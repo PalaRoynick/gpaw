@@ -429,11 +429,14 @@ def pytest_configure(config):
                  'gllb: GLLBSC tests',
                  'elph: Electron-phonon',
                  'intel: fails on INTEL toolchain',
+                 'rpa: tests of RPA',
                  'response: tests of the response code',
                  'kspair: tests of kspair in the response code',
                  'serial: run in serial only',
                  'gpu: GPU test',
-                 'later: know failure for new refactored GPAW']:
+                 'later: know failure for new refactored GPAW',
+                 'legacy: Old stuff that will be removed later',
+                 'wannier: Wannier functions']:
         config.addinivalue_line('markers', line)
 
 
