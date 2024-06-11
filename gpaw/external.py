@@ -388,15 +388,15 @@ def static_polarizability(atoms, strength=0.01):
     atoms.get_potential_energy()
     calc = atoms.calc
     assert calc.parameters.external is None
-    dipole_gs = calc.get_dipole_moment()
+    dipole_gs = atoms.get_dipole_moment()
 
     alpha = np.zeros((3, 3))
     for c in range(3):
         axes = np.zeros(3)
         axes[c] = 1
-        calc.set(external=ConstantElectricField(strength, axes))
-        calc.get_potential_energy()
-        alpha[c] = (calc.get_dipole_moment() - dipole_gs) / strength
-    calc.set(external=None)
+        atoms.calc = calc.new(external=ConstantElectricField(strength, axes))
+        atoms.get_potential_energy()
+        alpha[c] = (atoms.get_dipole_moment() - dipole_gs) / strength
+    atoms.calc = calc
 
     return alpha.T
