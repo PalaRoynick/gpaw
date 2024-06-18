@@ -29,7 +29,8 @@ class GSInfo:
             'Calculator must be in plane wave mode.'
 
         dft = calc.dft
-        self.nabla_aiiv = [setup.nabla_iiv for setup in dft.setups]
+        self.setups = dft.setups
+        self.nabla_aiiv = [setup.nabla_iiv for setup in self.setups]
 
         state = dft.state
         ibzwfs = self.ibzwfs = state.ibzwfs
@@ -95,6 +96,7 @@ class CollinearGSInfo(GSInfo):
                  calc: ASECalculator):
         super().__init__(calc)
         self.ns = self.ndensities
+        self.soc = False
 
     def get_wfs(self,
                 wfs_s: list[PWFDWaveFunctions],
@@ -118,6 +120,7 @@ class NoncollinearGSInfo(GSInfo):
                  calc: ASECalculator):
         super().__init__(calc)
         self.ns = 2
+        self.soc = calc.params.soc
 
     def get_wfs(self,
                 wfs_s: list[PWFDWaveFunctions],

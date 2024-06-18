@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import warnings
 
 from ase.parallel import parprint
 from ase.utils.timing import Timer
@@ -16,9 +17,8 @@ if TYPE_CHECKING:
 
 
 def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
+            bands: range,
             spin: int,
-            ni: int,
-            nf: int,
             timer: Timer | None = None) -> ArrayND:
     """
     Compute momentum matrix elements.
@@ -32,7 +32,7 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
     ni, nf
         First and last band to compute the mml (0 to nb).
     timer
-        Timer to keep track of time.
+        Timer to monitor code performance.
 
     Returns
     -------
@@ -76,14 +76,12 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
         wfs = gs.get_wfs(wfs_s, spin)
 
         with timer('Contribution from pseudo wave functions'):
-            G_plus_k_Gv, u_nG = gs.get_plane_wave_coefficients(
-                wfs, bands=bands, spin=spin)
+            G_plus_k_Gv, u_nG = gs.get_pw_coefficients(wfs, bands, spin)
             p_vnn = np.einsum('Gv,mG,nG->vmn',
                               G_plus_k_Gv, u_nG.conj(), u_nG) * gs.ucvol
 
         with timer('Contribution from PAW corrections'):
-            P_ani = gs.get_wave_function_projections(
-                wfs, bands=bands, spin=spin)
+            P_ani = gs.get_wave_function_projections(wfs, bands, spin)
             for P_ni, nabla_iiv in zip(P_ani.values(), gs.nabla_aiiv):
                 p_vnn -= 1j * np.einsum('mi,nj,ijv->vmn',
                                         P_ni.conj(), P_ni, nabla_iiv)
@@ -126,8 +124,61 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
         return np.array([], dtype=complex)
 
 
+def get_vmlsoc(gs: CollinearGSInfo | NoncollinearGSInfo,
+               bands: range,
+               timer: Timer | None = None) -> ArrayND:
+    """
+    Compute the spin--orbit correction to the velocity matrix elements.
+
+    Parameters
+    ----------
+    gs
+        Ground state adapter.
+    bands
+        Range of bands.
+    timer
+        Timer to monitor code performance.
+
+    Returns
+    -------
+    p_kvnn
+        Momentum matrix elements in atomic units gathered on master.
+    """
+
+    # Start the timer
+    if timer is None:
+        timer = Timer()
+    parprint(f'Calculating momentum matrix elements for spin channel {spin}.')
+
+    # Specify desired range and number of bands in calculation
+    nb = len(bands)
+
+    # Spin input
+    assert spin < gs.ns, 'Wrong spin input'
+
+    # Parallelisation and memory estimate
+    ibzwfs = gs.ibzwfs
+    kpt_comm = ibzwfs.kpt_comm
+    rank = kpt_comm.rank
+    master = (rank == 0)
+
+    nk = len(ibzwfs.rank_k)  # Total number of k-points
+    k_q = np.array(list(ibzwfs.q_k.keys()), int)  # k-index for each q-index
+    nq = len(k_q)  # Number of k-points (q-indices) for each core
+    est_mem = 2 * 3 * nk * nb**2 * 16 / 2**20
+    parprint(f'At least {est_mem:.2f} MB of memory is required on master.')
+
+    # Allocate the matrix elements
+    v_qvnn = np.empty((nq, 3, nb, nb), dtype=complex)
+
+    # Initial call to print 0 % progress
+    if master:
+        pb = ProgressBar()
+
+
 def make_nlodata(calc: ASECalculator | str | Path,
                  spin_string: str = 'all',
+                 add_soc_correction: bool = False,
                  ni: int | None = None,
                  nf: int | None = None) -> NLOData:
     """
@@ -187,6 +238,7 @@ def make_nlodata(calc: ASECalculator | str | Path,
     ni = int(ni) if ni is not None else 0
     nf = int(nf) if nf is not None else nb_full
     nf = nb_full + nf if (nf <= 0) else nf
+    bands = range(ni, nf)
 
     # Start the timer
     timer = Timer()
@@ -207,16 +259,24 @@ def make_nlodata(calc: ASECalculator | str | Path,
     with timer('Compute the momentum matrix elements'):
         p_skvnn = []
         for spin in spins:
-            p_kvnn = get_mml(gs=gs, ni=ni, nf=nf,
-                             spin=spin, timer=timer)
+            p_kvnn = get_mml(gs=gs, bands=bands, spin=spin, timer=timer)
             p_skvnn.append(p_kvnn)
         if not gs.collinear:
             p_skvnn = [p_skvnn[0] + p_skvnn[1]]
+    if add_soc_correction:
+        assert not gs.collinear
+        if not gs.soc:
+            warnings.warn('Ground state was determined without the spin–'
+                          'orbit Hamiltonian. Adding the SOC to the velocity '
+                          'matrix elements may give unpredictable results.')
+        with timer('Compute the spin–orbit correction '
+                   'to velocity matrix elements'):
+            v_kvnn = get_vmlsoc(gs, bands, timer)
 
     # Save the output to the file
     return NLOData(w_sk=w_sk,
-                   f_skn=f_skn[:, :, ni:nf],
-                   E_skn=E_skn[:, :, ni:nf],
+                   f_skn=f_skn[:, :, bands],
+                   E_skn=E_skn[:, :, bands],
                    p_skvnn=np.array(p_skvnn, complex),
                    comm=ibzwfs.kpt_comm)
 
