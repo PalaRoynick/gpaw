@@ -101,10 +101,11 @@ def modern_theory(mmedata, bands=None, fermishift=None):
     timer = Timer()
 
     # Convert input in eV to Ha
+    eta = 0.0001 / Ha
     if fermishift is None:
         E_F = 0
     else:
-        E_F = fermishift * Ha
+        E_F = fermishift / Ha
         raise NotImplementedError()
 
     # Load the required data
@@ -130,9 +131,8 @@ def modern_theory(mmedata, bands=None, fermishift=None):
 
         with timer('Summing over bands'):
             for dk, f_n, E_n, p_vnn in data_k.values():
-                px_nn = p_vnn[0]
-                py_nn = p_vnn[1]
-                pz_nn = p_vnn[2]
+                real_p_vnn = p_vnn.real
+                imag_p_vnn = p_vnn.imag
 
                 E_n -= E_F
                 occ_n = f_n * dk
@@ -140,25 +140,22 @@ def modern_theory(mmedata, bands=None, fermishift=None):
                 for n1 in bands:
                     occ = occ_n[n1]
                     En1 = E_n[n1]
+                    real_p_vn = real_p_vnn[:, n1]
+                    imag_p_vn = imag_p_vnn[:, n1]
                     for n2 in chain(range(bands.start, n1),
                                     range(n1 + 1, bands.stop)):
-                        factor = occ * (E_n[n2] + En1) / (E_n[n2] - En1)**2
+                        factor = (occ * (E_n[n2] + En1) / (E_n[n2] - En1 + 1j * eta)**2).real
 
-                        orbmag_v[0] += factor * np.imag(
-                            py_nn[n1, n2] * pz_nn[n2, n1] -
-                            pz_nn[n1, n2] * py_nn[n2, n1])
-                        orbmag_v[1] += factor * np.imag(
-                            pz_nn[n1, n2] * px_nn[n2, n1] -
-                            px_nn[n1, n2] * pz_nn[n2, n1])
-                        orbmag_v[2] += factor * np.imag(
-                            px_nn[n1, n2] * py_nn[n2, n1] -
-                            py_nn[n1, n2] * px_nn[n2, n1])
+                        orbmag_v += factor * np.cross(real_p_vn[:, n2], imag_p_vn[:, n2])
 
                 # Update progress bar
                 if master:
                     pb.update(count / ncount)
                     count += 1
 
+            # Multiply by 2 for Bohr magneton
+            orbmag_v *= 2
+            # Divide by 8pi^3 from BZ integral
             orbmag_v /= 8 * np.pi**3
 
         if master:
