@@ -17,6 +17,7 @@ def test_smoothness():
     f1, _ = rgd.pseudize_normalized(f0, gc, l, 4)
     f2, _ = rgd.pseudize(f0, gc, l, 4)
     f3, _ = rgd.pseudize_smooth(f0, gc, l, 4, Gcut)
+    f4, _ = rgd.jpseudize(f0, gc, l, 4)
 
     # Calculate weight of large wave vectors (G > Gcut):
     weights = []

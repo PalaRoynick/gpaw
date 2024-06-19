@@ -406,12 +406,12 @@ class RadialGridDescriptor(ABC):
         """
 
         from scipy.optimize import brentq
-        from scipy.special import sph_jn
+        from scipy.special import spherical_jn
 
         if a_g[gc] == 0:
             return self.zeros(), 0.0
 
-        assert isinstance(gc, int) and gc > 10
+        assert isinstance(gc, numbers.Integral) and gc > 10, gc
 
         zeros_l = [[1, 2, 3, 4, 5, 6],
                    [1.430, 2.459, 3.471, 4.477, 5.482, 6.484],
@@ -425,7 +425,8 @@ class RadialGridDescriptor(ABC):
         rc = self.r_g[gc]
 
         def f(q):
-            j, dj = (y[-1] for y in sph_jn(l, q * rc))
+            j = spherical_jn(l, q * rc)
+            dj = spherical_jn(l, q * rc, derivative=True)
             return dj * q - j * ld
 
         j_pg = self.empty(points - 1)
@@ -438,9 +439,10 @@ class RadialGridDescriptor(ABC):
         else:
             z1 = 0
         x = 0.01
+
         for p, z2 in enumerate(zeros[:points - 1]):
             q = brentq(f, z1 * pi / rc + x, z2 * pi / rc - x)
-            j_pg[p] = [sph_jn(l, q * r)[0][-1] for r in self.r_g]
+            j_pg[p] = spherical_jn(l, q * self.r_g)
             q_p[p] = q
             z1 = z2
 
