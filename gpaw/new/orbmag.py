@@ -144,9 +144,11 @@ def modern_theory(mmedata, bands=None, fermishift=None):
                     imag_p_vn = imag_p_vnn[:, n1]
                     for n2 in chain(range(bands.start, n1),
                                     range(n1 + 1, bands.stop)):
-                        factor = (occ * (E_n[n2] + En1) / (E_n[n2] - En1 + 1j * eta)**2).real
+                        factor = (occ * (E_n[n2] + En1) / (E_n[n2] - En1
+                                                           + 1j * eta)**2).real
 
-                        orbmag_v += factor * np.cross(real_p_vn[:, n2], imag_p_vn[:, n2])
+                        orbmag_v += factor * np.cross(real_p_vn[:, n2],
+                                                      imag_p_vn[:, n2])
 
                 # Update progress bar
                 if master:
