@@ -17,8 +17,6 @@ from gpaw.utilities.progressbar import ProgressBar
 if TYPE_CHECKING:
     from gpaw.typing import ArrayND
 
-_G_vLL: list[np.ndarray] = []  # see get_gaunt_coefs() below
-
 
 def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
             bands: slice,
@@ -116,6 +114,7 @@ def get_vmlsoc(gs: NoncollinearGSInfo,
     nq = len(ibzwfs.q_k.keys())
     vsoc_qvnn = np.empty([nq, 3, nb, nb], dtype=complex)
 
+    G_vLL = get_gaunt_coefs()
     if master:
         pb = ProgressBar()
 
@@ -129,7 +128,7 @@ def get_vmlsoc(gs: NoncollinearGSInfo,
                                                            gs.dUdr_aq),
                                                        zip(P_up_ani.values(),
                                                            P_dn_ani.values())):
-            vsoc_vnn += vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni)
+            vsoc_vnn += vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL)
 
         vsoc_qvnn[wfs.q] = vsoc_vnn
 
@@ -142,10 +141,9 @@ def get_vmlsoc(gs: NoncollinearGSInfo,
     return vsoc_qvnn
 
 
-def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni):
-    vsoc_vnn = np.zeros([3, P_up_ni.shape[0], P_up_ni.shape[0]], dtype=complex)
+def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL):
 
-    G_vLL = get_gaunt_coefs()
+    vsoc_vnn = np.zeros([3, P_up_ni.shape[0], P_up_ni.shape[0]], dtype=complex)
 
     l_j = setup.l_j
     nj = len(l_j)
@@ -200,16 +198,14 @@ def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni):
 
 
 def get_gaunt_coefs():
-    if len(_G_vLL) == 3:
-        return _G_vLL
-
     G_LLL = gaunt(1)
 
-    _G_vLL.append(G_LLL[3])  # < Y_lm | px | Y_lm >
-    _G_vLL.append(G_LLL[1])  # < Y_lm | py | Y_lm >
-    _G_vLL.append(G_LLL[2])  # < Y_lm | pz | Y_lm >
+    G_vLL = np.zeros([3, 9, 9])
+    G_vLL[0] = G_LLL[3]  # < Y_lm | px | Y_lm >
+    G_vLL[1] = G_LLL[1]  # < Y_lm | py | Y_lm >
+    G_vLL[2] = G_LLL[2]  # < Y_lm | pz | Y_lm >
 
-    return np.array(_G_vLL)
+    return G_vLL
 
 
 def gather_to_master(p_qvnn, ibzwfs):
