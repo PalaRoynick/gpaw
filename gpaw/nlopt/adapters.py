@@ -4,6 +4,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from gpaw.spinorbit import get_radial_potential_derivative
+from gpaw.utilities import pack_density
+
 if TYPE_CHECKING:
     from gpaw.core.atom_arrays import AtomArrays
     from gpaw.core.plane_waves import PWArray
@@ -49,10 +52,10 @@ class GSInfo:
         self.ucvol = np.abs(np.linalg.det(grid.cell))
         self.bzvol = np.abs(np.linalg.det(2 * np.pi * grid.icell))
 
-    def get_plane_wave_coefficients(self,
-                                    wfs: PWFDWaveFunctions,
-                                    bands: slice,
-                                    spin: int) -> tuple[ArrayND, ArrayND]:
+    def get_plane_wave_coefs(self,
+                             wfs: PWFDWaveFunctions,
+                             bands: slice,
+                             spin: int) -> tuple[ArrayND, ArrayND]:
         """
         Returns the plane wave coefficients and reciprocal vectors.
 
@@ -62,12 +65,13 @@ class GSInfo:
         G_plus_k_Gv = psit_nG.desc.G_plus_k_Gv
         return G_plus_k_Gv, self._pw_data(psit_nG, spin)
 
-    def get_wave_function_projections(self,
-                                      wfs: PWFDWaveFunctions,
-                                      bands: slice,
-                                      spin: int):
+    def get_paw_projection_coefs(self,
+                                 wfs: PWFDWaveFunctions,
+                                 bands: slice,
+                                 spin: int):
         """
-        Returns the projections of the pseudo wfs onto the partial waves.
+        Returns the projection coefficients of the
+        pseudo-wave functions onto the partial waves.
 
         Output is a dictionary with atom index keys and array values with
         shape (band index, partial wave index)
@@ -117,10 +121,38 @@ class CollinearGSInfo(GSInfo):
 
 class NoncollinearGSInfo(GSInfo):
     def __init__(self,
-                 calc: ASECalculator):
+                 calc: ASECalculator,
+                 add_soc_correction: bool):
         super().__init__(calc)
         self.ns = 2
         self.soc = calc.params.soc
+
+        if add_soc_correction:
+            D_asp = [np.array([pack_density(D_ii.real) for D_ii in D_sii])
+                     for D_sii in calc.dft.state.density.D_asii.values()]
+
+            dUdr_ag = [get_radial_potential_derivative(setup,
+                                                       calc.hamiltonian.xc,
+                                                       D_sp)
+                       for setup, D_sp in zip(self.setups, D_asp)]
+
+            dUdr_aq = []
+            for setup, dUdr_g in zip(self.setups, dUdr_ag):
+                Ng = len(dUdr_g)
+                r_g = setup.xc_correction.rgd.r_g[:Ng]
+                dr_g = setup.xc_correction.rgd.dr_g[:Ng]
+                nj = setup.nj
+
+                dUdr_q = np.zeros(setup.nq)
+                q = 0
+                for j1 in range(nj):
+                    phi1_g = setup.data.phi_jg[j1][:Ng]
+                    for j2 in range(j1, nj):
+                        dUdr_q[q] = sum(phi1_g * setup.data.phi_jg[j2][:Ng]
+                                        * r_g**2 * dr_g)
+                        q += 1
+                dUdr_aq.append(dUdr_q)
+            self.dUdr_aq = dUdr_aq
 
     def get_wfs(self,
                 wfs_s: list[PWFDWaveFunctions],

@@ -3,17 +3,21 @@ from typing import TYPE_CHECKING
 import warnings
 
 from ase.parallel import parprint
+from ase.units import alpha
 from ase.utils.timing import Timer
 from pathlib import Path
 import numpy as np
 
+from gpaw.gaunt import gaunt
 from gpaw.new.ase_interface import ASECalculator
+from gpaw.nlopt.adapters import CollinearGSInfo, NoncollinearGSInfo
 from gpaw.nlopt.basic import NLOData
 from gpaw.utilities.progressbar import ProgressBar
 
 if TYPE_CHECKING:
-    from gpaw.nlopt.adapters import CollinearGSInfo, NoncollinearGSInfo
     from gpaw.typing import ArrayND
+
+_G_vLL: list[np.ndarray] = []  # see get_gaunt_coefs() below
 
 
 def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
@@ -64,13 +68,12 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
         wfs = gs.get_wfs(wfs_s, spin)
 
         with timer('Contribution from pseudo wave functions'):
-            G_plus_k_Gv, u_nG = gs.get_plane_wave_coefficients(wfs,
-                                                               bands, spin)
+            G_plus_k_Gv, u_nG = gs.get_plane_wave_coefs(wfs, bands, spin)
             p_vnn = np.einsum('Gv,mG,nG->vmn',
                               G_plus_k_Gv, u_nG.conj(), u_nG) * gs.ucvol
 
         with timer('Contribution from PAW corrections'):
-            P_ani = gs.get_wave_function_projections(wfs, bands, spin)
+            P_ani = gs.get_paw_projection_coefs(wfs, bands, spin)
             for P_ni, nabla_iiv in zip(P_ani.values(), gs.nabla_aiiv):
                 p_vnn -= 1j * np.einsum('mi,nj,ijv->vmn',
                                         P_ni.conj(), P_ni, nabla_iiv)
@@ -82,9 +85,131 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
 
     if master:
         pb.finish()
-        timer.write()
 
     return p_qvnn
+
+
+def get_vmlsoc(gs: NoncollinearGSInfo,
+               bands: slice) -> ArrayND:
+    """
+    Compute the spin–orbit correction to the velocity matrix elements.
+
+    Parameters
+    ----------
+    gs
+        Ground state adapter.
+    bands
+        Range of bands.
+
+    Returns
+    -------
+    vsoc_kvnn
+        SOC correction elements to the velocity matrix elements
+    """
+
+    parprint('Calculating spin–orbit correction to velocity matrix elements.')
+
+    # Allocate the matrix elements
+    ibzwfs = gs.ibzwfs
+    master = (ibzwfs.kpt_comm.rank == 0)
+    nb = bands.stop - bands.start
+    nq = len(ibzwfs.q_k.keys())
+    vsoc_qvnn = np.empty([nq, 3, nb, nb], dtype=complex)
+
+    if master:
+        pb = ProgressBar()
+
+    for wfs_s in ibzwfs.wfs_qs:
+        vsoc_vnn = np.empty([3, nb, nb], dtype=complex)
+
+        wfs = gs.get_wfs(wfs_s, 0)
+        P_up_ani = gs.get_paw_projection_coefs(wfs, bands, 0)
+        P_dn_ani = gs.get_paw_projection_coefs(wfs, bands, 1)
+        for (setup, dUdr_q), (P_up_ni, P_dn_ni) in zip(zip(gs.setups,
+                                                           gs.dUdr_aq),
+                                                       zip(P_up_ani.values(),
+                                                           P_dn_ani.values())):
+            vsoc_vnn += vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni)
+
+        vsoc_qvnn[wfs.q] = vsoc_vnn
+
+        if master:
+            pb.update(wfs.q / nq)
+
+    if master:
+        pb.finish()
+
+    return vsoc_qvnn
+
+
+def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni):
+    vsoc_vnn = np.zeros([3, P_up_ni.shape[0], P_up_ni.shape[0]], dtype=complex)
+
+    G_vLL = get_gaunt_coefs()
+
+    l_j = setup.l_j
+    nj = len(l_j)
+
+    islice1 = slice(0, 0)
+    for j1, l1 in enumerate(l_j):
+        islice1 = slice(islice1.stop, islice1.stop + 2 * l1 + 1)
+        Lslice1 = slice(l1**2, (l1 + 1)**2)
+        P1_up_ni = P_up_ni[:, islice1].conj()
+        P1_dn_ni = P_dn_ni[:, islice1].conj()
+
+        islice2 = slice(0, 0)
+        for j2, l2 in enumerate(l_j):
+            islice2 = slice(islice2.stop, islice2.stop + 2 * l2 + 1)
+            if l1 == l2:
+                continue  # No s-s, p-p or d-d coupling.
+            if (l1 == 0 and l2 == 2) or (l1 == 2 and l2 == 0):
+                continue  # No s-d or d-s coupling.
+            Lslice2 = slice(l2**2, (l2 + 1)**2)
+            P2_up_ni = P_up_ni[:, islice2]
+            P2_dn_ni = P_dn_ni[:, islice2]
+
+            # Radial part
+            dUdr = dUdr_q[j2 + j1 * nj - j1 * (j1 + 1) // 2 if j1 < j2
+                          else j1 + j2 * nj - j2 * (j2 + 1) // 2]
+
+            # Angular part
+            Gx_ii, Gy_ii, Gz_ii = G_vLL[:, Lslice1, Lslice2]
+
+            # Spin part
+            P_sigmax_nnii = (np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
+                             + np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni))
+            P_sigmay_nnii = - 1j * (
+                np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
+                - np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni))
+            P_sigmaz_nnii = (np.einsum('mi,nj->mnij', P1_up_ni, P2_up_ni)
+                             - np.einsum('mi,nj->mnij', P1_dn_ni, P2_dn_ni))
+
+            vsoc_vnn[0] += dUdr * (
+                np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gy_ii)
+                - np.einsum('mnij,ij->mn', P_sigmay_nnii, Gz_ii))
+
+            vsoc_vnn[1] += dUdr * (
+                np.einsum('mnij,ij->mn', P_sigmax_nnii, Gz_ii)
+                - np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gx_ii))
+
+            vsoc_vnn[2] += dUdr * (
+                np.einsum('mnij,ij->mn', P_sigmay_nnii, Gx_ii)
+                - np.einsum('mnij,ij->mn', P_sigmax_nnii, Gy_ii))
+
+    return vsoc_vnn
+
+
+def get_gaunt_coefs():
+    if len(_G_vLL) == 3:
+        return _G_vLL
+
+    G_LLL = gaunt(1)
+
+    _G_vLL.append(G_LLL[3])  # < Y_lm | px | Y_lm >
+    _G_vLL.append(G_LLL[1])  # < Y_lm | py | Y_lm >
+    _G_vLL.append(G_LLL[2])  # < Y_lm | pz | Y_lm >
+
+    return np.array(_G_vLL)
 
 
 def gather_to_master(p_qvnn, ibzwfs):
@@ -114,58 +239,6 @@ def gather_to_master(p_qvnn, ibzwfs):
         return p_kvnn
     else:
         return np.array([], dtype=complex)
-
-
-def get_vmlsoc(gs: CollinearGSInfo | NoncollinearGSInfo,
-               bands: range,
-               timer: Timer | None = None) -> ArrayND:
-    """
-    Compute the spin--orbit correction to the velocity matrix elements.
-
-    Parameters
-    ----------
-    gs
-        Ground state adapter.
-    bands
-        Range of bands.
-    timer
-        Timer to monitor code performance.
-
-    Returns
-    -------
-    p_kvnn
-        Momentum matrix elements in atomic units gathered on master.
-    """
-
-    # Start the timer
-    if timer is None:
-        timer = Timer()
-    parprint(f'Calculating momentum matrix elements for spin channel {spin}.')
-
-    # Specify desired range and number of bands in calculation
-    nb = len(bands)
-
-    # Spin input
-    assert spin < gs.ns, 'Wrong spin input'
-
-    # Parallelisation and memory estimate
-    ibzwfs = gs.ibzwfs
-    kpt_comm = ibzwfs.kpt_comm
-    rank = kpt_comm.rank
-    master = (rank == 0)
-
-    nk = len(ibzwfs.rank_k)  # Total number of k-points
-    k_q = np.array(list(ibzwfs.q_k.keys()), int)  # k-index for each q-index
-    nq = len(k_q)  # Number of k-points (q-indices) for each core
-    est_mem = 2 * 3 * nk * nb**2 * 16 / 2**20
-    parprint(f'At least {est_mem:.2f} MB of memory is required on master.')
-
-    # Allocate the matrix elements
-    v_qvnn = np.empty((nq, 3, nb, nb), dtype=complex)
-
-    # Initial call to print 0 % progress
-    if master:
-        pb = ProgressBar()
 
 
 def make_nlodata(calc: ASECalculator | str | Path,
@@ -206,11 +279,9 @@ def make_nlodata(calc: ASECalculator | str | Path,
 
     gs: CollinearGSInfo | NoncollinearGSInfo
     if calc.dft.state.density.collinear:
-        from gpaw.nlopt.adapters import CollinearGSInfo
         gs = CollinearGSInfo(calc)
     else:
-        from gpaw.nlopt.adapters import NoncollinearGSInfo
-        gs = NoncollinearGSInfo(calc)
+        gs = NoncollinearGSInfo(calc, add_soc_correction)
 
     # Start the timer
     timer = Timer()
@@ -260,19 +331,24 @@ def make_nlodata(calc: ASECalculator | str | Path,
         if not gs.collinear:
             p_sqvnn = [p_sqvnn[0] + p_sqvnn[1]]
     if add_soc_correction:
-        assert not gs.collinear
+        assert isinstance(gs, NoncollinearGSInfo)
         if not gs.soc:
             warnings.warn('Ground state was determined without the spin–'
                           'orbit Hamiltonian. Adding the SOC to the velocity '
                           'matrix elements may give unpredictable results.')
-        with timer('Compute the spin–orbit correction '
+        with timer('Compute and add the spin–orbit correction '
                    'to velocity matrix elements'):
-            v_kvnn = get_vmlsoc(gs, bands, timer)
+            v_qvnn = get_vmlsoc(gs, bands)
+            prefactor = alpha**2 * np.sqrt(np.pi / 12)
+            p_sqvnn = [p_sqvnn[0] + prefactor * v_qvnn]
     with timer('Gather the data to master'):
         p_skvnn = []
         for p_qvnn in p_sqvnn:
             p_kvnn = gather_to_master(p_qvnn, ibzwfs)
             p_skvnn.append(p_kvnn)
+
+    if ibzwfs.kpt_comm.rank == 0:
+        timer.write()
 
     # Save the output to the file
     return NLOData(w_sk=w_sk,
