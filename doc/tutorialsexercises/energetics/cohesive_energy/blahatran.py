@@ -9,10 +9,11 @@ From this paper:
 
   PHYSICAL REVIEW B 81, 115126 (2010)
 """
-
+import numpy as np
 from ase import Atoms
 from gpaw import GPAW
 from ase.build import bulk
+from ase.eos import EquationOfState
 
 
 # The data is: Crystal structure, 6 lattice constants (PBE, LDA,
@@ -75,7 +76,7 @@ def atom(symbol, L=12.0, d=0.1):
     atoms.positions[:, 2] += 0.1234
     atoms.calc = GPAW(
         xc='PBE',
-        mode={'name': 'pw', 'ecut': 800.0},
+        mode={'name': 'pw', 'ecut': 1000.0},
         nbands=-2,
         mixer={'backend': 'no-mixing'},
         occupations={'name': 'fixed-uniform'},
@@ -84,18 +85,35 @@ def atom(symbol, L=12.0, d=0.1):
         symmetry='off',
         convergence={'density': 1e-3, 'eigenstates': 1e-3},
         txt=f'{symbol}-atom.txt')
-    atom.get_potential_energy()
+    e = atom.get_potential_energy()
     atom.calc.write(f'{symbol}-atom.gpw')
+    return e
 
 
 def solid(name):
     x, a = data[name][:2]
     atoms = bulk(name, crystalstructure=x, latticeconstant=a)
-    k = int(atoms.get_volume()**0.33 / L * ...)
+    L = 40.0  # Å
+    k = int(L / atoms.get_volume()**0.33) + 1
     atoms.calc = GPAW(
         xc='PBE',
-        mode={'name': 'pw', 'ecut': 800.0},
-        kpts=(k, k, k))
+        mode={'name': 'pw', 'ecut': 1000.0},
+        kpts=(k, k, k),
+        occupations={'name': 'marzari-wanderbilt', 'width': 0.1},
+        txt=f'{name}-bulk.txt')
+    cell = atoms.get_cell()
+    volumes = []
+    energies = []
+    for strain in np.linspace(-0.06, 0.06, 7):
+        atoms.set_cell(cell * (1 + strain)**(1 / 3), scale_atoms=True)
+        vol = atoms.cell.volume
+        e = atoms.get_potential_energy()
+        volumes.append(vol)
+        energies.append(e)
+
+    eos = EquationOfState(volumes, energies, 'birchmurnaghan')
+    v0, e0, B = eos.fit()
+    return (v0, e0, B)
 
 
 symbols = (
@@ -105,4 +123,6 @@ symbols = (
 def workflow():
     from myqueue.workflow import run
     for symbol in symbols:
-        run(function=atom, args=[symbol])
+        run(function=atom, args=[symbol], name=f'{symbol}-atom')
+    for name in data:
+        run(function=solid, args=[name], name=f'{name}-bulk')
