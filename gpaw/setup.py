@@ -232,7 +232,6 @@ class BaseSetup:
 
         for j, (n1, l1, f, f_s) in enumerate(zip(self.n_j, self.l_j,
                                                  f_j, f_sj.T)):
-            print(j, n1, l1, f, f_s)
             if not f_s.any():
                 continue
             I = 0
@@ -265,7 +264,7 @@ class BaseSetup:
             raise WrongMagmomForHundsRuleError(
                 f'Bad magnetic moment {magmom:g} for {self.symbol} atom!')
 
-        #print('f_sI =', f_sI);sadf
+        # print('f_sI =', f_sI)
         return f_sI
 
     def get_hunds_rule_moment(self, charge=0):

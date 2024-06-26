@@ -42,7 +42,6 @@ def find_created_files():
         for name in filenames:
             name = name.strip()
             if name in names:
-                print(path)
                 raise RuntimeError(
                     f'The name {name!r} is used in more than one place!')
             names.add(name)
@@ -58,25 +57,3 @@ def collect_files_for_web_page():
         print(path)
         (folder / path.name).write_bytes(path.read_bytes())
     # os.environ['WEB_PAGE_FOLDER']
-
-
-hmm = """anisotropy
-planaraverages"""
-
-
-if __name__ == '__main__':
-    for p in find_created_files():
-        assert p.is_file()
-        p2 = Path.home() / 'nh/venv/gpaw/doc/' / p
-        assert p2.is_file()
-        if 0:  # p.suffix in {'.csv', '.dat', '.txt', '.out', '.xyz'}:
-            if p.read_text() != p2.read_text():
-                pass#print(f'meld {p} {p2}')
-            else:
-                print(p)
-        elif p.suffix in {'.png', '.svg'} and p.stem in hmm.splitlines():
-            print(p, p2, end=' ')
-        else:
-            pass  # print(p, p2)
-
-
