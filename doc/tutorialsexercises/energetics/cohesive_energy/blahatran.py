@@ -11,10 +11,11 @@ From this paper:
 """
 import numpy as np
 from ase import Atoms
-from gpaw import GPAW
 from ase.build import bulk
 from ase.eos import EquationOfState
-
+from ase.units import Ha
+from gpaw import GPAW
+from gpaw.spherical_harmonics import names
 
 # The data is: Crystal structure, 6 lattice constants (PBE, LDA,
 # EXX, RPA, RPA+, experiment), 6 cohesive energies and PBE bulk
@@ -70,6 +71,27 @@ data = {
            2.52, 3.64, 0.52, 2.64, 2.58, 2.98, 90]}
 
 
+def project(calc):
+    setup = calc.setups[0]
+    labels = [f'{n}{"spd"[l]}({names[l][m]})'
+              for n, l in zip(setup.n_j, setup.l_j)
+              for m in range(2 * l + 1)]
+
+    lines = ['#,eig. [eV],occ,character,eig. [eV],occ,character']
+    for n in range(len(calc.wfs.kpt_qs[0][0].eps_n)):
+        line = str(n)
+        for spin in [0, 1]:
+            kpt = calc.wfs.kpt_qs[0][spin]
+            P_i = kpt.P_ani[0][n]
+            i = abs(P_i).argmax()
+            eig = kpt.eps_n[n] * Ha
+            occ = kpt.f_n[n]
+            line += f',{eig:.3f},{occ:.1f},{labels[i]}'
+        lines.append(line)
+    with open(f'{setup.symbol}-atom.csv', 'w') as fd:
+        print('\n'.join(lines), file=fd)
+
+
 def atom(symbol, L=12.0, d=0.1):
     atoms = Atoms(symbol, cell=[L, L + d, L - d])
     atoms.center()
@@ -77,7 +99,7 @@ def atom(symbol, L=12.0, d=0.1):
     atoms.calc = GPAW(
         xc='PBE',
         mode={'name': 'pw', 'ecut': 1000.0},
-        nbands=-2,
+        nbands=0,
         mixer={'backend': 'no-mixing'},
         occupations={'name': 'fixed-uniform'},
         hund=True,
@@ -85,21 +107,28 @@ def atom(symbol, L=12.0, d=0.1):
         symmetry='off',
         convergence={'density': 1e-3, 'eigenstates': 1e-3},
         txt=f'{symbol}-atom.txt')
-    e = atom.get_potential_energy()
-    atom.calc.write(f'{symbol}-atom.gpw')
+    e = atoms.get_potential_energy()
+    atoms.calc.write(f'{symbol}-atom.gpw')
+    project(atoms.calc)
     return e
 
 
 def solid(name):
-    x, a = data[name][:2]
-    atoms = bulk(name, crystalstructure=x, latticeconstant=a)
+    d = data[name]
+    x = d[0]
+    a_pbe = d[1]
+    a_exp = d[6]
+    ec_pbe = d[7]
+    ec_exp = d[12]
+    B_pbe = d[13]
+    atoms = bulk(name, crystalstructure=x, a=a_pbe)
     L = 40.0  # Å
     k = int(L / atoms.get_volume()**0.33) + 1
     atoms.calc = GPAW(
         xc='PBE',
         mode={'name': 'pw', 'ecut': 1000.0},
         kpts=(k, k, k),
-        occupations={'name': 'marzari-wanderbilt', 'width': 0.1},
+        occupations={'name': 'marzari-vanderbilt', 'width': 0.1},
         txt=f'{name}-bulk.txt')
     cell = atoms.get_cell()
     volumes = []
@@ -113,7 +142,15 @@ def solid(name):
 
     eos = EquationOfState(volumes, energies, 'birchmurnaghan')
     v0, e0, B = eos.fit()
-    return (v0, e0, B)
+    return {'a': a_pbe * (v0 / volumes[3])**(1 / 3),
+            'e0': e0,
+            'symbols': list(atoms.symbols),
+            'B': B,
+            'a_pbe': a_pbe,
+            'a_exp': a_exp,
+            'ec_pbe': ec_pbe,
+            'ec_exp': ec_exp,
+            'B_pbe': B_pbe}
 
 
 symbols = (
@@ -123,6 +160,7 @@ symbols = (
 def workflow():
     from myqueue.workflow import run
     for symbol in symbols:
-        run(function=atom, args=[symbol], name=f'{symbol}-atom')
+        run(function=atom, args=[symbol], name=f'{symbol}-atom', tmax='2h')
     for name in data:
-        run(function=solid, args=[name], name=f'{name}-bulk')
+        run(function=solid, args=[name], name=f'{name}-bulk',
+            cores=24, tmax='2h')
