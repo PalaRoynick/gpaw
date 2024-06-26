@@ -9,6 +9,9 @@ From this paper:
 
   PHYSICAL REVIEW B 81, 115126 (2010)
 """
+import json
+from pathlib import Path
+
 import numpy as np
 from ase import Atoms
 from ase.build import bulk
@@ -164,3 +167,16 @@ def workflow():
     for name in data:
         run(function=solid, args=[name], name=f'{name}-bulk',
             cores=24, tmax='2h')
+
+
+if __name__ == '__main__':
+    reference_energies = {}
+    for path in Path().glob('*-atom.result'):
+        e = json.loads(path.read_text())
+        reference_energies[path.name.split('-')[0]] = e
+    for path in Path().glob('*-bulk.result'):
+        result = json.loads(path.read_text())
+        ec = (sum(reference_energies[symbol]
+                  for symbol in result['symbols']) -
+              result['e0']) / len(result['symbols'])
+        print(path, ec, ec - result['ec_pbe'])
