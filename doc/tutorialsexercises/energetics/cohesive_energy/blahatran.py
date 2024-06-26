@@ -163,20 +163,36 @@ symbols = (
 def workflow():
     from myqueue.workflow import run
     for symbol in symbols:
-        run(function=atom, args=[symbol], name=f'{symbol}-atom', tmax='2h')
+        run(function=atom, args=[symbol], name=f'{symbol}-atom')
     for name in data:
         run(function=solid, args=[name], name=f'{name}-bulk',
-            cores=24, tmax='2h')
+            cores=24, tmax='5m')
 
 
-if __name__ == '__main__':
+def summary():
     reference_energies = {}
     for path in Path().glob('*-atom.result'):
         e = json.loads(path.read_text())
         reference_energies[path.name.split('-')[0]] = e
     for path in Path().glob('*-bulk.result'):
         result = json.loads(path.read_text())
+        name = path.name.split('-')[0]
         ec = (sum(reference_energies[symbol]
                   for symbol in result['symbols']) -
               result['e0']) / len(result['symbols'])
-        print(path, ec, ec - result['ec_pbe'])
+        dec = 100 * (ec / result['ec_pbe'] - 1)
+        dec_exp = 100 * (result['ec_exp'] / result['ec_pbe'] - 1)
+        a = result['a']
+        da = 100 * (a / result['a_pbe'] - 1)
+        da_exp = 100 * (result['a_exp'] / result['a_pbe'] - 1)
+        B = result['B']
+        dB = 100 * (B / result['B_pbe'] - 1)
+        print(
+            f'{name:4},',
+            f'{a:.3f}, {da:6.2f}, {da_exp:6.2f},',
+            f'{ec:.3f}, {dec:6.2f}, {dec_exp:6.2f},',
+            f'{B:.3f}, {dB:6.2f}')
+
+
+if __name__ == '__main__':
+    summary()
