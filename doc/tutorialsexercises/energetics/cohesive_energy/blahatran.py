@@ -13,7 +13,7 @@ import numpy as np
 from ase import Atoms
 from ase.build import bulk
 from ase.eos import EquationOfState
-from ase.units import Ha
+from ase.units import Ha, kJ
 from gpaw import GPAW
 from gpaw.spherical_harmonics import names
 
@@ -120,7 +120,7 @@ def solid(name):
     a_exp = d[6]
     ec_pbe = d[7]
     ec_exp = d[12]
-    B_pbe = d[13]
+    B_pbe = d[13] * kJ * 1e-24
     atoms = bulk(name, crystalstructure=x, a=a_pbe)
     L = 40.0  # Å
     k = int(L / atoms.get_volume()**0.33) + 1
