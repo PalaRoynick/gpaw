@@ -174,25 +174,27 @@ def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL):
             Gx_ii, Gy_ii, Gz_ii = G_vLL[:, Lslice1, Lslice2]
 
             # Spin part
-            P_sigmax_nnii = (np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
-                             + np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni))
-            P_sigmay_nnii = - 1j * (
-                np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
-                - np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni))
-            P_sigmaz_nnii = (np.einsum('mi,nj->mnij', P1_up_ni, P2_up_ni)
-                             - np.einsum('mi,nj->mnij', P1_dn_ni, P2_dn_ni))
+            P_upup = np.einsum('mi,nj->mnij', P1_up_ni, P2_up_ni)
+            P_updn = np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
+            P_dnup = np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni)
+            P_dndn = np.einsum('mi,nj->mnij', P1_dn_ni, P2_dn_ni)
 
+            P_sigmax_nnii = P_updn + P_dnup
+            P_sigmay_nnii = - 1j * (P_updn - P_dnup)
+            P_sigmaz_nnii = P_upup - P_dndn
+
+            # Matrix elements
             vsoc_vnn[0] += dUdr * (
-                np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gy_ii)
-                - np.einsum('mnij,ij->mn', P_sigmay_nnii, Gz_ii))
+                np.einsum('mnij,ij->mn', P_sigmay_nnii, Gz_ii)
+                - np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gy_ii))
 
             vsoc_vnn[1] += dUdr * (
-                np.einsum('mnij,ij->mn', P_sigmax_nnii, Gz_ii)
-                - np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gx_ii))
+                np.einsum('mnij,ij->mn', P_sigmaz_nnii, Gx_ii)
+                - np.einsum('mnij,ij->mn', P_sigmax_nnii, Gz_ii))
 
             vsoc_vnn[2] += dUdr * (
-                np.einsum('mnij,ij->mn', P_sigmay_nnii, Gx_ii)
-                - np.einsum('mnij,ij->mn', P_sigmax_nnii, Gy_ii))
+                np.einsum('mnij,ij->mn', P_sigmax_nnii, Gy_ii)
+                - np.einsum('mnij,ij->mn', P_sigmay_nnii, Gx_ii))
 
     return vsoc_vnn
 
