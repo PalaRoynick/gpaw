@@ -174,6 +174,10 @@ def summary():
     for path in Path().glob('*-atom.result'):
         e = json.loads(path.read_text())
         reference_energies[path.name.split('-')[0]] = e
+    print('name,',
+          'aG [Ang], aG-aW [%], aE-aW [%],',
+          'eG [eV], eG-eW [%], eE-eW [%],',
+          'BG [eV/Ang^3], BG-BW [%]')
     for path in Path().glob('*-bulk.result'):
         result = json.loads(path.read_text())
         name = path.name.split('-')[0]
