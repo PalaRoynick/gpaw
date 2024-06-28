@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 
@@ -49,14 +48,11 @@ def find_created_files():
 
 
 def collect_files_for_web_page():
-    os.chdir('gpaw/doc')
     folder = Path('agts-files')
-    if not folder.is_dir():
-        folder.mkdir()
+    folder.mkdir(exist_ok=True)
     for path in find_created_files():
         print(path)
         (folder / path.name).write_bytes(path.read_bytes())
-    # os.environ['WEB_PAGE_FOLDER']
 
 
 if __name__ == '__main__':
