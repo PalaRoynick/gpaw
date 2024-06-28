@@ -73,3 +73,4 @@ doc/setups/[A-Z]*.rst
 !mypy.ini
 !pytest.ini
 !doc/words.txt
+!doc/tutorialsexercises/energetics/cohesive_energy/*.csv
