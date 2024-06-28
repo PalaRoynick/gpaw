@@ -11,6 +11,19 @@ from ase.units import Ha, kJ
 from gpaw import GPAW
 from gpaw.spherical_harmonics import names
 
+
+def read_csv(path: Path) -> dict[str, dict[str, float]]:
+    header, *lines = path.read_text().splitlines()
+    xcs = header.split(',')[2:]
+    data = {}
+    for line in lines:
+        name, x, *values = line.split(',')
+        data[name] = {}
+        for xc, value in zip(xcs, values):
+            data[name][xc] = float(value)
+    return data
+
+
 if 0:
     for line in Path('lattice_constants.csv').read_text().splitlines()[1:]:
         x = line.split(',')
@@ -65,7 +78,7 @@ data = {
 
 all_atoms = set()
 for formula in data:
-    all_atoms |= Formula(formula).count()
+    all_atoms.update(Formula(formula).count())
 
 
 def project(calc):
@@ -96,7 +109,7 @@ def atom(symbol, L=12.0, d=0.1):
     atoms.calc = GPAW(
         xc='PBE',
         mode={'name': 'pw', 'ecut': 1000.0},
-        nbands=0,
+        nbands=-2,
         mixer={'backend': 'no-mixing'},
         occupations={'name': 'fixed-uniform'},
         hund=True,
@@ -154,6 +167,9 @@ def summary():
     for path in Path().glob('*-atom.result'):
         e = json.loads(path.read_text())
         reference_energies[path.name.split('-')[0]] = e
+    LC = read_csv(Path('lattice_constants.csv'))
+    CE = read_csv(Path('cohesive_energies.csv'))
+    BM = read_csv(Path('bulk_moduli.csv'))
     print('name,',
           'aG [Ang], aG-aW [%], aE-aW [%],',
           'eG [eV], eG-eW [%], eE-eW [%],',
@@ -164,13 +180,18 @@ def summary():
         ec = (sum(reference_energies[symbol]
                   for symbol in result['symbols']) -
               result['e0']) / len(result['symbols'])
-        dec = 100 * (ec / result['ec_pbe'] - 1)
-        dec_exp = 100 * (result['ec_exp'] / result['ec_pbe'] - 1)
+        ec_pbe = CE[name]['PBE']
+        ec_exp = CE[name]['Expt.']
+        dec = 100 * (ec / ec_pbe - 1)
+        dec_exp = 100 * (ec_exp / ec_pbe - 1)
         a = result['a']
-        da = 100 * (a / result['a_pbe'] - 1)
-        da_exp = 100 * (result['a_exp'] / result['a_pbe'] - 1)
+        a_pbe = LC[name]['PBE']
+        a_exp = LC[name]['Expt.']
+        da = 100 * (a / a_pbe - 1)
+        da_exp = 100 * (a_exp / a_pbe - 1)
         B = result['B']
-        dB = 100 * (B / result['B_pbe'] - 1)
+        B_pbe = BM[name]['PBE'] * kJ * 1e-24
+        dB = 100 * (B / B_pbe - 1)
         print(
             f'{name:4},',
             f'{a:.3f}, {da:6.2f}, {da_exp:6.2f},',
