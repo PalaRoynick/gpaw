@@ -57,3 +57,12 @@ def collect_files_for_web_page():
         print(path)
         (folder / path.name).write_bytes(path.read_bytes())
     # os.environ['WEB_PAGE_FOLDER']
+
+
+if __name__ == '__main__':
+    if 1:
+        collect_files_for_web_page()
+    else:
+        for p in find_created_files():
+            if not p.is_file():
+                print('MISSING:', p)
