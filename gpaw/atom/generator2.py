@@ -8,7 +8,7 @@ from ase.data import atomic_numbers, chemical_symbols
 from ase.units import Ha
 from gpaw import __version__ as version
 from gpaw.atom.aeatom import (AllElectronAtom, Channel, GaussianBasis, colors,
-                              parse_ld_str)
+                              parse_ld_str, coefs)
 from gpaw.basis_data import Basis, BasisFunction, BasisPlotter
 from gpaw.gaunt import gaunt
 from gpaw.typing import Array2D
@@ -236,7 +236,7 @@ class PAWWaves:
         self.e_n.append(e)
         self.f_n.append(f)
 
-    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut):
+    def pseudize0(self, pseudizer, vtr_g, vr_g, rcmax, ecut):
         rgd = self.rgd
         r_g = rgd.r_g
         phi_ng = self.phi_ng = np.array(self.phi_ng)
@@ -283,6 +283,46 @@ class PAWWaves:
         self.dH_nn += self.dH_nn.T.copy()
         pt_ng[:] = np.dot(np.linalg.inv(A_nn.T), pt_ng)
 
+    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut):
+        rgd = self.rgd
+        r_g = rgd.r_g
+        phi_ng = self.phi_ng = np.array(self.phi_ng)
+        N = len(phi_ng)
+        phit_ng = self.phit_ng = rgd.empty(N)
+        pt_ng = self.pt_ng = rgd.empty(N)
+        gc = rgd.ceil(self.rcut)
+        l = self.l
+        rc = self.rcut
+        q_g = np.exp(-2.0 * rc**2 * r_g**2 / (rc**2 - r_g**2))
+        q_g[gc:] = 0.0
+        e = self.e_n[0]
+        u0_g = phi_ng[0].copy()
+        integrate_inwards(l, u0_g, rgd, vtr_g, gc, e, q_g * 0.0)
+        u1_g = phi_ng[0].copy()
+        integrate_inwards(l, u1_g, rgd, vtr_g, gc, e, q_g)
+        P0 = rgd.integrate(u0_g * q_g)
+        P1 = rgd.integrate(u1_g * q_g)
+        c0 = (1.0 - P1) / (P0 - P1)
+        self.phit_ng[0] = c0 * u0_g + (1.0 - c0) * u1_g
+        P = rgd.integrate(self.phit_ng[0] * q_g)
+        print(P0, P1, P, c0)
+        #rgd.plot(u0_g)
+        #rgd.plot(u1_g)
+        #rgd.plot(q_g, show=1)
+        rgd.plot(self.phit_ng[0])
+        rgd.plot(self.phi_ng[0], show=1)
+        self.nt_g = rgd.zeros()
+        self.nt_g += self.f_n[n] / 4 / pi * phit_ng[n]**2
+
+        self.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
+                      rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * pi)
+        self.Q = np.dot(self.f_n, self.dS_nn.diagonal())
+        A_nn = rgd.integrate(phit_ng[:, None] * pt_ng) / (4 * pi)
+        self.dH_nn = np.dot(self.dS_nn, np.diag(self.e_n)) - A_nn
+        self.dH_nn *= 0.5
+        self.dH_nn += self.dH_nn.T.copy()
+        pt_ng[:] = np.dot(np.linalg.inv(A_nn.T), pt_ng)
+
     def construct_projectors(self, vtr_g, rcmax):
         pass
 
@@ -296,6 +336,22 @@ class PAWWaves:
                                             self.phi_ng *
                                             vr_g, -1) / (4 * pi) +
                          self.dH_nn)
+
+
+def integrate_inwards(l, u_g, rgd, vr_g, g0, e, q_g):
+    r_g = rgd.r_g
+
+    cm1_g, c0_g, cp1_g, x = coefs(rgd, l, vr_g, e)
+
+    ag = u_g[g0] / r_g[g0]**l
+    agp1 = u_g[g0 + 1] / r_g[g0 + 1]**l
+
+    for g in range(g0, 1, -1):
+        agm1 = -(agp1 * cp1_g[g] + ag * c0_g[g] +
+                 2 * q_g[g] * r_g[g]) / cm1_g[g]
+        u_g[g - 1] = agm1 * r_g[g - 1]**l
+        agp1 = ag
+        ag = agm1
 
 
 class PAWSetupGenerator:
