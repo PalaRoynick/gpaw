@@ -98,7 +98,7 @@ def project(calc):
             occ = kpt.f_n[n]
             line += f',{eig:.3f},{occ:.1f},{labels[i]}'
         lines.append(line)
-    with open(f'{setup.symbol}-atom.csv', 'w') as fd:
+    with open(f'{setup.symbol}-atom3.csv', 'w') as fd:
         print('\n'.join(lines), file=fd)
 
 
@@ -120,6 +120,44 @@ def atom(symbol, L=12.0, d=0.1):
     e = atoms.get_potential_energy()
     atoms.calc.write(f'{symbol}-atom.gpw')
     project(atoms.calc)
+    return e
+
+
+def atom3(symbol, L=12.0, d=0.1):
+    atoms = Atoms(symbol, cell=[L, L + d, L - d])
+    atoms.center()
+    atoms.positions[:, 2] += 0.1234
+    atoms.calc = GPAW(
+        xc='PBE',
+        mode={'name': 'pw', 'ecut': 1000.0},
+        nbands=-2,
+        mixer={'backend': 'no-mixing'},
+        occupations={'name': 'fixed-uniform'},
+        hund=True,
+        eigensolver={'name': 'etdm-fdpw', 'converge_unocc': not True},
+        symmetry='off',
+        # convergence={'density': 1e-3, 'eigenstates': 1e-3},
+        txt=f'{symbol}-atom3.txt')
+    e = atoms.get_potential_energy()
+    project(atoms.calc)
+    return e
+
+
+def atom2(symbol, L=12.0, d=0.1):
+    atoms = Atoms(symbol, cell=[L, L + d, L - d])
+    atoms.center()
+    atoms.positions[:, 2] += 0.1234
+    atoms.calc = GPAW(
+        xc='PBE',
+        mode={'name': 'pw', 'ecut': 1000.0},
+        occupations={'name': 'fermi-dirac', 'width': 0.01},
+        hund=True,
+        symmetry='off',
+        # convergence={'density': 1e-3, 'eigenstates': 1e-3},
+        txt=f'{symbol}-atom2.txt')
+    e = atoms.get_potential_energy()
+    # atoms.calc.write(f'{symbol}-atom.gpw')
+    # project(atoms.calc)
     return e
 
 
@@ -157,9 +195,25 @@ def workflow():
     from myqueue.workflow import run
     for symbol in all_atoms:
         run(function=atom, args=[symbol], name=f'{symbol}-atom')
+        run(function=atom2, args=[symbol], name=f'{symbol}-atom2')
+        run(function=atom3, args=[symbol], name=f'{symbol}-atom3')
     for name in data:
         run(function=solid, args=[name], name=f'{name}-bulk',
-            cores=24, tmax='5m')
+            cores=24, tmax='50m')
+
+
+def check_occ():
+    for symbol in all_atoms:
+        calc = GPAW(f'{symbol}-atom.gpw')
+        f_sn = [[calc.get_occupation_numbers(spin=s) for s in [0, 1]]]
+        e_sn = [[calc.get_eigenvalues(spin=s) for s in [0, 1]]]
+        f_m = np.array(f_sn).reshape((-1,))
+        e_m = np.array(e_sn).reshape((-1,))
+        f = f_m[np.argsort(e_m)]
+        if not (f[1:] <= f[:-1]).all():
+            print(symbol)
+            print(e_sn)
+            print(f_sn)
 
 
 def summary():
@@ -200,4 +254,5 @@ def summary():
 
 
 if __name__ == '__main__':
-    summary()
+    #summary()
+    check_occ()
