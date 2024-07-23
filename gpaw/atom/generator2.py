@@ -300,12 +300,17 @@ class PAWWaves:
         integrate_inwards(l, u0_g, rgd, vtr_g, gc, e, q_g * 0.0)
         u1_g = phi_ng[0].copy()
         integrate_inwards(l, u1_g, rgd, vtr_g, gc, e, q_g)
-        P0 = rgd.integrate(u0_g * q_g)
-        P1 = rgd.integrate(u1_g * q_g)
-        c0 = (1.0 - P1) / (P0 - P1)
-        self.phit_ng[0] = c0 * u0_g + (1.0 - c0) * u1_g
-        P = rgd.integrate(self.phit_ng[0] * q_g)
-        print(P0, P1, P, c0)
+        fit phit = a-br^2 = a0*pfit0+(1-a0)*phit1
+        and 3b+(vt(0)-e)*a = a1*f ...
+        D0 = u0_g[2] - u0_g[1]
+        D1 = u1_g[2] - u1_g[1]
+        a0 = D1 / (D1 - D0)
+        self.phit_ng[0] = a0 * u0_g + (1.0 - a0) * u1_g
+        #P0 = rgd.integrate(u0_g * q_g)
+        #P1 = rgd.integrate(u1_g * q_g)
+        #c0 = (1.0 - P1) / (P0 - P1)
+        #P = rgd.integrate(self.phit_ng[0] * q_g)
+        #print(P0, P1, P, c0)
         #rgd.plot(u0_g)
         #rgd.plot(u1_g)
         #rgd.plot(q_g, show=1)
@@ -348,7 +353,7 @@ def integrate_inwards(l, u_g, rgd, vr_g, g0, e, q_g):
 
     for g in range(g0, 1, -1):
         agm1 = -(agp1 * cp1_g[g] + ag * c0_g[g] +
-                 2 * q_g[g] * r_g[g]) / cm1_g[g]
+                 2 * q_g[g] * r_g[g]**2) / cm1_g[g]
         u_g[g - 1] = agm1 * r_g[g - 1]**l
         agp1 = ag
         ag = agm1
