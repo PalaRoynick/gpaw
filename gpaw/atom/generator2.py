@@ -300,12 +300,20 @@ class PAWWaves:
         integrate_inwards(l, u0_g, rgd, vtr_g, gc, e, q_g * 0.0)
         u1_g = phi_ng[0].copy()
         integrate_inwards(l, u1_g, rgd, vtr_g, gc, e, q_g)
-        fit phit = a-br^2 = a0*pfit0+(1-a0)*phit1
-        and 3b+(vt(0)-e)*a = a1*f ...
-        D0 = u0_g[2] - u0_g[1]
-        D1 = u1_g[2] - u1_g[1]
-        a0 = D1 / (D1 - D0)
+        A = [[1, -r_g[1]**2, u1_g[1] - u0_g[1]],
+             [1, -r_g[2]**2, u1_g[2] - u0_g[2]],
+             [vtr_g[1] / r_g[1] - e, 3, q_g[0]]]
+        b = [u1_g[1],
+             u1_g[2],
+             q_g[0]]
+        c = np.linalg.solve(A, b)
+        print(c)
+        # D0 = u0_g[2] - u0_g[1]
+        # D1 = u1_g[2] - u1_g[1]
+        # a0 = D1 / (D1 - D0)
+        a0 = c[2]
         self.phit_ng[0] = a0 * u0_g + (1.0 - a0) * u1_g
+        self.phit_ng[0, 0] = c[0]
         #P0 = rgd.integrate(u0_g * q_g)
         #P1 = rgd.integrate(u1_g * q_g)
         #c0 = (1.0 - P1) / (P0 - P1)
