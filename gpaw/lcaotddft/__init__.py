@@ -18,6 +18,8 @@ from gpaw.utilities.scalapack import scalapack_zero
 from scipy.linalg import schur, eigvals, eigh
 from gpaw.blacs import Redistributor
 
+from gpaw.utilities.scalapack import (pblas_simple_gemm,
+                                      scalapack_diagonalize_dc)
 
 def LCAOTDDFT(filename: str, **kwargs) -> Any:
     if os.environ.get('GPAW_NEW'):
@@ -341,48 +343,163 @@ class OldLCAOTDDFT(GPAW):
 
     def basis_change(self, time, time_step):
         """CHANGE BASIS USING overlap matrix S
-           S(R+dR)^(1/2) PSI(R+dr) = S(R)^(1/2) PSI(R)"""
+           S(R+dR)^(1/2) PSI(R+dr) = S(R)^(1/2) PSI(R)
+           PSI(R+dr) = S(R+dR)^(-1/2)S(R)^(1/2) PSI(R))"""
         using_blacs = self.wfs.ksl.using_blacs
-
+        ksl = self.wfs.ksl
+        np.set_printoptions(precision = 2, suppress = 1, linewidth =1)
         if using_blacs is True:
-            nao = self.wfs.ksl.nao
-            MM_descriptor = self.wfs.ksl.blockgrid.new_descriptor(nao, nao,
-                                                                  nao, nao)
-            mm_block_descriptor = self.wfs.ksl.mmdescriptor
-            mm2MM = Redistributor(self.wfs.ksl.block_comm,
-                                  mm_block_descriptor,
-                                  MM_descriptor)
-
             for kpt in self.wfs.kpt_u:
-                S_MM = kpt.S_MM.copy()
-                S_MM_full = MM_descriptor.empty(dtype=S_MM.dtype)
-                mm2MM.redistribute(S_MM, S_MM_full)
+                P_MM = np.diag(self.wfs.P_kM[kpt.q])
+                N = len(P_MM[0, :])
+                grid = ksl.blockgrid
+                self.mm_block_descriptor = ksl.mmdescriptor
+                S_nm = kpt.S_MM.copy()
+                assert grid.nprow * grid.npcol == ksl.block_comm.size
+                # Descriptors
+                self.Cnm_block_descriptor = grid.new_descriptor(ksl.bd.nbands,
+                                                                ksl.nao,
+                                                                ksl.blocksize,
+                                                                ksl.blocksize)
+                self.CnM_unique_descriptor = ksl.nM_unique_descriptor
+                # Redistributors
+                self.Cnm2nM = Redistributor(ksl.block_comm,
+                                            self.Cnm_block_descriptor,
+                                            self.CnM_unique_descriptor)
+                self.CnM2nm = Redistributor(ksl.block_comm,
+                                            self.CnM_unique_descriptor,
+                                            self.Cnm_block_descriptor)
 
-                S_MM_old_full = MM_descriptor.empty(dtype=kpt.S_MM_old.dtype)
-                mm2MM.redistribute(kpt.S_MM_old, S_MM_old_full)
+                if self.density.gd.comm.rank != 0:
+                    # This is a (0, 0) dummy array that is needed for
+                    # redistributing between nM and nm block descriptor.
+                    # See propagate_wfs() and also
+                    # BlacsOrbitalLayouts.calculate_blocked_density_matrix()
+                    self.dummy_C_nM = \
+                        self.CnM_unique_descriptor.zeros(dtype=complex)
+                # This creates small blocks on each core
 
-                if self.density.gd.comm.rank == 0:
-                    T1, Seig_v = schur(S_MM_full, output='real')
-                    Seig = eigvals(T1)
-                    Seig_dm12 = np.diag(1 / np.sqrt(Seig))
+                source_C_nm       = self.Cnm_block_descriptor.empty(dtype=complex)
+                P_nm              = self.Cnm_block_descriptor.empty(dtype=complex)
+                S12diag_nm        = self.Cnm_block_descriptor.empty(dtype=complex)
+                S12diag_o_nm      = self.Cnm_block_descriptor.empty(dtype=complex)
+                PxS               = self.Cnm_block_descriptor.empty(dtype=complex)
+                PxSxPc            = self.Cnm_block_descriptor.empty(dtype=complex)
+                Seig_vxS12diag_nm = self.Cnm_block_descriptor.empty(dtype=complex)
+                Sm12              = self.Cnm_block_descriptor.empty(dtype=complex)
+                Seig_v_oxS12diag_nm = self.Cnm_block_descriptor.empty(dtype=complex)
+                Seig_v_o          = self.Cnm_block_descriptor.empty(dtype=complex)
+                Sp12_o            = self.Cnm_block_descriptor.empty(dtype=complex)
+                Sp12xC_nM         = self.Cnm_block_descriptor.empty(dtype=complex)
+                Sm12xSp12xC_nM    = self.Cnm_block_descriptor.empty(dtype=complex)
+                C_nM_final        = self.Cnm_block_descriptor.empty(dtype=complex)
 
-                    # S^1/2
-                    Sm12 = Seig_v @ Seig_dm12 @ np.conj(Seig_v).T
+                if self.density.gd.comm.rank != 0:
+                    source_MM = self.dummy_C_nM
+                    source_P_MM = self.dummy_C_nM
+                else:
+                    # This is on rank 0
+                    source_MM = kpt.C_nM
+                    source_P_MM = np.diag(self.wfs.P_kM[kpt.q])
 
-                    # Old overlap S^-1/2
-                    T2_o, Seig_v_o = schur(S_MM_old_full, output='real')
-                    Seig_o = eigvals(T2_o)
-                    Seig_dp12_o = np.diag(Seig_o**0.5)
-                    Sp12_o = Seig_v_o @ Seig_dp12_o @ np.conj(Seig_v_o).T
-                    C_nM_temp = kpt.C_nM.copy()
+                self.CnM2nm.redistribute(source_MM, source_C_nm)
+                self.CnM2nm.redistribute(source_P_MM, P_nm)
 
-                    # Change basis PSI(R+dr) = S(R+dR)^(-1/2)S(R)^(1/2) PSI(R))
-                    Sp12xC_nM = Sp12_o @ np.transpose(C_nM_temp)
-                    Sm12xSp12xC_nM = Sm12 @ Sp12xC_nM
-                    t_Sm12xSp12xC_nM = np.transpose(Sm12xSp12xC_nM)
-                    kpt.C_nM = t_Sm12xSp12xC_nM.copy()
+                # eigenvectors and eigenvalues of S
+                Seig_v = self.Cnm_block_descriptor.empty(dtype=complex)
+                Seig = np.empty((N), dtype=float)
+                # eigenvectors and eigenvalues of S old
+                Seig_v_o = self.Cnm_block_descriptor.empty(dtype=complex)
+                Seig_o = np.empty((N), dtype=float)
+                # Correction of the phase of overlap matrix S = P_MM.T @ S_MM @ P_MM.conj()
+                # 1.  P_MM.T @ S_MM @ P_MM.conj()
+                # 1.1 PxS = P_MM.T @ S_MM
+                #print(' SHAPE S_nm \n', S_nm.shape)
+                #print('S_nm \n', S_nm)
+                #print(' SHAPE P_nm \n', P_nm.shape)
+                #print('P_nm \n', P_nm)
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.mm_block_descriptor,
+                                  self.Cnm_block_descriptor, P_nm, S_nm, PxS,
+                                  transb='N')
+
+                # 1.2 PxSxPc = (P_MM.T @ S_MM) @ P_MM.conj()
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.mm_block_descriptor,
+                                  self.Cnm_block_descriptor, PxS, P_nm.conj(),
+                                  PxSxPc, transb='N')
+
+                # 2.  Seig, Seig_v = eigh(P_MM.T @ S_MM @ P_MM.conj())
+
+                #print('Calculate eigenvec of S_MM, rank', self.density.gd.comm.rank)
+                scalapack_diagonalize_dc(self.Cnm_block_descriptor, PxSxPc, Seig_v, Seig, 'L')
+
+                # 3. calculate Sm12 = S^(-1/2)
+                if self.density.gd.comm.rank != 0:
+                    S12diag_MM = self.dummy_C_nM
+                else:
+                    S12diag_MM = np.diag(1 / np.sqrt(Seig) + 0j)
+                self.CnM2nm.redistribute(S12diag_MM, S12diag_nm)
+
+                # 3.1  Sm12 = [ Seig_v @ np.diag(1 / np.sqrt(Seig)) ] @ Seig_v.T.conj()
+                # Seig_vxS12diag_nm = Seig_v @ np.diag(1 / np.sqrt(Seig))
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.mm_block_descriptor,
+                                  self.Cnm_block_descriptor, Seig_v, S12diag_nm, Seig_vxS12diag_nm,
+                                  transa='T')
+                # 3.2   Sm12 = Seig_v @ np.diag(1 / np.sqrt(Seig)) @ Seig_v.T.conj()
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.Cnm_block_descriptor,
+                                  self.Cnm_block_descriptor, Seig_vxS12diag_nm, Seig_v.conj(), Sm12,
+                                  transb='N')
+                #print('Sm12 \n ', Sm12)
+
+                # 5. NOW old overlap S^1/2
+                # 5.1 Seig_o, Seig_v_o = eigh(kpt.S_MM_old)
+                S_nm_old = kpt.S_MM_old.copy()
+                C_nM_temp = kpt.C_nM.copy()
+                scalapack_diagonalize_dc(self.Cnm_block_descriptor, S_nm_old, Seig_v_o, Seig_o, 'L')
+                #print('eigenvalues of S old from scalapack \n', Seig_o[:])
+
+                # 5.2  Sp12_o = Seig_v_o @ np.diag(np.sqrt(Seig_o)) @ Seig_v_o.T.conj()
+                if self.density.gd.comm.rank != 0:
+                    S12diag_o_MM = self.dummy_C_nM
+                else:
+                    S12diag_o_MM = np.diag(np.sqrt(Seig_o) + 0j)
+                self.CnM2nm.redistribute(S12diag_o_MM, S12diag_o_nm)
+
+                # Seig_v_oxS12diag_nm = Seig_v_o @ np.diag(np.sqrt(Seig_o))
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.mm_block_descriptor,
+                                  self.Cnm_block_descriptor, Seig_v_o, S12diag_o_nm, Seig_v_oxS12diag_nm,
+                                  transa='T')
+                # Sp12_o = Seig_v_oxS12diag_nm @ Seig_v_o.T.conj()
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.Cnm_block_descriptor,
+                                  self.Cnm_block_descriptor, Seig_v_oxS12diag_nm,  Seig_v_o.conj(), Sp12_o,
+                                  transb='N')
+                #print(' Sp12_o \n ', Sp12_o)
+
+                # 6 PSI(R+dr) = S(R+dR)^(-1/2)S(R)^(1/2) PSI(R))
+                #   PSI(R+dr) = S(R+dR)^(-1/2)S(R)^(1/2) PSI(R))
+                # 6.1
+                # Sp12xC_nM = Sp12_o @ np.transpose(C_nM_temp)
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.Cnm_block_descriptor,
+                                  self.Cnm_block_descriptor, Sp12_o, source_C_nm, Sp12xC_nM,
+                                  transb='T')
+                # 6.2
+                # Sm12xSp12xC_nM = (Sm12 @ Sp12xC_nM)
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.Cnm_block_descriptor,
+                                  self.Cnm_block_descriptor, Sm12, Sp12xC_nM, Sm12xSp12xC_nM,
+                                  transb='N')
+                # 6.3
+                # C_nM_final = P_MM @ Sm12xSp12xC_nM
+                pblas_simple_gemm(self.Cnm_block_descriptor, self.Cnm_block_descriptor,
+                                  self.Cnm_block_descriptor, P_nm, Sm12xSp12xC_nM, C_nM_final,
+                                  transb='T')
+
+                if self.density.gd.comm.rank != 0:
+                    target = self.dummy_C_nM
+                else:
+                    target = kpt.C_nM
+                self.Cnm2nM.redistribute(C_nM_final, target)
+                # Broadcast the new C_nM to all ranks in gd.comm
                 self.density.gd.comm.broadcast(kpt.C_nM, 0)
-                self.td_hamiltonian.update()
+
         else:
             for kpt in self.wfs.kpt_u:
                 S_MM = kpt.S_MM.copy()
