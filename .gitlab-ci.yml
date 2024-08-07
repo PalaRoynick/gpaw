@@ -164,7 +164,7 @@ build-cuda:
     - .build
     - .gpu-job
   tags:
-    - linux
+    - cuda
   script:
     - |
       cat << EOF >> siteconfig.py
