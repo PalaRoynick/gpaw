@@ -194,9 +194,9 @@ def solid(name):
 def workflow():
     from myqueue.workflow import run
     for symbol in all_atoms:
-        run(function=atom, args=[symbol], name=f'{symbol}-atom')
-        run(function=atom2, args=[symbol], name=f'{symbol}-atom2')
-        run(function=atom3, args=[symbol], name=f'{symbol}-atom3')
+        run(function=atom, args=[symbol], name=f'{symbol}-atom', tmax='1h')
+        run(function=atom2, args=[symbol], name=f'{symbol}-atom2', tmax='1h')
+        run(function=atom3, args=[symbol], name=f'{symbol}-atom3', tmax='1h')
     for name in data:
         run(function=solid, args=[name], name=f'{name}-bulk',
             cores=24, tmax='50m')
