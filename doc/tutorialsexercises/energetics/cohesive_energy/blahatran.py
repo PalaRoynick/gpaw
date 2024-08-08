@@ -216,9 +216,9 @@ def check_occ():
             print(f_sn)
 
 
-def summary():
+def summary(root):
     reference_energies = {}
-    for path in Path().glob('*-atom.result'):
+    for path in root.glob('*-atom.result'):
         e = json.loads(path.read_text())
         reference_energies[path.name.split('-')[0]] = e
     LC = read_csv(Path('lattice_constants.csv'))
@@ -228,7 +228,7 @@ def summary():
           'aG [Ang], aG-aW [%], aE-aW [%],',
           'eG [eV], eG-eW [%], eE-eW [%],',
           'BG [eV/Ang^3], BG-BW [%]')
-    for path in Path().glob('*-bulk.result'):
+    for path in root.glob('*-bulk.result'):
         result = json.loads(path.read_text())
         name = path.name.split('-')[0]
         ec = (sum(reference_energies[symbol]
@@ -254,5 +254,6 @@ def summary():
 
 
 if __name__ == '__main__':
-    # summary()
-    check_occ()
+    import sys
+    summary(Path(sys.argv[1]))  # RbCsVNiWBa
+    # check_occ(): NiPtV ???
