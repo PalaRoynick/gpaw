@@ -24,6 +24,8 @@ def test_ff(in_tmp_dir, gpw_files, scalapack):
 @pytest.mark.response
 @pytest.mark.parametrize("mpa", [True, False])
 def test_ppa(in_tmp_dir, gpw_files, scalapack, mpa):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Hybrids not working in parallel with GPAW_NEW=1')
     ref_result = {False: np.asarray([[[11.30094393, 21.62842077],
                                       [5.33751513, 16.06905725],
                                       [8.75269938, 22.46579489]]]),
