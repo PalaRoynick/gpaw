@@ -379,6 +379,12 @@ class UGArray(DistributedArrays[UGDesc]):
         x = np.arange(grid.start_c[c], grid.end_c[c]) * dx
         return x, as_np(y)
 
+    def to_complex(self) -> UGArray:
+        """Return a copy with dtype=complex."""
+        c = self.desc.new(dtype=complex).empty()
+        c.data[:] = self.data
+        return c
+
     def scatter_from(self, data=None):
         """Scatter data from rank-0 to all ranks."""
         if isinstance(data, UGArray):
@@ -443,14 +449,27 @@ class UGArray(DistributedArrays[UGDesc]):
         return out
 
     def fft(self, plan=None, pw=None, out=None):
-        """Do FFT.
+        r"""Do FFT.
 
+        Returns:
+            PWArray with values
         :::
+                          _ _
+           _    1  / _  -iG.r   _
+         C(G) = -- |dr e      f(r),
+                V  /
 
-                _ _
-          / _  iG.r  _
-          |dr e    f(r)
-          /
+        where `C(\bG)` are the plane wave coefficients and V is the cell
+        volume.
+
+        Parameters
+        ----------
+        plan:
+            Plan for FFT.
+        pw:
+            Target PW description.
+        out:
+            Target PWArray object.
         """
         assert self.dims == ()
         if out is None:
@@ -458,6 +477,9 @@ class UGArray(DistributedArrays[UGDesc]):
             out = pw.empty(xp=self.xp)
         if pw is None:
             pw = out.desc
+        if pw.dtype != self.desc.dtype:
+            raise TypeError(
+                f'Type mismatch: {self.desc.dtype} -> {pw.dtype}')
         input = self
         if self.desc.comm.size > 1:
             input = input.gather()
