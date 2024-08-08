@@ -1288,7 +1288,7 @@ class G0W0(G0W0Calculator):
         elif mpa:
             assert not ppa
 
-            frequencies = mpa_frequency_sampling(npoles=mpa['npoles'], 
+            frequencies = mpa_frequency_sampling(npoles=mpa['npoles'],
                                                  wrange=mpa['wrange'],
                                                  varpi=mpa['varpi'],
                                                  eta0=mpa['eta0'],

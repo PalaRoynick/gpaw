@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 from gpaw.response.g0w0 import G0W0
 from ase.units import Hartree as Ha
+from gpaw.mpi import world
 
 
 @pytest.mark.response
@@ -23,7 +24,7 @@ def test_ff(in_tmp_dir, gpw_files, scalapack):
 
 @pytest.mark.response
 @pytest.mark.parametrize("mpa", [True, False])
-def test_ppa(in_tmp_dir, gpw_files, scalapack, mpa):
+def test_ppa(in_tmp_dir, gpw_files, scalapack, mpa, gpaw_new):
     if gpaw_new and world.size > 1:
         pytest.skip('Hybrids not working in parallel with GPAW_NEW=1')
     ref_result = {False: np.asarray([[[11.30094393, 21.62842077],
@@ -32,7 +33,7 @@ def test_ppa(in_tmp_dir, gpw_files, scalapack, mpa):
                   True: np.asarray([[[11.303942, 21.624428],
                                      [5.346694, 16.06346],
                                      [8.7589, 22.461506]]])}[mpa]
-    mpa_dict = {'npoles': 1, 'wrange': [0, 0], 'parallel_lines':1,
+    mpa_dict = {'npoles': 1, 'wrange': [0, 0], 'parallel_lines': 1,
                 'varpi': Ha, 'eta0': 1e-10, 'eta_rest': 0.1 * Ha,
                 'alpha': 1}
 

@@ -108,7 +108,7 @@ def initialize_w_calculator(chi0calc, context, *,
     xckernel = G0W0Kernel(xc=xc, ecut=chi0calc.chi0_body_calc.ecut,
                           gs=gs, qd=qd,
                           context=context)
-  
+
     kwargs = dict()
     if ppa:
         wcalc_cls = PPACalculator
@@ -511,31 +511,21 @@ class MPACalculator(WBaseCalculator):
         V0, sqrtV0 = self.get_V0sqrtV0(chi0)
         self.context.timer.start('Dyson eq.')
         einv_wGG = dfc.get_epsinv_wGG(only_correlation=True)
-        
+
         einv_WgG = chi0.body.blockdist.distribute_as(einv_wGG, chi0.nw, 'WgG')
 
-        #nG1 = einv_WgG.shape[1]
-        #nG2 = einv_WgG.shape[2]
-        #R_nGG = np.zeros((self.mpa['npoles'], nG1, nG2), dtype=complex)
-        #omegat_nGG = np.ones((self.mpa['npoles'], nG1, nG2), dtype=complex)
-        #for i in range(nG1):
-        #    for j in range(nG2):
-        #        R_n, omegat_n, MPred, PPcond_rate =
         solver = RESolver(chi0.wd.omega_w)
         E_pGG, R_pGG = solver.solve(einv_WgG)
-        #            self.mpa['npoles'], chi0.wd.omega_w, einv_WgG[:, i, j])
-        #omegat_n -= (0.1j / 27.21)   # XXX
-        #    omegat_nGG[:, i, j] = omegat_n
-        #        R_nGG[:, i, j] = R_n
         E_pGG -= 0.1j / 27.21
 
-        R_pGG = chi0.body.blockdist.distribute_as(R_pGG, self.mpa['npoles'], 'wGG')
+        R_pGG = chi0.body.blockdist.distribute_as(R_pGG,
+                                                  self.mpa['npoles'], 'wGG')
         E_pGG = chi0.body.blockdist.distribute_as(E_pGG,
                                                   self.mpa['npoles'], 'wGG')
 
         W_pGG = pi * R_pGG * dfc.sqrtV_G[np.newaxis, :, np.newaxis] \
             * dfc.sqrtV_G[np.newaxis, np.newaxis, :]
-        
+
         if chi0.optical_limit or self.integrate_gamma != 0:
             for W_GG, R_GG in zip(W_pGG, R_pGG):
                 self.apply_gamma_correction(W_GG, pi * R_GG,
@@ -544,7 +534,8 @@ class MPACalculator(WBaseCalculator):
         W_pGG = np.transpose(W_pGG, axes=(0, 2, 1))  # Why the transpose
         E_pGG = np.transpose(E_pGG, axes=(0, 2, 1))
 
-        W_pGG = chi0.body.blockdist.distribute_as(W_pGG, self.mpa['npoles'], 'WgG')
+        W_pGG = chi0.body.blockdist.distribute_as(W_pGG,
+                                                  self.mpa['npoles'], 'WgG')
         E_pGG = chi0.body.blockdist.distribute_as(E_pGG,
                                                   self.mpa['npoles'], 'WgG')
 

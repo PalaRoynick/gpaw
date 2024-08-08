@@ -225,8 +225,6 @@ def pade_solve(X_wGG: Array3D, z_w: Array1D) -> Tuple[Array3D, Array2D]:
     b_GGm /= b_GGm[:, :, -1][..., None]
     companion_GGpp.reshape((nG, nG, -1))[:, :, npols::npols + 1] = 1
     companion_GGpp[:, :, :, -1] = -b_GGm[:, :, :npols]
-
     E_GGp = eigvals(companion_GGpp)
     E_GGp, npr_GG = mpa_cond_vectorized(npols=npols, z_w=z_w, E_GGp=E_GGp)
     return E_GGp, npr_GG
-
