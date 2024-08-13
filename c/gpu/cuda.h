@@ -66,8 +66,8 @@
 #define gpuEventElapsedTime(ms, start, end) \
         gpuSafeCall(cudaEventElapsedTime(ms, start, end))
 
-#define gpuLaunchKernel(kernel, dimGrid, dimBlock, shared, stream, ...) \
-        kernel<<<dimGrid, dimBlock, shared, stream>>>(__VA_ARGS__)
+#define gpuLaunchKernel(kernel, dimGrid, dimBlock, shared, stream, ...) {\
+        kernel<<<dimGrid, dimBlock, shared, stream>>>(__VA_ARGS__); gpuCheckLastError(); }
 
 #define gpublasStatus_t           cublasStatus_t
 #define gpublasHandle_t           cublasHandle_t
