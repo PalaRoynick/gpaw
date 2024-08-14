@@ -319,9 +319,18 @@ void bc_unpack_gpu_sync(const boundary_conditions* bc,
 
 #ifndef GPAW_GPU_AWARE_MPI
     if (bc->sendproc[i][0] >= 0 || bc->sendproc[i][1] >= 0)
+    {
+        printf("i=%d nin=%d bc->nsend[i][0]=%d bc->nsend[i][1]=%d\n", i, nin, bc->nsend[i][0], bc->nsend[i][1]);
         gpuMemcpy(bc_sbuff[i][0], bc_sbuff_gpu[i][0],
                   sizeof(double) * (bc->nsend[i][0] + bc->nsend[i][1]) * nin,
                   gpuMemcpyDeviceToHost);
+        fflush(stdout);
+        fflush(stderr);
+        printf("---\n");
+        fflush(stdout);
+        fflush(stderr);
+        
+    }
 #endif
 
     // Start sending:

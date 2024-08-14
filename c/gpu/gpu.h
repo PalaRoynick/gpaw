@@ -80,7 +80,8 @@ static inline gpuError_t __gpuSafeCall(gpuError_t err,
         snprintf(str, 100, "%s(%i): GPU error: %s.\n",
                  file, line, gpuGetErrorString(err));
         PyErr_SetString(PyExc_RuntimeError, str);
-        fprintf(stderr, "%s", str);
+        //fprintf(stderr, "%s", str);
+        fprintf(stdout, "%s", str);
     }
     return err;
 }

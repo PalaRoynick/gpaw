@@ -88,6 +88,10 @@ stages:
   rules:
     - if: ($GITLAB_USER_LOGIN == "jensj" || $GITLAB_USER_LOGIN == "mikaelkuisma" || $GITLAB_USER_LOGIN == "trossi") && ($CI_PIPELINE_SOURCE == "push")
       allow_failure: true
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://gitlab.com
+
 
 
 .lumi-g-job:
@@ -105,7 +109,6 @@ stages:
     - module load libxc/6.2.2-cpeGNU-22.12  # from EBU_USER_PREFIX
     - export GPAW_SETUP_PATH=/projappl/$LUMI_PROJECT/gpaw-setups-0.9.20000
     - !reference [default, before_script]
-
 
 build:
   image: $IMAGE_MAIN_OLDEST
