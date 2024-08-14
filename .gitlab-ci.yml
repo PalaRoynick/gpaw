@@ -464,7 +464,7 @@ test-lumi-g:
   script:
     - rocm-smi || true  # rocm-smi yields non-zero return code
     - gpaw info
-    - pytest -v -m gpu
+    - pytest -vsx -m gpu
 
 
 test-lumi-g-mpi:
@@ -478,7 +478,7 @@ test-lumi-g-mpi:
   script:
     - rocm-smi || true  # rocm-smi yields non-zero return code
     - gpaw info
-    - srun pytest -v -m gpu
+    - srun pytest -vsx -m gpu
 
 
 test-libxc:
