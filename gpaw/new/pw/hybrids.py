@@ -213,14 +213,24 @@ class PWHybridHamiltonian(PWHamiltonian):
               psit1_nR,
               rhot_nG, rhot_nR, vrhot_G,
               Htpsit_nG, B_ani):
+        N = (psi1.f_n > 1e-8).sum()
+        if N == 0:
+            return 0.0
+        if N < len(psi1.f_n):
+            rhot_nR = rhot_nR[:N]
+            rhot_nG = rhot_nG[:N]
+            if psit1_nR is not None:
+                psit1_nR = psit1_nR[:N]
+            Q_nA = Q_nA[:N]
+
         Q1_aniL = {a: np.einsum('ijL, nj -> niL',
-                                delta_iiL, psi1.P_ani[a])
+                                delta_iiL, psi1.P_ani[a][:N])
                    for a, delta_iiL in enumerate(self.delta_aiiL)}
 
         if psi1 is psi2:
-            psit1_nR = psi2.psit_nR
+            psit1_nR = psi2.psit_nR[:N]
         else:
-            ifft(psi1.psit_nG, psit1_nR, self.plan)
+            ifft(psi1.psit_nG[:N], psit1_nR, self.plan)
 
         e = 0.0
         for n2, (psit2_R, out_G) in enumerate(zip(psi2.psit_nR, Htpsit_nG)):
@@ -237,7 +247,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                 1.0, rhot_nG.data.view(float))
             for n1, (rhot_R, rhot_G, f1) in enumerate(zips(rhot_nR,
                                                            rhot_nG,
-                                                           psi1.f_n)):
+                                                           psi1.f_n[:N])):
                 vrhot_G.data = rhot_G.data * self.v_G.data
                 if psi2.f_n is not None:
                     e += f1 * psi2.f_n[n2] * rhot_G.integrate(vrhot_G)
@@ -252,7 +262,7 @@ class PWHybridHamiltonian(PWHamiltonian):
             ifft(rhot_nG, rhot_nR, plan=self.plan)
             rhot_nR.data *= psit1_nR.data
             fft(rhot_nR, rhot_nG, self.plan)
-            out_G.data -= psi1.f_n @ rhot_nG.data
+            out_G.data -= psi1.f_n[:N] @ rhot_nG.data
         return e
 
 
