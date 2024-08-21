@@ -11,6 +11,7 @@ from gpaw.mpi import broadcast_float
 def get_criterion(name):
     """Returns one of the pre-specified criteria by it's .name attribute,
     and raises sensible error if missing."""
+    name = name.replace(' ', '_')
     # All built-in criteria should be in this list.
     criteria = [Energy, Density, Eigenstates, Forces, WorkFunction,
                 MinIter, MaxIter]
@@ -335,7 +336,7 @@ class WorkFunction(Criterion):
         compares the peak-to-peak difference among the current work
         function and the two previous.
     """
-    name = 'work function'
+    name = 'work_function'
     tablename = 'wkfxn'
 
     def __init__(self, tol=0.005, n_old=3):
@@ -377,7 +378,7 @@ class MinIter(Criterion):
         the SCF cycle exits.
     """
     calc_last = False
-    name = 'minimum iterations'
+    name = 'minimum_iterations'
     tablename = 'minit'
 
     def __init__(self, n):
@@ -400,7 +401,7 @@ class MaxIter(Criterion):
         the SCF cycle exits.
     """
     calc_last = False
-    name = 'maximum iterations'
+    name = 'maximum_iterations'
     tablename = 'maxit'
     override_others = True
 
