@@ -12,23 +12,25 @@ x   r or h
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from typing import DefaultDict
 
 import numpy as np
+
 from gpaw.core.arrays import DistributedArrays
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
+from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
+from gpaw.new.external_potential import ExternalPotential
+from gpaw.new.logger import indent
 from gpaw.new.potential import Potential
 from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
-from gpaw.utilities import pack_hermitian, pack_density, unpack_hermitian
-from gpaw.new.logger import indent
-from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new.external_potential import ExternalPotential
+from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
 class PotentialCalculator:
@@ -150,19 +152,13 @@ def calculate_non_local_potential(setups,
     mya = [a for rank, a in enumerate(D_asii)
            if rank % kpt_band_comm.size == kpt_band_comm.rank]
     domain_comm = density.D_asii.layout.atomdist.comm
-    N = os.cpu_count()
-    nworkers = min(N // (domain_comm.size * kpt_band_comm.size),
-                   len(mya))
-    if nworkers > 1:
-        pool = ...
-    else:
-        pool = ...
+    pool = thread_pool(int(os.environ.get('GPAW_NWORKERS', 1)))
 
     def target(a):
         return calculate_non_local_potential1(
-            setups[a], xc, ext_pot, D_asii[a], Q_sL[a], soc)
+            setups[a], xc, ext_pot, D_asii[a], Q_aL[a], soc)
 
-    for a, (dH_sii, corrections) in pool.map(target, mya):
+    for a, (dH_sii, corrections) in enumerate(pool.map(target, mya)):
         dH_asii[a][:] = dH_sii
         for key, e in corrections.items():
             energy_corrections[key] += e
@@ -227,3 +223,15 @@ def calculate_non_local_potential1(setup: Setup,
                     'xc': e_xc,
                     'external': e_external,
                     'spinorbit': e_soc}
+
+
+def thread_pool(nworkers):
+    if nworkers == 1:
+        return Pool()
+    from concurrent.futures import ThreadPoolExecutor
+    return ThreadPoolExecutor(nworkers=nworkers)
+
+
+class Pool:
+    def map(self, func, data):
+        return [func(d) for d in data]
