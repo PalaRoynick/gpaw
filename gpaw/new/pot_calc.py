@@ -229,7 +229,7 @@ def thread_pool(nworkers):
     if nworkers == 1:
         return Pool()
     from concurrent.futures import ThreadPoolExecutor
-    return ThreadPoolExecutor(nworkers=nworkers)
+    return ThreadPoolExecutor(max_workers=nworkers)
 
 
 class Pool:
