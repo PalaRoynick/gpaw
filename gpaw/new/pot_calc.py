@@ -149,7 +149,7 @@ def calculate_non_local_potential(setups,
     dH_asii = D_asii.layout.new(dtype=dtype).zeros(density.ncomponents)
     Q_aL = Q_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
-    mya = [a for rank, a in enumerate(D_asii)
+    mya = [a for rank, a in enumerate(D_asii.keys())
            if rank % kpt_band_comm.size == kpt_band_comm.rank]
     domain_comm = density.D_asii.layout.atomdist.comm
     pool = thread_pool(int(os.environ.get('GPAW_NWORKERS', 1)))
