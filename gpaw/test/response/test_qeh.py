@@ -40,11 +40,19 @@ def dielectric(calc, domega, omega2, rate=0.0):
     return diel
 
 
+@pytest.fixture
+def qeh():
+    qeh = pytest.importorskip('qeh')
+    # Sanity check for whether qeh is new enough:
+    if not hasattr(qeh, 'ChiCalc'):
+        raise RuntimeError('Bad version of qeh, maybe pull master')
+    return qeh
+
+
 @pytest.mark.dielectricfunction
 @pytest.mark.serial
 @pytest.mark.response
-def test_basics(in_tmp_dir, gpw_files):
-    qeh = pytest.importorskip('qeh')
+def test_basics(in_tmp_dir, gpw_files, qeh):
     interpolate_building_blocks = qeh.interpolate_building_blocks
     Heterostructure = qeh.Heterostructure
 
