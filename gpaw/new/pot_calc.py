@@ -146,9 +146,10 @@ def calculate_non_local_potential(setups,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
     D_asii = density.D_asii.to_xp(np)
-    dH_asii = D_asii.layout.new(dtype=dtype).zeros(density.ncomponents)
+    dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
     Q_aL = Q_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
+
     mya = [a for rank, a in enumerate(D_asii.keys())
            if rank % kpt_band_comm.size == kpt_band_comm.rank]
     domain_comm = density.D_asii.layout.atomdist.comm
@@ -168,7 +169,7 @@ def calculate_non_local_potential(setups,
     # Sum over domain:
     names = ['kinetic', 'coulomb', 'zero', 'xc', 'external', 'spinorbit']
     energies = np.array([energy_corrections[name] for name in names])
-    domain_comm.sum(energies)
+    density.D_asii.layout.atomdist.comm.sum(energies)
     kpt_band_comm.sum(energies)
 
     return (dH_asii.to_xp(density.D_asii.layout.xp),

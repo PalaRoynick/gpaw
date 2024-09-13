@@ -340,7 +340,13 @@ class PWArray(DistributedArrays[PWDesc]):
         self._matrix = Matrix(*shape, data=data, dist=dist)
         return self._matrix
 
-    def ifft(self, *, plan=None, grid=None, out=None, periodic=False):
+    def ifft(self,
+             *,
+             plan=None,
+             grid=None,
+             grid_spacing=None,
+             out=None,
+             periodic=False):
         """Do inverse FFT(s) to uniform grid(s).
 
         Returns:
@@ -364,6 +370,8 @@ class PWArray(DistributedArrays[PWDesc]):
         comm = self.desc.comm
         xp = self.xp
         if out is None:
+            if grid is None:
+                grid = self.desc.uniform_grid_with_grid_spacing(grid_spacing)
             out = grid.empty(self.dims, xp=xp)
         assert self.desc.dtype == out.desc.dtype, (self.desc, out.desc)
         assert not out.desc.zerobc_c.any()
@@ -517,7 +525,7 @@ class PWArray(DistributedArrays[PWDesc]):
                 result = self.data[..., 0]
             else:
                 result = self.xp.empty(self.mydims, complex)
-            self.desc.comm.broadcast(result, 0)
+            self.desc.comm.broadcast(self.xp.ascontiguousarray(result), 0)
         if self.desc.dtype == float:
             result = result.real
         if result.ndim == 0:
