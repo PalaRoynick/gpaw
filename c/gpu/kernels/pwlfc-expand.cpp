@@ -799,3 +799,87 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
     }
     //gpuDeviceSynchronize();
 }
+
+__global__ void stress_tensor_calculate_f_IG_kernel(
+        int NI,
+        int NG,
+        int NA,
+        gpuDoubleComplex* f_IG,
+        int G1,
+        int G2,
+        int v1,
+        int v2,
+        gpuDoubleComplex* emiGR_Ga,
+        double* G_Gv,
+        double* Y_LG,
+        double* Z_LvG,
+        int a,
+        int l,
+        int I1,
+        int I2,
+        double* f_G,
+        double* dfdGoG_G)
+{
+    int G = threadIdx.x + blockIdx.x * blockDim.x;
+    int I = threadIdx.y + blockIdx.y * blockDim.y;
+    int L1 = l * l;
+    int L2 = (l + 1) * (l + 1);
+    gpuDoubleComplex imag_powers[4] = {make_gpuDoubleComplex(1.0,0),
+				       make_gpuDoubleComplex(0.0,-1.0),
+				       make_gpuDoubleComplex(-1.0,0),
+				       make_gpuDoubleComplex(0, 1.0)};
+    if ((G < NG) && (I < NI))
+    {
+        /*
+        f_IG[I * NG + G] = 
+        emiGR_Ga[G * NA + a] * imag_powers[l % 4] 
+              * (dfdGoG_G[G] * G_Gv[I * Nv + v1] * G_Gv[I * Nv + v2]
+                      * Y_LG[(L1 + I) * NG + G] +
+                        f_G[G] * G_Gv[G * Nv + v1] * Z_LvG[(L1 + I) * (Nv * NG) + v2 * NG + G]);
+        */
+    }
+}
+
+extern "C"
+void stress_tensor_calculate_f_IG_launch_kernel(
+        gpuDoubleComplex* f_IG,
+        int G1,
+        int G2,
+        int v1,
+        int v2,
+        gpuDoubleComplex* emiGR_Ga,
+        double* G_Gv,
+        double* Y_LG,
+        double* Z_LvG,
+        int a,
+        int l,
+        int I1,
+        int I2,
+        double* f_G,
+        double* dfdGoG_G)
+{
+    int NG = G2 - G1;
+    int NI = I2 - I1;
+    int NA = 1; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	gpuLaunchKernel(stress_tensor_calculate_f_IG_kernel,
+			dim3((NG+15)/16, (NI+15)/16),
+			dim3(16, 16),
+			0, 0,
+            NI, NG, NA,
+            f_IG,
+            G1,
+            G2,
+            v1,
+            v2,
+            emiGR_Ga,
+            G_Gv,
+            Y_LG,
+            Z_LvG,
+            a,
+            l,
+            I1,
+            I2,
+            f_G,
+            dfdGoG_G);
+}
+

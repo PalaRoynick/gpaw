@@ -9,6 +9,23 @@
 #include "gpu-complex.h"
 #include <stdio.h>
 
+void stress_tensor_calculate_f_IG_launch_kernel(
+        gpuDoubleComplex* f_IG,
+        int G1,
+        int G2,
+        int v1,
+        int v2,
+        gpuDoubleComplex* emiGR_Ga,
+        double* G_Gv,
+        double* Y_LG,
+        double* Z_LvG,
+        int a,
+        int l,
+        int I1,
+        int I2,
+        double* f_G,
+        double* dfdGoG_G);
+
 void calculate_residual_launch_kernel(int nG,
                                       int nn,
                                       double* residual_ng, 
@@ -329,3 +346,68 @@ PyObject* calculate_residual_gpu(PyObject* self, PyObject* args)
     calculate_residual_launch_kernel(nG, nn, residual_nG, eps_n, wf_nG, is_complex);
     Py_RETURN_NONE;
 }
+
+PyObject* stress_tensor_calculate_f_IG(PyObject* self, PyObject* args)
+{
+    PyObject *f_IG_obj;
+    int G1;
+    int G2;
+    int v1;
+    int v2;
+    PyObject* emiGR_Ga_obj;
+    PyObject* G_Gv_obj;
+    PyObject* Y_LG_obj;
+    PyObject* Z_LvG_obj;
+    PyObject* things;
+    if (!PyArg_ParseTuple(args, "OiiiiOOOOO",
+                          &f_IG_obj,
+                          &G1, &G2, &v1, &v2,
+                          &emiGR_Ga_obj,
+                          &G_Gv_obj,
+                          &Y_LG_obj,
+                          &Z_LvG_obj,
+                          &things))
+        return NULL;
+    assert(Array_ITEMSIZE(f_IG_obj) == 16);
+    assert(Array_ITEMSIZE(emiGR_Ga_obj) == 16);
+    assert(Array_ITEMSIZE(Y_LG_obj) == 8);
+    assert(Array_ITEMSIZE(Z_LvG_obj) == 8);
+
+    gpuDoubleComplex *f_IG = Array_DATA(f_IG_obj);
+    gpuDoubleComplex *emiGR_Ga = Array_DATA(emiGR_Ga_obj);
+    double *G_Gv = Array_DATA(G_Gv_obj);
+    double *Y_LG = Array_DATA(Y_LG_obj);
+    double* Z_LvG = Array_DATA(Z_LvG_obj);
+
+    for (int i = 0; i < PyList_Size(things); i++)
+    {
+        PyObject* things_tuple = PyList_GetItem(things, i);
+        int a = (int) PyLong_AsLong(PyTuple_GetItem(things_tuple, 0));
+        int l = (int) PyLong_AsLong(PyTuple_GetItem(things_tuple, 1));
+        int I1 = (int) PyLong_AsLong(PyTuple_GetItem(things_tuple, 2));
+        int I2 = (int) PyLong_AsLong(PyTuple_GetItem(things_tuple, 3));
+        PyObject* f_G_obj = PyTuple_GetItem(things_tuple, 4);
+        PyObject* dfdGoG_G_obj = PyTuple_GetItem(things_tuple, 5);
+        assert(Array_ITEMSIZE(f_G_obj) == 8);
+        assert(Array_ITEMSIZE(dfdGoG_G_obj) == 8);
+        double* f_G = Array_DATA(f_G_obj);
+        double* dfdGoG_G = Array_DATA(dfdGoG_G_obj);
+        stress_tensor_calculate_f_IG_launch_kernel(f_IG,
+                                                   G1,
+                                                   G2,
+                                                   v1,
+                                                   v2,
+                                                   emiGR_Ga,
+                                                   G_Gv,
+                                                   Y_LG,
+                                                   Z_LvG,
+                                                   a,
+                                                   l,
+                                                   I1,
+                                                   I2,
+                                                   f_G,
+                                                   dfdGoG_G);
+    }
+    Py_RETURN_NONE;
+}
+
