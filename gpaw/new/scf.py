@@ -137,6 +137,11 @@ class SCFContext:
         self.log = log
         self.niter = niter
         self.state = state
+        for name, e in state.potential.energies.items():
+            print(name, type(e))
+        for name, e in state.ibzwfs.energies.items():
+            print(name, type(e))
+
         energy = np.array([sum(e
                                for name, e in state.potential.energies.items()
                                if name != 'stress') +

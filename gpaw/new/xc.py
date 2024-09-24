@@ -114,6 +114,9 @@ class LDAFunctional(Functional):
                                                            UGArray | None]:
         vxct_sr = nt_sr.new()
         vxct_sr.data[:] = 0.0
+        if self.name == 'EXX':
+            return 0, vxct_sr, None
+
         e_r = nt_sr.desc.empty(xp=self.xp)
         if self.xp is np:
             self.xc.kernel.calculate(e_r.data, nt_sr.data, vxct_sr.data)

@@ -126,7 +126,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             assert self.nbands % self.communicators['b'].size == 0
             return PWHybridHamiltonian(
                 self.grid, self.wf_desc, self.xc, self.setups,
-                self.fracpos_ac, self.atomdist)
+                self.fracpos_ac, self.atomdist, self.xp)
         return SpinorPWHamiltonian(self.qspiral_v)
 
     def convert_wave_functions_from_uniform_grid(self,

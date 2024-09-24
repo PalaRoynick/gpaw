@@ -16,7 +16,7 @@ def xc_string_to_dict(string):
 
     'name:key1=value1:...' -> {'name': <name>, key1: value1, ...}."""
     tokens = string.split(':')
-
+    print('Tokens', tokens)
     d = {'name': tokens[0]}
     for token in tokens[1:]:
         kw, val = token.split('=')
@@ -56,7 +56,7 @@ def XC(kernel,
 
     if isinstance(kernel, str):
         kernel = xc_string_to_dict(kernel)
-
+    print('kernel', kernel)
     kwargs = {}
     if isinstance(kernel, dict):
         kwargs = kernel.copy()
@@ -76,6 +76,7 @@ def XC(kernel,
             return RI(name, **kwargs)
         elif backend == 'pw' or name in ['HSE03', 'HSE06']:
             from gpaw.hybrids import HybridXC
+            print('New hybrid', backend, name)
             return HybridXC(name, **kwargs)  # type: ignore
         elif backend:
             raise ValueError(
@@ -142,6 +143,7 @@ def XC(kernel,
             return QNA(atoms, kernel['parameters'], kernel['setup_name'],
                        alpha=kernel['alpha'], stencil=kwargs.get('stencil', 2))
         else:
+            print('CREATING LIBXC object')
             kernel = LibXC(name)
 
     if kernel.type == 'LDA':

@@ -20,6 +20,7 @@ class PWHamiltonian(Hamiltonian):
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
         self.pw_cache = {}
+        self.xp = xp
 
     @trace
     def apply_local_potential(self,
@@ -53,6 +54,7 @@ class PWHamiltonian(Hamiltonian):
             n2 = min(n1 + domain_comm.size, mynbands)
             psit_nG[n1:n2].gather_all(psit_G)
             if domain_comm.rank < n2 - n1:
+                print(self.plan, 'plan')
                 psit_G.ifft(out=tmp_R, plan=self.plan)
                 tmp_R.data *= vt_R.data
                 tmp_R.fft(out=vtpsit_G, plan=self.plan)

@@ -45,10 +45,16 @@ class Psi:
     f_n: Array1D | None = None
     psit_nR: UGArray | None = None
 
+    def __post_init__(self):
+        if self.f_n is not None:
+            self.f_n = self.psit_nG.xp.asarray(self.f_n)
+        print('Psi f_n type', type(self.f_n))
+
     def empty(self):
+        xp = psit_nG.xp
         return Psi(self.psit_nG.new(),
                    self.P_ani.new(),
-                   np.empty_like(self.f_n))
+                   xp.empty_like(self.f_n))
 
     @cached_property
     def comm(self):
@@ -77,8 +83,9 @@ class PWHybridHamiltonian(PWHamiltonian):
                  xc,
                  setups,
                  fracpos_ac,
-                 atomdist):
-        super().__init__(grid, pw)
+                 atomdist,
+                 xp):
+        super().__init__(grid, pw, xp=xp)
         self.pw = pw
         self.exx_fraction = xc.exx_fraction
         self.exx_omega = xc.exx_omega
@@ -89,12 +96,11 @@ class PWHybridHamiltonian(PWHamiltonian):
                        for setup in setups]
         self.delta_aiiL = [setup.Delta_iiL for setup in setups]
         self.VV_app = [setup.M_pp * self.exx_fraction for setup in setups]
-
-        self.v_G = coulomb(pw, grid, self.exx_omega)
+        self.v_G = coulomb(pw, grid, self.exx_omega).to_xp(xp)
         self.v_G.data *= self.exx_fraction
 
         self.ghat_aLG = setups.create_compensation_charges(
-            pw, fracpos_ac, atomdist)
+            pw, fracpos_ac, atomdist, xp=xp)
         self.ghat_aLG._lazy_init()
         self.ghat_GA = self.ghat_aLG._lfc.expand()
         # self.plan = grid.fft_plans()
@@ -122,6 +128,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                             ('exx_vc', evc),
                             ('exx_kinetic', ekin)]:
                 e *= ibzwfs.spin_degeneracy
+                e = float(e)
                 if spin == 0:
                     ibzwfs.energies[name] = e
                 else:
@@ -148,28 +155,35 @@ class PWHybridHamiltonian(PWHamiltonian):
         evc = 0.0
         ekin = 0.0
         B_ani = {}
+        xp = psi1.psit_nG.xp
         for a, D_ii in D_aii.items():
-            VV_ii = pawexxvv(self.VV_app[a], D_ii)
-            VC_ii = self.VC_aii[a]
+            VV_ii = xp.asarray(pawexxvv(self.VV_app[a], D_ii))
+            VC_ii = xp.asarray(self.VC_aii[a])
             V_ii = -VC_ii - 2 * VV_ii
-            B_ani[a] = psi2.P_ani[a] @ V_ii
+            print(type(psi2.P_ani), type(V_ii))
+            B_ani[a] = psi2.P_ani[a] @ psi1.psit_nG.xp.asarray(V_ii)
+
+            #D_ii = psi1.psit_nG.xp.asarray(D_ii)
             if same:
+                print(type(D_ii), type(VC_ii),'D_ii VC_ii')
+                
                 ec = (D_ii * VC_ii).sum()
+
                 ev = (D_ii * VV_ii).sum()
                 ekin += ec + 2 * ev
                 evv -= ev
                 evc -= ec
 
-        Q_nA = np.empty((mynbands,
+        Q_nA = self.xp.empty((mynbands,
                          sum(delta_iiL.shape[2]
                              for delta_iiL in self.delta_aiiL)),
                         dtype=self.pw.dtype)
-        rhot_nR = self.grid_local.empty(mynbands)
-        rhot_nG = self.pw.empty(mynbands)
-        vrhot_G = self.pw.empty()
+        rhot_nR = self.grid_local.empty(mynbands, xp=self.xp)
+        rhot_nG = self.pw.empty(mynbands, xp=self.xp)
+        vrhot_G = self.pw.empty(xp=self.xp)
 
         if psi1 is not psi2 or comm.size > 1:
-            psit1_nR = self.grid_local.empty(mynbands)
+            psit1_nR = self.grid_local.empty(mynbands, xp=self.xp)
         else:
             psit1_nR = None
 
@@ -181,7 +195,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                     psi = psi1.empty()
                 psi.receive((comm.rank - 1) % comm.size)
             if p == 0:
-                psi2.psit_nR = self.grid_local.empty(mynbands)
+                psi2.psit_nR = self.grid_local.empty(mynbands, xp=self.xp)
                 ifft(psi2.psit_nG, psi2.psit_nR, self.plan)
             e += self.inner(psi1, psi2,
                             Q_nA,
@@ -200,7 +214,8 @@ class PWHybridHamiltonian(PWHamiltonian):
         pt_aiG.add_to(Htpsit_nG, B_ani)
 
         if same:
-            e = comm.sum_scalar(e)
+            print('e', type(e))
+            e = comm.sum_scalar(float(e))
             evv -= 0.5 * e
             ekin += e
             return evv, evc, ekin
@@ -223,6 +238,7 @@ class PWHybridHamiltonian(PWHamiltonian):
 
         e = 0.0
         for n2, (psit2_R, out_G) in enumerate(zip(psi2.psit_nR, Htpsit_nG)):
+            print(type(psit1_nR.data), type(psit2_R.data),'types rhot:',type(rhot_nR.data))
             rhot_nR.data[:] = psit1_nR.data * psit2_R.data.conj()
             fft(rhot_nR, rhot_nG, plan=self.plan)
             A1 = 0
@@ -234,14 +250,20 @@ class PWHybridHamiltonian(PWHamiltonian):
 
             if self.pw.dtype == float:
                 # Note that G runs over G0.real, G0.imag, G1.real, G1.imag, ...
-                mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
-                    1.0, rhot_nG.data.view(float))
+                print(type(Q_nA), type(self.ghat_GA),'Q_nA','ghat_GA')
+                print(Q_nA.shape, self.ghat_GA.shape,'Q_nA','ghat_GA')
+                print(Q_nA.dtype, self.ghat_GA.dtype,'Q_nA','ghat_GA')
+                rhot_nG.data += (1.0/self.pw.dv * Q_nA @ self.ghat_GA.T).view(complex)
+                
+                #mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
+                #    1.0, rhot_nG.data.view(float))
             else:
                 mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
                     1.0, rhot_nG.data)
             for n1, (rhot_R, rhot_G, f1) in enumerate(zips(rhot_nR,
                                                            rhot_nG,
                                                            psi1.f_n)):
+                print(type(rhot_G.data), type(self.v_G.data), 'rhot_G', 'v_G')
                 vrhot_G.data = rhot_G.data * self.v_G.data
                 if psi2.f_n is not None:
                     e += f1 * psi2.f_n[n2] * rhot_G.integrate(vrhot_G).real
@@ -259,12 +281,14 @@ class PWHybridHamiltonian(PWHamiltonian):
             ifft(rhot_nG, rhot_nR, plan=self.plan)
             rhot_nR.data *= psit1_nR.data
             fft(rhot_nR, rhot_nG, self.plan)
+            print(type(psi1.f_n), type(rhot_nG.data), 'xc')
             out_G.data -= psi1.f_n @ rhot_nG.data
         return e
 
 
 def ifft(psit_nG, out_nR, plan):
     for psit_G, out_R in zips(psit_nG, out_nR):
+        print(psit_nG,out_nR, plan, 'in ifft') 
         psit_G.ifft(out=out_R, plan=plan)
 
 
