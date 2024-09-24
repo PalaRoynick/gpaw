@@ -26,10 +26,15 @@ class GammaIntegrationMode:
                     'WS': {'type': 'WS'}}
 
         if isinstance(gamma_integration, int):
-            raise TypeError("gamma_integration=INT is no longer supported. "
-                            "Please start using the new notations, as is given"
-                            " in the documentation in gpaw/response/g0w0.py"
-                            " of __init__ of class G0W0.")
+            if gamma_integration == 1:
+                gamma_integration = 'reciprocal'
+            if gamma_integration == 0:
+                gamma_integration = 'sphere'
+            else:
+                raise TypeError("gamma_integration=INT is no longer supported. "
+                                "Please start using the new notations, as is given"
+                                " in the documentation in gpaw/response/g0w0.py"
+                                " of __init__ of class G0W0.")
 
         if isinstance(gamma_integration, str):
             gamma_integration = defaults[gamma_integration]
