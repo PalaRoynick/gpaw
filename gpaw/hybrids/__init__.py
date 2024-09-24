@@ -9,7 +9,6 @@ def parse_name(name: str) -> Tuple[str, float, float]:
     if name == 'EXX':
         return 'null', 1.0, 0.0
     if name == 'PBE0':
-        print('PARSING NAME PBE0, returning HYB_GGA_XC_PBEH')
         return 'HYB_GGA_XC_PBEH', 0.25, 0.0
     if name == 'HSE03':
         return 'HYB_GGA_XC_HSE03', 0.25, 0.106
