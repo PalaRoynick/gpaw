@@ -28,7 +28,7 @@ class GammaIntegrationMode:
         if isinstance(gamma_integration, int):
             if gamma_integration == 1:
                 gamma_integration = 'reciprocal'
-            if gamma_integration == 0:
+            elif gamma_integration == 0:
                 gamma_integration = 'sphere'
             else:
                 raise TypeError("gamma_integration=INT is no longer supported. "
