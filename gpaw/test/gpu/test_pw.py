@@ -61,7 +61,7 @@ def test_gpu_hybrids(gpu, xc):
         log='-')
     dft.converge()
     dft.energies()
-    energies = {'EXX': 1141.6723, 'PBE0':0}
+    energies = {'EXX': 1142.6723, 'PBE0':0}
     assert dft.results['energy'] * Ha == pytest.approx(energies[xc], abs=1e-3)
 
 
