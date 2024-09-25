@@ -3,6 +3,8 @@ from ase.units import Bohr, Hartree
 from gpaw.calculator import GPAW
 from gpaw.io import Reader
 from gpaw.solvation.hamiltonian import SolvationRealSpaceHamiltonian
+from gpaw.solvation.pw.hamiltonian import SolvationReciprocalSpaceHamiltonian
+from gpaw.utilities.grid import GridRedistributor
 
 
 class SolvationGPAW(GPAW):
@@ -108,14 +110,12 @@ class SolvationGPAW(GPAW):
                                                interactions=stuff[2][0])
 
     def create_hamiltonian(self, realspace, mode, xc):
-        if not realspace:
-            raise NotImplementedError(
-                'SolvationGPAW does not support '
-                'calculations in reciprocal space yet.')
-
+        cavity, dielectric, interactions = self.stuff_for_hamiltonian
         dens = self.density
-        self.hamiltonian = SolvationRealSpaceHamiltonian(
-            *self.stuff_for_hamiltonian,
+        kwargs = dict(
+            cavity=cavity,
+            dielectric=dielectric,
+            interactions=interactions,
             gd=dens.gd, finegd=dens.finegd,
             nspins=dens.nspins,
             collinear=dens.collinear,
@@ -126,11 +126,40 @@ class SolvationGPAW(GPAW):
             redistributor=dens.redistributor,
             vext=self.parameters.external,
             psolver=self.parameters.poissonsolver,
-            stencil=mode.interpolation)
+            # charge=dens.charge,
+            # XXX/ap: charge keyword added after SolvationGPAW;
+            # do we want to add it too?
+        )
+        if realspace:
+            self.hamiltonian = SolvationRealSpaceHamiltonian(
+                stencil=mode.interpolation, **kwargs)
+            xc.set_grid_descriptor(self.hamiltonian.finegd)
+        else:
+            # XXX/CB: Update here parallel to SJM hamiltonian update; i.e.
+            # pulled from calculator.py
+            gd = dens.finegd
 
-        self.log(self.hamiltonian)
+            xc_redist = None
+            if self.parallel['augment_grids']:
+                from gpaw.grid_descriptor import BadGridError
+                try:
+                    aux_gd = gd.new_descriptor(comm=self.world)
+                except BadGridError as err:
+                    import warnings
+                    warnings.warn('Ignoring augment_grids: {}'
+                                  .format(err))
+                else:
+                    bcast_comm = dens.redistributor.broadcast_comm
+                    xc_redist = GridRedistributor(self.world, bcast_comm,
+                                                  gd, aux_gd)
 
-        xc.set_grid_descriptor(self.hamiltonian.finegd)
+            self.hamiltonian = SolvationReciprocalSpaceHamiltonian(
+                pd2=dens.pd2, pd3=dens.pd3, realpbc_c=self.atoms.pbc,
+                xc_redistributor=xc_redist,
+                **kwargs)
+            xc.set_grid_descriptor(self.hamiltonian.xc_gd)
+
+        self.log(self.hamiltonian, '\n')
 
     def initialize_positions(self, atoms=None):
         spos_ac = GPAW.initialize_positions(self, atoms)

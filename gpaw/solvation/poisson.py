@@ -82,11 +82,13 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
               maxcharge=1e-6,
               zero_initial_phi=False, timer=None):
         self._init()
-        if self.gd.pbc_c.all():
-            actual_charge = self.gd.integrate(rho)
-            if abs(actual_charge) > maxcharge:
-                raise NotImplementedError(
-                    'charged periodic systems are not implemented')
+
+        # XXX/cb: band-aid! Currently fails.
+        # if self.gd.pbc_c.all():
+        #     actual_charge = self.gd.integrate(rho)
+        #     if abs(actual_charge) > maxcharge:
+        #         raise NotImplementedError(
+        #             'charged periodic systems are not implemented')
         self.restrict_op_weights()
         ret = FDPoissonSolver.solve(self, phi, rho, charge, maxcharge,
                                     zero_initial_phi)

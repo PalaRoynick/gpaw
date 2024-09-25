@@ -81,6 +81,7 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
     def update_pseudo_potential(self, dens):
         ebar = self.pd2.integrate(self.vbar_Q, dens.nt_Q,
                                   global_integral=False)
+
         with self.timer('Poisson'):
             epot = self.poisson.solve(self.vHt_q, dens)
             epot /= self.finegd.comm.size
