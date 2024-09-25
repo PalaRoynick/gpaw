@@ -50,7 +50,7 @@ class Psi:
             self.f_n = self.psit_nG.xp.asarray(self.f_n)
 
     def empty(self):
-        xp = psit_nG.xp
+        xp = self.psit_nG.xp
         return Psi(self.psit_nG.new(),
                    self.P_ani.new(),
                    xp.empty_like(self.f_n))
@@ -162,18 +162,16 @@ class PWHybridHamiltonian(PWHamiltonian):
             B_ani[a] = psi2.P_ani[a] @ psi1.psit_nG.xp.asarray(V_ii)
 
             if same:
-                
                 ec = (D_ii * VC_ii).sum()
-
                 ev = (D_ii * VV_ii).sum()
                 ekin += ec + 2 * ev
                 evv -= ev
                 evc -= ec
 
         Q_nA = self.xp.empty((mynbands,
-                         sum(delta_iiL.shape[2]
-                             for delta_iiL in self.delta_aiiL)),
-                        dtype=self.pw.dtype)
+                              sum(delta_iiL.shape[2]
+                                  for delta_iiL in self.delta_aiiL)),
+                             dtype=self.pw.dtype)
         rhot_nR = self.grid_local.empty(mynbands, xp=self.xp)
         rhot_nG = self.pw.empty(mynbands, xp=self.xp)
         vrhot_G = self.pw.empty(xp=self.xp)
@@ -244,13 +242,19 @@ class PWHybridHamiltonian(PWHamiltonian):
 
             if self.pw.dtype == float:
                 # Note that G runs over G0.real, G0.imag, G1.real, G1.imag, ...
-                rhot_nG.data += (1.0/self.pw.dv * Q_nA @ self.ghat_GA.T).view(complex)
-                
-                #mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
-                #    1.0, rhot_nG.data.view(float))
+                if self.xp is np:
+                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
+                        1.0, rhot_nG.data.view(float))
+                else:
+                    # TODO: Use GPU gemm
+                    rhot_nG.data += (1.0 / self.pw.dv) * \
+                        (Q_nA @ self.ghat_GA.T).view(complex)
             else:
-                mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
-                    1.0, rhot_nG.data)
+                if self.xp is np:
+                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
+                        1.0, rhot_nG.data)
+                else:
+                    raise NotImplementedError
             for n1, (rhot_R, rhot_G, f1) in enumerate(zips(rhot_nR,
                                                            rhot_nG,
                                                            psi1.f_n)):
