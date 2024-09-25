@@ -224,13 +224,16 @@ template <bool gga, int nspin> __device__ double pbe_correlation(double n, doubl
 }
 
 
-template <int nspin, bool gga> __global__ void evaluate_ldaorgga_kernel(int ng,
-									double* n_sg,
-									double* v_sg,
-									double* e_g,
-									double* sigma_xg,
-									double* dedsigma_xg)
+template <int nspin, bool gga, int x_mix_id = 11, int c_mix_id = 11>
+__global__ void evaluate_ldaorgga_kernel(int ng,
+                                         double* n_sg,
+                                         double* v_sg,
+                                         double* e_g,
+                                         double* sigma_xg,
+                                         double* dedsigma_xg)
 {
+    constexpr double x_mix = ((double) (x_mix_id/10)) / ((double) (x_mix_id % 10));
+    constexpr double c_mix = ((double) (c_mix_id/10)) / ((double) (c_mix_id % 10));
     int g = threadIdx.x + blockIdx.x * blockDim.x;
     if (g >= ng)
     {
@@ -253,15 +256,15 @@ template <int nspin, bool gga> __global__ void evaluate_ldaorgga_kernel(int ng,
 	    double a2 = sigma_xg[g];
 	    ex = pbe_exchange<gga>(n, rs, a2, &dexdrs, &dexda2);
 	    ec = pbe_correlation<gga, nspin>(n, rs, 0.0, a2, &decdrs, 0, &decda2);
-	    dedsigma_xg[g] = n * (dexda2 + decda2);
+	    dedsigma_xg[g] = n * (dexda2 * x_mix + decda2 * c_mix);
 	  }
 	else
 	  {
 	    ex = pbe_exchange<gga>(n, rs, 0.0, &dexdrs, 0);
 	    ec = pbe_correlation<gga, nspin>(n, rs, 0.0, 0.0, &decdrs, 0, 0);
 	  }
-	e_g[g] = n * (ex + ec);
-	v_sg[g] += ex + ec - rs * (dexdrs + decdrs) / 3.0;
+	e_g[g] = n * (x_mix * ex + c_mix * ec);
+	v_sg[g] += x_mix * ex + c_mix * ec - rs * (dexdrs * x_mix + decdrs * c_mix) / 3.0;
     }
     else
     {
@@ -317,9 +320,9 @@ template <int nspin, bool gga> __global__ void evaluate_ldaorgga_kernel(int ng,
 	    double a2 = sigma0_g[g] + 2 * sigma1_g[g] + sigma2_g[g];
 	    ec = pbe_correlation<gga, nspin>(n, rs, zeta, a2,
 					     &decdrs, &decdzeta, &decda2);
-	    dedsigma0_g[g] = 2 * na * dexada2 + n * decda2;
-	    dedsigma1_g[g] = 2 * n * decda2;
-	    dedsigma2_g[g] = 2 * nb * dexbda2 + n * decda2;
+	    dedsigma0_g[g] = 2 * na * dexada2 * x_mix + n * decda2 * c_mix;
+	    dedsigma1_g[g] = 2 * n * decda2 * c_mix;
+	    dedsigma2_g[g] = 2 * nb * dexbda2 * x_mix + n * decda2 * c_mix;
 	}
 	else
 	{
@@ -329,13 +332,13 @@ template <int nspin, bool gga> __global__ void evaluate_ldaorgga_kernel(int ng,
 					    &decdrs, &decdzeta, 0);
 	}
 
-	e_g[g] = 0.5 * (na * exa + nb * exb) + n * ec;
-	va_g[g] += (exa + ec -
-		    (rsa * dexadrs + rs * decdrs) / 3.0 -
-		    (zeta - 1.0) * decdzeta);
-	vb_g[g] += (exb + ec -
-		    (rsb * dexbdrs + rs * decdrs) / 3.0 -
-		    (zeta + 1.0) * decdzeta);
+	e_g[g] = 0.5 * (na * exa * x_mix + nb * exb * x_mix) + n * ec * c_mix;
+	va_g[g] += (exa * x_mix + ec * c_mix -
+		    (rsa * dexadrs * x_mix + rs * decdrs * c_mix) / 3.0 -
+		    (zeta - 1.0) * decdzeta * c_mix);
+	vb_g[g] += (exb * x_mix + ec * c_mix -
+		    (rsb * dexbdrs * x_mix + rs * decdrs * c_mix) / 3.0-
+		    (zeta + 1.0) * decdzeta * c_mix);
     }
 }
 
@@ -346,14 +349,44 @@ constexpr void(*LDA_SPINPAIRED)(int, double*, double*, double*, double*, double*
 constexpr void(*LDA_SPINPOLARIZED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<2, false>;
 constexpr void(*PBE_SPINPAIRED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<1, true>;
 constexpr void(*PBE_SPINPOLARIZED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<2, true>;
+constexpr void(*PBEH_SPINPAIRED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<1, true, 34, 11>;
+constexpr void(*PBEH_SPINPOLARIZED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<2, true, 34, 11>;
+
+extern "C"
+void evaluate_pbeh_launch_kernel(int nspin, int ng,
+                                 double* n,
+                                 double* v,
+                                 double* e,
+                                 double* sigma,
+                                 double* dedsigma)
+{
+    if (nspin == 1)
+    {
+	gpuLaunchKernel(PBEH_SPINPAIRED,
+			dim3((ng+255)/256),
+			dim3(256),
+			0, 0,
+			ng,
+			n, v, e, sigma, dedsigma);
+    }
+    else if (nspin == 2)
+    {
+	gpuLaunchKernel(PBEH_SPINPOLARIZED,
+			dim3((ng+255)/256),
+			dim3(256),
+			0, 0,
+			ng,
+			n, v, e, sigma, dedsigma);
+    }
+}
 
 extern "C"
 void evaluate_pbe_launch_kernel(int nspin, int ng,
-				double* n,
-				double* v,
-				double* e,
-				double* sigma,
-				double* dedsigma)
+                                double* n,
+                                double* v,
+                                double* e,
+                                double* sigma,
+                                double* dedsigma)
 {
     if (nspin == 1)
     {

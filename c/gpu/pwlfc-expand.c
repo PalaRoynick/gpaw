@@ -57,6 +57,13 @@ void dH_aii_times_P_ani_launch_kernel(int nA, int nn,
                                       gpuDoubleComplex* outP_ani_dev,
                                       int is_complex);
 
+void evaluate_pbeh_launch_kernel(int nspin, int ng,
+                                 double* n,
+                                 double* v,
+                                 double* e,
+                                 double* sigma,
+                                 double* dedsigma);
+
 void evaluate_pbe_launch_kernel(int nspin, int ng,
                                 double* n,
                                 double* v,
@@ -131,6 +138,46 @@ PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args)
         return NULL;
     }
     evaluate_pbe_launch_kernel(nspin, ng, 
+                               n_ptr,
+                               v_ptr,
+                               e_ptr,
+                               sigma_ptr,
+                               dedsigma_ptr);
+    Py_RETURN_NONE;
+}
+
+
+PyObject* evaluate_pbeh_gpu(PyObject* self, PyObject* args)
+{
+    PyObject* n_obj;
+    PyObject* v_obj;
+    PyObject* sigma_obj;
+    PyObject* dedsigma_obj;
+    PyObject* e_obj; 
+    if (!PyArg_ParseTuple(args, "OOOOO",
+                          &n_obj, &v_obj, &e_obj, &sigma_obj, &dedsigma_obj))
+        return NULL;
+    int nspin = Array_DIM(n_obj, 0);
+    if ((nspin != 1) && (nspin != 2))
+    {
+        PyErr_Format(PyExc_RuntimeError, "Expected 1 or 2 spins. Got %d.", nspin);
+        return NULL;
+    }
+    int ng = 1;
+    for (int d=1; d<Array_NDIM(n_obj); d++)
+    {
+        ng *= Array_DIM(n_obj, d);
+    }
+    double* n_ptr = Array_DATA(n_obj);
+    double* v_ptr = Array_DATA(v_obj);
+    double* e_ptr = Array_DATA(e_obj);
+    double* sigma_ptr = Array_DATA(sigma_obj);
+    double* dedsigma_ptr = Array_DATA(dedsigma_obj);
+    if (PyErr_Occurred())
+    {
+        return NULL;
+    }
+    evaluate_pbeh_launch_kernel(nspin, ng, 
                                n_ptr,
                                v_ptr,
                                e_ptr,

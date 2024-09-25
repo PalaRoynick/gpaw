@@ -46,13 +46,14 @@ def test_gpu(dtype, gpu, mode, random):
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('gpu', [False, True])
-def test_gpu_hybrids(gpu):
+@pytest.mark.parametrize('xc', ['PBE0', 'EXX'])
+def test_gpu_hybrids(gpu, xc):
     from ase.build import bulk
     atoms = bulk('Si')
     dft = DFTCalculation.from_parameters(
         atoms,
         dict(mode={'name': 'pw'},
-             xc='EXX', #{'name': 'HSE06', 'backend': 'pw'},
+             xc=xc, #{'name': 'HSE06', 'backend': 'pw'},
              convergence={'density': 1e-6},
              kpts=(1, 1, 1),
              parallel={'gpu': gpu},
@@ -60,7 +61,8 @@ def test_gpu_hybrids(gpu):
         log='-')
     dft.converge()
     dft.energies()
-    assert dft.results['energy'] * Ha == pytest.approx(1142.672383976532, abs=1e-3)
+    energies = {'EXX': 1141.6723, 'PBE0':0}
+    assert dft.results['energy'] * Ha == pytest.approx(energies[xc], abs=1e-3)
 
 
 @pytest.mark.gpu
