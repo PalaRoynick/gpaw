@@ -337,7 +337,7 @@ __global__ void evaluate_ldaorgga_kernel(int ng,
 		    (rsa * dexadrs * x_mix + rs * decdrs * c_mix) / 3.0 -
 		    (zeta - 1.0) * decdzeta * c_mix);
 	vb_g[g] += (exb * x_mix + ec * c_mix -
-		    (rsb * dexbdrs * x_mix + rs * decdrs * c_mix) / 3.0-
+		    (rsb * dexbdrs * x_mix + rs * decdrs * c_mix) / 3.0 -
 		    (zeta + 1.0) * decdzeta * c_mix);
     }
 }
