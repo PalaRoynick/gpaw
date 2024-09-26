@@ -18,7 +18,8 @@ from gpaw.xc.functional import XCFunctional as OldXCFunctional
 from gpaw.xc.gga import add_gradient_correction
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
-from gpaw.hybrids import HybridXC
+from gpaw.hybrids import HybridXC as PWHybridXC
+from gpaw.xc.hybrid import HybridXC as FDHybridXC
 
 
 def create_functional(xc: OldXCFunctional | str | dict,
@@ -26,13 +27,18 @@ def create_functional(xc: OldXCFunctional | str | dict,
                       xp=np) -> Functional:
     exx_fraction = 0.0
     exx_omega = 0.0
+
     if isinstance(xc, (str, dict)):
         xc = XC(xc, xp=xp)
 
-    if xc.type == 'HYB':
-        assert isinstance(xc, HybridXC)
+    # Grab stuff needed from old objects:
+    if isinstance(xc, PWHybridXC):
         exx_fraction = xc.exx_fraction
         exx_omega = xc.omega
+        xc = xc.xc
+    elif isinstance(xc, FDHybridXC):
+        exx_fraction = xc.hybrid
+        exx_omega = xc.omega or 0.0
         xc = xc.xc
 
     if xc.type == 'LDA':
@@ -117,7 +123,7 @@ class LDAFunctional(Functional):
         if self.name == 'EXX':
             return 0, vxct_sr, None
         if self.name == 'null':
-            return 0, vxct_sr, None 
+            return 0, vxct_sr, None
 
         e_r = nt_sr.desc.empty(xp=self.xp)
         if self.xp is np:

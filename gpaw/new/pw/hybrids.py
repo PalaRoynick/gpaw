@@ -229,7 +229,7 @@ class PWHybridHamiltonian(PWHamiltonian):
               rhot_nG, rhot_nR, vrhot_G,
               Htpsit_nG, B_ani):
         Q1_aniL = {a: np.einsum('ijL, nj -> niL',
-                                delta_iiL, psi1.P_ani[a])
+                                     delta_iiL, psi1.P_ani[a])
                    for a, delta_iiL in enumerate(self.delta_aiiL)}
 
         if psi1 is psi2:
@@ -245,7 +245,7 @@ class PWHybridHamiltonian(PWHamiltonian):
             for a, Q1_niL in Q1_aniL.items():
                 P2_i = psi2.P_ani[a][n2]
                 A2 = A1 + Q1_niL.shape[2]
-                Q_nA[:, A1:A2] = P2_i.conj() @ Q1_niL
+                Q_nA[:, A1:A2] = P2_i.conj() @ self.xp.asarray(Q1_niL)
                 A1 = A2
 
             if self.pw.dtype == float:
