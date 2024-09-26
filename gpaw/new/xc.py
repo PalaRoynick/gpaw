@@ -116,6 +116,8 @@ class LDAFunctional(Functional):
         vxct_sr.data[:] = 0.0
         if self.name == 'EXX':
             return 0, vxct_sr, None
+        if self.name == 'null':
+            return 0, vxct_sr, None 
 
         e_r = nt_sr.desc.empty(xp=self.xp)
         if self.xp is np:
