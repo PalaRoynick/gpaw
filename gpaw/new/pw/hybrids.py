@@ -116,7 +116,15 @@ class PWHybridHamiltonian(PWHamiltonian):
         D_aii = D_asii[:, spin]
         if ibzwfs.nspins == 1:
             D_aii.data *= 0.5
-        psi1 = Psi(wfs.psit_nX, wfs.P_ani, wfs.myocc_n)
+        try:
+            f_n = wfs.myocc_n
+        except ValueError:
+            raise ValueError(
+                'Hybrid functionals need orbitals and '
+                'occupation-numbers as input. '
+                'Your random initial wave-functions don\'t have '
+                'well defined occupation numbers.')
+        psi1 = Psi(wfs.psit_nX, wfs.P_ani, f_n)
         pt_aiG = wfs.pt_aiX
 
         if psi1.psit_nG is psit2_nG:
