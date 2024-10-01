@@ -35,8 +35,7 @@ class GSInfo:
         self.setups = dft.setups
         self.nabla_aiiv = [setup.nabla_iiv for setup in self.setups]
 
-        state = dft.state
-        ibzwfs = self.ibzwfs = state.ibzwfs
+        ibzwfs = self.ibzwfs = dft.ibzwfs
         if not (ibzwfs.domain_comm.size == 1 and ibzwfs.band_comm.size == 1):
             raise ValueError('Calculator must be initialised with '
                              'only k-point parallelisation.')
@@ -44,7 +43,7 @@ class GSInfo:
             raise ValueError('Calculator is missing wfs data. If loading from '
                              'a .gpw file, please recalculate wave functions.')
 
-        density = state.density
+        density = dft.density
         self.collinear = density.collinear
         self.ndensities = density.ndensities
 
