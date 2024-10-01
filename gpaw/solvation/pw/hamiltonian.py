@@ -78,6 +78,9 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         self.e_el_extrapolated = None
 
         raise NotImplementedError('TODO')
+    
+    # def real_space_density(density):
+    #     return self.pd3.ifft(density.rhot_q)
 
     def __str__(self):
         s = ReciprocalSpaceHamiltonian.__str__(self) + '\n'
@@ -147,8 +150,12 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         # XXX/CB: should also be highly similar, updated in aux. Theme
         # of similarity in this func. corroborated by the fact that
         # pw/hamiltonian does NOT override update.
+        
         cavity_changed = self.solvation['cavity'].update(
             self.new_atoms, density)
+        # XXX/REPLACE:
+        # cavity_changed = self.solvation['cavity'].update(
+        #     self.new_atoms, self.real_space_density(density))
         if cavity_changed:
             self.solvation['cavity'].update_vol_surf()
             self.solvation['dielectric'].update(self.solvation['cavity'])
@@ -169,6 +176,8 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
 
         # XXX/CB: This is all well and good...but assumes that we hold density
         # in pw, which we should
+        
+        # XXX/CB: does gd parallelization still apply here?
         Ekin1 = self.gd.comm.sum_scalar(self.calculate_kinetic_energy(density))
         W_aL = self.calculate_atomic_hamiltonians(density)
         atomic_energies = self.update_corrections(density, W_aL)
@@ -217,6 +226,9 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         # check our results.
 
         self.el_force_correction(dens, F_av)
+        # XXX/REPLACE:
+        # real_dens = self.real_space_density(dens)
+        # self.el_force_correction(real_dens, F_av)
         for ia in self.solvation['interactions']:
             if self.solvation['cavity'].depends_on_atomic_positions:
                 for a, F_v in enumerate(F_av):
@@ -224,6 +236,9 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
                     # in our new cavity/interaction objs.
                     del_g_del_r_vg = self.solvation['cavity'].get_del_r_vg(
                         a, dens)
+                    # XXX/REPLACE:
+                    # del_g_del_r_vg = self.solvation['cavity'].get_del_r_vg(
+                    #     a, real_dens)
                     for v in (0, 1, 2):
                         # XXX/CB: Unclear to me yet whether we can do this
                         # integration here, or whether we need to involve pd2/
@@ -236,18 +251,23 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
             if ia.depends_on_atomic_positions:
                 for a, F_v in enumerate(F_av):
                     del_E_del_r_vg = ia.get_del_r_vg(a, dens)
+                    # XXX/REPLACE:
+                    # del_E_del_r_vg = ia.get_del_r_vg(a, real_dens)
                     for v in (0, 1, 2):
                         F_v[v] -= self.finegd.integrate(
                             del_E_del_r_vg[v],
                             global_integral=False)
 
-        # XXX/CB: move F_av to pw?
         return ReciprocalSpaceHamiltonian.calculate_forces(self, dens, F_av)
+        # XXX/REPLACE:
+        # return ReciprocalSpaceHamiltonian.calculate_forces(self, dens, self.pd3.fft(F_av))
 
     def el_force_correction(self, dens, F_av):
         # XXX/CB: We're definitely going to want to keep this in real space.
         # Only question will be what we are holding in reciprocal space that we
         # need to manage here, e.g. potentially vHt_q?
+        
+        # XXX/CB: density input in real space upstream
         if not self.solvation['cavity'].depends_on_atomic_positions:
             return
         del_eps_del_g_g = self.solvation['dielectric'].del_eps_del_g_g

@@ -116,6 +116,8 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
                 self.vt_Q += vxc_Q / self.nspins
             else:
                 vt_G += vxc_G
+                
+        # XXX/CB: Can we back out the correct vt_g/vt_sg from the above?
 
         self.timer.stop('XC 3D grid')
 
