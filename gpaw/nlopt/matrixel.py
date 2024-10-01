@@ -86,6 +86,111 @@ def get_mml(gs: CollinearGSInfo | NoncollinearGSInfo,
 
     return p_qvnn
 
+def get_vmlsr(gs: NoncollinearGSInfo,
+              bands: slice) -> ArrayND:
+    """
+    Compute the scalar relativistic corrections to velocity matrix elements.
+
+    Parameters
+    ----------
+    gs
+        Ground state adapter.
+    bands
+        Range of bands.
+
+    Returns
+    -------
+    vsr_qvnn
+        Scalar relativistic corrections to the velocity matrix elements.
+    """
+
+    parprint('Calculating scalar relativistic corrections to velocity matrix elements.')
+
+    # Allocate the matrix elements
+    ibzwfs = gs.ibzwfs
+    master = (ibzwfs.kpt_comm.rank == 0)
+    nb = bands.stop - bands.start
+    nq = len(ibzwfs.q_k.keys())
+    vsr_qvnn = np.empty([nq, 3, nb, nb], dtype=complex)
+
+    G_vLL = get_gaunt_coefs()
+    Y_vLL = get_gauntnabla_coefs():
+    if master:
+        pb = ProgressBar()
+
+    for wfs_s in ibzwfs.wfs_qs:
+        vsr_vnn = np.zeros((3, nb, nb), dtype=complex)
+
+        wfs = gs.get_wfs(wfs_s, 0)
+        P_up_ani = gs.get_paw_projection_coefs(wfs, bands, 0)
+        P_dn_ani = gs.get_paw_projection_coefs(wfs, bands, 1)
+        for (setup, dUdr_q), (P_up_ni, P_dn_ni) in zip(zip(gs.setups,
+                                                           gs.dUdr_aq),
+                                                       zip(P_up_ani.values(),
+                                                           P_dn_ani.values())):
+            vsr_vnn += vsr_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL)
+
+        vsr_qvnn[wfs.q] = vsr_vnn
+
+        if master:
+            pb.update(wfs.q / nq)
+
+    if master:
+        pb.finish()
+
+    return vsr_qvnn
+
+
+def vsr_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL):
+    vsr_vnn = np.zeros([3, P_up_ni.shape[0], P_up_ni.shape[0]], dtype=complex)
+
+    l_j = setup.l_j
+    nj = len(l_j)
+
+    islice1 = slice(0, 0)
+    for j1, l1 in enumerate(l_j):
+        islice1 = slice(islice1.stop, islice1.stop + 2 * l1 + 1)
+        Lslice1 = slice(l1**2, (l1 + 1)**2)
+        P1_up_ni = P_up_ni[:, islice1].conj()
+        P1_dn_ni = P_dn_ni[:, islice1].conj()
+
+        islice2 = slice(0, 0)
+        for j2, l2 in enumerate(l_j):
+            islice2 = slice(islice2.stop, islice2.stop + 2 * l2 + 1)
+            if l1 == l2:
+                continue  # No s-s, p-p or d-d coupling.
+            if (l1 == 0 and l2 == 2) or (l1 == 2 and l2 == 0):
+                continue  # No s-d or d-s coupling.
+            Lslice2 = slice(l2**2, (l2 + 1)**2)
+            P2_up_ni = P_up_ni[:, islice2]
+            P2_dn_ni = P_dn_ni[:, islice2]
+
+            # Radial part
+            dUdr = dUdr_q[j2 + j1 * nj - j1 * (j1 + 1) // 2 if j1 < j2
+                          else j1 + j2 * nj - j2 * (j2 + 1) // 2]
+
+            # Angular part
+            Gx_ii, Gy_ii, Gz_ii = G_vLL[:, Lslice1, Lslice2]
+
+            # Spin part
+            P_upup = np.einsum('mi,nj->mnij', P1_up_ni, P2_up_ni)
+            P_updn = np.einsum('mi,nj->mnij', P1_up_ni, P2_dn_ni)
+            P_dnup = np.einsum('mi,nj->mnij', P1_dn_ni, P2_up_ni)
+            P_dndn = np.einsum('mi,nj->mnij', P1_dn_ni, P2_dn_ni)
+
+            P_sigmax_nnii = P_updn + P_dnup
+            P_sigmay_nnii = - 1j * (P_updn - P_dnup)
+            P_sigmaz_nnii = P_upup - P_dndn
+
+            # Matrix elements
+            vsr_vnn[0] += 
+
+            vsr_vnn[1] +=
+
+            vsr_vnn[2] +=
+
+    return vsr_vnn
+
 
 def get_vmlsoc(gs: NoncollinearGSInfo,
                bands: slice) -> ArrayND:
@@ -102,7 +207,7 @@ def get_vmlsoc(gs: NoncollinearGSInfo,
     Returns
     -------
     vsoc_kvnn
-        SOC correction elements to the velocity matrix elements
+        Spin-orbit corrections to the velocity matrix elements.
     """
 
     parprint('Calculating spin–orbit correction to velocity matrix elements.')
@@ -142,7 +247,6 @@ def get_vmlsoc(gs: NoncollinearGSInfo,
 
 
 def vsoc_1k_1atom(setup, dUdr_q, P_up_ni, P_dn_ni, G_vLL):
-
     vsoc_vnn = np.zeros([3, P_up_ni.shape[0], P_up_ni.shape[0]], dtype=complex)
 
     l_j = setup.l_j
@@ -208,6 +312,12 @@ def get_gaunt_coefs():
     G_vLL[2] = G_LLL[2]  # < Y_lm | pz | Y_lm >
 
     return G_vLL
+
+def get_gauntnabla_coefs():
+    Y_LLv = nabla(2)
+
+    Y_vLL = np.rollaxis(Y_LLv, 2, 0)  # Not Hermitian, do not use np.swapaxes
+    return Y_vLL
 
 
 def gather_to_master(p_qvnn, ibzwfs):
@@ -317,6 +427,10 @@ def make_nlodata(calc: ASECalculator | str | Path,
         assert E_F is not None and len(E_F) == 1
         E_skn -= E_F[0]
 
+        from gpaw.occupations import fermi_dirac
+        from ase.units import Ha
+        f_skn, _, __ = fermi_dirac(E_skn, 0., 0.001 / Ha)
+
         w_sk = np.array([ibzwfs.ibz.weight_k for _ in range(gs.ndensities)])
         w_sk *= gs.bzvol * ibzwfs.spin_degeneracy
 
@@ -328,6 +442,13 @@ def make_nlodata(calc: ASECalculator | str | Path,
             p_sqvnn.append(p_qvnn)
         if not gs.collinear:
             p_sqvnn = [p_sqvnn[0] + p_sqvnn[1]]
+    if add_sr_correction:
+        assert isinstance(gs, NoncollinearGSInfo)
+        with timer('Compute and add the scalar relativistic correction '
+                   'to velocity matrix elements'):
+            vsr_qvnn = get_vmlsr(gs, bands)
+            prefactor = #alpha**2 * np.sqrt(np.pi / 12)
+            p_sqvnn = [p_sqvnn[0] + prefactor * vsr_qvnn]
     if add_soc_correction:
         assert isinstance(gs, NoncollinearGSInfo)
         if not gs.soc:
@@ -336,9 +457,9 @@ def make_nlodata(calc: ASECalculator | str | Path,
                           'matrix elements may give unpredictable results.')
         with timer('Compute and add the spin–orbit correction '
                    'to velocity matrix elements'):
-            v_qvnn = get_vmlsoc(gs, bands)
+            vsoc_qvnn = get_vmlsoc(gs, bands)
             prefactor = alpha**2 * np.sqrt(np.pi / 12)
-            p_sqvnn = [p_sqvnn[0] + prefactor * v_qvnn]
+            p_sqvnn = [p_sqvnn[0] + prefactor * vsoc_qvnn]
     with timer('Gather the data to master'):
         p_skvnn = []
         for p_qvnn in p_sqvnn:
