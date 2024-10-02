@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING
-
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import NamedTuple, Dict, List
 
 import numpy as np
@@ -63,6 +62,7 @@ def pawexxvv(M_pp, D_ii):
                     V += M_pp[p13, p24] * D_ii[i3, i4]
             V_ii[i1, i2] = V
     return V_ii
+
 
 if not TYPE_CHECKING:
     try:
