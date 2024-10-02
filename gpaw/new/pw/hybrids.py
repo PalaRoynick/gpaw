@@ -93,7 +93,7 @@ class PWHybridHamiltonian(PWHamiltonian):
         self.exx_cc = sum(setup.ExxC for setup in setups) * self.exx_fraction
         self.VC_aii = [unpack_hermitian(setup.X_p * self.exx_fraction)
                        for setup in setups]
-        self.delta_aiiL = [setup.Delta_iiL for setup in setups]
+        self.delta_aiiL = [xp.asarray(setup.Delta_iiL) for setup in setups]
         self.VV_app = [setup.M_pp * self.exx_fraction for setup in setups]
         self.v_G = coulomb(pw, grid, self.exx_omega).to_xp(xp)
         self.v_G.data *= self.exx_fraction
@@ -228,7 +228,7 @@ class PWHybridHamiltonian(PWHamiltonian):
               psit1_nR,
               rhot_nG, rhot_nR, vrhot_G,
               Htpsit_nG, B_ani):
-        Q1_aniL = {a: np.einsum('ijL, nj -> niL',
+        Q1_aniL = {a: self.xp.einsum('ijL, nj -> niL',
                                      delta_iiL, psi1.P_ani[a])
                    for a, delta_iiL in enumerate(self.delta_aiiL)}
 
