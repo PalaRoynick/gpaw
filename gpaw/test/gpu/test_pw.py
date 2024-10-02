@@ -45,7 +45,7 @@ def test_gpu(dtype, gpu, mode, random):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize('gpu', [True])
+@pytest.mark.parametrize('gpu', [True, False])
 @pytest.mark.parametrize('xc', ['PBE0', 'EXX'])
 def test_gpu_hybrids(gpu, xc):
     if gpu and xc == 'PBE0':

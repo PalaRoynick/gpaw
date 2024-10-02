@@ -88,6 +88,7 @@ class PAWHybridHamiltonian:
         self.ghat_aLG._lazy_init()
         self.ghat_GA = self.ghat_aLG._lfc.expand()
 
+
 class PWHybridHamiltonian(PWHamiltonian):
     def __init__(self,
                  grid: UGDesc,
@@ -104,7 +105,8 @@ class PWHybridHamiltonian(PWHamiltonian):
 
         self.v_G = coulomb(pw, grid, self.exx_omega).to_xp(xp)
         self.v_G.data *= self.exx_fraction
-        self.paw = PAWHybridHamiltonian(xp, pw, setups, fracpos_ac, atomdist, self.exx_fraction)
+        self.paw = PAWHybridHamiltonian(xp, pw, setups, fracpos_ac,
+                                        atomdist, self.exx_fraction)
         # self.plan = grid.fft_plans()
 
         self.VV_aii = None
@@ -171,8 +173,13 @@ class PWHybridHamiltonian(PWHamiltonian):
         ekin = 0.0
         B_ani = {}
         xp = psi1.psit_nG.xp
+
         for a, D_ii in D_aii.items():
-            VV_ii = xp.asarray(pawexxvv(self.paw.VV_app[a], D_ii))
+            if self.xp is not np:
+                cpuD_ii = xp.asnumpy(D_ii)
+            else:
+                cpuD_ii = D_ii
+            VV_ii = xp.asarray(pawexxvv(self.paw.VV_app[a], cpuD_ii))
             VC_ii = xp.asarray(self.paw.VC_aii[a])
             V_ii = -VC_ii - 2 * VV_ii
             B_ani[a] = psi2.P_ani[a] @ psi1.psit_nG.xp.asarray(V_ii)
