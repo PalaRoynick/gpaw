@@ -8,6 +8,8 @@ When:
   October 8 and 9 afternoons (Danish time)
 Announcement:
   https://listserv.fysik.dtu.dk/pipermail/gpaw-users/2024-September/007312.html
+Zoom:
+    https://dtudk.zoom.us/j/61353636155?pwd=DbeVAklaZKPo3aZAjrUfLrbfbdKJdb.1
 
 .. note::
 
@@ -16,8 +18,8 @@ Announcement:
    to solve and the challenges implementing those in the code.
 
 
-Preliminary program
-===================
+Program
+=======
 
 Tuesday
 -------
@@ -89,7 +91,7 @@ Tuesday
 
 :16:40:
 
-  **To be announced**
+  **Anubhab Haldar**
 
   *Improved basis sets for LCAO*
 
@@ -139,9 +141,3 @@ Wednesday
   **Vladimír Zobač**
 
   *Ehrenfest molecular dynamics with LCAO basis*
-
-:16:40:
-
-  **To be announced**
-
-  *RTTDDFT*

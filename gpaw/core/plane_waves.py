@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import pi
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from ase.units import Ha
@@ -19,7 +19,7 @@ from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
                         pw_insert_gpu)
 from gpaw.pw.descriptor import pad
 from gpaw.typing import (Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D,
-                         Literal, Vector)
+                         Vector)
 
 if TYPE_CHECKING:
     from gpaw.core import UGArray, UGDesc
@@ -864,10 +864,13 @@ def abs_square_gpu(psit_nG, weight_n, nt_R):
         elif nb < B:
             psit_bR = psit_bR[:nb]
         psit_bR[:] = 0.0
+        # TODO: Remember to give real space size instead of
+        # reciprocal space size when doing real wave functions
+        # (now psit_bR is shared between real and reciprocal space)
         pw_insert_gpu(psit_nG.data[b1:b2],
                       Q_G,
                       1.0,
-                      psit_bR.reshape((nb, -1)))
+                      psit_bR.reshape((nb, -1)), *psit_bR.shape[1:])
         psit_bR[:] = cupyx.scipy.fft.ifftn(
             psit_bR,
             shape,
