@@ -75,6 +75,19 @@ class Psi:
         comm.waitall(self.requests)
 
 
+class PAWHybridHamiltonian:
+    def __init__(self, xp, pw, setups, fracpos_ac, atomdist, exx_fraction):
+        # Stuff for PAW core-core, core-valence and valence-valence correctios:
+        self.exx_cc = sum(setup.ExxC for setup in setups) * exx_fraction
+        self.VC_aii = [unpack_hermitian(setup.X_p * exx_fraction)
+                       for setup in setups]
+        self.delta_aiiL = [xp.asarray(setup.Delta_iiL) for setup in setups]
+        self.VV_app = [setup.M_pp * exx_fraction for setup in setups]
+        self.ghat_aLG = setups.create_compensation_charges(
+            pw, fracpos_ac, atomdist, xp=xp)
+        self.ghat_aLG._lazy_init()
+        self.ghat_GA = self.ghat_aLG._lfc.expand()
+
 class PWHybridHamiltonian(PWHamiltonian):
     def __init__(self,
                  grid: UGDesc,
@@ -89,20 +102,12 @@ class PWHybridHamiltonian(PWHamiltonian):
         self.exx_fraction = xc.exx_fraction
         self.exx_omega = xc.exx_omega
 
-        # Stuff for PAW core-core, core-valence and valence-valence correctios:
-        self.exx_cc = sum(setup.ExxC for setup in setups) * self.exx_fraction
-        self.VC_aii = [unpack_hermitian(setup.X_p * self.exx_fraction)
-                       for setup in setups]
-        self.delta_aiiL = [xp.asarray(setup.Delta_iiL) for setup in setups]
-        self.VV_app = [setup.M_pp * self.exx_fraction for setup in setups]
         self.v_G = coulomb(pw, grid, self.exx_omega).to_xp(xp)
         self.v_G.data *= self.exx_fraction
-
-        self.ghat_aLG = setups.create_compensation_charges(
-            pw, fracpos_ac, atomdist, xp=xp)
-        self.ghat_aLG._lazy_init()
-        self.ghat_GA = self.ghat_aLG._lfc.expand()
+        self.paw = PAWHybridHamiltonian(xp, pw, setups, fracpos_ac, atomdist, self.exx_fraction)
         # self.plan = grid.fft_plans()
+
+        self.VV_aii = None
 
     def apply_orbital_dependent(self,
                                 ibzwfs: IBZWaveFunctions,
@@ -114,6 +119,9 @@ class PWHybridHamiltonian(PWHamiltonian):
         assert isinstance(Htpsit2_nG, PWArray)
         wfs = ibzwfs.wfs_qs[0][spin]
         D_aii = D_asii[:, spin]
+        print(D_aii)
+        print(type(D_asii))
+        print(type(D_aii))
         if ibzwfs.nspins == 1:
             D_aii.data *= 0.5
         try:
@@ -140,7 +148,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                     ibzwfs.energies[name] = e
                 else:
                     ibzwfs.energies[name] += e
-            ibzwfs.energies['exx_cc'] = self.exx_cc
+            ibzwfs.energies['exx_cc'] = self.paw.exx_cc
             return
 
         # We are applying the exchange operator (defined by psit1_nG,
@@ -164,8 +172,8 @@ class PWHybridHamiltonian(PWHamiltonian):
         B_ani = {}
         xp = psi1.psit_nG.xp
         for a, D_ii in D_aii.items():
-            VV_ii = xp.asarray(pawexxvv(self.VV_app[a], D_ii))
-            VC_ii = xp.asarray(self.VC_aii[a])
+            VV_ii = xp.asarray(pawexxvv(self.paw.VV_app[a], D_ii))
+            VC_ii = xp.asarray(self.paw.VC_aii[a])
             V_ii = -VC_ii - 2 * VV_ii
             B_ani[a] = psi2.P_ani[a] @ psi1.psit_nG.xp.asarray(V_ii)
 
@@ -178,7 +186,7 @@ class PWHybridHamiltonian(PWHamiltonian):
 
         Q_nA = self.xp.empty((mynbands,
                               sum(delta_iiL.shape[2]
-                                  for delta_iiL in self.delta_aiiL)),
+                                  for delta_iiL in self.paw.delta_aiiL)),
                              dtype=self.pw.dtype)
         rhot_nR = self.grid_local.empty(mynbands, xp=self.xp)
         rhot_nG = self.pw.empty(mynbands, xp=self.xp)
@@ -230,7 +238,7 @@ class PWHybridHamiltonian(PWHamiltonian):
               Htpsit_nG, B_ani):
         Q1_aniL = {a: self.xp.einsum('ijL, nj -> niL',
                                      delta_iiL, psi1.P_ani[a])
-                   for a, delta_iiL in enumerate(self.delta_aiiL)}
+                   for a, delta_iiL in enumerate(self.paw.delta_aiiL)}
 
         if psi1 is psi2:
             psit1_nR = psi2.psit_nR
@@ -251,15 +259,15 @@ class PWHybridHamiltonian(PWHamiltonian):
             if self.pw.dtype == float:
                 # Note that G runs over G0.real, G0.imag, G1.real, G1.imag, ...
                 if self.xp is np:
-                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
+                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.paw.ghat_GA, 'T',
                         1.0, rhot_nG.data.view(float))
                 else:
                     # TODO: Use GPU gemm
                     rhot_nG.data += (1.0 / self.pw.dv) * \
-                        (Q_nA @ self.ghat_GA.T).view(complex)
+                        (Q_nA @ self.paw.ghat_GA.T).view(complex)
             else:
                 if self.xp is np:
-                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.ghat_GA, 'T',
+                    mmm(1.0 / self.pw.dv, Q_nA, 'N', self.paw.ghat_GA, 'T',
                         1.0, rhot_nG.data)
                 else:
                     raise NotImplementedError
@@ -272,9 +280,9 @@ class PWHybridHamiltonian(PWHamiltonian):
                 rhot_G.data[:] = vrhot_G.data
                 if self.pw.dtype == float:
                     vrhot_G.data[0] *= 0.5
-                    A1_A = vrhot_G.data.view(float) @ self.ghat_GA * 2.0
+                    A1_A = vrhot_G.data.view(float) @ self.paw.ghat_GA * 2.0
                 else:
-                    A1_A = vrhot_G.data @ self.ghat_GA
+                    A1_A = vrhot_G.data @ self.paw.ghat_GA
                 A1 = 0
                 for a, Q1_niL in Q1_aniL.items():
                     A2 = A1 + Q1_niL.shape[2]
