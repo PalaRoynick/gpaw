@@ -7,6 +7,7 @@ from gpaw.pw.lfc import PWLFC
 from gpaw.pw.poisson import (ChargedReciprocalSpacePoissonSolver,
                              ReciprocalSpacePoissonSolver)
 from gpaw.typing import Array3D
+from gpaw.templogger import logg
 
 
 class ReciprocalSpaceHamiltonian(Hamiltonian):
@@ -117,7 +118,11 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
             else:
                 vt_G += vxc_G
                 
-        # XXX/CB: Can we back out the correct vt_g/vt_sg from the above?
+        # XXX/CB: Can we back out the correct vt_sg from the above?
+        logg("vHt_g, vt_sg: ")
+        logg(self.vt_sg.shape, self.vHt_g.shape)
+        logg(self.vt_sg)
+        logg(self.vHt_g)
 
         self.timer.stop('XC 3D grid')
 
