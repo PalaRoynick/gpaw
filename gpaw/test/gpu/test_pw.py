@@ -58,7 +58,7 @@ def test_gpu_hybrids(gpu, xc):
              xc=xc, #{'name': 'HSE06', 'backend': 'pw'},
              convergence={'density': 1e-4},
              kpts=(1, 1, 1),
-             parallel={'gpu': gpu},
+             parallel={'gpu': gpu, 'domain': 1},
              setups='paw'),
         log='-')
     dft.converge()

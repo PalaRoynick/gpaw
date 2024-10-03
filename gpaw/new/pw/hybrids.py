@@ -278,6 +278,8 @@ class PWHybridHamiltonian(PWHamiltonian):
                         1.0, rhot_nG.data)
                 else:
                     raise NotImplementedError
+
+                
             for n1, (rhot_R, rhot_G, f1) in enumerate(zips(rhot_nR,
                                                            rhot_nG,
                                                            psi1.f_n)):
@@ -295,6 +297,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                     A2 = A1 + Q1_niL.shape[2]
                     B_ani[a][n2] -= Q1_niL[n1] @ (f1 * A1_A[A1:A2])
                     A1 = A2
+            
             ifft(rhot_nG, rhot_nR, plan=self.plan)
             rhot_nR.data *= psit1_nR.data
             fft(rhot_nR, rhot_nG, self.plan)
