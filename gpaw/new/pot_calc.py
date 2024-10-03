@@ -77,7 +77,7 @@ class PotentialCalculator:
         xc = self.xc
         if xc.exx_fraction != 0.0:
             from gpaw.new.xc import create_functional
-            self.xc = create_functional('PBE', xc.grid)
+            self.xc = create_functional('PBE', xc.grid, density.nt_sR.xp)
         potential, Q_al = self.calculate(density, ibzwfs, vHt_x, kpt_band_comm)
         if xc.exx_fraction != 0.0:
             self.xc = xc

@@ -16,7 +16,6 @@ def xc_string_to_dict(string):
 
     'name:key1=value1:...' -> {'name': <name>, key1: value1, ...}."""
     tokens = string.split(':')
-
     d = {'name': tokens[0]}
     for token in tokens[1:]:
         kw, val = token.split('=')
@@ -56,7 +55,6 @@ def XC(kernel,
 
     if isinstance(kernel, str):
         kernel = xc_string_to_dict(kernel)
-
     kwargs = {}
     if isinstance(kernel, dict):
         kwargs = kernel.copy()

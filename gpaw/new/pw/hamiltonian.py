@@ -20,6 +20,7 @@ class PWHamiltonian(Hamiltonian):
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
         self.pw_cache = {}
+        self.xp = xp
 
     @trace
     def apply_local_potential(self,
