@@ -15,7 +15,8 @@ from gpaw.solvation.pw.poisson import WrappedWeightedFDPoissonSolver
 # answers, but we need to decide how to tackle the cavity/dielectric
 # management. My proposal is to first implement this so that it is essentially
 # just a real space calculation, except we fft everything before doing any
-# super calls and see if we can replicate standard solvation results.
+# super calls and see if we can replicate standard solvation results. Bit of a
+# Frankenstein, proof of concept experiment.
 
 
 class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
@@ -28,7 +29,7 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         gd, finegd, pd2, pd3, nspins, collinear,
         setups, timer, xc, world, xc_redistributor,
         vext=None, psolver=None, redistributor=None, realpbc_c=None,
-        charge=0.0):
+            charge=0.0):
         """Constructor of SolvationReciprocalSpaceHamiltonian class.
 
         Additional arguments not present in ReciprocalSpaceHamiltonian:
@@ -47,7 +48,7 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
                 'Fourier transform in the step that creates dependence')
 
         # XXX/CB: First 4 lines will remain the same, update will be in our
-        # new cavity and dielectric objs
+        # new cavity and dielectric objs if we go that route
         self.solvation['cavity'].set_grid_descriptor(finegd)
         self.solvation['dielectric'].set_grid_descriptor(finegd)
         for ia in self.solvation['interactions']:
@@ -78,9 +79,10 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         self.e_el_extrapolated = None
 
         raise NotImplementedError('TODO')
-    
-    # def real_space_density(density):
-    #     return self.pd3.ifft(density.rhot_q)
+
+    # XXX/REPLACE:
+    # def real_space_conversion(arr):
+    #     return self.pd3.ifft(arr)
 
     def __str__(self):
         s = ReciprocalSpaceHamiltonian.__str__(self) + '\n'
@@ -150,12 +152,12 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
         # XXX/CB: should also be highly similar, updated in aux. Theme
         # of similarity in this func. corroborated by the fact that
         # pw/hamiltonian does NOT override update.
-        
+
         cavity_changed = self.solvation['cavity'].update(
             self.new_atoms, density)
         # XXX/REPLACE:
         # cavity_changed = self.solvation['cavity'].update(
-        #     self.new_atoms, self.real_space_density(density))
+        #     self.new_atoms, self.real_space_conversion(density.rhot_q))
         if cavity_changed:
             self.solvation['cavity'].update_vol_surf()
             self.solvation['dielectric'].update(self.solvation['cavity'])
@@ -176,7 +178,7 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
 
         # XXX/CB: This is all well and good...but assumes that we hold density
         # in pw, which we should
-        
+
         # XXX/CB: does gd parallelization still apply here?
         Ekin1 = self.gd.comm.sum_scalar(self.calculate_kinetic_energy(density))
         W_aL = self.calculate_atomic_hamiltonians(density)
@@ -218,7 +220,7 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
             self, density)
 
     def calculate_forces(self, dens, F_av):
-        # TODO/AAP: ] Note we may be able to punt on this temporarily; if we
+        # TODO/AAP: Note we may be able to punt on this temporarily; if we
         # only call calc.get_potential_energy() and not calc.get_forces() in
         # our initial scripts, until we get that working. Also note ASE has a
         # numerical forces (done by finite difference, since force is
@@ -227,7 +229,7 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
 
         self.el_force_correction(dens, F_av)
         # XXX/REPLACE:
-        # real_dens = self.real_space_density(dens)
+        # real_dens = self.real_space_conversion(dens.rhot_q)
         # self.el_force_correction(real_dens, F_av)
         for ia in self.solvation['interactions']:
             if self.solvation['cavity'].depends_on_atomic_positions:
@@ -240,11 +242,9 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
                     # del_g_del_r_vg = self.solvation['cavity'].get_del_r_vg(
                     #     a, real_dens)
                     for v in (0, 1, 2):
-                        # XXX/CB: Unclear to me yet whether we can do this
-                        # integration here, or whether we need to involve pd2/
-                        # 3? Pretty sure pd3.integrate is a valid option here.
-                        # Although, also true that vanilla pw hamiltonian
-                        # keeps some info in real space.
+                        # XXX/CB: Integration here probably has to remain real
+                        # space...i.e. not obvious to me that pd3.integrate
+                        # would be a valid solution in the new basis.
                         F_v[v] -= self.finegd.integrate(
                             ia.delta_E_delta_g_g * del_g_del_r_vg[v],
                             global_integral=False)
@@ -260,19 +260,22 @@ class SolvationReciprocalSpaceHamiltonian(ReciprocalSpaceHamiltonian):
 
         return ReciprocalSpaceHamiltonian.calculate_forces(self, dens, F_av)
         # XXX/REPLACE:
-        # return ReciprocalSpaceHamiltonian.calculate_forces(self, dens, self.pd3.fft(F_av))
+        # return ReciprocalSpaceHamiltonian.calculate_forces(self, dens,
+        # self.pd3.fft(F_av))
 
     def el_force_correction(self, dens, F_av):
         # XXX/CB: We're definitely going to want to keep this in real space.
         # Only question will be what we are holding in reciprocal space that we
         # need to manage here, e.g. potentially vHt_q?
-        
+
         # XXX/CB: density input in real space upstream
         if not self.solvation['cavity'].depends_on_atomic_positions:
             return
         del_eps_del_g_g = self.solvation['dielectric'].del_eps_del_g_g
         fixed = 1 / (8 * np.pi) * del_eps_del_g_g * \
             self.grad_squared(self.vHt_g)  # XXX grad_vHt_g inexact in bmgs
+        # XXX/REPLACE:
+        # self.grad_squared(self.real_space_conversion(self.vHt_q))
         for a, F_v in enumerate(F_av):
             del_g_del_r_vg = self.solvation['cavity'].get_del_r_vg(a, dens)
             for v in (0, 1, 2):

@@ -117,12 +117,12 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
                 self.vt_Q += vxc_Q / self.nspins
             else:
                 vt_G += vxc_G
-                
+
         # XXX/CB: Can we back out the correct vt_sg from the above?
-        logg("vHt_g, vt_sg: ")
-        logg(self.vt_sg.shape, self.vHt_g.shape)
-        logg(self.vt_sg)
+        logg("vHt_g, vHt_q ifft: ")
+        logg(self.vHt_g.shape)
         logg(self.vHt_g)
+        logg(self.pd3.ifft(self.vHt_q))
 
         self.timer.stop('XC 3D grid')
 
