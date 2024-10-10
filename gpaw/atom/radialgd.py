@@ -208,30 +208,30 @@ class RadialGridDescriptor(ABC):
         Central difference stencils are mainly used except for the points
         close to r=0 for which forward difference stencils are employed.
         """
-        
+
         N = self.N
         dgdr_g = self._dgdr
         d2gdr2_g = self._d2gdr2
         d3gdr3_g = self._d3gdr3
 
         dfdg_g = np.zeros(N)
-        dfdg_g[2:N-2] = (1 / 12 * f_g[0:N-4] - 2 / 3 * f_g[1:N-3]
-                         + 2 / 3 * f_g[3:N-1] - 1 / 12 * f_g[4:N])
-        dfdg_g[0:2] = (- 25 / 12 * f_g[0:2] + 4 * f_g[1:3] - 3 * f_g[2:4]
+        dfdg_g[2:N - 2] = (1 / 12 * f_g[0:N - 4] - 2 / 3 * f_g[1:N - 3]
+                           + 2 / 3 * f_g[3:N - 1] - 1 / 12 * f_g[4:N])
+        dfdg_g[0:2] = (-25 / 12 * f_g[0:2] + 4 * f_g[1:3] - 3 * f_g[2:4]
                        + 4 / 3 * f_g[3:5] - 1 / 4 * f_g[4:6])
 
         d2fdg2_g = np.zeros(N)
-        d2fdg2_g[2:N-2] = (- 1 / 12 * f_g[0:N-4] + 4 / 3 * f_g[1:N-3]
-                           - 5 / 2 * f_g[2:N-2] + 4 / 3 * f_g[3:N-1]
-                           - 1 / 12 * f_g[4:N])
+        d2fdg2_g[2:N - 2] = (- 1 / 12 * f_g[0:N - 4] + 4 / 3 * f_g[1:N - 3]
+                             - 5 / 2 * f_g[2:N - 2] + 4 / 3 * f_g[3:N - 1]
+                             - 1 / 12 * f_g[4:N])
         d2fdg2_g[0:2] = (15 / 4 * f_g[0:2] - 77 / 6 * f_g[1:3]
                          + 107 / 6 * f_g[2:4] - 13 * f_g[3:5]
                          + 61 / 12 * f_g[4:6] - 5 / 6 * f_g[5:7])
 
         d3fdg3_g = np.zeros(N)
-        d3fdg3_g[3:N-3] = (1 / 8 * f_g[0:N-6] - 1 * f_g[1:N-5]
-                           + 13 / 8 * f_g[2:N-4] - 13 / 8 * f_g[4:N-2]
-                           + 1 * f_g[5:N-1] - 1 / 8 * f_g[6:N])
+        d3fdg3_g[3:N - 3] = (1 / 8 * f_g[0:N - 6] - 1 * f_g[1:N - 5]
+                             + 13 / 8 * f_g[2:N - 4] - 13 / 8 * f_g[4:N - 2]
+                             + 1 * f_g[5:N - 1] - 1 / 8 * f_g[6:N])
         d3fdg3_g[0:3] = (- 49 / 8 * f_g[0:3] + 29 * f_g[1:4]
                          - 461 / 8 * f_g[2:5] + 62 * f_g[3:6]
                          - 307 / 8 * f_g[4:7] + 13 * f_g[5:8]
@@ -239,7 +239,8 @@ class RadialGridDescriptor(ABC):
 
         dfdr_g = dfdg_g * dgdr_g
         d2fdr2_g = dfdg_g * d2gdr2_g + d2fdg2_g * dgdr_g**2
-        d3fdr3_g = dfdg_g * d3gdr3_g + 3 * d2fdg2_g * d2gdr2_g * dgdr_g + d3fdg3_g * dgdr_g**3
+        d3fdr3_g = (dfdg_g * d3gdr3_g + 3 * d2fdg2_g * d2gdr2_g * dgdr_g
+                    + d3fdg3_g * dgdr_g**3)
 
         return [dfdr_g, d2fdr2_g, d3fdr3_g]
 
