@@ -51,7 +51,8 @@ lxcXCFunctional_is_mgga(lxcXCFunctionalObject *self, PyObject *args)
 {
   int success = 0; /* assume functional is not MGGA */
   // check family of most-complex functional
-  if (self->functional[0]->info->family == XC_FAMILY_MGGA) success = XC_FAMILY_MGGA;
+  if (self->functional[0]->info->family == XC_FAMILY_MGGA ||
+      self->functional[0]->info->family == XC_FAMILY_HYB_MGGA ||) success = XC_FAMILY_MGGA;
   return Py_BuildValue("i", success);
 }
 
@@ -104,7 +105,11 @@ lxcXCFunctional_set_omega(lxcXCFunctionalObject *self, PyObject *args)
     return NULL;
   }
 
-  if (self->functional[0]->info->family == XC_FAMILY_HYB_GGA) {
+  if (self->functional[0]->info->family == XC_FAMILY_HYB_GGA ||
+#ifdef XC_FAMILY_HYB_LDA
+      self->functional[0]->info->family == XC_FAMILY_HYB_LDA ||
+#endif
+      self->functional[0]->info->family == XC_FAMILY_HYB_MGGA ) {
     for (i=0; i<self->functional[0]->n_func_aux; i++) {
       test_functional = self->functional[0]->func_aux[i];
 #if XC_MAJOR_VERSION >= 5
@@ -366,6 +371,7 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
   // setup pointers using most complex functional
   switch(self->functional[0]->info->family)
     {
+    case XC_FAMILY_HYB_MGGA:
     case XC_FAMILY_MGGA:
       inlist.p[2].p = DOUBLEP(py_tau_sg);
       inlist.p[2].special = 0;
@@ -387,6 +393,9 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
       outlist.p[2].spinsize = 3;
       outlist.num++;
       // don't break here since GGA also needs LDA ptrs
+#ifdef XC_FAMILY_HYB_LDA
+    case XC_FAMILY_HYB_LDA:
+#endif
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
       inlist.p[0].special = N_SG;
@@ -430,6 +439,9 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
       int noutcopy=0;
       switch(func->info->family)
         {
+#ifdef XC_FAMILY_HYB_LDA
+        case XC_FAMILY_HYB_LDA:
+#endif
         case XC_FAMILY_LDA:
           xc_lda_exc_vxc(func, blocksize, n_sg, e_g, dedn_sg);
           noutcopy = 2; // potentially decrease the size for block2dataadd if second functional less complex.
@@ -441,6 +453,7 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
                          dedn_sg, dedsigma_xg);
           noutcopy = 3; // potentially decrease the size for block2dataadd if second functional less complex.
           break;
+        case XC_FAMILY_HYB_MGGA:
         case XC_FAMILY_MGGA:
           xc_mgga_exc_vxc(func, blocksize, n_sg, sigma_xg, scratch_lapl,
                           tau_sg, e_g, dedn_sg, dedsigma_xg, scratch_vlapl,
@@ -492,6 +505,7 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
   // setup pointers using most complex functional
   switch(self->functional[0]->info->family)
     {
+    case XC_FAMILY_HYB_MGGA:
     case XC_FAMILY_MGGA:
       // not supported
       assert(self->functional[0]->info->family != XC_FAMILY_MGGA);
@@ -510,6 +524,9 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
       outlist.p[2].spinsize = 6;
       outlist.num+=2;
       // don't break here since GGA also needs LDA ptrs
+#ifdef XC_FAMILY_HYB_LDA
+    case XC_FAMILY_HYB_LDA:
+#endif
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
       inlist.p[0].special = N_SG;
@@ -547,6 +564,9 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
       int noutcopy=0;
       switch(func->info->family)
         {
+#ifdef XC_FAMILY_HYB_LDA
+        case XC_FAMILY_HYB_LDA:
+#endif
         case XC_FAMILY_LDA:
           xc_lda_fxc(func, blocksize, n_sg, v2rho2);
           noutcopy = 1; // potentially decrease the size for block2dataadd if second functional less complex.
@@ -557,6 +577,9 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
                      v2rho2, v2rhosigma, v2sigma2);
           noutcopy = 3; // potentially decrease the size for block2dataadd if second functional less complex.
           break;
+        case XC_FAMILY_HYB_MGGA:
+          // not supported by GPAW yet, so crash
+          assert (func->info->family!=XC_FAMILY_HYB_MGGA);
         case XC_FAMILY_MGGA:
           // not supported by GPAW yet, so crash
           assert (func->info->family!=XC_FAMILY_MGGA);
@@ -699,7 +722,7 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     if (x!=-1 && c!=-1) {
       /* put most complex functional first */
       /* important for later loops over functionals */
-      if (familyx == XC_FAMILY_MGGA) {
+      if (familyx == XC_FAMILY_MGGA || familyx == XC_FAMILY_HYB_MGGA) {
         self->functional[0]=&self->x_functional;
         self->functional[1]=&self->c_functional;
       } else if (familyc == XC_FAMILY_MGGA) {
