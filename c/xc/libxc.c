@@ -19,11 +19,11 @@ typedef struct
 {
   PyObject_HEAD
   /* exchange-correlation energy second derivatives */
-  void (*get_fxc)(XC(func_type) *func, double point[7], double der[5][5]);
-  XC(func_type) xc_functional;
-  XC(func_type) x_functional;
-  XC(func_type) c_functional;
-  XC(func_type) *functional[2]; /* store either x&c, or just xc */
+  void (*get_fxc)(xc_func_type *func, double point[7], double der[5][5]);
+  xc_func_type xc_functional;
+  xc_func_type x_functional;
+  xc_func_type c_functional;
+  xc_func_type *functional[2]; /* store either x&c, or just xc */
   int nspin; /* must be common to x and c, so declared redundantly here */
 } lxcXCFunctionalObject;
 
@@ -91,7 +91,7 @@ lxcXCFunctional_set_omega(lxcXCFunctionalObject *self, PyObject *args)
 #else
   float omega = 0.0;
 #endif
-  XC(func_type) *test_functional;
+  xc_func_type *test_functional;
 
 #if XC_MAJOR_VERSION >= 4
   if (!PyArg_ParseTuple(args, "d", &omega)) {
@@ -115,10 +115,10 @@ lxcXCFunctional_set_omega(lxcXCFunctionalObject *self, PyObject *args)
 #if XC_MAJOR_VERSION >= 5
       if ((test_functional->info->number == XC_GGA_X_SFAT) || 
 	  (test_functional->info->number == XC_GGA_X_SFAT_PBE)) {
-        XC(func_set_ext_params)(test_functional, &omega);
+        xc_func_set_ext_params(test_functional, &omega);
 #else
       if (test_functional->info->number == XC_GGA_X_SFAT) {
-        XC(gga_x_sfat_set_params)(test_functional, -1, omega);
+        xc_gga_x_sfat_set_params(test_functional, -1, omega);
 #endif /* XC_MAJOR_VERSION >= 5 */
         success = 1;
       }
@@ -435,7 +435,7 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
     double *dedtau_sg = outblock[3];
     for (int i=0; i<2; i++) {
       if (self->functional[i] == NULL) continue;
-      XC(func_type) *func = self->functional[i];
+      xc_func_type *func = self->functional[i];
       int noutcopy=0;
       switch(func->info->family)
         {
@@ -560,7 +560,7 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
     double *v2sigma2 = outblock[2];
     for (int i=0; i<2; i++) {
       if (self->functional[i] == NULL) continue;
-      XC(func_type) *func = self->functional[i];
+      xc_func_type *func = self->functional[i];
       int noutcopy=0;
       switch(func->info->family)
         {
@@ -702,7 +702,7 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
   if (xc != -1) {
     xc_family_from_id(xc,&family,&number);
     assert (family != XC_FAMILY_UNKNOWN);
-    XC(func_init)(&self->xc_functional, xc, nspin);
+    xc_func_init(&self->xc_functional, xc, nspin);
     self->functional[0]=&self->xc_functional;
     self->functional[1]=NULL;
   } else {
@@ -711,12 +711,12 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     if (x!=-1) {
       xc_family_from_id(x,&familyx,&number);
       assert (familyx != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->x_functional, x, nspin);
+      xc_func_init(&self->x_functional, x, nspin);
     }
     if (c!=-1) {
       xc_family_from_id(c,&familyc,&number);
       assert (familyc != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->c_functional, c, nspin);
+      xc_func_init(&self->c_functional, c, nspin);
     }
 
     if (x!=-1 && c!=-1) {
@@ -755,7 +755,7 @@ PyObject * lxcXCFuncNum(PyObject *obj, PyObject *args)
     return NULL;
   }
 
-  int num = XC(functional_get_number)(funcname);
+  int num = xc_functional_get_number(funcname);
   if (num != -1)
     return Py_BuildValue("i",num);
   else
