@@ -400,3 +400,100 @@ def static_polarizability(atoms, strength=0.01):
     calc.set(external=None)
 
     return alpha.T
+
+
+def apply_field_gradient(atoms, 
+                         shift,
+                         field_grad_strength, 
+                         field_grad_direction):
+
+    import point_charge_dist as pcd
+    """Apply field gradient using point charges
+
+    atoms: Atoms object
+    strength: field strength in Ha/Bohr
+
+    Returns
+    -------
+    polarizability tensor:
+        Unit (e^2 Bohr^3).
+    """
+    shift = shift/Bohr
+    COM = atoms.get_center_of_mass() 
+    cell = atoms.cell.diagonal() 
+    cell_center = cell / 2.
+    dc = cell_center - COM
+    pos = atoms.get_positions().copy()
+    atoms.set_positions(pos + (dc+shift))
+
+    # dRx, dRy, dRz
+    dRx = cell_center[0] / 2.0 + 10.0 + shift[0]
+    dRy = cell_center[1] / 2.0 + 10.0 + shift[1]
+    dRz = cell_center[2] / 2.0 + 10.0 + shift[2]
+
+    dRmax = max(dRx,dRy,dRz) + 5
+
+
+    chargepostions, charges = pcd.Vij(  (cell/2+shift)/Bohr,
+                                        dRmax/Bohr,
+                                        field_grad_strength,
+                                        field_grad_direction)
+
+    calc = atoms.calc
+    external= PointChargePotential(charges, chargepostions*Bohr)
+    calc.set(external=external)
+    atoms.set_calculator(calc)
+
+    E = atoms.get_potential_energy()
+    return E
+
+
+
+
+def apply_field(atoms, 
+                shift, 
+                field_strength, 
+                field_direction):
+    
+    import point_charge_dist as pcd
+
+    """Apply field using point charges
+
+    atoms: Atoms object
+    strength: field strength in Ha/Bohr
+
+    Returns
+    -------
+    polarizability tensor:
+        Unit (e^2 Bohr^3).
+    """
+
+    shift = shift/Bohr
+    COM = atoms.get_center_of_mass() 
+    cell = atoms.cell.diagonal() 
+    cell_center = cell / 2.
+    dc = cell_center - COM
+    pos = atoms.get_positions().copy()
+    atoms.set_positions(pos + (dc+shift))
+
+    # dRx, dRy, dRz
+    dRx = cell_center[0] / 2.0 + 10.0 + shift[0]
+    dRy = cell_center[1] / 2.0 + 10.0 + shift[1]
+    dRz = cell_center[2] / 2.0 + 10.0 + shift[2]
+
+    dRmax = max(dRx,dRy,dRz)
+    dRmax = dRmax + 5
+
+    chargepostions, charges = pcd.Vi(   (cell/2+shift)/Bohr,
+                                        dRmax/Bohr,
+                                        field_strength,
+                                        field_direction)
+
+    calc = atoms.calc
+    external= PointChargePotential(charges, chargepostions*Bohr)
+    calc.set(external=external)
+    atoms.set_calculator(calc)
+    E = atoms.get_potential_energy()
+
+    return E
+
