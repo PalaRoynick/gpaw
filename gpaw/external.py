@@ -407,7 +407,7 @@ def apply_field_gradient(atoms,
                          field_grad_strength, 
                          field_grad_direction):
 
-    import point_charge_dist as pcd
+    import gpaw.point_charge_dist as pcd
     """Apply field gradient using point charges
 
     atoms: Atoms object
@@ -455,7 +455,7 @@ def apply_field(atoms,
                 field_strength, 
                 field_direction):
     
-    import point_charge_dist as pcd
+    import gpaw.point_charge_dist as pcd
 
     """Apply field using point charges
 
