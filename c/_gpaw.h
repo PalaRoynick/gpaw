@@ -48,6 +48,7 @@ PyObject* NewSplineObject(PyObject *self, PyObject *args);
 PyObject* NewTransformerObject(PyObject *self, PyObject *args);
 PyObject* pc_potential(PyObject *self, PyObject *args);
 PyObject* add_to_density(PyObject *self, PyObject *args);
+PyObject* calculate_moments(PyObject *self, PyObject *args);
 PyObject* utilities_gaussian_wave(PyObject *self, PyObject *args);
 PyObject* pack(PyObject *self, PyObject *args);
 PyObject* unpack(PyObject *self, PyObject *args);
@@ -242,6 +243,7 @@ static PyMethodDef functions[] = {
     {"vdw2", vdw2, METH_VARARGS, 0},
     {"spherical_harmonics", spherical_harmonics, METH_VARARGS, 0},
     {"pc_potential", pc_potential, METH_VARARGS, 0},
+    {"calculate_moments", calculate_moments, METH_VARARGS, 0},
     {"spline_to_grid", spline_to_grid, METH_VARARGS, 0},
     {"LFC", NewLFCObject, METH_VARARGS, 0},
 #ifdef PARALLEL
