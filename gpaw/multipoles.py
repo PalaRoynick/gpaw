@@ -1,42 +1,62 @@
+"""Module for calculating the multipole moment(upto the hexadeacapole) 
+   and polarizability(upto the quadrupole-quadrupole) tensors .
+
+See:
+
+   https://arxiv.org/abs/2409.10184
+"""
+
 import numpy as np
-from gpaw.external import apply_field_gradient, apply_field, static_polarizability
+from gpaw.external import apply_field_gradient, apply_field
 import _gpaw
 from ase.units import Bohr, Ha
 
 
-
-def calculate_pert_moments( sysdef, 
-                            strength,
-                            field,
+def calculate_pert_moments( atoms, 
+                            pert_magnitude,
+                            pert_direction,
                             pert_type):
+    """Helper function to switch between field and field gradient perturbations.
+
+    atoms: ASE instance
+        ASE Atoms object.
+    pert_magnitude: 
+        Strength of field/field-gradient perturbation
+    pert_direction: Direction of the field/field-gradient
+        For fields values are : x, y, and z
+        Field-gradient values are: xx, xy, xz, yy, yz, zz
+    pert_type: Type of perturbation
+        Choose between field (apply_field) 
+        and field-gradient (apply_field_gradient)
+    """
 
     shifted_point = np.array([0.0,0.0,0.0])
-    E   = pert_type(sysdef, 
+    E   = pert_type(atoms, 
                     shifted_point,
-                    strength ,
-                    field )
+                    pert_magnitude ,
+                    pert_direction)
     
-    energy_v = sysdef.get_potential_energy()
-    CM = sysdef.cell.diagonal() / (2.0*Bohr)
+    energy = atoms.get_potential_energy()
+    CM = atoms.cell.diagonal() / (2.0*Bohr)
 
     D_v = np.zeros(3)
     Q_v = np.zeros((3,3))
     O_v = np.zeros((3,3,3))
     H_v = np.zeros((3,3,3,3))
 
-    _gpaw.calculate_moments(sysdef.calc.density.finegd.beg_c,
-                sysdef.calc.density.finegd.h_cv.diagonal().copy(),
+    _gpaw.calculate_moments(atoms.calc.density.finegd.beg_c,
+                atoms.calc.density.finegd.h_cv.diagonal().copy(),
                 CM,
-                sysdef.calc.density.rhot_g,
+                atoms.calc.density.rhot_g,
                 D_v, Q_v, O_v, H_v)
 
-    sysdef.calc.density.finegd.comm.sum(D_v)     
-    sysdef.calc.density.finegd.comm.sum(Q_v)
-    sysdef.calc.density.finegd.comm.sum(O_v)
-    sysdef.calc.density.finegd.comm.sum(H_v)
+    atoms.calc.density.finegd.comm.sum(D_v)     
+    atoms.calc.density.finegd.comm.sum(Q_v)
+    atoms.calc.density.finegd.comm.sum(O_v)
+    atoms.calc.density.finegd.comm.sum(H_v)
 
 
-    return energy_v, D_v, Q_v, O_v, H_v
+    return energy, D_v, Q_v, O_v, H_v
 
 class MomTensor:
     def __init__(self,
