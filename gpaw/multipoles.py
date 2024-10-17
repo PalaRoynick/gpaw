@@ -60,26 +60,40 @@ def calculate_pert_moments( atoms,
 
 class MomTensor:
     def __init__(self,
-                 molecule_system):
-        
-        self.molecule_system        =   molecule_system
-        self.moment_ref = calculate_pert_moments(self.molecule_system, 0.0, 'xx', apply_field_gradient) 
+                 atoms):
+        """Multipole moment tensor class.
+
+        atoms: ASE instance
+            ASE Atoms object.
+        """
+        self.moment_ref = calculate_pert_moments(atoms, 0.0, 'xx', apply_field_gradient) 
         self.e_0, self.d_0, self.q_0, self.o_0, self.h_0 = self.moment_ref
 
 
     def get_dipole(self):
+        """Get the dipole tensor"""
+
         return self.d_0
 
     def get_qpole(self):
+        """Get the qpole tensor"""
+
         return self.q_0
 
     def get_opole(self):
+        """Get the opole tensor"""
+
         return self.o_0
 
     def get_hpole(self):
+        """Get the hpole tensor"""
+
         return self.h_0
 
     def get_multipole_moments(self):
+        """Get the allthe multipole moment tensors in 
+        the order dipole, qpole, opole, hpole"""
+
         return self.moment_ref
 
 
@@ -160,22 +174,16 @@ class PolarTensor:
 
 
     def calc_dd_pol(self):
-        e_0, d_0, q_0, o_0, h_0 = self.moment_ref
-        
-        # np.save('d0.npy', d_0)
-        # np.save('q0.npy', q_0)
-        # np.save('o0.npy', o_0)
-        # np.save('h0.npy', h_0)
-
-        e_x, d_x, q_x, o_x, h_x = self.moment_field_pert_x 
-        e_y, d_y, q_y, o_y, h_y = self.moment_field_pert_y 
-        e_z, d_z, q_z, o_z, h_z = self.moment_field_pert_z 
+        _, d_0, _, _, _ = self.moment_ref
+        _, d_x, _, _, _ = self.moment_field_pert_x 
+        _, d_y, _, _, _ = self.moment_field_pert_y 
+        _, d_z, _, _, _ = self.moment_field_pert_z 
 
         alp_i_x = (d_x - d_0)/self.field_strength
         alp_i_y = (d_y - d_0)/self.field_strength
         alp_i_z = (d_z - d_0)/self.field_strength
 
-        self.alp_ij_IRREP                = np.zeros((6))
+        self.alp_ij_IRREP     = np.zeros((6))
         self.alp_ij_IRREP[0]  = alp_i_x[0]
         self.alp_ij_IRREP[1]  = alp_i_x[1]
         self.alp_ij_IRREP[2]  = alp_i_x[2]
@@ -197,20 +205,13 @@ class PolarTensor:
 
     def calc_dq_pol(self):
 
-        e_0, d_0, q_0, o_0, h_0 = self.moment_ref
-        
-
-        e_x, d_x, q_x, o_x, h_x = self.moment_field_pert_x 
-        e_y, d_y, q_y, o_y, h_y = self.moment_field_pert_y 
-        e_z, d_z, q_z, o_z, h_z = self.moment_field_pert_z 
-
-
-        e_xx, d_xx, q_xx, o_xx, h_xx = self.moment_field_grad_pert_xx 
-        e_xy, d_xy, q_xy, o_xy, h_xy = self.moment_field_grad_pert_xy 
-        e_xz, d_xz, q_xz, o_xz, h_xz = self.moment_field_grad_pert_xz 
-        e_yy, d_yy, q_yy, o_yy, h_yy = self.moment_field_grad_pert_yy 
-        e_yz, d_yz, q_yz, o_yz, h_yz = self.moment_field_grad_pert_yz 
-        e_zz, d_zz, q_zz, o_zz, h_zz = self.moment_field_grad_pert_zz
+        _, _, q_0, _, _ = self.moment_ref
+        _, _, q_x, _, _ = self.moment_field_pert_x 
+        _, _, q_y, _, _ = self.moment_field_pert_y 
+        _, _, q_z, _, _ = self.moment_field_pert_z 
+        _, d_xx, _, _, _ = self.moment_field_grad_pert_xx 
+        _, d_yy, _, _, _ = self.moment_field_grad_pert_yy 
+        _, d_zz, _, _, _ = self.moment_field_grad_pert_zz
 
         A_i_xx = (d_xx - d_yy)/self.field_grad_strength
         A_i_yy = (d_yy - d_zz)/self.field_grad_strength
@@ -253,18 +254,18 @@ class PolarTensor:
 
     def calc_qq_pol(self):
 
-        e_0, d_0, q_0, o_0, h_0 = self.moment_ref
-        e_xx, d_xx, q_xx, o_xx, h_xx = self.moment_field_grad_pert_xx 
-        e_xy, d_xy, q_xy, o_xy, h_xy = self.moment_field_grad_pert_xy 
-        e_xz, d_xz, q_xz, o_xz, h_xz = self.moment_field_grad_pert_xz 
-        e_yy, d_yy, q_yy, o_yy, h_yy = self.moment_field_grad_pert_yy 
-        e_yz, d_yz, q_yz, o_yz, h_yz = self.moment_field_grad_pert_yz 
-        e_zz, d_zz, q_zz, o_zz, h_zz = self.moment_field_grad_pert_zz
+        _, _,  q_0, _, _ = self.moment_ref
+        _, _, q_xx, _, _ = self.moment_field_grad_pert_xx 
+        _, _, q_xy, _, _ = self.moment_field_grad_pert_xy 
+        _, _, q_xz, _, _ = self.moment_field_grad_pert_xz 
+        _, _, q_yy, _, _ = self.moment_field_grad_pert_yy 
+        _, _, q_yz, _, _ = self.moment_field_grad_pert_yz 
+        _, _, q_zz, _, _ = self.moment_field_grad_pert_zz
 
 
-        C_ijxx = (q_xx - q_yy)/(3*self.field_grad_strength)
-        C_ijyy = (q_yy - q_zz)/(3*self.field_grad_strength)
-        C_ijzz = (q_zz - q_xx)/(3*self.field_grad_strength)
+        # C_ijxx = (q_xx - q_yy)/(3*self.field_grad_strength)
+        # C_ijyy = (q_yy - q_zz)/(3*self.field_grad_strength)
+        # C_ijzz = (q_zz - q_xx)/(3*self.field_grad_strength)
         C_ijxy = (q_xy - q_0)/self.field_grad_strength
         C_ijyz = (q_yz - q_0)/self.field_grad_strength
         C_ijxz = (q_xz - q_0)/self.field_grad_strength
@@ -274,8 +275,8 @@ class PolarTensor:
         C_yzyz = C_ijyz[1,2]/2.0
         C_xyxz = C_ijxz[0,1]/2.0
         C_xzxz = C_ijxz[0,2]/2.0
-        C_ijxx   = (q_xx - q_0)/self.field_grad_strength
-        C_ijyy   = (q_yy - q_0)/self.field_grad_strength
+        # C_ijxx   = (q_xx - q_0)/self.field_grad_strength
+        # C_ijyy   = (q_yy - q_0)/self.field_grad_strength
         C_ijxxyy = (q_xx - q_yy)/self.field_grad_strength
         C_ijyyzz = (q_yy - q_zz)/self.field_grad_strength
         C_ijzzxx = (q_zz - q_xx)/self.field_grad_strength
