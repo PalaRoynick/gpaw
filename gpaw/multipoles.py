@@ -101,12 +101,25 @@ class MomTensor:
 class PolarTensor:
 
     def __init__(self,
-                 molecule_system, 
+                 atoms, 
                  field_strength = 0.486/Ha*Bohr,
                  field_grad_strength = 0.0486/Ha*Bohr*Bohr,
                  irrep = False):
-        
-        self.molecule_system        =   molecule_system
+        """Multipole polarizability tensor class.
+
+        atoms: ASE instance
+            ASE Atoms object.
+        field_strength: magnitude of perturbation by the field
+            The default value of '0.486/Ha*Bohr' was used based on 
+            the discripancy between the moment-based (https://arxiv.org/abs/2409.10184) 
+            and energy-based scheme(https://doi.org/10.1002/jcc.24431) 
+            and using convergence of the tensor values.
+        field_grad_strength: magnitude of perturbation by the field-gradient
+            The default value was selected similarly to the case of the field perturbation.
+        irrep : flag to provide the irreducible representation
+            It defaults to the full represent. Hence irrep = False.
+        """
+        self.atoms        =   atoms
 
         self.field_direction_x          =   'x'
         self.field_direction_y          =   'y'
@@ -123,57 +136,62 @@ class PolarTensor:
 
         self.irrep = irrep
 
-        self.moment_field_pert_x      =   calculate_pert_moments(   self.molecule_system, 
+        """Calculation of dpole, qpole, opole and hpole tensor components 
+        for different perturbations"""
+
+        self.moment_field_pert_x      =   calculate_pert_moments(   self.atoms, 
                                                                     self.field_strength,
                                                                     self.field_direction_x,
                                                                     apply_field)
-        self.moment_field_pert_y      =   calculate_pert_moments(   self.molecule_system, 
+        self.moment_field_pert_y      =   calculate_pert_moments(   self.atoms, 
                                                                     self.field_strength,
                                                                     self.field_direction_y,
                                                                     apply_field)
-        self.moment_field_pert_z      =   calculate_pert_moments(   self.molecule_system, 
+        self.moment_field_pert_z      =   calculate_pert_moments(   self.atoms, 
                                                                     self.field_strength,
                                                                     self.field_direction_z,
                                                                     apply_field)
  
 
-        self.moment_field_grad_pert_xx =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_xx =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_xx,
                                                                     apply_field_gradient) 
         
-        self.moment_field_grad_pert_xy =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_xy =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_xy,
                                                                     apply_field_gradient) 
         
-        self.moment_field_grad_pert_xz =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_xz =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_xz,
                                                                     apply_field_gradient) 
         
-        self.moment_field_grad_pert_yy =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_yy =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_yy,
                                                                     apply_field_gradient) 
         
-        self.moment_field_grad_pert_yz =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_yz =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_yz,
                                                                     apply_field_gradient) 
         
-        self.moment_field_grad_pert_zz =   calculate_pert_moments(  self.molecule_system, 
+        self.moment_field_grad_pert_zz =   calculate_pert_moments(  self.atoms, 
                                                                     self.field_grad_strength,
                                                                     self.field_grad_direction_zz,
                                                                     apply_field_gradient) 
         
-        self.moment_ref = calculate_pert_moments(self.molecule_system, 0.0, 'xx', apply_field_gradient) 
+        """The unpertubred dpole, qpole, opole and hpole reference values"""
+        self.moment_ref = calculate_pert_moments(self.atoms, 0.0, 'xx', apply_field_gradient) 
 
 
 
 
 
     def calc_dd_pol(self):
+        """calculate the dipole-dipole polarizability tensor"""
         _, d_0, _, _, _ = self.moment_ref
         _, d_x, _, _, _ = self.moment_field_pert_x 
         _, d_y, _, _, _ = self.moment_field_pert_y 
@@ -183,6 +201,8 @@ class PolarTensor:
         alp_i_y = (d_y - d_0)/self.field_strength
         alp_i_z = (d_z - d_0)/self.field_strength
 
+        """Irreducible representation tensor"""
+
         self.alp_ij_IRREP     = np.zeros((6))
         self.alp_ij_IRREP[0]  = alp_i_x[0]
         self.alp_ij_IRREP[1]  = alp_i_x[1]
@@ -191,6 +211,7 @@ class PolarTensor:
         self.alp_ij_IRREP[4]  = alp_i_y[2]
         self.alp_ij_IRREP[5]  = alp_i_z[2] 
 
+        """Full representation tensor"""
         self.alp_ij = np.zeros((3,3))
         self.alp_ij[:,0] = alp_i_x
         self.alp_ij[:,1] = alp_i_y
@@ -204,6 +225,7 @@ class PolarTensor:
             return np.round(-self.alp_ij,4)
 
     def calc_dq_pol(self):
+        """calculate the dipole-quadrupole polarizability tensor"""
 
         _, _, q_0, _, _ = self.moment_ref
         _, _, q_x, _, _ = self.moment_field_pert_x 
@@ -221,9 +243,8 @@ class PolarTensor:
         A_ij_z = (q_z - q_0)/self.field_strength
 
 
+        """Irreducible representation tensor"""
         self.A_ijk_IRREP                = np.zeros((18))
-
-        # Irreducible representation
         self.A_ijk_IRREP[[0,6,12]]      = A_i_xx
         self.A_ijk_IRREP[[3,9,15]]      = A_i_yy
         self.A_ijk_IRREP[[5,11,17]]     = A_i_zz
@@ -233,7 +254,7 @@ class PolarTensor:
 
 
 
-        # Full matrix representation
+        """Full representation tensor"""
         self.A_ijk = np.zeros((3,3,3))
         self.A_ijk[:,0,0] = A_i_xx
         self.A_ijk[:,1,1] = A_i_yy
@@ -253,6 +274,7 @@ class PolarTensor:
 
 
     def calc_qq_pol(self):
+        """calculate the quadrupole-quadrupole polarizability tensor"""
 
         _, _,  q_0, _, _ = self.moment_ref
         _, _, q_xx, _, _ = self.moment_field_grad_pert_xx 
@@ -263,9 +285,6 @@ class PolarTensor:
         _, _, q_zz, _, _ = self.moment_field_grad_pert_zz
 
 
-        # C_ijxx = (q_xx - q_yy)/(3*self.field_grad_strength)
-        # C_ijyy = (q_yy - q_zz)/(3*self.field_grad_strength)
-        # C_ijzz = (q_zz - q_xx)/(3*self.field_grad_strength)
         C_ijxy = (q_xy - q_0)/self.field_grad_strength
         C_ijyz = (q_yz - q_0)/self.field_grad_strength
         C_ijxz = (q_xz - q_0)/self.field_grad_strength
@@ -275,38 +294,27 @@ class PolarTensor:
         C_yzyz = C_ijyz[1,2]/2.0
         C_xyxz = C_ijxz[0,1]/2.0
         C_xzxz = C_ijxz[0,2]/2.0
-        # C_ijxx   = (q_xx - q_0)/self.field_grad_strength
-        # C_ijyy   = (q_yy - q_0)/self.field_grad_strength
         C_ijxxyy = (q_xx - q_yy)/self.field_grad_strength
         C_ijyyzz = (q_yy - q_zz)/self.field_grad_strength
         C_ijzzxx = (q_zz - q_xx)/self.field_grad_strength
-
         C_xxxx =  -C_ijxxyy[0,0]/3.0
         C_xxyy =  -C_ijxxyy[1,1]/3.0
         C_xxzz =  -C_ijxxyy[2,2]/3.0
         C_yyyy =  -C_ijyyzz[1,1]/3.0
         C_yyzz =  -C_ijyyzz[2,2]/3.0
         C_zzzz =  -C_ijzzxx[2,2]/3.0
-
-
-
-
         C_ijxxyy = (q_xx - q_yy)/self.field_grad_strength
         cxyxx =  -C_ijxxyy[0,1]/3.0
         cxzxx =  -C_ijxxyy[0,2]/3.0
         cyzxx =  -C_ijxxyy[1,2]/3.0
-
         C_ijxxyy = (q_yy - q_zz)/self.field_grad_strength
         cxyyy =  -C_ijxxyy[0,1]/3.0
         cxzyy =  -C_ijxxyy[0,2]/3.0
         cyzyy =  -C_ijxxyy[1,2]/3.0
-
-
         C_ijxxyy = (q_zz - q_xx)/self.field_grad_strength
         cxyzz =  -C_ijxxyy[0,1]/3.0
         cxzzz =  -C_ijxxyy[0,2]/3.0
         cyzzz =  -C_ijxxyy[1,2]/3.0
-
         cxyxx = (q_xy[0,0]- q_0[0,0])/(2*self.field_grad_strength)
         cxyyy = (q_xy[1,1]- q_0[1,1])/(2*self.field_grad_strength)
         cxyzz = (q_xy[2,2]- q_0[2,2])/(2*self.field_grad_strength)
@@ -317,7 +325,7 @@ class PolarTensor:
         cyzyy = (q_yz[1,1]- q_0[1,1])/(2*self.field_grad_strength)
         cyzzz = (q_yz[2,2]- q_0[2,2])/(2*self.field_grad_strength)
 
-        # Irreducible representation
+        """Irreducible representation tensor"""
         self.C_ijkl_IRREP = np.zeros(21)
         self.C_ijkl_IRREP[0]   = round(float(C_xxxx),5)
         self.C_ijkl_IRREP[1]   = round(float(cxyxx),5)
@@ -341,7 +349,7 @@ class PolarTensor:
         self.C_ijkl_IRREP[19]  = round(float(cyzzz),5)
         self.C_ijkl_IRREP[20]  = round(float(C_zzzz),5)
 
-        # Irreducible representa
+        """Full representation tensor"""
  
         self.C_ijkl = np.zeros((3,3,3,3))
 
