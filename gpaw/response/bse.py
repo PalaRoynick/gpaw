@@ -359,7 +359,7 @@ class BSEBackend:
             pair0 = get_pair(qpd0, 0, iK, self.vi, self.vf,
                              self.ci, self.cf)
             deps_Kmm[iK] = self.get_transition_energies(iK=iK, pair=pair0)
-
+        world.sum(deps_Kmm)
         deps_min_mm = np.min(deps_Kmm, axis=0)
         # find bands to keep; these are the bands that have at least
         # one transition smaller than deps_max
