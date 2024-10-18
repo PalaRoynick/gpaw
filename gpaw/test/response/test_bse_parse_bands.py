@@ -44,3 +44,17 @@ def test_response_bse_parse_bands(in_tmp_dir, gpw_files):
             conduction_bands=5,
             nbands=4,
             ecut=10)
+
+
+@pytest.mark.response
+def test_response_bse_truncate_bands(in_tmp_dir, gpw_files):
+    bse = BSE(gpw_files['mos2_pw'],
+              ecut=10,
+              valence_bands=8,
+              conduction_bands=6,
+              eshift=0.8,
+              deps_max=4,
+              nbands=20)
+    nval, ncon = bse.get_truncated_bands()
+    assert len(nval) == 3
+    assert len(ncon) == 4

@@ -249,15 +249,13 @@ class BSEBackend:
 
         # Bands and spin
         self.nspins = self.gs.nspins
+        self.nK = self.kd.nbzkpts
         self.val_m = self.parse_bands(valence_bands,
                                       band_type='valence')
         self.con_m = self.parse_bands(conduction_bands,
                                       band_type='conduction')
-
         self.use_tammdancoff = decide_whether_tammdancoff(self.val_m,
                                                           self.con_m)
-
-        self.nK = self.kd.nbzkpts
         self.nv = len(self.val_m)
         self.nc = len(self.con_m)
         if eshift is not None:
@@ -347,6 +345,35 @@ class BSEBackend:
 
         return bands_m
 
+    def get_truncated_bands(self):
+        if self.deps_max == np.inf:
+            return self.val_m, self.con_m
+        # find bands that do not contain transitions < deps_max
+        deps_Kmm = np.zeros((self.nK, self.nv, self.nc), float)  # -(fv - fc)
+        qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
+        context = ResponseContext(txt='pair.txt', timer=self.context.timer,
+                                  comm=serial_comm)
+        kptpair_factory = KPointPairFactory(gs=self.gs, context=context)
+        get_pair = kptpair_factory.get_kpoint_pair
+        for iK in self.myKrange:
+            pair0 = get_pair(qpd0, 0, iK, self.vi, self.vf,
+                             self.ci, self.cf)
+            deps_Kmm[iK] = self.get_transition_energies(iK=iK, pair=pair0)
+
+        deps_min_mm = np.min(deps_Kmm, axis=0)
+        # find bands to keep; these are the bands that have at least
+        # one transition smaller than deps_max
+        valence_mask_m = np.min(deps_min_mm, axis=1) < self.deps_max
+        conduction_mask_m = np.min(deps_min_mm, axis=0) < self.deps_max
+        nval_removed = len(valence_mask_m) - np.sum(valence_mask_m)
+        ncon_removed = len(conduction_mask_m) - np.sum(conduction_mask_m)
+        self.context.print(f'{nval_removed} valence bands and {ncon_removed} '
+                           'conduction do not contain any transitions smaller '
+                           f'than {self.deps_max * Hartree} eV')
+        new_val_m = np.array(self.val_m)[valence_mask_m]
+        new_con_m = np.array(self.con_m)[conduction_mask_m]
+        return new_val_m, new_con_m
+
     def _spinordata(self, soc_tol):
         self.context.print('Diagonalizing spin-orbit Hamiltonian')
         # We dont need ALL the screening bands to mix in the SOC here.
@@ -358,6 +385,22 @@ class BSEBackend:
         e_km /= Hartree
         v_kmn = soc.eigenvectors()
         return SpinorData(self.con_m, self.val_m, e_km, f_km, v_kmn, soc_tol)
+
+    def get_transition_energies(self, iK, iKq=None, pair=None):
+        if iKq is None:
+            iKq = self.gs.kd.find_k_plus_q(self.q_c, [iK])[0]
+        optical_limit = np.allclose(self.q_c, 0.0)
+        if self.gw_kn is not None:
+            epsv_m = self.gw_kn[iK, :self.nv]
+            epsc_m = self.gw_kn[iKq, self.nv:]
+            deps_mm = -(epsv_m[:, np.newaxis] - epsc_m)
+        elif self.add_soc:
+            deps_mm = self.spinors_data.get_deps(iK, iKq)
+        else:
+            deps_mm = -pair.get_transition_energies()
+        if optical_limit:
+            deps_mm[np.where(deps_mm == 0)] = 1.0e-9
+        return deps_mm
 
     @timer('BSE calculate')
     def calculate(self, optical):
@@ -424,16 +467,8 @@ class BSEBackend:
             iKq = self.gs.kd.find_k_plus_q(self.q_c, [iK])[0]
 
             # Energies
-            if self.gw_kn is not None:
-                epsv_m = self.gw_kn[iK, :self.nv]
-                epsc_m = self.gw_kn[iKq, self.nv:]
-                deps_kmm[ik] = -(epsv_m[:, np.newaxis] - epsc_m)
-            elif self.add_soc:
-                deps_kmm[ik] = self.spinors_data.get_deps(iK, iKq)
-            else:
-                deps_kmm[ik] = -pair0.get_transition_energies()
-            if optical_limit:
-                deps_kmm[np.where(deps_kmm == 0)] = 1.0e-9
+            deps_kmm[ik] = self.get_transition_energies(iK=iK, iKq=iKq,
+                                                        pair=pair0)
 
             # Occupation factors
             if self.add_soc:
