@@ -50,8 +50,8 @@ for i, arg in enumerate(sys.argv):
             '~/.gpaw/siteconfig.py')
 
 libraries = ['xc']
-library_dirs = ["/home/resus/PHD/Software/libxc-6.2.2/lib"]
-include_dirs = ["/home/resus/PHD/Software/libxc-6.2.2/include"]
+library_dirs = []
+include_dirs = []
 extra_link_args = []
 extra_compile_args = ['-Wall', '-Wno-unknown-pragmas', '-std=c99']
 runtime_library_dirs = []
@@ -68,7 +68,7 @@ gpu_compile_args = []
 gpu_include_dirs = []
 
 parallel_python_interpreter = False
-compiler = "mpicc"
+compiler = None
 mpi = None
 noblas = False
 nolibxc = False

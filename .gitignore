@@ -74,3 +74,4 @@ doc/setups/[A-Z]*.rst
 !mypy.ini
 !pytest.ini
 !doc/words.txt
+setup_legacy.py
