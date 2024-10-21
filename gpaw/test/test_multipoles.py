@@ -4,20 +4,19 @@ from gpaw import GPAW
 from gpaw.eigensolvers import RMMDIIS
 from ase.parallel import parprint
 import numpy as np
-
-
-
-
+from gpaw.test import multipoles
+import os
 
 
 def test_moment_tensors():
 
-    dp_ref = np.load("multipoles/dp.npy")
-    qp_ref = np.load("multipoles/qp.npy")
-    op_ref = np.load("multipoles/op.npy")
-    hp_ref = np.load("multipoles/hp.npy")
+    dirname = os.path.dirname(multipoles.__file__)
+    dp_ref = np.load(os.path.join(dirname,"dp.npy"))
+    qp_ref = np.load(os.path.join(dirname,"qp.npy"))
+    op_ref = np.load(os.path.join(dirname,"op.npy"))
+    hp_ref = np.load(os.path.join(dirname,"hp.npy"))
     
-    exmaple_src_path = "multipoles/H2O.xyz"
+    exmaple_src_path = os.path.join(dirname,"H2O.xyz")
 
     gpaw_args = dict(convergence={'eigenstates': 1e-01,
                                 'density': 1e-01},
@@ -39,11 +38,12 @@ def test_moment_tensors():
 
 def test_polarizability_tensors():
 
+    dirname = os.path.dirname(multipoles.__file__)
 
-    dd_ref = np.load("multipoles/dd.npy")
-    dq_ref = np.load("multipoles/dq.npy")
-    qq_ref = np.load("multipoles/qq.npy")
-    exmaple_src_path = "multipoles/H2O.xyz"
+    dd_ref = np.load(os.path.join(dirname,"dd.npy"))
+    dq_ref = np.load(os.path.join(dirname,"dq.npy"))
+    qq_ref = np.load(os.path.join(dirname,"qq.npy"))
+    exmaple_src_path = os.path.join(dirname,"H2O.xyz")
 
     gpaw_args = dict(convergence={'eigenstates': 1e-01,
                                 'density': 1e-01},
