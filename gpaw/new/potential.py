@@ -6,8 +6,8 @@ from ase.units import Bohr, Ha
 from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
 from gpaw.core.domain import Domain as XDesc
-from gpaw.core.uniform_grid import UGArray, UGDesc
-from gpaw.mpi import MPIComm
+from gpaw.core import PWArray, UGArray, UGDesc
+from gpaw.mpi import MPIComm, broadcast_float
 from gpaw.new import zips
 
 
@@ -31,6 +31,13 @@ class Potential:
     def __str__(self) -> str:
         return (f'potential:\n'
                 f'  grid points: {self.vt_sR.desc.size}\n')
+
+    def update_from(self, potential):
+        self.vt_sR = potential.vt_sR
+        self.dH_asii = potential.dH_asii
+        self.dedtaut_sR = potential.dedtaut_sR
+        self.energies = potential.energies
+        self.vHt_x = potential.vHt_x
 
     def dH(self, P_ani, out_ani, spin):
         if len(P_ani.dims) == 1:  # collinear wave functions
@@ -77,16 +84,48 @@ class Potential:
             energies['stress'] = self.energies['stress']
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()
         vt_sR = self.vt_sR.to_xp(np).gather()
-        assert self.vHt_x is not None
-        vHt_x = self.vHt_x.to_xp(np).gather()
         if self.dedtaut_sR is not None:
             dedtaut_sR = self.dedtaut_sR.to_xp(np).gather()
+        if self.vHt_x is not None:
+            vHt_x = self.vHt_x.to_xp(np).gather()
         if dH_asp is None:
             return
         writer.write(
             potential=vt_sR.data * Ha,
-            electrostatic_potential=vHt_x.data * Ha,
             atomic_hamiltonian_matrices=dH_asp.data * Ha,
             **{f'e_{name}': val * Ha for name, val in energies.items()})
+        if self.vHt_x is not None:
+            writer.write(electrostatic_potential=vHt_x.data * Ha)
         if self.dedtaut_sR is not None:
             writer.write(mgga_potential=dedtaut_sR.data * Bohr**3)
+
+    def get_vacuum_level(self) -> float:
+        grid = self.vt_sR.desc
+        if grid.pbc_c.all():
+            return np.nan
+        if grid.zerobc_c.any():
+            return 0.0
+        if self.vHt_x is None:
+            raise ValueError('No electrostatic potential')
+        if isinstance(self.vHt_x, UGArray):
+            vHt_r = self.vHt_x.gather()
+        elif isinstance(self.vHt_x, PWArray):
+            vHt_g = self.vHt_x.gather()
+            if vHt_g is not None:
+                vHt_r = vHt_g.ifft(grid=grid.new(comm=None,
+                                                 size=grid.size_c * 2))
+            else:
+                vHt_r = None
+        else:
+            return np.nan  # TB-mode
+        vacuum_level = 0.0
+        if vHt_r is not None:
+            for c, periodic in enumerate(grid.pbc_c):
+                if not periodic:
+                    xp = vHt_r.xp
+                    vacuum_level += float(xp.moveaxis(vHt_r.data,
+                                                      c, 0)[0].mean())
+
+            vacuum_level /= (3 - grid.pbc_c.sum())
+
+        return broadcast_float(vacuum_level, grid.comm) * Ha

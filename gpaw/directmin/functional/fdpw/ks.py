@@ -3,12 +3,12 @@ Potentials for orbital density dependent energy functionals
 """
 
 import numpy as np
-from gpaw.utilities import unpack
+
 from gpaw.directmin.tools import d_matrix
+from gpaw.utilities import unpack_hermitian
 
 
 class KSFDPW:
-
     """
     KS-DFT
     """
@@ -37,7 +37,10 @@ class KSFDPW:
 
         c_axi = {}
         for a, P_xi in kpt.P_ani.items():
-            dH_ii = unpack(ham.dH_asp[a][kpt.s])
+            try:
+                dH_ii = unpack_hermitian(ham.dH_asp[a][kpt.s])
+            except AttributeError:
+                dH_ii = ham.potential.dH_asii[a][kpt.s]
             c_xi = np.dot(P_xi, dH_ii)
             c_axi[a] = c_xi
 

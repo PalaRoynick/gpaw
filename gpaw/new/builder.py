@@ -10,21 +10,24 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 from ase.units import Bohr
-
 from gpaw.core import UGDesc
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
 from gpaw.core.domain import Domain
 from gpaw.gpu.mpi import CuPyMPI
+from gpaw.lfc import BasisFunctions
 from gpaw.mixer import MixerWrapper, get_mixer_from_keywords
 from gpaw.mpi import (MPIComm, Parallelization, serial_comm, synchronize_atoms,
                       world)
 from gpaw.new import prod
 from gpaw.new.basis import create_basis
 from gpaw.new.brillouin import BZPoints, MonkhorstPackKPoints
+from gpaw.new.c import GPU_AWARE_MPI
 from gpaw.new.density import Density
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.input_parameters import InputParameters
+from gpaw.new.logger import Logger
+from gpaw.new.potential import Potential
 from gpaw.new.scf import SCFLoop
 from gpaw.new.smearing import OccupationNumberCalculator
 from gpaw.new.symmetry import create_symmetries_object
@@ -33,7 +36,6 @@ from gpaw.setup import Setups
 from gpaw.typing import Array2D, ArrayLike1D, ArrayLike2D, DTypeLike
 from gpaw.utilities.gpts import get_number_of_grid_points
 from gpaw.xc import XC
-from gpaw.new.c import GPU_AWARE_MPI
 
 
 def builder(atoms: Atoms,
@@ -82,7 +84,6 @@ class DFTComponentsBuilder:
         self.soc = params.soc
         self.nspins = self.ncomponents % 3
         self.spin_degeneracy = self.ncomponents % 2 + 1
-
         if isinstance(params.xc, (dict, str)):
             self._xc = XC(params.xc, collinear=(self.ncomponents < 4),
                           xp=self.xp)
@@ -94,7 +95,6 @@ class DFTComponentsBuilder:
                              params.basis,
                              self._xc.get_setup_name(),
                              world=comm)
-
         if params.hund:
             c = params.charge / len(atoms)
             for a, setup in enumerate(self.setups):
@@ -104,11 +104,16 @@ class DFTComponentsBuilder:
                                               self.setups.id_a,
                                               self.initial_magmom_av,
                                               params.symmetry)
-        assert not (self.ncomponents == 4 and len(symmetries) > 1)
+        self.setups.set_symmetry(symmetries.symmetry)
+
+        if self.ncomponents == 4:
+            assert (len(symmetries) == 1 and not
+                    symmetries.symmetry.time_reversal)
+
         bz = create_kpts(params.kpts, atoms)
         self.ibz = symmetries.reduce(bz, strict=False)
 
-        d = parallel.get('domain', None)
+        d = parallel.get('domain', 1 if self._xc.type == 'HYB' else None)
         k = parallel.get('kpt', None)
         b = parallel.get('band', None)
         self.communicators = create_communicators(comm, len(self.ibz),
@@ -175,11 +180,23 @@ class DFTComponentsBuilder:
         return self.create_wf_description()
 
     @cached_property
+    def gpu(self) -> bool:
+        """Are we running on a GPU?."""
+        if self.params.parallel.get('gpu', False):
+            from gpaw.gpu import cupy_is_fake
+            if cupy_is_fake and not os.environ.get('GPAW_CPUPY'):
+                raise ValueError(
+                    'Please set GPAW_CPUPY=1 if you really want to do GPU '
+                    'calculations with GPAW''s fake cupy library '
+                    '(gpaw.gpu.cpupy)')
+            return True
+        return False
+
+    @cached_property
     def xp(self) -> ModuleType:
         """Array module: Numpy or Cupy."""
-        if self.params.parallel['gpu']:
-            from gpaw.gpu import cupy, cupy_is_fake
-            assert not cupy_is_fake or os.environ.get('GPAW_CPUPY')
+        if self.gpu:
+            from gpaw.gpu import cupy
             return cupy
         return np
 
@@ -227,7 +244,15 @@ class DFTComponentsBuilder:
             self.communicators,
             self.initial_magmom_av.sum(0),
             self.ncomponents,
+            self.nelectrons,
             np.linalg.inv(self.atoms.cell.complete()).T)
+
+    def create_ibz_wave_functions(self,
+                                  basis: BasisFunctions,
+                                  potential: Potential,
+                                  *,
+                                  log: Logger) -> IBZWaveFunctions:
+        raise NotImplementedError
 
     def create_hamiltonian_operator(self):
         raise NotImplementedError
@@ -270,30 +295,37 @@ class DFTComponentsBuilder:
         """
         ha = reader.ha
 
+        domain_comm = self.communicators['d']
+        band_comm = self.communicators['b']
+
         eig_skn = reader.wave_functions.eigenvalues
         occ_skn = reader.wave_functions.occupations
-        if self.communicators['d'].rank == 0:
-            P_sknI = reader.wave_functions.projections
-            P_sknI = P_sknI.astype(ibzwfs.dtype)
-        else:
-            P_sknI = None
 
         for wfs in ibzwfs:
-            wfs._eig_n = eig_skn[wfs.spin, wfs.k] / ha
-            wfs._occ_n = occ_skn[wfs.spin, wfs.k]
+            index: tuple[int, ...]
+            if self.ncomponents < 4:
+                dims = [self.nbands]
+                index = (wfs.spin, wfs.k)
+            else:
+                dims = [self.nbands, 2]
+                index = (wfs.k,)
+
+            wfs._eig_n = eig_skn[index] / ha
+            wfs._occ_n = occ_skn[index]
             layout = AtomArraysLayout([(setup.ni,) for setup in self.setups],
                                       atomdist=self.atomdist,
                                       dtype=self.dtype)
-            data = None
-            if self.ncomponents < 4:
-                wfs._P_ani = AtomArrays(layout, dims=(self.nbands,))
-                if P_sknI is not None:
-                    data = P_sknI[wfs.spin, wfs.k]
+            P_ani = AtomArrays(layout, dims=dims, comm=band_comm)
+
+            if domain_comm.rank == 0:
+                P_nI = reader.wave_functions.proxy('projections', *index)
+                b1, b2 = P_ani.my_slice()  # my bands
+                data = P_nI[b1:b2].astype(ibzwfs.dtype)  # read from file
             else:
-                wfs._P_ani = AtomArrays(layout, dims=(self.nbands, 2))
-                if P_sknI is not None:
-                    data = P_sknI[wfs.k]
-            wfs._P_ani.scatter_from(data)
+                data = None
+
+            P_ani.scatter_from(data)  # distribute over atoms
+            wfs._P_ani = P_ani
 
         try:
             ibzwfs.fermi_levels = reader.wave_functions.fermi_levels / ha
@@ -383,6 +415,9 @@ def create_kpts(kpts: dict[str, Any], atoms: Atoms) -> BZPoints:
     if 'kpts' in kpts:
         assert len(kpts) == 1, kpts
         return BZPoints(kpts['kpts'])
+    if 'path' in kpts:
+        path = atoms.cell.bandpath(pbc=atoms.pbc, **kpts)
+        return BZPoints(path.kpts)
     size, offset = kpts2sizeandoffsets(**kpts, atoms=atoms)
     return MonkhorstPackKPoints(size, offset)
 
@@ -452,8 +487,10 @@ def create_uniform_grid(mode: str,
         h /= Bohr
 
     realspace = (mode != 'pw' and interpolation != 'fft')
-    if not realspace:
-        pbc = (True, True, True)
+    if realspace:
+        zerobc = [not periodic for periodic in pbc]
+    else:
+        zerobc = [False] * 3
 
     if gpts is not None:
         size = gpts
@@ -461,4 +498,4 @@ def create_uniform_grid(mode: str,
         modeobj = SimpleNamespace(name=mode, ecut=ecut)
         size = get_number_of_grid_points(cell, h, modeobj, realspace,
                                          symmetry.symmetry)
-    return UGDesc(cell=cell, pbc=pbc, size=size, comm=comm)
+    return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)

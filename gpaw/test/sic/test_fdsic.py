@@ -8,9 +8,9 @@ from ase.dft.bandgap import bandgap
 from ase.units import Ha
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 @pytest.mark.sic
-def test_fdsic(in_tmp_dir, needs_ase_master):
+def test_fdsic(in_tmp_dir):
     """
     Test Perdew-Zunger Self-Interaction
     Correction in PW mode using DirectMin

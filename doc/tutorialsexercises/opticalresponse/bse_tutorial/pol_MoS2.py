@@ -3,7 +3,6 @@ from gpaw.response.bse import BSE
 from gpaw.response.df import DielectricFunction
 
 ecut = 50
-eshift = 0.8
 eta = 0.05
 
 df = DielectricFunction('gs_MoS2.gpw',
@@ -13,18 +12,16 @@ df = DielectricFunction('gs_MoS2.gpw',
                         intraband=False,
                         hilbert=False,
                         eta=eta,
-                        eshift=eshift,
                         txt='rpa_MoS2.txt')
 
 df.get_polarizability(filename='pol_rpa_MoS2.csv')
 
 bse = BSE('gs_MoS2.gpw',
-          spinors=True,
+          add_soc=True,
           ecut=ecut,
-          valence_bands=[8],
-          conduction_bands=[9],
+          valence_bands=[16, 17],
+          conduction_bands=[18, 19],
           nbands=50,
-          eshift=eshift,
           mode='BSE',
           txt='bse_MoS2.txt')
 
@@ -34,13 +31,12 @@ bse.get_polarizability(filename='pol_bse_MoS2.csv',
                        w_w=np.linspace(0, 5, 5001))
 
 bse = BSE('gs_MoS2.gpw',
-          spinors=True,
+          add_soc=True,
           ecut=ecut,
-          valence_bands=[8],
-          conduction_bands=[9],
+          valence_bands=[16, 17],
+          conduction_bands=[18, 19],
           truncation='2D',
           nbands=50,
-          eshift=eshift,
           mode='BSE',
           txt='bse_MoS2_trun.txt')
 

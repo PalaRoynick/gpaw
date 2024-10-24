@@ -16,7 +16,6 @@ from gpaw.lcao.tci import TCIExpansions
 from gpaw.lfc import BasisFunctions
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
-from gpaw.new.calculation import DFTState
 from gpaw.new.lcao.builder import LCAODFTComponentsBuilder, create_lcao_ibzwfs
 from gpaw.new.lcao.hamiltonian import CollinearHamiltonianMatrixCalculator
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
@@ -25,6 +24,7 @@ from gpaw.setup import Setup
 from gpaw.spline import Spline
 from gpaw.utilities.timing import NullTimer
 from gpaw.typing import Array3D
+from gpaw.new.scf import SCFContext
 
 
 class TBHamiltonianMatrixCalculator(CollinearHamiltonianMatrixCalculator):
@@ -44,12 +44,13 @@ class TBHamiltonian:
 
     def create_hamiltonian_matrix_calculator(
             self,
-            state: DFTState) -> TBHamiltonianMatrixCalculator:
+            potential) -> TBHamiltonianMatrixCalculator:
+        ncomponents = potential.dH_asii.dims[0]
         dH_saii = [{a: dH_sii[s]
-                    for a, dH_sii in state.potential.dH_asii.items()}
-                   for s in range(state.density.ncomponents)]
+                    for a, dH_sii in potential.dH_asii.items()}
+                   for s in range(ncomponents)]
 
-        V_sxMM = [np.zeros(0) for _ in range(state.density.ncomponents)]
+        V_sxMM = [np.zeros(0) for _ in range(ncomponents)]
 
         return TBHamiltonianMatrixCalculator(V_sxMM, dH_saii, self.basis)
 
@@ -64,6 +65,7 @@ class NoGrid(Domain):
             N_c=[0, 0, 0],
             dv=0.0)
         self.size = (0, 0, 0)
+        self.zerobc_c = np.zeros(3, bool)
 
     def empty(self, shape=(), comm=serial_comm, xp=None):
         return DummyFunctions(self, shape, comm)
@@ -91,7 +93,11 @@ class DummyFunctions(DistributedArrays[NoGrid]):
         return self
 
     def __getitem__(self, index):
-        return DummyFunctions(self.desc, comm=self.comm)
+        if isinstance(index, int):
+            dims = self.dims[1:]
+        else:
+            dims = self.dims
+        return DummyFunctions(self.desc, dims, comm=self.comm)
 
     def moment(self):
         return np.zeros(3)
@@ -124,10 +130,6 @@ class TBPotentialCalculator(PotentialCalculator):
         self.force_av = None
         self.stress_vv = None
 
-    def calculate_charges(self, vHt_r):
-        return AtomArraysLayout([9] * len(self.atoms),
-                                self.domain_comm).zeros()
-
     def calculate_pseudo_potential(self, density, ibzwfs, vHt_r):
         vt_sR = density.nt_sR
 
@@ -139,28 +141,35 @@ class TBPotentialCalculator(PotentialCalculator):
         vol = abs(np.linalg.det(atoms.cell[atoms.pbc][:, atoms.pbc]))
         self.stress_vv = stress_vv / vol * Bohr**atoms.pbc.sum() / Ha
 
-        return {'kinetic': 0.0,
-                'coulomb': 0.0,
-                'zero': 0.0,
-                'xc': energy,
-                'external': 0.0}, vt_sR, None, vHt_r
+        V_aL = AtomArraysLayout([9] * len(self.atoms),
+                                self.domain_comm).zeros()
+        return ({'kinetic': 0.0,
+                 'coulomb': 0.0,
+                 'zero': 0.0,
+                 'xc': energy,
+                 'external': 0.0},
+                vt_sR,
+                None,
+                DummyFunctions(density.nt_sR.desc),
+                V_aL)
 
     def _move(self, fracpos_ac, ndensities):
         self.atoms.set_scaled_positions(fracpos_ac)
         self.force_av = None
         self.stress_vv = None
 
-    def force_contributions(self, state):
+    def force_contributions(self, density, potential):
         return {}, {}, {a: self.force_av[a:a + 1]
-                        for a in state.density.D_asii.keys()}
+                        for a in density.D_asii.keys()}
 
-    def stress_contribution(self, state):
+    def stress_contribution(self, ibzwfs, density, potential):
         return self.stress_vv
 
 
 class DummyXC:
     no_forces = False
     xc = None
+    exx_fraction = 0.0
 
     def calculate_paw_correction(self, setup, D_sp, dH_sp):
         return 0.0
@@ -174,17 +183,27 @@ class TBSCFLoop:
         self.comm = comm
 
     def iterate(self,
-                state,
+                ibzwfs,
+                density,
+                potential,
                 pot_calc,
                 convergence=None,
                 maxiter=None,
                 calculate_forces=None,
                 log=None):
-        self.eigensolver.iterate(state, self.hamiltonian)
-        state.ibzwfs.calculate_occs(self.occ_calc)
-        yield
-        state.potential, _ = pot_calc.calculate(
-            state.density, state.potential.vHt_x)
+        self.eigensolver.iterate(ibzwfs, density, potential, self.hamiltonian)
+        ibzwfs.calculate_occs(self.occ_calc)
+        yield SCFContext(
+            log,
+            1,
+            ibzwfs, density, potential,
+            0.0, 0.0,
+            self.comm, calculate_forces,
+            pot_calc, False)
+
+        new_potential, _ = pot_calc.calculate(
+            density, None, potential.vHt_x)
+        potential.update_from(new_potential)
 
 
 class DummyBasis:
@@ -246,7 +265,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         assert self.communicators['w'].size == 1
 
         ibzwfs, tciexpansions = create_lcao_ibzwfs(
-            basis, potential,
+            basis,
             self.ibz, self.communicators, self.setups,
             self.fracpos_ac, self.grid, self.dtype,
             self.nbands, self.ncomponents, self.atomdist, self.nelectrons)
@@ -267,7 +286,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
                 r_g = np.linspace(0, rc, 150)
                 vt_g = vt.map(r_g) / (4 * pi)**0.5
                 phit_g = phit.map(r_g)
-                vtphit_j.append(Spline(phit.l, rc, vt_g * phit_g))
+                vtphit_j.append(Spline.from_data(phit.l, rc, vt_g * phit_g))
             vtphit[setup] = vtphit_j
 
         vtciexpansions = TCIExpansions([s.basis_functions_J

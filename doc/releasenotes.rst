@@ -10,6 +10,67 @@ Git master branch
 
 :git:`master <>`.
 
+* Minimum version requirements: Python 3.9, ASE 3.23.0.
+
+* Updated development-workflow documentation:
+  :ref:`a good mr`, :ref:`get your mr merged`.
+
+* Works with
+  `Libxc-7.0.0 <https://gitlab.com/libxc/libxc/-/releases/7.0.0>`__.
+
+* The :meth:`gpaw.calculator.GPAW.fixed_density` method now respects the
+  ``update_fermi_level`` argument.  Previously, the Fermi-level would not
+  be updated, but the occupation numers would be calculated with an
+  updated Fermi-level.  Now, the Fermi-level and the occupation numbers
+  always in sync.
+
+* The :meth:`gpaw.calculator.GPAW.get_occupation_numbers` method can now
+  return the *raw* numbers (in the [0,1] range) without any spin-degeneracy
+  or **k**-point weights (use ``raw=True``).
+
+* Added functionality to compute LDA exchange constants based on the
+  local site properties methodology, see :ref:`sites`.
+
+* Extended ``restrict`` keyword and random phase approximation enabled
+  in :ref:`lrtddft`
+
+
+Version 24.6.0
+==============
+
+May 31, 2024: :git:`24.6.0 <../24.6.0>`
+
+* Minimum version requirements: Python 3.8, ASE 3.23.0.
+
+* Added a constraint on our Numpy dependency: ``numpy<2``.  GPAW almost
+  works with numpy-2, but not quite.
+
+* Fixed a bug in the electron-phonon module which constructed the PAW
+  corrections to the Hamiltonian with incorrect off-diagonal elements. Our
+  testing has not revealed any critical changes in results; however, if you've
+  been using the electron-phonon module, we still recommend that you verify
+  your results.
+
+* New 14 electron Cr PAW potential added to our :ref:`setup releases`.
+  For high accuracy, it is recommented over the old 6-electron version
+  (which is still the default).  You can use it by
+  specifying ``setups={'Cr': '14'}`` (see also :ref:`manual_setups`).
+  It has been generated with the following command::
+
+    $ gpaw dataset Cr -sw -r2.0 -P3s,4s,3p,4p,3d,d,F -fPBE -t 14 -b
+
+  There is also an LDA version of the potential.
+
+* A new ``adjust_cell()`` function is added to replace the
+  ``Cluster.minimal_box()``, and the Cluster object will be
+  discontinued. The new  ``adjust_cell()`` function expands the
+  ``minimal_box()``
+  function but considers the ``pbc`` for periodic calculations and
+  only adjusts the cell in the non-periodic directions.
+
+* Updated the BSE module such that SOC can be included for magnetic
+  systems. A new function has also been added such that one can obtain
+  the transverse magnetic susceptibility and magnons from the BSE code.
 
 .. _bug0:
 
@@ -47,13 +108,13 @@ Jan 4, 2024: :git:`24.1.0 <../24.1.0>`
 
    Fixed in :mr:`2114`.
 
-* Minimum version requirements: Python 3.8, ASE 3.22.1, NumPy 1.17.0,
+* Minimum version requirements: Python 3.8, ASE 3.23.0b1, NumPy 1.17.0,
   SciPy 1.6.0
 
 * Functionality has been added to calculate various local properties of the
   magnetic sites of a crystal, see :ref:`sites`.
 
-* Python 3.8 or later is required now.
+* Python 3.7 no longer supported.
 
 * Calculations of ground and excited states in FD and PW modes can now be
   done using direct orbital optimization (see :ref:`directmin`). Use
@@ -86,6 +147,11 @@ Jan 4, 2024: :git:`24.1.0 <../24.1.0>`
 
 * A bug in spin polarized (ferromagnetic) GW+BSE calculations was fixed:
   :issue:`828`.
+
+* A bug resulting in slight inaccuracies when calculating inner products
+  between radial partial waves was fixed. This bug affected the calculation
+  of spin magnetic moments inside PAW spheres and the Hubbard correction when
+  it was applied to p-states. See :issue:`1068`.
 
 
 Version 23.9.1
@@ -411,8 +477,8 @@ Jun 24, 2021: :git:`21.6.0 <../21.6.0>`
   of both p and d orbitals on transition metals)
 
 * There used to be two versions of the GPAW web-page which was quite
-  confusing.  The https://wiki.fysik.dtu.dk/gpaw/dev/ web-page has now been
-  dropped.  There is now only https://wiki.fysik.dtu.dk/gpaw/ and it documents
+  confusing.  The https://gpaw.readthedocs.io/dev/ web-page has now been
+  dropped.  There is now only https://gpaw.readthedocs.io/ and it documents
   the use of the in development version of GPAW.
 
 * ``gpaw sbatch`` will now detect an active virtual environment (venv)
@@ -455,7 +521,7 @@ Jan 18, 2021: :git:`21.1.0 <../21.1.0>`
 * Improved relaxation in the excited states in parallel,
   see  :ref:`linear response TDDFT <lrtddft>`
 
-* We now have a :ref:`code coverage` report updated every night.
+* We now have a code coverage report updated every night.
 
 * Plane-wave mode implementation of hybrid functionals can now be selected
   via a *dict*: ``xc={'name': ..., 'backend': 'pw'}``, where then name must be
@@ -578,7 +644,7 @@ Oct 19, 2020: :git:`20.10.0 <../20.10.0>`
       $ python3 -m gpaw.utilities.dipole <gpw-file>
 
 
-.. _pytest: http://doc.pytest.org/en/latest/contents.html
+.. _pytest: https://doc.pytest.org/en/latest/contents.html
 .. _mypy: https://mypy.readthedocs.io/en/stable/
 
 
@@ -813,7 +879,7 @@ Jan 11, 2019: :git:`1.5.0 <../1.5.0>`
 
 * New Jupyter notebooks added for teaching DFT and many-body methods.  Topics
   cover: :ref:`catalysis`, :ref:`magnetism`, :ref:`machinelearning`,
-  :ref:`photovoltaics`, :ref:`batteries` and :ref:`intro`.
+  :ref:`excited states`, :ref:`batteries` and :ref:`intro`.
 
 * New experimental local **k**-point refinement feature:
   :git:`gpaw/test/test_kpt_refine.py`.
@@ -932,7 +998,7 @@ October 2, 2017: :git:`1.3.0 <../1.3.0>`
 * Python 2.6 no longer supported.
 
 * There is now a web-page documenting the use of the in development version
-  of GPAW: https://wiki.fysik.dtu.dk/gpaw/dev/.
+  of GPAW: https://gpaw.readthedocs.io/dev/.
 
 * :ref:`BSE <bse tutorial>` calculations for spin-polarized systems.
 
@@ -988,7 +1054,7 @@ Feb 7, 2017: :git:`1.2.0 <../1.2.0>`.
   method that returns an :class:`ase.spectrum.band_structure.BandStructure`
   object.  This makes it easy to create band-structure plots as shown
   in section 9 of this awesome Psi-k *Scientfic Highlight Of The Month*:
-  http://psi-k.net/download/highlights/Highlight_134.pdf.
+  https://psi-k.net/download/highlights/Highlight_134.pdf.
 
 * Dipole-layer corrections for slab calculations can now be done in PW-mode
   also.  See :ref:`dipole`.
@@ -1141,7 +1207,7 @@ July 22, 2015: :git:`0.11.0 <../0.11.0>`.
   be used to calculate forces to a given precision.
 
 * Fixed bug in printing work functions for calculations with a
-  dipole-correction `<http://listserv.fysik.dtu.dk/pipermail/
+  dipole-correction `<https://listserv.fysik.dtu.dk/pipermail/
   gpaw-users/2015-February/003226.html>`_.
 
 * A :ref:`continuum solvent model <continuum_solvent_model>` was added.

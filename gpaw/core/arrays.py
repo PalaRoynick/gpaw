@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from types import ModuleType
-from typing import TYPE_CHECKING, Generic, TypeVar, Callable
+from typing import TYPE_CHECKING, Generic, TypeVar, Callable, Literal
 
 import gpaw.fftw as fftw
 import numpy as np
@@ -9,7 +8,8 @@ from ase.io.ulm import NDArrayReader
 from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.mpi import MPIComm
-from gpaw.typing import Array1D, Literal, Self, ArrayND
+from gpaw.typing import Array1D, Self, ArrayND
+from gpaw.gpu import XP
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -19,7 +19,7 @@ from gpaw.new import prod
 DomainType = TypeVar('DomainType', bound=Domain)
 
 
-class DistributedArrays(Generic[DomainType]):
+class DistributedArrays(Generic[DomainType], XP):
     desc: DomainType
 
     def __init__(self,
@@ -64,12 +64,12 @@ class DistributedArrays(Generic[DomainType]):
             data = (xp or np).empty(fullshape, dtype)
 
         self.data = data
-        self.xp: ModuleType
         if isinstance(data, (np.ndarray, NDArrayReader)):
-            self.xp = np
+            xp = np
         else:
             from gpaw.gpu import cupy as cp
-            self.xp = cp
+            xp = cp
+        XP.__init__(self, xp)
         self._matrix: Matrix | None = None
 
     def new(self, data=None) -> DistributedArrays:

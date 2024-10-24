@@ -12,7 +12,8 @@ read the guide :ref:`Using a pre-installed GPAW on Niflheim <load on niflheim>`.
 
     * :mod:`Creation of Python virtual environments <venv>`.
     * Information about the Niflheim cluster can be found at
-      `<https://wiki.fysik.dtu.dk/niflheim>`_.
+      `<https://niflheim-users.readthedocs.io/>`_ and
+      `<https://niflheim-system.readthedocs.io/>`_.
     * `MyQueue <https://myqueue.readthedocs.io/>`__.
 
 .. contents::
@@ -31,9 +32,9 @@ and run it like this::
 
 .. tip::
 
-    You will need Python 3.8 or later.  You can install that with::
+    You will need Python 3.9 or later.  You can install that with::
 
-        $ module load Python/3.8.6-GCCcore-10.2.0
+        $ module load Python
 
 Type ``python3 gpaw_venv.py --help`` for help.  After a few minutes, you will
 have a ``<venv-name>`` folder with a GPAW installation inside.
@@ -49,8 +50,8 @@ The ``gpaw_venv.py`` script does the following:
   matplotlib, pytest-xdist, myqueue, ase-ext, spglib
 * enable tab-completion for command-line tools:
   `ase <https://wiki.fysik.dtu.dk/ase/cmdline.html>`__,
-  `gpaw <https://wiki.fysik.dtu.dk/gpaw/documentation/cmdline.html>`__,
-  `mq <https://myqueue.readthedocs.io/en/latest/cli.html>`__
+  `gpaw <https://gpaw.readthedocs.io/documentation/cmdline.html>`__,
+  `mq <https://myqueue.readthedocs.io/cli.html>`__
 
 
 Using the venv

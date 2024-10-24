@@ -6,7 +6,7 @@ from ase.units import Ha
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.utils import IOContext
 
-from gpaw.utilities import pack
+from gpaw.utilities import pack_density
 from gpaw.utilities.tools import tri2full
 from gpaw.utilities.blas import rk, mmm, mmmx
 from gpaw.basis_data import Basis
@@ -42,19 +42,6 @@ def get_bfi(calc, a_list):
     for a in a_list:
         M = calc.wfs.basis_functions.M_a[a]
         bfs_list += range(M, M + calc.wfs.setups[a].nao)
-    return bfs_list
-
-
-def get_bfi2(symbols, basis, a_list):
-    """Same as get_bfi, but does not require an LCAO calc"""
-    basis = types2atomtypes(symbols, basis, default='dzp')
-    bfs_list = []
-    i = 0
-    for a, symbol in enumerate(symbols):
-        nao = Basis(symbol, basis[a]).nao
-        if a in a_list:
-            bfs_list += range(i, i + nao)
-        i += nao
     return bfs_list
 
 
@@ -276,6 +263,31 @@ def dump_hamiltonian_and_overlap(filename, atoms, direction=None):
 
 def get_lcao_hamiltonian(calc):
     """Return H_skMM, S_kMM on master, (None, None) on slaves. H is in eV."""
+    from gpaw.new.ase_interface import ASECalculator
+    if not isinstance(calc, ASECalculator):
+        return old_get_lcao_hamiltonian(calc)
+    dft = calc.dft
+    ibzwfs = dft.ibzwfs
+    ham = dft.scf_loop.hamiltonian
+    matcalc = ham.create_hamiltonian_matrix_calculator(dft.potential)
+    nM = ham.basis.Mmax
+    nK = len(ibzwfs.ibz)
+    H_skMM = np.zeros((ibzwfs.nspins, nK, nM, nM), ibzwfs.dtype)
+    S_kMM = np.zeros((nK, nM, nM), ibzwfs.dtype)
+    for wfs in ibzwfs:
+        H_MM = matcalc.calculate_matrix(wfs)
+        H_skMM[wfs.spin, wfs.k] = H_MM.data * Ha
+        S_MM = wfs.S_MM
+        if wfs.spin == 0:
+            S_kMM[wfs.k] = S_MM.data
+    ibzwfs.kpt_comm.sum(H_skMM)
+    ibzwfs.kpt_comm.sum(S_kMM)
+    if rank == 0:
+        return H_skMM, S_kMM
+    return None, None
+
+
+def old_get_lcao_hamiltonian(calc):
     if calc.wfs.S_qMM is None:
         calc.wfs.set_positions(calc.spos_ac)
     dtype = calc.wfs.dtype
@@ -479,7 +491,7 @@ def makeU(gpwfile='grid.gpw', orbitalfile='w_wG__P_awi.pckl',
     # Add atomic corrections to pairorbital overlap
     for a in myatoms:
         if setups[a].type != 'ghost':
-            P_pp = np.array([pack(np.outer(P_awi[a][w1], P_awi[a][w2]))
+            P_pp = np.array([pack_density(np.outer(P_awi[a][w1], P_awi[a][w2]))
                              for w1, w2 in np.ndindex(Nw, Nw)])
             I4_pp = setups[a].four_phi_integrals()
             A = np.zeros((len(I4_pp), len(P_pp)))
@@ -526,8 +538,8 @@ def makeU(gpwfile='grid.gpw', orbitalfile='w_wG__P_awi.pckl',
         mmmx(1.0, Uisq_qp, 'N', f_pG, 'N', 0.0, g_qG)
         g_qG = gd.collect(g_qG)
         if world.rank == 0:
-            P_app = {a: np.array([pack(np.outer(P_wi[w1], P_wi[w2]),
-                                       tolerance=1e3)
+            P_app = {a: np.array([pack_density(np.outer(P_wi[w1], P_wi[w2]),
+                                               tolerance=1e3)
                                   for w1, w2 in np.ndindex(Nw, Nw)])
                      for a, P_wi in P_awi.items()}
             P_aqp = {a: np.dot(Uisq_qp, Px_pp) for a, Px_pp in P_app.items()}
@@ -540,7 +552,7 @@ def makeV(gpwfile='grid.gpw', orbitalfile='w_wG__P_awi.pckl',
           log='V_qq.log', fft=False):
 
     with IOContext() as io:
-        log = io.openfile(log)
+        log = io.openfile(log, comm=serial_comm)
         _makeV(gpwfile=gpwfile, orbitalfile=orbitalfile,
                rotationfile=rotationfile, coulombfile=coulombfile,
                log=log, fft=fft)
@@ -587,8 +599,8 @@ def _makeV(gpwfile, orbitalfile, rotationfile, coulombfile, log, fft):
             U = Uisq_iqj[w1, qstart: qend].copy()
             mmmx(1, U, 'N', w1_G * w_wG, 'N', 1, g_qG)
             for a, P_wi in P_awi.items():
-                P_wp = np.array([pack(np.outer(P_wi[w1], P_wi[w2]))
-                                for w2 in range(Ni)])
+                P_wp = np.array([pack_density(np.outer(P_wi[w1], P_wi[w2]))
+                                 for w2 in range(Ni)])
                 mmm(1., U, 'N', P_wp, 'N', 1.0, P_aqp[a])
         return g_qG, P_aqp
 

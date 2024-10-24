@@ -4,11 +4,11 @@ from math import pi
 import numpy as np
 
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.calculation import DFTState
-from gpaw.new.ibzwfs import create_ibz_wave_functions as create_ibzwfs
+from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunction
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.pwfd.davidson import Davidson
+from gpaw.new.pwfd.etdm import ETDMPWFD
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 
 
@@ -21,14 +21,20 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
     def create_eigensolver(self, hamiltonian):
         eigsolv_params = self.params.eigensolver.copy()
         name = eigsolv_params.pop('name', 'dav')
-        assert name == 'dav'
-        return Davidson(
-            self.nbands,
-            self.wf_desc,
-            self.communicators['b'],
-            hamiltonian.create_preconditioner,
-            converge_bands=self.params.convergence.get('bands', 'occupied'),
-            **eigsolv_params)
+        if name == 'dav':
+            return Davidson(
+                self.nbands,
+                self.wf_desc,
+                self.communicators['b'],
+                hamiltonian.create_preconditioner,
+                converge_bands=self.params.convergence.get('bands',
+                                                           'occupied'),
+                **eigsolv_params)
+        from gpaw.directmin.etdm_fdpw import FDPWETDM
+        return ETDMPWFD(self.setups,
+                        self.communicators['w'],
+                        self.atoms,
+                        FDPWETDM(**eigsolv_params))
 
     def read_ibz_wave_functions(self, reader):
         kpt_comm, band_comm, domain_comm = (self.communicators[x]
@@ -55,13 +61,14 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
 
             return wfs
 
-        ibzwfs = create_ibzwfs(ibz=self.ibz,
-                               nelectrons=self.nelectrons,
-                               ncomponents=self.ncomponents,
-                               create_wfs_func=create_wfs,
-                               kpt_comm=self.communicators['k'],
-                               kpt_band_comm=self.communicators['D'],
-                               comm=self.communicators['w'])
+        ibzwfs = PWFDIBZWaveFunction.create(
+            ibz=self.ibz,
+            nelectrons=self.nelectrons,
+            ncomponents=self.ncomponents,
+            create_wfs_func=create_wfs,
+            kpt_comm=self.communicators['k'],
+            kpt_band_comm=self.communicators['D'],
+            comm=self.communicators['w'])
 
         # Set eigenvalues, occupations, etc..
         self.read_wavefunction_values(reader, ibzwfs)
@@ -80,14 +87,14 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
         lcaonbands = min(self.nbands,
                          basis.Mmax * (2 if self.ncomponents == 4 else 1))
         lcao_ibzwfs, _ = create_lcao_ibzwfs(
-            basis, potential,
+            basis,
             self.ibz, self.communicators, self.setups,
             self.fracpos_ac, self.grid, self.dtype,
             lcaonbands, self.ncomponents, self.atomdist, self.nelectrons)
 
-        state = DFTState(lcao_ibzwfs, None, potential)
         hamiltonian = LCAOHamiltonian(basis)
-        LCAOEigensolver(basis).iterate(state, hamiltonian)
+        LCAOEigensolver(basis).iterate(
+            lcao_ibzwfs, None, potential, hamiltonian)
 
         def create_wfs(spin, q, k, kpt_c, weight):
             lcaowfs = lcao_ibzwfs.wfs_qs[q][spin]
@@ -100,11 +107,11 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
             mylcaonbands, nao = lcaowfs.C_nM.dist.shape
             mynbands = len(psit_nX.data)
             eig_n = np.empty(self.nbands)
-            eig_n[:mylcaonbands] = lcaowfs._eig_n[lcaowfs.n1:lcaowfs.n2]
+            eig_n[:lcaonbands] = lcaowfs._eig_n
+            eig_n[lcaonbands:] = 1e10
             if mylcaonbands < mynbands:
                 psit_nX[mylcaonbands:].randomize(
                     seed=self.communicators['w'].rank)
-                eig_n[mylcaonbands:] = np.inf
 
             wfs = PWFDWaveFunctions(
                 psit_nX=psit_nX,
@@ -120,13 +127,14 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
             wfs._eig_n = eig_n
             return wfs
 
-        return create_ibzwfs(ibz=self.ibz,
-                             nelectrons=self.nelectrons,
-                             ncomponents=self.ncomponents,
-                             create_wfs_func=create_wfs,
-                             kpt_comm=self.communicators['k'],
-                             kpt_band_comm=self.communicators['D'],
-                             comm=self.communicators['w'])
+        return PWFDIBZWaveFunction.create(
+            ibz=self.ibz,
+            nelectrons=self.nelectrons,
+            ncomponents=self.ncomponents,
+            create_wfs_func=create_wfs,
+            kpt_comm=self.communicators['k'],
+            kpt_band_comm=self.communicators['D'],
+            comm=self.communicators['w'])
 
     def create_random_ibz_wave_functions(self, log):
         log('Initializing wave functions with random numbers')
@@ -151,12 +159,9 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
 
-            eig_n = self.xp.empty(self.nbands)
-            eig_n[:] = np.inf
-            wfs._eig_n = eig_n
             return wfs
 
-        return create_ibzwfs(
+        return PWFDIBZWaveFunction.create(
             ibz=self.ibz,
             nelectrons=self.nelectrons,
             ncomponents=self.ncomponents,

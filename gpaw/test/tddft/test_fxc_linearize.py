@@ -5,14 +5,14 @@ from gpaw.tddft import TDDFT, DipoleMomentWriter
 from gpaw.mpi import world
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 @pytest.mark.gllb
 @pytest.mark.libxc
 def test_tddft_fxc_linearize(in_tmp_dir, gpw_files):
 
     fxc = 'LDA'
     # Time-propagation calculation with linearize_to_fxc()
-    td_calc = TDDFT(gpw_files['sih4_xc_gllbsc'], txt='td.out')
+    td_calc = TDDFT(gpw_files['sih4_xc_gllbsc_fd'], txt='td.out')
     td_calc.linearize_to_xc(fxc)
     DipoleMomentWriter(td_calc, 'dm.dat')
     td_calc.absorption_kick(np.ones(3) * 1e-5)

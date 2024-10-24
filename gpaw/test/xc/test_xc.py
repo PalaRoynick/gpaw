@@ -2,6 +2,9 @@ import pytest
 import numpy as np
 from gpaw.xc.libxc import LibXC, short_names
 from gpaw.xc.kernel import XCKernel, codes
+from gpaw.xc import libraries
+
+HAS_LIBXC_7 = int((libraries['libxc'] or '0.0').split('.')[0]) >= 7
 
 
 @pytest.mark.ci
@@ -9,9 +12,14 @@ from gpaw.xc.kernel import XCKernel, codes
 def test_xc_xc():
     funcs = []
     modes = []
-    for name in short_names:
+    for name, value in short_names.items():
         try:
-            LibXC(name)
+            if 'MGGA' in value and not HAS_LIBXC_7:
+                with pytest.warns(UserWarning,
+                                  match='should be compiled with'):
+                    LibXC(name)
+            else:
+                LibXC(name)
         except NameError:
             continue
         if name == 'SCAN':
@@ -24,7 +32,7 @@ def test_xc_xc():
 
     def create_xc(func, mode):
         if mode == 0:
-            xc = LibXC(func)
+            xc = LibXC(func, disable_fhc=False)
         else:
             xc = XCKernel(func)
         return xc
