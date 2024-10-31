@@ -222,17 +222,17 @@ class GPAWPlugin:
 
 
 class FileLeakCheckPlugin:
-    def __init__(self, rundir, *, skipdirs=None):
+    def __init__(self, rundir, *, skippaths=None):
         """Pytest plugin for checking that tests do not leak files."""
         self.rundir = Path(rundir).resolve().absolute()
-        self.skipdirs = []
-        if skipdirs is not None:
-            for skipdir in skipdirs:
-                if skipdir is None:
+        self.skippaths = []
+        if skippaths is not None:
+            for skippath in skippaths:
+                if skippath is None:
                     continue
-                skipdir = Path(skipdir).resolve().absolute()
-                if skipdir.is_relative_to(self.rundir):
-                    self.skipdirs.append(skipdir)
+                skippath = Path(skippath).resolve().absolute()
+                if skippath.is_relative_to(self.rundir):
+                    self.skippaths.append(skippath)
         self.all_files = self._find_files()
 
     def _find_files(self, *, recursive=True):
@@ -246,11 +246,13 @@ class FileLeakCheckPlugin:
             if '__pycache__' in dirnames:
                 dirnames.remove('__pycache__')
 
-            for skipdir in self.skipdirs:
-                if skipdir.is_relative_to(root):
-                    skipdirname = skipdir.relative_to(root).name
-                    if skipdirname in dirnames:
-                        dirnames.remove(skipdirname)
+            for skippath in self.skippaths:
+                if skippath.is_relative_to(root):
+                    name = skippath.relative_to(root).name
+                    if name in dirnames:
+                        dirnames.remove(name)
+                    if name in filenames:
+                        filenames.remove(name)
 
             for name in dirnames + filenames:
                 files.append(str(root.relative_to(self.rundir) / name))
@@ -310,7 +312,12 @@ def pytest_configure(config):
         cachedir = config.cache.mkdir('').parent
         plugin = FileLeakCheckPlugin(
             '.',
-            skipdirs=[config.option.basetemp, cachedir, 'htmlcov'],
+            skippaths=[
+                config.option.basetemp,
+                cachedir,
+                'htmlcov',
+                '.coverage',
+            ],
         )
         config.pluginmanager.register(plugin, 'pytest_fileleakcheck')
 
