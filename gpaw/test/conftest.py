@@ -237,7 +237,9 @@ class FileLeakCheckPlugin:
 
     def _find_files(self, *, recursive=True):
         files = []
-        for root, dirnames, filenames in self.rundir.walk():
+        for root, dirnames, filenames in os.walk(self.rundir):
+            root = Path(root)
+
             if not recursive:
                 dirnames.clear()
 
