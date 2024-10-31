@@ -305,9 +305,10 @@ def pytest_configure(config):
     config.pluginmanager.register(GPAWPlugin(), 'pytest_gpaw')
 
     if config.getoption('--check-file-leak'):
+        cachedir = config.cache.mkdir('').parent
         plugin = FileLeakCheckPlugin(
             '.',
-            skipdirs=[config.option.basetemp, config.cache, 'htmlcov'],
+            skipdirs=[config.option.basetemp, cachedir, 'htmlcov'],
         )
         config.pluginmanager.register(plugin, 'pytest_fileleakcheck')
 
