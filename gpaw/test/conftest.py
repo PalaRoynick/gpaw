@@ -1,5 +1,7 @@
 import os
+import sys
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -219,6 +221,58 @@ class GPAWPlugin:
         terminalreporter.write(f'size: {size}\n')
 
 
+class FileLeakCheckPlugin:
+    def __init__(self, rundir, *, skipdirs=None):
+        """Pytest plugin for checking that tests do not leak files."""
+        self.rundir = Path(rundir).resolve().absolute()
+        self.skipdirs = []
+        if skipdirs is not None:
+            for skipdir in skipdirs:
+                if skipdir is None:
+                    continue
+                skipdir = Path(skipdir).resolve().absolute()
+                if skipdir.is_relative_to(self.rundir):
+                    self.skipdirs.append(skipdir)
+        self.all_files = self._find_files()
+
+    def _find_files(self, *, recursive=True):
+        files = []
+        for root, dirnames, filenames in self.rundir.walk():
+            if not recursive:
+                dirnames.clear()
+
+            if '__pycache__' in dirnames:
+                dirnames.remove('__pycache__')
+
+            for skipdir in self.skipdirs:
+                if skipdir.is_relative_to(root):
+                    skipdirname = skipdir.relative_to(root).name
+                    if skipdirname in dirnames:
+                        dirnames.remove(skipdirname)
+
+            for name in dirnames + filenames:
+                files.append(str(root.relative_to(self.rundir) / name))
+
+        return set(files)
+
+    def pytest_runtest_call(self, item):
+        test_files = self._find_files(recursive=False)
+        item.runtest()
+        extra_files = self._find_files(recursive=False) - test_files
+        if len(extra_files) > 0:
+            msg = f"Leaked files: {extra_files}"
+            pytest.fail(msg)
+
+    def pytest_terminal_summary(self, terminalreporter, exitstatus, config):
+        extra_files = self._find_files() - self.all_files
+        if len(extra_files) > 0:
+            msg = "File check FAILED"
+            terminalreporter.section(msg, red=True, bold=True)
+            msg = f"Leaked files: {extra_files}\n"
+            terminalreporter.write(msg, red=True)
+            sys.exit(1)
+
+
 @pytest.fixture
 def sg15_hydrogen():
     from io import StringIO
@@ -227,6 +281,14 @@ def sg15_hydrogen():
     # We can't easily load a non-python file from the test suite.
     # Therefore we load the pseudopotential from a Python file.
     return read_sg15(StringIO(pp_text))
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        '--check-file-leak',
+        action='store_true',
+        help='Check file leakage',
+    )
 
 
 def pytest_configure(config):
@@ -241,6 +303,13 @@ def pytest_configure(config):
         else:
             tw._file = devnull
     config.pluginmanager.register(GPAWPlugin(), 'pytest_gpaw')
+
+    if config.getoption('--check-file-leak'):
+        plugin = FileLeakCheckPlugin(
+            '.',
+            skipdirs=[config.option.basetemp, config.cache, 'htmlcov'],
+        )
+        config.pluginmanager.register(plugin, 'pytest_fileleakcheck')
 
 
 def pytest_runtest_setup(item):
