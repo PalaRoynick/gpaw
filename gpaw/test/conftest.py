@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -221,6 +222,12 @@ class GPAWPlugin:
         terminalreporter.write(f'size: {size}\n')
 
 
+def remove_by_pattern(pattern, names):
+    matches = [name for name in names if re.fullmatch(pattern, name)]
+    for name in matches:
+        names.remove(name)
+
+
 class FileLeakCheckPlugin:
     def __init__(self, rundir, *, skippaths=None):
         """Pytest plugin for checking that tests do not leak files."""
@@ -248,11 +255,9 @@ class FileLeakCheckPlugin:
 
             for skippath in self.skippaths:
                 if skippath.is_relative_to(root):
-                    name = skippath.relative_to(root).name
-                    if name in dirnames:
-                        dirnames.remove(name)
-                    if name in filenames:
-                        filenames.remove(name)
+                    skipname = skippath.relative_to(root).name
+                    remove_by_pattern(skipname, dirnames)
+                    remove_by_pattern(skipname, filenames)
 
             for name in dirnames + filenames:
                 files.append(str(root.relative_to(self.rundir) / name))
@@ -316,7 +321,7 @@ def pytest_configure(config):
                 config.option.basetemp,
                 cachedir,
                 'htmlcov',
-                '.coverage',
+                r'\.coverage.*',
             ],
         )
         config.pluginmanager.register(plugin, 'pytest_fileleakcheck')
