@@ -264,14 +264,6 @@ class FileLeakCheckPlugin:
 
         return set(files)
 
-    def pytest_runtest_call(self, item):
-        test_files = self._find_files(recursive=False)
-        item.runtest()
-        extra_files = self._find_files(recursive=False) - test_files
-        if len(extra_files) > 0:
-            msg = f"Leaked files: {extra_files}"
-            pytest.fail(msg)
-
     def pytest_terminal_summary(self, terminalreporter, exitstatus, config):
         extra_files = self._find_files() - self.all_files
         if len(extra_files) > 0:
