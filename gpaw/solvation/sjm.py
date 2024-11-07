@@ -33,6 +33,7 @@ from gpaw.solvation.poisson import WeightedFDPoissonSolver
 from gpaw.solvation.pw.poisson import WrappedWeightedFDPoissonSolver
 from gpaw.io.logger import indent
 from gpaw.pw.lfc import PWLFC
+from gpaw.templogger import logg
 
 
 class SJM(SolvationGPAW):
@@ -1053,6 +1054,10 @@ class SJM_RealSpaceHamiltonian(SolvationRealSpaceHamiltonian):
                                           psolver['dipolelayer'])
             self.dipcorr = True
 
+        # XXX/CB: What should happen here, in practice?
+        else:
+            self.dipcorr = False
+
         if self.dipcorr:
             psolver.poissonsolver.set_dielectric(self.dielectric)
         else:
@@ -1255,6 +1260,7 @@ class SJMDipoleCorrection(DipoleCorrection):
         """Construct dipole correction object."""
 
         DipoleCorrection.__init__(self, poissonsolver, direction, width=1.0)
+        logg(type(poissonsolver))  # currently uses weightedFD
         self.corrterm = 1
         self.elcorr = None
         self.last_corrterm = None

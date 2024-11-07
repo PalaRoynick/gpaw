@@ -9,6 +9,7 @@ from gpaw.wfd_operators import WeightedFDOperator
 from gpaw.utilities.gauss import Gaussian
 from gpaw import PoissonConvergenceError
 from gpaw.utilities.timing import NullTimer
+from gpaw.templogger import logg
 
 
 class SolvationPoissonSolver(FDPoissonSolver):
@@ -97,6 +98,8 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
     def restrict_op_weights(self):
         """Restric operator weights to coarse grids."""
         self._init()
+        logg('diel eps_gradeps')
+        logg(self.dielectric.eps_gradeps, header=False)
         weights = [self.dielectric.eps_gradeps] + self.op_coarse_weights
         for i, res in enumerate(self.restrictors):
             for j in range(4):
