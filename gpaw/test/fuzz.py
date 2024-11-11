@@ -198,8 +198,9 @@ def run2(atoms: Atoms,
     code = params.pop('code')
     if code[0] == 'n':
         if params.pop('dtype', None) == complex:
-            params['mode']['force_complex_dtype'] = True
-        calc = NewGPAW(**params)
+            params['mode'] = {'name': params['mode'],
+                              'force_complex_dtype': True}
+        calc = NewGPAW(**params, parallel={'gpu': True})
     else:
         calc = OldGPAW(**params)
     atoms.calc = calc
