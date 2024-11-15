@@ -3,32 +3,31 @@ from ase.build import molecule
 from ase.units import Hartree
 from gpaw import GPAW
 from gpaw.mpi import world
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from gpaw.occupations import FermiDirac
 from gpaw.eigensolvers import RMMDIIS
 from gpaw.lrtddft import LrTDDFT
 
-# h2o = Cluster(molecule('H2O'))
+# h2o = molecule('H2O')
 # h2o.set_initial_magnetic_moments([2, -1, -1])
-# h2o.minimal_box(3.0, h=0.3)
-h2o_plus = Cluster(molecule('H2O'))
+# adjust_cell(h2o, 3.0, h=0.3)
+h2o_plus = molecule('H2O')
 h2o_plus.set_initial_magnetic_moments([2, -0.5, -0.5])
-h2o_plus.minimal_box(3.0, h=0.35)
+adjust_cell(h2o_plus, 3.0, h=0.35)
 
 
-def get_paw():
+def get_paw(**kwargs):
     """Return calculator object."""
     c = {'energy': 0.001, 'eigenstates': 0.001, 'density': 0.001}
-    return GPAW(convergence=c, eigensolver=RMMDIIS(),
+    return GPAW(mode='fd', convergence=c, eigensolver=RMMDIIS(),
                 xc='LCY-PBE:omega=0.83:unocc=True',
                 parallel={'domain': world.size}, h=0.35,
-                occupations=FermiDirac(width=0.0, fixmagmom=True))
+                occupations=FermiDirac(width=0.0, fixmagmom=True),
+                **kwargs)
 
 
-# calc = get_paw()
-# calc.set(txt='H2O_LCY_PBE_083.log')
-calc_plus = get_paw()
-calc_plus.set(txt='H2O_plus_LCY_PBE_083.log', charge=1)
+# calc = get_paw(txt='H2O_LCY_PBE_083.log')
+calc_plus = get_paw(txt='H2O_plus_LCY_PBE_083.log', charge=1)
 
 # h2o.calc = calc
 # e_h2o = h2o.get_potential_energy()

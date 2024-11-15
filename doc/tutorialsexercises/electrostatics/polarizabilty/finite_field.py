@@ -1,14 +1,14 @@
 import numpy as np
 from ase.units import Bohr, Ha
 from ase.build import molecule
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from gpaw import GPAW
 from gpaw.external import static_polarizability
 
 
-atoms = Cluster(molecule('H2O'))
-atoms.minimal_box(3)
-atoms.calc = GPAW(txt=None)
+atoms = molecule('H2O')
+adjust_cell(atoms, border=3)
+atoms.calc = GPAW(mode='fd', txt=None)
 
 alpha_cc = static_polarizability(atoms)
 print('Polarizability tensor (units Angstrom^3):')

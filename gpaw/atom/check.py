@@ -1,22 +1,21 @@
 import optparse
 import traceback
 from pathlib import Path
+from typing import Any
 
-import numpy as np
 import ase.db
+import numpy as np
 from ase import Atoms
-from ase.data import covalent_radii, atomic_numbers
+from ase.data import atomic_numbers, covalent_radii
 from ase.optimize import BFGS
-
 from gpaw import GPAW, PW, KohnShamConvergenceError
-
 
 cutoffs = [200, 250, 300, 400, 500, 600, 700, 800, 1500]
 
 
 def check(con, name: str, lcao=True):
-    params = dict(xc='PBE',
-                  symmetry='off')
+    params: dict[str, Any] = dict(xc='PBE',
+                                  symmetry='off')
 
     if '.' in name:
         symbol, _, setup = name.partition('.')
@@ -27,8 +26,9 @@ def check(con, name: str, lcao=True):
     for h in [0.16, 0.18, 0.2]:
         a = 16 * h
         atoms = Atoms(symbol, cell=(a, a, 2 * a), pbc=True)
-        atoms.calc = GPAW(h=h,
-                          txt='{}-eggbox-{:.2f}.txt'.format(name, h),
+        atoms.calc = GPAW(mode='fd',
+                          h=h,
+                          txt=f'{name}-eggbox-{h:.2f}.txt',
                           **params)
         energies = []
         try:
@@ -45,7 +45,7 @@ def check(con, name: str, lcao=True):
     atoms = Atoms(symbol, cell=(a, a, a), pbc=True)
     for ecut in cutoffs:
         atoms.calc = GPAW(mode=PW(ecut),
-                          txt='{}-pw-{:04}.txt'.format(name, ecut),
+                          txt=f'{name}-pw-{ecut:04}.txt',
                           **params)
         try:
             atoms.get_potential_energy()
@@ -54,8 +54,9 @@ def check(con, name: str, lcao=True):
         con.write(atoms, name=name, test='pw1', ecut=ecut)
 
     for g in [20, 24, 28]:
-        atoms.calc = GPAW(gpts=(g, g, g),
-                          txt='{}-fd-{}.txt'.format(name, g),
+        atoms.calc = GPAW(mode='fd',
+                          gpts=(g, g, g),
+                          txt=f'{name}-fd-{g}.txt',
                           **params)
         try:
             atoms.get_potential_energy()
@@ -70,7 +71,7 @@ def check(con, name: str, lcao=True):
                 continue
             atoms.calc = GPAW(gpts=(g, g, g),
                               mode='lcao', basis='dzp',
-                              txt='{}-lcao-{}.txt'.format(name, g),
+                              txt=f'{name}-lcao-{g}.txt',
                               **params)
             atoms.get_potential_energy()
             con.write(atoms, name=name, test='lcao1', gpts=g)
@@ -82,7 +83,7 @@ def check(con, name: str, lcao=True):
                   positions=[(0, 0, 0), (0, 0, d)])
     for ecut in cutoffs:
         atoms.calc = GPAW(mode=PW(ecut),
-                          txt='{}2-pw-{:04}.txt'.format(name, ecut),
+                          txt=f'{name}2-pw-{ecut:04}.txt',
                           **params)
         try:
             atoms.get_potential_energy()
@@ -94,15 +95,16 @@ def check(con, name: str, lcao=True):
         id = con.reserve(name=name, test='relax')
         if id is not None:
             atoms.calc = GPAW(mode=PW(1500),
-                              txt='{}2-relax.txt'.format(name),
+                              txt=f'{name}2-relax.txt',
                               **params)
             BFGS(atoms).run(fmax=0.02)
             con.write(atoms, name=name, test='relax')
             del con[id]
 
     for g in [20, 24, 28]:
-        atoms.calc = GPAW(gpts=(g, g, 2 * g),
-                          txt='{}2-fd-{}.txt'.format(name, g),
+        atoms.calc = GPAW(mode='fd',
+                          gpts=(g, g, 2 * g),
+                          txt=f'{name}2-fd-{g}.txt',
                           **params)
         try:
             atoms.get_potential_energy()
@@ -117,7 +119,7 @@ def check(con, name: str, lcao=True):
                 continue
             atoms.calc = GPAW(gpts=(g, g, 2 * g),
                               mode='lcao', basis='dzp',
-                              txt='{}2-lcao-{}.txt'.format(name, g),
+                              txt=f'{name}2-lcao-{g}.txt',
                               **params)
             atoms.get_potential_energy()
             con.write(atoms, name=name, test='lcao2', gpts=g)
@@ -221,11 +223,11 @@ def main():
             else:
                 print('{0:5} {1:6.1f} {2:6.1f} {2:6.1f}'
                       .format(name, ecut, decut),
-                      ''.join('{:7.4f}'.format(e) for e in eegg),
-                      ''.join('{:7.3f}'.format(e) for e in eg),
-                      ''.join('{:7.3f}'.format(e) for e in deg),
-                      ''.join('{:7.3f}'.format(e) for e in eL),
-                      ''.join('{:7.3f}'.format(e) for e in deL))
+                      ''.join(f'{e:7.4f}' for e in eegg),
+                      ''.join(f'{e:7.3f}' for e in eg),
+                      ''.join(f'{e:7.3f}' for e in deg),
+                      ''.join(f'{e:7.3f}' for e in eL),
+                      ''.join(f'{e:7.3f}' for e in deL))
     if opts.plot:
         for name in names:
             E, dE, eegg, ecut, decut, eg, deg, eL, deL = summary(

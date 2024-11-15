@@ -1,7 +1,8 @@
 import numpy as np
+from ase.build import molecule
+
 from gpaw import GPAW, Mixer
 from gpaw.mpi import world
-from ase.build import molecule
 
 # Place one atom next to cell boundary, then check that reuse_wfs
 # works correctly when atom is subsequently displaced across the
@@ -19,7 +20,7 @@ def test_reuse_wfs_celldisp(in_tmp_dir):
         atoms.positions[:, 2] += dz
 
         calc = GPAW(mode='pw',
-                    txt='gpaw.txt',
+                    txt=f'gpaw-{reuse}.txt',
                     nbands=1,
                     experimental=dict(
                         reuse_wfs_method='paw' if reuse else None),
@@ -28,28 +29,23 @@ def test_reuse_wfs_celldisp(in_tmp_dir):
                     mixer=Mixer(0.7, 5, 50.0))
         atoms.calc = calc
 
-        first_iter_err = []
-
-        def monitor():
-            logerr = np.log10(calc.wfs.eigensolver.error)
-            n = calc.scf.niter
-            if n == 1:
-                first_iter_err.append(logerr)
-
-            if world.rank == 0:
-                print('iter', n, 'err', logerr)
-        calc.attach(monitor, 1)
-
-        atoms.get_potential_energy()
-        logerr1 = first_iter_err.pop()
+        for ctx in calc.icalculate(atoms):
+            if ctx.niter == 2:
+                # logerr1 = np.log10(calc.wfs.eigensolver.error)
+                logerr1 = np.log10(ctx.wfs.eigensolver.error)
 
         atoms.positions[:, 2] -= 2 * dz
-        atoms.get_potential_energy()
 
-        logerr2 = first_iter_err.pop()
+        if not reuse and not calc.old:
+            calc.dft.ibzwfs.move_wave_functions = lambda *args: None
+
+        for ctx in calc.icalculate(atoms, system_changes=['positions']):
+            if ctx.niter == 2:
+                logerr2 = np.log10(ctx.wfs.eigensolver.error)
+                break
 
         if world.rank == 0:
-            print('reuse={}'.format(bool(reuse)))
+            print(f'reuse={bool(reuse)}')
             print('logerr1', logerr1)
             print('logerr2', logerr2)
             gain = logerr2 - logerr1
@@ -58,6 +54,6 @@ def test_reuse_wfs_celldisp(in_tmp_dir):
 
     noreuse_logerr = check(0)
     reuse_logerr = check(1)
-    # Ref values: logerr=-3.6 without reuse_wfs and -5.0 with reuse_wfs
-    assert reuse_logerr < -4.8, reuse_logerr
+    # Ref values: logerr=-4.8 without reuse_wfs and -6.1 with reuse_wfs
+    assert reuse_logerr < -6.0, reuse_logerr
     assert reuse_logerr < noreuse_logerr - 1.2, (reuse_logerr, noreuse_logerr)

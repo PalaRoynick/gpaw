@@ -8,21 +8,7 @@ Introduction to GPAW internals
     from gpaw.core.matrix import *
     from gpaw.core.atom_arrays import *
 
-This guide will contain graphs showing the relationship between objects
-that build up a DFT calculation engine.
-
-.. hint::
-
-   Here is a simple graph showing the relations between the classes ``A``,
-   ``B`` and ``C``:
-
-   .. image:: abc.svg
-
-   Here, the object of type ``A`` has an attribute ``a`` of type ``int`` and an
-   attribute ``b`` of type ``B`` or ``C``, where ``C`` inherits from ``B``.
-
 .. contents::
-
 
 DFT components
 ==============
@@ -34,12 +20,10 @@ can be made with the :func:`~gpaw.new.builder.builder` function, an ASE
 >>> from ase import Atoms
 >>> atoms = Atoms('Li', cell=[2, 2, 2], pbc=True)
 >>> from gpaw.new.builder import builder
->>> params = {'mode': 'pw', 'kpts': (5, 5, 5), 'txt': None}
+>>> params = {'mode': 'pw', 'kpts': (5, 5, 5)}
 >>> b = builder(atoms, params)
 
-.. image:: builder.svg
-
-As seen in the figure above, there are builders for each of the modes: PW, FD and LCAO (builders for TB and ATOM modes are not shown).
+There are builders for each of the modes: PW, FD and LCAO.
 
 The :class:`~gpaw.new.input_parameters.InputParameters` object takes care of
 user parameters:
@@ -57,7 +41,7 @@ will happen automatically when you create a DFT-calculation object like this:
 or when you create an ASE-calculator interface:
 
 >>> from gpaw.new.ase_interface import GPAW
->>> atoms.calc = GPAW(**params)
+>>> atoms.calc = GPAW(**params, txt='li.txt')
 
 
 Full picture
@@ -73,7 +57,7 @@ created with the :func:`gpaw.new.ase_interface.GPAW` function:
 ...               pbc=True)
 >>> atoms.calc = GPAW(mode='pw', txt='h2.txt')
 >>> atoms.calc
-ASECalculator(mode: {'name': 'pw'}, txt: 'h2.txt')
+ASECalculator(mode: {'name': 'pw'})
 
 The ``atoms.calc`` object manages a
 :class:`gpaw.new.calculation.DFTCalculation` object that does the actual work.
@@ -91,21 +75,6 @@ and the following will happen:
 * calculate energy
 * store a copy of the atoms
 
-.. image:: code.svg
-
-
-Do-it-yourself example
-======================
-
-Let's try to build a DFT calculation without any of the shortcuts
-(:func:`gpaw.new.builder.builder`, :func:`gpaw.new.ase_interface.GPAW`
-or :meth:`gpaw.new.calculation.DFTCalculation.from_parameters`).
-
-So, instead of simple three-line example above where we calculate the energy
-of an :mol:`H2` molecule, we do it the hard way:
-
-.. literalinclude:: diy.py
-
 
 DFT-calculation object
 ======================
@@ -117,23 +86,51 @@ the following attributes:
 
 .. list-table::
 
-  * - ``state``
-    - :class:`gpaw.new.calculation.DFTState`
-  * - ``scf_loop``
-    - :class:`gpaw.new.scf.SCFLoop`
-  * - ``pot_calc``
-    - :class:`gpaw.new.pot_calc.PotentialCalculator`
-
-and a the :class:`gpaw.new.calculation.DFTState` object has these attributes:
-
-.. list-table::
-
   * - ``density``
     - :class:`gpaw.new.density.Density`
   * - ``ibzwfs``
     - :class:`gpaw.new.ibzwfs.IBZWaveFunctions`
   * - ``potential``
     - :class:`gpaw.new.potential.Potential`
+  * - ``scf_loop``
+    - :class:`gpaw.new.scf.SCFLoop`
+  * - ``pot_calc``
+    - :class:`gpaw.new.pot_calc.PotentialCalculator`
+
+Overview:
+
+* ``atoms.calc``:
+
+  * ``dft``:
+
+    * ``density``: ``nt_sR``, ``D_asii``, ...
+    * ``potential``: ``vt_sR``, ``dH_asii``, ...
+    * ``pot_calc``:
+
+      * ``xc``
+      * ``poisson_solver``
+
+    * ``scf_loop``:
+
+      * ``eigensolver``
+      * ``hamiltonian``
+      * ``occ_calc``
+      * ``mixer``
+
+    * ``ibzwfs``:
+
+      * ``ibz``:
+
+        * ``symmetries``
+        * ``bz``
+
+      * ``wfs_qs[q][s]``:
+
+        * ``psit_nX``
+        * ``occ_n``
+        * ...
+
+See also: :download:`code.svg`.
 
 
 Naming convention for arrays
@@ -183,14 +180,14 @@ Examples:
     - :class:`~atom_arrays.AtomArrays`
   * - ``density.nt_sR``
     - `\tilde{n}_\sigma(\mathbf{r})`
-    - :class:`~uniform_grid.UniformGridFunctions`
-  * - ``ibzwfs.wfs_qs[q][s].P_ain``
-    - `P_{\sigma \mathbf{k} in}^a`
+    - :class:`~UGArray`
+  * - ``ibzwfs.wfs_qs[q][s].P_ani``
+    - `P_{\sigma \mathbf{k} ni}^a`
     - :class:`~atom_arrays.AtomArrays`
   * - ``ibzwfs.wfs_qs[q][s].psit_nX``
     - `\tilde{\psi}_{\sigma \mathbf{k} n}(\mathbf{r})`
-    - :class:`~uniform_grid.UniformGridFunctions` |
-      :class:`~plane_waves.PlaneWaveExpansions`
+    - :class:`~UGArray` |
+      :class:`~PWArray`
   * - ``ibzwfs.wfs_qs[q][s].pt_aX``
     - `\tilde{p}_{\sigma \mathbf{k} i}^a(\mathbf{r}-\mathbf{R}^a)`
     - :class:`~atom_centered_functions.AtomCenteredFunctions`
@@ -202,25 +199,24 @@ Domain descriptors
 GPAW has two different container types for storing one or more functions
 in a unit cell (wave functions, electron densities, ...):
 
-* :class:`~plane_waves.PlaneWaveExpansions`
-* :class:`UniformGridFunctions`
+* :class:`~PWArray`
+* :class:`UGArray`
 
-.. image:: da.svg
 
 Uniform grids
 -------------
 
-A uniform grid can be created with the :class:`UniformGrid` class:
+A uniform grid can be created with the :class:`UGDesc` class:
 
 >>> import numpy as np
->>> from gpaw.core import UniformGrid
+>>> from gpaw.core import UGDesc
 >>> a = 4.0
 >>> n = 20
->>> grid = UniformGrid(cell=a * np.eye(3),
-...                    size=(n, n, n))
+>>> grid = UGDesc(cell=a * np.eye(3),
+...               size=(n, n, n))
 
-Given a :class:`UniformGrid` object, one can create
-:class:`UniformGridFunctions` objects like this
+Given a :class:`UGDesc` object, one can create
+:class:`UGArray` objects like this
 
 >>> func_R = grid.empty()
 >>> func_R.data.shape
@@ -229,15 +225,15 @@ Given a :class:`UniformGrid` object, one can create
 >>> grid.zeros((3, 2)).data.shape
 (3, 2, 20, 20, 20)
 
-Here are the methods of the :class:`UniformGrid` class:
+Here are the methods of the :class:`UGDesc` class:
 
 .. csv-table::
-   :file: ug.csv
+   :file: ugd.csv
 
-and the :class:`UniformGridFunctions` class:
+and the :class:`UGArray` class:
 
 .. csv-table::
-   :file: ugf.csv
+   :file: uga.csv
 
 
 Plane waves
@@ -246,44 +242,52 @@ Plane waves
 A set of plane-waves are characterized by a cutoff energy and a uniform
 grid:
 
->>> from gpaw.core import PlaneWaves
->>> pw = PlaneWaves(ecut=100, cell=grid.cell)
+>>> from gpaw.core import PWDesc
+>>> pw = PWDesc(ecut=100, cell=grid.cell)
 >>> func_G = pw.empty()
 >>> func_R.fft(out=func_G)
-PlaneWaveExpansions(pw=PlaneWaves(ecut=100 <coefs=1536/1536>, cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
+PWArray(pw=PWDesc(ecut=100 <coefs=1536/1536>, cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
 >>> G = pw.reciprocal_vectors()
 >>> G.shape
 (1536, 3)
 >>> G[0]
 array([0., 0., 0.])
 >>> func_G.data[0]
-(1+0j)
+np.complex128(1+0j)
 >>> func_G.ifft(out=func_R)
-UniformGridFunctions(grid=UniformGrid(size=[20, 20, 20], cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
+UGArray(grid=UGDesc(size=[20, 20, 20], cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
 >>> round(func_R.data[0, 0, 0], 15)
-1.0
+np.float64(1.0)
 
-Here are the methods of the :class:`~plane_waves.PlaneWaves` class:
-
-.. csv-table::
-   :file: pw.csv
-
-and the :class:`~plane_waves.PlaneWaveExpansions` class:
+Here are the methods of the :class:`~PWDesc` class:
 
 .. csv-table::
-   :file: pwe.csv
+   :file: pwd.csv
+
+and the :class:`~PWArray` class:
+
+.. csv-table::
+   :file: pwa.csv
 
 
 Atoms-arrays
 ============
 
-.. image:: aa.svg
+As an example, here is how to store the PAW atomic density-matrices for
+a water molcule
+(:math:`D_{\sigma,i_1,i_2}^a`):
 
+.. code-block:: python
 
-Block boundary conditions
-=========================
-
-...
+   >>> nspins = 2
+   >>> D_asii = AtomArraysLayout(
+   ...     [(5, 5), (5, 5), (13, 13)],
+   ...     # dtype=float,
+   ...     # xp=np,
+   ...     # atomdist=...
+   ...     ).zeros(nspins)
+   >>> D_asii.data.shape
+   (2, 219)
 
 
 Matrix elements
@@ -308,8 +312,6 @@ but faster.
 
 Atom-centered functions
 =======================
-
-.. image:: acf.svg
 
 .. literalinclude:: acf_example.py
 
@@ -372,16 +374,16 @@ API
 Core
 ----
 
-.. autoclass:: gpaw.core.UniformGrid
+.. autoclass:: gpaw.core.UGDesc
     :members:
     :undoc-members:
-.. autoclass:: gpaw.core.PlaneWaves
+.. autoclass:: gpaw.core.PWDesc
     :members:
     :undoc-members:
 .. autoclass:: gpaw.core.atom_centered_functions.AtomCenteredFunctions
     :members:
     :undoc-members:
-.. autoclass:: gpaw.core.uniform_grid.UniformGridFunctions
+.. autoclass:: gpaw.core.UGArray
     :members:
     :undoc-members:
 .. autoclass:: gpaw.core.arrays.DistributedArrays
@@ -396,7 +398,7 @@ Core
 .. autoclass:: gpaw.core.atom_arrays.AtomDistribution
     :members:
     :undoc-members:
-.. autoclass:: gpaw.core.plane_waves.PlaneWaveExpansions
+.. autoclass:: gpaw.core.PWArray
     :members:
     :undoc-members:
 .. autoclass:: gpaw.core.plane_waves.Empty
@@ -446,6 +448,7 @@ DFT
     :members:
     :undoc-members:
 .. autofunction:: gpaw.new.ase_interface.GPAW
+.. autofunction:: gpaw.new.pwfd.move_wfs.move_wave_functions
 
 
 FFTW

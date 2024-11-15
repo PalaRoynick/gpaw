@@ -1,15 +1,20 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Callable
+
 import numpy as np
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
-from gpaw.mpi import serial_comm, MPIComm
 from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.lfc import LocalizedFunctionsCollection as LFC
+from gpaw.mpi import MPIComm, serial_comm
+from gpaw.new import zips
 from gpaw.spline import Spline
-from gpaw.typing import ArrayLike2D, Array1D
+from gpaw.typing import Array1D, ArrayLike2D
+from gpaw.gpu import XP
+
 if TYPE_CHECKING:
-    from gpaw.core.uniform_grid import UniformGridFunctions
+    from gpaw.core.uniform_grid import UGArray
 
 
 def to_spline(l: int,
@@ -17,14 +22,16 @@ def to_spline(l: int,
               f: Callable[[Array1D], Array1D]) -> Spline:
     """Convert to GPAW's Spline object."""
     r = np.linspace(0, rcut, 100)
-    return Spline(l, rcut, f(r))
+    return Spline.from_data(l, rcut, f(r))
 
 
-class AtomCenteredFunctions:
+class AtomCenteredFunctions(XP):
     def __init__(self,
                  functions,
                  fracpos_ac: ArrayLike2D,
-                 atomdist: AtomDistribution = None):
+                 atomdist: AtomDistribution | None = None,
+                 xp=None):
+        XP.__init__(self, xp or np)
         self.functions = [[to_spline(*f) if isinstance(f, tuple) else f
                            for f in funcs]
                           for funcs in functions]
@@ -41,6 +48,9 @@ class AtomCenteredFunctions:
         return (f'{self.__class__.__name__}'
                 f'(functions={funcs}, atomdist={self.atomdist})')
 
+    def new(self, desc, atomdist):
+        raise NotImplementedError
+
     @property
     def layout(self):
         self._lazy_init()
@@ -51,16 +61,29 @@ class AtomCenteredFunctions:
         self._lazy_init()
         return self._atomdist
 
+    def _lazy_init(self):
+        raise NotImplementedError
+
     def empty(self,
               dims: int | tuple[int, ...] = (),
               comm: MPIComm = serial_comm) -> AtomArrays:
         """Create AtomsArray for coefficients."""
         return self.layout.empty(dims, comm)
 
-    def move(self, fracpos_ac, atomdist):
+    def move(self,
+             fracpos_ac: np.ndarray,
+             atomdist: AtomDistribution) -> AtomDistribution:
         """Move atoms to new positions."""
         self.fracpos_ac = np.array(fracpos_ac)
-        self._lfc.set_positions(fracpos_ac, atomdist)
+        self._atomdist = atomdist
+        if self._lfc is not None:
+            self._layout = self._layout.new(atomdist=atomdist)
+            migration = self._lfc.set_positions(fracpos_ac, atomdist)
+            if migration:
+                atomdist = AtomDistribution(
+                    [sphere.rank for sphere in self._lfc.sphere_a],
+                    atomdist.comm)
+        return atomdist
 
     def add_to(self, functions, coefs=1.0):
         """Add atom-centered functions multiplied by *coefs* to *functions*."""
@@ -70,14 +93,15 @@ class AtomCenteredFunctions:
         else:
             self._lfc.add(functions.data, coefs, q=0)
 
-    def integrate(self, functions, out=None):
+    def integrate(self, functions, out=None, add_to=False):
         """Calculate integrals of atom-centered functions multiplied by
         *functions*.
         """
         self._lazy_init()
         if out is None:
+            assert not add_to
             out = self.layout.empty(functions.dims, functions.comm)
-        self._lfc.integrate(functions.data, out, q=0)
+        self._lfc.integrate(functions.data, out, q=0, add_to=add_to)
         return out
 
     def derivative(self, functions, out=None):
@@ -86,14 +110,18 @@ class AtomCenteredFunctions:
         """
         self._lazy_init()
         if out is None:
-            out = self.layout.empty((3,) + functions.dims, functions.comm)
-        coef_axiv = {a: np.moveaxis(array_vxi, 0, -1)
-                     for a, array_vxi in out._arrays.items()}
+            out = self.layout.empty(functions.dims + (3,), functions.comm)
+        coef_axiv = {a: self.xp.moveaxis(array_xvi, -2, -1)
+                     for a, array_xvi in out._arrays.items()}
         self._lfc.derivative(functions.data, coef_axiv, q=0)
         return out
 
+    def stress_contribution(self, a, c=1.0):
+        self._lazy_init()
+        return self._lfc.stress_tensor_contribution(a.data, c)
 
-class UniformGridAtomCenteredFunctions(AtomCenteredFunctions):
+
+class UGAtomCenteredFunctions(AtomCenteredFunctions):
     def __init__(self,
                  functions,
                  fracpos_ac,
@@ -101,14 +129,25 @@ class UniformGridAtomCenteredFunctions(AtomCenteredFunctions):
                  *,
                  atomdist=None,
                  integral=None,
-                 cut=False):
+                 cut=False,
+                 xp=np):
         AtomCenteredFunctions.__init__(self,
                                        functions,
                                        fracpos_ac,
-                                       atomdist)
+                                       atomdist, xp=xp)
         self.grid = grid
         self.integral = integral
         self.cut = cut
+
+    def new(self, grid, atomdist):
+        return UGAtomCenteredFunctions(
+            self.functions,
+            self.fracpos_ac,
+            grid,
+            atomdist=atomdist,
+            integral=self.integral,
+            cut=self.cut,
+            xp=self.xp)
 
     def _lazy_init(self):
         if self._lfc is not None:
@@ -119,7 +158,8 @@ class UniformGridAtomCenteredFunctions(AtomCenteredFunctions):
                         dtype=self.grid.dtype,
                         integral=self.integral,
                         forces=True,
-                        cut=self.cut)
+                        cut=self.cut,
+                        xp=self.xp)
         self._lfc.set_positions(self.fracpos_ac)
 
         if self._atomdist is None:
@@ -127,18 +167,19 @@ class UniformGridAtomCenteredFunctions(AtomCenteredFunctions):
                 ranks=np.array([sphere.rank for sphere in self._lfc.sphere_a]),
                 comm=self.grid.comm)
         else:
-            for sphere, rank in zip(self._lfc.sphere_a, self._atomdist.rank_a):
+            for sphere, rank in zips(self._lfc.sphere_a,
+                                     self._atomdist.rank_a):
                 assert sphere.rank == rank
             assert self.grid.comm is self._atomdist.comm
 
         self._layout = AtomArraysLayout([sum(2 * f.l + 1 for f in funcs)
                                          for funcs in self.functions],
                                         self._atomdist,
-                                        self.grid.dtype)
+                                        self.grid.dtype, xp=self.xp)
 
     def to_uniform_grid(self,
-                        out: UniformGridFunctions,
-                        scale: float = 1.0) -> UniformGridFunctions:
+                        out: UGArray,
+                        scale: float = 1.0) -> UGArray:
         out.data[:] = 0.0
         self.add_to(out, scale)
         return out

@@ -3,9 +3,11 @@ from math import pi
 import numpy as np
 from ase.units import Bohr
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.grid_descriptor import GridDescriptor, GridBoundsError
+from gpaw.gpu import cupy_is_fake
+from gpaw.new import trace
 from gpaw.utilities import smallest_safe_grid_spacing
 
 """
@@ -88,7 +90,7 @@ class Sphere:
             l = spline.get_angular_momentum_number()
             for beg_c, end_c, sdisp_c in gd.get_boxes(spos_c, rcut, cut):
                 pos_v = np.dot(spos_c - sdisp_c, gd.cell_cv)
-                A_gm, G_b = _gpaw.spline_to_grid(
+                A_gm, G_b = cgpaw.spline_to_grid(
                     spline.spline,
                     beg_c, end_c, pos_v,
                     np.ascontiguousarray(gd.h_cv),
@@ -223,13 +225,14 @@ class LocalizedFunctionsCollection(BaseLFC):
 
     """
     def __init__(self, gd, spline_aj, kd=None, cut=False, dtype=float,
-                 integral=None, forces=None):
+                 integral=None, forces=None, xp=np):
         self.gd = gd
         self.kd = kd
         self.sphere_a = [Sphere(spline_j) for spline_j in spline_aj]
         self.cut = cut
         self.dtype = dtype
         self.Mmax = None
+        self.xp = xp
 
         if kd is None:
             self.ibzk_qc = np.zeros((1, 3))
@@ -253,19 +256,31 @@ class LocalizedFunctionsCollection(BaseLFC):
         self.my_atom_indices = None
         self.lfc = None
 
-    def set_positions(self, spos_ac, atom_partition=None):
+    def set_positions(self, spos_ac, atom_partition=None) -> bool:
+        """Set positions and return True if any atoms have migrated to
+        another rank.
+        """
         assert len(spos_ac) == len(self.sphere_a)
         spos_ac = np.asarray(spos_ac)
         movement = False
+        old_ranks = [sphere.rank for sphere in self.sphere_a]
         for a, (spos_c, sphere) in enumerate(zip(spos_ac, self.sphere_a)):
             try:
                 movement |= sphere.set_position(spos_c, self.gd, self.cut)
             except GridBoundsError as e:
-                e.args = [f'Atom {a} too close to edge: {e}']
+                e.args = (f'Atom {a} too close to edge: {e}',)
                 raise
 
-        if movement or self.my_atom_indices is None:
+        if self.my_atom_indices is None:
             self._update(spos_ac)
+            return False
+
+        if movement:
+            self._update(spos_ac)
+            for rank, sphere in zip(old_ranks, self.sphere_a):
+                if rank != sphere.rank:
+                    return True
+        return False
 
     def _update(self, spos_ac):
         nB = 0
@@ -294,8 +309,8 @@ class LocalizedFunctionsCollection(BaseLFC):
 
         natoms = len(spos_ac)
         # Holm-Nielsen check:
-        if ((self.gd.comm.sum(float(sum(self.my_atom_indices))) !=
-             natoms * (natoms - 1) // 2)):
+        if (self.gd.comm.sum_scalar(float(sum(self.my_atom_indices))) !=
+            natoms * (natoms - 1) // 2):
             raise ValueError('Holm-Nielsen check failed.  Grid might be '
                              'too coarse.  Use h < %.3f'
                              % (smallest_safe_grid_spacing * Bohr))
@@ -340,9 +355,6 @@ class LocalizedFunctionsCollection(BaseLFC):
         self.G_B = self.G_B[indices]
         self.W_B = self.W_B[indices]
 
-        self.lfc = _gpaw.LFC(self.A_Wgm, self.M_W, self.G_B, self.W_B,
-                             self.gd.dv, self.phase_qW)
-
         # Find out which ranks have a piece of the
         # localized functions:
         x_a = np.zeros(natoms, bool)
@@ -367,6 +379,9 @@ class LocalizedFunctionsCollection(BaseLFC):
             for i in range(3):
                 for iterator in iterators:
                     next(iterator)
+
+        self.lfc = cgpaw.LFC(self.A_Wgm, self.M_W, self.G_B, self.W_B,
+                             self.gd.dv, self.phase_qW, self.xp is not np)
 
         return sdisp_Wc
 
@@ -403,9 +418,17 @@ class LocalizedFunctionsCollection(BaseLFC):
 
         if isinstance(c_axi, float):
             assert q == -1 and a_xG.ndim == 3
-            c_xM = np.empty(self.Mmax)
+            c_xM = self.xp.empty(self.Mmax)
             c_xM.fill(c_axi)
-            self.lfc.add(c_xM, a_xG, q)
+            if self.xp is np:
+                self.lfc.add(c_xM, a_xG, q)
+            elif cupy_is_fake:
+                self.lfc.add(c_xM._data, a_xG._data, q)
+            else:
+                self.lfc.add_gpu(c_xM.data.ptr,
+                                 c_xM.shape,
+                                 a_xG.data.ptr,
+                                 a_xG.shape, q)
             return
 
         dtype = a_xG.dtype
@@ -427,7 +450,7 @@ class LocalizedFunctionsCollection(BaseLFC):
             sphere = self.sphere_a[a]
             M2 = M1 + sphere.Mmax
             if c_xi is None:
-                c_xi = np.empty(xshape + (sphere.Mmax,), dtype)
+                c_xi = self.xp.empty(xshape + (sphere.Mmax,), dtype)
                 b_axi[a] = c_xi
                 requests.append(comm.receive(c_xi, sphere.rank, a, False))
             else:
@@ -439,7 +462,7 @@ class LocalizedFunctionsCollection(BaseLFC):
         for request in requests:
             comm.wait(request)
 
-        c_xM = np.empty(xshape + (self.Mmax,), dtype)
+        c_xM = self.xp.empty(xshape + (self.Mmax,), dtype)
         M1 = 0
         for a in self.atom_indices:
             c_xi = c_axi.get(a)
@@ -450,7 +473,15 @@ class LocalizedFunctionsCollection(BaseLFC):
             c_xM[..., M1:M2] = c_xi
             M1 = M2
 
-        self.lfc.add(c_xM, a_xG, q)
+        if self.xp is np:
+            self.lfc.add(c_xM, a_xG, q)
+        elif cupy_is_fake:
+            self.lfc.add(c_xM._data, a_xG._data, q)
+        else:
+            self.lfc.add_gpu(c_xM.data.ptr,
+                             c_xM.shape,
+                             a_xG.data.ptr,
+                             a_xG.shape, q)
 
     def add_derivative(self, a, v, a_xG, c_axi=1.0, q=-1):
         """Add derivative of localized functions on atom to extended arrays.
@@ -530,7 +561,7 @@ class LocalizedFunctionsCollection(BaseLFC):
                                 gd.n_c, cspline_M,
                                 gd.beg_c, self.pos_Wv, a, v, q)
 
-    def integrate(self, a_xG, c_axi, q=-1):
+    def integrate(self, a_xG, c_axi, q=-1, add_to=False):
         """Calculate integrals of arrays times localized functions.
 
         ::
@@ -540,24 +571,35 @@ class LocalizedFunctionsCollection(BaseLFC):
                    /     x       i
 
         """
+        assert not add_to
         assert not self.use_global_indices
         if q == -1:
             assert self.dtype == float
 
         xshape = a_xG.shape[:-3]
+        dtype = a_xG.dtype
 
         if debug:
+            assert self.dtype == dtype
             assert a_xG.ndim >= 3
             assert sorted(c_axi.keys()) == self.my_atom_indices
             for c_xi in c_axi.values():
                 assert c_xi.shape[:-1] == xshape
 
-        dtype = a_xG.dtype
-
-        c_xM = np.zeros(xshape + (self.Mmax,), dtype)
-        self.lfc.integrate(a_xG, c_xM, q)
-
         comm = self.gd.comm
+
+        c_xM = self.xp.zeros(xshape + (self.Mmax,), dtype)
+        if self.xp is np:
+            self.lfc.integrate(a_xG, c_xM, q)
+        elif cupy_is_fake:
+            self.lfc.integrate(a_xG._data, c_xM._data, q)
+        else:
+            self.lfc.integrate_gpu(a_xG.data.ptr,
+                                   a_xG.shape,
+                                   c_xM.data.ptr,
+                                   c_xM.shape, q)
+            c_xM *= self.gd.dv
+
         rank = comm.rank
         srequests = []
         rrequests = []
@@ -574,8 +616,9 @@ class LocalizedFunctionsCollection(BaseLFC):
                                            sphere.rank, a, False))
             else:
                 if len(sphere.ranks) > 0:
-                    c_rxi = np.empty(sphere.ranks.shape + xshape + (M2 - M1,),
-                                     dtype)
+                    c_rxi = self.xp.empty(
+                        sphere.ranks.shape + xshape + (M2 - M1,),
+                        dtype)
                     c_arxi[a] = c_rxi
                     for r, b_xi in zip(sphere.ranks, c_rxi):
                         rrequests.append(comm.receive(b_xi, r, a, False))
@@ -591,8 +634,9 @@ class LocalizedFunctionsCollection(BaseLFC):
             M2 = M1 + sphere.Mmax
             if c_xi is not None:
                 if len(sphere.ranks) > 0:
-                    c_xi[:] = c_xM[..., M1:M2] + c_arxi[a].sum(axis=0)
-                else:
+                    if c_xM.shape[-1] > M1:
+                        c_xi[:] = c_xM[..., M1:M2] + c_arxi[a].sum(axis=0)
+                elif c_xM.shape[-1] > M1:
                     c_xi[:] = c_xM[..., M1:M2]
             M1 = M2
 
@@ -654,7 +698,7 @@ class LocalizedFunctionsCollection(BaseLFC):
         rank = comm.rank
         srequests = []
         rrequests = []
-        c_arxiv = {}  # see also http://arXiv.org
+        c_arxiv = {}  # see also https://arXiv.org
         b_axiv = {}
         M1 = 0
         for a in self.atom_indices:
@@ -917,16 +961,17 @@ class LocalizedFunctionsCollection(BaseLFC):
 
 class BasisFunctions(LocalizedFunctionsCollection):
     def __init__(self, gd, spline_aj, kd=None, cut=False, dtype=float,
-                 integral=None, forces=None):
+                 integral=None, forces=None, xp=np):
         LocalizedFunctionsCollection.__init__(self, gd, spline_aj,
                                               kd, cut,
                                               dtype, integral,
-                                              forces)
+                                              forces, xp=xp)
         self.use_global_indices = True
 
         self.Mstart = None
         self.Mstop = None
 
+    @trace
     def set_positions(self, spos_ac):
         LocalizedFunctionsCollection.set_positions(self, spos_ac)
         self.Mstart = 0
@@ -1171,6 +1216,7 @@ class BasisFunctions(LocalizedFunctionsCollection):
         F_vM = np.zeros((3, Mstop - Mstart))
         assert self.Mmax == rhoT_MM.shape[1]
         assert Mstop - Mstart == rhoT_MM.shape[0]
+        assert rhoT_MM.flags.c_contiguous
         for v in range(3):
             self.lfc.calculate_potential_matrix_force_contribution(
                 vt_G, rhoT_MM, F_vM[v],
@@ -1215,7 +1261,7 @@ def test():
 
     from gpaw.spline import Spline
     a = np.array([1, 0.9, 0.8, 0.0])
-    s = Spline(0, 0.2, a)
+    s = Spline.from_data(0, 0.2, a)
     x = LocalizedFunctionsCollection(gd, [[s], [s]])
     x.set_positions([(0.5, 0.45, 0.5), (0.5, 0.55, 0.5)])
     n_G = gd.zeros()

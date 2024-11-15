@@ -50,7 +50,7 @@ def encode(text: str) -> str:
     return ''.join(d.get(c, c) for c in text)
 
 
-dev = 'https://wiki.fysik.dtu.dk/gpaw/devel'
+dev = 'https://gpaw.readthedocs.io/devel'
 
 questions = [
     Question(text='What, ... is your name?'),
@@ -74,9 +74,9 @@ questions = [
              choises=['home-made system',
                       'pytest',
                       'unittest']),
-    Question(text='What is the name of the environment variable that the '
-             '"gpw_files" fixture uses for the folder to store gpw-files in?',
-             solutions=['TCJ_GRFG_SVYRF', '$TCJ_GRFG_SVYRF'])]
+    Question(text='What is the name of the environment variable that points '
+             'at the folder(s) where PAW dataset files are stores?',
+             solutions=['TCNJ_FRGHC_CNGU', '$TCNJ_FRGHC_CNGU'])]
 
 
 def main() -> None:

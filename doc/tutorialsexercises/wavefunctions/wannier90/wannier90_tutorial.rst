@@ -5,12 +5,12 @@
 Interface to Wannier90
 ======================
 
-In this tutorial we will briefly scetch the interface to Wannier90. The
+In this tutorial we will briefly sketch the interface to Wannier90. The
 tutorial assumes that ``Wannier90`` is installed and ``wannier90.x``,
 ``postw90.x`` are in your path of executables. We emphasize that this is only
 to be regarded as a tutorial on the GPAW interface to ``Wannier90``. Details
 and tutorials on the ``Wannier90`` code itself can be found at the `Wannier90
-home page <http://www.wannier.org>`_. For details on the theory the review
+home page <https://www.wannier.org>`_. For details on the theory the review
 paper [#Wannier_code]_ may be consulted. The interface is
 documented in Ref. [#Olsen]_
 
@@ -20,9 +20,7 @@ Wannier functions of GaAs
 
 As a first example we generate the maximally localized Wannier functions of
 GaAs. The ground state is calculated and saved with the following script
-:download:`GaAs.py`. Note that symmetry has been swtched off in the
-calculation, since the interface do not support symmetry reduced `k`-points
-at the moment. This should be trivial to implement though. The following
+:download:`GaAs.py`. The following
 script genrates the maximally localized Wannier functions of the occupied
 bands.
 
@@ -115,7 +113,11 @@ As a final example we calculate the anomalous Hall conductivity of Fe, which
 is not easily obtained with GPAW. It can be expressed as a Brillouin zone
 integral of the Berry curvature and is an effect of spin-orbit coupling. As
 such we need to generate spinorial Wannier functions. The ground state
-electronci structure is genrated with the script :download:`Fe.py`.  The
+electronci structure is generated with the script :download:`Fe.py`.
+Note that symmetry has been swtched off in the
+calculation, since the interface do not support symmetry reduced `k`-points
+including spin-orbit coupling at the moment.
+This should be trivial to implement though. The
 Wannier functions are generated with the script
 
 .. literalinclude:: Fe_wannier.py
@@ -147,7 +149,7 @@ and run::
 
 This will calculate the band structure and Berry curvature along the
 specified path. Note that the calculatons is orders of magnitude faster
-compared to a standard non-selfconsistent band structure calculation with
+compared to a standard non self-consistent band structure calculation with
 GPAW. It also generates the script ``Fe-bands+curv_z.py``, which can be used
 to plot the band structure along with the `z`-component of the Berry
 curvature. The result is shown below
@@ -167,7 +169,7 @@ on a very fine mesh. To perform the calculation set ``kpath = False`` in
 
 Now run ``postw90.x Fe`` once more. This calculates the anomalous Hall
 conductivity on a `50\times50\times50` `k`-mesh. The `z`-component should be
-924 S/cm and can be read from the output file ``Fe.wpout``. This is not too
+873 S/cm and can be read from the output file ``Fe.wpout``. This is not too
 bad, but one needs to go to much higher `k`-point densities to obtain the
 converged values of 757 S/cm [#AHC]_.
 

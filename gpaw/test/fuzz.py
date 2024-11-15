@@ -197,13 +197,11 @@ def run2(atoms: Atoms,
 
     code = params.pop('code')
     if code[0] == 'n':
+        if params.pop('dtype', None) == complex:
+            params['mode']['force_complex_dtype'] = True
         calc = NewGPAW(**params)
     else:
-        params['mode'] = {
-            'name': params['mode'],
-            'force_complex_dtype': params.pop('force_complex_dtype')}
         calc = OldGPAW(**params)
-
     atoms.calc = calc
 
     t1 = time()
@@ -222,19 +220,21 @@ def run2(atoms: Atoms,
     gpw_file = result_file.with_suffix('.gpw')
     calc.write(gpw_file, mode='all')
 
-    calculation = NewGPAW(gpw_file).calculation
+    dft = NewGPAW(gpw_file).dft
 
-    energy2 = calculation.results['energy'] * Ha
+    energy2 = dft.results['energy'] * Ha
     assert abs(energy2 - energy) < 1e-13, (energy2, energy)
 
     if forces is not None:
-        forces2 = calculation.results['forces'] * Ha / Bohr
+        forces2 = dft.results['forces'] * Ha / Bohr
         assert abs(forces2 - forces).max() < 1e-14
 
     # ibz_index = atoms.calc.wfs.kd.bz2ibz_k[p.kpt]
     # eigs = atoms.calc.get_eigenvalues(ibz_index, p.spin)
 
     if world.rank == 0:
+        if 'dtype' in params:
+            params['dtype'] = 'complex'
         result_file.write_text(json.dumps([result, params], indent=2))
 
     atoms.calc = None
@@ -341,11 +341,12 @@ def create_extra_parameters(codes: list[str],
                     sparams = {**params, 'symmetry': 'off'}
                 else:
                     sparams = params
-                for for_complex_dtype in pick(complex_all):
-                    sparams['force_complex_dtype'] = for_complex_dtype
+                for force_complex_dtype in pick(complex_all):
+                    if force_complex_dtype:
+                        sparams['dtype'] = complex
                     yield (sparams,
                            (f'-c{code} -n{ncores} -s{int(use_symm)} '
-                            f'-x{int(for_complex_dtype)}'))
+                            f'-x{int(force_complex_dtype)}'))
 
 
 systems = {}

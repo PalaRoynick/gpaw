@@ -8,7 +8,6 @@ import numpy as np
 from ase.units import Hartree
 from ase.utils.timing import Timer
 
-import _gpaw
 import gpaw.mpi as mpi
 from gpaw.xc import XC
 from gpaw.lrtddft.excitation import Excitation, ExcitationList, get_filehandle
@@ -154,18 +153,17 @@ class LrTDDFT(ExcitationList):
 
     def forced_update(self):
         """Recalc yourself."""
-        if not self.force_ApmB:
-            Om = OmegaMatrix
-            name = 'LrTDDFT'
-            if self.xc:
-                if isinstance(self.xc, str):
-                    xc = XC(self.xc)
-                else:
-                    xc = self.xc
-                if hasattr(xc, 'hybrid') and xc.hybrid > 0.0:
-                    Om = ApmB
-                    name = 'LrTDDFThyb'
-        else:
+        Om = OmegaMatrix
+        name = 'LrTDDFT'
+
+        hybrid = False
+        if self.xc and self.xc != 'RPA':
+            xc = self.xc
+            if isinstance(self.xc, str):
+                xc = XC(self.xc)
+            hybrid = hasattr(xc, 'hybrid') and xc.hybrid > 0.0
+
+        if hybrid or self.force_ApmB:
             Om = ApmB
             name = 'LrTDDFThyb'
 
@@ -220,7 +218,11 @@ class LrTDDFT(ExcitationList):
         s = f.readline().strip()
         lr.name = s.split()[1]
 
-        lr.xc = XC(f.readline().strip().split()[0])
+        xc = f.readline().strip().split()[0]
+        if xc == 'RPA':
+            lr.xc = xc
+        else:
+            lr.xc = XC(xc)
         values = f.readline().split()
         eps = float(values[0])
         if len(values) > 1:
@@ -353,7 +355,7 @@ class LrTDDFT(ExcitationList):
 
             if len(self):
                 f.write('# Eigenvalues\n')
-                f.write('{0}\n'.format(len(self)))
+                f.write(f'{len(self)}\n')
                 for ex in self:
                     f.write(ex.outstring())
                 f.write('# Eigenvectors\n')
@@ -411,23 +413,6 @@ class LrTDDFT(ExcitationList):
             self.timer.write(self.log.fd)
         except AttributeError:
             pass
-
-
-def d2Excdnsdnt(dup, ddn):
-    """Second derivative of Exc polarised"""
-    res = [[0, 0], [0, 0]]
-    for ispin in range(2):
-        for jspin in range(2):
-            res[ispin][jspin] = np.zeros(dup.shape)
-            _gpaw.d2Excdnsdnt(dup, ddn, ispin, jspin, res[ispin][jspin])
-    return res
-
-
-def d2Excdn2(den):
-    """Second derivative of Exc unpolarised"""
-    res = np.zeros(den.shape)
-    _gpaw.d2Excdn2(den, res)
-    return res
 
 
 class LrTDDFTExcitation(Excitation):

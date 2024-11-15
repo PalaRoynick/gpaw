@@ -662,6 +662,95 @@ PyObject* blacs_destroy(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
+#ifdef GPAW_WITH_INTEL_MKL
+PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args)
+{
+  PyArrayObject* a_obj; // matrix;
+  PyArrayObject* U_obj; // matrix;
+  PyArrayObject* eps_obj; // matrix;
+  PyArrayObject* desca_obj; // descriptor
+
+  if (!PyArg_ParseTuple(args, "OOOO", &a_obj, &U_obj, &eps_obj, &desca_obj))
+    return NULL;
+
+   char balanc = 'N';
+   char jobvl = 'N';
+   char jobvr = 'V';
+   char sense = 'N';
+   double_complex* a = (double_complex*) PyArray_BYTES(a_obj);
+   int* desca = (int*) PyArray_BYTES(desca_obj);
+   int n = desca[2];
+
+   double_complex* w = (double_complex*) PyArray_BYTES(eps_obj);
+   double_complex* vl = NULL;
+   int descvl = 0;
+   double_complex* vr = (double_complex*) PyArray_BYTES(U_obj);;
+   int* descvr = (int*) PyArray_BYTES(desca_obj);
+   int ilo = 1;
+   int ihi = n;
+   double* scale = (double*) malloc( sizeof(double) * n);
+   double abnrm = 0;
+   double* rconde = (double*) malloc(sizeof(double) * n);
+   double* rcondv = NULL;
+   double_complex qwork;
+   int lwork = -1;
+   int info = 0;
+
+   // First we query for optimal work array size
+   pzgeevx(&balanc, 
+           &jobvl,
+           &jobvr,
+           &sense,
+           &n,
+           a,
+           desca,
+           w,
+           vl,
+           &descvl,
+           vr,
+           descvr,
+           &ilo,
+           &ihi,
+           scale,
+           &abnrm,
+           rconde,
+           rcondv,
+           &qwork,
+           &lwork,
+           &info);
+
+   lwork = (int) qwork;
+   double_complex* work = (double_complex*) malloc(sizeof(double_complex) * lwork);
+ 
+   // Then we diagonalize
+   pzgeevx(&balanc, 
+           &jobvl,
+           &jobvr,
+           &sense,
+           &n,
+           a,
+           desca,
+           w,
+           vl,
+           &descvl,
+           vr,
+           descvr,
+           &ilo,
+           &ihi,
+           scale,
+           &abnrm,
+           rconde,
+           rcondv,
+           work,
+           &lwork,
+           &info);
+
+  free(scale); free(rconde); free(work);
+  PyObject* returnvalue = Py_BuildValue("i", info);
+  return returnvalue;
+}
+#endif
+
 PyObject* scalapack_set(PyObject *self, PyObject *args)
 {
   PyArrayObject* a; // matrix;
@@ -761,14 +850,10 @@ PyObject* scalapack_diagonalize_dc(PyObject *self, PyObject *args)
 
   // adesc
   // int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc; this can be relaxed a bit according to pdsyevd.f
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
 
   // If process not on BLACS grid, then return.
   // if (a_ConTxt == -1) Py_RETURN_NONE;
@@ -876,12 +961,8 @@ PyObject* scalapack_diagonalize_ex(PyObject *self, PyObject *args)
 
   // a desc
   int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc = bdesc; required by pdsyevx.f
 
@@ -996,7 +1077,7 @@ PyObject* scalapack_diagonalize_mr3(PyObject *self, PyObject *args)
 {
   // Standard driver for MRRR algorithm
   // Computes 'iu' eigenvalues and eigenvectors
-  // http://icl.cs.utk.edu/lapack-forum/archives/scalapack/msg00159.html
+  // https://icl.cs.utk.edu/lapack-forum/archives/scalapack/msg00159.html
 
   PyArrayObject* a; // Hamiltonian matrix
   PyArrayObject* desca; // Hamintonian matrix descriptor
@@ -1019,12 +1100,8 @@ PyObject* scalapack_diagonalize_mr3(PyObject *self, PyObject *args)
 
   // a desc
   // int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc = bdesc; required by pdsyevx.f
 
@@ -1138,12 +1215,8 @@ PyObject* scalapack_general_diagonalize_dc(PyObject *self, PyObject *args)
 
   // a desc
   // int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc = bdesc can be relaxed a bit according to pdsyevd.f
 
@@ -1337,12 +1410,8 @@ PyObject* scalapack_general_diagonalize_ex(PyObject *self, PyObject *args)
 
   // a desc
   int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc = bdesc; required by pdsygvx.f
 
@@ -1458,7 +1527,7 @@ PyObject* scalapack_general_diagonalize_mr3(PyObject *self, PyObject *args)
 {
   // General driver for MRRR algorithm
   // Computes 'iu' eigenvalues and eigenvectors
-  // http://icl.cs.utk.edu/lapack-forum/archives/scalapack/msg00159.html
+  // https://icl.cs.utk.edu/lapack-forum/archives/scalapack/msg00159.html
 
   PyArrayObject* a; // Hamiltonian matrix
   PyArrayObject* b; // overlap matrix
@@ -1485,12 +1554,8 @@ PyObject* scalapack_general_diagonalize_mr3(PyObject *self, PyObject *args)
 
   // a desc
   // int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   // zdesc = adesc = bdesc can be relaxed a bit according to pdsyevd.f
 
@@ -1685,13 +1750,9 @@ PyObject* scalapack_inverse_cholesky(PyObject *self, PyObject *args)
 
   // adesc
   // int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-
-  // Only square matrices
-  assert (a_m == a_n);
-  int n = a_n;
-  int p = a_n - 1;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
+  int p = n - 1;
 
   // If process not on BLACS grid, then return.
   // if (a_ConTxt == -1) Py_RETURN_NONE;
@@ -1744,12 +1805,8 @@ PyObject* scalapack_inverse(PyObject *self, PyObject *args)
   if (!PyArg_ParseTuple(args, "OOs", &a, &desca, &uplo))
     return NULL;
 
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
-  // Only square matrices
-  assert (a_m == a_n);
-
-  int n = a_n;
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
 
   if (PyArray_DESCR(a)->type_num == NPY_DOUBLE)
      {
@@ -1823,25 +1880,18 @@ PyObject* scalapack_solve(PyObject *self, PyObject *args) {
     return NULL;
 
   int a_ConTxt = INTP(desca)[1];
-  int a_m      = INTP(desca)[2];
-  int a_n      = INTP(desca)[3];
+  int n = INTP(desca)[2];
+  assert(n == INTP(desca)[3]); // Only square matrices
   int a_mb     = INTP(desca)[4];
-  // Only square matrices
-  assert (a_m == a_n);
 
-  int b_m      = INTP(descb)[2];
-  int b_n      = INTP(descb)[3];
-  // Equation valid
-  assert (a_n == b_m);
-
-  int n = a_n;
-  int nrhs = b_n;
+  assert(n == INTP(descb)[2]);  // Equation valid
+  int nrhs = INTP(descb)[3];
 
   int nprow, npcol, myrow, mycol, locM;
 
   Cblacs_gridinfo_(a_ConTxt, &nprow, &npcol, &myrow, &mycol);
   // LOCr( M ) <= ceil( ceil(M/MB_A)/NPROW )*MB_A
-  locM = (((a_m/a_mb) + 1)/nprow + 1) * a_mb;
+  locM = (((n/a_mb) + 1)/nprow + 1) * a_mb;
 
   /*
    *  IPIV    (local output) INTEGER array, dimension ( LOCr(M_A)+MB_A )

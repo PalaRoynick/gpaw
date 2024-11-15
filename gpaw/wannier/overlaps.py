@@ -3,13 +3,13 @@ from typing import Dict, List, Tuple, Union
 
 import numpy as np
 from ase import Atoms
+from ase.units import Bohr
 
-from gpaw.calculator import GPAW
+from gpaw.new.ase_interface import ASECalculator as GPAW
 from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.projections import Projections
 from gpaw.setup import Setup
 from gpaw.typing import Array2D, Array3D, Array4D, ArrayLike1D
-from gpaw.utilities.ibz2bz import construct_symmetry_operators
 from gpaw.utilities.partition import AtomPartition
 
 from .functions import WannierFunctions
@@ -220,9 +220,9 @@ def find_directions(icell: Array2D,
     directions: List[Tuple[int, ...]] = []
     for i1, i2 in voro.ridge_points:
         if i1 == 13 and i2 > 13:
-            directions.append(tuple(d_ic[i2]))
+            directions.append(tuple(d_ic[i2].tolist()))
         elif i2 == 13 and i1 > 13:
-            directions.append(tuple(d_ic[i1]))
+            directions.append(tuple(d_ic[i1].tolist()))
     return directions
 
 
@@ -232,32 +232,6 @@ class WaveFunction:
                  projections: Projections):
         self.u_nR = u_nR
         self.projections = projections
-
-    def transform(self,
-                  kd: KPointDescriptor,
-                  gd,
-                  setups: List[Setup],
-                  spos_ac: Array2D,
-                  bz_index: int) -> 'WaveFunction':
-        """Transforms PAW projections from IBZ to BZ k-point."""
-        a_a, U_aii, time_rev = construct_symmetry_operators(
-            kd, setups, spos_ac, bz_index)
-
-        projections = self.projections.new()
-
-        if projections.atom_partition.comm.rank == 0:
-            a = 0
-            for b, U_ii in zip(a_a, U_aii):
-                P_msi = self.projections[b].dot(U_ii)
-                if time_rev:
-                    P_msi = P_msi.conj()
-                projections[a][:] = P_msi
-                a += 1
-        else:
-            assert len(projections.indices) == 0
-
-        u_nR = 1 / 0
-        return WaveFunction(u_nR, projections)
 
     def redistribute_atoms(self,
                            gd,
@@ -303,18 +277,17 @@ class BZRealSpaceWaveFunctions:
         rank_a = np.arange(len(rank_a)) % gd.comm.size
         atom_partition2 = AtomPartition(gd.comm, rank_a)
 
-        spos_ac = calc.spos_ac
-        setups = calc.wfs.setups
-
         u_nR = gd.empty((n2 - n1), complex, global_array=True)
 
         bzwfs = {}
         for ibz_index in range(kd.nibzkpts):
             for n in range(n1, n2):
-                u_nR[n - n1] = wfs.get_wave_function_array(n=n,
-                                                           k=ibz_index,
-                                                           s=spin,
-                                                           periodic=True)
+                u_nR[n - n1] = calc.get_pseudo_wave_function(
+                    band=n,
+                    kpt=ibz_index,
+                    spin=spin,
+                    periodic=True,
+                    pad=False) * Bohr**1.5
             P_nI = wfs.collect_projections(ibz_index, spin)
             if P_nI is not None:
                 P_nI = P_nI[n1:n2]
@@ -332,7 +305,9 @@ class BZRealSpaceWaveFunctions:
                 if kd.ibz2bz_k[ibz_index] == bz_index:
                     wf1 = wf
                 else:
-                    wf1 = wf.transform(kd, gd, setups, spos_ac, bz_index)
+                    # One could potentially use the IBZ2BZMap functionality
+                    # to transform the wave function in the future
+                    raise NotImplementedError()
 
                 bzwfs[bz_index] = wf1.redistribute_atoms(gd, atom_partition2)
 

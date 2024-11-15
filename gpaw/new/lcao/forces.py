@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Tuple, Dict
+from typing import Dict, Tuple
 
 import numpy as np
-from gpaw.core.uniform_grid import UniformGridFunctions
-from gpaw.new import zip
+from gpaw.core.uniform_grid import UGArray
+from gpaw.new import zips
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.new.potential import Potential
 from gpaw.typing import Array2D, Array3D
@@ -45,7 +45,7 @@ class TCIDerivatives:
             self._derivatives_q = {
                 q: (dThetadR_vMM, dTdR_vMM, dPdR_avMi)
                 for q, (dThetadR_vMM, dTdR_vMM, dPdR_avMi)
-                in enumerate(zip(dThetadR_qvMM, dTdR_qvMM, dPdR_qavMi))}
+                in enumerate(zips(dThetadR_qvMM, dTdR_qvMM, dPdR_qavMi))}
 
         return self._derivatives_q[q]
 
@@ -66,12 +66,12 @@ def add_force_contributions(wfs: LCAOWaveFunctions,
 
     setups = wfs.setups
 
-    rhoT_MM = wfs.calculate_density_matrix().T
-    erhoT_MM = wfs.calculate_density_matrix(eigs=True).T
-
-    add_kinetic_term(rhoT_MM, dTdR_vMM, F_av, indices)
+    rhoT_MM = wfs.calculate_density_matrix(transposed=True)
+    erhoT_MM = wfs.calculate_density_matrix(transposed=True, eigs=True)
+    add_kinetic_term(rhoT_MM, dTdR_vMM, F_av, indices, wfs.atomdist.indices)
     add_pot_term(potential.vt_sR[wfs.spin], wfs.basis, wfs.q, rhoT_MM, F_av)
-    add_den_mat_term(erhoT_MM, dThetadR_vMM, F_av, indices)
+    add_den_mat_term(erhoT_MM, dThetadR_vMM, F_av, indices,
+                     wfs.atomdist.indices)
     for b in wfs.atomdist.indices:
         add_den_mat_paw_term(b,
                              setups[b].dO_ii,
@@ -89,7 +89,7 @@ def add_force_contributions(wfs: LCAOWaveFunctions,
                                 F_av)
 
 
-def add_kinetic_term(rhoT_MM, dTdR_vMM, F_av, indices):
+def add_kinetic_term(rhoT_MM, dTdR_vMM, F_av, indices, mya):
     """Calculate Kinetic energy term in LCAO
 
     :::
@@ -103,12 +103,13 @@ def add_kinetic_term(rhoT_MM, dTdR_vMM, F_av, indices):
             """
 
     for a, M1, M2 in indices:
-        F_av[a, :] += 2 * np.einsum('vmM, Mm -> v',
-                                    dTdR_vMM[:, M1:M2],
-                                    rhoT_MM[:, M1:M2]).real
+        if a in mya:
+            F_av[a, :] += 2 * np.einsum('vmM, mM -> v',
+                                        dTdR_vMM[:, M1:M2],
+                                        rhoT_MM[M1:M2]).real
 
 
-def add_pot_term(vt_R: UniformGridFunctions,
+def add_pot_term(vt_R: UGArray,
                  basis,
                  q: int,
                  rhoT_MM,
@@ -128,7 +129,7 @@ def add_pot_term(vt_R: UniformGridFunctions,
                                                q)
 
 
-def add_den_mat_term(erhoT_MM, dThetadR_vMM, F_av, indices):
+def add_den_mat_term(erhoT_MM, dThetadR_vMM, F_av, indices, mya):
     """Calculate density matrix term in LCAO"""
     # Density matrix contribution due to basis overlap
     #
@@ -140,9 +141,10 @@ def add_den_mat_term(erhoT_MM, dThetadR_vMM, F_av, indices):
     #         mu in a; nu
     #
     for a, M1, M2 in indices:
-        F_av[a, :] -= 2 * np.einsum('vmM, Mm -> v',
-                                    dThetadR_vMM[:, M1:M2],
-                                    erhoT_MM[:, M1:M2]).real
+        if a in mya:
+            F_av[a, :] -= 2 * np.einsum('vmM, mM -> v',
+                                        dThetadR_vMM[:, M1:M2],
+                                        erhoT_MM[M1:M2]).real
 
 
 def add_den_mat_paw_term(b, dO_ii, P_Mi, dPdR_vMi, erhoT_MM, indices, F_av):

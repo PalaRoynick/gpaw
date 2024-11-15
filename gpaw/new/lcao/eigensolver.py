@@ -9,11 +9,11 @@ class LCAOEigensolver(Eigensolver):
     def __init__(self, basis):
         self.basis = basis
 
-    def iterate(self, state, hamiltonian) -> float:
+    def iterate(self, ibzwfs, density, potential, hamiltonian) -> float:
         matrix_calculator = hamiltonian.create_hamiltonian_matrix_calculator(
-            state)
+            potential)
 
-        for wfs in state.ibzwfs:
+        for wfs in ibzwfs:
             self.iterate1(wfs, matrix_calculator)
         return 0.0
 
@@ -21,12 +21,19 @@ class LCAOEigensolver(Eigensolver):
                  wfs: LCAOWaveFunctions,
                  matrix_calculator: HamiltonianMatrixCalculator):
         H_MM = matrix_calculator.calculate_matrix(wfs)
-
         eig_M = H_MM.eighg(wfs.L_MM, wfs.domain_comm)
-        N = min(len(eig_M), wfs.nbands)
+        C_Mn = H_MM  # rename (H_MM now contains the eigenvectors)
+        assert len(eig_M) >= wfs.nbands
+        N = wfs.nbands
         wfs._eig_n = np.empty(wfs.nbands)
-        wfs._eig_n[:N] = eig_M[:N]
-        wfs.C_nM.data[:N] = H_MM.data.T[:N]
+        wfs._eig_n[:] = eig_M[:N]
+        comm = C_Mn.dist.comm
+        if comm.size == 1:
+            wfs.C_nM.data[:] = C_Mn.data.T[:N]
+        else:
+            C_Mn = C_Mn.gather(broadcast=True)
+            n1, n2 = wfs.C_nM.dist.my_row_range()
+            wfs.C_nM.data[:] = C_Mn.data.T[n1:n2]
 
         # Make sure wfs.C_nM and (lazy) wfs.P_ani are in sync:
         wfs._P_ani = None

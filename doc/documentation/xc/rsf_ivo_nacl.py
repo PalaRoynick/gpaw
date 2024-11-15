@@ -1,7 +1,7 @@
 """Test calculation for unoccupied states using IVOs."""
 
 from ase.build import molecule
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from gpaw import GPAW, KohnShamConvergenceError, FermiDirac
 from gpaw.eigensolvers import CG, RMMDIIS
 
@@ -26,7 +26,8 @@ def calc_me(atoms, nbands):
     molecule_name = atoms.get_chemical_formula()
     atoms.set_initial_magnetic_moments([-1.0, 1.0])
     fname = '.'.join([molecule_name, 'PBE-SIN'])
-    calc = GPAW(h=0.25,
+    calc = GPAW(mode='fd',
+                h=0.25,
                 xc='PBE',
                 eigensolver=CG(niter=5),
                 nbands=nbands,
@@ -53,8 +54,8 @@ def calc_me(atoms, nbands):
             calc.write(fname + '.gpw', mode='all')
 
 
-loa = Cluster(molecule('NaCl'))
-loa.minimal_box(border=6.0, h=0.25, multiple=16)
+loa = molecule('NaCl')
+adjust_cell(loa, border=6.0, h=0.25, idiv=16)
 loa.center()
 loa.translate([0.001, 0.002, 0.003])
 nbands = 25

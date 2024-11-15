@@ -14,6 +14,7 @@ from gpaw.lrtddft.excitation import Excitation, ExcitationList, get_filehandle
 from gpaw.pair_density import PairDensity
 from gpaw.fd_operators import Gradient
 from gpaw.utilities.tools import coordinates
+from .kssrestrictor import KSSRestrictor
 
 
 class KSSingles(ExcitationList):
@@ -71,7 +72,7 @@ class KSSingles(ExcitationList):
         self.select(nspins)
 
         trkm = self.get_trk()
-        self.log('KSS {0} transitions (restrict={1})'.format(
+        self.log('KSS {} transitions (restrict={})'.format(
             len(self), self.restrict))
         self.log('KSS TRK sum %g (%g,%g,%g)' %
                  (np.sum(trkm) / 3., trkm[0], trkm[1], trkm[2]))
@@ -105,9 +106,7 @@ class KSSingles(ExcitationList):
         if not hasattr(self, 'calculator'):  # I'm read from a file
             # throw away all not needed entries
             for i, ks in reversed(list(enumerate(self))):
-                if ((ks.fij / ks.weight) <= eps or
-                   ks.i < istart or ks.j > jend or
-                   ks.energy < emin or ks.energy > emax):
+                if not self.restrict.is_good(ks):
                     del self[i]
             return None
 
@@ -315,7 +314,7 @@ class KSSingles(ExcitationList):
             f = fh
 
         f.write('# KSSingles\n')
-        f.write('{0} {1}\n'.format(len(self), np.dtype(self.dtype)))
+        f.write(f'{len(self)} {np.dtype(self.dtype)}\n')
         f.write(json.dumps(self.restrict.values) + '\n')
         for kss in self:
             f.write(kss.outstring())
@@ -347,61 +346,6 @@ class KSSingles(ExcitationList):
         for p0, ex0 in enumerate(self):
             ov_pp[p0, :] = ov_nn[ex0.i, i1_p].conj() * ov_nn[ex0.j, j1_p]
         return ov_pp
-
-
-class KSSRestrictor:
-    """Object to handle KSSingles restrictions"""
-    defaults = {'eps': 0.01,
-                'istart': 0,
-                'jend': sys.maxsize,
-                'energy_range': None}
-
-    def __init__(self, dictionary={}):
-        self._vals = {}
-        self.update(dictionary)
-
-    def __getitem__(self, index):
-        assert index in self.defaults
-        return self._vals.get(index, self.defaults[index])
-
-    def __setitem__(self, index, value):
-        assert index in self.defaults
-        self._vals[index] = value
-
-    def update(self, dictionary):
-        for key, value in dictionary.items():
-            self[key] = value
-
-    def emin_emax(self):
-        emin = -sys.float_info.max
-        emax = sys.float_info.max
-        if self['energy_range'] is not None:
-            try:
-                emin, emax = self['energy_range']
-                emin /= Hartree
-                emax /= Hartree
-            except TypeError:
-                emax = self['energy_range'] / Hartree
-        return emin, emax
-
-    def __ge__(self, other):
-        """am I less or equal restricting than the other?"""
-        emin, emax = self.emin_emax()
-        omin, omax = other.emin_emax()
-        res = (emin <= omin) & (emax >= omax)
-
-        res &= self['istart'] <= other['istart']
-        res &= self['jend'] >= other['jend']
-        res &= self['eps'] < other['eps']
-
-        return res
-
-    @property
-    def values(self):
-        return dict(self._vals)
-
-    def __str__(self):
-        return str(self.values)
 
 
 class KSSingle(Excitation, PairDensity):
@@ -577,12 +521,12 @@ class KSSingle(Excitation, PairDensity):
 
     def distribute(self):
         """Distribute results to all cores."""
-        self.spin = self.kpt_comm.sum(self.spin)
-        self.pspin = self.kpt_comm.sum(self.pspin)
-        self.k = self.kpt_comm.sum(self.k)
-        self.weight = self.kpt_comm.sum(self.weight)
-        self.energy = self.kpt_comm.sum(self.energy)
-        self.fij = self.kpt_comm.sum(self.fij)
+        self.spin = self.kpt_comm.sum_scalar(self.spin)
+        self.pspin = self.kpt_comm.sum_scalar(self.pspin)
+        self.k = self.kpt_comm.sum_scalar(self.k)
+        self.weight = self.kpt_comm.sum_scalar(self.weight)
+        self.energy = self.kpt_comm.sum_scalar(self.energy)
+        self.fij = self.kpt_comm.sum_scalar(self.fij)
 
         self.kpt_comm.sum(self.me)
         self.kpt_comm.sum(self.mur)
@@ -595,7 +539,7 @@ class KSSingle(Excitation, PairDensity):
         result.me = self.me + other.me
         result.mur = self.mur + other.mur
         result.muv = self.muv + other.muv
-        result.magn = self.magn - other.magn
+        result.magn = self.magn + other.magn
         return result
 
     def __sub__(self, other):
@@ -650,11 +594,11 @@ class KSSingle(Excitation, PairDensity):
 
     def outstring(self):
         if self.mur.dtype == float:
-            string = '{0:d} {1:d}  {2:d} {3:d}  {4:.10g} {5:f}'.format(
+            string = '{:d} {:d}  {:d} {:d}  {:.10g} {:f}'.format(
                 self.i, self.j, self.pspin, self.spin, self.energy, self.fij)
         else:
             string = (
-                '{0:d} {1:d}  {2:d} {3:d} {4:d} {5:.10g}  {6:g} {7:g}'.format(
+                '{:d} {:d}  {:d} {:d} {:d} {:.10g}  {:g} {:g}'.format(
                     self.i, self.j, self.pspin, self.spin, self.k,
                     self.weight, self.energy, self.fij))
         string += '  '
@@ -663,7 +607,7 @@ class KSSingle(Excitation, PairDensity):
             string = ''
             if me.dtype == float:
                 for m in me:
-                    string += ' {0:.5e}'.format(m)
+                    string += f' {m:.5e}'
             else:
                 for m in me:
                     string += ' {0.real:.5e}{0.imag:+.5e}j'.format(m)
@@ -683,9 +627,9 @@ class KSSingle(Excitation, PairDensity):
             (self.i, self.j, self.pspin, self.spin,
              self.energy * Hartree)
         if self.me.dtype == float:
-            string += ' (%g,%g,%g)' % (self.me[0], self.me[1], self.me[2])
+            string += f' ({self.me[0]:g},{self.me[1]:g},{self.me[2]:g})'
         else:
-            string += ' kpt={0:d} w={1:g}'.format(self.k, self.weight)
+            string += f' kpt={self.k:d} w={self.weight:g}'
             string += ' ('
             # use velocity form
             s = - np.sqrt(self.energy * self.fij)

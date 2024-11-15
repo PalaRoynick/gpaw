@@ -19,7 +19,7 @@ atoms = Atoms('Na2', atom_center + np.array([[-1.5, 0.0, 0.0],
                                              [1.5, 0.0, 0.0]]))
 
 # Permittivity of Gold
-# J. Chem. Phys. 135, 084121 (2011); http://dx.doi.org/10.1063/1.3626549
+# J. Chem. Phys. 135, 084121 (2011); https://dx.doi.org/10.1063/1.3626549
 eps_gold = PermittivityPlus(data=[[0.2350, 0.1551, 95.62],
                                   [0.4411, 0.1480, -12.55],
                                   [0.7603, 1.946, -40.89],
@@ -41,8 +41,7 @@ qsfdtd = QSFDTD(classical_material=classical_material,
                 spacings=[2.0, 0.5],
                 remove_moments=(1, 1))
 
-energy = qsfdtd.ground_state('gs.gpw',
-                             nbands=1)
+energy = qsfdtd.ground_state('gs.gpw', mode='fd', nbands=1, symmetry='off')
 
 qsfdtd.time_propagation('gs.gpw',
                         kick_strength=[0.001, 0.000, 0.000],
@@ -65,7 +64,7 @@ qsfdtd = QSFDTD(classical_material=classical_material,
                 spacings=[2.0, 0.5],
                 remove_moments=(1, 1))
 
-energy = qsfdtd.ground_state('gs.gpw', nbands=-1)
+energy = qsfdtd.ground_state('gs.gpw', mode='fd', nbands=-1, symmetry='off')
 
 qsfdtd.time_propagation('gs.gpw',
                         kick_strength=[0.001, 0.000, 0.000],
@@ -87,7 +86,7 @@ qsfdtd = QSFDTD(classical_material=classical_material,
                 spacings=[2.0, 0.5],
                 remove_moments=(1, 1))
 
-energy = qsfdtd.ground_state('gs.gpw', nbands=-1)
+energy = qsfdtd.ground_state('gs.gpw', mode='fd', nbands=-1, symmetry='off')
 
 qsfdtd.time_propagation('gs.gpw',
                         kick_strength=[0.001, 0.000, 0.000],

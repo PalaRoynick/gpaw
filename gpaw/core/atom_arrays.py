@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import numbers
-from typing import Sequence
+from typing import Sequence, overload, Literal
 
 import numpy as np
-from gpaw.mpi import MPIComm, serial_comm
-from gpaw.typing import Array1D, ArrayLike1D
 from gpaw.core.matrix import Matrix
-from gpaw.new import prod
-from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy as cp, XP
+from gpaw.mpi import MPIComm, serial_comm
+from gpaw.new import prod, zips
+from gpaw.typing import Array1D, ArrayLike1D
+from gpaw.new.c import dH_aii_times_P_ani_gpu
 
 
-class AtomArraysLayout:
+class AtomArraysLayout(XP):
     def __init__(self,
-                 shapes: list[int | tuple[int, ...]],
+                 shapes: Sequence[int | tuple[int, ...]],
                  atomdist: AtomDistribution | MPIComm = serial_comm,
                  dtype=float,
                  xp=None):
@@ -34,7 +35,7 @@ class AtomArraysLayout:
             atomdist = AtomDistribution(np.zeros(len(shapes), int), atomdist)
         self.atomdist = atomdist
         self.dtype = np.dtype(dtype)
-        self.xp = xp or np
+        XP.__init__(self, xp or np)
 
         self.size = sum(prod(shape) for shape in self.shape_a)
 
@@ -47,9 +48,12 @@ class AtomArraysLayout:
             self.mysize += I2 - I1
             I1 = I2
 
+    def __len__(self):
+        return len(self.shape_a)
+
     def __repr__(self):
         return (f'AtomArraysLayout({self.shape_a}, {self.atomdist}, '
-                f'{self.dtype})')
+                f'{self.dtype}, xp={self.xp.__name__})')
 
     def new(self, atomdist=None, dtype=None, xp=None):
         """Create new AtomsArrayLayout object with new atomdist."""
@@ -72,6 +76,13 @@ class AtomArraysLayout:
         """
         return AtomArrays(self, dims, comm)
 
+    def zeros(self,
+              dims: int | tuple[int, ...] = (),
+              comm: MPIComm = serial_comm) -> AtomArrays:
+        aa = self.empty(dims, comm)
+        aa.data[:] = 0.0
+        return aa
+
     def sizes(self) -> tuple[list[dict[int, int]], Array1D]:
         """Compute array sizes for all ranks.
 
@@ -81,8 +92,8 @@ class AtomArraysLayout:
         comm = self.atomdist.comm
         size_ra: list[dict[int, int]] = [{} for _ in range(comm.size)]
         size_r = np.zeros(comm.size, int)
-        for a, (rank, shape) in enumerate(zip(self.atomdist.rank_a,
-                                              self.shape_a)):
+        for a, (rank, shape) in enumerate(zips(self.atomdist.rank_a,
+                                               self.shape_a)):
             size = prod(shape)
             size_ra[rank][a] = size
             size_r[rank] += size
@@ -102,7 +113,11 @@ class AtomDistribution:
         """
         self.comm = comm
         self.rank_a = np.array(ranks)
-        self.indices = np.where(self.rank_a == comm.rank)[0]
+        # convert from np.int64 -> int:
+        self.indices = [int(a) for a in np.where(self.rank_a == comm.rank)[0]]
+
+    def __len__(self) -> int:
+        return len(self.rank_a)
 
     @classmethod
     def from_number_of_atoms(cls,
@@ -129,14 +144,14 @@ class AtomDistribution:
                           atom_indices: Sequence[int],
                           comm: MPIComm = serial_comm,
                           *,
-                          natoms: int = None) -> AtomDistribution:
+                          natoms: int | None = None) -> AtomDistribution:
         """Create distribution from atom indices.
 
         >>> AtomDistribution.from_atom_indices([0, 1, 2]).rank_a
         array([0, 0, 0])
         """
         if natoms is None:
-            natoms = comm.max(max(atom_indices)) + 1
+            natoms = comm.max_scalar(max(atom_indices)) + 1
         rank_a = np.zeros(natoms, int)  # type: ignore
         rank_a[atom_indices] = comm.rank
         comm.sum(rank_a)
@@ -153,9 +168,9 @@ class AtomDistribution:
 class AtomArrays:
     def __init__(self,
                  layout: AtomArraysLayout,
-                 dims: int | tuple[int, ...] = (),
+                 dims: int | Sequence[int] = (),
                  comm: MPIComm = serial_comm,
-                 data: np.ndarray = None):
+                 data: np.ndarray | None = None):
         """AtomArrays object.
 
         parameters
@@ -178,12 +193,10 @@ class AtomArrays:
         self.domain_comm = domain_comm
 
         # convert int to tuple:
-        self.dims = dims if isinstance(dims, tuple) else (dims,)
+        self.dims = tuple(dims) if not isinstance(dims, int) else (dims,)
 
         if self.dims:
-            mydims0 = (self.dims[0] + comm.size - 1) // comm.size
-            d1 = min(comm.rank * mydims0, self.dims[0])
-            d2 = min((comm.rank + 1) * mydims0, self.dims[0])
+            d1, d2 = self.my_slice()
             mydims0 = d2 - d1
             self.mydims = (mydims0,) + self.dims[1:]
         else:
@@ -202,14 +215,22 @@ class AtomArrays:
             data = layout.xp.empty(fullshape, dtype)
 
         self.data = data
-        self._matrix: Matrix | None = None
+        self._matrix: Matrix | None = None  # matrix view
 
         self.layout = layout
         self._arrays = {}
         for a, I1, I2 in layout.myindices:
             self._arrays[a] = self.data[..., I1:I2].reshape(
                 self.mydims + layout.shape_a[a])
-        self.natoms: int = len(layout.shape_a)
+
+    def __len__(self) -> int:
+        return len(self.layout)
+
+    def my_slice(self) -> tuple[int, int]:
+        mydims0 = (self.dims[0] + self.comm.size - 1) // self.comm.size
+        d1 = min(self.comm.rank * mydims0, self.dims[0])
+        d2 = min((self.comm.rank + 1) * mydims0, self.dims[0])
+        return d1, d2
 
     def __repr__(self):
         txt = f'AtomArrays({self.layout}, dims={self.dims}'
@@ -259,6 +280,7 @@ class AtomArrays:
 
     def to_xp(self, xp):
         if self.layout.xp is xp:
+            assert xp is np, 'cp -> cp should not be needed!'
             return self
         if xp is np:
             return self.new(layout=self.layout.new(xp=np),
@@ -270,7 +292,9 @@ class AtomArrays:
         if isinstance(a, numbers.Integral):
             return self._arrays[a]
         if len(self.dims) == 1:
-            a_ai = AtomArrays(self.layout, data=self.data[a[1]].copy())
+            a0, a1 = a
+            assert a0 == slice(None)
+            a_ai = AtomArrays(self.layout, data=self.data[a1].copy())
             return a_ai
         1 / 0
 
@@ -292,7 +316,17 @@ class AtomArrays:
     def values(self):
         return self._arrays.values()
 
-    def gather(self, broadcast=False, copy=False) -> AtomArrays | None:
+    @overload
+    def gather(self, broadcast: Literal[False] = False, copy: bool = False
+               ) -> AtomArrays | None:
+        ...
+
+    @overload
+    def gather(self, broadcast: Literal[True], copy: bool = False
+               ) -> AtomArrays:
+        ...
+
+    def gather(self, broadcast=False, copy=False):
         """Gather all atoms on master."""
         comm = self.layout.atomdist.comm
         if comm.size == 1:
@@ -309,16 +343,17 @@ class AtomArrays:
 
         if comm.rank == 0:
             size_ra, size_r = self.layout.sizes()
-            shape = self.mydims + (size_r.max(),)
-            buffer = np.empty(shape, self.layout.dtype)
+            n = prod(self.mydims)
+            m = size_r.max()
+            buffer = self.layout.xp.empty(n * m, self.layout.dtype)
             for rank in range(1, comm.size):
-                buf = buffer[..., :size_r[rank]]
+                buf = buffer[:n * size_r[rank]].reshape((n, size_r[rank]))
                 comm.receive(buf, rank)
                 b1 = 0
                 for a, size in size_ra[rank].items():
                     b2 = b1 + size
                     A = aa[a]
-                    A[:] = buf[..., b1:b2].reshape(A.shape)
+                    A[:] = buf[:, b1:b2].reshape(A.shape)
                     b1 = b2
             for a, array in self._arrays.items():
                 aa[a] = array
@@ -330,8 +365,13 @@ class AtomArrays:
 
         return aa
 
-    def scatter_from(self, data: np.ndarray = None) -> None:
+    def scatter_from(self,
+                     data: np.ndarray | AtomArrays | None = None) -> None:
+        """Scatter atoms."""
+        if isinstance(data, AtomArrays):
+            data = data.data
         comm = self.layout.atomdist.comm
+        xp = self.layout.xp
         if comm.size == 1:
             self.data[:] = data
             return
@@ -344,9 +384,9 @@ class AtomArrays:
         aa = self.new(layout=self.layout.new(atomdist=serial_comm),
                       data=data)
         requests = []
-        for rank, (totsize, size_a) in enumerate(zip(size_r, size_ra)):
+        for rank, (totsize, size_a) in enumerate(zips(size_r, size_ra)):
             if rank != 0:
-                buf = np.empty(self.mydims + (totsize,), self.layout.dtype)
+                buf = xp.empty(self.mydims + (totsize,), self.layout.dtype)
                 b1 = 0
                 for a, size in size_a.items():
                     b2 = b1 + size
@@ -378,15 +418,17 @@ class AtomArrays:
         for i1, i2 in self.layout.shape_a:
             assert i1 == i2
             shape_a.append((i1 * (i1 + 1) // 2,))
+        xp = self.layout.xp
         layout = AtomArraysLayout(shape_a,
-                                  self.layout.atomdist.comm,
-                                  dtype=self.layout.dtype)
+                                  self.layout.atomdist,
+                                  dtype=self.layout.dtype,
+                                  xp=xp)
         a_axp = layout.empty(self.dims)
-        for a_xii, a_xp in zip(self.values(), a_axp.values()):
+        for a_xii, a_xp in zips(self.values(), a_axp.values()):
             i = a_xii.shape[-1]
-            L = np.tril_indices(i)
-            for a_p, a_ii in zip(a_xp.reshape((-1, i * (i + 1) // 2)),
-                                 a_xii.reshape((-1, i, i))):
+            L = xp.tril_indices(i)
+            for a_p, a_ii in zips(a_xp.reshape((-1, i * (i + 1) // 2)),
+                                  a_xii.reshape((-1, i, i))):
                 a_p[:] = a_ii[L]
 
         return a_axp
@@ -406,12 +448,92 @@ class AtomArrays:
             i = int((2 * p + 0.25)**0.5)
             shape_a.append((i, i))
         layout = AtomArraysLayout(shape_a,
-                                  self.layout.atomdist.comm,
+                                  self.layout.atomdist,
                                   self.layout.dtype)
         a_axii = layout.empty(self.dims)
-        for a_xp, a_xii in zip(self.values(), a_axii.values()):
+        for a_xp, a_xii in zips(self.values(), a_axii.values()):
             i = a_xii.shape[-1]
             a_xii[(...,) + np.tril_indices(i)] = a_xp
             u = (...,) + np.triu_indices(i, 1)
             a_xii[u] = np.swapaxes(a_xii, -1, -2)[u].conj()
         return a_axii
+
+    def moved(self, atomdist):
+        if (self.layout.atomdist.rank_a == atomdist.rank_a).all():
+            return self
+        assert self.comm.size == 1
+        layout = self.layout.new(atomdist=atomdist)
+        new = layout.empty(self.dims)
+        comm = atomdist.comm
+        xp = self.layout.xp
+        requests = []
+        for a, I1, I2 in self.layout.myindices:
+            r = layout.atomdist.rank_a[a]
+            if r == comm.rank:
+                new[a][:] = self[a]
+            else:
+                requests.append(comm.send(xp.ascontiguousarray(self[a]),
+                                          r, block=False))
+
+        for a, I1, I2 in layout.myindices:
+            r = self.layout.atomdist.rank_a[a]
+            if r != comm.rank:
+                target = new[a]
+                buf = xp.empty_like(target)
+                comm.receive(buf, r)
+                target[:] = buf
+
+        comm.waitall(requests)
+        return new
+
+    def redist(self,
+               atomdist: AtomDistribution,
+               comm1: MPIComm,
+               comm2: MPIComm) -> AtomArrays:
+        layout = self.layout.new(atomdist=atomdist)
+        result = layout.empty(dims=self.dims)
+        if comm1.rank == 0:
+            a = self.gather()
+        else:
+            a = None
+        if comm2.rank == 0:
+            result.scatter_from(a)
+        comm2.broadcast(result.data, 0)
+        return result
+
+    def block_diag_multiply(self,
+                            block_diag_matrix_axii: AtomArrays,
+                            out_ani: AtomArrays,
+                            index: int | None = None) -> None:
+        """Multiply by block diagonal matrix.
+
+        with A, B and C refering to ``self``, ``block_diag_matrix_axii`` and
+        ``out_ani``:::
+
+            --  a   a      a
+            >  A   B   -> C
+            --  ni  ij     nj
+            i
+
+        If index is not None, ``block_diag_matrix_axii`` must have an extra
+        dimension: :math:`B_{ij}^{ax}` and x=index is used.
+        """
+        xp = self.layout.xp
+        if xp is np:
+            if index is not None:
+                block_diag_matrix_axii = block_diag_matrix_axii[:, index]
+            for P_ni, dX_ii, out_ni in zips(self.values(),
+                                            block_diag_matrix_axii.values(),
+                                            out_ani.values()):
+                out_ni[:] = P_ni @ dX_ii
+            return
+
+        ni_a = xp.array(
+            [I2 - I1 for a, I1, I2 in self.layout.myindices],
+            dtype=np.int32)
+        data = block_diag_matrix_axii.data
+        if index is not None:
+            data = data[index]
+        if self.data.size > 0:
+            dH_aii_times_P_ani_gpu(data, ni_a,
+                                   self.data, out_ani.data)

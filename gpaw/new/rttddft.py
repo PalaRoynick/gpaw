@@ -36,7 +36,7 @@ class TDAlgorithm:
         raise NotImplementedError()
 
     def get_description(self):
-        return '%s' % self.__class__.__name__
+        return self.__class__.__name__
 
 
 def propagate_wave_functions_numpy(source_C_nM: np.ndarray,
@@ -90,11 +90,11 @@ class ECNAlgorithm(TDAlgorithm):
                                                wfs.S_MM.data,
                                                V_MM.data, 1 / nkicks)
         # Update density
-        state.density.update(pot_calc.nct_R, state.ibzwfs)
+        state.density.update(state.ibzwfs)
 
         # Calculate Hamiltonian H(t+dt) = H[n[Phi_n]]
-        state.potential, state.vHt_x, _ = pot_calc.calculate(
-            state.density, state.vHt_x)
+        state.potential, _ = pot_calc.calculate(
+            state.density, state.potential.vHt_x)
 
     def propagate(self,
                   time_step: float,
@@ -116,11 +116,11 @@ class ECNAlgorithm(TDAlgorithm):
                                            wfs.S_MM.data,
                                            H_MM.data, time_step)
         # Update density
-        state.density.update(pot_calc.nct_R, state.ibzwfs)
+        state.density.update(state.ibzwfs)
 
         # Calculate Hamiltonian H(t+dt) = H[n[Phi_n]]
-        state.potential, state.vHt_x, _ = pot_calc.calculate(
-            state.density, state.vHt_x)
+        state.potential, _ = pot_calc.calculate(
+            state.density, state.potential.vHt_x)
 
 
 class RTTDDFTHistory:
@@ -233,14 +233,14 @@ class RTTDDFT:
                              propagator: TDAlgorithm | None = None):
 
         if isinstance(calc, DFTCalculation):
-            calculation = calc
+            dft = calc
         else:
-            assert calc.calculation is not None
-            calculation = calc.calculation
+            assert calc.dft is not None
+            dft = calc.dft
 
-        state = calculation.state
-        pot_calc = calculation.pot_calc
-        hamiltonian = calculation.scf_loop.hamiltonian
+        state = dft.get_state()
+        pot_calc = dft.pot_calc
+        hamiltonian = dft.scf_loop.hamiltonian
         history = RTTDDFTHistory()
 
         return cls(state, pot_calc, hamiltonian, propagator=propagator,
@@ -250,13 +250,13 @@ class RTTDDFT:
     def from_dft_file(cls,
                       filepath: str,
                       propagator: TDAlgorithm | None = None):
-        _, calculation, params, builder = read_gpw(filepath,
-                                                   '-',
-                                                   {'world': world},
-                                                   force_complex_dtype=True)
+        _, dft, params, builder = read_gpw(filepath,
+                                           log='-',
+                                           comm=world,
+                                           dtype=complex)
 
-        state = calculation.state
-        pot_calc = calculation.pot_calc
+        state = dft.get_state()
+        pot_calc = dft.pot_calc
         hamiltonian = builder.create_hamiltonian_operator()
         history = RTTDDFTHistory()
 
@@ -284,7 +284,7 @@ class RTTDDFT:
             self.log(f'----  Magnitude: {magnitude:.8f} Hartree/Bohr')
             self.log(f'----  Direction: {dirstr}')
 
-            # Create hamiltonian object for absorption kick
+            # Create Hamiltonian object for absorption kick
             cef = ConstantElectricField(magnitude * Hartree / Bohr, direction)
 
             # Propagate kick

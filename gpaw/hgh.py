@@ -4,7 +4,7 @@ from typing import Dict
 import numpy as np
 from ase.data import atomic_numbers
 
-from gpaw.utilities import pack2
+from gpaw.utilities import pack_hermitian
 from gpaw.atom.radialgd import AERadialGridDescriptor
 from gpaw.atom.configurations import configurations
 from gpaw.pseudopotential import PseudoPotential, get_radial_hartree_energy
@@ -120,7 +120,7 @@ class HGHSetupData:
         if not hghdata.v_l:
             # No projectors.  But the remaining code assumes that everything
             # has projectors!  We'll just add the zero function then
-            hghdata.v_l = [VNonLocal(0, 0.01, [[0.]])]
+            hghdata.v_l = [VNonLocal(0, 0.01, [0.])]
 
         n_j = []
         l_j = []
@@ -132,7 +132,7 @@ class HGHSetupData:
         assert nj == len(n_j)
         self.nj = nj
         self.l_j = l_j
-        self.l_orb_j = l_j
+        self.l_orb_J = l_j
         self.n_j = n_j
 
         self.rcut_j = []
@@ -206,7 +206,7 @@ class HGHSetupData:
                     H_ii[M1start:M1end, M2start:M2end] += H_mm
                 M2start = M2end
             M1start = M1end
-        K_p = pack2(H_ii)
+        K_p = pack_hermitian(H_ii)
         return K_p
 
     def __str__(self):
@@ -554,7 +554,7 @@ def plot(symbol, extension=None):
         return
     s.plot()
     if extension is not None:
-        plt.savefig('hgh.%s.%s' % (symbol, extension))
+        plt.savefig(f'hgh.{symbol}.{extension}')
 
 
 def plot_many(*symbols):

@@ -2,7 +2,9 @@ import pytest
 import numpy as np
 from gpaw.xc.libxc import LibXC, short_names
 from gpaw.xc.kernel import XCKernel, codes
-from gpaw.test import equal
+from gpaw.xc import libraries
+
+HAS_LIBXC_7 = int((libraries['libxc'] or '0.0').split('.')[0]) >= 7
 
 
 @pytest.mark.ci
@@ -10,9 +12,14 @@ from gpaw.test import equal
 def test_xc_xc():
     funcs = []
     modes = []
-    for name in short_names:
+    for name, value in short_names.items():
         try:
-            LibXC(name)
+            if 'MGGA' in value and not HAS_LIBXC_7:
+                with pytest.warns(UserWarning,
+                                  match='should be compiled with'):
+                    LibXC(name)
+            else:
+                LibXC(name)
         except NameError:
             continue
         if name == 'SCAN':
@@ -25,7 +32,7 @@ def test_xc_xc():
 
     def create_xc(func, mode):
         if mode == 0:
-            xc = LibXC(func)
+            xc = LibXC(func, disable_fhc=False)
         else:
             xc = XCKernel(func)
         return xc
@@ -91,7 +98,7 @@ def test_xc_xc():
                  abs(ds_xg[:2] - d0_xg[0]).max() +
                  abs(ds_xg[2:5].sum(0) / 4 - d0_xg[1]).max() +
                  abs(ds_xg[5:] - d0_xg[2]).max())
-        equal(error, 0, 6e-9)
+        assert error == pytest.approx(0, abs=6e-9)
         del xc
 
     # Numbers from old lxc_xc.py test:
@@ -126,5 +133,5 @@ def test_xc_xc():
             d_xg[x] = 0.5 * f2(m_xg, xc)[0] / eps
             m_xg[x] -= 2 * eps
             d_xg[x] -= 0.5 * f2(m_xg, xc)[0] / eps
-        equal(abs(d0_xg - d_xg).max(), 0, 2e-8)
+        assert abs(d0_xg - d_xg).max() == pytest.approx(0, abs=2e-8)
         del xc

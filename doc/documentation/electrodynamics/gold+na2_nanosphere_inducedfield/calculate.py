@@ -23,7 +23,7 @@ atoms = Atoms('Na2', atom_center + np.array([[-1.5, 0.0, 0.0],
                                              [1.5, 0.0, 0.0]]))
 
 # Permittivity of Gold
-# J. Chem. Phys. 135, 084121 (2011); http://dx.doi.org/10.1063/1.3626549
+# J. Chem. Phys. 135, 084121 (2011); https://dx.doi.org/10.1063/1.3626549
 eps_gold = PermittivityPlus(data=[[0.2350, 0.1551, 95.62],
                                   [0.4411, 0.1480, -12.55],
                                   [0.7603, 1.946, -40.89],
@@ -53,9 +53,11 @@ atoms.set_cell(simulation_cell)
 atoms, qm_spacing, gpts = poissonsolver.cut_cell(atoms, vacuum=4.0)
 
 # Initialize GPAW
-gs_calc = GPAW(gpts=gpts,
+gs_calc = GPAW(mode='fd',
+               gpts=gpts,
                nbands=-1,
-               poissonsolver=poissonsolver)
+               poissonsolver=poissonsolver,
+               symmetry={'point_group': False})
 atoms.calc = gs_calc
 
 # Ground state

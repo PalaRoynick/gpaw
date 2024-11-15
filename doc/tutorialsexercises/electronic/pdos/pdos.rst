@@ -195,30 +195,22 @@ The meaning of an integer valued ``angular`` keyword can be determined
 by running::
 
   >>> from gpaw.utilities.dos import print_projectors
-  >>> print_projectors('Fe')
+  >>> print_projectors('Au')
 
 Note that the set of atomic partial waves do not form an orthonormal
 basis, thus the properties of the introduction are not fulfilled.
 This PDOS can however be used as a qualitative measure of the local
 character of the DOS.
 
-An example of how to obtain and plot the *d* band on atom number ``10`` of a
-stored calculation, is shown below::
+An example of how to obtain and plot the *d* band on atom number ``0`` of Au,
+is shown below (see :download:`atomic_orbital_gs.py` and
+:download:`atomic_orbital_pdos.py`):
 
-  import numpy as np
-  import pylab as plt
-  from gpaw import GPAW
+.. literalinclude:: atomic_orbital_gs.py
+.. literalinclude:: atomic_orbital_pdos.py
+   :start-after: web-page
 
-  calc = GPAW('old_calculation.gpw', txt=None)
-  energy, pdos = calc.get_orbital_ldos(a=10, angular='d')
-  I = np.trapz(pdos, energy)
-  center = np.trapz(pdos * energy, energy) / I
-  width = np.sqrt(np.trapz(pdos * (energy - center)**2, energy) / I)
-  plt.plot(energy, pdos)
-  plt.xlabel('Energy (eV)')
-  plt.ylabel('d-projected DOS on atom 10')
-  plt.title('d-band center = %s eV, d-band width = %s eV' % (center, width))
-  plt.show()
+.. image:: au-ddos.png
 
 Warning: You should always plot the PDOS before using the calculated
 center and width to check that it is sensible. The very localized
@@ -229,6 +221,8 @@ a larger width. This however requires some calculation time, as the
 LCAO projections are not determined in a standard grid
 calculation. The projections onto the projector functions are always
 present, hence using these takes no extra computational effort.
+
+See also the new API for calculating a PDOS: :ref:`dos_calculator_api`.
 
 
 -----------------
@@ -316,9 +310,22 @@ Last part of :git:`~doc/tutorialsexercises/electronic/pdos/lcaodos_plt.py` scrip
    :start-after: things
 
 
----
-WIP
----
+.. _dos_calculator_api:
+
+------------------
+DOS-calculator API
+------------------
+
+.. module:: gpaw.dos
+
+Same example as above using the :class:`gpaw.dos.DOSCalculator` and its
+:meth:`~gpaw.dos.DOSCalculator.raw_pdos` method:
+
+.. literalinclude:: atomic_orbital_pdos2.py
+
+One can also do this from the :ref:`command line <cli>`::
+
+    $ gpaw dos au.gpw -a 0-d -p
 
 .. autoclass:: gpaw.dos.DOSCalculator
     :members:

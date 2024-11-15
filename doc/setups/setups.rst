@@ -18,16 +18,42 @@ compressed :ref:`pawxml` files.
 Setup releases
 ==============
 
-===========  =============================
-Date         Tarfile
-===========  =============================
-Mar 22 2016  gpaw-setups-0.9.20000.tar.gz_
-Mar 27 2014  gpaw-setups-0.9.11271.tar.gz_
-Oct 26 2012  gpaw-setups-0.9.9672.tar.gz_
-Apr 13 2011  gpaw-setups-0.8.7929.tar.gz_
-Apr 19 2010  gpaw-setups-0.6.6300.tar.gz_
-Jul 22 2009  gpaw-setups-0.5.3574.tar.gz_
-===========  =============================
+.. list-table::
+   :header-rows: 1
+
+   * - Date
+     - Tarfile
+     -
+   * - Feb 22 2024
+     - 24.1.0_
+     - New 14 electron Cr PAW potential added.
+       For high accuracy, it is recommented over the old 6-electron version
+       (which is still the default).  You can use it by
+       specifying ``setups={'Cr': '14'}`` (see also :ref:manual_setups).
+       It has been generated with the following command::
+
+         $ gpaw dataset Cr -sw -r2.0 -P3s,4s,3p,4p,3d,d,F -fPBE -t 14 -b
+
+       There is also an LDA version of the potential.
+
+   * - Mar 22 2016
+     - 0.9.20000_
+     -
+   * - Mar 27 2014
+     - 0.9.11271_
+     -
+   * - Oct 26 2012
+     - 0.9.9672_
+     -
+   * - Apr 13 2011
+     - 0.8.7929_
+     -
+   * - Apr 19 2010
+     - 0.6.6300_
+     -
+   * - Jul 22 2009
+     - 0.5.3574_
+     -
 
 
 .. _periodic table:
@@ -41,7 +67,7 @@ Li_ Be_                                         B_  C_  N_  O_  F_  Ne_
 Na_ Mg_                                         Al_ Si_ P_  S_  Cl_ Ar_
 K_  Ca_ Sc_ Ti_ V_  Cr_ Mn_ Fe_ Co_ Ni_ Cu_ Zn_ Ga_ Ge_ As_ Se_ Br_ Kr_
 Rb_ Sr_ Y_  Zr_ Nb_ Mo_ Tc  Ru_ Rh_ Pd_ Ag_ Cd_ In_ Sn_ Sb_ Te_ I_  Xe_
-Cs_ Ba_ La_ Hf_ Ta_ W_  Re_ Os_ Ir_ Pt_ Au_ Hg_ Tl_ Pb_ Bi_ Po  At  Rn_
+Cs_ Ba_ La  Hf_ Ta_ W_  Re_ Os_ Ir_ Pt_ Au_ Hg_ Tl_ Pb_ Bi_ Po  At  Rn_
 === === === === === === === === === === === === === === === === === ===
 
 .. toctree::
@@ -49,6 +75,8 @@ Cs_ Ba_ La_ Hf_ Ta_ W_  Re_ Os_ Ir_ Pt_ Au_ Hg_ Tl_ Pb_ Bi_ Po  At  Rn_
    :hidden:
 
    [A-Z]*
+
+:xkcd:`Old PAW-potentials <2975>` (no longer in use).
 
 
 .. _installation of paw datasets:
@@ -95,17 +123,7 @@ To manually install the setups, do as follows:
 
 See also `NIST Atomic Reference Data`_.
 
-.. _NIST Atomic Reference Data: http://physics.nist.gov/PhysRefData/DFTdata/Tables/ptable.html
-
-
-Tests
-=====
-
-.. toctree::
-   :titlesonly:
-
-   g2_1
-   dcdft
+.. _NIST Atomic Reference Data: https://physics.nist.gov/PhysRefData/DFTdata/Tables/ptable.html
 
 
 Advanced topics
@@ -118,17 +136,19 @@ Advanced topics
    pawxml
 
 
-.. _gpaw-setups-0.9.20000.tar.gz:
+.. _24.1.0:
+    https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-24.1.0.tar.gz
+.. _0.9.20000:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.9.20000.tar.gz
-.. _gpaw-setups-0.9.11271.tar.gz:
+.. _0.9.11271:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.9.11271.tar.gz
-.. _gpaw-setups-0.9.9672.tar.gz:
+.. _0.9.9672:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.9.9672.tar.gz
-.. _gpaw-setups-0.8.7929.tar.gz:
+.. _0.8.7929:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.8.7929.tar.gz
-.. _gpaw-setups-0.6.6300.tar.gz:
+.. _0.6.6300:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.6.6300.tar.gz
-.. _gpaw-setups-0.5.3574.tar.gz:
+.. _0.5.3574:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-0.5.3574.tar.gz
 
 ..  _H:  H.html
@@ -186,7 +206,6 @@ Advanced topics
 .. _Xe: Xe.html
 .. _Cs: Cs.html
 .. _Ba: Ba.html
-.. _La: La.html
 .. _Hf: Hf.html
 .. _Ta: Ta.html
 ..  _W:  W.html

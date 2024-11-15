@@ -3,11 +3,12 @@ import pytest
 from ase import Atoms
 from gpaw import GPAW, restart
 from gpaw.mom import prepare_mom_calculation
-from gpaw.directmin.etdm import ETDM
+from gpaw.directmin.etdm_lcao import LCAOETDM
 from gpaw.directmin.tools import excite
 
 
 @pytest.mark.mom
+@pytest.mark.do
 def test_mom_directopt_lcao_forces(in_tmp_dir):
     L = 4.0
     d = 1.13
@@ -26,7 +27,7 @@ def test_mom_directopt_lcao_forces(in_tmp_dir):
                 spinpol=True,
                 symmetry='off',
                 occupations={'name': 'fixed-uniform'},
-                eigensolver={'name': 'etdm',
+                eigensolver={'name': 'etdm-lcao',
                              'linesearch_algo': 'max-step'},
                 mixer={'backend': 'no-mixing'},
                 nbands='nao',
@@ -37,11 +38,9 @@ def test_mom_directopt_lcao_forces(in_tmp_dir):
 
     f_sn = excite(calc, 0, 0, spin=(0, 0))
 
-    calc.set(eigensolver=ETDM(searchdir_algo={'name': 'l-sr1p'},
-                              linesearch_algo={'name': 'max-step'},
-                              representation='u-invar',
-                              matrix_exp='egdecomp-u-invar',
-                              need_init_orbs=False))
+    calc.set(eigensolver=LCAOETDM(excited_state=True,
+                                  representation='u-invar',
+                                  matrix_exp='egdecomp-u-invar'))
     prepare_mom_calculation(calc, atoms, f_sn)
     F = atoms.get_forces()
 
@@ -58,6 +57,8 @@ def test_mom_directopt_lcao_forces(in_tmp_dir):
     # Exercise fixed occupations and no update of numbers in OccupationsMOM
     atoms, calc = restart('co.gpw', txt='-')
     e0 = atoms.get_potential_energy()
+    for kpt in calc.wfs.kpt_u:
+        f_sn[kpt.s] = kpt.f_n
     for i in [True, False]:
         prepare_mom_calculation(calc, atoms, f_sn,
                                 use_fixed_occupations=i,

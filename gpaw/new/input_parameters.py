@@ -1,19 +1,20 @@
 from __future__ import annotations
-from pathlib import Path
 import warnings
 
-from typing import Any, IO, Sequence
+from typing import Any, Sequence
 
 import numpy as np
-from gpaw.mpi import world
 
 parameter_functions = {}
 
 """
 background_charge
 external
-reuse_wfs_method
 """
+
+
+class DeprecatedParameterWarning(FutureWarning):
+    """Warning class for when a parameter or its value is deprecated."""
 
 
 def input_parameter(func):
@@ -22,62 +23,43 @@ def input_parameter(func):
     return func
 
 
-def update_dict(default: dict, value: dict | None) -> dict[str, Any]:
-    """Create dict with defaults + updates.
-
-    >>> update_dict({'a': 1, 'b': 'hello'}, {'a': 2})
-    {'a': 2, 'b': 'hello'}
-    >>> update_dict({'a': 1, 'b': 'hello'}, None)
-    {'a': 1, 'b': 'hello'}
-    >>> update_dict({'a': 1, 'b': 'hello'}, {'c': 2})
-    Traceback (most recent call last):
-    ValueError: Unknown key: 'c'. Must be one of a, b
-    """
-    dct = default.copy()
-    if value is not None:
-        if not (value.keys() <= default.keys()):
-            key = (value.keys() - default.keys()).pop()
-            raise ValueError(
-                f'Unknown key: {key!r}. Must be one of {", ".join(default)}')
-        dct.update(value)
-    return dct
-
-
 class InputParameters:
     basis: Any
     charge: float
-    communicator: Any
     convergence: dict[str, Any]
     eigensolver: dict[str, Any]
     experimental: dict[str, Any]
-    force_complex_dtype: bool
+    external: dict[str, Any]
     gpts: None | Sequence[int]
     h: float | None
     hund: bool
     kpts: dict[str, Any]
     magmoms: Any
+    # maxiter ???
+    # mixer
     mode: dict[str, Any]
     nbands: None | int | str
+    # occupations
     parallel: dict[str, Any]
     poissonsolver: dict[str, Any]
+    # random
     setups: Any
     soc: bool
     spinpol: bool
     symmetry: dict[str, Any]
-    txt: str | Path | IO[str] | None
     xc: dict[str, Any]
 
     def __init__(self, params: dict[str, Any], warn: bool = True):
-        self.keys = sorted(params)
-
         for key in params:
             if key not in parameter_functions:
                 raise ValueError(
                     f'Unknown parameter {key!r}.  Must be one of: ' +
                     ', '.join(parameter_functions))
+        self.non_defaults = []
         for key, func in parameter_functions.items():
-            if key in params:
-                param = params[key]
+            param = params.get(key)
+            if param is not None:
+                self.non_defaults.append(key)
                 if hasattr(param, 'todict'):
                     param = param.todict()
                 value = func(param)
@@ -88,41 +70,48 @@ class InputParameters:
         if self.h is not None and self.gpts is not None:
             raise ValueError("""You can't use both "gpts" and "h"!""")
 
+        if self.mode.get('name') is None:
+            if warn:
+                warnings.warn(
+                    ('Finite-difference mode implicitly chosen; '
+                     'it will be an error to not specify a mode '
+                     'in the future'),
+                    DeprecatedParameterWarning)
+            self.mode = dict(self.mode, name='fd')
+
         if self.experimental is not None:
             if self.experimental.pop('niter_fixdensity', None) is not None:
                 warnings.warn('Ignoring "niter_fixdensity".')
+            if 'reuse_wfs_method' in self.experimental:
+                del self.experimental['reuse_wfs_method']
+                warnings.warn('Ignoring "reuse_wfs_method".')
             if 'soc' in self.experimental:
-                warnings.warn('Please use new "soc" parameter.')
-                self.soc = self.experimental.pop('soc')
+                warnings.warn('Please use new "soc" parameter.',
+                              DeprecatedParameterWarning)
+                self._add('soc', self.experimental.pop('soc'))
             if 'magmoms' in self.experimental:
-                warnings.warn('Please use new "magmoms" parameter.')
-                self.magmoms = self.experimental.pop('magmoms')
+                warnings.warn('Please use new "magmoms" parameter.',
+                              DeprecatedParameterWarning)
+                self._add('magmoms', self.experimental.pop('magmoms'))
             assert not self.experimental
-
-        force_complex_dtype = self.mode.pop('force_complex_dtype', None)
-        if force_complex_dtype is not None:
-            if warn:
-                warnings.warn(
-                    'Please use '
-                    f'GPAW(force_complex_dtype={bool(force_complex_dtype)}, '
-                    '...)',
-                    stacklevel=3)
-            self.force_complex_dtype = force_complex_dtype
-            self.keys.append('force_complex_dtype')
-            self.keys.sort()
-
-        if self.communicator is not None:
-            self.parallel['world'] = self.communicator
-            warnings.warn('Please use parallel={''world'': ...} '
-                          'instead of communicator=...')
+            self._remove('experimental')
 
     def __repr__(self) -> str:
         p = ', '.join(f'{key}={value!r}'
                       for key, value in self.items())
         return f'InputParameters({p})'
 
+    def _add(self, key, value):
+        self.__dict__[key] = value
+        if key not in self.non_defaults:
+            self.non_defaults.append(key)
+
+    def _remove(self, key):
+        del self.__dict__[key]
+        self.non_defaults.remove(key)
+
     def items(self):
-        for key in self.keys:
+        for key in self.non_defaults:
             yield key, getattr(self, key)
 
 
@@ -138,11 +127,6 @@ def charge(value=0.0):
 
 
 @input_parameter
-def communicator(value=None):
-    return None
-
-
-@input_parameter
 def convergence(value=None):
     """Accuracy of the self-consistency cycle."""
     return value or {}
@@ -153,7 +137,7 @@ def eigensolver(value=None) -> dict:
     """Eigensolver."""
     if isinstance(value, str):
         value = {'name': value}
-    if value and value['name'] != 'dav':
+    if value and value['name'] not in {'dav', 'etdm-fdpw', 'scissors'}:
         warnings.warn(f'{value["name"]} not implemented.  Using dav instead')
         return {'name': 'dav'}
     return value or {}
@@ -165,8 +149,8 @@ def experimental(value=None):
 
 
 @input_parameter
-def force_complex_dtype(value: bool = False):
-    return value
+def external(value=None):
+    return value or {}
 
 
 @input_parameter
@@ -193,10 +177,11 @@ def kpts(value=None) -> dict[str, Any]:
     if value is None:
         value = {'size': (1, 1, 1)}
     elif not isinstance(value, dict):
-        if len(value) == 3 and isinstance(value[0], int):
-            value = {'size': value}
+        array = np.array(value)
+        if array.shape == (3,):
+            value = {'size': array}
         else:
-            value = {'points': np.array(value)}
+            value = {'kpts': array}
     return value
 
 
@@ -217,8 +202,14 @@ def mixer(value=None):
 
 
 @input_parameter
-def mode(value='fd'):
-    return {'name': value} if isinstance(value, str) else value
+def mode(value=None):
+    if value is None:
+        return {'name': value}
+    if isinstance(value, str):
+        return {'name': value}
+    gc = value.pop('gammacentered', False)
+    assert not gc
+    return value
 
 
 @input_parameter
@@ -233,27 +224,28 @@ def occupations(value=None):
 
 
 @input_parameter
-def parallel(value: dict[str, Any] = None) -> dict[str, Any]:
-    dct = update_dict({'kpt': None,
-                       'domain': None,
-                       'band': None,
-                       'order': 'kdb',
-                       'stridebands': False,
-                       'augment_grids': False,
-                       'sl_auto': False,
-                       'sl_default': None,
-                       'sl_diagonalize': None,
-                       'sl_inverse_cholesky': None,
-                       'sl_lcao': None,
-                       'sl_lrtddft': None,
-                       'use_elpa': False,
-                       'elpasolver': '2stage',
-                       'buffer_size': None,
-                       'world': None,
-                       'gpu': False},
-                      value)
-    dct['world'] = dct['world'] or world
-    return dct
+def parallel(value: dict[str, Any] | None = None) -> dict[str, Any]:
+    known = {'kpt', 'domain', 'band',
+             'order',
+             'stridebands',
+             'augment_grids',
+             'sl_auto',
+             'sl_default',
+             'sl_diagonalize',
+             'sl_inverse_cholesky',
+             'sl_lcao',
+             'sl_lrtddft',
+             'use_elpa',
+             'elpasolver',
+             'buffer_size',
+             'gpu'}
+    if value is not None:
+        if not value.keys() <= known:
+            key = (value.keys() - known).pop()
+            raise ValueError(
+                f'Unknown key: {key!r}. Must be one of {", ".join(known)}')
+        return value
+    return {}
 
 
 @input_parameter
@@ -290,13 +282,6 @@ def symmetry(value='undefined'):
         value = {}
     elif value is None or value == 'off':
         value = {'point_group': False, 'time_reversal': False}
-    return value
-
-
-@input_parameter
-def txt(value: str | Path | IO[str] | None = '?'
-        ) -> str | Path | IO[str] | None:
-    """Log file."""
     return value
 
 

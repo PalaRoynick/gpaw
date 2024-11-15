@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 from ase.units import Bohr
 from gpaw.new.ase_interface import ASECalculator, GPAW
-from gpaw.typing import Array3D, Vector
+from gpaw.typing import Array3D
+from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
+from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 
 
 def dipole_matrix_elements(*args, **kwargs):
@@ -19,7 +21,6 @@ def dipole_matrix_elements(*args, **kwargs):
 def dipole_matrix_elements_from_calc(calc: ASECalculator,
                                      n1: int,
                                      n2: int,
-                                     center: Vector = None
                                      ) -> list[Array3D]:
     """Calculate dipole matrix-elements (units: eÅ).
 
@@ -27,30 +28,26 @@ def dipole_matrix_elements_from_calc(calc: ASECalculator,
     ----------
     n1, n2:
         Band range.
-    center:
-        Center of molecule in Å.  Defaults to center of cell.
     """
-    ibzwfs = calc.calculation.state.ibzwfs
+    ibzwfs = calc.dft.ibzwfs
 
     assert ibzwfs.ibz.bz.gamma_only
-
-    if center is not None:
-        center = np.asarray(center) / Bohr
 
     wfs_s = ibzwfs.wfs_qs[0]
 
     d_snnv = []
     for wfs in wfs_s:
-        if calc.params.mode['name'] == 'lcao':
-            basis = calc.calculation.scf_loop.hamiltonian.basis
-            grid = calc.calculation.state.density.nt_sR.desc
+        if isinstance(wfs, LCAOWaveFunctions):
+            basis = calc.dft.scf_loop.hamiltonian.basis
+            grid = calc.dft.density.nt_sR.desc
             wfs = wfs.to_uniform_grid_wave_functions(grid, basis)
-        wfs = wfs.collect(n1, n2)
-        if wfs is not None:
-            d_nnv = wfs.dipole_matrix_elements(center) * Bohr
+        wfs12 = wfs.collect(n1, n2)
+        if wfs12 is not None:
+            assert isinstance(wfs12, PWFDWaveFunctions)
+            d_nnv = wfs12.dipole_matrix_elements() * Bohr
         else:
             d_nnv = np.empty((n2 - n1, n2 - n1, 3))
-        calc.params.parallel['world'].broadcast(d_nnv, 0)
+        calc.comm.broadcast(d_nnv, 0)
         d_snnv.append(d_nnv)
 
     return d_snnv
@@ -69,9 +66,6 @@ def main(argv: list[str] = None) -> None:
         help='GPW-file with wave functions.')
     add('-n', '--band-range', nargs=2, type=int, default=[0, 0],
         metavar=('n1', 'n2'), help='Include bands: n1 <= n < n2.')
-    add('-c', '--center', metavar='x,y,z',
-        help='Center of charge distribution.  Default is middle of unit '
-        'cell.')
 
     args = parser.parse_intermixed_args(argv)
 
@@ -81,14 +75,9 @@ def main(argv: list[str] = None) -> None:
     nbands = calc.get_number_of_bands()
     n2 = n2 or n2 + nbands
 
-    if args.center:
-        center = [float(x) for x in args.center.split(',')]
-    else:
-        center = None  # center of cell
+    d_snnv = dipole_matrix_elements_from_calc(calc, n1, n2)
 
-        d_snnv = dipole_matrix_elements_from_calc(calc, n1, n2, center)
-
-    if calc.params.parallel['world'].rank > 0:
+    if calc.comm.rank > 0:
         return
 
     print('Number of bands:', nbands)

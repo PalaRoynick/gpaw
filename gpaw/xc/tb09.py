@@ -27,7 +27,7 @@ class TB09Kernel:
     beta = 1.023
 
     def __init__(self, c=None):
-        self.tb09 = LibXC('MGGA_X_TB09').xc.tb09
+        self.tb09 = LibXC('MGGA_X_TB09', provides_laplacian=True).xc.tb09
         self.ldac = LibXC('LDA_C_PW')
 
         self.fixedc = c is not None  # calculate c or use fixed value
@@ -47,7 +47,7 @@ class TB09Kernel:
                     # We don't have the integral yet - just use 1.0:
                     self.c = 1.0
                 else:
-                    self.I = self.world.sum(self.I)
+                    self.I = self.world.sum_scalar(self.I)
                     self.c = (self.alpha + self.beta *
                               (self.I / self.gd.volume)**0.5)
 

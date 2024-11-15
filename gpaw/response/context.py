@@ -1,4 +1,8 @@
+from __future__ import annotations
+from typing import Union
+from pathlib import Path
 from time import ctime
+from sys import stdout
 
 from inspect import isgeneratorfunction
 from functools import wraps
@@ -9,15 +13,32 @@ from ase.utils.timing import Timer
 import gpaw.mpi as mpi
 
 
+TXTFilename = Union[Path, str]
+ResponseContextInput = Union['ResponseContext', dict, TXTFilename]
+
+
 class ResponseContext:
-    def __init__(self, txt='-', timer=None, world=mpi.world):
-        self.world = world
-        self.open(txt)
+    def __init__(self, txt: TXTFilename = '-',
+                 timer=None, comm=mpi.world, mode='w'):
+        self.comm = comm
+        self.iocontext = IOContext()
+        self.open(txt, mode)
         self.set_timer(timer)
 
-    def open(self, txt):
-        self.iocontext = IOContext()
-        self.fd = self.iocontext.openfile(txt, self.world)
+    @staticmethod
+    def from_input(context: ResponseContextInput) -> ResponseContext:
+        if isinstance(context, ResponseContext):
+            return context
+        elif isinstance(context, dict):
+            return ResponseContext(**context)
+        elif isinstance(context, (Path, str)):  # TXTFilename
+            return ResponseContext(txt=context)
+        raise ValueError('Expected ResponseContextInput, got', context)
+
+    def open(self, txt, mode):
+        if txt is stdout and self.comm.rank != 0:
+            txt = None
+        self.fd = self.iocontext.openfile(txt, self.comm, mode)
 
     def set_timer(self, timer):
         self.timer = timer or Timer()
@@ -28,8 +49,9 @@ class ResponseContext:
     def __del__(self):
         self.close()
 
-    def with_txt(self, txt):
-        return ResponseContext(txt=txt, world=self.world, timer=self.timer)
+    def with_txt(self, txt, mode='w'):
+        return ResponseContext(txt=txt, comm=self.comm, timer=self.timer,
+                               mode=mode)
 
     def print(self, *args, flush=True, **kwargs):
         print(*args, file=self.fd, flush=flush, **kwargs)
@@ -38,7 +60,7 @@ class ResponseContext:
         self.write_timer()
         # Close old output file and create a new
         self.close()
-        self.open(txt)
+        self.open(txt, mode='w')
         self.set_timer(timer)
 
     def write_timer(self):

@@ -52,6 +52,7 @@ def dscf_calculation(paw, orbitals, atoms):
     # is None
     if paw.wfs is None:
         paw.initialize(atoms)
+    assert paw.wfs.mode != 'pw'
     occ = paw.wfs.occupations
     if isinstance(occ, OccupationsDSCF):
         occ.orbitals = orbitals
@@ -90,7 +91,9 @@ class OccupationsDSCF:
                   nelectrons,
                   eigenvalues,
                   weights,
-                  fermi_levels_guess):
+                  fermi_levels_guess,
+                  fix_fermi_level=False):
+        assert not fix_fermi_level
         f_qn, fermi_levels, e_entropy = self.occ.calculate(
             nelectrons - self.cnoe,
             eigenvalues,

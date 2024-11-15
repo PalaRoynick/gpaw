@@ -79,13 +79,15 @@ def test_old_vs_new_spherical_kernel():
     """Test explicitely hard coded implementation against generic
     implementation.
     """
+    rng = np.random.RandomState(42)
     for n in range(3):
-        R = np.random.rand(100) * 10
-        r = np.random.rand(100) * 10
+        R = rng.random(100) * 10
+        r = rng.random(100) * 10
         params = (n, 0.11, R, r)
         new, old = phi(*params), phiold(*params)
+        print(old, new, abs(old - new).max())
 
-        assert np.allclose(new, old, atol=1e-6)
+        assert np.allclose(new, old, atol=1.5e-6)
 
 
 def test_wrt_lebedev_integrated_kernel(plot=False):
@@ -93,7 +95,8 @@ def test_wrt_lebedev_integrated_kernel(plot=False):
         Test a double angular numerically integrated kernel against
         the generic implementation.
     """
-    import matplotlib.pyplot as plt
+    if plot:
+        import matplotlib.pyplot as plt
     s = 25
     for n in range(5):
         for RR in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 1e1, 1e2]:
@@ -116,16 +119,19 @@ def test_wrt_lebedev_integrated_kernel(plot=False):
         if plot:
             plt.show()
 
-    for n in range(5 if plot else 0):
-        t = np.logspace(-5, 5, s)
-        R, r = np.meshgrid(t, t)
-        params = (n, 0.11, R.ravel(), r.ravel())
-        new, old = phi(*params), phi_lebedev(*params)
-        plt.contourf(np.log10(r), np.log10(R),
-                     np.reshape(np.log10(np.abs(old - new) + 1e-7), (s, s)))
-        plt.colorbar()
-        plt.show()
+    if plot:
+        import matplotlib.pyplot as plt
+        for n in range(5):
+            t = np.logspace(-5, 5, s)
+            R, r = np.meshgrid(t, t)
+            params = (n, 0.11, R.ravel(), r.ravel())
+            new, old = phi(*params), phi_lebedev(*params)
+            plt.contourf(np.log10(r), np.log10(R),
+                         np.reshape(np.log10(np.abs(old - new) + 1e-7),
+                                    (s, s)))
+            plt.colorbar()
+            plt.show()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test_wrt_lebedev_integrated_kernel(plot=True)

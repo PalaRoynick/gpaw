@@ -2,8 +2,9 @@ from math import sqrt, pi
 
 import numpy as np
 
-from gpaw.xc.functional import XCFunctional
+from gpaw.new import trace
 from gpaw.sphere.lebedev import Y_nL, weight_n
+from gpaw.xc.functional import XCFunctional
 
 
 class LDARadialExpansion:
@@ -32,6 +33,7 @@ class LDARadialExpansion:
         return E, dEdD_sqL
 
 
+@trace
 def calculate_paw_correction(expansion,
                              setup, D_sp, dEdD_sp=None,
                              addcoredensity=True, a=None):
@@ -112,7 +114,7 @@ class LDA(XCFunctional):
         v_sg[:] = dedn_sg
         return rgd.integrate(e_g)
 
-    def stress_tensor_contribution(self, n_sg):
+    def stress_tensor_contribution(self, n_sg, skip_sum=False):
         nspins = len(n_sg)
         v_sg = self.gd.zeros(nspins)
         e_g = self.gd.empty()
@@ -120,7 +122,8 @@ class LDA(XCFunctional):
         stress = self.gd.integrate(e_g, global_integral=False)
         for v_g, n_g in zip(v_sg, n_sg):
             stress -= self.gd.integrate(v_g, n_g, global_integral=False)
-        stress = self.gd.comm.sum(stress)
+        if not skip_sum:
+            stress = self.gd.comm.sum_scalar(stress)
         return np.eye(3) * stress
 
 

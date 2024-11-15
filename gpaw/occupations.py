@@ -1,25 +1,24 @@
 """Smearing functions and occupation number calculators."""
+from __future__ import annotations
 
 import warnings
-from math import pi, nan, inf
-from typing import List, Tuple, NamedTuple, Any, Callable, Dict, cast
+from math import inf, nan, pi
+from typing import Any, Callable, Dict, List, NamedTuple, Tuple, cast
+
 import numpy as np
-from scipy.special import erf
 from ase.units import Ha
+from scipy.special import erf
 
 from gpaw.band_descriptor import BandDescriptor
-from gpaw.mpi import serial_comm, broadcast_float
+from gpaw.mpi import MPIComm, broadcast_float, serial_comm
 from gpaw.typing import Array1D, Array2D
-
-# typehints:
-MPICommunicator = Any
 
 
 class ParallelLayout(NamedTuple):
     """Collection of parallel stuff."""
     bd: BandDescriptor
-    kpt_comm: MPICommunicator
-    domain_comm: MPICommunicator
+    kpt_comm: MPIComm
+    domain_comm: MPIComm
 
 
 def fermi_dirac(eig: np.ndarray,
@@ -27,9 +26,10 @@ def fermi_dirac(eig: np.ndarray,
                 width: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Fermi-Dirac distribution function.
 
-    >>> f, _, _ = fermi_dirac(0.0, 0.0, 0.1)
-    >>> f
-    0.5
+    >>> f, _, _ = fermi_dirac(np.array([-1.0, 0.0, 1.0]), 0.0, 0.01)
+    >>> f.round(5)
+    array([1. , 0.5, 0. ])
+
     """
     x = (eig - fermi_level) / width
     x = np.clip(x, -100, 100)
@@ -86,7 +86,7 @@ def methfessel_paxton(eig: np.ndarray,
 
 
 def coff_function(n):
-    return (-1)**n / (np.product(np.arange(1, n + 1)) *
+    return (-1)**n / (np.prod(np.arange(1, n + 1)) *
                       4**n * np.sqrt(np.pi))
 
 
@@ -136,11 +136,12 @@ class OccupationNumberCalculator:
 
     def calculate(self,
                   nelectrons: float,
-                  eigenvalues: List[List[float]],
-                  weights: List[float],
-                  fermi_levels_guess: List[float] = None) -> Tuple[Array2D,
-                                                                   List[float],
-                                                                   float]:
+                  eigenvalues: list[list[float]],
+                  weights: list[float],
+                  fermi_levels_guess: list[float] = None,
+                  fix_fermi_level: bool = False) -> tuple[Array2D,
+                                                          list[float],
+                                                          float]:
         """Calculate occupation numbers and fermi level(s) from eigenvalues.
 
         nelectrons:
@@ -178,20 +179,22 @@ class OccupationNumberCalculator:
         if self.domain_comm.rank == 0:
             # Let the master domain do the work and broadcast results:
             result[:] = self._calculate(
-                nelectrons, eig_qn, weight_q, f_qn, fermi_levels_guess[0])
+                nelectrons, eig_qn, weight_q, f_qn,
+                fermi_levels_guess[0], fix_fermi_level)
 
         self.domain_comm.broadcast(result, 0)
         self.domain_comm.broadcast(f_qn, 0)
 
         fermi_level, e_entropy = result
-        return f_qn, [fermi_level], e_entropy
+        return f_qn, [float(fermi_level)], float(e_entropy)
 
     def _calculate(self,
                    nelectrons: float,
                    eig_qn: List[Array1D],
                    weight_q: Array1D,
                    f_qn: Array2D,
-                   fermi_level_guess: float) -> Tuple[float, float]:
+                   fermi_level_guess: float,
+                   fix_fermi_level: bool = False) -> tuple[float, float]:
         raise NotImplementedError
 
 
@@ -224,10 +227,10 @@ class FixMagneticMomentOccupationNumberCalculator(OccupationNumberCalculator):
                   nelectrons: float,
                   eigenvalues: List[List[float]],
                   weights: List[float],
-                  fermi_levels_guess: List[float] = None
-                  ) -> Tuple[Array2D,
-                             List[float],
-                             float]:
+                  fermi_levels_guess: List[float] = None,
+                  fix_fermi_level: bool = False) -> tuple[Array2D,
+                                                          List[float],
+                                                          float]:
 
         magmom = self.fixed_magmom_value
 
@@ -238,13 +241,15 @@ class FixMagneticMomentOccupationNumberCalculator(OccupationNumberCalculator):
             (nelectrons + magmom) / 2,
             eigenvalues[::2],
             weights[::2],
-            fermi_levels_guess[:1])
+            fermi_levels_guess[:1],
+            fix_fermi_level)
 
         f2_qn, fermi_levels2, e_entropy2 = self.occ.calculate(
             (nelectrons - magmom) / 2,
             eigenvalues[1::2],
             weights[1::2],
-            fermi_levels_guess[1:])
+            fermi_levels_guess[1:],
+            fix_fermi_level)
 
         f_qn = []
         for f1_n, f2_n in zip(f1_qn, f2_qn):
@@ -278,9 +283,10 @@ class SmoothDistribution(OccupationNumberCalculator):
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess):
-
-        if np.isnan(fermi_level_guess) or self._width == 0.0:
+                   fermi_level_guess,
+                   fix_fermi_level):
+        # Guess can be nan or inf:
+        if not np.isfinite(fermi_level_guess) or self._width == 0.0:
             zero = ZeroWidth(self.parallel_layout)
             fermi_level_guess, _ = zero._calculate(
                 nelectrons, eig_qn, weight_q, f_qn)
@@ -303,7 +309,11 @@ class SmoothDistribution(OccupationNumberCalculator):
             df = f - nelectrons
             return df, dfde
 
-        fermi_level, niter = findroot(func, x)
+        if fix_fermi_level:
+            func(x)
+            fermi_level = x
+        else:
+            fermi_level, niter = findroot(func, x)
 
         e_entropy = data[2]
 
@@ -370,6 +380,9 @@ def findroot(func: Callable[[float], Tuple[float, float]],
     >>> x, _ = findroot(lambda x: (x, 1.0), 1.0)
     >>> assert abs(x) < 1e-10
     """
+
+    assert np.isfinite(x), x
+
     xmin = -np.inf
     xmax = np.inf
 
@@ -425,9 +438,9 @@ def findroot(func: Callable[[float], Tuple[float, float]],
 def collect_eigelvalues(eig_qn: np.ndarray,
                         weight_q: np.ndarray,
                         bd: BandDescriptor,
-                        kpt_comm: MPICommunicator) -> Tuple[np.ndarray,
-                                                            np.ndarray,
-                                                            np.ndarray]:
+                        kpt_comm: MPIComm) -> Tuple[np.ndarray,
+                                                    np.ndarray,
+                                                    np.ndarray]:
     """Collect eigenvalues from bd.comm and kpt_comm."""
     nkpts_r = np.zeros(kpt_comm.size, int)
     nkpts_r[kpt_comm.rank] = len(weight_q)
@@ -464,7 +477,7 @@ def distribute_occupation_numbers(f_kn: np.ndarray,  # input
                                   f_qn: np.ndarray,  # output
                                   nkpts_r: np.ndarray,
                                   bd: BandDescriptor,
-                                  kpt_comm: MPICommunicator) -> None:
+                                  kpt_comm: MPIComm) -> None:
     """Distribute occupation numbers over bd.comm and kpt_comm."""
     k = 0
     for rank, nkpts in enumerate(nkpts_r):
@@ -512,7 +525,8 @@ class ZeroWidth(OccupationNumberCalculator):
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess=nan):
+                   fermi_level_guess=nan,
+                   fix_fermi_level=False):
         eig_kn, weight_k, nkpts_r = collect_eigelvalues(eig_qn, weight_q,
                                                         self.bd, self.kpt_comm)
 
@@ -532,21 +546,26 @@ class ZeroWidth(OccupationNumberCalculator):
             eig_m = eig_kn.ravel()
             w_m = w_kn.ravel()
             m_i = eig_m.argsort()
-            w_i = w_m[m_i]
-            sum_i = np.add.accumulate(w_i)
-            filled_i = (sum_i <= nelectrons * N)
-            i = sum(filled_i)
-            f_m[m_i[:i]] = 1.0
-            if i == len(m_i):
-                fermi_level = inf
+            if fix_fermi_level:
+                fermi_level = fermi_level_guess
+                f_m[eig_m < fermi_level] = 1.0
+                f_m[eig_m == fermi_level] = 0.5
             else:
-                extra = nelectrons * N - (sum_i[i - 1] if i > 0 else 0.0)
-                if extra > 0:
-                    assert extra <= w_i[i]
-                    f_m[m_i[i]] = extra / w_i[i]
-                    fermi_level = eig_m[m_i[i]]
+                w_i = w_m[m_i]
+                sum_i = np.add.accumulate(w_i)
+                filled_i = (sum_i <= nelectrons * N)
+                i = sum(filled_i)
+                f_m[m_i[:i]] = 1.0
+                if i == len(m_i):
+                    fermi_level = inf
                 else:
-                    fermi_level = (eig_m[m_i[i]] + eig_m[m_i[i - 1]]) / 2
+                    extra = nelectrons * N - (sum_i[i - 1] if i > 0 else 0.0)
+                    if extra > 0:
+                        assert extra <= w_i[i]
+                        f_m[m_i[i]] = extra / w_i[i]
+                        fermi_level = eig_m[m_i[i]]
+                    else:
+                        fermi_level = (eig_m[m_i[i]] + eig_m[m_i[i - 1]]) / 2
         else:
             f_kn = None
             fermi_level = nan
@@ -584,7 +603,8 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess=nan):
+                   fermi_level_guess=nan,
+                   fix_fermi_level=False):
 
         calc_fixed(self.bd, self.f_sn, f_qn)
 
@@ -645,7 +665,9 @@ class FixedOccupationNumbersUniform(OccupationNumberCalculator):
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess=nan):
+                   fermi_level_guess=nan,
+                   fix_fermi_level=False):
+        assert not fix_fermi_level
 
         calc_fixed(self.bd, self.f_sn, f_qn)
 
@@ -719,7 +741,8 @@ class ThomasFermiOccupations(OccupationNumberCalculator):
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess=nan):
+                   fermi_level_guess=nan,
+                   fix_fermi_level=False):
         assert len(f_qn) == 1
         f_qn[0][:] = [nelectrons]
         return inf, 0.0

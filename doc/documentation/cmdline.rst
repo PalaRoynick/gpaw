@@ -57,6 +57,7 @@ analysing :ref:`point groups`          :mod:`gpaw.point_groups`
 :ref:`fulldiag`                        :mod:`gpaw.fulldiag`
 Calculation of dipole matrix elements  :mod:`gpaw.utilities.dipole`
 PAW-dataset convergence                :mod:`gpaw.utilities.ekin`
+:ref:`elph`                            ``gpaw.elph.gpts``
 =====================================  ============================
 
 Try::
@@ -103,7 +104,7 @@ Bash completion
 
 You can enable bash completion like this::
 
-    $ gpaw completions
+    $ gpaw completion
 
 This will append a line like this::
 

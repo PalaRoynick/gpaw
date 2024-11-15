@@ -6,14 +6,18 @@
 This file defines a series of finite difference operators used in grid mode.
 """
 
-from math import pi, factorial as fact
+from math import factorial as fact
+from math import pi
 
 import numpy as np
+from ase.geometry.minkowski_reduction import reduction_full
 from numpy.fft import fftn, ifftn
+from scipy.spatial import Voronoi
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 from gpaw import debug
-
+from gpaw.gpu import cupy_is_fake
+from gpaw.typing import Array2D, ArrayLike2D
 
 # Expansion coefficients for finite difference Laplacian.  The numbers are
 # from J. R. Chelikowsky et al., Phys. Rev. B 50, 11355 (1994):
@@ -34,7 +38,7 @@ derivatives = [[1 / 2],
 
 class FDOperator:
     def __init__(self, coef_p, offset_pc, gd, dtype=float,
-                 description=None):
+                 description=None, xp=np):
         """FDOperator(coefs, offsets, gd, dtype) -> FDOperator object.
         """
 
@@ -79,9 +83,11 @@ class FDOperator:
         self.comm = comm
         self.cfd = cfd
 
-        self.operator = _gpaw.Operator(coef_p, offset_p, n_c, mp,
+        self.xp = xp
+        gpu = xp is not np and not cupy_is_fake
+        self.operator = cgpaw.Operator(coef_p, offset_p, n_c, mp,
                                        neighbor_cd, dtype == float,
-                                       comm, cfd)
+                                       comm, cfd, gpu)
 
         if description is None:
             description = '%d point finite-difference stencil' % self.npoints
@@ -90,11 +96,46 @@ class FDOperator:
     def __str__(self):
         return '<' + self.description + '>'
 
+    def __call__(self, in_xR, out_xR=None):
+        """New UGArray interface."""
+        if out_xR is None:
+            out_xR = in_xR.new()
+        if self.xp is np:
+            self.operator.apply(in_xR.data, out_xR.data,
+                                in_xR.desc.phase_factor_cd)
+        elif cupy_is_fake:
+            self.operator.apply(in_xR.data._data, out_xR.data._data,
+                                in_xR.desc.phase_factor_cd)
+        else:
+            assert isinstance(in_xR.data, self.xp.ndarray)
+            assert isinstance(out_xR.data, self.xp.ndarray)
+            self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
+                                    in_xR.data.shape, in_xR.data.dtype,
+                                    in_xR.desc.phase_factor_cd)
+        return out_xR
+
     def apply(self, in_xg, out_xg, phase_cd=None):
-        self.operator.apply(in_xg, out_xg, phase_cd)
+        """Old NumPy interface."""
+        if self.xp is np:
+            self.operator.apply(in_xg, out_xg, phase_cd)
+        elif cupy_is_fake:
+            self.operator.apply(in_xg._data, out_xg._data,
+                                phase_cd)
+        else:
+            self.operator.apply_gpu(in_xg.data.ptr,
+                                    out_xg.data.ptr,
+                                    in_xg.shape, in_xg.dtype, phase_cd)
 
     def relax(self, relax_method, f_g, s_g, n, w=None):
-        self.operator.relax(relax_method, f_g, s_g, n, w)
+        if self.xp is np:
+            self.operator.relax(relax_method, f_g, s_g, n, w)
+        elif cupy_is_fake:
+            self.operator.relax(relax_method, f_g._data, s_g._data, n, w)
+        else:
+            self.operator.relax_gpu(relax_method,
+                                    f_g.data.ptr,
+                                    s_g.data.ptr,
+                                    n, w)
 
     def get_diagonal_element(self):
         return self.operator.get_diagonal_element()
@@ -110,9 +151,9 @@ if debug:
         def apply(self, in_xg, out_xg, phase_cd=None):
             assert in_xg.shape == out_xg.shape
             assert in_xg.shape[-3:] == self.shape
-            assert in_xg.flags.contiguous
+            assert in_xg.flags.c_contiguous
             assert in_xg.dtype == self.dtype
-            assert out_xg.flags.contiguous
+            assert out_xg.flags.c_contiguous
             assert out_xg.dtype == self.dtype
             assert (self.dtype == float or
                     (phase_cd.dtype == complex and
@@ -122,23 +163,23 @@ if debug:
         def relax(self, relax_method, f_g, s_g, n, w=None):
             assert f_g.shape == self.shape
             assert s_g.shape == self.shape
-            assert f_g.flags.contiguous
+            assert f_g.flags.c_contiguous
             assert f_g.dtype == float
-            assert s_g.flags.contiguous
+            assert s_g.flags.c_contiguous
             assert s_g.dtype == float
             assert self.dtype == float
             _FDOperator.relax(self, relax_method, f_g, s_g, n, w)
 
 
-def Laplace(gd, scale=1.0, n=1, dtype=float):
+def Laplace(gd, scale=1.0, n=1, dtype=float, xp=np):
     if n == 9:
         return FTLaplace(gd, scale, dtype)
     else:
-        return GUCLaplace(gd, scale, n, dtype)
+        return GUCLaplace(gd, scale, n, dtype, xp=xp)
 
 
 class GUCLaplace(FDOperator):
-    def __init__(self, gd, scale=1.0, n=1, dtype=float):
+    def __init__(self, gd, scale=1.0, n=1, dtype=float, xp=np):
         """Laplacian for general non orthorhombic grid.
 
         gd: GridDescriptor
@@ -187,15 +228,64 @@ class GUCLaplace(FDOperator):
             offsets.extend(np.arange(-1, -n - 1, -1)[:, np.newaxis] * M_c)
             coefs.extend(a_d[d] * np.array(laplace[n][1:]))
 
-        FDOperator.__init__(self, coefs, offsets, gd, dtype)
+        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp)
 
         self.description = (
             '%d*%d+1=%d point O(h^%d) finite-difference Laplacian' %
             ((self.npoints - 1) // n, n, self.npoints, 2 * n))
 
 
+def find_neighbors(h_cv: ArrayLike2D) -> Array2D:
+    """Find nearest neighbors sorted after distance.
+
+    With ``M_dc = find_neighbors(h_cv)``, the neighbors will be at
+    ``M_dc @ h_cv``, where ``M_dc`` is a (#neighbors, 3)-shaped
+    ndarray of int.  If h is a vector pointing at a
+    neighbor grid-point then we don't also include -h in the list.
+
+    Examples:
+
+    >>> h_cv = [[0.1, 0, 0], [0, 0.11, 0], [0, 0, 0.12]]
+    >>> find_neighbors(h_cv)
+    array([[1, 0, 0],
+           [0, 1, 0],
+           [0, 0, 1]])
+    >>> h_cv = [[0.1, 0, 0], [0.2, 0.11, 0], [0, 0, 0.12]]
+    >>> find_neighbors(h_cv)
+    array([[ 1,  0,  0],
+           [-2,  1,  0],
+           [ 0,  0,  1]])
+    """
+    # Do Minkowski reduction:
+    h_bv, U_bc = reduction_full(h_cv)  # h_bv = U_bc @ h_cv
+
+    # 27 points: (-1,0,1)x(-1,0,1)x(-1,0,1)
+    M_ib = np.indices((3, 3, 3)).reshape((3, -1)).T - 1
+    h_iv = M_ib.dot(h_bv)
+    voro = Voronoi(h_iv)
+    i_d = []  # List[int]
+    for i1, i2 in voro.ridge_points:
+        if i1 == 13 and i2 > 13:  # 13 is the point in the middle
+            i_d.append(i2)
+        elif i2 == 13 and i1 > 13:
+            i_d.append(i1)
+    h2_d = (h_iv[i_d]**2).sum(1)
+    M_db = M_ib[[i_d[d] for d in h2_d.argsort()]]
+
+    # Transform back to origial unreduced space:
+    # h_dv = M_db @ h_bv = M_db @ U_bc @ h_cv = M_dc @ h_cv
+    M_dc = M_db @ U_bc
+    return M_dc
+
+
 class Gradient(FDOperator):
-    def __init__(self, gd, v, scale=1.0, n=1, dtype=float):
+    def __init__(self,
+                 gd,
+                 v: int,
+                 scale=1.0,
+                 n=1,
+                 dtype=float,
+                 xp=np):
         """Symmetric gradient for general non orthorhombic grid.
 
         gd: GridDescriptor
@@ -210,23 +300,9 @@ class Gradient(FDOperator):
             Data-type to work on.
         """
 
-        from scipy.spatial import Voronoi
-
-        # Find nearest neighbors.  If h is a vector pointing at a
-        # neighbor grid-points then we don't also include -h in the list:
-        M_ic = np.indices((3, 3, 3)).reshape((3, -1)).T - 1
-        h_iv = M_ic.dot(gd.h_cv)
-        voro = Voronoi(h_iv)
-        i_d = []  # List[int]
-        for i1, i2 in voro.ridge_points:
-            if i1 == 13 and i2 > 13:
-                i_d.append(i2)
-            elif i2 == 13 and i1 > 13:
-                i_d.append(i1)
-
-        D = len(i_d)  # number of neighbors (3, 4, 5, 6 or 7)
-
-        h_dv = h_iv[i_d]  # vectors pointing at neighbor grid-points
+        M_dc = find_neighbors(gd.h_cv)
+        h_dv = M_dc @ gd.h_cv  # vectors pointing at neighbor grid-points
+        D = len(h_dv)  # number of neighbors (3, 4, 5, 6 or 7)
 
         # Find gradient along 3 directions (n_cv):
         invh_vc = np.linalg.inv(gd.h_cv)
@@ -253,18 +329,18 @@ class Gradient(FDOperator):
 
         # Create stencil:
         offsets = []
-        coefs = []
+        coefs: list[float] = []
         stencil = np.array(derivatives[n - 1])
         for d, c in enumerate(coef_d):
             if abs(c) < 1e-10:
                 continue
-            M_c = M_ic[i_d[d]]
+            M_c = M_dc[d]
             offsets.extend(np.arange(1, n + 1)[:, np.newaxis] * M_c)
             coefs.extend(c * stencil)
             offsets.extend(np.arange(-1, -n - 1, -1)[:, np.newaxis] * M_c)
             coefs.extend(-c * stencil)
 
-        FDOperator.__init__(self, coefs, offsets, gd, dtype)
+        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp)
 
         self.description = (
             'Finite-difference {}-derivative with O(h^{}) error ({} points)'
@@ -272,7 +348,7 @@ class Gradient(FDOperator):
 
 
 class LaplaceA(FDOperator):
-    def __init__(self, gd, scale, dtype=float):
+    def __init__(self, gd, scale, dtype=float, xp=np):
         assert gd.orthogonal
         c = np.divide(-1 / 12, gd.h_cv.diagonal()**2) * scale  # Why divide?
         c0 = c[1] + c[2]
@@ -296,11 +372,12 @@ class LaplaceA(FDOperator):
                              (-1, 0, -1), (-1, 0, 1), (1, 0, -1), (1, 0, 1),
                              (-1, -1, 0), (-1, 1, 0), (1, -1, 0), (1, 1, 0)],
                             gd, dtype,
-                            'O(h^4) Mehrstellen Laplacian (A)')
+                            'O(h^4) Mehrstellen Laplacian (A)',
+                            xp=xp)
 
 
 class LaplaceB(FDOperator):
-    def __init__(self, gd, dtype=float):
+    def __init__(self, gd, dtype=float, xp=np):
         a = 0.5
         b = 1.0 / 12.0
         FDOperator.__init__(self,
@@ -311,7 +388,8 @@ class LaplaceB(FDOperator):
                              (0, -1, 0), (0, 1, 0),
                              (0, 0, -1), (0, 0, 1)],
                             gd, dtype,
-                            'O(h^4) Mehrstellen Laplacian (B)')
+                            'O(h^4) Mehrstellen Laplacian (B)',
+                            xp=xp)
 
 
 class FTLaplace:
@@ -343,7 +421,7 @@ class FTLaplace:
 
 
 class OldGradient(FDOperator):
-    def __init__(self, gd, v, scale=1.0, n=1, dtype=float):
+    def __init__(self, gd, v, scale=1.0, n=1, dtype=float, xp=np):
         h = (gd.h_cv**2).sum(1)**0.5
         d = gd.xxxiucell_cv[:, v]
         A = np.zeros((2 * n + 1, 2 * n + 1))
@@ -364,4 +442,5 @@ class OldGradient(FDOperator):
                 offset_pc.extend(offset)
 
         FDOperator.__init__(self, coef_p, offset_pc, gd, dtype,
-                            'O(h^%d) %s-gradient stencil' % (2 * n, 'xyz'[v]))
+                            'O(h^%d) %s-gradient stencil' % (2 * n, 'xyz'[v]),
+                            xp=xp)

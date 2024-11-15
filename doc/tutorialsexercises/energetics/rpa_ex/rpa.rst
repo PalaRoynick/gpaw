@@ -130,7 +130,7 @@ equation (9) of [Olsen]_.  The main points to note are that:
 * it requires knowledge of the wavefunctions, not just
   the density, which again makes it more expensive to compute.
 
-* in the formalism used here we calculate `E_\text{EXX}` non-self-consistently;
+* in the formalism used here we calculate `E_\text{EXX}` non self-consistently;
   that is, we use one approximation for the exchange-correlation energy
   (PBE) to obtain the wavefunctions, then use these wavefunctions to
   construct the exchange energy under a different
@@ -166,7 +166,7 @@ As before, we also need the energy of the isolated atom.  Look at (but don't
 run!) the script :download:`atom/si.atom.pbe+exx.py`, which returns the
 following output in ``pbe_and_exx_energies.txt``::
 
-  #Box_side_length(A) PBE_total_energy(eV) PBE+EXX_total_energy(eV)
+  #Box_side_length(A) PBE_total_energy(eV) EXX@PBE_total_energy(eV)
   6.0 -0.665810338359 9.88551793188
   7.0 -0.779861449204 9.79892076652
   8.0 -0.825944184466 9.76642864072
@@ -192,18 +192,20 @@ neglecting correlation in solids!
 (RPA+EXX)\@PBE cohesive energy - bulk
 =====================================
 
-Finally, we calculate `E_\text{XC}` including the correlation energy in the RPA:
+Finally, we calculate:
 
 .. math::
-  E_\text{XC} = E_\text{EXX} + E_\text{RPA}
+  E^\text{RPA}_\text{tot} = E^\text{PBE}_\text{tot} - E^\text{PBE}_\text{XC} + E^\text{EXX@PBE}_\text{X} + E^\text{RPA@PBE}_\text{C}
 
-An expression for `E_\text{RPA}` is given as equation (8) in [Olsen]_.
+where `E^\text{PBE}_\text{tot} - E^\text{PBE}_\text{XC} + E^\text{EXX@PBE}_\text{X}`
+represents `E^{EXX@PBE}_{tot}` that was calculated in the previous step. An
+expression for `E^\text{RPA}_\text{C}` is given as equation (8) in [Olsen]_.
 
 The main ingredient here is the response function `\chi_0`, which is nonlocal,
 energy dependent and constructed from a sum of an infinite number of
 unoccupied electronic states.  Therefore like GW calculations, RPA
 calculations are expensive to perform.  We also note that, like for exact
-exchange, we construct `\chi_0` non-self-consistently, here using the
+exchange, we construct `\chi_0` non self-consistently, here using the
 wavefunctions and eigenvalues obtained with the PBE functional.
 
 The good news however is that compared to exact exchange calculations,

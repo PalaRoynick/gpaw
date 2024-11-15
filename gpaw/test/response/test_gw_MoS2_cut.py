@@ -10,7 +10,6 @@ def gpwfile(in_tmp_dir):
     calc = GPAW(
         mode='pw',
         xc='PBE',
-        experimental={'niter_fixdensity': 2},
         nbands=16,
         convergence={'bands': 15},
         setups={'Mo': '6'},
@@ -22,10 +21,10 @@ def gpwfile(in_tmp_dir):
 
     cell = Hexagonal(symbol='Mo',
                      latticeconstant={'a': a, 'c': c}).get_cell()
-    layer = Atoms(symbols='MoS2', cell=cell, pbc=True,
-                  scaled_positions=[(0, 0, 0),
-                                    (2 / 3, 1 / 3, 0.3),
-                                    (2 / 3, 1 / 3, -0.3)])
+    layer = Atoms(symbols='MoS2', cell=cell, pbc=[True, True, False],
+                  scaled_positions=[(0, 0, 0.5),
+                                    (2 / 3, 1 / 3, 0.3 + 0.5),
+                                    (2 / 3, 1 / 3, -0.3 + 0.5)])
 
     pos = layer.get_positions()
     pos[1][2] = pos[0][2] + 3.172 / 2
@@ -39,13 +38,16 @@ def gpwfile(in_tmp_dir):
 
 
 @pytest.mark.response
-def test_response_gw_MoS2_cut(scalapack, gpwfile):
+@pytest.mark.parametrize('integrate_gamma', ['sphere', 'reciprocal2D',
+                                             '1BZ2D'])
+def test_response_gw_MoS2_cut(scalapack, gpwfile, integrate_gamma):
     gw = G0W0(gpwfile,
               'gw-test',
               nbands=15,
               ecut=10,
               eta=0.2,
               frequencies={'type': 'nonlinear', 'domega0': 0.1},
+              integrate_gamma=integrate_gamma,
               truncation='2D',
               kpts=[((1 / 3, 1 / 3, 0))],
               bands=(8, 10))
@@ -56,7 +58,9 @@ def test_response_gw_MoS2_cut(scalapack, gpwfile):
     for path in paths.values():
         assert path.exists()
 
-    ev = 2.392
-    ec = 7.337
+    results = {'sphere': (2.392, 7.337),
+               '1BZ2D': (2.400, 7.311),
+               'reciprocal2D': (2.406, 7.297)}
+    ev, ec = results[integrate_gamma]
     assert e_qp[0] == pytest.approx(ev, abs=0.01)
     assert e_qp[1] == pytest.approx(ec, abs=0.01)

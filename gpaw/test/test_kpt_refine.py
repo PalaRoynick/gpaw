@@ -1,11 +1,13 @@
-from gpaw import GPAW
-from gpaw import PW
-from gpaw import FermiDirac
+import pytest
 from ase.lattice.hexagonal import Graphene
 from ase.parallel import parprint
 
+from gpaw import GPAW, PW, FermiDirac
 
-def test_kpt_refine():
+
+def test_kpt_refine(gpaw_new):
+    if gpaw_new:
+        pytest.skip('Not implemented')
     system = Graphene(symbol='C',
                       latticeconstant={'a': 2.467710, 'c': 1.0},
                       size=(1, 1, 1))

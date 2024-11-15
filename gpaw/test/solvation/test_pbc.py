@@ -1,4 +1,4 @@
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from ase.build import molecule
 from ase.data.vdw import vdw_radii
 from gpaw.solvation import (
@@ -30,8 +30,8 @@ convergence = {
 
 
 def test_solvation_pbc():
-    atoms = Cluster(molecule('H2O'))
-    atoms.minimal_box(vac, h)
+    atoms = molecule('H2O')
+    adjust_cell(atoms, vac, h)
     atoms.pbc = True
 
     with warnings.catch_warnings():
@@ -40,7 +40,7 @@ def test_solvation_pbc():
         psolver = ADM12PoissonSolver(eps=1e-7)
 
     atoms.calc = SolvationGPAW(
-        xc='LDA', h=h, convergence=convergence,
+        mode='fd', xc='LDA', h=h, convergence=convergence,
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(
                 atomic_radii=atomic_radii, u0=u0),

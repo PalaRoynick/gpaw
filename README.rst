@@ -1,8 +1,6 @@
 .. image:: https://badge.fury.io/py/gpaw.svg
     :target: https://pypi.org/project/gpaw/
 
-Coverage_
-
 GPAW
 ====
 
@@ -11,37 +9,41 @@ projector-augmented wave (PAW) method and the atomic simulation environment
 (ASE_). It uses plane-waves, atom-centered basis-functions or real-space
 uniform grids combined with multigrid methods.
 
-Webpage: http://wiki.fysik.dtu.dk/gpaw
+Webpage: https://gpaw.readthedocs.io/
 
 
 Requirements
 ------------
 
-* Python_ 3.7 or later
-* ASE_ (atomic simulation environment)
-* NumPy_ (base N-dimensional array package)
-* SciPy_ (library for scientific computing)
-* LibXC
-* BLAS
+* Python_ 3.9 or later
+* ASE_
+* NumPy_
+* SciPy_
+* LibXC_
+* A C compiler
+* A BLAS_ library
 
-Optional (highly recommended):
+Optional (highly recommended for increased performance):
 
-* MPI
-* ScaLAPACK
+* A MPI_ library (required for parallel calculations)
+* BLACS_ and ScaLAPACK_ libraries
+* FFTW_
+
+See `Release notes <releasenotes_>`_ for version requirements.
 
 
 Installation
 ------------
 
-Do this::
+Create a virtual environment, activate it, install::
 
+    $ python3 -m venv venv
+    $ source venv/bin/activate
     $ python3 -m pip install gpaw
-
-and make sure you have ``~/.local/bin`` in your $PATH.
 
 For more details, please see:
 
-    https://wiki.fysik.dtu.dk/gpaw/install.html
+    https://gpaw.readthedocs.io/install.html
 
 
 Test your installation
@@ -96,13 +98,19 @@ Once you have familiarized yourself with ASE_ and NumPy_, you should take a
 look at the GPAW exercises_ and tutorials_.
 
 
-.. _Python: http://www.python.org/
-.. _ASE: http://wiki.fysik.dtu.dk/ase
-.. _NumPy: http://docs.scipy.org/doc/numpy/reference/
-.. _SciPy: http://docs.scipy.org/doc/scipy/reference/
+.. _Python: https://www.python.org/
+.. _ASE: https://wiki.fysik.dtu.dk/ase/
+.. _NumPy: https://docs.scipy.org/doc/numpy/reference/
+.. _SciPy: https://docs.scipy.org/doc/scipy/reference/
+.. _LibXC: https://libxc.gitlab.io/
+.. _MPI: https://www.mpi-forum.org/
+.. _BLAS: https://www.netlib.org/blas/
+.. _FFTW: https://www.fftw.org/
+.. _BLACS: https://www.netlib.org/blacs/
+.. _ScaLAPACK: https://www.netlib.org/scalapack/
 .. _gpaw-users: https://listserv.fysik.dtu.dk/mailman/listinfo/gpaw-users
-.. _Matrix: https://matrix.io/#/#gpaw:matrix.org
+.. _Matrix: https://app.element.io/#/room/#gpaw:matrix.org
 .. _gitlab-issues: https://gitlab.com/gpaw/gpaw/issues
-.. _exercises: https://wiki.fysik.dtu.dk/gpaw/exercises/exercises.html
-.. _tutorials: https://wiki.fysik.dtu.dk/gpaw/tutorials/tutorials.html
-.. _Coverage: https://wiki.fysik.dtu.dk/gpaw/htmlcov/index.html
+.. _exercises: https://gpaw.readthedocs.io/exercises/exercises.html
+.. _tutorials: https://gpaw.readthedocs.io/tutorials/tutorials.html
+.. _releasenotes: https://gpaw.readthedocs.io/releasenotes.html

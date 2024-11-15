@@ -16,7 +16,7 @@ from gpaw.occupations import FixedOccupationNumbers, ParallelLayout
 def prepare_mom_calculation(calc,
                             atoms,
                             numbers,
-                            use_projections=False,
+                            use_projections=True,
                             update_numbers=True,
                             use_fixed_occupations=False,
                             width=0.0,
@@ -32,13 +32,12 @@ def prepare_mom_calculation(calc,
         Occupation numbers (in the range from 0 to 1). Used
         for the initialization of the MOM reference orbitals.
     use_projections: bool
-        If True, the occupied orbitals at iteration k are chosen
-        as the orbitals ``|psi^(k)_m>`` with the biggest weights
-        ``P_m`` evaluated as the projections onto the manifold of
-        reference orbitals ``|psi_n>``: ``P_m = (Sum_n(|O_nm|^2))^0.5
-        (O_nm = <psi_n|psi^(k)_m>)`` see
-        :doi:`10.1021/acs.jctc.7b00994`. If False (default),
-        the weights are evaluated as: ``P_m = max_n(|O_nm|)``
+        If True (default), the occupied orbitals at iteration k are
+        chosen as the orbitals ``|psi^(k)_m>`` with the biggest
+        weights ``P_m`` evaluated as the projections onto the manifold
+        of reference orbitals ``|psi_n>``: ``P_m = (Sum_n(|O_nm|^2))^0.5
+        (O_nm = <psi_n|psi^(k)_m>)`` see :doi:`10.1021/acs.jctc.7b00994`.
+        If False, the weights are evaluated as: ``P_m = max_n(|O_nm|)``,
         see :doi:`10.1021/acs.jctc.0c00488`.
     update_numbers: bool
         If True (default), 'numbers' gets updated with the calculated
@@ -66,9 +65,14 @@ def prepare_mom_calculation(calc,
         function.
     """
 
-    if calc.wfs is None:
-        # We need the wfs object to initialize OccupationsMOM
-        calc.initialize(atoms)
+    new_gpaw = hasattr(calc, '_dft')
+    if not new_gpaw:
+        if calc.wfs is None:
+            # We need the wfs object to initialize OccupationsMOM
+            calc.initialize(atoms)
+    else:
+        if calc._dft is None:
+            calc.create_new_calculation(atoms)
 
     occ_mom = OccupationsMOM(calc.wfs,
                              numbers,
@@ -78,9 +82,15 @@ def prepare_mom_calculation(calc,
                              width,
                              niter_width_update,
                              width_increment)
-    calc.set(occupations=occ_mom)
+    if not new_gpaw:
+        calc.set(occupations=occ_mom, _set_ok=True)
+    else:
+        calc.dft.scf_loop.occ_calc.occ = occ_mom
+        calc.dft.results = {}
 
     calc.log(occ_mom)
+
+    return occ_mom
 
 
 class OccupationsMOM:
@@ -137,14 +147,16 @@ class OccupationsMOM:
         if self.width == 0.0:
             s += 'off\n'
         else:
-            s += '{0:.4f} eV\n'.format(self.width * Ha)
+            s += f'{self.width * Ha:.4f} eV\n'
         return s
 
     def calculate(self,
                   nelectrons,
                   eigenvalues,
                   weights,
-                  fermi_levels_guess):
+                  fermi_levels_guess,
+                  fix_fermi_level=False):
+        assert not fix_fermi_level
 
         if not self.initialized:
             # If MOM reference orbitals are not initialized yet (e.g. when
@@ -160,11 +172,14 @@ class OccupationsMOM:
                                                            eigenvalues,
                                                            weights,
                                                            fermi_levels_guess)
-
         return f_qn, fermi_levels, e_entropy
 
     def initialize_reference_orbitals(self):
-        if self.wfs.kpt_u[0].f_n is None:
+        try:
+            f_n = self.wfs.kpt_u[0].f_n
+        except ValueError:  # new gpaw
+            return
+        if f_n is None:  # old gpaw
             # If the occupation numbers are not already available
             # (e.g. when the calculation is initialized from atomic
             # densities) we first need to take a step of eigensolver
@@ -201,9 +216,8 @@ class OccupationsMOM:
                     self.wf[kpt.s][f_n_unique] = kpt.psit_nG[occupied].copy()
                     # Atomic contributions times projector overlaps
                     self.p_an[kpt.s][f_n_unique] = \
-                        dict([(a, np.dot(self.wfs.setups[a].dO_ii,
-                                         P_ni[occupied].T))
-                              for a, P_ni in kpt.P_ani.items()])
+                        {a: np.dot(self.wfs.setups[a].dO_ii, P_ni[occupied].T)
+                         for a, P_ni in kpt.P_ani.items()}
 
         self.initialized = True
 
@@ -273,8 +287,8 @@ class OccupationsMOM:
             O += O_corr
 
         if self.use_projections:
-            P = np.sum(abs(O) ** 2, axis=0)
-            P = P ** 0.5
+            P = np.sum(abs(O)**2, axis=0)
+            P = P**0.5
         else:
             P = np.amax(abs(O), axis=0)
 

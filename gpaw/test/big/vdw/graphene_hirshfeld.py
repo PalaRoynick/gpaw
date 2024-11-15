@@ -19,10 +19,11 @@ graphene = atoms.repeat([1, 2, 1])
 
 h = 0.25
 calc = GPAW(
+    mode='fd',
     h=h,
     occupations=FermiDirac(0.1))
 graphene.calc = calc
 graphene.get_potential_energy()
 vol_a = HirshfeldPartitioning(calc).get_effective_volume_ratios()
 print(vol_a)
-assert vol_a.ptp() < 1e-2
+assert np.ptp(vol_a) < 1e-2

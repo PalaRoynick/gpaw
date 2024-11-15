@@ -28,7 +28,7 @@ Please join the ``#gpaw`` channel on Matrix_
 (also accessible via the Element_ webclient) if you have any questions.
 There is also a ``#ase`` channel for ASE questions.
 
-.. _Matrix: https://matrix.io/#/#gpaw:matrix.org
+.. _Matrix: https://matrix.org
 .. _Element: https://app.element.io/#/room/#gpaw:matrix.org
 
 
@@ -48,11 +48,11 @@ These lists are inactive and serve as an archives only:
 * gridpaw-developer_ (deactivated Oct 20 2009)
 
 
-.. _webclient: http://webchat.freenode.net/?randomnick=0&channels=gpaw
+.. _webclient: https://webchat.freenode.net/?randomnick=0&channels=gpaw
 .. _gpaw-developers: https://listserv.fysik.dtu.dk/mailman/listinfo/
                      gpaw-developers
 .. _gpaw-svncheckins: https://listserv.fysik.dtu.dk/mailman/listinfo/
                       gpaw-svncheckins
 .. _gpaw-users: https://listserv.fysik.dtu.dk/mailman/listinfo/gpaw-users
-.. _gridpaw-developer: http://listserv.fysik.dtu.dk/mailman/listinfo/
+.. _gridpaw-developer: https://listserv.fysik.dtu.dk/mailman/listinfo/
                        gridpaw-developer

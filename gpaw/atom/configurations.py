@@ -1305,7 +1305,7 @@ def core_states(symbol):
 
 if __name__ == '__main__':
     import pprint
-    # http://www.physics.nist.gov/PhysRefData/DFTdata/
+    # https://www.physics.nist.gov/PhysRefData/DFTdata/
     path = '/scratch/jensj/dftdata/'
     Ztable = {}
     confs = [['X', '']]
@@ -1335,7 +1335,7 @@ if __name__ == '__main__':
     spdf = {'s': 0, 'p': 1, 'd': 2, 'f': 3}
     for symbol, Z in Ztable.items():
         occupations = get_occupations(symbol)
-        with open(path + 'LDA/neutrals/%02d%s' % (Z, symbol), 'r') as fd:
+        with open(path + 'LDA/neutrals/%02d%s' % (Z, symbol)) as fd:
             for n in range(5):
                 fd.readline()
             epsilons = {}

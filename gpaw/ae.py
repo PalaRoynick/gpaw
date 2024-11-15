@@ -3,9 +3,9 @@
 import numpy as np
 from scipy.special import erf
 
-from gpaw.spline import Spline
-from gpaw.setup import BaseSetup
 from gpaw.basis_data import Basis
+from gpaw.setup import BaseSetup
+from gpaw.spline import Spline
 
 
 class HydrogenAllElectronSetup(BaseSetup):
@@ -23,20 +23,20 @@ class HydrogenAllElectronSetup(BaseSetup):
         self.pt_j = []
         self.ni = 0
         self.l_j = [0]
-        self.l_orb_j = [0]
+        self.l_orb_J = [0]
         self.n_j = [1]
-        self.nct = Spline(0, 0.5, [0.0, 0.0, 0.0])
+        self.tauct = self.nct = Spline.from_data(0, 0.5, [0.0, 0.0, 0.0])
         self.Nct = 0.0
         self.N0_p = np.zeros(0)
         rc = 2.0
         r_g = np.linspace(0, rc, 100)
         r2_g = r_g**2
-        self.ghat_l = [Spline(0, rc, 4 * alpha1**1.5 / np.pi**0.5 *
-                              np.exp(-alpha1 * r2_g))]
+        self.ghat_l = [Spline.from_data(0, rc, 4 * alpha1**1.5 / np.pi**0.5 *
+                                        np.exp(-alpha1 * r2_g))]
         v_g = erf(alpha1**0.5 * r_g) - erf(alpha2**0.5 * r_g)
         v_g[1:] *= (4 * np.pi)**0.5 / r_g[1:]
         v_g[0] = 4 * (alpha1**0.5 - alpha2**0.5)
-        self.vbar = Spline(0, rc, v_g)
+        self.vbar = Spline.from_data(0, rc, v_g)
         self.Delta_pL = np.zeros((0, 1))
         self.Delta_iiL = np.zeros((0, 0, 1))
         self.Delta0 = -1 / (4 * np.pi)**0.5
@@ -47,7 +47,6 @@ class HydrogenAllElectronSetup(BaseSetup):
         self.MB = 0.0
         self.M = -(alpha1 / 2 / np.pi)**0.5
         self.xc_correction = None
-        self.HubU = None
         self.dO_ii = np.zeros((0, 0))
         self.type = 'all-electron'
         self.fingerprint = None
@@ -62,8 +61,11 @@ class HydrogenAllElectronSetup(BaseSetup):
             basis = Basis('H', 'sz(dzp)')
         elif isinstance(basis, str):
             basis = Basis('H', basis)
+
         self.basis = basis
-        self.phit_j = self.basis.tosplines()
+        self.basis_functions_J = self.basis.tosplines()
+        self.pseudo_partial_waves_j = None  # XXX
+
         self.f_j = [1.0]
         self.nao = self.basis.nao
 

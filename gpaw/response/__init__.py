@@ -1,5 +1,8 @@
 """GPAW Response core functionality."""
-from .groundstate import ResponseGroundStateAdapter  # noqa
-from .context import ResponseContext, timer  # noqa
+from __future__ import annotations
+from .groundstate import (ResponseGroundStateAdapter,
+                          ResponseGroundStateAdaptable)  # noqa
+from .context import ResponseContext, ResponseContextInput, timer  # noqa
 
-__all__ = ['ResponseGroundStateAdapter', 'ResponseContext', 'timer']
+__all__ = ['ResponseGroundStateAdapter', 'ResponseGroundStateAdaptable',
+           'ResponseContext', 'ResponseContextInput', 'timer']

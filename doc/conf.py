@@ -1,7 +1,7 @@
 import datetime
 import sys
 
-import sphinx_rtd_theme
+# import sphinx_rtd_theme
 from gpaw import __version__
 from gpaw.doctools.aamath import autodoc_process_docstring
 try:
@@ -9,7 +9,7 @@ try:
 except ImportError:
     sphinxcontrib = None
 
-assert sys.version_info >= (3, 6)
+assert sys.version_info >= (3, 8)
 
 sys.path.append('.')
 
@@ -21,7 +21,8 @@ extensions = ['images',
               'sphinx.ext.viewcode',
               'sphinx.ext.napoleon',
               'sphinx.ext.mathjax',
-              'sphinx.ext.intersphinx']
+              'sphinx.ext.intersphinx',
+              'sphinxcontrib.jquery']
 
 if sphinxcontrib:
     extensions.append('sphinxcontrib.spelling')
@@ -48,9 +49,10 @@ intersphinx_mapping = {
     'python': ('https://docs.python.org/3.10', None),
     'ase': ('https://wiki.fysik.dtu.dk/ase', None),
     'numpy': ('https://numpy.org/doc/stable', None),
+    'cupy': ('https://docs.cupy.dev/en/stable', None),
     'scipy': ('https://docs.scipy.org/doc/scipy', None),
     'pytest': ('https://docs.pytest.org/en/stable', None),
-    'mayavi': ('http://docs.enthought.com/mayavi/mayavi', None)}
+    'mayavi': ('https://docs.enthought.com/mayavi/mayavi', None)}
 nitpick_ignore = [('py:class', 'gpaw.calculator.GPAW'),
                   ('py:class', 'gpaw.spinorbit.BZWaveFunctions'),
                   ('py:class', 'GPAW'),
@@ -59,7 +61,8 @@ nitpick_ignore = [('py:class', 'gpaw.calculator.GPAW'),
                   ('py:class', 'ase.spectrum.dosdata.GridDOSData'),
                   ('py:class', 'ase.atoms.Atoms'),
                   ('py:class', 'gpaw.point_groups.group.PointGroup'),
-                  ('py:class', 'UniformGridFunctions'),
+                  ('py:class', 'UGArray'),
+                  ('py:class', 'gpaw.core.arrays.DomainType'),
                   ('py:class', 'DomainType'),
                   ('py:class', 'Path'),
                   ('py:class', 'Vector'),
@@ -69,11 +72,15 @@ nitpick_ignore = [('py:class', 'gpaw.calculator.GPAW'),
                   ('py:class', 'Array2D'),
                   ('py:class', 'Array3D'),
                   ('py:class', 'MPIComm'),
-                  ('py:class', 'DomainType'),
-                  ('py:class', 'IO')]
-
+                  ('py:class', 'NLOData'),
+                  ('py:class', 'numpy._typing._dtype_like._SupportsDType'),
+                  ('py:class', 'numpy._typing._dtype_like._DTypeDict'),
+                  ('py:class', 'DTypeLike'),
+                  ('py:class', 'ModuleType'),
+                  ('py:class', 'IO'),
+                  ('py:class', 'gpaw.gpu.cpupy.ndarray')]
 html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 html_style = 'gpaw.css'
 html_title = 'GPAW'
 html_favicon = 'static/gpaw_favicon.ico'

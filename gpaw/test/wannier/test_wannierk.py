@@ -1,33 +1,14 @@
 import pytest
+from ase.dft.wannier import Wannier
+
+from gpaw import GPAW
 
 
+@pytest.mark.serial
 @pytest.mark.wannier
-def test_ase_features_wannierk(in_tmp_dir):
+def test_ase_features_wannierk(in_tmp_dir, gpw_files, gpaw_new):
     'Test ase.dft.wannier module with k-points.'
-    from ase.build import bulk
-    from ase.dft.wannier import Wannier
-
-    from gpaw import GPAW, Mixer
-    from gpaw.mpi import world, serial_comm
-
-    si = bulk('Si', 'diamond', a=5.43)
-
-    k = 4
-    if 1:
-        params = dict(kpts=(k, k, k),
-                      parallel=dict(augment_grids=True),
-                      mixer=Mixer(0.8, 7, 50.0))
-        si.calc = GPAW(**params,
-                       txt='Si-ibz.txt')
-        e1 = si.get_potential_energy()
-        si.calc.write('Si-ibz.gpw', mode='all')
-        si.calc = GPAW(**params,
-                       symmetry={'point_group': False,
-                                 'time_reversal': False},
-                       txt='Si-bz.txt')
-        e2 = si.get_potential_energy()
-        si.calc.write('Si-bz.gpw', mode='all')
-        print((e1, e2))
+    k = 3
 
     def wan(calc):
         centers = [([0.125, 0.125, 0.125], 0, 1.5),
@@ -47,22 +28,21 @@ def test_ase_features_wannierk(in_tmp_dir):
         c = sorted(c.round().astype(int).tolist())
         assert c == [[0, 0, 0], [0, 0, 1], [0, 1, 0], [1, 0, 0]]
         if 0:
-            from ase.visualize import view
             from ase import Atoms
+            from ase.visualize import view
             watoms = calc.atoms + Atoms(symbols='X4',
                                         scaled_positions=centers,
                                         cell=calc.atoms.cell)
             view(watoms)
         return x
 
-    calc1 = GPAW('Si-bz.gpw', txt=None, communicator=serial_comm)
+    calc1 = GPAW(gpw_files['si_fd_bz'])
     x1 = wan(calc1)
-    calc2 = GPAW('Si-ibz.gpw', txt=None, communicator=serial_comm)
-    calc2.wfs.ibz2bz(si)
-    x2 = wan(calc2)
-    if world.rank == 0:
-        print((x1, x2))
-    assert abs(x1 - x2) < 0.001
-    assert abs(x1 - 9.71) < 0.01
+    assert abs(x1 - 8.817) < 0.01
+    if gpaw_new:
+        return
 
-    world.barrier()
+    calc2 = GPAW(gpw_files['si_fd_ibz'])
+    calc2.wfs.ibz2bz(calc2.atoms)
+    x2 = wan(calc2)
+    assert abs(x1 - x2) < 0.001

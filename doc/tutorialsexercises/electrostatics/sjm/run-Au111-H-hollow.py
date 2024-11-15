@@ -34,6 +34,7 @@ interactions = [SurfaceInteraction(surface_tension=gamma)]
 # The calculator
 calc = SJM(
     # General GPAW parameters.
+    mode='fd',
     txt='Au111-H-hollow.txt',
     gpts=(16, 16, 136),
     kpts=(9, 9, 1),
@@ -58,5 +59,5 @@ sj['always_adjust'] = False
 sj['slope'] = None
 calc.set(sj=sj)
 opt = BFGS(atoms, trajectory='qn-Au111-H-hollow-1.traj',
-           logfile='qn-Au111-H-hollow.log')
+           logfile='qn-Au111-H-hollow-1.log')
 opt.run()
