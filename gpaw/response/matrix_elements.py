@@ -592,3 +592,29 @@ class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
     """
     def add_f(self, gd, n_sx, f_x):
         f_x[:] += - np.abs(calculate_LSDA_Wxc(gd, n_sx))
+
+    def _add_paw_correction(self, P1_Amyti, P2_Amyti,
+                            matrix_element: SiteMatrixElement):
+        # Add usual PAW correction to d^(xc,ap)
+        super()._add_paw_correction(P1_Amyti, P2_Amyti, matrix_element)
+        # If relevant, add Hubbard correction to the matrix element
+        if self.gs_is_hubbard_corrected:
+            self._add_hubbard_correction(P1_Amyti, P2_Amyti, matrix_element)
+
+    @property
+    def gs_is_hubbard_corrected(self):
+        # insert some check of whether self.gs includes U
+        raise NotImplementedError
+
+    def _add_hubbard_correction(self, P1_Amyti, P2_Amyti,
+                                matrix_element: SiteMatrixElement):
+        """
+        Insert a doc string with equations
+        """
+        d_mytap = matrix_element.local_array_view
+        nlm_Aii = self.gs.nonlocal_magnetization
+        for a, A in enumerate(self.sites.A_a):
+            dd_myt = np.einsum('ti,ij,tj->t',
+                               P1_Amyti[A].conj(), nlm_Aii[A], P2_Amyti[A])
+            d_mytap[:, a] += dd_myt[:, np.newaxis]
+        raise NotImplementedError
