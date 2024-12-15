@@ -1,18 +1,20 @@
-from math import pi, sqrt
-from typing import Any, Callable, Dict, NamedTuple, Optional, Union
+from typing import Optional
 
 import numpy as np
 from ase.atoms import Atoms
+
+# from gpaw import debug
+debug = True
+from ase.parallel import parprint
+
 from gpaw.calculator import GPAW
 from gpaw.iks.ae2density import ae2density
+from gpaw.lfc import LFC, BasisFunctions
 from gpaw.poisson import create_poisson_solver
-from gpaw.pw.poisson import ReciprocalSpacePoissonSolver
 from gpaw.transformers import Transformer
 from gpaw.typing import ArrayND
-from gpaw.utilities import hartree
+from gpaw.utilities import unpack_density
 from gpaw.xc.numericalxc import NumericalXC, NumericalXCKernel
-from gpaw.sphere.lebedev import Y_nL, weight_n
-from scipy.optimize import minimize
 
 
 class iKS(GPAW):
@@ -32,6 +34,8 @@ class iKS(GPAW):
         self.nt_sG = nt_sG
         self.init_weights(weights)
         self.stencil = stencil
+        self.scale = scale
+        self.fapoisson = None
 
     @property
     def na_sG(self):
@@ -40,12 +44,8 @@ class iKS(GPAW):
         )
         return na_sG
 
-    def initialize(self, atoms: Atoms):
-        self.wfs = None
-        self.density = None
-        self.hamiltonian = None
-        self.scf = None
-        GPAW.initialize(self, atoms)
+    def initialize(self, atoms: Atoms, reading: bool = False):
+        GPAW.initialize(self, atoms, reading)
         GPAW.set_positions(self, atoms)
         self.gd = self.hamiltonian.gd
         self.finegd = self.hamiltonian.finegd
@@ -54,15 +54,51 @@ class iKS(GPAW):
         self.nt_sg = self.coarse2fine(self.nt_sG)
         self.update_target_density()
         self.N = int(np.round(np.sum(self.finegd.integrate(self.nt_sg))))
-        self.init_xckernel()
         self.niter = 0
         self.eigensolver_name = getattr(self.wfs.eigensolver, "name", "")
-        self.psi_jG = None
-        self.psi_iG = None
-        self.u_i = None
-        self.p_ij = None
+        # n -> bands(occ+virt), m -> occ
+        self.psi_nG: Optional[ArrayND] = None
+        self.psi_mG: Optional[ArrayND] = None
+        self.u_m: Optional[ArrayND] = None
+        self.p_mn: Optional[ArrayND] = None
         self.L = 0.0
         self.prev_L = 0.0
+        self.init_paw()
+        self.init_xckernel()
+
+    def init_paw(self) -> None:
+        phi_aj = []
+        phit_aj = []
+        nc_a = []
+        nct_a = []
+        splines = {}
+        for a, id in enumerate(self.setups.id_a):
+            if id in splines:
+                phi_j, phit_j = splines[id]
+            else:
+                phi_j, phit_j, nc, nct = self.setups[a].get_partial_waves()[:4]
+                splines[id] = (phi_j, phit_j)
+            phi_aj.append(phi_j)
+            phit_aj.append(phit_j)
+            nc_a.append([nc])
+            nct_a.append([nct])
+
+        spos_ac = self.hamiltonian.spos_ac
+        self.phi = BasisFunctions(self.gd, phi_aj)
+        self.phit = BasisFunctions(self.gd, phit_aj)
+        self.phi.set_positions(spos_ac)
+        self.phit.set_positions(spos_ac)
+        self.nc = LFC(self.gd, nc_a)
+        self.nct = LFC(self.gd, nct_a)
+        self.nc.set_positions(spos_ac)
+        self.nct.set_positions(spos_ac)
+        self.dO_MM = np.zeros(
+            (self.phi.Mmax, self.phi.Mmax), dtype=self.setups[0].dO_ii.dtype
+        )
+        for a in range(len(self.phi.M_a)):
+            M1 = self.phi.M_a[a]
+            M2 = M1 + self.phi.sphere_a[a].Mmax
+            self.dO_MM[M1:M2, M1:M2] = self.setups[a].dO_ii
 
     def init_weights(self, weights: str | ArrayND) -> None:
         if isinstance(weights, ArrayND):
@@ -85,47 +121,57 @@ class iKS(GPAW):
             )
 
     def init_xckernel(self) -> None:
+        D_asp = self.density.D_asp
         self.xckernel = NumericalXCKernel()
-        self.xckernel.update_vxc(self.fermi_amaldi(self.nt_sg))
+        self.xckernel.update_vxc(self.fermi_amaldi(self.finegd, self.nt_sg))
         xc = NumericalXC(self.xckernel, self.stencil)
         self.hamiltonian.xc = xc
         xc.set_positions(self.hamiltonian.spos_ac)
         xc.set_grid_descriptor(self.finegd)
-        self.hamiltonian.update(self.denst)
-        vxc_ansg = {}
-        vxct_ansg = {}
-        NN = len(Y_nL)
-        for a, setup in enumerate(self.setups):
-            xcc = setup.xc_correction
-            if xcc is None:
-                vxc_ansg[a] = [0.0] * NN
-                vxct_ansg[a] = [0.0] * NN
-            else:
-                D_sp = self.density.D_asp[a]
-                assert D_sp is not None
-                vxc_ansg[a], vxct_ansg[a] = self.fermi_amaldi_radial(xcc, D_sp)
+        vxc_asG, vxct_asG = self.fermi_amaldi_paw(D_asp)
+        self.xckernel.update_vxc_a(vxc_asG)
+        self.xckernel.update_vxct_a(vxct_asG)
+        xc.set_lfc(self.phi, self.phit, self.nc, self.nct, self.hamiltonian.nspins)
 
-    def fermi_amaldi(self, nt_sg):
-        vHt_sg = self.finegd.zeros(self.hamiltonian.nspins)
-        if isinstance(self.hamiltonian.poisson, ReciprocalSpacePoissonSolver):
-            poisson = create_poisson_solver()
-            poisson.set_grid_descriptor(self.finegd)
-            _ = poisson.solve(
-                vHt_sg[0],
-                nt_sg[0],
+    def fermi_amaldi(self, gd, nt_sg):
+        vHt_sg = gd.zeros(self.hamiltonian.nspins)
+        N = gd.integrate(nt_sg)
+        if self.fapoisson is None:
+            self.fapoisson = create_poisson_solver()
+        self.fapoisson.set_grid_descriptor(gd)
+        for s in range(self.hamiltonian.nspins):
+            _ = self.fapoisson.solve(
+                vHt_sg[s],
+                nt_sg[s],
             )
-        else:
-            _ = self.hamiltonian.poisson.solve(
-                vHt_sg[0],
-                nt_sg[0],
-            )
-        return -vHt_sg / self.N
+        return -vHt_sg / N
 
-    def fermi_amaldi_radial(self, xcc, D_sp):
-        # TODO: use rgd.poisson to implement this
-        vxc_nsg = xcc.rgd.zeros((len(Y_nL), len(D_sp)))
-        vxct_nsg = vxc_nsg.copy()
-        return vxc_nsg, vxct_nsg
+    def fermi_amaldi_paw(self, D_asp):
+        nspins = self.hamiltonian.nspins
+        natoms = len(self.setups)
+        a_asi = {
+            a: np.zeros((nspins, self.nc.get_function_count(a))) for a in range(natoms)
+        }
+        vxc_asG = self.gd.zeros((natoms, self.hamiltonian.nspins))
+        vxct_asG = self.gd.zeros((natoms, self.hamiltonian.nspins))
+        for a, D_sp in D_asp.items():
+            na_sG = self.gd.zeros(nspins)
+            nat_sG = self.gd.zeros(nspins)
+            M1 = self.phi.M_a[a]
+            M2 = M1 + self.phi.sphere_a[a].Mmax
+            for s, D_p in enumerate(D_sp):
+                rho_MM = np.zeros((self.phi.Mmax, self.phi.Mmax))
+                rho_MM[M1:M2, M1:M2] = unpack_density(D_p)
+                self.phi.construct_density(rho_MM, na_sG[s], -1)
+                self.phit.construct_density(rho_MM, nat_sG[s], -1)
+            # add core density
+            c_asi = a_asi.copy()
+            c_asi[a] = np.ones_like(c_asi[a])
+            self.nc.add(na_sG, c_asi)
+            self.nct.add(nat_sG, c_asi)
+            vxc_asG[a] = self.fermi_amaldi(self.gd, na_sG)
+            vxct_asG[a] = self.fermi_amaldi(self.gd, nat_sG)
+        return vxc_asG, vxct_asG
 
     def update_target_density(self) -> None:
         self.denst = ae2density(
@@ -134,49 +180,19 @@ class iKS(GPAW):
         self.denst.calculate_normalized_charges_and_mix()
         self.denst.fixed = True
 
-    def update(self, v_sg: ArrayND) -> None:
-        self.niter += 1
-        self.xckernel.update_vxc(v_sg)
+    def update(self, v_sG: ArrayND, v_asG: ArrayND, vt_asG: ArrayND) -> None:
+        self.xckernel.update_vxc(self.coarse2fine(v_sG))
+        self.xckernel.update_vxc_a(v_asG)
+        self.xckernel.update_vxct_a(vt_asG)
+        # scf step
         if not self.wfs.orthonormalized:
             self.wfs.orthonormalize()
         if self.eigensolver_name == "etdm-fdpw":
-            if self.use_canonical_orbitals:
-                self.wfs.eigensolver.get_canonical_representation(
-                    self.hamiltonian,
-                    self.wfs,
-                )
-            else:
-                if not self.wfs.eigensolver.initialized:
-                    print("initialize dm helper")
-                    # should it be self.densa or self.denst?
-                    self.wfs.eigensolver.initialize_dm_helper(
-                        self.wfs, self.hamiltonian, self.densa, self.log
-                    )
-                print("iterate")
-                self.wfs.eigensolver.iterate(
-                    self.hamiltonian, self.wfs, self.densa, self.log, denst=self.denst
-                )
-                print("iterate done")
-                #
-                # self.wfs.eigensolver.iters = 0
-                # or change line 523 in etdm_fdpw.py
-                # Do we need to do this?
-                # _ = self.wfs.eigensolver.check_restart(self.wfs)
-            e_entropy = 0.0
-            kin_en_using_band = False
-        # elif self.eigensolver_name == 'etdm-lcao':
-        #     self.wfs.eigensolver.iterate(
-        #         self.hamiltonian, self.wfs, self.densa)
-        #     _ = self.wfs.eigensolver.check_mom(self.wfs, self.densa)
-        #     e_entropy = 0.0
-        #     kin_en_using_band = False
+            raise NotImplementedError
         else:
-            print("iterate")
             self.wfs.eigensolver.iterate(self.hamiltonian, self.wfs)
             kin_en_using_band = True
             e_entropy = self.wfs.calculate_occupation_numbers()
-            print("iterate done")
-            # breakpoint()
 
         if hasattr(self.wfs.eigensolver, "e_sic"):
             e_sic = self.wfs.eigensolver.e_sic
@@ -188,220 +204,205 @@ class iKS(GPAW):
         self.density.update(self.wfs)
         self.update_target_density()
         self.hamiltonian.update(self.denst)
+        # update coefficients
         self.calculate_step()
-
-    def update_coarse(self, v_sG: ArrayND) -> None:
-        return self.update(self.coarse2fine(v_sG))
 
     def calculate_step(self) -> None:
         self.diff_G = np.sum(self.nt_sG - self.na_sG, axis=0)
         # TODO: replace the integrals with wfs.integrate()
         # integrate = self.wfs.pd.integrate
-        # else:
-        #     integrate = self.wfs.integrate
-        # add the kpoint stuff
+        # add the kpoint and spin stuff
         k = 0
-        occupied_i = np.nonzero(self.wfs.kpt_u[k].f_n > 1e-10)[0]
-        f_i = self.wfs.kpt_u[k].f_n[occupied_i]
-        e_j = self.wfs.collect_eigenvalues(k, 0)
-        self.psi_jG = self.wfs.kpt_u[k].psit_nG
+        s = 0
+        occupied_m = self.occupied_m = np.nonzero(self.wfs.kpt_u[k].f_n > 1e-10)[0]
+        f_m = self.f_m = self.wfs.kpt_u[k].f_n[occupied_m]
+        e_n = self.wfs.collect_eigenvalues(k, s)
+        self.psi_nG = self.wfs.kpt_u[k].psit_nG
         if self.wfs.mode == "pw":
-            self.psi_jG = np.asarray([self.wfs.pd.ifft(psi_G) for psi_G in self.psi_jG])
-        self.psi_iG = self.psi_jG[occupied_i]
-        tmp_G = self.weights_G * self.diff_G
-        self.u_i = 2.0 * f_i * self.gd.integrate(tmp_G * self.psi_iG * self.psi_iG)
-        w_ij = (e_j[:, np.newaxis] - e_j[np.newaxis, occupied_i]).T
-        np.fill_diagonal(w_ij, 1.0)
-        self.p_ij = (
+            self.psi_nG = np.asarray([self.wfs.pd.ifft(psi_G) for psi_G in self.psi_nG])
+        self.psi_mG = self.psi_nG[occupied_m]
+        self.wdn_G = self.weights_G * self.diff_G
+        self.u_m = 2.0 * f_m * self.gd.integrate(self.wdn_G * self.psi_mG * self.psi_mG)
+        self.add_paw_correction_u(k, s)
+        w_mn = self.w_mn = (e_n[:, np.newaxis] - e_n[np.newaxis, occupied_m]).T
+        np.fill_diagonal(w_mn, 1.0)
+        self.p_mn = (
             4.0
             * self.gd.integrate(
-                self.psi_jG,
+                self.psi_nG.conj(),
                 (
-                    tmp_G * self.psi_iG * f_i[..., None, None, None]
-                    - 0.5 * self.u_i[..., None, None, None] * self.psi_iG
+                    self.wdn_G * self.psi_mG * f_m[..., None, None, None]
+                    - 0.5 * self.u_m[..., None, None, None] * self.psi_mG
                 ),
             ).T
-            / w_ij
+            / w_mn
         )
-        # np.fill_diagonal(self.p_ij, 0.0)
+        self.add_paw_correction_p()
+        self.p_mn = self.p_mn.conj()
 
-    def lagrangian(self, vxc_sG: Optional[ArrayND] = None) -> float:
-        self.prev_L = self.L
-        if vxc_sG is not None:
-            vxc_sG = vxc_sG.reshape(self.nt_sG.shape)
-            if (
-                not np.allclose(
-                    self.coarse2fine(vxc_sG), self.xckernel.vxc_sg, atol=1e-60
+    def add_paw_correction_u(self, k: int = 0, s: int = 0) -> None:
+        """add paw correction to the lagrange multiplier u_m
+        and store the density matrix coefficients P_nM"""
+        self.P_nM = np.zeros(
+            (len(self.psi_nG), self.phi.Mmax),
+            dtype=self.wfs.kpt_u[k].P_ani[0].dtype,
+        )
+        self.phi.ai_to_M(self.wfs.kpt_u[k].P_ani, self.P_nM)
+        self.P_mM = self.P_nM[self.occupied_m]
+        for m, P_M in enumerate(self.P_mM):
+            rho_MM = np.outer(P_M.conj(), P_M)
+            PDelta_G = self.gd.zeros()
+            self.phi.construct_density(rho_MM, PDelta_G, q=-1)
+            self.phit.construct_density(-rho_MM, PDelta_G, q=-1)
+            self.u_m[m] += 2.0 * self.f_m[m] * self.gd.integrate(self.wdn_G * PDelta_G)
+
+    def add_paw_correction_p(self, k: int = 0, s: int = 0) -> None:
+        """add paw correction to the expansion coefficients p_mn"""
+        for n in range(len(self.P_nM)):
+            for m in range(len(self.P_mM)):
+                rho_MM = np.outer(self.P_nM[n].conj(), self.P_mM[m])
+                PmnDelta_G = self.gd.zeros()
+                self.phi.construct_density(rho_MM, PmnDelta_G, q=-1)
+                self.phit.construct_density(-rho_MM, PmnDelta_G, q=-1)
+                self.p_mn[m, n] += (
+                    self.gd.integrate(
+                        4.0 * self.f_m[m] * self.wdn_G * PmnDelta_G
+                        - 2.0 * self.u_m[m] * np.sum(self.dO_MM * rho_MM)
+                    )
+                    / self.w_mn[m, n]
                 )
-                or True
-            ):
-                print("update_coarse Lagrangian")
-                self.update_coarse(vxc_sG)
-        self.L = self.gd.integrate((self.diff_G**2) * self.weights_G)
-        if self.log is not None:
-            self.log(
-                "this should be almost zero:",
-                np.sum(self.u_i * (self.gd.integrate(self.psi_iG * self.psi_iG) - 1.0)),
-            )
-            self.log(f"iter: {self.niter} | L = {self.L:.6e}")
+
+    def lagrangian(self) -> float:
+        self.prev_L = self.L
+        self.L = self.gd.integrate(self.weights_G * self.diff_G**2)
+        self.debuglog(f"iter: {self.niter} | L = {self.L:.6e}")
         return self.scale * self.L
 
-    def jacobian(self, vxc_sG: Optional[ArrayND] = None) -> ArrayND:
-        if vxc_sG is not None:
-            vxc_sG = vxc_sG.reshape(self.nt_sG.shape)
-            if not np.allclose(
-                self.coarse2fine(vxc_sG), self.xckernel.vxc_sg, atol=1e-22
-            ):
-                print("update_coarse Jacobian")
-                self.update_coarse(vxc_sG)
-        # p_iG = np.einsum('ij,jxyz->ixyz', self.p_ij, self.psi_jG)
-        # J_G = np.sum(p_iG * self.psi_iG, axis=0)
-        self.J_G = np.einsum(
-            "ij,j...,i...->...", self.p_ij, self.psi_jG.conj(), self.psi_iG
+    def jacobian(self) -> ArrayND:
+        # TODO: include spin polarization
+        self.J_sG = np.einsum(
+            "mn,n...,m...->...", self.p_mn, self.psi_nG.conj(), self.psi_mG
+        )[np.newaxis]
+        return self.scale * self.J_sG
+
+    def jacobian_paw(self, k: int = 0) -> tuple[ArrayND, ArrayND]:
+        natoms, nspins = self.xckernel.vxc_asG.shape[:2]
+        self.J_asG = J_asG = self.gd.zeros((natoms, nspins))
+        self.Jt_asG = Jt_asG = self.gd.zeros((natoms, nspins))
+        Mmax = self.phi.Mmax
+        rho_MM = np.einsum(
+            "nM,mN,mn->MN",
+            self.P_nM.conj(),
+            self.P_mM,
+            self.p_mn,
         )
-        if self.log is not None:
-            self.log(
-                f"iter: {self.niter} | mean(J):\
-                {np.mean(self.J_G):.6e} | integral(J dr): \
-                {self.gd.integrate(self.J_G): .6e}"
-            )
-        return self.scale * self.J_G
+        for a in range(natoms):
+            M1 = self.phi.M_a[a]
+            M2 = M1 + self.phi.sphere_a[a].Mmax
+            mask = np.ones((Mmax, Mmax), dtype=bool)
+            mask[M1:M2, M1:M2] = False
+            buf_MM = rho_MM.copy()
+            buf_MM[mask] = 0.0
+            for s in range(nspins):
+                self.phi.construct_density(buf_MM, J_asG[a, s], q=-1)
+                self.phit.construct_density(-buf_MM, Jt_asG[a, s], q=-1)
+        return J_asG, Jt_asG
 
-    def converged(self, vxc_sG: ArrayND, Ltol, Jtol) -> None:
-        self.L_iter.append(self.L)
-        imax = np.unravel_index(np.argmax(np.abs(self.J_G)), self.J_G.shape)
-        self.log(
-            f"iter: {self.niter} | vxc_sG.shape = {
-            vxc_sG.shape}, max(J_sG) -> {imax}:{np.max(np.abs(self.J_G))}"
-        )
-        self.log(f"abs(L - L_prev): {np.abs(self.L - self.prev_L)}")
-        return np.abs(self.L) < Ltol or np.max(np.abs(self.J_G)) < Jtol
+    def converged(self, Ltol, Jtol) -> None:
+        return np.abs(self.L) < Ltol or np.max(np.abs(self.J_sG)) < Jtol
 
-    def run_opt(
-        self,
-        method: str = "L-BFGS-B",
-        options: Dict = {
-            "disp": True,
-            "gtol": 0,
-            "ftol": 0,
-            "maxiter": 300,
-            "maxls": 40,
-        },
-    ):
-        self.niter = 0
-        self.L_iter = []
-        if self.log is not None:
-            self.log(
-                "initial diff:",
-                self.gd.integrate((self.weights_G * (self.nt_sG - self.na_sG)[0]) ** 2),
-            )
+    def debuglog(self, msg: str) -> None:
+        if debug:
+            parprint(msg)
 
-        # hack to keep the optimizer running:
-
-        self.LL = self.L
-
-        def lagrangian(x):
-            print("lagrangian", self.L, self.prev_L, self.LL)
-            L = self.lagrangian(x)
-            if L != self.L:
-                print("mismatch")
-            if np.abs(L - self.prev_L) == 0.0:
-                self.update_coarse(x.reshape(self.nt_sG.shape))
-                L = self.lagrangian(x)
-                if np.abs(L - self.prev_L) == 0.0:
-                    print("wth")
-            self.LL = L
-            return L
-
-        self.opt = minimize(
-            lagrangian,
-            x0=self.fine2coarse(self.xckernel.vxc_sg).flatten(),
-            jac=lambda x: self.jacobian(x).flatten(),
-            method=method,
-            options=options,
-            tol=0,
-            callback=lambda x: self.converged(x, 1e-5, 1e-12),
-        )
-        return self.opt, self.L_iter
+    def adam_step(self, lr, vxc, J, m, mm):
+        epsilon = 1e-10
+        beta1 = self.adam_params["beta1"]
+        beta2 = self.adam_params["beta2"]
+        t = self.niter
+        # Update biased first moment estimate
+        m = beta1 * m + (1 - beta1) * J
+        # Update biased second moment estimate
+        mm = beta2 * mm + (1 - beta2) * J**2
+        # Update vxc
+        vxc -= lr * m / (1 - beta1**t) / (np.sqrt(mm / (1 - beta2**t)) + epsilon)
+        return m, mm
 
     def run_adam(
         self,
-        learning_rate=0.001,
+        maxiter=300,
+        lr_pseudo=0.001,
+        lr_paw=0.001,
         beta1=0.9,
         beta2=0.999,
         Ltol=1e-5,
-        Jtol=1e-12,
-        epsilon=1e-10,
-        maxiter=300,
+        Jtol=1e-6,
     ):
         """
         Adam optimizer to minimize the Lagrangian function with
                                                     respect to vxc_sg.
         Parameters:
-        - learning_rate: learning rate for the Adam optimizer.
+        - maxiter: number of iterations for the optimization.
+        - lr: learning rate for the Adam optimizer.
         - beta1: exponential decay rate for the first moment estimates.
         - beta2: exponential decay rate for the second moment estimates.
-        - epsilon: small constant to prevent any division by zero
-                                                    in the implementation.
-        - num_iterations: number of iterations for the optimization.
         - Ltol: tolerance for the Lagrangian function. (abs(L) < Ltol
                                                  for a successful termination)
         - Jtol: tolerance for the Jacobian function. (max(abs(J_G)) < Jtol
                                                  for a successful termination)
         Returns:
-        - vxc_sg: the optimized value.
+        - L_iter: list of Lagrangian values at each iteration.
         """
-        self.niter = 0
+        self.adam_params = {
+            "lr_pseudo": lr_pseudo,
+            "lr_paw": lr_paw,
+            "beta1": beta1,
+            "beta2": beta2,
+            "maxiter": maxiter,
+            "Ltol": Ltol,
+            "Jtol": Jtol,
+        }
         vxc_sG = self.fine2coarse(self.xckernel.vxc_sg)
+        vxc_asG = self.xckernel.vxc_asG
+        vxct_asG = self.xckernel.vxct_asG
         # Initialize first moment vector
         m_sG = np.zeros_like(vxc_sG)
+        m_asG = np.zeros_like(vxc_asG)
+        mt_asG = np.zeros_like(vxct_asG)
         # Initialize second moment vector
-        v_sG = np.zeros_like(vxc_sG)
+        mm_sG = np.zeros_like(vxc_sG)
+        mm_asG = np.zeros_like(vxc_asG)
+        mmt_asG = np.zeros_like(vxct_asG)
+        #
         L_iter = []
+        self.debuglog("-- Adam optimizer --")
+        self.debuglog(
+            "\t{:>5} | {:>10} | {:>10} | {:>10} | {:>10}".format(
+                "iter", "L", "max(J)", "max(J_a)", "max(Jt_a)" 
+            )
+        )
+
         for t in range(1, maxiter):
-            self.update_coarse(vxc_sG)
+            self.niter = t
+            # step
+            self.update(vxc_sG, vxc_asG, vxct_asG)
             L = self.lagrangian()
-            J_sG = self.jacobian()[np.newaxis]
-            # Update biased first moment estimate
-            m_sG = beta1 * m_sG + (1 - beta1) * J_sG
-            # Update biased second moment estimate
-            v_sG = beta2 * v_sG + (1 - beta2) * (J_sG**2)
-            # Update vxc_sg
-            vxc_sG = vxc_sG - learning_rate * m_sG / (1 - beta1**t) / (
-                np.sqrt(v_sG / (1 - beta2**t)) + epsilon
-            )
             L_iter.append(L)
-            if np.abs(L) < Ltol or np.max(np.abs(J_sG)) < Jtol:
-                break
-        self.update_coarse(vxc_sG)
-        return L_iter
-
-    def run_lbfgs(
-        self, method="LBFGS", maxiter=300, memory=10, Ltol=1e-5, Jtol=1e-10, beta=1.0
-    ):
-        from gpaw.directmin.sd_etdm import LBFGS, LBFGS_P
-
-        self.niter = 0
-        if method == "LBFGS":
-            opt = LBFGS(memory=memory)
-        elif method == "LBFGS_P":
-            opt = LBFGS_P(memory=memory, beta=beta)
-        vxc_sG = self.fine2coarse(self.xckernel.vxc_sg)
-        L_iter = []
-        for i in range(maxiter):
-            self.update_coarse(vxc_sG)
-            L = self.lagrangian()
-            J_sG = self.jacobian()[np.newaxis]
-            vxc_sG = opt.update_data(
-                self.wfs, {0: vxc_sG}, {0: -J_sG}, dimensions={0: 1}
-            )[0]
-            imax = np.unravel_index(np.argmax(np.abs(J_sG)), J_sG.shape)
-            self.log(
-                f"iter: {i} | vxc_sG.shape = {
-                vxc_sG.shape}, max(J_sG) -> {imax}:{np.max(np.abs(J_sG))}"
+            # pseudo
+            J_sG = self.jacobian()
+            m_sG, mm_sG = self.adam_step(lr_pseudo, vxc_sG, J_sG, m_sG, mm_sG)
+            # paw
+            J_asG, Jt_asG = self.jacobian_paw()
+            m_asG, mm_asG = self.adam_step(lr_paw, vxc_asG, J_asG, m_asG, mm_asG)
+            mt_asG, mmt_asG = self.adam_step(lr_paw, vxct_asG, Jt_asG, mt_asG, mmt_asG)
+            # log
+            self.debuglog(
+                "\t{:>5} | {:>10.6e} | {:>10.6e} | {:>10.6e} | {:>10.6e}".format(
+                    t, L, np.max(np.abs(J_sG)), np.max(np.abs(J_asG)), np.max(np.abs(Jt_asG)),
+                )
             )
-            L_iter.append(L)
-            if np.abs(L) < Ltol or np.max(np.abs(J_sG)) < Jtol:
+            # check convergence
+            if self.converged(Ltol, Jtol):
                 break
-        self.update_coarse(vxc_sG)
+        self.update(vxc_sG, vxc_asG, vxct_asG)
         return L_iter

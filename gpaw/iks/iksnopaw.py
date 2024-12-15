@@ -1,6 +1,8 @@
 from typing import Any, Callable, Dict, NamedTuple, Optional, Union
 
 import numpy as np
+from scipy.optimize import minimize
+
 from gpaw.calculator import GPAW
 from gpaw.iks.ae2density import ae2density, copy_density
 from gpaw.poisson import create_poisson_solver
@@ -8,7 +10,6 @@ from gpaw.pw.poisson import ReciprocalSpacePoissonSolver
 from gpaw.transformers import Transformer
 from gpaw.typing import ArrayND
 from gpaw.xc.numericalxc import NumericalXC, NumericalXCKernel
-from scipy.optimize import minimize
 
 
 class iKSNoPAW:
@@ -21,6 +22,7 @@ class iKSNoPAW:
         isae: bool = True,
         weights: str | ArrayND = "uniform",
         use_canonical_orbitals: bool = False,
+        nopawham: bool = False,
         log: Optional[Callable[[Any], None]] = None,
     ):
         """
@@ -33,6 +35,12 @@ class iKSNoPAW:
         self.use_canonical_orbitals = use_canonical_orbitals
         self.log = log
         self.ham = getattr(gs, "hamiltonian", None)
+        if nopawham:
+            def null_non_local(P, out=None):
+                if out is None:
+                    out = P.new()
+                return out
+            self.ham.dH = property(null_non_local)
         self.densa = getattr(gs, "density", None)
         self.wfs = getattr(gs, "wfs", None)
         self.stencil = stencil
@@ -63,6 +71,7 @@ class iKSNoPAW:
         else:
             na_sG = self.densa.nt_sG
         return na_sG
+
 
     def init_nt_sg(self, nt_sg: ArrayND) -> None:
         if np.all(nt_sg.shape[1:] == self.gd.n_c):

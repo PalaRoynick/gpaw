@@ -49,7 +49,7 @@ class _iKSAE:
 
     def init_xc(self):
         self.xc = NumericalXC(NumericalXCKernel())
-        self.xc.set_rgd(self.rgd)
+        self.xc.kernel.set_rgd(self.rgd)
         self.xc.kernel.vxc_asg = self.fermi_amaldi()[None, None]
 
     def fermi_amaldi(self):
