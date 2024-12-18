@@ -84,17 +84,18 @@ class Potential:
             energies['stress'] = self.energies['stress']
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()
         vt_sR = self.vt_sR.to_xp(np).gather()
-        assert self.vHt_x is not None
-        vHt_x = self.vHt_x.to_xp(np).gather()
         if self.dedtaut_sR is not None:
             dedtaut_sR = self.dedtaut_sR.to_xp(np).gather()
+        if self.vHt_x is not None:
+            vHt_x = self.vHt_x.to_xp(np).gather()
         if dH_asp is None:
             return
         writer.write(
             potential=vt_sR.data * Ha,
-            electrostatic_potential=vHt_x.data * Ha,
             atomic_hamiltonian_matrices=dH_asp.data * Ha,
             **{f'e_{name}': val * Ha for name, val in energies.items()})
+        if self.vHt_x is not None:
+            writer.write(electrostatic_potential=vHt_x.data * Ha)
         if self.dedtaut_sR is not None:
             writer.write(mgga_potential=dedtaut_sR.data * Bohr**3)
 
@@ -111,8 +112,7 @@ class Potential:
         elif isinstance(self.vHt_x, PWArray):
             vHt_g = self.vHt_x.gather()
             if vHt_g is not None:
-                vHt_r = vHt_g.ifft(grid=grid.new(comm=None,
-                                                 size=grid.size_c * 2))
+                vHt_r = vHt_g.ifft(grid=vHt_g.desc.minimal_uniform_grid())
             else:
                 vHt_r = None
         else:

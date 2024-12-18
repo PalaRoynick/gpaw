@@ -13,7 +13,12 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 
 
 class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
-    def __init__(self, atoms, params, *, comm, qspiral=None):
+    def __init__(self,
+                 atoms,
+                 params,
+                 *,
+                 comm,
+                 qspiral=None):
         super().__init__(atoms, params, comm=comm)
         self.qspiral_v = (None if qspiral is None else
                           qspiral @ self.grid.icell * (2 * pi))
@@ -54,7 +59,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 weight=weight,
                 psit_nX=psit_nG,  # type: ignore
                 setups=self.setups,
-                fracpos_ac=self.fracpos_ac,
+                relpos_ac=self.relpos_ac,
                 atomdist=self.atomdist,
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
@@ -89,7 +94,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
         lcao_ibzwfs, _ = create_lcao_ibzwfs(
             basis,
             self.ibz, self.communicators, self.setups,
-            self.fracpos_ac, self.grid, self.dtype,
+            self.relpos_ac, self.grid, self.dtype,
             lcaonbands, self.ncomponents, self.atomdist, self.nelectrons)
 
         hamiltonian = LCAOHamiltonian(basis)
@@ -120,7 +125,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 k=k,
                 weight=weight,
                 setups=self.setups,
-                fracpos_ac=self.fracpos_ac,
+                relpos_ac=self.relpos_ac,
                 atomdist=self.atomdist,
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
@@ -154,7 +159,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 k=k,
                 weight=weight,
                 setups=self.setups,
-                fracpos_ac=self.fracpos_ac,
+                relpos_ac=self.relpos_ac,
                 atomdist=self.atomdist,
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
