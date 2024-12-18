@@ -1020,43 +1020,21 @@ class SJMPower12Potential(Power12Potential):
         return True
 
 
-class SJM_RealSpaceHamiltonian(SolvationRealSpaceHamiltonian):
-    """Realspace Hamiltonian with continuum solvent model in the context of
-    SJM.
+class SJM_Hamiltonian:
+    def __init__(self, *args, **kwargs):
 
-    See also Section III of
-    A. Held and M. Walter, J. Chem. Phys. 141, 174108 (2014).
+        self.cavity = args[0]
+        self.dielectric = args[1]
+        self.interactions = args[2]
 
-    In contrast to the standard implicit solvent model a dipole correction can
-    also be applied; this is the only difference from its parent.
-    """
+        finegd = kwargs.get('finegd')
 
-    def __init__(self, cavity, dielectric, interactions, gd, finegd, nspins,
-                 setups, timer, xc, world, redistributor, vext=None,
-                 psolver=None, stencil=3, collinear=None):
-
-        self.cavity = cavity
-        self.dielectric = dielectric
-        self.interactions = interactions
-        cavity.set_grid_descriptor(finegd)
-        dielectric.set_grid_descriptor(finegd)
-        for ia in interactions:
+        self.cavity.set_grid_descriptor(finegd)
+        self.dielectric.set_grid_descriptor(finegd)
+        for ia in self.interactions:
             ia.set_grid_descriptor(finegd)
 
-        if psolver is None:
-            psolver = WeightedFDPoissonSolver()
-            self.dipcorr = False
-        elif isinstance(psolver, dict):
-            # Sadly the 'dipolelayer' cannot be pop'd because
-            # CavityShapedJellium calls this twice.
-            poi_par = {a: b for a, b in psolver.items() if a != 'dipolelayer'}
-            psolver = SJMDipoleCorrection(WeightedFDPoissonSolver(**poi_par),
-                                          psolver['dipolelayer'])
-            self.dipcorr = True
-
-        # XXX/CB: What should happen here, in practice?
-        else:
-            self.dipcorr = False
+        psolver = self.set_poisson(*args, **kwargs)
 
         if self.dipcorr:
             psolver.poissonsolver.set_dielectric(self.dielectric)
@@ -1065,18 +1043,15 @@ class SJM_RealSpaceHamiltonian(SolvationRealSpaceHamiltonian):
 
         self.gradient = None
 
-        RealSpaceHamiltonian.__init__(
-            self,
-            gd, finegd, nspins, collinear, setups, timer, xc, world,
-            vext=vext, psolver=psolver,
-            stencil=stencil, redistributor=redistributor)
+        kwargs.update({'psolver': psolver})
+        self.get_supertype().__init__(self, **kwargs)
 
-        for ia in interactions:
+        for ia in self.interactions:
             setattr(self, 'e_' + ia.subscript, None)
         self.new_atoms = None
         self.vt_ia_g = None
-        self.e_total_free = None
-        self.e_total_extrapolated = None
+        self.e_el_free = None
+        self.e_el_extrapolated = None
 
     def initialize(self):
         if self.dipcorr:
@@ -1093,10 +1068,49 @@ class SJM_RealSpaceHamiltonian(SolvationRealSpaceHamiltonian):
         self.dielectric.allocate()
         for ia in self.interactions:
             ia.allocate()
-        RealSpaceHamiltonian.initialize(self)
+        self.get_supertype().initialize(self)
 
 
-class SJM_ReciprocalSpaceHamiltonian(SolvationReciprocalSpaceHamiltonian):
+class SJM_RealSpaceHamiltonian(SJM_Hamiltonian, SolvationRealSpaceHamiltonian):
+    """Realspace Hamiltonian with continuum solvent model in the context of
+    SJM.
+
+    See also Section III of
+    A. Held and M. Walter, J. Chem. Phys. 141, 174108 (2014).
+
+    In contrast to the standard implicit solvent model a dipole correction can
+    also be applied; this is the only difference from its parent.
+    """
+
+    def get_supertype(self):
+        return RealSpaceHamiltonian
+
+    def set_poisson(self, *args, **kwargs):
+
+        psolver = kwargs.get('psolver')
+
+        if psolver is None:
+            psolver = self.poisson_default(*args, **kwargs)
+            self.dipcorr = False
+        elif isinstance(psolver, dict):
+            # Sadly the 'dipolelayer' cannot be pop'd because
+            # CavityShapedJellium calls this twice.
+            poi_par = {a: b for a, b in psolver.items() if a != 'dipolelayer'}
+            psolver = SJMDipoleCorrection(
+                self.poisson_default(poi_par, *args, **kwargs),
+                psolver['dipolelayer'])
+            self.dipcorr = True
+
+        # XXX/CB: What should happen here, in practice?
+        else:
+            self.dipcorr = False
+
+        logg(f'{psolver}')
+
+        return psolver
+
+
+class SJM_ReciprocalSpaceHamiltonian(SJM_Hamiltonian, SolvationReciprocalSpaceHamiltonian):
     """
     Reciprocal space Hamiltonian with continuum solvent model in the context of
     SJM...under development.
@@ -1104,26 +1118,22 @@ class SJM_ReciprocalSpaceHamiltonian(SolvationReciprocalSpaceHamiltonian):
     XXX/CB: new class here, initialization mostly drawn from pw/hamiltonian
     """
 
-    def __init__(self, cavity, dielectric, interactions, gd, finegd, pd2, pd3,
-                 nspins, setups, timer, xc, world, redistributor,
-                 xc_redistributor, realpbc_c, vext=None, psolver=None,
-                 collinear=None, charge=0.0):
+    def get_supertype(self):
+        return ReciprocalSpaceHamiltonian
 
-        self.solvation = {'cavity': cavity,
-                          'dielectric': dielectric,
-                          'interactions': interactions}
-        self.solvation['cavity'].set_grid_descriptor(finegd)
-        self.solvation['dielectric'].set_grid_descriptor(finegd)
-        for ia in self.solvation['interactions']:
-            ia.set_grid_descriptor(finegd)
-
+    def set_poisson(self, *args, **kwargs):
         # XXX/CB: presumably, as a function of how the dipole correction is
         # transmitted from the user
+
+        pd3 = kwargs.get('pd3')
+        finegd = kwargs.get('finegd')
+        psolver = kwargs.get('psolver')
+
         if psolver is None:
-            psolver = WrappedWeightedFDPoissonSolver(pd3)
+            psolver = self.poisson_default(*args, **kwargs)
             self.dipcorr = False
         elif isinstance(psolver, dict):
-            psolver = WrappedSJMDipoleCorrection(WeightedFDPoissonSolver(),
+            psolver = WrappedSJMDipoleCorrection(self.poisson_default(*args, **kwargs),
                                                  psolver['dipolelayer'],
                                                  pd3=pd3, gd=finegd)
             self.dipcorr = True
@@ -1135,60 +1145,7 @@ class SJM_ReciprocalSpaceHamiltonian(SolvationReciprocalSpaceHamiltonian):
 
         psolver.set_grid_descriptor(finegd)
 
-        if self.dipcorr:
-            psolver.poissonsolver.set_dielectric(self.solvation['dielectric'])
-        else:
-            psolver.set_dielectric(self.solvation['dielectric'])
-
-        self.poisson = psolver
-
-        self.gradient = None
-
-        if vext is None:
-            vext = NoExternalPotential()
-
-        Hamiltonian.__init__(self, gd, finegd, nspins, collinear, setups,
-                             timer, xc, world, vext=vext,
-                             redistributor=redistributor)
-
-        self.vbar = PWLFC([[setup.vbar] for setup in setups], pd2)
-        self.pd2 = pd2
-        self.pd3 = pd3
-        self.xc_redistributor = xc_redistributor
-        self.charge = charge
-
-        # XXX/CB: mark for nans
-        self.vHt_q = pd3.zeros()
-
-        self.npoisson = 0
-
-        self.vbar_Q = None
-        self.vt_Q = None
-        self.estress = None
-
-        for ia in interactions:
-            setattr(self, 'e_' + ia.subscript, None)
-        self.new_atoms = None
-        self.vt_ia_g = None
-        self.e_total_free = None
-        self.e_total_extrapolated = None
-
-    def initialize(self):
-        if self.dipcorr:
-            self.gradient = [Gradient(self.finegd, i, 1.0,
-                             self.poisson.poissonsolver.nn)
-                             for i in (0, 1, 2)]
-        else:
-            self.gradient = [Gradient(self.finegd, i, 1.0,
-                             self.poisson.nn)
-                             for i in (0, 1, 2)]
-
-        self.vt_ia_g = self.finegd.zeros()
-        self.solvation['cavity'].allocate()
-        self.solvation['dielectric'].allocate()
-        for ia in self.solvation['interactions']:
-            ia.allocate()
-        ReciprocalSpaceHamiltonian.initialize(self)
+        return psolver
 
 
 class CavityShapedJellium(Jellium):
@@ -1260,7 +1217,6 @@ class SJMDipoleCorrection(DipoleCorrection):
         """Construct dipole correction object."""
 
         DipoleCorrection.__init__(self, poissonsolver, direction, width=1.0)
-        logg(type(poissonsolver))  # currently uses weightedFD
         self.corrterm = 1
         self.elcorr = None
         self.last_corrterm = None

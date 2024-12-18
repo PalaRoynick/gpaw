@@ -18,6 +18,7 @@ from gpaw.utilities.grid import grid2grid
 from gpaw.utilities.ewald import madelung
 from gpaw.utilities.tools import construct_reciprocal
 from gpaw.utilities.timing import NullTimer
+from gpaw.templogger import logg
 
 POISSON_GRID_WARNING = """Grid unsuitable for FDPoissonSolver!
 
@@ -302,6 +303,8 @@ class BasePoissonSolver(_PoissonSolver):
                 return iters
 
             else:
+                logg(actual_charge)
+                logg(maxcharge)
                 # System is charged with mixed boundaryconditions
                 msg = ('Charged systems with mixed periodic/zero'
                        ' boundary conditions')
