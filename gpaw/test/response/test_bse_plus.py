@@ -27,15 +27,14 @@ def test_bse_plus(tda, in_tmp_dir, scalapack):
     val = range(4) if tda else range(8)
     cond = range(4, 8) if tda else range(8)
     bse = BSE('Si.gpw',
-              ecut=20, spinors=False,
+              ecut=20,
               valence_bands=val,
               conduction_bands=cond,
               eshift=0,
               mode='BSE',
               nbands=8,
               q_c=[0.0, 0.0, 0.0],
-              write_h=False,
-              write_v=False, no_coulomb=True)
+              no_coulomb=True)
 
     chi_irr_bse = bse.get_chi_wGG(eta=0.2, optical=True,
                                   w_w=np.array([-3, 0, 6]))

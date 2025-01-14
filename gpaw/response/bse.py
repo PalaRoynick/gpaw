@@ -796,7 +796,8 @@ class BSEBackend:
             T is global transition index, t is local transition index.
             G is global planewave index.
         """
-        print(C_tGG.shape,'orig shape')
+        print(C_tGG.shape, 'orig shape')
+        exclude_S = self.eig_data[2]
         nR = self.nS - len(exclude_S)
         nr = -(-nR // world.size)
         if len(C_tGG) != nr:
@@ -930,7 +931,7 @@ class BSEBackend:
         self.context.print('Calculating response function at %s frequency '
                            'points' % len(w_w))
 
-        if not self.td:
+        if not self.use_tammdancoff:
             if world.rank == 0:
                 v_RT = v_Rt
                 A_GT = rho_RG.T @ v_RT
@@ -1051,11 +1052,13 @@ class BSEBackend:
     def parallelisation_kpoints(self, rank=None):
         if rank is None:
             rank = world.rank
-        myKrange = range(rank * self.maxmyKsize,
-                         min((rank + 1) * self.maxmyKsize, self.nK))
+        nK = self.kd.nbzkpts
+        myKsize = -(-nK // world.size)
+        myKrange = range(rank * myKsize,
+                         min((rank + 1) * myKsize, nK))
         myKsize = len(myKrange)
-
         return myKrange, myKsize
+
 
     def print_initialization(self, td, eshift, gw_kn):
         isl = ['----------------------------------------------------------',
