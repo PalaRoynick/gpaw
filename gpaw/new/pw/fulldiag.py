@@ -103,19 +103,13 @@ def pw_matrix(pw: PWDesc,
 def diagonalize(potential: Potential,
                 ibzwfs: IBZWaveFunctions,
                 occ_calc: OccupationNumberCalculator,
-                nbands: int | None,
-                xc) -> IBZWaveFunctions:
+                nbands: int) -> IBZWaveFunctions:
     """Diagonalize hamiltonian in plane-wave basis."""
     vt_sR = potential.vt_sR
     dH_asii = potential.dH_asii
     dedtaut_sR: UGArray | list[None] = [None] * len(vt_sR)
     if potential.dedtaut_sR is not None:
         dedtaut_sR = potential.dedtaut_sR
-
-    if nbands is None:
-        nbands = min(wfs.array_shape(global_shape=True)[0]
-                     for wfs in ibzwfs)
-        nbands = ibzwfs.kpt_comm.min_scalar(nbands)
 
     band_comm = ibzwfs.band_comm
 

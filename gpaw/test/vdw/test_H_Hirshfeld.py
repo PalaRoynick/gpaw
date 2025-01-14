@@ -1,21 +1,19 @@
 """Test Hirshfeld for spin/no spin consistency."""
 import pytest
-from ase import Atom
+from ase import Atoms
 from ase.parallel import parprint
 
 from gpaw import GPAW, FermiDirac
 from gpaw.analyse.hirshfeld import HirshfeldPartitioning
-from gpaw.cluster import Cluster
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_vdw_H_Hirshfeld():
     h = 0.25
     box = 3
 
-    atoms = Cluster()
-    atoms.append(Atom('H'))
-    atoms.minimal_box(box)
+    atoms = Atoms('H')
+    atoms.center(vacuum=box)
 
     volumes = []
     for spinpol in [False, True]:

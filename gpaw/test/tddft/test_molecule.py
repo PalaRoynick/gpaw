@@ -86,7 +86,7 @@ def time_propagation_reference(ground_state):
                                write_and_continue=True)
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_dipole_moment_values(time_propagation_reference,
                               module_tmp_path, in_tmp_dir):
     with open('dm.dat', 'w') as fd:
@@ -118,7 +118,6 @@ def test_dipole_moment_values(time_propagation_reference,
     check_dm('dm2.dat', module_tmp_path / 'dm2.dat', rtol=rtol, atol=atol)
 
 
-@pytest.mark.later
 @pytest.mark.parametrize('parallel', parallel_i)
 @pytest.mark.parametrize('propagator', [
     'SICN', 'ECN', 'ETRSCN', 'SIKE'])
@@ -146,7 +145,7 @@ def test_propagation(time_propagation_reference,
     check_dm(module_tmp_path / 'dm.dat', 'dm.dat', rtol=rtol, atol=atol)
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_restart(time_propagation_reference,
                  parallel,

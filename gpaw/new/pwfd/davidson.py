@@ -1,26 +1,27 @@
 from __future__ import annotations
 
 from functools import partial
+from pprint import pformat
 from typing import Callable
 
 import numpy as np
 from ase.units import Ha
+
+from gpaw import debug
 from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
-from gpaw.mpi import broadcast_float
-from gpaw.new import zips
+from gpaw.mpi import broadcast_exception, broadcast_float
+from gpaw.new import trace, zips
 from gpaw.new.c import calculate_residuals_gpu
-from gpaw.new.calculation import DFTState
 from gpaw.new.eigensolver import Eigensolver
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.typing import Array1D, Array2D
 from gpaw.utilities.blas import axpy
-from gpaw.yml import obj2yaml as o2y
-from gpaw import debug
+from gpaw.new.energies import DFTEnergies
 
 
 class Davidson(Eigensolver):
@@ -46,9 +47,9 @@ class Davidson(Eigensolver):
         self.blocksize = blocksize
 
     def __str__(self):
-        return o2y(dict(name='Davidson',
-                        niter=self.niter,
-                        converge_bands=self.converge_bands))
+        return pformat(dict(name='Davidson',
+                            niter=self.niter,
+                            converge_bands=self.converge_bands))
 
     def _initialize(self, ibzwfs):
         # First time: allocate work-arrays
@@ -77,7 +78,14 @@ class Davidson(Eigensolver):
                            dist=(band_comm, band_comm.size),
                            xp=xp)
 
-    def iterate(self, state: DFTState, hamiltonian: Hamiltonian) -> float:
+    @trace
+    def iterate(self,
+                ibzwfs,
+                density,
+                potential,
+                hamiltonian: Hamiltonian,
+                pot_calc,
+                energies: DFTEnergies) -> tuple[float, DFTEnergies]:
         """Iterate on state given fixed hamiltonian.
 
         Returns
@@ -91,27 +99,31 @@ class Davidson(Eigensolver):
         """
 
         if self.work_arrays is None:
-            self._initialize(state.ibzwfs)
+            self._initialize(ibzwfs)
 
         assert self.M_nn is not None
 
-        wfs = state.ibzwfs.wfs_qs[0][0]
+        wfs = ibzwfs.wfs_qs[0][0]
         dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
                                                     wfs.xp)
-        dH = state.potential.dH
+        dH = potential.dH
         Ht = partial(hamiltonian.apply,
-                     state.potential.vt_sR, state.potential.dedtaut_sR)
-        ibzwfs = state.ibzwfs
+                     potential.vt_sR,
+                     potential.dedtaut_sR,
+                     ibzwfs, density.D_asii)  # used by hybrids
 
         weight_un = calculate_weights(self.converge_bands, ibzwfs)
 
         error = 0.0
-        for wfs, weight_n in zips(ibzwfs, weight_un):
-            e = self.iterate1(wfs, Ht, dH, dS_aii, weight_n)
-            error += wfs.weight * e
-        return ibzwfs.kpt_band_comm.sum_scalar(
+        with broadcast_exception(ibzwfs.kpt_comm):
+            for wfs, weight_n in zips(ibzwfs, weight_un):
+                e = self.iterate1(wfs, Ht, dH, dS_aii, weight_n)
+                error += wfs.weight * e
+        error = ibzwfs.kpt_band_comm.sum_scalar(
             float(error)) * ibzwfs.spin_degeneracy
+        return error, energies
 
+    @trace
     def iterate1(self, wfs, Ht, dH, dS_aii, weight_n):
         H_NN = self.H_NN
         S_NN = self.S_NN
@@ -204,11 +216,13 @@ class Davidson(Eigensolver):
             P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
             copy(S_NN.data[B:, :B])
 
-            if is_domain_band_master:
-                H_NN.data[:B, :B] = xp.diag(eig_N[:B])
-                S_NN.data[:B, :B] = xp.eye(B)
-                eig_N[:] = H_NN.eigh(S_NN)
-                wfs._eig_n = as_np(eig_N[:B])
+            with broadcast_exception(domain_comm):
+                with broadcast_exception(band_comm):
+                    if is_domain_band_master:
+                        H_NN.data[:B, :B] = xp.diag(eig_N[:B])
+                        S_NN.data[:B, :B] = xp.eye(B)
+                        eig_N[:] = H_NN.eigh(S_NN)
+                        wfs._eig_n = as_np(eig_N[:B])
             if domain_comm.rank == 0:
                 band_comm.broadcast(wfs.eig_n, 0)
             domain_comm.broadcast(wfs.eig_n, 0)
@@ -247,6 +261,7 @@ class Davidson(Eigensolver):
         return error
 
 
+@trace
 def calculate_residuals(residual_nX: XArray,
                         dH: Callable[[AtomArrays, AtomArrays], AtomArrays],
                         dS_aii: AtomArrays,
@@ -314,8 +329,6 @@ def calculate_weights(converge_bands: int | str,
             weight_un.append(weight_n)
         return weight_un
 
-    assert ibzwfs.band_comm.size == 1, 'not implemented!'
-
     # Converge states with energy up to CBM + delta:
     assert converge_bands.startswith('CBM+')
     delta = float(converge_bands[4:]) / Ha
@@ -346,7 +359,7 @@ def calculate_weights(converge_bands: int | str,
     ecut = cbm + delta
 
     for wfs in ibzwfs:
-        weight_n = (wfs.eig_n < ecut).astype(float)
+        weight_n = (wfs.myeig_n < ecut).astype(float)
         if wfs.eig_n[-1] < ecut:
             # We don't have enough bands!
             weight_n[:] = np.inf

@@ -20,7 +20,7 @@ def get_random_g(nk, nb):
     return g_sqklnn
 
 
-@pytest.mark.later  # calc.initialize_positions(atoms) not implemented!
+@pytest.mark.old_gpaw_only  # calc.initialize_positions(atoms) not implemented!
 @pytest.mark.serial
 def test_ramancalculator(gpw_files, in_tmp_dir):
     """Test of ResonantRamanCalculator object"""
@@ -70,3 +70,16 @@ def test_ramancalculator(gpw_files, in_tmp_dir):
             print(i, j, R_l[2], Rother_l[2])
             assert R_l[2].real == pytest.approx(Rother_l[2].real)
             assert R_l[2].imag == pytest.approx(Rother_l[2].imag)
+
+    # check proper kpt dependence. If we half all the weights,
+    # the total intensity should be half as well
+    for kpt in calc.wfs.kpt_u:
+        kpt.weight /= 2
+        kpt.f_n /= 2  # because f_n = kpt.f_n / kpt.weight
+
+    for i in range(3):
+        for j in range(3):
+            R_l = check_cache[f"{'xyz'[i]}{'xyz'[j]}"]
+            R_l_half = rrc.calculate(1.0, i, j)
+            assert 2. * R_l_half[2].real == pytest.approx(R_l[2].real)
+            assert 2. * R_l_half[2].imag == pytest.approx(R_l[2].imag)

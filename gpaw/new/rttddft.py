@@ -93,7 +93,7 @@ class ECNAlgorithm(TDAlgorithm):
         state.density.update(state.ibzwfs)
 
         # Calculate Hamiltonian H(t+dt) = H[n[Phi_n]]
-        state.potential, _ = pot_calc.calculate(
+        state.potential, state.energies, _ = pot_calc.calculate(
             state.density, state.potential.vHt_x)
 
     def propagate(self,
@@ -119,7 +119,7 @@ class ECNAlgorithm(TDAlgorithm):
         state.density.update(state.ibzwfs)
 
         # Calculate Hamiltonian H(t+dt) = H[n[Phi_n]]
-        state.potential, _ = pot_calc.calculate(
+        state.potential, state.energies, _ = pot_calc.calculate(
             state.density, state.potential.vHt_x)
 
 
@@ -233,14 +233,14 @@ class RTTDDFT:
                              propagator: TDAlgorithm | None = None):
 
         if isinstance(calc, DFTCalculation):
-            calculation = calc
+            dft = calc
         else:
-            assert calc.calculation is not None
-            calculation = calc.calculation
+            assert calc.dft is not None
+            dft = calc.dft
 
-        state = calculation.state
-        pot_calc = calculation.pot_calc
-        hamiltonian = calculation.scf_loop.hamiltonian
+        state = dft.get_state()
+        pot_calc = dft.pot_calc
+        hamiltonian = dft.scf_loop.hamiltonian
         history = RTTDDFTHistory()
 
         return cls(state, pot_calc, hamiltonian, propagator=propagator,
@@ -250,13 +250,13 @@ class RTTDDFT:
     def from_dft_file(cls,
                       filepath: str,
                       propagator: TDAlgorithm | None = None):
-        _, calculation, params, builder = read_gpw(filepath,
-                                                   log='-',
-                                                   comm=world,
-                                                   dtype=complex)
+        _, dft, params, builder = read_gpw(filepath,
+                                           log='-',
+                                           comm=world,
+                                           dtype=complex)
 
-        state = calculation.state
-        pot_calc = calculation.pot_calc
+        state = dft.get_state()
+        pot_calc = dft.pot_calc
         hamiltonian = builder.create_hamiltonian_operator()
         history = RTTDDFTHistory()
 
@@ -340,7 +340,7 @@ class RTTDDFT:
             time = self.history.propagate(time_step)
             # TODO This seems to be broken
             # dipolemoment = self.state.density.calculate_dipole_moment(
-            #     self.pot_calc.fracpos_ac)
+            #     self.pot_calc.relpos_ac)
             dipolemoment_xv = [
                 self.calculate_dipole_moment(wfs)  # type: ignore
                 for wfs in self.state.ibzwfs]

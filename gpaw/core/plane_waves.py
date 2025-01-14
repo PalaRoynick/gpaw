@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import pi
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 from ase.units import Ha
@@ -19,7 +19,8 @@ from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
                         pw_insert_gpu)
 from gpaw.pw.descriptor import pad
 from gpaw.typing import (Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D,
-                         Literal, Vector)
+                         Vector)
+from gpaw.fftw import get_efficient_fft_size
 
 if TYPE_CHECKING:
     from gpaw.core import UGArray, UGDesc
@@ -30,7 +31,8 @@ class PWDesc(Domain):
 
     def __init__(self,
                  *,
-                 ecut: float,  # hartree
+                 ecut: float | None = None,
+                 gcut: float | None = None,
                  cell: ArrayLike1D | ArrayLike2D,  # bohr
                  kpt: Vector | None = None,  # in units of reciprocal cell
                  comm: MPIComm = serial_comm,
@@ -53,6 +55,13 @@ class PWDesc(Domain):
         dtype:
             Data-type (float or complex).
         """
+        if ecut is None:
+            assert gcut is not None
+            ecut = 0.5 * gcut**2
+        else:
+            assert gcut is None
+            gcut = (2.0 * ecut)**0.5
+        self.gcut = gcut
         self.ecut = ecut
         Domain.__init__(self, cell, (True, True, True), kpt, comm, dtype)
 
@@ -134,13 +143,17 @@ class PWDesc(Domain):
     def new(self,
             *,
             ecut: float | None = None,
+            gcut: float | None = None,
             kpt=None,
             dtype=None,
             comm: MPIComm | Literal['inherit'] | None = 'inherit'
             ) -> PWDesc:
         """Create new plane-wave expansion description."""
         comm = self.comm if comm == 'inherit' else comm or serial_comm
-        return PWDesc(ecut=ecut or self.ecut,
+        if ecut is None and gcut is None:
+            ecut = self.ecut
+        return PWDesc(gcut=gcut,
+                      ecut=ecut,
                       cell=self.cell_cv,
                       kpt=self.kpt_c if kpt is None else kpt,
                       dtype=dtype or self.dtype,
@@ -150,10 +163,34 @@ class PWDesc(Domain):
         """Return indices into FFT-grid."""
         Q_G = self._indices_cache.get(shape)
         if Q_G is None:
+            # We should do this here instead of everywhere calling this: !!!!
+            # if self.dtype == float:
+            #     shape = (shape[0], shape[1], shape[2] // 2 + 1)
             Q_G = np.ravel_multi_index(self.indices_cG, shape,  # type: ignore
                                        mode='wrap').astype(np.int32)
+            if debug:
+                assert (Q_G[1:] > Q_G[:-1]).all()
             self._indices_cache[shape] = Q_G
         return Q_G
+
+    def minimal_uniform_grid(self,
+                             n: int = 1,
+                             factors: Sequence[int] = (2, 3, 5, 7)
+                             ) -> UGDesc:
+        from gpaw.core import UGDesc
+        size_c = np.ptp(self.indices_cG, axis=1) + 1
+        if self.dtype == float:
+            size_c[2] = size_c[2] * 2 - 1
+        size_c = (size_c + n - 1) // n * n
+        if factors:
+            size_c = np.array([get_efficient_fft_size(N, n, factors)
+                               for N in size_c])
+        return UGDesc(size=size_c,
+                      cell=self.cell_cv,
+                      pbc=self.pbc_c,
+                      kpt=self.kpt_c,
+                      dtype=self.dtype,
+                      comm=self.comm)
 
     def cut(self, array_Q: Array3D) -> Array1D:
         """Cut out G-vectors with (G+k)^2/2<E_kin."""
@@ -172,6 +209,8 @@ class PWDesc(Domain):
             assert Q_G.flags.c_contiguous
             assert array_Q.flags.c_contiguous
 
+        assert isinstance(coef_G, np.ndarray)
+        assert isinstance(array_Q, np.ndarray)
         pw_insert(coef_G, Q_G, 1.0, array_Q)
 
     def map_indices(self, other: PWDesc) -> tuple[Array1D, list[Array1D]]:
@@ -197,7 +236,7 @@ class PWDesc(Domain):
 
            [1], [[0, 1, 2, 3], [4]]
         """
-        size_c = tuple(self.indices_cG.ptp(axis=1) + 1)  # type: ignore
+        size_c = tuple(np.ptp(self.indices_cG, axis=1) + 1)  # type: ignore
         Q_G = self.indices(size_c)
         G_Q = np.empty(prod(size_c), int)
         G_Q[Q_G] = np.arange(len(Q_G))
@@ -219,14 +258,14 @@ class PWDesc(Domain):
                                 *,
                                 qspiral_v=None,
                                 atomdist=None,
-                                integral=None,
+                                integrals=None,
                                 cut=False,
                                 xp=None):
         """Create PlaneWaveAtomCenteredFunctions object."""
         if qspiral_v is None:
             return PWAtomCenteredFunctions(functions, positions, self,
                                            atomdist=atomdist,
-                                           xp=xp)
+                                           xp=xp, integrals=integrals)
 
         from gpaw.new.spinspiral import SpiralPWACF
         return SpiralPWACF(functions, positions, self,
@@ -250,7 +289,7 @@ class PWArray(DistributedArrays[PWDesc]):
         dims:
             Extra dimensions.
         comm:
-            Distribute plane-waves along this communicator.
+            Distribute extra dimensions along this communicator.
         data:
             Data array for storage.
         """
@@ -337,8 +376,23 @@ class PWArray(DistributedArrays[PWDesc]):
         self._matrix = Matrix(*shape, data=data, dist=dist)
         return self._matrix
 
-    def ifft(self, *, plan=None, grid=None, out=None, periodic=False):
+    def ifft(self,
+             *,
+             plan=None,
+             grid=None,
+             grid_spacing=None,
+             out=None,
+             periodic=False):
         """Do inverse FFT(s) to uniform grid(s).
+
+        Returns:
+            UGArray with values
+        :::
+                               _ _
+              _     --        iG.R
+            f(r) =  >  c(G) e
+                    --
+                     G
 
         Parameters
         ----------
@@ -352,9 +406,11 @@ class PWArray(DistributedArrays[PWDesc]):
         comm = self.desc.comm
         xp = self.xp
         if out is None:
+            if grid is None:
+                grid = self.desc.uniform_grid_with_grid_spacing(grid_spacing)
             out = grid.empty(self.dims, xp=xp)
         assert self.desc.dtype == out.desc.dtype, (self.desc, out.desc)
-        assert out.desc.pbc_c.all()
+        assert not out.desc.zerobc_c.any()
         assert comm.size == out.desc.comm.size, (comm, out.desc.comm)
 
         plan = plan or out.desc.fft_plans(xp=xp)
@@ -505,7 +561,7 @@ class PWArray(DistributedArrays[PWDesc]):
                 result = self.data[..., 0]
             else:
                 result = self.xp.empty(self.mydims, complex)
-            self.desc.comm.broadcast(result, 0)
+            self.desc.comm.broadcast(self.xp.ascontiguousarray(result), 0)
         if self.desc.dtype == float:
             result = result.real
         if result.ndim == 0:
@@ -529,7 +585,7 @@ class PWArray(DistributedArrays[PWDesc]):
                     correction *= self.dv
                     out.data -= correction
 
-    def norm2(self, kind: str = 'normal') -> np.ndarray:
+    def norm2(self, kind: str = 'normal', skip_sum=False) -> np.ndarray:
         r"""Calculate integral over cell.
 
         For kind='normal' we calculate:::
@@ -565,7 +621,8 @@ class PWArray(DistributedArrays[PWDesc]):
             result_x *= 2
             if self.desc.comm.rank == 0 and kind == 'normal':
                 result_x -= a_xG[:, 0]**2
-        self.desc.comm.sum(result_x)
+        if not skip_sum:
+            self.desc.comm.sum(result_x)
         return result_x.reshape(self.mydims) * self.dv
 
     def abs_square(self,
@@ -829,10 +886,13 @@ def abs_square_gpu(psit_nG, weight_n, nt_R):
         elif nb < B:
             psit_bR = psit_bR[:nb]
         psit_bR[:] = 0.0
+        # TODO: Remember to give real space size instead of
+        # reciprocal space size when doing real wave functions
+        # (now psit_bR is shared between real and reciprocal space)
         pw_insert_gpu(psit_nG.data[b1:b2],
                       Q_G,
                       1.0,
-                      psit_bR.reshape((nb, -1)))
+                      psit_bR.reshape((nb, -1)), *psit_bR.shape[1:])
         psit_bR[:] = cupyx.scipy.fft.ifftn(
             psit_bR,
             shape,

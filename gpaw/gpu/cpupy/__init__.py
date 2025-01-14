@@ -7,7 +7,9 @@ import gpaw.gpu.cpupy.fft as fft
 import gpaw.gpu.cpupy.linalg as linalg
 import gpaw.gpu.cpupy.random as random
 
-__all__ = ['linalg', 'cublas', 'fft', 'random']
+__version__ = 'fake'
+
+__all__ = ['linalg', 'cublas', 'fft', 'random', '__version__']
 
 
 def empty(*args, **kwargs):
@@ -43,8 +45,16 @@ def array(a, dtype=None):
     return ndarray(np.array(a, dtype))
 
 
+def ascontiguousarray(a):
+    return ndarray(np.ascontiguousarray(a._data))
+
+
 def dot(a, b):
     return ndarray(np.dot(a._data, b._data))
+
+
+def outer(a, b):
+    return ndarray(np.outer(a._data, b._data))
 
 
 def multiply(a, b, c):
@@ -167,6 +177,9 @@ class ndarray:
                 yield ndarray(data.item())
             else:
                 yield ndarray(data)
+
+    def mean(self):
+        return ndarray(self._data.mean())
 
     def __setitem__(self, index, value):
         if isinstance(index, tuple):

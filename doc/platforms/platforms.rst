@@ -18,6 +18,7 @@ Linux:
    Linux/Niflheim/Niflheim
    Linux/Niflheim/load
    Linux/Niflheim/build
+   Linux/Niflheim/gpu
    Linux/SUNCAT/SUNCAT
    Linux/akka
    Linux/armageddon
@@ -73,14 +74,6 @@ AIX:
    AIX/jump
    AIX/seaborg
 
-BGP:
-
-.. toctree::
-   :maxdepth: 2
-
-   BGP/jugene
-   BGP/performance
-
 BGQ:
 
 .. toctree::
@@ -109,7 +102,7 @@ Cray:
    :maxdepth: 1
 
    Cray/lumi
-   Cray/nersc_cori
+   Cray/nersc_perlmutter
    Cray/louhi
    Cray/jaguar
    Cray/sisu

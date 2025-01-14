@@ -4,21 +4,18 @@ from gpaw.mpi import world
 from gpaw.test import findpeak
 from gpaw.response.bse import BSE
 from gpaw.response.df import read_response_function
-from ase.units import Bohr
 
 
 def create_bse(gpwfile, q_c=(0, 0, 0)):
     bse = BSE(gpwfile,
               q_c=q_c,
-              spinors=True,
+              soc_tol=0.01,
+              add_soc=True,
               ecut=10,
-              valence_bands=[8],
-              conduction_bands=[9],
+              valence_bands=2,
+              conduction_bands=2,
               eshift=0.8,
               nbands=15,
-              write_h=False,
-              write_v=False,
-              wfile=None,
               mode='BSE',
               truncation='2D')
     return bse
@@ -29,8 +26,7 @@ def test_response_bse_MoS2_cut(in_tmp_dir, scalapack, gpw_files):
     gpwfile = gpw_files['mos2_5x5_pw']
     bse = create_bse(gpwfile)
 
-    outw_w, outalpha_w = bse.get_polarizability(write_eig=None,
-                                                eta=0.02,
+    outw_w, outalpha_w = bse.get_polarizability(eta=0.02,
                                                 w_w=np.linspace(0., 5., 5001))
     world.barrier()
     w_w, alphareal_w, alphaimag_w = read_response_function('pol_bse.csv')
@@ -58,9 +54,7 @@ def test_response_bse_MoS2_cut(in_tmp_dir, scalapack, gpw_files):
     outw_w, eels = bse.get_eels_spectrum(w_w=w_w)
 
     bse = create_bse(gpwfile)
-    pbc_c = bse.gs.pbc
-    V = bse.gs.nonpbc_cell_product()
-    factor = V * Bohr**(sum(~pbc_c)) / (4 * np.pi)
+    factor = bse.gs.cd.nonperiodic_hypervolume / (4 * np.pi)
     outw_w, pol = bse.get_polarizability(w_w=w_w)
     assert np.allclose(pol.imag / factor, eels)
 

@@ -1,12 +1,13 @@
 import pytest
 from gpaw.xc import XC
+from gpaw.gpu import cupy as cp, cupy_is_fake
 
 
 @pytest.mark.gpu
+@pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize('nspins', [1, 2])
-def test_gpu_pbe(nspins, gpu):
-    import cupy as cp
-    from _gpaw import evaluate_pbe_gpu
+def test_gpu_pbe(nspins):
+    from gpaw.cgpaw import evaluate_pbe_gpu
     ng = 10000
     n_sg = cp.exp(cp.log(10) * 5 * (cp.random.rand(nspins, ng) - 0.5))
     sigma_xg = cp.exp(cp.log(10) * 5 * (
@@ -47,10 +48,10 @@ def test_gpu_pbe(nspins, gpu):
 
 
 @pytest.mark.gpu
+@pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize('nspins', [1, 2])
-def test_gpu_lda(nspins, gpu):
-    import cupy as cp
-    from _gpaw import evaluate_lda_gpu
+def test_gpu_lda(nspins):
+    from gpaw.cgpaw import evaluate_lda_gpu
     ng = 10000
     n_sg = cp.exp(cp.log(10) * 5 * (cp.random.rand(nspins, ng) - 0.5))
     cp.cuda.runtime.deviceSynchronize()

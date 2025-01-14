@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING
 
 from gpaw.typing import Array1D, ArrayND
 from gpaw.gpu import cupy as cp
-import _gpaw
+import gpaw.cgpaw as cgpaw
 
 __all__ = ['GPU_AWARE_MPI']
 
-GPU_AWARE_MPI = getattr(_gpaw, 'gpu_aware_mpi', False)
-GPU_ENABLED = getattr(_gpaw, 'GPU_ENABLED', False)
+GPU_AWARE_MPI = getattr(cgpaw, 'gpu_aware_mpi', False)
+GPU_ENABLED = getattr(cgpaw, 'GPU_ENABLED', False)
 
 
 def add_to_density(f: float,
@@ -37,9 +37,14 @@ def pw_insert(coef_G: Array1D,
 def pw_insert_gpu(psit_nG,
                   Q_G,
                   scale,
-                  psit_bQ):
+                  psit_bQ,
+                  nx, ny, nz):
     assert scale == 1.0
-    psit_bQ[:, Q_G] = psit_nG
+    psit_bQ[..., Q_G] = psit_nG
+    if nx * ny * nz != psit_bQ.shape[-1]:
+        n, m = nx // 2 - 1, ny // 2 - 1
+        pw_amend_insert_realwf_gpu(psit_bQ.reshape((-1, nx, ny, nz // 2 + 1)),
+                                   n, m)
 
 
 def pwlfc_expand(f_Gs, emiGR_Ga, Y_GL,
@@ -85,6 +90,15 @@ def dH_aii_times_P_ani_gpu(dH_aii, ni_a,
         J1 = J2
 
 
+def pw_amend_insert_realwf_gpu(array_nQ, n, m):
+    for array_Q in array_nQ:
+        t = array_Q[:, :, 0]
+        t[0, -m:] = t[0, m:0:-1].conj()
+        t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
+        t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
+        t[-n:, 0] = t[n:0:-1, 0].conj()
+
+
 def calculate_residuals_gpu(residual_nG, eps_n, wfs_nG):
     for residual_G, eps, wfs_G in zip(residual_nG, eps_n, wfs_nG):
         residual_G -= eps * wfs_G
@@ -111,12 +125,12 @@ def evaluate_pbe_gpu(nt_sr, vxct_sr, e_r, sigma_xr, dedsigma_xr) -> None:
 
 
 if not TYPE_CHECKING:
-    from _gpaw import (  # noqa
+    from gpaw.cgpaw import (  # noqa
         add_to_density, pw_precond, pw_insert,
         pwlfc_expand, symmetrize_ft)
 
     if GPU_ENABLED:
-        from _gpaw import (  # noqa
+        from gpaw.cgpaw import (  # noqa
             pwlfc_expand_gpu, add_to_density_gpu, pw_insert_gpu,
             dH_aii_times_P_ani_gpu, evaluate_lda_gpu, evaluate_pbe_gpu,
-            calculate_residuals_gpu)
+            calculate_residuals_gpu, pw_amend_insert_realwf_gpu)

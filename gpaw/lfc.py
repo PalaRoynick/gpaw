@@ -3,10 +3,11 @@ from math import pi
 import numpy as np
 from ase.units import Bohr
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.grid_descriptor import GridDescriptor, GridBoundsError
 from gpaw.gpu import cupy_is_fake
+from gpaw.new import trace
 from gpaw.utilities import smallest_safe_grid_spacing
 
 """
@@ -89,7 +90,7 @@ class Sphere:
             l = spline.get_angular_momentum_number()
             for beg_c, end_c, sdisp_c in gd.get_boxes(spos_c, rcut, cut):
                 pos_v = np.dot(spos_c - sdisp_c, gd.cell_cv)
-                A_gm, G_b = _gpaw.spline_to_grid(
+                A_gm, G_b = cgpaw.spline_to_grid(
                     spline.spline,
                     beg_c, end_c, pos_v,
                     np.ascontiguousarray(gd.h_cv),
@@ -255,19 +256,31 @@ class LocalizedFunctionsCollection(BaseLFC):
         self.my_atom_indices = None
         self.lfc = None
 
-    def set_positions(self, spos_ac, atom_partition=None):
+    def set_positions(self, spos_ac, atom_partition=None) -> bool:
+        """Set positions and return True if any atoms have migrated to
+        another rank.
+        """
         assert len(spos_ac) == len(self.sphere_a)
         spos_ac = np.asarray(spos_ac)
         movement = False
+        old_ranks = [sphere.rank for sphere in self.sphere_a]
         for a, (spos_c, sphere) in enumerate(zip(spos_ac, self.sphere_a)):
             try:
                 movement |= sphere.set_position(spos_c, self.gd, self.cut)
             except GridBoundsError as e:
-                e.args = [f'Atom {a} too close to edge: {e}']
+                e.args = (f'Atom {a} too close to edge: {e}',)
                 raise
 
-        if movement or self.my_atom_indices is None:
+        if self.my_atom_indices is None:
             self._update(spos_ac)
+            return False
+
+        if movement:
+            self._update(spos_ac)
+            for rank, sphere in zip(old_ranks, self.sphere_a):
+                if rank != sphere.rank:
+                    return True
+        return False
 
     def _update(self, spos_ac):
         nB = 0
@@ -367,7 +380,7 @@ class LocalizedFunctionsCollection(BaseLFC):
                 for iterator in iterators:
                     next(iterator)
 
-        self.lfc = _gpaw.LFC(self.A_Wgm, self.M_W, self.G_B, self.W_B,
+        self.lfc = cgpaw.LFC(self.A_Wgm, self.M_W, self.G_B, self.W_B,
                              self.gd.dv, self.phase_qW, self.xp is not np)
 
         return sdisp_Wc
@@ -548,7 +561,7 @@ class LocalizedFunctionsCollection(BaseLFC):
                                 gd.n_c, cspline_M,
                                 gd.beg_c, self.pos_Wv, a, v, q)
 
-    def integrate(self, a_xG, c_axi, q=-1):
+    def integrate(self, a_xG, c_axi, q=-1, add_to=False):
         """Calculate integrals of arrays times localized functions.
 
         ::
@@ -558,6 +571,7 @@ class LocalizedFunctionsCollection(BaseLFC):
                    /     x       i
 
         """
+        assert not add_to
         assert not self.use_global_indices
         if q == -1:
             assert self.dtype == float
@@ -684,7 +698,7 @@ class LocalizedFunctionsCollection(BaseLFC):
         rank = comm.rank
         srequests = []
         rrequests = []
-        c_arxiv = {}  # see also http://arXiv.org
+        c_arxiv = {}  # see also https://arXiv.org
         b_axiv = {}
         M1 = 0
         for a in self.atom_indices:
@@ -957,6 +971,7 @@ class BasisFunctions(LocalizedFunctionsCollection):
         self.Mstart = None
         self.Mstop = None
 
+    @trace
     def set_positions(self, spos_ac):
         LocalizedFunctionsCollection.set_positions(self, spos_ac)
         self.Mstart = 0
@@ -1201,6 +1216,7 @@ class BasisFunctions(LocalizedFunctionsCollection):
         F_vM = np.zeros((3, Mstop - Mstart))
         assert self.Mmax == rhoT_MM.shape[1]
         assert Mstop - Mstart == rhoT_MM.shape[0]
+        assert rhoT_MM.flags.c_contiguous
         for v in range(3):
             self.lfc.calculate_potential_matrix_force_contribution(
                 vt_G, rhoT_MM, F_vM[v],
@@ -1245,7 +1261,7 @@ def test():
 
     from gpaw.spline import Spline
     a = np.array([1, 0.9, 0.8, 0.0])
-    s = Spline(0, 0.2, a)
+    s = Spline.from_data(0, 0.2, a)
     x = LocalizedFunctionsCollection(gd, [[s], [s]])
     x.set_positions([(0.5, 0.45, 0.5), (0.5, 0.55, 0.5)])
     n_G = gd.zeros()

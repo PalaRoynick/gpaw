@@ -1,14 +1,14 @@
 import numpy as np
 import pytest
 from ase import Atoms
-from ase.calculators.test import numeric_force
+from gpaw.test import calculate_numerical_forces
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 from gpaw import GPAW, Mixer, PoissonSolver
 from gpaw.external import PointChargePotential
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_ext_potential_point_charge(in_tmp_dir):
     # Find coefs for polynomial:
     c = np.linalg.solve([[1, 1, 1, 1],
@@ -41,7 +41,7 @@ def test_ext_potential_point_charge(in_tmp_dir):
 
     def f(rc):
         vext_G[:] = 0.0
-        _gpaw.pc_potential(beg_v, h_v, q_p, R_pv, rc,
+        cgpaw.pc_potential(beg_v, h_v, q_p, R_pv, rc,
                            np.inf, 1.0, vext_G, None)
         return -vext_G[0, 0, 0]
 
@@ -56,7 +56,7 @@ def test_ext_potential_point_charge(in_tmp_dir):
         assert f(rc) == pytest.approx(v0, abs=1e-12)
 
         F_pv = np.zeros((1, 3))
-        _gpaw.pc_potential(beg_v, h_v, q_p, R_pv, rc, np.inf, 1.0,
+        cgpaw.pc_potential(beg_v, h_v, q_p, R_pv, rc, np.inf, 1.0,
                            vext_G, None, rhot_G, F_pv)
         eps = 0.0001
         for v in range(3):
@@ -88,7 +88,7 @@ def test_ext_potential_point_charge(in_tmp_dir):
     print(fpc1)
     print(fpc1 + f1.sum(0))
 
-    f2 = [[numeric_force(lih, a, v) for v in range(3)] for a in range(2)]
+    f2 = calculate_numerical_forces(lih, 0.001)
     print(f1)
     print(f1 - f2)
     err = abs(f1 - f2).max()

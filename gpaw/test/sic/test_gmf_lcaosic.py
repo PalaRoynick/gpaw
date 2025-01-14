@@ -9,9 +9,9 @@ from ase import Atoms
 import numpy as np
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 @pytest.mark.sic
-def test_gmf_lcaosic(in_tmp_dir, needs_ase_master):
+def test_gmf_lcaosic(in_tmp_dir):
     """
     test Perdew-Zunger Self-Interaction
     Correction  in LCAO mode using DirectMin
@@ -78,10 +78,8 @@ def test_gmf_lcaosic(in_tmp_dir, needs_ase_master):
 
     numeric = False
     if numeric:
-        from ase.calculators.test import numeric_force
-        f_num = np.array([[numeric_force(H2O, a, i)
-                          for i in range(3)]
-                         for a in range(len(H2O))])
+        from gpaw.test import calculate_numerical_forces
+        f_num = calculate_numerical_forces(H2O, 0.001)
         print('Numerical forces')
         print(f_num)
         print(f - f_num, np.abs(f - f_num).max())

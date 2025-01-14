@@ -18,7 +18,7 @@ class HarmonicPotential(ExternalPotential):
         return {'name': 'HarmonicPotential'}
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_ext_potential_harmonic(in_tmp_dir):
     """Test against the analytic result (no xc, no Coulomb)."""
     a = 4.0
@@ -63,7 +63,7 @@ class PöschlTellerPotential(ExternalPotential):
         return {'name': 'HarmonicPotential'}
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_pt_potential():
     """Test againts analytic result (no xc, no Coulomb)."""
     d = 6.0
@@ -88,5 +88,5 @@ def test_pt_potential():
     e5 = -0.5
     assert eigs[0] == pytest.approx(e0, abs=0.0002)
     assert eigs[1] == pytest.approx(e1234, abs=0.001)
-    assert eigs[1:5].ptp() == pytest.approx(0)
+    assert np.ptp(eigs[1:5]) == pytest.approx(0)
     assert eigs[5] == pytest.approx(e5, abs=0.001)

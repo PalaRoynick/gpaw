@@ -12,7 +12,7 @@ from gpaw.atom.aeatom import (AllElectronAtom, Channel, GaussianBasis, colors,
 from gpaw.basis_data import Basis, BasisFunction, BasisPlotter
 from gpaw.gaunt import gaunt
 from gpaw.typing import Array2D
-from gpaw.utilities import pack2
+from gpaw.utilities import pack_hermitian
 from gpaw.xc.ri.ribasis import generate_ri_basis
 from gpaw.xc.ri.spherical_hse_kernel import RadialHSE
 from scipy.linalg import eigh
@@ -120,16 +120,16 @@ parameters = {
     'Ba2': ('6s,s,6p,5d', 3.9),
     'Ba10': ('5s,6s,5p,6p,5d,d,F', 2.2),
     # 57-71:
-    'La11': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.5),
-    'Ce12': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.4),
-    'Pr13': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.3),
-    'Nd14': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.3),
-    'Pm15': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.3),
+    'La11': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
+    'Ce12': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
+    'Pr13': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
+    'Nd14': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
+    'Pm15': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Sm16': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Eu17': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Gd18': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Tb19': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
-    'Dy20': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.1),
+    'Dy20': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Ho21': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Er22': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
     'Tm23': ('5s,6s,5p,6p,5d,d,4f,f,G', 2.2),
@@ -850,6 +850,8 @@ class PAWSetupGenerator:
                     tn = tailnorm
                     if waves.f_n[i] == 0:
                         tn = min(0.05, tn * 20)  # no need for long tail
+                    if l == 3:
+                        tn = 0.01
                     phit_g, ronset, rc, de = self.create_basis_function(
                         l, i, tn, scale)
                     bf = BasisFunction(n, l, rc, phit_g, 'bound state')
@@ -1042,7 +1044,8 @@ class PAWSetupGenerator:
         aea = self.aea
 
         from gpaw.setup_data import SetupData
-        setup = SetupData(aea.symbol, aea.xc.name, tag, readxml=False)
+        setup = SetupData(aea.symbol, aea.xc.name, tag, readxml=False,
+                          generator_version=3)
 
         setup.id_j = []
 
@@ -1121,13 +1124,13 @@ class PAWSetupGenerator:
         self.calculate_exx_integrals()
         setup.ExxC = self.exxcc
         setup.ExxC_w = self.exxcc_w  # erfc screened core contributions
-        setup.X_p = pack2(self.exxcv_ii[I][:, I])
-        setup.X_wp = {omega: pack2(self.exxcv_wii[omega][I][:, I])
+        setup.X_p = pack_hermitian(self.exxcv_ii[I][:, I])
+        setup.X_wp = {omega: pack_hermitian(self.exxcv_wii[omega][I][:, I])
                       for omega in self.exxcv_wii}
 
         if self.yukawa_gamma > 0.0:
             self.calculate_yukawa_integrals()
-            setup.X_pg = pack2(self.exxgcv_ii[I][:, I])
+            setup.X_pg = pack_hermitian(self.exxgcv_ii[I][:, I])
 
         setup.tauc_g = self.tauc_g * (4 * pi)**0.5
         setup.tauct_g = self.tauct_g * (4 * pi)**0.5

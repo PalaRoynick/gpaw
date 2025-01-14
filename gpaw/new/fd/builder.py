@@ -1,21 +1,23 @@
 from __future__ import annotations
-import numpy as np
 
-from gpaw.core import UGDesc
-from gpaw.core.arrays import DistributedArrays as XArray
-from gpaw.core.uniform_grid import UGArray
-from gpaw.fd_operators import Gradient, Laplace
-from gpaw.new import zips
+from gpaw.core import UGArray, UGDesc
 from gpaw.new.builder import create_uniform_grid
+from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
-from gpaw.new.hamiltonian import Hamiltonian
+from gpaw.new.gpw import as_double_precision
 from gpaw.new.poisson import PoissonSolver, PoissonSolverWrapper
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
 from gpaw.poisson import PoissonSolver as make_poisson_solver
 
 
 class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
-    def __init__(self, atoms, params, *, comm, nn=3, interpolation=3):
+    def __init__(self,
+                 atoms,
+                 params,
+                 *,
+                 comm,
+                 nn=3,
+                 interpolation=3):
         super().__init__(atoms,
                          params,
                          comm=comm)
@@ -49,13 +51,13 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def get_pseudo_core_densities(self):
         if self._nct_aR is None:
             self._nct_aR = self.setups.create_pseudo_core_densities(
-                self.grid, self.fracpos_ac, atomdist=self.atomdist, xp=self.xp)
+                self.grid, self.relpos_ac, atomdist=self.atomdist, xp=self.xp)
         return self._nct_aR
 
     def get_pseudo_core_ked(self):
         if self._tauct_aR is None:
             self._tauct_aR = self.setups.create_pseudo_core_ked(
-                self.grid, self.fracpos_ac, atomdist=self.atomdist)
+                self.grid, self.relpos_ac, atomdist=self.atomdist)
         return self._tauct_aR
 
     def create_poisson_solver(self) -> PoissonSolver:
@@ -67,7 +69,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         poisson_solver = self.create_poisson_solver()
         return FDPotentialCalculator(
             self.grid, self.fine_grid, self.setups, self.xc, poisson_solver,
-            fracpos_ac=self.fracpos_ac, atomdist=self.atomdist,
+            relpos_ac=self.relpos_ac, atomdist=self.atomdist,
             interpolation_stencil_range=self.interpolation_stencil_range,
             xp=self.xp)
 
@@ -92,10 +94,11 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         if 'coefficients' in reader.wave_functions:
             name = 'coefficients'
         elif 'values' in reader.wave_functions:
-            name = 'values'
+            name = 'values'  # old name
         else:
             return ibzwfs
 
+        singlep = reader.get('precision', 'double') == 'single'
         c = reader.bohr**1.5
         if reader.version < 0:
             c = 1  # old gpw file
@@ -105,7 +108,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             index = (wfs.spin, wfs.k)
             data = reader.wave_functions.proxy(name, *index)
             data.scale = c
-            if self.communicators['w'].size == 1:
+            if self.communicators['w'].size == 1 and not singlep:
                 wfs.psit_nX = UGArray(grid, self.nbands, data=data)
             else:
                 band_comm = self.communicators['b']
@@ -119,59 +122,10 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     n2 = min((band_comm.rank + 1) * mynbands, self.nbands)
                     assert wfs.psit_nX.mydims[0] == n2 - n1
                     data = data[n1:n2]  # read from file
-                wfs.psit_nX.scatter_from(data)
+
+                if singlep:
+                    wfs.psit_nX.scatter_from(as_double_precision(data))
+                else:
+                    wfs.psit_nX.scatter_from(data)
 
         return ibzwfs
-
-
-class FDHamiltonian(Hamiltonian):
-    def __init__(self, grid, kin_stencil=3, blocksize=10, xp=np):
-        self.grid = grid
-        self.blocksize = blocksize
-        self._gd = grid._gd
-        self.kin = Laplace(self._gd, -0.5, kin_stencil, grid.dtype, xp=xp)
-
-        # For MGGA:
-        self.grad_v = []
-
-    def apply_local_potential(self,
-                              vt_R: UGArray,
-                              psit_nR: XArray,
-                              out: XArray,
-                              ) -> None:
-        assert isinstance(psit_nR, UGArray)
-        assert isinstance(out, UGArray)
-        self.kin(psit_nR, out)
-        for p, o in zips(psit_nR.data, out.data):
-            o += p * vt_R.data
-
-    def apply_mgga(self,
-                   dedtaut_R: UGArray,
-                   psit_nR: XArray,
-                   vt_nR: XArray) -> None:
-        if len(self.grad_v) == 0:
-            grid = psit_nR.desc
-            self.grad_v = [
-                Gradient(grid._gd, v, n=3, dtype=grid.dtype)
-                for v in range(3)]
-
-        tmp_R = psit_nR.desc.empty()
-        for psit_R, out_R in zips(psit_nR, vt_nR):
-            for grad in self.grad_v:
-                grad(psit_R, tmp_R)
-                tmp_R.data *= dedtaut_R.data
-                grad(tmp_R, tmp_R)
-                tmp_R.data *= 0.5
-                out_R.data -= tmp_R.data
-
-    def create_preconditioner(self, blocksize, xp=np):
-        from types import SimpleNamespace
-
-        from gpaw.preconditioner import Preconditioner as PC
-        pc = PC(self._gd, self.kin, self.grid.dtype, self.blocksize, xp=xp)
-
-        def apply(psit, residuals, out):
-            kpt = SimpleNamespace(phase_cd=psit.desc.phase_factor_cd)
-            pc(residuals.data, kpt, out=out.data)
-
-        return apply
