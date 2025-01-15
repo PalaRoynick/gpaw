@@ -270,7 +270,6 @@ class BSEBackend:
                  integrate_gamma='reciprocal',
                  mode='BSE',
                  q_c=[0.0, 0.0, 0.0],
-                 no_coulomb=False,
                  direction=0):
 
         integrate_gamma = GammaIntegrationMode(integrate_gamma)
@@ -281,7 +280,6 @@ class BSEBackend:
         self.context = context
         self.add_soc = add_soc
         self.scale = scale
-        self.no_coulomb = no_coulomb
         assert mode in ['RPA', 'BSE']
 
         if deps_max is None:
@@ -425,7 +423,7 @@ class BSEBackend:
         return SpinorData(self.con_m, self.val_m, e_km, f_km, v_kmn, soc_tol)
 
     @timer('BSE calculate')
-    def calculate(self, optical):
+    def calculate(self, optical, no_coulomb=False):
         """Calculate the BSE Hamiltonian. This includes setting up all
         machinery for pair densities, KS eignevalues and occupation factors.
         At the end the direct and indirect interaction are included through
@@ -445,7 +443,7 @@ class BSEBackend:
         qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
 
         self.ikq_k = self.kd.find_k_plus_q(self.q_c)
-        if self.no_coulomb:
+        if no_coulomb:
             self.v_G = np.zeros(qpd0.NG)
         else:
             self.v_G = self.coulomb.V(qpd=qpd0, q_v=None)
@@ -785,9 +783,9 @@ class BSEBackend:
             return bsematrix.diagonalize_nontammdancoff(self)
 
     @timer('get_bse_matrix')
-    def get_bse_matrix(self, optical=True):
+    def get_bse_matrix(self, optical=True, no_coulomb=False):
         """Calculate BSE matrix."""
-        return self.calculate(optical=optical)
+        return self.calculate(optical=optical, no_coulomb = no_coulomb)
 
 
     def collect_C_TGG(self, C_tGG):
@@ -857,13 +855,13 @@ class BSEBackend:
 
     @timer('get_vchi')
     def get_vchi(self, w_w=None, eta=0.1, optical=True, write_eig=None,
-                 mode_c=None):
+                 mode_c=None, no_coulomb = False):
         """Returns v * chi where v is the bare Coulomb interaction"""
 
         vchi_w = np.zeros(len(w_w), dtype=complex)
 
         if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical)
+            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb = no_coulomb)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
@@ -909,11 +907,11 @@ class BSEBackend:
 
     @timer('get_chi_wGG')
     def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    write_eig=None):
+                    write_eig=None, no_coulomb = False):
         """Returns chi_wGG'"""
 
         if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical)
+            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb=no_coulomb)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
