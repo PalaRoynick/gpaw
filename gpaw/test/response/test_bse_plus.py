@@ -33,10 +33,9 @@ def test_bse_plus(tda, in_tmp_dir, scalapack):
               eshift=0,
               mode='BSE',
               nbands=8,
-              q_c=[0.0, 0.0, 0.0],
-              no_coulomb=True)
+              q_c=[0.0, 0.0, 0.0])
 
-    chi_irr_bse = bse.get_chi_wGG(eta=0.2, optical=True,
+    chi_irr_bse = bse.get_chi_wGG(eta=0.2, optical=True, no_coulomb=True,
                                   w_w=np.array([-3, 0, 6]))
     ref = [(-0.12319305784052169 - 0.005900101520066767j),
            (-3.519763508433997e-10 - 0.035759806607911705j),
