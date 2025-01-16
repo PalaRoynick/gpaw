@@ -142,8 +142,8 @@ class Chi0Calculator:
 
 
 class Chi0BodyCalculator(Chi0ComponentPWCalculator):
-    def __init__(self, *args,
-                 eshift: float | None = None,
+    def __init__(self, *args, n1, n2,
+                 eshift: float | None = None, 
                  **kwargs):
         """Construct the Chi0BodyCalculator.
 
@@ -317,7 +317,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
     def __init__(self, *args,
                  intraband=True,
-                 rate=0.0,
+                 rate=0.0, n1, n2,
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
