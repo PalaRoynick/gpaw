@@ -130,14 +130,14 @@ class Chi0Calculator:
         -------
         chi0 : Chi0Data
         """
-        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, n1, n2, spins)
+        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, spins, n1, n2)
         if chi0.optical_limit:
             if self.chi0_body_calc.eshift is not None:
                 raise NotImplementedError("No wings eshift available")
             assert chi0.optical_extension is not None
             # Update the head and wings
             self.chi0_opt_ext_calc.update_chi0_optical_extension(
-                chi0.optical_extension, m1, m2, n1, n2, spins)
+                chi0.optical_extension, m1, m2, spins, n1, n2)
         return chi0
 
 
@@ -197,7 +197,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         # Integrate all transitions into partially filled and empty bands
         m1, m2 = self.get_band_transitions()
         n1, n2 = self.n1, self.n2
-        self.update_chi0_body(chi0_body, m1, m2, n1, n2, spins=range(self.gs.nspins))
+        self.update_chi0_body(chi0_body, m1, m2, spins=range(self.gs.nspins), n1, n2)
 
         return chi0_body
 
@@ -375,8 +375,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         n1, n2 = self.n1, self.n2
 
         # Perform the actual integration
-        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2, n1, n2,
-                                           spins=range(self.gs.nspins))
+        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2,
+                                           spins=range(self.gs.nspins), n1, n2)
 
         if self.drude_calc is not None:
             # Add intraband contribution
