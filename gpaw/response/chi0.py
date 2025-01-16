@@ -112,7 +112,7 @@ class Chi0Calculator:
     @timer('Calculate CHI_0')
     def update_chi0(self,
                     chi0: Chi0Data,
-                    m1: int, m2: int, spins: list, n1: int = 0, n2: int = None) -> Chi0Data:
+                    m1: int, m2: int, spins: list, n1: int, n2: int) -> Chi0Data:
         """In-place calculation of chi0 (with optical extension).
 
         Parameters
@@ -203,7 +203,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
     def update_chi0_body(self,
                          chi0_body: Chi0BodyData,
-                         m1: int, m2: int, spins: list | range, n1: int = 0, n2: int = None):
+                         m1: int, m2: int, spins: list | range, n1: int, n2: int):
         """In-place calculation of the body.
 
         Parameters
@@ -391,7 +391,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
             self,
             chi0_optical_extension: Chi0OpticalExtensionData,
             m1: int, m2: int,
-            spins: list | range, n1: int = 0, n2: int = None):
+            spins: list | range, n1: int, n2: int):
         """In-place calculation of the chi0 head and wings.
 
         Parameters
