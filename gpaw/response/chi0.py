@@ -39,16 +39,19 @@ class Chi0Calculator:
                  eshift=None,
                  intraband=True,
                  rate=0.0,
+                 n1=0,
+                 n2=None,
                  **kwargs):
         self.gs = ResponseGroundStateAdapter.from_input(gs)
         self.context = ResponseContext.from_input(context)
-
+        if n2 is None:
+            n2 = self.gs.nocc2 
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
-            nblocks=nblocks, eshift=eshift, **kwargs)
+            nblocks=nblocks, eshift=eshift, n1=n1, n2=n2, **kwargs)
         self.chi0_opt_ext_calc = Chi0OpticalExtensionCalculator(
             self.gs, self.context,
-            intraband=intraband, rate=rate, **kwargs)
+            intraband=intraband, rate=rate, n1=n1, n2=n2, **kwargs)
 
     @property
     def wd(self) -> FrequencyDescriptor:
@@ -109,7 +112,7 @@ class Chi0Calculator:
     @timer('Calculate CHI_0')
     def update_chi0(self,
                     chi0: Chi0Data,
-                    m1: int, m2: int, spins: list) -> Chi0Data:
+                    m1: int, m2: int, n1: int = 0, n2: int = None, spins: list) -> Chi0Data:
         """In-place calculation of chi0 (with optical extension).
 
         Parameters
@@ -127,14 +130,14 @@ class Chi0Calculator:
         -------
         chi0 : Chi0Data
         """
-        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, spins)
+        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, n1, n2, spins)
         if chi0.optical_limit:
             if self.chi0_body_calc.eshift is not None:
                 raise NotImplementedError("No wings eshift available")
             assert chi0.optical_extension is not None
             # Update the head and wings
             self.chi0_opt_ext_calc.update_chi0_optical_extension(
-                chi0.optical_extension, m1, m2, spins)
+                chi0.optical_extension, m1, m2, n1, n2, spins)
         return chi0
 
 
@@ -191,13 +194,13 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
         # Integrate all transitions into partially filled and empty bands
         m1, m2 = self.get_band_transitions()
-        self.update_chi0_body(chi0_body, m1, m2, spins=range(self.gs.nspins))
+        self.update_chi0_body(chi0_body, m1, m2, n1, n2, spins=range(self.gs.nspins))
 
         return chi0_body
 
     def update_chi0_body(self,
                          chi0_body: Chi0BodyData,
-                         m1: int, m2: int, spins: list | range):
+                         m1: int, m2: int, n1: int = 0, n2: int = None, spins: list | range):
         """In-place calculation of the body.
 
         Parameters
@@ -223,7 +226,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=False, m1=m1, m2=m2)
+                                  optical=False, m1=m1, m2=m2, n1=n1, n2=n2)
 
         chi0_body.data_WgG[:] /= prefactor
         if self.hilbert:
@@ -366,7 +369,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         m1, m2 = self.get_band_transitions()
 
         # Perform the actual integration
-        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2,
+        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2, n1, n2,
                                            spins=range(self.gs.nspins))
 
         if self.drude_calc is not None:
@@ -381,7 +384,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
     def update_chi0_optical_extension(
             self,
             chi0_optical_extension: Chi0OpticalExtensionData,
-            m1: int, m2: int,
+            m1: int, m2: int, n1: int = 0, n2: int = None,
             spins: list | range):
         """In-place calculation of the chi0 head and wings.
 
@@ -401,7 +404,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=True, m1=m1, m2=m2)
+                                  optical=True, m1=m1, m2=m2, n1=n1, n2=n2)
 
         # We integrate the head and wings together, using the combined index P
         # index v = (x, y, z)
