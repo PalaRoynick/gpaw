@@ -42,6 +42,8 @@ class Chi0Integrand(Integrand):
         assert m1 <= m2
         self.m1 = m1
         self.m2 = m2
+        self.n1 = n1
+        self.n2 = n2
 
         self.context: ResponseContext = chi0calc.context
         self.kptpair_factory: KPointPairFactory = chi0calc.kptpair_factory
