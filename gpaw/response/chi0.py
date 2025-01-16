@@ -153,6 +153,8 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
             Energy shift of the conduction bands in eV.
         """
         self.eshift = eshift / Ha if eshift else eshift
+        self.n1 = n1
+        self.n2 = n2
 
         super().__init__(*args, **kwargs)
 
@@ -194,6 +196,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
         # Integrate all transitions into partially filled and empty bands
         m1, m2 = self.get_band_transitions()
+        n1, n2 = self.n1, self.n2
         self.update_chi0_body(chi0_body, m1, m2, n1, n2, spins=range(self.gs.nspins))
 
         return chi0_body
@@ -335,6 +338,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         # Serial block distribution
         super().__init__(*args, nblocks=1, **kwargs)
 
+        self.n1 = n1
+        self.n2 = n2
         # In the optical limit of metals, one must add the Drude dielectric
         # response from the free-space plasma frequency of the intraband
         # transitions to the head of chi0. This is handled by a separate
@@ -367,6 +372,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
         # Define band transitions
         m1, m2 = self.get_band_transitions()
+        n1, n2 = self.n1, self.n2
 
         # Perform the actual integration
         self.update_chi0_optical_extension(chi0_opt_ext, m1, m2, n1, n2,
