@@ -45,7 +45,7 @@ class Chi0Calculator:
         self.gs = ResponseGroundStateAdapter.from_input(gs)
         self.context = ResponseContext.from_input(context)
         if n2 is None:
-            n2 = self.gs.nocc2
+            n2 = self.gs.nocc2 
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
             nblocks=nblocks, eshift=eshift, n1=n1, n2=n2, **kwargs)
@@ -112,8 +112,7 @@ class Chi0Calculator:
     @timer('Calculate CHI_0')
     def update_chi0(self,
                     chi0: Chi0Data,
-                    m1: int, m2: int, spins: list,
-                    n1: int, n2: int) -> Chi0Data:
+                    m1: int, m2: int, n1: int = 0, n2: int = None, spins: list) -> Chi0Data:
         """In-place calculation of chi0 (with optical extension).
 
         Parameters
@@ -131,22 +130,20 @@ class Chi0Calculator:
         -------
         chi0 : Chi0Data
         """
-        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, spins, n1, n2)
+        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, n1, n2, spins)
         if chi0.optical_limit:
             if self.chi0_body_calc.eshift is not None:
                 raise NotImplementedError("No wings eshift available")
             assert chi0.optical_extension is not None
             # Update the head and wings
             self.chi0_opt_ext_calc.update_chi0_optical_extension(
-                chi0.optical_extension, m1, m2, spins, n1, n2)
+                chi0.optical_extension, m1, m2, n1, n2, spins)
         return chi0
 
 
 class Chi0BodyCalculator(Chi0ComponentPWCalculator):
     def __init__(self, *args,
                  eshift: float | None = None,
-                 n1: int,
-                 n2: int,
                  **kwargs):
         """Construct the Chi0BodyCalculator.
 
@@ -156,9 +153,8 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
             Energy shift of the conduction bands in eV.
         """
         self.eshift = eshift / Ha if eshift else eshift
+
         super().__init__(*args, **kwargs)
-        self.n1 = n1
-        self.n2 = n2
 
         if self.gs.metallic:
             assert self.eshift is None, \
@@ -198,16 +194,13 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
         # Integrate all transitions into partially filled and empty bands
         m1, m2 = self.get_band_transitions()
-        self.update_chi0_body(chi0_body, m1, m2,
-                              spins=range(self.gs.nspins),
-                              n1=self.n1, n2=self.n2)
+        self.update_chi0_body(chi0_body, m1, m2, n1, n2, spins=range(self.gs.nspins))
 
         return chi0_body
 
     def update_chi0_body(self,
                          chi0_body: Chi0BodyData,
-                         m1: int, m2: int, spins: list | range,
-                         n1: int, n2: int):
+                         m1: int, m2: int, n1: int = 0, n2: int = None, spins: list | range):
         """In-place calculation of the body.
 
         Parameters
@@ -325,8 +318,6 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
     def __init__(self, *args,
                  intraband=True,
                  rate=0.0,
-                 n1: int,
-                 n2: int,
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
@@ -343,8 +334,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         """
         # Serial block distribution
         super().__init__(*args, nblocks=1, **kwargs)
-        self.n1 = n1
-        self.n2 = n2
+
         # In the optical limit of metals, one must add the Drude dielectric
         # response from the free-space plasma frequency of the intraband
         # transitions to the head of chi0. This is handled by a separate
@@ -379,9 +369,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         m1, m2 = self.get_band_transitions()
 
         # Perform the actual integration
-        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2,
-                                           spins=range(self.gs.nspins),
-                                           n1=self.n1, n2=self.n2)
+        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2, n1, n2,
+                                           spins=range(self.gs.nspins))
 
         if self.drude_calc is not None:
             # Add intraband contribution
@@ -395,8 +384,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
     def update_chi0_optical_extension(
             self,
             chi0_optical_extension: Chi0OpticalExtensionData,
-            m1: int, m2: int, spins: list | range,
-            n1: int = 0, n2: int = None):
+            m1: int, m2: int, n1: int = 0, n2: int = None,
+            spins: list | range):
         """In-place calculation of the chi0 head and wings.
 
         Parameters
