@@ -112,7 +112,7 @@ class Chi0Calculator:
     @timer('Calculate CHI_0')
     def update_chi0(self,
                     chi0: Chi0Data,
-                    m1: int, m2: int, n1: int = 0, n2: int = None, spins: list) -> Chi0Data:
+                    m1: int, m2: int, spins: list, n1: int = 0, n2: int = None) -> Chi0Data:
         """In-place calculation of chi0 (with optical extension).
 
         Parameters
