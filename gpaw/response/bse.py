@@ -1286,3 +1286,13 @@ class VChi:
         self.context.print('')
 
         return self.w_w, array
+
+
+class BSE_Plus:
+    def __init__(self, df, bse, eta=0.1, optical=True, w_w=None, direction = 'x'):
+        self.bse = bse
+        self.df = df 
+
+    def get_dielectric_function(self):
+        chi_irr_BSE  = self.bse.get_chi_wGG(eta=eta, optical = optical, no_coulomb =True, w_w=w_w)
+        chi_irr_RPA = 
