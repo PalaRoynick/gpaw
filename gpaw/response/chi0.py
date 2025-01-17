@@ -46,6 +46,7 @@ class Chi0Calculator:
         self.context = ResponseContext.from_input(context)
         if n2 is None:
             n2 = self.gs.nocc2 
+        print('trying to make body', flush=True)
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
             nblocks=nblocks, eshift=eshift, n1=n1, n2=n2, **kwargs)
