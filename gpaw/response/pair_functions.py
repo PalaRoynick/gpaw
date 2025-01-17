@@ -22,10 +22,6 @@ class SingleQPWDescriptor(PWDescriptor):
                                    gammacentered=gammacentered)
 
     @property
-    def NG(self):
-        return self.ng_q[0]
-
-    @property
     def q_c(self):
         return self.kd.bzk_kc[0]
 
