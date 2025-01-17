@@ -49,9 +49,11 @@ class Chi0Calculator:
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
             nblocks=nblocks, eshift=eshift, n1=n1, n2=n2, **kwargs)
+        print('made body', flush=True)
         self.chi0_opt_ext_calc = Chi0OpticalExtensionCalculator(
             self.gs, self.context,
             intraband=intraband, rate=rate, n1=n1, n2=n2, **kwargs)
+        print('made extensions', flush=True)
 
     @property
     def wd(self) -> FrequencyDescriptor:
