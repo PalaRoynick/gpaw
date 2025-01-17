@@ -280,6 +280,7 @@ class BSEBackend:
         self.context = context
         self.add_soc = add_soc
         self.scale = scale
+
         assert mode in ['RPA', 'BSE']
 
         if deps_max is None:
@@ -423,7 +424,7 @@ class BSEBackend:
         return SpinorData(self.con_m, self.val_m, e_km, f_km, v_kmn, soc_tol)
 
     @timer('BSE calculate')
-    def calculate(self, optical, no_coulomb=False):
+    def calculate(self, optical):
         """Calculate the BSE Hamiltonian. This includes setting up all
         machinery for pair densities, KS eignevalues and occupation factors.
         At the end the direct and indirect interaction are included through
@@ -441,12 +442,8 @@ class BSEBackend:
         lattice index.
         """
         qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
-
         self.ikq_k = self.kd.find_k_plus_q(self.q_c)
-        if no_coulomb:
-            self.v_G = np.zeros(qpd0.NG)
-        else:
-            self.v_G = self.coulomb.V(qpd=qpd0, q_v=None)
+        self.v_G = self.coulomb.V(qpd=qpd0, q_v=None)
 
         if optical:
             self.v_G[0] = 0.0
@@ -566,13 +563,11 @@ class BSEBackend:
         world.sum(rhoex_KmmG)
 
         self.rhoG0_S = np.reshape(rhoex_KmmG[:, :, :, 0], -1)
-        self.rho_SG = np.reshape(rhoex_KmmG, (len(self.rhoG0_S), -1))
         if self.susc_component != '00':
             world.sum(rhomag_KmmG)
             self.rhomag_SG = np.reshape(rhomag_KmmG, (self.nS, -1))
             G_Gv = qpd0.get_reciprocal_vectors(add_q=False)
             self.G_Gc = np.dot(G_Gv, qpd0.gd.cell_cv.T / (2 * np.pi))
-
         self.context.timer.stop('Pair densities')
 
         # Calculate Hamiltonian
@@ -783,33 +778,9 @@ class BSEBackend:
             return bsematrix.diagonalize_nontammdancoff(self)
 
     @timer('get_bse_matrix')
-    def get_bse_matrix(self, optical=True, no_coulomb=False):
+    def get_bse_matrix(self, optical=True):
         """Calculate BSE matrix."""
-        return self.calculate(optical=optical, no_coulomb = no_coulomb)
-
-
-    def collect_C_TGG(self, C_tGG):
-        """
-            Collect C_tGG to a rank 0 (as C_TGG) from all ranks.
-            T is global transition index, t is local transition index.
-            G is global planewave index.
-        """
-        print(C_tGG.shape, 'orig shape')
-        exclude_S = self.eig_data[2]
-        nR = self.nS - len(exclude_S)
-        nr = -(-nR // world.size)
-        if len(C_tGG) != nr:
-            C2_tGG = np.zeros((nr, *C_tGG.shape[1:]), dtype=complex)
-            C2_tGG[:len(C_tGG)] = C_tGG
-            C_tGG = C2_tGG
-        if world.rank == 0:
-            C_TGG = np.zeros((nr * world.size, *C_tGG.shape[1:]), dtype=complex)
-        else:
-            C_TGG = None
-        world.gather(C_tGG, 0, C_TGG)
-        if world.rank == 0:
-            nG = self.rho_SG.shape[-1]
-            return C_TGG[:nR].reshape((nR, nG, nG))
+        return self.calculate(optical=optical)
 
     @timer('get_spectral_weights')
     def get_spectral_weights(self, eig_data, df_S, mode_c):
@@ -820,33 +791,33 @@ class BSEBackend:
             index = np.where(np.all(np.round(G_Gc) == mode_c, axis=1))[0][0]
             rho_S = self.rhomag_SG[:, index]
 
-        w_T, v_Rt = eig_data[0], eig_data[1]
+        w_T, v_St = eig_data[0], eig_data[1]
         exclude_S = eig_data[2]
-        nR = self.nS - len(exclude_S)
-        nr = -(-nR // world.size)
-        df_R = np.delete(df_S, exclude_S)
-        rho_R = np.delete(rho_S, exclude_S)
-        C_T = np.zeros(nR, complex)
+        nS = self.nS - len(exclude_S)
+        ns = -(-nS // world.size)
+        dft_S = np.delete(df_S, exclude_S)
+        rhot_S = np.delete(rho_S, exclude_S)
+        C_T = np.zeros(nS, complex)
         # Calculate the spectral weights C_T
         if self.use_tammdancoff:
-            A_t = np.dot(rho_R, v_Rt)
-            B_t = np.dot(rho_R * df_R, v_Rt)
+            A_t = np.dot(rhot_S, v_St)
+            B_t = np.dot(rhot_S * dft_S, v_St)
             if world.size == 1:
                 C_T = B_t.conj() * A_t
             else:
                 grid = BlacsGrid(world, world.size, 1)
-                desc = grid.new_descriptor(nR, 1, nr, 1)
+                desc = grid.new_descriptor(nS, 1, ns, 1)
                 C_t = desc.empty(dtype=complex)
                 C_t[:, 0] = B_t.conj() * A_t
                 C_T = desc.collect_on_master(C_t)[:, 0]
                 if world.rank != 0:
-                    C_T = np.empty(nR, dtype=complex)
+                    C_T = np.empty(nS, dtype=complex)
                 world.broadcast(C_T, 0)
         else:
             if world.rank == 0:
-                A_T = np.dot(rho_R, v_Rt)
-                B_T = np.dot(rho_R * df_R, v_Rt)
-                tmp = np.dot(v_Rt.conj().T, v_Rt)
+                A_T = np.dot(rhot_S, v_St)
+                B_T = np.dot(rhot_S * dft_S, v_St)
+                tmp = np.dot(v_St.conj().T, v_St)
                 overlap_TT = np.linalg.inv(tmp)
                 C_T = np.dot(B_T.conj(), overlap_TT.T) * A_T
             world.broadcast(C_T, 0)
@@ -855,13 +826,13 @@ class BSEBackend:
 
     @timer('get_vchi')
     def get_vchi(self, w_w=None, eta=0.1, optical=True, write_eig=None,
-                 mode_c=None, no_coulomb = False):
+                 mode_c=None):
         """Returns v * chi where v is the bare Coulomb interaction"""
 
         vchi_w = np.zeros(len(w_w), dtype=complex)
 
         if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb = no_coulomb)
+            bsematrix = self.get_bse_matrix(optical=optical)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
@@ -904,84 +875,6 @@ class BSEBackend:
         self.context.print('')
 
         return vchi_w
-
-    @timer('get_chi_wGG')
-    def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    write_eig=None, no_coulomb = False):
-        """Returns chi_wGG'"""
-
-        if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb=no_coulomb)
-            self.context.print('Calculating response function at %s frequency '
-                               'points' % len(w_w))
-            self.eig_data = self.diagonalize_bse_matrix(bsematrix)
-        else:
-            pass
-        
-        w_T, v_Rt, exclude_S = self.eig_data[0], self.eig_data[1], self.eig_data[2]
-        rho_SG = self.rho_SG
-        df_S = self.df_S
-        df_R = np.delete(df_S, exclude_S)
-        rho_RG = np.delete(rho_SG, exclude_S, axis=0)
-
-        nG = rho_RG.shape[-1]
-
-        self.context.print('Calculating response function at %s frequency '
-                           'points' % len(w_w))
-
-        if not self.use_tammdancoff:
-            if world.rank == 0:
-                v_RT = v_Rt
-                A_GT = rho_RG.T @ v_RT
-                B_GT = rho_RG.T * df_R[np.newaxis] @ v_RT
-                tmp = v_RT.conj().T @ v_RT
-                overlap_tt = np.linalg.inv(tmp)
-                C_TGG = ((B_GT.conj() @ overlap_tt.T).T)[..., np.newaxis] *\
-                    A_GT.T[:, np.newaxis]
-                C_TGG1 = None
-            else:
-                return
-        else:
-            A_Gt = rho_RG.T @ v_Rt
-            B_Gt = (rho_RG.T * df_R[np.newaxis]) @ v_Rt
-            if world.size == 1:
-                C_TGG1 = A_Gt.T.conj()[..., np.newaxis] * B_Gt.T[:, np.newaxis]
-                C_TGG = B_Gt.T.conj()[..., np.newaxis] * A_Gt.T[:, np.newaxis]
-            else:
-                nR = self.nS - len(exclude_S)
-                nr = -(-nR // world.size)
-                grid = BlacsGrid(world, world.size, 1)
-                desc = grid.new_descriptor(nR, nG * nG, nr, nG * nG)
-                C_tGG = desc.empty(dtype=complex)
-                np.einsum('Gt,Ht->tGH', B_Gt.conj(), A_Gt,
-                          out=C_tGG.reshape((-1, nG, nG)))
-                C_TGG = self.collect_C_TGG(C_tGG)
-                desc1 = grid.new_descriptor(nR, nG * nG, nr, nG * nG)
-                C_tGG1 = desc1.empty(dtype=complex)
-                np.einsum('Gt,Ht->tGH', A_Gt.conj(), B_Gt,
-                          out=C_tGG1.reshape((-1, nG, nG)))
-                C_TGG1 = self.collect_C_TGG(C_tGG1)
-                if grid.comm.rank != 0:
-                    return
-
-        eta /= Hartree
-
-        tmp_Tw = 1 / (w_w[None, :] / Hartree - w_T[:, None] + 1j * eta)
-        n_tmp_Tw = - 1 / (w_w[None, :] / Hartree + w_T[:, None] + 1j * eta)
-
-        chi_wGG = np.einsum('Tw,TAB->wAB', tmp_Tw, C_TGG)
-        if C_TGG1 is not None:
-            chi_wGG += np.einsum('Tw,TAB->wAB', n_tmp_Tw, C_TGG1)
-
-        chi_wGG *= 1 / self.gs.volume
-
-        if write_eig is not None:
-            assert isinstance(write_eig, str)
-            filename = write_eig
-            if world.rank == 0:
-                write_bse_eigenvalues(filename, self.mode,
-                                      self.w_T * Hartree, C_TGG[:, 0, 0])
-        return np.swapaxes(chi_wGG, -1, -2)
 
     def get_dielectric_function(self, *args, filename='df_bse.csv', **kwargs):
         vchi = self.vchi(*args, optical=True, **kwargs)
@@ -1056,7 +949,6 @@ class BSEBackend:
                          min((rank + 1) * myKsize, nK))
         myKsize = len(myKrange)
         return myKrange, myKsize
-
 
     def print_initialization(self, td, eshift, gw_kn):
         isl = ['----------------------------------------------------------',
@@ -1286,13 +1178,3 @@ class VChi:
         self.context.print('')
 
         return self.w_w, array
-
-
-class BSE_Plus:
-    def __init__(self, df, bse, eta=0.1, optical=True, w_w=None, direction = 'x'):
-        self.bse = bse
-        self.df = df 
-
-    def get_dielectric_function(self):
-        chi_irr_BSE  = self.bse.get_chi_wGG(eta=eta, optical = optical, no_coulomb =True, w_w=w_w)
-        chi_irr_RPA = 
