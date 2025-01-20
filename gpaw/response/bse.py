@@ -16,6 +16,7 @@ from gpaw.response.groundstate import CellDescriptor
 from gpaw.response.chi0 import Chi0Calculator
 from gpaw.response.context import timer
 from gpaw.response.coulomb_kernels import CoulombKernel
+from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.df import write_response_function
 from gpaw.response.frequencies import FrequencyDescriptor
 from gpaw.response.pair import KPointPairFactory, get_gs_and_context
@@ -1289,10 +1290,79 @@ class VChi:
 
 
 class BSE_Plus:
-    def __init__(self, df, bse, eta=0.1, optical=True, w_w=None, direction = 'x'):
-        self.bse = bse
-        self.df = df 
+    def __init__(self, gs, bse, chi0calc_small, chi0calc_large):
 
-    def get_dielectric_function(self):
-        chi_irr_BSE  = self.bse.get_chi_wGG(eta=eta, optical = optical, no_coulomb =True, w_w=w_w)
-        chi_irr_RPA = 
+        self.bse = bse
+        self.chi0calc_small = chi0calc_small
+        self.chi0calc_large = chi0calc_large 
+        self.gs = gs   # the one with many kpts used in rpa's. Don't think we need the small one here?
+
+        n1_BSE = self.bse.val_m[0]
+        n1_chi0_small =  self.chi0calc_small.chi0_body_calc.n1
+
+        nbands_BSE = bse.con_m[-1]
+        nbands_chi0_small = self.chi0calc_small.chi0_body_calc.get_band_transitions()[1] - 1
+
+        assert n1_BSE == n1_chi0_small and nbands_BSE == nbands_BSE, 'BSE and small chi0 objects must contain the same bands'
+
+        nbands_chi0_large = self.chi0calc_large.chi0_body_calc.get_band_transitions()[1] - 1
+
+        asssert nbands_chi0_small < nbands_chi0_large, 'Large chi0 calculation should contain more bands than the small chi0 calculation'
+
+        ecut_BSE = self.bse.ecut
+        ecut_chi0_small = self.chi0calc_small.chi0_body_calc.ecut
+        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
+
+        assert ecut_BSE == ecut_BSE == ecut_chi0_large, 'Cutoff energy should match in BSE and chi0 calculations'
+
+
+    def get_chi_wGG(self, optical = True, eta=0.1, w_w=None, q_c=[0.0, 0.0, 0.0], 
+        direction = 'x', truncation=None, xc_kernel=None):
+
+        # er ikke så glad for, at man angiver eta - for det er kun for bse beregningen, at den gælder, og ligeledes er q_c kun for rpa beregningen 
+    # bare fordi at koderne er struktureret på forskellig vis..  kan self kalde dem bse_eta og chi0_q_c for at forsøge at forhindre
+    # forvirring / fejl, men kønt er det ikke....  
+
+        w_w_BSE = w_w / Hartree
+        w_w_chi0_small = self.chi0calc_small.chi0_body_calc.wd.omega_w
+        w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
+
+        assert np.alltrue(w_w_BSE == w_w_chi0_small) and np.alltrue(w_w_chi0_small == w_w_chi0_large), 
+        'Use the same frequency grid in all calculations'
+
+        # irreducibale bse chi
+        chi_irr_BSE_WGG  = self.bse.get_chi_wGG(eta=eta, optical = optical, no_coulomb =True, w_w=w_w)
+
+        coulomb_kernel = CoulombKernel.from_gs(self.gs, truncation)
+
+        # chi0 matching the bse bands 
+        chi0_data_small = self.chi0calc_small.calculate(q_c)
+        dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel, xc_kernel, gs.cd)
+        chi0_small_wGG = dyson_eqs_small.get_chi0_wGG(direction)
+        chi0_small_WGG = dyson_eqs_small.wblocks.all_gather(chi0_small_wGG)
+
+        # chi0 fully converged
+        chi0_data_large = self.chi0calc_large.calculate(q_c)
+        dyson_eqs_large = Chi0DysonEquations(chi0_data_large, coulomb_kernel, xc_kernel, gs.cd)
+        chi0_large_wGG = dyson_eqs_large.get_chi0_wGG(direction)
+        chi0_large_WGG = dyson_eqs_large.wblocks.all_gather(chi0_large_wGG)
+   
+        self.v_G = coulomb_kernel.V(chi0_data_large.qpd)
+
+        self.v_G[0] = 0.0
+
+        chi_irr_BSE_plus_WGG = chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
+
+        self.chi_BSE_plus_WGG = ((np.linalg.inv(np.eye(len(chi_irr_BSE_plus_WGG[1])) 
+            -  chi_irr_BSE_plus_WGG @ np.diag(self.v_G))) @ chi_irr_BSE_plus_WGG)
+
+        return self.chi_BSE_plus_WGG
+
+    def get_refractive_index(self):
+        chi = self.chi_BSE_plus_WGG
+        return (np.sqrt(np.pi*4*(-chi) + 1)).real
+
+
+
+
+
