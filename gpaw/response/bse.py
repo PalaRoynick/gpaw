@@ -1348,8 +1348,6 @@ class BSE_Plus:
         else:
             chi_irr_BSE_WGG = None
 
-        chi_irr_BSE_WGG = world.broadcast(chi_irr_BSE_WGG, 0)
-
         coulomb_kernel = CoulombKernel.from_gs(self.gs, truncation=truncation)
 
         # chi0 matching the bse bands
@@ -1370,16 +1368,17 @@ class BSE_Plus:
 
         self.v_G[0] = 0.0
 
-        chi_irr_BSE_plus_WGG = \
-            chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
+        if world.rank == 0:
+            chi_irr_BSE_plus_WGG = \
+                chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
 
-        eye = np.eye(len(chi_irr_BSE_plus_WGG[1]))
+            eye = np.eye(len(chi_irr_BSE_plus_WGG[1]))
 
-        self.chi_BSE_plus_WGG = \
-            np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(self.v_G),
-                            chi_irr_BSE_plus_WGG)
+            self.chi_BSE_plus_WGG = \
+                np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(self.v_G),
+                                chi_irr_BSE_plus_WGG)
 
-        return self.chi_BSE_plus_WGG
+            return self.chi_BSE_plus_WGG
 
     def get_refractive_index(self):
         chi = self.chi_BSE_plus_WGG
