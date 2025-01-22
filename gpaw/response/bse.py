@@ -1337,10 +1337,13 @@ class BSE_Plus:
             'Use the same q_c in the BSE and chi0 calculations'
 
         # irreducibale bse chi
-        chi_irr_BSE_WGG = self.bse.get_chi_wGG(eta=eta_BSE,
+        chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=eta_BSE,
                                                optical=optical,
                                                no_coulomb=True,
                                                w_w=w_w)
+
+        if world.rank == 0:
+            chi_irr_BSE_WGG = chi_irr_BSE_wGG
 
         coulomb_kernel = CoulombKernel.from_gs(self.gs, truncation=truncation)
 
