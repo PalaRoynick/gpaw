@@ -268,7 +268,7 @@ class BSEBackend:
                  eshift=None,
                  gw_kn=None,
                  truncation=None,
-                 integrate_gamma='reciprocal',
+                 integrate_gamma='reciprocal',  # WS
                  mode='BSE',
                  q_c=[0.0, 0.0, 0.0],
                  direction=0):
@@ -1325,10 +1325,6 @@ class BSE_Plus:
                     q_c=[0.0, 0.0, 0.0], direction='x',
                     truncation=None, xc_kernel=None):
 
-        # er ikke så glad for, at man angiver eta - for det er kun for bse beregningen, at den gælder, og ligeledes er q_c kun for rpa beregningen 
-    # bare fordi at koderne er struktureret på forskellig vis..  kan self kalde dem bse_eta og chi0_q_c for at forsøge at forhindre
-    # forvirring / fejl, men kønt er det ikke....  
-
         w_w_BSE = w_w / Hartree
         w_w_chi0_small = self.chi0calc_small.chi0_body_calc.wd.omega_w
         w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
@@ -1336,6 +1332,9 @@ class BSE_Plus:
         assert np.alltrue(w_w_BSE == w_w_chi0_small) and \
             np.alltrue(w_w_chi0_small == w_w_chi0_large), \
             'Use the same frequency grid in all calculations'
+
+        assert q_c == self.bse.q_c, \
+            'Use the same q_c in the BSE and chi0 calculations'
 
         # irreducibale bse chi
         chi_irr_BSE_WGG = self.bse.get_chi_wGG(eta=eta_BSE,
