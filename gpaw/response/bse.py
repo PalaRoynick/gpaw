@@ -1345,6 +1345,11 @@ class BSE_Plus:
         if world.rank == 0:
             chi_irr_BSE_WGG = chi_irr_BSE_wGG
 
+        else:
+            chi_irr_BSE_WGG = None
+
+        chi_irr_BSE_WGG = world.broadcast(chi_irr_BSE_WGG, 0)
+
         coulomb_kernel = CoulombKernel.from_gs(self.gs, truncation=truncation)
 
         # chi0 matching the bse bands
