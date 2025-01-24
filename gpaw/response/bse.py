@@ -1329,7 +1329,7 @@ class BSE_Plus:
             'Cutoff energies should match in the BSE and chi0 calculation'
 
         n1_BSE = self.bse.val_m[0]
-        m2_BSE = bse.con_m[-1]
+        m2_BSE = self.bse.con_m[-1]
         m2_chi0_large = \
             self.chi0calc_large.chi0_body_calc.get_band_transitions()[1] - 1
 
