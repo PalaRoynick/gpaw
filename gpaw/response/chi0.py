@@ -44,6 +44,7 @@ class Chi0Calculator:
                  **kwargs):
         self.gs = ResponseGroundStateAdapter.from_input(gs)
         self.context = ResponseContext.from_input(context)
+        self.intraband = intraband
         if n2 is None:
             n2 = self.gs.nocc2
         self.chi0_body_calc = Chi0BodyCalculator(

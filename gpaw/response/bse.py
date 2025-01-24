@@ -1294,13 +1294,14 @@ class VChi:
 
 
 class BSE_Plus:
-    def __init__(self, gs, context, bse, chi0calc_large, eta=0.1, w_w=None,
+    def __init__(self, bse, chi0calc_large, eta=0.1, w_w=None,
                  q_c=[0.0, 0.0, 0.0], direction='x', truncation=None):
 
         self.bse = bse
         self.chi0calc_large = chi0calc_large
         self.eta = eta
-        self.gs = gs
+        self.gs = self.chi0calc_large.gs
+        self.context = self.chi0calc_large.context
         self.w_w = w_w
         self.wd = self.chi0calc_large.wd
         self.q_c = q_c
