@@ -1340,7 +1340,7 @@ class BSE_Plus:
         hilbert = self.chi0calc_large.chi0_body_calc.hilbert
         intraband = self.chi0calc_large.intraband
 
-        self.chi0calc_small = Chi0Calculator(gs, context,
+        self.chi0calc_small = Chi0Calculator(self.gs, self.context,
                                              wd=self.wd,
                                              nbands=m2_BSE, n1=n1_BSE,
                                              intraband=intraband,
