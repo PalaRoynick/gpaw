@@ -280,6 +280,7 @@ class BSEBackend:
         self.direction = direction
         self.context = context
         self.add_soc = add_soc
+        self.truncation = truncation
         self.scale = scale
         assert mode in ['RPA', 'BSE']
 
@@ -786,8 +787,7 @@ class BSEBackend:
     @timer('get_bse_matrix')
     def get_bse_matrix(self, optical=True, no_coulomb=False):
         """Calculate BSE matrix."""
-        return self.calculate(optical=optical, no_coulomb = no_coulomb)
-
+        return self.calculate(optical=optical, no_coulomb=no_coulomb)
 
     def collect_C_TGG(self, C_tGG):
         """
@@ -804,7 +804,8 @@ class BSEBackend:
             C2_tGG[:len(C_tGG)] = C_tGG
             C_tGG = C2_tGG
         if world.rank == 0:
-            C_TGG = np.zeros((nr * world.size, *C_tGG.shape[1:]), dtype=complex)
+            C_TGG = np.zeros((nr * world.size,
+                              *C_tGG.shape[1:]), dtype=complex)
         else:
             C_TGG = None
         world.gather(C_tGG, 0, C_TGG)
@@ -856,13 +857,14 @@ class BSEBackend:
 
     @timer('get_vchi')
     def get_vchi(self, w_w=None, eta=0.1, optical=True, write_eig=None,
-                 mode_c=None, no_coulomb = False):
+                 mode_c=None, no_coulomb=False):
         """Returns v * chi where v is the bare Coulomb interaction"""
 
         vchi_w = np.zeros(len(w_w), dtype=complex)
 
         if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb = no_coulomb)
+            bsematrix = self.get_bse_matrix(optical=optical,
+                                            no_coulomb=no_coulomb)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
@@ -908,18 +910,20 @@ class BSEBackend:
 
     @timer('get_chi_wGG')
     def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    write_eig=None, no_coulomb = False):
+                    write_eig=None, no_coulomb=False):
         """Returns chi_wGG'"""
 
         if not hasattr(self, 'eig_data'):
-            bsematrix = self.get_bse_matrix(optical=optical, no_coulomb=no_coulomb)
+            bsematrix = self.get_bse_matrix(optical=optical,
+                                            no_coulomb=no_coulomb)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
         else:
             pass
-        
-        w_T, v_Rt, exclude_S = self.eig_data[0], self.eig_data[1], self.eig_data[2]
+
+        w_T, v_Rt, exclude_S = \
+            self.eig_data[0], self.eig_data[1], self.eig_data[2]
         rho_SG = self.rho_SG
         df_S = self.df_S
         df_R = np.delete(df_S, exclude_S)
@@ -1290,57 +1294,67 @@ class VChi:
 
 
 class BSE_Plus:
-    def __init__(self, gs, bse, chi0calc_small, chi0calc_large):
+    def __init__(self, gs, context, bse, chi0calc_large, eta=0.1, w_w=None,
+                 q_c=[0.0, 0.0, 0.0], direction='x', truncation=None):
 
         self.bse = bse
-        self.chi0calc_small = chi0calc_small
         self.chi0calc_large = chi0calc_large
+        self.eta = eta
         self.gs = gs
+        self.w_w = w_w
+        self.wd = self.chi0calc_large.wd
+        self.q_c = q_c
+        self.direction = direction
+        self.truncation = truncation
+        ecut = self.bse.ecut
+        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
+
+        w_w_BSE = self.w_w / Hartree
+        w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
+
+        assert np.alltrue(w_w_BSE == w_w_chi0_large), \
+            'Use the same frequency grid in the BSE+ and chi0 calculations'
+
+        assert self.q_c == self.bse.q_c, \
+            'Use the same q_c in the BSE and chi0 calculations'
+
+        assert self.direction == ('x', 'y', 'z')[self.bse.direction], \
+            "BSE and chi0 have to be calculated in the same direction"
+
+        assert self.truncation == self.bse.truncation, \
+            'Inconsistent use of truncation'
+
+        assert ecut == ecut_chi0_large, \
+            'Cutoff energies should match in the BSE and chi0 calculation'
 
         n1_BSE = self.bse.val_m[0]
-        n1_chi0_small = self.chi0calc_small.chi0_body_calc.n1
-
         m2_BSE = bse.con_m[-1]
-        m2_chi0_small = \
-            self.chi0calc_small.chi0_body_calc.get_band_transitions()[1] - 1
-
-        assert n1_BSE == n1_chi0_small and m2_BSE == m2_chi0_small, \
-            'BSE and small chi0 objects must contain the same bands'
-
         m2_chi0_large = \
             self.chi0calc_large.chi0_body_calc.get_band_transitions()[1] - 1
 
-        assert m2_chi0_small < m2_chi0_large, \
+        assert m2_BSE < m2_chi0_large, \
             'Large chi0 calculation should contain more ' \
-            'bands than the small chi0 calculation'
+            'bands than the BSE calculation'
 
-        ecut_BSE = self.bse.ecut
-        ecut_chi0_small = self.chi0calc_small.chi0_body_calc.ecut
-        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
+        hilbert = self.chi0calc_large.chi0_body_calc.hilbert
+        intraband = self.chi0calc_large.chi0_opt_ext_calc.intraband
 
-        assert ecut_BSE == ecut_chi0_small == ecut_chi0_large, \
-            'Cutoff energy should match in BSE and chi0 calculations'
+        self.chi0calc_small = Chi0Calculator(gs, context,
+                                             wd=self.wd,
+                                             nbands=m2_BSE, n1=n1_BSE,
+                                             intraband=intraband,
+                                             hilbert=hilbert,
+                                             eta=self.eta,
+                                             ecut=ecut,
+                                             eshift=None)
 
-    def get_chi_wGG(self, optical=True, eta_BSE=0.1, w_w=None,
-                    q_c=[0.0, 0.0, 0.0], direction='x',
-                    truncation=None, xc_kernel=None):
-
-        w_w_BSE = w_w / Hartree
-        w_w_chi0_small = self.chi0calc_small.chi0_body_calc.wd.omega_w
-        w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
-
-        assert np.alltrue(w_w_BSE == w_w_chi0_small) and \
-            np.alltrue(w_w_chi0_small == w_w_chi0_large), \
-            'Use the same frequency grid in all calculations'
-
-        assert q_c == self.bse.q_c, \
-            'Use the same q_c in the BSE and chi0 calculations'
+    def get_chi_wGG(self, optical=True, xc_kernel=None):
 
         # irreducibale bse chi
-        chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=eta_BSE,
+        chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=self.eta,
                                                optical=optical,
                                                no_coulomb=True,
-                                               w_w=w_w)
+                                               w_w=self.w_w)
 
         if world.rank == 0:
             chi_irr_BSE_WGG = chi_irr_BSE_wGG
@@ -1348,20 +1362,21 @@ class BSE_Plus:
         else:
             chi_irr_BSE_WGG = None
 
-        coulomb_kernel = CoulombKernel.from_gs(self.gs, truncation=truncation)
+        coulomb_kernel = CoulombKernel.from_gs(self.gs,
+                                               truncation=self.truncation)
 
         # chi0 matching the bse bands
-        chi0_data_small = self.chi0calc_small.calculate(q_c)
+        chi0_data_small = self.chi0calc_small.calculate(self.q_c)
         dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel,
                                              xc_kernel, self.gs.cd)
-        chi0_small_wGG = dyson_eqs_small.get_chi0_wGG(direction)
+        chi0_small_wGG = dyson_eqs_small.get_chi0_wGG(self.direction)
         chi0_small_WGG = dyson_eqs_small.wblocks.all_gather(chi0_small_wGG)
 
         # chi0 fully converged
-        chi0_data_large = self.chi0calc_large.calculate(q_c)
+        chi0_data_large = self.chi0calc_large.calculate(self.q_c)
         dyson_eqs_large = Chi0DysonEquations(chi0_data_large, coulomb_kernel,
                                              xc_kernel, self.gs.cd)
-        chi0_large_wGG = dyson_eqs_large.get_chi0_wGG(direction)
+        chi0_large_wGG = dyson_eqs_large.get_chi0_wGG(self.direction)
         chi0_large_WGG = dyson_eqs_large.wblocks.all_gather(chi0_large_wGG)
 
         self.v_G = coulomb_kernel.V(chi0_data_large.qpd)
