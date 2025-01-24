@@ -1342,11 +1342,11 @@ class BSE_Plus:
 
         self.chi0calc_small = Chi0Calculator(self.gs, self.context,
                                              wd=self.wd,
-                                             nbands=m2_BSE, n1=n1_BSE,
+                                             nbands=m2_BSE + 1, n1=n1_BSE,
                                              intraband=intraband,
                                              hilbert=hilbert,
                                              eta=self.eta,
-                                             ecut=ecut,
+                                             ecut=ecut * Hartree,
                                              eshift=None)
 
     def get_chi_wGG(self, optical=True, xc_kernel=None):
