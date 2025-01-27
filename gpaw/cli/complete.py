@@ -49,7 +49,7 @@ commands = {
          '--atom', '-t', '--total', '-r', '--range', '-n',
          '--points', '--soc'],
     'gpw':
-        ['-w', '--remove-wave-functions'],
+        [],
     'info':
         [],
     'install-data':
