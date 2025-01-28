@@ -54,20 +54,33 @@ main(int argc, char **argv)
 #endif
 #endif
 
-#define PyChar wchar_t
-    wchar_t* wargv[argc];
-    wchar_t* wargv2[argc];
-    for (int i = 0; i < argc; i++) {
-        int n = 1 + mbstowcs(NULL, argv[i], 0);
-        wargv[i] = (wchar_t*)malloc(n * sizeof(wchar_t));
-        wargv2[i] = wargv[i];
-        mbstowcs(wargv[i], argv[i], n);
+    PyImport_AppendInittab("_gpaw", &moduleinit);
+
+    PyStatus pystatus;
+    PyConfig config;
+    PyConfig_InitPythonConfig(&config);
+    pystatus = PyConfig_SetBytesString(&config, &config.program_name, argv[0]);
+    if (PyStatus_Exception(pystatus)) {
+        PyErr_Print();
+        return 1;
     }
 
-    Py_SetProgramName(wargv[0]);
-    PyImport_AppendInittab("_gpaw", &moduleinit);
-    Py_Initialize();
-    PySys_SetArgvEx(argc, wargv, 0);
+    pystatus = PyConfig_SetBytesArgv(&config, argc, argv);
+    if (PyStatus_Exception(pystatus)) {
+        PyErr_Print();
+        return 1;
+    }
+
+    pystatus = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(pystatus)) {
+        PyErr_Print();
+        return 1;
+    }
+    
+    PyConfig_Clear(&config);
+
+    //Py_Initialize();
+    //PySys_SetArgvEx(argc, wargv, 0);
 
 #ifdef GPAW_WITH_ELPA
     // Globally initialize Elpa library if present:
@@ -99,9 +112,6 @@ main(int argc, char **argv)
 
     Py_Finalize();
     MPI_Finalize();
-
-    for (int i = 0; i < argc; i++)
-        free(wargv2[i]);
 
     return status;
 }

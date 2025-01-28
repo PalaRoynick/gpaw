@@ -44,10 +44,6 @@ stages:
                             ]
       extra_link_args = ['-fopenmp']
 
-      # TODO: PySys_SetArgv() etc deprecated in Python 3.11
-      import sys
-      if sys.version_info >= (3, 11):
-          extra_compile_args += ['-Wno-deprecated-declarations']
       # end TODO
 
       libraries += ['blas']
@@ -204,9 +200,7 @@ build-hip-cuda:
       libraries += ['cudart', 'hipblas']
 
       # Suppress warnings from hip-cuda headers
-      extra_compile_args += ['-Wno-deprecated-declarations',
-                             '-Wno-implicit-int',
-                             ]
+      extra_compile_args += ['-Wno-implicit-int']
       undef_macros += ['GPAW_GPU_AWARE_MPI']
       EOF
     - cat siteconfig.py
@@ -252,7 +246,6 @@ build-lumi-g:
           '-fPIC',
           '-Wall',
           '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
-          '-Wno-deprecated-declarations',  # PySys_SetArgv() etc deprecated in Python 3.11
           '-Werror',
           ]
       extra_link_args = ['-fopenmp']
