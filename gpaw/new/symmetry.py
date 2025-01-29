@@ -137,10 +137,10 @@ class Symmetries:
             rotations = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]
         self.rotation_scc = np.array(rotations, dtype=int)
         assert (self.rotation_scc == rotations).all()
-        if translations is None:
-            self.translation_sc = np.zeros((len(self.rotation_scc), 3))
-        else:
+        if translations is not None:
             self.translation_sc = np.array(translations)
+        else:
+            self.translation_sc = np.zeros((len(self.rotation_scc), 3))
         if atommaps is None:
             self.atommap_sa = np.empty((len(self.rotation_scc), 0), int)
         else:

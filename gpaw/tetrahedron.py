@@ -341,7 +341,7 @@ def weights(eig_in: Array2D, i_ktq: Array3D, improved=False) -> Array2D:
                                       (len(i_ktq), 6, n2 - n1))).T
     for f_q, q_q, (k, t, n) in zip(f_Tq, q_Tq, ktn_T):
         for q, f in zip(q_q, f_q):
-            f_in[i_ktq[k, t, q], n1 + n] += f
+            f_in[i_ktq[k, t, q], n1 + n] += f  # type: ignore[has-type]
 
     f_in *= 1 / 6
 

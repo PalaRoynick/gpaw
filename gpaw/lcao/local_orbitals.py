@@ -337,7 +337,7 @@ class Subdiagonalization(BasisTransform):
         blocks = self.blocks
         # Loop over pair of blocks.
         for b1, b2 in zip(*np.triu_indices(len(blocks), k=1)):
-            if len(blocks[b1]) != len(blocks[b2]):
+            if len(blocks[b1]) != len(blocks[b2]):  # type: ignore
                 # Blocks with different dimensions not compatible.
                 continue
             U1 = self.U_MM[np.ix_(blocks[b1], blocks[b1])]
