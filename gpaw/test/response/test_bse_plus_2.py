@@ -27,8 +27,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
               conduction_bands=range(4, 6),
               eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
-              nbands=14,
-              txt='bse_calculation.txt')
+              nbands=14)
 
     w_w = np.linspace(0, 10, 10)
     wd = get_frequency_descriptor(w_w, gs=gs)
@@ -100,7 +99,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
 
-    # assertion error if different frequency grids are passed
+    # assertion error if different shapes of frequency grids are passed
     with pytest.raises(AssertionError):
         chi0calc_large = Chi0Calculator(gs, context,
                                         wd=get_frequency_descriptor(
@@ -115,3 +114,76 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         bse_plus = BSE_Plus(bse, chi0calc_large,
                             eta=eta, w_w=np.linspace(0, 10, 10),
                             q_c=q_c, direction='x', truncation=None)
+
+    # assertion error if different frequency values are passed
+    with pytest.raises(AssertionError):
+        chi0calc_wrong_w = Chi0Calculator(gs, context,
+                                          wd=get_frequency_descriptor(
+                                              np.linspace(0, 20, 10), gs=gs),
+                                          nbands=14,
+                                          intraband=False,
+                                          hilbert=False,
+                                          eta=eta,
+                                          ecut=ecut,
+                                          eshift=None)
+
+        BSE_Plus(bse, chi0calc_wrong_w,
+                 eta=eta, w_w=np.linspace(0, 10, 10),
+                 q_c=q_c, direction='x', truncation=None)
+
+    # assertion error if different q_c's
+    with pytest.raises(AssertionError):
+        BSE_Plus(bse, chi0calc_large,
+                 eta=eta, w_w=w_w,
+                 q_c=[0.1, 0, 0], direction='x', truncation=None)
+
+    # assertion error if calculated in different directions
+    with pytest.raises(AssertionError):
+        BSE_Plus(bse, chi0calc_large,
+                 eta=eta, w_w=w_w,
+                 q_c=q_c, direction='y', truncation=None)
+
+    # assertion error if coulomb trunction is only used in one of them
+    with pytest.raises(AssertionError):
+        bse_truncation_2d = BSE(gpw_files['sic_pw'], ecut=ecut,
+                                q_c=q_c,
+                                valence_bands=range(2, 4),
+                                conduction_bands=range(4, 6),
+                                eshift=eshift,  # integrate_gamma = 0,
+                                mode='BSE',
+                                nbands=14,
+                                truncation='2D')
+
+        BSE_Plus(bse_truncation_2d, chi0calc_large,
+                 eta=eta, w_w=w_w,
+                 q_c=q_c, direction='x', truncation=None)
+
+    # assertion error if ecuts do not match
+    with pytest.raises(AssertionError):
+        chi0calc_ecut_10 = Chi0Calculator(gs, context,
+                                          wd=wd,
+                                          nbands=14,
+                                          intraband=False,
+                                          hilbert=False,
+                                          eta=eta,
+                                          ecut=10,
+                                          eshift=None)
+
+        BSE_Plus(bse, chi0calc_ecut_10,
+                 eta=eta, w_w=w_w,
+                 q_c=q_c, direction='x', truncation=None)
+
+    # assertion error if more bands in the bse calculation
+    with pytest.raises(AssertionError):
+        chi0calc_bands_5 = Chi0Calculator(gs, context,
+                                          wd=wd,
+                                          nbands=5,
+                                          intraband=False,
+                                          hilbert=False,
+                                          eta=eta,
+                                          ecut=ecut,
+                                          eshift=None)
+
+        BSE_Plus(bse, chi0calc_bands_5,
+                 eta=eta, w_w=w_w,
+                 q_c=q_c, direction='x', truncation=None)
