@@ -101,33 +101,34 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
     # assertion error if different shapes of frequency grids are passed
     with pytest.raises(AssertionError):
-        chi0calc_large = Chi0Calculator(gs, context,
-                                        wd=get_frequency_descriptor(
-                                            np.linspace(0, 20, 100), gs=gs),
-                                        nbands=14,
-                                        intraband=False,
-                                        hilbert=False,
-                                        eta=eta,
-                                        ecut=ecut,
-                                        eshift=None)
+        chi0calc_wrong_w_1 = Chi0Calculator(gs, context,
+                                            wd=get_frequency_descriptor(
+                                                np.linspace(0, 20, 100),
+                                                gs=gs),
+                                            nbands=14,
+                                            intraband=False,
+                                            hilbert=False,
+                                            eta=eta,
+                                            ecut=ecut,
+                                            eshift=None)
 
-        bse_plus = BSE_Plus(bse, chi0calc_large,
-                            eta=eta, w_w=np.linspace(0, 10, 10),
-                            q_c=q_c, direction='x', truncation=None)
+        BSE_Plus(bse, chi0calc_wrong_w_1,
+                 eta=eta, w_w=np.linspace(0, 10, 10),
+                 q_c=q_c, direction='x', truncation=None)
 
     # assertion error if different frequency values are passed
     with pytest.raises(AssertionError):
-        chi0calc_wrong_w = Chi0Calculator(gs, context,
-                                          wd=get_frequency_descriptor(
-                                              np.linspace(0, 20, 10), gs=gs),
-                                          nbands=14,
-                                          intraband=False,
-                                          hilbert=False,
-                                          eta=eta,
-                                          ecut=ecut,
-                                          eshift=None)
+        chi0calc_wrong_w_2 = Chi0Calculator(gs, context,
+                                            wd=get_frequency_descriptor(
+                                                np.linspace(0, 20, 10), gs=gs),
+                                            nbands=14,
+                                            intraband=False,
+                                            hilbert=False,
+                                            eta=eta,
+                                            ecut=ecut,
+                                            eshift=None)
 
-        BSE_Plus(bse, chi0calc_wrong_w,
+        BSE_Plus(bse, chi0calc_wrong_w_2,
                  eta=eta, w_w=np.linspace(0, 10, 10),
                  q_c=q_c, direction='x', truncation=None)
 
