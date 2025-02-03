@@ -100,7 +100,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                                         rel=1e-3, abs=1e-4)
 
     # assertion error if different shapes of frequency grids are passed
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Shape mismatch:*'):
         chi0calc_wrong_w_1 = Chi0Calculator(gs, context,
                                             wd=get_frequency_descriptor(
                                                 np.linspace(0, 20, 100),
@@ -117,7 +117,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if different frequency values are passed
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Use the same frequency grid*'):
         chi0calc_wrong_w_2 = Chi0Calculator(gs, context,
                                             wd=get_frequency_descriptor(
                                                 np.linspace(0, 20, 10), gs=gs),
@@ -133,19 +133,19 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if different q_c's
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Use the same q_c*'):
         BSE_Plus(bse, chi0calc_large,
                  eta=eta, w_w=w_w,
                  q_c=[0.1, 0, 0], direction='x', truncation=None)
 
     # assertion error if calculated in different directions
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'BSE and chi0 have to be*'):
         BSE_Plus(bse, chi0calc_large,
                  eta=eta, w_w=w_w,
                  q_c=q_c, direction='y', truncation=None)
 
     # assertion error if coulomb trunction is only used in one of them
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Inconsistent use of*'):
         bse_truncation_2d = BSE(gpw_files['sic_pw'], ecut=ecut,
                                 q_c=q_c,
                                 valence_bands=range(2, 4),
@@ -160,7 +160,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if ecuts do not match
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Cutoff energies should*'):
         chi0calc_ecut_10 = Chi0Calculator(gs, context,
                                           wd=wd,
                                           nbands=14,
@@ -175,7 +175,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if more bands in the bse calculation
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match=r'Large chi0 calculation*'):
         chi0calc_bands_5 = Chi0Calculator(gs, context,
                                           wd=wd,
                                           nbands=5,
