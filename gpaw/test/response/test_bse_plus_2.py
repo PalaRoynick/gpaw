@@ -23,18 +23,18 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     q_c = [0.0, 0.0, 0.0]
     bse = BSE(gpw_files['sic_pw'], ecut=ecut,
               q_c=q_c,
-              valence_bands=range(2, 4),
+              valence_bands=range(3, 4),
               conduction_bands=range(4, 6),
               eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
-              nbands=14)
+              nbands=8)
 
-    w_w = np.linspace(0, 10, 10)
+    w_w = np.linspace(0, 10, 5)
     wd = get_frequency_descriptor(w_w, gs=gs)
 
     chi0calc_small = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=6, n1=2,
+                                    nbands=6, n1=3,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
@@ -43,7 +43,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
     chi0calc_large = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=14,
+                                    nbands=8,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
@@ -103,9 +103,9 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     with pytest.raises(AssertionError, match=r'Shape mismatch:*'):
         chi0calc_wrong_w_1 = Chi0Calculator(gs, context,
                                             wd=get_frequency_descriptor(
-                                                np.linspace(0, 20, 100),
+                                                np.linspace(0, 10, 12),
                                                 gs=gs),
-                                            nbands=14,
+                                            nbands=8,
                                             intraband=False,
                                             hilbert=False,
                                             eta=eta,
@@ -113,15 +113,15 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                             eshift=None)
 
         BSE_Plus(bse, chi0calc_wrong_w_1,
-                 eta=eta, w_w=np.linspace(0, 10, 10),
+                 eta=eta, w_w=np.linspace(0, 10, 5),
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if different frequency values are passed
     with pytest.raises(AssertionError, match=r'Use the same frequency grid*'):
         chi0calc_wrong_w_2 = Chi0Calculator(gs, context,
                                             wd=get_frequency_descriptor(
-                                                np.linspace(0, 20, 10), gs=gs),
-                                            nbands=14,
+                                                np.linspace(0, 20, 5), gs=gs),
+                                            nbands=8,
                                             intraband=False,
                                             hilbert=False,
                                             eta=eta,
@@ -129,7 +129,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                             eshift=None)
 
         BSE_Plus(bse, chi0calc_wrong_w_2,
-                 eta=eta, w_w=np.linspace(0, 10, 10),
+                 eta=eta, w_w=np.linspace(0, 10, 5),
                  q_c=q_c, direction='x', truncation=None)
 
     # assertion error if different q_c's
@@ -148,11 +148,11 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     with pytest.raises(AssertionError, match=r'Inconsistent use of*'):
         bse_truncation_2d = BSE(gpw_files['sic_pw'], ecut=ecut,
                                 q_c=q_c,
-                                valence_bands=range(2, 4),
+                                valence_bands=range(3, 4),
                                 conduction_bands=range(4, 6),
                                 eshift=eshift,  # integrate_gamma = 0,
                                 mode='BSE',
-                                nbands=14,
+                                nbands=8,
                                 truncation='2D')
 
         BSE_Plus(bse_truncation_2d, chi0calc_large,
@@ -163,7 +163,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     with pytest.raises(AssertionError, match=r'Cutoff energies should*'):
         chi0calc_ecut_10 = Chi0Calculator(gs, context,
                                           wd=wd,
-                                          nbands=14,
+                                          nbands=8,
                                           intraband=False,
                                           hilbert=False,
                                           eta=eta,
