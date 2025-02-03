@@ -1313,7 +1313,7 @@ class BSE_Plus:
         w_w_BSE = self.w_w / Hartree
         w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
 
-        assert np.alltrue(w_w_BSE == w_w_chi0_large), \
+        assert np.all(w_w_BSE == w_w_chi0_large), \
             'Use the same frequency grid in the BSE+ and chi0 calculations'
 
         assert self.q_c == self.bse.q_c, \
