@@ -1062,7 +1062,6 @@ class BSEBackend:
         myKsize = len(myKrange)
         return myKrange, myKsize
 
-
     def print_initialization(self, td, eshift, gw_kn):
         isl = ['----------------------------------------------------------',
                f'{self.mode} Hamiltonian',
@@ -1313,7 +1312,11 @@ class BSE_Plus:
         w_w_BSE = self.w_w / Hartree
         w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
 
-        assert np.all(w_w_BSE == w_w_chi0_large), \
+        assert w_w_BSE.shape == w_w_chi0_large.shape, \
+            f'Shape mismatch: w_w_BSE.shape = {w_w_BSE.shape}, \
+            w_w_chi0_large.shape = {w_w_chi0_large.shape}'
+
+        assert np.allclose(w_w_BSE, w_w_chi0_large), \
             'Use the same frequency grid in the BSE+ and chi0 calculations'
 
         assert self.q_c == self.bse.q_c, \

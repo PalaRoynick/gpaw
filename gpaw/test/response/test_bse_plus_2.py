@@ -17,7 +17,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     """
     gs, context = get_gs_and_context(
         gpw_files['sic_pw'], txt=None, world=world, timer=None)
-    ecut = 20
+    ecut = 25
     eshift = 0
     eta = 0.1
     q_c = [0.0, 0.0, 0.0]
@@ -30,7 +30,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
               nbands=14,
               txt='bse_calculation.txt')
 
-    w_w = np.linspace(0,10,10)
+    w_w = np.linspace(0, 10, 10)
     wd = get_frequency_descriptor(w_w, gs=gs)
 
     chi0calc_small = Chi0Calculator(gs, context,
@@ -99,3 +99,19 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
+
+    # assertion error if different frequency grids are passed
+    with pytest.raises(AssertionError):
+        chi0calc_large = Chi0Calculator(gs, context,
+                                        wd=get_frequency_descriptor(
+                                            np.linspace(0, 20, 100), gs=gs),
+                                        nbands=14,
+                                        intraband=False,
+                                        hilbert=False,
+                                        eta=eta,
+                                        ecut=ecut,
+                                        eshift=None)
+
+        bse_plus = BSE_Plus(bse, chi0calc_large,
+                            eta=eta, w_w=np.linspace(0, 10, 10),
+                            q_c=q_c, direction='x', truncation=None)
