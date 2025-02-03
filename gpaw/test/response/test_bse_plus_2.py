@@ -4,7 +4,6 @@ import pytest
 from gpaw.response.pair import get_gs_and_context
 from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSE_Plus
-from gpaw import GPAW
 from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.coulomb_kernels import CoulombKernel
 
@@ -16,39 +15,35 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     manually to test that the BSE_Plus code is working. It tests that the
     assertions work.
     """
-    calc = GPAW(gpw_files['si_pw'])
-
     gs, context = get_gs_and_context(
-        gpw_files['si_pw'], txt=None, world=world, timer=None)
+        gpw_files['sic_pw'], txt=None, world=world, timer=None)
     ecut = 20
     eshift = 0
     eta = 0.1
     q_c = [0.0, 0.0, 0.0]
-    bse = BSE(calc, ecut=ecut,
+    bse = BSE(gpw_files['sic_pw'], ecut=ecut,
               q_c=q_c,
               valence_bands=range(1, 4),
-              conduction_bands=range(4, 6),
+              conduction_bands=range(4, 8),
               eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
-              nbands=60,
+              nbands=14,
               txt='bse_calculation.txt')
 
     wd = get_frequency_descriptor(np.linspace(0, 10, 101), gs=gs)
 
     chi0calc_small = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=6, n1=1,
+                                    nbands=8, n1=1,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
                                     ecut=ecut,
                                     eshift=None)
 
-    # i tvivl om vi her skal bruge calc_es.write(calc, mode='all') eller om vi kan slippe.
-
     chi0calc_large = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=30,
+                                    nbands=14,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
@@ -57,8 +52,13 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
     w_w = np.linspace(0, 10, 101)
 
-    chi_BSE_plus_WGG = BSE_Plus(bse, chi0calc_large, eta=eta, w_w=w_w,
+    bse_plus = BSE_Plus(bse, chi0calc_large, eta=eta, w_w=w_w,
                         q_c=q_c, direction='x', truncation=None)
+
+    chi_bse_plus = bse_plus.get_chi_wGG(optical=True)
+
+    if world.rank == 0:
+        chi_BSE_plus_WGG = chi_bse_plus
 
     coulomb_kernel = CoulombKernel.from_gs(gs, truncation=None)
 
