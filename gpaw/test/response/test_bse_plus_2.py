@@ -98,5 +98,5 @@ def test_bse_plus(in_tmp_dir, gpw_files):
             np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(v_G),
                             chi_irr_BSE_plus_WGG)
 
-    assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
-                                                    rel=1e-3, abs=1e-4)
+        assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
+                                                        rel=1e-3, abs=1e-4)
