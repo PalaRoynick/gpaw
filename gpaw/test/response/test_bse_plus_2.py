@@ -23,18 +23,19 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     q_c = [0.0, 0.0, 0.0]
     bse = BSE(gpw_files['sic_pw'], ecut=ecut,
               q_c=q_c,
-              valence_bands=range(1, 4),
-              conduction_bands=range(4, 8),
+              valence_bands=range(2, 4),
+              conduction_bands=range(4, 6),
               eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
               nbands=14,
               txt='bse_calculation.txt')
 
-    wd = get_frequency_descriptor(np.linspace(0, 10, 101), gs=gs)
+    w_w = np.linspace(0,10,10)
+    wd = get_frequency_descriptor(w_w, gs=gs)
 
     chi0calc_small = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=8, n1=1,
+                                    nbands=6, n1=2,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
@@ -49,8 +50,6 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                     eta=eta,
                                     ecut=ecut,
                                     eshift=None)
-
-    w_w = np.linspace(0, 10, 101)
 
     bse_plus = BSE_Plus(bse, chi0calc_large, eta=eta, w_w=w_w,
                         q_c=q_c, direction='x', truncation=None)
