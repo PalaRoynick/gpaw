@@ -156,7 +156,7 @@ class SCFLoop:
 
 
 def write_iteration(criteria, converged_items, entries, ctx, log):
-    custom = (set(criteria) -
+    custom = (set(entries) -
               {'energy', 'eigenstates', 'density'})
 
     eigensolver_name = getattr(ctx.wfs.eigensolver, "name", None)
