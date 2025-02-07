@@ -50,8 +50,8 @@ def main(args: str | list[str] = None) -> int:
 
     if args.pickle:
         pckl_file = Path(args.pickle)
-        atoms, params, result_file = pickle.loads(pckl_file.read_bytes())
-        run2(atoms, params, result_file)
+        atoms, params, result_file, gpu = pickle.loads(pckl_file.read_bytes())
+        run2(atoms, params, result_file, gpu)
         return 0
 
     many = args.all or args.fuzz
@@ -135,7 +135,13 @@ def main(args: str | list[str] = None) -> int:
                                  params2,
                                  tag + ' ' + xtag,
                                  args.ignore_cache,
-                                 args.stdout)
+                                 args.stdout, gpu=1)
+                    result0 = run(atoms,
+                                  params2,
+                                  tag + ' ' + xtag,
+                                  True,
+                                  args.stdout, gpu=0)
+                    calculations[tag] = result0
                     ok = check(tag, result, calculations)
                     count += 1
                     if not ok:
@@ -155,7 +161,8 @@ def run(atoms: Atoms,
         params: dict[str, Any],
         tag: str,
         ignore_cache: bool = False,
-        use_stdout: bool = False) -> dict[str, Any]:
+        use_stdout: bool = False,
+        gpu=0) -> dict[str, Any]:
     params = params.copy()
     name, things = tag.split(' ', 1)
     print(f'{name:3} {things}:', end='')
@@ -170,10 +177,12 @@ def run(atoms: Atoms,
         print(' ...', end='', flush=True)
         ncores = params.pop('ncores')
         if ncores == world.size:
-            result = run2(atoms, params, result_file)
+            result = run2(atoms, params, result_file, gpu)
         else:
             pckl_file = result_file.with_suffix('.pckl')
-            pckl_file.write_bytes(pickle.dumps((atoms, params, result_file)))
+            pckl_file.write_bytes(
+                pickle.dumps(
+                    (atoms, params, result_file, gpu)))
             args = ['mpiexec', '-np', str(ncores),
                     sys.executable, '-m', 'gpaw.test.fuzz',
                     '--pickle', str(pckl_file)]
@@ -192,15 +201,15 @@ def run(atoms: Atoms,
 
 def run2(atoms: Atoms,
          params: dict[str, Any],
-         result_file: Path) -> dict[str, Any]:
+         result_file: Path,
+         gpu=0) -> dict[str, Any]:
     params = params.copy()
-
     code = params.pop('code')
     if code[0] == 'n':
         if params.pop('dtype', None) == complex:
             params['mode'] = {'name': params['mode'],
                               'force_complex_dtype': True}
-        calc = NewGPAW(**params, parallel={'gpu': True})
+        calc = NewGPAW(**params, parallel={'gpu': gpu})
     else:
         calc = OldGPAW(**params)
     atoms.calc = calc
