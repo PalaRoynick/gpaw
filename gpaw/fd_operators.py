@@ -36,6 +36,96 @@ derivatives = [[1 / 2],
                [4 / 5, -1 / 5, 4 / 105, -1 / 280]]
 
 
+class GPUFFTFDOperator:
+    """Fake finite difference operators with FFT's with GPUs
+
+    The GPU code for finite difference operators is so buggy,
+    so here is an alternative implementation using Fast Fourier
+    and Fast Sin Transforms. It won't be as efficient, but on
+    the other hand, it only will be used for gradients of
+    density, so it should be fine.
+    """
+    def __init__(self, gd, coef_p, offset_pc):
+        self.gd = gd
+        axes = np.arange(3)
+        pbc_c = np.array(gd.pbc_c, dtype=bool)
+        periodic_axes = axes[pbc_c]
+        non_periodic_axes = axes[np.logical_not(pbc_c)]
+
+        # Find out which axes are orthogonal (0, 1 or 3)
+        # Note that one expects that the axes are always rotated in
+        # conventional form, thus for all axes to be
+        # classified as orthogonal, the cell_cv needs to be diagonal.
+        # This may always be achieved by rotating
+        # the unit-cell along with the atoms. The classification is
+        # inherited from grid_descriptor.orthogonal.
+        dotprods = np.dot(gd.cell_cv, gd.cell_cv.T)
+        # For each direction, check whether there is only one nonzero
+        # element in that row (necessarily being the diagonal element,
+        # since this is a cell vector length and must be > 0).
+        orthogonal_c = (np.abs(dotprods) > 1e-10).sum(axis=0) == 1
+        assert sum(orthogonal_c) in [0, 1, 3]
+
+        non_orthogonal_axes = axes[np.logical_not(orthogonal_c)]
+
+        if not all(pbc_c | orthogonal_c):
+            raise BadAxesError('Each axis must be periodic or orthogonal '
+                               'to other axes.  But we have pbc={} '
+                               'and orthogonal={}'
+                               .format(pbc_c.astype(int),
+                                       orthogonal_c.astype(int)))
+
+        # We sort them, and pick the longest non-periodic axes as the
+        # cholesky axis.
+        fst_axes = sorted(non_periodic_axes, key=lambda c: gd.N_c[c])
+        fft_axes = list(periodic_axes)
+        self.fst_axes, self.fft_axes = fst_axes, fft_axes
+        axes = self.fft_axes + self.fst_axes
+        self.axes = axes
+
+        # Create xy flat decomposition (where x=axes[0] and y=axes[1])
+        parsize_c = [1, 1, 1]
+        parsize_c[axes[2]] = gd.comm.size
+        gd1d = gd.new_descriptor(parsize_c=parsize_c,
+                                 allow_empty_domains=True)
+        self.gd1d = gd1d
+
+        # Create z flat decomposition
+        domain = gd.N_c.copy()
+        domain[axes[2]] = 1
+        parsize_c = decompose_domain(domain, gd.comm.size)
+        gd2d = gd.new_descriptor(parsize_c=parsize_c)
+        self.gd2d = gd2d
+
+        # Calculate eigenvalues in fst/fft decomposition for
+        # non-cholesky axes in parallel
+        xp = self.xp
+        r_cx = xp.indices(gd2d.n_c)
+        r_cx += xp.asarray(gd2d.beg_c[:, xp.newaxis, xp.newaxis, xp.newaxis])
+        r_cx = r_cx.astype(complex)
+        for c, axis in enumerate(axes):
+            r_cx[axis] *= 2j * xp.pi / gd2d.N_c[axis]
+            if axis in fst_axes:
+                r_cx[axis] /= 2
+        xp.exp(r_cx, out=r_cx)
+        fft_lambdas = xp.zeros_like(r_cx[0], dtype=complex)
+
+        for coeff, offset_c in zip(coef_p, offset_pc):
+            offset_c = np.array(offset_c)
+            if not any(offset_c):
+                # The centerpoint is handled with (temp-1.0)
+                # XXX This is not true for all operators!!!
+                continue
+            non_zero_axes, = np.where(offset_c)
+            if set(non_zero_axes).issubset(fftfst_axes):
+                temp = xp.ones_like(fft_lambdas)
+                for c, axis in enumerate(fftfst_axes):
+                    temp *= r_cx[axis] ** offset_c[axis]
+                fft_lambdas += coeff * (temp - 1.0)
+
+        assert xp.linalg.norm(fft_lambdas.imag) < 1e-10
+        self.fft_lambdas = fft_lambdas.real.copy()  # arr.real is not contiguous
+
 class FDOperator:
     def __init__(self, coef_p, offset_pc, gd, dtype=float,
                  description=None, xp=np):
@@ -61,6 +151,8 @@ class FDOperator:
         coef_p = np.ascontiguousarray(coef_p, float)
         neighbor_cd = gd.neighbor_cd
 
+        
+
         assert coef_p.ndim == 1
         assert coef_p.shape == offset_p.shape
         assert dtype in [float, complex]
@@ -85,9 +177,13 @@ class FDOperator:
 
         self.xp = xp
         gpu = xp is not np and not cupy_is_fake
-        self.operator = cgpaw.Operator(coef_p, offset_p, n_c, mp,
-                                       neighbor_cd, dtype == float,
-                                       comm, cfd, gpu)
+
+        if 0: #gpu:
+            self.operator = GPUFFTFDOperator(coef_p, offset_pc)
+        else:
+            self.operator = cgpaw.Operator(coef_p, offset_p, n_c, mp,
+                                           neighbor_cd, dtype == float,
+                                           comm, cfd, gpu)
 
         if description is None:
             description = '%d point finite-difference stencil' % self.npoints
