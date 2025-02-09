@@ -30,7 +30,7 @@ def create_eigensolver(nbands,
                        atoms,
                        name='dav',
                        **kwargs):
-    if name in ['rmm-diis', 'cg', 'direct']:
+    if name in ['cg', 'direct']:
         warnings.warn(f'{name} not implemented.  Using dav instead')
         name = 'dav'
     if name == 'dav':
@@ -131,6 +131,15 @@ def calculate_residuals(residual_nX: XArray,
                         wfs: PWFDWaveFunctions,
                         P1_ani: AtomArrays,
                         P2_ani: AtomArrays) -> None:
+    """Calculate residuals with GPU or CPU.
+
+    residual_nX: output array for residuals
+    dH: The PAW non-local operator
+    dS_aii: PAW overlap operator coefficients
+    wfs: Wave functions to calculate the residuals from.
+    P1_ani: temporary array for projector storaget 
+    P2_ani: temporary array for projector storage
+    """
 
     eig_n = wfs.myeig_n
     xp = residual_nX.xp
