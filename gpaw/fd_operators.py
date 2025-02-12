@@ -69,10 +69,8 @@ class GPUFFTFDOperator:
         orthogonal_c = (np.abs(dotprods) > 1e-10).sum(axis=0) == 1
         assert sum(orthogonal_c) in [0, 1, 3]
 
-        non_orthogonal_axes = axes[np.logical_not(orthogonal_c)]
-
         if not all(pbc_c | orthogonal_c):
-            raise BadAxesError('Each axis must be periodic or orthogonal '
+            raise RuntimeError('Each axis must be periodic or orthogonal '
                                'to other axes.  But we have pbc={} '
                                'and orthogonal={}'
                                .format(pbc_c.astype(int),
@@ -125,8 +123,7 @@ class GPUFFTFDOperator:
                     temp *= r_cx[axis] ** offset_c[axis]
                 fft_lambdas += coeff * (temp - 1.0)
 
-        #assert xp.linalg.norm(fft_lambdas.imag) < 1e-10
-        self.fft_lambdas = fft_lambdas #.real.copy()  # arr.real is not contiguous
+        self.fft_lambdas = fft_lambdas
 
     def apply_gpu(self, in_xR, out_xR, phase_factor_cd):
         from gpaw.poisson import transform2, transform, itransform, itransform2
@@ -174,6 +171,7 @@ class GPUFFTFDOperator:
 
         out_xR[:] = work_g.real
 
+
 class FDOperator:
     def __init__(self, coef_p, offset_pc, gd, dtype=float,
                  description=None, xp=np):
@@ -198,9 +196,6 @@ class FDOperator:
         offset_p = np.dot(offset_pc, stride_c)
         coef_p = np.ascontiguousarray(coef_p, float)
         neighbor_cd = gd.neighbor_cd
-
-        
-
         assert coef_p.ndim == 1
         assert coef_p.shape == offset_p.shape
         assert dtype in [float, complex]
@@ -257,7 +252,8 @@ class FDOperator:
                 self.operator.apply_gpu(in_xR.data, out_xR.data,
                                         in_xR.desc.phase_factor_cd)
             else:
-                self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
+                self.operator.apply_gpu(in_xR.data.data.ptr,
+                                        out_xR.data.data.ptr,
                                         in_xR.data.shape, in_xR.data.dtype,
                                         in_xR.desc.phase_factor_cd)
         return out_xR
