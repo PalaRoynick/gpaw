@@ -12,6 +12,7 @@ __version__ = 'fake'
 __all__ = ['linalg', 'cublas', 'fft', 'random', '__version__']
 
 newaxis = np.newaxis
+pi = np.pi
 
 
 def empty(*args, **kwargs):
