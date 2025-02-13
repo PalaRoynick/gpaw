@@ -11,6 +11,8 @@ __version__ = 'fake'
 
 __all__ = ['linalg', 'cublas', 'fft', 'random', '__version__']
 
+newaxis = np.newaxis
+
 
 def empty(*args, **kwargs):
     return ndarray(np.empty(*args, **kwargs))
@@ -56,8 +58,10 @@ def dot(a, b):
 def outer(a, b):
     return ndarray(np.outer(a._data, b._data))
 
+
 def indices(*args, **kwargs):
     return ndarray(np.indices(*args, **kwargs))
+
 
 def multiply(a, b, c):
     np.multiply(a._data, b._data, c._data)
