@@ -301,3 +301,6 @@ class ndarray:
 
     def fill(self, val):
         self._data.fill(val)
+
+    def astype(self, *args, **kwargs):
+        return ndarray(self._data.astype(*args, **kwargs))
