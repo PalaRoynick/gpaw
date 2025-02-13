@@ -226,7 +226,7 @@ class FDOperator:
         else:
             self.operator = cls(coef_p, offset_p, n_c, mp,
                                 neighbor_cd, dtype == float,
-                                 comm, cfd, gpu)
+                                comm, cfd, gpu)
 
         if description is None:
             description = '%d point finite-difference stencil' % self.npoints
