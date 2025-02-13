@@ -35,6 +35,10 @@ def ones(*args, **kwargs):
     return ndarray(np.ones(*args, **kwargs))
 
 
+def ones_like(a, **kwargs):
+    return ndarray(np.ones_like(a._data, **kwargs))
+
+
 def asnumpy(a, out=None):
     if out is None:
         return a._data.copy()
