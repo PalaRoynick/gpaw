@@ -27,6 +27,10 @@ def zeros(*args, **kwargs):
     return ndarray(np.zeros(*args, **kwargs))
 
 
+def zeros_like(a, **kwargs):
+    return ndarray(np.zeros_like(a._data, **kwargs))
+
+
 def ones(*args, **kwargs):
     return ndarray(np.ones(*args, **kwargs))
 
