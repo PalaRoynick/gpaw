@@ -174,7 +174,7 @@ class GPUFFTFDOperator:
 
 class FDOperator:
     def __init__(self, coef_p, offset_pc, gd, dtype=float,
-                 description=None, xp=np):
+                 description=None, xp=np, cls=cgpaw.Operator):
         """FDOperator(coefs, offsets, gd, dtype) -> FDOperator object.
         """
 
@@ -221,12 +221,12 @@ class FDOperator:
         self.xp = xp
         gpu = xp is not np and not cupy_is_fake
 
-        if gpu:
+        if cls is GPUFFTFDOperator:
             self.operator = GPUFFTFDOperator(gd, coef_p, offset_pc, xp=xp)
         else:
-            self.operator = cgpaw.Operator(coef_p, offset_p, n_c, mp,
-                                           neighbor_cd, dtype == float,
-                                           comm, cfd, gpu)
+            self.operator = cls(coef_p, offset_p, n_c, mp,
+                                neighbor_cd, dtype == float,
+                                 comm, cfd, gpu)
 
         if description is None:
             description = '%d point finite-difference stencil' % self.npoints
@@ -433,7 +433,8 @@ class Gradient(FDOperator):
                  scale=1.0,
                  n=1,
                  dtype=float,
-                 xp=np):
+                 xp=np,
+                 cls=cgpaw.Operator):
         """Symmetric gradient for general non orthorhombic grid.
 
         gd: GridDescriptor
@@ -488,7 +489,7 @@ class Gradient(FDOperator):
             offsets.extend(np.arange(-1, -n - 1, -1)[:, np.newaxis] * M_c)
             coefs.extend(-c * stencil)
 
-        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp)
+        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp, cls=cls)
 
         self.description = (
             'Finite-difference {}-derivative with O(h^{}) error ({} points)'

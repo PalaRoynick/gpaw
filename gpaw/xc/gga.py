@@ -170,7 +170,9 @@ def gga_vars(gd, grad_v, n_sg):
 
 
 def get_gradient_ops(gd, nn, xp):
-    return [Gradient(gd, v, n=nn, xp=xp).apply for v in range(3)]
+    from gpaw.fd_operators import GPUFFTFDOperator 
+    kwargs = {} if xp is np else {'cls': GPUFFTFDOperator}
+    return [Gradient(gd, v, n=nn, xp=xp, **kwargs).apply for v in range(3)]
 
 
 class GGA(XCFunctional):
