@@ -87,7 +87,10 @@ def abs(a):
     return ndarray(np.abs(a._data))
 
 
-def exp(a):
+def exp(a, out=None):
+    if out:
+        out._data = np.exp(a._data)
+        return out
     return ndarray(np.exp(a._data))
 
 
