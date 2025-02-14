@@ -121,7 +121,7 @@ class GPUFFTFDOperator:
                 temp = xp.ones_like(fft_lambdas)
                 for c, axis in enumerate(axes):
                     temp *= r_cx[axis] ** offset_c[axis]
-                fft_lambdas += coeff * (temp - 1.0)
+                fft_lambdas += xp.asarray(coeff * (temp - 1.0))
 
         self.fft_lambdas = fft_lambdas
 
