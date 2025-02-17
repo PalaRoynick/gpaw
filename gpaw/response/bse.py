@@ -1305,7 +1305,7 @@ class BSE_Plus:
         self.direction = ('x', 'y', 'z')[self.bse.direction]
         self.truncation = self.bse.truncation
 
-        ecut = self.bse.ecut
+        self.ecut = self.bse.ecut
         ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
 
         self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
@@ -1316,7 +1316,7 @@ class BSE_Plus:
         assert self.eshift == eshift_chi0_large, \
             'Inconsistent use of eshift'
 
-        assert ecut == ecut_chi0_large, \
+        assert self.ecut == ecut_chi0_large, \
             'Cutoff energies should match in the BSE and chi0 calculation'
 
         n1_BSE = self.bse.val_m[0]
