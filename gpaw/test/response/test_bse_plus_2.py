@@ -18,7 +18,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     gs, context = get_gs_and_context(
         gpw_files['sic_pw'], txt=None, world=world, timer=None)
     ecut = 25
-    eshift = 0
+    eshift = 0.2
     eta = 0.1
     q_c = [0.0, 0.0, 0.0]
     bse = BSE(gpw_files['sic_pw'], ecut=ecut,
@@ -34,12 +34,12 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
     chi0calc_small = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=6, n1=3,
+                                    nbands=slice(3, 6),
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
                                     ecut=ecut,
-                                    eshift=None)
+                                    eshift=eshift)
 
     chi0calc_large = Chi0Calculator(gs, context,
                                     wd=wd,
@@ -48,10 +48,9 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                     hilbert=False,
                                     eta=eta,
                                     ecut=ecut,
-                                    eshift=None)
+                                    eshift=eshift)
 
-    bse_plus = BSE_Plus(bse, chi0calc_large, eta=eta, w_w=w_w,
-                        q_c=q_c, direction='x', truncation=None)
+    bse_plus = BSE_Plus(bse, chi0calc_large)
 
     chi_bse_plus = bse_plus.get_chi_wGG(optical=True)
 
@@ -99,66 +98,6 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
 
-    # assertion error if different shapes of frequency grids are passed
-    with pytest.raises(AssertionError, match=r'Shape mismatch:*'):
-        chi0calc_wrong_w_1 = Chi0Calculator(gs, context,
-                                            wd=get_frequency_descriptor(
-                                                np.linspace(0, 10, 12),
-                                                gs=gs),
-                                            nbands=8,
-                                            intraband=False,
-                                            hilbert=False,
-                                            eta=eta,
-                                            ecut=ecut,
-                                            eshift=None)
-
-        BSE_Plus(bse, chi0calc_wrong_w_1,
-                 eta=eta, w_w=np.linspace(0, 10, 5),
-                 q_c=q_c, direction='x', truncation=None)
-
-    # assertion error if different frequency values are passed
-    with pytest.raises(AssertionError, match=r'Use the same frequency grid*'):
-        chi0calc_wrong_w_2 = Chi0Calculator(gs, context,
-                                            wd=get_frequency_descriptor(
-                                                np.linspace(0, 20, 5), gs=gs),
-                                            nbands=8,
-                                            intraband=False,
-                                            hilbert=False,
-                                            eta=eta,
-                                            ecut=ecut,
-                                            eshift=None)
-
-        BSE_Plus(bse, chi0calc_wrong_w_2,
-                 eta=eta, w_w=np.linspace(0, 10, 5),
-                 q_c=q_c, direction='x', truncation=None)
-
-    # assertion error if different q_c's
-    with pytest.raises(AssertionError, match=r'Use the same q_c*'):
-        BSE_Plus(bse, chi0calc_large,
-                 eta=eta, w_w=w_w,
-                 q_c=[0.1, 0, 0], direction='x', truncation=None)
-
-    # assertion error if calculated in different directions
-    with pytest.raises(AssertionError, match=r'BSE and chi0 have to be*'):
-        BSE_Plus(bse, chi0calc_large,
-                 eta=eta, w_w=w_w,
-                 q_c=q_c, direction='y', truncation=None)
-
-    # assertion error if coulomb trunction is only used in one of them
-    with pytest.raises(AssertionError, match=r'Inconsistent use of*'):
-        bse_truncation_2d = BSE(gpw_files['sic_pw'], ecut=ecut,
-                                q_c=q_c,
-                                valence_bands=range(3, 4),
-                                conduction_bands=range(4, 6),
-                                eshift=eshift,  # integrate_gamma = 0,
-                                mode='BSE',
-                                nbands=8,
-                                truncation='2D')
-
-        BSE_Plus(bse_truncation_2d, chi0calc_large,
-                 eta=eta, w_w=w_w,
-                 q_c=q_c, direction='x', truncation=None)
-
     # assertion error if ecuts do not match
     with pytest.raises(AssertionError, match=r'Cutoff energies should*'):
         chi0calc_ecut_10 = Chi0Calculator(gs, context,
@@ -168,11 +107,9 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                           hilbert=False,
                                           eta=eta,
                                           ecut=10,
-                                          eshift=None)
+                                          eshift=eshift)
 
-        BSE_Plus(bse, chi0calc_ecut_10,
-                 eta=eta, w_w=w_w,
-                 q_c=q_c, direction='x', truncation=None)
+        BSE_Plus(bse, chi0calc_ecut_10)
 
     # assertion error if more bands in the bse calculation
     with pytest.raises(AssertionError, match=r'Large chi0 calculation*'):
@@ -183,8 +120,19 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                           hilbert=False,
                                           eta=eta,
                                           ecut=ecut,
-                                          eshift=None)
+                                          eshift=eshift)
 
-        BSE_Plus(bse, chi0calc_bands_5,
-                 eta=eta, w_w=w_w,
-                 q_c=q_c, direction='x', truncation=None)
+        BSE_Plus(bse, chi0calc_bands_5)
+
+    # assertion error if different eshifts
+    with pytest.raises(AssertionError, match=r'Inconsistent use of eshift'):
+        chi0calc_eshift = Chi0Calculator(gs, context,
+                                         wd=wd,
+                                         nbands=8,
+                                         intraband=False,
+                                         hilbert=False,
+                                         eta=eta,
+                                         ecut=ecut,
+                                         eshift=3)
+
+        BSE_Plus(bse, chi0calc_eshift)

@@ -1293,40 +1293,28 @@ class VChi:
 
 
 class BSE_Plus:
-    def __init__(self, bse, chi0calc_large, eta=0.1, w_w=None,
-                 q_c=[0.0, 0.0, 0.0], direction='x', truncation=None):
+    def __init__(self, bse, chi0calc_large):
 
         self.bse = bse
         self.chi0calc_large = chi0calc_large
-        self.eta = eta
+
+        self.eta = self.chi0calc_large.eta
         self.gs = self.chi0calc_large.gs
         self.context = self.chi0calc_large.context
-        self.w_w = w_w
-        self.wd = self.chi0calc_large.wd
-        self.q_c = q_c
-        self.direction = direction
-        self.truncation = truncation
+        self.q_c = self.bse.q_c
+        self.direction = ('x', 'y', 'z')[self.bse.direction]
+        self.truncation = self.bse.truncation
+
         ecut = self.bse.ecut
         ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
 
-        w_w_BSE = self.w_w / Hartree
-        w_w_chi0_large = self.chi0calc_large.chi0_body_calc.wd.omega_w
+        self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
 
-        assert w_w_BSE.shape == w_w_chi0_large.shape, \
-            f'Shape mismatch: w_w_BSE.shape = {w_w_BSE.shape}, \
-            w_w_chi0_large.shape = {w_w_chi0_large.shape}'
+        self.eshift = self.bse.eshift
+        eshift_chi0_large = self.chi0calc.eshift
 
-        assert np.allclose(w_w_BSE, w_w_chi0_large), \
-            'Use the same frequency grid in the BSE+ and chi0 calculations'
-
-        assert self.q_c == self.bse.q_c, \
-            'Use the same q_c in the BSE and chi0 calculations'
-
-        assert self.direction == ('x', 'y', 'z')[self.bse.direction], \
-            "BSE and chi0 have to be calculated in the same direction"
-
-        assert self.truncation == self.bse.truncation, \
-            'Inconsistent use of truncation'
+        assert self.eshift == eshift_chi0_large, \
+            'Inconsistent use of eshift'
 
         assert ecut == ecut_chi0_large, \
             'Cutoff energies should match in the BSE and chi0 calculation'
@@ -1344,13 +1332,13 @@ class BSE_Plus:
         intraband = self.chi0calc_large.intraband
 
         self.chi0calc_small = Chi0Calculator(self.gs, self.context,
-                                             wd=self.wd,
-                                             nbands=m2_BSE + 1, n1=n1_BSE,
+                                             wd=self.w_w,
+                                             nbands=slice(n1_BSE, m2_BSE + 1),
                                              intraband=intraband,
                                              hilbert=hilbert,
-                                             eta=self.eta,
-                                             ecut=ecut * Hartree,
-                                             eshift=None)
+                                             eta=self.eta * Hartree,
+                                             ecut=self.ecut * Hartree,
+                                             eshift=self.eshift)
 
     def get_chi_wGG(self, optical=True, xc_kernel=None):
 
