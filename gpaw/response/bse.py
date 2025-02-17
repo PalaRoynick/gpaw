@@ -1323,7 +1323,7 @@ class BSE_Plus:
         n1_BSE = self.bse.val_m[0]
         m2_BSE = self.bse.con_m[-1]
         m2_chi0_large = \
-            self.chi0calc_large.chi0_body_calc.gs.get_band_transitions()[3] - 1
+            self.chi0calc_large.chi0_body_calc.nbands - 1
 
         assert m2_BSE < m2_chi0_large, \
             'Large chi0 calculation should contain more ' \
