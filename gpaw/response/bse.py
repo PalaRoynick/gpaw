@@ -1306,13 +1306,13 @@ class BSE_Plus:
         self.truncation = self.bse.truncation
 
         self.ecut = self.bse.ecut * Hartree
-        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
+        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut * Hartree
 
         self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
         wd = self.chi0calc_large.chi0_body_calc.wd
 
         self.eshift = self.bse.eshift * Hartree
-        eshift_chi0_large = self.chi0calc_large.eshift
+        eshift_chi0_large = self.chi0calc_large.eshift * Hartree
 
         assert self.eshift == eshift_chi0_large, \
             'Inconsistent use of eshift'
