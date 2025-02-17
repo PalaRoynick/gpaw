@@ -1298,7 +1298,7 @@ class BSE_Plus:
         self.bse = bse
         self.chi0calc_large = chi0calc_large
 
-        self.eta = self.chi0calc_large.chi0_body_calc.eta
+        self.eta = self.chi0calc_large.chi0_body_calc.eta * Hartree
         self.gs = self.chi0calc_large.gs
         self.context = self.chi0calc_large.context
         self.q_c = self.bse.q_c
@@ -1309,6 +1309,7 @@ class BSE_Plus:
         ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
 
         self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
+        wd = self.chi0calc_large.chi0_body_calc.wd
 
         self.eshift = self.bse.eshift
         eshift_chi0_large = self.chi0calc_large.eshift
@@ -1332,11 +1333,11 @@ class BSE_Plus:
         intraband = self.chi0calc_large.intraband
 
         self.chi0calc_small = Chi0Calculator(self.gs, self.context,
-                                             wd=self.w_w,
+                                             wd=wd,
                                              nbands=slice(n1_BSE, m2_BSE + 1),
                                              intraband=intraband,
                                              hilbert=hilbert,
-                                             eta=self.eta * Hartree,
+                                             eta=self.eta,
                                              ecut=self.ecut * Hartree,
                                              eshift=self.eshift)
 
