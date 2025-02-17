@@ -132,7 +132,7 @@ class ndarray:
         if isinstance(data, (float, complex, int, np.int32, np.int64,
                              np.bool_)):
             data = np.asarray(data)
-        assert isinstance(data, np.ndarray), type(data)
+        assert isinstance(data, (np.ndarray, np.flatiter)), type(data)
         self._data = data
         self.dtype = data.dtype
         self.size = data.size
@@ -209,7 +209,8 @@ class ndarray:
         if isinstance(value, ndarray):
             self._data[index] = value._data
         else:
-            assert isinstance(value, (float, int, complex))
+            print('rhs value', value)
+            assert isinstance(value, (float, int, complex)), type(value)
             self._data[index] = value
 
     def __getitem__(self, index):
@@ -237,7 +238,7 @@ class ndarray:
     def __mul__(self, f):
         if isinstance(f, (float, complex)):
             return ndarray(f * self._data)
-        return ndarray(f._data * self._data)
+        return ndarray(self._data * f._data)
 
     def __rmul__(self, f):
         return ndarray(f * self._data)
@@ -263,7 +264,7 @@ class ndarray:
         return ndarray(f._data + self._data)
 
     def __sub__(self, f):
-        if isinstance(f, float):
+        if isinstance(f, (float, int, complex)):
             return ndarray(self._data - f)
         return ndarray(self._data - f._data)
 
@@ -293,13 +294,19 @@ class ndarray:
     def __matmul__(self, other):
         return ndarray(self._data @ other._data)
 
+    @property
+    def flat(self):
+        return ndarray(self._data.flat)
+    
     def ravel(self):
         return ndarray(self._data.ravel())
 
     def conj(self):
         return ndarray(self._data.conj())
 
-    def reshape(self, shape):
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], tuple):
+            shape = shape[0]
         return ndarray(self._data.reshape(shape))
 
     def view(self, dtype):

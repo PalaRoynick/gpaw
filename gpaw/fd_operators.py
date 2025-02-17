@@ -121,7 +121,7 @@ class GPUFFTFDOperator:
                 temp = xp.ones_like(fft_lambdas)
                 for c, axis in enumerate(axes):
                     temp *= r_cx[axis] ** offset_c[axis]
-                fft_lambdas += xp.asarray(coeff * (temp - 1.0))
+                fft_lambdas += xp.asarray(coeff ) * (temp - 1.0)
 
         self.fft_lambdas = fft_lambdas
 
@@ -242,9 +242,9 @@ class FDOperator:
         if self.xp is np:
             self.operator.apply(in_xR.data, out_xR.data,
                                 in_xR.desc.phase_factor_cd)
-        elif cupy_is_fake:
-            self.operator.apply(in_xR.data._data, out_xR.data._data,
-                                in_xR.desc.phase_factor_cd)
+        #elif cupy_is_fake:
+        #    self.operator.apply_gpu(in_xR.data._data, out_xR.data._data,
+        #                            in_xR.desc.phase_factor_cd)
         else:
             assert isinstance(in_xR.data, self.xp.ndarray)
             assert isinstance(out_xR.data, self.xp.ndarray)
