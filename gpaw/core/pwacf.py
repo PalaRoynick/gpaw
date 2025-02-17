@@ -512,13 +512,24 @@ class PWLFC:  # (BaseLFC)
         f_IG = xp.empty((self.nI, G2 - G1), complex)
         emiGR_Ga = self.get_emiGR_Ga(G1, G2)
         Y_LG = self.Y_GL.T
-        for a, l, I1, I2, f_G, dfdGoG_G in things:
-            L1 = l**2
-            L2 = (l + 1)**2
-            f_IG[I1:I2] = (emiGR_Ga[:, a] * (-1.0j)**l *
-                           (dfdGoG_G[G1:G2] * G_Gv[:, v1] * G_Gv[:, v2] *
-                            Y_LG[L1:L2, G1:G2] +
-                            f_G[G1:G2] * G_Gv[:, v1] * Z_LvG[L1:L2, v2]))
+
+        if xp is np:
+            for a, l, I1, I2, f_G, dfdGoG_G in things:
+                L1 = l**2
+                L2 = (l + 1)**2
+                f_IG[I1:I2] = (emiGR_Ga[:, a] * (-1.0j)**l *
+                               (dfdGoG_G[G1:G2] * G_Gv[:, v1] * G_Gv[:, v2] *
+                                Y_LG[L1:L2, G1:G2] +
+                                f_G[G1:G2] * G_Gv[:, v1] * Z_LvG[L1:L2, v2]))
+        else:
+            
+            args = (f_IG, G1, G2, v1, v2, emiGR_Ga,
+                    G_Gv, Y_LG, Z_LvG, things)
+            #args2 = (f_IG, emiGR_Ga, G_Gv, Y_LG, Z_LvG, things[0][4], things[0][5])
+            #for arg in args2:
+            #    print(arg.dtype)
+            from gpaw.gpu import stress_tensor_calculate_f_IG
+            stress_tensor_calculate_f_IG(*args) 
 
         c_xI = xp.zeros(a_xG.shape[:-1] + (self.nI,), self.pw.dtype)
 
