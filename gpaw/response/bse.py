@@ -1305,13 +1305,13 @@ class BSE_Plus:
         self.direction = ('x', 'y', 'z')[self.bse.direction]
         self.truncation = self.bse.truncation
 
-        self.ecut = self.bse.ecut
+        self.ecut = self.bse.ecut * Hartree
         ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut
 
         self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
         wd = self.chi0calc_large.chi0_body_calc.wd
 
-        self.eshift = self.bse.eshift
+        self.eshift = self.bse.eshift * Hartree
         eshift_chi0_large = self.chi0calc_large.eshift
 
         assert self.eshift == eshift_chi0_large, \
@@ -1338,7 +1338,7 @@ class BSE_Plus:
                                              intraband=intraband,
                                              hilbert=hilbert,
                                              eta=self.eta,
-                                             ecut=self.ecut * Hartree,
+                                             ecut=self.ecut,
                                              eshift=self.eshift)
 
     def get_chi_wGG(self, optical=True, xc_kernel=None):
