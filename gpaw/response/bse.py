@@ -1374,7 +1374,14 @@ class BSE_Plus:
 
         self.v_G = coulomb_kernel.V(chi0_data_large.qpd)
 
-        self.v_G[0] = 0.0
+        if self.truncation == '2D':
+            coulomb_kernel_bare = CoulombKernel.from_gs(
+                self.gs, truncation=None)
+            v_G_bare = coulomb_kernel_bare.V(chi0_data_large.qpd, q_v=None)
+            self.v_G = self.v_G / v_G_bare
+
+        if chi0_data_large.qpd.optical_limit:
+            self.v_G[0] = 0.0
 
         if world.rank == 0:
             chi_irr_BSE_plus_WGG = \
