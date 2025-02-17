@@ -1298,7 +1298,7 @@ class BSE_Plus:
         self.bse = bse
         self.chi0calc_large = chi0calc_large
 
-        self.eta = self.chi0calc_large.eta
+        self.eta = self.chi0calc_large.chi0_body_calc.eta
         self.gs = self.chi0calc_large.gs
         self.context = self.chi0calc_large.context
         self.q_c = self.bse.q_c
@@ -1311,7 +1311,7 @@ class BSE_Plus:
         self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
 
         self.eshift = self.bse.eshift
-        eshift_chi0_large = self.chi0calc.eshift
+        eshift_chi0_large = self.chi0calc_large.eshift
 
         assert self.eshift == eshift_chi0_large, \
             'Inconsistent use of eshift'
@@ -1322,7 +1322,7 @@ class BSE_Plus:
         n1_BSE = self.bse.val_m[0]
         m2_BSE = self.bse.con_m[-1]
         m2_chi0_large = \
-            self.chi0calc_large.chi0_body_calc.get_band_transitions()[1] - 1
+            self.chi0calc_large.chi0_body_calc.gs.get_band_transitions()[3] - 1
 
         assert m2_BSE < m2_chi0_large, \
             'Large chi0 calculation should contain more ' \
