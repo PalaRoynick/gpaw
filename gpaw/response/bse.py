@@ -1351,7 +1351,6 @@ class BSE_Plus:
 
         if world.rank == 0:
             chi_irr_BSE_WGG = chi_irr_BSE_wGG
-
         else:
             chi_irr_BSE_WGG = None
 
@@ -1379,8 +1378,12 @@ class BSE_Plus:
                 self.gs, truncation=None)
             v_G_bare = coulomb_kernel_bare.V(chi0_data_large.qpd, q_v=None)
             self.v_G = self.v_G / v_G_bare
-
-        if chi0_data_large.qpd.optical_limit:
+            if optical:
+                v_G_bare[0] = 0.0
+            chi0_small_WGG = chi0_small_WGG @ v_G_bare
+            chi0_large_WGG = chi0_large_WGG @ v_G_bare
+            chi_irr_BSE_WGG = chi_irr_BSE_WGG @ v_G_bare
+        elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
         if world.rank == 0:
