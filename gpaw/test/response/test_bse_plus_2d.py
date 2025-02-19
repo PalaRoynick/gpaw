@@ -28,7 +28,7 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
               conduction_bands=range(9, 11),
               eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
-              nbands=8)
+              nbands=12)
 
     w_w = np.linspace(0, 10, 5)
     wd = get_frequency_descriptor(w_w, gs=gs)
