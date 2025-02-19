@@ -1380,9 +1380,12 @@ class BSE_Plus:
             self.v_G = self.v_G / v_G_bare
             if optical:
                 v_G_bare[0] = 0.0
-            chi0_small_WGG = chi0_small_WGG @ v_G_bare
-            chi0_large_WGG = chi0_large_WGG @ v_G_bare
-            chi_irr_BSE_WGG = chi_irr_BSE_WGG @ v_G_bare
+            chi0_small_WGG = chi0_small_WGG * \
+                v_G_bare[np.newaxis, np.newaxis, :]
+            chi0_large_WGG = chi0_large_WGG * \
+                v_G_bare[np.newaxis, np.newaxis, :]
+            chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
+                v_G_bare[np.newaxis, np.newaxis, :]
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
