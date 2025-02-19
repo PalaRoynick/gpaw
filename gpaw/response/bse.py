@@ -425,7 +425,7 @@ class BSEBackend:
         return SpinorData(self.con_m, self.val_m, e_km, f_km, v_kmn, soc_tol)
 
     @timer('BSE calculate')
-    def calculate(self, optical, no_coulomb=False):
+    def calculate(self, optical, irreducible=False):
         """Calculate the BSE Hamiltonian. This includes setting up all
         machinery for pair densities, KS eignevalues and occupation factors.
         At the end the direct and indirect interaction are included through
@@ -445,7 +445,7 @@ class BSEBackend:
         qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
 
         self.ikq_k = self.kd.find_k_plus_q(self.q_c)
-        if no_coulomb:
+        if irreducible:
             self.v_G = np.zeros(qpd0.NG)
         else:
             self.v_G = self.coulomb.V(qpd=qpd0, q_v=None)
@@ -785,9 +785,9 @@ class BSEBackend:
             return bsematrix.diagonalize_nontammdancoff(self)
 
     @timer('get_bse_matrix')
-    def get_bse_matrix(self, optical=True, no_coulomb=False):
+    def get_bse_matrix(self, optical=True, irreducible=False):
         """Calculate BSE matrix."""
-        return self.calculate(optical=optical, no_coulomb=no_coulomb)
+        return self.calculate(optical=optical, irreducible=irreducible)
 
     def collect_C_TGG(self, C_tGG):
         """
@@ -857,14 +857,14 @@ class BSEBackend:
 
     @timer('get_vchi')
     def get_vchi(self, w_w=None, eta=0.1, optical=True, write_eig=None,
-                 mode_c=None, no_coulomb=False):
+                 mode_c=None, irreducible=False):
         """Returns v * chi where v is the bare Coulomb interaction"""
 
         vchi_w = np.zeros(len(w_w), dtype=complex)
 
         if not hasattr(self, 'eig_data'):
             bsematrix = self.get_bse_matrix(optical=optical,
-                                            no_coulomb=no_coulomb)
+                                            irreducible=irreducible)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
@@ -910,12 +910,12 @@ class BSEBackend:
 
     @timer('get_chi_wGG')
     def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    write_eig=None, no_coulomb=False):
+                    write_eig=None, irreducible=False):
         """Returns chi_wGG'"""
 
         if not hasattr(self, 'eig_data'):
             bsematrix = self.get_bse_matrix(optical=optical,
-                                            no_coulomb=no_coulomb)
+                                            irreducible=irreducible)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
@@ -1293,60 +1293,61 @@ class VChi:
 
 
 class BSE_Plus:
-    def __init__(self, bse, chi0calc_large):
+    def __init__(self, bse, chi0calc_full):
 
         self.bse = bse
-        self.chi0calc_large = chi0calc_large
+        self.chi0calc_full = chi0calc_full
 
-        self.eta = self.chi0calc_large.chi0_body_calc.eta * Hartree
-        self.gs = self.chi0calc_large.gs
-        self.context = self.chi0calc_large.context
+        self.eta = self.chi0calc_full.chi0_body_calc.eta * Hartree
+        self.gs = self.chi0calc_full.gs
+        self.context = self.chi0calc_full.context
         self.q_c = self.bse.q_c
         self.direction = ('x', 'y', 'z')[self.bse.direction]
         self.truncation = self.bse.truncation
 
         self.ecut = self.bse.ecut * Hartree
-        ecut_chi0_large = self.chi0calc_large.chi0_body_calc.ecut * Hartree
+        ecut_chi0_full = self.chi0calc_full.chi0_body_calc.ecut * Hartree
 
-        self.w_w = self.chi0calc_large.chi0_body_calc.wd.omega_w * Hartree
-        wd = self.chi0calc_large.chi0_body_calc.wd
+        self.w_w = self.chi0calc_full.chi0_body_calc.wd.omega_w * Hartree
+        wd = self.chi0calc_full.chi0_body_calc.wd
 
         self.eshift = self.bse.eshift * Hartree
-        eshift_chi0_large = self.chi0calc_large.eshift * Hartree
+        eshift_chi0_full = self.chi0calc_full.eshift * Hartree
 
-        assert self.eshift == eshift_chi0_large, \
+        assert self.eshift == eshift_chi0_full, \
             'Inconsistent use of eshift'
 
-        assert self.ecut == ecut_chi0_large, \
+        assert self.ecut == ecut_chi0_full, \
             'Cutoff energies should match in the BSE and chi0 calculation'
 
         n1_BSE = self.bse.val_m[0]
         m2_BSE = self.bse.con_m[-1]
-        m2_chi0_large = \
-            self.chi0calc_large.chi0_body_calc.nbands - 1
+        m2_chi0_full = \
+            self.chi0calc_full.chi0_body_calc.nbands - 1
 
-        assert m2_BSE < m2_chi0_large, \
+        assert m2_BSE < m2_chi0_full, \
             'Large chi0 calculation should contain more ' \
             'bands than the BSE calculation'
 
-        hilbert = self.chi0calc_large.chi0_body_calc.hilbert
-        intraband = self.chi0calc_large.intraband
+        hilbert = self.chi0calc_full.chi0_body_calc.hilbert
+        intraband = self.chi0calc_full.intraband
 
-        self.chi0calc_small = Chi0Calculator(self.gs, self.context,
-                                             wd=wd,
-                                             nbands=slice(n1_BSE, m2_BSE + 1),
-                                             intraband=intraband,
-                                             hilbert=hilbert,
-                                             eta=self.eta,
-                                             ecut=self.ecut,
-                                             eshift=self.eshift)
+        self.chi0calc_limited = Chi0Calculator(self.gs, self.context,
+                                               wd=wd,
+                                               nbands=slice(
+                                                   n1_BSE, m2_BSE + 1),
+                                               intraband=intraband,
+                                               hilbert=hilbert,
+                                               eta=self.eta,
+                                               ecut=self.ecut,
+                                               eshift=self.eshift)
 
     def get_chi_wGG(self, optical=True, xc_kernel=None):
 
         # irreducibale bse chi
         chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=self.eta,
                                                optical=optical,
-                                               no_coulomb=True,
+                                               irreducible=True,
                                                w_w=self.w_w)
 
         if world.rank == 0:
@@ -1358,32 +1359,34 @@ class BSE_Plus:
                                                truncation=self.truncation)
 
         # chi0 matching the bse bands
-        chi0_data_small = self.chi0calc_small.calculate(self.q_c)
-        dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel,
-                                             xc_kernel, self.gs.cd)
-        chi0_small_wGG = dyson_eqs_small.get_chi0_wGG(self.direction)
-        chi0_small_WGG = dyson_eqs_small.wblocks.all_gather(chi0_small_wGG)
+        chi0_data_limited = self.chi0calc_limited.calculate(self.q_c)
+        dyson_eqs_limited = Chi0DysonEquations(chi0_data_limited,
+                                               coulomb_kernel, xc_kernel,
+                                               self.gs.cd)
+        chi0_limited_wGG = dyson_eqs_limited.get_chi0_wGG(self.direction)
+        chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
+            chi0_limited_wGG)
 
         # chi0 fully converged
-        chi0_data_large = self.chi0calc_large.calculate(self.q_c)
-        dyson_eqs_large = Chi0DysonEquations(chi0_data_large, coulomb_kernel,
-                                             xc_kernel, self.gs.cd)
-        chi0_large_wGG = dyson_eqs_large.get_chi0_wGG(self.direction)
-        chi0_large_WGG = dyson_eqs_large.wblocks.all_gather(chi0_large_wGG)
+        chi0_data_full = self.chi0calc_full.calculate(self.q_c)
+        dyson_eqs_full = Chi0DysonEquations(chi0_data_full, coulomb_kernel,
+                                            xc_kernel, self.gs.cd)
+        chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.direction)
+        chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
 
-        self.v_G = coulomb_kernel.V(chi0_data_large.qpd)
+        self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
 
         if self.truncation == '2D':
             coulomb_kernel_bare = CoulombKernel.from_gs(
                 self.gs, truncation=None)
-            v_G_bare = coulomb_kernel_bare.V(chi0_data_large.qpd, q_v=None)
+            v_G_bare = coulomb_kernel_bare.V(chi0_data_full.qpd, q_v=None)
             self.v_G = self.v_G / v_G_bare
             if optical:
                 v_G_bare[0] = 0.0
             if world.rank == 0:
-                chi0_small_WGG = chi0_small_WGG * \
+                chi0_limited_WGG = chi0_limited_WGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
-                chi0_large_WGG = chi0_large_WGG * \
+                chi0_full_WGG = chi0_full_WGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
                 chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
@@ -1392,7 +1395,7 @@ class BSE_Plus:
 
         if world.rank == 0:
             chi_irr_BSE_plus_WGG = \
-                chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
+                chi_irr_BSE_WGG - chi0_limited_WGG + chi0_full_WGG
 
             eye = np.eye(len(chi_irr_BSE_plus_WGG[1]))
 
