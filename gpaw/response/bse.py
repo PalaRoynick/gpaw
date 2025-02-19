@@ -803,15 +803,11 @@ class BSEBackend:
             C2_tGG = np.zeros((nr, *C_tGG.shape[1:]), dtype=complex)
             C2_tGG[:len(C_tGG)] = C_tGG
             C_tGG = C2_tGG
-        if world.rank == 0:
-            C_TGG = np.zeros((nr * world.size,
-                              *C_tGG.shape[1:]), dtype=complex)
-        else:
-            C_TGG = None
-        world.gather(C_tGG, 0, C_TGG)
-        if world.rank == 0:
-            nG = self.rho_SG.shape[-1]
-            return C_TGG[:nR].reshape((nR, nG, nG))
+        C_TGG = np.zeros((nr * world.size,
+                          *C_tGG.shape[1:]), dtype=complex)
+        world.all_gather(C_tGG, C_TGG)
+        nG = self.rho_SG.shape[-1]
+        return C_TGG[:nR].reshape((nR, nG, nG))
 
     @timer('get_spectral_weights')
     def get_spectral_weights(self, eig_data, df_S, mode_c):
