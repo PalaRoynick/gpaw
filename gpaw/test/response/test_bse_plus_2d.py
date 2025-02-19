@@ -88,11 +88,12 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
     v_G_bare = coulomb_kernel_bare.V(chi0_data_large.qpd, q_v=None)
     v_G = v_G / v_G_bare
     v_G_bare[0] = 0.0
-    chi0_small_WGG = chi0_small_WGG * v_G_bare[np.newaxis, np.newaxis, :]
-    chi0_large_WGG = chi0_large_WGG * v_G_bare[np.newaxis, np.newaxis, :]
-    chi_irr_BSE_WGG = chi_irr_BSE_WGG * v_G_bare[np.newaxis, np.newaxis, :]
 
     if world.rank == 0:
+        chi0_small_WGG = chi0_small_WGG * v_G_bare[np.newaxis, np.newaxis, :]
+        chi0_large_WGG = chi0_large_WGG * v_G_bare[np.newaxis, np.newaxis, :]
+        chi_irr_BSE_WGG = chi_irr_BSE_WGG * v_G_bare[np.newaxis, np.newaxis, :]
+
         chi_irr_BSE_plus_WGG = \
             chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
 
