@@ -1344,15 +1344,10 @@ class BSE_Plus:
     def get_chi_wGG(self, optical=True, xc_kernel=None):
 
         # irreducibale bse chi
-        chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=self.eta,
+        chi_irr_BSE_WGG = self.bse.get_chi_wGG(eta=self.eta,
                                                optical=optical,
                                                no_coulomb=True,
                                                w_w=self.w_w)
-
-        if world.rank == 0:
-            chi_irr_BSE_WGG = chi_irr_BSE_wGG
-        else:
-            chi_irr_BSE_WGG = None
 
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
