@@ -62,7 +62,7 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
 
     chi_irr_BSE_wGG = bse.get_chi_wGG(eta=eta,
                                       optical=True,
-                                      no_coulomb=True,
+                                      irreducible=True,
                                       w_w=w_w)
 
     if world.rank == 0:
