@@ -160,8 +160,6 @@ class Energy(Criterion):
         # e_total_extrapolated in the SCF table (logfile). I changed it to
         # use e_total_extrapolated for both. (Should be a miniscule
         # difference, but more consistent.)
-        if context.dens.fixed:
-            return True, ''
         total_energy = context.ham.e_total_extrapolated * Ha
         if context.wfs.nvalence == 0 or not self.relative:
             energy = total_energy
@@ -297,8 +295,7 @@ class Forces(Criterion):
         # criterion is off; backwards compatibility
         if np.isinf(self.atol) and np.isinf(self.rtol):
             return True, ''
-        F_av = context.calculate_forces()
-        F_av *= Ha / Bohr
+        F_av = context.calculate_forces() * (Ha / Bohr)
         error = np.inf
         max_force = np.max(np.linalg.norm(F_av, axis=1))
         if self.old_F_av is not None:

@@ -53,6 +53,10 @@ def dot(a, b):
     return ndarray(np.dot(a._data, b._data))
 
 
+def outer(a, b):
+    return ndarray(np.outer(a._data, b._data))
+
+
 def multiply(a, b, c):
     np.multiply(a._data, b._data, c._data)
 
@@ -91,6 +95,10 @@ def triu_indices(n, k=0, m=None):
 
 def tri(n, k=0, dtype=float):
     return ndarray(np.tri(n, k=k, dtype=dtype))
+
+
+def allclose(a, b, **kwargs):
+    return np.allclose(a._data, b._data, **kwargs)
 
 
 def moveaxis(a, source, destination):
