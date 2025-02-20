@@ -4,7 +4,6 @@ from ase.parallel import parprint
 from ase.units import Bohr
 import numpy as np
 
-from gpaw.pw.descriptor import PWDescriptor
 from gpaw.solvation.poisson import (WeightedFDPoissonSolver,
                                     ADM12PoissonSolver,
                                     PolarizationPoissonSolver,
@@ -12,6 +11,7 @@ from gpaw.solvation.poisson import (WeightedFDPoissonSolver,
 from gpaw.pw.poisson import ReciprocalSpacePoissonSolver
 from gpaw.solvation.dielectric import Dielectric
 from gpaw.grid_descriptor import GridDescriptor
+from gpaw.pw.descriptor import PWDescriptor
 from gpaw.utilities.gauss import Gaussian
 from gpaw.fd_operators import Gradient
 import pytest
