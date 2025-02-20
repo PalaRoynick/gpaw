@@ -939,9 +939,17 @@ class BSEBackend:
                 overlap_tt = np.linalg.inv(tmp)
                 C_TGG = ((B_GT.conj() @ overlap_tt.T).T)[..., np.newaxis] *\
                     A_GT.T[:, np.newaxis]
-                C_TGG1 = None
+                shape = np.array(C_TGG.shape, dtype=int)
             else:
-                return
+                shape = np.empty(3, dtype=int)
+            C_TGG1=None
+            world.broadcast(shape, 0)
+            size = np.prod(shape)
+            if world.rank != 0:
+                C_TGG = np.empty(size, dtype=complex)
+            C_TGG = C_TGG.flatten()
+            world.broadcast(C_TGG, 0)
+            C_TGG = C_TGG.reshape(shape)
         else:
             A_Gt = rho_RG.T @ v_Rt
             B_Gt = (rho_RG.T * df_R[np.newaxis]) @ v_Rt
@@ -962,8 +970,7 @@ class BSEBackend:
                 np.einsum('Gt,Ht->tGH', A_Gt.conj(), B_Gt,
                           out=C_tGG1.reshape((-1, nG, nG)))
                 C_TGG1 = self.collect_C_TGG(C_tGG1)
-                if grid.comm.rank != 0:
-                    return
+
 
         eta /= Hartree
 
