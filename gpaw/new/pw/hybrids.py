@@ -25,16 +25,36 @@ def coulomb(pw: PWDesc,
         wstc = WignerSeitzTruncatedCoulomb(
             pw.cell_cv, np.array([1, 1, 1]))
         return wstc.get_potential_new(pw, grid)
+    return truncated_coulomb(pw, omega)
 
+
+def truncated_coulomb(pw: PWDesc,
+                      omega: float = 0.11) -> PWArray:
+    """Fourier transform of truncated Coulomb.
+
+    Real space:::
+
+        erfc(ωr)
+        --------.
+           r
+
+    Reciprocal space:::
+
+        4π             _ _ 2     2
+      ------(1 - exp(-(G+k) /(4 ω )))
+       _ _ 2
+      (G+k)
+
+    (G+k=0 limit is pi/ω^2).
+    """
     v_G = pw.empty()
     G2_G = pw.ekin_G * 2
     v_G.data[:] = 4 * pi * (1 - np.exp(-G2_G / (4 * omega**2)))
-    if pw.ng1 == 0:
+    if G2_G[0] < 1e-10:
         v_G.data[1:] /= G2_G[1:]
         v_G.data[0] = pi / omega**2
     else:
         v_G.data /= G2_G
-
     return v_G
 
 
@@ -84,6 +104,7 @@ class PWHybridHamiltonian(PWHamiltonian):
         self.pw = pw
         self.exx_fraction = xc.exx_fraction
         self.exx_omega = xc.exx_omega
+        self.xc = xc
 
         # Stuff for PAW core-core, core-valence and valence-valence correctios:
         self.exx_cc = sum(setup.ExxC for setup in setups) * self.exx_fraction
@@ -126,15 +147,14 @@ class PWHybridHamiltonian(PWHamiltonian):
             # We are doing a subspace diagonalization ...
             evv, evc, ekin = self.apply1(D_aii, pt_aiG,
                                          psi1, psi1, Htpsit2_nG)
-            for name, e in [('exx_vv', evv),
-                            ('exx_vc', evc),
-                            ('exx_kinetic', ekin)]:
+            for name, e in [('hybrid_xc', evv + evc),
+                            ('hybrid_kinetic_correction', ekin)]:
                 e *= ibzwfs.spin_degeneracy
                 if spin == 0:
-                    ibzwfs.energies[name] = e
+                    self.xc.energies[name] = e
                 else:
-                    ibzwfs.energies[name] += e
-            ibzwfs.energies['exx_cc'] = self.exx_cc
+                    self.xc.energies[name] += e
+            self.xc.energies['hybrid_xc'] += self.exx_cc
             return
 
         # We are applying the exchange operator (defined by psit1_nG,
