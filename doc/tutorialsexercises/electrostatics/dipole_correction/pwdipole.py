@@ -5,6 +5,8 @@ slab = fcc100('Al', (2, 2, 2), a=4.05, vacuum=7.5)
 add_adsorbate(slab, 'Na', 4.0)
 slab.center(axis=2)
 
+print(PW(300))
+
 slab.calc = GPAW(mode=PW(300),
                  poissonsolver={'dipolelayer': 'xy'},
                  txt='pwcorrected.txt',

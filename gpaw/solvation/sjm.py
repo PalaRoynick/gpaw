@@ -33,6 +33,8 @@ from gpaw.solvation.poisson import WeightedFDPoissonSolver
 from gpaw.solvation.pw.poisson import WrappedWeightedFDPoissonSolver
 from gpaw.io.logger import indent
 from gpaw.pw.lfc import PWLFC
+
+from gpaw.grid_descriptor import GridDescriptor
 from gpaw.templogger import logg
 
 
@@ -1118,6 +1120,7 @@ class SJM_ReciprocalSpaceHamiltonian(SJM_Hamiltonian, SolvationReciprocalSpaceHa
     XXX/CB: new class here, initialization mostly drawn from pw/hamiltonian
     """
 
+    # XXX/CB: maybe make this idea a little nicer
     def get_supertype(self):
         return ReciprocalSpaceHamiltonian
 

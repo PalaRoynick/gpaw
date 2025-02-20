@@ -2,6 +2,7 @@ import warnings
 
 import numpy as np
 from scipy.special import erf
+import scipy.fft
 
 from gpaw.poisson import BasePoissonSolver, PoissonSolver, FDPoissonSolver
 from gpaw.fd_operators import Laplace, Gradient
@@ -14,6 +15,7 @@ from gpaw.templogger import logg
 from gpaw.pw.descriptor import PWDescriptor
 from gpaw.typing import Array1D
 from gpaw.pw.density import ReciprocalSpaceDensity
+from gpaw.density import Density
 import matplotlib.pyplot as plt
 
 
@@ -221,17 +223,41 @@ class PolarizationPoissonSolver(BasePoissonSolver):
 
 
 class WrappedWeightedFDPoissonSolver(WeightedFDPoissonSolver):
-    """
-    XXX/cb: new class here, does realspace poisson given reciprocal density. A
-    very frankenstein/simple solution...for proof of concept
-
-    eps originally 2e-10, maxiter 1000
-
-    Currently facing a non-convergence issue
+    """Wrapper class for WeightedFDPoissonSolver that handles reciprocal space density.
+    
+    This class provides an interface between reciprocal space densities and the
+    real-space weighted finite difference Poisson solver. It handles the 
+    necessary Fourier transforms between real and reciprocal space to make this 
+    happen.
+    
+    This is created just to test a potential planewave hamiltonian for 
+    solvation; it allows us to benchmark finite difference and conjugate 
+    gradient in the reciprocal space context.
     """
 
     def __init__(self, pd3, nn=3, relax='J', eps=1e-6, maxiter=10000,
                  remove_moment=None, use_charge_center=False):
+        """Set up this solver instance. Primarily relies on the underlying 
+        WeightedFD initialization, minus setting up the planewaver descriptor 
+        for any necessary Fourier transforms.
+        
+        Parameters:
+        -----------
+        pd3 : PWDescriptor
+            Plane wave descriptor for 3D transforms
+        nn : int, optional
+            Number of neighbors for finite difference stencil
+        relax : str, optional
+            Relaxation method ('J' for Jacobi)
+        eps : float, optional
+            Convergence threshold
+        maxiter : int, optional
+            Maximum number of iterations
+        remove_moment : bool, optional
+            Whether to remove multipole moments
+        use_charge_center : bool, optional
+            Whether to use charge center
+        """
         self.pd3 = pd3
         WeightedFDPoissonSolver.__init__(self, nn=nn, relax=relax, eps=eps,
                                          maxiter=maxiter,
@@ -240,31 +266,82 @@ class WrappedWeightedFDPoissonSolver(WeightedFDPoissonSolver):
 
     def solve(self, phi, rho, charge=None, maxcharge=1e-6,
               zero_initial_phi=False, timer=None):
-        # logg("start rhotq ifft")
-        # logg(rho.rhot_q.shape, header=False)
+        """Solve the Poisson equation using WeightedFD, wrapped in Fourier 
+        transforms.
+        
+        Parameters:
+        -----------
+        phi : ndarray
+            Initial guess and output potential
+        rho : ndarray
+            Input charge density
+        charge : float, optional
+            Total charge constraint
+        maxcharge : float, optional
+            Maximum allowed charge for periodic systems
+        zero_initial_phi : bool, optional
+            Whether to start from zero potential
+        timer : Timer, optional
+            Timer for profiling
+            
+        Returns:
+        --------
+        phi : ndarray
+            Solution potential
+        """
+        
+        # move densities and potentials to the realspace grid
         rho_r = self.pd3.ifft(rho)
-        # logg("end rhotq ifft")
-
-        # logg("start phi ifft")
         phi_r = self.pd3.ifft(phi)
-        # logg("end phi ifft")
         phi_r = self.pd3.gd.zeros()
 
+        # solve using the parent class
         WeightedFDPoissonSolver.solve(self, phi_r, rho_r, charge,
                                       maxcharge, zero_initial_phi)
 
-        # logg("start phi_r fft")
+        # move the solution back to reciprocal space
         phi_p = self.pd3.fft(phi_r)
-        # logg("end phi_r fft")
-
         phi[:] = phi_p[:]
 
         return phi
 
 
 class WrappedPolarizationPoissonSolver(PolarizationPoissonSolver):
+    """Wrapper class for WeightedPolarizationPoissonSolver that handles reciprocal space density.
+    
+    This class provides an interface between reciprocal space densities and the
+    real-space self-consistency Poisson solver as in Fisicaro, et. al. It 
+    handles the necessary Fourier transforms between real and reciprocal space 
+    to make this happen.
+    
+    This is created just to test a potential planewave hamiltonian for 
+    solvation; it allows us to benchmark finite difference and conjugate 
+    gradient, etc. in the reciprocal space context.
+    """
+    
     def __init__(self, pd3, nn=3, relax='J', eps=1e-6, maxiter=10000,
                  remove_moment=None, use_charge_center=False):
+        """Set up this solver instance. Primarily relies on the underlying 
+        initialization, minus setting up the planewave descriptor for any 
+        necessary Fourier transforms.
+        
+        Parameters:
+        -----------
+        pd3 : PWDescriptor
+            Plane wave descriptor for 3D transforms
+        nn : int, optional
+            Number of neighbors for finite difference stencil
+        relax : str, optional
+            Relaxation method ('J' for Jacobi)
+        eps : float, optional
+            Convergence threshold
+        maxiter : int, optional
+            Maximum number of iterations
+        remove_moment : bool, optional
+            Whether to remove multipole moments
+        use_charge_center : bool, optional
+            Whether to use charge center
+        """
         self.pd3 = pd3
         PolarizationPoissonSolver.__init__(self, nn=nn, relax=relax, eps=eps,
                                            maxiter=maxiter,
@@ -274,23 +351,31 @@ class WrappedPolarizationPoissonSolver(PolarizationPoissonSolver):
     def solve(self, phi, rho, charge=None, maxcharge=1e-6,
               zero_initial_phi=False, timer=None):
 
+        # move densities and potentials to the realspace grid
         rho_r = self.pd3.ifft(rho)
-
         phi_r = self.pd3.ifft(phi)
-
         phi_r = self.pd3.gd.zeros()
 
+        # solve using parent class
         PolarizationPoissonSolver.solve(self, phi_r, rho_r, charge,
                                         maxcharge, zero_initial_phi)
 
+        # back to planewave
         phi_p = self.pd3.fft(phi_r)
-
         phi[:] = phi_p[:]
 
         return phi
 
 
 class ConjugateGradientSolver():
+    """Generic conjugate gradient solver for linear systems (roughly equivalent 
+    to e.g., a numpy implementation).
+    
+    The beauty of conjugate gradient is that we can use an operator oracle 
+    rather than the entire matrix A (in a system Ax = b). We can leverage this 
+    to express the generalized planewave Poisson operator compactly, which has 
+    massive intermediates as a matrix.
+    """
 
     def __init__(self,
                  A_fn,
@@ -299,6 +384,24 @@ class ConjugateGradientSolver():
                  init=None,
                  nits_max=15,
                  threshold=1e-3):
+        """Initialize the conjugate gradient solver.
+        
+        Parameters:
+        -----------
+        A_fn : callable
+            Function that applies the operator A to a vector
+        b : ndarray
+            Right-hand side vector
+        preconditioner : callable, optional
+            Function that applies preconditioning
+        init : ndarray, optional
+            Initial guess for solution
+        nits_max : int, optional
+            Maximum number of iterations
+        threshold : float, optional
+            Convergence threshold
+        """
+        
         # system parameters
         self.A = A_fn
         self.b = b
@@ -323,19 +426,29 @@ class ConjugateGradientSolver():
         self.r_norms = []
 
     def update_alpha(self):
-        # update alpha using current residual and conjugate direction
-        self.alpha = (self.rz) / np.dot(self.p, self.Ap)
+        """Update the step size alpha using current residual and conjugate 
+        direction.
+        """
+        self.alpha = (self.rz) / np.vdot(self.p, self.Ap)
 
     def update_beta(self):
-        # update scaling factor based on residual growth
-        new_rz = np.dot(self.r, self.z)
+        """Update the direction update parameter beta based on residual growth.
+        """
+        new_rz = np.vdot(self.r, self.z)
         self.beta = (new_rz) / (self.rz)
         self.rz = new_rz
 
     def solve(self):
+        """Execute the conjugate gradient algorithm.
+        
+        Returns:
+        --------
+        x : ndarray
+            Solution vector
+        """
         i = 0
 
-        self.rz = np.dot(self.r, self.z)
+        self.rz = np.vdot(self.r, self.z)
         update_norm = float('inf')
 
         while (np.linalg.norm(self.r) / np.linalg.norm(self.b) > self.threshold
@@ -366,10 +479,28 @@ class ConjugateGradientSolver():
 
 
 class ConjugateGradientPoissonSolver():
+    """Poisson solver using conjugate gradient method in reciprocal space.
+    
+    This solver works directly in reciprocal space and is particularly efficient
+    for systems with periodic boundary conditions.
+    """
+    
     def __init__(self,
                  pd: PWDescriptor,
                  charge: float = 0.0,
                  strength: float = 1.0):
+        """Initialize the conjugate gradient Poisson solver.
+        
+        Parameters:
+        -----------
+        pd : PWDescriptor
+            Plane wave descriptor
+        charge : float, optional
+            Total charge of the system
+        strength : float, optional
+            Scaling factor for the potential
+        """
+        
         self.pd = pd
         self.charge = charge
         self.strength = strength
@@ -385,10 +516,26 @@ class ConjugateGradientPoissonSolver():
     def __str__(self):
         return f'Uniform background charge: {self.charge:.3f} electrons'
 
+    def get_description(self):
+        return 'Conjugate Gradient Poisson Solver'
+
     def estimate_memory(self, mem):
         pass
 
     def operator(self, phi_q):
+        """Apply the generalized Poisson operator in reciprocal space. This refers to the "A_fn" we'll use in the conjugate gradient algorithm.
+        
+        Parameters:
+        -----------
+        phi_q : ndarray
+            Input potential in reciprocal space
+            
+        Returns:
+        --------
+        ndarray
+            Result of operator application
+        """
+        
         G_Qv = self.pd.get_reciprocal_vectors()
         Gx, Gy, Gz = G_Qv.T
 
@@ -412,52 +559,214 @@ class ConjugateGradientPoissonSolver():
 
     def solve(self,
               vHt_q: Array1D,
-              dens: ReciprocalSpaceDensity,
-              plot=False) -> float:
+              dens: ReciprocalSpaceDensity) -> float:
         """Solve Poisson equeation.
 
         Places result in vHt_q ndarray.
         """
         assert dens.rhot_q is not None
-        epot = self._solve(vHt_q, dens.rhot_q, plot)
+        epot = self._solve(vHt_q, dens.rhot_q)
         return epot
 
     def _solve(self,
                vHt_q: Array1D,
-               rhot_q: Array1D,
-               plot=True) -> float:
+               rhot_q: Array1D) -> float:
 
         vHt_q[:] = 4 * np.pi * self.strength * rhot_q
         if self.pd.gd.comm.rank == 0:
-            # Use uniform backgroud charge in case we have a charged system:
+            # use uniform backgroud charge in case we have a charged system:
             vHt_q[0] = 0.0
 
         def precon(vec):
             return vec / self.G2_q
 
-        cg_solv = ConjugateGradientSolver(self.operator, vHt_q,
-                                          preconditioner=precon)
-        vHt_q[:] = cg_solv.solve()
-
-        if plot:
-            data = cg_solv.r_norms
-            plt.scatter(range(len(data)), data)
-            plt.xlabel('Iteration Number (dimensionless)')
-            plt.ylabel('Relative Residual Norm (dimensionless)')
-            plt.title(
-                f'Convergence for {np.prod([x for x in self.pd.gd.N_c]):.1E} Grid Points')
-            plt.tight_layout()
-            plt.savefig('rnorms_dv.png')
-            plt.close()
+        self.cg_solv = ConjugateGradientSolver(self.operator, vHt_q,
+                                               preconditioner=precon)
+        vHt_q[:] = self.cg_solv.solve()
 
         epot = 0.5 * self.pd.integrate(vHt_q, rhot_q)
+        return epot
+    
+    
+class RealConjugateGradientPoissonSolver(BasePoissonSolver):
+    """Poisson solver using conjugate gradient method in real space.
+    
+    This solver works directly in real space with arbitrarily mixed Dirichlet/
+    periodic boundary conditions
+    """
+    
+    def __init__(self, nn=3, relax='J', eps=1e-3, maxiter=15,
+                 remove_moment=None, use_charge_center=False):
+        self.nn = nn
+        self.eps = eps
+        self.maxiter = maxiter
+
+    def get_description(self):
+        return 'Real Space Conjugate Gradient Poisson Solver'
+
+    def estimate_memory(self, mem):
+        pass
+    
+    def set_dielectric(self, dielectric):
+        """Set the dielectric.
+
+        Arguments:
+        dielectric -- A Dielectric instance.
+        """
+        self.dielectric = dielectric
+        
+    def set_grid_descriptor(self, gd):
+        self.gd = gd
+        self.pbc = gd.pbc_c
+        self.L = np.array([np.linalg.norm(gd.h_cv[:, i]) * gd.N_c[i] for i in range(3)])
+        laplace_coefs = self.build_laplace()
+        self.laplace_coefs = np.where(abs(laplace_coefs) < 1e-10, 1.0, laplace_coefs)
+        
+    def stransform(self, f):
+        result = f.copy()
+        ndims = f.ndim
+        for ax in range(ndims):
+            if self.pbc[ax]:
+                result = scipy.fft.fft(result, axis=ax, norm='ortho')
+            else:
+                result = scipy.fft.dst(result, type=2, axis=ax, norm='ortho')
+        return result
+
+    def istransform(self, F):
+        result = F.copy()
+        ndims = F.ndim
+        for ax in range(ndims):
+            if self.pbc[ax]:
+                result = scipy.fft.ifft(result, axis=ax, norm='ortho')
+            else:
+                result = scipy.fft.dst(result, type=3, axis=ax, norm='ortho')
+        return result
+
+    def ctransform(self, f, grad_dim):
+        result = f.copy()
+        ndims = f.ndim
+        for ax in range(ndims):
+            if self.pbc[ax]:
+                result = scipy.fft.fft(result, axis=ax, norm='ortho')
+            else:
+                if ax == grad_dim:
+                    result = scipy.fft.dct(result, type=2, axis=ax, norm='ortho')
+                else:
+                    result = scipy.fft.dst(result, type=2, axis=ax, norm='ortho')
+        return result
+
+    def ictransform(self, F, grad_dim):
+        result = F.copy()
+        ndims = F.ndim
+        for ax in range(ndims):
+            if self.pbc[ax]:
+                result = scipy.fft.ifft(result, axis=ax, norm='ortho')
+            else:
+                if ax == grad_dim:
+                    result = scipy.fft.dct(result, type=3, axis=ax, norm='ortho')
+                else:
+                    result = scipy.fft.dst(result, type=3, axis=ax, norm='ortho')
+        return result
+    
+    def build_laplace(self):
+        full_shape = self.gd.N_c
+        effective_shape = []
+        for ax in range(len(full_shape)):
+            if self.pbc[ax]:
+                effective_shape.append(full_shape[ax])
+            else:
+                effective_shape.append(full_shape[ax] - 1)
+        effective_shape = tuple(effective_shape)
+        ndims = len(effective_shape)
+        coefs = np.zeros(effective_shape, dtype=float)
+        for ax in range(ndims):
+            n = effective_shape[ax]
+            L_axis = self.L[ax]
+            shape_ax = [1] * ndims
+            shape_ax[ax] = n
+            if self.pbc[ax]:
+                k = 2 * np.pi * np.fft.fftfreq(n, d=L_axis/n)
+            else:
+                k = (np.arange(n) + 1) * np.pi / L_axis
+            coefs += (k.reshape(shape_ax)**2)
+        return coefs
+
+    def operator(self, phi_tilde):
+        ndims = phi_tilde.ndim
+        grad_components = []
+        for ax in range(ndims):
+            n = phi_tilde.shape[ax]
+            L_axis = self.L[ax]
+            shape = [1] * ndims
+            shape[ax] = n
+            if self.pbc[ax]:
+                k = 2 * np.pi * np.fft.fftfreq(n, d=L_axis / n)
+                multiplier = (k).reshape(shape)
+            else:
+                k = (np.arange(n) + 1) * np.pi / L_axis
+                multiplier = k.reshape(shape)
+            grad_components.append(phi_tilde * multiplier)
+            
+        grad_real = [self.ictransform(comp, i) for i, comp in enumerate(grad_components)]
+        
+        grad_real_mod = [g * self.dielectric.eps_gradeps[0] for g in grad_real]
+        
+        grad_tilde_mod = [self.ctransform(g, i) for i, g in enumerate(grad_real_mod)]
+        divergence_tilde = 0
+        
+        for ax in range(ndims):
+            n = phi_tilde.shape[ax]
+            L_axis = self.L[ax]
+            shape = [1] * ndims
+            shape[ax] = n
+            if self.pbc[ax]:
+                k = 2 * np.pi * np.fft.fftfreq(n, d=L_axis / n)
+                multiplier = (k).reshape(shape)
+            else:
+                k = (np.arange(n) + 1) * np.pi / L_axis
+                multiplier = k.reshape(shape)
+            divergence_tilde += grad_tilde_mod[ax] * multiplier
+            
+        return divergence_tilde
+
+    def solve(self,
+              phi: Array1D,
+              rho: Density) -> float:
+        """Solve Poisson equeation.
+
+        Places result in vHt_q ndarray.
+        """
+        assert rho is not None
+        epot = self._solve(phi, rho)
+        return epot
+
+    def _solve(self,
+               phi: Array1D,
+               rho: Array1D) -> float:
+
+        phi[:] = 4 * np.pi * rho
+        
+        phi_tilde = self.stransform(phi)
+
+        def precon(vec):
+            return vec / self.laplace_coefs
+
+        self.cg_solv = ConjugateGradientSolver(self.operator, phi_tilde,
+                                               preconditioner=precon, nits_max=15)
+        
+        phi[:] = self.istransform(self.cg_solv.solve())
+
+        epot = 0.5 * self.gd.integrate(phi, rho)
         return epot
 
 
 class WrappedConjugateGradientPoissonSolver(ConjugateGradientPoissonSolver):
     def __init__(self, pd3: PWDescriptor, charge: float = 0.0,
-                 strength: float = 1.0):
+                 strength: float = 1.0, nn=3, relax='J', eps=1e-6):
         self.pd3 = pd3
+        self.nn = nn
+        self.relax = relax
+        self.eps = eps
         ConjugateGradientPoissonSolver.__init__(self, pd3, charge, strength)
 
     def solve(self, phi, rho, charge=None, maxcharge=1e-6,
