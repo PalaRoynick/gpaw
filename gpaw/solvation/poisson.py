@@ -309,6 +309,21 @@ class ConjugateGradientSolver():
     rather than the entire matrix A (in a system Ax = b). We can leverage this 
     to express the generalized planewave Poisson operator compactly, which has 
     massive intermediates as a matrix.
+    
+    Parameters:
+    -----------
+    A_fn : callable
+        Function that applies the operator A to a vector
+    b : ndarray
+        Right-hand side vector
+    preconditioner : callable, optional
+        Function that applies preconditioning
+    init : ndarray, optional
+        Initial guess for solution
+    nits_max : int, optional
+        Maximum number of iterations
+    threshold : float, optional
+        Convergence threshold
     """
 
     def __init__(self,
@@ -318,23 +333,6 @@ class ConjugateGradientSolver():
                  init=None,
                  nits_max=15,
                  threshold=1e-3):
-        """Initialize the conjugate gradient solver.
-        
-        Parameters:
-        -----------
-        A_fn : callable
-            Function that applies the operator A to a vector
-        b : ndarray
-            Right-hand side vector
-        preconditioner : callable, optional
-            Function that applies preconditioning
-        init : ndarray, optional
-            Initial guess for solution
-        nits_max : int, optional
-            Maximum number of iterations
-        threshold : float, optional
-            Convergence threshold
-        """
         
         # system parameters
         self.A = A_fn
@@ -417,23 +415,21 @@ class ConjugateGradientPoissonSolver():
     
     This solver works directly in reciprocal space and is particularly efficient
     for systems with periodic boundary conditions.
+    
+    Parameters:
+    -----------
+    pd : PWDescriptor
+        Plane wave descriptor
+    charge : float, optional
+        Total charge of the system
+    strength : float, optional
+        Scaling factor for the potential
     """
     
     def __init__(self,
                  pd: PWDescriptor,
                  charge: float = 0.0,
                  strength: float = 1.0):
-        """Initialize the conjugate gradient Poisson solver.
-        
-        Parameters:
-        -----------
-        pd : PWDescriptor
-            Plane wave descriptor
-        charge : float, optional
-            Total charge of the system
-        strength : float, optional
-            Scaling factor for the potential
-        """
         
         self.pd = pd
         self.charge = charge
