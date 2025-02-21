@@ -2,7 +2,6 @@ import numpy as np
 from ase.build import bulk
 import pytest
 from gpaw import GPAW, FermiDirac
-from gpaw.mpi import world
 from gpaw.response.bse import BSE
 
 
