@@ -24,7 +24,7 @@ from gpaw.response.pair_functions import SingleQPWDescriptor
 from gpaw.response.screened_interaction import (initialize_w_calculator,
                                                 GammaIntegrationMode)
 from gpaw.utilities.elpa import LibElpa
-
+from gpaw.response.pw_parallelization import Blocks1D
 
 def decide_whether_tammdancoff(val_m, con_m):
     for n in val_m:
@@ -1345,18 +1345,25 @@ class BSE_Plus:
                                                ecut=self.ecut,
                                                eshift=self.eshift)
 
-    def get_chi_wGG(self, optical=True, xc_kernel=None):
+    def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None):
+        
+        if comm is None:
+            comm = world
+
+        nR = len(self.w_w)
+
+        self.blocks = Blocks1D(comm, nR)
 
         # irreducibale bse chi
         chi_irr_BSE_wGG = self.bse.get_chi_wGG(eta=self.eta,
                                                optical=optical,
                                                irreducible=True,
-                                               w_w=self.w_w)
+                                               w_w=self.w_w[self.blocks.myslice])
 
-        if world.rank == 0:
-            chi_irr_BSE_WGG = chi_irr_BSE_wGG
-        else:
-            chi_irr_BSE_WGG = None
+        #if world.rank == 0:
+        #    chi_irr_BSE_WGG = chi_irr_BSE_wGG
+        #else:
+        #    chi_irr_BSE_WGG = None
 
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
@@ -1386,26 +1393,29 @@ class BSE_Plus:
             self.v_G = self.v_G / v_G_bare
             if optical:
                 v_G_bare[0] = 0.0
-            if world.rank == 0:
-                chi0_limited_WGG = chi0_limited_WGG * \
+            chi0_limited_WGG = chi0_limited_WGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
-                chi0_full_WGG = chi0_full_WGG * \
+            chi0_full_WGG = chi0_full_WGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
-                chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
+            chi_irr_BSE_wGG = chi_irr_BSE_wGG * \
                     v_G_bare[np.newaxis, np.newaxis, :]
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
+        #if world.rank == 0:
+        chi_irr_BSE_plus_wGG = \
+                chi_irr_BSE_wGG - chi0_limited_WGG[self.blocks.myslice] + chi0_full_WGG[self.blocks.myslice]
+        
+        eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
+
+        chi_BSE_plus_wGG = \
+                np.linalg.solve(eye - chi_irr_BSE_plus_wGG @ np.diag(self.v_G),
+                                chi_irr_BSE_plus_wGG)
+
+        nG = chi_BSE_plus_wGG.shape[1]
+
+        self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
         if world.rank == 0:
-            chi_irr_BSE_plus_WGG = \
-                chi_irr_BSE_WGG - chi0_limited_WGG + chi0_full_WGG
-
-            eye = np.eye(len(chi_irr_BSE_plus_WGG[1]))
-
-            self.chi_BSE_plus_WGG = \
-                np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(self.v_G),
-                                chi_irr_BSE_plus_WGG)
-
             return self.chi_BSE_plus_WGG
 
     def get_refractive_index(self):
