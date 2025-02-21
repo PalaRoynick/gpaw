@@ -26,6 +26,7 @@ from gpaw.response.screened_interaction import (initialize_w_calculator,
 from gpaw.utilities.elpa import LibElpa
 from gpaw.response.pw_parallelization import Blocks1D
 
+
 def decide_whether_tammdancoff(val_m, con_m):
     for n in val_m:
         if n in con_m:
