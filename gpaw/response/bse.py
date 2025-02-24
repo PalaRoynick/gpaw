@@ -1314,10 +1314,9 @@ class BSE_Plus:
         self.w_w = self.chi0calc_full.chi0_body_calc.wd.omega_w * Hartree
         wd = self.chi0calc_full.chi0_body_calc.wd
 
-        
         if self.bse.eshift is not None:
             self.eshift = self.bse.eshift * Hartree
-        if self.chi0calc_full.eshift is not None: 
+        if self.chi0calc_full.eshift is not None:
             eshift_chi0_full = self.chi0calc_full.eshift * Hartree
 
         assert self.eshift == eshift_chi0_full, \
