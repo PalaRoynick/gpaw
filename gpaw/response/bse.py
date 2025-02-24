@@ -1313,15 +1313,15 @@ class BSE_Plus:
 
         self.w_w = self.chi0calc_full.chi0_body_calc.wd.omega_w * Hartree
         wd = self.chi0calc_full.chi0_body_calc.wd
-
+           
+        assert self.bse.eshift == self.chi0calc_full.eshift, \
+            'Inconsistent use of eshift'
         
         if self.bse.eshift is not None:
             self.eshift = self.bse.eshift * Hartree
-        if self.chi0calc_full.eshift is not None: 
-            eshift_chi0_full = self.chi0calc_full.eshift * Hartree
+        else: 
+            self.eshift = None
 
-        assert self.eshift == eshift_chi0_full, \
-            'Inconsistent use of eshift'
 
         assert self.ecut == ecut_chi0_full, \
             'Cutoff energies should match in the BSE and chi0 calculation'
