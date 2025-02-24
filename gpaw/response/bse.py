@@ -1313,13 +1313,13 @@ class BSE_Plus:
 
         self.w_w = self.chi0calc_full.chi0_body_calc.wd.omega_w * Hartree
         wd = self.chi0calc_full.chi0_body_calc.wd
-           
+
         assert self.bse.eshift == self.chi0calc_full.eshift, \
             'Inconsistent use of eshift'
-        
+
         if self.bse.eshift is not None:
             self.eshift = self.bse.eshift * Hartree
-        else: 
+        else:
             self.eshift = None
 
         assert self.ecut == ecut_chi0_full, \
