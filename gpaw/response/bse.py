@@ -1322,7 +1322,6 @@ class BSE_Plus:
         else: 
             self.eshift = None
 
-
         assert self.ecut == ecut_chi0_full, \
             'Cutoff energies should match in the BSE and chi0 calculation'
 
