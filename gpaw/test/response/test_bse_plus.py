@@ -1,48 +1,138 @@
 import numpy as np
-from ase.build import bulk
+from gpaw.response.chi0 import Chi0Calculator, get_frequency_descriptor
 import pytest
-from gpaw import GPAW, FermiDirac
-from gpaw.response.bse import BSE
+from gpaw.response.pair import get_gs_and_context
+from gpaw.mpi import world
+from gpaw.response.bse import BSE, BSE_Plus
+from gpaw.response.df import Chi0DysonEquations
+from gpaw.response.coulomb_kernels import CoulombKernel
 
 
 @pytest.mark.response
-@pytest.mark.parametrize('tda', [False, True])
-def test_bse_plus(tda, in_tmp_dir, scalapack):
-    calc = GPAW(mode='pw',
-                kpts={'size': (2, 2, 2), 'gamma': True},
-                occupations=FermiDirac(0.01),
-                nbands=8,
-                symmetry='off',
-                convergence={'bands': -4, 'density': 1e-7,
-                             'eigenstates': 1e-10})
-
-    a = 5.431
-
-    atoms = bulk('Si', 'diamond', a=a)
-    atoms.calc = calc
-    atoms.get_potential_energy()
-    calc.write('Si.gpw', 'all')
-
-    val = range(4) if tda else range(8)
-    cond = range(4, 8) if tda else range(8)
-    bse = BSE('Si.gpw',
-              ecut=20,
-              valence_bands=val,
-              conduction_bands=cond,
-              eshift=0,
+def test_bse_plus(in_tmp_dir, gpw_files):
+    """
+    This test makes a BSE plus calculation with the BSE_Plus class and
+    manually to test that the BSE_Plus code is working. It tests that the
+    assertions work.
+    """
+    gs, context = get_gs_and_context(
+        gpw_files['sic_pw'], txt=None, world=world, timer=None)
+    ecut = 25
+    eshift = 0.2
+    eta = 0.1
+    q_c = [0.0, 0.0, 0.0]
+    bse = BSE(gpw_files['sic_pw'], ecut=ecut,
+              q_c=q_c,
+              valence_bands=range(3, 4),
+              conduction_bands=range(4, 6),
+              eshift=eshift,  # integrate_gamma = 0,
               mode='BSE',
-              nbands=8,
-              q_c=[0.0, 0.0, 0.0])
+              nbands=8)
 
-    chi_irr_bse = bse.get_chi_wGG(eta=0.2, optical=True, irreducible=True,
-                                  w_w=np.array([-3, 0, 6]))
-    ref = [(-0.12319305784052169 - 0.005900101520066767j),
-           (-3.519763508433997e-10 - 0.035759806607911705j),
-           (3.031540803184087e-05 - 0.0004896329314266086j)]
+    w_w = np.linspace(0, 10, 5)
+    wd = get_frequency_descriptor(w_w, gs=gs)
 
-    ref_ntda = [(-0.12062692823607513 - 0.007967378306545791j),
-                (1.2221039158990135e-06 - 0.0395577620626965j),
-                (-4.0745632474313676e-05 - 0.0005604860798409453j)]
+    chi0calc_small = Chi0Calculator(gs, context,
+                                    wd=wd,
+                                    nbands=slice(3, 6),
+                                    intraband=False,
+                                    hilbert=False,
+                                    eta=eta,
+                                    ecut=ecut,
+                                    eshift=eshift)
 
-    for i, r in enumerate(ref if tda else ref_ntda):
-        assert np.allclose(chi_irr_bse[i, i, i + 1], r)
+    chi0calc_large = Chi0Calculator(gs, context,
+                                    wd=wd,
+                                    nbands=8,
+                                    intraband=False,
+                                    hilbert=False,
+                                    eta=eta,
+                                    ecut=ecut,
+                                    eshift=eshift)
+
+    bse_plus = BSE_Plus(bse, chi0calc_large)
+
+    chi_bse_plus = bse_plus.get_chi_wGG(optical=True)
+
+    if world.rank == 0:
+        chi_BSE_plus_WGG = chi_bse_plus
+
+    coulomb_kernel = CoulombKernel.from_gs(gs, truncation=None)
+
+    chi_irr_BSE_wGG = bse.get_chi_wGG(eta=eta,
+                                      optical=True,
+                                      irreducible=True,
+                                      w_w=w_w)
+
+    if world.rank == 0:
+        chi_irr_BSE_WGG = chi_irr_BSE_wGG
+    else:
+        chi_irr_BSE_WGG = None
+
+    chi0_data_small = chi0calc_small.calculate(q_c)
+    dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel,
+                                         xc_kernel=None, cd=gs.cd)
+    chi0_small_wGG = dyson_eqs_small.get_chi0_wGG(direction='x')
+    chi0_small_WGG = dyson_eqs_small.wblocks.all_gather(chi0_small_wGG)
+
+    chi0_data_large = chi0calc_large.calculate(q_c)
+    dyson_eqs_large = Chi0DysonEquations(chi0_data_large, coulomb_kernel,
+                                         xc_kernel=None, cd=gs.cd)
+    chi0_large_wGG = dyson_eqs_large.get_chi0_wGG(direction='x')
+    chi0_large_WGG = dyson_eqs_large.wblocks.all_gather(chi0_large_wGG)
+
+    v_G = coulomb_kernel.V(chi0_data_large.qpd)
+
+    v_G[0] = 0.0
+
+    if world.rank == 0:
+        chi_irr_BSE_plus_WGG = \
+            chi_irr_BSE_WGG - chi0_small_WGG + chi0_large_WGG
+
+        eye = np.eye(len(chi_irr_BSE_plus_WGG[1]))
+
+        chi_BSE_plus_WGG_manuel = \
+            np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(v_G),
+                            chi_irr_BSE_plus_WGG)
+
+        assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
+                                                        rel=1e-3, abs=1e-4)
+
+    # assertion error if ecuts do not match
+    with pytest.raises(AssertionError, match=r'Cutoff energies should*'):
+        chi0calc_ecut_10 = Chi0Calculator(gs, context,
+                                          wd=wd,
+                                          nbands=8,
+                                          intraband=False,
+                                          hilbert=False,
+                                          eta=eta,
+                                          ecut=10,
+                                          eshift=eshift)
+
+        BSE_Plus(bse, chi0calc_ecut_10)
+
+    # assertion error if more bands in the bse calculation
+    with pytest.raises(AssertionError, match=r'Large chi0 calculation*'):
+        chi0calc_bands_5 = Chi0Calculator(gs, context,
+                                          wd=wd,
+                                          nbands=5,
+                                          intraband=False,
+                                          hilbert=False,
+                                          eta=eta,
+                                          ecut=ecut,
+                                          eshift=eshift)
+
+        BSE_Plus(bse, chi0calc_bands_5)
+
+    # assertion error if different eshifts
+    with pytest.raises(AssertionError, match=r'Inconsistent use of eshift'):
+        chi0calc_eshift = Chi0Calculator(gs, context,
+                                         wd=wd,
+                                         nbands=8,
+                                         intraband=False,
+                                         hilbert=False,
+                                         eta=eta,
+                                         ecut=ecut,
+                                         eshift=3)
+
+        BSE_Plus(bse, chi0calc_eshift)
