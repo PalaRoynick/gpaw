@@ -1347,7 +1347,8 @@ class BSE_Plus:
                                                ecut=self.ecut,
                                                eshift=self.eshift)
 
-    def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None):
+    def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None,
+                    chi_BSE=False, chi_RPA=False):
 
         if comm is None:
             comm = world
@@ -1373,6 +1374,7 @@ class BSE_Plus:
         chi0_limited_wGG = dyson_eqs_limited.get_chi0_wGG(self.direction)
         chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
             chi0_limited_wGG)
+        chi0_limited_wGG = chi0_limited_WGG[self.blocks.myslice]
 
         # chi0 fully converged
         chi0_data_full = self.chi0calc_full.calculate(self.q_c)
@@ -1380,6 +1382,7 @@ class BSE_Plus:
                                             xc_kernel, self.gs.cd)
         chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.direction)
         chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
+        chi0_full_wGG = chi0_full_WGG[self.blocks.myslice]
 
         self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
 
@@ -1398,9 +1401,8 @@ class BSE_Plus:
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
-        chi_irr_BSE_plus_wGG = chi_irr_BSE_wGG - \
-            chi0_limited_WGG[self.blocks.myslice] + \
-            chi0_full_WGG[self.blocks.myslice]
+        chi_irr_BSE_plus_wGG = \
+            chi_irr_BSE_wGG - chi0_limited_wGG + chi0_full_wGG
 
         eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
 
@@ -1409,8 +1411,29 @@ class BSE_Plus:
                             chi_irr_BSE_plus_wGG)
 
         self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
+
+        return_chi = [self.chi_BSE_plus_WGG]
+
+        if chi_BSE is True:
+            chi_BSE_wGG = \
+                np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
+                                chi_irr_BSE_wGG)
+
+            self.chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
+
+            return_chi.append(self.chi_BSE_WGG)
+
+        if chi_RPA is True:
+            chi_full_wGG = \
+                np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
+                                chi0_full_wGG)
+
+            self.chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
+
+            return_chi.append(self.chi_full_WGG)
+
         if world.rank == 0:
-            return self.chi_BSE_plus_WGG
+            return return_chi[0] if len(return_chi) == 1 else tuple(return_chi)
 
     def get_refractive_index(self):
         chi = self.chi_BSE_plus_WGG
