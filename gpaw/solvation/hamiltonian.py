@@ -1,13 +1,21 @@
 from gpaw.hamiltonian import RealSpaceHamiltonian
+from gpaw.pw.hamiltonian import ReciprocalSpaceHamiltonian
 from gpaw.solvation.poisson import WeightedFDPoissonSolver
+from gpaw.pw.descriptor import PWDescriptor
 from gpaw.fd_operators import Gradient
 from gpaw.io.logger import indent
 from ase.units import Ha
 import numpy as np
 
 
-class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
-    """Realspace Hamiltonian with continuum solvent model.
+class SolvationHamiltonian:
+    """Constructor of SolvationHamiltonian class, used to handle continuum 
+    solvent models.
+
+    Additional arguments not present in Hamiltonian:
+    cavity       -- A Cavity instance.
+    dielectric   -- A Dielectric instance.
+    interactions -- A list of Interaction instances.
 
     See also Section III of
     A. Held and M. Walter, J. Chem. Phys. 141, 174108 (2014).
@@ -17,33 +25,27 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         self,
         # solvation related arguments:
         cavity, dielectric, interactions,
-        # RealSpaceHamiltonian arguments:
-        gd, finegd, nspins, collinear, setups, timer, xc, world,
-        redistributor, vext=None, psolver=None,
-        stencil=3):
-        """Constructor of SolvationRealSpaceHamiltonian class.
+        # Hamiltonian arguments:
+        *args, **kwargs):
 
-        Additional arguments not present in RealSpaceHamiltonian:
-        cavity       -- A Cavity instance.
-        dielectric   -- A Dielectric instance.
-        interactions -- A list of Interaction instances.
-        """
         self.cavity = cavity
         self.dielectric = dielectric
         self.interactions = interactions
+
+        finegd = kwargs.get('finegd')
+        psolver = kwargs.get('psolver')
+
         cavity.set_grid_descriptor(finegd)
         dielectric.set_grid_descriptor(finegd)
         for ia in interactions:
             ia.set_grid_descriptor(finegd)
         if psolver is None:
-            psolver = WeightedFDPoissonSolver()
+            psolver = self.poisson_default(*args, **kwargs)
         psolver.set_dielectric(self.dielectric)
         self.gradient = None
-        RealSpaceHamiltonian.__init__(
-            self,
-            gd, finegd, nspins, collinear, setups, timer, xc, world,
-            vext=vext, psolver=psolver,
-            stencil=stencil, redistributor=redistributor)
+        kwargs.update({'psolver': psolver})
+        print(kwargs.get('gd'))
+        super().__init__(**kwargs)
 
         for ia in interactions:
             setattr(self, 'e_' + ia.subscript, None)
@@ -53,14 +55,14 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         self.e_el_extrapolated = None
 
     def __str__(self):
-        s = RealSpaceHamiltonian.__str__(self) + '\n'
+        s = super().__str__() + '\n'
         s += '  Solvation:\n'
         components = [self.cavity, self.dielectric] + self.interactions
         s += ''.join([indent(str(c), 2) for c in components])
         return s
 
     def estimate_memory(self, mem):
-        RealSpaceHamiltonian.estimate_memory(self, mem)
+        super().estimate_memory(mem)
         solvation = mem.subnode('Solvation')
         for name, obj in [
             ('Cavity', self.cavity),
@@ -84,16 +86,18 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         self.dielectric.allocate()
         for ia in self.interactions:
             ia.allocate()
-        RealSpaceHamiltonian.initialize(self)
+        super().initialize()
 
     def update(self, density, wfs=None, kin_en_using_band=True):
         self.timer.start('Hamiltonian')
+
+        # need to deal with this in pw (update g params)
         if self.vt_sg is None:
             self.timer.start('Initialize Hamiltonian')
             self.initialize()
             self.timer.stop('Initialize Hamiltonian')
 
-        cavity_changed = self.cavity.update(self.new_atoms, density)
+        cavity_changed = self.cavity.update(self.new_atoms, self.realspace_dens(density))
         if cavity_changed:
             self.cavity.update_vol_surf()
             self.dielectric.update(self.cavity)
@@ -104,7 +108,7 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         ia_changed = [
             ia.update(
                 self.new_atoms,
-                density,
+                self.realspace_dens(density),
                 self.cavity if cavity_changed else None)
             for ia in self.interactions]
         if np.any(ia_changed):
@@ -149,7 +153,7 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         self.timer.stop('Hamiltonian')
 
     def update_pseudo_potential(self, density):
-        ret = RealSpaceHamiltonian.update_pseudo_potential(self, density)
+        ret = super().update_pseudo_potential(density)
         if not self.cavity.depends_on_el_density:
             return ret
         del_g_del_n_g = self.cavity.del_g_del_n_g
@@ -167,19 +171,21 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
         for ia in self.interactions:
             if self.cavity.depends_on_atomic_positions:
                 for a, F_v in enumerate(F_av):
-                    del_g_del_r_vg = self.cavity.get_del_r_vg(a, dens)
+                    del_g_del_r_vg = self.cavity.get_del_r_vg(a, self.realspace_dens(dens))
                     for v in (0, 1, 2):
                         F_v[v] -= self.finegd.integrate(
                             ia.delta_E_delta_g_g * del_g_del_r_vg[v],
                             global_integral=False)
             if ia.depends_on_atomic_positions:
                 for a, F_v in enumerate(F_av):
-                    del_E_del_r_vg = ia.get_del_r_vg(a, dens)
+                    del_E_del_r_vg = ia.get_del_r_vg(a, self.realspace_dens(dens))
                     for v in (0, 1, 2):
                         F_v[v] -= self.finegd.integrate(
                             del_E_del_r_vg[v],
                             global_integral=False)
-        return RealSpaceHamiltonian.calculate_forces(self, dens, F_av)
+
+        # need a method to get out same-space F_av? e.g. need an FFT for recip.
+        return super().calculate_forces(dens, self.samespace_fav(F_av))
 
     def el_force_correction(self, dens, F_av):
         if not self.cavity.depends_on_atomic_positions:
@@ -195,8 +201,7 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
                     global_integral=False)
 
     def get_energy(self, e_entropy, wfs, kin_en_using_band=True, e_sic=None):
-        RealSpaceHamiltonian.get_energy(self, e_entropy, wfs,
-                                        kin_en_using_band, e_sic)
+        super().get_energy(e_entropy, wfs, kin_en_using_band, e_sic)
         # The total energy calculated by the parent class includes the
         # solvent electrostatic contributions but not the interaction
         # energies. We add those here and store the electrostatic energies.
@@ -265,3 +270,33 @@ class SolvationRealSpaceHamiltonian(RealSpaceHamiltonian):
             log()
 
         self.cavity.summary(log)
+
+
+class SolvationRealSpaceHamiltonian(SolvationHamiltonian, RealSpaceHamiltonian):
+    """Realspace Hamiltonian with continuum solvent model.
+    """
+
+    def poisson_default(self, poi_par=None, *args, **kwargs):
+        return WeightedFDPoissonSolver() if poi_par is None else WeightedFDPoissonSolver(**poi_par)
+
+    def realspace_dens(self, density):
+        return density
+
+    def samespace_fav(self, F_av):
+        return F_av
+
+
+class SolvationReciprocalSpaceHamiltonian(SolvationHamiltonian, ReciprocalSpaceHamiltonian):
+    """Reciprocal Hamiltonian with continuum solvent model.
+    """
+
+    def poisson_default(self, poi_par=None, *args, **kwargs):
+        # when combined with our other merge request:
+        # return ConjugateGradientPoissonSolver(kwargs.get('pd3'))
+        pass
+
+    def realspace_dens(self, density):
+        return self.pd3.ifft(density)
+
+    def samespace_fav(self, F_av):
+        return self.pd3.fft(F_av)
