@@ -3,7 +3,6 @@ from ase.optimize import BFGS
 from gpaw import GPAW
 # --- literalinclude import-end ---
 from ase.filters import FrechetCellFilter
-# --- literalinclude import-filter ---
 from params_forces import calculator_params as fast_params
 from params_stresses import calculator_params as accurate_params
 
