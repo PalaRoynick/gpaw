@@ -9,8 +9,8 @@ calculator_params = {
     "convergence": {"density": 1e-6,
                     "forces": 1e-4},
     "occupations": {"name": "fermi-dirac",
-                    "width": 0.05},
+                    "width": 0.01},
     "mixer": {"method": "fullspin",
               "backend": "pulay"},
-    "txt": "rlx.txt",
+    "txt": "rlx_accurate.txt",
 }

@@ -11,5 +11,5 @@ calculator_params = {
                     "width": 0.05},
     "mixer": {"method": "fullspin",
               "backend": "pulay"},
-    "txt": "rlx.txt",
+    "txt": "rlx_fast.txt",
 }
