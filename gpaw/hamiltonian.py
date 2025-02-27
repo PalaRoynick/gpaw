@@ -713,6 +713,8 @@ class RealSpaceHamiltonian(Hamiltonian):
         self.vbar.add(self.vbar_g)
 
     def update_pseudo_potential(self, dens):
+        # XXX/CB: Need to make sure these get properly updated in our
+        # reciprocal space hamiltonian, I guess after the fact.
         self.timer.start('vbar')
         e_zero = self.finegd.integrate(self.vbar_g, dens.nt_g,
                                        global_integral=False)

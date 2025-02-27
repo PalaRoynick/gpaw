@@ -7,6 +7,7 @@ from gpaw.pw.lfc import PWLFC
 from gpaw.pw.poisson import (ChargedReciprocalSpacePoissonSolver,
                              ReciprocalSpacePoissonSolver)
 from gpaw.typing import Array3D
+from gpaw.templogger import logg
 
 
 class ReciprocalSpaceHamiltonian(Hamiltonian):
@@ -81,6 +82,7 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
     def update_pseudo_potential(self, dens):
         ebar = self.pd2.integrate(self.vbar_Q, dens.nt_Q,
                                   global_integral=False)
+
         with self.timer('Poisson'):
             epot = self.poisson.solve(self.vHt_q, dens)
             epot /= self.finegd.comm.size
@@ -115,6 +117,12 @@ class ReciprocalSpaceHamiltonian(Hamiltonian):
                 self.vt_Q += vxc_Q / self.nspins
             else:
                 vt_G += vxc_G
+
+        # XXX/CB: Can we back out the correct vt_sg from the above?
+        logg("vHt_g, vHt_q ifft: ")
+        logg(self.vHt_g.shape)
+        logg(self.vHt_g)
+        logg(self.pd3.ifft(self.vHt_q))
 
         self.timer.stop('XC 3D grid')
 

@@ -51,6 +51,8 @@ from gpaw.xc import XC
 from gpaw.xc.kernel import XCKernel
 from gpaw.xc.sic import SIC
 
+from gpaw.templogger import logg
+
 
 class GPAW(Calculator):
     """This is the ASE-calculator frontend for doing a GPAW calculation."""
@@ -769,6 +771,7 @@ class GPAW(Calculator):
 
         self.create_setups(mode, xc)
 
+        # XXX/CB: ALERT
         if not realspace:
             pbc_c = np.ones(3, bool)
 

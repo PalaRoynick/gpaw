@@ -7,6 +7,8 @@ import gpaw.fftw as fftw
 from gpaw.utilities.blas import mmm, r2k, rk
 from gpaw.gpu import cupy as cp
 
+from gpaw.templogger import logg
+
 
 class PWDescriptor:
     ndim = 1  # all 3d G-vectors are stored in a 1d ndarray
@@ -24,6 +26,8 @@ class PWDescriptor:
         self.comm = gd.comm
 
         ecut0 = 0.5 * pi**2 / (self.gd.h_cv**2).sum(1).max()
+        # XXX/REMOVE
+        ecut = 0.9999 * ecut0
         if ecut is None:
             ecut = 0.9999 * ecut0
         else:

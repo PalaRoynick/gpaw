@@ -1,0 +1,59 @@
+I wrote this to AAP in 5/24. A reasonable layout of our broader plan.
+
+From my initial passes through the main files we'll be updating, here's where
+I think we should go:
+
+* Start by leaving cavity, dielectric, and interaction calculations in real
+space, including in hamiltonian.py. Basically, we just sub in FFTed versions
+via pd3 of inputs to each super call. Kind of a proof of concept that
+building off ReciprocalSpace is a valid approach. This might be a little funky
+with in-place edits done by the super calls...i.e., we might have to add an
+extra line in various places to keep vt_g consistent with vt_Q.
+
+* From here, we try moving the potentials in our main file to Fourier space. I.
+e., we hold v<x>_q instead of v<x>_g, but still use our wrapped Poisson solver
+(so, ifft these things there). We should also move over our electron densities
+in this step. What I mean by "moving over" is moving all calculations with
+v<x>_g to Fourier space.
+
+* I think next step (unless I'm missing something) is to evaluate whether it's
+worth converting cavity, interactions, dielectric to Fourier space. Most of the
+calculations we actually do with these things will be nasty in Fourier space,
+unless my intuition is misguided. My instincts say we should try to keep these
+things in real space, and rely on an ifft from ReciprocalSpaceHamiltonian
+results to modify/interact them. Kind of like what we plan to do with the
+Poisson solver. Here, in order to test this, we'll have to write some new
+classes (overwriting the files that I have copied, but not edited, besides
+hamiltonian.py in this file), and find a way to put the grad squared/force
+calculation stuff into Fourier space. Again, looks pretty gross to me. Not sure
+yet how del_x_del_x_x is managed in the auxiliary files like cavity.py and
+dielectric.py (maybe there is some save there, given taking these real-space
+derivatives in Fourier space might be simpler), but I can't imagine its so much
+better in Fourier space that we decide to take the hit on a slower and even
+more clunky force update in hamiltonian.py.
+
+* From here, we can start work on our new Poisson solver, but I think only
+after we do some serious testing on what we get out of the first three bullets.
+That will cover most of what we've talked about thus far, save maybe some edits
+to sjm.py.
+
+Things to keep in mind as we execute these:
+
+* We need to find the right way to fft back and forth with respect to these
+GPAW grid objects. pd2/3 seem to have builtin ifft methods...but how exactly do
+they interact with finegd? In vanilla real-space Hamiltonian, it looks like
+finegd is used as the real space grid in question...is pd2/3 parallel Fourier
+grid descriptors to finegd, or in the pw Hamiltonian, is finegd now really
+referring to a planewave grid? Something to think about, particularly for our
+first step. This is the main question we need to answer to confidently tackle
+bullet one. I might be missing something silly, so feel free to correct me.
+From looking at ReciprocalSpaceHamiltonian, it looks to me like pd2/3
+facilitate conversion over a grid on finegd, which would be ideal for us.
+
+* For bullet 3 above, in order to me to get a sense for what we should do, I 
+think I'll probably need some help understanding the physics, or at least which 
+of the cavities/interactions we are worried about (there are many classes in 
+these files; I'd guess we don't rely on all of them?).
+
+I'm sure more will come up to add to this list as we go. Much still to
+understand in terms of the code structure.
