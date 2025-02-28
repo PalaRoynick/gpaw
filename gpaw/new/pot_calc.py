@@ -23,6 +23,7 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
+from gpaw.new.energies import DFTEnergies
 from gpaw.new.external_potential import ExternalPotential
 from gpaw.new.logger import indent
 from gpaw.new.potential import Potential
@@ -39,14 +40,14 @@ class PotentialCalculator:
                  poisson_solver,
                  setups: list[Setup],
                  *,
-                 fracpos_ac: Array2D,
+                 relpos_ac: Array2D,
                  external_potential: ExternalPotential | None = None,
                  soc: bool = False):
         self.poisson_solver = poisson_solver
         self.xc = xc
         self.setups = setups
         self.external_potential = external_potential or ExternalPotential()
-        self.fracpos_ac = fracpos_ac
+        self.relpos_ac = relpos_ac
         self.soc = soc
 
     def __str__(self):
@@ -60,7 +61,9 @@ class PotentialCalculator:
                                    ) -> tuple[dict[str, float],
                                               UGArray,
                                               UGArray,
-                                              DistributedArrays]:
+                                              DistributedArrays,
+                                              AtomArrays,
+                                              float]:
         raise NotImplementedError
 
     def calculate_charges(self, vHt_x):
@@ -74,25 +77,27 @@ class PotentialCalculator:
                                    ibzwfs=None,
                                    vHt_x: DistributedArrays | None = None,
                                    kpt_band_comm: MPIComm | None = None
-                                   ) -> tuple[Potential, AtomArrays]:
+                                   ) -> tuple[Potential,
+                                              DFTEnergies,
+                                              AtomArrays]:
         xc = self.xc
         if xc.exx_fraction != 0.0:
             from gpaw.new.xc import create_functional
             self.xc = create_functional('PBE', xc.grid)
-        potential, Q_al = self.calculate(density, ibzwfs, vHt_x, kpt_band_comm)
+        potential, energies, V_al = self.calculate(
+            density, ibzwfs, vHt_x, kpt_band_comm)
         if xc.exx_fraction != 0.0:
             self.xc = xc
-        return potential, Q_al
+        return potential, energies, V_al
 
     def calculate(self,
                   density,
                   ibzwfs=None,
                   vHt_x: DistributedArrays | None = None,
                   kpt_band_comm: MPIComm | None = None
-                  ) -> tuple[Potential, AtomArrays]:
-        energies, vt_sR, dedtaut_sr, vHt_x = self.calculate_pseudo_potential(
-            density, ibzwfs, vHt_x)
-
+                  ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+        energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
+            self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
         e_kinetic = 0.0
         for spin, (vt_R, nt_R) in enumerate(zips(vt_sR, density.nt_sR)):
             e_kinetic -= vt_R.integrate(nt_R)
@@ -108,20 +113,19 @@ class PotentialCalculator:
         else:
             dedtaut_sR = None
 
-        energies['kinetic'] = e_kinetic
+        energies['kinetic_correction'] = e_kinetic
 
         if kpt_band_comm is None:
             if ibzwfs is None:
                 kpt_band_comm = serial_comm
             else:
                 kpt_band_comm = ibzwfs.kpt_band_comm
-        Q_aL = self.calculate_charges(vHt_x)
         dH_asii, corrections = calculate_non_local_potential(
             self.setups,
             density,
             self.xc,
             self.external_potential,
-            Q_aL,
+            V_aL,
             self.soc,
             kpt_band_comm)
 
@@ -131,7 +135,9 @@ class PotentialCalculator:
                 print(f'{key:10} {energies[key]:15.9f} {e:15.9f}')
             energies[key] += e
 
-        return Potential(vt_sR, dH_asii, dedtaut_sR, energies, vHt_x), Q_aL
+        return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
+                DFTEnergies(**energies),
+                V_aL)
 
 
 @trace
@@ -139,27 +145,29 @@ def calculate_non_local_potential(setups,
                                   density,
                                   xc,
                                   ext_pot,
-                                  Q_aL,
+                                  V_aL,
                                   soc: bool,
                                   kpt_band_comm: MPIComm
                                   ) -> tuple[AtomArrays,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
     D_asii = density.D_asii.to_xp(np)
-    dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
-    Q_aL = Q_aL.to_xp(np)
+    dH_asii = D_asii.layout.new(dtype=dtype).zeros(density.ncomponents)
+    V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
 
+    # Distribute atom indices for this domain-comm over kpt-comm
+    # and band-comm:
     mya = [a for rank, a in enumerate(D_asii.keys())
            if rank % kpt_band_comm.size == kpt_band_comm.rank]
-    domain_comm = density.D_asii.layout.atomdist.comm
+
     pool = thread_pool(int(os.environ.get('GPAW_NWORKERS', 1)))
 
-    def target(a):
-        return calculate_non_local_potential1(
-            setups[a], xc, ext_pot, D_asii[a], Q_aL[a], soc)
+    def target(a: int) -> tuple[int, np.ndarray, dict[str, float]]:
+        return (a,) + calculate_non_local_potential1(
+            setups[a], xc, ext_pot, D_asii[a], V_aL[a], soc)
 
-    for a, (dH_sii, corrections) in enumerate(pool.map(target, mya)):
+    for a, dH_sii, corrections in pool.map(target, mya):
         dH_asii[a][:] = dH_sii
         for key, e in corrections.items():
             energy_corrections[key] += e
@@ -167,9 +175,11 @@ def calculate_non_local_potential(setups,
     kpt_band_comm.sum(dH_asii.data)
 
     # Sum over domain:
-    names = ['kinetic', 'coulomb', 'zero', 'xc', 'external', 'spinorbit']
+    names = ['kinetic_correction', 'coulomb', 'zero', 'xc', 'external',
+             'spinorbit']
     energies = np.array([energy_corrections[name] for name in names])
-    density.D_asii.layout.atomdist.comm.sum(energies)
+    domain_comm = density.D_asii.layout.atomdist.comm
+    domain_comm.sum(energies)
     kpt_band_comm.sum(energies)
 
     return (dH_asii.to_xp(density.D_asii.layout.xp),
@@ -180,7 +190,7 @@ def calculate_non_local_potential1(setup: Setup,
                                    xc: Functional,
                                    ext_pot,
                                    D_sii: Array3D,
-                                   Q_L: Array1D,
+                                   V_L: Array1D,
                                    soc: bool) -> tuple[Array3D,
                                                        dict[str, float]]:
     ncomponents = len(D_sii)
@@ -191,7 +201,7 @@ def calculate_non_local_potential1(setup: Setup,
 
     dH_p = (setup.K_p + setup.M_p +
             setup.MB_p + 2.0 * setup.M_pp @ D_p +
-            setup.Delta_pL @ Q_L)
+            setup.Delta_pL @ V_L)
     e_kinetic = setup.K_p @ D_p + setup.Kc
     e_zero = setup.MB + setup.MB_p @ D_p
     e_coulomb = setup.M + D_p @ (setup.M_p + setup.M_pp @ D_p)
@@ -218,7 +228,7 @@ def calculate_non_local_potential1(setup: Setup,
 
     e_kinetic -= (D_sii * dH_sii).sum().real
 
-    return dH_sii, {'kinetic': e_kinetic,
+    return dH_sii, {'kinetic_correction': e_kinetic,
                     'coulomb': e_coulomb,
                     'zero': e_zero,
                     'xc': e_xc,

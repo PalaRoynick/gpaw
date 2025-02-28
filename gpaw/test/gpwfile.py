@@ -747,6 +747,19 @@ class GPWFiles(CachedFilesHandler):
         return atoms.calc
 
     @gpwfile
+    def c2_gw_more_bands(self):
+        a = 3.567
+        atoms = bulk('C', 'diamond', a=a)
+        atoms.calc = GPAW(mode=PW(400),
+                          parallel={'domain': 1},
+                          kpts={'size': (2, 2, 2), 'gamma': True},
+                          xc='LDA',
+                          occupations=FermiDirac(0.001))
+        atoms.get_potential_energy()
+        atoms.calc.diagonalize_full_hamiltonian(nbands=128)
+        return atoms.calc
+
+    @gpwfile
     def na_pw(self):
         from ase.build import bulk
 
@@ -1213,8 +1226,7 @@ class GPWFiles(CachedFilesHandler):
     def p4_pw_spinpol(self):
         return self._p4(spinpol=True)
 
-    @gpwfile
-    def ni_pw_kpts333(self):
+    def _ni_pw_kpts333(self, setups={'Ni': '10'}):
         from ase.dft.kpoints import monkhorst_pack
         # from gpaw.mpi import serial_comm
         Ni = bulk('Ni', 'fcc')
@@ -1226,7 +1238,7 @@ class GPWFiles(CachedFilesHandler):
                     txt=self.folder / 'ni_pw_kpts333.txt',
                     kpts=kpts,
                     occupations=FermiDirac(0.001),
-                    setups={'Ni': '10'},
+                    setups=setups,
                     parallel=dict(domain=1),  # >1 fails on 8 cores
                     # communicator=serial_comm
                     )
@@ -1235,6 +1247,14 @@ class GPWFiles(CachedFilesHandler):
         Ni.get_potential_energy()
         calc.diagonalize_full_hamiltonian()
         return calc
+
+    @gpwfile
+    def ni_pw(self):
+        return self._ni_pw_kpts333(setups={})
+
+    @gpwfile
+    def ni_pw_kpts333(self):
+        return self._ni_pw_kpts333()
 
     @gpwfile
     def c_pw(self):
@@ -1301,12 +1321,16 @@ class GPWFiles(CachedFilesHandler):
                    scaled_positions=[[0.5, 0.5, 0.5]],
                    pbc=False)
 
-        Tl.calc = GPAWNew(mode={'name': 'pw', 'ecut': 300}, xc='LDA',
-                          occupations={'name': 'fermi-dirac', 'width': 0.01},
-                          symmetry='off',
-                          convergence={'density': 1e-6},
-                          magmoms=[[0, 0, 0.5]], soc=True,
-                          txt=self.folder / 'Tl_box_pw.txt')
+        Tl.calc = GPAWNew(
+            mode={'name': 'pw', 'ecut': 300},
+            xc='LDA',
+            occupations={'name': 'fermi-dirac', 'width': 0.01},
+            symmetry='off',
+            convergence={'density': 1e-6},
+            parallel={'domain': 1, 'band': 1},
+            magmoms=[[0, 0, 0.5]],
+            soc=True,
+            txt=self.folder / 'Tl_box_pw.txt')
         Tl.get_potential_energy()
         return Tl.calc
 
