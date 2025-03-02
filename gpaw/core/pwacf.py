@@ -85,7 +85,7 @@ class PWLFC:  # (BaseLFC)
                  *,
                  xp,
                  integrals: ArrayLike1D | float | None = None,
-                 blocksize: int | None = None):  # fails with blocksize
+                 blocksize: int | None = 8192):  # fails with blocksize
         """Reciprocal-space plane-wave localized function collection.
 
         spline_aj: list of list of spline objects
@@ -239,21 +239,29 @@ class PWLFC:  # (BaseLFC)
         self.nI = I1
             
     def expand_and_add_gpu(self, c_xI, a_xG, cc=False):
-        a_xG *= self.pw.dv # TODO: add to kernel 
+        #a_xG *= self.pw.dv # TODO: add to kernel 
         for G1, G2 in self.block():
-            f_GI = self.expand(G1, G2, cc=cc)
+            #f_GI = self.expand(G1, G2, cc=cc)
 
             if self.real:
                 # f_IG = f_IG.view(float)
-                G1 *= 2
-                G2 *= 2
-            emiGR_Ga = self.get_emiGR_Ga(G1, G2)
-            f_Gs = self.f_Gs[G1:G2]
-            Y_GL = self.Y_GL[G1:G2]
+                aG1 = G1 * 2
+                aG2 = G2 * 2
+            emiGR_Ga = self.get_emiGR_Ga(G1, G2) #.copy()
+            f_Gs = self.f_Gs[G1:G2] #.copy()
+            Y_GL = self.Y_GL[G1:G2] #.copy()
+            assert f_Gs.flags.c_contiguous
+            assert Y_GL.flags.c_contiguous
+            assert a_xG[:, G1:G2].flags.c_contiguous
+            assert c_xI.flags.c_contiguous
+            assert emiGR_Ga.flags.c_contiguous
+            #temp = a_xG[:, aG1:aG2].copy()
             pwlfc_expand_and_add_gpu(f_Gs, emiGR_Ga, Y_GL,
                                      self.l_s, self.a_J, self.s_J,
-                                     self.I_J, c_xI, a_xG[:, G1:G2])  # Non contiguous, fails
-        a_xG /= self.pw.dv 
+                                     self.I_J, c_xI, a_xG[:, G1:G2],
+                                     1.0 / self.pw.dv)  # Non contiguous, fails
+            #a_xG[:, aG1:aG2] = temp
+        #a_xG /= self.pw.dv 
 
 
     @trace
@@ -357,9 +365,13 @@ class PWLFC:  # (BaseLFC)
             return
         c_xI = c_xI.reshape((nx, self.nI))
         a_xG = a_xG.reshape((nx, a_xG.shape[-1])).view(self.dtype)
-
+        #a_xG[:] = 0.0
+        #c_xI[:] = 0.0
+        #c_xI[0, 1] = 1
         if self.xp is not np and nx == 1:
-            return self.expand_and_add_gpu(c_xI, a_xG)
+             #a_xG_ref = a_xG.copy()
+             #a_xG_before_add= a_xG.copy()
+             return self.expand_and_add_gpu(c_xI, a_xG)
 
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=False)
@@ -376,6 +388,14 @@ class PWLFC:  # (BaseLFC)
                 gpu_gemm('N', 'T',
                          c_xI, f_GI, a_xG[:, G1:G2],
                          1.0 / self.pw.dv, 1.0)
+
+        #if self.xp is not np and nx == 1:
+        #    import cupy
+        #    cupy.cuda.runtime.deviceSynchronize()
+        #    for I in range(1000):
+        #        print(I, 'ref', a_xG[:, I] - a_xG_before_add[:, I], 'new', a_xG_ref[:, I] - a_xG_before_add[:, I])
+        #        #print('div', (a_xG[:, I] - a_xG_before_add[:, I]) / (a_xG_ref[:, 0:4] - a_xG_before_add[:, 0:4]))
+        #    assert self.xp.allclose(a_xG, a_xG_ref)
 
     @trace
     def integrate(self, a_xG, c_axi=None, q=-1, add_to=False):

@@ -688,35 +688,44 @@ __global__ void pwlfc_expand_and_add_kernel_8(double* f_Gs,
 				       int nsplines,
                        int nx,
                        double* c_xI,
-                       double* a_xG)
+                       double* a_xG,
+                       double alpha)
 {
     int G = threadIdx.x + blockIdx.x * blockDim.x;
-    int J = threadIdx.y + blockIdx.y * blockDim.y;
+    //int J = threadIdx.y + blockIdx.y * blockDim.y;
     gpuDoubleComplex imag_powers[4] = {make_gpuDoubleComplex(1.0,0),
 				       make_gpuDoubleComplex(0.0,-1.0),
 				       make_gpuDoubleComplex(-1.0,0),
 				       make_gpuDoubleComplex(0, 1.0)};
-    if ((G < nG) && (J < nJ))
+    if ((G < nG))
     {
 	f_Gs += G*nsplines;
 	emiGR_Ga += G*natoms;
 	Y_GL += G*nL;
+    for (int J=0; J< nJ; J++) {
 
 	int s = s_J[J];
 	int l = l_s[s];
 	gpuDoubleComplex f1 = gpuCmulD(gpuCmul(emiGR_Ga[a_J[J]],
 					       imag_powers[l % 4]),
 				       f_Gs[s]);
-    int I = 0;
+    int I = I_J[J];
 	for (int m = 0; m < 2 * l + 1; m++) {
 	    gpuDoubleComplex f = gpuCmulD(f1, Y_GL[l * l + m]); // f_GI
         for (int x=0; x<nx; x++)
         {
-            a_xG[x * (2 * nG) + G] += c_xI[x * nI + I] * f.x;
-            a_xG[x * (2 * nG) + G + nG] += c_xI[x * nI + I] * f.y;
+            double c = c_xI[x * nI + I] * alpha;
+            // a_xG += c_xI f_IG
+            double sumReal = c * f.x;
+            //printf("%d %d %d %d updated %d\n", threadIdx.x, blockIdx.x, threadIdx.y, blockIdx.y, x*(2*nG)+G*2);
+            double sumImag = c * f.y;
+            a_xG[x * (2 * nG) + 2 * G] += sumReal;
+            a_xG[x * (2 * nG) + G * 2 + 1] += sumImag;
         }
         I++;
     }
+    }
+
     }
 }
 
@@ -983,16 +992,17 @@ void pwlfc_expand_and_add_gpu_launch_kernel(int itemsize,
                                     int nsplines,
                                     int nx,
                                     double* c_xI,
-                                    double* a_xG)
+                                    double* a_xG,
+                                    double alpha)
 {
     assert (itemsize == 8);
-    printf("pwlfc_expand_and_add_gpu_kernel_8 %d %d\n", nG, nJ);
+    printf("pwlfc_expand_and_add_gpu_kernel_8 nG=%d nJ=%d nL=%d nI=%d\n", nG, nJ, nL, nI);
     if ((nG == 0) || (nJ == 0))
     {
       return;
     }
 	gpuLaunchKernel(pwlfc_expand_and_add_kernel_8,
-			dim3((nG+255)/256, nJ),
+			dim3((nG+255)/256, 1),
 			dim3(256, 1),
 			0, 0,
 			f_Gs,
@@ -1010,7 +1020,8 @@ void pwlfc_expand_and_add_gpu_launch_kernel(int itemsize,
 			nsplines,
             nx,
             c_xI,
-            a_xG);
+            a_xG,
+            alpha);
     gpuCheckLastError();
 }
 
