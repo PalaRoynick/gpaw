@@ -665,22 +665,21 @@ __global__ void pwlfc_expand_kernel_8(double* f_Gs,
     }
 }
 
+template <bool cc>
 __global__ void pwlfc_expand_kernel_16(double* f_Gs,
-				       gpuDoubleComplex *emiGR_Ga,
-				       double *Y_GL,
-				       int* l_s,
-				       int* a_J,
-				       int* s_J,
-				       int* I_J,
-				       double* f_GI,
-				       int nG,
-				       int nJ,
-				       int nL,
-				       int nI,
-				       int natoms,
-				       int nsplines,
-				       bool cc)
-
+                                       gpuDoubleComplex *emiGR_Ga,
+                                       double *Y_GL,
+                                       int* l_s,
+                                       int* a_J,
+                                       int* s_J,
+                                       int* I_J,
+                                       double* f_GI,
+                                       int nG,
+                                       int nJ,
+                                       int nL,
+                                       int nI,
+                                       int natoms,
+                                       int nsplines)
 {
     int G = threadIdx.x + blockIdx.x * blockDim.x;
     int J = threadIdx.y + blockIdx.y * blockDim.y;
@@ -702,7 +701,14 @@ __global__ void pwlfc_expand_kernel_16(double* f_Gs,
 	for (int m = 0; m < 2 * l + 1; m++) {
 	    gpuDoubleComplex f = gpuCmulD(f1, Y_GL[l * l + m]);
 	    *f_GI++ = f.x;
-	    *f_GI++ = cc ? -f.y : f.y;
+        if constexpr(cc)
+        {
+            *f_GI++ = -f.y;
+        }
+        if constexpr(!cc)
+        {
+            *f_GI++ = f.y;
+        }
 	}
     }
 }
@@ -924,8 +930,11 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
 {
     if (itemsize == 16)
     {
-	gpuLaunchKernel(pwlfc_expand_kernel_16,
-			dim3((nG+15)/16, (nJ+15)/16),
+        if (cc)
+        {
+            auto kernel = &pwlfc_expand_kernel_16<true>;
+            gpuLaunchKernel(kernel,
+             dim3((nG+15)/16, (nJ+15)/16),
 			dim3(16, 16),
 			0, 0,
 			f_Gs,
@@ -941,8 +950,30 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
 			nL,
 			nI,
 			natoms,
-			nsplines,
-			cc);
+			nsplines);
+        }
+        else
+        {
+            auto kernel = &pwlfc_expand_kernel_16<false>;
+            gpuLaunchKernel(kernel,
+             dim3((nG+15)/16, (nJ+15)/16),
+			dim3(16, 16),
+			0, 0,
+			f_Gs,
+			emiGR_Ga,
+			Y_GL,
+			l_s,
+			a_J,
+			s_J,
+			I_J,
+			f_GI,
+			nG,
+			nJ,
+			nL,
+			nI,
+			natoms,
+			nsplines);
+        }
     }
     else
     {
