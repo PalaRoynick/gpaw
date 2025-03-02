@@ -151,6 +151,9 @@ def pw_norm_kinetic_gpu(result_x, a_xG, kin_G):
     else:
         result_x[:] = cp.sum(cp.abs(a_xG)**2 * kin_G[None, :], axis=1)
 
+                                
+def pwlfc_expand_and_add_gpu(*args, **kwargs):
+    raise NotImplementedError
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
     from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa
