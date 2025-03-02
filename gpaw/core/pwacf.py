@@ -327,7 +327,7 @@ class PWLFC:  # (BaseLFC)
         else:
             yield 0, nG
 
-    @trace
+    @trace(kernel=True)
     def get_emiGR_Ga(self, G1, G2):
         if self.emiGR_Ga is None:
             Gk_Gv = self.G_plus_k_Gv_gpu[G1:G2]
