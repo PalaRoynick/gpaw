@@ -368,7 +368,7 @@ class PWLFC:  # (BaseLFC)
         #a_xG[:] = 0.0
         #c_xI[:] = 0.0
         #c_xI[0, 1] = 1
-        if self.xp is not np and nx == 1:
+        if self.xp is not np and nx == 1 and self.real:
              #a_xG_ref = a_xG.copy()
              #a_xG_before_add= a_xG.copy()
              return self.expand_and_add_gpu(c_xI, a_xG)
