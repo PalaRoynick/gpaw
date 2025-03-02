@@ -118,6 +118,7 @@ void calculate_residual_launch_kernel(int nG,
 			eps_n,
 			wf_nG);
     }
+    gpuCheckLastError();
 }
 
 
@@ -394,6 +395,10 @@ void evaluate_pbe_launch_kernel(int nspin, int ng,
 				double* sigma,
 				double* dedsigma)
 {
+    if (ng == 0)
+    {
+        return;
+    }
     if (nspin == 1)
     {
 	gpuLaunchKernel(PBE_SPINPAIRED,
@@ -412,6 +417,7 @@ void evaluate_pbe_launch_kernel(int nspin, int ng,
 			ng,
 			n, v, e, sigma, dedsigma);
     }
+    gpuCheckLastError();
 }
 
 extern "C"
@@ -420,6 +426,11 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
 				double* v,
 				double* e)
 {
+    if (ng == 0)
+    {
+        return;
+    }
+    printf("lda_launch_kernel %d\n", ng);
     if (nspin == 1)
     {
 	gpuLaunchKernel(LDA_SPINPAIRED,
@@ -438,6 +449,7 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
 			ng,
 			n, v, e, NULL, NULL);
     }
+    gpuCheckLastError();
 }
 
 __global__ void pw_insert_many_16(int nb,
@@ -529,6 +541,10 @@ void add_to_density_gpu_launch_kernel(int nb,
 				      double* rho_R,
 				      int wfs_is_complex)
 {
+    if (nR == 0)
+    {
+        return;
+    }
     if (wfs_is_complex)
     {
     gpuLaunchKernel(add_to_density_16,
@@ -551,6 +567,7 @@ void add_to_density_gpu_launch_kernel(int nb,
 		    (double*) psit_nR,
 		    rho_R);
     }
+    gpuCheckLastError();
 }
 
 extern "C"
@@ -562,11 +579,16 @@ void pw_amend_insert_realwf_gpu_launch_kernel(int nb,
                                               int m, 
                                               double* array_nQ)
 {
+    if ((nb == 0) || (max(n, m) == 0))
+    {
+        return;
+    }
     gpuLaunchKernel(pw_amend_insert_realwf,
                     dim3((nb+15)/16, (max(n,m)+15)/16),
                     dim3(16, 16),
                     0, 0,
                     nb, nx, ny, nz, n, m, (gpuDoubleComplex*) array_nQ);
+    gpuCheckLastError();
 }
 
 extern "C"
@@ -580,6 +602,10 @@ void pw_insert_gpu_launch_kernel(
 			     double* tmp_nQ,
                  int rx, int ry, int rz)
 {
+    if ((nb == 0) || (nG == 0))
+    {
+        return;
+    }
     if (nb == 1)
     {
        gpuLaunchKernel(pw_insert_16,
@@ -619,6 +645,7 @@ void pw_insert_gpu_launch_kernel(
                         0, 0,
                         nb, rx, ry, rz / 2 + 1, n, m, (gpuDoubleComplex*) tmp_nQ);
     }
+    gpuCheckLastError();
 }
 
 
@@ -923,6 +950,10 @@ void dH_aii_times_P_ani_launch_kernel(int nA, int nn,
 				      gpuDoubleComplex* outP_ani_dev,
 				      int is_complex)
 {
+    if (nn == 0)
+    {
+        return;
+    }
     if (is_complex)
     {
     gpuLaunchKernel(dH_aii_times_P_ani_16,
@@ -941,6 +972,7 @@ void dH_aii_times_P_ani_launch_kernel(int nA, int nn,
 		    nA, nn, nI, ni_a, dH_aii_dev,
 		    (double*) P_ani_dev, (double*) outP_ani_dev);
     }
+    gpuCheckLastError();
 
 }
 
@@ -948,6 +980,10 @@ extern "C" void pw_norm_gpu_launch_kernel(int nx, int nG,
                                           double* result_x,
                                           double* C_xG)
 {
+    if (nx == 0)
+    {
+        return;
+    }
 	gpuLaunchKernel(pw_norm_kernel<512>,
                     dim3(nx, 1),
                     dim3(512, 1),
@@ -963,7 +999,11 @@ extern "C" void pw_norm_kinetic_gpu_launch_kernel(int nx, int nG,
                                                   double* C_xG,
                                                   double* kin_G)
 {
-	gpuLaunchKernel(pw_norm_kinetic_kernel<512>,
+    if ((nx == 0) || (nG == 0))
+    {
+        return;
+    }
+    gpuLaunchKernel(pw_norm_kinetic_kernel<512>,
                     dim3(nx, 1),
                     dim3(512, 1),
                     sizeof(double) * 512, 0,
@@ -972,6 +1012,7 @@ extern "C" void pw_norm_kinetic_gpu_launch_kernel(int nx, int nG,
                     result_x,
                     C_xG,
                     kin_G);
+    gpuCheckLastError();
 }
 
 
@@ -1044,6 +1085,10 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
 				    int nsplines,
 				    bool cc)
 {
+    if ((nG == 0) || (nJ == 0))
+    {
+        return;
+    }
     if (itemsize == 16)
     {
         if (cc)
