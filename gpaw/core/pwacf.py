@@ -11,7 +11,7 @@ from gpaw.ffbt import rescaled_fourier_bessel_transform
 from gpaw.gpu import cupy_is_fake, gpu_gemm
 # from gpaw.lfc import BaseLFC
 from gpaw.new import prod, trace
-from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu
+from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu, pwlfc_expand_and_add_gpu
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
 from gpaw.utilities import as_complex_dtype, as_real_dtype
@@ -85,7 +85,7 @@ class PWLFC:  # (BaseLFC)
                  *,
                  xp,
                  integrals: ArrayLike1D | float | None = None,
-                 blocksize: int | None = 5000):
+                 blocksize: int | None = None):  # fails with blocksize
         """Reciprocal-space plane-wave localized function collection.
 
         spline_aj: list of list of spline objects
@@ -239,6 +239,7 @@ class PWLFC:  # (BaseLFC)
         self.nI = I1
             
     def expand_and_add_gpu(self, c_xI, a_xG, cc=False):
+        a_xG *= self.pw.dv # TODO: add to kernel 
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=cc)
 
@@ -246,16 +247,14 @@ class PWLFC:  # (BaseLFC)
                 # f_IG = f_IG.view(float)
                 G1 *= 2
                 G2 *= 2
+            emiGR_Ga = self.get_emiGR_Ga(G1, G2)
+            f_Gs = self.f_Gs[G1:G2]
+            Y_GL = self.Y_GL[G1:G2]
+            pwlfc_expand_and_add_gpu(f_Gs, emiGR_Ga, Y_GL,
+                                     self.l_s, self.a_J, self.s_J,
+                                     self.I_J, c_xI, a_xG[:, G1:G2])  # Non contiguous, fails
+        a_xG /= self.pw.dv 
 
-            self.xp.cublas.gemm('N', 'T',
-                                c_xI, f_GI, a_xG[:, G1:G2],
-                                1.0 / self.pw.dv, 1.0)
-
-        """pwlfc_expand_and_add_gpu(self.gpu_Gk_Gv, self.pos_avT, self.eikR_a, 
-                                 self.f_Gs, self.Y_GL,
-                                 self.l_s, self.a_J, self.s_J,
-                                 cc, f_GI, self.I_J, c_xI, a_xG)
-        """
 
     @trace
     def expand(self, G1=0, G2=None, cc=False):
