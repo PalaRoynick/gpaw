@@ -1,7 +1,6 @@
 import pytest
 from gpaw import GPAW, restart
-from gpaw.cluster import Cluster
-from gpaw.test import equal
+from gpaw.utilities.adjust_cell import adjust_cell
 from ase.build import molecule
 from ase.units import mol, kcal
 from gpaw.solvation import SolvationGPAW, get_HW14_water_kwargs
@@ -24,8 +23,8 @@ def parameters():
 def H2O(parameters):
     vac = 4.0
 
-    atoms = Cluster(molecule('H2O'))
-    atoms.minimal_box(vac, parameters['h'])
+    atoms = molecule('H2O')
+    adjust_cell(atoms, vac, parameters['h'])
 
     kwargs = get_HW14_water_kwargs()
     kwargs.update(parameters)
@@ -47,16 +46,22 @@ def test_solvation_water_water(H2O, parameters):
         Evac = -14.857414548
 
     Ewater = H2O.get_potential_energy()
-    Eelwater = H2O.calc.get_electrostatic_energy()
-    Esurfwater = H2O.calc.get_solvation_interaction_energy('surf')
     H2O.get_forces()
     DGSol = (Ewater - Evac) / (kcal / mol)
     print('Delta Gsol: %s kcal / mol' % DGSol)
 
-    equal(DGSol, -6.3, 2.)
-    equal(Ewater, Eelwater + Esurfwater, 1e-14)
+    assert DGSol == pytest.approx(-6.3, abs=2.)
+
+    if H2O.calc.old:
+        Eelwater = H2O.calc.get_electrostatic_energy()
+        Esurfwater = H2O.calc.get_solvation_interaction_energy('surf')
+        assert Ewater == pytest.approx(Eelwater + Esurfwater, abs=1e-14)
+    else:
+        Esurfwater = H2O.calc.environment.interaction_energy()
+    assert Esurfwater == pytest.approx(0.058, abs=0.002)
 
 
+@pytest.mark.old_gpaw_only
 def test_read(H2O, in_tmp_dir):
     """Read and check some basic properties"""
     fname = 'solvation.gpw'

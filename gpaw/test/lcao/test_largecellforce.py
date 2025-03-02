@@ -15,10 +15,8 @@ from numpy import array
 from ase import Atoms
 from gpaw import GPAW
 from gpaw.atom.basis import BasisMaker
-import pytest
 
 
-@pytest.mark.later
 def test_lcao_largecellforce(gpaw_new):
     hbasis = BasisMaker('H').generate(1, 0, energysplit=1.8, tailnorm=0.03**.5)
     basis = {'H': hbasis}
@@ -32,8 +30,7 @@ def test_lcao_largecellforce(gpaw_new):
     calc = GPAW(h=0.23,
                 mode='lcao',
                 basis=basis,
-                convergence={'density': 1e-4, 'energy': 1e-7},
-                )
+                convergence={'density': 1e-4, 'energy': 1e-7})
 
     system.calc = calc
 
@@ -43,7 +40,7 @@ def test_lcao_largecellforce(gpaw_new):
     from gpaw.mpi import rank, size
     if rank == 0 and size > 1:
         if gpaw_new:
-            basis = calc.calculation.scf_loop.hamiltonian.basis
+            basis = calc.dft.scf_loop.hamiltonian.basis
         else:
             basis = calc.wfs.basis_functions
         assert len(basis.atom_indices) < len(system)
@@ -58,8 +55,8 @@ def test_lcao_largecellforce(gpaw_new):
                  [0, 0, -4.616840606709416]])
 
     if fd:
-        from ase.calculators.test import numeric_force
-        ref = [[0, 0, numeric_force(system, a, 2, d=0.002)] for a in range(4)]
+        from gpaw.test import calculate_numerical_forces
+        ref = calculate_numerical_forces(system, 0.002, icarts=[2])
         print('Calced')
         print(F_ac)
         print('FD')

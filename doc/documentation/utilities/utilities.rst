@@ -4,6 +4,9 @@
 Utilities
 =========
 
+.. autofunction:: as_real_dtype
+.. autofunction:: as_complex_dtype
+
 .. autoclass:: gpaw.utilities.partition.AtomPartition
     :members:
 
@@ -13,3 +16,11 @@ Utilities
 
 .. module:: gpaw.utilities.ekin
 .. autofunction:: gpaw.utilities.ekin.ekin
+
+
+Electron localisation function (ELF)
+====================================
+
+.. module:: gpaw.elf
+.. autofunction:: elf
+.. autofunction:: elf_from_dft_calculation

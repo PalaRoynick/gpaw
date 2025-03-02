@@ -4,11 +4,6 @@ import subprocess
 import sys
 
 
-from ase.cli.main import main as ase_main
-
-from gpaw import __version__
-
-
 commands = [
     ('run', 'gpaw.cli.run'),
     ('info', 'gpaw.cli.info'),
@@ -54,23 +49,37 @@ def hook(parser, args):
 
         if py:
             # Start again in parallel:
-            arguments = ['mpiexec', '-np', str(args.parallel), py]
+            pyargs = []
+            if sys.version_info >= (3, 11):
+                # Don't prepend a potentially unsafe path to sys.path
+                pyargs.append('-P')
             if args.command == 'python' and args.debug:
-                arguments.append('-d')
-            arguments += ['-m', 'gpaw']
-            arguments += sys.argv[1:]
-
-            extra = os.environ.get('GPAW_MPI_OPTIONS')
-            if extra:
-                arguments[1:1] = extra.split()
+                pyargs.append('-d')
+            arguments = ['mpiexec',
+                         *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
+                         '-np',
+                         str(args.parallel),
+                         py,
+                         *pyargs,
+                         '-m',
+                         'gpaw',
+                         *sys.argv[1:]]
 
             # Use a clean set of environment variables without any MPI stuff:
-            p = subprocess.run(arguments, check=not True, env=os.environ)
+            p = subprocess.run(arguments, check=False, env=os.environ)
             sys.exit(p.returncode)
 
     return args
 
 
 def main(args=None):
+    from gpaw import all_lazy_imports, broadcast_imports, __getattr__
+    with broadcast_imports:
+        for attr in all_lazy_imports:
+            __getattr__(attr)
+
+        from ase.cli.main import main as ase_main
+        from gpaw import __version__
+
     ase_main('gpaw', 'GPAW command-line tool', __version__,
              commands, hook, args)

@@ -2,14 +2,14 @@ import pytest
 from gpaw.mpi import world
 from ase import Atoms
 from gpaw import GPAW
-from gpaw.test import equal
 
 pytestmark = pytest.mark.skipif(world.size > 1,
                                 reason='world.size > 1')
 
 
-@pytest.mark.legacy
-def test_potential():
+def test_potential(gpaw_new):
+    if gpaw_new:
+        pytest.skip('Not implemented')
     for mode in ['fd', 'pw']:
         print(mode)
         hydrogen = Atoms('H',
@@ -39,4 +39,4 @@ def test_potential():
         dens.calculate_pseudo_charge()
         ham.update(dens)
         e2 = ham.get_energy(0.0, wfs) - ham.e_kinetic
-        equal(y, (e1 - e2) / (2 * x), 2e-8)
+        assert y == pytest.approx((e1 - e2) / (2 * x), abs=2e-8)

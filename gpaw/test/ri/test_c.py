@@ -13,8 +13,8 @@ def test_diamond(in_tmp_dir, add_cwd_to_setup_paths):
     from gpaw.atom.basis import BasisMaker
 
     args = parameters['C']
-    generator = Generator('C', 'PBE', configuration='1s2')
-    generator.N *= 2
+    generator = Generator('C', 'PBE', configuration='1s2',
+                          gpernode=2 * Generator.default_gpernode)
     generator.run(write_xml=True, exx=True, **args)
     bm = BasisMaker(generator, run=False)
     basis = bm.generate(zetacount=4, polarizationcount=2,
@@ -63,7 +63,7 @@ def test_diamond(in_tmp_dir, add_cwd_to_setup_paths):
 
     # NOTE: HSE06 does not yet work. This is just a placeholder for
     # integration test.
-    assert np.allclose(atoms.get_potential_energy(), 3.291392, atol=4e-5)
+    assert np.allclose(atoms.get_potential_energy(), 3.291175, atol=4e-5)
 
     calc = atoms.calc
 

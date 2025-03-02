@@ -1,15 +1,14 @@
 from functools import partial
 
-from ase.utils.timing import timer
 import numpy as np
-
+from ase.utils.timing import timer
 from gpaw import debug
+from gpaw.eigensolvers.diagonalizerbackend import (ScalapackDiagonalizer,
+                                                   ElpaDiagonalizer,
+                                                   ScipyDiagonalizer)
 from gpaw.eigensolvers.eigensolver import Eigensolver
-from gpaw.matrix import matrix_matrix_multiply as mmm
 from gpaw.hybrids import HybridXC
-from gpaw.eigensolvers.diagonalizerbackend import (
-    ScipyDiagonalizer,
-    ScalapackDiagonalizer)
+from gpaw.matrix import matrix_matrix_multiply as mmm
 
 
 class DummyArray:
@@ -33,7 +32,7 @@ class Davidson(Eigensolver):
 
     def __init__(
             self, niter=2):
-        Eigensolver.__init__(self)
+        super().__init__()
         self.niter = niter
         self.diagonalizer_backend = None
 
@@ -43,14 +42,23 @@ class Davidson(Eigensolver):
         self.eps_N = DummyArray()
 
     def __repr__(self):
-        return 'Davidson(niter=%d)' % (
-            self.niter)
+        return f'Davidson(niter={self.niter})'
 
     def todict(self):
         return {'name': 'dav', 'niter': self.niter}
 
-    def initialize(self, wfs):
-        Eigensolver.initialize(self, wfs)
+    def initialize(self, wfs, dist_backend='scalapack'):
+        # dist_backend keyword exists due to this class having
+        # no reference to the parallelization backend. As such,
+        # the keyword must be specified by the user upon creation
+        # of this object. Usually one would want this to be ELPA
+        # if use_elpa in parallel is set to True.
+        dist_diagonalizers = {
+            'scalapack': ScalapackDiagonalizer,
+            'elpa': ElpaDiagonalizer
+        }
+
+        super().initialize(wfs)
         slcomm, nrows, ncols, slsize = wfs.scalapack_parameters
 
         if wfs.gd.comm.rank == 0 and wfs.bd.comm.rank == 0:
@@ -61,7 +69,7 @@ class Davidson(Eigensolver):
             self.eps_N = np.zeros(2 * B)
 
         if slsize is not None:
-            self.diagonalizer_backend = ScalapackDiagonalizer(
+            self.diagonalizer_backend = dist_diagonalizers[dist_backend](
                 arraysize=self.nbands * 2,
                 grid_nrows=nrows,
                 grid_ncols=ncols,
@@ -69,10 +77,10 @@ class Davidson(Eigensolver):
                 dtype=self.dtype,
                 blocksize=slsize)
         else:
-            self.diagonalizer_backend = ScipyDiagonalizer()
+            self.diagonalizer_backend = ScipyDiagonalizer(slcomm)
 
     def estimate_memory(self, mem, wfs):
-        Eigensolver.estimate_memory(self, mem, wfs)
+        super().estimate_memory(mem, wfs)
         nbands = wfs.bd.nbands
         mem.subnode('H_nn', nbands * nbands * mem.itemsize[wfs.dtype])
         mem.subnode('S_nn', nbands * nbands * mem.itemsize[wfs.dtype])
@@ -84,7 +92,9 @@ class Davidson(Eigensolver):
     def iterate_one_k_point(self, ham, wfs, kpt, weights):
         """Do Davidson iterations for the kpoint"""
         if isinstance(ham.xc, HybridXC):
-            self.niter = 1
+            niter = 1
+        else:
+            niter = self.niter
 
         bd = wfs.bd
         B = bd.nbands
@@ -134,8 +144,8 @@ class Davidson(Eigensolver):
 
         precond = self.preconditioner
 
-        for nit in range(self.niter):
-            if nit == self.niter - 1:
+        for nit in range(niter):
+            if nit == niter - 1:
                 error = np.dot(weights, [integrate(R_G) for R_G in R.array])
 
             for psit_G, R_G, psit2_G in zip(psit.array, R.array, psit2.array):
@@ -188,8 +198,7 @@ class Davidson(Eigensolver):
 
                 try:
                     self.diagonalizer_backend.diagonalize(
-                        H_NN, S_NN, eps_N, is_master=is_gridband_master,
-                        debug=debug)
+                        H_NN, S_NN, eps_N, debug=debug)
                 except np.linalg.LinAlgError as ex:
                     raise ValueError(
                         'Too few plane waves or grid points') from ex
@@ -216,7 +225,7 @@ class Davidson(Eigensolver):
                 P, P3 = P3, P
                 kpt.projections = P
 
-            if nit < self.niter - 1:
+            if nit < niter - 1:
                 psit.apply(Ht, out=R)
                 self.calculate_residuals(
                     kpt, wfs, ham, psit, P, kpt.eps_n, R, P2)

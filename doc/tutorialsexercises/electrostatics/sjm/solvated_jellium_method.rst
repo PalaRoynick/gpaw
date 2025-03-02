@@ -28,17 +28,15 @@ Try running the script below to find the number of electrons necessary to equili
 
 If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the target potential is within a tolerance of 4.2 V; the default tolerance is 0.01 V.
 This process usually takes a few steps on the first image, but is faster on subsequent images of a trajectory, since the changes are less dramatic and the potential--vs--charge slope is retained from previous steps.
-You should see that in net the routine removed only about 0.007 electrons from the simulation, as compared to a charge-neutral simulation, in order to achieve the desired work function.
+You should see that in net the routine added only about 0.007 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
 You'll notice that the output in 'Au.txt' contains additional information, as compared to a charge-neutral simulation::
 
-    Legendre-transformed energies (Omega = E - N mu)
-      (grand-potential energies)
-      N (excess electrons):   +0.006663
-      mu (workfunction, eV):   +4.194593
-    --------------------------
-    Free energy:    -23.630651
-    Extrapolated:   -23.608083
+    Legendre-transformed energies (grand potential, Omega = E - N mu)
+     N (excess electrons):    +0.006526
+     mu (-workfunction, eV):   -4.208990
+     (Grand) free energy:    -23.628448
+     (Grand) extrapolated:   -23.605878
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by :literal:`calc.get_potential_energy()` (and therefore :literal:`atoms.get_potential_energy()`).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
@@ -72,6 +70,8 @@ If you see solvent in the metal region, you could increase the atomic radii as d
 .. image:: traces-Au111.png
            :width: 600 px
            :align: center
+
+(The script used to generate this plot is here: :download:`plot-traces.py`.)
 
 Relaxing the slab and adsorbate
 ===============================
@@ -110,6 +110,8 @@ At the end of the sequential mode, we switched back to simultaneous mode to ensu
            :width: 600 px
            :align: center
 
+(Plot script: :download:`plot-seq-sim.py`.)
+
 Finding a barrier (NEB/DyNEB)
 =============================
 
@@ -121,11 +123,15 @@ The SJM method allows one to calculate a reaction barrier in a manner where all 
 The discrepancy between a canonical and grand-canonical simulation is most pronounced in reactions involving the creation or destruction of an ion, as the ion collides with the constant-potential surface.
 Unfortunately, simulating even a simple reaction like the Volmer reaction---where a proton in the solution reacts to form an adsorbed hydrogen atom---is not possible in this tutorial, as a relatively large water layer---that is, larger than the one molecule we are using!---is needed in order to stabilize the solvated proton in the initial state.
 Therefore, in this tutorial, we'll do a much simpler reaction: the diffusion of our adsorbed H atom from one type of surface site to another.
-Note that we should expect very little difference in the number of excess electrons in order to equilibrate the initial, transition, and final state; nevertheless, it allows us to demonstrate the use of the NEB method with SJM.
+Note that we should expect very little difference in the number of excess electrons in order to equilibrate the initial, transition, and final state; nevertheless, it allows us to demonstrate the use of the nudged elastic band (NEB) method with SJM.
+
+You will need to create the final state before you run the NEB; you can go through the exercise of creating this yourself, or you can use our script (:download:`run-Au111-H-hollow.py`).
+After you have created the final state, you can run the NEB as below; note here we use the DyNEB method which tends to save a large amount of computational time for these sorts of barriers.
 
 .. literalinclude:: run-neb.py
 
 After a few iterations, the band completes and we can make a plot of the barrier, using :literal:`NEBTools`.
+(Plot script: :download:`plot-neb.py`.)
 
 .. image:: band.png
            :width: 600 px

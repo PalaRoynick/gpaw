@@ -1,8 +1,9 @@
 import pytest
 from ase import Atoms
 from ase.io import read
+from ase.units import Ha
 
-from gpaw import GPAW, FermiDirac
+from gpaw import GPAW
 
 
 @pytest.mark.ci
@@ -12,22 +13,14 @@ def test_no_cell():
         H.get_potential_energy()
 
 
-@pytest.mark.later
-def test_read_txt(in_tmp_dir):
-    a = 2.0
-    calc = GPAW(
-        mode='fd',
-        gpts=(12, 12, 12),
-        txt='H.txt',
-        occupations=FermiDirac(0.0))
-    H = Atoms('H',
-              cell=(a, a, a),
-              pbc=True,
-              calculator=calc)
-    e0 = H.get_potential_energy()
-
-    H = read('H.txt')
-    assert H.get_potential_energy() == pytest.approx(e0)
-
-    energy_tolerance = 0.001
-    assert e0 == pytest.approx(-6.5577, abs=energy_tolerance)
+@pytest.mark.parametrize('name', ['h2_pw', 'bcc_li_lcao'])
+def test_read_txt(in_tmp_dir, gpw_files, name):
+    gpw = gpw_files[name]
+    calc = GPAW(gpw)
+    e0 = calc.get_atoms().get_potential_energy()
+    atoms = read(gpw.with_suffix('.txt'))
+    e = atoms.get_potential_energy()
+    assert e == pytest.approx(e0)
+    if not calc.old:
+        assert atoms.calc.energy_contributions['kinetic'] == pytest.approx(
+            calc.dft.energies.kinetic * Ha)

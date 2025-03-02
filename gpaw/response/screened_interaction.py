@@ -6,6 +6,69 @@ from ase.dft.kpoints import monkhorst_pack
 from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.response.temp import DielectricFunctionCalculator
 from gpaw.response.hilbert import GWHilbertTransforms
+from gpaw.response.mpa_interpolation import RESolver
+from gpaw.cgpaw import evaluate_mpa_poly
+
+
+class GammaIntegrationMode:
+    def __init__(self, gamma_integration):
+        if isinstance(gamma_integration, GammaIntegrationMode):
+            self.type = gamma_integration.type
+            self.reduced = gamma_integration.reduced
+            self._N = gamma_integration._N
+            return
+
+        defaults = {'sphere': {'type': 'sphere'},
+                    'reciprocal': {'type': 'reciprocal'},
+                    'reciprocal2D': {'type': 'reciprocal', 'reduced': True},
+                    '1BZ': {'type': '1BZ'},
+                    '1BZ2D': {'type': '1BZ', 'reduced': True},
+                    'WS': {'type': 'WS'}}
+
+        if isinstance(gamma_integration, int):
+            raise TypeError("gamma_integration=INT is no longer supported. "
+                            "Please start using the new notations, as is given"
+                            " in the documentation in gpaw/response/g0w0.py"
+                            " of __init__ of class G0W0.")
+
+        if isinstance(gamma_integration, str):
+            gamma_integration = defaults[gamma_integration]
+
+        self.type = gamma_integration['type']
+        self.reduced = gamma_integration.get('reduced', False)
+        self._N = gamma_integration.get('N', 100)
+
+        if self.type not in {'sphere', 'reciprocal', '1BZ', 'WS'}:
+            raise TypeError('type in gamma_integration should be one of sphere'
+                            ', reciprocal, 1BZ, or WS.')
+
+        if not self.is_numerical:
+            if gamma_integration.get('reduced', False):
+                raise TypeError('reduced key being True is only supported for '
+                                'type reciprocal or 1BZ.')
+
+    def __repr__(self):
+        return f'type: {self.type} reduced: {self.reduced}'
+
+    @property
+    def is_analytical(self):
+        return self.type == 'sphere'
+
+    @property
+    def is_numerical(self):
+        return self.type in {'reciprocal', '1BZ'}
+
+    @property
+    def is_Wigner_Seitz(self):
+        return self.type == 'WS'
+
+    @property
+    def to_1bz(self):
+        return self.type == '1BZ'
+
+    @property
+    def N(self):
+        return self._N
 
 
 class QPointDescriptor(KPointDescriptor):
@@ -25,8 +88,9 @@ class QPointDescriptor(KPointDescriptor):
 def initialize_w_calculator(chi0calc, context, *,
                             coulomb,
                             xc='RPA',  # G0W0Kernel arguments
-                            ppa=False, E0=Ha, eta=None,
-                            integrate_gamma=0, q0_correction=False):
+                            mpa=None, E0=Ha, eta=None,
+                            integrate_gamma=GammaIntegrationMode('sphere'),
+                            q0_correction=False):
     """Initialize a WCalculator from a Chi0Calculator.
 
     Parameters
@@ -46,22 +110,25 @@ def initialize_w_calculator(chi0calc, context, *,
                           gs=gs, qd=qd,
                           context=context)
 
-    if ppa:
-        wcalc_cls = PPACalculator
+    kwargs = dict()
+    if mpa:
+        wcalc_cls = MPACalculator
+        kwargs['mpa'] = mpa
     else:
         wcalc_cls = WCalculator
 
     return wcalc_cls(gs, context, qd=qd,
                      coulomb=coulomb, xckernel=xckernel,
                      integrate_gamma=integrate_gamma, eta=eta,
-                     q0_correction=q0_correction)
+                     q0_correction=q0_correction, **kwargs)
 
 
 class WBaseCalculator():
 
     def __init__(self, gs, context, *, qd,
                  coulomb, xckernel,
-                 integrate_gamma=0, eta=None,
+                 integrate_gamma=GammaIntegrationMode('sphere'),
+                 eta=None,
                  q0_correction=False):
         """
         Base class for W Calculator including basic initializations and Gamma
@@ -74,12 +141,7 @@ class WBaseCalculator():
         qd : QPointDescriptor
         coulomb : CoulombKernel
         xckernel : G0W0Kernel
-        integrate_gamma: int
-             Method to integrate the Coulomb interaction. 1 is a numerical
-             integration at all q-points with G=[0,0,0] - this breaks the
-             symmetry slightly. 0 is analytical integration at q=[0,0,0] only
-             this conserves the symmetry. integrate_gamma=2 is the same as 1,
-             but the average is only carried out in the non-periodic directions
+        integrate_gamma: GammaIntegrationMode
         q0_correction : bool
             Analytic correction to the q=0 contribution applicable to 2D
             systems.
@@ -110,22 +172,34 @@ class WBaseCalculator():
     def get_V0sqrtV0(self, chi0):
         """
         Integrated Coulomb kernels.
-        integrate_gamma = 0: Analytically integrated kernel
-        in sphere around Gamma
-        integrate_gamma > 0: Numerically  integrated kernel
-        XXX: Understand and document Rq0, V0, sqrtV0
         """
         V0 = None
         sqrtV0 = None
-        if self.integrate_gamma != 0:
-            reduced = (self.integrate_gamma == 2)
+        if self.integrate_gamma.is_numerical:
+            reduced = self.integrate_gamma.reduced
+            tofirstbz = self.integrate_gamma.to_1bz
+            N = self.integrate_gamma.N
             V0, sqrtV0 = self.coulomb.integrated_kernel(qpd=chi0.qpd,
-                                                        reduced=reduced)
-        elif self.integrate_gamma == 0 and chi0.optical_limit:
-            bzvol = (2 * np.pi)**3 / self.gs.volume / self.qd.nbzkpts
-            Rq0 = (3 * bzvol / (4 * np.pi))**(1. / 3.)
-            V0 = 16 * np.pi**2 * Rq0 / bzvol
-            sqrtV0 = (4 * np.pi)**(1.5) * Rq0**2 / bzvol / 2
+                                                        reduced=reduced,
+                                                        tofirstbz=tofirstbz,
+                                                        N=N)
+        elif self.integrate_gamma.is_analytical:
+            if chi0.optical_limit:
+                # The volume of reciprocal cell occupied by a single q-point
+                bzvol = (2 * np.pi)**3 / self.gs.volume / self.qd.nbzkpts
+                # Radius of a sphere with a volume of the bzvol above
+                Rq0 = (3 * bzvol / (4 * np.pi))**(1. / 3.)
+                # Analytical integral of Coulomb interaction over the sphere
+                # defined above centered at q=0.
+                # V0 = 1/|bzvol| int_bzvol dq 4 pi / |q^2|
+                V0 = 16 * np.pi**2 * Rq0 / bzvol
+                # Analytical integral of square root of Coulomb interaction
+                # over the same sphere
+                # sqrtV0 = 1/|bzvol| int_bzvol dq sqrt(4 pi / |q^2|)
+                sqrtV0 = (4 * np.pi)**(1.5) * Rq0**2 / bzvol / 2
+        else:
+            raise KeyError('Unknown integrate_gamma option:'
+                           f'{self.integrate_gamma}.')
         return V0, sqrtV0
 
     def apply_gamma_correction(self, W_GG, einv_GG, V0, sqrtV0, sqrtV_G):
@@ -175,40 +249,44 @@ class WCalculator(WBaseCalculator):
     def calculate_W_wGG(self, chi0, fxc_mode='GW',
                         only_correlation=False):
         """In-place calculation of the screened interaction."""
-        chi0_wGG = chi0.body.copy_array_with_distribution('wGG')
         dfc = DielectricFunctionCalculator(chi0, self.coulomb,
                                            self.xckernel, fxc_mode)
         self.context.timer.start('Dyson eq.')
 
-        V0, sqrtV0 = self.get_V0sqrtV0(chi0)
-        for iw, chi0_GG in enumerate(chi0_wGG):
-            # Note, at q=0 get_epsinv_GG modifies chi0_GG
-            einv_GG = dfc.get_epsinv_GG(chi0_GG, iw)
-            # Renaming the chi0_GG buffer since it will be used to store W
-            W_GG = chi0_GG
+        if self.integrate_gamma.is_Wigner_Seitz:
+            from gpaw.hybrids.wstc import WignerSeitzTruncatedCoulomb
+            wstc = WignerSeitzTruncatedCoulomb(chi0.qpd.gd.cell_cv,
+                                               dfc.coulomb.N_c)
+            sqrtV_G = wstc.get_potential(chi0.qpd)**0.5
+        else:
+            sqrtV_G = dfc.sqrtV_G
+            V0, sqrtV0 = self.get_V0sqrtV0(chi0)
+
+        einv_wGG = dfc.get_epsinv_wGG(only_correlation=False)
+        W_wGG = np.empty_like(einv_wGG)
+        for iw, (einv_GG, W_GG) in enumerate(zip(einv_wGG, W_wGG)):
             # If only_correlation = True function spits out
             # W^c = sqrt(V)(epsinv - delta_GG')sqrt(V). However, full epsinv
             # is still needed for q0_corrector.
             einvt_GG = (einv_GG - dfc.I_GG) if only_correlation else einv_GG
-            W_GG[:] = einvt_GG * (dfc.sqrtV_G *
-                                  dfc.sqrtV_G[:, np.newaxis])
+            W_GG[:] = einvt_GG * (sqrtV_G *
+                                  sqrtV_G[:, np.newaxis])
             if self.q0_corrector is not None and chi0.optical_limit:
-                W = dfc.wblocks1d.a + iw
+                W = dfc.wblocks.a + iw
                 self.q0_corrector.add_q0_correction(chi0.qpd, W_GG,
                                                     einv_GG,
                                                     chi0.chi0_WxvG[W],
                                                     chi0.chi0_Wvv[W],
-                                                    dfc.sqrtV_G)
-                # XXX Is it to correct to have "or" here?
-            elif chi0.optical_limit or self.integrate_gamma != 0:
+                                                    sqrtV_G)
+            elif (self.integrate_gamma.is_analytical and chi0.optical_limit) \
+                    or self.integrate_gamma.is_numerical:
                 self.apply_gamma_correction(W_GG, einvt_GG,
                                             V0, sqrtV0, dfc.sqrtV_G)
 
         self.context.timer.stop('Dyson eq.')
-        return chi0_wGG
+        return W_wGG
 
     def dyson_and_W_new(self, iq, q_c, chi0, ecut, coulomb):
-        # assert not self.ppa
         # assert not self.do_GW_too
         assert ecut == chi0.qpd.ecut
         assert self.fxc_mode == 'GW'
@@ -266,13 +344,11 @@ class HWModel:
         Hilbert Transformed W Model.
     """
 
-    def get_HW(self, omega, fsign):
+    def get_HW(self, omega, occ):
         """
             Get Hilbert transformed W at frequency omega.
 
-            The fsign is utilize to select which type of Hilbert transform
-            is selected, as is detailed in Sigma expectation value evaluation
-            where this model is used.
+            occ: The occupation number for the orbital of the Greens function.
         """
         raise NotImplementedError
 
@@ -283,8 +359,8 @@ class FullFrequencyHWModel(HWModel):
         self.HW_swGG = HW_swGG
         self.factor = factor
 
-    def get_HW(self, omega, fsign):
-        # For more information about how fsign, and wsign works, see
+    def get_HW(self, omega, occ):
+        # For more information about how fsign and wsign works, see
         # https://backend.orbit.dtu.dk/ws/portalfiles/portal/93075765/hueser_PhDthesis.pdf
         # eq. 2.2 endind up to eq. 2.11
         # Effectively, the symmetry of time ordered W is used,
@@ -294,6 +370,7 @@ class FullFrequencyHWModel(HWModel):
         # In addition, whether the orbital in question at G is occupied or
         # unoccupied, which then again affects, which Hilbert transform of
         # W is chosen, is kept track with fsign.
+        fsign = np.sign(2 * occ - 1)
         o = abs(omega)
         wsign = np.sign(omega + 1e-15)
         wd = self.wd
@@ -317,55 +394,80 @@ class FullFrequencyHWModel(HWModel):
         return -1j * p * sigma_GG, -1j * p * dsigma_GG
 
 
-class PPAHWModel(HWModel):
-    def __init__(self, W_GG, omegat_GG, eta, factor):
-        self.W_GG = W_GG
-        self.omegat_GG = omegat_GG
+class MPAHWModel(HWModel):
+    def __init__(self, W_nGG, omegat_nGG, eta, factor):
+        self.W_nGG = np.ascontiguousarray(W_nGG)
+        self.omegat_nGG = np.ascontiguousarray(omegat_nGG)
         self.eta = eta
         self.factor = factor
 
-    def get_HW(self, omega, sign):
-        omegat_GG = self.omegat_GG
-        W_GG = self.W_GG
+    def get_HW(self, omega, occ):
+        x_GG = np.empty(self.omegat_nGG.shape[1:], dtype=complex)
+        dx_GG = np.empty(self.omegat_nGG.shape[1:], dtype=complex)
+        evaluate_mpa_poly(x_GG, dx_GG, omega, occ, self.omegat_nGG, self.W_nGG,
+                          self.eta, self.factor)
 
-        x1_GG = 1 / (omega + omegat_GG - 1j * self.eta)
-        x2_GG = 1 / (omega - omegat_GG + 1j * self.eta)
-        x3_GG = 1 / (omega + omegat_GG - 1j * self.eta * sign)
-        x4_GG = 1 / (omega - omegat_GG - 1j * self.eta * sign)
-        x_GG = self.factor * W_GG * (sign * (x1_GG - x2_GG) + x3_GG + x4_GG)
-        dx_GG = -self.factor * W_GG * (sign * (x1_GG**2 - x2_GG**2) +
-                                       x3_GG**2 + x4_GG**2)
-        return x_GG, dx_GG
+        return x_GG.conj(), dx_GG.conj()  # Why do we have to do a conjugate
 
 
-class PPACalculator(WBaseCalculator):
+class MPACalculator(WBaseCalculator):
+    def __init__(self, gs, context, *, eta, mpa, **kwargs):
+        super().__init__(gs, context, **kwargs)
+        self.eta = eta
+        self.mpa = mpa
+
     def get_HW_model(self, chi0,
                      fxc_mode='GW'):
-        """Calculate the PPA parametrization of screened interaction.
+        """Calculate the MPA parametrization of screened interaction.
         """
-        assert len(chi0.wd.omega_w) == 2
-        # E0 directly related to frequency mesh for chi0
-        E0 = chi0.wd.omega_w[1].imag
 
         dfc = DielectricFunctionCalculator(chi0,
                                            self.coulomb,
                                            self.xckernel,
                                            fxc_mode)
 
-        V0, sqrtV0 = self.get_V0sqrtV0(chi0)
         self.context.timer.start('Dyson eq.')
         einv_wGG = dfc.get_epsinv_wGG(only_correlation=True)
-        omegat_GG = E0 * np.sqrt(einv_wGG[1] /
-                                 (einv_wGG[0] - einv_wGG[1]))
-        R_GG = -0.5 * omegat_GG * einv_wGG[0]
-        W_GG = pi * R_GG * dfc.sqrtV_G * dfc.sqrtV_G[:, np.newaxis]
-        if chi0.optical_limit or self.integrate_gamma != 0:
-            self.apply_gamma_correction(W_GG, pi * R_GG,
-                                        V0, sqrtV0,
-                                        dfc.sqrtV_G)
+        einv_WgG = chi0.body.blockdist.distribute_as(einv_wGG, chi0.nw, 'WgG')
+
+        solver = RESolver(chi0.wd.omega_w)
+        E_pGG, R_pGG = solver.solve(einv_WgG)
+        E_pGG -= 1j * self.eta  # DALV: This is just to match the FF results
+
+        R_pGG = chi0.body.blockdist.distribute_as(R_pGG, self.mpa['npoles'],
+                                                  'wGG')
+        E_pGG = chi0.body.blockdist.distribute_as(E_pGG,
+                                                  self.mpa['npoles'], 'wGG')
+
+        if self.integrate_gamma.is_Wigner_Seitz:
+            from gpaw.hybrids.wstc import WignerSeitzTruncatedCoulomb
+            wstc = WignerSeitzTruncatedCoulomb(chi0.qpd.gd.cell_cv,
+                                               dfc.coulomb.N_c)
+            sqrtV_G = wstc.get_potential(chi0.qpd)**0.5
+        else:
+            sqrtV_G = dfc.sqrtV_G
+
+        W_pGG = pi * R_pGG * sqrtV_G[np.newaxis, :, np.newaxis] \
+            * sqrtV_G[np.newaxis, np.newaxis, :]
+
+        assert self.q0_corrector is None
+        if (self.integrate_gamma.is_analytical and chi0.optical_limit)\
+                or self.integrate_gamma.is_numerical:
+            V0, sqrtV0 = self.get_V0sqrtV0(chi0)
+            for W_GG, R_GG in zip(W_pGG, R_pGG):
+                self.apply_gamma_correction(W_GG, pi * R_GG,
+                                            V0, sqrtV0,
+                                            dfc.sqrtV_G)
+
+        W_pGG = np.transpose(W_pGG, axes=(0, 2, 1))  # Why the transpose
+        E_pGG = np.transpose(E_pGG, axes=(0, 2, 1))
+
+        W_pGG = chi0.body.blockdist.distribute_as(W_pGG, self.mpa['npoles'],
+                                                  'WgG')
+        E_pGG = chi0.body.blockdist.distribute_as(E_pGG,
+                                                  self.mpa['npoles'], 'WgG')
 
         self.context.timer.stop('Dyson eq.')
 
         factor = 1.0 / (self.qd.nbzkpts * 2 * pi * self.gs.volume)
-
-        return PPAHWModel(W_GG, omegat_GG, self.eta, factor)
+        return MPAHWModel(W_pGG, E_pGG, self.eta, factor)

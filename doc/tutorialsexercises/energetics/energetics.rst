@@ -7,7 +7,7 @@ Energetics
 .. toctree::
    :maxdepth: 2
 
-   ../H2/atomization
+   cohesive_energy/cohesive_energy
    hubbardu/hubbardu
    defects/defects
    rpa_tut/rpa_tut

@@ -2,14 +2,13 @@ import pytest
 from gpaw.mpi import world
 from ase import Atoms
 from gpaw import GPAW
-from gpaw.test import equal
 
 from gpaw.utilities.kspot import AllElectronPotential
 pytestmark = pytest.mark.skipif(world.size > 1,
                                 reason='world.size > 1')
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_muffintinpot(in_tmp_dir):
     if 1:
         be = Atoms(symbols='Be', positions=[(0, 0, 0)])
@@ -23,7 +22,7 @@ def test_muffintinpot(in_tmp_dir):
         e = be.get_potential_energy()
 
         energy_tolerance = 0.001
-        equal(e, 0.00246471, energy_tolerance)
+        assert e == pytest.approx(0.00246471, abs=energy_tolerance)
 
     # be, calc = restart("be.gpw")
     AllElectronPotential(calc).write_spherical_ks_potentials('bepot.txt')

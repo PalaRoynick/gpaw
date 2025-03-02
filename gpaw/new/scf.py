@@ -4,24 +4,19 @@ import itertools
 import warnings
 from math import inf
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 import numpy as np
 from gpaw.convergence_criteria import (Criterion, check_convergence,
                                        dict2criterion)
 from gpaw.scf import write_iteration
 from gpaw.typing import Array2D
-from gpaw.yml import indent
-
-if TYPE_CHECKING:
-    from gpaw.new.calculation import DFTState
-
-
-class SCFConvergenceError(Exception):
-    ...
+from gpaw.new.logger import indent
+from gpaw import KohnShamConvergenceError
+from gpaw.new.energies import DFTEnergies
 
 
-class TooFewBandsError(SCFConvergenceError):
+class TooFewBandsError(KohnShamConvergenceError):
     """Not enough bands for CBM+x convergence cfriterium."""
 
 
@@ -39,10 +34,11 @@ class SCFLoop:
         self.mixer = mixer
         self.occ_calc = occ_calc
         self.comm = comm
-        self.convergence = convergence
+        self.convergence = create_convergence_criteria(convergence)
         self.maxiter = maxiter
         self.niter = 0
         self.update_density_and_potential = True
+        self.fix_fermi_level = False
 
     def __repr__(self):
         return 'SCFLoop(...)'
@@ -53,14 +49,16 @@ class SCFLoop:
                 f'occupation numbers:\n{indent(self.occ_calc)}\n')
 
     def iterate(self,
-                state: DFTState,
+                ibzwfs,
+                density,
+                potential,
+                energies: DFTEnergies,
                 pot_calc,
-                convergence=None,
+                *,
                 maxiter=None,
                 calculate_forces=None,
                 log=None):
-
-        cc = create_convergence_criteria(convergence or self.convergence)
+        cc = self.convergence
         maxiter = maxiter or self.maxiter
 
         if log:
@@ -72,23 +70,32 @@ class SCFLoop:
 
         self.mixer.reset()
 
+        self.occ_calc.initialize_reference_orbitals()
+
         if self.update_density_and_potential:
-            dens_error = self.mixer.mix(state.density)
+            dens_error = self.mixer.mix(density)
         else:
             dens_error = 0.0
 
         for self.niter in itertools.count(start=1):
-            wfs_error = self.eigensolver.iterate(state, self.hamiltonian)
-            state.ibzwfs.calculate_occs(
+            wfs_error, energies = self.eigensolver.iterate(
+                ibzwfs, density, potential,
+                self.hamiltonian, pot_calc, energies)
+            e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
                 self.occ_calc,
-                fixed_fermi_level=not self.update_density_and_potential)
+                fix_fermi_level=self.fix_fermi_level)
+
+            energies.set(**pot_calc.xc.energies,
+                         band=e_band,
+                         entropy=e_entropy,
+                         extrapolation=e_extrapolation)
 
             ctx = SCFContext(
-                log, self.niter,
-                state,
+                log, self.niter, energies,
+                ibzwfs, density, potential,
                 wfs_error, dens_error,
                 self.comm, calculate_forces,
-                pot_calc)
+                pot_calc, self.update_density_and_potential)
 
             yield ctx
 
@@ -97,73 +104,71 @@ class SCFLoop:
             assert nconverged in [0, self.comm.size], converged_items
 
             if log:
-                with log.comment():
-                    write_iteration(cc, converged_items, entries, ctx, log)
+                write_iteration(cc, converged_items, entries, ctx, log)
             if converged:
                 break
             if self.niter == maxiter:
                 if wfs_error < inf:
-                    raise SCFConvergenceError
+                    raise KohnShamConvergenceError
                 raise TooFewBandsError
 
             if self.update_density_and_potential:
-                state.density.update(state.ibzwfs,
-                                     ked=pot_calc.xc.type == 'MGGA')
-                dens_error = self.mixer.mix(state.density)
-                state.potential, _ = pot_calc.calculate(
-                    state.density, state.ibzwfs, state.potential.vHt_x)
+                density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
+                dens_error = self.mixer.mix(density)
+                potential, energies, _ = pot_calc.calculate(
+                    density, ibzwfs, potential.vHt_x)
+
+        self.eigensolver.postprocess(
+            ibzwfs, density, potential, self.hamiltonian)
 
 
 class SCFContext:
     def __init__(self,
                  log,
                  niter: int,
-                 state: DFTState,
+                 energies: DFTEnergies,
+                 ibzwfs,
+                 density,
+                 potential,
                  wfs_error: float,
                  dens_error: float,
                  comm,
                  calculate_forces: Callable[[], Array2D],
-                 pot_calc):
+                 pot_calc,
+                 update_density_and_potential):
         self.log = log
         self.niter = niter
-        self.state = state
-        energy = np.array([sum(e
-                               for name, e in state.potential.energies.items()
-                               if name != 'stress') +
-                           sum(state.ibzwfs.energies.values())])
-        comm.broadcast(energy, 0)
-        self.ham = SimpleNamespace(e_total_extrapolated=energy[0],
+        self.energies = energies
+        self.ibzwfs = ibzwfs
+        self.density = density
+        self.potential = potential
+        energy = energies.total_extrapolated
+        self.ham = SimpleNamespace(e_total_extrapolated=energy,
                                    get_workfunctions=self._get_workfunctions)
-        self.wfs = SimpleNamespace(nvalence=state.ibzwfs.nelectrons,
+        self.wfs = SimpleNamespace(nvalence=ibzwfs.nelectrons,
                                    world=comm,
                                    eigensolver=SimpleNamespace(
                                        error=wfs_error),
-                                   nspins=state.density.ndensities,
-                                   collinear=state.density.collinear)
+                                   nspins=density.ndensities,
+                                   collinear=density.collinear)
         self.dens = SimpleNamespace(
-            calculate_magnetic_moments=state.density
-            .calculate_magnetic_moments,
-            fixed=False,
+            calculate_magnetic_moments=density.calculate_magnetic_moments,
+            fixed=not update_density_and_potential,
             error=dens_error)
         self.calculate_forces = calculate_forces
         self.poisson_solver = pot_calc.poisson_solver
 
     def _get_workfunctions(self, _):
-        """
-        vHt_g = self.state.vHt_x
-        axes = (c, (c + 1) % 3, (c + 2) % 3)
-        potential.vt_sRself.pd3.ifft(v_q, local=True).transpose(axes)
-        vacuum = v_g[0].mean()
-        vacuum_level =
-        (fermi_level,) = self.state.ibzwfs.fermi_levels
+        vacuum_level = self.potential.get_vacuum_level()
+        (fermi_level,) = self.ibzwfs.fermi_levels
         wf = vacuum_level - fermi_level
-        delta = self.poisson_solver.correction
-        return np.array([wf + 0.5 * delta, wf - 0.5 * delta])
-        """
+        delta = self.poisson_solver.dipole_layer_correction()
+        return np.array([wf + delta, wf - delta])
 
 
 def create_convergence_criteria(criteria: dict[str, Any]
                                 ) -> dict[str, Criterion]:
+    criteria = criteria.copy()
     for k, v in [('energy', 0.0005),        # eV / electron
                  ('density', 1.0e-4),       # electrons / electron
                  ('eigenstates', 4.0e-8)]:  # eV^2 / electron

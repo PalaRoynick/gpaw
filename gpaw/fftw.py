@@ -14,8 +14,9 @@ import numpy as np
 from scipy.fft import fftn, ifftn, irfftn, rfftn
 import warnings
 
-import _gpaw
-from gpaw import SCIPY_VERSION
+import gpaw.cgpaw as cgpaw
+from gpaw.utilities import as_complex_dtype, as_real_dtype
+from gpaw.new.c import pw_insert_gpu
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 
 ESTIMATE = 64
@@ -28,7 +29,7 @@ _plan_cache: dict[tuple, weakref.ReferenceType] = {}
 
 def have_fftw() -> bool:
     """Did we compile with FFTW?"""
-    return hasattr(_gpaw, 'FFTWPlan')
+    return hasattr(cgpaw, 'FFTWPlan')
 
 
 def check_fft_size(n: int, factors=[2, 3, 5, 7]) -> bool:
@@ -66,11 +67,15 @@ def get_efficient_fft_size(N: int, n=1, factors=[2, 3, 5, 7]) -> int:
 
 def empty(shape, dtype=float):
     """numpy.empty() equivalent with 16 byte alignment."""
-    assert dtype == complex
+    assert np.issubdtype(dtype, np.complexfloating)
+
+    real_dtype = as_real_dtype(dtype)
+    complex_dtype = as_complex_dtype(dtype)
+
     N = np.prod(shape)
-    a = np.empty(2 * N + 1)
-    offset = (a.ctypes.data % 16) // 8
-    a = a[offset:2 * N + offset].view(complex)
+    a = np.empty(2 * N + 16 // real_dtype.itemsize - 1, real_dtype)
+    offset = (a.ctypes.data % 16) // real_dtype.itemsize
+    a = a[offset:2 * N + offset].view(complex_dtype)
     a.shape = shape
     return a
 
@@ -104,13 +109,14 @@ class FFTPlans:
                  dtype: DTypeLike,
                  empty=empty):
         self.shape: tuple[int, ...]
-        if dtype == float:
+
+        if np.issubdtype(dtype, np.floating):
             self.shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
-            self.tmp_Q = empty(self.shape, complex)
-            self.tmp_R = self.tmp_Q.view(float)[:, :, :size_c[2]]
+            self.tmp_Q = empty(self.shape, as_complex_dtype(dtype))
+            self.tmp_R = self.tmp_Q.view(dtype)[:, :, :size_c[2]]
         else:
             self.shape = tuple(size_c)
-            self.tmp_Q = empty(size_c, complex)
+            self.tmp_Q = empty(size_c, dtype)
             self.tmp_R = self.tmp_Q
 
     def fft(self) -> None:
@@ -140,7 +146,8 @@ class FFTPlans:
             out_R.scatter_from(None)
             return
         pw.paste(coef_G, self.tmp_Q)
-        if pw.dtype == float:
+
+        if np.issubdtype(pw.dtype, np.floating):
             t = self.tmp_Q[:, :, 0]
             n, m = (s // 2 - 1 for s in out_R.desc.size_c[:2])
             t[0, -m:] = t[0, m:0:-1].conj()
@@ -163,30 +170,33 @@ class FFTWPlans(FFTPlans):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
         super().__init__(size_c, dtype)
-        self._fftplan = _gpaw.FFTWPlan(self.tmp_R, self.tmp_Q, -1, flags)
-        self._ifftplan = _gpaw.FFTWPlan(self.tmp_Q, self.tmp_R, 1, flags)
+        self._fftplan = cgpaw.FFTWPlan(self.tmp_R, self.tmp_Q, -1, flags)
+        self._ifftplan = cgpaw.FFTWPlan(self.tmp_Q, self.tmp_R, 1, flags)
 
     def fft(self):
-        _gpaw.FFTWExecute(self._fftplan)
+        cgpaw.FFTWExecute(self._fftplan)
 
     def ifft(self):
-        _gpaw.FFTWExecute(self._ifftplan)
+        cgpaw.FFTWExecute(self._ifftplan)
 
     def __del__(self):
-        _gpaw.FFTWDestroy(self._fftplan)
-        _gpaw.FFTWDestroy(self._ifftplan)
+        # Attributes will not exist if execution stops during FFTW planning
+        if hasattr(self, '_fftplan'):
+            cgpaw.FFTWDestroy(self._fftplan)
+        if hasattr(self, '_ifftplan'):
+            cgpaw.FFTWDestroy(self._ifftplan)
 
 
 class NumpyFFTPlans(FFTPlans):
     """Numpy fallback."""
     def fft(self):
-        if self.tmp_R.dtype == float:
+        if np.issubdtype(self.tmp_R.dtype, np.floating):
             self.tmp_Q[:] = rfftn(self.tmp_R, overwrite_x=True)
         else:
             self.tmp_Q[:] = fftn(self.tmp_R, overwrite_x=True)
 
     def ifft(self):
-        if self.tmp_R.dtype == float:
+        if np.issubdtype(self.tmp_R.dtype, np.floating):
             self.tmp_R[:] = irfftn(self.tmp_Q, self.tmp_R.shape,
                                    norm='forward', overwrite_x=True)
         else:
@@ -258,21 +268,20 @@ class CuPyFFTPlans(FFTPlans):
 
         array_Q[:] = 0.0
         Q_G = self.indices(pw)
-        array_Q.ravel()[Q_G] = coef_G
 
-        assert SCIPY_VERSION >= [1, 6]
-        if self.dtype == complex:
+        assert np.issubdtype(array_Q.dtype, np.complexfloating)
+        assert np.issubdtype(coef_G.dtype, np.complexfloating)
+        pw_insert_gpu(coef_G,
+                      Q_G,
+                      1.0,
+                      array_Q.ravel(),
+                      *out_R.desc.size_c)
+
+        if np.issubdtype(self.dtype, np.complexfloating):
             array_R[:] = cupyx.scipy.fft.ifftn(
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)
         else:
-            # We need a GPU kernel for this stuff:
-            t = array_Q[:, :, 0]
-            n, m = (s // 2 - 1 for s in out_R.desc.size_c[:2])
-            t[0, -m:] = t[0, m:0:-1].conj()
-            t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
-            t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
-            t[-n:, 0] = t[n:0:-1, 0].conj()
             array_R[:] = cupyx.scipy.fft.irfftn(
                 array_Q, out_R.desc.global_shape(),
                 norm='forward', overwrite_x=True)
@@ -283,7 +292,7 @@ class CuPyFFTPlans(FFTPlans):
     def fft_sphere(self, in_R, pw):
         from gpaw.gpu import cupyx
         from gpaw.gpu import cupy as cp
-        if self.dtype == complex:
+        if np.issubdtype(self.dtype, np.complexfloating):
             out_Q = cupyx.scipy.fft.fftn(in_R)
         else:
             try:
@@ -335,15 +344,15 @@ class FFTWPlan(FFTPlan):
     def __init__(self, in_R, out_R, sign, flags=MEASURE):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
-        self._ptr = _gpaw.FFTWPlan(in_R, out_R, sign, flags)
+        self._ptr = cgpaw.FFTWPlan(in_R, out_R, sign, flags)
         FFTPlan.__init__(self, in_R, out_R, sign, flags)
 
     def execute(self):
-        _gpaw.FFTWExecute(self._ptr)
+        cgpaw.FFTWExecute(self._ptr)
 
     def __del__(self):
-        if getattr(self, '_ptr', None) and _gpaw is not None:
-            _gpaw.FFTWDestroy(self._ptr)
+        if getattr(self, '_ptr', None):
+            cgpaw.FFTWDestroy(self._ptr)
         self._ptr = None
 
 
@@ -353,10 +362,14 @@ class NumpyFFTPlan(FFTPlan):
         if self.in_R.dtype == float:
             self.out_R[:] = np.fft.rfftn(self.in_R)
         elif self.out_R.dtype == float:
-            self.out_R[:] = np.fft.irfftn(self.in_R, self.out_R.shape)
+            self.out_R[:] = np.fft.irfftn(self.in_R,
+                                          self.out_R.shape,
+                                          [0, 1, 2])
             self.out_R *= self.out_R.size
         elif self.sign == 1:
-            self.out_R[:] = np.fft.ifftn(self.in_R, self.out_R.shape)
+            self.out_R[:] = np.fft.ifftn(self.in_R,
+                                         self.out_R.shape,
+                                         [0, 1, 2])
             self.out_R *= self.out_R.size
         else:
             self.out_R[:] = np.fft.fftn(self.in_R)

@@ -7,7 +7,7 @@ from scipy.linalg import eigh
 from gpaw.calculator import GPAW
 from gpaw.wavefunctions.base import WaveFunctions
 from gpaw.atom.radialgd import EquidistantRadialGridDescriptor
-from gpaw.utilities import unpack
+from gpaw.utilities import unpack_hermitian
 from gpaw.occupations import OccupationNumberCalculator
 import gpaw.mpi as mpi
 
@@ -129,7 +129,7 @@ class AtomEigensolver:
         e_n = np.zeros(N)
 
         for s in range(wfs.nspins):
-            dH_ii = unpack(hamiltonian.dH_asp[0][s])
+            dH_ii = unpack_hermitian(hamiltonian.dH_asp[0][s])
             kpt = wfs.kpt_u[s]
             N1 = 0
             for l in range(lmax + 1):
@@ -214,7 +214,7 @@ class AtomGridDescriptor(EquidistantRadialGridDescriptor):
     def __init__(self, h, rcut):
         ng = int(float(rcut) / h + 0.5) - 1
         rcut = ng * h
-        EquidistantRadialGridDescriptor.__init__(self, h, ng, h0=h)
+        super().__init__(h, ng, h0=h)
         self.sdisp_cd = np.empty((3, 2))
         self.comm = mpi.serial_comm
         self.pbc_c = np.zeros(3, bool)
@@ -265,14 +265,15 @@ class AtomOccupations(OccupationNumberCalculator):
 
     def __init__(self, f_sln):
         self.f_sln = f_sln
-        OccupationNumberCalculator.__init__(self)
+        super().__init__()
 
     def _calculate(self,
                    nelectrons,
                    eig_qn,
                    weight_q,
                    f_qn,
-                   fermi_level_guess):
+                   fermi_level_guess,
+                   fix_fermi_level=False):
         for s, f_n in enumerate(f_qn):
             n1 = 0
             for l, f0_n in enumerate(self.f_sln[s]):
@@ -290,16 +291,15 @@ class AtomPAW(GPAW):
         self.symbol = symbol
 
         gd = AtomGridDescriptor(h, rcut)
-        GPAW.__init__(self,
-                      mode=MakeWaveFunctions(gd),
-                      eigensolver=AtomEigensolver(gd, f_sln),
-                      poissonsolver=AtomPoissonSolver(),
-                      nbands=sum([(2 * l + 1) * len(f_n)
-                                  for l, f_n in enumerate(f_sln[0])]),
-                      communicator=mpi.serial_comm,
-                      parallel=dict(augment_grids=False),
-                      occupations=AtomOccupations(f_sln),
-                      **kwargs)
+        super().__init__(mode=MakeWaveFunctions(gd),
+                         eigensolver=AtomEigensolver(gd, f_sln),
+                         poissonsolver=AtomPoissonSolver(),
+                         nbands=sum([(2 * l + 1) * len(f_n)
+                                     for l, f_n in enumerate(f_sln[0])]),
+                         communicator=mpi.serial_comm,
+                         parallel=dict(augment_grids=False),
+                         occupations=AtomOccupations(f_sln),
+                         **kwargs)
         # Initialize function will raise an error unless we set a (bogus) cell
         self.initialize(Atoms(symbol, calculator=self,
                               cell=np.eye(3)))
@@ -326,7 +326,7 @@ class AtomPAW(GPAW):
                 yield l, n, f, eps, psit_G
                 band += 2 * l + 1
 
-    def extract_basis_functions(self, basis_name='atompaw.sz'):
+    def extract_basis_functions(self, n_j, l_j, basis_name='atompaw.sz'):
         """Create BasisFunctions object with pseudo wave functions."""
         from gpaw.basis_data import Basis, BasisFunction
         assert self.wfs.nspins == 1
@@ -340,6 +340,7 @@ class AtomPAW(GPAW):
 
         bf_j = basis.bf_j
         for l, n, f, eps, psit_G in self.state_iter():
+            n = [N for N, L in zip(n_j, l_j) if L == l][n]
             bf_g = rgd.empty()
             bf_g[0] = 0.0
             bf_g[1:] = psit_G
@@ -350,6 +351,6 @@ class AtomPAW(GPAW):
             if abs(bf_g[1]) > 3.0 * abs(bf_g[2] - bf_g[1]):
                 bf_g[0] = bf_g[1]
             bf = BasisFunction(n, l, self.wfs.gd.r_g[-1], bf_g,
-                               '%s%d e=%.3f f=%.3f' % ('spdfgh'[l], n, eps, f))
+                               f'{n}{"spdfgh"[l]} e={eps:.3f} f={f:.3f}')
             bf_j.append(bf)
         return basis

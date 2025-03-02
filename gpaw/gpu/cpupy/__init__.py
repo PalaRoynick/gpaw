@@ -7,7 +7,12 @@ import gpaw.gpu.cpupy.fft as fft
 import gpaw.gpu.cpupy.linalg as linalg
 import gpaw.gpu.cpupy.random as random
 
-__all__ = ['linalg', 'cublas', 'fft', 'random']
+__version__ = 'fake'
+
+__all__ = ['linalg', 'cublas', 'fft', 'random', '__version__']
+
+
+pi = np.pi
 
 
 def empty(*args, **kwargs):
@@ -43,6 +48,26 @@ def array(a, dtype=None):
     return ndarray(np.array(a, dtype))
 
 
+def array_split(a, *args, **kwargs):
+    return list(map(ndarray, np.array_split(a._data, *args, **kwargs)))
+
+
+def ascontiguousarray(a):
+    return ndarray(np.ascontiguousarray(a._data))
+
+
+def dot(a, b):
+    return ndarray(np.dot(a._data, b._data))
+
+
+def inner(a, b):
+    return ndarray(np.inner(a._data, b._data))
+
+
+def outer(a, b):
+    return ndarray(np.outer(a._data, b._data))
+
+
 def multiply(a, b, c):
     np.multiply(a._data, b._data, c._data)
 
@@ -70,6 +95,10 @@ def exp(a):
     return ndarray(np.exp(a._data))
 
 
+def log(a):
+    return ndarray(np.log(a._data))
+
+
 def eye(n):
     return ndarray(np.eye(n))
 
@@ -81,6 +110,10 @@ def triu_indices(n, k=0, m=None):
 
 def tri(n, k=0, dtype=float):
     return ndarray(np.tri(n, k=k, dtype=dtype))
+
+
+def allclose(a, b, **kwargs):
+    return np.allclose(a._data, b._data, **kwargs)
 
 
 def moveaxis(a, source, destination):
@@ -98,7 +131,8 @@ def fuse():
 class ndarray:
     def __init__(self, data):
         if isinstance(data, (float, complex, int, np.int32, np.int64,
-                             np.bool_)):
+                             np.bool_, np.float64, np.float32,
+                             np.complex64, np.complex128)):
             data = np.asarray(data)
         assert isinstance(data, np.ndarray), type(data)
         self._data = data
@@ -124,6 +158,13 @@ class ndarray:
     @property
     def imag(self):
         return ndarray(self._data.imag)
+
+    @imag.setter
+    def imag(self, value):
+        if isinstance(value, (float, complex)):
+            self._data.imag = value
+        else:
+            self._data.imag = value._data
 
     def set(self, a):
         if self.ndim == 0:
@@ -164,6 +205,9 @@ class ndarray:
             else:
                 yield ndarray(data)
 
+    def mean(self):
+        return ndarray(self._data.mean())
+
     def __setitem__(self, index, value):
         if isinstance(index, tuple):
             def convert(a):
@@ -190,6 +234,34 @@ class ndarray:
         if isinstance(other, (float, complex, int)):
             return self._data == other
         return ndarray(self._data == other._data)
+
+    def __ne__(self, other):
+        if isinstance(other, (float, complex, int)):
+            return self._data != other
+        return ndarray(self._data != other._data)
+
+    def __lt__(self, other):
+        if isinstance(other, (float, complex, int)):
+            return self._data < other
+        return ndarray(self._data < other._data)
+
+    def __le__(self, other):
+        if isinstance(other, (float, complex, int)):
+            return self._data <= other
+        return ndarray(self._data <= other._data)
+
+    def __gt__(self, other):
+        if isinstance(other, (float, complex, int)):
+            return self._data > other
+        return ndarray(self._data > other._data)
+
+    def __ge__(self, other):
+        if isinstance(other, (float, complex, int)):
+            return self._data >= other
+        return ndarray(self._data >= other._data)
+
+    def __neg__(self):
+        return ndarray(-self._data)
 
     def __mul__(self, f):
         if isinstance(f, (float, complex)):

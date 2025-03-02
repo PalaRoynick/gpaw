@@ -6,10 +6,9 @@ from gpaw import GPAW, restart
 from gpaw.atom.basis import BasisMaker
 from gpaw.lcao.tools import get_lcao_hamiltonian
 from gpaw.mpi import world
-from gpaw.test import equal
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_lcao_lcao_hamiltonian(in_tmp_dir, add_cwd_to_setup_paths):
     if world.rank == 0:
         basis = BasisMaker('Li').generate(1, 1)
@@ -36,5 +35,5 @@ def test_lcao_lcao_hamiltonian(in_tmp_dir, add_cwd_to_setup_paths):
 
         energy_tolerance = 0.0003
         niter_tolerance = 0
-        equal(e, -1.82847, energy_tolerance)
-        equal(niter, 5, niter_tolerance)
+        assert e == pytest.approx(-1.82847, abs=energy_tolerance)
+        assert niter == pytest.approx(5, abs=niter_tolerance)

@@ -1,18 +1,26 @@
 from __future__ import annotations
+from dataclasses import dataclass
+from typing import Union
 from pathlib import Path
+from functools import cached_property
 from types import SimpleNamespace
-
+from typing import TYPE_CHECKING
 import numpy as np
 
 from ase.units import Ha, Bohr
-from ase.utils import lazyproperty
 
 import gpaw.mpi as mpi
 from gpaw.ibz2bz import IBZ2BZMaps
+from gpaw.calculator import GPAW as OldGPAW
+from gpaw.new.ase_interface import ASECalculator as NewGPAW
+from gpaw.response.paw import LeanPAWDataset
+
+if TYPE_CHECKING:
+    from gpaw.setup import Setups, LeanSetup
 
 
 class PAWDatasetCollection:
-    def __init__(self, setups):
+    def __init__(self, setups: Setups):
         by_species = {}
         by_atom = []
         id_by_atom = []
@@ -29,26 +37,38 @@ class PAWDatasetCollection:
         self.id_by_atom = id_by_atom
 
 
+GPAWCalculator = Union[OldGPAW, NewGPAW]
+GPWFilename = Union[Path, str]
+ResponseGroundStateAdaptable = Union['ResponseGroundStateAdapter',
+                                     GPAWCalculator,
+                                     GPWFilename]
+
+
 class ResponseGroundStateAdapter:
-    def __init__(self, calc):
-        wfs = calc.wfs
+    def __init__(self, calc: GPAWCalculator):
+        wfs = calc.wfs  # wavefunction object from gpaw.wavefunctions
 
         self.atoms = calc.atoms
-        self.kd = wfs.kd
-        self.world = calc.world
+        self.kd = wfs.kd  # KPointDescriptor object from gpaw.kpt_descriptor.
+        self.world = calc.world  # _Communicator object from gpaw.mpi
+
+        # GridDescriptor from gpaw.grid_descriptor.
+        # Describes a grid in real space
         self.gd = wfs.gd
+
+        # Also a GridDescriptor, with a finer grid...
         self.finegd = calc.density.finegd
-        self.bd = wfs.bd
-        self.nspins = wfs.nspins
-        self.dtype = wfs.dtype
+        self.bd = wfs.bd  # BandDescriptor from gpaw.band_descriptor
+        self.nspins = wfs.nspins  # number of spins: int
+        self.dtype = wfs.dtype  # data type of wavefunctions, real or complex
 
-        self.spos_ac = calc.spos_ac
+        self.spos_ac = calc.spos_ac  # scaled position vector: np.ndarray
 
-        self.kpt_u = wfs.kpt_u
-        self.kpt_qs = wfs.kpt_qs
+        self.kpt_u = wfs.kpt_u  # kpoints: list of Kpoint from gpaw.kpoint
+        self.kpt_qs = wfs.kpt_qs  # kpoints: list of Kpoint from gpaw.kpoint
 
-        self.fermi_level = wfs.fermi_level
-        self.atoms = calc.atoms
+        self.fermi_level = wfs.fermi_level  # float
+        self.atoms = calc.atoms  # ASE Atoms object
         self.pawdatasets = PAWDatasetCollection(calc.setups)
 
         self.pbc = self.atoms.pbc
@@ -64,18 +84,24 @@ class ResponseGroundStateAdapter:
         self._hamiltonian = calc.hamiltonian
         self._calc = calc
 
+    @staticmethod
+    def from_input(
+            gs: ResponseGroundStateAdaptable) -> ResponseGroundStateAdapter:
+        if isinstance(gs, ResponseGroundStateAdapter):
+            return gs
+        elif isinstance(gs, (OldGPAW, NewGPAW)):
+            return ResponseGroundStateAdapter(calc=gs)
+        elif isinstance(gs, (Path, str)):  # GPWFilename
+            return ResponseGroundStateAdapter.from_gpw_file(gpw=gs)
+        raise ValueError('Expected ResponseGroundStateAdaptable, got', gs)
+
     @classmethod
-    def from_gpw_file(cls, gpw, context) -> ResponseGroundStateAdapter:
+    def from_gpw_file(cls, gpw: GPWFilename) -> ResponseGroundStateAdapter:
         """Initiate the ground state adapter directly from a .gpw file."""
         from gpaw import GPAW, disable_dry_run
         assert Path(gpw).is_file()
-
-        context.print('Reading ground state calculation:\n  %s' % gpw)
-
-        with context.timer('Read ground state'):
-            with disable_dry_run():
-                calc = GPAW(gpw, txt=None, communicator=mpi.serial_comm)
-
+        with disable_dry_run():
+            calc = GPAW(gpw, txt=None, communicator=mpi.serial_comm)
         return cls(calc)
 
     @property
@@ -85,7 +111,11 @@ class ResponseGroundStateAdapter:
         # code, and that includes places that are also compatible with FD.
         return self._wfs.pd
 
-    @lazyproperty
+    def is_parallelized(self):
+        """Are we dealing with a parallel calculator?"""
+        return self.world.size > 1
+
+    @cached_property
     def global_pd(self):
         """Get a PWDescriptor that includes all k-points.
 
@@ -115,11 +145,9 @@ class ResponseGroundStateAdapter:
         width = getattr(occs, '_width', 0.0) / Ha
         return width
 
-    def nonpbc_cell_product(self):
-        """Volume, area, or length, taken in all non-periodic directions."""
-        nonpbc = ~self.pbc
-        cell_cv = self.gd.cell_cv
-        return abs(np.linalg.det(cell_cv[nonpbc][:, nonpbc]))
+    @cached_property
+    def cd(self):
+        return CellDescriptor(self.gd.cell_cv, self.pbc)
 
     @property
     def nt_sR(self):
@@ -133,12 +161,12 @@ class ResponseGroundStateAdapter:
             self._density.interpolate_pseudo_density()
         return self._density.nt_sg
 
-    @lazyproperty
+    @cached_property
     def n_sR(self):
         return self._density.get_all_electron_density(
             atoms=self.atoms, gridrefinement=1)[0]
 
-    @lazyproperty
+    @cached_property
     def n_sr(self):
         return self._density.get_all_electron_density(
             atoms=self.atoms, gridrefinement=2)[0]
@@ -230,27 +258,82 @@ class ResponseGroundStateAdapter:
         # gd.cell_cv must always be the same as pd.gd.cell_cv, right??
         return np.dot(self.spos_ac, self.gd.cell_cv)
 
-    def count_occupied_bands(self, ftol=1e-6):
-        """Count the number of filled and non-empty bands.
+    def count_occupied_bands(self, ftol: float = 1e-6) -> tuple[int, int]:
+        """Count the number of filled (nocc1) and nonempty bands (nocc2).
 
         ftol : float
             Threshold determining whether a band is completely filled
             (f > 1 - ftol) or completely empty (f < ftol).
         """
-        nocc1 = 9999999
-        nocc2 = 0
+        # Count the number of occupied bands for this rank
+        nocc1, nocc2 = self._count_occupied_bands(ftol=ftol)
+        # Minimize/maximize over k-points
+        nocc1 = self.kd.comm.min_scalar(nocc1)  # bands filled for all k
+        nocc2 = self.kd.comm.max_scalar(nocc2)  # bands filled for any k
+        # Sum over band distribution
+        nocc1 = self.bd.comm.sum_scalar(nocc1)  # number of filled bands
+        nocc2 = self.bd.comm.sum_scalar(nocc2)  # number of nonempty bands
+        return int(nocc1), int(nocc2)
+
+    def _count_occupied_bands(self, *, ftol: float) -> tuple[int, int]:
+        nocc1 = 9999999  # number of completely filled bands
+        nocc2 = 0  # number of nonempty bands
         for kpt in self.kpt_u:
             f_n = kpt.f_n / kpt.weight
             nocc1 = min((f_n > 1 - ftol).sum(), nocc1)
             nocc2 = max((f_n > ftol).sum(), nocc2)
-        return nocc1, nocc2
+        return int(nocc1), int(nocc2)
+
+    def get_band_transitions(self, nbands: int | slice | None = None):
+        """Determine the indices the define the range of occupied bands
+        n1, n2 and unoccupied bands m1, m2"""
+
+        if nbands is None:
+            n1 = 0
+            m2 = self.nbands
+        elif isinstance(nbands, int):
+            n1 = 0
+            m2 = nbands
+            assert 1 <= m2 <= self.nbands
+        elif isinstance(nbands, slice):
+            n1 = nbands.start
+            m2 = nbands.stop
+            assert n1 >= 0 and m2 >= 0
+            assert nbands.step in {None, 1}
+            assert n1 < m2 <= self.nbands
+            assert n1 <= self.nocc1
+        else:
+            raise ValueError(
+                f"Invalid type for nbands: {type(nbands)}."
+                "Expected None, int, or slice.")
+
+        n2 = self.nocc2
+        m1 = self.nocc1
+
+        assert n1 < n2
+
+        return n1, n2, m1, m2
+
+    def get_eigenvalue_range(self, nbands: int | slice | None = None):
+        """Get smallest and largest Kohn-Sham eigenvalues."""
+        n1, n2, m1, m2 = self.get_band_transitions(nbands)
+        epsmin = np.inf
+        epsmax = -np.inf
+        for kpt in self.kpt_u:
+            epsmin = min(epsmin, kpt.eps_n[n1])  # the eigenvalues are ordered
+            epsmax = max(epsmax, kpt.eps_n[m2 - 1])
+        return epsmin, epsmax
+
+    @property
+    def nbands(self):
+        return self.bd.nbands
 
     @property
     def metallic(self):
         # Does the number of filled bands equal the number of non-empty bands?
         return self.nocc1 != self.nocc2
 
-    @property
+    @cached_property
     def ibzq_qc(self):
         # For G0W0Kernel
         kd = self.kd
@@ -265,14 +348,14 @@ class ResponseGroundStateAdapter:
         from gpaw.bztools import get_bz
         # NB: We are ignoring the pbc_c keyword to get_bz() in order to mimic
         # find_high_symmetry_monkhorst_pack() in gpaw.bztools. XXX
-        _, ibz_vertices_kc = get_bz(self._calc)
+        _, ibz_vertices_kc, _ = get_bz(self._calc)
         return ibz_vertices_kc
 
     def get_aug_radii(self):
         return np.array([max(pawdata.rcut_j)
                          for pawdata in self.pawdatasets.by_atom])
 
-    @lazyproperty
+    @cached_property
     def micro_setups(self):
         from gpaw.response.localft import extract_micro_setup
         micro_setups = []
@@ -284,28 +367,72 @@ class ResponseGroundStateAdapter:
     def atomrotations(self):
         return self._wfs.setups.atomrotations
 
-    @lazyproperty
+    @cached_property
     def kpoints(self):
         from gpaw.response.kpoints import ResponseKPointGrid
-        return ResponseKPointGrid(self.kd, self.gd.icell_cv, self.kd.bzk_kc)
+        return ResponseKPointGrid(self.kd)
+
+
+@dataclass
+class CellDescriptor:
+    cell_cv: np.ndarray
+    pbc_c: np.ndarray
+
+    @property
+    def nonperiodic_hypervolume(self):
+        """Get the hypervolume of the cell along nonperiodic directions.
+
+        Returns the hypervolume Λ in units of Å, where
+
+        Λ = 1        in 3D
+        Λ = L        in 2D, where L is the out-of-plane cell vector length
+        Λ = A        in 1D, where A is the transverse cell area
+        Λ = V        in 0D, where V is the cell volume
+        """
+        cell_cv = self.cell_cv
+        pbc_c = self.pbc_c
+        if sum(pbc_c) > 0:
+            # In 1D and 2D, we assume the cartesian representation of the unit
+            # cell to be block diagonal, separating the periodic and
+            # nonperiodic cell vectors in different blocks.
+            assert np.allclose(cell_cv[~pbc_c][:, pbc_c], 0.) and \
+                np.allclose(cell_cv[pbc_c][:, ~pbc_c], 0.), \
+                "In 1D and 2D, please put the periodic/nonperiodic axis " \
+                "along a cartesian component"
+        L = np.abs(np.linalg.det(cell_cv[~pbc_c][:, ~pbc_c]))
+        return L * Bohr**sum(~pbc_c)  # Bohr -> Å
 
 
 # Contains all the relevant information
 # from Setups class for response calculators
-class ResponsePAWDataset:
-    def __init__(self, setup):
-        self.ni = setup.ni
-        self.rgd = setup.rgd
-        self.rcut_j = setup.rcut_j
-        self.l_j = setup.l_j
-        self.lq = setup.lq
+class ResponsePAWDataset(LeanPAWDataset):
+    def __init__(self, setup: LeanSetup, **kwargs):
+        super().__init__(
+            rgd=setup.rgd, l_j=setup.l_j, rcut_j=setup.rcut_j,
+            phit_jg=setup.data.phit_jg, phi_jg=setup.data.phi_jg, **kwargs)
+        assert setup.ni == self.ni
+
+        self.n_j = setup.n_j
+        self.N0_q = setup.N0_q
         self.nabla_iiv = setup.nabla_iiv
-        self.data = SimpleNamespace(phi_jg=setup.data.phi_jg,
-                                    phit_jg=setup.data.phit_jg)
-        self.xc_correction = SimpleNamespace(
-            rgd=setup.xc_correction.rgd, Y_nL=setup.xc_correction.Y_nL,
-            n_qg=setup.xc_correction.n_qg, nt_qg=setup.xc_correction.nt_qg,
-            nc_g=setup.xc_correction.nc_g, nct_g=setup.xc_correction.nct_g,
-            nc_corehole_g=setup.xc_correction.nc_corehole_g,
-            B_pqL=setup.xc_correction.B_pqL, e_xc0=setup.xc_correction.e_xc0)
+        self.xc_correction: SimpleNamespace | None
+        if setup.xc_correction is not None:
+            self.xc_correction = SimpleNamespace(
+                rgd=setup.xc_correction.rgd, Y_nL=setup.xc_correction.Y_nL,
+                n_qg=setup.xc_correction.n_qg, nt_qg=setup.xc_correction.nt_qg,
+                nc_g=setup.xc_correction.nc_g, nct_g=setup.xc_correction.nct_g,
+                nc_corehole_g=setup.xc_correction.nc_corehole_g,
+                B_pqL=setup.xc_correction.B_pqL,
+                e_xc0=setup.xc_correction.e_xc0)
+        else:
+            # If there is no `xc_correction` in the setup, we assume to be
+            # using pseudo potentials.
+            self.xc_correction = None
+            # In this case, we set l_j to an empty list in order to bypass the
+            # calculation of PAW corrections to pair densities etc.
+            # This is quite an ugly hack...
+            # If we want to support pseudo potential calculations for real, we
+            # should skip the PAW corrections at the matrix element calculator
+            # level, not by an odd hack.
+            self.l_j = np.array([], dtype=float)
         self.hubbard_u = setup.hubbard_u

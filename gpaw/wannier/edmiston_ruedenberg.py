@@ -3,7 +3,7 @@ from math import pi
 
 import numpy as np
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 from .overlaps import WannierOverlaps
 from .functions import WannierFunctions
 
@@ -36,7 +36,7 @@ def localize(overlaps: WannierOverlaps,
 
     old = 0.0
     for iter in range(maxiter):
-        value = _gpaw.localize(Z_nnc, U_nn)
+        value = cgpaw.localize(Z_nnc, U_nn)
         if verbose:
             print(f'{iter:4} {value:10.3f} {value - old:10.6f}')
         if value - old < tolerance:
@@ -56,7 +56,7 @@ def localize(overlaps: WannierOverlaps,
 if __name__ == '__main__':
     import sys
     from gpaw import GPAW
-    from .overlaps import calculate_overlaps
+    from gpaw.wannier.overlaps import calculate_overlaps
 
     calc = GPAW(sys.argv[1])
     nwannier = int(sys.argv[2])

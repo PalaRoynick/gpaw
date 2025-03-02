@@ -13,7 +13,7 @@ from gpaw.utilities.blas import axpy
 from gpaw.wavefunctions.arrays import UniformGridWaveFunctions
 from gpaw.wavefunctions.fdpw import FDPWWaveFunctions
 from gpaw.wavefunctions.mode import Mode
-import _gpaw
+import gpaw.cgpaw as cgpaw
 
 
 class FD(Mode):
@@ -97,7 +97,7 @@ class FDWaveFunctions(FDPWWaveFunctions):
         nt_G = nt_sG[kpt.s]
         for f, psit_G in zip(f_n, kpt.psit_nG):
             # Same as nt_G += f * abs(psit_G)**2, but much faster:
-            _gpaw.add_to_density(f, psit_G, nt_G)
+            cgpaw.add_to_density(f, psit_G, nt_G)
 
         # Hack used in delta-scf calculations:
         if hasattr(kpt, 'c_on'):
@@ -239,7 +239,11 @@ class FDWaveFunctions(FDPWWaveFunctions):
     def read(self, reader):
         FDPWWaveFunctions.read(self, reader)
 
-        if 'values' not in reader.wave_functions:
+        if 'values' in reader.wave_functions:
+            name = 'values'
+        elif 'coefficients' in reader.wave_functions:
+            name = 'coefficients'
+        else:
             return
 
         c = reader.bohr**1.5
@@ -250,7 +254,7 @@ class FDWaveFunctions(FDPWWaveFunctions):
             # We may not be able to keep all the wave
             # functions in memory - so psit_nG will be a special type of
             # array that is really just a reference to a file:
-            psit_nG = reader.wave_functions.proxy('values', kpt.s, kpt.k)
+            psit_nG = reader.wave_functions.proxy(name, kpt.s, kpt.k)
             psit_nG.scale = c
 
             kpt.psit = UniformGridWaveFunctions(
@@ -280,6 +284,7 @@ class FDWaveFunctions(FDPWWaveFunctions):
         """Generate random wave functions."""
 
         gpts = self.gd.N_c[0] * self.gd.N_c[1] * self.gd.N_c[2]
+        rng = np.random.default_rng(4 + self.world.rank)
 
         if self.bd.nbands < gpts / 64:
             gd1 = self.gd.coarsen()
@@ -294,21 +299,16 @@ class FDWaveFunctions(FDPWWaveFunctions):
             shape = tuple(gd2.n_c)
             scale = np.sqrt(12 / gd2.volume)
 
-            old_state = np.random.get_state()
-
-            np.random.seed(4 + self.world.rank)
-
             for kpt in self.kpt_u:
                 for psit_G in kpt.psit_nG[nao:]:
                     if self.dtype == float:
-                        psit_G2[:] = (np.random.random(shape) - 0.5) * scale
+                        psit_G2[:] = (rng.random(shape) - 0.5) * scale
                     else:
-                        psit_G2.real = (np.random.random(shape) - 0.5) * scale
-                        psit_G2.imag = (np.random.random(shape) - 0.5) * scale
+                        psit_G2.real = (rng.random(shape) - 0.5) * scale
+                        psit_G2.imag = (rng.random(shape) - 0.5) * scale
 
                     interpolate2(psit_G2, psit_G1, kpt.phase_cd)
                     interpolate1(psit_G1, psit_G, kpt.phase_cd)
-            np.random.set_state(old_state)
 
         elif gpts / 64 <= self.bd.nbands < gpts / 8:
             gd1 = self.gd.coarsen()
@@ -320,38 +320,27 @@ class FDWaveFunctions(FDPWWaveFunctions):
             shape = tuple(gd1.n_c)
             scale = np.sqrt(12 / gd1.volume)
 
-            old_state = np.random.get_state()
-
-            np.random.seed(4 + self.world.rank)
-
             for kpt in self.kpt_u:
                 for psit_G in kpt.psit_nG[nao:]:
                     if self.dtype == float:
-                        psit_G1[:] = (np.random.random(shape) - 0.5) * scale
+                        psit_G1[:] = (rng.random(shape) - 0.5) * scale
                     else:
-                        psit_G1.real = (np.random.random(shape) - 0.5) * scale
-                        psit_G1.imag = (np.random.random(shape) - 0.5) * scale
+                        psit_G1.real = (rng.random(shape) - 0.5) * scale
+                        psit_G1.imag = (rng.random(shape) - 0.5) * scale
 
                     interpolate1(psit_G1, psit_G, kpt.phase_cd)
-            np.random.set_state(old_state)
 
         else:
             shape = tuple(self.gd.n_c)
             scale = np.sqrt(12 / self.gd.volume)
 
-            old_state = np.random.get_state()
-
-            np.random.seed(4 + self.world.rank)
-
             for kpt in self.kpt_u:
                 for psit_G in kpt.psit_nG[nao:]:
                     if self.dtype == float:
-                        psit_G[:] = (np.random.random(shape) - 0.5) * scale
+                        psit_G[:] = (rng.random(shape) - 0.5) * scale
                     else:
-                        psit_G.real = (np.random.random(shape) - 0.5) * scale
-                        psit_G.imag = (np.random.random(shape) - 0.5) * scale
-
-            np.random.set_state(old_state)
+                        psit_G.real = (rng.random(shape) - 0.5) * scale
+                        psit_G.imag = (rng.random(shape) - 0.5) * scale
 
     def estimate_memory(self, mem):
         FDPWWaveFunctions.estimate_memory(self, mem)

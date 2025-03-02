@@ -1,10 +1,14 @@
-from gpaw.xc.libxc import LibXC
-from gpaw.xc.lda import LDA
+import numpy as np
+from gpaw import get_libraries
+from gpaw.xc.functional import XCFunctional
 from gpaw.xc.gga import GGA
+from gpaw.xc.lda import LDA
+from gpaw.xc.libxc import LibXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.noncollinear import NonCollinearLDAKernel
-from gpaw import libraries
-from gpaw.xc.functional import XCFunctional
+
+
+libraries = get_libraries()
 
 
 def xc_string_to_dict(string):
@@ -28,7 +32,11 @@ def xc_string_to_dict(string):
     return d
 
 
-def XC(kernel, parameters=None, atoms=None, collinear=True) -> XCFunctional:
+def XC(kernel,
+       parameters=None,
+       atoms=None,
+       collinear=True,
+       xp=np) -> XCFunctional:
     """Create XCFunctional object.
 
     kernel: XCKernel object, dict or str
@@ -41,7 +49,10 @@ def XC(kernel, parameters=None, atoms=None, collinear=True) -> XCFunctional:
     GLLBSC.  One can also use equivalent libxc names, for example
     GGA_X_PBE+GGA_C_PBE is equivalent to PBE, and LDA_X to the LDA exchange.
     In this way one has access to all the functionals defined in libxc.
-    See xc_funcs.h for the complete list.  """
+    See xc_funcs.h for the complete list.
+
+    Warning - if an MGGA from libxc is used, libxc should be compiled
+    with --disable-fhc. Otherwise the calcualtions won't converge"""
 
     if isinstance(kernel, str):
         kernel = xc_string_to_dict(kernel)
@@ -88,8 +99,8 @@ def XC(kernel, parameters=None, atoms=None, collinear=True) -> XCFunctional:
             from gpaw.xc.bee import BEE2
             kernel = BEE2(parameters)
         elif name.startswith('GLLB'):
-            from gpaw.xc.gllb.nonlocalfunctionalfactory import (
-                get_nonlocal_functional)
+            from gpaw.xc.gllb.nonlocalfunctionalfactory import \
+                get_nonlocal_functional
             xc = get_nonlocal_functional(name, **kwargs)
             return xc
         elif name == 'LB94':
@@ -139,6 +150,6 @@ def XC(kernel, parameters=None, atoms=None, collinear=True) -> XCFunctional:
         return LDA(kernel, **kwargs)
 
     elif kernel.type == 'GGA':
-        return GGA(kernel, **kwargs)
+        return GGA(kernel, xp=xp, **kwargs)
     else:
         return MGGA(kernel, **kwargs)

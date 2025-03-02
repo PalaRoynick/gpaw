@@ -12,7 +12,7 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
 from gpaw.setup import Setups
 from gpaw.typing import Array1D, ArrayLike2D
-from gpaw.utilities import pack
+from gpaw.utilities import pack_density
 
 if TYPE_CHECKING:
     from gpaw.new.calculation import DFTCalculation
@@ -24,13 +24,13 @@ class ElectrostaticPotential:
                  W_aL: AtomArrays,
                  Q_aL: AtomArrays,
                  D_asii: AtomArrays,
-                 fracpos_ac: ArrayLike2D,
+                 relpos_ac: ArrayLike2D,
                  setups: Setups):
         self.vHt_x = vHt_x
         self.W_aL = W_aL
         self.Q_aL = Q_aL
         self.D_asii = D_asii
-        self.fracpos_ac = fracpos_ac
+        self.relpos_ac = relpos_ac
         self.setups = setups
 
         # Caching of interpolated pseudo-potential:
@@ -39,14 +39,14 @@ class ElectrostaticPotential:
 
     @classmethod
     def from_calculation(cls, calculation: DFTCalculation):
-        density = calculation.state.density
-        potential, W_aL = calculation.pot_calc.calculate(density)
+        density = calculation.density
+        potential, _, W_aL = calculation.pot_calc.calculate(density)
         Q_aL = density.calculate_compensation_charge_coefficients()
         return cls(potential.vHt_x,
                    W_aL,
                    Q_aL,
                    density.D_asii,
-                   calculation.fracpos_ac,
+                   calculation.relpos_ac,
                    calculation.setups)
 
     def atomic_potentials(self) -> Array1D:
@@ -58,9 +58,9 @@ class ElectrostaticPotential:
         dEH_a = np.zeros(len(self.setups))
         for a, D_sii in self.D_asii.items():
             setup = self.setups[a]
-            D_p = pack(D_sii.sum(0))
+            D_p = pack_density(D_sii.sum(0))
             dEH_a[a] = setup.dEH0 + setup.dEH_p @ D_p
-        self.D_asii.comm.sum(dEH_a)
+        self.D_asii.layout.atomdist.comm.sum(dEH_a)
         return dEH_a * Ha * Bohr**3
 
     def pseudo_potential(self,
@@ -97,7 +97,7 @@ class ElectrostaticPotential:
             Width of gaussian (in Angstrom) used to represent the nuclear
             charge.
         """
-        vHt_R = self._pseudo_potential(grid_spacing / Bohr)
+        vHt_R = self._pseudo_potential(grid_spacing / Bohr).copy()
 
         dv_a = []
         for a, D_sii in self.D_asii.items():
@@ -108,7 +108,7 @@ class ElectrostaticPotential:
             params['lmax'] = 0
             ghat_g = shape_functions(rgd, **params)[0]
             Z_g = shape_functions(rgd, 'gauss', rcgauss, lmax=0)[0] * setup.Z
-            D_p = pack(D_sii.sum(axis=0))
+            D_p = pack_density(D_sii.sum(axis=0))
             D_q = D_p @ c.B_pqL[:, :, 0]
             dn_g = D_q @ (c.n_qg - c.nt_qg) * sqrt(4 * pi)
             dn_g += 4 * pi * (c.nc_g - c.nct_g)
@@ -120,6 +120,6 @@ class ElectrostaticPotential:
             dv_g[-1] = 0.0
             dv_a.append([rgd.spline(dv_g, points=npoints)])
 
-        dv_aR = vHt_R.desc.atom_centered_functions(dv_a, self.fracpos_ac)
+        dv_aR = vHt_R.desc.atom_centered_functions(dv_a, self.relpos_ac)
         dv_aR.add_to(vHt_R)
         return vHt_R.scaled(Bohr, Ha)

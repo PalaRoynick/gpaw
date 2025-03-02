@@ -3,10 +3,9 @@ from ase import Atoms
 
 from gpaw import GPAW
 from gpaw.external import ConstantPotential
-from gpaw.test import equal
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_ext_potential_external():
     sc = 2.9
     R = 0.7  # approx. experimental bond length
@@ -61,9 +60,9 @@ def test_ext_potential_external():
             e1 = c1.get_eigenvalues()[i]
             print('Eigenvalues no pot, expected, error=',
                   e00, e1 + 1, e00 - e1 - 1)
-            equal(e00, e1 + 1., 0.008)
+            assert e00 == pytest.approx(e1 + 1., abs=0.008)
 
     E_c00 = c00.get_potential_energy()
     E_c1 = c1.get_potential_energy()
     DeltaE = E_c00 - E_c1
-    equal(DeltaE, 0, 0.002)
+    assert DeltaE == pytest.approx(0, abs=0.002)

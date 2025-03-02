@@ -13,7 +13,7 @@ radius = 50.0
 large_cell = np.array([3 * radius, 3 * radius, 3 * radius])
 
 # Permittivity of Gold
-# J. Chem. Phys. 135, 084121 (2011); http://dx.doi.org/10.1063/1.3626549
+# J. Chem. Phys. 135, 084121 (2011); https://dx.doi.org/10.1063/1.3626549
 gold = [[0.2350, 0.1551, 95.62],
         [0.4411, 0.1480, -12.55],
         [0.7603, 1.946, -40.89],
@@ -41,7 +41,7 @@ qsfdtd = QSFDTD(classical_material=classical_material,
                 remove_moments=(4, 1))
 
 # Run ground state
-energy = qsfdtd.ground_state('gs.gpw', nbands=-1, symmetry='off')
+energy = qsfdtd.ground_state('gs.gpw', mode='fd', nbands=-1, symmetry='off')
 
 # Run time evolution
 qsfdtd.time_propagation('gs.gpw',

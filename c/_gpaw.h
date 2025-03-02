@@ -11,7 +11,7 @@
 #include <mpi.h>
 #endif
 #ifndef GPAW_WITHOUT_LIBXC
-#include <xc.h>
+#include <xc.h> // If this file is not found, install libxc https://gpaw.readthedocs.io/install.html#libxc-installation
 #endif
 
 #ifdef GPAW_HPM
@@ -27,6 +27,8 @@ PyObject* craypat_region_begin(PyObject *self, PyObject *args);
 PyObject* craypat_region_end(PyObject *self, PyObject *args);
 #endif
 
+PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
+PyObject* pawexxvv(PyObject* self, PyObject* args);
 PyObject* symmetrize(PyObject *self, PyObject *args);
 PyObject* symmetrize_ft(PyObject *self, PyObject *args);
 PyObject* symmetrize_wavefunction(PyObject *self, PyObject *args);
@@ -51,6 +53,8 @@ PyObject* pack(PyObject *self, PyObject *args);
 PyObject* unpack(PyObject *self, PyObject *args);
 PyObject* unpack_complex(PyObject *self, PyObject *args);
 PyObject* hartree(PyObject *self, PyObject *args);
+PyObject* integrate_outwards(PyObject *self, PyObject *args);
+PyObject* integrate_inwards(PyObject *self, PyObject *args);
 PyObject* localize(PyObject *self, PyObject *args);
 PyObject* NewXCFunctionalObject(PyObject *self, PyObject *args);
 #ifndef GPAW_WITHOUT_LIBXC
@@ -81,6 +85,9 @@ PyObject* scalapack_set(PyObject *self, PyObject *args);
 PyObject* scalapack_redist(PyObject *self, PyObject *args);
 PyObject* scalapack_diagonalize_dc(PyObject *self, PyObject *args);
 PyObject* scalapack_diagonalize_ex(PyObject *self, PyObject *args);
+#ifdef GPAW_WITH_INTEL_MKL
+PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args);
+#endif
 #ifdef GPAW_MR3
 PyObject* scalapack_diagonalize_mr3(PyObject *self, PyObject *args);
 #endif
@@ -185,13 +192,20 @@ PyObject* axpbz_gpu(PyObject *self, PyObject *args);
 PyObject* fill_gpu(PyObject *self, PyObject *args);
 PyObject* pwlfc_expand_gpu(PyObject *self, PyObject *args);
 PyObject* pw_insert_gpu(PyObject *self, PyObject *args);
+PyObject* pw_norm_kinetic_gpu(PyObject *self, PyObject *args);
+PyObject* pw_norm_gpu(PyObject *self, PyObject *args);
+
+PyObject* pw_amend_insert_realwf_gpu(PyObject *self, PyObject *args);
 PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
+PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 #endif
 
 static PyMethodDef functions[] = {
+    {"pawexxvv", pawexxvv, METH_VARARGS, 0},
+    {"evaluate_mpa_poly", evaluate_mpa_poly, METH_VARARGS, 0},
     {"symmetrize", symmetrize, METH_VARARGS, 0},
     {"symmetrize_ft", symmetrize_ft, METH_VARARGS, 0},
     {"symmetrize_wavefunction", symmetrize_wavefunction, METH_VARARGS, 0},
@@ -221,6 +235,8 @@ static PyMethodDef functions[] = {
     {"unpack", unpack, METH_VARARGS, 0},
     {"unpack_complex", unpack_complex,           METH_VARARGS, 0},
     {"hartree", hartree, METH_VARARGS, 0},
+    {"integrate_outwards", integrate_outwards, METH_VARARGS, 0},
+    {"integrate_inwards", integrate_inwards, METH_VARARGS, 0},
     {"localize", localize, METH_VARARGS, 0},
     {"XCFunctional", NewXCFunctionalObject, METH_VARARGS, 0},
 #ifndef GPAW_WITHOUT_LIBXC
@@ -244,6 +260,9 @@ static PyMethodDef functions[] = {
     {"get_blacs_local_shape", get_blacs_local_shape, METH_VARARGS, NULL},
     {"blacs_destroy", blacs_destroy, METH_VARARGS, 0},
     {"scalapack_set", scalapack_set, METH_VARARGS, 0},
+#ifdef GPAW_WITH_INTEL_MKL
+    {"mklscalapack_diagonalize_geev", mklscalapack_diagonalize_geev, METH_VARARGS, 0},
+#endif
     {"scalapack_redist", scalapack_redist, METH_VARARGS, 0},
     {"scalapack_diagonalize_dc", scalapack_diagonalize_dc, METH_VARARGS, 0},
     {"scalapack_diagonalize_ex", scalapack_diagonalize_ex, METH_VARARGS, 0},
@@ -345,10 +364,14 @@ static PyMethodDef functions[] = {
     {"fill_gpu", fill_gpu, METH_VARARGS, 0},
     {"pwlfc_expand_gpu", pwlfc_expand_gpu, METH_VARARGS, 0},
     {"pw_insert_gpu", pw_insert_gpu, METH_VARARGS, 0},
+    {"pw_norm_kinetic_gpu", pw_norm_kinetic_gpu, METH_VARARGS, 0},
+    {"pw_norm_gpu", pw_norm_gpu, METH_VARARGS, 0},
+    {"pw_amend_insert_realwf_gpu", pw_amend_insert_realwf_gpu, METH_VARARGS, 0},
     {"add_to_density_gpu", add_to_density_gpu, METH_VARARGS, 0},
     {"dH_aii_times_P_ani_gpu", dH_aii_times_P_ani_gpu, METH_VARARGS, 0},
     {"evaluate_lda_gpu", evaluate_lda_gpu, METH_VARARGS, 0},
     {"evaluate_pbe_gpu", evaluate_pbe_gpu, METH_VARARGS, 0},
+    {"calculate_residuals_gpu", calculate_residual_gpu, METH_VARARGS, 0},
 #endif // GPAW_GPU
     {0, 0, 0, 0}
 };
@@ -412,6 +435,10 @@ static PyObject* moduleinit(void)
     if (m == NULL)
         return NULL;
 
+#ifdef Py_GIL_DISABLED
+    PyUnstable_Module_SetGIL(m, Py_MOD_GIL_NOT_USED);
+#endif
+
 #ifdef PARALLEL
     Py_INCREF(&MPIType);
     Py_INCREF(&GPAW_MPI_Request_type);
@@ -425,16 +452,23 @@ static PyObject* moduleinit(void)
                            PyUnicode_FromString(xc_version_string()));
 # endif
 #endif
+#ifdef GPAW_GPU
+    PyObject_SetAttrString(m, "GPU_ENABLED", Py_True);
+#else
+    PyObject_SetAttrString(m, "GPU_ENABLED", Py_False);
+#endif
 #ifdef GPAW_GPU_AWARE_MPI
     PyObject_SetAttrString(m, "gpu_aware_mpi", Py_True);
+#else
+    PyObject_SetAttrString(m, "gpu_aware_mpi", Py_False);
 #endif
 #ifdef _OPENMP
     PyObject_SetAttrString(m, "have_openmp", Py_True);
 #else
     PyObject_SetAttrString(m, "have_openmp", Py_False);
 #endif
-    // Version number of C-code.  Keep in sync with gpaw/__init__.py
-    PyObject_SetAttrString(m, "version", PyLong_FromLong(4));
+    // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
+    PyObject_SetAttrString(m, "version", PyLong_FromLong(9));
 
     Py_INCREF(&LFCType);
     Py_INCREF(&OperatorType);

@@ -681,7 +681,7 @@ def dot_all_k_and_b(x1, x2, wfs, dimensions=None, mode=None):
         for k in x1.keys():
             dot_pr_x1x2 += np.dot(x1[k].conj(), x2[k]).real
     else:
-        dot_pr_x1x2 = 0.0j if wfs.dtype is complex else 0.0
+        dot_pr_x1x2 = 0.0j if wfs.dtype == complex else 0.0
         for k, kpt in enumerate(wfs.kpt_u):
             for i in range(dimensions[k]):
                 dot_prod = wfs.integrate(x1[k][i], x2[k][i], False)
@@ -714,7 +714,6 @@ def apply_prec(prec, x, const=1.0, wfs=None, mode=None):
                 psit_G = kpt.psit.array[i]
                 ekin = prec.calculate_kinetic_energy(psit_G, kpt)
                 y[k][i] = - const * prec(z, kpt, ekin) / deg
-
     else:
         deg = (3.0 - wfs.kd.nspins)
         for k, kpt in enumerate(wfs.kpt_u):

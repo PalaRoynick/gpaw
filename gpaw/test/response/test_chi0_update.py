@@ -6,7 +6,8 @@ import numpy as np
 from ase.build import bulk
 
 from gpaw import GPAW, PW, FermiDirac
-from gpaw.response.chi0 import Chi0
+from gpaw.response import ResponseGroundStateAdapter
+from gpaw.response.chi0 import Chi0Calculator, get_frequency_descriptor
 
 
 @pytest.mark.response
@@ -46,20 +47,19 @@ def test_si_update_consistency(in_tmp_dir):
     calc.write('Si', 'all')
 
     # Response calculation
-    chi0 = Chi0('Si',
-                hilbert=True,
-                intraband=False)
-    gs = chi0.gs
+    gs = ResponseGroundStateAdapter.from_gpw_file('Si')
+    chi0 = Chi0Calculator(gs, wd=get_frequency_descriptor(gs=gs),
+                          hilbert=True, intraband=False)
 
     chi0_full = chi0.create_chi0(q_c)
     chi0_steps = chi0.create_chi0(q_c)
     spins = range(gs.nspins)
     # Add chi0 contribution from all the unoccupied bands
-    chi0.update_chi0(chi0_full, gs.nocc1, nbands, spins)
+    chi0.update_chi0(chi0_full, m1=gs.nocc1, m2=nbands, spins=spins)
     # Add chi0 contribution from *some* of the unoccupied bands
-    chi0.update_chi0(chi0_steps, gs.nocc1, intermediate_m, spins)
+    chi0.update_chi0(chi0_steps, m1=gs.nocc1, m2=intermediate_m, spins=spins)
     # Add chi0 contribution from the remaining unoccupied bands
-    chi0.update_chi0(chi0_steps, intermediate_m, nbands, spins)
+    chi0.update_chi0(chi0_steps, m1=intermediate_m, m2=nbands, spins=spins)
 
     # Compare the output chi0 body
     assert chi0_steps.chi0_WgG == pytest.approx(chi0_full.chi0_WgG,

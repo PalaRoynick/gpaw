@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-
-from ase.utils import lazyproperty
+from functools import cached_property
 
 from gpaw.projections import Projections, serial_comm
 from gpaw.response import ResponseGroundStateAdapter, ResponseContext, timer
@@ -25,7 +24,7 @@ class IrreducibleKPoint:
         self.psit_hG = psit_hG   # Pseudo wave function plane-wave components
         self.h_myt = h_myt       # myt -> h index mapping
 
-    @lazyproperty
+    @cached_property
     def nh(self):
         nh = len(self.eps_h)
         assert len(self.f_h) == nh
@@ -73,20 +72,28 @@ class KohnShamKPointPair:
         return self.tblocks.all_gather(in_mytx)
 
     @property
-    def deps_t(self):
-        return self.get_all(self.ikpt2.eps_myt) \
-            - self.get_all(self.ikpt1.eps_myt)
+    def deps_myt(self):
+        return self.ikpt2.eps_myt - self.ikpt1.eps_myt
 
     @property
-    def df_t(self):
-        return self.get_all(self.ikpt2.f_myt) \
-            - self.get_all(self.ikpt1.f_myt)
+    def df_myt(self):
+        return self.ikpt2.f_myt - self.ikpt1.f_myt
+
+    def get_local_band_indices(self):
+        n1_t, n2_t = self.transitions.get_band_indices()
+        n1_myt = n1_t[self.tblocks.myslice]
+        n2_myt = n2_t[self.tblocks.myslice]
+        return n1_myt, n2_myt
 
     def get_local_spin_indices(self):
         s1_t, s2_t = self.transitions.get_spin_indices()
         s1_myt = s1_t[self.tblocks.myslice]
         s2_myt = s2_t[self.tblocks.myslice]
         return s1_myt, s2_myt
+
+    def get_local_intraband_mask(self):
+        intraband_t = self.transitions.get_intraband_mask()
+        return intraband_t[self.tblocks.myslice]
 
 
 class KohnShamKPointPairExtractor:
@@ -110,7 +117,10 @@ class KohnShamKPointPairExtractor:
         assert isinstance(context, ResponseContext)
         self.context = context
 
-        self.calc_parallel = self.check_calc_parallelisation()
+        if self.gs.is_parallelized():
+            assert self.context.comm is self.gs.world
+            # We assume no grid-parallelization in `map_who_has()`
+            assert self.gs.gd.comm.size == 1
 
         self.transitions_blockcomm = transitions_blockcomm
         self.kpts_blockcomm = kpts_blockcomm
@@ -121,45 +131,6 @@ class KohnShamKPointPairExtractor:
         # Prepare to redistribute kptdata
         self.rrequests = []
         self.srequests = []
-
-        # Count bands so it is possible to remove null transitions
-        self.nocc1 = None  # number of completely filled bands
-        self.nocc2 = None  # number of non-empty bands
-        self.count_occupied_bands()
-
-    def check_calc_parallelisation(self):
-        """Check how ground state calculation is distributed in memory"""
-        if self.gs.world.size == 1:
-            return False
-        else:
-            assert self.context.comm.rank == self.gs.world.rank
-            assert self.gs.gd.comm.size == 1
-            return True
-
-    def count_occupied_bands(self):
-        """Count number of occupied and unoccupied bands in ground state
-        calculation. Can be used to omit null-transitions between two occupied
-        bands or between two unoccupied bands."""
-
-        nocc1, nocc2 = self.gs.count_occupied_bands(ftol=1e-9)
-        nocc1 = int(nocc1)
-        nocc2 = int(nocc2)
-
-        # Collect nocc for all k-points
-        nocc1 = self.gs.kd.comm.min_scalar(nocc1)
-        nocc2 = self.gs.kd.comm.max_scalar(nocc2)
-
-        # Sum over band distribution
-        nocc1 = self.gs.bd.comm.sum_scalar(nocc1)
-        nocc2 = self.gs.bd.comm.sum_scalar(nocc2)
-
-        self.nocc1 = int(nocc1)
-        self.nocc2 = int(nocc2)
-        self.context.print('Number of completely filled bands:',
-                           self.nocc1, flush=False)
-        self.context.print('Number of partially filled bands:',
-                           self.nocc2, flush=False)
-        self.context.print('Total number of bands:', self.gs.bd.nbands)
 
     @timer('Get Kohn-Sham pairs')
     def get_kpoint_pairs(self, k1_pc, k2_pc,
@@ -213,7 +184,7 @@ class KohnShamKPointPairExtractor:
     def extract_kptdata(self, k_pc, n_t, s_t):
         """Extract the input data needed to construct the IrreducibleKPoints.
         """
-        if self.calc_parallel:
+        if self.gs.is_parallelized():
             return self.parallel_extract_kptdata(k_pc, n_t, s_t)
         else:
             return self.serial_extract_kptdata(k_pc, n_t, s_t)
@@ -391,7 +362,7 @@ class KohnShamKPointPairExtractor:
 
     def create_get_extraction_info(self):
         """Creator component of the extraction information factory."""
-        if self.calc_parallel:
+        if self.gs.is_parallelized():
             return self.get_parallel_extraction_info
         else:
             return self.get_serial_extraction_info

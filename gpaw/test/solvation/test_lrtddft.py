@@ -1,18 +1,19 @@
 from ase.build import molecule
 
-from gpaw.test import equal
+import pytest
 import gpaw.solvation as solv
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from gpaw.lrtddft import LrTDDFT
 from gpaw import PoissonSolver
 
 
+@pytest.mark.old_gpaw_only
 def test_solvation_lrtddft():
     h = 0.3
     vac = 3.0
 
-    atoms = Cluster(molecule('H2'))
-    atoms.minimal_box(vac, h)
+    atoms = molecule('H2')
+    adjust_cell(atoms, vac, h)
 
     calc = solv.SolvationGPAW(
         mode='fd', xc='PBE', h=0.2,  # non-solvent DFT parameters
@@ -42,4 +43,4 @@ def test_solvation_lrtddft():
     lr1 = LrTDDFT(calc)
     lr1.diagonalize()
     for ex, ex1 in zip(lr, lr1):
-        equal(ex.energy, ex1.energy, 1e-14)
+        assert ex.energy == pytest.approx(ex1.energy, abs=1e-14)

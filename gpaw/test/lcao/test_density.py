@@ -14,11 +14,10 @@ import pytest
 from ase.build import molecule
 
 from gpaw import GPAW, ConvergenceError
-from gpaw.new.scf import SCFConvergenceError
 from gpaw.utilities.blas import axpy
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_lcao_density():
     system = molecule('H2O')
     system.center(vacuum=2.5)
@@ -29,7 +28,7 @@ def test_lcao_density():
     system.calc = calc
     try:
         system.get_potential_energy()
-    except (ConvergenceError, SCFConvergenceError):
+    except ConvergenceError:
         pass
 
     wfs = calc.wfs

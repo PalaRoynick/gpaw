@@ -1,64 +1,36 @@
 from __future__ import annotations
 
-from typing import Generator
+from functools import cached_property
+from typing import TYPE_CHECKING, Callable, Generator, Generic, TypeVar
 
 import numpy as np
-from ase.dft.bandgap import bandgap
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
-from gpaw.gpu import synchronize, as_np
+from gpaw.gpu import as_np, synchronize
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import cached_property, zips
+from gpaw.new import zips
 from gpaw.new.brillouin import IBZ
 from gpaw.new.c import GPU_AWARE_MPI
 from gpaw.new.potential import Potential
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
-from gpaw.typing import Array1D, Array2D
+from gpaw.typing import Array1D, Array2D, Self
+from gpaw.utilities import pack_density
+
+if TYPE_CHECKING:
+    from gpaw.new.density import Density
+
+WFT = TypeVar('WFT', bound=WaveFunctions)
 
 
-def create_ibz_wave_functions(*,
-                              ibz: IBZ,
-                              nelectrons: float,
-                              ncomponents: int,
-                              create_wfs_func,
-                              kpt_comm: MPIComm = serial_comm,
-                              kpt_band_comm: MPIComm = serial_comm,
-                              comm: MPIComm = serial_comm,
-                              ) -> IBZWaveFunctions:
-    """Collection of wave function objects for k-points in the IBZ."""
-    rank_k = ibz.ranks(kpt_comm)
-    mask_k = (rank_k == kpt_comm.rank)
-    k_q = np.arange(len(ibz))[mask_k]
-
-    nspins = ncomponents % 3
-
-    wfs_qs: list[list[WaveFunctions]] = []
-    for q, k in enumerate(k_q):
-        wfs_s = []
-        for spin in range(nspins):
-            wfs = create_wfs_func(spin, q, k,
-                                  ibz.kpt_kc[k], ibz.weight_k[k])
-            wfs_s.append(wfs)
-        wfs_qs.append(wfs_s)
-
-    return IBZWaveFunctions(ibz,
-                            nelectrons=nelectrons,
-                            ncomponents=ncomponents,
-                            wfs_qs=wfs_qs,
-                            kpt_comm=kpt_comm,
-                            kpt_band_comm=kpt_band_comm,
-                            comm=comm)
-
-
-class IBZWaveFunctions:
+class IBZWaveFunctions(Generic[WFT]):
     def __init__(self,
                  ibz: IBZ,
                  *,
                  nelectrons: float,
                  ncomponents: int,
-                 wfs_qs: list[list[WaveFunctions]],
+                 wfs_qs: list[list[WFT]],
                  kpt_comm: MPIComm = serial_comm,
                  kpt_band_comm: MPIComm = serial_comm,
                  comm: MPIComm = serial_comm):
@@ -88,12 +60,49 @@ class IBZWaveFunctions:
 
         self.fermi_levels: Array1D | None = None  # hartree
 
-        self.energies: dict[str, float] = {}  # hartree
-
         self.xp = self.wfs_qs[0][0].xp
         if self.xp is not np:
             if not GPU_AWARE_MPI:
                 self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
+
+        self.move_wave_functions: Callable[..., None] = lambda *args: None
+
+        self.read_from_file_init_wfs_dm = False
+
+    @classmethod
+    def create(cls,
+               *,
+               ibz: IBZ,
+               nelectrons: float,
+               ncomponents: int,
+               create_wfs_func,
+               kpt_comm: MPIComm = serial_comm,
+               kpt_band_comm: MPIComm = serial_comm,
+               comm: MPIComm = serial_comm,
+               ) -> Self:
+        """Collection of wave function objects for k-points in the IBZ."""
+        rank_k = ibz.ranks(kpt_comm)
+        mask_k = (rank_k == kpt_comm.rank)
+        k_q = np.arange(len(ibz))[mask_k]
+
+        nspins = ncomponents % 3
+
+        wfs_qs: list[list[WFT]] = []
+        for q, k in enumerate(k_q):
+            wfs_s = []
+            for spin in range(nspins):
+                wfs = create_wfs_func(spin, q, k,
+                                      ibz.kpt_kc[k], ibz.weight_k[k])
+                wfs_s.append(wfs)
+            wfs_qs.append(wfs_s)
+
+        return cls(ibz,
+                   nelectrons=nelectrons,
+                   ncomponents=ncomponents,
+                   wfs_qs=wfs_qs,
+                   kpt_comm=kpt_comm,
+                   kpt_band_comm=kpt_band_comm,
+                   comm=comm)
 
     @cached_property
     def mode(self):
@@ -103,6 +112,9 @@ class IBZWaveFunctions:
                 return 'pw'
             return 'fd'
         return 'lcao'
+
+    def has_wave_functions(self):
+        return True
 
     def get_max_shape(self, global_shape: bool = False) -> tuple[int, ...]:
         """Find the largest wave function array shape.
@@ -115,6 +127,12 @@ class IBZWaveFunctions:
             self.kpt_comm.max(shape)
             return tuple(shape)
         return max(wfs.array_shape() for wfs in self)
+
+    @property
+    def fermi_level(self) -> float:
+        fl = self.fermi_levels
+        assert fl is not None and len(fl) == 1
+        return fl[0]
 
     def __str__(self):
         shape = self.get_max_shape(global_shape=True)
@@ -137,6 +155,7 @@ class IBZWaveFunctions:
                 f'spin-degeneracy: {self.spin_degeneracy}\n'
                 f'dtype: {self.dtype}\n\n'
                 'memory:\n'
+                f'    storage: {"CPU" if self.xp is np else "GPU"}\n'
                 f'    wave functions: {nbytes:_}  # bytes '
                 f' ({nbytes // ncores:_} per core)\n\n'
                 'parallelization:\n'
@@ -144,21 +163,23 @@ class IBZWaveFunctions:
                 f'    domain: {self.domain_comm.size}\n'
                 f'    band:   {self.band_comm.size}\n')
 
-    def __iter__(self) -> Generator[WaveFunctions, None, None]:
+    def __iter__(self) -> Generator[WFT, None, None]:
         for wfs_s in self.wfs_qs:
             yield from wfs_s
 
-    def move(self, fracpos_ac, atomdist):
-        self.ibz.symmetries.check_positions(fracpos_ac)
-        self.energies.clear()
+    def move(self, relpos_ac, atomdist):
+        self.ibz.symmetries.check_positions(relpos_ac)
+        self.make_sure_wfs_are_read_from_gpw_file()
         for wfs in self:
-            wfs.move(fracpos_ac, atomdist)
+            wfs.move(relpos_ac, atomdist, self.move_wave_functions)
 
     def orthonormalize(self, work_array_nX: np.ndarray = None):
         for wfs in self:
             wfs.orthonormalize(work_array_nX)
 
-    def calculate_occs(self, occ_calc, fixed_fermi_level=False):
+    def calculate_occs(self,
+                       occ_calc,
+                       fix_fermi_level=False) -> tuple[float, float, float]:
         degeneracy = self.spin_degeneracy
 
         # u index is q and s combined
@@ -168,9 +189,10 @@ class IBZWaveFunctions:
             weights=[wfs.weight for wfs in self],
             fermi_levels_guess=(None
                                 if self.fermi_levels is None else
-                                self.fermi_levels * Ha))
+                                self.fermi_levels * Ha),
+            fix_fermi_level=fix_fermi_level)
 
-        if not fixed_fermi_level:
+        if not fix_fermi_level:
             self.fermi_levels = np.array(fermi_levels) / Ha
         else:
             assert self.fermi_levels is not None
@@ -184,10 +206,7 @@ class IBZWaveFunctions:
             e_band += wfs.occ_n @ wfs.eig_n * wfs.weight * degeneracy
         e_band = self.kpt_comm.sum_scalar(float(e_band))  # XXX CPU float?
 
-        self.energies = {
-            'band': e_band,
-            'entropy': e_entropy,
-            'extrapolation': e_entropy * occ_calc.extrapolate_factor}
+        return e_band, e_entropy, e_entropy * occ_calc.extrapolate_factor
 
     def add_to_density(self, nt_sR, D_asii) -> None:
         """Compute density and add to ``nt_sR`` and ``D_asii``."""
@@ -203,6 +222,9 @@ class IBZWaveFunctions:
         self.kpt_comm.sum(D_asii.data)
         self.band_comm.sum(nt_sR.data)
         self.band_comm.sum(D_asii.data)
+
+    def normalize_density(self, density: Density) -> None:
+        pass  # overwritten in LCAOIBZWaveFunctions class
 
     def add_to_ked(self, taut_sR) -> None:
         for wfs in self:
@@ -228,7 +250,7 @@ class IBZWaveFunctions:
 
         if not skip_paw_correction:
             dphi_aj = wfs.setups.partial_wave_corrections()
-            dphi_air = grid.atom_centered_functions(dphi_aj, wfs.fracpos_ac)
+            dphi_air = grid.atom_centered_functions(dphi_aj, wfs.relpos_ac)
             dphi_air.add_to(psi_r, wfs.P_ani[:, 0])
 
         return psi_r
@@ -269,51 +291,53 @@ class IBZWaveFunctions:
                 return eig_n, occ_n
         return np.zeros(0), np.zeros(0)
 
-    def get_all_eigs_and_occs(self):
+    def get_all_eigs_and_occs(self, broadcast=False):
         nkpts = len(self.ibz)
-        if self.comm.rank == 0:
-            eig_skn = np.empty((self.nspins, nkpts, self.nbands))
-            occ_skn = np.empty((self.nspins, nkpts, self.nbands))
-        else:
-            eig_skn = np.empty((0, 0, 0))
-            occ_skn = np.empty((0, 0, 0))
+        mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
+        eig_skn = np.empty((self.nspins, nkpts, mynbands))
+        occ_skn = np.empty((self.nspins, nkpts, mynbands))
         for k in range(nkpts):
             for s in range(self.nspins):
                 eig_n, occ_n = self.get_eigs_and_occs(k, s)
                 if self.comm.rank == 0:
                     eig_skn[s, k, :] = eig_n
                     occ_skn[s, k, :] = occ_n
+        if broadcast:
+            self.comm.broadcast(eig_skn, 0)
+            self.comm.broadcast(occ_skn, 0)
         return eig_skn, occ_skn
 
     def forces(self, potential: Potential) -> Array2D:
-        F_av = self.xp.zeros((potential.dH_asii.natoms, 3))
+        self.make_sure_wfs_are_read_from_gpw_file()
+        F_av = self.xp.zeros((len(potential.dH_asii), 3))
         for wfs in self:
             wfs.force_contribution(potential, F_av)
         if self.xp is not np:
             synchronize()
-        self.kpt_comm.sum(F_av)
+        self.kpt_band_comm.sum(F_av)
         return F_av
 
-    def write(self,
-              writer: Writer,
-              skip_wfs: bool) -> None:
+    def write(self, writer: Writer, flags) -> None:
         """Write fermi-level(s), eigenvalues, occupation numbers, ...
 
         ... k-points, symmetry information, projections and possibly
         also the wave functions.
         """
         eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        if not self.collinear:
+            eig_skn = eig_skn[0]
+            occ_skn = occ_skn[0]
         assert self.fermi_levels is not None
         writer.write(fermi_levels=self.fermi_levels * Ha,
                      eigenvalues=eig_skn * Ha,
                      occupations=occ_skn)
         ibz = self.ibz
         writer.child('kpts').write(
-            atommap=ibz.symmetries.a_sa,
+            atommap=ibz.symmetries.atommap_sa,
             bz2ibz=ibz.bz2ibz_K,
             bzkpts=ibz.bz.kpt_Kc,
             ibzkpts=ibz.kpt_kc,
-            rotations=ibz.symmetries.rotation_svv,
+            rotations=ibz.symmetries.rotation_scc,
             translations=ibz.symmetries.translation_sc,
             weights=ibz.weight_k)
 
@@ -329,37 +353,41 @@ class IBZWaveFunctions:
             spin_k_shape = (len(ibz),)
             proj_shape = (self.nbands, 2, nproj)
 
-        writer.add_array('projections', spin_k_shape + proj_shape, self.dtype)
+        if flags.include_projections:
+            proj_dtype = flags.storage_dtype(self.dtype)
+            writer.add_array('projections', spin_k_shape + proj_shape,
+                             proj_dtype)
+            for spin in range(self.nspins):
+                for k, rank in enumerate(self.rank_k):
+                    if rank == self.kpt_comm.rank:
+                        wfs = self.wfs_qs[self.q_k[k]][spin]
+                        P_ani = wfs.P_ani.to_cpu().gather()  # gather atoms
+                        if P_ani is not None:
+                            P_nI = P_ani.matrix.gather()  # gather bands
+                            if P_nI.dist.comm.rank == 0:
+                                if rank == 0:
+                                    writer.fill(P_nI.data.reshape(
+                                        proj_shape).astype(proj_dtype))
+                                else:
+                                    self.kpt_comm.send(P_nI.data, 0)
+                    elif self.comm.rank == 0:
+                        data = np.empty(proj_shape, self.dtype)
+                        self.kpt_comm.receive(data, rank)
+                        writer.fill(data.astype(proj_dtype))
 
-        for spin in range(self.nspins):
-            for k, rank in enumerate(self.rank_k):
-                if rank == self.kpt_comm.rank:
-                    wfs = self.wfs_qs[self.q_k[k]][spin]
-                    P_ani = wfs.P_ani.to_cpu().gather()  # gather atoms
-                    if P_ani is not None:
-                        P_nI = P_ani.matrix.gather()  # gather bands
-                        if P_nI.dist.comm.rank == 0:
-                            if rank == 0:
-                                writer.fill(P_nI.data.reshape(proj_shape))
-                            else:
-                                self.kpt_comm.send(P_nI.data, 0)
-                elif self.comm.rank == 0:
-                    data = np.empty(proj_shape, self.dtype)
-                    self.kpt_comm.receive(data, rank)
-                    writer.fill(data)
+        if flags.include_wfs:
+            self._write_wave_functions(writer, spin_k_shape, flags)
 
-        if not skip_wfs:
-            self._write_wave_functions(writer, spin_k_shape)
-
-    def _write_wave_functions(self, writer, spin_k_shape):
+    def _write_wave_functions(self, writer, spin_k_shape, flags):
         # We collect all bands to master.  This may have to be changed
         # to only one band at a time XXX
         xshape = self.get_max_shape(global_shape=True)
         shape = spin_k_shape + (self.nbands,) + xshape
         dtype = complex if self.mode == 'pw' else self.dtype
+        dtype_write = flags.storage_dtype(dtype)
         c = 1.0 if self.mode == 'lcao' else Bohr**-1.5
 
-        writer.add_array('coefficients', shape, dtype=dtype)
+        writer.add_array('coefficients', shape, dtype=dtype_write)
         buf_nX = np.empty((self.nbands,) + xshape, dtype=dtype)
 
         for spin in range(self.nspins):
@@ -379,19 +407,19 @@ class IBZWaveFunctions:
                                 buf_nX[..., x:] = 0.0
                                 coef_nX = buf_nX
                         if rank == 0:
-                            writer.fill(coef_nX * c)
+                            writer.fill(flags.to_storage_dtype(coef_nX * c))
                         else:
                             self.kpt_comm.send(coef_nX, 0)
                 elif self.comm.rank == 0:
                     self.kpt_comm.receive(buf_nX, rank)
-                    writer.fill(buf_nX * c)
+                    writer.fill(flags.to_storage_dtype(buf_nX * c))
 
     def write_summary(self, log):
         fl = self.fermi_levels * Ha
         if len(fl) == 1:
-            log(f'\nFermi level: {fl[0]:.3f} eV')
+            log(f'\nFermi level: {fl[0]:.3f}')
         else:
-            log(f'\nFermi levels: {fl[0]:.3f}, {fl[1]:.3f} eV')
+            log(f'\nFermi levels: {fl[0]:.3f}, {fl[1]:.3f}')
 
         ibz = self.ibz
 
@@ -438,14 +466,19 @@ class IBZWaveFunctions:
                         f'    {e2:10.3f}   {f2:9.3f}')
 
         try:
+            from ase.dft.bandgap import GapInfo
+        except ImportError:
+            log('No gapinfo -- requires new ASE')
+            return
+
+        try:
             log()
-            bandgap(eigenvalues=eig_skn,
-                    efermi=fl[0],
-                    output=log.fd,
-                    kpts=ibz.kpt_kc)
+            fermilevel = fl[0]
+            gapinfo = GapInfo(eigenvalues=eig_skn - fermilevel)
+            log(gapinfo.description(ibz_kpoints=ibz.kpt_kc))
         except ValueError:
             # Maybe we only have the occupied bands and no empty bands
-            pass
+            log('Could not find a gap')
 
     def make_sure_wfs_are_read_from_gpw_file(self):
         for wfs in self:
@@ -453,30 +486,58 @@ class IBZWaveFunctions:
             if psit_nX is None:
                 return
             if hasattr(psit_nX.data, 'fd'):  # fd=file-descriptor
+                self.read_from_file_init_wfs_dm = True
                 psit_nX.data = psit_nX.data[:]  # read
 
     def get_homo_lumo(self, spin: int = None) -> Array1D:
         """Return HOMO and LUMO eigenvalues."""
         if self.ncomponents == 1:
-            N = 2
             assert spin != 1
             spin = 0
         elif self.ncomponents == 2:
-            N = 2
             if spin is None:
                 h0, l0 = self.get_homo_lumo(0)
                 h1, l1 = self.get_homo_lumo(1)
                 return np.array([max(h0, h1), min(l0, l1)])
         else:
-            N = 1
             assert spin != 1
             spin = 0
 
-        n = int(round(self.nelectrons)) // N
-        assert N * n == self.nelectrons
-        homo = self.kpt_comm.max_scalar(max(wfs_s[spin].eig_n[n - 1]
-                                            for wfs_s in self.wfs_qs))
-        lumo = self.kpt_comm.min_scalar(min(wfs_s[spin].eig_n[n]
-                                            for wfs_s in self.wfs_qs))
+        nocc = 0.0
+        for wfs_s in self.wfs_qs:
+            wfs = wfs_s[spin]
+            nocc += wfs.occ_n.sum() * wfs.weight
+        nocc = self.kpt_comm.sum_scalar(nocc)
+        n = int(round(nocc))
+
+        homo = -np.inf
+        if n > 0:
+            for wfs_s in self.wfs_qs:
+                homo = max(homo, wfs_s[spin].eig_n[n - 1])
+        homo = self.kpt_comm.max_scalar(homo)
+
+        lumo = np.inf
+        if n < self.nbands:
+            for wfs_s in self.wfs_qs:
+                lumo = min(lumo, wfs_s[spin].eig_n[n])
+        lumo = self.kpt_comm.min_scalar(lumo)
 
         return np.array([homo, lumo])
+
+    def calculate_kinetic_energy(self,
+                                 hamiltonian,
+                                 density: Density) -> float:
+        e_kin = 0.0
+        for wfs in self:
+            e_kin += hamiltonian.calculate_kinetic_energy(wfs, skip_sum=True)
+        e_kin = self.comm.sum_scalar(e_kin)
+
+        # PAW corrections:
+        e_kin_paw = 0.0
+        for a, D_sii in density.D_asii.items():
+            setup = wfs.setups[a]
+            D_p = pack_density(D_sii.real[:density.ndensities].sum(0))
+            e_kin_paw += setup.K_p @ D_p + setup.Kc
+        e_kin_paw = density.grid.comm.sum_scalar(e_kin_paw)
+
+        return e_kin + e_kin_paw

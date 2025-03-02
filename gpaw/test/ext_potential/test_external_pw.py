@@ -4,10 +4,9 @@ from ase.units import Bohr, Ha
 
 from gpaw import GPAW, PW
 from gpaw.external import ConstantElectricField, ConstantPotential
-from gpaw.test import equal
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_stark_pw():
     h = Atoms('H', pbc=(1, 1, 0), magmoms=[1])
     h.center(vacuum=3.0)
@@ -40,7 +39,7 @@ def test_stark_pw():
         assert a == pytest.approx(aref, abs=0.1)
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_ext_potential_external_pw():
     ConstantPotential()
 
@@ -97,9 +96,9 @@ def test_ext_potential_external_pw():
             e1 = c1.get_eigenvalues()[i]
             print('Eigenvalues no pot, expected, error=',
                   e00, e1 + 1, e00 - e1 - 1)
-            equal(e00, e1 + 1., 0.02)
+            assert e00 == pytest.approx(e1 + 1., abs=0.02)
 
     E_c00 = c00.get_potential_energy()
     E_c1 = c1.get_potential_energy()
     DeltaE = E_c00 - E_c1
-    equal(DeltaE, 0, 0.002)
+    assert DeltaE == pytest.approx(0, abs=0.002)

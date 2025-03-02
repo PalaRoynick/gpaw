@@ -5,7 +5,6 @@ from gpaw.cli.main import main
 result = """\
 symmetry:
   number of symmetries: 48
-  number of symmetries with translation: 0
 
 bz sampling:
   number of bz points: 512
@@ -16,7 +15,6 @@ bz sampling:
 """
 
 
-@pytest.mark.later  # ASE does not like non_collinear_magmoms
 @pytest.mark.serial
 def test_symmetry(gpw_files, capsys):
     args = ['symmetry',

@@ -5,10 +5,10 @@ from ase.utils.timing import Timer
 import pytest
 
 from gpaw import GPAW
-from gpaw.test import equal
 from gpaw.xc.hybrid import HybridXC
 
 
+@pytest.mark.slow
 @pytest.mark.libxc
 @pytest.mark.hybrids
 def test_exx_coarse(in_tmp_dir):
@@ -57,8 +57,8 @@ def test_exx_coarse(in_tmp_dir):
 
     print('Total energy on the fine grid   =', E[True])
     print('Total energy on the coarse grid =', E[False])
-    equal(E[True], E[False], 0.01)
+    assert E[True] == pytest.approx(E[False], abs=0.01)
 
     energy_tolerance = 0.003
-    equal(E[False], 6.97818, energy_tolerance)
-    equal(E[True], 6.97153, energy_tolerance)
+    assert E[False] == pytest.approx(6.97818, abs=energy_tolerance)
+    assert E[True] == pytest.approx(6.97153, abs=energy_tolerance)

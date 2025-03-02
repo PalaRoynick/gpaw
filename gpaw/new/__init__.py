@@ -8,6 +8,9 @@ if TYPE_CHECKING:
     from gpaw.core import UGArray
 
 
+from gpaw.new.timer import trace  # noqa
+
+
 def prod(iterable: Iterable[int]) -> int:
     """Simple int product.
 
@@ -20,18 +23,6 @@ def prod(iterable: Iterable[int]) -> int:
     for x in iterable:
         result *= x
     return result
-
-
-def cached_property(method):
-    """Quick'n'dirty implementation of cached_property coming in Python 3.8."""
-    name = f'__{method.__name__}'
-
-    def new_method(self):
-        if not hasattr(self, name):
-            setattr(self, name, method(self))
-        return getattr(self, name)
-
-    return property(new_method)
 
 
 def zips(*iterables, strict=True):
@@ -52,13 +43,13 @@ def zips(*iterables, strict=True):
     if items:
         i = len(items)
         plural = " " if i == 1 else "s 1-"
-        msg = f"zips() argument {i+1} is shorter than argument{plural}{i}"
+        msg = f"zips() argument {i + 1} is shorter than argument{plural}{i}"
         raise ValueError(msg)
     sentinel = object()
     for i, iterator in enumerate(iterators[1:], 1):
         if next(iterator, sentinel) is not sentinel:
             plural = " " if i == 1 else "s 1-"
-            msg = f"zips() argument {i+1} is longer than argument{plural}{i}"
+            msg = f"zips() argument {i + 1} is longer than argument{plural}{i}"
             raise ValueError(msg)
 
 

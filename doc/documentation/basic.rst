@@ -17,7 +17,7 @@ Below, there will be Python code examples starting with ``>>>`` (and
 ``...`` for continuation lines).  It is a good idea to start the
 Python interpreter and try some of the examples below.
 
-.. _Python: http://www.python.org
+.. _Python: https://www.python.org
 .. _Atomic Simulation Environment: https://wiki.fysik.dtu.dk/ase
 
 The units used by the GPAW calculator correspond to the :mod:`ASE
@@ -273,6 +273,80 @@ Features:
     for calculating the stress-tensor and for response function calculations.
 
 
+Features in FD, LCAO and PW modes
+`````````````````````````````````
+
+Some features are not available in all modes.  Here is a
+(possibly incomplete) table of the features:
+
+.. list-table::
+
+  * - mode
+    - FD
+    - LCAO
+    - PW
+  * - GPU ground state calculations
+    - (experimental)
+    -
+    - +
+  * - Time-propagation TDDFT
+    - +
+    - +
+    -
+  * - Dielectric function
+    -
+    -
+    - +
+  * - Casida equation
+    - +
+    -
+    -
+  * - Hybrid functionals
+    - (no forces, no **k**-points)
+    -
+    - +
+  * - Stress tensor
+    -
+    -
+    - +
+  * - GW
+    -
+    -
+    - +
+  * - BSE
+    -
+    -
+    - +
+  * - Direct orbital optimization (generalized mode following)
+    -
+    - +
+    -
+  * - Non-collinear spin
+    -
+    -
+    - +
+  * - Solvent models
+    - +
+    - +
+    -
+  * - MGGA
+    - +
+    -
+    - +
+  * - Constrained DFT
+    - +
+    - +
+    -
+  * - Ehrenfest
+    - +
+    -
+    -
+  * - Spin-spirals
+    -
+    -
+    - +
+
+
 .. _manual_nbands:
 
 Number of electronic bands
@@ -329,7 +403,7 @@ are listed below.
 
 ``'LDA'`` is the default value.  The next three ones are of
 generalized gradient approximation (GGA) type, and the last two are
-`hybrid functionals <http://en.wikipedia.org/wiki/Hybrid_functional>`_.
+`hybrid functionals <https://en.wikipedia.org/wiki/Hybrid_functional>`_.
 
 For the list of all functionals available in GPAW see :ref:`overview_xc`.
 
@@ -370,7 +444,7 @@ Set the location of setups as described on :ref:`installation of paw datasets`.
 The details of the implementation of the exchange-correlation
 are described on the :ref:`xc_functionals` page.
 
-.. _libxc: http://www.tddft.org/programs/octopus/wiki/index.php/Libxc
+.. _libxc: https://libxc.gitlab.io/
 
 
 .. _manual_kpts:
@@ -479,16 +553,10 @@ functions. Note, that this grid spacing in most cases is approximate
 as it has to fit to the unit cell (see :ref:`manual_gpts` above).
 
 In case you want to specify ``h`` exactly you have to choose the unit
-cell accordingly. This can be achieved by::
+cell accordingly. This can be achieved by:
 
-  from gpaw.cluster import *
-
-  d = 0.74
-  a = 6.0
-  atoms = Cluster('H2', positions=[(0, 0, 0), (0, 0, d)])
-  # set the amount of vacuum at least to 4 Å
-  # and ensure a grid spacing of h=0.2
-  atoms.minimal_box(4., h=.2)
+.. literalinclude:: grid_spacing.py
+  :language: python
 
 
 .. _manual_symmetry:
@@ -572,7 +640,8 @@ the initial value using::
 
 .. figure:: occupation_numbers.png
 
-    Occupation numbers for ``width=0.05``
+   Occupation numbers for different distribution functions
+   (value of ``width`` parameter in parenthesis)
 
 For fixed occupations numbers use the
 :class:`gpaw.occupations.FixedOccupationNumbers` class like this::
@@ -909,7 +978,7 @@ The last argument, ``eps``, is the convergence criterion.
 
 .. _manual_dipole_correction:
 
-The ``poissonsolver`` keyword can also be used to specify that a dipole
+The ``poissonsolver`` keyword can also be used to specify that a dipole-layer
 correction should be applied along a given axis.  The system should be
 non-periodic in that direction but periodic in the two other
 directions.
@@ -1154,6 +1223,14 @@ Parallelization settings that would be employed when run on
         {'a': '1', 'b': True}
 
     See also Python's :option:`python:-X` option.
+
+-----------------------------------
+On-going refactoring and “New” GPAW
+-----------------------------------
+
+Some features may be only available with either “new” or “old” GPAW.
+This refers to on-going efforts to refactor the computational backend.
+See :ref:`newgpaw` for further information.
 
 
 .. [#LDA]    J. P. Perdew and Y. Wang,

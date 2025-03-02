@@ -8,17 +8,21 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from sys import version_info, exit
+from sys import version_info
 
-if version_info < (3, 7):
-    raise ValueError('Please use Python-3.7 or later')
+if version_info < (3, 9):
+    raise ValueError('Please use Python-3.9 or later')
 
 # Python version in the venv that we are creating
 version = '3.11'
 fversion = 'cpython-311'
 
 # Niflheim login hosts, with the oldest architecture as the first
-nifllogin = ['thul', 'sylg', 'svol', 'surt']
+nifllogin = ['slid2',  # broadwell_el8 (xeon24el8)
+             'thul',  # skylake_el8 (xeon40el8)
+             'surt',  # icelake (xeon56)
+             'fjorm']  # epyc9004 (epyc96)
+
 
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
@@ -26,7 +30,8 @@ nifllogin = ['thul', 'sylg', 'svol', 'surt']
 #  mathchain: Chain with math libraries but no MPI
 #  compchain: Chain with full compiler suite (but no fancy libs)
 #  corechain: Core compiler
-# The subchain complementary to 'mathchain', with MPI but no math libs, is not used here.
+# The subchain complementary to 'mathchain', with MPI but no math libs, is
+# not used here.
 
 _gcccore = 'GCCcore-12.3.0'
 toolchains = {
@@ -48,7 +53,7 @@ toolchains = {
 module_cmds_all = """\
 module purge
 unset PYTHONPATH
-module load GPAW-setups/0.9.20000
+module load GPAW-setups/24.11.0
 module load ELPA/2023.05.001-{fullchain}
 module load Wannier90/3.1.0-{fullchain}
 module load Python-bundle-PyPI/2023.06-{corechain}
@@ -71,6 +76,14 @@ module load libvdwxc/0.4.0-{fullchain}
     'intel': ""
 }
 
+module_cmds_arch_dependent = """\
+if [ "$CPU_ARCH" == "icelake" ] && [ {fullchain} == "foss-2023a" ];\
+then module load CuPy/12.3.0-{fullchain}-CUDA-12.1.1;fi
+if [ "$SLURM_JOB_PARTITION" == "a100" ];\
+then export GPAW_USE_GPUS=1;export GPAW_NEW=1;fi
+"""
+
+
 activate_extra = """
 export GPAW_SETUP_PATH=$GPAW_SETUP_PATH:{venv}/gpaw-basis-pvalence-0.9.20000
 
@@ -86,26 +99,29 @@ fi
 dftd3 = """\
 mkdir {venv}/DFTD3
 cd {venv}/DFTD3
-URL=https://www.chemiebn.uni-bonn.de/pctc/mulliken-center/software/dft-d3
+URL=https://www.chemie.uni-bonn.de/grimme/de/software/dft-d3
 wget $URL/dftd3.tgz
 tar -xf dftd3.tgz
-ssh {nifllogin[0]} ". {venv}/bin/activate && cd {venv}/DFTD3 && make"
+ssh {nifllogin[0]} ". {venv}/bin/activate && cd {venv}/DFTD3 && make >& d3.log"
 ln -s {venv}/DFTD3/dftd3 {venv}/bin
 """
+
 
 def run(cmd: str, **kwargs) -> subprocess.CompletedProcess:
     print(cmd)
     return subprocess.run(cmd, shell=True, check=True, **kwargs)
 
 
-def compile_gpaw_c_code(gpaw: Path, activate: Path) -> None:
-    """Compile for all architectures: xeon16, xeon24, xeon40, ..."""
+def compile_gpaw_c_code(gpaw: Path, activate: Path, intel_only: bool) -> None:
+    """Compile for all architectures: xeon24, xeon40, ..."""
     # Remove targets:
     for path in gpaw.glob('build/lib.linux-x86_64-*/_gpaw.*.so'):
         path.unlink()
 
     # Compile:
     for host in nifllogin:
+        if host == 'fjorm' and intel_only:
+            continue
         run(f'ssh {host} ". {activate} && pip install -q -e {gpaw}"')
 
     # Clean up:
@@ -114,7 +130,10 @@ def compile_gpaw_c_code(gpaw: Path, activate: Path) -> None:
     for path in gpaw.glob('build/temp.linux-x86_64-*'):
         shutil.rmtree(path)
 
-def fix_installed_scripts(venvdir: Path, rootdir: str, pythonroot: str) -> None:
+
+def fix_installed_scripts(venvdir: Path,
+                          rootdir: str,
+                          pythonroot: str) -> None:
     """Fix command line tools so they work in the virtual environment.
 
     Command line tools (pytest, sphinx-build etc) fail in virtual
@@ -136,10 +155,10 @@ def fix_installed_scripts(venvdir: Path, rootdir: str, pythonroot: str) -> None:
     assert rootdir is not None
     assert pythonroot is not None
     bindir = rootdir / Path('bin')
-    print(f'Patching binaries from {bindir} to {venvdir}/bin')
-    assert '+' not in str(pythonroot) and '+' not in str(venvdir), 'Script will fail with "+" in folder names!'
+    print(f'Patching executable scripts from {bindir} to {venvdir}/bin')
+    assert '+' not in str(pythonroot) and '+' not in str(venvdir), (
+        'Script will fail with "+" in folder names!')
     sedscript = f's+{pythonroot}+{venvdir}+g'
-    #print('sed script:', sedscript)
 
     # Loop over potential executables
     for exe in bindir.iterdir():
@@ -161,8 +180,8 @@ def fix_installed_scripts(venvdir: Path, rootdir: str, pythonroot: str) -> None:
                     subprocess.run(
                         f"sed -e '{sedscript}' --in-place '{target}'",
                         shell=True,
-                        check=True
-                    )
+                        check=True)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -180,36 +199,31 @@ def main():
                         'install from pip (may affect performance).')
     args = parser.parse_args()
 
-    #if args.toolchain == 'intel':
-    #    raise ValueError('See: https://gitlab.com/gpaw/gpaw/-/issues/241')
+    # if args.toolchain == 'intel':
+    #     raise ValueError('See: https://gitlab.com/gpaw/gpaw/-/issues/241')
 
     venv = Path(args.venv).absolute()
     activate = venv / 'bin/activate'
     gpaw = venv / 'gpaw'
 
+    intel_only = args.toolchain == 'intel'
+
     if args.recompile:
-        compile_gpaw_c_code(gpaw, activate)
+        compile_gpaw_c_code(gpaw, activate, intel_only)
         return 0
 
     # Sanity checks
     if args.toolchain not in ('foss', 'intel'):
         raise ValueError(f'Unsupported toolchain "{args.toolchain}"')
-    if args.toolchain == 'intel' and not args.piponly:
-        # Temporarily not possible!
-        print("""
-ERROR:
-Currently the intel/2023a toolchain does not contain pre-built numpy
-and scipy modules.  You can still use the Intel toolchain but need to
-specify the --piponly option as well, to install numpy and scipy with
-pip.  This will reduce the performance gain from util Intel compilers.
-""")
-        exit(1)
 
     module_cmds = module_cmds_all.format(**toolchains[args.toolchain])
     if not args.piponly:
-        module_cmds += module_cmds_easybuild.format(**toolchains[args.toolchain])
-    module_cmds += module_cmds_tc[args.toolchain].format(**toolchains[args.toolchain])
-
+        module_cmds += module_cmds_easybuild.format(
+            **toolchains[args.toolchain])
+    module_cmds += module_cmds_tc[args.toolchain].format(
+        **toolchains[args.toolchain])
+    module_cmds += module_cmds_arch_dependent.format(
+        **toolchains[args.toolchain])
     cmds = (' && '.join(module_cmds.splitlines()) +
             f' && python3 -m venv --system-site-packages {args.venv}')
     run(cmds)
@@ -224,19 +238,24 @@ pip.  This will reduce the performance gain from util Intel compilers.
     # Fix venv so pytest etc work
     pythonroot = None
     for ebrootvar in ('EBROOTPYTHON', 'EBROOTPYTHONMINBUNDLEMINPYPI'):
-        # Note that we need the environment variable from the newly created venv, NOT from this process!
-        comm = run(f'. {activate} && echo ${ebrootvar}', capture_output=True, text=True)
+        # Note that we need the environment variable from the newly
+        # created venv, NOT from this process!
+        comm = run(f'. {activate} && echo ${ebrootvar}',
+                   capture_output=True, text=True)
         ebrootdir = comm.stdout.strip()
         if pythonroot is None:
             # The first module is the actual Python module.
             pythonroot = ebrootdir
-        assert ebrootdir, f'Environment variable {ebrootvar} appears to be unset.'
-        fix_installed_scripts(venvdir=venv, rootdir=ebrootdir, pythonroot=pythonroot)
+        assert ebrootdir, f'Env variable {ebrootvar} appears to be unset.'
+        fix_installed_scripts(venvdir=venv,
+                              rootdir=ebrootdir,
+                              pythonroot=pythonroot)
 
     packages = ['myqueue',
                 'graphviz',
                 'qeh',
-                'sphinx_rtd_theme']
+                'sphinx_rtd_theme',
+                'sphinxcontrib-jquery']
     if args.piponly:
         packages += ['matplotlib',
                      'scipy',
@@ -269,7 +288,7 @@ pip.  This will reduce the performance gain from util Intel compilers.
         f'gpaw/doc/platforms/Linux/Niflheim/siteconfig-{args.toolchain}.py')
     Path('gpaw/siteconfig.py').write_text(siteconfig.read_text())
 
-    compile_gpaw_c_code(gpaw, activate)
+    compile_gpaw_c_code(gpaw, activate, intel_only)
 
     for fro, to in [('ivybridge', 'sandybridge'),
                     ('nahelem', 'icelake')]:
@@ -278,24 +297,35 @@ pip.  This will reduce the performance gain from util Intel compilers.
         f.symlink_to(t)
 
     # Create .pth file to load correct .so file:
-    pth = ('import sys, os; '
-           'arch = os.environ["CPU_ARCH"]; '
-           f"path = f'{venv}/gpaw/build/lib.linux-x86_64-{{arch}}-{fversion}'; "
-           'sys.path.append(path)\n')
+    pth = (
+        'import sys, os; '
+        'arch = os.environ["CPU_ARCH"]; '
+        f"path = f'{venv}/gpaw/build/lib.linux-x86_64-{{arch}}-{fversion}'; "
+        'sys.path.append(path)\n')
     Path(f'lib/python{version}/site-packages/niflheim.pth').write_text(pth)
 
     # Install extra basis-functions:
-    run(f'. {activate} && gpaw install-data --basis --version=20000 '
+    run(f'. {activate} && gpaw install-data --basis --version=0.9.20000 '
         f'{venv} --no-register')
 
     extra = activate_extra.format(venv=venv)
 
     # Tab completion:
     for cmd in ['ase', 'gpaw', 'mq', 'pip']:
+        if cmd == 'gpaw':
+            # Currently, running the "gpaw" command writes warning message
+            # to stdout, so "gpaw completion" does not work!
+            continue
         txt = run(f'. {activate} && {cmd} completion' +
                   (' --bash' if cmd == 'pip' else ''),
                   capture_output=True).stdout.decode()
         extra += txt
+
+    # gpaw-hack:
+    python = venv / 'bin/python3'
+    complete = venv / 'gpaw/gpaw/cli/complete.py'
+    extra += f'complete -o default -C "{python} {complete}" gpaw\n'
+
     activate.write_text(activate.read_text() + extra)
 
     # Run tests:

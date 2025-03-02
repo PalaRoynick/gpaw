@@ -1,12 +1,13 @@
 from gpaw import GPAW
-from gpaw.cluster import Cluster
-from gpaw.test import equal
+from gpaw.utilities.adjust_cell import adjust_cell
+import pytest
 from ase.build import molecule
 from ase.units import mol, kcal
 from gpaw.directmin.etdm_lcao import LCAOETDM
 from gpaw.solvation import SolvationGPAW, get_HW14_water_kwargs
 
 
+@pytest.mark.old_gpaw_only
 def test_solvation_water_water_etdm_lcao():
     SKIP_VAC_CALC = True
 
@@ -18,8 +19,8 @@ def test_solvation_water_water_etdm_lcao():
         'eigenstates': 10.,
     }
 
-    atoms = Cluster(molecule('H2O'))
-    atoms.minimal_box(vac, h)
+    atoms = molecule('H2O')
+    adjust_cell(atoms, vac, h)
 
     if not SKIP_VAC_CALC:
         atoms.calc = GPAW(mode='lcao', xc='PBE', h=h, basis='dzp',
@@ -48,5 +49,5 @@ def test_solvation_water_water_etdm_lcao():
     DGSol = (Ewater - Evac) / (kcal / mol)
     print('Delta Gsol: %s kcal / mol' % DGSol)
 
-    equal(DGSol, -6.3, 2.)
-    equal(Ewater, Eelwater + Esurfwater, 1e-14)
+    assert DGSol == pytest.approx(-6.3, abs=2.)
+    assert Ewater == pytest.approx(Eelwater + Esurfwater, abs=1e-14)

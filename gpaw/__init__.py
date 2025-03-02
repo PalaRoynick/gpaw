@@ -1,14 +1,18 @@
 # Copyright (C) 2003  CAMP
 # Please see the accompanying LICENSE file for further information.
 """Main gpaw module."""
+from __future__ import annotations
 import os
 import sys
 import contextlib
 from pathlib import Path
-from typing import List, Dict, Union, Any, TYPE_CHECKING
+from typing import List, Any, TYPE_CHECKING
+import warnings
 
-__version__ = '23.9.2b1'
-__ase_version_required__ = '3.22.1'
+
+__version__ = '25.1.1b1'
+__ase_version_required__ = '3.23.0'
+
 __all__ = ['GPAW',
            'Mixer', 'MixerSum', 'MixerDif', 'MixerSum2',
            'MixerFull',
@@ -18,7 +22,17 @@ __all__ = ['GPAW',
            'PW', 'LCAO', 'FD',
            'restart']
 
-setup_paths: List[Union[str, Path]] = []
+boolean_envvars = {
+    'GPAW_NEW',
+    'GPAW_CPUPY',
+    'GPAW_USE_GPUS',
+    'GPAW_NO_C_EXTENSION'}
+allowed_envvars = {
+    *boolean_envvars,
+    'GPAW_MPI_OPTIONS',
+    'GPAW_MPI',
+    'GPAW_SETUP_PATH'}
+
 is_gpaw_python = '_gpaw' in sys.builtin_module_names
 dry_run = 0
 
@@ -26,6 +40,11 @@ dry_run = 0
 debug: bool = (TYPE_CHECKING or
                'pytest' in sys.modules or
                bool(sys.flags.debug))
+
+if debug:
+    for var in os.environ:
+        if var.startswith('GPAW') and var not in allowed_envvars:
+            warnings.warn(f'Unknown GPAW environment varable: {var}')
 
 
 @contextlib.contextmanager
@@ -41,33 +60,15 @@ def disable_dry_run():
     dry_run = size
 
 
+def get_scipy_version():
+    import scipy
+    # This is in a function because we don't like to have the scipy
+    # import at module level
+    return [int(x) for x in scipy.__version__.split('.')[:2]]
+
+
 if 'OMP_NUM_THREADS' not in os.environ:
     os.environ['OMP_NUM_THREADS'] = '1'
-
-
-from gpaw.broadcast_imports import broadcast_imports  # noqa
-
-with broadcast_imports:
-    import os
-    import runpy
-    import warnings
-    from argparse import ArgumentParser, REMAINDER, RawDescriptionHelpFormatter
-
-    # With gpaw-python BLAS symbols are in global scope and we need to
-    # ensure that NumPy and SciPy use symbols from their own dependencies
-    if is_gpaw_python:
-        old_dlopen_flags = sys.getdlopenflags()
-        sys.setdlopenflags(old_dlopen_flags | os.RTLD_DEEPBIND)
-    import numpy as np
-    import scipy.linalg  # noqa: F401
-    if is_gpaw_python:
-        sys.setdlopenflags(old_dlopen_flags)
-    import _gpaw
-
-SCIPY_VERSION = [int(x) for x in scipy.__version__.split('.')[:2]]
-
-if getattr(_gpaw, 'version', 0) != 4:
-    raise ImportError('Please recompile GPAW''s C-extensions!')
 
 
 class ConvergenceError(Exception):
@@ -91,14 +92,28 @@ class BadParallelization(Exception):
     pass
 
 
-libraries: Dict[str, str] = {}
-if hasattr(_gpaw, 'lxcXCFunctional'):
-    libraries['libxc'] = getattr(_gpaw, 'libxc_version', '2.x.y')
-else:
-    libraries['libxc'] = ''
+def get_libraries() -> dict[str, str]:
+    import gpaw.cgpaw as cgpaw
+    libraries: dict[str, str] = {}
+    if hasattr(cgpaw, 'lxcXCFunctional'):
+        libraries['libxc'] = getattr(cgpaw, 'libxc_version', '2.x.y')
+    else:
+        libraries['libxc'] = ''
+    return libraries
 
 
 def parse_arguments(argv):
+    from argparse import (ArgumentParser, REMAINDER,
+                          RawDescriptionHelpFormatter)
+    # With gpaw-python BLAS symbols are in global scope and we need to
+    # ensure that NumPy and SciPy use symbols from their own dependencies
+    if is_gpaw_python:
+        old_dlopen_flags = sys.getdlopenflags()
+        sys.setdlopenflags(old_dlopen_flags | os.RTLD_DEEPBIND)
+
+    if is_gpaw_python:
+        sys.setdlopenflags(old_dlopen_flags)
+
     version = sys.version.replace('\n', '')
     p = ArgumentParser(usage='%(prog)s [OPTION ...] [-c | -m] SCRIPT'
                        ' [ARG ...]',
@@ -145,8 +160,113 @@ def parse_arguments(argv):
     return args
 
 
+def __getattr__(attr: str) -> Any:
+    for attr_getter in _lazy_import, _get_gpaw_env_vars:
+        try:
+            result = attr_getter(attr)
+        except AttributeError:
+            continue
+        return globals().setdefault(attr, result)
+    raise _module_attr_error(attr)
+
+
+def __dir__() -> List[str]:
+    """
+    Get the (1) normally-present module attributes, (2) lazily-imported
+    objects, and (3) envrionmental variables starting with `GPAW_`.
+    """
+    return list({*globals(),
+                 *all_lazy_imports,  # From `_lazy_import()`
+                 *{*boolean_envvars,  # From `_get_gpaw_env_vars()`
+                   *(var for var in os.environ if var.startswith('GPAW_'))}})
+
+
+def _module_attr_error(attr: str, *args, **kwargs) -> AttributeError:
+    return AttributeError(f'{__getattr__.__module__}: '
+                          f'no attribute named `.{attr}`',
+                          *args, **kwargs)
+
+
+def _lazy_import(attr: str) -> Any:
+    """
+    Implement the lazy importing of classes in submodules."""
+    import importlib
+
+    try:
+        import_target = all_lazy_imports[attr]
+    except KeyError:
+        raise _module_attr_error(attr) from None
+
+    module, sep, target = import_target.rpartition('.')
+    assert module and all(chunk.isidentifier() for chunk in module.split('.'))
+    assert sep
+    assert target.isidentifier()
+    return getattr(importlib.import_module(module), target)
+
+
+def _get_gpaw_env_vars(attr: str) -> bool | str:
+    if attr in boolean_envvars:
+        return bool(int(os.environ.get(attr, 0)))
+    if attr in allowed_envvars and attr in os.environ:
+        return os.environ[attr]
+    raise _module_attr_error(attr)
+
+
+all_lazy_imports = dict(
+    Mixer='gpaw.mixer.Mixer',
+    MixerSum='gpaw.mixer.MixerSum',
+    MixerDif='gpaw.mixer.MixerDif',
+    MixerSum2='gpaw.mixer.MixerSum2',
+    MixerFull='gpaw.mixer.MixerFull',
+
+    Davidson='gpaw.eigensolvers.Davidson',
+    RMMDIIS='gpaw.eigensolvers.RMMDIIS',
+    CG='gpaw.eigensolvers.CG',
+    DirectLCAO='gpaw.eigensolvers.DirectLCAO',
+
+    PoissonSolver='gpaw.poisson.PoissonSolver',
+    FermiDirac='gpaw.occupations.FermiDirac',
+    MethfesselPaxton='gpaw.occupations.MethfesselPaxton',
+    MarzariVanderbilt='gpaw.occupations.MarzariVanderbilt',
+    FD='gpaw.wavefunctions.fd.FD',
+    LCAO='gpaw.wavefunctions.lcao.LCAO',
+    PW='gpaw.wavefunctions.pw.PW')
+
+
+# Make sure e.g. GPAW_NEW=0 will set GPAW_NEW=False
+# (`__getattr__()` magic handles the other boolean environment
+# variables, but GPAW_NEW is used within the same script, so it needs to
+# concretely exist in the namespace)
+GPAW_NEW = _get_gpaw_env_vars('GPAW_NEW')
+
+if os.uname().machine == 'wasm32':
+    GPAW_NO_C_EXTENSION = True
+
+
+class BroadcastImports:
+    def __enter__(self):
+        from gpaw._broadcast_imports import broadcast_imports
+        self._context = broadcast_imports
+        return self._context.__enter__()
+
+    def __exit__(self, *args):
+        self._context.__exit__(*args)
+
+
+broadcast_imports = BroadcastImports()
+
+
 def main():
-    gpaw_args = parse_arguments(sys.argv)
+    with broadcast_imports:
+        import runpy
+
+        # Apparently we need the scipy.linalg import for compatibility?
+        import scipy.linalg  # noqa: F401
+
+        for attr in all_lazy_imports:
+            __getattr__(attr)
+
+        gpaw_args = parse_arguments(sys.argv)
     # The normal Python interpreter puts . in sys.path, so we also do that:
     sys.path.insert(0, '.')
     # Stacktraces can be shortened by running script with
@@ -163,6 +283,7 @@ def main():
 
 
 if debug:
+    import numpy as np
     np.seterr(over='raise', divide='raise', invalid='raise', under='ignore')
     oldempty = np.empty
     oldempty_like = np.empty_like
@@ -186,28 +307,17 @@ if debug:
     np.empty = empty
     np.empty_like = empty_like
 
-
-with broadcast_imports:
-    from gpaw.calculator import GPAW as OldGPAW
-    from gpaw.mixer import Mixer, MixerSum, MixerDif, MixerSum2, \
-        MixerFull
-    from gpaw.eigensolvers import Davidson, RMMDIIS, CG, DirectLCAO
-    from gpaw.poisson import PoissonSolver
-    from gpaw.occupations import (FermiDirac, MethfesselPaxton,
-                                  MarzariVanderbilt)
-    from gpaw.wavefunctions.lcao import LCAO
-    from gpaw.wavefunctions.pw import PW
-    from gpaw.wavefunctions.fd import FD
+if TYPE_CHECKING:
+    from gpaw.new.ase_interface import GPAW
+elif GPAW_NEW:
+    all_lazy_imports['GPAW'] = 'gpaw.new.ase_interface.GPAW'
+else:
+    all_lazy_imports['GPAW'] = 'gpaw.calculator.GPAW'
 
 
-def GPAW(*args, **kwargs) -> Any:
-    if os.environ.get('GPAW_NEW'):
-        from gpaw.new.ase_interface import GPAW as NewGPAW
-        return NewGPAW(*args, **kwargs)
-    return OldGPAW(*args, **kwargs)
-
-
-def restart(filename, Class=GPAW, **kwargs):
+def restart(filename, Class=None, **kwargs):
+    if Class is None:
+        from gpaw import GPAW as Class
     calc = Class(filename, **kwargs)
     atoms = calc.get_atoms()
     return atoms, calc
@@ -227,18 +337,25 @@ def initialize_data_paths():
     try:
         setup_paths[:0] = os.environ['GPAW_SETUP_PATH'].split(os.pathsep)
     except KeyError:
-        if len(setup_paths) == 0:
-            if os.pathsep == ';':
-                setup_paths[:] = [r'C:\gpaw-setups']
-            else:
-                setup_paths[:] = ['/usr/local/share/gpaw-setups',
-                                  '/usr/share/gpaw-setups']
+        pass
 
 
+def standard_setup_paths() -> list[str | Path]:
+    try:
+        import gpaw_data
+    except ModuleNotFoundError:
+        return []
+    else:
+        return [gpaw_data.datapath()]
+
+
+setup_paths = standard_setup_paths()
 read_rc_file()
 initialize_data_paths()
 
 
 def RMM_DIIS(*args, **kwargs):
+    import warnings
+    from gpaw import RMMDIIS
     warnings.warn('Please use RMMDIIS instead of RMM_DIIS')
     return RMMDIIS(*args, **kwargs)

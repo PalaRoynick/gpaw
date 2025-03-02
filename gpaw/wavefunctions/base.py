@@ -2,7 +2,7 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw.projections import Projections
-from gpaw.utilities import pack
+from gpaw.utilities import pack_density
 from gpaw.utilities.blas import axpy, mmm
 from gpaw.utilities.partition import AtomPartition
 
@@ -141,7 +141,7 @@ class WaveFunctions:
         D_sii = np.zeros((self.nspins, ni, ni))
         P_i = kpt.P_ani[a][n]
         D_sii[kpt.s] += np.outer(P_i.conj(), P_i).real
-        D_sp = [pack(D_ii) for D_ii in D_sii]
+        D_sp = [pack_density(D_ii) for D_ii in D_sii]
         return D_sp
 
     def calculate_atomic_density_matrices_k_point(self, D_sii, kpt, a, f_n):
@@ -189,7 +189,7 @@ class WaveFunctions:
             for f_n, kpt in zip(f_un, self.kpt_u):
                 self.calculate_atomic_density_matrices_k_point(D_sii, kpt, a,
                                                                f_n)
-            D_sp[:] = [pack(D_ii) for D_ii in D_sii]
+            D_sp[:] = [pack_density(D_ii) for D_ii in D_sii]
             self.kptband_comm.sum(D_sp)
 
         self.symmetrize_atomic_density_matrices(D_asp)
@@ -203,7 +203,7 @@ class WaveFunctions:
             D_asp, a_sa=self.kd.symmetry.a_sa)
         D_asp.redistribute(self.atom_partition)
 
-    def calculate_occupation_numbers(self, fixed_fermi_level=False):
+    def calculate_occupation_numbers(self, fix_fermi_level=False):
         if self.collinear and self.nspins == 1:
             degeneracy = 2
         else:
@@ -213,10 +213,11 @@ class WaveFunctions:
             nelectrons=self.nvalence / degeneracy,
             eigenvalues=[kpt.eps_n * Ha for kpt in self.kpt_u],
             weights=[kpt.weightk for kpt in self.kpt_u],
-            fermi_levels_guess=self.fermi_levels * Ha
-            if self.fermi_levels is not None else None)
+            fermi_levels_guess=(self.fermi_levels * Ha
+                                if self.fermi_levels is not None else None),
+            fix_fermi_level=fix_fermi_level)
 
-        if not fixed_fermi_level or self.fermi_levels is None:
+        if not fix_fermi_level or self.fermi_levels is None:
             self.fermi_levels = np.array(fermi_levels) / Ha
 
         for f_n, kpt in zip(f_qn, self.kpt_u):
@@ -429,7 +430,7 @@ class WaveFunctions:
         # and there.
         return np.nan
 
-    def get_homo_lumo(self, spin=None):
+    def get_homo_lumo(self, spin=None, _gllb=False):
         """Return HOMO and LUMO eigenvalues."""
         if spin is None:
             if self.nspins == 1:
@@ -438,7 +439,17 @@ class WaveFunctions:
             h1, l1 = self.get_homo_lumo(1)
             return np.array([max(h0, h1), min(l0, l1)])
 
-        n = self.nvalence // 2
+        if _gllb:
+            # Backwards compatibility (see test/gllb/test_metallic.py test)
+            n = self.nvalence // 2
+        else:
+            nocc = 0.0
+            for kpt in self.kpt_u:
+                if kpt.s == spin:
+                    nocc += kpt.f_n.sum()
+            nocc = self.kptband_comm.sum_scalar(nocc) * self.nspins / 2
+            n = int(round(nocc))
+
         band_rank, myn = self.bd.who_has(n - 1)
         homo = -np.inf
         if self.bd.comm.rank == band_rank:
@@ -510,35 +521,36 @@ class WaveFunctions:
                 writer.fill(self.collect_occupations(k, s) / weight)
 
     def read(self, reader):
-        r = reader.wave_functions
+        wfs_reader = reader.wave_functions
         # Backward compatibility:
         # Take parameters from main reader
-        if 'ha' not in r:
-            r.ha = reader.ha
-        if 'version' not in r:
-            r.version = reader.version
+        if 'ha' not in wfs_reader:
+            wfs_reader.ha = reader.ha
+        if 'version' not in wfs_reader:
+            wfs_reader.version = reader.version
 
         if reader.version >= 3:
-            self.fermi_levels = r.fermi_levels / r.ha
+            self.fermi_levels = wfs_reader.fermi_levels / wfs_reader.ha
         else:
             o = reader.occupations
             self.fermi_levels = np.array(
                 [o.fermilevel + o.split / 2,
-                 o.fermilevel - o.split / 2]) / r.ha
+                 o.fermilevel - o.split / 2]) / wfs_reader.ha
             if self.occupations.name != 'fixmagmom':
                 assert o.split == 0.0
                 self.fermi_levels = self.fermi_levels[:1]
 
         if reader.version >= 2:
-            kpts = r.kpts
+            kpts = wfs_reader.kpts
             assert np.allclose(kpts.ibzkpts, self.kd.ibzk_kc)
             assert np.allclose(kpts.bzkpts, self.kd.bzk_kc)
             assert (kpts.bz2ibz == self.kd.bz2ibz_k).all()
             assert np.allclose(kpts.weights, self.kd.weight_k)
 
-        self.read_projections(r)
-        self.read_eigenvalues(r, r.version <= 0)
-        self.read_occupations(r, r.version <= 0)
+        if 'projections' in wfs_reader:
+            self.read_projections(wfs_reader)
+        self.read_eigenvalues(wfs_reader, wfs_reader.version <= 0)
+        self.read_occupations(wfs_reader, wfs_reader.version <= 0)
 
     def read_projections(self, reader):
         nslice = self.bd.get_slice()
@@ -605,24 +617,14 @@ class WaveFunctions:
             u = kpt.s * self.kd.nibzkpts + kpt.q
             f_sn[u] = kpt.f_n
 
-        log("For SIC calculations there are\n"
-            "diagonal elements of Lagrange matrix and "
-            "its eigenvalues.\n"
-            "Eigenvalues are printed above. \n"
-            "Labeling here corresponds "
-            "to how optimal orbitals are sorted "
-            "in array\n")
+        log("Diagonal elements of Lagrange matrix:")
         if self.nspins == 1:
             header = " Band         L_ii  " \
                      "Occupancy"
             log(header)
 
-            lagr_labeled = {}
-            for c, x in enumerate(pot.lagr_diag_s[0]):
-                lagr_labeled[str(round(x, 12))] = c
-            lagr = sorted(pot.lagr_diag_s[0])
-            for x in lagr:
-                i = lagr_labeled[str(round(x, 12))]
+            lagr = pot.lagr_diag_s[0]
+            for i, x in enumerate(lagr):
                 log('%5d  %11.5f  %9.5f' % (
                     i, Ha * x, f_sn[0][i]))
 
@@ -691,7 +693,6 @@ class WaveFunctions:
                          Ha * y,
                          f_sn[1][i1]))
 
-        log("\n")
         log(flush=True)
 
         sic_n = pot.e_sic_by_orbitals
@@ -727,11 +728,16 @@ class WaveFunctions:
 
         if self.kd.comm.rank == 0:
             for s in range(self.nspins):
-                log('Spin: %3d ' % (s))
+                if self.nspins == 2:
+                    log('Spin: %3d ' % (s))
                 header = """\
             Self-Har.  Self-XC   Hartree + XC  Scaling
             energy:    energy:   energy:       Factors:"""
                 log(header)
+
+                occupied = f_sn[s] > 1.0e-10
+                f_sn_occ = f_sn[s][occupied]
+                occupied_indices = np.where(occupied)[0]
                 u_s = 0.0
                 xc_s = 0.0
                 for i in range(len(sic_n[s])):
@@ -744,16 +750,16 @@ class WaveFunctions:
                         f = (pot.beta_c, pot.beta_x)
 
                     log('band: %3d ' %
-                        (i), end='')
+                        (occupied_indices[i]), end='')
                     log('%11.6f%11.6f%11.6f %8.3f%7.3f' %
-                        (-Ha * u / (f[0] * f_sn[s][i]),
-                         -Ha * xc / (f[1] * f_sn[s][i]),
-                         -Ha * (u / (f[0] * f_sn[s][i]) +
-                                xc / (f[1] * f_sn[s][i])),
+                        (-Ha * u / (f[0] * f_sn_occ[i]),
+                         -Ha * xc / (f[1] * f_sn_occ[i]),
+                         -Ha * (u / (f[0] * f_sn_occ[i]) +
+                                xc / (f[1] * f_sn_occ[i])),
                          f[0], f[1]), end='')
                     log(flush=True)
-                    u_s += u / (f[0] * f_sn[s][i])
-                    xc_s += xc / (f[1] * f_sn[s][i])
+                    u_s += u / (f[0] * f_sn_occ[i])
+                    xc_s += xc / (f[1] * f_sn_occ[i])
                 log('--------------------------------'
                     '-------------------------')
                 log('Total     ', end='')

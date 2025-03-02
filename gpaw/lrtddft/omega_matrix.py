@@ -5,9 +5,10 @@ from ase.units import Hartree
 from ase.utils.timing import Timer
 
 import gpaw.mpi as mpi
-from gpaw.lrtddft.kssingle import KSSingles, KSSRestrictor
+from .kssingle import KSSingles
+from gpaw.setup import CachedYukawaInteractions
 from gpaw.transformers import Transformer
-from gpaw.utilities import pack
+from gpaw.utilities import pack_density
 from gpaw.xc import XC
 
 """This module defines a Omega Matrix class."""
@@ -96,6 +97,11 @@ class OmegaMatrix:
             self.derivativeLevel = derivativeLevel
         else:
             self.xc = None
+
+        if getattr(self.xc, 'omega', 0):  # can be None or int
+            self.yukawa_interactions = CachedYukawaInteractions(self.xc.omega)
+        else:
+            self.yukawa_interactions = None
 
         self.numscale = numscale
 
@@ -204,7 +210,7 @@ class OmegaMatrix:
                 # We use the numerical two point formula for calculating
                 # the integral over fxc*n_ij. The results are
                 # vvt_s        smooth integral
-                # nucleus.I_sp atom based correction matrices (pack2)
+                # nucleus.I_sp atom based correction matrices (pack_hermitian)
                 #              stored on each nucleus
                 timer2.start('init v grids')
                 vp_s = np.zeros(nt_s.shape, nt_s.dtype.char)
@@ -233,7 +239,7 @@ class OmegaMatrix:
                     Pj_i = P_ni[kss[ij].j]
                     P_ii = np.outer(Pi_i, Pj_i)
                     # we need the symmetric form, hence we can pack
-                    P_p = pack(P_ii)
+                    P_p = pack_density(P_ii)
                     D_sp = D_asp[a].copy()
                     D_sp[kss[ij].pspin] -= ns * P_p
                     setup = wfs.setups[a]
@@ -317,8 +323,8 @@ class OmegaMatrix:
                         Pq_i = P_ni[kss[kq].j]
                         P_ii = np.outer(Pk_i, Pq_i)
                         # we need the symmetric form, hence we can pack
-                        # use pack as I_sp used pack2
-                        P_p = pack(P_ii)
+                        # use pack_density as I_sp used pack_hermitian
+                        P_p = pack_density(P_ii)
                         Exc += np.dot(I_asp[a][kss[kq].pspin], P_p)
                     Om_xc[ij, kq] += weight * self.gd.comm.sum_scalar(Exc)
                     timer2.stop()
@@ -345,8 +351,8 @@ class OmegaMatrix:
                         Pq_i = P_ni[kss[kq].j]
                         P_ii = np.outer(Pk_i, Pq_i)
                         # we need the symmetric form, hence we can pack
-                        # use pack as I_sp used pack2
-                        P_p = pack(P_ii)
+                        # use pack_density as I_sp used pack_hermitian
+                        P_p = pack_density(P_ii)
                         Exc += np.dot(I_asp[a][kss[kq].pspin], P_p)
                     Om_xc[ij, kq] += weight * self.gd.comm.sum(Exc)
                     timer2.stop()
@@ -380,14 +386,15 @@ class OmegaMatrix:
             Pi_i = Pij_ni[kss_ij.i]
             Pj_i = Pij_ni[kss_ij.j]
             Dij_ii = np.outer(Pi_i, Pj_i)
-            Dij_p = pack(Dij_ii)
+            Dij_p = pack_density(Dij_ii)
             Pk_i = Pkq_ani[a][kss_kq.i]
             Pq_i = Pkq_ani[a][kss_kq.j]
             Dkq_ii = np.outer(Pk_i, Pq_i)
-            Dkq_p = pack(Dkq_ii)
-            if yukawa and hasattr(self.xc, 'omega') and self.xc.omega > 0:
-                C_pp = wfs.setups[a].calculate_yukawa_interaction(
-                    self.xc.omega)
+            Dkq_p = pack_density(Dkq_ii)
+            if yukawa:
+                assert abs(
+                    self.yukawa_interactions.omega - self.xc.omega) < 1e-14
+                C_pp = self.yukawa_interactions.get_Mg_pp(wfs.setups[a])
             else:
                 C_pp = wfs.setups[a].M_pp
             #   ----
@@ -533,7 +540,7 @@ class OmegaMatrix:
         t = .5 * t * (nij - ij)  # estimated time for n*(n+1)/2, n=nij-(ij+1)
         return self.timestring(t0 * (nij - ij - 1) + t)
 
-    def get_map(self, restrict={}):
+    def get_map(self, restrict=None):
         """Return the reduction map for the given requirements
 
         Returns
@@ -541,36 +548,27 @@ class OmegaMatrix:
         map - list of original indices
         kss - reduced KSSingles object
         """
-        rst = KSSRestrictor(restrict)
-        if rst >= self.fullkss.restrict:
-            return None, self.fullkss
-
         self.log('# diagonalize: %d transitions original'
                  % len(self.fullkss))
 
         map = []
-        kss = KSSingles()
+
+        rst_dict = self.fullkss.restrict.values
+        if restrict is not None:
+            rst_dict.update(restrict)
+        kss = KSSingles(restrict=rst_dict)
         kss.dtype = self.fullkss.dtype
-        energy_range = rst['energy_range']
-        emin, emax = rst.emin_emax()
-        istart = rst['istart']
-        jend = rst['jend']
-        eps = rst['eps']
+
         for ij, k in zip(range(len(self.fullkss)), self.fullkss):
-            if energy_range is None:
-                if k.i >= istart and k.j <= jend and k.fij >= eps:
-                    kss.append(k)
-                    map.append(ij)
-            else:
-                if k.energy >= emin and k.energy < emax and k.fij >= eps:
-                    kss.append(k)
-                    map.append(ij)
+            if kss.restrict.is_good(k):
+                kss.append(k)
+                map.append(ij)
         kss.update()
         self.log('# diagonalize: %d transitions now' % len(kss))
 
         return map, kss
 
-    def diagonalize(self, restrict={}):
+    def diagonalize(self, restrict=None):
         """Evaluate Eigenvectors and Eigenvalues:"""
         map, kss = self.get_map(restrict)
 

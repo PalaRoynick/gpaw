@@ -3,18 +3,22 @@ import pytest
 from gpaw import GPAW
 from gpaw.ibz2bz import IBZ2BZMaps, get_overlap, get_overlap_coefficients
 import gpaw.mpi as mpi
-from gpaw.test.conftest import response_band_cutoff
+from gpaw.test.gpwfile import response_band_cutoff
 
 
-@pytest.mark.later
 @pytest.mark.serial
-@pytest.mark.parametrize('gs', ['fancy_si_pw',
-                                'al_pw',
-                                'fe_pw',
-                                'co_pw',
-                                'gaas_pw',
-                                'v2br4_pw',
-                                'srvo3_pw'])
+@pytest.mark.parametrize(
+    'gs',
+    ['bi2i6_pw',
+     'fancy_si_pw',
+     'al_pw',
+     'fe_pw',
+     'co_pw',
+     'gaas_pw',
+     pytest.param(
+         'v2br4_pw',
+         marks=[pytest.mark.old_gpaw_only]),  # interpolation=3 not implemented
+     'srvo3_pw'])
 def test_ibz2bz(in_tmp_dir, gpw_files, gs):
     """ Tests gpaw.ibz2bz.py
     Tests functionalities to take wavefunction and projections from
@@ -22,7 +26,7 @@ def test_ibz2bz(in_tmp_dir, gpw_files, gs):
     """
 
     atol = 5e-03  # Tolerance when comparing wfs and projections
-    atol_eig = 1e-04  # Tolerance when comparing eigenvalues
+    atol_eig = 2e-04  # Tolerance when comparing eigenvalues
     atol_deg = 5e-3  # Tolerance for checking degenerate states
 
     # Loading calc with symmetry

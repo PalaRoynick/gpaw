@@ -4,10 +4,9 @@ import pytest
 from ase import Atoms
 
 from gpaw import GPAW
-from gpaw.test import equal
 
 
-@pytest.mark.later
+@pytest.mark.old_gpaw_only
 def test_fileio_refine(in_tmp_dir):
     restart_wf = 'gpaw-restart-wf.gpw'
     # H2
@@ -34,4 +33,4 @@ def test_fileio_refine(in_tmp_dir):
 
     print(Edirect, Erestart)
     # Note: the different density mixing introduces small differences
-    equal(Edirect, Erestart, 4e-5)
+    assert Edirect == pytest.approx(Erestart, abs=4e-5)

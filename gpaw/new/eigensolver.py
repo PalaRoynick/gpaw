@@ -1,9 +1,24 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from gpaw.new.calculation import DFTState
+
+from gpaw.new.density import Density
+from gpaw.new.hamiltonian import Hamiltonian
+from gpaw.new.potential import Potential
+from gpaw.new.energies import DFTEnergies
+from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.new.pot_calc import PotentialCalculator
 
 
 class Eigensolver:
-    def iterate(self, state: DFTState, hamiltonian) -> float:
+    direct = False
+
+    def iterate(self,
+                ibzwfs: IBZWaveFunctions,
+                density: Density,
+                potential: Potential,
+                hamiltonian: Hamiltonian,
+                pot_calc: PotentialCalculator,
+                energies: DFTEnergies) -> tuple[float, DFTEnergies]:
         raise NotImplementedError
+
+    def postprocess(self, ibzwfs, density, potential, hamiltonian):
+        pass

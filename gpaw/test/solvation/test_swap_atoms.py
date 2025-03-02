@@ -1,4 +1,4 @@
-from gpaw.cluster import Cluster
+from gpaw.utilities.adjust_cell import adjust_cell
 from ase.build import molecule
 from ase.units import Pascal, m
 from ase.data.vdw import vdw_radii
@@ -32,8 +32,8 @@ def test_solvation_swap_atoms():
         'eigenstates': 10.,
     }
 
-    atoms = Cluster(molecule('H2O'))
-    atoms.minimal_box(vac, h)
+    atoms = molecule('H2O')
+    adjust_cell(atoms, vac, h)
 
     calc = SolvationGPAW(
         mode='fd', xc='LDA', h=h, convergence=convergence,
@@ -48,31 +48,38 @@ def test_solvation_swap_atoms():
     atoms.calc = calc
     atoms.get_potential_energy()
     atoms.get_forces()
-    eps_gradeps = calc.hamiltonian.dielectric.eps_gradeps
+
+    def env(calc):
+        if calc.old:
+            return calc.hamiltonian
+        return calc.environment
+
+    eps_gradeps = env(calc).dielectric.eps_gradeps
 
     # same molecules, different cell, reallocate
-    atoms = Cluster(molecule('H2O'))
+    atoms = molecule('H2O')
     atoms.positions[0][0] = atoms.positions[0][0] - 1.
-    atoms.minimal_box(vac, h)
+    adjust_cell(atoms, vac, h)
     atoms.calc = calc
     atoms.get_potential_energy()
     atoms.get_forces()
-    assert calc.hamiltonian.dielectric.eps_gradeps is not eps_gradeps
-    eps_gradeps = calc.hamiltonian.dielectric.eps_gradeps
+
+    assert env(calc).dielectric.eps_gradeps is not eps_gradeps
+    eps_gradeps = env(calc).dielectric.eps_gradeps
 
     # small position change, no reallocate
     atoms.positions[0][0] = atoms.positions[0][0] + 1e-2
     atoms.get_potential_energy()
     atoms.get_forces()
-    assert calc.hamiltonian.dielectric.eps_gradeps is eps_gradeps
-    eps_gradeps = calc.hamiltonian.dielectric.eps_gradeps
-    radii = calc.hamiltonian.cavity.effective_potential.r12_a
+    assert env(calc).dielectric.eps_gradeps is eps_gradeps
+    eps_gradeps = env(calc).dielectric.eps_gradeps
+    radii = env(calc).cavity.effective_potential.r12_a
 
     # completely different atoms object, reallocate, read new radii
-    atoms = Cluster(molecule('NH3'))
-    atoms.minimal_box(vac, h)
+    atoms = molecule('NH3')
+    adjust_cell(atoms, vac, h)
     atoms.calc = calc
     atoms.get_potential_energy()
     atoms.get_forces()
-    assert calc.hamiltonian.dielectric.eps_gradeps is not eps_gradeps
-    assert calc.hamiltonian.cavity.effective_potential.r12_a is not radii
+    assert env(calc).dielectric.eps_gradeps is not eps_gradeps
+    assert env(calc).cavity.effective_potential.r12_a is not radii

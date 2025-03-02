@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from typing import Callable
-
 import numpy as np
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
 from gpaw.core.matrix import Matrix
 from gpaw.mpi import MPIComm, receive, send, serial_comm
-from gpaw.new import cached_property
 from gpaw.new.potential import Potential
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
-from gpaw.typing import Array2D, Array3D
+from gpaw.typing import Array2D
 
 
 class LCAOWaveFunctions(WaveFunctions):
@@ -21,14 +18,13 @@ class LCAOWaveFunctions(WaveFunctions):
     def __init__(self,
                  *,
                  setups: Setups,
-                 density_adder: Callable[[Array2D, Array3D], None],
                  tci_derivatives,
                  basis,
                  C_nM: Matrix,
                  S_MM: Matrix,
                  T_MM: Matrix,
                  P_aMi,
-                 fracpos_ac: Array2D,
+                 relpos_ac: Array2D,
                  atomdist: AtomDistribution,
                  kpt_c=(0.0, 0.0, 0.0),
                  domain_comm: MPIComm = serial_comm,
@@ -44,13 +40,12 @@ class LCAOWaveFunctions(WaveFunctions):
                          k=k,
                          kpt_c=kpt_c,
                          weight=weight,
-                         fracpos_ac=fracpos_ac,
+                         relpos_ac=relpos_ac,
                          atomdist=atomdist,
                          ncomponents=ncomponents,
                          dtype=C_nM.dtype,
                          domain_comm=domain_comm,
                          band_comm=C_nM.dist.comm)
-        self.density_adder = density_adder
         self.tci_derivatives = tci_derivatives
         self.basis = basis
         self.C_nM = C_nM
@@ -64,18 +59,58 @@ class LCAOWaveFunctions(WaveFunctions):
         # This is for TB-mode (and MYPY):
         self.V_MM: Matrix
 
-    @cached_property
+        self._L_MM = None
+
+    def move(self,
+             relpos_ac: Array2D,
+             atomdist: AtomDistribution,
+             move_wave_functions) -> None:
+        self._update_phases(relpos_ac)
+        super().move(relpos_ac, atomdist, move_wave_functions)
+        self._L_MM = None
+
+    def _update_phases(self, relpos_ac):
+        """Complex-rotate coefficients compensating discontinuous phase shift.
+
+        This changes the coefficients to counteract the phase discontinuity
+        of overlaps when atoms move across a cell boundary."""
+
+        # We don't want to apply any phase shift unless we crossed a cell
+        # boundary.  So we round the shift to either 0 or 1.
+        #
+        # Example: spos_ac goes from 0.01 to 0.99 -- this rounds to 1 and
+        # we apply the phase.  If someone moves an atom by half a cell
+        # without crossing a boundary, then we are out of luck.  But they
+        # should have reinitialized from LCAO anyway.
+
+        C_nM = self.C_nM.data
+        if C_nM.dtype == float:
+            return
+        diff_ac = (relpos_ac - self.relpos_ac).round()
+        if not diff_ac.any():
+            return
+        phase_a = np.exp(2j * np.pi * diff_ac @ self.kpt_c)
+        M1 = 0
+        for phase, sphere in zip(phase_a, self.basis.sphere_a):
+            M2 = M1 + sphere.Mmax
+            C_nM[:, M1:M2] *= phase
+            M1 = M2
+
+    @property
     def L_MM(self):
-        S_MM = self.S_MM.copy()
-        S_MM.invcholesky()
-        if self.ncomponents < 4:
-            return S_MM
-        M, M = S_MM.shape
-        L_sMsM = Matrix(2 * M, 2 * M, dtype=complex)
-        L_sMsM.data[:] = 0.0
-        L_sMsM.data[:M, :M] = S_MM.data
-        L_sMsM.data[M:, M:] = S_MM.data
-        return L_sMsM
+        if self._L_MM is None:
+            S_MM = self.S_MM.copy()
+            S_MM.invcholesky()
+            if self.ncomponents < 4:
+                self._L_MM = S_MM
+            else:
+                M, M = S_MM.shape
+                L_sMsM = Matrix(2 * M, 2 * M, dtype=complex)
+                L_sMsM.data[:] = 0.0
+                L_sMsM.data[:M, :M] = S_MM.data
+                L_sMsM.data[M:, M:] = S_MM.data
+                self._L_MM = L_sMsM
+        return self._L_MM
 
     def _short_string(self, global_shape):
         return f'basis functions: {global_shape[0]}'
@@ -86,17 +121,26 @@ class LCAOWaveFunctions(WaveFunctions):
         1 / 0
 
     @property
+    def _layout(self):
+        atomdist = AtomDistribution.from_atom_indices(
+            list(self.P_aMi),
+            self.domain_comm,
+            natoms=len(self.setups))
+        return AtomArraysLayout([setup.ni for setup in self.setups],
+                                atomdist=atomdist,
+                                dtype=self.dtype)
+
+    @property
     def P_ani(self):
         if self._P_ani is None:
-            atomdist = AtomDistribution.from_atom_indices(
-                list(self.P_aMi),
-                self.domain_comm,
-                natoms=len(self.setups))
-            layout = AtomArraysLayout([setup.ni for setup in self.setups],
-                                      atomdist=atomdist,
-                                      dtype=self.dtype)
-            self._P_ani = layout.empty(self.nbands,
-                                       comm=self.C_nM.dist.comm)
+            self._P_ani = self._layout.empty(self.nbands,
+                                             comm=self.C_nM.dist.comm)
+            # As a hack, builder.py injects a NaN in the first element of
+            # C_nM.data in order for us to be able to tell that the
+            # data is uninitialized:
+            # if np.isnan(self.C_nM.data.flat[0]):
+            #   raise RuntimeError('There are no projections or wavefunctions')
+
             for a, P_Mi in self.P_aMi.items():
                 self._P_ani[a][:] = self.C_nM.data @ P_Mi
 
@@ -110,7 +154,7 @@ class LCAOWaveFunctions(WaveFunctions):
         Adds to ``nt_sR`` and ``D_asii``.
         """
         rho_MM = self.calculate_density_matrix()
-        self.density_adder(rho_MM, nt_sR.data[self.spin])
+        self.basis.construct_density(rho_MM, nt_sR.data[self.spin], q=self.q)
         f_n = self.weight * self.spin_degeneracy * self.myocc_n
         self.add_to_atomic_density_matrices(f_n, D_asii)
 
@@ -120,7 +164,10 @@ class LCAOWaveFunctions(WaveFunctions):
             return C_nM.data
         return None
 
-    def calculate_density_matrix(self, eigs=False) -> np.ndarray:
+    def calculate_density_matrix(self,
+                                 *,
+                                 eigs=False,
+                                 transposed=False) -> np.ndarray:
         """Calculate the density matrix.
 
         The density matrix is:::
@@ -139,7 +186,10 @@ class LCAOWaveFunctions(WaveFunctions):
             if eigs:
                 f_n *= self.myeig_n
             C_nM = self.C_nM.data
-            rho_MM = (C_nM.T.conj() * f_n) @ C_nM
+            if transposed:
+                rho_MM = (C_nM.T * f_n) @ C_nM.conj()
+            else:
+                rho_MM = (C_nM.T.conj() * f_n) @ C_nM
             self.band_comm.sum(rho_MM)
         else:
             rho_MM = np.empty_like(self.T_MM.data)
@@ -154,7 +204,10 @@ class LCAOWaveFunctions(WaveFunctions):
         psit_nR = grid.zeros(self.nbands, self.band_comm)
         basis.lcao_to_grid(self.C_nM.data, psit_nR.data, self.q)
 
-        return PWFDWaveFunctions.from_wfs(self, psit_nR)
+        wfs = PWFDWaveFunctions.from_wfs(self, psit_nR)
+        if self._eig_n is not None:
+            wfs._eig_n = self._eig_n.copy()
+        return wfs
 
     def collect(self,
                 n1: int = 0,
@@ -162,11 +215,9 @@ class LCAOWaveFunctions(WaveFunctions):
         # Quick'n'dirty implementation
         # We should generalize the PW+FD method
         assert self.band_comm.size == 1
-        assert self.domain_comm.size == 1
         n2 = n2 or self.nbands + n2
         return LCAOWaveFunctions(
             setups=self.setups,
-            density_adder=self.density_adder,
             tci_derivatives=self.tci_derivatives,
             basis=self.basis,
             C_nM=Matrix(n2 - n1,
@@ -175,19 +226,14 @@ class LCAOWaveFunctions(WaveFunctions):
             S_MM=self.S_MM,
             T_MM=self.T_MM,
             P_aMi=self.P_aMi,
-            fracpos_ac=self.fracpos_ac,
-            atomdist=self.atomdist,
+            relpos_ac=self.relpos_ac,
+            atomdist=self.atomdist.gather(),
             kpt_c=self.kpt_c,
             spin=self.spin,
             q=self.q,
             k=self.k,
             weight=self.weight,
             ncomponents=self.ncomponents)
-
-    def move(self,
-             fracpos_ac: Array2D,
-             atomdist: AtomDistribution) -> None:
-        1 / 0
 
     def force_contribution(self, potential: Potential, F_av: Array2D):
         from gpaw.new.lcao.forces import add_force_contributions
@@ -207,15 +253,14 @@ class LCAOWaveFunctions(WaveFunctions):
     def receive(self, rank, comm):
         kpt_c, data, spin, q, k, weight, ncomponents = receive(rank, comm)
         return LCAOWaveFunctions(setups=self.setups,
-                                 density_adder=self.density_adder,
                                  tci_derivatives=self.tci_derivatives,
                                  basis=self.basis,
                                  C_nM=Matrix(*data.shape, data=data),
                                  S_MM=None,
                                  T_MM=None,
                                  P_aMi=None,
-                                 fracpos_ac=self.fracpos_ac,
-                                 atomdist=self.atomdist,
+                                 relpos_ac=self.relpos_ac,
+                                 atomdist=self.atomdist.gather(),
                                  kpt_c=kpt_c,
                                  spin=spin,
                                  q=q,

@@ -2,8 +2,9 @@ from math import sqrt, pi
 
 import numpy as np
 
-from gpaw.xc.functional import XCFunctional
+from gpaw.new import trace
 from gpaw.sphere.lebedev import Y_nL, weight_n
+from gpaw.xc.functional import XCFunctional
 
 
 class LDARadialExpansion:

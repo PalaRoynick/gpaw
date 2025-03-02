@@ -1,6 +1,6 @@
 from ase import Atoms
 from ase.data.vdw import vdw_radii
-from gpaw.test import equal
+import pytest
 from ase.units import Pascal, m
 from gpaw.solvation import (
     SolvationGPAW,
@@ -38,26 +38,26 @@ def test_solvation_forces_symmetry():
     atoms.set_cell((xy_cell, xy_cell, z_cell))
 
     atoms.calc = SolvationGPAW(
-        mode='fd', xc='PBE', h=h, setups={'Na': '1'},
+        mode='fd',
+        xc='PBE',
+        h=h,
+        setups={'Na': '1'},
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii, u0),
             temperature=T,
             volume_calculator=KB51Volume(),
-            surface_calculator=GradientSurface()
-        ),
+            surface_calculator=GradientSurface()),
         dielectric=LinearDielectric(epsinf=epsinf),
         # parameters chosen to give ~ 1eV for each interaction
         interactions=[
             VolumeInteraction(pressure=-1e9 * Pascal),
             SurfaceInteraction(surface_tension=100. * 1e-3 * Pascal * m),
-            LeakedDensityInteraction(voltage=10.)
-        ]
-    )
+            LeakedDensityInteraction(voltage=10.)])
     F = atoms.calc.get_forces(atoms)
 
     difference = F[0][2] + F[1][2]
     print(difference)
-    equal(difference, .0, .02)  # gas phase is ~.007 eV / Ang
+    assert difference == pytest.approx(.0, abs=.02)
     F[0][2] = F[1][2] = .0
     print(np.abs(F))
-    equal(np.abs(F), .0, 1e-10)  # gas phase is ~1e-11 eV / Ang
+    assert np.abs(F) == pytest.approx(.0, abs=1e-10)

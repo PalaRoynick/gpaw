@@ -3,13 +3,13 @@ from __future__ import annotations
 
 from types import ModuleType
 from typing import Dict, Tuple
-import _gpaw
+import gpaw.cgpaw as cgpaw
 import numpy as np
 import scipy.linalg as sla
 
 import gpaw.utilities.blas as blas
-from gpaw import debug, SCIPY_VERSION
-from gpaw.gpu import cupy as cp, cupy_eigh
+from gpaw import debug, get_scipy_version
+from gpaw.gpu import cupy as cp, cupy_eigh, XP
 from gpaw.mpi import MPIComm, _Communicator, serial_comm
 from gpaw.typing import Array1D, ArrayLike1D, ArrayLike2D, Array2D
 
@@ -52,7 +52,7 @@ def suggest_blocking(N: int, ncpus: int) -> tuple[int, int, int]:
     return nprow, npcol, blocksize
 
 
-class Matrix:
+class Matrix(XP):
     def __init__(self,
                  M: int,
                  N: int,
@@ -91,18 +91,18 @@ class Matrix:
             else:
                 dtype = data.dtype
         self.dtype = np.dtype(dtype)
-        assert dtype == float or dtype == complex, dtype
+        assert np.dtype(self.dtype) in \
+            [np.float32, np.float64, np.complex64, np.complex128], dtype
 
         self.xp: ModuleType
         if xp is None:
             if isinstance(dist, CuPyDistribution):
-                self.xp = cp
+                xp = cp
             elif data is not None and not isinstance(data, np.ndarray):
-                self.xp = cp
+                xp = cp
             else:
-                self.xp = np
-        else:
-            self.xp = xp
+                xp = np
+        XP.__init__(self, xp)
 
         dist = dist or ()
         if isinstance(dist, tuple):
@@ -272,7 +272,7 @@ class Matrix:
             return
         bc, br = dist.desc[4:6]
         assert bc == br
-        info = _gpaw.scalapack_inverse(self.data, dist.desc, 'U')
+        info = cgpaw.scalapack_inverse(self.data, dist.desc, 'U')
         if info != 0:
             raise ValueError(f'scalapack_inverse error: {info}')
 
@@ -335,7 +335,6 @@ class Matrix:
             Number of eigenvector and values to find.  Defaults to all.
         """
         slcomm, rows, columns, blocksize = scalapack
-
         slcomm = slcomm or self.dist.comm
         dist = (slcomm, rows, columns, blocksize)
 
@@ -354,11 +353,17 @@ class Matrix:
             assert self.dist.comm.size == slcomm.size
             H = self
 
-        eps = self.xp.empty(H.shape[0])
+        if limit == H.shape[0]:
+            limit = None
+
+        if limit:
+            eps = self.xp.empty(limit)
+        else:
+            eps = self.xp.empty(H.shape[0])
 
         if rows * columns == 1:
             if self.dist.comm.rank == 0:
-                if cc and H.dtype == complex:
+                if cc and np.issubdtype(H.dtype, np.complexfloating):
                     np.negative(H.data.imag, H.data.imag)
                 if debug:
                     H.data[np.triu_indices(H.shape[0], 1)] = 42.0
@@ -399,7 +404,7 @@ class Matrix:
                 assert cc
                 assert S is None
                 array = H.data.copy()
-                info = _gpaw.scalapack_diagonalize_dc(array, H.dist.desc, 'U',
+                info = cgpaw.scalapack_diagonalize_dc(array, H.dist.desc, 'U',
                                                       H.data, eps)
                 assert info == 0, info
 
@@ -457,7 +462,7 @@ class Matrix:
                 blas.mmm(1.0, L_MM, 'N', H.data, 'N', 0.0, tmp_MM)
                 blas.r2k(0.5, tmp_MM, L_MM, 0.0, H.data)
                 # Ht_MM = L_MM @ H.data @ L_MM.conj().T
-                if SCIPY_VERSION >= [1, 9]:
+                if get_scipy_version() >= [1, 9]:
                     driver = 'evx' if M == 1 else 'evd'
                 else:
                     driver = None
@@ -485,7 +490,7 @@ class Matrix:
 
     def complex_conjugate(self) -> None:
         """Inplace complex conjugation."""
-        if self.dtype == complex:
+        if np.issubdtype(self.dtype, np.complexfloating):
             self.xp.negative(self.data.imag, self.data.imag)
 
     def add_hermitian_conjugate(self, scale: float = 1.0) -> None:
@@ -496,7 +501,7 @@ class Matrix:
             self.data += self.data.conj().T
             return
         tmp = self.copy()
-        _gpaw.pblas_tran(*self.shape, scale, tmp.data, scale, self.data,
+        cgpaw.pblas_tran(*self.shape, scale, tmp.data, scale, self.data,
                          self.dist.desc, self.dist.desc, True)
 
     def tril2full(self) -> None:
@@ -523,12 +528,12 @@ class Matrix:
             return
 
         desc = dist.desc
-        _gpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
+        cgpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
         buf = self.data.copy()
         # Set diagonal to zero in the copy:
-        _gpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
+        cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
         # Now transpose tmp_mm adding the result to the original matrix:
-        _gpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
+        cgpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
 
     def add_to_diagonal(self, d: ArrayLike1D | float) -> None:
         """Add list of numbers or single number to diagonal of matrix."""
@@ -551,7 +556,7 @@ def _matrix(M):
 
 
 def redist(dist1, M1, dist2, M2, context):
-    _gpaw.scalapack_redist(dist1.desc, dist2.desc,
+    cgpaw.scalapack_redist(dist1.desc, dist2.desc,
                            M1, M2,
                            dist1.desc[2], dist1.desc[3],
                            1, 1, 1, 1,  # 1-indexing
@@ -678,7 +683,7 @@ class BLACSDistribution(MatrixDistribution):
         context = _global_blacs_context_store.get(key)
         if context is None:
             try:
-                context = _gpaw.new_blacs_context(comm.get_c_object(),
+                context = cgpaw.new_blacs_context(comm.get_c_object(),
                                                   c, r, 'R')
             except AttributeError:
                 pass
@@ -704,7 +709,7 @@ class BLACSDistribution(MatrixDistribution):
             n = N
             m = min((comm.rank + 1) * br, M) - min(comm.rank * br, M)
         else:
-            n, m = _gpaw.get_blacs_local_shape(context, N, M, bc, br, 0, 0)
+            n, m = cgpaw.get_blacs_local_shape(context, N, M, bc, br, 0, 0)
         if n < 0 or m < 0:
             n = m = 0
         self.shape = (m, n)
@@ -749,12 +754,12 @@ class BLACSDistribution(MatrixDistribution):
             assert opb == 'C' or opb == 'T' and a.dtype == float
             N, K = a.shape
             if a is b:
-                _gpaw.pblas_rk(N, K, alpha, a.data,
+                cgpaw.pblas_rk(N, K, alpha, a.data,
                                beta, c.data,
                                a.dist.desc, c.dist.desc,
                                'U')
             else:
-                _gpaw.pblas_r2k(N, K, 0.5 * alpha, b.data, a.data,
+                cgpaw.pblas_r2k(N, K, 0.5 * alpha, b.data, a.data,
                                 beta, c.data,
                                 b.dist.desc, a.dist.desc, c.dist.desc,
                                 'U')
@@ -765,7 +770,7 @@ class BLACSDistribution(MatrixDistribution):
                 Ka, M = M, Ka
             if opb == 'N':
                 N, Kb = Kb, N
-            _gpaw.pblas_gemm(N, M, Ka, alpha, b.data, a.data,
+            cgpaw.pblas_gemm(N, M, Ka, alpha, b.data, a.data,
                              beta, c.data,
                              b.dist.desc, a.dist.desc, c.dist.desc,
                              opb, opa)
@@ -833,9 +838,13 @@ class CuPyDistribution(MatrixDistribution):
                         return
                     if c.data.size > 0:
                         assert beta in [0.0, 1.0]
+                        # CuPy doesn't have dsyrk, so we roll our own:
                         cp.cublas.gemm('N', 'H',
                                        a.data, b.data, c.data,
-                                       alpha, beta)
+                                       0.5 * alpha, beta)
+                        cp.cublas.gemm('N', 'H',
+                                       b.data, a.data, c.data,
+                                       0.5 * alpha, 1.0)
             else:
                 1 / 0
                 assert opa == 'C' and opb == 'N'

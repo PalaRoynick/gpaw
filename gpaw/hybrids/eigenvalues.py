@@ -19,11 +19,11 @@ from gpaw.xc import XC
 from gpaw.xc.kernel import XCNull
 from gpaw.xc.tools import vxc
 
-from . import parse_name
-from .coulomb import coulomb_interaction
-from .kpts import RSKPoint, get_kpt, to_real_space
-from .paw import calculate_paw_stuff
-from .symmetry import Symmetry
+from gpaw.hybrids import parse_name
+from gpaw.hybrids.coulomb import coulomb_interaction
+from gpaw.hybrids.kpts import RSKPoint, get_kpt, to_real_space
+from gpaw.hybrids.paw import calculate_paw_stuff
+from gpaw.hybrids.symmetry import Symmetry
 
 
 def non_self_consistent_eigenvalues(
@@ -231,8 +231,11 @@ def _calculate_eigenvalues(kpt1, kpts2, paw, kd, coulomb, sym, wfs, spos_ac):
         P_ni = proj1all[a]
         vv_n = np.einsum('ni, ij, nj -> n',
                          P_ni.conj(), VV_ii, P_ni).real
-        vc_n = np.einsum('ni, ij, nj -> n',
-                         P_ni.conj(), paw.VC_aii[a], P_ni).real
+        if paw.VC_aii[a] is not None:
+            vc_n = np.einsum('ni, ij, nj -> n',
+                             P_ni.conj(), paw.VC_aii[a], P_ni).real
+        else:
+            vc_n = 0.0
         E_n -= (2 * vv_n + vc_n)
 
     return E_n

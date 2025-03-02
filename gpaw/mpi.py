@@ -10,7 +10,7 @@ import traceback
 from contextlib import contextmanager
 from typing import Any
 
-import _gpaw
+import gpaw.cgpaw as cgpaw
 import numpy as np
 import warnings
 from ase.parallel import MPI as ASE_MPI
@@ -18,7 +18,7 @@ from ase.parallel import world as aseworld
 
 import gpaw
 
-from .broadcast_imports import world as _world
+from ._broadcast_imports import world as _world
 
 MASTER = 0
 
@@ -44,7 +44,7 @@ def broadcast_exception(comm):
     try:
         yield
     except Exception as ex:
-        rank = comm.max(comm.rank)
+        rank = comm.max_scalar(comm.rank)
         if rank == comm.rank:
             broadcast(ex, rank, comm)
             raise
@@ -128,7 +128,6 @@ class _Communicator:
         else:
             # assert a.ndim != 0
             tc = a.dtype
-            assert tc == int or tc == float or tc == complex
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
             self.comm.sum(a, root)
@@ -196,7 +195,7 @@ class _Communicator:
             self.comm.max(a, root)
 
     def max_scalar(self, a, root=-1):
-        assert isinstance(a, (int, float))
+        assert isinstance(a, (int, float, np.int64))
         return self.comm.max_scalar(a, root)
 
     def min(self, a, root=-1):
@@ -251,8 +250,10 @@ class _Communicator:
         Example::
 
           # The master has all the interesting data. Distribute it.
+          seed = 123456
+          rng = np.random.default_rng(seed)
           if comm.rank == 0:
-              data = np.random.normal(size=N*comm.size)
+              data = rng.normal(size=N*comm.size)
           else:
               data = None
           mydata = np.empty(N, dtype=float)
@@ -338,7 +339,9 @@ class _Communicator:
         Example::
 
           # All ranks have parts of interesting data. Gather on all ranks.
-          mydata = np.random.normal(size=N)
+          seed = 123456
+          rng = np.random.default_rng(seed)
+          mydata = rng.normal(size=N)
           data = np.empty(N*comm.size, dtype=float)
           comm.all_gather(mydata, data)
 
@@ -385,7 +388,9 @@ class _Communicator:
         Example::
 
           # All ranks have parts of interesting data. Gather it on master.
-          mydata = np.random.normal(size=N)
+          seed = 123456
+          rng = np.random.default_rng(seed)
+          mydata = rng.normal(size=N)
           if comm.rank == 0:
               data = np.empty(N*comm.size, dtype=float)
           else:
@@ -432,7 +437,9 @@ class _Communicator:
         Example::
 
           # All ranks have parts of interesting data. Take a given index.
-          mydata[:] = np.random.normal(size=N)
+          seed = 123456
+          rng = np.random.default_rng(seed)
+          mydata[:] = rng.normal(size=N)
 
           # Who has the element at global index 13? Everybody needs it!
           index = 13
@@ -623,7 +630,7 @@ class _Communicator:
         comm.get_c_object() and pass the resulting object to the C code.
         """
         c_obj = self.comm.get_c_object()
-        if isinstance(c_obj, _gpaw.Communicator):
+        if isinstance(c_obj, cgpaw.Communicator):
             return c_obj
         return c_obj.get_c_object()
 
@@ -1226,7 +1233,7 @@ def exit(error='Manual exit'):
     else:
         cleanup(error)
     world.barrier()  # sync up before exiting
-    sys.exit()  # quit for serial case, return to _gpaw.c for parallel case
+    sys.exit()  # quit for serial case, return to cgpaw.c for parallel case
 
 
 atexit.register(cleanup)
