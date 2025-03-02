@@ -217,6 +217,7 @@ class PWLFC:  # (BaseLFC)
         if xp is not np:
             self.pos_avT = xp.asarray(self.pos_av.T)
             self.emiGR_Ga = None
+            self.Gk_Gv = self.xp.asarray(self.pw.G_plus_k_Gv)
         else:
             Gk_Gv = self.pw.G_plus_k_Gv
             GkR_Ga = Gk_Gv @ self.pos_av.T
@@ -234,6 +235,25 @@ class PWLFC:  # (BaseLFC)
                 self.my_indices.append((a, I1, I2))
             I1 = I2
         self.nI = I1
+            
+    def expand_and_add_gpu(self, c_xI, a_xG, cc=False):
+        for G1, G2 in self.block():
+            f_GI = self.expand(G1, G2, cc=cc)
+
+            if self.real:
+                # f_IG = f_IG.view(float)
+                G1 *= 2
+                G2 *= 2
+
+            self.xp.cublas.gemm('N', 'T',
+                                c_xI, f_GI, a_xG[:, G1:G2],
+                                1.0 / self.pw.dv, 1.0)
+
+        """pwlfc_expand_and_add_gpu(self.gpu_Gk_Gv, self.pos_avT, self.eikR_a, 
+                                 self.f_Gs, self.Y_GL,
+                                 self.l_s, self.a_J, self.s_J,
+                                 cc, f_GI, self.I_J, c_xI, a_xG)
+        """
 
     def expand(self, G1=0, G2=None, cc=False):
         """Expand functions in plane-waves.
@@ -306,7 +326,7 @@ class PWLFC:  # (BaseLFC)
 
     def get_emiGR_Ga(self, G1, G2):
         if self.emiGR_Ga is None:
-            Gk_Gv = self.xp.asarray(self.pw.G_plus_k_Gv)[G1:G2]
+            Gk_Gv = self.Gk_Gv[G1:G2]
             GkR_Ga = Gk_Gv @ self.pos_avT
             return self.xp.exp(-1j * GkR_Ga) * self.eikR_a
         else:
@@ -333,6 +353,9 @@ class PWLFC:  # (BaseLFC)
             return
         c_xI = c_xI.reshape((nx, self.nI))
         a_xG = a_xG.reshape((nx, a_xG.shape[-1])).view(self.dtype)
+
+        if self.xp is not np and nx == 1:
+            return self.expand_and_add_gpu(c_xI, a_xG)
 
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=False)
