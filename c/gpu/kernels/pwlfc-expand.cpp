@@ -622,6 +622,7 @@ void pw_insert_gpu_launch_kernel(
 }
 
 
+template <bool cc>
 __global__ void pwlfc_expand_kernel_8(double* f_Gs,
 				       gpuDoubleComplex *emiGR_Ga,
 				       double *Y_GL,
@@ -635,8 +636,7 @@ __global__ void pwlfc_expand_kernel_8(double* f_Gs,
 				       int nL,
 				       int nI,
 				       int natoms,
-				       int nsplines,
-				       bool cc)
+				       int nsplines)
 {
     int G = threadIdx.x + blockIdx.x * blockDim.x;
     int J = threadIdx.y + blockIdx.y * blockDim.y;
@@ -659,7 +659,14 @@ __global__ void pwlfc_expand_kernel_8(double* f_Gs,
 	for (int m = 0; m < 2 * l + 1; m++) {
 	    gpuDoubleComplex f = gpuCmulD(f1, Y_GL[l * l + m]);
 	    f_GI[0] = f.x;
-	    f_GI[nI] = cc ? -f.y : f.y;
+        if constexpr(cc)
+        {
+	        f_GI[nI] = -f.y;
+        }
+        if constexpr(!cc)
+        {
+    	    f_GI[nI] = f.y;
+        }
 	    f_GI++;
 	}
     }
@@ -977,7 +984,10 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
     }
     else
     {
-	gpuLaunchKernel(pwlfc_expand_kernel_8,
+        if (cc)
+        {
+            auto kernel = &pwlfc_expand_kernel_8<true>;
+	gpuLaunchKernel(kernel,
 			dim3((nG+15)/16, (nJ+15)/16),
 			dim3(16, 16),
 			0, 0,
@@ -994,8 +1004,30 @@ void pwlfc_expand_gpu_launch_kernel(int itemsize,
 			nL,
 			nI,
 			natoms,
-			nsplines,
-			cc);
+			nsplines);
+        }
+        else
+        {
+            auto kernel = &pwlfc_expand_kernel_8<false>;
+	gpuLaunchKernel(kernel,
+			dim3((nG+15)/16, (nJ+15)/16),
+			dim3(16, 16),
+			0, 0,
+			f_Gs,
+			emiGR_Ga,
+			Y_GL,
+			l_s,
+			a_J,
+			s_J,
+			I_J,
+			f_GI,
+			nG,
+			nJ,
+			nL,
+			nI,
+			natoms,
+			nsplines);
+        }
     }
     //gpuDeviceSynchronize();
 }
