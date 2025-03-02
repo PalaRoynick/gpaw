@@ -85,7 +85,7 @@ class PWLFC:  # (BaseLFC)
                  *,
                  xp,
                  integrals: ArrayLike1D | float | None = None,
-                 blocksize: int | None = 8192):  # fails with blocksize
+                 blocksize: int | None = 8196):  # fails with blocksize
         """Reciprocal-space plane-wave localized function collection.
 
         spline_aj: list of list of spline objects
@@ -247,9 +247,9 @@ class PWLFC:  # (BaseLFC)
                 # f_IG = f_IG.view(float)
                 aG1 = G1 * 2
                 aG2 = G2 * 2
-            emiGR_Ga = self.get_emiGR_Ga(G1, G2) #.copy()
-            f_Gs = self.f_Gs[G1:G2] #.copy()
-            Y_GL = self.Y_GL[G1:G2] #.copy()
+            emiGR_Ga = self.get_emiGR_Ga(G1, G2)#.copy()
+            f_Gs = self.f_Gs[G1:G2]#.copy()
+            Y_GL = self.Y_GL[G1:G2]#.copy()
             assert f_Gs.flags.c_contiguous
             assert Y_GL.flags.c_contiguous
             assert a_xG[:, G1:G2].flags.c_contiguous
@@ -258,7 +258,7 @@ class PWLFC:  # (BaseLFC)
             #temp = a_xG[:, aG1:aG2].copy()
             pwlfc_expand_and_add_gpu(f_Gs, emiGR_Ga, Y_GL,
                                      self.l_s, self.a_J, self.s_J,
-                                     self.I_J, c_xI, a_xG[:, G1:G2],
+                                     self.I_J, c_xI,  a_xG[:, aG1:aG2],
                                      1.0 / self.pw.dv)  # Non contiguous, fails
             #a_xG[:, aG1:aG2] = temp
         #a_xG /= self.pw.dv 
@@ -392,7 +392,7 @@ class PWLFC:  # (BaseLFC)
         #if self.xp is not np and nx == 1:
         #    import cupy
         #    cupy.cuda.runtime.deviceSynchronize()
-        #    for I in range(1000):
+        #    for I in range(a_xG.shape[1]):
         #        print(I, 'ref', a_xG[:, I] - a_xG_before_add[:, I], 'new', a_xG_ref[:, I] - a_xG_before_add[:, I])
         #        #print('div', (a_xG[:, I] - a_xG_before_add[:, I]) / (a_xG_ref[:, 0:4] - a_xG_before_add[:, 0:4]))
         #    assert self.xp.allclose(a_xG, a_xG_ref)
