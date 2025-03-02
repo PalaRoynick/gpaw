@@ -1,5 +1,6 @@
 import numpy as np
 from gpaw.xc.kernel import XCKernel
+from gpaw.new import trace
 
 
 class XCFunctional:
@@ -64,6 +65,7 @@ class XCFunctional:
     def calculate_impl(self, gd, n_sg, v_sg, e_g):
         raise NotImplementedError
 
+    @trace
     def calculate_paw_correction(self, setup, D_sp, dEdD_sp=None,
                                  addcoredensity=True, a=None):
         xcc = setup.xc_correction
@@ -79,12 +81,10 @@ class XCFunctional:
         for sign, ae in [(1.0, True), (-1.0, False)]:
             expansion = expander.expand(ae=ae, addcoredensity=addcoredensity)
             Ein = expansion.integrate(rcalc(expansion), sign=sign, dEdD_sp=dEdD_sp)
-            print(sign*Ein, sign)
             E += Ein
 
         if addcoredensity:
             E -= xcc.e_xc0
-        print('final dEdD', dEdD_sp)
         return E 
 
     def calculate_spherical(self, rgd, n_sg, v_sg, e_g=None):
