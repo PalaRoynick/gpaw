@@ -237,6 +237,25 @@ class PWLFC:  # (BaseLFC)
                 self.my_indices.append((a, I1, I2))
             I1 = I2
         self.nI = I1
+            
+    def expand_and_add_gpu(self, c_xI, a_xG, cc=False):
+        for G1, G2 in self.block():
+            f_GI = self.expand(G1, G2, cc=cc)
+
+            if self.real:
+                # f_IG = f_IG.view(float)
+                G1 *= 2
+                G2 *= 2
+
+            self.xp.cublas.gemm('N', 'T',
+                                c_xI, f_GI, a_xG[:, G1:G2],
+                                1.0 / self.pw.dv, 1.0)
+
+        """pwlfc_expand_and_add_gpu(self.gpu_Gk_Gv, self.pos_avT, self.eikR_a, 
+                                 self.f_Gs, self.Y_GL,
+                                 self.l_s, self.a_J, self.s_J,
+                                 cc, f_GI, self.I_J, c_xI, a_xG)
+        """
 
     @trace
     def expand(self, G1=0, G2=None, cc=False):
@@ -339,6 +358,9 @@ class PWLFC:  # (BaseLFC)
             return
         c_xI = c_xI.reshape((nx, self.nI))
         a_xG = a_xG.reshape((nx, a_xG.shape[-1])).view(self.dtype)
+
+        if self.xp is not np and nx == 1:
+            return self.expand_and_add_gpu(c_xI, a_xG)
 
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=False)
