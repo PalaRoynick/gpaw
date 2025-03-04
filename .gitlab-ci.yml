@@ -8,7 +8,7 @@ variables:
   # CI for branches inside the GPAW namespace will run on camd-runner2
   # because the GPAW project settings define the CI variable
   # DEFAULT_RUNNER_TAG: "linux".
-  # Forks will instead get this definition which allows running
+  # Forks will instead get this definition which allows running 
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
 
@@ -187,9 +187,6 @@ build-cuda:
       gpu_compile_args = ['-O3',
                           '-g']
       libraries += ['cudart', 'cublas']
-
-      # Test new cuda container without cuda-aware MPI
-      undef_macros += ['GPAW_GPU_AWARE_MPI']
       EOF
     - cat siteconfig.py
     - pip install -v --user --log build.log --editable .
