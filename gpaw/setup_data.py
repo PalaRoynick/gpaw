@@ -85,7 +85,8 @@ class SetupData:
         self.e_total = 0.0
         self.e_kinetic_core = 0.0
 
-        # Generator may store description of setup in this string
+        # Generator may store description of setup in these
+        self.type = None
         self.generatorattrs = []
         self.generatordata = ''
 
@@ -387,9 +388,11 @@ class SetupData:
             print(f'  <yukawa_exchange gamma="{self.X_gamma}"/>', file=xml)
         print('</paw_dataset>', file=xml)
 
-    def build(self, xcfunc, lmax, basis, filter=None):
+    def build(self, xcfunc, lmax, basis, filter=None,
+              backwards_compatible=True):
         from gpaw.setup import Setup
-        setup = Setup(self, xcfunc, lmax, basis, filter)
+        setup = Setup(self, xcfunc, lmax, basis, filter,
+                      backwards_compatible=backwards_compatible)
         return setup
 
 
@@ -434,7 +437,7 @@ def search_for_file(name: str, world=None) -> Tuple[str, bytes]:
         helpful_message = """
 You need to set the GPAW_SETUP_PATH environment variable to point to
 the directories where PAW dataset and basis files are stored.  See
-https://wiki.fysik.dtu.dk/gpaw/install.html#install-paw-datasets
+https://gpaw.readthedocs.io/install.html#install-paw-datasets
 for details."""
         raise FileNotFoundError(f'{err}\n{helpful_message}\n')
 

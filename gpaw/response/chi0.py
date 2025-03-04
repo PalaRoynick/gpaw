@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from time import ctime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from ase.units import Ha
 
 import gpaw
-from gpaw.response import ResponseContext
-from gpaw.response.symmetry import PWSymmetrizer
+from gpaw.response import (ResponseGroundStateAdapter, ResponseContext,
+                           ResponseGroundStateAdaptable, ResponseContextInput)
+from gpaw.response.symmetrize import (BodySymmetryOperators,
+                                      WingSymmetryOperators)
 from gpaw.response.chi0_data import (Chi0Data, Chi0BodyData,
                                      Chi0OpticalExtensionData)
 from gpaw.response.frequencies import FrequencyDescriptor
@@ -26,28 +28,33 @@ from gpaw.response.integrators import (
 if TYPE_CHECKING:
     from typing import Any
     from gpaw.typing import ArrayLike1D
-    from gpaw.response.groundstate import ResponseGroundStateAdapter
     from gpaw.response.pair import ActualPairDensityCalculator
 
 
 class Chi0Calculator:
     def __init__(self,
-                 gs: ResponseGroundStateAdapter,
-                 context: ResponseContext | None = None,
+                 gs: ResponseGroundStateAdaptable,
+                 context: ResponseContextInput = '-',
                  nblocks=1,
                  eshift=None,
                  intraband=True,
-                 rate=0.0,
+                 rate='eta',
                  **kwargs):
-        self.gs = gs
-        self.context = context or ResponseContext()
-
+        """
+        Parameters
+            ----------
+            eshift : float or None
+                Energy shift of the conduction bands in eV.
+        """
+        self.eshift = eshift / Ha if eshift else None
+        self.gs = ResponseGroundStateAdapter.from_input(gs)
+        self.context = ResponseContext.from_input(context)
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
-            nblocks=nblocks, eshift=eshift, **kwargs)
+            nblocks=nblocks, eshift=self.eshift, **kwargs)
         self.chi0_opt_ext_calc = Chi0OpticalExtensionCalculator(
             self.gs, self.context,
-            intraband=intraband, rate=rate, **kwargs)
+            intraband=intraband, rate=rate, eshift=self.eshift, **kwargs)
 
     @property
     def wd(self) -> FrequencyDescriptor:
@@ -95,8 +102,6 @@ class Chi0Calculator:
 
         # Calculate optical extension
         if qpd.optical_limit:
-            if self.chi0_body_calc.eshift is not None:
-                raise NotImplementedError("No wings eshift available")
             chi0_opt_ext = self.chi0_opt_ext_calc.calculate(qpd=qpd)
         else:
             chi0_opt_ext = None
@@ -108,7 +113,11 @@ class Chi0Calculator:
     @timer('Calculate CHI_0')
     def update_chi0(self,
                     chi0: Chi0Data,
-                    m1: int, m2: int, spins: list) -> Chi0Data:
+                    *,
+                    n1: int = 0, n2: Optional[int] = None,
+                    m1: int, m2: int,
+                    spins: list
+                    ) -> Chi0Data:
         """In-place calculation of chi0 (with optical extension).
 
         Parameters
@@ -126,14 +135,14 @@ class Chi0Calculator:
         -------
         chi0 : Chi0Data
         """
-        self.chi0_body_calc.update_chi0_body(chi0.body, m1, m2, spins)
+        if n2 is None:
+            n2 = self.gs.nocc2
+        self.chi0_body_calc.update_chi0_body(chi0.body, n1, n2, m1, m2, spins)
         if chi0.optical_limit:
-            if self.chi0_body_calc.eshift is not None:
-                raise NotImplementedError("No wings eshift available")
             assert chi0.optical_extension is not None
             # Update the head and wings
             self.chi0_opt_ext_calc.update_chi0_optical_extension(
-                chi0.optical_extension, m1, m2, spins)
+                chi0.optical_extension, n1, n2, m1, m2, spins)
         return chi0
 
 
@@ -146,9 +155,10 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         Parameters
         ----------
         eshift : float or None
-            Energy shift of the conduction bands in eV.
+            Energy shift of the conduction bands in Hartree.
         """
-        self.eshift = eshift / Ha if eshift else eshift
+
+        self.eshift = eshift
 
         super().__init__(*args, **kwargs)
 
@@ -189,14 +199,17 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         chi0_body = self._create_chi0_body(qpd)
 
         # Integrate all transitions into partially filled and empty bands
-        m1, m2 = self.get_band_transitions()
-        self.update_chi0_body(chi0_body, m1, m2, spins=range(self.gs.nspins))
+        n1, n2, m1, m2 = self.gs.get_band_transitions(nbands=self.nbands)
+        self.update_chi0_body(chi0_body, n1, n2, m1, m2,
+                              spins=range(self.gs.nspins))
 
         return chi0_body
 
     def update_chi0_body(self,
                          chi0_body: Chi0BodyData,
-                         m1: int, m2: int, spins: list | range):
+                         n1: int, n2: int,
+                         m1: int, m2: int,
+                         spins: list | range):
         """In-place calculation of the body.
 
         Parameters
@@ -217,13 +230,12 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         self.context.print('Integrating chi0 body.')
 
         # symmetries: QSymmetries from gpaw.response.symmetry
-        # generator: KPointDomainGenerator from gpaw.response.symmetry
+        # generator: KPointDomainGenerator from gpaw.response.kpoints
         # domain: Domain from from gpaw.response.integrators
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
-        symmetrizer = PWSymmetrizer(symmetries, qpd)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=False, m1=m1, m2=m2)
+                                  optical=False, n1=n1, n2=n2, m1=m1, m2=m2)
 
         chi0_body.data_WgG[:] /= prefactor
         if self.hilbert:
@@ -252,9 +264,9 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         chi0_body.data_WgG[:] *= prefactor
 
         tmp_chi0_wGG = chi0_body.copy_array_with_distribution('wGG')
-        self.context.timer.start('symmetrize_wGG')
-        symmetrizer.symmetrize_wGG(tmp_chi0_wGG)
-        self.context.timer.stop('symmetrize_wGG')
+        with self.context.timer('symmetrize_wGG'):
+            operators = BodySymmetryOperators(symmetries, chi0_body.qpd)
+            operators.symmetrize_wGG(tmp_chi0_wGG)
         chi0_body.data_WgG[:] = chi0_body.blockdist.distribute_as(
             tmp_chi0_wGG, chi0_body.nw, 'WgG')
 
@@ -313,8 +325,9 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
     def __init__(self, *args,
+                 eshift=None,
                  intraband=True,
-                 rate=0.0,
+                 rate='eta',
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
@@ -328,9 +341,19 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
             rate. Please note that for consistency the rate is implemented as
             omegap^2 / (omega + 1j * rate)^2, which differs from some
             literature by a factor of 2.
+        eshift : float or None
+            Energy shift of the conduction bands in Hartree.
         """
         # Serial block distribution
+
+        self.eshift = eshift
+
         super().__init__(*args, nblocks=1, **kwargs)
+
+        if self.gs.metallic:
+            assert self.eshift is None, \
+                'A rigid energy shift cannot be applied to the conduction '\
+                'bands if there is no band gap'
 
         # In the optical limit of metals, one must add the Drude dielectric
         # response from the free-space plasma frequency of the intraband
@@ -363,10 +386,10 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         self.print_info(qpd)
 
         # Define band transitions
-        m1, m2 = self.get_band_transitions()
+        n1, n2, m1, m2 = self.gs.get_band_transitions(nbands=self.nbands)
 
         # Perform the actual integration
-        self.update_chi0_optical_extension(chi0_opt_ext, m1, m2,
+        self.update_chi0_optical_extension(chi0_opt_ext, n1, n2, m1, m2,
                                            spins=range(self.gs.nspins))
 
         if self.drude_calc is not None:
@@ -381,6 +404,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
     def update_chi0_optical_extension(
             self,
             chi0_optical_extension: Chi0OpticalExtensionData,
+            n1: int, n2: int,
             m1: int, m2: int,
             spins: list | range):
         """In-place calculation of the chi0 head and wings.
@@ -400,10 +424,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
-        symmetrizer = PWSymmetrizer(symmetries, qpd)
-
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=True, m1=m1, m2=m2)
+                                  optical=True, n1=n1, n2=n2, m1=m1, m2=m2)
 
         # We integrate the head and wings together, using the combined index P
         # index v = (x, y, z)
@@ -426,22 +448,26 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
         # Fill in wings part of the data, but leave out the head part (G0)
         chi0_opt_ext.wings_WxvG[..., 1:] += tmp_chi0_WxvP[..., 3:]
-        symmetrizer.symmetrize_wxvG(chi0_opt_ext.wings_WxvG)
         # Fill in the head
         chi0_opt_ext.head_Wvv[:] += tmp_chi0_WxvP[:, 0, :3, :3]
-        symmetrizer.symmetrize_wvv(chi0_opt_ext.head_Wvv)
+        # Symmetrize
+        operators = WingSymmetryOperators(symmetries, qpd)
+        operators.symmetrize_wxvG(chi0_opt_ext.wings_WxvG)
+        operators.symmetrize_wvv(chi0_opt_ext.head_Wvv)
 
     def construct_hermitian_task(self):
-        return HermitianOpticalLimit()
+        return HermitianOpticalLimit(eshift=self.eshift)
 
     def construct_point_hilbert_task(self):
-        return HilbertOpticalLimit()
+        return HilbertOpticalLimit(eshift=self.eshift)
 
     def construct_tetra_hilbert_task(self):
+        assert self.eshift is None, \
+            'energy shift is not applied here'
         return HilbertOpticalLimitTetrahedron()
 
     def construct_literal_task(self):
-        return OpticalLimit(eta=self.eta)
+        return OpticalLimit(eta=self.eta, eshift=self.eshift)
 
     def print_info(self, qpd: SingleQPWDescriptor):
         """Print information about optical extension calculation."""
@@ -458,7 +484,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 def get_frequency_descriptor(
         frequencies: ArrayLike1D | dict[str, Any] | None = None, *,
         gs: ResponseGroundStateAdapter | None = None,
-        nbands: int | None = None):
+        nbands: int | slice | None = None):
     """Helper function to generate frequency descriptors.
 
     In most cases, the `frequencies` input can be processed directly via
@@ -475,7 +501,7 @@ def get_frequency_descriptor(
 
 
 def get_omegamax(gs: ResponseGroundStateAdapter,
-                 nbands: int | None = None):
+                 nbands: int | slice | None = None):
     """Get the maxmimum eigenvalue difference including nbands, in eV."""
     epsmin, epsmax = gs.get_eigenvalue_range(nbands=nbands)
     return (epsmax - epsmin) * Ha

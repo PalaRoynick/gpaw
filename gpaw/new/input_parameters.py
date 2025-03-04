@@ -10,35 +10,17 @@ parameter_functions = {}
 """
 background_charge
 external
-reuse_wfs_method
 """
+
+
+class DeprecatedParameterWarning(FutureWarning):
+    """Warning class for when a parameter or its value is deprecated."""
 
 
 def input_parameter(func):
     """Decorator for input-parameter normalization functions."""
     parameter_functions[func.__name__] = func
     return func
-
-
-def update_dict(default: dict, value: dict | None) -> dict[str, Any]:
-    """Create dict with defaults + updates.
-
-    >>> update_dict({'a': 1, 'b': 'hello'}, {'a': 2})
-    {'a': 2, 'b': 'hello'}
-    >>> update_dict({'a': 1, 'b': 'hello'}, None)
-    {'a': 1, 'b': 'hello'}
-    >>> update_dict({'a': 1, 'b': 'hello'}, {'c': 2})
-    Traceback (most recent call last):
-    ValueError: Unknown key: 'c'. Must be one of a, b
-    """
-    dct = default.copy()
-    if value is not None:
-        if not value.keys() <= default.keys():
-            key = (value.keys() - default.keys()).pop()
-            raise ValueError(
-                f'Unknown key: {key!r}. Must be one of {", ".join(default)}')
-        dct.update(value)
-    return dct
 
 
 class InputParameters:
@@ -53,27 +35,32 @@ class InputParameters:
     hund: bool
     kpts: dict[str, Any]
     magmoms: Any
+    # maxiter ???
+    # mixer
     mode: dict[str, Any]
     nbands: None | int | str
+    # occupations
     parallel: dict[str, Any]
     poissonsolver: dict[str, Any]
+    # random
     setups: Any
     soc: bool
+    solvation: Any
     spinpol: bool
     symmetry: dict[str, Any]
     xc: dict[str, Any]
 
     def __init__(self, params: dict[str, Any], warn: bool = True):
-        self.keys = sorted(params)
-
         for key in params:
             if key not in parameter_functions:
                 raise ValueError(
                     f'Unknown parameter {key!r}.  Must be one of: ' +
                     ', '.join(parameter_functions))
+        self.non_defaults = []
         for key, func in parameter_functions.items():
-            if key in params:
-                param = params[key]
+            param = params.get(key)
+            if param is not None:
+                self.non_defaults.append(key)
                 if hasattr(param, 'todict'):
                     param = param.todict()
                 value = func(param)
@@ -84,25 +71,6 @@ class InputParameters:
         if self.h is not None and self.gpts is not None:
             raise ValueError("""You can't use both "gpts" and "h"!""")
 
-        if self.experimental is not None:
-            if self.experimental.pop('niter_fixdensity', None) is not None:
-                warnings.warn('Ignoring "niter_fixdensity".')
-            if self.experimental.pop('reuse_wfs_method', None) is not None:
-                warnings.warn('Ignoring "reuse_wfs_method".')
-            if 'soc' in self.experimental:
-                warnings.warn('Please use new "soc" parameter.',
-                              DeprecatedParameterWarning)
-                self.soc = self.experimental.pop('soc')
-            if 'magmoms' in self.experimental:
-                warnings.warn('Please use new "magmoms" parameter.',
-                              DeprecatedParameterWarning)
-                self.magmoms = self.experimental.pop('magmoms')
-                self.keys.append('magmoms')
-                self.keys.sort()
-            assert not self.experimental
-            self.keys.remove('experimental')
-            self.__dict__.pop('experimental')
-
         if self.mode.get('name') is None:
             if warn:
                 warnings.warn(
@@ -112,17 +80,42 @@ class InputParameters:
                     DeprecatedParameterWarning)
             self.mode = dict(self.mode, name='fd')
 
+        if self.experimental is not None:
+            if self.experimental.pop('niter_fixdensity', None) is not None:
+                warnings.warn('Ignoring "niter_fixdensity".')
+            if 'reuse_wfs_method' in self.experimental:
+                del self.experimental['reuse_wfs_method']
+                warnings.warn('Ignoring "reuse_wfs_method".')
+            if 'soc' in self.experimental:
+                warnings.warn('Please use new "soc" parameter.',
+                              DeprecatedParameterWarning)
+                self._add('soc', self.experimental.pop('soc'))
+            if 'magmoms' in self.experimental:
+                warnings.warn('Please use new "magmoms" parameter.',
+                              DeprecatedParameterWarning)
+                self._add('magmoms', self.experimental.pop('magmoms'))
+            unknown = self.experimental.keys() - {'backwards_compatible'}
+            if unknown:
+                warnings.warn(f'Unknown experimental keyword(s): {unknown}',
+                              stacklevel=3)
+
     def __repr__(self) -> str:
         p = ', '.join(f'{key}={value!r}'
                       for key, value in self.items())
         return f'InputParameters({p})'
 
-    def items(self):
-        for key in self.keys:
-            yield key, getattr(self, key)
+    def _add(self, key, value):
+        self.__dict__[key] = value
+        if key not in self.non_defaults:
+            self.non_defaults.append(key)
 
-    def __contains__(self, key):
-        return key in self.keys
+    def _remove(self, key):
+        del self.__dict__[key]
+        self.non_defaults.remove(key)
+
+    def items(self):
+        for key in self.non_defaults:
+            yield key, getattr(self, key)
 
 
 @input_parameter
@@ -147,20 +140,17 @@ def eigensolver(value=None) -> dict:
     """Eigensolver."""
     if isinstance(value, str):
         value = {'name': value}
-    if value and value['name'] != 'dav':
-        warnings.warn(f'{value["name"]} not implemented.  Using dav instead')
-        return {'name': 'dav'}
     return value or {}
 
 
 @input_parameter
 def experimental(value=None):
-    return value
+    return value or {}
 
 
 @input_parameter
 def external(value=None):
-    return value
+    return value or {}
 
 
 @input_parameter
@@ -235,24 +225,27 @@ def occupations(value=None):
 
 @input_parameter
 def parallel(value: dict[str, Any] | None = None) -> dict[str, Any]:
-    dct = update_dict({'kpt': None,
-                       'domain': None,
-                       'band': None,
-                       'order': 'kdb',
-                       'stridebands': False,
-                       'augment_grids': False,
-                       'sl_auto': False,
-                       'sl_default': None,
-                       'sl_diagonalize': None,
-                       'sl_inverse_cholesky': None,
-                       'sl_lcao': None,
-                       'sl_lrtddft': None,
-                       'use_elpa': False,
-                       'elpasolver': '2stage',
-                       'buffer_size': None,
-                       'gpu': False},
-                      value)
-    return dct
+    known = {'kpt', 'domain', 'band',
+             'order',
+             'stridebands',
+             'augment_grids',
+             'sl_auto',
+             'sl_default',
+             'sl_diagonalize',
+             'sl_inverse_cholesky',
+             'sl_lcao',
+             'sl_lrtddft',
+             'use_elpa',
+             'elpasolver',
+             'buffer_size',
+             'gpu'}
+    if value is not None:
+        if not value.keys() <= known:
+            key = (value.keys() - known).pop()
+            raise ValueError(
+                f'Unknown key: {key!r}. Must be one of {", ".join(known)}')
+        return value
+    return {}
 
 
 @input_parameter
@@ -278,6 +271,11 @@ def soc(value=False):
 
 
 @input_parameter
+def solvation(value=None):
+    return value
+
+
+@input_parameter
 def spinpol(value=False):
     return value
 
@@ -298,7 +296,3 @@ def xc(value='LDA'):
     if isinstance(value, str):
         return {'name': value}
     return value
-
-
-class DeprecatedParameterWarning(FutureWarning):
-    """Warning class for when a parameter or its value is deprecated."""

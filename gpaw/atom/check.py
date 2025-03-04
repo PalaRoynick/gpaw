@@ -1,22 +1,21 @@
 import optparse
 import traceback
 from pathlib import Path
+from typing import Any
 
-import numpy as np
 import ase.db
+import numpy as np
 from ase import Atoms
-from ase.data import covalent_radii, atomic_numbers
+from ase.data import atomic_numbers, covalent_radii
 from ase.optimize import BFGS
-
 from gpaw import GPAW, PW, KohnShamConvergenceError
-
 
 cutoffs = [200, 250, 300, 400, 500, 600, 700, 800, 1500]
 
 
 def check(con, name: str, lcao=True):
-    params = dict(xc='PBE',
-                  symmetry='off')
+    params: dict[str, Any] = dict(xc='PBE',
+                                  symmetry='off')
 
     if '.' in name:
         symbol, _, setup = name.partition('.')
@@ -189,6 +188,13 @@ all_names = [
     'Cd', 'In', 'Sn', 'Sb', 'Te', 'Te.16', 'I', 'Xe', 'Cs', 'Ba', 'Hf',
     'Ta', 'Ta.5', 'W', 'W.6', 'Re', 'Os', 'Os.8', 'Ir', 'Ir.9', 'Pt',
     'Pt.10', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Rn']
+
+new_names = [
+    'Cr.14',
+    'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd',
+    'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu']
+
+all_names += new_names
 
 
 def main():

@@ -11,11 +11,11 @@ from ase.units import Ha, Bohr
 
 import gpaw.mpi as mpi
 from gpaw.ibz2bz import IBZ2BZMaps
+from gpaw.calculator import GPAW as OldGPAW
+from gpaw.new.ase_interface import ASECalculator as NewGPAW
 from gpaw.response.paw import LeanPAWDataset
 
 if TYPE_CHECKING:
-    from gpaw.new.ase_interface import ASECalculator
-    from gpaw.calculator import GPAW
     from gpaw.setup import Setups, LeanSetup
 
 
@@ -37,11 +37,15 @@ class PAWDatasetCollection:
         self.id_by_atom = id_by_atom
 
 
+GPAWCalculator = Union[OldGPAW, NewGPAW]
 GPWFilename = Union[Path, str]
+ResponseGroundStateAdaptable = Union['ResponseGroundStateAdapter',
+                                     GPAWCalculator,
+                                     GPWFilename]
 
 
 class ResponseGroundStateAdapter:
-    def __init__(self, calc: ASECalculator | GPAW):
+    def __init__(self, calc: GPAWCalculator):
         wfs = calc.wfs  # wavefunction object from gpaw.wavefunctions
 
         self.atoms = calc.atoms
@@ -80,6 +84,17 @@ class ResponseGroundStateAdapter:
         self._hamiltonian = calc.hamiltonian
         self._calc = calc
 
+    @staticmethod
+    def from_input(
+            gs: ResponseGroundStateAdaptable) -> ResponseGroundStateAdapter:
+        if isinstance(gs, ResponseGroundStateAdapter):
+            return gs
+        elif isinstance(gs, (OldGPAW, NewGPAW)):
+            return ResponseGroundStateAdapter(calc=gs)
+        elif isinstance(gs, (Path, str)):  # GPWFilename
+            return ResponseGroundStateAdapter.from_gpw_file(gpw=gs)
+        raise ValueError('Expected ResponseGroundStateAdaptable, got', gs)
+
     @classmethod
     def from_gpw_file(cls, gpw: GPWFilename) -> ResponseGroundStateAdapter:
         """Initiate the ground state adapter directly from a .gpw file."""
@@ -95,6 +110,10 @@ class ResponseGroundStateAdapter:
         # We need to abstract away "calc" in all places used by response
         # code, and that includes places that are also compatible with FD.
         return self._wfs.pd
+
+    def is_parallelized(self):
+        """Are we dealing with a parallel calculator?"""
+        return self.world.size > 1
 
     @cached_property
     def global_pd(self):
@@ -239,33 +258,75 @@ class ResponseGroundStateAdapter:
         # gd.cell_cv must always be the same as pd.gd.cell_cv, right??
         return np.dot(self.spos_ac, self.gd.cell_cv)
 
-    def count_occupied_bands(self, ftol=1e-6):
-        """Count the number of filled and non-empty bands.
+    def count_occupied_bands(self, ftol: float = 1e-6) -> tuple[int, int]:
+        """Count the number of filled (nocc1) and nonempty bands (nocc2).
 
         ftol : float
             Threshold determining whether a band is completely filled
             (f > 1 - ftol) or completely empty (f < ftol).
         """
-        nocc1 = 9999999
-        nocc2 = 0
+        # Count the number of occupied bands for this rank
+        nocc1, nocc2 = self._count_occupied_bands(ftol=ftol)
+        # Minimize/maximize over k-points
+        nocc1 = self.kd.comm.min_scalar(nocc1)  # bands filled for all k
+        nocc2 = self.kd.comm.max_scalar(nocc2)  # bands filled for any k
+        # Sum over band distribution
+        nocc1 = self.bd.comm.sum_scalar(nocc1)  # number of filled bands
+        nocc2 = self.bd.comm.sum_scalar(nocc2)  # number of nonempty bands
+        return int(nocc1), int(nocc2)
+
+    def _count_occupied_bands(self, *, ftol: float) -> tuple[int, int]:
+        nocc1 = 9999999  # number of completely filled bands
+        nocc2 = 0  # number of nonempty bands
         for kpt in self.kpt_u:
             f_n = kpt.f_n / kpt.weight
             nocc1 = min((f_n > 1 - ftol).sum(), nocc1)
             nocc2 = max((f_n > ftol).sum(), nocc2)
-        return nocc1, nocc2
+        return int(nocc1), int(nocc2)
 
-    def get_eigenvalue_range(self, nbands: int | None = None):
-        """Get smallest and largest Kohn-Sham eigenvalues."""
+    def get_band_transitions(self, nbands: int | slice | None = None):
+        """Determine the indices the define the range of occupied bands
+        n1, n2 and unoccupied bands m1, m2"""
+
         if nbands is None:
-            nbands = self.bd.nbands
-        assert 1 <= nbands <= self.bd.nbands
+            n1 = 0
+            m2 = self.nbands
+        elif isinstance(nbands, int):
+            n1 = 0
+            m2 = nbands
+            assert 1 <= m2 <= self.nbands
+        elif isinstance(nbands, slice):
+            n1 = nbands.start
+            m2 = nbands.stop
+            assert n1 >= 0 and m2 >= 0
+            assert nbands.step in {None, 1}
+            assert n1 < m2 <= self.nbands
+            assert n1 <= self.nocc1
+        else:
+            raise ValueError(
+                f"Invalid type for nbands: {type(nbands)}."
+                "Expected None, int, or slice.")
 
+        n2 = self.nocc2
+        m1 = self.nocc1
+
+        assert n1 < n2
+
+        return n1, n2, m1, m2
+
+    def get_eigenvalue_range(self, nbands: int | slice | None = None):
+        """Get smallest and largest Kohn-Sham eigenvalues."""
+        n1, n2, m1, m2 = self.get_band_transitions(nbands)
         epsmin = np.inf
         epsmax = -np.inf
         for kpt in self.kpt_u:
-            epsmin = min(epsmin, kpt.eps_n[0])  # the eigenvalues are ordered
-            epsmax = max(epsmax, kpt.eps_n[nbands - 1])
+            epsmin = min(epsmin, kpt.eps_n[n1])  # the eigenvalues are ordered
+            epsmax = max(epsmax, kpt.eps_n[m2 - 1])
         return epsmin, epsmax
+
+    @property
+    def nbands(self):
+        return self.bd.nbands
 
     @property
     def metallic(self):

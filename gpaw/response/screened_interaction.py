@@ -7,7 +7,7 @@ from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.response.temp import DielectricFunctionCalculator
 from gpaw.response.hilbert import GWHilbertTransforms
 from gpaw.response.mpa_interpolation import RESolver
-from _gpaw import evaluate_mpa_poly
+from gpaw.cgpaw import evaluate_mpa_poly
 
 
 class GammaIntegrationMode:
@@ -93,7 +93,7 @@ class QPointDescriptor(KPointDescriptor):
 def initialize_w_calculator(chi0calc, context, *,
                             coulomb,
                             xc='RPA',  # G0W0Kernel arguments
-                            ppa=False, mpa=False, E0=Ha, eta=None,
+                            mpa=None, E0=Ha, eta=None,
                             integrate_gamma=GammaIntegrationMode('sphere'),
                             q0_correction=False):
     """Initialize a WCalculator from a Chi0Calculator.
@@ -116,11 +116,9 @@ def initialize_w_calculator(chi0calc, context, *,
                           context=context)
 
     kwargs = dict()
-    if ppa:
-        wcalc_cls = PPACalculator
-    elif mpa:
+    if mpa:
         wcalc_cls = MPACalculator
-        kwargs.update(mpa=mpa)
+        kwargs['mpa'] = mpa
     else:
         wcalc_cls = WCalculator
 
@@ -256,7 +254,6 @@ class WCalculator(WBaseCalculator):
     def calculate_W_wGG(self, chi0, fxc_mode='GW',
                         only_correlation=False):
         """In-place calculation of the screened interaction."""
-        chi0_wGG = chi0.body.copy_array_with_distribution('wGG')
         dfc = DielectricFunctionCalculator(chi0, self.coulomb,
                                            self.xckernel, fxc_mode)
         self.context.timer.start('Dyson eq.')
@@ -270,11 +267,9 @@ class WCalculator(WBaseCalculator):
             sqrtV_G = dfc.sqrtV_G
             V0, sqrtV0 = self.get_V0sqrtV0(chi0)
 
-        for iw, chi0_GG in enumerate(chi0_wGG):
-            # Note, at q=0 get_epsinv_GG modifies chi0_GG
-            einv_GG = dfc.get_epsinv_GG(chi0_GG, iw)
-            # Renaming the chi0_GG buffer since it will be used to store W
-            W_GG = chi0_GG
+        einv_wGG = dfc.get_epsinv_wGG(only_correlation=False)
+        W_wGG = np.empty_like(einv_wGG)
+        for iw, (einv_GG, W_GG) in enumerate(zip(einv_wGG, W_wGG)):
             # If only_correlation = True function spits out
             # W^c = sqrt(V)(epsinv - delta_GG')sqrt(V). However, full epsinv
             # is still needed for q0_corrector.
@@ -282,7 +277,7 @@ class WCalculator(WBaseCalculator):
             W_GG[:] = einvt_GG * (sqrtV_G *
                                   sqrtV_G[:, np.newaxis])
             if self.q0_corrector is not None and chi0.optical_limit:
-                W = dfc.wblocks1d.a + iw
+                W = dfc.wblocks.a + iw
                 self.q0_corrector.add_q0_correction(chi0.qpd, W_GG,
                                                     einv_GG,
                                                     chi0.chi0_WxvG[W],
@@ -294,10 +289,9 @@ class WCalculator(WBaseCalculator):
                                             V0, sqrtV0, dfc.sqrtV_G)
 
         self.context.timer.stop('Dyson eq.')
-        return chi0_wGG
+        return W_wGG
 
     def dyson_and_W_new(self, iq, q_c, chi0, ecut, coulomb):
-        # assert not self.ppa
         # assert not self.do_GW_too
         assert ecut == chi0.qpd.ecut
         assert self.fxc_mode == 'GW'
@@ -355,11 +349,11 @@ class HWModel:
         Hilbert Transformed W Model.
     """
 
-    def get_HW(self, omega, f):
+    def get_HW(self, omega, occ):
         """
             Get Hilbert transformed W at frequency omega.
 
-            f: The occupation number for the orbital of the Greens function.
+            occ: The occupation number for the orbital of the Greens function.
         """
         raise NotImplementedError
 
@@ -370,7 +364,7 @@ class FullFrequencyHWModel(HWModel):
         self.HW_swGG = HW_swGG
         self.factor = factor
 
-    def get_HW(self, omega, f):
+    def get_HW(self, omega, occ):
         # For more information about how fsign and wsign works, see
         # https://backend.orbit.dtu.dk/ws/portalfiles/portal/93075765/hueser_PhDthesis.pdf
         # eq. 2.2 endind up to eq. 2.11
@@ -381,7 +375,7 @@ class FullFrequencyHWModel(HWModel):
         # In addition, whether the orbital in question at G is occupied or
         # unoccupied, which then again affects, which Hilbert transform of
         # W is chosen, is kept track with fsign.
-        fsign = np.sign(2 * f - 1)
+        fsign = np.sign(2 * occ - 1)
         o = abs(omega)
         wsign = np.sign(omega + 1e-15)
         wd = self.wd
@@ -405,28 +399,6 @@ class FullFrequencyHWModel(HWModel):
         return -1j * p * sigma_GG, -1j * p * dsigma_GG
 
 
-class PPAHWModel(HWModel):
-    def __init__(self, W_GG, omegat_GG, eta, factor):
-        self.W_GG = W_GG
-        self.omegat_GG = omegat_GG
-        self.eta = eta
-        self.factor = factor
-
-    def get_HW(self, omega, f):
-        sign = np.sign(2 * f - 1)
-        omegat_GG = self.omegat_GG
-        W_GG = self.W_GG
-
-        x1_GG = 1 / (omega + omegat_GG - 1j * self.eta)
-        x2_GG = 1 / (omega - omegat_GG + 1j * self.eta)
-        x3_GG = 1 / (omega + omegat_GG - 1j * self.eta * sign)
-        x4_GG = 1 / (omega - omegat_GG - 1j * self.eta * sign)
-        x_GG = self.factor * W_GG * (sign * (x1_GG - x2_GG) + x3_GG + x4_GG)
-        dx_GG = -self.factor * W_GG * (sign * (x1_GG**2 - x2_GG**2) +
-                                       x3_GG**2 + x4_GG**2)
-        return x_GG.T.conj(), dx_GG.T.conj()
-
-
 class MPAHWModel(HWModel):
     def __init__(self, W_nGG, omegat_nGG, eta, factor):
         self.W_nGG = np.ascontiguousarray(W_nGG)
@@ -434,59 +406,18 @@ class MPAHWModel(HWModel):
         self.eta = eta
         self.factor = factor
 
-    def get_HW(self, omega, f, derivative=True):
+    def get_HW(self, omega, occ):
         x_GG = np.empty(self.omegat_nGG.shape[1:], dtype=complex)
         dx_GG = np.empty(self.omegat_nGG.shape[1:], dtype=complex)
-        evaluate_mpa_poly(x_GG, dx_GG, omega, f, self.omegat_nGG, self.W_nGG,
+        evaluate_mpa_poly(x_GG, dx_GG, omega, occ, self.omegat_nGG, self.W_nGG,
                           self.eta, self.factor)
-
-        if not derivative:
-            return x_GG.conj()
 
         return x_GG.conj(), dx_GG.conj()  # Why do we have to do a conjugate
 
 
-class PPACalculator(WBaseCalculator):
-    def get_HW_model(self, chi0,
-                     fxc_mode='GW'):
-        """Calculate the PPA parametrization of screened interaction.
-        """
-        assert len(chi0.wd.omega_w) == 2
-        # E0 directly related to imaginary frequency mesh for chi0
-        E0 = chi0.wd.omega_w[1].imag
-
-        dfc = DielectricFunctionCalculator(chi0,
-                                           self.coulomb,
-                                           self.xckernel,
-                                           fxc_mode)
-
-        V0, sqrtV0 = self.get_V0sqrtV0(chi0)
-        self.context.timer.start('Dyson eq.')
-        einv_wGG = dfc.get_epsinv_wGG(only_correlation=True)
-        omegat_GG = E0 * np.sqrt(einv_wGG[1] /
-                                 (einv_wGG[0] - einv_wGG[1]))
-        R_GG = -0.5 * omegat_GG * einv_wGG[0]
-        W_GG = pi * R_GG * dfc.sqrtV_G * dfc.sqrtV_G[:, np.newaxis]
-        if chi0.optical_limit or not self.integrate_gamma.is_analytical:
-            self.apply_gamma_correction(W_GG, pi * R_GG,
-                                        V0, sqrtV0,
-                                        dfc.sqrtV_G)
-
-        self.context.timer.stop('Dyson eq.')
-
-        factor = 1.0 / (self.qd.nbzkpts * 2 * pi * self.gs.volume)
-
-        return PPAHWModel(W_GG, omegat_GG, self.eta, factor)
-
-
 class MPACalculator(WBaseCalculator):
-    def __init__(self, gs, context, *, qd,
-                 coulomb, xckernel,
-                 integrate_gamma, q0_correction, eta, mpa):
-        super().__init__(gs, context, qd=qd, coulomb=coulomb,
-                         xckernel=xckernel,
-                         integrate_gamma=integrate_gamma,
-                         q0_correction=q0_correction)
+    def __init__(self, gs, context, *, eta, mpa, **kwargs):
+        super().__init__(gs, context, **kwargs)
         self.eta = eta
         self.mpa = mpa
 
