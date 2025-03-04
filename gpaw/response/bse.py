@@ -1413,7 +1413,7 @@ class BSE_Plus:
         self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
 
         return_chi = [self.chi_BSE_plus_WGG]
-        
+
         if chi_BSE is True:
             chi_BSE_wGG = \
                 np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
@@ -1432,7 +1432,6 @@ class BSE_Plus:
 
             return_chi.append(self.chi_full_WGG)
 
-       # if world.rank == 0:
         return return_chi[0] if len(return_chi) == 1 else tuple(return_chi)
 
     def get_refractive_index(self):
