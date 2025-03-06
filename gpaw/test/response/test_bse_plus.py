@@ -58,20 +58,19 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         bse_plus.get_chi_wGG(optical=True,
                              chi_BSE=True,
                              chi_RPA=True)
+
     coulomb_kernel = CoulombKernel.from_gs(gs, truncation=None)
 
     chi_irr_BSE_WGG = bse.get_chi_wGG(eta=eta,
                                       optical=True,
                                       irreducible=True,
                                       w_w=w_w)
-
+    
     chi_BSE_WGG_from_bse = bse.get_chi_wGG(eta=eta,
                                            optical=True,
                                            irreducible=False,
-                                           w_w=w_w)
-
-    # assert chi_BSE_WGG_from_bse == pytest.approx(chi_BSE_WGG,
-    #                                             rel=1e-3, abs=1e-4)
+                                           w_w=w_w) 
+    
 
     chi0_data_small = chi0calc_small.calculate(q_c)
     dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel,
@@ -95,9 +94,12 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         sqrtV_G = v_G**0.5
         chi_RPA_WGG_from_df /= sqrtV_G * sqrtV_G[:, np.newaxis]
 
-    if world.rank == 0:
+        assert chi_BSE_WGG_from_bse == pytest.approx(chi_BSE_WGG,
+                                                     rel=5e-2, abs=5e-2)
+
         assert chi_RPA_WGG_from_df == pytest.approx(chi_RPA_WGG,
                                                     rel=1e-3, abs=1e-4)
+
 
     v_G[0] = 0.0
 

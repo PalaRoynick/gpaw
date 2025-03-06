@@ -910,12 +910,16 @@ class BSEBackend:
                     write_eig=None, irreducible=False):
         """Returns chi_wGG'"""
 
-        if not hasattr(self, 'eig_data'):
+        if (not hasattr(self, 'eig_data') or 
+               self.eig_data_irreducible != irreducible or 
+               self.eig_data_optical != optical):
             bsematrix = self.get_bse_matrix(optical=optical,
                                             irreducible=irreducible)
             self.context.print('Calculating response function at %s frequency '
                                'points' % len(w_w))
             self.eig_data = self.diagonalize_bse_matrix(bsematrix)
+            self.eig_data_irreducible = irreducible
+            self.eig_data_optical = optical
         else:
             pass
 
