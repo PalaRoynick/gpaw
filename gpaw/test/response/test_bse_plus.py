@@ -4,9 +4,8 @@ import pytest
 from gpaw.response.pair import get_gs_and_context
 from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSE_Plus
-from gpaw.response.df import Chi0DysonEquations, DielectricFunctionCalculator
+from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.coulomb_kernels import CoulombKernel
-from gpaw import GPAW
 
 
 @pytest.mark.response
@@ -70,8 +69,9 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                                            irreducible=False,
                                            w_w=w_w)
 
-    # assert chi_BSE_WGG_from_bse == pytest.approx(chi_BSE_WGG,
-    #                                             rel=1e-3, abs=1e-4)
+    if world.rank == 0:
+        assert chi_BSE_WGG_from_bse == pytest.approx(chi_BSE_WGG,
+                                                     rel=1e-3, abs=1e-4)
 
     chi0_data_small = chi0calc_small.calculate(q_c)
     dyson_eqs_small = Chi0DysonEquations(chi0_data_small, coulomb_kernel,
