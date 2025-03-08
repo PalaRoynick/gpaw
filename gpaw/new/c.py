@@ -151,6 +151,9 @@ def pw_norm_kinetic_gpu(result_x, a_xG, kin_G):
     else:
         result_x[:] = cp.sum(cp.abs(a_xG)**2 * kin_G[None, :], axis=1)
 
+                                
+def pwlfc_expand_and_add_gpu(*args, **kwargs):
+    raise NotImplementedError
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
     from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa
@@ -162,6 +165,7 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
                                 dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
                                 evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
                                 pw_insert_gpu, pwlfc_expand_gpu,
+                                pwlfc_expand_and_add_gpu,
                                 pw_norm_kinetic_gpu, pw_norm_gpu)
 
         # This is somewhat useless to trace the kernels in CPU
@@ -174,5 +178,6 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
         pw_amend_insert_realwf_gpu = w(pw_amend_insert_realwf_gpu)
         pw_insert_gpu = w(pw_insert_gpu)
         pwlfc_expand_gpu = w(pwlfc_expand_gpu)
+        pwlfc_expand_and_add_gpu = w(pwlfc_expand_and_add_gpu)
         pw_norm_kinetic_gpu = w(pw_norm_kinetic_gpu)
         pw_norm_gpu = w(pw_norm_gpu)

@@ -224,6 +224,14 @@ class Profiler(Timer):
         self.ref = ref[0]
 
     def finish_trace(self):
+        self._finish_trace()
+        # Disable all further calls (including the atexit)
+        self._finish_trace = self.no_finish_trace
+
+    def no_finish_trace(self):
+        pass
+
+    def _finish_trace(self):
         self.txt.close()
         self.comm.barrier()
         if self.comm.rank == 0:

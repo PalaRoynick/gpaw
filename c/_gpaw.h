@@ -191,10 +191,11 @@ PyObject* axpbyz_gpu(PyObject *self, PyObject *args);
 PyObject* axpbz_gpu(PyObject *self, PyObject *args);
 PyObject* fill_gpu(PyObject *self, PyObject *args);
 PyObject* pwlfc_expand_gpu(PyObject *self, PyObject *args);
+PyObject* pwlfc_expand_and_add_gpu(PyObject *self, PyObject *args);
+PyObject* pwlfc_expand_and_integrate_gpu(PyObject *self, PyObject *args);
 PyObject* pw_insert_gpu(PyObject *self, PyObject *args);
 PyObject* pw_norm_kinetic_gpu(PyObject *self, PyObject *args);
 PyObject* pw_norm_gpu(PyObject *self, PyObject *args);
-
 PyObject* pw_amend_insert_realwf_gpu(PyObject *self, PyObject *args);
 PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args);
@@ -374,6 +375,8 @@ static PyMethodDef functions[] = {
     {"axpbz_gpu", axpbz_gpu, METH_VARARGS, 0},
     {"fill_gpu", fill_gpu, METH_VARARGS, 0},
     {"pwlfc_expand_gpu", pwlfc_expand_gpu, METH_VARARGS, 0},
+    {"pwlfc_expand_and_add_gpu", pwlfc_expand_and_add_gpu, METH_VARARGS, 0},
+    {"pwlfc_expand_and_integrate_gpu", pwlfc_expand_and_integrate_gpu, METH_VARARGS, 0},
     {"pw_insert_gpu", pw_insert_gpu, METH_VARARGS, 0},
     {"pw_norm_kinetic_gpu", pw_norm_kinetic_gpu, METH_VARARGS, 0},
     {"pw_norm_gpu", pw_norm_gpu, METH_VARARGS, 0},
