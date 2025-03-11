@@ -241,7 +241,11 @@ class CuPyFFTPlans(FFTPlans):
         from gpaw.gpu import cupy as cp
         if self.tmp_R.dtype == float:
             if is_hip:
+                #ref = cupyx.scipy.fft.rfftn(self.tmp_R)
                 self.tmp_Q[:] = rfftn_patch(self.tmp_R)
+                #print('Orig', self.tmp_Q[:][3,1,:5])
+                #print('ref', ref[3,1,:5])
+                #assert cp.allclose(self.tmp_Q[:], ref)
             else:
                 self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
         else:
@@ -252,23 +256,20 @@ class CuPyFFTPlans(FFTPlans):
         from gpaw.gpu import cupyx
         if self.tmp_R.dtype == float:
             if is_hip:
-                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape)
+                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) * self.tmp_R.size
+                #self.tmp_R[:] = cupyx.scipy.fft.irfftn(
+                #    self.tmp_Q, self.tmp_R.shape,
+                #    norm='forward',
+                #    overwrite_x=True)
+                #print('scipy', self.tmp_R[0,0,:])
+                #print('irfftn_patch', a[0,0,:])
+                #import cupy
+                #assert cupy.allclose(a, self.tmp_R)
                 return
-            try:
-                self.tmp_R[:] = cupyx.scipy.fft.irfftn(
-                    self.tmp_Q, self.tmp_R.shape,
-                    norm='forward',
-                    overwrite_x=True)
-            except cp.cuda.cufft.CuFFTError:
-                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape)
-                ver2 = cupyx.scipy.fft.irfftn(
-                    self.tmp_Q, self.tmp_R.shape,
-                    norm='forward',
-                    overwrite_x=True)
-                import cupy
-                print(self.tmp_R,'xxx')
-                print(ver2,'xxx')
-                assert cupy.allclose(self.tmp_R, ver2)
+            self.tmp_R[:] = cupyx.scipy.fft.irfftn(
+                self.tmp_Q, self.tmp_R.shape,
+                norm='forward',
+                overwrite_x=True)
         else:
             self.tmp_R[:] = cupyx.scipy.fft.ifftn(
                 self.tmp_Q, self.tmp_R.shape,
@@ -313,9 +314,12 @@ class CuPyFFTPlans(FFTPlans):
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)
         else:
-            array_R[:] = cupyx.scipy.fft.irfftn(
-                array_Q, out_R.desc.global_shape(),
-                norm='forward', overwrite_x=True)
+            if is_hip:
+                array_R[:] = irfftn_patch(array_Q, out_R.desc.global_shape()) * array_R.size
+            else:
+                array_R[:] = cupyx.scipy.fft.irfftn(
+                    array_Q, out_R.desc.global_shape(),
+                    norm='forward', overwrite_x=True)
 
         if out_R.desc.comm.size > 1:
             out_R.scatter_from(array_R)
