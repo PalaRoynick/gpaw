@@ -10,8 +10,9 @@ from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.new.timer import trace
 
 __all__ = ['GPU_AWARE_MPI']
-
-GPU_AWARE_MPI = getattr(cgpaw, 'gpu_aware_mpi', False)
+import os
+GPU_AWARE_MPI = bool(int(os.environ.get('MPICH_GPU_SUPPORT_ENABLED', 0)))
+# getattr(cgpaw, 'gpu_aware_mpi', False)
 GPU_ENABLED = getattr(cgpaw, 'GPU_ENABLED', False)
 
 

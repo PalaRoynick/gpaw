@@ -19,6 +19,7 @@ from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.new.c import pw_insert_gpu
 from gpaw.new import trace
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
+from gpaw.gpu import is_hip
 
 ESTIMATE = 64
 MEASURE = 0
@@ -212,6 +213,18 @@ def rfftn_patch(tmp_R):
     return cupyx.scipy.fft.fftn(tmp_R)[:, :, :tmp_R.shape[-1] // 2 + 1]
 
 
+def irfftn_patch(B, shape):
+    from gpaw.gpu import cupyx
+    import cupy as xp
+    A = xp.zeros(shape, dtype=complex)
+    A[:, :, :B.shape[2]] = B
+    inv_ind1 = -xp.arange(B.shape[0])[:, None, None]
+    inv_ind2 = -xp.arange(B.shape[1])[None, :, None]
+    inv_ind3 = -xp.arange(1, B.shape[2])[None, None, :]
+    A[:, :, -(B.shape[2]-1):] = B[inv_ind1, inv_ind2, inv_ind3].conj()
+    return cupyx.scipy.fft.ifftn(A).real
+
+
 class CuPyFFTPlans(FFTPlans):
     def __init__(self,
                  size_c: IntVector,
@@ -227,10 +240,10 @@ class CuPyFFTPlans(FFTPlans):
         from gpaw.gpu import cupyx
         from gpaw.gpu import cupy as cp
         if self.tmp_R.dtype == float:
-            try:
-                self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
-            except cp.cuda.cufft.CuFFTError:
+            if is_hip:
                 self.tmp_Q[:] = rfftn_patch(self.tmp_R)
+            else:
+                self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
         else:
             self.tmp_Q[:] = cupyx.scipy.fft.fftn(self.tmp_R)
 
@@ -238,10 +251,24 @@ class CuPyFFTPlans(FFTPlans):
     def ifft(self):
         from gpaw.gpu import cupyx
         if self.tmp_R.dtype == float:
-            self.tmp_R[:] = cupyx.scipy.fft.irfftn(
-                self.tmp_Q, self.tmp_R.shape,
-                norm='forward',
-                overwrite_x=True)
+            if is_hip:
+                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape)
+                return
+            try:
+                self.tmp_R[:] = cupyx.scipy.fft.irfftn(
+                    self.tmp_Q, self.tmp_R.shape,
+                    norm='forward',
+                    overwrite_x=True)
+            except cp.cuda.cufft.CuFFTError:
+                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape)
+                ver2 = cupyx.scipy.fft.irfftn(
+                    self.tmp_Q, self.tmp_R.shape,
+                    norm='forward',
+                    overwrite_x=True)
+                import cupy
+                print(self.tmp_R,'xxx')
+                print(ver2,'xxx')
+                assert cupy.allclose(self.tmp_R, ver2)
         else:
             self.tmp_R[:] = cupyx.scipy.fft.ifftn(
                 self.tmp_Q, self.tmp_R.shape,
@@ -300,10 +327,10 @@ class CuPyFFTPlans(FFTPlans):
         if np.issubdtype(self.dtype, np.complexfloating):
             out_Q = cupyx.scipy.fft.fftn(in_R)
         else:
-            try:
-                out_Q = cupyx.scipy.fft.rfftn(in_R)
-            except cp.cuda.cufft.CuFFTError:
+            if is_hip:
                 out_Q = rfftn_patch(in_R)
+            else:
+                out_Q = cupyx.scipy.fft.rfftn(in_R)
         Q_G = self.indices(pw)
         coef_G = out_Q.ravel()[Q_G] * (1 / in_R.size)
         return coef_G
