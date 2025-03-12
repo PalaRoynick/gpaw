@@ -12,7 +12,7 @@ from gpaw.core.arrays import DistributedArrays
 from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.core.pwacf import PWAtomCenteredFunctions
-from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy as cp, cupy_is_fake
 from gpaw.new.c import pw_norm_kinetic_gpu, pw_norm_gpu
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import prod, zips
@@ -571,7 +571,15 @@ class PWArray(DistributedArrays[PWDesc]):
                 result = self.data[..., 0]
             else:
                 result = self.xp.empty(self.mydims, self.complex_dtype)
-            self.desc.comm.broadcast(self.xp.ascontiguousarray(result), 0)
+
+            # HACK: broadcast does not work for cpupy.ndarray.
+            # Need to take its internal numpy.ndarray
+            if self.xp == cp and cupy_is_fake:
+                array_to_broadcast = self.xp.ascontiguousarray(result)._data
+            else:
+                array_to_broadcast = self.xp.ascontiguousarray(result)
+
+            self.desc.comm.broadcast(array_to_broadcast, 0)
         if self.desc.dtype == self.real_dtype:
             result = result.real
         if result.ndim == 0:
