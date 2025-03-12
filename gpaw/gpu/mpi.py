@@ -24,6 +24,9 @@ class CuPyMPI:
         self.comm.sum(a, root)
         array.set(a)
 
+    def translate_ranks(self, other, ranks):
+        return self.comm.translate_ranks(other.comm, ranks)
+
     def sum_scalar(self, a, root=-1):
         return self.comm.sum_scalar(a, root)
 
