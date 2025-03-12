@@ -756,8 +756,14 @@ have_mpi = _world is not None
 if not have_mpi:
     _world = _serial_comm  # type: ignore
 
-serial_comm = _serial_comm  # type: ignore
-world = _world  # type: ignore
+if gpaw.debug:
+    # Wrap communicators in helper class for argument checking on Python side
+    serial_comm = _Communicator(_serial_comm)
+    world = _Communicator(_world)
+
+else:
+    serial_comm = _serial_comm  # type: ignore
+    world = _world  # type: ignore
 
 rank = world.rank
 size = world.size
