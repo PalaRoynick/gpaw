@@ -5,8 +5,7 @@ import warnings
 from math import pi
 
 import numpy as np
-from numpy.fft import fftn, ifftn, fft2, ifft2, rfft2, irfft2, fft, ifft
-from scipy.fftpack import dst as scipydst
+from numpy.fft import fftn, ifftn
 
 from gpaw import PoissonConvergenceError
 from gpaw.dipole_correction import DipoleCorrection, dipole_correction
@@ -651,7 +650,6 @@ class FastPoissonSolver(BasePoissonSolver):
     def __init__(self, nn=3, **kwargs):
         BasePoissonSolver.__init__(self, **kwargs)
         self.nn = nn
-        
         self.use_cholesky = False
 
         # FastPoissonSolver supports only numpy for now
