@@ -23,6 +23,8 @@ from scipy.spatial import Voronoi
 
 from gpaw.domain import decompose_domain
 from gpaw.utilities.grid import grid2grid
+from gpaw.mixed_transforms import MixedTransforms
+
 
 if TYPE_CHECKING:
     from gpaw.core import UGDesc
@@ -55,6 +57,7 @@ class GPUFFTFDOperator:
     """
     def __init__(self, gd, coef_p, offset_pc, xp=None):
         self.xp = xp
+        self.transforms = MixedTransforms(xp)
         self.gd = gd
         axes = np.arange(3)
         pbc_c = np.array(gd.pbc_c, dtype=bool)
@@ -132,7 +135,6 @@ class GPUFFTFDOperator:
         self.fft_lambdas = fft_lambdas
 
     def apply_gpu(self, in_xR, out_xR, phase_factor_cd):
-        from gpaw.poisson import transform2, transform, itransform, itransform2
         if phase_factor_cd is not None:
             assert np.all(phase_factor_cd == 1.0)
         assert len(in_xR.shape) == 3
@@ -149,28 +151,28 @@ class GPUFFTFDOperator:
             work1d_g = gd1d.empty(dtype=in_xR.dtype, xp=self.xp)
             grid2grid(comm, gd, gd1d, in_xR, work1d_g, xp=self.xp)
         with timer('FFT 2D'):
-            work1d_g = transform2(work1d_g, axes=axes[:2],
-                                  pbc=gd.pbc_c[axes[:2]])
+            work1d_g = self.transforms.transform2(work1d_g, axes=axes[:2],
+                                                  pbc=gd.pbc_c[axes[:2]])
         with timer('Communicate to 2D'):
             work2d_g = gd2d.empty(dtype=work1d_g.dtype, xp=self.xp)
             grid2grid(comm, gd1d, gd2d, work1d_g, work2d_g, xp=self.xp)
         with timer('FFT 1D'):
-            work2d_g = transform(work2d_g, axis=axes[2],
-                                 pbc=gd.pbc_c[axes[2]])
+            work2d_g = self.transforms.transform(work2d_g, axis=axes[2],
+                                                 pbc=gd.pbc_c[axes[2]])
 
         # The remaining problem is 0D dimensional, i.e the problem
         # has been fully diagonalized
         work2d_g *= self.fft_lambdas
 
         with timer('FFT 1D'):
-            work2d_g = itransform(work2d_g, axis=axes[2],
-                                  pbc=gd.pbc_c[axes[2]])
+            work2d_g = self.transforms.itransform(work2d_g, axis=axes[2],
+                                                  pbc=gd.pbc_c[axes[2]])
         with timer('Communicate from 2D'):
             work1d_g = gd1d.empty(dtype=work2d_g.dtype, xp=self.xp)
             grid2grid(comm, gd2d, gd1d, work2d_g, work1d_g, xp=self.xp)
         with timer('FFT 2D'):
-            work1d_g = itransform2(work1d_g, axes=axes[1::-1],
-                                   pbc=gd.pbc_c[axes[1::-1]])
+            work1d_g = self.transforms.itransform2(work1d_g, axes=axes[1::-1],
+                                                   pbc=gd.pbc_c[axes[1::-1]])
         with timer('Communicate from 1D'):
             work_g = gd.empty(dtype=work1d_g.dtype, xp=self.xp)
             grid2grid(comm, gd1d, gd, work1d_g, work_g, xp=self.xp)
