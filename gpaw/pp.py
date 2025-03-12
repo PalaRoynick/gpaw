@@ -20,6 +20,7 @@ class Operator:
     def __init__(self, *args, **kwargs):
         raise NotImplementedError
 
+
 class Spline:
     def __init__(self, l, rmax, f_g):
         self.spline = CubicSpline(np.linspace(0, rmax, len(f_g)), f_g,

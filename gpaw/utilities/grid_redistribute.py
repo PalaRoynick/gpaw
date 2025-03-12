@@ -494,7 +494,6 @@ def general_redistribute(comm, domains1, domains2, rank2parpos1, rank2parpos2,
         nstop = nstart + recvcounts[recvrank]
         buf = recvbuf[nstart:nstop]
         if behavior == 'overwrite':
-            #recvchunk.reshape((-1,))[:] = buf
             recvchunk.flat[:] = buf
         elif behavior == 'add':
             recvchunk.flat[:] += buf

@@ -651,7 +651,7 @@ class FastPoissonSolver(BasePoissonSolver):
         BasePoissonSolver.__init__(self, **kwargs)
         self.nn = nn
         self.use_cholesky = False
-        
+
         # FastPoissonSolver supports only numpy for now
         self.transforms = MixedTransforms(np)
 
