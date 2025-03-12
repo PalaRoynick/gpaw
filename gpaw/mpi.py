@@ -756,15 +756,8 @@ have_mpi = _world is not None
 if not have_mpi:
     _world = _serial_comm  # type: ignore
 
-if gpaw.debug:
-    serial_comm = _Communicator(_serial_comm)
-    if _world.size == 1:
-        world = serial_comm
-    else:
-        world = _Communicator(_world)
-else:
-    serial_comm = _serial_comm  # type: ignore
-    world = _world  # type: ignore
+serial_comm = _serial_comm  # type: ignore
+world = _world  # type: ignore
 
 rank = world.rank
 size = world.size
