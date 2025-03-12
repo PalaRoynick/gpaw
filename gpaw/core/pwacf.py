@@ -17,6 +17,7 @@ from gpaw.utilities.blas import mmm
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.spline import Spline
 from gpaw.typing import ArrayLike1D
+from gpaw.mpi import world
 
 if TYPE_CHECKING:
     from gpaw.core.plane_waves import PWDesc
@@ -157,6 +158,7 @@ class PWLFC:  # (BaseLFC)
 
         self.f_Gs = xp.empty(self.pw.myshape + (nsplines,))
         self.l_s = np.empty(nsplines, np.int32)
+        self.l_s[:] = -10000
         self.a_J = np.empty(nJ, np.int32)
         self.s_J = np.empty(nJ, np.int32)
         self.I_J = np.empty(nJ, np.int32)
@@ -167,6 +169,7 @@ class PWLFC:  # (BaseLFC)
         for a, spline_j in enumerate(self.spline_aj):
             for spline in spline_j:
                 s = splines[spline]  # get spline index
+                print(world.rank, 'a=', a, 's=', s)
                 if spline not in done:
                     f = rescaled_fourier_bessel_transform(spline)
                     G_G = (2 * self.pw.ekin_G)**0.5
@@ -183,9 +186,9 @@ class PWLFC:  # (BaseLFC)
                 self.I_J[J] = I
                 I += 2 * spline.get_angular_momentum_number() + 1
                 J += 1
-
+        
         self.lmax = max(self.l_s, default=-1)
-
+        print('Initialized')
         # Spherical harmonics:
         G_Gv = self.pw.G_plus_k_Gv
         self.Y_GL = xp.empty((len(G_Gv), (self.lmax + 1)**2))
@@ -197,6 +200,9 @@ class PWLFC:  # (BaseLFC)
         self.s_J = xp.asarray(self.s_J)
         self.I_J = xp.asarray(self.I_J)
 
+        self.l_s[self.s_J]
+        print('l_s size', self.l_s.shape)
+        print('s_J max', xp.max(self.s_J))
         self.initialized = True
 
     def get_function_count(self, a):
@@ -368,7 +374,8 @@ class PWLFC:  # (BaseLFC)
         #a_xG[:] = 0.0
         #c_xI[:] = 0.0
         #c_xI[0, 1] = 1
-        if self.xp is not np and nx == 1 and self.real:
+        print('Disabled expand_and_add_gpu')
+        if 0 and self.xp is not np and nx == 1 and self.real:
              #a_xG_ref = a_xG.copy()
              #a_xG_before_add= a_xG.copy()
              return self.expand_and_add_gpu(c_xI, a_xG)

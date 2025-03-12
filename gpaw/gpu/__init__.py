@@ -34,6 +34,19 @@ else:
             raise ImportError
 
         import cupy
+        _asarray = cupy.asarray
+        _array = cupy.array
+        _asnumpy = cupy.asnumpy
+        def asarray(*args, **kwargs):
+            return _asarray(*args, **kwargs, blocking=True)
+        def array(*args, **kwargs):
+            return _array(*args, **kwargs, blocking=True)
+        def asnumpy(*args, **kwargs):
+            return _asnumpy(*args, **kwargs, blocking=True)
+        cupy.asarray = asarray
+        cupy.array = array
+        cupy.asnumpy = asnumpy
+
         from cupy import cublas
 
         gpu_gemm = trace(kernel=True)(cublas.gemm)  # noqa: F811

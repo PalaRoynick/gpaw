@@ -68,9 +68,13 @@ def pwlfc_expand(f_Gs, emiGR_Ga, Y_GL,
         if cc:
             np.conjugate(f_Gi, f_Gi)
         if real:
+            if f_GI[::2, I1:I2].shape != f_Gi.real.shape:
+                print('XXX', f_GI.shape, I1, I2, f_GI[::2, I1:I2].shape, f_GI.real.shape)
             f_GI[::2, I1:I2] = f_Gi.real
             f_GI[1::2, I1:I2] = f_Gi.imag
         else:
+            if f_GI[:, I1:I2].shape != f_Gi.shape:
+                print('XXX', f_GI.shape, I1, I2, f_GI[:, I1:I2].shape)
             f_GI[:, I1:I2] = f_Gi
         I1 = I2
 
@@ -158,17 +162,21 @@ def pwlfc_expand_and_add_gpu(*args, **kwargs):
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
     from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa
-                            pwlfc_expand, symmetrize_ft)
+                            #pwlfc_expand, 
+                            symmetrize_ft)
 
     if GPU_ENABLED:
         from gpaw.cgpaw import add_to_density_gpu  # noqa
         from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
                                 dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
                                 evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
-                                pw_insert_gpu, pwlfc_expand_gpu,
+                                pw_insert_gpu, # DISABLED PW_INSERT
+                                pwlfc_expand_gpu,
                                 pwlfc_expand_and_add_gpu,
                                 pw_norm_kinetic_gpu, pw_norm_gpu)
-
+        #print('Python version of PW_INSERT!')
+        #print('Python version of pwlfc_expand!')
+        #print('Python version of pwlfc_expand_gpu!')
         # This is somewhat useless to trace the kernels in CPU
         w = trace(kernel=True)
         add_to_density_gpu = w(add_to_density_gpu)

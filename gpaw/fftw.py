@@ -208,8 +208,8 @@ class NumpyFFTPlans(FFTPlans):
 
 def rfftn_patch(tmp_R):
     from gpaw.gpu import cupyx
-    warnings.warn(f'CuFFTError for cupyx.scipy.fft.rfftn {tmp_R.shape}.'
-                  f'reverting to using just fftn. This is a bug in ROCM cupy.')
+    #warnings.warn(f'CuFFTError for cupyx.scipy.fft.rfftn {tmp_R.shape}.'
+    #              f'reverting to using just fftn. This is a bug in ROCM cupy.')
     return cupyx.scipy.fft.fftn(tmp_R)[:, :, :tmp_R.shape[-1] // 2 + 1]
 
 
