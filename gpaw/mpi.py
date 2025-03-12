@@ -759,7 +759,7 @@ if not have_mpi:
 if gpaw.debug:
     serial_comm = _Communicator(_serial_comm)
     if _world.size == 1:
-        world = _Communicator(serial_comm)
+        world = serial_comm
     else:
         world = _Communicator(_world)
 else:
