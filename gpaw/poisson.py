@@ -18,6 +18,7 @@ from gpaw.utilities.grid import grid2grid
 from gpaw.utilities.ewald import madelung
 from gpaw.utilities.tools import construct_reciprocal
 from gpaw.utilities.timing import NullTimer
+from gpaw.mixed_transforms import MixedTransforms
 
 POISSON_GRID_WARNING = """Grid unsuitable for FDPoissonSolver!
 
@@ -642,206 +643,6 @@ class FFTPoissonSolver(BasePoissonSolver):
         mem.subnode('k squared', self.grids[-1].bytecount())
 
 
-"""def rfst2(A_g, axes=[0,1]):
-    assert axes[0] == 0
-    assert axes[1] == 1
-    x,y,z = A_g.shape
-    temp_g = np.zeros((x*2+2, y*2+2, z))
-    temp_g[1:x+1, 1:y+1,:] = A_g
-    temp_g[x+2:, 1:y+1,:] = -A_g[::-1, :, :]
-    temp_g[1:x+1, y+2:,:] = -A_g[:, ::-1, :]
-    temp_g[x+2:, y+2:,:] = A_g[::-1, ::-1, :]
-    X = -4*rfft2(temp_g, axes=axes)
-    return X[1:x+1, 1:y+1, :].real
-
-def irfst2(A_g, axes=[0,1]):
-    assert axes[0] == 0
-    assert axes[1] == 1
-    x,y,z = A_g.shape
-    temp_g = np.zeros((x*2+2, (y*2+2)//2+1, z))
-    temp_g[1:x+1, 1:y+1,:] = A_g
-    temp_g[x+2:, 1:y+1,:] = -A_g[::-1, :, :]
-    return -0.25*irfft2(temp_g, axes=axes)[1:x+1, 1:y+1, :].real
-"""
-
-
-class Transforms:
-    def __init__(self, xp):
-        if xp is np:
-            self.use_scipy_transforms = True
-
-
-    def rfst2(A_g, axes=[0, 1]):
-        all = {0, 1, 2}
-        third = [all.difference(set(axes)).pop()]
-
-        if use_scipy_transforms:
-            Y = A_g
-            for axis in axes:
-                Y = scipydst(Y, axis=axis, type=1)
-            Y *= 2**len(axes)
-            return Y
-
-        A_g = np.transpose(A_g, axes + third)
-        x, y, z = A_g.shape
-        temp_g = np.zeros((x * 2 + 2, y * 2 + 2, z))
-        temp_g[1:x + 1, 1:y + 1, :] = A_g
-        temp_g[x + 2:, 1:y + 1, :] = -A_g[::-1, :, :]
-        temp_g[1:x + 1, y + 2:, :] = -A_g[:, ::-1, :]
-        temp_g[x + 2:, y + 2:, :] = A_g[::-1, ::-1, :]
-        X = -4 * rfft2(temp_g, axes=[0, 1])[1:x + 1, 1:y + 1, :].real
-        return np.transpose(X, np.argsort(axes + third))
-
-
-    def irfst2(A_g, axes=[0, 1]):
-        if use_scipy_transforms:
-            Y = A_g
-            for axis in axes:
-                Y = scipydst(Y, axis=axis, type=1)
-            magic = 1.0 / (16 * np.prod([A_g.shape[axis] + 1 for axis in axes]))
-            Y *= magic
-            # Y /= 211200
-            return Y
-
-        all = {0, 1, 2}
-        third = [all.difference(set(axes)).pop()]
-        A_g = np.transpose(A_g, axes + third)
-        x, y, z = A_g.shape
-        temp_g = np.zeros((x * 2 + 2, (y * 2 + 2) // 2 + 1, z))
-        temp_g[1:x + 1, 1:y + 1, :] = A_g.real
-        temp_g[x + 2:, 1:y + 1, :] = -A_g[::-1, :, :].real
-        X = -0.25 * irfft2(temp_g, axes=[0, 1])[1:x + 1, 1:y + 1, :]
-
-        T = np.transpose(X, np.argsort(axes + third))
-        return T
-
-
-    # This method needs to be taken from fftw / scipy to gain speedup of ~4x
-    def fst(A_g, axis):
-        x, y, z = A_g.shape
-        N_c = np.array([x, y, z])
-        N_c[axis] = N_c[axis] * 2 + 2
-        temp_g = np.zeros(N_c, dtype=A_g.dtype)
-        if axis == 0:
-            temp_g[1:x + 1, :, :] = A_g
-            temp_g[x + 2:, :, :] = -A_g[::-1, :, :]
-        elif axis == 1:
-            temp_g[:, 1:y + 1, :] = A_g
-            temp_g[:, y + 2:, :] = -A_g[:, ::-1, :]
-        elif axis == 2:
-            temp_g[:, :, 1:z + 1] = A_g
-            temp_g[:, :, z + 2:] = -A_g[:, ::, ::-1]
-        else:
-            raise NotImplementedError()
-        X = 0.5j * fft(temp_g, axis=axis)
-        if axis == 0:
-            return X[1:x + 1, :, :]
-        elif axis == 1:
-            return X[:, 1:y + 1, :]
-        elif axis == 2:
-            return X[:, :, 1:z + 1]
-
-
-    def ifst(A_g, axis):
-        x, y, z = A_g.shape
-        N_c = np.array([x, y, z])
-        N_c[axis] = N_c[axis] * 2 + 2
-        temp_g = np.zeros(N_c, dtype=A_g.dtype)
-
-        if axis == 0:
-            temp_g[1:x + 1, :, :] = A_g
-            temp_g[x + 2:, :, :] = -A_g[::-1, :, :]
-        elif axis == 1:
-            temp_g[:, 1:y + 1, :] = A_g
-            temp_g[:, y + 2:, :] = -A_g[:, ::-1, :]
-        elif axis == 2:
-            temp_g[:, :, 1:z + 1] = A_g
-            temp_g[:, :, z + 2:] = -A_g[:, ::, ::-1]
-        else:
-            raise NotImplementedError()
-
-        X_g = ifft(temp_g, axis=axis)
-        if axis == 0:
-            return -2j * X_g[1:x + 1, :, :]
-        elif axis == 1:
-            return -2j * X_g[:, 1:y + 1, :]
-        elif axis == 2:
-            return -2j * X_g[:, :, 1:z + 1]
-
-
-    def transform(A_g, axis=None, pbc=True):
-        if pbc:
-            if A_g.size == 0:
-                return A_g.astype(complex)
-
-            return self.fft(A_g, axis=axis)
-        else:
-            if A_g.size == 0:
-                return A_g
-
-            if not use_scipy_transforms:
-                x = self.fst(A_g, axis)
-                return x
-            y = scipydst(A_g, axis=axis, type=1)
-            y *= .5
-            return y
-
-
-    def transform2(A_g, axes=None, pbc=[True, True]):
-        if all(pbc):
-            if A_g.size == 0:
-                return A_g.astype(complex)
-
-            return self.fft2(A_g, axes=axes)
-        elif not any(pbc):
-            if A_g.size == 0:
-                return A_g
-
-            return self.rfst2(A_g, axes=axes)
-        else:
-            return self.transform(self.transform(A_g,
-                                                 axis=axes[0],
-                                                 pbc=pbc[0]),
-                                  axis=axes[1], pbc=pbc[1])
-
-
-    def itransform(A_g, axis=None, pbc=True):
-        if pbc:
-            if A_g.size == 0:
-                return self.A_g.astype(complex)
-
-            return self.ifft(A_g, axis=axis)
-        else:
-            if A_g.size == 0:
-                return A_g
-
-            if not use_scipy_transforms:
-                x = self.ifst(A_g, axis)
-                return x
-            y = scipydst(A_g, axis=axis, type=1)
-            magic = 1.0 / (A_g.shape[axis] + 1)
-            y *= magic
-            return y
-
-
-    def itransform2(A_g, axes=None, pbc=[True, True]):
-        if all(pbc):
-            if A_g.size == 0:
-                return A_g.astype(complex)
-
-            return self.ifft2(A_g, axes=axes)
-        elif not any(pbc):
-            if A_g.size == 0:
-                return A_g
-
-            return self.irfst2(A_g, axes=axes)
-        else:
-            return self.itransform(self.itransform(A_g,
-                                                   axis=axes[0],
-                                                   pbc=pbc[0]),
-                                   axis=axes[1], pbc=pbc[1])
-
-
 class BadAxesError(ValueError):
     pass
 
@@ -850,8 +651,11 @@ class FastPoissonSolver(BasePoissonSolver):
     def __init__(self, nn=3, **kwargs):
         BasePoissonSolver.__init__(self, **kwargs)
         self.nn = nn
-        # We may later enable this to work with Cholesky, but not now:
+        
         self.use_cholesky = False
+
+        # FastPoissonSolver supports only numpy for now
+        self.transforms = MixedTransforms(np)
 
     def _init(self):
         pass
@@ -984,28 +788,28 @@ class FastPoissonSolver(BasePoissonSolver):
             work1d_g = gd1d.empty(dtype=rho_g.dtype, xp=self.xp)
             grid2grid(comm, gd, gd1d, rho_g, work1d_g, xp=self.xp)
         with timer('FFT 2D'):
-            work1d_g = transform2(work1d_g, axes=axes[:2],
-                                  pbc=gd.pbc_c[axes[:2]])
+            work1d_g = self.transforms.transform2(work1d_g, axes=axes[:2],
+                                                  pbc=gd.pbc_c[axes[:2]])
         with timer('Communicate to 2D'):
             work2d_g = gd2d.empty(dtype=work1d_g.dtype, xp=self.xp)
             grid2grid(comm, gd1d, gd2d, work1d_g, work2d_g, xp=self.xp)
         with timer('FFT 1D'):
-            work2d_g = transform(work2d_g, axis=axes[2],
-                                 pbc=gd.pbc_c[axes[2]])
+            work2d_g = self.transforms.transform(work2d_g, axis=axes[2],
+                                                 pbc=gd.pbc_c[axes[2]])
 
         # The remaining problem is 0D dimensional, i.e the problem
         # has been fully diagonalized
         work2d_g *= self.inv_fft_lambdas
 
         with timer('FFT 1D'):
-            work2d_g = itransform(work2d_g, axis=axes[2],
-                                  pbc=gd.pbc_c[axes[2]])
+            work2d_g = self.transforms.itransform(work2d_g, axis=axes[2],
+                                                  pbc=gd.pbc_c[axes[2]])
         with timer('Communicate from 2D'):
             work1d_g = gd1d.empty(dtype=work2d_g.dtype, xp=self.xp)
             grid2grid(comm, gd2d, gd1d, work2d_g, work1d_g, xp=self.xp)
         with timer('FFT 2D'):
-            work1d_g = itransform2(work1d_g, axes=axes[1::-1],
-                                   pbc=gd.pbc_c[axes[1::-1]])
+            work1d_g = self.transforms.itransform2(work1d_g, axes=axes[1::-1],
+                                                   pbc=gd.pbc_c[axes[1::-1]])
         with timer('Communicate from 1D'):
             work_g = gd.empty(dtype=work1d_g.dtype, xp=self.xp)
             grid2grid(comm, gd1d, gd, work1d_g, work_g, xp=self.xp)
