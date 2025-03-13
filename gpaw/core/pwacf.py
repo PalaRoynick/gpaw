@@ -8,15 +8,16 @@ from gpaw.core.atom_arrays import AtomArraysLayout, AtomDistribution
 from gpaw.core.atom_centered_functions import AtomCenteredFunctions
 from gpaw.core.uniform_grid import UGArray
 from gpaw.ffbt import rescaled_fourier_bessel_transform
-from gpaw.gpu import cupy_is_fake
+from gpaw.gpu import cupy_is_fake, gpu_gemm
 # from gpaw.lfc import BaseLFC
-from gpaw.new import prod
-from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu
+from gpaw.new import prod, trace
+from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu, pwlfc_expand_and_add_gpu
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.spline import Spline
 from gpaw.typing import ArrayLike1D
+from gpaw.mpi import world
 
 if TYPE_CHECKING:
     from gpaw.core.plane_waves import PWDesc
@@ -85,7 +86,7 @@ class PWLFC:  # (BaseLFC)
                  *,
                  xp,
                  integrals: ArrayLike1D | float | None = None,
-                 blocksize: int | None = 5000):
+                 blocksize: int | None = 8196*2):  # fails with blocksize
         """Reciprocal-space plane-wave localized function collection.
 
         spline_aj: list of list of spline objects
@@ -138,6 +139,7 @@ class PWLFC:  # (BaseLFC)
         else:
             self.integral_a = np.array(integrals)
 
+    @trace
     def initialize(self) -> None:
         """Initialize position-independent stuff."""
         if self.initialized:
@@ -156,6 +158,7 @@ class PWLFC:  # (BaseLFC)
 
         self.f_Gs = xp.empty(self.pw.myshape + (nsplines,))
         self.l_s = np.empty(nsplines, np.int32)
+        self.l_s[:] = -10000
         self.a_J = np.empty(nJ, np.int32)
         self.s_J = np.empty(nJ, np.int32)
         self.I_J = np.empty(nJ, np.int32)
@@ -166,6 +169,7 @@ class PWLFC:  # (BaseLFC)
         for a, spline_j in enumerate(self.spline_aj):
             for spline in spline_j:
                 s = splines[spline]  # get spline index
+                print(world.rank, 'a=', a, 's=', s)
                 if spline not in done:
                     f = rescaled_fourier_bessel_transform(spline)
                     G_G = (2 * self.pw.ekin_G)**0.5
@@ -182,9 +186,9 @@ class PWLFC:  # (BaseLFC)
                 self.I_J[J] = I
                 I += 2 * spline.get_angular_momentum_number() + 1
                 J += 1
-
+        
         self.lmax = max(self.l_s, default=-1)
-
+        print('Initialized')
         # Spherical harmonics:
         G_Gv = self.pw.G_plus_k_Gv
         self.Y_GL = xp.empty((len(G_Gv), (self.lmax + 1)**2))
@@ -196,12 +200,16 @@ class PWLFC:  # (BaseLFC)
         self.s_J = xp.asarray(self.s_J)
         self.I_J = xp.asarray(self.I_J)
 
+        self.l_s[self.s_J]
+        print('l_s size', self.l_s.shape)
+        print('s_J max', xp.max(self.s_J))
         self.initialized = True
 
     def get_function_count(self, a):
         return sum(2 * spline.get_angular_momentum_number() + 1
                    for spline in self.spline_aj[a])
 
+    @trace
     def set_positions(self, spos_ac, atomdist):
         self.initialize()
 
@@ -216,6 +224,7 @@ class PWLFC:  # (BaseLFC)
 
         if xp is not np:
             self.pos_avT = xp.asarray(self.pos_av.T)
+            self.G_plus_k_Gv_gpu = self.xp.asarray(self.pw.G_plus_k_Gv)
             self.emiGR_Ga = None
         else:
             Gk_Gv = self.pw.G_plus_k_Gv
@@ -234,7 +243,34 @@ class PWLFC:  # (BaseLFC)
                 self.my_indices.append((a, I1, I2))
             I1 = I2
         self.nI = I1
+            
+    def expand_and_add_gpu(self, c_xI, a_xG, cc=False):
+        #a_xG *= self.pw.dv # TODO: add to kernel 
+        for G1, G2 in self.block():
+            #f_GI = self.expand(G1, G2, cc=cc)
 
+            if self.real:
+                # f_IG = f_IG.view(float)
+                aG1 = G1 * 2
+                aG2 = G2 * 2
+            emiGR_Ga = self.get_emiGR_Ga(G1, G2)#.copy()
+            f_Gs = self.f_Gs[G1:G2]#.copy()
+            Y_GL = self.Y_GL[G1:G2]#.copy()
+            assert f_Gs.flags.c_contiguous
+            assert Y_GL.flags.c_contiguous
+            assert a_xG[:, G1:G2].flags.c_contiguous
+            assert c_xI.flags.c_contiguous
+            assert emiGR_Ga.flags.c_contiguous
+            #temp = a_xG[:, aG1:aG2].copy()
+            pwlfc_expand_and_add_gpu(f_Gs, emiGR_Ga, Y_GL,
+                                     self.l_s, self.a_J, self.s_J,
+                                     self.I_J, c_xI,  a_xG[:, aG1:aG2],
+                                     1.0 / self.pw.dv)  # Non contiguous, fails
+            #a_xG[:, aG1:aG2] = temp
+        #a_xG /= self.pw.dv 
+
+
+    @trace
     def expand(self, G1=0, G2=None, cc=False):
         """Expand functions in plane-waves.
 
@@ -304,14 +340,16 @@ class PWLFC:  # (BaseLFC)
         else:
             yield 0, nG
 
+    @trace(kernel=True)
     def get_emiGR_Ga(self, G1, G2):
         if self.emiGR_Ga is None:
-            Gk_Gv = self.xp.asarray(self.pw.G_plus_k_Gv)[G1:G2]
+            Gk_Gv = self.G_plus_k_Gv_gpu[G1:G2]
             GkR_Ga = Gk_Gv @ self.pos_avT
             return self.xp.exp(-1j * GkR_Ga) * self.eikR_a
         else:
             return self.emiGR_Ga[G1:G2]
 
+    @trace
     def add(self, a_xG, c_axi=1.0, q=None):
         if self.nI == 0:
             return
@@ -333,6 +371,14 @@ class PWLFC:  # (BaseLFC)
             return
         c_xI = c_xI.reshape((nx, self.nI))
         a_xG = a_xG.reshape((nx, a_xG.shape[-1])).view(self.dtype)
+        #a_xG[:] = 0.0
+        #c_xI[:] = 0.0
+        #c_xI[0, 1] = 1
+        print('Disabled expand_and_add_gpu')
+        if 0 and self.xp is not np and nx == 1 and self.real:
+             #a_xG_ref = a_xG.copy()
+             #a_xG_before_add= a_xG.copy()
+             return self.expand_and_add_gpu(c_xI, a_xG)
 
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=False)
@@ -346,10 +392,19 @@ class PWLFC:  # (BaseLFC)
                 mmm(1.0 / self.pw.dv, c_xI, 'N', f_GI, 'T',
                     1.0, a_xG[:, G1:G2])
             else:
-                self.xp.cublas.gemm('N', 'T',
-                                    c_xI, f_GI, a_xG[:, G1:G2],
-                                    1.0 / self.pw.dv, 1.0)
+                gpu_gemm('N', 'T',
+                         c_xI, f_GI, a_xG[:, G1:G2],
+                         1.0 / self.pw.dv, 1.0)
 
+        #if self.xp is not np and nx == 1:
+        #    import cupy
+        #    cupy.cuda.runtime.deviceSynchronize()
+        #    for I in range(a_xG.shape[1]):
+        #        print(I, 'ref', a_xG[:, I] - a_xG_before_add[:, I], 'new', a_xG_ref[:, I] - a_xG_before_add[:, I])
+        #        #print('div', (a_xG[:, I] - a_xG_before_add[:, I]) / (a_xG_ref[:, 0:4] - a_xG_before_add[:, 0:4]))
+        #    assert self.xp.allclose(a_xG, a_xG_ref)
+
+    @trace
     def integrate(self, a_xG, c_axi=None, q=-1, add_to=False):
         xp = self.xp
         if self.nI == 0:
@@ -381,9 +436,9 @@ class PWLFC:  # (BaseLFC)
             if xp is np:
                 mmm(alpha, a_xG[:, G1:G2], 'N', f_GI, 'N', x, b_xI)
             else:
-                xp.cublas.gemm('N', 'N',
-                               a_xG[:, G1:G2], f_GI, b_xI,
-                               alpha, x)
+                gpu_gemm('N', 'N',
+                         a_xG[:, G1:G2], f_GI, b_xI,
+                         alpha, x)
             x = 1.0
 
         self.comm.sum(b_xI)
@@ -396,6 +451,7 @@ class PWLFC:  # (BaseLFC)
 
         return c_axi
 
+    @trace
     def derivative(self, a_xG, c_axiv=None, q=-1):
         xp = self.xp
         c_vxI = xp.zeros((3,) + a_xG.shape[:-1] + (self.nI,), self.dtype)
@@ -425,11 +481,11 @@ class PWLFC:  # (BaseLFC)
                             d_GI, 'N',
                             x, b_vxI[v])
                     else:
-                        xp.cublas.gemm('N', 'N',
-                                       a_xG[:, 2 * G1:2 * G2],
-                                       d_GI,
-                                       b_vxI[v],
-                                       2 * alpha, x)
+                        gpu_gemm('N', 'N',
+                                 a_xG[:, 2 * G1:2 * G2],
+                                 d_GI,
+                                 b_vxI[v],
+                                 2 * alpha, x)
             else:
                 for v in range(3):
                     if xp is np:
@@ -438,11 +494,11 @@ class PWLFC:  # (BaseLFC)
                             f_GI * G_Gv[:, v, np.newaxis], 'N',
                             x, b_vxI[v])
                     else:
-                        xp.cublas.gemm('N', 'N',
-                                       a_xG[:, G1:G2],
-                                       f_GI * G_Gv[:, v, np.newaxis],
-                                       b_vxI[v],
-                                       -alpha, x)
+                        gpu_gemm('N', 'N',
+                                 a_xG[:, G1:G2],
+                                 f_GI * G_Gv[:, v, np.newaxis],
+                                 b_vxI[v],
+                                 -alpha, x)
             x = 1.0
 
         self.comm.sum(c_vxI)
@@ -458,6 +514,7 @@ class PWLFC:  # (BaseLFC)
 
         return c_axiv
 
+    @trace
     def stress_tensor_contribution(self, a_xG, c_axi=1.0):
         xp = self.xp
         cache = {}
@@ -507,6 +564,7 @@ class PWLFC:  # (BaseLFC)
 
         return stress_vv
 
+    @trace
     def _stress_tensor_contribution(self, v1, v2, things, G1, G2,
                                     G_Gv, a_xG, c_axi, Z_LvG):
         xp = self.xp
@@ -540,7 +598,7 @@ class PWLFC:  # (BaseLFC)
         if xp is np:
             mmm(alpha, a_xG, 'N', f_IG, 'C', 0.0, b_xI)
         else:
-            xp.cublas.gemm('N', 'H', a_xG, f_IG, b_xI, alpha, 0.0)
+            gpu_gemm('N', 'H', a_xG, f_IG, b_xI, alpha, 0.0)
         self.comm.sum(b_xI)
 
         stress = 0.0

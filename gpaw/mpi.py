@@ -44,6 +44,8 @@ def broadcast_exception(comm):
     try:
         yield
     except Exception as ex:
+        print('Broadcasting exception', ex)
+        print(ex.__traceback__)
         rank = comm.max_scalar(comm.rank)
         if rank == comm.rank:
             broadcast(ex, rank, comm)

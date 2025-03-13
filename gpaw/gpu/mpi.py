@@ -13,6 +13,7 @@ class CuPyMPI:
         return f'CuPyMPI({self.comm})'
 
     def sum(self, array, root=-1):
+        assert array.flags.c_contiguous
         if isinstance(array, (float, int)):
             1 / 0
             return self.comm.sum(array, root)
@@ -33,12 +34,22 @@ class CuPyMPI:
         return self.comm.max_scalar(a, root)
 
     def max(self, array):
+        assert array.flags.c_contiguous
         self.comm.max(array)
 
     def all_gather(self, a, b):
+        if a is not None:
+            assert a.flags.c_contiguous
+        if b is not None:
+            assert b.flags.c_contiguous
+
         self.comm.all_gather(a, b)
 
     def gather(self, a, rank, b):
+        if a is not None:
+            assert a.flags.c_contiguous
+        if b is not None:
+            assert b.flags.c_contiguous
         if isinstance(a, np.ndarray):
             self.comm.gather(a, rank, b)
         else:
@@ -51,6 +62,9 @@ class CuPyMPI:
                 b[:] = cp.asarray(c)
 
     def scatter(self, fro, to, root=0):
+        if fro is not None:
+            assert fro.flags.c_contiguous
+        assert to.flags.c_contiguous
         if isinstance(to, np.ndarray):
             self.comm.scatter(fro, to, root)
             return
@@ -63,6 +77,7 @@ class CuPyMPI:
         to[:] = cp.asarray(b)
 
     def broadcast(self, a, root):
+        assert a.flags.c_contiguous
         if isinstance(a, np.ndarray):
             self.comm.broadcast(a, root)
             return
@@ -71,6 +86,7 @@ class CuPyMPI:
         a[...] = cp.asarray(b)
 
     def receive(self, a, rank, tag=0, block=True):
+        assert a.flags.c_contiguous
         if isinstance(a, np.ndarray):
             return self.comm.receive(a, rank, tag, block)
         b = np.empty(a.shape, a.dtype)
@@ -81,12 +97,14 @@ class CuPyMPI:
         return CuPyRequest(req, b, a)
 
     def ssend(self, a, rank, tag):
+        assert a.flags.c_contiguous
         if isinstance(a, np.ndarray):
             self.comm.ssend(a, rank, tag)
         else:
             self.comm.ssend(a.get(), rank, tag)
 
     def send(self, a, rank, tag=0, block=True):
+        assert a.flags.c_contiguous
         if isinstance(a, np.ndarray):
             return self.comm.send(a, rank, tag, block)
         b = a.get()
@@ -97,6 +115,8 @@ class CuPyMPI:
     def alltoallv(self,
                   fro, ssizes, soffsets,
                   to, rsizes, roffsets):
+        assert fro.flags.c_contiguous
+        assert to.flags.c_contiguous
         a = np.empty(to.shape, to.dtype)
         self.comm.alltoallv(fro.get(), ssizes, soffsets,
                             a, rsizes, roffsets)

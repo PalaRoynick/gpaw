@@ -7,10 +7,12 @@ from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.typing import Array1D, ArrayND
 from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.new.timer import trace
 
 __all__ = ['GPU_AWARE_MPI']
-
-GPU_AWARE_MPI = getattr(cgpaw, 'gpu_aware_mpi', False)
+import os
+GPU_AWARE_MPI = bool(int(os.environ.get('MPICH_GPU_SUPPORT_ENABLED', 0)))
+# getattr(cgpaw, 'gpu_aware_mpi', False)
 GPU_ENABLED = getattr(cgpaw, 'GPU_ENABLED', False)
 
 
@@ -66,9 +68,13 @@ def pwlfc_expand(f_Gs, emiGR_Ga, Y_GL,
         if cc:
             np.conjugate(f_Gi, f_Gi)
         if real:
+            if f_GI[::2, I1:I2].shape != f_Gi.real.shape:
+                print('XXX', f_GI.shape, I1, I2, f_GI[::2, I1:I2].shape, f_GI.real.shape)
             f_GI[::2, I1:I2] = f_Gi.real
             f_GI[1::2, I1:I2] = f_Gi.imag
         else:
+            if f_GI[:, I1:I2].shape != f_Gi.shape:
+                print('XXX', f_GI.shape, I1, I2, f_GI[:, I1:I2].shape)
             f_GI[:, I1:I2] = f_Gi
         I1 = I2
 
@@ -150,15 +156,35 @@ def pw_norm_kinetic_gpu(result_x, a_xG, kin_G):
     else:
         result_x[:] = cp.sum(cp.abs(a_xG)**2 * kin_G[None, :], axis=1)
 
+                                
+def pwlfc_expand_and_add_gpu(*args, **kwargs):
+    raise NotImplementedError
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
     from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa
-                            pwlfc_expand, symmetrize_ft)
+                            #pwlfc_expand, 
+                            symmetrize_ft)
 
     if GPU_ENABLED:
         from gpaw.cgpaw import add_to_density_gpu  # noqa
-        from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
-                                dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
-                                evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
-                                pw_insert_gpu, pwlfc_expand_gpu,
-                                pw_norm_kinetic_gpu, pw_norm_gpu)
+        #from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
+        #                        dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
+        #                        evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
+        #                        pw_insert_gpu, # DISABLED PW_INSERT
+        #                        pwlfc_expand_gpu,
+        #                        pwlfc_expand_and_add_gpu,
+        #                        pw_norm_kinetic_gpu, pw_norm_gpu)
+        print('Python version of every kernel')
+        # This is somewhat useless to trace the kernels in CPU
+        w = trace(kernel=True)
+        add_to_density_gpu = w(add_to_density_gpu)
+        calculate_residuals_gpu = w(calculate_residuals_gpu)
+        dH_aii_times_P_ani_gpu = w(dH_aii_times_P_ani_gpu)
+        evaluate_lda_gpu = w(evaluate_lda_gpu)
+        evaluate_pbe_gpu = w(evaluate_pbe_gpu)
+        pw_amend_insert_realwf_gpu = w(pw_amend_insert_realwf_gpu)
+        pw_insert_gpu = w(pw_insert_gpu)
+        pwlfc_expand_gpu = w(pwlfc_expand_gpu)
+        pwlfc_expand_and_add_gpu = w(pwlfc_expand_and_add_gpu)
+        pw_norm_kinetic_gpu = w(pw_norm_kinetic_gpu)
+        pw_norm_gpu = w(pw_norm_gpu)

@@ -191,17 +191,29 @@ PyObject* axpbyz_gpu(PyObject *self, PyObject *args);
 PyObject* axpbz_gpu(PyObject *self, PyObject *args);
 PyObject* fill_gpu(PyObject *self, PyObject *args);
 PyObject* pwlfc_expand_gpu(PyObject *self, PyObject *args);
+PyObject* pwlfc_expand_and_add_gpu(PyObject *self, PyObject *args);
+PyObject* pwlfc_expand_and_integrate_gpu(PyObject *self, PyObject *args);
 PyObject* pw_insert_gpu(PyObject *self, PyObject *args);
 PyObject* pw_norm_kinetic_gpu(PyObject *self, PyObject *args);
 PyObject* pw_norm_gpu(PyObject *self, PyObject *args);
-
 PyObject* pw_amend_insert_realwf_gpu(PyObject *self, PyObject *args);
 PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
 PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
+
+#endif // GPAW_GPU
+
+#ifdef GPAW_WITH_MAGMA
+#include "magma_gpaw.h"
+PyObject* eigh_magma_dsyevd(PyObject* self, PyObject* args);
+PyObject* eigh_magma_zheevd(PyObject* self, PyObject* args);
+#ifdef GPAW_GPU
+PyObject* eigh_magma_dsyevd_gpu(PyObject* self, PyObject* args);
+PyObject* eigh_magma_zheevd_gpu(PyObject* self, PyObject* args);
 #endif
+#endif // GPAW_WITH_MAGMA
 
 static PyMethodDef functions[] = {
     {"pawexxvv", pawexxvv, METH_VARARGS, 0},
@@ -363,6 +375,8 @@ static PyMethodDef functions[] = {
     {"axpbz_gpu", axpbz_gpu, METH_VARARGS, 0},
     {"fill_gpu", fill_gpu, METH_VARARGS, 0},
     {"pwlfc_expand_gpu", pwlfc_expand_gpu, METH_VARARGS, 0},
+    {"pwlfc_expand_and_add_gpu", pwlfc_expand_and_add_gpu, METH_VARARGS, 0},
+    {"pwlfc_expand_and_integrate_gpu", pwlfc_expand_and_integrate_gpu, METH_VARARGS, 0},
     {"pw_insert_gpu", pw_insert_gpu, METH_VARARGS, 0},
     {"pw_norm_kinetic_gpu", pw_norm_kinetic_gpu, METH_VARARGS, 0},
     {"pw_norm_gpu", pw_norm_gpu, METH_VARARGS, 0},
@@ -372,7 +386,19 @@ static PyMethodDef functions[] = {
     {"evaluate_lda_gpu", evaluate_lda_gpu, METH_VARARGS, 0},
     {"evaluate_pbe_gpu", evaluate_pbe_gpu, METH_VARARGS, 0},
     {"calculate_residuals_gpu", calculate_residual_gpu, METH_VARARGS, 0},
+
 #endif // GPAW_GPU
+
+#ifdef GPAW_WITH_MAGMA
+{"eigh_magma_dsyevd", eigh_magma_dsyevd, METH_VARARGS, 0},
+{"eigh_magma_zheevd", eigh_magma_zheevd, METH_VARARGS, 0},
+#ifdef GPAW_GPU
+{"eigh_magma_dsyevd_gpu", eigh_magma_dsyevd_gpu, METH_VARARGS, 0},
+{"eigh_magma_zheevd_gpu", eigh_magma_zheevd_gpu, METH_VARARGS, 0},
+#endif
+#endif // GPAW_WITH_MAGMA
+
+
     {0, 0, 0, 0}
 };
 
@@ -392,6 +418,14 @@ extern PyTypeObject lxcXCFunctionalType;
 #endif
 
 
+static void gpaw_module_cleanup(void *m)
+{
+#ifdef GPAW_WITH_MAGMA
+    // Assuming GPAW calls magma_init() during module startup
+    magma_finalize();
+#endif
+}
+
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "_gpaw",
@@ -401,7 +435,7 @@ static struct PyModuleDef moduledef = {
     NULL,
     NULL,
     NULL,
-    NULL
+    gpaw_module_cleanup
 };
 
 static PyObject* moduleinit(void)
@@ -466,6 +500,23 @@ static PyObject* moduleinit(void)
     PyObject_SetAttrString(m, "have_openmp", Py_True);
 #else
     PyObject_SetAttrString(m, "have_openmp", Py_False);
+#endif
+
+#ifdef GPAW_WITH_MAGMA
+    PyObject_SetAttrString(m, "have_magma", Py_True);
+
+    // MAGMA needs to be globally initialized, but keeps track of accumulated
+    // magma_init() calls. So it's safe to call it inside GPAW, even if other
+    // libs are also doing it.
+
+    // FIXME: Where should GPAW call magma_init()?
+    // Should not be in GPU-specific init because magma can work without GPU too.
+    // However it needs to come AFTER cudaSetValidDevices and cudaSetDeviceFlags.
+    // Calling it here could become a problem if Python-side GPU init does more than setDevice(...)
+    magma_init();
+
+#else
+    PyObject_SetAttrString(m, "have_magma", Py_False);
 #endif
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
     PyObject_SetAttrString(m, "version", PyLong_FromLong(9));

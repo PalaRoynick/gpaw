@@ -130,11 +130,14 @@ def precondition(psit_nG: PWArray,
 
 
 @cp.fuse()
-def gpu_prec(ekin, G2, residual):
+def _gpu_prec(ekin, G2, residual):
     x = 1 / ekin / 3 * G2
     a = 27.0 + x * (18.0 + x * (12.0 + x * 8.0))
     xx = x * x
     return -4.0 / 3 / ekin * a / (a + 16.0 * xx * xx) * residual
+
+
+gpu_prec: Callable = trace(kernel=True)(_gpu_prec)
 
 
 def spinor_precondition(psit_nsG, residual_nsG, out):
@@ -193,23 +196,25 @@ class SpinorPWHamiltonian(Hamiltonian):
         return spinor_precondition
 
 
+@trace
 def apply_local_potential_gpu(vt_R,
                               psit_nG,
                               out_nG,
-                              blocksize=10):
+                              blocksize=50):
     from gpaw.gpu import cupyx
     pw = psit_nG.desc
     e_kin_G = cp.asarray(pw.ekin_G)
     mynbands = psit_nG.mydims[0]
     size_c = vt_R.desc.size_c
+    w = trace(kernel=True)
     if np.issubdtype(pw.dtype, np.floating):
         shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
-        ifftn = cupyx.scipy.fft.irfftn
-        fftn = cupyx.scipy.fft.rfftn
+        ifftn = w(cupyx.scipy.fft.irfftn)
+        fftn = w(cupyx.scipy.fft.rfftn)
     else:
         shape = tuple(size_c)
-        ifftn = cupyx.scipy.fft.ifftn
-        fftn = cupyx.scipy.fft.fftn
+        ifftn = w(cupyx.scipy.fft.ifftn)
+        fftn = w(cupyx.scipy.fft.fftn)
     Q_G = cp.asarray(pw.indices(shape))
     psit_bQ = None
     for b1 in range(0, mynbands, blocksize):

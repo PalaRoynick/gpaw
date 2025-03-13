@@ -29,7 +29,11 @@ libraries += ['fftw3']
 scalapack = True
 
 # Libxc
-libraries += ['xc']
+#libraries += ['xc']
+nolibxc = True
+
+magma = True
+libraries += ['magma']
 
 define_macros += [('GPAW_ASYNC', 1)]
 
