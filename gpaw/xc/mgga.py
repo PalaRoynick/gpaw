@@ -133,7 +133,7 @@ class MGGA(XCFunctional):
                 self.dedtaut_sG[s] * (taut_sG[s] -
                                       self.tauct_G / self.wfs.nspins))
 
-    def stress_tensor_contribution(self, n_sg):
+    def stress_tensor_contribution(self, n_sg, skip_sum=False):
         sigma_xg, dedsigma_xg, gradn_svg = gga_vars(self.gd, self.grad_v, n_sg)
         taut_sG = self.wfs.calculate_kinetic_energy_density()
         if taut_sG is None:
@@ -188,7 +188,8 @@ class MGGA(XCFunctional):
         for s in range(self.wfs.nspins):
             self.restrict_and_collect(dedtaut_sg[s], self.dedtaut_sG[s])
 
-        self.gd.comm.sum(stress_vv)
+        if not skip_sum:
+            self.gd.comm.sum(stress_vv)
         return stress_vv
 
     def apply_orbital_dependent_hamiltonian(self, kpt, psit_xG,
