@@ -167,14 +167,14 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
 
     if GPU_ENABLED:
         from gpaw.cgpaw import add_to_density_gpu  # noqa
-        #from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
-        #                        dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
-        #                        evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
-        #                        pw_insert_gpu, # DISABLED PW_INSERT
-        #                        pwlfc_expand_gpu,
-        #                        pwlfc_expand_and_add_gpu,
-        #                        pw_norm_kinetic_gpu, pw_norm_gpu)
-        print('Python version of every kernel')
+        from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
+                                dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
+                                evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
+                                pw_insert_gpu, # DISABLED PW_INSERT
+                                pwlfc_expand_gpu,
+                                pwlfc_expand_and_add_gpu,
+                                pw_norm_kinetic_gpu, pw_norm_gpu)
+        #print('Python version of every kernel')
         # This is somewhat useless to trace the kernels in CPU
         w = trace(kernel=True)
         add_to_density_gpu = w(add_to_density_gpu)

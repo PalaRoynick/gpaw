@@ -88,18 +88,21 @@ def test_eigh_magma_cpu(eigh_test_matrix: np.ndarray,
                     reason="MAGMA GPU tests disabled for fake cupy")
 @pytest.mark.gpu
 @pytest.mark.parametrize("matrix_size, matrix_type, uplo",
-                         [(16, 'symmetric', 'L'),
-                          (150, 'hermitian', 'L'),
-                          (256, 'symmetric', 'U')])
+                         [(160, 'symmetric', 'L'),
+                          (1500, 'hermitian', 'L'),
+                          (2560, 'symmetric', 'U')])
 def test_eigh_magma_gpu(eigh_test_matrix: cp.ndarray,
                         matrix_size: int,
                         matrix_type: str,
                         uplo: str):
     """Compare eigh output of CUPY and MAGMA"""
 
+    from gpaw.utilities.memory import maxrss
     arr = eigh_test_matrix(matrix_size, type=matrix_type, backend='cupy')
-    eigvals, eigvects = eigh_magma_gpu(arr, uplo)
-
+    for i in range(40):
+        eigvals, eigvects = eigh_magma_gpu(arr, uplo)
+        print(i, maxrss())
+    return
     eigvals_cp, eigvects_cp = cp.linalg.eigh(arr, UPLO=uplo)
 
     fix_eigenvector_phase(eigvects)

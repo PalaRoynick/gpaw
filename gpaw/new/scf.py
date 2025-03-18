@@ -78,6 +78,9 @@ class SCFLoop:
             dens_error = 0.0
 
         for self.niter in itertools.count(start=1):
+            from gpaw.utilities.memory import maxrss
+            log(f'Memory from maxrss {maxrss()}')
+
             wfs_error, energies = self.eigensolver.iterate(
                 ibzwfs, density, potential,
                 self.hamiltonian, pot_calc, energies)
