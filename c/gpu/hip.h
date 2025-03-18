@@ -19,13 +19,18 @@
 #define gpuDeviceProp             hipDeviceProp_t
 
 #define gpuDoubleComplex          hipDoubleComplex
+#define gpuFloatComplex           hipFloatComplex
 #define gpublasDoubleComplex      hipblasDoubleComplex
 #define make_gpuDoubleComplex     make_hipDoubleComplex
+#define make_gpuFloatComplex      make_hipFloatComplex
 #define gpuCreal                  hipCreal
 #define gpuCimag                  hipCimag
 #define gpuCadd                   hipCadd
+#define gpuCaddf                  hipCaddf
 #define gpuCsub                   hipCsub
+#define gpuCsubf                  hipCsubf
 #define gpuCmul                   hipCmul
+#define gpuCmulf                  hipCmulf
 #define gpuConj                   hipConj
 
 #define gpuCheckLastError()       gpuSafeCall(hipGetLastError())
