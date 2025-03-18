@@ -8,7 +8,8 @@ from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
 from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.lfc import LocalizedFunctionsCollection as LFC
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import zips, trace
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.spline import Spline
 from gpaw.typing import Array1D, ArrayLike2D
 from gpaw.gpu import XP

@@ -11,7 +11,8 @@ from gpaw.core.plane_waves import PWDesc
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.gpu import as_np
 from gpaw.mpi import MPIComm
-from gpaw.new import trace, zips
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.typing import Array3D, Vector
 from gpaw.utilities import unpack_hermitian, unpack_density
 from gpaw.new.symmetry import SymmetrizationPlan, GPUSymmetrizationPlan

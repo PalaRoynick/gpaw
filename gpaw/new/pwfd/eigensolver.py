@@ -10,7 +10,8 @@ from ase.units import Ha
 from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.mpi import broadcast_exception, broadcast_float
-from gpaw.new import trace, zips
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.new.c import calculate_residuals_gpu
 from gpaw.new.eigensolver import Eigensolver
 from gpaw.new.energies import DFTEnergies

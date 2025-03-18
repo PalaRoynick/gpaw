@@ -11,7 +11,7 @@ from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.typing import Array2D
-from gpaw.new import trace, trace2
+from gpaw.new.timer import trace, trace2
 
 
 class Davidson(PWFDEigensolver):

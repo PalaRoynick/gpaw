@@ -14,7 +14,8 @@ from gpaw.electrostatic_potential import ElectrostaticPotential
 from gpaw.gpu import as_np
 from gpaw.mpi import broadcast as bcast
 from gpaw.mpi import broadcast_float, world
-from gpaw.new import trace, zips
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions

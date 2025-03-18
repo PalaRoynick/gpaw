@@ -10,7 +10,8 @@ from gpaw.core.uniform_grid import UGArray
 from gpaw.ffbt import rescaled_fourier_bessel_transform
 from gpaw.gpu import cupy_is_fake, gpu_gemm
 # from gpaw.lfc import BaseLFC
-from gpaw.new import prod, trace
+from gpaw.new import prod
+from gpaw.new.timer import trace
 from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu #, pwlfc_expand_and_add_gpu
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
@@ -203,8 +204,8 @@ class PWLFC:  # (BaseLFC)
         self.I_J = xp.asarray(self.I_J)
 
         self.l_s[self.s_J]
-        print('l_s size', self.l_s.shape)
-        print('s_J max', xp.max(self.s_J))
+        #print('l_s size', self.l_s.shape)
+        #print('s_J max', xp.max(self.s_J))
         self.initialized = True
 
     def get_function_count(self, a):

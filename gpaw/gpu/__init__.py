@@ -4,7 +4,7 @@ from time import time
 from typing import TYPE_CHECKING
 from types import ModuleType
 from collections.abc import Iterable
-from gpaw.new import trace
+from gpaw.new.timer import trace
 
 import numpy as np
 
@@ -167,7 +167,6 @@ def cupy_eigh(a: cupy.ndarray, UPLO: str) -> tuple[cupy.ndarray, cupy.ndarray]:
     """
     from scipy.linalg import eigh
     from gpaw.cgpaw import have_magma
-
     if not is_hip:
         return cupy.linalg.eigh(a, UPLO=UPLO)
 

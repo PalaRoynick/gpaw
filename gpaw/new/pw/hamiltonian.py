@@ -7,7 +7,8 @@ from gpaw.core.plane_waves import PWArray
 from gpaw.core.uniform_grid import UGArray
 from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.gpu import cupy as cp
-from gpaw.new import trace, zips
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.c import pw_precond, pw_insert_gpu
 from gpaw.utilities import as_complex_dtype

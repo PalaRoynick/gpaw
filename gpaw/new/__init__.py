@@ -8,8 +8,6 @@ if TYPE_CHECKING:
     from gpaw.core import UGArray
 
 
-from gpaw.new.timer import trace, trace2  # noqa
-
 
 def prod(iterable: Iterable[int]) -> int:
     """Simple int product.

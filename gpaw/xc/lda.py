@@ -2,7 +2,7 @@ from math import sqrt, pi
 
 import numpy as np
 
-from gpaw.new import trace
+from gpaw.new.timer import trace
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.xc.functional import XCFunctional
 

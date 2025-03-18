@@ -36,6 +36,14 @@ def test_single_precision(dtype, gpu):
                          [np.complex128,
                           np.complex64,
                           np.float64,
+                          np.float32,
+                         np.complex128,
+                          np.complex64,
+                          np.float64,
+                          np.float32,
+                         np.complex128,
+                          np.complex64,
+                          np.float64,
                           np.float32])
 def test_single_precision_gpu(dtype):
     run_single_precision(dtype=dtype, gpu='True')

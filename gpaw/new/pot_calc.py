@@ -19,7 +19,8 @@ import numpy as np
 from gpaw.core.arrays import DistributedArrays
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
-from gpaw.new import trace, zips
+from gpaw.new import zips
+from gpaw.new.timer import trace
 from gpaw.new.potential import Potential
 from gpaw.new.xc import Functional
 from gpaw.setup import Setup

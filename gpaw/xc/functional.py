@@ -1,6 +1,6 @@
 import numpy as np
 from gpaw.xc.kernel import XCKernel
-from gpaw.new import trace
+from gpaw.new.timer import trace
 
 
 class XCFunctional:

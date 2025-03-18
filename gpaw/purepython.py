@@ -8,7 +8,10 @@ from gpaw.gpu import cupy as cp, cupy_is_fake
 from gpaw.typing import Array1D, ArrayND
 
 have_openmp = False
+have_magma = False
 
+class Operator:
+    pass
 
 def gpaw_gpu_init():
     pass
