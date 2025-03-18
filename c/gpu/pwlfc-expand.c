@@ -32,7 +32,8 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
                                     int natoms,
                                     int nsplines,
                                     bool cc);
-    
+
+/*    
 void pwlfc_expand_and_add_gpu_launch_kernel(int itemsize,
                                     double* f_Gs,
                                     gpuDoubleComplex *emiGR_Ga,
@@ -70,7 +71,7 @@ void pwlfc_expand_and_integrate_gpu_launch_kernel(int itemsize,
                                     double* c_xI,
                                     double* a_xG,
                                     double alpha);
-
+*/
 void pw_insert_gpu_launch_kernel(
                              int dtypenum,
                              int nb,
@@ -285,6 +286,7 @@ PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+/*
 PyObject* pwlfc_expand_and_add_gpu(PyObject* self, PyObject* args)
 {
     PyObject *f_Gs_obj;
@@ -329,7 +331,9 @@ PyObject* pwlfc_expand_and_add_gpu(PyObject* self, PyObject* args)
                                            nx, c_xI, a_xG, alpha);
     Py_RETURN_NONE;
 }
+*/
 
+/*
 PyObject* pwlfc_expand_and_integrate_gpu(PyObject* self, PyObject* args)
 {
     PyObject *f_Gs_obj;
@@ -374,7 +378,7 @@ PyObject* pwlfc_expand_and_integrate_gpu(PyObject* self, PyObject* args)
                                            nx, c_xI, a_xG, alpha);
     Py_RETURN_NONE;
 }
-
+*/
 
 PyObject* pwlfc_expand_gpu(PyObject* self, PyObject* args)
 {

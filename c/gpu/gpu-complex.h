@@ -63,6 +63,7 @@ __host__ __device__ static __inline__ gpuDoubleComplex gpuCmulD(
 }
 
 #ifdef __cplusplus
+
 __host__ __device__ static __inline__ gpuDoubleComplex operator*(
         gpuDoubleComplex x, double y)
 {

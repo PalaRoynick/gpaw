@@ -11,7 +11,7 @@ from gpaw.ffbt import rescaled_fourier_bessel_transform
 from gpaw.gpu import cupy_is_fake, gpu_gemm
 # from gpaw.lfc import BaseLFC
 from gpaw.new import prod, trace
-from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu, pwlfc_expand_and_add_gpu
+from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu #, pwlfc_expand_and_add_gpu
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
 from gpaw.utilities import as_complex_dtype, as_real_dtype

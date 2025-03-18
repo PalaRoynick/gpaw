@@ -1,9 +1,6 @@
 import pytest
 
 def test_irfftn_patch():
-    from gpaw.gpu import is_hip
-    if not is_hip:
-        pytest.skip('Only with hip')
     import cupyx
     import cupy as xp
     from gpaw.fftw import irfftn_patch
