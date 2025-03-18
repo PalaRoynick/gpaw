@@ -8,8 +8,6 @@ from gpaw.new import trace
 
 import numpy as np
 
-from gpaw.cgpaw import have_magma
-
 cupy_is_fake = True
 """True if :mod:`cupy` has been replaced by ``gpaw.gpu.cpupy``"""
 
@@ -168,6 +166,8 @@ def cupy_eigh(a: cupy.ndarray, UPLO: str) -> tuple[cupy.ndarray, cupy.ndarray]:
     MAGMA is not available.
     """
     from scipy.linalg import eigh
+    from gpaw.cgpaw import have_magma
+
     if not is_hip:
         return cupy.linalg.eigh(a, UPLO=UPLO)
 
