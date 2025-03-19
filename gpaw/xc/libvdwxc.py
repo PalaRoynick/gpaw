@@ -5,7 +5,8 @@ from gpaw.utilities import compiled_with_libvdwxc
 from gpaw.utilities.grid_redistribute import Domains, general_redistribute
 from gpaw.utilities.timing import nulltimer
 from gpaw.xc.functional import XCFunctional
-from gpaw.xc.gga import GGA, gga_vars, add_gradient_correction
+from gpaw.xc.lda import stress_lda_term
+from gpaw.xc.gga import GGA, gga_vars, add_gradient_correction, stress_gga_term
 from gpaw.xc.libxc import LibXC
 from gpaw.xc.mgga import MGGA
 import gpaw
@@ -135,13 +136,11 @@ class LibVDWXC:
             # assert arr.shape == self.shape, [arr.shape, self.shape]
         if get_stress:
             stress_vv = np.zeros((3, 3))
-            energy = cgpaw.libvdwxc_stress(self._ptr, stress_vv, n_sg,
-                                           sigma_xg, dedn_sg, dedsigma_xg)
-            return energy, stress_vv
         else:
-            energy = cgpaw.libvdwxc_calculate(self._ptr, n_sg, sigma_xg,
-                                              dedn_sg, dedsigma_xg)
-            return energy
+            stress_vv = None
+        energy = cgpaw.libvdwxc_calculate(self._ptr, stress_vv, n_sg,
+                                          sigma_xg, dedn_sg, dedsigma_xg)
+        return energy, stress_vv
 
     def get_description(self):
         if self.mode == 'serial':
@@ -191,15 +190,13 @@ class RedistWrapper:
         self.timer.stop('redistribute')
 
         self.timer.start('libvdwxc nonlocal')
-        energy = self.libvdwxc.calculate(nblock_sg, sigmablock_xg,
-                                         vblock_sg, dedsigmablock_xg,
-                                         get_stress=get_stress)
+        energy, stress = self.libvdwxc.calculate(nblock_sg, sigmablock_xg,
+                                                 vblock_sg, dedsigmablock_xg,
+                                                 get_stress=get_stress)
         self.timer.stop('libvdwxc nonlocal')
+        energy *= self.vdwcoef
         if get_stress:
-            energy[1][:] *= self.vdwcoef
-            energy = (energy[0] * self.vdwcoef, energy[1])
-        else:
-            energy *= self.vdwcoef
+            stress[:] *= self.vdwcoef
         for arr in vblock_sg, dedsigmablock_xg:
             arr *= self.vdwcoef
 
@@ -207,7 +204,7 @@ class RedistWrapper:
         self.distribution.block2gd_add(vblock_sg, v_sg)
         self.distribution.block2gd_add(dedsigmablock_xg, dedsigma_xg)
         self.timer.stop('redistribute')
-        return energy
+        return energy, stress
 
 
 class FFTDistribution:
@@ -465,7 +462,7 @@ class VDWXC(XCFunctional):
         self.timer.stop('semilocal')
 
         energy_nonlocal = self.redist_wrapper.calculate(n_sg, sigma_xg,
-                                                        v_sg, dedsigma_xg)
+                                                        v_sg, dedsigma_xg)[0]
         # Note: Redistwrapper handles vdwcoef.  For now
 
         add_gradient_correction(grad_v, gradn_svg, sigma_xg, dedsigma_xg, v_sg)
@@ -488,42 +485,20 @@ class VDWXC(XCFunctional):
         v_sg = np.zeros_like(n_sg)
         dedsigma_xg = np.zeros_like(sigma_xg)
 
-        enl, stress_vv = self.redist_wrapper.calculate(n_sg, sigma_xg,
-                                                     v_sg, dedsigma_xg,
-                                                     get_stress=True)
+        stress_vv = self.redist_wrapper.calculate(n_sg, sigma_xg,
+                                                  v_sg, dedsigma_xg,
+                                                  get_stress=True)[1]
 
-        def integrate(a1_g, a2_g=None):
-            return self.gd.integrate(a1_g, a2_g, global_integral=False)
+        stress_vv += stress_lda_term(self.gd, None, n_sg, v_sg)
+        stress_vv += stress_gga_term(self.gd, sigma_xg, gradn_svg, dedsigma_xg)
 
-        P = 0
-        for v_g, n_g in zip(v_sg, n_sg):
-            P -= integrate(v_g, n_g)
-        for sigma_g, dedsigma_g in zip(sigma_xg, dedsigma_xg):
-            P -= 2 * integrate(sigma_g, dedsigma_g)
-
-        stress_vv += P * np.eye(3)
-        for v1 in range(3):
-            for v2 in range(3):
-                stress_vv[v1, v2] -= integrate(gradn_svg[0, v1] *
-                                               gradn_svg[0, v2],
-                                               dedsigma_xg[0]) * 2
-                if nspins == 2:
-                    stress_vv[v1, v2] -= integrate(gradn_svg[0, v1] *
-                                                   gradn_svg[1, v2],
-                                                   dedsigma_xg[1]) * 2
-                    stress_vv[v1, v2] -= integrate(gradn_svg[1, v1] *
-                                                   gradn_svg[1, v2],
-                                                   dedsigma_xg[2]) * 2
         if not skip_sum:
             self.gd.comm.sum(stress_vv)
         return stress_vv + stress0_vv
 
     @property
     def dedtaut_sG(self):
-        if hasattr(self.semilocal_xc, "dedtaut_sG"):
-            return self.semilocal_xc.dedtaut_sG
-        else:
-            raise ValueError("This vdW functional does not have dedtau_sG")
+        return self.semilocal_xc.dedtaut_sG
 
     @property
     def tauct(self):
