@@ -165,55 +165,6 @@ PyObject* libvdwxc_calculate(PyObject* self, PyObject* args)
     return Py_BuildValue("d", energy);
 }
 
-PyObject* libvdwxc_stress(PyObject* self, PyObject* args)
-{
-    PyObject *vdwxc_obj;
-    PyArrayObject *stress_obj, *rho_obj, *sigma_obj,
-		  *dedn_obj, *dedsigma_obj;
-    if(!PyArg_ParseTuple(args, "OOOOOO",
-                         &vdwxc_obj, &stress_obj, &rho_obj, &sigma_obj,
-                         &dedn_obj, &dedsigma_obj)) {
-        return NULL;
-    }
-    double *stress_vv = (double*)PyArray_DATA(stress_obj);
-    vdwxc_data* vdw = unpack_vdwxc_pointer(vdwxc_obj);
-    int nspins = PyArray_DIM(rho_obj, 0);
-    double energy;
-    if (nspins == 1) {
-        double* rho_g = (double*)PyArray_DATA(rho_obj);
-        double* sigma_g = (double*)PyArray_DATA(sigma_obj);
-        double* dedn_g = (double*)PyArray_DATA(dedn_obj);
-        double* dedsigma_g = (double*)PyArray_DATA(dedsigma_obj);
-        energy = vdwxc_stress(*vdw, stress_vv, rho_g, sigma_g,
-			      dedn_g, dedsigma_g);
-    } else if (nspins == 2) {
-        // We actually only need two sigmas/dedsigmas.
-        // The third one came along because that's what usually happens,
-        // but we could save it entirely.
-        assert(PyArray_DIM(sigma_obj, 0) == 3);
-        assert(PyArray_DIM(dedn_obj, 0) == 2);
-        assert(PyArray_DIM(dedsigma_obj, 0) == 3);
-#ifdef VDWXC_HAS_SPIN
-        energy = vdwxc_stress_spin(*vdw,
-                                   stress_vv,
-                                   (double*)PyArray_GETPTR1(rho_obj, 0),
-                                   (double*)PyArray_GETPTR1(rho_obj, 1),
-                                   (double*)PyArray_GETPTR1(sigma_obj, 0),
-                                   (double*)PyArray_GETPTR1(sigma_obj, 2),
-                                   (double*)PyArray_GETPTR1(dedn_obj, 0),
-                                   (double*)PyArray_GETPTR1(dedn_obj, 1),
-                                   (double*)PyArray_GETPTR1(dedsigma_obj, 0),
-                                   (double*)PyArray_GETPTR1(dedsigma_obj, 2));
-#else
-        return NULL;
-#endif
-    } else {
-        PyErr_SetString(PyExc_ValueError, "Expected 1 or 2 spins");
-        return NULL;
-    }
-    return Py_BuildValue("d", energy);
-}
-
 PyObject* libvdwxc_tostring(PyObject* self, PyObject* args)
 {
     PyObject *vdwxc_obj;
