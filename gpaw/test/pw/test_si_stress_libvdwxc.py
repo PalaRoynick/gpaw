@@ -2,13 +2,18 @@ import numpy as np
 import pytest
 from ase.build import bulk
 
-from gpaw import GPAW, PW, Mixer
+from gpaw import GPAW, PW, Mixer, cgpaw
 from gpaw.mpi import world
 from gpaw.xc.libvdwxc import vdw_df
 
 
+skip_reason = "libvdwxc version does not implement stress"
+
+
 @pytest.mark.stress
+@pytest.mark.skipif(not cgpaw.libvdwxc_has_stress(), reason=skip_reason)
 def test_pw_si_stress_libvdwxc(in_tmp_dir, gpaw_new):
+    assert cgpaw.libvdwxc_has_spin() and cgpaw.libvdwxc_has_stress()
     si = bulk('Si')
     si.calc = GPAW(mode=PW(200),
                    mixer=Mixer(0.7, 5, 50.0),

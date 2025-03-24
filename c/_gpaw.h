@@ -137,6 +137,8 @@ PyObject* papi_mem_info(PyObject *self, PyObject *args);
 #ifdef GPAW_WITH_LIBVDWXC
 PyObject* libvdwxc_create(PyObject *self, PyObject *args);
 PyObject* libvdwxc_has(PyObject* self, PyObject *args);
+PyObject* libvdwxc_has_spin(PyObject* self, PyObject *args);
+PyObject* libvdwxc_has_stress(PyObject* self, PyObject *args);
 PyObject* libvdwxc_init_serial(PyObject *self, PyObject *args);
 PyObject* libvdwxc_calculate(PyObject *self, PyObject *args);
 PyObject* libvdwxc_tostring(PyObject *self, PyObject *args);
@@ -319,6 +321,8 @@ static PyMethodDef functions[] = {
 #ifdef GPAW_WITH_LIBVDWXC
     {"libvdwxc_create", libvdwxc_create, METH_VARARGS, 0},
     {"libvdwxc_has", libvdwxc_has, METH_VARARGS, 0},
+    {"libvdwxc_has_spin", libvdwxc_has_spin, METH_VARARGS, 0},
+    {"libvdwxc_has_stress", libvdwxc_has_stress, METH_VARARGS, 0},
     {"libvdwxc_init_serial", libvdwxc_init_serial, METH_VARARGS, 0},
     {"libvdwxc_calculate", libvdwxc_calculate, METH_VARARGS, 0},
     {"libvdwxc_tostring", libvdwxc_tostring, METH_VARARGS, 0},
