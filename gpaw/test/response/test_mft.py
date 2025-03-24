@@ -266,7 +266,7 @@ def test_NiO_withU(in_tmp_dir):
     etest_q = np.array([0., -0.22697916, -0.00113986])
     assert np.allclose(e_q, etest_q)
 
-    
+
 @pytest.mark.response
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_site_magnetization_sum_rule(in_tmp_dir, gpw_files, qrel):
