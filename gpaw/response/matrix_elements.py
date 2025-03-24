@@ -593,8 +593,7 @@ class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
     def add_f(self, gd, n_sx, f_x):
         f_x[:] += - np.abs(calculate_LSDA_Wxc(gd, n_sx))
 
-    def _add_paw_correction(self, P1_Amyti, P2_Amyti,
-                            matrix_element: SiteMatrixElement):
+    def _add_paw_correction(self, P1_Amyti, P2_Amyti, matrix_element):
         # Add usual PAW correction to d^(xc,ap)
         super()._add_paw_correction(P1_Amyti, P2_Amyti, matrix_element)
         # If relevant, add Hubbard correction to the matrix element
