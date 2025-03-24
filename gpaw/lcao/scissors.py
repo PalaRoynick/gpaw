@@ -68,7 +68,7 @@ def check_symmetries(symmetries: Symmetries,
     ValueError: A symmetry maps atom 0 onto atom 1,
     but those atoms have different scissors shifts
     """
-    b_sa = symmetries.a_sa
+    b_sa = symmetries.atommap_sa
     shift_a = []
     for ho, lu, natoms in shifts:
         shift_a += [(ho, lu)] * natoms
@@ -92,6 +92,21 @@ class ScissorsLCAOEigensolver(LCAOEigensolver):
         self.shifts = []
         for homo, lumo, natoms in shifts:
             self.shifts.append((homo / Ha, lumo / Ha, natoms))
+
+    def iterate(self,
+                ibzwfs,
+                density,
+                potential,
+                hamiltonian,
+                pot_calc=None,
+                energies=None):  # -> tuple[float, DFTEnergies]:
+        super().iterate(ibzwfs, density, potential, hamiltonian,
+                        pot_calc, energies)
+        if ibzwfs.wfs_qs[0][0]._occ_n is None:
+            error = np.nan
+        else:
+            error = 0.0
+        return error, energies
 
     def iterate1(self, wfs, matrix_calculator):
         super().iterate1(wfs, MyMatCalc(matrix_calculator, self.shifts))

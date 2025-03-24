@@ -29,6 +29,8 @@ commands = {
          '--logarithmic-derivatives', '-n', '--ngrid', '-R',
          '--rcut', '-r', '--refine', '-s',
          '--scalar-relativistic', '--no-ee-interaction'],
+    'basis':
+        ['--name', '--type'],
     'completion':
         [],
     'dataset':
@@ -53,7 +55,7 @@ commands = {
     'info':
         [],
     'install-data':
-        ['--version', '--tarball', '--list-all', '--gpaw', '--sg15',
+        ['--version', '--list-all', '--tarball', '--gpaw', '--sg15',
          '--basis', '--test', '--register', '--no-register'],
     'python':
         ['--dry-run', '-z', '-d', '--debug', '--command', '-c',

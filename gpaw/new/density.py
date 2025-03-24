@@ -14,7 +14,7 @@ from gpaw.mpi import MPIComm
 from gpaw.new import trace, zips
 from gpaw.typing import Array3D, Vector
 from gpaw.utilities import unpack_hermitian, unpack_density
-from gpaw.new.symmetry import SymmetrizationPlan
+from gpaw.new.symmetry import SymmetrizationPlan, GPUSymmetrizationPlan
 from gpaw.new.ibzwfs import IBZWaveFunctions
 
 
@@ -193,7 +193,7 @@ class Density:
 
         return ccc_aL
 
-    def normalize(self):
+    def normalize(self, background_charge: float) -> None:
         comp_charge = 0.0
         xp = self.D_asii.layout.xp
         for a, D_sii in self.D_asii.items():
@@ -204,7 +204,7 @@ class Density:
         # comp_charge could be cupy.ndarray:
         comp_charge = float(comp_charge) * sqrt(4 * pi)
         comp_charge = self.nt_sR.desc.comm.sum_scalar(comp_charge)
-        charge = comp_charge + self.charge
+        charge = comp_charge + self.charge - background_charge
         pseudo_charge = self.nt_sR[:self.ndensities].integrate().sum()
         if pseudo_charge != 0.0:
             x = -charge / pseudo_charge
@@ -246,26 +246,17 @@ class Density:
         xp = self.nt_sR.xp
         if xp is np:
             D_asii = self.D_asii.gather(broadcast=True, copy=True)
-            for a1, D_sii in self.D_asii.items():
-                D_sii[:] = 0.0
-                rotation_sii = symmetries.rotations(self.l_aj[a1], xp)
-                for a2, rotation_ii in zips(symmetries.a_sa[:, a1],
-                                            rotation_sii):
-                    D_sii += xp.einsum('ij, sjk, lk -> sil',
-                                       rotation_ii, D_asii[a2], rotation_ii)
-            self.D_asii.data *= 1.0 / len(symmetries)
+            if self.symplan is None:
+                self.symplan = SymmetrizationPlan(symmetries, self.l_aj)
+            self.symplan.apply_distributed(D_asii, self.D_asii)
         else:
             # GPU version does all the work in rank 0 for now
             D_asii = self.D_asii.gather(copy=True)
             if self.D_asii.layout.atomdist.comm.rank == 0:
                 if self.symplan is None:
-                    self.symplan = SymmetrizationPlan(xp, symmetries.rotations,
-                                                      symmetries.a_sa,
-                                                      self.l_aj,
-                                                      D_asii.layout)
-
+                    self.symplan = GPUSymmetrizationPlan(
+                        symmetries, self.l_aj, D_asii.layout)
                 self.symplan.apply(D_asii.data, D_asii.data)
-
             self.D_asii.scatter_from(D_asii)
 
     def move(self, relpos_ac, atomdist):
@@ -363,7 +354,7 @@ class Density:
 
         return magmom_v, magmom_av
 
-    def write(self, writer):
+    def write_to_gpw(self, writer, flags):
         D_asp = self.D_asii.to_cpu().to_lower_triangle().gather()
         nt_sR = self.nt_sR.to_xp(np).gather()
         if self.taut_sR is not None:
@@ -371,10 +362,11 @@ class Density:
         if D_asp is None:
             return  # let master do the writing
         writer.write(
-            density=nt_sR.data * Bohr**-3,
+            density=flags.to_storage_dtype(nt_sR.data * Bohr**-3),
             atomic_density_matrices=D_asp.data)
         if self.taut_sR is not None:
-            writer.write(ked=taut_sR.data * (Ha * Bohr**-3))
+            writer.write(ked=flags.to_storage_dtype(
+                taut_sR.data * (Ha * Bohr**-3)))
 
 
 def atomic_occupation_numbers(setup,

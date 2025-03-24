@@ -10,6 +10,7 @@ from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.c import pw_precond, pw_insert_gpu
+from gpaw.utilities import as_complex_dtype
 
 
 class PWHamiltonian(Hamiltonian):
@@ -88,11 +89,11 @@ class PWHamiltonian(Hamiltonian):
 
     def calculate_kinetic_energy(self, wfs, skip_sum=False):
         e_kin = 0.0
-        for f, psit_R in zip(wfs.myocc_n, wfs.psit_nX):
+        for f, psit_G in zip(wfs.myocc_n, wfs.psit_nX):
             if f > 1.0e-10:
-                e_kin += f * psit_R.norm2('kinetic', skip_sum=skip_sum)
+                e_kin += f * psit_G.norm2('kinetic', skip_sum=skip_sum)
         if not skip_sum:
-            e_kin = psit_R.desc.comm.sum_scalar(e_kin)
+            e_kin = psit_G.desc.comm.sum_scalar(e_kin)
             e_kin = wfs.band_comm.sum_scalar(e_kin)
         return e_kin * wfs.spin_degeneracy
 
@@ -201,7 +202,7 @@ def apply_local_potential_gpu(vt_R,
     e_kin_G = cp.asarray(pw.ekin_G)
     mynbands = psit_nG.mydims[0]
     size_c = vt_R.desc.size_c
-    if pw.dtype == float:
+    if np.issubdtype(pw.dtype, np.floating):
         shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
         ifftn = cupyx.scipy.fft.irfftn
         fftn = cupyx.scipy.fft.rfftn
@@ -215,7 +216,7 @@ def apply_local_potential_gpu(vt_R,
         b2 = min(b1 + blocksize, mynbands)
         nb = b2 - b1
         if psit_bQ is None:
-            psit_bQ = cp.empty((nb,) + shape, complex)
+            psit_bQ = cp.empty((nb,) + shape, as_complex_dtype(pw.dtype))
         elif nb < blocksize:
             psit_bQ = psit_bQ[:nb]
         psit_bQ[:] = 0.0
