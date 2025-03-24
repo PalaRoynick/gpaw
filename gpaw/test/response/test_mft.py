@@ -236,7 +236,6 @@ def test_Co_hcp(in_tmp_dir, gpw_files):
 
 
 @pytest.mark.response
-<<<<<<< HEAD
 def test_NiO_withU(in_tmp_dir):
 
     a0 = 4.17
@@ -271,9 +270,7 @@ def test_NiO_withU(in_tmp_dir):
 
 
 @pytest.mark.response
-=======
 @pytest.mark.kspair
->>>>>>> master
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_site_magnetization_sum_rule(in_tmp_dir, gpw_files, qrel):
     # Set up ground state adapter and basic parameters
