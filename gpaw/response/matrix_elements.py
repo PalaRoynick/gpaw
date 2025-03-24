@@ -646,18 +646,18 @@ class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
                                 setup.n_j,
                                 setup.N0_q,
                                 setup.hubbard_u.scale[0])
-                
+
                 N1_mm, dHU_ii = aoom(D_sii[1],
                                      setup.hubbard_u.l[0],
                                      setup.l_j,
                                      setup.n_j,
                                      setup.N0_q,
                                      setup.hubbard_u.scale[0])
-                
+
                 for il1, l1 in enumerate(nl):
                     # All indices with the given angular momentum
                     slice1_i = slice(nm_j[:nl[il1]].sum(),
-                                     nm_j[:nl[il1]].sum() + nm)             
+                                     nm_j[:nl[il1]].sum() + nm)
                     P1_myti = P1_Amyti[A][:, slice1_i]
                     for il2, l2 in enumerate(nl):
                         slice2_i = slice(nm_j[:nl[il2]].sum(),

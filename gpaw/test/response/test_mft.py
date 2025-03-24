@@ -244,14 +244,13 @@ def test_NiO_withU(in_tmp_dir):
                 xc='LDA',
                 setups={'Ni': ':d,4.0'},
                 kpts={'size': (2, 2, 2), 'gamma': True},
-                occupations=FermiDirac(0.001),
-    ) 
+                occupations=FermiDirac(0.001))
 
     a.calc = calc
     a.get_potential_energy()
 
     # q-points and atomic sites
-    q_qc = np.vstack([[0, 0, 0], [0, 0, 1/2], [0, 1/2, 1/2]])
+    q_qc = np.vstack([[0, 0, 0], [0, 0, 0.5], [0, 0.5, 0.5]])
     context = ResponseContext(txt='mft_nio.txt')
     gs = ResponseGroundStateAdapter(calc)
     _, r_a = get_site_radii_range(gs)
@@ -267,6 +266,7 @@ def test_NiO_withU(in_tmp_dir):
     etest_q = np.array([0., -0.22697916, -0.00113986])
     assert np.allclose(e_q, etest_q)
 
+    
 @pytest.mark.response
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_site_magnetization_sum_rule(in_tmp_dir, gpw_files, qrel):
