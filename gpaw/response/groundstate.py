@@ -326,15 +326,6 @@ class ResponseGroundStateAdapter:
         from gpaw.response.kpoints import ResponseKPointGrid
         return ResponseKPointGrid(self.kd)
 
-    @cached_property
-    def nonlocal_magnetization(self):
-        """
-        Insert a doc string with equations
-        """
-        # maybe from self.pawdatasets? (each set has hubbard_u as an attribute)
-        # return nlm_aii
-        raise NotImplementedError
-
 
 @dataclass
 class CellDescriptor:
