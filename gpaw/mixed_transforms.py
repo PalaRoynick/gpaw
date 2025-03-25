@@ -39,7 +39,6 @@ class MixedTransforms:
         self.use_scipy_transforms = xp is np
         self.cpupy = xp is cpupy
         self.xp = xp
-           
 
     def rfst2(self, A_g, axes=[0, 1]):
         if isinstance(A_g, cpupy.ndarray):
@@ -168,20 +167,18 @@ class MixedTransforms:
             result *= .5
 
         return result if not self.cpupy else cpupy.ndarray(result)
-     
+
     def transform2(self, A_g, axes=None, pbc=[True, True]):
         if isinstance(A_g, cpupy.ndarray):
             A_g = A_g._data
         if all(pbc):
             if A_g.size == 0:
-                return A_g.astype(complex)
-
-            result = fft2(A_g, axes=axes)
-
+                result = A_g.astype(complex)
+            else:
+                result = fft2(A_g, axes=axes)
         elif not any(pbc):
             if A_g.size == 0:
                 return A_g
-
             result = self.rfst2(A_g, axes=axes)
         else:
             result = self.transform(self.transform(A_g,
@@ -195,7 +192,7 @@ class MixedTransforms:
             A_g = A_g._data
         if pbc:
             if A_g.size == 0:
-                result =A_g.astype(complex)
+                result = A_g.astype(complex)
             else:
                 result = ifft(A_g, axis=axis)
         else:
@@ -220,7 +217,7 @@ class MixedTransforms:
                 result = ifft2(A_g, axes=axes)
         elif not any(pbc):
             if A_g.size == 0:
-                result =  A_g
+                result = A_g
             else:
                 result = self.irfst2(A_g, axes=axes)
         else:
@@ -230,4 +227,3 @@ class MixedTransforms:
                                      axis=axes[1], pbc=pbc[1])
 
         return cpupy.asarray(result) if self.cpupy else result
-

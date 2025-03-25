@@ -277,9 +277,9 @@ class FDOperator:
             self.operator.apply(in_xg._data, out_xg._data,
                                 phase_cd)
         else:
-           self.operator.apply_gpu(in_xg.data.ptr,
-                                   out_xg.data.ptr,
-                                   in_xg.shape, in_xg.dtype, phase_cd)
+            self.operator.apply_gpu(in_xg.data.ptr,
+                                    out_xg.data.ptr,
+                                    in_xg.shape, in_xg.dtype, phase_cd)
 
     def relax(self, relax_method, f_g, s_g, n, w=None):
         if self.xp is np:
