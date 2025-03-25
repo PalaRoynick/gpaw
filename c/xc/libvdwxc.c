@@ -109,7 +109,7 @@ PyObject* libvdwxc_calculate(PyObject* self, PyObject* args)
         return NULL;
     }
     double *stress_vv;
-    if (stress_obj == Py_None) {
+    if ((PyObject *)stress_obj == Py_None) {
         stress_vv = NULL;
     } else {
         stress_vv = (double*)PyArray_DATA(stress_obj);
