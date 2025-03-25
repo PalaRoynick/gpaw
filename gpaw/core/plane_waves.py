@@ -13,6 +13,7 @@ from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.core.pwacf import PWAtomCenteredFunctions
 from gpaw.gpu import cupy as cp
+from gpaw.new.c import pw_norm_kinetic_gpu, pw_norm_gpu
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import prod, zips
 from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from gpaw.core import UGArray, UGDesc
 
 
-class PWDesc(Domain):
+class PWDesc(Domain['PWArray']):
     itemsize = 16
 
     def __init__(self,
@@ -96,7 +97,7 @@ class PWDesc(Domain):
     def __repr__(self) -> str:
         m = self.myshape[0]
         n = self.shape[0]
-        return Domain.__repr__(self).replace(
+        return super().__repr__().replace(
             'Domain(',
             f'PWDesc(ecut={self.ecut} <coefs={m}/{n}>, ')
 
@@ -616,14 +617,24 @@ class PWArray(DistributedArrays[PWDesc]):
         """
         a_xG = self._arrays().view(self.real_dtype)
         if kind == 'normal':
-            result_x = self.xp.einsum('xG, xG -> x', a_xG, a_xG)
+            if self.xp is not np:
+                result_x = self.xp.empty((a_xG.shape[0],),
+                                         dtype=self.real_dtype)
+                pw_norm_gpu(result_x, self._arrays())
+            else:
+                result_x = self.xp.einsum('xG, xG -> x', a_xG, a_xG)
         elif kind == 'kinetic':
             x, G2 = a_xG.shape
-            a_xGz = a_xG.reshape((x, G2 // 2, 2))
-            result_x = self.xp.einsum('xGz, xGz, G -> x',
-                                      a_xGz,
-                                      a_xGz,
-                                      self.xp.asarray(self.desc.ekin_G))
+            if self.xp is not np:
+                result_x = self.xp.empty((x,), dtype=self.real_dtype)
+                pw_norm_kinetic_gpu(result_x, self._arrays(),
+                                    self.xp.asarray(self.desc.ekin_G))
+            else:
+                a_xGz = a_xG.reshape((x, G2 // 2, 2))
+                result_x = self.xp.einsum('xGz, xGz, G -> x',
+                                          a_xGz,
+                                          a_xGz,
+                                          self.xp.asarray(self.desc.ekin_G))
         else:
             1 / 0
         if self.desc.dtype == self.real_dtype:
@@ -702,11 +713,26 @@ class PWArray(DistributedArrays[PWDesc]):
         if seed is None:
             seed = self.comm.rank + self.desc.comm.rank * self.comm.size
         rng = self.xp.random.default_rng(seed)
-        a = self.data.view(self.real_dtype)
-        rng.random(a.shape, out=a, dtype=self.real_dtype)
-        a -= 0.5
-        if self.desc.dtype == self.real_dtype and self.desc.comm.rank == 0:
-            a[..., 1] = 0.0
+
+        batches = self.data.size // 5_000_000 + 1
+        arrays = self.xp.array_split(self.data, batches)
+        is_real = self.desc.dtype == self.real_dtype
+        ekin_G = self.xp.asarray(self.desc.ekin_G)
+        for a in arrays:
+            # numpy does not require shape, cupy does
+            # cupy just makes all elements equal to one random number
+            aview = a.view(dtype=self.real_dtype)
+            rng.random(aview.shape, out=aview, dtype=self.real_dtype)
+
+            # Uniform distribution inside unit circle
+            a[:] = a.real**0.5 * self.xp.exp(2j * self.xp.pi * a.imag)
+
+            # Damp high spatial frequencies
+            a[..., :] *= 0.5 / (1.00 + ekin_G[..., :])
+
+            # Make sure gamma point G=0 does not have imaginary part
+            if is_real and self.desc.comm.rank == 0:
+                a[..., 0].imag = 0.0
 
     def moment(self):
         pw = self.desc
@@ -720,11 +746,22 @@ class PWArray(DistributedArrays[PWDesc]):
                     b_G[m0_G & m1_G]]
             d_c = [b_s[1:] @ (1.0 / np.arange(1, len(b_s)))
                    for b_s in b_cs]
-            m_v = np.dot(d_c, pw.cell_cv) / pi * pw.dv
+            m_v = d_c @ pw.cell_cv / pi * pw.dv
         else:
             m_v = np.empty(3)
         pw.comm.broadcast(m_v, 0)
         return m_v
+
+    def boundary_value(self, axis: int) -> float:
+        """Calculate average value at boundary of box."""
+        assert axis == 2
+        pw = self.desc
+        m0_G, m1_G = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
+        assert self.desc.dtype == self.real_dtype
+        value = self.data.real[m0_G & m1_G].sum() * 2
+        if self.desc.comm.rank == 0:
+            value -= self.data[0].real
+        return self.desc.comm.sum_scalar(value)
 
     def morph(self, pw: PWDesc) -> PWArray:
         pw0 = self.desc
@@ -781,6 +818,38 @@ class PWArray(DistributedArrays[PWDesc]):
         tmp_R = taut_R.new()
         tmp_R.scatter_from(taut1_R)
         taut_R.data += tmp_R.data
+
+    def transform(self,
+                  U_cc: np.ndarray,
+                  complex_conjugate: bool = False,
+                  pw: PWDesc | None = None) -> PWArray:
+        """Symmetry-transform data."""
+        pw1 = self.desc
+        pw2 = pw
+        if complex_conjugate:
+            U_cc = -U_cc
+        kpt2_c = U_cc @ pw1.kpt_c
+        if pw2 is None:
+            pw2 = pw1.new(kpt=kpt2_c)
+        else:
+            assert np.allclose(pw2.kpt_c, kpt2_c)
+
+        size_c = np.ptp(pw1.indices_cG, axis=1) + 1
+        Q1_G = np.ravel_multi_index(U_cc @ pw1.indices_cG,
+                                    size_c,
+                                    mode='wrap')
+        Q2_G = np.ravel_multi_index(pw2.indices_cG,  # type: ignore
+                                    size_c,
+                                    mode='wrap')
+        G_Q = np.empty(np.prod(size_c), dtype=int)
+        G_Q[:] = -1
+        G_Q[Q1_G] = np.arange(len(Q1_G), dtype=int)
+        G1_G2 = G_Q[Q2_G]
+        assert -1 not in G1_G2
+        data = np.ascontiguousarray(self.data[..., G1_G2])
+        if complex_conjugate:
+            np.negative(data.imag, data.imag)
+        return PWArray(pw2, self.dims, self.comm, data)
 
 
 def a2a_stuff(comm, N, ng, myng, maxmyng):
