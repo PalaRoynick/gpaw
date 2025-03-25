@@ -91,7 +91,8 @@ class Matrix(XP):
             else:
                 dtype = data.dtype
         self.dtype = np.dtype(dtype)
-        assert dtype == float or dtype == complex, dtype
+        assert np.dtype(self.dtype) in \
+            [np.float32, np.float64, np.complex64, np.complex128], dtype
 
         self.xp: ModuleType
         if xp is None:
@@ -362,7 +363,7 @@ class Matrix(XP):
 
         if rows * columns == 1:
             if self.dist.comm.rank == 0:
-                if cc and H.dtype == complex:
+                if cc and np.issubdtype(H.dtype, np.complexfloating):
                     np.negative(H.data.imag, H.data.imag)
                 if debug:
                     H.data[np.triu_indices(H.shape[0], 1)] = 42.0
@@ -489,7 +490,7 @@ class Matrix(XP):
 
     def complex_conjugate(self) -> None:
         """Inplace complex conjugation."""
-        if self.dtype == complex:
+        if np.issubdtype(self.dtype, np.complexfloating):
             self.xp.negative(self.data.imag, self.data.imag)
 
     def add_hermitian_conjugate(self, scale: float = 1.0) -> None:

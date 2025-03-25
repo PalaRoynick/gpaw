@@ -200,6 +200,7 @@ class Density(Criterion):
         False if not, and entry is a <=5 character string to be printed in
         the user log file."""
         if context.dens.fixed:
+            # Old GPAW needs this
             return True, ''
         nv = context.wfs.nvalence
         if nv == 0:
@@ -295,8 +296,7 @@ class Forces(Criterion):
         # criterion is off; backwards compatibility
         if np.isinf(self.atol) and np.isinf(self.rtol):
             return True, ''
-        F_av = context.calculate_forces()
-        F_av *= Ha / Bohr
+        F_av = context.calculate_forces() * (Ha / Bohr)
         error = np.inf
         max_force = np.max(np.linalg.norm(F_av, axis=1))
         if self.old_F_av is not None:

@@ -4,7 +4,7 @@ import importlib
 import os
 from functools import cached_property
 from types import ModuleType, SimpleNamespace
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 from ase import Atoms
@@ -36,6 +36,7 @@ from gpaw.setup import Setups
 from gpaw.typing import Array2D, ArrayLike1D, ArrayLike2D, DTypeLike
 from gpaw.utilities.gpts import get_number_of_grid_points
 from gpaw.xc import XC
+from gpaw import GPAW_USE_GPUS
 
 
 def builder(atoms: Atoms,
@@ -66,6 +67,7 @@ class DFTComponentsBuilder:
     def __init__(self,
                  atoms: Atoms,
                  params: InputParameters,
+                 dtype: None | DTypeLike = None,
                  *,
                  comm):
 
@@ -97,7 +99,7 @@ class DFTComponentsBuilder:
             atoms.numbers,
             params.setups,
             params.basis,
-            self._xc.get_setup_name(),
+            self._xc,  # .get_setup_name(),
             world=comm,
             backwards_compatible=self._backwards_comatible)
         if params.hund:
@@ -138,8 +140,6 @@ class DFTComponentsBuilder:
             pass  # filter = create_fourier_filter(grid)
             # setups = setups.filter(filter)
 
-        self.nelectrons = self.setups.nvalence - params.charge
-
         self.nbands = calculate_number_of_bands(params.nbands,
                                                 self.setups,
                                                 params.charge,
@@ -149,19 +149,22 @@ class DFTComponentsBuilder:
             self.nbands *= 2
 
         self.dtype: DTypeLike
-        if self.params.mode.get('force_complex_dtype', False):
-            self.dtype = complex
-        else:
-            if self.ibz.bz.gamma_only and self.ncomponents < 4:
-                self.dtype = float
-            else:
+        if dtype is None:
+            if self.params.mode.get('force_complex_dtype', False):
                 self.dtype = complex
+            else:
+                if self.ibz.bz.gamma_only and self.ncomponents < 4:
+                    self.dtype = float
+                else:
+                    self.dtype = complex
+        else:
+            self.dtype = dtype
 
         self.grid, self.fine_grid = self.create_uniform_grids()
 
         self.relpos_ac = self.atoms.get_scaled_positions()
         self.relpos_ac %= 1
-        self.relpos_ac %= 1
+        self.relpos_ac %= 1  # yes, we need to do this twice!
 
         self.xc = self.create_xc_functional()
 
@@ -170,6 +173,17 @@ class DFTComponentsBuilder:
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.atoms}, {self.params})'
+
+    @cached_property
+    def nelectrons(self) -> float:
+        return self.setups.nvalence - (self.params.charge -
+                                       self.background_charge)
+
+    @cached_property
+    def background_charge(self) -> float:
+        if self.params.background_charge:
+            return self.params.background_charge['charge']
+        return 0.0
 
     @cached_property
     def atomdist(self) -> AtomDistribution:
@@ -196,8 +210,13 @@ class DFTComponentsBuilder:
 
     @cached_property
     def gpu(self) -> bool:
-        """Are we running on a GPU?."""
-        if self.params.parallel.get('gpu', False):
+        """Are we running on a GPU?
+
+        If parallel dict does not specify 'gpu': True or False,
+        GPAW_USE_GPUS environment variable will be used to
+        determine whether we use GPUs or not.
+        """
+        if self.params.parallel.get('gpu', GPAW_USE_GPUS):
             from gpaw.gpu import cupy_is_fake
             if cupy_is_fake and not os.environ.get('GPAW_CPUPY'):
                 raise ValueError(
@@ -294,10 +313,10 @@ class DFTComponentsBuilder:
                         if key != 'bands'},
                        self.params.maxiter)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, log):
         raise NotImplementedError
 
-    def create_potential_calculator(self):
+    def create_potential_calculator(self, log):
         raise NotImplementedError
 
     def read_wavefunction_values(self,
@@ -360,10 +379,30 @@ class DFTComponentsBuilder:
             ibzwfs.fermi_levels = np.array(
                 [reader.occupations.fermilevel / ha])
 
+    def create_environment(self, grid, log):
+        if self.params.background_charge:
+            from gpaw.new.environment import Jellium, FixedPotentialJellium
+            from gpaw.jellium import create_background_charge
+            fl = self.params.background_charge.pop('fermi_level', None)
+            bc = create_background_charge(**self.params.background_charge)
+            bc.set_grid_descriptor(grid._gd)
+            if fl is None:
+                return Jellium(bc, len(self.atoms), grid)
+            return FixedPotentialJellium(bc, len(self.atoms), grid, fl)
+        if self.params.solvation:
+            from gpaw.new.solvation import Solvation
+            return Solvation(**self.params.solvation,
+                             setups=self.setups,
+                             grid=grid, relpos_ac=self.relpos_ac, log=log,
+                             comm=self.communicators['w'],
+                             nn=self.params.poissonsolver.get('nn', 3))
+        from gpaw.new.environment import Environment
+        return Environment(len(self.atoms))
+
 
 def create_communicators(comm: MPIComm = None,
                          nibzkpts: int = 1,
-                         domain: Union[int, tuple[int, int, int]] = None,
+                         domain: int | tuple[int, int, int] | None = None,
                          kpt: int = None,
                          band: int = None,
                          xp: ModuleType = np) -> dict[str, MPIComm]:

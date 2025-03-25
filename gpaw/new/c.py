@@ -1,8 +1,12 @@
 from typing import TYPE_CHECKING
 
-from gpaw.typing import Array1D, ArrayND
-from gpaw.gpu import cupy as cp
+import numpy as np
+
 import gpaw.cgpaw as cgpaw
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy_is_fake
+from gpaw.typing import Array1D, ArrayND
+from gpaw import GPAW_NO_C_EXTENSION
 
 __all__ = ['GPU_AWARE_MPI']
 
@@ -50,38 +54,38 @@ def pw_insert_gpu(psit_nG,
 def pwlfc_expand(f_Gs, emiGR_Ga, Y_GL,
                  l_s, a_J, s_J,
                  cc, f_GI):
-    """
-    f_GI = xp.empty((G2 - G1, self.nI), complex)
+    real = np.issubdtype(f_GI.dtype, np.floating)
     I1 = 0
-    for J, (a, s) in enumerate(zip(self.a_J, self.s_J)):
-        l = self.l_s[s]
+    for J, (a, s) in enumerate(zip(a_J, s_J)):
+        l = l_s[s]
         I2 = I1 + 2 * l + 1
-        f_GI[:, I1:I2] = (f_Gs[:, s] *
-                          emiGR_Ga[:, a] *
-                          Y_GL[:, l**2:(l + 1)**2].T *
-                          (-1.0j)**l).T
+        f_Gi = (f_Gs[:, s] *
+                emiGR_Ga[:, a] *
+                Y_GL[:, l**2:(l + 1)**2].T *
+                (-1.0j)**l).T
+        if cc:
+            np.conjugate(f_Gi, f_Gi)
+        if real:
+            f_GI[::2, I1:I2] = f_Gi.real
+            f_GI[1::2, I1:I2] = f_Gi.imag
+        else:
+            f_GI[:, I1:I2] = f_Gi
         I1 = I2
-    if cc:
-        f_GI = f_GI.conj()
-    if self.dtype == float:
-        f_GI = f_GI.T.copy().view(float).T.copy()
-
-    return f_GI
-    """
-    raise NotImplementedError
 
 
 def pwlfc_expand_gpu(f_Gs, emiGR_Ga, Y_GL,
                      l_s, a_J, s_J,
                      cc, f_GI, I_J):
-    raise NotImplementedError
+    pwlfc_expand(f_Gs, emiGR_Ga, Y_GL,
+                 l_s, a_J, s_J,
+                 cc, f_GI)
 
 
 def dH_aii_times_P_ani_gpu(dH_aii, ni_a,
                            P_nI, out_nI):
     I1 = 0
     J1 = 0
-    for ni in ni_a._data:
+    for ni in ni_a.get():
         I2 = I1 + ni
         J2 = J1 + ni**2
         dH_ii = dH_aii[J1:J2].reshape((ni, ni))
@@ -110,12 +114,19 @@ def add_to_density_gpu(weight_n, psit_nR, nt_R):
 
 
 def symmetrize_ft(a_R, b_R, r_cc, t_c, offset_c):
+    if (r_cc == np.eye(3, dtype=int)).all() and not t_c.any():
+        b_R[:] = a_R
+        return
     raise NotImplementedError
 
 
 def evaluate_lda_gpu(nt_sr, vxct_sr, e_r) -> None:
-    from gpaw.xc.kernel import XCKernel
-    XCKernel('LDA').calculate(e_r._data, nt_sr._data, vxct_sr._data)
+    if cupy_is_fake:
+        from gpaw.xc.kernel import XCKernel
+        XCKernel('LDA').calculate(e_r._data, nt_sr._data, vxct_sr._data)
+    else:
+        from _gpaw import evaluate_lda_gpu as evalf  # type: ignore
+        evalf(nt_sr, vxct_sr, e_r)
 
 
 def evaluate_pbe_gpu(nt_sr, vxct_sr, e_r, sigma_xr, dedsigma_xr) -> None:
@@ -124,13 +135,30 @@ def evaluate_pbe_gpu(nt_sr, vxct_sr, e_r, sigma_xr, dedsigma_xr) -> None:
                               sigma_xr._data, dedsigma_xr._data)
 
 
-if not TYPE_CHECKING:
-    from gpaw.cgpaw import (  # noqa
-        add_to_density, pw_precond, pw_insert,
-        pwlfc_expand, symmetrize_ft)
+def pw_norm_gpu(result_x, C_xG):
+    if cupy_is_fake:
+        result_x._data[:] = np.sum(np.abs(C_xG._data)**2, axis=1)
+    else:
+        result_x[:] = cp.sum(cp.abs(C_xG)**2, axis=1)
+
+
+def pw_norm_kinetic_gpu(result_x, a_xG, kin_G):
+    if cupy_is_fake:
+        result_x._data[:] = np.sum(
+            np.abs(a_xG._data)**2 * kin_G._data[None, :],
+            axis=1)
+    else:
+        result_x[:] = cp.sum(cp.abs(a_xG)**2 * kin_G[None, :], axis=1)
+
+
+if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
+    from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa
+                            pwlfc_expand, symmetrize_ft)
 
     if GPU_ENABLED:
-        from gpaw.cgpaw import (  # noqa
-            pwlfc_expand_gpu, add_to_density_gpu, pw_insert_gpu,
-            dH_aii_times_P_ani_gpu, evaluate_lda_gpu, evaluate_pbe_gpu,
-            calculate_residuals_gpu, pw_amend_insert_realwf_gpu)
+        from gpaw.cgpaw import add_to_density_gpu  # noqa
+        from gpaw.cgpaw import (calculate_residuals_gpu,  # noqa
+                                dH_aii_times_P_ani_gpu, evaluate_lda_gpu,
+                                evaluate_pbe_gpu, pw_amend_insert_realwf_gpu,
+                                pw_insert_gpu, pwlfc_expand_gpu,
+                                pw_norm_kinetic_gpu, pw_norm_gpu)

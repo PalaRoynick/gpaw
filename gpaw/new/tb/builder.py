@@ -124,7 +124,8 @@ class TBPotentialCalculator(PotentialCalculator):
                  atoms,
                  domain_comm):
         super().__init__(xc, None, setups,
-                         relpos_ac=atoms.get_scaled_positions())
+                         relpos_ac=atoms.get_scaled_positions(),
+                         environment=None)
         self.atoms = atoms.copy()
         self.domain_comm = domain_comm
         self.force_av = None
@@ -151,7 +152,8 @@ class TBPotentialCalculator(PotentialCalculator):
                 vt_sR,
                 None,
                 DummyFunctions(density.nt_sR.desc),
-                V_aL)
+                V_aL,
+                np.nan)
 
     def _move(self, relpos_ac, ndensities):
         self.atoms.set_scaled_positions(relpos_ac)
@@ -186,24 +188,31 @@ class TBSCFLoop:
                 ibzwfs,
                 density,
                 potential,
+                energies,
                 pot_calc,
                 convergence=None,
                 maxiter=None,
                 calculate_forces=None,
                 log=None):
         self.eigensolver.iterate(ibzwfs, density, potential, self.hamiltonian)
-        ibzwfs.calculate_occs(self.occ_calc)
+        e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
+            self.occ_calc)
+
+        energies.set(band=e_band,
+                     entropy=e_entropy,
+                     extrapolation=e_extrapolation)
+
         yield SCFContext(
             log,
             1,
+            energies,
             ibzwfs, density, potential,
             0.0, 0.0,
             self.comm, calculate_forces,
             pot_calc, False)
 
-        new_potential, _ = pot_calc.calculate(
-            density, None, potential.vHt_x)
-        potential.update_from(new_potential)
+        # potential, _, _ = pot_calc.calculate(
+        #     density, None, potential.vHt_x)
 
 
 class DummyBasis:
@@ -244,7 +253,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
     def create_hamiltonian_operator(self):
         return TBHamiltonian(self.basis)
 
-    def create_potential_calculator(self):
+    def create_potential_calculator(self, log):
         xc = DummyXC()
         return TBPotentialCalculator(xc, self.setups, self.atoms,
                                      self.communicators['d'])

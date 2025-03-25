@@ -14,6 +14,7 @@ from gpaw.new import prod
 from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
+from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.spline import Spline
 from gpaw.typing import ArrayLike1D
 
@@ -101,6 +102,7 @@ class PWLFC:  # (BaseLFC)
         self.spline_aj = functions
 
         self.dtype = pw.dtype
+        self.real = np.issubdtype(pw.dtype, np.floating)
 
         self.initialized = False
 
@@ -205,17 +207,20 @@ class PWLFC:  # (BaseLFC)
 
         xp = self.xp
 
-        if self.pw.dtype == float:
+        if self.real:
             self.eikR_a = xp.ones(len(spos_ac))
         else:
             self.eikR_a = xp.asarray(
                 np.exp(2j * pi * (spos_ac @ self.pw.kpt_c)))
-
         self.pos_av = np.dot(spos_ac, self.pw.cell)
 
-        Gk_Gv = xp.asarray(self.pw.G_plus_k_Gv)
-        GkR_Ga = Gk_Gv @ xp.asarray(self.pos_av.T)
-        self.emiGR_Ga = xp.exp(-1j * GkR_Ga) * self.eikR_a
+        if xp is not np:
+            self.pos_avT = xp.asarray(self.pos_av.T)
+            self.emiGR_Ga = None
+        else:
+            Gk_Gv = self.pw.G_plus_k_Gv
+            GkR_Ga = Gk_Gv @ self.pos_av.T
+            self.emiGR_Ga = xp.exp(-1j * GkR_Ga) * self.eikR_a
 
         rank_a = atomdist.rank_a
 
@@ -247,12 +252,12 @@ class PWLFC:  # (BaseLFC)
         if G2 is None:
             G2 = self.Y_GL.shape[0]
 
-        emiGR_Ga = self.emiGR_Ga[G1:G2]
+        emiGR_Ga = self.get_emiGR_Ga(G1, G2)
         f_Gs = self.f_Gs[G1:G2]
         Y_GL = self.Y_GL[G1:G2]
 
-        if self.dtype == complex:
-            f_GI = xp.empty((G2 - G1, self.nI), complex)
+        if not self.real:
+            f_GI = xp.empty((G2 - G1, self.nI), as_complex_dtype(self.dtype))
         else:
             # Special layout because BLAS does not have real-complex
             # multiplications.  f_GI(G,I) layout:
@@ -263,7 +268,8 @@ class PWLFC:  # (BaseLFC)
             #    imag(G1+1, 0), imag(G1+1, 1), ...
             #    ...
 
-            f_GI = xp.empty((2 * (G2 - G1), self.nI))
+            f_GI = xp.empty((2 * (G2 - G1), self.nI),
+                            as_real_dtype(self.dtype))
 
         if xp is np:
             # Fast C-code:
@@ -298,6 +304,14 @@ class PWLFC:  # (BaseLFC)
         else:
             yield 0, nG
 
+    def get_emiGR_Ga(self, G1, G2):
+        if self.emiGR_Ga is None:
+            Gk_Gv = self.xp.asarray(self.pw.G_plus_k_Gv)[G1:G2]
+            GkR_Ga = Gk_Gv @ self.pos_avT
+            return self.xp.exp(-1j * GkR_Ga) * self.eikR_a
+        else:
+            return self.emiGR_Ga[G1:G2]
+
     def add(self, a_xG, c_axi=1.0, q=None):
         if self.nI == 0:
             return
@@ -323,7 +337,7 @@ class PWLFC:  # (BaseLFC)
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=False)
 
-            if self.dtype == float:
+            if self.real:
                 # f_IG = f_IG.view(float)
                 G1 *= 2
                 G2 *= 2
@@ -349,17 +363,17 @@ class PWLFC:  # (BaseLFC)
         a_xG = a_xG.reshape((nx, a_xG.shape[-1]))
 
         alpha = 1.0
-        if self.dtype == float:
+        if self.real:
             alpha *= 2
-            a_xG = a_xG.view(float)
+            a_xG = a_xG.view(self.dtype)
 
         if c_axi is None:
             c_axi = self.dict(a_xG.shape[:-1])
 
         x = 0.0
         for G1, G2 in self.block():
-            f_GI = self.expand(G1, G2, cc=self.dtype == complex)
-            if self.dtype == float:
+            f_GI = self.expand(G1, G2, cc=not self.real)
+            if self.real:
                 if G1 == 0 and self.comm.rank == 0:
                     f_GI[0] *= 0.5
                 G1 *= 2
@@ -400,7 +414,7 @@ class PWLFC:  # (BaseLFC)
         for G1, G2 in self.block():
             f_GI = self.expand(G1, G2, cc=True)
             G_Gv = xp.asarray(self.pw.G_plus_k_Gv[G1:G2])
-            if self.dtype == float:
+            if self.real:
                 d_GI = xp.empty(f_GI.shape)
                 for v in range(3):
                     d_GI[::2] = f_GI[1::2] * G_Gv[:, v, np.newaxis]
@@ -434,7 +448,7 @@ class PWLFC:  # (BaseLFC)
         self.comm.sum(c_vxI)
 
         for v in range(3):
-            if self.dtype == float:
+            if self.real:
                 for a, I1, I2 in self.my_indices:
                     c_axiv[a][..., v] = c_vxI[v, ..., I1:I2]
             else:
@@ -496,8 +510,8 @@ class PWLFC:  # (BaseLFC)
     def _stress_tensor_contribution(self, v1, v2, things, G1, G2,
                                     G_Gv, a_xG, c_axi, Z_LvG):
         xp = self.xp
-        f_IG = xp.empty((self.nI, G2 - G1), complex)
-        emiGR_Ga = self.emiGR_Ga[G1:G2]
+        f_IG = xp.empty((self.nI, G2 - G1), as_complex_dtype(self.dtype))
+        emiGR_Ga = self.get_emiGR_Ga(G1, G2)
         Y_LG = self.Y_GL.T
         for a, l, I1, I2, f_G, dfdGoG_G in things:
             L1 = l**2
@@ -516,12 +530,12 @@ class PWLFC:  # (BaseLFC)
         a_xG = a_xG.reshape((x, a_xG.shape[-1]))
 
         alpha = 1.0
-        if self.pw.dtype == float:
+        if self.real:
             alpha = 2.0
             if G1 == 0 and self.pw.comm.rank == 0:
                 f_IG[:, 0] *= 0.5
-            f_IG = f_IG.view(float)
-            a_xG = a_xG.copy().view(float)
+            f_IG = f_IG.view(as_real_dtype(f_IG.dtype))
+            a_xG = a_xG.copy().view(as_real_dtype(f_IG.dtype))
 
         if xp is np:
             mmm(alpha, a_xG, 'N', f_IG, 'C', 0.0, b_xI)
