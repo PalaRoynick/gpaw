@@ -256,6 +256,9 @@ class FDOperator:
             if isinstance(self.operator, GPUFFTFDOperator):
                 self.operator.apply_gpu(in_xR.data, out_xR.data,
                                         in_xR.desc.phase_factor_cd)
+            elif cupy_is_fake:
+                self.operator.apply(in_xR.data._data, out_xR.data._data,
+                                    in_xR.desc.phase_factor_cd)
             else:
                 self.operator.apply_gpu(in_xR.data.data.ptr,
                                         out_xR.data.data.ptr,

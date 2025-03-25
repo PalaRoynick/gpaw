@@ -347,7 +347,7 @@ class ndarray:
 
     @property
     def flat(self):
-        return ndarray(self._data.flat)
+        return ndarray(self._data.reshape((-1)))
 
     def ravel(self):
         return ndarray(self._data.ravel())
