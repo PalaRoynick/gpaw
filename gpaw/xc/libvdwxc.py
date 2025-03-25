@@ -21,6 +21,20 @@ def libvdwxc_has_pfft():
     return have_mpi and cgpaw.libvdwxc_has('pfft')
 
 
+def libvdwxc_has_spin():
+    val = cgpaw.libvdwxc_has("spin")
+    if val is None:
+        val = False
+    return val
+
+
+def libvdwxc_has_stress():
+    val = cgpaw.libvdwxc_has("stress")
+    if val is None:
+        val = False
+    return val
+
+
 def check_grid_descriptor(gd):
     assert gd.parsize_c[1] == 1 and gd.parsize_c[2] == 1
     nxpts_p = gd.n_cp[0][1:] - gd.n_cp[0][:-1]
@@ -138,8 +152,14 @@ class LibVDWXC:
             stress_vv = np.zeros((3, 3))
         else:
             stress_vv = None
-        energy = cgpaw.libvdwxc_calculate(self._ptr, stress_vv, n_sg,
-                                          sigma_xg, dedn_sg, dedsigma_xg)
+        try:
+            energy = cgpaw.libvdwxc_calculate(self._ptr, stress_vv, n_sg,
+                                              sigma_xg, dedn_sg, dedsigma_xg)
+        except TypeError as err:
+            err_msg = "The libvdwxc interface has changed. You might need to "
+            "recompile the GPAW C extensions."
+            print(err_msg)
+            raise TypeError(err_msg) from err
         return energy, stress_vv
 
     def get_description(self):

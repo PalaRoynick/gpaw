@@ -29,32 +29,22 @@ PyObject* libvdwxc_has(PyObject* self, PyObject* args)
         val = vdwxc_has_mpi();
     } else if(strcmp("pfft", name) == 0) {
         val = vdwxc_has_pfft();
+    } else if(strcmp("spin", name) == 0) {
+#ifdef VDWXC_HAS_SPIN
+        val = true;
+#else
+        val = false;
+#endif
+    } else if(strcmp("stress", name) == 0) {
+#ifdef VDWXC_HAS_STRESS
+        val = true;
+#else
+        val = false;
+#endif
     } else {
         return NULL;
     }
     PyObject* pyval = val ? Py_True : Py_False;
-    Py_INCREF(pyval);
-    return pyval;
-}
-
-PyObject* libvdwxc_has_spin(PyObject* self, PyObject* args)
-{
-#ifdef VDWXC_HAS_SPIN
-    PyObject *pyval = Py_True;
-#else
-    PyObject *pyval = Py_False;
-#endif
-    Py_INCREF(pyval);
-    return pyval;
-}
-
-PyObject* libvdwxc_has_stress(PyObject* self, PyObject* args)
-{
-#ifdef VDWXC_HAS_STRESS
-    PyObject *pyval = Py_True;
-#else
-    PyObject *pyval = Py_False;
-#endif
     Py_INCREF(pyval);
     return pyval;
 }
