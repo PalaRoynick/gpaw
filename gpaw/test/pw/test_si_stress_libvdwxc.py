@@ -2,15 +2,19 @@ import numpy as np
 import pytest
 from ase.build import bulk
 
+from gpaw.utilities import compiled_with_libvdwxc
 from gpaw import GPAW, PW, Mixer
 from gpaw.mpi import world
 from gpaw.xc.libvdwxc import vdw_df, libvdwxc_has_spin, libvdwxc_has_stress
 
 
 skip_reason = "libvdwxc version does not implement stress"
-try:
-    skip_cond = not libvdwxc_has_stress()
-except SystemError:
+if compiled_with_libvdwxc():
+    try:
+        skip_cond = not libvdwxc_has_stress()
+    except SystemError:
+        skip_cond = True
+else:
     skip_cond = True
 
 
