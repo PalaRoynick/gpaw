@@ -22,16 +22,17 @@ def libvdwxc_has_pfft():
 
 
 def libvdwxc_has_spin():
-    val = cgpaw.libvdwxc_has("spin")
-    if val is None:
-        val = False
-    return val
+    try:
+        return cgpaw.libvdwxc_has("spin")
+    except SystemError:
+        raise SystemError(interface_error) from err
 
 
 def libvdwxc_has_stress():
-    val = cgpaw.libvdwxc_has("stress")
-    if val is None:
-        val = False
+    try:
+        val = cgpaw.libvdwxc_has("stress")
+    except SystemError:
+        raise SystemError(interface_error) from err
     return val
 
 
@@ -63,6 +64,8 @@ def get_auto_pfft_grid(size):
     return nproc1, nproc2
 
 
+interface_error = ("The libvdwxc interface has changed. You might need to "
+                   "recompile the GPAW C extensions.")
 spinwarning = """\
 GPAW uses the total density to evaluate the van der Waals functional
 for a spin-polarized system.  This is not entirely rigorous, so the
@@ -156,10 +159,7 @@ class LibVDWXC:
             energy = cgpaw.libvdwxc_calculate(self._ptr, stress_vv, n_sg,
                                               sigma_xg, dedn_sg, dedsigma_xg)
         except TypeError as err:
-            err_msg = "The libvdwxc interface has changed. You might need to "
-            "recompile the GPAW C extensions."
-            print(err_msg)
-            raise TypeError(err_msg) from err
+            raise TypeError(interface_error) from err
         return energy, stress_vv
 
     def get_description(self):

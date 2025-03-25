@@ -8,10 +8,14 @@ from gpaw.xc.libvdwxc import vdw_df, libvdwxc_has_spin, libvdwxc_has_stress
 
 
 skip_reason = "libvdwxc version does not implement stress"
+try:
+    skip_cond = not libvdwxc_has_stress()
+except SystemError:
+    skip_cond = True
 
 
 @pytest.mark.stress
-@pytest.mark.skipif(not libvdwxc_has_stress(), reason=skip_reason)
+@pytest.mark.skipif(skip_cond, reason=skip_reason)
 def test_pw_si_stress_libvdwxc(in_tmp_dir, gpaw_new):
     assert libvdwxc_has_spin() and libvdwxc_has_stress()
     si = bulk('Si')
