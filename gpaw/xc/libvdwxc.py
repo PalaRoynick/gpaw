@@ -24,14 +24,14 @@ def libvdwxc_has_pfft():
 def libvdwxc_has_spin():
     try:
         return cgpaw.libvdwxc_has("spin")
-    except SystemError:
+    except SystemError as err:
         raise SystemError(interface_error) from err
 
 
 def libvdwxc_has_stress():
     try:
         val = cgpaw.libvdwxc_has("stress")
-    except SystemError:
+    except SystemError as err:
         raise SystemError(interface_error) from err
     return val
 
