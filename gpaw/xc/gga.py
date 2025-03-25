@@ -2,7 +2,8 @@ from math import pi
 
 import numpy as np
 
-from gpaw.xc.lda import calculate_paw_correction, stress_integral, stress_lda_term
+from gpaw.xc.lda import (calculate_paw_correction, stress_integral,
+                         stress_lda_term)
 from gpaw.utilities.blas import axpy
 from gpaw.fd_operators import Gradient
 from gpaw.sphere.lebedev import Y_nL, weight_n
@@ -237,7 +238,8 @@ class GGA(XCFunctional):
         self.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
 
         stress_vv = stress_lda_term(self.gd, e_g, n_sg, v_sg)
-        stress_vv[:] += stress_gga_term(self.gd, sigma_xg, gradn_svg, dedsigma_xg)
+        stress_vv[:] += stress_gga_term(self.gd, sigma_xg, gradn_svg,
+                                        dedsigma_xg)
 
         if not skip_sum:
             self.gd.comm.sum(stress_vv)

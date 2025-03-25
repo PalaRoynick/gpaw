@@ -141,7 +141,8 @@ class LibVDWXC:
 
         self.initialized = True
 
-    def calculate(self, n_sg, sigma_xg, dedn_sg, dedsigma_xg, get_stress=False):
+    def calculate(self, n_sg, sigma_xg, dedn_sg, dedsigma_xg,
+                  get_stress=False):
         """Calculate energy and add partial derivatives to arrays."""
         if not self.initialized:
             self.initialize_backend()
@@ -495,12 +496,13 @@ class VDWXC(XCFunctional):
         assert self.libvdwxc is not None
         semiloc = self.semilocal_xc
 
-        stress0_vv = semiloc.stress_tensor_contribution(n_sg, skip_sum=skip_sum)
+        stress0_vv = semiloc.stress_tensor_contribution(
+            n_sg, skip_sum=skip_sum
+        )
 
         grad_v = semiloc.grad_v
         sigma_xg, dedsigma_xg, gradn_svg = gga_vars(self.gd, grad_v, n_sg)
         n_sg[:] = np.abs(n_sg)  # XXXX What to do about this?
-        nspins = n_sg.shape[0]
         sigma_xg[:] = np.abs(sigma_xg)
         v_sg = np.zeros_like(n_sg)
         dedsigma_xg = np.zeros_like(sigma_xg)

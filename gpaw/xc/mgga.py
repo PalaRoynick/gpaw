@@ -6,7 +6,8 @@ from scipy.special import eval_legendre
 from gpaw.xc.gga import (add_gradient_correction, gga_vars,
                          GGARadialExpansion, GGARadialCalculator,
                          get_gradient_ops, stress_gga_term)
-from gpaw.xc.lda import calculate_paw_correction, stress_integral, stress_lda_term
+from gpaw.xc.lda import (calculate_paw_correction, stress_integral,
+                         stress_lda_term)
 from gpaw.xc.functional import XCFunctional
 from gpaw.sphere.lebedev import weight_n
 
@@ -177,7 +178,8 @@ class MGGA(XCFunctional):
                               taut_sg, dedtaut_sg)
 
         stress_vv = stress_lda_term(self.gd, e_g, n_sg, v_sg)
-        stress_vv[:] += stress_gga_term(self.gd, sigma_xg, gradn_svg, dedsigma_xg)
+        stress_vv[:] += stress_gga_term(self.gd, sigma_xg, gradn_svg,
+                                        dedsigma_xg)
         stress_vv[:] += self.stress_mgga_term(taut_sg, dedtaut_sg)
 
         if not skip_sum:
