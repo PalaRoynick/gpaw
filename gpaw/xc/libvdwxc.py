@@ -303,8 +303,7 @@ class VDWXC(XCFunctional):
 
         # XXX We should probably not initialize with the same data as the
         # semilocal XC kernel.
-        XCFunctional.__init__(self, semilocal_xc.kernel.name,
-                              semilocal_xc.kernel.type)
+        super().__init__(semilocal_xc.kernel.name, semilocal_xc.kernel.type)
         # Really, 'type' should be something along the lines of vdw-df.
         self.semilocal_xc = semilocal_xc
 
@@ -338,6 +337,11 @@ class VDWXC(XCFunctional):
         self.get_kinetic_energy_correction = \
             semilocal_xc.get_kinetic_energy_correction
         self.rotate = semilocal_xc.rotate
+
+    @property
+    def grad_v(self):
+        # GPAW new accesses .grad_v
+        return self.semilocal_xc.grad_v
 
     def __str__(self):
         tokens = [self._mode]
@@ -463,34 +467,49 @@ class VDWXC(XCFunctional):
         (To do: proper padded FFTs.)"""
         assert gd == self.distribution.input_gd
         assert self.libvdwxc is not None
-        semiloc = self.semilocal_xc
 
         self.timer.start('van der Waals')
 
         self.timer.start('semilocal')
         # XXXXXXX taken from GGA
-        grad_v = semiloc.grad_v
-        sigma_xg, dedsigma_xg, gradn_svg = gga_vars(gd, grad_v, n_sg)
+        sigma_xg, dedsigma_xg, gradn_svg = gga_vars(gd, self.grad_v, n_sg)
+
+        energy_nonlocal = self.calculate_impl_impl(
+            e_g, n_sg, v_sg, sigma_xg, dedsigma_xg, called_from_gpaw_new=False)
+
+        add_gradient_correction(self.grad_v, gradn_svg, sigma_xg,
+                                dedsigma_xg, v_sg)
+
+        e_g[0, 0, 0] += energy_nonlocal / self.gd.dv
+        self.timer.stop('van der Waals')
+
+    def calculate_impl_impl(self, e_g, n_sg, v_sg, sigma_xg, dedsigma_xg,
+                            called_from_gpaw_new):
+        # This method exists in order for GPAW new to call only part of
+        # the calculate_impl().
+        #
+        # The called_from_gpaw_new boolean only allows us to abort some
+        # cases where we might otherwise go GIGO mode.
+
         n_sg[:] = np.abs(n_sg)  # XXXX What to do about this?
         sigma_xg[:] = np.abs(sigma_xg)
 
         # Grrr, interface still sucks
-        if hasattr(semiloc, 'process_mgga'):
-            semiloc.process_mgga(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
+        if hasattr(self.semilocal_xc, 'process_mgga'):
+            assert not called_from_gpaw_new
+            self.semilocal_xc.process_mgga(e_g, n_sg, v_sg, sigma_xg,
+                                           dedsigma_xg)
         else:
-            semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
+            self.semilocal_xc.kernel.calculate(e_g, n_sg, v_sg,
+                                               sigma_xg, dedsigma_xg)
         self.last_semilocal_energy = e_g.sum() * self.gd.dv
         self.timer.stop('semilocal')
 
         energy_nonlocal = self.redist_wrapper.calculate(n_sg, sigma_xg,
                                                         v_sg, dedsigma_xg)[0]
         # Note: Redistwrapper handles vdwcoef.  For now
-
-        add_gradient_correction(grad_v, gradn_svg, sigma_xg, dedsigma_xg, v_sg)
-
         self.last_nonlocal_energy = energy_nonlocal
-        e_g[0, 0, 0] += energy_nonlocal / self.gd.dv
-        self.timer.stop('van der Waals')
+        return energy_nonlocal
 
     def stress_tensor_contribution(self, n_sg, skip_sum=False):
         assert self.libvdwxc is not None

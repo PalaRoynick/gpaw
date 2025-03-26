@@ -165,6 +165,8 @@ class GGAFunctional(LDAFunctional):
                   taut_sr: UGArray | None = None) -> tuple[float,
                                                            UGArray,
                                                            UGArray | None]:
+        from gpaw.xc.libvdwxc import VDWXC
+
         gradn_svr, sigma_xr = gradient_and_sigma(self.grad_v, nt_sr)
 
         vxct_sr = nt_sr.new(zeroed=True)
@@ -174,7 +176,13 @@ class GGAFunctional(LDAFunctional):
         if self.xp is np:
             args = [a.data
                     for a in [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr]]
-            if 'vdW' not in self.name:
+            print(self.xc)
+            if isinstance(self.xc, VDWXC):
+                if self.xc.redist_wrapper is None:
+                    self.xc.initialize_backend(self.xc.gd)
+                self.xc.calculate_impl_impl(*args,
+                                            called_from_gpaw_new=True)
+            elif 'vdW' not in self.name:
                 self.xc.kernel.calculate(*args)
             else:
                 assert isinstance(self.xc, VDWFunctionalBase)
