@@ -367,6 +367,8 @@ class VDWXC(XCFunctional):
     def set_grid_descriptor(self, gd):
         XCFunctional.set_grid_descriptor(self, gd)
         self.semilocal_xc.set_grid_descriptor(gd)
+        # If gd changes, libvdwxc changes
+        self.libvdwxc = None
 
     def get_description(self):
         lines = []
@@ -455,6 +457,25 @@ class VDWXC(XCFunctional):
                               ' x '.join(str(N) for N in gd.N_c)))
         # TODO Here we could decide FFT padding.
 
+    def calculate_xc(self, e_g, n_sg, v_sg, sigma_xg, dedsigma_xg,
+                     tau_sg=None, dedtau_sg=None):
+        self.timer.start('van der Waals')
+        assert self.libvdwxc is not None
+        semiloc = self.semilocal_xc
+        if hasattr(semiloc, 'process_mgga'):
+            semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg,
+                                     tau_sg, dedtau_sg)
+        else:
+            semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
+        self.last_semilocal_energy = e_g.sum() * self.gd.dv
+        self.timer.stop('semilocal')
+        energy_nonlocal = self.redist_wrapper.calculate(n_sg, sigma_xg,
+                                                        v_sg, dedsigma_xg)[0]
+        # Note: Redistwrapper handles vdwcoef.  For now
+        self.last_nonlocal_energy = energy_nonlocal
+        e_g[0, 0, 0] += energy_nonlocal / self.gd.dv
+        self.timer.stop('van der Waals')
+
     def calculate_impl(self, gd, n_sg, v_sg, e_g):
         """Calculate energy and potential.
 
@@ -469,7 +490,7 @@ class VDWXC(XCFunctional):
 
         self.timer.start('semilocal')
         # XXXXXXX taken from GGA
-        grad_v = semiloc.grad_v
+        grad_v = self.grad_v
         sigma_xg, dedsigma_xg, gradn_svg = gga_vars(gd, grad_v, n_sg)
         n_sg[:] = np.abs(n_sg)  # XXXX What to do about this?
         sigma_xg[:] = np.abs(sigma_xg)
@@ -494,14 +515,12 @@ class VDWXC(XCFunctional):
 
     def stress_tensor_contribution(self, n_sg, skip_sum=False):
         assert self.libvdwxc is not None
-        semiloc = self.semilocal_xc
 
-        stress0_vv = semiloc.stress_tensor_contribution(
+        stress0_vv = self.semilocal_xc.stress_tensor_contribution(
             n_sg, skip_sum=skip_sum
         )
 
-        grad_v = semiloc.grad_v
-        sigma_xg, dedsigma_xg, gradn_svg = gga_vars(self.gd, grad_v, n_sg)
+        sigma_xg, dedsigma_xg, gradn_svg = gga_vars(self.gd, self.grad_v, n_sg)
         n_sg[:] = np.abs(n_sg)  # XXXX What to do about this?
         sigma_xg[:] = np.abs(sigma_xg)
         v_sg = np.zeros_like(n_sg)
@@ -517,6 +536,10 @@ class VDWXC(XCFunctional):
         if not skip_sum:
             self.gd.comm.sum(stress_vv)
         return stress_vv + stress0_vv
+
+    @property
+    def grad_v(self):
+        return self.semilocal_xc.grad_v
 
     @property
     def dedtaut_sG(self):

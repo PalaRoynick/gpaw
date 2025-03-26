@@ -16,6 +16,7 @@ from gpaw.typing import Array2D
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional as OldXCFunctional
 from gpaw.xc.gga import add_gradient_correction
+from gpaw.xc.libvdwxc import VDWXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
 from gpaw.hybrids import HybridXC
@@ -89,7 +90,23 @@ class Functional:
         args, kwargs = self._args(ibzwfs, density, interpolate)
         if ibzwfs.kpt_band_comm.rank == 0:
             if self.xp is np:
-                self.xc.kernel.calculate(*[array.data for array in args])
+                if isinstance(self.xc, VDWXC):
+                    v_sg = args[2].data.copy()
+                    dedsigma_xg = args[4].data.copy()
+                    v_sg[:] = 0
+                    dedsigma_xg[:] = 0
+                    wrapper = self.xc.redist_wrapper
+                    stress_vv = wrapper.calculate(args[1].data, args[3].data,
+                                                  v_sg, dedsigma_xg,
+                                                  get_stress=True)[1]
+                    xck = self.xc.semilocal_xc.kernel
+                    xck.calculate(*[array.data for array in args])
+                    args[2].data[:] += v_sg
+                    args[4].data[:] += dedsigma_xg
+                    tmp = self._stress(*args, **kwargs)
+                    return stress_vv + self._stress(*args, **kwargs)
+                else:
+                    self.xc.kernel.calculate(*[array.data for array in args])
             # Special GPU cases:
             elif self.name == 'LDA':
                 e_r, nt_sr, vt_sr = args
@@ -160,6 +177,13 @@ class GGAFunctional(LDAFunctional):
         # xc already has Gradient.apply bound methods!!!
         self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
+    def _check_libvdwxc(self, nspins):
+        assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
+        libvdwxc = self.xc.libvdwxc
+        if libvdwxc is None or self.xc._nspins != nspins:
+            self.xc._nspins = nspins
+            self.xc.initialize_backend(self.xc.gd)
+
     def calculate(self,
                   nt_sr: UGArray,
                   taut_sr: UGArray | None = None) -> tuple[float,
@@ -176,10 +200,13 @@ class GGAFunctional(LDAFunctional):
                     for a in [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr]]
             if 'vdW' not in self.name:
                 self.xc.kernel.calculate(*args)
-            else:
+            elif isinstance(self.xc, VDWFunctionalBase):
                 assert isinstance(self.xc, VDWFunctionalBase)
                 self.xc.calculate_exchange(*args)
                 self.xc.calculate_correlation(*args)
+            else:
+                self._check_libvdwxc(args[1].data.shape[0])
+                self.xc.calculate_xc(*args)
         else:
             if self.name != 'PBE':
                 raise ValueError(f'{self.name} not supported on GPU')
@@ -284,9 +311,12 @@ class MGGAFunctional(GGAFunctional):
                   taut_sr: UGArray | None = None) -> tuple[float,
                                                            UGArray,
                                                            UGArray | None]:
-        assert 'vdW' not in self.name, 'Not implemented'
+        # assert 'vdW' not in self.name, 'Not implemented'
         gradn_svr, sigma_xr = gradient_and_sigma(self.grad_v, nt_sr)
-        assert isinstance(self.xc, MGGA), self.xc
+        if isinstance(self.xc, VDWXC):
+            assert isinstance(self.xc.semilocal_xc, MGGA), self.xc.semilocal_xc
+        else:
+            assert isinstance(self.xc, MGGA), self.xc
         e_r = self.grid.empty()
         if taut_sr is None:
             taut_sr = nt_sr.new(zeroed=True)
@@ -294,9 +324,14 @@ class MGGAFunctional(GGAFunctional):
         vxct_sr = taut_sr.new()
         vxct_sr.data[:] = 0.0
         dedsigma_xr = sigma_xr.new()
-        self.xc.kernel.calculate(e_r.data, nt_sr.data, vxct_sr.data,
-                                 sigma_xr.data, dedsigma_xr.data,
-                                 taut_sr.data, dedtaut_sr.data)
+        args = [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr,
+                taut_sr, dedtaut_sr]
+        args = [array.data for array in args]
+        if 'vdW' in self.name:
+            self._check_libvdwxc(args[1].data.shape[0])
+            self.xc.calculate_xc(*args)
+        else:
+            self.xc.kernel.calculate(*args)
         add_gradient_correction([grad.apply for grad in self.grad_v],
                                 gradn_svr.data, sigma_xr.data,
                                 dedsigma_xr.data, vxct_sr.data)
