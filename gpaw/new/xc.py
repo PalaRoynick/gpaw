@@ -177,7 +177,6 @@ class GGAFunctional(LDAFunctional):
         self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
     def _check_libvdwxc(self, nspins):
-        assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
         libvdwxc = self.xc.libvdwxc
         if libvdwxc is None or self.xc._nspins != nspins:
             self.xc._nspins = nspins
@@ -204,6 +203,7 @@ class GGAFunctional(LDAFunctional):
                 self.xc.calculate_exchange(*args)
                 self.xc.calculate_correlation(*args)
             else:
+                assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
                 self._check_libvdwxc(args[1].data.shape[0])
                 self.xc.calculate_xc(*args)
         else:
@@ -327,6 +327,7 @@ class MGGAFunctional(GGAFunctional):
                 taut_sr, dedtaut_sr]
         args = [array.data for array in args]
         if 'vdW' in self.name:
+            assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
             self._check_libvdwxc(args[1].data.shape[0])
             self.xc.calculate_xc(*args)
         else:
