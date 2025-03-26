@@ -440,8 +440,7 @@ class Gradient(FDOperator):
                  scale=1.0,
                  n=1,
                  dtype=float,
-                 xp=np,
-                 cls=cgpaw.Operator):
+                 xp=np):
         """Symmetric gradient for general non orthorhombic grid.
 
         gd: GridDescriptor
@@ -500,7 +499,8 @@ class Gradient(FDOperator):
             offsets.extend(np.arange(-1, -n - 1, -1)[:, np.newaxis] * M_c)
             coefs.extend(-c * stencil)
 
-        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp, cls=cls)
+        kwargs = {} if xp is np else dict(cls=GPUFFTFDOperator)
+        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp, **kwargs)
 
         self.description = (
             'Finite-difference {}-derivative with O(h^{}) error ({} points)'

@@ -15,9 +15,6 @@ newaxis = np.newaxis
 pi = np.pi
 
 
-pi = np.pi
-
-
 def empty(*args, **kwargs):
     return ndarray(np.empty(*args, **kwargs))
 
@@ -240,7 +237,6 @@ class ndarray:
         if isinstance(value, ndarray):
             self._data[index] = value._data
         else:
-            print('rhs value', value)
             assert isinstance(value, (float, int, complex)), type(value)
             self._data[index] = value
 
