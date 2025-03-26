@@ -198,14 +198,13 @@ class GGAFunctional(LDAFunctional):
                     for a in [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr]]
             if 'vdW' not in self.name:
                 self.xc.kernel.calculate(*args)
-            elif isinstance(self.xc, VDWFunctionalBase):
+            elif isinstance(self.xc, VDWXC):
+                self._check_libvdwxc(args[1].data.shape[0])
+                self.xc.calculate_xc(*args)
+            else:
                 assert isinstance(self.xc, VDWFunctionalBase)
                 self.xc.calculate_exchange(*args)
                 self.xc.calculate_correlation(*args)
-            else:
-                assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
-                self._check_libvdwxc(args[1].data.shape[0])
-                self.xc.calculate_xc(*args)
         else:
             if self.name != 'PBE':
                 raise ValueError(f'{self.name} not supported on GPU')
