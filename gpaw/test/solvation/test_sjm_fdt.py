@@ -78,6 +78,3 @@ def test_sjm_fdt_true():
     assert sj_input['fdt'] == atoms.calc.parameters['sj']['fdt']
     assert abs(atoms.calc.parameters['sj']['previous_electrons'][0]) < 1e-6
     assert abs(atoms.calc.parameters['sj']['excess_electrons']) > 1e-6
-
-
-
