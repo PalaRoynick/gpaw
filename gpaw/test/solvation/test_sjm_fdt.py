@@ -1,18 +1,12 @@
-from ase.build import fcc111, molecule
-from ase.units import Pascal, m, fs
-
-from gpaw.solvation import (
-    EffectivePotentialCavity,
-    LinearDielectric,
-    GradientSurface,
-    SurfaceInteraction
-)
-
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
-from ase.md.langevin import Langevin
-from ase.constraints import FixAtoms
-
 import pytest
+from ase.build import fcc111, molecule
+from ase.constraints import FixAtoms
+from ase.md.langevin import Langevin
+from ase.units import Pascal, fs, m
+
+from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
+                            LinearDielectric, SurfaceInteraction)
+from gpaw.solvation.sjm import SJM, SJMPower12Potential
 
 
 @pytest.mark.slow
@@ -20,7 +14,7 @@ def test_sjm_fdt_true():
     """Test if fdt dictionary is correctly set in the calculator.
     Test if fdt initial excess electron value is correctly
     set in the calculator.
-    """
+    Test if the sjm fdt is changing the excess electrons."""
     atoms = fcc111('Au', size=(1, 1, 3))
     atoms.center(axis=2, vacuum=10.2)
     atoms.translate([0.0, 0.0, -4.0])
@@ -57,13 +51,14 @@ def test_sjm_fdt_true():
     # The calculator
     calc = SJM(
         mode='lcao',
-        basis='szp',
+        basis='szp(dzp)',
         txt='test_fdt_true.txt',
-        gpts=(16, 16, 136),
+        gpts=(8, 8, 68),
         kpts=(1, 1, 1),
         xc='PBE',
         maxiter=1000,
         sj=sj_input,
+        convergence={'energy': 1e8, 'density': 1e8, 'work function': 1e8},
         cavity=cavity,
         dielectric=dielectric,
         interactions=interactions,
@@ -78,7 +73,11 @@ def test_sjm_fdt_true():
     traj = 'md_fdt_true.traj'
     dyn = Langevin(atoms, 0.5 * fs, temperature_K=300,
                    friction=0.005, trajectory=traj)
-    dyn.run(5)
+    dyn.run(2)
 
     assert sj_input['fdt'] == atoms.calc.parameters['sj']['fdt']
     assert abs(atoms.calc.parameters['sj']['previous_electrons'][0]) < 1e-6
+    assert abs(atoms.calc.parameters['sj']['excess_electrons']) > 1e-6
+
+
+
