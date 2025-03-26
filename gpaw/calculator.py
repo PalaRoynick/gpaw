@@ -113,7 +113,8 @@ class GPAW(Calculator):
         'sl_lrtddft': None,
         'use_elpa': False,
         'elpasolver': '2stage',
-        'buffer_size': None}
+        'buffer_size': None,
+        'kpt_priority_power': 1.4}
 
     old = True
 
@@ -1298,6 +1299,7 @@ class GPAW(Calculator):
         parsize_kpt = self.parallel['kpt']
         parsize_domain = self.parallel['domain']
         parsize_bands = self.parallel['band']
+        parsize_kptprioritypower = self.parallel['kpt_priority_power']
 
         if isinstance(xc, HybridXC):
             parsize_kpt = 1
@@ -1309,7 +1311,8 @@ class GPAW(Calculator):
             ndomains = np.prod(parsize_domain)
         parallelization.set(kpt=parsize_kpt,
                             domain=ndomains,
-                            band=parsize_bands)
+                            band=parsize_bands,
+                            kptprioritypower=parsize_kptprioritypower)
         comms = parallelization.build_communicators()
         domain_comm = comms['d']
         kpt_comm = comms['k']

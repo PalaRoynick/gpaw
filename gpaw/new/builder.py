@@ -133,8 +133,9 @@ class DFTComponentsBuilder:
         d = parallel.get('domain', 1 if self._xc.type == 'HYB' else None)
         k = parallel.get('kpt', None)
         b = parallel.get('band', None)
+        kpow = parallel.get('kpt_priority_power', 1.4)
         self.communicators = create_communicators(comm, len(self.ibz),
-                                                  d, k, b, self.xp)
+                                                  d, k, b, kpow, self.xp)
 
         if self.mode == 'fd':
             pass  # filter = create_fourier_filter(grid)
@@ -405,13 +406,15 @@ def create_communicators(comm: MPIComm = None,
                          domain: int | tuple[int, int, int] | None = None,
                          kpt: int = None,
                          band: int = None,
+                         kptprioritypower: float = 1.4,
                          xp: ModuleType = np) -> dict[str, MPIComm]:
     parallelization = Parallelization(comm or world, nibzkpts)
     if domain is not None and not isinstance(domain, int):
         domain = prod(domain)
     parallelization.set(kpt=kpt,
                         domain=domain,
-                        band=band)
+                        band=band,
+                        kptprioritypower=kptprioritypower)
     comms = parallelization.build_communicators()
     comms['w'] = comm
 

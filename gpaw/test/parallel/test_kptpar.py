@@ -39,3 +39,18 @@ def test_parallel_kptpar(in_tmp_dir):
                           txt='H-b2.txt')
             e2 = H.get_potential_energy()
             assert e2 == pytest.approx(e1, abs=5e-9)
+    
+    if world.size == 8:
+        calc = GPAW(**base_params,
+                    parallel={'kpt_priority_power': 1.4},
+                    txt='H-d.txt')
+        H.calc = calc
+        e1 = H.get_potential_energy()
+        assert H.calc.wfs.kd.comm.size == 2
+        
+        calc = GPAW(**base_params,
+                    parallel={'kpt_priority_power': 4.4},
+                    txt='H-e.txt')
+        H.calc = calc
+        e1 = H.get_potential_energy()
+        assert H.calc.wfs.kd.comm.size == 4

@@ -1031,17 +1031,20 @@ class Parallelization:
         self.kpt = None
         self.domain = None
         self.band = None
+        self.kptprioritypower = 1.4
 
         self.nclaimed = 1
         self.navail = comm.size
 
-    def set(self, kpt=None, domain=None, band=None):
+    def set(self, kpt=None, domain=None, band=None, kptprioritypower=None):
         if kpt is not None:
             self.kpt = kpt
         if domain is not None:
             self.domain = domain
         if band is not None:
             self.band = band
+        if kptprioritypower is not None:
+            self.kptprioritypower = kptprioritypower
 
         nclaimed = 1
         for group, name in zip([self.kpt, self.domain, self.band],
@@ -1064,13 +1067,15 @@ class Parallelization:
         self.navail = navail
         self.nclaimed = nclaimed
 
-    def get_communicator_sizes(self, kpt=None, domain=None, band=None):
-        self.set(kpt=kpt, domain=domain, band=band)
+    def get_communicator_sizes(self, kpt=None, domain=None, band=None,
+                               kptprioritypower=None):
+        self.set(kpt=kpt, domain=domain, band=band,
+                 kptprioritypower=kptprioritypower)
         self.autofinalize()
         return self.kpt, self.domain, self.band
 
     def build_communicators(self, kpt=None, domain=None, band=None,
-                            order='kbd'):
+                            kptprioritypower=None, order='kbd'):
         """Construct communicators.
 
         Returns a communicator for k-points, domains, bands and
@@ -1083,7 +1088,8 @@ class Parallelization:
         contiguous ranks, i.e. order='kbd' will yield contiguous
         domain ranks, whereas order='kdb' will yield contiguous band
         ranks."""
-        self.set(kpt=kpt, domain=domain, band=band)
+        self.set(kpt=kpt, domain=domain, band=band,
+                 kptprioritypower=kptprioritypower)
         self.autofinalize()
 
         comm = self.comm
@@ -1149,14 +1155,14 @@ class Parallelization:
                 f'All the CPUs must be used.  Have {assignments} but '
                 f'{self.navail} times more are available.')
 
-    def get_optimal_kpt_parallelization(self, kptprioritypower=1.4):
+    def get_optimal_kpt_parallelization(self):
         if self.domain and self.band:
             # Try to use all the CPUs for k-point parallelization
             ncpus = min(self.nkpts, self.navail)
             return ncpus
         ncpuvalues, wastevalues = self.find_kpt_parallelizations()
         scores = ((self.navail // ncpuvalues) *
-                  ncpuvalues**kptprioritypower)**(1.0 - wastevalues)
+                  ncpuvalues**self.kptprioritypower)**(1.0 - wastevalues)
         arg = np.argmax(scores)
         ncpus = ncpuvalues[arg]
         return ncpus

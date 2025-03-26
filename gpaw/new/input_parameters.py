@@ -240,7 +240,8 @@ def parallel(value: dict[str, Any] | None = None) -> dict[str, Any]:
              'use_elpa',
              'elpasolver',
              'buffer_size',
-             'gpu'}
+             'gpu',
+             'kpt_priority_power'}
     if value is not None:
         if not value.keys() <= known:
             key = (value.keys() - known).pop()
