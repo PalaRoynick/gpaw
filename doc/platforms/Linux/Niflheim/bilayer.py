@@ -1,11 +1,12 @@
 import sys
 
-from ase.io import read
+from ase.build import mx2
 from gpaw.new.ase_interface import GPAW
 
 
-def gpaw_test(atoms, gpu=False):
-    kpts = {'density': 4}
+def gpaw_test(gpu=False):
+    atoms = mx2('MoS2', size=(9, 9, 1), vacuum=5.0)
+    kpts = (2, 2, 1)
     params = {'convergence': {'density': 1e-06},
               'kpts': kpts,
               'random': True,
@@ -26,5 +27,4 @@ def gpaw_test(atoms, gpu=False):
 
 
 if __name__ == '__main__':
-    atoms = read('/home/niflheim/kuisma/benchmarks/bilayer_example.json')
-    gpaw_test(atoms, gpu=eval(sys.argv[1]))
+    gpaw_test(gpu=eval(sys.argv[1]))
