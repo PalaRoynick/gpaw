@@ -103,7 +103,6 @@ class Functional:
                     xck.calculate(*[array.data for array in args])
                     args[2].data[:] += v_sg
                     args[4].data[:] += dedsigma_xg
-                    tmp = self._stress(*args, **kwargs)
                     return stress_vv + self._stress(*args, **kwargs)
                 else:
                     self.xc.kernel.calculate(*[array.data for array in args])
