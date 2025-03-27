@@ -17,6 +17,8 @@ from gpaw.utilities.scalapack import \
     pblas_simple_gemm, pblas_simple_hemm, scalapack_tri2full
 from gpaw.utilities.tools import tri2full
 
+from gpaw.lcaotddft.magneticmomentwriter import calculate_magnetic_moment_matrix # simple try
+from gpaw.utilities.tools import coordinates
 
 def gauss_ij(energy_i, energy_j, sigma):
     denergy_ij = energy_i[:, np.newaxis] - energy_j[np.newaxis, :]
@@ -66,9 +68,18 @@ class KohnShamDecomposition:
             self.kpt_u = paw.wfs.kpt_u
             self.density = paw.density
             self.comm = paw.comms['K']
+            
+            # simple try
+            gd = paw.wfs.gd
+            r_vG, _ = coordinates(gd, origin=origin_v) 
+
+            # ToDo: PAW corrections
+            #atoms = paw.atoms # for PAW corrections
 
             if len(paw.wfs.kpt_u) > 1:
                 raise RuntimeError('K-points are not fully supported')
+
+            # I would need an else 
 
         if filename is not None:
             self.read(filename)
@@ -411,7 +422,7 @@ class KohnShamDecomposition:
         assert len(rho_up) == 1, 'K-points not implemented'
         u = 0
         rho_p = rho_up[u]
-        dmrho_vp = - self.dm_vp * rho_p
+        dmrho_vp = - self.dm_vp * rho_p ##
         return dmrho_vp
 
     def get_dipole_moment(self, rho_up):
