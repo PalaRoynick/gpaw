@@ -62,7 +62,7 @@ class DenseAtomicCorrection(BaseAtomicCorrection):
         # only on the local slice of bands.
         for a, dX_ii in dX_aii.items():
             P_Mi = P_aqMi[a][q]
-            assert dtype == P_Mi.dtype
+            assert dtype == P_Mi.dtype, (dtype, P_Mi.dtype)
             dXP_iM = np.zeros((dX_ii.shape[1], P_Mi.shape[0]), dtype)
             # (ATLAS can't handle uninitialized output array)
             mmm(1.0, np.asarray(dX_ii, dtype), 'N', P_Mi, 'C', 0.0, dXP_iM)
