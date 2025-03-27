@@ -380,15 +380,22 @@ class DFTComponentsBuilder:
                 [reader.occupations.fermilevel / ha])
 
     def create_environment(self, grid, log):
+        if self.params.environment is not None:
+            return self.params.environment.build(
+                setups=self.setups,
+                grid=grid, relpos_ac=self.relpos_ac, log=log,
+                comm=self.communicators['w'],
+                nn=self.params.poissonsolver.get('nn', 3))
+
         if self.params.background_charge:
             from gpaw.new.environment import Jellium, FixedPotentialJellium
             from gpaw.jellium import create_background_charge
-            fl = self.params.background_charge.pop('fermi_level', None)
+            wf = self.params.background_charge.pop('workfunction', None)
             bc = create_background_charge(**self.params.background_charge)
             bc.set_grid_descriptor(grid._gd)
-            if fl is None:
+            if wf is None:
                 return Jellium(bc, len(self.atoms), grid)
-            return FixedPotentialJellium(bc, len(self.atoms), grid, fl)
+            return FixedPotentialJellium(bc, len(self.atoms), grid, wf)
         if self.params.solvation:
             from gpaw.new.solvation import Solvation
             return Solvation(**self.params.solvation,

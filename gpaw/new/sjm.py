@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import numpy as np
+from ase.units import Bohr
+
+from gpaw.jellium import create_background_charge
+from gpaw.new.environment import Environment, FixedPotentialJellium
+from gpaw.new.poisson import PoissonSolverWrapper
+from gpaw.new.solvation import Solvation
+
+
+class SJM:
+    def __init__(self,
+                 *,
+                 cavity,
+                 dielectric,
+                 interactions,
+                 jelliumregion,
+                 target_potential: float,  # eV
+                 excess_electrons: float = 0.0,
+                 tol: float = 0.001):  # eV
+        self.cavity = cavity
+        self.dielectric = dielectric
+        self.interactions = interactions
+        self.jelliumregion = jelliumregion
+        self.target_potential = target_potential
+        self.excess_electrons = excess_electrons
+        self.tol = tol
+
+    def build(self,
+              setups,
+              grid,
+              relpos_ac,
+              log,
+              comm,
+              nn) -> SJMEnvironment:
+        solvation = Solvation(
+            cavity=self.cavity,
+            dielectric=self.dielectric,
+            interactions=self.interactions,
+            setups=setups, grid=grid, relpos_ac=relpos_ac,
+            log=log, comm=comm, nn=nn)
+        h = grid.cell_cv[2, 2] * Bohr
+        z1 = relpos_ac[:, 2].max() * h + 3.0
+        z2 = self.jelliumregion.get('top', h - 1.0)
+        jellium = create_background_charge(charge=self.excess_electrons,
+                                           z1=z1,
+                                           z2=z2)
+        jellium.set_grid_descriptor(grid._gd)
+        fixed_pot = FixedPotentialJellium(
+            jellium,
+            natoms=len(relpos_ac),
+            grid=grid,
+            workfunction=self.target_potential)
+        return SJMEnvironment(solvation, fixed_pot)
+
+
+class SJMEnvironment(Environment):
+    def __init__(self,
+                 solvation: Solvation,
+                 fixed_potential: FixedPotentialJellium):
+        super().__init__(solvation.natoms)
+        self.solvation = solvation
+        self.fixed_potential = fixed_potential
+        self.charge = self.fixed_potential.charge
+
+    def create_poisson_solver(self, **kwargs):
+        ps = self.solvation.create_poisson_solver(**kwargs).solver
+        return SJMPoissonSolver(ps, self.solvation.dielectric)
+
+    def post_scf_convergence(self,
+                             ibzwfs,
+                             occ_calc,
+                             mixer,
+                             log) -> bool:
+        converged = self.fixed_potential.post_scf_convergence(
+            ibzwfs, occ_calc, mixer, log)
+        self.charge = self.fixed_potential.charge
+        return converged
+
+    def update1(self, nt_r):
+        self.solvation.update1(nt_r)
+        self.fixed_potential.update1(nt_r)
+
+    def update2(self, nt_r, vHt_r, vt_sr) -> float:
+        return self.solvation.update2(nt_r, vHt_r, vt_sr)
+
+
+class SJMPoissonSolver(PoissonSolverWrapper):
+    def __init__(self, solver, dielectric):
+        super().__init__(solver)
+        self.dielectric = dielectric
+
+    def solve(self,
+              vHt_r,
+              rhot_r) -> float:
+        self.solver.solve(vHt_r.data, rhot_r.data)
+        eps_r = vHt_r.desc.from_data(self.dielectric.eps_gradeps[0])
+        saw_tooth_z = modified_saw_tooth(eps_r)
+        s1, s2 = saw_tooth_z[[2, 10]]
+        v1, v2 = vHt_r.data[:, :, [2, 10]].mean(axis=(0, 1))
+        vHt_r.data -= (v2 - v1) / (s2 - s1) * saw_tooth_z[np.newaxis,
+                                                          np.newaxis]
+        vHt_r.data -= vHt_r.data[:, :, -1].mean()
+        return np.nan
+
+
+def modified_saw_tooth(eps_r):
+    a_z = 1.0 / eps_r.data.mean(axis=(0, 1))
+    saw_tooth_z = np.add.accumulate(a_z)
+    saw_tooth_z -= 0.5 * a_z
+    return saw_tooth_z

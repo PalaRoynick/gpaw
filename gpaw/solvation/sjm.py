@@ -428,16 +428,14 @@ class SJM(SolvationGPAW):
             self.parameters['sj']['fdt'] = {
                 'dt': 0.5,
                 'po_time': 100.0,
-                'th_temp': 300.0
-            }
+                'th_temp': 300.0}
         elif isinstance(self.parameters['sj']['fdt'], dict):
             # If fdt is a dict, ensure the dictionary is complete
             fdt_dict = self.parameters['sj']['fdt']
             self.parameters['sj']['fdt'] = {
                 'dt': fdt_dict.get('dt', 0.5),
                 'po_time': fdt_dict.get('po_time', 100.0),
-                'th_temp': fdt_dict.get('th_temp', 300.0)
-            }
+                'th_temp': fdt_dict.get('th_temp', 300.0)}
 
     def _quick_reinitialization(self):
         """Minimal reinitialization of electronic-structure stuff when only
