@@ -12,24 +12,26 @@ x   r or h
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from typing import DefaultDict
 
 import numpy as np
+
 from gpaw.core.arrays import DistributedArrays
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
+from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
+from gpaw.new.energies import DFTEnergies
+from gpaw.new.external_potential import ExternalPotential
+from gpaw.new.logger import indent
 from gpaw.new.potential import Potential
 from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
-from gpaw.utilities import pack_hermitian, pack_density, unpack_hermitian
-from gpaw.new.logger import indent
-from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new.external_potential import ExternalPotential
-from gpaw.new.energies import DFTEnergies
+from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
 class PotentialCalculator:
@@ -153,22 +155,25 @@ def calculate_non_local_potential(setups,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
     D_asii = density.D_asii.to_xp(np)
-    dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
+    dH_asii = D_asii.layout.new(dtype=dtype).zeros(density.ncomponents)
     V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
-    rank = 0
-    for a, D_sii in D_asii.items():
-        if rank % kpt_band_comm.size == kpt_band_comm.rank:
-            V_L = V_aL[a]
-            setup = setups[a]
-            dH_sii, corrections = calculate_non_local_potential1(
-                setup, xc, ext_pot, D_sii, V_L, soc)
-            dH_asii[a][:] = dH_sii
-            for key, e in corrections.items():
-                energy_corrections[key] += e
-        else:
-            dH_asii[a][:] = 0.0
-        rank += 1
+
+    # Distribute atom indices for this domain-comm over kpt-comm
+    # and band-comm:
+    mya = [a for rank, a in enumerate(D_asii.keys())
+           if rank % kpt_band_comm.size == kpt_band_comm.rank]
+
+    pool = thread_pool(int(os.environ.get('GPAW_NWORKERS', 1)))
+
+    def target(a: int) -> tuple[int, np.ndarray, dict[str, float]]:
+        return (a,) + calculate_non_local_potential1(
+            setups[a], xc, ext_pot, D_asii[a], V_aL[a], soc)
+
+    for a, dH_sii, corrections in pool.map(target, mya):
+        dH_asii[a][:] = dH_sii
+        for key, e in corrections.items():
+            energy_corrections[key] += e
 
     kpt_band_comm.sum(dH_asii.data)
 
@@ -176,7 +181,8 @@ def calculate_non_local_potential(setups,
     names = ['kinetic_correction', 'coulomb', 'zero', 'xc', 'external',
              'spinorbit']
     energies = np.array([energy_corrections[name] for name in names])
-    density.D_asii.layout.atomdist.comm.sum(energies)
+    domain_comm = density.D_asii.layout.atomdist.comm
+    domain_comm.sum(energies)
     kpt_band_comm.sum(energies)
 
     return (dH_asii.to_xp(density.D_asii.layout.xp),
@@ -231,3 +237,15 @@ def calculate_non_local_potential1(setup: Setup,
                     'xc': e_xc,
                     'external': e_external,
                     'spinorbit': e_soc}
+
+
+def thread_pool(nworkers):
+    if nworkers == 1:
+        return Pool()
+    from concurrent.futures import ThreadPoolExecutor
+    return ThreadPoolExecutor(max_workers=nworkers)
+
+
+class Pool:
+    def map(self, func, data):
+        return [func(d) for d in data]
