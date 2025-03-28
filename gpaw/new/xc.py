@@ -176,11 +176,14 @@ class GGAFunctional(LDAFunctional):
         # xc already has Gradient.apply bound methods!!!
         self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
-    def _check_libvdwxc(self, nspins):
+    def _evaluate_libvdwxc(self, args):
         libvdwxc = self.xc.libvdwxc
+        nspins = args[1].shape[0]
         if libvdwxc is None or self.xc._nspins != nspins:
             self.xc._nspins = nspins
             self.xc.initialize_backend(self.xc.gd)
+        self.xc.semilocal_xc.kernel.calculate(*args)
+        self.xc.calculate_vdw(*args[:5])
 
     def calculate(self,
                   nt_sr: UGArray,
@@ -199,8 +202,7 @@ class GGAFunctional(LDAFunctional):
             if 'vdW' not in self.name:
                 self.xc.kernel.calculate(*args)
             elif isinstance(self.xc, VDWXC):
-                self._check_libvdwxc(args[1].data.shape[0])
-                self.xc.calculate_xc(*args)
+                self._evaluate_libvdwxc(args)
             else:
                 assert isinstance(self.xc, VDWFunctionalBase)
                 self.xc.calculate_exchange(*args)
@@ -327,8 +329,7 @@ class MGGAFunctional(GGAFunctional):
         args = [array.data for array in args]
         if 'vdW' in self.name:
             assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
-            self._check_libvdwxc(args[1].data.shape[0])
-            self.xc.calculate_xc(*args)
+            self._evaluate_libvdwxc(args)
         else:
             self.xc.kernel.calculate(*args)
         add_gradient_correction([grad.apply for grad in self.grad_v],

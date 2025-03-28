@@ -457,24 +457,14 @@ class VDWXC(XCFunctional):
                               ' x '.join(str(N) for N in gd.N_c)))
         # TODO Here we could decide FFT padding.
 
-    def calculate_xc(self, e_g, n_sg, v_sg, sigma_xg, dedsigma_xg,
-                     tau_sg=None, dedtau_sg=None):
-        self.timer.start('van der Waals')
+    def calculate_vdw(self, e_g, n_sg, v_sg, sigma_xg, dedsigma_xg):
         assert self.libvdwxc is not None
-        semiloc = self.semilocal_xc
-        if hasattr(semiloc, 'process_mgga'):
-            semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg,
-                                     tau_sg, dedtau_sg)
-        else:
-            semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
-        self.last_semilocal_energy = e_g.sum() * self.gd.dv
-        self.timer.stop('semilocal')
+        # Note: Redistwrapper handles vdwcoef.  For now
         energy_nonlocal = self.redist_wrapper.calculate(n_sg, sigma_xg,
                                                         v_sg, dedsigma_xg)[0]
-        # Note: Redistwrapper handles vdwcoef.  For now
+        self.last_semilocal_energy = e_g.sum() * self.gd.dv
         self.last_nonlocal_energy = energy_nonlocal
         e_g[0, 0, 0] += energy_nonlocal / self.gd.dv
-        self.timer.stop('van der Waals')
 
     def calculate_impl(self, gd, n_sg, v_sg, e_g):
         """Calculate energy and potential.
@@ -500,17 +490,10 @@ class VDWXC(XCFunctional):
             semiloc.process_mgga(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
         else:
             semiloc.kernel.calculate(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
-        self.last_semilocal_energy = e_g.sum() * self.gd.dv
         self.timer.stop('semilocal')
 
-        energy_nonlocal = self.redist_wrapper.calculate(n_sg, sigma_xg,
-                                                        v_sg, dedsigma_xg)[0]
-        # Note: Redistwrapper handles vdwcoef.  For now
-
+        self.calculate_vdw(e_g, n_sg, v_sg, sigma_xg, dedsigma_xg)
         add_gradient_correction(grad_v, gradn_svg, sigma_xg, dedsigma_xg, v_sg)
-
-        self.last_nonlocal_energy = energy_nonlocal
-        e_g[0, 0, 0] += energy_nonlocal / self.gd.dv
         self.timer.stop('van der Waals')
 
     def stress_tensor_contribution(self, n_sg, skip_sum=False):
