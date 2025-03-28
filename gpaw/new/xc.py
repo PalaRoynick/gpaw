@@ -91,18 +91,12 @@ class Functional:
         if ibzwfs.kpt_band_comm.rank == 0:
             if self.xp is np:
                 if isinstance(self.xc, VDWXC):
-                    v_sg = args[2].data.copy()
-                    dedsigma_xg = args[4].data.copy()
-                    v_sg[:] = 0
-                    dedsigma_xg[:] = 0
-                    wrapper = self.xc.redist_wrapper
-                    stress_vv = wrapper.calculate(args[1].data, args[3].data,
-                                                  v_sg, dedsigma_xg,
-                                                  get_stress=True)[1]
                     xck = self.xc.semilocal_xc.kernel
                     xck.calculate(*[array.data for array in args])
-                    args[2].data[:] += v_sg
-                    args[4].data[:] += dedsigma_xg
+                    wrapper = self.xc.redist_wrapper
+                    stress_vv = wrapper.calculate(args[1].data, args[3].data,
+                                                  args[2].data, args[4].data,
+                                                  get_stress=True)[1]
                     return stress_vv + self._stress(*args, **kwargs)
                 else:
                     self.xc.kernel.calculate(*[array.data for array in args])
