@@ -170,14 +170,21 @@ class GGAFunctional(LDAFunctional):
         # xc already has Gradient.apply bound methods!!!
         self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
-    def _evaluate_libvdwxc(self, args):
-        libvdwxc = self.xc.libvdwxc
-        nspins = args[1].shape[0]
-        if libvdwxc is None or self.xc._nspins != nspins:
-            self.xc._nspins = nspins
-            self.xc.initialize_backend(self.xc.gd)
-        self.xc.semilocal_xc.kernel.calculate(*args)
-        self.xc.calculate_vdw(*args[:5])
+    def _evaluate_xc_cpu(self, args):
+        if 'vdW' not in self.name:
+            self.xc.kernel.calculate(*args)
+        elif isinstance(self.xc, VDWXC):
+            libvdwxc = self.xc.libvdwxc
+            nspins = args[1].shape[0]
+            if libvdwxc is None or self.xc._nspins != nspins:
+                self.xc._nspins = nspins
+                self.xc.initialize_backend(self.xc.gd)
+            self.xc.semilocal_xc.kernel.calculate(*args)
+            self.xc.calculate_vdw(*args[:5])
+        else:
+            assert isinstance(self.xc, VDWFunctionalBase)
+            self.xc.kernel.calculate(*args)
+            self.xc.calculate_correlation(*args[:5])
 
     def calculate(self,
                   nt_sr: UGArray,
@@ -193,14 +200,7 @@ class GGAFunctional(LDAFunctional):
         if self.xp is np:
             args = [a.data
                     for a in [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr]]
-            if 'vdW' not in self.name:
-                self.xc.kernel.calculate(*args)
-            elif isinstance(self.xc, VDWXC):
-                self._evaluate_libvdwxc(args)
-            else:
-                assert isinstance(self.xc, VDWFunctionalBase)
-                self.xc.calculate_exchange(*args)
-                self.xc.calculate_correlation(*args)
+            self._evaluate_xc_cpu(args)
         else:
             if self.name != 'PBE':
                 raise ValueError(f'{self.name} not supported on GPU')
@@ -321,11 +321,7 @@ class MGGAFunctional(GGAFunctional):
         args = [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr,
                 taut_sr, dedtaut_sr]
         args = [array.data for array in args]
-        if 'vdW' in self.name:
-            assert isinstance(self.xc, VDWXC), 'Only implemented for libvdwxc'
-            self._evaluate_libvdwxc(args)
-        else:
-            self.xc.kernel.calculate(*args)
+        self._evaluate_xc_cpu(args)
         add_gradient_correction([grad.apply for grad in self.grad_v],
                                 gradn_svr.data, sigma_xr.data,
                                 dedsigma_xr.data, vxct_sr.data)
