@@ -19,6 +19,7 @@ from gpaw.utilities.tools import tri2full
 
 from gpaw.lcaotddft.magneticmomentwriter import calculate_magnetic_moment_matrix  # noqa: E501
 from gpaw.lcaotddft.magneticmomentwriter import calculate_magnetic_moment_atomic_corrections  # noqa: E501
+from gpaw.lcaotddft.magneticmomentwriter import get_origin_coordinates
 from gpaw.utilities.tools import coordinates
 
 
@@ -46,10 +47,18 @@ def get_bfs_maps(calc):
     l_M = np.array(l_M)
     return a_M, l_M
 
+def calculate_dipole_moment(paw,u, direction):
+    # Calculate dipole moment
+    cef = ConstantElectricField(Hartree / Bohr, direction)
+    kick_hamiltonian = KickHamiltonian(paw.hamiltonian,
+                                       paw.density, cef)
+    dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
+        kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
+        add_kinetic=False, root=-1)
+    return dm_MM
 
 class DummyKsl(NamedTuple):
     using_blacs: bool = False
-
 
 class KohnShamDecomposition:
     version = 1
@@ -88,8 +97,11 @@ class KohnShamDecomposition:
             assert (ns, nk) == (1, 1), 'Spins and K-points not implemented'
             self.kpt_u = [KPoint(weightk=1, weight=1, s=0, k=0, q=0)]
             self.ksl = DummyKsl()
-
-    def initialize(self, paw, min_occdiff=1e-3, only_ia=True):
+    
+    # initialize data for photoabsorption KS-decomposition ('dipole') or
+    # or CD KS-decomposition ('magnetic')
+    # the kind of the decomposition ('dipole' or 'magnetic') can be chosen via comp_kind
+    def initialize(self, paw, min_occdiff=1e-3, only_ia=True, comp_kind='dipole'):
         if self.has_initialized:
             return
         paw.initialize_positions()
@@ -192,36 +204,30 @@ class KohnShamDecomposition:
             dm_vp = np.empty((3, Np), dtype=float)
 
         # Calculate dipole or magnetic moment
-        for v in range(3):
-            direction = np.zeros(3, dtype=float)
-            direction[v] = 1.0
-            if 0:
-                # Calculate dipole moment
-                cef = ConstantElectricField(Hartree / Bohr, direction)
-                kick_hamiltonian = KickHamiltonian(paw.hamiltonian,
-                                                   paw.density, cef)
-                dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
-                    kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
-                    add_kinetic=False, root=-1)
-            else:
-                # Calculate magnetic moment
-                # Recalculating thrice
-                # simple try
-                gd = paw.wfs.gd
-                atoms = paw.atoms
-                origin_v = np.array([0.0, 0.0, 0.0])
-                r_vG, _ = coordinates(gd, origin=origin_v)  # XXX Add origin
-                R_av = atoms.positions / Bohr - origin_v[np.newaxis, :]
-                dM_vaii = calculate_magnetic_moment_atomic_corrections(
-                    R_av, paw.setups, paw.hamiltonian.dH_asp.partition)
+        if comp_kind == 'dipole':
+            for v in range(3):
+                direction = np.zeros(3, dtype=float)
+                direction[v] = 1.0
+                dm_MM = calculate_dipole_moment(paw, u, direction)
+        else:
+            # Calculate magnetic moment
+            # Recalculating thrice
+            # simple try
+            gd = paw.wfs.gd
+            atoms = paw.atoms
+            origin_v = np.array([0.0, 0.0, 0.0])
+            r_vG, _ = coordinates(gd, origin=origin_v)  # XXX Add origin
+            R_av = atoms.positions / Bohr - origin_v[np.newaxis, :]
+            dM_vaii = calculate_magnetic_moment_atomic_corrections(
+                R_av, paw.setups, paw.hamiltonian.dH_asp.partition)
 
-                # ToDo: PAW corrections
-                # atoms = paw.atoms # for PAW corrections
-                M_vmM = calculate_magnetic_moment_matrix(
-                    paw.wfs.kpt_u, paw.wfs.basis_functions,
-                    paw.wfs.atomic_correction, r_vG, dM_vaii,
-                    only_pseudo=False)
-                dm_MM = M_vmM[v]
+            # ToDo: PAW corrections
+            # atoms = paw.atoms # for PAW corrections
+            M_vmM = calculate_magnetic_moment_matrix(
+                paw.wfs.kpt_u, paw.wfs.basis_functions,
+                paw.wfs.atomic_correction, r_vG, dM_vaii,
+                only_pseudo=False)
+            dm_MM = M_vmM[v]
 
             if self.ksl.using_blacs:
                 tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
