@@ -233,7 +233,8 @@ class KohnShamDecomposition:
                 dm_MM = calculate_dipole_moment(paw, u, direction)
         else:
             # Calculate magnetic moment
-            dm_MM = calculate_magnetic_moment(paw)
+            # ToDo: cacl. all three directions and average spectra
+            dm_MM = calculate_magnetic_moment(paw)[0]
         #print(f"{comp_kind}, shape(dm_MM): {np.shape(dm_MM)}")
         if self.ksl.using_blacs:
             tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
