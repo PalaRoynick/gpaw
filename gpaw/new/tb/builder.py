@@ -124,7 +124,8 @@ class TBPotentialCalculator(PotentialCalculator):
                  atoms,
                  domain_comm):
         super().__init__(xc, None, setups,
-                         relpos_ac=atoms.get_scaled_positions())
+                         relpos_ac=atoms.get_scaled_positions(),
+                         environment=None)
         self.atoms = atoms.copy()
         self.domain_comm = domain_comm
         self.force_av = None
@@ -206,7 +207,7 @@ class TBSCFLoop:
             1,
             energies,
             ibzwfs, density, potential,
-            0.0, 0.0,
+            0.0, 0.0, 0.0,
             self.comm, calculate_forces,
             pot_calc, False)
 
@@ -252,7 +253,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
     def create_hamiltonian_operator(self):
         return TBHamiltonian(self.basis)
 
-    def create_potential_calculator(self):
+    def create_potential_calculator(self, log):
         xc = DummyXC()
         return TBPotentialCalculator(xc, self.setups, self.atoms,
                                      self.communicators['d'])

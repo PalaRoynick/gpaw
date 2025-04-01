@@ -13,13 +13,13 @@ from ase.units import Ha
 from gpaw import __version__
 from gpaw.core import UGArray
 from gpaw.dos import DOSCalculator
-from gpaw.mpi import MPIComm
+from gpaw.mpi import MPIComm, broadcast
 from gpaw.mpi import synchronize_atoms, world
 from gpaw.new import Timer, trace
 from gpaw.new.builder import builder as create_builder
 from gpaw.new.calculation import (CalculationModeError, DFTCalculation,
                                   ReuseWaveFunctionsError, units)
-from gpaw.new.gpw import read_gpw, write_gpw
+from gpaw.new.gpw import read_gpw, write_gpw, GPWFlags
 from gpaw.new.input_parameters import InputParameters
 from gpaw.new.input_parameters import parameter_functions as parameter_names
 from gpaw.new.logger import Logger
@@ -40,6 +40,7 @@ def GPAW(
     *,
     txt: str | Path | IO[str] | None = '?',
     communicator: MPIComm | Iterable[int] | None = None,
+    background_charge=None,
     basis: str | dict[str | int | None, str] | None = None,
     charge: float | None = None,
     convergence: dict[str, Any] | None = None,
@@ -61,6 +62,7 @@ def GPAW(
     random: bool | None = None,
     setups: Any | None = None,
     soc: bool | None = None,
+    solvation=None,
     spinpol: bool | None = None,
     symmetry: str | dict[str, Any] | None = None,
     xc: str | dict[str, Any] | Dictable | None = None) -> ASECalculator:
@@ -118,6 +120,16 @@ def write_header(log, params):
             n = len(key)
             txt = pformat(val, width=75 - n).replace('\n', '\n ' + ' ' * n)
             parts.append(f'{key}={txt}')
+        log(',\n'.join(parts))
+    with log.indent('\nenvironment variables:'):
+        import gpaw
+        parts = []
+        for name in sorted(gpaw.allowed_envvars):
+            try:
+                value = getattr(gpaw, name)
+            except AttributeError:
+                continue
+            parts.append(f'{name}={value!r}')
         log(',\n'.join(parts))
 
 
@@ -327,8 +339,8 @@ class ASECalculator:
     def _calculate_forces(self) -> Array2D:  # units: Ha/Bohr
         """Helper method for force-convergence criterium."""
         with self.timer('Forces'):
-            self.dft.forces(silent=True)
-        return self.dft.results.pop('forces')
+            self.dft._calculate_forces()
+        return self.dft.results['forces']
 
     def __del__(self):
         self.log('---')
@@ -376,6 +388,16 @@ class ASECalculator:
     def check_state(self, atoms, tol=1e-12):
         return list(compare_atoms(self.atoms, atoms))
 
+    def eigenvalues(self):
+        eig_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[0]
+        return broadcast(eig_skn * Ha if self.comm.rank == 0 else None,
+                         comm=self.comm)
+
+    def occupations(self):
+        occ_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[1]
+        return broadcast(occ_skn if self.comm.rank == 0 else None,
+                         comm=self.comm)
+
     def write(self,
               filename: str | Path,
               mode: str = '',
@@ -398,9 +420,13 @@ class ASECalculator:
         """
         self.log(f'# Writing to {filename} (mode={mode!r})\n')
 
-        write_gpw(filename, self.atoms, self.params,
-                  self.dft, skip_wfs=mode != 'all', precision=precision,
-                  include_projections=include_projections)
+        flags = GPWFlags(include_projections=include_projections,
+                         precision=precision, include_wfs=mode == 'all')
+        write_gpw(filename, self.atoms, self.params, self.dft, flags=flags)
+
+    @property
+    def environment(self):
+        return self.dft.pot_calc.environment
 
     # Old API:
 
@@ -613,7 +639,8 @@ class ASECalculator:
             dft.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
             if isinstance(dft.ibzwfs.wfs_qs[0][0].psit_nX, SimpleNamespace):
                 params = InputParameters(dict(self.params.items()))
-                builder = create_builder(self.atoms, params, self.comm)
+                builder = create_builder(self.atoms, params,
+                                         self.comm, dft.log)
                 basis_set = builder.create_basis_set()
                 ibzwfs = builder.create_ibz_wave_functions(
                     basis_set, dft.potential, log=dft.log)
@@ -662,12 +689,12 @@ class ASECalculator:
                       *,
                       txt='-',
                       update_fermi_level: bool = False,
-                      **kwargs):
+                      **kwargs) -> ASECalculator:
         kwargs = {**dict(self.params.items()), **kwargs}
 
         params = InputParameters(kwargs)
         log = Logger(txt, self.comm)
-        builder = create_builder(self.atoms, params, self.comm)
+        builder = create_builder(self.atoms, params, self.comm, log)
         basis_set = builder.create_basis_set()
         dft = self.dft
         comm1 = dft.ibzwfs.kpt_band_comm
@@ -688,14 +715,14 @@ class ASECalculator:
         scf_loop = builder.create_scf_loop()
         scf_loop.update_density_and_potential = False
         scf_loop.fix_fermi_level = not update_fermi_level
+        for name in ['energy', 'density', 'forces']:
+            scf_loop.convergence.pop(name, None)
 
         dft = DFTCalculation(
             ibzwfs, density, potential,
             builder.setups,
             scf_loop,
-            SimpleNamespace(relpos_ac=self.dft.relpos_ac,
-                            poisson_solver=None,
-                            xc=self.dft.pot_calc.xc),
+            builder.create_potential_calculator(log=log),
             log,
             energies=self.dft.energies)
 
@@ -787,3 +814,7 @@ class ASECalculator:
             return x.flatten()
         elif type == 'mbeefvdw':
             return np.append(x.flatten(), c)
+
+    def get_bz_to_ibz_map(self):
+        """Return indices from BZ to IBZ."""
+        return self.dft.ibzwfs.ibz.bz2ibz_K.copy()

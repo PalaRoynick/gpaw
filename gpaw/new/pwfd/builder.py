@@ -17,8 +17,9 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                  params,
                  *,
                  comm,
+                 dtype=None,
                  qspiral=None):
-        super().__init__(atoms, params, comm=comm)
+        super().__init__(atoms, params, dtype=dtype, comm=comm)
         self.qspiral_v = (None if qspiral is None else
                           qspiral @ self.grid.icell * (2 * pi))
 
@@ -34,7 +35,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
             self.atoms,
             **self.params.eigensolver)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, log):
         kpt_comm, band_comm, domain_comm = (self.communicators[x]
                                             for x in 'kbd')
 
@@ -106,7 +107,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
             mynbands = len(psit_nX.data)
             eig_n = np.empty(self.nbands)
             eig_n[:lcaonbands] = lcaowfs._eig_n
-            eig_n[lcaonbands:] = 1e10
+            eig_n[lcaonbands:] = 100.0  # set high value for random wfs.
             if mylcaonbands < mynbands:
                 psit_nX[mylcaonbands:].randomize(
                     seed=self.communicators['w'].rank)

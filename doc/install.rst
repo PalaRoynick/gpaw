@@ -48,6 +48,7 @@ There are several ways to install GPAW:
       architectures`
     * :ref:`troubleshooting`
     * In case of trouble: :ref:`Our mail list and #gpaw chat channel <contact>`
+    * Building the :ref:`gpu` version of GPAW.
 
 
 Requirements
@@ -106,15 +107,6 @@ Check that you have installed everything in the correct places::
 
     $ gpaw info
 
-
-Install PAW datasets
-====================
-
-Install the datasets into the folder ``<dir>`` using this command::
-
-    $ gpaw install-data <dir>
-
-See :ref:`installation of paw datasets` for more details.
 
 Now you should be ready to use GPAW, but before you start, please run the
 tests as described below.

@@ -193,7 +193,7 @@ class Density:
 
         return ccc_aL
 
-    def normalize(self):
+    def normalize(self, background_charge: float) -> None:
         comp_charge = 0.0
         xp = self.D_asii.layout.xp
         for a, D_sii in self.D_asii.items():
@@ -204,12 +204,13 @@ class Density:
         # comp_charge could be cupy.ndarray:
         comp_charge = float(comp_charge) * sqrt(4 * pi)
         comp_charge = self.nt_sR.desc.comm.sum_scalar(comp_charge)
-        charge = comp_charge + self.charge
+        charge = comp_charge + self.charge - background_charge
         pseudo_charge = self.nt_sR[:self.ndensities].integrate().sum()
         if pseudo_charge != 0.0:
             x = -charge / pseudo_charge
             self.nt_sR.data *= x
 
+    @trace
     def update(self, ibzwfs: IBZWaveFunctions, ked=False):
         self.nt_sR.data[:] = 0.0
         self.D_asii.data[:] = 0.0
@@ -236,6 +237,7 @@ class Density:
             self.taut_sR.symmetrize(symmetries.rotation_scc,
                                     symmetries.translation_sc)
 
+    @trace
     def symmetrize(self, symmetries):
         self.nt_sR.symmetrize(symmetries.rotation_scc,
                               symmetries.translation_sc)
@@ -259,6 +261,7 @@ class Density:
                 self.symplan.apply(D_asii.data, D_asii.data)
             self.D_asii.scatter_from(D_asii)
 
+    @trace
     def move(self, relpos_ac, atomdist):
         self.nt_sR.data[:self.ndensities] -= self.nct_R.data
         self.nct_aX.move(relpos_ac, atomdist)
@@ -268,6 +271,7 @@ class Density:
         self.nt_sR.data[:self.ndensities] += self.nct_R.data
         self.D_asii = self.D_asii.moved(atomdist)
 
+    @trace
     def redist(self,
                grid: UGDesc,
                xdesc,
@@ -354,25 +358,20 @@ class Density:
 
         return magmom_v, magmom_av
 
-    def write_to_gpw(self, writer, precision='double'):
-        from gpaw.new.gpw import as_single_precision
+    @trace
+    def write_to_gpw(self, writer, flags):
         D_asp = self.D_asii.to_cpu().to_lower_triangle().gather()
         nt_sR = self.nt_sR.to_xp(np).gather()
         if self.taut_sR is not None:
             taut_sR = self.taut_sR.to_xp(np).gather()
         if D_asp is None:
             return  # let master do the writing
-        nt_sR_data = nt_sR.data
-        if precision == 'single':
-            nt_sR_data = as_single_precision(nt_sR_data)
         writer.write(
-            density=nt_sR_data * Bohr**-3,
+            density=flags.to_storage_dtype(nt_sR.data * Bohr**-3),
             atomic_density_matrices=D_asp.data)
         if self.taut_sR is not None:
-            taut_sR_data = taut_sR.data
-            if precision == 'single':
-                taut_sR_data = as_single_precision(taut_sR_data)
-            writer.write(ked=taut_sR_data * (Ha * Bohr**-3))
+            writer.write(ked=flags.to_storage_dtype(
+                taut_sR.data * (Ha * Bohr**-3)))
 
 
 def atomic_occupation_numbers(setup,
