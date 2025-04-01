@@ -390,6 +390,7 @@ test-latest:
     - >
       pytest -v -m ci -m gpu
       --cov=gpaw --cov-report=html --cov-report=term
+      --check-file-leak
 
   artifacts:
     paths:
@@ -436,7 +437,7 @@ test-cuda:
     - pytest -v -m gpu
 
     - gpaw-python -m gpaw info
-    - gpaw-python -m pytest -v -m gpu
+    - gpaw-python -m pytest -v -m gpu --check-file-leak
 
 test-cuda-mpi:
   image: $IMAGE_CUDA
@@ -606,7 +607,7 @@ gpwfiles:
   before_script:
     - !reference [default, before_script]
   script:
-    - pytest -n 16 -m generate_gpw_files --durations 30 -v
+    - pytest -n 16 -m generate_gpw_files --durations 30 -v --check-file-leak
   artifacts:
     paths:
       - .pytest_cache/
@@ -637,6 +638,7 @@ gpwfiles:
     - >
       gpaw -P $GPAW_MPI_NPROCS python -m
       pytest --instafail -r s --durations 30
+      --check-file-leak
   rules:
     - if: $CI_PIPELINE_SOURCE == "push"
       when: manual
@@ -654,6 +656,7 @@ nightly-mpi-1:
     - >
       pytest -n 8 --instafail -r s --durations 30
       --cov=gpaw --cov-report=html --cov-report=term
+      --check-file-leak
   artifacts:
     paths:
       - htmlcov/
@@ -669,6 +672,7 @@ nightly-mpi-2:
     - >
       gpaw -P $GPAW_MPI_NPROCS python -m
       pytest --instafail -r s --durations 30 -m "not slow"
+      --check-file-leak
 
 
 nightly-mpi-4:
@@ -692,11 +696,12 @@ nightly-mpi-8:
     - .nightly
   script:
     - gpaw info
-    - pytest -n 4 --cache-clear -m generate_gpw_files
+    - pytest -n 4 --cache-clear -m generate_gpw_files --check-file-leak
     - >
       gpaw -P $GPAW_MPI_NPROCS python -m
       pytest --instafail -r s --durations 30 -m
       "not (old_gpaw_only or dscf or gllb or ofdft or do or legacy or lrtddft or rttddft or hybrids or pipekmezey) or new_gpaw_ready"
+      --check-file-leak
 
 
 nightly-mpi-1-new:
@@ -704,10 +709,11 @@ nightly-mpi-1-new:
     - .nightly-mpi-new
   script:
     - gpaw info
-    - pytest -n 4 --cache-clear -m generate_gpw_files
+    - pytest -n 4 --cache-clear -m generate_gpw_files --check-file-leak
     - >
       pytest -n 4 --instafail -r s --durations 30 -m
       "not (old_gpaw_only or dscf or gllb or ofdft or do or legacy or lrtddft or rttddft or hybrids or pipekmezey) or new_gpaw_ready"
+      --check-file-leak
 
 
 nightly-mpi-2-new:
