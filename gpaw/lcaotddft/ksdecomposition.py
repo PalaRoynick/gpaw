@@ -70,8 +70,6 @@ def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = None):
     dM_vaii = calculate_magnetic_moment_atomic_corrections(
         R_av, paw.setups, paw.hamiltonian.dH_asp.partition)
 
-    # ToDo: PAW corrections
-    # atoms = paw.atoms # for PAW corrections
     M_vmM = calculate_magnetic_moment_matrix(
         paw.wfs.kpt_u, paw.wfs.basis_functions,
         paw.wfs.atomic_correction, r_vG, dM_vaii,
@@ -105,8 +103,6 @@ class KohnShamDecomposition:
 
             if len(paw.wfs.kpt_u) > 1:
                 raise RuntimeError('K-points are not fully supported')
-
-            # I would need an else
 
         if filename is not None:
             self.read(filename)
@@ -242,7 +238,6 @@ class KohnShamDecomposition:
             # Calculate magnetic moment
             # ToDo: cacl. all three directions and average spectra
             dm_MM = calculate_magnetic_moment(paw, origin, origin_shift)[0]
-            print("M_vmM[0] in KSdec:") 
             for i in range(len(dm_MM)):
                print(dm_MM[i])
         if self.ksl.using_blacs:
