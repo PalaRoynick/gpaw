@@ -118,9 +118,9 @@ class SetupData:
                            setuptype='paw', world=None):
 
         setupdata = SetupData(symbol, xctype,
-                              name=setuptype, readxml=False,
-                              zero_reference=False, world=world,
-                              generator_version=None)
+                              name=setuptype,
+                              readxml=False,
+                              world=world)
 
         setupdata.filename = search_for_file(setupdata.stdfilename,
                                              world=world)
