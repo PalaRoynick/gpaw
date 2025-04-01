@@ -177,10 +177,9 @@ def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
     if not only_pseudo:
         for kpt in kpt_u:
             assert kpt.k == 0
-        print('Skipping PAW corrections to MM')
-        #for v in range(3):
-        #    correction.calculate(kpt_u[0].q, dM_vaii[v], M_vmM[v],
-        #                         Mstart, Mstop)
+        for v in range(3):
+            correction.calculate(kpt_u[0].q, dM_vaii[v], M_vmM[v],
+                                 Mstart, Mstop)
 
     # The matrices should be real
     assert np.max(np.absolute(M_vmM.imag)) == 0.0, np.max(np.absolute(M_vmM.imag))

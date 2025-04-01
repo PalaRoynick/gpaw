@@ -16,12 +16,13 @@ from gpaw.lcaotddft.utilities import read_uX, write_uX
 from gpaw.utilities.scalapack import \
     pblas_simple_gemm, pblas_simple_hemm, scalapack_tri2full
 from gpaw.utilities.tools import tri2full
+from gpaw.typing import Vector
 
 from gpaw.lcaotddft.magneticmomentwriter import \
     calculate_magnetic_moment_matrix
 from gpaw.lcaotddft.magneticmomentwriter import \
     calculate_magnetic_moment_atomic_corrections
-# from gpaw.lcaotddft.magneticmomentwriter import get_origin_coordinates
+from gpaw.lcaotddft.magneticmomentwriter import get_origin_coordinates
 from gpaw.utilities.tools import coordinates
 
 
@@ -60,11 +61,11 @@ def calculate_dipole_moment(paw, u, direction):
     return dm_MM
 
 
-def calculate_magnetic_moment(paw):
+def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = None):
     gd = paw.wfs.gd
     atoms = paw.atoms
-    origin_v = np.array([0.0, 0.0, 0.0])
-    r_vG, _ = coordinates(gd, origin=origin_v)  # XXX Add origin
+    origin_v = get_origin_coordinates(atoms, origin, origin_shift)
+    r_vG, _ = coordinates(gd, origin=origin_v)
     R_av = atoms.positions / Bohr - origin_v[np.newaxis, :]
     dM_vaii = calculate_magnetic_moment_atomic_corrections(
         R_av, paw.setups, paw.hamiltonian.dH_asp.partition)
@@ -123,11 +124,17 @@ class KohnShamDecomposition:
     # initialize data for photoabsorption KS-decomposition ('dipole') or
     # or CD KS-decomposition (atm all other strings stand for 'magnetic')
     def initialize(self, paw, min_occdiff=1e-3, only_ia=True,
-                   comp_kind='dipole'):
+                   comp_kind='dipole', origin: str = None,
+                   origin_shift: Vector = None):
         if self.has_initialized:
             return
         paw.initialize_positions()
         # paw.set_positions()
+
+        if origin is None:
+            origin = 'COM'
+        if origin_shift is None:
+            origin_shift = [0., 0., 0.]
 
         assert self.bd.nbands == self.ksl.nao
         self.only_ia = only_ia
@@ -234,7 +241,8 @@ class KohnShamDecomposition:
         else:
             # Calculate magnetic moment
             # ToDo: cacl. all three directions and average spectra
-            dm_MM = calculate_magnetic_moment(paw)[0] 
+            dm_MM = calculate_magnetic_moment(paw, origin, origin_shift)[0] 
+            print(f"M_vmM[0] = {dm_MM}")
         if self.ksl.using_blacs:
             tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
             pblas_simple_hemm(self.ksl.mmdescriptor,
