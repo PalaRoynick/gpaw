@@ -5,7 +5,7 @@ import xml.sax
 from glob import glob
 from math import pi, sqrt
 from pathlib import Path
-from typing import IO, Tuple
+from typing import IO
 
 import numpy as np
 from ase.data import atomic_names, atomic_numbers
@@ -114,7 +114,7 @@ class SetupData:
             self.read_xml(world=world)
 
     @classmethod
-    def find_and_read_path(cls, symbol, xctype, 
+    def find_and_read_path(cls, symbol, xctype,
                            setuptype='paw', world=None):
 
         setupdata = SetupData(symbol, xctype,
@@ -122,7 +122,8 @@ class SetupData:
                               zero_reference=False, world=world,
                               generator_version=None)
 
-        setupdata.filename = search_for_file(setupdata.stdfilename, world=world)
+        setupdata.filename = search_for_file(setupdata.stdfilename,
+                                             world=world)
         source = read_filecontent(setupdata.filename, world=world)
         PAWXMLParser(setupdata).parse(source=source, world=world)
 
