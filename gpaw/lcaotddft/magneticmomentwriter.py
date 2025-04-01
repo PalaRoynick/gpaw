@@ -184,6 +184,9 @@ def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
     # The matrices should be real
     assert np.max(np.absolute(M_vmM.imag)) == 0.0, np.max(np.absolute(M_vmM.imag))
     M_vmM = M_vmM.real.copy()
+    print(f"M_vmM[0] in MMW:")
+    for i in range(len(M_vmM[0])):
+       print(M_vmM[0][i])
     return -0.5 * M_vmM
 
 
