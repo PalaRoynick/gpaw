@@ -5,7 +5,7 @@ import xml.sax
 
 import numpy as np
 
-from gpaw.setup_data import search_for_file
+from gpaw.setup_data import search_for_file, read_filecontent
 from gpaw.atom.radialgd import RadialGridDescriptor, radial_grid_descriptor
 
 
@@ -243,7 +243,8 @@ class BasisSetXMLParser(xml.sax.handler.ContentHandler):
             reduced = None
         fullname = f'{self.symbol}.{name}.basis'
         if filename is None:
-            filename, source = search_for_file(fullname, world=world)
+            filename = search_for_file(fullname, world=world)
+            source = read_filecontent(filename, world=world)
         else:
             with open(filename, 'rb') as fd:
                 source = fd.read()

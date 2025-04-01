@@ -113,6 +113,24 @@ class SetupData:
         if readxml:
             self.read_xml(world=world)
 
+    @classmethod
+    def find_and_read_path(cls, symbol, xctype, 
+                           setuptype='paw', world=None):
+
+        setupdata = SetupData(symbol, xctype,
+                              name=setuptype, readxml=False,
+                              zero_reference=False, world=world,
+                              generator_version=None)
+
+        setupdata.filename = search_for_file(setupdata.stdfilename, world=world)
+        source = read_filecontent(setupdata.filename, world=world)
+        PAWXMLParser(setupdata).parse(source=source, world=world)
+
+        nj = len(setupdata.l_j)
+        setupdata.e_kin_jj.shape = (nj, nj)
+
+        return setupdata
+
     @property
     def stdfilename(self):
         """Default filename if this setup is written."""
@@ -138,6 +156,7 @@ class SetupData:
         self.phit_jg.append(phit_g)
         self.pt_jg.append(pt_g)
 
+    # XXX delete me
     def read_xml(self, source=None, world=None):
         PAWXMLParser(self).parse(source=source, world=world)
         nj = len(self.l_j)
@@ -400,14 +419,13 @@ class SetupData:
         return setup
 
 
-def search_for_file(name: str, world=None) -> Tuple[str, bytes]:
+def search_for_file(name: str, world=None) -> str:
     """Traverse gpaw setup paths to find file.
 
-    Returns the file path and file contents.  If the file is not
+    Returns the file path.  If the file is not
     found, raises RuntimeError."""
 
     if world is None or world.rank == 0:
-        source = b''
         filename = None
         for path in setup_paths:
             pattern = os.path.join(path, name)
@@ -418,19 +436,12 @@ def search_for_file(name: str, world=None) -> Tuple[str, bytes]:
                 # last/newest of the results (used with SG15).  (User must
                 # instantiate (UPF)SetupData directly to override.)
                 filename = max(filenames)
-                import gzip
-                if filename.endswith('.gz'):
-                    with gzip.open(filename) as fd:
-                        source = fd.read()
-                else:
-                    source = Path(filename).read_bytes()
-                break
 
     if world is not None:
         if world.rank == 0:
-            broadcast((filename, source), 0, world)
+            broadcast(filename, 0, world)
         else:
-            filename, source = broadcast(None, 0, world)
+            filename = broadcast(None, 0, world)
 
     if filename is None:
         if name.endswith('basis'):
@@ -445,7 +456,28 @@ https://gpaw.readthedocs.io/install.html#install-paw-datasets
 for details."""
         raise FileNotFoundError(f'{err}\n{helpful_message}\n')
 
-    return filename, source
+    return filename
+
+
+def read_filecontent(filename: str, world=None) -> bytes:
+    """Returns the file contents."""
+
+    if world is None or world.rank == 0:
+        source = b''
+        import gzip
+        if filename.endswith('.gz'):
+            with gzip.open(filename) as fd:
+                source = fd.read()
+        else:
+            source = Path(filename).read_bytes()
+
+    if world is not None:
+        if world.rank == 0:
+            broadcast(source, 0, world)
+        else:
+            source = broadcast(None, 0, world)
+
+    return source
 
 
 class PAWXMLParser(xml.sax.handler.ContentHandler):
@@ -458,7 +490,8 @@ class PAWXMLParser(xml.sax.handler.ContentHandler):
     def parse(self, source=None, world=None):
         setup = self.setup
         if source is None:
-            setup.filename, source = search_for_file(setup.stdfilename, world)
+            setup.filename = search_for_file(setup.stdfilename, world)
+            source = read_filecontent(setup.filename, world)
 
         setup.fingerprint = hashlib.md5(source).hexdigest()
 
