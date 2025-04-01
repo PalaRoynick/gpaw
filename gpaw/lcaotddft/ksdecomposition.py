@@ -234,8 +234,7 @@ class KohnShamDecomposition:
         else:
             # Calculate magnetic moment
             # ToDo: cacl. all three directions and average spectra
-            dm_MM = calculate_magnetic_moment(paw)[0]
-        #print(f"{comp_kind}, shape(dm_MM): {np.shape(dm_MM)}")
+            dm_MM = calculate_magnetic_moment(paw)[0] 
         if self.ksl.using_blacs:
             tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
             pblas_simple_hemm(self.ksl.mmdescriptor,
