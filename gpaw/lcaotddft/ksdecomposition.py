@@ -16,7 +16,6 @@ from gpaw.lcaotddft.utilities import read_uX, write_uX
 from gpaw.utilities.scalapack import \
     pblas_simple_gemm, pblas_simple_hemm, scalapack_tri2full
 from gpaw.utilities.tools import tri2full
-from gpaw.typing import Vector
 
 from gpaw.lcaotddft.magneticmomentwriter import \
     calculate_magnetic_moment_matrix
@@ -90,7 +89,7 @@ def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
 
 
 def calculate_magnetic_moment(paw, ksl, C0_nM, Np, P_p, comm, origin=None,
-                              origin_shift: Vector = [0., 0., 0.]):
+                              origin_shift=[0., 0., 0.]):
     dm_vp = np.empty((3, Np), dtype=float)  # TODO
 
     gd = paw.wfs.gd
@@ -176,8 +175,8 @@ class KohnShamDecomposition:
     # initialize data for photoabsorption KS-decomposition ('dipole') or
     # or CD KS-decomposition (atm all other strings stand for 'magnetic')
     def initialize(self, paw, min_occdiff=1e-3, only_ia=True,
-                   comp_kind='dipole', origin: str = None,
-                   origin_shift: Vector = [0., 0., 0.]):
+                   comp_kind='dipole', origin=None,
+                   origin_shift=[0., 0., 0.]):
         if self.has_initialized:
             return
         paw.initialize_positions()
