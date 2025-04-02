@@ -258,7 +258,7 @@ class KohnShamDecomposition:
 
         # Calculate dipole or magnetic moment
         if comp_kind == 'dipole':
-            dm_vp = calculate_dm_vp(paw, self.ksl, u, Np, P_p, self.comm)
+            dm_vp = calculate_dm_vp(paw, self.ksl, C0_nM, u, Np, P_p, self.comm)
 
         elif comp_kind == 'magnetic':
             print("Under construction.")
