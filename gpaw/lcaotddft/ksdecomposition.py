@@ -64,7 +64,7 @@ def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
         dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
             kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
             add_kinetic=False, root=-1)
- 
+
         if ksl.using_blacs:
             tmp_nM = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
             pblas_simple_hemm(ksl.mmdescriptor,
@@ -80,7 +80,7 @@ def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
         else:
             tri2full(dm_MM)
             dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
- 
+
         dm_nn = collect_MM(ksl, dm_nn)
         if comm.rank == 0:
             dm_P = dm_nn.ravel()
@@ -89,20 +89,48 @@ def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
     return dm_vp
 
 
-def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = [0., 0., 0.]):
+def calculate_magnetic_moment(paw, ksl, C0_nM, Np, P_p, comm, origin=None,
+                              origin_shift: Vector = [0., 0., 0.]):
+    dm_vp = np.empty((3, Np), dtype=float)  # TODO
+
     gd = paw.wfs.gd
     atoms = paw.atoms
     origin_v = get_origin_coordinates(atoms, origin, origin_shift)
     r_vG, _ = coordinates(gd, origin=origin_v)
     R_av = atoms.positions / Bohr - origin_v[np.newaxis, :]
-    dM_vaii = calculate_magnetic_moment_atomic_corrections(
-        R_av, paw.setups, paw.hamiltonian.dH_asp.partition)
+    dM_vaii = calculate_magnetic_moment_atomic_corrections(R_av,
+                                                           paw.setups,
+                                                           paw.hamiltonian.dH_asp.partition)  # noqa: E501
 
-    M_vmM = calculate_magnetic_moment_matrix(
-        paw.wfs.kpt_u, paw.wfs.basis_functions,
-        paw.wfs.atomic_correction, r_vG, dM_vaii,
-        only_pseudo=False)
-    return M_vmM
+    for v in range(3):
+        dm_MM = calculate_magnetic_moment_matrix(
+            paw.wfs.kpt_u, paw.wfs.basis_functions,
+            paw.wfs.atomic_correction, r_vG, dM_vaii,
+            only_pseudo=False)[v]
+
+        if ksl.using_blacs:
+            tmp_nM = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_hemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              dm_MM, C0_nM.conj(), tmp_nM,
+                              side='R', uplo='L')
+            dm_nn = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_gemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              tmp_nM, C0_nM, dm_nn, transb='T')
+        else:
+            tri2full(dm_MM)
+            dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
+
+        dm_nn = collect_MM(ksl, dm_nn)
+        if comm.rank == 0:
+            dm_P = dm_nn.ravel()
+            dm_p = dm_P[P_p]
+            dm_vp[v] = dm_p  # TODO
+
+    return dm_vp
 
 
 class DummyKsl(NamedTuple):
@@ -149,7 +177,7 @@ class KohnShamDecomposition:
     # or CD KS-decomposition (atm all other strings stand for 'magnetic')
     def initialize(self, paw, min_occdiff=1e-3, only_ia=True,
                    comp_kind='dipole', origin: str = None,
-                   origin_shift: Vector = None):
+                   origin_shift: Vector = [0., 0., 0.]):
         if self.has_initialized:
             return
         paw.initialize_positions()
@@ -258,7 +286,8 @@ class KohnShamDecomposition:
 
         # Calculate dipole or magnetic moment
         if comp_kind == 'dipole':
-            dm_vp = calculate_dm_vp(paw, self.ksl, C0_nM, u, Np, P_p, self.comm)
+            dm_vp = calculate_dm_vp(paw, self.ksl, C0_nM, u,
+                                    Np, P_p, self.comm)
 
         elif comp_kind == 'magnetic':
             print("Under construction.")
@@ -456,7 +485,7 @@ class KohnShamDecomposition:
         assert len(rho_up) == 1, 'K-points not implemented'
         u = 0
         rho_p = rho_up[u]
-        dmrho_vp = - self.dm_vp * rho_p  #
+        dmrho_vp = - self.dm_vp * rho_p
         return dmrho_vp
 
     def get_dipole_moment(self, rho_up):
