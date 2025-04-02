@@ -23,8 +23,9 @@ class MixedTransforms:
             def wrap(f):
                 @functools.wraps(f)
                 def wrapper(A_g, *args, **kwargs):
-                    A_g = A_g._data
-                    return cpupy.ndarray(f(A_g, *args, **kwargs))
+                    if isinstance(A_g, cpupy.ndarray):
+                        A_g = A_g._data
+                    return cpupy.ascpupy(f(A_g, *args, **kwargs))
                 return wrapper
 
             for method in ['rfst2', 'irfst2', 'fst', 'ifst', 'transform',
