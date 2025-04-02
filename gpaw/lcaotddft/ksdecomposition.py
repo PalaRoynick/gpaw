@@ -51,14 +51,42 @@ def get_bfs_maps(calc):
     return a_M, l_M
 
 
-def calculate_dipole_moment(paw, u, direction):
-    cef = ConstantElectricField(Hartree / Bohr, direction)
-    kick_hamiltonian = KickHamiltonian(paw.hamiltonian,
-                                       paw.density, cef)
-    dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
-        kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
-        add_kinetic=False, root=-1)
-    return dm_MM
+def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
+    # returns dm_vp which originates from
+    # matrix multiplication of C0_nM.conj(), dm_MM, and  C0_nM.T
+    dm_vp = np.empty((3, Np), dtype=float)
+    for v in range(3):
+        direction = np.zeros(3, dtype=float)
+        direction[v] = 1.0
+        cef = ConstantElectricField(Hartree / Bohr, direction)
+        kick_hamiltonian = KickHamiltonian(paw.hamiltonian, paw.density,
+                                           cef)
+        dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
+            kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
+            add_kinetic=False, root=-1)
+ 
+        if ksl.using_blacs:
+            tmp_nM = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_hemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              dm_MM, C0_nM.conj(), tmp_nM,
+                              side='R', uplo='L')
+            dm_nn = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_gemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              tmp_nM, C0_nM, dm_nn, transb='T')
+        else:
+            tri2full(dm_MM)
+            dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
+ 
+        dm_nn = collect_MM(ksl, dm_nn)
+        if comm.rank == 0:
+            dm_P = dm_nn.ravel()
+            dm_p = dm_P[P_p]
+            dm_vp[v] = dm_p
+    return dm_vp
 
 
 def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = None):
@@ -226,43 +254,14 @@ class KohnShamDecomposition:
                 P_p.append(P)
             P_p = np.array(P_p)
 
-            dm_vp = np.empty((3, Np), dtype=float)
+            # dm_vp = np.empty((3, Np), dtype=float)
 
         # Calculate dipole or magnetic moment
         if comp_kind == 'dipole':
-            for v in range(3):
-                direction = np.zeros(3, dtype=float)
-                direction[v] = 1.0
-                dm_MM = calculate_dipole_moment(paw, u, direction)
-        else:
-            # Calculate magnetic moment
-            # ToDo: cacl. all three directions and average spectra
-            dm_MM = calculate_magnetic_moment(paw, origin, origin_shift)[0]
-            for i in range(len(dm_MM)):
-               print(dm_MM[i])
-        if self.ksl.using_blacs:
-            tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
-            pblas_simple_hemm(self.ksl.mmdescriptor,
-                              self.ksl.mmdescriptor,
-                              self.ksl.mmdescriptor,
-                              dm_MM, C0_nM.conj(), tmp_nM,
-                              side='R', uplo='L')
-            dm_nn = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
-            pblas_simple_gemm(self.ksl.mmdescriptor,
-                              self.ksl.mmdescriptor,
-                              self.ksl.mmdescriptor,
-                              tmp_nM, C0_nM, dm_nn, transb='T')
-        else:
-            tri2full(dm_MM)
-            dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
+            dm_vp = calculate_dm_vp(paw, self.ksl, u, Np, P_p, self.comm)
 
-        dm_nn = collect_MM(self.ksl, dm_nn)
-        if self.comm.rank == 0:
-            dm_P = dm_nn.ravel()
-            dm_p = dm_P[P_p]
-            for v in range(3):
-                dm_vp[v] = dm_p
-
+        elif comp_kind == 'magnetic':
+            print("Under construction.")
         if self.comm.rank == 0:
             self.w_p = w_p
             self.f_p = f_p
