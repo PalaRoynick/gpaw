@@ -20,6 +20,7 @@ class MixedTransforms:
         else:
             # In case of cpupy which to numpy backend but add wrappers
             self.xp = np
+
             def wrap(f):
                 @functools.wraps(f)
                 def wrapper(A_g, *args, **kwargs):

@@ -69,6 +69,7 @@ def ascpupy(a):
     else:
         return array(a)
 
+
 def array_split(a, *args, **kwargs):
     return list(map(ndarray, np.array_split(a._data, *args, **kwargs)))
 

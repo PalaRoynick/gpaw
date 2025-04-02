@@ -6,7 +6,10 @@ from itertools import product, permutations
 @pytest.mark.serial
 def test_mixed_transforms():
     from gpaw.mixed_transforms import MixedTransforms
-    import cupy as cp
+    try:
+        import cupy as cp
+    except ImportError:
+        pytest.skip('No cupy.')
     import numpy as np
     from gpaw.gpu import cpupy as cpup
 
