@@ -89,7 +89,7 @@ def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
     return dm_vp
 
 
-def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = None):
+def calculate_magnetic_moment(paw, origin=None, origin_shift: Vector = [0., 0., 0.]):
     gd = paw.wfs.gd
     atoms = paw.atoms
     origin_v = get_origin_coordinates(atoms, origin, origin_shift)
