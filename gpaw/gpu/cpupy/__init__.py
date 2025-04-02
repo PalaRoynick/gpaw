@@ -11,8 +11,12 @@ __version__ = 'fake'
 
 __all__ = ['linalg', 'cublas', 'fft', 'random', '__version__']
 
-
+newaxis = np.newaxis
 pi = np.pi
+
+
+def transpose(*args, **kwargs):
+    return ndarray(np.transpose(*args, **kwargs))
 
 
 def empty(*args, **kwargs):
@@ -27,8 +31,16 @@ def zeros(*args, **kwargs):
     return ndarray(np.zeros(*args, **kwargs))
 
 
+def zeros_like(a, **kwargs):
+    return ndarray(np.zeros_like(a._data, **kwargs))
+
+
 def ones(*args, **kwargs):
     return ndarray(np.ones(*args, **kwargs))
+
+
+def ones_like(a, **kwargs):
+    return ndarray(np.ones_like(a._data, **kwargs))
 
 
 def asnumpy(a, out=None):
@@ -51,6 +63,13 @@ def array(a, dtype=None):
     return ndarray(np.array(a, dtype))
 
 
+def ascpupy(a):
+    if isinstance(a, ndarray):
+        return a
+    else:
+        return array(a)
+
+
 def array_split(a, *args, **kwargs):
     return list(map(ndarray, np.array_split(a._data, *args, **kwargs)))
 
@@ -69,6 +88,10 @@ def inner(a, b):
 
 def outer(a, b):
     return ndarray(np.outer(a._data, b._data))
+
+
+def indices(*args, **kwargs):
+    return ndarray(np.indices(*args, **kwargs))
 
 
 def multiply(a, b, c):
@@ -94,7 +117,10 @@ def abs(a):
     return ndarray(np.abs(a._data))
 
 
-def exp(a):
+def exp(a, out=None):
+    if out is not None:
+        out._data = np.exp(a._data)
+        return out
     return ndarray(np.exp(a._data))
 
 
@@ -141,7 +167,7 @@ class ndarray:
                              np.bool_, np.float64, np.float32,
                              np.complex64, np.complex128)):
             data = np.asarray(data)
-        assert isinstance(data, np.ndarray), type(data)
+        assert isinstance(data, (np.ndarray, np.flatiter)), type(data)
         self._data = data
         self.dtype = data.dtype
         self.size = data.size
@@ -185,9 +211,6 @@ class ndarray:
     def copy(self):
         return ndarray(self._data.copy())
 
-    def astype(self, dtype):
-        return ndarray(self._data.astype(dtype))
-
     def all(self):
         return ndarray(self._data.all())
 
@@ -228,7 +251,7 @@ class ndarray:
         if isinstance(value, ndarray):
             self._data[index] = value._data
         else:
-            assert isinstance(value, (float, int, complex))
+            assert isinstance(value, (float, int, complex)), type(value)
             self._data[index] = value
 
     def __getitem__(self, index):
@@ -276,7 +299,7 @@ class ndarray:
     def __mul__(self, f):
         if isinstance(f, (float, complex)):
             return ndarray(f * self._data)
-        return ndarray(f._data * self._data)
+        return ndarray(self._data * f._data)
 
     def __rmul__(self, f):
         return ndarray(f * self._data)
@@ -302,7 +325,7 @@ class ndarray:
         return ndarray(f._data + self._data)
 
     def __sub__(self, f):
-        if isinstance(f, float):
+        if isinstance(f, (float, int, complex)):
             return ndarray(self._data - f)
         return ndarray(self._data - f._data)
 
@@ -332,13 +355,19 @@ class ndarray:
     def __matmul__(self, other):
         return ndarray(self._data @ other._data)
 
+    @property
+    def flat(self):
+        return ndarray(self._data.reshape((-1)))
+
     def ravel(self):
         return ndarray(self._data.ravel())
 
     def conj(self):
         return ndarray(self._data.conj())
 
-    def reshape(self, shape):
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], tuple):
+            shape = shape[0]
         return ndarray(self._data.reshape(shape))
 
     def view(self, dtype):
@@ -352,3 +381,6 @@ class ndarray:
 
     def fill(self, val):
         self._data.fill(val)
+
+    def astype(self, *args, **kwargs):
+        return ndarray(self._data.astype(*args, **kwargs))
