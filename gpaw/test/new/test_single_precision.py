@@ -19,7 +19,8 @@ from gpaw.gpu import cupy_is_fake
 def test_single_precision(dtype, gpu):
     try:
         result = subprocess.run(
-            f'GPAW_NO_C_EXTENSION=1 python {__file__} {dtype} {gpu}',
+            'GPAW_NO_C_EXTENSION=1 GPAW_CPUPY=1 '
+            f'python {__file__} {dtype} {gpu}',
             shell=True, capture_output=True,
             text=True, check=True)
     except subprocess.CalledProcessError as e:
@@ -34,14 +35,6 @@ def test_single_precision(dtype, gpu):
 @pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize('dtype',
                          [np.complex128,
-                          np.complex64,
-                          np.float64,
-                          np.float32,
-                         np.complex128,
-                          np.complex64,
-                          np.float64,
-                          np.float32,
-                         np.complex128,
                           np.complex64,
                           np.float64,
                           np.float32])

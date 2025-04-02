@@ -11,8 +11,8 @@ from gpaw.ffbt import rescaled_fourier_bessel_transform
 from gpaw.gpu import cupy_is_fake, gpu_gemm
 # from gpaw.lfc import BaseLFC
 from gpaw.new import prod
-from gpaw.new.timer import trace
 from gpaw.new.c import pwlfc_expand, pwlfc_expand_gpu #, pwlfc_expand_and_add_gpu
+from gpaw.new import prod, trace, tracectx
 from gpaw.spherical_harmonics import Y, nablarlYL
 from gpaw.utilities.blas import mmm
 from gpaw.utilities import as_complex_dtype, as_real_dtype
@@ -229,10 +229,10 @@ class PWLFC:  # (BaseLFC)
             as_real_dtype(self.dtype))
 
         if xp is not np:
-            self.G_plus_k_Gv_gpu = self.xp.asarray(self.pw.G_plus_k_Gv,
-                                                   as_real_dtype(self.dtype))
             self.pos_avT = xp.asarray(self.pos_av.T,
                                       as_real_dtype(self.dtype))
+            self.G_plus_k_Gv_gpu = self.xp.asarray(self.pw.G_plus_k_Gv,
+                                                   as_real_dtype(self.dtype))
             self.emiGR_Ga = None
         else:
             Gk_Gv = self.pw.G_plus_k_Gv
@@ -452,12 +452,13 @@ class PWLFC:  # (BaseLFC)
             x = 1.0
 
         self.comm.sum(b_xI)
-        if add_to:
-            for a, I1, I2 in self.my_indices:
-                c_axi[a] += self.eikR_a[a] * c_xI[..., I1:I2]
-        else:
-            for a, I1, I2 in self.my_indices:
-                c_axi[a][:] = self.eikR_a[a] * c_xI[..., I1:I2]
+        with tracectx('Displace integrals', gpu=True):
+            if add_to:
+                for a, I1, I2 in self.my_indices:
+                    c_axi[a] += self.eikR_a[a] * c_xI[..., I1:I2]
+            else:
+                for a, I1, I2 in self.my_indices:
+                    c_axi[a][:] = self.eikR_a[a] * c_xI[..., I1:I2]
 
         return c_axi
 

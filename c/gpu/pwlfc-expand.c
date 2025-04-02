@@ -33,45 +33,6 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
                                     int nsplines,
                                     bool cc);
 
-/*    
-void pwlfc_expand_and_add_gpu_launch_kernel(int itemsize,
-                                    double* f_Gs,
-                                    gpuDoubleComplex *emiGR_Ga,
-                                    double *Y_GL,
-                                    int* l_s,
-                                    int* a_J,
-                                    int* s_J,
-                                    int* I_J,
-                                    int nG,
-                                    int nJ,
-                                    int nL,
-                                    int nI,
-                                    int natoms,
-                                    int nsplines,
-                                    int nx,
-                                    double* c_xI,
-                                    double* a_xG,
-                                    double alpha);
-
-void pwlfc_expand_and_integrate_gpu_launch_kernel(int itemsize,
-                                    double* f_Gs,
-                                    gpuDoubleComplex *emiGR_Ga,
-                                    double *Y_GL,
-                                    int* l_s,
-                                    int* a_J,
-                                    int* s_J,
-                                    int* I_J,
-                                    int nG,
-                                    int nJ,
-                                    int nL,
-                                    int nI,
-                                    int natoms,
-                                    int nsplines,
-                                    int nx,
-                                    double* c_xI,
-                                    double* a_xG,
-                                    double alpha);
-*/
 void pw_insert_gpu_launch_kernel(
                              int dtypenum,
                              int nb,
@@ -130,7 +91,7 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
                                 double* v,
                                 double* e);
 
-int get_dtype(void* array)
+static int get_dtype(void* array)
 {
     // Only these combinations are allowed. Make it so.
     // dtype.num 11      14        12      15
@@ -142,7 +103,7 @@ int get_dtype(void* array)
     return dtypenum;
 }
 
-void assert_corresponding_real(int dtypenum, void* array)
+static void assert_corresponding_real(int dtypenum, void* array)
 {
     // Only these combinations are allowed. Make it so.
     // dtypenum  11      14        12      15
@@ -286,99 +247,6 @@ PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-/*
-PyObject* pwlfc_expand_and_add_gpu(PyObject* self, PyObject* args)
-{
-    PyObject *f_Gs_obj;
-    PyObject *emiGR_Ga_obj;
-    PyObject *Y_GL_obj;
-    PyObject *l_s_obj;
-    PyObject *a_J_obj;
-    PyObject *s_J_obj;
-    PyObject *I_J_obj;
-    PyObject *c_xI_obj;
-    PyObject *a_xG_obj;
-    double alpha;
-    if (!PyArg_ParseTuple(args, "OOOOOOOOOd",
-                          &f_Gs_obj, &emiGR_Ga_obj, &Y_GL_obj,
-                          &l_s_obj, &a_J_obj, &s_J_obj,
-                          &I_J_obj, &c_xI_obj, &a_xG_obj, &alpha))
-        return NULL;
-    double *f_Gs = (double*)Array_DATA(f_Gs_obj);
-    gpuDoubleComplex* emiGR_Ga = (gpuDoubleComplex*)Array_DATA(emiGR_Ga_obj);
-    double *Y_GL = (double*)Array_DATA(Y_GL_obj);
-    int *l_s = (int*)Array_DATA(l_s_obj);
-    int *a_J = (int*)Array_DATA(a_J_obj);
-    int *s_J = (int*)Array_DATA(s_J_obj);
-    int *I_J = (int*)Array_DATA(I_J_obj);
-    double* c_xI = (double*)Array_DATA(c_xI_obj);
-    double* a_xG = (double*)Array_DATA(a_xG_obj);
-
-    int nG = Array_DIM(emiGR_Ga_obj, 0);
-    int nJ = Array_DIM(a_J_obj, 0);
-    int nL = Array_DIM(Y_GL_obj, 1);
-    int nI = Array_DIM(c_xI_obj, 1);
-    int natoms = Array_DIM(emiGR_Ga_obj, 1);
-    int nsplines = Array_DIM(f_Gs_obj, 1);
-    int itemsize = Array_ITEMSIZE(a_xG_obj); // Is correct itemsize?
-    int nx = Array_DIM(c_xI_obj, 0);
-    if (PyErr_Occurred())
-    {
-        return NULL;
-    }
-    pwlfc_expand_and_add_gpu_launch_kernel(itemsize, f_Gs, emiGR_Ga, Y_GL, l_s, a_J, s_J, 
-                                           I_J, nG, nJ, nL, nI, natoms, nsplines,
-                                           nx, c_xI, a_xG, alpha);
-    Py_RETURN_NONE;
-}
-*/
-
-/*
-PyObject* pwlfc_expand_and_integrate_gpu(PyObject* self, PyObject* args)
-{
-    PyObject *f_Gs_obj;
-    PyObject *emiGR_Ga_obj;
-    PyObject *Y_GL_obj;
-    PyObject *l_s_obj;
-    PyObject *a_J_obj;
-    PyObject *s_J_obj;
-    PyObject *I_J_obj;
-    PyObject *c_xI_obj;
-    PyObject *a_xG_obj;
-    double alpha;
-    if (!PyArg_ParseTuple(args, "OOOOOOOOOd",
-                          &f_Gs_obj, &emiGR_Ga_obj, &Y_GL_obj,
-                          &l_s_obj, &a_J_obj, &s_J_obj,
-                          &I_J_obj, &c_xI_obj, &a_xG_obj, &alpha))
-        return NULL;
-    double *f_Gs = (double*)Array_DATA(f_Gs_obj);
-    gpuDoubleComplex* emiGR_Ga = (gpuDoubleComplex*)Array_DATA(emiGR_Ga_obj);
-    double *Y_GL = (double*)Array_DATA(Y_GL_obj);
-    int *l_s = (int*)Array_DATA(l_s_obj);
-    int *a_J = (int*)Array_DATA(a_J_obj);
-    int *s_J = (int*)Array_DATA(s_J_obj);
-    int *I_J = (int*)Array_DATA(I_J_obj);
-    double* c_xI = (double*)Array_DATA(c_xI_obj);
-    double* a_xG = (double*)Array_DATA(a_xG_obj);
-
-    int nG = Array_DIM(emiGR_Ga_obj, 0);
-    int nJ = Array_DIM(a_J_obj, 0);
-    int nL = Array_DIM(Y_GL_obj, 1);
-    int nI = Array_DIM(c_xI_obj, 1);
-    int natoms = Array_DIM(emiGR_Ga_obj, 1);
-    int nsplines = Array_DIM(f_Gs_obj, 1);
-    int itemsize = Array_ITEMSIZE(a_xG_obj); // Is correct itemsize?
-    int nx = Array_DIM(c_xI_obj, 0);
-    if (PyErr_Occurred())
-    {
-        return NULL;
-    }
-    pwlfc_expand_and_integrate_gpu_launch_kernel(itemsize, f_Gs, emiGR_Ga, Y_GL, l_s, a_J, s_J, 
-                                           I_J, nG, nJ, nL, nI, natoms, nsplines,
-                                           nx, c_xI, a_xG, alpha);
-    Py_RETURN_NONE;
-}
-*/
 
 PyObject* pwlfc_expand_gpu(PyObject* self, PyObject* args)
 {

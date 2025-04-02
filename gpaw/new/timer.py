@@ -3,6 +3,7 @@ from functools import wraps
 from io import StringIO
 from typing import Callable, TypeVar, Union, overload, Optional
 from gpaw import GPAW_TRACE
+import inspect
 
 
 class GlobalTimer:
@@ -28,13 +29,19 @@ class GlobalTimer:
 
     def start(self, name, **kwargs):
         timer = self._timers[-1]
-        if getattr(timer, 'trace_kernel', False):
-            timer.start(name, **kwargs)
-        else:
+        n_params = len(inspect.signature(timer.start).parameters)
+        if n_params == 1:
             timer.start(name)
+        else:
+            timer.start(name, **kwargs)
 
-    def stop(self, name=None):
-        self._timers[-1].stop(name=name)
+    def stop(self, name=None, **kwargs):
+        timer = self._timers[-1]
+        n_params = len(inspect.signature(timer.stop).parameters)
+        if n_params == 1:
+            timer.stop(name)
+        else:
+            timer.stop(name, **kwargs)
 
     def tostring(self):
         buf = StringIO()
@@ -71,7 +78,7 @@ def _trace(meth: Optional[F] = None,
             try:
                 return method(*args, **kwargs)
             finally:
-                global_timer.stop()
+                global_timer.stop(**timer_params)
 
         return wrapper
 
@@ -93,19 +100,19 @@ def dummy_trace(meth: Union[Callable[..., T], None] = None,
 
 
 @contextmanager
-def _trace2(name):
-    global_timer.start(name)
+def _tracectx(name, gpu=False):
+    global_timer.start(name, gpu=gpu)
     try:
         yield
     finally:
-        global_timer.stop()
+        global_timer.stop(gpu=gpu)
 
 
 @contextmanager
-def dummy_trace2(name):
+def dummy_tracectx(name, gpu=False):
     yield
 
 
 trace = _trace if GPAW_TRACE else dummy_trace
-trace2 = _trace2 if GPAW_TRACE else dummy_trace2
+tracectx = _tracectx if GPAW_TRACE else dummy_tracectx
 global_timer = GlobalTimer()

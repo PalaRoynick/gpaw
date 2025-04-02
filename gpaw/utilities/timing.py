@@ -75,9 +75,8 @@ class DebugTimer(Timer):
 
 
 class GPUEvent:
-    def __init__(self, names, kernel=False):
-        self.names = names
-        self.kernel = kernel
+    def __init__(self, name):
+        self.name = name
         import cupy
         default = dict(block=False,
                        disable_timing=False,
@@ -96,22 +95,22 @@ class GPUEvent:
 
 
 class GPUTimerBase:
-    trace_kernel = True
 
-    def __init__(self):
+    def __init__(self, max_stack=10):
         self.event_queue = []
         self.event_stack = []
+        self.max_stack = max_stack
         from collections import defaultdict
         self.gpu_timers = defaultdict(float)
 
-    def gpu_start(self, key, kernel=True):
-        self.event_stack.append(GPUEvent(key, kernel=kernel))
+    def gpu_start(self, key):
+        self.event_stack.append(GPUEvent(key))
 
     def gpu_stop(self):
         gpu_event = self.event_stack.pop()
         gpu_event.stop()
         self.event_queue.append(gpu_event)
-        if len(self.event_queue) > 10:
+        if len(self.event_queue) > self.max_stack:
             self.handle_events()
 
     def handle_events(self):
@@ -121,7 +120,7 @@ class GPUTimerBase:
                 break
             del self.event_queue[0]
             time = event.get_time()
-            self.gpu_timers[event.names] += time
+            self.gpu_timers[event.name] += time
             self.handle_event_hook(event)
 
     def handle_event_hook(self, event):
@@ -276,26 +275,34 @@ class GPUProfiler(Profiler, GPUTimerBase):
         event = Event(block=True)
         event.record()
         event.synchronize()
-        # Now, initialize the CPU timers
-        Profiler.synchronize(self)
+
+        # Wait all CPUs
+        self.comm.barrier()
 
         # Now all GPUs and CPUs are somewhat simultaneous
-        # So, record the reference event
+        # So, record the reference event and time
         event = Event(block=True)
         event.record()
+        self.ref = time.time()
         self.ref_event = event
 
-    def start(self, name, kernel=False):
-        Profiler.start(self, name)
-        GPUTimerBase.gpu_start(self, name, kernel=kernel)
+        # Broadcast CPU time reference (possibly problematic)
+        buf = np.zeros(1)
+        buf[0] = self.ref
+        self.comm.broadcast(buf, 0)
+        self.ref = buf[0]
 
-    def stop(self, name=None):
+    def start(self, name, gpu=False):
+        Profiler.start(self, name)
+        if gpu:
+            GPUTimerBase.gpu_start(self, name)
+
+    def stop(self, name=None, gpu=False):
         Profiler.stop(self, name)
-        GPUTimerBase.gpu_stop(self)
+        if gpu:
+            GPUTimerBase.gpu_stop(self)
 
     def handle_event_hook(self, event):
-        if not event.kernel:
-            return
         import cupy
 
         def get_time(e):
@@ -305,13 +312,13 @@ class GPUProfiler(Profiler, GPUTimerBase):
         ms_start = get_time(event.start_event)
         ms_stop = get_time(event.stop_event)
         self.txt.write(
-            f"""{{"name": "{event.names}", "cat": "PERF", "ph": "B","""
+            f"""{{"name": "{event.name}", "cat": "PERF", "ph": "B","""
             f""" "pid": {self.pid}, "tid": "GPU {self.ranktxt}", """
-            f""""ts": {int(ms_start*1000)} }},\n""")
+            f""""ts": {int(ms_start * 1000)} }},\n""")
         self.txt.write(
-            f"""{{"name": "{event.names}", "cat": "PERF", "ph": "E", """
+            f"""{{"name": "{event.name}", "cat": "PERF", "ph": "E", """
             f""""pid": {self.pid}, "tid": "GPU {self.ranktxt}", """
-            f""""ts": {int(ms_stop*1000)} }},\n""")
+            f""""ts": {int(ms_stop * 1000)} }},\n""")
 
 
 class HPMTimer(Timer):

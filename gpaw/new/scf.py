@@ -14,6 +14,7 @@ from gpaw.typing import Array2D
 from gpaw.new.logger import indent
 from gpaw import KohnShamConvergenceError
 from gpaw.new.energies import DFTEnergies
+from gpaw.new.ibzwfs import IBZWaveFunctions
 
 
 class TooFewBandsError(KohnShamConvergenceError):
@@ -49,7 +50,7 @@ class SCFLoop:
                 f'occupation numbers:\n{indent(self.occ_calc)}\n')
 
     def iterate(self,
-                ibzwfs,
+                ibzwfs: IBZWaveFunctions,
                 density,
                 potential,
                 energies: DFTEnergies,
@@ -78,10 +79,7 @@ class SCFLoop:
             dens_error = 0.0
 
         for self.niter in itertools.count(start=1):
-            from gpaw.utilities.memory import maxrss
-            log(f'Memory from maxrss {maxrss()}')
-
-            wfs_error, energies = self.eigensolver.iterate(
+            eig_error, wfs_error, energies = self.eigensolver.iterate(
                 ibzwfs, density, potential,
                 self.hamiltonian, pot_calc, energies)
             e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
@@ -96,7 +94,7 @@ class SCFLoop:
             ctx = SCFContext(
                 log, self.niter, energies,
                 ibzwfs, density, potential,
-                wfs_error, dens_error,
+                wfs_error, dens_error, eig_error,
                 self.comm, calculate_forces,
                 pot_calc, self.update_density_and_potential)
 
@@ -108,8 +106,13 @@ class SCFLoop:
 
             if log:
                 write_iteration(cc, converged_items, entries, ctx, log)
+
             if converged:
-                break
+                converged = pot_calc.environment.post_scf_convergence(
+                    ibzwfs, self.occ_calc, self.mixer, log)
+                if converged:
+                    break
+
             if self.niter == maxiter:
                 if wfs_error < inf:
                     raise KohnShamConvergenceError
@@ -135,6 +138,7 @@ class SCFContext:
                  potential,
                  wfs_error: float,
                  dens_error: float,
+                 eig_error: float,
                  comm,
                  calculate_forces: Callable[[], Array2D],
                  pot_calc,
@@ -158,6 +162,7 @@ class SCFContext:
             calculate_magnetic_moments=density.calculate_magnetic_moments,
             fixed=not update_density_and_potential,
             error=dens_error)
+        self.eig_error = eig_error
         self.calculate_forces = calculate_forces
         self.poisson_solver = pot_calc.poisson_solver
 
