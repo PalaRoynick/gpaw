@@ -2,31 +2,6 @@ from scipy.fftpack import dst as scipydst
 from numpy.fft import fft2, ifft2, rfft2, irfft2, fft, ifft
 from gpaw.gpu import cpupy
 
-"""
-# In case real transforms are not available
-
-def rfst2(A_g, axes=[0,1]):
-    assert axes[0] == 0
-    assert axes[1] == 1
-    x,y,z = A_g.shape
-    temp_g = np.zeros((x*2+2, y*2+2, z))
-    temp_g[1:x+1, 1:y+1,:] = A_g
-    temp_g[x+2:, 1:y+1,:] = -A_g[::-1, :, :]
-    temp_g[1:x+1, y+2:,:] = -A_g[:, ::-1, :]
-    temp_g[x+2:, y+2:,:] = A_g[::-1, ::-1, :]
-    X = -4*rfft2(temp_g, axes=axes)
-    return X[1:x+1, 1:y+1, :].real
-
-def irfst2(A_g, axes=[0,1]):
-    assert axes[0] == 0
-    assert axes[1] == 1
-    x,y,z = A_g.shape
-    temp_g = np.zeros((x*2+2, (y*2+2)//2+1, z))
-    temp_g[1:x+1, 1:y+1,:] = A_g
-    temp_g[x+2:, 1:y+1,:] = -A_g[::-1, :, :]
-    return -0.25*irfft2(temp_g, axes=axes)[1:x+1, 1:y+1, :].real
-"""
-
 
 class MixedTransforms:
     """Mixed fast sin and fast fourier transforms helpers
