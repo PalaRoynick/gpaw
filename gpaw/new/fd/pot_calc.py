@@ -3,7 +3,8 @@ from math import pi
 import numpy as np
 
 from gpaw.core import UGDesc
-from gpaw.new import zips, spinsum, trace
+from gpaw.new import zips, spinsum
+from gpaw.new.timer import trace
 from gpaw.new.pot_calc import PotentialCalculator
 
 

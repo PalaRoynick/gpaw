@@ -1,10 +1,22 @@
 import pytest
-from gpaw.fftw import rfftn_patch, irfftn_patch
-from gpaw.gpu import is_hip, cupy_is_fake
+
+def test_irfftn_patch():
+    import cupyx
+    import cupy as xp
+    from gpaw.fftw import irfftn_patch
+    for sizes in [(1, 2, 3), (3, 5, 6), (6, 7, 9), (102, 14, 11)]:
+        A = xp.random.rand(*sizes)
+        rfft_A = cupyx.scipy.fft.rfftn(A)
+        Aback = cupyx.scipy.fft.irfftn(rfft_A, A.shape)
+        Aback2 = irfftn_patch(rfft_A, A.shape)
+        assert xp.allclose(Aback, Aback2)
+    
 
 
 @pytest.mark.gpu
 def test_hip_patch_on_cuda():
+    from gpaw.fftw import rfftn_patch, irfftn_patch
+    from gpaw.gpu import is_hip, cupy_is_fake
     if is_hip:
         pytest.skip('Test runs only on CUDA (have hip)')
     if cupy_is_fake:

@@ -15,7 +15,8 @@ from gpaw.core import UGArray
 from gpaw.dos import DOSCalculator
 from gpaw.mpi import MPIComm, broadcast
 from gpaw.mpi import synchronize_atoms, world
-from gpaw.new import Timer, trace
+from gpaw.new import Timer
+from gpaw.new.timer import trace
 from gpaw.new.builder import builder as create_builder
 from gpaw.new.calculation import (CalculationModeError, DFTCalculation,
                                   ReuseWaveFunctionsError, units)

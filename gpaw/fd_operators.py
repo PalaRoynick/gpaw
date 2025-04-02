@@ -21,6 +21,11 @@ from gpaw.typing import Array2D, ArrayLike2D
 from numpy.fft import fftn, ifftn
 from scipy.spatial import Voronoi
 
+from gpaw.domain import decompose_domain
+from gpaw.utilities.grid import grid2grid
+from gpaw.mixed_transforms import MixedTransforms
+
+
 if TYPE_CHECKING:
     from gpaw.core import UGDesc
 
@@ -41,9 +46,143 @@ derivatives = [[1 / 2],
                [4 / 5, -1 / 5, 4 / 105, -1 / 280]]
 
 
+class GPUFFTFDOperator:
+    """Fake finite difference operators with FFT's with GPUs
+
+    The GPU code for finite difference operators is so buggy,
+    so here is an alternative implementation using Fast Fourier
+    and Fast Sin Transforms. It won't be as efficient, but on
+    the other hand, it only will be used for gradients of
+    density, so it should be fine.
+    """
+    def __init__(self, gd, coef_p, offset_pc, xp=None):
+        self.xp = xp
+        self.transforms = MixedTransforms(xp)
+        self.gd = gd
+        axes = np.arange(3)
+        pbc_c = np.array(gd.pbc_c, dtype=bool)
+        periodic_axes = axes[pbc_c]
+        non_periodic_axes = axes[np.logical_not(pbc_c)]
+
+        # Find out which axes are orthogonal (0, 1 or 3)
+        # Note that one expects that the axes are always rotated in
+        # conventional form, thus for all axes to be
+        # classified as orthogonal, the cell_cv needs to be diagonal.
+        # This may always be achieved by rotating
+        # the unit-cell along with the atoms. The classification is
+        # inherited from grid_descriptor.orthogonal.
+        dotprods = np.dot(gd.cell_cv, gd.cell_cv.T)
+        # For each direction, check whether there is only one nonzero
+        # element in that row (necessarily being the diagonal element,
+        # since this is a cell vector length and must be > 0).
+        orthogonal_c = (np.abs(dotprods) > 1e-10).sum(axis=0) == 1
+        assert sum(orthogonal_c) in [0, 1, 3]
+
+        if not all(pbc_c | orthogonal_c):
+            raise RuntimeError('Each axis must be periodic or orthogonal '
+                               'to other axes.  But we have pbc={} '
+                               'and orthogonal={}'
+                               .format(pbc_c.astype(int),
+                                       orthogonal_c.astype(int)))
+
+        # We sort them, and pick the longest non-periodic axes as the
+        # cholesky axis.
+        fst_axes = sorted(non_periodic_axes, key=lambda c: gd.N_c[c])
+        fft_axes = list(periodic_axes)
+        self.fst_axes, self.fft_axes = fst_axes, fft_axes
+        axes = self.fft_axes + self.fst_axes
+        self.axes = axes
+
+        # Create xy flat decomposition (where x=axes[0] and y=axes[1])
+        parsize_c = [1, 1, 1]
+        parsize_c[axes[2]] = gd.comm.size
+        gd1d = gd.new_descriptor(parsize_c=parsize_c,
+                                 allow_empty_domains=True)
+        self.gd1d = gd1d
+
+        # Create z flat decomposition
+        domain = gd.N_c.copy()
+        domain[axes[2]] = 1
+        parsize_c = decompose_domain(domain, gd.comm.size)
+        gd2d = gd.new_descriptor(parsize_c=parsize_c)
+        self.gd2d = gd2d
+
+        # Calculate eigenvalues in fst/fft decomposition for
+        # non-cholesky axes in parallel
+        r_cx = xp.indices(gd2d.n_c)
+        r_cx += xp.asarray(gd2d.beg_c[:, xp.newaxis, xp.newaxis, xp.newaxis])
+        r_cx = r_cx.astype(complex)
+        for c, axis in enumerate(axes):
+            r_cx[axis] *= 2j * xp.pi / gd2d.N_c[axis]
+            if axis in fst_axes:
+                r_cx[axis] /= 2
+        xp.exp(r_cx, out=r_cx)
+        fft_lambdas = xp.zeros_like(r_cx[0], dtype=complex)
+
+        for coeff, offset_c in zip(coef_p, offset_pc):
+            offset_c = np.array(offset_c)
+            if not any(offset_c):
+                # The centerpoint is handled with (temp-1.0)
+                # XXX This is not true for all operators!!!
+                continue
+            non_zero_axes, = np.where(offset_c)
+            if set(non_zero_axes).issubset(axes):
+                temp = xp.ones_like(fft_lambdas)
+                for c, axis in enumerate(axes):
+                    temp *= r_cx[axis] ** offset_c[axis]
+                fft_lambdas += xp.asarray(coeff) * (temp - 1.0)
+
+        self.fft_lambdas = fft_lambdas
+
+    def apply_gpu(self, in_xR, out_xR, phase_factor_cd):
+        if phase_factor_cd is not None:
+            assert np.all(phase_factor_cd == 1.0)
+        assert len(in_xR.shape) == 3
+        assert len(out_xR.shape) == 3
+        gd = self.gd
+        gd1d = self.gd1d
+        gd2d = self.gd2d
+        comm = self.gd.comm
+        axes = self.axes
+        from gpaw.utilities.timing import NullTimer
+        timer = NullTimer()
+
+        with timer('Communicate to 1D'):
+            work1d_g = gd1d.empty(dtype=in_xR.dtype, xp=self.xp)
+            grid2grid(comm, gd, gd1d, in_xR, work1d_g, xp=self.xp)
+        with timer('FFT 2D'):
+            work1d_g = self.transforms.transform2(work1d_g, axes=axes[:2],
+                                                  pbc=gd.pbc_c[axes[:2]])
+        with timer('Communicate to 2D'):
+            work2d_g = gd2d.empty(dtype=work1d_g.dtype, xp=self.xp)
+            grid2grid(comm, gd1d, gd2d, work1d_g, work2d_g, xp=self.xp)
+        with timer('FFT 1D'):
+            work2d_g = self.transforms.transform(work2d_g, axis=axes[2],
+                                                 pbc=gd.pbc_c[axes[2]])
+
+        # The remaining problem is 0D dimensional, i.e the problem
+        # has been fully diagonalized
+        work2d_g *= self.fft_lambdas
+
+        with timer('FFT 1D'):
+            work2d_g = self.transforms.itransform(work2d_g, axis=axes[2],
+                                                  pbc=gd.pbc_c[axes[2]])
+        with timer('Communicate from 2D'):
+            work1d_g = gd1d.empty(dtype=work2d_g.dtype, xp=self.xp)
+            grid2grid(comm, gd2d, gd1d, work2d_g, work1d_g, xp=self.xp)
+        with timer('FFT 2D'):
+            work1d_g = self.transforms.itransform2(work1d_g, axes=axes[1::-1],
+                                                   pbc=gd.pbc_c[axes[1::-1]])
+        with timer('Communicate from 1D'):
+            work_g = gd.empty(dtype=work1d_g.dtype, xp=self.xp)
+            grid2grid(comm, gd1d, gd, work1d_g, work_g, xp=self.xp)
+
+        out_xR[:] = work_g.real
+
+
 class FDOperator:
     def __init__(self, coef_p, offset_pc, gd, dtype=float,
-                 description=None, xp=np):
+                 description=None, xp=np, cls=cgpaw.Operator):
         """FDOperator(coefs, offsets, gd, dtype) -> FDOperator object.
         """
 
@@ -65,7 +204,6 @@ class FDOperator:
         offset_p = np.dot(offset_pc, stride_c)
         coef_p = np.ascontiguousarray(coef_p, float)
         neighbor_cd = gd.neighbor_cd
-
         assert coef_p.ndim == 1
         assert coef_p.shape == offset_p.shape
         assert dtype in [float, complex]
@@ -90,9 +228,13 @@ class FDOperator:
 
         self.xp = xp
         gpu = xp is not np and not cupy_is_fake
-        self.operator = cgpaw.Operator(coef_p, offset_p, n_c, mp,
-                                       neighbor_cd, dtype == float,
-                                       comm, cfd, gpu)
+
+        if cls is GPUFFTFDOperator:
+            self.operator = GPUFFTFDOperator(gd, coef_p, offset_pc, xp=xp)
+        else:
+            self.operator = cls(coef_p, offset_p, n_c, mp,
+                                neighbor_cd, dtype == float,
+                                comm, cfd, gpu)
 
         if description is None:
             description = '%d point finite-difference stencil' % self.npoints
@@ -108,15 +250,17 @@ class FDOperator:
         if self.xp is np:
             self.operator.apply(in_xR.data, out_xR.data,
                                 in_xR.desc.phase_factor_cd)
-        elif cupy_is_fake:
-            self.operator.apply(in_xR.data._data, out_xR.data._data,
-                                in_xR.desc.phase_factor_cd)
         else:
             assert isinstance(in_xR.data, self.xp.ndarray)
             assert isinstance(out_xR.data, self.xp.ndarray)
-            self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
-                                    in_xR.data.shape, in_xR.data.dtype,
-                                    in_xR.desc.phase_factor_cd)
+            if isinstance(self.operator, GPUFFTFDOperator):
+                self.operator.apply_gpu(in_xR.data, out_xR.data,
+                                        in_xR.desc.phase_factor_cd)
+            else:
+                self.operator.apply_gpu(in_xR.data.data.ptr,
+                                        out_xR.data.data.ptr,
+                                        in_xR.data.shape, in_xR.data.dtype,
+                                        in_xR.desc.phase_factor_cd)
         return out_xR
 
     def apply(self, in_xg, out_xg, phase_cd=None):
@@ -127,9 +271,13 @@ class FDOperator:
             self.operator.apply(in_xg._data, out_xg._data,
                                 phase_cd)
         else:
-            self.operator.apply_gpu(in_xg.data.ptr,
-                                    out_xg.data.ptr,
-                                    in_xg.shape, in_xg.dtype, phase_cd)
+            if isinstance(self.operator, GPUFFTFDOperator):
+                self.operator.apply_gpu(in_xg, out_xg,
+                                        phase_cd)
+            else:
+                self.operator.apply_gpu(in_xg.data.ptr,
+                                        out_xg.data.ptr,
+                                        in_xg.shape, in_xg.dtype, phase_cd)
 
     def relax(self, relax_method, f_g, s_g, n, w=None):
         if self.xp is np:
@@ -290,7 +438,8 @@ class Gradient(FDOperator):
                  scale=1.0,
                  n=1,
                  dtype=float,
-                 xp=np):
+                 xp=np,
+                 cls=cgpaw.Operator):
         """Symmetric gradient for general non orthorhombic grid.
 
         gd: GridDescriptor
@@ -349,7 +498,7 @@ class Gradient(FDOperator):
             offsets.extend(np.arange(-1, -n - 1, -1)[:, np.newaxis] * M_c)
             coefs.extend(-c * stencil)
 
-        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp)
+        FDOperator.__init__(self, coefs, offsets, gd, dtype, xp=xp, cls=cls)
 
         self.description = (
             'Finite-difference {}-derivative with O(h^{}) error ({} points)'

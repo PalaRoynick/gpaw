@@ -7,7 +7,7 @@ import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.grid_descriptor import GridDescriptor, GridBoundsError
 from gpaw.gpu import cupy_is_fake
-from gpaw.new import trace
+from gpaw.new.timer import trace
 from gpaw.utilities import smallest_safe_grid_spacing
 
 """

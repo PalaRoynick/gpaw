@@ -8,8 +8,6 @@ from gpaw.new.timer import trace
 
 import numpy as np
 
-from gpaw.cgpaw import have_magma
-
 cupy_is_fake = True
 """True if :mod:`cupy` has been replaced by ``gpaw.gpu.cpupy``"""
 
@@ -34,6 +32,19 @@ else:
             raise ImportError
 
         import cupy
+        _asarray = cupy.asarray
+        _array = cupy.array
+        _asnumpy = cupy.asnumpy
+        def asarray(*args, **kwargs):
+            return _asarray(*args, **kwargs, blocking=True)
+        def array(*args, **kwargs):
+            return _array(*args, **kwargs, blocking=True)
+        def asnumpy(*args, **kwargs):
+            return _asnumpy(*args, **kwargs, blocking=True)
+        cupy.asarray = asarray
+        cupy.array = array
+        cupy.asnumpy = asnumpy
+
         from cupy import cublas
 
         gpu_gemm = trace(gpu=True)(cublas.gemm)  # noqa: F811
@@ -155,6 +166,7 @@ def cupy_eigh(a: cupy.ndarray, UPLO: str) -> tuple[cupy.ndarray, cupy.ndarray]:
     MAGMA is not available.
     """
     from scipy.linalg import eigh
+    from gpaw.cgpaw import have_magma
     if not is_hip:
         return cupy.linalg.eigh(a, UPLO=UPLO)
 

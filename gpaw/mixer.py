@@ -12,7 +12,7 @@ import gpaw.mpi as mpi
 from gpaw.utilities.blas import axpy
 from gpaw.fd_operators import FDOperator
 from gpaw.utilities.tools import construct_reciprocal
-from gpaw.new import trace
+from gpaw.new.timer import trace
 
 """About mixing-related classes.
 

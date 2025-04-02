@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING
 
 import gpaw.cgpaw as cgpaw
 from gpaw import GPAW_NO_C_EXTENSION
-from gpaw.new.timer import trace
 
 __all__ = ['GPU_AWARE_MPI']
 
 GPU_AWARE_MPI = getattr(cgpaw, 'gpu_aware_mpi', False)
 GPU_ENABLED = getattr(cgpaw, 'GPU_ENABLED', False)
+
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
     from gpaw.cgpaw import (add_to_density, pw_insert, pw_precond,  # noqa

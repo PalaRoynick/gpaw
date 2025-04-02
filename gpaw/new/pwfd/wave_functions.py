@@ -13,7 +13,8 @@ from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.fftw import get_efficient_fft_size
 from gpaw.gpu import as_np, XP
 from gpaw.mpi import receive, send
-from gpaw.new import prod, trace, zips
+from gpaw.new import prod, zips
+from gpaw.new.timer import trace
 from gpaw.new.potential import Potential
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
