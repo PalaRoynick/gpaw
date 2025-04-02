@@ -22,12 +22,12 @@ class MixedTransforms:
             self.xp = np
             def wrap(f):
                 @functools.wraps(f)
-                def wrapper(A_g, **kwargs):
+                def wrapper(A_g, *args, **kwargs):
                     A_g = A_g._data
-                    return cpupy.ndarray(f(A_g, **kwargs))
+                    return cpupy.ndarray(f(A_g, *args, **kwargs))
                 return wrapper
 
-            for method in ['rfst2', 'fst', 'ifst', 'transform',
+            for method in ['rfst2', 'irfst2', 'fst', 'ifst', 'transform',
                            'transform2', 'itransform', 'itransform2']:
                 setattr(self, method, wrap(getattr(self, method)))
 
@@ -72,13 +72,13 @@ class MixedTransforms:
         temp_g[1:x + 1, 1:y + 1, :] = A_g.real
         temp_g[x + 2:, 1:y + 1, :] = -A_g[::-1, :, :].real
         X = -0.25 * irfft2(temp_g, axes=[0, 1])[1:x + 1, 1:y + 1, :]
-        return xp.transpose(X, xp.argsort(axes + third))
+        return xp.transpose(X, np.argsort(axes + third))
 
     # This method needs to be taken from fftw / scipy to gain speedup of ~4x
     def fst(self, A_g, axis):
         xp = self.xp
         x, y, z = A_g.shape
-        N_c = xp.array([x, y, z])
+        N_c = np.array([x, y, z])
         N_c[axis] = N_c[axis] * 2 + 2
         temp_g = xp.zeros(N_c, dtype=A_g.dtype)
         if axis == 0:
@@ -103,7 +103,7 @@ class MixedTransforms:
     def ifst(self, A_g, axis):
         xp = self.xp
         x, y, z = A_g.shape
-        N_c = xp.array([x, y, z])
+        N_c = np.array([x, y, z])
         N_c[axis] = N_c[axis] * 2 + 2
         temp_g = xp.zeros(N_c, dtype=A_g.dtype)
 
