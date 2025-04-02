@@ -15,6 +15,10 @@ newaxis = np.newaxis
 pi = np.pi
 
 
+def transpose(*args, **kwargs):
+    return ndarray(np.transpose(*args, **kwargs))
+
+
 def empty(*args, **kwargs):
     return ndarray(np.empty(*args, **kwargs))
 

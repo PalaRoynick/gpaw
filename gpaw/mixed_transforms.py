@@ -1,6 +1,8 @@
 from scipy.fftpack import dst as scipydst
 from numpy.fft import fft2, ifft2, rfft2, irfft2, fft, ifft
 from gpaw.gpu import cpupy
+import numpy as np
+import functools
 
 
 class MixedTransforms:
@@ -10,15 +12,26 @@ class MixedTransforms:
     with arbitrary boundary conditions (fst vs. fft per each axis).
     """
     def __init__(self, xp):
-        import numpy as np
         self.use_scipy_transforms = xp is np
+
         self.cpupy = xp is cpupy
-        self.xp = xp
+        if not self.cpupy:
+            self.xp = xp
+        else:
+            # In case of cpupy which to numpy backend but add wrappers
+            self.xp = np
+            def wrap(f):
+                @functools.wraps(f)
+                def wrapper(A_g, **kwargs):
+                    A_g = A_g._data
+                    return cpupy.ndarray(f(A_g, **kwargs))
+                return wrapper
+
+            for method in ['rfst2', 'fst', 'ifst', 'transform',
+                           'transform2', 'itransform', 'itransform2']:
+                setattr(self, method, wrap(getattr(self, method)))
 
     def rfst2(self, A_g, axes=[0, 1]):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
-
         all = {0, 1, 2}
         third = [all.difference(set(axes)).pop()]
 
@@ -38,12 +51,9 @@ class MixedTransforms:
         temp_g[1:x + 1, y + 2:, :] = -A_g[:, ::-1, :]
         temp_g[x + 2:, y + 2:, :] = A_g[::-1, ::-1, :]
         X = -4 * rfft2(temp_g, axes=[0, 1])[1:x + 1, 1:y + 1, :].real
-        result = xp.transpose(X, xp.argsort(axes + third))
-        return self.xp.ndarray(result) if self.cpupy else result
+        return xp.transpose(X, np.argsort(axes + third))
 
     def irfst2(self, A_g, axes=[0, 1]):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         xp = self.xp
         if self.use_scipy_transforms:
             Y = A_g
@@ -62,9 +72,7 @@ class MixedTransforms:
         temp_g[1:x + 1, 1:y + 1, :] = A_g.real
         temp_g[x + 2:, 1:y + 1, :] = -A_g[::-1, :, :].real
         X = -0.25 * irfft2(temp_g, axes=[0, 1])[1:x + 1, 1:y + 1, :]
-
-        result = xp.transpose(X, xp.argsort(axes + third))
-        return self.xp.ndarray(result) if self.cpupy else result
+        return xp.transpose(X, xp.argsort(axes + third))
 
     # This method needs to be taken from fftw / scipy to gain speedup of ~4x
     def fst(self, A_g, axis):
@@ -93,8 +101,6 @@ class MixedTransforms:
             return X[:, :, 1:z + 1]
 
     def ifst(self, A_g, axis):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         xp = self.xp
         x, y, z = A_g.shape
         N_c = xp.array([x, y, z])
@@ -121,11 +127,9 @@ class MixedTransforms:
         elif axis == 2:
             result = -2j * X_g[:, :, 1:z + 1]
 
-        return result if not self.cpupy else cpupy.ndarray(result)
+        return result
 
     def transform(self, A_g, axis=None, pbc=True):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         if pbc:
             if A_g.size == 0:
                 return A_g.astype(complex)
@@ -141,11 +145,9 @@ class MixedTransforms:
             result = scipydst(A_g, axis=axis, type=1)
             result *= .5
 
-        return result if not self.cpupy else cpupy.ndarray(result)
+        return result
 
     def transform2(self, A_g, axes=None, pbc=[True, True]):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         if all(pbc):
             if A_g.size == 0:
                 result = A_g.astype(complex)
@@ -160,11 +162,9 @@ class MixedTransforms:
                                                    axis=axes[0],
                                                    pbc=pbc[0]),
                                     axis=axes[1], pbc=pbc[1])
-        return cpupy.asarray(result) if self.cpupy else result
+        return result
 
     def itransform(self, A_g, axis=None, pbc=True):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         if pbc:
             if A_g.size == 0:
                 result = A_g.astype(complex)
@@ -180,11 +180,9 @@ class MixedTransforms:
                 result = scipydst(A_g, axis=axis, type=1)
                 magic = 1.0 / (A_g.shape[axis] + 1)
                 result *= magic
-        return cpupy.asarray(result) if self.cpupy else result
+        return result
 
     def itransform2(self, A_g, axes=None, pbc=[True, True]):
-        if isinstance(A_g, cpupy.ndarray):
-            A_g = A_g._data
         if all(pbc):
             if A_g.size == 0:
                 result = A_g.astype(complex)
@@ -201,4 +199,4 @@ class MixedTransforms:
                                                      pbc=pbc[0]),
                                      axis=axes[1], pbc=pbc[1])
 
-        return cpupy.asarray(result) if self.cpupy else result
+        return result
