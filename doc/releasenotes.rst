@@ -10,13 +10,49 @@ Git master branch
 
 :git:`master <>`.
 
+* The fluctuation-dissipation theorem has been added to the SJM.
+
 * Minimum version requirements: Python 3.9, ASE 3.23.0.
 
-* Added functionality to compute LDA exchange constants based on the
-  local site properties methodology, see :ref:`sites`.
+* The constant inner potential DFT method has been included SJM.
 
-* Extended ``restrict`` keyword and random phase approximation enabled
-  in :ref:`lrtddft`
+* Sign of electron chemical potential in SJM text output has been corrected.
+  The resulting (Grand) energies are not affected by this change.
+
+* Preliminary support for ``wasm32`` architecture (web-browsers).
+
+* Experimental support for calculations with wave-functions in
+  single precision.
+
+* Non self-consistent calculation of HSE06 eigenvalues for arbitrary
+  **k**-points has been implemented.  See :ref:`hse06 on lda` and
+  :class:`gpaw.new.pw.nschse.NonSelfConsistentHSE06`.
+
+* Experimental: Support for using MPI4PY_.  Set ``GPAW_MPI4PY=1`` to use this.
+
+* Bug fix for spin-polarized LCAO-TDDFT circular dichroism See :mr:`2667`.
+
+* Added optional eigenvalue convergence criteria in :ref:`newgpaw`.
+  See :ref:`manual_convergence`.
+
+
+.. _MPI4PY: https://mpi4py.readthedocs.io/en/stable/
+
+
+Version 25.1.0
+==============
+
+January 6, 2025: :git:`25.1.0 <../25.1.0>`
+
+* Minimum version requirements: Python 3.9, ASE 3.23.0.
+
+* PAW potentials for lanthanides have been added to our :ref:`setup releases`.
+
+* Updated development-workflow documentation:
+  :ref:`a good mr`, :ref:`get your mr merged`.
+
+* Works with
+  `Libxc-7.0.0 <https://gitlab.com/libxc/libxc/-/releases/7.0.0>`__.
 
 * The :meth:`gpaw.calculator.GPAW.fixed_density` method now respects the
   ``update_fermi_level`` argument.  Previously, the Fermi-level would not
@@ -27,6 +63,33 @@ Git master branch
 * The :meth:`gpaw.calculator.GPAW.get_occupation_numbers` method can now
   return the *raw* numbers (in the [0,1] range) without any spin-degeneracy
   or **k**-point weights (use ``raw=True``).
+
+* Implementation of the multipole approximation (MPA) for the response
+  function in the GW self-energy [PRB 104, 115157 (2021)]
+
+* Experimental:
+  Faster and less memory hungry Poisson-solver in PW-mode.  For details,
+  see equations 25-28 in :doi:`P. E. Blöchl: Projector augmented-wave method
+  Phys. Rev. B 50, 17953 (1994) <0.1103/PhysRevB.50.17953>`.  Use
+  ``poissonsolver={'fast': True}`` to try it.
+
+* Added functionality to compute LDA exchange constants based on the
+  local site properties methodology, see :ref:`sites`.
+
+* Extended ``restrict`` keyword and random phase approximation enabled
+  in :ref:`lrtddft`.
+
+* Updated :ref:`scissors operator`.
+
+* New experimental parameter:
+  ``experimental={'backwards_compatible': False}``.
+  This will make calculations slightly more accurate, but also give slightly
+  different numbers.  See :mr:`2537` for an example of the changes.
+  Default is backwards compatible.
+
+* New GPAW only: The :meth:`~gpaw.new.ase_interface.ASECalculator.write`
+  method of the GPAW calculator object can now write smaller gpw-files
+  by using ``precision='single'`` and ``include_projections=False``.
 
 
 Version 24.6.0

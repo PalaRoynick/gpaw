@@ -29,6 +29,8 @@ commands = {
          '--logarithmic-derivatives', '-n', '--ngrid', '-R',
          '--rcut', '-r', '--refine', '-s',
          '--scalar-relativistic', '--no-ee-interaction'],
+    'basis':
+        ['--name', '--type'],
     'completion':
         [],
     'dataset':
@@ -40,8 +42,8 @@ commands = {
          '--write', '-s', '--scalar-relativistic', '-n',
          '--no-check', '-t', '--tag', '-a', '--alpha', '-g',
          '--gamma', '-b', '--create-basis-set', '--nlcc',
-         '--core-hole', '-e', '--electrons', '-o', '--output',
-         '--ecut', '--ri', '--omega'],
+         '--core-hole', '-e', '--electrons', '--ecut', '--ri',
+         '--omega'],
     'diag':
         ['-b', '--bands', '-s', '--scalapack'],
     'dos':
@@ -53,8 +55,10 @@ commands = {
     'info':
         [],
     'install-data':
-        ['--version', '--tarball', '--list-all', '--gpaw', '--sg15',
+        ['--version', '--list-all', '--tarball', '--gpaw', '--sg15',
          '--basis', '--test', '--register', '--no-register'],
+    'plot-basis':
+        ['--write'],
     'python':
         ['--dry-run', '-z', '-d', '--debug', '--command', '-c',
          '--module', '-m'],
