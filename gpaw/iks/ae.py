@@ -1,5 +1,5 @@
 # from itertools import cycle
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 from gpaw.atom.aeatom import AllElectronAtom
@@ -7,9 +7,7 @@ from gpaw.atom.aeatom import AllElectronAtom
 # from gpaw.atom.all_electron import AllElectron
 from gpaw.typing import Array1D
 from gpaw.utilities import hartree
-from gpaw.xc.numericalxc import NumericalXC, NumericalXCKernel
-
-# from scipy.optimize import minimize
+from gpaw.xc.numericalxc import NumericalXCGG, NumericalXCKernelGG
 
 
 class _iKSAE:
@@ -48,7 +46,7 @@ class _iKSAE:
             )
 
     def init_xc(self):
-        self.xc = NumericalXC(NumericalXCKernel())
+        self.xc = NumericalXCGG(NumericalXCKernelGG())
         self.xc.kernel.set_rgd(self.rgd)
         self.xc.kernel.vxc_asg = self.fermi_amaldi()[None, None]
 

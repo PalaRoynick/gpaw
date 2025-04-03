@@ -9,7 +9,7 @@ from gpaw.poisson import create_poisson_solver
 from gpaw.pw.poisson import ReciprocalSpacePoissonSolver
 from gpaw.transformers import Transformer
 from gpaw.typing import ArrayND
-from gpaw.xc.numericalxc import NumericalXC, NumericalXCKernel
+from gpaw.xc.numericalxc import NumericalXCGG, NumericalXCKernelGG
 
 
 class iKSNoPAW:
@@ -36,10 +36,12 @@ class iKSNoPAW:
         self.log = log
         self.ham = getattr(gs, "hamiltonian", None)
         if nopawham:
+
             def null_non_local(P, out=None):
                 if out is None:
                     out = P.new()
                 return out
+
             self.ham.dH = property(null_non_local)
         self.densa = getattr(gs, "density", None)
         self.wfs = getattr(gs, "wfs", None)
@@ -71,7 +73,6 @@ class iKSNoPAW:
         else:
             na_sG = self.densa.nt_sG
         return na_sG
-
 
     def init_nt_sg(self, nt_sg: ArrayND) -> None:
         if np.all(nt_sg.shape[1:] == self.gd.n_c):
@@ -107,9 +108,9 @@ class iKSNoPAW:
             )
 
     def init_xckernel(self) -> None:
-        self.xckernel = NumericalXCKernel()
+        self.xckernel = NumericalXCKernelGG()
         self.xckernel.update_vxc(self.fermi_amaldi(self.nt_sg))
-        xc = NumericalXC(self.xckernel, self.stencil)
+        xc = NumericalXCGG(self.xckernel, self.stencil)
         self.ham.xc = xc
         xc.set_positions(self.ham.spos_ac)
         xc.set_grid_descriptor(self.finegd)
@@ -164,11 +165,9 @@ class iKSNoPAW:
                     self.wfs.eigensolver.initialize_dm_helper(
                         self.wfs, self.ham, self.densa, self.log
                     )
-                print("iterate")
                 self.wfs.eigensolver.iterate(
                     self.ham, self.wfs, self.densa, self.log, denst=self.denst
                 )
-                print("iterate done")
                 #
                 # self.wfs.eigensolver.iters = 0
                 # or change line 523 in etdm_fdpw.py
@@ -182,12 +181,9 @@ class iKSNoPAW:
             e_entropy = 0.0
             kin_en_using_band = False
         else:
-            print("iterate")
             self.wfs.eigensolver.iterate(self.ham, self.wfs)
             kin_en_using_band = True
             e_entropy = self.wfs.calculate_occupation_numbers()
-            print("iterate done")
-            # breakpoint()
 
         if hasattr(self.wfs.eigensolver, "e_sic"):
             e_sic = self.wfs.eigensolver.e_sic
@@ -247,7 +243,6 @@ class iKSNoPAW:
                 )
                 or True
             ):
-                print("update_coarse Lagrangian")
                 self.update_coarse(vxc_sG)
         self.L = self.gd.integrate((self.diff_G**2) * self.weights_G)
         if self.log is not None:
@@ -270,7 +265,7 @@ class iKSNoPAW:
         # J_G = np.sum(p_iG * self.psi_iG, axis=0)
         self.J_G = np.einsum(
             "ij,j...,i...->...", self.p_ij, self.psi_jG.conj(), self.psi_iG
-        )
+        ).real
         if self.log is not None:
             self.log(
                 f"iter: {self.niter} | mean(J):\
@@ -282,11 +277,12 @@ class iKSNoPAW:
     def converged(self, vxc_sG: ArrayND, Ltol, Jtol) -> None:
         self.L_iter.append(self.L)
         imax = np.unravel_index(np.argmax(np.abs(self.J_G)), self.J_G.shape)
-        self.log(
-            f"iter: {self.niter} | vxc_sG.shape = {
-            vxc_sG.shape}, max(J_sG) -> {imax}:{np.max(np.abs(self.J_G))}"
-        )
-        self.log(f"abs(L - L_prev): {np.abs(self.L - self.prev_L)}")
+        if self.log is not None:
+            self.log(
+                f"iter: {self.niter} | vxc_sG.shape = {
+                vxc_sG.shape}, max(J_sG) -> {imax}:{np.max(np.abs(self.J_G))}"
+            )
+            self.log(f"abs(L - L_prev): {np.abs(self.L - self.prev_L)}")
         return np.abs(self.L) < Ltol or np.max(np.abs(self.J_G)) < Jtol
 
     def run_opt(
@@ -345,6 +341,7 @@ class iKSNoPAW:
         Jtol=1e-12,
         epsilon=1e-10,
         maxiter=300,
+        callback: Optional[Callable[[ArrayND], None]] = None,
     ):
         """
         Adam optimizer to minimize the Lagrangian function with
@@ -370,8 +367,10 @@ class iKSNoPAW:
         # Initialize second moment vector
         v_sG = np.zeros_like(vxc_sG)
         L_iter = []
-        for t in range(1, maxiter):
+        for t in range(1, maxiter + 1):
             self.update_coarse(vxc_sG)
+            if callback is not None:
+                callback(vxc_sG)
             L = self.lagrangian()
             J_sG = self.jacobian()[np.newaxis]
             # Update biased first moment estimate

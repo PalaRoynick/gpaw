@@ -5,16 +5,17 @@ from ase.atoms import Atoms
 
 # from gpaw import debug
 debug = True
-from ase.parallel import parprint
 
+from ase.parallel import parprint
 from gpaw.calculator import GPAW
+from gpaw.grid_descriptor import GridDescriptor
 from gpaw.iks.ae2density import ae2density
 from gpaw.lfc import LFC, BasisFunctions
-from gpaw.poisson import create_poisson_solver
+from gpaw.poisson import BasePoissonSolver, create_poisson_solver
 from gpaw.transformers import Transformer
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_density
-from gpaw.xc.numericalxc import NumericalXC, NumericalXCKernel
+from gpaw.xc.numericalxc import NumericalXCGG, NumericalXCKernelGG
 
 
 class iKS(GPAW):
@@ -35,7 +36,9 @@ class iKS(GPAW):
         self.init_weights(weights)
         self.stencil = stencil
         self.scale = scale
-        self.fapoisson = None
+        self.fapoisson: BasePoissonSolver = None
+        self.adam_params: dict[str, float | int] = {}
+        self.L_iter: list[float] = []
 
     @property
     def na_sG(self):
@@ -54,15 +57,20 @@ class iKS(GPAW):
         self.nt_sg = self.coarse2fine(self.nt_sG)
         self.update_target_density()
         self.N = int(np.round(np.sum(self.finegd.integrate(self.nt_sg))))
-        self.niter = 0
-        self.eigensolver_name = getattr(self.wfs.eigensolver, "name", "")
+        self.niter: int = 0
+        self.eigensolver_name: str = getattr(self.wfs.eigensolver, "name", "")
         # n -> bands(occ+virt), m -> occ
         self.psi_nG: Optional[ArrayND] = None
         self.psi_mG: Optional[ArrayND] = None
         self.u_m: Optional[ArrayND] = None
         self.p_mn: Optional[ArrayND] = None
-        self.L = 0.0
-        self.prev_L = 0.0
+        self.occupied_m: Optional[ArrayND] = None
+        self.f_m: Optional[ArrayND] = None
+        self.w_mn: Optional[ArrayND] = None
+        self.wdn_G: Optional[ArrayND] = None
+        self.L: float = 0.0
+        self.prev_L: float = 0.0
+        self.diff_G: Optional[ArrayND] = None
         self.init_paw()
         self.init_xckernel()
 
@@ -98,7 +106,9 @@ class iKS(GPAW):
         for a in range(len(self.phi.M_a)):
             M1 = self.phi.M_a[a]
             M2 = M1 + self.phi.sphere_a[a].Mmax
-            self.dO_MM[M1:M2, M1:M2] = self.setups[a].dO_ii
+            self.dO_MM[M1:M2, M1:M2] = 2.0 * self.setups[a].dO_ii
+        self.P_nM: Optional[ArrayND] = None
+        self.P_mM: Optional[ArrayND] = None
 
     def init_weights(self, weights: str | ArrayND) -> None:
         if isinstance(weights, ArrayND):
@@ -122,9 +132,11 @@ class iKS(GPAW):
 
     def init_xckernel(self) -> None:
         D_asp = self.density.D_asp
-        self.xckernel = NumericalXCKernel()
-        self.xckernel.update_vxc(self.fermi_amaldi(self.finegd, self.nt_sg))
-        xc = NumericalXC(self.xckernel, self.stencil)
+        self.xckernel = NumericalXCKernelGG()
+        poisson = create_poisson_solver()
+        poisson.set_grid_descriptor(self.finegd)
+        self.xckernel.update_vxc(self.fermi_amaldi(poisson, self.finegd, self.nt_sg))
+        xc = NumericalXCGG(self.xckernel, self.stencil)
         self.hamiltonian.xc = xc
         xc.set_positions(self.hamiltonian.spos_ac)
         xc.set_grid_descriptor(self.finegd)
@@ -133,22 +145,25 @@ class iKS(GPAW):
         self.xckernel.update_vxct_a(vxct_asG)
         xc.set_lfc(self.phi, self.phit, self.nc, self.nct, self.hamiltonian.nspins)
 
-    def fermi_amaldi(self, gd, nt_sg):
-        vHt_sg = gd.zeros(self.hamiltonian.nspins)
-        N = gd.integrate(nt_sg)
-        if self.fapoisson is None:
-            self.fapoisson = create_poisson_solver()
-        self.fapoisson.set_grid_descriptor(gd)
-        for s in range(self.hamiltonian.nspins):
-            _ = self.fapoisson.solve(
+    @staticmethod
+    def fermi_amaldi(
+        fapoisson: BasePoissonSolver, gd: GridDescriptor, n_sg: ArrayND
+    ) -> ArrayND:
+        nspins = len(n_sg)
+        vHt_sg = gd.zeros(nspins)
+        N = gd.integrate(n_sg)
+        for s in range(nspins):
+            _ = fapoisson.solve(
                 vHt_sg[s],
-                nt_sg[s],
+                n_sg[s],
             )
         return -vHt_sg / N
 
     def fermi_amaldi_paw(self, D_asp):
         nspins = self.hamiltonian.nspins
         natoms = len(self.setups)
+        poisson = create_poisson_solver()
+        poisson.set_grid_descriptor(self.gd)
         a_asi = {
             a: np.zeros((nspins, self.nc.get_function_count(a))) for a in range(natoms)
         }
@@ -169,8 +184,8 @@ class iKS(GPAW):
             c_asi[a] = np.ones_like(c_asi[a])
             self.nc.add(na_sG, c_asi)
             self.nct.add(nat_sG, c_asi)
-            vxc_asG[a] = self.fermi_amaldi(self.gd, na_sG)
-            vxct_asG[a] = self.fermi_amaldi(self.gd, nat_sG)
+            vxc_asG[a] = self.fermi_amaldi(poisson, self.gd, na_sG)
+            vxct_asG[a] = self.fermi_amaldi(poisson, self.gd, nat_sG)
         return vxc_asG, vxct_asG
 
     def update_target_density(self) -> None:
@@ -191,7 +206,6 @@ class iKS(GPAW):
             raise NotImplementedError
         else:
             self.wfs.eigensolver.iterate(self.hamiltonian, self.wfs)
-            kin_en_using_band = True
             e_entropy = self.wfs.calculate_occupation_numbers()
 
         if hasattr(self.wfs.eigensolver, "e_sic"):
@@ -199,7 +213,7 @@ class iKS(GPAW):
         else:
             e_sic = 0.0
         self.hamiltonian.get_energy(
-            e_entropy, self.wfs, kin_en_using_band=kin_en_using_band, e_sic=e_sic
+            e_entropy, self.wfs, kin_en_using_band=False, e_sic=e_sic
         )
         self.density.update(self.wfs)
         self.update_target_density()
@@ -207,13 +221,11 @@ class iKS(GPAW):
         # update coefficients
         self.calculate_step()
 
-    def calculate_step(self) -> None:
+    def calculate_step(self, k=0, s=0) -> None:
         self.diff_G = np.sum(self.nt_sG - self.na_sG, axis=0)
         # TODO: replace the integrals with wfs.integrate()
         # integrate = self.wfs.pd.integrate
         # add the kpoint and spin stuff
-        k = 0
-        s = 0
         occupied_m = self.occupied_m = np.nonzero(self.wfs.kpt_u[k].f_n > 1e-10)[0]
         f_m = self.f_m = self.wfs.kpt_u[k].f_n[occupied_m]
         e_n = self.wfs.collect_eigenvalues(k, s)
@@ -279,7 +291,7 @@ class iKS(GPAW):
         return self.scale * self.L
 
     def jacobian(self) -> ArrayND:
-        # TODO: include spin polarization
+        # TODO: include spin polarization and kpoints
         self.J_sG = np.einsum(
             "mn,n...,m...->...", self.p_mn, self.psi_nG.conj(), self.psi_mG
         )[np.newaxis]
@@ -291,10 +303,10 @@ class iKS(GPAW):
         self.Jt_asG = Jt_asG = self.gd.zeros((natoms, nspins))
         Mmax = self.phi.Mmax
         rho_MM = np.einsum(
-            "nM,mN,mn->MN",
+            "mn,nM,mN->MN",
+            self.p_mn,
             self.P_nM.conj(),
             self.P_mM,
-            self.p_mn,
         )
         for a in range(natoms):
             M1 = self.phi.M_a[a]
@@ -302,6 +314,7 @@ class iKS(GPAW):
             mask = np.ones((Mmax, Mmax), dtype=bool)
             mask[M1:M2, M1:M2] = False
             buf_MM = rho_MM.copy()
+            # drop the values of the other atoms
             buf_MM[mask] = 0.0
             for s in range(nspins):
                 self.phi.construct_density(buf_MM, J_asG[a, s], q=-1)
@@ -316,7 +329,7 @@ class iKS(GPAW):
             parprint(msg)
 
     def adam_step(self, lr, vxc, J, m, mm):
-        epsilon = 1e-10
+        epsilon = 1e-8
         beta1 = self.adam_params["beta1"]
         beta2 = self.adam_params["beta2"]
         t = self.niter
@@ -325,34 +338,39 @@ class iKS(GPAW):
         # Update biased second moment estimate
         mm = beta2 * mm + (1 - beta2) * J**2
         # Update vxc
-        vxc -= lr * m / (1 - beta1**t) / (np.sqrt(mm / (1 - beta2**t)) + epsilon)
+        vxc[:] = vxc - lr * m / (1.0 - beta1**t) / (
+            np.sqrt(mm / (1.0 - beta2**t)) + epsilon
+        )
         return m, mm
 
     def run_adam(
         self,
-        maxiter=300,
-        lr_pseudo=0.001,
-        lr_paw=0.001,
-        beta1=0.9,
-        beta2=0.999,
-        Ltol=1e-5,
-        Jtol=1e-6,
-    ):
+        maxiter: int = 300,
+        lr_pseudo: float = 0.001,
+        lr_paw: float = 0.001,
+        Ltol: float = 1e-5,
+        Jtol: float = 1e-6,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+    ) -> list[float]:
         """
         Adam optimizer to minimize the Lagrangian function with
-                                                    respect to vxc_sg.
+                        respect to smooth and atomic xc-potentials.
         Parameters:
         - maxiter: number of iterations for the optimization.
-        - lr: learning rate for the Adam optimizer.
+        - lr_pseudo: learning rate used for updating the smooth xc-potential.
+        - lr_paw: learning rate used for updating the atomic potentials.
+        - Ltol: tolerance for the Lagrangian.
+                [abs(L) < Ltol for a successful termination]
+        - Jtol: tolerance for the Jacobian of the smooth potential.
+                [max(abs(J)) < Jtol for a successful termination]
         - beta1: exponential decay rate for the first moment estimates.
         - beta2: exponential decay rate for the second moment estimates.
-        - Ltol: tolerance for the Lagrangian function. (abs(L) < Ltol
-                                                 for a successful termination)
-        - Jtol: tolerance for the Jacobian function. (max(abs(J_G)) < Jtol
-                                                 for a successful termination)
         Returns:
         - L_iter: list of Lagrangian values at each iteration.
         """
+        if not self.initialized:
+            raise ValueError("The calculator is not initialized.")
         self.adam_params = {
             "lr_pseudo": lr_pseudo,
             "lr_paw": lr_paw,
@@ -365,20 +383,20 @@ class iKS(GPAW):
         vxc_sG = self.fine2coarse(self.xckernel.vxc_sg)
         vxc_asG = self.xckernel.vxc_asG
         vxct_asG = self.xckernel.vxct_asG
-        # Initialize first moment vector
+        # initialize first moment vector
         m_sG = np.zeros_like(vxc_sG)
         m_asG = np.zeros_like(vxc_asG)
         mt_asG = np.zeros_like(vxct_asG)
-        # Initialize second moment vector
+        # initialize second moment vector
         mm_sG = np.zeros_like(vxc_sG)
         mm_asG = np.zeros_like(vxc_asG)
         mmt_asG = np.zeros_like(vxct_asG)
-        #
-        L_iter = []
+        # optimization loop
+        L_iter = self.L_iter = []
         self.debuglog("-- Adam optimizer --")
         self.debuglog(
             "\t{:>5} | {:>10} | {:>10} | {:>10} | {:>10}".format(
-                "iter", "L", "max(J)", "max(J_a)", "max(Jt_a)" 
+                "iter", "L", "max(J)", "max(J_a)", "max(Jt_a)"
             )
         )
 
@@ -388,17 +406,22 @@ class iKS(GPAW):
             self.update(vxc_sG, vxc_asG, vxct_asG)
             L = self.lagrangian()
             L_iter.append(L)
-            # pseudo
+            # jacobian
             J_sG = self.jacobian()
+            J_asG, Jt_asG = self.jacobian_paw()
+            # pseudo
             m_sG, mm_sG = self.adam_step(lr_pseudo, vxc_sG, J_sG, m_sG, mm_sG)
             # paw
-            J_asG, Jt_asG = self.jacobian_paw()
             m_asG, mm_asG = self.adam_step(lr_paw, vxc_asG, J_asG, m_asG, mm_asG)
             mt_asG, mmt_asG = self.adam_step(lr_paw, vxct_asG, Jt_asG, mt_asG, mmt_asG)
             # log
             self.debuglog(
                 "\t{:>5} | {:>10.6e} | {:>10.6e} | {:>10.6e} | {:>10.6e}".format(
-                    t, L, np.max(np.abs(J_sG)), np.max(np.abs(J_asG)), np.max(np.abs(Jt_asG)),
+                    t,
+                    L,
+                    np.max(np.abs(J_sG)),
+                    np.max(np.abs(J_asG)),
+                    np.max(np.abs(Jt_asG)),
                 )
             )
             # check convergence
