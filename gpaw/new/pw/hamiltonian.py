@@ -10,7 +10,7 @@ from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.c import pw_precond, pw_insert_gpu
-from gpaw.utilities import as_complex_dtype
+from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 
 class PWHamiltonian(Hamiltonian):
@@ -32,9 +32,9 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
-        if xp is not np and pw.comm.size == 1:
+        if xp is not np and pw.comm.size == 1 and False:
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
-        vt_R = vt_R.gather(broadcast=True)
+        vt_R = xp.asarray(vt_R.gather(broadcast=True).data, dtype=pw.dtype)
         tmp_R = self.grid_local.empty(xp=xp)
         if pw.comm.size == 1:
             pw_local = pw
@@ -45,7 +45,10 @@ class PWHamiltonian(Hamiltonian):
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
         psit_G = pw_local.empty(xp=xp)
-        e_kin_G = xp.asarray(psit_G.desc.ekin_G)
+
+        # This guy should be single precision earlier.
+        e_kin_G = xp.asarray(psit_G.desc.ekin_G).astype(as_real_dtype(pw.dtype))
+
         domain_comm = psit_nG.desc.comm
         mynbands = psit_nG.mydims[0]
         vtpsit_G = pw_local.empty(xp=xp)
@@ -55,7 +58,7 @@ class PWHamiltonian(Hamiltonian):
             psit_nG[n1:n2].gather_all(psit_G)
             if domain_comm.rank < n2 - n1:
                 psit_G.ifft(out=tmp_R, plan=self.plan)
-                tmp_R.data *= vt_R.data
+                tmp_R.data *= vt_R
                 tmp_R.fft(out=vtpsit_G, plan=self.plan)
                 psit_G.data *= e_kin_G
                 vtpsit_G.data += psit_G.data
