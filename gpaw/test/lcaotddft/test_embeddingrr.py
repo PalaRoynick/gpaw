@@ -61,7 +61,9 @@ def test_embeddingrr_dyadic(in_tmp_dir, write_inputs):
     env = {'environment': 'dressedcavity',
            'quantization_plane': 1e1,
            'cavity_polarization': [0, 0, 1],
-           'environmentcavity_in': [2.98, 3, 0.01, 0, 0, 30000],
+           'resonance': 2.98,
+           'loss': 0.01 * 2.98,
+           'ampl': 30000,
            'environmentens_in': [1, 1, 0, 0, 0]}
     rremission = RRemission(env)
     dyadic_out_very_good, _ = rremission.environment.dyadicGt(
@@ -115,7 +117,9 @@ def test_embeddingrr(in_tmp_dir, write_inputs):
     env = {'environment': 'dressedcavity',
            'quantization_plane': cross_section,
            'cavity_polarization': [0, 0, 1],
-           'environmentcavity_in': [2.98, 3, 0.01, 0, 0, 30000],
+           'resonance': 2.98,
+           'loss': 0.01 * 2.98,
+           'ampl': 30000,
            'environmentens_in': [1, 1, 0, 0, 0]}
     td_calc = LCAOTDDFT('gs.gpw',
                         rremission=RRemission(env),
@@ -244,7 +248,9 @@ def test_embeddingrr(in_tmp_dir, write_inputs):
     env = {'environment': 'dressedcavity',
            'quantization_plane': cross_section,
            'cavity_polarization': [0, 0, 1],
-           'environmentcavity_in': [2.98, 3, 0.01, 0, 0, 60000],
+           'resonance': 2.98,
+           'loss': 0.01 * 2.98,
+           'ampl': 60000,
            'environmentens_in': [1, 1, 0, 0, 0]}
     td_calc = LCAOTDDFT('gs.gpw',
                         rremission=RRemission(env),

@@ -417,59 +417,59 @@ class VacuumEnvironment(Environment):
 
 class CavityEnvironment(Environment):
 
-    """
-    environmentcavity_in: array
-        [0] lowest harmonic of cavity,
-        [1] highest harmonic (cutoff),
-        [2] loss of cavity,
-        [3] (must be string or will be ignored)
-            provide a file with the precomputed G(omega), omega > 0,
-            the first column should be frequency and the 2rd, 3th and 4th
-            should be xx, yy, zz component. This will be generalized
-            at a later point.
-        [4] using Claussius-Mossoti if 1, otherwise dilute limit.
-        [5] increase frequency resolution
-        comment: [3] If you provide a file, e.g. using the separate G_dyadic
-                     tool, all remaining parameters will be ignored. Notice,
-                     that quantization_plane will be used then as
-                     artifical amplification, i.e., the internally used G
-                     will be G = quantization_plane * G_in. This is done
-                     to allow simple parameter scalings but naturally
-                     deviates from the ab initio idea.
-    environmentens_in: array
-        [0] number of ensemble oscillators,
-        [1] Ve/V ratio of occupied ensemble to cavity volume,
-        [2] resonance frequency of Drude-Lorentz for ensemble,
-        [3] lossyness of ensemble oscillators,
-        [4] plasma-frequency of ensemble oscillators
-        comment: If [2], [3] or [4] equal 0, the code will attempt to load
-                 3 dipole files to compute the polarizability matrix.
-                 In that case [1] is ignored.
+    r"""
+
+    Parameters
+    ----------
+    quantization_plane
+        Quantization plane :math:`A` in units of Å^2.
+    cavity_polarization
+        The polarization of the cavity :math:`\boldsymbol{\varepsilon_c}`.
+        Direction vector.
+    resonances
+        List of cavity resonances in units of eV.
+    loss
+        Loss of cavity in units of eV.
+    precomputedG
+        (must be string or will be ignored)
+        provide a file with the precomputed G(omega), omega > 0,
+        the first column should be frequency and the 2rd, 3th and 4th
+        should be xx, yy, zz component. This will be generalized
+        at a later point.
+
+        comment: If you provide a file, e.g. using the separate G_dyadic
+                 tool, all remaining parameters will be ignored. Notice,
+                 that quantization_plane will be used then as
+                 artifical amplification, i.e., the internally used G
+                 will be G = quantization_plane * G_in. This is done
+                 to allow simple parameter scalings but naturally
+                 deviates from the ab initio idea.
+    ampl
+        increase frequency resolution
      """
 
-    def __init__(self, quantization_plane, cavity_polarization,
-                 environmentcavity_in=None):
-        assert environmentcavity_in is not None
+    def __init__(self,
+                 quantization_plane,
+                 cavity_polarization,
+                 *,
+                 resonance,
+                 loss,
+                 cutoff=None,
+                 precomputedG=None,
+                 ampl=1):
         self.quantization_plane = quantization_plane / Bohr**2
         self.cavity_polarization = np.array(cavity_polarization)
-        self.cavity_resonance = (np.arange(environmentcavity_in[0],
-                                           environmentcavity_in[1] + 1e-8,
-                                           environmentcavity_in[0])
-                                 / Hartree)
+        if cutoff is None:
+            cutoff = resonance
+        self.cavity_resonance = np.arange(resonance, cutoff + 1e-8, resonance
+                                          ) / Hartree
         self.cavity_volume = (self.quantization_plane
-                              * (np.pi / (alpha *
-                                          self.cavity_resonance[0])))
-        self.cavity_loss = (environmentcavity_in[2]
-                            * self.cavity_resonance[0])
+                              * (np.pi / (alpha * self.cavity_resonance[0])))
+        self.cavity_loss = loss / Hartree
         self.cutoff_lower = None
         self.cutofffrequency = None
-        self.claussius = environmentcavity_in[4]
-        if isinstance(environmentcavity_in[3], type('inappropriate')):
-            self.precomputedG = environmentcavity_in[3]
-            self.frequ_resolution_ampl = 2 * environmentcavity_in[5]
-        else:
-            self.precomputedG = None
-            self.frequ_resolution_ampl = environmentcavity_in[5]
+        self.precomputedG = precomputedG
+        self.frequ_resolution_ampl = ampl
 
         self.dyadic = None
         self.dyadic_st = None
@@ -478,16 +478,14 @@ class CavityEnvironment(Environment):
         self.precomputedG = None
 
     def todict(self):
-        environmentcavity_in = [self.cavity_resonance[0] * Hartree,
-                                self.cavity_resonance[-1] * Hartree,
-                                self.cavity_loss / self.cavity_resonance[0],
-                                self.precomputedG,
-                                self.claussius,
-                                self.frequ_resolution_ampl]
         return {'environment': 'cavity',
                 'quantization_plane': self.quantization_plane * Bohr**2,
                 'cavity_polarization': list(self.cavity_polarization),
-                'environmentcavity_in': environmentcavity_in}
+                'resonance': self.cavity_resonance[0] * Hartree,
+                'cutoff': self.cavity_resonance[-1] * Hartree,
+                'loss': self.cavity_loss * Hartree,
+                'precomputedG': self.precomputedG,
+                'ampl': self.frequ_resolution_ampl}
 
     def compute_dyadic(self, timestep, maxtimesteps, itert):
         [self.dyadic, self.dyadic_st] = self.dyadicGt(
@@ -681,11 +679,41 @@ class CavityEnvironment(Environment):
 
 class DressedCavityEnvironment(CavityEnvironment):
 
-    def __init__(self, quantization_plane, cavity_polarization,
-                 environmentcavity_in=None, environmentens_in=None):
-        super().__init__(quantization_plane, cavity_polarization,
-                         environmentcavity_in=environmentcavity_in)
+    """
+    Parameters
+    ----------
+    claussius
+        using Claussius-Mossoti if 1, otherwise dilute limit.
+    environmentens_in: array
+        [0] number of ensemble oscillators,
+        [1] Ve/V ratio of occupied ensemble to cavity volume,
+        [2] resonance frequency of Drude-Lorentz for ensemble,
+        [3] lossyness of ensemble oscillators,
+        [4] plasma-frequency of ensemble oscillators
+        comment: If [2], [3] or [4] equal 0, the code will attempt to load
+                 3 dipole files to compute the polarizability matrix.
+                 In that case [1] is ignored.
+    """
 
+    def __init__(self,
+                 quantization_plane,
+                 cavity_polarization,
+                 resonance,
+                 loss,
+                 cutoff=None,
+                 precomputedG=None,
+                 ampl=1,
+                 claussius=False,
+                 environmentens_in=None):
+        super().__init__(quantization_plane,
+                         cavity_polarization,
+                         resonance=resonance,
+                         cutoff=cutoff,
+                         loss=loss,
+                         precomputedG=precomputedG,
+                         ampl=ampl)
+
+        self.claussius = claussius
         assert environmentens_in is not None
         self.ensemble_number = environmentens_in[0]
         self.ensemble_occ_ratio = environmentens_in[1]
@@ -717,6 +745,7 @@ class DressedCavityEnvironment(CavityEnvironment):
                              self.ensemble_omegap * Hartree]
         _dict['environmentens_in'] = environmentens_in
         _dict['environment'] = 'dressedcavity'
+        _dict['claussius'] = self.claussius
         return _dict
 
     def dyadicGt(self, timestep, maxtimesteps, print_output=False, *, itert):
