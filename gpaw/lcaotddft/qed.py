@@ -4,9 +4,14 @@ import warnings
 from abc import ABC, abstractmethod
 
 import numpy as np
+from scipy import interpolate, special
+from gpaw.tddft.spectrum import read_td_file_kicks
 from ase.units import alpha, Hartree, Bohr
 from gpaw.external import ConstantElectricField
 from gpaw.lcaotddft.hamiltonian import KickHamiltonian
+import matplotlib.pyplot as plt
+
+krondelta = np.array([1, 0, 0, 0, 1, 0, 0, 0, 1])
 
 
 def create_environment(environment='waveguide', **kwargs):
@@ -21,8 +26,36 @@ def create_environment(environment='waveguide', **kwargs):
 
     if environment == 'waveguide':
         return WaveguideEnvironment(**kwargs)
+    if environment == 'vacuum':
+        return VacuumEnvironment(**kwargs)
+    if environment == 'cavity':
+        return CavityEnvironment(**kwargs)
+    if environment == 'dressedcavity':
+        return DressedCavityEnvironment(**kwargs)
 
     raise ValueError(f'Unknown environment {environment}')
+
+
+def is_invertible(a):
+    return (a.shape[0] == a.shape[1] and
+            np.linalg.matrix_rank(a) == a.shape[0])
+
+
+def l_fit(x, y, cutfreq):
+    from scipy.optimize import curve_fit
+
+    cutupper = int(np.floor(len(x) / 2))
+    xcut = x[:cutupper]
+    cutlower = np.argmin((x[:cutupper] - cutfreq * 1.5)**2)
+    xcut = xcut[cutlower:]
+    ycut = y[cutlower:cutupper]
+
+    def linear(xcut, a):
+        return a * xcut
+
+    popt, pcov = curve_fit(linear, xcut, ycut)
+    y_subtracted = y - popt * x
+    return [popt, y_subtracted]
 
 
 def forward_finite_difference(coefficients: list[int],
@@ -281,6 +314,11 @@ class RRemission:
     def vradiationreaction(self, kpt, time):
         self.update_dipole(time, self.density.calculate_dipole_moment())
 
+        # Set up the dyadic and dyadic_st arrays
+        self.environment.compute_dyadic_if_necessary(self.timestep,
+                                                     self.maxtimesteps,
+                                                     len(self.dipole_tv) - 1)
+
         field_v = self.environment.radiation_reaction_field(
             self.timestep, self.dipole_tv)
 
@@ -300,6 +338,9 @@ class Environment(ABC):
     @abstractmethod
     def todict(self):
         raise NotImplementedError
+
+    def compute_dyadic_if_necessary(self, timestep, maxtimesteps, itert):
+        pass
 
 
 class WaveguideEnvironment(Environment):
@@ -338,3 +379,679 @@ class WaveguideEnvironment(Environment):
         return {'environment': 'waveguide',
                 'quantization_plane': self.quantization_plane * Bohr**2,
                 'cavity_polarization': list(self.cavity_polarization)}
+
+
+class VacuumEnvironment(Environment):
+
+    r""" The radiation reaction potential in vacuum is
+
+    .. math::
+
+        -\frac{4 \alpha^3}{3} |\partial^3_t \boldsymbol{R}(t)
+        \cdot \hat{\boldsymbol{r}}|
+    """
+
+    def radiation_reaction_field(self, timestep, dipole_tv):
+        d1_dipole_v = calculate_first_derivative(timestep, dipole_tv)[-1]
+        # 3D emission (factor 2 for correct WW-emission included)
+        # currently the quantization_plane is overloaded with
+        # the harmonic frequency [input in eV]
+        # rr_amplify is an artificial amplification
+        rr_amplify = 1e0
+        if self.quantization_plane > 0:
+            rr_argument_in = (((self.quantization_plane * Bohr**2)**2
+                               / Hartree**2)
+                              * np.square(d1_dipole_v)**0.5)
+            rr_argument_in = np.array(3 * [rr_argument_in])
+        else:
+            d3_dipole_v = -calculate_third_derivative(timestep, dipole_tv)[-1]
+            rr_argument_in = d3_dipole_v
+
+        field_v = 4.0 * alpha**3 / 3.0 * rr_argument_in * rr_amplify
+
+        return field_v
+
+    def todict(self):
+        return {'environment': 'vacuum'}
+
+
+class CavityEnvironment(Environment):
+
+    """
+    environmentcavity_in: array
+        [0] lowest harmonic of cavity,
+        [1] highest harmonic (cutoff),
+        [2] loss of cavity,
+        [3] (must be string or will be ignored)
+            provide a file with the precomputed G(omega), omega > 0,
+            the first column should be frequency and the 2rd, 3th and 4th
+            should be xx, yy, zz component. This will be generalized
+            at a later point.
+        [4] using Claussius-Mossoti if 1, otherwise dilute limit.
+        [5] increase frequency resolution
+        comment: [3] If you provide a file, e.g. using the separate G_dyadic
+                     tool, all remaining parameters will be ignored. Notice,
+                     that quantization_plane will be used then as
+                     artifical amplification, i.e., the internally used G
+                     will be G = quantization_plane * G_in. This is done
+                     to allow simple parameter scalings but naturally
+                     deviates from the ab initio idea.
+    environmentens_in: array
+        [0] number of ensemble oscillators,
+        [1] Ve/V ratio of occupied ensemble to cavity volume,
+        [2] resonance frequency of Drude-Lorentz for ensemble,
+        [3] lossyness of ensemble oscillators,
+        [4] plasma-frequency of ensemble oscillators
+        comment: If [2], [3] or [4] equal 0, the code will attempt to load
+                 3 dipole files to compute the polarizability matrix.
+                 In that case [1] is ignored.
+     """
+
+    def __init__(self, quantization_plane, cavity_polarization,
+                 environmentcavity_in=None):
+        assert environmentcavity_in is not None
+        self.quantization_plane = quantization_plane / Bohr**2
+        self.cavity_polarization = np.array(cavity_polarization)
+        self.cavity_resonance = (np.arange(environmentcavity_in[0],
+                                           environmentcavity_in[1] + 1e-8,
+                                           environmentcavity_in[0])
+                                 / Hartree)
+        self.cavity_volume = (self.quantization_plane
+                              * (np.pi / (alpha *
+                                          self.cavity_resonance[0])))
+        self.cavity_loss = (environmentcavity_in[2]
+                            * self.cavity_resonance[0])
+        self.cutoff_lower = None
+        self.cutofffrequency = None
+        self.claussius = environmentcavity_in[4]
+        if isinstance(environmentcavity_in[3], type('inappropriate')):
+            self.precomputedG = environmentcavity_in[3]
+            self.frequ_resolution_ampl = 2 * environmentcavity_in[5]
+        else:
+            self.precomputedG = None
+            self.frequ_resolution_ampl = environmentcavity_in[5]
+
+        self.dyadic = None
+        self.dyadic_st = None
+
+        self.Ggbamp = 1.
+        self.precomputedG = None
+
+    def todict(self):
+        environmentcavity_in = [self.cavity_resonance[0] * Hartree,
+                                self.cavity_resonance[-1] * Hartree,
+                                self.cavity_loss / self.cavity_resonance[0],
+                                self.precomputedG,
+                                self.claussius,
+                                self.frequ_resolution_ampl]
+        return {'environment': 'cavity',
+                'quantization_plane': self.quantization_plane * Bohr**2,
+                'cavity_polarization': list(self.cavity_polarization),
+                'environmentcavity_in': environmentcavity_in}
+
+    def compute_dyadic(self, timestep, maxtimesteps, itert):
+        [self.dyadic, self.dyadic_st] = self.dyadicGt(
+            timestep, maxtimesteps, itert=itert)
+        static = True
+        if not static:
+            self.dyadic_st = self.dyadic_st * 0
+            print("You remove the static component from the dyadic.")
+
+    def selffield(self,
+                  timestep: float,
+                  dipole_tv: np.ndarray):
+        # While this is not the most efficient way to write the convolution,
+        # it is not the bottleneck of the calculation. If the number of
+        # time-steps is largely increased it would be reasonable to use
+        # advanced integration strategies in order to shorten the time
+        # for convolutions
+
+        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
+
+        electric_rr_field = np.zeros((3, ), dtype=complex)
+        for ii in range(3):
+            for jj in range(3):
+                dyadic_t = self.dyadic[:len(dipole_tv) - 1, 3 * ii + jj]
+                electric_rr_field[ii] += (
+                    (4. * np.pi * alpha**2 * timestep *
+                     (np.dot(dyadic_t[::-1], d1_dipole_tv[:-1, jj])
+                      - 0.5 * dyadic_t[-1] * d1_dipole_tv[0, jj]
+                      - 0.5 * dyadic_t[0] * d1_dipole_tv[-1, jj])))
+                if np.sum(abs(self.dyadic_st)) != 0:
+                    electric_rr_field[ii] += (
+                        4. * np.pi * alpha**2
+                        * self.dyadic_st[3 * ii + jj] *
+                        dipole_tv[-1, jj])
+        return -np.real(electric_rr_field)
+
+    def radiation_reaction_field(self, timestep, dipole_tv):
+        rr_bg = 0
+        if self.precomputedG is not None:
+            """
+            rr_bg is the background radiation and uses the provided
+            characteristic frequency self.cavity_resonance
+            """
+            rr_bg = (4.0 * (self.cavity_resonance * Bohr**2)**2
+                     / Hartree**2 * alpha**3 / 3.0 * self.Ggbamp
+                     * np.linalg.norm(self.d1_dipole_v))
+
+        if len(dipole_tv) > 1:
+            field_v = self.selffield(timestep, dipole_tv) + rr_bg
+        else:
+            field_v = np.zeros(3)
+
+        return field_v
+
+    def compute_dyadic_if_necessary(self, timestep, maxtimesteps, itert):
+        if self.dyadic is None or len(self.dyadic) < maxtimesteps:
+            # If dyadic does not exist, or is too short, then recalculate
+            self.compute_dyadic(timestep, maxtimesteps, itert)
+
+    def greens_tensor_frequency(self, timestep, maxtimesteps, *, itert):
+        if itert > 0:
+            self.frequ_resolution_ampl = (float(self.frequ_resolution_ampl) *
+                                          float(itert) /
+                                          float(maxtimesteps - 1))
+        timeg = np.arange(0, timestep *
+                          (maxtimesteps * self.frequ_resolution_ampl + 1),
+                          timestep)
+        omegafft = 2 * np.pi * np.fft.fftfreq(len(timeg), timestep)
+        Gw0 = np.zeros((len(omegafft), 9), dtype=complex)
+        Gst = np.zeros((9, ), dtype=complex)
+        window_Gw0 = 1.
+        window_Gw0_L = 1.
+        if self.precomputedG is None:
+            g_omega = 0
+            for omegares in self.cavity_resonance:
+                g_omega += (2. / self.cavity_volume / alpha**2 *
+                            np.fft.fft(np.exp(-self.cavity_loss * timeg)
+                                       * np.sin(omegares * timeg) / omegares))
+            for ii in range(3):
+                for jj in range(3):
+                    Gw0[:, 3 * ii + jj] = (g_omega *
+                                           self.cavity_polarization[ii] *
+                                           self.cavity_polarization[jj])
+        else:
+            G_clean = np.loadtxt(self.precomputedG + '_cleaned.dat',
+                                 dtype=complex)
+            Gstin = np.loadtxt(self.precomputedG + '_static.dat',
+                               dtype=complex)
+            flip_xz_cav = True
+            if flip_xz_cav is True:
+                print("Careful, you are flipping x and z for G!")
+                G_clean[:, [1, 9]] = G_clean[:, [9, 1]]
+                Gstin[[1, 9]] = Gstin[[9, 1]]
+            Gst = Gstin[1:]
+            print("Currently, I ignore the static G when dressing with",
+                  "molecular polarizabilities. This is not quite",
+                  "consistent and should get corrected.")
+            for ii in range(len(G_clean[0, 1:])):
+                """
+                The G that was computed for only some positive frequencies
+                G_clean[:,0], is inverted for negative frequencies, attached
+                in the np.fft format (0 to max frequency, min frequency to 0)
+                and interpolate (GG_pj) to the used frequency resolution as
+                specified by the propagation time and
+                self.frequ_resolution_ampl. Note, that one has to rescale by
+                the frequency-ratio between the oriG_cleanal and
+                the interpolated, otherwise the norms are not preserved.
+                Recall also that G is hermitian, i.e., G(-w*) = G*(w).
+                """
+                romin = G_clean[::-1, 0]
+                revG = G_clean[::-1, ii + 1]
+                omegafullin = np.real(np.append(G_clean[:, 0], -romin[:-1]))
+                GG_pj = interpolate.interp1d(omegafullin,
+                                             (np.append(G_clean[:, ii + 1],
+                                              np.conjugate(revG[:-1]))),
+                                             kind="cubic",
+                                             fill_value=(0, 0),
+                                             bounds_error=False)
+
+                if len(G_clean[0, 1:]) == 3:
+                    shiftfac = 4
+                elif len(G_clean[0, 1:]) == 9:
+                    shiftfac = 1
+                else:
+                    print('ERROR: G_dyadic.dat is not properly formated')
+
+                """
+                The Sellmeier equation can provide a decent model for the
+                refractive index over a given frequency domain.
+                The window function defined below is adhoc but 'inspired'
+                by the idea that high frequencies will not affect the
+                valence dynamic of molecules. The function should be inspired
+                by the provided G tensor.
+                The factor len(omegafft) is supposed to compensate the
+                normalization that will happen in the iFFT to get from
+                the frequency domain back to time and D(t).
+                """
+                # self.cutoff_lower = 0.01
+                self.cutofffrequency = 0.8
+                if self.cutofffrequency is not None:
+                    window_Gw0 = 1 - (0.5 + 0.5 *
+                                      special.erf((abs(omegafft) -
+                                                   self.cutofffrequency) * 25))
+                if self.cutoff_lower is not None:
+                    window_Gw0_L = (0.5 + 0.5 *
+                                    special.erf((abs(omegafft) -
+                                                 self.cutoff_lower) * 250))
+                    print("CAREFUL, you are using window function(s) for G0w",
+                          "and Xw (only upper) with a cutoff-energy [eV] ",
+                          str(self.cutofffrequency * Hartree),
+                          str(self.cutoff_lower * Hartree))
+
+                    print("CAREFUL, it could be that the cutoffs break",
+                          "Kramers-Kroenig and lead to false imaginary",
+                          "components in D.")
+
+                Gw0[:, ii * shiftfac] = (GG_pj(omegafft) * window_Gw0 *
+                                         window_Gw0_L *
+                                         len(omegafft))
+
+        return omegafft, Gw0, Gst, window_Gw0, g_omega
+
+    def dyadicGt(self, timestep, maxtimesteps, *, itert):
+        omegafft, Gw, Gst, _, _ = self.greens_tensor_frequency(
+            timestep, maxtimesteps, itert=itert)
+        Dt = np.zeros_like(Gw)
+        print('USING BARE Gw0')
+
+        if self.precomputedG is not None:
+            # We can move the sign to Dt later but the previous version
+            # was missing a sign in g and for test-suit reasons I added this
+            Gw = Gw * (-1)
+            # if self.quantization_plane * Bohr**2 != 1.:
+            #     Gw = Gw * self.quantization_plane * Bohr**2
+            #     print("CAREFUL, you amplify the strength of G by a factor",
+            #           "self.quantization_plane=",
+            #           self.quantization_plane * Bohr**2)
+        for ii in range(9):
+            Dt[:, ii] = - \
+                np.gradient(np.fft.ifft(Gw[:, ii].flatten()), timestep)
+            # For some reason the explicit derivative works best, version
+            # below also possible but seems to have issues sometimes.
+            # Notice that I moved a minus from down here to the sine G0
+            # because the poles had been defined up side down
+            # NOTE - I moved the sign back because there seem to be minor
+            # numerical deviations otherwise -- check that again later
+            # Dt[:,ii] = np.fft.ifft(1j * omegafft * Gw[:,ii].flatten())
+
+        return [Dt, Gst]
+
+
+class DressedCavityEnvironment(CavityEnvironment):
+
+    def __init__(self, quantization_plane, cavity_polarization,
+                 environmentcavity_in=None, environmentens_in=None):
+        super().__init__(quantization_plane, cavity_polarization,
+                         environmentcavity_in=environmentcavity_in)
+
+        assert environmentens_in is not None
+        self.ensemble_number = environmentens_in[0]
+        self.ensemble_occ_ratio = environmentens_in[1]
+        self.ensemble_resonance = (environmentens_in[2]
+                                   / Hartree)
+        self.dmpval = environmentens_in[3]
+        self.ensemble_loss = (environmentens_in[3]
+                              * self.ensemble_resonance)
+        self.ensemble_omegap = (environmentens_in[4]
+                                / Hartree)
+
+        self.dyadic = None
+        self.dyadic_st = None
+
+        self.Ggbamp = 1.
+        self.precomputedG = None
+
+    def todict(self):
+        _dict = super().todict()
+        if self.ensemble_resonance > 0:
+            loss_out = self.ensemble_loss / self.ensemble_resonance
+        else:
+            loss_out = 0
+
+        environmentens_in = [self.ensemble_number,
+                             self.ensemble_occ_ratio,
+                             self.ensemble_resonance,
+                             loss_out,
+                             self.ensemble_omegap * Hartree]
+        _dict['environmentens_in'] = environmentens_in
+        _dict['environment'] = 'dressedcavity'
+        return _dict
+
+    def dyadicGt(self, timestep, maxtimesteps, print_output=False, *, itert):
+        omegafft, Gw, Gst, window_Gw0, g_omega = self.greens_tensor_frequency(
+            timestep, maxtimesteps, itert=itert)
+
+        Gw = np.zeros((len(omegafft), 9), dtype=complex)
+        Xw = np.zeros((len(omegafft), 9), dtype=complex)
+        Dt = np.zeros_like(Gw)
+
+        if (self.ensemble_loss == 0 or
+            self.ensemble_omegap == 0 or
+            self.ensemble_resonance == 0):
+            print('Ab initio embedding using dm_ensemblebare_{x/y/z}.dat')
+            kickx = read_td_file_kicks('dm_ensemblebare_x.dat')
+            kickstrengthx = np.sqrt(np.sum(kickx[0]['strength_v']**2))
+            kicky = read_td_file_kicks('dm_ensemblebare_y.dat')
+            kickstrengthy = np.sqrt(np.sum(kicky[0]['strength_v']**2))
+            kickz = read_td_file_kicks('dm_ensemblebare_z.dat')
+            kickstrengthz = np.sqrt(np.sum(kickz[0]['strength_v']**2))
+            impdip_x = np.loadtxt('dm_ensemblebare_x.dat', skiprows=5)
+            impdip_y = np.loadtxt('dm_ensemblebare_y.dat', skiprows=5)
+            impdip_z = np.loadtxt('dm_ensemblebare_z.dat', skiprows=5)
+            timedm = impdip_z[:, 0]
+            dm_x = ((impdip_x[:, 2:] - impdip_x[0, 2:]) /
+                    (2. * np.pi * kickstrengthx))
+            dm_y = ((impdip_y[:, 2:] - impdip_y[0, 2:]) /
+                    (2. * np.pi * kickstrengthy))
+            dm_z = ((impdip_z[:, 2:] - impdip_z[0, 2:]) /
+                    (2. * np.pi * kickstrengthz))
+            omegafftdm = 2. * np.pi * np.fft.fftfreq(len(timedm),
+                                                     timedm[1] - timedm[0])
+            # One could move the calculation of the polarizability matrix
+            # into some tool and let the user specify directly the location
+            # of that matrix. This would make it necessary to have a tool
+            # for alpha_ij and the user would need to run it. However, this
+            # would also allow to get alpha_ij from another code.
+            # Maybe the best option would be to provide both input
+            # alternatives, careful with the FFT norms.
+
+            lastsize = np.sum(np.abs(dm_x[-1, :]) + np.abs(dm_y[-1, :]) +
+                              np.abs(dm_z[-1, :]))
+            dmp = np.ones(len(dm_x[:, 0]))
+            if lastsize > self.dmpval and self.dmpval != 0:
+                print("Adding additional damping to smoothen Xw to ",
+                      self.dmpval)
+                decayrate = -np.log(self.dmpval) / len(dm_x[:, 0])
+                dmp = np.exp(-decayrate * np.arange(len(dm_x[:, 0])))
+
+            pol_matrix = np.array([np.fft.fft(dm_x[:, 0] * dmp),
+                                   np.fft.fft(dm_x[:, 1] * dmp),
+                                   np.fft.fft(dm_x[:, 2] * dmp),
+                                   np.fft.fft(dm_y[:, 0] * dmp),
+                                   np.fft.fft(dm_y[:, 1] * dmp),
+                                   np.fft.fft(dm_y[:, 2] * dmp),
+                                   np.fft.fft(dm_z[:, 0] * dmp),
+                                   np.fft.fft(dm_z[:, 1] * dmp),
+                                   np.fft.fft(dm_z[:, 2] * dmp)],
+                                  dtype=complex)
+
+            print('Embedding RR, particle density is ',
+                  self.ensemble_number / self.cavity_volume,
+                  'with particle number',
+                  self.ensemble_number,
+                  'and volume of',
+                  self.cavity_volume)
+            # alpha_ij is the polarizablity (local response)
+            alpha_ij = np.zeros((len(omegafft), 9), dtype=complex)
+            for ii in range(9):
+                pol_interp = interpolate.interp1d(omegafftdm,
+                                                  pol_matrix[ii, :],
+                                                  kind="cubic",
+                                                  fill_value="extrapolate")
+                alpha_ij[:, ii] = (pol_interp(omegafft)
+                                   * timestep / (timedm[1] - timedm[0])
+                                   * window_Gw0)
+            print("Increase in frequency resolution",
+                  len(omegafft) / len(omegafftdm))
+
+            if self.claussius == 1:
+                print('Using Claussius-Mossotti for Xw')
+                skippedCM = False
+                for el in range(len(omegafft)):
+                    if is_invertible(np.reshape(alpha_ij[el, :], (3, 3))):
+                        # Xw[el, :] = np.reshape((4. * np.pi * self.ensemble_number / self.cavity_volume) * np.reshape(alpha_ij[el, :], (3, 3)) @ (np.linalg.inv(np.eye(3)) - 1. / 3. * (4. * np.pi * self.ensemble_number / self.cavity_volume) * np.reshape(alpha_ij[el, :], (3, 3))) , (-1, ))
+                        Xw[el, :] = np.reshape(np.linalg.inv(np.linalg.inv(np.reshape(alpha_ij[el, :], (3, 3))) / (
+                            4. * np.pi * self.ensemble_number / self.cavity_volume) - 1. / 3. * np.eye(3)), (-1, ))
+                    else:
+                        Xw[el, :] = 4. * np.pi * self.ensemble_number / \
+                            self.cavity_volume * alpha_ij[el, :]
+                        skippedCM = True
+                if skippedCM:
+                    print("Polarizability was not invertible at some point! This might be due to the window-function, consider REMOVING the window from alpha_ij -- CHRISTIAN!")
+
+            if print_output:
+                for ii in range(9):
+                    plt.figure()
+                    if self.claussius == 1:
+                        plt.plot(omegafft * Hartree, np.real(Xw[:, ii]))
+                        plt.plot(omegafft * Hartree, np.imag(Xw[:, ii]))
+                    else:
+                        plt.plot(omegafft * Hartree,
+                                 (4. * np.pi
+                                  * self.ensemble_number
+                                  / self.cavity_volume
+                                  * np.real(alpha_ij[:, ii])))
+                        plt.plot(omegafft * Hartree,
+                                 (4. * np.pi
+                                  * self.ensemble_number
+                                  / self.cavity_volume
+                                  * np.imag(alpha_ij[:, ii])))
+                    plt.xlabel("Energy (eV)")
+                    plt.ylabel(r"$\chi(\omega)$, i=" + str(ii)
+                               + 'CM=' + str(self.claussius))
+                    if self.cutofffrequency is not None:
+                        plt.xlim(0, self.cutofffrequency * 1.5 * Hartree)
+                    else:
+                        plt.xlim(0, 14)
+                    plt.savefig('Xw_' + str(ii) + '.png')
+                    plt.close()
+        else:
+            print('Drude-Lorentz model for polarizablity')
+            for ii in range(3):
+                alpha_ij[:, ii * 4] = (self.ensemble_omegap**2
+                                       / (self.ensemble_resonance**2 -
+                                          omegafft**2 + (1j * self.ensemble_loss
+                                                         * omegafft)))
+        if self.precomputedG is None:
+            print("Dressing G for simplified cavity")
+            for ii in range(3):
+                for jj in range(3):
+                    Gw[:, 3 * ii + jj] = (
+                        self.cavity_polarization[ii] *
+                        self.cavity_polarization[jj] *
+                        np.reciprocal(
+                            np.reciprocal(g_omega) -
+                            (
+                                alpha ** 2 * omegafft ** 2 * 4 * np.pi *
+                                self.ensemble_number * alpha_ij[:, 3 * ii + jj] *
+                                self.cavity_polarization[ii] *
+                                self.cavity_polarization[jj]
+                            )
+                        )
+                    )
+            if self.claussius == 1:
+                Gwibar = np.zeros((len(omegafft), 9), dtype=complex)
+                for ii in range(3):
+                    for jj in range(3):
+                        Gwibar[:, 3 * ii + jj] = (np.reciprocal(g_omega) *
+                                                  self.cavity_polarization[ii] *
+                                                  self.cavity_polarization[jj])
+                for el in range(len(omegafft)):
+                    if not is_invertible(np.reshape(Gwibar[el, :], (3, 3)) - (4 * np.pi * alpha**2 * omegafft[el]**2 * self.ensemble_number * np.reshape(alpha_ij[el, :], (3, 3)))):
+                        shift = 1e-8
+                    else:
+                        shift = 0
+                    Gw[el, :] = np.reshape((np.linalg.inv((np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @
+                                                           (np.reshape(Gwibar[el, :] + shift, (3, 3)) @ (np.eye(3) - 1. / 3. * np.reshape(Xw[el, :], (3, 3)))))
+                                                          - (4 * np.pi * alpha**2 * omegafft[el]**2 * self.ensemble_number * np.reshape(alpha_ij[el, :], (3, 3))))
+                                            @ np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)))
+                                            @ (np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)) @ np.linalg.inv(np.eye(3) + np.reshape(Xw[el, :], (3, 3))))), (-1, ))
+                    # Gw[el, :] = np.reshape(np.linalg.inv(np.eye(3) - 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @
+                    #                        np.reshape(Gw[el, :], (3, 3)) @ (np.eye(3) + 1. / 3. * np.linalg.inv(np.eye(3) + np.reshape(Xw[el, :], (3, 3))) @ np.reshape(Xw[el, :], (3, 3)) )
+                    #                        ,(-1, ))
+            elif self.claussius == -1:
+                Gwibar = np.zeros((len(omegafft), 9), dtype=complex)
+                for ii in range(3):
+                    for jj in range(3):
+                        Gwibar[:, 3 * ii + jj] = (np.reciprocal(g_omega) *
+                                                  self.cavity_polarization[ii] *
+                                                  self.cavity_polarization[jj])
+                for el in range(len(omegafft)):
+                    Xw[el, :] = 4. * np.pi * self.ensemble_number / \
+                        self.cavity_volume * alpha_ij[el, :]
+                    if not is_invertible(np.reshape(Gwibar[el, :], (3, 3)) - (alpha**2 * omegafft[el]**2 * self.cavity_volume * np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @ np.reshape(Xw[el, :], (3, 3)))):
+                        shift = 1e-8
+                    else:
+                        shift = 0
+                    Gw[el, :] = np.reshape((np.linalg.inv((np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @
+                                                           (np.reshape(Gwibar[el, :] + shift, (3, 3)) @ (np.eye(3) - 1. / 3. * np.reshape(Xw[el, :], (3, 3)))))
+                                                          - (alpha**2 * omegafft[el]**2 * self.cavity_volume *
+                                                              np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @ np.reshape(Xw[el, :], (3, 3))))
+                                            @ np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)))
+                                            @ (np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)) @ np.linalg.inv(np.eye(3) + np.reshape(Xw[el, :], (3, 3))))), (-1, ))
+        else:
+            print("Dressing G using the provided Gw0,",
+                  "this may take a few minutes.")
+            bg_correction = False
+            if not bg_correction:
+                print(
+                    "Using new version with local field correction but ignoring free-space dressing.")
+            if bg_correction:
+                G_freespace = np.zeros((len(omegafft), 9), dtype=complex)
+                Gbg = np.zeros((len(omegafft), 9), dtype=complex)
+                for ii in range(9):
+                    G_freespace[:, ii] = (1j * omegafft * alpha /
+                                          (6 * np.pi) * krondelta[ii])
+                Gw0 = Gw0 + G_freespace * len(omegafft)
+                """
+                The factor len(omegafft) is again added to compensate the
+                normalization via the FFT.
+                """
+            for el in range(len(omegafft)):
+                """
+                For each frequency, reshape Gw0 and Xw into matrix and
+                build Gw via taking the inverse. Notice, that for Xw=0,
+                Gw=Gw0 and the singular case is also set to Gw=Gw0.
+                """
+                if self.claussius == 1:
+                    if is_invertible(np.reshape(Gw0[el, :], (3, 3))):
+                        Gw[el, :] = np.reshape((np.linalg.inv((np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @
+                                                               (np.linalg.inv(np.reshape(Gw0[el, :], (3, 3))) @ (np.eye(3) - 1. / 3. * np.reshape(Xw[el, :], (3, 3)))))
+                                                              - (4 * np.pi * alpha**2 * omegafft[el]**2 * self.ensemble_number * np.reshape(alpha_ij[el, :], (3, 3))))
+                                                @ np.linalg.inv(np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)))
+                                                @ (np.eye(3) + 1. / 3. * np.reshape(Xw[el, :], (3, 3)) @ np.linalg.inv(np.eye(3) + np.reshape(Xw[el, :], (3, 3))))), (-1, ))
+                        # Gw[el, :] = np.reshape(np.linalg.inv(np.eye(3) - 1. / 3. * np.reshape(Xw[el, :], (3, 3))) @
+                        #                        (np.linalg.inv(np.linalg.inv(np.reshape(Gw0[el, :], (3, 3))) - (4 * np.pi * alpha**2 * omegafft[el]**2 * self.ensemble_number * np.reshape(alpha_ij[el, :], (3, 3)))) @
+                        #                         (np.eye(3) + 1. / 3. * np.linalg.inv(np.eye(3) + np.reshape(Xw[el, :], (3, 3))) @ np.reshape(Xw[el, :], (3, 3)) )
+                        #                         )
+                        #                        ,(-1, ))
+                    else:
+                        Gw[el, :] = Gw0[el, :]
+                else:
+                    if is_invertible(np.reshape(Gw0[el, :], (3, 3))):
+                        Gw[el, :] = np.reshape(
+                            np.linalg.inv(
+                                np.linalg.inv(
+                                    np.reshape(Gw0[el, :], (3, 3))
+                                ) - (alpha**2 * omegafft[el]**2 *
+                                     self.ensemble_number * 4 * np.pi *
+                                     np.reshape(alpha_ij[el, :], (3, 3)))
+                            ),
+                            (-1, )
+                        )
+                    else:
+                        Gw[el, :] = Gw0[el, :]
+            if bg_correction and self.cutofffrequency is not None:
+                """
+                    -- adding local field correction
+                                   derived by Frieder
+                print("Setting up Gbar0 correction -- only ISO yet")
+                iso_eps = 1 + (Xw[:, 0] + Xw[:, 4] + Xw[:, 8])/3
+                for ii in range(3):
+                    for jj in range(3):
+                        Gbar0[:,ii,jj] = (
+                            krondelta[ii,jj] *
+                            1/(3.* V_e * iso_eps * omegafft ** 2)
+                --- missing: define V_e somewhere
+                """
+                for ii in range(3):
+                    [Gbg_re, Gout_re] = l_fit(omegafft,
+                                              np.real(Gw[:, 4 * ii]),
+                                              self.cutofffrequency)
+                    [Gbg_im, Gout_im] = l_fit(omegafft,
+                                              np.imag(Gw[:, 4 * ii]),
+                                              self.cutofffrequency)
+                    if (np.abs(Gbg_im / len(omegafft)
+                        / (alpha / (6 * np.pi)) - 1) > 0.1):
+                        Gbg[:, 4 * ii] = 1j * Gbg_im * omegafft
+                        self.Ggbamp = (Gbg_im / len(omegafft) /
+                                       (alpha / (6 * np.pi)))
+                        print('background emission amplification: ',
+                              self.Ggbamp)
+                    else:
+                        Gbg[:, 4 * ii] = (1j * alpha / (6 * np.pi) *
+                                          omegafft * len(omegafft))
+                        self.Ggbamp = 1.
+                    if np.abs(Gbg_re) > 1e6:
+                        print("# WARNING: The linear part of G has a",
+                              "sizeable real-part, which is not take into",
+                              "account Gbg_re = ", str(Gbg_re))
+                Gw = Gw - Gbg
+                Gw0 = Gw0 - Gbg
+            elif bg_correction and self.cutofffrequency is None:
+                Gw = Gw - G_freespace
+                Gw0 = Gw0 - G_freespace
+
+        if self.precomputedG is not None:
+            # We can move the sign to Dt later but the previous version
+            # was missing a sign in g and for test-suit reasons I added this
+            Gw = Gw * (-1)
+            Gw0 = Gw0 * (-1)
+            # if self.quantization_plane * Bohr**2 != 1.:
+            #     Gw = Gw * self.quantization_plane * Bohr**2
+            #     print("CAREFUL, you amplify the strength of G by a factor",
+            #           "self.quantization_plane=",
+            #           self.quantization_plane * Bohr**2)
+        for ii in range(9):
+            Dt[:, ii] = - \
+                np.gradient(np.fft.ifft(Gw[:, ii].flatten()), timestep)
+            # For some reason the explicit derivative works best, version
+            # below also possible but seems to have issues sometimes.
+            # Notice that I moved a minus from down here to the sine G0
+            # because the poles had been defined up side down
+            # NOTE - I moved the sign back because there seem to be minor
+            # numerical deviations otherwise -- check that again later
+            # Dt[:,ii] = np.fft.ifft(1j * omegafft * Gw[:,ii].flatten())
+            if print_output:
+                if ii == 8:
+                    plt.figure()
+                    plt.plot(omegafft * Hartree, np.real(Gw[:, ii]), 'k-',
+                             label='Real Gw-scatter Element: ' + str(ii))
+                    plt.plot(omegafft * Hartree, np.imag(Gw[:, ii]), 'r-',
+                             label='Imag Gw-scatter Element: ' + str(ii))
+                    plt.plot(omegafft * Hartree, np.real(Gw0[:, ii]), 'k:',
+                             label='Real Gw0 Element: ' + str(ii))
+                    plt.plot(omegafft * Hartree, np.imag(Gw0[:, ii]), 'r:',
+                             label='Imag Gw0 Element: ' + str(ii))
+                    plt.xlabel("Energy (eV)")
+                    plt.ylabel(r"$G^{(1),no static}_i(\omega)$, i=" + str(ii))
+                    if self.cutofffrequency is not None:
+                        plt.xlim(0, self.cutofffrequency * 1.5 * Hartree)
+                    else:
+                        plt.xlim(0, 14)
+                    plt.legend(loc="upper right")
+                    plt.savefig('Gw_' + str(ii) + '.png')
+                    plt.figure()
+                    plt.plot(range(maxtimesteps), np.real(Dt[:maxtimesteps, ii]),
+                             label='Real Dt Element: ' + str(ii))
+                    plt.plot(range(maxtimesteps), np.imag(Dt[:maxtimesteps, ii]),
+                             label='Imag Dt Element: ' + str(ii))
+                    plt.xlabel("time step")
+                    plt.ylabel(r"$D^{(1),no static}_i(t)$, i=" + str(ii))
+                    plt.legend(loc="upper right")
+                    plt.savefig('Dt_' + str(ii) + '.png')
+                if self.ensemble_number is not None:
+                    np.savez("Xw",
+                             energy=omegafft[:int(
+                                 len(omegafft) / 2)] * Hartree,
+                             alpha_ij=alpha_ij[:int(len(omegafft) / 2), :],
+                             Xw=Xw[:int(len(omegafft) / 2), :])
+                    np.savez("dyadicD",
+                             Dt=Dt[:int(len(omegafft) / 2), :],
+                             energy=omegafft[:int(
+                                 len(omegafft) / 2)] * Hartree,
+                             Gw=Gw[:int(len(omegafft) / 2), :],
+                             Gst=Gst)
+        return [Dt, Gst]
