@@ -115,8 +115,7 @@ def test_cavityrr(in_tmp_dir):
            'quantization_plane': cross_section,
            'cavity_polarization': [0, 0, 1],
            'resonance': 2.98,
-           'loss': 0.01 * 2.98,
-           'ampl': 30000}
+           'loss': 0.01 * 2.98}
     td_calc = LCAOTDDFT('gs.gpw',
                         rremission=RRemission(env),
                         propagator={'name': 'scpc', 'tolerance': 1e-0})

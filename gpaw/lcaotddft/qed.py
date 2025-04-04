@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 
 import numpy as np
-from scipy import interpolate, special
+from scipy import interpolate, special, integrate
 from gpaw.tddft.spectrum import read_td_file_kicks
 from ase.units import alpha, Hartree, Bohr
 from gpaw.external import ConstantElectricField
@@ -314,11 +314,6 @@ class RRemission:
     def vradiationreaction(self, kpt, time):
         self.update_dipole(time, self.density.calculate_dipole_moment())
 
-        # Set up the dyadic arrays
-        self.environment.compute_dyadic_if_necessary(self.timestep,
-                                                     self.maxtimesteps,
-                                                     len(self.dipole_tv) - 1)
-
         field_v = self.environment.radiation_reaction_field(
             self.timestep, self.dipole_tv)
 
@@ -338,9 +333,6 @@ class Environment(ABC):
     @abstractmethod
     def todict(self):
         raise NotImplementedError
-
-    def compute_dyadic_if_necessary(self, timestep, maxtimesteps, itert):
-        pass
 
 
 class WaveguideEnvironment(Environment):
@@ -381,6 +373,116 @@ class WaveguideEnvironment(Environment):
                 'cavity_polarization': list(self.cavity_polarization)}
 
 
+class CavityEnvironment(Environment):
+
+    r"""
+
+    Parameters
+    ----------
+    quantization_plane
+        Quantization plane :math:`A` in units of Å^2.
+    cavity_polarization
+        The polarization of the cavity :math:`\boldsymbol{\varepsilon_c}`.
+        Direction vector.
+    resonances
+        List of cavity resonances in units of eV.
+    loss
+        Loss of cavity in units of eV.
+    """
+
+    def __init__(self,
+                 quantization_plane,
+                 cavity_polarization,
+                 *,
+                 resonance,
+                 loss,
+                 cutoff=None):
+        self.quantization_plane = quantization_plane / Bohr**2
+        self.cavity_polarization = np.array(cavity_polarization)
+        if cutoff is None:
+            cutoff = resonance
+        self.cavity_resonance = np.arange(resonance, cutoff + 1e-8, resonance
+                                          ) / Hartree
+        self.cavity_volume = (self.quantization_plane
+                              * (np.pi / (alpha * self.cavity_resonance[0])))
+        self.cavity_loss = loss / Hartree
+        self.cutoff_lower = None
+        self.cutofffrequency = None
+
+        self._dyadic_t = np.array([])
+
+    def todict(self):
+        return {'environment': 'cavity',
+                'quantization_plane': self.quantization_plane * Bohr**2,
+                'cavity_polarization': list(self.cavity_polarization),
+                'resonance': self.cavity_resonance[0] * Hartree,
+                'cutoff': self.cavity_resonance[-1] * Hartree,
+                'loss': self.cavity_loss * Hartree}
+
+    def selffield(self,
+                  timestep: float,
+                  dipole_tv: np.ndarray):
+        # While this is not the most efficient way to write the convolution,
+        # it is not the bottleneck of the calculation. If the number of
+        # time-steps is largely increased it would be reasonable to use
+        # advanced integration strategies in order to shorten the time
+        # for convolutions
+
+        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
+        d1_dipole_t = d1_dipole_tv @ self.cavity_polarization
+
+        N = len(dipole_tv)
+        dyadic_t = self.dyadic_t(timestep, N)[:N - 1]
+        electric_rr_field = self.cavity_polarization * (
+            np.dot(dyadic_t[::-1], d1_dipole_t[:-1])
+            - 0.5 * dyadic_t[-1] * d1_dipole_t[0]
+            - 0.5 * dyadic_t[0] * d1_dipole_t[-1])
+
+        electric_rr_field *= 4. * np.pi * alpha**2 * timestep
+        return -np.real(electric_rr_field)
+
+    def radiation_reaction_field(self, timestep, dipole_tv):
+        if len(dipole_tv) <= 1:
+            return np.zeros(3)
+
+        field_v = self.selffield(timestep, dipole_tv)
+
+        return field_v
+
+    def dyadic_t(self, timestep, N):
+        if len(self._dyadic_t) < N:
+            # Calculate the dyadic, but how long? At least 1000 times and
+            # at least twice the requested length
+            N = max(1000, 2 * N)
+            time_t = np.arange(0, timestep * (N - 0.1), timestep)
+            envelope_t = np.exp(-self.cavity_loss * time_t)
+            G_t = 0
+            for omegares in self.cavity_resonance:
+                G_t += envelope_t * np.sin(omegares * time_t) / omegares
+            G_t *= 2. / self.cavity_volume / alpha**2
+            self._dyadic_t = - np.gradient(G_t, timestep, axis=0)
+
+        return self._dyadic_t
+
+    def fieldenergy(self, timestep, dipole_tv, d1_dipole_v):
+        field_v = self.selffield(timestep, dipole_tv)
+
+        return field_v @ d1_dipole_v
+
+    def fieldenergy_post(self, timestep, dipole_tv):
+        self.dyadic = self.dyadicGt(
+            timestep, 3000, itert=len(self.dipole_tv) - 1)
+        dipole_tv = np.array(dipole_tv)
+        d1_dipole_tv = np.gradient(dipole_tv, timestep, axis=0)
+
+        field_tv = np.array([self.selffield(timestep, dipole_tv[:iters])
+                             for iters in range(len(dipole_tv))])
+        energy_t = - np.einsum('tv,tv->t', field_tv, d1_dipole_tv,
+                               optimize=True)
+        int_energy_t = integrate.cumtrapz(energy_t, dx=timestep)
+        return energy_t, int_energy_t
+
+
 class VacuumEnvironment(Environment):
 
     r""" The radiation reaction potential in vacuum is
@@ -413,123 +515,6 @@ class VacuumEnvironment(Environment):
 
     def todict(self):
         return {'environment': 'vacuum'}
-
-
-class CavityEnvironment(Environment):
-
-    r"""
-
-    Parameters
-    ----------
-    quantization_plane
-        Quantization plane :math:`A` in units of Å^2.
-    cavity_polarization
-        The polarization of the cavity :math:`\boldsymbol{\varepsilon_c}`.
-        Direction vector.
-    resonances
-        List of cavity resonances in units of eV.
-    loss
-        Loss of cavity in units of eV.
-    ampl
-        increase frequency resolution
-     """
-
-    def __init__(self,
-                 quantization_plane,
-                 cavity_polarization,
-                 *,
-                 resonance,
-                 loss,
-                 cutoff=None,
-                 ampl=1):
-        self.quantization_plane = quantization_plane / Bohr**2
-        self.cavity_polarization = np.array(cavity_polarization)
-        if cutoff is None:
-            cutoff = resonance
-        self.cavity_resonance = np.arange(resonance, cutoff + 1e-8, resonance
-                                          ) / Hartree
-        self.cavity_volume = (self.quantization_plane
-                              * (np.pi / (alpha * self.cavity_resonance[0])))
-        self.cavity_loss = loss / Hartree
-        self.cutoff_lower = None
-        self.cutofffrequency = None
-        self.frequ_resolution_ampl = ampl
-
-        self.dyadic = None
-
-    def todict(self):
-        return {'environment': 'cavity',
-                'quantization_plane': self.quantization_plane * Bohr**2,
-                'cavity_polarization': list(self.cavity_polarization),
-                'resonance': self.cavity_resonance[0] * Hartree,
-                'cutoff': self.cavity_resonance[-1] * Hartree,
-                'loss': self.cavity_loss * Hartree,
-                'ampl': self.frequ_resolution_ampl}
-
-    def compute_dyadic(self, timestep, maxtimesteps, itert):
-        self.dyadic = self.dyadicGt(timestep, maxtimesteps, itert=itert)
-
-    def selffield(self,
-                  timestep: float,
-                  dipole_tv: np.ndarray):
-        # While this is not the most efficient way to write the convolution,
-        # it is not the bottleneck of the calculation. If the number of
-        # time-steps is largely increased it would be reasonable to use
-        # advanced integration strategies in order to shorten the time
-        # for convolutions
-
-        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
-        d1_dipole_t = d1_dipole_tv @ self.cavity_polarization
-
-        dyadic_t = self.dyadic[:len(dipole_tv) - 1]
-        electric_rr_field = self.cavity_polarization * (
-            np.dot(dyadic_t[::-1], d1_dipole_t[:-1])
-            - 0.5 * dyadic_t[-1] * d1_dipole_t[0]
-            - 0.5 * dyadic_t[0] * d1_dipole_t[-1])
-
-        electric_rr_field *= 4. * np.pi * alpha**2 * timestep
-        return -np.real(electric_rr_field)
-
-    def radiation_reaction_field(self, timestep, dipole_tv):
-        if len(dipole_tv) <= 1:
-            return np.zeros(3)
-
-        field_v = self.selffield(timestep, dipole_tv)
-
-        return field_v
-
-    def compute_dyadic_if_necessary(self, timestep, maxtimesteps, itert):
-        if self.dyadic is None or len(self.dyadic) < maxtimesteps:
-            # If dyadic does not exist, or is too short, then recalculate
-            self.compute_dyadic(timestep, maxtimesteps, itert)
-
-    def dyadicGt(self, timestep, maxtimesteps, *, itert):
-        if itert > 0:
-            self.frequ_resolution_ampl = (float(self.frequ_resolution_ampl) *
-                                          float(itert) /
-                                          float(maxtimesteps - 1))
-        time_t = np.arange(0, timestep *
-                           (maxtimesteps * self.frequ_resolution_ampl + 1),
-                           timestep)
-        # omega_w = 2 * np.pi * np.fft.fftfreq(len(time_t), timestep)
-        G_w = 0
-        envelope_t = np.exp(-self.cavity_loss * time_t)
-        for omegares in self.cavity_resonance:
-            g_t = envelope_t * np.sin(omegares * time_t) / omegares
-            G_w += np.fft.fft(g_t)
-        G_w *= 2. / self.cavity_volume / alpha**2
-        print('USING BARE Gw0')
-
-        Dt = - np.gradient(np.fft.ifft(G_w), timestep, axis=0)
-        # For some reason the explicit derivative works best, version
-        # below also possible but seems to have issues sometimes.
-        # Notice that I moved a minus from down here to the sine G0
-        # because the poles had been defined up side down
-        # NOTE - I moved the sign back because there seem to be minor
-        # numerical deviations otherwise -- check that again later
-        # Dt[:,ii] = np.fft.ifft(1j * omegafft * Gw[:,ii].flatten())
-
-        return Dt
 
 
 class PrecomputedCavityEnvironment(Environment):
@@ -804,15 +789,13 @@ class DressedCavityEnvironment(CavityEnvironment):
                  loss,
                  cutoff=None,
                  precomputedG=None,
-                 ampl=1,
                  claussius=False,
                  environmentens_in=None):
         super().__init__(quantization_plane,
                          cavity_polarization,
                          resonance=resonance,
                          cutoff=cutoff,
-                         loss=loss,
-                         ampl=ampl)
+                         loss=loss)
 
         self.claussius = claussius
         assert environmentens_in is not None
@@ -850,13 +833,11 @@ class DressedCavityEnvironment(CavityEnvironment):
         _dict['claussius'] = self.claussius
         return _dict
 
-    def compute_dyadic(self, timestep, maxtimesteps, itert):
-        self.dyadic, self.dyadic_st = self.dyadicGt(
-                timestep, maxtimesteps, itert=itert)
-
     def selffield(self,
                   timestep: float,
                   dipole_tv: np.ndarray):
+        if self.dyadic is None:
+            self.dyadic, self.dyadic_st = self.dyadicGt(timestep)
         # While this is not the most efficient way to write the convolution,
         # it is not the bottleneck of the calculation. If the number of
         # time-steps is largely increased it would be reasonable to use
@@ -881,14 +862,10 @@ class DressedCavityEnvironment(CavityEnvironment):
                         dipole_tv[-1, jj])
         return -np.real(electric_rr_field)
 
-    def greens_tensor_frequency(self, timestep, maxtimesteps, *, itert):
-        if itert > 0:
-            self.frequ_resolution_ampl = (float(self.frequ_resolution_ampl) *
-                                          float(itert) /
-                                          float(maxtimesteps - 1))
-        timeg = np.arange(0, timestep *
-                          (maxtimesteps * self.frequ_resolution_ampl + 1),
-                          timestep)
+    def greens_tensor_frequency(self, timestep):
+        # Let's just compute 1e6 steps and come up with something
+        # more sophisticated later
+        timeg = np.arange(0, timestep * (1e6 - 0.1), timestep)
         omegafft = 2 * np.pi * np.fft.fftfreq(len(timeg), timestep)
         Gw0 = np.zeros((len(omegafft), 9), dtype=complex)
         Gst = np.zeros((9, ), dtype=complex)
@@ -983,9 +960,9 @@ class DressedCavityEnvironment(CavityEnvironment):
                                          len(omegafft))
         return omegafft, Gw0, Gst, window_Gw0, g_omega
 
-    def dyadicGt(self, timestep, maxtimesteps, print_output=False, *, itert):
+    def dyadicGt(self, timestep, print_output=False):
         omegafft, Gw, Gst, window_Gw0, g_omega = self.greens_tensor_frequency(
-            timestep, maxtimesteps, itert=itert)
+            timestep)
 
         Gw = np.zeros((len(omegafft), 9), dtype=complex)
         Xw = np.zeros((len(omegafft), 9), dtype=complex)
