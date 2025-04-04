@@ -69,6 +69,8 @@ doc/setups/[A-Z]*.rst
 *.py.state
 *.py.*.err
 
+*.pkl
+
 # These are OK:
 !requirements.txt
 !mypy.ini

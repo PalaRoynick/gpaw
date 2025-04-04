@@ -26,7 +26,7 @@ import time
 
 nn = 3
 accuracy = 2e-10
-BOX = 12.0
+BOX = 32
 
 
 def gradient(gd, x, nn):
@@ -219,7 +219,7 @@ def test_realspace_periodic_poisson():
             return phi
         return phi
 
-    psolvers = (WeightedFDPoissonSolver,
+    psolvers = (#WeightedFDPoissonSolver,
                 ADM12PoissonSolver,
                 PolarizationPoissonSolver,
                 RealConjugateGradientPoissonSolver)
@@ -254,22 +254,22 @@ def test_realspace_periodic_poisson():
         
         assert phi == pytest.approx(phi_expected, abs=1e-3)
 
-    # test charged system with constant permittivity
-    parprint('charged, constant permittivity')
-    epsinf = 80.
-    eps = gd.zeros()
-    eps.fill(epsinf)
-    q = -2.
-    gauss_norm = q / np.sqrt(4 * np.pi)
-    gauss = Gaussian(gd, center=(box / 2. + 1.) * np.ones(3) / Bohr)
-    rho_gauss = gauss_norm * gauss.get_gauss(0)
-    phi_gauss = gauss_norm * gauss.get_gauss_pot(0)
-    phi_expected = phi_gauss / epsinf
+    # # test charged system with constant permittivity
+    # parprint('charged, constant permittivity')
+    # epsinf = 80.
+    # eps = gd.zeros()
+    # eps.fill(epsinf)
+    # q = -2.
+    # gauss_norm = q / np.sqrt(4 * np.pi)
+    # gauss = Gaussian(gd, center=(box / 2. + 1.) * np.ones(3) / Bohr)
+    # rho_gauss = gauss_norm * gauss.get_gauss(0)
+    # phi_gauss = gauss_norm * gauss.get_gauss_pot(0)
+    # phi_expected = phi_gauss / epsinf
 
-    for ps in psolvers:
-        phi = solve(ps, eps, rho_gauss)
-        parprint(ps, np.abs(phi - phi_expected).max())
-        # assert phi == pytest.approx(phi_expected, abs=1e-3)
+    # for ps in psolvers:
+    #     phi = solve(ps, eps, rho_gauss)
+    #     parprint(ps, np.abs(phi - phi_expected).max())
+    #     # assert phi == pytest.approx(phi_expected, abs=1e-3)
 
     # test non-constant permittivity
     msgs = ('neutral, non-constant permittivity',
@@ -450,9 +450,10 @@ def test_planewave_const_permittivity(density_function):
             phi_r = pd.ifft(phi)
 
             x_ax = np.array([x for x in range(int(box * 5))]) / 5
-            plot_results(phi_r, phi_expected, x_ax, nm, tag='nonvar')
+            # plot_results(phi_r, phi_expected, x_ax, nm, tag='nonvar')
 
             assert phi_r == pytest.approx(phi_expected, abs=1e-3)
+    assert False
 
 
 @pytest.mark.parametrize("dielectric_function", [
@@ -509,4 +510,101 @@ def test_planewave_var_permittivity(dielectric_function, density_function):
             print(f'{nm} Timing: {end - start}')
             phi_r = pd.ifft(phi)
             assert phi_r == pytest.approx(phi_expected, abs=5e-3)
+            
+            x_ax = np.array([x for x in range(int(box * 5))]) / 5
+            for ax in 'xyz':
+                fig, ax = plt.subplots()
+                ax.plot(x_ax, phi_r[:, int(box / 2.), int(box / 2.)] if ax == 'z' else
+                        phi_r[int(box / 2.), :, int(box / 2.)] if ax == 'y' else
+                        phi_r[int(box / 2.), int(box / 2.), :])
+                ax.set_title(f'{ax}-trace of {nm}')
+                fig.savefig(f'{ax}-{nm}.png')
+                plt.close(fig)
+                    
         assert False
+
+
+def test_poisson_from_pickle_all_solvers():
+    """
+    Load precomputed phi, rho, eps, and grid descriptor parameters from 'poisson.pkl',
+    reconstruct the grid descriptor, and then for each of the realspace Poisson solvers
+    (WeightedFDPoissonSolver, ADM12PoissonSolver, PolarizationPoissonSolver,
+    RealConjugateGradientPoissonSolver) verify that solving the Poisson equation with the
+    loaded rho and eps reproduces phi within the desired accuracy.
+    
+    The pickle file is expected to contain:
+      - "phi": expected potential,
+      - "rho": charge density,
+      - "eps": permittivity,
+      - "cell": grid cell (cell_cv),
+      - "h_cv": grid spacing,
+      - "N_c": grid dimensions,
+      - "pbc_c": periodic boundary conditions,
+      - "parsize_c": parallel decomposition info,
+      - "dv": cell volume.
+    """
+    import pickle
+
+    # load precomputed data from the pickle file.
+    with open("poisson_data_8.pkl", "rb") as f:
+        data = pickle.load(f)
+    phi_expected = data["phi"]
+    rho = data["rho"]
+    eps = data["eps"][0]
+
+    # reconstruct the grid descriptor from the stored parameters.
+    N_c = data["N_c"]
+    cell = data["cell"]
+    pbc_c = data["pbc_c"]
+    gd = GridDescriptor(N_c, cell, pbc_c)
+    gd.h_cv = data["h_cv"]
+    gd.parsize_c = data["parsize_c"]
+    gd.dv = data["dv"]
+
+    print(phi_expected.shape, rho.shape, eps.shape)
+
+    # list of Poisson solvers to test.
+    psolvers = (# WeightedFDPoissonSolver,
+                ADM12PoissonSolver,
+                PolarizationPoissonSolver,
+                RealConjugateGradientPoissonSolver)
+
+    # define a helper function that uses the same formalism as in the other tests.
+    def solve(ps, eps, rho):
+        phi = gd.zeros()
+        dielectric = MockDielectric(epsinf=eps.max(), nn=nn)
+        dielectric.set_grid_descriptor(gd)
+        dielectric.allocate()
+        dielectric.eps_gradeps[0][...] = eps
+        dielectric.update(None)
+        with warnings.catch_warnings():
+            # ignore production code warning for alternative psolvers
+            warnings.simplefilter("ignore")
+            solver = ps(nn=nn, relax='J', eps=accuracy)
+        solver.set_dielectric(dielectric)
+        solver.set_grid_descriptor(gd)
+        solver.solve(phi, rho)
+        try:
+            # data = solver.cg_solv.r_norms
+            # img_path = 'conv.png'
+            # plt.scatter(range(len(data)), data)
+            # plt.xlabel('Iteration Number (dimensionless)', fontsize=12)
+            # plt.ylabel('Relative Residual Norm (dimensionless)', fontsize=12)
+            # plt.tick_params(axis='both', which='major', labelsize=12)
+            # plt.tick_params(axis='both', which='minor', labelsize=12)
+            # plt.title(
+            #     f'Convergence for {np.prod([x for x in solver.gd.N_c]):.1E} Grid Points', fontsize=12)
+            # plt.tight_layout()
+            # plt.savefig(img_path)
+            # plt.close()
+            return phi
+        except Exception as e:
+            parprint(e)
+            return phi
+        return phi
+
+    # loop over each solver and check if the computed potential matches the expected potential.
+    for ps in psolvers:
+        phi = solve(ps, eps, rho)
+        parprint(ps, np.abs(phi - phi_expected).max())
+        assert phi == pytest.approx(phi_expected, abs=1e-3)

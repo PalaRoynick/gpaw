@@ -276,8 +276,9 @@ class SolvationRealSpaceHamiltonian(SolvationHamiltonian, RealSpaceHamiltonian):
     """
 
     def poisson_default(self, poi_par=None, *args, **kwargs):
-        pd3 = PWDescriptor(ecut=None, gd=kwargs.get('gd'))
-        return WrappedConjugateGradientPoissonSolver(pd3, **poi_par) if poi_par else WrappedConjugateGradientPoissonSolver(pd3)
+        return WeightedFDPoissonSolver() if poi_par is None else WeightedFDPoissonSolver(**poi_par)
+        # XXX/CB: Idea for integration of pw solver, but problematic...pd3 = PWDescriptor(ecut=None, gd=kwargs.get('gd'))
+        # return WrappedConjugateGradientPoissonSolver(pd3, **poi_par) if poi_par else WrappedConjugateGradientPoissonSolver(pd3)
 
     def realspace_dens(self, density):
         return density

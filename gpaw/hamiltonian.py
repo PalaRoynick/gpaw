@@ -749,7 +749,7 @@ class RealSpaceHamiltonian(Hamiltonian):
         # npoisson is the number of iterations:
         self.npoisson = self.poisson.solve(self.vHt_g, dens.rhot_g,
                                            charge=-dens.charge,
-                                           timer=self.timer)
+                                           timer=self.timer, dump_data=True, dump_prefix='poisson')
         self.timer.stop('Poisson')
 
         self.timer.start('Hartree integrate/restrict')

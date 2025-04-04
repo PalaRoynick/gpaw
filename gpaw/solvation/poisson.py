@@ -1,4 +1,5 @@
 import warnings
+import os
 
 import numpy as np
 from scipy.special import erf
@@ -17,6 +18,7 @@ from gpaw.typing import Array1D
 from gpaw.pw.density import ReciprocalSpaceDensity
 from gpaw.density import Density
 import matplotlib.pyplot as plt
+from scipy.sparse.linalg import cg, LinearOperator
 
 
 class SolvationPoissonSolver(FDPoissonSolver):
@@ -88,7 +90,8 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
 
     def solve(self, phi, rho, charge=None,
               maxcharge=1e-6,
-              zero_initial_phi=False, timer=None):
+              zero_initial_phi=False, timer=None,
+              dump_data=True, dump_prefix='poisson_data'):
         self._init()
 
         # XXX/cb: band-aid! Currently fails.
@@ -98,8 +101,13 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
         #         raise NotImplementedError(
         #             'charged periodic systems are not implemented')
         self.restrict_op_weights()
+        
         ret = FDPoissonSolver.solve(self, phi, rho, charge, maxcharge,
                                     zero_initial_phi)
+        
+        if dump_data:
+            self.dump_data(phi, rho, prefix=f'{dump_prefix}')
+        
         return ret
 
     def restrict_op_weights(self):
@@ -118,6 +126,43 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
         return description.replace(
             'solver with',
             'weighted FD solver with dielectric and')
+            
+    def dump_data(self, phi, rho, prefix='poisson_data', phi_only=False):
+
+        import os
+        import pickle
+        
+        if self.gd.comm.rank == 0:
+            os.makedirs(os.path.dirname(prefix) if os.path.dirname(prefix) else '.', exist_ok=True)
+            
+
+            data = {
+                'cell': self.gd.cell_cv.copy(),
+                'h_cv': self.gd.h_cv.copy(),
+                'N_c': self.gd.N_c.copy(),
+                'pbc_c': self.gd.pbc_c.copy(),
+                'parsize_c': self.gd.parsize_c,
+                'dv': self.gd.dv
+            }
+            
+            phi_g = self.gd.collect(phi)
+            rho_g = self.gd.collect(rho)
+            eps_g = self.gd.collect(self.dielectric.eps_gradeps)
+            
+            if phi_g is not None and rho_g is not None and eps_g is not None:
+                data['phi'] = phi_g
+                data['rho'] = rho_g
+                data['eps'] = eps_g
+                smp = np.random.choice(range(10))
+                if np.random.choice(range(10)) == 1:
+                    logg(f'Dumping charge density and potential to {prefix}_{smp}.pkl')
+                    
+                    filename = f'{prefix}_{smp}.pkl'
+                    if not(os.path.exists(filename)):
+                        with open(filename, 'wb') as f:
+                            pickle.dump(data, f)
+            else:
+                print("problems!")
 
     def _init(self):
         if self._initialized:
@@ -355,15 +400,15 @@ class WrappedPolarizationPoissonSolver(PolarizationPoissonSolver):
         rho_r = self.pd3.ifft(rho)
         phi_r = self.pd3.ifft(phi)
         phi_r = self.pd3.gd.zeros()
-
+        
         # solve using parent class
         PolarizationPoissonSolver.solve(self, phi_r, rho_r, charge,
                                         maxcharge, zero_initial_phi)
-
+                                    
         # back to planewave
         phi_p = self.pd3.fft(phi_r)
         phi[:] = phi_p[:]
-
+        
         return phi
 
 
@@ -488,7 +533,8 @@ class ConjugateGradientPoissonSolver():
     def __init__(self,
                  pd: PWDescriptor,
                  charge: float = 0.0,
-                 strength: float = 1.0):
+                 strength: float = 1.0,
+                 eps=1e-4, maxiter=15):
         """Initialize the conjugate gradient Poisson solver.
         
         Parameters:
@@ -574,15 +620,17 @@ class ConjugateGradientPoissonSolver():
 
         vHt_q[:] = 4 * np.pi * self.strength * rhot_q
         if self.pd.gd.comm.rank == 0:
-            # use uniform backgroud charge in case we have a charged system:
+            # use uniform background charge in case we have a charged system:
             vHt_q[0] = 0.0
 
-        def precon(vec):
-            return vec / self.G2_q
+        N = len(vHt_q)
+        op = LinearOperator((N, N), matvec=self.operator, dtype=vHt_q.dtype)
+        M = LinearOperator((N, N), matvec=lambda x: x / self.G2_q, dtype=vHt_q.dtype)
 
-        self.cg_solv = ConjugateGradientSolver(self.operator, vHt_q,
-                                               preconditioner=precon)
-        vHt_q[:] = self.cg_solv.solve()
+        vHt_q[:], info = cg(op, vHt_q, rtol=self.eps, maxiter=self.maxiter, M=M)
+        
+        if info != 0:
+            warnings.warn(f'Conjugate gradient did not converge (info={info})')
 
         epot = 0.5 * self.pd.integrate(vHt_q, rhot_q)
         return epot
@@ -595,7 +643,7 @@ class RealConjugateGradientPoissonSolver(BasePoissonSolver):
     periodic boundary conditions
     """
     
-    def __init__(self, nn=3, relax='J', eps=1e-3, maxiter=15,
+    def __init__(self, nn=3, relax='J', eps=1e-4, maxiter=8,
                  remove_moment=None, use_charge_center=False):
         self.nn = nn
         self.eps = eps
@@ -707,11 +755,11 @@ class RealConjugateGradientPoissonSolver(BasePoissonSolver):
                 multiplier = k.reshape(shape)
             grad_components.append(phi_tilde * multiplier)
             
-        grad_real = [self.ictransform(comp, i) for i, comp in enumerate(grad_components)]
+        grad_real = [self.istransform(comp) for i, comp in enumerate(grad_components)]
         
         grad_real_mod = [g * self.dielectric.eps_gradeps[0] for g in grad_real]
         
-        grad_tilde_mod = [self.ctransform(g, i) for i, g in enumerate(grad_real_mod)]
+        grad_tilde_mod = [self.stransform(g) for i, g in enumerate(grad_real_mod)]
         divergence_tilde = 0
         
         for ax in range(ndims):
@@ -745,16 +793,25 @@ class RealConjugateGradientPoissonSolver(BasePoissonSolver):
                rho: Array1D) -> float:
 
         phi[:] = 4 * np.pi * rho
-        
         phi_tilde = self.stransform(phi)
 
-        def precon(vec):
-            return vec / self.laplace_coefs
+        N = len(phi_tilde.ravel())
+        shape = (N, N)
+        op = LinearOperator(shape,
+                           matvec=lambda x: self.operator(x.reshape(phi_tilde.shape)).ravel(),
+                           dtype=phi_tilde.dtype)
 
-        self.cg_solv = ConjugateGradientSolver(self.operator, phi_tilde,
-                                               preconditioner=precon, nits_max=15)
-        
-        phi[:] = self.istransform(self.cg_solv.solve())
+        M = LinearOperator(shape,
+                          matvec=lambda x: (x.reshape(phi_tilde.shape) / self.laplace_coefs).ravel(),
+                          dtype=phi_tilde.dtype)
+
+        solution, info = cg(op, phi_tilde.ravel(), tol=self.eps,
+                          maxiter=self.maxiter, M=M)
+
+        if info != 0:
+            warnings.warn(f'Conjugate gradient did not converge (info={info})')
+
+        phi[:] = self.istransform(solution.reshape(phi_tilde.shape))
 
         epot = 0.5 * self.gd.integrate(phi, rho)
         return epot
