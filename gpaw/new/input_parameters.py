@@ -4,14 +4,9 @@ import warnings
 from typing import Any, Sequence
 
 import numpy as np
+from gpaw.new.environment import Environment
 
 parameter_functions = {}
-
-"""
-background_charge
-external
-reuse_wfs_method
-"""
 
 
 class DeprecatedParameterWarning(FutureWarning):
@@ -29,6 +24,7 @@ class InputParameters:
     charge: float
     convergence: dict[str, Any]
     eigensolver: dict[str, Any]
+    environment: Environment
     experimental: dict[str, Any]
     external: dict[str, Any]
     gpts: None | Sequence[int]
@@ -46,6 +42,7 @@ class InputParameters:
     # random
     setups: Any
     soc: bool
+    solvation: Any
     spinpol: bool
     symmetry: dict[str, Any]
     xc: dict[str, Any]
@@ -61,7 +58,7 @@ class InputParameters:
             param = params.get(key)
             if param is not None:
                 self.non_defaults.append(key)
-                if hasattr(param, 'todict'):
+                if hasattr(param, 'todict') and not hasattr(param, 'build'):
                     param = param.todict()
                 value = func(param)
             else:
@@ -71,10 +68,20 @@ class InputParameters:
         if self.h is not None and self.gpts is not None:
             raise ValueError("""You can't use both "gpts" and "h"!""")
 
+        if self.mode.get('name') is None:
+            if warn:
+                warnings.warn(
+                    ('Finite-difference mode implicitly chosen; '
+                     'it will be an error to not specify a mode '
+                     'in the future'),
+                    DeprecatedParameterWarning)
+            self.mode = dict(self.mode, name='fd')
+
         if self.experimental is not None:
             if self.experimental.pop('niter_fixdensity', None) is not None:
                 warnings.warn('Ignoring "niter_fixdensity".')
-            if self.experimental.pop('reuse_wfs_method', None) is not None:
+            if 'reuse_wfs_method' in self.experimental:
+                del self.experimental['reuse_wfs_method']
                 warnings.warn('Ignoring "reuse_wfs_method".')
             if 'soc' in self.experimental:
                 warnings.warn('Please use new "soc" parameter.',
@@ -84,17 +91,10 @@ class InputParameters:
                 warnings.warn('Please use new "magmoms" parameter.',
                               DeprecatedParameterWarning)
                 self._add('magmoms', self.experimental.pop('magmoms'))
-            assert not self.experimental
-            self._remove('experimental')
-
-        if self.mode.get('name') is None:
-            if warn:
-                warnings.warn(
-                    ('Finite-difference mode implicitly chosen; '
-                     'it will be an error to not specify a mode '
-                     'in the future'),
-                    DeprecatedParameterWarning)
-            self.mode = dict(self.mode, name='fd')
+            unknown = self.experimental.keys() - {'backwards_compatible'}
+            if unknown:
+                warnings.warn(f'Unknown experimental keyword(s): {unknown}',
+                              stacklevel=3)
 
     def __repr__(self) -> str:
         p = ', '.join(f'{key}={value!r}'
@@ -137,15 +137,17 @@ def eigensolver(value=None) -> dict:
     """Eigensolver."""
     if isinstance(value, str):
         value = {'name': value}
-    if value and value['name'] not in {'dav', 'etdm-fdpw', 'scissors'}:
-        warnings.warn(f'{value["name"]} not implemented.  Using dav instead')
-        return {'name': 'dav'}
     return value or {}
 
 
 @input_parameter
-def experimental(value=None):
+def environment(value=None):
     return value
+
+
+@input_parameter
+def experimental(value=None):
+    return value or {}
 
 
 @input_parameter
@@ -267,6 +269,11 @@ def setups(value='paw'):
 
 @input_parameter
 def soc(value=False):
+    return value
+
+
+@input_parameter
+def solvation(value=None):
     return value
 
 

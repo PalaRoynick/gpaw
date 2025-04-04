@@ -8,8 +8,6 @@ When:
   October 8 and 9 afternoons (Danish time)
 Announcement:
   https://listserv.fysik.dtu.dk/pipermail/gpaw-users/2024-September/007312.html
-Zoom:
-    https://dtudk.zoom.us/j/68759562007?pwd=KbVH4IADa6z9o83SWGvEviRfpZiQas.1
 
 .. note::
 

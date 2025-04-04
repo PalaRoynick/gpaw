@@ -10,6 +10,7 @@ from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import prod, zips
 from gpaw.typing import Array1D, ArrayLike1D
 from gpaw.new.c import dH_aii_times_P_ani_gpu
+from gpaw.utilities import as_real_dtype
 
 
 class AtomArraysLayout(XP):
@@ -47,6 +48,9 @@ class AtomArraysLayout(XP):
             self.myindices.append((a, I1, I2))
             self.mysize += I2 - I1
             I1 = I2
+
+    def __len__(self):
+        return len(self.shape_a)
 
     def __repr__(self):
         return (f'AtomArraysLayout({self.shape_a}, {self.atomdist}, '
@@ -112,6 +116,9 @@ class AtomDistribution:
         self.rank_a = np.array(ranks)
         # convert from np.int64 -> int:
         self.indices = [int(a) for a in np.where(self.rank_a == comm.rank)[0]]
+
+    def __len__(self) -> int:
+        return len(self.rank_a)
 
     @classmethod
     def from_number_of_atoms(cls,
@@ -216,7 +223,9 @@ class AtomArrays:
         for a, I1, I2 in layout.myindices:
             self._arrays[a] = self.data[..., I1:I2].reshape(
                 self.mydims + layout.shape_a[a])
-        self.natoms: int = len(layout.shape_a)
+
+    def __len__(self) -> int:
+        return len(self.layout)
 
     def my_slice(self) -> tuple[int, int]:
         mydims0 = (self.dims[0] + self.comm.size - 1) // self.comm.size
@@ -365,6 +374,7 @@ class AtomArrays:
         comm = self.layout.atomdist.comm
         xp = self.layout.xp
         if comm.size == 1:
+            assert data is not None
             self.data[:] = data
             return
 
@@ -527,5 +537,6 @@ class AtomArrays:
         if index is not None:
             data = data[index]
         if self.data.size > 0:
-            dH_aii_times_P_ani_gpu(data, ni_a,
-                                   self.data, out_ani.data)
+            realdtype = as_real_dtype(self.data.dtype)
+            dH_aii_times_P_ani_gpu(xp.asarray(data, dtype=realdtype),
+                                   ni_a, self.data, out_ani.data)

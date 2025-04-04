@@ -13,6 +13,8 @@ from gpaw.scf import write_iteration
 from gpaw.typing import Array2D
 from gpaw.new.logger import indent
 from gpaw import KohnShamConvergenceError
+from gpaw.new.energies import DFTEnergies
+from gpaw.new.ibzwfs import IBZWaveFunctions
 
 
 class TooFewBandsError(KohnShamConvergenceError):
@@ -33,7 +35,7 @@ class SCFLoop:
         self.mixer = mixer
         self.occ_calc = occ_calc
         self.comm = comm
-        self.convergence = convergence
+        self.convergence = create_convergence_criteria(convergence)
         self.maxiter = maxiter
         self.niter = 0
         self.update_density_and_potential = True
@@ -48,22 +50,17 @@ class SCFLoop:
                 f'occupation numbers:\n{indent(self.occ_calc)}\n')
 
     def iterate(self,
-                ibzwfs,
+                ibzwfs: IBZWaveFunctions,
                 density,
                 potential,
+                energies: DFTEnergies,
                 pot_calc,
-                convergence=None,
+                *,
                 maxiter=None,
                 calculate_forces=None,
                 log=None):
-
-        cc = create_convergence_criteria(convergence or self.convergence)
+        cc = self.convergence
         maxiter = maxiter or self.maxiter
-
-        self.eigensolver.initialize_etdm(
-            ibzwfs, density, potential,
-            pot_calc, self.occ_calc,
-            self.hamiltonian, self.mixer, log)
 
         if log:
             log('convergence criteria:')
@@ -82,18 +79,25 @@ class SCFLoop:
             dens_error = 0.0
 
         for self.niter in itertools.count(start=1):
-            wfs_error = self.eigensolver.iterate(
-                ibzwfs, density, potential, self.hamiltonian)
-            ibzwfs.calculate_occs(
+            eig_error, wfs_error, energies = self.eigensolver.iterate(
+                ibzwfs, density, potential,
+                self.hamiltonian, pot_calc, energies)
+            nelectrons = (density.nvalence - density.charge +
+                          pot_calc.environment.charge)
+            e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
                 self.occ_calc,
+                nelectrons,
                 fix_fermi_level=self.fix_fermi_level)
-            if self.eigensolver.direct:
-                ibzwfs.energies['band'] = 0.0
+
+            energies.set(**pot_calc.xc.energies,
+                         band=e_band,
+                         entropy=e_entropy,
+                         extrapolation=e_extrapolation)
 
             ctx = SCFContext(
-                log, self.niter,
+                log, self.niter, energies,
                 ibzwfs, density, potential,
-                wfs_error, dens_error,
+                wfs_error, dens_error, eig_error,
                 self.comm, calculate_forces,
                 pot_calc, self.update_density_and_potential)
 
@@ -105,8 +109,13 @@ class SCFLoop:
 
             if log:
                 write_iteration(cc, converged_items, entries, ctx, log)
+
             if converged:
-                break
+                converged = pot_calc.environment.post_scf_convergence(
+                    ibzwfs, nelectrons, self.occ_calc, self.mixer, log)
+                if converged:
+                    break
+
             if self.niter == maxiter:
                 if wfs_error < inf:
                     raise KohnShamConvergenceError
@@ -115,13 +124,8 @@ class SCFLoop:
             if self.update_density_and_potential:
                 density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
-                new_potential, _ = pot_calc.calculate(
+                potential, energies, _ = pot_calc.calculate(
                     density, ibzwfs, potential.vHt_x)
-                potential.update_from(new_potential)
-                if self.eigensolver.direct:
-                    ekin = ibzwfs.calculate_kinetic_energy(
-                        self.hamiltonian, density)
-                    potential.energies['kinetic'] = ekin
 
         self.eigensolver.postprocess(
             ibzwfs, density, potential, self.hamiltonian)
@@ -131,28 +135,28 @@ class SCFContext:
     def __init__(self,
                  log,
                  niter: int,
+                 energies: DFTEnergies,
                  ibzwfs,
                  density,
                  potential,
                  wfs_error: float,
                  dens_error: float,
+                 eig_error: float,
                  comm,
                  calculate_forces: Callable[[], Array2D],
                  pot_calc,
                  update_density_and_potential):
         self.log = log
         self.niter = niter
+        self.energies = energies
         self.ibzwfs = ibzwfs
         self.density = density
         self.potential = potential
-        energy = np.array([sum(e
-                               for name, e in potential.energies.items()
-                               if name != 'stress') +
-                           sum(ibzwfs.energies.values())])
-        comm.broadcast(energy, 0)
-        self.ham = SimpleNamespace(e_total_extrapolated=energy[0],
+        energy = energies.total_extrapolated
+        self.ham = SimpleNamespace(e_total_extrapolated=energy,
                                    get_workfunctions=self._get_workfunctions)
-        self.wfs = SimpleNamespace(nvalence=ibzwfs.nelectrons,
+        self.wfs = SimpleNamespace(nvalence=density.nvalence +
+                                   pot_calc.environment.charge,
                                    world=comm,
                                    eigensolver=SimpleNamespace(
                                        error=wfs_error),
@@ -162,6 +166,7 @@ class SCFContext:
             calculate_magnetic_moments=density.calculate_magnetic_moments,
             fixed=not update_density_and_potential,
             error=dens_error)
+        self.eig_error = eig_error
         self.calculate_forces = calculate_forces
         self.poisson_solver = pot_calc.poisson_solver
 
@@ -175,6 +180,7 @@ class SCFContext:
 
 def create_convergence_criteria(criteria: dict[str, Any]
                                 ) -> dict[str, Criterion]:
+    criteria = criteria.copy()
     for k, v in [('energy', 0.0005),        # eV / electron
                  ('density', 1.0e-4),       # electrons / electron
                  ('eigenstates', 4.0e-8)]:  # eV^2 / electron

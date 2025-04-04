@@ -15,12 +15,10 @@ build:
         noblas = True
         nolibxc = True
         EOF
-    pre_build:
-      - gpaw -T install-data --register .
 
 sphinx:
   configuration: doc/conf.py
-  fail_on_warning: false
+  fail_on_warning: true
 
 python:
   install:
