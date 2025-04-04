@@ -305,7 +305,6 @@ class MGGAFunctional(GGAFunctional):
                   taut_sr: UGArray | None = None) -> tuple[float,
                                                            UGArray,
                                                            UGArray | None]:
-        # assert 'vdW' not in self.name, 'Not implemented'
         gradn_svr, sigma_xr = gradient_and_sigma(self.grad_v, nt_sr)
         if isinstance(self.xc, VDWXC):
             assert isinstance(self.xc.semilocal_xc, MGGA), self.xc.semilocal_xc
