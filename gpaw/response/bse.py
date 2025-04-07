@@ -25,7 +25,9 @@ from gpaw.response.screened_interaction import (initialize_w_calculator,
                                                 GammaIntegrationMode)
 from gpaw.utilities.elpa import LibElpa
 from gpaw.response.pw_parallelization import Blocks1D
-
+from math import log2
+from time import time as bse_time
+t0 = bse_time()
 
 def decide_whether_tammdancoff(val_m, con_m):
     for n in val_m:
@@ -790,6 +792,20 @@ class BSEBackend:
         """Calculate BSE matrix."""
         return self.calculate(optical=optical, irreducible=irreducible)
 
+
+    def mygather(self, comm, C_tGG, root, C_TGG):
+        nt = len(C_tGG)
+        if comm.rank == root:
+            C_TGG[comm.rank * nt: (comm.rank+1) * nt] = C_tGG
+            for srank in range(comm.size):
+                if srank == root:
+                    continue
+                comm.receive(C_TGG[srank * nt:(srank + 1) * nt], srank, tag=srank)
+        else:
+            print('About to send', log2(C_tGG.nbytes), 'log2 bytes', comm.rank)
+            comm.send(C_tGG, root, tag=comm.rank)
+            print('Success', log2(C_tGG.nbytes), 'log2 bytes', comm.rank)
+
     def collect_C_TGG(self, C_tGG):
         """
             Collect C_tGG to a rank 0 (as C_TGG) from all ranks.
@@ -804,12 +820,16 @@ class BSEBackend:
             C2_tGG = np.zeros((nr, *C_tGG.shape[1:]), dtype=complex)
             C2_tGG[:len(C_tGG)] = C_tGG
             C_tGG = C2_tGG
+        print(f'done with C2_tgg at {bse_time()-t0}')
         if world.rank == 0:
             C_TGG = np.zeros((nr * world.size,
                               *C_tGG.shape[1:]), dtype=complex)
         else:
             C_TGG = None
-        world.gather(C_tGG, 0, C_TGG)
+        print(f'allocated the space in collect_CTGG, time is {bse_time()-t0}')
+        #world.gather(C_tGG, 0, C_TGG
+        self.mygather(world, C_tGG, 0, C_TGG)
+        print(f'did the gather at {bse_time()-t0}')
         if world.rank == 0:
             nG = self.rho_SG.shape[-1]
             return C_TGG[:nR].reshape((nR, nG, nG))
