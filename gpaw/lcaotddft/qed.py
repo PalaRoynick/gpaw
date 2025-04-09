@@ -328,6 +328,19 @@ class Environment(ABC):
 
     @abstractmethod
     def radiation_reaction_field(self, timestep, dipole_tv):
+        """ Calculate the radiation reaction field at the present time.
+
+        Parameters
+        ----------
+        timestep
+            Time step in atomic units.
+        dipole_tv
+            Recorded dipoles for the entire simulation; in atomic units.
+
+        Returns
+        -------
+        The radiation reaction field at the present time.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -419,42 +432,61 @@ class CavityEnvironment(Environment):
                 'cutoff': self.cavity_resonance[-1] * Hartree,
                 'loss': self.cavity_loss * Hartree}
 
-    def selffield(self,
-                  timestep: float,
-                  dipole_tv: np.ndarray):
-        # While this is not the most efficient way to write the convolution,
-        # it is not the bottleneck of the calculation. If the number of
-        # time-steps is largely increased it would be reasonable to use
-        # advanced integration strategies in order to shorten the time
-        # for convolutions
-
-        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
-        d1_dipole_t = d1_dipole_tv @ self.cavity_polarization
-
-        N = len(dipole_tv)
-        dyadic_t = self.dyadic_t(timestep, N)[:N - 1]
-        electric_rr_field = self.cavity_polarization * (
-            np.dot(dyadic_t[::-1], d1_dipole_t[:-1])
-            - 0.5 * dyadic_t[-1] * d1_dipole_t[0]
-            - 0.5 * dyadic_t[0] * d1_dipole_t[-1])
-
-        electric_rr_field *= 4. * np.pi * alpha**2 * timestep
-        return -np.real(electric_rr_field)
-
     def radiation_reaction_field(self, timestep, dipole_tv):
         if len(dipole_tv) <= 1:
             return np.zeros(3)
 
-        field_v = self.selffield(timestep, dipole_tv)
+        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
+        d1_dipole_t = d1_dipole_tv @ self.cavity_polarization
+        dyadic_t = self.dyadic_t(timestep, len(dipole_tv))
 
+        # Integrate using trapezoidal rule
+        # Do not include current time
+        field_v = -4. * np.pi * alpha**2 * self.cavity_polarization
+        field_v *= (np.trapz(dyadic_t[-2::-1] * d1_dipole_t[:-1], dx=timestep)
+                    # bug in previous implementation
+                    + 0.5 * dyadic_t[0] * d1_dipole_t[-2] * timestep
+                    - 0.5 * dyadic_t[0] * d1_dipole_t[-1] * timestep
+                    )
         return field_v
 
+    def radiation_reaction_field_trajectory(self, timestep, dipole_tv):
+        """ Calculate the radiation reaction field for all simulation times.
+
+        Parameters
+        ----------
+        timestep
+            Time step in atomic units.
+        dipole_tv
+            Recorded dipoles for the entire simulation; in atomic units.
+
+        Returns
+        -------
+        The radiation reaction field for all simulation times.
+        """
+        field_tv = [self.radiation_reaction_field(timestep, dipole_tv[:iters])
+                    for iters in range(len(dipole_tv))]
+        return np.array(field_tv)
+
     def dyadic_t(self, timestep, N):
+        """ Calculate dyadic, or return a cached dyadic if one exists.
+
+        Parameters
+        ----------
+        timestep
+            Time step in atomic units.
+        N
+            Length of dyadic to return.
+
+        Returns
+        -------
+        The first :attr:`N` values of the dyadic.
+        """
         if len(self._dyadic_t) < N:
-            # Calculate the dyadic, but how long? At least 1000 times and
-            # at least twice the requested length
-            N = max(1000, 2 * N)
-            time_t = np.arange(0, timestep * (N - 0.1), timestep)
+            # Reqested longer dyadic than what is cached.
+            # Calculate twice the requested length, but at least 1000 times
+            _N = max(1000, 2 * N)
+            time_t = np.arange(0, timestep * (_N - 0.1), timestep)
             envelope_t = np.exp(-self.cavity_loss * time_t)
             G_t = 0
             for omegares in self.cavity_resonance:
@@ -462,21 +494,18 @@ class CavityEnvironment(Environment):
             G_t *= 2. / self.cavity_volume / alpha**2
             self._dyadic_t = - np.gradient(G_t, timestep, axis=0)
 
-        return self._dyadic_t
+        return self._dyadic_t[:N]
 
     def fieldenergy(self, timestep, dipole_tv, d1_dipole_v):
-        field_v = self.selffield(timestep, dipole_tv)
+        field_v = self.radiation_reaction_field(timestep, dipole_tv)
 
         return field_v @ d1_dipole_v
 
-    def fieldenergy_post(self, timestep, dipole_tv):
-        self.dyadic = self.dyadicGt(
-            timestep, 3000, itert=len(self.dipole_tv) - 1)
-        dipole_tv = np.array(dipole_tv)
-        d1_dipole_tv = np.gradient(dipole_tv, timestep, axis=0)
+    def fieldenergy_trajectory(self, timestep, dipole_tv):
+        d1_dipole_tv = calculate_first_derivative(timestep, dipole_tv)
 
-        field_tv = np.array([self.selffield(timestep, dipole_tv[:iters])
-                             for iters in range(len(dipole_tv))])
+        field_tv = self.radiation_reaction_field_trajectory(timestep,
+                                                            dipole_tv)
         energy_t = - np.einsum('tv,tv->t', field_tv, d1_dipole_tv,
                                optimize=True)
         int_energy_t = integrate.cumtrapz(energy_t, dx=timestep)
@@ -595,7 +624,7 @@ class PrecomputedCavityEnvironment(Environment):
         static = True
         if not static:
             self.dyadic_st = self.dyadic_st * 0
-            print("You remove the static component from the dyadic.")
+            print('You remove the static component from the dyadic.')
 
     def selffield(self,
                   timestep: float,
@@ -861,6 +890,11 @@ class DressedCavityEnvironment(CavityEnvironment):
                         * self.dyadic_st[3 * ii + jj] *
                         dipole_tv[-1, jj])
         return -np.real(electric_rr_field)
+
+    def radiation_reaction_field(self, timestep, dipole_tv):
+        if len(dipole_tv) <= 1:
+            return np.zeros(3)
+        return self.selffield(timestep, dipole_tv)
 
     def greens_tensor_frequency(self, timestep):
         # Let's just compute 1e6 steps and come up with something
