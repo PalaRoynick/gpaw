@@ -1006,7 +1006,7 @@ class BSEBackend:
             self.blocks = Blocks1D(world, len(w_T))
             w_t=w_T[self.blocks.myslice]
             C_tGG = C_tGG[:nr].reshape((nr, nG, nG))
-        elif world.rank == 0 and self.use_tammdancoff is False:
+        elif (world.rank == 0 and self.use_tammdancoff is False) or world.size == 1:
             w_t = w_T
             C_tGG = C_tGG[:nR].reshape((nR, nG, nG))
         
