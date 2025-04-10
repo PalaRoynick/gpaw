@@ -931,7 +931,7 @@ class BSEBackend:
 
     @timer('get_chi_wGG')
     def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    write_eig=None, irreducible=False):
+                    irreducible=False):
         """Returns chi_wGG'"""
 
         if (not hasattr(self, 'eig_data')
@@ -955,8 +955,6 @@ class BSEBackend:
         rho_RG = np.delete(rho_SG, exclude_S, axis=0)
 
         nG = rho_RG.shape[-1]
-
-        exclude_S = self.eig_data[2]
         nR = self.nS - len(exclude_S)
         nr = -(-nR // world.size)
 
@@ -975,7 +973,7 @@ class BSEBackend:
                     A_GT.T[:, np.newaxis]
                 C_tGG1 = None
             else:
-                C_tGG =  None
+                C_tGG = None
                 C_tGG1 = None
         else:
             A_Gt = rho_RG.T @ v_Rt
@@ -991,25 +989,23 @@ class BSEBackend:
                 C_tGG = desc.empty(dtype=complex)
                 np.einsum('Gt,Ht->tGH', B_Gt.conj(), A_Gt,
                           out=C_tGG.reshape((-1, nG, nG)))
-                #C_TGG = self.collect_C_TGG(C_tGG)
                 desc1 = grid.new_descriptor(nR, nG * nG, nr, nG * nG)
                 C_tGG1 = desc1.empty(dtype=complex)
                 np.einsum('Gt,Ht->tGH', A_Gt.conj(), B_Gt,
                           out=C_tGG1.reshape((-1, nG, nG)))
-                #C_TGG1 = self.collect_C_TGG(C_tGG1)
-                #if grid.comm.rank != 0:
-                #    return
 
         eta /= Hartree
 
         if world.size > 1 and self.use_tammdancoff is True:
             self.blocks = Blocks1D(world, len(w_T))
-            w_t=w_T[self.blocks.myslice]
+            w_t = w_T[self.blocks.myslice]
             C_tGG = C_tGG[:nr].reshape((nr, nG, nG))
-        elif (world.rank == 0 and self.use_tammdancoff is False) or world.size == 1:
+        elif (
+            world.rank == 0 and self.use_tammdancoff is False
+        ) or world.size == 1:
             w_t = w_T
             C_tGG = C_tGG[:nR].reshape((nR, nG, nG))
-        
+
         if self.use_tammdancoff is True or world.rank == 0:
             tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
             n_tmp_tw = - 1 / (w_w[None, :] / Hartree + w_t[:, None] + 1j * eta)
@@ -1021,7 +1017,7 @@ class BSEBackend:
                 chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
 
             chi_wGG_local *= 1 / self.gs.volume
-        
+
         if world.size > 1 and self.use_tammdancoff is True:
             chi_wGG = np.zeros_like(chi_wGG_local)
             world.sum(chi_wGG_local)
@@ -1029,18 +1025,11 @@ class BSEBackend:
         else:
             if world.rank == 0:
                 flat_chi_wGG = chi_wGG_local.ravel()
-            else: 
-                flat_chi_wGG = np.empty(len(w_w)*nG*nG, dtype=complex)
+            else:
+                flat_chi_wGG = np.empty(len(w_w) * nG * nG, dtype=complex)
             world.broadcast(flat_chi_wGG, 0)
             chi_wGG = flat_chi_wGG.reshape((len(w_w), nG, nG))
 
-
-            #if write_eig is not None:
-             #   assert isinstance(write_eig, str)
-              #  filename = write_eig
-                #if world.rank == 0:
-                #write_bse_eigenvalues(filename, self.mode,
-                #                      self.w_T * Hartree, C_TGG[:, 0, 0])
         return np.swapaxes(chi_wGG, -1, -2)
 
     def get_dielectric_function(self, *args, filename='df_bse.csv', **kwargs):
