@@ -1012,7 +1012,7 @@ class BSEBackend:
 
             chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
 
-            if C_tGG is not None and C_tGG1 is not None:
+            if C_tGG1 is not None:
                 C_tGG1 = C_tGG1[:nr].reshape((nr, nG, nG))
                 chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
 
@@ -1371,7 +1371,14 @@ class BSE_Plus:
         m2_chi0_full = \
             self.chi0calc_full.chi0_body_calc.nbands - 1
 
-        assert m2_BSE < m2_chi0_full, \
+        if bse.add_soc:
+            n1_chi0 = int(n1_BSE / 2)
+            m2_chi0 = int((m2_BSE + 1) / 2)
+        else:
+            n1_chi0 = n1_BSE
+            m2_chi0 = m2_BSE + 1
+
+        assert m2_chi0 < m2_chi0_full, \
             'Large chi0 calculation should contain more ' \
             'bands than the BSE calculation'
 
@@ -1381,7 +1388,7 @@ class BSE_Plus:
         self.chi0calc_limited = Chi0Calculator(self.gs, self.context,
                                                wd=wd,
                                                nbands=slice(
-                                                   n1_BSE, m2_BSE + 1),
+                                                   n1_chi0, m2_chi0),
                                                intraband=intraband,
                                                hilbert=hilbert,
                                                eta=self.eta,
@@ -1438,6 +1445,8 @@ class BSE_Plus:
             chi0_full_wGG = chi0_full_wGG * v_G_bare[np.newaxis, np.newaxis, :]
             chi_irr_BSE_wGG = chi_irr_BSE_wGG * \
                 v_G_bare[np.newaxis, np.newaxis, :]
+            chi0_full_WGG=chi0_full_wGG
+            chi0_limited_WGG=chi0_limited_wGG
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
