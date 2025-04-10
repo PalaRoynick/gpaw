@@ -966,17 +966,17 @@ class BSEBackend:
                 B_GT = rho_RG.T * df_R[np.newaxis] @ v_RT
                 tmp = v_RT.conj().T @ v_RT
                 overlap_tt = np.linalg.inv(tmp)
-                C_TGG = ((B_GT.conj() @ overlap_tt.T).T)[..., np.newaxis] *\
+                C_tGG = ((B_GT.conj() @ overlap_tt.T).T)[..., np.newaxis] *\
                     A_GT.T[:, np.newaxis]
-                C_TGG1 = None
+                C_tGG1 = None
             else:
                 return
         else:
             A_Gt = rho_RG.T @ v_Rt
             B_Gt = (rho_RG.T * df_R[np.newaxis]) @ v_Rt
             if world.size == 1:
-                C_TGG1 = A_Gt.T.conj()[..., np.newaxis] * B_Gt.T[:, np.newaxis]
-                C_TGG = B_Gt.T.conj()[..., np.newaxis] * A_Gt.T[:, np.newaxis]
+                C_tGG1 = A_Gt.T.conj()[..., np.newaxis] * B_Gt.T[:, np.newaxis]
+                C_tGG = B_Gt.T.conj()[..., np.newaxis] * A_Gt.T[:, np.newaxis]
             else:
                 nR = self.nS - len(exclude_S)
                 nr = -(-nR // world.size)
@@ -985,32 +985,54 @@ class BSEBackend:
                 C_tGG = desc.empty(dtype=complex)
                 np.einsum('Gt,Ht->tGH', B_Gt.conj(), A_Gt,
                           out=C_tGG.reshape((-1, nG, nG)))
-                C_TGG = self.collect_C_TGG(C_tGG)
+                #C_TGG = self.collect_C_TGG(C_tGG)
                 desc1 = grid.new_descriptor(nR, nG * nG, nr, nG * nG)
                 C_tGG1 = desc1.empty(dtype=complex)
                 np.einsum('Gt,Ht->tGH', A_Gt.conj(), B_Gt,
                           out=C_tGG1.reshape((-1, nG, nG)))
-                C_TGG1 = self.collect_C_TGG(C_tGG1)
-                if grid.comm.rank != 0:
-                    return
+                #C_TGG1 = self.collect_C_TGG(C_tGG1)
+                #if grid.comm.rank != 0:
+                #    return
 
         eta /= Hartree
 
-        tmp_Tw = 1 / (w_w[None, :] / Hartree - w_T[:, None] + 1j * eta)
-        n_tmp_Tw = - 1 / (w_w[None, :] / Hartree + w_T[:, None] + 1j * eta)
+        nG = rho_SG.shape[-1]
+        exclude_S = self.eig_data[2]
+        nR = self.nS - len(exclude_S)
+        nr = -(-nR // world.size)
 
-        chi_wGG = np.einsum('Tw,TAB->wAB', tmp_Tw, C_TGG)
-        if C_TGG1 is not None:
-            chi_wGG += np.einsum('Tw,TAB->wAB', n_tmp_Tw, C_TGG1)
+        if world.size > 1 and self.use_tammdancoff is True:
+            self.blocks = Blocks1D(world, len(w_T))
+            w_t=w_T[self.blocks.myslice]
+            C_tGG = C_tGG[:nr].reshape((nr, nG, nG))
+        else:
+            w_t = w_T
+            C_tGG = C_tGG[:nR].reshape((nR, nG, nG))
+            
+        tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
+        n_tmp_tw = - 1 / (w_w[None, :] / Hartree + w_t[:, None] + 1j * eta)
 
-        chi_wGG *= 1 / self.gs.volume
+        chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
 
-        if write_eig is not None:
-            assert isinstance(write_eig, str)
-            filename = write_eig
-            if world.rank == 0:
-                write_bse_eigenvalues(filename, self.mode,
-                                      self.w_T * Hartree, C_TGG[:, 0, 0])
+        if C_tGG1 is not None:
+            C_tGG1 = C_tGG1[:nr].reshape((nr, nG, nG))
+            chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
+
+        chi_wGG_local *= 1 / self.gs.volume
+        
+        if world.size > 1 and self.use_tammdancoff is True:
+            chi_wGG = np.zeros_like(chi_wGG_local)
+            world.sum(chi_wGG_local)
+            chi_wGG = chi_wGG_local
+        else:
+            chi_wGG = chi_wGG_local
+
+            #if write_eig is not None:
+             #   assert isinstance(write_eig, str)
+              #  filename = write_eig
+                #if world.rank == 0:
+                #write_bse_eigenvalues(filename, self.mode,
+                #                      self.w_T * Hartree, C_TGG[:, 0, 0])
         return np.swapaxes(chi_wGG, -1, -2)
 
     def get_dielectric_function(self, *args, filename='df_bse.csv', **kwargs):
@@ -1382,8 +1404,7 @@ class BSE_Plus:
             eta=self.eta,
             optical=optical,
             irreducible=True,
-            w_w=self.w_w[self.blocks.myslice]
-        )
+            w_w=self.w_w) #[self.blocks.myslice])
 
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
@@ -1396,7 +1417,7 @@ class BSE_Plus:
         chi0_limited_wGG = dyson_eqs_limited.get_chi0_wGG(self.direction)
         chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
             chi0_limited_wGG)
-        chi0_limited_wGG = chi0_limited_WGG[self.blocks.myslice]
+        chi0_limited_wGG = chi0_limited_WGG #[self.blocks.myslice]
 
         # chi0 fully converged
         chi0_data_full = self.chi0calc_full.calculate(self.q_c)
@@ -1404,7 +1425,7 @@ class BSE_Plus:
                                             xc_kernel, self.gs.cd)
         chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.direction)
         chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
-        chi0_full_wGG = chi0_full_WGG[self.blocks.myslice]
+        chi0_full_wGG = chi0_full_WGG #[self.blocks.myslice]
 
         self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
 
@@ -1423,34 +1444,37 @@ class BSE_Plus:
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
+        print(chi_irr_BSE_wGG.shape)
+        print(chi0_limited_WGG.shape)
+        print(chi0_full_WGG.shape)
         chi_irr_BSE_plus_wGG = \
-            chi_irr_BSE_wGG - chi0_limited_wGG + chi0_full_wGG
+            chi_irr_BSE_wGG - chi0_limited_WGG + chi0_full_WGG
 
         eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
 
-        chi_BSE_plus_wGG = \
+        self.chi_BSE_plus_WGG = \
             np.linalg.solve(eye - chi_irr_BSE_plus_wGG @ np.diag(self.v_G),
                             chi_irr_BSE_plus_wGG)
 
-        self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
+        #self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
 
         return_chi = [self.chi_BSE_plus_WGG]
 
         if chi_BSE is True:
-            chi_BSE_wGG = \
+            self.chi_BSE_WGG = \
                 np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
                                 chi_irr_BSE_wGG)
 
-            self.chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
+            #self.chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
 
             return_chi.append(self.chi_BSE_WGG)
 
         if chi_RPA is True:
-            chi_full_wGG = \
+            self.chi_full_WGG = \
                 np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
                                 chi0_full_wGG)
 
-            self.chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
+            #self.chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
 
             return_chi.append(self.chi_full_WGG)
 
