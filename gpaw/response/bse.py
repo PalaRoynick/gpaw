@@ -956,6 +956,11 @@ class BSEBackend:
 
         nG = rho_RG.shape[-1]
 
+        exclude_S = self.eig_data[2]
+        nR = self.nS - len(exclude_S)
+        nr = -(-nR // world.size)
+
+
         self.context.print('Calculating response function at %s frequency '
                            'points' % len(w_w))
 
@@ -970,7 +975,8 @@ class BSEBackend:
                     A_GT.T[:, np.newaxis]
                 C_tGG1 = None
             else:
-                return
+                C_tGG =  None
+                C_tGG1 = None
         else:
             A_Gt = rho_RG.T @ v_Rt
             B_Gt = (rho_RG.T * df_R[np.newaxis]) @ v_Rt
@@ -996,36 +1002,38 @@ class BSEBackend:
 
         eta /= Hartree
 
-        nG = rho_SG.shape[-1]
-        exclude_S = self.eig_data[2]
-        nR = self.nS - len(exclude_S)
-        nr = -(-nR // world.size)
-
         if world.size > 1 and self.use_tammdancoff is True:
             self.blocks = Blocks1D(world, len(w_T))
             w_t=w_T[self.blocks.myslice]
             C_tGG = C_tGG[:nr].reshape((nr, nG, nG))
-        else:
+        elif world.rank == 0 and self.use_tammdancoff is False:
             w_t = w_T
             C_tGG = C_tGG[:nR].reshape((nR, nG, nG))
-            
-        tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
-        n_tmp_tw = - 1 / (w_w[None, :] / Hartree + w_t[:, None] + 1j * eta)
+        
+        if self.use_tammdancoff is True or world.rank == 0:
+            tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
+            n_tmp_tw = - 1 / (w_w[None, :] / Hartree + w_t[:, None] + 1j * eta)
 
-        chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
+            chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
 
-        if C_tGG1 is not None:
-            C_tGG1 = C_tGG1[:nr].reshape((nr, nG, nG))
-            chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
+            if C_tGG is not None and C_tGG1 is not None:
+                C_tGG1 = C_tGG1[:nr].reshape((nr, nG, nG))
+                chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
 
-        chi_wGG_local *= 1 / self.gs.volume
+            chi_wGG_local *= 1 / self.gs.volume
         
         if world.size > 1 and self.use_tammdancoff is True:
             chi_wGG = np.zeros_like(chi_wGG_local)
             world.sum(chi_wGG_local)
             chi_wGG = chi_wGG_local
         else:
-            chi_wGG = chi_wGG_local
+            if world.rank == 0:
+                flat_chi_wGG = chi_wGG_local.ravel()
+            else: 
+                flat_chi_wGG = np.empty(len(w_w)*nG*nG, dtype=complex)
+            world.broadcast(flat_chi_wGG, 0)
+            chi_wGG = flat_chi_wGG.reshape((len(w_w), nG, nG))
+
 
             #if write_eig is not None:
              #   assert isinstance(write_eig, str)
