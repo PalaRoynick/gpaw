@@ -226,7 +226,7 @@ build-hip-cuda:
       extra_compile_args += ['-Wno-deprecated-declarations',
                              '-Wno-implicit-int',
                              ]
-      #undef_macros += ['GPAW_GPU_AWARE_MPI']
+      undef_macros += ['GPAW_GPU_AWARE_MPI']
 
       # MAGMA
       magma = True
