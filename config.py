@@ -170,8 +170,8 @@ def build_gpu(gpu_compiler, gpu_compile_args, gpu_include_dirs,
         has_std_flag = (
             any(re.match(r'-std=.+', arg) for arg in gpu_compile_args)
         )
-        #if not has_std_flag:
-            #gpu_compile_args.append('-std=c++17')
+        if not has_std_flag:
+            gpu_compile_args.append('-std=c++17')
 
         run_args += gpu_compile_args
         for (name, value) in define_macros:
