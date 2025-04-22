@@ -6,7 +6,7 @@ data_ej = np.loadtxt('spec.dat')
 
 plt.figure(figsize=(6, 6 / 1.62))
 ax = plt.subplot(1, 1, 1)
-ax.plot(data_ej[:, 0], data_ej[:, 1], 'k')
+ax.plot(data_ej[:, 0], data_ej[:, 3], 'k')
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
 ax.yaxis.set_ticks_position('left')
