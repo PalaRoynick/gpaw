@@ -19,7 +19,7 @@ from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.occupations import FermiDirac
 from gpaw.response.math_func import (two_phi_planewave_integrals,
                                      two_phi_nabla_planewave_integrals)
-from gpaw.utilities.blas import gemm
+from gpaw.utilities.blas import gemmdot as gemm
 from gpaw.utilities.progressbar import ProgressBar
 from gpaw.wavefunctions.pw import PWLFC
 from gpaw.bztools import get_reduced_bz, unique_rows
@@ -48,6 +48,7 @@ class KPointPair:
 
     Used for calculating pair quantities it contains two kpoints,
     and an associated set of Fourier components."""
+
     def __init__(self, kpt1, kpt2, Q_G):
         self.kpt1 = kpt1
         self.kpt2 = kpt2
@@ -88,6 +89,7 @@ class KPointPair:
 
 class PWSymmetryAnalyzer:
     """Class for handling planewave symmetries."""
+
     def __init__(self, kd, pd, txt=sys.stdout,
                  disable_point_group=False,
                  disable_non_symmorphic=True,
@@ -567,11 +569,15 @@ class PWSymmetryAnalyzer:
 
         reds = s % self.nU
         if self.timereversal(s):
-            TR = lambda x: x.conj()
+
+            def TR(x):
+                return x.conj()
             sign = -1
         else:
             sign = 1
-            TR = lambda x: x
+
+            def TR(x):
+                return x
 
         return U_scc[reds], sign, TR, self.shift_sc[s], ft_sc[reds]
 
@@ -674,12 +680,13 @@ class PairDensity:
         assert calc.wfs.kd.symmetry.symmorphic
         self.calc = calc
 
-        self.fermi_level = self.calc.occupations.get_fermi_level()
+        self.fermi_level = self.calc.get_fermi_level()
 
         if gate_voltage is not None:
             self.add_gate_voltage(gate_voltage)
         else:
-            self.add_gate_voltage(gate_voltage=0)
+            pass  # the below call seems bugged
+            # self.add_gate_voltage(gate_voltage=0)
 
         self.spos_ac = calc.spos_ac
 
@@ -700,7 +707,6 @@ class PairDensity:
 
     def add_gate_voltage(self, gate_voltage=0):
         """Shifts the Fermi-level by e * Vg. By definition e = 1."""
-        assert isinstance(self.calc.occupations, FermiDirac)
         print('Shifting Fermi-level by %.2f eV' % (gate_voltage * Hartree),
               file=self.fd)
         self.fermi_level += gate_voltage
@@ -711,7 +717,7 @@ class PairDensity:
     def shift_occupations(self, eps_n, gate_voltage):
         """Shift fermilevel."""
         fermi = self.fermi_level
-        width = self.calc.occupations.width
+        width = self.calc.parameters['occupations']['width']
         if width < 1e-9:
             return (eps_n < fermi).astype(float)
         else:
@@ -1180,7 +1186,6 @@ class PairDensity:
         dv = pd.gd.dv
         n_mG = pd.empty(kpt2.blocksize)
         myblocksize = kpt2.nb - kpt2.na
-
         for ut_R, n_G in zip(kpt2.ut_nR, n_mG):
             n_R = ut1cc_R * ut_R
             with self.timer('fft'):
@@ -1189,8 +1194,8 @@ class PairDensity:
         # PAW corrections:
         with self.timer('gemm'):
             for C1_Gi, P2_mi in zip(C1_aGi, kpt2.P_ani):
-                gemm(1.0, C1_Gi, P2_mi, 1.0, n_mG[:myblocksize], 't')
-
+                # gemm(1.0, C1_Gi, P2_mi, 1.0, n_mG[:myblocksize], 't')
+                gemm(C1_Gi, P2_mi, 1.0, 1.0, n_mG[:myblocksize], 't')
         if not block or self.blockcomm.size == 1:
             return n_mG
         else:
@@ -1378,7 +1383,7 @@ class PairDensity:
 
         See the get_k_point() method for how to use these tuples.
         """
-
+        from gpaw.atomrotations import AtomRotations
         wfs = self.calc.wfs
         kd = wfs.kd
 
@@ -1407,25 +1412,35 @@ class PairDensity:
         shift_c = shift_c.round().astype(int)
 
         if (U_cc == np.eye(3)).all():
-            T = lambda f_R: f_R
+
+            def T(f_R):
+                return f_R
         else:
             N_c = self.calc.wfs.gd.N_c
             i_cr = np.dot(U_cc.T, np.indices(N_c).reshape((3, -1)))
             i = np.ravel_multi_index(i_cr, N_c, 'wrap')
-            T = lambda f_R: f_R.ravel()[i].reshape(N_c)
+
+            def T(f_R):
+                return f_R.ravel()[i].reshape(N_c)
 
         if time_reversal:
             T0 = T
-            T = lambda f_R: T0(f_R).conj()
-            shift_c *= -1
 
+            def T(f_R):
+                return T0(f_R).conj()
+            shift_c *= -1
+        atomrotations = AtomRotations(
+            self.calc.wfs.setups.setups,
+            self.calc.wfs.setups.id_a,
+            kd.symmetry)
         a_a = []
         U_aii = []
         for a, id in enumerate(self.calc.wfs.setups.id_a):
             b = kd.symmetry.a_sa[s, a]
             S_c = np.dot(self.spos_ac[a], U_cc) - self.spos_ac[b]
             x = np.exp(2j * pi * np.dot(ik_c, S_c))
-            U_ii = wfs.setups[a].R_sii[s].T * x
+            R_sii = atomrotations.get_R_asii()[a]
+            U_ii = R_sii[s].T * x
             a_a.append(b)
             U_aii.append(U_ii)
 

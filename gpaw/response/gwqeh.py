@@ -12,10 +12,18 @@ from ase.dft.kpoints import monkhorst_pack
 
 import gpaw.mpi as mpi
 from gpaw.kpt_descriptor import KPointDescriptor
-from gpaw.response.chi0 import HilbertTransform, frequency_grid
+from gpaw.response.chi0 import HilbertTransform
 from gpaw.response.old_pair import PairDensity
 from gpaw.wavefunctions.pw import PWDescriptor
-from gpaw.xc.exx import select_kpts
+from gpaw.response.g0w0 import select_kpts
+
+
+def frequency_grid(domega0, omega2, omegamax):
+    beta = (2**0.5 - 1) * domega0 / omega2
+    wmax = int(omegamax / (domega0 + beta * omegamax)) + 2
+    w = np.arange(wmax)
+    omega_w = w * domega0 / (1 - beta * w)
+    return omega_w
 
 
 class GWQEHCorrection(PairDensity):
@@ -168,10 +176,14 @@ class GWQEHCorrection(PairDensity):
                 print('Self-energy loaded from file', file=self.fd)
 
     def calculate_QEH(self):
+        from gpaw.atomrotations import AtomRotations
         print('Calculating QEH self-energy contribution', file=self.fd)
 
         kd = self.calc.wfs.kd
-
+        atomrotations = AtomRotations(
+            self.calc.wfs.setups.setups,
+            self.calc.wfs.setups.id_a,
+            kd.symmetry)
         # Reset calculation
         self.sigma_sin = np.zeros(self.shape)   # self-energies
         self.dsigma_sin = np.zeros(self.shape)  # derivatives of self-energies
@@ -217,13 +229,11 @@ class GWQEHCorrection(PairDensity):
                 self.htm(Wpm_w[nw:])
 
             qd = KPointDescriptor([q_c])
-            pd0 = PWDescriptor(self.ecut, self.calc.wfs.gd, complex, qd)
-
-            # modify pd0 by hand - only G=0 component is needed
-            pd0.G_Qv = np.array([1e-17, 1e-17, 1e-17])[np.newaxis, :]
-            pd0.Q_qG = [np.array([0], dtype='int32')]
-            pd0.ngmax = 1
+            pd0 = PWDescriptor(self.ecut, self.calc.wfs.gd, complex, qd,
+                               gamma_only=True)
             G_Gv = pd0.get_reciprocal_vectors()
+            assert len(G_Gv) == 1
+            assert np.allclose(pd0.get_reciprocal_vectors(add_q=False), 0)
 
             self.Q_aGii = self.initialize_paw_corrections(pd0)
 
@@ -234,7 +244,6 @@ class GWQEHCorrection(PairDensity):
             for s, Q2 in enumerate(self.qd.bz2bz_ks[Q1]):
                 if Q2 >= 0 and Q2 not in Q2s:
                     Q2s.add(Q2)
-
             for Q2 in Q2s:
                 s = self.qd.sym_k[Q2]
                 self.s = s
@@ -278,7 +287,8 @@ class GWQEHCorrection(PairDensity):
                         x_G = np.exp(1j * np.dot(G_Gv, (pos_av[a] -
                                                         np.dot(M_vv,
                                                                pos_av[a]))))
-                        U_ii = self.calc.wfs.setups[a].R_sii[self.s]
+                        R_sii = atomrotations.get_R_asii()[a]
+                        U_ii = R_sii[self.s]
                         Q_Gii = np.dot(np.dot(U_ii, Q_Gii * x_G[:, None,
                                                                 None]),
                                        U_ii.T).transpose(1, 0, 2)
@@ -362,7 +372,6 @@ class GWQEHCorrection(PairDensity):
         w_m = (o_m / (self.domega0 + beta * o_m)).astype(int)
         o1_m = self.omega_w[w_m]
         o2_m = self.omega_w[w_m + 1]
-
         x = 1.0 / (self.qd.nbzkpts * 2 * pi * self.vol)
         sigma = 0.0
         dsigma = 0.0
@@ -402,7 +411,7 @@ class GWQEHCorrection(PairDensity):
             return False
         else:
             if (data['kpts'] == self.kpts and
-                data['bands'] == self.bands and
+                (data['bands'] == self.bands).all() and
                     data['nbands'] == self.nbands):
                 self.nq = data['last_q']
                 self.complete = data['complete']
@@ -479,7 +488,7 @@ class GWQEHCorrection(PairDensity):
         return dWgw_qw
 
     def calculate_W_QEH(self, structure, d, layer=0):
-        from gpaw.response.qeh import Heterostructure, expand_layers
+        from gpaw.response.old_qeh import Heterostructure, expand_layers
 
         structure = expand_layers(structure)
         self.w_grid = self.omega_w

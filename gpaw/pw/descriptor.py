@@ -13,13 +13,13 @@ class PWDescriptor:
 
     def __init__(self, ecut, gd, dtype=None, kd=None,
                  fftwflags=fftw.MEASURE, gammacentered=False,
-                 _new=False):
+                 _new=False, gamma_only=False):
 
         assert gd.pbc_c.all()
 
         self.gd = gd
         self.fftwflags = fftwflags
-
+        B_cv = 2.0 * pi * gd.icell_cv
         N_c = gd.N_c
         self.comm = gd.comm
 
@@ -60,7 +60,6 @@ class PWDescriptor:
         self.ifftplan = fftw.create_plan(self.tmp_Q, self.tmp_R, 1, fftwflags)
 
         # Calculate reciprocal lattice vectors:
-        B_cv = 2.0 * pi * gd.icell_cv
         i_Qc.shape = (-1, 3)
         self.G_Qv = np.dot(i_Qc, B_cv)
 
@@ -80,7 +79,11 @@ class PWDescriptor:
         self.ng_q = []
         for q, K_v in enumerate(self.K_qv):
             G2_Q = ((self.G_Qv + K_v)**2).sum(axis=1)
-            if gammacentered:
+            if gamma_only:
+                mask_Q = np.zeros_like(G2_Q, dtype=bool)
+                gamma_idx = np.argwhere(np.isclose((self.G_Qv**2).sum(1), 0))
+                mask_Q[gamma_idx] = True
+            elif gammacentered:
                 mask_Q = ((self.G_Qv**2).sum(axis=1) <= 2 * ecut)
             else:
                 mask_Q = (G2_Q <= 2 * ecut)
