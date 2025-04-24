@@ -2,6 +2,10 @@ import warnings
 
 import numpy as np
 from scipy.special import erf
+from gpaw.pw.descriptor import PWDescriptor
+from gpaw.typing import Array1D
+from gpaw.pw.density import ReciprocalSpaceDensity
+from gpaw.density import Density
 
 from gpaw.poisson import BasePoissonSolver, PoissonSolver, FDPoissonSolver
 from gpaw.fd_operators import Laplace, Gradient
@@ -296,3 +300,247 @@ class ADM12PoissonSolver(SolvationPoissonSolver):
                 (1. - self.eta) * self.rho_iter
             self.rhos[0][:] = (self.rho_iter + self.rho) / epsr
         return SolvationPoissonSolver.iterate2(self, step, level)
+
+class ConjugateGradientSolver():
+    """Generic conjugate gradient solver for linear systems (roughly equivalent 
+    to e.g., a numpy implementation).
+    
+    The beauty of conjugate gradient is that we can use an operator oracle 
+    rather than the entire matrix A (in a system Ax = b). We can leverage this 
+    to express the generalized planewave Poisson operator compactly, which has 
+    massive intermediates as a matrix.
+    
+    Parameters:
+    -----------
+    A_fn : callable
+        Function that applies the operator A to a vector
+    b : ndarray
+        Right-hand side vector
+    preconditioner : callable, optional
+        Function that applies preconditioning
+    init : ndarray, optional
+        Initial guess for solution
+    nits_max : int, optional
+        Maximum number of iterations
+    threshold : float, optional
+        Convergence threshold
+    """
+
+    def __init__(self,
+                 A_fn,
+                 b,
+                 preconditioner=lambda x: x,
+                 init=None,
+                 nits_max=15,
+                 threshold=1e-3):
+        
+        # system parameters
+        self.A = A_fn
+        self.b = b
+        self.preconditioner = preconditioner
+        if init is not None:
+            self.x = init
+        else:
+            self.x = np.zeros_like(self.b)
+
+        # initial residual/gradient
+        self.r = self.b - self.A(self.x)
+        self.z = self.preconditioner(self.r)
+        self.p = self.z.copy()
+
+        # to be computed during iterations
+        self.alpha = None
+        self.beta = None
+
+        # hyperparameters
+        self.nits_max = nits_max
+        self.threshold = threshold
+        self.r_norms = []
+
+    def update_alpha(self):
+        """Update the step size alpha using current residual and conjugate 
+        direction.
+        """
+        self.alpha = (self.rz) / np.vdot(self.p, self.Ap)
+
+    def update_beta(self):
+        """Update the direction update parameter beta based on residual growth.
+        """
+        new_rz = np.vdot(self.r, self.z)
+        self.beta = (new_rz) / (self.rz)
+        self.rz = new_rz
+
+    def solve(self):
+        """Execute the conjugate gradient algorithm.
+        
+        Returns:
+        --------
+        x : ndarray
+            Solution vector
+        """
+        i = 0
+
+        self.rz = np.vdot(self.r, self.z)
+        update_norm = float('inf')
+
+        while (np.linalg.norm(self.r) / np.linalg.norm(self.b) > self.threshold
+               and update_norm > self.threshold
+               and i < self.nits_max):
+            #    and (len(self.r_norms) < 2 or self.r_norms[-1]
+            # < self.r_norms[-2])):
+            self.Ap = self.A(self.p)
+
+            # update guess
+            self.update_alpha()
+            dx = self.alpha * self.p
+            self.x = self.x + dx
+            update_norm = np.linalg.norm(
+                dx) / max(np.linalg.norm(self.x), 1e-10)
+
+            # explicitly recompute residual
+            self.r = self.r - self.alpha * self.Ap
+            self.z = self.preconditioner(self.r)
+
+            # choose next direction conjugate to r_0
+            self.update_beta()
+            self.p = self.z + self.beta * self.p
+            self.r_norms.append(
+                np.linalg.norm(self.r) / np.linalg.norm(self.b))
+            i += 1
+        return self.x
+
+
+class ConjugateGradientPoissonSolver():
+    """Poisson solver using conjugate gradient method in reciprocal space.
+    
+    This solver works directly in reciprocal space and is particularly efficient
+    for systems with periodic boundary conditions.
+    
+    Parameters:
+    -----------
+    pd : PWDescriptor
+        Plane wave descriptor
+    charge : float, optional
+        Total charge of the system
+    strength : float, optional
+        Scaling factor for the potential
+    """
+    
+    def __init__(self,
+                 pd: PWDescriptor,
+                 charge: float = 0.0,
+                 strength: float = 1.0):
+        
+        self.pd = pd
+        self.charge = charge
+        self.strength = strength
+
+        self.G2_q = pd.G2_qG[0].copy()
+        if pd.gd.comm.rank == 0:
+            # Avoid division by zero:
+            self.G2_q[0] = 1.0
+
+    def set_dielectric(self, dielectric):
+        self.dielectric = dielectric
+
+    def __str__(self):
+        return f'Uniform background charge: {self.charge:.3f} electrons'
+
+    def get_description(self):
+        return 'Conjugate Gradient Poisson Solver'
+
+    def estimate_memory(self, mem):
+        pass
+
+    def operator(self, phi_q):
+        """Apply the generalized Poisson operator in reciprocal space. This refers to the "A_fn" we'll use in the conjugate gradient algorithm.
+        
+        Parameters:
+        -----------
+        phi_q : ndarray
+            Input potential in reciprocal space
+            
+        Returns:
+        --------
+        ndarray
+            Result of operator application
+        """
+        
+        G_Qv = self.pd.get_reciprocal_vectors()
+        Gx, Gy, Gz = G_Qv.T
+
+        # gradient of phi
+        grad_x, grad_y, grad_z = [x * phi_q for x in [Gx, Gy, Gz]]
+
+        # move to realspace
+        gx_real, gy_real, gz_real = [self.pd.ifft(x)
+                                     for x in [grad_x, grad_y, grad_z]]
+
+        # apply dielectric
+        epsg_x_r, epsg_y_r, epsg_z_r = [x * self.dielectric.eps_gradeps[0]
+                                        for x in [gx_real, gy_real, gz_real]]
+
+        # take divergence
+        epsg_x, epsg_y, epsg_z = [self.pd.fft(x)
+                                  for x in [epsg_x_r, epsg_y_r, epsg_z_r]]
+
+        return np.sum(
+            [Gx * epsg_x, Gy * epsg_y, Gz * epsg_z], axis=0)
+
+    def solve(self,
+              vHt_q: Array1D,
+              dens: ReciprocalSpaceDensity) -> float:
+        """Solve Poisson equation according to _solve. Places result in vHt_q 
+        ndarray.
+        
+        Parameters:
+        -----------
+        vHt_q : Array1D
+            Array to store resulting potential
+        dens : ReciprocalSpaceDensity
+            Density to solve Poisson equation with
+            
+        Returns:
+        --------
+        float
+            Potential energy of the solution
+        """
+        
+        assert dens.rhot_q is not None
+        epot = self._solve(vHt_q, dens.rhot_q)
+        return epot
+
+    def _solve(self,
+               vHt_q: Array1D,
+               rhot_q: Array1D) -> float:
+        """Solve Poisson equation using conjugate gradient in reciprocal space, 
+        using the generalized Poisson operator and the diagonalized Laplace as 
+        a preconditioner. Places result in vHt_q ndarray.
+        
+        Parameters:
+        -----------
+        vHt_q : Array1D
+            Array to store resulting potential
+        rhot_q : Array1D
+            Density to solve Poisson equation with
+            
+        Returns:
+        --------
+        float
+            Potential energy of the solution
+        """
+
+        vHt_q[:] = 4 * np.pi * self.strength * rhot_q
+        if self.pd.gd.comm.rank == 0:
+            # use uniform backgroud charge in case we have a charged system:
+            vHt_q[0] = 0.0
+
+        def precon(vec):
+            return vec / self.G2_q
+
+        self.cg_solv = ConjugateGradientSolver(self.operator, vHt_q,
+                                               preconditioner=precon)
+        vHt_q[:] = self.cg_solv.solve()
+
+        epot = 0.5 * self.pd.integrate(vHt_q, rhot_q)
+        return epot
