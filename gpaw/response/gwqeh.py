@@ -97,7 +97,8 @@ class GWQEHCorrection(PairDensity):
         self.ecut = 1.
         PairDensity.__init__(self, calc, ecut=self.ecut, world=world,
                              txt=filename + '.txt')
-
+        if txt == sys.stdout:
+            self.fd = sys.stdout
         self.filename = filename
         self.ecut /= Hartree
         self.eta = eta / Hartree
@@ -174,6 +175,8 @@ class GWQEHCorrection(PairDensity):
         if self.load_state_file():
             if self.complete:
                 print('Self-energy loaded from file', file=self.fd)
+
+        print('Initialized GWQEHCorrection object', file=self.fd)
 
     def calculate_QEH(self):
         from gpaw.atomrotations import AtomRotations
