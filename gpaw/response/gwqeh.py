@@ -27,7 +27,7 @@ def frequency_grid(domega0, omega2, omegamax):
 
 
 class GWQEHCorrection(PairDensity):
-    def __init__(self, calc, gwfile, filename=None, kpts=[0], bands=None,
+    def __init__(self, calc, gwfile=None, filename=None, kpts=[0], bands=None,
                  structure=None, d=None, layer=0,
                  dW_qw=None, qqeh=None, wqeh=None,
                  txt=sys.stdout, world=mpi.world, domega0=0.025,
@@ -41,7 +41,7 @@ class GWQEHCorrection(PairDensity):
 
         calc: str or PAW object
             GPAW calculator object or filename of saved calculator object.
-        gwfile: str
+        gwfile: str or None
             name of gw results file from the monolayer calculation
         filename: str
             filename for gwqeh output
@@ -332,20 +332,32 @@ class GWQEHCorrection(PairDensity):
 
         # Need GW result for renormalization factor
         b1, b2 = self.bands
-        gwdata = pickle.load(open(self.gwfile, 'rb'))
-        self.dsigmagw_sin = gwdata['dsigma']
-        self.qpgw_sin = gwdata['qp'] / Hartree
-        nk = self.qpgw_sin.shape[1]
-        if not self.sigma_sin.shape[1] == nk:
-            self.sigma_sin = np.repeat(self.sigma_sin[:, :1, :], nk, axis=1)
-            self.dsigma_sin = np.repeat(self.dsigma_sin[:, :1, :], nk, axis=1)
-        self.Z_sin = 1. / (1 - self.dsigma_sin - self.dsigmagw_sin)
+        if self.gwfile is not None:
+            gwdata = pickle.load(open(self.gwfile, 'rb'))
+
+            self.dsigmagw_sin = gwdata['dsigma']
+            self.qpgw_sin = gwdata['qp'] / Hartree
+
+            nk = self.qpgw_sin.shape[1]
+            if not self.sigma_sin.shape[1] == nk:
+                self.sigma_sin = np.repeat(
+                    self.sigma_sin[:, :1, :], nk, axis=1)
+                self.dsigma_sin = np.repeat(
+                    self.dsigma_sin[:, :1, :], nk, axis=1)
+            self.Z_sin = 1. / (1 - self.dsigma_sin - self.dsigmagw_sin)
+        else:
+            # Z = 0.7 is a good estimate according to
+            # https://doi.org/10.1038/s41524-020-00480-7
+            print('estimating quasiparticle weight Z = 0.7')
+            self.Z_sin = 0.7
         self.qp_sin = self.Z_sin * self.sigma_sin
 
         return self.qp_sin * Hartree
 
     def calculate_qp_energies(self):
         # calculate
+        assert self.gwfile is not None, \
+            'gwfile must be specified to calculate qp energies!'
         qp_sin = self.calculate_qp_correction() / Hartree
         self.Qp_sin = self.qpgw_sin + qp_sin
         self.save_state_file()
