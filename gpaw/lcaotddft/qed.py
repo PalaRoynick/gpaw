@@ -443,11 +443,7 @@ class CavityEnvironment(Environment):
         # Integrate using trapezoidal rule
         # Do not include current time
         field_v = -4. * np.pi * alpha**2 * self.cavity_polarization
-        field_v *= (np.trapz(dyadic_t[-2::-1] * d1_dipole_t[:-1], dx=timestep)
-                    # bug in previous implementation
-                    + 0.5 * dyadic_t[0] * d1_dipole_t[-2] * timestep
-                    - 0.5 * dyadic_t[0] * d1_dipole_t[-1] * timestep
-                    )
+        field_v *= np.trapz(dyadic_t[-2::-1] * d1_dipole_t[:-1], dx=timestep)
         return field_v
 
     def radiation_reaction_field_trajectory(self, timestep, dipole_tv):
