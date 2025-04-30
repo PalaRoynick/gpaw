@@ -321,7 +321,7 @@ class UGArray(DistributedArrays[UGDesc]):
             txt += ', xp=cp'
         return txt + ')'
 
-    def new(self, data=None, zeroed=False):
+    def new(self, data=None, zeroed=False, dims=None):
         """Create new UniforGridFunctions object of same kind.
 
         Parameters
@@ -329,6 +329,9 @@ class UGArray(DistributedArrays[UGDesc]):
         data:
             Array to use for storage.
         """
+        if dims:
+            assert data is not None
+            return UGArray(self.desc, dims, self.comm, data)
         if data is None:
             data = self.xp.empty_like(self.data)
         f_xR = UGArray(self.desc, self.dims, self.comm, data)

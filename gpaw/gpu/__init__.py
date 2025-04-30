@@ -34,8 +34,9 @@ else:
             raise ImportError
 
         import cupy
-        from cupy import cublas
 
+        # Cupy gemm wrapper (does extra copying):
+        from cupy import cublas
         gpu_gemm = trace(gpu=True)(cublas.gemm)  # noqa: F811
 
         import cupyx

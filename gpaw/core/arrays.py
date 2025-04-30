@@ -72,8 +72,31 @@ class DistributedArrays(Generic[DomainType], XP):
         XP.__init__(self, xp)
         self._matrix: Matrix | None = None
 
-    def new(self, data=None) -> DistributedArrays:
+    def new(self, data=None, dims=None) -> DistributedArrays:
         raise NotImplementedError
+
+    def new_buffer(self, data_buffer: np.ndarray):
+        """Create new Distributed array object of same
+        kind, to be used as a buffer array when doing
+        sliced operations.
+
+        Parameters
+        ----------
+        data_buffer:
+            Array to use for storage.
+        """
+        assert isinstance(data_buffer, self.xp.ndarray)
+        data_buffer = data_buffer.view(self.data.dtype)
+        datasize = data_buffer.size
+        X = self.data.shape[1:]
+        nX = int(np.prod(X))
+        mybands = min(datasize // nX,
+                      self.data.shape[0])
+        data = data_buffer[:mybands * nX].reshape(
+            (mybands,) + X)
+        totalbands = self.comm.sum_scalar(mybands)
+        return self.new(data=data,
+                        dims=(totalbands,) + self.dims[1:])
 
     def copy(self):
         return self.new(data=self.data.copy())
@@ -146,7 +169,7 @@ class DistributedArrays(Generic[DomainType], XP):
                          xp=self.xp)
 
         if comm.size == 1:
-            assert other.comm.size == 1
+            assert other.comm.size == comm.size
             if function:
                 assert symmetric
                 other = function(other)
@@ -156,9 +179,9 @@ class DistributedArrays(Generic[DomainType], XP):
             out = M1.multiply(M2, opb='C', alpha=self.dv,
                               symmetric=symmetric, out=out)
 
-            # Plane-wave expansion of real-valued functions needs a correction:
+            # Plane-wave expansion of real-valued
+            # functions needs a correction:
             self._matrix_elements_correction(M1, M2, out, symmetric)
-
         else:
             if symmetric:
                 _parallel_me_sym(self, out, function)
@@ -170,7 +193,6 @@ class DistributedArrays(Generic[DomainType], XP):
 
         if domain_sum:
             self.domain_comm.sum(out.data)
-
         return out
 
     def _matrix_elements_correction(self,
