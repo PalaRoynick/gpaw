@@ -52,7 +52,7 @@ else:
                 ld = a.shape[0]
             elif a.strides[-1] == a.dtype.itemsize:
                 ld = a.strides[-2] / a.strides[-1]
-		trans = 1 - trans
+                trans = 1 - trans
             return ld, trans
 
         @trace(gpu=True)
