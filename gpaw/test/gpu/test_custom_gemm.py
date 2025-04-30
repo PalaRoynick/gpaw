@@ -3,7 +3,7 @@ import cupy as cp
 
 from gpaw.gpu import gpu_gemm
 
-pytestmark = pytest.mark.skipif(gpu_gemm is None, reason='no GPU gemm')
+@pytest.mark.skipif(gpu_gemm is None, reason='no GPU gemm')
 def test_gemm():
     # transa, transb, a, b, out=None, alpha=1.0, beta=0.0
     A = cp.ones((10, 10))
