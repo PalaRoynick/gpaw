@@ -37,6 +37,7 @@ define_macros += [('GPAW_ASYNC', 1)]
 magma = True
 libraries += ['magma']
 
+
 # hip
 gpu = True
 gpu_target = 'hip-amd'

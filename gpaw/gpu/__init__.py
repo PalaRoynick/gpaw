@@ -50,6 +50,9 @@ else:
                 trans = 1 - trans
             elif a._f_contiguous:
                 ld = a.shape[0]
+            elif a.strides[-1] == a.dtype.itemsize:
+                ld = a.strides[-2] / a.strides[-1]
+		trans = 1 - trans
             return ld, trans
 
         @trace(gpu=True)
@@ -279,7 +282,7 @@ def cupy_eigh(a: cupy.ndarray, UPLO: str) -> tuple[cupy.ndarray, cupy.ndarray]:
         # magma needs cupy (possibly fake),
         # which must be imported from this file
         from gpaw.new.magma import eigh_magma_gpu
-
+        print(f'Calling eigh_magma_gpu with {a.shape}, {a.dtype}, {a.size}, {UPLO}', flush=True)
         return eigh_magma_gpu(a, UPLO)
 
     else:
