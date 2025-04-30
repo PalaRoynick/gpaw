@@ -149,6 +149,10 @@ def block_step(psit_nX,
     #P_ani = pt_aiX.integrate(PR_nX)
     calculate_residuals(PR_nX, dR_nX, pt_aiX, P_ani, eig_n,
                         dH, dS_aii, P1_ani, P2_ani)
+    preconditioner(psit_nX, dR_nX, out=buff_nX, ekin_n=ekin_n)
+    tmp = dR_nX
+    dR_nX = buff_nX
+    buff_nX = tmp
     a_n = psit_nX.xp.asarray(
         [-d_X.integrate(r_X) for d_X, r_X in zip(dR_nX, PR_nX)]) #  XXX PR_nX should be R_nX
     b_n = dR_nX.norm2()
@@ -158,8 +162,7 @@ def block_step(psit_nX,
     psit_nX.data += PR_nX.data
     dR_nX.data *= lambda_n
     #R_nX.data += dR_nX.data
-    preconditioner(psit_nX, dR_nX, out=buff_nX, ekin_n=ekin_n)
-    PR_nX.data += buff_nX.data
+    PR_nX.data += dR_nX.data
     if trial_step is None:
         PR_nX.data *= lambda_n
     else:

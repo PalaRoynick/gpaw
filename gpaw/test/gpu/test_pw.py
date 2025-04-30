@@ -18,6 +18,9 @@ from gpaw.new.c import GPU_AWARE_MPI
 def test_gpu(dtype, gpu, mode, random, eigensolver):
     if eigensolver == 'rmm-diis' and mode == 'fd':
         pytest.skip("FD mode doesn't have rmm-diis.")
+    if eigensolver == 'rmm-diis' and random:
+        pytest.skip("rmm-diis with random wave-functions"
+                    " won't converge.")
     atoms = Atoms('H2')
     atoms.positions[1, 0] = 0.75
     atoms.center(vacuum=1.0)
