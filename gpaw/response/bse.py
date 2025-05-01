@@ -808,34 +808,6 @@ class BSEBackend:
             comm.send(C_tGG, root, tag=comm.rank)
             print('Success', log2(C_tGG.nbytes), 'log2 bytes', comm.rank)
 
-    def collect_C_TGG(self, C_tGG):
-        """
-            Collect C_tGG to a rank 0 (as C_TGG) from all ranks.
-            T is global transition index, t is local transition index.
-            G is global planewave index.
-        """
-        print(C_tGG.shape, 'orig shape')
-        exclude_S = self.eig_data[2]
-        nR = self.nS - len(exclude_S)
-        nr = -(-nR // world.size)
-        if len(C_tGG) != nr:
-            C2_tGG = np.zeros((nr, *C_tGG.shape[1:]), dtype=complex)
-            C2_tGG[:len(C_tGG)] = C_tGG
-            C_tGG = C2_tGG
-        print(f'done with C2_tgg at {bse_time()-t0}')
-        if world.rank == 0:
-            C_TGG = np.zeros((nr * world.size,
-                              *C_tGG.shape[1:]), dtype=complex)
-        else:
-            C_TGG = None
-        print(f'allocated the space in collect_CTGG, time is {bse_time()-t0}')
-        # world.gather(C_tGG, 0, C_TGG
-        self.mygather(world, C_tGG, 0, C_TGG)
-        print(f'did the gather at {bse_time()-t0}')
-        if world.rank == 0:
-            nG = self.rho_SG.shape[-1]
-            return C_TGG[:nR].reshape((nR, nG, nG))
-
     @timer('get_spectral_weights')
     def get_spectral_weights(self, eig_data, df_S, mode_c):
         if mode_c is None:
@@ -996,8 +968,6 @@ class BSEBackend:
                           out=C_tGG1.reshape((-1, nG, nG)))
 
         eta /= Hartree
-
-        #print(C_tGG.shape, 'orig shape')
 
         if world.size > 1 and self.use_tammdancoff is True:
             self.blocks = Blocks1D(world, len(w_T))
