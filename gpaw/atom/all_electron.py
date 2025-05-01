@@ -725,7 +725,7 @@ guess for the density).
     f0 = c0 - 2 * c2
 
     if gmax is None:
-        gcut = int(rc * len(r) / (beta + rc))
+        gcut = np.searchsorted(vr, np.inf, 'left')
         # set boundary conditions at r -> oo (u(oo) = 0 is implicit)
         u[gcut - 1] = 1.
         u[gcut:] = 0.
