@@ -62,6 +62,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                         rpa_gpw=gpw_files['sic_pw'],
                         rpa_nbands=rpa_nbands,
                         w_w=w_w,
+                        eshift=eshift,
                         eta=eta,
                         q_c=q_c,
                         ecut=ecut)
@@ -136,6 +137,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                  rpa_gpw=gpw_files['sic_pw'],
                  rpa_nbands=rpa_nbands,
                  w_w=w_w,
+                 eshift=eshift,
                  eta=eta,
                  q_c=q_c,
                  ecut=ecut)

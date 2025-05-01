@@ -1391,6 +1391,7 @@ class BSE_Plus:
                  rpa_gpw,
                  rpa_nbands,
                  w_w,
+                 eshift=0.0,
                  bse_add_soc=False,
                  eta=0.1,
                  q_c=[0.0, 0.0, 0.0],
@@ -1405,6 +1406,7 @@ class BSE_Plus:
         self.rpa_gpw = rpa_gpw
         self.rpa_nbands = rpa_nbands
         self.w_w = w_w
+        self.eshift = eshift
         self.bse_add_soc = bse_add_soc
         self.eta = eta
         self.q_c = q_c
