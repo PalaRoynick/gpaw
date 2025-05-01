@@ -838,6 +838,8 @@ class GPAW(Calculator):
             nvalence += background.charge
 
         M = np.linalg.norm(magmom_av.sum(0))
+        if M < 1e-4:
+            M = 0
 
         nbands = par.nbands
 
