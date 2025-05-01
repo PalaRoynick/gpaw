@@ -1399,16 +1399,19 @@ class BSE_Plus:
                  ecut=10):
 
         self.bse_gpw = bse_gpw
-        self.rpa_gpw = rpa_gpw
         self.bse_valence_bands = bse_valence_bands
         self.bse_conduction_bands = bse_conduction_bands
+        self.bse_nbands = bse_nbands
+        self.rpa_gpw = rpa_gpw
+        self.rpa_nbands = rpa_nbands
+        self.w_w = w_w
+        self.bse_add_soc = bse_add_soc
         self.eta = eta
         self.q_c = q_c
         self.bse_direction = direction
         self.rpa_direction = ('x', 'y', 'z')[direction]
         self.truncation = truncation
         self.ecut = ecut
-        self.w_w = w_w
 
         self.n1_BSE = self.bse_valence_bands[0]
         self.m2_BSE = self.bse_conduction_bands[-1]
