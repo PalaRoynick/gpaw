@@ -996,10 +996,13 @@ class BSEBackend:
 
         eta /= Hartree
 
+        #print(C_tGG.shape, 'orig shape')
+
         if world.size > 1 and self.use_tammdancoff is True:
             self.blocks = Blocks1D(world, len(w_T))
             w_t = w_T[self.blocks.myslice]
-            C_tGG = C_tGG[:nr].reshape((nr, nG, nG))
+            print(f'shape is {C_tGG.shape}')
+            C_tGG = C_tGG[:C_tGG.shape[0]].reshape((C_tGG.shape[0], nG, nG))
         elif (
             world.rank == 0 and self.use_tammdancoff is False
         ) or world.size == 1:
@@ -1013,7 +1016,7 @@ class BSEBackend:
             chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
 
             if C_tGG1 is not None:
-                C_tGG1 = C_tGG1[:nr].reshape((nr, nG, nG))
+                C_tGG1 = C_tGG1[:C_tGG1.shape[0]].reshape((C_tGG1.shape[0], nG, nG))
                 chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
 
             chi_wGG_local *= 1 / self.gs.volume
@@ -1398,10 +1401,17 @@ class BSE_Plus:
     def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None,
                     chi_BSE=False, chi_RPA=False):
 
-        if comm is None:
-            comm = world
-        nR = len(self.w_w)
-        self.blocks = Blocks1D(comm, nR)
+        #if comm is None:
+        #    comm = world
+        #nR = len(self.w_w)
+        #self.blocks = Blocks1D(comm, nR)
+
+        print('here1', flush=True)
+
+        print(f'this is eta {self.eta}')
+        print(f'this is optical {optical}')
+        print(f'this is w_w {len(self.w_w)}')
+        print(f'w_w first 5: {self.w_w[0:5]}')
 
         # irreducibale bse chi
         chi_irr_BSE_wGG = self.bse.get_chi_wGG(
@@ -1409,6 +1419,7 @@ class BSE_Plus:
             optical=optical,
             irreducible=True,
             w_w=self.w_w) #[self.blocks.myslice])
+        print('here2', flush=True)
 
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
@@ -1422,7 +1433,7 @@ class BSE_Plus:
         chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
             chi0_limited_wGG)
         chi0_limited_wGG = chi0_limited_WGG #[self.blocks.myslice]
-
+        print('here3', flush=True)
         # chi0 fully converged
         chi0_data_full = self.chi0calc_full.calculate(self.q_c)
         dyson_eqs_full = Chi0DysonEquations(chi0_data_full, coulomb_kernel,
@@ -1430,7 +1441,7 @@ class BSE_Plus:
         chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.direction)
         chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
         chi0_full_wGG = chi0_full_WGG #[self.blocks.myslice]
-
+        print('here4', flush=True)
         self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
 
         if self.truncation == '2D':
@@ -1455,7 +1466,7 @@ class BSE_Plus:
         print(chi0_full_WGG.shape)
         chi_irr_BSE_plus_wGG = \
             chi_irr_BSE_wGG - chi0_limited_WGG + chi0_full_WGG
-
+        print('here5', flush=True)
         eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
 
         self.chi_BSE_plus_WGG = \
@@ -1463,6 +1474,7 @@ class BSE_Plus:
                             chi_irr_BSE_plus_wGG)
 
         #self.chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
+        print('here6', flush=True)
 
         return_chi = [self.chi_BSE_plus_WGG]
 
@@ -1474,7 +1486,7 @@ class BSE_Plus:
             #self.chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
 
             return_chi.append(self.chi_BSE_WGG)
-
+        print('here7', flush=True)
         if chi_RPA is True:
             self.chi_full_WGG = \
                 np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
@@ -1483,7 +1495,7 @@ class BSE_Plus:
             #self.chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
 
             return_chi.append(self.chi_full_WGG)
-
+        print('here8', flush=True)
         return return_chi[0] if len(return_chi) == 1 else tuple(return_chi)
 
     def get_refractive_index(self):
