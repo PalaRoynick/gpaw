@@ -13,7 +13,7 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     """
     This test makes a BSE plus calculation with the BSE_Plus class and
     manually to test that the BSE_Plus code is working. It tests that the
-    assertions work.
+    assertion work.
     """
     gs, context = get_gs_and_context(
         gpw_files['sic_pw'], txt=None, world=world, timer=None)
@@ -22,13 +22,17 @@ def test_bse_plus(in_tmp_dir, gpw_files):
     eshift = 0.2
     eta = 0.1
     q_c = [0.0, 0.0, 0.0]
+    bse_valence_bands = range(3, 4)
+    bse_conduction_bands = range(4, 6)
+    bse_nbands = 8
+    rpa_nbands = 8
     bse = BSE(gpw_files['sic_pw'], ecut=ecut,
               q_c=q_c,
-              valence_bands=range(3, 4),
-              conduction_bands=range(4, 6),
-              eshift=eshift,  # integrate_gamma = 0,
+              valence_bands=bse_valence_bands,
+              conduction_bands=bse_conduction_bands,
+              eshift=eshift,
               mode='BSE',
-              nbands=8)
+              nbands=bse_nbands)
 
     w_w = np.linspace(0, 10, 5)
     wd = get_frequency_descriptor(w_w, gs=gs)
@@ -44,14 +48,23 @@ def test_bse_plus(in_tmp_dir, gpw_files):
 
     chi0calc_large = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=8,
+                                    nbands=rpa_nbands,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
                                     ecut=ecut,
                                     eshift=eshift)
 
-    bse_plus = BSE_Plus(bse, chi0calc_large)
+    bse_plus = BSE_Plus(bse_gpw=gpw_files['sic_pw'],
+                        bse_valence_bands=bse_valence_bands,
+                        bse_conduction_bands=bse_conduction_bands,
+                        bse_nbands=bse_nbands,
+                        rpa_gpw=gpw_files['sic_pw'],
+                        rpa_nbands=rpa_nbands,
+                        w_w=w_w,
+                        eta=eta,
+                        q_c=q_c,
+                        ecut=ecut)
 
     chi_BSE_plus_WGG, chi_BSE_WGG, chi_RPA_WGG = \
         bse_plus.get_chi_wGG(optical=True,
@@ -113,41 +126,16 @@ def test_bse_plus(in_tmp_dir, gpw_files):
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
 
-    # assertion error if ecuts do not match
-    with pytest.raises(AssertionError, match=r'Cutoff energies should*'):
-        chi0calc_ecut_10 = Chi0Calculator(gs, context,
-                                          wd=wd,
-                                          nbands=8,
-                                          intraband=False,
-                                          hilbert=False,
-                                          eta=eta,
-                                          ecut=10,
-                                          eshift=eshift)
-
-        BSE_Plus(bse, chi0calc_ecut_10)
-
     # assertion error if more bands in the bse calculation
     with pytest.raises(AssertionError, match=r'Large chi0 calculation*'):
-        chi0calc_bands_5 = Chi0Calculator(gs, context,
-                                          wd=wd,
-                                          nbands=5,
-                                          intraband=False,
-                                          hilbert=False,
-                                          eta=eta,
-                                          ecut=ecut,
-                                          eshift=eshift)
-
-        BSE_Plus(bse, chi0calc_bands_5)
-
-    # assertion error if different eshifts
-    with pytest.raises(AssertionError, match=r'Inconsistent use of eshift'):
-        chi0calc_eshift = Chi0Calculator(gs, context,
-                                         wd=wd,
-                                         nbands=8,
-                                         intraband=False,
-                                         hilbert=False,
-                                         eta=eta,
-                                         ecut=ecut,
-                                         eshift=3)
-
-        BSE_Plus(bse, chi0calc_eshift)
+        rpa_nbands = 5
+        BSE_Plus(bse_gpw=gpw_files['sic_pw'],
+                 bse_valence_bands=bse_valence_bands,
+                 bse_conduction_bands=bse_conduction_bands,
+                 bse_nbands=bse_nbands,
+                 rpa_gpw=gpw_files['sic_pw'],
+                 rpa_nbands=rpa_nbands,
+                 w_w=w_w,
+                 eta=eta,
+                 q_c=q_c,
+                 ecut=ecut)

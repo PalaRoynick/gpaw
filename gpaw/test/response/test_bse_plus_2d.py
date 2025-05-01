@@ -21,14 +21,19 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
     eshift = 0.2
     eta = 0.1
     q_c = [0.0, 0.0, 0.0]
+    bse_valence_bands = range(7, 9)
+    bse_conduction_bands = range(9, 11)
+    bse_nbands = 12
+    rpa_nbands = 15
+
     bse = BSE(gpw_files['mos2_5x5_pw'], ecut=ecut,
               truncation='2D',
               q_c=q_c,
-              valence_bands=range(7, 9),
-              conduction_bands=range(9, 11),
-              eshift=eshift,  # integrate_gamma = 0,
+              valence_bands=bse_valence_bands,
+              conduction_bands=bse_conduction_bands,
+              eshift=eshift,
               mode='BSE',
-              nbands=12)
+              nbands=bse_nbands)
 
     w_w = np.linspace(0, 10, 5)
     wd = get_frequency_descriptor(w_w, gs=gs)
@@ -44,14 +49,24 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
 
     chi0calc_large = Chi0Calculator(gs, context,
                                     wd=wd,
-                                    nbands=15,
+                                    nbands=rpa_nbands,
                                     intraband=False,
                                     hilbert=False,
                                     eta=eta,
                                     ecut=ecut,
                                     eshift=eshift)
 
-    bse_plus = BSE_Plus(bse, chi0calc_large)
+    bse_plus = BSE_Plus(bse_gpw=gpw_files['mos2_5x5_pw'],
+                        bse_valence_bands=bse_valence_bands,
+                        bse_conduction_bands=bse_conduction_bands,
+                        bse_nbands=bse_nbands,
+                        rpa_gpw=gpw_files['mos2_5x5_pw'],
+                        rpa_nbands=rpa_nbands,
+                        w_w=w_w,
+                        eta=eta,
+                        q_c=q_c,
+                        ecut=ecut,
+                        truncation='2D')
 
     chi_bse_plus = bse_plus.get_chi_wGG(optical=True)
 
