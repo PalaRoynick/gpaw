@@ -645,7 +645,7 @@ gpwfiles:
   #  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 
-.nightly-old
+.nightly-old:
   extends:
     - .nightly
   needs:
