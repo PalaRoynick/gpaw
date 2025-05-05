@@ -628,7 +628,6 @@ gpwfiles:
   stage: test
   needs:
     - build-latest
-    - gpwfiles
   tags:
     - xeon24
   before_script:
@@ -646,9 +645,15 @@ gpwfiles:
   #  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 
-nightly-mpi-1:
+.nightly-old
   extends:
     - .nightly
+  needs:
+    - gpwfiles
+
+nightly-mpi-1:
+  extends:
+    - .nightly-old
   script:
     - gpaw info
     - pytest --cache-show
@@ -670,7 +675,7 @@ nightly-mpi-2:
   variables:
     GPAW_MPI_NPROCS: "2"
   extends:
-    - .nightly
+    - .nightly-old
   script:
     - >
       gpaw -P $GPAW_MPI_NPROCS python -m
@@ -681,14 +686,14 @@ nightly-mpi-4:
   variables:
     GPAW_MPI_NPROCS: "4"
   extends:
-    - .nightly
+    - .nightly-old
 
 
 nightly-mpi-8:
   variables:
     GPAW_MPI_NPROCS: "8"
   extends:
-    - .nightly
+    - .nightly-old
 
 
 .nightly-mpi-new:
