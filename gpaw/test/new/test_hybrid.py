@@ -54,5 +54,33 @@ def test_h(gpaw_new):
     assert eigs[0] == pytest.approx(-9.71440, abs=1e-3)
 
 
+def test_h_from_pbe(gpaw_new):
+    if gpaw_new and size > 2:
+        pytest.skip('Only band-parallelization!')
+    atoms = Atoms('H', magmoms=[1])
+    atoms.center(vacuum=2.5)
+    atoms.calc = GPAW(mode='pw',
+                      xc='PBE',
+                      nbands=2,
+                      convergence={'energy': 1e-4},
+                      parallel={'domain': 1})
+    atoms.get_potential_energy()
+    dft = atoms.calc.dft
+    from gpaw.new.xc import create_functional
+    xc = create_functional('HSE06', dft.pot_calc.fine_grid)
+    dft.pot_calc.xc = xc
+    from gpaw.new.pw.hybrids import PWHybridHamiltonian
+    dft.scf_loop.hamiltonian = PWHybridHamiltonian(
+        dft.density.nt_sR.desc, dft.ibzwfs.wfs_qs[0][0].psit_nX.desc, xc,
+        dft.setups,
+        dft.relpos_ac, dft.density.D_asii.layout.atomdist,
+        comp_charge_in_real_space=False)
+    dft.results.clear()
+    e = atoms.get_potential_energy()
+    eigs = atoms.calc.get_eigenvalues(spin=0)
+    assert e == pytest.approx(-1.703969, abs=4e-3)
+    assert eigs[0] == pytest.approx(-9.71440, abs=1e-3)
+
+
 if __name__ == '__main__':
     test_hse06(1, True)
