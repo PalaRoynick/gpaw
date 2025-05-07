@@ -160,9 +160,8 @@ class TBPotentialCalculator(PotentialCalculator):
         self.force_av = None
         self.stress_vv = None
 
-    def force_contributions(self, density, potential):
-        return {}, {}, {a: self.force_av[a:a + 1]
-                        for a in density.D_asii.keys()}
+    def force_contributions(self, Q_aL, density, potential):
+        return 0.0, {}, None, {}, 0.0
 
     def stress_contribution(self, ibzwfs, density, potential):
         return self.stress_vv
@@ -216,17 +215,28 @@ class TBSCFLoop:
         #     density, None, potential.vHt_x)
 
 
+class Sphere:
+    def __init__(self, Mmax):
+        self.Mmax = Mmax
+
+
 class DummyBasis:
     def __init__(self, setups):
         self.my_atom_indices = np.arange(len(setups))
         self.Mstart = 0
         self.Mstop = setups.nao
+        self.sphere_a = [Sphere(sum(2 * bf.l + 1
+                                    for bf in setup.basis_functions_J))
+                         for setup in setups]
 
     def add_to_density(self, nt_sR, f_asi):
         pass
 
     def construct_density(self, rho_MM, nt_G, q):
         pass
+
+    def calculate_force_contribution(self, vt_R, rhot_MM, q):
+        return 0.0
 
 
 class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
@@ -272,7 +282,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
                                   *,
                                   log=None,
                                   coefficients=None):
-        assert self.communicators['w'].size == 1
+        # assert self.communicators['w'].size == 1
 
         ibzwfs, tciexpansions = create_lcao_ibzwfs(
             basis,

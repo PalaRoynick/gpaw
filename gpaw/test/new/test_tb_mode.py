@@ -5,7 +5,7 @@ from gpaw.new.ase_interface import GPAW
 from gpaw.test.xc.test_qna_stress import numeric_stress
 
 
-@pytest.mark.serial
+# @pytest.mark.serial
 def test_tb_mode_molecule():
     atoms = Atoms('LiH',
                   [[0, 0.1, 0.2],
@@ -15,7 +15,8 @@ def test_tb_mode_molecule():
         symmetry='off',  # ??? should not be needed
         txt='-')  # None)
     atoms.get_potential_energy()
-    # f1 = atoms.get_forces()
+    f1 = atoms.get_forces()
+    print(f1)
     # f2 = calculate_numerical_forces(atoms)
     # assert abs(f1 - f2).max() < 0.0005
 
