@@ -1,13 +1,13 @@
 import numpy as np
-from gpaw.core.matrix import Matrix
+from gpaw.core.matrix import Matrix, MatrixWithNoData
 from gpaw.lcao.tci import TCIExpansions
 from gpaw.new import zips
 from gpaw.new.fd.builder import FDDFTComponentsBuilder
-from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.lcao.forces import TCIDerivatives
 from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.lcao.hybrids import HybridLCAOEigensolver, HybridXCFunctional
+from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.utilities.timing import NullTimer
 
@@ -52,13 +52,13 @@ class LCAODFTComponentsBuilder(FDDFTComponentsBuilder):
                                            self.ibz.symmetries)
         return LCAOEigensolver(self.basis)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, log):
         c = 1
         if reader.version >= 0 and reader.version < 4:
             c = reader.bohr**1.5
 
         basis = self.create_basis_set()
-        potential = self.create_potential_calculator()
+        potential = self.create_potential_calculator(log)
         if 'coefficients' in reader.wave_functions:
             coefficients = reader.wave_functions.proxy('coefficients')
             coefficients.scale = c
@@ -105,18 +105,17 @@ def create_lcao_ibzwfs(basis,
     nao = setups.nao
 
     def create_wfs(spin, q, k, kpt_c, weight):
-        C_nM = Matrix(nbands, 2 * nao if ncomponents == 4 else nao,
-                      dtype,
-                      dist=(band_comm, band_comm.size, 1))
+        shape = (nbands, 2 * nao if ncomponents == 4 else nao)
         if coefficients is not None:
-            C_nM.data[:] = coefficients.proxy(spin, k)
+            C_nM = Matrix(*shape,
+                          dtype=dtype,
+                          dist=(band_comm, band_comm.size, 1))
+            n1, n2 = C_nM.dist.my_row_range()
+            C_nM.data[:] = coefficients.proxy(spin, k)[n1:n2]
         else:
-            # We set the first element to NaN as a hack so that the
-            # code can later tell that the data is not initialized.
-            # We could set /all/ the elements, but what we care about is
-            # only this piece of information.  Maybe we can find a better
-            # solution.
-            pass  # C_nM.data[:1, :1] = np.nan
+            C_nM = MatrixWithNoData(*shape,
+                                    dtype=dtype,
+                                    dist=(band_comm, band_comm.size, 1))
         return LCAOWaveFunctions(
             setups=setups,
             tci_derivatives=tci_derivatives,
@@ -137,7 +136,6 @@ def create_lcao_ibzwfs(basis,
 
     ibzwfs = LCAOIBZWaveFunctions.create(
         ibz=ibz,
-        nelectrons=nelectrons,
         ncomponents=ncomponents,
         create_wfs_func=create_wfs,
         kpt_comm=kpt_comm,
