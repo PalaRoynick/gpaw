@@ -6,15 +6,16 @@ from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSE_Plus
 from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.coulomb_kernels import CoulombKernel
-
+import os
 
 @pytest.mark.response
-def test_bse_plus(in_tmp_dir, gpw_files):
+def test_bse_plus(in_tmp_dir, gpw_files, monkeypatch):
     """
     This test makes a BSE plus calculation with the BSE_Plus class and
     manually to test that the BSE_Plus code is working. It tests that the
     assertion work.
     """
+    monkeypatch.chdir(in_tmp_dir)
     gs, context = get_gs_and_context(
         gpw_files['sic_pw'], txt=None, world=world, timer=None)
 
@@ -67,10 +68,18 @@ def test_bse_plus(in_tmp_dir, gpw_files):
                         q_c=q_c,
                         ecut=ecut)
 
-    chi_BSE_plus_WGG, chi_BSE_WGG, chi_RPA_WGG = \
-        bse_plus.get_chi_wGG(optical=True,
+   # chi_BSE_plus_WGG, chi_BSE_WGG, chi_RPA_WGG = \
+    bse_plus.get_chi_wGG(optical=True,
                              chi_BSE=True,
-                             chi_RPA=True)
+                             chi_RPA=True, 
+                             bsep_name = 'chi_BSE_Plus_3bands', 
+                             bse_name = 'chi_BSE', 
+                             rpa_name = 'chi_RPA')
+    if world.rank == 0:
+        chi_BSE_plus_WGG = np.load("chi_BSE_Plus_3bands.npy")
+        chi_BSE_WGG = np.load("chi_BSE.npy")
+        chi_RPA_WGG = np.load("chi_RPA.npy")
+
 
     coulomb_kernel = CoulombKernel.from_gs(gs, truncation=None)
 

@@ -1314,7 +1314,7 @@ class VChi:
 class BSE_Plus:
 
     def create_chi0_full_calculator(self):
-        self.chi0calc_full = Chi0Calculator(self.gs, self.context,
+        chi0calc_full = Chi0Calculator(self.gs, self.context,
                                             wd=self.wd,
                                             nbands=self.rpa_nbands,
                                             intraband=False,
@@ -1323,10 +1323,10 @@ class BSE_Plus:
                                             ecut=self.ecut,
                                             eshift=self.eshift)
 
-        return self.chi0calc_full
+        return chi0calc_full
 
     def create_bse_calculator(self):
-        self.bse = BSE(self.bse_gpw,
+        bse = BSE(self.bse_gpw,
                        ecut=self.ecut,
                        valence_bands=self.bse_valence_bands,
                        conduction_bands=self.bse_conduction_bands,
@@ -1339,10 +1339,14 @@ class BSE_Plus:
                        add_soc=self.bse_add_soc,
                        txt='bse_calculation.txt')
 
-        return self.bse
+        return bse
 
     def create_chi0_limited_calculator(self):
-        self.chi0calc_limited = Chi0Calculator(self.gs, self.context,
+        self.gs, self.context = get_gs_and_context(
+            self.rpa_gpw, txt=None, world=world, timer=None)
+        self.wd = get_frequency_descriptor(
+            self.w_w, gs=self.gs, nbands=self.rpa_nbands)
+        chi0calc_limited = Chi0Calculator(self.gs, self.context,
                                                wd=self.wd,
                                                nbands=slice(
                                                    self.n1_chi0, self.m2_chi0),
@@ -1351,7 +1355,7 @@ class BSE_Plus:
                                                eta=self.eta,
                                                ecut=self.ecut,
                                                eshift=self.eshift)
-        return self.chi0calc_limited
+        return chi0calc_limited
 
     def __init__(self,
                  bse_gpw,
@@ -1400,86 +1404,144 @@ class BSE_Plus:
             'Large chi0 calculation should contain more ' \
             'bands than the BSE calculation'
 
-        self.gs, self.context = get_gs_and_context(
-            rpa_gpw, txt=None, world=world, timer=None)
-        self.wd = get_frequency_descriptor(
-            self.w_w, gs=self.gs, nbands=self.rpa_nbands)
+        #self.gs, self.context = get_gs_and_context(
+        #    rpa_gpw, txt=None, world=world, timer=None)
+        #self.wd = get_frequency_descriptor(
+        #    self.w_w, gs=self.gs, nbands=self.rpa_nbands)
 
     def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None,
-                    chi_BSE=False, chi_RPA=False):
+                    chi_BSE=False, chi_RPA=False, 
+                    bsep_name = 'chi_BSE_Plus', bse_name='chi_BSE', 
+                    rpa_name='chi_RPA'):
 
         # irreducibale bse chi
-        self.bse = self.create_bse_calculator()
-        chi_irr_BSE_wGG = self.bse.get_chi_wGG(
+        bse = self.create_bse_calculator()
+        print('made bse caulculator', flush=True)
+        chi_irr_BSE_WGG = bse.get_chi_wGG(
             eta=self.eta,
             optical=optical,
             irreducible=True,
             w_w=self.w_w)
-
-        coulomb_kernel = CoulombKernel.from_gs(self.gs,
-                                               truncation=self.truncation)
+        print('made bse irr chi', flush=True)
+        del bse
+       # coulomb_kernel = CoulombKernel.from_gs(self.gs,
+       #                                        truncation=self.truncation)
 
         # chi0 matching the bse bands
-        self.chi0calc_limited = self.create_chi0_limited_calculator()
-        chi0_data_limited = self.chi0calc_limited.calculate(self.q_c)
+        chi0calc_limited = self.create_chi0_limited_calculator()
+        print('made chi0 limitied calc',flush=True)
+        coulomb_kernel = CoulombKernel.from_gs(self.gs,
+                                               truncation=self.truncation)
+        chi0_data_limited = chi0calc_limited.calculate(self.q_c)
         dyson_eqs_limited = Chi0DysonEquations(chi0_data_limited,
                                                coulomb_kernel, xc_kernel,
                                                self.gs.cd)
         chi0_limited_wGG = dyson_eqs_limited.get_chi0_wGG(self.rpa_direction)
         chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
             chi0_limited_wGG)
-        chi0_limited_wGG = chi0_limited_WGG
+        print('finished chi0 limited calc', flush=True)
+        del chi0calc_limited
+        del dyson_eqs_limited
+        del chi0_data_limited 
+        del chi0_limited_wGG
 
         # chi0 fully converged
-        self.chi0calc_full = self.create_chi0_full_calculator()
-        chi0_data_full = self.chi0calc_full.calculate(self.q_c)
+        chi0calc_full = self.create_chi0_full_calculator()
+        print('made full chi0 calc', flush=True)
+        chi0_data_full = chi0calc_full.calculate(self.q_c)
+        del chi0calc_full
+        print('made chi0_data_full', flush=True)
         dyson_eqs_full = Chi0DysonEquations(chi0_data_full, coulomb_kernel,
                                             xc_kernel, self.gs.cd)
-        chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.rpa_direction)
-        chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
-        chi0_full_wGG = chi0_full_WGG
         self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
-
         if self.truncation == '2D':
             coulomb_kernel_bare = CoulombKernel.from_gs(
                 self.gs, truncation=None)
             v_G_bare = coulomb_kernel_bare.V(chi0_data_full.qpd, q_v=None)
+        del chi0_data_full
+        print('made it to here', flush=True)
+        chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.rpa_direction)
+        chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
+        del dyson_eqs_full
+        del chi0_full_wGG
+        print('finished chi0 full calc', flush=True)
+
+        if self.truncation == '2D':
+            #coulomb_kernel_bare = CoulombKernel.from_gs(
+            #    self.gs, truncation=None)
+            #v_G_bare = coulomb_kernel_bare.V(chi0_data_full.qpd, q_v=None)
             self.v_G = self.v_G / v_G_bare
             if optical:
                 v_G_bare[0] = 0.0
-            chi0_limited_wGG = chi0_limited_wGG * \
+            chi0_limited_WGG = chi0_limited_WGG * \
                 v_G_bare[np.newaxis, np.newaxis, :]
-            chi0_full_wGG = chi0_full_wGG * v_G_bare[np.newaxis, np.newaxis, :]
-            chi_irr_BSE_wGG = chi_irr_BSE_wGG * \
+            chi0_full_WGG = chi0_full_WGG * v_G_bare[np.newaxis, np.newaxis, :]
+            chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
                 v_G_bare[np.newaxis, np.newaxis, :]
-            chi0_full_WGG = chi0_full_wGG
-            chi0_limited_WGG = chi0_limited_wGG
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
+        print('here 1', flush=True)
+
+
+        if comm is None:
+            comm = world
+        nR = len(self.w_w)
+        self.blocks = Blocks1D(comm, nR)
+
+
+        chi_irr_BSE_wGG =  chi_irr_BSE_WGG[self.blocks.myslice] 
+        chi0_full_wGG = chi0_full_WGG[self.blocks.myslice]
+        chi0_limited_wGG = chi0_limited_WGG[self.blocks.myslice]
+
         chi_irr_BSE_plus_wGG = \
-            chi_irr_BSE_wGG - chi0_limited_WGG + chi0_full_WGG
+            chi_irr_BSE_wGG - chi0_limited_wGG + chi0_full_wGG
         eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
 
-        self.chi_BSE_plus_WGG = \
+        print('here 2', flush=True)
+
+        chi_BSE_plus_wGG = \
             np.linalg.solve(eye - chi_irr_BSE_plus_wGG @ np.diag(self.v_G),
                             chi_irr_BSE_plus_wGG)
-
-        return_chi = [self.chi_BSE_plus_WGG]
-
+        
+        chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
+        del chi0_limited_wGG
+        if world.rank == 0:
+            np.save(bsep_name +'.npy', chi_BSE_plus_WGG)
+            del chi_BSE_plus_WGG
+        del chi_BSE_plus_wGG
+        #return_chi = [self.chi_BSE_plus_WGG]
+        print('here 3', flush=True)
         if chi_BSE is True:
-            self.chi_BSE_WGG = \
+            chi_BSE_wGG = \
                 np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
                                 chi_irr_BSE_wGG)
 
-            return_chi.append(self.chi_BSE_WGG)
+            chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
+            if world.rank == 0:
+                np.save(bse_name +'.npy', chi_BSE_WGG)
+                del chi_BSE_WGG
+            del chi_BSE_wGG
+            #return_chi.append(self.chi_BSE_WGG)
+
+        print('here 4', flush=True)
         if chi_RPA is True:
-            self.chi_full_WGG = \
+            chi_full_wGG = \
                 np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
                                 chi0_full_wGG)
 
-            return_chi.append(self.chi_full_WGG)
-        return return_chi[0] if len(return_chi) == 1 else tuple(return_chi)
+            chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
+            if world.rank == 0:
+                np.save(rpa_name +'.npy', chi_full_WGG)
+                del chi_full_WGG
+            del chi_full_wGG
+            
+        print('here 5',flush=True)
+
+        return
+
+        #return return_chi[0] if len(return_chi) == 1 else tuple(return_chi)
+
 
     def get_refractive_index(self):
         chi = self.chi_BSE_plus_WGG

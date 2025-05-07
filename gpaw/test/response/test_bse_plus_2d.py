@@ -69,10 +69,10 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
                         ecut=ecut,
                         truncation='2D')
 
-    chi_bse_plus = bse_plus.get_chi_wGG(optical=True)
+    bse_plus.get_chi_wGG(optical=True)
 
     if world.rank == 0:
-        chi_BSE_plus_WGG = chi_bse_plus
+        chi_BSE_plus_WGG = np.load("chi_BSE_Plus.npy")
 
     coulomb_kernel = CoulombKernel.from_gs(gs, truncation='2D')
 
