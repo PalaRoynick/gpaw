@@ -6,7 +6,7 @@ from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSE_Plus
 from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.coulomb_kernels import CoulombKernel
-import os
+
 
 @pytest.mark.response
 def test_bse_plus(in_tmp_dir, gpw_files, monkeypatch):
@@ -68,18 +68,16 @@ def test_bse_plus(in_tmp_dir, gpw_files, monkeypatch):
                         q_c=q_c,
                         ecut=ecut)
 
-   # chi_BSE_plus_WGG, chi_BSE_WGG, chi_RPA_WGG = \
     bse_plus.get_chi_wGG(optical=True,
-                             chi_BSE=True,
-                             chi_RPA=True, 
-                             bsep_name = 'chi_BSE_Plus_3bands', 
-                             bse_name = 'chi_BSE', 
-                             rpa_name = 'chi_RPA')
+                         chi_BSE=True,
+                         chi_RPA=True,
+                         bsep_name='chi_BSE_Plus_3bands',
+                         bse_name='chi_BSE',
+                         rpa_name='chi_RPA')
     if world.rank == 0:
         chi_BSE_plus_WGG = np.load("chi_BSE_Plus_3bands.npy")
         chi_BSE_WGG = np.load("chi_BSE.npy")
         chi_RPA_WGG = np.load("chi_RPA.npy")
-
 
     coulomb_kernel = CoulombKernel.from_gs(gs, truncation=None)
 
