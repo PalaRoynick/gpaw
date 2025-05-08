@@ -1458,7 +1458,7 @@ class BSE_Plus:
             cell_cv = self.gs.gd.cell_cv
             pbc_c = self.gs.pbc
             V = np.abs(np.linalg.det(cell_cv[~pbc_c][:, ~pbc_c]))
-            V*=Bohr
+            V *= Bohr
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
@@ -1482,7 +1482,7 @@ class BSE_Plus:
                             chi_irr_BSE_plus_wGG)
 
         if self.truncation == '2D':
-            chi_BSE_plus_wGG*=V/(4*np.pi)
+            chi_BSE_plus_wGG *= V / (4 * np.pi)
 
         chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
 
@@ -1497,7 +1497,7 @@ class BSE_Plus:
                                 chi_irr_BSE_wGG)
 
             if self.truncation == '2D':
-                chi_BSE_wGG*=V/(4*np.pi)
+                chi_BSE_wGG *= V / (4 * np.pi)
 
             chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
 
@@ -1512,7 +1512,7 @@ class BSE_Plus:
                                 chi0_full_wGG)
 
             if self.truncation == '2D':
-                chi_full_wGG*=V/(4*np.pi)
+                chi_full_wGG *= V / (4 * np.pi)
 
             chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
 
