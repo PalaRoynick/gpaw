@@ -3,7 +3,7 @@ from datetime import timedelta
 from functools import cached_property
 from time import time, ctime
 
-from ase.units import Hartree
+from ase.units import Hartree, Bohr
 from ase.dft import monkhorst_pack
 import numpy as np
 from scipy.linalg import eigh
@@ -1454,6 +1454,11 @@ class BSE_Plus:
             chi0_full_WGG = chi0_full_WGG * v_G_bare[np.newaxis, np.newaxis, :]
             chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
                 v_G_bare[np.newaxis, np.newaxis, :]
+
+            cell_cv = self.gs.gd.cell_cv
+            pbc_c = self.gs.pbc
+            V = np.abs(np.linalg.det(cell_cv[~pbc_c][:, ~pbc_c]))
+            V*=Bohr
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
@@ -1475,18 +1480,27 @@ class BSE_Plus:
         chi_BSE_plus_wGG = \
             np.linalg.solve(eye - chi_irr_BSE_plus_wGG @ np.diag(self.v_G),
                             chi_irr_BSE_plus_wGG)
+
+        if self.truncation == '2D':
+            chi_BSE_plus_wGG*=V/(4*np.pi)
+
         chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
-        del chi0_limited_wGG
+
         if world.rank == 0:
             np.save(bsep_name + '.npy', chi_BSE_plus_WGG)
             del chi_BSE_plus_WGG
-        del chi_BSE_plus_wGG
+        del chi_BSE_plus_wGG, chi0_limited_wGG
 
         if chi_BSE is True:
             chi_BSE_wGG = \
                 np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
                                 chi_irr_BSE_wGG)
+
+            if self.truncation == '2D':
+                chi_BSE_wGG*=V/(4*np.pi)
+
             chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
+
             if world.rank == 0:
                 np.save(bse_name + '.npy', chi_BSE_WGG)
                 del chi_BSE_WGG
@@ -1496,7 +1510,12 @@ class BSE_Plus:
             chi_full_wGG = \
                 np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
                                 chi0_full_wGG)
+
+            if self.truncation == '2D':
+                chi_full_wGG*=V/(4*np.pi)
+
             chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
+
             if world.rank == 0:
                 np.save(rpa_name + '.npy', chi_full_WGG)
                 del chi_full_WGG

@@ -6,6 +6,7 @@ from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSE_Plus
 from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.coulomb_kernels import CoulombKernel
+from ase.units import Bohr
 
 
 @pytest.mark.response
@@ -118,6 +119,12 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
         chi_BSE_plus_WGG_manuel = \
             np.linalg.solve(eye - chi_irr_BSE_plus_WGG @ np.diag(v_G),
                             chi_irr_BSE_plus_WGG)
+        cell_cv = gs.gd.cell_cv
+        pbc_c = gs.pbc
+        V = np.abs(np.linalg.det(cell_cv[~pbc_c][:, ~pbc_c]))
+        V*=Bohr
+
+        chi_BSE_plus_WGG_manuel*=V/(np.pi*4)
 
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
