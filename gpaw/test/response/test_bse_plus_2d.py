@@ -128,3 +128,13 @@ def test_bse_plus_2d(in_tmp_dir, gpw_files):
 
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
+
+        ref = [(3.397365320873605e-08-0.0011565040523532147j),
+               (0.0808651014210496+8.040955353014965e-05j),
+               (0.08902208746183858+0.04489347809737628j),
+               (0.04277497642659831+0.013775402447791992j),
+               (-0.0221078136579067+0.00854914022562708j)]
+
+        for i, r in enumerate(ref):
+            assert np.allclose(chi_BSE_plus_WGG[i, i, i + 1], r)
+
