@@ -1419,6 +1419,7 @@ class BSE_Plus:
             w_w=self.w_w)
         del bse
 
+        # chi0 calculation with the same bands as in the bse
         chi0calc_limited = self.create_chi0_limited_calculator()
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
@@ -1454,7 +1455,6 @@ class BSE_Plus:
             chi0_full_WGG = chi0_full_WGG * v_G_bare[np.newaxis, np.newaxis, :]
             chi_irr_BSE_WGG = chi_irr_BSE_WGG * \
                 v_G_bare[np.newaxis, np.newaxis, :]
-
             cell_cv = self.gs.gd.cell_cv
             pbc_c = self.gs.pbc
             V = np.abs(np.linalg.det(cell_cv[~pbc_c][:, ~pbc_c]))
