@@ -17,15 +17,10 @@ def test_bse_plus(tda, in_tmp_dir, scalapack):
                              'eigenstates': 1e-10})
 
     a = 5.431
-
-    print('here')
-
     atoms = bulk('Si', 'diamond', a=a)
     atoms.calc = calc
     atoms.get_potential_energy()
-    print('here 2')
     calc.write('Si.gpw', 'all')
-    print('here 3')
 
     val = range(4) if tda else range(8)
     cond = range(4, 8) if tda else range(8)
