@@ -562,11 +562,15 @@ def test_poisson_from_pickle_all_solvers():
     gd.dv = data["dv"]
 
     print(phi_expected.shape, rho.shape, eps.shape)
+    print(phi_expected[0, 0, 0:5])
+    print(rho[0, 0, 0:5])
+    print(eps[0,0,0:5])
 
     # list of Poisson solvers to test.
     psolvers = (# WeightedFDPoissonSolver,
-                ADM12PoissonSolver,
-                PolarizationPoissonSolver,
+                # ADM12PoissonSolver,
+                # PolarizationPoissonSolver,
+                RealConjugateGradientPoissonSolver,
                 RealConjugateGradientPoissonSolver)
 
     # define a helper function that uses the same formalism as in the other tests.

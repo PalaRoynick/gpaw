@@ -91,7 +91,7 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
     def solve(self, phi, rho, charge=None,
               maxcharge=1e-6,
               zero_initial_phi=False, timer=None,
-              dump_data=True, dump_prefix='poisson_data'):
+              dump_data=True, dump_prefix='~/poisson_data/arr'):
         self._init()
 
         # XXX/cb: band-aid! Currently fails.
@@ -106,6 +106,21 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
                                     zero_initial_phi)
         
         if dump_data:
+            has_nan_phi = np.isnan(phi).any()
+            has_nan_rho = np.isnan(rho).any()
+            logg(f'Before dump_data: phi contains NaN: {has_nan_phi}, rho contains NaN: {has_nan_rho}')
+            
+            if has_nan_phi:
+                nan_count = np.isnan(phi).sum()
+                total_elements = phi.size
+                nan_positions = np.where(np.isnan(phi))
+                logg(f'NaN count in phi: {nan_count}/{total_elements} elements')
+                logg(f'First few NaN positions in phi: {[tuple(p) for p in zip(*nan_positions)][:5]}')
+                
+                non_nan_phi = phi[~np.isnan(phi)]
+                if len(non_nan_phi) > 0:
+                    logg(f'Min/Max of non-NaN values in phi: {non_nan_phi.min()}/{non_nan_phi.max()}')
+
             self.dump_data(phi, rho, prefix=f'{dump_prefix}')
         
         return ret
@@ -132,6 +147,8 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
         import os
         import pickle
         
+        logg("dumping data")
+        
         if self.gd.comm.rank == 0:
             os.makedirs(os.path.dirname(prefix) if os.path.dirname(prefix) else '.', exist_ok=True)
             
@@ -154,15 +171,14 @@ class WeightedFDPoissonSolver(SolvationPoissonSolver):
                 data['rho'] = rho_g
                 data['eps'] = eps_g
                 smp = np.random.choice(range(10))
-                if np.random.choice(range(10)) == 1:
-                    logg(f'Dumping charge density and potential to {prefix}_{smp}.pkl')
-                    
-                    filename = f'{prefix}_{smp}.pkl'
-                    if not(os.path.exists(filename)):
-                        with open(filename, 'wb') as f:
-                            pickle.dump(data, f)
+                logg(f'Dumping charge density and potential to {prefix}_{smp}.pkl')
+                
+                filename = f'{prefix}_{smp}.pkl'
+                if not(os.path.exists(filename)):
+                    with open(filename, 'wb') as f:
+                        pickle.dump(data, f)
             else:
-                print("problems!")
+                logg("problems!")
 
     def _init(self):
         if self._initialized:
