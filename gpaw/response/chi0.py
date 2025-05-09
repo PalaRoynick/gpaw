@@ -49,6 +49,7 @@ class Chi0Calculator:
         self.eshift = eshift / Ha if eshift else None
         self.gs = ResponseGroundStateAdapter.from_input(gs)
         self.context = ResponseContext.from_input(context)
+        self.intraband = intraband
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
             nblocks=nblocks, eshift=self.eshift, **kwargs)
