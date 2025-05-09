@@ -25,10 +25,6 @@ from gpaw.response.screened_interaction import (initialize_w_calculator,
                                                 GammaIntegrationMode)
 from gpaw.utilities.elpa import LibElpa
 from gpaw.response.pw_parallelization import Blocks1D
-from math import log2
-from time import time as bse_time
-
-t0 = bse_time()
 
 
 def decide_whether_tammdancoff(val_m, con_m):
@@ -273,7 +269,7 @@ class BSEBackend:
                  eshift=None,
                  gw_kn=None,
                  truncation=None,
-                 integrate_gamma='reciprocal',  # WS
+                 integrate_gamma='reciprocal',
                  mode='BSE',
                  q_c=[0.0, 0.0, 0.0],
                  direction=0):
@@ -285,8 +281,8 @@ class BSEBackend:
         self.direction = direction
         self.context = context
         self.add_soc = add_soc
-        self.truncation = truncation
         self.scale = scale
+
         assert mode in ['RPA', 'BSE']
 
         if deps_max is None:
@@ -579,7 +575,6 @@ class BSEBackend:
             self.rhomag_SG = np.reshape(rhomag_KmmG, (self.nS, -1))
             G_Gv = qpd0.get_reciprocal_vectors(add_q=False)
             self.G_Gc = np.dot(G_Gv, qpd0.gd.cell_cv.T / (2 * np.pi))
-
         self.context.timer.stop('Pair densities')
 
         # Calculate Hamiltonian
@@ -794,20 +789,6 @@ class BSEBackend:
         """Calculate BSE matrix."""
         return self.calculate(optical=optical, irreducible=irreducible)
 
-    def mygather(self, comm, C_tGG, root, C_TGG):
-        nt = len(C_tGG)
-        if comm.rank == root:
-            C_TGG[comm.rank * nt: (comm.rank + 1) * nt] = C_tGG
-            for srank in range(comm.size):
-                if srank == root:
-                    continue
-                comm.receive(
-                    C_TGG[srank * nt:(srank + 1) * nt], srank, tag=srank)
-        else:
-            print('About to send', log2(C_tGG.nbytes), 'log2 bytes', comm.rank)
-            comm.send(C_tGG, root, tag=comm.rank)
-            print('Success', log2(C_tGG.nbytes), 'log2 bytes', comm.rank)
-
     @timer('get_spectral_weights')
     def get_spectral_weights(self, eig_data, df_S, mode_c):
         if mode_c is None:
@@ -817,33 +798,33 @@ class BSEBackend:
             index = np.where(np.all(np.round(G_Gc) == mode_c, axis=1))[0][0]
             rho_S = self.rhomag_SG[:, index]
 
-        w_T, v_Rt = eig_data[0], eig_data[1]
+        w_T, v_St = eig_data[0], eig_data[1]
         exclude_S = eig_data[2]
-        nR = self.nS - len(exclude_S)
-        nr = -(-nR // world.size)
-        df_R = np.delete(df_S, exclude_S)
-        rho_R = np.delete(rho_S, exclude_S)
-        C_T = np.zeros(nR, complex)
+        nS = self.nS - len(exclude_S)
+        ns = -(-nS // world.size)
+        dft_S = np.delete(df_S, exclude_S)
+        rhot_S = np.delete(rho_S, exclude_S)
+        C_T = np.zeros(nS, complex)
         # Calculate the spectral weights C_T
         if self.use_tammdancoff:
-            A_t = np.dot(rho_R, v_Rt)
-            B_t = np.dot(rho_R * df_R, v_Rt)
+            A_t = np.dot(rhot_S, v_St)
+            B_t = np.dot(rhot_S * dft_S, v_St)
             if world.size == 1:
                 C_T = B_t.conj() * A_t
             else:
                 grid = BlacsGrid(world, world.size, 1)
-                desc = grid.new_descriptor(nR, 1, nr, 1)
+                desc = grid.new_descriptor(nS, 1, ns, 1)
                 C_t = desc.empty(dtype=complex)
                 C_t[:, 0] = B_t.conj() * A_t
                 C_T = desc.collect_on_master(C_t)[:, 0]
                 if world.rank != 0:
-                    C_T = np.empty(nR, dtype=complex)
+                    C_T = np.empty(nS, dtype=complex)
                 world.broadcast(C_T, 0)
         else:
             if world.rank == 0:
-                A_T = np.dot(rho_R, v_Rt)
-                B_T = np.dot(rho_R * df_R, v_Rt)
-                tmp = np.dot(v_Rt.conj().T, v_Rt)
+                A_T = np.dot(rhot_S, v_St)
+                B_T = np.dot(rhot_S * dft_S, v_St)
+                tmp = np.dot(v_St.conj().T, v_St)
                 overlap_TT = np.linalg.inv(tmp)
                 C_T = np.dot(B_T.conj(), overlap_TT.T) * A_T
             world.broadcast(C_T, 0)
