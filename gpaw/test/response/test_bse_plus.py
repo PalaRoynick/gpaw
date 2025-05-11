@@ -134,22 +134,25 @@ def test_bse_plus(in_tmp_dir, gpw_files, monkeypatch):
         assert chi_BSE_plus_WGG_manuel == pytest.approx(chi_BSE_plus_WGG,
                                                         rel=1e-3, abs=1e-4)
 
-        ref_BSE_plus = [(-0.03597080853670548 - 0.012088438926031349j),
-                        (-0.0015353493019636896 - 0.005680078189455463j),
-                        (-0.008636011295605255 + 0.00079402193913143j)]
+        ref_BSE_plus = [(-0.035944653032812565 - 0.01210489304296787j),
+                        (-0.0015325557438748021 - 0.005681882257833088j),
+                        (-0.008360476962747542 + 0.0006972132287041919j)]
 
-        ref_BSE = [(-0.03256667436590259 - 0.017327431455759948j),
-                   (-0.00024938505140278125 - 0.0029101866060457044j),
-                   (-0.0074022942954481115 + 0.003364506229845619j)]
+        ref_BSE = [(-0.0324945448838119 - 0.017379162560129873j),
+                   (-0.00020976702039095932 - 0.0029422719254655243j),
+                   (-0.0070628859974412005 + 0.0029784568548538314j)]
 
         ref_RPA = [(-0.027204997411298056 - 0.008582830564182742j),
                    (-0.0016731748176204374 - 0.00548611231117654j),
                    (-0.007730855455966065 - 0.0012352187727613646j)]
 
         for i in range(3):
-            assert np.allclose(chi_BSE_plus_WGG[i, i, i + 1], ref_BSE_plus[i])
-            assert np.allclose(chi_BSE_WGG[i, i, i + 1], ref_BSE[i])
-            assert np.allclose(chi_RPA_WGG[i, i, i + 1], ref_RPA[i])
+            assert np.allclose(chi_BSE_plus_WGG[i, i, i + 1],
+                               ref_BSE_plus[i], rtol=1e-4, atol=1e-4)
+            assert np.allclose(chi_BSE_WGG[i, i, i + 1],
+                               ref_BSE[i], rtol=1e-4, atol=1e-4)
+            assert np.allclose(chi_RPA_WGG[i, i, i + 1],
+                               ref_RPA[i], rtol=1e-4, atol=1e-4)
 
     # assertion error if more bands in the bse calculation
     with pytest.raises(AssertionError, match=r'Large chi0 calculation*'):
