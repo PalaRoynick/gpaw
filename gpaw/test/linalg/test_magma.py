@@ -7,39 +7,36 @@ from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 
 
-def fix_eigenvector_phase(inout_arr):
-    """Helper function for comparing eigenvector output from different
-    solvers. Rotates eigenvectors in the input matrix so that the first
-    element of each vector is real and non-negative.
-    Input is modified in-place.
-    NB: eigenvectors are on columns.
-    """
-    assert inout_arr.ndim == 2
-    # Works for cupy arrays too because the dtypes are compatible
+# Comparing eigenvectors from different solvers is challenging because of
+# phase ambiguity. One solution would be to fix the phase according to some
+# sensible convention; however this doesn't seem to work very well at single
+# precision. Instead, we check that the eigenvalues, eigenvector pairs
+# (lam, v) satisfy A.v == lam*v, and assert that eigenvalues from Magma
+# match with those from Numpy/Cupy.
+# We also check unitarity/orthonormality of the eigenvector matrix.
 
-    if np.issubdtype(inout_arr.dtype, np.complexfloating):
-        # Complex matrices
-        for i in range(inout_arr.shape[1]):
-            phase = np.angle(inout_arr[0, i])
-            if phase != 0:
-                rotation = np.exp(phase * (-1j))
-                inout_arr[:, i] *= rotation
 
-    elif np.issubdtype(inout_arr.dtype, np.floating):
-        # Real matrices
-        for i in range(inout_arr.shape[1]):
-            if inout_arr[0, i] < 0:
-                inout_arr[:, i] *= -1
+def assert_eigenpairs(A, eigvals, eigvecs, rtol=1e-12, atol=1e-12) -> None:
+    """Checks that A @ v == lam*v and asserts on failure."""
 
-    return inout_arr
+    xp = cp if isinstance(A, cp.ndarray) else np
+
+    for i in range(eigvecs.shape[1]):
+        v = eigvecs[:, i]
+        lam = eigvals[i]
+        lhs = A @ v
+        rhs = lam * v
+
+        xp.testing.assert_allclose(lhs, rhs, rtol=rtol, atol=atol)
+    #
 
 
 @pytest.fixture
 def eigh_test_matrix():
-    def _generate(n: int, type: str = 'symmetric',
+    """Symmetric if dtype is real, Hermitian otherwise."""
+    def _generate(n: int, dtype: np.dtype = np.float64,
                   backend: str = 'numpy', seed: int = 42):
 
-        assert type in ['symmetric', 'hermitian']
         assert backend in ['numpy', 'cupy']
 
         if backend == 'cupy':
@@ -48,37 +45,53 @@ def eigh_test_matrix():
             xp = np
 
         rng = xp.random.default_rng(seed)
-        if type == 'symmetric':
-            A = rng.random((n, n))
+
+        if not np.issubdtype(dtype, np.complexfloating):
+            # Real dtype, return symmetric matrix
+            A = rng.random((n, n), dtype=dtype)
             return (A + A.T) / 2
 
         else:
+            # Only 32/64 bit precision implemented
+            assert dtype == np.complex64 or dtype == np.complex128
+            dtype_real = np.float32 if dtype == np.complex64 else np.float64
             # Create Hermitian matrix
-            A = rng.random((n, n)) + 1j * rng.random((n, n))
+            A = (
+                rng.random((n, n), dtype=dtype_real)
+                + 1j * rng.random((n, n), dtype=dtype_real)
+            )
             return (A + A.T.conj()) / 2
 
     return _generate
 
 
 @pytest.mark.skipif(not have_magma, reason="No MAGMA")
-@pytest.mark.parametrize("matrix_size, matrix_type, uplo",
-                         [(2, 'symmetric', 'L'), (4, 'hermitian', 'U')])
+@pytest.mark.parametrize("matrix_size, dtype, uplo",
+                         [(2, np.float32, 'L'),
+                          (3, np.float64, 'U'),
+                          (2, np.complex64, 'U'),
+                          (4, np.complex128, 'L')])
 def test_eigh_magma_cpu(eigh_test_matrix: np.ndarray,
                         matrix_size: int,
-                        matrix_type: str,
+                        dtype: np.dtype,
                         uplo: str) -> None:
     """Compare eigh output of Numpy and MAGMA"""
 
-    arr = eigh_test_matrix(matrix_size, type=matrix_type, backend='numpy')
-    eigvals, eigvects = eigh_magma_cpu(arr, uplo)
+    arr = eigh_test_matrix(matrix_size, dtype=dtype, backend='numpy')
+    eigvals, eigvecs = eigh_magma_cpu(arr, uplo)
 
-    eigvals_np, eigvects_np = np.linalg.eigh(arr, UPLO=uplo)
+    eigvals_np, eigvecs_np = np.linalg.eigh(arr, UPLO=uplo)
 
-    fix_eigenvector_phase(eigvects)
-    fix_eigenvector_phase(eigvects_np)
+    atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-6
+    rtol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
 
-    np.testing.assert_allclose(eigvals, eigvals_np, atol=1e-12)
-    np.testing.assert_allclose(eigvects, eigvects_np, atol=1e-12)
+    np.testing.assert_allclose(eigvals, eigvals_np, atol=atol)
+    assert_eigenpairs(arr, eigvals, eigvecs, rtol=rtol, atol=atol)
+
+    # check orthonormality
+    np.testing.assert_allclose(np.identity(matrix_size),
+                               eigvecs.conjugate().T @ eigvecs,
+                               rtol=rtol, atol=atol)
 
 
 # MAGMA seems to do small matrices (N <= 128) on the CPU.
@@ -87,23 +100,30 @@ def test_eigh_magma_cpu(eigh_test_matrix: np.ndarray,
 @pytest.mark.skipif(cupy_is_fake,
                     reason="MAGMA GPU tests disabled for fake cupy")
 @pytest.mark.gpu
-@pytest.mark.parametrize("matrix_size, matrix_type, uplo",
-                         [(16, 'symmetric', 'L'),
-                          (150, 'hermitian', 'L'),
-                          (256, 'symmetric', 'U')])
+@pytest.mark.parametrize("matrix_size, dtype, uplo",
+                         [(16, np.float32, 'L'),
+                          (130, np.float32, 'L'),
+                          (256, np.float64, 'U'),
+                          (150, np.complex64, 'U'),
+                          (140, np.complex128, 'L')])
 def test_eigh_magma_gpu(eigh_test_matrix: cp.ndarray,
                         matrix_size: int,
-                        matrix_type: str,
+                        dtype: np.dtype,
                         uplo: str):
-    """Compare eigh output of CUPY and MAGMA"""
+    """Compare eigh output of CUPY and MAGMA (GPU)"""
 
-    arr = eigh_test_matrix(matrix_size, type=matrix_type, backend='cupy')
-    eigvals, eigvects = eigh_magma_gpu(arr, uplo)
+    arr = eigh_test_matrix(matrix_size, dtype=dtype, backend='cupy')
 
-    eigvals_cp, eigvects_cp = cp.linalg.eigh(arr, UPLO=uplo)
+    eigvals, eigvecs = eigh_magma_gpu(arr, uplo)
+    eigvals_cp, eigvecs_cp = cp.linalg.eigh(arr, UPLO=uplo)
 
-    fix_eigenvector_phase(eigvects)
-    fix_eigenvector_phase(eigvects_cp)
+    atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
+    rtol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
 
-    cp.testing.assert_allclose(eigvals, eigvals_cp, atol=1e-12)
-    cp.testing.assert_allclose(eigvects, eigvects_cp, atol=1e-12)
+    cp.testing.assert_allclose(eigvals, eigvals_cp, atol=atol, rtol=rtol)
+    assert_eigenpairs(arr, eigvals, eigvecs, rtol=rtol, atol=atol)
+
+    # check orthonormality
+    cp.testing.assert_allclose(cp.identity(matrix_size),
+                               eigvecs.conjugate().T @ eigvecs,
+                               rtol=rtol, atol=atol)

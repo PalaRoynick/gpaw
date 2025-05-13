@@ -294,7 +294,7 @@ def cupy_eigh(a: cupy.ndarray, UPLO: str) -> tuple[cupy.ndarray, cupy.ndarray]:
         # magma needs cupy (possibly fake),
         # which must be imported from this file
         from gpaw.new.magma import eigh_magma_gpu
-
+        print(f'Calling eigh_magma_gpu with {a.shape}, {a.dtype}, {a.size}, {UPLO}', flush=True)
         return eigh_magma_gpu(a, UPLO)
 
     else:

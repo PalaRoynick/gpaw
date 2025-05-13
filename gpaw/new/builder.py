@@ -445,7 +445,7 @@ def create_communicators(comm: MPIComm = None,
     comms = {key: comm if comm.size > 1 else serial_comm
              for key, comm in comms.items()}
 
-    if xp is not np and not GPU_AWARE_MPI:
+    if xp is not np: # and not GPU_AWARE_MPI:
         comms = {key: CuPyMPI(comm) for key, comm in comms.items()}
 
     return comms

@@ -327,7 +327,8 @@ class PWArray(DistributedArrays[PWDesc]):
                           data=data)
 
     def new(self,
-            data=None) -> PWArray:
+            data=None,
+            dims=None) -> PWArray:
         """Create new PWArray object of same kind.
 
         Parameters
@@ -336,11 +337,15 @@ class PWArray(DistributedArrays[PWDesc]):
             Array to use for storage.
         """
         if data is None:
+            assert dims is None
             data = self.xp.empty_like(self.data)
         else:
-            # Number of plane-waves depends on the k-point.  We therfore
-            # allow for data to be bigger than needed:
-            data = data.ravel()[:self.data.size].reshape(self.data.shape)
+            if dims is None:
+                # Number of plane-waves depends on the k-point.  We therfore
+                # allow for data to be bigger than needed:
+                data = data.ravel()[:self.data.size].reshape(self.data.shape)
+            else:
+                return PWArray(self.desc, dims, self.comm, data)
         return PWArray(self.desc,
                        self.dims,
                        self.comm,

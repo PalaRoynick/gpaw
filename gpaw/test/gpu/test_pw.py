@@ -13,8 +13,14 @@ from gpaw.new.c import GPU_AWARE_MPI
 @pytest.mark.parametrize('dtype', [float, complex])
 @pytest.mark.parametrize('gpu', [False, True])
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
+@pytest.mark.parametrize('eigensolver', ['dav', 'rmm-diis'])
 @pytest.mark.parametrize('random', [False, True])
-def test_gpu(dtype, gpu, mode, random):
+def test_gpu(dtype, gpu, mode, random, eigensolver):
+    if eigensolver == 'rmm-diis' and mode == 'fd':
+        pytest.skip("FD mode doesn't have rmm-diis.")
+    if eigensolver == 'rmm-diis' and random:
+        pytest.skip("rmm-diis with random wave-functions"
+                    " won't converge.")
     atoms = Atoms('H2')
     atoms.positions[1, 0] = 0.75
     atoms.center(vacuum=1.0)
@@ -30,6 +36,7 @@ def test_gpu(dtype, gpu, mode, random):
                    'force_complex_dtype': dtype == complex},
              poissonsolver=poisson,
              random=random,
+             eigensolver=eigensolver,
              h=h,
              convergence={'density': 1e-8},
              parallel={'gpu': gpu},

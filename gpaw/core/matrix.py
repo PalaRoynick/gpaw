@@ -183,6 +183,7 @@ class Matrix(XP):
                  opa='N',
                  opb='N',
                  out=None,
+                 data_buffer=None,
                  beta=0.0,
                  symmetric=False) -> Matrix:
         """BLAS matrix-multiplication with other matrix."""
@@ -198,6 +199,63 @@ class Matrix(XP):
             out = Matrix(M, N, dtype=A.dtype, dist=dist.new(M, N))
         elif not isinstance(out, Matrix):
             out = out.matrix
+        if out.data is other.data:
+            # Repeatably call multiply to save memory (200 MB per rank)
+            assert opa == 'N', 'Not implemented'
+            assert opb == 'N', 'Not implemented'
+            assert not beta, 'Not implemented'
+            assert other.shape[0] == self.shape[0]
+
+            if data_buffer is None:
+                raise ValueError('other is out, and data_buffer is None')
+
+            assert isinstance(data_buffer, other.xp.ndarray)
+            dtype = other.data.dtype
+            data_buffer = data_buffer.view(dtype)
+            if other.data.shape[0] > 0:
+                buffer_size = min(
+                    data_buffer.size // other.data.shape[0] // 2,
+                    other.data.shape[1])
+            else:
+                buffer_size = other.data.shape[1]
+            buffer_size = dist.comm.min_scalar(buffer_size)
+            max_B = other.data.shape[1]
+
+            if buffer_size >= max_B:
+                # No need for sliced multiply
+                other_buffer = other.new(
+                    data=data_buffer[:other.data.size].reshape(
+                        other.data.shape))
+                other_buffer.data[:] = other.data
+                dist.multiply(alpha, A, opa, other_buffer, opb, beta, out,
+                              symmetric=symmetric)
+                return out
+
+            # Sliced multiply
+            for i in range(0, max_B, buffer_size):
+                r_buffer_size = min(max(other.data.shape[1] - i, 0),
+                                    buffer_size)
+                buffer_slice = r_buffer_size * other.data.shape[0]
+                buffer = Matrix(
+                    M=other.shape[0],
+                    N=r_buffer_size,
+                    data=data_buffer[
+                        :buffer_slice].reshape(
+                        (other.data.shape[0], r_buffer_size)
+                    ),
+                    dist=dist.new(M=other.shape[0], N=r_buffer_size),
+                    xp=other.xp)
+                buffer.data[:] \
+                    = other.data[:, i:i + buffer_size]
+                out_buffer = buffer.new(data=data_buffer[
+                    buffer_slice:2 * buffer_slice].reshape(
+                    (other.data.shape[0], r_buffer_size)))
+
+                dist.multiply(alpha, A, opa, buffer,
+                              opb, 0.0, out_buffer, symmetric=False)
+                out.data[:, i:i + buffer_size] *= beta
+                out.data[:, i:i + buffer_size] += out_buffer.data
+            return out
 
         dist.multiply(alpha, A, opa, B, opb, beta, out, symmetric=symmetric)
         return out
@@ -758,13 +816,8 @@ class BLACSDistribution(MatrixDistribution):
 
     def multiply(self, alpha, a, opa, b, opb, beta, c, symmetric):
         if self.comm.size > 1:
-            # XXX: Not 100% sure what the requirements for "ok" are
-            # however, requiring square matrices seems necessary
-            # in the current implementation. Maybe this should be
-            # looked into more. For now, we just use the more general
-            # scalapack function when matrices are not square.
-            ok = a.dist.simple and b.dist.simple and c.dist.simple \
-                and a.shape[0] == a.shape[1] and b.shape[0] == b.shape[1]
+            # XXX: ...
+            ok = a.dist.simple and b.dist.simple and c.dist.simple
             if ok:
                 # Special cases that don't need scalapack - most likely also
                 # faster:
@@ -802,6 +855,7 @@ class BLACSDistribution(MatrixDistribution):
                              beta, c.data,
                              b.dist.desc, a.dist.desc, c.dist.desc,
                              opb, opa)
+        return c
 
 
 def cublas_mmm(alpha, a, opa, b, opb, beta, c):
@@ -919,6 +973,7 @@ def mmm_nn(m1, m2, m3, alpha, beta, mmm):
 
     for r in range(comm.size):
         if r == 0:
+            # Buffers...
             buf2 = xp.empty((n, buf1.shape[1]), dtype=buf1.dtype)
 
         rrequest = None
@@ -941,6 +996,7 @@ def mmm_nn(m1, m2, m3, alpha, beta, mmm):
         beta = 1.0
 
         if r == 0:
+            # Buffers...
             buf1 = xp.empty_like(buf2)
 
         buf1, buf2 = buf2, buf1
@@ -969,6 +1025,7 @@ def mmm_nc_sym(a, b, out, alpha, mmm):
     mym = len(a.data)
     xp = a.xp
 
+    # Buffers...
     buf1 = xp.empty((m, N), dtype=a.dtype)
     buf2 = xp.empty((m, N), dtype=a.dtype)
     half = comm.size // 2
@@ -1051,6 +1108,7 @@ def mmm_nc(a, b, out, alpha, beta, mmm):
     mym = len(a.data)
     xp = a.xp
 
+    # Nasty buffers
     buf1 = xp.empty((m, N), dtype=a.dtype)
     buf2 = xp.empty((m, N), dtype=a.dtype)
     aa = a.data
@@ -1067,8 +1125,6 @@ def mmm_nc(a, b, out, alpha, beta, mmm):
             m2 = min(m1 + m, M)
             if m2 > m1:
                 rrequest = comm.receive(buf1[:m2 - m1], rrank, 11, False)
-                # XXX: BUFFER OVERFLOW WHEN M < N!!!!
-                # SO WE GET SEGGFAULT
             if mym > 0:
                 srequest = comm.send(b.data, srank, 11, False)
 
