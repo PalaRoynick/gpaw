@@ -12,6 +12,7 @@ from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.typing import Array2D
 from gpaw.new import trace, tracectx
+from gpaw.utilities import as_real_dtype
 
 
 class Davidson(PWFDEigensolver):
@@ -72,6 +73,9 @@ class Davidson(PWFDEigensolver):
         eig_N = xp.empty(2 * B)
         b = psit_nX.mydims[0]
 
+        if weight_n is not None:
+            weight_n = xp.asarray(weight_n, dtype=as_real_dtype(wfs.dtype))
+
         psit2_nX = psit_nX.new(data=self.work_arrays[0, :b])
         psit3_nX = psit_nX.new(data=self.work_arrays[1, :b])
 
@@ -117,13 +121,21 @@ class Davidson(PWFDEigensolver):
                 if band_comm.rank == 0:
                     C_nn[:] = M0_nn.data
 
+        flag = False
+        error = np.inf
         for i in range(self.niter):
-            if i == self.niter - 1:  # last iteration
+            if i == self.niter - 1 or True:  # last iteration
+                if flag:
+                    i = self.niter - 1
                 # Calculate error before we destroy residuals:
                 if weight_n is None:
-                    error = np.inf
-                else:
-                    error = (weight_n @ as_np(residual_nX.norm2())).sum()
+                    weight_n = xp.ones(b, dtype=as_real_dtype(wfs.dtype))
+                n_error = as_np(weight_n @ residual_nX.norm2()).sum()
+                print('n_error', np.log10(n_error))
+                if error / n_error < 2 or error < 1e-4 or np.isnan(n_error):
+                    print(f'Breaking at iter {i} / {self.niter}')
+                    break
+                error = n_error
 
             self.preconditioner(psit_nX, residual_nX, out=psit2_nX)
 
@@ -137,7 +149,7 @@ class Davidson(PWFDEigensolver):
                 P2_ani.matrix.multiply(P3_ani, opb='C', symmetric=True, beta=1,
                                        out=M_nn)
                 copy(H_NN.data[B:, B:])
-
+                
                 # <psi2 | H | psi>
                 me(residual_nX, psit_nX)
                 P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
@@ -149,7 +161,8 @@ class Davidson(PWFDEigensolver):
                 P2_ani.matrix.multiply(P3_ani, opb='C', symmetric=True, beta=1,
                                        out=M_nn)
                 copy(S_NN.data[B:, B:])
-
+                M2_nn = M_nn
+                
                 # <psi2 | S | psi>
                 me(psit2_nX, psit_nX)
                 P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
@@ -159,9 +172,44 @@ class Davidson(PWFDEigensolver):
                 with broadcast_exception(domain_comm):
                     with broadcast_exception(band_comm):
                         if is_domain_band_master:
+                            H_NN.tril2full()
+                            S_NN.tril2full()
                             H_NN.data[:B, :B] = xp.diag(eig_N[:B])
                             S_NN.data[:B, :B] = xp.eye(B)
-                            eig_N[:] = H_NN.eigh(S_NN)
+                            
+                            '''
+                            D_N = S_NN.eigh()
+                            b_inds = D_N > xp.max(D_N) * 5e-6
+                            b = int(np.sum(b_inds))
+                            H2_NN = Matrix(b, b, dtype=H_NN.dtype, xp=H_NN.xp)
+                            S2_NN = Matrix(b, b, dtype=S_NN.dtype, xp=S_NN.xp)
+                            H2_NN.data[:] = S_NN.data[b_inds].conj() @ H_NN.data @ S_NN.data[b_inds].T
+                            S2_NN.data[:] = xp.diag(D_N[b_inds])
+                            
+                            assert b >= B
+                            S2_NN.data[:] = xp.diag(1/xp.sqrt(D_N[b_inds]))
+                            H2_NN.data[:] = S2_NN.data.conj() @ H2_NN.data @ S2_NN.data
+                            eig_N[:B] = H2_NN.eigh()[:B]
+                            H_NN.data[:B, :] = H2_NN.data[:B, :] @ S2_NN.data @ S_NN.data[b_inds]
+                            '''
+                            
+                            S_nn = S_NN.data[B:, B:]
+                            D_n, U_nn = xp.linalg.eigh(S_nn)
+                            b_inds = D_n > 1e-6
+                            b = int(np.sum(b_inds))
+                            U_nn = U_nn[:, b_inds]
+                            H2_NN = Matrix(B + b, B + b, dtype=H_NN.dtype, xp=H_NN.xp)
+                            S2_NN = Matrix(B + b, B + b, dtype=S_NN.dtype, xp=S_NN.xp)
+                            S2_NN.data[B:, :B] = U_nn.conj().T @ S_NN.data[B:, :B]
+                            H2_NN.data[B:, :B] = U_nn.conj().T @ H_NN.data[B:, :B]
+                            S2_NN.data[B:, B:] = xp.diag(D_n[b_inds])
+                            H2_NN.data[B:, B:] = U_nn.conj().T @ H_NN.data[B:, B:] @ U_nn
+                            H2_NN.data[:B, :B] = xp.diag(eig_N[:B])
+                            S2_NN.data[:B, :B] = xp.eye(B)
+
+                            eig_N[:B] = H2_NN.eigh(S2_NN)[:B]
+                            H_NN.data[:B, :B] = H2_NN.data[:B, :B]
+                            H_NN.data[:B, B:] = H2_NN.data[:B, B:] @ U_nn.T
                             wfs._eig_n = as_np(eig_N[:B])
                 if domain_comm.rank == 0:
                     band_comm.broadcast(wfs.eig_n, 0)
@@ -184,7 +232,6 @@ class Davidson(PWFDEigensolver):
                         M0_nn.complex_conjugate()
                     M0_nn.redist(M_nn)
                 domain_comm.broadcast(M_nn.data, 0)
-
                 M_nn.multiply(psit2_nX, beta=1.0, out=residual_nX)
                 M_nn.multiply(P2_ani, beta=1.0, out=P3_ani)
                 psit_nX.data[:] = residual_nX.data
@@ -198,6 +245,8 @@ class Davidson(PWFDEigensolver):
                     residual_nX,
                     wfs.pt_aiX, wfs.P_ani, wfs.myeig_n,
                     dH, dS_aii, P2_ani, P3_ani)
+            else:
+                break
 
         if debug:
             psit_nX.sanity_check()
