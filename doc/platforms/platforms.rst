@@ -45,7 +45,7 @@ WSL:
    wsl-ubuntu
 
 
-MacOSX:
+macOS:
 
 .. toctree::
    :maxdepth: 1
