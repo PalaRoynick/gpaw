@@ -13,7 +13,7 @@ Install the Xcode command line tools with the command::
     >     || xcode-select --install  # This installs it if not
     > }
 
-Install `Homebrew`_::
+Install `Homebrew from the source <https://brew.sh/>`_::
 
     $ /bin/bash -c "$(
     >    curl -fsSL
@@ -30,8 +30,8 @@ Install ASE and GPAW dependencies::
 
 .. note::
     - Specific versions of Python can be installed with
-      "python@<vesrsion>".  For Tkinter support (which is no longer
-      shipped by default), use "python-tk@<version>".  Note that
+      ``python@<version>``.  For Tkinter support (which is no longer
+      shipped by default), use ``python-tk@<version>``.  Note that
       Tkinter is required for using ASE's graphical user interface
       (GUI).
     - While GPAW functions without a C-level BLAS library, it is
@@ -41,6 +41,17 @@ Install :py:mod:`pip` (should not be necessary for most
 installations)::
 
     $ python -m ensurepip
+
+.. py:module:: pip
+
+    ..
+        FIXME: This is just a hack to get :py:mod:`pip` to link
+        *somewhere* because PIP's :file:`objects.inv` doesn't contain
+        itself.
+
+    .. seealso::
+
+        `The pip documentation`_
 
 Create and activate a virtual environment with :py:mod:`venv` (or other
 equivalent; optional but *highly* recommended)::
@@ -64,7 +75,7 @@ equivalent; optional but *highly* recommended)::
 
     - It may be useful to patch the virtual-environment activation
       script to ensure that the installed libraries are available at the
-      runtime via the :envvar:`LD_LIBRARY_PATH` environment variable::
+      runtime via the ``${LD_LIBRARY_PATH}`` environment variable::
 
           $ _gpaw_venv_libraries=( "${libraries[@]}" )
           $ declare -p _gpaw_venv_libraries >>${activation_script}"
@@ -110,24 +121,24 @@ Install (and optionally test) ASE::
     The same goes for GPAW – just replace all ``ase`` in the above
     command with ``gpaw``.  See also :ref:`development workflow`.
 
-Use this :ref:`siteconfig.py <siteconfig>` file:
-
-.. literalinclude:: siteconfig.py
-
 Install GPAW::
 
     $ pip install --upgrade gpaw
 
 .. note::
     If this simple installation fails, you may have to look into setting
-    up the appropriate :file:`siteconfig.py` file; see
-    :ref:`siteconfig`.
+    up the appropriate :file:`siteconfig.py` file.  Depending on your
+    setup, it could be as simple as
+
+    .. literalinclude:: siteconfig.py
+
+    See also :ref:`siteconfig`.
 
 Test GPAW::
 
     $ gpaw test  # Serial
     $ gpaw -P 4 test  # Parallel
 
-.. _Homebrew: https://brew.sh/
-.. _extenally managed: https://packaging.python.org/en/latest/specifications/externally-managed-environments/
+.. _externally managed: https://packaging.python.org/en/latest/specifications/externally-managed-environments/
 .. _install from the repository: https://pip.pypa.io/en/latest/topics/vcs-support/
+.. _The pip documentation: https://pip.pypa.io/en/stable/index.html

@@ -47,12 +47,16 @@ autoclass_content = 'both'
 modindex_common_prefix = ['gpaw.']
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3.13', None),
+    # FIXME: despite adding `pip` here we still can't link to it with
+    # :py:mod:`pip` unlike other packages...
+    'pip': ('https://pip.pypa.io/en/stable/', None),
     'ase': ('https://wiki.fysik.dtu.dk/ase', None),
     'numpy': ('https://numpy.org/doc/stable', None),
     'cupy': ('https://docs.cupy.dev/en/stable', None),
     'scipy': ('https://docs.scipy.org/doc/scipy', None),
     'pytest': ('https://docs.pytest.org/en/stable', None),
-    'mayavi': ('https://docs.enthought.com/mayavi/mayavi', None)}
+    'mayavi': ('https://docs.enthought.com/mayavi/mayavi', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None)}
 nitpick_ignore = [('py:class', 'gpaw.calculator.GPAW'),
                   ('py:class', 'gpaw.spinorbit.BZWaveFunctions'),
                   ('py:class', 'GPAW'),
