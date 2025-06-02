@@ -155,7 +155,7 @@ class GWQEHCorrection(PairDensity):
                 self.qqeh = data['qqeh']
                 self.wqeh = data['wqeh']
                 dW_qw = data['dW_qw']
-            except IOError:
+            except FileNotFoundError:
                 dW_qw = self.calculate_W_QEH(structure, d, layer)
         else:
             self.qqeh = qqeh
