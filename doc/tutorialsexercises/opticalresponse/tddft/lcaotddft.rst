@@ -22,7 +22,7 @@ The time-dependent Kohn--Sham equation in the PAW formalism can be written as
 
 .. math::
 
-  \left[ \widehat T^\dagger \left( -i \frac{{\rm d}}{{\rm d}t} + \hat H_{\rm KS}(t) \right) \widehat T \right]  \tilde{\Psi(\mathbf{r},t)} = 0.
+  \left[ \widehat T^\dagger \left( -i \frac{{\rm d}}{{\rm d}t} + \hat H_{\rm KS}(t) \right) \widehat T \right]  \tilde{\Psi}(\mathbf{r},t) = 0.
 
 From this, the following matrix equation can be derived for the
 LCAO wave function coefficients:
