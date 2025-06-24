@@ -95,7 +95,6 @@ def random_degenerate_unitary_rotation(calc):
                     n_l = []
                     chunks_dl.append(n_l)
                 n_l.append(n)
-        print(chunks_dl)
         return chunks_dl
 
     from numpy.random import Generator, PCG64
@@ -134,7 +133,7 @@ class GPWFiles(CachedFilesHandler):
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
-        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw', 'fe_pw', 'co_pw'}
+        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw', 'fe_pw', 'co_pw', 'h_hess_num_lcao'}
         if name not in exception_list:
             random_degenerate_unitary_rotation(calc)
         calc.write(work_path, mode='all')
