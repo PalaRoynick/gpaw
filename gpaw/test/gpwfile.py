@@ -80,6 +80,7 @@ def gpwfile(meth):
 
 def random_degenerate_unitary_rotation(calc):
     assert calc.world.size == 1
+
     def group_eigenvalues(eps_n, tol=1e-4):
         chunks_dl = []
         n_l = []
