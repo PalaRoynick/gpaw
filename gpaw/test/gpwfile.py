@@ -73,6 +73,7 @@ def gpwfile(meth):
 
 
 def random_degenerate_unitary_rotation(calc):
+    assert calc.comm.size == 1
     def group_eigenvalues(eps_n, tol=1e-4):
         chunks_dl = []
         n_l = []
@@ -122,7 +123,9 @@ class GPWFiles(CachedFilesHandler):
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
-        random_degenerate_unitary_rotation(calc)
+        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw', 'fe_pw', 'co_pw'}
+        if name not in exception_list:
+            random_degenerate_unitary_rotation(calc)
         calc.write(work_path, mode='all')
 
     @gpwfile
