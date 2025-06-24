@@ -95,13 +95,17 @@ def random_degenerate_unitary_rotation(calc):
                     n_l = []
                     chunks_dl.append(n_l)
                 n_l.append(n)
+        print(chunks_dl)
         return chunks_dl
+
+    from numpy.random import Generator, PCG64
+    rng = Generator(PCG64())
 
     # Random unitary matrix
     def randU_nn(n, unitary=False):
-        A_nn = np.random.rand(n, n)
+        A_nn = rng.random((n, n))
         if unitary:
-            A_nn = A_nn + 1j * np.random.rand(n, n)
+            A_nn = A_nn + 1j * rng.random((n, n))
         return np.linalg.qr(A_nn)[0]
 
     for kpt in calc.wfs.kpt_u:
