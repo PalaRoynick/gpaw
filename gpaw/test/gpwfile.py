@@ -133,7 +133,9 @@ class GPWFiles(CachedFilesHandler):
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
-        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw', 'fe_pw', 'co_pw', 'h_hess_num_lcao'}
+        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw',
+                          'fe_pw', 'co_pw', 'h_hess_num_lcao',
+                          'sic_pw', 'sic_pw_spinpol'}
         if name not in exception_list:
             random_degenerate_unitary_rotation(calc)
         calc.write(work_path, mode='all')
