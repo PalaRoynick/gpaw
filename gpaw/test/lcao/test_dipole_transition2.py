@@ -31,10 +31,9 @@ def test_dipole_transition(gpw_files, tmp_path_factory):
         for v in range(3):
             dip_kvnm[k, v].T == pytest.approx(dip_kvnm[k, v])
 
-    # Check numerical value of a few elements - signs might change!
-    assert 0.0824 == pytest.approx(abs(dip_kvnm[0, 0, 0, 1]), abs=1e-4)
-    assert abs(-0.0781 + 0.0282j) == pytest.approx(abs(dip_kvnm[1, 2, 0, 3]),
-                                                   abs=1e-4)
+    # Check numerical value of 0->[1,2,3] subspace of transitions
+    assert np.allclose(np.abs(np.linalg.eig(dip_kvnm[0, :, 0, 1:4])[0]),
+                       0.14276677, atol=1e-4)
 
     calc = GPAW(gpw_files['bcc_li_fd'])
     # compare to lrtddft implementation

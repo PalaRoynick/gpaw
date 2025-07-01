@@ -98,6 +98,7 @@ class Derivatives:
                 analytical_der = etdm.get_energy_and_gradients(
                     self.a, wfs, dens, ham)[1]
         else:
+            assert what2calc == 'hessian'
             # Calculate analytical approximation to hessian
             if wfs.mode == 'lcao':
                 ind_up = etdm.ind_up
@@ -155,6 +156,7 @@ class Derivatives:
             numerical_der = {u: np.zeros_like(v)
                              for u, v in self.a.items()}
         else:
+            assert what2calc == 'hessian'
             numerical_der = np.zeros(shape=(len(steps) * dim,
                                             len(steps) * dim))
             # have to use exact gradient when Hessian is calculated

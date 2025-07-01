@@ -78,6 +78,53 @@ def gpwfile(meth):
     return meth
 
 
+def random_degenerate_unitary_rotation(calc):
+    assert calc.world.size == 1
+
+    def group_eigenvalues(eps_n, tol=1e-6):
+        chunks_dl = []
+        n_l = []
+        chunks_dl.append(n_l)
+        for n in range(len(eps_n)):
+            if len(n_l) == 0:
+                n_l.append(n)
+            else:
+                E = eps_n[n_l[0]]
+                if abs(E - eps_n[n]) > tol:  # New subspace
+                    # New subspace
+                    n_l = []
+                    chunks_dl.append(n_l)
+                n_l.append(n)
+        return chunks_dl
+
+    from numpy.random import Generator, PCG64
+    rng = Generator(PCG64())
+
+    # Random unitary matrix
+    def randU_nn(n, unitary=False):
+        A_nn = rng.random((n, n))
+        if unitary:
+            A_nn = A_nn + 1j * rng.random((n, n))
+        return np.linalg.qr(A_nn)[0]
+
+    for kpt in calc.wfs.kpt_u:
+        unitary = np.iscomplexobj(kpt.P_ani[0])
+        eig_dl = group_eigenvalues(kpt.eps_n)
+        for n_l in eig_dl:
+            nl = len(n_l)
+            U_nn = randU_nn(len(n_l), unitary=unitary)
+            if kpt.psit_nG is not None:
+                psit_nX = U_nn @ kpt.psit_nG[n_l].reshape((nl, -1))
+                shape = kpt.psit_nG[n_l].shape
+                kpt.psit_nG[n_l] = psit_nX.reshape(shape)
+            else:
+                kpt.C_nM[n_l] = U_nn @ kpt.C_nM[n_l]
+
+            for a, P_ni in kpt.P_ani.items():
+                P_nx = U_nn @ P_ni[n_l].reshape((nl, -1))
+                P_ni[n_l] = P_nx.reshape(P_ni[n_l].shape)
+
+
 class GPWFiles(CachedFilesHandler):
     """Create gpw-files."""
 
@@ -86,6 +133,13 @@ class GPWFiles(CachedFilesHandler):
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
+        exception_list = {'fancy_si_pw', 'al_pw', 'fe_pw',
+                          'fe_pw', 'co_pw', 'h_hess_num_lcao',
+                          'sic_pw', 'sic_pw_spinpol',
+                          'fcc_Ni_col', 'fcc_Ni_ncol',
+                          'si_gw_a0_all'}
+        if name not in exception_list:
+            random_degenerate_unitary_rotation(calc)
         calc.write(work_path, mode='all')
 
     @gpwfile
