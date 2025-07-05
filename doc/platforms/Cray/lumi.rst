@@ -213,7 +213,7 @@ Do the following in a clean terminal session and exit afterwards!
   module load EasyBuild-user
 
   # Install
-  eb libxc-6.2.2-cpeGNU-24.03.eb -r
+  eb libxc-6.2.2-cpeGNU-24.03.eb -r --ignore-checksums
 
 Exit the terminal now and open a clean terminal.
 The above EasyBuild setup is needed only once.
@@ -238,6 +238,7 @@ Then, the following steps build GPAW in a Python virtual environment:
   module load partition/C
   module load cpeGNU/24.03
   module load cray-fftw/3.3.10.7
+  module load Tk/8.6.13-cpeGNU-24.03
   module load buildtools-python/24.03-cray-python3.11
   module load libxc/6.2.2-cpeGNU-24.03                  # from EBU_USER_PREFIX
   EOF
@@ -247,7 +248,7 @@ Then, the following steps build GPAW in a Python virtual environment:
   source venv-gpaw-cpu/bin/activate
 
   # Install GPAW development version
-  git clone git@gitlab.com:gpaw/gpaw.git
+  git clone http://gitlab.com/gpaw/gpaw.git
   export GPAW_CONFIG=$(readlink -f gpaw/doc/platforms/Cray/siteconfig-lumi-cpu.py)
   cd gpaw
   rm -rf build _gpaw.*.so gpaw.egg-info
