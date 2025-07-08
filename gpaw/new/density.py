@@ -373,12 +373,34 @@ class Density:
             taut_sR = self.taut_sR.to_xp(np).gather()
         if D_asp is None:
             return  # let master do the writing
+        print(f"DEBUG density: nt_sR dtype: {nt_sR.data.dtype}")
+        print(f"DEBUG density: About to convert nt_sR")
+        converted_density = flags.to_storage_dtype(nt_sR.data * Bohr**-3)
+        print(f"DEBUG density: Converted density dtype: {converted_density.dtype}")
+        
+        print(f"DEBUG density: D_asp dtype: {D_asp.data.dtype}")
+        
+        print("DEBUG density: About to write density data")
         writer.write(
-            density=flags.to_storage_dtype(nt_sR.data * Bohr**-3),
+            density=converted_density,
             atomic_density_matrices=D_asp.data)
+        print("DEBUG density: Density data written successfully")
+        
         if self.taut_sR is not None:
-            writer.write(ked=flags.to_storage_dtype(
-                taut_sR.data * (Ha * Bohr**-3)))
+            print("DEBUG density: About to convert taut_sR")
+            converted_ked = flags.to_storage_dtype(taut_sR.data * (Ha * Bohr**-3))
+            print(f"DEBUG density: Converted ked dtype: {converted_ked.dtype}")
+            print("DEBUG density: About to write ked")
+            writer.write(ked=converted_ked)
+            print("DEBUG density: Ked written successfully")
+        
+        print("DEBUG density: Completed density write_to_gpw")
+        # writer.write(
+        #     density=flags.to_storage_dtype(nt_sR.data * Bohr**-3),
+        #     atomic_density_matrices=D_asp.data)
+        # if self.taut_sR is not None:
+        #     writer.write(ked=flags.to_storage_dtype(
+        #         taut_sR.data * (Ha * Bohr**-3)))
 
 
 def atomic_occupation_numbers(setup,

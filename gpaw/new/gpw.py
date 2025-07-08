@@ -79,24 +79,25 @@ class GPWFlags:
     def __post_init__(self) -> None:
         if self.precision not in ['single', 'double']:
             raise ValueError('precision must be either "single" or "double"')
-
+    
     def storage_dtype(self, dtype):
         dtype = np.dtype(dtype)
-        if self.precision == 'double':
-            return dtype
-
-        if dtype == float:
-            return np.dtype(np.float32)
-
-        if dtype == complex:
-            return np.dtype(np.complex64)
+        
+        if np.issubdtype(dtype, np.floating):
+            if self.precision == 'double':
+                return np.dtype(np.float64)
+            elif self.precision == 'single':
+                return np.dtype(np.float32)
+        elif np.issubdtype(dtype, np.complexfloating):
+            if self.precision == 'double':
+                return np.dtype(np.complex128)
+            elif self.precision == 'single':
+                return np.dtype(np.complex64)
 
         raise ValueError(f'Unexpected dtype: {dtype}')
 
     def to_storage_dtype(self, array: np.ndarray) -> np.ndarray:
-        if self.precision == 'double':
-            return array
-        return array.astype(self.storage_dtype(array.dtype))
+        return np.asarray(array, dtype=self.storage_dtype(array.dtype))
 
 
 def write_gpw(filename: str | Path,
@@ -128,7 +129,11 @@ def write_gpw(filename: str | Path,
         p.pop('parallel', None)
         # ULM does not know about numpy dtypes:
         if 'dtype' in p:
-            p['dtype'] = np.dtype(p['dtype']).name
+            if isinstance(p['dtype'], type):
+                p['dtype'] = p['dtype'].__name__
+            else:
+                p['dtype'] = np.dtype(p['dtype']).name
+        
         writer.child('parameters').write(**p)
 
         dft.density.write_to_gpw(writer.child('density'), flags)
@@ -206,8 +211,8 @@ def read_gpw(filename: Union[str, Path, IO[str]],
     log(f'Reading from {filename}')
 
     reader = ulm.Reader(filename)
-    bohr = reader.bohr
-    ha = reader.ha
+    bohr = Bohr
+    ha = Ha
     singlep = reader.get('precision', 'double') == 'single'
 
     atoms = read_atoms(reader.atoms)

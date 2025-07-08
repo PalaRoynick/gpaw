@@ -205,6 +205,7 @@ def apply_local_potential_gpu(vt_R,
     e_kin_G = cp.asarray(pw.ekin_G)
     mynbands = psit_nG.mydims[0]
     size_c = vt_R.desc.size_c
+    vt_R.data = cp.asarray(vt_R.data)
     w = trace(gpu=True)
     if np.issubdtype(pw.dtype, np.floating):
         shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
