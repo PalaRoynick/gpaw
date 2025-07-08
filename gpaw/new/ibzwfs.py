@@ -327,8 +327,8 @@ class IBZWaveFunctions(Generic[WFT]):
             occ_skn = occ_skn[0]
         assert self.fermi_levels is not None
         writer.write(fermi_levels=self.fermi_levels * Ha,
-                    eigenvalues=eig_skn * Ha,
-                    occupations=occ_skn)
+                     eigenvalues=eig_skn * Ha,
+                     occupations=occ_skn)
         ibz = self.ibz
         writer.child('kpts').write(
             atommap=ibz.symmetries.atommap_sa,
@@ -352,77 +352,29 @@ class IBZWaveFunctions(Generic[WFT]):
             proj_shape = (self.nbands, 2, nproj)
 
         if flags.include_projections:
-            print(f"DEBUG ibzwfs: About to handle projections")
-            print(f"DEBUG ibzwfs: self.dtype = {self.dtype}, type = {type(self.dtype)}")
             proj_dtype = flags.storage_dtype(self.dtype)
-            print(f"DEBUG ibzwfs: proj_dtype = {proj_dtype}, type = {type(proj_dtype)}")
-            
-            # Continue with rest of projections code...
-        
+            writer.add_array('projections', spin_k_shape + proj_shape,
+                             proj_dtype)
+            for spin in range(self.nspins):
+                for k, rank in enumerate(self.rank_k):
+                    if rank == self.kpt_comm.rank:
+                        wfs = self.wfs_qs[self.q_k[k]][spin]
+                        P_ani = wfs.P_ani.to_cpu().gather()  # gather atoms
+                        if P_ani is not None:
+                            P_nI = P_ani.matrix.gather()  # gather bands
+                            if P_nI.dist.comm.rank == 0:
+                                if rank == 0:
+                                    writer.fill(P_nI.data.reshape(
+                                        proj_shape).astype(proj_dtype))
+                                else:
+                                    self.kpt_comm.send(P_nI.data, 0)
+                    elif self.comm.rank == 0:
+                        data = np.empty(proj_shape, self.dtype)
+                        self.kpt_comm.receive(data, rank)
+                        writer.fill(data.astype(proj_dtype))
+
         if flags.include_wfs:
             self._write_wave_functions(writer, spin_k_shape, flags)
-
-
-    # def write(self, writer: Writer, flags) -> None:
-    #     """Write fermi-level(s), eigenvalues, occupation numbers, ...
-
-    #     ... k-points, symmetry information, projections and possibly
-    #     also the wave functions.
-    #     """
-    #     eig_skn, occ_skn = self.get_all_eigs_and_occs()
-    #     if not self.collinear:
-    #         eig_skn = eig_skn[0]
-    #         occ_skn = occ_skn[0]
-    #     assert self.fermi_levels is not None
-    #     writer.write(fermi_levels=self.fermi_levels * Ha,
-    #                  eigenvalues=eig_skn * Ha,
-    #                  occupations=occ_skn)
-    #     ibz = self.ibz
-    #     writer.child('kpts').write(
-    #         atommap=ibz.symmetries.atommap_sa,
-    #         bz2ibz=ibz.bz2ibz_K,
-    #         bzkpts=ibz.bz.kpt_Kc,
-    #         ibzkpts=ibz.kpt_kc,
-    #         rotations=ibz.symmetries.rotation_scc,
-    #         translations=ibz.symmetries.translation_sc,
-    #         weights=ibz.weight_k)
-
-    #     nproj = self.wfs_qs[0][0].P_ani.layout.size
-
-    #     spin_k_shape: tuple[int, ...]
-    #     proj_shape: tuple[int, ...]
-
-    #     if self.collinear:
-    #         spin_k_shape = (self.ncomponents, len(ibz))
-    #         proj_shape = (self.nbands, nproj)
-    #     else:
-    #         spin_k_shape = (len(ibz),)
-    #         proj_shape = (self.nbands, 2, nproj)
-
-    #     if flags.include_projections:
-    #         proj_dtype = flags.storage_dtype(self.dtype)
-    #         writer.add_array('projections', spin_k_shape + proj_shape,
-    #                          proj_dtype)
-    #         for spin in range(self.nspins):
-    #             for k, rank in enumerate(self.rank_k):
-    #                 if rank == self.kpt_comm.rank:
-    #                     wfs = self.wfs_qs[self.q_k[k]][spin]
-    #                     P_ani = wfs.P_ani.to_cpu().gather()  # gather atoms
-    #                     if P_ani is not None:
-    #                         P_nI = P_ani.matrix.gather()  # gather bands
-    #                         if P_nI.dist.comm.rank == 0:
-    #                             if rank == 0:
-    #                                 writer.fill(P_nI.data.reshape(
-    #                                     proj_shape).astype(proj_dtype))
-    #                             else:
-    #                                 self.kpt_comm.send(P_nI.data, 0)
-    #                 elif self.comm.rank == 0:
-    #                     data = np.empty(proj_shape, self.dtype)
-    #                     self.kpt_comm.receive(data, rank)
-    #                     writer.fill(data.astype(proj_dtype))
-
-    #     if flags.include_wfs:
-    #         self._write_wave_functions(writer, spin_k_shape, flags)
 
     def _write_wave_functions(self, writer, spin_k_shape, flags):
         # We collect all bands to master.  This may have to be changed
