@@ -31,6 +31,9 @@ class PWHamiltonian(Hamiltonian):
         assert isinstance(out, PWArray)
         out_nG = out
         xp = psit_nG.xp
+        print(f'DEBUG: Comm size: {psit_nG.desc.comm.size}')
+        print("DEBUG: xp is np?", xp is np)
+        print("DEBUG: xp is cp?", xp is cp)
         pw = psit_nG.desc
         if xp is not np and pw.comm.size == 1:
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
