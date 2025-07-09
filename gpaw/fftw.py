@@ -271,7 +271,8 @@ class CuPyFFTPlans(FFTPlans):
 
     @trace
     def ifft_sphere(self, coef_G, pw, out_R):
-        from gpaw.gpu import cupyx
+        from gpaw.gpu import cupyx, cupy
+        assert isinstance(out_R.data, cupy.ndarray)
 
         if coef_G is None:
             out_R.scatter_from(None)
@@ -295,6 +296,7 @@ class CuPyFFTPlans(FFTPlans):
                       *out_R.desc.size_c)
 
         if np.issubdtype(self.dtype, np.complexfloating):
+            print(type(array_R), type(array_Q), 'fft')
             array_R[:] = cupyx.scipy.fft.ifftn(
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)

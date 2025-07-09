@@ -34,7 +34,9 @@ class PWHamiltonian(Hamiltonian):
         pw = psit_nG.desc
         if xp is not np and pw.comm.size == 1:
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
+        print(type(vt_R.data), 'before gather')
         vt_R = vt_R.gather(broadcast=True)
+        print(type(vt_R.data), 'after gather')
         tmp_R = self.grid_local.empty(xp=xp)
         if pw.comm.size == 1:
             pw_local = pw
@@ -55,6 +57,7 @@ class PWHamiltonian(Hamiltonian):
             psit_nG[n1:n2].gather_all(psit_G)
             if domain_comm.rank < n2 - n1:
                 psit_G.ifft(out=tmp_R, plan=self.plan)
+                print(type(tmp_R.data), type(vt_R.data), 'apply local potential')
                 tmp_R.data *= vt_R.data
                 tmp_R.fft(out=vtpsit_G, plan=self.plan)
                 psit_G.data *= e_kin_G

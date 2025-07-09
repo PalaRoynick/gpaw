@@ -262,7 +262,7 @@ class DistributedArrays(Generic[DomainType], XP):
     def redist(self,
                domain,
                comm1: MPIComm, comm2: MPIComm) -> DistributedArrays:
-        result = domain.empty(self.dims)
+        result = domain.empty(self.dims, xp=self.xp)
         if comm1.rank == 0:
             a = self.gather()
         else:
