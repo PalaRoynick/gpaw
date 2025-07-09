@@ -29,7 +29,7 @@ short_names = {
     'SCAN': 'MGGA_X_SCAN+MGGA_C_SCAN',
     'R2SCAN': 'MGGA_X_R2SCAN+MGGA_C_R2SCAN',
     'TASK': 'MGGA_X_TASK+MGGA_C_CCALDA'
-    }
+}
 
 
 class LibXC(XCKernel):
