@@ -434,6 +434,7 @@ class PWArray(DistributedArrays[PWDesc]):
         assert not out.desc.zerobc_c.any()
         assert comm.size == out.desc.comm.size, (comm, out.desc.comm)
 
+        #print('OUT HERE', type(out.data))
         plan = plan or out.desc.fft_plans(xp=xp)
         this = self.gather()
         if this is not None:

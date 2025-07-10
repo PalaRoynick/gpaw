@@ -216,7 +216,7 @@ class UGDesc(Domain['UGArray']):
 
         return transform
 
-    def eikr(self, kpt_c: Vector | None = None) -> Array3D:
+    def eikr(self, kpt_c: Vector | None = None, xp=np) -> Array3D:
         """Plane wave.
 
         :::
@@ -233,7 +233,10 @@ class UGDesc(Domain['UGArray']):
         if kpt_c is None:
             kpt_c = self.kpt_c
         index_Rc = np.indices(self.mysize_c).T + self.start_c
-        return np.exp(2j * pi * (index_Rc @ (kpt_c / self.size_c))).T
+        arr = np.exp(2j * pi * (index_Rc @ (kpt_c / self.size_c))).T
+        if xp is not np:
+            arr = xp.asarray(arr)
+        return arr
 
     @property
     def _gd(self):
@@ -413,7 +416,7 @@ class UGArray(DistributedArrays[UGDesc]):
             return
 
         requests = []
-        assert isinstance(data, self.xp.ndarray)
+        #assert isinstance(data, self.xp.ndarray), type(data)
         for rank, block in enumerate(self.desc.blocks(data)):
             if rank != 0:
                 block = block.copy()
@@ -562,7 +565,7 @@ class UGArray(DistributedArrays[UGDesc]):
         else:
             kpt_c = np.asarray(kpt_c)
         if kpt_c.any():
-            self.data *= self.desc.eikr(kpt_c)
+            self.data *= self.desc.eikr(kpt_c, xp=self.xp)
 
     def interpolate(self,
                     plan1: fftw.FFTPlans | None = None,

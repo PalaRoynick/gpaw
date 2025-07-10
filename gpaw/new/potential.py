@@ -60,6 +60,7 @@ class Potential:
                atomdist: AtomDistribution,
                comm1: MPIComm,
                comm2: MPIComm) -> Potential:
+        print('Redistrubuting potential', type(self.vt_sR.data))
         return Potential(
             self.vt_sR.redist(grid, comm1, comm2),
             self.dH_asii.redist(atomdist, comm1, comm2),
