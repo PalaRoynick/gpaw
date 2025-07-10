@@ -39,12 +39,8 @@ class PWHamiltonian(Hamiltonian):
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         print(type(vt_R.data), 'before gather')
         vt_R = vt_R.gather(broadcast=True)
-<<<<<<< HEAD
         if xp is not np:
             vt_R.data = cp.asarray(vt_R.data)
-=======
-        print(type(vt_R.data), 'after gather')
->>>>>>> cf88d31912335860563372efef3b8245728329fe
         tmp_R = self.grid_local.empty(xp=xp)
         if pw.comm.size == 1:
             pw_local = pw
