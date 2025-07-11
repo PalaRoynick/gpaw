@@ -1149,7 +1149,7 @@ class Parallelization:
                 f'All the CPUs must be used.  Have {assignments} but '
                 f'{self.navail} times more are available.')
 
-    def get_optimal_kpt_parallelization(self, kptprioritypower=1.4):
+    def get_optimal_kpt_parallelization(self, kptprioritypower=2.4):
         if self.domain and self.band:
             # Try to use all the CPUs for k-point parallelization
             ncpus = min(self.nkpts, self.navail)

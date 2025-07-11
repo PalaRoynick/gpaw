@@ -211,6 +211,51 @@ class FakeWFS:
     def collect_eigenvalues(self, k, s):
         return self.ibzwfs.wfs_qs[k][s].eig_n.copy()
 
+    def collect_array(self, name, k, s, subset=None):
+        """Helper method for collect_eigenvalues and collect_occupations.
+
+        For the parallel case find the rank in kpt_comm that contains
+        the (k,s) pair, for this rank, collect on the corresponding
+        domain a full array on the domain master and send this to the
+        global master."""
+
+        kpt_qs = self.kpt_qs
+        kpt_rank, q = self.kd.get_rank_and_index(k)
+        if self.kd.comm.rank == kpt_rank:
+            a_nx = getattr(kpt_qs[q][s], name)
+
+            if subset is not None:
+                a_nx = a_nx[subset]
+
+            # Domain master send this to the global master
+            if self.gd.comm.rank == 0:
+                if self.bd.comm.size == 1:
+                    if kpt_rank == 0:
+                        return a_nx
+                    else:
+                        self.kd.comm.ssend(a_nx, 0, 1301)
+                else:
+                    b_nx = self.bd.collect(a_nx)
+                    if self.bd.comm.rank == 0:
+                        if kpt_rank == 0:
+                            return b_nx
+                        else:
+                            self.kd.comm.ssend(b_nx, 0, 1301)
+
+        elif self.world.rank == 0 and kpt_rank != 0:
+            # Only used to determine shape and dtype of receiving buffer:
+            a_nx = getattr(kpt_qs[0][0], name)
+
+            if subset is not None:
+                a_nx = a_nx[subset]
+
+            b_nx = np.zeros((self.bd.nbands,) + a_nx.shape[1:],
+                            dtype=a_nx.dtype)
+            self.kd.comm.receive(b_nx, kpt_rank, 1301)
+            return b_nx
+
+        return np.zeros(0)  # see comment in get_wave_function_array() method
+
     @cached_property
     def kpt_u(self):
         return [kpt
