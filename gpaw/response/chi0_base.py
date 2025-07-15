@@ -31,7 +31,8 @@ class Chi0Integrand(Integrand):
                  n1: int,
                  n2: int,
                  m1: int,
-                 m2: int):
+                 m2: int,
+                 deps_max: float | None = None):
         """
         n1 : int
             Lower occupied band index.
@@ -51,6 +52,7 @@ class Chi0Integrand(Integrand):
         self.m2 = m2
         self.n1 = n1
         self.n2 = n2
+        self.deps_max = deps_max
 
         self._chi0calc = chi0calc
 
@@ -134,6 +136,12 @@ class Chi0Integrand(Integrand):
                               pawcorr=self._chi0calc.pawcorr,
                               block=True)
 
+        deps_nm = self.eigenvalues(point).reshape(len(n_n), len(m_m))
+
+        if self.deps_max is not None:
+            mask_block = np.abs(deps_nm) > self.deps_max
+            n_nmG[mask_block] = 0.0
+
         if self.integrationmode == 'point integration':
             n_nmG *= weight
 
@@ -170,6 +178,7 @@ class Chi0Integrand(Integrand):
         kpt2 = gs.kpt_qs[ik2][point.spin]
         deps_nm = np.subtract(kpt1.eps_n[self.n1:self.n2][:, np.newaxis],
                               kpt2.eps_n[self.m1:self.m2])
+
         return deps_nm.reshape(-1)
 
 
