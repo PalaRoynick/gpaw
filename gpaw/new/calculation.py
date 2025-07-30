@@ -505,7 +505,7 @@ class DFTState:
                  ibzwfs: IBZWaveFunctions,
                  density: Density,
                  potential: Potential,
-                 energies):
+                 energies: DFTEnergies | None):
         """State of a Kohn-Sham calculation."""
         self.ibzwfs = ibzwfs
         self.density = density
