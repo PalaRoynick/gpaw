@@ -1294,6 +1294,7 @@ class BSEPlus:
                   ecut=self.ecut,
                   valence_bands=self.bse_valence_bands,
                   conduction_bands=self.bse_conduction_bands,
+                  deps_max=self.deps_max,
                   nbands=self.bse_nbands,
                   eshift=self.eshift,
                   mode='BSE',
@@ -1314,6 +1315,7 @@ class BSEPlus:
                                           wd=self.wd,
                                           nbands=slice(
                                               self.n1_chi0, self.m2_chi0),
+                                          deps_max=self.deps_max,
                                           intraband=False,
                                           hilbert=False,
                                           eta=self.eta,
@@ -1340,6 +1342,7 @@ class BSEPlus:
                  rpa_gpw,
                  rpa_nbands,
                  w_w,
+                 deps_max=None,
                  eshift=0.0,
                  bse_add_soc=False,
                  eta=0.1,
@@ -1391,6 +1394,7 @@ class BSEPlus:
         self.bse_gpw = bse_gpw
         self.bse_valence_bands = bse_valence_bands
         self.bse_conduction_bands = bse_conduction_bands
+        self.deps_max = deps_max
         self.bse_nbands = bse_nbands
         self.rpa_gpw = rpa_gpw
         self.rpa_nbands = rpa_nbands

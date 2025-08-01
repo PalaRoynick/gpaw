@@ -244,7 +244,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
                                   optical=False, n1=n1, n2=n2, m1=m1, m2=m2,
-                                  deps_max=self.deps_max)
+                                  deps_max=self.deps_max, eshift=self.eshift)
 
         chi0_body.data_WgG[:] /= prefactor
         if self.hilbert:
@@ -436,7 +436,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
                                   optical=True, n1=n1, n2=n2, m1=m1, m2=m2,
-                                  deps_max=self.deps_max)
+                                  deps_max=self.deps_max, eshift=self.eshift)
 
         # We integrate the head and wings together, using the combined index P
         # index v = (x, y, z)

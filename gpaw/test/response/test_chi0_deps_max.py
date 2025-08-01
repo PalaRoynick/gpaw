@@ -62,4 +62,4 @@ def test_chi0_emax(in_tmp_dir, gpw_files, monkeypatch):
 
     if world.rank == 0:
         assert chi0_RPA_WGG_from_bse == pytest.approx(chi0_small_WGG,
-                                                      rel=1e-3, abs=1e-4)
+                                                      rel=1e-6, abs=1e-8)

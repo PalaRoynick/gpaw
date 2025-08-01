@@ -32,7 +32,8 @@ class Chi0Integrand(Integrand):
                  n2: int,
                  m1: int,
                  m2: int,
-                 deps_max: float | None = None):
+                 deps_max: float | None = None,
+                 eshift: float | None = None):
         """
         n1 : int
             Lower occupied band index.
@@ -53,6 +54,7 @@ class Chi0Integrand(Integrand):
         self.n1 = n1
         self.n2 = n2
         self.deps_max = deps_max
+        self.eshift = eshift
 
         self._chi0calc = chi0calc
 
@@ -139,7 +141,11 @@ class Chi0Integrand(Integrand):
         deps_nm = self.eigenvalues(point).reshape(len(n_n), len(m_m))
 
         if self.deps_max is not None:
-            mask_block = np.abs(deps_nm) > self.deps_max
+            if self.eshift is not None:
+                mask_block = np.abs(deps_nm + self.eshift
+                                    * np.sign(deps_nm)) > self.deps_max
+            else:
+                mask_block = np.abs(deps_nm) > self.deps_max
             n_nmG[mask_block] = 0.0
 
         if self.integrationmode == 'point integration':
@@ -148,7 +154,6 @@ class Chi0Integrand(Integrand):
         df_nm = kptpair.get_occupation_differences()
         df_nm[df_nm <= 1e-20] = 0.0
         n_nmG *= df_nm[..., np.newaxis]**0.5
-
         return n_nmG
 
     @timer('Get eigenvalues')
