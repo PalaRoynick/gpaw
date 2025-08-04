@@ -48,6 +48,7 @@
 #endif
 #define gpuFloatComplex           XXXhipFloatComplex
 #define gpublasDoubleComplex      hipblasDoubleComplex
+#define gpublasComplex            hipblasComplex
 #define make_gpuDoubleComplex     make_hipDoubleComplex
 #define make_gpuFloatComplex      make_hipFloatComplex
 
