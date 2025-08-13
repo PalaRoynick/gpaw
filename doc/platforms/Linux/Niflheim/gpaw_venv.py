@@ -9,6 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from sys import version_info
+from concurrent.futures import ThreadPoolExecutor
 
 if version_info < (3, 9):
     raise ValueError('Please use Python-3.9 or later')
@@ -126,10 +127,12 @@ def compile_gpaw_c_code(gpaw: Path, activate: Path, intel_only: bool) -> None:
         path.unlink()
 
     # Compile:
-    for host in nifllogin:
-        if host == 'fjorm' and intel_only:
-            continue
-        run(f'ssh {host} ". {activate} && pip install -q -e {gpaw}"')
+    with ThreadPoolExecutor() as e:
+        for host in nifllogin:
+            if host == 'fjorm' and intel_only:
+                continue
+            e.submit(run,
+                     f'ssh {host} ". {activate} && pip install -q -e {gpaw}"')
 
     # Clean up:
     for path in gpaw.glob('_gpaw.*.so'):
