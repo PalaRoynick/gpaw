@@ -143,12 +143,14 @@ def test_eigh_magma_gpu(eigh_test_matrix: cp.ndarray,
     eigvals, eigvecs = eigh_magma_gpu(arr, uplo)
     eigvals_cp, eigvecs_cp = cp.linalg.eigh(arr, UPLO=uplo)
 
-    eigvals_cp = cp.sort(eigvals_cp)
-    eigvals = cp.sort(eigvals)
+    eigvals_np, eigvecs_np = np.linalg.eigh(cp.asnumpy(arr), UPLO=uplo)
+
+
 
     atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
     rtol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
 
+    cp.testing.assert_allclose(cp.asarray(eigvals_np), eigvals_cp, atol=atol, rtol=rtol)
     cp.testing.assert_allclose(eigvals, eigvals_cp, atol=atol, rtol=rtol)
 
     true_matrix = fill_uplo(arr, uplo)
