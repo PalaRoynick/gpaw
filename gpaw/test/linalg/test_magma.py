@@ -64,6 +64,9 @@ def eigh_test_matrix():
                 rng.random((n, n), dtype=dtype_real)
                 + 1j * rng.random((n, n), dtype=dtype_real)
             )
+
+            # Set imaginary parts to zero on the diagonal
+            xp.fill_diagonal(A.imag, 0)
             return A
 
     return _generate
