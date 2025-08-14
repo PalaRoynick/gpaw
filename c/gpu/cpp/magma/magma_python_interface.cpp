@@ -14,6 +14,7 @@ static magma_uplo_t get_magma_uplo(char* in_uplo_str)
         && "Invalid UPLO");
 
     return strcmp(in_uplo_str, "L") == 0 ? MagmaUpper : MagmaLower;
+    //return strcmp(in_uplo_str, "L") == 0 ? MagmaLower : MagmaUpper;
 }
 
 struct MagmaPythonContext

@@ -32,7 +32,7 @@ def eigh_magma_cpu(matrix: np.ndarray, UPLO: str) -> tuple[np.ndarray,
     assert matrix.flags.c_contiguous
 
     # The internal function handles output array creation
-    eigvals, eigvects = cgpaw._eigh_magma_cpu(matrix.conj(), UPLO)
+    eigvals, eigvects = cgpaw._eigh_magma_cpu(matrix, UPLO)
 
     # MAGMA eigenvectors are on rows, numpy/cupy has them on columns
     return eigvals, np.conjugate(eigvects).T
@@ -80,7 +80,7 @@ def eigh_magma_gpu(matrix: cp.ndarray, UPLO: str) -> tuple[cp.ndarray,
     eigvals = cp.empty((matrix.shape[0]), dtype=eigval_dtype)
 
     # Will throw if matrix dtype is unsupported
-    cgpaw._eigh_magma_gpu(matrix.conj(), UPLO, eigvals, eigvects)
+    cgpaw._eigh_magma_gpu(matrix, UPLO, eigvals, eigvects)
 
     # MAGMA eigenvectors are on rows, numpy/cupy has them on columns
     return eigvals, cp.conjugate(eigvects).T

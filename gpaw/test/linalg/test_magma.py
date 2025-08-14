@@ -143,6 +143,9 @@ def test_eigh_magma_gpu(eigh_test_matrix: cp.ndarray,
     eigvals, eigvecs = eigh_magma_gpu(arr, uplo)
     eigvals_cp, eigvecs_cp = cp.linalg.eigh(arr, UPLO=uplo)
 
+    eigvals_cp = cp.sort(eigvals_cp)
+    eigvals = cp.sort(eigvals)
+
     atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
     rtol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
 
