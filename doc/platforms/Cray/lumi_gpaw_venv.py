@@ -64,6 +64,7 @@ module load EasyBuild-user
     # Make sure the virtual environment doesn't exist yet
     assert not (Path(install_root) / venv_name).is_dir()
 
+    # STEP 2: Create the virtual environment and update actiavte script.
     step2 = f"""{export_ebu_path}
 cd {install_root} 
 module load cray-python/3.11.7
@@ -75,6 +76,7 @@ python3 -m venv --system-site-packages {venv_name}"""
     extra = f"""{export_ebu_path}
 module load LUMI/24.03
 module load partition/G
+module load EasyBuild-user
 module load cpeGNU/24.03
 module load SuiteSparse/5.13.0-cpeGNU-24.03-OpenMP    # Dependency of hipSolver for ROCm 6.2
 module load rocm/6.2.2
@@ -86,6 +88,19 @@ module load libxc/7.0.0-cpeGNU-24.03                  # from EBU_USER_PREFIX
 export MPICH_GPU_SUPPORT_ENABLED=1
 """
     activate.write_text(extra + activate.read_text())
+
+
+    # STEP 3: Clone and build GPAW
+
+    # clone locally, ssh within ssh is problematic
+    run(f'cd {venv_root} && git clone git@gitlab.com:gpaw/gpaw.git')
+    step3 = f"""source {activate}
+cd {venv_root}
+export GPAW_CONFIG={venv_root / 'gpaw/doc/platforms/Cray/siteconfig-lumi-gpu.py'}
+echo GPAW CONFIF=$GPAW_CONFIG
+pip install -v --log build-gpu.log -e gpaw"""
+
+    ssh_run_list(step3)
 
 if __name__ == '__main__':
     raise SystemExit(main())
