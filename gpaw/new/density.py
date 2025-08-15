@@ -19,6 +19,10 @@ from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.setup import Setups
 
 
+from gpaw.mpi4pywrapper import scrutinize
+
+
+@scrutinize
 class Density:
     @classmethod
     def from_data_and_setups(cls,
