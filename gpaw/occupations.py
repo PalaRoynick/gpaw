@@ -13,6 +13,7 @@ from gpaw.band_descriptor import BandDescriptor
 from gpaw.mpi import MPIComm, broadcast_float, serial_comm
 from gpaw.typing import Array1D, Array2D
 
+from gpaw.mpi4pywrapper import scrutinize
 
 class ParallelLayout(NamedTuple):
     """Collection of parallel stuff."""
@@ -260,6 +261,7 @@ class FixMagneticMomentOccupationNumberCalculator(OccupationNumberCalculator):
                 e_entropy1 + e_entropy2)
 
 
+@scrutinize
 class SmoothDistribution(OccupationNumberCalculator):
     """Base class for Fermi-Dirac and other smooth distributions."""
     def __init__(self, width: float, parallel_layout: ParallelLayout = None):

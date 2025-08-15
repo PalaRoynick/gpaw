@@ -23,9 +23,14 @@ def get_debug_wrapper(cls, name, func):
         result = func(self, *args, **kwargs)
         stack = ' '.join(traceback.format_list(traceback.extract_stack(limit=5)))
         stack = ' '.join(stack.split())
+
+        from gpaw.mpi import world
+        if self.__debug_file is None:
+            self.__debug_file = open('debug.%03d.txt' % world.rank, 'w')
+
         print('%30s' % (cls.__name__ + '.' + func.__name__),
               '%81s' % summary(args, kwargs), 'ret',
-              '%20s' % result, stack, file=self.__debug_file, flush=True)
+              '%20s' % str(result), stack, file=self.__debug_file, flush=True)
         return result
 
     return debug_wrapper
@@ -46,7 +51,7 @@ def scrutinize(cls):
     init = cls.__init__
     def __init__(self, *args, **kwargs):
         init(self, *args, **kwargs)
-        self.__debug_file = open('debug.%03d.txt' % self.comm.rank, 'w')
+        self.__debug_file = None
         def close_file():
              self.__debug_file.close()
         atexit.register(close_file)            
