@@ -18,22 +18,20 @@ def get_debug_wrapper(cls, name, func):
         return s if len(s) <= 80 else s[:77] + '...'
 
     def summary(args, kwargs):
-        s = '\n'.join([f'{name}={argsummary(arg)}'
-                       for name, arg in zip(argspec.args[1:], args)])
-        return '\n' + s
+        return '\n'.join([f'{name}={argsummary(arg)}'
+                          for name, arg in zip(argspec.args[1:], args)])
 
     def debug_wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
-        stack = ' '.join(traceback.format_list(traceback.extract_stack(limit=5)))
-        stack = ' '.join(stack.split())
+        stack = '\n'.join(traceback.format_list(traceback.extract_stack(limit=5)))
 
         from gpaw.mpi import world
         if self.__debug_file is None:
             self.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
 
-        print('%30s' % (cls.__name__ + '.' + func.__name__),
-              summary(args, kwargs), 'ret',
-              '%20s' % str(result), stack, file=self.__debug_file, flush=True)
+        print('%30s\n' % (cls.__name__ + '.' + func.__name__),
+              summary(args, kwargs), '\nret',
+              '%20s\n' % str(result), stack, file=self.__debug_file, flush=True)
         return result
 
     return debug_wrapper
