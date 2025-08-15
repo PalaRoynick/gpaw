@@ -26,12 +26,12 @@ def get_debug_wrapper(cls, name, func):
         stack = '\n'.join(traceback.format_list(traceback.extract_stack(limit=5)))
 
         from gpaw.mpi import world
-        if self.__debug_file is None:
-            self.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
+        if cls.__debug_file is None:
+            cls.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
 
         print('%30s\n' % (cls.__name__ + '.' + func.__name__),
               summary(args, kwargs), '\nret',
-              '%20s\n' % str(result), stack, file=self.__debug_file, flush=True)
+              '%20s\n' % str(result), stack, file=cls.__debug_file, flush=True)
         return result
 
     return debug_wrapper
