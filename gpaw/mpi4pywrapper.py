@@ -6,12 +6,12 @@ except ImportError:
 from inspect import isfunction, getfullargspec
 import atexit
 import traceback
-from gpaw.core.arrays import DistributesArrays
 
 def get_debug_wrapper(cls, name, func):
     argspec = getfullargspec(func)
 
     def argsummary(arg):
+        from gpaw.core.arrays import DistributedArrays
         if isinstance(arg, DistributedArrays):
             arg = arg.data
         s = ' '.join(str(arg).split())
