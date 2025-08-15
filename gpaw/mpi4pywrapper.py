@@ -6,6 +6,7 @@ except ImportError:
 from inspect import isfunction, getfullargspec
 import atexit
 import traceback
+import numpy as np
 
 
 def get_debug_wrapper(cls, name, func):
@@ -14,11 +15,16 @@ def get_debug_wrapper(cls, name, func):
     def argsummary(arg):
         from gpaw.core.arrays import DistributedArrays
         from gpaw.core.matrix import Matrix
+
+        info = ''
+        if hasattr(arg, 'xp'):
+            info = 'np:' if arg.xp is np else 'cp:'
         if isinstance(arg, DistributedArrays):
             arg = arg.data
         if isinstance(arg, Matrix):
             arg = arg.data
-        s = ' '.join(str(arg).split())
+        s = info + ' '.join(str(arg).split())
+
         return s if len(s) <= 80 else s[:77] + '...'
 
     def summary(self, args, kwargs):
