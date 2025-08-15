@@ -51,8 +51,10 @@ nulltimer = NullTimer()
 
 
 class DebugTimer(Timer):
-    def __init__(self, print_levels=1000, comm=mpi.world, txt=sys.stdout):
+    def __init__(self, print_levels=1000, comm=None, txt=sys.stdout):
         Timer.__init__(self, print_levels)
+        if comm is None:
+            comm = mpi.world
         ndigits = 1 + int(math.log10(comm.size))
         self.srank = '%0*d' % (ndigits, comm.rank)
         self.txt = txt
@@ -198,7 +200,10 @@ class ParallelTimer(DebugTimer):
 
 
 class Profiler(Timer):
-    def __init__(self, prefix, comm=mpi.world):
+    def __init__(self, prefix, comm=None):
+        if comm is None:
+            comm = mpi.world
+
         import atexit
 
         self.prefix = prefix
@@ -257,7 +262,9 @@ class Profiler(Timer):
 
 
 class GPUProfiler(Profiler, GPUTimerBase):
-    def __init__(self, prefix, comm=mpi.world):
+    def __init__(self, prefix, comm=None):
+        if comm is None:
+            comm = mpi.world
         Profiler.__init__(self, prefix, comm=comm)
         GPUTimerBase.__init__(self)
 

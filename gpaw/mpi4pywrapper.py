@@ -3,7 +3,58 @@ try:
 except ImportError:
     pass
 
+from inspect import isfunction, getfullargspec
+import atexit
+import traceback
 
+
+def get_debug_wrapper(cls, name, func):
+    argspec = getfullargspec(func)
+
+    def argsummary(arg):
+        s = ' '.join(str(arg).split())
+        return s if len(s) <= 80 else s[:79] + '…'
+
+    def summary(args, kwargs):
+        return ','.join([f'{name}={argsummary(arg)}'
+                         for name, arg in zip(argspec.args[1:], args)])
+
+    def debug_wrapper(self, *args, **kwargs):
+        result = func(self, *args, **kwargs)
+        stack = ' '.join(traceback.format_list(traceback.extract_stack(limit=5)))
+        stack = ' '.join(stack.split())
+        print('%30s' % (cls.__name__ + '.' + func.__name__),
+              '%81s' % summary(args, kwargs), 'ret',
+              '%20s' % result, stack, file=self.__debug_file, flush=True)
+        return result
+
+    return debug_wrapper
+
+
+def scrutinize(cls):
+    def inherited_classvars(cls: type):
+        namespace = {}
+        for basecls in reversed(cls.mro()):
+            namespace.update(vars(basecls))
+        return namespace
+    for name, var in inherited_classvars(cls).items():
+        if name.startswith('__'):
+            continue
+        if isfunction(var):
+            setattr(cls, name, get_debug_wrapper(cls, name, var))
+
+    def __init__(self, *args, **kwargs):
+        self.__debug_file = open('debug.%03d.txt' % self.comm.rank)
+        def close_file():
+             self.__debug_file.close()
+        atexit.register(close_file)            
+        super().__init__(*args, **kwargs)
+    cls.__init__ = __init__
+
+    return cls
+
+
+@scrutinize
 class MPI4PYWrapper:
     def __init__(self, comm, parent=None):
         self.comm = comm
