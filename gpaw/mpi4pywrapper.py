@@ -7,30 +7,37 @@ from inspect import isfunction, getfullargspec
 import atexit
 import traceback
 
+
 def get_debug_wrapper(cls, name, func):
     argspec = getfullargspec(func)
 
     def argsummary(arg):
         from gpaw.core.arrays import DistributedArrays
+        from gpaw.core.matrix import Matrix
         if isinstance(arg, DistributedArrays):
+            arg = arg.data
+        if isinstance(arg, Matrix):
             arg = arg.data
         s = ' '.join(str(arg).split())
         return s if len(s) <= 80 else s[:77] + '...'
 
-    def summary(args, kwargs):
-        return '\n'.join([f'{name}={argsummary(arg)}'
-                          for name, arg in zip(argspec.args[1:], args)])
+    def summary(self, args, kwargs):
+        return (f'self={argsummary(self)}\n' +
+                '\n'.join([f'{name}={argsummary(arg)}'
+                           for name, arg in zip(argspec.args[1:], args)]))
 
     def debug_wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
-        stack = '\n'.join(traceback.format_list(traceback.extract_stack(limit=5)))
+        lst = traceback.format_list(traceback.extract_stack(limit=5))
+        stack = '\n'.join(lst)
 
         from gpaw.mpi import world
         if cls.__debug_file is None:
-            cls.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
+            cls.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank,
+                                    'w')
 
         print('%30s\n' % (cls.__name__ + '.' + func.__name__),
-              summary(args, kwargs), '\nret',
+              summary(self, args, kwargs), '\nret',
               '%20s\n' % str(result), stack, file=cls.__debug_file, flush=True)
         return result
 
@@ -48,11 +55,11 @@ def scrutinize(cls):
             continue
         if isfunction(var):
             setattr(cls, name, get_debug_wrapper(cls, name, var))
-    
     cls.__debug_file = None
+
     def close_file():
-        cls.__debug_file and self.__debug_file.close()
-    atexit.register(close_file)            
+        cls.__debug_file and cls.__debug_file.close()
+    atexit.register(close_file)
 
     return cls
 
