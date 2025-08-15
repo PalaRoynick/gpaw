@@ -26,7 +26,7 @@ def get_debug_wrapper(cls, name, func):
 
         from gpaw.mpi import world
         if self.__debug_file is None:
-            self.__debug_file = open('debug.%03d.txt' % world.rank, 'w')
+            self.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
 
         print('%30s' % (cls.__name__ + '.' + func.__name__),
               '%81s' % summary(args, kwargs), 'ret',
