@@ -12,7 +12,9 @@ from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.c import pw_precond, pw_insert_gpu
 from gpaw.utilities import as_complex_dtype
 
+from gpaw.mpi4pywrapper import scrutinize
 
+@scrutinize
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, pw, xp=np):
         self.grid_local = grid.new(comm=None, dtype=pw.dtype)
@@ -131,7 +133,6 @@ def precondition(psit_nG: PWArray,
 
 
 @trace(gpu=True)
-@cp.fuse()
 def gpu_prec(ekin, G2, residual):
     x = 1 / ekin / 3 * G2
     a = 27.0 + x * (18.0 + x * (12.0 + x * 8.0))
