@@ -16,8 +16,9 @@ def get_debug_wrapper(cls, name, func):
         return s if len(s) <= 80 else s[:79] + '…'
 
     def summary(args, kwargs):
-        return ','.join([f'{name}={argsummary(arg)}'
-                         for name, arg in zip(argspec.args[1:], args)])
+        s = '\n'.join([f'{name}={argsummary(arg)}'
+                       for name, arg in zip(argspec.args[1:], args)])
+        return '\n' + s
 
     def debug_wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
@@ -29,7 +30,7 @@ def get_debug_wrapper(cls, name, func):
             self.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank, 'w')
 
         print('%30s' % (cls.__name__ + '.' + func.__name__),
-              '%81s' % summary(args, kwargs), 'ret',
+              summary(args, kwargs), 'ret',
               '%20s' % str(result), stack, file=self.__debug_file, flush=True)
         return result
 
@@ -53,7 +54,7 @@ def scrutinize(cls):
         init(self, *args, **kwargs)
         self.__debug_file = None
         def close_file():
-             self.__debug_file.close()
+             self.__debug_file and self.__debug_file.close()
         atexit.register(close_file)            
     cls.__init__ = __init__
 
