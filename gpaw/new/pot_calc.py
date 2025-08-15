@@ -35,6 +35,9 @@ from gpaw.typing import Array1D, Array2D, Array3D
 from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
+from gpaw.mpi4pywrapper import scrutinize
+
+@scrutinize
 class PotentialCalculator:
     def __init__(self,
                  xc: Functional,
