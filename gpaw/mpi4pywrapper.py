@@ -13,7 +13,7 @@ def get_debug_wrapper(cls, name, func):
 
     def argsummary(arg):
         s = ' '.join(str(arg).split())
-        return s if len(s) <= 80 else s[:79] + '…'
+        return s if len(s) <= 80 else s[:77] + '...'
 
     def summary(args, kwargs):
         s = '\n'.join([f'{name}={argsummary(arg)}'
