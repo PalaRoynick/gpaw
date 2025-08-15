@@ -37,8 +37,12 @@ def get_debug_wrapper(cls, name, func):
         lst = traceback.format_list(traceback.extract_stack(limit=5))
         stack = '\n'.join(lst)
 
-        from gpaw.mpi import world
         if cls.__debug_file is None:
+            # We need to import world, so we can't do this init call
+            if func.__name__ == '__init__' and 'MPI' in cls.__name__:
+                return result
+ 
+            from gpaw.mpi import world
             cls.__debug_file = open(cls.__name__ + '.%03d.txt' % world.rank,
                                     'w')
 
@@ -57,7 +61,7 @@ def scrutinize(cls):
             namespace.update(vars(basecls))
         return namespace
     for name, var in inherited_classvars(cls).items():
-        if name.startswith('__'):
+        if name.startswith('__') and name != '__init__':
             continue
         if isfunction(var):
             setattr(cls, name, get_debug_wrapper(cls, name, var))
