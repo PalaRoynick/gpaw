@@ -48,15 +48,11 @@ def scrutinize(cls):
             continue
         if isfunction(var):
             setattr(cls, name, get_debug_wrapper(cls, name, var))
-
-    init = cls.__init__
-    def __init__(self, *args, **kwargs):
-        init(self, *args, **kwargs)
-        self.__debug_file = None
-        def close_file():
-             self.__debug_file and self.__debug_file.close()
-        atexit.register(close_file)            
-    cls.__init__ = __init__
+    
+    cls.__debug_file = None
+    def close_file():
+        cls.__debug_file and self.__debug_file.close()
+    atexit.register(close_file)            
 
     return cls
 
