@@ -43,12 +43,13 @@ def scrutinize(cls):
         if isfunction(var):
             setattr(cls, name, get_debug_wrapper(cls, name, var))
 
+    init = cls.__init__
     def __init__(self, *args, **kwargs):
-        self.__debug_file = open('debug.%03d.txt' % self.comm.rank)
+        init(self, *args, **kwargs)
+        self.__debug_file = open('debug.%03d.txt' % self.comm.rank, 'w')
         def close_file():
              self.__debug_file.close()
         atexit.register(close_file)            
-        super().__init__(*args, **kwargs)
     cls.__init__ = __init__
 
     return cls
