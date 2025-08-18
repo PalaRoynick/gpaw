@@ -217,6 +217,7 @@ class Density:
         comp_charge = self.nt_sR.desc.comm.sum_scalar(comp_charge)
         charge = comp_charge + self.charge - background_charge
         self.log('charge', charge)
+        self.log('self.nt_sR', self.nt_sR.data)
         pseudo_charge = self.nt_sR[:self.ndensities].integrate().sum()
         self.log('pseudo_charge', pseudo_charge)
         if pseudo_charge != 0.0:
