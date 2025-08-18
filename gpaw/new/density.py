@@ -88,7 +88,9 @@ class Density:
                                            nct_aX,
                                            tauct_aX)
         ndensities = ncomponents % 3
+        self.log('density before nct_R', density.nt_sR.data)
         density.nt_sR.data[:ndensities] += density.nct_R.data
+        self.log('density after nct_R', density.nt_sR.data)
         if mgga:
             density.taut_sR = nt_sR.new()
             density.taut_sR.data[:] = density.tauct_R.data
