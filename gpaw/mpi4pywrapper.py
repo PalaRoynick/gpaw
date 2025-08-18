@@ -67,6 +67,11 @@ def scrutinize(cls):
             setattr(cls, name, get_debug_wrapper(cls, name, var))
     cls.__debug_file = None
 
+    def log(self, name, value):
+        pass
+
+    cls.log = get_debug_wrapper(cls, 'log', log) 
+
     def close_file():
         cls.__debug_file and cls.__debug_file.close()
     atexit.register(close_file)

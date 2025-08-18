@@ -211,14 +211,20 @@ class Density:
                                      D_sii[:self.ndensities].real,
                                      self.delta_aiiL[a][:, :, 0])
             comp_charge += self.delta0_a[a]
+        self.log('comp_charge', comp_charge)
         # comp_charge could be cupy.ndarray:
         comp_charge = float(comp_charge) * sqrt(4 * pi)
         comp_charge = self.nt_sR.desc.comm.sum_scalar(comp_charge)
         charge = comp_charge + self.charge - background_charge
+        self.log('charge', charge)
         pseudo_charge = self.nt_sR[:self.ndensities].integrate().sum()
+        self.log('pseudo_charge', pseudo_charge)
         if pseudo_charge != 0.0:
+            print(pseudo_charge)
             x = -charge / pseudo_charge
             self.nt_sR.data *= x
+
+        self.log('nt_sR.data', self.nt_sR.data)
 
     @trace
     def update(self, ibzwfs: IBZWaveFunctions, ked=False):
