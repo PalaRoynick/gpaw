@@ -7,7 +7,16 @@ from inspect import isfunction, getfullargspec
 import atexit
 import traceback
 import numpy as np
+import cupy
 
+def sync(f):
+    def wrapped(*args, **kwargs):
+        cupy.cuda.runtime.deviceSynchronize()
+        result = f(*args, **kwargs)
+        cupy.cuda.runtime.deviceSynchronize()
+        return result
+    return wrapped
+        
 
 def get_debug_wrapper(cls, name, func):
     argspec = getfullargspec(func)
@@ -78,6 +87,20 @@ def scrutinize(cls):
 
     return cls
 
+def scrutinize2(cls):
+    cls.__debug_file = None
+
+    def log(self, name, value):
+        pass
+
+    cls.log = get_debug_wrapper(cls, 'log', log) 
+
+    def close_file():
+        cls.__debug_file and cls.__debug_file.close()
+    atexit.register(close_file)
+
+    return cls
+
 
 @scrutinize
 class MPI4PYWrapper:
@@ -98,6 +121,7 @@ class MPI4PYWrapper:
     def max_scalar(self, a, root=-1):
         return self.sum_scalar(a, root=-1, _op=MAX)
 
+    @sync
     def sum_scalar(self, a, root=-1, _op=None):
         if _op is None:
             _op = SUM
@@ -107,6 +131,7 @@ class MPI4PYWrapper:
         else:
             return self.comm.reduce(a, root=root, op=_op)
 
+    @sync
     def sum(self, a, root=-1):
         if root == -1:
             self.comm.Allreduce(IN_PLACE, a, op=SUM)
@@ -116,55 +141,69 @@ class MPI4PYWrapper:
             else:
                 self.comm.Reduce(a, None, root=root, op=SUM)
 
+    @sync
     def scatter(self, a, b, root):
         self.comm.Scatter(a, b, root)
 
+    @sync
     def alltoallv(self, sbuffer, scounts, sdispls, rbuffer, rcounts, rdispls):
         self.comm.Alltoallv((sbuffer, (scounts, sdispls), sbuffer.dtype.char),
                             (rbuffer, (rcounts, rdispls), rbuffer.dtype.char))
 
+    @sync
     def all_gather(self, a, b):
         self.comm.Allgather(a, b)
 
+    @sync
     def gather(self, a, root, b=None):
         self.comm.Gather(a, b, root)
 
+    @sync
     def broadcast(self, a, root):
         self.comm.Bcast(a, root)
 
+    @sync
     def sendreceive(self, a, dest, b, src, sendtag=123, recvtag=123):
         return self.comm.Sendrecv(a, dest, sendtag, b, src, recvtag)
 
+    @sync
     def send(self, a, dest, tag=123, block=True):
         if block:
             self.comm.Send(a, dest, tag)
         else:
             return self.comm.Isend(a, dest, tag)
 
+    @sync
     def ssend(self, a, dest, tag=123):
         return self.comm.Ssend(a, dest, tag)
 
+    @sync
     def receive(self, a, src, tag=123, block=True):
         if block:
             self.comm.Recv(a, src, tag)
         else:
             return self.comm.Irecv(a, src, tag)
 
+    @sync
     def test(self, request):
         return request.test()
 
+    @sync
     def testall(self, requests):
         return Request.testall(requests)
 
+    @sync
     def wait(self, request):
         request.wait()
 
+    @sync
     def waitall(self, requests):
         Request.waitall(requests)
 
     def name(self):
         return self.comm.Get_name()
 
+    @sync
     def barrier(self):
         self.comm.barrier()
 

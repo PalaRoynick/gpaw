@@ -88,7 +88,6 @@ class Density:
                                            nct_aX,
                                            tauct_aX)
         ndensities = ncomponents % 3
-        density.log('density before nct_R', density.nt_sR.data)
         density.nt_sR.data[:ndensities] += density.nct_R.data
         density.log('density after nct_R', density.nt_sR.data)
         if mgga:
@@ -146,9 +145,10 @@ class Density:
     @property
     def nct_R(self):
         if self._nct_R is None:
-            self._nct_R = self.grid.empty(xp=self.nt_sR.xp)
+            self._nct_R = self.grid.zeros(xp=self.nt_sR.xp)
             self.nct_aX.to_uniform_grid(out=self._nct_R,
                                         scale=1.0 / (self.ncomponents % 3))
+            self.log('nct_R after', self._nct_R.data)    
         return self._nct_R
 
     @property

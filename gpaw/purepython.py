@@ -129,6 +129,7 @@ def pwlfc_expand(f_Gs, Gk_Gv, pos_av, eikR_a,
         (xp.cos(emiGR_Ga) - 1j * xp.sin(emiGR_Ga)) * eikR_a
     real = np.issubdtype(f_GI.dtype, np.floating)
     I1 = 0
+    print('l_s', l_s)
     for J, (a, s) in enumerate(zip(a_J, s_J)):
         l = l_s[s]
         I2 = I1 + 2 * l + 1

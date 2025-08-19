@@ -7,12 +7,11 @@ from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
 from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.lfc import LocalizedFunctionsCollection as LFC
-from gpaw.mpi import MPIComm, serial_comm
+from gpaw.mpi import MPIComm, serial_comm, world
 from gpaw.new import zips, trace
 from gpaw.spline import Spline
 from gpaw.typing import Array1D, ArrayLike2D
 from gpaw.gpu import XP
-
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray
 
@@ -88,10 +87,16 @@ class AtomCenteredFunctions(XP):
     def add_to(self, functions, coefs=1.0):
         """Add atom-centered functions multiplied by *coefs* to *functions*."""
         self._lazy_init()
+        #print('self._lfc', self._lfc)
+        #print('functions.data before', functions.data)
+        #print(coefs, type(coefs), isinstance(coefs, float), 'XXX')
         if isinstance(coefs, float):
+            with open('in_add_to_float_%d.txt' % world.rank, 'a') as f:
+                print('in add to float', world.rank, file=f)
             self._lfc.add(functions.data, coefs)
         else:
             self._lfc.add(functions.data, coefs, q=0)
+        #print('functions.data after', functions.data)
 
     @trace
     def integrate(self, functions, out=None, add_to=False):
@@ -155,6 +160,7 @@ class UGAtomCenteredFunctions(AtomCenteredFunctions):
             return
         gd = self.grid._gd
         kd = KPointDescriptor(np.array([self.grid.kpt]))
+        asd
         self._lfc = LFC(gd, self.functions, kd,
                         dtype=self.grid.dtype,
                         integral=self.integrals,

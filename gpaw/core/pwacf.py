@@ -19,6 +19,7 @@ from gpaw.spline import Spline
 from gpaw.typing import ArrayLike1D
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 from gpaw.utilities.blas import mmm
+from gpaw.mpi import world
 
 if TYPE_CHECKING:
     from gpaw.core.plane_waves import PWDesc, PWArray
@@ -73,7 +74,11 @@ class PWAtomCenteredFunctions(AtomCenteredFunctions):
                         scale: float = 1.0) -> UGArray:
         out_G = self.pw.zeros(xp=out.xp)
         self.add_to(out_G, scale)
-        return out_G.ifft(out=out)
+        a = out_G.ifft(out=out)
+        with open('out_and_out_G_%d.txt' % world.rank, 'a') as f:
+            print('out_G', out_G.data, 'rank', world.rank, file=f)
+            print('out', out.data, 'rank', world.rank, file=f)
+        return a
 
     def change_cell(self, new_pw):
         self.pw = new_pw
@@ -97,7 +102,9 @@ class PWAtomCenteredFunctions(AtomCenteredFunctions):
                 gpu_gemm('N', 'T',
                          C_nM.data, f_GI, a_nG, 1.0 / self.pw.dv, 0.0)
 
+from gpaw.mpi4pywrapper import scrutinize2
 
+@scrutinize2
 class PWLFC:  # (BaseLFC)
     def __init__(self,
                  functions,
@@ -174,7 +181,7 @@ class PWLFC:  # (BaseLFC)
 
         nJ = sum(len(spline_j) for spline_j in self.spline_aj)
 
-        self.f_Gs = xp.empty(self.pw.myshape + (nsplines,),
+        self.f_Gs = xp.zeros(self.pw.myshape + (nsplines,),
                              dtype=as_real_dtype(self.dtype))
         self.l_s = np.empty(nsplines, np.int32)
         self.a_J = np.empty(nJ, np.int32)
@@ -310,9 +317,15 @@ class PWLFC:  # (BaseLFC)
                          self.l_s._data, self.a_J._data, self.s_J._data,
                          cc, f_GI._data)
         else:
+            #from gpaw.purepython import pwlfc_expand_gpu
+            #print('Calling pure python kernel')
+            #import cupy
+            #cupy.cuda.runtime.deviceSynchronize()
             pwlfc_expand_gpu(f_Gs, Gk_Gv, pos_av, eikR_a, Y_GL,
                              self.l_s, self.a_J, self.s_J,
                              cc, f_GI, self.I_J)
+            #cupy.cuda.runtime.deviceSynchronize()
+            
         return f_GI
 
     def block(self, ensure_same_number_of_blocks=False):
@@ -348,6 +361,7 @@ class PWLFC:  # (BaseLFC)
         if isinstance(c_axi, float):
             assert a_xG.ndim == 1
             c_xI[:] = c_axi
+            print('Adding just a float', c_axi)
         else:
             if self.comm.size != 1:
                 c_xI[:] = 0.0
@@ -356,6 +370,8 @@ class PWLFC:  # (BaseLFC)
             if self.comm.size != 1:
                 self.comm.sum(c_xI)
 
+        self.log('c_xI', c_xI) 
+  
         nx = prod(c_xI.shape[:-1])
         if nx == 0:
             return
@@ -375,9 +391,8 @@ class PWLFC:  # (BaseLFC)
                     mmm(1.0 / self.pw.dv, c_xI, 'N', f_GI, 'T',
                         1.0, a_xG[:, G1:G2])
                 else:
-                    gpu_gemm('N', 'T',
-                             c_xI, f_GI, a_xG[:, G1:G2],
-                             1.0 / self.pw.dv, 1.0)
+                    a_xG[:, G1:G2] += 1.0 / self.pw.dv * (c_xI @ f_GI.T)
+        self.log('in add a_xG', a_xG)
 
     @trace
     def integrate(self, a_xG, c_axi=None, q=-1, add_to=False):

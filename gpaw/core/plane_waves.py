@@ -428,6 +428,7 @@ class PWArray(DistributedArrays[PWDesc]):
             if grid is None:
                 grid = self.desc.uniform_grid_with_grid_spacing(grid_spacing)
             out = grid.empty(self.dims, xp=xp)
+
         assert self.desc.dtype == out.desc.dtype, \
             (self.desc.dtype, out.desc.dtype)
 
@@ -484,7 +485,10 @@ class PWArray(DistributedArrays[PWDesc]):
             comm.gather(mydata, 0, data)
             if comm.rank == 0:
                 output[:] = data[:len(output)]
-
+        if comm.rank == 0:
+            with open('output_G.txt','w') as f:
+                print(output, file=f)
+            
         if broadcast:
             comm.broadcast(out.data, 0)
 
@@ -538,6 +542,9 @@ class PWArray(DistributedArrays[PWDesc]):
             for to in self._arrays():
                 comm.scatter(None, buf, 0)
                 to[:] = buf[:len(to)]
+
+        with open('scatter_from_%d.txt', 'a') as f:
+            print(self.data, file=f)
 
     def scatter_from_all(self, a_G: PWArray) -> None:
         """Scatter all coefficients from rank r to self on other cores."""

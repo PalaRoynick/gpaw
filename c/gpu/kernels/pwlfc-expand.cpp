@@ -391,7 +391,7 @@ template <int nspin, bool gga> __global__ void evaluate_ldaorgga_kernel(int ng,
     }
 }
 
-// The define wrappers do not allow special characters for the first argument
+// The define wrappers do not allow special characters (< or >) for the first argument
 // Hence, here defining an expression in such way, that the first argument can be
 // a well defined identifier, and the preprocessor macro parses it correctly.
 constexpr void(*LDA_SPINPAIRED)(int, double*, double*, double*, double*, double*) = &evaluate_ldaorgga_kernel<1, false>;
