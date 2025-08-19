@@ -99,10 +99,11 @@ def test_gpu_k(gpu, par, mode, xc):
 
 
 @pytest.mark.gpu
-def test_2d():
+@pytest.mark.parametrize("shift", [-1e-10, 0, 1e-10])
+def test_2d(shift):
     atoms = Atoms('H', pbc=[True, True, False], cell=[1, 1, 5])
     atoms.center(axis=2)
-    #atoms.translate([0, 0, -0.1])
+    atoms.translate([0, 0, shift])
 
     dft = DFT(
         atoms,
