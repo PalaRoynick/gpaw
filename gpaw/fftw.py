@@ -15,7 +15,8 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.utilities import as_complex_dtype, as_real_dtype
-from gpaw.new.c import pw_insert_gpu
+#from gpaw.new.c import pw_insert_gpu
+from gpaw.purepython import pw_insert_gpu
 from gpaw.new import trace
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.gpu import is_hip
@@ -236,7 +237,7 @@ class CuPyFFTPlans(FFTPlans):
     def fft(self):
         from gpaw.gpu import cupyx
         if self.tmp_R.dtype == float:
-            if is_hip:
+            if 0: #is_hip:
                 self.tmp_Q[:] = rfftn_patch(self.tmp_R)
             else:
                 self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
@@ -247,7 +248,7 @@ class CuPyFFTPlans(FFTPlans):
     def ifft(self):
         from gpaw.gpu import cupyx
         if self.tmp_R.dtype == float:
-            if is_hip:
+            if 0: #is_hip:
                 self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) \
                     * self.tmp_R.size
             else:
@@ -299,7 +300,7 @@ class CuPyFFTPlans(FFTPlans):
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)
         else:
-            if is_hip:
+            if 0: #is_hip:
                 array_R[:] = irfftn_patch(array_Q, out_R.desc.global_shape())\
                     * array_R.size
             else:
@@ -316,7 +317,7 @@ class CuPyFFTPlans(FFTPlans):
         if np.issubdtype(self.dtype, np.complexfloating):
             out_Q = cupyx.scipy.fft.fftn(in_R)
         else:
-            if is_hip:
+            if 0: #is_hip:
                 out_Q = rfftn_patch(in_R)
             else:
                 # CuPy bug? rfftn fails on non-aligned arrays

@@ -304,6 +304,30 @@ if debug:
     np.empty = empty  # type: ignore[misc]
     np.empty_like = empty_like
 
+    import cupy
+    oldempty2 = cupy.empty
+    oldempty_like2 = cupy.empty_like
+
+    def empty2(*args, **kwargs):
+        a = oldempty2(*args, **kwargs)
+        try:
+            a.fill(cupy.nan)
+        except ValueError:
+            a.fill(42)
+        return a
+
+    def empty_like2(*args, **kwargs):
+        a = oldempty_like2(*args, **kwargs)
+        try:
+            a.fill(cupy.nan)
+        except ValueError:
+            a.fill(-42)
+        return a
+
+    cupy.empty = empty2  # type: ignore[misc]
+    cupy.empty_like = empty_like2
+    
+
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import GPAW
 elif GPAW_NEW:
