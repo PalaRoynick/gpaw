@@ -41,7 +41,8 @@ dry_run = 0
 # When type-checking or running pytest, we want the debug-wrappers enabled:
 debug: bool = (TYPE_CHECKING or
                'pytest' in sys.modules or
-               bool(sys.flags.debug))
+               bool(sys.flags.debug) or
+               True)
 
 if debug:
     for var in os.environ:

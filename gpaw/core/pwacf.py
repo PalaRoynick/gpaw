@@ -105,7 +105,7 @@ class PWLFC:  # (BaseLFC)
                  *,
                  xp,
                  integrals: ArrayLike1D | float | None = None,
-                 blocksize: int | None = 5000):
+                 blocksize: int | None = 1000):
         """Reciprocal-space plane-wave localized function collection.
 
         spline_aj: list of list of spline objects
@@ -298,6 +298,8 @@ class PWLFC:  # (BaseLFC)
 
             f_GI = xp.empty((2 * (G2 - G1), self.nI),
                             as_real_dtype(self.dtype))
+
+        assert (self.I_J >= 0).all()
 
         if xp is np:
             # Fast C-code:

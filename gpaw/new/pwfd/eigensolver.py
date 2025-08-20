@@ -90,24 +90,33 @@ class PWFDEigensolver(Eigensolver):
               R = (H - ε S)ψ
                n        n   n
         """
+        print('initinit')
 
         if not hasattr(self, 'preconditioner'):
             self._initialize(ibzwfs)
 
         wfs = ibzwfs.wfs_qs[0][0]
+        comm = wfs.psit_nX.comm
+        comm.barrier()
+        print('overlap corr')
+        print(wfs.P_ani.layout.atomdist)
         dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
                                                     wfs.xp)
+        comm.barrier()
+        print('got past overlap corr')
 
         ibzwfs.orthonormalize()
+        print('orthonormalized, updating wfs')
         hamiltonian.update_wave_functions(ibzwfs)
-
+        print('updated wfs, calculating weights')
         apply = partial(hamiltonian.apply,
                         potential.vt_sR,
                         potential.dedtaut_sR,
                         ibzwfs, density.D_asii)  # used by hybrids
 
         weight_un = calculate_weights(self.converge_bands, ibzwfs)
-
+        comm.barrier()
+        print('starting iter')
         wfs_error = 0.0
         eig_error = 0.0
         # Loop over k-points:

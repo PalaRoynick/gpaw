@@ -689,8 +689,8 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
     }
   else   // It should be an array
     {
-      int n;
-      int elemsize;
+      long n;
+      long elemsize;
       MPI_Datatype datatype;
       PyObject* aobj = obj;
       CHK_ARRAY(aobj);

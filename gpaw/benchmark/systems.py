@@ -11,7 +11,8 @@ def system_magic_graphene():
                                  transa_cc=transa_cc,
                                  transb_cc=transb_cc,
                                  straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
+                                 interlayer_dist=3.35,
+                                 vacuum=3.5)
     return atoms
 
 

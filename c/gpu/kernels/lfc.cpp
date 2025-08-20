@@ -19,8 +19,9 @@
 #ifndef GPU_USE_COMPLEX
 
 #define INLINE inline
-static INLINE void* gpaw_malloc(int n)
+static INLINE void* gpaw_malloc(long n)
 {
+    printf("gpaw_malloc");
     void *p = malloc(n);
     assert(p != NULL);
     return p;

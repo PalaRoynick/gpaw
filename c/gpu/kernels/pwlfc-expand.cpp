@@ -702,8 +702,8 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
 				       int nsplines)
 
 {
-    int G = threadIdx.x + blockIdx.x * blockDim.x;
-    int J = threadIdx.y + blockIdx.y * blockDim.y;
+    long G = threadIdx.x + blockIdx.x * blockDim.x;
+    long J = threadIdx.y + blockIdx.y * blockDim.y;
 
 	__shared__ Tcomplex imag_powers[4];
 	if (threadIdx.y == 0 && threadIdx.x == 0)
@@ -727,8 +727,8 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
 		       	   Gk_Gv[1] * pos_av[1] +
 		           Gk_Gv[2] * pos_av[2]);
 	Tcomplex emiGR = {cos(GkPos), -sin(GkPos)};
-	int s = s_J[J];
-	int l = l_s[s];
+	long s = s_J[J];
+	long l = l_s[s];
 	Y_GL += G*nL + l*l;
 	Tcomplex f1 = emiGR * eikR_a[a_J[J]] * imag_powers[l % 4] * f_Gs[s];
 	if constexpr(strided) {

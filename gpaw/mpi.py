@@ -122,7 +122,7 @@ class _Communicator:
             will be distributed back to all processes, i.e. a broadcast.
 
         """
-        if isinstance(a, (int, float, complex)):
+        if isinstance(a, (int, float, complex, np.float32, np.complex64)):
             warnings.warn('Please use sum_scalar(...)', stacklevel=2)
             return self.comm.sum_scalar(a, root)
         else:
@@ -130,7 +130,9 @@ class _Communicator:
             tc = a.dtype
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            self.comm.sum(a, root)
+            aflat = a.ravel()
+            for inds in range(0, aflat.size, 100000000):
+                self.comm.sum(aflat[inds:inds+100000000], root)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -466,7 +468,9 @@ class _Communicator:
         """
         assert 0 <= root < self.size
         assert is_contiguous(a)
-        self.comm.broadcast(a, root)
+        aflat = a.ravel()
+        for inds in range(0, aflat.size, 100000000):
+            self.comm.broadcast(aflat[inds:inds+100000000], root)
 
     def sendreceive(self, a, dest, b, src, sendtag=123, recvtag=123):
         assert 0 <= dest < self.size
