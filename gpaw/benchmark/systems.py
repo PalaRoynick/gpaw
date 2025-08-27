@@ -1,79 +1,64 @@
 import numpy as np
+from scipy.linalg import block_diag
+
+graphene_bilayers = {
+    244: [[[-5, -9], [4, -5]], [[-4, -9], [5, -4]]],
+    364: [[[-6, -11], [5, -6]], [[-5, -11], [6, -5]]],
+    508: [[[-13, -6], [-7, -13]], [[-13, -7], [-6, -13]]],
+    676: [[[-7, 8], [-15, -7]], [[-8, 7], [-15, -8]]],
+    868: [[[-17, -8], [-9, -17]], [[-17, -9], [-8, -17]]],
+    1084: [[[-10, -19], [9, -10]], [[-9, -19], [10, -9]]],
+    1324: [[[-10, 11], [-21, -10]], [[-11, 10], [-21, -11]]],
+    1588: [[[-23, -11], [-12, -23]], [[-23, -12], [-11, -23]]],
+    1876: [[[-13, -25], [12, -13]], [[-12, -25], [13, -12]]],
+    2188: [[[27, 13], [14, 27]], [[27, 14], [13, 27]]],
+    2524: [[[-15, -29], [14, -15]], [[-14, -29], [15, -14]]],
+    2884: [[[15, -16], [31, 15]], [[16, -15], [31, 16]]],
+    3268: [[[-16, 17], [-33, -16]], [[-17, 16], [-33, -17]]],
+    3676: [[[18, 35], [-17, 18]], [[17, 35], [-18, 17]]],
+    4564: [[[-39, -19], [-20, -39]], [[-39, -20], [-19, -39]]],
+    5548: [[[21, -22], [43, 21]], [[22, -21], [43, 22]]],
+    10444: [[[29, -30], [59, 29]], [[30, -29], [59, 30]]],
+}
 
 
-def system_magic_graphene():
+def get_bilayer(N):
     from gpaw.benchmark.generate_twisted import make_heterostructure
     from ase.build import graphene
+
     atoms = graphene(vacuum=5)
-    transa_cc = np.array([[29, -30, 0], [59, 29, 0], [0, 0, 1]])
-    transb_cc = np.array([[30, -29, 0], [59, 30, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_2188_bl_graphene():
-    from gpaw.benchmark.generate_twisted import make_heterostructure
-    from ase.build import graphene
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[27, 13, 0], [14, 27, 0], [0, 0, 1]])
-    transb_cc = np.array([[27, 24, 0], [13, 27, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_6000_bl_graphene():
-    from gpaw.benchmark.generate_twisted import make_heterostructure
-    from ase.build import graphene
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[23, 45, 0], [-22, 23, 0], [0, 0, 1]])
-    transb_cc = np.array([[22, 45, 0], [-23, 22, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_676_bl_graphene():
-    from gpaw.benchmark.generate_twisted import make_heterostructure
-    from ase.build import graphene
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[7, -8, 0], [15, 7, 0], [0, 0, 1]])
-    transb_cc = np.array([[8, -7, 0], [15, 8, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
+    transa_cc, transb_cc = graphene_bilayers[N]
+    atoms = make_heterostructure(
+        atoms,
+        atoms,
+        transa_cc=block_diag(transa_cc, [[1]]),
+        transb_cc=block_diag(transb_cc, [[1]]),
+        straina_vv=np.eye(3),
+        interlayer_dist=3.35,
+    )
     return atoms
 
 
 def system_H2():
     from ase.build import molecule
-    atoms = molecule('H2')
+
+    atoms = molecule("H2")
     atoms.center(vacuum=3)
     return atoms
 
 
 def system_C60():
     from ase.build import molecule
-    atoms = molecule('C60')
+
+    atoms = molecule("C60")
     atoms.center(vacuum=5)
     return atoms
 
 
 def system_diamond():
     from ase.build import bulk
-    atoms = bulk('C')
+
+    atoms = bulk("C")
     return atoms
 
 
@@ -83,7 +68,7 @@ def system_MoS2_tube():
     from ase.build import mx2
 
     # Create tube of MoS2:
-    atoms = mx2('MoS2', size=(3, 2, 1))
+    atoms = mx2("MoS2", size=(3, 2, 1))
     atoms.cell[1, 0] = 0
     atoms = atoms.repeat((1, 10, 1))
     p = atoms.positions
@@ -103,27 +88,32 @@ def system_MoS2_tube():
 
 def system_magbulk():
     from ase.build import bulk
-    atoms = bulk('Fe') * 2
+
+    atoms = bulk("Fe") * 2
     atoms.set_initial_magnetic_moments([3] * len(atoms))
     return atoms
 
 
 def system_metalslab():
     from ase.build import fcc111
-    slab = fcc111('Al', size=(3, 4, 8), vacuum=6.0)
+
+    slab = fcc111("Al", size=(3, 4, 8), vacuum=6.0)
     return slab
 
 
-systems = {'C60': system_C60,
-           'diamond': system_diamond,
-           'H2': system_H2,
-           'MoS2_tube': system_MoS2_tube,
-           'C6000': system_6000_bl_graphene,
-           'C2188': system_2188_bl_graphene,
-           'C676': system_676_bl_graphene,
-           'magbulk': system_magbulk,
-           'metalslab': system_metalslab,
-           'magic_graphene': system_magic_graphene}
+systems = {
+    "C60": system_C60,
+    "diamond": system_diamond,
+    "H2": system_H2,
+    "MoS2_tube": system_MoS2_tube,
+    "magbulk": system_magbulk,
+    "metalslab": system_metalslab,
+}
+
+for N in graphene_bilayers:
+    systems["C" + str(N)] = lambda: get_bilayer(N)
+    assert N == len(get_bilayer(N)), (N, len(get_bilayer(N)))
+systems["magic_graphene"] = systems["C10444"]
 
 
 def parse_system(name):
