@@ -157,8 +157,7 @@ class TBPotentialCalculator(PotentialCalculator):
         for a, V_L in V_aL.items():
             V_L[0] = self.setups[a].W
 
-        return ({'kinetic': 0.0,
-                 'coulomb': 0.0,
+        return ({'coulomb': 0.0,
                  'zero': 0.0,
                  'xc': energy,
                  'external': 0.0},
@@ -215,7 +214,6 @@ class TBSCFLoop:
         e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
             self.occ_calc,
             nelectrons=density.nvalence - density.charge)
-
         energies.set(band=e_band,
                      entropy=e_entropy,
                      extrapolation=e_extrapolation)
