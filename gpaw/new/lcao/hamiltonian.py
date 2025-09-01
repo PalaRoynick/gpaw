@@ -10,6 +10,7 @@ from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
+from gpaw.mpi4pywrapper import scrutinize
 
 
 class HamiltonianMatrixCalculator:
@@ -18,6 +19,7 @@ class HamiltonianMatrixCalculator:
         raise NotImplementedError
 
 
+@scrutinize
 class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
     def __init__(self,
                  V_sxMM: list[np.ndarray],
@@ -120,6 +122,7 @@ class NonCollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
         return H_sMsM
 
 
+@scrutinize
 class LCAOHamiltonian(Hamiltonian):
     def __init__(self,
                  basis: BasisFunctions):

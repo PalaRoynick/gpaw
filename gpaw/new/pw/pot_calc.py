@@ -6,7 +6,10 @@ from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
 
+from gpaw.mpi4pywrapper import scrutinize
 
+
+@scrutinize
 class PlaneWavePotentialCalculator(PotentialCalculator):
     def __init__(self,
                  grid,

@@ -17,6 +17,7 @@ from gpaw.typing import (Array1D, Array2D, Array3D, Array4D, ArrayLike1D,
                          ArrayLike2D, Vector)
 from gpaw.new.c import add_to_density, add_to_density_gpu, symmetrize_ft
 from gpaw.fd_operators import Gradient
+from gpaw.mpi import world
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -411,7 +412,7 @@ class UGArray(DistributedArrays[UGDesc]):
         """Scatter data from rank-0 to all ranks."""
         if isinstance(data, UGArray):
             data = data.data
-
+        
         comm = self.desc.comm
         if comm.size == 1:
             self.data[:] = data
@@ -436,6 +437,8 @@ class UGArray(DistributedArrays[UGDesc]):
 
         for request, _ in requests:
             comm.wait(request)
+        with open('UGArray.scatter_from_%d.txt' % world.rank, 'a') as f:
+            print('self.data', self.data, file=f)
 
     def gather(self, out=None, broadcast=False):
         """Gather data from all ranks to rank-0."""

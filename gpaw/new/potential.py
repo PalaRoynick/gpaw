@@ -9,8 +9,10 @@ from gpaw.core.domain import Domain as XDesc
 from gpaw.core import PWArray, UGArray, UGDesc
 from gpaw.mpi import MPIComm, broadcast_float
 from gpaw.new import zips
+from gpaw.mpi4pywrapper import scrutinize
 
 
+@scrutinize
 class Potential:
     def __init__(self,
                  vt_sR: UGArray,

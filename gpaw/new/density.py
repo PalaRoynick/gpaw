@@ -19,6 +19,10 @@ from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.setup import Setups
 
 
+from gpaw.mpi4pywrapper import scrutinize
+
+
+@scrutinize
 class Density:
     @classmethod
     def from_data_and_setups(cls,
@@ -85,6 +89,7 @@ class Density:
                                            tauct_aX)
         ndensities = ncomponents % 3
         density.nt_sR.data[:ndensities] += density.nct_R.data
+        density.log('density after nct_R', density.nt_sR.data)
         if mgga:
             density.taut_sR = nt_sR.new()
             density.taut_sR.data[:] = density.tauct_R.data
@@ -140,9 +145,10 @@ class Density:
     @property
     def nct_R(self):
         if self._nct_R is None:
-            self._nct_R = self.grid.empty(xp=self.nt_sR.xp)
+            self._nct_R = self.grid.zeros(xp=self.nt_sR.xp)
             self.nct_aX.to_uniform_grid(out=self._nct_R,
                                         scale=1.0 / (self.ncomponents % 3))
+            self.log('nct_R after', self._nct_R.data)    
         return self._nct_R
 
     @property
@@ -207,14 +213,21 @@ class Density:
                                      D_sii[:self.ndensities].real,
                                      self.delta_aiiL[a][:, :, 0])
             comp_charge += self.delta0_a[a]
+        self.log('comp_charge', comp_charge)
         # comp_charge could be cupy.ndarray:
         comp_charge = float(comp_charge) * sqrt(4 * pi)
         comp_charge = self.nt_sR.desc.comm.sum_scalar(comp_charge)
         charge = comp_charge + self.charge - background_charge
+        self.log('charge', charge)
+        self.log('self.nt_sR', self.nt_sR.data)
         pseudo_charge = self.nt_sR[:self.ndensities].integrate().sum()
+        self.log('pseudo_charge', pseudo_charge)
         if pseudo_charge != 0.0:
+            print(pseudo_charge)
             x = -charge / pseudo_charge
             self.nt_sR.data *= x
+
+        self.log('nt_sR.data', self.nt_sR.data)
 
     @trace
     def update(self, ibzwfs: IBZWaveFunctions, ked=False):

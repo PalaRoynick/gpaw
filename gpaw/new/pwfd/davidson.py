@@ -115,6 +115,8 @@ class Davidson(PWFDEigensolver):
                             dH, dS_aii, P2_ani, P3_ani)
 
         def copy(C_nn: Array2D, M_nn: Matrix) -> None:
+            import cupy
+            cupy.cuda.runtime.deviceSynchronize()
             domain_comm.sum(M_nn.data, 0)
             if domain_comm.rank == 0:
                 M_nn.redist(M0_nn)

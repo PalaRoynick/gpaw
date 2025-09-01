@@ -73,6 +73,9 @@ class MatrixWithNoData:
         return Matrix(*self.shape, dtype=self.dtype, dist=self.dist)
 
 
+from gpaw.mpi4pywrapper import scrutinize
+
+@scrutinize
 class Matrix(XP):
     def __init__(self,
                  M: int,

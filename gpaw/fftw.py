@@ -15,7 +15,8 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.utilities import as_complex_dtype, as_real_dtype
-from gpaw.new.c import pw_insert_gpu
+#from gpaw.new.c import pw_insert_gpu
+from gpaw.purepython import pw_insert_gpu
 from gpaw.new import trace
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.gpu import is_hip
@@ -247,11 +248,11 @@ class CuPyFFTPlans(FFTPlans):
     def ifft(self):
         from gpaw.gpu import cupyx
         if self.tmp_R.dtype == float:
-            if is_hip:
-                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) \
-                    * self.tmp_R.size
-            else:
-                self.tmp_R[:] = cupyx.scipy.fft.irfftn(
+            #if is_hip:
+            #    self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) \
+            #        * self.tmp_R.size
+            #else:
+            self.tmp_R[:] = cupyx.scipy.fft.irfftn(
                     self.tmp_Q, self.tmp_R.shape,
                     norm='forward',
                     overwrite_x=True)
@@ -288,6 +289,7 @@ class CuPyFFTPlans(FFTPlans):
 
         assert np.issubdtype(array_Q.dtype, np.complexfloating)
         assert np.issubdtype(coef_G.dtype, np.complexfloating)
+        # XXX
         pw_insert_gpu(coef_G,
                       Q_G,
                       1.0,
@@ -299,13 +301,13 @@ class CuPyFFTPlans(FFTPlans):
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)
         else:
-            if is_hip:
-                array_R[:] = irfftn_patch(array_Q, out_R.desc.global_shape())\
-                    * array_R.size
-            else:
-                array_R[:] = cupyx.scipy.fft.irfftn(
-                    array_Q, out_R.desc.global_shape(),
-                    norm='forward', overwrite_x=True)
+            #if is_hip:
+            #    array_R[:] = irfftn_patch(array_Q, out_R.desc.global_shape())\
+            #        * array_R.size
+            #else:
+            array_R[:] = cupyx.scipy.fft.irfftn(
+                array_Q, out_R.desc.global_shape(),
+                norm='forward', overwrite_x=True)
 
         if out_R.desc.comm.size > 1:
             out_R.scatter_from(array_R)

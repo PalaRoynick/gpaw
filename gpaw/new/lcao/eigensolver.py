@@ -5,8 +5,9 @@ from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.new.energies import DFTEnergies
 from gpaw.core.matrix import MatrixWithNoData
+from gpaw.mpi4pywrapper import scrutinize
 
-
+@scrutinize
 class LCAOEigensolver(Eigensolver):
     def __init__(self,
                  basis,
