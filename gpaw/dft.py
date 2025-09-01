@@ -133,6 +133,26 @@ class FD(Mode):
 class TB(Mode):
     distribution = '?'
 
+    def __init__(self,
+                 *,
+                 fudge_factors=None,
+                 repulsions=None,
+                 dtype: DTypeLike | None = None,
+                 force_complex_dtype: bool = False):
+        self.fudge_factors = fudge_factors
+        self.repulsions = repulsions
+        super().__init__(dtype=dtype,
+                         force_complex_dtype=force_complex_dtype)
+
+    def todict(self):
+        dct = super().todict()
+        if self.fudge_factors:
+            dct['fudge_factors'] = self.fudge_factors
+        if self.repulsions:
+            dct['repulsions'] = self.repulsions
+        return dct
+
+
 
 class Eigensolver(Parameter):
     @classmethod

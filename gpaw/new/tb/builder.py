@@ -4,7 +4,7 @@ from math import pi
 from types import SimpleNamespace
 
 import numpy as np
-from ase.data import atomic_numbers, covalent_radii
+# from ase.data import covalent_radii
 from ase.neighborlist import neighbor_list
 from ase.units import Bohr, Ha
 
@@ -132,11 +132,13 @@ class TBPotentialCalculator(PotentialCalculator):
                  xc,
                  setups,
                  atoms,
+                 repulsions,
                  domain_comm):
         super().__init__(xc, None, setups,
                          relpos_ac=atoms.get_scaled_positions(),
                          environment=None)
         self.atoms = atoms.copy()
+        self.repulsions = repulsions
         self.domain_comm = domain_comm
         self.force_av = None
         self.stress_vv = None
@@ -145,7 +147,8 @@ class TBPotentialCalculator(PotentialCalculator):
         vt_sR = density.nt_sR
 
         atoms = self.atoms
-        energy, force_av, stress_vv = pairpot(atoms)
+        energy, force_av, stress_vv = pairpot(
+            atoms, self.repulsions)
         energy /= Ha
         self.force_av = force_av * Bohr / Ha
 
@@ -283,8 +286,20 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         return TBHamiltonian(self.basis)
 
     def create_potential_calculator(self):
+        reps = self.params.mode.repulsions or {}
+        symbols = [setup.symbol for setup in self.setups.setups.values()]
+        repulsions = {}
+        for sym1 in symbols:
+            for sym2 in symbols:
+                rep = reps.get((sym1, sym2),
+                               reps.get((sym2, sym1), None))
+                if rep is None:
+                    rep = Repulsion.default(sym1, sym2)
+                repulsions[(sym1, sym2)] = rep
+
         xc = DummyXC(self.xc)
         return TBPotentialCalculator(xc, self.setups, self.atoms,
+                                     repulsions,
                                      self.communicators['d'])
 
     def create_scf_loop(self):
@@ -357,7 +372,25 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         return ibzwfs
 
 
-def pairpot(atoms):
+class Repulsion:
+    def __init__(self, f, dfdr=None, rc=None):
+        self.f = f
+        self.dfdr = dfdr
+        if rc is None:
+            for rc in np.linspace(1.0, 10.0, 31):
+                if f(rc) == 0.0:
+                    break
+            else:
+                1 / 0
+        self.rc = rc
+
+    @staticmethod
+    def default(sym1, sym2):
+        # radii[symbol] = covalent_radii[atomic_numbers[symbol]]
+        return Repulsion(lambda r: 0.0, rc=0.5)
+
+
+def pairpot(atoms, repulsions):
     """Simple pair-potential for testing.
 
     >>> from ase import Atoms
@@ -371,28 +404,18 @@ def pairpot(atoms):
            [0., 0., 0.]])
 
     """
-    radii = {}
     symbol_a = atoms.symbols
-    for symbol in symbol_a:
-        radii[symbol] = covalent_radii[atomic_numbers[symbol]]
-
-    r0 = {}
-    for s1, r1 in radii.items():
-        for s2, r2 in radii.items():
-            r0[(s1, s2)] = r1 + r2
-    rcutmax = 2 * max(r0.values(), default=1.0)
-
+    rcutmax = max(rep.rc for rep in repulsions)
     energy = 0.0
     force_av = np.zeros((len(atoms), 3))
     stress_vv = np.zeros((3, 3))
 
+    # PARALLELIZE!!!
     for i, j, d, D_v in zip(*neighbor_list('ijdD', atoms, rcutmax)):
-        d0 = r0[(symbol_a[i], symbol_a[j])]
-        e0 = 6.0 / d0
-        x = d0 / d
-        if x > 0.5:
-            energy += 0.5 * e0 * (-5 + x * (24 + x * (-36 + 16 * x)))
-            f = -0.5 * e0 * (24 + x * (-72 + 48 * x)) * d0 / d**2
+        rep = repulsions[(symbol_a[i], symbol_a[j])]
+        if d < rep.rc:
+            energy += 0.5 * rep.f(d)
+            f = -0.5 * rep.dfdr(d)
             F_v = D_v * f / d
             force_av[i] += F_v
             force_av[j] -= F_v
