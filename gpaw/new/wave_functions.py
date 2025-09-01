@@ -12,6 +12,10 @@ from gpaw.setup import Setups
 from gpaw.typing import Array1D, Array2D, ArrayND
 
 
+class WaveFunctionCollapseError(Exception):
+    """No wave functions available."""
+
+
 class WaveFunctions:
     bytes_per_band: int
     xp: ModuleType  # numpy or cupy
