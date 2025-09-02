@@ -374,6 +374,13 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         return ibzwfs
 
 
+def create_fudge_factors(setups, hops):
+    ff = {}
+    for setup in setups.setups.values():
+        symbol = setup.symbol
+        hop = hops.get(symbol, {})
+
+
 class Repulsion:
     def __init__(self, f, dfdr=None, rc=None):
         self.f = f
