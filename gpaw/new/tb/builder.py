@@ -348,7 +348,8 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
 
         manytci.Pindices = manytci.Mindices
         my_atom_indices = self.atomdist.indices
-        fudge_factor = 0.75
+
+        fudge_factors = create_fudge_factors(self.setups, self.params.hops)
 
         domain_comm = self.communicators['d']
 
@@ -359,6 +360,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
             V_mM[:] = V_MM.T[M1:M2].toarray()
             domain_comm.sum(V_mM)
             wfs.V_MM.add_hermitian_conjugate()
+
             V_mM *= fudge_factor / domain_comm.size
             MM1 = 0
             for m in manytci.Mindices.nm_a:
@@ -387,7 +389,7 @@ class Repulsion:
     @staticmethod
     def default(sym1, sym2):
         # radii[symbol] = covalent_radii[atomic_numbers[symbol]]
-        return Repulsion(lambda r: 0.0, rc=0.5)
+        return Repulsion(lambda r: 0.0, lambda r: 0.0, rc=0.5)
 
 
 def pairpot(atoms, repulsions):
