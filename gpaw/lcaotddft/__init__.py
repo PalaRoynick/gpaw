@@ -220,7 +220,11 @@ class OldLCAOTDDFT(GPAW):
         self.niter += 1
         self.timer.stop('Kick')
 
-    def propagate(self, time_step: float = 10.0, iterations: int = 2000):
+    def propagate(self, time_step: float = 10.0, iterations: int = 2000,
+                  restart_file: str = None,  # deprecated
+                  dump_interval: int = None,  # deprecated
+                  ):
+
         """Propagate the electronic system.
 
         Parameters
@@ -229,7 +233,14 @@ class OldLCAOTDDFT(GPAW):
             Time step in attoseconds
         iterations
             Number of propagation steps
+        restart_file
+            Deprecated. Do not use this.
+            Name of the restart file.
+        dump_interval
+            Deprecated. Do not use this.
+            After how many iterations restart data is dumped.
         """
+
         self.tddft_init()
 
         time_step *= attosec_to_autime
@@ -239,6 +250,8 @@ class OldLCAOTDDFT(GPAW):
 
         # Set these as class properties for use of observers
         self.time_step = time_step
+        self.dump_interval = dump_interval  # XXX remove, deprecated
+        self.restart_file = restart_file  # XXX remove, deprecated
         
         self.timer.start('Propagate')
         while self.niter < self.maxiter:
