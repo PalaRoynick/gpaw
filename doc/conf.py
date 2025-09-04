@@ -50,7 +50,7 @@ intersphinx_mapping = {
     # FIXME: despite adding `pip` here we still can't link to it with
     # :py:mod:`pip` unlike other packages...
     'pip': ('https://pip.pypa.io/en/stable/', None),
-    'ase': ('https://wiki.fysik.dtu.dk/ase', None),
+    'ase': ('https://ase-lib.org', None),
     'numpy': ('https://numpy.org/doc/stable', None),
     'cupy': ('https://docs.cupy.dev/en/stable', None),
     'scipy': ('https://docs.scipy.org/doc/scipy', None),

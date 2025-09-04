@@ -416,8 +416,8 @@ class DFTCalculation:
             raise ReuseWaveFunctionsError
 
         ibzwfs = self.ibzwfs
-        if ibzwfs.domain_comm.size != 1:
-            raise ReuseWaveFunctionsError
+        # if ibzwfs.domain_comm.size != 1:
+        #     raise ReuseWaveFunctionsError
 
         check_atoms_too_close(atoms)
         check_atoms_too_close_to_boundary(atoms)
@@ -447,7 +447,7 @@ class DFTCalculation:
         # At the moment we skip it on GPU's because it doesn't
         # work!
         if density.nt_sR.xp is np:
-            self.comm.broadcast(density.nt_sR.data, 0)
+            ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
 

@@ -17,6 +17,7 @@ from gpaw.new.gpw import as_double_precision
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.hamiltonian import PWHamiltonian, SpinorPWHamiltonian
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
+from gpaw.new.pw.hybridsk import PWHybridHamiltonianK
 from gpaw.new.pw.paw_poisson import SlowPAWPoissonSolver
 from gpaw.new.pw.poisson import make_poisson_solver
 from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
@@ -131,7 +132,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         pw = self.electrostatic_potential_desc
         ps = make_poisson_solver(pw,
                                  grid,
-                                 self.params.charge,
+                                 self.charge,
                                  env,
                                  **psparams)
 
@@ -167,11 +168,18 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             assert self.communicators['d'].size == 1
             assert self.communicators['k'].size == 1
             assert self.nbands % self.communicators['b'].size == 0
-            return PWHybridHamiltonian(
-                self.grid, self.wf_desc, self.xc, self.setups,
-                self.relpos_ac, self.atomdist,
-                comp_charge_in_real_space=self.params.experimental.get(
-                    'ccirs'))
+            if self.dtype is float:
+                return PWHybridHamiltonian(
+                    self.grid, self.wf_desc, self.xc, self.setups,
+                    self.relpos_ac, self.atomdist,
+                    comp_charge_in_real_space=self.params.experimental.get(
+                        'ccirs'))
+            else:
+                return PWHybridHamiltonianK(
+                    self.grid, self.wf_desc, self.xc, self.setups,
+                    self.relpos_ac, self.atomdist, self.log,
+                    self.communicators['k'],
+                    self.communicators['w'])
         return SpinorPWHamiltonian(self.qspiral_v)
 
     def convert_wave_functions_from_uniform_grid(self,
@@ -179,12 +187,31 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                                                  basis_set,
                                                  kpt_c,
                                                  q):
-        # Replace this with code that goes directly from C_nM to
-        # psit_nG via PWAtomCenteredFunctions.
-        # XXX
+        if self.params.experimental.get('fast_pw_init', True):
+            if self.ncomponents < 4:
+                from gpaw.core.pwacf import PWAtomCenteredFunctions
+                pw = self.wf_desc.new(kpt=kpt_c)
+                phit_aJG = PWAtomCenteredFunctions(
+                    [setup.basis_functions_J for setup in self.setups],
+                    self.relpos_ac,
+                    pw,
+                    atomdist=self.atomdist,
+                    xp=self.xp)
+                psit_nG = pw.empty(self.nbands,
+                                   comm=self.communicators['b'],
+                                   xp=self.xp)
+                mynbands, M = C_nM.dist.shape
+                phit_aJG.multiply(C_nM.to_xp(self.xp).to_dtype(pw.dtype),
+                                  out_nG=psit_nG[:mynbands])
+                return psit_nG
 
-        grid = self.grid.new(kpt=kpt_c, dtype=self.dtype)
-        pw = self.wf_desc.new(kpt=kpt_c)
+        lcao_dtype = complex if \
+            np.issubdtype(self.dtype, np.complexfloating) else float
+
+        grid = self.grid.new(kpt=kpt_c, dtype=lcao_dtype)
+        pw = self.wf_desc.new(kpt=kpt_c, dtype=lcao_dtype)
+        if self.dtype != lcao_dtype:
+            pw_correct = self.wf_desc.new(kpt=kpt_c, dtype=self.dtype)
 
         if np.issubdtype(self.dtype, np.complexfloating):
             emikr_R = grid.eikr(-kpt_c)
@@ -199,6 +226,12 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 if np.issubdtype(self.dtype, np.complexfloating):
                     psit_R.data *= emikr_R
                 psit_R.fft(out=psit_G)
+
+            if self.dtype != lcao_dtype:
+                psit2_nG = pw_correct.empty(self.nbands,
+                                            self.communicators['b'])
+                psit2_nG.data[:] = psit_nG.data
+                return psit2_nG.to_xp(self.xp)
             return psit_nG.to_xp(self.xp)
         else:
             psit_nsG = pw.empty((self.nbands, 2), self.communicators['b'])
