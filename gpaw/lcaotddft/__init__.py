@@ -237,6 +237,9 @@ class OldLCAOTDDFT(GPAW):
 
         self.log('----  About to do %d propagation steps' % iterations)
 
+        # Set these as class properties for use of observers
+        self.time_step = time_step
+        
         self.timer.start('Propagate')
         while self.niter < self.maxiter:
             # Propagate one step
