@@ -349,7 +349,14 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         manytci.Pindices = manytci.Mindices
         my_atom_indices = self.atomdist.indices
 
-        fudge_factors = create_fudge_factors(self.setups, self.params.hops)
+        ells = {}
+        for setup in setups.setups.values():
+            symbol = setup.symbol
+            ells[symbol] = [phit.l for phit in setup.basis_functions_J]
+
+        fudge_factors = create_hop_factors(
+            {symbol: ['spdf'[l] for l in ll] for symbol, ll in ells.items()},
+            self.params.hops)
 
         domain_comm = self.communicators['d']
 
@@ -361,24 +368,65 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
             domain_comm.sum(V_mM)
             wfs.V_MM.add_hermitian_conjugate()
 
+        def mmsl():
+            M = 0
+            for setup in setups:
+                for l in ells[setup.symbol]:
+                    yield M, M + 2 * l + 1, setup.symbol, l
+                    M += 2 * l + 1
+
+        for wfs in ibzwfs:
+            M1, M2 = wfs.V_MM.dist.my_row_range()
+            V_MM = wfs.V_MM.data
+
             V_mM *= fudge_factor / domain_comm.size
-            MM1 = 0
-            for m in manytci.Mindices.nm_a:
-                MM2 = MM1 + m
-                m1 = max(MM1 - M1, 0)
-                m2 = min(MM2 - M1, M2 - M1)
-                if m2 > m1:
-                    V_mM[m1:m2, MM1:MM2] *= 0.5 / fudge_factor
-                MM1 = MM2
+
+            for Ma1, Ma2, symbola, la in mmsl():
+                for Mb1, Mb2, symbolb, lb in mmsl():
+                    if Ma1 == Mb1:
+                        continue
+                    Ma1 = max(Ma1 - M1, 0)
+                    Ma2 = min(Ma2 - M1, M2 - M1)
+                    if Ma1 >= Ma2:
+                        continue
+                    f = factors[symbola + symbolb]['spdf'[la] + 'spdf'[lb]]
+                    V_MM[Ma1:Ma2, Mb1:Mb2] *= 0.5 * f
 
         return ibzwfs
 
 
-def create_fudge_factors(setups, hops):
-    ff = {}
-    for setup in setups.setups.values():
-        symbol = setup.symbol
+def create_hop_factors(ells: dict[str, list[str]],
+                       hops: dict[str, dict[str, float]]
+                       ) -> dict[str, dict[str, float]]:
+    """Create hopping matrix-element scaling factors.
+
+    >>> create_hop_factors({'C': ['s', 'p']}, {'C':{'pp': 0.75}})
+    {}
+    """
+    factors = {}
+
+    for symbol, ll in ells.items():
         hop = hops.get(symbol, {})
+        ff = factors[symbol + symbol] = {}
+        for l1 in ll:
+            for l2 in ll:
+                f = hop.get(l1 + l2, hop.get(l2 + l1, 1.0))
+                ff[l1 + l2] = f
+
+    for symbol1, ll1 in ells.items():
+        for symbol2, ll2 in ells.items():
+            if symbol1 == symbol2:
+                continue
+            hop = hops.get(symbol1 + symbol2)
+            if hop is None:
+                hop = {ll[::-1]: f
+                       for ll, f in hops.get(symbol2 + symbol1, {}).items()}
+            ff = factors[symbol1 + symbol2] = {}
+            for l1 in ll1:
+                for l2 in ll2:
+                    f = hop.get(l1 + l2, 1.0))
+                    ff[l1 + l2] = f
+    return factors
 
 
 class Repulsion:
