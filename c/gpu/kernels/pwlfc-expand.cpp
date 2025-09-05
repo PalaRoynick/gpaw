@@ -59,7 +59,12 @@ void launch_kernel_impl(
         printf("Kernel launch error with \"%s\" in %s at line %d:\n%s\n",
             kernel_name, file, line, gpuGetErrorString(status)
         );
+		printf("\nLaunch params were:\n");
+        printf("\tblocks (%lu, %lu, %lu)\n", (unsigned long)blocks.x, (unsigned long)blocks.y, (unsigned long)blocks.z);
+        printf("\tthreads (%lu, %lu, %lu)\n", (unsigned long)threads.x, (unsigned long)threads.y, (unsigned long)threads.z);
+        printf("\tshmem %zu\n", shmem_bytes);
         fflush(stdout);
+
 		PyErr_SetString(PyExc_RuntimeError, gpuGetErrorString(status));
 		fprintf(stderr, "%s\n", gpuGetErrorString(status));
     }
