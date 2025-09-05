@@ -3,6 +3,9 @@
 #include "numpy/arrayobject.h"
 #include "assert.h"
 
+#include <cstdio>
+#include <utility>
+
 #define BETA   0.066725
 #define GAMMA  0.031091
 #define MU     0.2195164512208958 // PBE mod in libxc
