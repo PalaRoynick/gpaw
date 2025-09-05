@@ -18,6 +18,53 @@
 #define THIRD  0.33333333333333333
 #define NMIN   1.0E-10
 
+/*  Hack to demonstrate failing kernel launches in this file.
+Redefine the kernel launch macro with a version that uses type-safe templating
+and does runtime error checking.
+*/
+#undef gpuLaunchKernel
+
+#ifdef GPAW_HIP
+#define gpuGetLastError()         hipGetLastError()
+#else
+#define gpuGetLastError() 		  cudaGetLastError()
+#endif
+
+#define gpuLaunchKernel(kernel, blocks, threads, shmem, stream, ...) \
+    launch_kernel_impl(#kernel, __FILE__, __LINE__, kernel, blocks, threads, shmem, stream, __VA_ARGS__)
+
+template<typename Kernel, typename... Args>
+void launch_kernel_impl(
+    const char *kernel_name,
+    const char *file,
+    int32_t line,
+    Kernel kernel,
+    dim3 blocks,
+    dim3 threads,
+    size_t shmem_bytes,
+    gpuStream_t stream,
+    Args... args
+)
+{
+    // NB: kernel error checking is different in CUDA/HIP, and changes in ROCm 7.0.
+    // So this should be revisited at some point.
+    gpuLaunchKernel(kernel, blocks, threads, shmem_bytes, stream, std::forward<Args>(args)...);
+    // Check kernel launch
+    gpuError_t status = gpuGetLastError();
+    if (status != gpuSuccess)
+    {
+        printf("Kernel launch error with \"%s\" in %s at line %d:\n%s\n",
+            kernel_name, file, line, gpuGetErrorString(status)
+        );
+        fflush(stdout);
+		PyErr_SetString(PyExc_RuntimeError, gpuGetErrorString(status));
+		fprintf(stderr, "%s\n", gpuGetErrorString(status));
+    }
+}
+/** End hack */
+
+
+
 template <typename Tcomplex, typename Treal>
 __global__ void calculate_residual_kernel(int nG, int nn,
 					       				  Tcomplex* residual_nG,
@@ -49,7 +96,7 @@ __global__ void pw_amend_insert_realwf(int nb, int nx, int ny, int nz, int n, in
             value.y = -value.y;
             MAT(array_nQ, nx, ny, nz, b, 0, ny - m + i) = value;
         }
-        
+
         if (i < n)
         {
             for (int j=0; j<m; j++)
@@ -57,16 +104,16 @@ __global__ void pw_amend_insert_realwf(int nb, int nx, int ny, int nz, int n, in
                 // t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
                 Tcomplex value = MAT(array_nQ, nx, ny, nz, b, nx - n + i, m - j);
                 value.y = -value.y;
-                MAT(array_nQ, nx, ny, nz, b, n - i, ny - m + j) = value; 
+                MAT(array_nQ, nx, ny, nz, b, n - i, ny - m + j) = value;
 
                 // t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
                 value = MAT(array_nQ, nx, ny, nz, b, n - i, m - j);
                 value.y = -value.y;
-                MAT(array_nQ, nx, ny, nz, b, nx - n + i, ny - m + j) = value; 
+                MAT(array_nQ, nx, ny, nz, b, nx - n + i, ny - m + j) = value;
             }
             Tcomplex value = MAT(array_nQ, nx, ny, nz, b, n - i, 0);
             value.y = -value.y;
-            MAT(array_nQ, nx, ny, nz, b, nx - n + i, 0) = value; 
+            MAT(array_nQ, nx, ny, nz, b, nx - n + i, 0) = value;
             }
         }
 }
@@ -484,7 +531,7 @@ __global__ void add_to_density(int nb,
 			       double* rho_R)
 {
     constexpr bool realtype = std::is_same<Tcomplex, Treal>::value;
-	
+
     int R = threadIdx.x + blockIdx.x * blockDim.x;
     if (R < nR)
     {
@@ -562,9 +609,9 @@ void pw_amend_insert_realwf_gpu_launch_kernel(int dtypenum,
 											  int nb,
                                               int nx,
                                               int ny,
-                                              int nz, 
-                                              int n, 
-                                              int m, 
+                                              int nz,
+                                              int n,
+                                              int m,
                                               void* array_nQ)
 {
 	if (dtypenum == NP_DOUBLE_COMPLEX)
@@ -714,7 +761,7 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
 	if (threadIdx.y == 0 && threadIdx.x == 3)
 		imag_powers[3] = {0,1.0};
     __syncthreads();
-	
+
 	//Tcomplex imag_powers[4] = {{1.0,0},{0,-1.0},{-1.0,0},{0,1.0}};
 
     if ((G < nG) && (J < nJ))
@@ -758,7 +805,7 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
 
 template <typename Tcomplex, typename Treal>
 __global__ void dH_aii_times_P_ani(int nA, int nn, int nI,
-				      npy_int32* ni_a, 
+				      npy_int32* ni_a,
 					  Treal* dH_aii_dev,
 				      Tcomplex* P_ani_dev,
 				      Tcomplex* outP_ani_dev)
@@ -984,7 +1031,7 @@ extern "C" void pw_norm_kinetic_gpu_launch_kernel(int dtypenum,
 	} else {
 		assert(0);
 	}
-	
+
 }
 
 
@@ -1017,7 +1064,7 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
 			dim3((nG+15)/16, (nJ+15)/16), // blockDimX must be > 4 due to shared initialization,
 			dim3(16, 16),
 			0, 0,
-			(double*) f_Gs,				       
+			(double*) f_Gs,
 			(double*) Gk_Gv,
 			(double*) pos_av,
 			(gpuDoubleComplex*) eikR_a,
@@ -1043,7 +1090,7 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
 			dim3((nG+15)/16, (nJ+15)/16), // blockDimX must be > 4 due to shared initialization,
 			dim3(16, 16),
 			0, 0,
-			(double*) f_Gs,				       
+			(double*) f_Gs,
 			(double*) Gk_Gv,
 			(double*) pos_av,
 			(gpuDoubleComplex*) eikR_a,
@@ -1068,7 +1115,7 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
 			dim3((nG+15)/16, (nJ+15)/16), // blockDimX must be > 4 due to shared initialization,
 			dim3(16, 16),
 			0, 0,
-			(float*) f_Gs,				       
+			(float*) f_Gs,
 			(float*) Gk_Gv,
 			(float*) pos_av,
 			(gpuFloatComplex*) eikR_a,
@@ -1093,7 +1140,7 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
 			dim3((nG+15)/16, (nJ+15)/16), // blockDimX must be > 4 due to shared initialization,
 			dim3(16, 16),
 			0, 0,
-			(float*) f_Gs,		       
+			(float*) f_Gs,
 			(float*) Gk_Gv,
 			(float*) pos_av,
 			(gpuFloatComplex*) eikR_a,
