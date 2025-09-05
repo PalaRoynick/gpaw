@@ -3,7 +3,6 @@ from ase import Atoms
 from ase.optimize import BFGS
 from gpaw.dft import GPAW, TB
 from gpaw.test.xc.test_qna_stress import numeric_stress
-from gpaw.new.tb.builder import Repulsion
 
 
 # @pytest.mark.serial

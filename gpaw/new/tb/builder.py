@@ -286,7 +286,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         return TBHamiltonian(self.basis)
 
     def create_potential_calculator(self):
-        reps = self.params.mode.repulsions or {}
+        reps = self.mode.repulsions or {}
         symbols = [setup.symbol for setup in self.setups.setups.values()]
         repulsions = {}
         for sym1 in symbols:
@@ -354,9 +354,12 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
             symbol = setup.symbol
             ells[symbol] = [phit.l for phit in setup.basis_functions_J]
 
+        from gpaw.dft import TB
+        assert isinstance(self.params.mode, TB)
+        hop_factors = self.params.mode.hop_factors
         factors = create_hop_factors(
             {symbol: ['spdf'[l] for l in ll] for symbol, ll in ells.items()},
-            self.params.hops)
+            hop_factors)
 
         domain_comm = self.communicators['d']
 
@@ -401,7 +404,7 @@ def create_hop_factors(ells: dict[str, list[str]],
     ...                    {'CC': {'pp': 0.75}})
     {'CC': {'ss': 1.0, 'sp': 1.0, 'ps': 1.0, 'pp': 0.75}}
     """
-    factors = {}
+    factors: dict[str, dict[str, float]] = {}
     for symbol1, ll1 in ells.items():
         for symbol2, ll2 in ells.items():
             hop = hops.get(symbol1 + symbol2)

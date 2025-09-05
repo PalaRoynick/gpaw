@@ -135,19 +135,19 @@ class TB(Mode):
 
     def __init__(self,
                  *,
-                 hops: dict[str, float] | None = None,
-                 repulsions=None,
+                 hop_factors: dict[str, dict[str, float]] | None = None,
+                 repulsions: dict | None = None,
                  dtype: DTypeLike | None = None,
                  force_complex_dtype: bool = False):
-        self.hops = hops or {}
-        self.repulsions = repulsions
+        self.hop_factors = hop_factors or {}
+        self.repulsions = repulsions or {}
         super().__init__(dtype=dtype,
                          force_complex_dtype=force_complex_dtype)
 
     def todict(self):
         dct = super().todict()
-        if self.hops:
-            dct['hops'] = self.hops
+        if self.hop_factors:
+            dct['hop_factors'] = self.hop_factors
         if self.repulsions:
             dct['repulsions'] = self.repulsions
         return dct
