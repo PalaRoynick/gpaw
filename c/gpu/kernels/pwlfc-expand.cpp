@@ -51,7 +51,17 @@ void launch_kernel_impl(
 {
     // NB: kernel error checking is different in CUDA/HIP, and changes in ROCm 7.0.
     // So this should be revisited at some point.
-    gpuLaunchKernel(kernel, blocks, threads, shmem_bytes, stream, std::forward<Args>(args)...);
+    kernel<<<blocks, threads, shmem_bytes, stream>>>(std::forward<Args>(args)...);
+
+
+	printf("Launching \"%s\" in %s at line %d:\n",
+		kernel_name, file, line
+	);
+	printf("\nLaunch params were:\n");
+	printf("\tblocks (%lu, %lu, %lu)\n", (unsigned long)blocks.x, (unsigned long)blocks.y, (unsigned long)blocks.z);
+	printf("\tthreads (%lu, %lu, %lu)\n", (unsigned long)threads.x, (unsigned long)threads.y, (unsigned long)threads.z);
+	printf("\tshmem %zu\n", shmem_bytes);
+
     // Check kernel launch
     gpuError_t status = gpuGetLastError();
     if (status != gpuSuccess)
@@ -495,7 +505,7 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
 			dim3(256),
 			0, 0,
 			ng,
-			n, v, e, NULL, NULL);
+			n, v, e, nullptr, nullptr);
     }
     else if (nspin == 2)
     {
@@ -504,7 +514,7 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
 			dim3(256),
 			0, 0,
 			ng,
-			n, v, e, NULL, NULL);
+			n, v, e, nullptr, nullptr);
     }
 }
 
