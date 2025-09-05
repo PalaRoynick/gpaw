@@ -291,11 +291,11 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         repulsions = {}
         for sym1 in symbols:
             for sym2 in symbols:
-                rep = reps.get((sym1, sym2),
-                               reps.get((sym2, sym1), None))
+                rep = reps.get(sym1 + sym2,
+                               reps.get(sym2 + sym1, None))
                 if rep is None:
                     rep = Repulsion.default(sym1, sym2)
-                repulsions[(sym1, sym2)] = rep
+                repulsions[sym1 + sym2] = rep
 
         xc = DummyXC(self.xc)
         return TBPotentialCalculator(xc, self.setups, self.atoms,
@@ -350,11 +350,11 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         my_atom_indices = self.atomdist.indices
 
         ells = {}
-        for setup in setups.setups.values():
+        for setup in self.setups.setups.values():
             symbol = setup.symbol
             ells[symbol] = [phit.l for phit in setup.basis_functions_J]
 
-        fudge_factors = create_hop_factors(
+        factors = create_hop_factors(
             {symbol: ['spdf'[l] for l in ll] for symbol, ll in ells.items()},
             self.params.hops)
 
@@ -366,11 +366,11 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
             V_mM = wfs.V_MM.data
             V_mM[:] = V_MM.T[M1:M2].toarray()
             domain_comm.sum(V_mM)
-            wfs.V_MM.add_hermitian_conjugate()
+            wfs.V_MM.add_hermitian_conjugate(scale=0.5 / domain_comm.size)
 
         def mmsl():
             M = 0
-            for setup in setups:
+            for setup in self.setups:
                 for l in ells[setup.symbol]:
                     yield M, M + 2 * l + 1, setup.symbol, l
                     M += 2 * l + 1
@@ -378,9 +378,6 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         for wfs in ibzwfs:
             M1, M2 = wfs.V_MM.dist.my_row_range()
             V_MM = wfs.V_MM.data
-
-            V_mM *= fudge_factor / domain_comm.size
-
             for Ma1, Ma2, symbola, la in mmsl():
                 for Mb1, Mb2, symbolb, lb in mmsl():
                     if Ma1 == Mb1:
@@ -390,7 +387,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
                     if Ma1 >= Ma2:
                         continue
                     f = factors[symbola + symbolb]['spdf'[la] + 'spdf'[lb]]
-                    V_MM[Ma1:Ma2, Mb1:Mb2] *= 0.5 * f
+                    V_MM[Ma1:Ma2, Mb1:Mb2] *= 2.0 * f
 
         return ibzwfs
 
@@ -400,23 +397,13 @@ def create_hop_factors(ells: dict[str, list[str]],
                        ) -> dict[str, dict[str, float]]:
     """Create hopping matrix-element scaling factors.
 
-    >>> create_hop_factors({'C': ['s', 'p']}, {'C':{'pp': 0.75}})
-    {}
+    >>> create_hop_factors({'C': ['s', 'p']},
+    ...                    {'CC': {'pp': 0.75}})
+    {'CC': {'ss': 1.0, 'sp': 1.0, 'ps': 1.0, 'pp': 0.75}}
     """
     factors = {}
-
-    for symbol, ll in ells.items():
-        hop = hops.get(symbol, {})
-        ff = factors[symbol + symbol] = {}
-        for l1 in ll:
-            for l2 in ll:
-                f = hop.get(l1 + l2, hop.get(l2 + l1, 1.0))
-                ff[l1 + l2] = f
-
     for symbol1, ll1 in ells.items():
         for symbol2, ll2 in ells.items():
-            if symbol1 == symbol2:
-                continue
             hop = hops.get(symbol1 + symbol2)
             if hop is None:
                 hop = {ll[::-1]: f
@@ -424,7 +411,7 @@ def create_hop_factors(ells: dict[str, list[str]],
             ff = factors[symbol1 + symbol2] = {}
             for l1 in ll1:
                 for l2 in ll2:
-                    f = hop.get(l1 + l2, 1.0))
+                    f = hop.get(l1 + l2, 1.0)
                     ff[l1 + l2] = f
     return factors
 
@@ -451,25 +438,25 @@ def pairpot(atoms, repulsions):
     """Simple pair-potential for testing.
 
     >>> from ase import Atoms
-    >>> r = covalent_radii[1]
-    >>> atoms = Atoms('H2', [(0, 0, 0), (0, 0, 2 * r)])
-    >>> e, f, s = pairpot(atoms)
+    >>> atoms = Atoms('H2', [(0, 0, 0), (0, 0, 1.0)])
+    >>> rep = Repulsion(lambda d: (d - 2.0)**2, lambda d: 2 * (d - 2.0), 2.0)
+    >>> e, f, s = pairpot(atoms, {'HH': rep})
     >>> print(f'{e:.6f} eV')
-    -9.677419 eV
+    1.000000 eV
     >>> f
-    array([[0., 0., 0.],
-           [0., 0., 0.]])
+    array([[ 0.,  0.,  2.],
+           [ 0.,  0., -2.]])
 
     """
     symbol_a = atoms.symbols
-    rcutmax = max(rep.rc for rep in repulsions)
+    rcutmax = max(rep.rc for rep in repulsions.values())
     energy = 0.0
     force_av = np.zeros((len(atoms), 3))
     stress_vv = np.zeros((3, 3))
 
     # PARALLELIZE!!!
     for i, j, d, D_v in zip(*neighbor_list('ijdD', atoms, rcutmax)):
-        rep = repulsions[(symbol_a[i], symbol_a[j])]
+        rep = repulsions[symbol_a[i] + symbol_a[j]]
         if d < rep.rc:
             energy += 0.5 * rep.f(d)
             f = -0.5 * rep.dfdr(d)
