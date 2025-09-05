@@ -27,7 +27,7 @@ def test_tb_mode_bulk():
                   cell=[a, a, a],
                   pbc=True)
     atoms.calc = GPAW(
-        mode=TB(hop={'Li': {'ss': 0.8}}),
+        mode=TB(hop_factors={'LiLi': {'ss': 0.8}}),
         kpts=(2, 2, 2))
     atoms.get_potential_energy()
     return

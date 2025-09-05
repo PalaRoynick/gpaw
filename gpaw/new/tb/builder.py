@@ -286,7 +286,7 @@ class TBDFTComponentsBuilder(LCAODFTComponentsBuilder):
         return TBHamiltonian(self.basis)
 
     def create_potential_calculator(self):
-        reps = self.mode.repulsions or {}
+        reps = self.params.mode.repulsions or {}
         symbols = [setup.symbol for setup in self.setups.setups.values()]
         repulsions = {}
         for sym1 in symbols:
