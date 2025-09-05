@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <utility>
+#include <type_traits>
 
 #define BETA   0.066725
 #define GAMMA  0.031091
@@ -49,6 +50,8 @@ void launch_kernel_impl(
     Args... args
 )
 {
+	static_assert(std::is_invocable_r_v<void, Kernel, Args...>, "Kernel has invalid signature");
+
     // NB: kernel error checking is different in CUDA/HIP, and changes in ROCm 7.0.
     // So this should be revisited at some point.
     kernel<<<blocks, threads, shmem_bytes, stream>>>(std::forward<Args>(args)...);
