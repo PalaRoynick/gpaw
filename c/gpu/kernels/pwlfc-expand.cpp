@@ -53,15 +53,6 @@ void launch_kernel_impl(
     // So this should be revisited at some point.
     kernel<<<blocks, threads, shmem_bytes, stream>>>(std::forward<Args>(args)...);
 
-
-	printf("Launching \"%s\" in %s at line %d:\n",
-		kernel_name, file, line
-	);
-	printf("\nLaunch params were:\n");
-	printf("\tblocks (%lu, %lu, %lu)\n", (unsigned long)blocks.x, (unsigned long)blocks.y, (unsigned long)blocks.z);
-	printf("\tthreads (%lu, %lu, %lu)\n", (unsigned long)threads.x, (unsigned long)threads.y, (unsigned long)threads.z);
-	printf("\tshmem %zu\n", shmem_bytes);
-
     // Check kernel launch
     gpuError_t status = gpuGetLastError();
     if (status != gpuSuccess)
@@ -997,6 +988,11 @@ extern "C" void pw_norm_gpu_launch_kernel(int dtypenum,
 {
 	if (dtypenum == NP_DOUBLE_COMPLEX) {
 		auto fptr = &pw_norm_kernel<512, double>;
+
+		auto blocks = dim3(nx, 1);
+		printf("Launching kernel with blocks = (%lu, %lu, %lu) ; nx = %d\n",
+			(unsigned long)blocks.x, (unsigned long)blocks.y, (unsigned long)blocks.z, nx);
+
 		gpuLaunchKernel(fptr,
 						dim3(nx, 1),
 						dim3(512, 1),
