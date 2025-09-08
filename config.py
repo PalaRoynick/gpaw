@@ -1,5 +1,6 @@
 # Copyright (C) 2006 CSC-Scientific Computing Ltd.
 # Please see the accompanying LICENSE file for further information.
+
 import os
 import sys
 import re
