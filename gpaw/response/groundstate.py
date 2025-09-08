@@ -36,6 +36,13 @@ class PAWDatasetCollection:
         self.by_atom = by_atom
         self.id_by_atom = id_by_atom
 
+    @property
+    def includes_hubbard_corrections(self):
+        for setup in self.by_atom:
+            if setup.hubbard_u is not None:
+                return True
+        return False
+
 
 GPAWCalculator = Union[OldGPAW, NewGPAW]
 GPWFilename = Union[Path, str]
@@ -74,7 +81,9 @@ class ResponseGroundStateAdapter:
         self.pbc = self.atoms.pbc
         self.volume = self.gd.volume
 
-        self.nvalence = wfs.nvalence
+        self.nvalence = int(round(wfs.nvalence))
+        assert self.nvalence == wfs.nvalence
+
         self.nocc1, self.nocc2 = self.count_occupied_bands()
 
         self.ibz2bz = IBZ2BZMaps.from_calculator(calc)
