@@ -76,12 +76,13 @@ benchmarks = {
 
 gpu_article = {}
 for N in graphene_bilayers:
-    system = f"C{N}"
+    system = f"pw_weak_C{N}"
     gpu_article[system] = (
         f"{system}-pw.kigh:kpts.gamma:xc.LDA:eigensolver.DAV3",
         "1-:4G:1-GPU",
     )
 
+benchmarks.update(gpu_article)
 
 def get_domainband(size=None):
     """Divide a world size to domain and bands (as square as possible)
@@ -207,11 +208,11 @@ def parse_parameters(parameter_sets):
 
 def list_benchmarks():
     lst = ""
-    header = "{:20s} | {:35s}\n".format("name", "system-parameter sets")
+    header = "{:20s} | {:70s} | {:30s}\n".format("name", "system-parameter sets", "requirements")
     lst += header + "-" * len(header) + "\n"
 
-    for benchmark, system_and_parameter_set in benchmarks.items():
-        lst += f"{benchmark:20s} | {system_and_parameter_set:35s}\n"
+    for benchmark, (system_and_parameter_set, req) in benchmarks.items():
+        lst += f"{benchmark:20s} | {system_and_parameter_set:70s} | {req:30s}\n"
 
     return lst
 
