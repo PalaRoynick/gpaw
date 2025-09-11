@@ -233,12 +233,38 @@ else:
         from gpaw.gpu.cpupy.cublas import gemm as gpu_gemm  # noqa
 
 
-__all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize']
+__all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
+           'flush_pinned_arrays']
+
+
+try:
+    from gpaw.cgpaw import _flush_pending_decrefs
+
+    @trace
+    def flush_pinned_arrays() -> None:
+        """Flushes the list of arrays that are currently pinned by GPAW's
+        'GPU array life support' system.
+        """
+        _flush_pending_decrefs()
+
+    # Hook the above to garbage collector
+    import gc
+
+    def gpaw_gc_flush_pinned_arrays(phase, info):
+        if phase == "start":
+            flush_pinned_arrays()
+
+    gc.callbacks.append(gpaw_gc_flush_pinned_arrays)
+
+except ImportError:
+    def _flush_pending_decrefs() -> None:
+        # no-op
+        pass
 
 
 def synchronize():
     if not cupy_is_fake:
-        cupy.cuda.get_current_stream().synchronize()
+        cupy.cuda.runtime.deviceSynchronize()
 
 
 def as_np(array: np.ndarray | cupy.ndarray) -> np.ndarray:
