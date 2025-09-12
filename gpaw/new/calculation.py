@@ -473,7 +473,8 @@ class DFTCalculation:
             params=params, energies=energies)
 
     def get_state(self):
-        return DFTState(self.ibzwfs, self.density, self.potential)
+        return DFTState(self.ibzwfs, self.density,
+                        self.potential, self.energies)
 
     @property
     def state(self):
@@ -496,7 +497,7 @@ class DFTState:
                  ibzwfs: IBZWaveFunctions,
                  density: Density,
                  potential: Potential,
-                 energies):
+                 energies: DFTEnergies | None):
         """State of a Kohn-Sham calculation."""
         self.ibzwfs = ibzwfs
         self.density = density
