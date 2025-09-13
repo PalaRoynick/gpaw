@@ -16,6 +16,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  xc,
                  poisson_solver,
                  *,
+                 dedecut: object | None = None,  # ?
                  relpos_ac,
                  atomdist,
                  environment,
@@ -29,6 +30,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                          environment=environment,
                          extensions=extensions,
                          soc=soc)
+
+        self.dedecut = dedecut
 
         self.vbar_ag = setups.create_local_potentials(
             pw, relpos_ac, atomdist, xp)

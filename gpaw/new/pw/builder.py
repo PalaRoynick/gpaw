@@ -35,7 +35,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                  log=None):
         mode = params.mode
         self.ecut = mode.ecut / Ha
-        # mode.dedecut ???
+        self.dedecut = mode.dedecut  # maybe save self.mode?
+
         super().__init__(atoms, params, comm=comm, log=log)
 
         self._nct_ag = None
@@ -154,6 +155,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.setups,
             self.xc,
             self.create_poisson_solver(env),
+            dedecut=self.dedecut,
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
             soc=self.soc,

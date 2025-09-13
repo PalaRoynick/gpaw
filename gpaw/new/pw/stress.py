@@ -54,6 +54,8 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
         synchronize()
     comm.sum(s_vv, 0)
 
+    s_vv += pulay_estimated_stress(ibzwfs, pot_calc)
+
     vol = dom.volume
     s_vv = 0.5 / vol * (s_vv + s_vv.T)
 
@@ -70,21 +72,43 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
     # Make sure all agree on the result (redundant calculation on
     # different cores involving BLAS might give slightly different
     # results):
-
     sigma_vv += pot_calc.extensions_stress_contribution
     comm.broadcast(sigma_vv, 0)
     return sigma_vv
+
+
+def estimate_dedecut(ecut, setups):
+    from gpaw.utilities.ekin import dekindecut, ekin
+    dedecut = 0.0
+
+    for setup in setups:
+        G, de, e0 = ekin(setup)
+        dedecut -= dekindecut(G, de, ecut)
+
+    return dedecut
+
+
+def pulay_estimated_stress(ibzwfs, pot_calc):
+    for wfs in ibzwfs:  # XXX ibzwfs[0] fails, why not subscriptable??
+        ecut = wfs.psit_nX.desc.ecut
+        break
+
+    dedecut = estimate_dedecut(ecut, pot_calc.setups)
+    dedepsilon = dedecut * 2 / 3 * ecut
+    return dedepsilon * np.eye(3)
 
 
 def get_wfs_stress(ibzwfs: IBZWaveFunctions,
                    dH_asii: AtomArrays) -> Array2D:
     xp = ibzwfs.xp
     sigma_vv = xp.zeros((3, 3))
+
     for wfs in ibzwfs:
         assert isinstance(wfs, PWFDWaveFunctions)
         occ_n = xp.asarray(wfs.weight * wfs.spin_degeneracy * wfs.myocc_n)
         sigma_vv += get_kinetic_stress(wfs, occ_n)
         sigma_vv += get_paw_stress(wfs, dH_asii, occ_n)
+
     return sigma_vv
 
 

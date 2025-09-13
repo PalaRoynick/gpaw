@@ -318,6 +318,7 @@ class DFTCalculation:
         self.log('\nstress tensor: [  # eV/Ang^3')
         for (x, y, z), c in zips(stress_vv * (Ha / Bohr**3), ',,]'):
             self.log(f'  [{x:13.6f}, {y:13.6f}, {z:13.6f}]{c}')
+
         self.results['stress'] = stress_vv.flat[[0, 4, 8, 5, 2, 1]]
 
     def write_converged(self) -> None:
