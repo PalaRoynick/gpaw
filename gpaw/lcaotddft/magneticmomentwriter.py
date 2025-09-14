@@ -336,8 +336,8 @@ class MagneticMomentWriter(TDDFTObserver):
                  dmat: DensityMatrix = None,
                  calculate_on_grid: bool = None,
                  only_pseudo: bool = None,
-                 row_range = None,
-                 column_range = None,
+                 row_range=None,
+                 column_range=None,
                  interval: int = 1):
         super().__init__(paw, interval)
         self.ioctx = IOContext()
