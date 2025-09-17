@@ -142,7 +142,7 @@ class DistributedArrays(Generic[DomainType], XP):
         for index in range(self.dims[0]):
             yield self[index]
 
-    def flat(self):
+    def flat(self) -> Self:
         if self.dims == ():
             yield self
         else:
@@ -262,6 +262,16 @@ class DistributedArrays(Generic[DomainType], XP):
     def redist(self,
                domain,
                comm1: MPIComm, comm2: MPIComm) -> DistributedArrays:
+        """Redistribute to new domain.
+
+        The "world" is spanned by::
+
+            (self.desc.comm, comm1)
+
+        and::
+
+            (domain.comm, comm2).
+        """
         result = domain.empty(self.dims, xp=self.xp)
         if comm1.rank == 0:
             a = self.gather()

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Generator, Generic, TypeVar
 import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
-from gpaw.gpu import as_np, synchronize
+from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
@@ -78,7 +78,6 @@ class IBZWaveFunctions(Generic[WFT]):
                kpt_band_comm: MPIComm = serial_comm,
                comm: MPIComm = serial_comm,
                ) -> Self:
-        """Collection of wave function objects for k-points in the IBZ."""
         rank_k = ibz.ranks(kpt_comm)
         mask_k = (rank_k == kpt_comm.rank)
         k_q = np.arange(len(ibz))[mask_k]
@@ -211,9 +210,6 @@ class IBZWaveFunctions(Generic[WFT]):
         for wfs in self:
             wfs.add_to_density(nt_sR, D_asii)
 
-        if self.xp is not np:
-            synchronize()
-
         # This should be done in a more efficient way!!!
         # Also: where do we want the density?
         self.kpt_comm.sum(nt_sR.data)
@@ -227,8 +223,6 @@ class IBZWaveFunctions(Generic[WFT]):
     def add_to_ked(self, taut_sR) -> None:
         for wfs in self:
             wfs.add_to_ked(taut_sR)
-        if self.xp is not np:
-            synchronize()
         self.kpt_comm.sum(taut_sR.data)
         self.band_comm.sum(taut_sR.data)
 
@@ -310,8 +304,6 @@ class IBZWaveFunctions(Generic[WFT]):
         F_av = self.xp.zeros((len(potential.dH_asii), 3))
         for wfs in self:
             wfs.force_contribution(potential, F_av)
-        if self.xp is not np:
-            synchronize()
         self.kpt_band_comm.sum(F_av)
         return F_av
 

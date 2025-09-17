@@ -179,7 +179,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         self.psit_nX.add_ked(occ_n, taut_sR[self.spin])
 
     @trace
-    def orthonormalize(self, psit2_nX):
+    def orthonormalize(self, psit2_nX=None):
         r"""Orthonormalize wave functions.
 
         Computes the overlap matrix:::
@@ -264,7 +264,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         P2_ani = P_ani.new()
         domain_comm = psit_nX.desc.comm
 
-        Ht = partial(Ht, out=psit2_nX, spin=self.spin)
+        Ht = partial(Ht, out=psit2_nX, spin=self.spin, calculate_energy=True)
         H = psit_nX.matrix_elements(psit_nX,
                                     function=Ht,
                                     domain_sum=False,
@@ -273,7 +273,6 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         P_ani.matrix.multiply(P2_ani, opb='C', symmetric=True,
                               out=H, beta=1.0)
         domain_comm.sum(H.data, 0)
-
         if domain_comm.rank == 0:
             slcomm, r, c, b = scalapack_parameters
             if r == c == 1:
@@ -399,6 +398,21 @@ class PWFDWaveFunctions(WaveFunctions, XP):
 
         return None
 
+    def copy(self) -> PWFDWaveFunctions:
+        wfs = PWFDWaveFunctions(self.psit_nX.copy(),
+                                spin=self.spin,
+                                q=self.q,
+                                k=self.k,
+                                setups=self.setups,
+                                relpos_ac=self.relpos_ac,
+                                atomdist=self.atomdist,
+                                weight=self.weight,
+                                ncomponents=self.ncomponents,
+                                qspiral_v=self.qspiral_v)
+        wfs._eig_n = self._eig_n
+        wfs._occ_n = self._occ_n
+        return wfs
+
     def send(self, rank, comm):
         stuff = (self.kpt_c,
                  self.psit_nX.data,
@@ -515,4 +529,5 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         self._pt_aiX = None
 
         return PWFDWaveFunctions.from_wfs(self, psit_nX,
-                                          relpos_ac=relpos_ac)
+                                          relpos_ac=relpos_ac,
+                                          atomdist=atomdist)

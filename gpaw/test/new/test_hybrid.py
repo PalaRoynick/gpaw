@@ -5,6 +5,7 @@ from gpaw.mpi import size
 import numpy as np
 
 
+@pytest.mark.hybrids
 def test_pawexxvv():
     from gpaw.hybrids.paw import python_pawexxvv
     from _gpaw import pawexxvv
@@ -17,42 +18,54 @@ def test_pawexxvv():
         assert np.allclose(V_ii, V2_ii)
 
 
+@pytest.mark.new_gpaw_ready
+@pytest.mark.hybrids
 @pytest.mark.parametrize('ccirs', [False, True])
-def test_hse06(gpaw_new, ccirs):
-    if gpaw_new and size > 4:
-        pytest.skip('Only band-parallelization!')
+@pytest.mark.parametrize('dtype', [float, complex])
+def test_hse06(gpaw_new, ccirs, dtype):
     if gpaw_new:
+        if dtype is float and size > 4:
+            pytest.skip('Only band-parallelization!')
+        if ccirs and dtype is complex:
+            pytest.skip('not implemented')
         experimental = {'ccirs': ccirs}
         # Low max_buffer_mem to test that this value is overwritten due to
         # the non band-local hybrid-xc hamiltonian.
-        eigensolver = {'name': 'dav',
+        eigensolver = {'name': 'davidson',
                        'max_buffer_mem': 1024 * 4}
     else:
-        eigensolver = 'dav'
+        eigensolver = 'davidson'
         experimental = {}
         if ccirs:
             pytest.skip('CCIRS only for new GPAW')
     atoms = Atoms('Li2', [[0, 0, 0], [0, 0, 2.0]])
     atoms.center(vacuum=2.5)
-    atoms.calc = GPAW(mode=dict(name='pw', force_complex_dtype=not True),
-                      xc='HSE06',
-                      experimental=experimental,
-                      eigensolver=eigensolver,
-                      nbands=4)
+    atoms.calc = GPAW(
+        mode=dict(name='pw',
+                  force_complex_dtype=dtype is complex),
+        xc='HSE06',
+        experimental=experimental,
+        eigensolver=eigensolver,
+        parallel={'domain': min(2, size) if dtype is complex else 1},
+        nbands=4)
     e = atoms.get_potential_energy()
     eigs = atoms.calc.get_eigenvalues(spin=0)
     assert e == pytest.approx(-5.633278, abs=1e-3)
     assert eigs[0] == pytest.approx(-4.67477532, abs=1e-3)
 
 
-def test_h(gpaw_new):
-    if gpaw_new and size > 2:
-        pytest.skip('Only band-parallelization!')
+@pytest.mark.new_gpaw_ready
+@pytest.mark.hybrids
+@pytest.mark.parametrize('dtype', [float, complex])
+def test_h(gpaw_new, dtype):
+    if gpaw_new:
+        if dtype is float and size > 2:
+            pytest.skip('Only band-parallelization!')
     atoms = Atoms('H', magmoms=[1])
     atoms.center(vacuum=2.5)
-    atoms.calc = GPAW(mode='pw',
+    atoms.calc = GPAW(mode=dict(name='pw',
+                                force_complex_dtype=dtype is complex),
                       xc='HSE06',
-                      eigensolver='dav',
                       nbands=2,
                       convergence={'energy': 1e-4})
     e = atoms.get_potential_energy()
@@ -62,4 +75,4 @@ def test_h(gpaw_new):
 
 
 if __name__ == '__main__':
-    test_hse06(1, True)
+    test_hse06(1, not True, complex)
