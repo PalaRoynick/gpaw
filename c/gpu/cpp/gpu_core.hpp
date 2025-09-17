@@ -3,6 +3,9 @@
 #include "../gpu-runtime.h"
 #include "utils.hpp"
 
+// Can we avoid this include here?
+#include <Python.h>
+
 #include <string>
 #include <cstdint>
 
@@ -73,6 +76,7 @@ struct launch_kernel
         if (status != gpuSuccess)
         {
             raise_kernel_launch_error(status, blocks, threads, shmem_bytes, source_location);
+            return;
         }
     }
 };

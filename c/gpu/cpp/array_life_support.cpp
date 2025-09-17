@@ -2,9 +2,35 @@
 #include "pyarray_utils.hpp"
 #include "utils.hpp"
 #include "gpu_core.hpp"
+#include "events.hpp"
 
 #include <Python.h>
 #include <mutex>
+
+// TODO rename. This is what checks and removes expired events
+CLINKAGE PyObject* flush_pending_decrefs(PyObject* self, PyObject* args)
+{
+    // if (life_support::g_pending_decrefs.empty())
+    // {
+    //     Py_RETURN_NONE;
+    // }
+
+    // std::vector<PyObject*> local_pending_decrefs;
+    // {
+    //     std::lock_guard<std::mutex> lock(life_support::g_pending_decrefs_mutex);
+    //     local_pending_decrefs.swap(life_support::g_pending_decrefs);
+    // }
+
+    // for (PyObject* obj : local_pending_decrefs)
+    // {
+    //     Py_DECREF(obj);
+    // }
+
+    // FIXME
+    gpaw::g_event_manager.process_finished_events();
+
+    Py_RETURN_NONE;
+}
 
 namespace gpaw
 {
@@ -16,28 +42,6 @@ static std::vector<PyObject*> g_pending_decrefs; // should this be volatile?!
 static std::mutex g_pending_decrefs_mutex;
 
 } // namespace life_support
-
-
-CLINKAGE PyObject* flush_pending_decrefs(PyObject* self, PyObject* args)
-{
-    if (life_support::g_pending_decrefs.empty())
-    {
-        Py_RETURN_NONE;
-    }
-
-    std::vector<PyObject*> local_pending_decrefs;
-    {
-        std::lock_guard<std::mutex> lock(life_support::g_pending_decrefs_mutex);
-        local_pending_decrefs.swap(life_support::g_pending_decrefs);
-    }
-
-    for (PyObject* obj : local_pending_decrefs)
-    {
-        Py_DECREF(obj);
-    }
-
-    Py_RETURN_NONE;
-}
 
 
 PyObjectPinner::PyObjectPinner()

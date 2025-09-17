@@ -9,14 +9,20 @@
 #define gpuMemcpyDeviceToHost     cudaMemcpyDeviceToHost
 #define gpuMemcpyHostToDevice     cudaMemcpyHostToDevice
 #define gpuMemcpyDeviceToDevice   cudaMemcpyDeviceToDevice
-#define gpuSuccess                cudaSuccess
+#define gpuStream_t               cudaStream_t
+#define gpuEvent_t                cudaEvent_t
 #define gpuEventDefault           cudaEventDefault
 #define gpuEventBlockingSync      cudaEventBlockingSync
 #define gpuEventDisableTiming     cudaEventDisableTiming
 
-#define gpuStream_t               cudaStream_t
-#define gpuEvent_t                cudaEvent_t
 #define gpuError_t                cudaError_t
+#define gpuSuccess                cudaSuccess
+#define gpuErrorNotReady          cudaErrorNotReady
+#define gpuErrorInvalidHandle     cudaErrorInvalidResourceHandle
+#define gpuErrorInvalidValue      cudaErrorInvalidValue
+#define gpuErrorNotInitialized    cudaErrorInitializationError
+#define gpuErrorLaunchFailure     cudaErrorLaunchFailure
+
 #define gpuDeviceProp             cudaDeviceProp
 #define gpuPointerAttributes      cudaPointerAttributes
 #define gpuPointerGetAttributes   cudaPointerGetAttributes

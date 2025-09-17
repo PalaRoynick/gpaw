@@ -9,14 +9,20 @@
 #define gpuMemcpyDeviceToHost     hipMemcpyDeviceToHost
 #define gpuMemcpyHostToDevice     hipMemcpyHostToDevice
 #define gpuMemcpyDeviceToDevice   hipMemcpyDeviceToDevice
-#define gpuSuccess                hipSuccess
+#define gpuStream_t               hipStream_t
+#define gpuEvent_t                hipEvent_t
 #define gpuEventDefault           hipEventDefault
 #define gpuEventBlockingSync      hipEventBlockingSync
 #define gpuEventDisableTiming     hipEventDisableTiming
 
-#define gpuStream_t               hipStream_t
-#define gpuEvent_t                hipEvent_t
 #define gpuError_t                hipError_t
+#define gpuSuccess                hipSuccess
+#define gpuErrorNotReady          hipErrorNotReady
+#define gpuErrorInvalidHandle     hipErrorInvalidHandle
+#define gpuErrorInvalidValue      hipErrorInvalidValue
+#define gpuErrorNotInitialized    hipErrorNotInitialized
+#define gpuErrorLaunchFailure     hipErrorLaunchFailure
+
 #define gpuDeviceProp             hipDeviceProp_t
 #define gpuPointerAttributes      hipPointerAttribute_t
 #define gpuPointerGetAttributes   hipPointerGetAttributes

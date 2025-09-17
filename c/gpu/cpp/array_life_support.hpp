@@ -52,8 +52,10 @@ public:
         return data;
     }
 
-protected:
     std::vector<PyObject*> objects;
+
+protected:
+
 
 #ifdef GPAW_GPU_ARRAY_DEBUG
     bool has_committed = false;

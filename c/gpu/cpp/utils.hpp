@@ -13,6 +13,9 @@
 #include <sstream>
 #include <unordered_map>
 
+// Use to suppress -Wunused-variable warnings
+#define GPAW_UNUSED(x) (void)x;
+
 namespace gpaw
 {
 
