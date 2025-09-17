@@ -15,7 +15,50 @@ KernelEvent::~KernelEvent()
         assert(obj && "Null PyObject, can't happen since we should have ownership");
         Py_DECREF(obj);
     }
-    gpuEventDestroy(native_event);
+    if (native_event != nullptr)
+    {
+        gpuEventDestroy(native_event);
+    }
+}
+
+KernelEvent::KernelEvent(KernelEvent&& other) noexcept
+    : EventBase(std::move(other)),
+      native_event(other.native_event),
+      stream(other.stream),
+      device(other.device),
+      cached_has_finished(other.cached_has_finished),
+      used_objects(std::move(other.used_objects))
+{
+    other.used_objects.clear();
+    other.native_event = nullptr;
+}
+
+KernelEvent& KernelEvent::operator=(KernelEvent&& other) noexcept
+{
+    if (this != &other)
+    {
+        EventBase::operator=(std::move(other));
+
+        for (PyObject* obj : used_objects)
+        {
+            Py_DECREF(obj);
+        }
+        if (native_event)
+        {
+            gpuEventDestroy(native_event);
+        }
+
+        native_event = other.native_event;
+        stream = other.stream;
+        device = other.device;
+        cached_has_finished = other.cached_has_finished;
+        used_objects = std::move(other.used_objects);
+
+        other.used_objects.clear();
+        other.native_event = nullptr;
+    }
+
+    return *this;
 }
 
 bool KernelEvent::has_finished() const

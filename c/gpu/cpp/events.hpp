@@ -30,10 +30,17 @@ struct EventBase
 
 struct KernelEvent : public EventBase
 {
+    // Owns a gpuStream_t object and a list of PyObjects => disallow copy, allow moves
+
     ~KernelEvent();
-    gpuEvent_t native_event;
-    gpuStream_t stream;
-    int32_t device;
+    KernelEvent(const KernelEvent&) = delete;
+    KernelEvent& operator=(const KernelEvent&) = delete;
+    KernelEvent(KernelEvent&& other) noexcept;
+    KernelEvent& operator=(KernelEvent&& other) noexcept;
+
+    gpuEvent_t native_event = nullptr;
+    gpuStream_t stream = nullptr;
+    int32_t device = -1;
     bool has_finished() const;
 
     std::vector<PyObject*> used_objects;
