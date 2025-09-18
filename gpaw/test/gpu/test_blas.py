@@ -96,6 +96,7 @@ def test_blas(dtype):
     gpu_r2k(0.5, a_gpu, b_gpu, 0.2, c_gpu)
     check_gpu = c_gpu.sum().get()
 
+    assert np.allclose(c_gpu.get(), c)
     assert check_cpu == pytest.approx(check_gpu, rel=1e-14)
 
     # dotc
