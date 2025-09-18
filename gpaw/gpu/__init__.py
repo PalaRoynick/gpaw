@@ -34,6 +34,15 @@ else:
             raise ImportError
 
         import cupy
+        # Ensure cupy works
+
+        from cupy_backends.cuda.api.runtime import CUDARuntimeError as CUDAError
+        try:
+            if not cupy.cuda.runtime.getDeviceCount() > 0:
+                raise ImportError('No GPUs')
+        except CUDAError:
+            raise ImportError('No GPU backend')
+
         # cupy.cuda.set_allocator(cupy.cuda.malloc_managed)
         # Cupy gemm wrapper (does extra copying):
         # from cupy import cublas

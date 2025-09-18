@@ -105,6 +105,7 @@ class PPCG(PWFDEigensolver):
         self.MP_nn: Matrix
         self.include_cg = include_cg
         self.promote_inner_dtype = promote_inner_dtype
+        self.first_residual_error = np.inf
 
     def __str__(self):
         return pformat(dict(name='PPCG',
@@ -166,7 +167,7 @@ class PPCG(PWFDEigensolver):
         #   breakout_tolerance saves time at the cost of minimum
         #   achievable residual. Can also be used to improve numerical
         #   stability.
-        self.breakout_tolerance = 1e-8
+        self.breakout_tolerance = 1e-12
 
         if self.tolerances is not None:
             assert len(self.tolerances) == 3
@@ -193,6 +194,7 @@ class PPCG(PWFDEigensolver):
                              dtype=inner_dtype)
         self.S_bb = xp.zeros((self.nblocksizes, self.nblocksizes),
                              dtype=inner_dtype)
+
 
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
@@ -259,8 +261,7 @@ class PPCG(PWFDEigensolver):
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
             if band_comm.sum_scalar(len(active_indicies)) == 0  \
-                    or b_error < self.breakout_tolerance and \
-                    self.min_niter <= 1:
+                    or self.check_breakout(b_error, 1):
                 if debug:
                     psit_nX.sanity_check()
                 break_after_update = True
@@ -491,8 +492,7 @@ class PPCG(PWFDEigensolver):
                     max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
                 if band_comm.sum_scalar(len(active_indicies)) == 0 \
-                        or (b_error < self.breakout_tolerance
-                            and i + 2 >= self.min_niter):
+                    or self.check_breakout(b_error, i+2): 
                     # Set 'break_after_update = True', causing the
                     # loop to break at the next iteration. This gives us
                     # one more cheap iteration (since we already
@@ -526,7 +526,15 @@ class PPCG(PWFDEigensolver):
         if debug:
             psit_nX.sanity_check()
 
+        self.first_residual_error = b_error
         return error
+
+    def check_breakout(self, residual_error, itt):
+        tol_hard_check = residual_error < 1e-4
+        tol_soft_check = residual_error < self.breakout_tolerance
+        iter_check = self.min_niter <= itt
+        imp_check = residual_error < 0.2 * self.first_residual_error
+        return tol_hard_check and iter_check and (tol_soft_check)
 
 
 @trace
@@ -608,3 +616,4 @@ def update_eigenvalues(wfs, Hpsit_nX, P_ani, HP_ani, dH, domain_comm):
                         p_nX)
     domain_comm.sum(eigs_n)
     wfs.myeig_n[:] = as_np(eigs_n)
+
