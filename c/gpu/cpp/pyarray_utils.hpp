@@ -64,6 +64,62 @@ private:
     PyGILState_STATE gil_state;
 };
 
+// Scoped numpy datatypes
+enum class DataType
+{
+    eUnknown        = -1,
+    eBool           = NPY_BOOL,
+    eInt8           = NPY_INT8,
+    eUint8          = NPY_UINT8,
+    eInt16          = NPY_INT16,
+    eUint16         = NPY_UINT16,
+    eInt32          = NPY_INT32,
+    eUint32         = NPY_UINT32,
+    eInt64          = NPY_INT64,
+    eUint64         = NPY_UINT64,
+    eFloat32        = NPY_FLOAT32,
+    eFloat64        = NPY_FLOAT64,
+    eComplex64      = NPY_COMPLEX64,
+    eComplex128     = NPY_COMPLEX128
+};
+
+// Map runtime DataType to compile-time T
+template<typename T>
+constexpr bool matches_dtype(DataType dtype)
+{
+    if constexpr (std::is_same_v<T, bool>) return dtype == DataType::eBool;
+    if constexpr (std::is_same_v<T, int8_t>) return dtype == DataType::eInt8;
+    if constexpr (std::is_same_v<T, uint8_t>) return dtype == DataType::eUint8;
+    if constexpr (std::is_same_v<T, int16_t>) return dtype == DataType::eInt16;
+    if constexpr (std::is_same_v<T, uint16_t>) return dtype == DataType::eUint16;
+    if constexpr (std::is_same_v<T, int32_t>) return dtype == DataType::eInt32;
+    if constexpr (std::is_same_v<T, uint32_t>) return dtype == DataType::eUint32;
+    if constexpr (std::is_same_v<T, int64_t>) return dtype == DataType::eInt64;
+    if constexpr (std::is_same_v<T, uint64_t>) return dtype == DataType::eUint64;
+    if constexpr (std::is_same_v<T, float>) return dtype == DataType::eFloat32;
+    if constexpr (std::is_same_v<T, double>) return dtype == DataType::eFloat64;
+    if constexpr (std::is_same_v<T, gpuFloatComplex>) return dtype == DataType::eComplex64;
+    if constexpr (std::is_same_v<T, gpuDoubleComplex>) return dtype == DataType::eComplex128;
+    else
+    {
+        static_no_match();
+    }
+    return false;
+}
+
+
+/* Convert Numpy's type identifier to a DataType enum.
+For example, dtype_from_typenum(NPY_FLOAT32) would return DataType::eFloat32 */
+constexpr inline DataType dtype_from_typenum(int typenum)
+{
+    return static_cast<DataType>(typenum);
+}
+
+/* Convert DataType to raw Numpy typenum */
+constexpr inline int typenum_from_dtype(DataType dtype)
+{
+    return static_cast<int>(dtype);
+}
 
 // Get pointer to the array data
 template<typename T>
