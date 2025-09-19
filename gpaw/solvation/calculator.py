@@ -189,3 +189,5 @@ class OldSolvationGPAW(OldGPAW):
         """
         A = self.hamiltonian.cavity.A
         return A and A * Bohr ** 2
+
+   

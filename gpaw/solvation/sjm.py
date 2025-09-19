@@ -523,7 +523,9 @@ class OldSJM(OldSolvationGPAW):
             self.log('Canonical energy was written into results.\n')
 
         self.results['excess_electrons'] = p.excess_electrons
+        atoms.info['excess_electrons'] = p.excess_electrons
         self.results['electrode_potential'] = self.get_electrode_potential()
+        atoms.info['electrode_potential'] = self.get_electrode_potential()
         self.log.fd.flush()
 
     def _equilibrate_potential(self, atoms, system_changes):
