@@ -27,7 +27,7 @@ namespace gpaw
 {
 
 // Returns true if the current thread has GIL
-inline bool check_gil() noexcept
+inline bool has_gil() noexcept
 {
     return PyGILState_Check();
 }
@@ -36,7 +36,7 @@ inline bool check_gil() noexcept
 #define ASSERT_GIL()    __assert_gil(__FILE__, __LINE__)
 static inline void __assert_gil(const char* file, int line)
 {
-    if (!check_gil())
+    if (!has_gil())
     {
         char msg[100];
         snprintf(msg, 100, "ENSURE_GIL() failed at %s:%d\n", file, line);

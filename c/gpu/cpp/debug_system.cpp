@@ -43,6 +43,9 @@ bool DebugSystem::is_enabled() const
 
 void DebugSystem::start_tracking_event(EventID id)
 {
+    // Does not modify Python stuff directly, but we don't want this to be called from many threads. So restrict usage to Python's current thread
+    ASSERT_GIL();
+
     if (!is_enabled()) return;
 
     assert(g_event_manager.is_valid_event(id));
@@ -85,6 +88,9 @@ void DebugSystem::start_tracking_event(EventID id)
 
 void DebugSystem::stop_tracking_event(EventID id)
 {
+    // Same threading logic as in start_tracking_event
+    ASSERT_GIL();
+
     if (!is_enabled()) return;
 
     if (!map_contains(buffers_for_event, id))

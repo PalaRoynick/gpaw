@@ -17,8 +17,6 @@ enum class EventType
 
 using EventID = uint64_t;
 
-template<bool multithreaded> class EventManager;
-
 struct EventBase
 {
     // Unique ID for the event
@@ -60,8 +58,7 @@ private:
     */
     void on_start();
 
-    friend class EventManager<true>;
-    friend class EventManager<false>;
+    friend class EventManager;
 };
 
 } // namespace gpaw
