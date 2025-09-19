@@ -29,7 +29,8 @@ boolean_envvars = {
     'GPAW_TRACE',
     'GPAW_NO_C_EXTENSION',
     'GPAW_MPI4PY',
-    'GPAW_DEBUG'}
+    'GPAW_DEBUG',
+    'GPAW_GPU_DEBUG'}
 allowed_envvars = {
     *boolean_envvars,
     'GPAW_MPI_OPTIONS',
@@ -50,6 +51,10 @@ def _get_gpaw_env_vars(attr: str) -> bool | str:
 
 # When type-checking, we want the debug-wrappers enabled:
 debug = TYPE_CHECKING or _get_gpaw_env_vars('GPAW_DEBUG')
+
+GPAW_GPU_DEBUG = _get_gpaw_env_vars('GPAW_GPU_DEBUG')
+if GPAW_GPU_DEBUG:
+    debug = True  # GPAW_GPU_DEBUG implies debug mode
 
 
 @contextlib.contextmanager

@@ -11,7 +11,7 @@ import numpy as np
 import warnings
 
 from gpaw.cgpaw import have_magma
-from gpaw import debug
+from gpaw import debug, GPAW_GPU_DEBUG
 
 cupy_is_fake = True
 """True if :mod:`cupy` has been replaced by ``gpaw.gpu.cpupy``"""
@@ -244,11 +244,8 @@ else:
 __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
            'flush_pinned_arrays']
 
-# Import bindings to event and its debug system
 try:
-    from gpaw.cgpaw import (_destroy_expired_events,
-                            is_debug_system_enabled, toggle_debug_system,
-                            configure_debug_stream_delay_microseconds)
+    from gpaw.cgpaw import _destroy_expired_events
 
     @trace
     def destroy_expired_events() -> None:
@@ -271,16 +268,15 @@ except ImportError:
         # no-op
         pass
 
-    def is_debug_system_enabled() -> bool:
-        return False
+if GPAW_GPU_DEBUG:
+    # Activate debug system globally
+    from gpaw.gpu.debug import toggle_debug_system
+    toggle_debug_system(True)
 
-    def toggle_debug_system(enabled: bool) -> None:
-        pass
+    def gpaw_disable_debug_system() -> None:
+        toggle_debug_system(False)
 
-    def configure_debug_stream_delay_microseconds(microsecs: float) -> None:
-        pass
-
-toggle_debug_system(True)
+    atexit.register(gpaw_disable_debug_system)
 
 
 def synchronize():
