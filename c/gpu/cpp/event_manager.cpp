@@ -46,10 +46,9 @@ EventID EventManager::create_kernel_exec_event(const std::string& name, gpuStrea
         debug_system.insert_stream_delay(stream);
 
         // FIXME should schedule the callback inside the debug system
-        auto callback = [id]() mutable
+        auto callback = [id, &debug_system]() mutable
         {
-            DebugSystem& ds = DebugSystem::get();
-            ds.internal_mark_event_finished(id);
+            debug_system.internal_mark_event_finished(id);
         };
 
         gpu_host_callback(stream, callback);
@@ -69,10 +68,14 @@ void EventManager::process_finished_events()
     auto it = events.begin();
     while (it != events.end())
     {
-        //const EventID event = it->first;
-
         if (std::visit(has_finished_visitor, it->second))
         {
+            if (DebugSystem::is_system_enabled())
+            {
+                const EventID event = it->first;
+                DebugSystem::get().stop_tracking_event(event);
+            }
+
             it = events.erase(it);
         }
         else

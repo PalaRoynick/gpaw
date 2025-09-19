@@ -181,6 +181,90 @@ void DebugSystem::internal_mark_event_finished(EventID id)
     finished_events.emplace(id);
 }
 
+bool DebugSystem::is_event_tracked(EventID id) const
+{
+    if (!is_enabled())
+    {
+        return false;
+    }
+
+    return map_contains(buffers_for_event, id);
+}
+
+bool DebugSystem::is_pointer_tracked(uintptr_t ptr) const
+{
+    if (!is_enabled())
+    {
+        return false;
+    }
+
+    return map_contains(buffer_to_events, ptr);
+}
+
+bool DebugSystem::is_object_tracked(PyObject* obj) const
+{
+    if (!is_enabled())
+    {
+        return false;
+    }
+
+    return map_contains(owner_to_events, obj);
+}
+
+bool DebugSystem::ensure_object_not_in_use(PyObject* obj)
+{
+    if (!is_object_tracked(obj))
+    {
+        return true;
+    }
+
+    std::vector<EventID> events;
+    for (auto event : owner_to_events.at(obj))
+    {
+        if (!is_event_finished(event))
+        {
+            events.push_back(event);
+        }
+    }
+
+    if (events.size() > 0)
+    {
+        printf("Error, object is in use by %zu unfinished events\n", events.size());
+        print_event_info(events);
+        fflush(stdout);
+        return false;
+    }
+
+    return true;
+}
+
+bool DebugSystem::ensure_pointer_not_in_use(uintptr_t ptr)
+{
+    if (!is_pointer_tracked(ptr))
+    {
+        return true;
+    }
+
+    std::vector<EventID> events;
+    for (auto event : buffer_to_events.at(ptr))
+    {
+        if (!is_event_finished(event))
+        {
+            events.push_back(event);
+        }
+    }
+
+    if (events.size() > 0)
+    {
+        printf("Error, pointer is in use by %zu unfinished events\n", events.size());
+        print_event_info(events);
+        fflush(stdout);
+        return false;
+    }
+
+    return true;
+}
+
 void DebugSystem::configure_stream_delay(double microseconds)
 {
     stream_delay_microseconds = microseconds;
@@ -191,6 +275,19 @@ void DebugSystem::insert_stream_delay(gpuStream_t stream)
     if (stream_delay_microseconds > 0)
     {
         launch_wait_kernel(stream, stream_delay_microseconds);
+    }
+}
+
+void DebugSystem::print_event_info(EventID id) const
+{
+    printf("id : %zu\n", (size_t)id);
+}
+
+void DebugSystem::print_event_info(const std::vector<EventID>& events) const
+{
+    for (EventID id : events)
+    {
+        print_event_info(id);
     }
 }
 

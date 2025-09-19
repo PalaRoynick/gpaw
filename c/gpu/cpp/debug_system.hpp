@@ -39,6 +39,13 @@ public:
     // FIXME should be private. But need to refactor event creation "hooking"
     void internal_mark_event_finished(EventID id);
 
+    bool is_event_tracked(EventID id) const;
+    bool is_pointer_tracked(uintptr_t ptr) const;
+    bool is_object_tracked(PyObject* obj) const;
+
+    bool ensure_object_not_in_use(PyObject* obj);
+    bool ensure_pointer_not_in_use(uintptr_t ptr);
+
     /* Set amount of delay that the DebugSystem will insert to the GPU stream after every kernel launch
     Default is 500 microseconds. Value of 0 or less will disable the delay insertions. */
     void configure_stream_delay(double microseconds);
@@ -46,6 +53,9 @@ public:
     void insert_stream_delay(gpuStream_t stream);
 
 protected:
+
+    void print_event_info(EventID id) const;
+    void print_event_info(const std::vector<EventID>& events) const;
 
     bool enabled = false;
 
@@ -77,7 +87,7 @@ private:
     DebugSystem& operator=(const DebugSystem&) = delete;
     DebugSystem(const DebugSystem&) = delete;
 
-    double stream_delay_microseconds = 500;
+    double stream_delay_microseconds = 0;
 
     // Launches a kernel that just waits for approximately the given time
     void launch_wait_kernel(gpuStream_t stream, double microseconds);
