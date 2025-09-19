@@ -48,9 +48,9 @@ void DebugSystem::start_tracking_event(EventID id)
 
     if (!is_enabled()) return;
 
-    assert(g_event_manager.is_valid_event(id));
+    assert(EventManager::get().is_valid_event(id));
 
-    std::vector<PyObject*> objects_to_track = g_event_manager.get_event_pyobjects(id);
+    std::vector<PyObject*> objects_to_track = EventManager::get().get_event_pyobjects(id);
     if (objects_to_track.empty())
     {
         // No buffers to track
@@ -149,7 +149,7 @@ bool DebugSystem::is_event_finished(EventID id)
         }
     }
     // Then check through the event manager
-    const bool has_finished = g_event_manager.has_event_finished(id);
+    const bool has_finished = EventManager::get().has_event_finished(id);
     if (has_finished)
     {
         // Update debug system's cache

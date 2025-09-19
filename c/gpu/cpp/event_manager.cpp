@@ -4,7 +4,11 @@
 namespace gpaw
 {
 
-EventManager g_event_manager;
+EventManager& EventManager::get()
+{
+    static EventManager instance;
+    return instance;
+}
 
 EventManager::EventManager()
     : next_event_id(0)

@@ -11,10 +11,12 @@
 namespace gpaw
 {
 
+// Singleton
 class EventManager
 {
 public:
-    EventManager();
+
+    static EventManager& get();
 
     /* Creates a new GPU event and records it in the given GPU stream on current device.
     Flags are native cuda or hip event creation flags */
@@ -40,13 +42,14 @@ protected:
     std::unordered_map<EventID, EventVariant> events;
 
 private:
+    // singleton pattern
+    EventManager();
+    ~EventManager() {}
+    EventManager& operator=(const EventManager&) = delete;
+    EventManager(const EventManager&) = delete;
 
     // Events will be created from one thread only, so this does not need to be atomic
     EventID next_event_id;
-
-
 };
-
-extern EventManager g_event_manager;
 
 } // namespace gpaw

@@ -164,7 +164,7 @@ CLINKAGE PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args)
     gpuStream_t stream = 0;
     evaluate_lda_launch_kernel(nspin, ng, n_ptr, v_ptr, e_ptr, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_evaluate_lda",
         stream,
         std::move(pinner.objects),
@@ -219,7 +219,7 @@ CLINKAGE PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args)
     evaluate_pbe_launch_kernel(nspin, ng, n_ptr, v_ptr, e_ptr, sigma_ptr,
         dedsigma_ptr, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_evaluate_pbe",
         stream,
         std::move(pinner.objects),
@@ -297,7 +297,7 @@ CLINKAGE PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args)
     dH_aii_times_P_ani_launch_kernel(dtypenum, nA, nn, nI, ni_a, dH_aii_dev,
         P_ani_dev, outP_ani_dev, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_dH_aii_times_P_ani",
         stream,
         std::move(pinner.objects),
@@ -366,7 +366,7 @@ CLINKAGE PyObject* pwlfc_expand_gpu(PyObject* self, PyObject* args)
     pwlfc_expand_gpu_launch_kernel(dtype, f_Gs, Gk_Gv, pos_av, eikR_a, Y_GL,
         l_s, a_J, s_J, f_GI, I_J, nG, nJ, nL, nI, natoms, nsplines, cc, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_lfc_expand",
         stream,
         std::move(pinner.objects),
@@ -429,7 +429,7 @@ CLINKAGE PyObject* pw_insert_gpu(PyObject* self, PyObject* args)
     pw_insert_gpu_launch_kernel(dtypenum, nb, nG, nQ, c_nG, Q_G, scale,
         tmp_nQ, rx, ry, rz, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_insert",
         stream,
         std::move(pinner.objects),
@@ -481,7 +481,7 @@ CLINKAGE PyObject* pw_norm_gpu(PyObject* self, PyObject* args)
     gpuStream_t stream = 0;
     pw_norm_gpu_launch_kernel(dtypenum, nx, nG, result_x, C_xG, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_norm_gpu",
         stream,
         std::move(pinner.objects),
@@ -536,7 +536,7 @@ CLINKAGE PyObject* pw_norm_kinetic_gpu(PyObject* self, PyObject* args)
     pw_norm_kinetic_gpu_launch_kernel(dtypenum, nx, nG, result_x, C_xG, kin_G,
         stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_norm_kinetic",
         stream,
         std::move(pinner.objects),
@@ -584,7 +584,7 @@ CLINKAGE PyObject* pw_amend_insert_realwf_gpu(PyObject* self, PyObject* args)
     pw_amend_insert_realwf_gpu_launch_kernel(dtypenum, nb, nx, ny, nz, n, m,
         array_nQ, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_amend_insert_realwf",
         stream,
         std::move(pinner.objects),
@@ -631,7 +631,7 @@ CLINKAGE PyObject* add_to_density_gpu(PyObject* self, PyObject* args)
     gpuStream_t stream = 0;
     add_to_density_gpu_launch_kernel(nb, nR, f_n, psit_nR, rho_R, dtypenum, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_add_to_density",
         stream,
         std::move(pinner.objects),
@@ -676,7 +676,7 @@ CLINKAGE PyObject* calculate_residual_gpu(PyObject* self, PyObject* args)
     calculate_residual_launch_kernel(dtypenum, nG, nn, residual_nG, eps_n,
         wf_nG, stream);
 
-    gpaw::EventID id = gpaw::g_event_manager.create_kernel_exec_event(
+    gpaw::EventID id = gpaw::EventManager::get().create_kernel_exec_event(
         "pw_calculate_residual",
         stream,
         std::move(pinner.objects),

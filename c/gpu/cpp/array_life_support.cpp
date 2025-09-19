@@ -27,7 +27,7 @@ CLINKAGE PyObject* flush_pending_decrefs(PyObject* self, PyObject* args)
     // }
 
     // FIXME
-    gpaw::g_event_manager.process_finished_events();
+    gpaw::EventManager::get().process_finished_events();
 
     Py_RETURN_NONE;
 }
