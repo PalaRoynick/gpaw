@@ -64,7 +64,9 @@ if not cupy_is_fake:
             """"""
             if self.take_tracebacks:
                 mem_ptr = kwargs['mem_ptr']
-                self.alloc_traceback[mem_ptr] = ''.join(traceback.format_stack())
+                self.alloc_traceback[mem_ptr] = (
+                    ''.join(traceback.format_stack())
+                )
 
         def free_preprocess(self, **kwargs):
             """"""

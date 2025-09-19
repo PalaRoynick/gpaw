@@ -160,8 +160,7 @@ bool DebugSystem::is_event_finished(EventID id)
     // It may be more up-to-date than the global manager due to async debug callbacks
     {
         SharedLock lock(finished_events_mutex);
-        auto it = finished_events.find(id);
-        if (it != finished_events.end())
+        if (finished_events.find(id) != finished_events.end())
         {
             return true;
         }
@@ -254,7 +253,7 @@ bool DebugSystem::ensure_pointer_not_in_use(uintptr_t ptr)
     }
 
     std::vector<EventID> events;
-    for (auto event : buffer_to_events.at(ptr))
+    for (EventID event : buffer_to_events.at(ptr))
     {
         if (!is_event_finished(event))
         {

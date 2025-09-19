@@ -8,8 +8,9 @@ KernelEvent::~KernelEvent()
 {
     for (PyObject* obj : used_objects)
     {
+        //assert(obj && "Null PyObject, can't happen since we should have ownership");
+
         // would Py_CLEAR be safer?
-        assert(obj && "Null PyObject, can't happen since we should have ownership");
         Py_DECREF(obj);
     }
     if (native_event != nullptr)
