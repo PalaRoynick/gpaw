@@ -47,7 +47,7 @@ public:
     bool ensure_pointer_not_in_use(uintptr_t ptr);
 
     /* Set amount of delay that the DebugSystem will insert to the GPU stream after every kernel launch
-    Default is 500 microseconds. Value of 0 or less will disable the delay insertions. */
+    Default is 200 microseconds. Value of 0 or less will disable the delay insertions. */
     void configure_stream_delay(double microseconds);
 
     void insert_stream_delay(gpuStream_t stream);
@@ -87,7 +87,7 @@ private:
     DebugSystem& operator=(const DebugSystem&) = delete;
     DebugSystem(const DebugSystem&) = delete;
 
-    double stream_delay_microseconds = 0;
+    double stream_delay_microseconds = 200;
 
     // Launches a kernel that just waits for approximately the given time
     void launch_wait_kernel(gpuStream_t stream, double microseconds);

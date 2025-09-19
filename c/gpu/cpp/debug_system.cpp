@@ -111,11 +111,19 @@ void DebugSystem::stop_tracking_event(EventID id)
 
     for (const PythonBuffer& buffer : buffers_for_event.at(id))
     {
-        // Check that the PyObject data pointer is still the same as when we registered it
+        // Check that the PyObject data pointer is still the same as when we registered it.
+
+        /* FIXME this needs more thought. Fails immediately if the 'owner' has already died,
+        which can happen if the event system does not take ownership problem in itself.
+        And the check itself seems restrictive because do we know that Cupy/Numpy objects never change their data ptr?
+        */
+
+        /*
         void* data_ptr = gpaw::Array_DATA<void>(buffer.owner);
         assert(data_ptr);
         const uintptr_t ptr_current = reinterpret_cast<uintptr_t>(data_ptr);
         assert(ptr_current == buffer.ptr && "PyObject <-> data_ptr mapping broken, pointer has changed?");
+        */
 
         // Remove event from PyObject* -> EventID and uintptr_t -> EventID maps
         PyObject* owner = buffer.owner;
@@ -300,7 +308,7 @@ void DebugSystem::launch_wait_kernel(gpuStream_t stream, double microseconds)
     gpuGetDeviceProperties(&prop, device);
 
     const int clock_rate_khz = prop.clockRate;
-    const uint64_t wait_cycles = 1000 * microseconds * (uint64_t)clock_rate_khz;
+    const uint64_t wait_cycles = microseconds / 1000.0 * (uint64_t)clock_rate_khz;
 
     launch_kernel(wait_kernel, 1, 1, 0, stream, wait_cycles);
 }
