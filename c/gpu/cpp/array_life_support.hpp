@@ -15,6 +15,7 @@ while kernels are still using them. */
 namespace gpaw
 {
 
+// TODO remove this and move the borrow_array_data() functionality elsewhere
 
 /* Class PyObjectPinner - used to keep Python objects alive for as long as GPU
 kernels are using them. Intended for Cupy arrays specifically.
@@ -26,13 +27,6 @@ class PyObjectPinner
 public:
     PyObjectPinner();
     PyObjectPinner(size_t reserve_count);
-
-    // "Commits" the pinning. This is where all stored objects get their ref counts increased
-    void commit();
-    /* Schedules unpinning in a GPU stream. Call this after launching your kernel(s).
-    This way the arrays will be unpinned once the kernel(s) finish executing.
-    The pinner object does not need to be alive when the unpinning actually happens. */
-    void schedule_unpin(gpuStream_t stream);
 
     /* Request to 'borrow' array data from a PyObject. The object is assumed to be
     an array, so that gpaw::Array_DATA() returns a valid pointer.
@@ -54,12 +48,6 @@ public:
 
     std::vector<PyObject*> objects;
 
-protected:
-
-
-#ifdef GPAW_GPU_ARRAY_DEBUG
-    bool has_committed = false;
-#endif
 };
 
 } // namespace gpaw
