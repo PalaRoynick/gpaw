@@ -4,7 +4,7 @@
 #include "pyarray_utils.hpp"
 #include "array_life_support.hpp"
 #include "utils.hpp"
-#include "events.hpp"
+#include "event_manager.hpp"
 
 CLINKAGE
 {

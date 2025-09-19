@@ -4,9 +4,6 @@
 namespace gpaw
 {
 
-EventManager<true> g_multithreaded_manager;
-EventManager<false> g_event_manager;
-
 KernelEvent::~KernelEvent()
 {
     for (PyObject* obj : used_objects)

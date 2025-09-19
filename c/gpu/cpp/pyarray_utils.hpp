@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../gpu-runtime.h"
+#include "utils.hpp"
 
 #include <Python.h>
 
@@ -33,7 +34,7 @@ inline bool check_gil() noexcept
 
 // Check that the current thread is holding GIL and abort on failure
 #define ASSERT_GIL()    __assert_gil(__FILE__, __LINE__)
-static inline void __assert_gil(const char *file, int line)
+static inline void __assert_gil(const char* file, int line)
 {
     if (!check_gil())
     {
@@ -67,20 +68,20 @@ private:
 // Scoped numpy datatypes
 enum class DataType
 {
-    eUnknown        = -1,
-    eBool           = NPY_BOOL,
-    eInt8           = NPY_INT8,
-    eUint8          = NPY_UINT8,
-    eInt16          = NPY_INT16,
-    eUint16         = NPY_UINT16,
-    eInt32          = NPY_INT32,
-    eUint32         = NPY_UINT32,
-    eInt64          = NPY_INT64,
-    eUint64         = NPY_UINT64,
-    eFloat32        = NPY_FLOAT32,
-    eFloat64        = NPY_FLOAT64,
-    eComplex64      = NPY_COMPLEX64,
-    eComplex128     = NPY_COMPLEX128
+    eUnknown = -1,
+    eBool = NPY_BOOL,
+    eInt8 = NPY_INT8,
+    eUint8 = NPY_UINT8,
+    eInt16 = NPY_INT16,
+    eUint16 = NPY_UINT16,
+    eInt32 = NPY_INT32,
+    eUint32 = NPY_UINT32,
+    eInt64 = NPY_INT64,
+    eUint64 = NPY_UINT64,
+    eFloat32 = NPY_FLOAT32,
+    eFloat64 = NPY_FLOAT64,
+    eComplex64 = NPY_COMPLEX64,
+    eComplex128 = NPY_COMPLEX128
 };
 
 // Map runtime DataType to compile-time T
@@ -106,7 +107,6 @@ constexpr bool matches_dtype(DataType dtype)
     }
     return false;
 }
-
 
 /* Convert Numpy's type identifier to a DataType enum.
 For example, dtype_from_typenum(NPY_FLOAT32) would return DataType::eFloat32 */

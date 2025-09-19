@@ -2,7 +2,7 @@
 #include "pyarray_utils.hpp"
 #include "utils.hpp"
 #include "gpu_core.hpp"
-#include "events.hpp"
+#include "event_manager.hpp"
 
 #include <Python.h>
 #include <mutex>
