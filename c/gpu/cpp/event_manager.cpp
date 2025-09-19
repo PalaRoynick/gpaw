@@ -43,6 +43,7 @@ EventID EventManager::create_kernel_exec_event(const std::string& name, gpuStrea
     {
         DebugSystem& debug_system = DebugSystem::get();
         debug_system.start_tracking_event(id);
+        debug_system.insert_stream_delay(stream);
 
         // FIXME should schedule the callback inside the debug system
         auto callback = [id]() mutable

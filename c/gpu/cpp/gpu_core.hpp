@@ -12,11 +12,11 @@
 namespace gpaw
 {
 
-inline int32_t get_current_device()
+inline int get_current_device()
 {
     int dev;
     gpuGetDevice(&dev);
-    return static_cast<int32_t>(dev);
+    return dev;
 }
 
 template<typename T>

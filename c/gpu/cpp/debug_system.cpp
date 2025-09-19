@@ -1,8 +1,19 @@
 #include "debug_system.hpp"
 #include "event_manager.hpp"
+#include "gpu_core.hpp"
 
 namespace gpaw
 {
+
+// Kernel that just wastes time
+__global__ static void wait_kernel(uint64_t wait_cycles)
+{
+    unsigned long long start = clock64();
+    while (clock64() - start < wait_cycles)
+    {
+        // Do nothing
+    }
+}
 
 DebugSystem& DebugSystem::get()
 {
@@ -168,6 +179,33 @@ void DebugSystem::internal_mark_event_finished(EventID id)
 
     UniqueLock lock(finished_events_mutex);
     finished_events.emplace(id);
+}
+
+void DebugSystem::configure_stream_delay(double microseconds)
+{
+    stream_delay_microseconds = microseconds;
+}
+
+void DebugSystem::insert_stream_delay(gpuStream_t stream)
+{
+    if (stream_delay_microseconds > 0)
+    {
+        launch_wait_kernel(stream, stream_delay_microseconds);
+    }
+}
+
+void DebugSystem::launch_wait_kernel(gpuStream_t stream, double microseconds)
+{
+    // Convert time to cycles based on clock frequency
+
+    int device = get_current_device();
+    gpuDeviceProp prop;
+    gpuGetDeviceProperties(&prop, device);
+
+    const int clock_rate_khz = prop.clockRate;
+    const uint64_t wait_cycles = 1000 * microseconds * (uint64_t)clock_rate_khz;
+
+    launch_kernel(wait_kernel, 1, 1, 0, stream, wait_cycles);
 }
 
 }

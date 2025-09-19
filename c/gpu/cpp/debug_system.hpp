@@ -29,6 +29,7 @@ public:
     static DebugSystem& get();
     static bool is_system_enabled();
 
+    // Enable or disable the debug system
     void toggle(bool enabled);
     bool is_enabled() const;
 
@@ -38,9 +39,15 @@ public:
     // FIXME should be private. But need to refactor event creation "hooking"
     void internal_mark_event_finished(EventID id);
 
+    /* Set amount of delay that the DebugSystem will insert to the GPU stream after every kernel launch
+    Default is 500 microseconds. Value of 0 or less will disable the delay insertions. */
+    void configure_stream_delay(double microseconds);
+
+    void insert_stream_delay(gpuStream_t stream);
+
 protected:
 
-    bool enabled = true;
+    bool enabled = false;
 
     // Manual "bidirectional map" setup for buffer lookups
 
@@ -70,11 +77,10 @@ private:
     DebugSystem& operator=(const DebugSystem&) = delete;
     DebugSystem(const DebugSystem&) = delete;
 
+    double stream_delay_microseconds = 500;
+
+    // Launches a kernel that just waits for approximately the given time
+    void launch_wait_kernel(gpuStream_t stream, double microseconds);
 };
-
-/* Probably easiest approach: in all "create event" functions of the event manager,
-inform the DebugSystem about the newly created event and which object it's using.
-DebugSystem can then store map of objects -> EventID. Then cupy memory hooks can ask the DebugSystem if a given object is used in any existing event. */
-
 
 } // namespace gpaw

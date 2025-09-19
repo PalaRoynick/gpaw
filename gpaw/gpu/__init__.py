@@ -244,9 +244,11 @@ else:
 __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
            'flush_pinned_arrays']
 
-
+# Import bindings to event and its debug system
 try:
-    from gpaw.cgpaw import _destroy_expired_events
+    from gpaw.cgpaw import (_destroy_expired_events,
+                            is_debug_system_enabled, toggle_debug_system,
+                            configure_debug_stream_delay_microseconds)
 
     @trace
     def destroy_expired_events() -> None:
@@ -268,6 +270,17 @@ except ImportError:
     def destroy_expired_events() -> None:
         # no-op
         pass
+
+    def is_debug_system_enabled() -> bool:
+        return False
+
+    def toggle_debug_system(enabled: bool) -> None:
+        pass
+
+    def configure_debug_stream_delay_microseconds(microsecs: float) -> None:
+        pass
+
+toggle_debug_system(True)
 
 
 def synchronize():
