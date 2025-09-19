@@ -7,31 +7,6 @@
 #include <Python.h>
 #include <mutex>
 
-// TODO rename. This is what checks and removes expired events
-CLINKAGE PyObject* flush_pending_decrefs(PyObject* self, PyObject* args)
-{
-    // if (life_support::g_pending_decrefs.empty())
-    // {
-    //     Py_RETURN_NONE;
-    // }
-
-    // std::vector<PyObject*> local_pending_decrefs;
-    // {
-    //     std::lock_guard<std::mutex> lock(life_support::g_pending_decrefs_mutex);
-    //     local_pending_decrefs.swap(life_support::g_pending_decrefs);
-    // }
-
-    // for (PyObject* obj : local_pending_decrefs)
-    // {
-    //     Py_DECREF(obj);
-    // }
-
-    // FIXME
-    gpaw::EventManager::get().process_finished_events();
-
-    Py_RETURN_NONE;
-}
-
 namespace gpaw
 {
 

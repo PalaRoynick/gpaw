@@ -64,7 +64,6 @@ void EventManager::process_finished_events()
         return event.has_finished();
     };
 
-    size_t expired = 0;
     // Iterate through all events and expire (destroy) ones that have finished
     auto it = events.begin();
     while (it != events.end())
@@ -74,16 +73,12 @@ void EventManager::process_finished_events()
         if (std::visit(has_finished_visitor, it->second))
         {
             it = events.erase(it);
-            expired++;
         }
         else
         {
             ++it;
         }
     }
-
-    printf("Cleared %zu finished events\n", expired);
-    fflush(stdout);
 }
 
 bool EventManager::has_event_finished(EventID id) const

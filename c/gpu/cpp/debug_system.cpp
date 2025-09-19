@@ -122,7 +122,6 @@ void DebugSystem::stop_tracking_event(EventID id)
         {
             buffer_to_events.erase(ptr);
         }
-
     }
 
     buffers_for_event.erase(id);

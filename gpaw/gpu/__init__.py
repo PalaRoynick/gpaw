@@ -246,26 +246,26 @@ __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
 
 
 try:
-    from gpaw.cgpaw import _flush_pending_decrefs
+    from gpaw.cgpaw import _destroy_expired_events
 
     @trace
-    def flush_pinned_arrays() -> None:
+    def destroy_expired_events() -> None:
         """Flushes the list of arrays that are currently pinned by GPAW's
         'GPU array life support' system.
         """
-        _flush_pending_decrefs()
+        _destroy_expired_events()
 
     # Hook the above to garbage collector
     import gc
 
-    def gpaw_gc_flush_pinned_arrays(phase, info):
+    def gpaw_gc_destroy_expired_events(phase, info):
         if phase == "start":
-            flush_pinned_arrays()
+            destroy_expired_events()
 
-    gc.callbacks.append(gpaw_gc_flush_pinned_arrays)
+    gc.callbacks.append(gpaw_gc_destroy_expired_events)
 
 except ImportError:
-    def _flush_pending_decrefs() -> None:
+    def destroy_expired_events() -> None:
         # no-op
         pass
 
