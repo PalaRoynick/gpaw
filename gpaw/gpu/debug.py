@@ -80,7 +80,7 @@ def debug_memory_block_check(block_start: int,
                              assert_success: bool = True,
                              traceback_start=0,
                              traceback_end=10  # None means no limit
-                             ) -> None:
+                             ) -> bool:
     """Checks the GPU debug system if the input memory block is currently in
     use by any event.
     Prints debug info on failure, including stack trace.
@@ -110,6 +110,8 @@ def debug_memory_block_check(block_start: int,
 
         if assert_success:
             raise AssertionError("DebugSystem: Bad memory overlap detected")
+
+    return not overlaps
 
 
 if not cupy_is_fake:
@@ -146,15 +148,31 @@ if not cupy_is_fake:
             debug_memory_block_check(mem_ptr, nbytes, assert_success=False)
 
             if self.take_tracebacks:
+                trace = traceback.format_stack()[:-1]
+                trace = trace[-10:]
                 self.alloc_traceback[mem_ptr] = (
-                    ''.join(traceback.format_stack())
+                    ''.join(trace)
                 )
 
         def free_preprocess(self, **kwargs):
             """"""
             mem_ptr = kwargs['mem_ptr']
             nbytes = kwargs['mem_size']
-            debug_memory_block_check(mem_ptr, nbytes, assert_success=False)
+            ok = debug_memory_block_check(mem_ptr,
+                                          nbytes,
+                                          assert_success=False)
+
+            if not ok:
+                if mem_ptr in self.alloc_traceback:
+                    print("Cupy malloc trace for this pointer:")
+                    print(self.alloc_traceback[mem_ptr])
+                    print("\n", flush=True)
+                else:
+                    # Should not happen since GPAW doesn't alloc GPU buffers
+                    # on its own (except for in old FD code maybe).
+                    # If we still get here, maybe there is some Cupy slicing
+                    # that this tracker doesn't notice??
+                    print("\nThis pointer was NOT allocated by Cupy")
 
         def free_postprocess(self, **kwargs):
             """"""
@@ -180,7 +198,7 @@ def toggle_debug_system(enabled: bool):
     global g_cupy_debug_hooks
     if g_cupy_debug_hooks is not None:
         if enabled:
-            g_cupy_debug_hooks.activate_hooks(take_tracebacks=False)
+            g_cupy_debug_hooks.activate_hooks(take_tracebacks=True)
         else:
             g_cupy_debug_hooks.disable_hooks()
 
