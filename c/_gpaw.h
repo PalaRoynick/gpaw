@@ -221,6 +221,8 @@ PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 
 #endif // GPAW_GPU
 
+PyObject* debug_toggle_async_comms(PyObject* self, PyObject* args);
+
 static PyMethodDef functions[] = {
     {"pawexxvv", pawexxvv, METH_VARARGS, 0},
     {"evaluate_mpa_poly", evaluate_mpa_poly, METH_VARARGS, 0},
@@ -407,6 +409,7 @@ static PyMethodDef functions[] = {
     {"ensure_object_not_in_use", ensure_object_not_in_use, METH_VARARGS, 0},
     {"ensure_block_not_in_use", ensure_block_not_in_use, METH_VARARGS, 0},
 #endif // GPAW_GPU
+    {"debug_toggle_async_comms", debug_toggle_async_comms, METH_VARARGS, 0},
 
     {0, 0, 0, 0}
 };

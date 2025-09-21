@@ -24,7 +24,7 @@ import sys
 import marshal
 from importlib.machinery import PathFinder, ModuleSpec
 
-from gpaw import GPAW_NO_C_EXTENSION, GPAW_MPI4PY
+from gpaw import GPAW_NO_C_EXTENSION, GPAW_MPI4PY, GPAW_NO_ASYNC_COMMS
 import gpaw.cgpaw as cgpaw
 
 cgpaw_version = getattr(cgpaw, 'version', 0)
@@ -50,6 +50,10 @@ elif hasattr(cgpaw, 'Communicator'):
         except OSError:
             pass
     world = cgpaw.Communicator()
+
+    if GPAW_NO_ASYNC_COMMS:
+        cgpaw.debug_toggle_async_comms(False)
+
 else:
     world = None  # type: ignore
 

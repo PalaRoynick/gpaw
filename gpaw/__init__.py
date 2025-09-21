@@ -29,6 +29,7 @@ boolean_envvars = {
     'GPAW_TRACE',
     'GPAW_NO_C_EXTENSION',
     'GPAW_MPI4PY',
+    'GPAW_NO_ASYNC_COMMS',
     'GPAW_DEBUG',
     'GPAW_GPU_DEBUG',
     'GPAW_DEBUG_NO_EVENT_OWNERSHIP'}

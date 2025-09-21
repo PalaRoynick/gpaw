@@ -33,6 +33,32 @@
 
 void gpawDeviceSynchronize();
 
+// For debugging
+static bool g_no_async_comms = false;
+static inline bool gpaw_no_async_comms() { return g_no_async_comms; }
+
+void gpaw_debug_toggle_async_comms(bool enabled)
+{
+    g_no_async_comms = enabled;
+    if (!enabled)
+    {
+        printf("!!! Async MPI comms are DISABLED. This is intended for debugging only!\n");
+        fflush(stdout);
+    }
+}
+
+PyObject* debug_toggle_async_comms(PyObject* self, PyObject* args)
+{
+    int enabled;
+    if (!PyArg_ParseTuple(args, "p", &enabled))
+    {
+        return NULL;
+    }
+    gpaw_debug_toggle_async_comms((bool)enabled);
+    Py_RETURN_NONE;
+}
+
+
 // Check that a processor number is valid
 #define CHK_PROC(n) if (n < 0 || n >= self->size) {\
     PyErr_SetString(PyExc_ValueError, "Invalid processor number.");     \
@@ -330,6 +356,28 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
   int n = Array_ITEMSIZE(a);
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a, d);
+
+  if (gpaw_no_async_comms())
+  {
+    // Always block, but Python side still expect a request object as return value.
+    // So we fake it by returning a dummy request that has "already finished".
+    // Note that this only works because GPAW does NOT ask the request/status about what was actually done!
+
+    maybeSynchronize(a);
+    int ret = MPI_Recv(Array_BYTES(a), n, MPI_BYTE, src, tag, self->comm, MPI_STATUS_IGNORE);
+    if (ret != MPI_SUCCESS)
+    {
+      PyErr_SetString(PyExc_RuntimeError, "MPI_Recv error occurred.");
+	  return NULL;
+    }
+
+    GPAW_MPI_Request *req = NewMPIRequest();
+    if (req == NULL) return NULL;
+    req->buffer = (PyObject*)a;
+    req->status = 0; // "already done"s
+    return (PyObject *) req;
+  }
+
   if (block)
     {
       maybeSynchronize(a);
@@ -375,6 +423,26 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
   int n = Array_ITEMSIZE(a);
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
+
+  if (gpaw_no_async_comms())
+  {
+    // Always block and fake the returned request. See commend in mpi_receive()
+
+    maybeSynchronize(a);
+    int ret = MPI_Send(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
+    if (ret != MPI_SUCCESS)
+	{
+	  PyErr_SetString(PyExc_RuntimeError, "MPI_Send error occurred.");
+	  return NULL;
+	}
+
+    GPAW_MPI_Request *req = NewMPIRequest();
+    if (req == NULL) return NULL;
+    req->buffer = (PyObject*)a;
+    req->status = 0; // "already done"
+    return (PyObject *) req;
+  }
+
   if (block)
     {
       maybeSynchronize(a);
