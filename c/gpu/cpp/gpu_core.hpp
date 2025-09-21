@@ -29,6 +29,16 @@ bool is_pointer_on_device(int32_t device, const T* ptr)
     return (device == (int32_t)attr.device && attr.type == gpuMemoryTypeDevice);
 }
 
+// String representation of a GPU stream. 0 means the default stream
+inline std::string stream_to_string(gpuStream_t stream)
+{
+    if (stream == nullptr)
+    {
+        return "0";
+    }
+    return std::to_string(reinterpret_cast<uintptr_t>(stream));
+}
+
 static inline void raise_kernel_launch_error(
     gpuError_t status,
     dim3 blocks,

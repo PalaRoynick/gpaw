@@ -17,5 +17,5 @@ CLINKAGE PyObject* configure_events_take_pyobject_ownership(PyObject* self, PyOb
 CLINKAGE PyObject* ensure_buffer_not_in_use(PyObject* self, PyObject* args);
 //
 CLINKAGE PyObject* ensure_object_not_in_use(PyObject* self, PyObject* args);
-//
-CLINKAGE PyObject* ensure_block_not_in_use(PyObject* self, PyObject* args);
+// Returns human-readable list of events that currently use the given memory block
+CLINKAGE PyObject* get_overlapping_events_as_string(PyObject* self, PyObject* args);

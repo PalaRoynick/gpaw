@@ -1,6 +1,7 @@
 #include "debug_system.hpp"
 #include "event_manager.hpp"
 #include "gpu_core.hpp"
+#include "utils.hpp"
 
 namespace gpaw
 {
@@ -253,8 +254,6 @@ bool DebugSystem::ensure_object_not_in_use(PyObject* obj)
     if (events.size() > 0)
     {
         printf("Error, object is in use by %zu unfinished events\n", events.size());
-        print_event_info(events);
-        fflush(stdout);
         return false;
     }
 
@@ -280,46 +279,10 @@ bool DebugSystem::ensure_pointer_not_in_use(uintptr_t ptr)
     if (events.size() > 0)
     {
         printf("Error, pointer is in use by %zu unfinished events\n", events.size());
-        print_event_info(events);
-        fflush(stdout);
         return false;
     }
 
     return true;
-}
-
-bool DebugSystem::ensure_block_not_in_use(const MemoryBlock& block)
-{
-    uint32_t overlaps = 0;
-    // TODO optimize the search
-    for (const auto& [event, blocks] : blocks_for_event)
-    {
-        if (is_event_finished(event))
-        {
-            continue;
-        }
-
-        for (const MemoryBlock& other_block : blocks)
-        {
-            if (block.overlaps(other_block))
-            {
-                overlaps++;
-
-                printf("Block overlap!\n");
-                print_event_info(event);
-                fflush(stdout);
-            }
-        }
-    }
-    return overlaps == 0;
-}
-
-bool DebugSystem::ensure_block_not_in_use(uintptr_t start, size_t nbytes)
-{
-    MemoryBlock block;
-    block.start = start;
-    block.nbytes = nbytes;
-    return ensure_block_not_in_use(block);
 }
 
 void DebugSystem::configure_stream_delay(double microseconds)
@@ -335,17 +298,32 @@ void DebugSystem::insert_stream_delay(gpuStream_t stream)
     }
 }
 
-void DebugSystem::print_event_info(EventID id) const
+std::vector<EventID> DebugSystem::get_overlapping_events(const MemoryBlock& block)
 {
-    printf("id : %zu\n", (size_t)id);
-}
-
-void DebugSystem::print_event_info(const std::vector<EventID>& events) const
-{
-    for (EventID id : events)
+    std::vector<EventID> events;
+    if (!is_enabled())
     {
-        print_event_info(id);
+        return events;
     }
+
+    // TODO optimize the search
+    for (const auto& [event, blocks] : blocks_for_event)
+    {
+        // Actually would not need an async callback to mark the event as finished since we check if here anyway!
+        if (is_event_finished(event))
+        {
+            continue;
+        }
+
+        for (const MemoryBlock& other_block : blocks)
+        {
+            if (block.overlaps(other_block))
+            {
+                events.push_back(event);
+            }
+        }
+    }
+    return events;
 }
 
 void DebugSystem::launch_wait_kernel(gpuStream_t stream, double microseconds)

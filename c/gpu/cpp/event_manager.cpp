@@ -163,4 +163,38 @@ void EventManager::toggle_events_take_pyobject_ownership(bool enabled)
     }
 }
 
+std::unordered_map<std::string, std::string> EventManager::as_string_dict(EventID id) const
+{
+    std::unordered_map<std::string, std::string> dict;
+
+    auto it = events.find(id);
+    if (it == events.end())
+    {
+        // event not found
+        return dict;
+    }
+
+    // FIXME don't use variant
+    try
+    {
+        const KernelEvent& event = std::get<KernelEvent>(it->second);
+
+        dict["EventID"] = std::to_string(event.id);
+        // FIXME base this on EventType
+        dict["type"] = "GPU Kernel";
+        dict["finished"] = event.has_finished() ? "true" : "false";
+        dict["stream"] = stream_to_string(event.stream);
+        dict["debug_name"] = event.name;
+
+        return dict;
+    }
+    catch (const std::bad_variant_access& ex)
+    {
+        gpaw_set_runtime_error(ex.what());
+        assert(false);
+        return std::unordered_map<std::string, std::string>();
+    }
+
+}
+
 } // namespace gpaw

@@ -8,9 +8,6 @@
 #include <mutex>
 #include <shared_mutex>
 
-// TODO Bind global funcs like these to Python, make them access the singleton
-//void toggle_debug_mode(bool enabled);
-//bool is_debug_mode();
 
 namespace gpaw
 {
@@ -56,8 +53,6 @@ public:
 
     bool ensure_object_not_in_use(PyObject* obj);
     bool ensure_pointer_not_in_use(uintptr_t ptr);
-    bool ensure_block_not_in_use(const MemoryBlock& block);
-    bool ensure_block_not_in_use(uintptr_t start, size_t nbytes);
 
     /* Set amount of delay that the DebugSystem will insert to the GPU stream after every kernel launch
     Default is 200 microseconds. Value of 0 or less will disable the delay insertions. */
@@ -65,10 +60,11 @@ public:
 
     void insert_stream_delay(gpuStream_t stream);
 
-protected:
+    /* Returns list of events that currently use a given memory block.
+    */
+    std::vector<EventID> get_overlapping_events(const MemoryBlock& block);
 
-    void print_event_info(EventID id) const;
-    void print_event_info(const std::vector<EventID>& events) const;
+protected:
 
     bool enabled = false;
 

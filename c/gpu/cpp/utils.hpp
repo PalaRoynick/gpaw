@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <cstdint>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 // Use to suppress -Wunused-variable warnings
@@ -75,5 +76,8 @@ inline bool map_contains(const std::unordered_map<Key, Val>& map, Key key)
 {
     return map.find(key) != map.end();
 }
+
+// Converts of a map of strings to a JSON-like format
+std::string to_json_entry(const std::unordered_map<std::string, std::string>& dict);
 
 } // namespace gpaw

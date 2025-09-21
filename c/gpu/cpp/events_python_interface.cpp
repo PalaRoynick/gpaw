@@ -1,6 +1,11 @@
 #include "events_python_interface.h"
 #include "event_manager.hpp"
 #include "debug_system.hpp"
+#include "events.hpp"
+#include "utils.hpp"
+
+#include <vector>
+#include <string>
 
 CLINKAGE PyObject* destroy_expired_events(PyObject* self, PyObject* args)
 {
@@ -76,7 +81,7 @@ CLINKAGE PyObject* ensure_object_not_in_use(PyObject* self, PyObject* args)
     return PyBool_FromLong(static_cast<long>(not_in_use));
 }
 
-CLINKAGE PyObject* ensure_block_not_in_use(PyObject* self, PyObject* args)
+CLINKAGE PyObject* get_overlapping_events_as_string(PyObject* self, PyObject* args)
 {
     long long start;
     long long nbytes;
@@ -85,6 +90,46 @@ CLINKAGE PyObject* ensure_block_not_in_use(PyObject* self, PyObject* args)
         return NULL;
     }
 
-    const bool not_in_use = gpaw::DebugSystem::get().ensure_block_not_in_use(static_cast<uintptr_t>(start), static_cast<size_t>(nbytes));
-    return PyBool_FromLong(static_cast<long>(not_in_use));
+    gpaw::MemoryBlock block;
+    block.start = static_cast<uintptr_t>(start);
+    block.nbytes = static_cast<size_t>(nbytes);
+    std::vector<gpaw::EventID> events = gpaw::DebugSystem::get().get_overlapping_events(block);
+
+    if (events.empty())
+    {
+        return PyList_New(0);
+    }
+
+    // Return as a list of entries like {"EventID": 1, name: "something", ...}
+
+    PyObject* list_obj = PyList_New(events.size());
+    if (!list_obj)
+    {
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < (Py_ssize_t)events.size(); i++)
+    {
+        const gpaw::EventID id = events[i];
+        auto event_dict = gpaw::EventManager::get().as_string_dict(id);
+        // Above we checked that the event had NOT finished yet, but by now it may have.
+        // So for this output we don't want the "finished" field because it may be misleading.
+        if (gpaw::map_contains(event_dict, std::string("finished")))
+        {
+            event_dict.erase("finished");
+        }
+
+        const std::string event_str = gpaw::to_json_entry(event_dict);
+
+        PyObject* str_obj = PyUnicode_FromString(event_str.c_str());
+        if (!str_obj)
+        {
+            Py_DECREF(list_obj);
+            return NULL;
+        }
+
+        PyList_SetItem(list_obj, i, str_obj); // steals reference
+    }
+
+    return list_obj;
 }

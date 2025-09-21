@@ -36,6 +36,9 @@ public:
     // Can toggle ownership off for debugging
     void toggle_events_take_pyobject_ownership(bool enabled);
 
+    // Returns info about the event in a string format
+    std::unordered_map<std::string, std::string> as_string_dict(EventID id) const;
+
 protected:
 
     // Generates a new globally unique event ID

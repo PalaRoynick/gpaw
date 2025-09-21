@@ -407,7 +407,7 @@ static PyMethodDef functions[] = {
     {"configure_events_take_pyobject_ownership", configure_events_take_pyobject_ownership, METH_VARARGS, 0},
     {"ensure_buffer_not_in_use", ensure_buffer_not_in_use, METH_VARARGS, 0},
     {"ensure_object_not_in_use", ensure_object_not_in_use, METH_VARARGS, 0},
-    {"ensure_block_not_in_use", ensure_block_not_in_use, METH_VARARGS, 0},
+    {"get_overlapping_events_as_string", get_overlapping_events_as_string, METH_VARARGS, 0},
 #endif // GPAW_GPU
     {"debug_toggle_async_comms", debug_toggle_async_comms, METH_VARARGS, 0},
 

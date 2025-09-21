@@ -1,9 +1,10 @@
 """Utils for using the C++ GPU debug system from Python.
 """
 
-from gpaw.gpu import cupy_is_fake
+from gpaw.gpu import cupy_is_fake, cupy as cp
 from typing import TYPE_CHECKING
 import traceback
+import numpy as np
 
 try:
     # Hack to make type checker always see the dummy functions
@@ -15,7 +16,7 @@ try:
                             configure_debug_stream_delay_microseconds,
                             ensure_object_not_in_use,
                             ensure_buffer_not_in_use,
-                            ensure_block_not_in_use)
+                            get_overlapping_events_as_string)
 
     # We will wrap toggle_debug_system() in a Python function that also
     # activates Cupy's memory hooks
@@ -40,8 +41,75 @@ except ImportError:
     def ensure_buffer_not_in_use(buffer: int) -> bool:
         return True
 
-    def ensure_block_not_in_use(start: int, nbytes: int) -> bool:
+    def get_overlapping_events_as_string(start: int, nbytes: int) -> bool:
+        return []
+
+
+def debug_array_overlap_check(arr: np.ndarray | cp.ndarray,
+                              assert_success: bool = True,
+                              traceback_start=0,
+                              traceback_end=10  # None means no limit
+                              ) -> None:
+    """Checks the GPU debug system if the memory block occupied by the input
+    array is currently in use by any event. Prints debug info on failure,
+    including stack trace.
+    if `assert_success` is True, will raise AssertionError on failure.
+    """
+
+    if not is_debug_system_enabled():
         return True
+
+    if isinstance(arr, cp.ndarray):
+        start = arr.data.ptr
+        nbytes = arr.nbytes
+    elif isinstance(arr, np.ndarray):
+        start = arr.ctypes.data
+        nbytes = arr.nbytes
+    else:
+        raise ValueError("Input must be a Numpy or Cupy array")
+
+    debug_memory_block_check(start,
+                             nbytes,
+                             assert_success=assert_success,
+                             traceback_start=traceback_start,
+                             traceback_end=traceback_end)
+
+
+def debug_memory_block_check(block_start: int,
+                             block_nbytes: int,
+                             assert_success: bool = True,
+                             traceback_start=0,
+                             traceback_end=10  # None means no limit
+                             ) -> None:
+    """Checks the GPU debug system if the input memory block is currently in
+    use by any event.
+    Prints debug info on failure, including stack trace.
+    if `assert_success` is True, will raise AssertionError on failure.
+    """
+
+    overlaps: list = get_overlapping_events_as_string(block_start,
+                                                      block_nbytes)
+
+    if overlaps:
+        print(f"\n\nData race detected for memory block at {block_start}",
+              f" (size {block_nbytes}).")
+        print("This block is in async use by the following events:")
+
+        for s in overlaps:
+            print(s)
+
+        print("\nTraceback to where Python is trying to use the memory:")
+        # stack[0] is the very first function call,
+        # stack[-1] the deepest (this function)
+        trace = traceback.extract_stack()[:-1]  # drop this function from stack
+        trace = trace[-traceback_end:]
+
+        for line in traceback.format_list(trace):
+            print(line, end="")
+        print("\n", flush=True)
+
+        if assert_success:
+            raise AssertionError("DebugSystem: Bad memory overlap detected")
 
 
 if not cupy_is_fake:
@@ -75,7 +143,7 @@ if not cupy_is_fake:
             mem_ptr = kwargs['mem_ptr']  # integer
             nbytes = kwargs['mem_size']
 
-            ensure_block_not_in_use(mem_ptr, nbytes)
+            debug_memory_block_check(mem_ptr, nbytes, assert_success=False)
 
             if self.take_tracebacks:
                 self.alloc_traceback[mem_ptr] = (
@@ -86,34 +154,18 @@ if not cupy_is_fake:
             """"""
             mem_ptr = kwargs['mem_ptr']
             nbytes = kwargs['mem_size']
-
-            if not ensure_block_not_in_use(mem_ptr, nbytes):
-                print("!!! Cupy is freeing pointer that is still in use!")
-
-                if self.take_tracebacks:
-                    print("Malloc traceback:\n", self.alloc_traceback[mem_ptr])
-                    print("\nFree traceback:\n",
-                          ''.join(traceback.format_stack()))
-                    print("\n", flush=True)
-                raise RuntimeWarning("Data race!!")
+            debug_memory_block_check(mem_ptr, nbytes, assert_success=False)
 
         def free_postprocess(self, **kwargs):
             """"""
             mem_ptr = kwargs['mem_ptr']
             nbytes = kwargs['mem_size']
 
-            if not ensure_block_not_in_use(mem_ptr, nbytes):
-                print("!!! Cupy freed a buffer that is still in use!")
-
-                if self.take_tracebacks:
-                    print("Malloc traceback:\n", self.alloc_traceback[mem_ptr])
-                    print("\nFree traceback:\n",
-                          ''.join(traceback.format_stack()))
-                    print("\n", flush=True)
-                raise RuntimeWarning("Data race!!")
+            debug_memory_block_check(mem_ptr, nbytes, assert_success=False)
 
             if self.take_tracebacks:
                 self.alloc_traceback.pop(mem_ptr)
+
 
 if not cupy_is_fake:
     g_cupy_debug_hooks = CupyDebugHook()
