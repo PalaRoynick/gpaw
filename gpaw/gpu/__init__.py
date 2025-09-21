@@ -11,7 +11,7 @@ import numpy as np
 import warnings
 
 from gpaw.cgpaw import have_magma
-from gpaw import debug, GPAW_GPU_DEBUG
+from gpaw import debug, GPAW_GPU_DEBUG, GPAW_DEBUG_NO_EVENT_OWNERSHIP
 
 cupy_is_fake = True
 """True if :mod:`cupy` has been replaced by ``gpaw.gpu.cpupy``"""
@@ -277,6 +277,10 @@ if GPAW_GPU_DEBUG:
         toggle_debug_system(False)
 
     atexit.register(gpaw_disable_debug_system)
+
+if GPAW_DEBUG_NO_EVENT_OWNERSHIP:
+    from gpaw.gpu.debug import configure_events_take_pyobject_ownership
+    configure_events_take_pyobject_ownership(False)
 
 
 def synchronize():

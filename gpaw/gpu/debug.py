@@ -11,6 +11,7 @@ try:
         raise ImportError
 
     from gpaw.cgpaw import (is_debug_system_enabled,
+                            configure_events_take_pyobject_ownership,
                             configure_debug_stream_delay_microseconds,
                             ensure_object_not_in_use,
                             ensure_buffer_not_in_use,
@@ -26,6 +27,9 @@ except ImportError:
 
     def is_debug_system_enabled() -> bool:
         return False
+
+    def configure_events_take_pyobject_ownership(enabled: bool) -> None:
+        pass
 
     def configure_debug_stream_delay_microseconds(microsecs: float) -> None:
         pass

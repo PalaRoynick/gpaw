@@ -156,7 +156,7 @@ std::vector<PyObject*> EventManager::get_event_pyobjects(EventID id)
 void EventManager::toggle_events_take_pyobject_ownership(bool enabled)
 {
     events_take_pyobject_ownership = enabled;
-    if (enabled)
+    if (!enabled)
     {
         printf("!!! WARNING: EventManager set to NOT take PyObject ownership. This is intended for debugging only\n");
         fflush(stdout);

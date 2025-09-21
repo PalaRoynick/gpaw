@@ -402,6 +402,7 @@ static PyMethodDef functions[] = {
     {"is_debug_system_enabled", is_debug_system_enabled, METH_NOARGS, 0},
     {"toggle_debug_system", toggle_debug_system, METH_VARARGS, 0},
     {"configure_debug_stream_delay_microseconds", configure_debug_stream_delay_microseconds, METH_VARARGS, 0},
+    {"configure_events_take_pyobject_ownership", configure_events_take_pyobject_ownership, METH_VARARGS, 0},
     {"ensure_buffer_not_in_use", ensure_buffer_not_in_use, METH_VARARGS, 0},
     {"ensure_object_not_in_use", ensure_object_not_in_use, METH_VARARGS, 0},
     {"ensure_block_not_in_use", ensure_block_not_in_use, METH_VARARGS, 0},

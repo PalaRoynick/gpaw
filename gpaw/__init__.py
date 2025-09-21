@@ -30,7 +30,8 @@ boolean_envvars = {
     'GPAW_NO_C_EXTENSION',
     'GPAW_MPI4PY',
     'GPAW_DEBUG',
-    'GPAW_GPU_DEBUG'}
+    'GPAW_GPU_DEBUG',
+    'GPAW_DEBUG_NO_EVENT_OWNERSHIP'}
 allowed_envvars = {
     *boolean_envvars,
     'GPAW_MPI_OPTIONS',
@@ -55,6 +56,10 @@ debug = TYPE_CHECKING or _get_gpaw_env_vars('GPAW_DEBUG')
 GPAW_GPU_DEBUG = _get_gpaw_env_vars('GPAW_GPU_DEBUG')
 if GPAW_GPU_DEBUG:
     debug = True  # GPAW_GPU_DEBUG implies debug mode
+
+GPAW_DEBUG_NO_EVENT_OWNERSHIP = (
+    _get_gpaw_env_vars('GPAW_DEBUG_NO_EVENT_OWNERSHIP')
+)
 
 
 @contextlib.contextmanager
