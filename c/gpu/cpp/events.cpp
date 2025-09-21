@@ -6,13 +6,16 @@ namespace gpaw
 
 KernelEvent::~KernelEvent()
 {
-    for (PyObject* obj : used_objects)
+    if (take_pyobject_ownership)
     {
-        //assert(obj && "Null PyObject, can't happen since we should have ownership");
-
-        // would Py_CLEAR be safer?
-        Py_DECREF(obj);
+        for (PyObject* obj : used_objects)
+        {
+            assert(obj && "Null PyObject, can't happen since we should have ownership");
+            // would Py_CLEAR be safer?
+            Py_DECREF(obj);
+        }
     }
+
     if (native_event != nullptr)
     {
         gpuEventDestroy(native_event);
@@ -25,6 +28,7 @@ KernelEvent::KernelEvent(KernelEvent&& other) noexcept
       stream(other.stream),
       device(other.device),
       cached_has_finished(other.cached_has_finished),
+      take_pyobject_ownership(other.take_pyobject_ownership),
       used_objects(std::move(other.used_objects))
 {
     other.used_objects.clear();
@@ -37,10 +41,14 @@ KernelEvent& KernelEvent::operator=(KernelEvent&& other) noexcept
     {
         EventBase::operator=(std::move(other));
 
-        for (PyObject* obj : used_objects)
+        if (take_pyobject_ownership)
         {
-            Py_DECREF(obj);
+            for (PyObject* obj : used_objects)
+            {
+                Py_DECREF(obj);
+            }
         }
+
         if (native_event)
         {
             gpuEventDestroy(native_event);
@@ -50,6 +58,7 @@ KernelEvent& KernelEvent::operator=(KernelEvent&& other) noexcept
         stream = other.stream;
         device = other.device;
         cached_has_finished = other.cached_has_finished;
+        take_pyobject_ownership = other.take_pyobject_ownership;
         used_objects = std::move(other.used_objects);
 
         other.used_objects.clear();
@@ -88,9 +97,12 @@ bool KernelEvent::has_finished() const
 
 void KernelEvent::on_start()
 {
-    for (PyObject* obj : used_objects)
+    if (take_pyobject_ownership)
     {
-        Py_INCREF(obj);
+        for (PyObject* obj : used_objects)
+        {
+            Py_INCREF(obj);
+        }
     }
 }
 

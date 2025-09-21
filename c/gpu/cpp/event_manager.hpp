@@ -33,6 +33,9 @@ public:
     // Returns PyObjects associated with an event. Will be empty if the event is invalid
     std::vector<PyObject*> get_event_pyobjects(EventID id);
 
+    // Can toggle ownership off for debugging
+    void toggle_events_take_pyobject_ownership(bool enabled);
+
 protected:
 
     // Generates a new globally unique event ID
@@ -40,6 +43,8 @@ protected:
 
     using EventVariant = std::variant<KernelEvent>;
     std::unordered_map<EventID, EventVariant> events;
+
+    bool events_take_pyobject_ownership = true;
 
 private:
     // singleton pattern

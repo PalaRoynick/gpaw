@@ -13,7 +13,8 @@ try:
     from gpaw.cgpaw import (is_debug_system_enabled,
                             configure_debug_stream_delay_microseconds,
                             ensure_object_not_in_use,
-                            ensure_buffer_not_in_use)
+                            ensure_buffer_not_in_use,
+                            ensure_block_not_in_use)
 
     # We will wrap toggle_debug_system() in a Python function that also
     # activates Cupy's memory hooks
@@ -35,6 +36,9 @@ except ImportError:
     def ensure_buffer_not_in_use(buffer: int) -> bool:
         return True
 
+    def ensure_block_not_in_use(start: int, nbytes: int) -> bool:
+        return True
+
 
 if not cupy_is_fake:
     from gpaw.gpu import cupy as cp
@@ -48,8 +52,9 @@ if not cupy_is_fake:
             self.take_tracebacks = take_tracebacks
             self.alloc_traceback = {}
 
-        def activate_hooks(self):
+        def activate_hooks(self, take_tracebacks: bool = True):
             """"""
+            self.take_tracebacks = take_tracebacks
             self.__enter__()
 
         def disable_hooks(self):
@@ -62,16 +67,23 @@ if not cupy_is_fake:
 
         def malloc_postprocess(self, **kwargs):
             """"""
+
+            mem_ptr = kwargs['mem_ptr']  # integer
+            nbytes = kwargs['mem_size']
+
+            ensure_block_not_in_use(mem_ptr, nbytes)
+
             if self.take_tracebacks:
-                mem_ptr = kwargs['mem_ptr']
                 self.alloc_traceback[mem_ptr] = (
                     ''.join(traceback.format_stack())
                 )
 
         def free_preprocess(self, **kwargs):
             """"""
-            mem_ptr = kwargs['mem_ptr']  # Integer
-            if not ensure_buffer_not_in_use(mem_ptr):
+            mem_ptr = kwargs['mem_ptr']
+            nbytes = kwargs['mem_size']
+
+            if not ensure_block_not_in_use(mem_ptr, nbytes):
                 print("!!! Cupy is freeing pointer that is still in use!")
 
                 if self.take_tracebacks:
@@ -83,8 +95,10 @@ if not cupy_is_fake:
 
         def free_postprocess(self, **kwargs):
             """"""
-            mem_ptr = kwargs['mem_ptr']  # Integer
-            if not ensure_buffer_not_in_use(mem_ptr):
+            mem_ptr = kwargs['mem_ptr']
+            nbytes = kwargs['mem_size']
+
+            if not ensure_block_not_in_use(mem_ptr, nbytes):
                 print("!!! Cupy freed a buffer that is still in use!")
 
                 if self.take_tracebacks:
@@ -110,7 +124,7 @@ def toggle_debug_system(enabled: bool):
     global g_cupy_debug_hooks
     if g_cupy_debug_hooks is not None:
         if enabled:
-            g_cupy_debug_hooks.activate_hooks()
+            g_cupy_debug_hooks.activate_hooks(take_tracebacks=False)
         else:
             g_cupy_debug_hooks.disable_hooks()
 

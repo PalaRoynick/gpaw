@@ -404,6 +404,7 @@ static PyMethodDef functions[] = {
     {"configure_debug_stream_delay_microseconds", configure_debug_stream_delay_microseconds, METH_VARARGS, 0},
     {"ensure_buffer_not_in_use", ensure_buffer_not_in_use, METH_VARARGS, 0},
     {"ensure_object_not_in_use", ensure_object_not_in_use, METH_VARARGS, 0},
+    {"ensure_block_not_in_use", ensure_block_not_in_use, METH_VARARGS, 0},
 #endif // GPAW_GPU
 
     {0, 0, 0, 0}

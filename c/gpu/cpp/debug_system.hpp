@@ -22,6 +22,17 @@ struct PythonBuffer
     DataType dtype;
 };
 
+// Memory block is an open interval [start, start + nbytes)
+struct MemoryBlock
+{
+    uintptr_t start;
+    size_t nbytes;
+
+    // Checks if this block has overlap with the other block
+    bool overlaps(const MemoryBlock& other) const;
+};
+
+
 // Singleton
 class DebugSystem
 {
@@ -45,6 +56,8 @@ public:
 
     bool ensure_object_not_in_use(PyObject* obj);
     bool ensure_pointer_not_in_use(uintptr_t ptr);
+    bool ensure_block_not_in_use(const MemoryBlock& block);
+    bool ensure_block_not_in_use(uintptr_t start, size_t nbytes);
 
     /* Set amount of delay that the DebugSystem will insert to the GPU stream after every kernel launch
     Default is 200 microseconds. Value of 0 or less will disable the delay insertions. */
@@ -65,6 +78,8 @@ protected:
     std::unordered_map<EventID, std::vector<PythonBuffer>> buffers_for_event;
     std::unordered_map<PyObject*, std::unordered_set<EventID>> owner_to_events;
     std::unordered_map<uintptr_t, std::unordered_set<EventID>> buffer_to_events;
+
+    std::unordered_map<EventID, std::vector<MemoryBlock>> blocks_for_event;
 
     /* List of tracked events that have finished. We store this info here
     instead of modifying the events directly, because the DebugSystem can do

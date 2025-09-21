@@ -38,6 +38,17 @@ CLINKAGE PyObject* configure_debug_stream_delay_microseconds(PyObject* self, PyO
     Py_RETURN_NONE;
 }
 
+CLINKAGE PyObject* configure_events_take_pyobject_ownership(PyObject* self, PyObject* args)
+{
+    int take_ownership;
+    if (!PyArg_ParseTuple(args, "p", &take_ownership))
+    {
+        return NULL;
+    }
+    gpaw::EventManager::get().toggle_events_take_pyobject_ownership(take_ownership);
+    Py_RETURN_NONE;
+}
+
 CLINKAGE PyObject* ensure_buffer_not_in_use(PyObject* self, PyObject* args)
 {
     long long ptr;
@@ -45,6 +56,9 @@ CLINKAGE PyObject* ensure_buffer_not_in_use(PyObject* self, PyObject* args)
     {
         return NULL;
     }
+
+    // FIXME: Actually this cast may not work 32bit platforms. Should check sizeof(uintptr_t) >= sizeof(long long).
+    // But better would be to just parse it as proper type...
 
     const bool not_in_use = gpaw::DebugSystem::get().ensure_pointer_not_in_use(static_cast<uintptr_t>(ptr));
     return PyBool_FromLong(static_cast<long>(not_in_use));
@@ -59,5 +73,18 @@ CLINKAGE PyObject* ensure_object_not_in_use(PyObject* self, PyObject* args)
     }
 
     const bool not_in_use = gpaw::DebugSystem::get().ensure_object_not_in_use(obj);
+    return PyBool_FromLong(static_cast<long>(not_in_use));
+}
+
+CLINKAGE PyObject* ensure_block_not_in_use(PyObject* self, PyObject* args)
+{
+    long long start;
+    long long nbytes;
+    if (!PyArg_ParseTuple(args, "LL", &start, &nbytes))
+    {
+        return NULL;
+    }
+
+    const bool not_in_use = gpaw::DebugSystem::get().ensure_block_not_in_use(static_cast<uintptr_t>(start), static_cast<size_t>(nbytes));
     return PyBool_FromLong(static_cast<long>(not_in_use));
 }

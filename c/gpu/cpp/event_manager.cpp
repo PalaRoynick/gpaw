@@ -31,6 +31,7 @@ EventID EventManager::create_kernel_exec_event(const std::string& name, gpuStrea
     event.device = get_current_device();
     event.stream = stream;
     event.used_objects = objects;
+    event.take_pyobject_ownership = events_take_pyobject_ownership;
 
     gpuEventCreateWithFlags(&event.native_event, flags);
     gpuEventRecord(event.native_event, stream);
@@ -150,6 +151,16 @@ std::vector<PyObject*> EventManager::get_event_pyobjects(EventID id)
         return std::vector<PyObject*>();
     }
 
+}
+
+void EventManager::toggle_events_take_pyobject_ownership(bool enabled)
+{
+    events_take_pyobject_ownership = enabled;
+    if (enabled)
+    {
+        printf("!!! WARNING: EventManager set to NOT take PyObject ownership. This is intended for debugging only\n");
+        fflush(stdout);
+    }
 }
 
 } // namespace gpaw

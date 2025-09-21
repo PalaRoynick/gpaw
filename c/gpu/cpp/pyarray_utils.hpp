@@ -167,6 +167,11 @@ int Array_TYPE(PyObject* a);
 // True if the array type is any complex floating point number
 bool Array_ISCOMPLEX(PyObject* a);
 
+/* Checks if the array is C-contiguous.
+Does NOT check the equivalent of PyArray_ISBEHAVED() (dunno how to do that for CuPy). */
+bool Array_ISCARRAY(PyObject* obj);
+
+
 //~
 // Begin overloads for PyArrayObject, ie. Numpy array
 
@@ -183,6 +188,7 @@ int64_t Array_SIZE(PyArrayObject* a);
 int64_t Array_NBYTES(PyArrayObject* a);
 int Array_TYPE(PyArrayObject* a);
 bool Array_ISCOMPLEX(PyArrayObject* a);
+bool Array_ISCARRAY(PyArrayObject* a);
 //~ End Numpy
 
 } // namespace gpaw

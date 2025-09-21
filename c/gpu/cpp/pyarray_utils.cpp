@@ -89,6 +89,22 @@ bool Array_ISCOMPLEX(PyObject* obj)
     return PyTypeNum_ISCOMPLEX(Array_TYPE(obj));
 }
 
+bool Array_ISCARRAY(PyObject* obj)
+{
+    PyObject* flags = PyObject_GetAttrString(obj, "flags");
+    if (!flags) return false;
+
+    PyObject* is_contiguous_flag = PyObject_GetAttrString(flags, "c_contiguous");
+    Py_DECREF(flags);
+
+    if (!is_contiguous_flag) return false;
+
+    bool is_contiguous = static_cast<bool>(PyLong_AS_LONG(is_contiguous_flag));
+    Py_DECREF(is_contiguous_flag);
+
+    return is_contiguous;
+}
+
 
 // Numpy overloads
 
@@ -131,6 +147,11 @@ int Array_TYPE(PyArrayObject* a)
 bool Array_ISCOMPLEX(PyArrayObject* a)
 {
     return PyArray_ISCOMPLEX(a);
+}
+
+bool Array_ISCARRAY(PyArrayObject* a)
+{
+    return PyArray_ISCARRAY(a);
 }
 
 } // namespace gpaw

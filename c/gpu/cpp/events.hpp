@@ -47,6 +47,7 @@ struct KernelEvent : public EventBase
 
 protected:
     mutable bool cached_has_finished = false;
+    bool take_pyobject_ownership = true;
 
 private:
     // Can only be constructed via EventManager

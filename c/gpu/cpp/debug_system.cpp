@@ -73,6 +73,9 @@ void DebugSystem::start_tracking_event(EventID id)
     std::vector<PythonBuffer> buffers;
     buffers.reserve(objects_to_track.size());
 
+    std::vector<MemoryBlock> blocks;
+    blocks.reserve(objects_to_track.size());
+
     for (PyObject* obj : objects_to_track)
     {
         PythonBuffer buf;
@@ -80,6 +83,9 @@ void DebugSystem::start_tracking_event(EventID id)
 
         void* data_ptr = gpaw::Array_DATA<void>(obj);
         assert(data_ptr);
+
+        assert(gpaw::Array_ISCARRAY(obj));
+
         buf.ptr = reinterpret_cast<uintptr_t>(data_ptr);
         buf.dtype = dtype_from_typenum(gpaw::Array_TYPE(obj));
         buffers.push_back(buf);
@@ -91,10 +97,19 @@ void DebugSystem::start_tracking_event(EventID id)
         // uintptr_t -> EventID map
         buffer_to_events.try_emplace(buf.ptr, std::unordered_set<EventID>());
         buffer_to_events.at(buf.ptr).insert(id);
+
+        MemoryBlock block;
+        block.start = buf.ptr;
+        block.nbytes = static_cast<size_t>(gpaw::Array_NBYTES(obj));
+
+        blocks.push_back(block);
     }
 
     // EventID -> PythonBuffers map
     buffers_for_event.emplace(id, buffers);
+
+    // EventID -> MemoryBlocks map
+    blocks_for_event.emplace(id, blocks);
 }
 
 void DebugSystem::stop_tracking_event(EventID id)
@@ -144,6 +159,7 @@ void DebugSystem::stop_tracking_event(EventID id)
     }
 
     buffers_for_event.erase(id);
+    blocks_for_event.erase(id);
 
     // Remove from list of finished events
     UniqueLock lock(finished_events_mutex);
@@ -272,6 +288,40 @@ bool DebugSystem::ensure_pointer_not_in_use(uintptr_t ptr)
     return true;
 }
 
+bool DebugSystem::ensure_block_not_in_use(const MemoryBlock& block)
+{
+    uint32_t overlaps = 0;
+    // TODO optimize the search
+    for (const auto& [event, blocks] : blocks_for_event)
+    {
+        if (is_event_finished(event))
+        {
+            continue;
+        }
+
+        for (const MemoryBlock& other_block : blocks)
+        {
+            if (block.overlaps(other_block))
+            {
+                overlaps++;
+
+                printf("Block overlap!\n");
+                print_event_info(event);
+                fflush(stdout);
+            }
+        }
+    }
+    return overlaps == 0;
+}
+
+bool DebugSystem::ensure_block_not_in_use(uintptr_t start, size_t nbytes)
+{
+    MemoryBlock block;
+    block.start = start;
+    block.nbytes = nbytes;
+    return ensure_block_not_in_use(block);
+}
+
 void DebugSystem::configure_stream_delay(double microseconds)
 {
     stream_delay_microseconds = microseconds;
@@ -310,6 +360,11 @@ void DebugSystem::launch_wait_kernel(gpuStream_t stream, double microseconds)
     const uint64_t wait_cycles = microseconds / 1000.0 * (uint64_t)clock_rate_khz;
 
     launch_kernel(wait_kernel, 1, 1, 0, stream, wait_cycles);
+}
+
+bool MemoryBlock::overlaps(const MemoryBlock& other) const
+{
+    return start < other.start + other.nbytes && other.start < start + other.nbytes;
 }
 
 }
