@@ -52,7 +52,12 @@ elif hasattr(cgpaw, 'Communicator'):
     world = cgpaw.Communicator()
 
     if GPAW_NO_ASYNC_COMMS:
-        cgpaw.debug_toggle_async_comms(False)
+        try:
+            cgpaw.debug_toggle_async_comms(False)
+        except AttributeError:
+            print("""Please recompile GPAW C-extension to use
+                  GPAW_NO_ASYNC_COMMS""")
+            raise
 
 else:
     world = None  # type: ignore

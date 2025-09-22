@@ -34,12 +34,12 @@
 void gpawDeviceSynchronize();
 
 // For debugging
-static bool g_no_async_comms = false;
-static inline bool gpaw_no_async_comms() { return g_no_async_comms; }
+static bool g_allow_async_comms = true;
+static inline bool gpaw_allow_async_comms() { return g_allow_async_comms; }
 
 void gpaw_debug_toggle_async_comms(bool enabled)
 {
-    g_no_async_comms = enabled;
+    g_allow_async_comms = enabled;
     if (!enabled)
     {
         printf("!!! Async MPI comms are DISABLED. This is intended for debugging only!\n");
@@ -357,7 +357,7 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a, d);
 
-  if (gpaw_no_async_comms())
+  if (!gpaw_allow_async_comms() && !block)
   {
     // Always block, but Python side still expect a request object as return value.
     // So we fake it by returning a dummy request that has "already finished".
@@ -368,7 +368,7 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
     if (ret != MPI_SUCCESS)
     {
       PyErr_SetString(PyExc_RuntimeError, "MPI_Recv error occurred.");
-	  return NULL;
+	    return NULL;
     }
 
     GPAW_MPI_Request *req = NewMPIRequest();
@@ -424,17 +424,17 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
 
-  if (gpaw_no_async_comms())
+  if (!gpaw_allow_async_comms() && !block)
   {
-    // Always block and fake the returned request. See commend in mpi_receive()
+    // Always block and fake the returned request. See comment in mpi_receive()
 
     maybeSynchronize(a);
     int ret = MPI_Send(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
     if (ret != MPI_SUCCESS)
-	{
-	  PyErr_SetString(PyExc_RuntimeError, "MPI_Send error occurred.");
-	  return NULL;
-	}
+    {
+      PyErr_SetString(PyExc_RuntimeError, "MPI_Send error occurred.");
+      return NULL;
+    }
 
     GPAW_MPI_Request *req = NewMPIRequest();
     if (req == NULL) return NULL;
