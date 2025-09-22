@@ -31,6 +31,13 @@
 #endif
 #endif
 
+#include "gpu/cpp/events_python_interface.h"
+
+// Fatal check using the DebugSystem if it's active
+#define DEBUG_SYSTEM_CHECK(arr)                               \
+    if (!ensure_no_async_overlap(arr, true)) return NULL;
+
+
 void gpawDeviceSynchronize();
 
 // For debugging
@@ -92,6 +99,20 @@ static void maybeSynchronize(PyObject* a)
     }
 #endif
 }
+
+// Calls gpuDeviceSynchronize if either input is a GPU object
+static void synchronize_if_gpu(PyObject* a, PyObject* b)
+{
+#ifdef GPAW_GPU_AWARE_MPI
+    // FIXME better way of testing for a GPU buffer
+    // FIXME what if one process uses multiple GPUs?
+    if (!PyArray_Check(a) || !PyArray_Check(b))
+    {
+        gpawDeviceSynchronize();
+    }
+#endif
+}
+
 
 static PyObject *mpi_request_wait(GPAW_MPI_Request *self, PyObject *noargs)
 {
@@ -328,7 +349,11 @@ static PyObject * mpi_sendreceive(MPIObject *self, PyObject *args,
     int nrecv = Array_ITEMSIZE(b);
     for (int d = 0; d < Array_NDIM(b); d++)
 	nrecv *= Array_DIM(b,d);
-    maybeSynchronize(a);
+
+    synchronize_if_gpu(a, b);
+    DEBUG_SYSTEM_CHECK(a);
+    DEBUG_SYSTEM_CHECK(b);
+
     int ret = MPI_Sendrecv(Array_BYTES(a), nsend, MPI_BYTE, dest, sendtag,
 			   Array_BYTES(b), nrecv, MPI_BYTE, src, recvtag,
 			   self->comm, MPI_STATUS_IGNORE);
@@ -357,13 +382,14 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a, d);
 
+  maybeSynchronize(a);
+  DEBUG_SYSTEM_CHECK(a);
   if (!gpaw_allow_async_comms() && !block)
   {
     // Always block, but Python side still expect a request object as return value.
     // So we fake it by returning a dummy request that has "already finished".
     // Note that this only works because GPAW does NOT ask the request/status about what was actually done!
 
-    maybeSynchronize(a);
     int ret = MPI_Recv(Array_BYTES(a), n, MPI_BYTE, src, tag, self->comm, MPI_STATUS_IGNORE);
     if (ret != MPI_SUCCESS)
     {
@@ -380,7 +406,6 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
 
   if (block)
     {
-      maybeSynchronize(a);
       int ret = MPI_Recv(Array_BYTES(a), n, MPI_BYTE, src, tag, self->comm,
 			 MPI_STATUS_IGNORE);
       if (ret != MPI_SUCCESS)
@@ -396,7 +421,6 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
       if (req == NULL) return NULL;
       req->buffer = (PyObject*)a;
       Py_INCREF(req->buffer);
-      maybeSynchronize(a);
       int ret = MPI_Irecv(Array_BYTES(a), n, MPI_BYTE, src, tag, self->comm,
 			  &(req->rq));
       if (ret != MPI_SUCCESS)
@@ -424,11 +448,12 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
 
+  maybeSynchronize(a);
+  DEBUG_SYSTEM_CHECK(a);
   if (!gpaw_allow_async_comms() && !block)
   {
     // Always block and fake the returned request. See comment in mpi_receive()
 
-    maybeSynchronize(a);
     int ret = MPI_Send(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
     if (ret != MPI_SUCCESS)
     {
@@ -445,7 +470,6 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
 
   if (block)
     {
-      maybeSynchronize(a);
       int ret = MPI_Send(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
       if (ret != MPI_SUCCESS)
 	{
@@ -459,7 +483,6 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
       GPAW_MPI_Request *req = NewMPIRequest();
       req->buffer = (PyObject*)a;
       Py_INCREF(a);
-      maybeSynchronize(a);
       int ret = MPI_Isend(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm,
 			  &(req->rq));
       if (ret != MPI_SUCCESS)
@@ -487,6 +510,7 @@ static PyObject * mpi_ssend(MPIObject *self, PyObject *args, PyObject *kwargs)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   maybeSynchronize(a);
+  DEBUG_SYSTEM_CHECK(a);
   MPI_Ssend(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
   Py_RETURN_NONE;
 }
@@ -717,6 +741,8 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
 				   &obj, &root))
     return NULL;
   CHK_PROC_DEF(root);
+
+  // Non-array reduces
   if (PyFloat_Check(obj))
     {
       double din = PyFloat_AS_DOUBLE(obj);
@@ -781,33 +807,37 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
 	      return NULL;
 	    }
 	}
-      if (root == -1)
+      if (root == -1) // allreduce
 	{
-          maybeSynchronize(aobj);
+    maybeSynchronize(aobj);
+    DEBUG_SYSTEM_CHECK(aobj);
 #ifdef GPAW_MPI_INPLACE
 	  MPI_Allreduce(MPI_IN_PLACE, Array_BYTES(aobj), n, datatype,
 			operation, self->comm);
 #else
+    // FIXME: GPU aware
 	  char* b = GPAW_MALLOC(char, n * elemsize);
-      MPI_Allreduce(Array_BYTES(aobj), b, n, datatype, operation,
-                    self->comm);
-      assert(Array_NBYTES(aobj) == n * elemsize);
-      memcpy(Array_BYTES(aobj), b, n * elemsize);
-      free(b);
+    MPI_Allreduce(Array_BYTES(aobj), b, n, datatype, operation,
+                  self->comm);
+    assert(Array_NBYTES(aobj) == n * elemsize);
+    memcpy(Array_BYTES(aobj), b, n * elemsize);
+    free(b);
 #endif
 	}
-      else
+      else // NOT allreduce
 	{
 	  int rank;
 	  MPI_Comm_rank(self->comm, &rank);
 	  char* b = 0;
 	  if (rank == root)
 	    {
-              maybeSynchronize(aobj);
+        maybeSynchronize(aobj);
+        DEBUG_SYSTEM_CHECK(aobj);
 #ifdef GPAW_MPI_INPLACE
 	      MPI_Reduce(MPI_IN_PLACE, Array_BYTES(aobj), n,
 			 datatype, operation, root, self->comm);
 #else
+        // FIXME: GPU aware
 	      b = GPAW_MALLOC(char, n * elemsize);
 	      MPI_Reduce(Array_BYTES(aobj), b, n, datatype,
 			 operation, root, self->comm);
@@ -816,9 +846,10 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
 	      free(b);
 #endif
 	    }
-	  else
+	  else // not root
 	    {
-              maybeSynchronize(aobj);
+        maybeSynchronize(aobj);
+        DEBUG_SYSTEM_CHECK(aobj);
 	      MPI_Reduce(Array_BYTES(aobj), b, n, datatype,
 			 operation, root, self->comm);
 	    }
@@ -942,7 +973,9 @@ static PyObject * mpi_scatter(MPIObject *self, PyObject *args)
   int n = Array_ITEMSIZE(recvobj);
   for (int d = 0; d < Array_NDIM(recvobj); d++)
     n *= Array_DIM(recvobj,d);
-  maybeSynchronize(recvobj);
+  synchronize_if_gpu(sendobj, recvobj);
+  DEBUG_SYSTEM_CHECK(sendobj);
+  DEBUG_SYSTEM_CHECK(recvobj);
   MPI_Scatter(source, n, MPI_BYTE, Array_BYTES(recvobj),
 	      n, MPI_BYTE, root, self->comm);
   Py_RETURN_NONE;
@@ -963,7 +996,9 @@ static PyObject * mpi_allgather(MPIObject *self, PyObject *args)
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   // What about endianness????
-  maybeSynchronize(a);
+  synchronize_if_gpu(a, b);
+  DEBUG_SYSTEM_CHECK(a);
+  DEBUG_SYSTEM_CHECK(b);
   MPI_Allgather(Array_BYTES(a), n, MPI_BYTE, Array_BYTES(b), n,
 		MPI_BYTE, self->comm);
   Py_RETURN_NONE;
@@ -993,11 +1028,19 @@ static PyObject * mpi_gather(MPIObject *self, PyObject *args)
   int n = Array_ITEMSIZE(a);
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
-  maybeSynchronize(a);
   if (root != self->rank)
+  {
+    maybeSynchronize(a);
+    DEBUG_SYSTEM_CHECK(a);
     MPI_Gather(Array_BYTES(a), n, MPI_BYTE, 0, n, MPI_BYTE, root, self->comm);
+  }
   else
+  {
+    synchronize_if_gpu(a, b);
+    DEBUG_SYSTEM_CHECK(a);
+    DEBUG_SYSTEM_CHECK(b);
     MPI_Gather(Array_BYTES(a), n, MPI_BYTE, Array_BYTES(b), n, MPI_BYTE, root, self->comm);
+  }
   Py_RETURN_NONE;
 }
 
@@ -1020,6 +1063,7 @@ static PyObject * mpi_broadcast(MPIObject *self, PyObject *args)
   for (int d = 0; d < Array_NDIM(buf); d++)
     n *= Array_DIM(buf,d);
   maybeSynchronize(buf);
+  DEBUG_SYSTEM_CHECK(buf);
   MPI_Bcast(Array_BYTES(buf), n, MPI_BYTE, root, self->comm);
   Py_RETURN_NONE;
 }
@@ -1134,7 +1178,9 @@ static PyObject * mpi_alltoallv(MPIObject *self, PyObject *args)
       r_cnts[i] = tmp3[i] * elem_size;
       r_displs[i] = tmp4[i] * elem_size;
   }
-  maybeSynchronize(send_obj);
+  synchronize_if_gpu(send_obj, recv_obj);
+  DEBUG_SYSTEM_CHECK(send_obj);
+  DEBUG_SYSTEM_CHECK(recv_obj);
 
   MPI_Alltoallv(Array_BYTES(send_obj),
 		s_cnts, s_displs,

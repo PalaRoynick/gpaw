@@ -28,13 +28,6 @@ def is_contiguous(*args, **kwargs):
     return is_contiguous(*args, **kwargs)
 
 
-def debug_system_check(arr) -> bool:
-    """"""
-    # Can't do this import at module level, whole thing blows up badly
-    from gpaw.gpu.debug import (debug_array_overlap_check)
-    debug_array_overlap_check(arr)
-
-
 @contextmanager
 def broadcast_exception(comm):
     """Make sure all ranks get a possible exception raised.
@@ -137,12 +130,6 @@ class _Communicator:
             tc = a.dtype
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-
-            # This doesn't get stream-synchronized properly on C side!!
-            from gpaw.gpu import synchronize
-            synchronize()
-
-            debug_system_check(a)
             self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
@@ -176,7 +163,6 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            debug_system_check(a)
             self.comm.product(a, root)
 
     def max(self, a, root=-1):
@@ -206,7 +192,6 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            debug_system_check(a)
             self.comm.max(a, root)
 
     def max_scalar(self, a, root=-1):
@@ -240,7 +225,6 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            debug_system_check(a)
             self.comm.min(a, root)
 
     def min_scalar(self, a, root=-1):
@@ -293,10 +277,8 @@ class _Communicator:
             assert a.dtype == b.dtype
             assert a.size == self.size * b.size
             assert a.flags.c_contiguous
-            debug_system_check(a)
         assert b.flags.c_contiguous
         assert 0 <= root < self.size
-        debug_system_check(b)
         self.comm.scatter(a, b, root)
 
     def alltoallv(self, sbuffer, scounts, sdispls, rbuffer, rcounts, rdispls):
@@ -339,8 +321,6 @@ class _Communicator:
         assert np.all(0 <= rdispls)
         assert np.all(sdispls + scounts <= sbuffer.size)
         assert np.all(rdispls + rcounts <= rbuffer.size)
-        debug_system_check(sbuffer)
-        debug_system_check(rbuffer)
         self.comm.alltoallv(sbuffer, scounts, sdispls,
                             rbuffer, rcounts, rdispls)
 
@@ -387,8 +367,6 @@ class _Communicator:
         assert b.dtype == a.dtype
         assert (b.shape[0] == self.size and a.shape == b.shape[1:] or
                 a.size * self.size == b.size)
-        debug_system_check(a)
-        debug_system_check(b)
         self.comm.all_gather(a, b)
 
     def gather(self, a, root, b=None):
@@ -436,12 +414,10 @@ class _Communicator:
         """
         assert a.flags.c_contiguous
         assert 0 <= root < self.size
-        debug_system_check(a)
         if root == self.rank:
             assert b.flags.c_contiguous and b.dtype == a.dtype
             assert (b.shape[0] == self.size and a.shape == b.shape[1:] or
                     a.size * self.size == b.size)
-            debug_system_check(b)
             self.comm.gather(a, root, b)
         else:
             assert b is None
@@ -490,7 +466,6 @@ class _Communicator:
         """
         assert 0 <= root < self.size
         assert is_contiguous(a)
-        debug_system_check(a)
         self.comm.broadcast(a, root)
 
     def sendreceive(self, a, dest, b, src, sendtag=123, recvtag=123):
@@ -500,15 +475,12 @@ class _Communicator:
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(b)
-        debug_system_check(a)
-        debug_system_check(b)
         return self.comm.sendreceive(a, dest, b, src, sendtag, recvtag)
 
     def send(self, a, dest, tag=123, block=True):
         assert 0 <= dest < self.size
         assert dest != self.rank
         assert is_contiguous(a)
-        debug_system_check(a)
         if not block:
             pass  # assert sys.getrefcount(a) > 3
         return self.comm.send(a, dest, tag, block)
@@ -517,14 +489,12 @@ class _Communicator:
         assert 0 <= dest < self.size
         assert dest != self.rank
         assert is_contiguous(a)
-        debug_system_check(a)
         return self.comm.ssend(a, dest, tag)
 
     def receive(self, a, src, tag=123, block=True):
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(a)
-        debug_system_check(a)
         return self.comm.receive(a, src, tag, block)
 
     def test(self, request):

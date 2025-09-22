@@ -121,13 +121,24 @@ constexpr inline int typenum_from_dtype(DataType dtype)
     return static_cast<int>(dtype);
 }
 
+/* Convert list of std::strings to a new Python list of strings.
+Will raise a Python exception and return null if there is an error (like OOM). */
+PyObject* as_python_list(const std::vector<std::string>& strings);
+
 // Get pointer to the array data
 template<typename T>
 T* Array_DATA(PyObject* obj)
 {
     static_assert(!std::is_pointer<T>::value, "T must be a scalar type");
 
-    // Equivalent to obj.data.ptr
+    // For Cupy arrays we can do obj.data.ptr to get the data pointer.
+    // But this doesn't work for Numpy arrays, so handle that case separately
+    if (PyArray_Check(obj))
+    {
+        PyArrayObject* arr_obj = reinterpret_cast<PyArrayObject*>(obj);
+        return reinterpret_cast<T*>(PyArray_DATA(arr_obj));
+    }
+
     PyObject* ndarray_data = PyObject_GetAttrString(obj, "data");
     if (ndarray_data == nullptr)
     {

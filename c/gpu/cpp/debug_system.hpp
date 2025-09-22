@@ -63,6 +63,8 @@ public:
     /* Returns list of events that currently use a given memory block.
     */
     std::vector<EventID> get_overlapping_events(const MemoryBlock& block);
+    // Converts events to JSON-like string entries that will be shown when the debug system detects an error
+    std::vector<std::string> make_debug_strings(const std::vector<gpaw::EventID>& overlapping_events);
 
 protected:
 

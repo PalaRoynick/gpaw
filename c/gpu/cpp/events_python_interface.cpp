@@ -7,6 +7,8 @@
 #include <vector>
 #include <string>
 
+PyObject* DebugSystemError = nullptr;
+
 CLINKAGE PyObject* destroy_expired_events(PyObject* self, PyObject* args)
 {
     gpaw::EventManager::get().process_finished_events();
@@ -95,41 +97,83 @@ CLINKAGE PyObject* get_overlapping_events_as_string(PyObject* self, PyObject* ar
     block.nbytes = static_cast<size_t>(nbytes);
     std::vector<gpaw::EventID> events = gpaw::DebugSystem::get().get_overlapping_events(block);
 
-    if (events.empty())
-    {
-        return PyList_New(0);
-    }
-
     // Return as a list of entries like {"EventID": 1, name: "something", ...}
+    std::vector<std::string> event_strings = gpaw::DebugSystem::get().make_debug_strings(events);
 
-    PyObject* list_obj = PyList_New(events.size());
+    PyObject* list_obj = gpaw::as_python_list(event_strings);
+
+    // Is already NULL if there was an exception
+    return list_obj;
+}
+
+/* This packs the error metadata into a dict and propagates it to Python as a custom exception.
+Can access the dict as "e.args[0]". Would be better to make the metadata fields direct attributes of the exception,
+but this requires too much boilerplate in the Python.h API. */
+static void raise_debug_system_error(const gpaw::MemoryBlock& block, const std::vector<gpaw::EventID>& overlapping_events)
+{
+    using gpaw::EventID;
+
+    std::vector<std::string> event_strings = gpaw::DebugSystem::get().make_debug_strings(overlapping_events);
+    PyObject* list_obj = gpaw::as_python_list(event_strings);
+
     if (!list_obj)
     {
-        return NULL;
+        // Likely OOM
+        PyErr_SetString(PyExc_RuntimeError, "DebugSystem detected an error but failed to propagate payload to Python");
+        return;
     }
 
-    for (Py_ssize_t i = 0; i < (Py_ssize_t)events.size(); i++)
+    PyObject *payload = Py_BuildValue("{s:s, s:k, s:n, s:O}",
+        "reason", "Data race with ongoing events",
+        "address", (unsigned long long)block.start,
+        "length",  (unsigned long long)block.nbytes,
+        "events", list_obj
+    );
+    Py_DECREF(list_obj);
+
+    if (!payload)
     {
-        const gpaw::EventID id = events[i];
-        auto event_dict = gpaw::EventManager::get().as_string_dict(id);
-        // Above we checked that the event had NOT finished yet, but by now it may have.
-        // So for this output we don't want the "finished" field because it may be misleading.
-        if (gpaw::map_contains(event_dict, std::string("finished")))
-        {
-            event_dict.erase("finished");
-        }
-
-        const std::string event_str = gpaw::to_json_entry(event_dict);
-
-        PyObject* str_obj = PyUnicode_FromString(event_str.c_str());
-        if (!str_obj)
-        {
-            Py_DECREF(list_obj);
-            return NULL;
-        }
-
-        PyList_SetItem(list_obj, i, str_obj); // steals reference
+        PyErr_SetString(PyExc_RuntimeError, "DebugSystem detected an error but failed to propagate payload to Python");
+        return;
     }
 
-    return list_obj;
+    PyErr_SetObject(DebugSystemError, payload);
+    Py_DECREF(payload);
+}
+
+
+bool ensure_no_async_overlap(PyObject* arr, bool fatal)
+{
+    using gpaw::DebugSystem;
+
+    if (!DebugSystem::is_system_enabled())
+    {
+        return true;
+    }
+
+    void* data_ptr = gpaw::Array_DATA<void>(arr);
+    if (!data_ptr)
+    {
+        // No data, so can't overlap
+        return true;
+    }
+
+    gpaw::MemoryBlock block;
+    block.start = reinterpret_cast<uintptr_t>(data_ptr);
+    block.nbytes = static_cast<size_t>(gpaw::Array_NBYTES(arr));
+
+    DebugSystem& debug_system = DebugSystem::get();
+    std::vector<gpaw::EventID> events = debug_system.get_overlapping_events(block);
+
+    if (events.empty())
+    {
+        return true;
+    }
+
+    raise_debug_system_error(block, events);
+    if (!fatal && PyErr_Occurred())
+    {
+        PyErr_Print();
+    }
+    return false;
 }

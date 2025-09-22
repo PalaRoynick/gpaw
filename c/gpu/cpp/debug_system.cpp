@@ -326,6 +326,26 @@ std::vector<EventID> DebugSystem::get_overlapping_events(const MemoryBlock& bloc
     return events;
 }
 
+std::vector<std::string> DebugSystem::make_debug_strings(const std::vector<gpaw::EventID>& overlapping_events)
+{
+    std::vector<std::string> result;
+    result.reserve(overlapping_events.size());
+
+    for (const gpaw::EventID id : overlapping_events)
+    {
+        auto event_dict = gpaw::EventManager::get().as_string_dict(id);
+        // Assumption is that the events were NOT finished when this was called,
+        // but they might have finished once we get here. So for this output we don't want the "finished" field because it may be misleading.
+        if (gpaw::map_contains(event_dict, std::string("finished")))
+        {
+            event_dict.erase("finished");
+        }
+
+        result.push_back(gpaw::to_json_entry(event_dict));
+    }
+    return result;
+}
+
 void DebugSystem::launch_wait_kernel(gpuStream_t stream, double microseconds)
 {
     // Convert time to cycles based on clock frequency

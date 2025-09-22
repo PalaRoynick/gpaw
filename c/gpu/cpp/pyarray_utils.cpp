@@ -4,6 +4,30 @@
 namespace gpaw
 {
 
+PyObject* as_python_list(const std::vector<std::string>& strings)
+{
+    PyObject* list_obj = PyList_New(strings.size());
+    if (!list_obj)
+    {
+        return PyErr_NoMemory();
+    }
+
+    for (Py_ssize_t i = 0; i < (Py_ssize_t)strings.size(); i++)
+    {
+        PyObject* str_obj = PyUnicode_FromString(strings[i].c_str());
+        if (!str_obj)
+        {
+            Py_DECREF(list_obj);
+            return NULL;
+        }
+
+        PyList_SetItem(list_obj, i, str_obj); // steals reference
+    }
+
+    return list_obj;
+}
+
+
 int32_t Array_NDIM(PyObject* obj)
 {
     // return len(obj.shape)
