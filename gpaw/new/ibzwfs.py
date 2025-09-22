@@ -373,15 +373,16 @@ class IBZWaveFunctions(Generic[WFT]):
         # to only one band at a time XXX
         xshape = self.get_max_shape(global_shape=True)
         shape = spin_k_shape + (self.nbands,) + xshape
-        dtype = as_complex_dtype(self.dtype) if self.mode == 'pw' else self.dtype
+        dtype = (as_complex_dtype(self.dtype) if self.mode == 'pw'
+                 else self.dtype)
         dtype_write = flags.storage_dtype(dtype)
         c = 1.0 if self.mode == 'lcao' else Bohr**-1.5
-        
+
         writer.add_array('coefficients', shape, dtype=dtype_write)
         buf_nX = np.empty((self.nbands,) + xshape, dtype=dtype)
 
         for spin in range(self.nspins):
-            for k, rank in enumerate(self.rank_k): 
+            for k, rank in enumerate(self.rank_k):
                 if rank == self.kpt_comm.rank:
                     wfs = self.wfs_qs[self.q_k[k]][spin]
                     coef_nX = wfs.gather_wave_function_coefficients()
