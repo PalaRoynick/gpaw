@@ -388,6 +388,7 @@ class FakeDensity:
         self.ncomponents = len(self.nt_sG)
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
+        self.nct_G = 'not None'
 
     @cached_property
     def _atom_partition(self):

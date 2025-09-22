@@ -189,7 +189,7 @@ class _Communicator:
                 self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
-        assert isinstance(a, (int, float, complex))
+        assert isinstance(a, (int, float, complex, np.int64))
         return self.comm.sum_scalar(a, root)
 
     def product(self, a, root=-1):
