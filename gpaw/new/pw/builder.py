@@ -260,10 +260,12 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         from gpaw.utilities import as_dtype_precision
 
         # Determine stored precision and target dtype
-        stored_precision = 'single' if reader.get('precision', 'double') == 'single' else 'double'
+        stored_precision = ('single' if reader.get('precision', 'double') ==
+                            'single' else 'double')
         target_dtype = as_dtype_precision(self.dtype, stored_precision)
 
-        # Temporarily modify self.dtype so the base class creates the right dtype
+        # Temporarily modify self.dtype so the base class creates the right
+        # dtype
         original_dtype = self.dtype
         self.dtype = target_dtype
 
@@ -273,7 +275,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         self.dtype = original_dtype
 
         if 'coefficients' not in reader.wave_functions:
-            # No coefficients to read, but dtype should be correct from base class
+            # No coefficients to read, but dtype should be correct from base
+            # class
             ibzwfs.dtype = target_dtype
             return ibzwfs
 
@@ -305,7 +308,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             data.scale = c
             data.length_of_last_dimension = pw.shape[-1]
 
-            if self.communicators['w'].size == 1 and stored_precision == 'double':
+            if (self.communicators['w'].size == 1 and
+                    stored_precision == 'double'):
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
                 wfs.psit_nX = pw.from_data(data)
@@ -340,17 +344,17 @@ def check_g_vector_ordering(grid: UGDesc,
                             use_real_fft_layout: bool | None = None) -> None:
     """Verify that stored G-vector indices match expected ordering."""
     size = tuple(grid.size)
-    
+
     # Use real FFT layout if specified, otherwise infer from pw.dtype
     if use_real_fft_layout is None:
         use_real_fft_layout = np.issubdtype(pw.dtype, np.floating)
-    
+
     if use_real_fft_layout:
         size = (size[0], size[1], size[2] // 2 + 1)
-    
+
     expected_indices = pw.indices(size)
     nG = len(expected_indices)
-    
+
     if not (expected_indices == index_G[:nG]).all():
         raise AssertionError("G-vector ordering mismatch")
     if not (index_G[nG:] == -1).all():
