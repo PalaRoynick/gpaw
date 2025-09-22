@@ -3,6 +3,46 @@
 #include "../gpu-complex.h"
 #include "pyarray_utils.hpp"
 #include "array_life_support.hpp"
+#include "gpu_core.hpp"
+
+// Kernel that first wastes time, then writes to the input buffer at index 0
+__global__ static void buggy_kernel(uint64_t wait_cycles, double* buf)
+{
+    unsigned long long start = clock64();
+    while (clock64() - start < wait_cycles)
+    {
+        // Do nothing
+    }
+
+    buf[0] = 42.0;
+}
+
+
+CLINKAGE PyObject* buggy_kernel_launch(PyObject* self, PyObject* args)
+{
+    double wait_microsecs;
+    PyObject *inout_array;
+    if (!PyArg_ParseTuple(args, "dO", &wait_microsecs, &inout_array))
+    {
+        return NULL;
+    }
+
+    // Convert time to cycles based on clock frequency
+    int device = gpaw::get_current_device();
+    gpuDeviceProp prop;
+    gpuGetDeviceProperties(&prop, device);
+
+    const int clock_rate_khz = prop.clockRate;
+    const uint64_t wait_cycles = wait_microsecs / 1000.0 * (uint64_t)clock_rate_khz;
+
+    gpuStream_t stream = 0;
+
+    double* buf = gpaw::Array_DATA<double>(inout_array);
+
+    gpaw::launch_kernel(buggy_kernel, 1, 1, 0, stream, wait_cycles, buf);
+
+    Py_RETURN_NONE;
+}
 
 CLINKAGE
 {

@@ -219,6 +219,8 @@ PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
     #include "gpu/cpp/magma/magma_python_interface.h"
 #endif // GPAW_WITH_MAGMA
 
+PyObject* buggy_kernel_launch(PyObject* self, PyObject* args);
+
 #endif // GPAW_GPU
 
 
@@ -399,6 +401,8 @@ static PyMethodDef functions[] = {
     #endif // GPAW_WITH_MAGMA
 
     {"_flush_pending_decrefs", flush_pending_decrefs, METH_NOARGS, 0},
+
+    {"buggy_kernel_launch", buggy_kernel_launch, METH_VARARGS, 0},
 
 #endif // GPAW_GPU
 
