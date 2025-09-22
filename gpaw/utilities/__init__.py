@@ -500,7 +500,7 @@ def get_dtype_precision(dtype: DTypeLike) -> str:
     dt = np.dtype(dtype).type
     if dt in (np.float32, np.complex64):
         return 'single'
-    elif dt in (np.float64, np.complex128):
+    else:
         return 'double'
 
 
@@ -518,7 +518,7 @@ def as_dtype_precision(dtype: DTypeLike, precision: str) -> np.dtype:
 
     if precision == 'single':
         return np.dtype(np.complex64 if is_complex else np.float32)
-    elif precision == 'double':
+    else:
         return np.dtype(np.complex128 if is_complex else np.float64)
 
 
