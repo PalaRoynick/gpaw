@@ -2,7 +2,7 @@
 """
 
 from gpaw.gpu import cupy_is_fake, cupy as cp
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import traceback
 import numpy as np
 
@@ -41,7 +41,7 @@ except ImportError:
     def ensure_buffer_not_in_use(buffer: int) -> bool:
         return True
 
-    def get_overlapping_events_as_string(start: int, nbytes: int) -> bool:
+    def get_overlapping_events_as_string(start: int, nbytes: int) -> list[str]:
         return []
 
 
@@ -57,7 +57,7 @@ def debug_array_overlap_check(arr: np.ndarray | cp.ndarray,
     """
 
     if not is_debug_system_enabled():
-        return True
+        return
 
     if isinstance(arr, cp.ndarray):
         start = arr.data.ptr
@@ -117,14 +117,14 @@ def debug_memory_block_check(block_start: int,
 if not cupy_is_fake:
     from gpaw.gpu import cupy as cp
 
-    class CupyDebugHook(cp.cuda.memory_hook.MemoryHook):
+    class CupyDebugHook(cp.cuda.memory_hook.MemoryHook):  # type: ignore
         """"""
 
         name = 'GPAWDebugHook'
 
         def __init__(self, take_tracebacks: bool = True):
             self.take_tracebacks = take_tracebacks
-            self.alloc_traceback = {}
+            self.alloc_traceback: dict = {}
 
         def activate_hooks(self, take_tracebacks: bool = True):
             """"""
@@ -184,6 +184,7 @@ if not cupy_is_fake:
             if self.take_tracebacks:
                 self.alloc_traceback.pop(mem_ptr)
 
+g_cupy_debug_hooks: Optional[CupyDebugHook]
 
 if not cupy_is_fake:
     g_cupy_debug_hooks = CupyDebugHook()
@@ -195,7 +196,6 @@ def toggle_debug_system(enabled: bool):
     """Toggles the global debug system on/off"""
     _toggle_debug_system(enabled)
 
-    global g_cupy_debug_hooks
     if g_cupy_debug_hooks is not None:
         if enabled:
             g_cupy_debug_hooks.activate_hooks(take_tracebacks=True)
