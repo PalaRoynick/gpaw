@@ -88,3 +88,6 @@ class Timer:
             m = int(round(2 * N * t / total))
             bar = '━' * (m // 2) + '╸' * (m % 2)
             log(f'  {name + ":":{n}}{t:{w}.3f}  # {bar}')
+
+    def start(self, name):
+        pass

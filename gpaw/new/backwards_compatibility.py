@@ -371,7 +371,6 @@ class FakeDensity:
         self.ccc_aL = density.calculate_compensation_charge_coefficients()
         try:
             # mypy complains about these missing from PotentialCalculator
-            self.interpolate = pot_calc._interpolate_density  # type: ignore
             self.finegd = pot_calc.fine_grid._gd  # type: ignore
             self.fine_grid = pot_calc.fine_grid  # type: ignore
         except AttributeError:
@@ -389,6 +388,8 @@ class FakeDensity:
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
         self.nct_G = 'not None'
+        self.stencil = pot_calc.interpolation_stencil_range
+        self.interpolator = pot_calc._interpolate.transformer
 
     @cached_property
     def _atom_partition(self):
@@ -462,7 +463,7 @@ class FakeHamiltonian:
         self.ibzwfs = ibzwfs
         self.density = density
         self.potential = potential
-        self.poisson = FakePoisson()
+        self.poisson = pot_calc.poisson_solver.solver  # FakePoisson()
         try:
             self.finegd = self.pot_calc.fine_grid._gd  # type: ignore
         except AttributeError:
