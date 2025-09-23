@@ -39,7 +39,7 @@ def create_basis(ibz: IBZ,
                            kd,
                            dtype=basis_dtype,
                            cut=True,
-                           xp=xp)
+                           xp=np)
     basis.set_positions(relpos_ac)
     myM = (basis.Mmax + band_comm.size - 1) // band_comm.size
     basis.set_matrix_distribution(

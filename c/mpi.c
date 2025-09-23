@@ -328,8 +328,8 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
     return NULL;
   CHK_ARRAY(a);
   CHK_OTHER_PROC(src);
-  int n = Array_ITEMSIZE(a);
-  for (int d = 0; d < Array_NDIM(a); d++)
+  long n = Array_ITEMSIZE(a);
+  for (long d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a, d);
   if (block)
     {
@@ -373,8 +373,8 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
     return NULL;
   CHK_ARRAY(a);
   CHK_OTHER_PROC(dest);
-  int n = Array_ITEMSIZE(a);
-  for (int d = 0; d < Array_NDIM(a); d++)
+  long n = Array_ITEMSIZE(a);
+  for (long d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   if (block)
     {
@@ -416,8 +416,8 @@ static PyObject * mpi_ssend(MPIObject *self, PyObject *args, PyObject *kwargs)
     return NULL;
   CHK_ARRAY_RO(a);
   CHK_OTHER_PROC(dest);
-  int n = Array_ITEMSIZE(a);
-  for (int d = 0; d < Array_NDIM(a); d++)
+  long n = Array_ITEMSIZE(a);
+  for (long d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   maybeSynchronize(a);
   MPI_Ssend(Array_BYTES(a), n, MPI_BYTE, dest, tag, self->comm);
@@ -583,7 +583,7 @@ static PyObject * mpi_waitall(MPIObject *self, PyObject *requests)
 
 static MPI_Datatype get_mpi_datatype(PyObject *a)
 {
-  int n = Array_ITEMSIZE(a);
+  long n = Array_ITEMSIZE(a);
   if (Array_ISCOMPLEX(a))
     n = n / 2;
   int array_type = Array_TYPE(a);
@@ -690,8 +690,8 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
     }
   else   // It should be an array
     {
-      int n;
-      int elemsize;
+      long n;
+      long elemsize;
       MPI_Datatype datatype;
       PyObject* aobj = obj;
       CHK_ARRAY(aobj);
@@ -884,8 +884,8 @@ static PyObject * mpi_scatter(MPIObject *self, PyObject *args)
     CHK_ARRAYS(recvobj, sendobj, self->size); // size(send) = size(recv)*Ncpu
     source = Array_BYTES(sendobj);
   }
-  int n = Array_ITEMSIZE(recvobj);
-  for (int d = 0; d < Array_NDIM(recvobj); d++)
+  long n = Array_ITEMSIZE(recvobj);
+  for (long d = 0; d < Array_NDIM(recvobj); d++)
     n *= Array_DIM(recvobj,d);
   maybeSynchronize(recvobj);
   MPI_Scatter(source, n, MPI_BYTE, Array_BYTES(recvobj),
@@ -904,7 +904,7 @@ static PyObject * mpi_allgather(MPIObject *self, PyObject *args)
   CHK_ARRAY(a);
   CHK_ARRAY(b);
   CHK_ARRAYS(a, b, self->size);
-  int n = Array_ITEMSIZE(a);
+  long n = Array_ITEMSIZE(a);
   for (int d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   // What about endianness????
@@ -935,8 +935,8 @@ static PyObject * mpi_gather(MPIObject *self, PyObject *args)
 		      "mpi_gather: b array should not be given on non-root processors.");
       return NULL;
     }
-  int n = Array_ITEMSIZE(a);
-  for (int d = 0; d < Array_NDIM(a); d++)
+  long n = Array_ITEMSIZE(a);
+  for (long d = 0; d < Array_NDIM(a); d++)
     n *= Array_DIM(a,d);
   maybeSynchronize(a);
   if (root != self->rank)
@@ -961,8 +961,8 @@ static PyObject * mpi_broadcast(MPIObject *self, PyObject *args)
       CHK_ARRAY(buf);
 
   CHK_PROC(root);
-  int n = Array_ITEMSIZE(buf);
-  for (int d = 0; d < Array_NDIM(buf); d++)
+  long n = Array_ITEMSIZE(buf);
+  for (long d = 0; d < Array_NDIM(buf); d++)
     n *= Array_DIM(buf,d);
   maybeSynchronize(buf);
   MPI_Bcast(Array_BYTES(buf), n, MPI_BYTE, root, self->comm);
@@ -1292,7 +1292,7 @@ static PyObject * MPICommunicator(MPIObject *self, PyObject *args)
   if (ranks == NULL)
     return NULL;
   PyArrayObject *iranks;
-  int n = PyArray_DIM(ranks, 0);
+  long n = PyArray_DIM(ranks, 0);
   iranks = (PyArrayObject*)PyArray_Cast((PyArrayObject*) ranks, NPY_INT);
   Py_DECREF(ranks);
   if (iranks == NULL)
