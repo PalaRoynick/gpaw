@@ -380,8 +380,7 @@ class DFTCalculation:
             basis = getattr(self.scf_loop.hamiltonian, 'basis', None)
             grid = self.density.nt_sR.desc.new(comm=None)
             if collinear:
-                wfs = wfs.to_uniform_grid_wave_functions(grid, basis,
-                                                         xp=wfs.psit_nX.xp)
+                wfs = wfs.to_uniform_grid_wave_functions(grid, basis)
                 psit_nR = wfs.psit_nX
             else:
                 psit_nsG = wfs.psit_nX

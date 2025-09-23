@@ -11,6 +11,7 @@ from gpaw.core import PWDesc, UGDesc
 from gpaw.core.domain import Domain
 from gpaw.core.matrix import Matrix
 from gpaw.core.plane_waves import PWArray
+from gpaw.gpu import as_xp
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
 from gpaw.new.gpw import as_double_precision
@@ -328,7 +329,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if stored_precision == 'single':
-                        psit_G.scatter_from(as_double_precision(array))
+                        array_dp = as_double_precision(array)
+                        array_xp = as_xp(array_dp, psit_G.xp)
+                        psit_G.scatter_from(array_xp)
                     else:
                         psit_G.scatter_from(array)
 

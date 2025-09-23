@@ -128,7 +128,7 @@ def run_restart_fixed_density(dtype, gpu):
     with dtype conversions (calc_dtype, write_precision, restart_dtype):
     - float32 -> single -> float32 (control)
     - float32 -> double -> float64
-    - complex64 -> single -> complex128
+    - complex128 -> single -> complex128
     - complex128 -> single -> complex64
     """
     atoms = molecule('H2O')

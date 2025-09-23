@@ -508,10 +508,12 @@ class PWFDWaveFunctions(WaveFunctions, XP):
                                        grid,
                                        basis,
                                        *,
-                                       xp):
+                                       xp=None):
         if isinstance(self.psit_nX, UGArray):
             return self
 
+        if xp is None:
+            xp = self.xp
         grid = grid.new(kpt=self.kpt_c, dtype=self.dtype)
         psit_nR = grid.zeros(self.nbands, self.band_comm, xp=xp)
         self.psit_nX.ifft(out=psit_nR)
