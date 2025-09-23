@@ -329,9 +329,10 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if stored_precision == 'single':
-                        array_dp = as_double_precision(array)
-                        array_xp = as_xp(array_dp, psit_G.xp)
-                        psit_G.scatter_from(array_xp)
+                        if array is not None:
+                            array_dp = as_double_precision(array)
+                            array = as_xp(array_dp, psit_G.xp)
+                        psit_G.scatter_from(array)
                     else:
                         psit_G.scatter_from(array)
 
