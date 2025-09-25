@@ -307,7 +307,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
                         # Always convert to double precision
-                        double_dtype = as_dtype_precision(array.dtype, 'double')
+                        double_dtype = as_dtype_precision(array.dtype,
+                                                          'double')
                         array = np.array(array, dtype=double_dtype)
                         # as_xp handles numpy/cupy conversion
                         array = as_xp(array, psit_G.xp)
