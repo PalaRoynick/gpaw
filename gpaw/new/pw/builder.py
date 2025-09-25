@@ -257,8 +257,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             return psit_nsG
 
     def read_ibz_wave_functions(self, reader):
-        from gpaw.utilities import as_dtype_precision
-
         ibzwfs = super().read_ibz_wave_functions(reader)
 
         if 'coefficients' not in reader.wave_functions:
@@ -287,9 +285,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                # Always convert to double precision
-                double_dtype = as_dtype_precision(data.dtype, 'double')
-                converted_data = np.array(data, dtype=double_dtype)
+                # Convert to match calculation dtype
+                converted_data = np.array(data, dtype=self.dtype)
                 # pw.from_data handles xp conversion
                 wfs.psit_nX = pw.from_data(converted_data)
                 data.shape = orig_shape
@@ -306,10 +303,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
-                        # Always convert to double precision
-                        double_dtype = as_dtype_precision(array.dtype,
-                                                          'double')
-                        array = np.array(array, dtype=double_dtype)
+                        # Convert to match calculation dtype
+                        array = np.array(array, dtype=self.dtype)
                         # as_xp handles numpy/cupy conversion
                         array = as_xp(array, psit_G.xp)
                     psit_G.scatter_from(array)
