@@ -7,7 +7,6 @@ from ase.build import molecule
 
 from gpaw.new.ase_interface import GPAW
 from gpaw.gpu import cupy_is_fake
-from gpaw.utilities import as_dtype_precision
 
 
 @pytest.mark.serial
@@ -176,7 +175,7 @@ def run_restart_fixed_density(dtype, gpu):
 
     calc_restart = GPAW(gpw_file,
                         parallel={'gpu': gpu}, txt=None)
-    # When reading from GPW file without specifying dtype, 
+    # When reading from GPW file without specifying dtype,
     # should restore original calculation's dtype
     expected_read_dtype = calc_dtype  # User's original calculation dtype
     assert calc_restart.wfs.dtype == expected_read_dtype

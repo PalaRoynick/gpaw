@@ -14,7 +14,7 @@ from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
-from gpaw.new.gpw import as_double_precision
+from gpaw.new.gpw import as_double_precision, as_single_precision
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.hamiltonian import PWHamiltonian, SpinorPWHamiltonian
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
@@ -261,7 +261,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         from gpaw.utilities import as_dtype_precision
 
         stored_precision = reader.get('precision', 'double')
-        
+
         ibzwfs = super().read_ibz_wave_functions(reader)
 
         if 'coefficients' not in reader.wave_functions:
@@ -300,10 +300,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
                 # Convert precision if needed
-                if stored_precision == 'single' and self.dtype in [np.float64, np.complex128]:
+                if (stored_precision == 'single' and
+                    self.dtype in [np.float64, np.complex128]):
                     data = as_double_precision(data)
-                elif stored_precision == 'double' and self.dtype in [np.float32, np.complex64]:
-                    from gpaw.new.gpw import as_single_precision
+                elif (stored_precision == 'double' and
+                      self.dtype in [np.float32, np.complex64]):
                     data = as_single_precision(data)
                 # pw.from_data handles xp conversion
                 wfs.psit_nX = pw.from_data(data)
@@ -322,10 +323,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
                         # Convert precision if needed
-                        if stored_precision == 'single' and self.dtype in [np.float64, np.complex128]:
+                        if (stored_precision == 'single' and
+                            self.dtype in [np.float64, np.complex128]):
                             array = as_double_precision(array)
-                        elif stored_precision == 'double' and self.dtype in [np.float32, np.complex64]:
-                            from gpaw.new.gpw import as_single_precision
+                        elif (stored_precision == 'double' and
+                              self.dtype in [np.float32, np.complex64]):
                             array = as_single_precision(array)
                         # as_xp handles numpy/cupy conversion
                         array = as_xp(array, psit_G.xp)
