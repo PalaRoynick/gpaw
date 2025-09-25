@@ -14,7 +14,6 @@ from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
-from gpaw.new.gpw import as_double_precision, as_single_precision
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.hamiltonian import PWHamiltonian, SpinorPWHamiltonian
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
@@ -258,11 +257,33 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             return psit_nsG
 
     def read_ibz_wave_functions(self, reader):
-        from gpaw.utilities import as_dtype_precision
+        from gpaw.utilities import get_dtype_precision, as_dtype_precision
 
         stored_precision = reader.get('precision', 'double')
 
         ibzwfs = super().read_ibz_wave_functions(reader)
+
+        def convert_to_target_precision(array):
+            """Convert array to match self.dtype precision.
+
+            Note: PW coefficients are always complex, even for real
+            calculations.
+            """
+            if array is None:
+                return None
+
+            target_precision = get_dtype_precision(self.dtype)
+
+            if (target_precision == 'double' and
+                    array.dtype in [np.complex64, np.float32]):
+                target_dtype = as_dtype_precision(array.dtype, 'double')
+                return np.array(array, dtype=target_dtype)
+            elif (target_precision == 'single' and
+                  array.dtype in [np.complex128, np.float64]):
+                target_dtype = as_dtype_precision(array.dtype, 'single')
+                return np.array(array, dtype=target_dtype)
+            else:
+                return array
 
         if 'coefficients' not in reader.wave_functions:
             ibzwfs.dtype = self.dtype
@@ -299,15 +320,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                # Convert precision if needed
-                if (stored_precision == 'single' and
-                    self.dtype in [np.float64, np.complex128]):
-                    data = as_double_precision(data)
-                elif (stored_precision == 'double' and
-                      self.dtype in [np.float32, np.complex64]):
-                    data = as_single_precision(data)
+                converted_data = convert_to_target_precision(data)
                 # pw.from_data handles xp conversion
-                wfs.psit_nX = pw.from_data(data)
+                wfs.psit_nX = pw.from_data(converted_data)
                 data.shape = orig_shape
             else:
                 band_comm = self.communicators['b']
@@ -322,13 +337,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
-                        # Convert precision if needed
-                        if (stored_precision == 'single' and
-                            self.dtype in [np.float64, np.complex128]):
-                            array = as_double_precision(array)
-                        elif (stored_precision == 'double' and
-                              self.dtype in [np.float32, np.complex64]):
-                            array = as_single_precision(array)
+                        array = convert_to_target_precision(array)
                         # as_xp handles numpy/cupy conversion
                         array = as_xp(array, psit_G.xp)
                     psit_G.scatter_from(array)
