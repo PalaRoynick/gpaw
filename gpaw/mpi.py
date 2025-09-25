@@ -40,10 +40,9 @@ class RegisteredPointer:
        somewhere in GPAW equally well).
     """
     def __init__(self, a, _input=True, _output=True, enabled=True):
-        enabled = enabled and is_hip  # Disable extra transfer on cuda
+        self.enabled = enabled and is_hip  # Disable extra transfer on cuda
 
-        self.enabled = enabled
-        if not enabled:
+        if not self.enabled:
             self.array = a
             return
 
@@ -184,11 +183,15 @@ class _Communicator:
             # Right now comm.sum is the only place where one needs this
             # extra malloc + intradevice memory copies for hip
             # gpu-aware MPI
-            with RegisteredPointer(a, enabled=True,
+            with RegisteredPointer(a, enabled=False,
                                    _input=True,
                                    _output=((root == -1) or
                                             (root == self.rank))) as a:
-                self.comm.sum(a, root)
+                if root == -1:
+                    self.comm.sum(a, 0)
+                    self.comm.broadcast(a, 0)
+                else:
+                    self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
