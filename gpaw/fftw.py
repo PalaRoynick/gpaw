@@ -296,7 +296,6 @@ class CuPyFFTPlans(FFTPlans):
                       *out_R.desc.size_c)
 
         if np.issubdtype(self.dtype, np.complexfloating):
-            print(type(array_R), type(array_Q), 'fft')
             array_R[:] = cupyx.scipy.fft.ifftn(
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)

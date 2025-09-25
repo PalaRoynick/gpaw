@@ -9,7 +9,7 @@ import gpaw.fftw as fftw
 from gpaw.core.arrays import DistributedArrays
 from gpaw.core.atom_centered_functions import UGAtomCenteredFunctions
 from gpaw.core.domain import Domain
-from gpaw.gpu import as_np, cupy_is_fake
+from gpaw.gpu import as_np, cupy_is_fake, as_xp
 from gpaw.grid_descriptor import GridDescriptor
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
@@ -234,9 +234,7 @@ class UGDesc(Domain['UGArray']):
             kpt_c = self.kpt_c
         index_Rc = np.indices(self.mysize_c).T + self.start_c
         arr = np.exp(2j * pi * (index_Rc @ (kpt_c / self.size_c))).T
-        if xp is not np:
-            arr = xp.asarray(arr)
-        return arr
+        return as_xp(arr, xp)
 
     @property
     def _gd(self):

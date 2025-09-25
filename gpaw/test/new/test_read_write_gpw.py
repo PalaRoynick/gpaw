@@ -95,7 +95,8 @@ def run_read_write_gpw(dtype, gpu):
                       mode={'name': 'pw',
                             'ecut': 200.0,
                             'dtype': dtype},
-                      parallel={'gpu': gpu})
+                      parallel={'gpu': gpu},
+                      txt=None)
 
     e_pot_original = atoms.get_potential_energy()
     expected_e = 9.595593472328737
@@ -127,9 +128,9 @@ def run_restart_fixed_density(dtype, gpu):
     Test restart from GPW file and fixed density calculation
     with dtype conversions (calc_dtype, write_precision, restart_dtype):
     - float32 -> single -> float32 (control)
-    - float32 -> double -> float64
+    - float64 -> single -> float64
     - complex128 -> single -> complex128
-    - complex128 -> single -> complex64
+    - float32 -> double -> complex64
     """
     atoms = molecule('H2O')
     atoms.center(vacuum=2.5)
@@ -139,9 +140,9 @@ def run_restart_fixed_density(dtype, gpu):
     # Define conversion tuples: (calc_dtype, write_precision, restart_dtype)
     conversion_tuples = {
         np.float32: (np.float32, 'single', np.float32),
-        np.float64: (np.float32, 'double', np.float64),
+        np.float64: (np.float64, 'single', np.float64),
         np.complex128: (np.complex128, 'single', np.complex128),
-        np.complex64: (np.complex128, 'single', np.complex64),
+        np.complex64: (np.float32, 'double', np.complex64),
     }
 
     calc_dtype, write_precision, restart_dtype = conversion_tuples[dtype]
@@ -163,7 +164,9 @@ def run_restart_fixed_density(dtype, gpu):
     atoms.calc.write(gpw_file, mode='all', precision=write_precision)
     assert atoms.calc.wfs.dtype == calc_dtype
 
-    expected_dtype = as_dtype_precision(calc_dtype, write_precision)
+    # When reading from GPW file, restore original calculation's dtype
+    # The stored precision is just for storage efficiency
+    expected_dtype = calc_dtype  # User's original calculation dtype
     calc_read = GPAW(gpw_file, txt=None)
 
     print(f"Expected read dtype: {expected_dtype}")
@@ -173,10 +176,9 @@ def run_restart_fixed_density(dtype, gpu):
 
     calc_restart = GPAW(gpw_file,
                         parallel={'gpu': gpu}, txt=None)
-    # The GPAW file was written with write_precision, but with our dtype
-    # conversion fix it should be read as the precision stored in the file,
-    # not necessarily restart_dtype
-    expected_read_dtype = as_dtype_precision(calc_dtype, write_precision)
+    # When reading from GPW file without specifying dtype, 
+    # should restore original calculation's dtype
+    expected_read_dtype = calc_dtype  # User's original calculation dtype
     assert calc_restart.wfs.dtype == expected_read_dtype
 
     fixed_dens_calc = calc_read.fixed_density(
@@ -189,8 +191,7 @@ def run_restart_fixed_density(dtype, gpu):
     print(f"expected_read_dtype = {expected_read_dtype}")
     print(f"fixed_dens_calc.wfs.dtype = {fixed_dens_calc.wfs.dtype}")
 
-    # calc_restart correctly loaded with the converted dtype
-    assert calc_restart.wfs.dtype == expected_read_dtype
+    assert fixed_dens_calc.wfs.dtype == restart_dtype
     assert e_pot_fixed == pytest.approx(expected_e, rel=1e-3)
 
 

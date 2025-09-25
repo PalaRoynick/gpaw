@@ -260,32 +260,19 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def read_ibz_wave_functions(self, reader):
         from gpaw.utilities import as_dtype_precision
 
-        # Determine stored precision and target dtype
-        stored_precision = ('single' if reader.get('precision', 'double') ==
-                            'single' else 'double')
-        target_dtype = as_dtype_precision(self.dtype, stored_precision)
-
-        # Temporarily modify self.dtype so the base class creates the right
-        # dtype
-        original_dtype = self.dtype
-        self.dtype = target_dtype
-
+        stored_precision = reader.get('precision', 'double')
+        
         ibzwfs = super().read_ibz_wave_functions(reader)
 
-        # Restore original dtype
-        self.dtype = original_dtype
-
         if 'coefficients' not in reader.wave_functions:
-            # No coefficients to read, but dtype should be correct from base
-            # class
-            ibzwfs.dtype = target_dtype
+            ibzwfs.dtype = self.dtype
             return ibzwfs
 
-        # Determine FFT layout for G-vector ordering check
-        # Use target dtype since that's what we're reading into
+        # For G-vector compatibility check, use file's original dtype
+        file_dtype = as_dtype_precision(self.dtype, stored_precision)
         use_real_fft_layout = None
         if 'indices' in reader.wave_functions:
-            use_real_fft_layout = np.issubdtype(target_dtype, np.floating)
+            use_real_fft_layout = np.issubdtype(file_dtype, np.floating)
 
         c = reader.bohr**1.5
         if reader.version < 0:
@@ -299,7 +286,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
-            pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=target_dtype)
+            pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
             if wfs.spin == 0 and 'indices' in reader.wave_functions:
                 check_g_vector_ordering(self.grid, pw, index_kG[wfs.k],
                                         use_real_fft_layout)
@@ -309,17 +296,22 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             data.scale = c
             data.length_of_last_dimension = pw.shape[-1]
 
-            if (self.communicators['w'].size == 1 and
-                    stored_precision == 'double'):
+            if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
+                # Convert precision if needed
+                if stored_precision == 'single' and self.dtype in [np.float64, np.complex128]:
+                    data = as_double_precision(data)
+                elif stored_precision == 'double' and self.dtype in [np.float32, np.complex64]:
+                    from gpaw.new.gpw import as_single_precision
+                    data = as_single_precision(data)
+                # pw.from_data handles xp conversion
                 wfs.psit_nX = pw.from_data(data)
                 data.shape = orig_shape
             else:
                 band_comm = self.communicators['b']
                 wfs.psit_nX = PWArray(pw, shape, comm=band_comm)
-                mynbands = (self.nbands +
-                            band_comm.size - 1) // band_comm.size
+                mynbands = (self.nbands + band_comm.size - 1) // band_comm.size
                 n1 = min(band_comm.rank * mynbands, self.nbands)
                 n2 = min((band_comm.rank + 1) * mynbands, self.nbands)
                 if pw.comm.rank == 0:
@@ -328,17 +320,18 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 else:
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
-                    if stored_precision == 'single':
-                        if array is not None:
-                            array_dp = as_double_precision(array)
-                            array = as_xp(array_dp, psit_G.xp)
-                        psit_G.scatter_from(array)
-                    else:
-                        psit_G.scatter_from(array)
+                    if array is not None:
+                        # Convert precision if needed
+                        if stored_precision == 'single' and self.dtype in [np.float64, np.complex128]:
+                            array = as_double_precision(array)
+                        elif stored_precision == 'double' and self.dtype in [np.float32, np.complex64]:
+                            from gpaw.new.gpw import as_single_precision
+                            array = as_single_precision(array)
+                        # as_xp handles numpy/cupy conversion
+                        array = as_xp(array, psit_G.xp)
+                    psit_G.scatter_from(array)
 
-        # Update the ibzwfs dtype to match the target dtype
-        ibzwfs.dtype = target_dtype
-
+        ibzwfs.dtype = self.dtype
         return ibzwfs
 
 
