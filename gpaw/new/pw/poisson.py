@@ -82,6 +82,35 @@ class PWPoissonSolver(PoissonSolver):
         return epot
 
 
+class PW2PS(PoissonSolver):
+    def __init__(self,
+                 pw: PWDesc,
+                 grid):
+        self.pw1 = pw
+        self.grid1 = grid
+        cell2_cv = [[1, 0, 0], [0, 1, 0], [0, 0, 2]] @ pw.cell_cv
+        self.pw2 = PWDesc(gcut=pw.gcut, cell=cell2_cv)
+        self.grid2 = UGDesc(size=grid.size_c * [1, 1, 2],
+                            cell=cell2_cv,
+                            pbc=(1, 1, 0))
+        self.ps = PWPoissonSolver(self.pw2)
+
+    def solve(self,
+              vHt_g: PWArray,
+              rhot_g: PWArray) -> float:
+        rhot1_r = rhot_g.ifft(grid=self.grid1)
+        rhot2_r = self.grid2.zeros()
+        n = self.grid1.size_c[2]
+        rhot2_r.data[:, :, 1:n] = rhot1_r.data[:, :, 1:]
+        rhot2_r.data[:, :, :n:-1] = rhot1_r.data[:, :, 1:]
+        rhot2_g = rhot2_r.fft(pw=self.pw2)
+        vHt2_g = self.pw2.empty()
+        epot = self.ps._solve(vHt2_g, rhot2_g)
+        return 0.5 * epot, vHt2_g.ifft(grid=self.grid2)
+
+
+
+
 class ChargedPWPoissonSolver(PWPoissonSolver):
     def __init__(self,
                  pw: PWDesc,
@@ -288,7 +317,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         self.drho_g = None
         self.zero_vacuum = zero_vacuum
         if zero_vacuum:
-            self.drho_g = dipole_layer(grid).fft(pw=pw)
+            self.drho_g = dipole_layer(grid, z0=0).fft(pw=pw)
 
     def __str__(self) -> str:
         txt = ('conjugate gradient poisson solver:\n'
@@ -335,6 +364,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
                rhot_g) -> float:
         vHt_g.data[:] = 4 * np.pi * self.strength * rhot_g.data
         eps_R = self.grid.from_data(self.dielectric.eps_gradeps[0])
+        print(eps_R.data[0,0])
         self.eps0_R = eps_R.gather()
 
         vHt0_g = vHt_g.gather()

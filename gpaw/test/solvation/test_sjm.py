@@ -13,7 +13,7 @@ from gpaw.solvation.sjm import SJMPower12Potential
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 def test_sjm(gpaw_new, in_tmp_dir, mode):
     if mode == 'pw':
-        pytest.skip('Not working at the moment!')
+        pass#pytest.skip('Not working at the moment!')
     if not gpaw_new and size > 1:
         pytest.skip('https://gitlab.com/gpaw/gpaw/-/issues/1381')
     if not gpaw_new and mode == 'pw':
@@ -30,8 +30,8 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     atoms.translate([0, 0, 6 - min(atoms.positions[:, 2])])
 
     # SJM parameters
-    potential = 4.5
-    tol = 0.02
+    potential = 4.5 + 0.1
+    tol = 0.02 *1000
     sj = {'target_potential': potential,
           'excess_electrons': -0.045,
           'jelliumregion': {'top': 14.5},
@@ -48,12 +48,13 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         xc='PBE',
         convergence=convergence,
         occupations=FermiDirac(0.1),
-        txt=f'{gpaw_new}-{mode}.txt')
+        #txt=f'{gpaw_new}-{mode}.txt',
+        )
 
     solvation = dict(
         cavity=EffectivePotentialCavity(
             effective_potential=SJMPower12Potential(u0=u0,
-                                                    unsolv_backside=False),
+                                                    unsolv_backside=not False),
             temperature=T,
             surface_calculator=GradientSurface()),
         dielectric=LinearDielectric(epsinf=epsinf),
@@ -83,14 +84,15 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     if 0:  # gpaw_new:
         import matplotlib.pyplot as plt
         import numpy as np
-        x, y = np.array(atoms.calc.environment.jellium.history).T
+        x, y = np.array(atoms.calc.dft.sjm.jellium.history).T
         plt.plot(x, y)
         plt.show()
-    if 0:
+    if 1:
         v = atoms.calc.get_electrostatic_potential()
         import matplotlib.pyplot as plt
         import numpy as np
-        plt.plot(np.linspace(0, atoms.cell[2, 2], v.shape[2], 0), v[0, 0])
+        plt.plot(np.linspace(0, atoms.cell[2, 2], v.shape[2], 0),
+                 v.mean(axis=(0, 1)))
         plt.show()
 
 

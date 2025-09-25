@@ -24,7 +24,7 @@ class SJM(Solvation):
                  excess_electrons: float = 0.0,
                  tol: float = 0.001):  # eV
         super().__init__(cavity, dielectric, interactions)
-        self.jelliumregion = jelliumregion or {}
+        self.jelliumregion = jelliumregion
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
         self.tol = tol
@@ -32,14 +32,19 @@ class SJM(Solvation):
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
         grid = builder.fine_grid
+
         relpos_ac = builder.relpos_ac
-        h = grid.cell_cv[2, 2] * Bohr
-        z1 = relpos_ac[:, 2].max() * h + 3.0  # Å
-        z2 = self.jelliumregion.get('top', h - 1.0)  # Å
+        L = grid.cell_cv[2, 2]
         mask_r = grid.empty()
-        R_rv = grid.xyz()
-        mask_r.data[:] = np.logical_and(R_rv[:, :, :, 2] > z1 / Bohr,
-                                        R_rv[:, :, :, 2] < z2 / Bohr)
+        z_r = grid.xyz()[:, :, :, 2]
+        if self.jelliumregion is not None:
+            z1 = relpos_ac[:, 2].max() * L + 3.0 / Bohr
+            z2 = self.jelliumregion.get('top', L - 1.0) / Bohr
+            mask_r.data[:] = np.logical_and(z_r > z1, z_r < z2)
+        else:
+            z_r[z_r > L / 2] -= L
+            mask_r.data[:] = np.exp(-(z_r / 0.5)**2)
+
         if self.target_potential is None:
             jellium = JelliumExtension(
                 mask_r,
