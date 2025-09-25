@@ -257,43 +257,12 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             return psit_nsG
 
     def read_ibz_wave_functions(self, reader):
-        from gpaw.utilities import get_dtype_precision, as_dtype_precision
-
-        stored_precision = reader.get('precision', 'double')
+        from gpaw.utilities import as_dtype_precision
 
         ibzwfs = super().read_ibz_wave_functions(reader)
 
-        def convert_to_target_precision(array):
-            """Convert array to match self.dtype precision.
-
-            Note: PW coefficients are always complex, even for real
-            calculations.
-            """
-            if array is None:
-                return None
-
-            target_precision = get_dtype_precision(self.dtype)
-
-            if (target_precision == 'double' and
-                    array.dtype in [np.complex64, np.float32]):
-                target_dtype = as_dtype_precision(array.dtype, 'double')
-                return np.array(array, dtype=target_dtype)
-            elif (target_precision == 'single' and
-                  array.dtype in [np.complex128, np.float64]):
-                target_dtype = as_dtype_precision(array.dtype, 'single')
-                return np.array(array, dtype=target_dtype)
-            else:
-                return array
-
         if 'coefficients' not in reader.wave_functions:
-            ibzwfs.dtype = self.dtype
             return ibzwfs
-
-        # For G-vector compatibility check, use file's original dtype
-        file_dtype = as_dtype_precision(self.dtype, stored_precision)
-        use_real_fft_layout = None
-        if 'indices' in reader.wave_functions:
-            use_real_fft_layout = np.issubdtype(file_dtype, np.floating)
 
         c = reader.bohr**1.5
         if reader.version < 0:
@@ -301,16 +270,14 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         elif reader.version < 4:
             c /= self.grid.size_c.prod()
 
-        if 'indices' in reader.wave_functions:
-            index_kG = reader.wave_functions.indices
+        index_kG = reader.wave_functions.indices
 
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
             pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
-            if wfs.spin == 0 and 'indices' in reader.wave_functions:
-                check_g_vector_ordering(self.grid, pw, index_kG[wfs.k],
-                                        use_real_fft_layout)
+            if wfs.spin == 0:
+                check_g_vector_ordering(self.grid, pw, index_kG[wfs.k])
 
             index = (wfs.spin, wfs.k) if self.ncomponents != 4 else (wfs.k,)
             data = reader.wave_functions.proxy('coefficients', *index)
@@ -320,7 +287,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                converted_data = convert_to_target_precision(data)
+                # Always convert to double precision
+                double_dtype = as_dtype_precision(data.dtype, 'double')
+                converted_data = np.array(data, dtype=double_dtype)
                 # pw.from_data handles xp conversion
                 wfs.psit_nX = pw.from_data(converted_data)
                 data.shape = orig_shape
@@ -337,33 +306,23 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
-                        array = convert_to_target_precision(array)
+                        # Always convert to double precision
+                        double_dtype = as_dtype_precision(array.dtype, 'double')
+                        array = np.array(array, dtype=double_dtype)
                         # as_xp handles numpy/cupy conversion
                         array = as_xp(array, psit_G.xp)
                     psit_G.scatter_from(array)
 
-        ibzwfs.dtype = self.dtype
         return ibzwfs
 
 
 def check_g_vector_ordering(grid: UGDesc,
                             pw: PWDesc,
-                            index_G: Array1D,
-                            use_real_fft_layout: bool | None = None) -> None:
-    """Verify that stored G-vector indices match expected ordering."""
+                            index_G: Array1D) -> None:
     size = tuple(grid.size)
-
-    # Use real FFT layout if specified, otherwise infer from pw.dtype
-    if use_real_fft_layout is None:
-        use_real_fft_layout = np.issubdtype(pw.dtype, np.floating)
-
-    if use_real_fft_layout:
+    if np.issubdtype(pw.dtype, np.floating):
         size = (size[0], size[1], size[2] // 2 + 1)
-
-    expected_indices = pw.indices(size)
-    nG = len(expected_indices)
-
-    if not (expected_indices == index_G[:nG]).all():
-        raise AssertionError("G-vector ordering mismatch")
-    if not (index_G[nG:] == -1).all():
-        raise AssertionError("Invalid padding in stored G-vector indices")
+    index0_G = pw.indices(size)
+    nG = len(index0_G)
+    assert (index0_G == index_G[:nG]).all()
+    assert (index_G[nG:] == -1).all()
