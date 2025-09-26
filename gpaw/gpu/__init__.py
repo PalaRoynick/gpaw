@@ -2,7 +2,7 @@ from __future__ import annotations
 import contextlib
 import atexit
 from time import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 from types import ModuleType
 from collections.abc import Iterable
 from gpaw.new.timer import trace
@@ -42,8 +42,7 @@ else:
         from cupy.cuda import runtime
         is_hip = runtime.is_hip
         cupy_is_fake = False
-    except ImportError as e:
-        print('Cannot properly load CuPy', e)
+    except ImportError:
         cupy_is_fake = True
         is_hip = False
         import gpaw.gpu.cpupy as cupy
@@ -120,6 +119,12 @@ if not TYPE_CHECKING:
                 assert out.ndim == 2
                 assert out.shape == (m, n)
                 assert out.dtype == dtype
+            if a.size == 0 or b.size == 0:
+                if beta == 0.0:
+                    out[:] = 0
+                else:
+                    out *= beta
+                return out
 
             alpha, alpha_ptr = _get_scalar_ptr(alpha, a.dtype)
             beta, beta_ptr = _get_scalar_ptr(beta, a.dtype)
@@ -244,7 +249,6 @@ def set_device(log):
             nodename = os.uname()[1]
             bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
             device_id = f'{nodename}:{bus_id}'
-            print(f'Device count on {nodename}', device_count)
 
     log(f'mpi rank {rank} has GPU device {device_id}', parallel=True)
 
@@ -280,6 +284,18 @@ except ImportError:
 def synchronize():
     if not cupy_is_fake:
         cupy.cuda.runtime.deviceSynchronize()
+
+
+@contextlib.contextmanager
+def as_numpy(a: np.ndarray | cupy.ndarray
+             ) -> Generator[np.ndarray, None, None]:
+    """Copy array to CPU and back to GPU when done."""
+    if isinstance(a, np.ndarray):
+        yield a
+        return
+    b = a.get()
+    yield b
+    a[:] = cupy.asarray(b)
 
 
 def as_np(array: np.ndarray | cupy.ndarray) -> np.ndarray:

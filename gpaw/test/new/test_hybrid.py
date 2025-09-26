@@ -5,6 +5,7 @@ from gpaw.mpi import size
 import numpy as np
 
 
+@pytest.mark.new_gpaw_ready
 @pytest.mark.hybrids
 def test_pawexxvv():
     from gpaw.hybrids.paw import python_pawexxvv
@@ -66,6 +67,7 @@ def test_h(gpaw_new, dtype):
     atoms.calc = GPAW(mode=dict(name='pw',
                                 force_complex_dtype=dtype is complex),
                       xc='HSE06',
+                      eigensolver='davidson',
                       nbands=2,
                       convergence={'energy': 1e-4})
     e = atoms.get_potential_energy()
