@@ -555,6 +555,11 @@ class GPAW(Calculator):
                 raise ValueError(
                     'Please use new(...) instead of set(...)')
 
+        if self.initialized:
+            warnings.warn(
+                'The set method is deprecated. Please use GPAW.new instead',
+                DeprecationWarning, stacklevel=2)
+
         # Verify that keys are consistent with default ones.
         for key in kwargs:
             if key != 'txt' and key not in self.default_parameters:
