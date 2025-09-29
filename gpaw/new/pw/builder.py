@@ -300,9 +300,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                
                 converted_data = convert_precision(data)
-                    
+
                 wfs.psit_nX = pw.from_data(converted_data)
                 data.shape = orig_shape
             else:
@@ -319,7 +318,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
                         array = convert_precision(array)
-                        
                         array = as_xp(array, psit_G.xp)
                     psit_G.scatter_from(array)
 
