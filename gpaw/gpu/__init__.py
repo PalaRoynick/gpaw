@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Generator
 from types import ModuleType
 from collections.abc import Iterable
 from gpaw.new.timer import trace
+import os
 
 import numpy as np
 import warnings
@@ -216,7 +217,7 @@ if not TYPE_CHECKING:
 
 def set_device(log):
     global device_id
-    from gpaw.mpi import rank
+    from gpaw.mpi import world, rank
     if cupy_is_fake:
         device_id = 'CPU emulation of GPU'
         log(f'mpi rank {rank} has no GPU device!', parallel=True)
@@ -235,22 +236,24 @@ def set_device(log):
             device_count = 0
 
         if device_count > 0:
-            # select GPU device (round-robin based on MPI rank)
-            # if not set, all MPI ranks will use the same default device
-            runtime.setDevice(rank % device_count)
+            # select GPU device based on a node local rank            
+            nodecomm = world.node_communicator()
+            runtime.setDevice(nodecomm.rank % device_count)
+            if nodecomm.size > device_count:
+                # Generate a device id
+                log(f'WARNING: oversubscribing GPUs')
+                nodename = os.uname()[1]
+                bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
+                device_id = f'{nodename}:{bus_id}'
+
+                log(f'mpi rank {rank} has GPU device {device_id}', parallel=True)
+            
 
             # initialise C parameters and memory buffers
             import gpaw.cgpaw as cgpaw
             cgpaw.gpaw_gpu_init()
             atexit.register(cgpaw.gpaw_gpu_delete)
 
-            # Generate a device id
-            import os
-            nodename = os.uname()[1]
-            bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
-            device_id = f'{nodename}:{bus_id}'
-
-    log(f'mpi rank {rank} has GPU device {device_id}', parallel=True)
 
 
 __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
