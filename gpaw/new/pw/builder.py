@@ -257,6 +257,22 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             return psit_nsG
 
     def read_ibz_wave_functions(self, reader):
+        from gpaw.utilities import get_dtype_precision, as_dtype_precision
+
+        def convert_precision(array):
+            """Convert array to match calculation precision."""
+            target_precision = get_dtype_precision(self.dtype)
+            if (target_precision == 'double' and
+                    array.dtype in [np.complex64, np.float32]):
+                target_dtype = as_dtype_precision(array.dtype, 'double')
+                return np.array(array, dtype=target_dtype)
+            elif (target_precision == 'single' and
+                  array.dtype in [np.complex128, np.float64]):
+                target_dtype = as_dtype_precision(array.dtype, 'single')
+                return np.array(array, dtype=target_dtype)
+            else:
+                return array
+
         ibzwfs = super().read_ibz_wave_functions(reader)
 
         if 'coefficients' not in reader.wave_functions:
@@ -269,7 +285,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             c /= self.grid.size_c.prod()
 
         index_kG = reader.wave_functions.indices
-
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
@@ -285,9 +300,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                # Convert to match calculation dtype
-                converted_data = np.array(data, dtype=self.dtype)
-                # pw.from_data handles xp conversion
+                
+                converted_data = convert_precision(data)
+                    
                 wfs.psit_nX = pw.from_data(converted_data)
                 data.shape = orig_shape
             else:
@@ -303,9 +318,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     data = [None] * (n2 - n1)
                 for psit_G, array in zips(wfs.psit_nX, data):
                     if array is not None:
-                        # Convert to match calculation dtype
-                        array = np.array(array, dtype=self.dtype)
-                        # as_xp handles numpy/cupy conversion
+                        array = convert_precision(array)
+                        
                         array = as_xp(array, psit_G.xp)
                     psit_G.scatter_from(array)
 
