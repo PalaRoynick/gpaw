@@ -39,6 +39,10 @@ def test_mpicomm():
     assert subcomm.rank == 0 and subcomm.size == 1
     assert subcomm.get_members().item() == comm.rank
 
+    # node local communicator
+    nodecomm = world.node_communicator()
+    assert nodecomm.get_members()[nodecomm.rank] == world.rank
+
     if debug:
         assert isinstance(world, _Communicator)
         assert isinstance(comm, _Communicator)
@@ -51,3 +55,4 @@ def test_mpicomm():
         assert isinstance(world, cgpaw.Communicator)
         assert isinstance(comm, cgpaw.Communicator)
         assert isinstance(subcomm, cgpaw.Communicator)
+        assert isinstance(nodecomm, cgpaw.Communicator)
