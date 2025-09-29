@@ -30,6 +30,67 @@ def is_contiguous(*args, **kwargs):
     return is_contiguous(*args, **kwargs)
 
 
+from cupy.cuda.memory import Memory, MemoryPointer, MemoryPool
+extra_bytes = 32 * 1024
+
+pool = MemoryPool()
+
+#class GuardedMemory(Memory):
+#    pass
+
+def debug_malloc(size):
+    total_size = 2 * extra_bytes + size
+    pointer = pool.malloc(total_size)
+    fill = cupy.ndarray((total_size,), 
+                        memptr=pointer,
+                        dtype=np.uint8)
+    fill[:] = 85
+    cupy.cuda.runtime.deviceSynchronize()
+    #print('malloc', size)
+    return pointer + extra_bytes
+
+def check_array_mem(a):
+    if not isinstance(a, cupy.ndarray):
+        return
+    mem = a.data.mem
+    #if not isinstance(mem, GuardedMemory):
+    #    print('unguarded memory', mem.size)
+    #    return
+    total_size = mem.size
+    fill = cupy.ndarray((total_size,), 
+                        memptr=MemoryPointer(mem, 0),
+                        dtype=np.uint8)
+    if cupy.all(fill[:extra_bytes] == 85):
+        pass #print('front of buffer correct', a.data.mem.ptr, a.data.mem.size)
+    else:
+        print('front of buffer corrupted', fill[:extra_butes], a.data.mem.ptr, a.data.mem.size)
+        from gpaw.mpi import world
+        f = open('start_corruption_%02d.txt' % world.rank, 'a')
+        s = fill[:extra_bytes].get().tobytes().hex()
+        print(repr(s), file=f)
+        import traceback
+        stack_trace = ''.join(traceback.format_stack())
+        print('^', stack_trace, file=f)
+        f.close()
+        fill[:extra_bytes] = 85
+    if cupy.all(fill[-extra_bytes:] == 85):
+        pass #print('end of buffer correct', a.data.mem.ptr, a.data.mem.size)
+    else:
+        print('end of buffer corrupted', a.data.mem.ptr, a.data.mem.size)
+        i = cupy.argmax(fill[-extra_bytes:] != 85)
+        print('corruption start at', i, fill[-extra_bytes:][i:])
+        from gpaw.mpi import world
+        f = open('end_corruption_%02d.txt' % world.rank, 'a')
+        s = fill[-extra_bytes:][i:].get().tobytes().hex()
+        print('corruption start at', i, file=f)
+        print(repr(s), file=f)
+        import traceback
+        stack_trace = ''.join(traceback.format_stack())
+        print('^', stack_trace, file=f)
+        f.close()
+        fill[-extra_bytes:] = 85
+
+
 class RegisteredPointer:
     """This is a workaround for the MPI race condition in LUMI with MI250X.
 
@@ -42,7 +103,7 @@ class RegisteredPointer:
     """
     def __init__(self, a, _input=True, _output=True, enabled=True):
         self.enabled = enabled and is_hip  # Disable extra transfer on cuda
-
+        check_array_mem(a)
         if not self.enabled:
             self.array = a
             return
@@ -50,7 +111,7 @@ class RegisteredPointer:
         self.a = a
         self._output = _output
         if isinstance(a, cupy.ndarray):
-            if 1:
+            if 0:
                 from cupy.cuda.memory import Memory, MemoryPointer
                 mem = Memory(a.nbytes)  # Direct malloc
                 memptr = MemoryPointer(mem, 0)
@@ -61,7 +122,7 @@ class RegisteredPointer:
                 if _input:
                     self.array[...] = a
             else:
-                self.array = a.copy()  # This SEGFAULTS!
+                self.array = a
         else:
             self.array = a
 
@@ -69,6 +130,7 @@ class RegisteredPointer:
         return self.array
 
     def __exit__(self, *args):
+        check_array_mem(self.array)
         if not self.enabled:
             return
 
@@ -185,7 +247,7 @@ class _Communicator:
                                    _input=True,
                                    _output=((root == -1) or
                                             (root == self.rank))) as a:
-                if root == -1:
+                if 0: #root == -1:
                     self.comm.sum(a, 0)
                     self.comm.broadcast(a, 0)
                 else:
