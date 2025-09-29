@@ -115,8 +115,8 @@ class FDOperator:
             out_xR_cpu = out_xR.data.get()
             self.operator.apply(in_xR.data.get(),
                                 out_xR_cpu,
-                                phase_cd)
-            out_xR[:] = self.xp.asarray(out_xR_cpu)
+                                in_xR.desc.phase_factor_cd)
+            out_xR.data[:] = self.xp.asarray(out_xR_cpu)
             #self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
             #                        in_xR.data.shape, in_xR.data.dtype,
             #                        in_xR.desc.phase_factor_cd)
@@ -145,11 +145,15 @@ class FDOperator:
         elif cupy_is_fake:
             self.operator.relax(relax_method, f_g._data, s_g._data, n, w)
         else:
-            assert 0
-            self.operator.relax_gpu(relax_method,
-                                    f_g.data.ptr,
-                                    s_g.data.ptr,
-                                    n, w)
+            f_g_cpu = f_g.get()
+            s_g_cpu = s_g.get()
+            #self.operator.relax_gpu(relax_method,
+            #                        f_g.data.ptr,
+            #                        s_g.data.ptr,
+            #                        n, w)
+            self.operator.relax(relax_method, f_g_cpu, s_g_cpu, n, w)
+            f_g[:] = self.xp.asarray(f_g_cpu)
+            s_g[:] = self.xp.asarray(s_g_cpu)
 
     def get_diagonal_element(self):
         return self.operator.get_diagonal_element()
