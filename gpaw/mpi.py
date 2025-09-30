@@ -154,8 +154,9 @@ class _Communicator:
             return _Communicator(comm, parent=self)
 
     def node_communicator(self):
-        """Create a new communicator for processes sharing memory, 
-        i.e. within a node, based on MPI_Comm_split_type with MPI_COMM_TYPE_SHARED
+        """Create a new communicator for processes sharing memory,
+        i.e. within a node, based on MPI_Comm_split_type with
+        MPI_COMM_TYPE_SHARED
         """
         comm = self.comm.node_communicator()
         return _Communicator(comm, parent=self)

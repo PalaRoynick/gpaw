@@ -236,24 +236,23 @@ def set_device(log):
             device_count = 0
 
         if device_count > 0:
-            # select GPU device based on a node local rank            
+            # select GPU device based on a node local rank
             nodecomm = world.node_communicator()
             runtime.setDevice(nodecomm.rank % device_count)
             if nodecomm.size > device_count:
                 # Generate a device id
-                log(f'WARNING: oversubscribing GPUs')
+                log('WARNING: oversubscribing GPUs')
                 nodename = os.uname()[1]
                 bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
                 device_id = f'{nodename}:{bus_id}'
 
-                log(f'mpi rank {rank} has GPU device {device_id}', parallel=True)
-            
+                log(f'mpi rank {rank} has GPU device {device_id}',
+                    parallel=True)
 
             # initialise C parameters and memory buffers
             import gpaw.cgpaw as cgpaw
             cgpaw.gpaw_gpu_init()
             atexit.register(cgpaw.gpaw_gpu_delete)
-
 
 
 __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
