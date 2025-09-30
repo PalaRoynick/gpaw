@@ -717,9 +717,9 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
       if (root == -1)
 	{
           maybeSynchronize(aobj);
-          PyErr_SetString(PyExc_RuntimeError,
-                          "MPI_AllReduce disabled.");
-          return NULL;
+          //PyErr_SetString(PyExc_RuntimeError,
+          //                "MPI_AllReduce disabled.");
+          //return NULL;
 #ifdef GPAW_MPI_INPLACE
 	  MPI_Allreduce(MPI_IN_PLACE, Array_BYTES(aobj), n, datatype,
 			operation, self->comm);
