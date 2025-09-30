@@ -35,8 +35,26 @@ extra_bytes = 32 * 1024
 
 pool = MemoryPool()
 
-#class GuardedMemory(Memory):
-#    pass
+"""
+# This will reproduce the memory corruption at the end of buffers
+# probably meaning that one kernel writes 256 bytes before its giver pointer.
+# probably the all reduce kernel.
+
+from gpaw import GPAW
+from ase.build import bulk
+from gpaw.mpi import world, debug_malloc
+import cupy
+cupy.cuda.set_allocator(debug_malloc)
+
+atoms = bulk('Si')
+atoms.rattle(0.1, seed=32)
+atoms.calc = GPAW(mode={'name': 'pw', 'ecut': 320}, kpts=(4,4,4), xc='PBE',
+                  convergence={'density': 1e-6},
+                  parallel=dict(gpu=True, kpt=2))
+from ase.optimize import BFGS
+relax = BFGS(atoms)
+relax.run()
+"""
 
 def debug_malloc(size):
     total_size = 2 * extra_bytes + size
@@ -46,16 +64,12 @@ def debug_malloc(size):
                         dtype=np.uint8)
     fill[:] = 85
     cupy.cuda.runtime.deviceSynchronize()
-    #print('malloc', size)
     return pointer + extra_bytes
 
 def check_array_mem(a):
     if not isinstance(a, cupy.ndarray):
         return
     mem = a.data.mem
-    #if not isinstance(mem, GuardedMemory):
-    #    print('unguarded memory', mem.size)
-    #    return
     total_size = mem.size
     fill = cupy.ndarray((total_size,), 
                         memptr=MemoryPointer(mem, 0),
@@ -63,7 +77,7 @@ def check_array_mem(a):
     if cupy.all(fill[:extra_bytes] == 85):
         pass #print('front of buffer correct', a.data.mem.ptr, a.data.mem.size)
     else:
-        print('front of buffer corrupted', fill[:extra_butes], a.data.mem.ptr, a.data.mem.size)
+        print('front of buffer corrupted', fill[:extra_bytes], a.data.mem.ptr, a.data.mem.size)
         from gpaw.mpi import world
         f = open('start_corruption_%02d.txt' % world.rank, 'a')
         s = fill[:extra_bytes].get().tobytes().hex()
@@ -111,6 +125,9 @@ class RegisteredPointer:
         self.a = a
         self._output = _output
         if isinstance(a, cupy.ndarray):
+            # This extra GPU-GPU copy with direct malloc cured 99.9% of the problem
+            # Perhaps, because malloc always just happened to have 256 bytes free on
+            # its left side?
             if 0:
                 from cupy.cuda.memory import Memory, MemoryPointer
                 mem = Memory(a.nbytes)  # Direct malloc
@@ -122,6 +139,9 @@ class RegisteredPointer:
                 if _input:
                     self.array[...] = a
             else:
+                # With MPICH all reduce use kernel env enabled (default),
+                # and without circumventing all-reduce with reduce+broadcast
+                # this seg faults, and also a.copy() will seg fault
                 self.array = a
         else:
             self.array = a
@@ -243,15 +263,15 @@ class _Communicator:
             # Right now comm.sum is the only place where one needs this
             # extra malloc + intradevice memory copies for HIP and
             # gpu-aware MPI
-            with RegisteredPointer(a, enabled=False,
+            with RegisteredPointer(a, enabled=True,
                                    _input=True,
                                    _output=((root == -1) or
                                             (root == self.rank))) as a:
-                if 0: #root == -1:
+                if 0: #root == -1:  # Enabling root == -1 branch prevents the bug, as no all reduce is called
                     self.comm.sum(a, 0)
                     self.comm.broadcast(a, 0)
                 else:
-                    self.comm.sum(a, root)
+                    self.comm.sum(a, root)  # This is the normal code path
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -313,7 +333,11 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            self.comm.max(a, root)
+            if root == -1:
+                self.comm.max(a, 0)
+                self.comm.broadcast(a, 0)
+            else:
+                self.comm.max(a, root)
 
     def max_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, np.int64))
