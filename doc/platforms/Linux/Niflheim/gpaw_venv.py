@@ -284,15 +284,16 @@ def main():
                 'qeh',
                 'sphinx_rtd_theme',
                 'sphinxcontrib-jquery']
-    if args.piponly:
-        packages += ['matplotlib',
-                     'scipy',
-                     'pandas',
-                     'pytest',
-                     'pytest-xdist',
-                     'pytest-mock',
-                     'scikit-learn']
     run(f'. {activate} && pip install -q -U ' + ' '.join(packages))
+    if args.piponly:
+        morepackages = ['matplotlib',
+                        'scipy',
+                        'pandas',
+                        'pytest',
+                        'pytest-xdist',
+                        'pytest-mock',
+                        'scikit-learn']
+        run(f'ssh {nifllogin[0]} ". {activate} && pip install -q -U ' + ' '.join(morepackages) + '"')
 
     run('git clone -q https://gitlab.com/ase/ase.git')
     branch = '' if args.gpaw_branch == 'master' else f'-b {args.gpaw_branch} '
