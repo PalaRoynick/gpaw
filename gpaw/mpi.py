@@ -30,10 +30,6 @@ def is_contiguous(*args, **kwargs):
     return is_contiguous(*args, **kwargs)
 
 
-from cupy.cuda.memory import Memory, MemoryPointer, MemoryPool
-extra_bytes = 32 * 1024
-
-pool = MemoryPool()
 
 """
 # This will reproduce the memory corruption at the end of buffers
@@ -42,7 +38,7 @@ pool = MemoryPool()
 
 from gpaw import GPAW
 from ase.build import bulk
-from gpaw.mpi import world, debug_malloc
+from gpaw.mpi import world, GPUMemoryGuard
 import cupy
 cupy.cuda.set_allocator(debug_malloc)
 
@@ -53,109 +49,87 @@ atoms.calc = GPAW(mode={'name': 'pw', 'ecut': 320}, kpts=(4,4,4), xc='PBE',
                   parallel=dict(gpu=True, kpt=2))
 from ase.optimize import BFGS
 relax = BFGS(atoms)
-relax.run()
+with GPUMemoryGuard(2048):
+    relax.run()
 """
 
-def debug_malloc(size):
-    total_size = 2 * extra_bytes + size
-    pointer = pool.malloc(total_size)
-    fill = cupy.ndarray((total_size,), 
-                        memptr=pointer,
-                        dtype=np.uint8)
-    fill[:] = 85
-    cupy.cuda.runtime.deviceSynchronize()
-    return pointer + extra_bytes
+from contextlib import contextmanager
+from cupy.cuda.memory import get_allocator
+import traceback
+import sys
+   
+def get_debug_malloc(pool, extra_bytes): 
+    def debug_malloc(size):
+        total_size = 2 * extra_bytes + size
+        pointer = pool.malloc(total_size)
+        fill = cupy.ndarray((total_size,), 
+                            memptr=pointer,
+                            dtype=np.uint8)
+
+        fill[:] = 85
+        # synchronize not really necessary but just in case for MPI stuff
+        cupy.cuda.runtime.deviceSynchronize()
+        return pointer + extra_bytes
+    return debug_malloc
+
+
+@contextmanager
+def GPUMemoryGuard(extra_bytes=1024):
+    from cupy.cuda.memory import Memory, MemoryPointer, MemoryPool
+    pool = MemoryPool()
+    old_allocator = get_allocator()
+    cupy.cuda.set_allocator(get_debug_malloc(pool, extra_bytes))
+
+    def check_array_mem(a):
+        if not isinstance(a, cupy.ndarray):
+            return
+        mem = a.data.mem
+        total_size = mem.size
+        fill = cupy.ndarray((total_size,), 
+                            memptr=MemoryPointer(mem, 0),
+                            dtype=np.uint8)
+        if cupy.all(fill[:extra_bytes] == 85):
+            pass #print('front of buffer correct', a.data.mem.ptr, a.data.mem.size)
+        else:
+            print('front of buffer corrupted', fill[:extra_bytes], a.data.mem.ptr, a.data.mem.size)
+            from gpaw.mpi import world
+            f = open('start_corruption_%02d.txt' % world.rank, 'a')
+            s = fill[:extra_bytes].get().tobytes().hex()
+            print(repr(s), file=f)
+            stack_trace = ''.join(traceback.format_stack())
+            print('^', stack_trace, file=f)
+            f.close()
+
+            # Refill to not to trigger again
+            fill[:extra_bytes] = 85
+
+        if cupy.all(fill[-extra_bytes:] == 85):
+            pass #print('end of buffer correct', a.data.mem.ptr, a.data.mem.size)
+        else:
+            print('end of buffer corrupted', a.data.mem.ptr, a.data.mem.size)
+            i = cupy.argmax(fill[-extra_bytes:] != 85)
+            print('corruption start at', i, fill[-extra_bytes:][i:])
+            from gpaw.mpi import world
+            f = open('end_corruption_%02d.txt' % world.rank, 'a')
+            s = fill[-extra_bytes:][i:].get().tobytes().hex()
+            print('corruption start at', i, 'which means', extra_bytes-i, 'bytes from the end of the buffer', file=f)
+            print(repr(s), file=f)
+            stack_trace = ''.join(traceback.format_stack())
+            print('^', stack_trace, file=f)
+            f.close()
+
+            # Refill to not to trigger again
+            fill[-extra_bytes:] = 85
+
+
+    globals()['check_array_mem'] = check_array_mem
+    yield
+    globals()['check_array_mem'] = lambda a: None 
+    cupy.cuda.set_allocator(old_allocator)
+
 
 def check_array_mem(a):
-    if not isinstance(a, cupy.ndarray):
-        return
-    mem = a.data.mem
-    total_size = mem.size
-    fill = cupy.ndarray((total_size,), 
-                        memptr=MemoryPointer(mem, 0),
-                        dtype=np.uint8)
-    if cupy.all(fill[:extra_bytes] == 85):
-        pass #print('front of buffer correct', a.data.mem.ptr, a.data.mem.size)
-    else:
-        print('front of buffer corrupted', fill[:extra_bytes], a.data.mem.ptr, a.data.mem.size)
-        from gpaw.mpi import world
-        f = open('start_corruption_%02d.txt' % world.rank, 'a')
-        s = fill[:extra_bytes].get().tobytes().hex()
-        print(repr(s), file=f)
-        import traceback
-        stack_trace = ''.join(traceback.format_stack())
-        print('^', stack_trace, file=f)
-        f.close()
-        fill[:extra_bytes] = 85
-    if cupy.all(fill[-extra_bytes:] == 85):
-        pass #print('end of buffer correct', a.data.mem.ptr, a.data.mem.size)
-    else:
-        print('end of buffer corrupted', a.data.mem.ptr, a.data.mem.size)
-        i = cupy.argmax(fill[-extra_bytes:] != 85)
-        print('corruption start at', i, fill[-extra_bytes:][i:])
-        from gpaw.mpi import world
-        f = open('end_corruption_%02d.txt' % world.rank, 'a')
-        s = fill[-extra_bytes:][i:].get().tobytes().hex()
-        print('corruption start at', i, file=f)
-        print(repr(s), file=f)
-        import traceback
-        stack_trace = ''.join(traceback.format_stack())
-        print('^', stack_trace, file=f)
-        f.close()
-        fill[-extra_bytes:] = 85
-
-
-class RegisteredPointer:
-    """This is a workaround for the MPI race condition in LUMI with MI250X.
-
-       MPI Transferred data will be corrupted including data which is never
-       even sent trough MPI. If one performs a direct hipMalloc (as done
-       by doing Memory, and doing GPU-GPU transfer, this works around this
-       behaviour (for a currently unknown reason, but perhaps open-mpi or hip
-       has problems identifying GPU pointers, but the reason could also be
-       somewhere in GPAW equally well).
-    """
-    def __init__(self, a, _input=True, _output=True, enabled=True):
-        self.enabled = enabled and is_hip  # Disable extra transfer on cuda
-        check_array_mem(a)
-        if not self.enabled:
-            self.array = a
-            return
-
-        self.a = a
-        self._output = _output
-        if isinstance(a, cupy.ndarray):
-            # This extra GPU-GPU copy with direct malloc cured 99.9% of the problem
-            # Perhaps, because malloc always just happened to have 256 bytes free on
-            # its left side?
-            if 0:
-                from cupy.cuda.memory import Memory, MemoryPointer
-                mem = Memory(a.nbytes)  # Direct malloc
-                memptr = MemoryPointer(mem, 0)
-                self.array = cupy.ndarray(a.shape,
-                                          memptr=memptr,
-                                          dtype=a.dtype,
-                                          strides=a.strides)
-                if _input:
-                    self.array[...] = a
-            else:
-                # With MPICH all reduce use kernel env enabled (default),
-                # and without circumventing all-reduce with reduce+broadcast
-                # this seg faults, and also a.copy() will seg fault
-                self.array = a
-        else:
-            self.array = a
-
-    def __enter__(self):
-        return self.array
-
-    def __exit__(self, *args):
-        check_array_mem(self.array)
-        if not self.enabled:
-            return
-
-        if self._output and isinstance(self.a, cupy.ndarray):
-            self.a[...] = self.array
+    pass
 
 
 @contextmanager
@@ -259,19 +233,14 @@ class _Communicator:
             # assert a.ndim != 0
             tc = a.dtype
             assert is_contiguous(a, tc)
+            check_array_mem(a)
             assert root == -1 or 0 <= root < self.size
-            # Right now comm.sum is the only place where one needs this
-            # extra malloc + intradevice memory copies for HIP and
-            # gpu-aware MPI
-            with RegisteredPointer(a, enabled=True,
-                                   _input=True,
-                                   _output=((root == -1) or
-                                            (root == self.rank))) as a:
-                if 0: #root == -1:  # Enabling root == -1 branch prevents the bug, as no all reduce is called
-                    self.comm.sum(a, 0)
-                    self.comm.broadcast(a, 0)
-                else:
-                    self.comm.sum(a, root)  # This is the normal code path
+            if 0: #root == -1:  # Enabling root == -1 branch prevents the bug, as no all reduce is called
+                self.comm.sum(a, 0)
+                self.comm.broadcast(a, 0)
+            else:
+                self.comm.sum(a, root)  # This is the normal code path
+            check_array_mem(a)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -370,8 +339,9 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            with RegisteredPointer(a, enabled=False) as a:
-                self.comm.min(a, root)
+            check_array_mem(a)
+            self.comm.min(a, root)
+            check_array_mem(a)
 
     def min_scalar(self, a, root=-1):
         assert isinstance(a, (int, float))
@@ -467,8 +437,12 @@ class _Communicator:
         assert np.all(0 <= rdispls)
         assert np.all(sdispls + scounts <= sbuffer.size)
         assert np.all(rdispls + rcounts <= rbuffer.size)
+        check_array_mem(sbuffer)
+        check_array_mem(rbuffer)
         self.comm.alltoallv(sbuffer, scounts, sdispls,
                             rbuffer, rcounts, rdispls)
+        check_array_mem(sbuffer)
+        check_array_mem(rbuffer)
 
     def all_gather(self, a, b):
         """Gather data from all ranks onto all processes in a group.
@@ -513,7 +487,11 @@ class _Communicator:
         assert b.dtype == a.dtype
         assert (b.shape[0] == self.size and a.shape == b.shape[1:] or
                 a.size * self.size == b.size)
+        check_array_mem(a)
+        check_array_mem(b)
         self.comm.all_gather(a, b)
+        check_array_mem(a)
+        check_array_mem(b)
 
     def gather(self, a, root, b=None):
         """Gather data from all ranks onto a single process in a group.
@@ -612,7 +590,9 @@ class _Communicator:
         """
         assert 0 <= root < self.size
         assert is_contiguous(a)
+        check_array_mem(a)
         self.comm.broadcast(a, root)
+        check_array_mem(a)
 
     def sendreceive(self, a, dest, b, src, sendtag=123, recvtag=123):
         assert 0 <= dest < self.size
@@ -621,6 +601,8 @@ class _Communicator:
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(b)
+        check_array_mem(a)
+        check_array_mem(b)
         return self.comm.sendreceive(a, dest, b, src, sendtag, recvtag)
 
     def send(self, a, dest, tag=123, block=True):
@@ -629,18 +611,21 @@ class _Communicator:
         assert is_contiguous(a)
         if not block:
             pass  # assert sys.getrefcount(a) > 3
+        check_array_mem(a)
         return self.comm.send(a, dest, tag, block)
 
     def ssend(self, a, dest, tag=123):
         assert 0 <= dest < self.size
         assert dest != self.rank
         assert is_contiguous(a)
+        check_array_mem(a)
         return self.comm.ssend(a, dest, tag)
 
     def receive(self, a, src, tag=123, block=True):
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(a)
+        check_array_mem(a)
         return self.comm.receive(a, src, tag, block)
 
     def test(self, request):
