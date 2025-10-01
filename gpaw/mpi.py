@@ -54,7 +54,6 @@ with GPUMemoryGuard(2048):
 """
 
 from contextlib import contextmanager
-from cupy.cuda.memory import get_allocator
 import traceback
 import sys
    
@@ -76,6 +75,7 @@ def get_debug_malloc(pool, extra_bytes):
 @contextmanager
 def GPUMemoryGuard(extra_bytes=1024):
     from cupy.cuda.memory import Memory, MemoryPointer, MemoryPool
+    from cupy.cuda.memory import get_allocator
     pool = MemoryPool()
     old_allocator = get_allocator()
     cupy.cuda.set_allocator(get_debug_malloc(pool, extra_bytes))
