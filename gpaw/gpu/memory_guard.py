@@ -35,10 +35,6 @@ from cupy.cuda.memory import _malloc
 
 def get_debug_malloc(pool, front_bytes, back_bytes, print_malloc):
     pool_ptr = defaultdict(int)
-    if pool:
-        # CuPy MemoryPool disregards MemoryPointer offset
-        # and just extracts mem with offset 0, so offset must be 0.
-        assert front_bytes == 0
  
     def debug_malloc(size):
         total_size = front_bytes + back_bytes + size
@@ -62,12 +58,17 @@ def get_debug_malloc(pool, front_bytes, back_bytes, print_malloc):
     return debug_malloc
 
 
-guard = None
+class GuardContext:
+    def check_array_mem(self, a):
+        if _guard is not None:
+            _guard.check_array_mem(a)
+
+
+guard = GuardContext()
+_guard = None
 
 @contextmanager
-def GPUMemoryGuard(front_bytes=None, back_bytes=1024, pooled=True, print_malloc=False):
-    if front_bytes is None:
-        front_bytes = 0 if pooled else 1024
+def GPUMemoryGuard(front_bytes=1024, back_bytes=1024, pooled=True, print_malloc=False, abort=True):
     
     from cupy.cuda.memory import MemoryPointer, MemoryPool
     from cupy.cuda.memory import get_allocator
@@ -78,7 +79,6 @@ def GPUMemoryGuard(front_bytes=None, back_bytes=1024, pooled=True, print_malloc=
 
     class Guard:
         def check_array_mem(self, a):
-            print('Checking array mem')
             if not isinstance(a, cupy.ndarray):
                 return
             mem = a.data.mem
@@ -87,6 +87,8 @@ def GPUMemoryGuard(front_bytes=None, back_bytes=1024, pooled=True, print_malloc=
             fill = cupy.ndarray((total_size,),
                                 memptr=MemoryPointer(mem, 0),
                                 dtype=np.uint8)
+
+            fault = False
             if cupy.all(fill[:front_bytes] == 85):
                 # print('front of buffer correct', a.data.mem.ptr, a.data.mem.size)
                 pass
@@ -100,9 +102,7 @@ def GPUMemoryGuard(front_bytes=None, back_bytes=1024, pooled=True, print_malloc=
                 stack_trace = ''.join(traceback.format_stack())
                 print('^', stack_trace, file=f)
                 f.close()
-
-                # Refill to not to trigger again
-                fill[:front_bytes] = 85
+                fault = True
 
             if cupy.all(fill[-back_bytes:] == 85):
                 # print('end of buffer correct', a.data.mem.ptr, a.data.mem.size)
@@ -122,14 +122,32 @@ def GPUMemoryGuard(front_bytes=None, back_bytes=1024, pooled=True, print_malloc=
                 stack_trace = ''.join(traceback.format_stack())
                 print('^', stack_trace, file=f)
                 f.close()
+                fault = True
 
-                from code import interact
-                interact(local=locals())
-
+            if fault:
+                if abort:
+                    raise RuntimeError('Memory corruption detected.')
                 # Refill to not to trigger again
                 fill[-back_bytes:] = 85
+                fill[:front_bytes] = 85
+
     _guard = Guard()
-    globals()['guard'] = _guard
-    yield _guard
-    globals()['guard'] = lambda a: None
+    globals()['_guard'] = _guard
+    if pooled:
+        from cupy.cuda.memory_hook import MemoryHook
+        from cupy.cuda.memory import UnownedMemory, MemoryPointer
+        class PrefillPooledMemory(MemoryHook):
+            name = 'PrefillPooledMemory'
+            def free_preprocess(self, *, device_id, mem_size, mem_ptr, pmem_id):
+                mem = UnownedMemory(mem_ptr, mem_size, self, device_id)
+                ptr = MemoryPointer(mem, 0)
+                fill = cupy.ndarray((mem_size,),
+                                    memptr=ptr,
+                                    dtype=np.uint8)
+                fill[:] = 85
+        with PrefillPooledMemory():
+            yield _guard
+    else:
+        yield _guard
+    globals()['_guard'] = lambda a: None
     cupy.cuda.set_allocator(old_allocator)
