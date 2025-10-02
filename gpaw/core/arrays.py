@@ -11,7 +11,7 @@ from gpaw.mpi import MPIComm
 from gpaw.typing import Array1D, Self, ArrayND
 from gpaw.gpu import XP
 from gpaw.new import trace
-from gpaw import MPI4PY
+from gpaw import GPAW_MPI4PY
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -188,18 +188,18 @@ class DistributedArrays(Generic[DomainType], XP):
 
         """Create arrays for MPI alltoallv call."""
         # Arrays for switching domain to band decomposition.
-        d2b_sizes = buffersize // size
+        d2b_sizes = np.repeat(buffersize // size, size)
         d2b_offsets = np.append([0,], np.cumsum(d2b_sizes[:-1]))
         
         #b2d_sizes = np.array(mybands * ((maxnX + size - 1 - np.arange(size)) // size), int)
         #b2d_offsets = np.append([0,], np.cumsum(b2d_sizes[:-1]))
 
-        print(d2b_sizes, d2b_offsets, b2d_sizes, b2d_offsets, rank)
         if not GPAW_MPI4PY:
-            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
-            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
         else:
-            
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
  
     @property
     def matrix(self) -> Matrix:
