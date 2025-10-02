@@ -10,6 +10,7 @@ import traceback
 from contextlib import contextmanager
 from typing import Any
 
+import gpaw.cgpaw as cgpaw
 import numpy as np
 import warnings
 from ase.parallel import MPI as ASE_MPI
@@ -631,7 +632,7 @@ class _Communicator:
         This method corresponds to MPI_Comm_compare."""
         if isinstance(self.comm, SerialCommunicator):
             return self.comm.compare(othercomm.comm)  # argh!
-        result = self.comm.compare(othercomm.comm)
+        result = self.comm.compare(othercomm.get_c_object())
         assert result in ['ident', 'congruent', 'similar', 'unequal']
         return result
 
@@ -649,7 +650,7 @@ class _Communicator:
         assert all(rank < self.size for rank in ranks)
         if isinstance(self.comm, SerialCommunicator):
             return self.comm.translate_ranks(other.comm, ranks)  # argh!
-        otherranks = self.comm.translate_ranks(other.comm, ranks)
+        otherranks = self.comm.translate_ranks(other.get_c_object(), ranks)
         assert all(-1 <= rank for rank in otherranks)
         assert ranks.dtype == otherranks.dtype
         return otherranks
@@ -685,10 +686,10 @@ class _Communicator:
         implementation which returns itself; thus, always call
         comm.get_c_object() and pass the resulting object to the C code.
         """
-        # c_obj = self.comm.get_c_object()
-        # if isinstance(c_obj, cgpaw.Communicator):
-        #     return c_obj
-        return self.comm.get_c_object()
+        c_obj = self.comm.get_c_object()
+        if isinstance(c_obj, cgpaw.Communicator):
+            return c_obj
+        return c_obj.get_c_object()
 
 
 MPIComm = _Communicator  # for type hints
@@ -802,7 +803,7 @@ class SerialCommunicator:
     def get_c_object(self):
         if gpaw.dry_run:
             return None  # won't actually be passed to C
-        return _world.get_c_object()
+        return _world
 
 
 _serial_comm = SerialCommunicator()

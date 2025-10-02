@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from gpaw.mpi import world
+from ase.parallel import world
 from gpaw.utilities import compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
 from gpaw.eigensolvers.diagonalizerbackend import (

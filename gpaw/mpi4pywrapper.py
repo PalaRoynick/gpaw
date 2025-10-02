@@ -1,10 +1,7 @@
 try:
-    from mpi4py.MPI import (Request, SUM, MAX, MIN, IN_PLACE, IDENT,
-                            CONGRUENT, SIMILAR, UNEQUAL, _addressof)
+    from mpi4py.MPI import Request, SUM, MAX, IN_PLACE
 except ImportError:
     pass
-
-import numpy as np
 
 
 class MPI4PYWrapper:
@@ -25,9 +22,6 @@ class MPI4PYWrapper:
     def max_scalar(self, a, root=-1):
         return self.sum_scalar(a, root=-1, _op=MAX)
 
-    def min_scalar(self, a, root=-1):
-        return self.sum_scalar(a, root=-1, _op=MIN)
-
     def sum_scalar(self, a, root=-1, _op=None):
         if _op is None:
             _op = SUM
@@ -45,24 +39,6 @@ class MPI4PYWrapper:
                 self.comm.Reduce(IN_PLACE, a, root=root, op=SUM)
             else:
                 self.comm.Reduce(a, None, root=root, op=SUM)
-
-    def max(self, a, root=-1):
-        if root == -1:
-            self.comm.Allreduce(IN_PLACE, a, op=MAX)
-        else:
-            if root == self.rank:
-                self.comm.Reduce(IN_PLACE, a, root=root, op=MAX)
-            else:
-                self.comm.Reduce(a, None, root=root, op=MAX)
-
-    def min(self, a, root=-1):
-        if root == -1:
-            self.comm.Allreduce(IN_PLACE, a, op=MIN)
-        else:
-            if root == self.rank:
-                self.comm.Reduce(IN_PLACE, a, root=root, op=MIN)
-            else:
-                self.comm.Reduce(a, None, root=root, op=MIN)
 
     def scatter(self, a, b, root):
         self.comm.Scatter(a, b, root)
@@ -116,29 +92,5 @@ class MPI4PYWrapper:
     def barrier(self):
         self.comm.barrier()
 
-    def abort(self, errcode):
-        self.comm.Abort(errcode)
-
-    def compare(self, othercomm):
-        code = self.comm.Compare(othercomm.comm)
-        if code == IDENT:
-            return 'ident'
-        elif code == CONGRUENT:
-            return 'congruent'
-        elif code == SIMILAR:
-            return 'similar'
-        elif code == UNEQUAL:
-            return 'unequal'
-        else:
-            raise ValueError(f'Unknown compare code {code}')
-
-    def translate_ranks(self, other, ranks):
-        return np.array(
-            self.comm.Get_group().Translate_ranks(ranks,
-                                                  other.comm.Get_group()))
-
-    def get_members(self):
-        return self.translate_ranks(self.parent, np.arange(self.size))
-
     def get_c_object(self):
-        return _addressof(self.comm)
+        return self.comm
