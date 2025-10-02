@@ -11,6 +11,7 @@ from gpaw.mpi import MPIComm
 from gpaw.typing import Array1D, Self, ArrayND
 from gpaw.gpu import XP
 from gpaw.new import trace
+from gpaw import MPI4PY
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -67,11 +68,20 @@ class DistributedArrays(Generic[DomainType], XP):
             self.mydims = ()
 
         fullshape = self.mydims + self.myshape
+        mynX = int(np.prod(self.myshape))
+        maxnX = domain_comm.max_scalar(mynX)
+        if self.mydims:
+            nbands = np.prod(self.mydims)
+        else:
+            nbands = 1
+        maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
+        print(mynX, maxnX, nbands, maxbands)
+        buffersize = maxbands * maxnX * domain_comm.size
 
         if data is not None:
-            if data.shape != fullshape:
+            if data.size != buffersize:
                 raise ValueError(
-                    f'Bad shape for data: {data.shape} != {fullshape}')
+                    f'Data buffer wrong size: {data.size} != {buffersize}')
             if data.dtype != dtype:
                 raise ValueError(
                     f'Bad dtype for data: {data.dtype} != {dtype}')
@@ -79,9 +89,10 @@ class DistributedArrays(Generic[DomainType], XP):
                 assert (xp is np) == isinstance(
                     data, (np.ndarray, NDArrayReader)), xp
         else:
-            data = (xp or np).empty(fullshape, dtype)
+            data = (xp or np).empty(buffersize, dtype)
 
-        self.data = data
+        self.data_buffer = data
+        self.data = data[:np.prod(fullshape)].reshape(fullshape)
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:
@@ -158,6 +169,38 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             return self.new(data=xp.asarray(self.data))
 
+    def domain_a2a_bands(self):
+        """Convert domain decomposition to band decomposition, and
+        vice versa."""
+        maxnX = np.prod(self.desc.shape)
+        mynX = np.prod(self.myshape)
+        comm = self.desc.comm
+        size = comm.size
+        rank = comm.rank
+        print(np.prod(self.dims), maxnX, size)        
+        mysize = np.prod(self.mydims + self.myshape)
+        nbands = np.prod(self.mydims)
+        
+        # Required buffersize:
+        mybands = (nbands + size - 1 - rank) // size
+        buffersize = self.data_buffer.size
+        #assert self.data_buffer.size == buffersize, f'{self.data_buffer.size} != {buffersize}'
+
+        """Create arrays for MPI alltoallv call."""
+        # Arrays for switching domain to band decomposition.
+        d2b_sizes = buffersize // size
+        d2b_offsets = np.append([0,], np.cumsum(d2b_sizes[:-1]))
+        
+        #b2d_sizes = np.array(mybands * ((maxnX + size - 1 - np.arange(size)) // size), int)
+        #b2d_offsets = np.append([0,], np.cumsum(b2d_sizes[:-1]))
+
+        print(d2b_sizes, d2b_offsets, b2d_sizes, b2d_offsets, rank)
+        if not GPAW_MPI4PY:
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+        else:
+            
+ 
     @property
     def matrix(self) -> Matrix:
         if self._matrix is not None:

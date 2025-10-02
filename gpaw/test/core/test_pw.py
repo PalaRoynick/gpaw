@@ -174,3 +174,13 @@ def test_morph():
     b = a.morph(pw2)
     c = b.morph(pw1)
     assert (a.data == c.data).all()
+
+
+def test_a2a():
+    pw = PWDesc(ecut=20, cell=[1, 1, 1], comm=world)
+    a = pw.empty(5)
+    a.randomize()
+    b = a.copy()
+    a.domain_a2a_bands()
+    
+    assert np.all(a.data == b.data), f"{a.data} != {b.data}"

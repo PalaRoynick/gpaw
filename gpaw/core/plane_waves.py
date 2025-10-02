@@ -341,18 +341,18 @@ class PWArray(DistributedArrays[PWDesc]):
         """
         if data is None:
             assert dims is None
-            data = self.xp.empty_like(self.data)
+            data_buffer = self.xp.empty_like(self.data_buffer)
         else:
             if dims is None:
                 # Number of plane-waves depends on the k-point.  We therefore
                 # allow for data to be bigger than needed:
-                data = data.ravel()[:self.data.size].reshape(self.data.shape)
+                data_buffer = data.ravel()[:self.data_buffer.size].reshape(self.data_buffer.shape)
             else:
-                return PWArray(self.desc, dims, self.comm, data)
+                return PWArray(self.desc, dims, self.comm, data_buffer)
         return PWArray(self.desc,
                        self.dims,
                        self.comm,
-                       data)
+                       data_buffer)
 
     def copy(self):
         """Create a copy (surprise!)."""
