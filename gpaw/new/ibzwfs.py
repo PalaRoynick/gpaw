@@ -398,17 +398,13 @@ class IBZWaveFunctions(Generic[WFT]):
                                 buf_nX[..., x:] = 0.0
                                 coef_nX = buf_nX
                         if rank == 0:
-                            coef_nX = flags.to_storage_dtype(coef_nX)
-                            # Convert c to the same dtype as coef_nX
-                            c_converted = np.asarray(c, dtype=coef_nX.dtype)
-                            writer.fill(coef_nX * c_converted)
+                            writer.fill(flags.to_storage_dtype(coef_nX * c))
                         else:
                             self.kpt_comm.send(coef_nX, 0)
                 elif self.comm.rank == 0:
                     self.kpt_comm.receive(buf_nX, rank)
-                    buf_nX = flags.to_storage_dtype(buf_nX)
-                    c_converted = np.asarray(c, dtype=buf_nX.dtype)
-                    writer.fill(buf_nX * c_converted)
+                    writer.fill(flags.to_storage_dtype(buf_nX * c))
+
 
     def write_summary(self, log):
         fl = self.fermi_levels * Ha
