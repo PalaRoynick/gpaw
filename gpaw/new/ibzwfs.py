@@ -405,7 +405,6 @@ class IBZWaveFunctions(Generic[WFT]):
                     self.kpt_comm.receive(buf_nX, rank)
                     writer.fill(flags.to_storage_dtype(buf_nX * c))
 
-
     def write_summary(self, log):
         fl = self.fermi_levels * Ha
         if len(fl) == 1:
