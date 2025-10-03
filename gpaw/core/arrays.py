@@ -11,7 +11,6 @@ from gpaw.mpi import MPIComm
 from gpaw.typing import Array1D, Self, ArrayND
 from gpaw.gpu import XP
 from gpaw.new import trace
-from gpaw import GPAW_MPI4PY
 
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
@@ -76,7 +75,6 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             nbands = 1
         maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
-        print(mynX, maxnX, nbands, maxbands)
         buffersize = maxbands * maxnX * domain_comm.size
 
         if data is not None:

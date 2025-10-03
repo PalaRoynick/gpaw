@@ -348,7 +348,7 @@ class PWArray(DistributedArrays[PWDesc]):
                 # allow for data to be bigger than needed:
                 data_buffer = data.ravel()[:self.data_buffer.size].reshape(self.data_buffer.shape)
             else:
-                return PWArray(self.desc, dims, self.comm, data_buffer)
+                return PWArray(self.desc, dims, self.comm, data)
         return PWArray(self.desc,
                        self.dims,
                        self.comm,
