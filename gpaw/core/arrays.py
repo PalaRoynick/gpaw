@@ -53,7 +53,6 @@ class DistributedArrays(Generic[DomainType], XP):
         self.comm = comm
         self.domain_comm = domain_comm
         self.dv = dv
-        self.band_distributed = False
 
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
@@ -176,28 +175,29 @@ class DistributedArrays(Generic[DomainType], XP):
         comm = self.desc.comm
         size = comm.size
         rank = comm.rank
-  
+        print(np.prod(self.dims), maxnX, size)        
         mysize = np.prod(self.mydims + self.myshape)
         nbands = np.prod(self.mydims)
-
+        
         # Required buffersize:
         mybands = (nbands + size - 1 - rank) // size
         buffersize = self.data_buffer.size
+        #assert self.data_buffer.size == buffersize, f'{self.data_buffer.size} != {buffersize}'
 
         """Create arrays for MPI alltoallv call."""
         # Arrays for switching domain to band decomposition.
         d2b_sizes = np.repeat(buffersize // size, size)
         d2b_offsets = np.append([0,], np.cumsum(d2b_sizes[:-1]))
-        comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
         
-        # Change views, comm, desc, etc
-        self.band_distributed = not self.band_distributed
-        if self.band_distributed:
-            self.data = self.data_buffer[:mybands * maxnX].reshape((mybands,) + self.desc.shape)
-            self._matrix = None
+        #b2d_sizes = np.array(mybands * ((maxnX + size - 1 - np.arange(size)) // size), int)
+        #b2d_offsets = np.append([0,], np.cumsum(b2d_sizes[:-1]))
+
+        if not GPAW_MPI4PY:
+            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
         else:
-            self.data = self.data_buffer[:nbands * mynX].reshape(self.mydims + self.myshape)
-            self._matrix = None
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
  
     @property
     def matrix(self) -> Matrix:
