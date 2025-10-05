@@ -68,7 +68,7 @@ guard = GuardContext()
 _guard = None
 
 @contextmanager
-def GPUMemoryGuard(front_bytes=1024, back_bytes=1024, pooled=True, print_malloc=False, abort=True):
+def GPUMemoryGuard(front_bytes=1024, back_bytes=1024, pooled=False, print_malloc=False, abort=True):
     
     from cupy.cuda.memory import MemoryPointer, MemoryPool
     from cupy.cuda.memory import get_allocator
