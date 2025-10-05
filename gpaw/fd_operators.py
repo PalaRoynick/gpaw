@@ -112,9 +112,14 @@ class FDOperator:
         else:
             assert isinstance(in_xR.data, self.xp.ndarray)
             assert isinstance(out_xR.data, self.xp.ndarray)
-            self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
-                                    in_xR.data.shape, in_xR.data.dtype,
-                                    in_xR.desc.phase_factor_cd)
+            out_xR_cpu = out_xR.data.get()
+            self.operator.apply(in_xR.data.get(),
+                                out_xR_cpu,
+                                in_xR.desc.phase_factor_cd)
+            out_xR.data[:] = self.xp.asarray(out_xR_cpu)
+            #self.operator.apply_gpu(in_xR.data.data.ptr, out_xR.data.data.ptr,
+            #                        in_xR.data.shape, in_xR.data.dtype,
+            #                        in_xR.desc.phase_factor_cd)
         return out_xR
 
     def apply(self, in_xg, out_xg, phase_cd=None):
@@ -125,9 +130,14 @@ class FDOperator:
             self.operator.apply(in_xg._data, out_xg._data,
                                 phase_cd)
         else:
-            self.operator.apply_gpu(in_xg.data.ptr,
-                                    out_xg.data.ptr,
-                                    in_xg.shape, in_xg.dtype, phase_cd)
+            out_xg_cpu = out_xg.get()
+            self.operator.apply(in_xg.get(),
+                                out_xg_cpu,
+                                phase_cd)
+            out_xg[:] = self.xp.asarray(out_xg_cpu)
+            #self.operator.apply_gpu(in_xg.data.ptr,
+            #                        out_xg.data.ptr,
+            #                        in_xg.shape, in_xg.dtype, phase_cd)
 
     def relax(self, relax_method, f_g, s_g, n, w=None):
         if self.xp is np:
@@ -135,10 +145,15 @@ class FDOperator:
         elif cupy_is_fake:
             self.operator.relax(relax_method, f_g._data, s_g._data, n, w)
         else:
-            self.operator.relax_gpu(relax_method,
-                                    f_g.data.ptr,
-                                    s_g.data.ptr,
-                                    n, w)
+            f_g_cpu = f_g.get()
+            s_g_cpu = s_g.get()
+            #self.operator.relax_gpu(relax_method,
+            #                        f_g.data.ptr,
+            #                        s_g.data.ptr,
+            #                        n, w)
+            self.operator.relax(relax_method, f_g_cpu, s_g_cpu, n, w)
+            f_g[:] = self.xp.asarray(f_g_cpu)
+            s_g[:] = self.xp.asarray(s_g_cpu)
 
     def get_diagonal_element(self):
         return self.operator.get_diagonal_element()

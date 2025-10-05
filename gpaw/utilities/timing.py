@@ -8,7 +8,6 @@ import math
 import numpy as np
 from ase.utils.timing import Timer
 
-import gpaw.mpi as mpi
 
 
 class NullTimer:
@@ -52,6 +51,7 @@ nulltimer = NullTimer()
 
 class DebugTimer(Timer):
     def __init__(self, print_levels=1000, comm=None, txt=sys.stdout):
+        from gpaw import mpi
         comm = comm or mpi.world
         Timer.__init__(self, print_levels)
         ndigits = 1 + int(math.log10(comm.size))

@@ -9,6 +9,7 @@ import time
 import traceback
 from contextlib import contextmanager
 from typing import Any
+import os
 
 import gpaw.cgpaw as cgpaw
 import numpy as np
@@ -16,65 +17,16 @@ import warnings
 from ase.parallel import MPI as ASE_MPI
 from ase.parallel import world as aseworld
 from gpaw.gpu import is_hip, cupy
-from gpaw.new.c import GPU_AWARE_MPI
-
+from gpaw.gpu.memory_guard import guard
 import gpaw
 
 from ._broadcast_imports import world as _world
 
-MASTER = 0
-
+GPAW_NO_ALLREDUCE = bool(int(os.environ.get('GPAW_NO_ALLREDUCE', 0))) 
 
 def is_contiguous(*args, **kwargs):
     from gpaw.utilities import is_contiguous
     return is_contiguous(*args, **kwargs)
-
-
-class RegisteredPointer:
-    """This is a workaround for the MPI race condition in LUMI with MI250X.
-
-       MPI Transferred data will be corrupted including data which is never
-       even sent trough MPI. If one performs a direct hipMalloc (as done
-       by doing Memory, and doing GPU-GPU transfer, this works around this
-       behaviour (for a currently unknown reason, but perhaps open-mpi or hip
-       has problems identifying GPU pointers, but the reason could also be
-       somewhere in GPAW equally well).
-    """
-    def __init__(self, a, _input=True, _output=True, enabled=True):
-        enabled = enabled and is_hip  # Disable extra transfer on cuda
-
-        self.enabled = enabled
-        if not enabled:
-            self.array = a
-            return
-
-        self.a = a
-        self._output = _output
-        if isinstance(a, cupy.ndarray):
-            if 1:
-                from cupy.cuda.memory import Memory, MemoryPointer
-                mem = Memory(a.nbytes)  # Direct malloc
-                memptr = MemoryPointer(mem, 0)
-                self.array = cupy.ndarray(a.shape,
-                                          memptr=memptr,
-                                          dtype=a.dtype,
-                                          strides=a.strides)
-                if _input:
-                    self.array[...] = a
-            else:
-                self.array = a.copy()  # This SEGFAULTS!
-        else:
-            self.array = a
-
-    def __enter__(self):
-        return self.array
-
-    def __exit__(self, *args):
-        if not self.enabled:
-            return
-
-        if self._output and isinstance(self.a, cupy.ndarray):
-            self.a[...] = self.array
 
 
 @contextmanager
@@ -178,15 +130,19 @@ class _Communicator:
             # assert a.ndim != 0
             tc = a.dtype
             assert is_contiguous(a, tc)
+            guard.check_array_mem(a)
             assert root == -1 or 0 <= root < self.size
-            # Right now comm.sum is the only place where one needs this
-            # extra malloc + intradevice memory copies for HIP and
-            # gpu-aware MPI
-            with RegisteredPointer(a, enabled=GPU_AWARE_MPI,
-                                   _input=True,
-                                   _output=((root == -1) or
-                                            (root == self.rank))) as a:
-                self.comm.sum(a, root)
+            # Enabling root == -1 branch prevents the bug,
+            # as no all reduce is called
+            
+
+            if root == -1 and GPAW_NO_ALLREDUCE:
+                print('skipping all redcuce')
+                self.comm.sum(a, 0)
+                self.comm.broadcast(a, 0)
+            else:
+                self.comm.sum(a, root)  # This is the normal code path
+            guard.check_array_mem(a)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -248,7 +204,13 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            self.comm.max(a, root)
+            # Enabling root == -1 branch prevents the bug,
+            # as no all reduce is called
+            if root == -1 and GPAW_NO_ALLREDUCE:
+                self.comm.max(a, 0)
+                self.comm.broadcast(a, 0)
+            else:
+                self.comm.max(a, root)
 
     def max_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, np.int64))
@@ -281,8 +243,15 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            with RegisteredPointer(a, enabled=False) as a:
+            guard.check_array_mem(a)
+            # Enabling root == -1 branch prevents the bug,
+            # as no all reduce is called
+            if root == -1 and GPAW_NO_ALLREDUCE:
+                self.comm.min(a, 0)
+                self.comm.broadcast(a, 0)
+            else:
                 self.comm.min(a, root)
+            guard.check_array_mem(a)
 
     def min_scalar(self, a, root=-1):
         assert isinstance(a, (int, float))
@@ -378,8 +347,12 @@ class _Communicator:
         assert np.all(0 <= rdispls)
         assert np.all(sdispls + scounts <= sbuffer.size)
         assert np.all(rdispls + rcounts <= rbuffer.size)
+        guard.check_array_mem(sbuffer)
+        guard.check_array_mem(rbuffer)
         self.comm.alltoallv(sbuffer, scounts, sdispls,
                             rbuffer, rcounts, rdispls)
+        guard.check_array_mem(sbuffer)
+        guard.check_array_mem(rbuffer)
 
     def all_gather(self, a, b):
         """Gather data from all ranks onto all processes in a group.
@@ -424,7 +397,11 @@ class _Communicator:
         assert b.dtype == a.dtype
         assert (b.shape[0] == self.size and a.shape == b.shape[1:] or
                 a.size * self.size == b.size)
+        guard.check_array_mem(a)
+        guard.check_array_mem(b)
         self.comm.all_gather(a, b)
+        guard.check_array_mem(a)
+        guard.check_array_mem(b)
 
     def gather(self, a, root, b=None):
         """Gather data from all ranks onto a single process in a group.
@@ -523,7 +500,9 @@ class _Communicator:
         """
         assert 0 <= root < self.size
         assert is_contiguous(a)
+        guard.check_array_mem(a)
         self.comm.broadcast(a, root)
+        guard.check_array_mem(a)
 
     def sendreceive(self, a, dest, b, src, sendtag=123, recvtag=123):
         assert 0 <= dest < self.size
@@ -532,6 +511,8 @@ class _Communicator:
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(b)
+        guard.check_array_mem(a)
+        guard.check_array_mem(b)
         return self.comm.sendreceive(a, dest, b, src, sendtag, recvtag)
 
     def send(self, a, dest, tag=123, block=True):
@@ -540,18 +521,21 @@ class _Communicator:
         assert is_contiguous(a)
         if not block:
             pass  # assert sys.getrefcount(a) > 3
+        guard.check_array_mem(a)
         return self.comm.send(a, dest, tag, block)
 
     def ssend(self, a, dest, tag=123):
         assert 0 <= dest < self.size
         assert dest != self.rank
         assert is_contiguous(a)
+        guard.check_array_mem(a)
         return self.comm.ssend(a, dest, tag)
 
     def receive(self, a, src, tag=123, block=True):
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(a)
+        guard.check_array_mem(a)
         return self.comm.receive(a, src, tag, block)
 
     def test(self, request):
@@ -823,6 +807,7 @@ else:
     serial_comm = _serial_comm  # type: ignore
     if is_hip:
         world = _Communicator(_world)
+        serial_comm = _Communicator(_serial_comm)  # type: ignore
     else:
         world = _world  # type: ignore
 
