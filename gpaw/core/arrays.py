@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
 
 from gpaw.new import prod
+from gpaw import GPAW_MPI4PY
 
 DomainType = TypeVar('DomainType', bound=Domain)
 
@@ -48,14 +49,17 @@ class DistributedArrays(Generic[DomainType], XP):
                  data: np.ndarray | None,
                  dv: float,
                  dtype,
-                 xp=None):
+                 xp=None,
+                 domain_transposable: bool = False):
         self.myshape = myshape
         self.comm = comm
         self.domain_comm = domain_comm
         self.dv = dv
+        self.domain_transposed = False
 
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
+        self.domain_transposable = domain_transposable
 
         if self.dims:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
@@ -67,19 +71,25 @@ class DistributedArrays(Generic[DomainType], XP):
             self.mydims = ()
 
         fullshape = self.mydims + self.myshape
+
+        # Check for buffersize if nbands > 0:
         mynX = int(np.prod(self.myshape))
-        maxnX = domain_comm.max_scalar(mynX)
+        self.maxnX = domain_comm.max_scalar(mynX)
         if self.mydims:
             nbands = np.prod(self.mydims)
         else:
             nbands = 1
-        maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
-        buffersize = maxbands * maxnX * domain_comm.size
+        if domain_transposable:
+            self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
+            buffersize = self.maxbands * self.maxnX * domain_comm.size
+        else:
+            buffersize = np.prod(fullshape)
 
         if data is not None:
-            if data.size != buffersize:
+            if data.size < buffersize:
+                breakpoint()
                 raise ValueError(
-                    f'Data buffer wrong size: {data.size} != {buffersize}')
+                    f'Data buffer wrong size: {data.size} < {buffersize}')
             if data.dtype != dtype:
                 raise ValueError(
                     f'Bad dtype for data: {data.dtype} != {dtype}')
@@ -90,7 +100,8 @@ class DistributedArrays(Generic[DomainType], XP):
             data = (xp or np).empty(buffersize, dtype)
 
         self.data_buffer = data
-        self.data = data[:np.prod(fullshape)].reshape(fullshape)
+        assert np.prod(fullshape) == buffersize
+        self.data = data[:np.prod(fullshape)].reshape(fullshape)  # XXX: This is prolly no good
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:
@@ -175,29 +186,38 @@ class DistributedArrays(Generic[DomainType], XP):
         comm = self.desc.comm
         size = comm.size
         rank = comm.rank
-        print(np.prod(self.dims), maxnX, size)        
+        assert self.domain_transposable
         mysize = np.prod(self.mydims + self.myshape)
         nbands = np.prod(self.mydims)
         
         # Required buffersize:
         mybands = (nbands + size - 1 - rank) // size
         buffersize = self.data_buffer.size
-        #assert self.data_buffer.size == buffersize, f'{self.data_buffer.size} != {buffersize}'
 
         """Create arrays for MPI alltoallv call."""
-        # Arrays for switching domain to band decomposition.
-        d2b_sizes = np.repeat(buffersize // size, size)
-        d2b_offsets = np.append([0,], np.cumsum(d2b_sizes[:-1]))
-        
-        #b2d_sizes = np.array(mybands * ((maxnX + size - 1 - np.arange(size)) // size), int)
-        #b2d_offsets = np.append([0,], np.cumsum(b2d_sizes[:-1]))
+        d2b_sizes = np.repeat(self.maxnX,   size*self.maxbands).reshape(size, self.maxbands)
+        d2b_offsets = np.arange(buffersize, step=self.maxnX).reshape(size, self.maxbands)
+
+        dtype = self.data_buffer.dtype.char
+        reqs = []
 
         if not GPAW_MPI4PY:
-            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
-            comm.alltoallv(self.data_buffer.copy(), d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            for size, offset in zip(d2b_sizes, d2b_offsets):
+                comm.alltoallv(self.data_buffer, size, offset,
+                               self.data_buffer, size, offset)
         else:
-            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
-            comm.alltoallv(self.data_buffer, d2b_sizes, d2b_offsets, self.data_buffer, d2b_sizes, d2b_offsets)
+            from mpi4py.MPI import IN_PLACE
+            for size, offset in zip(d2b_sizes, d2b_offsets):
+                req = comm.comm.Ialltoallv(IN_PLACE,
+                                           (self.data_buffer, size, offset, dtype))
+                reqs.append(req)
+ 
+        comm.waitall(reqs)
+        self.domain_transposed = not self.domain_transposed
+        if self.domain_transposed:
+            self.data = self.data.reshape((mybands, maxnX))
+        else:
+            self.data = self.data.reshape((nbands, mynX))
  
     @property
     def matrix(self) -> Matrix:

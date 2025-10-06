@@ -210,7 +210,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     xp=self.xp)
                 psit_nG = pw.empty(self.nbands,
                                    comm=self.communicators['b'],
-                                   xp=self.xp)
+                                   xp=self.xp,
+                                   domain_transposable=True)
                 mynbands, M = C_nM.dist.shape
                 phit_aJG.multiply(C_nM.to_dtype(pw.dtype),
                                   out_nG=psit_nG[:mynbands])
@@ -229,7 +230,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
         mynbands, M = C_nM.dist.shape
         if self.ncomponents < 4:
-            psit_nG = pw.empty(self.nbands, self.communicators['b'])
+            psit_nG = pw.empty(self.nbands, self.communicators['b'],
+                               domain_transposable=True)
             psit_nR = grid.zeros(mynbands)
             basis_set.lcao_to_grid(C_nM.data, psit_nR.data, q)
 
@@ -289,11 +291,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             if self.communicators['w'].size == 1 and not singlep:
                 orig_shape = data.shape
                 data.shape = shape + pw.shape
-                wfs.psit_nX = pw.from_data(data)
+                wfs.psit_nX = pw.from_data(data, domain_transposable=True)
                 data.shape = orig_shape
             else:
                 band_comm = self.communicators['b']
-                wfs.psit_nX = PWArray(pw, shape, comm=band_comm)
+                wfs.psit_nX = PWArray(pw, shape, comm=band_comm, domain_transposable=True)
                 mynbands = (self.nbands +
                             band_comm.size - 1) // band_comm.size
                 n1 = min(band_comm.rank * mynbands, self.nbands)

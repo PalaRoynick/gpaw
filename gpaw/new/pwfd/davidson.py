@@ -270,7 +270,11 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
         buffer_view_aX = buffer_mX.new(
             data=buffer_mX.data[:n2 - n1],
             dims=(world_N,) + buffer_mX.dims[1:])
-        Ht(psit2_nX[n1:n2], out=buffer_view_aX)
+        psit_view_aX = psit2_nX.new(
+            data=psit2_nX.data[n1:n2],
+            dims=(world_N,) + psit2_nX.dims[1:])
+
+        Ht(psit_view_aX, out=buffer_view_aX)
 
         out1 = Matrix(
             M=world_N,

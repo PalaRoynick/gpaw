@@ -65,7 +65,7 @@ class PWHamiltonian(Hamiltonian):
             psit_G.data *= e_kin_G
             vtpsit_G.data += psit_G.data
             #out_nG[n1:n2].scatter_from_all(vtpsit_G)
-            out_nG[n1].data = vtpsit_G.data
+            out_nG[n1].data[:] = vtpsit_G.data
         
         psit_nG.domain_a2a_bands()
         out_nG.domain_a2a_bands()

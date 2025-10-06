@@ -127,6 +127,7 @@ class PWDesc(Domain['PWArray']):
     def empty(self,
               dims: int | tuple[int, ...] = (),
               comm: MPIComm = serial_comm,
+              domain_transposable: bool = False,
               xp=None) -> PWArray:
         """Create new PlaneWaveExpanions object.
 
@@ -137,10 +138,10 @@ class PWDesc(Domain['PWArray']):
         comm:
             Distribute dimensions along this communicator.
         """
-        return PWArray(self, dims, comm, xp=xp)
+        return PWArray(self, dims, comm, xp=xp, domain_transposable=domain_transposable)
 
-    def from_data(self, data):
-        return PWArray(self, data.shape[:-1], data=data)
+    def from_data(self, data, domain_transposable=False):
+        return PWArray(self, data.shape[:-1], data=data, domain_transposable=domain_transposable)
 
     def new(self,
             *,
@@ -281,7 +282,8 @@ class PWArray(DistributedArrays[PWDesc]):
                  dims: int | tuple[int, ...] = (),
                  comm: MPIComm = serial_comm,
                  data: np.ndarray | None = None,
-                 xp=None):
+                 xp=None,
+                 domain_transposable: bool = False):
         """Object for storing function(s) as a plane-wave expansions.
 
         parameters
@@ -302,7 +304,9 @@ class PWArray(DistributedArrays[PWDesc]):
         DistributedArrays. __init__(self, dims, pw.myshape,
                                     comm, pw.comm,
                                     data, pw.dv,
-                                    self.complex_dtype, xp)
+                                    self.complex_dtype,
+                                    xp,
+                                    domain_transposable)
         self.desc = pw
         self._matrix: Matrix | None
 
@@ -318,7 +322,8 @@ class PWArray(DistributedArrays[PWDesc]):
         data = self.data[index]
         return PWArray(self.desc,
                        data.shape[:-1],
-                       data=data)
+                       data=data,
+                       domain_transposable=self.domain_transposable)
 
     def __iter__(self):
         for data in self.data:
@@ -348,11 +353,16 @@ class PWArray(DistributedArrays[PWDesc]):
                 # allow for data to be bigger than needed:
                 data_buffer = data.ravel()[:self.data_buffer.size].reshape(self.data_buffer.shape)
             else:
-                return PWArray(self.desc, dims, self.comm, data)
+                return PWArray(self.desc,
+                               dims,
+                               self.comm,
+                               data,
+                               domain_transposable=self.domain_transposable)
         return PWArray(self.desc,
                        self.dims,
                        self.comm,
-                       data_buffer)
+                       data_buffer,
+                       domain_transposable=self.domain_transposable,)
 
     def copy(self):
         """Create a copy (surprise!)."""
