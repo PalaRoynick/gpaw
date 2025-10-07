@@ -388,7 +388,7 @@ class FakeDensity:
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
         self.nct_G = 'not None'
-        self.stencil = pot_calc.interpolation_stencil_range
+        self.stencil = getattr(pot_calc, 'interpolation_stencil_range', None)
         self.interpolator = pot_calc._interpolate.transformer
 
     @cached_property

@@ -375,6 +375,7 @@ class KSSingle(Excitation):
         """
         if string is not None:
             self.fromstring(string, dtype)
+
             return None
 
         # normal entry
@@ -595,12 +596,14 @@ class KSSingle(Excitation):
     def outstring(self):
         if self.mur.dtype == float:
             string = '{:d} {:d}  {:d} {:d}  {:.10g} {:f}'.format(
-                self.i, self.j, self.pspin, self.spin, self.energy, self.fij)
+                self.pairdens.i, self.pairdens.j,
+                self.pspin, self.pairdens.spin, self.energy, self.fij)
         else:
             string = (
                 '{:d} {:d}  {:d} {:d} {:d} {:.10g}  {:g} {:g}'.format(
-                    self.i, self.j, self.pspin, self.spin, self.k,
-                    self.weight, self.energy, self.fij))
+                    self.pairdens.i, self.pairdens.j,
+                    self.pspin, self.pairdens.spin, self.pairdens.k,
+                    self.pairdens.weight, self.energy, self.fij))
         string += '  '
 
         def format_me(me):
