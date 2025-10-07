@@ -223,9 +223,9 @@ class OmegaMatrix:
                     nv_s[kss[ij].pspin] -= ns * kss[ij].get(fg)
                     xc.calculate(gd, nv_s, vm_s)
                 else:  # spin unpolarised
-                    nv = nt_s + ns * kss[ij].get(fg)
+                    nv = nt_s + ns * kss[ij].pairdens.get(fg)
                     xc.calculate(gd, nv, vp_s)
-                    nv = nt_s - ns * kss[ij].get(fg)
+                    nv = nt_s - ns * kss[ij].pairdens.get(fg)
                     xc.calculate(gd, nv, vm_s)
                 vvt_s = (0.5 / ns) * (vp_s - vm_s)
                 timer2.stop()
@@ -233,10 +233,10 @@ class OmegaMatrix:
                 # initialize the correction matrices
                 timer2.start('init v corrections')
                 I_asp = {}
-                for a, P_ni in wfs.kpt_u[kss[ij].spin].P_ani.items():
+                for a, P_ni in wfs.kpt_u[kss[ij].pairdens.spin].P_ani.items():
                     # create the modified density matrix
-                    Pi_i = P_ni[kss[ij].i]
-                    Pj_i = P_ni[kss[ij].j]
+                    Pi_i = P_ni[kss[ij].pairdens.i]
+                    Pj_i = P_ni[kss[ij].pairdens.j]
                     P_ii = np.outer(Pi_i, Pj_i)
                     # we need the symmetric form, hence we can pack
                     P_p = pack_density(P_ii)
@@ -311,16 +311,16 @@ class OmegaMatrix:
 
                     timer2.start('integrate')
                     Om_xc[ij, kq] += weight *\
-                        self.gd.integrate(kss[kq].get(fg) *
+                        self.gd.integrate(kss[kq].pairdens.get(fg) *
                                           vvt_s[kss[kq].pspin])
                     timer2.stop()
 
                     timer2.start('integrate corrections')
                     Exc = 0.
-                    for a, P_ni in wfs.kpt_u[kss[kq].spin].P_ani.items():
+                    for a, P_ni in wfs.kpt_u[kss[kq].pairdens.spin].P_ani.items():
                         # create the modified density matrix
-                        Pk_i = P_ni[kss[kq].i]
-                        Pq_i = P_ni[kss[kq].j]
+                        Pk_i = P_ni[kss[kq].pairdens.i]
+                        Pq_i = P_ni[kss[kq].pairdens.j]
                         P_ii = np.outer(Pk_i, Pq_i)
                         # we need the symmetric form, hence we can pack
                         # use pack_density as I_sp used pack_hermitian
@@ -377,18 +377,18 @@ class OmegaMatrix:
             timer.start('integrate corrections 2')
 
         wfs = self.paw.wfs
-        Pij_ani = wfs.kpt_u[kss_ij.spin].P_ani
-        Pkq_ani = wfs.kpt_u[kss_kq.spin].P_ani
+        Pij_ani = wfs.kpt_u[kss_ij.pairdens.spin].P_ani
+        Pkq_ani = wfs.kpt_u[kss_kq.pairdens.spin].P_ani
 
         # Add atomic corrections
         Ia = 0.0
         for a, Pij_ni in Pij_ani.items():
-            Pi_i = Pij_ni[kss_ij.i]
-            Pj_i = Pij_ni[kss_ij.j]
+            Pi_i = Pij_ni[kss_ij.pairdens.i]
+            Pj_i = Pij_ni[kss_ij.pairdens.j]
             Dij_ii = np.outer(Pi_i, Pj_i)
             Dij_p = pack_density(Dij_ii)
-            Pk_i = Pkq_ani[a][kss_kq.i]
-            Pq_i = Pkq_ani[a][kss_kq.j]
+            Pk_i = Pkq_ani[a][kss_kq.pairdens.i]
+            Pq_i = Pkq_ani[a][kss_kq.pairdens.j]
             Dkq_ii = np.outer(Pk_i, Pq_i)
             Dkq_p = pack_density(Dkq_ii)
             if yukawa:
@@ -431,7 +431,7 @@ class OmegaMatrix:
 
             # smooth density including compensation charges
             timer2.start('with_compensation_charges 0')
-            rhot_p = kss[ij].with_compensation_charges(
+            rhot_p = kss[ij].pairdens.with_compensation_charges(
                 finegrid != 0)
             timer2.stop()
 
@@ -457,7 +457,7 @@ class OmegaMatrix:
                 if kq != ij:
                     # smooth density including compensation charges
                     timer2.start('kq with_compensation_charges')
-                    rhot = kss[kq].with_compensation_charges(
+                    rhot = kss[kq].pairdens.with_compensation_charges(
                         finegrid == 2)
                     timer2.stop()
 

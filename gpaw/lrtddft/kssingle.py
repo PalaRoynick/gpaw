@@ -247,16 +247,16 @@ class KSSingles(ExcitationList):
         return kssl
 
     def update(self):
-        istart = self[0].i
+        istart = self[0].pairdens.i
         jend = 0
         npspins = 1
         nvspins = 1
         for kss in self:
-            istart = min(kss.i, istart)
-            jend = max(kss.j, jend)
+            istart = min(kss.pairdens.i, istart)
+            jend = max(kss.pairdens.j, jend)
             if kss.pspin == 1:
                 npspins = 2
-            if kss.spin == 1:
+            if kss.pairdens.spin == 1:
                 nvspins = 2
         self.restrict.update({'istart': istart, 'jend': jend})
         self.npspins = npspins
@@ -348,7 +348,7 @@ class KSSingles(ExcitationList):
         return ov_pp
 
 
-class KSSingle(Excitation, PairDensity):
+class KSSingle(Excitation):
     """Single Kohn-Sham transition containing all its indices
 
       pspin=physical spin
@@ -379,8 +379,8 @@ class KSSingle(Excitation, PairDensity):
 
         # normal entry
 
-        PairDensity.__init__(self, paw)
-        PairDensity.initialize(self, kpt, iidx, jidx)
+        self.pairdens = PairDensity(paw)
+        self.pairdens.initialize(kpt, iidx, jidx)
 
         self.pspin = pspin
 
@@ -411,15 +411,15 @@ class KSSingle(Excitation, PairDensity):
         # course grid contribution
         # <i|r|j> is the negative of the dipole moment (because of negative
         # e- charge)
-        me = - gd.calculate_dipole_moment(self.get())
+        me = - gd.calculate_dipole_moment(self.pairdens.get())
 
         # augmentation contributions
         ma = np.zeros(me.shape, dtype=dtype)
         pos_av = paw.atoms.get_positions() / Bohr
         for a, P_ni in kpt.P_ani.items():
             Ra = pos_av[a]
-            Pi_i = P_ni[self.i].conj()
-            Pj_i = P_ni[self.j]
+            Pi_i = P_ni[self.pairdens.i].conj()
+            Pj_i = P_ni[self.pairdens.j]
             Delta_pL = wfs.setups[a].Delta_pL
             ni = len(Pi_i)
             ma0 = 0
@@ -444,21 +444,21 @@ class KSSingle(Excitation, PairDensity):
 
         # velocity form .............................
 
-        if self.lcao:
+        if self.pairdens.lcao:
             self.wfi = _get_and_distribute_wf(wfs, iidx, kpt.k, pspin)
             self.wfj = _get_and_distribute_wf(wfs, jidx, kpt.k, pspin)
 
         me = np.zeros(self.mur.shape, dtype=dtype)
 
         # get derivatives
-        dtype = self.wfj.dtype
+        dtype = self.pairdens.wfj.dtype
         dwfj_cg = gd.empty((3), dtype=dtype)
         if not hasattr(gd, 'ddr'):
             gd.ddr = [Gradient(gd, c, dtype=dtype, n=2).apply
                       for c in range(3)]
         for c in range(3):
-            gd.ddr[c](self.wfj, dwfj_cg[c], kpt.phase_cd)
-            me[c] = gd.integrate(self.wfi.conj() * dwfj_cg[c])
+            gd.ddr[c](self.pairdens.wfj, dwfj_cg[c], kpt.phase_cd)
+            me[c] = gd.integrate(self.pairdens.wfi.conj() * dwfj_cg[c])
 
         # XXX is this the best choice, maybe center of mass?
         origin = 0.5 * np.diag(paw.wfs.gd.cell_cv)
@@ -470,8 +470,8 @@ class KSSingle(Excitation, PairDensity):
         # Ra x <psi_i|grad|psi_j> for magnetic transition dipole
         mRa = np.zeros(me.shape, dtype=me.dtype)
         for a, P_ni in kpt.P_ani.items():
-            Pi_i = P_ni[self.i].conj()
-            Pj_i = P_ni[self.j]
+            Pi_i = P_ni[self.pairdens.i].conj()
+            Pj_i = P_ni[self.pairdens.j]
             nabla_iiv = paw.wfs.setups[a].nabla_iiv
             ma_c = np.zeros(me.shape, dtype=me.dtype)
             for c in range(3):
@@ -494,7 +494,7 @@ class KSSingle(Excitation, PairDensity):
         magn = np.zeros(me.shape, dtype=dtype)
 
         # <psi_i|r x grad|psi_j>
-        wfi_g = self.wfi.conj()
+        wfi_g = self.pairdens.wfi.conj()
         for ci in range(3):
             cj = (ci + 1) % 3
             ck = (ci + 2) % 3
@@ -508,8 +508,8 @@ class KSSingle(Excitation, PairDensity):
 
         ma = np.zeros(magn.shape, dtype=magn.dtype)
         for a, P_ni in kpt.P_ani.items():
-            Pi_i = P_ni[self.i].conj()
-            Pj_i = P_ni[self.j]
+            Pi_i = P_ni[self.pairdens.i].conj()
+            Pj_i = P_ni[self.pairdens.j]
             rxnabla_iiv = paw.wfs.setups[a].rxnabla_iiv
             for c in range(3):
                 for i1, Pi in enumerate(Pi_i):
@@ -521,10 +521,10 @@ class KSSingle(Excitation, PairDensity):
 
     def distribute(self):
         """Distribute results to all cores."""
-        self.spin = self.kpt_comm.sum_scalar(self.spin)
+        self.pairdens.spin = self.kpt_comm.sum_scalar(self.pairdens.spin)
         self.pspin = self.kpt_comm.sum_scalar(self.pspin)
-        self.k = self.kpt_comm.sum_scalar(self.k)
-        self.weight = self.kpt_comm.sum_scalar(self.weight)
+        self.pairdens.k = self.kpt_comm.sum_scalar(self.pairdens.k)
+        self.pairdens.weight = self.kpt_comm.sum_scalar(self.pairdens.weight)
         self.energy = self.kpt_comm.sum_scalar(self.energy)
         self.fij = self.kpt_comm.sum_scalar(self.fij)
 
@@ -624,7 +624,7 @@ class KSSingle(Excitation, PairDensity):
 
     def __str__(self):
         string = '# <KSSingle> %d->%d %d(%d) eji=%g[eV]' % \
-            (self.i, self.j, self.pspin, self.spin,
+            (self.pairdens.i, self.pairdens.j, self.pspin, self.pairdens.spin,
              self.energy * Hartree)
         if self.me.dtype == float:
             string += f' ({self.me[0]:g},{self.me[1]:g},{self.me[2]:g})'

@@ -54,8 +54,8 @@ class KSSRestrictor:
         """Check if Kohn-Sham single fulfills the criterion"""
         emin, emax = self.emin_emax()
 
-        ok = (ks.fij / ks.weight) > self['eps']
-        ok &= ks.i >= self['istart'] and ks.j <= self['jend']
+        ok = (ks.fij / ks.pairdens.weight) > self['eps']
+        ok &= ks.pairdens.i >= self['istart'] and ks.pairdens.j <= self['jend']
         ok &= ks.energy >= emin and ks.energy <= emax
         if self['from'] is not None:
             ok &= ks.i in self['from']
