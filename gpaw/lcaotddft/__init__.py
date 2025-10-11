@@ -97,6 +97,8 @@ class OldLCAOTDDFT(GPAW):
                                                'time_reversal': False}
         GPAW.__init__(self, filename, parallel=parallel,
                       communicator=communicator, txt=txt)
+        if Ehrenfest_flag:
+            self.hamiltonian.vext=None
         self.set_positions()
         self.td_density = TimeDependentDensity(self)
         self.calculate_energy = calculate_energy
