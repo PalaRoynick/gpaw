@@ -326,9 +326,10 @@ def get_max_nblocks(world, calc, ecut):
     else:
         nblocks_calc = GPAW(calc)
     ngmax = []
+    if not isinstance(ecut, dict):
+        ecut = np.min(ecut) / Ha
     for q_c in nblocks_calc.wfs.kd.bzk_kc:
-        qpd = SingleQPWDescriptor.from_q(q_c, np.min(ecut) / Ha,
-                                         nblocks_calc.wfs.gd)
+        qpd = SingleQPWDescriptor.from_q(q_c, ecut, nblocks_calc.wfs.gd)
         ngmax.append(qpd.ngmax)
     nG = np.min(ngmax)
 
