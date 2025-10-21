@@ -140,6 +140,25 @@ class FD(Mode):
 class TB(Mode):
     distribution = '?'
 
+    def __init__(self,
+                 *,
+                 hop_factors: dict[str, dict[str, float]] | None = None,
+                 repulsions: dict | None = None,
+                 dtype: DTypeLike | None = None,
+                 force_complex_dtype: bool = False):
+        self.hop_factors = hop_factors or {}
+        self.repulsions = repulsions or {}
+        super().__init__(dtype=dtype,
+                         force_complex_dtype=force_complex_dtype)
+
+    def todict(self):
+        dct = super().todict()
+        if self.hop_factors:
+            dct['hop_factors'] = self.hop_factors
+        if self.repulsions:
+            dct['repulsions'] = self.repulsions
+        return dct
+
 
 class Eigensolver(Parameter):
     @classmethod

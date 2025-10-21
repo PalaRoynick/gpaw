@@ -4,7 +4,7 @@ from math import pi
 from types import SimpleNamespace
 
 import numpy as np
-from ase.data import atomic_numbers, covalent_radii
+# from ase.data import covalent_radii
 from ase.neighborlist import neighbor_list
 from ase.units import Bohr, Ha
 
@@ -133,10 +133,12 @@ class TBPotentialCalculator(PotentialCalculator):
                  xc,
                  setups,
                  atoms,
+                 repulsions,
                  domain_comm):
         super().__init__(xc, None, setups,
                          relpos_ac=atoms.get_scaled_positions())
         self.atoms = atoms.copy()
+        self.repulsions = repulsions
         self.domain_comm = domain_comm
         self.force_av = None
         self.stress_vv = None
@@ -145,7 +147,8 @@ class TBPotentialCalculator(PotentialCalculator):
         vt_sR = density.nt_sR
 
         atoms = self.atoms
-        energy, force_av, stress_vv = pairpot(atoms)
+        energy, force_av, stress_vv = pairpot(
+            atoms, self.repulsions)
         energy /= Ha
         self.force_av = force_av * Bohr / Ha
 
@@ -157,8 +160,7 @@ class TBPotentialCalculator(PotentialCalculator):
         for a, V_L in V_aL.items():
             V_L[0] = self.setups[a].W
 
-        return ({'kinetic': 0.0,
-                 'coulomb': 0.0,
+        return ({'coulomb': 0.0,
                  'zero': 0.0,
                  'xc': energy,
                  'external': 0.0},
@@ -215,7 +217,6 @@ class TBSCFLoop:
         e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
             self.occ_calc,
             nelectrons=density.nvalence - density.charge)
-
         energies.set(band=e_band,
                      entropy=e_entropy,
                      extrapolation=e_extrapolation)
@@ -285,8 +286,20 @@ class TBDFTComponentsBuilder(DFTComponentsBuilder):
         return TBHamiltonian(self.basis)
 
     def create_potential_calculator(self):
+        reps = self.params.mode.repulsions or {}
+        symbols = [setup.symbol for setup in self.setups.setups.values()]
+        repulsions = {}
+        for sym1 in symbols:
+            for sym2 in symbols:
+                rep = reps.get(sym1 + sym2,
+                               reps.get(sym2 + sym1, None))
+                if rep is None:
+                    rep = Repulsion.default(sym1, sym2)
+                repulsions[sym1 + sym2] = rep
+
         xc = DummyXC(self.xc)
         return TBPotentialCalculator(xc, self.setups, self.atoms,
+                                     repulsions,
                                      self.communicators['d'])
 
     def create_scf_loop(self):
@@ -344,7 +357,18 @@ class TBDFTComponentsBuilder(DFTComponentsBuilder):
 
         manytci.Pindices = manytci.Mindices
         my_atom_indices = self.atomdist.indices
-        fudge_factor = 0.75
+
+        ells = {}
+        for setup in self.setups.setups.values():
+            symbol = setup.symbol
+            ells[symbol] = [phit.l for phit in setup.basis_functions_J]
+
+        from gpaw.dft import TB
+        assert isinstance(self.params.mode, TB)
+        hop_factors = self.params.mode.hop_factors
+        factors = create_hop_factors(
+            {symbol: ['spdf'[l] for l in ll] for symbol, ll in ells.items()},
+            hop_factors)
 
         domain_comm = self.communicators['d']
 
@@ -354,56 +378,100 @@ class TBDFTComponentsBuilder(DFTComponentsBuilder):
             V_mM = wfs.V_MM.data
             V_mM[:] = V_MM.T[M1:M2].toarray()
             domain_comm.sum(V_mM)
-            wfs.V_MM.add_hermitian_conjugate()
-            V_mM *= fudge_factor / domain_comm.size
-            MM1 = 0
-            for m in manytci.Mindices.nm_a:
-                MM2 = MM1 + m
-                m1 = max(MM1 - M1, 0)
-                m2 = min(MM2 - M1, M2 - M1)
-                if m2 > m1:
-                    V_mM[m1:m2, MM1:MM2] *= 0.5 / fudge_factor
-                MM1 = MM2
+            wfs.V_MM.add_hermitian_conjugate(scale=0.5 / domain_comm.size)
+
+        def mmsl():
+            M = 0
+            for setup in self.setups:
+                for l in ells[setup.symbol]:
+                    yield M, M + 2 * l + 1, setup.symbol, l
+                    M += 2 * l + 1
+
+        for wfs in ibzwfs:
+            M1, M2 = wfs.V_MM.dist.my_row_range()
+            V_MM = wfs.V_MM.data
+            for Ma1, Ma2, symbola, la in mmsl():
+                for Mb1, Mb2, symbolb, lb in mmsl():
+                    if Ma1 == Mb1:
+                        continue
+                    Ma1 = max(Ma1 - M1, 0)
+                    Ma2 = min(Ma2 - M1, M2 - M1)
+                    if Ma1 >= Ma2:
+                        continue
+                    f = factors[symbola + symbolb]['spdf'[la] + 'spdf'[lb]]
+                    V_MM[Ma1:Ma2, Mb1:Mb2] *= 2.0 * f
 
         return ibzwfs
 
 
-def pairpot(atoms):
+def create_hop_factors(ells: dict[str, list[str]],
+                       hops: dict[str, dict[str, float]]
+                       ) -> dict[str, dict[str, float]]:
+    """Create hopping matrix-element scaling factors.
+
+    >>> create_hop_factors({'C': ['s', 'p']},
+    ...                    {'CC': {'pp': 0.75}})
+    {'CC': {'ss': 1.0, 'sp': 1.0, 'ps': 1.0, 'pp': 0.75}}
+    """
+    factors: dict[str, dict[str, float]] = {}
+    for symbol1, ll1 in ells.items():
+        for symbol2, ll2 in ells.items():
+            hop = hops.get(symbol1 + symbol2)
+            if hop is None:
+                hop = {ll[::-1]: f
+                       for ll, f in hops.get(symbol2 + symbol1, {}).items()}
+            ff = factors[symbol1 + symbol2] = {}
+            for l1 in ll1:
+                for l2 in ll2:
+                    f = hop.get(l1 + l2, 1.0)
+                    ff[l1 + l2] = f
+    return factors
+
+
+class Repulsion:
+    def __init__(self, f, dfdr=None, rc=None):
+        self.f = f
+        self.dfdr = dfdr
+        if rc is None:
+            for rc in np.linspace(1.0, 10.0, 31):
+                if f(rc) == 0.0:
+                    break
+            else:
+                1 / 0
+        self.rc = rc
+
+    @staticmethod
+    def default(sym1, sym2):
+        # radii[symbol] = covalent_radii[atomic_numbers[symbol]]
+        return Repulsion(lambda r: 0.0, lambda r: 0.0, rc=0.5)
+
+
+def pairpot(atoms, repulsions):
     """Simple pair-potential for testing.
 
     >>> from ase import Atoms
-    >>> r = covalent_radii[1]
-    >>> atoms = Atoms('H2', [(0, 0, 0), (0, 0, 2 * r)])
-    >>> e, f, s = pairpot(atoms)
+    >>> atoms = Atoms('H2', [(0, 0, 0), (0, 0, 1.0)])
+    >>> rep = Repulsion(lambda d: (d - 2.0)**2, lambda d: 2 * (d - 2.0), 2.0)
+    >>> e, f, s = pairpot(atoms, {'HH': rep})
     >>> print(f'{e:.6f} eV')
-    -9.677419 eV
+    1.000000 eV
     >>> f
-    array([[0., 0., 0.],
-           [0., 0., 0.]])
+    array([[ 0.,  0.,  2.],
+           [ 0.,  0., -2.]])
 
     """
-    radii = {}
     symbol_a = atoms.symbols
-    for symbol in symbol_a:
-        radii[symbol] = covalent_radii[atomic_numbers[symbol]]
-
-    r0 = {}
-    for s1, r1 in radii.items():
-        for s2, r2 in radii.items():
-            r0[(s1, s2)] = r1 + r2
-    rcutmax = 2 * max(r0.values(), default=1.0)
-
+    rcutmax = max(rep.rc for rep in repulsions.values())
     energy = 0.0
     force_av = np.zeros((len(atoms), 3))
     stress_vv = np.zeros((3, 3))
 
+    # PARALLELIZE!!!
     for i, j, d, D_v in zip(*neighbor_list('ijdD', atoms, rcutmax)):
-        d0 = r0[(symbol_a[i], symbol_a[j])]
-        e0 = 6.0 / d0
-        x = d0 / d
-        if x > 0.5:
-            energy += 0.5 * e0 * (-5 + x * (24 + x * (-36 + 16 * x)))
-            f = -0.5 * e0 * (24 + x * (-72 + 48 * x)) * d0 / d**2
+        rep = repulsions[symbol_a[i] + symbol_a[j]]
+        if d < rep.rc:
+            energy += 0.5 * rep.f(d)
+            f = -0.5 * rep.dfdr(d)
             F_v = D_v * f / d
             force_av[i] += F_v
             force_av[j] -= F_v

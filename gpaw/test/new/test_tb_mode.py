@@ -1,7 +1,7 @@
 import pytest
 from ase import Atoms
 from ase.optimize import BFGS
-from gpaw.new.ase_interface import GPAW
+from gpaw.dft import GPAW, TB
 from gpaw.test.xc.test_qna_stress import numeric_stress
 
 
@@ -27,7 +27,7 @@ def test_tb_mode_bulk():
                   cell=[a, a, a],
                   pbc=True)
     atoms.calc = GPAW(
-        mode='tb',
+        mode=TB(hop_factors={'LiLi': {'ss': 0.8}}),
         kpts=(2, 2, 2))
     atoms.get_potential_energy()
     return

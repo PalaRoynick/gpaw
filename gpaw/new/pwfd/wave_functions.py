@@ -15,7 +15,7 @@ from gpaw.gpu import as_np, XP
 from gpaw.mpi import receive, send
 from gpaw.new import prod, trace, zips
 from gpaw.new.potential import Potential
-from gpaw.new.wave_functions import WaveFunctions
+from gpaw.new.wave_functions import WaveFunctions, WaveFunctionCollapseError
 from gpaw.setup import Setups
 from gpaw.typing import Array2D, Array3D, Vector
 from gpaw.utilities import as_real_dtype
@@ -126,7 +126,8 @@ class PWFDWaveFunctions(WaveFunctions, XP):
             self._P_ani = self.pt_aiX.empty(self.psit_nX.dims,
                                             self.psit_nX.comm)
             if self.psit_nX.data is None:
-                raise RuntimeError('There are no projections or wavefunctions')
+                raise WaveFunctionCollapseError(
+                    'There are no projections or wave functions')
             self.pt_aiX.integrate(self.psit_nX, self._P_ani)
         return self._P_ani
 
