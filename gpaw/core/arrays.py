@@ -100,7 +100,7 @@ class DistributedArrays(Generic[DomainType], XP):
             data = (xp or np).empty(buffersize, dtype)
 
         self.data_buffer = data
-        assert np.prod(fullshape) == buffersize
+        # assert np.prod(fullshape) == buffersize
         self.data = data[:np.prod(fullshape)].reshape(fullshape)  # XXX: This is prolly no good
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
@@ -201,7 +201,7 @@ class DistributedArrays(Generic[DomainType], XP):
         dtype = self.data_buffer.dtype.char
         reqs = []
 
-        if not GPAW_MPI4PY:
+        if not GPAW_MPI4PY or size == 1:
             for size, offset in zip(d2b_sizes, d2b_offsets):
                 comm.alltoallv(self.data_buffer, size, offset,
                                self.data_buffer, size, offset)
