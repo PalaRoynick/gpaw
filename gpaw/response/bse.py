@@ -9,7 +9,7 @@ import numpy as np
 from scipy.linalg import eigh
 
 from gpaw.blacs import BlacsGrid, Redistributor, BlacsDescriptor
-from gpaw.kpt_descriptor import KPointDescriptor
+from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.mpi import world, serial_comm
 from gpaw.response import ResponseContext
 from gpaw.response.groundstate import CellDescriptor
@@ -129,7 +129,7 @@ def parallel_delete(A_nn: np.ndarray,
     grid_desc: BlacsDescriptor for A_nn
     new_grid: BlacsGrid on which A_nn will be returned; optional.
     If None, the output grid will be determined automatically
-    by the gpaw.matrix.suggest_blocking function.
+    by the gpaw.old.matrix.suggest_blocking function.
     -------------------
     Returns:
     A_rs: np.ndarray
@@ -139,7 +139,7 @@ def parallel_delete(A_nn: np.ndarray,
     have been deleted.
     new_grid is the grid on which it is distributed.
     """
-    from gpaw.matrix import suggest_blocking
+    from gpaw.old.matrix import suggest_blocking
     N = grid_desc.N
     assert N == grid_desc.M, 'Matrix must be square'
 
@@ -270,6 +270,7 @@ class BSEBackend:
                  gw_kn=None,
                  truncation=None,
                  integrate_gamma='reciprocal',
+                 q0_correction=False,
                  mode='BSE',
                  q_c=[0.0, 0.0, 0.0],
                  direction=0):
@@ -282,7 +283,10 @@ class BSEBackend:
         self.context = context
         self.add_soc = add_soc
         self.scale = scale
-
+        self.q0_correction = q0_correction
+        if q0_correction and truncation != '2D':
+            raise ValueError('q0_correction should only be used with '
+                             'truncation=\'2D\'.')
         assert mode in ['RPA', 'BSE']
 
         if deps_max is None:
@@ -746,7 +750,8 @@ class BSEBackend:
         return initialize_w_calculator(
             self._chi0calc, self.wcontext,
             coulomb=self.coulomb,
-            integrate_gamma=self.integrate_gamma)
+            integrate_gamma=self.integrate_gamma,
+            q0_correction=self.q0_correction)
 
     @timer('calculate_screened_potential')
     def calculate_screened_potential(self):
@@ -1143,6 +1148,10 @@ class BSE(BSEBackend):
         truncation: str or None
             Coulomb truncation scheme. Can be None or 2D.
         integrate_gamma: dict
+        q0_correction: bool
+            Whether to use analytical correction at q=0 in the
+            calculation of W, applicable for 2D systems.
+            Will raise an error if used without truncation='2D'
         txt: str
             txt output
         mode: str
