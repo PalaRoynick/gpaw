@@ -23,7 +23,8 @@ class GammaIntegrationMode:
                     'reciprocal2D': {'type': 'reciprocal', 'reduced': True},
                     '1BZ': {'type': '1BZ'},
                     '1BZ2D': {'type': '1BZ', 'reduced': True},
-                    'WS': {'type': 'WS'}}
+                    'WS': {'type': 'WS'},
+                    'WS2D': {'type': 'WS2D', 'reduced': True}}
 
         if isinstance(gamma_integration, int):
             raise TypeError("gamma_integration=INT is no longer supported. "
@@ -61,6 +62,10 @@ class GammaIntegrationMode:
     @property
     def is_Wigner_Seitz(self):
         return self.type == 'WS'
+
+    @property
+    def is_Wigner_Seitz_2D(self):
+        return self.type == 'WS2D'
 
     @property
     def to_1bz(self):

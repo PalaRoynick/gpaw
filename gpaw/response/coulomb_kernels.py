@@ -24,12 +24,13 @@ class NewCoulombKernel(PWKernel):
 
 
 class CoulombKernel:
-    def __init__(self, truncation, *, N_c, pbc_c, kd):
+    def __init__(self, truncation, *, N_c, pbc_c, kd, WS_truncation=False):
         self.truncation = truncation
         assert self.truncation in {None, '0D', '2D'}
         self.N_c = N_c
         self.pbc_c = pbc_c
         self.kd = kd
+        self.WS_truncation = WS_truncation
 
     @classmethod
     def from_gs(cls, gs, *, truncation):
@@ -56,7 +57,8 @@ class CoulombKernel:
     def V(self, qpd, q_v=None):
         assert isinstance(qpd, SingleQPWDescriptor)
         return get_coulomb_kernel(qpd, self.N_c, pbc_c=self.pbc_c, q_v=q_v,
-                                  truncation=self.truncation)
+                                  truncation=self.truncation,
+                                  WS_truncation=self.WS_truncation)
 
     def kernel(self, qpd, q_v=None):
         return np.diag(self.V(qpd, q_v=q_v))
@@ -68,7 +70,7 @@ class CoulombKernel:
             tofirstbz=tofirstbz, N=N)
 
 
-def get_coulomb_kernel(qpd, N_c, q_v=None, truncation=None, *, pbc_c)\
+def get_coulomb_kernel(qpd, N_c, q_v=None, truncation=None, *, pbc_c, WS_truncation=False)\
         -> np.ndarray:
     """Factory function that calls the specified flavour
     of the Coulomb interaction"""
@@ -88,7 +90,13 @@ def get_coulomb_kernel(qpd, N_c, q_v=None, truncation=None, *, pbc_c)\
     elif truncation == '2D':
         v_G = calculate_2D_truncated_coulomb(qpd, pbc_c=pbc_c, q_v=q_v)
         if qpd.optical_limit and q_v is None:
-            v_G[0] = 0.0
+            if WS_truncation:
+                L_v = qpd.gd.cell_cv[~pbc_c][0]
+                L = np.linalg.norm(L_v)
+                v_G[0] = - np.pi * L**2 / 2
+            else:
+                v_G[0] =  - np.pi * L**2 / 2
+
 
     elif truncation == '0D':
         from gpaw.hybrids.wstc import WignerSeitzTruncatedCoulomb
