@@ -3,6 +3,8 @@
  *  Copyright (C) 2010  Argonne National Laboratory
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #ifdef PARALLEL
 #include <Python.h>
 #ifdef GPAW_WITH_SL
@@ -355,6 +357,18 @@ void pztrsm_(char* side, char* uplo, char* trans, char* diag,
              void* b, int* ib, int* jb, int* descb);
 
 
+/* Helper for making complex -> int casts work in C++ mode,
+when extracting optimal lwork */
+static inline int get_lwork(double_complex c_work)
+{
+#if GPAW_CPP
+  return static_cast<int>(c_work.real());
+#else
+  return (int)(c_work);
+#endif
+}
+
+
 PyObject* pblas_tran(PyObject *self, PyObject *args)
 {
     int m, n;
@@ -704,7 +718,7 @@ PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args)
    int info = 0;
 
    // First we query for optimal work array size
-   pzgeevx(&balanc, 
+   pzgeevx(&balanc,
            &jobvl,
            &jobvr,
            &sense,
@@ -728,9 +742,9 @@ PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args)
 
    lwork = (int) qwork;
    double_complex* work = (double_complex*) malloc(sizeof(double_complex) * lwork);
- 
+
    // Then we diagonalize
-   pzgeevx(&balanc, 
+   pzgeevx(&balanc,
            &jobvl,
            &jobvr,
            &sense,
@@ -896,7 +910,7 @@ PyObject* scalapack_diagonalize_dc(PyObject *self, PyObject *args)
                (void*)COMPLEXP(z), &one,  &one, INTP(desca),
                (void*)&c_work, &querywork, &d_work, &querywork,
                &i_work, &querywork, &info);
-      lwork = (int)(c_work);
+      lwork = get_lwork(c_work);
       lrwork = (int)(d_work);
     }
 
@@ -1025,7 +1039,7 @@ PyObject* scalapack_diagonalize_ex(PyObject *self, PyObject *args)
                (void*)&c_work, &querywork, d_work, &querywork,
                &i_work, &querywork,
                ifail, iclustr, gap, &info);
-      lwork = MAX(3, (int)(c_work));
+      lwork = MAX(3, get_lwork(c_work));
       lrwork = MAX(3, (int)(d_work[0]));
     }
 
@@ -1268,7 +1282,7 @@ PyObject* scalapack_general_diagonalize_dc(PyObject *self, PyObject *args)
                 (void*)COMPLEXP(a), &one, &one, INTP(desca),
                 (void*)COMPLEXP(b), &one, &one, INTP(desca),
                 &scale, (void*)&c_work, &querywork, &info);
-      lwork = (int)(c_work);
+      lwork = get_lwork(c_work);
     }
 
   if (info != 0) {
@@ -1324,7 +1338,7 @@ PyObject* scalapack_general_diagonalize_dc(PyObject *self, PyObject *args)
                (void*)COMPLEXP(z), &one,  &one, INTP(desca),
                (void*)&c_work, &querywork, &d_work, &querywork,
                &i_work, &querywork, &info);
-      lwork = (int)(c_work);
+      lwork = get_lwork(c_work);
       lrwork = (int)(d_work);
     }
 
@@ -1476,7 +1490,7 @@ PyObject* scalapack_general_diagonalize_ex(PyObject *self, PyObject *args)
                (void*)&c_work, &querywork, d_work, &querywork,
                &i_work, &querywork,
                ifail, iclustr, gap, &info);
-      lwork = MAX(3, (int)(c_work));
+      lwork = MAX(3, get_lwork(c_work));
       lrwork = MAX(3, (int)(d_work[0]));
     }
   if (info != 0) {

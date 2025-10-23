@@ -6,6 +6,8 @@
 #ifndef H_EXTENSIONS
 #define H_EXTENSIONS
 
+#include "c_cpp_tools.h"
+
 
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
@@ -19,16 +21,6 @@
 # define M_PI           3.14159265358979323846  /* pi */
 #endif
 
-#ifndef DOUBLECOMPLEXDEFINED
-#  define DOUBLECOMPLEXDEFINED 1
-#  include <complex.h>
-   typedef double complex double_complex;
-   /* Numpy 2.0 undefines I (see Numpy PR 26789), so we have to put it
-    * back */
-#  ifndef I
-#    define I _Complex_I
-#  endif
-#endif
 
 static inline void* gpaw_malloc(size_t n)
 {
@@ -38,12 +30,12 @@ static inline void* gpaw_malloc(size_t n)
 }
 
 #ifdef GPAW_BGP
-#define GPAW_MALLOC(T, n) (gpaw_malloc((n) * sizeof(T)))
+#define GPAW_MALLOC(T, n) (T*)(gpaw_malloc((n) * sizeof(T)))
 #else
 #ifdef GPAW_AIX
-#define GPAW_MALLOC(T, n) (malloc((n) * sizeof(T)))
+#define GPAW_MALLOC(T, n) (T*)(malloc((n) * sizeof(T)))
 #else
-#define GPAW_MALLOC(T, n) (gpaw_malloc((n) * sizeof(T)))
+#define GPAW_MALLOC(T, n) (T*)(gpaw_malloc((n) * sizeof(T)))
 #endif
 #endif
 #define MIN(x, y) ((x) < (y) ? (x) : (y))

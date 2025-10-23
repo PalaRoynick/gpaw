@@ -46,7 +46,7 @@ name(type *x, int start, int end, int size)                             \
 }
 
 ARRAY_NEGATE(array_negate,  double)
-ARRAY_NEGATE(array_negatez, double complex)
+ARRAY_NEGATE(array_negatez, double_complex)
 
 #define ARRAY_SUB(name, type)                                           \
 static void                                                             \
@@ -61,7 +61,7 @@ name(type *x, const type *y, int start, int end, int size)              \
 }
 
 ARRAY_SUB(array_sub,  double)
-ARRAY_SUB(array_subz, double complex)
+ARRAY_SUB(array_subz, double_complex)
 
 #define ARRAY_SUB_MULT(name, type)                                      \
 static void                                                             \
@@ -76,7 +76,7 @@ name(type *x, const type *y, double a, int start, int end, int size)    \
 }
 
 ARRAY_SUB_MULT(array_sub_mult,  double)
-ARRAY_SUB_MULT(array_sub_multz, double complex)
+ARRAY_SUB_MULT(array_sub_multz, double_complex)
 
 #define ARRAY_MULTO(name, type)                                         \
 static void                                                             \
@@ -91,7 +91,7 @@ name(type *x, const type *y, double a, int start, int end, int size)    \
 }
 
 ARRAY_MULTO(array_multo,  double)
-ARRAY_MULTO(array_multoz, double complex)
+ARRAY_MULTO(array_multoz, double_complex)
 
 /*
  * Implements the computational part of the preconditioner in C. In overall,
@@ -122,7 +122,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         return NULL;
 
     /* Input and output buffers */
-    const double* in; 
+    const double* in;
     double* out;
 
     /*
@@ -202,7 +202,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
     const double_complex* ph;
     ph = (real != 0) ? NULL : COMPLEXP(phases);
 
-    int chunksize = 1; // Use a single chunk for a while 
+    int chunksize = 1; // Use a single chunk for a while
 
     #pragma omp parallel
     {
@@ -223,7 +223,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Restrict (-residuals) -> r1. */
         in   = DOUBLEP(nresiduals);
         out  = DOUBLEP(r1);
-        transapply_worker(rest0, chunksize, start, end, thread_id, nthreads, 
+        transapply_worker(rest0, chunksize, start, end, thread_id, nthreads,
 			  in, out, real, ph );
 
         /* d1 <- 4 * step * r1 */
@@ -236,7 +236,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Apply d1 --kin1--> q1. */
         in   = DOUBLEP(d1);
         out  = DOUBLEP(q1);
-        apply_worker(kin1, chunksize, start, end, thread_id, nthreads, 
+        apply_worker(kin1, chunksize, start, end, thread_id, nthreads,
 		     in, out, real, ph);
 
         /* q1 -= r1 */
@@ -248,7 +248,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Restrict q1 -> r2. */
         in   = DOUBLEP(q1);
         out  = DOUBLEP(r2);
-        transapply_worker(rest1, chunksize, start, end, thread_id, nthreads, 
+        transapply_worker(rest1, chunksize, start, end, thread_id, nthreads,
 			  in, out, real, ph);
 
         /* d2 <- 16 * step * r2 */
@@ -262,7 +262,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Apply d2 --kin2--> q2. */
         in   = DOUBLEP(d2);
         out  = DOUBLEP(q2);
-        apply_worker(kin2, chunksize, start, end, thread_id, nthreads, 
+        apply_worker(kin2, chunksize, start, end, thread_id, nthreads,
 		 in, out, real, ph);
 
         /*
@@ -283,7 +283,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Interpolate d2 -> q1. */
         in   = DOUBLEP(d2);
         out  = DOUBLEP(q1);
-        transapply_worker(intp2, chunksize, start, end, thread_id, nthreads, 
+        transapply_worker(intp2, chunksize, start, end, thread_id, nthreads,
 			  in, out, real, ph);
 
         /* d1 -= q1 */
@@ -295,7 +295,7 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
         /* Apply d1 --kin1--> q1. */
         in   = DOUBLEP(d1);
         out  = DOUBLEP(q1);
-        apply_worker(kin1, chunksize, start, end, thread_id, nthreads, 
+        apply_worker(kin1, chunksize, start, end, thread_id, nthreads,
 		 in, out, real, ph);
 
         /*
@@ -320,13 +320,13 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
             array_negatez(COMPLEXP(d1), start, end, size1);
         in   = DOUBLEP(d1);
         out  = DOUBLEP(d0);
-        transapply_worker(intp1, chunksize, start, end, thread_id, nthreads, 
+        transapply_worker(intp1, chunksize, start, end, thread_id, nthreads,
 			  in, out, real, ph);
 
         /* Apply d0 --kin0--> q0. */
         in   = DOUBLEP(d0);
         out  = DOUBLEP(q0);
-        apply_worker(kin0, chunksize, start, end, thread_id, nthreads, 
+        apply_worker(kin0, chunksize, start, end, thread_id, nthreads,
 		 in, out, real, ph);
 
         /*

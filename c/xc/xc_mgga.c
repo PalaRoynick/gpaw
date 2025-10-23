@@ -29,7 +29,7 @@ void init_mgga(void** params, int code, int nspin) {
     finfo = NULL;
   }
   *params = malloc(finfo->size);
-  init_common(*params, code, nspin, finfo);
+  init_common((common_params*) *params, code, nspin, finfo);
   finfo->init(*params);
 }
 

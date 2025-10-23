@@ -1069,10 +1069,10 @@ static PyObject * mpi_alltoallv(MPIObject *self, PyObject *args)
   /* Create count and displacement arrays in units of bytes */
   int elem_size = Array_ITEMSIZE(send_obj);
 
-  long* tmp1 = Array_DATA(send_cnts);
-  long* tmp2 = Array_DATA(send_displs);
-  long* tmp3 = Array_DATA(recv_cnts);
-  long* tmp4 = Array_DATA(recv_displs);
+  long* tmp1 = (long*)Array_DATA(send_cnts);
+  long* tmp2 = (long*)Array_DATA(send_displs);
+  long* tmp3 = (long*)Array_DATA(recv_cnts);
+  long* tmp4 = (long*)Array_DATA(recv_displs);
   for (int i=0; i < self->size; i++) {
       s_cnts[i] = tmp1[i] * elem_size;
       s_displs[i] = tmp2[i] * elem_size;
@@ -1300,7 +1300,7 @@ static PyObject * MPICommunicator(MPIObject *self, PyObject *args)
   // Check that all ranks make sense
   for (int i = 0; i < n; i++)
     {
-      int *x = PyArray_GETPTR1(iranks, i);
+      int *x = (int*)PyArray_GETPTR1(iranks, i);
       if (*x < 0 || *x >= self->size)
 	{
 	  Py_DECREF(iranks);
@@ -1309,7 +1309,7 @@ static PyObject * MPICommunicator(MPIObject *self, PyObject *args)
 	}
       for (int j = 0; j < i; j++)
 	{
-	  int *y = PyArray_GETPTR1(iranks, j);
+	  int *y = (int*)PyArray_GETPTR1(iranks, j);
 	  if (*y == *x)
 	    {
 	      Py_DECREF(iranks);

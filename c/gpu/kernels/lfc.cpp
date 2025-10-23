@@ -1,3 +1,5 @@
+#include "../../c_cpp_tools.h"
+
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
@@ -6,7 +8,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#include </usr/include/complex.h>
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY

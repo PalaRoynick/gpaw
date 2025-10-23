@@ -1,19 +1,21 @@
 /*  Copyright (C) 2003-2007  CAMP
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "../c_cpp_tools.h"
+
 #include "../extensions.h"
 #include "bmgs.h"
 
 #ifdef K
 
 void
-IP1D(const T* a, const int n, const int m, T* restrict b, int skip[2])
+IP1D(const T* a, const int n, const int m, T* GPAW_RESTRICT b, int skip[2])
 {
     a += K / 2 - 1;
 
     for (int j = 0; j < m; j++) {
         const T* aa = a + j * (K - 1 - skip[1] + n);
-        T* restrict bb = b + j;
+        T* GPAW_RESTRICT bb = b + j;
 
         for (int i = 0; i < n; i++) {
             if (i == 0 && skip[0])
@@ -69,7 +71,7 @@ IP1D(const T* a, const int n, const int m, T* restrict b, int skip[2])
 
 void
 Z(bmgs_interpolate)(int k, int skip[3][2],
-        const T* a, const int size[3], T* restrict b, T* restrict w)
+        const T* a, const int size[3], T* GPAW_RESTRICT b, T* GPAW_RESTRICT w)
 {
     void (*ip)(const T*, int, int, T*, int[2]);
     int e;

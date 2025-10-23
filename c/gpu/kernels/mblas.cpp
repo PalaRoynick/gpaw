@@ -1,3 +1,5 @@
+#include "../../c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -9,7 +11,6 @@
 #include <math.h>
 #include <time.h>
 #include <float.h>
-#include <complex.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
