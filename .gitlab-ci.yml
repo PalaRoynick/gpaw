@@ -44,12 +44,18 @@ stages:
   stage: build
   parallel:
     matrix:
-    #- { lang: "c" }
-    - { lang: "cpp" }
+      - lang: "c"
+      - lang: "cpp"
+  variables:
+    # We'll take a full copy of the repo to separate C and C++ versions
+    WORK_DIR: "repo_${lang}"
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
+      git clone . "$WORK_DIR"
+      cd "$WORK_DIR"
+
       if [ "$lang" = "c" ]; then
         compiler="mpicc"
         std="-std=c11"
@@ -98,10 +104,18 @@ stages:
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
+      - $WORK_DIR
     expire_in: 30 mins
 
 .test:
   stage: test
+  parallel:
+    matrix:
+      - lang: "c"
+      - lang: "cpp"
+  needs:
+    - job: precalculate
+      artifacts: true
   before_script:
     - !reference [default, before_script]
 
@@ -614,6 +628,10 @@ gpwfiles:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
+  parallel:
+    matrix:
+      - lang: "c"
+      - lang: "cpp"
   needs:
     - build-latest
     - nightly-all
