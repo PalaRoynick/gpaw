@@ -164,7 +164,7 @@ build:
     - .build
   script:
     - cat siteconfig.py
-    - pip install --user --log build.log --editable .
+    - pip install --user --log build.log --editable . -v
     - gpaw -P 1 info
   cache:
     key: cache-build-oldest
@@ -206,7 +206,7 @@ build-latest:
     - cat siteconfig.py
     - pip install --user --upgrade numpy scipy
     - pip install --user --upgrade mpi4py
-    - pip install --user --editable .
+    - pip install --user --editable . -v
     - gpaw -P 1 info
   cache:
     key: cache-build-latest
@@ -283,7 +283,7 @@ build-minimal:
       nolibxc = True
       EOF
     - cat siteconfig.py
-    - pip install --user --log build.log --editable .
+    - pip install --user --log build.log --editable . -v
     - gpaw info
 
 
