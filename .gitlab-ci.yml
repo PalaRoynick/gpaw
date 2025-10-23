@@ -42,9 +42,10 @@ stages:
 
 .build:
   stage: build
-  matrix:
-  - { lang: "c" }
-  - { lang: "cpp" }
+  parallel:
+    matrix:
+    - { lang: "c" }
+    - { lang: "cpp" }
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
