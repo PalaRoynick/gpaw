@@ -44,7 +44,7 @@ stages:
   stage: build
   parallel:
     matrix:
-    - { lang: "c" }
+    #- { lang: "c" }
     - { lang: "cpp" }
   before_script:
     - !reference [default, before_script]
