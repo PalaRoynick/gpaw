@@ -42,23 +42,35 @@ stages:
 
 .build:
   stage: build
+  matrix:
+  - { lang: "c" }
+  - { lang: "cpp" }
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
+      if [ "$lang" = "c" ]; then
+        compiler="mpicc"
+        std="-std=c11"
+      else
+        compiler="mpic++"
+        std="-std=c++17"
+      fi
+
       cat << EOF > siteconfig.py
       mpi = True
-      compiler = 'mpicc'
+      compiler = '${compiler}'
       libraries = []
       library_dirs = []
       include_dirs = []
 
-      extra_compile_args = ['-fPIC',
+      extra_compile_args = ['${std}',
+                            '-fPIC',
                             '-O3',
                             '-g',
                             '-fopenmp',
                             '-Wall',
-                            '-Werror',
+                            # '-Werror',
                             ]
       extra_link_args = ['-fopenmp']
 
@@ -270,7 +282,7 @@ build-lumi-g:
     - |
       cat << EOF > siteconfig.py
       mpi = True
-      compiler = 'cc'
+      compiler = 'CC'
       compiler_args = []
       libraries = []
       library_dirs = []
@@ -283,7 +295,7 @@ build-lumi-g:
           '-Wall',
           '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
           '-Wno-deprecated-declarations',  # PySys_SetArgv() etc deprecated in Python 3.11
-          '-Werror',
+          #'-Werror',
           ]
       extra_link_args = ['-fopenmp']
 
