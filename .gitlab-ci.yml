@@ -55,10 +55,10 @@ stages:
     - |
       git clone . "$WORK_DIR"
       cd "$WORK_DIR"
-
+    - |
       if [ "$lang" = "c" ]; then
         compiler="mpicc"
-        std="-std=c11"
+        std="-std=c99"
       else
         compiler="mpic++"
         std="-std=c++17"
