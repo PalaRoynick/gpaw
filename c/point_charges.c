@@ -1,7 +1,8 @@
+#include "c_cpp_tools.h"
 #include "extensions.h"
 //#include <stdlib.h>
 
-PyObject *pc_potential(PyObject *self, PyObject *args)
+CLINKAGE PyObject *pc_potential(PyObject *self, PyObject *args)
 {
     PyArrayObject* beg_v_obj;
     PyArrayObject* h_v_obj;

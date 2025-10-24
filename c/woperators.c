@@ -6,6 +6,8 @@
  *  Copyright (C) 2005-2020  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -27,6 +29,9 @@
   #define GPAW_ASYNC3 1
   #define GPAW_ASYNC2 1
 #endif
+
+CLINKAGE
+{
 
 typedef struct
 {
@@ -160,7 +165,7 @@ void wapply_worker(WOperatorObject *self, int chunksize, int start,
 
 
 //Double buffering async worker
-void wapply_worker_cfd(WOperatorObject *self, int chunksize, int chunkinc, 
+void wapply_worker_cfd(WOperatorObject *self, int chunksize, int chunkinc,
       int start, int end, int thread_id, int nthreads,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph)
@@ -172,7 +177,7 @@ void wapply_worker_cfd(WOperatorObject *self, int chunksize, int chunkinc,
   const int* size2 = bc->size2;
   int ng = bc->ndouble * size1[0] * size1[1] * size1[2];
   int ng2 = bc->ndouble * size2[0] * size2[1] * size2[2];
-  
+
   MPI_Request recvreq[2 * GPAW_ASYNC3 * GPAW_ASYNC2];
   MPI_Request sendreq[2 * GPAW_ASYNC3 * GPAW_ASYNC2];
 
@@ -284,7 +289,7 @@ static PyObject * WOperator_apply(WOperatorObject *self,
     nin = PyArray_DIMS(input)[0];
 
   boundary_conditions* bc = self->bc;
-  
+
   const double* in = DOUBLEP(input);
   double* out = DOUBLEP(output);
   const double_complex* ph;
@@ -322,7 +327,7 @@ static PyObject * WOperator_apply(WOperatorObject *self,
   thread_id = omp_get_thread_num();
   nthreads = omp_get_num_threads();
 #endif
-  SHARE_WORK(nin, nthreads, thread_id, &start, &end); 
+  SHARE_WORK(nin, nthreads, thread_id, &start, &end);
 
 #ifndef GPAW_ASYNC
   if (1)
@@ -477,3 +482,5 @@ PyObject* NewWOperatorObject(PyObject *obj, PyObject *args)
 
   return (PyObject*) self;
 }
+
+} // CLINKAGE

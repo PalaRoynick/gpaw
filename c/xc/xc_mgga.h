@@ -26,7 +26,7 @@ typedef struct mgga_func_info {
   void (*corr)(void* par, const double *rho, const double *sigma, const double *tau,
                double *energy, double *dedd, double *vsigma, double *dedtau);
 } mgga_func_info;
-  
+
 typedef struct common_params {
   int nspin;
   int code;

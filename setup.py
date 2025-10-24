@@ -53,11 +53,20 @@ for i, arg in enumerate(sys.argv):
             f'Please set GPAW_CONFIG={custom} or place {custom} in ' +
             '~/.gpaw/siteconfig.py')
 
+# temp flag for choosing different options for C/C++ builds
+use_cpp = True
+
 libraries = ['xc']
 library_dirs = []
 include_dirs = []
 extra_link_args = []
-extra_compile_args = ['-Wall', '-Wno-unknown-pragmas', '-std=c99']
+extra_compile_args = ['-Wall', '-Wno-unknown-pragmas']
+
+if use_cpp:
+    extra_compile_args += ['-std=c++17']
+else:
+    extra_compile_args += ['-std=c99']
+
 runtime_library_dirs = []
 extra_objects = []
 define_macros = [('NPY_NO_DEPRECATED_API', '7'),
@@ -141,16 +150,17 @@ if 'mpicompiler' in locals():
 
 # If `mpi` was not set in siteconfig,
 # it is enabled by default if `mpicc` is found
+default_mpi_compiler = 'mpic++' if use_cpp else 'mpicc'
 if mpi is None:
     if compiler is None:
         if (os.name != 'nt'
-                and run(['which', 'mpicc'],
+                and run(['which', default_mpi_compiler],
                         capture_output=True).returncode == 0):
             mpi = True
-            compiler = 'mpicc'
+            compiler = default_mpi_compiler
         else:
             mpi = False
-    elif compiler == 'mpicc':
+    elif compiler in ['mpicc', 'mpic++', 'mpiCC', 'mpicxx']:
         warn_deprecated(
             'Define in siteconfig explicitly'
             '\n\nmpi = True')
@@ -326,15 +336,21 @@ def test_libxc() -> bool:
 @try_compiling
 def test_blas() -> bool:
     """
-    // For some reasons GPAW doesn't seem to use any of the BLAS header
-    // files (e.g. 'cblas.h' and 'f77blas.h'), but instead declares
-    // them explicitly (e.g. 'c/blas.c');
-    // do as the Romans do
-    #ifdef GPAW_NO_UNDERSCORE_BLAS
+    // GPAW calls Fortran BLAS functions directly instead of using cblas.h,
+    // so must forward declare the function here and prevent name mangling.
+
+    # ifdef GPAW_NO_UNDERSCORE_BLAS
     #  define dnrm2_  dnrm2
+    # endif
+
+    #ifdef __cplusplus
+    extern "C" {
     #endif
 
     double dnrm2_(int n, double *vec, int stride);
+    #ifdef __cplusplus
+    }
+    #endif
 
     void no_op(double _) { return; }  // Suppress -Wunused-variable
 
@@ -442,7 +458,7 @@ extensions = [Extension('_gpaw',
                         extra_compile_args=extra_compile_args,
                         runtime_library_dirs=runtime_library_dirs,
                         extra_objects=extra_objects,
-                        language='c')]
+                        language='c++' if use_cpp else 'c')]
 
 
 write_configuration(define_macros, include_dirs, libraries, library_dirs,

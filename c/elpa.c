@@ -1,9 +1,14 @@
 #if defined(GPAW_WITH_SL) && defined(PARALLEL) && defined(GPAW_WITH_ELPA)
 
+#include "c_cpp_tools.h"
 #include "extensions.h"
 #include <elpa/elpa.h>
 #include <mpi.h>
 #include "mympi.h"
+
+
+CLINKAGE
+{
 
 elpa_t* unpack_handleptr(PyObject* handle_obj)
 {
@@ -237,5 +242,7 @@ PyObject *pyelpa_deallocate(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 #endif
 }
+
+} // CLINKAGE
 
 #endif

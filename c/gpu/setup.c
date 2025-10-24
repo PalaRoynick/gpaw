@@ -1,3 +1,4 @@
+#include "../c_cpp_tools.h"
 #include "../extensions.h"
 #include "gpu.h"
 #include "gpu-complex.h"
@@ -8,6 +9,9 @@
 #ifdef GPAW_WITH_MAGMA
     #include "cpp/magma/magma_python_interface.h"
 #endif
+
+CLINKAGE
+{
 
 void bc_init_buffers_gpu();
 void blas_init_gpu();
@@ -64,3 +68,5 @@ PyObject* gpaw_gpu_delete(PyObject *self, PyObject *args)
     else
         Py_RETURN_NONE;
 }
+
+} // CLINKAGE

@@ -1,10 +1,16 @@
 #ifdef GPAW_WITH_FFTW
+
+#include "c_cpp_tools.h"
+
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
 #include <numpy/arrayobject.h>
 #include <fftw3.h>
+
+CLINKAGE
+{
 
 /* Create plan and return pointer to plan as a string */
 PyObject * FFTWPlan(PyObject *self, PyObject *args)
@@ -72,6 +78,8 @@ PyObject * FFTWDestroy(PyObject *self, PyObject *args)
         return NULL;
     fftw_destroy_plan(*plan);
     Py_RETURN_NONE;
+}
+
 }
 
 #endif // GPAW_WITH_FFTW

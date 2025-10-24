@@ -3,6 +3,8 @@
  *  Copyright (C) 2007-2010  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #include <numpy/arrayobject.h>
@@ -14,23 +16,27 @@
 #include <xc.h> // If this file is not found, install libxc https://gpaw.readthedocs.io/install.html#libxc-installation
 #endif
 
+
 #ifdef GPAW_HPM
-PyObject* ibm_hpm_start(PyObject *self, PyObject *args);
-PyObject* ibm_hpm_stop(PyObject *self, PyObject *args);
-PyObject* ibm_mpi_start(PyObject *self);
-PyObject* ibm_mpi_stop(PyObject *self);
+CLINKAGE PyObject* ibm_hpm_start(PyObject *self, PyObject *args);
+CLINKAGE PyObject* ibm_hpm_stop(PyObject *self, PyObject *args);
+CLINKAGE PyObject* ibm_mpi_start(PyObject *self);
+CLINKAGE PyObject* ibm_mpi_stop(PyObject *self);
 #endif
 
 #ifdef CRAYPAT
 #include <pat_api.h>
-PyObject* craypat_region_begin(PyObject *self, PyObject *args);
-PyObject* craypat_region_end(PyObject *self, PyObject *args);
+CLINKAGE PyObject* craypat_region_begin(PyObject *self, PyObject *args);
+CLINKAGE PyObject* craypat_region_end(PyObject *self, PyObject *args);
 #endif
 
 #if defined(GPAW_WITH_MAGMA) && !defined(GPAW_GPU)
 #warning "GPAW must be built with GPU support in order to use MAGMA routines. Disabling MAGMA"
 #undef GPAW_WITH_MAGMA
 #endif
+
+CLINKAGE
+{
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -111,8 +117,13 @@ PyObject* pblas_hemm_symm(PyObject *self, PyObject *args);
 PyObject* pblas_gemv(PyObject *self, PyObject *args);
 PyObject* pblas_r2k(PyObject *self, PyObject *args);
 PyObject* pblas_rk(PyObject *self, PyObject *args);
+} // CLINKAGE
+
 #if defined(GPAW_WITH_ELPA)
 #include <elpa/elpa.h>
+
+CLINKAGE
+{
 PyObject* pyelpa_init(PyObject *self, PyObject *args);
 PyObject* pyelpa_uninit(PyObject *self, PyObject *args);
 PyObject* pyelpa_version(PyObject *self, PyObject *args);
@@ -124,14 +135,18 @@ PyObject* pyelpa_diagonalize(PyObject *self, PyObject *args);
 PyObject* pyelpa_general_diagonalize(PyObject *self, PyObject *args);
 PyObject* pyelpa_constants(PyObject *self, PyObject *args);
 PyObject* pyelpa_deallocate(PyObject *self, PyObject *args);
+} // CLINKAGE
 #endif // GPAW_WITH_ELPA
 #endif // GPAW_WITH_SL and PARALLEL
 
 #ifdef GPAW_WITH_FFTW
-PyObject * FFTWPlan(PyObject *self, PyObject *args);
-PyObject * FFTWExecute(PyObject *self, PyObject *args);
-PyObject * FFTWDestroy(PyObject *self, PyObject *args);
+CLINKAGE PyObject * FFTWPlan(PyObject *self, PyObject *args);
+CLINKAGE PyObject * FFTWExecute(PyObject *self, PyObject *args);
+CLINKAGE PyObject * FFTWDestroy(PyObject *self, PyObject *args);
 #endif
+
+CLINKAGE
+{
 
 // Threading
 PyObject* get_num_threads(PyObject *self, PyObject *args);
@@ -170,8 +185,12 @@ PyObject* adjust_momenta(PyObject *self, PyObject *args);
 // TIP3P forces
 PyObject* calculate_forces_H2O(PyObject *self, PyObject *args);
 
+} // CLINKAGE
 
 #ifdef GPAW_GPU
+
+CLINKAGE
+{
 PyObject* gpaw_gpu_init(PyObject *self, PyObject *args);
 PyObject* gpaw_gpu_delete(PyObject *self, PyObject *args);
 PyObject* csign_gpu(PyObject *self, PyObject *args);
@@ -209,6 +228,7 @@ PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
 PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
+} // CLINKAGE
 
 #ifdef GPAW_WITH_MAGMA
     // Include just the C99-compliant interface, implementation is C++
@@ -217,6 +237,8 @@ PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
 
 #endif // GPAW_GPU
 
+CLINKAGE
+{
 
 static PyMethodDef functions[] = {
     {"pawexxvv", pawexxvv, METH_VARARGS, 0},
@@ -517,3 +539,5 @@ static PyObject* moduleinit(void)
 #endif
     return m;
 }
+
+} // CLINKAGE

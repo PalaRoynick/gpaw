@@ -2,6 +2,7 @@
  *  Copyright (C) 2007-2009  CAMd
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "../c_cpp_tools.h"
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -23,6 +24,7 @@
 //            __  2
 //         d(|\/n| )
 //
+
 
 #ifndef GPAW_WITHOUT_LIBXC
 void init_mgga(void** params, int code, int nspin);
@@ -48,6 +50,9 @@ double rpbe_exchange(const xc_parameters* par,
 double beefvdw_exchange(const xc_parameters* par,
                         double n, double rs, double a2,
                         double* dedrs, double* deda2);
+
+CLINKAGE
+{
 
 //
 typedef struct
@@ -305,3 +310,5 @@ PyObject * NewXCFunctionalObject(PyObject *obj, PyObject *args)
   }
   return (PyObject*)self;
 }
+
+} // CLINKAGE

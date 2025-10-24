@@ -5,7 +5,7 @@
 
  Pure C implementation of preconditioner                           */
 
-
+#include "c_cpp_tools.h"
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -89,6 +89,9 @@ name(type *x, const type *y, double a, int start, int end, int size)    \
     for (i = 0; i < (end - start) * size; i++)                          \
         x[i] = a * y[i];                                                \
 }
+
+CLINKAGE
+{
 
 ARRAY_MULTO(array_multo,  double)
 ARRAY_MULTO(array_multoz, double_complex)
@@ -351,3 +354,5 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
 
     Py_RETURN_NONE;
 }
+
+} // CLINKAGE

@@ -5,11 +5,6 @@
 
 #include "../../../gpaw_utils.h"
 
-// MAGMA needs stdbool.h but it is not properly included by their own headers.
-// Can remove this include once it's fixed in MAGMA.
-// See https://github.com/icl-utk-edu/magma/pull/41
-#include <stdbool.h>
-#include <magma_v2.h>
 #include <Python.h>
 
 /* Initializes MAGMA library. Must be called come AFTER any calls to cudaSetValidDevices

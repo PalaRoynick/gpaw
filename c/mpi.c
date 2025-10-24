@@ -3,6 +3,8 @@
  *  Copyright (C) 2005-2009  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
@@ -47,6 +49,9 @@ void gpawDeviceSynchronize();
 #define CHK_OTHER_PROC(n) if (n < 0 || n >= self->size || n == self->rank) { \
     PyErr_SetString(PyExc_ValueError, "Invalid processor number.");     \
     return NULL; } else
+
+CLINKAGE
+{
 
 // MPI request object, so we can store a reference to the buffer,
 // preventing its early deallocation.
@@ -1400,5 +1405,7 @@ PyObject* globally_broadcast_bytes(PyObject *self, PyObject *args)
     free(dst);
     return value;
 }
+
+} // CLINKAGE
 
 #endif // PARALLEL

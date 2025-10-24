@@ -2,8 +2,12 @@
  *  Copyright (C) 2007-2008  CAMd
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
 #include "spline.h"
 #include "assert.h"
+
+CLINKAGE
+{
 
 static void spline_dealloc(SplineObject *xp)
 {
@@ -163,3 +167,5 @@ PyObject * NewSplineObject(PyObject *self, PyObject *args)
   spline->spline = bmgs_spline(l, dr, nbins, DOUBLEP(farray));
   return (PyObject*)spline;
 }
+
+} // CLINKAGE

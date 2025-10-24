@@ -25,6 +25,8 @@ void _pw_insert(int nG,
         tmp_Q[Q1] = 0.0;
 }
 
+CLINKAGE
+{
 
 PyObject *pw_insert(PyObject *self, PyObject *args)
 // Python wrapper
@@ -330,3 +332,4 @@ PyObject* pawexxvv(PyObject *self, PyObject *args)
   return (PyObject*) V_ii_obj;
 }
 
+} // CLINKAGE

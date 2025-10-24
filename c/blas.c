@@ -3,12 +3,20 @@
  *  Copyright (C) 2007       CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+
 #ifndef GPAW_WITHOUT_BLAS
+
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
 #include <numpy/arrayobject.h>
 #include "extensions.h"
+
+/* Python wrappers for some BLAS functions. The following calls Fortran functions
+directly, without using cblas.h wrappers, so we must forward declare them and ensure
+they don't get name mangled. */
 
 #ifdef GPAW_NO_UNDERSCORE_BLAS
 #  define dsyrk_  dsyrk
@@ -19,6 +27,8 @@
 #  define zgemm_  zgemm
 #endif
 
+CLINKAGE
+{
 
 void dsyrk_(char *uplo, char *trans, int *n, int *k,
             double *alpha, double *a, int *lda, double *beta,
@@ -59,9 +69,9 @@ PyObject* mmm(PyObject *self, PyObject *args)
                           &alpha, &M1, &trans1, &M2, &trans2, &beta, &M3))
         return NULL;
 
-    void* a = PyArray_DATA(M2);
-    void* b = PyArray_DATA(M1);
-    void* c = PyArray_DATA(M3);
+    double* a = (double*) PyArray_DATA(M2);
+    double* b = (double*) PyArray_DATA(M1);
+    double* c = (double*) PyArray_DATA(M3);
 
     int bytes = PyArray_ITEMSIZE(M3);
 
@@ -174,5 +184,7 @@ PyObject* r2k(PyObject *self, PyObject *args)
 
   Py_RETURN_NONE;
 }
+
+} // CLINKAGE
 
 #endif

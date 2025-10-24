@@ -741,7 +741,7 @@ static void m06l_end(void *p)
   free(par->x_aux);
 }
 
-const mgga_func_info m06l_info = {
+mgga_func_info m06l_info = {
   sizeof(m06l_params),
   &m06l_init,
   &m06l_end,

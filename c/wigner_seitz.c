@@ -1,5 +1,9 @@
+#include "c_cpp_tools.h"
 #include "extensions.h"
 #include <stdlib.h>
+
+CLINKAGE
+{
 
 double distance(double *a, double *b);
 
@@ -14,7 +18,7 @@ double distance3d2_di(double *a, int *b)
     sum += diff*diff;
   }
   return sum;
-} 
+}
 
 PyObject *exterior_electron_density_region(PyObject *self, PyObject *args)
 {
@@ -24,7 +28,7 @@ PyObject *exterior_electron_density_region(PyObject *self, PyObject *args)
   PyArrayObject* end_c;
   PyArrayObject* hh_c;
   PyArrayObject* vdWrad;
-  if (!PyArg_ParseTuple(args, "OOOOOO", &ai, &aatom_c, 
+  if (!PyArg_ParseTuple(args, "OOOOOO", &ai, &aatom_c,
 			&beg_c, &end_c, &hh_c, &vdWrad))
     return NULL;
 
@@ -63,3 +67,4 @@ PyObject *exterior_electron_density_region(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
+} // CLINKAGE

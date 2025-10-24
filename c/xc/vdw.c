@@ -2,6 +2,7 @@
  *  Copyright (C) 2007-2009  CAMd
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "../c_cpp_tools.h"
 #include "../extensions.h"
 
 /* Old code used a VLA 'phi' array defined as `double (*phi)[nD]` and which was passed to vdwkernel as such.
@@ -49,6 +50,9 @@ double vdwkernel(double D, double d1, double d2, int nD, int ndelta,
     }
   return e12;
 }
+
+CLINKAGE
+{
 
 PyObject * vdw(PyObject* self, PyObject *args)
 {
@@ -200,3 +204,5 @@ PyObject * vdw2(PyObject* self, PyObject *args)
     }
   Py_RETURN_NONE;
 }
+
+} // CLINKAGE

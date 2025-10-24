@@ -1,3 +1,5 @@
+#include "../c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -21,6 +23,9 @@ static int operator_streams = 0;
 static double *operator_buf_gpu = NULL;
 static int operator_buf_size = 0;
 static int operator_init_count = 0;
+
+CLINKAGE
+{
 
 /*
  * Increment reference count to register a new operator object
@@ -389,3 +394,5 @@ PyObject * Operator_apply_gpu(OperatorObject* self, PyObject* args)
     else
         Py_RETURN_NONE;
 }
+
+} // CLINKAGE

@@ -32,18 +32,26 @@
 #define Csys2blacs_handle_ Csys2blacs_handle
 #endif
 
-void Cblacs_barrier_(int ConTxt, char *scope);
+/* Python wrappers for SCALAPACK and BLACS stuff. The following wants to declare
+the functions manually, without including a scalapack header.
+So for this to compile also as C++ we must ensure the functions don't get name mangled.
+FIXME: don't declare API functions manually...
 
-void Cblacs_gridexit_(int ConTxt);
+See also similar comment in blas.c.
+*/
 
-void Cblacs_gridinfo_(int ConTxt, int* nprow, int* npcol,
+CLINKAGE void Cblacs_barrier_(int ConTxt, char *scope);
+
+CLINKAGE void Cblacs_gridexit_(int ConTxt);
+
+CLINKAGE void Cblacs_gridinfo_(int ConTxt, int* nprow, int* npcol,
                       int* myrow, int* mycol);
 
-void Cblacs_gridinit_(int* ConTxt, char* order, int nprow, int npcol);
+CLINKAGE void Cblacs_gridinit_(int* ConTxt, char* order, int nprow, int npcol);
 
-void Cblacs_pinfo_(int* mypnum, int* nprocs);
+CLINKAGE void Cblacs_pinfo_(int* mypnum, int* nprocs);
 
-int Csys2blacs_handle_(MPI_Comm SysCtxt);
+CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 // End of BLACS
 
 // ScaLAPACK
@@ -101,6 +109,9 @@ int Csys2blacs_handle_(MPI_Comm SysCtxt);
 #define   Cpdtrmr2d_  Cpdtrmr2d
 #define   Cpztrmr2d_  Cpztrmr2d
 #endif
+
+CLINKAGE
+{
 
 // tools
 #ifndef GPAW_WITH_INTEL_MKL
@@ -356,6 +367,7 @@ void pztrsm_(char* side, char* uplo, char* trans, char* diag,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb);
 
+} // CLINKAGE
 
 /* Helper for making complex -> int casts work in C++ mode,
 when extracting optimal lwork */
@@ -368,6 +380,8 @@ static inline int get_lwork(double_complex c_work)
 #endif
 }
 
+CLINKAGE
+{
 
 PyObject* pblas_tran(PyObject *self, PyObject *args)
 {
@@ -1951,6 +1965,8 @@ PyObject* scalapack_solve(PyObject *self, PyObject *args) {
   PyObject* returnvalue = Py_BuildValue("i", info);
   return returnvalue;
 }
+
+} // CLINKAGE
 
 #endif
 #endif // PARALLEL

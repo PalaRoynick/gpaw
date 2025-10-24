@@ -1,4 +1,8 @@
+#include "c_cpp_tools.h"
 #include "extensions.h"
+
+CLINKAGE
+{
 
 // Evaluate the multipole expansion
 // x_GG: output, the multipole exansion evaluated at omega
@@ -156,4 +160,4 @@ PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-
+} // CLINKAGE

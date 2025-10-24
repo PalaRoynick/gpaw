@@ -1,3 +1,5 @@
+#include "../c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -36,6 +38,8 @@ static gpublasOperation_t gpublas_operation(int op)
     return gpu_op;
 }
 
+CLINKAGE
+{
 
 PyObject* scal_gpu(PyObject *self, PyObject *args)
 {
@@ -510,3 +514,5 @@ PyObject* dotu_gpu(PyObject *self, PyObject *args)
             return PyComplex_FromDoubles(result.x,result.y);
     }
 }
+
+} // CLINKAGE

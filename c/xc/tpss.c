@@ -14,6 +14,7 @@
 #endif
 #include "xc_mgga.h"
 
+
 typedef struct tpss_params {
   common_params common; // needs to be at the beginning of every functional_params
   XC(func_type) *x_aux;
@@ -554,7 +555,7 @@ static void tpss_end(void *p) {
   free(par->c_aux2);
 }
 
-const mgga_func_info tpss_info = {
+mgga_func_info tpss_info = {
   sizeof(tpss_params),
   &tpss_init,
   &tpss_end,

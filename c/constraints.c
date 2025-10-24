@@ -1,3 +1,5 @@
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -222,6 +224,9 @@ INLINE double pair_interaction_cutoff(double A, double B, double cutoff, double 
   return E;
 
 }
+
+CLINKAGE
+{
 
 PyObject* adjust_positions(PyObject *self, PyObject *args)
 {
@@ -576,3 +581,4 @@ PyObject* calculate_forces_H2O(PyObject *self, PyObject *args)
   return Py_BuildValue("d", E);
 }
 
+} // CLINKAGE

@@ -37,7 +37,7 @@ void cut(const double* a, const int n[3], const int c[3],
 }
 
 
-PyObject *tci_overlap(PyObject *self, PyObject *args)
+CLINKAGE PyObject *tci_overlap(PyObject *self, PyObject *args)
 {
     /*
     Calculate two-center integral overlaps:

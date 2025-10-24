@@ -4,6 +4,8 @@
  *  Copyright (C) 2011  Argonne National Laboratory
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -19,6 +21,9 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+
+CLINKAGE
+{
 
 #ifdef GPAW_HPM
 void HPM_Start(char *);
@@ -56,12 +61,13 @@ PyObject* ibm_mpi_stop(PyObject *self)
   Py_RETURN_NONE;
 }
 #endif
+} // CLINKAGE
 
 
 #ifdef CRAYPAT
 #include <pat_api.h>
 
-PyObject* craypat_region_begin(PyObject *self, PyObject *args)
+CLINKAGE PyObject* craypat_region_begin(PyObject *self, PyObject *args)
 {
   int n;
   char* s;
@@ -71,7 +77,7 @@ PyObject* craypat_region_begin(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
-PyObject* craypat_region_end(PyObject *self, PyObject *args)
+CLINKAGE PyObject* craypat_region_end(PyObject *self, PyObject *args)
 {
   int n;
   if (!PyArg_ParseTuple(args, "i", &n))
@@ -81,7 +87,7 @@ PyObject* craypat_region_end(PyObject *self, PyObject *args)
 }
 #endif
 
-PyObject* get_num_threads(PyObject *self, PyObject *args)
+CLINKAGE PyObject* get_num_threads(PyObject *self, PyObject *args)
 {
   int nthreads = 1;
 #ifdef _OPENMP
@@ -141,7 +147,7 @@ static long_long papi_start_usec_r;
 
 // Returns PAPI_dmem_info structure in Python dictionary
 // Units used by PAPI are kB
-PyObject* papi_mem_info(PyObject *self, PyObject *args)
+CLINKAGE PyObject* papi_mem_info(PyObject *self, PyObject *args)
 {
   PAPI_dmem_info_t dmem;
   PyObject* py_dmem;
@@ -293,7 +299,7 @@ void gpaw_perf_finalize(void)
 #endif
 
 // returns the distance between two 3d double vectors
-double distance(double *a, double *b)
+CLINKAGE double distance(double *a, double *b)
 {
   double sum = 0;
   double diff;
@@ -304,6 +310,8 @@ double distance(double *a, double *b)
   return sqrt(sum);
 }
 
+CLINKAGE
+{
 
 PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 // Equivalent to:
@@ -810,3 +818,5 @@ PyObject* integrate_inwards(PyObject *self, PyObject *args)
     }
     Py_RETURN_NONE;
 }
+
+} // CLINKAGE

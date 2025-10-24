@@ -5,9 +5,12 @@
 #include "xc_mgga.h"
 #include "xc_gpaw.h"
 
-extern const mgga_func_info m06l_info;
-extern const mgga_func_info tpss_info;
-extern const mgga_func_info revtpss_info;
+/* LN: Can't have these as const if compiling as C++. const in C++ has internal linkage.
+Could "patch" this by wrapping with extern "C" but that becomes ugly too. */
+
+extern mgga_func_info m06l_info;
+extern mgga_func_info tpss_info;
+extern mgga_func_info revtpss_info;
 
 static void init_common(common_params* params, int code, int nspin, const mgga_func_info *finfo) {
   params->code = code;

@@ -4,6 +4,8 @@
 /*  Copyright (C) 2009-2012  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #include "bc.h"
 
 #ifdef GPAW_ASYNC
@@ -11,6 +13,9 @@
 #else
   #define GPAW_ASYNC_D 1
 #endif
+
+CLINKAGE
+{
 
 #ifdef __TRANSFORMERS_C
 typedef struct
@@ -29,7 +34,7 @@ typedef struct
 #endif
 } TransformerObject;
 #else
-// Provide an opaque type for routines outside transformers.c 
+// Provide an opaque type for routines outside transformers.c
 struct _TransformerObject;
 typedef struct _TransformerObject TransformerObject;
 
@@ -45,3 +50,5 @@ void transapply_worker(TransformerObject *self, int chunksize, int start,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph);
 #endif
+
+} // CLINKAGE

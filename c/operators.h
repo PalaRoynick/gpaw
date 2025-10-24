@@ -1,6 +1,8 @@
 #ifndef __OPERATORS_H
 #define __OPERATORS_H
 
+#include "c_cpp_tools.h"
+
 /*  Copyright (C) 2009-2012  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
@@ -9,6 +11,10 @@
 #ifdef GPAW_GPU
 #include "gpu/bmgs.h"
 #endif
+
+// Python bindings need C-linkage
+CLINKAGE
+{
 
 #ifdef __OPERATORS_C
 typedef struct
@@ -39,5 +45,7 @@ void apply_worker(OperatorObject *self, int chunksize, int start,
 		  int end, int thread_id, int nthreads,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph);
+
+} // CLINKAGE
 
 #endif

@@ -2,6 +2,12 @@
 
 #include "magma_python_interface.h"
 
+// MAGMA needs stdbool.h but it is not properly included by their own headers.
+// Can remove this include once it's fixed in MAGMA.
+// See https://github.com/icl-utk-edu/magma/pull/41
+#include <stdbool.h>
+#include <magma_v2.h>
+
 #include <magma_auxiliary.h>
 #include <magma_types.h>
 

@@ -1,8 +1,10 @@
 /*  Copyright (C) 2010-2011 CAMd
  *  Please see the accompanying LICENSE file for further information. */
+#include "c_cpp_tools.h"
 #include "extensions.h"
 
-
+CLINKAGE
+{
 
 PyObject* GG_shuffle(PyObject *self, PyObject *args)
 {
@@ -350,3 +352,5 @@ PyObject* map_k_points(PyObject *self, PyObject *args)
     }
     Py_RETURN_NONE;
 }
+
+} // CLINKAGE

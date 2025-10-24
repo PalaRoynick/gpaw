@@ -3,6 +3,8 @@
  *  Copyright (C) 2010,2020  CSC - IT Center for Science Ltd.
  *  Please see the accompanying LICENSE file for further information. */
 
+#include "c_cpp_tools.h"
+
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -20,7 +22,7 @@
 #  define zgemm_  zgemm
 #endif
 #ifndef GPAW_WITHOUT_BLAS
-void zgemm_(char *transa, char *transb, int *m, int * n,
+CLINKAGE void zgemm_(char *transa, char *transb, int *m, int * n,
             int *k, void *alpha, void *a, int *lda,
             const void *b, int *ldb, void *beta,
             void *c, int *ldc);
@@ -41,6 +43,9 @@ void myzgemm(char *transa, char *transb, int *m, int * n,
                                        b_xM[*ldb * x + M]);
 }
 #endif
+
+CLINKAGE
+{
 
 #ifdef GPAW_GPU
 void lfc_dealloc_gpu(LFCObject *self);
@@ -1775,3 +1780,5 @@ PyObject* ae_core_density_correction(LFCObject *lfc, PyObject *args)
   GRID_LOOP_STOP(lfc, -1, 0);
   Py_RETURN_NONE;
 }
+
+} // CLINKAGE

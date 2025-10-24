@@ -1,7 +1,7 @@
 /*  Copyright (C) 2003-2007  CAMP
  *  Copyright (C) 2007-2008  CAMd
  *  Please see the accompanying LICENSE file for further information. */
-
+#include "../c_cpp_tools.h"
 #include <Python.h>
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #define NO_IMPORT_ARRAY
@@ -334,6 +334,9 @@ static void block2dataadd(const xcinfo *info, double *outblocklist[], const xcpt
     }
   }
 }
+
+CLINKAGE
+{
 
 static PyObject*
 lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
@@ -739,3 +742,5 @@ PyObject * lxcXCFuncNum(PyObject *obj, PyObject *args)
   else
     Py_RETURN_NONE;
 }
+
+} // CLINKAGE
