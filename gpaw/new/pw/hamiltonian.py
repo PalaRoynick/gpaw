@@ -57,7 +57,7 @@ class PWHamiltonian(Hamiltonian):
         for n1 in range(0, psit_nG.data.shape[0]):
             # n2 = min(n1 + domain_comm.size, mynbands)
             # psit_nG[n1:n2].gather_all(psit_G)
-            psit_G.data[:] = psit_nG[n1].data
+            psit_G.data[:] = psit_nG.data[n1]
             #if domain_comm.rank < n2 - n1:
             psit_G.ifft(out=tmp_R, plan=self.plan)
             tmp_R.data *= vt_R.data
@@ -65,7 +65,7 @@ class PWHamiltonian(Hamiltonian):
             psit_G.data *= e_kin_G
             vtpsit_G.data += psit_G.data
             #out_nG[n1:n2].scatter_from_all(vtpsit_G)
-            out_nG[n1].data[:] = vtpsit_G.data
+            out_nG.data[n1] = vtpsit_G.data
         
         psit_nG.domain_a2a_bands()
         out_nG.domain_a2a_bands()

@@ -231,7 +231,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
             if self.dtype != lcao_dtype:
                 psit2_nG = pw_correct.empty(self.nbands,
-                                            self.communicators['b'])
+                                            self.communicators['b'],
+                                            domain_transposable=True)
                 psit2_nG.data[:] = psit_nG.data
                 return psit2_nG.to_xp(self.xp)
             return psit_nG.to_xp(self.xp)

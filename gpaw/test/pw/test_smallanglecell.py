@@ -9,7 +9,7 @@ def test_pw_smallanglecell(in_tmp_dir):
     ec = 200
     h2 = Atoms('H2', [[0, 0, 0], [0, 0, 0.8]],
                cell=[a, a, a], pbc=1)
-    h2.calc = GPAW(mode=PW(ec), txt='sc.txt')
+    h2.calc = GPAW(mode=PW(ec))#, txt='sc.txt', random=True)
     e0 = h2.get_potential_energy()
     h2.cell[1, 0] = a
     with pytest.warns(UserWarning):

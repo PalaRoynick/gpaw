@@ -1,6 +1,7 @@
 try:
     from mpi4py.MPI import (Request, SUM, MAX, MIN, IN_PLACE, IDENT,
-                            CONGRUENT, SIMILAR, UNEQUAL, PROD, _addressof)
+                            CONGRUENT, SIMILAR, UNEQUAL, PROD, Comm,
+                            _addressof)
 except ImportError:
     SUM = MAX = MIN = IN_PLACE = IDENT = None  # type: ignore
     CONGRUENT = SIMILAR = UNEQUAL = PROD = None  # type: ignore
@@ -17,6 +18,7 @@ def maybe_sync(arr):
 class MPI4PYWrapper:
     def __init__(self, comm, parent=None):
         self.comm = comm
+        assert isinstance(comm, Comm)
         self.size = comm.size
         self.rank = comm.rank
         self.parent = parent  # XXX check C-object against comm.parent?

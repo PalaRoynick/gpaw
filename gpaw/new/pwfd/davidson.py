@@ -76,7 +76,7 @@ class Davidson(PWFDEigensolver):
         eig_N = xp.empty(2 * B)
         b = psit_nX.mydims[0]
 
-        psit2_nX = psit_nX.new(data=self.work_arrays[0, :b])
+        psit2_nX = psit_nX.new(data=self.work_arrays[0, :])
         data_buffer = self.data_buffers[0]
 
         wfs.subspace_diagonalize(Ht, dH,
@@ -268,10 +268,12 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
                       totalbands - N1)
 
         buffer_view_aX = buffer_mX.new(
-            data=buffer_mX.data[:n2 - n1],
+            data=buffer_mX.data_buffer,  # Hmm
             dims=(world_N,) + buffer_mX.dims[1:])
+        
+        stride = int(np.prod(psit2_nX.mydims[1:]) * psit2_nX.maxnX)
         psit_view_aX = psit2_nX.new(
-            data=psit2_nX.data[n1:n2],
+            data=psit2_nX.data_buffer[n1*stride:],
             dims=(world_N,) + psit2_nX.dims[1:])
 
         Ht(psit_view_aX, out=buffer_view_aX)

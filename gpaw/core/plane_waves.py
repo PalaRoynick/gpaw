@@ -323,7 +323,7 @@ class PWArray(DistributedArrays[PWDesc]):
         return PWArray(self.desc,
                        data.shape[:-1],
                        data=data,
-                       domain_transposable=self.domain_transposable)
+                       domain_transposable=False)
 
     def __iter__(self):
         for data in self.data:
