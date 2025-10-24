@@ -270,6 +270,9 @@ build-minimal:
   image: $IMAGE_MAIN_OLDEST
   extends:
     - .build
+  parallel:
+    matrix:
+      - lang: ["c", "cpp"]
   script:
     - |
       if [ "$lang" = "c" ]; then
