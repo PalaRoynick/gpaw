@@ -119,7 +119,7 @@ PyObject* pblas_rk(PyObject *self, PyObject *args);
 CLINKAGE_END
 
 #if defined(GPAW_WITH_ELPA)
-#include <elpa/elpa.h>
+#include "gpaw_elpa.h"
 
 CLINKAGE_BEGIN
 PyObject* pyelpa_init(PyObject *self, PyObject *args);
@@ -499,6 +499,13 @@ static PyObject* moduleinit(void)
                            PyUnicode_FromString(xc_version_string()));
 # endif
 #endif
+
+#if GPAW_CPP
+    PyObject_SetAttrString(m, "gpaw_cpp", Py_True);
+#else
+    PyObject_SetAttrString(m, "gpaw_cpp", Py_False);
+#endif
+
 #ifdef GPAW_GPU
     PyObject_SetAttrString(m, "GPU_ENABLED", Py_True);
 #else
