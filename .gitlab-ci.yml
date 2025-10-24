@@ -53,12 +53,15 @@ stages:
       if [ "$lang" = "c" ]; then
         compiler="mpicc"
         std="-std=c99"
+        cpp_specific=""
       else
         compiler="mpic++"
         std="-std=c++17"
+        cpp_specific="use_cpp = True"
       fi
 
       cat << EOF > siteconfig.py
+      ${cpp_specific}
       mpi = True
       compiler = '${compiler}'
       libraries = []

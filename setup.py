@@ -491,6 +491,7 @@ class build_ext(_build_ext):
 
         # FIXME: 'compiler' should be a string or None, if not we give up
         # and let setuptools do its worst. Apply this only in C++ mode
+        self.should_undo_linker_hack = False
 
         if use_cpp and isinstance(compiler, str):
             old_cxx = os.environ.get("CXX")
@@ -502,6 +503,7 @@ class build_ext(_build_ext):
                       " will be restored after GPAW build finishes")
 
             os.environ["CXX"] = compiler
+            self.should_undo_linker_hack = True
             # End linker hack
 
         super().finalize_options()
@@ -530,11 +532,11 @@ class build_ext(_build_ext):
             print("Build temp:", self.build_temp)
             print("Build lib: ", self.build_lib)
         finally:
-            # undo linker envvar hack
-            if self.old_cxx:
-                os.environ["CXX"] = self.old_cxx
-            else:
-                del os.environ["CXX"]
+            if self.should_undo_linker_hack:
+                if self.old_cxx:
+                    os.environ["CXX"] = self.old_cxx
+                else:
+                    del os.environ["CXX"]
 
 
 data = 'git+https://gitlab.com/gpaw/gpaw-web-page-data.git'
