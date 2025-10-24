@@ -396,8 +396,8 @@ test-oldest:
   needs:
     - job: build
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
 
   script:
     - gpaw info
@@ -419,8 +419,8 @@ test-latest:
   needs:
     - job: build-latest
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   script:
     - gpaw info
 
@@ -452,8 +452,8 @@ test-latest-new:
   needs:
     - job: build-latest
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   script:
     - gpaw info
     - GPAW_DEBUG=1 GPAW_NEW=1 pytest -v -m "ci and not old_gpaw_only"
@@ -469,8 +469,8 @@ test-minimal:
   needs:
     - job: build-minimal
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   script:
     - gpaw info
     - >
@@ -487,8 +487,8 @@ test-cuda:
   needs:
     - job: build-cuda
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda
   script:
@@ -509,8 +509,8 @@ test-cuda-mpi:
   needs:
     - job: build-cuda
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda-mpi
   script:
@@ -530,8 +530,8 @@ test-hip-cuda:
   needs:
     - job: build-hip-cuda
       parallel:
-      matrix:
-        - lang: [ '$[[ matrix.lang ]]' ]
+        matrix:
+          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda
   script:
