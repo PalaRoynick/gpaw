@@ -119,7 +119,7 @@ PyObject* pblas_rk(PyObject *self, PyObject *args);
 CLINKAGE_END
 
 #if defined(GPAW_WITH_ELPA)
-#include <elpa/elpa.h>
+#include "gpaw_elpa.h"
 
 CLINKAGE_BEGIN
 PyObject* pyelpa_init(PyObject *self, PyObject *args);

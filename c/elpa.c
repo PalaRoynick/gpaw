@@ -1,21 +1,22 @@
 #if defined(GPAW_WITH_SL) && defined(PARALLEL) && defined(GPAW_WITH_ELPA)
 
+#include "gpaw_elpa.h"
+
 #include "c_cpp_tools.h"
 #include "extensions.h"
-#include <elpa/elpa.h>
 #include <mpi.h>
 #include "mympi.h"
 
 
 CLINKAGE_BEGIN
 
-elpa_t* unpack_handleptr(PyObject* handle_obj)
+static elpa_t* unpack_handleptr(PyObject* handle_obj)
 {
     elpa_t* elpa = (elpa_t *)PyArray_DATA((PyArrayObject *)handle_obj);
     return elpa;
 }
 
-elpa_t unpack_handle(PyObject* handle_obj)
+static elpa_t unpack_handle(PyObject* handle_obj)
 {
     elpa_t* elpa = unpack_handleptr(handle_obj);
     return *elpa;
