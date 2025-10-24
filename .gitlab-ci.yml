@@ -464,8 +464,8 @@ test-minimal:
   extends:
     - .test
   parallel:
-  matrix:
-    - lang: ["c", "cpp"]
+    matrix:
+      - lang: ["c", "cpp"]
   needs:
     - job: build-minimal
       parallel:
