@@ -14,10 +14,8 @@
   #define GPAW_ASYNC_D 1
 #endif
 
-CLINKAGE_BEGIN
-
 #ifdef __TRANSFORMERS_C
-typedef struct
+CLINKAGE typedef struct
 {
   PyObject_HEAD
   boundary_conditions* bc;
@@ -34,8 +32,8 @@ typedef struct
 } TransformerObject;
 #else
 // Provide an opaque type for routines outside transformers.c
-struct _TransformerObject;
-typedef struct _TransformerObject TransformerObject;
+CLINKAGE struct _TransformerObject;
+CLINKAGE typedef struct _TransformerObject TransformerObject;
 
 #endif
 
@@ -44,10 +42,8 @@ void transformer_init_gpu(TransformerObject *self);
 void transformer_dealloc_gpu(int force);
 #endif
 
-void transapply_worker(TransformerObject *self, int chunksize, int start,
+CLINKAGE void transapply_worker(TransformerObject *self, int chunksize, int start,
 		  int end, int thread_id, int nthreads,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph);
 #endif
-
-CLINKAGE_END

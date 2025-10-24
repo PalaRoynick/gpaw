@@ -1,8 +1,12 @@
 #ifndef GPU_BMGS_H
 #define GPU_BMGS_H
 
+#include "../c_cpp_tools.h"
+
 #include "gpu.h"
 #include "gpu-complex.h"
+
+CLINKAGE_BEGIN
 
 int bmgs_fd_boundary_test(const bmgsstencil_gpu* s, int boundary,
                           int ndouble);
@@ -93,5 +97,7 @@ void bmgs_interpolate_stencil_gpuz(int k, int skip[3][2],
 void reducemap_dotuz(const gpuDoubleComplex* a_gpu,
                      const gpuDoubleComplex* b_gpu, gpuDoubleComplex* result,
                      int n, int nvec);
+
+CLINKAGE_END
 
 #endif

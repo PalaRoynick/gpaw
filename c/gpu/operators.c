@@ -24,7 +24,6 @@ static double *operator_buf_gpu = NULL;
 static int operator_buf_size = 0;
 static int operator_init_count = 0;
 
-CLINKAGE_BEGIN
 
 /*
  * Increment reference count to register a new operator object
@@ -108,6 +107,8 @@ void operator_dealloc_gpu(int force)
         operator_init_count--;
     }
 }
+
+CLINKAGE_BEGIN
 
 /*
  * Run the relax algorithm (see Operator_relax() in ../operators.c)

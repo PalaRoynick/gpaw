@@ -33,7 +33,7 @@
 #endif
 #endif
 
-void gpawDeviceSynchronize();
+CLINKAGE void gpawDeviceSynchronize();
 
 // Check that a processor number is valid
 #define CHK_PROC(n) if (n < 0 || n >= self->size) {\

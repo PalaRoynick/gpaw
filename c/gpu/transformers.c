@@ -19,8 +19,6 @@ static double *transformer_buf16_gpu = NULL;
 static int transformer_buf_size = 0;
 static int transformer_init_count = 0;
 
-CLINKAGE_BEGIN
-
 /*
  * Increment reference count to register a new tranformer object.
  */
@@ -196,7 +194,7 @@ static void _transformer_apply_gpu(TransformerObject* self,
  *   phases     -- phase (complex) (ignored if type is NPY_DOUBLE)
  *   stencil    -- use stencil version of interpolate functions
  */
-PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args)
+CLINKAGE PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args)
 {
     PyArrayObject* phases = 0;
     void *input_gpu;
@@ -234,5 +232,3 @@ PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args)
     else
         Py_RETURN_NONE;
 }
-
-CLINKAGE_END

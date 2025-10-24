@@ -35,16 +35,18 @@ struct _OperatorObject;
 typedef struct _OperatorObject OperatorObject;
 #endif
 
+CLINKAGE_END
+
 #ifdef GPAW_GPU
 void operator_init_gpu(OperatorObject *self);
 void operator_dealloc_gpu(int force);
 #endif
 
-void apply_worker(OperatorObject *self, int chunksize, int start,
+CLINKAGE void apply_worker(OperatorObject *self, int chunksize, int start,
 		  int end, int thread_id, int nthreads,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph);
 
-CLINKAGE_END
+
 
 #endif
