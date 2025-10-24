@@ -112,6 +112,9 @@ stages:
   needs:
     - job: precalculate
       artifacts: true
+      parallel:
+        matrix:
+          - lang: ['$[[ matrix.lang ]]']
   before_script:
     - !reference [default, before_script]
 
@@ -624,13 +627,13 @@ gpwfiles:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
-  parallel:
-    matrix:
-      - lang: "c"
-      - lang: "cpp"
   needs:
-    - build-latest
-    - nightly-all
+    - job: build-latest
+      # Generate GPW files using the C-compiled version only
+      parallel:
+        matrix:
+          - lang: "c"
+    - job: nightly-all
   stage: precalculate
   tags:
     - xeon40
