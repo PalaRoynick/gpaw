@@ -99,9 +99,13 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             data = (xp or np).empty(buffersize, dtype)
 
-        self.data_buffer = data[:buffersize]
         # assert np.prod(fullshape) == buffersize
-        self.data = data[:nbands * self.maxnX].reshape(*self.mydims, self.maxnX)[..., :mynX].reshape(fullshape)  # XXX: Madness
+        if self.domain_transposable:
+            self.data_buffer = data[:buffersize]
+            self.data = data[:nbands * self.maxnX].reshape(*self.mydims, self.maxnX)[..., :mynX].reshape(fullshape)  # XXX: Madness
+        else:
+            self.data_buffer = data
+            self.data = data[:np.prod(fullshape)].reshape(fullshape)
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:
