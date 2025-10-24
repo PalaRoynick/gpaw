@@ -489,7 +489,7 @@ class build_ext(_build_ext):
         # Careful, this gets called many times during the build process
         self.old_cxx = None
 
-        # 'compiler' should be a string or None, if not we give up
+        # FIXME: 'compiler' should be a string or None, if not we give up
         # and let setuptools do its worst. Apply this only in C++ mode
 
         if use_cpp and isinstance(compiler, str):
