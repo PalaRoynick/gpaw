@@ -276,7 +276,13 @@ build-minimal:
     - .build
   script:
     - |
+      if [ "$lang" = "c" ]; then
+        cpp_specific=""
+      else
+        cpp_specific="use_cpp = True"
+      fi
       cat << EOF > siteconfig.py
+      $cpp_specific
       mpi = False
       noblas = True
       nolibxc = True
