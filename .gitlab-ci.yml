@@ -40,35 +40,38 @@ stages:
   - deploy
 
 
-.build:
-  stage: build
+# Build configurations that are built and tested separately in parallel.
+# Implemented as a YAML anchor for reusability.
+.build_matrix: &build_matrix
   parallel:
     matrix:
-      - lang: "c"
-      - lang: "cpp"
+      - LANG: "c"
+        MPI_COMPILER: 'mpicc'
+        LANG_STD: 'c99'
+        SITECONFIG_OPTS: ""
+      - LANG: "cpp"
+        MPI_COMPILER: 'mpic++'
+        LANG_STD: 'c++17'
+        # Paste this to the siteconfig.py file
+        SITECONFIG_OPTS: "use_cpp = True"
+
+
+.build:
+  stage: build
+  <<: *build_matrix
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
-      if [ "$lang" = "c" ]; then
-        compiler="mpicc"
-        std="-std=c99"
-        cpp_specific=""
-      else
-        compiler="mpic++"
-        std="-std=c++17"
-        cpp_specific="use_cpp = True"
-      fi
-
       cat << EOF > siteconfig.py
-      ${cpp_specific}
+      $SITECONFIG_OPTS
       mpi = True
-      compiler = '${compiler}'
+      compiler = '$MPI_COMPILER'
       libraries = []
       library_dirs = []
       include_dirs = []
 
-      extra_compile_args = ['${std}',
+      extra_compile_args = ['$LANG_STD',
                             '-fPIC',
                             '-O3',
                             '-g',
@@ -102,13 +105,6 @@ stages:
       - _gpaw.*.so
       - "*.log"
     expire_in: 30 mins
-
-.test:
-  stage: test
-  needs:
-    - job: precalculate
-  before_script:
-    - !reference [default, before_script]
 
 
 .gpu-job:
@@ -386,13 +382,45 @@ build-libxc:
     - gpaw -P 1 info
 
 
+gpwfiles:
+  image: $IMAGE_MAIN_LATEST
+  needs:
+    - job: build-latest
+      # Generate GPW files using the C-compiled version only
+      parallel:
+        matrix:
+          - lang: "c"
+    - job: nightly-all
+  stage: precalculate
+  tags:
+    - xeon40
+  before_script:
+    - !reference [default, before_script]
+  script:
+    - pytest -n 16 -m generate_gpw_files --durations 30 -v
+  artifacts:
+    paths:
+      - .pytest_cache/
+    expire_in: 30 mins
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+.test:
+  stage: test
+  needs:
+    - job: precalculate
+  before_script:
+    - !reference [default, before_script]
+
+
 test-oldest:
   image: $IMAGE_MAIN_OLDEST
   extends:
     - .test
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build
       parallel:
@@ -664,35 +692,6 @@ nightly-all:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push"
       when: manual
-      allow_failure: true
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-
-
-gpwfiles:
-  image: $IMAGE_MAIN_LATEST
-  extends:
-    - .test
-  needs:
-    - job: build-latest
-      # Generate GPW files using the C-compiled version only
-      parallel:
-        matrix:
-          - lang: "c"
-    - job: nightly-all
-  stage: precalculate
-  tags:
-    - xeon40
-  before_script:
-    - !reference [default, before_script]
-  script:
-    - pytest -n 16 -m generate_gpw_files --durations 30 -v
-  artifacts:
-    paths:
-      - .pytest_cache/
-    expire_in: 30 mins
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-      when: on_success
       allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
