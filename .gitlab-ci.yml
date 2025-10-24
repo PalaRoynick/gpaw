@@ -56,6 +56,12 @@ stages:
         SITECONFIG_OPTS: "use_cpp = True"
 
 
+.needs_corresponding_build: &needs_corresponding_build
+  parallel:
+    matrix:
+      - LANG: ['$[[ matrix.LANG ]]']
+
+
 .build:
   stage: build
   <<: *build_matrix
@@ -389,7 +395,7 @@ gpwfiles:
       # Generate GPW files using the C-compiled version only
       parallel:
         matrix:
-          - lang: "c"
+          - LANG: "c"
     - job: nightly-all
   stage: precalculate
   tags:
@@ -411,6 +417,8 @@ gpwfiles:
 
 .test:
   stage: test
+  # Parallelize here, then add correct dependency in each extending job
+  <<: *build_matrix
   needs:
     - job: precalculate
   before_script:
@@ -441,14 +449,10 @@ test-latest:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
+  <<: *build_matrix
   needs:
     - job: build-latest
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
+      <<: *needs_corresponding_build
   script:
     - gpaw info
 
@@ -474,14 +478,8 @@ test-latest-new:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build-latest
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
   script:
     - gpaw info
     - GPAW_DEBUG=1 GPAW_NEW=1 pytest -v -m "ci and not old_gpaw_only"
@@ -491,14 +489,8 @@ test-minimal:
   image: $IMAGE_MAIN_OLDEST
   extends:
     - .test
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build-minimal
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
   script:
     - gpaw info
     - >
@@ -509,14 +501,8 @@ test-cuda:
   extends:
     - .test
     - .gpu-job
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build-cuda
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda
   script:
@@ -531,14 +517,8 @@ test-cuda-mpi:
   extends:
     - .test
     - .gpu-job
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build-cuda
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda-mpi
   script:
@@ -552,14 +532,8 @@ test-hip-cuda:
   extends:
     - .test
     - .gpu-job
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   needs:
     - job: build-hip-cuda
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
   tags:
     - cuda
   script:
