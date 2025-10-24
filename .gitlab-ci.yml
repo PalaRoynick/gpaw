@@ -60,16 +60,26 @@ stages:
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
+    - | # Set different siteconfig vars for C and C++
+      if [[ "$LANG" == "c" ]]; then
+        compiler="mpicc"
+        std="-std=c99"
+        cpp_specific=""
+      else
+        compiler="mpic++"
+        std="-std=c++17"
+        cpp_specific="use_cpp = True"
+      fi
     - |
       cat << EOF > siteconfig.py
-      # WIP
+      ${cpp_specific}
       mpi = True
-      compiler = '$MPI_COMPILER'
+      compiler = '${compiler}'
       libraries = []
       library_dirs = []
       include_dirs = []
 
-      extra_compile_args = ['-std=c99',
+      extra_compile_args = ['${std}',
                             '-fPIC',
                             '-O3',
                             '-g',
@@ -261,15 +271,15 @@ build-minimal:
   extends:
     - .build
   script:
-    # C++ doesn't work! I guess it ends up picking a C compiler no matter what
     - |
-      if [ "$lang" = "c" ]; then
-        cpp_specific=""
+      if [ "$LANG" = "c" ]; then
+        compiler="gcc"
       else
-        cpp_specific="use_cpp = True"
+        compiler="g++"
       fi
       cat << EOF > siteconfig.py
-      $cpp_specific
+      ${cpp_specific}
+      compiler = '${compiler}'
       mpi = False
       noblas = True
       nolibxc = True
@@ -380,7 +390,11 @@ build-libxc:
 gpwfiles:
   image: $IMAGE_MAIN_LATEST
   needs:
+    # Do this only for the C build
     - job: build-latest
+      parallel:
+        matrix:
+          - LANG: "c"
     - job: nightly-all
   stage: precalculate
   tags:
