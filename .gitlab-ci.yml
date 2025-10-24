@@ -107,10 +107,6 @@ stages:
   stage: test
   needs:
     - job: precalculate
-      artifacts: true
-      parallel:
-        matrix:
-          - lang: ['$[[ matrix.lang ]]']
   before_script:
     - !reference [default, before_script]
 
@@ -274,6 +270,7 @@ build-minimal:
     matrix:
       - lang: ["c", "cpp"]
   script:
+    # C++ doesn't work! I guess it ends up picking a C compiler no matter what
     - |
       if [ "$lang" = "c" ]; then
         cpp_specific=""
