@@ -178,6 +178,7 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             return self.new(data=xp.asarray(self.data))
 
+    @trace
     def domain_a2a_bands(self):
         """Convert domain decomposition to band decomposition, and
         vice versa."""
@@ -209,7 +210,10 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             from mpi4py.MPI import IN_PLACE
             from gpaw.gpu.mpi import CuPyMPI
+            from gpaw.mpi import MPIComm
             if isinstance(comm, CuPyMPI):
+                comm = comm.comm
+            if isinstance(comm, MPIComm):
                 comm = comm.comm
             for size, offset in zip(d2b_sizes, d2b_offsets):
                 req = comm.comm.Ialltoallv(IN_PLACE,
