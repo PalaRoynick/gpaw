@@ -53,8 +53,9 @@ for i, arg in enumerate(sys.argv):
             f'Please set GPAW_CONFIG={custom} or place {custom} in ' +
             '~/.gpaw/siteconfig.py')
 
-# temp flag for choosing different options for C/C++ builds
-use_cpp = True
+# temp flag for choosing different options for C/C++ builds.
+# Currently this must be set to true in siteconfig.py if compiling as C++
+use_cpp = False
 
 libraries = ['xc']
 library_dirs = []
@@ -62,6 +63,7 @@ include_dirs = []
 extra_link_args = []
 extra_compile_args = ['-Wall', '-Wno-unknown-pragmas']
 
+# FIXME won't work if users override this list in siteconfig.py
 if use_cpp:
     extra_compile_args += ['-std=c++17']
 else:
@@ -132,6 +134,9 @@ else:  # no break
     if not noblas:
         libraries.append('blas')
 
+if use_cpp:
+    print("EXPERIMENTAL: Compiling entire GPAW as C++.")
+
 # Deprecation check
 if 'mpicompiler' in locals():
     mpicompiler = locals()['mpicompiler']
@@ -172,6 +177,7 @@ if mpi:
     if compiler is None:
         raise_error('Define compiler for MPI in siteconfig:'
                     "\ncompiler = ...  # MPI compiler, e.g., 'mpicc'")
+
 
 # Deprecation check
 if 'mpilinker' in locals():
@@ -238,8 +244,10 @@ if gpu:
         print("Adding gpu compile argument: '-std=c++17'")
         gpu_compile_args += ['-std=c++17']
 
-    # GPU code needs to link to c++ stdlib
-    libraries += ['stdc++']
+    # GPU code needs to link to c++ stdlib. This is automatic if the linking
+    # is done using a C++ compiler, if not we have to add it manually
+    if not use_cpp:
+        libraries += ['stdc++']
 
 
 def set_compiler_executables(cc: CCompiler) -> None:
@@ -252,6 +260,7 @@ def set_compiler_executables(cc: CCompiler) -> None:
                             ('linker_exe', linker_exe_args)]:
         new_args = []
         old_args = getattr(cc, name)
+
         # Set executable
         if compiler is not None:
             new_args += [compiler]
@@ -467,6 +476,31 @@ write_configuration(define_macros, include_dirs, libraries, library_dirs,
 
 
 class build_ext(_build_ext):
+
+    def finalize_options(self):
+        """Override to implement envvar hack"""
+
+        """HACK: Ensure linking is done with the same compiler.
+        The above sets 'linker_so' and 'linker_exe' in compiler settings but
+        this is apparently not enough for C++: setuptools can end up using
+        g++ instead of mpic++ for linking. This misses out on MPI lib flags.
+        Setting the CXX envvar seems to work, so we temporarily set it here.
+        """
+
+        # Careful, this gets called many times during the build process
+        self.old_cxx = None
+        old_cxx = os.environ.get("CXX")
+        if old_cxx and old_cxx != compiler:
+            self.old_cxx = old_cxx
+            print(f"\tNOTE: Your environment has `CXX` set to '{old_cxx}'. "
+                  f"GPAW will temporarily override it with '{compiler}' to "
+                  "ensure consistent linking. The value will be restored "
+                  "after GPAW build finishes")
+
+        os.environ["CXX"] = compiler
+        # End linker hack
+        super().finalize_options()
+
     def run(self):
         import numpy as np
         self.include_dirs.append(np.get_include())
@@ -486,10 +520,16 @@ class build_ext(_build_ext):
 
     def build_extensions(self):
         set_compiler_executables(self.compiler)
-        super().build_extensions()
-
-        print("Build temp:", self.build_temp)
-        print("Build lib: ", self.build_lib)
+        try:
+            super().build_extensions()
+            print("Build temp:", self.build_temp)
+            print("Build lib: ", self.build_lib)
+        finally:
+            # undo linker envvar hack
+            if self.old_cxx:
+                os.environ["CXX"] = self.old_cxx
+            else:
+                del os.environ["CXX"]
 
 
 data = 'git+https://gitlab.com/gpaw/gpaw-web-page-data.git'
