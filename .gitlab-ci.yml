@@ -21,9 +21,6 @@ variables:
   # uses hyperthreading and so was equipped to redistribute the load.
   GPAW_MPI_OPTIONS: "--bind-to none"
 
-  # Separate pipelines for C and C++ builds
-  BUILD_LANGS: "c cpp"
-
 default:
   before_script:
     - export PYTHONUSERBASE=`realpath $PYTHONUSERBASE`
@@ -45,13 +42,15 @@ stages:
 
 .build:
   stage: build
-  variables:
-    LANG: $BUILD_LANGS
+  parallel:
+    matrix:
+      - lang: "c"
+      - lang: "cpp"
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
-      if [ "$LANG" = "c" ]; then
+      if [ "$lang" = "c" ]; then
         compiler="mpicc"
         std="-std=c99"
         cpp_specific=""
@@ -75,7 +74,6 @@ stages:
                             '-g',
                             '-fopenmp',
                             '-Wall',
-                            '-v',
                             # '-Werror',
                             ]
       extra_link_args = ['-fopenmp']
@@ -107,8 +105,10 @@ stages:
 
 .test:
   stage: test
-  variables:
-    LANG: $BUILD_LANGS
+  parallel:
+    matrix:
+      - lang: "c"
+      - lang: "cpp"
   needs:
     - job: precalculate
       artifacts: true
@@ -622,10 +622,12 @@ nightly-all:
 
 gpwfiles:
   image: $IMAGE_MAIN_LATEST
-  variables:
-    LANG: $BUILD_LANGS
   extends:
     - .test
+  parallel:
+    matrix:
+      - lang: "c"
+      - lang: "cpp"
   needs:
     - build-latest
     - nightly-all
