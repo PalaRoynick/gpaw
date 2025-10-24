@@ -88,9 +88,10 @@ def time_propagation_reference(ground_state):
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 def test_dipole_moment_values(time_propagation_reference,
-                              module_tmp_path, in_tmp_dir):
+                              module_tmp_path, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     with open('dm.dat', 'w') as fd:
         fd.write('''
 # DipoleMomentWriter[version=1](center=False, density='comp')
@@ -121,13 +122,14 @@ def test_dipole_moment_values(time_propagation_reference,
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.parametrize('parallel', parallel_i)
 @pytest.mark.parametrize('propagator', [
     'SICN', 'ECN'])
 def test_propagation(time_propagation_reference,
                      parallel, propagator,
-                     module_tmp_path, in_tmp_dir):
+                     module_tmp_path, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     calculate_time_propagation(module_tmp_path / 'gs.gpw',
                                propagator=propagator,
                                parallel=parallel)
@@ -179,11 +181,12 @@ def test_propagation2(time_propagation_reference,
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_restart(time_propagation_reference,
                  parallel,
-                 module_tmp_path, in_tmp_dir):
+                 module_tmp_path, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     calculate_time_propagation(module_tmp_path / 'td.gpw',
                                kick=None,
                                force_new_dm_file=True,

@@ -71,11 +71,12 @@ def test_propagated_wave_function(initialize_system, module_tmp_path):
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_propagation(initialize_system, module_tmp_path, parallel,
-                     gpw_files, in_tmp_dir):
+                     gpw_files, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     calculate_time_propagation(gpw_files['nacl_nospin'],
                                kick=np.ones(3) * 1e-5,
                                parallel=parallel)
@@ -308,10 +309,11 @@ def initialize_system_spinpol(nacl_spin):
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 def test_spinpol_dipole_moment(initialize_system, initialize_system_spinpol,
-                               module_tmp_path):
+                               module_tmp_path, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     # The test system has even number of electrons and is non-magnetic
     # so spin-paired and spin-polarized calculation should give same result
     check_txt_data(module_tmp_path / 'dm.dat',
@@ -320,11 +322,12 @@ def test_spinpol_dipole_moment(initialize_system, initialize_system_spinpol,
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_spinpol_propagation(initialize_system_spinpol, module_tmp_path,
-                             parallel, in_tmp_dir, gpw_files):
+                             parallel, in_tmp_dir, gpw_files, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     ref_path = module_tmp_path / 'spinpol'
     calculate_time_propagation(gpw_files['nacl_spin'],
                                kick=np.ones(3) * 1e-5,

@@ -13,9 +13,10 @@ from gpaw.tddft.spectrum import photoabsorption_spectrum
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
-def test_lcaotddft_simple(gpw_files, in_tmp_dir):
+def test_lcaotddft_simple(gpw_files, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     # Time-propagation calculation
     td_calc = LCAOTDDFT(gpw_files['na2_tddft_poisson'], txt='td.out')
     dmat = DensityMatrix(td_calc)
@@ -163,9 +164,10 @@ def test_lcaotddft_laser(gpw_files, in_tmp_dir):
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
-def test_lcaotddft_fail_with_symmetry(gpw_files, in_tmp_dir):
+def test_lcaotddft_fail_with_symmetry(gpw_files, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     # Time-propagation calculation
     # should not be allowed with symmetries
     with pytest.raises(ValueError):

@@ -1,6 +1,7 @@
 import pytest
 
 from gpaw import GPAW
+from gpaw.mpi import world
 from gpaw.tddft import TDDFT, DipoleMomentWriter, photoabsorption_spectrum
 from gpaw.tddft.abc import PML, LinearAbsorbingBoundary, P4AbsorbingBoundary
 
@@ -62,8 +63,9 @@ def test_tddft_td_na2(in_tmp_dir, gpw_files):
     td_pmlabs.propagate(time_step, iters)
 
 
-@pytest.mark.old_gpaw_only_mpi
-def test_tddft_fail_with_symmetry(in_tmp_dir, gpw_files):
+def test_tddft_fail_with_symmetry(in_tmp_dir, gpw_files, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
 
     # Time-propagation calculation
     # should not be allowed with symmetries

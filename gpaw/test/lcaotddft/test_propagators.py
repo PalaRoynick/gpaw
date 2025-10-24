@@ -1,15 +1,17 @@
 import pytest
 import numpy as np
+from gpaw.mpi import world
 from gpaw.lcaotddft import LCAOTDDFT
 from gpaw.lcaotddft.dipolemomentwriter import DipoleMomentWriter
 from gpaw.lcaotddft.dipolemomentwriter import VelocityGaugeWriter
 
 
 @pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
-@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 @pytest.mark.parametrize('propagator', ['sicn', 'ecn'])
-def test_propagators(propagator, gpw_files, in_tmp_dir):
+def test_propagators(propagator, gpw_files, in_tmp_dir, gpaw_new):
+    if gpaw_new and world.size > 1:
+        pytest.skip('Does not work with GPAW-new in parallel')
     # XXX convergence={'density': 1e-8} originally 1e-12
     td_calc = LCAOTDDFT(gpw_files['na2_tddft_dzp'], propagator=propagator)
     DipoleMomentWriter(td_calc, 'dm.dat')
