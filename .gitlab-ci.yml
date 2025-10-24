@@ -268,9 +268,6 @@ build-minimal:
   image: $IMAGE_MAIN_OLDEST
   extends:
     - .build
-  parallel:
-    matrix:
-      - lang: ["c", "cpp"]
   script:
     # C++ doesn't work! I guess it ends up picking a C compiler no matter what
     - |
@@ -431,10 +428,6 @@ test-oldest:
     - .test
   needs:
     - job: build
-      parallel:
-        matrix:
-          - lang: [ '$[[ matrix.lang ]]' ]
-
   script:
     - gpaw info
     - >
