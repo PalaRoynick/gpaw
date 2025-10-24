@@ -11,7 +11,7 @@ import gpaw.cgpaw as cgpaw
 import gpaw
 import gpaw.fftw as fftw
 from gpaw.mpi import have_mpi, rank
-from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED
+from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED, GPAW_IS_CPP
 from gpaw.utilities import compiled_with_libvdwxc, compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
 from gpaw.gpu import cupy, cupy_is_fake, __file__ as gpaw_gpu_filename
@@ -100,6 +100,7 @@ def info() -> None:
 
     results.append(('MPI enabled', have_mpi))
     results.append(('OpenMP enabled', cgpaw.have_openmp))
+    results.append(('Compiled as C++', GPAW_IS_CPP))
     results.append(('GPU enabled', GPU_ENABLED))
     results.append(('GPU-aware MPI', GPU_AWARE_MPI))
     cupy_version = 'cupy-' + cupy.__version__
