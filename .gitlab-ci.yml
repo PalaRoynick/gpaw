@@ -45,15 +45,7 @@ stages:
 .build_matrix: &build_matrix
   parallel:
     matrix:
-      - LANG: "c"
-        MPI_COMPILER: 'mpicc'
-        LANG_STD: 'c99'
-        SITECONFIG_OPTS: ""
-      - LANG: "cpp"
-        MPI_COMPILER: 'mpic++'
-        LANG_STD: 'c++17'
-        # Paste this to the siteconfig.py file
-        SITECONFIG_OPTS: "use_cpp = True"
+      - LANG: ["c", "cpp"]
 
 
 .needs_corresponding_build: &needs_corresponding_build
@@ -70,14 +62,14 @@ stages:
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
       cat << EOF > siteconfig.py
-      $SITECONFIG_OPTS
+      # WIP
       mpi = True
       compiler = '$MPI_COMPILER'
       libraries = []
       library_dirs = []
       include_dirs = []
 
-      extra_compile_args = ['$LANG_STD',
+      extra_compile_args = ['-std=c99',
                             '-fPIC',
                             '-O3',
                             '-g',
