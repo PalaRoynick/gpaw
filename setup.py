@@ -62,13 +62,6 @@ library_dirs = []
 include_dirs = []
 extra_link_args = []
 extra_compile_args = ['-Wall', '-Wno-unknown-pragmas']
-
-# FIXME won't work if users override this list in siteconfig.py
-if use_cpp:
-    extra_compile_args += ['-std=c++17']
-else:
-    extra_compile_args += ['-std=c99']
-
 runtime_library_dirs = []
 extra_objects = []
 define_macros = [('NPY_NO_DEPRECATED_API', '7'),
@@ -106,6 +99,26 @@ linker_so_args = None
 linker_exe_args = None
 
 
+def ensure_cpp_standard(compile_args: list):
+    """GPAW C++ code requires -std=c++17. This adds it to the input compile
+    args list if it's missing. Don't override existing flags, but warn if the
+    user-specified standard is too low.
+    """
+    old_std = None
+    for arg in compile_args:
+        m = re.match(r'-std=(c\+\+(\d+))', arg)
+        if m:
+            old_std = m.group(1)
+            version = int(m.group(2))
+            if version < 17:
+                warnings.warn(f"C++ standard {old_std} is too low, "
+                              "GPAW requires -std=c++17 or newer")
+            break
+
+    if old_std is None:
+        compile_args.append('-std=c++17')
+
+
 # Search and store current git hash if possible
 try:
     from ase.utils import search_current_git_hash
@@ -136,6 +149,7 @@ else:  # no break
 
 if use_cpp:
     print("EXPERIMENTAL: Compiling entire GPAW as C++.")
+    ensure_cpp_standard(extra_compile_args)
 
 # Deprecation check
 if 'mpicompiler' in locals():
@@ -213,6 +227,7 @@ if parallel_python_interpreter is not PLACEHOLDER:
 if mpi:
     print('Building GPAW with MPI support.')
 
+
 if gpu:
     valid_gpu_targets = ['cuda', 'hip-amd', 'hip-cuda']
     if gpu_target not in valid_gpu_targets:
@@ -233,16 +248,7 @@ if gpu:
             gpu_compile_args += ['-Xcompiler']
         gpu_compile_args += ['-fPIC']
 
-    # Some C++ code (eg. magma wrappers) requires C++17 standard.
-    # Add the flag here, but don't override any user-specified option.
-    # GPAW C++ files that require C++17 are encouraged to #error
-    # with a sensible message if the standard is too low.
-    has_std_flag = (
-        any(re.match(r'-std=.+', arg) for arg in gpu_compile_args)
-    )
-    if not has_std_flag:
-        print("Adding gpu compile argument: '-std=c++17'")
-        gpu_compile_args += ['-std=c++17']
+    ensure_cpp_standard(gpu_compile_args)
 
     # GPU code needs to link to c++ stdlib. This is automatic if the linking
     # is done using a C++ compiler, if not we have to add it manually
