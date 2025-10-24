@@ -3,8 +3,13 @@
 #include "c_cpp_tools.h"
 #include "extensions.h"
 
-/* Ensure C-linkage for ELPA declarations. Modern ELPA has these inside the header already,
-but seems to be required for compatibility with older versions. */
-CLINKAGE_BEGIN
+/* PATCH: elpa_strerr() is missing extern "C" in their headers. Seems to be
+fixed in early 2025 but we fix it manually here for backwards compatibility.
+See commit 4e0d286eb91de0cd5945798c387232dc81e2b7ed in ELPA repo.
+
+FIXME: should not be GPAW's responsibility to patch this!
+*/
+CLINKAGE const char *elpa_strerr(int elpa_error);
+
 #include <elpa/elpa.h>
-CLINKAGE_END
+
