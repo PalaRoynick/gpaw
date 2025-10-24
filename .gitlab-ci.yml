@@ -40,17 +40,28 @@ stages:
   - deploy
 
 
-.build:
-  stage: build
+# Build configurations that are built and tested separately in parallel.
+# Implemented as a YAML anchor for reusability.
+.build_matrix: &build_matrix
   parallel:
     matrix:
-      - lang: "c"
-      - lang: "cpp"
+      - LANG: ["c", "cpp"]
+
+
+.needs_corresponding_build: &needs_corresponding_build
+  parallel:
+    matrix:
+      - LANG: ['$[[ matrix.LANG ]]']
+
+
+.build:
+  stage: build
+  <<: *build_matrix
   before_script:
     - !reference [default, before_script]
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
-    - |
-      if [ "$lang" = "c" ]; then
+    - | # Set different siteconfig vars for C and C++
+      if [[ "$LANG" == "c" ]]; then
         compiler="mpicc"
         std="-std=c99"
         cpp_specific=""
@@ -59,7 +70,7 @@ stages:
         std="-std=c++17"
         cpp_specific="use_cpp = True"
       fi
-
+    - |
       cat << EOF > siteconfig.py
       ${cpp_specific}
       mpi = True
@@ -102,18 +113,6 @@ stages:
       - _gpaw.*.so
       - "*.log"
     expire_in: 30 mins
-
-.test:
-  stage: test
-  parallel:
-    matrix:
-      - lang: "c"
-      - lang: "cpp"
-  needs:
-    - job: precalculate
-      artifacts: true
-  before_script:
-    - !reference [default, before_script]
 
 
 .gpu-job:
@@ -273,7 +272,16 @@ build-minimal:
     - .build
   script:
     - |
+      if [ "$LANG" = "c" ]; then
+        compiler="gcc"
+        cpp_specific=""
+      else
+        compiler="g++"
+        cpp_specific="use_cpp = True"
+      fi
       cat << EOF > siteconfig.py
+      ${cpp_specific}
+      compiler = '${compiler}'
       mpi = False
       noblas = True
       nolibxc = True
@@ -381,12 +389,50 @@ build-libxc:
     - gpaw -P 1 info
 
 
+gpwfiles:
+  image: $IMAGE_MAIN_LATEST
+  needs:
+    # Do this only for the C build
+    - job: build-latest
+      parallel:
+        matrix:
+          - LANG: "c"
+    - job: nightly-all
+  stage: precalculate
+  tags:
+    - xeon40
+  before_script:
+    - !reference [default, before_script]
+  script:
+    - pytest -n 16 -m generate_gpw_files --durations 30 -v
+  artifacts:
+    paths:
+      - .pytest_cache/
+    expire_in: 30 mins
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+.test:
+  stage: test
+  # Parallelize here, then add correct dependency in each extending job
+  <<: *build_matrix
+  needs:
+    - job: precalculate
+  before_script:
+    - !reference [default, before_script]
+
+
 test-oldest:
   image: $IMAGE_MAIN_OLDEST
   extends:
     - .test
   needs:
-    - build
+    - job: build
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - >
@@ -401,8 +447,10 @@ test-latest:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
+  <<: *build_matrix
   needs:
-    - build-latest
+    - job: build-latest
+      <<: *needs_corresponding_build
   script:
     - gpaw info
 
@@ -429,7 +477,8 @@ test-latest-new:
   extends:
     - .test
   needs:
-    - build-latest
+    - job: build-latest
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - GPAW_DEBUG=1 GPAW_NEW=1 pytest -v -m "ci and not old_gpaw_only"
@@ -440,7 +489,8 @@ test-minimal:
   extends:
     - .test
   needs:
-    - build-minimal
+    - job: build-minimal
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - >
@@ -452,7 +502,8 @@ test-cuda:
     - .test
     - .gpu-job
   needs:
-    - build-cuda
+    - job: build-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda
   script:
@@ -468,7 +519,8 @@ test-cuda-mpi:
     - .test
     - .gpu-job
   needs:
-    - build-cuda
+    - job: build-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda-mpi
   script:
@@ -483,7 +535,8 @@ test-hip-cuda:
     - .test
     - .gpu-job
   needs:
-    - build-hip-cuda
+    - job: build-hip-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda
   script:
@@ -620,35 +673,6 @@ nightly-all:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
 
-gpwfiles:
-  image: $IMAGE_MAIN_LATEST
-  extends:
-    - .test
-  parallel:
-    matrix:
-      - lang: "c"
-      - lang: "cpp"
-  needs:
-    - build-latest
-    - nightly-all
-  stage: precalculate
-  tags:
-    - xeon40
-  before_script:
-    - !reference [default, before_script]
-  script:
-    - pytest -n 16 -m generate_gpw_files --durations 30 -v
-  artifacts:
-    paths:
-      - .pytest_cache/
-    expire_in: 30 mins
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-      when: on_success
-      allow_failure: true
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-
-
 .nightly:
   image: $IMAGE_MAIN_LATEST
   variables:
@@ -657,7 +681,8 @@ gpwfiles:
     - .test
   stage: test
   needs:
-    - build-latest
+    - job: build-latest
+      <<: *needs_corresponding_build
     - gpwfiles
   tags:
     - xeon40
