@@ -274,16 +274,14 @@ build-minimal:
     - |
       if [ "$LANG" = "c" ]; then
         compiler="gcc"
-        std=""
+        cpp_specific=""
       else
         compiler="g++"
-        # Always need at least C++17
-        std="-std=c++17"
+        cpp_specific="use_cpp = True"
       fi
       cat << EOF > siteconfig.py
       ${cpp_specific}
       compiler = '${compiler}'
-      extra_compile_args += ['${std}']
       mpi = False
       noblas = True
       nolibxc = True
