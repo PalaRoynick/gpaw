@@ -486,19 +486,24 @@ class build_ext(_build_ext):
         g++ instead of mpic++ for linking. This misses out on MPI lib flags.
         Setting the CXX envvar seems to work, so we temporarily set it here.
         """
-
         # Careful, this gets called many times during the build process
         self.old_cxx = None
-        old_cxx = os.environ.get("CXX")
-        if old_cxx and old_cxx != compiler:
-            self.old_cxx = old_cxx
-            print(f"\tNOTE: Your environment has `CXX` set to '{old_cxx}'. "
-                  f"GPAW will temporarily override it with '{compiler}' to "
-                  "ensure consistent linking. The value will be restored "
-                  "after GPAW build finishes")
 
-        os.environ["CXX"] = compiler
-        # End linker hack
+        # 'compiler' should be a string or None, if not we give up
+        # and let setuptools do its worst. Apply this only in C++ mode
+
+        if use_cpp and isinstance(compiler, str):
+            old_cxx = os.environ.get("CXX")
+            if old_cxx and old_cxx != compiler:
+                self.old_cxx = old_cxx
+                print("\tNOTE: Your environment has `CXX` set to "
+                      f"'{old_cxx}'. GPAW will temporarily override it with "
+                      f"'{compiler}' to ensure consistent linking. The value "
+                      " will be restored after GPAW build finishes")
+
+            os.environ["CXX"] = compiler
+            # End linker hack
+
         super().finalize_options()
 
     def run(self):
