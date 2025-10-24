@@ -389,10 +389,6 @@ gpwfiles:
   image: $IMAGE_MAIN_LATEST
   needs:
     - job: build-latest
-      # Generate GPW files using the C-compiled version only
-      parallel:
-        matrix:
-          - LANG: "c"
     - job: nightly-all
   stage: precalculate
   tags:
