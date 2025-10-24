@@ -274,12 +274,16 @@ build-minimal:
     - |
       if [ "$LANG" = "c" ]; then
         compiler="gcc"
+        std=""
       else
         compiler="g++"
+        # Always need at least C++17
+        std="-std=c++17"
       fi
       cat << EOF > siteconfig.py
       ${cpp_specific}
       compiler = '${compiler}'
+      extra_compile_args += ['${std}']
       mpi = False
       noblas = True
       nolibxc = True
@@ -430,6 +434,7 @@ test-oldest:
     - .test
   needs:
     - job: build
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - >
@@ -475,6 +480,7 @@ test-latest-new:
     - .test
   needs:
     - job: build-latest
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - GPAW_DEBUG=1 GPAW_NEW=1 pytest -v -m "ci and not old_gpaw_only"
@@ -486,6 +492,7 @@ test-minimal:
     - .test
   needs:
     - job: build-minimal
+      <<: *needs_corresponding_build
   script:
     - gpaw info
     - >
@@ -498,6 +505,7 @@ test-cuda:
     - .gpu-job
   needs:
     - job: build-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda
   script:
@@ -514,6 +522,7 @@ test-cuda-mpi:
     - .gpu-job
   needs:
     - job: build-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda-mpi
   script:
@@ -529,6 +538,7 @@ test-hip-cuda:
     - .gpu-job
   needs:
     - job: build-hip-cuda
+      <<: *needs_corresponding_build
   tags:
     - cuda
   script:
@@ -673,7 +683,8 @@ nightly-all:
     - .test
   stage: test
   needs:
-    - build-latest
+    - job: build-latest
+      <<: *needs_corresponding_build
     - gpwfiles
   tags:
     - xeon40
