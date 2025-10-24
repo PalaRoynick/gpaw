@@ -30,8 +30,7 @@
   #define GPAW_ASYNC2 1
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 typedef struct
 {
@@ -483,4 +482,4 @@ PyObject* NewWOperatorObject(PyObject *obj, PyObject *args)
   return (PyObject*) self;
 }
 
-} // CLINKAGE
+CLINKAGE_END

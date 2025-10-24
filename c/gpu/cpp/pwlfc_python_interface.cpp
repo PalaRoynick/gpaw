@@ -4,8 +4,8 @@
 #include "pyarray_utils.hpp"
 #include "array_life_support.hpp"
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
+
 void calculate_residual_launch_kernel(int dtypenum,
                                       int nG,
                                       int nn,
@@ -100,7 +100,7 @@ void evaluate_lda_launch_kernel(int nspin, int ng,
                                 double* e,
                                 gpuStream_t stream = 0);
 
-} // CLINKAGE
+CLINKAGE_END
 
 static int get_dtype(PyObject* array)
 {

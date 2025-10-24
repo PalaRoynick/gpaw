@@ -7,8 +7,7 @@
 #include "lfc.h"
 #include "bmgs/spherical_harmonics.h"
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* second_derivative(LFCObject *lfc, PyObject *args)
 {
@@ -367,4 +366,4 @@ PyObject* add_derivative(LFCObject *lfc, PyObject *args)
   Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

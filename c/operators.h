@@ -13,8 +13,7 @@
 #endif
 
 // Python bindings need C-linkage
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 #ifdef __OPERATORS_C
 typedef struct
@@ -46,6 +45,6 @@ void apply_worker(OperatorObject *self, int chunksize, int start,
 		  const double* in, double* out,
 		  bool real, const double_complex* ph);
 
-} // CLINKAGE
+CLINKAGE_END
 
 #endif

@@ -6,8 +6,7 @@
 #include "spline.h"
 #include "assert.h"
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 static void spline_dealloc(SplineObject *xp)
 {
@@ -168,4 +167,4 @@ PyObject * NewSplineObject(PyObject *self, PyObject *args)
   return (PyObject*)spline;
 }
 
-} // CLINKAGE
+CLINKAGE_END

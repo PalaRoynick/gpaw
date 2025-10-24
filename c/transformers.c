@@ -29,8 +29,7 @@
 CLINKAGE PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args);
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 static void Transformer_dealloc(TransformerObject *self)
 {
@@ -256,4 +255,4 @@ PyObject * NewTransformerObject(PyObject *obj, PyObject *args)
   return (PyObject*)self;
 }
 
-} // CLINKAGE
+CLINKAGE_END

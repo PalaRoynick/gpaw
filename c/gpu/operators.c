@@ -24,8 +24,7 @@ static double *operator_buf_gpu = NULL;
 static int operator_buf_size = 0;
 static int operator_init_count = 0;
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 /*
  * Increment reference count to register a new operator object
@@ -395,4 +394,4 @@ PyObject * Operator_apply_gpu(OperatorObject* self, PyObject* args)
         Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

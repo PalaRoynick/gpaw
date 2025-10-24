@@ -51,8 +51,7 @@ double vdwkernel(double D, double d1, double d2, int nD, int ndelta,
   return e12;
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject * vdw(PyObject* self, PyObject *args)
 {
@@ -205,4 +204,4 @@ PyObject * vdw2(PyObject* self, PyObject *args)
   Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

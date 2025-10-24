@@ -51,8 +51,7 @@ double beefvdw_exchange(const xc_parameters* par,
                         double n, double rs, double a2,
                         double* dedrs, double* deda2);
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 //
 typedef struct
@@ -311,4 +310,4 @@ PyObject * NewXCFunctionalObject(PyObject *obj, PyObject *args)
   return (PyObject*)self;
 }
 
-} // CLINKAGE
+CLINKAGE_END

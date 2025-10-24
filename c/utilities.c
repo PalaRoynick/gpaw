@@ -22,8 +22,7 @@
 #include <omp.h>
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 #ifdef GPAW_HPM
 void HPM_Start(char *);
@@ -61,7 +60,7 @@ PyObject* ibm_mpi_stop(PyObject *self)
   Py_RETURN_NONE;
 }
 #endif
-} // CLINKAGE
+CLINKAGE_END
 
 
 #ifdef CRAYPAT
@@ -310,8 +309,7 @@ CLINKAGE double distance(double *a, double *b)
   return sqrt(sum);
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* add_to_density_gpu(PyObject* self, PyObject* args);
 // Equivalent to:
@@ -819,4 +817,4 @@ PyObject* integrate_inwards(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

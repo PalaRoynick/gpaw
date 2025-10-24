@@ -335,8 +335,7 @@ static void block2dataadd(const xcinfo *info, double *outblocklist[], const xcpt
   }
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 static PyObject*
 lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
@@ -743,4 +742,4 @@ PyObject * lxcXCFuncNum(PyObject *obj, PyObject *args)
     Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

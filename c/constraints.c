@@ -225,8 +225,7 @@ INLINE double pair_interaction_cutoff(double A, double B, double cutoff, double 
 
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* adjust_positions(PyObject *self, PyObject *args)
 {
@@ -581,4 +580,4 @@ PyObject* calculate_forces_H2O(PyObject *self, PyObject *args)
   return Py_BuildValue("d", E);
 }
 
-} // CLINKAGE
+CLINKAGE_END

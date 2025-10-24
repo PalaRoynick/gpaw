@@ -19,8 +19,7 @@ static double *transformer_buf16_gpu = NULL;
 static int transformer_buf_size = 0;
 static int transformer_init_count = 0;
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 /*
  * Increment reference count to register a new tranformer object.
@@ -236,4 +235,4 @@ PyObject* Transformer_apply_gpu(TransformerObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

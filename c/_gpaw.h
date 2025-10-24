@@ -35,8 +35,7 @@ CLINKAGE PyObject* craypat_region_end(PyObject *self, PyObject *args);
 #undef GPAW_WITH_MAGMA
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -117,13 +116,12 @@ PyObject* pblas_hemm_symm(PyObject *self, PyObject *args);
 PyObject* pblas_gemv(PyObject *self, PyObject *args);
 PyObject* pblas_r2k(PyObject *self, PyObject *args);
 PyObject* pblas_rk(PyObject *self, PyObject *args);
-} // CLINKAGE
+CLINKAGE_END
 
 #if defined(GPAW_WITH_ELPA)
 #include <elpa/elpa.h>
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 PyObject* pyelpa_init(PyObject *self, PyObject *args);
 PyObject* pyelpa_uninit(PyObject *self, PyObject *args);
 PyObject* pyelpa_version(PyObject *self, PyObject *args);
@@ -135,7 +133,7 @@ PyObject* pyelpa_diagonalize(PyObject *self, PyObject *args);
 PyObject* pyelpa_general_diagonalize(PyObject *self, PyObject *args);
 PyObject* pyelpa_constants(PyObject *self, PyObject *args);
 PyObject* pyelpa_deallocate(PyObject *self, PyObject *args);
-} // CLINKAGE
+CLINKAGE_END
 #endif // GPAW_WITH_ELPA
 #endif // GPAW_WITH_SL and PARALLEL
 
@@ -145,8 +143,7 @@ CLINKAGE PyObject * FFTWExecute(PyObject *self, PyObject *args);
 CLINKAGE PyObject * FFTWDestroy(PyObject *self, PyObject *args);
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 // Threading
 PyObject* get_num_threads(PyObject *self, PyObject *args);
@@ -185,12 +182,11 @@ PyObject* adjust_momenta(PyObject *self, PyObject *args);
 // TIP3P forces
 PyObject* calculate_forces_H2O(PyObject *self, PyObject *args);
 
-} // CLINKAGE
+CLINKAGE_END
 
 #ifdef GPAW_GPU
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 PyObject* gpaw_gpu_init(PyObject *self, PyObject *args);
 PyObject* gpaw_gpu_delete(PyObject *self, PyObject *args);
 PyObject* csign_gpu(PyObject *self, PyObject *args);
@@ -228,7 +224,7 @@ PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
 PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
-} // CLINKAGE
+CLINKAGE_END
 
 #ifdef GPAW_WITH_MAGMA
     // Include just the C99-compliant interface, implementation is C++
@@ -237,8 +233,7 @@ PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
 
 #endif // GPAW_GPU
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 static PyMethodDef functions[] = {
     {"pawexxvv", pawexxvv, METH_VARARGS, 0},
@@ -540,4 +535,4 @@ static PyObject* moduleinit(void)
     return m;
 }
 
-} // CLINKAGE
+CLINKAGE_END

@@ -10,8 +10,7 @@
     #include "cpp/magma/magma_python_interface.h"
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 void bc_init_buffers_gpu();
 void blas_init_gpu();
@@ -69,4 +68,4 @@ PyObject* gpaw_gpu_delete(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

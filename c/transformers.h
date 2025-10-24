@@ -14,8 +14,7 @@
   #define GPAW_ASYNC_D 1
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 #ifdef __TRANSFORMERS_C
 typedef struct
@@ -51,4 +50,4 @@ void transapply_worker(TransformerObject *self, int chunksize, int start,
 		  bool real, const double_complex* ph);
 #endif
 
-} // CLINKAGE
+CLINKAGE_END

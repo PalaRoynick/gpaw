@@ -39,8 +39,7 @@ CLINKAGE PyObject* Operator_relax_gpu(OperatorObject *self, PyObject *args);
 CLINKAGE PyObject* Operator_apply_gpu(OperatorObject *self, PyObject *args);
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 static void Operator_dealloc(OperatorObject *self)
 {
@@ -428,4 +427,4 @@ PyObject * NewOperatorObject(PyObject *obj, PyObject *args)
   return (PyObject*)self;
 }
 
-} // CLINKAGE
+CLINKAGE_END

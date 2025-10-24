@@ -7,8 +7,7 @@
 #include "mympi.h"
 
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 elpa_t* unpack_handleptr(PyObject* handle_obj)
 {
@@ -243,6 +242,6 @@ PyObject *pyelpa_deallocate(PyObject *self, PyObject *args)
 #endif
 }
 
-} // CLINKAGE
+CLINKAGE_END
 
 #endif

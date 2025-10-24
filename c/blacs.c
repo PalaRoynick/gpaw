@@ -110,8 +110,7 @@ CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 #define   Cpztrmr2d_  Cpztrmr2d
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 // tools
 #ifndef GPAW_WITH_INTEL_MKL
@@ -367,7 +366,7 @@ void pztrsm_(char* side, char* uplo, char* trans, char* diag,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb);
 
-} // CLINKAGE
+CLINKAGE_END
 
 /* Helper for making complex -> int casts work in C++ mode,
 when extracting optimal lwork */
@@ -380,8 +379,7 @@ static inline int get_lwork(double_complex c_work)
 #endif
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* pblas_tran(PyObject *self, PyObject *args)
 {
@@ -1966,7 +1964,7 @@ PyObject* scalapack_solve(PyObject *self, PyObject *args) {
   return returnvalue;
 }
 
-} // CLINKAGE
+CLINKAGE_END
 
 #endif
 #endif // PARALLEL

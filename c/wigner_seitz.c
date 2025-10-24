@@ -2,8 +2,7 @@
 #include "extensions.h"
 #include <stdlib.h>
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 double distance(double *a, double *b);
 
@@ -67,4 +66,4 @@ PyObject *exterior_electron_density_region(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

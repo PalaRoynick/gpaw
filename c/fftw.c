@@ -9,8 +9,7 @@
 #include <numpy/arrayobject.h>
 #include <fftw3.h>
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 /* Create plan and return pointer to plan as a string */
 PyObject * FFTWPlan(PyObject *self, PyObject *args)
@@ -80,6 +79,6 @@ PyObject * FFTWDestroy(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-}
+CLINKAGE_END
 
 #endif // GPAW_WITH_FFTW

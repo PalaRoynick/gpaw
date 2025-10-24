@@ -44,8 +44,7 @@ void myzgemm(char *transa, char *transb, int *m, int * n,
 }
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 #ifdef GPAW_GPU
 void lfc_dealloc_gpu(LFCObject *self);
@@ -1781,4 +1780,4 @@ PyObject* ae_core_density_correction(LFCObject *lfc, PyObject *args)
   Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

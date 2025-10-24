@@ -50,8 +50,7 @@ void gpawDeviceSynchronize();
     PyErr_SetString(PyExc_ValueError, "Invalid processor number.");     \
     return NULL; } else
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 // MPI request object, so we can store a reference to the buffer,
 // preventing its early deallocation.
@@ -1406,6 +1405,6 @@ PyObject* globally_broadcast_bytes(PyObject *self, PyObject *args)
     return value;
 }
 
-} // CLINKAGE
+CLINKAGE_END
 
 #endif // PARALLEL

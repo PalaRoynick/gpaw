@@ -90,8 +90,7 @@ name(type *x, const type *y, double a, int start, int end, int size)    \
         x[i] = a * y[i];                                                \
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 ARRAY_MULTO(array_multo,  double)
 ARRAY_MULTO(array_multoz, double_complex)
@@ -355,4 +354,4 @@ PyObject *fd_precond(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END

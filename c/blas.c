@@ -27,8 +27,7 @@ they don't get name mangled. */
 #  define zgemm_  zgemm
 #endif
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 void dsyrk_(char *uplo, char *trans, int *n, int *k,
             double *alpha, double *a, int *lda, double *beta,
@@ -185,6 +184,6 @@ PyObject* r2k(PyObject *self, PyObject *args)
   Py_RETURN_NONE;
 }
 
-} // CLINKAGE
+CLINKAGE_END
 
 #endif

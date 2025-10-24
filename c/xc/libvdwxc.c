@@ -1,4 +1,7 @@
 #ifdef GPAW_WITH_LIBVDWXC
+
+#include "c_cpp_tools.h"
+
 #include "../extensions.h"
 
 #ifdef PARALLEL
@@ -18,7 +21,7 @@ vdwxc_data* unpack_vdwxc_pointer(PyObject* vdwxc_obj)
     return vdw;
 }
 
-PyObject* libvdwxc_has(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_has(PyObject* self, PyObject* args)
 {
     char* name;
     if(!PyArg_ParseTuple(args, "s", &name)) {
@@ -49,7 +52,7 @@ PyObject* libvdwxc_has(PyObject* self, PyObject* args)
     return pyval;
 }
 
-PyObject* libvdwxc_create(PyObject* self, PyObject* args, PyObject* kwargs)
+CLINKAGE PyObject* libvdwxc_create(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     PyObject* vdwxc_obj;
     int vdwxc_code;
@@ -88,7 +91,7 @@ PyObject* libvdwxc_create(PyObject* self, PyObject* args, PyObject* kwargs)
     Py_RETURN_NONE;
 }
 
-PyObject* libvdwxc_init_serial(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_init_serial(PyObject* self, PyObject* args)
 {
     PyObject* vdwxc_obj;
     if(!PyArg_ParseTuple(args, "O", &vdwxc_obj)) {
@@ -99,7 +102,7 @@ PyObject* libvdwxc_init_serial(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-PyObject* libvdwxc_calculate(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_calculate(PyObject* self, PyObject* args)
 {
     PyObject *vdwxc_obj;
     PyArrayObject *stress_obj, *rho_obj, *sigma_obj, *dedn_obj, *dedsigma_obj;
@@ -177,7 +180,7 @@ PyObject* libvdwxc_calculate(PyObject* self, PyObject* args)
     return Py_BuildValue("d", energy);
 }
 
-PyObject* libvdwxc_tostring(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_tostring(PyObject* self, PyObject* args)
 {
     PyObject *vdwxc_obj;
     if(!PyArg_ParseTuple(args, "O", &vdwxc_obj)) {
@@ -190,7 +193,7 @@ PyObject* libvdwxc_tostring(PyObject* self, PyObject* args)
     return Py_BuildValue("s", str);
 }
 
-PyObject* libvdwxc_free(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_free(PyObject* self, PyObject* args)
 {
     PyObject* vdwxc_obj;
     if(!PyArg_ParseTuple(args, "O", &vdwxc_obj)) {
@@ -202,13 +205,13 @@ PyObject* libvdwxc_free(PyObject* self, PyObject* args)
 }
 
 #ifdef PARALLEL
-MPI_Comm unpack_gpaw_comm(PyObject* gpaw_mpi_obj)
+static MPI_Comm unpack_gpaw_comm(PyObject* gpaw_mpi_obj)
 {
     return *((MPI_Comm*) PyLong_AsVoidPtr(gpaw_mpi_obj));
 }
 #endif
 
-PyObject* error_parallel_support(void)
+CLINKAGE PyObject* error_parallel_support(void)
 {
     // Not a true import error, but pretty close.
 #ifndef PARALLEL
@@ -222,7 +225,7 @@ PyObject* error_parallel_support(void)
     return NULL;
 }
 
-PyObject* libvdwxc_init_mpi(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_init_mpi(PyObject* self, PyObject* args)
 {
     PyObject* vdwxc_obj;
     PyObject* gpaw_comm_obj;
@@ -245,7 +248,7 @@ PyObject* libvdwxc_init_mpi(PyObject* self, PyObject* args)
 #endif
 }
 
-PyObject* libvdwxc_init_pfft(PyObject* self, PyObject* args)
+CLINKAGE PyObject* libvdwxc_init_pfft(PyObject* self, PyObject* args)
 {
     PyObject* vdwxc_obj;
     PyObject* gpaw_comm_obj;

@@ -38,8 +38,7 @@ static gpublasOperation_t gpublas_operation(int op)
     return gpu_op;
 }
 
-CLINKAGE
-{
+CLINKAGE_BEGIN
 
 PyObject* scal_gpu(PyObject *self, PyObject *args)
 {
@@ -515,4 +514,4 @@ PyObject* dotu_gpu(PyObject *self, PyObject *args)
     }
 }
 
-} // CLINKAGE
+CLINKAGE_END
