@@ -1,6 +1,6 @@
 #ifdef GPAW_WITH_LIBVDWXC
 
-#include "c_cpp_tools.h"
+#include "../c_cpp_tools.h"
 
 #include "../extensions.h"
 
