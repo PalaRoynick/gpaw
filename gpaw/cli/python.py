@@ -12,6 +12,11 @@ class CLICommand:
             '--dry-run', '-z', type=int, default=0,
             metavar='NCPUS',
             help='Dry run on NCPUS cpus.')
+        
+        
+        parser.add_argument(
+            '--warnings', '-W',
+            help='warning control; arg is action:message:category:module:lineno.')
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument(
