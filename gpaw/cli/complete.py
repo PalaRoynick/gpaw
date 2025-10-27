@@ -69,7 +69,8 @@ commands = {
          '--logarithmic-derivatives', '-s', '--separate-figures',
          '-S', '--search', '-o', '--outfile', '--write'],
     'python':
-        ['--dry-run', '-z', '--command', '-c', '--module', '-m'],
+        ['--dry-run', '-z', '--warnings', '-W', '--command', '-c',
+         '--module', '-m'],
     'run':
         ['-p', '--parameters', '-t', '--tag', '--properties', '-f',
          '--maximum-force', '--constrain-tags', '-s',
