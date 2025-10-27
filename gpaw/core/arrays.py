@@ -60,6 +60,8 @@ class DistributedArrays(Generic[DomainType], XP):
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
         self.domain_transposable = domain_transposable
+        if domain_comm.size == 1:
+            self.domain_transposable = True
 
         if self.dims:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
@@ -80,9 +82,9 @@ class DistributedArrays(Generic[DomainType], XP):
             nbands = np.prod(self.mydims)
         else:
             nbands = 1
+        self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
+        mynbands = (nbands + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size
         if domain_transposable:
-            self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
-            mynbands = (nbands + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size
             buffersize = self.maxbands * self.maxnX * domain_comm.size
         else:
             buffersize = np.prod(fullshape)
@@ -187,7 +189,7 @@ class DistributedArrays(Generic[DomainType], XP):
             return self.new(data=xp.asarray(self.data))
 
     @trace
-    def domain_a2a_bands(self):
+    def domain_a2a_bands(self, transfer_data=True, blocking=True):
         """Convert domain decomposition to band decomposition, and
         vice versa."""
         maxnX = np.prod(self.desc.shape)
@@ -202,40 +204,44 @@ class DistributedArrays(Generic[DomainType], XP):
         # Required buffersize:
         mybands = (nbands + size - 1 - rank) // size
         buffersize = self.data_buffer.size
-
-        """Create arrays for MPI alltoallv call."""
-        d2b_sizes = np.repeat(self.maxnX, size*self.maxbands).reshape(self.maxbands, size)
-        d2b_offsets = np.arange(buffersize, step=self.maxnX).reshape(self.maxbands, size)
-
-        dtype = self.data_buffer.dtype.char
-        reqs = []
-
-        if (not GPAW_MPI4PY) or size == 1:
-            send_buffer = self.data_buffer.copy()
-            for size, offset in zip(d2b_sizes, d2b_offsets):
-                comm.alltoallv(send_buffer, size, offset,
-                               self.data_buffer, size, offset)
-        else:
-            from mpi4py.MPI import IN_PLACE
-            from gpaw.gpu.mpi import CuPyMPI
-            from gpaw.mpi import MPIComm
-            if isinstance(comm, CuPyMPI):
-                comm = comm.comm
-            if isinstance(comm, MPIComm):
-                comm = comm.comm
-            for size, offset in zip(d2b_sizes, d2b_offsets):
-                req = comm.comm.Ialltoallv(IN_PLACE,
-                                           (self.data_buffer, (size, offset), dtype))
-                reqs.append(req)
- 
-        comm.waitall(reqs)
+        
         self.domain_transposed = not self.domain_transposed
         if self.domain_transposed:
             self.data = self._domain_view
-            #self.data_buffer[:mybands*maxnX].reshape((mybands, maxnX))
         else:
             self.data = self._band_view
-            #self.data_buffer[:nbands*mynX].reshape((nbands, mynX))
+
+        if transfer_data:
+            """Create arrays for MPI alltoallv call."""
+            d2b_sizes = np.repeat(self.maxnX, size*self.maxbands).reshape(self.maxbands, size)
+            d2b_offsets = np.arange(buffersize, step=self.maxnX).reshape(self.maxbands, size)
+
+            dtype = self.data_buffer.dtype.char
+            reqs = []
+            from gpaw.gpu.mpi import CuPyMPI
+
+            if (not GPAW_MPI4PY) or size == 1 or isinstance(comm, CuPyMPI):
+                send_buffer = self.data_buffer.copy()
+                for size, offset in zip(d2b_sizes, d2b_offsets):
+                    comm.alltoallv(send_buffer, size, offset,
+                                self.data_buffer, size, offset)
+                    reqs.append(None)
+            else:
+                from mpi4py.MPI import IN_PLACE
+                from gpaw.mpi import MPIComm
+                if isinstance(comm, MPIComm):
+                    comm = comm.comm
+                if not self.xp is np:
+                    self.xp.cuda.get_current_stream().synchronize()
+                for size, offset in zip(d2b_sizes, d2b_offsets):
+                    req = comm.comm.Ialltoallv(IN_PLACE,
+                                               (self.data_buffer, (size, offset), dtype))
+                    reqs.append(req)
+            if blocking:
+                for req in reqs:
+                    if req is not None:
+                        comm.wait(req)
+            return reqs
  
     @property
     def matrix(self) -> Matrix:

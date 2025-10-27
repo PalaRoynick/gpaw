@@ -12,7 +12,7 @@ import numpy as np
 def maybe_sync(arr):
     from gpaw.gpu import cupy, cupy_is_fake
     if not cupy_is_fake and isinstance(arr, cupy.ndarray):
-        cupy.cuda.deviceSynchronize()
+        cupy.cuda.get_current_stream().synchronize()
 
 
 class MPI4PYWrapper:

@@ -45,27 +45,23 @@ class PWHamiltonian(Hamiltonian):
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
 
-        psit_nG.domain_a2a_bands()
-        out_nG.domain_a2a_bands()
+        reqs = psit_nG.domain_a2a_bands(blocking=False)
+        out_nG.domain_a2a_bands(transfer_data=False)  # Since array gets overwritten
         psit_G = pw_local.empty(xp=xp)
-        e_kin_G = xp.asarray(psit_G.desc.ekin_G)
+        e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
-        mynbands = psit_nG.mydims[0]
         vtpsit_G = pw_local.empty(xp=xp)
 
-        # for n1 in range(0, mynbands, domain_comm.size):
-        for n1 in range(0, psit_nG.data.shape[0]):
-            # n2 = min(n1 + domain_comm.size, mynbands)
-            # psit_nG[n1:n2].gather_all(psit_G)
-            psit_G.data[:] = psit_nG.data[n1]
-            #if domain_comm.rank < n2 - n1:
+        for n, (req, out_G) in enumerate(zip(reqs, out_nG)):
+            if req is not None:
+                domain_comm.wait(req)
+            psit_G.data[:] = psit_nG.data[n]
             psit_G.ifft(out=tmp_R, plan=self.plan)
             tmp_R.data *= vt_R.data
             tmp_R.fft(out=vtpsit_G, plan=self.plan)
             psit_G.data *= e_kin_G
             vtpsit_G.data += psit_G.data
-            #out_nG[n1:n2].scatter_from_all(vtpsit_G)
-            out_nG.data[n1] = vtpsit_G.data
+            out_G.data[:] = vtpsit_G.data
         
         psit_nG.domain_a2a_bands()
         out_nG.domain_a2a_bands()

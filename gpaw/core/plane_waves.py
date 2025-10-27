@@ -724,11 +724,12 @@ class PWArray(DistributedArrays[PWDesc]):
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
-        a_nG.domain_a2a_bands()
-        for index, n1 in enumerate(range(0, N, domain_comm.size)):
-            n2 = min(n1 + domain_comm.size, N)
-            # a_nG[n1:n2].gather_all(a1_G)
-            n = n1 + domain_comm.rank
+        reqs = a_nG.domain_a2a_bands(blocking=False)
+        # for index, n1 in enumerate(range(0, N, domain_comm.size)):
+        for i, req in enumerate(reqs):
+            if req is not None:
+                a_nG.domain_comm.wait(req)
+            n = i * domain_comm.size + domain_comm.rank
             if n >= N:
                 continue
             a1_G.data[:] = a_nG.data[index]
