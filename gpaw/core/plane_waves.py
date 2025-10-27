@@ -732,7 +732,7 @@ class PWArray(DistributedArrays[PWDesc]):
             n = i * domain_comm.size + domain_comm.rank
             if n >= N:
                 continue
-            a1_G.data[:] = a_nG.data[index]
+            a1_G.data[:] = a_nG.data[i]
             weight = weights[n]
             if weight == 0.0:
                 continue

@@ -52,7 +52,7 @@ class PWHamiltonian(Hamiltonian):
         domain_comm = psit_nG.desc.comm
         vtpsit_G = pw_local.empty(xp=xp)
 
-        for n, (req, out_G) in enumerate(zip(reqs, out_nG)):
+        for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)):
             if req is not None:
                 domain_comm.wait(req)
             psit_G.data[:] = psit_nG.data[n]
@@ -61,7 +61,7 @@ class PWHamiltonian(Hamiltonian):
             tmp_R.fft(out=vtpsit_G, plan=self.plan)
             psit_G.data *= e_kin_G
             vtpsit_G.data += psit_G.data
-            out_G.data[:] = vtpsit_G.data
+            out_G[:] = vtpsit_G.data
         
         psit_nG.domain_a2a_bands()
         out_nG.domain_a2a_bands()
