@@ -3,6 +3,7 @@ import runpy
 import sys
 import warnings
 
+
 class CLICommand:
     """Run GPAW's Python interpreter."""
 
@@ -15,7 +16,8 @@ class CLICommand:
 
         parser.add_argument(
             '--warnings', '-W',
-            help='warning control; arg is action:message:category:module:lineno.')
+            help='warning control; arg is '
+            'action:message:category:module:lineno.')
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument(
