@@ -1,7 +1,7 @@
 import argparse
 import runpy
 import sys
-
+import warnings
 
 class CLICommand:
     """Run GPAW's Python interpreter."""
@@ -12,7 +12,6 @@ class CLICommand:
             '--dry-run', '-z', type=int, default=0,
             metavar='NCPUS',
             help='Dry run on NCPUS cpus.')
-        
         
         parser.add_argument(
             '--warnings', '-W',
@@ -41,6 +40,9 @@ class CLICommand:
     @staticmethod
     def run(args):
         from gpaw import all_lazy_imports, broadcast_imports, __getattr__
+        if args.warnings is not None:
+            warnings.simplefilter(args.warnings)
+            print('hello')
         with broadcast_imports:
             for attr in all_lazy_imports:
                 __getattr__(attr)
