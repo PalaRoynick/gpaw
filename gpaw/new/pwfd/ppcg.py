@@ -211,9 +211,9 @@ class PPCG(PWFDEigensolver):
             psit_nX = wfs.psit_nX
             b = psit_nX.mydims[0]
 
-            residual_nX = psit_nX.new(data=self.work_arrays[0, :b])
+            residual_nX = psit_nX.new(data=self.work_arrays[0])
             if self.include_cg:
-                P_nX = psit_nX.new(data=self.work_arrays[1, :b])
+                P_nX = psit_nX.new(data=self.work_arrays[1])
 
             wfs.subspace_diagonalize(Ht, dH,
                                      psit2_nX=residual_nX,

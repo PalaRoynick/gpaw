@@ -47,6 +47,7 @@ class MPI4PYWrapper:
             return self.comm.reduce(a, root=root, op=_op)
 
     def sum(self, a, root=-1, _op=SUM):
+#        assert a.flags.c_contiguous and a.flags.f_contiguous
         maybe_sync(a)
         if root == -1:
             self.comm.Allreduce(IN_PLACE, a, op=_op)

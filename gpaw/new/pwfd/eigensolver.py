@@ -62,8 +62,7 @@ class PWFDEigensolver(Eigensolver):
             # Now increase size to be sure its domain transposable
             G_max_max = ibzwfs.domain_comm.max_scalar(G_max)
             G_max_sum = ibzwfs.domain_comm.sum_scalar(G_max)
-            buffer_size = max(mybands * G_max_sum,
-                              nbands * G_max_max) * dtype_size
+            buffer_size = mybands * G_max_max * domain_size * dtype_size
             
             '''
             buffer_size_per_domain = max(self.max_buffer_mem,

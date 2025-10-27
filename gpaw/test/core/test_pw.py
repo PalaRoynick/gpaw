@@ -177,17 +177,18 @@ def test_morph():
 
 
 def test_a2a():
-    pw = PWDesc(ecut=25, cell=[1, 1, 1], comm=world)
-    a = pw.empty(3)
-    #a.randomize()
+    pw = PWDesc(ecut=25, cell=[1, 1, 1], comm=world, dtype=complex)
+    a = pw.empty(3, domain_transposable=True)
     a.data_buffer[:] = 0
-    a.data[:] = world.rank + 1
+    a.data[:, :] = world.rank + 1 + (np.arange(a.data.shape[0])[:, None] + 1) * 1j
     b = a.copy()
-    print(np.abs(a.data_buffer), f'Before a2a {world.rank}')
+    print(a.data, f'Before a2a {world.rank}')
     a.domain_a2a_bands()
-    print(np.abs(a.data_buffer), f'After a2a {world.rank}')
+    print(a.data, f'After a2a {world.rank}')
+    # Imaginary part is the band. All bands should follow:
+    # np.arange(a.data.shape[0] * world.size, world.size) + 1
+    assert np.all(a.data.imag == np.arange(world.rank, a.data.shape[0] * world.size, step=world.size)[:, None] + 1), f'{a.data_buffer}'
     a.domain_a2a_bands()
-    
-    print(np.abs(a.data_buffer), f'After 2x a2a {world.rank}')
+    print(a.data, f'After 2x a2a {world.rank}')
     
     assert np.all(a.data == b.data), f"{a.data} != {b.data}"

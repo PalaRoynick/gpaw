@@ -724,12 +724,14 @@ class PWArray(DistributedArrays[PWDesc]):
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
-        for n1 in range(0, N, domain_comm.size):
+        a_nG.domain_a2a_bands()
+        for index, n1 in enumerate(range(0, N, domain_comm.size)):
             n2 = min(n1 + domain_comm.size, N)
-            a_nG[n1:n2].gather_all(a1_G)
+            # a_nG[n1:n2].gather_all(a1_G)
             n = n1 + domain_comm.rank
             if n >= N:
                 continue
+            a1_G.data[:] = a_nG.data[index]
             weight = weights[n]
             if weight == 0.0:
                 continue
@@ -739,6 +741,7 @@ class PWArray(DistributedArrays[PWDesc]):
             else:
                 b1_R.data += float(weight) * xp.abs(a1_R.data)**2
 
+        a_nG.domain_a2a_bands()
         domain_comm.sum(b1_R.data)
         b_R = out.new()
         b_R.scatter_from(b1_R)
@@ -761,7 +764,7 @@ class PWArray(DistributedArrays[PWDesc]):
             # numpy does not require shape, cupy does
             # cupy just makes all elements equal to one random number
             aview = a.view(dtype=self.real_dtype)
-            rng.random(aview.shape, out=aview, dtype=self.real_dtype)
+            aview[:] = rng.random(aview.shape, dtype=self.real_dtype)
 
             # Uniform distribution inside unit circle
             a[:] = a.real**0.5 * self.xp.exp(2j * self.xp.pi * a.imag)

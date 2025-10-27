@@ -82,7 +82,8 @@ class DistributedArrays(Generic[DomainType], XP):
             nbands = 1
         if domain_transposable:
             self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
-            buffersize = max(self.maxbands * fullnX, nbands * self.maxnX)
+            mynbands = (nbands + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size
+            buffersize = self.maxbands * self.maxnX * domain_comm.size
         else:
             buffersize = np.prod(fullshape)
 
@@ -102,7 +103,10 @@ class DistributedArrays(Generic[DomainType], XP):
         # assert np.prod(fullshape) == buffersize
         if self.domain_transposable:
             self.data_buffer = data[:buffersize]
-            self.data = data[:nbands * self.maxnX].reshape(*self.mydims, self.maxnX)[..., :mynX].reshape(fullshape)  # XXX: Madness
+            # XXX: Madness here:
+            self._band_view = data[:buffersize].reshape(self.maxbands * domain_comm.size, self.maxnX)[:nbands, :mynX].reshape(fullshape)
+            self._domain_view = data[:buffersize].reshape(self.maxbands, self.maxnX * domain_comm.size)[:mynbands, :fullnX].reshape(mynbands, fullnX)
+            self.data = self._band_view
         else:
             self.data_buffer = data
             self.data = data[:np.prod(fullshape)].reshape(fullshape)
@@ -227,9 +231,11 @@ class DistributedArrays(Generic[DomainType], XP):
         comm.waitall(reqs)
         self.domain_transposed = not self.domain_transposed
         if self.domain_transposed:
-            self.data = self.data_buffer[:mybands*maxnX].reshape((mybands, maxnX))
+            self.data = self._domain_view
+            #self.data_buffer[:mybands*maxnX].reshape((mybands, maxnX))
         else:
-            self.data = self.data_buffer[:nbands*mynX].reshape((nbands, mynX))
+            self.data = self._band_view
+            #self.data_buffer[:nbands*mynX].reshape((nbands, mynX))
  
     @property
     def matrix(self) -> Matrix:
