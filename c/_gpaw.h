@@ -87,7 +87,10 @@ PyObject* NewLFCObject(PyObject *self, PyObject *args);
 #ifdef PARALLEL
 PyObject* globally_broadcast_bytes(PyObject *self, PyObject *args);
 #endif
+CLINKAGE_END
+
 #if defined(GPAW_WITH_SL) && defined(PARALLEL)
+CLINKAGE_BEGIN
 PyObject* new_blacs_context(PyObject *self, PyObject *args);
 PyObject* get_blacs_gridinfo(PyObject* self, PyObject *args);
 PyObject* get_blacs_local_shape(PyObject* self, PyObject *args);
@@ -135,6 +138,7 @@ PyObject* pyelpa_constants(PyObject *self, PyObject *args);
 PyObject* pyelpa_deallocate(PyObject *self, PyObject *args);
 CLINKAGE_END
 #endif // GPAW_WITH_ELPA
+CLINKAGE_END
 #endif // GPAW_WITH_SL and PARALLEL
 
 #ifdef GPAW_WITH_FFTW
