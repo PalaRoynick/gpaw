@@ -189,7 +189,7 @@ class DistributedArrays(Generic[DomainType], XP):
             return self.new(data=xp.asarray(self.data))
 
     @trace
-    def domain_a2a_bands(self, transfer_data=True, blocking=True):
+    def domain_a2a_bands(self, transfer_data=True, blocking=True, index=None):
         """Convert domain decomposition to band decomposition, and
         vice versa."""
         maxnX = np.prod(self.desc.shape)
@@ -205,11 +205,12 @@ class DistributedArrays(Generic[DomainType], XP):
         mybands = (nbands + size - 1 - rank) // size
         buffersize = self.data_buffer.size
         
-        self.domain_transposed = not self.domain_transposed
-        if self.domain_transposed:
-            self.data = self._domain_view
-        else:
-            self.data = self._band_view
+        if index is None:
+            self.domain_transposed = not self.domain_transposed
+            if self.domain_transposed:
+                self.data = self._domain_view
+            else:
+                self.data = self._band_view
 
         if transfer_data:
             """Create arrays for MPI alltoallv call."""
@@ -220,11 +221,15 @@ class DistributedArrays(Generic[DomainType], XP):
             reqs = []
             from gpaw.gpu.mpi import CuPyMPI
 
+            if isinstance(index, int):
+                d2b_sizes = [d2b_sizes[index], ]
+                d2b_offsets = [d2b_offsets[index], ]
+
             if (not GPAW_MPI4PY) or size == 1 or isinstance(comm, CuPyMPI):
                 send_buffer = self.data_buffer.copy()
                 for size, offset in zip(d2b_sizes, d2b_offsets):
                     comm.alltoallv(send_buffer, size, offset,
-                                self.data_buffer, size, offset)
+                                   self.data_buffer, size, offset)
                     reqs.append(None)
             else:
                 from mpi4py.MPI import IN_PLACE
@@ -241,6 +246,8 @@ class DistributedArrays(Generic[DomainType], XP):
                 for req in reqs:
                     if req is not None:
                         comm.wait(req)
+            if isinstance(index, int):
+                return reqs[0]
             return reqs
  
     @property

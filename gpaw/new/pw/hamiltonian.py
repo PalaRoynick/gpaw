@@ -46,25 +46,32 @@ class PWHamiltonian(Hamiltonian):
                 self.pw_cache[key] = pw_local
 
         reqs = psit_nG.domain_a2a_bands(blocking=False)
-        out_nG.domain_a2a_bands(transfer_data=False)  # Since array gets overwritten
-        psit_G = pw_local.empty(xp=xp)
+        out_nG.domain_a2a_bands(transfer_data=False)  # Since data gets overwritten
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
-        vtpsit_G = pw_local.empty(xp=xp)
+        reqs2 = []
 
-        for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)):
+        # for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)): Not all ranks have equal bands :(
+        for n in range(psit_nG.maxbands):
+            if n < psit_nG.data.shape[0]:
+                if reqs[n] is not None:
+                    domain_comm.wait(reqs[n])
+                psit_G = pw_local.from_data(data=psit_nG.data[n])
+                vtpsit_G = pw_local.from_data(data=out_nG.data[n])
+                psit_G.ifft(out=tmp_R, plan=self.plan)
+                tmp_R.data *= vt_R.data
+                tmp_R.fft(out=vtpsit_G, plan=self.plan)
+                # psit_G.data *= e_kin_G
+                # vtpsit_G.data += psit_G.data
+                vtpsit_G.data += psit_G.data * e_kin_G
+            reqs2.append(psit_nG.domain_a2a_bands(blocking=False, index=n))
+            reqs2.append(out_nG.domain_a2a_bands(blocking=False, index=n))
+        
+        for req in reqs2:
             if req is not None:
                 domain_comm.wait(req)
-            psit_G.data[:] = psit_nG.data[n]
-            psit_G.ifft(out=tmp_R, plan=self.plan)
-            tmp_R.data *= vt_R.data
-            tmp_R.fft(out=vtpsit_G, plan=self.plan)
-            psit_G.data *= e_kin_G
-            vtpsit_G.data += psit_G.data
-            out_G[:] = vtpsit_G.data
-        
-        psit_nG.domain_a2a_bands()
-        out_nG.domain_a2a_bands()
+        psit_nG.domain_a2a_bands(transfer_data=False)
+        out_nG.domain_a2a_bands(transfer_data=False)
 
     def apply_mgga(self,
                    dedtaut_R: UGArray,

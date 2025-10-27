@@ -720,33 +720,36 @@ class PWArray(DistributedArrays[PWDesc]):
 
         # Undistributed work arrays:
         a1_R = out.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
-        a1_G = pw.new(comm=None).empty(xp=xp)
+        pw_dist = pw.new(comm=None)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
         reqs = a_nG.domain_a2a_bands(blocking=False)
+        reqs2 = []
         # for index, n1 in enumerate(range(0, N, domain_comm.size)):
         for i, req in enumerate(reqs):
             if req is not None:
                 a_nG.domain_comm.wait(req)
             n = i * domain_comm.size + domain_comm.rank
-            if n >= N:
-                continue
-            a1_G.data[:] = a_nG.data[i]
-            weight = weights[n]
-            if weight == 0.0:
-                continue
-            a1_G.ifft(out=a1_R)
-            if xp is np:
-                add_to_density(weight, a1_R.data, b1_R.data)
-            else:
-                b1_R.data += float(weight) * xp.abs(a1_R.data)**2
+            if n < N:
+                a1_G = pw_dist.from_data(a_nG.data[i])
+                weight = weights[n]
+                if weight != 0.0:
+                    a1_G.ifft(out=a1_R)
+                    if xp is np:
+                        add_to_density(weight, a1_R.data, b1_R.data)
+                    else:
+                        b1_R.data += float(weight) * xp.abs(a1_R.data)**2
+            reqs2.append(a_nG.domain_a2a_bands(blocking=False, index=i))
 
-        a_nG.domain_a2a_bands()
+        a_nG.domain_a2a_bands(transfer_data=False)
         domain_comm.sum(b1_R.data)
         b_R = out.new()
         b_R.scatter_from(b1_R)
         out.data += b_R.data
+        for req in reqs2:
+            if req is not None:
+                a_nG.domain_comm.wait(req)
 
     def to_pbc_grid(self):
         return self
