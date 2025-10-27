@@ -120,8 +120,9 @@ PyObject* pblas_gemv(PyObject *self, PyObject *args);
 PyObject* pblas_r2k(PyObject *self, PyObject *args);
 PyObject* pblas_rk(PyObject *self, PyObject *args);
 CLINKAGE_END
+#endif // GPAW_WITH_SL and PARALLEL
 
-#if defined(GPAW_WITH_ELPA)
+#if defined(GPAW_WITH_SL) && defined(PARALLEL) && defined(GPAW_WITH_ELPA)
 #include "gpaw_elpa.h"
 
 CLINKAGE_BEGIN
@@ -137,9 +138,7 @@ PyObject* pyelpa_general_diagonalize(PyObject *self, PyObject *args);
 PyObject* pyelpa_constants(PyObject *self, PyObject *args);
 PyObject* pyelpa_deallocate(PyObject *self, PyObject *args);
 CLINKAGE_END
-#endif // GPAW_WITH_ELPA
-CLINKAGE_END
-#endif // GPAW_WITH_SL and PARALLEL
+#endif // GPAW_WITH_SL && PARALLEL && GPAW_WITH_ELPA
 
 #ifdef GPAW_WITH_FFTW
 CLINKAGE PyObject * FFTWPlan(PyObject *self, PyObject *args);
