@@ -2,7 +2,7 @@
 import os
 import subprocess
 import sys
-
+import argparse
 
 commands = [
     ('run', 'gpaw.cli.run'),
@@ -29,7 +29,9 @@ def hook(parser, args):
     parser.suggest_on_error = True
     parser.add_argument('-P', '--parallel', type=int, metavar='N',
                         help='Run on N CPUs.')
-    parser.add_argument('--xxx', action='store_true')
+    parser.add_argument('--run-in-parallel',
+                        action='store_true',
+                        help=argparse.SUPPRESS)
 
     parser.color = True
     args = parser.parse_args(args)
@@ -46,38 +48,35 @@ def hook(parser, args):
             mpi.world = mpi.SerialCommunicator()
             mpi.world.size = N
 
-    if not args.xxx and args.command == 'python':
-        from gpaw.mpi import have_mpi, world
-        if not have_mpi:
-            raise SystemExit('MPI not available')
+    if args.run_in_parallel or args.command != 'python':
+        return args
 
-        if 1:#py:
-            # Start again in parallel:
-            pyargs = []
-            if sys.version_info >= (3, 11):
-                # Don't prepend a potentially unsafe path to sys.path
-                pyargs.append('-P')
-            if args.warnings:
-                pyargs += ['-W', args.warnings]
-            print(args)
-            arguments = ['mpiexec',
-                         *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
-                         '-np',
-                         str(args.parallel or 1),
-                         sys.executable,
-                         *pyargs,
-                         '-m',
-                         'gpaw', '--xxx',
-                         *sys.argv[1:]]
-            print(arguments)
+    from gpaw.mpi import have_mpi
 
-            # Use a clean set of environment variables without any MPI stuff:
-            p = subprocess.run(arguments, check=False, env=os.environ)
-            sys.exit(p.returncode)
-        else:
-            lkjhasdfljkh
+    if not have_mpi:
+        raise SystemExit('MPI not available')
 
-    return args
+    # Start again in parallel:
+    pyargs = []
+    if sys.version_info >= (3, 11):
+        # Don't prepend a potentially unsafe path to sys.path
+        pyargs.append('-P')
+    if args.warnings:
+        pyargs += ['-W', args.warnings]
+    arguments = ['mpiexec',
+                 *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
+                 '-np',
+                 str(args.parallel or 1),
+                 sys.executable,
+                 *pyargs,
+                 '-m',
+                 'gpaw',
+                 '--run-in-parallel',
+                 *sys.argv[1:]]
+
+    # Use a clean set of environment variables without any MPI stuff:
+    p = subprocess.run(arguments, check=False, env=os.environ)
+    sys.exit(p.returncode)
 
 
 def main(args=None):
