@@ -582,7 +582,7 @@ def calculate_Wxc(gd, n_sR, xc):
     xc = XC(xc)
     assert xc.type in ['LDA', 'GGA']
 
-    # Spherical approximation for v_xc on the radial in case of GGA
+    # Spherical approximation for v_xc on the radial grid in case of GGA
     if len(np.shape(v_sR)) == 2 and xc.type == 'GGA':
         xc.calculate_spherical(gd, n_sR, v_sg=v_sR)
     else:
