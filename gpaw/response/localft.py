@@ -601,7 +601,7 @@ def add_zeeman_energy(gd, n_sR, EZ_R, xc):
     EZ_R += - calculate_Wxc(gd, n_sR, xc) * calculate_spin_polarization(n_sR)
 
 
-def add_dens_fxc(gd, n_sR, fxc_R, *, fxc):
+def add_LDA_dens_fxc(gd, n_sR, fxc_R, *, fxc):
     r"""Calculate the LDA density kernel and add it to the output array fxc_R.
 
     The LDA density kernel is given by:
