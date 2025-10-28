@@ -33,6 +33,8 @@ Git master branch
 * :ref:`newgpaw`: Non-collinear calculations can now be parallelized over
   plane-waves.
 
+* The `gpaw python` command now has warning control (use `-W arg`).
+
 
 Version 25.7.0
 ==============
