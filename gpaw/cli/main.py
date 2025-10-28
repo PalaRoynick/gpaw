@@ -45,7 +45,7 @@ def hook(parser,
             import gpaw
             gpaw.dry_run = N
             import gpaw.mpi as mpi
-            mpi.world = mpi.SerialCommunicator()
+            mpi.world = mpi.SerialCommunicator()  # type: ignore
             mpi.world.size = N
 
     if args.run_in_parallel or args.command != 'python':
