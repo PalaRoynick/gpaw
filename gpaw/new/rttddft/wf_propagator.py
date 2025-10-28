@@ -7,6 +7,7 @@ import numpy as np
 from numpy.linalg import solve
 
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.matrix import Matrix, suggest_blocking
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.new.fd.hamiltonian import FDHamiltonian, FDKickHamiltonian
 from gpaw.new.hamiltonian import Hamiltonian
@@ -53,9 +54,48 @@ def propagate_wave_functions_numpy(source_C_nM: np.ndarray,
                                    S_MM: np.ndarray,
                                    H_MM: np.ndarray,
                                    dt: float):
+    r""" Solve for the new wave functions using numpy.
+
+    The new wave functions :math:`C(t + \Delta t)` are solved from
+
+    .. math:
+
+        C(t + \Delta t) (S + i \Delta t / 2)
+        = C(t) (S - i \Delta t / 2)
+
+    Parameters
+    ----------
+    source_C_nM
+        Old wave functions :math:`C(t).
+    target_C_nM
+        New wave functions :math:`C(t + \Delta t).
+    S_MM
+        Overlap :math:`S`.
+    H_MM
+        Hamiltonian :math:`S`.
+    dt
+        Time step in atomic units.
+    """
     SjH_MM = S_MM + (0.5j * dt) * H_MM
     target_C_nM[:] = source_C_nM @ SjH_MM.conj().T
     target_C_nM[:] = solve(SjH_MM.T, target_C_nM.T).T
+
+
+def propagate_wave_functions_blacs(source_C_nM: Matrix,
+                                   target_C_nM: Matrix,
+                                   S_MM: Matrix,
+                                   H_MM: Matrix,
+                                   dt: float):
+    # Construct (S + i dt /2 H)
+    SjH_MM = H_MM.copy()
+    SjH_MM.data[:] *= 0.5j * dt
+    SjH_MM += S_MM
+
+    # Construct C(t) (S - i dt /2 H)
+    source_C_nM.multiply(SjH_MM, opb='C', out=target_C_nM)
+
+    # Solve for C(t + dt), replacing the data in target_C_nM
+    target_C_nM.solve(SjH_MM)
 
 
 class WaveFunctionPropagator(ABC):
@@ -108,13 +148,31 @@ class LCAONumpyPropagator(WaveFunctionPropagator):
         assert isinstance(source_wfs, LCAOWaveFunctions)
         assert isinstance(target_wfs, LCAOWaveFunctions)
         H_MM = self.ham_calc.calculate_matrix(source_wfs)
+        nM = H_MM.shape[0]
 
         # Phi_n <- U[H(t)] Phi_n
-        propagate_wave_functions_numpy(source_wfs.C_nM.data,
-                                       target_wfs.C_nM.data,
-                                       source_wfs.S_MM.data,
-                                       H_MM.data,
-                                       time_step)
+        if False:
+            propagate_wave_functions_numpy(source_wfs.C_nM.data,
+                                           target_wfs.C_nM.data,
+                                           source_wfs.S_MM.data,
+                                           H_MM.data,
+                                           time_step)
+        else:
+            comm = source_wfs.C_nM.dist.comm
+            r, c, b = suggest_blocking(nM, comm.size)
+            C_nM = source_wfs.C_nM.new(dist=(comm, r, c, b))
+            target_C_nM = source_wfs.C_nM.new(dist=(comm, r, c, b))
+            source_wfs.C_nM.redist(C_nM)
+            _H_MM = H_MM.new(dist=(comm, r, c, b))
+            H_MM.redist(_H_MM)
+            S_MM = H_MM.new(dist=(comm, r, c, b))
+            source_wfs.S_MM.redist(S_MM)
+            propagate_wave_functions_blacs(C_nM,
+                                           target_C_nM,
+                                           S_MM,
+                                           _H_MM,
+                                           time_step)
+            target_C_nM.redist(target_wfs.C_nM)
 
         # Make sure wfs.C_nM and (lazy) wfs.P_ani are in sync:
         target_wfs._P_ani = None

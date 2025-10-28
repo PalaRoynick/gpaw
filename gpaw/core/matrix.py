@@ -406,6 +406,44 @@ class Matrix(XP):
         if info != 0:
             raise ValueError(f'scalapack_inverse error: {info}')
 
+    def solve(self, A):
+        """General matrix solve.
+
+        Solve X from A*X = B. The array b will be replaced with the result.
+
+        This function works on the transposed form. The equivalent
+        non-distributed operation is numpy.linalg.solve(a.T, b.T).T.
+
+        This function executes the following scalapack routine:
+        * pzgesv if matrices are complex
+        * pdgesv if matrices are real
+        """
+        assert A.shape[0] == A.shape[1], 'A not a square matrix'
+        assert A.shape[1] == self.shape[1], 'B shape not compatible with A'
+
+        Aserial = (A.dist.comm.size == 1 or
+                   A.dist.rows == 1 and A.dist.columns == 1)
+        bserial = (self.dist.comm.size == 1
+                   or self.dist.rows == 1 and self.dist.columns == 1)
+        if Aserial:
+            assert bserial, 'If A is not distributed ' \
+                            'then b cannot be distributed'
+
+            # No distribution
+            self.data[:] = self.xp.linalg.solve(A.data.T, self.data.T).T
+            return
+
+        # Block size of A and b
+        Abc, Abr = A.dist.desc[4:6]
+        bbc, bbr = self.dist.desc[4:6]
+        assert Abc == Abr, 'A not having square blocks'
+        assert Abc == bbc, 'B blocks not compatible with A'
+
+        info = cgpaw.scalapack_solve(A.data, A.dist.desc,
+                                     self.data, self.dist.desc)
+        if info != 0:
+            raise RuntimeError(f'scalapack_solve error: {info}')
+
     def invcholesky(self) -> None:
         """In-place inverse of Cholesky decomposition.
 

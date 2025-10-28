@@ -174,7 +174,7 @@ class RTTDDFT:
             Parallelization parameters.
         """
         _, state, history, dft_params, params, builder = read_rttddft(
-            filepath, log='-', comm=world)
+            filepath, log='-', comm=world, parallel=parallel)
 
         pot_calc = builder.create_potential_calculator()
         hamiltonian = builder.create_hamiltonian_operator()
