@@ -21,6 +21,10 @@ class RTTDDFTState:
     potential: Potential
     energies: DFTEnergies
 
+    def __str__(self) -> str:
+        return ''.join([str(self.ibzwfs), str(self.density),
+                        str(self.potential)])
+
 
 @dataclass
 class RTTDDFTKick:

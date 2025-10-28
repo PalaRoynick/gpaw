@@ -256,6 +256,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                                 P_aMi=self.P_aMi,
                                 relpos_ac=self.relpos_ac,
                                 atomdist=self.atomdist,
+                                domain_comm=self.domain_comm,
                                 kpt_c=self.kpt_c,
                                 spin=self.spin,
                                 q=self.q,

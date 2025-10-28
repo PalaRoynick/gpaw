@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Generator
+from typing import Any, Generator
 
 from ase import Atoms
+from ase.parallel import parprint
 from ase.io.ulm import Reader
 
 from gpaw.dft import Parameters
@@ -55,9 +56,6 @@ class RTTDDFT:
                  td_algorithm: TDAlgorithmLike = None,
                  *,
                  dft_params: Parameters):
-        if world.size > 1:
-            raise NotImplementedError('Parallel execution not implemented')
-
         if len(state.ibzwfs.ibz.symmetries.op_scc) > 1:
             raise ValueError('Symmetries are not allowed for TDDFT. '
                              'Run the ground state calculation with '
@@ -81,7 +79,10 @@ class RTTDDFT:
                              f'({type(hamiltonian)})')
 
         self.timer = nulltimer
-        self.log = print
+        self.log = parprint
+        self.log('Initialized RT-TDDFT')
+        self.log(self.history)
+        self.log(self.state)
 
     @property
     def atoms(self) -> Atoms:
@@ -130,7 +131,8 @@ class RTTDDFT:
     @classmethod
     def from_dft_file(cls,
                       filepath: str,
-                      td_algorithm: TDAlgorithmLike = None):
+                      td_algorithm: TDAlgorithmLike = None,
+                      parallel: dict[str, Any] | None = None):
         """ Set up the RTTDDFT object from a DFT calculation file.
 
         Parameters
@@ -139,10 +141,13 @@ class RTTDDFT:
             Filename of the DFT calculation file.
         td_algorithm
             Propagation algorithm for the state.
+        parallel
+            Parallelization parameters.
         """
         _, dft, params, builder = read_gpw(filepath,
                                            log='-',
                                            comm=world,
+                                           parallel=parallel,
                                            force_complex_dtype=True)
 
         state = RTTDDFTState(dft.ibzwfs, dft.density,
@@ -157,13 +162,16 @@ class RTTDDFT:
 
     @classmethod
     def from_rttddft_file(cls,
-                          filepath: str):
+                          filepath: str,
+                          parallel: dict[str, Any] | None = None):
         """ Set up the RTTDDFT object from a restart file.
 
         Parameters
         ----------
         filepath
             Filename of the restart file.
+        parallel
+            Parallelization parameters.
         """
         _, state, history, dft_params, params, builder = read_rttddft(
             filepath, log='-', comm=world)
@@ -190,8 +198,8 @@ class RTTDDFT:
             Filename.
         kwargs
             Parameters passed to the :meth:`~from_dft_file` if
-            `filepath` is a DFT calculation file. No parameters
-            are allowed for RTTDDFT restart files.
+            `filepath` is a DFT calculation file. Only the `parallel`
+            parameter is allowed for RTTDDFT restart files.
         """
         if world.rank == 0:
             with Reader(filepath) as reader:
