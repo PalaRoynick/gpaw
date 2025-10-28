@@ -46,7 +46,7 @@ def hook(parser, args):
             mpi.world = mpi.SerialCommunicator()
             mpi.world.size = N
 
-    if not args.xxx:
+    if not args.xxx and args.command == 'python':
         from gpaw.mpi import have_mpi, world
         if not have_mpi:
             raise SystemExit('MPI not available')
