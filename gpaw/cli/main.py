@@ -51,11 +51,6 @@ def hook(parser,
     if args.run_in_parallel or args.command != 'python':
         return args
 
-    from gpaw.mpi import have_mpi
-
-    if not have_mpi:
-        raise SystemExit('MPI not available')
-
     # Start again in parallel:
     pyargs = []
     if sys.version_info >= (3, 11):
@@ -63,17 +58,25 @@ def hook(parser,
         pyargs.append('-P')
     if args.warnings:
         pyargs += ['-W', args.warnings]
+
     cmd = [
-        'mpiexec',
-        *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
-        '-np',
-        str(args.parallel or 1),
         sys.executable,
         *pyargs,
         '-m',
         'gpaw',
         '--run-in-parallel',
         *(sys.argv[1:] if arguments is None else arguments)]
+
+    P = args.parallel or 1
+    if P > 1:
+        from gpaw.mpi import have_mpi
+        if not have_mpi:
+            raise SystemExit('MPI not available')
+        cmd = [
+            'mpiexec',
+            *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
+            '-np',
+            str(N)] + cmd
 
     # Use a clean set of environment variables without any MPI stuff:
     p = subprocess.run(cmd, check=False, env=os.environ)
