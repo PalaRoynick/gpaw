@@ -1,7 +1,6 @@
 import argparse
 import runpy
 import sys
-import warnings
 
 
 class CLICommand:

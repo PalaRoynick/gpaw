@@ -24,8 +24,8 @@ commands = [
     ('install-data', 'gpaw.cli.install_data')]
 
 
-def hook(parser, args):
-    parser.color = True
+def hook(parser,
+         arguments: None | list[str]):
     parser.suggest_on_error = True
     parser.add_argument('-P', '--parallel', type=int, metavar='N',
                         help='Run on N CPUs.')
@@ -34,7 +34,7 @@ def hook(parser, args):
                         help=argparse.SUPPRESS)
 
     parser.color = True
-    args = parser.parse_args(args)
+    args = parser.parse_args(arguments)
 
     if args.command == 'python':
         args.traceback = True
@@ -63,20 +63,25 @@ def hook(parser, args):
         pyargs.append('-P')
     if args.warnings:
         pyargs += ['-W', args.warnings]
-    arguments = ['mpiexec',
-                 *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
-                 '-np',
-                 str(args.parallel or 1),
-                 sys.executable,
-                 *pyargs,
-                 '-m',
-                 'gpaw',
-                 '--run-in-parallel',
-                 *sys.argv[1:]]
+    cmd = [
+        'mpiexec',
+        *os.environ.get('GPAW_MPI_OPTIONS', '').split(),
+        '-np',
+        str(args.parallel or 1),
+        sys.executable,
+        *pyargs,
+        '-m',
+        'gpaw',
+        '--run-in-parallel',
+        *(sys.argv[1:] if arguments is None else arguments)]
 
     # Use a clean set of environment variables without any MPI stuff:
-    p = subprocess.run(arguments, check=False, env=os.environ)
-    sys.exit(p.returncode)
+    p = subprocess.run(cmd, check=False, env=os.environ)
+    if arguments is None:
+        sys.exit(p.returncode)
+    if p.returncode:
+        raise RuntimeError
+    return args
 
 
 def main(args=None):
