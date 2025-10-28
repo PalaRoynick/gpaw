@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from gpaw.new import prod
 from gpaw import GPAW_MPI4PY
+from gpaw.gpu.mpi import CuPyMPI
 
 DomainType = TypeVar('DomainType', bound=Domain)
 
@@ -214,22 +215,24 @@ class DistributedArrays(Generic[DomainType], XP):
 
         if transfer_data:
             """Create arrays for MPI alltoallv call."""
-            d2b_sizes = np.repeat(self.maxnX, size*self.maxbands).reshape(self.maxbands, size)
-            d2b_offsets = np.arange(buffersize, step=self.maxnX).reshape(self.maxbands, size)
+            d2b_size = np.repeat(self.maxnX, size)
+            d2b_offset = np.cumsum(d2b_size) - self.maxnX
 
             dtype = self.data_buffer.dtype.char
             reqs = []
-            from gpaw.gpu.mpi import CuPyMPI
 
             if isinstance(index, int):
-                d2b_sizes = [d2b_sizes[index], ]
-                d2b_offsets = [d2b_offsets[index], ]
+                inds = np.array([index, ])
+            else:
+                inds = np.arange(self.maxbands)
+            send_size = self.maxnX * size
+            inds *= send_size
 
             if (not GPAW_MPI4PY) or size == 1 or isinstance(comm, CuPyMPI):
-                send_buffer = self.data_buffer.copy()
-                for size, offset in zip(d2b_sizes, d2b_offsets):
-                    comm.alltoallv(send_buffer, size, offset,
-                                   self.data_buffer, size, offset)
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
+                    comm.alltoallv(data_view.copy(), d2b_size, d2b_offset,
+                                   data_view, d2b_size, d2b_offset)
                     reqs.append(None)
             else:
                 from mpi4py.MPI import IN_PLACE
@@ -238,9 +241,10 @@ class DistributedArrays(Generic[DomainType], XP):
                     comm = comm.comm
                 if not self.xp is np:
                     self.xp.cuda.get_current_stream().synchronize()
-                for size, offset in zip(d2b_sizes, d2b_offsets):
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
                     req = comm.comm.Ialltoallv(IN_PLACE,
-                                               (self.data_buffer, (size, offset), dtype))
+                                               (data_view, (d2b_size, d2b_offset), dtype))
                     reqs.append(req)
             if blocking:
                 for req in reqs:

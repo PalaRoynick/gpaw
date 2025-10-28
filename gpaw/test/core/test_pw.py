@@ -177,18 +177,24 @@ def test_morph():
 
 
 def test_a2a():
-    pw = PWDesc(ecut=25, cell=[1, 1, 1], comm=world, dtype=complex)
-    a = pw.empty(3, domain_transposable=True)
+    from time import time
+    pw = PWDesc(ecut=30500, cell=[1, 1, 1], comm=world, dtype=complex)
+    a = pw.empty(600, domain_transposable=True)
     a.data_buffer[:] = 0
     a.data[:, :] = world.rank + 1 + (np.arange(a.data.shape[0])[:, None] + 1) * 1j
+    print(a.data.shape)
     b = a.copy()
-    print(a.data, f'Before a2a {world.rank}')
-    a.domain_a2a_bands()
-    print(a.data, f'After a2a {world.rank}')
-    # Imaginary part is the band. All bands should follow:
-    # np.arange(a.data.shape[0] * world.size, world.size) + 1
+    then = time()
+    reqs = a.domain_a2a_bands(blocking=False)
+    for ind, req in enumerate(reqs):
+        then2 = time()
+        world.wait(req)
+        if world.rank == 0:
+            print(f'Ind: {ind} waited {time() - then2}s')
+    now = time()
     assert np.all(a.data.imag == np.arange(world.rank, a.data.shape[0] * world.size, step=world.size)[:, None] + 1), f'{a.data_buffer}'
     a.domain_a2a_bands()
-    print(a.data, f'After 2x a2a {world.rank}')
+    
+    print(f'Total Time: {now - then}')
     
     assert np.all(a.data == b.data), f"{a.data} != {b.data}"
