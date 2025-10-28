@@ -17,7 +17,7 @@ from gpaw.atom.radialgd import AERadialGridDescriptor
 
 from gpaw.response import ResponseGroundStateAdapter, ResponseContext
 from gpaw.response.localft import (LocalFTCalculator, MicroSetup,
-                                   add_total_density, add_LSDA_Wxc)
+                                   add_total_density, add_Wxc)
 from gpaw.response.pair_functions import get_pw_coordinates
 from gpaw.test.response.test_site_kernels import get_pw_descriptor
 
@@ -197,12 +197,13 @@ def test_localft_paw_engine(a):
     nt_sR = np.array([nt_R])
 
     # Create MicroSetup(s)
-    micro_setup = MicroSetup(rgd, Y_nL, n_sLg, nt_sLg)
+    micro_setup = MicroSetup(rgd, Y_nL, n_sLg, nt_sLg, xc='LDA')
     micro_setups = [micro_setup]
 
     gs = EmptyGSAdapter()  # hack to pass isinstance in constructor
     context = ResponseContext()
     for rshe_params in rshe_params_p:
+        print(rshe_params)
         # Initialize the LocalPAWFTCalculator with an empty gs adapter
         localft_calc = LocalFTCalculator.from_rshe_parameters(gs, context,
                                                               **rshe_params)
@@ -241,7 +242,7 @@ def test_Fe_bxc(gpw_files):
                             ecut=ecut,
                             gammacentered=True)
 
-    Wxc_G = localft_calc(pd0, add_LSDA_Wxc)
+    Wxc_G = localft_calc(pd0, add_Wxc)
 
     # Part 3: Check symmetry relation
     G1_G, G2_G = get_inversion_pairs(pd0)
