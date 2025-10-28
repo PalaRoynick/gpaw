@@ -349,9 +349,10 @@ class UGArray(DistributedArrays[UGDesc]):
         else:
             dims = self.dims
         if data is None:
-            data = self.xp.empty_like(self.data)
+            data = self.xp.empty_like(self.data_buffer)
 
         f_xR = UGArray(self.desc, dims, self.comm, data)
+#        assert f_xR.mydims == self.mydims
         if zeroed:
             f_xR.data[:] = 0.0
         return f_xR

@@ -106,7 +106,6 @@ class DistributedArrays(Generic[DomainType], XP):
             data = (xp or np).empty(buffersize, dtype)
 
         if self.domain_transposable:
-            assert 0
             self.data_buffer = data[:buffersize]
             # XXX: Madness here:
             self._band_view = self.data_buffer.reshape(
@@ -150,7 +149,7 @@ class DistributedArrays(Generic[DomainType], XP):
         # data_buffer. Hence, datasize divided by nX
         # rounded down.
         mybands = min(datasize // nX,
-                      self.data_buffer.size // nX)
+                      self.maxbands * self.domain_comm.size)
         # data = data_buffer[:mybands * nX].reshape(
         #     (mybands,) + X)
         totalbands = self.comm.sum_scalar(mybands)

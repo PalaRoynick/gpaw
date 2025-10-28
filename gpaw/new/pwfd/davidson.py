@@ -134,13 +134,10 @@ class Davidson(PWFDEigensolver):
                                   precon=self.preconditioner)
 
             # Calculate projections
-            asdfaa
             wfs.pt_aiX.integrate(psit2_nX, out=P2_ani)
-            asdf
             with tracectx('Matrix elements'):
                 # Sliced matrix elements with hamiltonian. See
                 # sliced_matrix_elements docstring.
-                afdsafdsfd
                 sliced_matrix_elements(psit_nX, psit2_nX,
                                        buffer_mX=me_buffer_mX,
                                        Ht=Ht,
@@ -229,9 +226,6 @@ def sliced_preconditioner(psit_nX, psit2_nX, buffer, precon):
     if not mybands == 0:
         for i_local in range(0, mybands, buffer_size):
             buffer_view = buffer[:mybands - i_local]
-            assert psit_nX[i_local:i_local + buffer_size].data.flags.c_contiguous
-            assert psit2_nX[i_local:i_local + buffer_size].data.flags.c_contiguous
-            assert buffer_view[i_local:i_local + buffer_size].data.flags.c_contiguous
             precon(
                 psit_nX[i_local:i_local + buffer_size],
                 psit2_nX[i_local:i_local + buffer_size],
