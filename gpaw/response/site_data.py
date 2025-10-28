@@ -12,7 +12,7 @@ from gpaw.sphere.integrate import (integrate_lebedev,
 from gpaw.response import (ResponseGroundStateAdapter,
                            ResponseGroundStateAdaptable)
 from gpaw.response.localft import (add_spin_polarization,
-                                   add_LSDA_zeeman_energy)
+                                   add_zeeman_energy)
 
 
 class AtomicSites:
@@ -142,6 +142,7 @@ class AtomicSiteData:
                           'may be less accurate beyond this range, see '
                           'gpaw.response.site_data.get_site_radii_range()')
         self.sites = sites
+        self.xc = gs.xcname
 
         # Extract the scaled positions and micro_setups for each atomic site
         self.spos_ac = gs.spos_ac[sites.A_a]
@@ -218,7 +219,7 @@ class AtomicSiteData:
 
     def calculate_zeeman_energies(self):
         r"""Calculate the local Zeeman energy E_Z for each atomic site."""
-        EZ_ap = self.integrate_local_function(add_LSDA_zeeman_energy)
+        EZ_ap = self.integrate_local_function(add_zeeman_energy)
         return EZ_ap
 
     def integrate_local_function(self, add_f):
@@ -248,7 +249,7 @@ class AtomicSiteData:
         """
         # Evaluate the local function on the real-space grid
         ft_r = self.finegd.zeros()
-        add_f(self.finegd, self.nt_sr, ft_r)
+        add_f(self.finegd, self.nt_sr, ft_r, self.xc)
 
         # Integrate θ(|r-r_a|<rc_ap) f(ñ(r))
         ftdict_ap = {a: np.empty(self.sites.npartitions)

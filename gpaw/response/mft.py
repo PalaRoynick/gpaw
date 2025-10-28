@@ -11,7 +11,7 @@ from gpaw.response.frequencies import ComplexFrequencyDescriptor
 from gpaw.response.chiks import (ChiKSCalculator, RealAxisWarning,
                                  get_smat_components, smat,
                                  regularize_intraband_transitions)
-from gpaw.response.localft import LocalFTCalculator, add_LSDA_Wxc
+from gpaw.response.localft import LocalFTCalculator, add_Wxc
 from gpaw.response.site_kernels import SiteKernels
 from gpaw.response.site_data import AtomicSites
 from gpaw.response.pair_integrator import PairFunction, PairFunctionIntegrator
@@ -144,7 +144,7 @@ class IsotropicExchangeCalculator:
         # q_c is arbitrary, since we are assuming that chiks.gammacentered == 1
         qpd0 = self.chiks_calc.get_pw_descriptor([0., 0., 0.])
 
-        return self.localft_calc(qpd0, add_LSDA_Wxc)
+        return self.localft_calc(qpd0, add_Wxc)
 
     def get_chiksr(self, q_c, txt=None):
         """Get χ_KS^('+-)(q) from buffer."""
@@ -463,7 +463,7 @@ class SingleParticleSiteZeemanEnergyCalculator(
     """
     def create_matrix_element_calculator(self):
         return SiteZeemanPairEnergyCalculator(
-            self.gs, self.context, self.sites, rshewmin=1e-8)
+            self.gs, self.context, self.sites)
 
 
 class SitePairFunction(PairFunction):
@@ -688,7 +688,7 @@ class TwoParticleSiteZeemanEnergyCalculator(
     """
     def create_matrix_element_calculators(self):
         site_zeeman_pair_energy_calc = SiteZeemanPairEnergyCalculator(
-            self.gs, self.context, self.sites, rshewmin=1e-8)
+            self.gs, self.context, self.sites)
         site_pair_density_calc = SitePairDensityCalculator(
             self.gs, self.context, self.sites)
         return site_zeeman_pair_energy_calc, site_pair_density_calc

@@ -369,7 +369,8 @@ class ResponseGroundStateAdapter:
         from gpaw.response.localft import extract_micro_setup
         micro_setups = []
         for a, pawdata in enumerate(self.pawdatasets.by_atom):
-            micro_setups.append(extract_micro_setup(pawdata, self.D_asp[a]))
+            micro_setups.append(extract_micro_setup(pawdata, self.D_asp[a],
+                                                    self.xcname))
         return micro_setups
 
     @property

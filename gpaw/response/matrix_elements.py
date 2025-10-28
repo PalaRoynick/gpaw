@@ -14,7 +14,7 @@ from gpaw.response.site_paw import (
     calculate_site_matrix_element_correction,
     calculate_nonlocal_hubbard_potential,
 )
-from gpaw.response.localft import calculate_LSDA_Wxc, add_LSDA_trans_fxc
+from gpaw.response.localft import calculate_Wxc, add_LSDA_trans_fxc
 from gpaw.response.site_data import AtomicSiteData
 
 
@@ -582,8 +582,11 @@ class SiteZeemanPairEnergyCalculator(SiteMatrixElementCalculator):
 
     E^(Z,ap)_(nks,n'k+qs') = - <ψ_nks|Θ(r∊Ω_ap)W_xc^z(r)|ψ_n'k+qs'>
     """
+    def __init__(self, gs, context, sites):
+        super().__init__(gs, context, sites)
+
     def add_f(self, gd, n_sx, f_x):
-        f_x[:] += - calculate_LSDA_Wxc(gd, n_sx)
+        f_x[:] += - calculate_Wxc(gd, n_sx, self.gs.xcname)
 
 
 class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
@@ -594,8 +597,11 @@ class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
 
     d^(xc,ap)_(nks,n'k+qs') = - <ψ_nks|Θ(r∊Ω_ap)|W_xc^z(r)||ψ_n'k+qs'>
     """
+    def __init__(self, gs, context, sites, rshewmin):
+        super().__init__(gs, context, sites)
+
     def add_f(self, gd, n_sx, f_x):
-        f_x[:] += - np.abs(calculate_LSDA_Wxc(gd, n_sx))
+        f_x[:] += - np.abs(calculate_Wxc(gd, n_sx, self.gs.xcname))
 
     def _add_paw_correction(self, P1_Amyti, P2_Amyti, matrix_element):
         # Add usual PAW correction to d^(xc,ap)

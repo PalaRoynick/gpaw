@@ -197,7 +197,8 @@ class LocalPAWFTCalculator(LocalFTCalculator):
                  rshelmax=-1, rshewmin=None):
         super().__init__(gs, context, bg_density=bg_density)
 
-        self.engine = LocalPAWFTEngine(self.context, rshelmax, rshewmin)
+        self.engine = LocalPAWFTEngine(self.context, rshelmax, rshewmin,
+                                       gs.xcname)
 
     def calculate(self, qpd, add_f):
         """Calculate f(G) with an expansion of f(r) in real spherical harmonics
@@ -229,11 +230,12 @@ class LocalPAWFTCalculator(LocalFTCalculator):
 
 class MicroSetup:
 
-    def __init__(self, rgd, Y_nL, n_sLg, nt_sLg):
+    def __init__(self, rgd, Y_nL, n_sLg, nt_sLg, xc):
         self.rgd = rgd
         self.Y_nL = Y_nL
         self.n_sLg = n_sLg
         self.nt_sLg = nt_sLg
+        self.xc = xc
 
     def evaluate_function(self, add_f):
         """Evaluate a given function f(r) on the angular and radial grids."""
@@ -258,11 +260,11 @@ class MicroSetup:
         for n, Y_L in enumerate(self.Y_nL):
             f_g[:] = 0.
             n_sg = Y_L @ self.n_sLg
-            add_f(rgd, n_sg, f_g)
+            add_f(rgd, n_sg, f_g, self.xc)
 
             ft_g[:] = 0.
             nt_sg = Y_L @ self.nt_sLg
-            add_f(rgd, nt_sg, ft_g)
+            add_f(rgd, nt_sg, ft_g, self.xc)
 
             df_ng[n, :] = f_g - ft_g
 
@@ -281,7 +283,7 @@ class MicroSetup:
         return calculate_reduced_rshe(self.rgd, f_ng, self.Y_nL, **kwargs)
 
 
-def extract_micro_setup(pawdata, D_sp) -> MicroSetup:
+def extract_micro_setup(pawdata, D_sp, xc) -> MicroSetup:
     """Extract the a.e. and pseudo (spin-)densities as a MicroSetup."""
     # Radial grid descriptor:
     rgd = pawdata.xc_correction.rgd
@@ -290,7 +292,7 @@ def extract_micro_setup(pawdata, D_sp) -> MicroSetup:
     n_sLg, nt_sLg = calculate_atom_centered_densities(pawdata,
                                                       # atomic density matrix
                                                       D_sp)
-    return MicroSetup(rgd, Y_nL, n_sLg, nt_sLg)
+    return MicroSetup(rgd, Y_nL, n_sLg, nt_sLg, xc)
 
 
 def calculate_atom_centered_densities(pawdata, D_sp):
@@ -325,11 +327,12 @@ def calculate_atom_centered_densities(pawdata, D_sp):
 
 class LocalPAWFTEngine:
 
-    def __init__(self, context, rshelmax=-1, rshewmin=None):
+    def __init__(self, context, rshelmax=-1, rshewmin=None, xc=None):
         """Construct the engine."""
         self.context = context
         self.rshelmax = rshelmax
         self.rshewmin = rshewmin
+        self.xc = xc
 
         self._add_f = None
 
@@ -362,7 +365,7 @@ class LocalPAWFTEngine:
         # Calculate ft(r) (t=tilde=pseudo)
         gd = qpd.gd
         ft_R = gd.zeros()
-        self._add_f(gd, nt_sR, ft_R)
+        self._add_f(gd, nt_sR, ft_R, self.xc)
 
         # FFT to reciprocal space
         ft_G = fft_from_grid(ft_R, qpd)  # G = 1D grid of |G|^2/2 < ecut
@@ -552,7 +555,7 @@ def add_total_density(gd, n_sR, n_R):
     n_R += np.sum(n_sR, axis=0)
 
 
-def add_spin_polarization(gd, n_sR, nz_R):
+def add_spin_polarization(gd, n_sR, nz_R, xc):
     nz_R += calculate_spin_polarization(n_sR)
 
 
@@ -560,41 +563,45 @@ def calculate_spin_polarization(n_sR):
     return n_sR[0] - n_sR[1]
 
 
-def add_LSDA_Wxc(gd, n_sR, Wxc_R):
-    Wxc_R += calculate_LSDA_Wxc(gd, n_sR)
+def add_Wxc(gd, n_sR, Wxc_R, xc):
+    Wxc_R += calculate_Wxc(gd, n_sR, xc)
 
 
-def calculate_LSDA_Wxc(gd, n_sR):
+def calculate_Wxc(gd, n_sR, xc):
     """Calculate W_xc^z in the local spin-density approximation.
 
     For a collinear system:
 
                 δE_xc[n,n^z]   1
-    W_xc^z(r) = ‾‾‾‾‾‾‾‾‾‾‾‾ = ‾ [V_LSDA^↑(r) - V_LSDA^↓(r)]
+    W_xc^z(r) = ‾‾‾‾‾‾‾‾‾‾‾‾ = ‾ [V_xc^↑(r) - V_xc^↓(r)]
                    δn^z(r)     2
     """
-    # Allocate an array for the spin-dependent xc potential on the real
-    # space grid
+    # Allocate an array for the spin-dependent xc potential
     v_sR = np.zeros(np.shape(n_sR))
-
     # Calculate the spin-dependent potential
-    xc = XC('LDA')
-    xc.calculate(gd, n_sR, v_sg=v_sR)
+    xc = XC(xc)
+    assert xc.type in ['LDA', 'GGA']
+
+    # Spherical approximation for v_xc on the radial in case of GGA
+    if len(np.shape(v_sR)) == 2 and xc.type == 'GGA':
+        xc.calculate_spherical(gd, n_sR, v_sg=v_sR)
+    else:
+        xc.calculate(gd, n_sR, v_sg=v_sR)
 
     return (v_sR[0] - v_sR[1]) / 2
 
 
-def add_LSDA_zeeman_energy(gd, n_sR, EZ_R):
-    """Calculate and add the LSDA Zeeman energy to the output array.
+def add_zeeman_energy(gd, n_sR, EZ_R, xc):
+    """Calculate and add the Zeeman energy to the output array.
 
     The Zeeman energy is defined as:
 
     E_Z(r) = - B^(xc)(r) m(r) = - W_xc^z n^z(r).
     """
-    EZ_R += - calculate_LSDA_Wxc(gd, n_sR) * calculate_spin_polarization(n_sR)
+    EZ_R += - calculate_Wxc(gd, n_sR, xc) * calculate_spin_polarization(n_sR)
 
 
-def add_LDA_dens_fxc(gd, n_sR, fxc_R, *, fxc):
+def add_dens_fxc(gd, n_sR, fxc_R, *, fxc):
     r"""Calculate the LDA density kernel and add it to the output array fxc_R.
 
     The LDA density kernel is given by:
