@@ -80,13 +80,15 @@ class DistributedArrays(Generic[DomainType], XP):
         fullnX = domain_comm.sum_scalar(mynX)
         self.maxnX = domain_comm.max_scalar(mynX)
         if self.mydims:
-            nbands = np.prod(self.mydims)
+            nbands = self.mydims[0]
+            extra_dims_size = int(np.prod(self.mydims[1:]))
         else:
             nbands = 1
+            extra_dims_size = 1
         self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
         mynbands = (nbands + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size
         if domain_transposable:
-            buffersize = self.maxbands * self.maxnX * domain_comm.size
+            buffersize = self.maxbands * self.maxnX * extra_dims_size * domain_comm.size
         else:
             buffersize = np.prod(fullshape)
 
@@ -103,16 +105,20 @@ class DistributedArrays(Generic[DomainType], XP):
         else:
             data = (xp or np).empty(buffersize, dtype)
 
-        # assert np.prod(fullshape) == buffersize
         if self.domain_transposable:
+            assert 0
             self.data_buffer = data[:buffersize]
             # XXX: Madness here:
-            self._band_view = data[:buffersize].reshape(self.maxbands * domain_comm.size, self.maxnX)[:nbands, :mynX].reshape(fullshape)
-            self._domain_view = data[:buffersize].reshape(self.maxbands, self.maxnX * domain_comm.size)[:mynbands, :fullnX].reshape(mynbands, fullnX)
+            self._band_view = self.data_buffer.reshape(
+                (self.maxbands * domain_comm.size, extra_dims_size, self.maxnX)
+                )[:nbands, :, :mynX].reshape(fullshape)
+            self._domain_view = self.data_buffer.reshape(
+                (self.maxbands, extra_dims_size, self.maxnX * domain_comm.size)
+                )[:mynbands, :, :fullnX].reshape((mynbands, *self.mydims[1:], fullnX))
             self.data = self._band_view
         else:
-            self.data_buffer = data
-            self.data = data[:np.prod(fullshape)].reshape(fullshape)
+            self.data_buffer = data[:np.prod(fullshape)]
+            self.data = self.data_buffer.reshape(fullshape)
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:

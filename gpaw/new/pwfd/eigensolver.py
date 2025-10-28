@@ -114,7 +114,6 @@ class PWFDEigensolver(Eigensolver):
             self._initialize(ibzwfs)
 
         wfs = ibzwfs.wfs_qs[0][0]
-        assert wfs.psit_nX.domain_transposable
         dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
                                                     wfs.xp)
 
