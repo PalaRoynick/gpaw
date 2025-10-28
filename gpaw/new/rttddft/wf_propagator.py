@@ -147,7 +147,9 @@ class LCAONumpyPropagator(WaveFunctionPropagator):
                   time_step: float):
         assert isinstance(source_wfs, LCAOWaveFunctions)
         assert isinstance(target_wfs, LCAOWaveFunctions)
+        # The root of the domain comm has the right data
         H_MM = self.ham_calc.calculate_matrix(source_wfs)
+        source_wfs.domain_comm.broadcast(H_MM.data, 0)
         nM = H_MM.shape[0]
 
         # Phi_n <- U[H(t)] Phi_n
