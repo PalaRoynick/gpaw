@@ -9,6 +9,7 @@ from ase.io.ulm import Reader
 from gpaw.dft import Parameters
 from gpaw.external import ExternalPotential
 from gpaw.mpi import broadcast, world
+from gpaw.new import Timer
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.new.fd.hamiltonian import FDHamiltonian, FDKickHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
@@ -25,7 +26,6 @@ from gpaw.new.rttddft.dataclasses import RTTDDFTState
 from gpaw.new.rttddft.history import RTTDDFTHistory
 from gpaw.tddft.units import asetime_to_autime, autime_to_asetime
 from gpaw.utilities import reconstruct_atoms
-from gpaw.utilities.timing import nulltimer
 
 
 class RTTDDFT:
@@ -78,7 +78,7 @@ class RTTDDFT:
             raise ValueError(f"I don\'t know {hamiltonian} "
                              f'({type(hamiltonian)})')
 
-        self.timer = nulltimer
+        self.timer = Timer()
         self.log = parprint
         self.log('Initialized RT-TDDFT')
         self.log(self.history)
@@ -284,8 +284,9 @@ class RTTDDFT:
                 td_algorithm.propagate_wfs(1 / nkicks,
                                            state=self.state,
                                            hamiltonian=kick_hamiltonian)
-            td_algorithm.update_time_dependent_operators(self.state,
-                                                         self.pot_calc)
+            with self.timer('Update operators'):
+                td_algorithm.update_time_dependent_operators(self.state,
+                                                             self.pot_calc)
 
             # Register in history
             self.history.register_kick(potential)
@@ -312,10 +313,15 @@ class RTTDDFT:
         time_step = time_step * asetime_to_autime
 
         for iteration in range(maxiter):
-            self.td_algorithm.propagate(time_step,
-                                        state=self.state,
-                                        pot_calc=self.pot_calc,
-                                        hamiltonian=self.hamiltonian)
+            with self.timer('propagate'):
+                self.td_algorithm.propagate(time_step,
+                                            state=self.state,
+                                            pot_calc=self.pot_calc,
+                                            hamiltonian=self.hamiltonian)
             time = self.history.propagate(time_step)
 
             yield time * autime_to_asetime
+
+    def __del__(self):
+        self.log('---')
+        self.timer.write(self.log)
