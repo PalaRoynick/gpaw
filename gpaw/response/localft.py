@@ -245,6 +245,10 @@ class MicroSetup:
             add_f(self.rgd, n_sg, f_ng[n])
         return f_ng
 
+    def spherical_components(self):
+        return MicroSetup(self.rgd, self.Y_nL[:, :1], self.n_sLg[:, :1],
+                          self.nt_sLg[:, :1], self.xc)
+    
     def evaluate_paw_correction(self, add_f):
         r"""Evaluate Δf_a[n_a,ñ_a](r) for a given function f(r).
 

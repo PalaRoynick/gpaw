@@ -438,6 +438,8 @@ class SiteMatrixElementCalculator(MatrixElementCalculator):
         # Expand local functional in real spherical harmonics around each site
         rshe_a = []
         for a, micro_setup in enumerate(self.site_data.micro_setup_a):
+            if gs.xcname == 'PBE':
+                micro_setup = micro_setup.spherical_components()
             rshe, info_string = micro_setup.expand_function(
                 self.add_f, lmax=rshelmax, wmin=rshewmin)
             self.print_rshe_info(a, info_string)
