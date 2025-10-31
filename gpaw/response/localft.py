@@ -245,10 +245,6 @@ class MicroSetup:
             add_f(self.rgd, n_sg, f_ng[n])
         return f_ng
 
-    def spherical_components(self):
-        return MicroSetup(self.rgd, self.Y_nL[:, :1], self.n_sLg[:, :1],
-                          self.nt_sLg[:, :1], self.xc)
-    
     def evaluate_paw_correction(self, add_f):
         r"""Evaluate Δf_a[n_a,ñ_a](r) for a given function f(r).
 
@@ -582,12 +578,13 @@ def calculate_Wxc(gd, n_sR, xc):
     """
     # Allocate an array for the spin-dependent xc potential
     v_sR = np.zeros(np.shape(n_sR))
+
     # Calculate the spin-dependent potential
     xc = XC(xc)
     assert xc.type in ['LDA', 'GGA']
-
+    
     # Spherical approximation for v_xc on the radial grid in case of GGA
-    if len(np.shape(v_sR)) == 2 and xc.type == 'GGA':
+    if len(np.shape(v_sR)) == 2:
         xc.calculate_spherical(gd, n_sR, v_sg=v_sR)
     else:
         xc.calculate(gd, n_sR, v_sg=v_sR)
