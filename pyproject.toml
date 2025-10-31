@@ -71,9 +71,6 @@ namespaces = false
 [tool.setuptools.dynamic]
 version = {attr = 'gpaw.__version__'}
 
-[tool.setuptools.packages.find]
-# where = ['gpaw']  # why does this fail?
-
 [tool.setuptools.package-data]
 gpaw = ['py.typed']
 
