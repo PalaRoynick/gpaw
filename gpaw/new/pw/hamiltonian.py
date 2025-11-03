@@ -49,6 +49,10 @@ class PWHamiltonian(Hamiltonian):
         out_nG.domain_a2a_bands(transfer_data=False)  # Since data gets overwritten
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
+        # apply_local_potential_gpu doesn't work with domain parallisation
+        # So we force vt_R to be the right type here.
+        vt_R_data = xp.asarray(vt_R.data)
+        
         reqs2 = []
 
         # for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)): Not all ranks have equal bands :(
@@ -59,7 +63,7 @@ class PWHamiltonian(Hamiltonian):
                 psit_G = pw_local.from_data(data=psit_nG.data[n])
                 vtpsit_G = pw_local.from_data(data=out_nG.data[n])
                 psit_G.ifft(out=tmp_R, plan=self.plan)
-                tmp_R.data *= vt_R.data
+                tmp_R.data *= vt_R_data
                 tmp_R.fft(out=vtpsit_G, plan=self.plan)
                 # psit_G.data *= e_kin_G
                 # vtpsit_G.data += psit_G.data
