@@ -442,12 +442,83 @@ class AtomArrays:
         for request, _ in requests:
             comm.wait(request)
 
-    def scatter_everything_from(self,
-                                a_axi: AtomArrays | None = None) -> None:
-        """Scatter atoms and extra dimension."""
-        b_axi = self.new(comm=None)
-        b_axi.scatter_from(a_axi)
-        b_axi.matrix.redist(self.matrix)
+    def atoms_a2a_bands(self, inverse_layout=None, out=None):
+        """
+        Transform atom distibution to band distribution if inverse_layout is None.
+        Transform band distribution back to atom distribution if inverse_layout is a atom layout.
+        """
+        if inverse_layout is not None:
+            layout = inverse_layout
+            atoms_comm = layout.atomdist.comm
+            nbands = atoms_comm.sum_scalar(int(np.prod(self.dims)))
+            
+            if out is None:
+                b_axi = layout.empty((nbands, ))
+            else:
+                b_axi = out
+            s_sizes = layout.sizes()[-1]
+            r_sizes = layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
+
+            s_offsets = np.cumulative_sum(s_sizes[:-1], include_initial=True)
+            r_offsets = np.cumulative_sum(r_sizes[:-1], include_initial=True)
+            
+            buffer_I = self.matrix.data[0].copy()
+            
+            for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
+                # Gotta unsort some atoms...
+                if n < self.data.shape[0]:
+                    for sndr, (size, offset) in enumerate(zip(s_sizes, s_offsets)):
+                        size_b = offset
+                        for a, size_a in layout.sizes()[0][sndr].items():
+                            buffer_I[size_b:size_b+size_a] = self[a][n]
+                            size_b += size_a
+                else:
+                    s_sizes[:] = 0
+                    s_offsets[:] = 0
+                for rank in range(atoms_comm.size):
+                    n_max = (nbands + atoms_comm.size - 1 - rank) // atoms_comm.size
+                    if n >= n_max:
+                        r_sizes[rank] = 0
+                        r_offsets[rank] = r_offsets[rank-1]
+                atoms_comm.alltoallv(buffer_I, s_sizes, s_offsets,
+                                     b_axi.matrix.data, r_sizes, r_offsets)
+                r_offsets += np.sum(r_sizes)
+        else:
+            atoms_comm = self.layout.atomdist.comm
+            nbands = np.prod(self.dims)
+
+            layout = self.layout.new(atomdist=serial_comm)
+            # Spin?
+            b_axi = layout.empty(((nbands + atoms_comm.size - 1 - atoms_comm.rank) // atoms_comm.size, ))
+            
+            a_Ni = self.matrix
+            b_nI = b_axi.matrix
+
+            r_sizes = self.layout.sizes()[-1]
+            s_sizes = self.layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
+
+            s_offsets = np.cumulative_sum(s_sizes[:-1], include_initial=True)
+            r_offsets = np.cumulative_sum(r_sizes[:-1], include_initial=True)
+            
+            reqs = []
+            
+            buffer_I = b_nI.data[0].copy()
+            
+            for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
+                atoms_comm.alltoallv(a_Ni.data, s_sizes, s_offsets,
+                                     buffer_I, r_sizes, r_offsets)
+                s_offsets += np.sum(s_sizes)
+                
+                if n >= b_nI.shape[0]:
+                    continue
+
+                # Gotta sort some atoms...
+                for sndr, (size, offset) in enumerate(zip(r_sizes, r_offsets)):
+                    size_b = offset
+                    for a, size_a in self.layout.sizes()[0][sndr].items():
+                        b_axi[a][n][:] = buffer_I[size_b:size_b+size_a]
+                        size_b += size_a
+        return b_axi
 
     def to_lower_triangle(self):
         """Convert `N*N` matrices to `N*(N+1)/2` vectors.

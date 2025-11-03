@@ -5,6 +5,7 @@ from pprint import pformat
 from ase.units import Ha
 
 import numpy as np
+from gpaw.mpi import SerialCommunicator
 from gpaw import debug
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
@@ -299,14 +300,25 @@ class PPCG(PWFDEigensolver):
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands()
+                pot_inner = potential.copy()
+                pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
+                dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
                 
                 # We should have equivalent method for projectors.
                 # For now, we just gather and broadcast
                 mybands = np.arange(domain_comm.rank, b, domain_comm.size)
-                P_ni = P_ani.gather(broadcast=True).matrix.data[mybands]
-                P2_ni = P2_ani.gather(broadcast=True).matrix.data[mybands]
-                if self.include_cg:
-                    P3_ni = P3_ani.gather(broadcast=True).matrix.data[mybands]
+                # P_ni = P_ani.gather(broadcast=True).matrix.data[mybands]
+                # P2_ni = P2_ani.gather(broadcast=True).matrix.data[mybands]
+                # if self.include_cg:
+                #     P3_ni = P3_ani.gather(broadcast=True).matrix.data[mybands]
+                P_aNi = P_ani.atoms_a2a_bands()
+                P_ni = P_aNi.matrix.data
+                P2_aNi = P2_ani.atoms_a2a_bands()
+                P2_ni = P2_aNi.matrix.data
+                P3_aNi = P3_ani.atoms_a2a_bands()
+                P3_ni = P3_aNi.matrix.data
+                dS_Aii = dS_aii.gather(broadcast=True)
+                # domain_comm.all_gather(dS_aii, dS_Aii)
                 dS_Aii = dS_aii.gather(broadcast=True)
                 
                 for j in range(0, psit_nX.data.shape[0], self.blocksize):
@@ -387,8 +399,8 @@ class PPCG(PWFDEigensolver):
                         MBuf_bb = MH_bb
 
                     Ht_H = partial(Ht, out=Hbuff_bX[:nblocks])
-                    dH(Pbuf_abi[:, :nblocks],
-                       out_ani=HPbuf_abi[:, :nblocks])
+                    dH_inner(Pbuf_abi[:, :nblocks],
+                             out_ani=HPbuf_abi[:, :nblocks])
                     buff_bX[:nblocks].matrix_elements(
                         buff_bX[:nblocks], function=Ht_H,
                         cc=True, out=MBuf_bb,
@@ -442,7 +454,8 @@ class PPCG(PWFDEigensolver):
                         print('H is not finite')
                         break_after_update = True
                         continue
-                    wfs.myeig_n[block_slice] = as_np(eig_b[:block])
+                    my_ns  = mybands[block_slice]
+                    wfs.myeig_n[my_ns] = as_np(eig_b[:block])
 
                     with tracectx('rotations', gpu=xp is not np):
                         # Ye olde updates
@@ -470,13 +483,23 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[:block] \
                             + Pbuf_abi.matrix.data[block:2 * block]
 
+                domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
+                
+                # wfs.orthonormalize(residual_nX)
+                pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
+                psit0_nX = pw_desc.from_data(psit_nX.data)
+                residual0_nX = pw_desc.from_data(residual_nX.data)
+                Ht(psit0_nX, out=residual0_nX)
+                
                 psit_nX.domain_a2a_bands()
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands()
                 
                 # Convert P_ni data to P_ani
+                P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
+                P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
 
             wfs.orthonormalized = False
             if break_after_update or i >= self.niter - 1:
@@ -485,12 +508,11 @@ class PPCG(PWFDEigensolver):
             with tracectx('Residual'):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
-                    wfs.subspace_diagonalize(Ht, dH,
+                    def fake_Ht(inp, out):
+                        return out
+                    wfs.subspace_diagonalize(fake_Ht, dH,
                                              psit2_nX=residual_nX,
                                              data_buffer=self.data_buffers[0])
-                else:
-                    wfs.orthonormalize(residual_nX)
-                    Ht(psit_nX, out=residual_nX)
 
                 calculate_residuals(wfs.psit_nX,
                                     residual_nX,
