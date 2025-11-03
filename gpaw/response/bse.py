@@ -6,10 +6,11 @@ from time import time, ctime
 from ase.units import Hartree, Bohr
 from ase.dft import monkhorst_pack
 import numpy as np
+import os
 from scipy.linalg import eigh
 
 from gpaw.blacs import BlacsGrid, Redistributor, BlacsDescriptor
-from gpaw.old.kpt_descriptor import KPointDescriptor
+from gpaw.kpt_descriptor import KPointDescriptor
 from gpaw.mpi import world, serial_comm
 from gpaw.response import ResponseContext
 from gpaw.response.groundstate import CellDescriptor
@@ -129,7 +130,7 @@ def parallel_delete(A_nn: np.ndarray,
     grid_desc: BlacsDescriptor for A_nn
     new_grid: BlacsGrid on which A_nn will be returned; optional.
     If None, the output grid will be determined automatically
-    by the gpaw.old.matrix.suggest_blocking function.
+    by the gpaw.matrix.suggest_blocking function.
     -------------------
     Returns:
     A_rs: np.ndarray
@@ -139,7 +140,7 @@ def parallel_delete(A_nn: np.ndarray,
     have been deleted.
     new_grid is the grid on which it is distributed.
     """
-    from gpaw.old.matrix import suggest_blocking
+    from gpaw.matrix import suggest_blocking
     N = grid_desc.N
     assert N == grid_desc.M, 'Matrix must be square'
 
@@ -270,7 +271,6 @@ class BSEBackend:
                  gw_kn=None,
                  truncation=None,
                  integrate_gamma='reciprocal',
-                 q0_correction=False,
                  mode='BSE',
                  q_c=[0.0, 0.0, 0.0],
                  direction=0):
@@ -283,10 +283,7 @@ class BSEBackend:
         self.context = context
         self.add_soc = add_soc
         self.scale = scale
-        self.q0_correction = q0_correction
-        if q0_correction and truncation != '2D':
-            raise ValueError('q0_correction should only be used with '
-                             'truncation=\'2D\'.')
+
         assert mode in ['RPA', 'BSE']
 
         if deps_max is None:
@@ -319,12 +316,10 @@ class BSEBackend:
 
         # Bands and spin
         self.nspins = self.gs.nspins
-        self.val_m = self.parse_bands(valence_bands, gs=self.gs,
-                                      band_type='valence',
-                                      add_soc=self.add_soc)
-        self.con_m = self.parse_bands(conduction_bands, gs=self.gs,
-                                      band_type='conduction',
-                                      add_soc=self.add_soc)
+        self.val_m = self.parse_bands(valence_bands,
+                                      band_type='valence')
+        self.con_m = self.parse_bands(conduction_bands,
+                                      band_type='conduction')
 
         self.use_tammdancoff = decide_whether_tammdancoff(self.val_m,
                                                           self.con_m)
@@ -381,8 +376,7 @@ class BSEBackend:
             self.vi, self.vf = self.val_m[0], self.val_m[-1] + 1
             self.ci, self.cf = self.con_m[0], self.con_m[-1] + 1
 
-    @staticmethod
-    def parse_bands(bands, gs, band_type, add_soc):
+    def parse_bands(self, bands, band_type='valence'):
         """Helper function that checks whether bands are correctly specified,
          and brings them to the format used later in the code.
 
@@ -401,25 +395,17 @@ class BSEBackend:
                                  'list or an integer (number of bands).')
             return bands
 
-        if bands <= 0:
-            raise ValueError(
-                f'\'bands\' must be a positive integer (received {bands = }).')
         n_fully_occupied_bands, n_partially_occupied_bands = \
-            gs.count_occupied_bands()
+            self.gs.count_occupied_bands()
 
-        if gs.nspins == 2:
+        if self.nspins == 2:
             n_fully_occupied_bands += n_partially_occupied_bands
-        elif add_soc:
+        elif self.add_soc:
             n_fully_occupied_bands *= 2
 
         if band_type == 'valence':
-            if bands > n_fully_occupied_bands:
-                raise ValueError(
-                    f'{bands} valence bands were requested, '
-                    f'but at most {n_fully_occupied_bands} are available.')
             bands_m = range(n_fully_occupied_bands - bands,
                             n_fully_occupied_bands)
-
         elif band_type == 'conduction':
             bands_m = range(n_fully_occupied_bands,
                             n_fully_occupied_bands + bands)
@@ -761,8 +747,7 @@ class BSEBackend:
         return initialize_w_calculator(
             self._chi0calc, self.wcontext,
             coulomb=self.coulomb,
-            integrate_gamma=self.integrate_gamma,
-            q0_correction=self.q0_correction)
+            integrate_gamma=self.integrate_gamma)
 
     @timer('calculate_screened_potential')
     def calculate_screened_potential(self):
@@ -910,27 +895,44 @@ class BSEBackend:
 
     @timer('get_chi_wGG')
     def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
-                    irreducible=False):
+                    irreducible=False, write_eigenstates=False,
+                    read_eigenstates=False):
         """Returns chi_wGG'"""
 
-        self._cache_eig_data(irreducible, optical, w_w)
+        if read_eigenstates:
+            foldername = (
+                read_eigenstates
+                if isinstance(read_eigenstates, str)
+                else "BSE_eigenstates"
+            )
+            w_T, v_Rt, rho_SG, df_S, exclude_S, nS, nR = (
+                read_bse_eigenstates(foldername)
+            )
+        else:
+            self._cache_eig_data(irreducible, optical, w_w)
 
-        w_T, v_Rt, exclude_S = \
-            self.eig_data[0], self.eig_data[1], self.eig_data[2]
-        rho_SG = self.rho_SG
-        df_S = self.df_S
+            w_T, v_Rt, exclude_S = \
+                self.eig_data[0], self.eig_data[1], self.eig_data[2]
+            rho_SG = self.rho_SG
+            df_S = self.df_S
+            nR = self.nS - len(exclude_S)
+
         df_R = np.delete(df_S, exclude_S)
         rho_RG = np.delete(rho_SG, exclude_S, axis=0)
-
         nG = rho_RG.shape[-1]
-        nR = self.nS - len(exclude_S)
         nr = -(-nR // world.size)
+
         # nr is the local size of the array
 
         self.context.print('Calculating response function at %s frequency '
                            'points' % len(w_w))
         self.blocks = Blocks1D(world, len(w_T))
         w_t = w_T[self.blocks.myslice]
+
+        if write_eigenstates:
+            write_bse_eigenstates('BSE_eigenstates', w_T, v_Rt,
+                                  exclude_S, self.rho_SG,
+                                  self.df_S, self.nS, self.blocks)
 
         if not self.use_tammdancoff:
             if world.rank == 0:
@@ -1113,6 +1115,19 @@ class BSEBackend:
             f'    Pair orbital decomposition           : {world.size}'])
         self.context.print('\n'.join(isl))
 
+    def recreateA(self, foldername=True):
+        foldername = (
+            foldername
+            if isinstance(foldername, str)
+            else 'BSE_eigenstates'
+        )
+        w_T, v_Rt, rho_SG, df_S, exclude_S, nS, nR = (
+            read_bse_eigenstates(foldername)
+        )
+        t = v_Rt.shape[-1]
+        v_Rt.reshape(self.nK, self.nv, self.nc, t)
+        return v_Rt
+
 
 class BSE(BSEBackend):
     def __init__(self, calc=None, timer=None, txt='-', **kwargs):
@@ -1159,10 +1174,6 @@ class BSE(BSEBackend):
         truncation: str or None
             Coulomb truncation scheme. Can be None or 2D.
         integrate_gamma: dict
-        q0_correction: bool
-            Whether to use analytical correction at q=0 in the
-            calculation of W, applicable for 2D systems.
-            Will raise an error if used without truncation='2D'
         txt: str
             txt output
         mode: str
@@ -1186,6 +1197,60 @@ def write_bse_eigenvalues(filename, mode, w_w, C_w):
 def read_bse_eigenvalues(filename):
     _, w_w, C_w = np.loadtxt(filename, unpack=True)
     return w_w, C_w
+
+
+def write_bse_eigenstates(foldername, w_T, v_Rt,
+                          exclude_S, rho_SG,
+                          df_S, nS, blocks):
+
+    if world.rank == 0:
+        if not os.path.exists(foldername):
+            os.makedirs(foldername)
+        np.save(os.path.join(foldername, 'w_T.npy'), w_T)
+        np.save(os.path.join(foldername, 'exclude_S.npy'), exclude_S)
+        np.save(os.path.join(foldername, 'nS.npy'), np.array([nS]))
+        np.save(os.path.join(foldername, 'rho_SG.npy'), rho_SG)
+        np.save(os.path.join(foldername, 'df_S.npy'), df_S)
+        np.save(os.path.join(foldername, 'nproc.npy'), np.array([world.size]))
+
+    world.barrier()
+
+    np.save(os.path.join(foldername, f'v_Rt_rank{world.rank:04d}.npy'), v_Rt)
+    mystart, mystop = blocks.myslice.start, blocks.myslice.stop
+
+    np.save(os.path.join(foldername, f'slice_rank{world.rank:04d}.npy'),
+            np.array([mystart, mystop], dtype=int))
+
+    world.barrier()
+    if world.rank == 0:
+        print(f'BSE eigenstates written to folder: {foldername}')
+
+
+def read_bse_eigenstates(foldername):
+    w_T = np.load(os.path.join(foldername, 'w_T.npy'))
+    exclude_S = np.load(os.path.join(foldername, 'exclude_S.npy'))
+    nS = int(np.load(os.path.join(foldername, 'nS.npy')))
+    nR = nS - len(exclude_S)
+    rho_SG = np.load(os.path.join(foldername, 'rho_SG.npy'))
+    df_S = np.load(os.path.join(foldername, 'df_S.npy'))
+
+    nproc_saved = int(np.load(os.path.join(foldername, 'nproc.npy')))
+
+    v_RT = np.empty((nR, len(w_T)), dtype=np.complex128)
+
+    for rank in range(nproc_saved):
+        v_loaded = np.load(os.path.join(
+            foldername, f'v_Rt_rank{rank:04d}.npy'
+        ))
+        mystart, mystop = np.load(os.path.join(
+            foldername, f'slice_rank{rank:04d}.npy'
+        ))
+        v_RT[:, mystart:mystop] = v_loaded
+
+    blocks = Blocks1D(world, len(w_T))
+    v_Rt = v_RT[:, blocks.myslice]
+
+    return w_T, v_Rt, rho_SG, df_S, exclude_S, nS, nR
 
 
 def write_spectrum(filename, w_w, A_w):
@@ -1295,7 +1360,7 @@ class VChi:
         return self.w_w, array
 
 
-class BSEPlus:
+class BSE_Plus:
 
     def create_chi0_full_calculator(self):
         chi0calc_full = Chi0Calculator(self.gs, self.context,
@@ -1341,17 +1406,6 @@ class BSEPlus:
                                           eshift=self.eshift)
         return chi0calc_limited
 
-    def get_chi_RPA(self, chi0calc, q_c, coulomb_kernel, xc_kernel,
-                    CellDescriptor, direction):
-        self.chi0_data = chi0calc.calculate(q_c)
-        dyson_eqs = Chi0DysonEquations(self.chi0_data, coulomb_kernel,
-                                       xc_kernel, CellDescriptor)
-        self.v_G = coulomb_kernel.V(self.chi0_data.qpd)
-        chi0_wGG = dyson_eqs.get_chi0_wGG(direction)
-        chi0_WGG = dyson_eqs.wblocks.all_gather(chi0_wGG)
-        del chi0calc, dyson_eqs, chi0_wGG
-        return chi0_WGG
-
     def __init__(self,
                  bse_gpw,
                  bse_valence_bands,
@@ -1367,46 +1421,6 @@ class BSEPlus:
                  direction=0,
                  truncation=None,
                  ecut=10):
-
-        """ BSE+ calculation of chi. BSE+ offers a way to improve
-        the convergence of the BSE by including transitions outside
-        the active BSE electron-hole subspace at the RPA level in
-        the irreducible polarizability. It saves the chi matrix
-        calculated with the BSE+, BSE and RPA as npy-files.
-
-        Parameters
-        ----------
-        bse_gpw: Path or str
-            Name of the calculator that the BSE calculation should be
-            made from (typically a fixed density calculator with less
-            kpts)
-        bse_valence_bands: range or list of integers
-            Number of valence bands to be included in the bse calculation
-        bse_conduction_bands: range or list of integers
-            Number of conduction bands to be included in the bse calculation
-        bse_nbands: integer
-            Number of bands used for the screened interaction
-        rpa_nbands: integer
-            Number of bands to be included in the RPA calculation.
-        w_w: list of floats
-            Dielectric function is calculated at these frequencies (eV)
-        eshift: float
-            Scissors operator opening the gap (eV)
-        bse_add_soc: bool
-            If True the calculation will included non-self-consitent SOC in the
-            underlying BSE calculation. SOC is not implemented in the RPA code.
-        eta: float
-            Lorentzian broadening of the spectrum (eV)
-        q_c: list of three floats
-            Wavevector in reduced units on which the response is calculated
-        direction: int
-            If q_c = [0, 0, 0] this gives the direction in cartesian
-            coordinates - 0=x, 1=y, 2=z
-        truncation: str or None
-            Coulomb truncation scheme. Can be None or 2D.
-        ecut: float
-            Plane wave cutoff energy (eV)
-         """
 
         self.bse_gpw = bse_gpw
         self.bse_valence_bands = bse_valence_bands
@@ -1441,9 +1455,11 @@ class BSEPlus:
             'Large chi0 calculation should contain more ' \
             'bands than the BSE calculation'
 
-    def calculate_chi_wGG(self, optical=True, xc_kernel=None, comm=None,
-                          bsep_name='chi_BSEPlus',
-                          save_chi_BSE=False, save_chi_RPA=False):
+    def get_chi_wGG(self, optical=True, xc_kernel=None, comm=None,
+                    chi_BSE=False, chi_RPA=False,
+                    bsep_name='chi_BSE_Plus',
+                    bse_name='chi_BSE',
+                    rpa_name='chi_RPA'):
 
         # irreducibale bse chi
         bse = self.create_bse_calculator()
@@ -1458,22 +1474,32 @@ class BSEPlus:
         chi0calc_limited = self.create_chi0_limited_calculator()
         coulomb_kernel = CoulombKernel.from_gs(self.gs,
                                                truncation=self.truncation)
-        chi0_limited_WGG = self.get_chi_RPA(chi0calc_limited, self.q_c,
-                                            coulomb_kernel, xc_kernel,
-                                            self.gs.cd, self.rpa_direction)
+        chi0_data_limited = chi0calc_limited.calculate(self.q_c)
+        dyson_eqs_limited = Chi0DysonEquations(chi0_data_limited,
+                                               coulomb_kernel, xc_kernel,
+                                               self.gs.cd)
+        chi0_limited_wGG = dyson_eqs_limited.get_chi0_wGG(self.rpa_direction)
+        chi0_limited_WGG = dyson_eqs_limited.wblocks.all_gather(
+            chi0_limited_wGG)
+        del chi0calc_limited, dyson_eqs_limited, chi0_data_limited,
+        chi0_limited_wGG
 
         # chi0 fully converged
         chi0calc_full = self.create_chi0_full_calculator()
-        chi0_full_WGG = self.get_chi_RPA(chi0calc_full, self.q_c,
-                                         coulomb_kernel, xc_kernel,
-                                         self.gs.cd, self.rpa_direction)
+        chi0_data_full = chi0calc_full.calculate(self.q_c)
+        dyson_eqs_full = Chi0DysonEquations(chi0_data_full, coulomb_kernel,
+                                            xc_kernel, self.gs.cd)
+        self.v_G = coulomb_kernel.V(chi0_data_full.qpd)
+        chi0_full_wGG = dyson_eqs_full.get_chi0_wGG(self.rpa_direction)
+        chi0_full_WGG = dyson_eqs_full.wblocks.all_gather(chi0_full_wGG)
+        del chi0calc_full, dyson_eqs_full, chi0_full_wGG
 
         if self.truncation == '2D':
             pbc_c = self.gs.pbc
             assert sum(pbc_c) == 2
             coulomb_kernel_bare = CoulombKernel.from_gs(
                 self.gs, truncation=None)
-            v_G_bare = coulomb_kernel_bare.V(self.chi0_data.qpd, q_v=None)
+            v_G_bare = coulomb_kernel_bare.V(chi0_data_full.qpd, q_v=None)
             self.v_G = self.v_G / v_G_bare
             if optical:
                 v_G_bare[0] = 0.0
@@ -1488,7 +1514,7 @@ class BSEPlus:
         elif self.truncation is None and optical:
             self.v_G[0] = 0.0
 
-        del self.chi0_data
+        del chi0_data_full
 
         if comm is None:
             comm = world
@@ -1499,25 +1525,25 @@ class BSEPlus:
         chi0_full_wGG = chi0_full_WGG[self.blocks.myslice]
         chi0_limited_wGG = chi0_limited_WGG[self.blocks.myslice]
 
-        chi_irr_BSEPlus_wGG = \
+        chi_irr_BSE_plus_wGG = \
             chi_irr_BSE_wGG - chi0_limited_wGG + chi0_full_wGG
-        eye = np.eye(chi_irr_BSEPlus_wGG.shape[1])
+        eye = np.eye(chi_irr_BSE_plus_wGG.shape[1])
 
-        chi_BSEPlus_wGG = \
-            np.linalg.solve(eye - chi_irr_BSEPlus_wGG @ np.diag(self.v_G),
-                            chi_irr_BSEPlus_wGG)
+        chi_BSE_plus_wGG = \
+            np.linalg.solve(eye - chi_irr_BSE_plus_wGG @ np.diag(self.v_G),
+                            chi_irr_BSE_plus_wGG)
 
         if self.truncation == '2D':
-            chi_BSEPlus_wGG *= V / (4 * np.pi)
+            chi_BSE_plus_wGG *= V / (4 * np.pi)
 
-        chi_BSEPlus_WGG = self.blocks.gather(chi_BSEPlus_wGG, 0)
+        chi_BSE_plus_WGG = self.blocks.gather(chi_BSE_plus_wGG, 0)
 
         if world.rank == 0:
-            np.save(bsep_name + '.npy', chi_BSEPlus_WGG)
-            del chi_BSEPlus_WGG
-        del chi_BSEPlus_wGG, chi0_limited_wGG
+            np.save(bsep_name + '.npy', chi_BSE_plus_WGG)
+            del chi_BSE_plus_WGG
+        del chi_BSE_plus_wGG, chi0_limited_wGG
 
-        if save_chi_BSE:
+        if chi_BSE:
             chi_BSE_wGG = \
                 np.linalg.solve(eye - chi_irr_BSE_wGG @ np.diag(self.v_G),
                                 chi_irr_BSE_wGG)
@@ -1528,12 +1554,11 @@ class BSEPlus:
             chi_BSE_WGG = self.blocks.gather(chi_BSE_wGG, 0)
 
             if world.rank == 0:
-                np.save('chi_BSE.npy' if save_chi_BSE is True else
-                        save_chi_BSE, chi_BSE_WGG)
+                np.save(bse_name + '.npy', chi_BSE_WGG)
                 del chi_BSE_WGG
             del chi_BSE_wGG
 
-        if save_chi_RPA:
+        if chi_RPA:
             chi_full_wGG = \
                 np.linalg.solve(eye - chi0_full_wGG @ np.diag(self.v_G),
                                 chi0_full_wGG)
@@ -1544,7 +1569,8 @@ class BSEPlus:
             chi_full_WGG = self.blocks.gather(chi_full_wGG, 0)
 
             if world.rank == 0:
-                np.save('chi_RPA.npy' if save_chi_RPA is True else
-                        save_chi_RPA, chi_full_WGG)
+                np.save(rpa_name + '.npy', chi_full_WGG)
                 del chi_full_WGG
             del chi_full_wGG
+
+        return
