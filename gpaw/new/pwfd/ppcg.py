@@ -303,22 +303,14 @@ class PPCG(PWFDEigensolver):
                 pot_inner = potential.copy()
                 pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
                 dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
-                
-                # We should have equivalent method for projectors.
-                # For now, we just gather and broadcast
+
                 mybands = np.arange(domain_comm.rank, b, domain_comm.size)
-                # P_ni = P_ani.gather(broadcast=True).matrix.data[mybands]
-                # P2_ni = P2_ani.gather(broadcast=True).matrix.data[mybands]
-                # if self.include_cg:
-                #     P3_ni = P3_ani.gather(broadcast=True).matrix.data[mybands]
                 P_aNi = P_ani.atoms_a2a_bands()
                 P_ni = P_aNi.matrix.data
                 P2_aNi = P2_ani.atoms_a2a_bands()
                 P2_ni = P2_aNi.matrix.data
                 P3_aNi = P3_ani.atoms_a2a_bands()
                 P3_ni = P3_aNi.matrix.data
-                dS_Aii = dS_aii.gather(broadcast=True)
-                # domain_comm.all_gather(dS_aii, dS_Aii)
                 dS_Aii = dS_aii.gather(broadcast=True)
                 
                 for j in range(0, psit_nX.data.shape[0], self.blocksize):
