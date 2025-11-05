@@ -262,8 +262,12 @@ def set_compiler_executables(cc: CCompiler) -> None:
     # https://shwina.github.io/custom-compiler-linker-extensions/
     for (name, my_args) in [('compiler', compiler_args),
                             ('compiler_so', compiler_args),
+                            ('compiler_cxx', compiler_args),
+                            ('compiler_so_cxx', compiler_args),
                             ('linker_so', linker_so_args),
-                            ('linker_exe', linker_exe_args)]:
+                            ('linker_exe', linker_exe_args),
+                            ('linker_so_cxx', linker_so_args),
+                            ('linker_exe_cxx', linker_exe_args)]:
         new_args = []
         old_args = getattr(cc, name)
 
@@ -483,37 +487,6 @@ write_configuration(define_macros, include_dirs, libraries, library_dirs,
 
 class build_ext(_build_ext):
 
-    def finalize_options(self):
-        """Override to implement envvar hack"""
-
-        """HACK: Ensure linking is done with the same compiler.
-        The above sets 'linker_so' and 'linker_exe' in compiler settings but
-        this is apparently not enough for C++: setuptools can end up using
-        g++ instead of mpic++ for linking. This misses out on MPI lib flags.
-        Setting the CXX envvar seems to work, so we temporarily set it here.
-        """
-        # Careful, this gets called many times during the build process
-        self.old_cxx = None
-
-        # FIXME: 'compiler' should be a string or None, if not we give up
-        # and let setuptools do its worst. Apply this only in C++ mode
-        self.should_undo_linker_hack = False
-
-        if use_cpp and isinstance(compiler, str):
-            old_cxx = os.environ.get("CXX")
-            if old_cxx and old_cxx != compiler:
-                self.old_cxx = old_cxx
-                print("\tNOTE: Your environment has `CXX` set to "
-                      f"'{old_cxx}'. GPAW will temporarily override it with "
-                      f"'{compiler}' to ensure consistent linking. The value "
-                      " will be restored after GPAW build finishes")
-
-            os.environ["CXX"] = compiler
-            self.should_undo_linker_hack = True
-            # End linker hack
-
-        super().finalize_options()
-
     def run(self):
         import numpy as np
         self.include_dirs.append(np.get_include())
@@ -533,16 +506,9 @@ class build_ext(_build_ext):
 
     def build_extensions(self):
         set_compiler_executables(self.compiler)
-        try:
-            super().build_extensions()
-            print("Build temp:", self.build_temp)
-            print("Build lib: ", self.build_lib)
-        finally:
-            if self.should_undo_linker_hack:
-                if self.old_cxx:
-                    os.environ["CXX"] = self.old_cxx
-                else:
-                    del os.environ["CXX"]
+        super().build_extensions()
+        print("Build temp:", self.build_temp)
+        print("Build lib: ", self.build_lib)
 
 
 data = 'git+https://gitlab.com/gpaw/gpaw-web-page-data.git'
