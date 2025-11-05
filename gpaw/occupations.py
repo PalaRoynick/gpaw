@@ -621,6 +621,7 @@ class FixedOccupationNumbersUniform(OccupationNumberCalculator):
     name = 'fixed-uniform'
 
     def __init__(self, nelectrons, nspins, magmom, nkpts, nbands,
+                 variable_magmom: bool = False,
                  parallel_layout: ParallelLayout = None):
         """
         Uniform distribution of occupation numbers: each
@@ -649,6 +650,9 @@ class FixedOccupationNumbersUniform(OccupationNumberCalculator):
             return f_qn
 
         if nspins == 2:
+            if variable_magmom:
+                if (nelectrons % 2) != (magmom % 2):
+                    magmom += 1
             f1_qn = get_f(nelectrons, magmom, nkpts, nbands, 1)
             f2_qn = get_f(nelectrons, magmom, nkpts, nbands, -1)
             f_qn = []
