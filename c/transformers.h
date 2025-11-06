@@ -14,7 +14,6 @@
   #define GPAW_ASYNC_D 1
 #endif
 
-#ifdef __TRANSFORMERS_C
 CLINKAGE typedef struct
 {
   PyObject_HEAD
@@ -30,12 +29,6 @@ CLINKAGE typedef struct
   int use_gpu;
 #endif
 } TransformerObject;
-#else
-// Provide an opaque type for routines outside transformers.c
-CLINKAGE struct _TransformerObject;
-CLINKAGE typedef struct _TransformerObject TransformerObject;
-
-#endif
 
 #ifdef GPAW_GPU
 void transformer_init_gpu(TransformerObject *self);

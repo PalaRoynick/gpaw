@@ -36,7 +36,7 @@ void bmgs_translate_gpu(double* a, const int sizea[3], const int size[3],
                         const int start1[3], const int start2[3],
                         int blocks, gpuStream_t stream);
 
-void bmgs_restrict_gpu(int k, double* a, const int n[3], double* b,
+void bmgs_restrict_gpu(int k, const double* a, const int n[3], double* b,
                        const int nb[3], int blocks);
 
 void bmgs_restrict_stencil_gpu(int k, double* a, const int na[3],
@@ -76,7 +76,7 @@ void bmgs_translate_gpuz(gpuDoubleComplex* a, const int sizea[3],
                          const int start2[3], gpuDoubleComplex,
                          int blocks, gpuStream_t stream);
 
-void bmgs_restrict_gpuz(int k, gpuDoubleComplex* a, const int n[3],
+void bmgs_restrict_gpuz(int k, const gpuDoubleComplex* a, const int n[3],
                         gpuDoubleComplex* b, const int nb[3],
                         int blocks);
 
