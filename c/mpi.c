@@ -291,12 +291,21 @@ static PyObject * mpi_sendreceive(MPIObject *self, PyObject *args,
     int dest, src;
     int sendtag = 123;
     int recvtag = 123;
-    static char *kwlist[] = {"a", "dest", "b", "src", "sendtag", "recvtag",
-			     NULL};
+    
+    // Some scary code below, explanation:
+    // Before Python 3.13 the PyArg macro below takes kwlist as char** instead of const char**.
+    // Meanwhile if we compile this as C++, string literals must be const char* type.
+    // We must then cast away constness when passing kwlist to Python, which _should_
+    // be OK since Python doesn't actually modify the strings. Python 3.13 removes the need for this by making the argument const.
+    // The following casts with (char**) instead of const_cast for C-compatibility.
+
+    static const char *kwlist[] = {"a", "dest", "b", "src", "sendtag", "recvtag", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OiOi|ii:sendreceive",
-				     kwlist,
-				     &a, &dest, &b, &src, &sendtag, &recvtag))
-	return NULL;
+          (char**)kwlist, &a, &dest, &b, &src, &sendtag, &recvtag))
+    {
+      return NULL;
+    }
+
     CHK_ARRAY(a);
     CHK_OTHER_PROC(dest);
     CHK_ARRAY(b);
@@ -325,11 +334,16 @@ static PyObject * mpi_receive(MPIObject *self, PyObject *args, PyObject *kwargs)
   int src;
   int tag = 123;
   int block = 1;
-  static char *kwlist[] = {"a", "src", "tag", "block", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|ii:receive", kwlist,
+  // Scary code, see comment in mpi_sendreceive
+  static const char *kwlist[] = {"a", "src", "tag", "block", NULL};
+
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|ii:receive", (char**)kwlist,
 				   &a, &src, &tag, &block))
+  {
     return NULL;
+  }
+
   CHK_ARRAY(a);
   CHK_OTHER_PROC(src);
   int n = Array_ITEMSIZE(a);
@@ -371,10 +385,15 @@ static PyObject * mpi_send(MPIObject *self, PyObject *args, PyObject *kwargs)
   int dest;
   int tag = 123;
   int block = 1;
-  static char *kwlist[] = {"a", "dest", "tag", "block", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|ii:send", kwlist,
+
+  // Scary code, see comment in mpi_sendreceive
+  static const char *kwlist[] = {"a", "dest", "tag", "block", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|ii:send", (char**)kwlist,
 				   &a, &dest, &tag, &block))
+  {
     return NULL;
+  }
+
   CHK_ARRAY(a);
   CHK_OTHER_PROC(dest);
   int n = Array_ITEMSIZE(a);
@@ -414,10 +433,15 @@ static PyObject * mpi_ssend(MPIObject *self, PyObject *args, PyObject *kwargs)
   PyObject* a;
   int dest;
   int tag = 123;
-  static char *kwlist[] = {"a", "dest", "tag", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|i:send", kwlist,
+
+  // Scary code, see comment in mpi_sendreceive
+  static const char *kwlist[] = {"a", "dest", "tag", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|i:send", (char**)kwlist,
 				   &a, &dest, &tag))
+  {
     return NULL;
+  }
+
   CHK_ARRAY_RO(a);
   CHK_OTHER_PROC(dest);
   int n = Array_ITEMSIZE(a);
@@ -648,11 +672,15 @@ static PyObject * mpi_reduce(MPIObject *self, PyObject *args, PyObject *kwargs,
 #endif
   PyObject* obj;
   int root = -1;
-  static char *kwlist[] = {"a", "root", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i:reduce", kwlist,
+  // Scary code, see comment in mpi_sendreceive
+  static const char *kwlist[] = {"a", "root", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i:reduce", (char**)kwlist,
 				   &obj, &root))
+  {
     return NULL;
+  }
+
   CHK_PROC_DEF(root);
   if (PyFloat_Check(obj))
     {
@@ -784,11 +812,15 @@ static PyObject * mpi_reduce_scalar(MPIObject *self, PyObject *args, PyObject *k
 #endif
   PyObject* obj;
   int root = -1;
-  static char *kwlist[] = {"a", "root", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i:reduce", kwlist,
+  // Scary code, see comment in mpi_sendreceive
+  static const char *kwlist[] = {"a", "root", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i:reduce", (char**)kwlist,
 				   &obj, &root))
+  {
     return NULL;
+  }
+
   CHK_PROC_DEF(root);
   if (PyFloat_Check(obj))
     {
@@ -977,7 +1009,7 @@ static PyObject *mpi_compare(MPIObject *self, PyObject *args)
 {
   MPIObject* other;
   int result;
-  char* pyresult;
+  const char* pyresult;
   if (!PyArg_ParseTuple(args, "O", &other))
     return NULL;
 
