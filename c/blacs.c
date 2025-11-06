@@ -128,34 +128,34 @@ void Cpzgemr2d_(int m, int n,
                 void* b, int ib, int jb, int* descb,
                 int gcontext);
 
-void Cpdtrmr2d_(char* uplo, char* diag, int m, int n,
+void Cpdtrmr2d_(const char* uplo, const char* diag, int m, int n,
                 double* a, int ia, int ja, int* desca,
                 double* b, int ib, int jb, int* descb,
                 int gcontext);
 
-void Cpztrmr2d_(char* uplo, char* diag, int m, int n,
+void Cpztrmr2d_(const char* uplo, const char* diag, int m, int n,
                 void* a, int ia, int ja, int* desca,
                 void* b, int ib, int jb, int* descb,
                 int gcontext);
 
-double pdlamch_(int* ictxt, char* cmach);
+double pdlamch_(int* ictxt, const char* cmach);
 
-void pzpotri_(char* uplo, int* n, void* a, int *ia, int* ja, int* desca, int* info);
+void pzpotri_(const char* uplo, int* n, void* a, int *ia, int* ja, int* desca, int* info);
 
 void pzgetri_(int* n, void* a,
               int *ia, int* ja, int* desca, int* info);
 
-void pdlaset_(char* uplo, int* m, int* n, double* alpha, double* beta,
+void pdlaset_(const char* uplo, int* m, int* n, double* alpha, double* beta,
               double* a, int* ia, int* ja, int* desca);
 
-void pzlaset_(char* uplo, int* m, int* n, void* alpha, void* beta,
+void pzlaset_(const char* uplo, int* m, int* n, void* alpha, void* beta,
               void* a, int* ia, int* ja, int* desca);
 
 // cholesky
-void pdpotrf_(char* uplo, int* n, double* a,
+void pdpotrf_(const char* uplo, int* n, double* a,
               int* ia, int* ja, int* desca, int* info);
 
-void pzpotrf_(char* uplo, int* n, void* a,
+void pzpotrf_(const char* uplo, int* n, void* a,
               int* ia, int* ja, int* desca, int* info);
 
 void pzgesv_(int* n, int* nrhs, void* a,
@@ -167,27 +167,27 @@ void pdgesv_(int *n, int *nrhs, void *a,
              void* b, int* ib, int* jb, int* descb, int* info);
 
 
-void pdtrtri_(char* uplo, char* diag, int* n, double* a,
+void pdtrtri_(const char* uplo, const char* diag, int* n, double* a,
               int *ia, int* ja, int* desca, int* info);
 
-void pztrtri_(char* uplo, char* diag, int* n, void* a,
+void pztrtri_(const char* uplo, const char* diag, int* n, void* a,
               int *ia, int* ja, int* desca, int* info);
 
 // diagonalization
-void pdsyevd_(char* jobz, char* uplo, int* n,
+void pdsyevd_(const char* jobz, const char* uplo, int* n,
               double* a, int* ia, int* ja, int* desca,
               double* w, double* z, int* iz, int* jz,
               int* descz, double* work, int* lwork, int* iwork,
               int* liwork, int* info);
 
-void pzheevd_(char* jobz, char* uplo, int* n,
+void pzheevd_(const char* jobz, const char* uplo, int* n,
               void* a, int* ia, int* ja, int* desca,
               double* w, void* z, int* iz, int* jz,
               int* descz, void* work, int* lwork, double* rwork,
               int* lrwork, int* iwork, int* liwork, int* info);
 
-void pdsyevx_(char* jobz, char* range,
-              char* uplo, int* n,
+void pdsyevx_(const char* jobz, const char* range,
+              const char* uplo, int* n,
               double* a, int* ia, int* ja, int* desca,
               double* vl, double* vu,
               int* il, int* iu, double* abstol,
@@ -196,8 +196,8 @@ void pdsyevx_(char* jobz, char* range,
               double* work, int* lwork, int* iwork, int* liwork,
               int* ifail, int* iclustr, double* gap, int* info);
 
-void pzheevx_(char* jobz, char* range,
-              char* uplo, int* n,
+void pzheevx_(const char* jobz, const char* range,
+              const char* uplo, int* n,
               void* a, int* ia, int* ja, int* desca,
               double* vl, double* vu,
               int* il, int* iu, double* abstol,
@@ -207,8 +207,8 @@ void pzheevx_(char* jobz, char* range,
               int* iwork, int* liwork,
               int* ifail, int* iclustr, double* gap, int* info);
 
-void pdsygvx_(int* ibtype, char* jobz, char* range,
-              char* uplo, int* n,
+void pdsygvx_(int* ibtype, const char* jobz, const char* range,
+              const char* uplo, int* n,
               double* a, int* ia, int* ja, int* desca,
               double* b, int *ib, int* jb, int* descb,
               double* vl, double* vu,
@@ -218,8 +218,8 @@ void pdsygvx_(int* ibtype, char* jobz, char* range,
               double* work, int* lwork, int* iwork, int* liwork,
               int* ifail, int* iclustr, double* gap, int* info);
 
-void pzhegvx_(int* ibtype, char* jobz, char* range,
-              char* uplo, int* n,
+void pzhegvx_(int* ibtype, const char* jobz, const char* range,
+              const char* uplo, int* n,
               void* a, int* ia, int* ja, int* desca,
               void* b, int *ib, int* jb, int* descb,
               double* vl, double* vu,
@@ -230,20 +230,20 @@ void pzhegvx_(int* ibtype, char* jobz, char* range,
               int* iwork, int* liwork,
               int* ifail, int* iclustr, double* gap, int* info);
 
-void pdsyngst_(int* ibtype, char* uplo, int* n,
+void pdsyngst_(int* ibtype, const char* uplo, int* n,
                double* a, int* ia, int* ja, int* desca,
                double* b, int* ib, int* jb, int* descb,
                double* scale, double* work, int* lwork, int* info);
 
-void pzhengst_(int* ibtype, char* uplo, int* n,
+void pzhengst_(int* ibtype, const char* uplo, int* n,
                void* a, int* ia, int* ja, int* desca,
                void* b, int* ib, int* jb, int* descb,
                double* scale, void* work, int* lwork, int* info);
 #endif // GPAW_WITH_INTEL_MKL
 
 #ifdef GPAW_MR3
-void pdsyevr_(char* jobz, char* range,
-              char* uplo, int* n,
+void pdsyevr_(const char* jobz, const char* range,
+              const char* uplo, int* n,
               double* a, int* ia, int* ja, int* desca,
               double* vl, double* vu,
               int* il, int* iu,
@@ -252,8 +252,8 @@ void pdsyevr_(char* jobz, char* range,
               double* work, int* lwork, int* iwork, int* liwork,
               int* info);
 
-void pzheevr_(char* jobz, char* range,
-              char* uplo, int* n,
+void pzheevr_(const char* jobz, const char* range,
+              const char* uplo, int* n,
               void* a, int* ia, int* ja, int* desca,
               double* vl, double* vu,
               int* il, int* iu,
@@ -283,85 +283,85 @@ void pztranu_(int* m, int* n,
               void* beta,
               void* c, int* ic, int* jc, int* descc);
 
-void pdgemm_(char* transa, char* transb, int* m, int* n, int* k,
+void pdgemm_(const char* transa, const char* transb, int* m, int* n, int* k,
              double* alpha,
              double* a, int* ia, int* ja, int* desca,
              double* b, int* ib, int* jb, int* descb,
              double* beta,
              double* c, int* ic, int* jc, int* descc);
 
-void pzgemm_(char* transa, char* transb, int* m, int* n, int* k,
+void pzgemm_(const char* transa, const char* transb, int* m, int* n, int* k,
              void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb,
              void* beta,
              void* c, int* ic, int* jc, int* descc);
 
-void pzhemm_(char* side, char* uplo, int* m, int* n,
+void pzhemm_(const char* side, const char* uplo, int* m, int* n,
              void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb,
              void* beta,
              void* c, int* ic, int* jc, int* descc);
 
-void pzsymm_(char* side, char* uplo, int* m, int* n,
+void pzsymm_(const char* side, const char* uplo, int* m, int* n,
              void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb,
              void* beta,
              void* c, int* ic, int* jc, int* descc);
 
-void pdsymm_(char* side, char* uplo, int* m, int* n,
+void pdsymm_(const char* side, const char* uplo, int* m, int* n,
              void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb,
              void* beta,
              void* c, int* ic, int* jc, int* descc);
 
-void pdgemv_(char* transa, int* m, int* n, double* alpha,
+void pdgemv_(const char* transa, int* m, int* n, double* alpha,
              double* a, int* ia, int* ja, int* desca,
              double* x, int* ix, int* jx, int* descx, int* incx,
              double* beta,
              double* y, int* iy, int* jy, int* descy, int* incy);
 
-void pzgemv_(char* transa, int* m, int* n, void* alpha,
+void pzgemv_(const char* transa, int* m, int* n, void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* x, int* ix, int* jx, int* descx, int* incx,
              void* beta,
              void* y, int* iy, int* jy, int* descy, int* incy);
 
-void pdsyr2k_(char* uplo, char* trans, int* n, int* k,
+void pdsyr2k_(const char* uplo, const char* trans, int* n, int* k,
               double* alpha,
               double* a, int* ia, int* ja, int* desca,
               double* b, int* ib, int* jb, int* descb,
               double* beta,
               double* c, int* ic, int *jc, int* descc);
 
-void pzher2k_(char* uplo, char* trans, int* n, int* k,
+void pzher2k_(const char* uplo, const char* trans, int* n, int* k,
               void* alpha,
               void* a, int* ia, int* ja, int* desca,
               void* b, int* ib, int* jb, int* descb,
               void* beta,
               void* c, int* ic, int* jc, int* descc);
 
-void pdsyrk_(char* uplo, char* trans, int* n, int* k,
+void pdsyrk_(const char* uplo, const char* trans, int* n, int* k,
              double* alpha,
              double* a, int* ia, int* ja, int* desca,
              double* beta,
              double* c, int* ic, int* jc, int* descc);
 
-void pzherk_(char* uplo, char* trans, int* n, int* k,
+void pzherk_(const char* uplo, const char* trans, int* n, int* k,
              void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* beta,
              void* c, int* ic, int* jc, int* descc);
 
-void pdtrsm_(char* side, char* uplo, char* trans, char* diag,
+void pdtrsm_(const char* side, const char* uplo, const char* trans, const char* diag,
              int* m, int *n, double* alpha,
              double* a, int* ia, int* ja, int* desca,
              double* b, int* ib, int* jb, int* descb);
 
-void pztrsm_(char* side, char* uplo, char* trans, char* diag,
+void pztrsm_(const char* side, const char* uplo, const char* trans, const char* diag,
              int* m, int *n, void* alpha,
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb);
