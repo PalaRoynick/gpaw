@@ -100,7 +100,7 @@ def info() -> None:
 
     results.append(('MPI enabled', have_mpi))
     results.append(('OpenMP enabled', cgpaw.have_openmp))
-    results.append(('Compiled as C++', GPAW_IS_CPP))
+    results.append(('Compiled as C++ (experimental)', GPAW_IS_CPP))
     results.append(('GPU enabled', GPU_ENABLED))
     results.append(('GPU-aware MPI', GPU_AWARE_MPI))
     cupy_version = 'cupy-' + cupy.__version__
