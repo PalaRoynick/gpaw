@@ -18,7 +18,7 @@ void Z(bmgs_zero)(T* a, const int n[3], const int c[3],
       for (int i1 = 0; i1 < s[1]; i1++)
 	{
 
-  #if defined(GPAW_CPP) && defined(BMGSCOMPLEX)
+  #if GPAW_CPP && defined(BMGSCOMPLEX)
 	  // Patch for complex T in C++ mode. Now T = std::complex<double>, and
     // the compiler warns about using memset on non-POD objects.
     // For std::complex memset should still be fine (same data layout as C-style complex number),
