@@ -146,7 +146,7 @@ __global__ void Zgpu(interpolate_kernel)(
     }
 }
 
-extern "C"
+CLINKAGE
 void Zgpu(bmgs_interpolate_gpu)(int k, int skip[3][2],
                                 const Tgpu* a, const int size[3],
                                 Tgpu* b, const int sizeb[3],
@@ -207,7 +207,7 @@ void Zgpu(bmgs_interpolate_gpu)(int k, int skip[3][2],
 #undef IP1D_kernel
 #undef K
 
-extern "C"
+CLINKAGE
 void Zgpu(bmgs_interpolate_stencil_gpu)(int k, int skip[3][2],
                                         const Tgpu* a, const int sizea[3],
                                         Tgpu* b, const int sizeb[3],

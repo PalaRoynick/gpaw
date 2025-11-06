@@ -91,7 +91,7 @@ __global__ void Zgpu(add_kernel)(Tgpu *a_G, const Tgpu *c_M, int *G_B1,
 #define GPU_USE_COMPLEX
 #include "lfc.cpp"
 
-extern "C"
+CLINKAGE
 void lfc_dealloc_gpu(LFCObject *self)
 {
     if (self->use_gpu) {
@@ -115,7 +115,7 @@ void lfc_dealloc_gpu(LFCObject *self)
     }
 }
 
-extern "C"
+CLINKAGE
 void *transp(void *matrix, int rows, int cols, size_t item_size)
 {
 #define ALIGNMENT 16    /* power of 2 >= minimum array boundary alignment;
@@ -162,7 +162,7 @@ void *transp(void *matrix, int rows, int cols, size_t item_size)
     return matrix;
 }
 
-extern "C"
+CLINKAGE
 PyObject * NewLFCObject_gpu(LFCObject *self, PyObject *args)
 {
     PyObject* A_Wgm_obj;
@@ -447,7 +447,7 @@ PyObject * NewLFCObject_gpu(LFCObject *self, PyObject *args)
 }
 
 
-extern "C"
+CLINKAGE
 void parse_shape_xG(PyObject* shape, int* nx, int* nG)
 {
     int nd = PyTuple_Size(shape);
@@ -462,7 +462,7 @@ void parse_shape_xG(PyObject* shape, int* nx, int* nG)
 }
 
 
-extern "C"
+CLINKAGE
 PyObject* integrate_gpu(LFCObject *lfc, PyObject *args)
 {
     void *a_xG_gpu;
@@ -503,7 +503,7 @@ PyObject* integrate_gpu(LFCObject *lfc, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* add_gpu(LFCObject *lfc, PyObject *args)
 {
     void *a_xG_gpu;

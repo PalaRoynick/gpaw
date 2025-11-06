@@ -9,13 +9,13 @@
 
 static void *reduce_buffer = NULL;
 
-extern "C"
+CLINKAGE
 void reduce_init_buffers_gpu()
 {
     reduce_buffer = NULL;
 }
 
-extern "C"
+CLINKAGE
 void reduce_dealloc_gpu()
 {
     gpuFree(reduce_buffer);

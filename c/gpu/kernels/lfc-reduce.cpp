@@ -12,14 +12,14 @@
 static void *lfc_reduce_buffer = NULL;
 static int lfc_reduce_buffer_size = 0;
 
-extern "C"
+CLINKAGE
 void lfc_reduce_init_buffers_gpu()
 {
     lfc_reduce_buffer = NULL;
     lfc_reduce_buffer_size = 0;
 }
 
-extern "C"
+CLINKAGE
 void lfc_reduce_dealloc_gpu()
 {
     gpuFree(lfc_reduce_buffer);

@@ -47,7 +47,7 @@ __global__ void Zgpu(bmgs_translate_kernel)(
     }
 }
 
-extern "C"
+CLINKAGE
 void Zgpu(bmgs_translate_gpu)(
         Tgpu* a, const int sizea[3], const int size[3],
         const int start1[3], const int start2[3],

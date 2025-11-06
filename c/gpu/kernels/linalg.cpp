@@ -124,7 +124,7 @@ __global__ void multi_elmenwise_mul_add_kernel2zz(
     }
 }
 
-extern "C"
+CLINKAGE
 PyObject* elementwise_multiply_add_gpu(PyObject *self, PyObject *args)
 {
     void *x_gpu;
@@ -177,7 +177,7 @@ PyObject* elementwise_multiply_add_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* multi_elementwise_multiply_add_gpu(PyObject *self,
                                              PyObject *args)
 {
@@ -274,7 +274,7 @@ PyObject* multi_elementwise_multiply_add_gpu(PyObject *self,
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* ax2py_gpu(PyObject *self, PyObject *args)
 {
     double alpha;
@@ -312,7 +312,7 @@ PyObject* ax2py_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* csign_gpu(PyObject *self, PyObject *args)
 {
     void *x_gpu;
@@ -347,7 +347,7 @@ PyObject* csign_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* multi_ax2py_gpu(PyObject *self, PyObject *args)
 {
     void *alpha_gpu;

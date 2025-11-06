@@ -11,7 +11,7 @@ CLINKAGE_BEGIN
 int bmgs_fd_boundary_test(const bmgsstencil_gpu* s, int boundary,
                           int ndouble);
 
-bmgsstencil_gpu bmgs_stencil_to_gpu(bmgsstencil *s);
+bmgsstencil_gpu bmgs_stencil_to_gpu(const bmgsstencil *s);
 
 void bmgs_fd_gpu(const bmgsstencil_gpu* s, const double* adev,
                  double* bdev, int boundary, int blocks,

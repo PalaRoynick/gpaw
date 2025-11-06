@@ -451,14 +451,14 @@ __global__ void RELAX_kernel_onlyb(
 #  undef MYJ
 
 
-extern "C"
+CLINKAGE
 bmgsstencil_gpu bmgs_stencil_to_gpu(const bmgsstencil* s);
 
-extern "C"
+CLINKAGE
 int bmgs_fd_boundary_test(const bmgsstencil_gpu* s, int boundary,
                           int ndouble);
 
-extern "C"
+CLINKAGE
 void bmgs_relax_gpu(const int relax_method,
                     const bmgsstencil_gpu* s_gpu,
                     double* adev, double* bdev, const double* src,

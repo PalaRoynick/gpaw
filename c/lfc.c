@@ -22,7 +22,7 @@
 #  define zgemm_  zgemm
 #endif
 #ifndef GPAW_WITHOUT_BLAS
-CLINKAGE void zgemm_(const char *transa, const char *transb, int *m, int * n,
+ALWAYSCLINKAGE void zgemm_(const char *transa, const char *transb, int *m, int * n,
             int *k, void *alpha, void *a, int *lda,
             const void *b, int *ldb, void *beta,
             void *c, int *ldc);

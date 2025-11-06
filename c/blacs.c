@@ -40,18 +40,18 @@ FIXME: don't declare API functions manually...
 See also similar comment in blas.c.
 */
 
-CLINKAGE void Cblacs_barrier_(int ConTxt, char *scope);
+ALWAYSCLINKAGE void Cblacs_barrier_(int ConTxt, char *scope);
 
-CLINKAGE void Cblacs_gridexit_(int ConTxt);
+ALWAYSCLINKAGE void Cblacs_gridexit_(int ConTxt);
 
-CLINKAGE void Cblacs_gridinfo_(int ConTxt, int* nprow, int* npcol,
+ALWAYSCLINKAGE void Cblacs_gridinfo_(int ConTxt, int* nprow, int* npcol,
                       int* myrow, int* mycol);
 
-CLINKAGE void Cblacs_gridinit_(int* ConTxt, char* order, int nprow, int npcol);
+ALWAYSCLINKAGE void Cblacs_gridinit_(int* ConTxt, char* order, int nprow, int npcol);
 
-CLINKAGE void Cblacs_pinfo_(int* mypnum, int* nprocs);
+ALWAYSCLINKAGE void Cblacs_pinfo_(int* mypnum, int* nprocs);
 
-CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
+ALWAYSCLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 // End of BLACS
 
 // ScaLAPACK
@@ -110,7 +110,7 @@ CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 #define   Cpztrmr2d_  Cpztrmr2d
 #endif
 
-CLINKAGE_BEGIN
+ALWAYSCLINKAGE_BEGIN
 
 // tools
 #ifndef GPAW_WITH_INTEL_MKL
@@ -366,7 +366,7 @@ void pztrsm_(const char* side, const char* uplo, const char* trans, const char* 
              void* a, int* ia, int* ja, int* desca,
              void* b, int* ib, int* jb, int* descb);
 
-CLINKAGE_END
+ALWAYSCLINKAGE_END
 
 /* Helper for making complex -> int casts work in C++ mode,
 when extracting optimal lwork */

@@ -445,14 +445,14 @@ __global__ void FD_kernel_onlyb(
 #  undef MYJ
 
 
-extern "C"
+CLINKAGE
 bmgsstencil_gpu bmgs_stencil_to_gpu(const bmgsstencil* s);
 
-extern "C"
+CLINKAGE
 int bmgs_fd_boundary_test(
         const bmgsstencil_gpu* s, int boundary, int ndouble);
 
-extern "C"
+CLINKAGE
 void Zgpu(bmgs_fd_gpu)(
         const bmgsstencil_gpu* s_gpu, const Tgpu* adev, Tgpu* bdev,
         int boundary, int blocks, gpuStream_t stream)
@@ -681,7 +681,7 @@ void Zgpu(bmgs_fd_gpu)(
 #define GPU_USE_COMPLEX
 #include "fd.cpp"
 
-extern "C"
+CLINKAGE
 int bmgs_fd_boundary_test(const bmgsstencil_gpu* s, int boundary,
                           int ndouble)
 {
@@ -746,7 +746,7 @@ int bmgs_fd_boundary_test(const bmgsstencil_gpu* s, int boundary,
     return 1;
 }
 
-extern "C"
+CLINKAGE
 bmgsstencil_gpu bmgs_stencil_to_gpu(const bmgsstencil* s)
 {
     bmgsstencil_gpu s_gpu;

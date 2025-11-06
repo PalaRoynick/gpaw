@@ -67,7 +67,7 @@ __global__ void Zgpu(multi_axpy_kernel)(int n, const Tgpu *alpha,
 #define GPU_USE_COMPLEX
 #include "mblas.cpp"
 
-extern "C"
+CLINKAGE
 PyObject* multi_scal_gpu(PyObject *self, PyObject *args)
 {
     void *alpha_gpu;
@@ -127,7 +127,7 @@ PyObject* multi_scal_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* multi_axpy_gpu(PyObject *self, PyObject *args)
 {
     void *alpha_gpu;
@@ -189,7 +189,7 @@ PyObject* multi_axpy_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* multi_dotu_gpu(PyObject *self, PyObject *args)
 {
     void *a_gpu;
@@ -225,7 +225,7 @@ PyObject* multi_dotu_gpu(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
 }
 
-extern "C"
+CLINKAGE
 PyObject* multi_dotc_gpu(PyObject *self, PyObject *args)
 {
     void *a_gpu;

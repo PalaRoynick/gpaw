@@ -226,7 +226,10 @@ PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args);
 PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
 PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 
+namespace gpaw
+{
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
+}
 CLINKAGE_END
 
 #ifdef GPAW_WITH_MAGMA
@@ -414,7 +417,7 @@ static PyMethodDef functions[] = {
     {"_eigh_magma_cupy", eigh_magma_cupy, METH_VARARGS, 0},
     #endif // GPAW_WITH_MAGMA
 
-    {"_flush_pending_decrefs", flush_pending_decrefs, METH_NOARGS, 0},
+    {"_flush_pending_decrefs", gpaw::flush_pending_decrefs, METH_NOARGS, 0},
 
 #endif // GPAW_GPU
 

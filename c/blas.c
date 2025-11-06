@@ -27,32 +27,30 @@ they don't get name mangled. */
 #  define zgemm_  zgemm
 #endif
 
-CLINKAGE_BEGIN
 
-void dsyrk_(const char* uplo, const char* trans, int *n, int *k,
+ALWAYSCLINKAGE void dsyrk_(const char* uplo, const char* trans, int *n, int *k,
             double *alpha, double *a, int *lda, double *beta,
             double *c, int *ldc);
-void zherk_(const char* uplo, const char* trans, int *n, int *k,
+ALWAYSCLINKAGE void zherk_(const char* uplo, const char* trans, int *n, int *k,
             double *alpha, void *a, int *lda,
             double *beta,
             void *c, int *ldc);
-void dsyr2k_(const char* uplo, const char* trans, int *n, int *k,
+ALWAYSCLINKAGE void dsyr2k_(const char* uplo, const char* trans, int *n, int *k,
              double *alpha, double *a, int *lda,
              double *b, int *ldb, double *beta,
              double *c, int *ldc);
-void zher2k_(const char* uplo, const char* trans, int *n, int *k,
+ALWAYSCLINKAGE void zher2k_(const char* uplo, const char* trans, int *n, int *k,
              void *alpha, void *a, int *lda,
              void *b, int *ldb, double *beta,
              void *c, int *ldc);
-void dgemm_(const char* transa, const char* transb, int *m, int * n,
+ALWAYSCLINKAGE void dgemm_(const char* transa, const char* transb, int *m, int * n,
             int *k, double *alpha, double *a, int *lda,
             double *b, int *ldb, double *beta,
             double *c, int *ldc);
-void zgemm_(const char* transa, const char* transb, int *m, int * n,
+ALWAYSCLINKAGE void zgemm_(const char* transa, const char* transb, int *m, int * n,
             int *k, void *alpha, void *a, int *lda,
             void *b, int *ldb, void *beta,
             void *c, int *ldc);
-
 
 PyObject* mmm(PyObject *self, PyObject *args)
 {
@@ -183,7 +181,5 @@ PyObject* r2k(PyObject *self, PyObject *args)
 
   Py_RETURN_NONE;
 }
-
-CLINKAGE_END
 
 #endif

@@ -108,7 +108,7 @@ __global__ void fill_kernelz(double real, double imag, gpuDoubleComplex *z,
  *   shape         -- shape of the arrays
  *   type          -- datatype of elements in the arrays
  */
-extern "C"
+CLINKAGE
 PyObject* axpbyz_gpu(PyObject *self, PyObject *args)
 {
     double a, b;
@@ -155,7 +155,7 @@ PyObject* axpbyz_gpu(PyObject *self, PyObject *args)
  *   shape      -- shape of the arrays
  *   type       -- datatype of elements in the arrays
  */
-extern "C"
+CLINKAGE
 PyObject* axpbz_gpu(PyObject *self, PyObject *args)
 {
     double a, b;
@@ -200,7 +200,7 @@ PyObject* axpbz_gpu(PyObject *self, PyObject *args)
  *   shape    -- shape of the arrays
  *   type     -- datatype of elements in the arrays
  */
-extern "C"
+CLINKAGE
 PyObject* fill_gpu(PyObject *self, PyObject *args)
 {
     PyObject *value;

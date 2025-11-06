@@ -71,9 +71,9 @@ void pw_amend_insert_realwf_gpu_launch_kernel(int dtypenum,
 
 void add_to_density_gpu_launch_kernel(int nb,
                                       int nR,
-                                      void* f_n,
+                                      double* f_n,
                                       void* psit_nR,
-                                      void* rho_R,
+                                      double* rho_R,
                                       int dtypenum,
                                       gpuStream_t stream);
 
@@ -605,7 +605,7 @@ CLINKAGE PyObject* add_to_density_gpu(PyObject* self, PyObject* args)
 
     double *f_n = pinner.borrow_array_data<double>(f_n_obj);
     void *psit_nR = pinner.borrow_array_data<void>(psit_nR_obj);
-    void *rho_R = pinner.borrow_array_data<void>(rho_R_obj);
+    double *rho_R = pinner.borrow_array_data<double>(rho_R_obj);
     int nb = gpaw::Array_SIZE(f_n_obj);
     int nR = gpaw::Array_SIZE(psit_nR_obj) / nb;
 

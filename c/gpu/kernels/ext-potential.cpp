@@ -58,7 +58,7 @@ __global__ void Zgpu(add_linear_field_kernel)(
 #define GPU_USE_COMPLEX
 #include "ext-potential.cpp"
 
-extern "C"
+CLINKAGE
 PyObject* add_linear_field_gpu(PyObject *self, PyObject *args)
 {
     void *a_gpu;
