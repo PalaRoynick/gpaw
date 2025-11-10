@@ -2,13 +2,14 @@ from math import pi
 
 import numpy as np
 from ase.units import Bohr
-
+from functools import cached_property
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.old.grid_descriptor import GridDescriptor, GridBoundsError
 from gpaw.gpu import cupy_is_fake, as_numpy, as_np, as_xp
 from gpaw.new import trace
 from gpaw.utilities import smallest_safe_grid_spacing
+from gpaw.sphere.spherical_harmonics import Y
 
 """
 
@@ -967,7 +968,205 @@ class LocalizedFunctionsCollection(BaseLFC):
         return self.sphere_a[a].get_function_count()
 
 
-class BasisFunctions(LocalizedFunctionsCollection):
+class SubProblem:
+    def __init__(self, a, beg_c, end_c, phit_mg, M_m):
+        self.a = a
+        self.beg_c = beg_c
+        self.end_c = end_c
+        self.phit_mg = phit_mg
+        self.M_m = M_m
+        self.results = []
+
+    def add_to_density_work(self, f_asi):
+        self.results.append(np.einsum('sm, mxyz -> sxyz', f_asi[self.a], self.phit_mg**2, optimize=True))
+        return self
+
+    def add_to_density_reduce(self, gd, nt_sG):
+        nt_sg = self.pop_result() 
+        beg_c = self.beg_c - gd.beg_c 
+        end_c = self.end_c - gd.beg_c
+        nt_sG[:, beg_c[0]:end_c[0], beg_c[1]:end_c[1], beg_c[2]:end_c[2]] += nt_sg
+
+    def pop_result(self):
+        return self.results.pop()
+
+class BasisFunctions:
+    """BasisFunctions implementation with a structure suitable for GPUs
+
+    The grid is divided into blocks of about 8 x 8 x 8 grid points.
+    For each atom, we find which (corners) of grid boxes 
+    
+    """
+    def __init__(self, gd, spline_aj, kd=None, cut=False, dtype=float,
+                 integral=None, forces=None, xp=np,
+                 gpu_add_and_integrate=True):
+        self.spline_aj = spline_aj
+        self.gd = gd
+        self.sub_problems = None
+        
+        if kd is None:
+            self.gamma = True
+        else:
+            self.gamma = kd.gamma
+
+        self.dtype = dtype
+        if dtype is not float:
+            raise NotImplementedError('Only float dtype implemented.')
+
+        if not self.gamma:
+            raise NotImplementedError('Only Gamma point implemented')
+
+        # These will be set by set_maxtrix_distribution method
+        self.Mstart = None
+        self.Mstop = None
+
+    @cached_property
+    def Mmax(self):
+        Mmax = 0
+        for spline_j in self.spline_aj:
+            for spline in spline_j:
+                Mmax += 2 * spline.get_angular_momentum_number() + 1
+        return Mmax
+
+    @cached_property
+    def my_atom_indices(self):
+        return range(len(self.spline_aj))
+    
+    @cached_property
+    def atom_indices(self):
+        return range(len(self.spline_aj))
+    
+    def set_matrix_distribution(self, Mstart, Mstop):
+        assert self.Mstart is None
+        assert self.Mstop is None
+        self.Mstart = Mstart
+        self.Mstop = Mstop
+    
+    def set_positions(self, spos_ac):
+        self.spos_ac = spos_ac
+        self.sub_problems = list(self.get_sub_problems())
+    
+    def add_to_density(self, nt_sG, f_asi):
+        assert len(nt_sG) == 1
+
+        results = []
+        for sub_problem in self.sub_problems:
+            results.append(sub_problem.add_to_density_work(f_asi))
+
+        for result in results:
+            result.add_to_density_reduce(self.gd, nt_sG)
+
+    
+    def calculate_potential_matrices(self, vt_G):
+        """Calculate lower part of potential matrix.
+
+        ::
+
+                      /
+            ~         |     *  _  ~ _        _   _
+            V      =  |  Phi  (r) v(r) Phi  (r) dr    for  mu >= nu
+             mu nu    |     mu            nu
+                      /
+
+        Overwrites the elements of the target matrix Vt_MM. """
+        vt_G = as_np(vt_G)
+
+        assert np.all(vt_G.shape == self.gd.n_c), (vt_G.shape, self.gd.n_c)
+        if self.gamma and self.dtype == float:
+            Vt_xMM = np.zeros((1, self.Mstop - self.Mstart, self.Mmax))
+
+            # XXX Add implentation
+            raise NotImplementedError('calculate_potential_matrices not implemented')
+        else:
+            raise NotImplementedError
+
+        return as_xp(Vt_xMM, self.xp)
+
+    def calculate_potential_matrix(self, vt_G, Vt_MM, q):
+        """Calculate lower part of potential matrix.
+
+        ::
+
+                      /
+            ~         |     *  _  ~ _        _   _
+            V      =  |  Phi  (r) v(r) Phi  (r) dr    for  mu >= nu
+             mu nu    |     mu            nu
+                      /
+
+        Overwrites the elements of the target matrix Vt_MM. """
+        Vt_MM[:] = 0.0
+        self.lfc.calculate_potential_matrix(vt_G, Vt_MM, q,
+                                            self.Mstart, self.Mstop)
+
+    # Internal implementatin begins here (private methods)
+
+    @cached_property
+    def M_a(self):
+        M = 0
+        M_a = []
+        for a, spline_j in enumerate(self.spline_aj):
+            M_a.append(M)
+            for spline in spline_j:
+                M += 2 * spline.get_angular_momentum_number() + 1
+
+        assert M == self.Mmax
+        return M_a
+
+    @cached_property
+    def M_am(self):
+        M = 0
+        M_am = {}
+        for a, spline_j in enumerate(self.spline_aj):
+            M2 = M
+            for spline in spline_j:
+                M2 += 2 * spline.get_angular_momentum_number() + 1
+            M_am[a] = range(M, M2)
+            M = M2
+        return M_am
+
+    def grid_split_iterator(self):
+        # Just one block for now
+        yield self.gd.beg_c, self.gd.end_c
+
+    def find_overlapping_atoms(self, beg_c, end_c):
+        # XXX Not actually finding overlapping atoms yet
+        return self.my_atom_indices
+
+    def get_sub_problems(self):
+        for beg_c, end_c in self.grid_split_iterator():
+            for a in self.find_overlapping_atoms(beg_c, end_c):
+                M_m = self.M_am[a]
+                yield SubProblem(a, beg_c, end_c, self.evaluate_basisfunctions_on_grid(beg_c, end_c, a), M_m)
+
+    def get_grid_points(self, beg_c, end_c):
+        n_c = end_c - beg_c
+        r_vG = np.dot(np.indices(n_c).T + beg_c, self.gd.h_cv).T.copy()
+        return r_vG
+
+    def evaluate_basisfunctions_on_grid(self, beg_c, end_c, a):
+        n_c = end_c - beg_c
+        N = np.prod(n_c)
+        M = len(self.M_am[a])
+        phit_mg = np.zeros((M, *n_c))
+        pos_v = self.spos_ac[a] @ self.gd.cell_cv
+        spline_j = self.spline_aj[a]
+        r_vG = self.get_grid_points(beg_c, end_c)
+        d_vG = r_vG - pos_v[:, None, None, None]
+        d_R = (d_vG**2).sum(axis=0)**0.5
+        M = 0
+        for j, spline in enumerate(spline_j):
+            rc = spline.get_cutoff()
+            f_r = spline.map(d_R)
+            l = spline.get_angular_momentum_number()
+            for m in range(2 * l + 1):
+                print(M + m)
+                print(phit_mg.shape)
+                phit_mg[M + m] = Y(l**2 + m, *d_vG) * f_r
+            M += 2 * l + 1
+        return phit_mg
+
+
+class OldBasisFunctions(LocalizedFunctionsCollection):
     def __init__(self, gd, spline_aj, kd=None, cut=False, dtype=float,
                  integral=None, forces=None, xp=np,
                  gpu_add_and_integrate=True):
