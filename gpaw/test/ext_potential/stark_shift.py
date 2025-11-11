@@ -9,7 +9,7 @@ from gpaw.mpi import rank, size
 from gpaw import GPAW
 from gpaw.external import ConstantElectricField
 from gpaw.utilities import packed_index
-from gpaw.pair_density import PairDensity
+from gpaw.lrtddft.pair_density import PairDensity
 
 # Three ways to compute the polarizability of hydrogen:
 # 1. Perturbation theory
