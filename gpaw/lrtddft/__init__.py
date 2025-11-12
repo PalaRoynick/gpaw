@@ -89,10 +89,11 @@ class LrTDDFT(ExcitationList):
                 raise RuntimeError('LrTDDFT supports only fd and lcao modes')
             if calculator.wfs.mode != 'lcao':
                 calculator.converge_wave_functions()
-            if calculator.density.nct_G is None:
-                spos_ac = calculator.initialize_positions()
-                calculator.wfs.initialize(calculator.density,
-                                          calculator.hamiltonian, spos_ac)
+            if calculator.old:
+                if calculator.density.nct_G is None:
+                    spos_ac = calculator.initialize_positions()
+                    calculator.wfs.initialize(calculator.density,
+                                              calculator.hamiltonian, spos_ac)
 
             self.forced_update()
 
