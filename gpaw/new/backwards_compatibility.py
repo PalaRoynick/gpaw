@@ -380,8 +380,9 @@ class FakeDensity:
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
         try:
-            self.stencil = pot_calc.interpolation_stencil_range
-            self.interpolator = pot_calc._interpolate._transformer
+            self.stencil = pot_calc.interpolation_stencil_range  # type: ignore
+            self.interpolator = \
+                pot_calc._interpolate._transformer  # type: ignore
         except AttributeError:
             pass
 
@@ -432,12 +433,6 @@ class FakeDensity:
         return n_sr.data, n_sr.desc._gd
 
 
-class FakePoisson:
-
-    def get_description(self):
-        return ''
-
-
 class FakeHamiltonian:
     def __init__(self,
                  ibzwfs: IBZWaveFunctions,
@@ -457,9 +452,9 @@ class FakeHamiltonian:
         self.ibzwfs = ibzwfs
         self.density = density
         self.potential = potential
-        self.poisson = pot_calc.poisson_solver.solver  # FakePoisson()
         try:
-            self.finegd = self.pot_calc.fine_grid._gd  # type: ignore
+            self.finegd = pot_calc.fine_grid._gd  # type: ignore
+            self.poisson = pot_calc.poisson_solver.solver  # type: ignore
         except AttributeError:
             pass
         self.grid = potential.vt_sR.desc
