@@ -379,6 +379,8 @@ class FakeDensity:
         self.ncomponents = len(self.nt_sG)
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
+        self.stencil = getattr(pot_calc, 'interpolation_stencil_range', None)
+        self.interpolator = pot_calc._interpolate._transformer
 
     @cached_property
     def _atom_partition(self):
@@ -452,7 +454,7 @@ class FakeHamiltonian:
         self.ibzwfs = ibzwfs
         self.density = density
         self.potential = potential
-        self.poisson = FakePoisson()
+        self.poisson = pot_calc.poisson_solver.solver  # FakePoisson()
         try:
             self.finegd = self.pot_calc.fine_grid._gd  # type: ignore
         except AttributeError:

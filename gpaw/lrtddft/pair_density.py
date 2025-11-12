@@ -25,6 +25,10 @@ class PairDensity:
             assert paw.wfs.dtype == float
             self.wfs = paw.wfs
 
+        self.old = paw.old
+        if not paw.old:
+            self.ghat_aLr = paw.dft.pot_calc.ghat_aLr
+
     def initialize(self, kpt, i, j):
         """initialize yourself with the wavefunctions"""
         self.i = i
@@ -97,7 +101,11 @@ class PairDensity:
 
         # Add compensation charges
         if finegrid:
-            self.density.ghat.add(rhot_g, Q_aL)
+            if self.old:
+                self.density.ghat.add(rhot_g, Q_aL)
+            else:
+                rhot_r = self.ghat_aLr.grid.from_data(rhot_g)
+                self.ghat_aLr.add_to(rhot_r, Q_aL)
         else:
             if not hasattr(self.density, 'Ghat'):
                 self.density.Ghat = LFC(self.density.gd,
