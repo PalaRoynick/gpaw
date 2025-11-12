@@ -247,10 +247,10 @@ class FFTBaseMixer(BaseMixer):
             self.gd1 = gd.new_descriptor(comm=mpi.serial_comm)
             k2_Q, _ = construct_reciprocal(self.gd1)
             self.metric = ReciprocalMetric(self.weight, k2_Q)
-            self.mR_sG = self.gd1.empty(2, dtype=complex)
+            self.mR_sG = self.gd1.empty(4, dtype=complex)
         else:
             self.metric = lambda R_Q, mR_Q: None
-            self.mR_sG = np.empty((2, 0, 0, 0), dtype=complex)
+            self.mR_sG = np.empty((4, 0, 0, 0), dtype=complex)
 
     def calculate_charge_sloshing(self, R_sQ):
         if self.gd.comm.rank == 0:

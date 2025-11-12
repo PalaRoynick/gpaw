@@ -22,6 +22,7 @@ def test_noncollinear_o2(in_tmp_dir, gpaw_new):
                   kpts=(2, 1, 1),
                   symmetry='off',
                   convergence={'density': 1e-5},
+                  mixer={'backend': 'fft'},
                   magmoms=[[0, 0.5, 0.5], [0, 0, 1]])
     f = a.get_forces()
     e = a.calc.get_eigenvalues(0, 0)[10]
