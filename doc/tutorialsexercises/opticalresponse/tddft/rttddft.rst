@@ -23,7 +23,6 @@ The following features from the old code have been ported
 The following features are still to be ported
 
 * Logging
-* Parallel execution
 * Time-dependent potentials
 * The radiation-reaction potential
 * Linearization of the xc functional

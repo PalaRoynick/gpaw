@@ -31,6 +31,11 @@ class RTTDDFTHistory:
         """ Kicks that have been done. """
         return self._kicks
 
+    def __str__(self) -> str:
+        return ('RTTDDFTHistory('
+                f'{self.niter} iterations, '
+                f'{len(self.kicks)} kicks)')
+
     def register_kick(self,
                       potential: ExternalPotential,
                       gauge: str = 'length'):
