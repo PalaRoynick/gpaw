@@ -433,6 +433,11 @@ class FakeDensity:
         return n_sr.data, n_sr.desc._gd
 
 
+class FakePoisson:
+    def get_description(self):
+        return ''
+
+
 class FakeHamiltonian:
     def __init__(self,
                  ibzwfs: IBZWaveFunctions,
