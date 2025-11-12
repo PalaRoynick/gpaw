@@ -667,7 +667,19 @@ class ASECalculator:
         self.create_new_calculation(atoms)
 
     def converge_wave_functions(self):
-        self.dft.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
+        dft = self.dft
+        dft.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
+        if not dft.ibzwfs.has_wave_functions():
+            builder = self.params.dft_component_builder(self.atoms,
+                                                        log=dft.log)
+            basis_set = builder.create_basis_set()
+            ibzwfs = builder.create_ibz_wave_functions(
+                basis_set, dft.potential)
+            ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels
+            dft.ibzwfs = ibzwfs
+            dft.scf_loop.update_density_and_potential = False
+            dft.converge()
+            self._wfs_dft = -1, -1
 
     def get_number_of_spins(self):
         return self.dft.density.ndensities

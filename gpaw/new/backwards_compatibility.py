@@ -379,8 +379,11 @@ class FakeDensity:
         self.ncomponents = len(self.nt_sG)
         self.nspins = self.ncomponents % 3
         self.collinear = self.ncomponents < 4
-        self.stencil = getattr(pot_calc, 'interpolation_stencil_range', None)
-        self.interpolator = pot_calc._interpolate._transformer
+        try:
+            self.stencil = pot_calc.interpolation_stencil_range
+            self.interpolator = pot_calc._interpolate._transformer
+        except AttributeError:
+            pass
 
     @cached_property
     def _atom_partition(self):
