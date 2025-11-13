@@ -100,10 +100,20 @@ def propagate_wave_functions_blacs(source_C_nM: Matrix,
 
 class WaveFunctionPropagator(ABC):
     """
-    Takes care about propagating wave functions
+    Propagator object.
 
-    Implementations are specific to parallelization scheme (Numpy) and
-    type of wave functions (LCAO/FD)
+    Implementations are specific to the type of wave functions (LCAO/FD)
+    and possibly to the parallelization scheme (Numpy/BLACS).
+
+    Objects of this class have to be rebuilt after each change of the
+    state (i.e. in each time step).
+
+    Parameters
+    ----------
+    hamiltonian
+        The Hamiltonian object.
+    state
+        The current RTTDDFT state.
     """
 
     def __init__(self,
@@ -121,11 +131,11 @@ class WaveFunctionPropagator(ABC):
         ----------
         source_wfs
             Source wave functions. Unchanged by the propagation
-            if they are different from target_wfs
+            if they are different from target_wfs.
         target_wfs
-            Target wave functions where result is written
+            Target wave functions where result is written.
         time_step
-            Time step
+            Time step.
         """
 
         raise NotImplementedError
@@ -185,17 +195,11 @@ class FDNumpyPropagator(WaveFunctionPropagator):
     def __init__(self,
                  hamiltonian: Hamiltonian,
                  state: RTTDDFTState):
-        """
-        Parameters
-        ----------
-        hamiltonian
-        """
         assert isinstance(hamiltonian, FDHamiltonian)
 
         self.timer = nulltimer
         self.preconditioner = None
 
-        self.hamiltonian = hamiltonian
         self.Ht = partial(hamiltonian.apply,
                           state.potential.vt_sR,
                           state.potential.dedtaut_sR,
@@ -211,7 +215,6 @@ class FDNumpyPropagator(WaveFunctionPropagator):
                           wfs.xp)
 
         self.dSinv = wfs.setups.inverse_overlap_correction
-        self.layout = wfs.P_ani.layout
         self.pt_aiX = wfs.pt_aiX
 
     def calculate_projections(self,
@@ -231,7 +234,9 @@ class FDNumpyPropagator(WaveFunctionPropagator):
         The projections P_ani
         """
         if P_ani is None:
-            P_ani = self.layout.empty(len(psit_nR))
+            P_ani = self.pt_aiX.empty(psit_nR.dims, psit_nR.comm)
+            if psit_nR.data is None:
+                raise RuntimeError('There are no projections or wavefunctions')
         self.pt_aiX.integrate(psit_nR, P_ani)
 
         return P_ani
@@ -281,10 +286,9 @@ class FDNumpyPropagator(WaveFunctionPropagator):
         Parameters
         ----------
         psit_nR
-            The known wavefunctions
+            The known wavefunctions.
         out_nR
-            The result ( S + i H dt/2 ) psit_nR
-
+            The result ( S + i H dt/2 ) psit_nR.
         """
         self.timer.start('Apply time-dependent operators')
 
@@ -302,10 +306,10 @@ class FDNumpyPropagator(WaveFunctionPropagator):
 
         Parameters
         ----------
-        psi: List of coarse grids
-            the known wavefunctions
-        psin: List of coarse grids
-            the result
+        psi
+            The known wavefunctions.
+        psin
+            The result.
 
         """
         self.timer.start('Solve TDDFT preconditioner')
@@ -320,16 +324,16 @@ class FDNumpyPropagator(WaveFunctionPropagator):
                           out_nR: UGArray,
                           spin: int = 0):
         """
-        Apply the hamiltonian on wave functions
+        Apply the Hamiltonian on wave functions.
 
         Parameters
         ----------
         psit_nR
-            Wave functions
+            Wave functions.
         out_nR
-            Result, i.e. hamiltonian acting on wavefunctions
+            Result, i.e. Hamiltonian acting on wavefunctions.
         spin
-            Spin
+            Spin.
         """
         out_nR.data[:] = 0
         self.Ht(psit_nG=psit_nR, out=out_nR, spin=spin)

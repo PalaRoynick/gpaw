@@ -5,7 +5,7 @@ from gpaw.core import UGArray, UGDesc
 from gpaw.new.builder import create_uniform_grid
 from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
-from gpaw.new.gpw import as_double_precision
+from gpaw.new.gpw import as_double_precision, as_complex_double_precision
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
 
 
@@ -118,14 +118,21 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         c = reader.bohr**1.5
         if reader.version < 0:
             c = 1  # old gpw file
-        singlep = reader.get('precision', 'double') == 'single'
+
+        # Check if we need to convert from single precision..
+        force_double = reader.get('precision', 'double') == 'single'
+        # ..or from real to complex
+        reader_dtype = reader.wave_functions.proxy(name).dtype
+        force_complex = (reader_dtype in [np.float32, np.float64]
+                         and ibzwfs.dtype not in [np.float32, np.float64])
+        force_cast = force_double or force_complex
 
         for wfs in ibzwfs:
             grid = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
             index = (wfs.spin, wfs.k)
             data = reader.wave_functions.proxy(name, *index)
             data.scale = c
-            if self.communicators['w'].size == 1 and not singlep:
+            if self.communicators['w'].size == 1 and not force_cast:
                 # Cast to the right dtype
                 wfs.psit_nX = UGArray(grid, self.nbands,
                                       data=np.array(data, dtype=grid.dtype))
@@ -142,7 +149,9 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     assert wfs.psit_nX.mydims[0] == n2 - n1
                     data = data[n1:n2]  # read from file
 
-                if singlep:
+                if force_complex:
+                    wfs.psit_nX.scatter_from(as_complex_double_precision(data))
+                elif force_double:
                     wfs.psit_nX.scatter_from(as_double_precision(data))
                 else:
                     wfs.psit_nX.scatter_from(data)
