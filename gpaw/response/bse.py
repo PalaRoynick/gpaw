@@ -3,6 +3,8 @@ from datetime import timedelta
 from functools import cached_property
 from time import time, ctime
 
+import warnings
+
 from ase.units import Hartree, Bohr
 from ase.dft import monkhorst_pack
 import numpy as np
@@ -20,11 +22,13 @@ from gpaw.response.df import Chi0DysonEquations
 from gpaw.response.df import write_response_function
 from gpaw.response.frequencies import FrequencyDescriptor
 from gpaw.response.pair import KPointPairFactory, get_gs_and_context
+from gpaw.response.pw_parallelization import Blocks1D
 from gpaw.response.qpd import SingleQPWDescriptor
 from gpaw.response.screened_interaction import (initialize_w_calculator,
                                                 GammaIntegrationMode)
 from gpaw.utilities.elpa import LibElpa
-from gpaw.response.pw_parallelization import Blocks1D
+from gpaw.utilities.scalapack import mkl_scalapack_diagonalize_non_symmetric, \
+    have_mkl, pblas_gemm, scalapack_solve, pblas_tran
 
 
 def decide_whether_tammdancoff(val_m, con_m):
@@ -43,46 +47,59 @@ class BSEMatrix:
 
     def diagonalize_nontammdancoff(self, bse, deps_max=None):
         df_S = self.df_S
-        H_sS = self.H_sS
         if deps_max is None:
             deps_max = self.deps_max
         excludef_S = np.where(np.abs(df_S) < 0.001)[0]
         excludedeps_S = np.where(np.abs(self.deps_S) > deps_max)[0]
         exclude_S = np.unique(np.concatenate((excludef_S, excludedeps_S)))
-        bse.context.print('  Using numpy.linalg.eig...')
-        bse.context.print('  Eliminated %s pair orbitals' % len(
-            exclude_S))
-        H_SS = bse.collect_A_SS(H_sS)
-        w_T = np.zeros(bse.nS - len(exclude_S), complex)
-        v_ST = None
-        if world.rank == 0:
-            H_SS = np.delete(H_SS, exclude_S, axis=0)
-            H_SS = np.delete(H_SS, exclude_S, axis=1)
-            w_T, v_ST = np.linalg.eig(H_SS)
-        else:
-            v_ST = None
-        world.broadcast(w_T, 0)
-        return w_T, v_ST, exclude_S
+        H_rr, desc = self.exclude_states(bse, exclude_S)
+        nR = bse.nS - len(exclude_S)
+        if world.size > 1 and have_mkl():
+            bse.context.print('  Using mkl...')
+            v_rt = desc.empty(dtype=complex)
+            w_T = np.empty(nR, dtype=complex)
+            mkl_scalapack_diagonalize_non_symmetric(desc, H_rr, v_rt, w_T)
+            grid_Rt = BlacsGrid(world, 1, world.size)
+            nt = -((-nR) // world.size)
+            desc_Rt = grid_Rt.new_descriptor(nR, nR, nR, nt)
+            v_Rt = desc_Rt.zeros(dtype=complex)
+            Redistributor(world, desc, desc_Rt).redistribute(v_rt, v_Rt)
+            return w_T, v_Rt, exclude_S
 
-    def diagonalize_tammdancoff(self, bse, deps_max=None, elpa=False):
+        bse.context.print('  Using numpy.linalg.eig...')
+        H_RR = desc.collect_on_master(H_rr)
+        w_T = np.zeros(nR, complex)
+        v_RT = np.zeros((nR, nR), complex)
+        if world.rank == 0:
+            w_T, v_RT = np.linalg.eig(H_RR)
+        world.broadcast(v_RT, 0)
+        world.broadcast(w_T, 0)
+        return w_T, v_RT, exclude_S
+
+    def diagonalize_tammdancoff(self, bse, deps_max=None, backend='scalapack'):
+        known_backends = {'scalapack', 'elpa'}
+        if backend not in known_backends:
+            raise ValueError(f"'backend' must be one of {known_backends}")
         if deps_max is None:
             deps_max = self.deps_max
         exclude_S = np.where(np.abs(self.deps_S) > deps_max)[0]
-        H_rr, new_grid_desc = self.exclude_states(bse, exclude_S)
+        H_rr, desc = self.exclude_states(bse, exclude_S)
         if world.size == 1:
             bse.context.print('  Using lapack...')
             w_T, v_Rt = eigh(H_rr)
             return w_T, v_Rt, exclude_S
         nR = bse.nS - len(exclude_S)
         w_T = np.empty(nR)
-        v_rt = new_grid_desc.empty(dtype=complex)
-        if elpa:
+        v_rt = desc.empty(dtype=complex)
+        if backend == 'elpa':
+            warnings.warn('Elpa implementation is currently experimental'
+                          ' - use at your own risk!')
             bse.context.print('Using elpa...')
-            elpa = LibElpa(new_grid_desc)
+            elpa = LibElpa(desc)
             elpa.diagonalize(H_rr, v_rt, w_T)
         else:
             bse.context.print('Using scalapack...')
-            new_grid_desc.diagonalize_dc(H_rr, v_rt, w_T)
+            desc.diagonalize_dc(H_rr, v_rt, w_T)
 
         # redistribute eigenvectors
         # we want them to be parallelized over the last index only
@@ -91,9 +108,10 @@ class BSEMatrix:
         nt = -((-nR) // world.size)
         desc_tR = grid_tR.new_descriptor(nR, nR, nt, nR)
         v_tR = desc_tR.zeros(dtype=complex)
-        Redistributor(world, new_grid_desc,
+        Redistributor(world, desc,
                       desc_tR).redistribute(v_rt, v_tR)
-        v_Rt = v_tR.conj().T
+        v_Rt = np.ascontiguousarray(v_tR.conj().T)
+
         return w_T, v_Rt, exclude_S
 
     def exclude_states(self, bse, exclude_S):
@@ -810,6 +828,7 @@ class BSEBackend:
 
     @timer('get_spectral_weights')
     def get_spectral_weights(self, eig_data, df_S, mode_c):
+        from gpaw.old.matrix import suggest_blocking
         if mode_c is None:
             rho_S = self.rhoG0_S
         else:
@@ -817,37 +836,98 @@ class BSEBackend:
             index = np.where(np.all(np.round(G_Gc) == mode_c, axis=1))[0][0]
             rho_S = self.rhomag_SG[:, index]
 
-        w_T, v_St = eig_data[0], eig_data[1]
+        w_T, v_Rt = eig_data[0], eig_data[1]
         exclude_S = eig_data[2]
-        nS = self.nS - len(exclude_S)
-        ns = -(-nS // world.size)
-        dft_S = np.delete(df_S, exclude_S)
-        rhot_S = np.delete(rho_S, exclude_S)
-        C_T = np.zeros(nS, complex)
-        # Calculate the spectral weights C_T
-        if self.use_tammdancoff:
-            A_t = np.dot(rhot_S, v_St)
-            B_t = np.dot(rhot_S * dft_S, v_St)
-            if world.size == 1:
-                C_T = B_t.conj() * A_t
-            else:
-                grid = BlacsGrid(world, world.size, 1)
-                desc = grid.new_descriptor(nS, 1, ns, 1)
-                C_t = desc.empty(dtype=complex)
-                C_t[:, 0] = B_t.conj() * A_t
-                C_T = desc.collect_on_master(C_t)[:, 0]
-                if world.rank != 0:
-                    C_T = np.empty(nS, dtype=complex)
-                world.broadcast(C_T, 0)
-        else:
-            if world.rank == 0:
-                A_T = np.dot(rhot_S, v_St)
-                B_T = np.dot(rhot_S * dft_S, v_St)
-                tmp = np.dot(v_St.conj().T, v_St)
-                overlap_TT = np.linalg.inv(tmp)
-                C_T = np.dot(B_T.conj(), overlap_TT.T) * A_T
-            world.broadcast(C_T, 0)
+        nR = self.nS - len(exclude_S)
+        nt = -(-nR // world.size)
+        dft_R = np.delete(df_S, exclude_S)
+        rhot_R = np.delete(rho_S, exclude_S)
+        C_T = np.zeros(nR, complex)  # spectral weights
 
+        if self.use_tammdancoff:
+            if world.size == 1:
+                A_t = np.dot(rhot_R, v_Rt)
+                B_t = np.dot(rhot_R * dft_R, v_Rt)
+                C_t = A_t * B_t.conj()
+                return w_T, C_t
+
+            # create blacs grid on which A_t and B_t are distributed
+            grid_Rt = BlacsGrid(world, 1, world.size)
+            desc_t = grid_Rt.new_descriptor(1, nR, 1, nt)
+            A_t = desc_t.zeros(dtype=complex)
+            A_t[0, :] = np.dot(rhot_R, v_Rt)
+
+            B_t = desc_t.zeros(dtype=complex)
+            B_t[0, :] = np.dot(rhot_R * dft_R, v_Rt)
+            C_t = A_t * B_t.conj()
+            C_T = desc_t.collect_on_master(C_t)
+            if world.rank != 0:
+                C_T = np.empty((1, nR), dtype=complex)
+            world.broadcast(C_T, 0)
+            C_T = C_T.flatten()
+            return w_T, C_T
+
+        # not tamm-dancoff
+        if world.size == 1 or not have_mkl():
+            A_t = np.dot(rhot_R, v_Rt)
+            B_t = np.dot(rhot_R * dft_R, v_Rt)
+            N_tt = np.dot(v_Rt.conj().T, v_Rt)
+            B_t = np.linalg.solve(N_tt.T, B_t)
+            C_t = A_t * B_t.conj()
+            return w_T, C_t
+
+        # create blacs grid on which A_t and B_t are distributed
+        grid_Rt = BlacsGrid(world, 1, world.size)
+
+        # get descriptors for existing blacs grid
+        desc1_t = grid_Rt.new_descriptor(1, nR, 1, nt)
+        desc_Rt = grid_Rt.new_descriptor(nR, nR, nR, nt)
+
+        A1_t = desc1_t.zeros(dtype=complex)
+        B1_t = desc1_t.zeros(dtype=complex)
+        A1_t[0, :] = np.dot(rhot_R, v_Rt)
+        B1_t[0, :] = np.dot(rhot_R * dft_R, v_Rt)
+
+        # new blacs grid. this must be created because scalapack_solve
+        # requires that the row and columns have the same blocksize
+        nrows, ncols, blocksize = suggest_blocking(nR, world.size)
+        grid_tt = BlacsGrid(world, nrows, ncols)
+        desc_tt = grid_tt.new_descriptor(nR, nR, blocksize, blocksize)
+        desc_t = grid_tt.new_descriptor(1, nR, blocksize, blocksize)
+        vector_redistributor = Redistributor(world, desc1_t, desc_t)
+
+        A_t = desc_t.zeros(dtype=complex)
+        vector_redistributor.redistribute(A1_t, A_t)
+
+        B_t = desc_t.zeros(dtype=complex)
+        vector_redistributor.redistribute(B1_t, B_t)
+
+        # eigenvectors of BSE Hamiltonian
+        v_rt = desc_tt.zeros(dtype=complex)
+        Redistributor(world, desc_Rt,
+                      desc_tt).redistribute(v_Rt, v_rt)
+
+        # conjugate transpose eigenvectors
+        vc_tr = desc_tt.zeros(dtype=complex)
+        pblas_tran(1.0, v_rt, 0.0, vc_tr, desc_tt, desc_tt, conj=True)
+
+        # compute overlap matrix N_tt
+        N_tt = desc_tt.zeros(dtype=complex)
+        pblas_gemm(1.0, vc_tr, v_rt, 0.0,
+                   N_tt, desc_tt, desc_tt, desc_tt)
+
+        # Find B_t including the inverse of overlap
+        # Note that scalapack automatically transposes N_tt,
+        # so we don't do this explicitly here (unlike in the serial case)
+
+        scalapack_solve(desc_tt, desc_t, N_tt, B_t)
+
+        C_t = A_t * B_t.conj()
+        C_T = desc_t.collect_on_master(C_t)
+        if world.rank != 0:
+            C_T = np.empty((1, nR), dtype=complex)
+        world.broadcast(C_T, 0)
+        C_T = C_T.flatten()
         return w_T, C_T
 
     def _cache_eig_data(self, irreducible, optical, w_w):
