@@ -91,36 +91,17 @@ class FDKickHamiltonian(FDHamiltonian):
         # This is a shifted grid, compared to ext.calculate_potential
         self.vext_R.data[:] = np.einsum('xyzv,v->xyz', r_Rv, ext.field_v)
         wfs = ibzwfs._wfs_u[0]
+
+        # Calculate the potential at each atom, duplicate data on all ranks
         positions_av = wfs.relpos_ac @ grid.cell_cv
         potential_a = positions_av @ ext.field_v
 
-        # calculate coefficient
-        # ---------------------
-        #
-        # coeffs_ni =
-        #   P_nj * c0 * 1_ij
-        #   + P_nj * cx * x_ij
-        #
-        # where (see spherical_harmonics.py)
-        #
-        #   1_ij = sqrt(4pi) Delta_0ij
-        #   y_ij = sqrt(4pi/3) Delta_1ij
-        #   z_ij = sqrt(4pi/3) Delta_2ij
-        #   x_ij = sqrt(4pi/3) Delta_3ij
-        # ...
-
-        #   1_ij = sqrt(4pi) Delta_0ij
-        #   y_ij = sqrt(4pi/3) Delta_1ij
-        #   z_ij = sqrt(4pi/3) Delta_2ij
-        #   x_ij = sqrt(4pi/3) Delta_3ij
-
-        # coefficients
-        # coefs_ni = sum_j ( <phi_i| f(x,y,z) | phi_j>
-        #                    - <phit_i| f(x,y,z) | phit_j> ) P_nj
-
         assert wfs.nspins == 1
         self.dH_asii = layout.empty(wfs.nspins)
-        for a, c0 in enumerate(potential_a):
+
+        # Loop over dH. Atoms are distributed along the domain comm ranks
+        for a, dH_sii in self.dH_asii.items():
+            c0 = potential_a[a]
             Delta_iiL = wfs.setups[a].Delta_iiL
             coef_ii = np.sqrt(4 * np.pi) * c0 * Delta_iiL[..., 0]
             coef_ii += np.sqrt(4 * np.pi / 3) \
@@ -129,7 +110,7 @@ class FDKickHamiltonian(FDHamiltonian):
                 * ext.field_v[1] * Delta_iiL[..., 1]  # y
             coef_ii += np.sqrt(4 * np.pi / 3) \
                 * ext.field_v[2] * Delta_iiL[..., 2]  # z
-            self.dH_asii[a][0] = coef_ii
+            dH_sii[0] = coef_ii
 
     def dH(self, P_ani, out_ani, spin):
         assert spin == 0

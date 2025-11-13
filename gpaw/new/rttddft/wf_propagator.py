@@ -7,6 +7,7 @@ import numpy as np
 from numpy.linalg import solve
 
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.matrix import Matrix, suggest_blocking
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.new.fd.hamiltonian import FDHamiltonian, FDKickHamiltonian
 from gpaw.new.hamiltonian import Hamiltonian
@@ -14,7 +15,7 @@ from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.new.pw.hamiltonian import PWHamiltonian
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
-from gpaw.new.rttddft.state import RTTDDFTState
+from gpaw.new.rttddft.dataclasses import RTTDDFTState
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.tddft.solvers.cscg import CSCG
 from gpaw.utilities.timing import nulltimer
@@ -53,17 +54,66 @@ def propagate_wave_functions_numpy(source_C_nM: np.ndarray,
                                    S_MM: np.ndarray,
                                    H_MM: np.ndarray,
                                    dt: float):
+    r""" Solve for the new wave functions using numpy.
+
+    The new wave functions :math:`C(t + \Delta t)` are solved from
+
+    .. math:
+
+        C(t + \Delta t) (S + i \Delta t / 2)
+        = C(t) (S - i \Delta t / 2)
+
+    Parameters
+    ----------
+    source_C_nM
+        Old wave functions :math:`C(t).
+    target_C_nM
+        New wave functions :math:`C(t + \Delta t).
+    S_MM
+        Overlap :math:`S`.
+    H_MM
+        Hamiltonian :math:`S`.
+    dt
+        Time step in atomic units.
+    """
     SjH_MM = S_MM + (0.5j * dt) * H_MM
     target_C_nM[:] = source_C_nM @ SjH_MM.conj().T
     target_C_nM[:] = solve(SjH_MM.T, target_C_nM.T).T
 
 
+def propagate_wave_functions_blacs(source_C_nM: Matrix,
+                                   target_C_nM: Matrix,
+                                   S_MM: Matrix,
+                                   H_MM: Matrix,
+                                   dt: float):
+    # Construct (S + i dt /2 H)
+    SjH_MM = H_MM.copy()
+    SjH_MM.data[:] *= 0.5j * dt
+    SjH_MM += S_MM
+
+    # Construct C(t) (S - i dt /2 H)
+    source_C_nM.multiply(SjH_MM, opb='C', out=target_C_nM)
+
+    # Solve for C(t + dt), replacing the data in target_C_nM
+    target_C_nM.solve(SjH_MM)
+
+
 class WaveFunctionPropagator(ABC):
     """
-    Takes care about propagating wave functions
+    Propagator object.
 
-    Implementations are specific to parallelization scheme (Numpy) and
-    type of wave functions (LCAO/FD)
+    Implementations are specific to the type of wave functions (LCAO/FD)
+    and possibly to the parallelization scheme (Numpy/BLACS).
+
+    Objects of this class have to be rebuilt after each change of the
+    state (i.e. in each time step).
+
+    Parameters
+    ----------
+    hamiltonian
+        The Hamiltonian object.
+    state
+        The current RTTDDFT state.
     """
 
     def __init__(self,
@@ -81,11 +131,11 @@ class WaveFunctionPropagator(ABC):
         ----------
         source_wfs
             Source wave functions. Unchanged by the propagation
-            if they are different from target_wfs
+            if they are different from target_wfs.
         target_wfs
-            Target wave functions where result is written
+            Target wave functions where result is written.
         time_step
-            Time step
+            Time step.
         """
 
         raise NotImplementedError
@@ -107,14 +157,34 @@ class LCAONumpyPropagator(WaveFunctionPropagator):
                   time_step: float):
         assert isinstance(source_wfs, LCAOWaveFunctions)
         assert isinstance(target_wfs, LCAOWaveFunctions)
+        # The root of the domain comm has the right data
         H_MM = self.ham_calc.calculate_matrix(source_wfs)
+        source_wfs.domain_comm.broadcast(H_MM.data, 0)
+        nM = H_MM.shape[0]
 
         # Phi_n <- U[H(t)] Phi_n
-        propagate_wave_functions_numpy(source_wfs.C_nM.data,
-                                       target_wfs.C_nM.data,
-                                       source_wfs.S_MM.data,
-                                       H_MM.data,
-                                       time_step)
+        if False:
+            propagate_wave_functions_numpy(source_wfs.C_nM.data,
+                                           target_wfs.C_nM.data,
+                                           source_wfs.S_MM.data,
+                                           H_MM.data,
+                                           time_step)
+        else:
+            comm = source_wfs.C_nM.dist.comm
+            r, c, b = suggest_blocking(nM, comm.size)
+            C_nM = source_wfs.C_nM.new(dist=(comm, r, c, b))
+            target_C_nM = source_wfs.C_nM.new(dist=(comm, r, c, b))
+            source_wfs.C_nM.redist(C_nM)
+            _H_MM = H_MM.new(dist=(comm, r, c, b))
+            H_MM.redist(_H_MM)
+            S_MM = H_MM.new(dist=(comm, r, c, b))
+            source_wfs.S_MM.redist(S_MM)
+            propagate_wave_functions_blacs(C_nM,
+                                           target_C_nM,
+                                           S_MM,
+                                           _H_MM,
+                                           time_step)
+            target_C_nM.redist(target_wfs.C_nM)
 
         # Make sure wfs.C_nM and (lazy) wfs.P_ani are in sync:
         target_wfs._P_ani = None
@@ -125,17 +195,11 @@ class FDNumpyPropagator(WaveFunctionPropagator):
     def __init__(self,
                  hamiltonian: Hamiltonian,
                  state: RTTDDFTState):
-        """
-        Parameters
-        ----------
-        hamiltonian
-        """
         assert isinstance(hamiltonian, FDHamiltonian)
 
         self.timer = nulltimer
         self.preconditioner = None
 
-        self.hamiltonian = hamiltonian
         self.Ht = partial(hamiltonian.apply,
                           state.potential.vt_sR,
                           state.potential.dedtaut_sR,
@@ -151,7 +215,6 @@ class FDNumpyPropagator(WaveFunctionPropagator):
                           wfs.xp)
 
         self.dSinv = wfs.setups.inverse_overlap_correction
-        self.layout = wfs.P_ani.layout
         self.pt_aiX = wfs.pt_aiX
 
     def calculate_projections(self,
@@ -171,7 +234,9 @@ class FDNumpyPropagator(WaveFunctionPropagator):
         The projections P_ani
         """
         if P_ani is None:
-            P_ani = self.layout.empty(len(psit_nR))
+            P_ani = self.pt_aiX.empty(psit_nR.dims, psit_nR.comm)
+            if psit_nR.data is None:
+                raise RuntimeError('There are no projections or wavefunctions')
         self.pt_aiX.integrate(psit_nR, P_ani)
 
         return P_ani
@@ -221,10 +286,9 @@ class FDNumpyPropagator(WaveFunctionPropagator):
         Parameters
         ----------
         psit_nR
-            The known wavefunctions
+            The known wavefunctions.
         out_nR
-            The result ( S + i H dt/2 ) psit_nR
-
+            The result ( S + i H dt/2 ) psit_nR.
         """
         self.timer.start('Apply time-dependent operators')
 
@@ -242,10 +306,10 @@ class FDNumpyPropagator(WaveFunctionPropagator):
 
         Parameters
         ----------
-        psi: List of coarse grids
-            the known wavefunctions
-        psin: List of coarse grids
-            the result
+        psi
+            The known wavefunctions.
+        psin
+            The result.
 
         """
         self.timer.start('Solve TDDFT preconditioner')
@@ -260,16 +324,16 @@ class FDNumpyPropagator(WaveFunctionPropagator):
                           out_nR: UGArray,
                           spin: int = 0):
         """
-        Apply the hamiltonian on wave functions
+        Apply the Hamiltonian on wave functions.
 
         Parameters
         ----------
         psit_nR
-            Wave functions
+            Wave functions.
         out_nR
-            Result, i.e. hamiltonian acting on wavefunctions
+            Result, i.e. Hamiltonian acting on wavefunctions.
         spin
-            Spin
+            Spin.
         """
         out_nR.data[:] = 0
         self.Ht(psit_nG=psit_nR, out=out_nR, spin=spin)

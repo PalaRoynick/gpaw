@@ -69,6 +69,18 @@ def as_double_precision(array):
     return np.array(array, dtype=dtype)
 
 
+def as_complex_double_precision(array):
+    """Convert 32 bit floating point numbers to 64 bit, forcing complex.
+
+    >>> as_complex_double_precision(np.ones(3, dtype=np.float32))
+    array([1.+0.j, 1.+0.j, 1.+0.j])
+    """
+    if array is None:
+        return None
+    assert array.dtype in [np.float32, np.float64, np.complex64]
+    return np.array(array, dtype=np.complex128)
+
+
 @dataclass
 class GPWFlags:
     include_wfs: bool
