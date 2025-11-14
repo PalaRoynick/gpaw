@@ -10,6 +10,7 @@ See::
     Phys. Rev. Research 2, 022024(R) – Published 30 April 2020
 
 """
+from __future__ import annotations
 from math import pi
 
 import numpy as np
@@ -46,8 +47,8 @@ def zfs(calc: GPAW,
         wf1 = WaveFunctions.from_calc(calc, 0, occ1only)
         wf12 = [wf1]
     else:
-        wf1 = WaveFunctions.from_calc(calc, 0, 0, occ1)
-        wf2 = WaveFunctions.from_calc(calc, 1, 0, occ2)
+        wf1 = WaveFunctions.from_calc(calc, 0, occ1)
+        wf2 = WaveFunctions.from_calc(calc, 1, occ2)
         wf12 = [wf1, wf2]
 
     D_vv = np.zeros((3, 3))
