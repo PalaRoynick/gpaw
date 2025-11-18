@@ -214,7 +214,7 @@ class UGDesc(Domain['UGArray']):
                 t.apply(input, output)
             return out
 
-        transform._transformer = t
+        transform._transformer = t  # type: ignore
 
         return transform
 
