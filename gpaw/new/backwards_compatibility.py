@@ -385,6 +385,8 @@ class FakeDensity:
                 pot_calc._interpolate._transformer  # type: ignore
         except AttributeError:
             pass
+        self.charge = density.charge
+        self.redistributor = None
 
     @cached_property
     def _atom_partition(self):

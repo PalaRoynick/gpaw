@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 from ase.units import Hartree
 from ase.utils.timing import Timer
+from ase.calculators.calculator import Calculator
 
 import gpaw.mpi as mpi
 from gpaw import __version__, restart
@@ -16,7 +17,7 @@ from gpaw.old.wavefunctions.lcao import LCAOWaveFunctions
 from gpaw.utilities.blas import axpy
 
 
-class ExcitedState:  # (GPAW):
+class ExcitedState(Calculator):
     nparts = 1
     implemented_properties = ['energy', 'forces']
     default_parameters: dict[str, Any] = {}
@@ -52,7 +53,7 @@ class ExcitedState:  # (GPAW):
         self.lrtddft = lrtddft
         self.calculator = self.lrtddft.calculator
 
-        # Calculator.__init__(self)
+        Calculator.__init__(self)
 
         self.log = self.calculator.log
         self.atoms = self.calculator.atoms
@@ -72,7 +73,7 @@ class ExcitedState:  # (GPAW):
         self.log('#', self.__class__.__name__, __version__)
         self.log('#', self.index)
         self.log('# Force displacement:', self.d)
-        self.log
+        self.log.flush()
 
         self.split(parallel)
 

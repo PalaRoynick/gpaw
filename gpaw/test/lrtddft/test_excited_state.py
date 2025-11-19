@@ -177,6 +177,7 @@ def test_log(in_tmp_dir):
     exlst = LrTDDFT(calc, restrict={'eps': 0.4, 'jend': 3}, log=calc.log)
     exst = ExcitedState(exlst, 0, log=exlst.log, parallel=2)
     exst.get_forces()
+    exlst.log.flush()
     del calc
     del exlst
     del exst
