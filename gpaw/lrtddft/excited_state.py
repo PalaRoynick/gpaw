@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from ase.calculators.calculator import Calculator
 from ase.units import Hartree
 from ase.utils.timing import Timer
 
@@ -17,7 +16,7 @@ from gpaw.old.wavefunctions.lcao import LCAOWaveFunctions
 from gpaw.utilities.blas import axpy
 
 
-class ExcitedState(GPAW):
+class ExcitedState:  # (GPAW):
     nparts = 1
     implemented_properties = ['energy', 'forces']
     default_parameters: dict[str, Any] = {}
@@ -53,7 +52,7 @@ class ExcitedState(GPAW):
         self.lrtddft = lrtddft
         self.calculator = self.lrtddft.calculator
 
-        Calculator.__init__(self)
+        # Calculator.__init__(self)
 
         self.log = self.calculator.log
         self.atoms = self.calculator.atoms
