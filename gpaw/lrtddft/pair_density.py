@@ -1,8 +1,10 @@
-from math import sqrt, pi
+from math import pi, sqrt
+
 import numpy as np
 
+from gpaw.lfc import BasisFunctions
+from gpaw.lfc import LocalizedFunctionsCollection as LFC
 from gpaw.utilities import pack_density, unpack_density
-from gpaw.lfc import LocalizedFunctionsCollection as LFC, BasisFunctions
 
 
 class PairDensity:

@@ -1,13 +1,12 @@
-import pytest
 from io import StringIO
 
+import pytest
 from ase.io import read
 from ase.units import Ha
 
 from gpaw import GPAW, FermiDirac
 from gpaw.lrtddft import LrTDDFT
 from gpaw.lrtddft2 import LrTDDFT2
-
 
 jend = 12  # LUMO
 
@@ -39,7 +38,7 @@ H   1.8684   0.8649   0.5908
     return atoms
 
 
-@pytest.mark.old_gpaw_only
+@pytest.mark.lrtddft2
 def test_lrtddft2(C3H6O, in_tmp_dir):
     """Test equivalence"""
     atoms = C3H6O

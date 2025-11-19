@@ -1,8 +1,8 @@
 from functools import wraps
-from typing import Tuple
+
+import numpy as np
 
 import gpaw.mpi as mpi
-import numpy as np
 from gpaw.atom.configurations import parameters, tf_parameters
 from gpaw.atom.generator import Generator
 from gpaw.typing import Array1D
@@ -20,7 +20,7 @@ def print_reference(data_i, name='ref_i', fmt='%.12le'):
         print('\b]')
 
 
-def findpeak(x: Array1D, y: Array1D) -> Tuple[float, float]:
+def findpeak(x: Array1D, y: Array1D) -> tuple[float, float]:
     """Find peak.
 
     >>> x = np.linspace(1, 5, 10)

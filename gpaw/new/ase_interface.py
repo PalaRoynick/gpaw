@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Any, Callable, Generator
+from typing import Any
 
 import numpy as np
 from ase import Atoms
 from ase.units import Ha
+
 from gpaw import __version__
 from gpaw.core import UGArray
 from gpaw.dft import GPAW, Parameters
@@ -109,7 +111,7 @@ class ASECalculator:
 
     def iconverge(self, atoms: Atoms | None,
                   *,
-                  need_wfs: bool = False) -> Generator[SCFContext, None, None]:
+                  need_wfs: bool = False) -> Generator[SCFContext]:
         """Iterate to self-consistent solution.
 
         Will also calculate "cheap" properties: energy, magnetic moments

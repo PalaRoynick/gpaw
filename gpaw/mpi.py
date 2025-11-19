@@ -7,17 +7,18 @@ import pickle
 import sys
 import time
 import traceback
+import warnings
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-import warnings
 from ase.parallel import MPI as ASE_MPI
 from ase.parallel import world as aseworld
-from gpaw.gpu import is_hip, cupy
-from gpaw.new.c import GPU_AWARE_MPI
 
 import gpaw
+from gpaw.gpu import cupy, is_hip
+from gpaw.new.c import GPU_AWARE_MPI
 
 from ._broadcast_imports import world as _world
 
@@ -1272,6 +1273,30 @@ def print_mpi_stack_trace(type, value, tb):
     for lineno, line in enumerate(lines):
         lineno = ('%%0%dd' % line_ndigits) % lineno
         sys.stderr.write(f'rank={rankstring} L{lineno}: {line}\n')
+
+
+def pretty_print_parallel_traceback_file(path: Path) -> None:
+    """Pretty-print rank-0 part of traceback files.
+
+    See print_mpi_stack_trace() exception hook.
+    """
+    lines = []
+    with path.open() as fd:
+        for line in fd:
+            if line.startswith('rank='):
+                x, line = line.split(': ', 1)
+                rank = int(x[5:].split()[0])
+                if rank == 0:
+                    lines.append(line)
+    text = ''.join(lines)
+    try:
+        from pygments import highlight
+        from pygments.formatters import TerminalFormatter
+        from pygments.lexers.python import PythonTracebackLexer
+    except ImportError:
+        print(text)
+    else:
+        print(highlight(text, PythonTracebackLexer(), TerminalFormatter()))
 
 
 if world.size > 1:  # Triggers for dry-run communicators too, but we care not.
