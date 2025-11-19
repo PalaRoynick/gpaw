@@ -7,7 +7,7 @@ from gpaw.lrtddft2.lr_communicators import LrCommunicators
 from gpaw.mpi import rank, size, world
 
 
-@pytest.mark.lrtddft
+@pytest.mark.lrtddft2
 def test_lrtddft2_Al2(in_tmp_dir):
     debug = False
     restart_file = 'Al2_gs.gpw'

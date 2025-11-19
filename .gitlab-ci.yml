@@ -723,7 +723,7 @@ nightly-mpi-8:
     - >
       gpaw -P $GPAW_MPI_NPROCS python -m pytest
       --cov=gpaw --instafail -r s --durations 30
-      -m "not (old_gpaw_only_mpi or old_gpaw_only or dscf or gllb or do or legacy or lrtddft or hybrids or pipekmezey) or new_gpaw_ready"
+      -m "not (old_gpaw_only_mpi or old_gpaw_only or dscf or gllb or do or legacy or lrtddft2 or hybrids or pipekmezey) or new_gpaw_ready"
   extends:
     - .nightly
 
@@ -736,7 +736,7 @@ nightly-mpi-1-new:
     - pytest --cache-show
     - >
       pytest -n 8 --instafail -r s --durations 30 -m
-      "not (old_gpaw_only or dscf or gllb or do or legacy or lrtddft or hybrids or pipekmezey) or new_gpaw_ready"
+      "not (old_gpaw_only or dscf or gllb or do or legacy or lrtddft2 or hybrids or pipekmezey) or new_gpaw_ready"
       --cov=gpaw
   after_script:
     - mv .coverage coverage-$CI_JOB_NAME

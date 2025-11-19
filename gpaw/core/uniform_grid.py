@@ -208,14 +208,16 @@ class UGDesc(Domain['UGArray']):
         """
         from gpaw.transformers import Transformer
 
-        apply = Transformer(self._gd, other._gd, nn=stencil_range, xp=xp).apply
+        t = Transformer(self._gd, other._gd, nn=stencil_range, xp=xp)
 
         def transform(functions, out=None):
             if out is None:
                 out = other.empty(functions.dims, functions.comm, xp=xp)
             for input, output in zips(functions._arrays(), out._arrays()):
-                apply(input, output)
+                t.apply(input, output)
             return out
+
+        transform._transformer = t  # type: ignore
 
         return transform
 

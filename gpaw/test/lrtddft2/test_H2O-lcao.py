@@ -5,7 +5,7 @@ from gpaw import GPAW
 from gpaw.lrtddft2 import LrTDDFT2
 
 
-@pytest.mark.lrtddft
+@pytest.mark.lrtddft2
 def test_lrtddft2_H2O_lcao(gpw_files, in_tmp_dir):
     name = 'H2O-lcao'
     # LrTDDFT2

@@ -8,7 +8,7 @@ from ase.units import Bohr, Hartree
 from gpaw import GPAW
 from gpaw.external import ConstantElectricField
 from gpaw.mpi import rank, size
-from gpaw.pair_density import PairDensity
+from gpaw.lrtddft.pair_density import PairDensity
 from gpaw.utilities import packed_index
 
 # Three ways to compute the polarizability of hydrogen:
