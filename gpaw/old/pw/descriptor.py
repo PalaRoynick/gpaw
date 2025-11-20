@@ -399,6 +399,8 @@ class PWDescriptor:
 
         if result.ndim == 0:
             if global_integral:
+                from gpaw import mpi
+                #assert self.gd.comm is not mpi.world
                 return self.gd.comm.sum_scalar(result.item())
             return result.item()
         else:

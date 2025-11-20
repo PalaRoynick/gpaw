@@ -73,6 +73,7 @@ class GridDescriptor(Domain):
 
     ndim = 3  # dimension of ndarrays
 
+    @mpi.parallel
     def __init__(self, N_c, cell_cv=[1, 1, 1], pbc_c=True,
                  comm=None, parsize_c=None, allow_empty_domains=False):
         """Construct grid-descriptor object.
@@ -109,11 +110,14 @@ class GridDescriptor(Domain):
 
         The length unit is Bohr.
         """
-
+        print('COMM', comm)
         if isinstance(pbc_c, int):
             pbc_c = (pbc_c,) * 3
         if comm is None:
             comm = mpi.world
+
+        from gpaw import mpi
+        assert comm is not mpi.world
 
         self.N_c = np.array(N_c, int)
         if (self.N_c != N_c).any():
@@ -188,8 +192,8 @@ class GridDescriptor(Domain):
             comm = self.comm
         if parsize_c is None and comm.size == self.comm.size:
             parsize_c = self.parsize_c
-        return self.__class__(N_c, cell_cv, pbc_c, comm, parsize_c,
-                              allow_empty_domains)
+        return self.__class__(N_c, cell_cv, pbc_c, comm=comm, parsize_c=parsize_c,
+                              allow_empty_domains=allow_empty_domains)
 
     def coords(self, c, pad=True):
         """Return coordinates along one of the three axes.

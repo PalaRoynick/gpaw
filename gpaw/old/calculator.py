@@ -127,6 +127,7 @@ class GPAW(Calculator):
                  parallel=None,
                  **kwargs):
 
+
         if txt == '?':
             txt = '-' if restart is None else None
 
@@ -1055,10 +1056,11 @@ class GPAW(Calculator):
                              xc, filter=filter, world=self.world)
         self.log(self.setups)
 
+    @mpi.parallel(name='domain_comm')
     def create_grid_descriptor(self, N_c, cell_cv, pbc_c,
-                               domain_comm, parsize_domain):
-        return GridDescriptor(N_c, cell_cv, pbc_c, domain_comm,
-                              parsize_domain)
+                               *, domain_comm, parsize_domain):
+        return GridDescriptor(N_c, cell_cv, pbc_c, comm=domain_comm,
+                              parsize_c=parsize_domain)
 
     def create_occupations(self, cell_cv, magmom, orbital_free, nvalence):
         dct = self.parameters.occupations
@@ -1321,7 +1323,7 @@ class GPAW(Calculator):
 
         # Construct grid descriptor for coarse grids for wave functions:
         gd = self.create_grid_descriptor(N_c, cell_cv, pbc_c,
-                                         domain_comm, parsize_domain)
+                                         domain_comm=domain_comm, parsize_domain=parsize_domain)
 
         if hasattr(self, 'time') or mode.force_complex_dtype or not collinear:
             dtype = complex

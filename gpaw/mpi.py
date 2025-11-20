@@ -800,6 +800,7 @@ class SerialCommunicator:
     def get_c_object(self):
         if gpaw.dry_run:
             return None  # won't actually be passed to C
+        asd
         return _world.get_c_object()
 
 
@@ -826,6 +827,7 @@ else:
 rank = world.rank
 size = world.size
 
+serial_comm = SerialCommunicator()
 
 def verify_ase_world():
     # ASE does not like that GPAW uses world.size at import time.
@@ -1309,24 +1311,35 @@ class DontDoThat(Exception):
     pass
 
 
-def parallel(func):
+def parallel(func=None, name='comm'):
     """Decorator for functions that take comm=world.
 
     We want this decorator so as to control access to world and prevent
     deadlocks when callers of these functions forget to set the
     communicator."""
+
+    if func is None:
+        def custom_name_deco(func):
+            return parallel(func, name=name)
+        return custom_name_deco
+
+    assert func is not None
+
     import functools
     from gpaw.mpi import world
 
     @functools.wraps(func)
-    def wrapper(*args, comm=None, **kwargs):
+    def wrapper(*args, **kwargs):
+        comm = kwargs.pop(name, None)
         if comm is None:
             if _NO_TOUCH_WORLD:
                 raise DontDoThat(
-                    'Must call method with keyword comm=<communicator>'
+                    f'Must call method with keyword {name}=<communicator>'
                 )
             comm = world
-        return func(*args, comm=comm, **kwargs)
+        else:
+            assert comm is not world
+        return func(*args, **{name: comm}, **kwargs)
 
     return wrapper
 

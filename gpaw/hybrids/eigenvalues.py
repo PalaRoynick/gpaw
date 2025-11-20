@@ -58,6 +58,7 @@ def non_self_consistent_eigenvalues(
             return (np.zeros((1, 1, 1)),
                     np.zeros((1, 1, 1)),
                     np.zeros((1, 1, 1)))
+        asd
         calc = GPAW(Path(calc), txt=None, parallel={'band': 1, 'kpt': 1})
 
     assert isinstance(calc, (GPAWOld, ASECalculator))
@@ -164,6 +165,8 @@ def _calculate_eigenvalues(kpt1, kpts2, paw, kd, coulomb, sym, wfs, spos_ac):
     pd = kpt1.psit.pd
     gd = pd.gd.new_descriptor(comm=serial_comm)
     comm = wfs.world
+    from gpaw import mpi
+    assert wfs.world is not mpi.world
     size = comm.size
     rank = comm.rank
 
