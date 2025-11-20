@@ -10,6 +10,7 @@ from scipy.special import erf
 from gpaw import get_scipy_version
 from gpaw.core import PWArray, PWDesc, UGDesc
 from gpaw.new.poisson import PoissonSolver
+from gpaw.solvation.poisson import WeightedFDPoissonSolver
 
 if get_scipy_version() >= [1, 14]:
     RTOL = 'rtol'
@@ -416,3 +417,73 @@ def xy_average_at_boundary(f_G: PWArray) -> np.ndarray:
     result = np.array([value, derivative])
     pw.comm.sum(result)
     return result
+
+
+class FDPWsolver(PWPoissonSolver):
+    def __init__(self,
+                 pw: PWDesc,
+                 grid,
+                 dielectric,
+                 charge: float = 0.0,
+                 strength: float = 1.0,
+                 eps=1e-4,
+                 maxiter=350,
+                 real_space_solver=WeightedFDPoissonSolver(),
+                 zero_vacuum=False):
+        """Initialize the finite-difference Poisson solver.
+        Parameters:
+        """
+
+        super().__init__(pw, charge, strength)
+
+        self.dielectric = dielectric
+        self.grid = grid
+        self.pw0 = pw.new(comm=None)
+        self.pwg0 = self.pw0
+        self.grid0 = grid.new(comm=None)
+        if pw.comm.rank == 0:
+            self.ekin_g = self.pw0.ekin_G.copy()
+            self.ekin_g[0] = 1.0
+
+        self.eps = eps
+        self.maxiter = maxiter
+
+        self.eps0_R = None
+
+        self.drho_g = None
+        self.zero_vacuum = zero_vacuum
+        self.real_space_solver = real_space_solver
+        self.real_space_solver.set_dielectric(self.dielectric)
+        self.real_space_solver.set_grid_descriptor(grid._gd)
+        # self.real_space_solver.set_grid_descriptor(grid.ifft)
+        if zero_vacuum:
+            self.drho_g = dipole_layer(grid).fft(pw=pw)
+
+    def get_description(self):
+        return 'FD Conjugate Gradient Poisson Solver'
+
+    def _solve(self,
+               vHt_g,
+               rhot_g) -> float:
+        rhot_r = self.grid.new(comm=None).empty()
+        vHt_r = self.grid.new(comm=None).empty()
+        rhot0_g = self.pw.new(comm=None).empty()
+        vHt0_g = vHt_g.gather()
+        rhot0_g = rhot_g.gather()
+        vHt0_r = self.grid.new(comm=None).empty()
+#        if self.pw.comm.rank == 0:
+        print(self.grid._gd)
+        if 1:
+            rhot0_r = rhot0_g.ifft(grid=self.grid.new(comm=None))
+            rhot_r.scatter_from(rhot0_r)
+            vHt0_r = vHt0_g.ifft(grid=self.grid.new(comm=None))
+            self.real_space_solver.solve(vHt_r.data,rhot_r.data)
+            # THE following fails dont know why
+            vHt0_r = vHt_r.gather()
+            vHt0_g = vHt0_r.fft(pw=self.pw)
+            rhot0_g = rhot0_r.fft(pw=self.pw)
+        rhot_g.scatter_from(rhot0_g)
+        # vHt_r.scatter_from(vHt0_r)
+        vHt_g.scatter_from(vHt0_g)
+        epot = 0.5 * vHt_g.integrate(rhot_g)
+        return epot

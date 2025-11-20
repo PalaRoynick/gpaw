@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from gpaw.core import PWDesc, UGDesc
-from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
+from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver, FDPWsolver
 from gpaw.new.sjm import SJMPWPoissonSolver
 
 
@@ -22,7 +22,8 @@ if 0:  # Analytic result
 def test_sjm():
     a = 1.0
     L = 10.0
-    grid = UGDesc.from_cell_and_grid_spacing(cell=[a, a, L], grid_spacing=0.15)
+    grid = UGDesc.from_cell_and_grid_spacing(cell=[a, a, L],
+                                             grid_spacing=1 / 8)
     z = grid.xyz()[0, 0, :, 2]
     c = 0.05
     rhot = f(a, z, 4.0, 1.0) * (1 + c)  # electrons
@@ -42,15 +43,22 @@ def test_sjm():
     vt_r = vt_g.ifft(grid=grid)
     dielectric = SimpleNamespace(eps_gradeps=[eps_r.data])
     ps2 = ConjugateGradientPoissonSolver(pw, grid, dielectric,
-                                         zero_vacuum=True)
+                                         zero_vacuum=not True)
     vt2_g = pw.zeros()
     ps2.solve(vt2_g, rhot_g)
     vt2_r = vt2_g.ifft(grid=grid)
-    if 0:
+
+    ps3 = FDPWsolver(pw, grid, dielectric)
+    vt3_g = pw.zeros()
+    ps3.solve(vt3_g, rhot_g)
+    vt3_r = vt3_g.ifft(grid=grid)
+
+    if 1:
         import matplotlib.pyplot as plt
         plt.plot(z, rhot_r.data[0, 0])
-        plt.plot(z, vt_r.data[0, 0])
+        # plt.plot(z, vt_r.data[0, 0])
         plt.plot(z, vt2_r.data[0, 0])
+        plt.plot(z, vt3_r.data[0, 0])
         plt.show()
 
 

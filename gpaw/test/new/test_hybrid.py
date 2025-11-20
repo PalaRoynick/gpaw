@@ -31,6 +31,7 @@ def test_hse06(gpaw_new, dtype):
     atoms.calc = GPAW(
         mode=dict(name='pw',
                   force_complex_dtype=dtype is complex),
+        random=True,
         xc='HSE06',
         convergence={'density': 1e-6},
         parallel={'domain': min(2, size) if dtype is complex else 1},
@@ -70,4 +71,4 @@ def test_h(gpaw_new, dtype):
 
 
 if __name__ == '__main__':
-    test_hse06(1, not True, complex)
+    test_hse06(True, float)
