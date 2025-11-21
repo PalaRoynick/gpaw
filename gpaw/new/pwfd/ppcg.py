@@ -2,20 +2,21 @@ from __future__ import annotations
 
 from functools import partial
 from pprint import pformat
-from ase.units import Ha
 
 import numpy as np
 from gpaw.mpi import SerialCommunicator
+from ase.units import Ha
 from gpaw import debug
+# from gpaw.typing import Array2D
+from gpaw.core import PWDesc  # , PWArray
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
+from gpaw.new import tracectx  # , trace
+from gpaw.new.pwfd.davidson import sliced_preconditioner
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
-from gpaw.new.pwfd.davidson import sliced_preconditioner
-# from gpaw.typing import Array2D
-from gpaw.core import PWDesc  # , PWArray
-from gpaw.new import tracectx  # , trace
+
 # from gpaw.utilities import as_real_dtype
 
 
@@ -26,8 +27,8 @@ class PPCG(PWFDEigensolver):
                  band_comm,
                  hamiltonian,
                  converge_bands='occupied',
-                 niter=2,
-                 min_niter=None,
+                 niter=5,
+                 min_niter=2,
                  blocksize=None,
                  rr_modulo=5,
                  include_cg=True,
@@ -136,11 +137,11 @@ class PPCG(PWFDEigensolver):
             self._allocate_work_arrays(ibzwfs, shape=(1,))
         self._allocate_buffer_arrays(ibzwfs, shape=(1,))
 
-        wfs = ibzwfs.wfs_qs[0][0]
+        band_comm = ibzwfs.band_comm
+        wfs = ibzwfs._wfs_u[0]
         assert isinstance(wfs, PWFDWaveFunctions)
         band_comm = wfs.band_comm
         domain_comm = wfs.domain_comm
-
         B = ibzwfs.nbands
         b = wfs.psit_nX.mydims[0]
         self.blocksize = max(min(self.blocksize, (b + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size),
@@ -295,7 +296,7 @@ class PPCG(PWFDEigensolver):
             active_bs = len(active_indicies)
 
             with tracectx('Block-diagonal Update'):
-                wfs.eig_n[:] = 0  # Reset eigenvalues
+                new_eigs_n = np.zeros_like(wfs.myeig_n)  # New eigenvalues
                 psit_nX.domain_a2a_bands()
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
@@ -375,11 +376,11 @@ class PPCG(PWFDEigensolver):
                     # domain_comm.sum(S_bb)
 
                     # Scale the diagonal elements, to improve numerical
-                    # stability. Here, we use the expontent -0.25, which
+                    # stability. Here, we use the expontent -0.5, which
                     # makes the diagonal elements closer to 1, by the a
                     # factor of sqrt(X), with X being the previous diagonal.
                     # This value performed best of the ones attempted.
-                    diag_scale_b = xp.diag(S_bb)[block:]**(-0.25)
+                    diag_scale_b = xp.diag(S_bb)[block:]**(-0.5)
                     S_bb[block:, :] *= diag_scale_b[:, None]
                     S_bb[:, block:] *= diag_scale_b[None, :]
                     buff_bX.matrix.data[block:nblocks, :] \
@@ -414,12 +415,15 @@ class PPCG(PWFDEigensolver):
                         #     pos_defness = A.get()[0]
                         # Eigvalsh approach
                         with tracectx('eigvalsh', gpu=xp is not np):
-                            pos_defness = xp.linalg.eigvalsh(S_bb)[0]
-                        if xp is not np:
-                            pos_defness = pos_defness.get()
+                            try:
+                                pos_defness = xp.linalg.eigvalsh(S_bb)[0]
+                                if xp is not np:
+                                    pos_defness = pos_defness.get()
+                            except np.linalg.LinAlgError:
+                                pos_defness = -42
                         if pos_defness < \
                                 np.finfo(psit_nX.data.dtype).eps * \
-                                nblocks**0.5:
+                                nblocks**0.5 or np.isnan(pos_defness):
                             # Insufficient numerical precision for CG,
                             # thus we only do the steepest descent step
                             nblocks = 2 * block
@@ -443,11 +447,11 @@ class PPCG(PWFDEigensolver):
                     else:
                         cmin = H_bb[:block, :nblocks].conj()
                     if not xp.isfinite(H_bb).all():
-                        print('H is not finite')
                         break_after_update = True
+                        new_eigs_n[block_slice] = wfs.myeig_n[block_slice]
                         continue
                     my_ns  = mybands[block_slice]
-                    wfs.myeig_n[my_ns] = as_np(eig_b[:block])
+                    new_eigs_n[my_ns] = as_np(eig_b[:block])
 
                     with tracectx('rotations', gpu=xp is not np):
                         # Ye olde updates
@@ -475,6 +479,7 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[:block] \
                             + Pbuf_abi.matrix.data[block:2 * block]
 
+                wfs.myeig_n[:] = new_eigs_n
                 domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
                 

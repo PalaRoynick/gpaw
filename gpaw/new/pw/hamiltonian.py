@@ -1,15 +1,16 @@
 from __future__ import annotations
-from typing import Callable
+
+from collections.abc import Callable
 
 import numpy as np
 
+from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.core.plane_waves import PWArray
 from gpaw.core.uniform_grid import UGArray
-from gpaw.core.arrays import DistributedArrays as XArray
 from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
+from gpaw.new.c import pw_insert_gpu, pw_precond
 from gpaw.new.hamiltonian import Hamiltonian
-from gpaw.new.c import pw_precond, pw_insert_gpu
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 
@@ -35,7 +36,9 @@ class PWHamiltonian(Hamiltonian):
         if xp is not np and pw.comm.size == 1:
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         vt_R = vt_R.gather(broadcast=True)
-        tmp_R = self.grid_local.empty(xp=xp)
+        plan = self.plan
+        tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
+        tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
             pw_local = pw
         else:
@@ -82,9 +85,10 @@ class PWHamiltonian(Hamiltonian):
                    psit_nG: XArray,
                    vt_nG: XArray) -> None:
         pw = psit_nG.desc
-        dpsit_R = dedtaut_R.desc.new(dtype=pw.dtype).empty()
-        Gplusk1_Gv = pw.reciprocal_vectors()
-        tmp_G = pw.empty()
+        xp = psit_nG.xp
+        dpsit_R = dedtaut_R.desc.new(dtype=pw.dtype).empty(xp=xp)
+        Gplusk1_Gv = pw.reciprocal_vectors(xp)
+        tmp_G = pw.empty(xp=xp)
 
         for psit_G, vt_G in zips(psit_nG, vt_nG):
             for v in range(3):

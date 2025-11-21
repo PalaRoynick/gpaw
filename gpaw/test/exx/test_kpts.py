@@ -1,15 +1,13 @@
 """Test case where q=k1-k2 has component outside 0<=q<1 range."""
-from typing import Tuple
-
-import pytest
 import numpy as np
+import pytest
 from ase import Atoms
 
 from gpaw import GPAW, PW
 from gpaw.hybrids.eigenvalues import non_self_consistent_eigenvalues
 from gpaw.mpi import size
-from gpaw.new.pw.nschse import NonSelfConsistentHSE06
 from gpaw.new.ase_interface import GPAW as NewGPAW
+from gpaw.new.pw.nschse import NonSelfConsistentHSE06
 
 
 @pytest.fixture(scope='module')
@@ -32,7 +30,7 @@ def atoms() -> Atoms:
     return a
 
 
-def bandgap(eps: np.ndarray) -> Tuple[int, int, float]:
+def bandgap(eps: np.ndarray) -> tuple[int, int, float]:
     """Find band-gap."""
     k1 = eps[0, :, 0].argmax()
     k2 = eps[0, :, 1].argmin()

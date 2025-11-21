@@ -5,9 +5,9 @@ from ase.units import Bohr
 
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
-from gpaw.old.grid_descriptor import GridDescriptor, GridBoundsError
-from gpaw.gpu import cupy_is_fake, as_numpy, as_np, as_xp
+from gpaw.gpu import as_np, as_numpy, as_xp, cupy_is_fake
 from gpaw.new import trace
+from gpaw.old.grid_descriptor import GridBoundsError, GridDescriptor
 from gpaw.utilities import smallest_safe_grid_spacing
 
 """
@@ -387,7 +387,7 @@ class LocalizedFunctionsCollection(BaseLFC):
 
         self.lfc = cgpaw.LFC(self.A_Wgm, self.M_W, self.G_B, self.W_B,
                              self.gd.dv, self.phase_qW,
-                             self.gpu_add_and_integrate)
+                             self.gpu_add_and_integrate and self.xp is not np)
 
         return sdisp_Wc
 

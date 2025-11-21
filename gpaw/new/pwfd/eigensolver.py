@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 import numpy as np
 
@@ -13,9 +13,9 @@ from gpaw.new.c import calculate_residuals_gpu
 from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.hamiltonian import Hamiltonian
-from gpaw.utilities.blas import axpy
-from gpaw.utilities import as_real_dtype
 from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.utilities import as_real_dtype
+from gpaw.utilities.blas import axpy
 
 
 class PWFDEigensolver(Eigensolver):
@@ -113,11 +113,12 @@ class PWFDEigensolver(Eigensolver):
         if not hasattr(self, 'preconditioner'):
             self._initialize(ibzwfs)
 
-        wfs = ibzwfs.wfs_qs[0][0]
+        wfs = ibzwfs._wfs_u[0]
         dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
                                                     wfs.xp)
 
         ibzwfs.orthonormalize()
+        # ibzwfs = kpad(ibzwfs)
         hamiltonian.update_wave_functions(ibzwfs)
 
         apply = partial(hamiltonian.apply,
