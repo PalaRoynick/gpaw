@@ -45,7 +45,7 @@ class PWFDEigensolver(Eigensolver):
         G_max = int(np.prod(ibzwfs.get_max_shape()))
         b = max(wfs.n2 - wfs.n1 for wfs in ibzwfs)
         full_nbands = ibzwfs.nbands
-        dtype_size = ibzwfs.wfs_qs[0][0].psit_nX.data.dtype.itemsize
+        dtype_size = ibzwfs._wfs_u[0].psit_nX.data.dtype.itemsize
         domain_size = ibzwfs.domain_comm.size
 
         if self.max_buffer_mem is not None:
@@ -87,7 +87,7 @@ class PWFDEigensolver(Eigensolver):
         size = max(wfs.psit_nX.data_buffer.size for wfs in ibzwfs)
         shape += (size,)
         #shape += (b,) + ibzwfs.get_max_shape()
-        dtype = ibzwfs.wfs_qs[0][0].psit_nX.data.dtype
+        dtype = ibzwfs._wfs_u[0].psit_nX.data.dtype
         self.work_arrays = ibzwfs.xp.empty(shape, dtype)
 
     @trace

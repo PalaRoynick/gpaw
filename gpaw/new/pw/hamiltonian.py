@@ -38,6 +38,9 @@ class PWHamiltonian(Hamiltonian):
         vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
         tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
+        tmp_R = vt_R.new(
+            data=tmp_R
+        )
         tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
             pw_local = pw
