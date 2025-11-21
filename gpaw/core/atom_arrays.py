@@ -505,7 +505,7 @@ class AtomArrays:
             buffer_I = b_nI.data[0].copy()
             
             for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
-                atoms_comm.alltoallv(a_Ni.data, s_sizes, s_offsets,
+                atoms_comm.alltoallv(a_Ni.data.ravel(), s_sizes, s_offsets,
                                      buffer_I, r_sizes, r_offsets)
                 s_offsets += np.sum(s_sizes)
                 

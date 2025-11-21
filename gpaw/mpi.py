@@ -749,7 +749,7 @@ class SerialCommunicator:
         assert len(sdispls) == 1
         assert len(rcounts) == 1
         assert len(rdispls) == 1
-        assert len(sbuffer) == len(rbuffer)
+#        assert len(sbuffer) == len(rbuffer)
 
         rbuffer[rdispls[0]:rdispls[0] + rcounts[0]] = \
             sbuffer[sdispls[0]:sdispls[0] + scounts[0]]

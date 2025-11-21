@@ -482,7 +482,7 @@ class PPCG(PWFDEigensolver):
                 pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
                 psit0_nX = pw_desc.from_data(psit_nX.data)
                 residual0_nX = pw_desc.from_data(residual_nX.data)
-                Ht(psit0_nX, out=residual0_nX)
+                Ht(psit0_nX, out=residual0_nX, spin=wfs.spin, calculate_energy=True)
                 
                 psit_nX.domain_a2a_bands()
                 residual_nX.domain_a2a_bands()
@@ -494,13 +494,14 @@ class PPCG(PWFDEigensolver):
                 P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
 
             wfs.orthonormalized = False
+            wfs.orthonormalize(data_buffer=self.data_buffers[0])
             if break_after_update or i >= self.niter - 1:
                 break
 
             with tracectx('Residual'):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
-                    def fake_Ht(inp, out):
+                    def fake_Ht(inp, out, spin=None, calculate_energy=None):
                         return out
                     wfs.subspace_diagonalize(fake_Ht, dH,
                                              psit2_nX=residual_nX,
