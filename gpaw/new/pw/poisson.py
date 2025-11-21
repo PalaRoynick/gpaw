@@ -325,10 +325,10 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
 
         ophi_G = np.zeros_like(phi_G)
         for G_G in G_vG:
-            grad_G = pw.from_data(G_G * phi_G)
+            grad_G = pw.from_data(G_G * phi_G * 1j)
             grad_R = grad_G.ifft(grid=grid)
             grad_R.data *= self.eps0_R.data
-            ophi_G += grad_R.fft(pw=pw).data * G_G
+            ophi_G -= grad_R.fft(pw=pw).data * G_G * 1j
 
         return ophi_G
 
@@ -472,12 +472,13 @@ class FDPWsolver(PWPoissonSolver):
         rhot0_g = rhot_g.gather()
         vHt0_r = self.grid.new(comm=None).empty()
 #        if self.pw.comm.rank == 0:
-        print(self.grid._gd)
         if 1:
             rhot0_r = rhot0_g.ifft(grid=self.grid.new(comm=None))
             rhot_r.scatter_from(rhot0_r)
             vHt0_r = vHt0_g.ifft(grid=self.grid.new(comm=None))
-            self.real_space_solver.solve(vHt_r.data,rhot_r.data)
+            print(rhot0_r.data[0, 0])
+            vHt_r.data[:] = 0.0
+            self.real_space_solver.solve(vHt_r.data, rhot_r.data)
             # THE following fails dont know why
             vHt0_r = vHt_r.gather()
             vHt0_g = vHt0_r.fft(pw=self.pw)

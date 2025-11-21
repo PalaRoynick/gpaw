@@ -11,6 +11,10 @@ def f(a, z, z0, w):
     return np.exp(-((z - z0) / w)**2) / a**2 / np.pi**0.5 / w
 
 
+def dfdz(a, z, z0, w):
+    return f(a, z, z0, w) * 2 * (z0 - z) / w**2
+
+
 if 0:  # Analytic result
     from sympy import Symbol, exp, integrate, oo, var
     z = var('z')
@@ -25,23 +29,32 @@ def test_sjm():
     grid = UGDesc.from_cell_and_grid_spacing(cell=[a, a, L],
                                              grid_spacing=1 / 8)
     z = grid.xyz()[0, 0, :, 2]
-    c = 0.05
-    rhot = f(a, z, 4.0, 1.0) * (1 + c)  # electrons
-    rhot -= f(a, z, 4.0, 0.5)  # nucleui
+    c = 0.05*0
+    rhot = f(a, z, 5.0, 1.0) * (1 + c)  # electrons
+    rhot -= f(a, z, 5.0, 0.5)  # nucleui
     rhot -= f(a, z, 6.0, 1.0) * c  # jellium
-    eps = 1.0 + f(a, z, 5.0, 2.0) * 20  # dielectric
+    E = 20.0
+    eps = 1.0 + f(a, z, 5.0, 2.0) * E  # dielectric
+    depsdz = dfdz(a, z, 5.0, 2.0) * E  # dielectric
     rhot_r = grid.zeros()
     rhot_r.data[:] = rhot
     eps_r = grid.zeros()
+    depsdx_r = grid.zeros()
+    depsdz_r = grid.zeros()
     eps_r.data[:] = eps
+    depsdz_r.data[:] = depsdz
     print(rhot_r.integrate())
     pw = PWDesc(ecut=grid.ekin_max(), cell=grid.cell)
+    print(pw)
     ps = SJMPWPoissonSolver(pw, dielectric=None)
     vt_g = pw.zeros()
     rhot_g = rhot_r.fft(pw=pw)
     ps.solve(vt_g, rhot_g)
     vt_r = vt_g.ifft(grid=grid)
-    dielectric = SimpleNamespace(eps_gradeps=[eps_r.data])
+    dielectric = SimpleNamespace(eps_gradeps=[eps_r.data,
+                                              depsdx_r.data,
+                                              depsdx_r.data,
+                                              depsdz_r.data])
     ps2 = ConjugateGradientPoissonSolver(pw, grid, dielectric,
                                          zero_vacuum=not True)
     vt2_g = pw.zeros()
@@ -52,7 +65,8 @@ def test_sjm():
     vt3_g = pw.zeros()
     ps3.solve(vt3_g, rhot_g)
     vt3_r = vt3_g.ifft(grid=grid)
-
+    print(vt2_r.integrate())
+    print(vt3_r.integrate())
     if 1:
         import matplotlib.pyplot as plt
         plt.plot(z, rhot_r.data[0, 0])
