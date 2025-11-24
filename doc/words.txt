@@ -17,7 +17,7 @@ Brillouin
 Cholesky
 CLI
 collinear
-criterium
+criteria
 CSV
 cupy
 dataset
@@ -61,7 +61,7 @@ Hamann
 Hartree
 Hartwigsen
 HCP
-hermitian
+Hermitian
 Hirshfeld
 Hund
 Hutter
@@ -72,7 +72,6 @@ integrations
 intercalate
 iteratively
 jellium
-Jupyter
 Jupyter
 Kohn
 lapack
@@ -100,7 +99,7 @@ numpy
 optimizations
 orthonormal
 orthorhombic
-othonormalized
+orthonormalized
 parallelization
 parallelize
 parallelized
@@ -143,7 +142,6 @@ svdW
 SVG
 symmetrized
 symmorphic
-TB
 TB
 Thygesen
 Trac
@@ -252,7 +250,7 @@ Debiossac
 Delaunay
 Devlin
 Diagonalize
-Dictionart
+Dictionary
 Drude
 Dudarev
 DyNEB
@@ -278,7 +276,7 @@ Excercises
 Excitations
 Excitonic
 Excitons
-Explicitely
+Explicitly
 Exx
 FHI
 FZ
@@ -476,7 +474,6 @@ Nvidia
 Nørskov
 OPt
 Ojanen
-Ojanpera
 Ojanperä
 Okugawa
 Olevano
@@ -639,7 +636,6 @@ acroread
 adaptively
 adiabatically
 adjoint
-advicable
 ae
 aep
 al
@@ -690,7 +686,7 @@ bools
 bosons
 brainer
 bsub
-bulklike
+bulk-like
 bz
 bzk
 cDFT
@@ -702,7 +698,7 @@ cd
 cdft
 centrosymmetric
 chalcogen
-chared
+charged
 checkbox
 chemisorbed
 chiral
@@ -897,7 +893,7 @@ heptic
 hess
 heterostructure
 heterostructures
-hierarki
+hierarchy
 howto
 hpc
 hs
@@ -1004,10 +1000,9 @@ magmom
 magmoms
 magnetisation
 magnetons
-magnins
 magnon
 magnons
-magnoton
+magneton
 mahti
 majavi
 marzari
@@ -1021,7 +1016,7 @@ methfessel
 miniconda
 minima
 minimizer
-mininimum
+minimum
 mins
 mk
 mkl
@@ -1290,7 +1285,7 @@ tcsh
 tep
 tetragonal
 tetrahedra
-tetrahedras
+tetrahedron
 tetravalent
 thermodynamically
 thinlinc
