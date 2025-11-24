@@ -18,9 +18,9 @@ def generate_si_systems():
     return [si1, si2]
 
 
-def run(gpw_filename, nblocks, integrate_gamma, qpt=False):
+def run(gpw_filename, nblocks, integrate_gamma, qpt=False, *, comm):
     # This tests checks the actual numerical accuracy which is asserted below
-    calc = GPAW(gpw_filename)
+    calc = GPAW(gpw_filename, communicator=comm)
     e = calc.get_potential_energy()
 
     integrate_gamma = GammaIntegrationMode(integrate_gamma)
@@ -41,7 +41,7 @@ def run(gpw_filename, nblocks, integrate_gamma, qpt=False):
         for q in range(gw.nqpts):
             gw.calculate(qpoints=[q])
 
-    gw = G0W0(gpw_filename, 'gw_None', **kwargs)
+    gw = G0W0(gpw_filename, 'gw_None', world=comm, **kwargs)
     results = gw.calculate()
 
     G, X = results['eps'][0]
@@ -75,9 +75,9 @@ reference['1BZ2D'] = reference['1BZ']
 @pytest.mark.parametrize('nblocks',
                          [x for x in [1, 2, 4, 8] if x <= world.size])
 def test_response_gwsi(in_tmp_dir, si, symm, nblocks, integrate_gamma,
-                       scalapack, gpw_files):
+                       scalapack, gpw_files, comm):
     filename = gpw_files[f'si_gw_a{si}_{symm}']
-    assert run(filename, nblocks, integrate_gamma) ==\
+    assert run(filename, nblocks, integrate_gamma, comm=comm) ==\
            reference[integrate_gamma]
 
 
@@ -86,8 +86,8 @@ def test_response_gwsi(in_tmp_dir, si, symm, nblocks, integrate_gamma,
                                              'reciprocal2D',
                                              '1BZ2D'])
 @pytest.mark.response
-def test_integrate_gamma_modes(in_tmp_dir, integrate_gamma, gpw_files):
-    assert run(gpw_files['si_gw_a0_all'], 1, integrate_gamma) == \
+def test_integrate_gamma_modes(in_tmp_dir, integrate_gamma, gpw_files, comm):
+    assert run(gpw_files['si_gw_a0_all'], 1, integrate_gamma, comm=comm) == \
            reference[integrate_gamma]
 
 
@@ -96,9 +96,9 @@ def test_integrate_gamma_modes(in_tmp_dir, integrate_gamma, gpw_files):
 @pytest.mark.parametrize('si', [0, 1])
 @pytest.mark.parametrize('symm', ['all'])
 def test_small_response_gwsi(in_tmp_dir, si, symm, scalapack,
-                             gpw_files):
+                             gpw_files, comm):
     filename = gpw_files[f'si_gw_a{si}_{symm}']
-    assert run(filename, 1, 'sphere') == reference['sphere']
+    assert run(filename, 1, 'sphere', comm=comm) == reference['sphere']
 
 
 @pytest.mark.response

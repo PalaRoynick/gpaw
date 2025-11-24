@@ -6,7 +6,7 @@ from gpaw.tddft.abc import PML, LinearAbsorbingBoundary, P4AbsorbingBoundary
 
 
 @pytest.mark.old_gpaw_only
-def test_tddft_td_na2(in_tmp_dir, gpw_files):
+def test_tddft_td_na2(in_tmp_dir, gpw_files, comm):
     """Sodium dimer, Na2."""
     atoms = GPAW(gpw_files['na2_fd']).atoms
     # 16 fs run with 8.0 attosec time step

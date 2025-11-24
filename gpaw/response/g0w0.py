@@ -1127,6 +1127,8 @@ def choose_bands(bands, relbands, nvalence, nocc):
 
 
 class G0W0(G0W0Calculator):
+
+    @mpi.parallel(name='world')
     def __init__(self, calc, filename='gw',
                  ecut=150.0,
                  ecut_extrapolation=False,
@@ -1144,7 +1146,6 @@ class G0W0(G0W0Calculator):
                  nblocks=1,
                  nblocksmax=False,
                  kpts=None,
-                 world=mpi.world,
                  timer=None,
                  fxc_mode='GW',
                  fxc_modes=None,
@@ -1153,7 +1154,10 @@ class G0W0(G0W0Calculator):
                  q0_correction=False,
                  do_GW_too=False,
                  output_prefix=None,
-                 **kwargs):
+                 *,
+                 world,
+                 **kwargs,
+                 ):
         """G0W0 calculator wrapper.
 
         The G0W0 calculator is used to calculate the quasi
@@ -1384,7 +1388,7 @@ class G0W0(G0W0Calculator):
             fxc_modes.append('GW')
 
         exx_vxc_calculator = EXXVXCCalculator(
-            gpwfile, world=world,
+            gpwfile, world=world, 
             snapshotfile_prefix=filename)
 
         super().__init__(filename=filename,
@@ -1418,6 +1422,7 @@ class G0W0(G0W0Calculator):
 class EXXVXCCalculator:
     """EXX and Kohn-Sham XC contribution."""
 
+    @mpi.parallel(name='world')
     def __init__(self, gpwfile, snapshotfile_prefix, world=None):
         self._gpwfile = gpwfile
         self._snapshotfile_prefix = snapshotfile_prefix

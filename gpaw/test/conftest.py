@@ -432,6 +432,9 @@ def no_touch_world(monkeypatch, _not_world):
     #
     # With GPAW_DEBUG it will be wrapped, so in that case we can:
     if debug:
+        from gpaw.mpi import SerialCommunicator
+        monkeypatch.setattr(mpi, 'serial_comm', SerialCommunicator())
+
         monkeypatch.setattr(mpi.world, 'comm', None)
 
 
