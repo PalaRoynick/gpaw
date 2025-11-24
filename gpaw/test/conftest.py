@@ -436,7 +436,6 @@ def no_touch_world(monkeypatch, _not_world):
         monkeypatch.setattr(mpi, 'serial_comm', SerialCommunicator())
 
         monkeypatch.setattr(mpi.world, 'comm', None)
-    return _not_world
 
 
 @pytest.fixture(scope='session')
