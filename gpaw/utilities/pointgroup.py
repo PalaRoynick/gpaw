@@ -20,9 +20,51 @@ class CharacterTable:
     classes: list[str]
     characters_ig: np.array
 
+    @property
+    def order(self):
+        E = self.classes.index('E')
+        return np.sum(self.characters_ig[:, E]**2) 
+
+    @property
+    def normalized_characters_ig(self):
+        # TODO: Actually pass on ng's
+        def extract_n(s):
+            if s == 'E':
+                return 1
+            return int(s[0])
+
+        n_g = np.array([extract_n(cls) for cls in self.classes])
+        return self.characters_ig * n_g[None, :] / self.order
+
     @classmethod
     def from_data(cls, *, irreps, classes, table):
-        return CharacterTable(irreps, classes, table)
+        return CharacterTable(irreps, classes, np.array(table))
+
+    def in_conjugacy_order(self, names_g):
+        indices = [ self.classes.index(name) for name in names_g ]
+        return CharacterTable(self.irreps,
+                              [self.classes[idx] for idx in indices],
+                              self.characters_ig[:, indices])
+
+    def detect_irrep(self, signature_g):
+        print(self.normalized_characters_ig)
+        return self.normalized_characters_ig @ signature_g
+
+    def print(self):
+        try:
+            print("%-20s" % "irreps/classes", end="")
+
+            for name in self.classes:
+                print("%-5s" % name, end="")
+            print()
+            for i, iname in enumerate(self.irreps):
+                print("%-20s" % iname, end="")
+                for g, gname in enumerate(self.classes):
+                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]), end="")
+                print()
+        except ValueError:
+            print('...')
+
 
 @dataclass
 class SPGOperations:
@@ -59,7 +101,7 @@ class SPGOperations:
         origin_shift_c = dataset["origin_shift"]
         cell_cv = np.array(atoms.cell)
         dct = {'-6m2': 'D3h'}
-        pointgroup = dataset['pointgroup']
+        pointgroup = dct[dataset['pointgroup']]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
     @property
@@ -102,9 +144,20 @@ class Spacegroup:
         #self._name_groups_and_classes()
         print(self.ops_g)
         print(self.names_g)
-        self.print_character_table()
+        #self.print_character_table()
 
-        print(self.spg_ops.character_table)
+        character_table = self.spg_ops.character_table
+        if set(character_table.classes) != set(self.names_g):
+             print('Not in our names_g', set(character_table.classes) - set(self.names_g))
+             print('Not in our character_table', set(self.names_g) - set(character_table.classes))
+             raise ValueError('Cannot detect all of the conjugacy classes.')
+        
+        character_table = character_table.in_conjugacy_order(self.names_g)
+        character_table.print()
+
+        for i in range(self.character_ig.shape[0]):
+            print(character_table.detect_irrep(signature_g=self.character_ig[i]))
+ 
         asd
     def _detect_irreps(self):
         self.names_i = [self._detect_irrep(self.character_ig[i, :]) for i in range(self.character_ig.shape[0])]
@@ -206,7 +259,7 @@ class Spacegroup:
             return "6S4"  # -1j and 1j corresponds to 90 rotation. Determinant is -1 thus, improper.
         if np.all(np.isclose(eigs_o, [-1, 1, 1])):
             # Horizontal mirror operation flips one of the coordinates
-            return f"{len(det_o)}σh"
+            return f"{len(det_o)}sh"
         if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
             return "6sd"
         if len(det_o) == 8 and np.all(np.isclose(eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)])):
@@ -286,27 +339,6 @@ class Spacegroup:
                 mul_oo[o1, o2] = o3
                 inv_oo[o1, o3] = o2
         self.mul_oo, self.inv_oo = mul_oo, inv_oo
-
-    def print_character_table(self, class_order=None, irrep_order=None):
-        try:
-            print("%-20s" % "irreps/classes", end="")
-            if class_order is None:
-                class_order = self.names_g
-            if irrep_order is None:
-                irrep_order = self.names_i
-
-            for name in class_order:
-                print("%-5s" % name, end="")
-            print()
-            for iname in irrep_order:
-                i = self.names_i.index(iname)
-                print("%-20s" % self.names_i[i], end="")
-                for gname in class_order:
-                    g = self.names_g.index(gname)
-                    print("%-5s" % ("%+02d" % self.character_ig[i, g]), end="")
-                print()
-        except ValueError:
-            print('...')
 
 
 
