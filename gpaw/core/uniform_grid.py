@@ -776,8 +776,9 @@ class UGArray(DistributedArrays[UGDesc]):
 
     def symmetrize(self, rotation_scc, translation_sc):
         """Make data symmetric."""
-        if len(rotation_scc) == 1:
-            return
+        #if len(rotation_scc) == 1:
+        #    return
+        # XXX
 
         a_xR = self.gather()
 

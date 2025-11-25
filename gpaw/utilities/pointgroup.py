@@ -35,6 +35,17 @@ class CharacterTable:
 
         n_g = np.array([extract_n(cls) for cls in self.classes])
         return self.characters_ig * n_g[None, :] / self.order
+    
+    @property
+    def normalized_characters_ig2(self):
+        # TODO: Actually pass on ng's
+        def extract_n(s):
+            if s == 'E':
+                return 1
+            return int(s[0])
+        
+        n_g = np.array([extract_n(cls) for cls in self.classes])
+        return self.characters_ig / self.characters_ig[:, :1]
 
     @classmethod
     def from_data(cls, *, irreps, classes, table):
@@ -49,6 +60,9 @@ class CharacterTable:
     def detect_irrep(self, signature_g):
         print(self.normalized_characters_ig)
         return self.normalized_characters_ig @ signature_g
+    
+    def detect_irrep2(self, signature_g):
+        return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
 
     def print(self):
         try:
@@ -157,15 +171,24 @@ class Spacegroup:
 
         for i in range(self.character_ig.shape[0]):
             print(character_table.detect_irrep(signature_g=self.character_ig[i]))
+
+        self.character_table = character_table
+
+    def signature(self, projectable):
+        signature = np.zeros((len(self.names_g),), dtype=complex)
+        for o, op_cc in enumerate(self.ops_occ):
+            g = self.g_o[o]
+            signature[g] += 1 / len(self.ops_g[g]) * projectable.dot(projectable.operation(op_cc))
+        return signature
+
+    def detect_irrep(self, signature):
+        return self.character_table.detect_irrep2(signature)  
  
-        asd
     def _detect_irreps(self):
         self.names_i = [self._detect_irrep(self.character_ig[i, :]) for i in range(self.character_ig.shape[0])]
 
     def class_id(self, classname):
         return self.names_g.index(classname)
-
-
 
     def _detect_irrep(self, signature):
         h = signature[ self.class_id("E") ]
@@ -279,7 +302,6 @@ class Spacegroup:
 
         print(f'{ops_occ=}')
         print(f'{det_o=} {eigs_o=}')
-        asd
         return "bug?"
 
     def _detect_conjugacy_classes(self):
@@ -313,7 +335,6 @@ class Spacegroup:
                 #assert(abs(int(np.round(traces_o[0])) - traces_o[0]) < 1e-10)
 
         self.character_ig = character_ig
-        print(character_ig)
 
     def diagonalize_and_group(self, H_oo):
         eps, psi = np.linalg.eigh(H_oo)
@@ -347,19 +368,74 @@ if __name__ == "__main__":
 
     primitive = mx2("MoS2", "2H", a=3.16, thickness=3.17, vacuum=5.0)
     primitive.rotate("z", 90, rotate_cell=True)
+    primitive.set_pbc(True)
     # transform = np.array([[4, -2, 0],
     #                       [1,  4, 0],
     #                       [0,  0, 1]])
     # atoms = make_supercell(primitive, transform, wrap=True)
     atoms = primitive.repeat((2, 2, 1))
-    atoms.translate([0, 0, 3.1415])
+    #atoms.translate([0, 0, 3.1415])
     atoms[0].symbol = "H"
     print(atoms)
-
     spg_ops = SPGOperations.from_atoms(atoms)
     origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
+    atoms = atoms.copy()
+    print('shift', spg_ops.origin_shift_c @ atoms.cell)
+    atoms.translate(spg_ops.origin_shift_c @ atoms.cell)
     print(spg_ops)
     print(origin_ops)
     assert np.allclose(origin_ops.w_sc, 0)
 
-    Spacegroup(origin_ops, None) 
+    sg = Spacegroup(origin_ops, None)
+
+    del atoms[0]
+
+    from gpaw import GPAW
+    if 0:
+        calc = GPAW(mode={'name': 'pw', 'force_complex_dtype': True}, xc='LDA', kpts=(1,1,1))
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        calc.write('MoS2_test.gpw', mode='all')
+
+    calc = GPAW('MoS2_test.gpw')
+
+    class Projectable:
+        def __init__(self, calc, cell_cv, wf):
+            self.calc = calc
+            self.cell_cv = cell_cv
+            self.wf = wf
+
+        @classmethod
+        def from_calc(cls, calc, n):
+            if 0:
+                gamma = next(iter(calc.dft.ibzwfs))
+                wf = gamma.psit_nX[n] #get_pseudo_wave_function(n, grid_spacing=0.05)
+            wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
+            return Projectable(calc, calc.atoms.cell, wf)
+
+        def dot(self, projectable):
+            return self.wf.integrate(projectable.wf)
+
+        def operation(self, op_vv):
+            cell_cv = calc.atoms.cell
+
+            #op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
+
+            op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
+            op_cc = op_cc.T.copy()
+            op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
+            
+            wf = self.wf.copy()
+            wf.symmetrize([op_cc_int], np.array([[0,0,0]], dtype=np.int64))
+            return Projectable(self.calc, cell_cv, self.wf)
+            #assert np.allclose(op_cc, op_cc_int) 
+            #wf2 = np.zeros_like(self.wf)
+            #offset_c = np.zeros(3, dtype=np.int64)
+            #from _gpaw import symmetrize
+            #asdff
+            #symmetrize(self.wf, wf2, op_cc, offset_c)
+            return Projectable(self.calc, cell_cv, wf2)
+
+    for band in range(100):
+        for irrep, s in zip(sg.character_table.irreps, sg.detect_irrep(sg.signature(Projectable.from_calc(calc, band)))):
+            print(band, irrep, f'{s.real:.2f}') 
