@@ -9,7 +9,7 @@ from ase.lattice.compounds import L1_2
 from ase.lattice.hexagonal import Graphene
 from ase.units import Bohr
 
-from gpaw import FD, GPAW, LCAO, PW, Davidson, FermiDirac, Mixer
+from gpaw import FD, LCAO, PW, Davidson, FermiDirac, Mixer
 from gpaw.directmin.derivatives import Davidson as SICDavidson
 from gpaw.directmin.etdm_fdpw import FDPWETDM
 from gpaw.directmin.etdm_lcao import LCAOETDM
@@ -19,6 +19,8 @@ from gpaw.mpi import serial_comm, world
 from gpaw.new.ase_interface import GPAW as GPAWNew
 from gpaw.poisson import FDPoissonSolver, PoissonSolver
 from gpaw.test.cachedfilehandler import CachedFilesHandler
+
+GPAW = GPAWNew
 
 response_band_cutoff = {}
 _all_gpw_methodnames = set()
