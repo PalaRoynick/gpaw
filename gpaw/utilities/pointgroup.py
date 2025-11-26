@@ -160,9 +160,10 @@ class SPGOperations:
 
 
 class PointGroup:
-    def __init__(self, spg_ops, character_table):
+    def __init__(self, spg_ops, character_table, principal_axis=[0,0,1]):
         self.spg_ops = spg_ops
         self.verbose = True
+        self.principal_axis = principal_axis
 
         self._build_multiplication_table()
         self._find_conjugacy_classes()
@@ -311,7 +312,26 @@ class PointGroup:
             return "6S4"  # -1j and 1j corresponds to 90 rotation. Determinant is -1 thus, improper.
         if np.all(np.isclose(eigs_o, [-1, 1, 1])):
             # Horizontal mirror operation flips one of the coordinates
-            return f"{len(det_o)}sh"
+            name = f"{len(det_o)}s"
+            reflection_type = ''
+            for op_cc in ops_occ:
+                eigs, vecs = np.linalg.eig(op_cc)
+                I = np.argmin(eigs)
+
+                # Reflection axis parallel to the reflection plane
+                axis = vecs[:, I]
+
+                D = np.abs(np.dot(self.principal_axis, axis))
+                if np.allclose(D, 1):
+                    reflection_type += 'h'
+                elif np.allclose(D, 0):
+                    reflection_type += 'v'
+                else:
+                    raise ValueError('Unknown reflection type') 
+            assert len(set(reflection_type)) ==1
+            name += reflection_type[0]
+            return name
+            
         if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
             return "6sd"
         if len(det_o) == 8 and np.all(
