@@ -409,85 +409,39 @@ class PointGroup:
         self.mul_oo, self.inv_oo = mul_oo, inv_oo
 
 
-if __name__ == "__main__":
-    from ase.build import mx2
+class Projectable:
+    def __init__(self, calc, cell_cv, wf):
+        self.calc = calc
+        self.cell_cv = cell_cv
+        self.wf = wf
 
-    primitive = mx2("MoS2", "2H", a=3.16, thickness=3.17, vacuum=5.0)
-    primitive.rotate("z", 90, rotate_cell=True)
-    primitive.set_pbc(True)
-    # transform = np.array([[4, -2, 0],
-    #                       [1,  4, 0],
-    #                       [0,  0, 1]])
-    # atoms = make_supercell(primitive, transform, wrap=True)
-    atoms = primitive.repeat((2, 2, 1))
-    # atoms.translate([0, 0, 3.1415])
-    atoms[0].symbol = "H"
-    print(atoms)
-    spg_ops = SPGOperations.from_atoms(atoms)
-    origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
-    atoms = atoms.copy()
-    print("shift", spg_ops.origin_shift_c @ atoms.cell)
-    atoms.translate(spg_ops.origin_shift_c @ atoms.cell)
-    print(spg_ops)
-    print(origin_ops)
-    assert np.allclose(origin_ops.w_sc, 0)
+    @classmethod
+    def from_calc(cls, calc, n):
+        if 0:
+            gamma = next(iter(calc.dft.ibzwfs))
+            wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
+        wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
+        return Projectable(calc, calc.atoms.cell, wf)
 
-    pg = PointGroup(origin_ops, None)
+    def dot(self, projectable):
+        return self.wf.integrate(projectable.wf)
 
-    del atoms[0]
+    def operation(self, op_vv):
+        cell_cv = self.calc.atoms.cell
 
-    from gpaw import GPAW
+        # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
 
-    if 0:
-        calc = GPAW(
-            mode={"name": "pw", "force_complex_dtype": True}, xc="LDA", kpts=(1, 1, 1)
-        )
-        atoms.calc = calc
-        atoms.get_potential_energy()
-        calc.write("MoS2_test.gpw", mode="all")
+        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
+        op_cc = op_cc.T.copy()
+        op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
 
-    calc = GPAW("MoS2_test.gpw")
-
-    class Projectable:
-        def __init__(self, calc, cell_cv, wf):
-            self.calc = calc
-            self.cell_cv = cell_cv
-            self.wf = wf
-
-        @classmethod
-        def from_calc(cls, calc, n):
-            if 0:
-                gamma = next(iter(calc.dft.ibzwfs))
-                wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
-            wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
-            return Projectable(calc, calc.atoms.cell, wf)
-
-        def dot(self, projectable):
-            return self.wf.integrate(projectable.wf)
-
-        def operation(self, op_vv):
-            cell_cv = calc.atoms.cell
-
-            # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
-
-            op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
-            op_cc = op_cc.T.copy()
-            op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
-
-            wf = self.wf.copy()
-            wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
-            return Projectable(self.calc, cell_cv, self.wf)
-            # assert np.allclose(op_cc, op_cc_int)
-            # wf2 = np.zeros_like(self.wf)
-            # offset_c = np.zeros(3, dtype=np.int64)
-            # from _gpaw import symmetrize
-            # asdff
-            # symmetrize(self.wf, wf2, op_cc, offset_c)
-            # return Projectable(self.calc, cell_cv, wf2)
-
-    for band in range(100):
-        for irrep, s in zip(
-            pg.character_table.irreps,
-            pg.detect_irrep(pg.signature(Projectable.from_calc(calc, band))),
-        ):
-            print(band, irrep, f"{s.real:.2f}")
+        wf = self.wf.copy()
+        wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
+        return Projectable(self.calc, cell_cv, self.wf)
+        # assert np.allclose(op_cc, op_cc_int)
+        # wf2 = np.zeros_like(self.wf)
+        # offset_c = np.zeros(3, dtype=np.int64)
+        # from _gpaw import symmetrize
+        # asdff
+        # symmetrize(self.wf, wf2, op_cc, offset_c)
+        # return Projectable(self.calc, cell_cv, wf2)
