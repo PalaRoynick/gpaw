@@ -46,7 +46,7 @@ class CharacterTable:
                 return 1
             return int(s[0])
 
-        n_g = np.array([extract_n(cls) for cls in self.classes])
+        # n_g = np.array([extract_n(cls) for cls in self.classes])
         return self.characters_ig / self.characters_ig[:, :1]
 
     @classmethod
@@ -78,7 +78,8 @@ class CharacterTable:
             for i, iname in enumerate(self.irreps):
                 print("%-20s" % iname, end="")
                 for g, gname in enumerate(self.classes):
-                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]), end="")
+                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]),
+                          end="")
                 print()
         except ValueError:
             print("...")
@@ -158,7 +159,7 @@ class SPGOperations:
         return s
 
 
-class Spacegroup:
+class PointGroup:
     def __init__(self, spg_ops, character_table):
         self.spg_ops = spg_ops
         self.verbose = True
@@ -176,7 +177,8 @@ class Spacegroup:
         character_table = self.spg_ops.character_table
         if set(character_table.classes) != set(self.names_g):
             print(
-                "Not in our names_g", set(character_table.classes) - set(self.names_g)
+                "Not in our names_g",
+                set(character_table.classes) - set(self.names_g)
             )
             print(
                 "Not in our character_table",
@@ -430,7 +432,7 @@ if __name__ == "__main__":
     print(origin_ops)
     assert np.allclose(origin_ops.w_sc, 0)
 
-    sg = Spacegroup(origin_ops, None)
+    pg = PointGroup(origin_ops, None)
 
     del atoms[0]
 
@@ -481,11 +483,11 @@ if __name__ == "__main__":
             # from _gpaw import symmetrize
             # asdff
             # symmetrize(self.wf, wf2, op_cc, offset_c)
-            return Projectable(self.calc, cell_cv, wf2)
+            # return Projectable(self.calc, cell_cv, wf2)
 
     for band in range(100):
         for irrep, s in zip(
-            sg.character_table.irreps,
-            sg.detect_irrep(sg.signature(Projectable.from_calc(calc, band))),
+            pg.character_table.irreps,
+            pg.detect_irrep(pg.signature(Projectable.from_calc(calc, band))),
         ):
             print(band, irrep, f"{s.real:.2f}")
