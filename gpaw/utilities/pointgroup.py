@@ -62,7 +62,6 @@ class CharacterTable:
         )
 
     def detect_irrep(self, signature_g):
-        print(self.normalized_characters_ig)
         return self.normalized_characters_ig @ signature_g
 
     def detect_irrep2(self, signature_g):
@@ -120,7 +119,7 @@ class SPGOperations:
         w_sc = dataset["translations"]
         origin_shift_c = dataset["origin_shift"]
         cell_cv = np.array(atoms.cell)
-        dct = {"-6m2": "D3h"}
+        dct = {"-6m2": "D3h", "3m": "C3v"}
         pointgroup = dct[dataset["pointgroup"]]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
@@ -255,7 +254,7 @@ class PointGroup:
 
     @property
     def ops_occ(self):  # XXX change to vv
-        return spg_ops.O_svv
+        return self.spg_ops.O_svv
 
     def get_op_id(self, op_cc):
         for o1, op1_cc in enumerate(self.ops_occ):
@@ -430,21 +429,25 @@ class PointGroup:
 
 
 class Projectable:
-    def __init__(self, calc, cell_cv, wf):
+    def __init__(self, calc, cell_cv, wf, pseudo_wf=True):
         self.calc = calc
         self.cell_cv = cell_cv
         self.wf = wf
+        self.pseudo_wf = pseudo_wf
 
     @classmethod
-    def from_calc(cls, calc, n):
-        if 0:
+    def from_calc(cls, calc, n, pseudo_wf=True):
+        if pseudo_wf:
             gamma = next(iter(calc.dft.ibzwfs))
             wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
-        wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
-        return Projectable(calc, calc.atoms.cell, wf)
+        else:
+            asd # XXX DOes not work yet
+            wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
+        return Projectable(calc, calc.atoms.cell, wf, pseudo_wf=pseudo_wf)
 
     def dot(self, projectable):
-        return self.wf.integrate(projectable.wf)
+        result = self.wf.integrate(projectable.wf)
+        return result
 
     def operation(self, op_vv):
         cell_cv = self.calc.atoms.cell
@@ -454,14 +457,15 @@ class Projectable:
         op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
         op_cc = op_cc.T.copy()
         op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
+        assert np.allclose(op_cc, op_cc_int)
 
-        wf = self.wf.copy()
-        wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
-        return Projectable(self.calc, cell_cv, self.wf)
-        # assert np.allclose(op_cc, op_cc_int)
-        # wf2 = np.zeros_like(self.wf)
-        # offset_c = np.zeros(3, dtype=np.int64)
-        # from _gpaw import symmetrize
-        # asdff
-        # symmetrize(self.wf, wf2, op_cc, offset_c)
-        # return Projectable(self.calc, cell_cv, wf2)
+        if self.pseudo_wf:
+            wf2 = self.wf.transform(op_cc_int)
+            return Projectable(self.calc, cell_cv, wf2)
+        else:
+            # This one does not infact work
+            asd
+            wf = self.wf.copy()
+            wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
+            return Projectable(self.calc, cell_cv, wf)
+
