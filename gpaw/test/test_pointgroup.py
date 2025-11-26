@@ -14,9 +14,13 @@ def create_mos2(pg_type="D3h"):
     primitive.rotate("z", 90, rotate_cell=True)
     primitive.set_pbc(True)
     atoms = primitive.repeat((2, 2, 1))
+    #return atoms.copy(), atoms.copy()
     #atoms.translate([0, 0, 3.1415])
     if pg_type == "C3v":
         atoms[1].symbol = "H"
+        shift = -atoms[1].position
+        shift[2] = 0
+        atoms.translate(shift)
     elif pg_type == "D3h":
         atoms[0].symbol = "H"
     else:
@@ -49,7 +53,7 @@ def test_point_groups(group):
     from gpaw.new.ase_interface import GPAW
 
     fname = f"MoS2_test_{group}.gpw"
-    if 0:
+    if 1:
         calc = GPAW(
             mode={"name": "pw", "force_complex_dtype": True},
             xc="LDA",
@@ -61,8 +65,8 @@ def test_point_groups(group):
         calc.write(fname, mode="all")
 
     calc = GPAW(fname)
-
-    reference = """A'2 
+    if group == 'D3h': 
+        reference = """A'2 
 E'1 
 E'1 
 A'1 
@@ -74,9 +78,23 @@ A'1
 A'2 
 E'1 
 E'1""".split('\n')
+    elif group == 'C3v':
+        # Kartik todo
+        reference = """E 
+E 
+E 
+E 
+A1
+A2
+E 
+E 
+A1
+A1
+E 
+E""".split('\n') 
 
     for band, ref in zip(range(39, 51), reference):
-        ref = ref.strip() # Kartik
+        ref = ref.strip() # XXX remove whitespace
         signature = pg.signature(Projectable.from_calc(calc, band))
         found = None
         for irrep, s in zip(

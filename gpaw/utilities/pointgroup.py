@@ -111,6 +111,7 @@ class SPGOperations:
             aperiodic_dir=2,
             symprec=1e-1,
         )
+        print(f'{dataset=}')
         return cls.from_dataset(dataset, atoms)
 
     @classmethod
