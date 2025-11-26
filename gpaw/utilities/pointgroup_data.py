@@ -19,7 +19,7 @@ C3v = {
 
 C2v = {
     "irreps": ["A1", "A2", "B1", "B2"],
-    "classes": ["E", "C2", "sv_xz", "sv_yz"],
+    "classes": ["E", "1C2", "1sv_xz", "1sv_yz"],
     'table': [[1., 1., 1., 1.],
               [1., 1., -1., -1.],
               [1., -1., 1., -1.],
@@ -45,4 +45,5 @@ Oh = {
 """
 
 character_tables = {'D3h': D3h,
-                    'C3v': C3v}
+                    'C3v': C3v,
+                    'C2v': C2v}

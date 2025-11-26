@@ -11,11 +11,12 @@ def create_mos2(pg_type="D3h"):
     one Mo atom or one S atom.
     """
     primitive = mx2("MoS2", "2H", a=3.16, thickness=3.17, vacuum=5.0)
-    primitive.rotate("z", 90, rotate_cell=True)
+    primitive.rotate("z", 13.55, rotate_cell=True)
     primitive.set_pbc(True)
     atoms = primitive.repeat((2, 2, 1))
     #return atoms.copy(), atoms.copy()
-    #atoms.translate([0, 0, 3.1415])
+    atoms.translate([0, 0, 3.1415])
+    atoms.set_scaled_positions(-atoms.get_scaled_positions())
     if pg_type == "C3v":
         atoms[1].symbol = "H"
         shift = -atoms[1].position
@@ -37,6 +38,37 @@ def create_mos2(pg_type="D3h"):
 
     return Hreplaced_atoms, atoms
 
+def analyze_symmetry(calc):
+    spg_ops = SPGOperations.from_atoms(calc.atoms)
+    pg = PointGroup(spg_ops, None)
+    for band in range(100):
+        signature = pg.signature(Projectable.from_calc(calc, band))
+        found = None
+        for irrep, s in zip(
+            pg.character_table.irreps,
+            pg.detect_irrep(signature),
+        ):
+            if s > 0.01:
+                print(band, irrep, f"{s.real:.2f}")
+                assert found is None
+                found = irrep
+
+def test_H2O():
+    from ase.build import molecule
+    atoms = molecule('H2O')
+    atoms.center(vacuum=5)
+    from gpaw.new.ase_interface import GPAW
+    calc = GPAW(
+        mode={"name": "pw", "force_complex_dtype": True},
+        xc="LDA",
+        kpts=(1, 1, 1),
+        convergence={'density':1e-3, 'eigenstates': 1e-5},
+    )
+    atoms.calc = calc
+    atoms.get_potential_energy()
+    analyze_symmetry(calc)
+
+
 @pytest.mark.parametrize('group', ['D3h', 'C3v'])
 def test_point_groups(group):
     Hreplaced_atoms, atoms = create_mos2(pg_type=group)
@@ -48,7 +80,6 @@ def test_point_groups(group):
     print(origin_ops.w_sc)
     assert np.allclose(origin_ops.w_sc, 0)
     pg = PointGroup(origin_ops, None)
-
 
     from gpaw.new.ase_interface import GPAW
 

@@ -120,7 +120,7 @@ class SPGOperations:
         w_sc = dataset["translations"]
         origin_shift_c = dataset["origin_shift"]
         cell_cv = np.array(atoms.cell)
-        dct = {"-6m2": "D3h", "3m": "C3v"}
+        dct = {"-6m2": "D3h", "3m": "C3v", "mm2": "C2v"}
         pointgroup = dct[dataset["pointgroup"]]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
@@ -168,7 +168,11 @@ class PointGroup:
         self._build_multiplication_table()
         self._find_conjugacy_classes()
         self._build_character_table()
+
+        from collections import defaultdict
+        self.used_class_names = defaultdict(int)
         self._detect_conjugacy_classes()
+
         self._detect_irreps()
         # self._name_groups_and_classes()
         print(self.ops_g)
@@ -299,7 +303,7 @@ class PointGroup:
         det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
         eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "C2"
+            return "1C2"
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, -1])):
             return "i"  # Inversion flips all axes, -x, -y, -z
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [1, 1, 1])):
@@ -330,7 +334,9 @@ class PointGroup:
                     raise ValueError('Unknown reflection type') 
             assert len(set(reflection_type)) ==1
             name += reflection_type[0]
-            return name
+            self.used_class_names[name] += 1
+            # XXX Save something to self, which indicated the xz and yz planes
+            return name + [None, '_xz','_yz'][self.used_class_names[name]]
             
         if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
             return "6sd"
