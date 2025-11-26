@@ -1,18 +1,20 @@
 from dataclasses import dataclass
 import numpy as np
 
+
 def ppstr(W_cc, w_c=None):
-    s = ''
+    s = ""
     for i in range(3):
         s += "[ "
         for j in range(3):
             s += f"{W_cc[i, j]:5.2f} "
         s += "] "
         if w_c is None:
-            s += '\n'
+            s += "\n"
         else:
             s += f"  [ {w_c[i]:.2f} ]\n"
-    return s + '\n'
+    return s + "\n"
+
 
 @dataclass
 class CharacterTable:
@@ -22,28 +24,28 @@ class CharacterTable:
 
     @property
     def order(self):
-        E = self.classes.index('E')
-        return np.sum(self.characters_ig[:, E]**2) 
+        E = self.classes.index("E")
+        return np.sum(self.characters_ig[:, E] ** 2)
 
     @property
     def normalized_characters_ig(self):
         # TODO: Actually pass on ng's
         def extract_n(s):
-            if s == 'E':
+            if s == "E":
                 return 1
             return int(s[0])
 
         n_g = np.array([extract_n(cls) for cls in self.classes])
         return self.characters_ig * n_g[None, :] / self.order
-    
+
     @property
     def normalized_characters_ig2(self):
         # TODO: Actually pass on ng's
         def extract_n(s):
-            if s == 'E':
+            if s == "E":
                 return 1
             return int(s[0])
-        
+
         n_g = np.array([extract_n(cls) for cls in self.classes])
         return self.characters_ig / self.characters_ig[:, :1]
 
@@ -52,15 +54,17 @@ class CharacterTable:
         return CharacterTable(irreps, classes, np.array(table))
 
     def in_conjugacy_order(self, names_g):
-        indices = [ self.classes.index(name) for name in names_g ]
-        return CharacterTable(self.irreps,
-                              [self.classes[idx] for idx in indices],
-                              self.characters_ig[:, indices])
+        indices = [self.classes.index(name) for name in names_g]
+        return CharacterTable(
+            self.irreps,
+            [self.classes[idx] for idx in indices],
+            self.characters_ig[:, indices],
+        )
 
     def detect_irrep(self, signature_g):
         print(self.normalized_characters_ig)
         return self.normalized_characters_ig @ signature_g
-    
+
     def detect_irrep2(self, signature_g):
         return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
 
@@ -77,7 +81,7 @@ class CharacterTable:
                     print("%-5s" % ("%+02d" % self.characters_ig[i, g]), end="")
                 print()
         except ValueError:
-            print('...')
+            print("...")
 
 
 @dataclass
@@ -91,6 +95,7 @@ class SPGOperations:
     @property
     def character_table(self):
         from gpaw.utilities.pointgroup_data import character_tables
+
         return CharacterTable.from_data(**character_tables[self.pointgroup])
 
     @classmethod
@@ -114,8 +119,8 @@ class SPGOperations:
         w_sc = dataset["translations"]
         origin_shift_c = dataset["origin_shift"]
         cell_cv = np.array(atoms.cell)
-        dct = {'-6m2': 'D3h'}
-        pointgroup = dct[dataset['pointgroup']]
+        dct = {"-6m2": "D3h"}
+        pointgroup = dct[dataset["pointgroup"]]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
     @property
@@ -133,13 +138,21 @@ class SPGOperations:
 
         spos'_c = W_cc (spos_c - origin_shift_c) + w_c + origin_shift_c
         """
-        w_sc = self.w_sc - np.einsum('scd,d->sc', self.W_scc, -origin_shift_c) + self.origin_shift_c
+        w_sc = (
+            self.w_sc
+            - np.einsum("scd,d->sc", self.W_scc, -origin_shift_c)
+            + self.origin_shift_c
+        )
         return SPGOperations(
-            self.W_scc, w_sc, self.origin_shift_c - origin_shift_c, self.cell_cv, self.pointgroup,
+            self.W_scc,
+            w_sc,
+            self.origin_shift_c - origin_shift_c,
+            self.cell_cv,
+            self.pointgroup,
         )
 
     def __repr__(self):
-        s = ''
+        s = ""
         for l in zip(self.W_scc, self.w_sc):
             s += ppstr(*l)
         return s
@@ -155,17 +168,22 @@ class Spacegroup:
         self._build_character_table()
         self._detect_conjugacy_classes()
         self._detect_irreps()
-        #self._name_groups_and_classes()
+        # self._name_groups_and_classes()
         print(self.ops_g)
         print(self.names_g)
-        #self.print_character_table()
+        # self.print_character_table()
 
         character_table = self.spg_ops.character_table
         if set(character_table.classes) != set(self.names_g):
-             print('Not in our names_g', set(character_table.classes) - set(self.names_g))
-             print('Not in our character_table', set(self.names_g) - set(character_table.classes))
-             raise ValueError('Cannot detect all of the conjugacy classes.')
-        
+            print(
+                "Not in our names_g", set(character_table.classes) - set(self.names_g)
+            )
+            print(
+                "Not in our character_table",
+                set(self.names_g) - set(character_table.classes),
+            )
+            raise ValueError("Cannot detect all of the conjugacy classes.")
+
         character_table = character_table.in_conjugacy_order(self.names_g)
         character_table.print()
 
@@ -178,42 +196,47 @@ class Spacegroup:
         signature = np.zeros((len(self.names_g),), dtype=complex)
         for o, op_cc in enumerate(self.ops_occ):
             g = self.g_o[o]
-            signature[g] += 1 / len(self.ops_g[g]) * projectable.dot(projectable.operation(op_cc))
+            signature[g] += (
+                1 / len(self.ops_g[g]) * projectable.dot(projectable.operation(op_cc))
+            )
         return signature
 
     def detect_irrep(self, signature):
-        return self.character_table.detect_irrep2(signature)  
- 
+        return self.character_table.detect_irrep2(signature)
+
     def _detect_irreps(self):
-        self.names_i = [self._detect_irrep(self.character_ig[i, :]) for i in range(self.character_ig.shape[0])]
+        self.names_i = [
+            self._detect_irrep(self.character_ig[i, :])
+            for i in range(self.character_ig.shape[0])
+        ]
 
     def class_id(self, classname):
         return self.names_g.index(classname)
 
     def _detect_irrep(self, signature):
-        h = signature[ self.class_id("E") ]
+        h = signature[self.class_id("E")]
         if h == 1:
-            sig = 'A'
+            sig = "A"
         elif h == 2:
-            sig = 'E'
+            sig = "E"
         elif h == 3:
-            sig = 'T'
+            sig = "T"
         else:
-            sig = 'h' + str(h)
+            sig = "h" + str(h)
 
         return sig + str(signature)
         if np.all(signature == 1):
             return "A1"
         return str(h)
-        #"AET"[len(signature)]
-        h = signature[ self.class_id("E") ]
+        # "AET"[len(signature)]
+        h = signature[self.class_id("E")]
 
-        #rotations = [ self.class_id(name) for name in self.names_g if ("C" in name) ]
+        # rotations = [ self.class_id(name) for name in self.names_g if ("C" in name) ]
         rotations = self.class_id("6C2")
-        ug = "g" if signature[ self.class_id("i") ] > 0 else "u"
+        ug = "g" if signature[self.class_id("i")] > 0 else "u"
         C = "?"
         N = ""
-        if signature[self.class_id("6C4")]>0:
+        if signature[self.class_id("6C4")] > 0:
             N = "1"
         else:
             N = "2"
@@ -223,21 +246,20 @@ class Spacegroup:
             C = "E"
             N = ""
         if h == 3:
-            C="T"
+            C = "T"
 
-        return C+N+ug
-
+        return C + N + ug
 
     @property
-    def ops_occ(self): # XXX change to vv
-        return spg_ops.O_svv 
-   
+    def ops_occ(self):  # XXX change to vv
+        return spg_ops.O_svv
+
     def get_op_id(self, op_cc):
         for o1, op1_cc in enumerate(self.ops_occ):
             if np.linalg.norm(op_cc - op1_cc) < 1e-8:
                 return o1
         raise ValueError("Unknown operation: %s." % str(op_cc))
- 
+
     def _find_conjugacy_classes(self):
         ops_occ = self.ops_occ
         N = len(ops_occ)
@@ -253,7 +275,12 @@ class Spacegroup:
             op1 = op_pool[0]
             op1_cc = ops_occ[op1]
             # ...conjugate it with all possible operations, see the result, and remove any duplicates
-            conjugacy_class = np.unique([self.get_op_id(np.dot(op2_cc, np.dot(op1_cc, op2_cc.T))) for o2, op2_cc in enumerate(ops_occ)])
+            conjugacy_class = np.unique(
+                [
+                    self.get_op_id(np.dot(op2_cc, np.dot(op1_cc, op2_cc.T)))
+                    for o2, op2_cc in enumerate(ops_occ)
+                ]
+            )
 
             # Fill g_o array that maps ops to class
             for op in conjugacy_class:
@@ -285,11 +312,19 @@ class Spacegroup:
             return f"{len(det_o)}sh"
         if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
             return "6sd"
-        if len(det_o) == 8 and np.all(np.isclose(eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)])):
+        if len(det_o) == 8 and np.all(
+            np.isclose(
+                eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)]
+            )
+        ):
             return "8S6"
         if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1j, 1j, 1])):
             return "6C4"
-        if len(det_o) == 8 and np.all(np.isclose(eigs_o, [np.exp(-1j * np.pi * 2 / 3), np.exp(1j * np.pi * 2 / 3), 1])):
+        if len(det_o) == 8 and np.all(
+            np.isclose(
+                eigs_o, [np.exp(-1j * np.pi * 2 / 3), np.exp(1j * np.pi * 2 / 3), 1]
+            )
+        ):
             return "8C3"
 
         if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
@@ -298,14 +333,17 @@ class Spacegroup:
         if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
             # XXX
             return "2C3"
-        #if len(det_o) == 1 and np.all(np.isclose(eig_o, [-1, 1 ,1])):
+        # if len(det_o) == 1 and np.all(np.isclose(eig_o, [-1, 1 ,1])):
 
-        print(f'{ops_occ=}')
-        print(f'{det_o=} {eigs_o=}')
+        print(f"{ops_occ=}")
+        print(f"{det_o=} {eigs_o=}")
         return "bug?"
 
     def _detect_conjugacy_classes(self):
-        self.names_g = [self._detect_conjugacy_class([self.ops_occ[o] for o in classops]) for classops in self.ops_g]
+        self.names_g = [
+            self._detect_conjugacy_class([self.ops_occ[o] for o in classops])
+            for classops in self.ops_g
+        ]
 
     def _build_character_table(self):
         ops_occ = self.ops_occ
@@ -327,12 +365,19 @@ class Spacegroup:
             for g, ops in enumerate(self.ops_g):
                 # It is not necessary to loop over all group operations. However, it will be a good sanity check.
                 # Calculate the trace of this irrep under operation o
-                traces_o = np.array([np.trace(np.dot(psi_no[:, self.mul_oo[:, o]], psi_no.T.conjugate())) for o in ops])
-                h = len(psi_no)**0.5
-                assert(np.all(abs(traces_o - traces_o[0]) < 1e-10))
+                traces_o = np.array(
+                    [
+                        np.trace(
+                            np.dot(psi_no[:, self.mul_oo[:, o]], psi_no.T.conjugate())
+                        )
+                        for o in ops
+                    ]
+                )
+                h = len(psi_no) ** 0.5
+                assert np.all(abs(traces_o - traces_o[0]) < 1e-10)
                 character_ig[i, g] = int(np.round(traces_o[0] / h))
-                #print(int(np.round(traces_o[0])) - traces_o[0])
-                #assert(abs(int(np.round(traces_o[0])) - traces_o[0]) < 1e-10)
+                # print(int(np.round(traces_o[0])) - traces_o[0])
+                # assert(abs(int(np.round(traces_o[0])) - traces_o[0]) < 1e-10)
 
         self.character_ig = character_ig
 
@@ -362,7 +407,6 @@ class Spacegroup:
         self.mul_oo, self.inv_oo = mul_oo, inv_oo
 
 
-
 if __name__ == "__main__":
     from ase.build import mx2
 
@@ -374,13 +418,13 @@ if __name__ == "__main__":
     #                       [0,  0, 1]])
     # atoms = make_supercell(primitive, transform, wrap=True)
     atoms = primitive.repeat((2, 2, 1))
-    #atoms.translate([0, 0, 3.1415])
+    # atoms.translate([0, 0, 3.1415])
     atoms[0].symbol = "H"
     print(atoms)
     spg_ops = SPGOperations.from_atoms(atoms)
     origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
     atoms = atoms.copy()
-    print('shift', spg_ops.origin_shift_c @ atoms.cell)
+    print("shift", spg_ops.origin_shift_c @ atoms.cell)
     atoms.translate(spg_ops.origin_shift_c @ atoms.cell)
     print(spg_ops)
     print(origin_ops)
@@ -391,13 +435,16 @@ if __name__ == "__main__":
     del atoms[0]
 
     from gpaw import GPAW
+
     if 0:
-        calc = GPAW(mode={'name': 'pw', 'force_complex_dtype': True}, xc='LDA', kpts=(1,1,1))
+        calc = GPAW(
+            mode={"name": "pw", "force_complex_dtype": True}, xc="LDA", kpts=(1, 1, 1)
+        )
         atoms.calc = calc
         atoms.get_potential_energy()
-        calc.write('MoS2_test.gpw', mode='all')
+        calc.write("MoS2_test.gpw", mode="all")
 
-    calc = GPAW('MoS2_test.gpw')
+    calc = GPAW("MoS2_test.gpw")
 
     class Projectable:
         def __init__(self, calc, cell_cv, wf):
@@ -409,7 +456,7 @@ if __name__ == "__main__":
         def from_calc(cls, calc, n):
             if 0:
                 gamma = next(iter(calc.dft.ibzwfs))
-                wf = gamma.psit_nX[n] #get_pseudo_wave_function(n, grid_spacing=0.05)
+                wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
             wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
             return Projectable(calc, calc.atoms.cell, wf)
 
@@ -419,23 +466,26 @@ if __name__ == "__main__":
         def operation(self, op_vv):
             cell_cv = calc.atoms.cell
 
-            #op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
+            # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
 
             op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
             op_cc = op_cc.T.copy()
             op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
-            
+
             wf = self.wf.copy()
-            wf.symmetrize([op_cc_int], np.array([[0,0,0]], dtype=np.int64))
+            wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
             return Projectable(self.calc, cell_cv, self.wf)
-            #assert np.allclose(op_cc, op_cc_int) 
-            #wf2 = np.zeros_like(self.wf)
-            #offset_c = np.zeros(3, dtype=np.int64)
-            #from _gpaw import symmetrize
-            #asdff
-            #symmetrize(self.wf, wf2, op_cc, offset_c)
+            # assert np.allclose(op_cc, op_cc_int)
+            # wf2 = np.zeros_like(self.wf)
+            # offset_c = np.zeros(3, dtype=np.int64)
+            # from _gpaw import symmetrize
+            # asdff
+            # symmetrize(self.wf, wf2, op_cc, offset_c)
             return Projectable(self.calc, cell_cv, wf2)
 
     for band in range(100):
-        for irrep, s in zip(sg.character_table.irreps, sg.detect_irrep(sg.signature(Projectable.from_calc(calc, band)))):
-            print(band, irrep, f'{s.real:.2f}') 
+        for irrep, s in zip(
+            sg.character_table.irreps,
+            sg.detect_irrep(sg.signature(Projectable.from_calc(calc, band))),
+        ):
+            print(band, irrep, f"{s.real:.2f}")
