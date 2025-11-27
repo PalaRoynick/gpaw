@@ -25,18 +25,20 @@ def test_spread():
     basis.add_to(psi_nG, coefs)
     print(psi_nG.norm2())
     print(gauss_integral)
-    if 0:
-        from sympy import exp, integrate, oo, var
+    if 1:
+        from sympy import exp, integrate, oo, var, sqrt, pi
         a0, r = var('a, r')
-        print(integrate(exp(-2 * a0 * r**2) * r**2, (r, 0, oo)))
-        # sqrt(2)*sqrt(pi)/(16*a**(3/2))
+        c = 16 * sqrt(a0**3) / sqrt(2) / sqrt(pi)
+        print(integrate(c * exp(-2 * a0 * r**2) * r**2, (r, 0, oo)))
+        print(integrate(c * exp(-2 * a0 * r**2) * r**4, (r, 0, oo)))
 
     # assert f1.integrate() == pytest.approx(gauss_integral)
     psi_nR = psi_nG.ifft(grid=pw.minimal_uniform_grid())
     print(psi_nR.norm2())
     z, G = pseudo_spread_integral(psi_nR)
     print(z, G)
-    print(spread_and_center(z[0], G))
+    s, c_v = spread_and_center(z[0], G)
+    assert s == (0.75 / alpha)**0.5
 
 
 if __name__ == '__main__':
