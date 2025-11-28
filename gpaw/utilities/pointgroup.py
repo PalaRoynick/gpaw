@@ -90,6 +90,23 @@ class SPGOperations:
     origin_shift_c: np.array
     cell_cv: np.array
     pointgroup: str
+    allow_translations: bool = False
+
+    def __post_init__(self):
+        if not self.allow_translations:
+            print('Filtering out translations', len(self.w_sc))
+            new_W_scc, new_w_sc = [], []
+            for W_cc, w_c in zip(self.W_scc, self.w_sc):
+                if np.allclose(w_c, 0, atol=0.01):
+                    new_W_scc.append(W_cc)
+                    new_w_sc.append(w_c)
+            self.W_scc = new_W_scc
+            self.w_sc = new_w_sc
+            print('Left', len(self.w_sc))
+
+            if not np.allclose(self.w_sc, 0):
+                print(f'{self}')
+                raise ValueError( 'We do not support translations atm.')
 
     @property
     def character_table(self):
@@ -182,7 +199,11 @@ class SPGOperations:
         pointgroup = dct[dataset.pointgroup]
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
-        return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
+        unshifted = cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True)
+        print(f'unshifted {unshifted}')
+        shifted = unshifted.apply_origin_shift(-origin_shift_c)
+        print('shifts', shifted.w_sc)
+        return shifted
 
     @property
     def O_svv(self):
@@ -203,7 +224,7 @@ class SPGOperations:
             self.w_sc
             - np.einsum("scd,d->sc", self.W_scc, -origin_shift_c)
             + self.origin_shift_c
-        )
+        ) % 1.0 % 1.0
         return SPGOperations(
             self.W_scc,
             w_sc,
@@ -231,8 +252,6 @@ class SymmmetryOperations:
         for o1, op1_cc in enumerate(self.ops_occ):
             if np.linalg.norm(op_cc - op1_cc) < 0.01:
                 return o1
-            print(f"{op1_cc=}")
-            print(f"{op_cc=}")
         raise ValueError("Unknown operation: %s." % str(op_cc))
 
     def _build_multiplication_table(self):

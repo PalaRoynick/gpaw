@@ -162,6 +162,7 @@ def get_group_example(group):
         return atoms, "A1,B2,A1,B1,A1,B2"
     elif group == "C2h":
         atoms = read('structures/C2h.json')
+        atoms.translate(-atoms.positions[0])
         spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
         pg = PointGroup(spg_ops)
         print(pg)
@@ -182,20 +183,23 @@ def get_group_example(group):
     pytest.skip(msg=f'Test for {group} not yet implemented.')
 
 
-
 @pytest.mark.parametrize('group', character_tables.keys())
 def test_all(group):
     atoms, results = get_group_example(group)
 
     from gpaw.new.ase_interface import GPAW
+    fname = f'cache_{group}.gpw'
+    if not Path(fname).exists():
+        calc = GPAW(
+            mode={"name": "pw", "force_complex_dtype": True},
+            xc="LDA",
+            kpts=(1, 1, 1),
+            convergence={"density": 1e-3, "eigenstates": 1e-5},
+        )
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        calc.write(fname, mode='all')
 
-    calc = GPAW(
-        mode={"name": "pw", "force_complex_dtype": True},
-        xc="LDA",
-        kpts=(1, 1, 1),
-        convergence={"density": 1e-3, "eigenstates": 1e-5},
-    )
-    atoms.calc = calc
-    atoms.get_potential_energy()
+    calc = GPAW(fname)
     obtained_results = analyze_symmetry(calc, layergroup=True)
     assert results.split(',') == obtained_results
