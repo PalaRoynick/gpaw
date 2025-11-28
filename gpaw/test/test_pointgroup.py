@@ -96,36 +96,38 @@ def test_point_groups(group):
         calc.write(fname, mode="all")
 
     calc = GPAW(fname)
-    if group == 'D3h': 
-        reference = """A'2 
-E'1 
-E'1 
-A'1 
-E'1 
-E'1 
-E''1
-E''1
-A'1 
-A'2 
-E'1 
-E'1""".split('\n')
+    if group == 'D3h':
+        reference = [
+            "A'2",
+            "E'1",
+            "E'1",
+            "A'1",
+            "E'1",
+            "E'1",
+            "E''1",
+            "E''1",
+            "A'1",
+            "A'2",
+            "E'1",
+            "E'1",
+        ]
     elif group == 'C3v':
-        # Kartik todo
-        reference = """E 
-E 
-E 
-E 
-A1
-A2
-E 
-E 
-A1
-A1
-E 
-E""".split('\n') 
+        reference = [
+            "E",
+            "E",
+            "E",
+            "E",
+            "A1",
+            "A2",
+            "E",
+            "E",
+            "A1",
+            "A1",
+            "E",
+            "E",
+        ]
 
     for band, ref in zip(range(39, 51), reference):
-        ref = ref.strip() # XXX remove whitespace
         signature = pg.signature(Projectable.from_calc(calc, band))
         found = None
         for irrep, s in zip(
@@ -137,5 +139,3 @@ E""".split('\n')
                 assert found is None
                 found = irrep
         assert found == ref
-
-
