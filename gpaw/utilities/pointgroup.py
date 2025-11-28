@@ -77,8 +77,7 @@ class CharacterTable:
             for i, iname in enumerate(self.irreps):
                 print("%-20s" % iname, end="")
                 for g, gname in enumerate(self.classes):
-                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]),
-                          end="")
+                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]), end="")
                 print()
         except ValueError:
             print("...")
@@ -111,7 +110,7 @@ class SPGOperations:
             aperiodic_dir=2,
             symprec=1e-1,
         )
-        print(f'{dataset=}')
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms)
 
     @classmethod
@@ -120,38 +119,40 @@ class SPGOperations:
         w_sc = dataset["translations"]
         origin_shift_c = dataset["origin_shift"]
         cell_cv = np.array(atoms.cell)
-        dct = {"1": "C1",
-               "-1": "Ci",
-               "2": "C2",
-               "m": "Cs",
-               "2/m": "C2h",
-               "222": "D2",
-               "mm2": "C2v",
-               "mmm": "D2h",
-               "3": "C3",
-               "-3": "S6",
-               "32": "D3",
-               "3m": "C3v",
-               "-3m": "D3d",
-               "4": "C4",
-               "-4": "S4",
-               "4/m": "C4h",
-               "422": "D4",
-               "4mm": "C4v",
-               "-32m": "D2d",
-               "4/mmm": "D4h",
-               "6": "C6",
-               "-6": "C3h",
-               "6/m": "C6h",
-               "622": "D6",
-               "6mm": "C6v",
-               "-6m2": "D3h",
-               "6/mmm": "D6h",
-               "23": "T",
-               "m-3": "Th",
-               "432": "O",
-               "-43m": "Td",
-               "m-3m": "Oh"}
+        dct = {
+            "1": "C1",
+            "-1": "Ci",
+            "2": "C2",
+            "m": "Cs",
+            "2/m": "C2h",
+            "222": "D2",
+            "mm2": "C2v",
+            "mmm": "D2h",
+            "3": "C3",
+            "-3": "S6",
+            "32": "D3",
+            "3m": "C3v",
+            "-3m": "D3d",
+            "4": "C4",
+            "-4": "S4",
+            "4/m": "C4h",
+            "422": "D4",
+            "4mm": "C4v",
+            "-32m": "D2d",
+            "4/mmm": "D4h",
+            "6": "C6",
+            "-6": "C3h",
+            "6/m": "C6h",
+            "622": "D6",
+            "6mm": "C6v",
+            "-6m2": "D3h",
+            "6/mmm": "D6h",
+            "23": "T",
+            "m-3": "Th",
+            "432": "O",
+            "-43m": "Td",
+            "m-3m": "Oh",
+        }
         pointgroup = dct[dataset["pointgroup"]]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
@@ -185,36 +186,213 @@ class SPGOperations:
 
     def __repr__(self):
         s = ""
-        for l in zip(self.W_scc, self.w_sc):
-            s += ppstr(*l)
+        for W_cc, w_c in zip(self.W_scc, self.w_sc):
+            s += ppstr(W_cc, w_c)
         return s
 
 
+class SymmmetryOperations:
+    def __init__(self, ops_occ):
+        self.ops_occ = ops_occ
+        self.inv_oo = None
+        self.mul_oo = None
+
+        self._build_multiplication_table()
+
+    def get_op_id(self, op_cc):
+        for o1, op1_cc in enumerate(self.ops_occ):
+            if np.linalg.norm(op_cc - op1_cc) < 1e-8:
+                return o1
+        raise ValueError("Unknown operation: %s." % str(op_cc))
+
+    def _build_multiplication_table(self):
+        ops_occ = self.ops_occ
+        N = len(ops_occ)
+        mul_oo = np.zeros((N, N), dtype=int)
+        inv_oo = np.zeros((N, N), dtype=int)
+        for o1, op1_cc in enumerate(ops_occ):
+            for o2, op2_cc in enumerate(ops_occ):
+                o3 = self.get_op_id(np.dot(op1_cc, op2_cc))
+                mul_oo[o1, o2] = o3
+                inv_oo[o1, o3] = o2
+        self.mul_oo, self.inv_oo = mul_oo, inv_oo
+
+
+class ConjugacyClassClassifierClass:
+    def __init__(
+        self,
+        operations: SymmmetryOperations,
+        expected_classes: list[str],
+        principal_axis: list[float],
+        verbose=True,
+    ):
+        self.operations = operations
+        self.expected_classes = expected_classes
+        self.principal_axis = principal_axis
+
+        ops_occ = operations.ops_occ
+        N = len(ops_occ)
+        op_pool = range(N)
+        self.ops_g = []
+
+        self.g_o = np.zeros((N,), int)  # Conjugacy class index for each op
+        while True:
+            # Loop until all operations are assigned a class
+            if len(op_pool) == 0:
+                break
+            # Take an element from operation pool...
+            op1 = op_pool[0]
+            op1_cc = ops_occ[op1]
+            # ...conjugate it with all possible operations, see the result, and remove any duplicates
+            conjugacy_class = np.unique(
+                [
+                    operations.get_op_id(np.dot(op2_cc, np.dot(op1_cc, op2_cc.T)))
+                    for o2, op2_cc in enumerate(ops_occ)
+                ]
+            )
+
+            # Fill g_o array that maps ops to class
+            for op in conjugacy_class:
+                self.g_o[op] = len(self.ops_g)
+            self.ops_g.append(conjugacy_class)
+            # Remove all operations already assigned a class from the pool
+            op_pool = list(set(op_pool) - set(conjugacy_class))
+
+        if verbose:
+            print("Found %d conjugacy classes" % len(self.ops_g))
+
+    def _detect_conjugacy_class(self, ops_occ):
+        det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
+        eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
+        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
+            return "1C2"
+        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, -1])):
+            return "i"  # Inversion flips all axes, -x, -y, -z
+        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [1, 1, 1])):
+            return "E"  # Identity leaves all axes intact x, y, z
+        if len(det_o) == 3 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
+            return "3C2"  # C2 rotation along z is -x, -y, z
+        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
+            return "6C2"
+        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1j, 1j])):
+            return "6S4"  # -1j and 1j corresponds to 90 rotation. Determinant is -1 thus, improper.
+        if np.all(np.isclose(eigs_o, [-1, 1, 1])):
+            # Horizontal mirror operation flips one of the coordinates
+            name = f"{len(det_o)}s"
+            reflection_type = ""
+            for op_cc in ops_occ:
+                eigs, vecs = np.linalg.eig(op_cc)
+                index = np.argmin(eigs)
+
+                # Reflection axis parallel to the reflection plane
+                axis = vecs[:, index]
+
+                D = np.abs(np.dot(self.principal_axis, axis))
+                if np.allclose(D, 1):
+                    reflection_type += "h"
+                elif np.allclose(D, 0):
+                    reflection_type += "v"
+                else:
+                    raise ValueError("Unknown reflection type")
+            assert len(set(reflection_type)) == 1
+
+            # name += reflection_type[0]
+            # self.used_class_names[name] += 1
+            ## XXX Save something to self, which indicated the xz and yz planes
+            # return name + [None, '_xz','_yz'][self.used_class_names[name]]
+            return name
+
+        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
+            return "6sd"
+        if len(det_o) == 8 and np.all(
+            np.isclose(
+                eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)]
+            )
+        ):
+            return "8S6"
+        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1j, 1j, 1])):
+            return "6C4"
+        if len(det_o) == 8 and np.all(
+            np.isclose(
+                eigs_o, [np.exp(-1j * np.pi * 2 / 3), np.exp(1j * np.pi * 2 / 3), 1]
+            )
+        ):
+            return "8C3"
+
+        if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
+            # XXX
+            return "2S3"
+        if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
+            # XXX
+            return "2C3"
+        # if len(det_o) == 1 and np.all(np.isclose(eig_o, [-1, 1 ,1])):
+
+        print(f"{ops_occ=}")
+        print(f"{det_o=} {eigs_o=}")
+        return "bug?"
+
+    def _detect_conjugacy_classes(self, class_names: list[str]):
+        free_names = set(class_names)
+
+        names_g = []
+
+        # For each conjugacy class
+        for classops in self.ops_g:
+            # There are the operations of current conjucagy class
+            ops_occ = [self.operations.ops_occ[o] for o in classops]
+            suggestion = self._detect_conjugacy_class(ops_occ)
+            if suggestion in free_names:
+                names_g.append(suggestion)
+                free_names.remove(suggestion)
+            else:
+                for free_name in free_names:
+                    if free_name.startswith(suggestion):
+                        names_g.append(free_name)
+                        free_names.remove(free_name)
+                        break
+                else:
+                    raise ValueError(
+                        f"Got unexpected conjugacy class {suggestion} free names: {free_names} all_names {class_names}"
+                    )
+        return names_g
+
+    @property
+    def names_g(self):
+        return self._detect_conjugacy_classes(self.expected_classes)
+
+
 class PointGroup:
-    def __init__(self, spg_ops, character_table, principal_axis=[0,0,1]):
+    def __init__(self, spg_ops, principal_axis=[0, 0, 1]):
         self.spg_ops = spg_ops
         self.verbose = True
         self.principal_axis = principal_axis
 
-        self._build_multiplication_table()
-        self._find_conjugacy_classes()
-        self._build_character_table()
+        self.operations = SymmmetryOperations(self.ops_occ)
 
-        from collections import defaultdict
-        self.used_class_names = defaultdict(int)
-        self._detect_conjugacy_classes()
+        # self._build_multiplication_table()
+        character_table = self.spg_ops.character_table
 
-        self._detect_irreps()
+        self.c4 = ConjugacyClassClassifierClass(
+            self.operations,
+            expected_classes=character_table.classes,
+            principal_axis=principal_axis,
+        )
+        # self._find_conjugacy_classes()
+        # self._build_character_table()
+
+        # from collections import defaultdict
+        # self.used_class_names = defaultdict(int)
+        # self._detect_conjugacy_classes(class_names=character_table.classes)
+
+        # self._detect_irreps()
         # self._name_groups_and_classes()
-        print(self.ops_g)
-        print(self.names_g)
+        # print(self.ops_g)
+        # print(self.names_g)
         # self.print_character_table()
 
-        character_table = self.spg_ops.character_table
         if set(character_table.classes) != set(self.names_g):
             print(
-                "Not in our names_g",
-                set(character_table.classes) - set(self.names_g)
+                "Not in our names_g", set(character_table.classes) - set(self.names_g)
             )
             print(
                 "Not in our character_table",
@@ -225,19 +403,25 @@ class PointGroup:
         character_table = character_table.in_conjugacy_order(self.names_g)
         character_table.print()
 
-        for i in range(self.character_ig.shape[0]):
-            print(character_table.detect_irrep(signature_g=self.character_ig[i]))
+        # for i in range(self.character_ig.shape[0]):
+        #    print(character_table.detect_irrep(signature_g=self.character_ig[i]))
 
         self.character_table = character_table
 
     def signature(self, projectable):
         signature = np.zeros((len(self.names_g),), dtype=complex)
         for o, op_cc in enumerate(self.ops_occ):
-            g = self.g_o[o]
+            g = self.c4.g_o[o]
             signature[g] += (
-                1 / len(self.ops_g[g]) * projectable.dot(projectable.operation(op_cc))
+                1
+                / len(self.c4.ops_g[g])
+                * projectable.dot(projectable.operation(op_cc))
             )
         return signature
+
+    @property
+    def names_g(self):
+        return self.c4.names_g
 
     def detect_irrep(self, signature):
         return self.character_table.detect_irrep2(signature)
@@ -270,7 +454,7 @@ class PointGroup:
         h = signature[self.class_id("E")]
 
         # rotations = [ self.class_id(name) for name in self.names_g if ("C" in name) ]
-        rotations = self.class_id("6C2")
+        # rotations = self.class_id("6C2")
         ug = "g" if signature[self.class_id("i")] > 0 else "u"
         C = "?"
         N = ""
@@ -292,129 +476,14 @@ class PointGroup:
     def ops_occ(self):  # XXX change to vv
         return self.spg_ops.O_svv
 
-    def get_op_id(self, op_cc):
-        for o1, op1_cc in enumerate(self.ops_occ):
-            if np.linalg.norm(op_cc - op1_cc) < 1e-8:
-                return o1
-        raise ValueError("Unknown operation: %s." % str(op_cc))
-
-    def _find_conjugacy_classes(self):
-        ops_occ = self.ops_occ
-        N = len(ops_occ)
-        op_pool = range(N)
-        self.ops_g = []
-
-        self.g_o = np.zeros((N,), int)  # Conjugacy class index for each op
-        while True:
-            # Loop until all operations are assigned a class
-            if len(op_pool) == 0:
-                break
-            # Take an element from operation pool...
-            op1 = op_pool[0]
-            op1_cc = ops_occ[op1]
-            # ...conjugate it with all possible operations, see the result, and remove any duplicates
-            conjugacy_class = np.unique(
-                [
-                    self.get_op_id(np.dot(op2_cc, np.dot(op1_cc, op2_cc.T)))
-                    for o2, op2_cc in enumerate(ops_occ)
-                ]
-            )
-
-            # Fill g_o array that maps ops to class
-            for op in conjugacy_class:
-                self.g_o[op] = len(self.ops_g)
-            self.ops_g.append(conjugacy_class)
-            # Remove all operations already assigned a class from the pool
-            op_pool = list(set(op_pool) - set(conjugacy_class))
-
-        if self.verbose:
-            print("Found %d conjugacy classes" % len(self.ops_g))
-
-    def _detect_conjugacy_class(self, ops_occ):
-        det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
-        eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "1C2"
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, -1])):
-            return "i"  # Inversion flips all axes, -x, -y, -z
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [1, 1, 1])):
-            return "E"  # Identity leaves all axes intact x, y, z
-        if len(det_o) == 3 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "3C2"  # C2 rotation along z is -x, -y, z
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "6C2"
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1j, 1j])):
-            return "6S4"  # -1j and 1j corresponds to 90 rotation. Determinant is -1 thus, improper.
-        if np.all(np.isclose(eigs_o, [-1, 1, 1])):
-            # Horizontal mirror operation flips one of the coordinates
-            name = f"{len(det_o)}s"
-            reflection_type = ''
-            for op_cc in ops_occ:
-                eigs, vecs = np.linalg.eig(op_cc)
-                I = np.argmin(eigs)
-
-                # Reflection axis parallel to the reflection plane
-                axis = vecs[:, I]
-
-                D = np.abs(np.dot(self.principal_axis, axis))
-                if np.allclose(D, 1):
-                    reflection_type += 'h'
-                elif np.allclose(D, 0):
-                    reflection_type += 'v'
-                else:
-                    raise ValueError('Unknown reflection type') 
-            assert len(set(reflection_type)) ==1
-            name += reflection_type[0]
-            self.used_class_names[name] += 1
-            # XXX Save something to self, which indicated the xz and yz planes
-            return name + [None, '_xz','_yz'][self.used_class_names[name]]
-            
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
-            return "6sd"
-        if len(det_o) == 8 and np.all(
-            np.isclose(
-                eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)]
-            )
-        ):
-            return "8S6"
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1j, 1j, 1])):
-            return "6C4"
-        if len(det_o) == 8 and np.all(
-            np.isclose(
-                eigs_o, [np.exp(-1j * np.pi * 2 / 3), np.exp(1j * np.pi * 2 / 3), 1]
-            )
-        ):
-            return "8C3"
-
-        if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
-            # XXX
-            return "2S3"
-        if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
-            # XXX
-            return "2C3"
-        # if len(det_o) == 1 and np.all(np.isclose(eig_o, [-1, 1 ,1])):
-
-        print(f"{ops_occ=}")
-        print(f"{det_o=} {eigs_o=}")
-        return "bug?"
-
-    def _detect_conjugacy_classes(self):
-        self.names_g = [
-            self._detect_conjugacy_class([self.ops_occ[o] for o in classops])
-            for classops in self.ops_g
-        ]
-
     def _build_character_table(self):
-        ops_occ = self.ops_occ
-        N = len(ops_occ)
-
         # Diagonalize arbitrary Hamiltonian (the form 1/(1+g) is irrelevant)
         # to numerically build the character table. The degenerate eigenspaces
         # describe the irreducible representations.
         # There might be an accidental degeneracy, in which case the a representation
         # might end up being a direct product of two representations.
         H_oo = 1 / (self.g_o[self.inv_oo] + 1)
-        groups_i = self.diagonalize_and_group(1 / (self.g_o[self.inv_oo] + 1))
+        groups_i = self.diagonalize_and_group(H_oo)
         self.groups_i = groups_i
         character_ig = np.zeros((len(groups_i), len(self.ops_g)), dtype=int)
 
@@ -453,18 +522,6 @@ class PointGroup:
 
         return [np.array(x) for x in groups_i]
 
-    def _build_multiplication_table(self):
-        ops_occ = self.ops_occ
-        N = len(ops_occ)
-        mul_oo = np.zeros((N, N), dtype=int)
-        inv_oo = np.zeros((N, N), dtype=int)
-        for o1, op1_cc in enumerate(ops_occ):
-            for o2, op2_cc in enumerate(ops_occ):
-                o3 = self.get_op_id(np.dot(op1_cc, op2_cc))
-                mul_oo[o1, o2] = o3
-                inv_oo[o1, o3] = o2
-        self.mul_oo, self.inv_oo = mul_oo, inv_oo
-
 
 class Projectable:
     def __init__(self, calc, cell_cv, wf, pseudo_wf=True):
@@ -479,7 +536,7 @@ class Projectable:
             gamma = next(iter(calc.dft.ibzwfs))
             wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
         else:
-            asd # XXX DOes not work yet
+            raise NotImplementedError()
             wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
         return Projectable(calc, calc.atoms.cell, wf, pseudo_wf=pseudo_wf)
 
@@ -502,8 +559,7 @@ class Projectable:
             return Projectable(self.calc, cell_cv, wf2)
         else:
             # This one does not infact work
-            asd
+            raise NotImplementedError()
             wf = self.wf.copy()
             wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
             return Projectable(self.calc, cell_cv, wf)
-

@@ -14,7 +14,7 @@ def create_mos2(pg_type="D3h"):
     primitive.rotate("z", 13.55, rotate_cell=True)
     primitive.set_pbc(True)
     atoms = primitive.repeat((2, 2, 1))
-    #return atoms.copy(), atoms.copy()
+    # return atoms.copy(), atoms.copy()
     atoms.translate([0, 0, 3.1415])
     atoms.set_scaled_positions(-atoms.get_scaled_positions())
     if pg_type == "C3v":
@@ -25,23 +25,24 @@ def create_mos2(pg_type="D3h"):
     elif pg_type == "D3h":
         atoms[0].symbol = "H"
     else:
-        raise ValueError('Unknown pg type')
+        raise ValueError("Unknown pg type")
 
     Hreplaced_atoms = atoms.copy()
-    
+
     if pg_type == "C3v":
         del atoms[1]
     elif pg_type == "D3h":
         del atoms[0]
     else:
-        raise ValueError('Unknown pg type')
+        raise ValueError("Unknown pg type")
 
     return Hreplaced_atoms, atoms
 
+
 def analyze_symmetry(calc):
     spg_ops = SPGOperations.from_atoms(calc.atoms)
-    pg = PointGroup(spg_ops, None)
-    for band in range(100):
+    pg = PointGroup(spg_ops)
+    for band in range(6):
         signature = pg.signature(Projectable.from_calc(calc, band))
         found = None
         for irrep, s in zip(
@@ -53,33 +54,36 @@ def analyze_symmetry(calc):
                 assert found is None
                 found = irrep
 
+
 def test_H2O():
     from ase.build import molecule
-    atoms = molecule('H2O')
+
+    atoms = molecule("H2O")
     atoms.center(vacuum=5)
     from gpaw.new.ase_interface import GPAW
+
     calc = GPAW(
         mode={"name": "pw", "force_complex_dtype": True},
         xc="LDA",
         kpts=(1, 1, 1),
-        convergence={'density':1e-3, 'eigenstates': 1e-5},
+        convergence={"density": 1e-3, "eigenstates": 1e-5},
     )
     atoms.calc = calc
     atoms.get_potential_energy()
     analyze_symmetry(calc)
 
 
-@pytest.mark.parametrize('group', ['D3h', 'C3v'])
+@pytest.mark.parametrize("group", ["D3h", "C3v"])
 def test_point_groups(group):
     Hreplaced_atoms, atoms = create_mos2(pg_type=group)
 
     spg_ops = SPGOperations.from_atoms(Hreplaced_atoms)
     origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
-    #print("shift", spg_ops.origin_shift_c @ atoms.cell)
+    # print("shift", spg_ops.origin_shift_c @ atoms.cell)
     atoms.translate(spg_ops.origin_shift_c @ atoms.cell)
     print(origin_ops.w_sc)
     assert np.allclose(origin_ops.w_sc, 0)
-    pg = PointGroup(origin_ops, None)
+    pg = PointGroup(origin_ops)
 
     from gpaw.new.ase_interface import GPAW
 
@@ -89,14 +93,14 @@ def test_point_groups(group):
             mode={"name": "pw", "force_complex_dtype": True},
             xc="LDA",
             kpts=(1, 1, 1),
-            convergence={'density':1e-3, 'eigenstates': 1e-5},
+            convergence={"density": 1e-3, "eigenstates": 1e-5},
         )
         atoms.calc = calc
         atoms.get_potential_energy()
         calc.write(fname, mode="all")
 
     calc = GPAW(fname)
-    if group == 'D3h':
+    if group == "D3h":
         reference = [
             "A'2",
             "E'1",
@@ -111,7 +115,7 @@ def test_point_groups(group):
             "E'1",
             "E'1",
         ]
-    elif group == 'C3v':
+    elif group == "C3v":
         reference = [
             "E",
             "E",
