@@ -166,6 +166,18 @@ def get_group_example(group):
         pg = PointGroup(spg_ops)
         print(pg)
         return atoms, "Ag,Au,Ag,Bu,Ag,Au"
+    elif group == "C2":
+        atoms = read('structures/C2.json')
+        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
+        pg = PointGroup(spg_ops)
+        print(pg)
+        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
+    elif group == "S4":
+        atoms = read('structures/S4.json')
+        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
+        pg = PointGroup(spg_ops)
+        print(pg)
+        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
 
     pytest.skip(msg=f'Test for {group} not yet implemented.')
 
