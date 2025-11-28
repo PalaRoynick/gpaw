@@ -275,9 +275,11 @@ class ASECalculator:
     def get_potential_energy(self,
                              atoms: Atoms | None = None,
                              force_consistent: bool = False) -> float:
-        return self.calculate_property(atoms,
-                                       'free_energy' if force_consistent else
-                                       'energy')
+        result = self.calculate_property(atoms,
+                                        'free_energy' if force_consistent else
+                                        'energy')
+        self.symmetry_info()
+        return result
 
     @trace
     def get_forces(self, atoms: Atoms | None = None) -> Array2D:
@@ -750,3 +752,7 @@ class ASECalculator:
     def get_bz_to_ibz_map(self):
         """Return indices from BZ to IBZ."""
         return self.dft.ibzwfs.ibz.bz2ibz_K.copy()
+
+    def symmetry_info(self, verbose=True):
+        from gpaw.utilities.pointgroup import analyze_symmetry
+        return analyze_symmetry(self, verbose)

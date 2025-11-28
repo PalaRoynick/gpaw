@@ -98,14 +98,16 @@ class SPGOperations:
         return CharacterTable.from_data(**character_tables[self.pointgroup])
 
     @classmethod
-    def from_atoms(cls, atoms, *, layergroup: bool):
+    def from_atoms(cls, atoms, verbose=False, *, layergroup: bool):
         if layergroup:
-            return cls.from_atoms_layergroup(atoms)
+            return cls.from_atoms_layergroup(atoms, verbose=verbose)
         else:
-            return cls.from_atoms_spacegroup(atoms)
+            return cls.from_atoms_spacegroup(atoms, verbose=verbose)
     
     @classmethod
-    def from_atoms_spacegroup(cls, atoms):
+    def from_atoms_spacegroup(cls, atoms, verbose=False):
+        if verbose:
+            print('Detecting spacegroup (NOT layergroup) with spglib...')
         import spglib
 
         dataset = spglib.get_symmetry_dataset(
@@ -116,11 +118,13 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        print(f"{dataset=}")
-        return cls.from_dataset(dataset, atoms)
+        #print(f"{dataset=}")
+        return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
-    def from_atoms_layergroup(cls, atoms):
+    def from_atoms_layergroup(cls, atoms, verbose=False):
+        if verbose:
+            print('Detecting layergroup (NOT spacegroup) with spglib...')
         import spglib
 
         dataset = spglib.get_layergroup(
@@ -132,11 +136,11 @@ class SPGOperations:
             aperiodic_dir=2,
             symprec=1e-1,
         )
-        print(f"{dataset=}")
-        return cls.from_dataset(dataset, atoms)
+        #print(f"{dataset=}")
+        return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
-    def from_dataset(cls, dataset, atoms):
+    def from_dataset(cls, dataset, atoms, verbose=False):
         W_scc = dataset.rotations
         w_sc = dataset.translations
         origin_shift_c = dataset.origin_shift
@@ -176,6 +180,8 @@ class SPGOperations:
             "m-3m": "Oh",
         }
         pointgroup = dct[dataset.pointgroup]
+        if verbose:
+            print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
     @property
@@ -594,3 +600,25 @@ class Projectable:
             wf = self.wf.copy()
             wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
             return Projectable(self.calc, cell_cv, wf)
+
+
+def analyze_symmetry(calc, verbose, layergroup = False):
+    spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup, verbose=verbose)
+    return
+    pg = PointGroup(spg_ops, [0,0,1] if layergroup else None)
+    results = []
+    for band in range(6):
+        signature = pg.signature(Projectable.from_calc(calc, band))
+        found = None
+        for irrep, s in zip(
+            pg.character_table.irreps,
+            pg.detect_irrep(signature),
+        ):
+            if s > 0.01:
+                print(band, irrep, f"{s.real:.2f}")
+                results.append(irrep)
+                assert found is None
+                found = irrep
+    return results
+
+        
