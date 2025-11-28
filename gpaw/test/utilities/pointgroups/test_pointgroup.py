@@ -87,7 +87,7 @@ def test_H2O():
 
 
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
-def test_point_groups(group):
+def test_defect_atoms(group):
     Hreplaced_atoms, atoms = create_mos2(pg_type=group)
 
     spg_ops = SPGOperations.from_atoms(Hreplaced_atoms, layergroup=True)
