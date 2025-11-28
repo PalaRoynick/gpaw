@@ -12,7 +12,7 @@ def ppstr(W_cc, w_c=None):
         if w_c is None:
             s += "\n"
         else:
-            s += f"  [ {w_c[i]:.2f} ]\n"
+            s += f"  [ {w_c[i]:.15f} ]\n"
     return s + "\n"
 
 
@@ -224,7 +224,8 @@ class SPGOperations:
             self.w_sc
             - np.einsum("scd,d->sc", self.W_scc, -origin_shift_c)
             + self.origin_shift_c
-        ) % 1.0 % 1.0
+        )
+        w_sc = (np.round(w_sc * 100) / 100) % 1.0 % 1.0
         return SPGOperations(
             self.W_scc,
             w_sc,
@@ -341,7 +342,10 @@ class ConjugacyClassClassifierClass:
 
                 # Reflection axis parallel to the reflection plane
                 axis = vecs[:, index]
-
+                print('principal axis', self.principal_axis)
+                #print('op_cc', op_cc)
+                print('op_cc', ppstr(op_cc))
+                print('axis of reflection', axis)
                 D = np.abs(np.dot(self.principal_axis, axis))
                 if np.allclose(D, 1):
                     reflection_type += "h"
@@ -349,6 +353,8 @@ class ConjugacyClassClassifierClass:
                     reflection_type += "v"
                 else:
                     raise ValueError("Unknown reflection type")
+                print('D', D)
+                print('reflection_type', reflection_type)
             if len(set(reflection_type)) == 1:
                 name += reflection_type[0]
             else:
@@ -447,6 +453,8 @@ class PointGroup:
         # self.print_character_table()
 
         if set(character_table.classes) != set(self.names_g):
+            print('Character tables classes', character_table.classes)
+            print('Our names_g', self.names_g)
             print(
                 "Not in our names_g", set(character_table.classes) - set(self.names_g)
             )

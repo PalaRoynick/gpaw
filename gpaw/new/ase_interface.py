@@ -278,7 +278,6 @@ class ASECalculator:
         result = self.calculate_property(atoms,
                                         'free_energy' if force_consistent else
                                         'energy')
-        self.symmetry_info()
         return result
 
     @trace
