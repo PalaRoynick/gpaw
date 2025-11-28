@@ -17,13 +17,13 @@ def test_Oh():
     spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
     pg = PointGroup(spg_ops, principal_axis=None)
 
-    if not Path('gs.gpw').exists():
+    if not Path('gs_Oh.gpw').exists():
         calc = GPAW(mode={'name': 'pw', 'force_complex_dtype':True})
         atoms.calc = calc
         atoms.get_potential_energy()
-        calc.write('gs.gpw', mode='all')
+        calc.write('gs_Oh.gpw', mode='all')
 
-    calc = GPAW('gs.gpw')
+    calc = GPAW('gs_Oh.gpw')
     analyze_symmetry(calc, layergroup=False)
 
 def create_mos2(pg_type="D3h"):
@@ -64,6 +64,7 @@ def create_mos2(pg_type="D3h"):
 def analyze_symmetry(calc, layergroup):
     spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
     pg = PointGroup(spg_ops, [0,0,1] if layergroup else None)
+    results = []
     for band in range(6):
         signature = pg.signature(Projectable.from_calc(calc, band))
         found = None
@@ -73,26 +74,16 @@ def analyze_symmetry(calc, layergroup):
         ):
             if s > 0.01:
                 print(band, irrep, f"{s.real:.2f}")
+                results.append(irrep)
                 assert found is None
                 found = irrep
-
+    return results
 
 def test_H2O():
     from ase.build import molecule
 
     atoms = molecule("H2O")
     atoms.center(vacuum=5)
-    from gpaw.new.ase_interface import GPAW
-
-    calc = GPAW(
-        mode={"name": "pw", "force_complex_dtype": True},
-        xc="LDA",
-        kpts=(1, 1, 1),
-        convergence={"density": 1e-3, "eigenstates": 1e-5},
-    )
-    atoms.calc = calc
-    atoms.get_potential_energy()
-    analyze_symmetry(calc, layergroup=True)
 
 
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
@@ -166,6 +157,31 @@ def test_point_groups(group):
                 found = irrep
         assert found == ref
 
+def get_group_example(group):
+    from ase.build import molecule
+    if group == "C2v":
+        atoms = molecule("H2O")
+        atoms.center(vacuum=3.5)
+        return atoms, "A1,B2,A1,B1,A1,B2"
+
+    pytest.skip(msg=f'Test for {group} not yet implemented.')
+
+
+
 @pytest.mark.parametrize('group', character_tables.keys())
 def test_all(group):
-    pytest.skip(msg=f'Test for {group} not yet implemented.')
+    atoms, results = get_group_example(group)
+
+    from gpaw.new.ase_interface import GPAW
+
+    calc = GPAW(
+        mode={"name": "pw", "force_complex_dtype": True},
+        xc="LDA",
+        kpts=(1, 1, 1),
+        convergence={"density": 1e-3, "eigenstates": 1e-5},
+    )
+    atoms.calc = calc
+    atoms.get_potential_energy()
+    obtained_results = analyze_symmetry(calc, layergroup=True)
+    assert results.split(',') == obtained_results
+
