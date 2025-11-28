@@ -153,35 +153,23 @@ def test_defect_atoms(group):
 
 
 def get_group_example(group):
-    from ase.build import molecule
     from ase.io import read
 
-    if group == "C2v":
-        atoms = molecule("H2O")
-        atoms.center(vacuum=3.5)
-        return atoms, "A1,B2,A1,B1,A1,B2"
-    elif group == "C2h":
-        atoms = read('structures/C2h.json')
-        atoms.translate(-atoms.positions[0])
-        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
-        pg = PointGroup(spg_ops)
-        print(pg)
-        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
-    elif group == "C2":
-        atoms = read('structures/C2.json')
-        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
-        pg = PointGroup(spg_ops)
-        print(pg)
-        return atoms, "A,B,A,B,A,B"
-    elif group == "S4":
-        atoms = read('structures/S4.json')
-        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
-        pg = PointGroup(spg_ops)
-        print(pg)
-        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
+    examples = {
+        "C2v": ("structures/C2v.json", "A1,B2,A1,B1,A1,B2"),
+        "C2h": ("structures/C2h.json", "Ag,Au,Ag,Bu,Ag,Au"),
+        "C2": ("structures/C2.json", "A,B,A,B,A,B"),
+        "S4": ("structures/S4.json", "Ag,Au,Ag,Bu,Ag,Au"),
+        "D2h": ("structures/D2h.json", "Ag,B1u,B2u,B3g,Ag,B1u"),
+    }
 
-    pytest.skip(msg=f'Test for {group} not yet implemented.')
+    try:
+        fname, result = examples[group]
+    except KeyError:
+        pytest.skip(msg=f"Test for {group} not yet implemented.")
 
+    atoms = read(fname)
+    return atoms, result
 
 @pytest.mark.parametrize('group', character_tables.keys())
 def test_all(group):
