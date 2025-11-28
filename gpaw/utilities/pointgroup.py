@@ -118,7 +118,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        #print(f"{dataset=}")
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -136,7 +136,7 @@ class SPGOperations:
             aperiodic_dir=2,
             symprec=1e-1,
         )
-        #print(f"{dataset=}")
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -229,7 +229,7 @@ class SymmmetryOperations:
 
     def get_op_id(self, op_cc):
         for o1, op1_cc in enumerate(self.ops_occ):
-            if np.linalg.norm(op_cc - op1_cc) < 1e-8:
+            if np.linalg.norm(op_cc - op1_cc) < 0.01:
                 return o1
             print(f"{op1_cc=}")
             print(f"{op_cc=}")

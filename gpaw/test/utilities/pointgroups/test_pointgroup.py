@@ -10,7 +10,7 @@ def test_Oh():
     from ase.build import bulk
     from ase.io import read
     cell = (bulk('Al') * 5).cell
-    atoms = read('Al13.xyz')
+    atoms = read('structures/Al13.xyz')
     atoms.set_pbc(True)
     atoms.set_cell(cell, scale_atoms=False)
 
@@ -171,7 +171,7 @@ def get_group_example(group):
         spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
         pg = PointGroup(spg_ops)
         print(pg)
-        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
+        return atoms, "A,B,A,B,A,B"
     elif group == "S4":
         atoms = read('structures/S4.json')
         spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
