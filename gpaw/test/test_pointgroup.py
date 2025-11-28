@@ -92,7 +92,7 @@ def test_H2O():
     )
     atoms.calc = calc
     atoms.get_potential_energy()
-    analyze_symmetry(calc)
+    analyze_symmetry(calc, layergroup=True)
 
 
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
