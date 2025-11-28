@@ -2,7 +2,29 @@ import pytest
 from ase.build import mx2
 import numpy as np
 from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
+from gpaw.utilities.pointgroup_data import character_tables
+from gpaw.new.ase_interface import GPAW
+from pathlib import Path
 
+def test_Oh():
+    from ase.build import bulk
+    from ase.io import read
+    cell = (bulk('Al') * 5).cell
+    atoms = read('Al13.xyz')
+    atoms.set_pbc(True)
+    atoms.set_cell(cell, scale_atoms=False)
+
+    spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
+    pg = PointGroup(spg_ops, principal_axis=None)
+
+    if not Path('gs.gpw').exists():
+        calc = GPAW(mode={'name': 'pw', 'force_complex_dtype':True})
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        calc.write('gs.gpw', mode='all')
+
+    calc = GPAW('gs.gpw')
+    analyze_symmetry(calc, layergroup=False)
 
 def create_mos2(pg_type="D3h"):
     """
@@ -39,9 +61,9 @@ def create_mos2(pg_type="D3h"):
     return Hreplaced_atoms, atoms
 
 
-def analyze_symmetry(calc):
-    spg_ops = SPGOperations.from_atoms(calc.atoms)
-    pg = PointGroup(spg_ops)
+def analyze_symmetry(calc, layergroup):
+    spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
+    pg = PointGroup(spg_ops, [0,0,1] if layergroup else None)
     for band in range(6):
         signature = pg.signature(Projectable.from_calc(calc, band))
         found = None
@@ -77,7 +99,7 @@ def test_H2O():
 def test_point_groups(group):
     Hreplaced_atoms, atoms = create_mos2(pg_type=group)
 
-    spg_ops = SPGOperations.from_atoms(Hreplaced_atoms)
+    spg_ops = SPGOperations.from_atoms(Hreplaced_atoms, layergroup=True)
     origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
     # print("shift", spg_ops.origin_shift_c @ atoms.cell)
     atoms.translate(spg_ops.origin_shift_c @ atoms.cell)
@@ -143,3 +165,7 @@ def test_point_groups(group):
                 assert found is None
                 found = irrep
         assert found == ref
+
+@pytest.mark.parametrize('group', character_tables.keys())
+def test_all(group):
+    pytest.skip(msg=f'Test for {group} not yet implemented.')

@@ -98,7 +98,29 @@ class SPGOperations:
         return CharacterTable.from_data(**character_tables[self.pointgroup])
 
     @classmethod
-    def from_atoms(cls, atoms):
+    def from_atoms(cls, atoms, *, layergroup: bool):
+        if layergroup:
+            return cls.from_atoms_layergroup(atoms)
+        else:
+            return cls.from_atoms_spacegroup(atoms)
+    
+    @classmethod
+    def from_atoms_spacegroup(cls, atoms):
+        import spglib
+
+        dataset = spglib.get_symmetry_dataset(
+            cell=(
+                atoms.get_cell(),
+                atoms.get_scaled_positions(),
+                atoms.get_atomic_numbers(),
+            ),
+            symprec=1e-1,
+        )
+        print(f"{dataset=}")
+        return cls.from_dataset(dataset, atoms)
+
+    @classmethod
+    def from_atoms_layergroup(cls, atoms):
         import spglib
 
         dataset = spglib.get_layergroup(
@@ -279,6 +301,12 @@ class ConjugacyClassClassifierClass:
         if np.all(np.isclose(eigs_o, [-1, 1, 1])):
             # Horizontal mirror operation flips one of the coordinates
             name = f"{len(det_o)}s"
+            
+            if self.principal_axis is None:
+                if len(det_o) == 6:
+                    return '6sd'
+                return name + 'h'
+
             reflection_type = ""
             for op_cc in ops_occ:
                 eigs, vecs = np.linalg.eig(op_cc)
@@ -294,9 +322,10 @@ class ConjugacyClassClassifierClass:
                     reflection_type += "v"
                 else:
                     raise ValueError("Unknown reflection type")
-            assert len(set(reflection_type)) == 1
-
-            # name += reflection_type[0]
+            if len(set(reflection_type)) == 1:
+                name += reflection_type[0]
+            else:
+                name += reflection_type + "???"
             # self.used_class_names[name] += 1
             ## XXX Save something to self, which indicated the xz and yz planes
             # return name + [None, '_xz','_yz'][self.used_class_names[name]]
