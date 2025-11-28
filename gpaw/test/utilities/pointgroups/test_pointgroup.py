@@ -79,12 +79,6 @@ def analyze_symmetry(calc, layergroup):
                 found = irrep
     return results
 
-def test_H2O():
-    from ase.build import molecule
-
-    atoms = molecule("H2O")
-    atoms.center(vacuum=5)
-
 
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
 def test_defect_atoms(group):
@@ -157,12 +151,21 @@ def test_defect_atoms(group):
                 found = irrep
         assert found == ref
 
+
 def get_group_example(group):
     from ase.build import molecule
+    from ase.io import read
+
     if group == "C2v":
         atoms = molecule("H2O")
         atoms.center(vacuum=3.5)
         return atoms, "A1,B2,A1,B1,A1,B2"
+    elif group == "C2h":
+        atoms = read('structures/C2h.json')
+        spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
+        pg = PointGroup(spg_ops)
+        print(pg)
+        return atoms, "Ag,Au,Ag,Bu,Ag,Au"
 
     pytest.skip(msg=f'Test for {group} not yet implemented.')
 
@@ -184,4 +187,3 @@ def test_all(group):
     atoms.get_potential_energy()
     obtained_results = analyze_symmetry(calc, layergroup=True)
     assert results.split(',') == obtained_results
-

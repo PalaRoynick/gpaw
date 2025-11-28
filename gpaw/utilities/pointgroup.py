@@ -137,9 +137,9 @@ class SPGOperations:
 
     @classmethod
     def from_dataset(cls, dataset, atoms):
-        W_scc = dataset["rotations"]
-        w_sc = dataset["translations"]
-        origin_shift_c = dataset["origin_shift"]
+        W_scc = dataset.rotations
+        w_sc = dataset.translations
+        origin_shift_c = dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         dct = {
             "1": "C1",
@@ -175,7 +175,7 @@ class SPGOperations:
             "-43m": "Td",
             "m-3m": "Oh",
         }
-        pointgroup = dct[dataset["pointgroup"]]
+        pointgroup = dct[dataset.pointgroup]
         return cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup)
 
     @property
@@ -225,6 +225,8 @@ class SymmmetryOperations:
         for o1, op1_cc in enumerate(self.ops_occ):
             if np.linalg.norm(op_cc - op1_cc) < 1e-8:
                 return o1
+            print(f"{op1_cc=}")
+            print(f"{op_cc=}")
         raise ValueError("Unknown operation: %s." % str(op_cc))
 
     def _build_multiplication_table(self):
