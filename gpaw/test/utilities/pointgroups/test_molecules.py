@@ -4,10 +4,14 @@ from ase.io import write
 from ase.build import molecule
 from pathlib import Path
 from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
-from gpaw.utilities.pointgroup_data import character_tables
+from gpaw.new.ase_interface import GPAW
+from dataclasses import dataclass
+from numpy import pi, sin, cos
 
 import os
 import contextlib
+
+from itertools import zip_longest
 
 
 @contextlib.contextmanager
@@ -64,7 +68,6 @@ on
 *
 *
 """
-from dataclasses import dataclass
 
 
 @dataclass
@@ -76,9 +79,6 @@ class State:
 
     def __format__(self, fmt):
         return f"{self.irrep:5s} {self.eigenvalue:8.2f} {self.occupation:5.2f}"
-
-
-from itertools import zip_longest
 
 
 def grouped_tokens(tokens):
@@ -297,33 +297,49 @@ systems = {
 }
 
 spin_polarized = [
-    "BeH",
-    "C2H3",
-    "C2H5",
-    "C3H7",
-    "C3H9C",
-    "CCH",
-    "CH3CH2O",
-    "CH3CO",
-    "CH3O",
-    "CH3",
-    "CH3S",
-    "CN",
     "H2COH",
+    "C3H9C",
+    "SiH2_s3B1d",
+    "CH3CO",
     "HCO",
-    "H",
-    "Li",
-    "Na",
-    "NH2",
-    "NH",
-    "NO2",
-    "N",
-    "O2",
+    "Si",
+    "CN",
+    "S",
+    "F",
+    "C2H3",
     "PH2",
+    "SiH3",
+    "NO",
+    "NH2",
+    "CH",
+    "C",
+    "CH3S",
+    "OH",
+    "Cl",
+    "Al",
+    "CH3O",
+    "Na",
+    "CH3CH2O",
+    "C3H7",
+    "CH3",
     "P",
     "S2",
-    "SiH3",
+    "H",
+    "C2H5",
+    "B",
+    "ClO",
+    "O2",
     "SO",
+    "NH",
+    "CH2_s3B1d",
+    "O",
+    "CCH",
+    "N",
+    "Si2",
+    "SH",
+    "Li",
+    "BeH",
+    "NO2",
 ]
 
 for mol in spin_polarized:
@@ -350,17 +366,31 @@ assert set(systems.values()) == {
     "c1",
 }
 
+
 # P2 make cell hexagonal
+def build_cell(atoms):
+    if len(atoms) == 2:
+        L = 8
+        angle = 2 * pi / 3
+        c, s = cos(angle), sin(angle)
+        cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+        atoms.set_cell(cell)
+        atoms.set_pbc((True, True, True))
+        atoms.center()
+    else:
+        atoms.center(vacuum=3)
 
 
 @pytest.mark.parametrize("name,symmetry", systems.items())  # g2.names
 def test_molecule(name, symmetry):
     atoms = molecule(name)
+    build_cell(atoms)
+    with workdir(name):
+        write(name + ".xyz", atoms)
     if 0:
         os.system(f"rm -r {name}")
         Path(name).mkdir(existok=True)
         with workdir(name):
-            write(name + ".xyz", atoms)
             os.system(f"x2t {name}.xyz > coord")
             Path("inp").write_text(turbomole_input)
             os.system("define < inp > define_out.txt")
@@ -380,10 +410,7 @@ def test_molecule(name, symmetry):
 
     with workdir(name):
         if not Path("wfs.gpw").exists():
-            from gpaw.new.ase_interface import GPAW
-
             calc = GPAW(mode={"name": "pw"}, xc="PBE")
-            atoms.center(vacuum=4)
             atoms.calc = calc
             atoms.get_potential_energy()
             calc.write("wfs.gpw", mode="all")
