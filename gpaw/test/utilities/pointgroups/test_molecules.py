@@ -22,7 +22,7 @@ def workdir(path):
 
 def analyze_symmetry(calc, layergroup, expected):
     spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
-    assert spg_ops.pointgroup == expected
+    assert spg_ops.pointgroup.upper() == expected.upper()
     pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
     results = []
     failure = False
@@ -109,7 +109,6 @@ def parse_eigenvalues(text):
     states = []
     try:
         while True:
-            print("asd")
             irreps = iter(next(lines).split())
             Hartree = iter(next(lines).split())
             eV = iter(next(lines).split())
@@ -297,6 +296,59 @@ systems = {
     "NO2": "c2v",
 }
 
+spin_polarized = [
+    "BeH",
+    "C2H3",
+    "C2H5",
+    "C3H7",
+    "C3H9C",
+    "CCH",
+    "CH3CH2O",
+    "CH3CO",
+    "CH3O",
+    "CH3",
+    "CH3S",
+    "CN",
+    "H2COH",
+    "HCO",
+    "H",
+    "Li",
+    "Na",
+    "NH2",
+    "NH",
+    "NO2",
+    "N",
+    "O2",
+    "PH2",
+    "P",
+    "S2",
+    "SiH3",
+    "SO",
+]
+
+for mol in spin_polarized:
+    del systems[mol]
+
+# Have just one representative of the each symmetry group
+groups = {v: k for k, v in systems.items()}
+systems = {v: k for k, v in groups.items()}
+
+assert set(systems.values()) == {
+    "d2d",
+    "d3d",
+    "d6h",
+    "c2",
+    "cs",
+    "td",
+    "c2v",
+    "c6v",
+    "d3h",
+    "c3v",
+    "oh",
+    "d2h",
+    "c2h",
+    "c1",
+}
 
 # P2 make cell hexagonal
 
@@ -304,14 +356,14 @@ systems = {
 @pytest.mark.parametrize("name,symmetry", systems.items())  # g2.names
 def test_molecule(name, symmetry):
     atoms = molecule(name)
-    os.system(f"rm -r {name}")
-    Path(name).mkdir(exist_ok=True)
-    with workdir(name):
-        if 1:
+    if 0:
+        os.system(f"rm -r {name}")
+        Path(name).mkdir(existok=True)
+        with workdir(name):
             write(name + ".xyz", atoms)
             os.system(f"x2t {name}.xyz > coord")
             Path("inp").write_text(turbomole_input)
-            os.system("define < inp")
+            os.system("define < inp > define_out.txt")
             os.system("dscf >output.txt")
             os.system(
                 'cat output.txt |grep "irrep      " --after=3 --no-group-separator > irreps.txt'
@@ -319,28 +371,36 @@ def test_molecule(name, symmetry):
             os.system(
                 'cat output.txt |grep "symmetry group of the molecule :" > group.txt'
             )
+    with workdir(name):
         states = parse_eigenvalues(Path("irreps.txt").read_text())
         tmole_group = Path("group.txt").read_text().split()[-1]
-        assert tmole_group.upper() == symmetry.upper()
-        for state in states:
-            print(f"{state}")
-    return
-    from gpaw.new.ase_interface import GPAW
+    assert tmole_group.upper() == symmetry.upper()
+    for state in states:
+        print(f"{state}")
 
-    calc = GPAW(mode={"name": "pw"}, xc="PBE")
-    atoms.center(vacuum=4)
-    atoms.calc = calc
-    atoms.get_potential_energy()
-    results = analyze_symmetry(calc, False, expected=symmetry)
+    with workdir(name):
+        if not Path("wfs.gpw").exists():
+            from gpaw.new.ase_interface import GPAW
+
+            calc = GPAW(mode={"name": "pw"}, xc="PBE")
+            atoms.center(vacuum=4)
+            atoms.calc = calc
+            atoms.get_potential_energy()
+            calc.write("wfs.gpw", mode="all")
+
+    with workdir(name):
+        calc = GPAW("wfs.gpw")
+        results = analyze_symmetry(calc, False, expected=symmetry)
     print(results)
     print(states)
 
 
-print(g2.names)
-for system in g2.names:
-    group = "???"
-    try:
-        group = Path(system + "/group.txt").read_text().split()[-1]
-    except FileNotFoundError:
-        pass
-    print(f'"{system}": "{group}",')
+if __name__ == "__main__":
+    print(set(systems.values()))
+    for system in g2.names:
+        group = "???"
+        try:
+            group = Path(system + "/group.txt").read_text().split()[-1]
+        except FileNotFoundError:
+            pass
+        print(f'"{system}": "{group}",')
