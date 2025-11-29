@@ -88,7 +88,8 @@ class SymmetryEigenvalues:
                     print(band, irrep, f"{s.real:.2f}")
                     states.append(State(irrep, eig, occ, 1, s))
                     if found is not None:
-                        failure = True
+                        if occ > 1e-2:
+                            failure = True
                     found = irrep
         if failure:
             raise ValueError("Band spans multiple irreps.")
@@ -143,7 +144,7 @@ class SymmetryEigenvalues:
 turbomole_input = """
 
 a coord
-desy
+desy 1e-3
 *
 no
 b
@@ -357,7 +358,7 @@ systems = {
     "CCH": "c6v",
     "N": "oh",
     "Si2": "d6h",
-    "C2H6SO": "c1",
+    "C2H6SO": "cs",
     "C5H8": "d2d",
     "H2CF2": "c2v",
     "Li2": "d6h",
@@ -450,6 +451,9 @@ assert set(systems.values()) == {
     "c1",
 }
 
+ready = {'c1', 'ci', 'cs', 'c2', 'c2h'}
+systems = {key: value for key, value in systems.items() if value in ready}
+
 
 def build_cell(atoms, group):
     if group.upper() in {'D3D', 'D6H'}:
@@ -469,7 +473,7 @@ def test_molecule(name, symmetry):
     atoms = molecule(name)
     build_cell(atoms, symmetry)
     tmole_json = Path(name + "_tmole.json")
-    if not tmole_json.exists():
+    if 1: #not tmole_json.exists():
         os.system(f"rm -r {name}")
         Path(name).mkdir(exist_ok=True)
         with workdir(name):

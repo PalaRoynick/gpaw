@@ -280,15 +280,14 @@ Oh = {
 }
 
 character_tables = {'C1': C1,
+                    'Cs': Cs,
                     'Ci': Ci,
+                    'C2': C2,
+                    'C2h': C2h,
                     'D3h': D3h,
                     'C3v': C3v,
                     'C2v': C2v,
-                    'C2': C2,
-                    'Cs': Cs,
-                    'C2h': C2h,
                     'D2': D2,
-                    'C2v': C2v,
                     'D2h': D2h,
                     'C3': C3,
                     'S6': S6,

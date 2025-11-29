@@ -15,6 +15,110 @@ def ppstr(W_cc, w_c=None):
             s += f"  [ {w_c[i]:.15f} ]\n"
     return s + "\n"
 
+@dataclass
+class OperationInfo:
+    op_cc: np.array
+    cls: str
+    axis: np.array
+
+    @classmethod
+    def from_op(cls, op_cc):
+        eigs_n, vecs_n = np.linalg.eig(op_cc)
+        print('in the beginning')
+        print(eigs_n, '\n', vecs_n)
+        from functools import cmp_to_key
+        eps = 1e-3
+
+        def cmp(a, b):
+            # First element is the index
+            a, b = a[1], b[1]
+            if abs(a.real - b.real) < eps:
+                return -1 if a.imag < b.imag else (1 if a.imag > b.imag else 0)
+            return -1 if a.real < b.real else 1
+
+        idx = [i for i, _ in sorted(enumerate(eigs_n), key=cmp_to_key(cmp))]
+        eigs_n = eigs_n[idx]
+        vecs_n = vecs_n[:, idx]
+        print('after sort')
+        print(eigs_n,'\n', vecs_n)
+
+        # Identity
+        if np.allclose(eigs_n, 1.0):
+            return cls(op_cc, "E", None)
+
+        # Reflection
+        if np.allclose(eigs_n, [-1.0, 1.0, 1.0]):
+            print(vecs_n[0], 'axis of reflection')
+            print('total op', op_cc)
+            return cls(op_cc, "s", vecs_n[:, 0])
+
+        # Inversion
+        if np.allclose(eigs_n, [-1.0, -1.0, -1.0]):
+            return cls(op_cc, "i", None)
+
+        # Proper rotation
+        for N in [2, 3, 4, 6]:
+            angle = 2 * np.pi / N
+            em, ep = np.exp(1j * angle), np.exp(-1j * angle)
+            #print(eigs_n,'vs', [ ep, em, 1.0])
+            if np.allclose(eigs_n, [ ep, em, 1.0]):
+                return cls(op_cc, f"C{N}", vecs_n[:, 2])
+
+        # Improper rotation
+        for N in [2, 3, 4, 6]:
+            angle = 2 * np.pi / N
+            em, ep = np.exp(1j * angle), np.exp(-1j * angle)
+            #print(eigs_n,'vs', [ -1, ep, em])
+            if np.allclose(eigs_n, [ -1, ep, em]):
+                return cls(op_cc, f"S{N}", vecs_n[:, 0])
+
+        print(ppstr(op_cc))
+        print(f"{eigs_n=} {vecs_n=}")
+        raise NotImplementedError
+
+    def __repr__(self):
+        if self.cls == "E":
+            return "Identity"
+        if self.cls == "s":
+            return f"Reflection over plane n=<{self.axis}>"
+        if self.cls == "i":
+            return "Inversion"
+        return f"{self.cls} {self.axis}"
+
+    @property
+    def identity(self):
+        return self.cls == "E"
+    
+    @property
+    def rotation(self):
+        if self.cls.startswith('C'):
+            return True
+        if self.cls.startswith('S'):
+            return True
+        return False
+
+    @property
+    def inversion(self):
+        return self.cls == "i"
+    
+    @property
+    def reflection(self):
+        return self.cls == "s"
+
+    @property
+    def CN(self):
+        # XXX Name, returns also order on S
+        if self.cls.startswith('C'):
+            return int(self.cls[1:])
+        if self.cls.startswith('S'):
+            return int(self.cls[1:])
+        return None
+
+    @property
+    def N(self):
+        if self.reflection:
+            return 2
+        return self.CN
 
 @dataclass
 class CharacterTable:
@@ -135,7 +239,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        print(f"{dataset=}")
+        #print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -181,7 +285,7 @@ class SPGOperations:
             "4/m": "C4h",
             "422": "D4",
             "4mm": "C4v",
-            "-32m": "D2d",
+            "-42m": "D2d",
             "4/mmm": "D4h",
             "6": "C6",
             "-6": "C3h",
@@ -249,6 +353,8 @@ class SymmmetryOperations:
 
         self._build_multiplication_table()
 
+        self.operation_info_o = [OperationInfo.from_op(op_cc) for op_cc in ops_occ]
+
     def get_op_id(self, op_cc):
         for o1, op1_cc in enumerate(self.ops_occ):
             if np.linalg.norm(op_cc - op1_cc) < 0.01:
@@ -311,7 +417,28 @@ class ConjugacyClassClassifierClass:
         if verbose:
             print("Found %d conjugacy classes" % len(self.ops_g))
 
-    def _detect_conjugacy_class(self, ops_occ):
+    def _detect_main_conjugacy_class(self, operation_info_o):
+        """Detect the main conjugacy class
+
+        Essentially, either E, i, or a number indicating the size of the conjugacy
+        class and then operation. However, at this point, one does not yet
+        distinguish different types of reflections.
+        """
+        N = len(operation_info_o)
+        first_info = operation_info_o[0]
+
+        # Special cases (omit 1 in front)
+        if len(operation_info_o) == 1:
+            if first_info.identity:
+                return "E"
+            if first_info.inversion:
+                return "i"
+
+        if all([info.cls == first_info.cls for info in operation_info_o]): 
+            return f'{N}{first_info.cls}'
+
+        print(f"{operation_info_o=}")
+        asd
         det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
         eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
@@ -382,7 +509,7 @@ class ConjugacyClassClassifierClass:
             return "8C3"
 
         if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
-            for N in [3, 6]:
+            for N in [3, 4, 6]:
                 c = np.cos(2 * np.pi / N)
                 s = np.sin(2 * np.pi / N)
                 eigs = sorted(np.linalg.eig(np.array([[c, s, 0],
@@ -390,8 +517,8 @@ class ConjugacyClassClassifierClass:
                                                       [0, 0, -1]]))[0])
                 if np.all(np.isclose(eigs, eigs_o)):
                     return f'2S{N}'
-            asd
-            # XXX
+            print(f'{ops_occ=}')
+            print(det_o, eigs_o)
             return "2S3"
         if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
             # XXX
@@ -407,11 +534,50 @@ class ConjugacyClassClassifierClass:
 
         names_g = []
 
+        main_conjugacy_classes = []
         # For each conjugacy class
-        for classops in self.ops_g:
+        for g, classops in enumerate(self.ops_g):
             # There are the operations of current conjucagy class
-            ops_occ = [self.operations.ops_occ[o] for o in classops]
-            suggestion = self._detect_conjugacy_class(ops_occ)
+            #ops_occ = [self.operations.ops_occ[o] for o in classops]
+            operation_info_o = [self.operations.operation_info_o[o] for o in classops]
+
+            # Favour C2 over sigma h
+            rotation_order = (operation_info_o[0].N or 0)+ 0.1 * operation_info_o[0].rotation
+            main_conjugacy_classes.append((g,
+                                           self._detect_main_conjugacy_class(operation_info_o),
+                                           operation_info_o,
+                                           rotation_order))
+
+        # Find the principal axis
+        axis_determining_cc = max(main_conjugacy_classes, key=lambda x: x[3])
+        principal_axis = axis_determining_cc[2][0].axis
+        print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
+        if principal_axis is not None:
+            assert np.linalg.norm(principal_axis.imag) < 1e-5
+        
+        names_g = []
+        for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
+            if operation_info_o[0].reflection:
+                if principal_axis is None:
+                    names_g.append(main_cc)
+                    continue
+                print('Analyzing reflection conjugacy class. Reflection planes:')
+                Ds = []
+                for info in operation_info_o:
+                    assert info.reflection
+                    Ds.append(np.dot(info.axis, principal_axis))
+                    print(info.op_cc)
+                    print(info.axis, 'D=', np.dot(info.axis, principal_axis))
+                if np.allclose(Ds, 1.0):
+                    main_cc += 'h'
+                elif np.allclose(Ds, 0.0):
+                    main_cc += 'v'  # XXX Migh also be d sometimes
+                else:
+                    main_cc += 'd'
+            names_g.append(main_cc)
+        return names_g
+        asd
+        """
             if suggestion in free_names:
                 names_g.append(suggestion)
                 free_names.remove(suggestion)
@@ -423,13 +589,14 @@ class ConjugacyClassClassifierClass:
                         break
                 else:
                     print('Conjugacy class:')
-                    for op_cc in ops_occ:
-                        print(ppstr(op_cc))
-                        print(np.linalg.eig(op_cc)[0])
+                    for info in operation_info_o:
+                        print(ppstr(info.op_cc))
+                        print(info)
                     raise ValueError(
                         f"Got unexpected conjugacy class {suggestion} free names: {free_names} all_names {class_names}"
                     )
         return names_g
+        """
 
     @property
     def names_g(self):
