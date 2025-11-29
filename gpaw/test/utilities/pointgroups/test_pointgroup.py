@@ -1,4 +1,4 @@
-import pytest
+gpaw.test.utilitiesimport pytest
 from ase.build import mx2
 import numpy as np
 from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
