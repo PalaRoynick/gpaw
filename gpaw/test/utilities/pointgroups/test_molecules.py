@@ -451,7 +451,7 @@ assert set(systems.values()) == {
     "c1",
 }
 
-ready = {'c1', 'ci', 'cs', 'c2', 'c2h'}
+ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v'}
 systems = {key: value for key, value in systems.items() if value in ready}
 
 

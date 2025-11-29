@@ -575,6 +575,22 @@ class ConjugacyClassClassifierClass:
                 else:
                     main_cc += 'd'
             names_g.append(main_cc)
+
+        # We still might have two 1sv's
+        # Hack for C2v
+        one_es_vees = [g for g, name in enumerate(names_g) if name == '1sv']
+        if len(one_es_vees) == 2:
+            for g, add in zip(one_es_vees, ["_xz", "_yz"]):
+                # TODO: Actually use orientation (maybe crystal axes)
+                names_g[g] += add
+       
+        # Hack for D2
+        one_es_vees = [g for g, name in enumerate(names_g) if name == '1C2']
+        if len(one_es_vees) == 3:
+            for g, add in zip(one_es_vees, ["_x", "_y", "_z"]):
+                # TODO: Actually use some orientation
+                names_g[g] += add
+
         return names_g
         asd
         """
