@@ -459,7 +459,8 @@ def build_cell(atoms):
 def test_molecule(name, symmetry):
     atoms = molecule(name)
     build_cell(atoms)
-    if 0:
+    tmole_json = Path(name + "_tmole.json")
+    if not tmole_json.exists():
         os.system(f"rm -r {name}")
         Path(name).mkdir(exist_ok=True)
         with workdir(name):
@@ -476,12 +477,10 @@ def test_molecule(name, symmetry):
             )
             states = parse_eigenvalues(Path("irreps.txt").read_text())
             tmole_group = Path("group.txt").read_text().split()[-1]
+            assert tmole_group.upper() == symmetry.upper()
             tmole_states = SymmetryEigenvalues(tmole_group, states)
-        tmole_states.save(name + "_tmole.json")
-    tmole_states = tmole_states.load(name + "_tmole.json")
-    assert tmole_group.upper() == symmetry.upper()
-    for state in states:
-        print(f"{state}")
+        tmole_states.save(tmole_json)
+    tmole_states = SymmetryEigenvalues.load(tmole_json)
 
     with workdir(name):
         if not Path("wfs.gpw").exists():
