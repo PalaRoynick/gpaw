@@ -1,3 +1,4 @@
+import numpy as np
 from ase.collections import g2
 import pytest
 from ase.io import write
@@ -7,7 +8,8 @@ from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
 from gpaw.new.ase_interface import GPAW
 from dataclasses import dataclass
 from numpy import pi, sin, cos
-
+import re
+import json
 import os
 import contextlib
 
@@ -24,28 +26,108 @@ def workdir(path):
         os.chdir(prev_cwd)
 
 
-def analyze_symmetry(calc, layergroup, expected):
-    spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
-    assert spg_ops.pointgroup.upper() == expected.upper()
-    pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
-    results = []
-    failure = False
-    for band in range(6):
-        signature = pg.signature(Projectable.from_calc(calc, band))
-        found = None
-        for irrep, s in zip(
-            pg.character_table.irreps,
-            pg.detect_irrep(signature),
-        ):
-            if s > 0.01:
-                print(band, irrep, f"{s.real:.2f}")
-                results.append(irrep)
-                if found is not None:
-                    failure = True
-                found = irrep
-    if failure:
-        raise ValueError("Band spans multiple irreps.")
-    return results
+@dataclass
+class State:
+    irrep: str
+    eigenvalue: float
+    occupation: float
+    degeneracy: int = 1
+    weight: float = 1.0
+
+    def __format__(self, fmt):
+        return f"{self.irrep:5s} {self.eigenvalue:8.2f} {self.occupation:5.2f}"
+
+    def as_dict(self):
+        return {
+            "irrep": self.irrep,
+            "eigenvalue": self.eigenvalue,
+            "occupation": self.occupation,
+            "degeneracy": self.degeneracy,
+            "weight": self.weight,
+        }
+
+
+@dataclass
+class SymmetryEigenvalues:
+    little_group: str
+    states: list[State]
+
+    def __post_init__(self):
+        if isinstance(self.states[0], dict):
+            self.states = [State(**state) for state in self.states]
+
+    def save(self, filename: str):
+        Path(filename).write_text(json.dumps(self.as_dict()))
+
+    def as_dict(self):
+        return {"little_group": self.little_group, "states": [state.as_dict() for state in self.states]}
+
+    @classmethod
+    def load(cls, filename: str):
+        return SymmetryEigenvalues(**json.loads(Path(filename).read_text()))
+
+    @classmethod
+    def from_calc(cls, calc, layergroup=False):
+        spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
+        pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
+        states = []
+        failure = False
+        eig_n = calc.get_eigenvalues()
+        occ_n = calc.get_occupation_numbers()
+        for band, (eig, occ) in enumerate(zip(eig_n, occ_n)):
+            signature = pg.signature(Projectable.from_calc(calc, band))
+            found = None
+            for irrep, s in zip(
+                pg.character_table.irreps,
+                pg.detect_irrep(signature),
+            ):
+                if s > 0.01:
+                    print(band, irrep, f"{s.real:.2f}")
+                    states.append(State(irrep, eig, occ, 1, s))
+                    if found is not None:
+                        failure = True
+                    found = irrep
+        if failure:
+            raise ValueError("Band spans multiple irreps.")
+        return cls(spg_ops.pointgroup, states)
+
+    def __isub__(self, value):
+        if isinstance(value, float):
+            for state in self.states:
+                state.eigenvalue -= value
+            return self
+        else:
+            raise TypeError("Cannot subtract {value}")
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self.states[item]
+        if isinstance(item, slice):
+            return SymmetryEigenvalues(self.little_group, self.states[item])
+        raise NotImplementedError
+
+    def __repr__(self):
+        s = f"Point group: {self.little_group}"
+        s += "\n"
+        for state in self.states:
+            s += f"{state}\n"
+        return s
+
+    @property
+    def occupations(self):
+        return [state.occupation for state in self.states]
+
+    @property
+    def irreps(self):
+        return [state.irrep for state in self.states]
+
+    @property
+    def occupied_states(self):
+        HOMO = np.where(self.occupations)[0][-1]
+        return SymmetryEigenvalues(self.little_group, self.states[: HOMO + 1])
+
+    def __len__(self):
+        return len(self.states)
 
 
 turbomole_input = """
@@ -55,7 +137,7 @@ desy
 *
 no
 b
-all DZP
+all def2-TZVPP
 *
 eht
 y
@@ -68,17 +150,6 @@ on
 *
 *
 """
-
-
-@dataclass
-class State:
-    irrep: str
-    eigenvalue: float
-    occupation: float
-    degeneracy: int = 1
-
-    def __format__(self, fmt):
-        return f"{self.irrep:5s} {self.eigenvalue:8.2f} {self.occupation:5.2f}"
 
 
 def grouped_tokens(tokens):
@@ -125,6 +196,9 @@ def parse_eigenvalues(text):
             for irr, eig, (deg, occ) in zip_longest(
                 irreps, eV, grouped_tokens(occupations), fillvalue=(1, 0.0)
             ):
+                # Remove the leading eigenvalue index
+                irr = re.sub(r"^\d+", "", irr).upper()
+                irr = irr.replace('"', "''")
                 states.append(State(irr, float(eig), float(occ), deg))
     except StopIteration:
         pass
@@ -378,19 +452,18 @@ def build_cell(atoms):
         atoms.set_pbc((True, True, True))
         atoms.center()
     else:
-        atoms.center(vacuum=3)
+        atoms.center(vacuum=6)
 
 
 @pytest.mark.parametrize("name,symmetry", systems.items())  # g2.names
 def test_molecule(name, symmetry):
     atoms = molecule(name)
     build_cell(atoms)
-    with workdir(name):
-        write(name + ".xyz", atoms)
     if 0:
         os.system(f"rm -r {name}")
-        Path(name).mkdir(existok=True)
+        Path(name).mkdir(exist_ok=True)
         with workdir(name):
+            write(name + ".xyz", atoms)
             os.system(f"x2t {name}.xyz > coord")
             Path("inp").write_text(turbomole_input)
             os.system("define < inp > define_out.txt")
@@ -401,25 +474,37 @@ def test_molecule(name, symmetry):
             os.system(
                 'cat output.txt |grep "symmetry group of the molecule :" > group.txt'
             )
-    with workdir(name):
-        states = parse_eigenvalues(Path("irreps.txt").read_text())
-        tmole_group = Path("group.txt").read_text().split()[-1]
+            states = parse_eigenvalues(Path("irreps.txt").read_text())
+            tmole_group = Path("group.txt").read_text().split()[-1]
+            tmole_states = SymmetryEigenvalues(tmole_group, states)
+        tmole_states.save(name + "_tmole.json")
+    tmole_states = tmole_states.load(name + "_tmole.json")
     assert tmole_group.upper() == symmetry.upper()
     for state in states:
         print(f"{state}")
 
     with workdir(name):
         if not Path("wfs.gpw").exists():
-            calc = GPAW(mode={"name": "pw"}, xc="PBE")
+            calc = GPAW(
+                mode={"name": "pw", "ecut": 400, "force_complex_dtype": True}, xc="PBE"
+            )
+            atoms.set_pbc((False, False, False))
             atoms.calc = calc
             atoms.get_potential_energy()
             calc.write("wfs.gpw", mode="all")
 
     with workdir(name):
         calc = GPAW("wfs.gpw")
-        results = analyze_symmetry(calc, False, expected=symmetry)
-    print(results)
-    print(states)
+        gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
+        assert gpaw_states.little_group.upper() == tmole_states.little_group.upper()
+    gpaw_states = gpaw_states.occupied_states
+    tmole_states = tmole_states.occupied_states
+    gpaw_states = gpaw_states[len(gpaw_states) - len(tmole_states) :]
+
+    for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
+        print(f"{tmole_state} | {gpaw_state}")
+        assert tmole_state.irrep == gpaw_state.irrep
+        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.1
 
 
 if __name__ == "__main__":
