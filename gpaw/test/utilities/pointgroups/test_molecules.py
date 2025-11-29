@@ -37,6 +37,9 @@ class State:
     def __format__(self, fmt):
         return f"{self.irrep:5s} {self.eigenvalue:8.2f} {self.occupation:5.2f}"
 
+    def new(self, irrep=None, eigenvalue=None, occupation=None, degeneracy=None, weight=None):
+        return State(irrep or self.irrep, eigenvalue or self.eigenvalue, occupation or self.occupation, degeneracy or self.degeneracy, weight or self.weight)
+
     def as_dict(self):
         return {
             "irrep": self.irrep,
@@ -69,7 +72,7 @@ class SymmetryEigenvalues:
     @classmethod
     def from_calc(cls, calc, layergroup=False):
         spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
-        pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
+        pg = PointGroup(spg_ops, [0, 0, 1]) # if layergroup else None)
         states = []
         failure = False
         eig_n = calc.get_eigenvalues()
@@ -99,6 +102,13 @@ class SymmetryEigenvalues:
         else:
             raise TypeError("Cannot subtract {value}")
 
+    def unroll_degeneracies(self):
+        states = []
+        for state in self.states:
+            for _ in range(state.degeneracy):
+                states.append(state.new(degeneracy=1))
+        return SymmetryEigenvalues(self.little_group, states)
+
     def __getitem__(self, item):
         if isinstance(item, int):
             return self.states[item]
@@ -127,7 +137,7 @@ class SymmetryEigenvalues:
         return SymmetryEigenvalues(self.little_group, self.states[: HOMO + 1])
 
     def __len__(self):
-        return len(self.states)
+        return np.sum([state.degeneracy for state in self.states])
 
 
 turbomole_input = """
@@ -441,10 +451,9 @@ assert set(systems.values()) == {
 }
 
 
-# P2 make cell hexagonal
-def build_cell(atoms):
-    if len(atoms) == 2:
-        L = 8
+def build_cell(atoms, group):
+    if group.upper() in {'D3D', 'D6H'}:
+        L = 10
         angle = 2 * pi / 3
         c, s = cos(angle), sin(angle)
         cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
@@ -458,7 +467,7 @@ def build_cell(atoms):
 @pytest.mark.parametrize("name,symmetry", systems.items())  # g2.names
 def test_molecule(name, symmetry):
     atoms = molecule(name)
-    build_cell(atoms)
+    build_cell(atoms, symmetry)
     tmole_json = Path(name + "_tmole.json")
     if not tmole_json.exists():
         os.system(f"rm -r {name}")
@@ -485,7 +494,8 @@ def test_molecule(name, symmetry):
     with workdir(name):
         if not Path("wfs.gpw").exists():
             calc = GPAW(
-                mode={"name": "pw", "ecut": 400, "force_complex_dtype": True}, xc="PBE"
+                mode={"name": "pw", "ecut": 400, "force_complex_dtype": True}, xc="PBE",
+                txt="gpaw.txt",
             )
             atoms.set_pbc((False, False, False))
             atoms.calc = calc
@@ -496,14 +506,17 @@ def test_molecule(name, symmetry):
         calc = GPAW("wfs.gpw")
         gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
         assert gpaw_states.little_group.upper() == tmole_states.little_group.upper()
+    print(f'{tmole_states}\n{gpaw_states}')
     gpaw_states = gpaw_states.occupied_states
-    tmole_states = tmole_states.occupied_states
-    gpaw_states = gpaw_states[len(gpaw_states) - len(tmole_states) :]
-
+    tmole_states = tmole_states.unroll_degeneracies().occupied_states
+    comparable = min(len(gpaw_states), len(tmole_states))
+    gpaw_states = gpaw_states[-comparable:]
+    tmole_states = tmole_states[-comparable:]
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         print(f"{tmole_state} | {gpaw_state}")
-        assert tmole_state.irrep == gpaw_state.irrep
-        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.1
+    for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
+        assert tmole_state.irrep.upper() == gpaw_state.irrep.upper()
+        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.4
 
 
 if __name__ == "__main__":

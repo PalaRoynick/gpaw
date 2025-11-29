@@ -330,10 +330,10 @@ class ConjugacyClassClassifierClass:
             # Horizontal mirror operation flips one of the coordinates
             name = f"{len(det_o)}s"
             
-            if self.principal_axis is None:
-                if len(det_o) == 6:
-                    return '6sd'
-                return name + 'h'
+            #if self.principal_axis is None:
+            if len(det_o) in {6, 3}:
+                return f'{len(det_o)}sd'
+            #return name + 'h'
 
             reflection_type = ""
             for op_cc in ops_occ:
@@ -382,6 +382,15 @@ class ConjugacyClassClassifierClass:
             return "8C3"
 
         if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
+            for N in [3, 6]:
+                c = np.cos(2 * np.pi / N)
+                s = np.sin(2 * np.pi / N)
+                eigs = sorted(np.linalg.eig(np.array([[c, s, 0],
+                                                      [-s, c, 0],
+                                                      [0, 0, -1]]))[0])
+                if np.all(np.isclose(eigs, eigs_o)):
+                    return f'2S{N}'
+            asd
             # XXX
             return "2S3"
         if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
@@ -413,6 +422,10 @@ class ConjugacyClassClassifierClass:
                         free_names.remove(free_name)
                         break
                 else:
+                    print('Conjugacy class:')
+                    for op_cc in ops_occ:
+                        print(ppstr(op_cc))
+                        print(np.linalg.eig(op_cc)[0])
                     raise ValueError(
                         f"Got unexpected conjugacy class {suggestion} free names: {free_names} all_names {class_names}"
                     )
