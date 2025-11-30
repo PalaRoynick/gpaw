@@ -60,7 +60,7 @@ def test_C2v():
 def test_D2():
     pg = symmetry_from(read("twistane.xyz"))
     assert pg.spg_ops.pointgroup == "D2"
-    assert set(pg.names_g) == {"E", "1C2_z", "1C2_y", "1C2_x"}
+    assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x"}
 
 
 def test_D2h():

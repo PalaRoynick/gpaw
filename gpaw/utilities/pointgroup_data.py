@@ -75,7 +75,8 @@ C3 = {
 
 D2 = {
     "irreps": ["A", "B1", "B2", "B3"],
-    "classes": ["E", "1C2_z", "1C2_y", "1C2_x"],
+    "classes_textbook": ["E", "1C2_z", "1C2_y", "1C2_x"],
+    "classes": ["E", '1C2', "1C2'_y", "1C2'_x"],
     'table': [[1., 1., 1., 1.],
               [1., 1., -1., -1.],
               [1., -1., 1., -1.],
@@ -85,7 +86,7 @@ D2 = {
 D2h = {
     "irreps": ["Ag", "B1g", "B2g", "B3g",
                "Au", "B1u", "B2u", "B3u"],
-    "classes": ["E", "1C2_z", "1C2_y", "1C2_x",
+    "classes": ["E", "1C2", "1C2'_y", "1C2'_x",
                 "i", "1sh", "1sv_xz", "1sv_yz"],
     # One of the 1sh's is h and two v, and that is how we identify them.
     # It is jsut convention that they are not labeled that way.
@@ -183,7 +184,7 @@ C4v = {
 
 D2d = {
     "irreps": ["A1", "A2", "B1", "B2", "E"],
-    "classes": ["E", "2S4", "1C2", "2C2", "2sv"],
+    "classes": ["E", "2S4", "1C2", "2C2'", "2sv"],
     "classes_textbook": ["E", "2S4", "1C2", "2C2'", "2sd"],  # sv and sd both here
     'table': [[1., 1., 1., 1., 1.],
               [1., 1., 1., -1., -1.],

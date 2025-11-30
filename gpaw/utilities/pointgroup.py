@@ -452,7 +452,12 @@ class ConjugacyClassClassifierClass:
         
         names_g = []
         for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
-            if operation_info_o[0].reflection:
+            info = operation_info_o[0]
+            if info.rotation:
+                # Rotation orthogonal to the main axis, add a prime
+                if np.allclose(np.dot(info.axis, principal_axis), 0):
+                    main_cc += "'"
+            if info.reflection:
                 if principal_axis is None:
                     names_g.append(main_cc)
                     continue
@@ -481,6 +486,9 @@ class ConjugacyClassClassifierClass:
             elif name == '1C2' and count == 3:
                 extras = ["_x", "_y", "_z"]
                 # Actually fix according to crystal axes
+            elif name == "1C2'" and count == 2:
+                extras = ["_x", "_y"]
+                # We should also name the unprimed 1C2 as _z now
             elif name == "1C3" and count == 2:
                 extras = ["", "^2"]
                 # TODO: Actually fix according to principal axis
