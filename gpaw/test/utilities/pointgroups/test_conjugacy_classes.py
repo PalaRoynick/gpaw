@@ -69,6 +69,11 @@ def test_D2h():
     assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x",
                 "i", "1s_xy", "1s_xz", "1s_yz"}
 
+def test_D2d():
+    pg = symmetry_from("cyclobutane")
+    assert pg.spg_ops.pointgroup == "D2d"
+    assert set(pg.textbook_names_g) == {"E", "2S4", "1C2", "2C2'", "2sd"}
+
 def test_C3():
     atoms = Atoms("H2", positions=[[1, 2, 3], [4, 5, 6]])
     atoms2 = atoms.copy()

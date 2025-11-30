@@ -183,7 +183,8 @@ C4v = {
 
 D2d = {
     "irreps": ["A1", "A2", "B1", "B2", "E"],
-    "classes": ["E", "2S4", "1C2", "2C2'", "2sd"],  # sv and sd both here
+    "classes": ["E", "2S4", "1C2", "2C2", "2sv"],
+    "classes_textbook": ["E", "2S4", "1C2", "2C2'", "2sd"],  # sv and sd both here
     'table': [[1., 1., 1., 1., 1.],
               [1., 1., 1., -1., -1.],
               [1., -1., 1., 1., -1.],
@@ -290,27 +291,27 @@ Oh = {
               [3., 0., 1., -1., -1., -3., 1., 0., 1., -1.]]
 }
 
-character_tables = {'C1': C1,
-                    'Cs': Cs,
-                    'Ci': Ci,
-                    'C2': C2,
-                    'C2h': C2h,
-                    'C2v': C2v,
-                    'D2': D2,
-                    'C3': C3,
-                    'C3h': C3h,
-                    'C3v': C3v,
-                    'D2h': D2h,
-                    'D3h': D3h,
-                    'S6': S6,
+character_tables = {'C1': C1,    # cc tested
+                    'Cs': Cs,    # cc tested
+                    'Ci': Ci,    # cc tested
+                    'C2': C2,    # cc tested
+                    'C2h': C2h,  # cc tested
+                    'C2v': C2v,  # cc tested
+                    'D2': D2,    # cc tested
+                    'D2h': D2h,  # cc tested
+                    'D2d': D2d,  # cc tested
+                    'C3': C3,    # cc tested
+                    'C3h': C3h,  # cc tested
+                    'C3v': C3v,  # cc tested
                     'D3': D3,
+                    'D3h': D3h,
                     'D3d': D3d,
+                    'S6': S6,
                     'C4': C4,
                     'S4': S4,
                     'C4h': C4h,
                     'D4': D4,
                     'C4v': C4v,
-                    'D2d': D2d,
                     'D4h': D4h,
                     'C6': C6,
                     'C6h': C6h,
@@ -319,3 +320,18 @@ character_tables = {'C1': C1,
                     'Td': Td,
                     'Oh': Oh,
                     }
+
+"""
+Current tests:
+test_conjugacy_classes.py:def test_C1():
+test_conjugacy_classes.py:def test_Ci():
+test_conjugacy_classes.py:def test_Cs():
+test_conjugacy_classes.py:def test_C2():
+test_conjugacy_classes.py:def test_C2h():
+test_conjugacy_classes.py:def test_C2v():
+test_conjugacy_classes.py:def test_D2():
+test_conjugacy_classes.py:def test_D2h():
+test_conjugacy_classes.py:def test_C3():
+test_conjugacy_classes.py:def test_C3h():
+test_conjugacy_classes.py:def test_C3v():
+"""
