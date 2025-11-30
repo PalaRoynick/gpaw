@@ -308,13 +308,13 @@ character_tables = {'C1': C1,    # cc tested
                     'D3': D3,    # cc tested
                     'D3h': D3h,  # cc tested
                     'D3d': D3d,  # cc tested
-                    'C4': C4,
-                    'C4v': C4v,
-                    'C4h': C4h,
-                    'D4': D4,
-                    'S6': S6,
+                    'C4': C4,    # cc tested
+                    'C4v': C4v,  # cc tested
+                    'C4h': C4h,  # cc tested
                     'S4': S4,
+                    'D4': D4,
                     'D4h': D4h,
+                    'S6': S6,
                     'C6': C6,
                     'C6h': C6h,
                     'D6h': D6h,

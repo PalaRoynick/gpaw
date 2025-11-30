@@ -159,3 +159,24 @@ def test_D3d():
     assert pg.spg_ops.pointgroup == "D3d"
     assert set(pg.textbook_names_g) == {"E", "2C3", "3C2'", "i", "2S6", "3sd"}
 
+def test_C4():
+    atoms = Atoms('H9', positions=[[1,1,1], [-1,1,1], [1,-1,1],[-1,-1,1],[0,0,0],
+                                   [1.1,1,-1], [-1,1.1,-1], [1,-1.1,-1],[-1.1,-1,-1]])
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C4"
+    assert set(pg.textbook_names_g) == {"E", "1C4", "1C2", "1C4^3"}
+
+def test_C4h():
+    atoms = Atoms('H9', positions=[[1.1,1,1], [-1,1.1,1], [1,-1.1,1],[-1.1,-1,1],[0,0,0],
+                                   [1.1,1,-1], [-1,1.1,-1], [1,-1.1,-1],[-1.1,-1,-1]])
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C4h"
+    assert set(pg.textbook_names_g) == {"E", "1C4", "1C2", "1C4^3", "i", "1S4^3", "1sh", "1S4"}
+
+def test_C4v():
+    atoms = Atoms('H5', positions=[[1,1,1], [-1,1,1], [1,-1,1],[-1,-1,1],[0,0,0]])
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C4v"
+    assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2sv", "2sd"}
+
+

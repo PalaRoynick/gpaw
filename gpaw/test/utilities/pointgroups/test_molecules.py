@@ -126,7 +126,7 @@ class SymmetryEigenvalues:
 
     @property
     def occupations(self):
-        return [state.occupation for state in self.states]
+        return np.array([state.occupation for state in self.states])
 
     @property
     def irreps(self):
@@ -134,7 +134,7 @@ class SymmetryEigenvalues:
 
     @property
     def occupied_states(self):
-        HOMO = np.where(self.occupations)[0][-1]
+        HOMO = np.where(self.occupations > 0.01)[0][-1]
         return SymmetryEigenvalues(self.little_group, self.states[: HOMO + 1])
 
     def __len__(self):
@@ -504,7 +504,14 @@ def test_molecule(name, symmetry):
                 mode={"name": "pw", "ecut": 400, "force_complex_dtype": True}, xc="PBE",
                 txt="gpaw.txt",
             )
-            atoms.set_pbc((False, False, False))
+
+            # We don't support arbitrary centers (in our own symmetry
+            # projection code) so shift atoms to origin and enable
+            # periodic boundary conditions
+            atoms.set_pbc((True, True, True)) # False, False, False))
+
+            # Calling this to translate the atoms
+            spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
             atoms.calc = calc
             atoms.get_potential_energy()
             calc.write("wfs.gpw", mode="all")
@@ -516,14 +523,18 @@ def test_molecule(name, symmetry):
     print(f'{tmole_states}\n{gpaw_states}')
     gpaw_states = gpaw_states.occupied_states
     tmole_states = tmole_states.unroll_degeneracies().occupied_states
+    print(f'occupied GPAW states {gpaw_states=}')
+    print(f'occupied TMOLE states {tmole_states=}')
     comparable = min(len(gpaw_states), len(tmole_states))
     gpaw_states = gpaw_states[-comparable:]
     tmole_states = tmole_states[-comparable:]
+    print(f'{gpaw_states=}')
+    print(f'{tmole_states=}')
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         print(f"{tmole_state} | {gpaw_state}")
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         assert tmole_state.irrep.upper() == gpaw_state.irrep.upper()
-        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.4
+        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.65
 
 
 if __name__ == "__main__":

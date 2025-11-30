@@ -113,6 +113,8 @@ class SPGOperations:
 
     @classmethod
     def from_atoms(cls, atoms, verbose=False, *, layergroup: bool):
+        # XXX: NOTE! This will modify the atoms!!!
+        print("Modifying atoms with translations (for now, temporarily)")
         if layergroup:
             return cls.from_atoms_layergroup(atoms, verbose=verbose)
         else:
@@ -132,7 +134,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        #print(f"{dataset=}")
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -200,6 +202,16 @@ class SPGOperations:
         unshifted = cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True)
         print(f'unshifted {unshifted}')
         shifted = unshifted.apply_origin_shift(-origin_shift_c)
+        #print('Atoms before', atoms.get_positions())
+        # XXX: The apply origin shift has a negative sign
+        # XXX: It is bad that we modify atoms here
+        # XXX: All of this needs to be consolidated
+        atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
+
+        #print('Atoms after', atoms.get_positions())
+        #from ase.io import write
+        #write('after.xyz', atoms)
+        #asd
         print('shifts', shifted.w_sc)
         return shifted
 
@@ -446,7 +458,7 @@ class ConjugacyClassClassifierClass:
         # Find the principal axis
         axis_determining_cc = max(main_conjugacy_classes, key=lambda x: x[3])
         principal_axis = axis_determining_cc[2][0].axis
-        print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
+        #print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
         
@@ -461,17 +473,17 @@ class ConjugacyClassClassifierClass:
                 if principal_axis is None:
                     names_g.append(main_cc)
                     continue
-                print('Analyzing reflection conjugacy class. Reflection planes:')
+                #print('Analyzing reflection conjugacy class. Reflection planes:')
                 Ds = []
                 for info in operation_info_o:
                     assert info.reflection
                     Ds.append(np.dot(info.axis, principal_axis))
-                    print(info.op_cc)
-                    print(info.axis, 'D=', np.dot(info.axis, principal_axis))
+                    #print(info.op_cc)
+                    #print(info.axis, 'D=', np.dot(info.axis, principal_axis))
                 if np.allclose(Ds, 1.0):
                     main_cc += 'h'
                 elif np.allclose(Ds, 0.0):
-                    main_cc += 'v'  # XXX Migh also be d sometimes
+                    main_cc += 'v'  # XXX Might also be d sometimes
                 else:
                     main_cc += 'd'
             names_g.append(main_cc)
@@ -495,12 +507,23 @@ class ConjugacyClassClassifierClass:
             elif name == "1S3" and count == 2:
                 extras = ["", "^5"]
                 # TODO: Actually fix according to principal axis
+            elif name == "1S4" and count == 2:
+                extras = ["", "^3"]
+            elif name == "1C4" and count == 2:
+                extras = ["", "^3"]
+                # TODO: Actually fix according to principal axis
+            elif name == "2sv" and count == 2:
+                extras = ["-2sv", "-2sd"]
+                # TODO: Actually figure out which is sv and which is sd
             else:
                 raise NotImplementedError(f"Duplicate conjugacy class name {name} count: {count}")
 
             dpl_idx = [i for i, x in enumerate(names_g) if x == name]            
             for idx, extra in zip(dpl_idx, extras):
-                names_g[idx] += extra
+                if extra and extra[0] == '-':
+                    names_g[idx] = extra[1:]
+                else:
+                    names_g[idx] += extra
         """
         # We still might have two 1sv's
         # Hack for C2v
@@ -548,6 +571,7 @@ class ConjugacyClassClassifierClass:
 class PointGroup:
     def __init__(self, spg_ops, principal_axis=[0, 0, 1]):
         self.spg_ops = spg_ops
+        print('POINTGROUP', spg_ops.pointgroup)
         self.verbose = True
         self.principal_axis = principal_axis
 

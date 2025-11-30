@@ -30,8 +30,8 @@ class OperationInfo:
     @classmethod
     def from_op(cls, op_cc):
         eigs_n, vecs_n = np.linalg.eig(op_cc)
-        print('in the beginning')
-        print(eigs_n, '\n', vecs_n)
+        #print('in the beginning')
+        #print(eigs_n, '\n', vecs_n)
         from functools import cmp_to_key
         eps = 1e-3
 
@@ -45,8 +45,8 @@ class OperationInfo:
         idx = [i for i, _ in sorted(enumerate(eigs_n), key=cmp_to_key(cmp))]
         eigs_n = eigs_n[idx]
         vecs_n = vecs_n[:, idx]
-        print('after sort')
-        print(eigs_n,'\n', vecs_n)
+        #print('after sort')
+        #print(eigs_n,'\n', vecs_n)
 
         # Identity
         if np.allclose(eigs_n, 1.0):
