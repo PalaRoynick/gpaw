@@ -1,3 +1,4 @@
+import numpy as np
 D3h = {
     "irreps": ["A'1", "A'2", "E'1", "A''1", "A''2", "E''1"],
     "classes": ["E", "2C3", "3C2", "1sh", "2S3", "3sv"],
@@ -235,13 +236,17 @@ C6 = {
               [2., 1., 1., 2., 1., 1.]]
 }
 
+eps = np.exp(2 * np.pi * 1j / 3)
+epsc = np.conjugate(eps)
 C3h = {
-    "irreps": ["A'", "E'", "A''", "E''"],
+    "irreps": ["A'", "E'", "E'*", "A''", "E''", "E''*"],
     "classes": ["E", "1C3", "1C3^2", "1sh", "1S3", "1S3^5"],
     'table': [[1., 1., 1., 1., 1., 1.],
-              [2., -1., -1., 2., -1., -1.],
-              [1., 1., 1., -1., -1., -1.],  # Evaluated cosines
-              [2., -1., -1., -2., 1., 1.]]
+              [1., eps, epsc, 1, eps, epsc],
+              [1., epsc, eps, 1, epsc,  eps],
+              [1., 1., 1., -1., -1., -1.],
+              [1., eps, epsc, -1., -eps, -epsc],
+              [1., epsc, eps, -1., -epsc, -eps]]
 }
 
 C6h = {
@@ -293,12 +298,12 @@ character_tables = {'C1': C1,
                     'C2v': C2v,
                     'D2': D2,
                     'C3': C3,
+                    'C3h': C3h,
+                    'C3v': C3v,
                     'D2h': D2h,
                     'D3h': D3h,
-                    'C3v': C3v,
                     'S6': S6,
                     'D3': D3,
-                    'C3v': C3v,
                     'D3d': D3d,
                     'C4': C4,
                     'S4': S4,
@@ -308,7 +313,6 @@ character_tables = {'C1': C1,
                     'D2d': D2d,
                     'D4h': D4h,
                     'C6': C6,
-                    'C3h': C3h,
                     'C6h': C6h,
                     'D3h': D3h,
                     'D6h': D6h,

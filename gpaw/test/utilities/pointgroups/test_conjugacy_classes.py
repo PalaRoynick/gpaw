@@ -88,3 +88,29 @@ def test_C3():
     assert pg.spg_ops.pointgroup == "C3"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2"}
 
+def test_C3h():
+    atoms = read('boric_acid.xyz')
+    L = 10
+    angle = 2 * np.pi / 3
+    c, s = np.cos(angle), np.sin(angle)
+    cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+    atoms.set_cell(cell)
+    atoms.set_pbc((True, True, True))
+    atoms.center()
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C3h"
+    assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2", "1sh", "1S3", "1S3^5"}
+
+def test_C3v():
+    atoms = molecule("HCCl3")
+    L = 10
+    angle = 2 * np.pi / 3
+    c, s = np.cos(angle), np.sin(angle)
+    cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+    atoms.set_cell(cell)
+    atoms.set_pbc((True, True, True))
+    atoms.center()
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C3v"
+    assert set(pg.textbook_names_g) == {"E", "2C3", "3sv"}
+    

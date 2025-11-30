@@ -332,7 +332,7 @@ class ConjugacyClassClassifierClass:
             return f'{N}{first_info.cls}'
 
         print(f"{operation_info_o=}")
-        asd
+        raise ValueError('Could not detect conjugacy class.')
         det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
         eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
@@ -471,6 +471,29 @@ class ConjugacyClassClassifierClass:
                     main_cc += 'd'
             names_g.append(main_cc)
 
+        # Find duplicate main classes to furher distinguish them
+        from collections import Counter
+        duplicates = [(k, v) for k, v in Counter(names_g).items() if v > 1]
+        for name, count in duplicates:
+            if name == '1sv' and count == 2:
+                extras = ["_xz", "_yz"]
+                # Actually fix according to molecular symmetry(?)
+            elif name == '1C2' and count == 3:
+                extras = ["_x", "_y", "_z"]
+                # Actually fix according to crystal axes
+            elif name == "1C3" and count == 2:
+                extras = ["", "^2"]
+                # TODO: Actually fix according to principal axis
+            elif name == "1S3" and count == 2:
+                extras = ["", "^5"]
+                # TODO: Actually fix according to principal axis
+            else:
+                raise NotImplementedError(f"Duplicate conjugacy class name {name} count: {count}")
+
+            dpl_idx = [i for i, x in enumerate(names_g) if x == name]            
+            for idx, extra in zip(dpl_idx, extras):
+                names_g[idx] += extra
+        """
         # We still might have two 1sv's
         # Hack for C2v
         one_es_vees = [g for g, name in enumerate(names_g) if name == '1sv']
@@ -485,7 +508,7 @@ class ConjugacyClassClassifierClass:
             for g, add in zip(one_es_vees, ["_x", "_y", "_z"]):
                 # TODO: Actually use some orientation
                 names_g[g] += add
-
+        """
         return names_g
         asd
         """

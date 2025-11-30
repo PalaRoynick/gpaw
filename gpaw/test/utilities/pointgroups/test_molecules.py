@@ -470,6 +470,7 @@ def build_cell(atoms, group):
         atoms.center(vacuum=6)
 
 
+# TODO: Add C3 molecule test, even an artificial one
 @pytest.mark.parametrize("name,symmetry", systems.items())  # g2.names
 def test_molecule(name, symmetry):
     atoms = molecule(name)
