@@ -90,8 +90,10 @@ class SPGOperations:
 
     def __post_init__(self):
         if not self.allow_translations:
-            print('TODO: Actually make sure that neglected translations are a normal subgroup of the operations')
-            print('Filtering out translations', len(self.w_sc))
+            print(
+                "TODO: Actually make sure that neglected translations are a normal subgroup of the operations"
+            )
+            print("Filtering out translations", len(self.w_sc))
             new_W_scc, new_w_sc = [], []
             for W_cc, w_c in zip(self.W_scc, self.w_sc):
                 if np.allclose(w_c, 0, atol=0.01):
@@ -99,11 +101,11 @@ class SPGOperations:
                     new_w_sc.append(w_c)
             self.W_scc = new_W_scc
             self.w_sc = new_w_sc
-            print('Left', len(self.w_sc))
+            print("Left", len(self.w_sc))
 
             if not np.allclose(self.w_sc, 0):
-                print(f'{self}')
-                raise ValueError( 'We do not support translations atm.')
+                print(f"{self}")
+                raise ValueError("We do not support translations atm.")
 
     @property
     def character_table(self):
@@ -119,11 +121,11 @@ class SPGOperations:
             return cls.from_atoms_layergroup(atoms, verbose=verbose)
         else:
             return cls.from_atoms_spacegroup(atoms, verbose=verbose)
-    
+
     @classmethod
     def from_atoms_spacegroup(cls, atoms, verbose=False):
         if verbose:
-            print('Detecting spacegroup (NOT layergroup) with spglib...')
+            print("Detecting spacegroup (NOT layergroup) with spglib...")
         import spglib
 
         dataset = spglib.get_symmetry_dataset(
@@ -140,7 +142,7 @@ class SPGOperations:
     @classmethod
     def from_atoms_layergroup(cls, atoms, verbose=False):
         if verbose:
-            print('Detecting layergroup (NOT spacegroup) with spglib...')
+            print("Detecting layergroup (NOT spacegroup) with spglib...")
         import spglib
 
         dataset = spglib.get_layergroup(
@@ -199,20 +201,22 @@ class SPGOperations:
         pointgroup = dct[dataset.pointgroup]
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
-        unshifted = cls(W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True)
-        print(f'unshifted {unshifted}')
+        unshifted = cls(
+            W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True
+        )
+        print(f"unshifted {unshifted}")
         shifted = unshifted.apply_origin_shift(-origin_shift_c)
-        #print('Atoms before', atoms.get_positions())
+        # print('Atoms before', atoms.get_positions())
         # XXX: The apply origin shift has a negative sign
         # XXX: It is bad that we modify atoms here
         # XXX: All of this needs to be consolidated
         atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
 
-        #print('Atoms after', atoms.get_positions())
-        #from ase.io import write
-        #write('after.xyz', atoms)
-        #asd
-        print('shifts', shifted.w_sc)
+        # print('Atoms after', atoms.get_positions())
+        # from ase.io import write
+        # write('after.xyz', atoms)
+        # asd
+        print("shifts", shifted.w_sc)
         return shifted
 
     @property
@@ -340,11 +344,11 @@ class ConjugacyClassClassifierClass:
             if first_info.inversion:
                 return "i"
 
-        if all([info.cls == first_info.cls for info in operation_info_o]): 
-            return f'{N}{first_info.cls}'
+        if all([info.cls == first_info.cls for info in operation_info_o]):
+            return f"{N}{first_info.cls}"
 
         print(f"{operation_info_o=}")
-        raise ValueError('Could not detect conjugacy class.')
+        raise ValueError("Could not detect conjugacy class.")
         det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
         eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
         if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
@@ -362,11 +366,11 @@ class ConjugacyClassClassifierClass:
         if np.all(np.isclose(eigs_o, [-1, 1, 1])):
             # Horizontal mirror operation flips one of the coordinates
             name = f"{len(det_o)}s"
-            
-            #if self.principal_axis is None:
+
+            # if self.principal_axis is None:
             if len(det_o) in {6, 3}:
-                return f'{len(det_o)}sd'
-            #return name + 'h'
+                return f"{len(det_o)}sd"
+            # return name + 'h'
 
             reflection_type = ""
             for op_cc in ops_occ:
@@ -375,10 +379,10 @@ class ConjugacyClassClassifierClass:
 
                 # Reflection axis parallel to the reflection plane
                 axis = vecs[:, index]
-                print('principal axis', self.principal_axis)
-                #print('op_cc', op_cc)
-                print('op_cc', ppstr(op_cc))
-                print('axis of reflection', axis)
+                print("principal axis", self.principal_axis)
+                # print('op_cc', op_cc)
+                print("op_cc", ppstr(op_cc))
+                print("axis of reflection", axis)
                 D = np.abs(np.dot(self.principal_axis, axis))
                 if np.allclose(D, 1):
                     reflection_type += "h"
@@ -386,8 +390,8 @@ class ConjugacyClassClassifierClass:
                     reflection_type += "v"
                 else:
                     raise ValueError("Unknown reflection type")
-                print('D', D)
-                print('reflection_type', reflection_type)
+                print("D", D)
+                print("reflection_type", reflection_type)
             if len(set(reflection_type)) == 1:
                 name += reflection_type[0]
             else:
@@ -418,12 +422,12 @@ class ConjugacyClassClassifierClass:
             for N in [3, 4, 6]:
                 c = np.cos(2 * np.pi / N)
                 s = np.sin(2 * np.pi / N)
-                eigs = sorted(np.linalg.eig(np.array([[c, s, 0],
-                                                      [-s, c, 0],
-                                                      [0, 0, -1]]))[0])
+                eigs = sorted(
+                    np.linalg.eig(np.array([[c, s, 0], [-s, c, 0], [0, 0, -1]]))[0]
+                )
                 if np.all(np.isclose(eigs, eigs_o)):
-                    return f'2S{N}'
-            print(f'{ops_occ=}')
+                    return f"2S{N}"
+            print(f"{ops_occ=}")
             print(det_o, eigs_o)
             return "2S3"
         if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
@@ -444,24 +448,30 @@ class ConjugacyClassClassifierClass:
         # For each conjugacy class
         for g, classops in enumerate(self.ops_g):
             # There are the operations of current conjucagy class
-            #ops_occ = [self.operations.ops_occ[o] for o in classops]
+            # ops_occ = [self.operations.ops_occ[o] for o in classops]
             operation_info_o = [self.operations.operation_info_o[o] for o in classops]
 
             # Favour C2 over sigma h
             # XXX: Consolidate this hack
-            rotation_order = (operation_info_o[0].N or 0)+ 0.1 * operation_info_o[0].rotation
-            main_conjugacy_classes.append((g,
-                                           self._detect_main_conjugacy_class(operation_info_o),
-                                           operation_info_o,
-                                           rotation_order))
+            rotation_order = (operation_info_o[0].N or 0) + 0.1 * operation_info_o[
+                0
+            ].rotation
+            main_conjugacy_classes.append(
+                (
+                    g,
+                    self._detect_main_conjugacy_class(operation_info_o),
+                    operation_info_o,
+                    rotation_order,
+                )
+            )
 
         # Find the principal axis
         axis_determining_cc = max(main_conjugacy_classes, key=lambda x: x[3])
         principal_axis = axis_determining_cc[2][0].axis
-        #print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
+        # print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
-        
+
         names_g = []
         for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
             info = operation_info_o[0]
@@ -473,29 +483,30 @@ class ConjugacyClassClassifierClass:
                 if principal_axis is None:
                     names_g.append(main_cc)
                     continue
-                #print('Analyzing reflection conjugacy class. Reflection planes:')
+                # print('Analyzing reflection conjugacy class. Reflection planes:')
                 Ds = []
                 for info in operation_info_o:
                     assert info.reflection
                     Ds.append(np.dot(info.axis, principal_axis))
-                    #print(info.op_cc)
-                    #print(info.axis, 'D=', np.dot(info.axis, principal_axis))
+                    # print(info.op_cc)
+                    # print(info.axis, 'D=', np.dot(info.axis, principal_axis))
                 if np.allclose(Ds, 1.0):
-                    main_cc += 'h'
+                    main_cc += "h"
                 elif np.allclose(Ds, 0.0):
-                    main_cc += 'v'  # XXX Might also be d sometimes
+                    main_cc += "v"  # XXX Might also be d sometimes
                 else:
-                    main_cc += 'd'
+                    main_cc += "d"
             names_g.append(main_cc)
 
         # Find duplicate main classes to furher distinguish them
         from collections import Counter
+
         duplicates = [(k, v) for k, v in Counter(names_g).items() if v > 1]
         for name, count in duplicates:
-            if name == '1sv' and count == 2:
+            if name == "1sv" and count == 2:
                 extras = ["_xz", "_yz"]
                 # Actually fix according to molecular symmetry(?)
-            elif name == '1C2' and count == 3:
+            elif name == "1C2" and count == 3:
                 extras = ["_x", "_y", "_z"]
                 # Actually fix according to crystal axes
             elif name == "1C2'" and count == 2:
@@ -525,11 +536,13 @@ class ConjugacyClassClassifierClass:
                 extras = ["", "^5"]
                 # TODO: Actually figure out which is C6 and which is C6^5
             else:
-                raise NotImplementedError(f"Duplicate conjugacy class name {name} count: {count}")
+                raise NotImplementedError(
+                    f"Duplicate conjugacy class name {name} count: {count}"
+                )
 
-            dpl_idx = [i for i, x in enumerate(names_g) if x == name]            
+            dpl_idx = [i for i, x in enumerate(names_g) if x == name]
             for idx, extra in zip(dpl_idx, extras):
-                if extra and extra[0] == '-':
+                if extra and extra[0] == "-":
                     names_g[idx] = extra[1:]
                 else:
                     names_g[idx] += extra
@@ -580,7 +593,7 @@ class ConjugacyClassClassifierClass:
 class PointGroup:
     def __init__(self, spg_ops, principal_axis=[0, 0, 1]):
         self.spg_ops = spg_ops
-        print('POINTGROUP', spg_ops.pointgroup)
+        print("POINTGROUP", spg_ops.pointgroup)
         self.verbose = True
         self.principal_axis = principal_axis
 
@@ -608,10 +621,11 @@ class PointGroup:
         # self.print_character_table()
 
         if set(character_table.classes) != set(self.c4.names_g):
-            print('Character tables classes', character_table.classes)
-            print('Our names_g', self.c4.names_g)
+            print("Character tables classes", character_table.classes)
+            print("Our names_g", self.c4.names_g)
             print(
-                "Not in our names_g", set(character_table.classes) - set(self.c4.names_g)
+                "Not in our names_g",
+                set(character_table.classes) - set(self.c4.names_g),
             )
             print(
                 "Not in our character_table",
@@ -641,10 +655,13 @@ class PointGroup:
     @property
     def names_g(self):
         return self.c4.names_g
-    
+
     @property
     def textbook_names_g(self):
-        return [self.spg_ops.character_table.class_to_textbook(name) for name in self.c4.names_g]
+        return [
+            self.spg_ops.character_table.class_to_textbook(name)
+            for name in self.c4.names_g
+        ]
 
     def detect_irrep(self, signature):
         return self.character_table.detect_irrep2(signature)
@@ -657,7 +674,7 @@ class PointGroup:
 
     def class_id(self, classname):
         return self.names_g.index(classname)
-    
+
     def _detect_irrep(self, signature):
         h = signature[self.class_id("E")]
         if h == 1:
@@ -788,10 +805,12 @@ class Projectable:
             return Projectable(self.calc, cell_cv, wf)
 
 
-def analyze_symmetry(calc, verbose, layergroup = False):
-    spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup, verbose=verbose)
+def analyze_symmetry(calc, verbose, layergroup=False):
+    spg_ops = SPGOperations.from_atoms(
+        calc.atoms, layergroup=layergroup, verbose=verbose
+    )
     return
-    pg = PointGroup(spg_ops, [0,0,1] if layergroup else None)
+    pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
     results = []
     for band in range(6):
         signature = pg.signature(Projectable.from_calc(calc, band))
@@ -806,5 +825,3 @@ def analyze_symmetry(calc, verbose, layergroup = False):
                 assert found is None
                 found = irrep
     return results
-
-        

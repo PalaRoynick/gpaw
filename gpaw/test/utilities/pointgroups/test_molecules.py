@@ -37,8 +37,16 @@ class State:
     def __format__(self, fmt):
         return f"{self.irrep:5s} {self.eigenvalue:8.2f} {self.occupation:5.2f}"
 
-    def new(self, irrep=None, eigenvalue=None, occupation=None, degeneracy=None, weight=None):
-        return State(irrep or self.irrep, eigenvalue or self.eigenvalue, occupation or self.occupation, degeneracy or self.degeneracy, weight or self.weight)
+    def new(
+        self, irrep=None, eigenvalue=None, occupation=None, degeneracy=None, weight=None
+    ):
+        return State(
+            irrep or self.irrep,
+            eigenvalue or self.eigenvalue,
+            occupation or self.occupation,
+            degeneracy or self.degeneracy,
+            weight or self.weight,
+        )
 
     def as_dict(self):
         return {
@@ -63,7 +71,10 @@ class SymmetryEigenvalues:
         Path(filename).write_text(json.dumps(self.as_dict()))
 
     def as_dict(self):
-        return {"little_group": self.little_group, "states": [state.as_dict() for state in self.states]}
+        return {
+            "little_group": self.little_group,
+            "states": [state.as_dict() for state in self.states],
+        }
 
     @classmethod
     def load(cls, filename: str):
@@ -72,7 +83,7 @@ class SymmetryEigenvalues:
     @classmethod
     def from_calc(cls, calc, layergroup=False):
         spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
-        pg = PointGroup(spg_ops, [0, 0, 1]) # if layergroup else None)
+        pg = PointGroup(spg_ops, [0, 0, 1])  # if layergroup else None)
         states = []
         failure = False
         eig_n = calc.get_eigenvalues()
@@ -453,12 +464,12 @@ assert set(systems.values()) == {
 
 # TODO: Test twistane.xyz for d2
 
-#ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3', 'd3d'}
-#systems = {key: value for key, value in systems.items() if value in ready}
+# ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3', 'd3d'}
+# systems = {key: value for key, value in systems.items() if value in ready}
 
 
 def build_cell(atoms, group):
-    if '3' in group or '6' in group:
+    if "3" in group or "6" in group:
         L = 10
         angle = 2 * pi / 3
         c, s = cos(angle), sin(angle)
@@ -501,14 +512,15 @@ def test_molecule(name, symmetry):
     with workdir(name):
         if not Path("wfs.gpw").exists():
             calc = GPAW(
-                mode={"name": "pw", "ecut": 400, "force_complex_dtype": True}, xc="PBE",
+                mode={"name": "pw", "ecut": 400, "force_complex_dtype": True},
+                xc="PBE",
                 txt="gpaw.txt",
             )
 
             # We don't support arbitrary centers (in our own symmetry
             # projection code) so shift atoms to origin and enable
             # periodic boundary conditions
-            atoms.set_pbc((True, True, True)) # False, False, False))
+            atoms.set_pbc((True, True, True))  # False, False, False))
 
             # Calling this to translate the atoms
             spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
@@ -520,16 +532,16 @@ def test_molecule(name, symmetry):
         calc = GPAW("wfs.gpw")
         gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
         assert gpaw_states.little_group.upper() == tmole_states.little_group.upper()
-    print(f'{tmole_states}\n{gpaw_states}')
+    print(f"{tmole_states}\n{gpaw_states}")
     gpaw_states = gpaw_states.occupied_states
     tmole_states = tmole_states.unroll_degeneracies().occupied_states
-    print(f'occupied GPAW states {gpaw_states=}')
-    print(f'occupied TMOLE states {tmole_states=}')
+    print(f"occupied GPAW states {gpaw_states=}")
+    print(f"occupied TMOLE states {tmole_states=}")
     comparable = min(len(gpaw_states), len(tmole_states))
     gpaw_states = gpaw_states[-comparable:]
     tmole_states = tmole_states[-comparable:]
-    print(f'{gpaw_states=}')
-    print(f'{tmole_states=}')
+    print(f"{gpaw_states=}")
+    print(f"{tmole_states=}")
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         print(f"{tmole_state} | {gpaw_state}")
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
