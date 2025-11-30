@@ -85,7 +85,13 @@ D2h = {
     "irreps": ["Ag", "B1g", "B2g", "B3g",
                "Au", "B1u", "B2u", "B3u"],
     "classes": ["E", "1C2_z", "1C2_y", "1C2_x",
-                "i", "1sh_xy", "1sh_xz", "1sh_yz"],
+                "i", "1sh", "1sv_xz", "1sv_yz"],
+    # One of the 1sh's is h and two v, and that is how we identify them.
+    # It is jsut convention that they are not labeled that way.
+    # Also 1sh_xy -> 1s_xy (and same for xz and yz)
+    # Mikael
+    "classes_textbook": ["E", "1C2_z", "1C2_y", "1C2_x",
+                         "i", "1s_xy", "1s_xz", "1s_yz"],
     'table': [[1., 1., 1., 1., 1., 1., 1., 1.],
               [1., 1., -1., -1., 1., 1., -1., -1.],
               [1., -1., 1., -1., 1., -1., 1., -1.],
@@ -286,9 +292,9 @@ character_tables = {'C1': C1,
                     'C2h': C2h,
                     'C2v': C2v,
                     'D2': D2,
+                    'D2h': D2h,
                     'D3h': D3h,
                     'C3v': C3v,
-                    'D2h': D2h,
                     'C3': C3,
                     'S6': S6,
                     'D3': D3,

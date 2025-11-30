@@ -125,6 +125,14 @@ class CharacterTable:
     irreps: list[str]
     classes: list[str]
     characters_ig: np.array
+    classes_textbook: list[str] | None = None
+
+    def __post_init__(self):
+        if self.classes_textbook is None:
+            self.classes_textbook = self.classes
+
+    def class_to_textbook(self, name):
+        return self.classes_textbook[self.classes.index(name)]
 
     @property
     def order(self):
@@ -154,8 +162,8 @@ class CharacterTable:
         return self.characters_ig / self.characters_ig[:, :1]
 
     @classmethod
-    def from_data(cls, *, irreps, classes, table):
-        return CharacterTable(irreps, classes, np.array(table))
+    def from_data(cls, *, irreps, classes, table, classes_textbook=None):
+        return CharacterTable(irreps, classes, np.array(table), classes_textbook)
 
     def in_conjugacy_order(self, names_g):
         indices = [self.classes.index(name) for name in names_g]
@@ -163,6 +171,7 @@ class CharacterTable:
             self.irreps,
             [self.classes[idx] for idx in indices],
             self.characters_ig[:, indices],
+            [self.classes_textbook[idx] for idx in indices],
         )
 
     def detect_irrep(self, signature_g):
@@ -198,6 +207,7 @@ class SPGOperations:
 
     def __post_init__(self):
         if not self.allow_translations:
+            print('TODO: Actually make sure that neglected translations are a normal subgroup of the operations')
             print('Filtering out translations', len(self.w_sc))
             new_W_scc, new_w_sc = [], []
             for W_cc, w_c in zip(self.W_scc, self.w_sc):
@@ -266,6 +276,7 @@ class SPGOperations:
         w_sc = dataset.translations
         origin_shift_c = dataset.origin_shift
         cell_cv = np.array(atoms.cell)
+        # Kartik: Move to pointgroup_data
         dct = {
             "1": "C1",
             "-1": "Ci",
@@ -542,6 +553,7 @@ class ConjugacyClassClassifierClass:
             operation_info_o = [self.operations.operation_info_o[o] for o in classops]
 
             # Favour C2 over sigma h
+            # XXX: Consolidate this hack
             rotation_order = (operation_info_o[0].N or 0)+ 0.1 * operation_info_o[0].rotation
             main_conjugacy_classes.append((g,
                                            self._detect_main_conjugacy_class(operation_info_o),
@@ -648,11 +660,11 @@ class PointGroup:
         # print(self.names_g)
         # self.print_character_table()
 
-        if set(character_table.classes) != set(self.names_g):
+        if set(character_table.classes) != set(self.c4.names_g):
             print('Character tables classes', character_table.classes)
-            print('Our names_g', self.names_g)
+            print('Our names_g', self.c4.names_g)
             print(
-                "Not in our names_g", set(character_table.classes) - set(self.names_g)
+                "Not in our names_g", set(character_table.classes) - set(self.c4.names_g)
             )
             print(
                 "Not in our character_table",
@@ -660,7 +672,7 @@ class PointGroup:
             )
             raise ValueError("Cannot detect all of the conjugacy classes.")
 
-        character_table = character_table.in_conjugacy_order(self.names_g)
+        character_table = character_table.in_conjugacy_order(self.c4.names_g)
         character_table.print()
 
         # for i in range(self.character_ig.shape[0]):
@@ -682,6 +694,10 @@ class PointGroup:
     @property
     def names_g(self):
         return self.c4.names_g
+    
+    @property
+    def textbook_names_g(self):
+        return [self.spg_ops.character_table.class_to_textbook(name) for name in self.c4.names_g]
 
     def detect_irrep(self, signature):
         return self.character_table.detect_irrep2(signature)
@@ -694,7 +710,7 @@ class PointGroup:
 
     def class_id(self, classname):
         return self.names_g.index(classname)
-
+    
     def _detect_irrep(self, signature):
         h = signature[self.class_id("E")]
         if h == 1:
