@@ -179,4 +179,23 @@ def test_C4v():
     assert pg.spg_ops.pointgroup == "C4v"
     assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2sv", "2sd"}
 
+def test_S4():
+    atoms = read('S4.xyz')
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "S4"
+    assert set(pg.textbook_names_g) == {"E", "1S4", "1C2", "1S4^3"}
+
+def test_D4():
+    atoms = read('D4.xyz')
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "D4"
+    assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2C2'", "2C2''"}
+
+def test_D4h():
+    atoms = Atoms('CH4', positions=[[0,0,0], [1,1,0], [-1,1,0], [1,-1,0],[-1,-1,0]])
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "D4h"
+    assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2C2'", "2C2''",
+                                        "i", "2S4", "1sh", "2sv", "2sd"}
+
 

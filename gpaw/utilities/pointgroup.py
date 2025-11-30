@@ -515,6 +515,9 @@ class ConjugacyClassClassifierClass:
             elif name == "2sv" and count == 2:
                 extras = ["-2sv", "-2sd"]
                 # TODO: Actually figure out which is sv and which is sd
+            elif name == "2C2'" and count == 2:
+                extras = ["", "'"]
+                # TODO: Actually figure out which is ' and which is ''
             else:
                 raise NotImplementedError(f"Duplicate conjugacy class name {name} count: {count}")
 

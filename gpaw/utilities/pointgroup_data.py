@@ -198,7 +198,7 @@ D4h = {
     "irreps": ["A1g", "A2g", "B1g", "B2g", "Eg",
                "A1u", "A2u", "B1u", "B2u", "Eu"],
     "classes": ["E", "2C4", "1C2", "2C2'", "2C2''",
-                "i", "2S4", "1sh", "2sv", "3sd"],
+                "i", "2S4", "1sh", "2sv", "2sd"],  # was 3sd, changed to 2sd
     'table': [[1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
               [1., 1., 1., -1., -1., 1., 1., 1., -1., -1.],
               [1., -1., 1., 1., -1., 1., -1., 1., 1., -1.],
@@ -311,8 +311,8 @@ character_tables = {'C1': C1,    # cc tested
                     'C4': C4,    # cc tested
                     'C4v': C4v,  # cc tested
                     'C4h': C4h,  # cc tested
-                    'S4': S4,
-                    'D4': D4,
+                    'S4': S4,    # cc tested
+                    'D4': D4,    # cc tested
                     'D4h': D4h,
                     'S6': S6,
                     'C6': C6,
