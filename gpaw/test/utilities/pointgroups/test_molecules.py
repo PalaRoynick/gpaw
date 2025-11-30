@@ -1,7 +1,7 @@
 import numpy as np
 from ase.collections import g2
 import pytest
-from ase.io import write
+from ase.io import write, read
 from ase.build import molecule
 from pathlib import Path
 from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
@@ -478,7 +478,34 @@ def build_cell(atoms, group):
         atoms.set_pbc((True, True, True))
         atoms.center()
     else:
-        atoms.center(vacuum=6)
+        atoms.center(vacuum=4)
+
+
+def test_Oh():
+    atoms = read('Al13.xyz')
+    build_cell(atoms, 'Oh')
+    if not Path("Al13_wfs.gpw").exists():
+        calc = GPAW(
+            mode={"name": "pw", "ecut": 400, "force_complex_dtype": True},
+            xc="PBE",
+            txt="gpaw.txt",
+        )
+
+        # We don't support arbitrary centers (in our own symmetry
+        # projection code) so shift atoms to origin and enable
+        # periodic boundary conditions
+        atoms.set_pbc((True, True, True))  # False, False, False))
+
+        # Calling this to translate the atoms
+        spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        calc.write("Al13_wfs.gpw", mode="all")
+
+    calc = GPAW("Al13_wfs.gpw")
+    gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
+    assert gpaw_states.little_group == "Oh"
+    print(gpaw_states)
 
 
 # TODO: Add C3 molecule test, even an artificial one
