@@ -315,7 +315,6 @@ character_tables = {'C1': C1,    # cc tested
                     'D4h': D4h,
                     'C6': C6,
                     'C6h': C6h,
-                    'D3h': D3h,
                     'D6h': D6h,
                     'Td': Td,
                     'Oh': Oh,
