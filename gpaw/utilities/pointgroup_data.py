@@ -1,7 +1,7 @@
 import numpy as np
 D3h = {
     "irreps": ["A'1", "A'2", "E'1", "A''1", "A''2", "E''1"],
-    "classes": ["E", "2C3", "3C2", "1sh", "2S3", "3sv"],
+    "classes": ["E", "2C3", "3C2'", "1sh", "2S3", "3sv"],
     'table': [[1., 1., 1., 1., 1., 1.],
               [1., 1., -1., 1., 1., -1.],
               [2., -1., 0., 2., -1., 0.],
@@ -304,8 +304,8 @@ character_tables = {'C1': C1,    # cc tested
                     'C3': C3,    # cc tested
                     'C3h': C3h,  # cc tested
                     'C3v': C3v,  # cc tested
-                    'D3': D3,
-                    'D3h': D3h,
+                    'D3': D3,    # cc tested
+                    'D3h': D3h,  # cc tested
                     'D3d': D3d,
                     'S6': S6,
                     'C4': C4,
