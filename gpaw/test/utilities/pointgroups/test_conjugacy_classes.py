@@ -2,6 +2,7 @@ from ase.build import molecule
 from gpaw.utilities.pointgroup import PointGroup, SPGOperations
 from ase import Atoms
 from ase.io import read
+import numpy as np
 
 
 def symmetry_from(mol):
@@ -67,4 +68,23 @@ def test_D2h():
     assert pg.spg_ops.pointgroup == "D2h"
     assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x",
                 "i", "1s_xy", "1s_xz", "1s_yz"}
+
+def test_C3():
+    atoms = Atoms("H2", positions=[[1, 2, 3], [4, 5, 6]])
+    atoms2 = atoms.copy()
+    atoms3 = atoms.copy()
+    atoms2.rotate(120, 'z')
+    atoms3.rotate(-120, 'z')
+    atoms.extend(atoms2)
+    atoms.extend(atoms3)
+    L = 10
+    angle = 2 * np.pi / 3
+    c, s = np.cos(angle), np.sin(angle)
+    cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+    atoms.set_cell(cell)
+    atoms.set_pbc((True, True, True))
+    atoms.center()
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C3"
+    assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2"}
 
