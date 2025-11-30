@@ -353,3 +353,10 @@ def test_Td():
     pg = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "Td"
     assert set(pg.textbook_names_g) == {"E", "8C3", "3C2", "6S4", "6sd"}
+
+def test_Oh():
+    atoms = read("Al13.xyz")
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "Oh"
+    assert set(pg.textbook_names_g) == {"E", "8C3", "6C2", "6C4", "3C2",
+                "i", "6S4", "8S6", "3sh", "6sd"}

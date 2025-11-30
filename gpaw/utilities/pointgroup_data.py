@@ -279,7 +279,9 @@ Td = {
 Oh = {
     "irreps": ["A1g", "A2g", "Eg", "T1g", "T2g",
                "A1u", "A2u", "Eu", "T1u", "T2u"],
-    "classes": ["E", "8C3", "6C2", "6C4", "3C2",
+    "classes": ["E", "8C3", "6C2'", "6C4", "3C2",  # principal axis wrong, because this was primed?
+                "i", "6S4", "8S6", "3sd", "6sd"],  # We should give 3sh but give 3sd, principal axis wrong?
+    "classes_textbook": ["E", "8C3", "6C2", "6C4", "3C2",
                 "i", "6S4", "8S6", "3sh", "6sd"],
     'table': [[1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
               [1., 1., -1., -1., 1., 1., -1., 1., 1., -1.],
