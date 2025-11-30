@@ -319,3 +319,30 @@ def test_C6h():
         "1S6",
         "1S3",
     }
+
+
+def test_D6h():
+    atoms = molecule("C6H6")
+    L = 10
+    angle = 2 * np.pi / 3
+    c, s = np.cos(angle), np.sin(angle)
+    cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+    atoms.set_cell(cell)
+    atoms.set_pbc((True, True, True))
+    atoms.center()
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "D6h"
+    assert set(pg.textbook_names_g) == {
+        "E",
+        "2C6",
+        "2C3",
+        "1C2",
+        "3C2'",
+        "3C2''",
+        "i",
+        "2S3",
+        "2S6",
+        "1sh",
+        "3sd",
+        "3sv",
+    }

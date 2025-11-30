@@ -535,6 +535,12 @@ class ConjugacyClassClassifierClass:
             elif name == "1C6" and count == 2:
                 extras = ["", "^5"]
                 # TODO: Actually figure out which is C6 and which is C6^5
+            elif name == "3C2'" and count == 2:
+                extras = ["", "'"]
+                # TODO: Actually figure out which is 3C2' and which is 3C2''
+            elif name == "3sv" and count == 2:
+                extras = ["-3sv", "-3sd"]
+                # TODO: Actually figure out which is 3sv and which is 3sd
             else:
                 raise NotImplementedError(
                     f"Duplicate conjugacy class name {name} count: {count}"
