@@ -346,3 +346,10 @@ def test_D6h():
         "3sd",
         "3sv",
     }
+
+
+def test_Td():
+    atoms = read("Td.xyz")
+    pg = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "Td"
+    assert set(pg.textbook_names_g) == {"E", "8C3", "3C2", "6S4", "6sd"}
