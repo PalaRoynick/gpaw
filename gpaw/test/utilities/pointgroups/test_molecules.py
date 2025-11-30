@@ -453,12 +453,12 @@ assert set(systems.values()) == {
 
 # TODO: Test twistane.xyz for d2
 
-ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3'}
+ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3', 'd3d'}
 systems = {key: value for key, value in systems.items() if value in ready}
 
 
 def build_cell(atoms, group):
-    if group.upper() in {'D3D', 'D6H'}:
+    if '3' in group or '6' in group:
         L = 10
         angle = 2 * pi / 3
         c, s = cos(angle), sin(angle)
@@ -476,7 +476,7 @@ def test_molecule(name, symmetry):
     atoms = molecule(name)
     build_cell(atoms, symmetry)
     tmole_json = Path(name + "_tmole.json")
-    if 1: #not tmole_json.exists():
+    if not tmole_json.exists():
         os.system(f"rm -r {name}")
         Path(name).mkdir(exist_ok=True)
         with workdir(name):

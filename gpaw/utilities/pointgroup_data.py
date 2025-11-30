@@ -114,7 +114,8 @@ D3 = {
 
 D3d = {
     "irreps": ["A1g", "A2g", "Eg", "A1u", "A2u", "Eu"],
-    "classes": ["E", "2C3", "3C2'", "i", "2S6", "3sd"],  # this one got sd
+    "classes": ["E", "2C3", "3C2'", "i", "2S6", "3sv"],  # 3sv should ve 3sd
+    "classes_textbook": ["E", "2C3", "3C2'", "i", "2S6", "3sd"],  # this one got sd
     'table': [[1., 1., 1., 1., 1., 1.],
               [1., 1., -1., 1., 1., -1.],
               [2., -1., 0., 2., -1., 0.],
@@ -306,13 +307,13 @@ character_tables = {'C1': C1,    # cc tested
                     'C3v': C3v,  # cc tested
                     'D3': D3,    # cc tested
                     'D3h': D3h,  # cc tested
-                    'D3d': D3d,
-                    'S6': S6,
+                    'D3d': D3d,  # cc tested
                     'C4': C4,
-                    'S4': S4,
+                    'C4v': C4v,
                     'C4h': C4h,
                     'D4': D4,
-                    'C4v': C4v,
+                    'S6': S6,
+                    'S4': S4,
                     'D4h': D4h,
                     'C6': C6,
                     'C6h': C6h,
