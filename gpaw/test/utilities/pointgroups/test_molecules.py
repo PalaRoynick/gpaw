@@ -453,8 +453,8 @@ assert set(systems.values()) == {
 
 # TODO: Test twistane.xyz for d2
 
-ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3', 'd3d'}
-systems = {key: value for key, value in systems.items() if value in ready}
+#ready = {'c1', 'ci', 'cs', 'c2', 'c2h', 'c2v', 'd2', 'd2h', 'd2d', 'c3','c3v', 'd3', 'd3d'}
+#systems = {key: value for key, value in systems.items() if value in ready}
 
 
 def build_cell(atoms, group):

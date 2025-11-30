@@ -127,7 +127,7 @@ D3d = {
 # TODO: Same as C3 - complex or keep the evaluated one?
 S6 = {
     "irreps": ["Ag", "Eg", "Au", "Eu"],
-    "classes": ["E", "1C3", "1C3^2", "i", "S6^5", "S6"],
+    "classes": ["E", "1C3", "1C3^2", "i", "1S6^5", "1S6"],
     'table': [[1., 1., 1., 1., 1., 1.],
               [2., -1., -1., 2., -1., -1.],
               [1., 1., 1., -1., -1., -1.],
@@ -313,7 +313,7 @@ character_tables = {'C1': C1,    # cc tested
                     'C4h': C4h,  # cc tested
                     'S4': S4,    # cc tested
                     'D4': D4,    # cc tested
-                    'D4h': D4h,
+                    'D4h': D4h,  # cc tested
                     'S6': S6,
                     'C6': C6,
                     'C6h': C6h,
