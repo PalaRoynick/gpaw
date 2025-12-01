@@ -144,12 +144,12 @@ C4 = {
 }
 
 S4 = {
-    "irreps": ["A", "B", "E"],
+    "irreps": ["A", "B", "E.", "E*"],
     "classes": ["E", "1S4", "1C2", "1S4^3"],
     'table': [[1., 1., 1., 1.],
               [1., -1., 1., -1.],
-              [2., 0., -2., 0.]]
-}
+              [1., 1j, -1., -1j],
+              [2., -1j, -1., +1j]]}
 
 # TODO: This one got +i/-i for E but we evaluated it.
 C4h = {

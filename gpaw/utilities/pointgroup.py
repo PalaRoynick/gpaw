@@ -163,6 +163,7 @@ class SPGOperations:
         w_sc = dataset.translations
         origin_shift_c = dataset.origin_shift
         cell_cv = np.array(atoms.cell)
+        #assert np.allclose(dataset.transformation_matrix, np.eye(3))
         # Kartik: Move to pointgroup_data
         dct = {
             "1": "C1",
@@ -210,7 +211,9 @@ class SPGOperations:
         # XXX: The apply origin shift has a negative sign
         # XXX: It is bad that we modify atoms here
         # XXX: All of this needs to be consolidated
-        atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
+        if not np.allclose(origin_shift_c, 0):
+            raise ValueError(f'Presymmetrize your system to have origin_shift of 0. {dataset=}')
+        #atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
 
         # print('Atoms after', atoms.get_positions())
         # from ase.io import write

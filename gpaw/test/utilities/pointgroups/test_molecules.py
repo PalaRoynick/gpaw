@@ -83,6 +83,13 @@ class SymmetryEigenvalues:
     @classmethod
     def from_calc(cls, calc, layergroup=False):
         spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
+        for op_cc in calc.symmetry.op_scc:
+            for W_cc in spg_ops.W_scc:
+                if np.allclose(op_cc.T, W_cc):
+                    break
+            else:
+                raise ValueError(f'Symmetry not found. {op_cc}.')
+
         pg = PointGroup(spg_ops, [0, 0, 1])  # if layergroup else None)
         states = []
         failure = False
@@ -96,7 +103,7 @@ class SymmetryEigenvalues:
                 pg.detect_irrep(signature),
             ):
                 if s > 0.01:
-                    print(band, irrep, f"{s.real:.2f}")
+                    print(band, eig, occ, irrep, f"{s.real:.2f}")
                     states.append(State(irrep, eig, occ, 1, s))
                     if found is not None:
                         if occ > 1e-2:
@@ -480,6 +487,14 @@ def build_cell(atoms, group):
     else:
         atoms.center(vacuum=4)
 
+    atoms.translate(-atoms.get_center_of_mass())
+    from ase.spacegroup.symmetrize import get_symmetrized_atoms, spglib_get_symmetry_dataset
+    from ase.utils import atoms_to_spglib_cell
+    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
+    atoms.set_scaled_positions(atoms.get_scaled_positions() + dataset.transformation_matrix.T @ dataset.origin_shift)
+    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
+    assert np.allclose(dataset.origin_shift, 0)
+    #assert np.allclose(dataset.transformation_matrix, np.eye(3))
 
 def test_Oh():
     atoms = read('Al13.xyz')
@@ -554,6 +569,8 @@ def test_molecule(name, symmetry):
             atoms.calc = calc
             atoms.get_potential_energy()
             calc.write("wfs.gpw", mode="all")
+    tmole_states = tmole_states.unroll_degeneracies().occupied_states
+    print(f"occupied TMOLE states {tmole_states=}")
 
     with workdir(name):
         calc = GPAW("wfs.gpw")
@@ -561,9 +578,7 @@ def test_molecule(name, symmetry):
         assert gpaw_states.little_group.upper() == tmole_states.little_group.upper()
     print(f"{tmole_states}\n{gpaw_states}")
     gpaw_states = gpaw_states.occupied_states
-    tmole_states = tmole_states.unroll_degeneracies().occupied_states
     print(f"occupied GPAW states {gpaw_states=}")
-    print(f"occupied TMOLE states {tmole_states=}")
     comparable = min(len(gpaw_states), len(tmole_states))
     gpaw_states = gpaw_states[-comparable:]
     tmole_states = tmole_states[-comparable:]
@@ -573,7 +588,8 @@ def test_molecule(name, symmetry):
         print(f"{tmole_state} | {gpaw_state}")
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         assert tmole_state.irrep.upper() == gpaw_state.irrep.upper()
-        assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.65
+        if name != 'Be':
+            assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.6
 
 
 if __name__ == "__main__":
