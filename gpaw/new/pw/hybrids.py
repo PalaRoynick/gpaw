@@ -530,46 +530,28 @@ class PWHybridHamiltonian(PWHamiltonian):
             f1 = f1_n[n1]
             for a, Q1_niL in Q1_aniL.items():
                 Q_anL[a] = P2_ani[a] @ Q1_niL[n1]
-            for n2, (rhot_G, ut2_R) in enumerate(zip(rhot2_nG.data,
+            for n2, (rhot_R, ut2_R) in enumerate(zip(rhot2_nR.data,
                                                      ut2_nR.data)):
-                tmp_R[:] = ut2_R
-                tmp_R *= ut1_R.conj()
-            if self.real:
-                mmm(1.0 / pw.dv, Q_anL.data, 'N', ghat_GA, 'T',
-                    0.0, rhot2_nG.data.view(float))
-            else:
-                mmm(1.0 / pw.dv, Q_anL.data, 'N', ghat_GA, 'C',
-                    0.0, rhot2_nG.data)
-            for n2, (rhot_G, ut2_R) in enumerate(zip(rhot2_nG.data,
+                rhot_R[:] = ut2_R
+                rhot_R *= ut1_R
+            ghat_aLG.add_to(rhot2_nR, Q_anL)
+            for n2, (rhot_R, ut2_R) in enumerate(zip(rhot2_nR.data,
                                                      ut2_nR.data)):
-                tmp_R[:] = ut2_R
-                tmp_R *= ut1_R.conj()
+                tmp_R[:] = rhot_R
                 self.plan.fft()
-                a_G = tmp_Q.ravel()[Q_G]
-                self.zaxpy(a_G, rhot_G, NG, 1.0 / NR)
+                rhot_G = tmp_Q.ravel()[Q_G]
                 if not calculate_energy:
                     rhot_G *= v_G
                 else:
                     tmp_G[:] = rhot_G
                     rhot_G *= v_G
                     e12 = tmp_G.view(float) @ rhot_G.view(float)
-                    if self.real:
-                        e12 = 2 * e12 - (tmp_G[0] * rhot_G[0]).real
+                    e12 = 2 * e12 - (tmp_G[0] * rhot_G[0]).real
                     e += e12 * f2_n[n2] * f1 * pw.dv
-            if F1_av is not None:
-                forces(ghat_aLG, rhot2_nG, P2_ani,
-                       Q_anL,
-                       f1, f2_n, self.nbzk, self.delta_aiiL,
-                       psit1.dP_anvi,
-                       n1, eikR_a, F1_av)
-                continue
-            if self.real:
-                ghat_GA[0] *= 0.5
-                mmm(2.0, rhot2_nG.data.view(float), 'N', ghat_GA, 'N',
-                    0.0, Q_anL.data)
-                ghat_GA[0] *= 2.0
-            else:
-                mmm(1.0, rhot2_nG.data, 'N', ghat_GA, 'N', 0.0, Q_anL.data)
+            ghat_GA[0] *= 0.5
+            mmm(2.0, rhot2_nG.data.view(float), 'N', ghat_GA, 'N',
+                0.0, Q_anL.data)
+            ghat_GA[0] *= 2.0
             x = self.exx_fraction * f1 / self.nbzk
             for rhot_G, Htpsit2_G in zip(rhot2_nG.data, Htpsit2_nG.data):
                 self.plan.ifft_sphere(rhot_G, pw)
