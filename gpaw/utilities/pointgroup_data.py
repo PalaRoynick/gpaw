@@ -87,7 +87,7 @@ print('Remember to double check D2h character table')
 D2h = {
     "irreps": ["Ag", "B1g", "B2g", "B3g",
                "Au", "B1u", "B2u", "B3u"],
-    # Tried svapping 1sv_xz and 1sv_yz XXX CHECK
+    # Tried swapping 1sv_xz and 1sv_yz XXX CHECK
     # This makes conjugacy classes work, but irreps labeled wrong
     # This is a symptom of that we are not labeling the extra conjugacy
     # class labels. All of the if statements in conjugacy class detector need to be addressed
@@ -156,7 +156,7 @@ S4 = {
     'table': [[1., 1., 1., 1.],
               [1., -1., 1., -1.],
               [1., 1j, -1., -1j],
-              [2., -1j, -1., +1j]]}
+              [1., -1j, -1., +1j]]}
 
 # TODO: This one got +i/-i for E but we evaluated it.
 C4h = {
@@ -302,7 +302,9 @@ Oh = {
               [3., 0., 1., -1., -1., -3., 1., 0., 1., -1.]]
 }
 
-character_tables = {'C1': C1,    # cc tested
+
+# TODO: Add which are tested as molecules
+character_tables = {'C1': C1,    # cc tested, molecule tested
                     'Cs': Cs,    # cc tested
                     'Ci': Ci,    # cc tested
                     'C2': C2,    # cc tested

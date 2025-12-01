@@ -294,7 +294,6 @@ class ConjugacyClassClassifierClass:
         self,
         operations: SymmmetryOperations,
         expected_classes: list[str],
-        # principal_axis: list[float],
         verbose=True,
     ):
         self.operations = operations
@@ -354,95 +353,6 @@ class ConjugacyClassClassifierClass:
 
         print(f"{operation_info_o=}")
         raise ValueError("Could not detect conjugacy class.")
-        det_o = np.array([np.linalg.det(op_cc) for op_cc in ops_occ])
-        eigs_o = np.array([np.sort(np.linalg.eig(op_cc)[0]) for op_cc in ops_occ])
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "1C2"
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [-1, -1, -1])):
-            return "i"  # Inversion flips all axes, -x, -y, -z
-        if len(det_o) == 1 and np.all(np.isclose(eigs_o, [1, 1, 1])):
-            return "E"  # Identity leaves all axes intact x, y, z
-        if len(det_o) == 3 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "3C2"  # C2 rotation along z is -x, -y, z
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1, 1])):
-            return "6C2"
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, -1j, 1j])):
-            return "6S4"  # -1j and 1j corresponds to 90 rotation. Determinant is -1 thus, improper.
-        if np.all(np.isclose(eigs_o, [-1, 1, 1])):
-            # Horizontal mirror operation flips one of the coordinates
-            name = f"{len(det_o)}s"
-
-            # if self.principal_axis is None:
-            if len(det_o) in {6, 3}:
-                return f"{len(det_o)}sd"
-            # return name + 'h'
-
-            reflection_type = ""
-            for op_cc in ops_occ:
-                eigs, vecs = np.linalg.eig(op_cc)
-                index = np.argmin(eigs)
-
-                # Reflection axis parallel to the reflection plane
-                axis = vecs[:, index]
-                print("principal axis", self.principal_axis)
-                # print('op_cc', op_cc)
-                print("op_cc", ppstr(op_cc))
-                print("axis of reflection", axis)
-                D = np.abs(np.dot(self.principal_axis, axis))
-                if np.allclose(D, 1):
-                    reflection_type += "h"
-                elif np.allclose(D, 0):
-                    reflection_type += "v"
-                else:
-                    raise ValueError("Unknown reflection type")
-                print("D", D)
-                print("reflection_type", reflection_type)
-            if len(set(reflection_type)) == 1:
-                name += reflection_type[0]
-            else:
-                name += reflection_type + "???"
-            # self.used_class_names[name] += 1
-            ## XXX Save something to self, which indicated the xz and yz planes
-            # return name + [None, '_xz','_yz'][self.used_class_names[name]]
-            return name
-
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1, 1, 1])):
-            return "6sd"
-        if len(det_o) == 8 and np.all(
-            np.isclose(
-                eigs_o, [-1, np.exp(-1j * 2 * np.pi / 6), np.exp(1j * 2 * np.pi / 6)]
-            )
-        ):
-            return "8S6"
-        if len(det_o) == 6 and np.all(np.isclose(eigs_o, [-1j, 1j, 1])):
-            return "6C4"
-        if len(det_o) == 8 and np.all(
-            np.isclose(
-                eigs_o, [np.exp(-1j * np.pi * 2 / 3), np.exp(1j * np.pi * 2 / 3), 1]
-            )
-        ):
-            return "8C3"
-
-        if np.all(np.isclose(det_o, -1)) and len(det_o) == 2:
-            for N in [3, 4, 6]:
-                c = np.cos(2 * np.pi / N)
-                s = np.sin(2 * np.pi / N)
-                eigs = sorted(
-                    np.linalg.eig(np.array([[c, s, 0], [-s, c, 0], [0, 0, -1]]))[0]
-                )
-                if np.all(np.isclose(eigs, eigs_o)):
-                    return f"2S{N}"
-            print(f"{ops_occ=}")
-            print(det_o, eigs_o)
-            return "2S3"
-        if np.all(np.isclose(det_o, 1)) and len(det_o) == 2:
-            # XXX
-            return "2C3"
-        # if len(det_o) == 1 and np.all(np.isclose(eig_o, [-1, 1 ,1])):
-
-        print(f"{ops_occ=}")
-        print(f"{det_o=} {eigs_o=}")
-        return "bug?"
 
     def _detect_conjugacy_classes(self, class_names: list[str]):
         free_names = set(class_names)
