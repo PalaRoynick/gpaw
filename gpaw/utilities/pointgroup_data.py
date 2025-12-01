@@ -244,15 +244,18 @@ D6h = {
               [2., -1., -1., 2., 0., 0., -2., 1., 1., -2., 0., 0.]]
 }
 
+eps6 = np.exp(2 * np.pi * 1j / 6)
+epsc6 = np.conjugate(eps6)
+
 C6 = {
     "irreps": ["A", "B", "E1(1)", "E1(2)", "E2(1)", "E2(2)"],
     "classes": ["E", "1C6", "1C3", "1C2", "1C3^2", "1C6^5"],
     'table': [[1., 1., 1., 1., 1., 1.],
               [1., -1., 1., -1., 1., -1.],
-              [1., eps, -epsc, -1., -eps, epsc],
-              [1., epsc, -eps, -1., -epsc, eps],
-              [1., -epsc, -eps, 1., -epsc, -eps],
-              [1., -eps, -epsc, 1., -eps, -epsc]]
+              [1., eps6, -epsc6, -1., -eps6, epsc6],
+              [1., epsc6, -eps6, -1., -epsc6, eps6],
+              [1., -epsc6, -eps6, 1., -epsc6, -eps6],
+              [1., -eps6, -epsc6, 1., -eps6, -epsc6]]
 }
 
 C3h = {
@@ -273,16 +276,16 @@ C6h = {
                 "i", "1S3^5", "1S6^5", "1sh", "1S6", "1S3"],
     'table': [[1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
               [1., -1., 1., -1., 1., -1., 1., -1., 1., -1., 1., -1.],
-              [1., eps, -epsc, -1., -eps, epsc, 1., eps, -epsc, -1., -eps, epsc],
-              [1., epsc, -eps, -1., -epsc, eps, 1., epsc, -eps, -1., -epsc, eps],
-              [1., -epsc, -eps, 1., -epsc, -eps, 1., -epsc, -eps, 1., -epsc, -eps],
-              [1., -eps, -epsc, 1., -eps, -epsc, 1., -eps, -epsc, 1., -eps, -epsc],
+              [1., eps6, -epsc6, -1., -eps6, epsc6, 1., eps6, -epsc6, -1., -eps6, epsc6],
+              [1., epsc6, -eps6, -1., -epsc6, eps6, 1., epsc6, -eps6, -1., -epsc6, eps6],
+              [1., -epsc6, -eps6, 1., -epsc6, -eps6, 1., -epsc6, -eps6, 1., -epsc6, -eps6],
+              [1., -eps6, -epsc6, 1., -eps6, -epsc6, 1., -eps6, -epsc6, 1., -eps6, -epsc6],
               [1., 1., 1., 1., 1., 1., -1., -1., -1., -1., -1., -1.],
               [1., -1., 1., -1., 1., -1., -1., 1., -1., 1., -1., 1.],
-              [1., eps, -epsc, -1., -eps, epsc, -1., -eps, epsc, 1., eps, -epsc],
-              [1., epsc, -eps, -1., -epsc, eps, -1., -epsc, eps, 1., epsc, -eps],
-              [1., -epsc, -eps, 1., -epsc, -eps, -1., epsc, eps, -1., epsc, eps],
-              [1., -eps, -epsc, 1., -eps, -epsc, -1., eps, epsc, -1., eps, epsc]]
+              [1., eps6, -epsc6, -1., -eps6, epsc6, -1., -eps6, epsc6, 1., eps6, -epsc6],
+              [1., epsc6, -eps6, -1., -epsc6, eps6, -1., -epsc6, eps6, 1., epsc6, -eps6],
+              [1., -epsc6, -eps6, 1., -epsc6, -eps6, -1., epsc6, eps6, -1., epsc6, eps6],
+              [1., -eps6, -epsc6, 1., -eps6, -epsc6, -1., eps6, epsc6, -1., eps6, epsc6]]
 }
 
 C6v = {

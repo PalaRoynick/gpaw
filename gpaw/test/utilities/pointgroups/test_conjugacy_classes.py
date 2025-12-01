@@ -19,6 +19,7 @@ def test_print():
 
 
 def get_span(pg, projectable):
+    print('Getting span')
     irreps = []
     signature = pg.signature(projectable)
     for irrep, s in zip(pg.character_table.irreps, pg.detect_irrep(signature)):
@@ -353,6 +354,12 @@ def test_C4h():
         "1sh",
         "1S4",
     }
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["Au"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["Eu(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["Eu(2)"]
 
 
 def test_C4v():
@@ -375,6 +382,12 @@ def test_S4():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "S4"
     assert set(pg.textbook_names_g) == {"E", "1S4", "1C2", "1S4^3"}
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["B"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["E(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["E(2)"]
 
 
 def test_D4():
@@ -382,6 +395,12 @@ def test_D4():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D4"
     assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2C2'", "2C2''"}
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["A2"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1], [x, y])) == ["E"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1], [x, y])) == ["E"]
 
 
 def test_D4h():
@@ -402,6 +421,12 @@ def test_D4h():
         "2sv",
         "2sd",
     }
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["A2u"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1], [x, y])) == ["Eu"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1], [x, y])) == ["Eu"]
 
 
 def test_S6():
@@ -416,6 +441,12 @@ def test_S6():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "S6"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2", "i", "1S6^5", "1S6"}
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["Au"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["Eu(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["Eu(2)"]
 
 
 def test_C6():
@@ -430,6 +461,12 @@ def test_C6():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C6"
     assert set(pg.textbook_names_g) == {"E", "1C6", "1C3", "1C2", "1C3^2", "1C6^5"}
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["A"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["E1(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["E1(2)"]
 
 
 def test_C6v():
@@ -471,6 +508,12 @@ def test_C6h():
         "1S6",
         "1S3",
     }
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["Au"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["E1u(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["E1u(2)"]
 
 
 def test_D6h():
