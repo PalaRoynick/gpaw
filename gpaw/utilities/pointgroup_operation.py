@@ -27,6 +27,15 @@ class OperationInfo:
         print(self.op_cc)
         print()
 
+    def is_clockwise(self, principal_axis):
+        # Create arbitrary vector perpendicuylar to principal axis
+        vec = np.linalg.qr(np.array([principal_axis]).T, mode='complete').Q[:,1]
+        vec2 = self.op_cc @ vec
+        return np.dot(np.cross(vec, vec2), principal_axis) < 0
+        # Apply the vector
+        # Calculate how much the vector rotated
+
+
     @classmethod
     def from_op(cls, op_cc):
         eigs_n, vecs_n = np.linalg.eig(op_cc)

@@ -1,9 +1,14 @@
 from ase.build import molecule
-from gpaw.utilities.pointgroup import PointGroup, SPGOperations
+from gpaw.utilities.pointgroup import PointGroup, SPGOperations, CharacterTable
+from gpaw.utilities.pointgroup_data import character_tables
 from ase import Atoms
 from ase.io import read
 import numpy as np
 
+def test_print():
+    for pointgroup in character_tables:
+        print(pointgroup)
+        CharacterTable.from_data(**character_tables[pointgroup]).print()
 
 def symmetry_from(mol, filt=None):
     if isinstance(mol, str):
@@ -337,6 +342,19 @@ def test_C6():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C6"
     assert set(pg.textbook_names_g) == {"E", "1C6", "1C3", "1C2", "1C3^2", "1C6^5"}
+
+def test_C6v():
+    atoms = molecule('HF')
+    L = 10
+    angle = 2 * np.pi / 3
+    c, s = np.cos(angle), np.sin(angle)
+    cell = [[L, 0, 0], [c * L, s * L, 0], [0, 0, L]]
+    atoms.set_cell(cell)
+    atoms.set_pbc((True, True, True))
+    atoms.center()
+    pg, _ = symmetry_from(atoms)
+    assert pg.spg_ops.pointgroup == "C6v"
+    assert set(pg.textbook_names_g) == {"E", "2C6", "2C3", "1C2", "3sv", "3sd"}
 
 
 def test_C6h():

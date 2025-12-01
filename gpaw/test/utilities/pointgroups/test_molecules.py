@@ -234,7 +234,7 @@ def parse_eigenvalues(text):
     return sorted(states, key=lambda state: state.eigenvalue)
 
 
-systems = {
+all_systems = {
     "PH3": "cs",
     "P2": "d6h",
     "CH3CHO": "cs",
@@ -446,11 +446,13 @@ spin_polarized = [
 ]
 
 for mol in spin_polarized:
-    del systems[mol]
+    del all_systems[mol]
 
 # Have just one representative of the each symmetry group
-groups = {v: k for k, v in systems.items()}
+groups = {v: k for k, v in all_systems.items()}
 systems = {v: k for k, v in groups.items()}
+
+systems['H2O'] = all_systems['H2O']
 
 assert set(systems.values()) == {
     "d2d",

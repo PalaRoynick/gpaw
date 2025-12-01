@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 from gpaw.utilities.pointgroup_operation import OperationInfo, ppstr
+from ase import Atoms
 
 
 @dataclass
@@ -46,7 +47,10 @@ class CharacterTable:
 
     @classmethod
     def from_data(cls, *, irreps, classes, table, classes_textbook=None):
-        return CharacterTable(irreps, classes, np.array(table), classes_textbook)
+        return CharacterTable(irreps,
+                              classes,
+                              np.array(table),
+                              classes_textbook)
 
     def in_conjugacy_order(self, names_g):
         indices = [self.classes.index(name) for name in names_g]
@@ -64,23 +68,59 @@ class CharacterTable:
         return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
 
     def print(self):
+        is_complex = np.any(np.iscomplex(self.characters_ig))
+        symbols = [("ε", np.exp(2j * np.pi / 3), "exp(2πi/3)"),
+                   ("ε*", np.exp(-2j * np.pi / 3), "exp(-2πi/3)")]
+        used_values = []
+        #if is_complex:
+        #    columns = 12
+        #else:
+        #    columns = 7
+        columns = 6
+        def format_number(n):
+            if np.isclose(n, np.round(n)):
+                return "%+02d" % n
+            return "%+.2f" % n
+
+        def complex_format(n):
+            if np.isclose(n, 0):
+                return " 0"
+            if np.isclose(n.imag, 0):
+                return format_number(n)
+            if np.isclose(n.real, 0):
+                return format_number(n.imag) + "i"
+            for used, (symbol, value, text) in enumerate(symbols):
+                if np.isclose(value, n):
+                    used_values.append(used)
+                    return symbol
+                if np.isclose(value, -n):
+                    used_values.append(used)
+                    return "-" + symbol
+            return format_number(n.real) + format_number(n.imag) + "i"
+
         try:
             print("%-20s" % "irreps/classes", end="")
 
             for name in self.classes:
-                print("%-5s" % name, end="")
+                print(f"%-{columns}s" % name, end="")
             print()
             for i, iname in enumerate(self.irreps):
                 print("%-20s" % iname, end="")
                 for g, gname in enumerate(self.classes):
-                    print("%-5s" % ("%+02d" % self.characters_ig[i, g]), end="")
+                    chi = self.characters_ig[i, g]
+                    chi_str = complex_format(chi)
+                    print(f"%-{columns}s" % chi_str, end="")
                 print()
+            for value in set(used_values):
+                symbol, value, text = symbols[value]
+                print(f'{symbol} = {text} = {value}')
         except ValueError:
             print("...")
 
 
 @dataclass
 class SPGOperations:
+    atoms: Atoms
     W_scc: np.array
     w_sc: np.array
     origin_shift_c: np.array
@@ -91,7 +131,8 @@ class SPGOperations:
     def __post_init__(self):
         if not self.allow_translations:
             print(
-                "TODO: Actually make sure that neglected translations are a normal subgroup of the operations"
+                "TODO: Actually make sure that neglected translations"
+                "are a normal subgroup of the operations"
             )
             print("Filtering out translations", len(self.w_sc))
             new_W_scc, new_w_sc = [], []
@@ -203,6 +244,7 @@ class SPGOperations:
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
         unshifted = cls(
+                atoms,
             W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True
         )
         print(f"unshifted {unshifted}")
@@ -246,6 +288,7 @@ class SPGOperations:
         )
         w_sc = (np.round(w_sc * 100) / 100) % 1.0 % 1.0
         return SPGOperations(
+            self.atoms, # XXX Should it apply the origin shift to the atoms
             self.W_scc,
             w_sc,
             self.origin_shift_c - origin_shift_c,
@@ -295,11 +338,14 @@ class ConjugacyClassClassifierClass:
         operations: SymmmetryOperations,
         expected_classes: list[str],
         verbose=True,
+        moi = None, # moments of inertia
+        atoms = None,
     ):
         self.operations = operations
         self.expected_classes = expected_classes
         self.principal_axis = "Principal axis not yet detected."
-
+        self.moi = moi
+        self.atoms = atoms
         ops_occ = operations.ops_occ
         N = len(ops_occ)
         op_pool = range(N)
@@ -387,14 +433,17 @@ class ConjugacyClassClassifierClass:
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
 
-        self.principal_axis = principal_axis
+        #principal_axis = np.array([1,0,0])
 
+        self.principal_axis = principal_axis
+        print('"PRINCIPAL AXIS', self.principal_axis)
         names_g = []
         for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
             info = operation_info_o[0]
             if info.rotation:
                 # Rotation orthogonal to the main axis, add a prime
                 if np.allclose(np.dot(info.axis, principal_axis), 0):
+                    print('Adding prime')
                     main_cc += "'"
             if info.reflection:
                 if principal_axis is None:
@@ -420,42 +469,95 @@ class ConjugacyClassClassifierClass:
 
         duplicates = [(k, v) for k, v in Counter(names_g).items() if v > 1]
         for name, count in duplicates:
+            # Collect all of the axes of the conjugacy classes
+            operations = []
+            for g, _, operation_info_o, _ in main_conjugacy_classes:
+                if names_g[g] != name:
+                    continue
+                # Getting information only from the first item
+                o = operation_info_o[0]
+                operations.append(o)
             if name == "1sv" and count == 2:
-                extras = ["_xz", "_yz"]
+                axes = [operations[0].axis, operations[1].axis]
+                if np.isclose(np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0):
+                    extras = ["_yz", "_xz"]
+                elif np.isclose(np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0):
+                    extras = ["_xz", "_yz"]
+                else:
+                    print(self.principal_axis, axes)
+                    raise ValueError("Could not determine coordinate system.")
                 # Actually fix according to molecular symmetry(?)
             elif name == "1C2" and count == 3:
+                raise NotImplementedError
                 extras = ["_x", "_y", "_z"]
                 # Actually fix according to crystal axes
             elif name == "1C2'" and count == 2:
-                extras = ["_x", "_y"]
-                # We should also name the unprimed 1C2 as _z now
-            elif name == "1C3" and count == 2:
-                extras = ["", "^2"]
-                # TODO: Actually fix according to principal axis
-            elif name == "1S3" and count == 2:
-                extras = ["", "^5"]
-                # TODO: Actually fix according to principal axis
-            elif name == "1S4" and count == 2:
-                extras = ["", "^3"]
-            elif name == "1C4" and count == 2:
-                extras = ["", "^3"]
-                # TODO: Actually fix according to principal axis
+                axes = [operations[0].axis, operations[1].axis]
+                det = np.linalg.det([self.principal_axis, axes[0], axes[1]])
+                print('DET', det, axes, self.principal_axis)
+                if np.isclose(det, 1.0):
+                    extras = ["_y", "_x"]
+                elif np.isclose(np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0):
+                    extras = ["_x", "_y"]
+                else:
+                    print(self.principal_axis, axes)
+                    raise ValueError("Could not determine coordinate system.")
+            elif name in {"1C3", "1S3", "1S4", "1C4", "1S6", "1C6"} and count == 2:
+                # Horrible code, refactor
+                order = int(name[-1])
+                if name[1] == "S" and order % 2 == 1:
+                    order *= 2
+                odd = order - 1
+                if (operations[0].is_clockwise(self.principal_axis) and
+                    not operations[1].is_clockwise(self.principal_axis)):
+                    extras = ["", f"^{odd}"]
+                elif (not operations[0].is_clockwise(self.principal_axis) and
+                      operations[1].is_clockwise(self.principal_axis)):
+                    extras = [f"^{odd}", ""]
+                else:
+                    raise ValueError("Cannot figure out.")
+            #elif name == "1S3" and count == 2:
+            #    raise NotImplementedError
+            #    extras = ["", "^5"]
+            #    # TODO: Actually fix according to principal axis
+            #elif name == "1S4" and count == 2:
+            #     raise NotImplementedError
+            #     extras = ["", "^3"]
+            # elif name == "1C4" and count == 2:
+            #     raise NotImplementedError
+            #     extras = ["", "^3"]
+            #     # TODO: Actually fix according to principal axis
+            # elif name == "1S6" and count == 2:
+            #     raise NotImplementedError
+            #     extras = ["", "^5"]
+            #     # TODO: Actually figure out which is S6 and which is S6^5
+            # elif name == "1C6" and count == 2:
+            #     raise NotImplementedError
+            #     extras = ["", "^5"]
+            #     # TODO: Actually figure out which is C6 and which is C6^5
             elif name == "2sv" and count == 2:
-                extras = ["-2sv", "-2sd"]
-                # TODO: Actually figure out which is sv and which is sd
+                from code import interact
+                interact(local=locals())
+                from numpy.linalg import norm
+                cosines = []
+                for cell_v in self.atoms.cell:
+                    cosines.append(np.dot(operations[0].axis, cell_v) / norm(cell_v))
+                cosines = np.array(cosines)
+                if np.allclose(cosines, np.round(cosines)):
+                    extras = ["-2sv", "-2sd"]
+                else:
+                    extras = ["-2sd", "-2sv"]
+                # TODO
             elif name == "2C2'" and count == 2:
+                raise NotImplementedError
                 extras = ["", "'"]
                 # TODO: Actually figure out which is ' and which is ''
-            elif name == "1S6" and count == 2:
-                extras = ["", "^5"]
-                # TODO: Actually figure out which is S6 and which is S6^5
-            elif name == "1C6" and count == 2:
-                extras = ["", "^5"]
-                # TODO: Actually figure out which is C6 and which is C6^5
             elif name == "3C2'" and count == 2:
+                raise NotImplementedError
                 extras = ["", "'"]
                 # TODO: Actually figure out which is 3C2' and which is 3C2''
             elif name == "3sv" and count == 2:
+                raise NotImplementedError
                 extras = ["-3sv", "-3sd"]
                 # TODO: Actually figure out which is 3sv and which is 3sd
             else:
@@ -525,9 +627,13 @@ class PointGroup:
         # self._build_multiplication_table()
         character_table = self.spg_ops.character_table
 
+        moi = spg_ops.atoms.get_moments_of_inertia(vectors=True)
+
         self.c4 = ConjugacyClassClassifierClass(
             self.operations,
             expected_classes=character_table.classes,
+            moi=moi,
+            atoms=spg_ops.atoms,
             # principal_axis=principal_axis,
         )
         # self._find_conjugacy_classes()
@@ -684,8 +790,7 @@ class PointGroup:
             groups_i[irrep].append(psi[:, eig_idx])
 
         return [np.array(x) for x in groups_i]
-
-
+     
 class Projectable:
     def __init__(self, calc, cell_cv, wf, pseudo_wf=True):
         self.calc = calc

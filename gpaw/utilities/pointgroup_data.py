@@ -24,7 +24,7 @@ C3v = {
 
 C2v = {
     "irreps": ["A1", "A2", "B1", "B2"],
-    "classes": ["E", "1C2", "1sv_xz", "1sv_yz"],
+    "classes": ["E", "1C2", "1sv_xz", "1sv_yz"], # xz is the plane H2O is flat
     'table': [[1., 1., 1., 1.],
               [1., 1., -1., -1.],
               [1., -1., 1., -1.],
@@ -98,21 +98,21 @@ D2h = {
     # and choices to be made non-ambigous
     # XXX When done, remember to switch back 1s_xc and 1sv_yz
     "classes": ["E", "1C2", "1C2'_y", "1C2'_x",
-                "i", "1sh", "1sv_yz", "1sv_xz"],  
+                "i", "1sh", "1sv_xz", "1sv_yz"],  
     # One of the 1sh's is h and two v, and that is how we identify them.
     # It is jsut convention that they are not labeled that way.
     # Also 1sh_xy -> 1s_xy (and same for xz and yz)
     # Mikael
     "classes_textbook": ["E", "1C2_z", "1C2_y", "1C2_x",
                          "i", "1s_xy", "1s_xz", "1s_yz"],
-    'table': [[1., 1., 1., 1., 1., 1., 1., 1.],
-              [1., 1., -1., -1., 1., 1., -1., -1.],
-              [1., -1., 1., -1., 1., -1., 1., -1.],
-              [1., -1., -1., 1., 1., -1., -1., 1.],
-              [1., 1., 1., 1., -1., -1., -1., -1.],
-              [1., 1., -1., -1., -1., -1., 1., 1.],
-              [1., -1., 1., -1., -1., 1., -1., 1.],
-              [1., -1., -1., 1., -1., 1., 1., -1.]]
+    'table': [[1., 1., 1., 1., 1., 1., 1., 1.],     # Ag
+              [1., 1., -1., -1., 1., 1., -1., -1.], # B1g
+              [1., -1., 1., -1., 1., -1., 1., -1.], # B2g
+              [1., -1., -1., 1., 1., -1., -1., 1.], # B3g
+              [1., 1., 1., 1., -1., -1., -1., -1.], # Au
+              [1., 1., -1., -1., -1., -1., 1., 1.], # B1u
+              [1., -1., 1., -1., -1., 1., -1., 1.], # B2u
+              [1., -1., -1., 1., -1., 1., 1., -1.]] # B3u
 }
 
 D3 = {
@@ -327,21 +327,21 @@ Oh = {
 
 
 # TODO: Add which are tested as molecules
-character_tables = {'C1': C1,    # cc tested, molecule tested
-                    'Cs': Cs,    # cc tested
+character_tables = {'C1': C1,    # cc tested, molecule PASS
+                    'Cs': Cs,    # cc tested, molecule PASS
                     'Ci': Ci,    # cc tested
-                    'C2': C2,    # cc tested
-                    'C2h': C2h,  # cc tested
-                    'C2v': C2v,  # cc tested
+                    'C2': C2,    # cc tested, molecule PASS
+                    'C2h': C2h,  # cc tested, molecule PASS 
+                    'C2v': C2v,  # cc tested, molecule FAIL
                     'D2': D2,    # cc tested
-                    'D2h': D2h,  # cc tested
-                    'D2d': D2d,  # cc tested
+                    'D2h': D2h,  # cc tested, molecule FAIL
+                    'D2d': D2d,  # cc tested, molecule PASS
                     'C3': C3,    # cc tested
                     'C3h': C3h,  # cc tested
                     'C3v': C3v,  # cc tested
-                    'D3': D3,    # cc tested
-                    'D3h': D3h,  # cc tested
-                    'D3d': D3d,  # cc tested
+                    'D3': D3,    # cc tested, molecule PASS
+                    'D3h': D3h,  # cc tested, molecule PASS
+                    'D3d': D3d,  # cc tested, molecule PASS
                     'C4': C4,    # cc tested
                     'C4v': C4v,  # cc tested
                     'C4h': C4h,  # cc tested
@@ -351,22 +351,8 @@ character_tables = {'C1': C1,    # cc tested, molecule tested
                     'S6': S6,    # cc tested
                     'C6': C6,    # cc tested
                     'C6h': C6h,  # cc tested
-                    'D6h': D6h,  # cc tested
-                    'Td': Td,
-                    'Oh': Oh,
+                    'C6v': C6v,  # cc tested, molecule PASS
+                    'D6h': D6h,  # cc tested, molecule PASS
+                    'Td': Td,    # cc tested, molecule PASS
+                    'Oh': Oh,    # cc tested, molecule PASS (make better test)
                     }
-
-"""
-Current tests:
-test_conjugacy_classes.py:def test_C1():
-test_conjugacy_classes.py:def test_Ci():
-test_conjugacy_classes.py:def test_Cs():
-test_conjugacy_classes.py:def test_C2():
-test_conjugacy_classes.py:def test_C2h():
-test_conjugacy_classes.py:def test_C2v():
-test_conjugacy_classes.py:def test_D2():
-test_conjugacy_classes.py:def test_D2h():
-test_conjugacy_classes.py:def test_C3():
-test_conjugacy_classes.py:def test_C3h():
-test_conjugacy_classes.py:def test_C3v():
-"""
