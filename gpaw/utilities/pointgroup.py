@@ -32,7 +32,7 @@ class CharacterTable:
             return int(s[0])
 
         n_g = np.array([extract_n(cls) for cls in self.classes])
-        return self.characters_ig * n_g[None, :] / self.order
+        return np.conjugate(self.characters_ig) * n_g[None, :] / self.order
 
     @property
     def normalized_characters_ig2(self):
@@ -47,10 +47,7 @@ class CharacterTable:
 
     @classmethod
     def from_data(cls, *, irreps, classes, table, classes_textbook=None):
-        return CharacterTable(irreps,
-                              classes,
-                              np.array(table),
-                              classes_textbook)
+        return CharacterTable(irreps, classes, np.array(table), classes_textbook)
 
     def in_conjugacy_order(self, names_g):
         indices = [self.classes.index(name) for name in names_g]
@@ -62,24 +59,28 @@ class CharacterTable:
         )
 
     def detect_irrep(self, signature_g):
-        return self.normalized_characters_ig @ signature_g
+        return np, sum(self.normalized_characters_ig * signature_g[None, :], axis=1)
 
     def detect_irrep2(self, signature_g):
         return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
 
     def print(self):
         is_complex = np.any(np.iscomplex(self.characters_ig))
-        symbols = [("ε", np.exp(2j * np.pi / 3), "exp(2πi/3)"),
-                   ("ε*", np.exp(-2j * np.pi / 3), "exp(-2πi/3)")]
+        symbols = [
+            ("ε", np.exp(2j * np.pi / 3), "exp(2πi/3)"),
+            ("ε*", np.exp(-2j * np.pi / 3), "exp(-2πi/3)"),
+        ]
         used_values = []
-        #if is_complex:
+        # if is_complex:
         #    columns = 12
-        #else:
+        # else:
         #    columns = 7
         columns = 6
+
         def format_number(n):
             if np.isclose(n, np.round(n)):
-                return "%+02d" % n
+                assert np.abs(n.imag) < 1e-5
+                return "%+02d" % n.real
             return "%+.2f" % n
 
         def complex_format(n):
@@ -113,7 +114,7 @@ class CharacterTable:
                 print()
             for value in set(used_values):
                 symbol, value, text = symbols[value]
-                print(f'{symbol} = {text} = {value}')
+                print(f"{symbol} = {text} = {value}")
         except ValueError:
             print("...")
 
@@ -244,8 +245,13 @@ class SPGOperations:
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
         unshifted = cls(
-                atoms,
-            W_scc, w_sc, origin_shift_c, cell_cv, pointgroup, allow_translations=True
+            atoms,
+            W_scc,
+            w_sc,
+            origin_shift_c,
+            cell_cv,
+            pointgroup,
+            allow_translations=True,
         )
         print(f"unshifted {unshifted}")
         shifted = unshifted.apply_origin_shift(-origin_shift_c)
@@ -286,9 +292,9 @@ class SPGOperations:
             - np.einsum("scd,d->sc", self.W_scc, -origin_shift_c)
             + self.origin_shift_c
         )
-        w_sc = (np.round(w_sc * 100) / 100) % 1.0 % 1.0
+        w_sc = (np.round(w_sc * 100) / 100) % 1.0 % 1.0  # XXX More robust
         return SPGOperations(
-            self.atoms, # XXX Should it apply the origin shift to the atoms
+            self.atoms,  # XXX Should it apply the origin shift to the atoms
             self.W_scc,
             w_sc,
             self.origin_shift_c - origin_shift_c,
@@ -338,8 +344,8 @@ class ConjugacyClassClassifierClass:
         operations: SymmmetryOperations,
         expected_classes: list[str],
         verbose=True,
-        moi = None, # moments of inertia
-        atoms = None,
+        moi=None,  # moments of inertia
+        atoms=None,
     ):
         self.operations = operations
         self.expected_classes = expected_classes
@@ -433,17 +439,16 @@ class ConjugacyClassClassifierClass:
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
 
-        #principal_axis = np.array([1,0,0])
+        # principal_axis = np.array([1,0,0])
 
         self.principal_axis = principal_axis
-        print('"PRINCIPAL AXIS', self.principal_axis)
         names_g = []
         for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
             info = operation_info_o[0]
             if info.rotation:
                 # Rotation orthogonal to the main axis, add a prime
                 if np.allclose(np.dot(info.axis, principal_axis), 0):
-                    print('Adding prime')
+                    print("Adding prime")
                     main_cc += "'"
             if info.reflection:
                 if principal_axis is None:
@@ -479,9 +484,13 @@ class ConjugacyClassClassifierClass:
                 operations.append(o)
             if name == "1sv" and count == 2:
                 axes = [operations[0].axis, operations[1].axis]
-                if np.isclose(np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0):
+                if np.isclose(
+                    np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0
+                ):
                     extras = ["_yz", "_xz"]
-                elif np.isclose(np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0):
+                elif np.isclose(
+                    np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
+                ):
                     extras = ["_xz", "_yz"]
                 else:
                     print(self.principal_axis, axes)
@@ -494,10 +503,12 @@ class ConjugacyClassClassifierClass:
             elif name == "1C2'" and count == 2:
                 axes = [operations[0].axis, operations[1].axis]
                 det = np.linalg.det([self.principal_axis, axes[0], axes[1]])
-                print('DET', det, axes, self.principal_axis)
+                print("DET", det, axes, self.principal_axis)
                 if np.isclose(det, 1.0):
                     extras = ["_y", "_x"]
-                elif np.isclose(np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0):
+                elif np.isclose(
+                    np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
+                ):
                     extras = ["_x", "_y"]
                 else:
                     print(self.principal_axis, axes)
@@ -508,19 +519,21 @@ class ConjugacyClassClassifierClass:
                 if name[1] == "S" and order % 2 == 1:
                     order *= 2
                 odd = order - 1
-                if (operations[0].is_clockwise(self.principal_axis) and
-                    not operations[1].is_clockwise(self.principal_axis)):
+                if operations[0].is_clockwise(self.principal_axis) and not operations[
+                    1
+                ].is_clockwise(self.principal_axis):
                     extras = ["", f"^{odd}"]
-                elif (not operations[0].is_clockwise(self.principal_axis) and
-                      operations[1].is_clockwise(self.principal_axis)):
+                elif not operations[0].is_clockwise(self.principal_axis) and operations[
+                    1
+                ].is_clockwise(self.principal_axis):
                     extras = [f"^{odd}", ""]
                 else:
                     raise ValueError("Cannot figure out.")
-            #elif name == "1S3" and count == 2:
+            # elif name == "1S3" and count == 2:
             #    raise NotImplementedError
             #    extras = ["", "^5"]
             #    # TODO: Actually fix according to principal axis
-            #elif name == "1S4" and count == 2:
+            # elif name == "1S4" and count == 2:
             #     raise NotImplementedError
             #     extras = ["", "^3"]
             # elif name == "1C4" and count == 2:
@@ -537,8 +550,10 @@ class ConjugacyClassClassifierClass:
             #     # TODO: Actually figure out which is C6 and which is C6^5
             elif name == "2sv" and count == 2:
                 from code import interact
+
                 interact(local=locals())
                 from numpy.linalg import norm
+
                 cosines = []
                 for cell_v in self.atoms.cell:
                     cosines.append(np.dot(operations[0].axis, cell_v) / norm(cell_v))
@@ -790,7 +805,50 @@ class PointGroup:
             groups_i[irrep].append(psi[:, eig_idx])
 
         return [np.array(x) for x in groups_i]
-     
+
+
+class PolynomialProjectable:
+    def __init__(self, cell_cv, weights_c, normalize=True):
+        self.cell_cv = cell_cv
+        if normalize:
+            vector_v = weights_c @ cell_cv
+            self.weights_c = weights_c / np.linalg.norm(vector_v)
+        else:
+            self.weights_c = weights_c
+
+    def dot(self, other):
+        return np.dot(self.weights_c @ self.cell_cv, other.weights_c @ other.cell_cv)
+
+    def operation(self, op_vv):
+        cell_cv = self.cell_cv
+        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
+        op_cc = op_cc.T.copy()
+        op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
+        assert np.allclose(op_cc, op_cc_int)
+        return PolynomialProjectable(
+            self.cell_cv, op_cc_int @ self.weights_c, normalize=False
+        )
+
+
+class LinearCombinationProjectable:
+    def __init__(self, w_x, projectables_x):
+        self.w_x = w_x
+        self.projectables_x = projectables_x
+
+    def dot(self, other):
+        s = 0.0
+        for w, projectable in zip(self.w_x, self.projectables_x):
+            for w2, projectable2 in zip(other.w_x, other.projectables_x):
+                s += w * np.conjugate(w2) * projectable.dot(projectable2)
+        return s
+
+    def operation(self, op_vv):
+        return LinearCombinationProjectable(
+            self.w_x,
+            [projectable.operation(op_vv) for projectable in self.projectables_x],
+        )
+
+
 class Projectable:
     def __init__(self, calc, cell_cv, wf, pseudo_wf=True):
         self.calc = calc

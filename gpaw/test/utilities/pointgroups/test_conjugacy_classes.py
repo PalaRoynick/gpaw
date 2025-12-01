@@ -1,14 +1,44 @@
 from ase.build import molecule
-from gpaw.utilities.pointgroup import PointGroup, SPGOperations, CharacterTable
+from gpaw.utilities.pointgroup import (
+    PointGroup,
+    SPGOperations,
+    CharacterTable,
+    PolynomialProjectable,
+    LinearCombinationProjectable,
+)
 from gpaw.utilities.pointgroup_data import character_tables
 from ase import Atoms
 from ase.io import read
 import numpy as np
 
+
 def test_print():
     for pointgroup in character_tables:
         print(pointgroup)
         CharacterTable.from_data(**character_tables[pointgroup]).print()
+
+
+def get_span(pg, projectable):
+    irreps = []
+    signature = pg.signature(projectable)
+    for irrep, s in zip(pg.character_table.irreps, pg.detect_irrep(signature)):
+        if s > 0.01:
+            print(irrep, s, end=" ")
+            irreps.append(irrep)
+    return irreps
+
+
+def get_axis_span(pg):
+    irreps = []
+    atoms = pg.spg_ops.atoms
+    for c in range(3):
+        a_c = np.zeros((3,))
+        a_c[c] = 1.0
+        print(f"{c}. axis spans", end="")
+        irreps += get_span(pg, PolynomialProjectable(atoms.cell, a_c))
+        print()
+    return irreps
+
 
 def symmetry_from(mol, filt=None):
     if isinstance(mol, str):
@@ -56,23 +86,28 @@ def test_Ci():
     assert pg.spg_ops.pointgroup == "Ci"
     assert set(pg.names_g) == {"E", "i"}
 
+    assert get_axis_span(pg) == ["Au", "Au", "Au"]
+
 
 def test_Cs():
     pg, _ = symmetry_from("C3H6_Cs")
     assert pg.spg_ops.pointgroup == "Cs"
     assert set(pg.names_g) == {"E", "1sh"}
+    assert get_axis_span(pg) == ["A'", "A'", "A''"]
 
 
 def test_C2():
     pg, _ = symmetry_from("H2O2")
     assert pg.spg_ops.pointgroup == "C2"
     assert set(pg.names_g) == {"E", "1C2"}
+    assert get_axis_span(pg) == ["B", "B", "A"]
 
 
 def test_C2h():
     pg, _ = symmetry_from("OCHCHO")
     assert pg.spg_ops.pointgroup == "C2h"
     assert set(pg.names_g) == {"E", "1C2", "i", "1sh"}
+    assert get_axis_span(pg) == ["Bu", "Bu", "Au"]
 
 
 def test_C2v():
@@ -84,6 +119,7 @@ def test_C2v():
         return v3
 
     pg, atoms = symmetry_from("H2O")
+    assert get_axis_span(pg) == ["B1", "B2", "A1"]
     assert pg.spg_ops.pointgroup == "C2v"
     assert np.allclose(pg.c4.principal_axis, [0, 0, 1])
     assert set(pg.names_g) == {"E", "1C2", "1sv_xz", "1sv_yz"}
@@ -110,6 +146,7 @@ def test_D2():
     pg, _ = symmetry_from(read("twistane.xyz"))
     assert pg.spg_ops.pointgroup == "D2"
     assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x"}
+    assert get_axis_span(pg) == ["B3", "B2", "B1"]
 
 
 def test_D2h():
@@ -126,12 +163,14 @@ def test_D2h():
         "1s_xz",
         "1s_yz",
     }
+    assert get_axis_span(pg) == ["TODO", "TODO", "TODO"]
 
 
 def test_D2d():
     pg, _ = symmetry_from("cyclobutane")
     assert pg.spg_ops.pointgroup == "D2d"
     assert set(pg.textbook_names_g) == {"E", "2S4", "1C2", "2C2'", "2sd"}
+    assert get_axis_span(pg) == ["E", "E", "B2"]
 
 
 def test_C3():
@@ -152,6 +191,13 @@ def test_C3():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C3"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2"}
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["A"]
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    assert get_span(pg, x) == ["E(1)", "E(2)"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["E(1)"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["E(2)"]
 
 
 def test_C3h():
@@ -343,8 +389,9 @@ def test_C6():
     assert pg.spg_ops.pointgroup == "C6"
     assert set(pg.textbook_names_g) == {"E", "1C6", "1C3", "1C2", "1C3^2", "1C6^5"}
 
+
 def test_C6v():
-    atoms = molecule('HF')
+    atoms = molecule("HF")
     L = 10
     angle = 2 * np.pi / 3
     c, s = np.cos(angle), np.sin(angle)
