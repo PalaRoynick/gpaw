@@ -6,15 +6,24 @@ from gpaw.utilities.pointgroup_data import character_tables
 from gpaw.new.ase_interface import GPAW
 from pathlib import Path
 
+
 def prepare_atoms(atoms):
-    #atoms.set_pbc((True,True,True))
-    #atoms.translate(-atoms.get_center_of_mass())
-    from ase.spacegroup.symmetrize import get_symmetrized_atoms, spglib_get_symmetry_dataset
+    # atoms.set_pbc((True,True,True))
+    # atoms.translate(-atoms.get_center_of_mass())
+    from ase.spacegroup.symmetrize import (
+        get_symmetrized_atoms,
+        spglib_get_symmetry_dataset,
+    )
     from ase.utils import atoms_to_spglib_cell
+
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(atoms.get_scaled_positions() + dataset.transformation_matrix.T @ dataset.origin_shift)
+    atoms.set_scaled_positions(
+        atoms.get_scaled_positions()
+        + dataset.transformation_matrix.T @ dataset.origin_shift
+    )
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    #assert np.allclose(dataset.origin_shift, 0)
+    # assert np.allclose(dataset.origin_shift, 0)
+
 
 def test_Oh():
     from ase.build import bulk
@@ -27,7 +36,7 @@ def test_Oh():
     spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
     assert spg_ops.pointgroup == "Oh"
 
-    pg = PointGroup(spg_ops, principal_axis=None)
+    pg = PointGroup(spg_ops)
 
     if not Path("gs_Oh.gpw").exists():
         calc = GPAW(mode={"name": "pw", "force_complex_dtype": True})
@@ -81,7 +90,7 @@ def analyze_symmetry(calc, layergroup, expected):
     assert not layergroup
     spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
     assert spg_ops.pointgroup == expected
-    pg = PointGroup(spg_ops, None) #[0, 0, 1] if layergroup else None)
+    pg = PointGroup(spg_ops)  # [0, 0, 1] if layergroup else None)
     results = []
     failure = False
     for band in range(6):
@@ -105,8 +114,8 @@ def analyze_symmetry(calc, layergroup, expected):
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
 def test_defect_atoms(group):
     Hreplaced_atoms, atoms = create_mos2(pg_type=group)
-    #prepare_atoms(Hreplaced_atoms)
-    #prepare_atoms(atoms)
+    # prepare_atoms(Hreplaced_atoms)
+    # prepare_atoms(atoms)
     spg_ops = SPGOperations.from_atoms(Hreplaced_atoms, layergroup=True)
     assert spg_ops.pointgroup == group
     # origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
@@ -195,8 +204,15 @@ def get_group_example(group):
     except KeyError:
         pytest.skip(reason=f"Test for {group} not yet implemented.")
 
-    atoms = read(fname)
-    from ase.spacegroup.symmetrize import get_symmetrized_atoms, spglib_get_symmetry_dataset
+    try:
+        atoms = read(fname)
+    except FileNotFoundError:
+        pytest.skip(reason=f"File {fname} not found.")
+    from ase.spacegroup.symmetrize import (
+        get_symmetrized_atoms,
+        spglib_get_symmetry_dataset,
+    )
+
     atoms = get_symmetrized_atoms(atoms, symprec=0.3)[0]
     prepare_atoms(atoms)
 
@@ -222,5 +238,7 @@ def test_all(group):
         calc.write(fname, mode="all")
 
     calc = GPAW(fname)
-    obtained_results = analyze_symmetry(calc, layergroup=False, expected=group) # XXX Not using layergroup
+    obtained_results = analyze_symmetry(
+        calc, layergroup=False, expected=group
+    )  # XXX Not using layergroup
     assert results.split(",") == obtained_results

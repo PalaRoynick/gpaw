@@ -163,7 +163,7 @@ class SPGOperations:
         w_sc = dataset.translations
         origin_shift_c = dataset.origin_shift
         cell_cv = np.array(atoms.cell)
-        #assert np.allclose(dataset.transformation_matrix, np.eye(3))
+        # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         # Kartik: Move to pointgroup_data
         dct = {
             "1": "C1",
@@ -212,8 +212,10 @@ class SPGOperations:
         # XXX: It is bad that we modify atoms here
         # XXX: All of this needs to be consolidated
         if not np.allclose(origin_shift_c, 0):
-            raise ValueError(f'Presymmetrize your system to have origin_shift of 0. {dataset=}')
-        #atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
+            raise ValueError(
+                f"Presymmetrize your system to have origin_shift of 0. {dataset=}"
+            )
+        # atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
 
         # print('Atoms after', atoms.get_positions())
         # from ase.io import write
@@ -292,12 +294,12 @@ class ConjugacyClassClassifierClass:
         self,
         operations: SymmmetryOperations,
         expected_classes: list[str],
-        principal_axis: list[float],
+        # principal_axis: list[float],
         verbose=True,
     ):
         self.operations = operations
         self.expected_classes = expected_classes
-        self.principal_axis = principal_axis
+        self.principal_axis = "Principal axis not yet detected."
 
         ops_occ = operations.ops_occ
         N = len(ops_occ)
@@ -475,6 +477,8 @@ class ConjugacyClassClassifierClass:
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
 
+        self.principal_axis = principal_axis
+
         names_g = []
         for g, main_cc, operation_info_o, rotation_order in main_conjugacy_classes:
             info = operation_info_o[0]
@@ -600,11 +604,11 @@ class ConjugacyClassClassifierClass:
 
 
 class PointGroup:
-    def __init__(self, spg_ops, principal_axis=[0, 0, 1]):
+    def __init__(self, spg_ops):  # , principal_axis=[0, 0, 1]):
         self.spg_ops = spg_ops
         print("POINTGROUP", spg_ops.pointgroup)
         self.verbose = True
-        self.principal_axis = principal_axis
+        # self.principal_axis = principal_axis
 
         self.operations = SymmmetryOperations(self.ops_occ)
 
@@ -614,7 +618,7 @@ class PointGroup:
         self.c4 = ConjugacyClassClassifierClass(
             self.operations,
             expected_classes=character_table.classes,
-            principal_axis=principal_axis,
+            # principal_axis=principal_axis,
         )
         # self._find_conjugacy_classes()
         # self._build_character_table()

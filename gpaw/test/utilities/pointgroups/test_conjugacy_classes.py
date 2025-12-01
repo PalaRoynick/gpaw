@@ -5,7 +5,7 @@ from ase.io import read
 import numpy as np
 
 
-def symmetry_from(mol):
+def symmetry_from(mol, filt=None):
     if isinstance(mol, str):
         atoms = molecule(mol)
     else:
@@ -13,21 +13,30 @@ def symmetry_from(mol):
     atoms.center(vacuum=5)
     atoms.set_pbc((True, True, True))
 
-    from ase.spacegroup.symmetrize import get_symmetrized_atoms, spglib_get_symmetry_dataset
+    from ase.spacegroup.symmetrize import (
+        get_symmetrized_atoms,
+        spglib_get_symmetry_dataset,
+    )
     from ase.utils import atoms_to_spglib_cell
+
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(atoms.get_scaled_positions() + dataset.transformation_matrix.T @ dataset.origin_shift)
+    atoms.set_scaled_positions(
+        atoms.get_scaled_positions()
+        + dataset.transformation_matrix.T @ dataset.origin_shift
+    )
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
     assert np.allclose(dataset.origin_shift, 0)
-    #assert np.allclose(dataset.transformation_matrix, np.eye(3))
-    
+    # assert np.allclose(dataset.transformation_matrix, np.eye(3))
+
+    if filt:
+        filt(atoms)
 
     spg_ops = SPGOperations.from_atoms(atoms, False, layergroup=False)
-    return PointGroup(spg_ops, None)
+    return PointGroup(spg_ops), atoms
 
 
 def test_C1():
-    pg = symmetry_from("H2COH")
+    pg, _ = symmetry_from("H2COH")
     assert set(pg.names_g) == {"E"}
     assert pg.spg_ops.pointgroup == "C1"
 
@@ -38,43 +47,69 @@ def test_Ci():
     atoms2 = atoms.copy()
     atoms2.set_scaled_positions(-atoms2.get_scaled_positions())
     atoms.extend(atoms2)
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "Ci"
     assert set(pg.names_g) == {"E", "i"}
 
 
 def test_Cs():
-    pg = symmetry_from("C3H6_Cs")
+    pg, _ = symmetry_from("C3H6_Cs")
     assert pg.spg_ops.pointgroup == "Cs"
     assert set(pg.names_g) == {"E", "1sh"}
 
 
 def test_C2():
-    pg = symmetry_from("H2O2")
+    pg, _ = symmetry_from("H2O2")
     assert pg.spg_ops.pointgroup == "C2"
     assert set(pg.names_g) == {"E", "1C2"}
 
 
 def test_C2h():
-    pg = symmetry_from("OCHCHO")
+    pg, _ = symmetry_from("OCHCHO")
     assert pg.spg_ops.pointgroup == "C2h"
     assert set(pg.names_g) == {"E", "1C2", "i", "1sh"}
 
 
 def test_C2v():
-    pg = symmetry_from("H2O")
+    def xz_plane_normal(atoms):
+        v1 = atoms[1].position - atoms[0].position
+        v2 = atoms[2].position - atoms[0].position
+        v3 = np.cross(v2, v1)
+        v3 /= np.linalg.norm(v3)
+        return v3
+
+    pg, atoms = symmetry_from("H2O")
     assert pg.spg_ops.pointgroup == "C2v"
+    assert np.allclose(pg.c4.principal_axis, [0, 0, 1])
     assert set(pg.names_g) == {"E", "1C2", "1sv_xz", "1sv_yz"}
+    xz = xz_plane_normal(atoms)
+    xz_axis = pg.c4.operations.operation_info_o[pg.c4.names_g.index("1sv_xz")].axis
+    assert np.allclose(np.abs(np.dot(xz, xz_axis)), 1), (xz, xz_axis)
+    # from code import interact
+    # interact(local=locals())
+    # print(xy)
+    # asd
+    pg, atoms = symmetry_from(
+        "H2O", lambda atoms: atoms.rotate(90, "x", rotate_cell=True)
+    )
+    assert pg.spg_ops.pointgroup == "C2v"
+    assert np.allclose(pg.c4.principal_axis, [0, 1, 0])
+    xz = xz_plane_normal(atoms)
+    xz_axis = pg.c4.operations.operation_info_o[pg.c4.names_g.index("1sv_xz")].axis
+    assert np.allclose(np.abs(np.dot(xz, xz_axis)), 1), (xz, xz_axis)
+    # from code import interact
+    # interact(local=locals())
 
 
 def test_D2():
-    pg = symmetry_from(read("twistane.xyz"))
+    pg, _ = symmetry_from(read("twistane.xyz"))
     assert pg.spg_ops.pointgroup == "D2"
     assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x"}
 
 
 def test_D2h():
-    pg = symmetry_from("C2H4")
+    pg, _ = symmetry_from("C2H4")
+
     assert pg.spg_ops.pointgroup == "D2h"
     assert set(pg.textbook_names_g) == {
         "E",
@@ -89,7 +124,7 @@ def test_D2h():
 
 
 def test_D2d():
-    pg = symmetry_from("cyclobutane")
+    pg, _ = symmetry_from("cyclobutane")
     assert pg.spg_ops.pointgroup == "D2d"
     assert set(pg.textbook_names_g) == {"E", "2S4", "1C2", "2C2'", "2sd"}
 
@@ -109,7 +144,7 @@ def test_C3():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C3"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2"}
 
@@ -123,7 +158,7 @@ def test_C3h():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C3h"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2", "1sh", "1S3", "1S3^5"}
 
@@ -137,7 +172,7 @@ def test_C3v():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C3v"
     assert set(pg.textbook_names_g) == {"E", "2C3", "3sv"}
 
@@ -151,7 +186,7 @@ def test_D3():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D3"
     assert set(pg.textbook_names_g) == {"E", "2C3", "3C2'"}
 
@@ -165,7 +200,7 @@ def test_D3h():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D3h"
     assert set(pg.textbook_names_g) == {"E", "2C3", "3C2'", "1sh", "2S3", "3sv"}
 
@@ -179,7 +214,7 @@ def test_D3d():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D3d"
     assert set(pg.textbook_names_g) == {"E", "2C3", "3C2'", "i", "2S6", "3sd"}
 
@@ -199,7 +234,7 @@ def test_C4():
             [-1.1, -1, -1],
         ],
     )
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C4"
     assert set(pg.textbook_names_g) == {"E", "1C4", "1C2", "1C4^3"}
 
@@ -219,7 +254,7 @@ def test_C4h():
             [-1.1, -1, -1],
         ],
     )
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C4h"
     assert set(pg.textbook_names_g) == {
         "E",
@@ -237,21 +272,21 @@ def test_C4v():
     atoms = Atoms(
         "H5", positions=[[1, 1, 1], [-1, 1, 1], [1, -1, 1], [-1, -1, 1], [0, 0, 0]]
     )
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C4v"
     assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2sv", "2sd"}
 
 
 def test_S4():
     atoms = read("S4.xyz")
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "S4"
     assert set(pg.textbook_names_g) == {"E", "1S4", "1C2", "1S4^3"}
 
 
 def test_D4():
     atoms = read("D4.xyz")
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D4"
     assert set(pg.textbook_names_g) == {"E", "2C4", "1C2", "2C2'", "2C2''"}
 
@@ -260,7 +295,7 @@ def test_D4h():
     atoms = Atoms(
         "CH4", positions=[[0, 0, 0], [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0]]
     )
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D4h"
     assert set(pg.textbook_names_g) == {
         "E",
@@ -285,7 +320,7 @@ def test_S6():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "S6"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2", "i", "1S6^5", "1S6"}
 
@@ -299,7 +334,7 @@ def test_C6():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C6"
     assert set(pg.textbook_names_g) == {"E", "1C6", "1C3", "1C2", "1C3^2", "1C6^5"}
 
@@ -313,7 +348,7 @@ def test_C6h():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "C6h"
     assert set(pg.textbook_names_g) == {
         "E",
@@ -340,7 +375,7 @@ def test_D6h():
     atoms.set_cell(cell)
     atoms.set_pbc((True, True, True))
     atoms.center()
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "D6h"
     assert set(pg.textbook_names_g) == {
         "E",
@@ -360,13 +395,24 @@ def test_D6h():
 
 def test_Td():
     atoms = read("Td.xyz")
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "Td"
     assert set(pg.textbook_names_g) == {"E", "8C3", "3C2", "6S4", "6sd"}
 
+
 def test_Oh():
     atoms = read("Al13.xyz")
-    pg = symmetry_from(atoms)
+    pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "Oh"
-    assert set(pg.textbook_names_g) == {"E", "8C3", "6C2", "6C4", "3C2",
-                "i", "6S4", "8S6", "3sh", "6sd"}
+    assert set(pg.textbook_names_g) == {
+        "E",
+        "8C3",
+        "6C2",
+        "6C4",
+        "3C2",
+        "i",
+        "6S4",
+        "8S6",
+        "3sh",
+        "6sd",
+    }

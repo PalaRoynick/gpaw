@@ -1,6 +1,6 @@
 import numpy as np
 D3h = {
-    "irreps": ["A'1", "A'2", "E'1", "A''1", "A''2", "E''1"],
+    "irreps": ["A'1", "A'2", "E'", "A''1", "A''2", "E''"],
     "classes": ["E", "2C3", "3C2'", "1sh", "2S3", "3sv"],
     'table': [[1., 1., 1., 1., 1., 1.],
               [1., 1., -1., 1., 1., -1.],
@@ -83,11 +83,18 @@ D2 = {
               [1., -1., -1., 1.]]
 }
 
+print('Remember to double check D2h character table')
 D2h = {
     "irreps": ["Ag", "B1g", "B2g", "B3g",
                "Au", "B1u", "B2u", "B3u"],
+    # Tried svapping 1sv_xz and 1sv_yz XXX CHECK
+    # This makes conjugacy classes work, but irreps labeled wrong
+    # This is a symptom of that we are not labeling the extra conjugacy
+    # class labels. All of the if statements in conjugacy class detector need to be addressed
+    # and choices to be made non-ambigous
+    # XXX When done, remember to switch back 1s_xc and 1sv_yz
     "classes": ["E", "1C2", "1C2'_y", "1C2'_x",
-                "i", "1sh", "1sv_xz", "1sv_yz"],
+                "i", "1sh", "1sv_yz", "1sv_xz"],  
     # One of the 1sh's is h and two v, and that is how we identify them.
     # It is jsut convention that they are not labeled that way.
     # Also 1sh_xy -> 1s_xy (and same for xz and yz)

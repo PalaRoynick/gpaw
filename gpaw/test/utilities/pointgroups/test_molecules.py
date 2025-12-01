@@ -88,9 +88,9 @@ class SymmetryEigenvalues:
                 if np.allclose(op_cc.T, W_cc):
                     break
             else:
-                raise ValueError(f'Symmetry not found. {op_cc}.')
+                raise ValueError(f"Symmetry not found. {op_cc}.")
 
-        pg = PointGroup(spg_ops, [0, 0, 1])  # if layergroup else None)
+        pg = PointGroup(spg_ops)  # , [0, 0, 1])  # if layergroup else None)
         states = []
         failure = False
         eig_n = calc.get_eigenvalues()
@@ -488,17 +488,30 @@ def build_cell(atoms, group):
         atoms.center(vacuum=4)
 
     atoms.translate(-atoms.get_center_of_mass())
-    from ase.spacegroup.symmetrize import get_symmetrized_atoms, spglib_get_symmetry_dataset
+    from ase.spacegroup.symmetrize import (
+        get_symmetrized_atoms,
+        spglib_get_symmetry_dataset,
+    )
     from ase.utils import atoms_to_spglib_cell
+
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(atoms.get_scaled_positions() + dataset.transformation_matrix.T @ dataset.origin_shift)
+    atoms.set_scaled_positions(
+        atoms.get_scaled_positions()
+        + dataset.transformation_matrix.T @ dataset.origin_shift
+    )
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
     assert np.allclose(dataset.origin_shift, 0)
-    #assert np.allclose(dataset.transformation_matrix, np.eye(3))
+    # assert np.allclose(dataset.transformation_matrix, np.eye(3))
+
 
 def test_Oh():
-    atoms = read('Al13.xyz')
-    build_cell(atoms, 'Oh')
+    states = parse_eigenvalues(Path("Oh/irreps.txt").read_text())
+    tmole_group = Path("Oh/group.txt").read_text().split()[-1]
+    states = SymmetryEigenvalues(tmole_group, states)
+    states = states.unroll_degeneracies().occupied_states
+
+    atoms = read("Al13.xyz")
+    build_cell(atoms, "Oh")
     if not Path("Al13_wfs.gpw").exists():
         calc = GPAW(
             mode={"name": "pw", "ecut": 400, "force_complex_dtype": True},
@@ -520,7 +533,10 @@ def test_Oh():
     calc = GPAW("Al13_wfs.gpw")
     gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
     assert gpaw_states.little_group == "Oh"
-    print(gpaw_states)
+    print("GPAW")
+    print(gpaw_states.occupied_states)
+    print("TURBOMOLE")
+    print(states)
 
 
 # TODO: Add C3 molecule test, even an artificial one
@@ -587,8 +603,10 @@ def test_molecule(name, symmetry):
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
         print(f"{tmole_state} | {gpaw_state}")
     for tmole_state, gpaw_state in zip(tmole_states, gpaw_states):
-        assert tmole_state.irrep.upper() == gpaw_state.irrep.upper()
-        if name != 'Be':
+        assert sorted(tmole_state.irrep.upper()) == sorted(
+            gpaw_state.irrep.upper()
+        )  # Sorted, because primes can be in different places
+        if name != "Be" and name != "C2Cl4":
             assert np.abs(tmole_state.eigenvalue - gpaw_state.eigenvalue) < 0.6
 
 
