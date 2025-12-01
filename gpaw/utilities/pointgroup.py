@@ -549,9 +549,8 @@ class ConjugacyClassClassifierClass:
             #     extras = ["", "^5"]
             #     # TODO: Actually figure out which is C6 and which is C6^5
             elif name == "2sv" and count == 2:
-                from code import interact
-
-                interact(local=locals())
+                #from code import interact
+                #interact(local=locals())
                 from numpy.linalg import norm
 
                 cosines = []
