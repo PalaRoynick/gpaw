@@ -541,6 +541,12 @@ def test_D6h():
         "3sd",
         "3sv",
     }
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, z) == ["A2u"]
+    assert get_span(pg, LinearCombinationProjectable([1, 1], [x, y])) == ["E1u"]
+    assert get_span(pg, LinearCombinationProjectable([1, -1], [x, y])) == ["E1u"]
 
 
 def test_Td():
@@ -548,6 +554,12 @@ def test_Td():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "Td"
     assert set(pg.textbook_names_g) == {"E", "8C3", "3C2", "6S4", "6sd"}
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, x) == ["T2"]
+    assert get_span(pg, y) == ["T2"]
+    assert get_span(pg, z) == ["T2"]
 
 
 def test_Oh():
@@ -566,3 +578,10 @@ def test_Oh():
         "3sh",
         "6sd",
     }
+    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
+    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
+    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    assert get_span(pg, x) == ["T1u"]
+    assert get_span(pg, y) == ["T1u"]
+    assert get_span(pg, z) == ["T1u"]
+
