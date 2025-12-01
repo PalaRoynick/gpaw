@@ -192,6 +192,7 @@ class PWHybridHamiltonian(PWHamiltonian):
                  relpos_ac,
                  atomdist,
                  log,
+                 compensation_charges_in_real_space,
                  kpt_comm,
                  band_comm,
                  comm):
@@ -447,6 +448,92 @@ class PWHybridHamiltonian(PWHamiltonian):
             f1 = f1_n[n1]
             for a, Q1_niL in Q1_aniL.items():
                 Q_anL[a] = P2_ani[a] @ Q1_niL[n1] * eikR_a[a].conj()
+            if self.real:
+                mmm(1.0 / pw.dv, Q_anL.data, 'N', ghat_GA, 'T',
+                    0.0, rhot2_nG.data.view(float))
+            else:
+                mmm(1.0 / pw.dv, Q_anL.data, 'N', ghat_GA, 'C',
+                    0.0, rhot2_nG.data)
+            for n2, (rhot_G, ut2_R) in enumerate(zip(rhot2_nG.data,
+                                                     ut2_nR.data)):
+                tmp_R[:] = ut2_R
+                tmp_R *= ut1_R.conj()
+                self.plan.fft()
+                a_G = tmp_Q.ravel()[Q_G]
+                self.zaxpy(a_G, rhot_G, NG, 1.0 / NR)
+                if not calculate_energy:
+                    rhot_G *= v_G
+                else:
+                    tmp_G[:] = rhot_G
+                    rhot_G *= v_G
+                    e12 = tmp_G.view(float) @ rhot_G.view(float)
+                    if self.real:
+                        e12 = 2 * e12 - (tmp_G[0] * rhot_G[0]).real
+                    e += e12 * f2_n[n2] * f1 * pw.dv
+            if F1_av is not None:
+                forces(ghat_aLG, rhot2_nG, P2_ani,
+                       Q_anL,
+                       f1, f2_n, self.nbzk, self.delta_aiiL,
+                       psit1.dP_anvi,
+                       n1, eikR_a, F1_av)
+                continue
+            if self.real:
+                ghat_GA[0] *= 0.5
+                mmm(2.0, rhot2_nG.data.view(float), 'N', ghat_GA, 'N',
+                    0.0, Q_anL.data)
+                ghat_GA[0] *= 2.0
+            else:
+                mmm(1.0, rhot2_nG.data, 'N', ghat_GA, 'N', 0.0, Q_anL.data)
+            x = self.exx_fraction * f1 / self.nbzk
+            for rhot_G, Htpsit2_G in zip(rhot2_nG.data, Htpsit2_nG.data):
+                self.plan.ifft_sphere(rhot_G, pw)
+                tmp_R *= ut1_R.data
+                self.plan.fft()
+                # Htpsit2_G -= x / NR * pw2.cut(tmp_Q)
+                v2_G = tmp_Q.ravel()[Q2_G]
+                self.zaxpy(v2_G, Htpsit2_G, NG2, -x / NR)
+            for a, Q1_niL in Q1_aniL.items():
+                V2_ani[a] -= x * Q_anL[a] @ Q1_niL[n1].T.conj() * eikR_a[a]
+        return e
+
+    def _apply3rs(self,
+                  pw: PWDesc,
+                  v_G: np.ndarray,
+                  psit1: Psit,
+                  ut2_nR: UGArray,
+                  P2_ani: AtomArrays,
+                  Htpsit2_nG: PWArray,
+                  V2_ani,
+                  f2_n: np.ndarray,
+                  calculate_energy: bool,
+                  F1_av: np.ndarray | None) -> float:
+        ut1_nR = psit1.ut_nR
+        Q1_aniL = psit1.Q_aniL
+        f1_n = psit1.f_n
+        grid = ut1_nR.desc
+        ghat_aLG = self.setups.create_compensation_charges(grid,
+                                                           self.relpos_ac)
+        N2 = len(ut2_nR)
+        Q_anL = ghat_aLG.layout.empty(N2)
+        rhot2_nR = grid.empty(N2)
+        tmp_Q = self.plan.tmp_Q
+        tmp_R = self.plan.tmp_R
+        pw2 = Htpsit2_nG.desc
+        NR = tmp_R.size
+        NG = pw.myshape[0]
+        NG2 = pw2.myshape[0]
+        tmp_G = np.empty(NG, complex)
+        Q_G = pw.indices(tmp_Q.shape)
+        Q2_G = pw2.indices(tmp_Q.shape)
+        e = 0.0
+        for n1, ut1_R in enumerate(ut1_nR.data):
+            f1 = f1_n[n1]
+            for a, Q1_niL in Q1_aniL.items():
+                Q_anL[a] = P2_ani[a] @ Q1_niL[n1]
+            for n2, (rhot_G, ut2_R) in enumerate(zip(rhot2_nG.data,
+                                                     ut2_nR.data)):
+                tmp_R[:] = ut2_R
+                tmp_R *= ut1_R.conj()
             if self.real:
                 mmm(1.0 / pw.dv, Q_anL.data, 'N', ghat_GA, 'T',
                     0.0, rhot2_nG.data.view(float))
