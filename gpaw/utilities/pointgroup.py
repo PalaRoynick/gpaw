@@ -310,13 +310,11 @@ class ConjugacyClassClassifierClass:
         operations: SymmmetryOperations,
         expected_classes: list[str],
         verbose=True,
-        moi=None,  # moments of inertia
         atoms=None,
     ):
         self.operations = operations
         self.expected_classes = expected_classes
         self.principal_axis = "Principal axis not yet detected."
-        self.moi = moi
         self.atoms = atoms
         ops_occ = operations.ops_occ
         N = len(ops_occ)
@@ -620,12 +618,9 @@ class PointGroup:
         # self._build_multiplication_table()
         character_table = self.spg_ops.character_table
 
-        moi = spg_ops.atoms.get_moments_of_inertia(vectors=True)
-
         self.c4 = ConjugacyClassClassifierClass(
             self.operations,
             expected_classes=character_table.classes,
-            moi=moi,
             atoms=spg_ops.atoms,
             # principal_axis=principal_axis,
         )

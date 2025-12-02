@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 
+
 def ppstr(W_cc, w_c=None):
     s = ""
     for i in range(3):
@@ -34,7 +35,6 @@ class OperationInfo:
         return np.dot(np.cross(vec, vec2), principal_axis) < 0
         # Apply the vector
         # Calculate how much the vector rotated
-
 
     @classmethod
     def from_op(cls, op_cc):
@@ -105,7 +105,7 @@ class OperationInfo:
     @property
     def identity(self):
         return self.cls == "E"
-    
+
     @property
     def rotation(self):
         if self.cls.startswith('C'):
@@ -117,7 +117,7 @@ class OperationInfo:
     @property
     def inversion(self):
         return self.cls == "i"
-    
+
     @property
     def reflection(self):
         return self.cls == "s"
@@ -136,4 +136,3 @@ class OperationInfo:
         if self.reflection:
             return 2
         return self.CN
-
