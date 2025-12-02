@@ -206,42 +206,8 @@ class SPGOperations:
         origin_shift_c = dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
-        # Kartik: Move to pointgroup_data
-        dct = {
-            "1": "C1",
-            "-1": "Ci",
-            "2": "C2",
-            "m": "Cs",
-            "2/m": "C2h",
-            "222": "D2",
-            "mm2": "C2v",
-            "mmm": "D2h",
-            "3": "C3",
-            "-3": "S6",
-            "32": "D3",
-            "3m": "C3v",
-            "-3m": "D3d",
-            "4": "C4",
-            "-4": "S4",
-            "4/m": "C4h",
-            "422": "D4",
-            "4mm": "C4v",
-            "-42m": "D2d",
-            "4/mmm": "D4h",
-            "6": "C6",
-            "-6": "C3h",
-            "6/m": "C6h",
-            "622": "D6",
-            "6mm": "C6v",
-            "-6m2": "D3h",
-            "6/mmm": "D6h",
-            "23": "T",
-            "m-3": "Th",
-            "432": "O",
-            "-43m": "Td",
-            "m-3m": "Oh",
-        }
-        pointgroup = dct[dataset.pointgroup]
+        from gpaw.utilities.pointgroup_data import spglib_to_schoenflies
+        pointgroup = spglib_to_schoenflies[dataset.pointgroup]
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
         unshifted = cls(
@@ -406,6 +372,95 @@ class ConjugacyClassClassifierClass:
         print(f"{operation_info_o=}")
         raise ValueError("Could not detect conjugacy class.")
 
+    def _resolve_1sv(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"1sv count {count}")
+        axes = [operations[0].axis, operations[1].axis]
+        if np.isclose(
+            np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0
+        ):
+            return ["_yz", "_xz"]
+        elif np.isclose(
+            np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
+        ):
+            return ["_xz", "_yz"]
+        else:
+            print(self.principal_axis, axes)
+            raise ValueError("Could not determine coordinate system.")
+
+    def _resolve_1C2(self, count, operations):
+        if count == 3:
+            raise NotImplementedError
+            return ["_x", "_y", "_z"]
+        raise NotImplementedError(f"1C2 count {count}")
+
+    def _resolve_1C2_prime(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"1C2' count {count}")
+        axes = [operations[0].axis, operations[1].axis]
+        det = np.linalg.det([self.principal_axis, axes[0], axes[1]])
+        print("DET", det, axes, self.principal_axis)
+        if np.isclose(det, 1.0):
+            return ["_y", "_x"]
+        elif np.isclose(
+            np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
+        ):
+            return ["_x", "_y"]
+        else:
+            print(self.principal_axis, axes)
+            raise ValueError("Could not determine coordinate system.")
+
+    def _resolve_cyclic(self, name, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"{name} count {count}")
+        # Horrible code, refactor
+        order = int(name[-1])
+        if name[1] == "S" and order % 2 == 1:
+            order *= 2
+        odd = order - 1
+        if operations[0].is_clockwise(self.principal_axis) and not operations[
+            1
+        ].is_clockwise(self.principal_axis):
+            return ["", f"^{odd}"]
+        elif not operations[0].is_clockwise(self.principal_axis) and operations[
+            1
+        ].is_clockwise(self.principal_axis):
+            return [f"^{odd}", ""]
+        else:
+            raise ValueError("Cannot figure out.")
+
+    def _resolve_2sv(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"2sv count {count}")
+        from numpy.linalg import norm
+
+        cosines = []
+        for cell_v in self.atoms.cell:
+            cosines.append(np.dot(operations[0].axis, cell_v) / norm(cell_v))
+        cosines = np.array(cosines)
+        if np.allclose(cosines, np.round(cosines)):
+            return ["-2sv", "-2sd"]
+        else:
+            return ["-2sd", "-2sv"]
+
+    def _resolve_2C2_prime(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"2C2' count {count}")
+        raise NotImplementedError
+        return ["", "'"]
+
+    def _resolve_3C2_prime(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"3C2' count {count}")
+        raise NotImplementedError
+        return ["", "'"]
+
+    def _resolve_3sv(self, count, operations):
+        if count != 2:
+            raise NotImplementedError(f"3sv count {count}")
+        raise NotImplementedError
+        return ["-3sv", "-3sd"]
+
     def _detect_conjugacy_classes(self, class_names: list[str]):
         free_names = set(class_names)
 
@@ -482,98 +537,22 @@ class ConjugacyClassClassifierClass:
                 # Getting information only from the first item
                 o = operation_info_o[0]
                 operations.append(o)
-            if name == "1sv" and count == 2:
-                axes = [operations[0].axis, operations[1].axis]
-                if np.isclose(
-                    np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0
-                ):
-                    extras = ["_yz", "_xz"]
-                elif np.isclose(
-                    np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
-                ):
-                    extras = ["_xz", "_yz"]
-                else:
-                    print(self.principal_axis, axes)
-                    raise ValueError("Could not determine coordinate system.")
-                # Actually fix according to molecular symmetry(?)
-            elif name == "1C2" and count == 3:
-                raise NotImplementedError
-                extras = ["_x", "_y", "_z"]
-                # Actually fix according to crystal axes
-            elif name == "1C2'" and count == 2:
-                axes = [operations[0].axis, operations[1].axis]
-                det = np.linalg.det([self.principal_axis, axes[0], axes[1]])
-                print("DET", det, axes, self.principal_axis)
-                if np.isclose(det, 1.0):
-                    extras = ["_y", "_x"]
-                elif np.isclose(
-                    np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
-                ):
-                    extras = ["_x", "_y"]
-                else:
-                    print(self.principal_axis, axes)
-                    raise ValueError("Could not determine coordinate system.")
-            elif name in {"1C3", "1S3", "1S4", "1C4", "1S6", "1C6"} and count == 2:
-                # Horrible code, refactor
-                order = int(name[-1])
-                if name[1] == "S" and order % 2 == 1:
-                    order *= 2
-                odd = order - 1
-                if operations[0].is_clockwise(self.principal_axis) and not operations[
-                    1
-                ].is_clockwise(self.principal_axis):
-                    extras = ["", f"^{odd}"]
-                elif not operations[0].is_clockwise(self.principal_axis) and operations[
-                    1
-                ].is_clockwise(self.principal_axis):
-                    extras = [f"^{odd}", ""]
-                else:
-                    raise ValueError("Cannot figure out.")
-            # elif name == "1S3" and count == 2:
-            #    raise NotImplementedError
-            #    extras = ["", "^5"]
-            #    # TODO: Actually fix according to principal axis
-            # elif name == "1S4" and count == 2:
-            #     raise NotImplementedError
-            #     extras = ["", "^3"]
-            # elif name == "1C4" and count == 2:
-            #     raise NotImplementedError
-            #     extras = ["", "^3"]
-            #     # TODO: Actually fix according to principal axis
-            # elif name == "1S6" and count == 2:
-            #     raise NotImplementedError
-            #     extras = ["", "^5"]
-            #     # TODO: Actually figure out which is S6 and which is S6^5
-            # elif name == "1C6" and count == 2:
-            #     raise NotImplementedError
-            #     extras = ["", "^5"]
-            #     # TODO: Actually figure out which is C6 and which is C6^5
-            elif name == "2sv" and count == 2:
-                #from code import interact
-                #interact(local=locals())
-                from numpy.linalg import norm
-
-                cosines = []
-                for cell_v in self.atoms.cell:
-                    cosines.append(np.dot(operations[0].axis, cell_v) / norm(cell_v))
-                cosines = np.array(cosines)
-                if np.allclose(cosines, np.round(cosines)):
-                    extras = ["-2sv", "-2sd"]
-                else:
-                    extras = ["-2sd", "-2sv"]
-                # TODO
-            elif name == "2C2'" and count == 2:
-                raise NotImplementedError
-                extras = ["", "'"]
-                # TODO: Actually figure out which is ' and which is ''
-            elif name == "3C2'" and count == 2:
-                raise NotImplementedError
-                extras = ["", "'"]
-                # TODO: Actually figure out which is 3C2' and which is 3C2''
-            elif name == "3sv" and count == 2:
-                raise NotImplementedError
-                extras = ["-3sv", "-3sd"]
-                # TODO: Actually figure out which is 3sv and which is 3sd
+            if name == "1sv":
+                extras = self._resolve_1sv(count, operations)
+            elif name == "1C2":
+                extras = self._resolve_1C2(count, operations)
+            elif name == "1C2'":
+                extras = self._resolve_1C2_prime(count, operations)
+            elif name in {"1C3", "1S3", "1S4", "1C4", "1S6", "1C6"}:
+                extras = self._resolve_cyclic(name, count, operations)
+            elif name == "2sv":
+                extras = self._resolve_2sv(count, operations)
+            elif name == "2C2'":
+                extras = self._resolve_2C2_prime(count, operations)
+            elif name == "3C2'":
+                extras = self._resolve_3C2_prime(count, operations)
+            elif name == "3sv":
+                extras = self._resolve_3sv(count, operations)
             else:
                 raise NotImplementedError(
                     f"Duplicate conjugacy class name {name} count: {count}"
