@@ -324,7 +324,7 @@ class DFTCalculation:
         self.results['stress'] = stress_vv.flat[[0, 4, 8, 5, 2, 1]]
 
     def write_converged(self) -> None:
-        self.ibzwfs.write_summary(self.log)
+        self.ibzwfs.write_summary(self.log, self.atoms)
         vacuum_level = self.potential.get_vacuum_level()
         if not np.isnan(vacuum_level):
             self.log(f'vacuum-level: {vacuum_level:.3f}  # V')
