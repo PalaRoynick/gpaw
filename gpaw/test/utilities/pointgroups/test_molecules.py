@@ -19,6 +19,7 @@ from itertools import zip_longest
 @contextlib.contextmanager
 def workdir(path):
     prev_cwd = Path.cwd()
+    Path(path).mkdir(exist_ok=True)
     os.chdir(path)
     try:
         yield
@@ -416,7 +417,6 @@ def test_molecule(name, symmetry):
     tmole_json = Path(name + "_tmole.json")
     if not tmole_json.exists():
         os.system(f"rm -r {name}")
-        Path(name).mkdir(exist_ok=True)
         with workdir(name):
             write(name + ".xyz", atoms)
             os.system(f"x2t {name}.xyz > coord")
