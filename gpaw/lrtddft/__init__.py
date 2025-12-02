@@ -67,9 +67,11 @@ class LrTDDFT(ExcitationList):
         self.diagonalized = False
 
         self.set(**kwargs)
+        # if calculator is not None and not calculator.old:
+        #     calculator = calculator._to_old()
         self.calculator = calculator
 
-        ExcitationList.__init__(self, log=log, txt=txt)
+        super().__init__(log=log, txt=txt)
 
         if self.eh_comm is None:
             self.eh_comm = mpi.serial_comm
