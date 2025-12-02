@@ -377,19 +377,50 @@ class ConjugacyClassClassifierClass:
         if np.isclose(
             np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0
         ):
-            return ["_yz", "_xz"]
+            return ["_xz", "_yz"]
+            # return ["_yz", "_xz"] # XXX This one works for C3H4
         elif np.isclose(
             np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
         ):
-            return ["_xz", "_yz"]
+            return ["_yz", "_xz"]
+            # return ["_xz", "_yz"] XXX This one works for C3H4
         else:
             print(self.principal_axis, axes)
             raise ValueError("Could not determine coordinate system.")
 
     def _resolve_1C2(self, count, operations):
         if count == 3:
-            raise NotImplementedError
-            return ["_x", "_y", "_z"]
+            suffixes = [None] * 3
+
+            # Identify z-axis (parallel to principal axis)
+            z_idx = -1
+            for i, op in enumerate(operations):
+                if np.isclose(abs(np.dot(op.axis, self.principal_axis)), 1.0):
+                    z_idx = i
+                    break
+
+            if z_idx == -1:
+                 raise ValueError("Could not identify principal axis among 1C2 axes")
+
+            suffixes[z_idx] = "_z"
+            # Identify x and y using handedness
+            others = [i for i in range(3) if i != z_idx]
+            idx1, idx2 = others
+
+            det = np.linalg.det(
+                [self.principal_axis, operations[idx1].axis, operations[idx2].axis]
+            )
+
+            if np.isclose(det, 1.0):
+                suffixes[idx1] = "_x"
+                suffixes[idx2] = "_y"
+            elif np.isclose(det, -1.0):
+                suffixes[idx1] = "_y"
+                suffixes[idx2] = "_x"
+            else:
+                raise ValueError(f"Determinant not +/- 1: {det}")
+
+            return suffixes
         raise NotImplementedError(f"1C2 count {count}")
 
     def _resolve_1C2_prime(self, count, operations):
@@ -501,8 +532,11 @@ class ConjugacyClassClassifierClass:
             if info.rotation:
                 # Rotation orthogonal to the main axis, add a prime
                 if np.allclose(np.dot(info.axis, principal_axis), 0):
-                    print("Adding prime")
-                    main_cc += "'"
+                    if f"{main_cc}_z" in self.expected_classes:
+                        print(f"Skipping prime for {main_cc} because {main_cc}_z is expected")
+                    else:
+                        print("Adding prime")
+                        main_cc += "'"
             if info.reflection:
                 if principal_axis is None:
                     names_g.append(main_cc)

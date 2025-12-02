@@ -97,7 +97,7 @@ D2h = {
     # class labels. All of the if statements in conjugacy class detector need to be addressed
     # and choices to be made non-ambigous
     # XXX When done, remember to switch back 1s_xc and 1sv_yz
-    "classes": ["E", "1C2", "1C2'_y", "1C2'_x",
+    "classes": ["E", "1C2_z", "1C2_y", "1C2_x",
                 "i", "1sh", "1sv_xz", "1sv_yz"],  
     # One of the 1sh's is h and two v, and that is how we identify them.
     # It is jsut convention that they are not labeled that way.
