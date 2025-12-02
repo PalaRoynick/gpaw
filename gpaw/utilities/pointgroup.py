@@ -316,6 +316,7 @@ class ConjugacyClassClassifierClass:
         self.expected_classes = expected_classes
         self.principal_axis = "Principal axis not yet detected."
         self.atoms = atoms
+        self.axes = {}
         ops_occ = operations.ops_occ
         N = len(ops_occ)
         op_pool = range(N)
@@ -374,15 +375,51 @@ class ConjugacyClassClassifierClass:
         if count != 2:
             raise NotImplementedError(f"1sv count {count}")
         axes = [operations[0].axis, operations[1].axis]
+        print(f"DEBUG: _resolve_1sv axes={axes}")
+        print(f"DEBUG: self.axes={self.axes}")
+
+        # If axes are already defined (e.g. by 1C2), use them
+        if 'x' in self.axes and 'y' in self.axes:
+            suffixes = [None, None]
+            for i, axis in enumerate(axes):
+                if np.isclose(abs(np.dot(axis, self.axes['x'])), 1.0):
+                    suffixes[i] = "_yz"  # Normal x -> yz plane
+                elif np.isclose(abs(np.dot(axis, self.axes['y'])), 1.0):
+                    suffixes[i] = "_xz"  # Normal y -> xz plane
+                else:
+                    print(f"DEBUG: axis {axis} not matching x {self.axes['x']} or y {self.axes['y']}")
+            
+            print(f"DEBUG: suffixes={suffixes}")
+            if all(suffixes):
+                return suffixes
+            # If we failed to match, fall through to other methods
+
+        # Check for flat plane (C2v convention)
+        # xz is the flat plane (containing atoms). Normal is y.
+        is_flat_normal = [False, False]
+        if self.atoms is not None:
+            center = self.atoms.get_center_of_mass()
+            pos = self.atoms.positions - center
+            for i, axis in enumerate(axes):
+                # Check if all atoms are in the plane perpendicular to axis
+                projections = np.dot(pos, axis)
+                if np.allclose(projections, 0, atol=0.1):
+                    is_flat_normal[i] = True
+
+        if sum(is_flat_normal) == 1:
+            # Found exactly one flat plane. Label it _xz (normal y).
+            # The other is _yz (normal x).
+            return ["_xz" if is_flat else "_yz" for is_flat in is_flat_normal]
+
         if np.isclose(
             np.linalg.det([self.principal_axis, axes[0], axes[1]]), 1.0
         ):
-            return ["_xz", "_yz"]
+            return ["_yz", "_xz"]
             # return ["_yz", "_xz"] # XXX This one works for C3H4
         elif np.isclose(
             np.linalg.det([self.principal_axis, axes[1], axes[0]]), 1.0
         ):
-            return ["_yz", "_xz"]
+            return ["_xz", "_yz"]
             # return ["_xz", "_yz"] XXX This one works for C3H4
         else:
             print(self.principal_axis, axes)
@@ -403,6 +440,8 @@ class ConjugacyClassClassifierClass:
                  raise ValueError("Could not identify principal axis among 1C2 axes")
 
             suffixes[z_idx] = "_z"
+            self.axes['z'] = operations[z_idx].axis
+
             # Identify x and y using handedness
             others = [i for i in range(3) if i != z_idx]
             idx1, idx2 = others
@@ -410,15 +449,23 @@ class ConjugacyClassClassifierClass:
             det = np.linalg.det(
                 [self.principal_axis, operations[idx1].axis, operations[idx2].axis]
             )
+            
+            print(f"DEBUG: _resolve_1C2 principal={self.principal_axis} axes={[op.axis for op in operations]} det={det}")
 
             if np.isclose(det, 1.0):
                 suffixes[idx1] = "_x"
                 suffixes[idx2] = "_y"
+                self.axes['x'] = operations[idx1].axis
+                self.axes['y'] = operations[idx2].axis
             elif np.isclose(det, -1.0):
                 suffixes[idx1] = "_y"
                 suffixes[idx2] = "_x"
+                self.axes['y'] = operations[idx1].axis
+                self.axes['x'] = operations[idx2].axis
             else:
                 raise ValueError(f"Determinant not +/- 1: {det}")
+            
+            print(f"DEBUG: _resolve_1C2 suffixes={suffixes}")
 
             return suffixes
         raise NotImplementedError(f"1C2 count {count}")
@@ -560,6 +607,8 @@ class ConjugacyClassClassifierClass:
         from collections import Counter
 
         duplicates = [(k, v) for k, v in Counter(names_g).items() if v > 1]
+        duplicates.sort(key=lambda x: x[0])  # Ensure 1C2 comes before 1sv
+
         for name, count in duplicates:
             # Collect all of the axes of the conjugacy classes
             operations = []
