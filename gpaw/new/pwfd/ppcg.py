@@ -116,7 +116,7 @@ class PPCG(PWFDEigensolver):
 
         if self.blocksize is None:
             if xp == np:
-                self.blocksize = 24
+                self.blocksize = 32
             else:
                 self.blocksize = 512
 
