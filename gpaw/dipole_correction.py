@@ -1,6 +1,6 @@
 import numpy as np
-from scipy.special import erf
 from ase.units import Bohr
+from scipy.special import erf
 
 
 class DipoleCorrection:
@@ -133,6 +133,12 @@ class DipoleCorrection:
 
     def estimate_memory(self, mem):
         self.poissonsolver.estimate_memory(mem)
+
+    def build(self, grid, xp):
+        from gpaw.new.poisson import PoissonSolverWrapper
+        self.xp = xp
+        self.set_grid_descriptor(grid._gd)
+        return PoissonSolverWrapper(self)
 
 
 def dipole_correction(c, gd, rhot_g, center=False, origin_c=None):

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
 import xml.sax
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
-from gpaw.setup_data import search_for_file
 from gpaw.atom.radialgd import RadialGridDescriptor, radial_grid_descriptor
-
+from gpaw.setup_data import search_for_file
 
 _basis_letter2number = {'s': 1, 'd': 2, 't': 3, 'q': 4}
 _basis_number2letter = 'Xsdtq56789'
@@ -327,17 +326,20 @@ class BasisPlotter:
         self.default_filename = '%(symbol)s.%(name)s.' + ext
 
         self.title = 'Basis functions: %(symbol)s %(name)s'
-        self.xlabel = r'r [Bohr]'
+        self.xlabel = 'radius [Bohr]'
+        ylabel = r'\Phi(r)'
         if premultiply:
-            ylabel = r'$\tilde{\phi} r$'
-        else:
-            ylabel = r'$\tilde{\phi}$'
-        self.ylabel = ylabel
+            ylabel = 'r' + ylabel
+        self.ylabel = f'${ylabel}$'
 
         self.normalize = normalize
 
     def plot(self, basis, filename=None, ax=None, **plot_args):
-        import matplotlib.pyplot as plt
+        if ax is None:
+            from matplotlib import pyplot as plt
+
+            ax = plt.figure().gca()
+
         if plot_args is None:
             plot_args = {}
         r_g = basis.rgd.r_g
@@ -370,9 +372,6 @@ class BasisPlotter:
             factor = np.ones_like(r_g)
 
         dashes_l = [(), (6, 3), (4, 1, 1, 1), (1, 1)]
-
-        if ax is None:
-            ax = plt.figure().gca()
 
         for norm, bf in zip(norm_j, basis.bf_j):
             ng = len(bf.phit_g)
@@ -415,6 +414,7 @@ class CLICommand:
     @staticmethod
     def run(args):
         from pathlib import Path
+
         import matplotlib.pyplot as plt
         path = Path(args.file)
 

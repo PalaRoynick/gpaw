@@ -1,8 +1,10 @@
-from ase import Atom, Atoms
-from gpaw import GPAW
 import pytest
+from ase import Atom, Atoms
+
+from gpaw import GPAW
 
 
+@pytest.mark.legacy
 def test_eigen_cg():
     a = 4.05
     d = a / 2**0.5

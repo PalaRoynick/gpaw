@@ -1,18 +1,17 @@
 import numpy as np
 import pytest
-
 from ase.utils import workdir
 
 from gpaw import GPAW
-from gpaw.mpi import world, serial_comm, broadcast
-from gpaw.lcaotddft.wfwriter import WaveFunctionReader
 from gpaw.lcaotddft.densitymatrix import DensityMatrix
 from gpaw.lcaotddft.frequencydensitymatrix import FrequencyDensityMatrix
 from gpaw.lcaotddft.ksdecomposition import KohnShamDecomposition
-
+from gpaw.lcaotddft.wfwriter import WaveFunctionReader
+from gpaw.mpi import broadcast, serial_comm, world
 from gpaw.test import only_on_master
-from . import (parallel_options, calculate_time_propagation, calculate_error,
-               check_txt_data, check_wfs)
+
+from . import (calculate_error, calculate_time_propagation, check_txt_data,
+               check_wfs, parallel_options)
 
 pytestmark = pytest.mark.usefixtures('module_tmp_path')
 
@@ -20,23 +19,33 @@ parallel_i = parallel_options(fix_sl_auto=True)
 
 
 @pytest.fixture(scope='module')
+def nacl_spin(gpw_files):
+    return gpw_files['nacl_spin']
+
+
+@pytest.fixture(scope='module')
+def nacl_nospin(gpw_files):
+    return gpw_files['nacl_nospin']
+
+
+@pytest.fixture(scope='module')
 @only_on_master(world)
-def initialize_system(gpw_files):
+def initialize_system(nacl_nospin):
     comm = serial_comm
-    calc = GPAW(gpw_files['nacl_nospin'], communicator=comm)
-    fdm = calculate_time_propagation(gpw_files['nacl_nospin'],
+    calc = GPAW(nacl_nospin, communicator=comm)
+    fdm = calculate_time_propagation(nacl_nospin,
                                      kick=np.ones(3) * 1e-5,
                                      communicator=comm,
                                      do_fdm=True)
 
     # Calculate ground state with full unoccupied space
     unocc_calc = calc.fixed_density(nbands='nao',
-                                    communicator=comm,
                                     txt='unocc.out')
     unocc_calc.write('unocc.gpw', mode='all')
     return unocc_calc, fdm
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 def test_propagated_wave_function(initialize_system, module_tmp_path):
     wfr = WaveFunctionReader(module_tmp_path / 'wf.ulm')
@@ -59,6 +68,8 @@ def test_propagated_wave_function(initialize_system, module_tmp_path):
     assert err < 1e-4
 
 
+@pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
+@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_propagation(initialize_system, module_tmp_path, parallel,
@@ -72,8 +83,8 @@ def test_propagation(initialize_system, module_tmp_path, parallel,
 @pytest.fixture(scope='module')
 @only_on_master(world, broadcast=broadcast)
 def dipole_moment_reference(initialize_system):
-    from gpaw.tddft.spectrum import \
-        read_dipole_moment_file, calculate_fourier_transform
+    from gpaw.tddft.spectrum import (calculate_fourier_transform,
+                                     read_dipole_moment_file)
 
     unocc_calc, fdm = initialize_system
     _, time_t, _, dm_tv = read_dipole_moment_file('dm.dat')
@@ -168,6 +179,7 @@ def test_ksd_transform_real_only(load_ksd, ksd_transform_reference):
     assert err < atol
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 def test_dipole_moment_from_ksd(ksd_transform, load_ksd,
                                 dipole_moment_reference):
@@ -211,6 +223,7 @@ def density_reference(ksd_reference):
     return dict(dmat=dmat_rho_wg, ksd=ksd_rho_wg)
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 def test_ksd_vs_dmat_density(density_reference):
     ref_wg = density_reference['dmat']
@@ -230,6 +243,7 @@ def density(load_ksd):
     return dict(dmat=dmat_rho_wg, ksd=ksd_rho_wg)
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 @pytest.mark.parametrize('kind', ['ksd', 'dmat'])
 def test_density(kind, density, load_ksd, density_reference):
@@ -241,6 +255,7 @@ def test_density(kind, density, load_ksd, density_reference):
     assert err < atol
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 @pytest.mark.parametrize('kind', ['ksd', 'dmat'])
 def test_dipole_moment_from_density(kind, density, load_ksd,
@@ -259,6 +274,7 @@ def test_dipole_moment_from_density(kind, density, load_ksd,
     assert err < atol
 
 
+@pytest.mark.old_gpaw_only
 @pytest.mark.rttddft
 @only_on_master(world)
 def test_read_ksd(ksd_reference):
@@ -281,14 +297,16 @@ def test_read_ksd(ksd_reference):
 @pytest.fixture(scope='module')
 @only_on_master(world)
 @workdir('spinpol', mkdir=True)
-def initialize_system_spinpol(gpw_files):
+def initialize_system_spinpol(nacl_spin):
     comm = serial_comm
-    calculate_time_propagation(gpw_files['nacl_spin'],
+    calculate_time_propagation(nacl_spin,
                                kick=np.ones(3) * 1e-5,
                                communicator=comm,
                                do_fdm=True)
 
 
+@pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
+@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 def test_spinpol_dipole_moment(initialize_system, initialize_system_spinpol,
                                module_tmp_path):
@@ -299,6 +317,8 @@ def test_spinpol_dipole_moment(initialize_system, initialize_system_spinpol,
                    atol=1.0001e-12)
 
 
+@pytest.mark.filterwarnings('ignore:Using compabilitity wrapper for RTTDDFT')
+@pytest.mark.old_gpaw_only_mpi
 @pytest.mark.rttddft
 @pytest.mark.parametrize('parallel', parallel_i)
 def test_spinpol_propagation(initialize_system_spinpol, module_tmp_path,

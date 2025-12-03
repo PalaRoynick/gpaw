@@ -1,13 +1,11 @@
 import numpy as np
-
+from ase.utils.timing import timer
 from numpy.linalg import inv, solve
 
-from ase.utils.timing import timer
-
-from gpaw.lcaotddft.hamiltonian import KickHamiltonian
 from gpaw import debug
+from gpaw.lcaotddft.hamiltonian import KickHamiltonian
 from gpaw.tddft.units import au_to_as
-from gpaw.utilities.scalapack import (pblas_simple_hemm, pblas_simple_gemm,
+from gpaw.utilities.scalapack import (pblas_simple_gemm, pblas_simple_hemm,
                                       scalapack_inverse, scalapack_solve,
                                       scalapack_tri2full)
 
@@ -462,12 +460,6 @@ class SelfConsistentPropagator(SICNPropagator):
         self.max_pc_iterations = max_pc_iterations
         self.last_pc_iterations = 0
 
-    def initialize(self, paw):
-        super().initialize(paw)
-        # Allocate kpt.C2_nM arrays
-        for kpt in self.wfs.kpt_u:
-            kpt.C2_nM = np.empty_like(kpt.C_nM)
-
     def propagate(self, time, time_step):
         """
         Since the propagate + update call will change the result
@@ -509,21 +501,22 @@ class SelfConsistentPropagator(SICNPropagator):
                 self.propagate_wfs(kpt.C2_nM, kpt.C_nM, kpt.S_MM, kpt.H0_MM,
                                    time_step)
                 kpt.H0_MM = None
-            PCprev_dip = self.density.calculate_dipole_moment()
+
+            prev_dipole_v = self.density.calculate_dipole_moment()
             # 4. Calculate new Hamiltonian (and density)
             self.hamiltonian.update()
-            PCnew_dip = self.density.calculate_dipole_moment()
-            if np.sum(np.abs(PCnew_dip - PCprev_dip)) < self.tolerance:
+            dipole_v = self.density.calculate_dipole_moment()
+            if np.sum(np.abs(dipole_v - prev_dipole_v)) < self.tolerance:
                 break
         if last_pc_iterations == self.max_pc_iterations - 1:
-            raise RuntimeError('The SCPC propagator required too',
-                               ' many iterations to reached the',
-                               ' demanded accuracy.')
+            raise RuntimeError('The SCPC propagator required too ',
+                               'many iterations to reach the ',
+                               'demanded accuracy.')
         return time + time_step
 
     def todict(self):
         return {'name': 'scpc', 'tolerance': self.tolerance,
-                'PCmax': self.PCmax}
+                'max_pc_iterations': self.max_pc_iterations}
 
 
 class TaylorPropagator(Propagator):
