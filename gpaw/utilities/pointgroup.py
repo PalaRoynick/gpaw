@@ -3,6 +3,8 @@ import numpy as np
 from gpaw.utilities.pointgroup_operation import OperationInfo, ppstr
 from ase import Atoms
 
+def debugprint(*args, **kwargs):
+    pass
 
 @dataclass
 class CharacterTable:
@@ -375,8 +377,8 @@ class ConjugacyClassClassifierClass:
         if count != 2:
             raise NotImplementedError(f"1sv count {count}")
         axes = [operations[0].axis, operations[1].axis]
-        print(f"DEBUG: _resolve_1sv axes={axes}")
-        print(f"DEBUG: self.axes={self.axes}")
+        debugprint(f"DEBUG: _resolve_1sv axes={axes}")
+        debugprint(f"DEBUG: self.axes={self.axes}")
 
         # If axes are already defined (e.g. by 1C2), use them
         if 'x' in self.axes and 'y' in self.axes:
@@ -387,9 +389,9 @@ class ConjugacyClassClassifierClass:
                 elif np.isclose(abs(np.dot(axis, self.axes['y'])), 1.0):
                     suffixes[i] = "_xz"  # Normal y -> xz plane
                 else:
-                    print(f"DEBUG: axis {axis} not matching x {self.axes['x']} or y {self.axes['y']}")
+                    debugprint(f"DEBUG: axis {axis} not matching x {self.axes['x']} or y {self.axes['y']}")
             
-            print(f"DEBUG: suffixes={suffixes}")
+            debugprint(f"DEBUG: suffixes={suffixes}")
             if all(suffixes):
                 return suffixes
             # If we failed to match, fall through to other methods
@@ -450,7 +452,7 @@ class ConjugacyClassClassifierClass:
                 [self.principal_axis, operations[idx1].axis, operations[idx2].axis]
             )
             
-            print(f"DEBUG: _resolve_1C2 principal={self.principal_axis} axes={[op.axis for op in operations]} det={det}")
+            debugprint(f"DEBUG: _resolve_1C2 principal={self.principal_axis} axes={[op.axis for op in operations]} det={det}")
 
             if np.isclose(det, 1.0):
                 suffixes[idx1] = "_x"
@@ -465,7 +467,7 @@ class ConjugacyClassClassifierClass:
             else:
                 raise ValueError(f"Determinant not +/- 1: {det}")
             
-            print(f"DEBUG: _resolve_1C2 suffixes={suffixes}")
+            debugprint(f"DEBUG: _resolve_1C2 suffixes={suffixes}")
 
             return suffixes
         raise NotImplementedError(f"1C2 count {count}")
@@ -475,7 +477,7 @@ class ConjugacyClassClassifierClass:
             raise NotImplementedError(f"1C2' count {count}")
         axes = [operations[0].axis, operations[1].axis]
         det = np.linalg.det([self.principal_axis, axes[0], axes[1]])
-        print("DET", det, axes, self.principal_axis)
+        debugprint("DET", det, axes, self.principal_axis)
         if np.isclose(det, 1.0):
             return ["_y", "_x"]
         elif np.isclose(
@@ -483,7 +485,7 @@ class ConjugacyClassClassifierClass:
         ):
             return ["_x", "_y"]
         else:
-            print(self.principal_axis, axes)
+            debugprint(self.principal_axis, axes)
             raise ValueError("Could not determine coordinate system.")
 
     def _resolve_cyclic(self, name, count, operations):
@@ -522,7 +524,8 @@ class ConjugacyClassClassifierClass:
     def _resolve_2C2_prime(self, count, operations):
         if count != 2:
             raise NotImplementedError(f"2C2' count {count}")
-        raise NotImplementedError
+        #raise NotImplementedError
+        print('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX resolve_C2C_prime needs to be implemented')
         return ["", "'"]
 
     def _resolve_3C2_prime(self, count, operations):
@@ -580,9 +583,9 @@ class ConjugacyClassClassifierClass:
                 # Rotation orthogonal to the main axis, add a prime
                 if np.allclose(np.dot(info.axis, principal_axis), 0):
                     if f"{main_cc}_z" in self.expected_classes:
-                        print(f"Skipping prime for {main_cc} because {main_cc}_z is expected")
+                        debugprint(f"Skipping prime for {main_cc} because {main_cc}_z is expected")
                     else:
-                        print("Adding prime")
+                        debugprint("Adding prime")
                         main_cc += "'"
             if info.reflection:
                 if principal_axis is None:
