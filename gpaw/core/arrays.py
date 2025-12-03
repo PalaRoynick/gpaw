@@ -200,6 +200,11 @@ class DistributedArrays(Generic[DomainType], XP):
     def domain_a2a_bands(self, transfer_data=True, blocking=True, index=None):
         """Convert domain decomposition to band decomposition, and
         vice versa."""
+        if self.domain_comm.size == 1:
+            if index is not None:
+                return None
+            else:
+                return (None, ) * np.prod(self.myshape)
         maxnX = np.prod(self.desc.shape)
         mynX = np.prod(self.myshape)
         comm = self.domain_comm

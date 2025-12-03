@@ -37,10 +37,7 @@ class PWHamiltonian(Hamiltonian):
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
-        tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
-        tmp_R = vt_R.new(
-            data=tmp_R
-        )
+        tmp_R = plan.tmp_R
         tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
             pw_local = pw
@@ -58,6 +55,7 @@ class PWHamiltonian(Hamiltonian):
         # apply_local_potential_gpu doesn't work with domain parallisation
         # So we force vt_R to be the right type here.
         vt_R_data = xp.asarray(vt_R.data)
+        Q_G = pw_local.indices(plan.tmp_Q.shape)
         
         reqs2 = []
 
@@ -66,14 +64,18 @@ class PWHamiltonian(Hamiltonian):
             if n < psit_nG.data.shape[0]:
                 if reqs[n] is not None:
                     domain_comm.wait(reqs[n])
-                psit_G = pw_local.from_data(data=psit_nG.data[n])
-                vtpsit_G = pw_local.from_data(data=out_nG.data[n])
-                psit_G.ifft(out=tmp_R, plan=self.plan)
-                tmp_R.data *= vt_R_data
-                tmp_R.fft(out=vtpsit_G, plan=self.plan)
+                psit_G = psit_nG.data[n]
+                vtpsit_G = out_nG.data[n]
+                # psit_G.ifft(out=tmp_R, plan=self.plan)
+                plan.ifft_sphere(psit_G, pw_local)
+                tmp_R *= vt_R_data
+                plan.fft()
+                vtpsit_G[:] = tmp_Q.ravel()[Q_G]
+                vtpsit_G *= 1.0 / tmp_R.size
+                # tmp_R.fft(out=vtpsit_G, plan=self.plan)
                 # psit_G.data *= e_kin_G
                 # vtpsit_G.data += psit_G.data
-                vtpsit_G.data += psit_G.data * e_kin_G
+                vtpsit_G += psit_G * e_kin_G
             reqs2.append(psit_nG.domain_a2a_bands(blocking=False, index=n))
             reqs2.append(out_nG.domain_a2a_bands(blocking=False, index=n))
         

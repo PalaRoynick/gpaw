@@ -121,7 +121,7 @@ class PPCG(PWFDEigensolver):
 
         if self.blocksize is None:
             if xp == np:
-                self.blocksize = 128
+                self.blocksize = 24
             else:
                 self.blocksize = 512
 
@@ -316,7 +316,7 @@ class PPCG(PWFDEigensolver):
                 
                 for j in range(0, psit_nX.data.shape[0], self.blocksize):
                     block_slice_base = \
-                        slice(j, min(j + self.blocksize, active_bs))
+                        slice(j, min(j + self.blocksize, psit_nX.data.shape[0]))
                     block = \
                         block_slice_base.stop - block_slice_base.start
                     block_slice = block_slice_base # active_indicies[block_slice_base]
@@ -483,7 +483,7 @@ class PPCG(PWFDEigensolver):
                 domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
                 
-                # wfs.orthonormalize(residual_nX)
+                wfs.orthonormalize(residual_nX)
                 pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
                 psit0_nX = pw_desc.from_data(psit_nX.data)
                 residual0_nX = pw_desc.from_data(residual_nX.data)
