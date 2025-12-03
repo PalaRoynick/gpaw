@@ -16,21 +16,21 @@ from collections import defaultdict
 from typing import DefaultDict
 
 import numpy as np
+from ase.units import Ha
+
 from gpaw.core.arrays import DistributedArrays
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
+from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
+from gpaw.new.energies import DFTEnergies
+from gpaw.new.logger import indent
 from gpaw.new.potential import Potential
 from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
-from gpaw.utilities import pack_hermitian, pack_density, unpack_hermitian
-from gpaw.new.logger import indent
-from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new.external_potential import ExternalPotential
-from gpaw.new.energies import DFTEnergies
-from gpaw.new.environment import Environment
+from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
 class PotentialCalculator:
@@ -40,20 +40,22 @@ class PotentialCalculator:
                  setups: list[Setup],
                  *,
                  relpos_ac: Array2D,
-                 environment: Environment,
-                 external_potential: ExternalPotential | None = None,
+                 extensions: list | None = None,
                  soc: bool = False):
         self.poisson_solver = poisson_solver
         self.xc = xc
         self.setups = setups
-        self.external_potential = external_potential or ExternalPotential()
         self.relpos_ac = relpos_ac
         self.soc = soc
-        self.environment = environment or Environment(len(relpos_ac))
+        self.extensions: list = extensions or []
 
     def __str__(self):
         return (f'{self.poisson_solver}\n'
                 f'xc functional:\n{indent(self.xc)}\n')
+
+    @property
+    def charge(self):
+        return sum(ext.charge for ext in self.extensions)
 
     def calculate_pseudo_potential(self,
                                    density,
@@ -66,6 +68,12 @@ class PotentialCalculator:
                                               AtomArrays,
                                               float]:
         raise NotImplementedError
+
+    def move(self, relpos_ac, atomdist):
+        for ext in self.extensions:
+            ext.move_atoms(relpos_ac)
+        # Special case for QNA:
+        getattr(self.xc.xc, 'set_positions', lambda relpos_ac: None)(relpos_ac)
 
     def calculate_charges(self, vHt_x):
         raise NotImplementedError
@@ -126,15 +134,21 @@ class PotentialCalculator:
             self.setups,
             density,
             self.xc,
-            self.external_potential,
             V_aL,
             self.soc,
+            self.extensions,
             kpt_band_comm)
+
+        for ext in self.extensions:
+            dct = ext.get_energy_contributions()
+            for name, e in dct.items():
+                assert name not in energies
+                energies[name] = e
 
         energies['spinorbit'] = 0.0
         for key, e in corrections.items():
-            if 0:
-                print(f'{key:10} {energies[key]:15.9f} {e:15.9f}')
+            if False:
+                print(f'{key:10} {energies[key] * Ha:15.9f} {e * Ha:15.9f}')
             energies[key] += e
 
         return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
@@ -146,9 +160,9 @@ class PotentialCalculator:
 def calculate_non_local_potential(setups,
                                   density,
                                   xc,
-                                  ext_pot,
                                   V_aL,
                                   soc: bool,
+                                  extensions,
                                   kpt_band_comm: MPIComm
                                   ) -> tuple[AtomArrays,
                                              dict[str, float]]:
@@ -163,7 +177,7 @@ def calculate_non_local_potential(setups,
             V_L = V_aL[a]
             setup = setups[a]
             dH_sii, corrections = calculate_non_local_potential1(
-                setup, xc, ext_pot, D_sii, V_L, soc)
+                setup, xc, D_sii, V_L, soc, extensions, a)
             dH_asii[a][:] = dH_sii
             for key, e in corrections.items():
                 energy_corrections[key] += e
@@ -186,11 +200,12 @@ def calculate_non_local_potential(setups,
 
 def calculate_non_local_potential1(setup: Setup,
                                    xc: Functional,
-                                   ext_pot,
                                    D_sii: Array3D,
                                    V_L: Array1D,
-                                   soc: bool) -> tuple[Array3D,
-                                                       dict[str, float]]:
+                                   soc: bool,
+                                   extensions,
+                                   atom_index) -> tuple[Array3D,
+                                                        dict[str, float]]:
     ncomponents = len(D_sii)
     ndensities = 2 if ncomponents == 2 else 1
     D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
@@ -206,16 +221,16 @@ def calculate_non_local_potential1(setup: Setup,
 
     dH_sp = np.zeros_like(D_sp, dtype=float if ncomponents < 4 else complex)
 
-    e_soc = 0.
+    e_soc = 0.0
     if soc:
         dHsoc_sii = soc_terms(setup, xc.xc, D_sp)
         e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
         dH_sp[1:4] = pack_hermitian(dHsoc_sii)
 
     dH_sp[:ndensities] = dH_p
-    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp)
+    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index)
 
-    e_external = ext_pot.add_paw_correction(setup.Delta_pL[:, 0], dH_sp)
+    # e_external = ext_pot.add_paw_correction(setup.Delta_pL[:, 0], dH_sp)
 
     dH_sii = unpack_hermitian(dH_sp)
 
@@ -224,11 +239,15 @@ def calculate_non_local_potential1(setup: Setup,
         e_xc += eU
         dH_sii += dHU_sii
 
+    for extension in extensions:
+        e_xc += extension.update_non_local_hamiltonian(
+            D_sii, setup, atom_index, dH_sii)
+
     e_kinetic -= (D_sii * dH_sii).sum().real
 
     return dH_sii, {'kinetic_correction': e_kinetic,
                     'coulomb': e_coulomb,
                     'zero': e_zero,
                     'xc': e_xc,
-                    'external': e_external,
+                    'external': 0.0,  # e_external,
                     'spinorbit': e_soc}

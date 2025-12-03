@@ -1,7 +1,8 @@
 import numpy as np
+
 from gpaw.core import PWDesc
 from gpaw.mpi import broadcast_float
-from gpaw.new import zips, spinsum, trace
+from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
@@ -16,18 +17,16 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  xc,
                  poisson_solver,
                  *,
-                 external_potential,
                  relpos_ac,
                  atomdist,
-                 environment,
+                 extensions,
                  soc=False,
                  xp=np):
         self.xp = xp
         self.pw = pw
         super().__init__(xc, poisson_solver, setups,
-                         external_potential=external_potential,
                          relpos_ac=relpos_ac,
-                         environment=environment,
+                         extensions=extensions,
                          soc=soc)
 
         self.vbar_ag = setups.create_local_potentials(
@@ -110,7 +109,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         else:
             vt0_g = None
 
-        self.environment.update1pw(nt0_g)
+        for ext in self.extensions:
+            ext.update1pw(nt0_g)
 
         Q_aL = density.calculate_compensation_charge_coefficients()
 
@@ -128,7 +128,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
             vt_sR.data[1] = vt_sR.data[0]
         vt_sR.data[density.ndensities:] = 0.0
 
-        e_external = self.external_potential.update_potential(vt_sR, density)
+        # e_external = self.external_potential.update_potential(vt_sR, density)
+        e_external = 0.0
 
         vtmp_R = vt_sR.desc.empty(xp=self.xp)
         for spin, (vt_R, vxct_r) in enumerate(zips(vt_sR, vxct_sr)):
@@ -150,6 +151,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 e_stress)
 
     def move(self, relpos_ac, atomdist):
+        super().move(relpos_ac, atomdist)
         self.poisson_solver.move(relpos_ac, atomdist)
         self.vbar_ag.move(relpos_ac, atomdist)
         self.vbar_g.data[:] = 0.0
@@ -182,11 +184,17 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         return self._vt_g, self._nt_g, self._dedtaut_g
 
     def force_contributions(self, Q_aL, density, potential):
+        if potential.vHt_x is None:
+            raise RuntimeError(ERROR.format(thing='forces'))
         vt_g, nt_g, dedtaut_g = self._force_stress_helper(density, potential)
         if dedtaut_g is None:
             Ftauct_av = None
         else:
             Ftauct_av = density.tauct_aX.derivative(dedtaut_g)
+
+        ext_force_av = np.zeros((len(self.setups), 3))
+        for ext in self.extensions:
+            ext_force_av += ext.force_contribution(nt_g, potential.vHt_x)
 
         return (
             self.poisson_solver.force_contribution(Q_aL,
@@ -194,9 +202,21 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                                                    nt_g),
             density.nct_aX.derivative(vt_g),
             Ftauct_av,
-            self.vbar_ag.derivative(nt_g))
+            self.vbar_ag.derivative(nt_g),
+            ext_force_av)
 
     def stress(self, ibzwfs, density, potential):
+        if potential.vHt_x is None:
+            raise RuntimeError(ERROR.format(thing='stress'))
         vt_g, nt_g, dedtaut_g = self._force_stress_helper(density, potential)
-        return calculate_stress(self, ibzwfs, density, potential,
-                                vt_g, nt_g, dedtaut_g)
+        stress_vv = calculate_stress(self, ibzwfs, density, potential,
+                                     vt_g, nt_g, dedtaut_g)
+        for ext in self.extensions:
+            stress_vv += ext.stress_contribution()
+        return stress_vv
+
+
+ERROR = (
+    'Unable to calculate {thing}.  Are you restarting from an old '
+    'gpw-file?  In that case, calculate the {thing} before writing '
+    'the gpw-file or switch to new GPAW.')

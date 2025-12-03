@@ -1,105 +1,30 @@
 from __future__ import annotations
 
 import warnings
-from functools import cached_property
+from collections.abc import Callable, Generator
 from pathlib import Path
-from pprint import pformat
-from types import SimpleNamespace
-from typing import IO, Any, Callable, Iterable, Protocol, Sequence, Union
+from typing import Any
 
 import numpy as np
 from ase import Atoms
 from ase.units import Ha
+
 from gpaw import __version__
 from gpaw.core import UGArray
+from gpaw.dft import GPAW, Parameters
 from gpaw.dos import DOSCalculator
-from gpaw.mpi import MPIComm, broadcast, synchronize_atoms, world
+from gpaw.mpi import broadcast, synchronize_atoms
 from gpaw.new import Timer, trace
-from gpaw.new.builder import builder as create_builder
 from gpaw.new.calculation import (CalculationModeError, DFTCalculation,
                                   ReuseWaveFunctionsError, units)
-from gpaw.new.environment import Environment
-from gpaw.new.gpw import GPWFlags, read_gpw, write_gpw
-from gpaw.new.input_parameters import InputParameters
-from gpaw.new.input_parameters import parameter_functions as parameter_names
+from gpaw.new.gpw import GPWFlags, write_gpw
 from gpaw.new.logger import Logger
 from gpaw.new.pw.fulldiag import diagonalize
+from gpaw.new.scf import SCFContext
 from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D, Array2D, Array3D
 from gpaw.utilities import pack_density
 from gpaw.utilities.memory import maxrss
-
-
-class Dictable(Protocol):
-    def todict(self) -> dict[str, Any]:
-        ...
-
-
-def GPAW(
-    filename: Union[str, Path, IO[str]] = None,
-    *,
-    txt: str | Path | IO[str] | None = '?',
-    communicator: MPIComm | Iterable[int] | None = None,
-    basis: str | dict[str | int | None, str] | None = None,
-    charge: float | None = None,
-    convergence: dict[str, Any] | None = None,
-    eigensolver: dict[str, Any] | None = None,
-    environment: Environment | None = None,
-    experimental: dict[str, Any] | None = None,
-    external: dict[str, Any] | None = None,
-    gpts: None | Sequence[int] | None = None,
-    h: float | None = None,
-    hund: bool | None = None,
-    kpts: dict[str, Any] | None = None,
-    magmoms: Any | None = None,
-    maxiter: int | None = None,
-    mixer: dict[str, Any] | None = None,
-    mode: str | dict[str, Any] | None = None,
-    nbands: int | str | None = None,
-    occupations: dict[str, Any] | None = None,
-    parallel: dict[str, Any] | None = None,
-    poissonsolver: dict[str, Any] | None = None,
-    random: bool | None = None,
-    setups: Any | None = None,
-    soc: bool | None = None,
-    solvation=None,
-    spinpol: bool | None = None,
-    symmetry: str | dict[str, Any] | None = None,
-    xc: str | dict[str, Any] | Dictable | None = None) -> ASECalculator:
-
-    """Create ASE-compatible GPAW calculator.
-
-    """
-    if txt == '?':
-        txt = '-' if filename is None else None
-
-    if communicator is None:
-        comm = world
-    elif not hasattr(communicator, 'rank'):
-        comm = world.new_communicator(list(communicator))
-    else:
-        comm = communicator  # type: ignore
-
-    log = Logger(txt, comm)
-
-    params_dict = {key: value for key, value in locals().items()
-                   if key in parameter_names}
-
-    if filename is not None:
-        for key, value in params_dict.items():
-            if key != 'parallel' and value is not None:
-                raise ValueError(
-                    f'Illegal argument when reading from a file: {key}')
-        atoms, dft, params, _ = read_gpw(filename,
-                                         log=log,
-                                         parallel=parallel)
-        return ASECalculator(params,
-                             log=log, dft=dft, atoms=atoms)
-
-    params = InputParameters(params_dict)
-    write_header(log, params)
-    return ASECalculator(params, log=log)
-
 
 LOGO = """\
   ___ ___ ___ _ _ _
@@ -110,17 +35,12 @@ LOGO = """\
 """
 
 
-def write_header(log: Logger, params: InputParameters) -> None:
-    from gpaw.io.logger import write_header as header
+def write_header(log: Logger, params: Parameters) -> None:
+    from gpaw.old.logger import write_header as header
     log(LOGO.format(version=__version__))
     header(log, log.comm)
     with log.indent('input parameters:'):
-        parts = []
-        for key, val in params.items():
-            n = len(key)
-            txt = pformat(val, width=75 - n).replace('\n', '\n ' + ' ' * n)
-            parts.append(f'{key}={txt}')
-        log(',\n'.join(parts))
+        log(params)
     with log.indent('\nenvironment variables:'):
         import gpaw
         parts = []
@@ -159,7 +79,7 @@ class ASECalculator:
     old = False
 
     def __init__(self,
-                 params: InputParameters,
+                 params: Parameters,
                  *,
                  log: Logger,
                  dft: DFTCalculation | None = None,
@@ -171,6 +91,8 @@ class ASECalculator:
         self._atoms = atoms
         self.timer = Timer()
         self.hooks: dict[str, Callable] = {}
+        write_header(log, params)
+        self._wfs_dft = -1, -1
 
     @property
     def dft(self) -> DFTCalculation:
@@ -185,16 +107,11 @@ class ASECalculator:
         return self._atoms
 
     def __repr__(self):
-        params = []
-        for key, value in self.params.items():
-            val = repr(value)
-            if len(val) > 40:
-                val = '...'
-            params.append((key, val))
-        p = ', '.join(f'{key}: {val}' for key, val in params)
-        return f'ASECalculator({p})'
+        return f'ASECalculator({self.params!r})'
 
-    def iconverge(self, atoms: Atoms | None):
+    def iconverge(self, atoms: Atoms | None,
+                  *,
+                  need_wfs: bool = False) -> Generator[SCFContext]:
         """Iterate to self-consistent solution.
 
         Will also calculate "cheap" properties: energy, magnetic moments
@@ -238,11 +155,14 @@ class ASECalculator:
         elif not self._dft.results:
             # Something cleared the results dict
             converged = False
+        elif need_wfs and not self.dft.ibzwfs.has_wave_functions():
+            converged = False
 
         if converged:
             return
 
         if not self.dft.ibzwfs.has_wave_functions():
+            # We have started from a gpw-file without wave functions
             self.create_new_calculation(atoms)
 
         assert self.hooks.keys() <= {'scf_step', 'converged'}
@@ -278,7 +198,7 @@ class ASECalculator:
         * magmoms
         * dipole
         """
-        for _ in self.iconverge(atoms):
+        for _ in self.iconverge(atoms, need_wfs=prop in {'forces', 'stress'}):
             pass
 
         if prop == 'forces':
@@ -350,6 +270,7 @@ class ASECalculator:
             self.log(f'\nMax RSS: {mib:.3f}  # MiB')
         except NameError:
             pass
+        self.log.close()
 
     def get_potential_energy(self,
                              atoms: Atoms | None = None,
@@ -422,11 +343,7 @@ class ASECalculator:
 
         flags = GPWFlags(include_projections=include_projections,
                          precision=precision, include_wfs=mode == 'all')
-        write_gpw(filename, self.atoms, self.params, self.dft, flags=flags)
-
-    @property
-    def environment(self):
-        return self.dft.pot_calc.environment
+        write_gpw(filename, self.dft, flags=flags)
 
     # Old API:
 
@@ -438,7 +355,7 @@ class ASECalculator:
         yield from self.iconverge(atoms)
 
     def new(self, **kwargs) -> ASECalculator:
-        kwargs = {**dict(self.params.items()), **kwargs}
+        kwargs = {**self.params.todict(), **kwargs}
         return GPAW(**kwargs)
 
     def get_pseudo_wave_function(self, band, kpt=0, spin=None,
@@ -475,7 +392,7 @@ class ASECalculator:
     def get_number_of_electrons(self):
         density = self.dft.density
         return (density.nvalence - density.charge +
-                self.dft.pot_calc.environment.charge)
+                self.dft.pot_calc.charge)
 
     def get_number_of_bands(self):
         return self.dft.ibzwfs.nbands
@@ -506,14 +423,15 @@ class ASECalculator:
         return self.dft.electrostatic_potential().atomic_corrections()
 
     def get_pseudo_density(self,
-                           spin=None,
-                           gridrefinement=1,
-                           broadcast=True) -> Array3D:
-        assert spin is None
+                           spin: int | None = None,
+                           gridrefinement: int = 1,
+                           broadcast: bool = True) -> Array3D | None:
         nt_sr = self.dft.densities().pseudo_densities(
             grid_refinement=gridrefinement)
         nt_sr = nt_sr.gather(broadcast=broadcast)
-        return None if nt_sr is None else nt_sr.data.sum(0)
+        if spin is None:
+            return None if nt_sr is None else nt_sr.data.sum(0)
+        return None if nt_sr is None else nt_sr.data[spin]
 
     def get_all_electron_density(self,
                                  spin=None,
@@ -530,7 +448,8 @@ class ASECalculator:
         return None if n_sr is None else n_r.data
 
     def get_eigenvalues(self, kpt=0, spin=0, broadcast=True):
-        eig_n = self.dft.ibzwfs.get_eigs_and_occs(k=kpt, s=spin)[0] * Ha
+        eig_n = self.dft.ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[0] * Ha
+        assert eig_n.dtype == np.float64
         if broadcast:
             if self.comm.rank != 0:
                 eig_n = np.empty(self.dft.ibzwfs.nbands)
@@ -540,7 +459,7 @@ class ASECalculator:
     def get_occupation_numbers(self, kpt=0, spin=0, broadcast=True,
                                raw=False):
         ibzwfs = self.dft.ibzwfs
-        occ_n = ibzwfs.get_eigs_and_occs(k=kpt, s=spin)[1]
+        occ_n = ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[1]
         if not raw:
             weight = ibzwfs.ibz.weight_k[kpt] * ibzwfs.spin_degeneracy
             occ_n *= weight
@@ -586,31 +505,40 @@ class ASECalculator:
         for name in properties:
             self.calculate_property(atoms, name)
 
-    @cached_property
+    @property
     def wfs(self):
-        from gpaw.new.backwards_compatibility import FakeWFS
-        return FakeWFS(self.dft.ibzwfs,
-                       self.dft.density,
-                       self.dft.potential,
-                       self.dft.setups,
-                       self.comm,
-                       self.dft.scf_loop.occ_calc,
-                       self.dft.scf_loop.hamiltonian,
-                       self.atoms,
-                       scale_pw_coefs=True)
+        wfs, dft = self._wfs_dft
+        if dft is not self._dft:
+            from gpaw.new.backwards_compatibility import FakeWFS
+            wfs = FakeWFS(self.dft.ibzwfs,
+                          self.dft.density,
+                          self.dft.potential,
+                          self.dft.setups,
+                          self.comm,
+                          self.dft.scf_loop.occ_calc,
+                          self.dft.scf_loop.hamiltonian,
+                          self.atoms,
+                          scale_pw_coefs=True)
+            self._wfs_dft = wfs, self._dft
+        return wfs
 
     @property
     def density(self):
         from gpaw.new.backwards_compatibility import FakeDensity
-        return FakeDensity(self.dft)
+        return FakeDensity(ibzwfs=self.dft.ibzwfs,
+                           density=self.dft.density,
+                           potential=self.dft.potential,
+                           pot_calc=self.dft.pot_calc,
+                           densities=self.dft.densities())
 
     @property
     def hamiltonian(self):
         from gpaw.new.backwards_compatibility import FakeHamiltonian
         return FakeHamiltonian(
             self.dft.ibzwfs, self.dft.density, self.dft.potential,
-            self.dft.pot_calc, self.dft.results.get('free_energy'),
-            self.dft.energies._energies['xc'])
+            self.dft.pot_calc,
+            e_total_free=self.dft.results.get('free_energy'),
+            e_xc=self.dft.energies._energies['xc'])
 
     @property
     def spos_ac(self):
@@ -639,13 +567,12 @@ class ASECalculator:
         xc = create_functional(xcparams, pot_calc.fine_grid)
         if xc.type == 'MGGA' and density.taut_sR is None:
             dft.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
-            if isinstance(dft.ibzwfs.wfs_qs[0][0].psit_nX, SimpleNamespace):
-                params = InputParameters(dict(self.params.items()))
-                builder = create_builder(self.atoms, params,
-                                         self.comm, dft.log)
+            if not dft.ibzwfs.has_wave_functions():
+                builder = self.params.dft_component_builder(self.atoms,
+                                                            log=dft.log)
                 basis_set = builder.create_basis_set()
                 ibzwfs = builder.create_ibz_wave_functions(
-                    basis_set, dft.potential, log=dft.log)
+                    basis_set, dft.potential)
                 ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels
                 dft.ibzwfs = ibzwfs
                 dft.scf_loop.update_density_and_potential = False
@@ -676,13 +603,17 @@ class ASECalculator:
             assert isinstance(nbands, int)
 
         dft.scf_loop.occ_calc._set_nbands(nbands)
+        from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
+        assert isinstance(dft.ibzwfs, PWFDIBZWaveFunctions)
         ibzwfs = diagonalize(dft.potential,
                              dft.ibzwfs,
                              dft.scf_loop.occ_calc,
                              nbands,
                              dft.density.nvalence + dft.density.charge)
         dft.ibzwfs = ibzwfs
-        self.params._add('nbands', ibzwfs.nbands)
+        self.params.nbands = ibzwfs.nbands
+        if 'nbands' not in self.params._non_defaults:
+            self.params._non_defaults.append('nbands')
 
     def gs_adapter(self):
         from gpaw.response.groundstate import ResponseGroundStateAdapter
@@ -693,26 +624,41 @@ class ASECalculator:
                       txt='-',
                       update_fermi_level: bool = False,
                       **kwargs) -> ASECalculator:
-        kwargs = {**dict(self.params.items()), **kwargs}
+        kwargs.pop('communicator', None)  # Ignore silently
+        allowed = {'nbands', 'occupations', 'poissonsolver',
+                   'kpts', 'eigensolver', 'random', 'maxiter',
+                   'basis', 'symmetry', 'convergence', 'verbose',
+                   'parallel', 'mode'}
+        illegal = kwargs.keys() - allowed
+        if illegal:
+            raise TypeError(f'Illegal keyword(s): {illegal}.  '
+                            f'Only {allowed} allowed.')
 
-        params = InputParameters(kwargs)
+        mode = kwargs.get('mode', {})
+        if mode.keys() - {'dtype'}:
+            raise TypeError('Only mode={"dtype": dtype} is allowed.')
+
+        old_params = self.params.todict()
+        kwargs = {**old_params, **kwargs,
+                  'mode': {**old_params['mode'], **mode}}
+
+        params = Parameters(**kwargs)
         log = Logger(txt, self.comm)
-        builder = create_builder(self.atoms, params, self.comm, log)
+        builder = params.dft_component_builder(self.atoms, log=log)
         basis_set = builder.create_basis_set()
         dft = self.dft
-        comm1 = dft.ibzwfs.kpt_band_comm
-        comm2 = builder.communicators['D']
+        kbcomm1 = dft.ibzwfs.kpt_band_comm
+        kbcomm2 = builder.communicators['D']
         potential = dft.potential.redist(
             builder.grid,
             builder.electrostatic_potential_desc,
             builder.atomdist,
-            comm1, comm2)
+            kbcomm1, kbcomm2)
         density = dft.density.redist(builder.grid,
                                      builder.interpolation_desc,
                                      builder.atomdist,
-                                     comm1, comm2)
-        ibzwfs = builder.create_ibz_wave_functions(basis_set, potential,
-                                                   log=log)
+                                     kbcomm1, kbcomm2)
+        ibzwfs = builder.create_ibz_wave_functions(basis_set, potential)
         ibzwfs.fermi_levels = dft.ibzwfs.fermi_levels
 
         scf_loop = builder.create_scf_loop()
@@ -722,11 +668,12 @@ class ASECalculator:
             scf_loop.convergence.pop(name, None)
 
         dft = DFTCalculation(
-            ibzwfs, density, potential,
+            self.atoms, ibzwfs, density, potential,
             builder.setups,
             scf_loop,
-            builder.create_potential_calculator(log=log),
+            builder.create_potential_calculator(),
             log,
+            params=params,
             energies=self.dft.energies)
 
         dft.converge()
@@ -801,7 +748,7 @@ class ASECalculator:
             **eigensolver)
 
     def todict(self):
-        return dict(self.params.items())
+        return self.params.todict()
 
     def get_nonselfconsistent_energies(self, type='beefvdw'):
         from gpaw.xc.bee import BEEFEnsemble
@@ -821,3 +768,19 @@ class ASECalculator:
     def get_bz_to_ibz_map(self):
         """Return indices from BZ to IBZ."""
         return self.dft.ibzwfs.ibz.bz2ibz_K.copy()
+
+    def _to_old(self):
+        import tempfile
+        from gpaw.old.calculator import GPAW as OldGPAW
+        from gpaw.mpi import broadcast_string
+
+        if self._dft is None:
+            return OldGPAW(**self.params.todict(), txt=self.log.fd)
+
+        if self.comm.rank == 0:
+            gpw = tempfile.mkstemp(suffix='.gpw')[1]
+        else:
+            gpw = ''
+        gpw = broadcast_string(gpw, comm=self.comm)
+        self.write(gpw, mode='all')
+        return OldGPAW(gpw)

@@ -1,15 +1,16 @@
 import pytest
 from ase import Atom, Atoms
 
-from gpaw import GPAW, restart, Davidson, Mixer
-from gpaw.atom.generator import Generator
+from gpaw import GPAW, Davidson, Mixer, restart
 from gpaw.atom.configurations import parameters
+from gpaw.atom.generator import Generator
 from gpaw.mpi import world
 
 # This test calculates the derivative discontinuity of Ne-atom
 # first on 3D without restart. Then does restart and recalculates.
 
 
+@pytest.mark.slow
 @pytest.mark.gllb
 @pytest.mark.libxc
 def test_gllb_ne_disc(in_tmp_dir, add_cwd_to_setup_paths):

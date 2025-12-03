@@ -1,17 +1,10 @@
-from gpaw.utilities.adjust_cell import adjust_cell
 from ase.build import molecule
 from ase.units import Pascal, m
-from ase.data.vdw import vdw_radii
-from gpaw.solvation import (
-    SolvationGPAW,
-    EffectivePotentialCavity,
-    Power12Potential,
-    LinearDielectric,
-    GradientSurface,
-    SurfaceInteraction)
 
-
-vdw_radii = vdw_radii.copy()
+from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
+                            LinearDielectric, Power12Potential, SolvationGPAW,
+                            SurfaceInteraction)
+from gpaw.utilities.adjust_cell import adjust_cell
 
 
 def test_solvation_swap_atoms():
@@ -21,10 +14,8 @@ def test_solvation_swap_atoms():
     epsinf = 80.
     st = 18.4 * 1e-3 * Pascal * m
     T = 298.15
-    vdw_radii[1] = 1.09
 
-    def atomic_radii(atoms):
-        return [vdw_radii[n] for n in atoms.numbers]
+    atomic_radii = {'H': 1.09}
 
     convergence = {
         'energy': 0.1 / 8.,
@@ -36,15 +27,16 @@ def test_solvation_swap_atoms():
     adjust_cell(atoms, vac, h)
 
     calc = SolvationGPAW(
-        mode='fd', xc='LDA', h=h, convergence=convergence,
+        mode='fd',
+        xc='LDA',
+        h=h,
+        convergence=convergence,
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii, u0),
             temperature=T,
-            surface_calculator=GradientSurface()
-        ),
+            surface_calculator=GradientSurface()),
         dielectric=LinearDielectric(epsinf=epsinf),
-        interactions=[SurfaceInteraction(surface_tension=st)]
-    )
+        interactions=[SurfaceInteraction(surface_tension=st)])
     atoms.calc = calc
     atoms.get_potential_energy()
     atoms.get_forces()
@@ -52,7 +44,7 @@ def test_solvation_swap_atoms():
     def env(calc):
         if calc.old:
             return calc.hamiltonian
-        return calc.environment
+        return calc.dft.solvation
 
     eps_gradeps = env(calc).dielectric.eps_gradeps
 
