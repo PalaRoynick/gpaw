@@ -356,16 +356,17 @@ class PPCG(PWFDEigensolver):
                     else:
                         MBuf_bb = MS_bb
 
-                    Pbuf_abi.block_diag_multiply(dS_Aii, out_ani=HPbuf_abi)
-                    buff_bX[:nblocks].matrix_elements(
-                        buff_bX[:nblocks], cc=True, out=MBuf_bb,
-                        domain_sum=False, symmetric=True)
+                    Pbuf_abi[:, block:nblocks].block_diag_multiply(
+                        dS_Aii, out_ani=HPbuf_abi[:, block:nblocks])
+                    buff_bX[block:nblocks].matrix_elements(
+                        buff_bX[:nblocks], cc=True, out=MBuf_bb[block:],
+                        domain_sum=False, symmetric=False)
                     if self.promote_inner_dtype:
                         S_bb[:] = buffer_bb
                         buffer_bb[:] = 0
-                    HPbuf_abi[:, :nblocks].matrix.multiply(
-                        Pbuf_abi[:, :nblocks], out=MBuf_bb,
-                        symmetric=True, beta=1, opb='C')
+                    HPbuf_abi[:, block:nblocks].matrix.multiply(
+                        Pbuf_abi[:, :nblocks], out=MBuf_bb[block:],
+                        symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         S_bb += buffer_bb
                     # domain_comm.sum(S_bb)
@@ -386,22 +387,26 @@ class PPCG(PWFDEigensolver):
                     if not self.promote_inner_dtype:
                         MBuf_bb = MH_bb
 
-                    Ht_H = partial(Ht, out=Hbuff_bX[:nblocks])
-                    dH_inner(Pbuf_abi[:, :nblocks],
-                             out_ani=HPbuf_abi[:, :nblocks])
-                    buff_bX[:nblocks].matrix_elements(
-                        buff_bX[:nblocks], function=Ht_H,
-                        cc=True, out=MBuf_bb,
-                        domain_sum=False, symmetric=True)
+                    Ht(buff_bX[block:nblocks], out=Hbuff_bX[block:nblocks])
+                    dH_inner(Pbuf_abi[:, block:nblocks],
+                             out_ani=HPbuf_abi[:, block:nblocks])
+                    Hbuff_bX[block:nblocks].matrix_elements(
+                        buff_bX[:nblocks], cc=True, out=MBuf_bb[block:],
+                        domain_sum=False, symmetric=False)
                     if self.promote_inner_dtype:
                         H_bb[:] = buffer_bb
                         buffer_bb[:] = 0
-                    HPbuf_abi[:, :nblocks].matrix.multiply(
-                        Pbuf_abi[:, :nblocks], out=MBuf_bb,
-                        symmetric=True, beta=1, opb='C')
+                    HPbuf_abi[:, block:nblocks].matrix.multiply(
+                        Pbuf_abi[:, :nblocks], out=MBuf_bb[block:],
+                        symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         H_bb[:] += buffer_bb[:]
                     # domain_comm.sum(H_bb)
+
+                    H_bb[:block, :block] = xp.diag(wfs.myeig_n[mybands[block_slice]])
+                    S_bb[:block, :block] = xp.eye(block)
+                    # MH_bb.tril2full()
+                    MS_bb.tril2full()
 
                     if nblocks > 2 * block:
                         # Eigh approach
