@@ -112,6 +112,7 @@ class LrTDDFT2:
             self.max_energy_diff = None
         self.recalculate = recalculate
         # Don't init calculator yet if it's not needed (to save memory)
+        gs_calc = gs_calc._to_old()
         self.calc = gs_calc
         self.calc_ready = False
 
@@ -306,7 +307,7 @@ class LrTDDFT2:
         Includes population difference.
 
         This method is meant to be used for small number of transitions.
-        It is not suitable for analysing densely packed transitions of
+        It is not suitable for analyzing densely packed transitions of
         large systems. Use transition contribution map (TCM) or similar
         approach for this.
 

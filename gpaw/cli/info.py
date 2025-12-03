@@ -12,7 +12,7 @@ import gpaw.cgpaw as cgpaw
 import gpaw.fftw as fftw
 from gpaw.gpu import __file__ as gpaw_gpu_filename
 from gpaw.gpu import cupy, cupy_is_fake
-from gpaw.mpi import have_mpi, rank
+from gpaw.mpi import have_mpi, parallel
 from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED
 from gpaw.utilities import compiled_with_libvdwxc, compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
@@ -56,7 +56,8 @@ def warn(text: str,
                      **kwargs) + pad
 
 
-def info() -> None:
+@parallel
+def info(comm) -> None:
     """Show versions of GPAW and its dependencies."""
     results: list[tuple[str, str | bool]] = [
         ('python-' + sys.version.split()[0], sys.executable)]
@@ -143,7 +144,9 @@ def info() -> None:
     for i, path in enumerate(gpaw.setup_paths):
         results.append((f'PAW-datasets ({i + 1})', str(path)))
 
-    if rank != 0:
+    # XXX Why are we not appending to result below, but made this
+    # function parallel half way
+    if comm.rank != 0:
         return
 
     lines = [(a, b if isinstance(b, str) else ['no', 'yes'][b])
