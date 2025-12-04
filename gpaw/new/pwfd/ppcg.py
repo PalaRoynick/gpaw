@@ -232,7 +232,7 @@ class PPCG(PWFDEigensolver):
 
             buffer_array_nX = psit_nX.create_work_buffer(self.data_buffers[0])
 
-            full_pw = psit_nX.desc.new(comm=None)
+            full_pw = psit_nX.desc.new(comm=SerialCommunicator())
 
             buff_bX = full_pw.empty((self.nblocksizes, ) +
                                      psit_nX.dims[1:], xp=psit_nX.xp)
@@ -295,7 +295,7 @@ class PPCG(PWFDEigensolver):
                 psit_nX.domain_a2a_bands()
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
-                    P_nX.domain_a2a_bands()
+                    P_nX.domain_a2a_bands(transfer_data=i > 0)
                 pot_inner = potential.copy()
                 pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
                 dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
@@ -315,6 +315,8 @@ class PPCG(PWFDEigensolver):
                     block = \
                         block_slice_base.stop - block_slice_base.start
                     block_slice = block_slice_base # active_indicies[block_slice_base]
+                    if block == 0:
+                        continue
 
                     buff_bX.data[:block] = \
                         psit_nX.data[block_slice]
@@ -372,11 +374,11 @@ class PPCG(PWFDEigensolver):
                     # domain_comm.sum(S_bb)
 
                     # Scale the diagonal elements, to improve numerical
-                    # stability. Here, we use the expontent -0.5, which
+                    # stability. Here, we use the expontent -0.25, which
                     # makes the diagonal elements closer to 1, by the a
                     # factor of sqrt(X), with X being the previous diagonal.
                     # This value performed best of the ones attempted.
-                    diag_scale_b = xp.diag(S_bb)[block:]**(-0.5)
+                    diag_scale_b = xp.diag(S_bb)[block:]**(-0.25)
                     S_bb[block:, :] *= diag_scale_b[:, None]
                     S_bb[:, block:] *= diag_scale_b[None, :]
                     buff_bX.matrix.data[block:nblocks, :] \
@@ -450,7 +452,7 @@ class PPCG(PWFDEigensolver):
                         break_after_update = True
                         new_eigs_n[block_slice] = wfs.myeig_n[block_slice]
                         continue
-                    my_ns  = mybands[block_slice]
+                    my_ns = mybands[block_slice]
                     new_eigs_n[my_ns] = as_np(eig_b[:block])
 
                     with tracectx('rotations', gpu=xp is not np):
@@ -484,7 +486,6 @@ class PPCG(PWFDEigensolver):
                 domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
                 
-                wfs.orthonormalize(residual_nX)
                 pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
                 psit0_nX = pw_desc.from_data(psit_nX.data)
                 residual0_nX = pw_desc.from_data(residual_nX.data)
