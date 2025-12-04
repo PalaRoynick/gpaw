@@ -120,13 +120,16 @@ class Domain(Generic[XArray]):
 
     def empty(self,
               shape: int | tuple[int, ...] = (),
-              comm: MPIComm = serial_comm, xp=None) -> XArray:
+              comm: MPIComm = serial_comm, xp=None,
+              domain_transposable: bool = False) -> XArray:
         raise NotImplementedError
 
     def zeros(self,
               shape: int | tuple[int, ...] = (),
-              comm: MPIComm = serial_comm, xp=None) -> XArray:
-        array = self.empty(shape, comm, xp=xp)
+              comm: MPIComm = serial_comm, xp=None,
+              domain_transposable: bool = False) -> XArray:
+        array = self.empty(shape, comm, xp=xp,
+                           domain_transposable=domain_transposable)
         array.data[:] = 0.0
         return array
 

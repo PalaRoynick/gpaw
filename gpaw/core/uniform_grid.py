@@ -148,7 +148,8 @@ class UGDesc(Domain['UGArray']):
     def empty(self,
               dims: int | tuple[int, ...] = (),
               comm: MPIComm = serial_comm,
-              xp=np) -> UGArray:
+              xp=np,
+              domain_transposable: bool = False) -> UGArray:
         """Create new UGArray object.
 
         parameters
@@ -158,7 +159,8 @@ class UGDesc(Domain['UGArray']):
         comm:
             Distribute dimensions along this communicator.
         """
-        return UGArray(self, dims, comm, xp=xp)
+        return UGArray(self, dims, comm, xp=xp,
+                       domain_transposable=domain_transposable)
 
     def from_data(self, data: np.ndarray) -> UGArray:
         return UGArray(self, data.shape[:-3], data=data)
@@ -307,7 +309,8 @@ class UGArray(DistributedArrays[UGDesc]):
                  dims: int | tuple[int, ...] = (),
                  comm: MPIComm = serial_comm,
                  data: np.ndarray | None = None,
-                 xp=None):
+                 xp=None,
+                 domain_transposable: bool = False):
         """Object for storing function(s) on a uniform grid.
 
         parameters
@@ -321,9 +324,10 @@ class UGArray(DistributedArrays[UGDesc]):
         data:
             Data array for storage.
         """
-        DistributedArrays. __init__(self, dims, grid.myshape,
-                                    comm, grid.comm, data, grid.dv,
-                                    grid.dtype, xp)
+        DistributedArrays.__init__(self, dims, grid.myshape,
+                                   comm, grid.comm, data, grid.dv,
+                                   grid.dtype, xp,
+                                   domain_transposable=domain_transposable)
         self.desc = grid
 
     def __repr__(self):
