@@ -464,7 +464,7 @@ class AtomArrays:
             s_offsets = np.cumulative_sum(s_sizes[:-1], include_initial=True)
             r_offsets = np.cumulative_sum(r_sizes[:-1], include_initial=True)
             
-            buffer_I = self.matrix.data[0].copy()
+            buffer_I = self.layout.empty().data
             
             for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
                 # Gotta unsort some atoms...
@@ -504,7 +504,7 @@ class AtomArrays:
             
             reqs = []
             
-            buffer_I = b_nI.data[0].copy()
+            buffer_I = layout.empty().data
             
             for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
                 atoms_comm.alltoallv(a_Ni.data.ravel(), s_sizes, s_offsets,

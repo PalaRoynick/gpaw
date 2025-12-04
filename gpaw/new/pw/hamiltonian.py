@@ -33,9 +33,9 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
+        vt_R = vt_R.gather(broadcast=True)
         if xp is not np and pw.comm.size == 1 and False:
             return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
-        vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
         tmp_R = plan.tmp_R
         tmp_Q = plan.tmp_Q

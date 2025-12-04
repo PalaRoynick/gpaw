@@ -309,14 +309,13 @@ class PPCG(PWFDEigensolver):
                 P3_ni = P3_aNi.matrix.data
                 dS_Aii = dS_aii.gather(broadcast=True)
                 
-                for j in range(0, psit_nX.data.shape[0], self.blocksize):
+                for j in range(0, b + domain_comm.size - 1 // domain_comm.size, self.blocksize):
                     block_slice_base = \
-                        slice(j, min(j + self.blocksize, psit_nX.data.shape[0]))
+                        slice(min(j, psit_nX.data.shape[0]), 
+                              min(j + self.blocksize, psit_nX.data.shape[0]))
                     block = \
                         block_slice_base.stop - block_slice_base.start
                     block_slice = block_slice_base # active_indicies[block_slice_base]
-                    if block == 0:
-                        continue
 
                     buff_bX.data[:block] = \
                         psit_nX.data[block_slice]
@@ -389,6 +388,8 @@ class PPCG(PWFDEigensolver):
                     if not self.promote_inner_dtype:
                         MBuf_bb = MH_bb
 
+                    # XXX: Apply should really have methods for not doing
+                    # any domain comunication...
                     Ht(buff_bX[block:nblocks], out=Hbuff_bX[block:nblocks])
                     dH_inner(Pbuf_abi[:, block:nblocks],
                              out_ani=HPbuf_abi[:, block:nblocks])
