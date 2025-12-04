@@ -847,7 +847,8 @@ class PWArray(DistributedArrays[PWDesc]):
 
         out_xG = pw.zeros(self.dims,
                           comm=self.comm,
-                          xp=self.xp)
+                          xp=self.xp,
+                          domain_transposable=self.domain_transposable)
         out_xG.scatter_from(out0_xG)
         return out_xG
 
