@@ -377,7 +377,7 @@ def build_cell(atoms, group):
 def test_Oh():
     states = parse_eigenvalues(Path("Oh/irreps.txt").read_text())
     tmole_group = Path("Oh/group.txt").read_text().split()[-1]
-    states = SymmetryEigenvalues(tmolegroup, states)
+    states = SymmetryEigenvalues(tmole_group, states)
     states = states.unroll_degeneracies().occupied_states
 
     atoms = read("Al13.xyz")
