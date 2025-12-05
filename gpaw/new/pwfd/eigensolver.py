@@ -42,15 +42,29 @@ class PWFDEigensolver(Eigensolver):
                                                           xp=ibzwfs.xp)
 
     def _allocate_buffer_arrays(self, ibzwfs, shape):
-        G_max = np.prod(ibzwfs.get_max_shape())
+        G_max = int(np.prod(ibzwfs.get_max_shape()))
         b = max(wfs.n2 - wfs.n1 for wfs in ibzwfs)
-        nbands = ibzwfs.nbands
+        full_nbands = ibzwfs.nbands
         dtype_size = ibzwfs._wfs_u[0].psit_nX.data.dtype.itemsize
         domain_size = ibzwfs.domain_comm.size
 
         if self.max_buffer_mem is not None:
             # Buffer size needs to ensure that the number of bands
             # of the buffer is a multiple of domain_size.
+            # Additionally, it needs to be domain transposable.
+            max_nbands = self.max_buffer_mem // (G_max * dtype_size)
+            nbands = min(max(domain_size * (max_nbands // domain_size),
+                             domain_size),
+                         full_nbands)
+            mybands = (nbands + domain_size - 1) // domain_size
+            # buffer_size = nbands * G_max * dtype_size
+            
+            # Now increase size to be sure its domain transposable
+            G_max_max = ibzwfs.domain_comm.max_scalar(G_max)
+            G_max_sum = ibzwfs.domain_comm.sum_scalar(G_max)
+            buffer_size = mybands * G_max_max * domain_size * dtype_size
+            
+            '''
             buffer_size_per_domain = max(self.max_buffer_mem,
                                          domain_size * G_max * dtype_size,
                                          nbands * dtype_size) \
@@ -58,7 +72,10 @@ class PWFDEigensolver(Eigensolver):
             buffer_size = min(buffer_size_per_domain * domain_size
                               * G_max * dtype_size,
                               b * G_max * dtype_size)
+            '''
+            
         else:
+            raise NotImplementedError('Stop wasting memory!')
             buffer_size = max(b * G_max * dtype_size,
                               nbands * dtype_size)
 
@@ -66,8 +83,10 @@ class PWFDEigensolver(Eigensolver):
                                             np.byte)
 
     def _allocate_work_arrays(self, ibzwfs, shape):
-        b = max(wfs.n2 - wfs.n1 for wfs in ibzwfs)
-        shape += (b,) + ibzwfs.get_max_shape()
+        #b = max(wfs.n2 - wfs.n1 for wfs in ibzwfs)
+        size = max(wfs.psit_nX.data_buffer.size for wfs in ibzwfs)
+        shape += (size,)
+        #shape += (b,) + ibzwfs.get_max_shape()
         dtype = ibzwfs._wfs_u[0].psit_nX.data.dtype
         self.work_arrays = ibzwfs.xp.empty(shape, dtype)
 
@@ -114,11 +133,11 @@ class PWFDEigensolver(Eigensolver):
         # Loop over k-points:
         with broadcast_exception(ibzwfs.kpt_comm):
             for wfs, weight_n in zips(ibzwfs, weight_un):
-                dH = partial(potential.dH, spin=wfs.spin)
                 Ht = partial(apply, spin=wfs.spin)
                 temp_wfs_error, temp_eig_error = \
                     self.iterate_kpt(wfs, weight_n, self.iterate1,
-                                     Ht=Ht, dH=dH, dS_aii=dS_aii)
+                                     Ht=Ht, potential=potential,
+                                     dS_aii=dS_aii)
                 wfs_error += wfs.weight * temp_wfs_error
                 if eig_error < temp_eig_error:
                     eig_error = temp_eig_error

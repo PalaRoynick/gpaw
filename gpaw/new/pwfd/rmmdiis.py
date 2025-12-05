@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from functools import partial
 from pprint import pformat
 
 import numpy as np
@@ -55,7 +56,8 @@ class RMMDIIS(PWFDEigensolver):
 
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
-                 Ht, dH, dS_aii, weight_n):
+                 Ht, potential,
+                 dS_aii, weight_n):
         """Do one step ...
 
         See here:
@@ -63,6 +65,7 @@ class RMMDIIS(PWFDEigensolver):
             https://gpaw.readthedocs.io/documentation/rmm-diis.html
         """
 
+        dH = partial(potential.deltaH, spin=wfs.spin)
         psit_nX = wfs.psit_nX
         mynbands = psit_nX.mydims[0]
 

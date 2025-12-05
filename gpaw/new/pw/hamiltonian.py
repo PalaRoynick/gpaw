@@ -33,11 +33,11 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
-        if xp is not np and pw.comm.size == 1:
-            return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         vt_R = vt_R.gather(broadcast=True)
+        if xp is not np and pw.comm.size == 1 and False:
+            return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         plan = self.plan
-        tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
+        tmp_R = plan.tmp_R
         tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
             pw_local = pw
@@ -47,29 +47,43 @@ class PWHamiltonian(Hamiltonian):
             if pw_local is None:
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
-        psit_G = pw_local.empty(xp=xp).data
+
+        reqs = psit_nG.domain_a2a_bands(blocking=False)
+        out_nG.domain_a2a_bands(transfer_data=False)  # Since data gets overwritten
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
-        mynbands = psit_nG.mydims[0]
-        Q_G = pw_local.indices(tmp_Q.shape)
-
         # apply_local_potential_gpu doesn't work with domain parallisation
         # So we force vt_R to be the right type here.
         vt_R_data = xp.asarray(vt_R.data)
-        vtpsit_G = xp.empty_like(psit_G)
+        Q_G = pw_local.indices(plan.tmp_Q.shape)
+        
+        reqs2 = []
 
-        for n1 in range(0, mynbands, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, mynbands)
-            psit_nG[n1:n2].gather_all(psit_G)
-            if domain_comm.rank < n2 - n1:
+        # for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)): Not all ranks have equal bands :(
+        for n in range(psit_nG.maxbands):
+            if n < psit_nG.data.shape[0]:
+                if reqs[n] is not None:
+                    domain_comm.wait(reqs[n])
+                psit_G = psit_nG.data[n]
+                vtpsit_G = out_nG.data[n]
+                # psit_G.ifft(out=tmp_R, plan=self.plan)
                 plan.ifft_sphere(psit_G, pw_local)
                 tmp_R *= vt_R_data
                 plan.fft()
-                vtpsit_G = tmp_Q.ravel()[Q_G]
+                vtpsit_G[:] = tmp_Q.ravel()[Q_G]
                 vtpsit_G *= 1.0 / tmp_R.size
-                psit_G *= e_kin_G
-                vtpsit_G += psit_G
-            out_nG[n1:n2].scatter_from_all(vtpsit_G)
+                # tmp_R.fft(out=vtpsit_G, plan=self.plan)
+                # psit_G.data *= e_kin_G
+                # vtpsit_G.data += psit_G.data
+                vtpsit_G += psit_G * e_kin_G
+            reqs2.append(psit_nG.domain_a2a_bands(blocking=False, index=n))
+            reqs2.append(out_nG.domain_a2a_bands(blocking=False, index=n))
+        
+        for req in reqs2:
+            if req is not None:
+                domain_comm.wait(req)
+        psit_nG.domain_a2a_bands(transfer_data=False)
+        out_nG.domain_a2a_bands(transfer_data=False)
 
     def apply_mgga(self,
                    dedtaut_R: UGArray,

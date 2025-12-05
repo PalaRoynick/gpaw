@@ -151,7 +151,8 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
             psit_nX = desc.empty(
                 dims=dims,
                 comm=self.communicators['b'],
-                xp=self.xp)
+                xp=self.xp,
+                domain_transposable=True)
             psit_nX.randomize()
 
             wfs = PWFDWaveFunctions(

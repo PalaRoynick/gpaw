@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from pprint import pformat
 
 import numpy as np
@@ -62,11 +63,13 @@ class Davidson(PWFDEigensolver):
 
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
-                 Ht, dH, dS_aii, weight_n):
+                 Ht, potential,
+                 dS_aii, weight_n):
         H_NN = self.H_NN
         S_NN = self.S_NN
         M_nn = self.M_nn
         M2_nn = self.M2_nn
+        dH = partial(potential.deltaH, spin=wfs.spin)
 
         xp = M_nn.xp
 
@@ -75,7 +78,7 @@ class Davidson(PWFDEigensolver):
         eig_N = xp.empty(2 * B)
         b = psit_nX.mydims[0]
 
-        psit2_nX = psit_nX.new(data=self.work_arrays[0, :b])
+        psit2_nX = psit_nX.new(data=self.work_arrays[0, :])
         data_buffer = self.data_buffers[0]
         wfs.subspace_diagonalize(Ht, dH,
                                  psit2_nX=psit2_nX,
@@ -266,9 +269,15 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
                       totalbands - N1)
 
         buffer_view_aX = buffer_mX.new(
-            data=buffer_mX.data[:n2 - n1],
+            data=buffer_mX.data_buffer,  # Hmm
             dims=(world_N,) + buffer_mX.dims[1:])
-        Ht(psit2_nX[n1:n2], out=buffer_view_aX)
+        
+        stride = int(np.prod(psit2_nX.mydims[1:]) * psit2_nX.maxnX)
+        psit_view_aX = psit2_nX.new(
+            data=psit2_nX.data_buffer[n1*stride:],
+            dims=(world_N,) + psit2_nX.dims[1:])
+
+        Ht(psit_view_aX, out=buffer_view_aX)
 
         out1 = Matrix(
             M=world_N,

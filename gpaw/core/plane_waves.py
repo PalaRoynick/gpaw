@@ -134,6 +134,7 @@ class PWDesc(Domain['PWArray']):
     def empty(self,
               dims: int | tuple[int, ...] = (),
               comm: MPIComm = serial_comm,
+              domain_transposable: bool = False,
               xp=None) -> PWArray:
         """Create new PlaneWaveExpanions object.
 
@@ -144,10 +145,10 @@ class PWDesc(Domain['PWArray']):
         comm:
             Distribute dimensions along this communicator.
         """
-        return PWArray(self, dims, comm, xp=xp)
+        return PWArray(self, dims, comm, xp=xp, domain_transposable=domain_transposable)
 
-    def from_data(self, data):
-        return PWArray(self, data.shape[:-1], data=data)
+    def from_data(self, data, domain_transposable=False):
+        return PWArray(self, data.shape[:-1], data=data, domain_transposable=domain_transposable)
 
     def new(self,
             *,
@@ -290,7 +291,8 @@ class PWArray(DistributedArrays[PWDesc]):
                  dims: int | tuple[int, ...] = (),
                  comm: MPIComm = serial_comm,
                  data: np.ndarray | None = None,
-                 xp=None):
+                 xp=None,
+                 domain_transposable: bool = False):
         """Object for storing function(s) as a plane-wave expansions.
 
         parameters
@@ -311,7 +313,9 @@ class PWArray(DistributedArrays[PWDesc]):
         DistributedArrays. __init__(self, dims, pw.myshape,
                                     comm, pw.comm,
                                     data, pw.dv,
-                                    self.complex_dtype, xp)
+                                    self.complex_dtype,
+                                    xp,
+                                    domain_transposable)
         self.desc = pw
         self._matrix: Matrix | None
 
@@ -327,7 +331,8 @@ class PWArray(DistributedArrays[PWDesc]):
         data = self.data[index]
         return PWArray(self.desc,
                        data.shape[:-1],
-                       data=data)
+                       data=data,
+                       domain_transposable=False)
 
     def __iter__(self):
         for data in self.data:
@@ -350,18 +355,23 @@ class PWArray(DistributedArrays[PWDesc]):
         """
         if data is None:
             assert dims is None
-            data = self.xp.empty_like(self.data)
+            data_buffer = self.xp.empty_like(self.data_buffer)
         else:
             if dims is None:
                 # Number of plane-waves depends on the k-point.  We therefore
                 # allow for data to be bigger than needed:
-                data = data.ravel()[:self.data.size].reshape(self.data.shape)
+                data_buffer = data.ravel()[:self.data_buffer.size].reshape(self.data_buffer.shape)
             else:
-                return PWArray(self.desc, dims, self.comm, data)
+                return PWArray(self.desc,
+                               dims,
+                               self.comm,
+                               data,
+                               domain_transposable=self.domain_transposable)
         return PWArray(self.desc,
                        self.dims,
                        self.comm,
-                       data)
+                       data_buffer,
+                       domain_transposable=self.domain_transposable,)
 
     def copy(self):
         """Create a copy (surprise!)."""
@@ -722,29 +732,36 @@ class PWArray(DistributedArrays[PWDesc]):
 
         # Undistributed work arrays:
         a1_R = out.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
-        a1_G = pw.new(comm=None).empty(xp=xp)
+        pw_dist = pw.new(comm=None)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
-        for n1 in range(0, N, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, N)
-            a_nG[n1:n2].gather_all(a1_G)
-            n = n1 + domain_comm.rank
-            if n >= N:
-                continue
-            weight = weights[n]
-            if weight == 0.0:
-                continue
-            a1_G.ifft(out=a1_R)
-            if xp is np:
-                add_to_density(weight, a1_R.data, b1_R.data)
-            else:
-                b1_R.data += float(weight) * xp.abs(a1_R.data)**2
+        reqs = a_nG.domain_a2a_bands(blocking=False)
+        reqs2 = []
+        # for index, n1 in enumerate(range(0, N, domain_comm.size)):
+        for i, req in enumerate(reqs):
+            if req is not None:
+                a_nG.domain_comm.wait(req)
+            n = i * domain_comm.size + domain_comm.rank
+            if n < N:
+                a1_G = pw_dist.from_data(a_nG.data[i])
+                weight = weights[n]
+                if weight != 0.0:
+                    a1_G.ifft(out=a1_R)
+                    if xp is np:
+                        add_to_density(weight, a1_R.data, b1_R.data)
+                    else:
+                        b1_R.data += float(weight) * xp.abs(a1_R.data)**2
+            reqs2.append(a_nG.domain_a2a_bands(blocking=False, index=i))
 
+        a_nG.domain_a2a_bands(transfer_data=False)
         domain_comm.sum(b1_R.data)
         b_R = out.new()
         b_R.scatter_from(b1_R)
         out.data += b_R.data
+        for req in reqs2:
+            if req is not None:
+                a_nG.domain_comm.wait(req)
 
     def to_pbc_grid(self):
         return self
@@ -763,7 +780,7 @@ class PWArray(DistributedArrays[PWDesc]):
             # numpy does not require shape, cupy does
             # cupy just makes all elements equal to one random number
             aview = a.view(dtype=self.real_dtype)
-            rng.random(aview.shape, out=aview, dtype=self.real_dtype)
+            aview[:] = rng.random(aview.shape, dtype=self.real_dtype)
 
             # Uniform distribution inside unit circle
             a[:] = a.real**0.5 * self.xp.exp(2j * self.xp.pi * a.imag)
@@ -830,7 +847,8 @@ class PWArray(DistributedArrays[PWDesc]):
 
         out_xG = pw.zeros(self.dims,
                           comm=self.comm,
-                          xp=self.xp)
+                          xp=self.xp,
+                          domain_transposable=self.domain_transposable)
         out_xG.scatter_from(out0_xG)
         return out_xG
 

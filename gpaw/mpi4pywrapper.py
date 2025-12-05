@@ -1,6 +1,7 @@
 try:
-    from mpi4py.MPI import (CONGRUENT, IDENT, IN_PLACE, MAX, MIN, PROD,
-                            SIMILAR, SUM, UNEQUAL, Request, _addressof)
+    from mpi4py.MPI import (Request, SUM, MAX, MIN, IN_PLACE, IDENT,
+                            CONGRUENT, SIMILAR, UNEQUAL, PROD, Comm,
+                            _addressof)
 except ImportError:
     SUM = MAX = MIN = IN_PLACE = IDENT = None  # type: ignore
     CONGRUENT = SIMILAR = UNEQUAL = PROD = None  # type: ignore
@@ -11,12 +12,13 @@ import numpy as np
 def maybe_sync(arr):
     from gpaw.gpu import cupy, cupy_is_fake
     if not cupy_is_fake and isinstance(arr, cupy.ndarray):
-        cupy.cuda.deviceSynchronize()
+        cupy.cuda.get_current_stream().synchronize()
 
 
 class MPI4PYWrapper:
     def __init__(self, comm, parent=None):
         self.comm = comm
+        assert isinstance(comm, Comm)
         self.size = comm.size
         self.rank = comm.rank
         self.parent = parent  # XXX check C-object against comm.parent?
@@ -45,6 +47,7 @@ class MPI4PYWrapper:
             return self.comm.reduce(a, root=root, op=_op)
 
     def sum(self, a, root=-1, _op=SUM):
+        assert a.flags.c_contiguous
         maybe_sync(a)
         if root == -1:
             self.comm.Allreduce(IN_PLACE, a, op=_op)

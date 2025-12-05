@@ -187,6 +187,14 @@ class Matrix(XP):
         self.data += other
         return self
 
+    def __getitem__(self, index: slice):
+        assert self.dist.comm.size == 1
+        data = self.data[index]
+        return Matrix(*data.shape,                     
+                      dtype=self.dtype,
+                      data=data,
+                      xp=self.xp)
+
     def is_distributed(self) -> bool:
         """True if this matrix has nontrivial BLACS or GPU distribution.
         """

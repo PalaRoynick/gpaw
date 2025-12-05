@@ -200,7 +200,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                     xp=self.xp)
                 psit_nG = pw.empty(self.nbands,
                                    comm=self.communicators['b'],
-                                   xp=self.xp)
+                                   xp=self.xp,
+                                   domain_transposable=True)
                 mynbands, M = C_nM.dist.shape
                 phit_aJG.multiply(C_nM.to_dtype(pw.dtype),
                                   out_nG=psit_nG[:mynbands])
@@ -219,7 +220,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
         mynbands, M = C_nM.dist.shape
         if self.ncomponents < 4:
-            psit_nG = pw.empty(self.nbands, self.communicators['b'])
+            psit_nG = pw.empty(self.nbands, self.communicators['b'],
+                               domain_transposable=True)
             psit_nR = grid.zeros(mynbands)
             basis_set.lcao_to_grid(C_nM.data, psit_nR.data, q)
 
@@ -230,7 +232,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
             if self.dtype != lcao_dtype:
                 psit2_nG = pw_correct.empty(self.nbands,
-                                            self.communicators['b'])
+                                            self.communicators['b'],
+                                            domain_transposable=True)
                 psit2_nG.data[:] = psit_nG.data
                 return psit2_nG.to_xp(self.xp)
             return psit_nG.to_xp(self.xp)
@@ -292,11 +295,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 data.shape = shape + pw.shape
                 converted_data = convert_precision(data)
 
-                wfs.psit_nX = pw.from_data(converted_data)
+                wfs.psit_nX = pw.from_data(converted_data, domain_transposable=True)
                 data.shape = orig_shape
             else:
                 band_comm = self.communicators['b']
-                wfs.psit_nX = PWArray(pw, shape, comm=band_comm)
+                wfs.psit_nX = PWArray(pw, shape, comm=band_comm, domain_transposable=True)
                 mynbands = (self.nbands + band_comm.size - 1) // band_comm.size
                 n1 = min(band_comm.rank * mynbands, self.nbands)
                 n2 = min((band_comm.rank + 1) * mynbands, self.nbands)
