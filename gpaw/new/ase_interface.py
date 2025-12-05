@@ -775,8 +775,8 @@ class ASECalculator:
     def symmetry_info(self, verbose=True):
         from gpaw.utilities.pointgroup_projections import SymmetryEigenvalues
         SymmetryEigenvalues.from_calc(self, layergroup=False)
-        #from gpaw.utilities.pointgroup import analyze_symmetry
-        #return analyze_symmetry(self, verbose)
+        from gpaw.utilities.pointgroup import analyze_symmetry
+        return analyze_symmetry(self, verbose)
 
     def _to_old(self):
         import tempfile

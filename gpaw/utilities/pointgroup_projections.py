@@ -2,7 +2,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import numpy as np
-from gpaw.utilities.pointgroup import SPGOperations, PointGroup, Projectable
+from gpaw.utilities.pointgroup import SPGOperations, PointGroup
+from gpaw.utilities.pointgroup_proj import Projectable
 
 @dataclass
 class State:
