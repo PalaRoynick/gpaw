@@ -606,7 +606,7 @@ class ConjugacyClassClassifierClass:
                     main_cc += "d"
             names_g.append(main_cc)
 
-        # Find duplicate main classes to furher distinguish them
+        # Find duplicate main classes to further distinguish them
         from collections import Counter
 
         duplicates = [(k, v) for k, v in Counter(names_g).items() if v > 1]
@@ -864,90 +864,6 @@ class PointGroup:
             groups_i[irrep].append(psi[:, eig_idx])
 
         return [np.array(x) for x in groups_i]
-
-
-class PolynomialProjectable:
-    def __init__(self, cell_cv, weights_c, normalize=True):
-        self.cell_cv = cell_cv
-        if normalize:
-            vector_v = weights_c @ cell_cv
-            self.weights_c = weights_c / np.linalg.norm(vector_v)
-        else:
-            self.weights_c = weights_c
-
-    def dot(self, other):
-        return np.dot(self.weights_c @ self.cell_cv, other.weights_c @ other.cell_cv)
-
-    def operation(self, op_vv):
-        cell_cv = self.cell_cv
-        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
-        op_cc = op_cc.T.copy()
-        op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
-        assert np.allclose(op_cc, op_cc_int)
-        return PolynomialProjectable(
-            self.cell_cv, op_cc_int @ self.weights_c, normalize=False
-        )
-
-
-class LinearCombinationProjectable:
-    def __init__(self, w_x, projectables_x):
-        self.w_x = w_x
-        self.projectables_x = projectables_x
-
-    def dot(self, other):
-        s = 0.0
-        for w, projectable in zip(self.w_x, self.projectables_x):
-            for w2, projectable2 in zip(other.w_x, other.projectables_x):
-                s += w * np.conjugate(w2) * projectable.dot(projectable2)
-        return s
-
-    def operation(self, op_vv):
-        return LinearCombinationProjectable(
-            self.w_x,
-            [projectable.operation(op_vv) for projectable in self.projectables_x],
-        )
-
-
-class Projectable:
-    def __init__(self, calc, cell_cv, wf, pseudo_wf=True):
-        self.calc = calc
-        self.cell_cv = cell_cv
-        self.wf = wf
-        self.pseudo_wf = pseudo_wf
-
-    @classmethod
-    def from_calc(cls, calc, n, pseudo_wf=True):
-        if pseudo_wf:
-            gamma = next(iter(calc.dft.ibzwfs))
-            wf = gamma.psit_nX[n]  # get_pseudo_wave_function(n, grid_spacing=0.05)
-        else:
-            raise NotImplementedError()
-            wf = calc.dft.ibzwfs.get_all_electron_wave_function(n, grid_spacing=0.05)
-        return Projectable(calc, calc.atoms.cell, wf, pseudo_wf=pseudo_wf)
-
-    def dot(self, projectable):
-        result = self.wf.integrate(projectable.wf)
-        return result
-
-    def operation(self, op_vv):
-        cell_cv = self.calc.atoms.cell
-
-        # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
-
-        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
-        op_cc = op_cc.T.copy()
-        op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
-        assert np.allclose(op_cc, op_cc_int)
-
-        if self.pseudo_wf:
-            wf2 = self.wf.transform(op_cc_int)
-            return Projectable(self.calc, cell_cv, wf2)
-        else:
-            # This one does not infact work
-            raise NotImplementedError()
-            wf = self.wf.copy()
-            wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
-            return Projectable(self.calc, cell_cv, wf)
 
 
 def analyze_symmetry(calc, verbose, layergroup=False):

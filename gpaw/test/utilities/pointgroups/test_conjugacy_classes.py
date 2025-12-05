@@ -3,6 +3,8 @@ from gpaw.utilities.pointgroup import (
     PointGroup,
     SPGOperations,
     CharacterTable,
+)
+from gpaw.utilities.pointgroup_proj import (
     PolynomialProjectable,
     LinearCombinationProjectable,
 )

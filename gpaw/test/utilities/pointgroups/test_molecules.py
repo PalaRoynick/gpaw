@@ -4,7 +4,8 @@ import pytest
 from ase.io import write, read
 from ase.build import molecule
 from pathlib import Path
-from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
+from gpaw.utilities.pointgroup import PointGroup, SPGOperations
+from gpaw.utilities.pointgroup_proj import Projectable
 from gpaw.utilities.pointgroup_projections import State, SymmetryEigenvalues
 from gpaw.new.ase_interface import GPAW
 from dataclasses import dataclass

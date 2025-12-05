@@ -1,7 +1,8 @@
 import pytest
 from ase.build import mx2
 import numpy as np
-from gpaw.utilities.pointgroup import PointGroup, Projectable, SPGOperations
+from gpaw.utilities.pointgroup import PointGroup, SPGOperations
+from gpaw.utilities.pointgroup_proj import Projectable
 from gpaw.utilities.pointgroup_data import character_tables
 from gpaw.new.ase_interface import GPAW
 from pathlib import Path

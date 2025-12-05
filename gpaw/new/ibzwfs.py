@@ -430,7 +430,8 @@ class IBZWaveFunctions(Generic[WFT]):
                     writer.fill(flags.to_storage_dtype(buf_nX * c))
     
     def write_summary(self, log, atoms):
-        from gpaw.utilities.pointgroup import SPGOperations, PointGroup, Projectable
+        from gpaw.utilities.pointgroup import SPGOperations, PointGroup
+        from gpaw.utilities.pointgroup_proj import Projectable
         spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
         # Make sure spglib has same symmetries
         for op_cc in atoms.calc.symmetry.op_scc:
