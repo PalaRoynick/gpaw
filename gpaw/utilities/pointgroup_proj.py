@@ -88,7 +88,7 @@ class Projectable:
             return Projectable(self.calc, cell_cv, wf)
 
 
-class PAniProjectable:
+class PaniProjectable:
     """Projectable for point group analysis using PAW projections.
     Parameters
     ----------
@@ -178,7 +178,7 @@ class PAniProjectable:
 
         Returns
         -------
-        PAniProjectable
+        PaniProjectable
             New state representing R|psi>.
         """
         a_sa = self.compute_atom_mapping(self.atoms, op_cc[np.newaxis, :, :])
@@ -213,4 +213,4 @@ class PAniProjectable:
                 ni += nm
             new_P_ai[a] = P_a_new
 
-        return PAniProjectable(new_P_ai, self.atoms, self.setups)
+        return PaniProjectable(new_P_ai, self.atoms, self.setups)
