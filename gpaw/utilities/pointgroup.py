@@ -205,7 +205,7 @@ class SPGOperations:
     def from_dataset(cls, dataset, atoms, verbose=False):
         W_scc = dataset.rotations
         w_sc = dataset.translations
-        origin_shift_c = dataset.origin_shift
+        origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         from gpaw.utilities.pointgroup_data import spglib_to_schoenflies
@@ -744,19 +744,32 @@ class PointGroup:
 
         self.character_table = character_table
 
-    @property
-    def center_c(self):
-        return dataset.transformation_matrix.T @ self.spg_ops.origin_shift_c
-
     def signature(self, projectable):
+        from gpaw.utilities.pointgroup_proj import PaniProjectable
+        
         signature = np.zeros((len(self.names_g),), dtype=complex)
-        for o, op_cc in enumerate(self.ops_occ):
-            g = self.c4.g_o[o]
-            signature[g] += (
-                1
-                / len(self.c4.ops_g[g])
-                * projectable.dot(projectable.operation(op_cc, center_c=self.center_c))
-            )
+        
+        # PaniProjectable uses fractional coords (W_scc, w_sc)
+        # Other projectables need Cartesian ops but we convert to fractional inside
+        if isinstance(projectable, PaniProjectable):
+            for o, (op_cc, w_c) in enumerate(zip(self.spg_ops.W_scc, self.spg_ops.w_sc)):
+                g = self.c4.g_o[o]
+                signature[g] += (
+                    1
+                    / len(self.c4.ops_g[g])
+                    * projectable.dot(projectable.operation(op_cc, w_c=w_c))
+                )
+        else:
+            # For other projectables, pass O_svv (Cartesian) and let them convert
+            # Note: ops_occ returns O_svv despite the variable name op_cc
+            for o, op_vv in enumerate(self.ops_occ):
+                g = self.c4.g_o[o]
+                w_c = self.spg_ops.w_sc[o]
+                signature[g] += (
+                    1
+                    / len(self.c4.ops_g[g])
+                    * projectable.dot(projectable.operation(op_vv, w_c=w_c))
+                )
         return signature
 
     @property

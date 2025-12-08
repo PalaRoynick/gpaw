@@ -16,7 +16,8 @@ class PolynomialProjectable:
         return np.dot(self.weights_c @ self.cell_cv,
                       other.weights_c @ other.cell_cv)
 
-    def operation(self, op_vv):
+    def operation(self, op_vv, w_c):
+        # Convert Cartesian operation to fractional
         cell_cv = self.cell_cv
         op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
         op_cc = op_cc.T.copy()
@@ -39,10 +40,11 @@ class LinearCombinationProjectable:
                 s += w * np.conjugate(w2) * projectable.dot(projectable2)
         return s
 
-    def operation(self, op_vv):
+    def operation(self, op_vv, w_c):
         return LinearCombinationProjectable(
             self.w_x,
-            [projectable.operation(op_vv) for projectable in self.projectables_x],
+            [projectable.operation(op_vv, w_c=w_c)
+             for projectable in self.projectables_x],
         )
 
 
@@ -67,13 +69,9 @@ class Projectable:
         result = self.wf.integrate(projectable.wf)
         return result
 
-    def operation(self, op_vv, center_v):
-        # TODO: Center_v
-
+    def operation(self, op_vv, w_c):
+        # Convert Cartesian operation to fractional
         cell_cv = self.calc.atoms.cell
-
-        # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
-
         op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
         op_cc = op_cc.T.copy()
         op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
@@ -81,13 +79,13 @@ class Projectable:
 
         if self.pseudo_wf:
             wf2 = self.wf.transform(op_cc_int)
-            return Projectable(self.calc, cell_cv, wf2)
+            return Projectable(self.calc, self.cell_cv, wf2)
         else:
-            # This one does not infact work
+            # This one does not in fact work
             raise NotImplementedError()
             wf = self.wf.copy()
             wf.symmetrize([op_cc_int], np.array([[0, 0, 0]], dtype=np.int64))
-            return Projectable(self.calc, cell_cv, wf)
+            return Projectable(self.calc, self.cell_cv, wf)
 
 
 class PaniProjectable:
@@ -109,11 +107,12 @@ class PaniProjectable:
         self.setups = setups
 
     @staticmethod
-    def compute_atom_mapping(atoms, op_scc, center_c, tol=1e-4):
+    def compute_atom_mapping(atoms, op_scc, w_c, tol=1e-4):
         """Compute atom mapping under symmetry operations.
 
         For each symmetry operation s and atom a, finds which atom b
-        satisfies: op_scc[s] @ spos_ac[a] ≈ spos_ac[b] (modulo lattice).
+        satisfies: op_scc[s] @ spos_ac[a] + w_c ≈ spos_ac[b]
+        (modulo lattice).
 
         Parameters
         ----------
@@ -121,6 +120,8 @@ class PaniProjectable:
             The atoms object.
         op_scc : ndarray
             Symmetry operations in fractional coordinates. Shape (nsym, 3, 3).
+        w_c : ndarray
+            Translation vector in fractional coordinates. Shape (3,).
         tol : float
             Tolerance for atom position matching.
 
@@ -130,15 +131,18 @@ class PaniProjectable:
             Atom mapping array. Shape (nsym, natoms).
             a_sa[s, a] = b means operation s maps atom a to atom b.
         """
-        spos_ac = (atoms.get_scaled_positions() - center_c) % 1.0 % 1.0
+        spos_ac = atoms.get_scaled_positions()
+        # Wrap to [0,1)
+        spos_ac = spos_ac % 1.0 % 1.0
         natoms = len(atoms)
         nsym = len(op_scc)
         a_sa = np.zeros((nsym, natoms), dtype=int)
 
         for s, op_cc in enumerate(op_scc):
             for a in range(natoms):
-                # Apply symmetry operation to atom a's position
-                spos_c = op_cc @ spos_ac[a]
+                # Apply symmetry operation: r' = W_cc @ r + w_c
+                spos_c = op_cc @ spos_ac[a] + w_c
+                spos_c = spos_c % 1.0 % 1.0
 
                 # Find which atom this maps to (handle PBC wrapping)
                 diff_ac = spos_ac - spos_c
@@ -170,20 +174,24 @@ class PaniProjectable:
                 s += np.vdot(P_i, N0_p @ other.P_ai[a])
         return s
 
-    def operation(self, op_cc, center_c):
+    def operation(self, op_cc, w_c):
         """Apply symmetry operation to create R|psi>.
 
         Parameters
         ----------
         op_cc : ndarray
             Rotation matrix R in fractional coordinates (3x3).
+        w_c : ndarray
+            Translation vector in fractional coordinates (3,).
 
         Returns
         -------
         PaniProjectable
             New state representing R|psi>.
         """
-        a_sa = self.compute_atom_mapping(self.atoms, op_cc[np.newaxis, :, :], center_c=center_c)
+        a_sa = self.compute_atom_mapping(self.atoms,
+                                         op_cc[np.newaxis, :, :],
+                                         w_c=w_c)
         map_a = {a: a_sa[0, a] for a in range(len(self.atoms))}
 
         # Rotate coefficients

@@ -78,15 +78,6 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
     # 3. Translate
     atoms.translate(translation)
     
-    # Make sure we get the C2v symmetry
-
-    spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
-    if spg_ops.pointgroup != 'C2v':
-        print('Got point group', spg_ops.pointgroup)
-        atoms.edit()
-        breakpoint()
-        raise SystemExit
-
     # Load turbomole reference
     tmole_json = Path(name + "_tmole.json")
     if not tmole_json.exists():
@@ -98,16 +89,6 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
     tmole_states = SymmetryEigenvalues.load(tmole_json)
     tmole_states = tmole_states.unroll_degeneracies().occupied_states
 
-    # Load GPAW calculation
-    #gpw_file = Path(name) / "wfs.gpw"
-    #if not gpw_file.exists():
-    #    raise FileNotFoundError(
-    #        f"GPAW file {gpw_file} not found. "
-    #        f"Run test_molecules.py::test_molecule[H2O] first to generate it."
-    #    )
-    #
-    #calc = GPAW(str(gpw_file))
-    
     calc = GPAW(mode={'name': 'pw', 'force_complex_dtype': True})
     atoms.calc = calc
     atoms.get_potential_energy()
