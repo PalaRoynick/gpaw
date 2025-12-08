@@ -8,6 +8,7 @@ commands = [
     ('info', 'gpaw.cli.info'),
     ('test', 'gpaw.cli.test'),
     ('dos', 'gpaw.cli.dos'),
+    ('pointgroup', 'gpaw.cli.pointgroup'),
     ('gpw', 'gpaw.cli.gpw'),
     ('completion', 'gpaw.cli.completion'),
     ('atom', 'gpaw.atom.aeatom'),

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import numpy as np
 from gpaw.utilities.pointgroup import SPGOperations, PointGroup
-from gpaw.utilities.pointgroup_proj import Projectable
+from gpaw.utilities.pointgroup_proj import Projectable, PaniProjectable
 
 @dataclass
 class State:
@@ -60,7 +60,7 @@ class SymmetryEigenvalues:
         return SymmetryEigenvalues(**json.loads(Path(filename).read_text()))
 
     @classmethod
-    def from_calc(cls, calc, layergroup=False):
+    def from_calc(cls, calc, layergroup=False, *, pani):
         spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
         for op_cc in calc.symmetry.op_scc:
             for W_cc in spg_ops.W_scc:
@@ -75,13 +75,22 @@ class SymmetryEigenvalues:
         eig_n = calc.get_eigenvalues()
         occ_n = calc.get_occupation_numbers()
         for band, (eig, occ) in enumerate(zip(eig_n, occ_n)):
-            signature = pg.signature(Projectable.from_calc(calc, band))
+            if pani:
+                P_ai = {}
+                P_ani = calc.wfs.kpt_u[0].P_ani
+                for a in P_ani.keys():
+                    P_ai[a] = P_ani[a][band]
+                proj = PaniProjectable(P_ai, calc.atoms, calc.wfs.setups)
+                signature = pg.signature(proj)
+
+            else:
+                signature = pg.signature(Projectable.from_calc(calc, band))
             found = None
             for irrep, s in zip(
                 pg.character_table.irreps,
                 pg.detect_irrep(signature),
             ):
-                if s > 0.01:
+                if s > 1e-5: # 0.01:
                     print(band, eig, occ, irrep, f"{s.real:.2f}")
                     states.append(State(irrep, eig, occ, 1, s))
                     if found is not None:

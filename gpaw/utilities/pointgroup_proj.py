@@ -1,6 +1,6 @@
 import numpy as np
 from gpaw.rotation import rotation
-from gpaw.utilities import unpack_hermitian
+from gpaw.utilities import unpack_hermitian, unpack_density
 
 
 class PolynomialProjectable:
@@ -79,6 +79,7 @@ class Projectable:
 
         if self.pseudo_wf:
             wf2 = self.wf.transform(op_cc_int)
+            wf2.data *= np.exp(2j * np.pi * w_c @ self.wf.desc.indices_cG)
             return Projectable(self.calc, self.cell_cv, wf2)
         else:
             # This one does not in fact work
@@ -169,9 +170,8 @@ class PaniProjectable:
         for a, P_i in self.P_ai.items():
             if a in other.P_ai:
                 # unpack or unpack2 N0_p.
-                N0_p = unpack_hermitian(self.setups[a].N0_p)
-                # dO_ii = self.setups[a].dO_ii
-                s += np.vdot(P_i, N0_p @ other.P_ai[a])
+                N0_ii = unpack_hermitian(self.setups[a].N0_p)
+                s += np.vdot(P_i, N0_ii @ other.P_ai[a])
         return s
 
     def operation(self, op_cc, w_c):
@@ -197,7 +197,7 @@ class PaniProjectable:
         # Rotate coefficients
         # Convert to Cartesian for Wigner rotation
         cell_cv = np.array(self.atoms.cell)
-        op_vv = cell_cv.T @ op_cc @ np.linalg.inv(cell_cv.T)
+        op_vv = (cell_cv.T @ op_cc @ np.linalg.inv(cell_cv.T))
 
         # Cache Wigner D-matrices for each l
         D_l = {}
@@ -216,7 +216,7 @@ class PaniProjectable:
 
                 # Get or compute Wigner D-matrix for this l
                 if l not in D_l:
-                    D_l[l] = rotation(l, op_vv)
+                    D_l[l] = rotation(l, op_vv.T)
                 D = D_l[l]
                 # Apply rotation to the spherical harmonic coefficients
                 P_a_new[ni:ni+nm] = D @ P_b[ni:ni+nm]

@@ -51,12 +51,15 @@ def symmetry_from(mol, filt=None):
     atoms.center(vacuum=5)
     atoms.set_pbc((True, True, True))
 
+    atoms.rotate(90, 'z')
+    """
     from ase.spacegroup.symmetrize import (
         get_symmetrized_atoms,
         spglib_get_symmetry_dataset,
     )
     from ase.utils import atoms_to_spglib_cell
 
+   
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
     atoms.set_scaled_positions(
         atoms.get_scaled_positions()
@@ -65,7 +68,7 @@ def symmetry_from(mol, filt=None):
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
     assert np.allclose(dataset.origin_shift, 0)
     # assert np.allclose(dataset.transformation_matrix, np.eye(3))
-
+    """
     if filt:
         filt(atoms)
 

@@ -402,7 +402,7 @@ def test_Oh():
         calc.write("Al13_wfs.gpw", mode="all")
 
     calc = GPAW("Al13_wfs.gpw")
-    gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
+    gpaw_states = SymmetryEigenvalues.from_calc(calc, False, pani=True)
     assert gpaw_states.little_group == "Oh"
     print("GPAW")
     print(gpaw_states.occupied_states)
@@ -460,7 +460,7 @@ def test_molecule(name, symmetry):
 
     with workdir(name):
         calc = GPAW("wfs.gpw")
-        gpaw_states = SymmetryEigenvalues.from_calc(calc, False)
+        gpaw_states = SymmetryEigenvalues.from_calc(calc, False, pani=True)
         assert gpaw_states.little_group.upper() == tmole_states.little_group.upper()
     print(f"{tmole_states}\n{gpaw_states}")
     gpaw_states = gpaw_states.occupied_states

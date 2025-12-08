@@ -180,7 +180,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        #print(f"{dataset=}")
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -205,7 +205,8 @@ class SPGOperations:
     def from_dataset(cls, dataset, atoms, verbose=False):
         W_scc = dataset.rotations
         w_sc = dataset.translations
-        origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
+        origin_shift_c = dataset.origin_shift
+        #origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         from gpaw.utilities.pointgroup_data import spglib_to_schoenflies

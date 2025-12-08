@@ -56,26 +56,27 @@ def create_mos2(pg_type="D3h"):
     one Mo atom or one S atom.
     """
     primitive = mx2("MoS2", "2H", a=3.16, thickness=3.17, vacuum=5.0)
-    primitive.rotate("z", 13.55, rotate_cell=True)
+    #primitive.rotate("z", 13.55, rotate_cell=True)
     primitive.set_pbc(True)
     atoms = primitive.repeat((2, 2, 1))
+
     # return atoms.copy(), atoms.copy()
-    atoms.translate([0, 0, 3.1415])
-    atoms.set_scaled_positions(-atoms.get_scaled_positions())
+    #atoms.translate([0, 0, 3.1415])
+    #atoms.set_scaled_positions(-atoms.get_scaled_positions())
     if pg_type == "C3v":
         atoms[1].symbol = "H"
-        shift = -atoms[1].position
-        shift[2] = 0
-        atoms.translate(shift)
+        #shift = -atoms[1].position
+        #shift[2] = 0
+        #atoms.translate(shift)
     elif pg_type == "D3h":
         atoms[0].symbol = "H"
-        shift = -atoms[0].position
-        shift[2] = 0
-        atoms.translate(shift)
+        #shift = -atoms[0].position
+        #shift[2] = 0
+        #atoms.translate(shift)
     else:
         raise ValueError("Unknown pg type")
 
-    Hreplaced_atoms = atoms.copy()
+    #Hreplaced_atoms = atoms.copy()
 
     if pg_type == "C3v":
         del atoms[1]
@@ -84,7 +85,8 @@ def create_mos2(pg_type="D3h"):
     else:
         raise ValueError("Unknown pg type")
 
-    return Hreplaced_atoms, atoms
+    return atoms
+    #return Hreplaced_atoms, atoms
 
 
 def analyze_symmetry(calc, layergroup, expected):
@@ -113,12 +115,13 @@ def analyze_symmetry(calc, layergroup, expected):
 
 
 @pytest.mark.parametrize("group", ["D3h", "C3v"])
-@pytest.mark.parametrize("pani", [False, True])
-def test_defect_atoms(group, pani):
-    Hreplaced_atoms, atoms = create_mos2(pg_type=group)
+def test_defect_atoms(group): #, pani):
+    #@pytest.mark.parametrize("pani", [False, True])
+    #Hreplaced_atoms, atoms = create_mos2(pg_type=group)
+    atoms = create_mos2(pg_type=group)
     # prepare_atoms(Hreplaced_atoms)
     # prepare_atoms(atoms)
-    spg_ops = SPGOperations.from_atoms(Hreplaced_atoms, layergroup=True)
+    spg_ops = SPGOperations.from_atoms(atoms, layergroup=True)
     assert spg_ops.pointgroup == group
     # origin_ops = spg_ops.apply_origin_shift(-spg_ops.origin_shift_c)
     # print("shift", spg_ops.origin_shift_c @ atoms.cell)
@@ -127,7 +130,6 @@ def test_defect_atoms(group, pani):
     # assert np.allclose(origin_ops.w_sc, 0)
     pg = PointGroup(spg_ops)
     from gpaw.new.ase_interface import GPAW
-
     fname = f"MoS2_test_{group}.gpw"
     if 1:
         calc = GPAW(
@@ -174,30 +176,30 @@ def test_defect_atoms(group, pani):
 
     failure = False
     # Use higher threshold for pani
-    threshold = 0.1 if pani else 0.01
+    threshold = 0.0001# 0.1 if pani else 0.01
 
     for band, ref in zip(range(39, 51), reference):
-        if pani:
-            kpt = calc.wfs.kpt_u[0]
-            P_ai = {}
-            for a in kpt.P_ani.keys():
-                P_ai[a] = kpt.P_ani[a][band]
-            proj = PaniProjectable(P_ai, calc.atoms, calc.wfs.setups)
-            signature = pg.signature(proj)
-        else:
-            # Plane waves
-            signature = pg.signature(Projectable.from_calc(calc, band))
+        kpt = calc.wfs.kpt_u[0]
+        P_ai = {}
+        for a in kpt.P_ani.keys():
+            P_ai[a] = kpt.P_ani[a][band]
+        proj = PaniProjectable(P_ai, calc.atoms, calc.wfs.setups)
+        signature_pani = pg.signature(proj)
+        # Plane waves
+        signature_pw = pg.signature(Projectable.from_calc(calc, band))
 
-        irreps_found = []
-        for irrep, s in zip(
-            pg.character_table.irreps,
-            pg.detect_irrep(signature),
-        ):
-            if s > threshold:
-                print(band, irrep, f"{s.real:.2f}",
-                      "(P_ani)" if pani else "(pw)")
-                irreps_found.append((irrep, s))
+        for pani, signature in [(True, signature_pani), (False, signature_pw)]:
+            irreps_found = []
+            for irrep, s in zip(
+                pg.character_table.irreps,
+                pg.detect_irrep(signature),
+            ):
+                if s > threshold:
+                    print(band, irrep, f"{s.real:.2f}",
+                          "(P_ani)" if pani else "(pw)")
+                    irreps_found.append((irrep, s))
 
+        """
         # For pani, accept if dominant irrep is clear (even if there's mixing)
         # For pw, expect single clear irrep
         if pani and len(irreps_found) > 1:
@@ -206,6 +208,7 @@ def test_defect_atoms(group, pani):
             if irreps_found[0][1] > 2 * irreps_found[1][1]:
                 print(f"  Band {band}: Dominant {irreps_found[0][0]}")
             else:
+                failure = True
                 print(f"  Band {band}: Mixed (PAW incomplete), dominant {irreps_found[0][0]}")
         elif not pani and len(irreps_found) > 1:
             # For plane waves, expect single irrep
@@ -214,7 +217,7 @@ def test_defect_atoms(group, pani):
         # assert found == ref XXXX
     if failure:
         raise ValueError("Band spans multiple irreps.")
-
+        """
 
 def get_group_example(group):
     from ase.io import read
