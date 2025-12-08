@@ -67,7 +67,9 @@ class Projectable:
         result = self.wf.integrate(projectable.wf)
         return result
 
-    def operation(self, op_vv):
+    def operation(self, op_vv, center_v):
+        # TODO: Center_v
+
         cell_cv = self.calc.atoms.cell
 
         # op_vv = self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
@@ -107,7 +109,7 @@ class PaniProjectable:
         self.setups = setups
 
     @staticmethod
-    def compute_atom_mapping(atoms, op_scc, tol=1e-4):
+    def compute_atom_mapping(atoms, op_scc, center_c, tol=1e-4):
         """Compute atom mapping under symmetry operations.
 
         For each symmetry operation s and atom a, finds which atom b
@@ -128,7 +130,7 @@ class PaniProjectable:
             Atom mapping array. Shape (nsym, natoms).
             a_sa[s, a] = b means operation s maps atom a to atom b.
         """
-        spos_ac = atoms.get_scaled_positions()
+        spos_ac = (atoms.get_scaled_positions() - center_c) % 1.0 % 1.0
         natoms = len(atoms)
         nsym = len(op_scc)
         a_sa = np.zeros((nsym, natoms), dtype=int)
@@ -168,7 +170,7 @@ class PaniProjectable:
                 s += np.vdot(P_i, N0_p @ other.P_ai[a])
         return s
 
-    def operation(self, op_cc):
+    def operation(self, op_cc, center_c):
         """Apply symmetry operation to create R|psi>.
 
         Parameters
@@ -181,7 +183,7 @@ class PaniProjectable:
         PaniProjectable
             New state representing R|psi>.
         """
-        a_sa = self.compute_atom_mapping(self.atoms, op_cc[np.newaxis, :, :])
+        a_sa = self.compute_atom_mapping(self.atoms, op_cc[np.newaxis, :, :], center_c=center_c)
         map_a = {a: a_sa[0, a] for a in range(len(self.atoms))}
 
         # Rotate coefficients

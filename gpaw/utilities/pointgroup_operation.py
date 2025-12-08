@@ -23,10 +23,11 @@ class OperationInfo:
     axis: np.array
 
     def __post_init__(self):
-        print('*** OperationInfo ***')
-        print(self)
-        print(self.op_cc)
-        print()
+        pass
+        #print('*** OperationInfo ***')
+        #print(self)
+        #print(self.op_cc)
+        #print()
 
     def is_clockwise(self, principal_axis):
         # Create arbitrary vector perpendicuylar to principal axis

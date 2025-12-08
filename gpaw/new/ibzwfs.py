@@ -488,7 +488,7 @@ class IBZWaveFunctions(Generic[WFT]):
                 for n, (e, f) in enumerate(zips(eig_n, occ_skn[0, k])):
                     # First, last and +-8 bands window around Fermi level:
                     if n == 0 or abs(n - n0) < 8 or n == nbands - 1:
-                        analysis = analyse_band(n)
+                        analysis = 'skipping' #analyse_band(n)
                         log(f'  {n:4} {e:13.3f}   {D * f:9.3f} {log.green}{analysis}{log.reset}')
                         skipping = False
                     else:

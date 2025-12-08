@@ -184,7 +184,8 @@ class ASECalculator:
 
         self.hooks.get('converged', lambda: None)()
 
-        self.symmetry_info()
+        #
+        #self.symmetry_info()
 
     def calculate_property(self,
                            atoms: Atoms | None,

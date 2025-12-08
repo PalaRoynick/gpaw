@@ -160,7 +160,7 @@ class SPGOperations:
     @classmethod
     def from_atoms(cls, atoms, verbose=False, *, layergroup: bool):
         # XXX: NOTE! This will modify the atoms!!!
-        print("Modifying atoms with translations (for now, temporarily)")
+        #print("Modifying atoms with translations (for now, temporarily)")
         if layergroup:
             return cls.from_atoms_layergroup(atoms, verbose=verbose)
         else:
@@ -180,7 +180,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        print(f"{dataset=}")
+        #print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -223,22 +223,22 @@ class SPGOperations:
         )
         print(f"unshifted {unshifted}")
         shifted = unshifted.apply_origin_shift(-origin_shift_c)
-        # print('Atoms before', atoms.get_positions())
-        # XXX: The apply origin shift has a negative sign
-        # XXX: It is bad that we modify atoms here
-        # XXX: All of this needs to be consolidated
-        if not np.allclose(origin_shift_c, 0):
-            raise ValueError(
-                f"Presymmetrize your system to have origin_shift of 0. {dataset=}"
-            )
-        # atoms.set_scaled_positions(atoms.get_scaled_positions() + origin_shift_c)
 
-        # print('Atoms after', atoms.get_positions())
-        # from ase.io import write
-        # write('after.xyz', atoms)
-        # asd
-        print("shifts", shifted.w_sc)
-        return shifted
+        # We shift the operations with origin_shift_c
+        # and therefore, we expect that all translations are cancelled
+        # This is the requirement for the set of operations to be a point
+        # group.
+        if not np.allclose(shifted.w_sc, 0):
+            raise ValueError(
+                "After applying the origin shift from spglib, we still "
+                "have translations. Thus, this does not appear to"
+                f" be a point group. Shifts after shifting: {shifted.w_sc}.")
+
+        #if not np.allclose(origin_shift_c, 0):
+        #    raise ValueError(
+        #        f"Presymmetrize your system to have origin_shift of 0. {dataset=}"
+        #    )
+        return unshifted
 
     @property
     def O_svv(self):
@@ -744,6 +744,10 @@ class PointGroup:
 
         self.character_table = character_table
 
+    @property
+    def center_c(self):
+        return dataset.transformation_matrix.T @ self.spg_ops.origin_shift_c
+
     def signature(self, projectable):
         signature = np.zeros((len(self.names_g),), dtype=complex)
         for o, op_cc in enumerate(self.ops_occ):
@@ -751,7 +755,7 @@ class PointGroup:
             signature[g] += (
                 1
                 / len(self.c4.ops_g[g])
-                * projectable.dot(projectable.operation(op_cc))
+                * projectable.dot(projectable.operation(op_cc, center_c=self.center_c))
             )
         return signature
 

@@ -21,7 +21,7 @@ def build_cell(atoms, group):
         atoms.center()
     else:
         atoms.center(vacuum=4)
-
+    atoms.set_pbc((True, True, True))
     atoms.translate(-atoms.get_center_of_mass())
     from ase.spacegroup.symmetrize import (
         spglib_get_symmetry_dataset,
@@ -73,10 +73,19 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
     if rotation_axis is not None:
         from ase.build import rotate
         angle = 37.5  # arbitrary angle in degrees
-        atoms.rotate(angle, rotation_axis, center='COM')
+        atoms.rotate(angle, rotation_axis, center='COM', rotate_cell=True)
 
     # 3. Translate
     atoms.translate(translation)
+    
+    # Make sure we get the C2v symmetry
+
+    spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
+    if spg_ops.pointgroup != 'C2v':
+        print('Got point group', spg_ops.pointgroup)
+        atoms.edit()
+        breakpoint()
+        raise SystemExit
 
     # Load turbomole reference
     tmole_json = Path(name + "_tmole.json")
@@ -90,14 +99,18 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
     tmole_states = tmole_states.unroll_degeneracies().occupied_states
 
     # Load GPAW calculation
-    gpw_file = Path(name) / "wfs.gpw"
-    if not gpw_file.exists():
-        raise FileNotFoundError(
-            f"GPAW file {gpw_file} not found. "
-            f"Run test_molecules.py::test_molecule[H2O] first to generate it."
-        )
-
-    calc = GPAW(str(gpw_file))
+    #gpw_file = Path(name) / "wfs.gpw"
+    #if not gpw_file.exists():
+    #    raise FileNotFoundError(
+    #        f"GPAW file {gpw_file} not found. "
+    #        f"Run test_molecules.py::test_molecule[H2O] first to generate it."
+    #    )
+    #
+    #calc = GPAW(str(gpw_file))
+    
+    calc = GPAW(mode={'name': 'pw', 'force_complex_dtype': True})
+    atoms.calc = calc
+    atoms.get_potential_energy()
 
     # Get symmetry operations
     spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=False)
@@ -145,6 +158,7 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
     print(f"Comparing TMOLE: {[s.irrep for s in tmole_states_cmp]}")
 
     for pani_irrep, tmole_state in zip(pani_irreps_cmp, tmole_states_cmp):
+        print(pani_irrep, tmole_state, '<--')
         assert sorted(tmole_state.irrep.upper()) == sorted(pani_irrep.upper())
 
 
