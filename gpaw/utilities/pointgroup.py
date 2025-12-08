@@ -745,31 +745,16 @@ class PointGroup:
         self.character_table = character_table
 
     def signature(self, projectable):
-        from gpaw.utilities.pointgroup_proj import PaniProjectable
-        
         signature = np.zeros((len(self.names_g),), dtype=complex)
         
-        # PaniProjectable uses fractional coords (W_scc, w_sc)
-        # Other projectables need Cartesian ops but we convert to fractional inside
-        if isinstance(projectable, PaniProjectable):
-            for o, (op_cc, w_c) in enumerate(zip(self.spg_ops.W_scc, self.spg_ops.w_sc)):
-                g = self.c4.g_o[o]
-                signature[g] += (
-                    1
-                    / len(self.c4.ops_g[g])
-                    * projectable.dot(projectable.operation(op_cc, w_c=w_c))
-                )
-        else:
-            # For other projectables, pass O_svv (Cartesian) and let them convert
-            # Note: ops_occ returns O_svv despite the variable name op_cc
-            for o, op_vv in enumerate(self.ops_occ):
-                g = self.c4.g_o[o]
-                w_c = self.spg_ops.w_sc[o]
-                signature[g] += (
-                    1
-                    / len(self.c4.ops_g[g])
-                    * projectable.dot(projectable.operation(op_vv, w_c=w_c))
-                )
+        # All projectables use fractional coords (op_cc, w_c) from W_scc
+        for o, (op_cc, w_c) in enumerate(zip(self.spg_ops.W_scc, self.spg_ops.w_sc)):
+            g = self.c4.g_o[o]
+            signature[g] += (
+                1
+                / len(self.c4.ops_g[g])
+                * projectable.dot(projectable.operation(op_cc, w_c=w_c))
+            )
         return signature
 
     @property

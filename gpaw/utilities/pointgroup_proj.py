@@ -16,11 +16,8 @@ class PolynomialProjectable:
         return np.dot(self.weights_c @ self.cell_cv,
                       other.weights_c @ other.cell_cv)
 
-    def operation(self, op_vv, w_c):
-        # Convert Cartesian operation to fractional
-        cell_cv = self.cell_cv
-        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
-        op_cc = op_cc.T.copy()
+    def operation(self, op_cc, w_c):
+        # op_cc is in fractional coordinates, use directly
         op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
         assert np.allclose(op_cc, op_cc_int)
         return PolynomialProjectable(
@@ -40,10 +37,10 @@ class LinearCombinationProjectable:
                 s += w * np.conjugate(w2) * projectable.dot(projectable2)
         return s
 
-    def operation(self, op_vv, w_c):
+    def operation(self, op_cc, w_c):
         return LinearCombinationProjectable(
             self.w_x,
-            [projectable.operation(op_vv, w_c=w_c)
+            [projectable.operation(op_cc, w_c=w_c)
              for projectable in self.projectables_x],
         )
 
@@ -69,13 +66,16 @@ class Projectable:
         result = self.wf.integrate(projectable.wf)
         return result
 
-    def operation(self, op_vv, w_c):
-        # Convert Cartesian operation to fractional
-        cell_cv = self.calc.atoms.cell
-        op_cc = np.linalg.inv(cell_cv.T) @ op_vv @ cell_cv.T
-        op_cc = op_cc.T.copy()
-        op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
-        assert np.allclose(op_cc, op_cc_int)
+    def operation(self, op_cc, w_c):
+        # For reciprocal space (plane waves), we need the transpose of the
+        # real-space rotation because reciprocal vectors transform with (R^-1)^T = (R^T)^-1
+        # Since op_cc is already integer in fractional coords,
+        # just transpose it.
+        op_cc_reciprocal = op_cc.T.copy()
+        op_cc_int = np.asarray(np.round(op_cc_reciprocal), dtype=np.int64)
+        assert np.allclose(op_cc_reciprocal, op_cc_int), (
+            f"Operation matrix is not integer: {op_cc_reciprocal}"
+        )
 
         if self.pseudo_wf:
             wf2 = self.wf.transform(op_cc_int)
