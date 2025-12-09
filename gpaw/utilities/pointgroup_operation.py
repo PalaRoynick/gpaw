@@ -64,8 +64,8 @@ class OperationInfo:
 
         # Reflection
         if np.allclose(eigs_n, [-1.0, 1.0, 1.0]):
-            print(vecs_n[0], 'axis of reflection')
-            print('total op', op_cc)
+            #print(vecs_n[0], 'axis of reflection')
+            #print('total op', op_cc)
             return cls(op_cc, "s", vecs_n[:, 0])
 
         # Inversion

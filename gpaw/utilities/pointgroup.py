@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 import numpy as np
 from gpaw.utilities.pointgroup_operation import OperationInfo, ppstr
+from gpaw.utilities.pointgroup_data import character_tables
 from ase import Atoms
 
 def debugprint(*args, **kwargs):
     pass
+
 
 @dataclass
 class CharacterTable:
@@ -133,11 +135,8 @@ class SPGOperations:
 
     def __post_init__(self):
         if not self.allow_translations:
-            print(
-                "TODO: Actually make sure that neglected translations"
-                "are a normal subgroup of the operations"
-            )
-            print("Filtering out translations", len(self.w_sc))
+            print(f'Before {self}')
+            operations_now = len(self.w_sc)
             new_W_scc, new_w_sc = [], []
             for W_cc, w_c in zip(self.W_scc, self.w_sc):
                 if np.allclose(w_c, 0, atol=0.01):
@@ -145,11 +144,18 @@ class SPGOperations:
                     new_w_sc.append(w_c)
             self.W_scc = new_W_scc
             self.w_sc = new_w_sc
-            print("Left", len(self.w_sc))
+
+            operations_after = len(self.w_sc)
+            if operations_now != operations_after:
+                import warnings
+                raise ValueError(f'Translational operations removed'
+                              f'{operations_now} -> {operations_after}.'
+                              'TODO: make sure they were actually correctly '
+                              'handled.')
 
             if not np.allclose(self.w_sc, 0):
                 print(f"{self}")
-                raise ValueError("We do not support translations atm.")
+                raise ValueError("Point groups don't support translations.")
 
     @property
     def character_table(self):
@@ -180,7 +186,7 @@ class SPGOperations:
             ),
             symprec=1e-1,
         )
-        print(f"{dataset=}")
+        debugprint(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
@@ -198,19 +204,20 @@ class SPGOperations:
             aperiodic_dir=2,
             symprec=1e-1,
         )
-        print(f"{dataset=}")
+        debugprint(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
     def from_dataset(cls, dataset, atoms, verbose=False):
         W_scc = dataset.rotations
         w_sc = dataset.translations
-        origin_shift_c = dataset.origin_shift
-        #origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
+        #origin_shift_c = dataset.origin_shift
+        origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         from gpaw.utilities.pointgroup_data import spglib_to_schoenflies
         pointgroup = spglib_to_schoenflies[dataset.pointgroup]
+
         if verbose:
             print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
         unshifted = cls(
@@ -222,7 +229,7 @@ class SPGOperations:
             pointgroup,
             allow_translations=True,
         )
-        print(f"unshifted {unshifted}")
+        #print(f"unshifted {unshifted}")
         shifted = unshifted.apply_origin_shift(-origin_shift_c)
 
         # We shift the operations with origin_shift_c
@@ -326,7 +333,12 @@ class ConjugacyClassClassifierClass:
         self.ops_g = []
 
         self.g_o = np.zeros((N,), int)  # Conjugacy class index for each op
+        iterations = 0
         while True:
+            iterations += 1
+            if iterations >= 1_000:
+                breakpoint()
+                raise RuntimeError('Unexpected infinite loop')
             # Loop until all operations are assigned a class
             if len(op_pool) == 0:
                 break
@@ -371,7 +383,7 @@ class ConjugacyClassClassifierClass:
         if all([info.cls == first_info.cls for info in operation_info_o]):
             return f"{N}{first_info.cls}"
 
-        print(f"{operation_info_o=}")
+        debugprint(f"{operation_info_o=}")
         raise ValueError("Could not detect conjugacy class.")
 
     def _resolve_1sv(self, count, operations):
@@ -695,6 +707,8 @@ class ConjugacyClassClassifierClass:
 
 class PointGroup:
     def __init__(self, spg_ops):  # , principal_axis=[0, 0, 1]):
+        # TODO: Create a class method to create from atoms
+        # Make spg_ops obsolete
         self.spg_ops = spg_ops
         print("POINTGROUP", spg_ops.pointgroup)
         self.verbose = True
@@ -711,6 +725,8 @@ class PointGroup:
             atoms=spg_ops.atoms,
             # principal_axis=principal_axis,
         )
+
+        assert self.detected_pointgroup == self.spg_ops.pointgroup
         # self._find_conjugacy_classes()
         # self._build_character_table()
 
@@ -744,6 +760,16 @@ class PointGroup:
         #    print(character_table.detect_irrep(signature_g=self.character_ig[i]))
 
         self.character_table = character_table
+
+    @property
+    def detected_pointgroup(self):
+        names_g = set(self.c4.names_g)
+        for name, table_data in character_tables.items():
+            if set(table_data["classes"]) == names_g:
+                print(f'Detected point group {name} from irreps {names_g}')
+                return name
+        else:
+            raise ValueError(f'Cannot detect point group for conjugacy classes {names_g}')
 
     def signature(self, projectable):
         signature = np.zeros((len(self.names_g),), dtype=complex)
