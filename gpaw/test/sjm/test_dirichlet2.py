@@ -58,6 +58,3 @@ def test_dirichlet2():
     assert abs(atoms.calc.get_electrode_potential() - pot) < tol
     assert abs(-atoms.calc.get_fermi_level() - pot) < tol
     assert abs(E1 - E2) < 1e-4
-
-
-test_dirichlet2()
