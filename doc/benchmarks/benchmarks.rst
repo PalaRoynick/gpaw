@@ -2,6 +2,10 @@
 Benchmarks
 ==========
 
+.. image:: pw-perf-index.svg
+.. image:: lcao-perf-index.svg
+.. image:: fd-perf-index.svg
+
 See :git:`gpaw/benchmark/performance_index.py`.
 
 .. contents::
@@ -99,3 +103,6 @@ The future
 ----------
 
 * Added three more systems (``ErGe-2M``, ``Mn2O2-3M``, ``Fe8O8-3M``).
+
+
+(:download:`pw-perf-index.svg`)
