@@ -129,7 +129,7 @@ class DirOptPWFD(PWFDEigensolver):
 
         # total projected search_direction length
         slength = ibzwfs.kpt_comm.sum_scalar(
-            sum(p_nX.norm2().sum() for p_nX in p_unX))**0.5
+            sum(weight*p_nX.norm2().sum() for weight, p_nX in zip(weights, p_unX)))**0.5
         max_step = 0.2
         alpha = max_step / slength if slength > max_step else 1.0
 
