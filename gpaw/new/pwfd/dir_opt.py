@@ -115,11 +115,11 @@ class DirOptPWFD(PWFDEigensolver):
         if self.search_dir is None:
             self.search_dir = LBFGS()
 
-        weights = [wfs.weight for wfs in ibzwfs]
+        weights_u = [wfs.weight for wfs in ibzwfs]
 
         p_unX = self.search_dir.update(
-            MultiXArray(psit_unX, ibzwfs.kpt_comm, weights),
-            MultiXArray(pg_unX, ibzwfs.kpt_comm, weights)).a_unX
+            MultiXArray(psit_unX, ibzwfs.kpt_comm, weights_u),
+            MultiXArray(pg_unX, ibzwfs.kpt_comm, weights_u)).a_unX
 
         for wfs, p_nX in zips(ibzwfs, p_unX):
             # projecting search direction on tangent space at psi
@@ -129,7 +129,8 @@ class DirOptPWFD(PWFDEigensolver):
 
         # total projected search_direction length
         slength = ibzwfs.kpt_comm.sum_scalar(
-            sum(weight*p_nX.norm2().sum() for weight, p_nX in zip(weights, p_unX)))**0.5
+            sum(weight * p_nX.norm2().sum()
+                for weight, p_nX in zips(weights_u, p_unX)))**0.5
         max_step = 0.2
         alpha = max_step / slength if slength > max_step else 1.0
 
@@ -166,6 +167,7 @@ class DirOptPWFD(PWFDEigensolver):
             shape = (-1,) + (1,) * (grad_nX.data.ndim - 1)
             grad_nX.data *= weight_n.reshape(shape)
         error = ibzwfs.kpt_comm.sum_scalar(error)
+
 
         return 0.0, error, energies
 

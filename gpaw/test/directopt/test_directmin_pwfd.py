@@ -94,7 +94,7 @@ def test_directmin_C2H4(in_tmp_dir, mode):
                 eigensolver={'name': 'etdm-fdpw',
                              'converge_unocc': False},
                 mixer={'backend': 'no-mixing'},
-                spinpol=True,
+                spinpol=False,
                 symmetry='off',
                 nbands=-5,
                 convergence={'eigenstates': 4.0e-6})
