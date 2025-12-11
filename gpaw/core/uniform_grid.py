@@ -779,8 +779,10 @@ class UGArray(XArray[UGDesc]):
 
     def symmetrize(self, rotation_scc, translation_sc):
         """Make data symmetric."""
-        if len(rotation_scc) == 1:
-            return
+        # if len(rotation_scc) == 1:
+        #    if np.allclose(rotation_scc[0], np.eye(3)):
+        #        if np.allclose(translation_sc[0], [0, 0, 0]):
+        #            return
 
         a_xR = self.gather()
 

@@ -429,8 +429,101 @@ class IBZWaveFunctions(Generic[WFT]):
                 elif self.comm.rank == 0:
                     self.kpt_comm.receive(buf_nX, rank)
                     writer.fill(flags.to_storage_dtype(buf_nX * c))
+    
+    def write_summary(self, log, atoms):
+        from gpaw.utilities.pointgroup import SPGOperations, PointGroup
+        from gpaw.utilities.pointgroup_proj import Projectable
+        spg_ops = SPGOperations.from_atoms(atoms, layergroup=False)
+        # Make sure spglib has same symmetries
+        for op_cc in atoms.calc.symmetry.op_scc:
+            for W_cc in spg_ops.W_scc:
+                if np.allclose(op_cc.T, W_cc):
+                    break
+            else:
+                raise ValueError(f"Symmetry not found. {op_cc}.")
 
-    def write_summary(self, log):
+        def analyse_band(band):
+            analysis = ''
+            signature = pg.signature(Projectable.from_calc(atoms.calc, band))
+            found = None
+            for irrep, s in zip(
+                pg.character_table.irreps,
+                pg.detect_irrep(signature),
+            ):
+                if s > 0.01:
+                    analysis += f'{irrep}'
+            return analysis
+
+        pg = PointGroup(spg_ops)
+        fl = self.fermi_levels * Ha
+        if len(fl) == 1:
+            log(f'\nFermi level: {fl[0]:.3f}')
+        else:
+            log(f'\nFermi levels: {fl[0]:.3f}, {fl[1]:.3f}')
+
+        ibz = self.ibz
+
+        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+
+        if self.comm.rank != 0:
+            return
+
+        eig_skn *= Ha
+
+        D = self.spin_degeneracy
+        nbands = eig_skn.shape[2]
+
+        for k, (x, y, z) in enumerate(ibz.kpt_kc):
+            if k == 3:
+                log(f'(only showing first 3 out of {len(ibz)} k-points)')
+                break
+
+            log(f'\nkpt = [{x:.3f}, {y:.3f}, {z:.3f}], '
+                f'weight = {ibz.weight_k[k]:.3f}:')
+            log(f'Point group: {pg.spg_ops.pointgroup}')
+            if self.nspins == 1:
+                skipping = False
+                log(f'  Band      eig [eV]   occ [0-{D}]')
+                eig_n = eig_skn[0, k]
+                n0 = (eig_n < fl[0]).sum() - 0.5
+                for n, (e, f) in enumerate(zips(eig_n, occ_skn[0, k])):
+                    # First, last and +-8 bands window around Fermi level:
+                    if n == 0 or abs(n - n0) < 8 or n == nbands - 1:
+                        analysis = 'skipping' #analyse_band(n)
+                        log(f'  {n:4} {e:13.3f}   {D * f:9.3f} {log.green}{analysis}{log.reset}')
+                        skipping = False
+                    else:
+                        if not skipping:
+                            log('   ...')
+                            skipping = True
+            else:
+                log('  Band      eig [eV]   occ [0-1]'
+                    '      eig [eV]   occ [0-1]')
+                for n, (e1, f1, e2, f2) in enumerate(zips(eig_skn[0, k],
+                                                          occ_skn[0, k],
+                                                          eig_skn[1, k],
+                                                          occ_skn[1, k])):
+                    log(f'  {n:4} {e1:13.3f}   {f1:9.3f}'
+                        f'    {e2:10.3f}   {f2:9.3f}')
+
+        try:
+            from ase.dft.bandgap import GapInfo
+        except ImportError:
+            log('No gapinfo -- requires new ASE')
+            return
+
+        try:
+            log()
+            fermilevel = fl[0]
+            gapinfo = GapInfo(eigenvalues=eig_skn - fermilevel)
+            log(gapinfo.description(ibz_kpoints=ibz.kpt_kc))
+        except ValueError:
+            # Maybe we only have the occupied bands and no empty bands
+            log('Could not find a gap')
+
+    
+    # This one is just without symmetry, keeping it separate for debugging reasons
+    def write_summary_old(self, log):
         fl = self.fermi_levels * Ha
         if len(fl) == 1:
             log(f'\nFermi level: {fl[0]:.3f}')

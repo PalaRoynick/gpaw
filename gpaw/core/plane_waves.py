@@ -903,6 +903,7 @@ class PWArray(XArray[PWDesc]):
         G_Q[:] = -1
         G_Q[Q1_G] = np.arange(len(Q1_G), dtype=int)
         G1_G2 = G_Q[Q2_G]
+
         assert -1 not in G1_G2
         data = np.ascontiguousarray(self.data[..., G1_G2])
         if complex_conjugate:
