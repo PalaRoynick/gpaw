@@ -9,12 +9,10 @@ from gpaw.solvation.sjm import SJM, SJMPower12Potential
 @pytest.mark.old_gpaw_only
 # @pytest.mark.ci maybe
 def test_dirichlet():
-    epsinf = 78.36
-    gamma = 0.00114843767916
-    T = 298.15
-
-    def calculator():
-        return SJM(
+    atoms = fcc111('H', size=(1, 1, 1), a=2.5)
+    atoms.center(axis=2, vacuum=5)
+    atoms.cell[2][2] = 10
+    atoms.calc = SJM(
             sj={'target_potential': 4.5,
                 'jelliumregion': {'top': 10.},
                 'tol': 0.5,
@@ -35,15 +33,11 @@ def test_dirichlet():
             basis='dzp',
             cavity=EffectivePotentialCavity(
                 effective_potential=SJMPower12Potential(),
-                temperature=T,
+                temperature=298.15,
                 surface_calculator=GradientSurface()),
-            dielectric=LinearDielectric(epsinf=epsinf),
-            interactions=[SurfaceInteraction(surface_tension=gamma)])
+            dielectric=LinearDielectric(epsinf=78.36),
+            interactions=[SurfaceInteraction(surface_tension=0)])
 
-    atoms = fcc111('H', size=(1, 1, 1), a=2.5)
-    atoms.center(axis=2, vacuum=5)
-    atoms.cell[2][2] = 10
-    atoms.calc = calculator()
     atoms.get_forces()
 
     pot = atoms.calc.parameters['sj']['target_potential']
