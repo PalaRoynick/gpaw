@@ -106,9 +106,11 @@ class PaniProjectable:
         self.P_ai = P_ai
         self.atoms = atoms
         self.setups = setups
+        self.norm = self.dot(self) ** 0.5
+        self.P_ai = {a: P_i/ self.norm for a, P_i in P_ai.items()}
 
     @staticmethod
-    def compute_atom_mapping(atoms, op_scc, w_c, tol=1e-4):
+    def compute_atom_mapping(atoms, op_scc, w_c, tol=1e-1):
         """Compute atom mapping under symmetry operations.
 
         For each symmetry operation s and atom a, finds which atom b
