@@ -547,7 +547,8 @@ class IBZWaveFunctions(Generic[WFT]):
                                  density: Density) -> float:
         e_kin = 0.0
         for wfs in self:
-            e_kin += hamiltonian.calculate_kinetic_energy(wfs, skip_sum=True)
+            ekin = hamiltonian.calculate_kinetic_energy(wfs, skip_sum=True)
+            e_kin += wfs.weight * ekin
         e_kin = self.comm.sum_scalar(e_kin)
 
         # PAW corrections:

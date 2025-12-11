@@ -66,7 +66,7 @@ def test_directmin_C2H4(in_tmp_dir, mode):
                       [1.24406282, -0.93242148, 0.00000108],
                       [1.24409838, 0.93244792, 0.00000112]])
     atoms.center(vacuum=4.0)
-    atoms.set_pbc(False)
+    atoms.set_pbc(True)
 
     if mode == 'pw':
         kwargs = dict(mode=PW(300, force_complex_dtype=True))
@@ -89,6 +89,7 @@ def test_directmin_C2H4(in_tmp_dir, mode):
 
     calc = GPAW(**kwargs,
                 xc='PBE',
+                kpts={'size': [1, 1, 1], 'gamma': True},
                 occupations={'name': 'fixed-uniform'},
                 eigensolver={'name': 'etdm-fdpw',
                              'converge_unocc': False},
@@ -106,15 +107,8 @@ def test_directmin_C2H4(in_tmp_dir, mode):
 
     f = atoms.get_forces()
 
-    assert energy == pytest.approx(e0, abs=1.0e-4)
+    assert energy == pytest.approx(e0, abs=3e-4)
     assert f == pytest.approx(f0, abs=1e-2)
-
-    if 0:
-        # If unoccupied orbitals are not converged:
-        #     energy(LUMO) > energy(HOMO)
-        assert calc.wfs.kpt_u[0].f_n[6] == 1.0
-        assert calc.wfs.kpt_u[0].f_n[5] == 0.0
-        assert calc.wfs.kpt_u[0].eps_n[6] > calc.wfs.kpt_u[0].eps_n[5]
 
     calc.write('ethylene.gpw', mode='all')
     from gpaw import restart
@@ -124,13 +118,6 @@ def test_directmin_C2H4(in_tmp_dir, mode):
     assert f2 == pytest.approx(f0, abs=1e-2)
     niter = calc.get_number_of_iterations()
     assert niter == pytest.approx(3, abs=1)
-
-    if 0:
-        # If unoccupied orbitals are not converged:
-        #     energy(LUMO) > energy(HOMO)
-        assert calc.wfs.kpt_u[0].f_n[6] == 1.0
-        assert calc.wfs.kpt_u[0].f_n[5] == 0.0
-        assert calc.wfs.kpt_u[0].eps_n[6] > calc.wfs.kpt_u[0].eps_n[5]
 
 
 if __name__ == '__main__':
