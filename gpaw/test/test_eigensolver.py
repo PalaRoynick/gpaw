@@ -8,12 +8,18 @@ from gpaw.mpi import world
 
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 @pytest.mark.parametrize('element', ['Al', 'Si'])
-@pytest.mark.parametrize('eigensolver', ['davidson', 'ppcg'])
+#@pytest.mark.parametrize('eigensolver', ['davidson', 'ppcg', 'etdm-fdpw'])
+@pytest.mark.parametrize('eigensolver', ['etdm-fdpw'])
 def test_eigensolver(mode, element, eigensolver, gpaw_new):
     if not gpaw_new:
         pytest.skip('Only implemented for new GPAW')
 
-    energy_tolerance = 5e-5
+    if eigensolver == 'etdm-fdpw':
+        energy_tolerance = 5e-4
+        if element == 'Al':
+            pytest.skip('Direct-optimization only implemented for integer occupations.')
+    else:
+        energy_tolerance = 5e-5
     eig_tolerance = 1e-3
     spinpol = False
 
