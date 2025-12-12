@@ -1,5 +1,4 @@
 import pytest
-
 from gpaw import restart
 from gpaw.solvation.sjm import SJM
 

@@ -5,8 +5,10 @@ import pytest
 @pytest.mark.ci
 def test_scf(atoms, calculator):
     atoms.calc = calculator
-    atoms.calc.set(sj={'target_potential': 3.64,
+    tol = 0.5
+    pot = 3.64
+    atoms.calc.set(sj={'target_potential': pot,
                        'excess_electrons': 0.02,
-                       'tol': 0.5})
+                       'tol': tol})
     atoms.get_potential_energy()
-    # XXX Not assertive enough
+    assert abs(atoms.calc.get_electrode_potential() - pot) < tol
