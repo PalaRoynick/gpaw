@@ -120,10 +120,10 @@ class PPCG(PWFDEigensolver):
             else:
                 self.blocksize = 512
 
-        if isinstance(self.wf_grid, PWDesc):
-            S = self.wf_grid.comm.size
+        # if isinstance(self.wf_grid, PWDesc):
+        #     S = self.wf_grid.comm.size
             # Use a multiple of S for maximum efficiency
-            self.blocksize = int(np.ceil(self.blocksize / S)) * S
+        #     self.blocksize = int(np.ceil(self.blocksize / S)) * S
 
         super()._initialize(ibzwfs)
         if self.include_cg:
@@ -299,6 +299,9 @@ class PPCG(PWFDEigensolver):
                 pot_inner = potential.copy()
                 pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
                 dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
+                vt_sR_local = Ht.args[0].gather(broadcast=True)
+                new_args = (vt_sR_local, *Ht.args[1:])
+                Ht_local = partial(Ht.func, *new_args, **Ht.keywords)
 
                 mybands = np.arange(domain_comm.rank, b, domain_comm.size)
                 P_aNi = P_ani.atoms_a2a_bands()
@@ -309,13 +312,14 @@ class PPCG(PWFDEigensolver):
                 P3_ni = P3_aNi.matrix.data
                 dS_Aii = dS_aii.gather(broadcast=True)
                 
-                for j in range(0, b + domain_comm.size - 1 // domain_comm.size, self.blocksize):
+                for j in range(0, (b + domain_comm.size - 1) // domain_comm.size, self.blocksize):
                     block_slice_base = \
                         slice(min(j, psit_nX.data.shape[0]), 
                               min(j + self.blocksize, psit_nX.data.shape[0]))
                     block = \
                         block_slice_base.stop - block_slice_base.start
                     block_slice = block_slice_base # active_indicies[block_slice_base]
+                    assert block <= self.blocksize
 
                     buff_bX.data[:block] = \
                         psit_nX.data[block_slice]
@@ -390,7 +394,9 @@ class PPCG(PWFDEigensolver):
 
                     # XXX: Apply should really have methods for not doing
                     # any domain comunication...
-                    Ht(buff_bX[block:nblocks], out=Hbuff_bX[block:nblocks])
+                    with tracectx('Apply H'):
+                        Ht_local(buff_bX[block:nblocks],
+                                 out=Hbuff_bX[block:nblocks])
                     dH_inner(Pbuf_abi[:, block:nblocks],
                              out_ani=HPbuf_abi[:, block:nblocks])
                     Hbuff_bX[block:nblocks].matrix_elements(
@@ -482,24 +488,25 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[:block] \
                             + Pbuf_abi.matrix.data[block:2 * block]
 
-                wfs.eig_n[:] = 0
-                wfs.myeig_n[:] = new_eigs_n
-                domain_comm.sum(wfs.myeig_n)
-                band_comm.sum(wfs._eig_n)
-                
                 pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
                 psit0_nX = pw_desc.from_data(psit_nX.data)
                 residual0_nX = pw_desc.from_data(residual_nX.data)
-                Ht(psit0_nX, out=residual0_nX, spin=wfs.spin, calculate_energy=True)
+                Ht_local(psit0_nX, out=residual0_nX, spin=wfs.spin, calculate_energy=True)
                 
-                psit_nX.domain_a2a_bands()
-                residual_nX.domain_a2a_bands()
-                if self.include_cg:
-                    P_nX.domain_a2a_bands()
-                
-                # Convert P_ni data to P_ani
-                P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
-                P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
+                with tracectx('MPI Stuff', gpu=xp is not np):
+                    wfs.eig_n[:] = 0
+                    wfs.myeig_n[:] = new_eigs_n
+                    domain_comm.sum(wfs.myeig_n)
+                    band_comm.sum(wfs._eig_n)
+                    
+                    psit_nX.domain_a2a_bands()
+                    residual_nX.domain_a2a_bands()
+                    if self.include_cg:
+                        P_nX.domain_a2a_bands()
+                    
+                    # Convert P_ni data to P_ani
+                    P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
+                    P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
 
             wfs.orthonormalized = False
             wfs.orthonormalize(data_buffer=self.data_buffers[0])

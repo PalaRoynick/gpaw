@@ -59,7 +59,6 @@ class PWHamiltonian(Hamiltonian):
         
         reqs2 = []
 
-        # for n, (req, out_G) in enumerate(zip(reqs, out_nG.data)): Not all ranks have equal bands :(
         for n in range(psit_nG.maxbands):
             if n < psit_nG.data.shape[0]:
                 if reqs[n] is not None:
