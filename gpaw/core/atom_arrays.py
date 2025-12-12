@@ -15,6 +15,7 @@ from gpaw.new import prod, zips
 from gpaw.new.c import dH_aii_times_P_ani_gpu
 from gpaw.typing import Array1D, ArrayLike1D
 from gpaw.utilities import as_real_dtype
+from gpaw.new import trace
 
 
 class AtomArraysLayout(XP):
@@ -444,6 +445,7 @@ class AtomArrays:
         for request, _ in requests:
             comm.wait(request)
 
+    @trace
     def atoms_a2a_bands(self, inverse_layout=None, out=None):
         """
         Transform atom distibution to band distribution if inverse_layout is None.

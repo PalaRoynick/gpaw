@@ -206,6 +206,14 @@ class PPCG(PWFDEigensolver):
 
             xp = M_nn.xp
 
+            pot_inner = potential.copy()
+            pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
+            dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
+            vt_sR_local = Ht.args[0].gather(broadcast=True)
+            new_args = (vt_sR_local, *Ht.args[1:])
+            Ht_local = partial(Ht.func, *new_args, **Ht.keywords)
+            dS_Aii = dS_aii.gather(broadcast=True)
+
             psit_nX = wfs.psit_nX
             b = psit_nX.mydims[0]
 
@@ -290,18 +298,12 @@ class PPCG(PWFDEigensolver):
 
             active_bs = len(active_indicies)
 
-            with tracectx('Block-diagonal Update'):
+            with tracectx('MPI Pre-Block-diagonal'):
                 new_eigs_n = np.zeros_like(wfs.myeig_n)  # New eigenvalues
                 psit_nX.domain_a2a_bands()
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands(transfer_data=i > 0)
-                pot_inner = potential.copy()
-                pot_inner.dH_asii = pot_inner.dH_asii.gather(broadcast=True)
-                dH_inner = partial(pot_inner.deltaH, spin=wfs.spin)
-                vt_sR_local = Ht.args[0].gather(broadcast=True)
-                new_args = (vt_sR_local, *Ht.args[1:])
-                Ht_local = partial(Ht.func, *new_args, **Ht.keywords)
 
                 mybands = np.arange(domain_comm.rank, b, domain_comm.size)
                 P_aNi = P_ani.atoms_a2a_bands()
@@ -310,8 +312,8 @@ class PPCG(PWFDEigensolver):
                 P2_ni = P2_aNi.matrix.data
                 P3_aNi = P3_ani.atoms_a2a_bands()
                 P3_ni = P3_aNi.matrix.data
-                dS_Aii = dS_aii.gather(broadcast=True)
-                
+            
+            with tracectx('Block-diagonal'):    
                 for j in range(0, (b + domain_comm.size - 1) // domain_comm.size, self.blocksize):
                     block_slice_base = \
                         slice(min(j, psit_nX.data.shape[0]), 
@@ -392,8 +394,6 @@ class PPCG(PWFDEigensolver):
                     if not self.promote_inner_dtype:
                         MBuf_bb = MH_bb
 
-                    # XXX: Apply should really have methods for not doing
-                    # any domain comunication...
                     with tracectx('Apply H'):
                         Ht_local(buff_bX[block:nblocks],
                                  out=Hbuff_bX[block:nblocks])
@@ -493,20 +493,20 @@ class PPCG(PWFDEigensolver):
                 residual0_nX = pw_desc.from_data(residual_nX.data)
                 Ht_local(psit0_nX, out=residual0_nX, spin=wfs.spin, calculate_energy=True)
                 
-                with tracectx('MPI Stuff', gpu=xp is not np):
-                    wfs.eig_n[:] = 0
-                    wfs.myeig_n[:] = new_eigs_n
-                    domain_comm.sum(wfs.myeig_n)
-                    band_comm.sum(wfs._eig_n)
-                    
-                    psit_nX.domain_a2a_bands()
-                    residual_nX.domain_a2a_bands()
-                    if self.include_cg:
-                        P_nX.domain_a2a_bands()
-                    
-                    # Convert P_ni data to P_ani
-                    P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
-                    P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
+            with tracectx('MPI Post-Block', gpu=xp is not np):
+                wfs.eig_n[:] = 0
+                wfs.myeig_n[:] = new_eigs_n
+                domain_comm.sum(wfs.myeig_n)
+                band_comm.sum(wfs._eig_n)
+                
+                psit_nX.domain_a2a_bands()
+                residual_nX.domain_a2a_bands()
+                if self.include_cg:
+                    P_nX.domain_a2a_bands()
+                
+                # Convert P_ni data to P_ani
+                P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
+                P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
 
             wfs.orthonormalized = False
             wfs.orthonormalize(data_buffer=self.data_buffers[0])
