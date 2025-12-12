@@ -21,6 +21,7 @@ class DirOptPWFD(PWFDEigensolver):
                  hamiltonian,
                  excited_state: bool = False,
                  converge_unocc: bool = False,
+                 alpha: float = 0.2,
                  scalapack_params=(None, 1, 1, None)):
         # Lazy initialization of search_dir, done later in iterate()
         self.search_dir: LBFGS | None = None
@@ -28,6 +29,7 @@ class DirOptPWFD(PWFDEigensolver):
         self.converge_unocc = converge_unocc
         self.dS_aii: AtomArrays
         self.nocc_s: list[int] = []
+        self.alpha = alpha
         self.scalapack = scalapack_params
         super().__init__(hamiltonian)
 
@@ -127,16 +129,9 @@ class DirOptPWFD(PWFDEigensolver):
             # as it doesn't apply overlap matrix because of S^{-1}
             project_gradient(p_nX, wfs)
 
-        # total projected search_direction length
-        slength = ibzwfs.kpt_comm.sum_scalar(
-            sum(weight * p_nX.norm2().sum()
-                for weight, p_nX in zips(weights_u, p_unX)))**0.5
-        max_step = 0.2
-        alpha = max_step / slength if slength > max_step else 1.0
-
         # update wavefunctions coefficents
         for psit_nX, p_nX in zips(psit_unX, p_unX):
-            psit_nX.data += alpha * p_nX.data
+            psit_nX.data += self.alpha * p_nX.data
 
         # update wavefunctions
         for wfs in ibzwfs:
@@ -167,7 +162,6 @@ class DirOptPWFD(PWFDEigensolver):
             shape = (-1,) + (1,) * (grad_nX.data.ndim - 1)
             grad_nX.data *= weight_n.reshape(shape)
         error = ibzwfs.kpt_comm.sum_scalar(error)
-
 
         return 0.0, error, energies
 

@@ -66,7 +66,7 @@ def test_directmin_C2H4(in_tmp_dir, mode):
                       [1.24406282, -0.93242148, 0.00000108],
                       [1.24409838, 0.93244792, 0.00000112]])
     atoms.center(vacuum=4.0)
-    atoms.set_pbc(True)
+    atoms.set_pbc(False)
 
     if mode == 'pw':
         kwargs = dict(mode=PW(300, force_complex_dtype=True))
