@@ -1,10 +1,11 @@
 import pytest
 
 
-#@pytest.mark.skip('See #1510')
+# @pytest.mark.skip('See #1510')
 @pytest.mark.old_gpaw_only
 # @pytest.mark.ci maybe
-def test_dirichlet(atoms):
+def test_dirichlet(atoms, calculator):
+    atoms.calc = calculator
     atoms.calc.set(sj={'tol': 0.5, 'dirichlet': True})
     atoms.get_forces()
 

@@ -4,7 +4,8 @@ import pytest
 @pytest.mark.old_gpaw_only
 @pytest.mark.ci
 @pytest.mark.serial
-def test_keys(atoms):
+def test_keys(atoms, calculator):
+    atoms.calc = calculator
     atoms.calc.set(
         sj={'excess_electrons': 1.,
             'jelliumregion': {'top': -2.,

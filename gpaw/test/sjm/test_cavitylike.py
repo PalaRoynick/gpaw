@@ -2,8 +2,9 @@ import pytest
 
 
 @pytest.mark.old_gpaw_only
-def test_cavitylike(atoms):
+def test_cavitylike(atoms, calculator):
     charge = 0.2
+    atoms.calc = calculator
     atoms.calc.set(sj={'jelliumregion': {'bottom': 'cavity_like'},
                        'target_potential': None,
                        'excess_electrons': 0.2})
