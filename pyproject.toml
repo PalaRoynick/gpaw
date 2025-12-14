@@ -7,8 +7,7 @@ name = 'gpaw'
 description = 'GPAW: DFT and beyond within the projector-augmented wave method'
 dynamic = ['version']
 readme = 'README.rst'
-license = 'GPL-3.0-or-later'
-license-files = ['LICENSE']
+license = { file = "LICENSE" }
 maintainers = [{ name = 'GPAW Community', email = 'gpaw-users@listserv.fysik.dtu.dk' }]
 
 classifiers = [
