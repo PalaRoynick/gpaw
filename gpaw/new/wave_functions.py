@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import ModuleType
 
 import numpy as np
+
 from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
 from gpaw.core.uniform_grid import UGArray
 from gpaw.mpi import MPIComm, serial_comm
@@ -135,6 +136,15 @@ class WaveFunctions:
         if self._eig_n is None:
             raise ValueError
         return self._eig_n
+
+    @eig_n.setter
+    def eig_n(self, value):
+        # It can induce (and has induced) mpi and related bugs to set wrong
+        # length or wrong dtype arrays, so we are being very careful here.
+        if value is not None:
+            assert value.dtype == np.float64
+            assert len(value) == self.nbands
+        self._eig_n = value
 
     @property
     def occ_n(self) -> Array1D:

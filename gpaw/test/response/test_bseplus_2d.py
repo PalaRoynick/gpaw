@@ -1,16 +1,17 @@
 import numpy as np
-from gpaw.response.chi0 import Chi0Calculator, get_frequency_descriptor
 import pytest
-from gpaw.response.pair import get_gs_and_context
+from ase.units import Bohr
+
 from gpaw.mpi import world
 from gpaw.response.bse import BSE, BSEPlus
-from gpaw.response.df import Chi0DysonEquations
+from gpaw.response.chi0 import Chi0Calculator, get_frequency_descriptor
 from gpaw.response.coulomb_kernels import CoulombKernel
-from ase.units import Bohr
+from gpaw.response.df import Chi0DysonEquations
+from gpaw.response.pair import get_gs_and_context
 
 
 @pytest.mark.response
-def test_BSEPlus_2d(in_tmp_dir, gpw_files):
+def test_BSEPlus_2d(in_tmp_dir, gpw_files, scalapack):
     """
     This test makes a BSEPlus calculation with the BSEPlus class and
     manually to test that the BSEPlus code is working. It tests that the

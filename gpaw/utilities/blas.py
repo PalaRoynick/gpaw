@@ -12,15 +12,16 @@ https://www.netlib.org/lapack/lug/node145.html
 """
 from typing import TypeVar
 
-import gpaw.cgpaw as cgpaw
 import numpy as np
 import scipy.linalg.blas as blas
+
+import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.gpu import cupy_is_fake
 from gpaw.new import prod
+from gpaw.new.timer import trace
 from gpaw.typing import Array2D, ArrayND
 from gpaw.utilities import is_contiguous
-from gpaw.new.timer import trace
 
 
 def is_finite(array, tril=False):
@@ -356,8 +357,16 @@ def r2k(alpha, a, b, beta, c, trans='c'):
                 a.dtype == complex and b.dtype == complex and
                 c.dtype == complex)
         # assert a.flags.c_contiguous and b.flags.c_contiguous
-        assert a.strides[-1] == a.itemsize or a.size == 0
-        assert b.strides[-1] == b.itemsize or b.size == 0
+
+        # Inserted or a.shape[-1] == 1 as well. Due to reshaping
+        # a singleton dimension with reshape -1 makes the stride go back
+        # to the stide of the next one.
+        # >>> np.reshape(np.zeros((100, 10))[:, 9:10], (100, -1)).strides
+        # (80, 80)
+        # >>> np.reshape(np.zeros((100, 10)), (100, -1)).strides
+        # (80, 8)
+        assert (a.strides[-1] == a.itemsize or a.shape[-1] == 1) or a.size == 0
+        assert (b.strides[-1] == b.itemsize or b.shape[-1] == 1) or b.size == 0
         assert a.ndim > 1
         assert a.shape == b.shape
         if trans == 'c':
@@ -374,6 +383,8 @@ def gpu_r2k(alpha, a, b, beta, c, trans='c'):
     """Launch CPU or GPU version of r2k()."""
     if cupy_is_fake:
         return r2k(alpha, a._data, b._data, beta, c._data, trans)
+
+    from cupy.cuda.stream import get_current_stream
 
     assert a.shape == b.shape
     assert c.shape[0] == a.shape[0]
@@ -393,7 +404,8 @@ def gpu_r2k(alpha, a, b, beta, c, trans='c'):
     lda = a.strides[0] // a.itemsize
     ldb = b.strides[0] // b.itemsize
     ldc = c.strides[0] // c.itemsize
-    cgpaw.r2k_gpu(alpha,
+    cgpaw.r2k_gpu(get_current_stream().ptr,
+                  alpha,
                   a,
                   b,
                   beta,
@@ -421,6 +433,9 @@ def gpu_dotc(a, b):
                 (is_contiguous(a, complex) and is_contiguous(b, complex)))
         assert a.shape == b.shape
 
+        from cupy.cuda.stream import get_current_stream
+        assert get_current_stream().ptr == 0
+
     return cgpaw.dotc_gpu(a.data.ptr, a.shape,
                           b.data.ptr, a.dtype)
 
@@ -442,6 +457,9 @@ def gpu_dotu(a, b):
         assert ((is_contiguous(a, float) and is_contiguous(b, float)) or
                 (is_contiguous(a, complex) and is_contiguous(b, complex)))
         assert a.shape == b.shape
+
+        from cupy.cuda.stream import get_current_stream
+        assert get_current_stream().ptr == 0
 
     return cgpaw.dotu_gpu(a.data.ptr, a.shape,
                           b.data.ptr, a.dtype)

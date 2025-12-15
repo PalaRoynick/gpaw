@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import numpy as np
+
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
 from gpaw.core.matrix import Matrix
+from gpaw.gpu import XP
 from gpaw.mpi import MPIComm, receive, send, serial_comm
 from gpaw.new.potential import Potential
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
-from gpaw.gpu import XP
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -211,8 +212,8 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         basis.lcao_to_grid(self.C_nM.data, psit_nR.data, self.q)
 
         wfs = PWFDWaveFunctions.from_wfs(self, psit_nR)
-        if self._eig_n is not None:
-            wfs._eig_n = self._eig_n.copy()
+        if self.has_eigs:
+            wfs.eig_n = self.eig_n.copy()
         return wfs
 
     def collect(self,
@@ -262,7 +263,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                                 k=self.k,
                                 weight=self.weight,
                                 ncomponents=self.ncomponents)
-        wfs._eig_n = self._eig_n
+        wfs.eig_n = self.eig_n
         wfs._occ_n = self._occ_n
         return wfs
 

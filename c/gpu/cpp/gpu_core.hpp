@@ -3,6 +3,7 @@
 #include "../gpu-runtime.h"
 #include "utils.hpp"
 
+#include <cstdint>
 #include <string>
 #include <cstdint>
 
@@ -63,7 +64,6 @@ struct launch_kernel
         static_assert(std::is_invocable_r_v<void, Kernel, Args...>,
             "Incorrect kernel signature, must be f(Args...) -> void"
         );
-
         gpuLaunchKernel(kernel, blocks, threads, shmem_bytes, stream, std::forward<Args>(kernel_args)...);
 
         // Check kernel launch.
