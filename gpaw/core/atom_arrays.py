@@ -491,9 +491,14 @@ class AtomArrays:
             atoms_comm = self.layout.atomdist.comm
             nbands = np.prod(self.dims)
 
-            layout = self.layout.new(atomdist=serial_comm)
-            # Spin?
-            b_axi = layout.empty(((nbands + atoms_comm.size - 1 - atoms_comm.rank) // atoms_comm.size, ))
+            if out is None:
+                # Spin?
+                layout = self.layout.new(atomdist=serial_comm)
+                b_axi = layout.empty(((nbands + atoms_comm.size - 1 - atoms_comm.rank) // atoms_comm.size, ))
+            else:
+                b_axi = out
+                layout = b_axi.layout
+                assert layout.atomdist.comm.size == 1
             
             a_Ni = self.matrix
             b_nI = b_axi.matrix

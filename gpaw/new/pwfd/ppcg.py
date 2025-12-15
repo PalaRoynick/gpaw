@@ -244,13 +244,14 @@ class PPCG(PWFDEigensolver):
 
             buff_bX = full_pw.empty((self.nblocksizes, ) +
                                      psit_nX.dims[1:], xp=psit_nX.xp)
-            Hbuff_bX = full_pw.empty((self.nblocksizes, ) +
+            Hbuff_bX = full_pw.empty(((1 + self.include_cg) * self.blocksize, ) +
                                       psit_nX.dims[1:], xp=psit_nX.xp)
             
             buf_layout = P_ani.layout.new(atomdist=buff_bX.domain_comm)
             Pbuf_abi = buf_layout.empty((self.nblocksizes, )
                                          + psit_nX.dims[1:])
-            HPbuf_abi = Pbuf_abi.new()
+            HPbuf_abi = buf_layout.empty(((1 + self.include_cg) * self.blocksize, )
+                                         + psit_nX.dims[1:])
 
         with tracectx('Residual'):
             calculate_residuals(wfs.psit_nX,
@@ -310,9 +311,13 @@ class PPCG(PWFDEigensolver):
                 P_ni = P_aNi.matrix.data
                 P2_aNi = P2_ani.atoms_a2a_bands()
                 P2_ni = P2_aNi.matrix.data
-                P3_aNi = P3_ani.atoms_a2a_bands()
-                P3_ni = P3_aNi.matrix.data
-            
+                if self.include_cg:
+                    if i > 0:
+                        P3_aNi = P3_ani.atoms_a2a_bands()
+                    else:
+                        P3_aNi = P2_aNi.new()
+                    P3_ni = P3_aNi.matrix.data
+                
             with tracectx('Block-diagonal'):    
                 for j in range(0, (b + domain_comm.size - 1) // domain_comm.size, self.blocksize):
                     block_slice_base = \
@@ -364,14 +369,14 @@ class PPCG(PWFDEigensolver):
                         MBuf_bb = MS_bb
 
                     Pbuf_abi[:, block:nblocks].block_diag_multiply(
-                        dS_Aii, out_ani=HPbuf_abi[:, block:nblocks])
+                        dS_Aii, out_ani=HPbuf_abi[:, :nblocks-block])
                     buff_bX[block:nblocks].matrix_elements(
                         buff_bX[:nblocks], cc=True, out=MBuf_bb[block:],
                         domain_sum=False, symmetric=False)
                     if self.promote_inner_dtype:
                         S_bb[:] = buffer_bb
                         buffer_bb[:] = 0
-                    HPbuf_abi[:, block:nblocks].matrix.multiply(
+                    HPbuf_abi[:, :nblocks-block].matrix.multiply(
                         Pbuf_abi[:, :nblocks], out=MBuf_bb[block:],
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
@@ -396,16 +401,16 @@ class PPCG(PWFDEigensolver):
 
                     with tracectx('Apply H'):
                         Ht_local(buff_bX[block:nblocks],
-                                 out=Hbuff_bX[block:nblocks])
+                                 out=Hbuff_bX[:nblocks-block],)
                     dH_inner(Pbuf_abi[:, block:nblocks],
-                             out_ani=HPbuf_abi[:, block:nblocks])
-                    Hbuff_bX[block:nblocks].matrix_elements(
+                             out_ani=HPbuf_abi[:, :nblocks-block])
+                    Hbuff_bX[:nblocks-block].matrix_elements(
                         buff_bX[:nblocks], cc=True, out=MBuf_bb[block:],
                         domain_sum=False, symmetric=False)
                     if self.promote_inner_dtype:
                         H_bb[:] = buffer_bb
                         buffer_bb[:] = 0
-                    HPbuf_abi[:, block:nblocks].matrix.multiply(
+                    HPbuf_abi[:, :nblocks-block].matrix.multiply(
                         Pbuf_abi[:, :nblocks], out=MBuf_bb[block:],
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
@@ -506,7 +511,8 @@ class PPCG(PWFDEigensolver):
                 
                 # Convert P_ni data to P_ani
                 P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
-                P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
+                if self.include_cg:
+                    P3_aNi.atoms_a2a_bands(inverse_layout=P3_ani.layout, out=P3_ani)
 
             wfs.orthonormalized = False
             wfs.orthonormalize(data_buffer=self.data_buffers[0])
