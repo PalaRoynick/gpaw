@@ -41,6 +41,7 @@ def get_bilayer(N):
         straina_vv=np.eye(3),
         interlayer_dist=3.35,
     )
+    return atoms
 
 
 def system_H2():
