@@ -85,6 +85,7 @@ for N in graphene_bilayers:
 
 benchmarks.update(gpu_article)
 
+
 def get_domainband(size=None, world=None):
     """Divide a world size to domain and bands (as square as possible)
 
@@ -168,7 +169,6 @@ def parse_requirement(req):
     }
 
 
-
 def recursive_update(d, u):
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
@@ -210,7 +210,9 @@ def parse_parameters(parameter_sets):
 
 def list_benchmarks():
     lst = ""
-    header = "{:20s} | {:70s} | {:30s}\n".format("name", "system-parameter sets", "requirements")
+    header = "{:20s} | {:70s} | {:30s}\n".format(
+        "name", "system-parameter sets", "requirements"
+    )
     lst += header + "-" * len(header) + "\n"
 
     for benchmark, (system_and_parameter_set, req) in benchmarks.items():
@@ -295,7 +297,7 @@ def benchmark_atoms_and_calc(long_name, calc_info, world=None):
     info (new/old)
     """
     world = normalize_communicator(world)
-    if calc_info == 'new':
+    if calc_info == "new":
         from gpaw.new.ase_interface import GPAW
     elif calc_info == "old":
         from gpaw import GPAW
@@ -391,7 +393,7 @@ def benchmark_main(name, world=None):
 
     if world.rank == 0:
         system_info = gather_system_information(world)
-        print('Running benchmark', name)
+        print("Running benchmark", name)
     else:
         system_info = None
 
