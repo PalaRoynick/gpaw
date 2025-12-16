@@ -223,8 +223,8 @@ def read(folder: Path,
     return data
 
 
-def summary(folders: list[Path], mode: int) -> None:
-    from gpaw.new.logger import GREEN, RESET
+def summary(folders: list[Path], mode: int, reference_column) -> None:
+    from gpaw.new.logger import GREEN, RED, RESET
     alldata = [read(folder, mode) for folder in folders]
     for i, folder in enumerate(folders):
         print(i + 1, folder)
@@ -235,7 +235,11 @@ def summary(folders: list[Path], mode: int) -> None:
         print(f'{r + 1:2} {name:12} ', end='')
         times = [data[name][0] for data in alldata]
         iters = [data[name][1] for data in alldata]
-        t0 = min(times)
+        #ref_times = [data[name][-1] for data in alldata]
+        if reference_column == 0:
+            t0 = min(times)
+        else:
+            t0 = times[reference_column - 1]
         if t0 == np.inf:
             print()
             continue
@@ -246,8 +250,12 @@ def summary(folders: list[Path], mode: int) -> None:
                 line = ' | ------(---) ------%'
             else:
                 percent = f'{(t / t0 - 1) * 100:+6.1f}%'
-                if t == t0:
+                if t == t0 and reference_column != 0:
+                    percent = percent
+                elif t < t0:
                     percent = GREEN + percent + RESET
+                else:
+                    percent = RED + percent + RESET
                 line = f' | {t:6.1f}({i:3}) {percent}'
             print(line, end='')
             if max(times) < np.inf:
@@ -285,6 +293,9 @@ def main(arguments: list[str] | None = None):
         '-m', '--mode', type=int, default=3,
         help='1: first step, 2: second step, 3: both (default).')
     parser.add_argument(
+        '-r', '--reference-column', type=int, default=0,
+        help='Give presentages wrt to either fastest (0) or a given column.')
+    parser.add_argument(
         'folder', nargs='*',
         help='Folder with <name>.json files.')
     parser.add_argument(
@@ -293,7 +304,8 @@ def main(arguments: list[str] | None = None):
     args = parser.parse_args(arguments)
     if args.folder:
         folders = [Path(folder) for folder in args.folder]
-        summary(folders=folders, mode=args.mode)
+        summary(folders=folders, mode=args.mode,
+                reference_column=args.reference_column)
         if args.average:
             average(folders)
         return

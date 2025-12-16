@@ -11,6 +11,7 @@ from typing import IO, Any
 from gpaw.mpi import MPIComm, normalize_communicator
 
 GREEN = '\x1b[32m'
+RED = '\x1b[91m'
 RESET = '\x1b[0m'
 
 
