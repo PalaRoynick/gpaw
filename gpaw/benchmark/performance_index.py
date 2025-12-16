@@ -235,7 +235,6 @@ def summary(folders: list[Path], mode: int, reference_column) -> None:
         print(f'{r + 1:2} {name:12} ', end='')
         times = [data[name][0] for data in alldata]
         iters = [data[name][1] for data in alldata]
-        #ref_times = [data[name][-1] for data in alldata]
         if reference_column == 0:
             t0 = min(times)
         else:
