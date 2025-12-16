@@ -252,7 +252,7 @@ def summary(folders: list[Path], mode: int, reference_column) -> None:
                 percent = f'{(t / t0 - 1) * 100:+6.1f}%'
                 if t == t0:
                     if reference_column == 0:
-                        percent =  GREEN + percent + RESET
+                        percent = GREEN + percent + RESET
                 elif t < t0:
                     percent = GREEN + percent + RESET
                 else:

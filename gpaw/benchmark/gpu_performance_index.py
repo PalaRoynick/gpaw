@@ -1,7 +1,7 @@
 from gpaw.benchmark.performance_index import REFERENCES, PARAMS, work
 
 
-def workflow(skip: list[str] | None = None) -> list:
+def workflow(skip: list[str] | None = None) -> None:
     """MyQueue workflow."""
     from myqueue.workflow import run
     GPU_PARAMS = PARAMS.copy()
@@ -17,9 +17,9 @@ def workflow(skip: list[str] | None = None) -> list:
         gpus = 1
 
         if name in {'Au309'}:
-            cores *= 2
-            processes *= 2
-            gpus *= 2
+            cores *= 4
+            processes *= 4
+            gpus *= 4
 
         run(function=work,
             args=[name],
