@@ -87,7 +87,7 @@ def system_magbulk():
 
 
 def system_metalslab():
-    slab = fcc111("Al", size=(3, 4, 8), vacuum=6.0)
+    slab = fcc111('Al', size=(3, 4, 8), vacuum=6.0)
     return slab
 
 
@@ -350,11 +350,11 @@ systems = {'H2': system_H2,
            'C72-2': c72}
 
 for N in graphene_bilayers:
-    systems["C" + str(N)] = lambda: get_bilayer(N)
+    systems['C' + str(N)] = lambda: get_bilayer(N)
     assert N == len(get_bilayer(N)), (N, len(get_bilayer(N)))
 
 
-systems["magic_graphene"] = systems["C10444"]
+systems['magic_graphene'] = systems['C10444']
 
 
 def parse_system(name):
