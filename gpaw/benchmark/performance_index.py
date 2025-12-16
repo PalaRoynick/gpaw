@@ -266,6 +266,10 @@ def summary(folders: list[Path], mode: int, reference_column) -> None:
     for s in scores:
         print(f'{(s / N - 1) * 100:+21.1f}%', end='')
     print('\n           ', end='')
+
+    # The reference data is only for both
+    if mode != 3:
+        return
     for data in alldata:
         s, _ = score({name: t for name, (t, i) in data.items()})
         print(f'{s:22.2f}', end='')
