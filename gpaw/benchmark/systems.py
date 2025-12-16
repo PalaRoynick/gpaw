@@ -325,6 +325,7 @@ def c72():
 def au_nanoparticle():
     atoms = Icosahedron('Au', 5)
     atoms.center(vacuum=5)
+    atoms.rattle(0.05, seed=42)
     return atoms
 
 

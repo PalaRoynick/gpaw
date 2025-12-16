@@ -11,11 +11,15 @@ from gpaw.calcinfo import get_calculation_info
 from gpaw.dft import GPAW
 from gpaw.mpi import normalize_communicator
 from gpaw.utilities.memory import maxrss
+from gpaw.mixer import Mixer
+
 
 PARAMS = dict(
     xc='PBE',
     mode={'name': 'pw', 'ecut': 800},
     kpts={'density': 5.0},
+    mixer=Mixer(beta=0.05, nmaxold=5, weight=50.0),
+    occupations={'name': 'fermi-dirac', 'width': 0.1},
     setups={'Cr': '14'})
 
 
@@ -43,7 +47,10 @@ REFERENCES0 = {
     'CrSi2As4-2M': (-38.89434, -0.17154, 24, 100.10),
     'VI2-2M': (-9.29013, -0.77486, 24, 31.65),
     'Ti2Br6-3': (-32.64699, -0.00286, 24, 155.44),
-    'Au309': (-999, -999, 56, 999999)}
+    'Au309': (-999, -999, 56, 999999),
+    'C676': (-999, -999, 56, 999999),
+    'C1588': (-999, -999, 2*56, 999999)
+}
 
 RESCALE_FACTOR = 1.0
 

@@ -16,7 +16,7 @@ def workflow(skip: list[str] | None = None) -> None:
         cores = 32
         gpus = 1
 
-        if name in {'Au309'}:
+        if name in {'Au309', 'C676', 'C1588'}:
             cores *= 4
             processes *= 4
             gpus *= 4
