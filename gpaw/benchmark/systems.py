@@ -6,6 +6,7 @@ from ase import Atoms
 from ase.build import add_adsorbate, bulk, fcc111, graphene, molecule, mx2
 from ase.lattice.hexagonal import Graphene
 from gpaw.benchmark.generate_twisted import make_heterostructure
+from ase.cluster.icosahedron import Icosahedron
 
 
 graphene_bilayers = {
@@ -321,6 +322,12 @@ def c72():
     return atoms * (6, 6, 1)
 
 
+def au_nanoparticle():
+    atoms = Icosahedron('Au', 5)
+    atoms.center(vacuum=5)
+    return atoms
+
+
 # Contains both old and new names:
 systems = {'H2': system_H2,
            'H2-0': system_H2,
@@ -347,7 +354,8 @@ systems = {'H2': system_H2,
            'Mn2O2-3M': mn2o2,
            'Ti2Br6-3': ti2br6,
            'Fe8O8-3M': fe8o8,
-           'C72-2': c72}
+           'C72-2': c72,
+           'Au309': au_nanoparticle}
 
 for N in graphene_bilayers:
     systems['C' + str(N)] = lambda: get_bilayer(N)

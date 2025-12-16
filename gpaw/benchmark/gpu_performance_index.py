@@ -16,6 +16,11 @@ def workflow(skip: list[str] | None = None) -> list:
         cores = 32
         gpus = 1
 
+        if name in {'Au309'}:
+            cores *= 2
+            processes *= 2
+            gpus *= 2
+
         run(function=work,
             args=[name],
             kwargs={'params': GPU_PARAMS},

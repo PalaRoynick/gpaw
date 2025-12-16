@@ -42,7 +42,8 @@ REFERENCES0 = {
     'OPt24-2': (-153.25143, -1.61599, 40, 999.75),
     'CrSi2As4-2M': (-38.89434, -0.17154, 24, 100.10),
     'VI2-2M': (-9.29013, -0.77486, 24, 31.65),
-    'Ti2Br6-3': (-32.64699, -0.00286, 24, 155.44)}
+    'Ti2Br6-3': (-32.64699, -0.00286, 24, 155.44),
+    'Au309': (-999, -999, 56, 999999)}
 
 RESCALE_FACTOR = 1.0
 
@@ -249,8 +250,9 @@ def summary(folders: list[Path], mode: int, reference_column) -> None:
                 line = ' | ------(---) ------%'
             else:
                 percent = f'{(t / t0 - 1) * 100:+6.1f}%'
-                if t == t0 and reference_column != 0:
-                    percent = percent
+                if t == t0:
+                    if reference_column == 0:
+                        percent =  GREEN + percent + RESET
                 elif t < t0:
                     percent = GREEN + percent + RESET
                 else:
