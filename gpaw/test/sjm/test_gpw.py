@@ -1,5 +1,4 @@
 import pytest
-
 from gpaw import restart
 from gpaw.solvation.sjm import SJM
 
@@ -7,7 +6,8 @@ from gpaw.solvation.sjm import SJM
 # Test wrting and reading of the SJM object into the gpw file
 @pytest.mark.old_gpaw_only
 # @pytest.mark.ci
-def test_gpw(in_tmp_dir, atoms):
+def test_gpw(in_tmp_dir, atoms, calculator):
+    atoms.calc = calculator
     atoms.calc.set(sj={'target_potential': None})
 
     E1 = atoms.get_potential_energy()
