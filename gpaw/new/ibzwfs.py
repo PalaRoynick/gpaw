@@ -566,6 +566,7 @@ def bytes_for_projectors(ibzwfs: IBZWaveFunctions) -> int:
 
     Without creating them!
     """
+    return -1
     if ibzwfs.mode != 'pw':
         # TODO ...
         return -1

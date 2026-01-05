@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import cached_property
 from math import pi
 from typing import TYPE_CHECKING, Literal
-from functools import cached_property
 
 import numpy as np
 from ase.units import Ha
@@ -18,11 +18,16 @@ from gpaw.fftw import get_efficient_fft_size
 from gpaw.gpu import cupy as cp
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import prod, zips
-from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
-                        pw_insert_gpu, pw_norm_gpu, pw_norm_kinetic_gpu)
+from gpaw.new.c import (
+    add_to_density,
+    add_to_density_gpu,
+    pw_insert,
+    pw_insert_gpu,
+    pw_norm_gpu,
+    pw_norm_kinetic_gpu,
+)
 from gpaw.old.pw.descriptor import pad
-from gpaw.typing import (Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D,
-                         Vector)
+from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D, Vector
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 if TYPE_CHECKING:
@@ -329,16 +334,24 @@ class PWArray(DistributedArrays[PWDesc]):
 
     def __getitem__(self, index: int | slice) -> PWArray:
         data = self.data[index]
+        if data.ndim > 1 and len(data) == prod(self.desc.myshape):
+            # XXX: Special nasty case, we switch to Fortran contiguity
+            data = data.T
+        if isinstance(index, int):
+            dims = self.mydims[1:]
+        else:
+            dims = (data.shape[0], *self.mydims[1:])
+
         return PWArray(self.desc,
-                       data.shape[:-1],
+                       dims,
                        data=data,
                        domain_transposable=False)
 
-    def __iter__(self):
-        for data in self.data:
-            yield PWArray(self.desc,
-                          data.shape[:-1],
-                          data=data)
+    # def __iter__(self):
+    #     for data in self.data:
+    #         yield PWArray(self.desc,
+    #                       data.shape[:-1],
+    #                       data=data)
 
     def new(self,
             data=None,
@@ -394,24 +407,30 @@ class PWArray(DistributedArrays[PWDesc]):
 
     def _arrays(self):
         shape = self.data.shape
-        return self.data.reshape((prod(shape[:-1]), shape[-1]))
+        dat_views = [self, ]
+        while dat_views[0].data.ndim > 1:
+            next_views = []
+            for arr in dat_views:
+                for a in arr:
+                    next_views.append(a)
+            dat_views = next_views
+        dat_views = [view.data for view in dat_views]
+        return self.xp.asarray(dat_views)
+
 
     @property
     def matrix(self) -> Matrix:
-        """Matrix view of data."""
         if self._matrix is not None:
             return self._matrix
 
-        shape = (self.dims[0], prod(self.dims[1:]) * self.myshape[0])
-        myshape = (self.mydims[0], prod(self.mydims[1:]) * self.myshape[0])
+        nx = prod(self.myshape)
+        shape = (self.dims[0], prod(self.dims[1:]) * nx)
+        myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
-        data = self.data.reshape(myshape)
 
-        if self.desc.dtype == self.real_dtype:
-            data = data.view(self.real_dtype)
-            shape = (shape[0], shape[1] * 2)
-
+        data = self.data.reshape(myshape, copy=False, order='A')
         self._matrix = Matrix(*shape, data=data, dist=dist)
+
         return self._matrix
 
     def ifft(self,
@@ -672,7 +691,8 @@ class PWArray(DistributedArrays[PWDesc]):
                                          dtype=self.real_dtype)
                 pw_norm_gpu(result_x, self._arrays())
             else:
-                result_x = self.xp.einsum('xG, xG -> x', a_xG, a_xG)
+                # result_x = self.xp.einsum('xG, xG -> x', a_xG, a_xG)
+                result_x = self.xp.vecdot(a_xG, a_xG)
         elif kind == 'kinetic':
             x, G2 = a_xG.shape
             if self.xp is not np:

@@ -238,7 +238,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 return psit2_nG.to_xp(self.xp)
             return psit_nG.to_xp(self.xp)
         else:
-            psit_nsG = pw.empty((self.nbands, 2), self.communicators['b'])
+            psit_nsG = pw.empty((self.nbands, 2),
+                                self.communicators['b'],
+                                domain_transposable=True)
             psit_sR = grid.empty(2)
             C_nsM = C_nM.data.reshape((mynbands, 2, M // 2))
             for psit_sG, C_sM in zips(psit_nsG, C_nsM, strict=False):

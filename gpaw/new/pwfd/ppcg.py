@@ -4,15 +4,18 @@ from functools import partial
 from pprint import pformat
 
 import numpy as np
-from gpaw.mpi import SerialCommunicator
 from ase.units import Ha
+
 from gpaw import debug
+
 # from gpaw.typing import Array2D
 from gpaw.core import PWDesc  # , PWArray
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
+from gpaw.mpi import SerialCommunicator
 from gpaw.new import tracectx  # , trace
 from gpaw.new.pwfd.davidson import sliced_preconditioner
+
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
@@ -246,7 +249,7 @@ class PPCG(PWFDEigensolver):
                                      psit_nX.dims[1:], xp=psit_nX.xp)
             Hbuff_bX = full_pw.empty(((1 + self.include_cg) * self.blocksize, ) +
                                       psit_nX.dims[1:], xp=psit_nX.xp)
-            
+
             buf_layout = P_ani.layout.new(atomdist=buff_bX.domain_comm)
             Pbuf_abi = buf_layout.empty((self.nblocksizes, )
                                          + psit_nX.dims[1:])
@@ -305,7 +308,6 @@ class PPCG(PWFDEigensolver):
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands(transfer_data=i > 0)
-
                 mybands = np.arange(domain_comm.rank, b, domain_comm.size)
                 P_aNi = P_ani.atoms_a2a_bands()
                 P_ni = P_aNi.matrix.data
@@ -317,11 +319,11 @@ class PPCG(PWFDEigensolver):
                     else:
                         P3_aNi = P2_aNi.new()
                     P3_ni = P3_aNi.matrix.data
-                
-            with tracectx('Block-diagonal'):    
+
+            with tracectx('Block-diagonal'):
                 for j in range(0, (b + domain_comm.size - 1) // domain_comm.size, self.blocksize):
                     block_slice_base = \
-                        slice(min(j, psit_nX.data.shape[0]), 
+                        slice(min(j, psit_nX.data.shape[0]),
                               min(j + self.blocksize, psit_nX.data.shape[0]))
                     block = \
                         block_slice_base.stop - block_slice_base.start
@@ -493,22 +495,26 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[:block] \
                             + Pbuf_abi.matrix.data[block:2 * block]
 
-                pw_desc = psit_nX.desc.new(comm=SerialCommunicator())
+                pw_desc = psit_nX.desc.new(comm=None)
                 psit0_nX = pw_desc.from_data(psit_nX.data)
                 residual0_nX = pw_desc.from_data(residual_nX.data)
+                psit0_nX.domain_transposed = True
+                residual0_nX.domain_transposed = True
                 Ht_local(psit0_nX, out=residual0_nX, spin=wfs.spin, calculate_energy=True)
-                
+
             with tracectx('MPI Post-Block', gpu=xp is not np):
                 wfs.eig_n[:] = 0
                 wfs.myeig_n[:] = new_eigs_n
                 domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
-                
+
+                print(psit0_nX.norm2(skip_sum=True))
                 psit_nX.domain_a2a_bands()
+                print(psit_nX.norm2())
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands()
-                
+
                 # Convert P_ni data to P_ani
                 P_aNi.atoms_a2a_bands(inverse_layout=P_ani.layout, out=P_ani)
                 if self.include_cg:

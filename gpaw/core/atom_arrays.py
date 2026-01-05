@@ -454,19 +454,19 @@ class AtomArrays:
         if inverse_layout is not None:
             layout = inverse_layout
             atoms_comm = layout.atomdist.comm
-            nbands = atoms_comm.sum_scalar(int(np.prod(self.dims)))
+            nbands = atoms_comm.sum_scalar(self.dims[0])
             
             if out is None:
-                b_axi = layout.empty((nbands, ))
+                b_axi = layout.empty((nbands, *self.dims[1:]))
             else:
                 b_axi = out
-            s_sizes = layout.sizes()[-1]
-            r_sizes = layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
+            s_sizes = int(np.prod(self.dims[1:])) * layout.sizes()[-1]
+            r_sizes = int(np.prod(self.dims[1:])) * layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
 
             s_offsets = np.cumulative_sum(s_sizes[:-1], include_initial=True)
             r_offsets = np.cumulative_sum(r_sizes[:-1], include_initial=True)
             
-            buffer_I = self.layout.empty().data
+            buffer_I = self.layout.empty(*self.dims[1:]).data
             
             for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
                 # Gotta unsort some atoms...
@@ -474,7 +474,8 @@ class AtomArrays:
                     for sndr, (size, offset) in enumerate(zip(s_sizes, s_offsets)):
                         size_b = offset
                         for a, size_a in layout.sizes()[0][sndr].items():
-                            buffer_I[size_b:size_b+size_a] = self[a][n]
+                            #size_a = layout.sizes()[0][sndr][a]
+                            buffer_I[..., size_b:size_b+size_a] = self[a][n]
                             size_b += size_a
                 else:
                     s_sizes[:] = 0
@@ -489,12 +490,15 @@ class AtomArrays:
                 r_offsets += np.sum(r_sizes)
         else:
             atoms_comm = self.layout.atomdist.comm
-            nbands = np.prod(self.dims)
+            nbands = self.dims[0]
 
             if out is None:
                 # Spin?
                 layout = self.layout.new(atomdist=serial_comm)
-                b_axi = layout.empty(((nbands + atoms_comm.size - 1 - atoms_comm.rank) // atoms_comm.size, ))
+                b_axi = layout.empty(
+                    ((nbands + atoms_comm.size - 1 - atoms_comm.rank) // atoms_comm.size, 
+                    *self.dims[1:]),
+                    )
             else:
                 b_axi = out
                 layout = b_axi.layout
@@ -503,15 +507,15 @@ class AtomArrays:
             a_Ni = self.matrix
             b_nI = b_axi.matrix
 
-            r_sizes = self.layout.sizes()[-1]
-            s_sizes = self.layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
+            r_sizes = int(np.prod(self.dims[1:])) * self.layout.sizes()[-1]
+            s_sizes = int(np.prod(self.dims[1:])) * self.layout.sizes()[-1][atoms_comm.rank].repeat(atoms_comm.size)
 
             s_offsets = np.cumulative_sum(s_sizes[:-1], include_initial=True)
             r_offsets = np.cumulative_sum(r_sizes[:-1], include_initial=True)
             
             reqs = []
             
-            buffer_I = layout.empty().data
+            buffer_I = layout.empty(self.dims[1:]).data
             
             for n in range((nbands + atoms_comm.size - 1) // atoms_comm.size):
                 atoms_comm.alltoallv(a_Ni.data.ravel(), s_sizes, s_offsets,
@@ -523,9 +527,9 @@ class AtomArrays:
 
                 # Gotta sort some atoms...
                 for sndr, (size, offset) in enumerate(zip(r_sizes, r_offsets)):
-                    size_b = offset
+                    size_b = offset.copy()
                     for a, size_a in self.layout.sizes()[0][sndr].items():
-                        b_axi[a][n][:] = buffer_I[size_b:size_b+size_a]
+                        b_axi[a][n][:] = buffer_I.ravel()[size_b:size_b+size_a]
                         size_b += size_a
         return b_axi
 

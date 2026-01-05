@@ -56,7 +56,7 @@ class PWHamiltonian(Hamiltonian):
         # So we force vt_R to be the right type here.
         vt_R_data = xp.asarray(vt_R.data)
         Q_G = pw_local.indices(plan.tmp_Q.shape)
-        
+
         reqs2 = []
 
         for n in range(psit_nG.maxbands):
@@ -77,7 +77,7 @@ class PWHamiltonian(Hamiltonian):
                 vtpsit_G += psit_G * e_kin_G
             reqs2.append(psit_nG.domain_a2a_bands(blocking=False, index=n))
             reqs2.append(out_nG.domain_a2a_bands(blocking=False, index=n))
-        
+
         for req in reqs2:
             if req is not None:
                 domain_comm.wait(req)
@@ -191,7 +191,7 @@ class SpinorPWHamiltonian(Hamiltonian):
         pw = psit_nsG.desc
 
         if self.qspiral_v is None:
-            np.multiply(pw.ekin_G, psit_nsG.data, out_nsG.data)
+            np.multiply(pw.ekin_G[:, None], psit_nsG.data, out_nsG.data)
         else:
             for s, sign in enumerate([1, -1]):
                 ekin_G = 0.5 * ((pw.G_plus_k_Gv +
