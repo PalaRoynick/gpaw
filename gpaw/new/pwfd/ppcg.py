@@ -508,9 +508,9 @@ class PPCG(PWFDEigensolver):
                 domain_comm.sum(wfs.myeig_n)
                 band_comm.sum(wfs._eig_n)
 
-                print(psit0_nX.norm2(skip_sum=True))
+                # print(psit0_nX.norm2(skip_sum=True))
                 psit_nX.domain_a2a_bands()
-                print(psit_nX.norm2())
+                # print(psit_nX.norm2())
                 residual_nX.domain_a2a_bands()
                 if self.include_cg:
                     P_nX.domain_a2a_bands()

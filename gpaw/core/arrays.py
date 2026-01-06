@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from this import s
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 import numpy as np
@@ -86,11 +87,11 @@ class DistributedArrays(Generic[DomainType], XP):
             nbands = 1
             extra_dims_size = 1
         fullnX = domain_comm.sum_scalar(mynX)
-        self.maxnX = domain_comm.max_scalar(mynX * extra_dims_size)
+        self.maxnX = domain_comm.max_scalar(mynX)
         self.maxbands = (nbands + domain_comm.size - 1) // domain_comm.size
         mynbands = (nbands + domain_comm.size - 1 - domain_comm.rank) // domain_comm.size
         if domain_transposable:
-            buffersize = self.maxbands * self.maxnX * domain_comm.size
+            buffersize = self.maxbands * self.maxnX * domain_comm.size * extra_dims_size
         else:
             buffersize = np.prod(fullshape)
 
@@ -109,13 +110,14 @@ class DistributedArrays(Generic[DomainType], XP):
 
         if self.domain_transposable:
             self.data_buffer = data.ravel()[:buffersize]
+            self.data_buffer[:] = 0
             # XXX: Madness here:
             self._band_view = self.data_buffer.reshape(
-                (self.maxbands * domain_comm.size, self.maxnX)
-                )[:nbands, :mynX * extra_dims_size].reshape((nbands, mynX, *self.mydims[1:]), copy=False)
+                (self.maxbands * domain_comm.size * extra_dims_size, self.maxnX)
+                )[:nbands * extra_dims_size, :mynX].reshape((nbands, *self.mydims[1:], mynX), copy=False)
             self._domain_view = self.data_buffer.reshape(
-                (self.maxbands, self.maxnX * domain_comm.size)
-                )[:mynbands, :fullnX * extra_dims_size].reshape((mynbands, fullnX, *self.mydims[1:]), copy=False)
+                (self.maxbands * extra_dims_size, self.maxnX * domain_comm.size)
+                )[:mynbands * extra_dims_size, :fullnX].reshape((mynbands, *self.mydims[1:], fullnX), copy=False)
             # Beware, domain view is non-trivial, in that the ordering of data is:
                 # rank index - extra dims - domain of rank index
             # We would like:
@@ -149,7 +151,7 @@ class DistributedArrays(Generic[DomainType], XP):
         assert len(self.dims) >= 1
         data_buffer = data_buffer.view(self.data.dtype)
         datasize = data_buffer.size
-        nX = self.maxnX
+        nX = self.maxnX * prod(self.dims[1:])
         # Choose mybands, s.t. they fit into
         # data_buffer. Hence, datasize divided by nX
         # rounded down.
@@ -228,9 +230,10 @@ class DistributedArrays(Generic[DomainType], XP):
             reqs = []
 
             if isinstance(index, int):
+                assert not self.dims[1:]
                 inds = np.array([index, ])
             else:
-                inds = np.arange(self.maxbands)
+                inds = np.arange(self.maxbands * prod(self.dims[1:]))
             send_size = self.maxnX * size
             inds *= send_size
 
@@ -263,15 +266,21 @@ class DistributedArrays(Generic[DomainType], XP):
 
     @property
     def matrix(self) -> Matrix:
+        assert not self.domain_transposed
+
         if self._matrix is not None:
             return self._matrix
 
-        nx = prod(self.myshape)
+        if self.domain_transposable:
+            nx = self.maxnX
+        else:
+            nx = prod(self.myshape)
+
         shape = (self.dims[0], prod(self.dims[1:]) * nx)
         myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
 
-        data = self.data.reshape(myshape, copy=False)
+        data = self.data_buffer.reshape(myshape, copy=False)
         self._matrix = Matrix(*shape, data=data, dist=dist)
 
         return self._matrix
