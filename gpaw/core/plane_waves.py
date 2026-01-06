@@ -419,7 +419,7 @@ class PWArray(DistributedArrays[PWDesc]):
 
 
     @property
-    def matrix(self) -> Matrix:
+    def matrix_deprecated(self) -> Matrix:
         if self._matrix is not None:
             return self._matrix
 

@@ -191,7 +191,7 @@ class SpinorPWHamiltonian(Hamiltonian):
         pw = psit_nsG.desc
 
         if self.qspiral_v is None:
-            np.multiply(pw.ekin_G[:, None], psit_nsG.data, out_nsG.data)
+            np.multiply(pw.ekin_G, psit_nsG.data, out_nsG.data)
         else:
             for s, sign in enumerate([1, -1]):
                 ekin_G = 0.5 * ((pw.G_plus_k_Gv +

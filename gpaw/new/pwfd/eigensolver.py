@@ -58,12 +58,12 @@ class PWFDEigensolver(Eigensolver):
                          full_nbands)
             mybands = (nbands + domain_size - 1) // domain_size
             # buffer_size = nbands * G_max * dtype_size
-            
+
             # Now increase size to be sure its domain transposable
             G_max_max = ibzwfs.domain_comm.max_scalar(G_max)
             G_max_sum = ibzwfs.domain_comm.sum_scalar(G_max)
             buffer_size = mybands * G_max_max * domain_size * dtype_size
-            
+
             '''
             buffer_size_per_domain = max(self.max_buffer_mem,
                                          domain_size * G_max * dtype_size,
@@ -73,7 +73,7 @@ class PWFDEigensolver(Eigensolver):
                               * G_max * dtype_size,
                               b * G_max * dtype_size)
             '''
-            
+
         else:
             raise NotImplementedError('Stop wasting memory!')
             buffer_size = max(b * G_max * dtype_size,
@@ -181,8 +181,10 @@ def calculate_residuals(psit_nX,
     """
     xp = residual_nX.xp
     if xp is np:
-        for r, e, p in zips(residual_nX.data, eig_n, psit_nX.data):
-            axpy(-e, p, r)
+        residual_nX.matrix.data += psit_nX.matrix.data * eig_n[:, None]
+        # for r, e, p in zips(residual_nX.data, eig_n, psit_nX.data):
+            # axpy(-e, p, r)
+
     else:
         eig_n = xp.asarray(eig_n, dtype=as_real_dtype(residual_nX.data.dtype))
         calculate_residuals_gpu(residual_nX.data, eig_n, psit_nX.data)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from this import s
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 import numpy as np
@@ -79,7 +78,7 @@ class DistributedArrays(Generic[DomainType], XP):
         fullshape = self.mydims + self.myshape
 
         # Check for buffersize if nbands > 0:
-        mynX = prod(self.myshape)
+        mynX = int(prod(self.myshape))
         if self.mydims:
             nbands = self.mydims[0]
             extra_dims_size = int(np.prod(self.mydims[1:]))
@@ -280,7 +279,7 @@ class DistributedArrays(Generic[DomainType], XP):
         myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
 
-        data = self.data_buffer.reshape(myshape, copy=False)
+        data = self.data_buffer[:prod(myshape)].reshape(myshape, copy=False)
         self._matrix = Matrix(*shape, data=data, dist=dist)
 
         return self._matrix
