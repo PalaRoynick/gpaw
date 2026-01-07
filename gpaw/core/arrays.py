@@ -206,14 +206,22 @@ class XArray(Generic[DomainType], XP):
         if self._matrix is not None:
             return self._matrix
 
-        nx = prod(self.myshape)
+        if self.dom_transable:
+            assert not self.dom_trans
+            nx = self.maxnX
+        else:
+            nx = prod(self.myshape)
         shape = (self.dims[0], prod(self.dims[1:]) * nx)
         myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
 
-        data = self.data.reshape(myshape)
-        self._matrix = Matrix(*shape, data=data, dist=dist)
+        data = self.data_buffer[:prod(myshape)].reshape(myshape)
 
+        if self.desc.dtype == self.real_dtype:
+            data = data.view(self.real_dtype)
+            shape = (shape[0], shape[1] * 2)
+
+        self._matrix = Matrix(*shape, data=data, dist=dist)
         return self._matrix
 
     @trace

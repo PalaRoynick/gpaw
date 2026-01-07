@@ -139,3 +139,25 @@ def test_morph(comm):
     b = a.morph(pw2)
     c = b.morph(pw1)
     assert (a.data == c.data).all()
+
+
+def test_a2a(comm):
+    pw = PWDesc(ecut=50, cell=[1, 1, 1], comm=comm, dtype=complex)
+    a = pw.empty(2, dom_transable=True)
+    b = pw.empty(2, dom_transable=False)
+
+    a.randomize(seed=42)
+    b.data[:] = a.data
+    assert (a.data == b.data).all()
+    c = a.matrix_elements(a, symmetric=False, domain_sum=True)
+    d = b.matrix_elements(b, symmetric=False, domain_sum=True)
+
+    assert c.data == pytest.approx(d.data)
+    assert a.data.shape == b.data.shape
+
+    a.domain_a2a_bands()
+    # TODO: Assert some stuff in here!
+
+    a.domain_a2a_bands()
+    assert c.data == pytest.approx(
+        a.matrix_elements(a, symmetric=False, domain_sum=True).data)

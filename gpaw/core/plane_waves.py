@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import cached_property
 from math import pi
 from typing import TYPE_CHECKING, Literal
-from functools import cached_property
 
 import numpy as np
 from ase.units import Ha
@@ -18,11 +18,16 @@ from gpaw.fftw import get_efficient_fft_size
 from gpaw.gpu import cupy as cp
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import prod, zips
-from gpaw.new.c import (add_to_density, add_to_density_gpu, pw_insert,
-                        pw_insert_gpu, pw_norm_gpu, pw_norm_kinetic_gpu)
+from gpaw.new.c import (
+    add_to_density,
+    add_to_density_gpu,
+    pw_insert,
+    pw_insert_gpu,
+    pw_norm_gpu,
+    pw_norm_kinetic_gpu,
+)
 from gpaw.old.pw.descriptor import pad
-from gpaw.typing import (Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D,
-                         Vector)
+from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike1D, ArrayLike2D, Vector
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 if TYPE_CHECKING:
@@ -134,7 +139,8 @@ class PWDesc(Domain['PWArray']):
     def empty(self,
               dims: int | tuple[int, ...] = (),
               comm: MPIComm = serial_comm,
-              xp=None) -> PWArray:
+              xp=None,
+              dom_transable=False) -> PWArray:
         """Create new PlaneWaveExpanions object.
 
         parameters
@@ -144,7 +150,7 @@ class PWDesc(Domain['PWArray']):
         comm:
             Distribute dimensions along this communicator.
         """
-        return PWArray(self, dims, comm, xp=xp)
+        return PWArray(self, dims, comm, xp=xp, dom_transable=dom_transable)
 
     def from_data(self, data):
         return PWArray(self, data.shape[:-1], data=data)
@@ -290,7 +296,8 @@ class PWArray(XArray[PWDesc]):
                  dims: int | tuple[int, ...] = (),
                  comm: MPIComm = serial_comm,
                  data: np.ndarray | None = None,
-                 xp=None):
+                 xp=None,
+                 dom_transable=False):
         """Object for storing function(s) as a plane-wave expansions.
 
         parameters
@@ -311,7 +318,8 @@ class PWArray(XArray[PWDesc]):
         XArray. __init__(self, dims, pw.myshape,
                          comm, pw.comm,
                          data, pw.dv,
-                         self.complex_dtype, xp)
+                         self.complex_dtype, xp,
+                         dom_transable)
         self.desc = pw
         self._matrix: Matrix | None
 
@@ -387,7 +395,7 @@ class PWArray(XArray[PWDesc]):
         return self.data.reshape((prod(shape[:-1]), shape[-1]))
 
     @property
-    def matrix(self) -> Matrix:
+    def matrix_is_this_really_needed(self) -> Matrix:
         """Matrix view of data."""
         if self._matrix is not None:
             return self._matrix
@@ -763,7 +771,9 @@ class PWArray(XArray[PWDesc]):
             # numpy does not require shape, cupy does
             # cupy just makes all elements equal to one random number
             aview = a.view(dtype=self.real_dtype)
-            rng.random(aview.shape, out=aview, dtype=self.real_dtype)
+            work_buffer = aview.copy()
+            rng.random(aview.shape, out=work_buffer, dtype=self.real_dtype)
+            aview[:] = work_buffer
 
             # Uniform distribution inside unit circle
             a[:] = a.real**0.5 * self.xp.exp(2j * self.xp.pi * a.imag)
