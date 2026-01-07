@@ -50,11 +50,13 @@ class XArray(Generic[DomainType], XP):
                  data: np.ndarray | None,
                  dv: float,
                  dtype,
-                 xp=None):
+                 xp=None,
+                 dom_transable=False):
         self.myshape = myshape
         self.comm = comm
         self.domain_comm = domain_comm
         self.dv = dv
+        self.dom_trans = False
 
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
@@ -69,21 +71,56 @@ class XArray(Generic[DomainType], XP):
             self.mydims = ()
 
         fullshape = self.mydims + self.myshape
+        extra_dims_size = prod(self.mydims[1:])
+
+        if self.dims:
+            # Determine required size for domain_transposability:
+            self.maxnX = domain_comm.max_scalar(int(prod(self.myshape)))
+            nnX = domain_comm.sum_scalar(int(prod(self.myshape)))
+            self.maxbands = (mydims0 + domain_comm.size - 1) // domain_comm.size
+            mybands = (mydims0 + domain_comm.size - 1 - self.domain_comm.rank) // domain_comm.size
+            if dom_transable:
+                buffersize = self.maxbands * self.maxnX * domain_comm.size * extra_dims_size
+            else:
+                buffersize = prod(fullshape)
+            self.dom_transable = \
+                buffersize == self.maxbands * self.maxnX * domain_comm.size * extra_dims_size
+        else:
+            assert not dom_transable
+            self.dom_transable = False
+            buffersize = prod(fullshape)
 
         if data is not None:
-            if data.shape != fullshape:
+            if data.size < buffersize:
                 raise ValueError(
-                    f'Bad shape for data: {data.shape} != {fullshape}')
+                    f'Bad shape for data buffer: {data.size} < {buffersize}')
             if data.dtype != dtype:
                 raise ValueError(
-                    f'Bad dtype for data: {data.dtype} != {dtype}')
+                    f'Bad dtype for data buffer: {data.dtype} != {dtype}')
             if xp is not None:
                 assert (xp is np) == isinstance(
                     data, (np.ndarray, NDArrayReader)), xp
         else:
-            data = (xp or np).empty(fullshape, dtype)
+            data = (xp or np).zeros(buffersize, dtype)
 
-        self.data = data
+        self.data_buffer = data.ravel()[:buffersize]
+        if self.dom_transable:
+            self._domain_dist_view = self.data_buffer.reshape(
+                (self.maxbands * domain_comm.size, *self.dims[1:], self.maxnX), copy=False
+            )[:mydims0, ..., :prod(myshape)].reshape(
+                fullshape, copy=False
+            )
+            self._band_dist_view = self.data_buffer.reshape(
+                (self.maxbands, *self.dims[1:], self.maxnX * domain_comm.size), copy=False
+            )[:mybands, ..., :nnX].reshape(
+                (mybands, *self.dims[1:], nnX), copy=False
+            )
+            self.data = self._domain_dist_view
+        else:
+            self.data = self.data_buffer.reshape(
+                fullshape, copy=False
+            )
+
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:
