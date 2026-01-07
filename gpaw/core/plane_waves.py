@@ -406,17 +406,7 @@ class PWArray(DistributedArrays[PWDesc]):
                     f'Imag value of {val}')
 
     def _arrays(self):
-        shape = self.data.shape
-        dat_views = [self, ]
-        while dat_views[0].data.ndim > 1:
-            next_views = []
-            for arr in dat_views:
-                for a in arr:
-                    next_views.append(a)
-            dat_views = next_views
-        dat_views = [view.data for view in dat_views]
-        return self.xp.asarray(dat_views)
-
+        return self.data.reshape(prod(self.mydims), prod(self.myshape))
 
     @property
     def matrix_deprecated(self) -> Matrix:

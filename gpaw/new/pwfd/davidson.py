@@ -271,10 +271,10 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
         buffer_view_aX = buffer_mX.new(
             data=buffer_mX.data_buffer,  # Hmm
             dims=(world_N,) + buffer_mX.dims[1:])
-        
+
         stride = int(np.prod(psit2_nX.mydims[1:]) * psit2_nX.maxnX)
         psit_view_aX = psit2_nX.new(
-            data=psit2_nX.data_buffer[n1*stride:],
+            data=psit2_nX.data_buffer[n1*stride:n2*stride],
             dims=(world_N,) + psit2_nX.dims[1:])
 
         Ht(psit_view_aX, out=buffer_view_aX)

@@ -105,11 +105,10 @@ class DistributedArrays(Generic[DomainType], XP):
                 assert (xp is np) == isinstance(
                     data, (np.ndarray, NDArrayReader)), xp
         else:
-            data = (xp or np).empty(buffersize, dtype)
+            data = (xp or np).zeros(buffersize, dtype)
 
         if self.domain_transposable:
             self.data_buffer = data.ravel()[:buffersize]
-            self.data_buffer[:] = 0
             # XXX: Madness here:
             self._band_view = self.data_buffer.reshape(
                 (self.maxbands * domain_comm.size * extra_dims_size, self.maxnX)
@@ -149,6 +148,7 @@ class DistributedArrays(Generic[DomainType], XP):
         assert isinstance(data_buffer, self.xp.ndarray)
         assert len(self.dims) >= 1
         data_buffer = data_buffer.view(self.data.dtype)
+        data_buffer[:] = 0
         datasize = data_buffer.size
         nX = self.maxnX * prod(self.dims[1:])
         # Choose mybands, s.t. they fit into
@@ -266,7 +266,6 @@ class DistributedArrays(Generic[DomainType], XP):
     @property
     def matrix(self) -> Matrix:
         assert not self.domain_transposed
-
         if self._matrix is not None:
             return self._matrix
 
