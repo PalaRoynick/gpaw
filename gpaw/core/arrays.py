@@ -17,6 +17,9 @@ from gpaw.typing import Array1D, ArrayND, Self
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
 
+
+from gpaw import GPAW_MPI4PY
+from gpaw.gpu.mpi import CuPyMPI
 from gpaw.new import prod
 
 DomainType = TypeVar('DomainType', bound=Domain)
@@ -212,6 +215,74 @@ class XArray(Generic[DomainType], XP):
         self._matrix = Matrix(*shape, data=data, dist=dist)
 
         return self._matrix
+
+    @trace
+    def domain_a2a_bands(self, transfer_data=True, blocking=True, index=None):
+        """Convert domain decomposition to band decomposition, and
+        vice versa."""
+        if self.domain_comm.size == 1:
+            self.dom_trans = not self.dom_trans
+            if index is not None:
+                return None
+            else:
+                return (None, ) * np.prod(self.myshape)
+
+        comm = self.domain_comm
+        size = comm.size
+        assert self.dom_transable
+        mpi_requests = []
+
+        if index is None:
+            self.dom_trans = not self.dom_trans
+            if self.dom_trans:
+                self.data = self._band_dist_view
+            else:
+                self.data = self._domain_dist_view
+
+        if transfer_data:
+            """Create arrays for MPI alltoallv call."""
+
+            # TODO: Define these things in __init__:
+            d2b_size = np.repeat(self.maxnX, size)
+            d2b_offset = np.cumsum(d2b_size) - self.maxnX
+
+            dtype = self.data_buffer.dtype.char
+
+            if isinstance(index, int):
+                if self.dims[1:]:
+                    raise NotImplementedError()
+                inds = np.array([index, ])
+            else:
+                inds = np.arange(self.maxbands * prod(self.dims[1:]))
+            send_size = self.maxnX * size
+            inds *= send_size
+
+            if (not GPAW_MPI4PY) or size == 1 or isinstance(comm, CuPyMPI):
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
+                    comm.alltoallv(data_view.copy(), d2b_size, d2b_offset,
+                                    data_view, d2b_size, d2b_offset)
+                    mpi_requests.append(None)
+            else:
+                from mpi4py.MPI import IN_PLACE
+
+                from gpaw.mpi import MPIComm
+                if isinstance(comm, MPIComm):
+                    comm = comm.comm
+                if self.xp is not np:
+                    self.xp.cuda.get_current_stream().synchronize()
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
+                    req = comm.comm.Ialltoallv(IN_PLACE,
+                                               (data_view, (d2b_size, d2b_offset), dtype))
+                    mpi_requests.append(req)
+            if blocking:
+                for req in mpi_requests:
+                    if req is not None:
+                        comm.wait(req)
+            if isinstance(index, int):
+                return mpi_requests[0]
+            return mpi_requests
 
     @trace
     def matrix_elements(self,
