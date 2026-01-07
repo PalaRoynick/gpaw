@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
 
 
-from gpaw import GPAW_MPI4PY
+from gpaw import GPAW_MPI_BACKEND
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.new import prod
 
@@ -257,7 +257,7 @@ class XArray(Generic[DomainType], XP):
             send_size = self.maxnX * size
             inds *= send_size
 
-            if (not GPAW_MPI4PY) or size == 1 or isinstance(comm, CuPyMPI):
+            if (not GPAW_MPI_BACKEND == 'MPI4PY') or isinstance(comm, CuPyMPI):
                 for ind in inds:
                     data_view = self.data_buffer[ind:ind + send_size]
                     comm.alltoallv(data_view.copy(), d2b_size, d2b_offset,
