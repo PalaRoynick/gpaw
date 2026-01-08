@@ -343,7 +343,7 @@ class C_Response(Contribution):
     def calculate_discontinuity_potential(self, homo, lumo):
         r"""Calculate the derivative discontinuity potential.
 
-        This function calculates $`\Delta_{xc}(r)`$ as given by
+        This function calculates `\Delta_{xc}(r)` as given by
         Eq. (24) of https://doi.org/10.1103/PhysRevB.82.115106
 
         Parameters:
