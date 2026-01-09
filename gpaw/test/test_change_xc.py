@@ -1,30 +1,29 @@
 import pytest
 import numpy as np
-from ase.build import molecule
+from ase.lattice.hexagonal import Graphene
 from gpaw.dft import DFT
 
 
 def test_xc():
 
-    etot_hse = -10.014548
-    fz = 1.38885
-    forces_hse = np.array([[0, 0, fz], [0, 0, -fz]])
-
-    atoms = molecule('H2', cell=[4, 4, 4])
-    atoms.center()
+    atoms = Graphene(symbol='B',
+                     latticeconstant={'a': 2.5, 'c': 1.0},
+                     size=(1, 1, 1))
+    atoms[0].symbol = 'N'
     atoms.set_pbc(True)
+    atoms.center(axis=2, vacuum=3.0)
 
     ppcg = {'name': 'ppcg',
             'niter': 30,
             'min_niter': 2}
 
     params = {'xc': 'PBE',
-              'mode': {'name': 'pw', 'ecut': 400},
-              'nbands': 3,
+              'mode': {'name': 'pw', 'ecut': 400, 'force_complex_dtype': False},
+              'nbands': '120%',
               'eigensolver': ppcg,
-              'convergence': {'eigenstates': 1e-4,
-                              'density': 1e-2,
-                              'forces': 1e-1}}
+              'convergence': {'eigenstates': 1e-6,
+                              'density': 1e-4,
+                              'forces': 1e-2}}
 
     xc_hse = {'name': 'HYB_GGA_XC_HSE06',
               'fraction': 0.26,
@@ -47,7 +46,7 @@ def test_xc():
     etot_xc = ase_calc.get_potential_energy(atoms)
     forces_xc = ase_calc.get_forces(atoms)
 
-    if 0:
+    if 1:
         from gpaw.new.ase_interface import GPAW
         # check against HSE
         params['xc'] = xc_hse
