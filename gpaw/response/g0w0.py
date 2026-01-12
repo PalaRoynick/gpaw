@@ -632,7 +632,7 @@ class G0W0Calculator:
     @cached_property
     def pair_distribution(self):
         b1, b2 = self.bands
-        self.pair_distribution = distribute_k_points_and_bands(
+        return distribute_k_points_and_bands(
             self.chi0calc.chi0_body_calc, b1, b2,
             self.chi0calc.gs.kd.ibz2bz_k[self.kpts])
 
