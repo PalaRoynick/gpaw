@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from contextlib import ExitStack
 from math import isclose, pi
 from pathlib import Path
+from functools import cached_property
 
 import numpy as np
 from ase.parallel import broadcast, paropen
