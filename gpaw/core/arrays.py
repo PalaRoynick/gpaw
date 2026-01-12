@@ -106,7 +106,13 @@ class XArray(Generic[DomainType], XP):
         else:
             data = (xp or np).zeros(buffersize, dtype)
 
-        self.data_buffer = data.ravel()[:buffersize]
+        if data.flags['C_CONTIGUOUS']:
+            self.data_buffer = data.reshape(-1, copy=False)[:buffersize]
+        else:
+            assert data.shape == fullshape
+            self.dom_transable = False
+            self.data_buffer = data
+
         if self.dom_transable:
             self._domain_dist_view = self.data_buffer.reshape(
                 (self.maxbands * domain_comm.size, *self.dims[1:], self.maxnX), copy=False
@@ -215,9 +221,12 @@ class XArray(Generic[DomainType], XP):
         myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
 
-        data = self.data_buffer[:prod(myshape)].reshape(myshape)
+        data = self.data_buffer.reshape(
+            -1, copy=False)[:prod(myshape)].reshape(
+                myshape, copy=False)
 
-        if self.desc.dtype == self.real_dtype:
+        if np.issubdtype(self.desc.dtype, np.floating) \
+                and self.desc.dtype != self.data.dtype:
             data = data.view(self.real_dtype)
             shape = (shape[0], shape[1] * 2)
 
