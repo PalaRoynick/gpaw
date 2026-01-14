@@ -47,7 +47,7 @@ def gpu_only_fixture(request):
 
     mempool = cupy.get_default_memory_pool()
     with cupy.cuda.Device(0):
-        mempool.set_limit(size=100*1024**2)  # 0.1 GiB
+        mempool.set_limit(size=256*1024**2)  # quarter GiB
 
     yield
 
