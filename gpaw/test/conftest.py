@@ -37,6 +37,7 @@ def execute_in_tmp_path(request, tmp_path_factory):
 def gpu_only_fixture(request):
     marker = request.node.get_closest_marker("gpu")
     if not marker:
+        yield
         return
 
     try:
