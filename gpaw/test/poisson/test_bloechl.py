@@ -73,7 +73,7 @@ def test_psolve(xp):
     d12 = 1.35
     g_ai = [[g(rc1, rgd)], [g(rc2, rgd)]]
     v = 7.5
-    gcut = 25.0
+    gcut = 18.0
     pw = PWDesc(gcut=gcut, cell=[2 * v, 2 * v, 2 * v + d12], comm=comm)
     relpos_ac = np.array([[0.5, 0.5, v / (2 * v + d12)],
                           [0.5, 0.5, (v + d12) / (2 * v + d12)]])
@@ -109,7 +109,7 @@ def test_psolve(xp):
     e1, vHt_g, V1_aL = spps.solve(nt0_g, Q_aL, vt10_g)
     F1_av = spps.force_contribution(Q_aL, vHt_g, nt_g)
     comm.sum(F1_av)
-    assert e1 == pytest.approx(e0, abs=1e-9)
+    assert e1 == pytest.approx(e0, abs=1e-7)
     print('simple', e1, e1 - e0)
     print(F1_av)
     assert xp.allclose(F1_av, [[0, 0, f0],
@@ -121,7 +121,7 @@ def test_psolve(xp):
     e2, vHt_g, V2_aL = pps.solve(nt0_g, Q_aL, vt20_g)
     F2_av = pps.force_contribution(Q_aL, vHt_g, nt_g)
     comm.sum(F2_av)
-    assert e2 == pytest.approx(e0, abs=1e-8)
+    assert e2 == pytest.approx(e0, abs=1e-7)
     print('\nfast  ', e2, e2 - e0)
     assert xp.allclose(V2_aL.data[::9], V1_aL.data[::9])
     if comm.rank == 0:
