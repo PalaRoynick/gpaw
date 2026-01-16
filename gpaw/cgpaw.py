@@ -1,14 +1,29 @@
 from gpaw import GPAW_NO_C_EXTENSION
+from types import ModuleType
+
+# Import everything from the C-extension module, or the purepython equivalent.
+# Other modules should use `from gpaw.cgpaw import xxx` to access stuff
+# from the extension module.
 
 if GPAW_NO_C_EXTENSION:
-    have_magma = False
-    import gpaw.purepython as _gpaw
+    from gpaw.purepython import *  # noqa: F401, F403
 else:
-    import _gpaw  # type: ignore[no-redef]
+    from _gpaw import *  # noqa: F401, F403
 
-    # Do not force users to recompile due to merging magma support to master
-    have_magma = getattr(_gpaw, 'have_magma', False)
+    # Ensure we have symbols that were added to C-extension without bumping
+    # its version. Bad practice, obviously. This is a hotfix
+    try:
+        have_magma_symbols = "have_magma" in globals()
+    except NameError:
+        have_magma = False
 
 
-def __getattr__(name):
-    return getattr(_gpaw, name)
+def _get_extension_module() -> ModuleType | None:
+    """Return direct access to the _gpaw extension module, if available.
+    Internal use only.
+    """
+    if GPAW_NO_C_EXTENSION:
+        return None
+    else:
+        import _gpaw
+        return _gpaw

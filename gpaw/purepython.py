@@ -8,6 +8,7 @@ from scipy.interpolate import CubicSpline
 from gpaw.typing import Array1D, ArrayND
 
 have_openmp = False
+have_magma = False
 
 
 def gpaw_gpu_init():
