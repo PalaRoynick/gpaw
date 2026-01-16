@@ -55,7 +55,7 @@ class MagmaDiagonalizer(NonDistributedDiagonalizer):
             Eigenvector corresponding to ``w[i]`` is in column ``v[:,i]``.
         """
 
-        from gpaw.cgpaw import _eigh_magma_cupy, _eigh_magma_numpy
+        from gpaw.cgpaw import eigh_magma_cupy, eigh_magma_numpy
 
         shape = inout_matrix.shape
         assert (inout_matrix.ndim == 2 and shape[0] == shape[1])
@@ -75,7 +75,7 @@ class MagmaDiagonalizer(NonDistributedDiagonalizer):
             host_matrix = cp.asnumpy(inout_matrix)
             eigvals = np.empty((shape[0]), dtype=eigval_dtype)
 
-            _eigh_magma_numpy(host_matrix,
+            eigh_magma_numpy(host_matrix,
                               eigvals,
                               options.uplo,
                               options.gpus_per_process)
@@ -86,10 +86,10 @@ class MagmaDiagonalizer(NonDistributedDiagonalizer):
         else:
             eigvals = xp.empty((shape[0]), dtype=eigval_dtype)
             if xp is np:
-                _eigh_magma_numpy(eigvecs, eigvals, options.uplo,
+                eigh_magma_numpy(eigvecs, eigvals, options.uplo,
                                   options.gpus_per_process)
             else:
-                _eigh_magma_cupy(eigvecs, eigvals, options.uplo)
+                eigh_magma_cupy(eigvecs, eigvals, options.uplo)
 
         # Transform to Numpy convention (conjugate transpose)
         xp.conjugate(eigvecs, out=eigvecs.T)

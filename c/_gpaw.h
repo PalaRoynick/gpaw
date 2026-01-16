@@ -318,11 +318,11 @@ static PyMethodDef functions[] = {
     {"calculate_residuals_gpu", calculate_residual_gpu, METH_VARARGS, 0},
 
     #ifdef GPAW_WITH_MAGMA
-    {"_eigh_magma_numpy", eigh_magma_numpy, METH_VARARGS, 0},
-    {"_eigh_magma_cupy", eigh_magma_cupy, METH_VARARGS, 0},
+    {"eigh_magma_numpy", eigh_magma_numpy, METH_VARARGS, 0},
+    {"eigh_magma_cupy", eigh_magma_cupy, METH_VARARGS, 0},
     #endif // GPAW_WITH_MAGMA
 
-    {"_flush_pending_decrefs", flush_pending_decrefs, METH_NOARGS, 0},
+    {"flush_pending_decrefs", flush_pending_decrefs, METH_NOARGS, 0},
 
 #endif // GPAW_GPU
 
