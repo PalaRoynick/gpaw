@@ -76,9 +76,9 @@ class MagmaDiagonalizer(NonDistributedDiagonalizer):
             eigvals = np.empty((shape[0]), dtype=eigval_dtype)
 
             eigh_magma_numpy(host_matrix,
-                              eigvals,
-                              options.uplo,
-                              options.gpus_per_process)
+                             eigvals,
+                             options.uplo,
+                             options.gpus_per_process)
 
             eigvecs[:] = cp.asarray(host_matrix)
             eigvals = cp.asarray(eigvals)
@@ -87,7 +87,7 @@ class MagmaDiagonalizer(NonDistributedDiagonalizer):
             eigvals = xp.empty((shape[0]), dtype=eigval_dtype)
             if xp is np:
                 eigh_magma_numpy(eigvecs, eigvals, options.uplo,
-                                  options.gpus_per_process)
+                                 options.gpus_per_process)
             else:
                 eigh_magma_cupy(eigvecs, eigvals, options.uplo)
 
