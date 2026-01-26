@@ -42,7 +42,8 @@ def test_legacy_conversion(dtype: np.dtype):
     else:
         assert spline.get_x_end() == pytest.approx(legacy_spline.get_cutoff())
 
-    x = rng.uniform(0.0, x_max, (10))
+    # Test at a few points, including some that go beyond the cutoff
+    x = rng.uniform(0.0, 1.2*x_max, (15))
     y = spline.evaluate(x)
     y_old = legacy_spline.map(x)
 
@@ -64,12 +65,20 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     else:
         spline = Spline64(r_start, r_end, data)
 
+    rtol = 1e-12 if dtype == np.float64 else 1e-8
+    atol = 1e-12
+
     # Check that values at the breakpoints match the input values.
     # ie. did we choose breakpoints correctly
     r = spline.get_breakpoints()
     assert r[0] == pytest.approx(r_start)
     assert r[-1] == pytest.approx(r_end)
-    np.testing.assert_allclose(spline.evaluate(r), data)
+    np.testing.assert_allclose(spline.evaluate(r), data, atol=atol)
+
+    # Test out of bound evaluation (should give 0)
+    r = np.asarray([r_start - 0.2, r_end + 0.1])
+    np.testing.assert_allclose(spline.evaluate(r),
+                               np.zeros_like(r))
 
     legacy_spline = Spline.from_data(0, r_end, fixt_random_data)
 
@@ -80,6 +89,4 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     s_r = spline.evaluate(r)
     s_r_legacy = legacy_spline.map(r).view(dtype)
 
-    rtol = 1e-12 if dtype == np.float64 else 1e-8
-    atol = 1e-12
     np.testing.assert_allclose(s_r, s_r_legacy, rtol=rtol, atol=atol)
