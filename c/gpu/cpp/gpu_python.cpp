@@ -4,6 +4,8 @@
 #include "gpu/cpp/pyarray_utils.hpp"
 #include "gpu/cpp/pybind_cupy_type_caster.hpp"
 
+#include "gpu/cpp/splines/spline_python.hpp"
+
 #ifdef GPAW_WITH_MAGMA
     #include "gpu/cpp/magma/magma_python.h"
 #endif
@@ -106,11 +108,16 @@ bool bind_gpu_submodule(PyObject* module)
         R"(Tests that the array type caster correctly copies metadata from cupy ndarray. Use by passing the same array as both inputs. Raises RuntimeError on failure.)"
     );
 
-    bool submodules_ok = true;
-#ifdef GPAW_WITH_MAGMA
-    // creates gpaw.gpu.magma
-    submodules_ok &= bind_magma_submodule(submodule);
+#ifdef GPAW_CPP
+    gpaw::bind_spline<float>(submodule, "Spline32", "Single-precision natural cubic spline");
+    gpaw::bind_spline<double>(submodule, "Spline64", "Double-precision natural cubic spline");
 #endif
 
-    return submodules_ok;
+    bool all_ok = true;
+#ifdef GPAW_WITH_MAGMA
+    // creates gpaw.gpu.magma
+    all_ok &= bind_magma_submodule(submodule);
+#endif
+
+    return all_ok;
 }
