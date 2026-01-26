@@ -68,6 +68,7 @@ void bind_spline(py::module_& m, const std::string& class_name, const std::strin
         },
         py::arg("x"),
         R"doc(Vectorized evaluation of the spline. Output array shape will match that of the input array.
+        Note that this may create a copy of the input array if its dtype does not match dtype of the spline.
         )doc"
     );
 
