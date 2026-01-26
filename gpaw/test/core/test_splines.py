@@ -61,22 +61,22 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     r_end = 5.8
 
     if dtype == np.float32:
-        spline = Spline32(r_start, r_end, data)
+        spline = Spline32(r_end, data)
     else:
-        spline = Spline64(r_start, r_end, data)
+        spline = Spline64(r_end, data)
 
     rtol = 1e-12 if dtype == np.float64 else 1e-8
     atol = 1e-12
 
     # Check that values at the breakpoints match the input values.
     # ie. did we choose breakpoints correctly
-    r = spline.get_breakpoints()
-    assert r[0] == pytest.approx(r_start)
-    assert r[-1] == pytest.approx(r_end)
-    np.testing.assert_allclose(spline.evaluate(r), data, atol=atol)
+    breakpoints = spline.get_breakpoints()
+    assert breakpoints[0] == pytest.approx(r_start)
+    assert breakpoints[-1] == pytest.approx(r_end)
+    np.testing.assert_allclose(spline.evaluate(breakpoints), data, atol=atol)
 
-    # Test out of bound evaluation (should give 0)
-    r = np.asarray([r_start - 0.2, r_end + 0.1])
+    # Test out of bounds evaluation (should give 0)
+    r = np.asarray([r_end, r_end + 0.1])
     np.testing.assert_allclose(spline.evaluate(r),
                                np.zeros_like(r))
 
@@ -90,3 +90,11 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     s_r_legacy = legacy_spline.map(r).view(dtype)
 
     np.testing.assert_allclose(s_r, s_r_legacy, rtol=rtol, atol=atol)
+
+
+    from scipy.interpolate import CubicSpline
+    scipy_spline = CubicSpline(breakpoints, data, bc_type="clamped")
+    np.testing.assert_allclose(scipy_spline(breakpoints), data, atol=atol)
+
+    np.testing.assert_allclose(scipy_spline(r), spline.evaluate(r),
+                               rtol=rtol, atol=atol)

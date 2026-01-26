@@ -4,7 +4,7 @@
 #include "gpu/cpp/pyarray_utils.hpp"
 #include "gpu/cpp/pybind_cupy_type_caster.hpp"
 
-#include "gpu/cpp/splines/spline_python.hpp"
+#include "gpu/cpp/splines/splines_python.hpp"
 
 #ifdef GPAW_WITH_MAGMA
     #include "gpu/cpp/magma/magma_python.h"
@@ -109,8 +109,8 @@ bool bind_gpu_submodule(PyObject* module)
     );
 
 #ifdef GPAW_CPP
-    gpaw::bind_spline<float>(submodule, "Spline32", "Single-precision natural cubic spline");
-    gpaw::bind_spline<double>(submodule, "Spline64", "Double-precision natural cubic spline");
+    gpaw::bind_spline<float>(submodule, "Spline32");
+    gpaw::bind_spline<double>(submodule, "Spline64");
 #endif
 
     bool all_ok = true;
