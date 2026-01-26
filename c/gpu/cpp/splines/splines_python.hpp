@@ -1,25 +1,29 @@
+#pragma once
+
 #include "python_utils.h"
 #include <pybind11/numpy.h>
 
-#include "spline_python.hpp"
-#include "spline.hpp"
+#include "radial_spline.hpp"
 #include "spline.h"
 #include <string>
 #include <algorithm>
 
 namespace py = pybind11;
 
-template<typename T>
-static void bind_spline(py::module_& m, const std::string& class_name, const std::string& class_docs)
+namespace gpaw
 {
-    using Spline = gpaw::TSpline<T>;
+
+template<typename T>
+void bind_spline(py::module_& m, const std::string& class_name)
+{
+    using Spline = gpaw::TRadialSpline<T>;
 
     py::class_<Spline> cls(m, class_name.c_str());
 
     // Bind constructor via helper lambda (copy Numpy array -> std::vector).
     // This forces a copy to C-contiguous array if the input is not such.
     cls.def(py::init(
-        [](T x_start, T x_end, py::array_t<T, py::array::c_style | py::array::forcecast> data)
+        [](T r_max, py::array_t<T, py::array::c_style | py::array::forcecast> data)
         {
             py::buffer_info buf = data.request();
             if (buf.ndim != 1)
@@ -29,8 +33,9 @@ static void bind_spline(py::module_& m, const std::string& class_name, const std
 
             T* data_ptr = static_cast<T*>(buf.ptr);
             std::vector<T> data_copy(data_ptr, data_ptr + buf.size);
-            return Spline(x_start, x_end, std::move(data_copy));
-        })
+            return Spline(r_max, std::move(data_copy));
+        }),
+        R"(Create a new spline from input data. Last value in the input array should correspond to spline value at r = r_max and MUST equal 0.0.)"
     );
 
     cls.def("get_x_start", &Spline::get_x_start);
@@ -64,6 +69,7 @@ static void bind_spline(py::module_& m, const std::string& class_name, const std
         },
         py::arg("x"),
         R"doc(Vectorized evaluation of the spline. Output array shape will match that of the input array.
+        Note that this may create a copy of the input array if its dtype does not match dtype of the spline.
         )doc"
     );
 
@@ -94,8 +100,20 @@ static void bind_spline(py::module_& m, const std::string& class_name, const std
             std::copy_n(x.data(), x.size(), result.mutable_data());
             return result;
         },
-        R"(Returns {x_i}: breakpoints used when constructing the spline.)"
+        R"(Returns {x_i}.)"
     );
 
-    cls.doc() = class_docs.c_str();
+    cls.doc() = R"(Implements cubic spline interpolation for radial functions, uniform spacing.
+    The spline is a C2-smooth piecewise polynomial
+        S(x) = S_i(x) for x_i < x <= x_{i+1},
+    such that
+        S_i(x) = a_i + b_i (x - x_i) + c_i (x - x_i)^2 + d_i (x - x_i)^3.
+    This is intended for radial functions only, ie. x is in range [0, x_max].
+    Boundary conditions are hardcoded:
+       - "Clamped" boundaries, ie. first derivatives at endpoints are zero. S'(0) = S'(x_max) = 0.
+        - S(x) = S(0) for x <= 0
+        - S(x) = 0 for x >= x_max.
+    )";
 }
+
+} // namespace gpaw

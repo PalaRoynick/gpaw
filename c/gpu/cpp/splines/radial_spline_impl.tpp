@@ -1,4 +1,4 @@
-#include "spline.hpp"
+#include "radial_spline.hpp"
 
 #include <cassert>
 #include <vector>
@@ -7,16 +7,16 @@ namespace gpaw
 {
 
 template<typename T>
-inline TSpline<T>::TSpline(T x_start, T x_end, const std::vector<T>& data)
-    : x_start(x_start), x_end(x_end)
+inline TRadialSpline<T>::TRadialSpline(T x_end, const std::vector<T>& data)
+    : x_end(x_end)
 {
     if (data.size() < 3)
     {
         throw std::length_error("Spline constructor needs at least 3 data points");
     }
-    if (x_start >= x_end)
+    if (x_end <= T(0.0))
     {
-        throw std::domain_error("Spline constructor needs x_start < x_end");
+        throw std::domain_error("Spline constructor needs x_end > 0.0");
     }
     if (data.back() != T(0.0))
     {
@@ -24,33 +24,37 @@ inline TSpline<T>::TSpline(T x_start, T x_end, const std::vector<T>& data)
     }
 
     num_bins = data.size() - 1;
-    dx = (x_end - x_start) / num_bins;
+    dx = x_end / num_bins;
 
     build_coefficients(data);
 }
 
 template<typename T>
-inline T TSpline<T>::evaluate(T x) const
+inline T TRadialSpline<T>::evaluate(T x) const
 {
-    if (x < x_start || x > x_end)
+    if (x < 0.0)
+    {
+        throw std::runtime_error("Attempted to evaluate radial spline at r < 0");
+    }
+    if (x >= x_end)
     {
         return 0;
     }
 
-    const size_t bin_idx = floor((x - x_start) / dx);
+    const size_t bin_idx = floor(x / dx);
     const SplineCoeffs<T>& c = coeffs[bin_idx];
 
     // x - x_i
-    const T u = x - (x_start + bin_idx*dx);
+    const T u = x - bin_idx*dx;
+    //const T u = x - (x_start + bin_idx*dx);
 
     // S(x) = a + b*u + c*u^2 + d*u^3
     return c.a + u * (c.b + u * (c.c + u * c.d));
 }
 
 template<typename T>
-inline TSpline<T> TSpline<T>::from_legacy_spline(const bmgsspline& spline)
+inline TRadialSpline<T> TRadialSpline<T>::from_legacy_spline(const bmgsspline& spline)
 {
-    // TODO: double check if the old spline always starts at 0
     const double x_start = 0.0;
     const double x_end = x_start + spline.nbins * spline.dr;
 
@@ -62,22 +66,22 @@ inline TSpline<T> TSpline<T>::from_legacy_spline(const bmgsspline& spline)
         data[i] = bmgs_splinevalue(&spline, x_start + i*spline.dr);
     }
 
-    return TSpline<T>(x_start, x_end, std::move(data));
+    return TRadialSpline<T>(x_end, std::move(data));
 }
 
 template<typename T>
-inline std::vector<T> TSpline<T>::get_breakpoints() const
+inline std::vector<T> TRadialSpline<T>::get_breakpoints() const
 {
     std::vector<T> x(num_bins + 1);
     for (size_t i = 0; i < x.size(); ++i)
     {
-        x[i] = x_start + i * dx;
+        x[i] = i * dx;
     }
     return x;
 }
 
 template<typename T>
-inline void TSpline<T>::build_coefficients(const std::vector<T>& data)
+inline void TRadialSpline<T>::build_coefficients(const std::vector<T>& data)
 {
     /* We have (N+1) data points and N spline sections (bins).
     * Need to solve spline coefficients {a_i, b_i, c_i, d_i} for i = 0, ..., N-1 such that
@@ -91,9 +95,9 @@ inline void TSpline<T>::build_coefficients(const std::vector<T>& data)
     /* Let y_i = f(x_i) and h = dx = x_{i+1} - x_i (same for all i)
     * We have to solve c_i from:
     *   c_{i-1} + 4c_i + c_{i+1} = 3/h^2 (y_{i+1} - 2y_i + y_{i+1})
-    * with approprite boundary conds (TODO: which bc??).
+    * and we impose clamped boundary conditions.
     * See any article on tridiagonal matrix algorithm (Thomas algorithm).
-    * The following is based on the legacy spline builder in bmgs/spline.c
+    * The following is based on the legacy spline builder in bmgs/spline.c,
     */
 
     // We only store up to c_{N-1}

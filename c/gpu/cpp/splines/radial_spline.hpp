@@ -8,13 +8,6 @@
 #include <vector>
 #include <type_traits>
 
-/* Defines cubic spline interpolation in 1D. The spline is a piecewise polynomial
-*    S(x) = S_i(x) for x_i < x <= x_{i+1},
-* such that
-*    S_i(x) = a_i + b_i (x - x_i) + c_i (x - x_i)^2 + d_i (x - x_i)^3
-* Coefficients are fixed so that the first and second derivatives are continuous,
-* and that the second derivatives at the endpoints are zero.
-*/
 
 // Cubic spline coefficients
 template<typename T>
@@ -26,26 +19,33 @@ struct alignas(4 * sizeof(T)) SplineCoeffs
 namespace gpaw
 {
 
-/* Cubic spline. This is a "natural" spline, ie. second derivatives at endpoints are zero.
-* This is currently hardcoded to have zero boundary conditions,
-* ie. S(x) = 0 for x outside the range [x_start, x_end]. */
+/* Cubic spline interpolation in 1D with uniform spacing for radial functions.
+* The spline is a C2-smooth piecewise polynomial
+*    S(x) = S_i(x) for x_i < x <= x_{i+1},
+* such that
+*    S_i(x) = a_i + b_i (x - x_i) + c_i (x - x_i)^2 + d_i (x - x_i)^3.
+* This is intended for radial functions only, ie. x is in range [0, x_max].
+* Boundary conditions are hardcoded:
+*   - "Clamped" boundaries, ie. first derivatives at endpoints are zero. S'(0) = S'(x_max) = 0.
+*   - S(x) = S(0) for x <= 0
+*   - S(x) = 0 for x >= x_max.
+*/
 template<typename T>
-class TSpline
+class TRadialSpline
 {
     static_assert(std::is_floating_point_v<T>, "T must be a floating-point type");
-
 public:
 
     /* Create a uniformly-spaced cubic spline that interpolates the input data.
-    */
-    TSpline(T x_start, T x_end, const std::vector<T>& data);
+    Last element in the input data must be 0. */
+    TRadialSpline(T x_end, const std::vector<T>& data);
 
     // Evaluate the spline S(x)
     T evaluate(T x) const;
 
-    static TSpline from_legacy_spline(const bmgsspline& spline);
+    static TRadialSpline from_legacy_spline(const bmgsspline& spline);
 
-    T get_x_start() const { return x_start; }
+    constexpr T get_x_start() const { return T(0.0); }
     T get_x_end() const { return x_end; }
     size_t get_num_bins() const { return num_bins; }
 
@@ -62,11 +62,10 @@ private:
 
     // Spacing of x-axis
     T dx;
-    T x_start;
     T x_end;
     size_t num_bins;
 };
 
 } // namespace gpaw
 
-#include "spline_impl.tpp"
+#include "radial_spline_impl.tpp"
