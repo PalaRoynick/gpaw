@@ -4,7 +4,6 @@ from gpaw.new.symmetry import Symmetries, create_symmetries_object
 import numpy as np
 from gpaw.new.ase_interface import ASECalculator
 
-
 def pretty(C_cv):
     for i in range(3):
         for j in range(3):
@@ -13,9 +12,10 @@ def pretty(C_cv):
 
 
 def chol_derivative(A, dA):
+    eps = 1e-5
     L = np.linalg.cholesky(A)
-    Lp = np.linalg.cholesky(A + dA)
-    return (Lp - L) / np.linalg.norm(dA)
+    Lp = np.linalg.cholesky(A + eps * dA)
+    return (Lp - L) / eps
 
     # L lower-triangular Cholesky of A
     Linv = np.linalg.inv(L)
@@ -54,6 +54,7 @@ def unit_cell_symmetry(C_cv, U_scc):
 
     rot_vv, P_vv = scipy.linalg.polar(F_vv)
     osymC_cv = symC_cv @ rot_vv.T
+    print('rot_vv', rot_vv)
     print("Old cell like, but symmetrized", osymC_cv)
     print(Atoms(cell=osymC_cv).cell.angles())
     print(Atoms(cell=osymC_cv).cell.lengths())
@@ -82,10 +83,14 @@ def unit_cell_symmetry(C_cv, U_scc):
     null_mask = S < tol
     nullspace = Vh[null_mask]
     dM_zcc = []
+    dM_zvv = []
     for B in nullspace:
-        dof = osymC_cv @ B.reshape((3, 3)) @ osymC_cv.T
+        dM_vv = B.reshape((3,3))
+        dof = osymC_cv @ dM_vv @ osymC_cv.T
         dM_zcc.append(dof)
+        dM_zvv.append(rot_vv @ dM_vv @ rot_vv.T)
     dM_zcc = np.array(dM_zcc).reshape((-1, 3, 3))
+    dM_zvv = np.array(dM_zvv).reshape((-1, 3, 3))
 
     # Do a QR decomposition, try to get more zeros to coordinates
     # basis = np.array(dM_zcc).reshape((-1, 9))
@@ -101,7 +106,7 @@ def unit_cell_symmetry(C_cv, U_scc):
         print("C_cv:")
         pretty(chol_derivative(M_cc, 1e-5 * dM_cc) @ rot_vv.T)
 
-    return M_cc, osymC_cv, U_svv, np.array(dM_zcc), rot_vv
+    return M_cc, osymC_cv, U_svv, dM_zcc, dM_zvv, rot_vv
 
 
 class Relax:
@@ -119,7 +124,7 @@ class Relax:
 
         self.symmetries = create_symmetries_object(self.atoms, tolerance=self.symprec)
 
-        self.M_cc, self.C_cv, U_svv, self.dM_zcc, self.rot_vv = unit_cell_symmetry(
+        self.M_cc, self.C_cv, U_svv, self.dM_zcc, self.dM_zvv, self.rot_vv = unit_cell_symmetry(
             self.atoms.cell, self.symmetries.rotation_scc
         )
 
@@ -174,22 +179,22 @@ class Relax:
 
             grad_z[z] = (E1 - E0) / (2 * eps)
         self.set_x(xref)
-        return grad_z
-        # Infinitesimal deformation gradient
-        # F = chol(M_cc + \sum_z u_z dM^z_cc) chol(M_cc)^-1 = I + dF
-        # Strain eps = 1/2 (F^T F -I)
-        # Thus, d eps = 1/2 (dF + dF.T)
-        # dE/du_z = dE/deps_vv deps_vv
-
-        # dE = dE/deps_vv
-        grad_z = np.zeros((self.ndofs(),))
+        grad2_z = grad_z.copy()
+        
+        grad_z = np.zeros(self.ndofs())
         S_vv = self.atoms.get_stress(voigt=False)
-        iC_cv = np.linalg.inv(self.C_cv)
+        C_cv = np.array(self._get_cell())
+        V = np.linalg.det(C_cv)
+        Cinv = np.linalg.inv(C_cv)
+        
+        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.value_z, self.dM_zcc)
+
+        # dE/deps_vv deps_vv/dC_cv dC_cv/dz
         for z in range(self.ndofs()):
-            dC_vv = 0.5 * iC_cv.T @ self.dM_zcc[z] @ iC_cv
-            grad_z[z] = np.sum(np.sum(dC_vv * S_vv))
-        # print('gradient value', grad_z)
-        # print('S_vv', S_vv)
+            dC_cv = chol_derivative(M_cc, self.dM_zcc[z]) @ self.rot_vv.T ## @ self.dM_zcc[z]
+            grad_z[z] = V * np.sum(S_vv * (Cinv @ dC_cv + dC_cv.T @ Cinv.T)/2)
+        print('grad', grad_z)
+        print('fd grad', grad2_z)
         return grad_z
 
     def converged(self, gradient, fmax):
@@ -209,15 +214,12 @@ if __name__ == "__main__":
     from ase.build import bulk
     from ase.calculators.emt import EMT
 
-    atoms = bulk("Zn")
-    for atom in atoms:
-        atom.symbol = "Au"
+    atoms = bulk("Au")
     # eps_cc = np.random.rand(3, 3) * 0.0001
     # atoms.set_cell(atoms.cell @ (np.eye(3) + eps_cc), scale_atoms=True)
-    # calc = GPAW(mode="pw", txt='out.txt', convergece={'density':1e-7})
+    calc = GPAW(mode="pw", txt='out.txt', convergence={'density':1e-7})
 
-    calc = EMT()
-    print(type(calc))
+    #calc = EMT()
     from ase.optimize.bfgs import BFGS
 
     relax = Relax(atoms=atoms, calc=calc, optimizer_factory=BFGS, symprec=1e-1)
