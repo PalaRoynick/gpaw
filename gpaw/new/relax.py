@@ -29,6 +29,7 @@ def chol_derivative(A, dA):
 
 
 def unit_cell_symmetry(C_cv, U_scc):
+    print('Original cell', Atoms(cell=C_cv).cell.lengths(), Atoms(cell=C_cv).cell.angles())
     print("Symmetries", len(U_scc))
     # Calculate the cell metric
     M_cc = C_cv @ C_cv.T
@@ -104,7 +105,7 @@ def unit_cell_symmetry(C_cv, U_scc):
         print("In metric space")
         pretty(dM_cc)
         print("C_cv:")
-        pretty(chol_derivative(M_cc, 1e-5 * dM_cc) @ rot_vv.T)
+        pretty(chol_derivative(M_cc, dM_cc) @ rot_vv.T)
 
     return M_cc, osymC_cv, U_svv, dM_zcc, dM_zvv, rot_vv
 
@@ -165,21 +166,22 @@ class Relax:
         self.atoms.set_cell(C_cv, scale_atoms=True)
 
     def get_gradient(self):
-        eps = 1e-5
-        xref = np.array(self.get_x())
-        grad_z = np.zeros((self.ndofs(),))
-        for z in range(self.ndofs()):
-            x = xref.copy()
-            x[z] += eps
-            self.set_x(x)
-            E1 = self.get_value()
-            x[z] -= 2 * eps
-            self.set_x(x)
-            E0 = self.get_value()
+        if 0:
+            eps = 1e-5
+            xref = np.array(self.get_x())
+            grad_z = np.zeros((self.ndofs(),))
+            for z in range(self.ndofs()):
+                x = xref.copy()
+                x[z] += eps
+                self.set_x(x)
+                E1 = self.get_value()
+                x[z] -= 2 * eps
+                self.set_x(x)
+                E0 = self.get_value()
 
-            grad_z[z] = (E1 - E0) / (2 * eps)
-        self.set_x(xref)
-        grad2_z = grad_z.copy()
+                grad_z[z] = (E1 - E0) / (2 * eps)
+            self.set_x(xref)
+            grad2_z = grad_z.copy()
         
         grad_z = np.zeros(self.ndofs())
         S_vv = self.atoms.get_stress(voigt=False)
@@ -191,10 +193,10 @@ class Relax:
 
         # dE/deps_vv deps_vv/dC_cv dC_cv/dz
         for z in range(self.ndofs()):
-            dC_cv = chol_derivative(M_cc, self.dM_zcc[z]) @ self.rot_vv.T ## @ self.dM_zcc[z]
+            dC_cv = chol_derivative(M_cc, self.dM_zcc[z]) @ self.rot_vv.T
             grad_z[z] = V * np.sum(S_vv * (Cinv @ dC_cv + dC_cv.T @ Cinv.T)/2)
-        print('grad', grad_z)
-        print('fd grad', grad2_z)
+        #print('grad', grad_z)
+        #print('fd grad', grad2_z)
         return grad_z
 
     def converged(self, gradient, fmax):
@@ -214,10 +216,28 @@ if __name__ == "__main__":
     from ase.build import bulk
     from ase.calculators.emt import EMT
 
-    atoms = bulk("Au")
-    # eps_cc = np.random.rand(3, 3) * 0.0001
-    # atoms.set_cell(atoms.cell @ (np.eye(3) + eps_cc), scale_atoms=True)
-    calc = GPAW(mode="pw", txt='out.txt', convergence={'density':1e-7})
+    from ase.io.jsonio import read_json
+    atoms = read_json('output.json')
+
+    #atoms = Atoms('NaCl',
+    #        cell=[4, 4, 4],
+    #        positions=[[0, 0, 0],
+    #                   [2, 2, 2]],
+    #        pbc=True)
+
+    
+    #angle = 62
+    #c = np.cos(angle / 180 * np.pi)
+    #a = atoms.cell.lengths()[0]
+    #M_cc = a**2 * np.array([[1, c, c], [c, 1, c], [c, c, 1]])
+    #cell_cv = np.linalg.cholesky(M_cc)
+    #atoms.set_cell(cell_cv, scale_atoms=True)
+
+    #eps_cc = np.random.rand(3, 3) * 0.0001
+    #atoms.set_cell(atoms.cell @ (np.eye(3) + eps_cc), scale_atoms=True)
+    calc = GPAW(mode={'name': "pw", 'ecut': 800}, kpts={'size': (4,4,4), 'gamma': True},
+                txt='out.txt', xc='PBE',
+                convergence={'density':1e-7})
 
     #calc = EMT()
     from ase.optimize.bfgs import BFGS
@@ -237,3 +257,7 @@ if __name__ == "__main__":
             print("div", grad[z] / ((E1 - E0) / 1e-3))
 
     relax.run(fmax=0.005, smax=0.001)
+
+"""
+    [ cos(alpha) |v1|^2   
+"""
