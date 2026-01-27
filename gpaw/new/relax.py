@@ -12,53 +12,37 @@ def pretty(C_cv):
 
 
 def chol_derivative(A, dA):
-    eps = 1e-5
+    eps = 1e-8
     L = np.linalg.cholesky(A)
     Lp = np.linalg.cholesky(A + eps * dA)
     return (Lp - L) / eps
-
-    # L lower-triangular Cholesky of A
-    Linv = np.linalg.inv(L)
-    S = Linv @ dA @ Linv.T
-
-    X = np.tril(S)
-    X[np.diag_indices_from(X)] *= 0.5
-
-    dL = L @ X
-    return dL
 
 
 def unit_cell_symmetry(C_cv, U_scc):
     print('Original cell', Atoms(cell=C_cv).cell.lengths(), Atoms(cell=C_cv).cell.angles())
     print("Symmetries", len(U_scc))
+
     # Calculate the cell metric
     M_cc = C_cv @ C_cv.T
 
     # Symmetrize the cell metric
     M_cc = np.einsum("scd,de,sfe->cf", U_scc, M_cc, U_scc, optimize=True) / len(U_scc)
 
-    print("Old cell", C_cv)
     symC_cv = np.linalg.cholesky(M_cc)
 
-    print("New cell", symC_cv)
 
     # Deformation gradient
     F_vv = np.linalg.inv(C_cv) @ symC_cv
 
     # Sanity check
-    print("Rotated", C_cv @ F_vv)
-    print("Symmetric", symC_cv)
     assert np.allclose(C_cv @ F_vv, symC_cv)
 
     # Do a polar decomposition to rotate the symmetrized cell back
     import scipy
-
     rot_vv, P_vv = scipy.linalg.polar(F_vv)
     osymC_cv = symC_cv @ rot_vv.T
-    print('rot_vv', rot_vv)
-    print("Old cell like, but symmetrized", osymC_cv)
-    print(Atoms(cell=osymC_cv).cell.angles())
-    print(Atoms(cell=osymC_cv).cell.lengths())
+    print('Symmetrized cell', Atoms(cell=osymC_cv).cell.lengths(),
+                              Atoms(cell=osymC_cv).cell.angles())
     # Now we can construct exact Cartesian rotation matrices
     iosymC_cv = np.linalg.inv(osymC_cv)
     U_svv = np.array([osymC_cv.T @ U_cc.T @ iosymC_cv.T for U_cc in U_scc])
@@ -68,7 +52,6 @@ def unit_cell_symmetry(C_cv, U_scc):
         eps_ij = np.zeros((3, 3))
         eps_ij[i, j] = 1.0
         return eps_ij
-        return (eps_ij + eps_ij.T) / 2
 
     A_blocks = []
     for U_vv in U_svv:
@@ -149,6 +132,7 @@ class Relax:
         return self.atoms.get_potential_energy()
 
     def get_x(self):
+        print(self.value_z)
         return self.value_z.copy()
 
     def _get_cell(self):
@@ -158,11 +142,8 @@ class Relax:
 
     def set_x(self, x):
         self.value_z[:] = x
-        # print('z values', self.value_z)
         M_cc = self.M_cc + np.einsum("z,zcd->cd", self.value_z, self.dM_zcc)
         C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
-        # print('Current cell', C_cv)
-        # print('Volume', np.linalg.det(C_cv))
         self.atoms.set_cell(C_cv, scale_atoms=True)
 
     def get_gradient(self):
@@ -195,13 +176,10 @@ class Relax:
         for z in range(self.ndofs()):
             dC_cv = chol_derivative(M_cc, self.dM_zcc[z]) @ self.rot_vv.T
             grad_z[z] = V * np.sum(S_vv * (Cinv @ dC_cv + dC_cv.T @ Cinv.T)/2)
-        #print('grad', grad_z)
-        #print('fd grad', grad2_z)
         return grad_z
 
     def converged(self, gradient, fmax):
         cell = self._get_cell()
-        print(cell.lengths(), cell.angles())
         return self.gradient_norm(gradient) < fmax
 
     def gradient_norm(self, grad_z):
@@ -257,7 +235,3 @@ if __name__ == "__main__":
             print("div", grad[z] / ((E1 - E0) / 1e-3))
 
     relax.run(fmax=0.005, smax=0.001)
-
-"""
-    [ cos(alpha) |v1|^2   
-"""
