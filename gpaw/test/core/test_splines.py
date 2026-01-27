@@ -1,4 +1,5 @@
 from gpaw.cgpaw.gpu import Spline32, Spline64
+from gpaw.gpu import cupy_is_fake, as_xp, cupy as cp
 from gpaw.spline import Spline  # legacy spline class
 
 import pytest
@@ -98,3 +99,20 @@ def test_radial_spline(fixt_random_data: np.ndarray):
 
     np.testing.assert_allclose(scipy_spline(r), spline.evaluate(r),
                                rtol=rtol, atol=atol)
+
+@pytest.mark.gpu
+@pytest.mark.skipif(cupy_is_fake, reason="Fake cupy")
+def test_gpu_spline(fixt_random_data: np.ndarray):
+    """"""
+    from gpaw.cgpaw.gpu import SplineTester64
+    dtype = fixt_random_data.dtype
+
+    cutoff = 33.2
+    tester = SplineTester64(cutoff, fixt_random_data)
+
+    rng = np.random.default_rng(99)
+    r = rng.uniform(0.0, cutoff, (8)).view(dtype)
+
+    res_cpu = tester.evaluate_cpu(r)
+    res_gpu = tester.evaluate_gpu(as_xp(r, xp=cp))
+    np.testing.assert_allclose(res_gpu, res_cpu)

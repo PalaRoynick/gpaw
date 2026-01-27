@@ -111,6 +111,8 @@ bool bind_gpu_submodule(PyObject* module)
 #ifdef GPAW_CPP
     gpaw::bind_spline<float>(submodule, "Spline32");
     gpaw::bind_spline<double>(submodule, "Spline64");
+
+    gpaw::bind_gpu_splines(submodule);
 #endif
 
     bool all_ok = true;

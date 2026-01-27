@@ -13,6 +13,22 @@ namespace py = pybind11;
 namespace gpaw
 {
 
+void bind_gpu_splines(py::module_& m);
+
+template<typename T>
+TRadialSpline<T> spline_from_numpy(T r_max, py::array_t<T, py::array::c_style | py::array::forcecast> data)
+{
+    py::buffer_info buf = data.request();
+    if (buf.ndim != 1)
+    {
+        throw std::runtime_error("Input data must be 1D");
+    }
+
+    T* data_ptr = static_cast<T*>(buf.ptr);
+    std::vector<T> data_copy(data_ptr, data_ptr + buf.size);
+    return TRadialSpline<T>(r_max, std::move(data_copy));
+}
+
 template<typename T>
 void bind_spline(py::module_& m, const std::string& class_name)
 {
@@ -20,21 +36,9 @@ void bind_spline(py::module_& m, const std::string& class_name)
 
     py::class_<Spline> cls(m, class_name.c_str());
 
-    // Bind constructor via helper lambda (copy Numpy array -> std::vector).
-    // This forces a copy to C-contiguous array if the input is not such.
-    cls.def(py::init(
-        [](T r_max, py::array_t<T, py::array::c_style | py::array::forcecast> data)
-        {
-            py::buffer_info buf = data.request();
-            if (buf.ndim != 1)
-            {
-                throw std::runtime_error("Input data must be 1D");
-            }
-
-            T* data_ptr = static_cast<T*>(buf.ptr);
-            std::vector<T> data_copy(data_ptr, data_ptr + buf.size);
-            return Spline(r_max, std::move(data_copy));
-        }),
+    // Bind constructor directly to the above factory function
+    // See https://pybind11.readthedocs.io/en/stable/advanced/classes.html#custom-constructors
+    cls.def(py::init(&spline_from_numpy<T>),
         R"(Create a new spline from input data. Last value in the input array should correspond to spline value at r = r_max and MUST equal 0.0.)"
     );
 
