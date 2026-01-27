@@ -4,17 +4,10 @@
     #error "Must compile GPAW in C++ mode"
 #endif
 
+#include "splines_common.hpp"
 #include "bmgs/bmgs.h"
 #include <vector>
 #include <type_traits>
-
-
-// Cubic spline coefficients
-template<typename T>
-struct alignas(4 * sizeof(T)) SplineCoeffs
-{
-    T a, b, c, d;
-};
 
 namespace gpaw
 {
@@ -48,9 +41,11 @@ public:
     constexpr T get_x_start() const { return T(0.0); }
     T get_x_end() const { return x_end; }
     size_t get_num_bins() const { return num_bins; }
+    T get_dx() const { return dx; }
 
     // Returns {x_i}, ie. breakpoints used when the spline was constructed.
     std::vector<T> get_breakpoints() const;
+    const std::vector<SplineCoeffs<T>>& get_coefficients() const { return coeffs; }
 
 private:
 

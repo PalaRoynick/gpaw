@@ -86,6 +86,30 @@ launch_kernel(Kernel, dim3, dim3, size_t, gpuStream_t, Args&&...)
     -> launch_kernel<Kernel, Args...>;
 
 
+template<typename T>
+T* Tgpu_malloc(size_t num_elements)
+{
+    static_assert(!std::is_pointer_v<T>);
+    T* ptr;
+    gpuMalloc(reinterpret_cast<void**>(&ptr), num_elements * sizeof(T));
+    return ptr;
+}
+
+template<typename T>
+void Tgpu_free(T* ptr)
+{
+    static_assert(!std::is_pointer_v<T>);
+    gpuFree(ptr);
+}
+
+template<typename T>
+void Tgpu_memcpy(T* dst, const T* src, size_t num_elements, gpuMemcpyKind kind)
+{
+    static_assert(!std::is_pointer_v<T>);
+    gpuMemcpy(dst, src, num_elements * sizeof(T), kind);
+}
+
+
 // Schedule an async host callback in the input GPU stream
 template <typename F>
 void gpu_host_callback(gpuStream_t stream, F&& func)
