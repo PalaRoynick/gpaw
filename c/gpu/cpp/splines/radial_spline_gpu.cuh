@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gpu_core.hpp"
+#include "gpu/cpp/gpu_core.hpp"
 #include "splines_common.hpp"
 #include "radial_spline.hpp"
 #include "gpaw_utils.h"
@@ -17,9 +17,9 @@ struct TRadialSplineGpu
 
     // Evaluate the spline S(x)
     __device__ T evaluate(T x) const;
-    __host__ void free();
+    void free();
 
-    __host__ static TRadialSplineGpu<T> from_cpu(const TRadialSpline<T>& cpu_spline);
+    static TRadialSplineGpu<T> from_cpu(const TRadialSpline<T>& cpu_spline);
 
 private:
     SplineCoeffs<T>* __restrict__ coeffs = nullptr; // Or GPAW_RESTRICT ?
@@ -29,11 +29,11 @@ private:
 };
 
 template<typename T>
-inline T TRadialSplineGpu<T>::evaluate(T x) const
+__device__ inline T TRadialSplineGpu<T>::evaluate(T x) const
 {
     if (x >= x_end)
     {
-        return 0;
+        return static_cast<T>(0.0);
     }
 
     const size_t bin_idx = floor(x / dx);

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pyarray_utils.hpp"
-#include "gpu_core.hpp"
+#include "gpu/cpp/pyarray_utils.hpp"
+#include "gpu/cpp/gpu_core.hpp"
 #include "radial_spline_gpu.cuh"
 
 namespace gpaw
@@ -9,7 +9,7 @@ namespace gpaw
 
 // Evaluates the input spline on 1D data
 template<typename T>
-__global__ void evaluate_spline(const T* x, T* out, TRadialSpline<T> spline, size_t num_x)
+__global__ void evaluate_spline(const T* x, T* out, TRadialSplineGpu<T> spline, size_t num_x)
 {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_x)
@@ -28,7 +28,7 @@ void launch_evaluate_spline(
     const TRadialSplineGpu<T>& spline,
     gpuStream_t stream = 0)
 {
-    if (x.ndim() != 1 || !x.is_c_contiguous() || )
+    if (x.ndim() != 1 || !x.is_c_contiguous() || x.dtype != pybind11::dtype::of<T>())
     {
         throw std::invalid_argument("input array must be contiguous 1D array with dtype matching the template parameter");
     }
@@ -41,7 +41,9 @@ void launch_evaluate_spline(
     constexpr int threads = 256;
     const int blocks = (x.shape[0] + threads - 1) / threads;
 
-    launch_kernel(evaluate_spline<T>, blocks, threads, 0, stream, x.data, out.data, spline, num_x);
+    launch_kernel(evaluate_spline<T>, blocks, threads, 0, stream,
+        static_cast<T*>(x.data), static_cast<T*>(out.data), spline, num_x
+    );
 }
 
 }
