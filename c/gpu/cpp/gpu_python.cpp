@@ -111,12 +111,10 @@ bool bind_gpu_submodule(PyObject* module)
 
     bind_ndarray_tests(submodule);
 
-#ifdef GPAW_CPP
     gpaw::bind_spline<float>(submodule, "Spline32");
     gpaw::bind_spline<double>(submodule, "Spline64");
 
     gpaw::bind_gpu_splines(submodule);
-#endif
 
     bool all_ok = true;
 #ifdef GPAW_WITH_MAGMA
