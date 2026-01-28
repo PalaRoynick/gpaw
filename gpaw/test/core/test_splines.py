@@ -1,14 +1,18 @@
-from gpaw.cgpaw.gpu import Spline32, Spline64
+import pytest
+
+try:
+    from gpaw.cgpaw.gpu import Spline32, Spline64
+except (ImportError, ModuleNotFoundError):
+    pytest.skip("No GPU splines (compile with GPAW_CPP)",
+                allow_module_level=True)
+
 from gpaw.gpu import cupy_is_fake, as_xp, cupy as cp
 from gpaw.spline import Spline  # legacy spline class
-
-import pytest
 import numpy as np
+from scipy.interpolate import CubicSpline
 
-# can't use legacy splines with 32bit floats :(
 
-#@pytest.fixture(scope="module", params=[np.float32, np.float64])
-@pytest.fixture(scope="module", params=[np.float64])
+@pytest.fixture(scope="module", params=[np.float32, np.float64])
 def fixt_random_data(request) -> np.ndarray:
     """Tests will fit an interpolating spline to this data."""
     rng = np.random.default_rng(99)
@@ -44,7 +48,7 @@ def test_legacy_conversion(dtype: np.dtype):
         assert spline.get_x_end() == pytest.approx(legacy_spline.get_cutoff())
 
     # Test at a few points, including some that go beyond the cutoff
-    x = rng.uniform(0.0, 1.2*x_max, (15))
+    x = rng.uniform(0.0, 1.2 * x_max, (15))
     y = spline.evaluate(x)
     y_old = legacy_spline.map(x)
 
@@ -81,24 +85,17 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     np.testing.assert_allclose(spline.evaluate(r),
                                np.zeros_like(r))
 
-    legacy_spline = Spline.from_data(0, r_end, fixt_random_data)
+    # Compare with Scipy's CubicSpline. Should be the same with clamped b.c.
+    scipy_spline = CubicSpline(breakpoints, data, bc_type="clamped")
 
     # test at random values of r
     rng = np.random.default_rng(99)
     r = rng.uniform(r_start, r_end, (8)).view(dtype)
 
-    s_r = spline.evaluate(r)
-    s_r_legacy = legacy_spline.map(r).view(dtype)
-
-    np.testing.assert_allclose(s_r, s_r_legacy, rtol=rtol, atol=atol)
-
-
-    from scipy.interpolate import CubicSpline
-    scipy_spline = CubicSpline(breakpoints, data, bc_type="clamped")
     np.testing.assert_allclose(scipy_spline(breakpoints), data, atol=atol)
-
     np.testing.assert_allclose(scipy_spline(r), spline.evaluate(r),
                                rtol=rtol, atol=atol)
+
 
 @pytest.mark.gpu
 @pytest.mark.skipif(cupy_is_fake, reason="Fake cupy")
