@@ -9,7 +9,7 @@ namespace gpaw
 
 // Evaluates the input spline on 1D data
 template<typename T>
-__global__ void evaluate_spline(const T* x, T* out, TRadialSplineGpu<T> spline, size_t num_x)
+__global__ void evaluate_spline_kernel(const T* x, T* out, TRadialSplineGpu<T> spline, size_t num_x)
 {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_x)
