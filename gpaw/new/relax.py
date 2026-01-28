@@ -92,9 +92,77 @@ def unit_cell_symmetry(C_cv, U_scc):
 
     return M_cc, osymC_cv, U_svv, dM_zcc, dM_zvv, rot_vv
 
+def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
+    ns = len(U_scc)
+    na = len(atoms)
+    S_ac = atoms.get_scaled_positions()
+    B_ascac = np.zeros((na, ns, 3, na, 3), int)
+    for s, U_cc in enumerate(U_scc):
+        for a, S_c in enumerate(S_ac):
+            a2 = atommap_sa[s]
+            #print(S_c)
+            #n_c = U_cc.T @ S_c - S_ac[a2] This is missing non-symmorphic shift
+            #assert abs(n_c - n_c.round()).sum() < tol, n_c
+            #N_asc[a, s] = n_c.astype(int)
+            B_ascac[a, s, :, a] = U_cc
+            B_ascac[a, s, :, a2] -= np.eye(3, dtype=int)
+    B_EA = B_ascac.reshape((na * ns * 3, na * 3))
+
+    U, S, Vh = np.linalg.svd(B_EA, False)
+    tol = 1e-6
+    null_mask = S < tol
+    nullspace = Vh[null_mask]
+
+    # Maybe DOFs will be more human understandable after this rotation?
+    Q, R = np.linalg.qr(nullspace)
+    nullspace = Q.T @ nullspace
+
+    # Just make the printing prettyer for now
+    nullspace = np.where(np.abs(nullspace)<1e-10, 0, nullspace)
+
+    if len(nullspace) == 0:
+        print('No atomic degrees of freedom')
+        return np.empty((0, na, 3)), np.empty((0,))
+    dof_zac = nullspace.reshape((-1, na, 3))
+    #print(f'{dof_zac=}')
+    ## Solve the underdetermined problem, i.e. project symmetric dof
+    #dof_zx = dof_zac.reshape((-1, na * 3))
+    #print(dof_zx.shape)
+    #print(S_ac.reshape((-1,)).shape)
+    # TODO: Add checks that the residuals are within the tolerances assumed
+    #S_z = np.linalg.lstsq(dof_zx.T, S_ac.reshape((-1,)))[0]
+    #print(S_z.shape)
+    #print(dof_zac.shape)
+    #print('Old scaled positions', S_ac)
+    #S_ac = np.einsum('z,zac->ac', S_z, dof_zac)
+    #print('New scaled positions', S_ac)
+    #  
+    # Set symmetrized positions to atoms
+    #atoms.set_scaled_positions(S_ac)
+
+    return dof_zac #, S_z
+
+
+def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
+    ns, na = atommap_sa.shape
+    Ssym_ac = np.zeros_like(S_ac, dtype=np.complex128)
+    from collections import defaultdict
+    moves = defaultdict(list)
+    for a in range(na):
+        for s in range(ns):
+            new = U_scc[s].T @ S_ac[a] - f_sc[s]
+            Ssym_ac[atommap_sa[s, a]] += np.exp(2j*np.pi*new)
+            moves[atommap_sa[s,a]].append(new)
+    Ssym_ac = (np.angle(Ssym_ac) / (2 * np.pi)) % 1.0 % 1.0
+    Ssym_ac[np.abs(Ssym_ac) < tol] = 0.0
+    Ssym_ac[np.abs(Ssym_ac - 1.0) < tol] = 0.0
+    for a in range(na):
+        print('Atom', a)
+        print(moves[a])
+    return Ssym_ac
 
 class Relax:
-    def __init__(self, *, atoms: Atoms, calc: GPAW, optimizer_factory, symprec):
+    def __init__(self, symmorphic=False, *, atoms: Atoms, calc: GPAW, optimizer_factory, symprec):
         if atoms.calc is not None:
             raise ValueError("Do not attach a calculator to Atoms yet.")
 
@@ -105,15 +173,27 @@ class Relax:
         self.calc = calc
         self.optimizer_factory = optimizer_factory
         self.symprec = symprec
-
-        self.symmetries = create_symmetries_object(self.atoms, tolerance=self.symprec)
+        old_positions = atoms.get_positions().copy()
+        from ase.io import write
+        write('old.xyz', atoms)
+        self.symmetries = create_symmetries_object(self.atoms, tolerance=self.symprec, symmorphic=symmorphic)
 
         self.M_cc, self.C_cv, U_svv, self.dM_zcc, self.dM_zvv, self.rot_vv = unit_cell_symmetry(
             self.atoms.cell, self.symmetries.rotation_scc
         )
-
+        
+        self.dof_zac = atom_position_symmetry(self.symmetries.rotation_scc, self.symmetries.atommap_sa, atoms, symprec)
         self.atoms.set_cell(self.C_cv, scale_atoms=True)
-        # Now, with cell (and later atoms) symmetrized, it is safe to assign the calculator
+
+        print('Old positions', atoms.get_scaled_positions())
+        self.S_ac = symmetrize_atoms(atoms.get_scaled_positions(), self.symmetries.rotation_scc, self.symmetries.translation_sc, self.symmetries.atommap_sa)
+        self.atoms.set_scaled_positions(self.S_ac)
+        new_positions = atoms.get_positions()
+        print('New positions', atoms.get_scaled_positions())
+        print('Maximum shift after atomic symmetrization', np.max(np.abs(new_positions.flatten() - old_positions.flatten())))
+        assert np.max(np.abs(new_positions.flatten() - old_positions.flatten())) < symprec 
+        write('new.xyz', atoms)
+        # Now, with cell and atoms symmetrized, it is safe to assign the calculator
         self.atoms.calc = calc
 
         self._ndofs = len(self.dM_zcc)
@@ -194,16 +274,15 @@ if __name__ == "__main__":
     from ase.build import bulk
     from ase.calculators.emt import EMT
 
-    from ase.io.jsonio import read_json
-    atoms = read_json('output.json')
+    #from ase.io.jsonio import read_json
+    #atoms = read_json('output.json')
 
-    #atoms = Atoms('NaCl',
-    #        cell=[4, 4, 4],
-    #        positions=[[0, 0, 0],
-    #                   [2, 2, 2]],
-    #        pbc=True)
-
-    
+    atoms = Atoms('AuAg',
+            cell=[4, 4, 4],
+            positions=[[0, 0, 0],
+                       [2, 2, 2]],
+            pbc=True)
+    atoms.positions[1, 1] += 0.01 
     #angle = 62
     #c = np.cos(angle / 180 * np.pi)
     #a = atoms.cell.lengths()[0]
@@ -213,14 +292,16 @@ if __name__ == "__main__":
 
     #eps_cc = np.random.rand(3, 3) * 0.0001
     #atoms.set_cell(atoms.cell @ (np.eye(3) + eps_cc), scale_atoms=True)
-    calc = GPAW(mode={'name': "pw", 'ecut': 800}, kpts={'size': (4,4,4), 'gamma': True},
-                txt='out.txt', xc='PBE',
-                convergence={'density':1e-7})
 
-    #calc = EMT()
+    if 1:
+        atoms = bulk('ZnO', crystalstructure='wurtzite', a=3.24, c=5.20)
+        calc = GPAW(mode={'name': "pw", 'ecut': 800}, kpts={'size': (4,4,4), 'gamma': True},
+                    txt='out.txt', xc='PBE',
+                    convergence={'density':1e-7})
+
     from ase.optimize.bfgs import BFGS
 
-    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=BFGS, symprec=1e-1)
+    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=BFGS, symprec=0.1)
     if 0:
         for z in range(2):
             vec = np.zeros((2,))
