@@ -105,11 +105,14 @@ def test_radial_spline(fixt_random_data: np.ndarray):
 @pytest.mark.skipif(cupy_is_fake, reason="Fake cupy")
 def test_gpu_spline(fixt_random_data: np.ndarray):
     """"""
-    from gpaw.cgpaw.gpu import SplineTester64
+    from gpaw.cgpaw.gpu import SplineTester32, SplineTester64
     dtype = fixt_random_data.dtype
 
     cutoff = 33.2
-    tester = SplineTester64(cutoff, fixt_random_data)
+    if dtype == np.float32:
+        tester = SplineTester32(cutoff, fixt_random_data)
+    else:
+        tester = SplineTester64(cutoff, fixt_random_data)
 
     rng = np.random.default_rng(99)
     r = rng.uniform(0.0, cutoff, (8)).astype(dtype)
