@@ -41,7 +41,7 @@ void launch_evaluate_spline(
     constexpr int threads = 256;
     const int blocks = (x.shape[0] + threads - 1) / threads;
 
-    launch_kernel(evaluate_spline<T>, blocks, threads, 0, stream,
+    launch_kernel(evaluate_spline_kernel<T>, blocks, threads, 0, stream,
         static_cast<T*>(x.data), static_cast<T*>(out.data), spline, num_x
     );
 }
