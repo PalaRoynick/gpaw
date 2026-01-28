@@ -22,7 +22,7 @@ public:
     SplineTester( T r_cutoff, py::array_t<T, py::array::c_style | py::array::forcecast> f_r)
         : spline(std::move(spline_from_numpy<T>(r_cutoff, f_r)))
     {
-        TRadialSplineGpu<T>::from_cpu(spline);
+        gpu_spline = TRadialSplineGpu<T>::from_cpu(spline);
     }
 
     ~SplineTester()
