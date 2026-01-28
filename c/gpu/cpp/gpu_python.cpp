@@ -108,12 +108,10 @@ bool bind_gpu_submodule(PyObject* module)
         R"(Tests that the array type caster correctly copies metadata from cupy ndarray. Use by passing the same array as both inputs. Raises RuntimeError on failure.)"
     );
 
-#ifdef GPAW_CPP
     gpaw::bind_spline<float>(submodule, "Spline32");
     gpaw::bind_spline<double>(submodule, "Spline64");
 
     gpaw::bind_gpu_splines(submodule);
-#endif
 
     bool all_ok = true;
 #ifdef GPAW_WITH_MAGMA

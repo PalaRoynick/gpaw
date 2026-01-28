@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef GPAW_CPP
-    #error "Must compile GPAW in C++ mode"
-#endif
-
 #include "splines_common.hpp"
 #include "bmgs/bmgs.h"
 #include <vector>
