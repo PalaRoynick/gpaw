@@ -70,8 +70,8 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     else:
         spline = Spline64(r_end, data)
 
-    rtol = 1e-12 if dtype == np.float64 else 1e-8
-    atol = 1e-12
+    rtol = 1e-12 if dtype == np.float64 else 1e-6
+    atol = 1e-12 if dtype == np.float64 else 1e-6
 
     # Check that values at the breakpoints match the input values.
     # ie. did we choose breakpoints correctly
@@ -85,12 +85,16 @@ def test_radial_spline(fixt_random_data: np.ndarray):
     np.testing.assert_allclose(spline.evaluate(r),
                                np.zeros_like(r))
 
+    # Test r < 0: should raise RuntimeError
+    with pytest.raises(RuntimeError):
+        spline.evaluate(np.asarray([1.0, -1.0, 0.3]))
+
     # Compare with Scipy's CubicSpline. Should be the same with clamped b.c.
     scipy_spline = CubicSpline(breakpoints, data, bc_type="clamped")
 
     # test at random values of r
     rng = np.random.default_rng(99)
-    r = rng.uniform(r_start, r_end, (8)).view(dtype)
+    r = rng.uniform(r_start, r_end, 8).astype(dtype)
 
     np.testing.assert_allclose(scipy_spline(breakpoints), data, atol=atol)
     np.testing.assert_allclose(scipy_spline(r), spline.evaluate(r),
@@ -108,7 +112,7 @@ def test_gpu_spline(fixt_random_data: np.ndarray):
     tester = SplineTester64(cutoff, fixt_random_data)
 
     rng = np.random.default_rng(99)
-    r = rng.uniform(0.0, cutoff, (8)).view(dtype)
+    r = rng.uniform(0.0, cutoff, (8)).astype(dtype)
 
     res_cpu = tester.evaluate_cpu(r)
     res_gpu = tester.evaluate_gpu(as_xp(r, xp=cp))
