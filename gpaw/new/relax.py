@@ -99,7 +99,7 @@ def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
     B_ascac = np.zeros((na, ns, 3, na, 3), int)
     for s, U_cc in enumerate(U_scc):
         for a, S_c in enumerate(S_ac):
-            a2 = atommap_sa[s]
+            a2 = atommap_sa[s, a]
             #print(S_c)
             #n_c = U_cc.T @ S_c - S_ac[a2] This is missing non-symmorphic shift
             #assert abs(n_c - n_c.round()).sum() < tol, n_c
@@ -107,22 +107,30 @@ def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
             B_ascac[a, s, :, a] = U_cc
             B_ascac[a, s, :, a2] -= np.eye(3, dtype=int)
     B_EA = B_ascac.reshape((na * ns * 3, na * 3))
+    # Extra translational gauge degrees of freedom
+    if 1:
+        B_A = np.zeros((na * 3, 3))
+        for a in range(na):
+            B_A[(a*3):(a*3+3), :] = np.eye(3)
+        B_EA = np.vstack([B_EA, B_A.T])
 
     U, S, Vh = np.linalg.svd(B_EA, False)
     tol = 1e-6
     null_mask = S < tol
     nullspace = Vh[null_mask]
 
+    print('Eigenvalues', S)
     # Maybe DOFs will be more human understandable after this rotation?
     Q, R = np.linalg.qr(nullspace)
     nullspace = Q.T @ nullspace
 
+    
     # Just make the printing prettyer for now
     nullspace = np.where(np.abs(nullspace)<1e-10, 0, nullspace)
-
+    
     if len(nullspace) == 0:
         print('No atomic degrees of freedom')
-        return np.empty((0, na, 3)), np.empty((0,))
+        return np.empty((0, na, 3))
     dof_zac = nullspace.reshape((-1, na, 3))
     #print(f'{dof_zac=}')
     ## Solve the underdetermined problem, i.e. project symmetric dof
@@ -139,6 +147,12 @@ def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
     #  
     # Set symmetrized positions to atoms
     #atoms.set_scaled_positions(S_ac)
+    print('Atomic degrees of freedom')
+    for z, dof_ac in enumerate(dof_zac):
+        print(f'DOF {z}')
+        for dof_c in dof_ac:
+            print(dof_c, end=' ')
+        print()
 
     return dof_zac #, S_z
 
@@ -146,19 +160,13 @@ def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
 def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
     ns, na = atommap_sa.shape
     Ssym_ac = np.zeros_like(S_ac, dtype=np.complex128)
-    from collections import defaultdict
-    moves = defaultdict(list)
     for a in range(na):
         for s in range(ns):
             new = U_scc[s].T @ S_ac[a] - f_sc[s]
             Ssym_ac[atommap_sa[s, a]] += np.exp(2j*np.pi*new)
-            moves[atommap_sa[s,a]].append(new)
     Ssym_ac = (np.angle(Ssym_ac) / (2 * np.pi)) % 1.0 % 1.0
     Ssym_ac[np.abs(Ssym_ac) < tol] = 0.0
     Ssym_ac[np.abs(Ssym_ac - 1.0) < tol] = 0.0
-    for a in range(na):
-        print('Atom', a)
-        print(moves[a])
     return Ssym_ac
 
 class Relax:
@@ -196,14 +204,20 @@ class Relax:
         # Now, with cell and atoms symmetrized, it is safe to assign the calculator
         self.atoms.calc = calc
 
-        self._ndofs = len(self.dM_zcc)
+        self._ndofs_cell = len(self.dM_zcc)
+        self._ndofs_atoms = len(self.dof_zac)
+        self._ndofs = self._ndofs_cell + self._ndofs_atoms
 
         self.optimizer = optimizer_factory(self)
 
         self.value_z = np.zeros((self._ndofs))
 
+    def iterimages(self):
+        return [self.atoms]
+
     def run(self, *, fmax, smax):
-        self.optimizer.run(fmax=fmax)
+        for _ in self.optimizer.irun(fmax=fmax):
+            print('DIST', self.atoms.cell.lengths(), self.atoms.cell.angles())
 
     def __ase_optimizable__(self):
         return self
@@ -211,20 +225,33 @@ class Relax:
     def get_value(self):
         return self.atoms.get_potential_energy()
 
+    @property
+    def cell_z(self):
+        return self.get_x()[:self._ndofs_cell]
+    
+    @property
+    def atoms_z(self):
+        return self.get_x()[self._ndofs_cell:]
+
     def get_x(self):
         print(self.value_z)
         return self.value_z.copy()
 
     def _get_cell(self):
-        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.value_z, self.dM_zcc)
+        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.cell_z, self.dM_zcc)
         C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
         return Atoms(cell=C_cv).cell
 
     def set_x(self, x):
         self.value_z[:] = x
-        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.value_z, self.dM_zcc)
+
+        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.cell_z, self.dM_zcc)
+        print(M_cc)
         C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
-        self.atoms.set_cell(C_cv, scale_atoms=True)
+        self.atoms.set_cell(C_cv)
+
+        S_ac = self.S_ac + np.einsum('z,zac->ac', self.atoms_z, self.dof_zac)
+        self.atoms.set_scaled_positions(S_ac)
 
     def get_gradient(self):
         if 0:
@@ -244,22 +271,33 @@ class Relax:
             self.set_x(xref)
             grad2_z = grad_z.copy()
         
-        grad_z = np.zeros(self.ndofs())
+        grad_z = np.zeros(self._ndofs_cell)
         S_vv = self.atoms.get_stress(voigt=False)
         C_cv = np.array(self._get_cell())
         V = np.linalg.det(C_cv)
         Cinv = np.linalg.inv(C_cv)
         
-        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.value_z, self.dM_zcc)
+        M_cc = self.M_cc + np.einsum("z,zcd->cd", self.cell_z, self.dM_zcc)
 
         # dE/deps_vv deps_vv/dC_cv dC_cv/dz
-        for z in range(self.ndofs()):
+        for z in range(len(self.dM_zcc)):
             dC_cv = chol_derivative(M_cc, self.dM_zcc[z]) @ self.rot_vv.T
             grad_z[z] = V * np.sum(S_vv * (Cinv @ dC_cv + dC_cv.T @ Cinv.T)/2)
-        return grad_z
+
+        F_av = self.atoms.get_forces()
+        # dE/ds_z = dE/dR_av dR_av/ds_ac ds_ac/ds_z
+        # R_av = ds_ac C_cv
+        # ds_ac = self.dof_zac S_z
+        print(F_av.shape, C_cv.shape, self.dof_zac.shape)
+        atoms_grad_z = -np.einsum('av,cv,zac->z', F_av, C_cv, self.dof_zac)
+
+        gradient = np.hstack([grad_z, atoms_grad_z])
+        print('gradient shape', gradient.shape)
+        print('gradient', gradient)
+        return gradient
 
     def converged(self, gradient, fmax):
-        cell = self._get_cell()
+        print('Is converged', gradient)
         return self.gradient_norm(gradient) < fmax
 
     def gradient_norm(self, grad_z):
@@ -295,13 +333,15 @@ if __name__ == "__main__":
 
     if 1:
         atoms = bulk('ZnO', crystalstructure='wurtzite', a=3.24, c=5.20)
-        calc = GPAW(mode={'name': "pw", 'ecut': 800}, kpts={'size': (4,4,4), 'gamma': True},
-                    txt='out.txt', xc='PBE',
-                    convergence={'density':1e-7})
+        calc = GPAW(mode={'name': "pw", 'ecut': 600}, kpts={'size': (8,8,8),
+                    'gamma': True},
+                    eigensolver='dav',
+                    symmetry={'symmorphic': False},
+                    xc='PBE',
+                    convergence={'density':1e-4})
 
     from ase.optimize.bfgs import BFGS
-
-    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=BFGS, symprec=0.1)
+    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj', maxstep=0.05), symprec=0.01)
     if 0:
         for z in range(2):
             vec = np.zeros((2,))
