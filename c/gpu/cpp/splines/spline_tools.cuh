@@ -28,11 +28,11 @@ void launch_evaluate_spline(
     const TRadialSplineGpu<T>& spline,
     gpuStream_t stream = 0)
 {
-    if (x.ndim() != 1 || !x.is_c_contiguous() || x.dtype != pybind11::dtype::of<T>())
+    if (x.ndim() != 1 || !x.is_c_contiguous() || !x.dtype.is(pybind11::dtype::of<T>()))
     {
         throw std::invalid_argument("input array must be contiguous 1D array with dtype matching the template parameter");
     }
-    if (out.ndim() != 1 || out.shape[0] != x.shape[0] || !out.is_c_contiguous() || out.dtype != x.dtype)
+    if (out.ndim() != 1 || out.shape[0] != x.shape[0] || !out.is_c_contiguous() || !out.dtype.is(x.dtype))
     {
         throw std::invalid_argument("output array shape and dtype must match that of the input array");
     }

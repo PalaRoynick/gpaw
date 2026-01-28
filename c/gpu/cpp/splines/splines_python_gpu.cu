@@ -5,6 +5,7 @@
 #include "radial_spline.hpp"
 #include "gpu/cpp/pybind_cupy_type_caster.hpp"
 #include <vector>
+#include <string>
 
 namespace py = pybind11;
 
@@ -48,9 +49,12 @@ public:
 
     py::array_t<T> evaluate_gpu(const PyDeviceArray& x)
     {
-        if (!x.c_contiguous || x.ndim() != 1 || x.dtype != py::dtype::of<T>())
+        if (!x.c_contiguous || x.ndim() != 1 || !x.dtype.is(py::dtype::of<T>()))
         {
-            throw std::invalid_argument("Needs 1D contiguous Cupy array with matching dtype");
+            const std::string msg = "Needs 1D contiguous Cupy array with dtype: "
+                + std::to_string(py::dtype::of<T>().normalized_num())
+                + ". You had dtype: " + std::to_string(x.dtype.normalized_num());
+            throw std::invalid_argument(msg);
         }
 
         // Hacky
