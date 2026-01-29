@@ -10,8 +10,8 @@ def generate_all_bulk_structures():
 
     for Z in range(1, len(chemical_symbols)):
         symbol = chemical_symbols[Z]
-        if symbol in {'Np', 'U', 'Sb', 'As', 'Bi'}:
-            continue
+        #if symbol in {'Np', 'U', 'Sb', 'As', 'Bi'}:
+        #    continue
         try:
             atoms = bulk(symbol)
             from ase.build import niggli_reduce
@@ -40,14 +40,14 @@ def test_symmetry_constrained_relaxation_emt(system):
     from gpaw.new.relax import Relax
     from ase.optimize.bfgs import BFGS
     relax = Relax(atoms=atoms, calc=EMT(), optimizer_factory=lambda atoms: BFGS(atoms, alpha=100.0), symprec=0.01)
-    relax.run(fmax=0.001, smax=0.0001)
+    relax.run(fmax=0.0001, smax=0.00001)
 
     print('Relax complete', atoms.get_stress())
     from ase.filters import FrechetCellFilter 
     from ase.optimize.cellawarebfgs import CellAwareBFGS
     atoms_ref.calc = EMT()
     relax = CellAwareBFGS(FrechetCellFilter(atoms_ref, exp_cell_factor=1.0))
-    relax.run(fmax=0.001, smax=0.0001)
+    relax.run(fmax=0.0001, smax=0.00001)
     print('Ref relax complete', atoms_ref.get_stress())
     
     print(atoms.cell.lengths(), atoms_ref.cell.lengths())
@@ -55,5 +55,4 @@ def test_symmetry_constrained_relaxation_emt(system):
 
     assert np.allclose(atoms.cell.lengths(), atoms_ref.cell.lengths(), atol=0.001)
     assert np.allclose(atoms.cell.angles(), atoms_ref.cell.angles(), atol=0.01)
-
 

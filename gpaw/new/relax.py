@@ -83,6 +83,13 @@ def unit_cell_symmetry(C_cv, U_scc):
 
     symC_cv = np.linalg.cholesky(M_cc)
 
+    if 1:
+        Cinv = np.linalg.inv(C_cv)
+        for z in range(len(dM_zcc)):
+            dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
+            eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
+            dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv) # np.sqrt(np.sum(eps * eps))
+
     for z, dM_cc in enumerate(dM_zcc):
         print(f"Tangent {z} of cell")
         print("In metric space")
@@ -191,6 +198,16 @@ class Relax:
         )
         
         self.dof_zac = atom_position_symmetry(self.symmetries.rotation_scc, self.symmetries.atommap_sa, atoms, symprec)
+
+        # s_ac = dof_zac s_z -> ds_ac/d_sz = dof_zac
+        # dR_av / dsz = dR_av / d_sac ds_ac / ds_z
+        # R_av = s_ac C_cv 
+        # 
+        if 1:
+            dof_zav = np.einsum('zac,cv->zav', self.dof_zac, self.C_cv)
+            # Normalize such that the distance in Cartesian real space is reflected on the generalized coordinate
+            self.dof_zac /= np.sum(np.abs(dof_zav)) ##np.sum(np.sum(dof_zav**2, axis=2), axis=1) ** 0.5
+
         self.atoms.set_cell(self.C_cv, scale_atoms=True)
 
         print('Old positions', atoms.get_scaled_positions())
@@ -338,21 +355,22 @@ if __name__ == "__main__":
                     eigensolver='dav',
                     symmetry={'symmorphic': False},
                     xc='PBE',
-                    convergence={'density':1e-4})
+                    convergence={'density':1e-8})
 
     from ase.optimize.bfgs import BFGS
-    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj', maxstep=0.05), symprec=0.01)
-    if 0:
-        for z in range(2):
-            vec = np.zeros((2,))
+    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01)
+    if 1:
+        for z in range(3):
+            grad = relax.get_gradient()
+            vec = np.zeros((3,))
+            vec[z] = -1e-3
             relax.set_x(vec)
             E0 = relax.get_value()
-            grad = relax.get_gradient()
             vec[z] = 1e-3
             relax.set_x(vec)
             E1 = relax.get_value()
-            print("Finite difference grad", (E1 - E0) / 1e-3)
+            print("Finite difference grad", (E1 - E0) / (2e-3))
             print("Gotten grad", grad[z])
-            print("div", grad[z] / ((E1 - E0) / 1e-3))
+            print("div", grad[z] / ((E1 - E0) / 2e-3))
 
     relax.run(fmax=0.005, smax=0.001)

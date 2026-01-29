@@ -444,6 +444,7 @@ class Symmetries:
 
     def group_check(self) -> None:
         """Sanity check."""
+        print(self.translation_sc)
         for U1_cc, t1_c in zip(self.rotation_scc, self.translation_sc):
             for U2_cc, t2_c in zip(self.rotation_scc, self.translation_sc):
                 U_cc = U1_cc @ U2_cc
