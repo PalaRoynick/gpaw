@@ -99,10 +99,10 @@ struct GPAW_HIDDEN_SYMBOL PyDeviceArray
     std::vector<int64_t> shape;
     std::vector<int64_t> strides;
 
-private:
     void from_cupy(pybind11::handle array);
     void from_cupy(PyObject* obj) { from_cupy(pybind11::handle(obj)); }
 
+private:
     // Let pybind11 type caster access private members
     friend class pybind11::detail::type_caster<gpaw::PyDeviceArray>;
 };
