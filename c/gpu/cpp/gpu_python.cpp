@@ -1,5 +1,6 @@
 #include "python_utils.h"
 #include "gpu_python.h"
+#include "test_ndarray.hpp"
 
 #include "gpu/cpp/pyarray_utils.hpp"
 #include "gpu/cpp/pybind_cupy_type_caster.hpp"
@@ -105,6 +106,8 @@ bool bind_gpu_submodule(PyObject* module)
         py::arg("array"), py::arg("same_array"),
         R"(Tests that the array type caster correctly copies metadata from cupy ndarray. Use by passing the same array as both inputs. Raises RuntimeError on failure.)"
     );
+
+    bind_ndarray_tests(submodule);
 
     bool submodules_ok = true;
 #ifdef GPAW_WITH_MAGMA
