@@ -166,6 +166,29 @@ struct NDArrayTraits
     /* True if we know anything at all about the shape. Knowing ndim is sufficient,
     and knowing all or some dimension sizes is also OK. */
     static constexpr bool has_shape_info = (ndim != -1);
+
+    // TODO ensure this builds at compile time. Or at the very least, build in only once for each traits specialization
+    static std::string as_string()
+    {
+        std::string s = "";
+        if constexpr (has_dtype)
+        {
+            // ???
+        }
+
+        if constexpr (is_gpu) { s += "device=gpu"; } else { s += "device=cpu"; }
+        if constexpr (is_c_contig) { s += ", C"; } else { s += ", F"; }
+        if constexpr (has_shape_info)
+        {
+            s += ", shape<";
+            for (int32_t i = 0; i < ndim; ++i)
+            {
+                s += std::to_string(shape[i]) + ", ";
+            }
+            s += ">";
+        }
+        return s;
+    }
 };
 
 
@@ -465,8 +488,9 @@ struct type_caster<gpaw::NDArray<Args...>>
     using ndarray = gpaw::NDArray<Args...>;
     using Traits = gpaw::detail::NDArrayTraits<Args...>;
 
-    // TODO different text based on template args
-    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _("ndarray"));
+    // TODO how to build this at compile time??
+    static const std::string ndarray_str = "NDArray<" + Traits::as_string() + ">";
+    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _(ndarray_str.c_str()));
 
     /* C++ -> Python conversion. FIXME: can't easily have this as Cupy provides no C++ interface.
     * So either we call Cupy's Python API from here, or simply don't allow conversion like this.
