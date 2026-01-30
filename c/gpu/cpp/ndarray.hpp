@@ -8,6 +8,7 @@
 
 #include "python_utils.h"
 #include <type_traits>
+#include <array>
 
 #include "pyarray_utils.hpp"
 
@@ -18,13 +19,16 @@ namespace gpaw
 
 namespace device
 {
+// Array is in CPU memory
 struct cpu {};
+// Array is in GPU memory
 struct gpu {};
 }
 
+// C-contiguous memory layout
 struct c_contig {};
+// F-contiguous memory layout (Fortran style)
 struct f_contig {};
-
 
 /* Use to require NDArray of specific shape. Eg: NDArray<shape<2, 3>> for a 2x3 array.
 * Value of -1 leaves the size of that dimension unconstrained, eg: NDArray<shape<2, -1>>
@@ -36,6 +40,7 @@ template<int64_t... Dims> struct shape {};
 * Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>.
 */
 template<int32_t N> struct ndim {};
+
 
 namespace detail
 {
@@ -69,34 +74,43 @@ struct is_numpy_scalar<T, std::void_t<
 >> : std::true_type {};
 //~
 
-// Shape and ndim filtering
-template<typename T> struct is_shape : std::false_type {};
-template<int64_t... Dims> struct is_shape<shape<Dims...>> : std::true_type {};
-
-template<typename T> struct is_ndim : std::false_type {};
-template<int32_t N> struct is_ndim<ndim<N>> : std::true_type {};
-
-template<typename T>
-struct extract_shape;
+// Shape and ndim
+template<typename T> struct shape_info;
 
 template<int64_t... Dims>
-struct extract_shape<shape<Dims...>>
+struct shape_info<shape<Dims...>>
 {
     static constexpr int32_t ndim = sizeof...(Dims);
-    static constexpr std::array<int64_t, ndim> value = { Dims... };
+    static constexpr std::array<int64_t, ndim> dims = { Dims... };
 };
 
-template<typename T>
-struct extract_ndim;
-
+// Shape constructed from ndim<N>. Sets dims to -1 (unconstrained)
 template<int32_t N>
-struct extract_ndim<ndim<N>>
+struct shape_info<ndim<N>>
 {
-    static constexpr int32_t value = N;
+    static constexpr int32_t ndim = N;
+    static constexpr std::array<int64_t, N> dims = []{
+        std::array<int64_t, N> a{};
+        for (auto& v : a) v = -1;
+        return a;
+    }();
 };
+
+template<>
+struct shape_info<unused>
+{
+    static constexpr int32_t ndim = -1;
+    static constexpr std::array<int64_t, 0> dims = {};
+};
+
+// Predicates
+template<typename T> struct is_shape_like : std::false_type {};
+template<int64_t... D> struct is_shape_like<shape<D...>> : std::true_type {};
+template<int32_t N> struct is_shape_like<ndim<N>> : std::true_type {};
+
 //~
 
-// Metaprogramming selector, used to "parse" traits from Args...
+// Metaprogramming selector, used to extract specific traits from Args... using predicates from above
 template<typename Default, template<typename> class Pred, typename... Ts>
 struct Select;
 
@@ -115,7 +129,8 @@ struct Select<Default, Pred, T, Ts...>
         typename Select<Default, Pred, Ts...>::type>;
 };
 
-// Used for ensuring that we only select each trait once. Eg. NDArray<float, double> is not valid.
+/* Used for ensuring that we only select each trait once. Eg. NDArray<float, double> is not valid.
+This kinda relies on predicates being careful with SFINAE. */
 template<template<typename> class Pred, typename... Ts>
 constexpr size_t count_matches()
 {
@@ -133,35 +148,24 @@ struct NDArrayTraits
         "NDArray: Only one device trait is allowed. Eg: NDArray<device::cpu, device::gpu> is not valid.");
     static_assert(count_matches<is_layout, Args...>() <=1,
         "NDArray: Only one layout trait is allowed. Eg: NDArray<c_contig, f_contig> is not valid.");
-    static_assert(count_matches<is_shape, Args...>() <= 1,
-        "NDArray: only one shape<> trait is allowed.");
-    static_assert(count_matches<is_ndim, Args...>() <= 1,
-        "NDArray: only one ndim<> trait is allowed.");
+    static_assert(count_matches<is_shape_like, Args...>() <= 1,
+        "NDArray: only one shape<> or ndim<> trait is allowed. You cannot give both ndim<> and shape<>.");
 
     using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
     using device_trait = typename Select<device::cpu, is_device, Args...>::type;
     using layout_trait = typename Select<unused, is_layout, Args...>::type;
-    using shape_trait = typename Select<unused, is_shape, Args...>::type;
-    using ndim_trait  = typename Select<unused, is_ndim,  Args...>::type;
+    using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
     static constexpr bool is_c_contig = std::is_same_v<layout_trait, c_contig>;
-    static constexpr bool has_shape = !std::is_same_v<shape_trait, unused>;
-    static constexpr bool has_ndim  = !std::is_same_v<ndim_trait, unused>;
 
-    static constexpr int32_t ndim =
-        has_shape ? extract_shape<shape_trait>::ndim :
-        has_ndim  ? extract_ndim<ndim_trait>::value :
-                    int32_t(-1);
+    static constexpr int32_t ndim = shape_info<shape_trait>::ndim;
+    static constexpr auto shape = shape_info<shape_trait>::dims;
 
-    static constexpr auto shape =
-    has_shape ? extract_shape<shape_trait>::value :
-                std::array<int64_t, ndim>(-1);
-
-    static_assert(extract_shape<shape_trait>::ndim == extract_ndim<ndim_trait>::value,
-        "NDArray: shape<> and ndim<> are inconsistent.");
-
+    /* True if we know anything at all about the shape. Knowing ndim is sufficient,
+    and knowing all or some dimension sizes is also OK. */
+    static constexpr bool has_shape_info = (ndim != -1);
 };
 
 
@@ -233,6 +237,11 @@ private:
 namespace detail
 {
 
+enum class Framework
+{
+    eNumpy, eCupy
+};
+
 template<typename... Args>
 inline bool ndarray_import_numpy(
     PyArrayObject* obj,
@@ -265,9 +274,28 @@ inline bool ndarray_import_numpy(
     }
 
     out.ndim = static_cast<int32_t>(PyArray_NDIM(obj));
+    if constexpr (traits::ndim != -1)
+    {
+        if (out.ndim != traits::ndim)
+        {
+            return false;
+        }
+    }
+
     // TODO constexpr check ndim and shape
     // CAUTION: we're getting memory owned by numpy
     out.shape = PyArray_DIMS(obj);
+    if constexpr (traits::has_shape_info)
+    {
+        for (int32_t i = 0; i < out.ndim; ++i)
+        {
+            if (traits::shape[i] != -1 && out.shape[i] != traits::shape[i])
+            {
+                return false;
+            }
+        }
+    }
+
     out.strides = PyArray_STRIDES(obj);
 
     return true;

@@ -49,5 +49,8 @@ void bind_ndarray_tests(py::module_ m)
     NDArray<> a;
     NDArray<c_contig> b;
     NDArray<double, c_contig> c;
-
+    NDArray<double, c_contig, shape<-1, 2>> aa;
+    NDArray<shape<3>> a1;
+    NDArray<ndim<2>>();
+    NDArray<ndim<2>, double, f_contig>();
 }
