@@ -11,36 +11,6 @@
 
 #include "pyarray_utils.hpp"
 
-// // Lightweight struct for describing what kind of array we are expecting to import from Python side
-// struct ndarray_request
-// {
-//     bool is_gpu = false;
-//     bool c_contig = false;
-//     int typenum = 0;
-//     int32_t ndim = 0;
-//     int64_t* shape = nullptr;
-//     ndarray_request() = default;
-
-//     template<typename Traits> ndarray_request() noexcept
-//     {
-//         is_gpu = Traits::is_gpu;
-//         c_contig = Traits::is_c_contig;
-
-//         if constexpr (Traits::has_dtype)
-//         {
-//             typenum = py::dtype::num_of<typename Traits::value_type>();
-//         }
-//         else
-//         {
-//             typenum = 0;
-//         }
-
-//         // TODO
-//         ndim = 0;
-//         shape = nullptr;
-//     }
-// };
-
 namespace py = pybind11;
 
 namespace gpaw
@@ -55,10 +25,22 @@ struct gpu {};
 struct c_contig {};
 struct f_contig {};
 
+
+/* Use to require NDArray of specific shape. Eg: NDArray<shape<2, 3>> for a 2x3 array.
+* Value of -1 leaves the size of that dimension unconstrained, eg: NDArray<shape<2, -1>>
+* is a 2D array with second dimension being any size.
+*/
+template<int64_t... Dims> struct shape {};
+
+/* Alternative way of specifying shape when only the number of dimensions is fixed.
+* Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>.
+*/
+template<int32_t N> struct ndim {};
+
 namespace detail
 {
 
-// Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_type is unused.
+// Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_trait is unused.
 struct unused {};
 
 // Helpers for defining array traits
@@ -85,6 +67,33 @@ template<typename T>
 struct is_numpy_scalar<T, std::void_t<
     decltype(py::detail::npy_format_descriptor<T>::value)
 >> : std::true_type {};
+//~
+
+// Shape and ndim filtering
+template<typename T> struct is_shape : std::false_type {};
+template<int64_t... Dims> struct is_shape<shape<Dims...>> : std::true_type {};
+
+template<typename T> struct is_ndim : std::false_type {};
+template<int32_t N> struct is_ndim<ndim<N>> : std::true_type {};
+
+template<typename T>
+struct extract_shape;
+
+template<int64_t... Dims>
+struct extract_shape<shape<Dims...>>
+{
+    static constexpr int32_t ndim = sizeof...(Dims);
+    static constexpr std::array<int64_t, ndim> value = { Dims... };
+};
+
+template<typename T>
+struct extract_ndim;
+
+template<int32_t N>
+struct extract_ndim<ndim<N>>
+{
+    static constexpr int32_t value = N;
+};
 //~
 
 // Metaprogramming selector, used to "parse" traits from Args...
@@ -119,19 +128,40 @@ template<typename... Args>
 struct NDArrayTraits
 {
     static_assert(count_matches<is_numpy_scalar, Args...>() <= 1,
-        "NDArray: only one value_type is allowed. Eg: NDArray<float, double> is not valid.");
+        "NDArray: only one value trait is allowed. Eg: NDArray<float, double> is not valid.");
     static_assert(count_matches<is_device, Args...>() <= 1,
-        "NDArray: Only one device_type is allowed. Eg: NDArray<device::cpu, device::gpu> is not valid.");
+        "NDArray: Only one device trait is allowed. Eg: NDArray<device::cpu, device::gpu> is not valid.");
     static_assert(count_matches<is_layout, Args...>() <=1,
-        "NDArray: Only one layout specifier is allowed. Eg: NDArray<c_contig, f_contig> is not valid.");
+        "NDArray: Only one layout trait is allowed. Eg: NDArray<c_contig, f_contig> is not valid.");
+    static_assert(count_matches<is_shape, Args...>() <= 1,
+        "NDArray: only one shape<> trait is allowed.");
+    static_assert(count_matches<is_ndim, Args...>() <= 1,
+        "NDArray: only one ndim<> trait is allowed.");
 
-    using value_type = typename Select<unused, is_numpy_scalar, Args...>::type;
-    using device_type = typename Select<device::cpu, is_device, Args...>::type;
-    using layout_type = typename Select<unused, is_layout, Args...>::type;
+    using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
+    using device_trait = typename Select<device::cpu, is_device, Args...>::type;
+    using layout_trait = typename Select<unused, is_layout, Args...>::type;
+    using shape_trait = typename Select<unused, is_shape, Args...>::type;
+    using ndim_trait  = typename Select<unused, is_ndim,  Args...>::type;
 
-    static constexpr bool has_dtype = !std::is_same_v<value_type, unused>;
-    static constexpr bool is_gpu = std::is_same_v<device_type, device::gpu>;
-    static constexpr bool is_c_contig = std::is_same_v<layout_type, c_contig>;
+    static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
+    static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
+    static constexpr bool is_c_contig = std::is_same_v<layout_trait, c_contig>;
+    static constexpr bool has_shape = !std::is_same_v<shape_trait, unused>;
+    static constexpr bool has_ndim  = !std::is_same_v<ndim_trait, unused>;
+
+    static constexpr int32_t ndim =
+        has_shape ? extract_shape<shape_trait>::ndim :
+        has_ndim  ? extract_ndim<ndim_trait>::value :
+                    int32_t(-1);
+
+    static constexpr auto shape =
+    has_shape ? extract_shape<shape_trait>::value :
+                std::array<int64_t, ndim>(-1);
+
+    static_assert(extract_shape<shape_trait>::ndim == extract_ndim<ndim_trait>::value,
+        "NDArray: shape<> and ndim<> are inconsistent.");
+
 };
 
 
@@ -220,7 +250,7 @@ inline bool ndarray_import_numpy(
     out.typenum = PyArray_TYPE(obj);
     if constexpr (traits::has_dtype)
     {
-        if (out.typenum != py::dtype::num_of<typename traits::value_type>())
+        if (out.typenum != py::dtype::num_of<typename traits::value_trait>())
         {
             return false;
         }
