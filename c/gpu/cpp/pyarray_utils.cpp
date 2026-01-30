@@ -60,6 +60,17 @@ void PyDeviceArray::from_cupy(pybind11::handle array)
     }
 }
 
+bool ndarray_check(pybind11::handle handle) noexcept
+{
+    PyObject* obj = handle.ptr();
+    if (!obj)
+    {
+        return false;
+    }
+
+    return (PyArray_Check(obj) || PyObject_HasAttrString(obj, "__dlpack__"));
+}
+
 bool is_cupy_array(PyObject* obj)
 {
     if (!obj)
@@ -69,7 +80,7 @@ bool is_cupy_array(PyObject* obj)
 
     /* Fast path: check that obj is not a Numpy array and exposes dlpack interface .
     This is very naive, but will correctly identify Cupy arrays as long as we only work with Numpy/Cupy. */
-    if (!PyArray_Check(obj) && PyObject_HasAttrString(obj, "__dlpack__"))
+    if (!is_numpy_array(obj) && PyObject_HasAttrString(obj, "__dlpack__"))
     {
         return true;
     }
