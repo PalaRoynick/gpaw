@@ -176,8 +176,15 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     void* data = nullptr;
     int typenum = 0; // raw numpy typenum
     int32_t ndim = 0;
-    int64_t* shape = nullptr;
-    int64_t* strides = nullptr;
+
+    // For Numpy we could go for zero-copy but that seems fragile.
+    // For Cupy this is harder because the shape/stride there are Python tuples (not contiguous C-style arrays)
+    // So we opt for copies.
+    // TODO!! Figure out a good pattern for memory management.
+    // For now, just std::vector which is not optimal for this
+
+    std::vector<int64_t> shape;
+    std::vector<int64_t> strides;
     // Offset is TODO. Libraries don't really seem to use this ATM
     static constexpr uint64_t byte_offset = 0;
 
@@ -207,8 +214,8 @@ public:
     size_t shape(size_t i) const { return desc.shape[i]; }
     // Returns stride in the i. dimension. Does not check bounds!
     int64_t stride(size_t i) const { return desc.strides[i]; }
-    const int64_t* shape_ptr() const { return desc.shape; }
-    const int64_t* stride_ptr() const { return desc.strides; }
+    const int64_t* shape_ptr() const { return desc.shape.data(); }
+    const int64_t* stride_ptr() const { return desc.strides.data(); }
     bool is_valid() const { return handle != nullptr; }
 
     // Number of elements in the array
@@ -242,21 +249,148 @@ enum class Framework
     eNumpy, eCupy
 };
 
-template<typename... Args>
-inline bool ndarray_import_numpy(
-    PyArrayObject* obj,
+/* Aggressive CPython-style accessors to array attributes.
+* No ownership (borrows only), no error checking, no exceptions.
+* For Numpy these are trivial wrappers around Numpy C-API.*/
+struct ArrayAccessors
+{
+    // ===================== NumPy =====================
+
+    static void* data(PyArrayObject* obj) noexcept
+    {
+        return PyArray_DATA(obj);
+    }
+
+    static int typenum(PyArrayObject* obj) noexcept
+    {
+        return PyArray_TYPE(obj);
+    }
+
+    static bool is_c_contig(PyArrayObject* obj) noexcept
+    {
+        return PyArray_IS_C_CONTIGUOUS(obj);
+    }
+
+    static int32_t ndim(PyArrayObject* obj) noexcept
+    {
+        return static_cast<int32_t>(PyArray_NDIM(obj));
+    }
+
+    static std::vector<int64_t> shape(PyArrayObject* obj) noexcept
+    {
+        const int32_t num_dims = ndim(obj);
+        std::vector<int64_t> out(num_dims);
+        npy_intp* shape_ptr = PyArray_DIMS(obj);
+        for (int32_t i = 0; i < num_dims; ++i)
+        {
+            out[i] = (int64_t)shape_ptr[i];
+        }
+        return out;
+    }
+
+    static std::vector<int64_t> strides(PyArrayObject* obj) noexcept
+    {
+        const int32_t num_dims = ndim(obj);
+        std::vector<int64_t> out(num_dims);
+        npy_intp* stride_ptr = PyArray_STRIDES(obj);
+        for (int32_t i = 0; i < num_dims; ++i)
+        {
+            out[i] = (int64_t)stride_ptr[i];
+        }
+        return out;
+    }
+
+
+    // ===================== CuPy =====================
+
+    static void* data(PyObject* obj) noexcept
+    {
+        // obj.data.ptr (device pointer)
+        PyObject* data_obj = PyObject_GetAttrString(obj, "data");
+        void* ptr = PyLong_AsVoidPtr(PyObject_GetAttrString(data_obj, "ptr"));
+        Py_DECREF(data_obj);
+        return ptr;
+    }
+
+    static int typenum(PyObject* obj) noexcept
+    {
+        // obj.dtype.num
+        PyObject* dtype = PyObject_GetAttrString(obj, "dtype");
+        int typenum = static_cast<int>(PyLong_AsLong(PyObject_GetAttrString(dtype, "num")));
+        Py_DECREF(dtype);
+        return typenum;
+    }
+
+    static bool is_c_contig(PyObject* obj) noexcept
+    {
+        // obj.flags.c_contiguous
+        PyObject* flags = PyObject_GetAttrString(obj, "flags");
+        bool value = PyObject_IsTrue(PyObject_GetAttrString(flags, "c_contiguous"));
+        Py_DECREF(flags);
+        return value;
+    }
+
+    static int32_t ndim(PyObject* obj) noexcept
+    {
+        // obj.ndim
+        return static_cast<int32_t>(PyLong_AsLong(PyObject_GetAttrString(obj, "ndim")));
+    }
+
+    static std::vector<int64_t> shape(PyObject* obj) noexcept
+    {
+        // obj.shape (tuple)
+        PyObject* shape_tuple = PyObject_GetAttrString(obj, "shape");
+        const Py_ssize_t num_dims = PyTuple_GET_SIZE(shape_tuple);
+
+        std::vector<int64_t> out(num_dims);
+        for (Py_ssize_t i = 0; i < num_dims; ++i)
+        {
+            out[i] = (int64_t)PyLong_AsLongLong(PyTuple_GET_ITEM(shape_tuple, i));
+        }
+
+        Py_DECREF(shape_tuple);
+        return out;
+    }
+
+    static std::vector<int64_t> strides(PyObject* obj) noexcept
+    {
+        // obj.strides (tuple)
+        PyObject* strides_tuple = PyObject_GetAttrString(obj, "strides");
+        const Py_ssize_t num_dims = PyTuple_GET_SIZE(strides_tuple);
+
+        std::vector<int64_t> out(num_dims);
+        for (Py_ssize_t i = 0; i < num_dims; ++i)
+        {
+            out[i] = (int64_t)PyLong_AsLongLong(PyTuple_GET_ITEM(strides_tuple, i));
+        }
+
+        Py_DECREF(strides_tuple);
+        return out;
+    }
+};
+
+/* Import an array from Numpy or Cupy. Import will fail if not all requested traits are satisfied,
+in which case this returns false and the `out` desc is in an invalid state.
+*/
+template<Framework framework, typename... Args>
+inline bool ndarray_import_impl(
+    PyObject* obj,
     ArrayDesc& out) noexcept
 {
     using traits = NDArrayTraits<Args...>;
 
-    if constexpr (traits::is_gpu)
+    // For Numpy, cast to PyArrayObject* so that we trigger faster overloads of gpaw::Array_DATA etc.
+    using object_ptr_t = std::conditional_t<framework == Framework::eNumpy, PyArrayObject*, PyObject*>;
+    object_ptr_t arr = reinterpret_cast<object_ptr_t>(obj);
+
+    if constexpr (traits::is_gpu && framework == Framework::eNumpy)
     {
         return false;
     }
 
-    out.data = PyArray_DATA(obj);
+    out.data = ArrayAccessors::data(arr);
 
-    out.typenum = PyArray_TYPE(obj);
+    out.typenum = ArrayAccessors::typenum(arr);
     if constexpr (traits::has_dtype)
     {
         if (out.typenum != py::dtype::num_of<typename traits::value_trait>())
@@ -267,13 +401,13 @@ inline bool ndarray_import_numpy(
 
     if constexpr (traits::is_c_contig)
     {
-        if (!PyArray_IS_C_CONTIGUOUS(obj))
+        if (!PyArray_IS_C_CONTIGUOUS(arr))
         {
             return false;
         }
     }
 
-    out.ndim = static_cast<int32_t>(PyArray_NDIM(obj));
+    out.ndim = static_cast<int32_t>(ArrayAccessors::ndim(arr));
     if constexpr (traits::ndim != -1)
     {
         if (out.ndim != traits::ndim)
@@ -282,9 +416,7 @@ inline bool ndarray_import_numpy(
         }
     }
 
-    // TODO constexpr check ndim and shape
-    // CAUTION: we're getting memory owned by numpy
-    out.shape = PyArray_DIMS(obj);
+    out.shape = ArrayAccessors::shape(arr);
     if constexpr (traits::has_shape_info)
     {
         for (int32_t i = 0; i < out.ndim; ++i)
@@ -296,7 +428,7 @@ inline bool ndarray_import_numpy(
         }
     }
 
-    out.strides = PyArray_STRIDES(obj);
+    out.strides = ArrayAccessors::strides(arr);
 
     return true;
 }
@@ -306,11 +438,11 @@ inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
 {
     if (is_numpy_array(obj))
     {
-        return ndarray_import_numpy<Args...>(reinterpret_cast<PyArrayObject*>(obj), out);
+        return ndarray_import_impl<Framework::eNumpy, Args...>(obj, out);
     }
     else if (is_cupy_array(obj))
     {
-        return false; // TODO!
+        return ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
     }
     return false;
 }
@@ -351,8 +483,6 @@ struct type_caster<gpaw::NDArray<Args...>>
     {
         PyObject* obj = src.ptr();
         assert(obj);
-
-        static constexpr Traits traits;
 
         if (!gpaw::detail::ndarray_import<Args...>(obj, value.desc))
         {

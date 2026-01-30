@@ -115,6 +115,7 @@ private:
     friend class pybind11::detail::type_caster<gpaw::PyDeviceArray>;
 };
 
+
 // Old CPython-style stuff below
 
 // Get pointer to the array data
@@ -183,5 +184,6 @@ int64_t Array_NBYTES(PyArrayObject* a);
 int Array_TYPE(PyArrayObject* a);
 bool Array_ISCOMPLEX(PyArrayObject* a);
 //~ End Numpy
+
 
 } // namespace gpaw
