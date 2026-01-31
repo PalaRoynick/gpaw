@@ -18,13 +18,13 @@ def chol_derivative(A, dA):
     return (Lp - L) / eps
 
 
-def unit_cell_symmetry(C_cv, U_scc):
+def unit_cell_symmetry(C_cv, U_scc, pbc_c):
     print('Original cell', Atoms(cell=C_cv).cell.lengths(), Atoms(cell=C_cv).cell.angles())
+    print('Original cell', Atoms(cell=C_cv).cell)
     print("Symmetries", len(U_scc))
 
     # Calculate the cell metric
     M_cc = C_cv @ C_cv.T
-
     # Symmetrize the cell metric
     M_cc = np.einsum("scd,de,sfe->cf", U_scc, M_cc, U_scc, optimize=True) / len(U_scc)
 
@@ -43,6 +43,7 @@ def unit_cell_symmetry(C_cv, U_scc):
     osymC_cv = symC_cv @ rot_vv.T
     print('Symmetrized cell', Atoms(cell=osymC_cv).cell.lengths(),
                               Atoms(cell=osymC_cv).cell.angles())
+    print('Symmetrized cell', osymC_cv)
     # Now we can construct exact Cartesian rotation matrices
     iosymC_cv = np.linalg.inv(osymC_cv)
     U_svv = np.array([osymC_cv.T @ U_cc.T @ iosymC_cv.T for U_cc in U_scc])
@@ -60,6 +61,9 @@ def unit_cell_symmetry(C_cv, U_scc):
             for j in range(3):
                 rows.append((U_vv @ e(i, j) @ U_vv.T - e(i, j)).reshape((9,)))
         A_blocks.append(np.vstack(rows))
+    for c in range(3):
+        if not pbc_c[c]:
+            A_blocks.append(e(c,c).reshape((9,)))
     A = np.vstack(A_blocks)
     # Compute null space via SVD
     U, S, Vh = np.linalg.svd(A)
@@ -88,7 +92,7 @@ def unit_cell_symmetry(C_cv, U_scc):
         for z in range(len(dM_zcc)):
             dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
             eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
-            dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv) # np.sqrt(np.sum(eps * eps))
+            dM_zcc[z] /= 0.01 * np.max(np.abs(eps)) * np.linalg.det(C_cv) # np.sqrt(np.sum(eps * eps))
 
     for z, dM_cc in enumerate(dM_zcc):
         print(f"Tangent {z} of cell")
@@ -111,7 +115,7 @@ def atom_position_symmetry(U_scc, atommap_sa, atoms, tol):
             #n_c = U_cc.T @ S_c - S_ac[a2] This is missing non-symmorphic shift
             #assert abs(n_c - n_c.round()).sum() < tol, n_c
             #N_asc[a, s] = n_c.astype(int)
-            B_ascac[a, s, :, a] = U_cc
+            B_ascac[a, s, :, a] = U_cc.T
             B_ascac[a, s, :, a2] -= np.eye(3, dtype=int)
     B_EA = B_ascac.reshape((na * ns * 3, na * 3))
     # Extra translational gauge degrees of freedom
@@ -188,13 +192,14 @@ class Relax:
         self.calc = calc
         self.optimizer_factory = optimizer_factory
         self.symprec = symprec
+        atoms.wrap()
         old_positions = atoms.get_positions().copy()
         from ase.io import write
         write('old.xyz', atoms)
         self.symmetries = create_symmetries_object(self.atoms, tolerance=self.symprec, symmorphic=symmorphic)
-
+        print('pbc', self.atoms.pbc)
         self.M_cc, self.C_cv, U_svv, self.dM_zcc, self.dM_zvv, self.rot_vv = unit_cell_symmetry(
-            self.atoms.cell, self.symmetries.rotation_scc
+            self.atoms.cell, self.symmetries.rotation_scc, self.atoms.pbc
         )
         
         self.dof_zac = atom_position_symmetry(self.symmetries.rotation_scc, self.symmetries.atommap_sa, atoms, symprec)
@@ -206,17 +211,24 @@ class Relax:
         if 1:
             dof_zav = np.einsum('zac,cv->zav', self.dof_zac, self.C_cv)
             # Normalize such that the distance in Cartesian real space is reflected on the generalized coordinate
-            self.dof_zac /= np.sum(np.abs(dof_zav)) ##np.sum(np.sum(dof_zav**2, axis=2), axis=1) ** 0.5
+            self.dof_zac /= np.max(np.abs(dof_zav)) ##np.sum(np.sum(dof_zav**2, axis=2), axis=1) ** 0.5
 
         self.atoms.set_cell(self.C_cv, scale_atoms=True)
 
+        atoms.wrap()
         print('Old positions', atoms.get_scaled_positions())
+        print('Old positions', atoms.get_positions())
         self.S_ac = symmetrize_atoms(atoms.get_scaled_positions(), self.symmetries.rotation_scc, self.symmetries.translation_sc, self.symmetries.atommap_sa)
         self.atoms.set_scaled_positions(self.S_ac)
+        atoms.wrap()
         new_positions = atoms.get_positions()
         print('New positions', atoms.get_scaled_positions())
+        print('New positions', new_positions)
+        dR_av = new_positions - old_positions
+        s_ac = np.linalg.solve(self.C_cv, dR_av.T)
+        print('Scaled diff', s_ac)
         print('Maximum shift after atomic symmetrization', np.max(np.abs(new_positions.flatten() - old_positions.flatten())))
-        assert np.max(np.abs(new_positions.flatten() - old_positions.flatten())) < symprec 
+        #assert np.max(np.abs(new_positions.flatten() - old_positions.flatten())) < symprec 
         write('new.xyz', atoms)
         # Now, with cell and atoms symmetrized, it is safe to assign the calculator
         self.atoms.calc = calc
@@ -233,7 +245,11 @@ class Relax:
         return [self.atoms]
 
     def run(self, *, fmax, smax):
+        self.smax = smax
+        return self.optimizer.run(fmax=fmax)
+        
         for _ in self.optimizer.irun(fmax=fmax):
+            print('INTERNAL', self.get_x()) 
             print('DIST', self.atoms.cell.lengths(), self.atoms.cell.angles())
 
     def __ase_optimizable__(self):
@@ -251,7 +267,6 @@ class Relax:
         return self.get_x()[self._ndofs_cell:]
 
     def get_x(self):
-        print(self.value_z)
         return self.value_z.copy()
 
     def _get_cell(self):
@@ -263,7 +278,6 @@ class Relax:
         self.value_z[:] = x
 
         M_cc = self.M_cc + np.einsum("z,zcd->cd", self.cell_z, self.dM_zcc)
-        print(M_cc)
         C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
         self.atoms.set_cell(C_cv)
 
@@ -305,25 +319,48 @@ class Relax:
         # dE/ds_z = dE/dR_av dR_av/ds_ac ds_ac/ds_z
         # R_av = ds_ac C_cv
         # ds_ac = self.dof_zac S_z
-        print(F_av.shape, C_cv.shape, self.dof_zac.shape)
         atoms_grad_z = -np.einsum('av,cv,zac->z', F_av, C_cv, self.dof_zac)
 
         gradient = np.hstack([grad_z, atoms_grad_z])
-        print('gradient shape', gradient.shape)
-        print('gradient', gradient)
         return gradient
 
     def converged(self, gradient, fmax):
-        print('Is converged', gradient)
         return self.gradient_norm(gradient) < fmax
+        #return F < fmax and S < self.smax
 
     def gradient_norm(self, grad_z):
         # Go actually to cell metric
-        return np.max(np.abs(grad_z))
+        return np.max(np.abs(grad_z)) # (np.max(self.atoms.get_forces()), np.max(self.atoms.get_stress()), *self.atoms.cell.lengths())
 
     def ndofs(self):
         return self._ndofs
 
+    def visualize_modes(self):
+        from ase.io.trajectory import Trajectory
+        traj = Trajectory('modes.traj', 'w')
+        for z in range(self.ndofs()):
+            x = np.zeros((self.ndofs(),))
+            for i in np.arange(0, 6 * np.pi, 0.1):
+                x[z] = np.sin(i) * 0.004 
+                self.set_x(x)
+                traj.write(self.atoms.copy())
+
+    def calc_hessian(self):
+        x = np.zeros((self._ndofs))
+        H = np.zeros((self._ndofs, self._ndofs))
+        for i in range(self._ndofs):
+            x[:] = 0.0
+            x[i] = 1e-3
+            self.set_x(x)
+            G = self.get_gradient()
+            x[i] = -1e-3
+            self.set_x(x)
+            G0 = self.get_gradient()
+            H[i] = (G - G0) / (2e-3)
+            print(i)
+        print('Hessian', H)
+        print(np.linalg.eigh(H))
+        self.optimizer.H0 = H
 
 if __name__ == "__main__":
     from ase.build import bulk
@@ -350,16 +387,24 @@ if __name__ == "__main__":
 
     if 1:
         atoms = bulk('ZnO', crystalstructure='wurtzite', a=3.24, c=5.20)
-        calc = GPAW(mode={'name': "pw", 'ecut': 600}, kpts={'size': (8,8,8),
-                    'gamma': True},
+        atoms = bulk('NaCl', crystalstructure='rocksalt', a=5.2)
+        from ase.io import read
+        atoms = read('/home/kuisma/Downloads/2AlCl3-1.xyz').copy()
+        print(atoms.cell.angles(), atoms.cell.lengths())
+        calc = GPAW(mode={'name': "pw", 'ecut': 700}, kpts={'size': (2,2,1),
+                    'gamma': True}, txt='asd.txt',
                     eigensolver='dav',
                     symmetry={'symmorphic': False},
-                    xc='PBE',
-                    convergence={'density':1e-8})
+                    xc='LDA',
+                    convergence={'density':1e-7})
 
     from ase.optimize.bfgs import BFGS
-    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01)
-    if 1:
+    from ase.optimize.mdmin import MDMin
+    from ase.optimize.sciopt import SciPyFminBFGS, SciPyFminCG 
+    relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, alpha=[7, 1, 56], maxstep=1, trajectory='a.traj'), symprec=0.1)
+    #relax.calc_hessian()
+    relax.visualize_modes()
+    if 0:
         for z in range(3):
             grad = relax.get_gradient()
             vec = np.zeros((3,))
@@ -373,4 +418,4 @@ if __name__ == "__main__":
             print("Gotten grad", grad[z])
             print("div", grad[z] / ((E1 - E0) / 2e-3))
 
-    relax.run(fmax=0.005, smax=0.001)
+    relax.run(fmax=0.001, smax=0.001)
