@@ -11,11 +11,26 @@ from gpaw.new.symmetry import Symmetries, create_symmetries_object
 import numpy as np
 from gpaw.new.ase_interface import ASECalculator
 from dataclasses import dataclass
-from gpaw.new.relax_print import pretty, pprint_atoms, pretty_dofs
+from gpaw.new.relax_print import pretty, pprint_atoms, pretty_dofs, pretty_header, pretty_subheader
 
 def chol_derivative(A, dA, L=None):
+    """
+    Compute the derivative of the Cholesky factorization.
+
+        A = L L^T
+
+    where L is lower-triangular. For a small symmetric perturbation `dA`, this function
+    returns an approximation of the differential `dL` of the Cholesky factor:
+
+        L + dL ≈ chol(A + dA).
+
+    Either L or A must be given as an input.
+    """
+    A = (A + A.T) / 2
     dA = (dA + dA.T) / 2
-    L = L or np.linalg.cholesky(A)
+
+    if A is None:
+        L = np.linalg.cholesky(A)
     Linv = np.linalg.inv(L)
     S = Linv @ dA @ Linv.T
     X = np.tril(S)
@@ -247,11 +262,11 @@ class SymmetryAdaptedScaledCoordinates:
             # Normalize such that the distance in Cartesian real space is reflected on the generalized coordinate
             dof_zac /= np.max(np.abs(dof_zav)) ##np.sum(np.sum(dof_zav**2, axis=2), axis=1) ** 0.5
         
-        log('Atomic degrees of freedom')
+        log('Atomic degrees of freedom:')
         for z, dof_ac in enumerate(dof_zac):
-            log(f'DOF {z}')
+            log(f'{z}', end=' ')
             for dof_c in dof_ac:
-                log(dof_c, end=' ')
+                log(f'{dof_c[0]:.5f} {dof_c[1]:.5f} {dof_c[2]:.5f}   ', end=' ')
             log()
 
         precondition_z = np.max(np.max(np.abs(dof_zac), axis=2), axis=1) / np.sum(np.sum(np.abs(dof_zac), axis=2), axis=1)
@@ -274,10 +289,10 @@ class SymmetryAdaptedAtoms:
         self.actual_atoms = actual_atoms
         self.symmetries = symmetries
 
-        log('Building symmetry adapted cell coordinates')
+        pretty_subheader('Symmetry adapted cell coordinates', log)
         self.cell_coordinates = SymmeryAdaptedCellCoordinates.build(self.actual_atoms.cell, self.actual_atoms.pbc, self.symmetries.rotation_scc, log=log)
         
-        log('Building symmetry adapted atomic coordinates')
+        pretty_subheader('Symmetry adapted atomic coordinates', log)
         self.atom_coordinates = SymmetryAdaptedScaledCoordinates.build(self.actual_atoms.get_scaled_positions(), self.symmetries.rotation_scc, self.symmetries.atommap_sa, self.symmetries.symprec, self.cell_coordinates.C_cv, log=log)
         assert isinstance(self.atom_coordinates, SymmetryAdaptedScaledCoordinates)
         # s_ac = dof_zac s_z -> ds_ac/d_sz = dof_zac
@@ -297,9 +312,6 @@ class SymmetryAdaptedAtoms:
             dR_av = new_positions - old_positions
             s_ac = np.linalg.solve(self.C_cv, dR_av.T)
             assert np.max(np.abs(new_positions.flatten() - old_positions.flatten())) < symprec 
-
-        log('Symmetrized atoms')
-        pprint_atoms(self.actual_atoms, log)
 
         self._ndofs_cell = len(self.cell_coordinates.dM_zcc)
         self._ndofs_atoms = len(self.atom_coordinates.dof_zac)
@@ -405,8 +417,8 @@ class Relax:
 
         self.symprec = symprec
 
-        self.log('Symmetry adapted relaxation')
-        self.log('Original atoms')
+        pretty_header('Symmetry adapted Cell and Atomic Relaxation', self.log)
+        pretty_subheader('Original atoms', self.log)
         self.original_atoms = atoms.copy()
         pprint_atoms(self.original_atoms, self.log)
 
@@ -417,7 +429,7 @@ class Relax:
         # TODO: Implement Setter or something
         self.symmetry_adapted_atoms.actual_atoms.calc = calc
 
-        self.log('Symmetrized atoms')
+        pretty_subheader('Symmetrized atoms', self.log)
         pprint_atoms(self.symmetry_adapted_atoms.actual_atoms, self.log)
 
         # if not isinstance(calc, ASECalculator):
@@ -476,7 +488,7 @@ class Relax:
 if __name__ == "__main__":
     from ase.build import bulk
     atoms = bulk('NaCl', 'rocksalt', a=5.2)
-    atoms = bulk('NiAg', crystalstructure='wurtzite', a=3.24*1.2, c=5.20*1.2)
+    atoms = bulk('ZnO', crystalstructure='wurtzite', a=3.24*0.95, c=5.20*1.05)
     # Avoid rotating the cell (making it symmetric)
     eps = np.random.rand(3,3)*0.001
     atoms.set_cell(atoms.get_cell() @ (np.eye(3) + eps + eps.T))
@@ -489,7 +501,6 @@ if __name__ == "__main__":
                 convergence={'density':1e-7})
     from ase.optimize.bfgs import BFGS
     from ase.calculators.emt import EMT
-    calc = EMT()
     relax = Relax(atoms=atoms, calc=calc, optimizer_factory=lambda atoms: BFGS(atoms, maxstep=1, trajectory='a.traj'), symprec=0.1)
     relax.calc_hessian()
     relax.run(fmax=0.05, smax=0.003)
