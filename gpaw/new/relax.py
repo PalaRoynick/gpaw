@@ -12,10 +12,12 @@ def pretty(C_cv, title=None, units=None, decimals=7, symbolize=False, eps=1e-4, 
         C_cv = C_cv / alpha
         if np.allclose(C_cv - np.round(C_cv), 0, atol=1e-3):
             C_cv = np.round(C_cv)
-
-            # Remove signed zero
-            C_cv = np.where(C_cv == 0, 0.0, C_cv)
             decimals = 0
+    else:
+        C_cv = np.round(C_cv, decimals=decimals)
+
+    # Remove signed zero
+    C_cv = np.where(C_cv == 0, 0.0, C_cv)
         
     if title:
         log(f'{title} [{units}]')
@@ -51,7 +53,7 @@ def pretty_dofs(dM_zcc, M_cc, rot_vv, C_cv, eps=1e-8, *, log):
         pretty(dM_cc, symbolize=True, decimals=3, log=log)
         log("In cell space at C0_cv:")
         dC_cv = chol_derivative(M_cc, dM_cc) @ rot_vv.T
-        pretty(dC_cv, symbolize=True, decimals=3, log=log)
+        pretty(dC_cv, symbolize=True, decimals=6, log=log)
 
         log("In terms of unit cell vectors a1, a2, a3")
         # Deformation gradient, but in cc space
@@ -486,10 +488,6 @@ class Relax:
 
     def __ase_optimizable__(self):
         return self
-
-    
-
-
 
     def visualize_modes(self):
         from ase.io.trajectory import Trajectory
