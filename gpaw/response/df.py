@@ -708,13 +708,18 @@ class DielectricFunction(DielectricFunctionCalculator):
             Shift unoccupied bands
         """
         world = normalize_communicator(world)
+        f = open(f'/home/kuisma/b_{world.rank}.txt', 'w')
+        print('bsd1', file=f, flush=True)
         gs, context = get_gs_and_context(calc, txt, world, timer=None)
+        print('bsd2', file=f, flush=True)
         wd = get_frequency_descriptor(frequencies, gs=gs, nbands=nbands)
+        print('bsd3', file=f, flush=True)
 
         if integrationmode is None:
             raise DeprecationWarning(
                 "Please use `integrationmode='point integration'` instead")
             integrationmode = 'point integration'
+        print('bsd4', file=f, flush=True)
 
         chi0calc = Chi0Calculator(
             gs, context, nblocks=nblocks,
@@ -726,8 +731,10 @@ class DielectricFunction(DielectricFunctionCalculator):
             integrationmode=integrationmode,
             rate=rate, eshift=eshift
         )
+        print('bsd5', file=f, flush=True)
         super().__init__(chi0calc)
         self.truncation = truncation
+        print('bsd6', file=f, flush=True)
 
     def get_frequencies(self) -> np.ndarray:
         """Return frequencies (in eV) that the χ is evaluated on."""

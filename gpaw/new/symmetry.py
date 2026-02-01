@@ -217,6 +217,8 @@ class Symmetries:
             self.translation_sc = np.zeros((len(self.rotation_scc), 3))
         else:
             self.translation_sc = np.array(translations)
+            lcm = self.lcm()
+            self.translation_sc = np.round(self.translation_sc * lcm) / lcm
         if atommaps is None:
             self.atommap_sa = np.empty((len(self.rotation_scc), 0), int)
         else:
@@ -444,14 +446,13 @@ class Symmetries:
 
     def group_check(self) -> None:
         """Sanity check."""
-        print(self.translation_sc)
         for U1_cc, t1_c in zip(self.rotation_scc, self.translation_sc):
             for U2_cc, t2_c in zip(self.rotation_scc, self.translation_sc):
                 U_cc = U1_cc @ U2_cc
                 t_c = t1_c @ U2_cc + t2_c
                 for U3_cc, t3_c in zip(self.rotation_scc, self.translation_sc):
                     dt_c = t_c - t3_c
-                    if abs(dt_c - dt_c.round()).max() > 1e-10:
+                    if abs(dt_c - dt_c.round()).max() > self.tolerance:
                         continue
                     if (U_cc != U3_cc).any():
                         continue

@@ -74,5 +74,27 @@ def test_h(gpaw_new, dtype, eigensolver):
     assert eigs[0] == pytest.approx(-9.7143, abs=4e-4)
 
 
+@pytest.mark.new_gpaw_ready
+@pytest.mark.hybrids
+@pytest.mark.parametrize('dtype', [float, complex])
+@pytest.mark.parametrize('eigensolver', ['davidson', 'ppcg'])
+def test_si(gpaw_new, dtype, eigensolver):
+
+    if not gpaw_new and eigensolver == 'ppcg':
+        pytest.skip('PPCG only for GPAW new.')
+    from ase.build import bulk
+    atoms = bulk('Si')
+    atoms.center(vacuum=2.5)
+    atoms.calc = GPAW(mode=dict(name='pw',
+                                force_complex_dtype=dtype is complex),
+                      xc='HSE06',
+                      eigensolver=eigensolver,
+                      nbands=8,
+                      kpts=(3,3,3),
+                      convergence={'density': 1e-6})
+    e = atoms.get_potential_energy()
+    eigs = atoms.calc.get_eigenvalues(spin=0)
+
+
 if __name__ == '__main__':
     test_hse06(1, complex, 'ppcg')

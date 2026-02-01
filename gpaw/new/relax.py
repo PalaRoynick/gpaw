@@ -10,11 +10,17 @@ def pretty(C_cv, title=None, units=None, decimals=7, symbolize=False, eps=1e-4, 
         # Find smallest non zero
         alpha = np.min(np.abs(C_cv[np.nonzero(np.abs(C_cv) > eps)]))
         C_cv = C_cv / alpha
+        if np.allclose(C_cv - np.round(C_cv), 0, atol=1e-3):
+            C_cv = np.round(C_cv)
+
+            # Remove signed zero
+            C_cv = np.where(C_cv == 0, 0.0, C_cv)
+            decimals = 0
         
     if title:
         log(f'{title} [{units}]')
-    for i in range(3):
-        for j in range(3):
+    for i in range(C_cv.shape[0]):
+        for j in range(C_cv.shape[1]):
             log(f"{C_cv[i, j]:{decimals+5}.{decimals}f} ", end="")
         log()
 
@@ -223,7 +229,12 @@ class SymmeryAdaptedCellCoordinates:
             for z in range(len(dM_zcc)):
                 dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
                 eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
-                dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv) # np.sqrt(np.sum(eps * eps))
+                dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv)
+
+                # Define the direction of the tangent vector such that
+                # it increases the volume. Sign cannot be used because of shear
+                if np.trace(np.linalg.inv(C_cv) @ dC) < 0:
+                    dM_zcc[z] *= -1
 
         pretty_dofs(dM_zcc, M_cc, rot_vv, osymC_cv, log=log)
 
@@ -462,7 +473,6 @@ class Relax:
         
 
     def log(self, *args, **kwargs):
-        return
         print(*args, **kwargs)
 
     def run(self, *, fmax, smax):
@@ -504,8 +514,8 @@ class Relax:
             saa.set_x(x)
             G0 = saa.get_gradient()
             H[i] = (G - G0) / (2e-3)
-        print('Hessian', H)
-        print(np.linalg.eigh(H))
+        pretty(H, 'Hessian', log=self.log)
+        eps, vec = np.linalg.eigh(H)
         self.optimizer.H0 = H
 
 # Tests:
