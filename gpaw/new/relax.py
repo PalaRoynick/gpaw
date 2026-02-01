@@ -1,3 +1,10 @@
+# TODO:
+# Test cholesky derivative
+# Add analytical cholesky derivative
+# Precalculate Cholesky derivative
+# Prettier print of atomic degrees of freedom
+
+
 from gpaw.new.ase_interface import GPAW
 from ase import Atoms
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
@@ -24,6 +31,7 @@ def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
     Ssym_ac[np.abs(Ssym_ac) < tol] = 0.0
     Ssym_ac[np.abs(Ssym_ac - 1.0) < tol] = 0.0
     return Ssym_ac
+
 
 @dataclass
 class AtomsSymmetries:
