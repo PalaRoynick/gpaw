@@ -1,8 +1,8 @@
 # TODO:
-# Test cholesky derivative
-# Add analytical cholesky derivative
-# Precalculate Cholesky derivative
-# Prettier print of atomic degrees of freedom
+# [X] Test cholesky derivative
+# [X] Add analytical cholesky derivative
+# [ ] Precalculate Cholesky derivative
+# [ ] Prettier print of atomic degrees of freedom
 
 
 from gpaw.new.ase_interface import GPAW
@@ -13,11 +13,14 @@ from gpaw.new.ase_interface import ASECalculator
 from dataclasses import dataclass
 from gpaw.new.relax_print import pretty, pprint_atoms, pretty_dofs
 
-def chol_derivative(A, dA):
-    eps = 1e-8
-    L = np.linalg.cholesky(A)
-    Lp = np.linalg.cholesky(A + eps * dA)
-    return (Lp - L) / eps
+def chol_derivative(A, dA, L=None):
+    dA = (dA + dA.T) / 2
+    L = L or np.linalg.cholesky(A)
+    Linv = np.linalg.inv(L)
+    S = Linv @ dA @ Linv.T
+    X = np.tril(S)
+    X[np.diag_indices_from(X)] *= 0.5
+    return L @ X
 
 
 def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
