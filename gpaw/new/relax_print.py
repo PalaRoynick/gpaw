@@ -1,5 +1,20 @@
 import numpy as np
 
+def pretty_header(header, log):
+    bar = ' ' + '═' * (len(header) + 14)
+    log(bar)
+    log('     ' + header)
+    log(bar)
+    log()
+
+def pretty_subheader(header, log):
+    bar = ' ' * 2 + '─' * (len(header) + 10)
+    log(bar)
+    log(' ' * 4 + header)
+    log(bar)
+
+def atos(array, fmt):
+    return " ".join(f"{x:{fmt}}" for x in array)
 
 def pretty(C_cv, title=None, units=None, decimals=7, symbolize=False, eps=1e-4, *, log):
     if symbolize:
@@ -23,15 +38,16 @@ def pretty(C_cv, title=None, units=None, decimals=7, symbolize=False, eps=1e-4, 
         log()
 
 
-def pprint_atoms(atoms, log):
+def pprint_atoms(atoms, log, units='Å'):
     cell = atoms.cell
-    log("Unit cell:")
+    log(f"Unit cell ({units})")
     for i in range(3):
+        log(f' a{i+1} = [ ', end='')
         for j in range(3):
-            log(f"{cell[i, j]:10.5f}", end="")
-        log()
-    log(f"Lengths: {cell.lengths()}")
-    log(f"Angles: {cell.angles()}")
+            log(f" {cell[i, j]:10.5f}", end="")
+        log(' ]')
+    log(f"Lengths ({units}): {atos(cell.lengths(), '.3f')}")
+    log(f"Angles (°): {atos(cell.angles(), '.2f')}")
     log("Atoms:")
     for a in atoms:
         s = f"{a.symbol:5s}"
@@ -43,6 +59,7 @@ def pprint_atoms(atoms, log):
 
 
 def pretty_dofs(dM_zcc, M_cc, rot_vv, C_cv, eps=1e-8, *, log):
+    from gpaw.new.relax import chol_derivative
     log(f"Found {len(dM_zcc)} independent cell degrees of freedom")
     for z, dM_cc in enumerate(dM_zcc):
         log(f"Tangent {z} of cell")

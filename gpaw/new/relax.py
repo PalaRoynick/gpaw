@@ -38,7 +38,42 @@ def chol_derivative(A, dA, L=None):
     return L @ X
 
 
-def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
+def symmetrize_atoms(S_ac: np.ndarray, U_scc: np.ndarray, f_sc: np.ndarray, atommap_sa, tol=1e-12):
+   """
+    Symmetrize fractional atomic coordinates under a space-group.
+
+    Given atomic scaled positions `S_ac` and a set of space-group operations
+    (U_scc, f_sc), this function projects the positions onto the symmetry-
+    invariant subspace by averaging over all symmetry-related images.
+
+    Parameters
+    ----------
+    S_ac : ndarray, shape (na, 3)
+        Scaled atomic coordinates.
+
+    U_scc : ndarray, shape (ns, 3, 3)
+        Rotation matrices.
+
+    f_sc : ndarray, shape (ns, 3)
+        Translation vectors.
+
+    atommap_sa : ndarray, shape (ns, na)
+        Mapping such that atommap_sa[s, a] gives the index of the atom
+        to which atom `a` is mapped by symmetry operation `s`.
+
+    tol : float, optional
+        Tolerance for snapping values close to 0 or 1 back to 0.
+
+    Returns
+    -------
+    Ssym_ac : ndarray, shape (na, 3)
+        Symmetrized fractional atomic coordinates in [0, 1).
+
+    Notes
+    -----
+    The symmetrization is done in the complex phase representation
+    exp(2πi x) to correctly average periodic fractional coordinates.
+    """
     ns, na = atommap_sa.shape
     Ssym_ac = np.zeros_like(S_ac, dtype=np.complex128)
     for a in range(na):
@@ -53,6 +88,13 @@ def symmetrize_atoms(S_ac, U_scc, f_sc, atommap_sa, tol=1e-12):
 
 @dataclass
 class AtomsSymmetries:
+    """
+    Dataclass to contain symmetry information from atoms.
+
+    This is to set up an interface for spglib/GPAW or whatever
+    source of symmetry operations.
+    """
+
     rotation_scc: np.ndarray
     atommap_sa: np.ndarray
     translation_sc: np.ndarray
@@ -75,7 +117,7 @@ class SymmeryAdaptedCellCoordinates:
     """Class for defining symmetry adapted cell coordinates
 
     Note: This is not symmetry adapted cell, it just provides the set of generalized coordinates
-    for the symmetry adapted cell. To get the cell, call
+    for the symmetry adapted cell. To get the cell, call C_cv = get_cell(cell_z).
 
     sacc = SymmeryAdaptedCellCoordinates(...)
     sacc.get_cell(cell_z), where cell_z is 1D array of the cell coordinates.
