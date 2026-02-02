@@ -138,7 +138,7 @@ constexpr size_t count_matches()
 }
 //~
 
-// NDArrayTraits collects array metadata traits, eg. dtype, data layout and shape
+// NDArrayTraits collects static array metadata traits, eg. dtype, data layout and shape
 template<typename... Args>
 struct NDArrayTraits
 {
@@ -158,7 +158,6 @@ struct NDArrayTraits
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
-    static constexpr bool is_c_contig = std::is_same_v<layout_trait, c_contig>;
 
     static constexpr int32_t ndim = shape_info<shape_trait>::ndim;
     static constexpr auto shape = shape_info<shape_trait>::dims;
@@ -166,12 +165,24 @@ struct NDArrayTraits
     /* True if we know anything at all about the shape. Knowing ndim is sufficient,
     and knowing all or some dimension sizes is also OK. */
     static constexpr bool has_shape_info = (ndim != -1);
+
+    static constexpr bool is_contiguous = std::is_same_v<layout_trait, c_contig> || std::is_same_v<layout_trait, f_contig>;
+    // 1D contiguous arrays are both c_contig and f_contig
+    static constexpr bool is_c_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, c_contig>;
+    static constexpr bool is_f_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, f_contig>;
 };
 
 
 // Stores array metadata
 struct GPAW_HIDDEN_SYMBOL ArrayDesc
 {
+    ArrayDesc() = default;
+
+    // Pick array metadata from Numpy or Cupy ndarray. Suboptimal, used for tests only
+    ArrayDesc(py::handle handle);
+
+    py::dtype dtype() { return py::dtype(typenum); }
+
     // Use signed integers for compatibility with dlpack
     void* data = nullptr;
     int typenum = 0; // raw numpy typenum
@@ -187,12 +198,6 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     std::vector<int64_t> strides;
     // Offset is TODO. Libraries don't really seem to use this ATM
     static constexpr uint64_t byte_offset = 0;
-
-private:
-    // These use raw CPython API since pybind11 funcs are not necessarily noexcept
-    // FIXME redundant, could remove
-    void from_numpy(PyArrayObject* arr) noexcept;
-    void from_cupy(PyObject* obj) noexcept;
 };
 
 } // namespace detail
@@ -212,8 +217,10 @@ public:
     size_t ndim() const { return (size_t)desc.ndim; }
     // Returns shape in the i. dimension. Does not check bounds!
     size_t shape(size_t i) const { return desc.shape[i]; }
+
     // Returns stride in the i. dimension. Does not check bounds!
     int64_t stride(size_t i) const { return desc.strides[i]; }
+
     const int64_t* shape_ptr() const { return desc.shape.data(); }
     const int64_t* stride_ptr() const { return desc.strides.data(); }
     bool is_valid() const { return handle != nullptr; }
@@ -271,6 +278,11 @@ struct ArrayAccessors
         return PyArray_IS_C_CONTIGUOUS(obj);
     }
 
+    static bool is_f_contig(PyArrayObject* obj) noexcept
+    {
+        return PyArray_IS_F_CONTIGUOUS(obj);
+    }
+
     static int32_t ndim(PyArrayObject* obj) noexcept
     {
         return static_cast<int32_t>(PyArray_NDIM(obj));
@@ -326,6 +338,15 @@ struct ArrayAccessors
         // obj.flags.c_contiguous
         PyObject* flags = PyObject_GetAttrString(obj, "flags");
         bool value = PyObject_IsTrue(PyObject_GetAttrString(flags, "c_contiguous"));
+        Py_DECREF(flags);
+        return value;
+    }
+
+    static bool is_f_contig(PyObject* obj) noexcept
+    {
+        // obj.flags.f_contiguous
+        PyObject* flags = PyObject_GetAttrString(obj, "flags");
+        bool value = PyObject_IsTrue(PyObject_GetAttrString(flags, "f_contiguous"));
         Py_DECREF(flags);
         return value;
     }
@@ -406,6 +427,13 @@ inline bool ndarray_import_impl(
             return false;
         }
     }
+    if constexpr (traits::is_f_contig)
+    {
+        if (!ArrayAccessors::is_f_contig(arr))
+        {
+            return false;
+        }
+    }
 
     out.ndim = static_cast<int32_t>(ArrayAccessors::ndim(arr));
     if constexpr (traits::ndim != -1)
@@ -451,9 +479,6 @@ inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
 
 } // namespace gpaw
 
-// TODO how to build a better string description at compile time??
-#define GPAW_NDARRAY_STR(T) "NDArray<" #T ">"
-
 // Pybind11 type casters
 namespace pybind11::detail
 {
@@ -468,7 +493,12 @@ struct type_caster<gpaw::NDArray<Args...>>
     using ndarray = gpaw::NDArray<Args...>;
     using Traits = gpaw::detail::NDArrayTraits<Args...>;
 
-    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _(GPAW_NDARRAY_STR(Args...)));
+    // TODO build a better descriptor like "NDArray<float, shape<-1>, c_contig>").
+    // Ideally it'd be a compile-time string (required by pybind11)
+    // but that is very difficult to construct in C++17 without extensive metaprogramming.
+    // We could build it at runtime if the array conversion fails, but that doesn't show up in docstrings then
+
+    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _("NDArray<>"));
 
     /* C++ -> Python conversion. FIXME: can't easily have this as Cupy provides no C++ interface.
     * So either we call Cupy's Python API from here, or simply don't allow conversion like this.
