@@ -36,7 +36,7 @@ def chol_derivative(A, dA, L=None):
     A = (A + A.T) / 2
     dA = (dA + dA.T) / 2
 
-    if A is None:
+    if A is not None:
         L = np.linalg.cholesky(A)
     Linv = np.linalg.inv(L)
     S = Linv @ dA @ Linv.T
@@ -112,7 +112,7 @@ class AtomsSymmetries:
     symprec: float
 
     @classmethod
-    def from_GPAW(cls, atoms, log=print, *, tolerance, symmorphic):
+    def from_GPAW(cls, atoms, log=None, *, tolerance, symmorphic):
         gpaw_symmetries = create_symmetries_object(
             atoms, tolerance=tolerance, symmorphic=symmorphic
         )
@@ -307,7 +307,7 @@ class SymmeryAdaptedCellCoordinates:
             dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
             eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
             dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv)
-
+            dM_zcc[z] *= 40
             # Define the direction of the tangent vector such that
             # it increases the volume. Sign cannot be used because of shear
             if np.trace(np.linalg.inv(C_cv) @ dC) < 0:
@@ -456,7 +456,7 @@ class SymmetryAdaptedAtoms:
     @classmethod
     def from_atoms(cls, atoms, log=print, *, symprec, symmorphic):
         symmetries = AtomsSymmetries.from_GPAW(
-            atoms, tolerance=symprec, symmorphic=symmorphic
+            atoms, tolerance=symprec, symmorphic=symmorphic, log=log,
         )
         return cls(atoms, symmetries, log=log)
 
@@ -474,6 +474,13 @@ class SymmetryAdaptedAtoms:
 
     def get_x(self):
         return self.value_z.copy()
+    
+    def set_x(self, x):
+        self.value_z[:] = x
+        self.actual_atoms.set_cell(self.cell_coordinates.get_cell(self.cell_z))
+        self.actual_atoms.set_scaled_positions(
+            self.atom_coordinates.get_scaled_coordinates(self.atoms_z)
+        )
 
     def get_gradient(self):
         grad_z = np.zeros(self._ndofs_cell)
@@ -506,8 +513,9 @@ class SymmetryAdaptedAtoms:
         return gradient * self.get_preconditioner()
 
     def get_preconditioner(self):
+        return 1
         return np.hstack(
-            [np.ones_like(self.cell_z), self.atom_coordinates.precondition_z]
+            [np.ones((self._ndofs_cell,)) * 10, self.atom_coordinates.precondition_z]
         )
 
     def gradient_norm(self, grad_z):
@@ -526,12 +534,6 @@ class SymmetryAdaptedAtoms:
         return self.gradient_norm(gradient) < fmax
         # return F < fmax and S < self.smax
 
-    def set_x(self, x):
-        self.value_z[:] = x
-        self.actual_atoms.set_cell(self.cell_coordinates.get_cell(self.cell_z))
-        self.actual_atoms.set_scaled_positions(
-            self.atom_coordinates.get_scaled_coordinates(self.atoms_z)
-        )
 
     @property
     def atoms_z(self):
@@ -542,9 +544,17 @@ class Relax:
     """General utility class to log and perform symmetry adapted relax"""
 
     def __init__(
-        self, symmorphic=False, *, atoms: Atoms, calc: GPAW, optimizer_factory,
-        symprec
+        self, symmorphic=False, logfile=None, teelog=True, *, atoms: Atoms, calc: GPAW, optimizer_factory,
+        symprec, comm
     ):
+        self.comm = comm
+        self.logfile = logfile
+        self.logf = None
+        if self.logfile:
+            if self.comm.rank == 0:
+                self.logf = open(self.logfile, 'w')
+        self.teelog = teelog
+
         if atoms.calc is not None:
             raise ValueError("Do not attach a calculator to Atoms yet.")
 
@@ -576,14 +586,38 @@ class Relax:
         # atoms.wrap()
 
     def log(self, *args, **kwargs):
-        print(*args, **kwargs)
+        if self.comm.rank == 0:
+            if self.logf:
+                print(*args, **kwargs, flush=True, file=self.logf)
+            if self.teelog:
+                print(*args, **kwargs)
 
     def run(self, *, fmax, smax):
         self.smax = smax
-        return self.optimizer.run(fmax=fmax)
-
+        i = 0
         for _ in self.optimizer.irun(fmax=fmax):
-            pass
+            import time
+            T = time.localtime()
+            tstr = '%02d:%02d:%02d' % (T[3], T[4], T[4])
+
+            F = self.symmetry_adapted_atoms.actual_atoms.get_forces()
+            S = self.symmetry_adapted_atoms.actual_atoms.get_stress()
+            g = self.symmetry_adapted_atoms.get_gradient()
+            Fmax = np.max(np.abs(F))
+            Smax = np.max(np.abs(S))
+            gmax = np.max(np.abs(g))
+
+            cell = self.symmetry_adapted_atoms.actual_atoms.cell
+            a = cell.angles()
+            l = cell.lengths()
+            cell = f'{a[0]:4.1f} {a[1]:4.1f} {a[2]:4.1f} '
+            cell += f'{l[0]:6.3f} {l[1]:6.3f} {l[2]:6.3f}'
+
+            dofs = ''
+            for Z in self.symmetry_adapted_atoms.atoms_z:
+                dofs += f' {Z:5.3f}'
+            self.log(f'{i:5d} {tstr} {Fmax:7.2f} {Smax:7.4f} {gmax:5.3f} {cell}{dofs}')
+            i += 1
 
     def __ase_optimizable__(self):
         return self
@@ -624,11 +658,11 @@ if __name__ == "__main__":
 
     atoms = bulk("NaCl", "rocksalt", a=5.2)
     atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.24, c=5.20)
+    atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.14, c=5.30)
     # Avoid rotating the cell (making it symmetric)
-    eps = np.random.rand(3, 3) * 0.001
-    atoms.set_cell(atoms.get_cell() @ (np.eye(3) + eps + eps.T))
-
-    atoms.rattle(0.001)
+    #eps = np.array([1,3,-2], [2,3,-1], [3,3, -2]) * 1e-3
+    #atoms.set_cell(atoms.get_cell() @ (np.eye(3) + eps + eps.T))
+    #atoms.rattle(0.001)
     calc = GPAW(
         mode={"name": "pw", "ecut": 700},
         kpts={"size": (2, 2, 2), "gamma": True},
@@ -638,14 +672,17 @@ if __name__ == "__main__":
         convergence={"density": 1e-7},
     )
     from ase.optimize.bfgs import BFGS
-
+    from gpaw.mpi import world
     relax = Relax(
         atoms=atoms,
         calc=calc,
         optimizer_factory=lambda atoms: BFGS(atoms,
-                                             maxstep=1,
+                                             maxstep=1,logfile='bfgs.log',
                                              trajectory="a.traj"),
         symprec=0.1,
+        logfile='relax.log',
+        teelog=True,
+        comm=world,
     )
-    relax.calc_hessian()
-    relax.run(fmax=0.05, smax=0.003)
+    #relax.calc_hessian()
+    relax.run(fmax=0.0005, smax=0.003)
