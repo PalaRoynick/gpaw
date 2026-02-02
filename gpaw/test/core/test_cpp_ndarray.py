@@ -2,12 +2,13 @@ import pytest
 import numpy as np
 from typing import cast, Callable
 
-from gpaw.cgpaw.gpu.arraytests import *
+from gpaw.cgpaw.gpu import arraytests
 from gpaw.gpu import cupy as cp, cupy_is_fake
 
 
 @pytest.mark.parametrize("xp", [np, cp])
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64,
+                                   np.complex128])
 @pytest.mark.parametrize("order", ["C", "F"])
 @pytest.mark.parametrize("shape", [(2), (2, 3), (1, 2, 3)])
 def test_type_casts(xp, shape: tuple, dtype: np.dtype, order: str):
@@ -36,20 +37,22 @@ def test_type_casts(xp, shape: tuple, dtype: np.dtype, order: str):
         else:
             testfunc(a, a)
 
-    maybe_raises(a, accept_any, True)
-    maybe_raises(a, accept_cpu, xp is np)
-    maybe_raises(a, accept_gpu, xp is not np)
-    maybe_raises(a, accept_c_contig,  a.flags.c_contiguous)
-    maybe_raises(a, accept_float, dtype is np.float32)
-    maybe_raises(a, accept_complexdouble, dtype is np.complex128)
-    maybe_raises(a, accept_2D, a.ndim == 2)
-    maybe_raises(a, accept_shape_any, a.ndim == 1)
-    maybe_raises(a, accept_shape_1_2_3, a.shape == (1, 2, 3))
-    maybe_raises(a, accept_shape_2_any, a.shape[0] == 2 and a.ndim == 2)
-    maybe_raises(a, accept_double_c_contig_3D,
+    maybe_raises(a, arraytests.accept_any, True)
+    maybe_raises(a, arraytests.accept_cpu, xp is np)
+    maybe_raises(a, arraytests.accept_gpu, xp is not np)
+    maybe_raises(a, arraytests.accept_c_contig, a.flags.c_contiguous)
+    maybe_raises(a, arraytests.accept_float, dtype is np.float32)
+    maybe_raises(a, arraytests.accept_complexdouble, dtype is np.complex128)
+    maybe_raises(a, arraytests.accept_2D, a.ndim == 2)
+    maybe_raises(a, arraytests.accept_shape_any, a.ndim == 1)
+    maybe_raises(a, arraytests.accept_shape_1_2_3, a.shape == (1, 2, 3))
+    maybe_raises(a, arraytests.accept_shape_2_any,
+                 a.shape[0] == 2 and a.ndim == 2)
+    maybe_raises(a, arraytests.accept_double_c_contig_3D,
                  dtype is np.float64 and a.flags.c_contiguous and a.ndim == 3)
-    maybe_raises(a, accept_complexdouble_f_contig_cpu_shape_2_3,
-                 dtype is np.complex128 and a.flags.f_contiguous and a.shape == (2, 3))
-    maybe_raises(a, accept_complexfloat_c_contig_gpu_shape_any_any,
+    maybe_raises(a, arraytests.accept_complexdouble_f_contig_cpu_shape_2_3,
+                 xp is np and dtype is np.complex128 and a.flags.f_contiguous
+                 and a.shape == (2, 3))
+    maybe_raises(a, arraytests.accept_complexfloat_c_contig_gpu_shape_any_any,
                  dtype == np.complex64 and a.flags.c_contiguous
                  and xp is cp and a.ndim == 2)
