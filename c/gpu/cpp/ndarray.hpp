@@ -157,6 +157,7 @@ struct NDArrayTraits
     using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
+    static constexpr bool is_cpu = std::is_same_v<device_trait, device::cpu>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
 
     static constexpr int32_t ndim = shape_info<shape_trait>::ndim;
@@ -202,6 +203,11 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
 
 } // namespace detail
 
+/* Class NDArray<>: generic multidimensional array that is convertible from Python ndarrays.
+Use template parameters to specify requirements like datatype, shape and whether the data is in CPU or GPU memory.
+Defined as a hidden symbol to avoid subtle ABI issues due to exposing pybind11::dtype, see
+https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
+*/
 template<typename... Args>
 class GPAW_HIDDEN_SYMBOL NDArray
 {
@@ -258,7 +264,8 @@ enum class Framework
 
 /* Aggressive CPython-style accessors to array attributes.
 * No ownership (borrows only), no error checking, no exceptions.
-* For Numpy these are trivial wrappers around Numpy C-API.*/
+* For Numpy these are trivial wrappers around Numpy C-API.
+*/
 struct ArrayAccessors
 {
     // ===================== NumPy =====================
@@ -401,10 +408,14 @@ inline bool ndarray_import_impl(
     using traits = NDArrayTraits<Args...>;
 
     // For Numpy, cast to PyArrayObject* so that we trigger faster overloads of gpaw::Array_DATA etc.
-    using object_ptr_t = std::conditional_t<framework == Framework::eNumpy, PyArrayObject*, PyObject*>;
-    object_ptr_t arr = reinterpret_cast<object_ptr_t>(obj);
+    using pyobject_ptr_t = std::conditional_t<framework == Framework::eNumpy, PyArrayObject*, PyObject*>;
+    pyobject_ptr_t arr = reinterpret_cast<pyobject_ptr_t>(obj);
 
-    if constexpr (traits::is_gpu && framework == Framework::eNumpy)
+    if constexpr (traits::is_cpu && framework != Framework::eNumpy)
+    {
+        return false;
+    }
+    else if constexpr (traits::is_gpu && framework != Framework::eCupy)
     {
         return false;
     }
@@ -464,20 +475,35 @@ inline bool ndarray_import_impl(
 template<typename... Args>
 inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
 {
+    bool success = true;
     if (is_numpy_array(obj))
     {
-        return ndarray_import_impl<Framework::eNumpy, Args...>(obj, out);
+        success &= ndarray_import_impl<Framework::eNumpy, Args...>(obj, out);
     }
     else if (is_cupy_array(obj))
     {
-        return ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
+        success &= ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
     }
-    return false;
+
+    if (!success)
+    {
+        return false;
+    }
+    else if (PyErr_Occurred())
+    {
+        // Got CPython error that is not due to mismatched array traits. Either we miscategorized the PyObject (not Numpy nor Cupy)
+        // or there is a bug in ArrayAccessors, or the error actually occurred much earlier and whoever caused it forgot to handle and clear it.
+        fprintf(stderr, "Unhandled Python exception occurred during gpaw::NDArray type cast. This could happen for non-Numpy or non-Cupy arrays, or could imply a bug in GPAW. This error is unrecoverable!\n");
+        PyErr_PrintEx(0);
+        std::terminate();
+    }
+
+    return success;
 }
 
 } // namespace detail
-
 } // namespace gpaw
+
 
 // Pybind11 type casters
 namespace pybind11::detail
@@ -490,9 +516,6 @@ namespace pybind11::detail
 template<typename... Args>
 struct type_caster<gpaw::NDArray<Args...>>
 {
-    using ndarray = gpaw::NDArray<Args...>;
-    using Traits = gpaw::detail::NDArrayTraits<Args...>;
-
     // TODO build a better descriptor like "NDArray<float, shape<-1>, c_contig>").
     // Ideally it'd be a compile-time string (required by pybind11)
     // but that is very difficult to construct in C++17 without extensive metaprogramming.
