@@ -147,6 +147,27 @@ class SymmeryAdaptedCellCoordinates:
     rot_vv: np.ndarray
 
     def get_cell(self, cell_z):
+        """
+        Construct the real-space unit cell from symmetry-adapted coordinates.
+
+        Given generalized cell coordinates `cell_z`, this method reconstructs
+        the metric tensor (see get_M_cc) and then computes a corresponding
+        cell matrix C_cv via a Cholesky factorization of M_cc,
+        followed by a fixed rotation `rot_vv`:
+
+            C_cv = chol(M_cc) @ rot_vv.T
+
+        Parameters
+        ----------
+        cell_z : ndarray, shape (nz,)
+            Symmetry-adapted cell coordinates.
+
+        Returns
+        -------
+        cell : ase.geometry.Cell
+            The reconstructed unit cell.
+        """
+
         M_cc = self.get_M_cc(cell_z)
         try:
             C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
@@ -156,6 +177,24 @@ class SymmeryAdaptedCellCoordinates:
         return Atoms(cell=C_cv).cell
 
     def get_M_cc(self, cell_z):
+        """
+        Reconstruct the metric tensor from symmetry-adapted coordinates.
+
+        Computes the metric tensor as a linear expansion around a reference
+        metric M0_cc in the symmetry-allowed tangent directions:
+
+            M_cc = M0_cc + sum_z cell_z[z] * dM_zcc[z]
+
+        Parameters
+        ----------
+        cell_z : ndarray, shape (nz,)
+            Symmetry-adapted cell coordinates.
+
+        Returns
+        -------
+        M_cc : ndarray, shape (3, 3)
+            Symmetrized metric tensor corresponding to `cell_z`.
+        """
         return self.M_cc + np.einsum("z,zcd->cd", cell_z, self.dM_zcc)
 
     @classmethod
@@ -610,64 +649,3 @@ if __name__ == "__main__":
     )
     relax.calc_hessian()
     relax.run(fmax=0.05, smax=0.003)
-
-if 0:  # __name__ == "__main__":
-    from ase.build import bulk
-
-    # from ase.io.jsonio import read_json
-    # atoms = read_json('output.json')
-
-    atoms = Atoms("AuAg", cell=[4, 4, 4], positions=[[0, 0, 0], [2, 2, 2]], pbc=True)
-    atoms.positions[1, 1] += 0.01
-    # angle = 62
-    # c = np.cos(angle / 180 * np.pi)
-    # a = atoms.cell.lengths()[0]
-    # M_cc = a**2 * np.array([[1, c, c], [c, 1, c], [c, c, 1]])
-    # cell_cv = np.linalg.cholesky(M_cc)
-    # atoms.set_cell(cell_cv, scale_atoms=True)
-
-    # eps_cc = np.random.rand(3, 3) * 0.0001
-    # atoms.set_cell(atoms.cell @ (np.eye(3) + eps_cc), scale_atoms=True)
-
-    if 1:
-        atoms = bulk("NaCl", crystalstructure="rocksalt", a=5.2)
-        # from ase.io import read
-        # atoms = read('/home/kuisma/Downloads/2AlCl3-1.xyz').copy()
-        print(atoms.cell.angles(), atoms.cell.lengths())
-        calc = GPAW(
-            mode={"name": "pw", "ecut": 700},
-            kpts={"size": (2, 2, 1), "gamma": True},
-            txt="asd.txt",
-            eigensolver="dav",
-            symmetry={"symmorphic": False},
-            xc="LDA",
-            convergence={"density": 1e-7},
-        )
-
-    from ase.optimize.bfgs import BFGS
-    from ase.optimize.mdmin import MDMin
-    from ase.optimize.sciopt import SciPyFminBFGS, SciPyFminCG
-
-    relax = Relax(
-        atoms=atoms,
-        calc=calc,
-        optimizer_factory=lambda atoms: BFGS(atoms, trajectory="a.traj"),
-        symprec=0.1,
-    )
-    # relax.calc_hessian()
-    relax.visualize_modes()
-    if 0:
-        for z in range(3):
-            grad = relax.get_gradient()
-            vec = np.zeros((3,))
-            vec[z] = -1e-3
-            relax.set_x(vec)
-            E0 = relax.get_value()
-            vec[z] = 1e-3
-            relax.set_x(vec)
-            E1 = relax.get_value()
-            print("Finite difference grad", (E1 - E0) / (2e-3))
-            print("Gotten grad", grad[z])
-            print("div", grad[z] / ((E1 - E0) / 2e-3))
-
-    relax.run(fmax=0.001, smax=0.001)
