@@ -3,4 +3,4 @@
 #include "python_utils.h"
 #include "gpu/gpu_utils.h"
 
-GPAW_GPU_LINKAGE void bind_ndarray_tests(pybind11::module_ m);
+GPAW_GPU_LINKAGE void bind_ndarray_tests(pybind11::module_ parent_module);

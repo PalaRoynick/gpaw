@@ -84,7 +84,7 @@ struct shape_info<shape<Dims...>>
     static constexpr std::array<int64_t, ndim> dims = { Dims... };
 };
 
-// Shape constructed from ndim<N>. Sets dims to -1 (unconstrained)
+// Shape constructed from ndim<N>. Sets dims to -1 (meaning unconstrained)
 template<int32_t N>
 struct shape_info<ndim<N>>
 {
@@ -130,7 +130,7 @@ struct Select<Default, Pred, T, Ts...>
 };
 
 /* Used for ensuring that we only select each trait once. Eg. NDArray<float, double> is not valid.
-This kinda relies on predicates being careful with SFINAE. */
+This relies on predicates being careful with SFINAE. */
 template<template<typename> class Pred, typename... Ts>
 constexpr size_t count_matches()
 {
@@ -152,7 +152,7 @@ struct NDArrayTraits
         "NDArray: only one shape<> or ndim<> trait is allowed. You cannot give both ndim<> and shape<>.");
 
     using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
-    using device_trait = typename Select<device::cpu, is_device, Args...>::type;
+    using device_trait = typename Select<unused, is_device, Args...>::type;
     using layout_trait = typename Select<unused, is_layout, Args...>::type;
     using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
 
@@ -166,29 +166,6 @@ struct NDArrayTraits
     /* True if we know anything at all about the shape. Knowing ndim is sufficient,
     and knowing all or some dimension sizes is also OK. */
     static constexpr bool has_shape_info = (ndim != -1);
-
-    // TODO ensure this builds at compile time. Or at the very least, build in only once for each traits specialization
-    static std::string as_string()
-    {
-        std::string s = "";
-        if constexpr (has_dtype)
-        {
-            // ???
-        }
-
-        if constexpr (is_gpu) { s += "device=gpu"; } else { s += "device=cpu"; }
-        if constexpr (is_c_contig) { s += ", C"; } else { s += ", F"; }
-        if constexpr (has_shape_info)
-        {
-            s += ", shape<";
-            for (int32_t i = 0; i < ndim; ++i)
-            {
-                s += std::to_string(shape[i]) + ", ";
-            }
-            s += ">";
-        }
-        return s;
-    }
 };
 
 
@@ -424,7 +401,7 @@ inline bool ndarray_import_impl(
 
     if constexpr (traits::is_c_contig)
     {
-        if (!PyArray_IS_C_CONTIGUOUS(arr))
+        if (!ArrayAccessors::is_c_contig(arr))
         {
             return false;
         }
@@ -474,6 +451,9 @@ inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
 
 } // namespace gpaw
 
+// TODO how to build a better string description at compile time??
+#define GPAW_NDARRAY_STR(T) "NDArray<" #T ">"
+
 // Pybind11 type casters
 namespace pybind11::detail
 {
@@ -488,16 +468,14 @@ struct type_caster<gpaw::NDArray<Args...>>
     using ndarray = gpaw::NDArray<Args...>;
     using Traits = gpaw::detail::NDArrayTraits<Args...>;
 
-    // TODO how to build this at compile time??
-    static const std::string ndarray_str = "NDArray<" + Traits::as_string() + ">";
-    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _(ndarray_str.c_str()));
+    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _(GPAW_NDARRAY_STR(Args...)));
 
     /* C++ -> Python conversion. FIXME: can't easily have this as Cupy provides no C++ interface.
     * So either we call Cupy's Python API from here, or simply don't allow conversion like this.
-    * For not, don't allow it. */
+    * For now, don't allow it. */
     static handle cast(const gpaw::NDArray<Args...>& array, return_value_policy policy, handle parent) noexcept
     {
-        assert(false && "WIP");
+        assert(false && "Passing gpaw::NDArray back to Python is not implemented");
         return handle();
     }
 
