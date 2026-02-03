@@ -217,7 +217,7 @@ class Symmetries:
             self.translation_sc = np.zeros((len(self.rotation_scc), 3))
         else:
             self.translation_sc = np.array(translations)
-            lcm = self.lcm()
+            lcm = self.lcm(tolerance=tolerance)
             self.translation_sc = np.round(self.translation_sc * lcm) / lcm
         if atommaps is None:
             self.atommap_sa = np.empty((len(self.rotation_scc), 0), int)
@@ -393,9 +393,9 @@ class Symmetries:
                 F_av[a2] += np.dot(F0_av[a1], op_vv)
         return F_av / len(self)
 
-    def lcm(self) -> list[int]:
+    def lcm(self, tolerance=1e-4) -> list[int]:
         """Find lowest common multiple compatible with translations."""
-        return [np.lcm.reduce([frac(t, tol=1e-4)[1] for t in t_s])
+        return [np.lcm.reduce([frac(t, max_denominator=12)[1] for t in t_s])
                 for t_s in self.translation_sc.T]
 
     @cached_property
