@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from functools import cached_property
+from functools import cached_property, cache
 from typing import Any
 
 import numpy as np
@@ -16,6 +16,7 @@ from gpaw.rotation import rotation
 from gpaw.symmetry import Symmetry as OldSymmetry
 from gpaw.symmetry import frac
 from gpaw.typing import Array2D, Array3D, ArrayLike1D, ArrayLike2D, ArrayLike3D
+
 
 class SymmetryBrokenError(Exception):
     """Broken-symmetry error."""
@@ -462,14 +463,21 @@ class Symmetries:
                         'Sorry!  Try using spglib.standardize_cell(...)')
 
 
-def find_lattice_symmetry(cell_cv, pbc_c, tol, _backwards_compatible=False):
-    """Determine list of symmetry operations."""
+@cache
+def totally_unimodular_matrices() -> np.ndarray:
     # Symmetry operations as matrices in 123 basis.
     # Operation is a 3x3 matrix, with possible elements -1, 0, 1, thus
     # there are 3**9 = 19683 possible matrices:
     combinations = 1 - np.indices([3] * 9)
-    U_scc = combinations.reshape((3, 3, 3**9)).transpose((2, 0, 1)) * 1.0
-    U_scc = U_scc[abs(np.linalg.det(U_scc)) == 1.0]
+    U_scc = combinations.reshape((3, 3, 3**9)).transpose((2, 0, 1))
+    U_scc = U_scc.astype(float)
+    U_scc = U_scc[abs(np.linalg.det(U_scc)) == 1.0]  # reduce to 6960
+    return U_scc
+
+
+def find_lattice_symmetry(cell_cv, pbc_c, tol, _backwards_compatible=False):
+    """Determine list of symmetry operations."""
+    U_scc = totally_unimodular_matrices()
 
     # The metric of the cell should be conserved after applying
     # the operation:
@@ -479,10 +487,11 @@ def find_lattice_symmetry(cell_cv, pbc_c, tol, _backwards_compatible=False):
                            optimize=True)
 
     if _backwards_compatible:
+        # (wrong units)
         mask_s = abs(metric_scc - metric_cc).sum(2).sum(1) <= tol
     else:
-        s_c = metric_cc.diagonal()**0.25
-        tol_cc = np.outer(s_c, s_c) * tol
+        L_c = metric_cc.diagonal()**0.5
+        tol_cc = np.add.outer(L_c, L_c) * tol
         err_scc = abs(metric_scc - metric_cc)
         mask_s = (err_scc <= tol_cc).all(axis=(1, 2))
 
