@@ -7,8 +7,10 @@
 */
 
 #include "python_utils.h"
+#include "compile_time_strings.hpp"
 #include <type_traits>
 #include <array>
+#include <string>
 
 #include "pyarray_utils.hpp"
 
@@ -20,15 +22,15 @@ namespace gpaw
 namespace device
 {
 // Array is in CPU memory
-struct cpu {};
+struct cpu { static constexpr FixedString name = "CPU"; };
 // Array is in GPU memory
-struct gpu {};
+struct gpu { static constexpr FixedString name = "GPU"; };
 }
 
 // C-contiguous memory layout
-struct c_contig {};
+struct c_contig { static constexpr FixedString name = "order=C"; };
 // F-contiguous memory layout (Fortran style)
-struct f_contig {};
+struct f_contig { static constexpr FixedString name = "order=F"; };
 
 /* Use to require NDArray of specific shape. Eg: NDArray<shape<2, 3>> for a 2x3 array.
 * Value of -1 leaves the size of that dimension unconstrained, eg: NDArray<shape<2, -1>>
@@ -41,12 +43,11 @@ template<int64_t... Dims> struct shape {};
 */
 template<int32_t N> struct ndim {};
 
-
 namespace detail
 {
 
 // Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_trait is unused.
-struct unused {};
+struct unused { static constexpr FixedString name = ""; };
 
 // Helpers for defining array traits
 
@@ -153,10 +154,11 @@ struct NDArrayTraits
 
     using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
     using device_trait = typename Select<unused, is_device, Args...>::type;
-    using layout_trait = typename Select<unused, is_layout, Args...>::type;
     using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
+    using layout_trait = typename Select<unused, is_layout, Args...>::type;
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
+    static constexpr bool has_device = !std::is_same_v<device_trait, unused>;
     static constexpr bool is_cpu = std::is_same_v<device_trait, device::cpu>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
 
@@ -171,6 +173,12 @@ struct NDArrayTraits
     // 1D contiguous arrays are both c_contig and f_contig
     static constexpr bool is_c_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, c_contig>;
     static constexpr bool is_f_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, f_contig>;
+
+    // Get FixedString string representation of these traits.
+    static consteval auto string_repr()
+    {
+        return concat(device_trait::name, layout_trait::name);
+    }
 };
 
 
@@ -192,6 +200,7 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     // For Numpy we could go for zero-copy but that seems fragile.
     // For Cupy this is harder because the shape/stride there are Python tuples (not contiguous C-style arrays)
     // So we opt for copies.
+
     // TODO!! Figure out a good pattern for memory management.
     // For now, just std::vector which is not optimal for this
 
@@ -512,16 +521,26 @@ namespace pybind11::detail
 // Try to follow nanobind semantics here so that we have easier time porting to it later if needed.
 // https://nanobind.readthedocs.io/en/latest/porting.html#type-casters
 
-
 template<typename... Args>
 struct type_caster<gpaw::NDArray<Args...>>
 {
-    // TODO build a better descriptor like "NDArray<float, shape<-1>, c_contig>").
-    // Ideally it'd be a compile-time string (required by pybind11)
-    // but that is very difficult to construct in C++17 without extensive metaprogramming.
-    // We could build it at runtime if the array conversion fails, but that doesn't show up in docstrings then
+    using ndarray = gpaw::NDArray<Args...>;
+    using traits = gpaw::detail::NDArrayTraits<Args...>;
 
-    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, _("NDArray<>"));
+    /* Generate a name that will appear in stubs. But:
+        1. Mypy stubgen doesn't like types with [], <> etc
+        2. If we bypass 1. with additional quotes like "\"Ndarray[]\"", the type will appear only in the docstring, not stub function signatures.
+    Doing this properly would probably require declaration like `class NDArray(Generic[T]):` on Python side;
+    dunno if this is doable with Mypy stubgen.
+    With pybind11-stubgen, problem 1. still persists but 2. works as one would expect.
+    But still need to define Python-side generics to make editors understand the stubs => combine with a manual stub file?
+    */
+
+    static constexpr auto ndarray_str = gpaw::concat(gpaw::FixedString("\"NDArray["),
+                                                     traits::string_repr(),
+                                                     gpaw::FixedString("]\""));
+
+    PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, const_name(ndarray_str.data));
 
     /* C++ -> Python conversion. FIXME: can't easily have this as Cupy provides no C++ interface.
     * So either we call Cupy's Python API from here, or simply don't allow conversion like this.
