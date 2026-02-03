@@ -1,9 +1,10 @@
 #pragma once
 
-/* Partly based on ndarray template in the Nanobind library,
+/* Defines NDArray<> template class with optional constraints on allowed array types.
+* Inspired by a similar class in the nanobind library,
 * https://nanobind.readthedocs.io/en/latest/ndarray.html,
-* https://github.com/wjakob/nanobind (BSD-3)
-*
+* https://github.com/wjakob/nanobind (BSD-3).
+* Ours is a less polished implementation but we try to follow their conventions for using the class.
 */
 
 #include "python_utils.h"
@@ -36,7 +37,15 @@ struct f_contig { static constexpr FixedString name = "order=F"; };
 * Value of -1 leaves the size of that dimension unconstrained, eg: NDArray<shape<2, -1>>
 * is a 2D array with second dimension being any size.
 */
-template<int64_t... Dims> struct shape {};
+template<int64_t... Dims>
+struct shape
+{
+    // static constexpr auto name = concat(
+    //     FixedString("shape=("),
+    //     FixedString<Dims == -1>(FixedString("*"), FixedString<(size_t) Dims>())...,
+    //     FixedString(")")
+    // );
+};
 
 /* Alternative way of specifying shape when only the number of dimensions is fixed.
 * Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>.
@@ -152,6 +161,7 @@ struct NDArrayTraits
     static_assert(count_matches<is_shape_like, Args...>() <= 1,
         "NDArray: only one shape<> or ndim<> trait is allowed. You cannot give both ndim<> and shape<>.");
 
+    // float, double, std::complex<double>, etc. Or simply unused
     using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
     using device_trait = typename Select<unused, is_device, Args...>::type;
     using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
@@ -174,10 +184,24 @@ struct NDArrayTraits
     static constexpr bool is_c_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, c_contig>;
     static constexpr bool is_f_contig = (ndim == 1) ? is_contiguous : std::is_same_v<layout_trait, f_contig>;
 
-    // Get FixedString string representation of these traits.
+    /* Get FixedString representation of value_trait. Hard because we don't have reflection.
+    Instead, this uses pybind11's dtype -> name mapping. Not great because it's considered an internal detail. */
+    static constexpr auto value_type_name = []()
+    {
+        if constexpr(!has_dtype)
+        {
+            return FixedString("");
+        }
+        else
+        {
+            return FixedString(py::detail::npy_format_descriptor<value_trait>::name.text);
+        }
+    }();
+
+    // Get FixedString string representation of all traits.
     static consteval auto string_repr()
     {
-        return concat(device_trait::name, layout_trait::name);
+        return concat_with_separator<FixedString(", ")>(value_type_name, device_trait::name, layout_trait::name);
     }
 };
 
@@ -524,7 +548,6 @@ namespace pybind11::detail
 template<typename... Args>
 struct type_caster<gpaw::NDArray<Args...>>
 {
-    using ndarray = gpaw::NDArray<Args...>;
     using traits = gpaw::detail::NDArrayTraits<Args...>;
 
     /* Generate a name that will appear in stubs. But:
@@ -535,7 +558,6 @@ struct type_caster<gpaw::NDArray<Args...>>
     With pybind11-stubgen, problem 1. still persists but 2. works as one would expect.
     But still need to define Python-side generics to make editors understand the stubs => combine with a manual stub file?
     */
-
     static constexpr auto ndarray_str = gpaw::concat(gpaw::FixedString("\"NDArray["),
                                                      traits::string_repr(),
                                                      gpaw::FixedString("]\""));

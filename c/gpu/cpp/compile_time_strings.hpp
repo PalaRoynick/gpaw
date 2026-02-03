@@ -49,30 +49,53 @@ struct uint_to_str<0, Digits...>
         FixedString<sizeof...(Digits) + 1>{ { char('0' + Digits)..., '\0' } };
 };
 
-// Concatenate FixedStrings
-template<typename... Parts>
-constexpr auto concat(const Parts&... parts)
+/* Concatenate any number of FixedStrings, adding a separator string between two non-empty strings. */
+template<FixedString Sep, typename... Parts>
+constexpr auto concat_with_separator(const Parts&... parts)
 {
     static_assert((is_fixed_string<Parts>::value && ...),
-        "concat only accepts FixedString arguments"
+        "concat_with_separator only accepts FixedString arguments"
     );
 
-    constexpr size_t size = 1 + (0 + ... + (parts.size() - 1));
+    constexpr size_t nonEmpty =
+        (0 + ... + (Parts::size() > 1));
 
-    FixedString<size> out {};
+    constexpr size_t size =
+        1
+        + (0 + ... + (Parts::size() - 1))
+        + (nonEmpty > 0 ? (nonEmpty - 1) * (Sep.size() - 1) : 0);
+
+    FixedString<size> out{};
     size_t pos = 0;
+    bool first = true;
 
     auto append = [&](auto const& p)
     {
-        for (size_t i = 0; i + 1 < p.size(); ++i)
+        if constexpr (p.size() > 1)
         {
-            out.data[pos++] = p.data[i];
+            if (!first)
+            {
+                for (size_t i = 0; i + 1 < Sep.size(); ++i)
+                    out.data[pos++] = Sep.data[i];
+            }
+            first = false;
+
+            for (size_t i = 0; i + 1 < p.size(); ++i)
+                out.data[pos++] = p.data[i];
         }
     };
 
     (append(parts), ...);
-    out.data[pos] = '\0'; // always null-terminated
+    out.data[pos] = '\0';
     return out;
-};
+}
+
+
+// Concatenate FixedStrings. No separators added
+template<typename... Parts>
+constexpr auto concat(const Parts&... parts)
+{
+    return concat_with_separator<FixedString("")>(parts...);
+}
 
 };
