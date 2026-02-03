@@ -430,6 +430,7 @@ class SymmetryAdaptedAtoms:
                  log=print):
         self.actual_atoms = actual_atoms
         self.symmetries = symmetries
+        self.symmetry_force_violation = np.inf
 
         pretty_subheader("Symmetry adapted cell coordinates", log)
         self.cell_coordinates = SymmeryAdaptedCellCoordinates.build(
@@ -528,7 +529,9 @@ class SymmetryAdaptedAtoms:
 
         # TODO: Move to SymmetryAdaptedCellCoordinates
         # dE/deps_vv deps_vv/dC_cv dC_cv/dz
-        for z in range(len(self.cell_coordinates.dM_zcc)):
+
+        ncellz = len(self.cell_coordinates.dM_zcc)
+        for z in range(ncellz):
             dC_cv = (
                 chol_derivative(M_cc, self.cell_coordinates.dM_zcc[z])
                 @ self.cell_coordinates.rot_vv.T
@@ -543,6 +546,23 @@ class SymmetryAdaptedAtoms:
         atoms_grad_z = -np.einsum(
             "av,cv,zac->z", F_av, C_cv, self.atom_coordinates.dof_zac
         )
+
+        natomz = len(self.atom_coordinates.dof_zac)
+        # For sanity check, we want to project the atomic gradient back
+        # minimizing the Cartesian metrix.
+        dof_zX = np.einsum('cv,zac->zav', C_cv, self.atom_coordinates.dof_zac).reshape((natomz, -1))
+        back_Fav = -(dof_zX.T @ np.linalg.inv(dof_zX @ dof_zX.T) @ atoms_grad_z).reshape(F_av.shape)
+
+        dF_av = F_av - back_Fav
+        dF = np.max(np.linalg.norm(dF_av, axis=1))
+        self.symmetry_force_violation = dF
+        self.back_Fav = back_Fav
+        if dF > self.fmax:
+            print('Warning!!! Back projection of symmetry adapted'
+                  f' forces to Cartesian space failed by {dF:7.13f}')
+            print('atom Obtained force           Back projected force')
+            for a, (F_v, F2_v) in enumerate(zip(F_av, back_Fav)):
+                print(f'{a:5d} {F_v[0]:7.4f} {F_v[1]:7.4f} {F_v[2]:7.4f} {F2_v[0]:7.4f} {F2_v[1]:7.4f} {F2_v[2]:7.4f}')
 
         gradient = np.hstack([grad_z, atoms_grad_z])
         return gradient * self.get_preconditioner()
@@ -566,7 +586,9 @@ class SymmetryAdaptedAtoms:
         return [self.actual_atoms]
 
     def converged(self, gradient, fmax):
-        Fconv = np.max(np.linalg.norm(self.actual_atoms.get_forces(), axis=1)) 
+        # Convergence needs to be from the back projected forces.
+        # The symmetry violating forces will never converge.
+        Fconv = np.max(np.linalg.norm(self.back_Fav, axis=1)) 
         Sconv = np.max(np.max(np.linalg.norm(self.actual_atoms.get_stress())))
         return Fconv < self.fmax and Sconv < self.smax
 
@@ -605,6 +627,10 @@ class Relax:
         self.symmetry_adapted_atoms = SymmetryAdaptedAtoms.from_atoms(
             self.atoms, log=self.log, symmorphic=False, symprec=symprec
         )
+        
+        saa2 = SymmetryAdaptedAtoms.from_atoms(
+            self.symmetry_adapted_atoms.actual_atoms, log=self.log, symmorphic=False, symprec=1e-5
+        )
 
         # Now, with cell and atoms symmetrized,
         # it is safe to assign the calculator
@@ -640,17 +666,17 @@ class Relax:
         self.maxiter = maxiter
         i = 0
         dtitles = '    '.join([f'q{i:02d}' for i in range(len(self.symmetry_adapted_atoms.atoms_z))])
-        self.log(f'iter  time     E            maxF  maxS   maxG  a1   a2   a3     L1     L2     L3    {dtitles}')
+        self.log(f'iter  time     E            maxF   maxS    maxG    a1    a2    a3     L1      L2      L3     {dtitles}   log sym. violation')
         for _ in self.optimizer.irun(fmax=fmax):
             import time
             T = time.localtime()
             tstr = '%02d:%02d:%02d' % (T[3], T[4], T[5])
             E = self.symmetry_adapted_atoms.actual_atoms.get_potential_energy()
-            F = self.symmetry_adapted_atoms.actual_atoms.get_forces()
+            F = self.symmetry_adapted_atoms.back_Fav #get_forces()
             S = self.symmetry_adapted_atoms.actual_atoms.get_stress()
             g = self.symmetry_adapted_atoms.get_gradient()
             Fmax = np.max(np.linalg.norm(F, axis=1))
-            sFmax = f'{Fmax:7.2f}'
+            sFmax = f'{Fmax:7.3f}'
             if Fmax < self.fmax:
                 sFmax = GREEN + sFmax + RESET
             
@@ -664,13 +690,17 @@ class Relax:
             cell = self.symmetry_adapted_atoms.actual_atoms.cell
             a = cell.angles()
             l = cell.lengths()
-            cell = f'{a[0]:4.1f} {a[1]:4.1f} {a[2]:4.1f} '
-            cell += f'{l[0]:6.3f} {l[1]:6.3f} {l[2]:6.3f}'
+            cell = f'{a[0]:5.1f} {a[1]:5.1f} {a[2]:5.1f} '
+            cell += f'{l[0]:7.3f} {l[1]:7.3f} {l[2]:7.3f}'
 
             dofs = ''
             for Z in self.symmetry_adapted_atoms.atoms_z:
                 dofs += f' {Z:6.3f}'
-            self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:5.3f} {cell}{dofs}')
+            syviol = np.log10(self.symmetry_adapted_atoms.symmetry_force_violation)
+            symviol = f'{syviol:4.1f}'
+            if syviol < self.fmax:
+                symviol = GREEN + symviol + RESET
+            self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:7.3f} {cell}{dofs} {symviol}')
             i += 1
             if i > maxiter:
                 self.log(f'Not converged in {maxiter}.')
@@ -738,14 +768,14 @@ if __name__ == "__main__":
     from ase.io import read
     #atoms = read('2AlCl3-1.xyz').copy()
     atoms = read(argv[1]).copy()
-     
+
     def calc():
         return GPAW(
-            mode={"name": "pw", "ecut": 700},
-            kpts={"density": 2, "gamma": True},
+            mode={"name": "pw", "ecut": 400},
+            kpts={"density": 1, "gamma": True},
             symmetry={"symmorphic": False},
             txt='ZnO.txt', 
-            xc="LDA",
+            xc="PBE",
             convergence={"density": 1e-7},
         )
     from ase.optimize.bfgs import BFGS
@@ -756,10 +786,10 @@ if __name__ == "__main__":
         optimizer_factory=lambda atoms: BFGS(atoms,
                                              maxstep=0.1,logfile='bfgs.log',
                                              trajectory="a.traj"),
-        symprec=0.3,
+        symprec=0.1,
         logfile='relax.log',
         teelog=True,
         comm=world,
     )
     #relax.calc_hessian()
-    relax.run(fmax=0.005, smax=0.0002, maxiter=20)
+    relax.run(fmax=0.005, smax=0.0002, maxiter=40)
