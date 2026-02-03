@@ -53,8 +53,35 @@ def pprint_atoms(atoms, log, units="Å"):
     log(f"Lengths ({units}): {atos(cell.lengths(), '.3f')}")
     log(f"Angles (°): {atos(cell.angles(), '.2f')}")
     log("Atoms:")
+    atom_table(atoms, log=log)
+
+def pretty_atomic_dofs(atoms, dof_zac, *, log):
+    C_cv = atoms.cell
+    log("Atomic degrees of freedom:")
+
+    from dataclasses import dataclass
+
+    @dataclass
+    class FakeAtom:
+        index: int
+        symbol: str
+        position: np.ndarray
+        scaled_position: np.ndarray
+
+    for z, dof_ac in enumerate(dof_zac):
+        log(f'Degree of freedom q{z:02d}')
+        from ase import Atom
+        atoms = [FakeAtom(atom.index,
+                          atom.symbol,
+                          dof_ac[atom.index] @ C_cv,
+                          dof_ac[atom.index]) for atom in atoms]
+        atom_table(atoms, log=log)
+        log()
+
+def atom_table(atoms, *, log):    
+    log('   id symbol  Rx         Ry         Rz         sx         sy         sz')
     for a in atoms:
-        s = f"{a.symbol:5s}"
+        s = f"{a.index:5d} {a.symbol:5s}"
         for v in range(3):
             s += f"{a.position[v]:10.5f} "
         for v in range(3):

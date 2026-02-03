@@ -3,8 +3,8 @@
 # [X] Add analytical cholesky derivative
 # [ ] Precalculate Cholesky derivative
 # [ ] Prettier print of atomic degrees of freedom
-
-
+from sys import argv
+from gpaw.new.logger import GREEN, RESET
 from gpaw.new.ase_interface import GPAW
 from ase import Atoms
 from gpaw.new.symmetry import create_symmetries_object
@@ -16,8 +16,41 @@ from gpaw.new.relax_print import (
     pretty_dofs,
     pretty_header,
     pretty_subheader,
+    pretty_atomic_dofs,
 )
 
+def minimize_l1(dof_zac):
+    nz = len(dof_zac)
+    if nz < 2:
+        # Nothing to minimize with just 1 dof
+        return
+    from scipy.linalg import expm
+    from scipy.optimize import fmin    
+
+    basis = []
+    for i in range(nz):
+        for j in range(i + 1, nz):
+            b = np.zeros((nz, nz))
+            b[i,j] = 1
+            b[j,i] = -1
+            basis.append(b)
+
+    nb = len(basis)
+
+    def U_zz(x):
+        x = np.array(x).reshape((-1, ))
+        M = np.zeros((nz, nz))
+        for i, e in enumerate(x):
+            M += e * basis[i]
+        return expm(M)
+
+    def function(x):
+        return np.sum(np.abs(np.einsum('zw,wac->zac', U_zz(x), dof_zac)))
+
+    xopt, *args = fmin(function, np.zeros((nb, )), xtol=1e-7, ftol=1e-7)
+    print(args)
+    dof_zac[:] = np.einsum('zw,wac->zac', U_zz(np.array(xopt)), dof_zac)
+    
 
 def chol_derivative(A, dA, L=None):
     """
@@ -343,15 +376,22 @@ class SymmetryAdaptedScaledCoordinates:
         for a in range(na):
             B_A[(a * 3):(a * 3 + 3), :] = np.eye(3)
         B_EA = np.vstack([B_EA, B_A.T])
+        import sympy as sp
+        nullspace = np.array(sp.Matrix(np.array(B_EA, dtype=int)).nullspace(), dtype=float)[:, :, 0]
 
+        # Make sure the old svd code reproduces the same result      
         U, S, Vh = np.linalg.svd(B_EA, False)
         tol = 1e-6
         null_mask = S < tol
-        nullspace = Vh[null_mask]
-
-        # Maybe DOFs will be more human understandable after this rotation?
-        Q, R = np.linalg.qr(nullspace)
-        nullspace = Q.T @ nullspace
+        nullspace2 = Vh[null_mask]
+       
+        def same_rowspace(N, M, tol=1e-10):
+            A = np.vstack([N, M])
+            rA = np.linalg.matrix_rank(A, tol)
+            rN = np.linalg.matrix_rank(N, tol)
+            rM = np.linalg.matrix_rank(M, tol)
+            return rA == rN == rM
+        assert same_rowspace(nullspace, nullspace2)
 
         # Just make the printing prettyer for now
         nullspace = np.where(np.abs(nullspace) < 1e-10, 0, nullspace)
@@ -368,15 +408,8 @@ class SymmetryAdaptedScaledCoordinates:
             dof_zav = np.einsum("zac,cv->zav", dof_zac, C_cv)
             # Normalize such that the distance in Cartesian real space
             # is reflected on the generalized coordinate
-            dof_zac /= np.max(np.abs(dof_zav))
-
-        log("Atomic degrees of freedom:")
-        for z, dof_ac in enumerate(dof_zac):
-            log(f"{z}", end=" ")
-            for dof_c in dof_ac:
-                log(f"{dof_c[0]:.5f} {dof_c[1]:.5f} {dof_c[2]:.5f}   ",
-                    end=" ")
-            log()
+            dof_zac /= np.max(np.linalg.norm(dof_zav, axis=2), axis=1)[:, None, None]
+            #minimize_l1(dof_zac)
 
         precondition_z = np.max(np.max(np.abs(dof_zac), axis=2), axis=1)
         precondition_z /= np.sum(np.sum(np.abs(dof_zac), axis=2), axis=1)
@@ -415,6 +448,8 @@ class SymmetryAdaptedAtoms:
             self.cell_coordinates.C_cv,
             log=log,
         )
+        pretty_atomic_dofs(actual_atoms, self.atom_coordinates.dof_zac, log=log)
+
         assert isinstance(self.atom_coordinates,
                           SymmetryAdaptedScaledCoordinates)
         # s_ac = dof_zac s_z -> ds_ac/d_sz = dof_zac
@@ -531,8 +566,9 @@ class SymmetryAdaptedAtoms:
         return [self.actual_atoms]
 
     def converged(self, gradient, fmax):
-        return self.gradient_norm(gradient) < fmax
-        # return F < fmax and S < self.smax
+        Fconv = np.max(np.linalg.norm(self.actual_atoms.get_forces(), axis=1)) 
+        Sconv = np.max(np.max(np.linalg.norm(self.actual_atoms.get_stress())))
+        return Fconv < self.fmax and Sconv < self.smax
 
 
     @property
@@ -573,7 +609,8 @@ class Relax:
         # Now, with cell and atoms symmetrized,
         # it is safe to assign the calculator
         # TODO: Implement Setter or something
-        self.symmetry_adapted_atoms.actual_atoms.calc = calc
+        self.calc = calc
+        self.symmetry_adapted_atoms.actual_atoms.calc = calc()
 
         pretty_subheader("Symmetrized atoms", self.log)
         pprint_atoms(self.symmetry_adapted_atoms.actual_atoms, self.log)
@@ -592,19 +629,36 @@ class Relax:
             if self.teelog:
                 print(*args, **kwargs)
 
-    def run(self, *, fmax, smax):
+    def run(self, *, fmax, smax, maxiter):
+        # Why would symmetry adapted atoms care about smax and fmax
+        # But it needs to be ase optimizable, so it needs to do that
+        self.symmetry_adapted_atoms.smax = smax
+        self.symmetry_adapted_atoms.fmax = fmax
+        
         self.smax = smax
+        self.fmax = fmax
+        self.maxiter = maxiter
         i = 0
+        dtitles = '    '.join([f'q{i:02d}' for i in range(len(self.symmetry_adapted_atoms.atoms_z))])
+        self.log(f'iter  time     E            maxF  maxS   maxG  a1   a2   a3     L1     L2     L3    {dtitles}')
         for _ in self.optimizer.irun(fmax=fmax):
             import time
             T = time.localtime()
-            tstr = '%02d:%02d:%02d' % (T[3], T[4], T[4])
-
+            tstr = '%02d:%02d:%02d' % (T[3], T[4], T[5])
+            E = self.symmetry_adapted_atoms.actual_atoms.get_potential_energy()
             F = self.symmetry_adapted_atoms.actual_atoms.get_forces()
             S = self.symmetry_adapted_atoms.actual_atoms.get_stress()
             g = self.symmetry_adapted_atoms.get_gradient()
-            Fmax = np.max(np.abs(F))
+            Fmax = np.max(np.linalg.norm(F, axis=1))
+            sFmax = f'{Fmax:7.2f}'
+            if Fmax < self.fmax:
+                sFmax = GREEN + sFmax + RESET
+            
             Smax = np.max(np.abs(S))
+            sSmax = f'{Smax:7.4f}'
+            if Smax < self.smax:
+                sSmax = GREEN + sSmax + RESET
+
             gmax = np.max(np.abs(g))
 
             cell = self.symmetry_adapted_atoms.actual_atoms.cell
@@ -615,9 +669,14 @@ class Relax:
 
             dofs = ''
             for Z in self.symmetry_adapted_atoms.atoms_z:
-                dofs += f' {Z:5.3f}'
-            self.log(f'{i:5d} {tstr} {Fmax:7.2f} {Smax:7.4f} {gmax:5.3f} {cell}{dofs}')
+                dofs += f' {Z:6.3f}'
+            self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:5.3f} {cell}{dofs}')
             i += 1
+            if i > maxiter:
+                self.log(f'Not converged in {maxiter}.')
+                return False
+
+        return True
 
     def __ase_optimizable__(self):
         return self
@@ -634,22 +693,35 @@ class Relax:
                 traj.write(self.atoms.copy())
 
     def calc_hessian(self):
+        from gpaw.new.symmetry import SymmetryBrokenError
         saa = self.symmetry_adapted_atoms
         x = np.zeros((saa._ndofs))
         H = np.zeros((saa._ndofs, saa._ndofs))
+        def grad():
+            try:
+                G = saa.get_gradient()
+            except SymmetryBrokenError:
+                saa.actual_atoms.calc = self.calc()
+                G = saa.get_gradient()
+            return G
         for i in range(saa._ndofs):
             x[:] = 0.0
             x[i] = 1e-3
             saa.set_x(x)
-            G = saa.get_gradient()
+            G = grad()
             x[i] = -1e-3
             saa.set_x(x)
-            G0 = saa.get_gradient()
+            G0 = grad()
             H[i] = (G - G0) / (2e-3)
+            print(i)
         pretty(H, "Hessian", log=self.log)
         eps, vec = np.linalg.eigh(H)
         self.optimizer.H0 = H
 
+        # Reset to full symmetry
+        x[:] = 0.0
+        saa.set_x(x)
+        saa.actual_atoms.calc = self.calc()
 
 # Tests:
 # Wurtzite, distorted structure, nice logging, quick convergence
@@ -660,29 +732,34 @@ if __name__ == "__main__":
     atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.24, c=5.20)
     atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.14, c=5.30)
     # Avoid rotating the cell (making it symmetric)
-    #eps = np.array([1,3,-2], [2,3,-1], [3,3, -2]) * 1e-3
+    #eps = np.array([[0,1,0], [1,0,0], [0,0, 0]]) * 0.02
     #atoms.set_cell(atoms.get_cell() @ (np.eye(3) + eps + eps.T))
-    #atoms.rattle(0.001)
-    calc = GPAW(
-        mode={"name": "pw", "ecut": 700},
-        kpts={"size": (2, 2, 2), "gamma": True},
-        txt="NaCl.txt",
-        symmetry={"symmorphic": False},
-        xc="LDA",
-        convergence={"density": 1e-7},
-    )
+    #atoms.rattle(0.1)
+    from ase.io import read
+    #atoms = read('2AlCl3-1.xyz').copy()
+    atoms = read(argv[1]).copy()
+     
+    def calc():
+        return GPAW(
+            mode={"name": "pw", "ecut": 700},
+            kpts={"density": 2, "gamma": True},
+            symmetry={"symmorphic": False},
+            txt='ZnO.txt', 
+            xc="LDA",
+            convergence={"density": 1e-7},
+        )
     from ase.optimize.bfgs import BFGS
     from gpaw.mpi import world
     relax = Relax(
         atoms=atoms,
         calc=calc,
         optimizer_factory=lambda atoms: BFGS(atoms,
-                                             maxstep=1,logfile='bfgs.log',
+                                             maxstep=0.1,logfile='bfgs.log',
                                              trajectory="a.traj"),
-        symprec=0.1,
+        symprec=0.3,
         logfile='relax.log',
         teelog=True,
         comm=world,
     )
     #relax.calc_hessian()
-    relax.run(fmax=0.0005, smax=0.003)
+    relax.run(fmax=0.005, smax=0.0002, maxiter=20)
