@@ -11,9 +11,12 @@ from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 class LCAOEigensolver(Eigensolver):
     def __init__(self,
                  basis,
+                 *,
+                 domain_band_comm,
                  converge_bands='occupied'):
         self.basis = basis
         self.converge_bands = converge_bands
+        self.band_domain_comm = domain_band_comm
 
     def iterate(self,
                 ibzwfs,
@@ -42,7 +45,7 @@ class LCAOEigensolver(Eigensolver):
                  weight_n: np.ndarray,  # XXX: Unused
                  matrix_calculator: HamiltonianMatrixCalculator):
         H_MM = matrix_calculator.calculate_matrix(wfs)
-        eig_M = H_MM.eighl(wfs.L_MM, wfs.domain_comm)
+        eig_M = H_MM.eighl(wfs.L_MM, self.domain_band_comm)  # wfs.domain_comm)
         C_Mn = H_MM  # rename (H_MM now contains the eigenvectors)
         assert len(eig_M) >= wfs.nbands
         N = wfs.nbands

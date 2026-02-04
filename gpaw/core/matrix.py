@@ -613,10 +613,17 @@ class Matrix(XP):
         H = self
 
         if comm2.rank == 0:
+            print(L)
+            print(H)
             LH = L.multiply(H)
             LH.multiply(L, opb='C', out=H)
-            r, c, b = suggest_blocking(M, comm.size)
-            eig_n = H.eigh(scalapack=(comm, r, c, b))
+
+        from gpaw.mpi import world as comm
+        r, c, b = suggest_blocking(M, comm.size)
+        print(r, c, b)
+        eig_n = H.eigh(scalapack=(comm, r, c, b))
+
+        if comm2.rank == 0:
             L.multiply(H, opa='C', opb='T', out=LH)
             H.data[:] = LH.data
         else:

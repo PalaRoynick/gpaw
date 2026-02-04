@@ -350,7 +350,8 @@ class RMMDIIS(PWFDEigensolverParameter):
 class LCAOEigensolver(Eigensolver):
     name = 'lcao'
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries,
+                   domain_band_comm):
         from gpaw.new.lcao.eigensolver import LCAOEigensolver as LCAOES
         return LCAOES(basis)
 

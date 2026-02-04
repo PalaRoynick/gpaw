@@ -206,6 +206,9 @@ def parse(lines: str | list[str], n: int = None) -> str:
         ('<-', r'\leftarrow')]:
         latex = latex.replace(sequence, replacement)
 
+    for name in ['exp', 'erfc']:
+        latex = latex.replace(name, rf'\mathrm{{{name}}}')
+
     return latex
 
 
