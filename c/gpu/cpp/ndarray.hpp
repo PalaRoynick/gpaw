@@ -265,7 +265,7 @@ public:
     // Must be default constructible for pybind11 type caster
     NDArray() = default;
 
-    static constexpr detail::NDArrayTraits<Args...> traits;
+    using traits = detail::NDArrayTraits<Args...>;
 
     // FIXME: not optimal, py::dtype(typenum) constructor is not constexpr and may throw
     py::dtype dtype() const { return py::dtype(desc.typenum); }
