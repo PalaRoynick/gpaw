@@ -40,21 +40,36 @@ struct f_contig { static constexpr FixedString name = "order=F"; };
 template<int64_t... Dims>
 struct shape
 {
-    // static constexpr auto name = concat(
-    //     FixedString("shape=("),
-    //     FixedString<Dims == -1>(FixedString("*"), FixedString<(size_t) Dims>())...,
-    //     FixedString(")")
-    // );
+    static_assert(((Dims >= 0 || Dims == -1) && ...), "Shape arguments must be positive or -1.");
+
+    static constexpr int32_t ndim = sizeof...(Dims);
+    static constexpr std::array<int64_t, ndim> dims = { Dims... };
+
+    // FixedString("*") for -1, otherwise number
+    template<int64_t D>
+    static constexpr auto dim_str()
+    {
+        if constexpr (D < 0)
+            return FixedString("*");
+        else
+            return uint_to_str<size_t(D)>::value;
+    }
+
+    static constexpr auto name = concat(
+        FixedString("shape=("),
+        concat_with_separator<FixedString(",")>(dim_str<Dims>()...),
+        FixedString(")")
+    );
 };
 
 /* Alternative way of specifying shape when only the number of dimensions is fixed.
 * Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>.
 */
-template<int32_t N> struct ndim {};
+template<int32_t N>
+struct ndim {};
 
 namespace detail
 {
-
 // Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_trait is unused.
 struct unused { static constexpr FixedString name = ""; };
 
@@ -84,41 +99,34 @@ struct is_numpy_scalar<T, std::void_t<
 >> : std::true_type {};
 //~
 
-// Shape and ndim
-template<typename T> struct shape_info;
-
-template<int64_t... Dims>
-struct shape_info<shape<Dims...>>
-{
-    static constexpr int32_t ndim = sizeof...(Dims);
-    static constexpr std::array<int64_t, ndim> dims = { Dims... };
-};
-
-// Shape constructed from ndim<N>. Sets dims to -1 (meaning unconstrained)
-template<int32_t N>
-struct shape_info<ndim<N>>
-{
-    static constexpr int32_t ndim = N;
-    static constexpr std::array<int64_t, N> dims = []{
-        std::array<int64_t, N> a{};
-        for (auto& v : a) v = -1;
-        return a;
-    }();
-};
-
-template<>
-struct shape_info<unused>
-{
-    static constexpr int32_t ndim = -1;
-    static constexpr std::array<int64_t, 0> dims = {};
-};
-
-// Predicates
+// Shape predicates
 template<typename T> struct is_shape_like : std::false_type {};
 template<int64_t... D> struct is_shape_like<shape<D...>> : std::true_type {};
 template<int32_t N> struct is_shape_like<ndim<N>> : std::true_type {};
-
 //~
+
+// Shape is either unused, given directly as shape<Dims...> or indirectly as ndim<N>. For ndim<N> we build a corresponding shape<Dims...>
+
+template<int32_t N, size_t... I>
+consteval auto make_ndim_shape(std::index_sequence<I...>)
+    -> shape<((void)I, -1)...>;
+
+template<typename T>
+struct make_shape
+{
+    // sanity check for ourselves
+    static_assert(std::is_same_v<T, unused> || is_shape_like<T>::value,
+        "make_shape may only be instantiated with shape<> or ndim<>"
+    );
+    using type = T;  // shape<D...>
+};
+
+template<int32_t N>
+struct make_shape<ndim<N>>
+{
+    using type = decltype(detail::make_ndim_shape<N>(std::make_index_sequence<N>{}));
+};
+
 
 // Metaprogramming selector, used to extract specific traits from Args... using predicates from above
 template<typename Default, template<typename> class Pred, typename... Ts>
@@ -164,20 +172,30 @@ struct NDArrayTraits
     // float, double, std::complex<double>, etc. Or simply unused
     using value_trait = typename Select<unused, is_numpy_scalar, Args...>::type;
     using device_trait = typename Select<unused, is_device, Args...>::type;
-    using shape_trait = typename Select<unused, is_shape_like, Args...>::type;
     using layout_trait = typename Select<unused, is_layout, Args...>::type;
+    // Always either unused or shape<Dims...>. If ndim<N> was given, convert it to shape<...>
+    using shape_trait = typename make_shape<
+        typename Select<unused, is_shape_like, Args...>::type
+    >::type;
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
     static constexpr bool has_device = !std::is_same_v<device_trait, unused>;
     static constexpr bool is_cpu = std::is_same_v<device_trait, device::cpu>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
 
-    static constexpr int32_t ndim = shape_info<shape_trait>::ndim;
-    static constexpr auto shape = shape_info<shape_trait>::dims;
-
     /* True if we know anything at all about the shape. Knowing ndim is sufficient,
     and knowing all or some dimension sizes is also OK. */
-    static constexpr bool has_shape_info = (ndim != -1);
+    static constexpr bool has_shape = !std::is_same_v<shape_trait, unused>;
+    static constexpr int32_t ndim = []()
+    {
+        if constexpr (!has_shape) return -1;
+        else return shape_trait::ndim;
+    }();
+    static constexpr auto shape = []()
+    {
+        if constexpr (!has_shape) return std::array<int64_t, 0>{};
+        else return shape_trait::dims;
+    }();
 
     static constexpr bool is_contiguous = std::is_same_v<layout_trait, c_contig> || std::is_same_v<layout_trait, f_contig>;
     // 1D contiguous arrays are both c_contig and f_contig
@@ -201,7 +219,7 @@ struct NDArrayTraits
     // Get FixedString string representation of all traits.
     static consteval auto string_repr()
     {
-        return concat_with_separator<FixedString(", ")>(value_type_name, device_trait::name, layout_trait::name);
+        return concat_with_separator<FixedString(", ")>(value_type_name, device_trait::name, layout_trait::name, shape_trait::name);
     }
 };
 
@@ -489,7 +507,7 @@ inline bool ndarray_import_impl(
     }
 
     out.shape = ArrayAccessors::shape(arr);
-    if constexpr (traits::has_shape_info)
+    if constexpr (traits::has_shape)
     {
         for (int32_t i = 0; i < out.ndim; ++i)
         {
