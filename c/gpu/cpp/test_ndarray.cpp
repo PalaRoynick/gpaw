@@ -23,7 +23,10 @@ static void accept_array(const NDArray<Args...>& a, py::handle same_array)
         throw std::runtime_error("dtype does not match");
     }
 
-    // TODO check data pointer
+    if (reinterpret_cast<uintptr_t>(a.data()) != reinterpret_cast<uintptr_t>(static_cast<std::byte*>(desc.data) + desc.byte_offset))
+    {
+        throw std::runtime_error("Data pointer does not match");
+    }
 
     if (a.ndim() != (size_t)desc.ndim)
     {

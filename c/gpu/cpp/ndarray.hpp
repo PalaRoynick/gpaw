@@ -178,6 +178,8 @@ struct NDArrayTraits
     >::type;
 
     static constexpr bool has_dtype = !std::is_same_v<value_trait, unused>;
+    using Scalar = std::conditional_t<has_dtype, value_trait, void>;
+
     static constexpr bool has_device = !std::is_same_v<device_trait, unused>;
     static constexpr bool is_cpu = std::is_same_v<device_trait, device::cpu>;
     static constexpr bool is_gpu = std::is_same_v<device_trait, device::gpu>;
@@ -262,10 +264,12 @@ template<typename... Args>
 class GPAW_HIDDEN_SYMBOL NDArray
 {
 public:
+    using traits = detail::NDArrayTraits<Args...>;
+    // Type of elements contained in the array. Will be void if no value trait was specified.
+    using Scalar = typename traits::Scalar;
+
     // Must be default constructible for pybind11 type caster
     NDArray() = default;
-
-    using traits = detail::NDArrayTraits<Args...>;
 
     // FIXME: not optimal, py::dtype(typenum) constructor is not constexpr and may throw
     py::dtype dtype() const { return py::dtype(desc.typenum); }
@@ -296,6 +300,15 @@ public:
     size_t itemsize() const { return (size_t) dtype().itemsize(); }
     // Total number of bytes occupied by the array
     size_t nbytes() const { return itemsize() * size(); }
+
+    // TODO: do we want to have a dedicated accessor for non-const access? eg. mutable_data()
+
+    /* Get access to the underlying data pointer. Pointer type will match the value trait if it was specified,
+    otherwise will return a void pointer. */
+    Scalar* data() const
+    {
+        return reinterpret_cast<Scalar*>(static_cast<std::byte*>(desc.data) + desc.byte_offset);
+    }
 
 private:
     py::handle handle = nullptr;
