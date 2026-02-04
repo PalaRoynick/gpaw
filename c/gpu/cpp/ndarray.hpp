@@ -57,7 +57,7 @@ struct shape
 
     static constexpr auto name = concat(
         FixedString("shape=("),
-        concat_with_separator<FixedString(",")>(dim_str<Dims>()...),
+        concat_with_separator(FixedString(","), dim_str<Dims>()...),
         FixedString(")")
     );
 };
@@ -107,7 +107,7 @@ template<int32_t N> struct is_shape_like<ndim<N>> : std::true_type {};
 // Shape is either unused, given directly as shape<Dims...> or indirectly as ndim<N>. For ndim<N> we build a corresponding shape<Dims...>
 
 template<int32_t N, size_t... I>
-consteval auto make_ndim_shape(std::index_sequence<I...>)
+constexpr auto make_ndim_shape(std::index_sequence<I...>)
     -> shape<((void)I, -1)...>;
 
 template<typename T>
@@ -216,9 +216,9 @@ struct NDArrayTraits
     }();
 
     // Get FixedString string representation of all traits.
-    static consteval auto string_repr()
+    static constexpr auto string_repr()
     {
-        return concat_with_separator<FixedString(", ")>(value_type_name, device_trait::name, layout_trait::name, shape_trait::name);
+        return concat_with_separator(FixedString(", "), value_type_name, device_trait::name, layout_trait::name, shape_trait::name);
     }
 };
 

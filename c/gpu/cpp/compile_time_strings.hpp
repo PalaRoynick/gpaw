@@ -50,9 +50,11 @@ struct uint_to_str<0, Digits...>
 };
 
 /* Concatenate any number of FixedStrings, adding a separator string between two non-empty strings. */
-template<FixedString Sep, typename... Parts>
-constexpr auto concat_with_separator(const Parts&... parts)
+template<size_t SeparatorLength, typename... Parts>
+constexpr auto concat_with_separator(const FixedString<SeparatorLength>& sep, const Parts&... parts)
 {
+    // NB: in C++20 could use "FixedString Sep" as template parameter instead.
+
     static_assert((is_fixed_string<Parts>::value && ...),
         "concat_with_separator only accepts FixedString arguments"
     );
@@ -63,7 +65,7 @@ constexpr auto concat_with_separator(const Parts&... parts)
     constexpr size_t size =
         1
         + (0 + ... + (Parts::size() - 1))
-        + (nonEmpty > 0 ? (nonEmpty - 1) * (Sep.size() - 1) : 0);
+        + (nonEmpty > 0 ? (nonEmpty - 1) * (sep.size() - 1) : 0);
 
     FixedString<size> out{};
     size_t pos = 0;
@@ -75,8 +77,8 @@ constexpr auto concat_with_separator(const Parts&... parts)
         {
             if (!first)
             {
-                for (size_t i = 0; i + 1 < Sep.size(); ++i)
-                    out.data[pos++] = Sep.data[i];
+                for (size_t i = 0; i + 1 < sep.size(); ++i)
+                    out.data[pos++] = sep.data[i];
             }
             first = false;
 
@@ -95,7 +97,7 @@ constexpr auto concat_with_separator(const Parts&... parts)
 template<typename... Parts>
 constexpr auto concat(const Parts&... parts)
 {
-    return concat_with_separator<FixedString("")>(parts...);
+    return concat_with_separator(FixedString(""), parts...);
 }
 
 };
