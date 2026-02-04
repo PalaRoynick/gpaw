@@ -63,8 +63,7 @@ struct shape
 };
 
 /* Alternative way of specifying shape when only the number of dimensions is fixed.
-* Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>.
-*/
+* Eg: NDArray<ndim<3>> is equivalent to NDArray<shape<-1, -1, -1>>. */
 template<int32_t N>
 struct ndim {};
 
