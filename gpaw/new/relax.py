@@ -5,6 +5,7 @@
 # [ ] Prettier print of atomic degrees of freedom
 from sys import argv
 from gpaw.new.logger import GREEN, RESET
+from gpaw.mpi import world
 from gpaw.new.ase_interface import GPAW
 from ase import Atoms
 from gpaw.new.symmetry import create_symmetries_object
@@ -442,7 +443,7 @@ class SymmetryAdaptedAtoms:
         self.symmetry_force_violation = np.inf
 
         pretty_subheader("Symmetry adapted cell coordinates", log)
-        self.cell_coordinates = SymmeryAdaptedCellCoordinates.build(
+        self.cell_coordinates: SymmeryAdaptedCellCoordinates = SymmeryAdaptedCellCoordinates.build(
             self.actual_atoms.cell,
             self.actual_atoms.pbc,
             self.symmetries.rotation_scc,
@@ -757,44 +758,117 @@ class Relax:
             G0 = grad()
             H[i] = (G - G0) / (2e-3)
             print(i)
+        H = 0.5 * (H + H.T)
         pretty(H, "Hessian", log=self.log)
         eps, vec = np.linalg.eigh(H)
         self.optimizer.H0 = H
+        ncell = saa._ndofs_cell
+        C = H[:ncell, :ncell]
+        L = H[:ncell, ncell:]
+        K = H[ncell:, ncell:]
+        C0_zz = C - L @ np.linalg.inv(K) @ L.T
+        print('Stiffness tensor', C0_zz)
+        dM_zvv = saa.cell_coordinates.dM_zvv
+        print('Stiffness tensor', np.einsum('yij,yz,zkl->ijkl', dM_zvv, C0_zz, dM_zvv))
+
 
         # Reset to full symmetry
         x[:] = 0.0
         saa.set_x(x)
         saa.actual_atoms.calc = self.calc()
 
+def phonon_code(saa: SymmetryAdaptedAtoms):
+    symmetries = saa.symmetries
+    atommap_sa = symmetries.atommap_sa
+    rotation_scc = symmetries.rotation_scc
+    ns, na = atommap_sa.shape
+    B_saa = np.zeros((ns, na, na), int)
+    total = 0
+    for s, U_cc in enumerate(rotation_scc):
+        for a in range(na):
+            a2 = atommap_sa[s, a]
+            B_saa[s, a2, a] = 1
+        total = np.kron(np.kron(B_saa[s], U_cc.T), np.kron(B_saa[s], U_cc.T).T) + total
+    print('total.shape', total.shape)
+    #B_qq = total.reshape((na * 3, na * 3))
+    H_qq = np.random.rand(3 * na, 3 * na)
+    H_qq = H_qq + H_qq.T
+    #A_qq = np.einsum('sop,pq,srq->or', B_sqq, H_qq, B_sqq)
+    A_qq = (total @ H_qq.flatten()).reshape((3*na, 3*na))
+    print(A_qq, '<- A_qq')
+    eps, vec = np.linalg.eigh(A_qq)
+    print(eps)
+    print(vec)
+
+def phonon_code(saa: SymmetryAdaptedAtoms):
+    sym = saa.symmetries
+    atommap_sa = sym.atommap_sa      # shape (ns, na)
+    rotation_scc = sym.rotation_scc  # shape (ns, 3, 3)
+
+    ns, na = atommap_sa.shape
+    dim = 3 * na
+
+    # --- Build D(s) = Π(s) ⊗ U(s)
+    D_s = []
+
+    C_cv = saa.actual_atoms.cell
+    for s in range(ns):
+        Pi = np.zeros((na, na))
+        for a in range(na):
+            ap = atommap_sa[s, a]
+            Pi[a, ap] = 1.0
+
+        U = rotation_scc[s]
+        D = np.kron(Pi, np.linalg.inv(C_cv) @ U @ C_cv)   # (3na x 3na)
+        D_s.append(D)
+
+    H = np.random.randn(dim, dim)
+    H = 0.5 * (H + H.T)
+
+    A = np.zeros_like(H)
+    for D in D_s:
+        A += D.T @ H @ D
+    A /= ns
+
+    eps, vecs = np.linalg.eigh(A)
+
+    print("Eigenvalues:")
+    from ase.io.trajectory import Trajectory
+    traj = Trajectory('modes.traj', 'w')
+    saa.actual_atoms = saa.actual_atoms.copy()
+    for vec in vecs.T:
+        saa.actual_atoms.set_velocities(vec.reshape((na, 3)))
+        traj.write(saa.actual_atoms)
+    print(np.round(eps, 8))
+
+
 # Tests:
 # Wurtzite, distorted structure, nice logging, quick convergence
 if __name__ == "__main__":
-    from ase.build import bulk
-
-    atoms = bulk("NaCl", "rocksalt", a=5.2)
-    atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.24, c=5.20)
-    atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.14, c=5.30)
+    if world.rank == 0:
+        import requests
+        url = f'https://c2db.fysik.dtu.dk/material/{argv[1]}/download/xyz'
+        print(url)
+        request = requests.get(url)
+        with open('atoms.xyz', 'wb') as f:
+            f.write(request.content)
+        print('Written to atoms.xyz')
+    world.barrier()
+    #atoms = bulk("NaCl", "rocksalt", a=5.2)
+    #atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.24, c=5.20)
+    #atoms = bulk("ZnO", crystalstructure="wurtzite", a=3.14, c=5.30)
     # Avoid rotating the cell (making it symmetric)
     #eps = np.array([[0,1,0], [1,0,0], [0,0, 0]]) * 0.02
     #atoms.set_cell(atoms.get_cell() @ (np.eye(3) + eps + eps.T))
     #atoms.rattle(0.1)
     from ase.io import read
     #atoms = read('2AlCl3-1.xyz').copy()
-    atoms = read(argv[1]).copy()
-
-    # Give the relaxation something to do
-    atoms.set_cell(1.05 * atoms.get_cell(), scale_atoms=True)
-    
-    atoms = bulk("ZnO", crystalstructure="wurtzite", a=8.5, c=6.50)
-    for i in range(4):
-        del atoms[0]
-    atoms.extend(molecule('C6H6'))
+    atoms = read('atoms.xyz').copy()
     atoms.center()
-
     def calc():
         return GPAW(
             mode={"name": "pw", "ecut": 800},
-            kpts={"density": 0.3, "gamma": True},
+            kpts={"density": 4, "gamma": True},
             symmetry={"symmorphic": False},
             txt='ZnO.txt', 
             xc="PBE",
@@ -808,10 +882,13 @@ if __name__ == "__main__":
         optimizer_factory=lambda atoms: BFGS(atoms,
                                              maxstep=0.5,logfile='bfgs.log',
                                              trajectory="a.traj"),
-        symprec=0.2,
+        symprec=0.003,
         logfile='relax.log',
         teelog=True,
         comm=world,
     )
-    #relax.calc_hessian()
+    #phonon_code(relax.symmetry_adapted_atoms)
+    #asd
     relax.run(fmax=0.01, smax=0.0005, maxiter=40)
+    relax.calc_hessian()
+
