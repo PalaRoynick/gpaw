@@ -30,8 +30,17 @@ the basis functions have a finite range => can avoid a lot of redundant
 "addition of 0". Challenge is to do this in a smart way.
 """
 
-# BasisFunction manages splines: chooses C++ vs Python, mirrors to GPU, etc
-
+"""NOTE TO SELF: I quite like the current BasisFunctionCollection setup where
+the base class handles indexing but does not dictate how the basis functions
+(splines) should be stored. However the BasisFunction class is very annoying,
+seems hard to handle both CPU and GPU cases?
+Perhaps we can reduce BasisFunction to a much simpler "dataclass" that is
+defined within the PurePython version of BasisFunctionCollection.
+For the C++ version we should create a pure-C++ class that holds the splines,
+and the python implementation wraps around it. This makes sense because we
+need to pass splines to kernels, which is easier to do fully from C++.
+So we'd change the following so that BasisFunction is always purepython
+"""
 
 class PrecalculationMode(Enum):
     eIfPossible = auto()
@@ -66,6 +75,7 @@ class BasisFunction:
     """
 
     spline: SplineLike
+    spline_gpu = None
 
     def __init__(self,
                  desc: BasisFunctionDesc,
@@ -128,19 +138,27 @@ class BasisFunction:
             from gpaw.cgpaw.gpu import Spline32, Spline64
             self.spline = Spline64(self.cutoff, f_r)
 
-        # # build a cubic spline. Cupyx does not have a direct CubicSpline
-        # # replacement, so we build it on CPU first, then get it on GPU as a
-        # # PPoly object (generic piecewise polynomial).
-        # # TODO handle fake cupy. Would need a PPoly that returns cp.ndarray
-        # if self.xp is cp:
-        #     from cupyx.scipy.interpolate import PPoly
-        #     self.spline = PPoly(cp.asarray(spline_cpu.c),
-        #                         cp.asarray(spline_cpu.x),
-        #                         extrapolate=False)
-
     def num_m(self) -> int:
         """How many values of m does this describe. IE: just 2*l + 1."""
         return 2 * self.l + 1
+
+    def to_gpu(self,
+               keep_cpu: bool) -> None:
+        """Creates a GPU version of the spline."""
+        # This is very much a WIP draft. Need to figure out how to handle Cupy
+        # spline and C++ GPU spline without too code branching or duplication
+
+        if self.purepython:
+            # Cupyx does not have a direct CubicSpline replacement, so we use
+            # a PPoly object (generic piecewise polynomial).
+            # TODO handle fake cupy?
+            from cupyx.scipy.interpolate import PPoly
+            self.spline_gpu = PPoly(cp.asarray(self.spline.c),
+                                    cp.asarray(self.spline.x),
+                                    extrapolate=False)
+
+        if not keep_cpu:
+            self.spline = None
 
     @staticmethod
     def from_old_spline(spline: Spline, purepython = False) -> "BasisFunction":
@@ -494,3 +512,52 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         else:
             raise NotImplementedError(
                 "PurePython BasisFunctions without precalculation")
+
+
+class BasisFunctionCollection(BasisFunctionCollectionBase):
+    """Version that uses GPAW C++ extension."""
+
+    @override
+    def __init__(self,
+                 grid: UGDesc,
+                 phi_aj: list[list[BasisFunctionDesc]],
+                 use_gpu: bool = False,
+                 mode: PrecalculationMode = PrecalculationMode.eIfPossible):
+        """"""
+        if GPAW_NO_C_EXTENSION:
+            raise RuntimeError("Cannot construct BasisFunctionCollection" \
+            "without GPAW C++ extension." \
+            "Use BasisFunctionCollection_PurePython instead.")
+
+        if not use_gpu:
+            raise RuntimeError("Only GPU version implemented for now")
+        super().__init__(grid, phi_aj, use_gpu, mode)
+        # TODO: construct C++ side object that holds splines
+
+    @override
+    def create_basis_functions(
+        self,
+        phi_desc_aj: list[list[BasisFunctionDesc]]) -> None:
+        """"""
+        raise NotImplementedError("WIP")
+
+    @override
+    def precalculate_on_grid(self) -> None:
+        """"""
+        raise NotImplementedError("WIP")
+
+    @override
+    def add_to_density(
+        self,
+        nt_sG: np.ndarray | cp.ndarray,
+        f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
+        """"""
+        raise NotImplementedError("WIP")
+
+    @override
+    def calculate_potential_matrices(
+        self,
+        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
+        """"""
+        raise NotImplementedError("WIP")
+
