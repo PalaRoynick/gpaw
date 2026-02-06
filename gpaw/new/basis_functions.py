@@ -7,12 +7,8 @@ from gpaw.core import UGDesc
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.new.timer import trace
 
-from typing import TypeAlias, Literal, Optional
 from scipy.interpolate import CubicSpline
 
-
-GridPoint: TypeAlias = np.ndarray[int, tuple[Literal[3]]]
-"""Alias for 3-element Numpy array. Used for indexing XYZ grid points."""
 
 """
 Each atom has list of basis functions. A basis function is defined by its
@@ -150,7 +146,7 @@ class BasisFunctionsNew():
     class AtomData:
         basis_functions: list[BasisFunction]
         index: int  # index of the atom (integer between 0 and num_atoms)
-        position_v: Optional[np.ndarray] = None
+        position_v: np.ndarray | None = None
         """Position of the atom in real units."""
 
         @cached_property
@@ -188,7 +184,7 @@ class BasisFunctionsNew():
 
         self.xp = xp
 
-        self.phi_MG_cache: Optional[np.ndarray | cp.ndarray] = None
+        self.phi_MG_cache: np.ndarray | cp.ndarray | None
         """Cached values of basis funcs, phi_mu(x).
         This is 4D: first index is mu (M), then x, y, z indices.
         """
