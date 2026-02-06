@@ -39,6 +39,7 @@ void bind_spline(py::module_& m, const std::string& class_name)
     // Bind constructor directly to the above factory function
     // See https://pybind11.readthedocs.io/en/stable/advanced/classes.html#custom-constructors
     cls.def(py::init(&spline_from_numpy<T>),
+        py::arg("r_max"), py::arg("f_r"),
         R"(Create a new spline from input data. Last value in the input array should correspond to spline value at r = r_max and MUST equal 0.0.)"
     );
 
@@ -47,8 +48,7 @@ void bind_spline(py::module_& m, const std::string& class_name)
     cls.def("get_num_bins", &Spline::get_num_bins);
 
     // Bind vectorized form of evaluate() with Numpy input/output.
-    cls.def("evaluate",
-        [](const Spline& self, py::array_t<T> x)
+    auto vector_evaluate = [](const Spline& self, py::array_t<T> x)
         {
             py::buffer_info x_buf = x.request();
 
@@ -70,7 +70,18 @@ void bind_spline(py::module_& m, const std::string& class_name)
                 r_ptr[i] = self.evaluate(x_ptr[i]);
             }
             return result;
-        },
+        };
+
+    cls.def("evaluate",
+        vector_evaluate,
+        py::arg("x"),
+        R"doc(Vectorized evaluation of the spline. Output array shape will match that of the input array.
+        Note that this may create a copy of the input array if its dtype does not match dtype of the spline.
+        )doc"
+    );
+
+    cls.def("__call__",
+        vector_evaluate,
         py::arg("x"),
         R"doc(Vectorized evaluation of the spline. Output array shape will match that of the input array.
         Note that this may create a copy of the input array if its dtype does not match dtype of the spline.
