@@ -7,11 +7,14 @@ from typing import cast, TYPE_CHECKING
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.matrix import Matrix
 from gpaw.lfc import BasisFunctions
-from gpaw.new.basis_functions import BasisFunctionsNew, BasisFunction
+from gpaw.new.basis_functions import (BasisFunctionDesc,
+                                      BasisFunctionCollectionBase,
+                                      BasisFunctionCollection_PurePython)
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.spline import Spline
 from gpaw.mpi import world
 from gpaw.gpu import cupy as cp, as_xp, as_np, cupy_is_fake
+from gpaw import GPAW_NO_C_EXTENSION
 
 if TYPE_CHECKING:
     from gpaw.mpi import MPIComm
@@ -34,26 +37,30 @@ def xp_params_no_cpupy():
         ),
     ]
 
-
-@dataclass
-class BasisFunctionDesc:
-    """Helper dataclass that just contains the data needed to define a radial
-    spline. This is useful for tests that need both new and old splines.
+def parametrize_purepython():
+    """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
+    to run both purepython and non-purepython versions, skipping the latter if
+    not available.
     """
-    l: int
-    radial_cutoff: float
-    f_r: np.ndarray
+    return [True,
+            pytest.param(
+                False,
+                marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
+                                          reason="No C extension")]
+            )
+        ]
 
-    @staticmethod
-    def make_random(l: int,
-                    cutoff: float,
-                    rng: np.random.Generator,
-                    num_points: int = 100) -> "BasisFunctionDesc":
-        """"""
-        values = rng.random(size=num_points)
-        # last value must be 0
-        values[-1] = 0.0
-        return BasisFunctionDesc(l, cutoff, values)
+
+def make_random_phi(
+        l: int,
+        cutoff: float,
+        rng: np.random.Generator,
+        num_points: int = 100) -> BasisFunctionDesc:
+    """"""
+    values = rng.random(size=num_points)
+    # last value must be 0
+    values[-1] = 0.0
+    return BasisFunctionDesc(l, cutoff, values)
 
 
 @dataclass
@@ -84,9 +91,9 @@ def make_test_system() -> AtomSystem:
         # Only the old LFC code handles this at the moment.
         # For now, test with small cutoffs like 0.2*a
 
-        s = BasisFunctionDesc.make_random(0, 0.18 * a, rng, num_points=100)
-        p = BasisFunctionDesc.make_random(1, 0.25 * a, rng, num_points=100)
-        d = BasisFunctionDesc.make_random(2, 0.20 * a, rng, num_points=100)
+        s = make_random_phi(0, 0.18 * a, rng, num_points=100)
+        p = make_random_phi(1, 0.25 * a, rng, num_points=100)
+        d = make_random_phi(2, 0.20 * a, rng, num_points=100)
         basis_functions_aj.append([s, p, d])
 
     return AtomSystem(grid, relpos_ac, basis_functions_aj)
@@ -98,33 +105,17 @@ def fixt_atom_system() -> AtomSystem:
     return make_test_system()
 
 
-def make_phi(system: AtomSystem, xp=np) -> list[list[BasisFunction]]:
+def make_legacy_basis_functions(system: AtomSystem, xp) -> BasisFunctions:
     """"""
-    phi_aj = []
-    for phi_j in system.basis_functions_aj:
-        funcs = [BasisFunction(phi.l,
-                               phi.radial_cutoff,
-                               as_xp(phi.f_r, xp=xp))
-                 for phi in phi_j]
-        phi_aj.append(funcs)
-    return phi_aj
-
-
-def make_legacy_phi(system: AtomSystem) -> list[list[Spline]]:
-    """"""
+    # Build legacy basis functions (Spline objects)
     phi_aj = []
     for phi_j in system.basis_functions_aj:
         funcs = [ Spline.from_data(phi.l,
-                                   phi.radial_cutoff,
+                                   phi.cutoff,
                                    phi.f_r)
                      for phi in phi_j]
         phi_aj.append(funcs)
-    return phi_aj
 
-
-def make_legacy_basis_functions(system: AtomSystem, xp) -> BasisFunctions:
-    """"""
-    phi_aj = make_legacy_phi(system)
     basis = BasisFunctions(
         system.grid._gd,
         phi_aj,
@@ -154,19 +145,26 @@ def calculate_potential_matrix_old_code(
     return V_MM
 
 
-def make_basis(system: AtomSystem, xp=np) -> BasisFunctionsNew:
+def make_basis(system: AtomSystem,
+               xp, purepython) -> BasisFunctionCollectionBase:
     """"""
-    phi_aj = make_phi(system, xp=xp)
-    basis = BasisFunctionsNew(system.grid, phi_aj)
-    basis.set_positions(system.relpos_ac)
+    if purepython:
+        basis = BasisFunctionCollection_PurePython(
+            system.grid,
+            system.basis_functions_aj,
+            use_gpu = (xp is not np)
+            )
+    else:
+        assert "TODO"
+
     return basis
 
-
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
-def test_basis_creation(fixt_atom_system: AtomSystem, xp):
+@pytest.mark.parametrize("purepython", parametrize_purepython())
+def test_basis_creation(fixt_atom_system: AtomSystem, xp, purepython: bool):
     """"""
     system = fixt_atom_system
-    basis = make_basis(system, xp=xp)
+    basis = make_basis(system, xp, purepython)
 
     assert basis.num_atoms == len(system.relpos_ac)
 
@@ -181,7 +179,7 @@ def test_basis_creation(fixt_atom_system: AtomSystem, xp):
 
     assert basis.num_basis_functions() == num_mu
 
-    # test mu index ordering
+    # Test mu index ordering
     mu = 0
     for atom in basis.atoms:
         mu_range = basis.mu_range_a[atom.index]
@@ -194,13 +192,12 @@ def test_basis_creation(fixt_atom_system: AtomSystem, xp):
 
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
-def test_potential_matrix(fixt_atom_system: AtomSystem, xp):
+@pytest.mark.parametrize("purepython", parametrize_purepython())
+def test_potential_matrix(fixt_atom_system: AtomSystem, xp, purepython: bool):
     """"""
-
     system = fixt_atom_system
-    basis = make_basis(system, xp=xp)
-
-    basis.precalculate_on_grid()
+    basis = make_basis(system, xp, purepython)
+    basis.set_positions(system.relpos_ac)
 
     # Test array that we sandwich between basis funcs and integrate
     vt_R: UGArray = system.grid.zeros(xp=xp)
@@ -223,12 +220,12 @@ def test_potential_matrix(fixt_atom_system: AtomSystem, xp):
 
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
-def test_add_to_density(fixt_atom_system: AtomSystem, xp):
+@pytest.mark.parametrize("purepython", parametrize_purepython())
+def test_add_to_density(fixt_atom_system: AtomSystem, xp, purepython: bool):
     """"""
     system = fixt_atom_system
-    basis = make_basis(system, xp=xp)
-
-    basis.precalculate_on_grid()
+    basis = make_basis(system, xp, purepython)
+    basis.set_positions(system.relpos_ac)
 
     num_spins = 2
     # Test density
