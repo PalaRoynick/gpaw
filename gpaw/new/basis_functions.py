@@ -7,7 +7,8 @@ from gpaw.core import UGDesc
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.new.timer import trace
 from gpaw import GPAW_NO_C_EXTENSION
-from typing import Protocol, runtime_checkable, override
+from gpaw.setup import Setups, Setup
+from typing import Protocol, runtime_checkable, override, cast
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
@@ -42,19 +43,8 @@ need to pass splines to kernels, which is easier to do fully from C++.
 So we'd change the following so that BasisFunction is always purepython
 """
 
-class PrecalculationMode(Enum):
-    eIfPossible = auto()
-    eAlways = auto()
-    eNever = auto()
-
-
-@runtime_checkable
-class SplineLike(Protocol):
-    """"""
-
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        ...
-
+TypeId = int
+"""Type alias used for labeling atom types"""
 
 @dataclass
 class BasisFunctionDesc:
@@ -69,6 +59,120 @@ class BasisFunctionDesc:
     These values are used to construct a continuous spline. The
     final value at r = cutoff MUST be exactly zero."""
 
+    @staticmethod
+    def from_legacy_spline(spline: Spline) -> "BasisFunctionDesc":
+        """"""
+        breakpoints = np.linspace(0.0,
+                                  spline.get_cutoff(),
+                                  spline.get_npoints())
+        f_r = spline.map(breakpoints)
+        assert(f_r[-1] == 0.0)
+        return BasisFunctionDesc(spline.get_angular_momentum_number(),
+                                 spline.get_cutoff(),
+                                 f_r)
+
+
+@dataclass
+class LFCAtomDefinition:
+    id: TypeId
+    basis_functions: list[BasisFunctionDesc]
+
+
+@dataclass
+class LFCAtomInstance:
+    type: LFCAtomDefinition
+    position: np.ndarray
+    """Real-space position of the atom. 3D array."""
+
+
+@dataclass
+class LFCSystem:
+    grid: UGDesc
+    atom_types: list[LFCAtomDefinition]
+    atoms: list[LFCAtomInstance]
+
+    def __post_init__(self):
+       """"""
+       # check that all atom IDs are unique
+       ids = []
+       for atom_type in self.atom_types:
+            if atom_type.id in ids:
+                raise RuntimeError("Atom type IDs must be unique")
+            ids.append(atom_type.id)
+
+
+def build_lfc_system(setups: Setups,
+                    grid: UGDesc,
+                    relpos_ac: np.ndarray) -> LFCSystem:
+    """Old version of BasisFunctions takes just splines_aj: list[list[Spline]]
+    as input, which is a list spanning all atoms. In practice, it's
+    constructed as [setup.basis_functions_J for setup in setups].
+    With just this it's hard to know which splines are shared between atoms.
+
+    We also cannot directly use the existing splines as they do not support
+    GPU or single-precision evaluation.
+
+    This function reorganizes GPAW setups to a simpler LFC-specific format,
+      de-construct the provided splines
+    """
+
+    unique_phi_lists: list[list[Spline]] = []
+    atom_types: list[LFCAtomDefinition] = []
+    atoms = []
+
+    num_atoms = len(setups)
+
+    relpos_ac = np.asanyarray(relpos_ac)
+    assert len(relpos_ac) == num_atoms
+
+    # atom positions in real units
+    pos_av = relpos_ac @ grid.cell_cv
+
+    # Iterate over all atoms, not just unique species. This assumes that
+    # atoms of the same type have the exact same list of basis functions
+    for atom_idx, setup in enumerate(setups):
+        setup = cast(Setup, setup)
+
+        my_basis_funcs: list[Spline] = setup.basis_functions_J
+
+        if my_basis_funcs not in unique_phi_lists:
+            # Found new atom type
+            unique_phi_lists.append(my_basis_funcs)
+
+            phi_descs = []
+            for phi in my_basis_funcs:
+                phi = cast(Spline, phi)
+                phi_descs.append(BasisFunctionDesc.from_legacy_spline(phi))
+
+            atom_types.append(LFCAtomDefinition(len(atom_types), phi_descs))
+
+        # Figure out type of this atom
+        atom_type_idx = unique_phi_lists.index(my_basis_funcs)
+        atom_type = atom_types[atom_type_idx]
+
+        atoms.append(LFCAtomInstance(atom_type, pos_av[atom_idx]))
+
+    assert len(atoms) == num_atoms
+    assert len(unique_phi_lists) == len(atom_types)
+    # check that we didn't accidentally include duplicate types
+    assert len(unique_phi_lists) == len(set(unique_phi_lists))
+    assert len(atom_types) == len(set(atom_types))
+
+    return LFCSystem(grid, atom_types, atoms)
+
+
+class PrecalculationMode(Enum):
+    eIfPossible = auto()
+    eAlways = auto()
+    eNever = auto()
+
+
+@runtime_checkable
+class SplineLike(Protocol):
+    """"""
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        ...
 
 class BasisFunction:
     """Defines a basis function: phi_lm(x) = f(r)*Y_lm.
@@ -172,18 +276,24 @@ class BasisFunction:
                              purepython)
 
 
+#TODO: probably prefer struct-of-arrays storage instead of this.
+
 @dataclass
 class AtomData:
     """Does not store basis functions themselves, just useful metadata for
     atoms."""
+
+    type_id: TypeId
+    """Identifies atom type."""
 
     mu_range: range
     """Values of the combined index mu spanned by basis functions of this
     atom."""
     index: int
     """Index of the atom (integer between 0 and num_atoms)"""
-    position_v: np.ndarray | None = None
-    """Position of the atom in real units."""
+
+    position: np.ndarray
+    """Real-space position of the atom. 3D array."""
 
     @cached_property
     def num_basis_functions(self) -> int:
@@ -194,18 +304,25 @@ class AtomData:
 
     def set_position(self, new_pos_v: np.ndarray) -> None:
         """"""
-        self.position_v = new_pos_v
+        self.position = new_pos_v
 
 
 class BasisFunctionCollectionBase(ABC):
-    """Draft implementation of basis functions. This one uses the C++ backend.
-    Keep in mind while designing:
-        - Should eventually work also without C-extension => try to keep data
-        structures on Python side.
-    """
+    """"""
 
-    def __init__(self, grid: UGDesc,
-                 phi_aj: list[list[BasisFunctionDesc]],
+    # Prefer struct-of-arrays type data storage here. Spline storage is left
+    # for subclasses to decide.
+
+    # atom_type_a: list[TypeId]
+    # """Type id of atom 'a'"""
+    # position_av: np.ndarray
+    # """Real-space positions of atoms, so that position_av[a] is a 3D
+    # array."""
+
+
+
+    def __init__(self,
+                 system: LFCSystem,
                  use_gpu: bool = False,
                  mode: PrecalculationMode = PrecalculationMode.eIfPossible):
         """
@@ -213,11 +330,8 @@ class BasisFunctionCollectionBase(ABC):
 
         Parameters
         ----------
-        grid : UGDesc
-            Grid descriptor.
-        phi_aj : list[list[BasisFunctionDesc]]
-            List of basis function lists, one list per atom. Each inner list
-            contains BasisFunctionDesc objects for that atom.
+        system : LFCSystem
+            Defines the grid and atom content on the grid.
         use_gpu : bool, optional
             If True, basis functions will be computed and stored
             **exclusively** on GPU.
@@ -229,31 +343,34 @@ class BasisFunctionCollectionBase(ABC):
             amounts of memory!
             Default is eIfPossible (precalculate if memory allows).
         """
-        self.grid = grid
+        self.grid = system.grid
 
-        assert len(phi_aj) > 0, "No atoms?!"
+        assert len(system.atoms) > 0, "No atoms?!"
 
         self.atoms: list[AtomData] = []
 
         # Assign mu indices to basis functions
         mu = 0
-        for a, desc_j in enumerate(phi_aj):
-            if len(desc_j) == 0:
-                raise RuntimeError(f"Missing basis functions for atom {a}")
+        for atom_idx, atom in enumerate(system.atoms):
+            if len(atom.type.basis_functions) == 0:
+                raise RuntimeError(
+                    f"Missing basis functions for atom {atom_idx}")
 
             mu_a_start = mu
             mu_a_end = mu_a_start
-            for desc in desc_j:
+            for desc in atom.type.basis_functions:
                 mu_a_end += 2*desc.l + 1
 
-            self.atoms.append(AtomData(range(mu_a_start, mu_a_end), a))
+            self.atoms.append(AtomData(atom.type.id,
+                                       range(mu_a_start, mu_a_end),
+                                       atom_idx,
+                                       atom.position))
             mu = mu_a_end
 
         self._phi_MG_cache: np.ndarray | cp.ndarray | None
         """Cached values of basis funcs, phi_mu(x).
         This is 4D: first index is mu (M), then x, y, z indices.
         """
-        self.atoms_placed = False  # Set to True once positions have been set
 
         if use_gpu and cupy_is_fake:
             raise RuntimeError(
@@ -268,19 +385,22 @@ class BasisFunctionCollectionBase(ABC):
         else:
             self.should_precalculate = False
 
-        self.create_basis_functions(phi_aj)
+        self._init_basis_functions(system.atom_types)
+
+        if self.should_precalculate:
+            self.precalculate_on_grid()
 
     # Should keep the API as close to the old BasisFunctions as possible,
     # so use raw np or cp arrays instead of UGArray/Matrix in the following
 
     @trace
     @abstractmethod
-    def create_basis_functions(
-        self,
-        phi_desc_aj: list[list[BasisFunctionDesc]]) -> None:
+    def _init_basis_functions(self,
+                              atom_types: list[LFCAtomDefinition]) -> None:
         """Initializes all basis functions for the system. Subclasses can
         choose how this should be done, and how the basis functions should
-        be stored."""
+        be stored.
+        """
         raise NotImplementedError
 
     @trace
@@ -326,10 +446,15 @@ class BasisFunctionCollectionBase(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def has_precalculated_phi(self) -> bool:
+        """"""
+        raise NotImplementedError
+
     @property
     def num_atoms(self) -> int:
         """"""
-        return len(self.atoms)
+        return len(self.atom_type_a)
 
     @cached_property
     def mu_range(self) -> range:
@@ -364,17 +489,13 @@ class BasisFunctionCollectionBase(ABC):
         """True if this object is using GPU."""
         return self.xp is not np
 
-    def have_atoms_been_placed(self) -> bool:
-        """"""
-        return self.atoms_placed
-
     def num_basis_functions(self) -> int:
         """"""
         return self.mu_range.stop - self.mu_range.start
 
     @trace
     def set_positions(self, relpos_ac: np.ndarray) -> None:
-        """Sets atom positions"""
+        """Updates atom positions"""
         relpos_ac = np.asanyarray(relpos_ac)
         assert relpos_ac.shape[0] == self.num_atoms
 
@@ -382,8 +503,7 @@ class BasisFunctionCollectionBase(ABC):
         pos_av = relpos_ac @ self.grid.cell_cv
 
         for a, atom in enumerate(self.atoms):
-            atom.position_v = pos_av[a]
-        self.atoms_placed = True
+            atom.position = pos_av[a]
 
         if self.should_precalculate:
             self.precalculate_on_grid()
@@ -413,17 +533,23 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
     Not very optimized.
     """
 
+    def get_phi_list(self, atom_idx: int) -> list[BasisFunction]:
+        """Return basis functions for the given atom."""
+        return self._phi_t_j.get(self.atoms[atom_idx].type_id)  # type: ignore
+
     @override
-    def create_basis_functions(
+    def _init_basis_functions(
         self,
-        phi_desc_aj: list[list[BasisFunctionDesc]]) -> None:
+        atom_types: list[LFCAtomDefinition]) -> None:
         """"""
 
-        self.phi_aj: list[list[BasisFunction]] = []
-        for desc_j in phi_desc_aj:
-            self.phi_aj.append([BasisFunction(desc, purepython=True)
-                                for desc in desc_j])
+        # Dict that maps atom type ID -> list of basis funcs
+        self._phi_t_j: dict[TypeId, list[BasisFunction]] = {}
 
+        for atom_type in atom_types:
+            self._phi_t_j[atom_type.id] \
+                = [BasisFunction(desc, purepython=True)
+                   for desc in atom_type.basis_functions]
 
     @override
     def precalculate_on_grid(self) -> None:
@@ -431,7 +557,6 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         grid.
         TODO: Boundary conditions! f(r) can contribute to neighboring cells
         """
-        assert self.have_atoms_been_placed(), "Must call set_positions() first"
 
         num_mu = self.mu_range.stop - self.mu_range.start
         # get all grid points in real units. 4D array of shape (Nx, Ny, Nz, 3)
@@ -445,10 +570,10 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         # TODO precalculation on GPU. For now, do it on CPU and send to GPU
         phi_MG_cache = np.zeros(shape, dtype=np.float64)
         for a, atom in enumerate(self.atoms):
-            d_Gv = x_Gv - atom.position_v
+            d_Gv = x_Gv - atom.position
             d_G = (d_Gv**2).sum(axis=3)**0.5
 
-            for phi in self.phi_aj[a]:
+            for phi in self.get_phi_list(a):
                 # Points that are too far from the atom are left at value 0
                 mask_G = (d_G < phi.cutoff)
 
@@ -469,6 +594,11 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         self.phi_MG_cache = as_xp(phi_MG_cache, xp=self.xp)
 
     @override
+    def has_precalculated_phi(self) -> bool:
+        """"""
+        return self.phi_MG_cache is not None
+
+    @override
     def add_to_density(
         self,
         nt_sG: np.ndarray | cp.ndarray,
@@ -479,7 +609,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
         if self.phi_MG_cache is not None:
             # Copy the f_asi dict to a single array
-            for atom_index in range(len(self.phi_aj)):
+            for atom_index in range(self.num_atoms):
                 atom_mu_range = self.mu_range_a[atom_index]
                 f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
                     f_asi[atom_index]
@@ -519,8 +649,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
     @override
     def __init__(self,
-                 grid: UGDesc,
-                 phi_aj: list[list[BasisFunctionDesc]],
+                 system: LFCSystem,
                  use_gpu: bool = False,
                  mode: PrecalculationMode = PrecalculationMode.eIfPossible):
         """"""
@@ -531,13 +660,13 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         if not use_gpu:
             raise RuntimeError("Only GPU version implemented for now")
-        super().__init__(grid, phi_aj, use_gpu, mode)
+        super().__init__(system, use_gpu, mode)
         # TODO: construct C++ side object that holds splines
 
     @override
-    def create_basis_functions(
+    def _init_basis_functions(
         self,
-        phi_desc_aj: list[list[BasisFunctionDesc]]) -> None:
+        atom_types: list[list[LFCAtomDefinition]]) -> None:
         """"""
         raise NotImplementedError("WIP")
 
@@ -552,7 +681,19 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         nt_sG: np.ndarray | cp.ndarray,
         f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
         """"""
-        raise NotImplementedError("WIP")
+
+        # Copy the f_asi dict to a single contiguous array
+        num_spins = nt_sG.shape[0]
+        f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
+
+        for atom_index in range(self.num_atoms):
+            atom_mu_range = self.mu_range_a[atom_index]
+            f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
+                f_asi[atom_index]
+            )
+
+        # TODO call cpp function
+
 
     @override
     def calculate_potential_matrices(
@@ -561,3 +702,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         """"""
         raise NotImplementedError("WIP")
 
+    @override
+    def has_precalculated_phi(self) -> bool:
+        """"""
+        return False

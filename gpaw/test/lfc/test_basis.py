@@ -9,7 +9,10 @@ from gpaw.core.matrix import Matrix
 from gpaw.lfc import BasisFunctions
 from gpaw.new.basis_functions import (BasisFunctionDesc,
                                       BasisFunctionCollectionBase,
-                                      BasisFunctionCollection_PurePython)
+                                      BasisFunctionCollection_PurePython,
+                                      LFCAtomDefinition, LFCAtomInstance,
+                                      LFCSystem,
+                                      TypeId)
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.spline import Spline
 from gpaw.mpi import world
@@ -63,69 +66,68 @@ def make_random_phi(
     return BasisFunctionDesc(l, cutoff, values)
 
 
-@dataclass
-class AtomSystem:
-    grid: UGDesc
-    relpos_ac: np.ndarray
-    basis_functions_aj: list[list[BasisFunctionDesc]]
-
-    def num_atoms(self) -> int:
-        """"""
-        return len(self.relpos_ac)
-
-
-def make_test_system() -> AtomSystem:
+def make_test_system() -> LFCSystem:
     """"""
     n = 24
     a = 3.0  # grid size in Bohr units ("unit cell"). NOT the lattice spacing
     grid = UGDesc(cell=[a, a, a], size=(n, n, n))
 
-    relpos_ac = np.asarray([(0.5, 0.5, 0.25 + 0.25 * i) for i in [0, 1, 2]])
-
-    # Generate random radial functions
     rng = np.random.default_rng(404)
-    basis_functions_aj = []
 
-    for relpos in relpos_ac:
-        # FIXME: handle boundary conds if any radial part extends outside the grid.
-        # Only the old LFC code handles this at the moment.
-        # For now, test with small cutoffs like 0.2*a
-
+    # Make system of 3 atoms, 2 of which are identical (same basis funcs)
+    atom_defs = []
+    for i in range(2):
         s = make_random_phi(0, 0.18 * a, rng, num_points=100)
         p = make_random_phi(1, 0.25 * a, rng, num_points=100)
         d = make_random_phi(2, 0.20 * a, rng, num_points=100)
-        basis_functions_aj.append([s, p, d])
 
-    return AtomSystem(grid, relpos_ac, basis_functions_aj)
+        atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
+
+    relpos_ac = np.asarray([(0.5, 0.5, 0.25 + 0.25 * i) for i in [0, 1, 2]])
+    pos_av = relpos_ac @ grid.cell_cv
+
+    atom_instances = []
+    for a in range(3):
+        atom_type = atom_defs[0] if a < 2 else atom_defs[1]
+        atom_instances.append(LFCAtomInstance(atom_type, pos_av[a]))
+
+    return LFCSystem(grid, atom_defs, atom_instances)
 
 
 @pytest.fixture(scope="module")
-def fixt_atom_system() -> AtomSystem:
+def fixt_lfc_system() -> LFCSystem:
     """"""
     return make_test_system()
 
 
-def make_legacy_basis_functions(system: AtomSystem, xp) -> BasisFunctions:
+def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
     """"""
     # Build legacy basis functions (Spline objects)
-    phi_aj = []
-    for phi_j in system.basis_functions_aj:
+    phi_t_j: dict[TypeId, list[Spline]] = {}
+    for atom_type in system.atom_types:
         funcs = [ Spline.from_data(phi.l,
                                    phi.cutoff,
                                    phi.f_r)
-                     for phi in phi_j]
-        phi_aj.append(funcs)
+                    for phi in atom_type.basis_functions
+                ]
+        phi_t_j[atom_type.id] = funcs
+
+    phi_aj = []
+    for atom in system.atoms:
+        phi_aj.append(phi_t_j.get(atom.type.id))
 
     basis = BasisFunctions(
         system.grid._gd,
         phi_aj,
         xp=xp)
+
+    pos_av = relpos_ac @ grid.cell_cv
     basis.set_positions(system.relpos_ac)
     return basis
 
 
 def calculate_potential_matrix_old_code(
-        system: AtomSystem,
+        system: LFCSystem,
         vt_R: UGArray) -> Matrix:
     """Uses old CPU LFC code so should be both reliable and reasonably fast.
     Result matrix will be on GPU if vt_R is a Cupy array, otherwise on CPU.
@@ -145,13 +147,13 @@ def calculate_potential_matrix_old_code(
     return V_MM
 
 
-def make_basis(system: AtomSystem,
-               xp, purepython) -> BasisFunctionCollectionBase:
+def make_basis(system: LFCSystem,
+               xp,
+               purepython: bool) -> BasisFunctionCollectionBase:
     """"""
     if purepython:
         basis = BasisFunctionCollection_PurePython(
-            system.grid,
-            system.basis_functions_aj,
+            system,
             use_gpu = (xp is not np)
             )
     else:
@@ -161,9 +163,9 @@ def make_basis(system: AtomSystem,
 
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_basis_creation(fixt_atom_system: AtomSystem, xp, purepython: bool):
+def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     """"""
-    system = fixt_atom_system
+    system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
 
     assert basis.num_atoms == len(system.relpos_ac)
@@ -193,11 +195,10 @@ def test_basis_creation(fixt_atom_system: AtomSystem, xp, purepython: bool):
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_potential_matrix(fixt_atom_system: AtomSystem, xp, purepython: bool):
+def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     """"""
-    system = fixt_atom_system
+    system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
-    basis.set_positions(system.relpos_ac)
 
     # Test array that we sandwich between basis funcs and integrate
     vt_R: UGArray = system.grid.zeros(xp=xp)
@@ -221,11 +222,10 @@ def test_potential_matrix(fixt_atom_system: AtomSystem, xp, purepython: bool):
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_add_to_density(fixt_atom_system: AtomSystem, xp, purepython: bool):
+def test_add_to_density(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     """"""
-    system = fixt_atom_system
+    system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
-    basis.set_positions(system.relpos_ac)
 
     num_spins = 2
     # Test density
