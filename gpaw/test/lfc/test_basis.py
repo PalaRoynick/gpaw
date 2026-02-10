@@ -121,8 +121,14 @@ def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
         phi_aj,
         xp=xp)
 
-    pos_av = relpos_ac @ grid.cell_cv
-    basis.set_positions(system.relpos_ac)
+    pos_av = np.empty((len(system.atoms), 3))
+    for a, atom in enumerate(system.atoms):
+        pos_av[a] = atom.position
+
+    # annoying, need to transform back to relative position
+    relpos_ac = pos_av @ np.linalg.inv(system.grid.cell_cv)
+
+    basis.set_positions(relpos_ac)
     return basis
 
 
@@ -168,28 +174,18 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
 
-    assert basis.num_atoms == len(system.relpos_ac)
+    assert basis.num_atoms == len(system.atoms)
 
     # TODO check index range if using multiple MPI ranks?
     assert basis.mu_range.start == 0
 
     # check number of basis functions (indices {a,l,m})
     num_mu = 0
-    for phi_j in system.basis_functions_aj:
-        for phi in phi_j:
+    for atom in system.atoms:
+        for phi in atom.type.basis_functions:
             num_mu += 2 * phi.l + 1
 
     assert basis.num_basis_functions() == num_mu
-
-    # Test mu index ordering
-    mu = 0
-    for atom in basis.atoms:
-        mu_range = basis.mu_range_a[atom.index]
-        mu_start, mu_end = mu_range.start, mu_range.stop
-
-        assert mu_start == mu
-        assert mu_end - mu_start == atom.num_basis_functions
-        mu += atom.num_basis_functions
 
 
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
@@ -238,9 +234,10 @@ def test_add_to_density(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     # Make test "array" f_asi. This is actually a dict of arrays, because
     # the number of basis functions (range of i) can vary per atom.
     f_asi = {}
-    for atom in basis.atoms:
-        shape_si = (num_spins, atom.num_basis_functions)
-        f_asi[atom.index] = rng.random(shape_si)
+    for atom_idx in range(basis.num_atoms):
+        mu_range_a = basis.get_mu_range_a(atom_idx)
+        shape_si = (num_spins, basis.get_num_phi_a(atom_idx))
+        f_asi[atom_idx] = rng.random(shape_si)
 
     basis.add_to_density(nt_sG, f_asi)
 

@@ -311,14 +311,21 @@ class BasisFunctionCollectionBase(ABC):
     """"""
 
     # Prefer struct-of-arrays type data storage here. Spline storage is left
-    # for subclasses to decide.
+    # for subclasses to decide. We always index atoms as 0, 1, ... N.
+    # With domain parallelization this will require index mapping (TODO)
 
-    # atom_type_a: list[TypeId]
-    # """Type id of atom 'a'"""
-    # position_av: np.ndarray
-    # """Real-space positions of atoms, so that position_av[a] is a 3D
-    # array."""
-
+    _atom_type_a: list[TypeId]
+    """Type id of atom 'a'. This can be used to look up basis functions for
+    a given atom instance."""
+    _position_av: np.ndarray
+    """Real-space positions of atoms, so that position_av[a] is a 3D
+    array."""
+    _mu_range_a: list[range]
+    """Range of mu indices for atom 'a'."""
+    _phi_MG_cache: np.ndarray | cp.ndarray | None
+    """Cached values of basis funcs, phi_mu(x).
+    This is 4D: first index is mu (M), then x, y, z indices.
+    """
 
 
     def __init__(self,
@@ -345,38 +352,39 @@ class BasisFunctionCollectionBase(ABC):
         """
         self.grid = system.grid
 
-        assert len(system.atoms) > 0, "No atoms?!"
-
-        self.atoms: list[AtomData] = []
-
-        # Assign mu indices to basis functions
-        mu = 0
-        for atom_idx, atom in enumerate(system.atoms):
-            if len(atom.type.basis_functions) == 0:
-                raise RuntimeError(
-                    f"Missing basis functions for atom {atom_idx}")
-
-            mu_a_start = mu
-            mu_a_end = mu_a_start
-            for desc in atom.type.basis_functions:
-                mu_a_end += 2*desc.l + 1
-
-            self.atoms.append(AtomData(atom.type.id,
-                                       range(mu_a_start, mu_a_end),
-                                       atom_idx,
-                                       atom.position))
-            mu = mu_a_end
-
-        self._phi_MG_cache: np.ndarray | cp.ndarray | None
-        """Cached values of basis funcs, phi_mu(x).
-        This is 4D: first index is mu (M), then x, y, z indices.
-        """
+        num_atoms = len(system.atoms)
+        if num_atoms == 0:
+            raise RuntimeError("No atoms?!")
 
         if use_gpu and cupy_is_fake:
             raise RuntimeError(
                 "Can't use GPU BasisFunctionCollection with fake CuPy")
 
         self.xp = cp if use_gpu else np
+
+        # Build lookup lists: atom -> type ID; atom -> mu range.
+        # Also build the atom position array
+        mu = 0
+        self._atom_type_a = []
+        self._mu_range_a = []
+        self._position_av = np.empty((num_atoms, 3), np.float64)
+
+        for atom_idx, atom in enumerate(system.atoms):
+            if len(atom.type.basis_functions) == 0:
+                raise RuntimeError(
+                    f"Missing basis functions for atom {atom_idx}")
+
+            self._atom_type_a.append(atom.type.id)
+
+            mu_a_start = mu
+            mu_a_end = mu_a_start
+            for desc in atom.type.basis_functions:
+                mu_a_end += 2*desc.l + 1
+
+            self._mu_range_a.append(range(mu_a_start, mu_a_end))
+            mu = mu_a_end
+
+            self._position_av[atom_idx] = atom.position
 
         # TODO: check if we can/should precalculate
         if mode != PrecalculationMode.eNever:
@@ -454,26 +462,15 @@ class BasisFunctionCollectionBase(ABC):
     @property
     def num_atoms(self) -> int:
         """"""
-        return len(self.atom_type_a)
+        return len(self._atom_type_a)
 
     @cached_property
     def mu_range(self) -> range:
         """Range of mu indices"""
-        mu_start = 0
-        mu_end = mu_start
-        for atom in self.atoms:
-            mu_end += atom.num_basis_functions
+        # atom indices for lookups are always in range 0, ... N
+        mu_start = self._mu_range_a[0].start
+        mu_end = self._mu_range_a[-1].stop
         return range(mu_start, mu_end)
-
-    @cached_property
-    def mu_range_a(self) -> list[range]:
-        """Range of mu indices for a given atom."""
-        mu = 0
-        res = []
-        for atom in self.atoms:
-            res.append(range(mu, mu + atom.num_basis_functions))
-            mu += atom.num_basis_functions
-        return res
 
     @property
     def Mmax(self) -> int:
@@ -484,6 +481,15 @@ class BasisFunctionCollectionBase(ABC):
     def my_atom_indices(self) -> range:
         """TODO handle distributed grid"""
         return range(self.num_atoms)
+
+    def get_mu_range_a(self, atom_index: int) -> range:
+        """Get range of mu indices for specified atom."""
+        return self._mu_range_a[atom_index]
+
+    def get_num_phi_a(self, atom_index: int) -> int:
+        """Get number of basis functions for specified atom"""
+        mu_range = self._mu_range_a[atom_index]
+        return mu_range.stop - mu_range.start
 
     def is_gpu(self) -> bool:
         """True if this object is using GPU."""
@@ -497,13 +503,13 @@ class BasisFunctionCollectionBase(ABC):
     def set_positions(self, relpos_ac: np.ndarray) -> None:
         """Updates atom positions"""
         relpos_ac = np.asanyarray(relpos_ac)
-        assert relpos_ac.shape[0] == self.num_atoms
+        if relpos_ac.shape != self._position_av.shape:
+            raise ValueError("Wrong atom position array shape")
 
-        # atom positions in real units
-        pos_av = relpos_ac @ self.grid.cell_cv
+        # convert to real units
+        self._position_av = relpos_ac @ self.grid.cell_cv
 
-        for a, atom in enumerate(self.atoms):
-            atom.position = pos_av[a]
+        # TODO: recalculate overlaps; check if atoms moved to another MPI rank
 
         if self.should_precalculate:
             self.precalculate_on_grid()
@@ -535,7 +541,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
     def get_phi_list(self, atom_idx: int) -> list[BasisFunction]:
         """Return basis functions for the given atom."""
-        return self._phi_t_j.get(self.atoms[atom_idx].type_id)  # type: ignore
+        return self._phi_t_j.get(self._atom_type_a[atom_idx])  # type: ignore
 
     @override
     def _init_basis_functions(
@@ -569,11 +575,11 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
         # TODO precalculation on GPU. For now, do it on CPU and send to GPU
         phi_MG_cache = np.zeros(shape, dtype=np.float64)
-        for a, atom in enumerate(self.atoms):
-            d_Gv = x_Gv - atom.position
+        for atom_idx in range(self.num_atoms):
+            d_Gv = x_Gv - self._position_av[atom_idx]
             d_G = (d_Gv**2).sum(axis=3)**0.5
 
-            for phi in self.get_phi_list(a):
+            for phi in self.get_phi_list(atom_idx):
                 # Points that are too far from the atom are left at value 0
                 mask_G = (d_G < phi.cutoff)
 
@@ -609,10 +615,10 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
         if self.phi_MG_cache is not None:
             # Copy the f_asi dict to a single array
-            for atom_index in range(self.num_atoms):
-                atom_mu_range = self.mu_range_a[atom_index]
+            for atom_idx in range(self.num_atoms):
+                atom_mu_range = self._mu_range_a[atom_idx]
                 f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                    f_asi[atom_index]
+                    f_asi[atom_idx]
                 )
 
             nt_sG += self.xp.einsum('sm, mxyz -> sxyz',
@@ -686,10 +692,10 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         num_spins = nt_sG.shape[0]
         f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
 
-        for atom_index in range(self.num_atoms):
-            atom_mu_range = self.mu_range_a[atom_index]
+        for atom_idx in range(self.num_atoms):
+            atom_mu_range = self._mu_range_a[atom_idx]
             f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                f_asi[atom_index]
+                f_asi[atom_idx]
             )
 
         # TODO call cpp function
