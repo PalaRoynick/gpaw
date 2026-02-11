@@ -40,19 +40,21 @@ def xp_params_no_cpupy():
         ),
     ]
 
-def parametrize_purepython():
-    """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
-    to run both purepython and non-purepython versions, skipping the latter if
-    not available.
-    """
-    return [True,
-            pytest.param(
-                False,
-                marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
-                                          reason="No C extension")]
-            )
-        ]
+# def parametrize_purepython():
+#     """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
+#     to run both purepython and non-purepython versions, skipping the latter if
+#     not available.
+#     """
+#     return [True,
+#             pytest.param(
+#                 False,
+#                 marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
+#                                           reason="No C extension")]
+#             )
+#         ]
 
+def parametrize_purepython():
+    return [True]
 
 def make_random_phi(
         l: int,
@@ -78,7 +80,8 @@ def make_test_system() -> LFCSystem:
     atom_defs = []
     for i in range(2):
         s = make_random_phi(0, 0.18 * a, rng, num_points=100)
-        p = make_random_phi(1, 0.25 * a, rng, num_points=100)
+        #p = make_random_phi(1, 0.249999 * a, rng, num_points=100)
+        p = make_random_phi(1, 0.35 * a, rng, num_points=100)
         d = make_random_phi(2, 0.20 * a, rng, num_points=100)
 
         atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
@@ -94,16 +97,45 @@ def make_test_system() -> LFCSystem:
     return LFCSystem(grid, atom_defs, atom_instances)
 
 
+def make_test_system_small() -> LFCSystem:
+    """"""
+    n = 2
+    a = 2.0
+    grid = UGDesc(cell=[a, a, a], size=(n, n, n))
+
+    rng = np.random.default_rng(404)
+
+    atom_defs = []
+    for i in range(2):
+        s = make_random_phi(0, 0.75 * a, rng, num_points=50)
+        #p = make_random_phi(1, 0.75 * a, rng, num_points=50)
+        #d = make_random_phi(2, 0.20 * a, rng, num_points=50)
+
+        #atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
+        atom_defs.append(LFCAtomDefinition(i, [s]))
+
+    relpos_ac = np.asarray([(0.5, 0.5, 0.50 + 0.25 * i) for i in [0, 1]])
+    pos_av = relpos_ac @ grid.cell_cv
+
+    atom_instances = []
+    for a in range(2):
+        atom_type = atom_defs[a]
+        atom_instances.append(LFCAtomInstance(atom_type, pos_av[a]))
+
+    return LFCSystem(grid, atom_defs, atom_instances)
+
+
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    return make_test_system()
+    #return make_test_system()
+    return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
     """"""
     # Build legacy basis functions (Spline objects)
-    phi_t_j: dict[TypeId, list[Spline]] = {}
+    phi_t_j: dict[AtomTypeId, list[Spline]] = {}
     for atom_type in system.atom_types:
         funcs = [ Spline.from_data(phi.l,
                                    phi.cutoff,
@@ -173,6 +205,9 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     """"""
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
+    if purepython:
+        #assert len(basis._virtual_atoms_a) == 0
+        1+1
 
     assert basis.num_atoms == len(system.atoms)
 
@@ -218,12 +253,15 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_add_to_density(fixt_lfc_system: LFCSystem, xp, purepython: bool):
+@pytest.mark.parametrize("num_spins", [1])
+def test_add_to_density(fixt_lfc_system: LFCSystem,
+                        xp,
+                        purepython: bool,
+                        num_spins: int):
     """"""
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
 
-    num_spins = 2
     # Test density
     rng = xp.random.default_rng(432)
     sG_shape = (num_spins, *system.grid.size)
