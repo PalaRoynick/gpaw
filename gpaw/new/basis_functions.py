@@ -4,11 +4,10 @@ from functools import cached_property
 from dataclasses import dataclass
 from gpaw.spline import Spline
 from gpaw.core import UGDesc
-from gpaw.sphere.spherical_harmonics import Y
 from gpaw.new.timer import trace
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.setup import Setups, Setup
-from typing import Protocol, runtime_checkable, override, cast
+from typing import override, cast
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
@@ -43,7 +42,7 @@ need to pass splines to kernels, which is easier to do fully from C++.
 So we'd change the following so that BasisFunction is always purepython
 """
 
-TypeId = int
+AtomTypeId = int
 """Type alias used for labeling atom types"""
 
 @dataclass
@@ -74,7 +73,7 @@ class BasisFunctionDesc:
 
 @dataclass
 class LFCAtomDefinition:
-    id: TypeId
+    id: AtomTypeId
     basis_functions: list[BasisFunctionDesc]
 
 
@@ -167,146 +166,6 @@ class PrecalculationMode(Enum):
     eNever = auto()
 
 
-@runtime_checkable
-class SplineLike(Protocol):
-    """"""
-
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        ...
-
-class BasisFunction:
-    """Defines a basis function: phi_lm(x) = f(r)*Y_lm.
-    """
-
-    spline: SplineLike
-    spline_gpu = None
-
-    def __init__(self,
-                 desc: BasisFunctionDesc,
-                 purepython: bool = False):
-        """
-        Initialize a basis function phi_lm(x) = f(r) * Y_lm.
-
-        Parameters
-        ----------
-        l : int
-            Angular momentum number.
-        cutoff : float
-            Radial cutoff beyond which the basis function is zero.
-        f_r : np.ndarray or cp.ndarray
-            Discrete samples of the radial function f(r) on [0, cutoff].
-            These values are used to construct a continuous spline; the
-            final value at r = cutoff must be exactly zero.
-        purepython : bool
-            If True, will use splines from Scipy/Cupy instead using GPAW C++
-            extension. This option is forcibly turned on if
-            GPAW_NO_C_EXTENSION is True.
-        """
-        assert desc.l >= 0
-        assert desc.cutoff > 0
-        assert len(desc.f_r) > 2, "Need at least 3 points to define a spline"
-        self.l = desc.l
-        self.cutoff = desc.cutoff
-        self.purepython = True if GPAW_NO_C_EXTENSION else purepython
-
-        # TODO handle single precision
-        self._init_spline(desc.f_r)
-
-    @staticmethod
-    def make_random(l: int,
-                    cutoff: float,
-                    rng: np.random.Generator,
-                    num_points: int = 100,
-                    purepython: bool = False) -> "BasisFunction":
-        """Generates a basis function with randomly generated radial part
-        using the provided RNG.
-        """
-        values = rng.random(size=num_points)
-        # last value must be 0
-        values[-1] = 0.0
-        return BasisFunction(l, cutoff, values, purepython)
-
-    def _init_spline(self, f_r: np.ndarray) -> None:
-        """Initializes spline on the CPU.
-        """
-
-        if self.purepython:
-            from scipy.interpolate import CubicSpline
-            self.spline = CubicSpline(
-                np.linspace(0.0, self.cutoff, len(f_r), endpoint=True),
-                as_xp(f_r, xp=np),
-                bc_type='clamped',  # first derivatives are zero at boundaries
-                extrapolate=False
-            )
-        else:
-            from gpaw.cgpaw.gpu import Spline32, Spline64
-            self.spline = Spline64(self.cutoff, f_r)
-
-    def num_m(self) -> int:
-        """How many values of m does this describe. IE: just 2*l + 1."""
-        return 2 * self.l + 1
-
-    def to_gpu(self,
-               keep_cpu: bool) -> None:
-        """Creates a GPU version of the spline."""
-        # This is very much a WIP draft. Need to figure out how to handle Cupy
-        # spline and C++ GPU spline without too code branching or duplication
-
-        if self.purepython:
-            # Cupyx does not have a direct CubicSpline replacement, so we use
-            # a PPoly object (generic piecewise polynomial).
-            # TODO handle fake cupy?
-            from cupyx.scipy.interpolate import PPoly
-            self.spline_gpu = PPoly(cp.asarray(self.spline.c),
-                                    cp.asarray(self.spline.x),
-                                    extrapolate=False)
-
-        if not keep_cpu:
-            self.spline = None
-
-    @staticmethod
-    def from_old_spline(spline: Spline, purepython = False) -> "BasisFunction":
-        """"""
-        num_x: int = spline.get_npoints()
-        x = np.linspace(0.0, spline.get_cutoff(), num_x)
-
-        return BasisFunction(spline.get_angular_momentum_number(),
-                             spline.get_cutoff(),
-                             spline.map(x),
-                             purepython)
-
-
-#TODO: probably prefer struct-of-arrays storage instead of this.
-
-@dataclass
-class AtomData:
-    """Does not store basis functions themselves, just useful metadata for
-    atoms."""
-
-    type_id: TypeId
-    """Identifies atom type."""
-
-    mu_range: range
-    """Values of the combined index mu spanned by basis functions of this
-    atom."""
-    index: int
-    """Index of the atom (integer between 0 and num_atoms)"""
-
-    position: np.ndarray
-    """Real-space position of the atom. 3D array."""
-
-    @cached_property
-    def num_basis_functions(self) -> int:
-        """Number of basis functions for this atom, ie. how many {l,m}
-        index combinations.
-        """
-        return self.mu_range.stop - self.mu_range.start
-
-    def set_position(self, new_pos_v: np.ndarray) -> None:
-        """"""
-        self.position = new_pos_v
-
-
 class BasisFunctionCollectionBase(ABC):
     """"""
 
@@ -314,7 +173,7 @@ class BasisFunctionCollectionBase(ABC):
     # for subclasses to decide. We always index atoms as 0, 1, ... N.
     # With domain parallelization this will require index mapping (TODO)
 
-    _atom_type_a: list[TypeId]
+    _atom_type_a: list[AtomTypeId]
     """Type id of atom 'a'. This can be used to look up basis functions for
     a given atom instance."""
     _position_av: np.ndarray
@@ -326,7 +185,6 @@ class BasisFunctionCollectionBase(ABC):
     """Cached values of basis funcs, phi_mu(x).
     This is 4D: first index is mu (M), then x, y, z indices.
     """
-
 
     def __init__(self,
                  system: LFCSystem,
@@ -533,121 +391,13 @@ class BasisFunctionCollectionBase(ABC):
         # TODO single precision. Do we need to allow complex phi?
         return num_sites * self.num_basis_functions() * 8
 
-
-class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
-    """Pure Python implementation of BasisFunctionCollection.
-    Not very optimized.
-    """
-
-    def get_phi_list(self, atom_idx: int) -> list[BasisFunction]:
-        """Return basis functions for the given atom."""
-        return self._phi_t_j.get(self._atom_type_a[atom_idx])  # type: ignore
-
-    @override
-    def _init_basis_functions(
-        self,
-        atom_types: list[LFCAtomDefinition]) -> None:
+    def _update_boundaries(self) -> None:
         """"""
+        if not np.any(self.grid.pbc_c):
+            # No periodic boundaries, nothing to do
+            return
 
-        # Dict that maps atom type ID -> list of basis funcs
-        self._phi_t_j: dict[TypeId, list[BasisFunction]] = {}
-
-        for atom_type in atom_types:
-            self._phi_t_j[atom_type.id] \
-                = [BasisFunction(desc, purepython=True)
-                   for desc in atom_type.basis_functions]
-
-    @override
-    def precalculate_on_grid(self) -> None:
-        """Computes and caches phi_mu(x) = f_al(r) * Y_l^m everywhere on the
-        grid.
-        TODO: Boundary conditions! f(r) can contribute to neighboring cells
-        """
-
-        num_mu = self.mu_range.stop - self.mu_range.start
-        # get all grid points in real units. 4D array of shape (Nx, Ny, Nz, 3)
-        x_Gv = self.grid.xyz()
-
-        shape = (num_mu, x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
-
-        # running work index
-        mu_work = self.mu_range.start
-
-        # TODO precalculation on GPU. For now, do it on CPU and send to GPU
-        phi_MG_cache = np.zeros(shape, dtype=np.float64)
-        for atom_idx in range(self.num_atoms):
-            d_Gv = x_Gv - self._position_av[atom_idx]
-            d_G = (d_Gv**2).sum(axis=3)**0.5
-
-            for phi in self.get_phi_list(atom_idx):
-                # Points that are too far from the atom are left at value 0
-                mask_G = (d_G < phi.cutoff)
-
-                f_R_masked = phi.spline(d_G[mask_G])
-                d_Rv_masked = d_Gv[mask_G]
-
-                for m in range(0, phi.num_m()):
-                    phi_MG_cache[mu_work + m, mask_G] = (
-                        f_R_masked * Y(phi.l**2 + m, *d_Rv_masked.T)
-                    )
-                mu_work += phi.num_m()
-
-        # TODO check not-NaN. Splines should be set to NOT extrapolating,
-        # so if we attempted to compute splines outside their range we should
-        # have gotten an error/NaN/None
-        # TODO actually, I guess the intended behavior would be to return 0
-        # for r > r_c. This is what the old Spline class does
-        self.phi_MG_cache = as_xp(phi_MG_cache, xp=self.xp)
-
-    @override
-    def has_precalculated_phi(self) -> bool:
-        """"""
-        return self.phi_MG_cache is not None
-
-    @override
-    def add_to_density(
-        self,
-        nt_sG: np.ndarray | cp.ndarray,
-        f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
-        """"""
-        num_spins = nt_sG.shape[0]
-        f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
-
-        if self.phi_MG_cache is not None:
-            # Copy the f_asi dict to a single array
-            for atom_idx in range(self.num_atoms):
-                atom_mu_range = self._mu_range_a[atom_idx]
-                f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                    f_asi[atom_idx]
-                )
-
-            nt_sG += self.xp.einsum('sm, mxyz -> sxyz',
-                                    f_sM, self.phi_MG_cache**2,  # type:ignore
-                                    optimize=True)  # type:ignore
-        else:
-            raise NotImplementedError(
-                "PurePython BasisFunctions without precalculation")
-
-    @override
-    def calculate_potential_matrix(
-        self,
-        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
-        """"""
-        if self.phi_MG_cache is not None:
-            # v(x) * phi(x)
-            phit_vt_MG = vt_G * self.phi_MG_cache
-
-            # "integrate": ie. contract the grid indices.
-            res = self.xp.einsum("mxyz, nxyz -> mn",
-                                 self.phi_MG_cache.conj(),  # type:ignore
-                                 phit_vt_MG)                # type:ignore
-
-            # FIXME: Drop half since we promised just the lower half.
-            # Very redundant, obviously
-            return self.xp.tril(res) * self.grid.dv  # type:ignore
-        else:
-            raise NotImplementedError(
-                "PurePython BasisFunctions without precalculation")
+        #for atom_idx in range(self.num_atoms):
 
 
 class BasisFunctionCollection(BasisFunctionCollectionBase):

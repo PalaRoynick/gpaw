@@ -9,10 +9,10 @@ from gpaw.core.matrix import Matrix
 from gpaw.lfc import BasisFunctions
 from gpaw.new.basis_functions import (BasisFunctionDesc,
                                       BasisFunctionCollectionBase,
-                                      BasisFunctionCollection_PurePython,
                                       LFCAtomDefinition, LFCAtomInstance,
-                                      LFCSystem,
-                                      TypeId)
+                                      LFCSystem, AtomTypeId)
+from gpaw.new.basis_functions_purepython \
+    import BasisFunctionCollection_PurePython
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.spline import Spline
 from gpaw.mpi import world
