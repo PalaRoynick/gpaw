@@ -7,6 +7,7 @@ from gpaw.sphere.spherical_harmonics import Y
 
 from typing import Protocol, runtime_checkable, override
 import numpy as np
+from dataclasses import dataclass
 
 @runtime_checkable
 class SplineLike(Protocol):
@@ -105,10 +106,23 @@ class BasisFunction:
                              purepython)
 
 
+@dataclass
+class VirtualAtom:
+    """"""
+    real_atom_idx: int
+    phi_j: list[BasisFunction]
+    """List of just those basis funcs that contribute from this image"""
+    position: np.ndarray
+    """Real-space position of the image. This is always outside the "main"
+    cell"""
+
 class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
     """Pure Python implementation of BasisFunctionCollection.
     Not very optimized.
     """
+
+    virtual_atoms_a: dict[int, list[VirtualAtom]]
+    """Dict mapping atom index -> list of virtual images of that atom"""
 
     def get_phi_list(self, atom_idx: int) -> list[BasisFunction]:
         """Return basis functions for the given atom."""
@@ -219,3 +233,106 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         else:
             raise NotImplementedError(
                 "PurePython BasisFunctions without precalculation")
+
+
+    def _update_boundaries(self) -> None:
+        """"""
+        self.virtual_atoms_a = {}
+
+        if not np.any(self.grid.pbc_c):
+            # No periodic boundaries, nothing to do
+            return
+
+        L = np.diag(self.grid.cell_cv)
+        assert L.shape == (3)
+
+        for atom_idx in range(self.num_atoms):
+            type_id = self._atom_type_a[atom_idx]
+            center = self._position_av[atom_idx]
+            phi_j = self._phi_t_j[type_id]
+
+            # Find basis function with longest range
+            r = 0.0
+            for phi in phi_j:
+                r = max(r, phi.cutoff)
+
+            # How many boxes does the atom overlap in given direction
+            n_min = np.floor((center - r) / L).astype(np.int64)
+            n_max = np.floor((center + r) / L).astype(np.int64)
+
+            # Enforce no overlap in directions without periodic b.c.
+            pbc_mask = ~np.array(self.grid.pbc_c)
+            n_min = np.where(pbc_mask, 0, n_min)
+            n_max = np.where(pbc_mask, 0, n_max)
+
+            """Place "virtual" atoms in neighbor cells. We know overlaps in
+            axis-aligned directions; to handle diagonal dirs we attempt to
+            place a virtual atom in all possible cells where it could be
+            according to n_min, n_max, then check whether it actually
+            extends to this domain.
+            """
+
+            """The following Numpy magic produces a 3D grid of possible shifts
+            and is equivalent to:
+            for nx, ny, nz in itertools.product(
+                range(n_min[0], n_max[0] + 1),
+                range(n_min[1], n_max[1] + 1),
+                range(n_min[2], n_max[2] + 1),
+            ):
+                shift = np.array([nx, ny, nz])
+                ...
+            """
+            ranges = [np.arange(n_min[d], n_max[d] + 1) for d in range(3)]
+            grids = np.meshgrid(*ranges, indexing="ij")
+            shifts = np.stack(grids, axis=-1).reshape(-1, 3)
+
+            # remove (0,0,0)
+            shifts = shifts[np.any(shifts != 0, axis=1)]
+            if shifts.size == 0:
+                continue
+
+            # Where the virtual atoms would be
+            translated_centers = center - shifts * L
+
+            lower = np.minimum(translated_centers, 0.0)
+            upper = np.maximum(translated_centers - L, 0.0)
+            d2 = np.sum(lower**2 + upper**2, axis=1)
+
+            mask = (d2 <= r * r)
+            if not np.any(mask):
+                # no virtual copies of this atom
+                continue
+
+
+
+            for phi in self._phi_t_j[type_id]:
+
+                r = phi.cutoff
+
+                # How many boxes does the sphere overlap in given direction
+                n_min = np.floor((center - r) / L).astype(np.int64)
+                n_max = np.floor((center + r) / L).astype(np.int64)
+
+
+
+
+
+
+                if first_phi_for_atom:
+                    self.image_atoms
+                    first_phi_for_atom = False
+                else:
+                    self.image_atoms[-1].
+
+
+
+
+
+
+
+
+
+
+
+
+

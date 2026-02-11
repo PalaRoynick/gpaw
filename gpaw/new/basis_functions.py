@@ -391,14 +391,6 @@ class BasisFunctionCollectionBase(ABC):
         # TODO single precision. Do we need to allow complex phi?
         return num_sites * self.num_basis_functions() * 8
 
-    def _update_boundaries(self) -> None:
-        """"""
-        if not np.any(self.grid.pbc_c):
-            # No periodic boundaries, nothing to do
-            return
-
-        #for atom_idx in range(self.num_atoms):
-
 
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""
