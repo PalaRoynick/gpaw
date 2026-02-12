@@ -11,6 +11,16 @@ from typing import override, cast
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class SplineLike(Protocol):
+    """"""
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        ...
+
+
 """
 Each atom has list of basis functions. A basis function is defined by its
 angular quantum numbers l, m and a radial function f(r). We also require a
@@ -100,6 +110,59 @@ class LFCSystem:
             ids.append(atom_type.id)
 
 
+class BasisFunction():
+    """"""
+
+    spline: SplineLike
+
+    def __init__(self, desc: BasisFunctionDesc, dtype, use_gpu: bool = False):
+        """"""
+        assert not use_gpu
+        assert dtype is np.float64
+
+        assert desc.l >= 0
+        assert desc.cutoff > 0
+        assert len(desc.f_r) > 2, "Need at least 3 points to define a spline"
+        self.l = desc.l
+        self.cutoff = desc.cutoff
+
+        self._init_spline(desc.f_r)
+
+    def _init_spline(self, f_r: np.ndarray) -> None:
+        """Initializes spline on the CPU.
+        """
+
+        from scipy.interpolate import CubicSpline
+        self.spline = CubicSpline(
+            np.linspace(0.0, self.cutoff, len(f_r), endpoint=True),
+            as_xp(f_r, xp=np),
+            bc_type='clamped',  # first derivatives are zero at boundaries
+            extrapolate=False
+        )
+
+    def get_num_mu(self) -> int:
+        """How many mu indices does this basis function span.
+        In practice, returns 2*l + 1.
+        """
+        return 2 * self.l + 1
+
+@dataclass
+class BasisFunctionInstance:
+    """Instance of a basis function with fixed position and index range."""
+    phi_class: BasisFunction
+    parent_atom: int
+    first_mu: int
+    position: np.ndarray
+
+    def get_cutoff(self) -> float:
+        """Get the radial cutoff"""
+        return self.phi_class.cutoff
+
+    def get_angular_momentum_number(self) -> int:
+        """Get l"""
+        return self.phi_class.l
+
+
 def build_lfc_system(setups: Setups,
                     grid: UGDesc,
                     relpos_ac: np.ndarray) -> LFCSystem:
@@ -166,6 +229,9 @@ class PrecalculationMode(Enum):
     eNever = auto()
 
 
+# Should keep the API as close to the old BasisFunctions as possible,
+# so use raw np or cp arrays instead of UGArray/Matrix in the following
+
 class BasisFunctionCollectionBase(ABC):
     """"""
 
@@ -176,15 +242,22 @@ class BasisFunctionCollectionBase(ABC):
     _atom_type_a: list[AtomTypeId]
     """Type id of atom 'a'. This can be used to look up basis functions for
     a given atom instance."""
+    _basis_functions_t: list[list[BasisFunction]]
+    """BasisFunctions for a given atom type"""
     _position_av: np.ndarray
     """Real-space positions of atoms, so that position_av[a] is a 3D
     array."""
+    _relpos_ac: np.ndarray
+    """Guess we need the relative position too, old code uses it extensively"""
     _mu_range_a: list[range]
     """Range of mu indices for atom 'a'."""
     _phi_MG_cache: np.ndarray | cp.ndarray | None
     """Cached values of basis funcs, phi_mu(x).
     This is 4D: first index is mu (M), then x, y, z indices.
     """
+
+    _phi_aj: list[list[BasisFunctionInstance]]
+    _virtual_phi_aj: dict[int, list[BasisFunctionInstance]]
 
     def __init__(self,
                  system: LFCSystem,
@@ -220,6 +293,10 @@ class BasisFunctionCollectionBase(ABC):
 
         self.xp = cp if use_gpu else np
 
+        self.dtype = np.float64
+
+        self._init_basis_functions(system.atom_types)
+
         # Build lookup lists: atom -> type ID; atom -> mu range.
         # Also build the atom position array
         mu = 0
@@ -244,30 +321,62 @@ class BasisFunctionCollectionBase(ABC):
 
             self._position_av[atom_idx] = atom.position
 
-        # TODO: check if we can/should precalculate
+        """Hacky: set_positions would trigger precalculation of the basis
+        funcs on the grid if precalculation was requested. But we don't know
+        yet if it's feasible => start with should_precalculate = False and set
+        it later. Cleaner solution would be to re-estimate it directly in
+        set_positions because the memory requirements CAN change when atoms
+        move.
+        """
+        self.should_precalculate = False
+
+        # Places atoms and basis functions, handling also periodic boundaries
+        self.set_positions(self._position_av)
+
+        # TODO: actually check if we can/should precalculate
         if mode != PrecalculationMode.eNever:
             # if self.get_cache_size_estimate() > too_much...
             self.should_precalculate = True
         else:
             self.should_precalculate = False
 
-        self._init_basis_functions(system.atom_types)
+        self._relpos_ac = self._position_av @ np.linalg.inv(self.grid.cell_cv)
 
         if self.should_precalculate:
             self.precalculate_on_grid()
 
-    # Should keep the API as close to the old BasisFunctions as possible,
-    # so use raw np or cp arrays instead of UGArray/Matrix in the following
-
-    @trace
-    @abstractmethod
     def _init_basis_functions(self,
                               atom_types: list[LFCAtomDefinition]) -> None:
-        """Initializes all basis functions for the system. Subclasses can
-        choose how this should be done, and how the basis functions should
-        be stored.
+        """Initializes all basis functions for the system.
         """
-        raise NotImplementedError
+        self._basis_functions_t = []
+        for atom in atom_types:
+            phi_j = []
+            for desc in atom.basis_functions:
+                phi_j.append(
+                    BasisFunction(desc,
+                    self.dtype,
+                    use_gpu=False)
+                )
+            self._basis_functions_t.append(phi_j)
+        #
+
+    def _place_basis_functions(self) -> None:
+        """Creates BasisFunctionInstance objects with up-to-date placement"""
+        self._phi_aj = []
+        for a in range(self.num_atoms):
+            phi_j = []
+            mu = self.get_mu_range_a(a).start
+
+            for phi_type in self._basis_functions_t[self._atom_type_a[a]]:
+                phi_j.append(
+                    BasisFunctionInstance(phi_type,
+                                          a,
+                                          mu,
+                                          self._position_av[a]
+                                          ))
+                mu += phi_type.get_num_mu()
+            self._phi_aj.append(phi_j)
 
     @trace
     @abstractmethod
@@ -366,8 +475,10 @@ class BasisFunctionCollectionBase(ABC):
 
         # convert to real units
         self._position_av = relpos_ac @ self.grid.cell_cv
+        # TODO: check if atoms moved to another MPI rank
 
-        # TODO: recalculate overlaps; check if atoms moved to another MPI rank
+        self._place_basis_functions()
+        self._construct_periodic_images()
 
         if self.should_precalculate:
             self.precalculate_on_grid()
@@ -391,6 +502,111 @@ class BasisFunctionCollectionBase(ABC):
         # TODO single precision. Do we need to allow complex phi?
         return num_sites * self.num_basis_functions() * 8
 
+    def _construct_periodic_images(self) -> None:
+        """For periodic boundary conditions it can happen that basis functions
+        from other unit cells overlap with grid points or basis
+        functions in this unit cell. This function creates "virtual images" of
+        basis functions that exist outside our unit cell to handle the
+        overlaps.
+
+        Must be called whenever atom positions change, which MUST happen only
+        from set_positions."""
+        self._virtual_phi_aj = {}
+
+        if not np.any(self.grid.pbc_c):
+            # No periodic boundaries, nothing to do
+            return
+
+        L = np.diag(self.grid.cell_cv)  # shape = (3,)
+
+        """Goal is to place "virtual" atoms in neighbor cells, including
+        only the basis funcs that have overlap with this "main" cell.
+        We first compute how many periodic unit cells a basis func
+        overlaps in each direction, giving a list of integer "shifts" like
+        [-2, -1, 0, 1] if the phi extends 2 cells in negative dir and 1 in
+        positive dir. Doing this for all 3 dimensions and taking cartesian
+        product gives a 3D grid of all possible shifts to cells to which
+        this phi may extend. We then check the overlap separately for each
+        shifted cell, handling possible virtual atoms in diagonal
+        directions.
+        """
+
+        for atom_idx, phi_j in enumerate(self._phi_aj):
+            center = self._position_av[atom_idx]
+
+            virtual_copies: list[BasisFunctionInstance] = []
+
+            for phi in phi_j:
+
+                r = phi.get_cutoff()
+
+                # How many boxes does the sphere overlap in given direction
+                n_min = np.floor((center - r) / L).astype(np.int64)
+                n_max = np.floor((center + r) / L).astype(np.int64)
+
+                # Enforce no overlap in directions without periodic b.c.
+                pbc_mask = ~np.array(self.grid.pbc_c)
+                n_min = np.where(pbc_mask, 0, n_min)
+                n_max = np.where(pbc_mask, 0, n_max)
+
+
+                """Build a 3D shift grid. This Numpy magic is equivalent to:
+                for nx, ny, nz in itertools.product(
+                    range(n_min[0], n_max[0] + 1),
+                    range(n_min[1], n_max[1] + 1),
+                    range(n_min[2], n_max[2] + 1),
+                ):
+                    shift = np.array([nx, ny, nz])
+                    ...
+                """
+                ranges = [np.arange(n_min[d], n_max[d] + 1) for d in range(3)]
+                grids = np.meshgrid(*ranges, indexing="ij")
+                shifts = np.stack(grids, axis=-1).reshape(-1, 3)
+
+                # remove (0,0,0)
+                shifts = shifts[np.any(shifts != 0, axis=1)]
+                if shifts.size == 0:
+                    continue
+
+                # Where the virtual atoms would be
+                translated_centers = center - shifts * L
+
+                lower = np.minimum(translated_centers, 0.0)
+                upper = np.maximum(translated_centers - L, 0.0)
+                d2 = np.sum(lower**2 + upper**2, axis=1)
+
+                # which virtual atoms actually overlap with the (0,0,0) cell
+                mask = (d2 <= r * r)
+                if not np.any(mask):
+                    continue
+
+                for shift_vec, virtual_pos in zip(shifts[mask],
+                                                  translated_centers[mask]):
+                    # Virtual phi gets the same mu indices as the real one
+                    virtual_copies.append(
+                        BasisFunctionInstance(
+                            phi_class=phi.phi_class,
+                            parent_atom=atom_idx,
+                            first_mu=phi.first_mu,
+                            position=virtual_pos.copy(),
+                        )
+                    )
+
+                # Seems to work, virtual atom positions match with those of old code
+                # TEMP TEMP Compare with old code (cryptic)
+                # boxes: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = self.grid._gd.get_boxes(rel_center_c, r, True)
+                # for box in boxes:
+                #     start_c, end_c, displacement_c = box
+                #     disp_c = tuple(int(s) for s in displacement_c)
+                #     if disp_c == (0, 0, 0):
+                #         continue
+                #     pos_v = np.dot(rel_center_c- displacement_c, self.grid._gd.cell_cv)
+                #     assert np.all(pos_v == virtual_copies[disp_c].position)
+                # END TEMP
+            # end phi loop
+
+            if virtual_copies:
+                self._virtual_phi_aj[atom_idx] = virtual_copies
 
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""
@@ -410,13 +626,6 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
             raise RuntimeError("Only GPU version implemented for now")
         super().__init__(system, use_gpu, mode)
         # TODO: construct C++ side object that holds splines
-
-    @override
-    def _init_basis_functions(
-        self,
-        atom_types: list[list[LFCAtomDefinition]]) -> None:
-        """"""
-        raise NotImplementedError("WIP")
 
     @override
     def precalculate_on_grid(self) -> None:
