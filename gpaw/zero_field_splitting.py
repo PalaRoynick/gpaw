@@ -46,7 +46,6 @@ def zfs(calc: GPAW,
         wf2 = WaveFunctions.from_calc(calc, 1, 0, nocc2)
         wf12 = [wf1, wf2]
 
-
     def dipole_tensor(calc, wf12):
         D_vv = np.zeros((3, 3))
         compensation_charge = create_compensation_charge(wf12[0].setups,
