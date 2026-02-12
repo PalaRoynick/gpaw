@@ -8,6 +8,8 @@ from gpaw.tddft.folding import FoldedFrequencies, Folding
 from gpaw.tddft.units import au_to_as, au_to_eV, au_to_fs, rot_au_to_cgs
 
 
+#M(t) = <psi_0| exp(-1j * D * eps) U(t0, t) M U(t, t0) exp(1j * D * eps) |psi_0>
+
 def calculate_fourier_transform(x_t, y_ti, foldedfrequencies, velocity=False):
     ff = foldedfrequencies
     X_w = ff.frequencies
@@ -267,7 +269,7 @@ def calculate_rotatory_strength_components(kick_v, time_t, mm_tv,
     assert np.all(mm_tv[0] == 0.0)
     mm_wv = calculate_fourier_transform(time_t, mm_tv, foldedfrequencies)
     kick_magnitude = np.sqrt(np.sum(kick_v**2))
-    rot_wv = mm_wv.real / (np.pi * kick_magnitude)
+    rot_wv = mm_wv / (np.pi * kick_magnitude)
     return rot_wv
 
 
@@ -498,8 +500,8 @@ def rotatory_strength_spectrum(magnetic_moment_files, spectrum_file,
                  f'width = {folding.width * au_to_eV:.4f} eV '
                  f'<=> FWHM = {folding.fwhm * au_to_eV:.4f} eV']
         fd.write('# ' + '\n# '.join(lines) + '\n')
-        fd.write(f'# {"Energy (eV)":>12} {"R (1e-40 cgs / eV)":>20}\n')
+        fd.write(f'# {"Energy (eV)":>12} {"R (1e-40 cgs / eV)":>20} {"im R":>20}\n')
 
-        data_wi = np.vstack((omega_w, rot_w)).T
+        data_wi = np.vstack((omega_w, rot_w.real, rot_w.imag)).T
         np.savetxt(fd, data_wi,
                    fmt='%14.6lf' + (' %20.10le' * (data_wi.shape[1] - 1)))
