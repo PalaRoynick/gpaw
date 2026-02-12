@@ -10,8 +10,6 @@ See::
     Phys. Rev. Research 2, 022024(R) – Published 30 April 2020
 
 """
-from math import pi
-
 import numpy as np
 from ase.units import Bohr, Ha, _c, _e, _hplanck
 
@@ -166,7 +164,7 @@ def zfs1(wf1: WaveFunctions,
 
     sign = 1.0 if wf1.spin == wf2.spin else -1.0
 
-    return sign * alpha**2 * pi * D_vv * Ha
+    return sign * alpha**2 * np.pi * D_vv * Ha
 
 
 def zfs2(pd: PWDescriptor,
