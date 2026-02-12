@@ -16,7 +16,7 @@ import numpy as np
 from ase.units import Bohr, Ha, _c, _e, _hplanck
 
 from gpaw.hyperfine import alpha  # fine-structure constant: ~ 1 / 137
-from gpaw.mpi import serial_comm
+from gpaw.mpi import serial_comm, rank0_call
 from gpaw.old.calculator import GPAW
 from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.old.pw.descriptor import PWDescriptor
@@ -48,18 +48,20 @@ def zfs(calc: GPAW,
         wf2 = WaveFunctions.from_calc(calc, 1, 0, nocc2)
         wf12 = [wf1, wf2]
 
-    D_vv = np.zeros((3, 3))
 
-    if calc.world.rank == 0:
-        compensation_charge = create_compensation_charge(wf1.setups,
-                                                         wf1.pd,
+    def dipole_tensor(calc, wf12):
+        D_vv = np.zeros((3, 3))
+        compensation_charge = create_compensation_charge(wf12[0].setups,
+                                                         wf12[0].pd,
                                                          calc.spos_ac)
         for wfa in wf12:
             for wfb in wf12:
                 d_vv = zfs1(wfa, wfb, compensation_charge)
                 D_vv += d_vv
 
-    calc.world.broadcast(D_vv, 0)
+        return D_vv
+
+    D_vv = rank0_call(dipole_tensor, calc.world)(calc, wf12)
 
     return D_vv
 
