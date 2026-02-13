@@ -34,6 +34,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         """Computes and caches phi_mu(x) = f_al(r) * Y_l^m everywhere on the
         grid.
         """
+        return
         num_mu = self.mu_range.stop - self.mu_range.start
         # get all grid points in real units. 4D array of shape (Nx, Ny, Nz, 3)
         x_Gv = self.grid.xyz()
@@ -79,7 +80,8 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
     @override
     def has_precalculated_phi(self) -> bool:
         """"""
-        return self.phi_MG_cache is not None
+        #return self.phi_MG_cache is not None
+        return True
 
     @override
     def add_to_density(
@@ -88,19 +90,30 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
         """"""
         num_spins = nt_sG.shape[0]
+
+        # Copy the f_asi dict to a single array
         f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
+        for atom_idx in range(self.num_atoms):
+            atom_mu_range = self._mu_range_a[atom_idx]
+            f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
+                f_asi[atom_idx]
+            )
 
-        if self.phi_MG_cache is not None:
-            # Copy the f_asi dict to a single array
-            for atom_idx in range(self.num_atoms):
-                atom_mu_range = self._mu_range_a[atom_idx]
-                f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                    f_asi[atom_idx]
-                )
+        if self.has_precalculated_phi():
+            for atom in self.atoms_a:
 
-            nt_sG += self.xp.einsum('sm, mxyz -> sxyz',
-                                    f_sM, self.phi_MG_cache**2,  # type:ignore
-                                    optimize=True)  # type:ignore
+                assert atom.phi_wmG is not None
+                for w, phi_mG in enumerate(atom.phi_wmG):
+                    mu_start = atom.mu_range_w[w].start
+                    mu_end = atom.mu_range_w[w].stop
+                    for m in range(mu_end - mu_start):
+                        nt_sG += f_sM[:, mu_start + m] * phi_mG[m, :]**2
+
+
+        # if self.phi_MG_cache is not None:
+        #     nt_sG += self.xp.einsum('sm, mxyz -> sxyz',
+        #                             f_sM, self.phi_MG_cache**2,  # type:ignore
+        #                             optimize=True)  # type:ignore
 
 
         else:

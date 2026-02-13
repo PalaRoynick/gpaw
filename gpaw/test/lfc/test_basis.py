@@ -107,12 +107,11 @@ def make_test_system_small() -> LFCSystem:
 
     atom_defs = []
     for i in range(2):
-        s = make_random_phi(0, 1.25 * a, rng, num_points=50)
+        s = make_random_phi(0, 0.9 * a, rng, num_points=50)
         p = make_random_phi(1, 0.75 * a, rng, num_points=50)
-        #d = make_random_phi(2, 0.20 * a, rng, num_points=50)
+        d = make_random_phi(2, 2.20 * a, rng, num_points=50)
 
-        #atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
-        atom_defs.append(LFCAtomDefinition(i, [s, p]))
+        atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
 
     relpos_ac = np.asarray([(0.5, 0.5, 0.50 + 0.25 * i) for i in [0, 1]])
     pos_av = relpos_ac @ grid.cell_cv

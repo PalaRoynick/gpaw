@@ -11,6 +11,8 @@ from typing import override, cast
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
+from gpaw.sphere.spherical_harmonics import Y
+
 from typing import Protocol, runtime_checkable
 
 @runtime_checkable
@@ -162,6 +164,92 @@ class BasisFunctionInstance:
         """Get l"""
         return self.phi_class.l
 
+    def get_num_mu(self) -> int:
+        return self.phi_class.get_num_mu()
+
+
+class LFCAtom:
+    """"""
+
+    def __init__(self, index: int, first_mu: int, phi_j: list[BasisFunction],
+                 relpos_c: np.ndarray, grid: UGDesc):
+        """"""
+        self.index = index
+        self.first_mu = first_mu
+        self.phi_j = phi_j
+        self.phi_instances: list[BasisFunctionInstance] = []
+        """Includes periodic copies"""
+
+        self.phi_wmG: list[np.ndarray] | None = None
+        """Cached phi_mu(x) on the grid"""
+
+        self.set_position(relpos_c, grid)
+
+    def set_position(self, new_relpos_c: np.ndarray, grid: UGDesc):
+        """"""
+        self.phi_instances = []
+
+        self.mu_range_w: list[range] = []
+        # yeah...
+
+        mu_work = self.first_mu
+        for phi in self.phi_j:
+
+            radius = phi.cutoff
+
+            """Use helper from GridDescriptor to find all units cells that this
+            spline overlaps with, including the main cell.
+            We get XYZ coords for box start and end corners, and relative
+            displacement that brings this atom to correct position in the
+            other box."""
+            # TODO actually not 100% sure what the first two outputs are
+
+            # dunno what this is
+            cut: bool = True
+            boxes: list[tuple[np.ndarray, np.ndarray, np.ndarray]] \
+                = grid._gd.get_boxes(new_relpos_c, radius, cut)
+
+            # Loop includes the "real" atom:
+            for beg_c, end_c, relative_displacement_c in boxes:
+                # real-space position of the replicated atom
+                pos_v = np.dot(new_relpos_c - relative_displacement_c,
+                               grid.cell_cv)
+                self.phi_instances.append(
+                    BasisFunctionInstance(phi, self.index, mu_work, pos_v)
+                )
+
+            mu_work += phi.get_num_mu()
+
+        # Precalculate. TODO do in separate function
+
+        # get all grid points in real units. 4D array of shape (Nx, Ny, Nz, 3)
+        x_Gv = grid.xyz()
+        # For now I compute these everywhere on the grid, not just in overlap regions
+        grid_shape = (x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
+
+        self.phi_wmG = []
+        for phi in self.phi_instances:
+            shape = (phi.get_num_mu(), *grid_shape)
+            phi_mG = np.zeros(shape)
+
+            d_Gv = x_Gv - phi.position
+            d_G = (d_Gv**2).sum(axis=3)**0.5
+            # Points that are too far from the atom are left at value 0
+            mask_G = (d_G < phi.get_cutoff())
+            f_R_masked = phi.phi_class.spline(d_G[mask_G])
+            d_Rv_masked = d_Gv[mask_G]
+
+            l = phi.get_angular_momentum_number()
+            for m in range(0, phi.get_num_mu()):
+                phi_mG[m, mask_G] = (
+                    f_R_masked * Y(l**2 + m, *d_Rv_masked.T)
+                )
+
+            self.phi_wmG.append(phi_mG)
+
+            mu = phi.first_mu
+            self.mu_range_w.append(range(mu, mu + phi.get_num_mu()))
+
 
 def build_lfc_system(setups: Setups,
                     grid: UGDesc,
@@ -244,17 +332,14 @@ class BasisFunctionCollectionBase(ABC):
     a given atom instance."""
     _basis_functions_t: list[list[BasisFunction]]
     """BasisFunctions for a given atom type"""
-    _position_av: np.ndarray
-    """Real-space positions of atoms, so that position_av[a] is a 3D
-    array."""
-    _relpos_ac: np.ndarray
-    """Guess we need the relative position too, old code uses it extensively"""
     _mu_range_a: list[range]
     """Range of mu indices for atom 'a'."""
     _phi_MG_cache: np.ndarray | cp.ndarray | None
     """Cached values of basis funcs, phi_mu(x).
     This is 4D: first index is mu (M), then x, y, z indices.
     """
+
+    atoms_a: list[LFCAtom]
 
     _phi_aj: list[list[BasisFunctionInstance]]
     _virtual_phi_aj: dict[int, list[BasisFunctionInstance]]
@@ -302,7 +387,7 @@ class BasisFunctionCollectionBase(ABC):
         mu = 0
         self._atom_type_a = []
         self._mu_range_a = []
-        self._position_av = np.empty((num_atoms, 3), np.float64)
+        position_av = np.empty((num_atoms, 3), np.float64)
 
         for atom_idx, atom in enumerate(system.atoms):
             if len(atom.type.basis_functions) == 0:
@@ -319,19 +404,10 @@ class BasisFunctionCollectionBase(ABC):
             self._mu_range_a.append(range(mu_a_start, mu_a_end))
             mu = mu_a_end
 
-            self._position_av[atom_idx] = atom.position
+            position_av[atom_idx] = atom.position
 
-        """Hacky: set_positions would trigger precalculation of the basis
-        funcs on the grid if precalculation was requested. But we don't know
-        yet if it's feasible => start with should_precalculate = False and set
-        it later. Cleaner solution would be to re-estimate it directly in
-        set_positions because the memory requirements CAN change when atoms
-        move.
-        """
-        self.should_precalculate = False
-
-        # Places atoms and basis functions, handling also periodic boundaries
-        self.set_positions(self._position_av)
+        relpos_ac = position_av @ np.linalg.inv(self.grid.cell_cv)
+        self._place_atoms(relpos_ac)
 
         # TODO: actually check if we can/should precalculate
         if mode != PrecalculationMode.eNever:
@@ -339,8 +415,6 @@ class BasisFunctionCollectionBase(ABC):
             self.should_precalculate = True
         else:
             self.should_precalculate = False
-
-        self._relpos_ac = self._position_av @ np.linalg.inv(self.grid.cell_cv)
 
         if self.should_precalculate:
             self.precalculate_on_grid()
@@ -361,22 +435,17 @@ class BasisFunctionCollectionBase(ABC):
             self._basis_functions_t.append(phi_j)
         #
 
-    def _place_basis_functions(self) -> None:
-        """Creates BasisFunctionInstance objects with up-to-date placement"""
-        self._phi_aj = []
+    def _place_atoms(self, relpos_ac: np.ndarray):
+        """"""
+        # TODO init mu ranges here
+        self.atoms_a = []
         for a in range(self.num_atoms):
-            phi_j = []
             mu = self.get_mu_range_a(a).start
+            phi_j = self._basis_functions_t[self._atom_type_a[a]]
+            self.atoms_a.append(
+                LFCAtom(a, mu, phi_j, relpos_ac[a], self.grid)
+            )
 
-            for phi_type in self._basis_functions_t[self._atom_type_a[a]]:
-                phi_j.append(
-                    BasisFunctionInstance(phi_type,
-                                          a,
-                                          mu,
-                                          self._position_av[a]
-                                          ))
-                mu += phi_type.get_num_mu()
-            self._phi_aj.append(phi_j)
 
     @trace
     @abstractmethod
@@ -470,18 +539,16 @@ class BasisFunctionCollectionBase(ABC):
     def set_positions(self, relpos_ac: np.ndarray) -> None:
         """Updates atom positions"""
         relpos_ac = np.asanyarray(relpos_ac)
-        if relpos_ac.shape != self._position_av.shape:
+        if len(relpos_ac) != self.num_atoms:
             raise ValueError("Wrong atom position array shape")
 
-        # convert to real units
-        self._position_av = relpos_ac @ self.grid.cell_cv
         # TODO: check if atoms moved to another MPI rank
 
-        self._place_basis_functions()
-        self._construct_periodic_images()
+        for a, atom in enumerate(self.atoms_a):
+            atom.set_position(relpos_ac[a], self.grid)
 
-        if self.should_precalculate:
-            self.precalculate_on_grid()
+        # if self.should_precalculate:
+        #     self.precalculate_on_grid()
 
     def set_matrix_distribution(self, Mstart: int, Mstop: int) -> None:
         """TODO!"""
