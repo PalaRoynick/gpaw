@@ -1,3 +1,4 @@
+#M(t) = <psi_0| exp(-1j * D * eps) U(t0, t) M U(t, t0) exp(1j * D * eps) |psi_0>
 import re
 
 import numpy as np
@@ -8,7 +9,7 @@ from gpaw.tddft.folding import FoldedFrequencies, Folding
 from gpaw.tddft.units import au_to_as, au_to_eV, au_to_fs, rot_au_to_cgs
 
 
-#M(t) = <psi_0| exp(-1j * D * eps) U(t0, t) M U(t, t0) exp(1j * D * eps) |psi_0>
+
 
 def calculate_fourier_transform(x_t, y_ti, foldedfrequencies, velocity=False):
     ff = foldedfrequencies
@@ -263,13 +264,21 @@ def read_magnetic_moment_file(fname, remove_duplicates=True):
     kick_i = read_td_file_kicks(fname)
     return kick_i, time_t, mm_tv
 
-
+def calculate_G_components(kick_v, time_t, mm_tv,
+                                           foldedfrequencies):
+    assert np.all(mm_tv[0] == 0.0)
+    mm_wv = calculate_fourier_transform(time_t, mm_tv, foldedfrequencies)
+    kick_magnitude = np.sqrt(np.sum(kick_v**2))
+    rot_wv = mm_wv / kick_magnitude
+    return rot_wv
+    
+    
 def calculate_rotatory_strength_components(kick_v, time_t, mm_tv,
                                            foldedfrequencies):
     assert np.all(mm_tv[0] == 0.0)
     mm_wv = calculate_fourier_transform(time_t, mm_tv, foldedfrequencies)
     kick_magnitude = np.sqrt(np.sum(kick_v**2))
-    rot_wv = mm_wv / (np.pi * kick_magnitude)
+    rot_wv = mm_wv.real / (np.pi * kick_magnitude)
     return rot_wv
 
 
@@ -500,8 +509,205 @@ def rotatory_strength_spectrum(magnetic_moment_files, spectrum_file,
                  f'width = {folding.width * au_to_eV:.4f} eV '
                  f'<=> FWHM = {folding.fwhm * au_to_eV:.4f} eV']
         fd.write('# ' + '\n# '.join(lines) + '\n')
+        fd.write(f'# {"Energy (eV)":>12} {"R (1e-40 cgs / eV)":>20}\n')
+
+        data_wi = np.vstack((omega_w, rot_w)).T
+        np.savetxt(fd, data_wi,
+                   fmt='%14.6lf' + (' %20.10le' * (data_wi.shape[1] - 1)))
+                   
+                   
+def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
+                               folding='Gauss', width=0.2123,
+                               e_min=0.0, e_max=30.0, delta_e=0.05,
+                               world=None):
+    """Calculates rotatory strength spectrum from the time-dependent
+    magnetic moment.
+
+    Parameters
+    ----------
+    magnetic_moment_files: list of string
+        Time-dependent magnetic moment files for x, y, and z kicks
+    tensor_file: string
+        Name of the file for storing the tensor
+    folding: 'Gauss' or 'Lorentz'
+        Whether to use Gaussian or Lorentzian folding
+    width: float
+        Width of the Gaussian (sigma) or Lorentzian (Gamma)
+        Gaussian =     1/(sigma sqrt(2pi)) exp(-(1/2)(omega/sigma)^2)
+        Lorentzian =  (1/pi) (1/2) Gamma / [omega^2 + ((1/2) Gamma)^2]
+    e_min: float
+        Minimum energy shown in the spectrum (eV)
+    e_max: float
+        Maximum energy shown in the spectrum (eV)
+    delta_e: float
+        Energy resolution (eV)
+        
+    This implements the RT-TDDFT version of
+    G_{i,j}(omega) =
+              sum_n [
+                      <0| d^i |n> <n| m^j |0> / (omega_n - omega - i*eta)
+                     + <0| m^j |n> <n| d^i |0> / (omega_n + omega + i*eta)
+                    ]
+    omega_n: transition energies,               
+    i,j in {x,yz}.
+    
+
+    In RT-TDDFT one applies a weak instantaneous electric field j-kick (j in {x,y,z}),
+    which is equivalent to perturbing the system with -E_j(t) d^j. This excites all frequencies simultaneously.
+
+    The time-dependent magnetic dipole moment is recorded as
+        m^i(t) = <psi_0| exp(-1j * d^j * eps) M^i(t) exp(1j * d^j * eps) |psi_0>
+
+    Here, the notation distinguishes between:
+       - M^i : the magnetic dipole operator (capitalized), representing a quantum operator
+       - m^i(t) : the time-dependent expectation value of M^i (lowercase),
+           which is the quantity actually measured or recorded in the simulation
+
+   d^j * eps represents the applied kick along direction j, and the time-evolution is implicitly
+   contained in M^i(t). Fourier transforming m^i(t) then gives the linear electric-magnetic
+   response tensor G_{i,j}(omega).
+    """
+    world = normalize_communicator(world)
+    if world.rank != 0:
+        return
+
+    freqs = np.arange(e_min, e_max + 0.5 * delta_e, delta_e)
+    folding = Folding(folding, width)
+    ff = FoldedFrequencies(freqs, folding)
+    omega_w = ff.frequencies * au_to_eV
+    rot_w = np.zeros_like(omega_w)
+
+    tot_time = np.inf
+    time_steps = []
+    kick_strength = None
+    G = np.zeros(len(omega_w), 3,3, dtype=complex)
+    for v, fpath in enumerate(magnetic_moment_files):
+        kick_i, time_t, mm_tv = read_magnetic_moment_file(fpath)
+        kick_v, velocity, time_t, mm_tv = clean_td_data(kick_i, time_t, mm_tv)
+
+        tot_time = min(tot_time, time_t[-1])
+        time_steps.append(np.around(time_t[1:] - time_t[:-1], 6))
+
+        # Check kicks
+        for v0 in range(3):
+            if v0 == v:
+                continue
+            if kick_v[v0] != 0.0:
+                raise RuntimeError('The magnetic moment files must be '
+                                   'for kicks in x, y, and z directions.')
+        if kick_strength is None:
+            kick_strength = np.sqrt(np.sum(kick_v**2))
+        if np.sqrt(np.sum(kick_v**2)) != kick_strength:
+            raise RuntimeError('The magnetic moment files must have '
+                               'been calculated with the same kick strength.')
+
+        rot_wv = calculate_G_components(kick_v, time_t,
+                                                        mm_tv, ff)
+       G[ :,  : ,v] = rot_wv[:, v]
+
+    # Unique non-zero time steps
+    time_steps = np.unique(time_steps)
+    time_steps = time_steps[time_steps != 0]
+
+    with open(spectrum_file, 'w') as fd:
+        steps_str = ', '.join(f'{val:.4f}' for val in time_steps * au_to_as)
+        lines = ['Rotatory strength spectrum from real-time propagations',
+                 f'Total time = {tot_time * au_to_fs:.4f} fs, '
+                 f'Time steps = [{steps_str}] as',
+                 f'Kick strength = {kick_strength}',
+                 f'{folding.folding}ian folding, '
+                 f'width = {folding.width * au_to_eV:.4f} eV '
+                 f'<=> FWHM = {folding.fwhm * au_to_eV:.4f} eV']
+        fd.write('# ' + '\n# '.join(lines) + '\n')
         fd.write(f'# {"Energy (eV)":>12} {"R (1e-40 cgs / eV)":>20} {"im R":>20}\n')
 
         data_wi = np.vstack((omega_w, rot_w.real, rot_w.imag)).T
         np.savetxt(fd, data_wi,
                    fmt='%14.6lf' + (' %20.10le' * (data_wi.shape[1] - 1)))
+                   
+                   
+def calcualte_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
+                               folding='Gauss', width=0.2123,
+                               e_min=0.0, e_max=30.0, delta_e=0.05,
+                               world=None)
+    """
+       Parameters
+    ----------
+    magnetic_moment_files: list of string
+        Time-dependent magnetic moment files for x, y, and z kicks
+    tensor_file: string
+        Name of the file for storing the tensor
+    folding: 'Gauss' or 'Lorentz'
+        Whether to use Gaussian or Lorentzian folding
+    width: float
+        Width of the Gaussian (sigma) or Lorentzian (Gamma)
+        Gaussian =     1/(sigma sqrt(2pi)) exp(-(1/2)(omega/sigma)^2)
+        Lorentzian =  (1/pi) (1/2) Gamma / [omega^2 + ((1/2) Gamma)^2]
+    e_min: float
+        Minimum energy shown in the spectrum (eV)
+    e_max: float
+        Maximum energy shown in the spectrum (eV)
+    delta_e: float
+        Energy resolution (eV)
+        
+    This method implements the macrsocopic pasteur parameter kappa as
+        kappa(omega) = (G_{x,x}(omega) + G_{y,y}(omega) + G_{z,z}(omega)) / 3
+    """"
+    # G = np.zeros(len(omega_w), 3,3, dtype=complex)
+    G = calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
+                               folding, width, e_min, e_max, delta, world)
+
+    # compute the trace over Cartesian indices (yy, xx, zz) for each frequency
+    # and divide by 3 to obtain the isotropic Pasteur component
+    kappa_w = np.trace(G, axis1=1, axis2=2) / 3.0
+    
+    return kappa_w
+
+
+def write_pasteur_spectrum(magnetic_moment_files, spectrum_file, tensor_file,
+                               folding='Gauss', width=0.2123,
+                               e_min=0.0, e_max=30.0, delta_e=0.05,
+                               world=None):
+                               world=None)
+    """
+       Parameters
+    ----------
+    magnetic_moment_files: list of string
+        Time-dependent magnetic moment files for x, y, and z kicks
+    spectrum_file: string
+        Name of the spectrum file
+    tensor_file: string
+        Name of the file for storing the tensor
+    folding: 'Gauss' or 'Lorentz'
+        Whether to use Gaussian or Lorentzian folding
+    width: float
+        Width of the Gaussian (sigma) or Lorentzian (Gamma)
+        Gaussian =     1/(sigma sqrt(2pi)) exp(-(1/2)(omega/sigma)^2)
+        Lorentzian =  (1/pi) (1/2) Gamma / [omega^2 + ((1/2) Gamma)^2]
+    e_min: float
+        Minimum energy shown in the spectrum (eV)
+    e_max: float
+        Maximum energy shown in the spectrum (eV)
+    delta_e: float
+        Energy resolution (eV)
+  """                              
+   kappa_w = calcualte_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
+                               folding, width, e_min, e_max, delta, world)                    
+
+    with open(filename, "w") as f:
+        f.write("# omega   Re[kappa(omega)]   Im[kappa(omega)]\n")
+        for w, k in zip(frequencies_w, kappa_w):
+            f.write(f"{w:18.10e} {k.real:18.10e} {k.imag:18.10e}\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
