@@ -517,9 +517,9 @@ def rotatory_strength_spectrum(magnetic_moment_files, spectrum_file,
                    
                    
 def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
-                               folding='Gauss', width=0.2123,
-                               e_min=0.0, e_max=30.0, delta_e=0.05,
-                               world=None):
+                                         folding='Gauss', width=0.2123,
+                                         e_min=0.0, e_max=30.0, delta_e=0.05,
+                                         world=None):
     """Calculates rotatory strength spectrum from the time-dependent
     magnetic moment.
 
@@ -580,7 +580,7 @@ def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
     tot_time = np.inf
     time_steps = []
     kick_strength = None
-    G = np.zeros(len(omega_w), 3,3, dtype=complex)
+    G = np.zeros((len(omega_w), 3,3), dtype=complex)
     for v, fpath in enumerate(magnetic_moment_files):
         kick_i, time_t, mm_tv = read_magnetic_moment_file(fpath)
         kick_v, velocity, time_t, mm_tv = clean_td_data(kick_i, time_t, mm_tv)
@@ -601,15 +601,14 @@ def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
             raise RuntimeError('The magnetic moment files must have '
                                'been calculated with the same kick strength.')
 
-        rot_wv = calculate_G_components(kick_v, time_t,
-                                                        mm_tv, ff)
-       G[ :,  : ,v] = rot_wv[:, v]
+        rot_wv = calculate_G_components(kick_v, time_t, mm_tv, ff)
+        G[:,:,v] = rot_wv
 
-    # Unique non-zero time steps
-    time_steps = np.unique(time_steps)
-    time_steps = time_steps[time_steps != 0]
 
-    with open(spectrum_file, 'w') as fd:
+    np.savetxt(tensor_file, G.reshape((-1, 9)))
+    """
+    # XXX This code doesn't work to write the tensor file, so skipping
+    with open(tensor_file, 'w') as fd:
         steps_str = ', '.join(f'{val:.4f}' for val in time_steps * au_to_as)
         lines = ['Rotatory strength spectrum from real-time propagations',
                  f'Total time = {tot_time * au_to_fs:.4f} fs, '
@@ -621,15 +620,17 @@ def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
         fd.write('# ' + '\n# '.join(lines) + '\n')
         fd.write(f'# {"Energy (eV)":>12} {"R (1e-40 cgs / eV)":>20} {"im R":>20}\n')
 
-        data_wi = np.vstack((omega_w, rot_w.real, rot_w.imag)).T
+        data_wi = np.vstack((omega_w, Grot_w.real, rot_w.imag)).T
         np.savetxt(fd, data_wi,
                    fmt='%14.6lf' + (' %20.10le' * (data_wi.shape[1] - 1)))
+    """
+    return omega_w, G
                    
                    
-def calcualte_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
-                               folding='Gauss', width=0.2123,
-                               e_min=0.0, e_max=30.0, delta_e=0.05,
-                               world=None)
+def calculate_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
+                                      folding='Gauss', width=0.2123,
+                                      e_min=0.0, e_max=30.0, delta_e=0.05,
+                                      world=None):
     """
        Parameters
     ----------
@@ -652,23 +653,20 @@ def calcualte_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
         
     This method implements the macrsocopic pasteur parameter kappa as
         kappa(omega) = (G_{x,x}(omega) + G_{y,y}(omega) + G_{z,z}(omega)) / 3
-    """"
+    """
     # G = np.zeros(len(omega_w), 3,3, dtype=complex)
-    G = calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
-                               folding, width, e_min, e_max, delta, world)
-
+    frequencies_w, G = calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
+                                                            folding, width, e_min, e_max, delta_e, world)
     # compute the trace over Cartesian indices (yy, xx, zz) for each frequency
     # and divide by 3 to obtain the isotropic Pasteur component
     kappa_w = np.trace(G, axis1=1, axis2=2) / 3.0
-    
-    return kappa_w
+    return frequencies_w, kappa_w
 
 
-def write_pasteur_spectrum(magnetic_moment_files, spectrum_file, tensor_file,
-                               folding='Gauss', width=0.2123,
-                               e_min=0.0, e_max=30.0, delta_e=0.05,
-                               world=None):
-                               world=None)
+def write_pasteur_spectrum(magnetic_moment_files, spectrum_file, 
+                           folding='Gauss', width=0.2123,
+                           e_min=0.0, e_max=30.0, delta_e=0.05,
+                           world=None):
     """
        Parameters
     ----------
@@ -676,8 +674,6 @@ def write_pasteur_spectrum(magnetic_moment_files, spectrum_file, tensor_file,
         Time-dependent magnetic moment files for x, y, and z kicks
     spectrum_file: string
         Name of the spectrum file
-    tensor_file: string
-        Name of the file for storing the tensor
     folding: 'Gauss' or 'Lorentz'
         Whether to use Gaussian or Lorentzian folding
     width: float
@@ -691,17 +687,21 @@ def write_pasteur_spectrum(magnetic_moment_files, spectrum_file, tensor_file,
     delta_e: float
         Energy resolution (eV)
   """                              
-   kappa_w = calcualte_pasteur_parameter_kappa(magnetic_moment_files, tensor_file,
-                               folding, width, e_min, e_max, delta, world)                    
-
-    with open(filename, "w") as f:
+    frequencies_w, kappa_w = calculate_pasteur_parameter_kappa(magnetic_moment_files, 'tensorfile.npy',
+                                                               folding, width, e_min, e_max, delta_e, world)                    
+    print('TODO: One actually needs to multiply this woith consentration, and make sure the units are correct.')
+    print('The electric-magnetic tensor will be per molecule, and these kappa quantities are per volume')
+    with open(spectrum_file, "w") as f:
         f.write("# omega   Re[kappa(omega)]   Im[kappa(omega)]\n")
         for w, k in zip(frequencies_w, kappa_w):
             f.write(f"{w:18.10e} {k.real:18.10e} {k.imag:18.10e}\n")
 
 
-
-
+if __name__ == "__main__":
+    from gpaw.tddft.spectrum import rotatory_strength_spectrum, write_pasteur_spectrum as kappa
+    files = [f'mm_opt_methyl-oxirane_{v}.dat' for v in 'xyz']
+    kappa(files, 'output', width=0.1) 
+    rotatory_strength_spectrum(files, 'rotatory.spec', width=0.1)
 
 
 
