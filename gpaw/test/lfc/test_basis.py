@@ -76,15 +76,16 @@ def make_test_system() -> LFCSystem:
 
     rng = np.random.default_rng(404)
 
-    # Make system of 3 atoms, 2 of which are identical (same basis funcs)
+    # Make system of 3 atoms, 2 of which are identical (same basis funcs).
+    # Also give the other atom type a different number of basis funcs
     atom_defs = []
     for i in range(2):
-        s = make_random_phi(0, 0.18 * a, rng, num_points=100)
-        #p = make_random_phi(1, 0.249999 * a, rng, num_points=100)
-        p = make_random_phi(1, 0.35 * a, rng, num_points=100)
-        d = make_random_phi(2, 0.20 * a, rng, num_points=100)
+        s = make_random_phi(0, 0.98 * a, rng, num_points=100)
+        p = make_random_phi(1, 1.35 * a, rng, num_points=100)
+        d = make_random_phi(2, 0.50 * a, rng, num_points=100)
 
-        atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
+        funcs = [s, p, d] if i == 0 else [s, d]
+        atom_defs.append(LFCAtomDefinition(i, funcs))
 
     relpos_ac = np.asarray([(0.5, 0.5, 0.25 + 0.25 * i) for i in [0, 1, 2]])
     pos_av = relpos_ac @ grid.cell_cv
@@ -111,7 +112,9 @@ def make_test_system_small() -> LFCSystem:
         p = make_random_phi(1, 0.75 * a, rng, num_points=50)
         d = make_random_phi(2, 2.20 * a, rng, num_points=50)
 
-        atom_defs.append(LFCAtomDefinition(i, [s, p, d]))
+        #funcs = [s, p, d] if i == 0 else [s, d]
+        funcs = [p] if i == 0 else [s]
+        atom_defs.append(LFCAtomDefinition(i, funcs))
 
     relpos_ac = np.asarray([(0.5, 0.5, 0.50 + 0.25 * i) for i in [0, 1]])
     pos_av = relpos_ac @ grid.cell_cv
@@ -127,8 +130,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    #return make_test_system()
-    return make_test_system_small()
+    return make_test_system()
+    #return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -239,6 +242,9 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     # Repeat with old code and compare
     v_MN_ref = calculate_potential_matrix_old_code(system, vt_R)
     v_MN_ref = v_MN_ref.data
+
+    # print(f"\n{v_MN=}")
+    # print(f"\n{v_MN_ref=}")
 
     xp.testing.assert_allclose(v_MN,
                                v_MN_ref,

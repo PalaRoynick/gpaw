@@ -155,6 +155,8 @@ class BasisFunctionInstance:
     parent_atom: int
     first_mu: int
     position: np.ndarray
+    phi_mG: np.ndarray | None = None
+    """Precalculated values on the grid"""
 
     def get_cutoff(self) -> float:
         """Get the radial cutoff"""
@@ -249,6 +251,12 @@ class LFCAtom:
 
             mu = phi.first_mu
             self.mu_range_w.append(range(mu, mu + phi.get_num_mu()))
+
+            # Give the phi instance a view to its contribution to the phi_wmG
+            # array. Makes looping over all phi easier. In fact the whole
+            # atom.phi_wmG is pretty dumb because its a list of arrays,
+            # not a single contiguous array!
+            phi.phi_mG = phi_mG
 
 
 def build_lfc_system(setups: Setups,
@@ -534,6 +542,14 @@ class BasisFunctionCollectionBase(ABC):
     def num_basis_functions(self) -> int:
         """"""
         return self.mu_range.stop - self.mu_range.start
+
+    def get_phi_instances(self) -> list[BasisFunctionInstance]:
+        """Returns all basis function instances that contribute in this unit
+        cell, including periodic copies extending from other cells"""
+        out = []
+        for atom in self.atoms_a:
+            out += atom.phi_instances
+        return out
 
     @trace
     def set_positions(self, relpos_ac: np.ndarray) -> None:

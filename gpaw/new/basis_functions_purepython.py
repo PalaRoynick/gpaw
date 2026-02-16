@@ -6,6 +6,7 @@ from gpaw.sphere.spherical_harmonics import Y
 
 from typing import override
 import numpy as np
+import itertools
 
 
     # def to_gpu(self,
@@ -110,7 +111,8 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                     i_end = i_start + num_mu
                     nt_sG += np.einsum("sm, mxyz -> sxyz",
                                        f_asi[atom.index][:, i_start:i_end],
-                                       phi_mG**2)
+                                       phi_mG**2,
+                                       optimize=True)
 
                     # for m in range(mu_end - mu_start):
                     #     nt_sG += f_sM[:, mu_start + m] * phi_mG[m, :]**2
@@ -143,34 +145,23 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
             M = self.num_basis_functions()
             res = np.zeros((M, M))
 
-            # TODO this a double loop over all phi.
-            # But our precalculated phi_wmG are grouped per atom...
+            # Double loop over all phi_mu that contribute.
+            # TODO: only do the lower matrix
+            all_phi = self.get_phi_instances()
 
-            for atom1, atom2 in zip(self.atoms_a, self.atoms_a):
-                assert atom1.phi_wmG is not None
-                assert atom2.phi_wmG is not None
+            for phi1, phi2 in itertools.product(all_phi, all_phi):
 
-                for w1, phi_mG1 in enumerate(atom1.phi_wmG):
-                    for w2, phi_mG2 in enumerate(atom2.phi_wmG):
-                        mu = atom1.mu_range_w[w1].start
-                        nu = atom2.mu_range_w[w2].start
+                mu = phi1.first_mu
+                mu_end = mu + phi1.get_num_mu()
+                nu = phi2.first_mu
+                nu_end = nu + phi2.get_num_mu()
 
-                        mu_end = atom1.mu_range_w[w1].stop
-                        nu_end = atom2.mu_range_w[w2].stop
-
-                        p1 = phi_mG1 * vt_G
-
-                        # OK I guess this now needs a phase factor for periodic copies ??
-                        res[mu:mu_end, nu:nu_end] += np.einsum("mxyz,nxyz->mn", p1, phi_mG2, optimize=True)
-
-        # if self.phi_MG_cache is not None:
-        #     # v(x) * phi(x)
-        #     phit_vt_MG = vt_G * self.phi_MG_cache
-
-        #     # "integrate": ie. contract the grid indices.
-        #     res = self.xp.einsum("mxyz, nxyz -> mn",
-        #                          self.phi_MG_cache.conj(),  # type:ignore
-        #                          phit_vt_MG)                # type:ignore
+                p1_vt_mG = phi1.phi_mG * vt_G
+                # "Integrate", ie. contract the grid indices
+                res[mu:mu_end, nu:nu_end] += np.einsum("mxyz, nxyz -> mn",
+                                                       p1_vt_mG,
+                                                       phi2.phi_mG,
+                                                       optimize=True)
 
             # FIXME: Drop half since we promised just the lower half.
             # Very redundant, obviously
