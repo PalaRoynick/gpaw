@@ -25,7 +25,7 @@ def create_basis(ibz: IBZ,
     basis_dtype = complex if \
         np.issubdtype(dtype, np.complexfloating) else float
 
-    use_old_lfc = True
+    use_old_lfc = False
     if use_old_lfc:
         basis = BasisFunctions(grid._gd,
                             [setup.basis_functions_J for setup in setups],
@@ -38,9 +38,14 @@ def create_basis(ibz: IBZ,
     else:
         from gpaw.new.basis_functions import (build_lfc_system,
                                               BasisFunctionCollection)
+        from gpaw.new.basis_functions_purepython \
+            import BasisFunctionCollection_PurePython
         system = build_lfc_system(setups, grid, relpos_ac)
-        basis = BasisFunctionCollection(system,
-                                        use_gpu = (xp is not np))
+        if True:
+            basis = BasisFunctionCollection_PurePython(system)
+        else:
+            basis = BasisFunctionCollection(system,
+                                            use_gpu = (xp is not np))
 
     myM = (basis.Mmax + band_comm.size - 1) // band_comm.size
     basis.set_matrix_distribution(

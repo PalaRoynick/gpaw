@@ -88,6 +88,9 @@ class LFCAtomDefinition:
     id: AtomTypeId
     basis_functions: list[BasisFunctionDesc]
 
+    def __hash__(self):
+        return hash(self.id)
+
 
 @dataclass
 class LFCAtomInstance:
@@ -108,7 +111,7 @@ class LFCSystem:
        ids = []
        for atom_type in self.atom_types:
             if atom_type.id in ids:
-                raise RuntimeError("Atom type IDs must be unique")
+                raise ValueError("Atom type IDs must be unique")
             ids.append(atom_type.id)
 
 
@@ -312,8 +315,11 @@ def build_lfc_system(setups: Setups,
 
     assert len(atoms) == num_atoms
     assert len(unique_phi_lists) == len(atom_types)
-    # check that we didn't accidentally include duplicate types
-    assert len(unique_phi_lists) == len(set(unique_phi_lists))
+    # check that we didn't accidentally include duplicate types.
+    # Crazy oneliner for converting list[list[...]] to unique set and back
+    assert len(unique_phi_lists) \
+        == len(set(tuple(inner) for inner in unique_phi_lists))
+
     assert len(atom_types) == len(set(atom_types))
 
     return LFCSystem(grid, atom_types, atoms)
@@ -323,6 +329,20 @@ class PrecalculationMode(Enum):
     eIfPossible = auto()
     eAlways = auto()
     eNever = auto()
+
+
+@dataclass
+class LFCMatrixDistributionRules:
+    """Used to describe how calculate_potential_matrix should be parallelized.
+    We will parallelize by rows, ie. one rank does rows [mu_start, mu_end).
+    """
+    mu_start: int
+    mu_end: int
+
+    def __post_init__(self):
+        """Validate"""
+        if self.mu_start >= self.mu_end:
+            raise ValueError
 
 
 # Should keep the API as close to the old BasisFunctions as possible,
@@ -346,6 +366,10 @@ class BasisFunctionCollectionBase(ABC):
     """Cached values of basis funcs, phi_mu(x).
     This is 4D: first index is mu (M), then x, y, z indices.
     """
+    _matrix_distribution_rules: LFCMatrixDistributionRules
+    """FIXME: why does this have to be stored?! Old code passes the M ranges
+    to C functions anyway. Outside users do seems to access Mstart, Mend,
+    why?!?"""
 
     atoms_a: list[LFCAtom]
 
@@ -413,6 +437,9 @@ class BasisFunctionCollectionBase(ABC):
             mu = mu_a_end
 
             position_av[atom_idx] = atom.position
+
+        # Default to trivial matrix distribution (ie. one rank does all mu)
+        self.set_matrix_distribution(0, self.Mmax)
 
         relpos_ac = position_av @ np.linalg.inv(self.grid.cell_cv)
         self._place_atoms(relpos_ac)
@@ -551,6 +578,18 @@ class BasisFunctionCollectionBase(ABC):
             out += atom.phi_instances
         return out
 
+    # ??? These need to be exposed directly, outside code accesses them...
+    @property
+    def Mstart(self) -> int:
+        """"""
+        return self._matrix_distribution_rules.mu_start
+
+    @property
+    def Mstop(self) -> int:
+        """"""
+        return self._matrix_distribution_rules.mu_end
+    # end ???
+
     @trace
     def set_positions(self, relpos_ac: np.ndarray) -> None:
         """Updates atom positions"""
@@ -567,9 +606,9 @@ class BasisFunctionCollectionBase(ABC):
         #     self.precalculate_on_grid()
 
     def set_matrix_distribution(self, Mstart: int, Mstop: int) -> None:
-        """TODO!"""
-        self.Mstart = Mstart
-        self.Mstop = Mstop
+        """"""
+        self._matrix_distribution_rules \
+            = LFCMatrixDistributionRules(Mstart, Mstop)
 
     def calculate_potential_matrices(
             self,
@@ -674,19 +713,6 @@ class BasisFunctionCollectionBase(ABC):
                             position=virtual_pos.copy(),
                         )
                     )
-
-                # Seems to work, virtual atom positions match with those of old code
-                # TEMP TEMP Compare with old code (cryptic)
-                # boxes: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = self.grid._gd.get_boxes(rel_center_c, r, True)
-                # for box in boxes:
-                #     start_c, end_c, displacement_c = box
-                #     disp_c = tuple(int(s) for s in displacement_c)
-                #     if disp_c == (0, 0, 0):
-                #         continue
-                #     pos_v = np.dot(rel_center_c- displacement_c, self.grid._gd.cell_cv)
-                #     assert np.all(pos_v == virtual_copies[disp_c].position)
-                # END TEMP
-            # end phi loop
 
             if virtual_copies:
                 self._virtual_phi_aj[atom_idx] = virtual_copies
