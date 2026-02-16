@@ -91,30 +91,42 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         """"""
         num_spins = nt_sG.shape[0]
 
-        # Copy the f_asi dict to a single array
-        f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
-        for atom_idx in range(self.num_atoms):
-            atom_mu_range = self._mu_range_a[atom_idx]
-            f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                f_asi[atom_idx]
-            )
-
         if self.has_precalculated_phi():
             for atom in self.atoms_a:
-
                 assert atom.phi_wmG is not None
+
+                """Loop over all basis funcs of the atom, including those
+                that extend from other cells. Compute also the range of
+                'i' indices corresponding to the phi; this is necessary
+                because some phi_j of the original atom may not extend to the
+                main cell from other cells, so we have not included them in
+                atom.phi_wmG."""
                 for w, phi_mG in enumerate(atom.phi_wmG):
                     mu_start = atom.mu_range_w[w].start
                     mu_end = atom.mu_range_w[w].stop
-                    for m in range(mu_end - mu_start):
-                        nt_sG += f_sM[:, mu_start + m] * phi_mG[m, :]**2
+                    num_mu = mu_end - mu_start
+
+                    i_start = mu_start - atom.first_mu
+                    i_end = i_start + num_mu
+                    nt_sG += np.einsum("sm, mxyz -> sxyz",
+                                       f_asi[atom.index][:, i_start:i_end],
+                                       phi_mG**2)
+
+                    # for m in range(mu_end - mu_start):
+                    #     nt_sG += f_sM[:, mu_start + m] * phi_mG[m, :]**2
 
 
-        # if self.phi_MG_cache is not None:
+        # Copy the f_asi dict to a single array
+        # f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
+        # for atom_idx in range(self.num_atoms):
+        #     atom_mu_range = self._mu_range_a[atom_idx]
+        #     f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
+        #         f_asi[atom_idx]
+        #     )
+        #     # does not work, periodic copies are not accounted for
         #     nt_sG += self.xp.einsum('sm, mxyz -> sxyz',
         #                             f_sM, self.phi_MG_cache**2,  # type:ignore
         #                             optimize=True)  # type:ignore
-
 
         else:
             raise NotImplementedError(
@@ -125,14 +137,40 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         self,
         vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
         """"""
-        if self.phi_MG_cache is not None:
-            # v(x) * phi(x)
-            phit_vt_MG = vt_G * self.phi_MG_cache
 
-            # "integrate": ie. contract the grid indices.
-            res = self.xp.einsum("mxyz, nxyz -> mn",
-                                 self.phi_MG_cache.conj(),  # type:ignore
-                                 phit_vt_MG)                # type:ignore
+        if self.has_precalculated_phi():
+
+            M = self.num_basis_functions()
+            res = np.zeros((M, M))
+
+            # TODO this a double loop over all phi.
+            # But our precalculated phi_wmG are grouped per atom...
+
+            for atom1, atom2 in zip(self.atoms_a, self.atoms_a):
+                assert atom1.phi_wmG is not None
+                assert atom2.phi_wmG is not None
+
+                for w1, phi_mG1 in enumerate(atom1.phi_wmG):
+                    for w2, phi_mG2 in enumerate(atom2.phi_wmG):
+                        mu = atom1.mu_range_w[w1].start
+                        nu = atom2.mu_range_w[w2].start
+
+                        mu_end = atom1.mu_range_w[w1].stop
+                        nu_end = atom2.mu_range_w[w2].stop
+
+                        p1 = phi_mG1 * vt_G
+
+                        # OK I guess this now needs a phase factor for periodic copies ??
+                        res[mu:mu_end, nu:nu_end] += np.einsum("mxyz,nxyz->mn", p1, phi_mG2, optimize=True)
+
+        # if self.phi_MG_cache is not None:
+        #     # v(x) * phi(x)
+        #     phit_vt_MG = vt_G * self.phi_MG_cache
+
+        #     # "integrate": ie. contract the grid indices.
+        #     res = self.xp.einsum("mxyz, nxyz -> mn",
+        #                          self.phi_MG_cache.conj(),  # type:ignore
+        #                          phit_vt_MG)                # type:ignore
 
             # FIXME: Drop half since we promised just the lower half.
             # Very redundant, obviously
