@@ -70,11 +70,9 @@ class ETDM:
         the gradient norm is below tolerance or maximum iterations are reached.
         """
         while (not self.is_converged) and self.iter < self._max_iter:
-            # Update the search direction using LBFGS
-            self.searchdir_algo.update(self.a_u, self.gradient)
 
-            # Move parameters along the search direction
-            self.move()
+            # perform one iteration
+            self.one_iteration()
 
             # Increment iteration counter
             self.iter += 1
@@ -106,7 +104,21 @@ class ETDM:
             self.a_u = p_u
         else:
             # Accumulated update: C_{j+1} = C_0 exp(sum_0^j A_j)
+            # here there should be a reset every tot iterations?
             self.a_u += p_u
+
+    def one_iteration(self):
+
+        """ 
+        Just one iteration of optimization using the search algorithm
+        """
+
+        # Update the search direction using LBFGS
+        self.searchdir_algo.update(self.a_u, self.gradient)
+
+        # Move parameters along the search direction
+        self.move()
+        
 
     @property
     def a_u(self):

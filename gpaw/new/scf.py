@@ -75,6 +75,8 @@ class SCFLoop:
 
         self.occ_calc.initialize_reference_orbitals()
 
+        # eigensolver.initialization()
+
         if self.update_density_and_potential:
             dens_error = self.mixer.mix(density)
         else:
@@ -112,6 +114,7 @@ class SCFLoop:
                 write_iteration(cc, converged_items, entries, ctx, log)
 
             if converged:
+            # fare canonical orbitals
                 converged = all(
                     ext.post_scf_convergence(
                         ibzwfs, nelectrons, self.occ_calc, self.mixer, log)

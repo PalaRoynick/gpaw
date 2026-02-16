@@ -88,6 +88,9 @@ class SkewHermitian:
         self._len = len(self.ind_up[0])
 
         # Assign initial data (if provided)
+
+        # can i write here id data = None che è un vettore zero delle dim giuste?
+        
         self.data = data
 #        assert representation == "full"
 

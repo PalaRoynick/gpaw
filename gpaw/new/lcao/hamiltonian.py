@@ -13,6 +13,8 @@ from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
 
+from gpaw.new.etdm.tools2 import get_n_occ
+
 
 class HamiltonianMatrixCalculator:
     def calculate_matrix(self,
@@ -188,3 +190,46 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
         return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_saii,
                                                     self.basis,
                                                     include_kinetic=False)
+
+
+    def calculate_kinetic_energy_directly(self, ):
+        """
+        Calculate kinetic energy as 1/2 (nable psi)^2
+        it gives better estimate of kinetic energy during the SCF.
+        Important for direct min.
+
+        'calculate_kinetic_energy' method gives a correct
+        value of kinetic energy only at self-consistent solution.
+
+        :param density:
+        :param wfs:
+        :return: total kinetic energy
+        """
+
+
+    def calculate_kinetic_energy_using_kin_en_matrix(self, density,
+                                                         wfs):
+            """
+            E_k = sum_{M'M} rho_MM' T_M'M
+            better agreement between gradients of energy and
+            the total energy during the direct minimization.
+            This is important when the line search is used.
+            Also avoids using the eigenvalues which are
+            not calculated during the direct minimization.
+
+            'calculate_kinetic_energy' method gives a correct
+            value of kinetic energy only at self-consistent solution.
+
+            :param density:
+            :param wfs:
+            :return: total kinetic energy
+            """
+
+        # pseudo-part
+            e_kinetic = 0.0
+            e_kin_paw = 0.0
+
+            for kpt in wfs.wfs_u:
+                n_occ = get_n_occ(wfs.get_all_eigs_and_occs(broadcast=True)[1])
+
+                

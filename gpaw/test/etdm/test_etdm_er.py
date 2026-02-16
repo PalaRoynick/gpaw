@@ -17,7 +17,7 @@ def ibzwfs_from_new_gpaw(tmp_path_factory):
         mode='pw',
         xc='LDA',
         nbands=15,
-        spinpol = True,
+        spinpol = False,
         kpts=(1, 1, 1),
         txt=str(txt_file),
     )

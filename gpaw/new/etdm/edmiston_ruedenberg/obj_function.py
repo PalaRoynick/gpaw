@@ -22,7 +22,7 @@ class EdmistonRuedenberg(ObjectiveFunctionETDM):
         # calculate list of occupation numbers, for all kpts and spins
         # f_n is a np array = [spin, kpt, list of occ]
 
-        f_n = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1]
+        f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
 
         assert nkps == 1
 
