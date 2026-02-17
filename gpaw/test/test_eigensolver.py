@@ -162,9 +162,9 @@ def test_li2(eigensolver, gpaw_new):
         pytest.skip('Only implemented for new GPAW')
 
     atoms = Atoms('Li2',
-              [[0, 0, 0], [0.9, 0.9, 0]],
-              cell=[2.6, 2.6, 1.4],
-              pbc=True)
+                  [[0, 0, 0], [0.9, 0.9, 0]],
+                  cell=[2.6, 2.6, 1.4],
+                  pbc=True)
     atoms.center()
 
     if eigensolver == 'etdm-fdpw':
