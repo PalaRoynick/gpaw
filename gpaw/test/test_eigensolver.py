@@ -191,5 +191,45 @@ def test_li2(eigensolver, gpaw_new):
     assert eig0 == pytest.approx(eigt, abs=1e-4)
 
 
+@pytest.mark.parametrize('eigensolver', ['ppcg', 'davidson', 'etdm-fdpw'])
+def test_h2(eigensolver, gpaw_new):
+
+    et = -7.075390
+    fz = 2.14124
+    ft = np.array([[0, 0, fz], [0, 0, -fz]])
+    eigt = [-10.5155343, 0.05254895, 3.32638484, 5.49102227]
+
+    if not gpaw_new:
+        pytest.skip('Only implemented for new GPAW')
+
+    atoms = molecule('H2', cell=[4, 4, 4])
+    atoms.center()
+    atoms.set_pbc(True)
+
+    if eigensolver == 'etdm-fdpw':
+        eigensolver = {'name': 'etdm-fdpw', 'converge_unocc': True}
+        mixer = {'backend': 'no-mixing'}
+    else:
+        mixer = {}
+
+    params = {'mode': 'pw',
+              'nbands': 4,
+              'kpts': {'size': [1, 1, 1], 'gamma': True},
+              'eigensolver': eigensolver,
+              'mixer': mixer,
+              'convergence': {'bands': 4}}
+
+    calc = GPAW(**params)
+    atoms.calc = calc
+    e0 = atoms.get_potential_energy()
+    f0 = atoms.get_forces()
+    eig0 = atoms.calc.get_eigenvalues()
+    print(eigensolver, e0, f0, eig0)
+
+    assert e0 == pytest.approx(et, abs=1e-5)
+    assert f0 == pytest.approx(ft, abs=1e-3)
+    assert eig0 == pytest.approx(eigt, abs=1e-4)
+
+
 if __name__ == '__main__':
     test_li2('ppcg', 1)
