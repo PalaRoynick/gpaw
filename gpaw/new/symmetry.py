@@ -453,12 +453,13 @@ class Symmetries:
                 t_c = t1_c @ U2_cc + t2_c
                 for U3_cc, t3_c in zip(self.rotation_scc, self.translation_sc):
                     dt_c = t_c - t3_c
-                    if abs(dt_c - dt_c.round()).max() > self.tolerance:
+                    if abs(dt_c - dt_c.round()).max() > 1e-10: #ASD self.tolerance * 2:
                         continue
                     if (U_cc != U3_cc).any():
                         continue
                     break
                 else:  # no break
+                    print(self)
                     raise SymmetryAnalysisBug(
                         'Sorry!  Try using spglib.standardize_cell(...)')
 

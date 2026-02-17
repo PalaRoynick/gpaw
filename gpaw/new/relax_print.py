@@ -21,6 +21,8 @@ def atos(array, fmt):
 
 
 def pretty(C_cv, title=None, units=None, decimals=7, symbolize=False, eps=1e-4, *, log):
+    print('Pretty getting', C_cv, title)
+    C_cv = C_cv.copy()
     if symbolize:
         # Find smallest non zero
         alpha = np.min(np.abs(C_cv[np.nonzero(np.abs(C_cv) > eps)]))
@@ -85,7 +87,7 @@ def atom_table(atoms, *, log):
         for v in range(3):
             s += f"{a.position[v]:10.5f} "
         for v in range(3):
-            s += f"{a.scaled_position[v]:10.5f} "
+            s += f"{a.scaled_position[v]:20.15f} "
         log(s)
 
 
