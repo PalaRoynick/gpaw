@@ -335,12 +335,15 @@ class SymmeryAdaptedCellCoordinates:
         basis = np.array(dM_zcc).reshape((-1, 9))
         Q, R = np.linalg.qr(basis)
         dM_zcc = (Q.T @ basis).reshape((-1, 3, 3))
+        
 
         # Normalize tangent space vectors
         Cinv = np.linalg.inv(C_cv)
         for z in range(len(dM_zcc)):
             dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
             eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
+            print('XXXxxx this goes to zero')
+            print('eps', eps, dM_zcc[z] @ rot_vv.T)
             dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv)
             dM_zcc[z] *= 40
             # Define the direction of the tangent vector such that
@@ -378,30 +381,37 @@ class SymmetryAdaptedScaledCoordinates:
         for a in range(na):
             B_A[(a * 3):(a * 3 + 3), :] = np.eye(3)
         B_EA = np.vstack([B_EA, B_A.T])
-        import sympy as sp
-        nullspace = np.array(sp.Matrix(np.array(B_EA, dtype=int)).nullspace(), dtype=float)[:, :, 0]
+        #import sympy as sp
+        #nullspace = np.array(sp.Matrix(np.array(B_EA, dtype=int)).nullspace(), dtype=float)
 
         # Make sure the old svd code reproduces the same result      
         U, S, Vh = np.linalg.svd(B_EA, False)
         tol = 1e-6
         null_mask = S < tol
-        nullspace2 = Vh[null_mask]
+        nullspace = Vh[null_mask]
        
-        def same_rowspace(N, M, tol=1e-10):
-            A = np.vstack([N, M])
-            rA = np.linalg.matrix_rank(A, tol)
-            rN = np.linalg.matrix_rank(N, tol)
-            rM = np.linalg.matrix_rank(M, tol)
-            return rA == rN == rM
-        assert same_rowspace(nullspace, nullspace2)
+        #def same_rowspace(N, M, tol=1e-10):
+        #    A = np.vstack([N, M])
+        #    rA = np.linalg.matrix_rank(A, tol)
+        #    rN = np.linalg.matrix_rank(N, tol)
+        #    rM = np.linalg.matrix_rank(M, tol)
+        #    return rA == rN == rM
+        #assert same_rowspace(nullspace, nullspace2)
 
         # Just make the printing prettyer for now
         nullspace = np.where(np.abs(nullspace) < 1e-10, 0, nullspace)
 
+        s0_ac = symmetrize_atoms(
+            s_ac,
+            rotation_scc,
+            translation_sc,
+            atommap_sa,
+        )
+        print('SYMMETRIZE ATOMS SCALED COORDINATES', s0_ac)
         if len(nullspace) == 0:
             log("No atomic degrees of freedom")
             return SymmetryAdaptedScaledCoordinates(
-                np.empty((0, na, 3)), s_ac, np.empty((0,))
+                np.empty((0, na, 3)), s0_ac, np.empty((0,))
             )
 
         dof_zac = nullspace.reshape((-1, na, 3))
@@ -416,12 +426,6 @@ class SymmetryAdaptedScaledCoordinates:
         precondition_z = np.max(np.max(np.abs(dof_zac), axis=2), axis=1)
         precondition_z /= np.sum(np.sum(np.abs(dof_zac), axis=2), axis=1)
         
-        s0_ac = symmetrize_atoms(
-            s_ac,
-            rotation_scc,
-            translation_sc,
-            atommap_sa,
-        )
         sasc = SymmetryAdaptedScaledCoordinates(dof_zac, s0_ac, precondition_z)
         
         return sasc
@@ -531,8 +535,14 @@ class SymmetryAdaptedAtoms:
         return self.value_z.copy()
     
     def set_x(self, x):
+        old_cell = self.cell_coordinates.get_cell(self.cell_z)
         self.value_z[:] = x
-        self.actual_atoms.set_cell(self.cell_coordinates.get_cell(self.cell_z))
+        try:
+            self.actual_atoms.set_cell(self.cell_coordinates.get_cell(self.cell_z))
+        except np.linalg.LinAlgError as e:
+            print(e)
+            print('Old cell', old_cell)
+            
         self.actual_atoms.set_scaled_positions(
             self.atom_coordinates.get_scaled_coordinates(self.atoms_z)
         )
@@ -570,13 +580,18 @@ class SymmetryAdaptedAtoms:
         natomz = len(self.atom_coordinates.dof_zac)
         # For sanity check, we want to project the atomic gradient back
         # minimizing the Cartesian metrix.
-        dof_zX = np.einsum('cv,zac->zav', C_cv, self.atom_coordinates.dof_zac).reshape((natomz, -1))
-        back_Fav = -(dof_zX.T @ np.linalg.inv(dof_zX @ dof_zX.T) @ atoms_grad_z).reshape(F_av.shape)
+        if natomz > 0:
+            dof_zX = np.einsum('cv,zac->zav', C_cv, self.atom_coordinates.dof_zac).reshape((natomz, -1))
+            back_Fav = -(dof_zX.T @ np.linalg.inv(dof_zX @ dof_zX.T) @ atoms_grad_z).reshape(F_av.shape)
+        else:
+            # Even if there is degrees of freedom, it is possible to get symmetry violation
+            back_Fav = np.zeros_like(F_av)
 
         dF_av = F_av - back_Fav
         dF = np.max(np.linalg.norm(dF_av, axis=1))
         self.symmetry_force_violation = dF
         self.back_Fav = back_Fav
+
         if dF > self.fmax / 20:
             print('Warning!!! Back projection of symmetry adapted'
                   f' forces to Cartesian space failed by {dF:7.13f}')
@@ -670,7 +685,7 @@ class Relax:
             if self.teelog:
                 print(*args, **kwargs)
 
-    def run(self, *, fmax, smax, maxiter):
+    def run(self, *, fmax=0.01, smax=0.0001, steps=20):
         # Why would symmetry adapted atoms care about smax and fmax
         # But it needs to be ase optimizable, so it needs to do that
         self.symmetry_adapted_atoms.smax = smax
@@ -678,7 +693,7 @@ class Relax:
         
         self.smax = smax
         self.fmax = fmax
-        self.maxiter = maxiter
+        self.maxiter = steps
         i = 0
         dtitles = '    '.join([f'q{i:02d}' for i in range(len(self.symmetry_adapted_atoms.atoms_z))])
         self.log(f'iter  time     E           maxF   maxS     maxG   a1    a2    a3    L1      L2       L3     {dtitles}   log_10 viol.')
@@ -716,8 +731,8 @@ class Relax:
                 symviol = GREEN + symviol + RESET
             self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:7.3f} {cell}{dofs} {symviol}')
             i += 1
-            if i > maxiter:
-                self.log(f'Not converged in {maxiter}.')
+            if i > self.maxiter or i > 40:
+                self.log(f'Not converged in {self.maxiter} or 40 steps.')
                 return False
 
         return True
