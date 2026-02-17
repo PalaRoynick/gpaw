@@ -189,7 +189,7 @@ class Symmetry:
                 ftrans_jc -= np.rint(ftrans_jc)
                 for ft_c in ftrans_jc:
                     try:
-                        nom_c, denom_c = np.array([frac(ft, tol=self.tol)
+                        nom_c, denom_c = np.array([frac(ft)
                                                    for ft in ft_c]).T
                     except ValueError:
                         continue

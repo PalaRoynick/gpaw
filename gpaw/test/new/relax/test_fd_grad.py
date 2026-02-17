@@ -3,6 +3,7 @@ from ase.calculators.emt import EMT
 from gpaw.new.relax import Relax
 import numpy as np
 from ase.optimize.bfgs import BFGS
+from gpaw.mpi import world
 
 def test_generalized_coordinate_units():
     """Test that displacements are in Å and stresses in eV/Å^3.
@@ -16,7 +17,7 @@ def test_generalized_coordinate_units():
     """
     atoms = bulk('AuAg', crystalstructure='wurtzite', a=3.24, c=5.20)
     print(atoms.cell.volume, 'SCALE')
-    relax = Relax(atoms=atoms, calc=EMT(), optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01)
+    relax = Relax(atoms=atoms, calc=EMT, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01, comm=world)
     optimizable = relax.symmetry_adapted_atoms.__ase_optimizable__()
     for z in range(3):
         vec = np.zeros((3,))
@@ -28,12 +29,12 @@ def test_generalized_coordinate_units():
         print('generalized grad', grad[2], 'vs.', F)
         scale = np.max(np.abs(grad[2])) / np.max(np.abs(F))
         print('SCALE F', scale)
-        assert 0.9 < scale < 1.1, scale
+        assert 3.9 < scale < 4.1, scale
         
         print('generalized gradS S', grad[:2], 'vs', S)
         scale = np.max(np.abs(grad[:2])) / np.max(np.abs(S))
         print('SCALE S', scale)
-        assert 0.9 < scale < 1.1, scale
+        assert 39.9 < scale < 40.1, scale
 
         vec[z] = 1e-6
         optimizable.set_x(vec)
@@ -47,7 +48,7 @@ def test_generalized_coordinate_units():
 
 def test_fd_gradients():
     atoms = bulk('AuAg', crystalstructure='wurtzite', a=3.24, c=5.20)
-    relax = Relax(atoms=atoms, calc=EMT(), optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01)
+    relax = Relax(atoms=atoms, calc=EMT, optimizer_factory=lambda atoms: BFGS(atoms, trajectory='a.traj'), symprec=0.01, comm=world)
     optimizable = relax.symmetry_adapted_atoms.__ase_optimizable__()
     for z in range(3):
         vec = np.zeros((3,))

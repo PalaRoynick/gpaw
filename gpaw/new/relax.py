@@ -302,20 +302,34 @@ class SymmeryAdaptedCellCoordinates:
         def e(i, j):
             eps_ij = np.zeros((3, 3))
             eps_ij[i, j] = 1.0
+            eps_ij[j, i] = 1.0
             return eps_ij
+
+        eps_ijk = np.zeros((3, 3, 6))
+        k = 0
+        for i in range(3):
+            for j in range(i, 3):
+                if i == j:
+                    s = 1.0
+                else:
+                    s = 2 ** (-0.5)
+                eps_ijk[i, j, k] = s
+                eps_ijk[j, i, k] = s
+                k += 1
+
 
         A_blocks = []
         for U_vv in U_svv:
             rows = []
-            for i in range(3):
-                for j in range(3):
-                    row = U_vv @ e(i, j) @ U_vv.T - e(i, j)
-                    rows.append(row.reshape((9,)))
+            for k in range(6):
+                row = U_vv @ eps_ijk[:, :, k] @ U_vv.T - eps_ijk[:, :, k]
+                rows.append(row.reshape((9,)))
             A_blocks.append(np.vstack(rows))
         for c in range(3):
             if not pbc_c[c]:
                 A_blocks.append(e(c, c).reshape((9,)))
         A = np.vstack(A_blocks)
+        A = A @ eps_ijk.reshape((9, 6))
         # Compute null space via SVD
         U, S, Vh = np.linalg.svd(A)
         tol = 1e-6
@@ -324,6 +338,7 @@ class SymmeryAdaptedCellCoordinates:
         dM_zcc = []
         dM_zvv = []
         for B in nullspace:
+            B = B @ eps_ijk.reshape((9, 6)).T
             dM_vv = B.reshape((3, 3))
             dof = osymC_cv @ dM_vv @ osymC_cv.T
             dM_zcc.append(dof)
@@ -342,6 +357,9 @@ class SymmeryAdaptedCellCoordinates:
         for z in range(len(dM_zcc)):
             dC = chol_derivative(M_cc, dM_zcc[z]) @ rot_vv.T
             eps = 0.5 * (Cinv @ dC + dC.T @ Cinv.T)
+            if np.sum(np.abs(eps)) < 1e-5:
+                from code import interact
+                interact(local=locals())
             print('XXXxxx this goes to zero')
             print('eps', eps, dM_zcc[z] @ rot_vv.T)
             dM_zcc[z] /= np.sum(np.abs(eps)) * np.linalg.det(C_cv)
@@ -445,6 +463,7 @@ class SymmetryAdaptedAtoms:
         self.actual_atoms = actual_atoms
         self.symmetries = symmetries
         self.symmetry_force_violation = np.inf
+        self.fmax = None
 
         pretty_subheader("Symmetry adapted cell coordinates", log)
         self.cell_coordinates: SymmeryAdaptedCellCoordinates = SymmeryAdaptedCellCoordinates.build(
@@ -592,7 +611,7 @@ class SymmetryAdaptedAtoms:
         self.symmetry_force_violation = dF
         self.back_Fav = back_Fav
 
-        if dF > self.fmax / 20:
+        if dF > (self.fmax or 0.01) / 20:
             print('Warning!!! Back projection of symmetry adapted'
                   f' forces to Cartesian space failed by {dF:7.13f}')
             print('atom Obtained force           Back projected force')
