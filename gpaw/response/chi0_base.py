@@ -195,19 +195,26 @@ class Chi0ComponentCalculator:
             performed using the linear tetrahedron method.
             If == 'point integration', point integration is used.
         """
+        f = open(f'/home/kuisma/dsd_{context.comm.rank}.txt', 'w')
         self.gs = gs
         self.context = context
+        print('dsd1', file=f, flush=True)
         self.kptpair_factory = KPointPairFactory(gs, context)
+        print('dsd2', file=f, flush=True)
 
         self.nblocks = nblocks
+        print('dsd3', file=f, flush=True)
         self.blockcomm, self.kncomm = block_partition(
             self.context.comm, self.nblocks)
+        print('dsd4', file=f, flush=True)
 
         self.qsymmetry = QSymmetryAnalyzer.from_input(qsymmetry)
+        print('dsd5', file=f, flush=True)
 
         # Set up integrator
         self.integrationmode = integrationmode
         self.integrator = self.construct_integrator()
+        print('dsd6', file=f, flush=True)
 
     @property
     def pbc(self):

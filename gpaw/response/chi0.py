@@ -48,15 +48,21 @@ class Chi0Calculator:
             eshift : float or None
                 Energy shift of the conduction bands in eV.
         """
+        f = open(f'/home/kuisma/c_{context.comm.rank}.txt', 'w')
         self.eshift = eshift / Ha if eshift else None
+        print('csd1', file=f, flush=True)
         self.gs = ResponseGroundStateAdapter.from_input(gs)
+        print('csd2', file=f, flush=True)
         self.context = ResponseContext.from_input(context)
+        print('csd3', file=f, flush=True)
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
             nblocks=nblocks, eshift=self.eshift, **kwargs)
+        print('csd4', file=f, flush=True)
         self.chi0_opt_ext_calc = Chi0OpticalExtensionCalculator(
             self.gs, self.context,
             intraband=intraband, rate=rate, eshift=self.eshift, **kwargs)
+        print('csd5', file=f, flush=True)
 
     @property
     def wd(self) -> FrequencyDescriptor:

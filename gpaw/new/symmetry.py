@@ -218,6 +218,8 @@ class Symmetries:
             self.translation_sc = np.zeros((len(self.rotation_scc), 3))
         else:
             self.translation_sc = np.array(translations)
+            lcm = self.lcm(tolerance=tolerance)
+            self.translation_sc = np.round(self.translation_sc * lcm) / lcm
         if atommaps is None:
             self.atommap_sa = np.empty((len(self.rotation_scc), 0), int)
         else:
@@ -392,9 +394,9 @@ class Symmetries:
                 F_av[a2] += np.dot(F0_av[a1], op_vv)
         return F_av / len(self)
 
-    def lcm(self) -> list[int]:
+    def lcm(self, tolerance=1e-4) -> list[int]:
         """Find lowest common multiple compatible with translations."""
-        return [np.lcm.reduce([frac(t, tol=1e-4)[1] for t in t_s])
+        return [np.lcm.reduce([frac(t, max_denominator=80)[1] for t in t_s])
                 for t_s in self.translation_sc.T]
 
     @cached_property
@@ -451,12 +453,13 @@ class Symmetries:
                 t_c = t1_c @ U2_cc + t2_c
                 for U3_cc, t3_c in zip(self.rotation_scc, self.translation_sc):
                     dt_c = t_c - t3_c
-                    if abs(dt_c - dt_c.round()).max() > 1e-10:
+                    if abs(dt_c - dt_c.round()).max() > 1e-10: #ASD self.tolerance * 2:
                         continue
                     if (U_cc != U3_cc).any():
                         continue
                     break
                 else:  # no break
+                    print(self)
                     raise SymmetryAnalysisBug(
                         'Sorry!  Try using spglib.standardize_cell(...)')
 
