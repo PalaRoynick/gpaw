@@ -19,6 +19,7 @@ from gpaw.mpi import world
 from gpaw.gpu import cupy as cp, as_xp, as_np, cupy_is_fake
 from gpaw import GPAW_NO_C_EXTENSION
 
+
 if TYPE_CHECKING:
     from gpaw.mpi import MPIComm
     world = cast(MPIComm, world)
@@ -130,8 +131,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    return make_test_system()
-    #return make_test_system_small()
+    #return make_test_system()
+    return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -164,27 +165,6 @@ def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
 
     basis.set_positions(relpos_ac)
     return basis
-
-
-def calculate_potential_matrix_old_code(
-        system: LFCSystem,
-        vt_R: UGArray) -> Matrix:
-    """Uses old CPU LFC code so should be both reliable and reasonably fast.
-    Result matrix will be on GPU if vt_R is a Cupy array, otherwise on CPU.
-    """
-
-    xp = vt_R.xp
-    basis = make_legacy_basis_functions(system, xp=xp)
-
-    N = cast(int, basis.Mmax)
-    # this still only works with numpy
-    V_MM = Matrix(N, N, xp=np)
-    basis.calculate_potential_matrix(as_np(vt_R.data), V_MM.data, 0)
-    V_MM = V_MM.to_xp(xp=xp)
-
-    # other one of these does the full matrix instead of lower-half
-    V_MM.data = xp.tril(V_MM.data)
-    return V_MM
 
 
 def make_basis(system: LFCSystem,
@@ -230,24 +210,24 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
 
+    #basis.set_matrix_distribution(1, 2)
+
     # Test array that we sandwich between basis funcs and integrate
-    vt_R: UGArray = system.grid.zeros(xp=xp)
+    vt_G: UGArray = system.grid.zeros(xp=xp)
 
     rng = xp.random.default_rng(222)
-    noise = rng.random(vt_R.data.shape)
-    vt_R.data += noise
+    noise = rng.random(vt_G.data.shape)
+    vt_G.data += noise
 
-    v_MN = basis.calculate_potential_matrix(vt_R.data)
+    V_MN = basis.calculate_potential_matrix(vt_G.data)
 
     # Repeat with old code and compare
-    v_MN_ref = calculate_potential_matrix_old_code(system, vt_R)
-    v_MN_ref = v_MN_ref.data
+    basis_old = make_legacy_basis_functions(system, xp=xp)
+    V_MN_ref = xp.zeros((basis_old.Mmax, basis_old.Mmax))
+    basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
 
-    # print(f"\n{v_MN=}")
-    # print(f"\n{v_MN_ref=}")
-
-    xp.testing.assert_allclose(v_MN,
-                               v_MN_ref,
+    xp.testing.assert_allclose(V_MN,
+                               V_MN_ref,
                                rtol=1e-10,
                                atol=1e-12)
 

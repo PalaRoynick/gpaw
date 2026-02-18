@@ -145,8 +145,13 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
             M = self.num_basis_functions()
             res = np.zeros((M, M))
 
-            # Double loop over all phi_mu that contribute.
-            # TODO: only do the lower matrix
+            """Double loop over all phi_mu that contribute.
+            We only need the lower half of the matrix, however this is quite
+            tricky to achieve without one extra loop (slow).
+            So instead we do some elements in the upper half too,
+            while avoiding those that are easy to drop. Seems consistent with
+            what the old CPU-LFC code does (comparison tests match exactly).
+            """
             all_phi = self.get_phi_instances()
 
             for phi1, phi2 in itertools.product(all_phi, all_phi):
@@ -156,6 +161,11 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 nu = phi2.first_mu
                 nu_end = nu + phi2.get_num_mu()
 
+                # Clamp mu range to drop some mu > nu.
+                mu = max(mu, nu)
+                if mu >= mu_end:
+                    continue
+
                 p1_vt_mG = phi1.phi_mG * vt_G
                 # "Integrate", ie. contract the grid indices
                 res[mu:mu_end, nu:nu_end] += np.einsum("mxyz, nxyz -> mn",
@@ -163,9 +173,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                                                        phi2.phi_mG,
                                                        optimize=True)
 
-            # FIXME: Drop half since we promised just the lower half.
-            # Very redundant, obviously
-            return self.xp.tril(res) * self.grid.dv  # type:ignore
+            return res * self.grid.dv
         else:
             raise NotImplementedError(
                 "PurePython BasisFunctions without precalculation")

@@ -521,6 +521,9 @@ class BasisFunctionCollectionBase(ABC):
              mu nu    |     mu            nu
                       /
 
+        Specifically, only the lower triangle and the diagonal are guaranteed
+        to be sensible. Upper triangle may still be modified (old CPU code in
+        fact does do this).
         Returns Vt_MM.
         """
         raise NotImplementedError
@@ -606,7 +609,9 @@ class BasisFunctionCollectionBase(ABC):
         #     self.precalculate_on_grid()
 
     def set_matrix_distribution(self, Mstart: int, Mstop: int) -> None:
-        """"""
+        """FIXME: why do we need stateful Mstart, Mstop if they don't affect
+        data stored in this class in any way? Why not just pass them as inputs
+        to functions actually do stuff with them?"""
         self._matrix_distribution_rules \
             = LFCMatrixDistributionRules(Mstart, Mstop)
 
