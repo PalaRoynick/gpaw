@@ -109,7 +109,7 @@ class ETDM:
 
     def one_iteration(self):
 
-        """ 
+        """
         Just one iteration of optimization using the search algorithm
         """
 
@@ -118,7 +118,6 @@ class ETDM:
 
         # Move parameters along the search direction
         self.move()
-        
 
     @property
     def a_u(self):
