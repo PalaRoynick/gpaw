@@ -131,8 +131,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    #return make_test_system()
-    return make_test_system_small()
+    return make_test_system()
+    #return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -223,6 +223,7 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
 
     # Repeat with old code and compare
     basis_old = make_legacy_basis_functions(system, xp=xp)
+    #basis_old.set_matrix_distribution(1, 2)
     V_MN_ref = xp.zeros((basis_old.Mmax, basis_old.Mmax))
     basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
 
@@ -243,13 +244,15 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     """"""
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
+    # Matrix distribution does not matter here.
+    # TODO separate test that it indeed does not matter?
 
     # Test density
     rng = xp.random.default_rng(432)
     sG_shape = (num_spins, *system.grid.size)
     nt_sG = rng.random(sG_shape)
 
-    nt_sG_copy = nt_sG.copy()
+    nt_sG_ref = nt_sG.copy()
 
     # Make test "array" f_asi. This is actually a dict of arrays, because
     # the number of basis functions (range of i) can vary per atom.
@@ -264,7 +267,8 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     # Repeat with old code.
     # this still only works with numpy (density is converted internally)
     f_asi = {a: as_np(f_asi[a]) for a in f_asi.keys()}
-    basis = make_legacy_basis_functions(system, xp=np)
-    basis.add_to_density(nt_sG_copy, f_asi)
+    basis_old = make_legacy_basis_functions(system, xp=np)
+    basis_old.set_matrix_distribution(1, 2)
+    basis_old.add_to_density(nt_sG_ref, f_asi)
 
-    xp.testing.assert_allclose(nt_sG, nt_sG_copy, rtol=1e-10, atol=1e-12)
+    xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
