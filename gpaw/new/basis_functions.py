@@ -348,8 +348,15 @@ class BasisFunctionCollectionBase(ABC):
 
     # Prefer struct-of-arrays type data storage here. Spline storage is left
     # for subclasses to decide. We always index atoms as 0, 1, ... N.
-    # With domain parallelization this will require index mapping (TODO)
 
+    """The following containers are "global" and "constant": they describe the
+    entire system independently of possible domain decomposition, and do not
+    change after being initialized in the constructor. IE: We do not change
+    atom or basis function indexing at any point.
+    """
+    atoms_a: list[LFCAtom]
+    """List of all atoms in the system, including those which reside in other
+    MPI domains."""
     _atom_type_a: list[AtomTypeId]
     """Type id of atom 'a'. This can be used to look up basis functions for
     a given atom instance."""
@@ -359,19 +366,20 @@ class BasisFunctionCollectionBase(ABC):
     """Range of mu indices for atom 'a'."""
     _atom_for_mu: dict[int, int]
     """Gives index of the atom that contributes to given mu."""
-    _phi_MG_cache: np.ndarray | cp.ndarray | None
-    """Cached values of basis funcs, phi_mu(x).
-    This is 4D: first index is mu (M), then x, y, z indices.
-    """
+
+    # This is local to each MPI rank in the grid communicator
+    my_atom_indices: list[int]
+    """Indices of all atoms whose center resides in this MPI rank (domain
+    decomposition)."""
+
     _matrix_distribution_rules: LFCMatrixDistributionRules
     """FIXME: why does this have to be stored?! Old code passes the M ranges
     to C functions anyway. Outside users do seems to access Mstart, Mend,
     why?!?"""
 
-    atoms_a: list[LFCAtom]
 
-    _phi_aj: list[list[BasisFunctionInstance]]
-    _virtual_phi_aj: dict[int, list[BasisFunctionInstance]]
+    #_phi_aj: list[list[BasisFunctionInstance]]
+    #_virtual_phi_aj: dict[int, list[BasisFunctionInstance]]
 
     def __init__(self,
                  system: LFCSystem,
@@ -383,7 +391,9 @@ class BasisFunctionCollectionBase(ABC):
         Parameters
         ----------
         system : LFCSystem
-            Defines the grid and atom content on the grid.
+            Defines the grid and atom content on the grid. Should contain all
+            atoms in the main unit cell even if the grid is set to use domain
+            decomposition.
         use_gpu : bool, optional
             If True, basis functions will be computed and stored
             **exclusively** on GPU.
@@ -411,14 +421,14 @@ class BasisFunctionCollectionBase(ABC):
 
         self._init_basis_functions(system.atom_types)
 
-        # Build lookup lists: atom -> type ID; atom -> mu range.
-        # Also build the atom position array
+        # Build lookup lists:
+        #   atom -> type ID; atom -> mu range; mu -> atom idx.
+        # Also build the atom position array.
         mu = 0
         self._atom_type_a = []
         self._mu_range_a = []
         self._atom_for_mu = {}
         position_av = np.empty((num_atoms, 3), np.float64)
-
 
         for atom_idx, atom in enumerate(system.atoms):
             if len(atom.type.basis_functions) == 0:
@@ -441,11 +451,11 @@ class BasisFunctionCollectionBase(ABC):
 
             position_av[atom_idx] = atom.position
 
-        # Default is to always compute do the full V_munu matrix
-        self.set_matrix_distribution(0, self.Mmax)
-
         relpos_ac = position_av @ np.linalg.inv(self.grid.cell_cv)
         self._place_atoms(relpos_ac)
+
+        # Default is to always compute do the full V_munu matrix
+        self.set_matrix_distribution(0, self.Mmax)
 
         # TODO: actually check if we can/should precalculate
         if mode != PrecalculationMode.eNever:
@@ -586,11 +596,6 @@ class BasisFunctionCollectionBase(ABC):
     def Mmax(self) -> int:
         """Last global index mu."""
         return self.mu_range.stop
-
-    @cached_property
-    def my_atom_indices(self) -> range:
-        """TODO handle distributed grid"""
-        return range(self.num_atoms)
 
     def get_atoms_for_mu(self, mu_start: int, mu_end: int) -> list[LFCAtom]:
         """Returns list of atoms that contribute to indices in range
