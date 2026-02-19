@@ -342,6 +342,17 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
                rhot_g) -> float:
         vHt_g.data[:] = 4 * np.pi * self.strength * rhot_g.data
         eps_R = self.grid.from_data(self.dielectric.eps_gradeps[0])
+        if 0:
+            z = eps_R.desc.xyz()[0, 0, :, 2]
+            z1 = 11.3 / 0.529
+            z2 = 13.9 / 0.529
+            a = 2.0
+            eps_R.data[:] = (
+                1 +
+                77 * np.exp(-a * (z - z1)**2) +
+                77 * np.exp(-a * (z - z2)**2))
+            eps_R.data[:, :, np.logical_and(z > z1, z < z2)] = 78
+
         self.eps0_R = eps_R.gather()
 
         vHt0_g = vHt_g.gather()

@@ -33,14 +33,17 @@ class SJM(Solvation):
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
         grid = builder.fine_grid
-        relpos_ac = builder.relpos_ac
-        h = grid.cell_cv[2, 2] * Bohr
-        z1 = relpos_ac[:, 2].max() * h + 3.0  # Å
-        z2 = self.jelliumregion.get('top', h - 1.0)  # Å
+        # relpos_ac = builder.relpos_ac
+        # h = grid.cell_cv[2, 2] * Bohr
+        # z1 = relpos_ac[:, 2].max() * h + 3.0  # Å
+        # z2 = self.jelliumregion.get('top', h - 1.0)  # Å
         mask_r = grid.empty()
         R_rv = grid.xyz()
-        mask_r.data[:] = np.logical_and(R_rv[:, :, :, 2] > z1 / Bohr,
-                                        R_rv[:, :, :, 2] < z2 / Bohr)
+        z0 = 2.0
+        alpha = -np.log(0.001) / z0**2
+        mask_r.data[:] = np.exp(-alpha * (R_rv[:, :, :, 2] - z0)**2)
+        # mask_r.data[:] = np.logical_and(R_rv[:, :, :, 2] > z1 / Bohr,
+        #                                 R_rv[:, :, :, 2] < z2 / Bohr)
         if self.target_potential is None:
             jellium = JelliumExtension(
                 mask_r,

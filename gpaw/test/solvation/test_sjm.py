@@ -13,7 +13,7 @@ from gpaw.solvation.sjm import SJMPower12Potential
 
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 def test_sjm(gpaw_new, in_tmp_dir, mode):
-    if mode == 'pw':
+    if mode == 'pwwwwwwwwwww':
         pytest.skip('Not working at the moment!')
     if not gpaw_new and world.size > 1:
         pytest.skip('https://gitlab.com/gpaw/gpaw/-/issues/1381')
@@ -21,7 +21,7 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         pytest.skip('Not implemented')
     # Solvent parameters
     u0 = 0.180  # eV
-    epsinf = 78.36  # dielectric constant of water at 298 K
+    epsinf = 1#78.36  # dielectric constant of water at 298 K
     gamma = 0.00114843767916  # 18.4*1e-3 * Pascal* m
     T = 298.15  # K
 
@@ -49,12 +49,12 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         xc='PBE',
         convergence=convergence,
         occupations=FermiDirac(0.1),
-        txt=f'{gpaw_new}-{mode}.txt')
+        )#txt=f'{gpaw_new}-{mode}.txt')
 
     solvation = dict(
         cavity=EffectivePotentialCavity(
             effective_potential=SJMPower12Potential(u0=u0,
-                                                    unsolv_backside=False),
+                                                    unsolv_backside=not True),
             temperature=T,
             surface_calculator=GradientSurface()),
         dielectric=LinearDielectric(epsinf=epsinf),
@@ -81,13 +81,13 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         print(atoms.calc.dft.sjm)
         print(calc.dft.sjm)
 
-    if 0:  # gpaw_new:
+    if gpaw_new:
         import matplotlib.pyplot as plt
         import numpy as np
-        x, y = np.array(atoms.calc.environment.jellium.history).T
+        x, y = np.array(atoms.calc.dft.sjm.jellium.history).T
         plt.plot(x, y)
         plt.show()
-    if 0:
+    if 1:
         v = atoms.calc.get_electrostatic_potential()
         import matplotlib.pyplot as plt
         import numpy as np
