@@ -201,16 +201,29 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
 
     assert basis.num_basis_functions() == num_mu
 
+    # Both of these should be the full list of basis function instances:
+    all_phi = basis.get_phi_instances()
+    maybe_all_phi = basis.get_phi_for_mu(0, basis.num_basis_functions())
+    assert len(all_phi) == len(maybe_all_phi)
+    # Compare with "is", not with "==" because these should be same objects
+    for phi in all_phi:
+        assert any(p is phi for p in maybe_all_phi)
+
 
 @pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
+@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
+def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
+    row_range: range | None):
     """"""
+
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython)
 
-    #basis.set_matrix_distribution(1, 2)
+    if row_range:
+        assert row_range.step == 1
+        basis.set_matrix_distribution(row_range.start, row_range.stop)
 
     # Test array that we sandwich between basis funcs and integrate
     vt_G: UGArray = system.grid.zeros(xp=xp)
@@ -221,10 +234,15 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool):
 
     V_MN = basis.calculate_potential_matrix(vt_G.data)
 
-    # Repeat with old code and compare
+    # Repeat with old code and compare. Need to manually create output array
     basis_old = make_legacy_basis_functions(system, xp=xp)
-    #basis_old.set_matrix_distribution(1, 2)
-    V_MN_ref = xp.zeros((basis_old.Mmax, basis_old.Mmax))
+    if row_range:
+        basis_old.set_matrix_distribution(row_range.start, row_range.stop)
+        out_shape = (row_range.stop - row_range.start, basis_old.Mmax)
+    else:
+        out_shape = (basis_old.Mmax, basis_old.Mmax)
+
+    V_MN_ref = xp.zeros(out_shape)
     basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
 
     xp.testing.assert_allclose(V_MN,

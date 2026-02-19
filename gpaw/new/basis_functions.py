@@ -339,11 +339,6 @@ class LFCMatrixDistributionRules:
     mu_start: int
     mu_end: int
 
-    def __post_init__(self):
-        """Validate"""
-        if self.mu_start >= self.mu_end:
-            raise ValueError
-
 
 # Should keep the API as close to the old BasisFunctions as possible,
 # so use raw np or cp arrays instead of UGArray/Matrix in the following
@@ -362,6 +357,8 @@ class BasisFunctionCollectionBase(ABC):
     """BasisFunctions for a given atom type"""
     _mu_range_a: list[range]
     """Range of mu indices for atom 'a'."""
+    _atom_for_mu: dict[int, int]
+    """Gives index of the atom that contributes to given mu."""
     _phi_MG_cache: np.ndarray | cp.ndarray | None
     """Cached values of basis funcs, phi_mu(x).
     This is 4D: first index is mu (M), then x, y, z indices.
@@ -419,7 +416,9 @@ class BasisFunctionCollectionBase(ABC):
         mu = 0
         self._atom_type_a = []
         self._mu_range_a = []
+        self._atom_for_mu = {}
         position_av = np.empty((num_atoms, 3), np.float64)
+
 
         for atom_idx, atom in enumerate(system.atoms):
             if len(atom.type.basis_functions) == 0:
@@ -436,9 +435,13 @@ class BasisFunctionCollectionBase(ABC):
             self._mu_range_a.append(range(mu_a_start, mu_a_end))
             mu = mu_a_end
 
+            for m in range(mu_a_start, mu_a_end):
+                assert m not in self._atom_for_mu
+                self._atom_for_mu[m] = atom_idx
+
             position_av[atom_idx] = atom.position
 
-        # Default to trivial matrix distribution (ie. one rank does all mu)
+        # Default is to always compute do the full V_munu matrix
         self.set_matrix_distribution(0, self.Mmax)
 
         relpos_ac = position_av @ np.linalg.inv(self.grid.cell_cv)
@@ -510,7 +513,9 @@ class BasisFunctionCollectionBase(ABC):
     @abstractmethod
     def calculate_potential_matrix(
             self,
-            vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
+            vt_G: np.ndarray | cp.ndarray,
+            out: np.ndarray | cp.ndarray | None = None) \
+            -> np.ndarray | cp.ndarray:
         """Calculate lower part of the potential matrix.
 
         ::
@@ -521,11 +526,42 @@ class BasisFunctionCollectionBase(ABC):
              mu nu    |     mu            nu
                       /
 
+        Parameters
+        ----------
+        vt_G : np.ndarray | cp.ndarray
+            The potential array in real space (GPU or CPU).
+        out : np.ndarray | cp.ndarray | None, optional
+            Optional output array to store the result. If None, a new array is
+            created. Default is None. TODO shape requirements?
+
+        Returns
+        -------
+        np.ndarray | cp.ndarray
+            The potential matrix with shape (Mstop - Mstart, MMax), where:
+            - Rows correspond to basis functions [Mstart, Mstop)
+            (if set_matrix_distribution was called, otherwise all rows).
+            - Only the lower triangle and diagonal are guaranteed to be
+            correct. Upper triangle elements may contain undefined or stale
+            values.
+
+            If 'out' was given, return value will be that same array.
+
+        Notes
+        -----
+        - Only the lower triangle and diagonal elements are mathematically meaningful
+        - If set_matrix_distribution() has been called, only rows [Mstart, Mstop) are computed
+        - The returned array type (CPU or GPU) matches the input vt_G type
+
         Specifically, only the lower triangle and the diagonal are guaranteed
         to be sensible. Upper triangle may still be modified (old CPU code in
         fact does do this).
-        Returns Vt_MM.
+
+        If set_matrix_distribution() has been called, will only do rows
+        [Mstart, Mstop).
+
+        The returned array will have shape (Mstop - Mstart, MMax)
         """
+
         raise NotImplementedError
 
     @abstractmethod
@@ -555,6 +591,41 @@ class BasisFunctionCollectionBase(ABC):
     def my_atom_indices(self) -> range:
         """TODO handle distributed grid"""
         return range(self.num_atoms)
+
+    def get_atoms_for_mu(self, mu_start: int, mu_end: int) -> list[LFCAtom]:
+        """Returns list of atoms that contribute to indices in range
+        [mu_start, mu_end), exclusive."""
+        assert mu_start <= mu_end
+        mu_start = max(mu_start, self.mu_range.start)
+        mu_end = min(mu_end, self.mu_range.stop)
+
+        res = []
+        # auxiliary set for faster "if not in list ..."
+        seen = set()
+
+        for mu in range(mu_start, mu_end):
+            a = self._atom_for_mu[mu]
+            if a not in seen:
+                res.append(self.atoms_a[a])
+                seen.add(a)
+
+        return res
+
+    def get_phi_for_mu(self, mu_start: int, mu_end: int) \
+        -> list[BasisFunctionInstance]:
+        """Returns list of basis functions that contribute to indices in range
+        [mu_start, mu_end), exclusive"""
+
+        atoms = self.get_atoms_for_mu(mu_start, mu_end)
+        res = []
+        for atom in atoms:
+            # only include phi that really overlap with the wanted range
+            for phi in atom.phi_instances:
+                if (phi.first_mu < mu_end and
+                    phi.first_mu + phi.get_num_mu() > mu_start
+                    ):
+                    res.append(phi)
+        return res
 
     def get_mu_range_a(self, atom_index: int) -> range:
         """Get range of mu indices for specified atom."""
@@ -609,9 +680,11 @@ class BasisFunctionCollectionBase(ABC):
         #     self.precalculate_on_grid()
 
     def set_matrix_distribution(self, Mstart: int, Mstop: int) -> None:
-        """FIXME: why do we need stateful Mstart, Mstop if they don't affect
-        data stored in this class in any way? Why not just pass them as inputs
-        to functions actually do stuff with them?"""
+        """Specifies that calculate_potential_matrices should only do rows
+        [Mstart, Mstop); Mstop is exclusive. Used for parallelization.
+        See dataclass LFCMatrixDistributionRules."""
+        # FIXME: why do we need stateful Mstart, Mstop?
+        # Why not just pass them as inputs to functions that use them?
         self._matrix_distribution_rules \
             = LFCMatrixDistributionRules(Mstart, Mstop)
 

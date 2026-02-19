@@ -137,14 +137,36 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
     @override
     def calculate_potential_matrix(
         self,
-        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
+        vt_G: np.ndarray | cp.ndarray,
+        out: np.ndarray | cp.ndarray | None = None) \
+        -> np.ndarray | cp.ndarray:
         """"""
+        xp = cp if isinstance(vt_G, cp.ndarray) else np
+
+        num_work_rows = (self._matrix_distribution_rules.mu_end
+                         - self._matrix_distribution_rules.mu_start)
+        if (num_work_rows <= 0):
+            # nothing to do
+            if out:
+                return out
+            else:
+                return xp.empty((0))
+
+        if out:
+            if out.ndim != 2:
+                raise ValueError("out array must be 2D and have enough rows")
+            rows, cols = out.shape
+            if rows < num_work_rows or cols != self.num_basis_functions():
+                raise ValueError("Not enough rows or columns in out array")
+            out[:] = 0
+
+        M = self.num_basis_functions()
+        res = out or xp.zeros((num_work_rows, M))
+
+        def clamp(val: int, min_val: int, max_val: int) -> int:
+            return max(min_val, min(val, max_val))
 
         if self.has_precalculated_phi():
-
-            M = self.num_basis_functions()
-            res = np.zeros((M, M))
-
             """Double loop over all phi_mu that contribute.
             We only need the lower half of the matrix, however this is quite
             tricky to achieve without one extra loop (slow).
@@ -154,24 +176,40 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
             """
             all_phi = self.get_phi_instances()
 
-            for phi1, phi2 in itertools.product(all_phi, all_phi):
+            first_mu = self._matrix_distribution_rules.mu_start
+            # inclusive last_mu
+            last_mu = self._matrix_distribution_rules.mu_end + 1
+            phi_for_mu = self.get_phi_for_mu(first_mu, last_mu - 1)
+
+            for phi1, phi2 in itertools.product(phi_for_mu, all_phi):
+                assert phi1.phi_mG is not None
+                assert phi2.phi_mG is not None
 
                 mu = phi1.first_mu
                 mu_end = mu + phi1.get_num_mu()
                 nu = phi2.first_mu
                 nu_end = nu + phi2.get_num_mu()
 
-                # Clamp mu range to drop some mu > nu.
+                # Clamp mu range to drop some nu > mu.
                 mu = max(mu, nu)
                 if mu >= mu_end:
                     continue
 
-                p1_vt_mG = phi1.phi_mG * vt_G
+                # Depending on mu_start, mu_end it can happen that phi1
+                # contains mu indices outside this range => clamp
+                mu = clamp(mu, first_mu, last_mu)
+                mu_end = clamp(mu_end, first_mu, last_mu)
+                # can't fail if our phi_for_mu was obtained correctly:
+                assert mu_end > mu
+
+                p1_m = mu - phi1.first_mu
+                p1_m_end = mu_end - phi1.first_mu
+
+                p1_vt_mG = phi1.phi_mG[p1_m:p1_m_end] * vt_G
                 # "Integrate", ie. contract the grid indices
-                res[mu:mu_end, nu:nu_end] += np.einsum("mxyz, nxyz -> mn",
-                                                       p1_vt_mG,
-                                                       phi2.phi_mG,
-                                                       optimize=True)
+                res[(mu - first_mu):(mu_end - first_mu), nu:nu_end] \
+                    += np.einsum("mxyz, nxyz -> mn", p1_vt_mG, phi2.phi_mG,
+                                 optimize=True)
 
             return res * self.grid.dv
         else:
