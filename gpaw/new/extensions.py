@@ -279,8 +279,8 @@ class FixedPotentialJelliumExtension(JelliumExtension):
             (c2, fl2), (c1, fl1) = self.history[-2:]
             c = c2 + (fl - fl2) / (fl1 - fl2) * (c1 - c2)
             dc = c - c1
-            if abs(dc) > abs(c2 - c1):
-                dc *= abs((c2 - c1) / dc)
+            if abs(dc) > 3 * abs(c2 - c1):
+                dc *= abs(3 * (c2 - c1) / dc)
         self.charge += dc
         nelectrons += dc
         ibzwfs.calculate_occs(occ_calc, nelectrons)
