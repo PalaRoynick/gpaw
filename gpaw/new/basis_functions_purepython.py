@@ -89,11 +89,38 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         self,
         nt_sG: np.ndarray | cp.ndarray,
         f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
-        """"""
+        r"""Add linear combination of squared localized basis functions to
+        density:
+
+            nt_s(x) += \sum_a \sum_i f_{asi} |\phi_{ai}|^2
+
+        where i runs over all basis functions for said atom.
+
+        Parameters
+        ----------
+        nt_sG : np.ndarray | cp.ndarray
+            The density array to which contributions are added. Must be domain
+            aware: if (nx, ny, nz) is the shape of this MPI grid domain, nt_sG
+            must have shape (num_spins, nx, ny, nz).
+            Modified in-place.
+        f_asi : dict[int, np.ndarray] | dict[int, cp.ndarray]
+            Dictionary that maps atom indices to occupation coefficient
+            arrays. Each array has shape (num_spins, n_a), if n_a is the
+            number of basis functions for that atom.
+        Raises
+        ------
+        AssertionError
+            If input array/dict shapes are incorrect.
+        """
+
         num_spins = nt_sG.shape[0]
+        assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
 
         if self.has_precalculated_phi():
+
             for atom in self.atoms_a:
+                assert atom.index in f_asi
+                assert f_asi[atom.index].shape[0] == num_spins
 
                 """Loop over all basis funcs of the atom, including those
                 that extend from other cells. Compute also the range of
@@ -107,10 +134,11 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
                     i_start = mu_start - atom.first_mu
                     i_end = i_start + num_mu
-                    nt_sG += np.einsum("sm, mxyz -> sxyz",
-                                       f_asi[atom.index][:, i_start:i_end],
-                                       phi.phi_mG**2,
-                                       optimize=True)
+                    nt_sG += np.einsum(
+                        "sm, mxyz -> sxyz",
+                        f_asi[atom.index][:, i_start:i_end],
+                        phi.phi_mG**2,
+                        optimize=True)
 
                     # for m in range(mu_end - mu_start):
                     #     nt_sG += f_sM[:, mu_start + m] * phi_mG[m, :]**2

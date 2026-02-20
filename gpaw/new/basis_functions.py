@@ -4,6 +4,7 @@ from functools import cached_property
 from dataclasses import dataclass
 from gpaw.spline import Spline
 from gpaw.core import UGDesc
+from gpaw.old.grid_descriptor import GridBoundsError
 from gpaw.new.timer import trace
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.setup import Setups, Setup
@@ -175,6 +176,9 @@ class BasisFunctionInstance:
 
 class LFCAtom:
     """"""
+    rank: int
+    """MPI rank of the grid domain that holds the center of this atom."""
+
 
     def __init__(self, index: int, first_mu: int, phi_j: list[BasisFunction],
                  relpos_c: np.ndarray, grid: UGDesc):
@@ -184,20 +188,36 @@ class LFCAtom:
         self.phi_j = phi_j
         self.phi_instances: list[BasisFunctionInstance] = []
         """Includes periodic copies"""
+        self.grid = grid
 
-        self.set_position(relpos_c, grid)
+        # Rank and position are properly set in set_position(),
+        self.rank = -1
+        self.relpos_c = np.asarray([np.nan, np.nan, np.nan])
+        position_properly_set = self.set_position(relpos_c)
+        assert position_properly_set
 
-    def set_position(self, new_relpos_c: np.ndarray, grid: UGDesc):
-        """"""
+    def set_position(self, new_relpos_c: np.ndarray) -> bool:
+        """Returns true if the atom migrated to a different rank."""
+
+        if np.all(self.relpos_c == new_relpos_c):
+            # No movement at all, nothing to do here
+            return False
+
+        self.relpos_c = new_relpos_c
+        new_rank = self.grid._gd.get_rank_from_position(new_relpos_c)
+        rank_changed = (self.rank != new_rank)
+        self.rank = new_rank
+
+        # Place all basis funcs for this atom on the grid, including those
+        # extending from other cells
         self.phi_instances = []
-
         mu_work = self.first_mu
         for phi in self.phi_j:
 
             radius = phi.cutoff
 
-            """Use helper from GridDescriptor to find all units cells that this
-            spline overlaps with, including the main cell.
+            """Use helper from GridDescriptor to find all units cells that
+            this spline overlaps with, including the main cell.
             We get XYZ coords for box start and end corners, and relative
             displacement that brings this atom to correct position in the
             other box."""
@@ -206,13 +226,13 @@ class LFCAtom:
             # dunno what this is
             cut: bool = True
             boxes: list[tuple[np.ndarray, np.ndarray, np.ndarray]] \
-                = grid._gd.get_boxes(new_relpos_c, radius, cut)
+                = self.grid._gd.get_boxes(new_relpos_c, radius, cut)
 
             # Loop includes the "real" atom:
             for beg_c, end_c, relative_displacement_c in boxes:
                 # real-space position of the replicated atom
                 pos_v = np.dot(new_relpos_c - relative_displacement_c,
-                               grid.cell_cv)
+                               self.grid.cell_cv)
                 self.phi_instances.append(
                     BasisFunctionInstance(phi, self.index, mu_work, pos_v)
                 )
@@ -221,8 +241,9 @@ class LFCAtom:
 
         # Precalculate. TODO do in separate function
 
-        # get all grid points in real units. 4D array of shape (Nx, Ny, Nz, 3)
-        x_Gv = grid.xyz()
+        # get all grid points in this domain in real units.
+        # 4D array of shape (Nx, Ny, Nz, 3)
+        x_Gv = self.grid.xyz()
         # For now I compute these everywhere on the grid, not just in overlap regions
         grid_shape = (x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
 
@@ -244,6 +265,8 @@ class LFCAtom:
                 )
 
             phi.phi_mG = phi_mG
+
+        return rank_changed
 
 
 def build_lfc_system(setups: Setups,
@@ -471,12 +494,16 @@ class BasisFunctionCollectionBase(ABC):
         """"""
         # TODO init mu ranges here
         self.atoms_a = []
+        self.my_atom_indices = []
         for a in range(self.num_atoms):
             mu = self.get_mu_range_a(a).start
             phi_j = self._basis_functions_t[self._atom_type_a[a]]
             self.atoms_a.append(
                 LFCAtom(a, mu, phi_j, relpos_ac[a], self.grid)
             )
+
+            if self.atoms_a[a].rank == self.grid.comm.rank:
+                self.my_atom_indices.append(a)
 
     @trace
     @abstractmethod
@@ -653,19 +680,24 @@ class BasisFunctionCollectionBase(ABC):
     # end ???
 
     @trace
-    def set_positions(self, relpos_ac: np.ndarray) -> None:
-        """Updates atom positions"""
+    def set_positions(self, relpos_ac: np.ndarray) -> bool:
+        """Updates atom positions. Return value is True if any atom migrated
+        to another MPI rank in grid domain decomposition."""
         relpos_ac = np.asanyarray(relpos_ac)
         if len(relpos_ac) != self.num_atoms:
             raise ValueError("Wrong atom position array shape")
 
-        # TODO: check if atoms moved to another MPI rank
-
+        has_migrations = False
         for a, atom in enumerate(self.atoms_a):
-            atom.set_position(relpos_ac[a], self.grid)
+            try:
+                has_migrations |= atom.set_position(relpos_ac[a])
+            except GridBoundsError as e:
+                e.args = (f'Atom {a} too close to edge: {e}',)
+                raise
 
         # if self.should_precalculate:
         #     self.precalculate_on_grid()
+        return has_migrations
 
     def set_matrix_distribution(self, Mstart: int, Mstop: int) -> None:
         """Specifies that calculate_potential_matrices should only do rows
@@ -685,7 +717,9 @@ class BasisFunctionCollectionBase(ABC):
     def get_cache_size_estimate(self) -> int:
         """Estimate of how many bytes are needed to precalculate and cache the
         basis functions on the grid.
+        FIXME: not correct atm.
         """
+        # FIXME does not include periodic copies
         num_sites = int(np.prod(self.grid.size))
         # TODO single precision. Do we need to allow complex phi?
         return num_sites * self.num_basis_functions() * 8

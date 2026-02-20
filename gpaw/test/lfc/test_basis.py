@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from dataclasses import dataclass
 from typing import cast, TYPE_CHECKING
+import copy
 
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.matrix import Matrix
@@ -15,7 +16,7 @@ from gpaw.new.basis_functions_purepython \
     import BasisFunctionCollection_PurePython
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.spline import Spline
-from gpaw.mpi import world, MPIComm
+from gpaw.mpi import world, MPIComm, broadcast_exception
 from gpaw.gpu import cupy as cp, as_xp, as_np, cupy_is_fake
 from gpaw import GPAW_NO_C_EXTENSION
 
@@ -102,6 +103,7 @@ def make_test_system_small() -> LFCSystem:
     """"""
     n = 4
     a = 2.0
+    global world
     world = cast(MPIComm, world)
     grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
 
@@ -131,8 +133,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    return make_test_system()
-    #return make_test_system_small()
+    #return make_test_system()
+    return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -266,7 +268,7 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
 
     # Test density
     rng = xp.random.default_rng(432)
-    sG_shape = (num_spins, *system.grid.size)
+    sG_shape = (num_spins, *system.grid.mysize_c)
     nt_sG = rng.random(sG_shape)
 
     nt_sG_ref = nt_sG.copy()
@@ -275,7 +277,6 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     # the number of basis functions (range of i) can vary per atom.
     f_asi = {}
     for atom_idx in range(basis.num_atoms):
-        mu_range_a = basis.get_mu_range_a(atom_idx)
         shape_si = (num_spins, basis.get_num_phi_a(atom_idx))
         f_asi[atom_idx] = rng.random(shape_si)
 
@@ -291,13 +292,90 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
-# def test_grid():
-#     """TEMP"""
-#     n = 4
-#     a = 2.0
-#     grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
+@pytest.mark.parametrize("xp", xp_params_no_cpupy())
+@pytest.mark.parametrize("purepython", parametrize_purepython())
+@pytest.mark.parametrize("num_spins", [1, 2])
+@pytest.mark.skipif(world.size < 2, reason="Not enough MPI ranks")
+def test_domain_decomposition(
+    fixt_lfc_system: LFCSystem,
+    xp,
+    purepython: bool,
+    num_spins: int):
+    """"""
+    system = fixt_lfc_system
+    basis = make_basis(system, xp, purepython)
 
-#     def mpiprint(s):
-#         print(f"Rank {world.rank}: {s}", flush=True)
+    global world
+    world = cast(MPIComm, world)
+    # Did we construct with the right comm
+    assert system.grid.comm is world
 
-#     mpiprint(grid.xyz())
+    serial_comm = world.new_communicator([0])
+
+    serial_system = copy.copy(system)
+    serial_system.grid = system.grid.new(comm=serial_comm)
+    serial_basis = make_basis(serial_system, xp, purepython)
+
+    assert serial_basis.num_atoms == basis.num_atoms
+    assert serial_basis.num_basis_functions() == basis.num_basis_functions()
+
+    # add_to_density. We want to compare against a pure-serial computation,
+    # so each rank should use the same f_asi input => use same seed
+    rng = xp.random.default_rng(999)
+    f_asi = {}
+    for atom_idx in range(basis.num_atoms):
+        shape_si = (num_spins, basis.get_num_phi_a(atom_idx))
+        f_asi[atom_idx] = rng.random(shape_si)
+
+    # change use rank-based seed for the input density array
+    rng = xp.random.default_rng(world.rank + 121)
+    sG_shape = (num_spins, *system.grid.mysize_c)
+    nt_sG = rng.random(sG_shape)
+
+    # Get the input density on rank 0 for comparing with a serial calculation.
+    nt_sG_serial = xp.empty((num_spins, *system.grid.size))
+    for s in range(num_spins):
+        if world.rank == 0:
+            world.gather(nt_sG[s], 0, nt_sG_serial[s])
+        else:
+            world.gather(nt_sG[s], 0, None)
+
+    with broadcast_exception(world):
+        basis.add_to_density(nt_sG, f_asi)
+        if world.rank == 0:
+            serial_basis.add_to_density(nt_sG_serial, f_asi)
+
+    # Scatter the serial result back to all ranks
+    nt_sG_ref = xp.empty_like(nt_sG)
+    for s in range(num_spins):
+        if world.rank == 0:
+            world.scatter(nt_sG_serial[s], nt_sG_ref[s], 0)
+        else:
+            world.scatter(None, nt_sG_ref[s], 0)
+
+    xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
+
+
+def test_grid():
+    """TEMP"""
+
+    global world
+    n = 4
+    a = 2.0
+    grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
+
+    def mpiprint(s):
+        print(f"Rank {world.rank}: {s}", flush=True)
+
+    # size is 3D tuple, full grid shape. size_c is the same but as np array.
+    # myshape is 3D tuple shape of the decomposed domain, mysize_c is the same but as np array
+    # mypos_c is the location of this domain on "the grid of domains".
+    # start_c and end_c tell what range of indices of the full grid are included in this domain
+    # Old code uses grid._gc.n_c which seems to be the same as mysize_c
+    mpiprint(f"{grid.size=}, {grid.size_c=}, {grid.mysize_c=}, {grid.mypos_c=}, {grid.start_c=}, {grid.end_c=}, {grid._gd.n_c=}")
+
+    a = UGArray(grid, (2, *grid.size), world)
+    mpiprint(f"{a=}")
+    b = a.scatter_from(a.data)
+
+    mpiprint(f"{a=}, {b=}")
