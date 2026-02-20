@@ -191,45 +191,17 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
                                                     self.basis,
                                                     include_kinetic=False)
 
+    def calculate_kinetic_energy(self, wfs, skip_sum=False):
+        
+        e_kin = 0.0
+        f = wfs.myocc_n > 1e10   # vedere da pw
+        # occ = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1] > 1e-10
+        x_nn = np.dot(wfs.C_nM[f],
+                      np.dot(wfs.T_MM, wfs.C_nM[f].T.conj())).real
+        e_kin += np.einsum('i,ii->', f, x_nn)
 
-    def calculate_kinetic_energy_directly(self, ):
-        """
-        Calculate kinetic energy as 1/2 (nable psi)^2
-        it gives better estimate of kinetic energy during the SCF.
-        Important for direct min.
+        if not skip_sum:  # what does it do?
+            raise NotImplementedError
 
-        'calculate_kinetic_energy' method gives a correct
-        value of kinetic energy only at self-consistent solution.
-
-        :param density:
-        :param wfs:
-        :return: total kinetic energy
-        """
-
-
-    def calculate_kinetic_energy_using_kin_en_matrix(self, density,
-                                                         wfs):
-            """
-            E_k = sum_{M'M} rho_MM' T_M'M
-            better agreement between gradients of energy and
-            the total energy during the direct minimization.
-            This is important when the line search is used.
-            Also avoids using the eigenvalues which are
-            not calculated during the direct minimization.
-
-            'calculate_kinetic_energy' method gives a correct
-            value of kinetic energy only at self-consistent solution.
-
-            :param density:
-            :param wfs:
-            :return: total kinetic energy
-            """
-
-        # pseudo-part
-            e_kinetic = 0.0
-            e_kin_paw = 0.0
-
-            for kpt in wfs.wfs_u:
-                n_occ = get_n_occ(wfs.get_all_eigs_and_occs(broadcast=True)[1])
-
-                
+        return e_kin
+    

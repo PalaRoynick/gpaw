@@ -87,12 +87,12 @@ class SkewHermitian:
         # Number of independent parameters
         self._len = len(self.ind_up[0])
 
-        # Assign initial data (if provided)
-
-        # can i write here id data = None che è un vettore zero delle dim giuste?
-        
-        self.data = data
-#        assert representation == "full"
+        # Assign initial data, otherwise make it zero
+        # could/has to be done with the setter below?
+        if data is not None:
+            self.data = data
+        else:
+            self.data = np.zeros(shape=self._len, dtype=self._dtype)
 
     # ------------------------
     # Properties
