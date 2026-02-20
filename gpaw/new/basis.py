@@ -51,6 +51,7 @@ def create_basis(ibz: IBZ,
     basis.set_matrix_distribution(
         min(band_comm.rank * myM, basis.Mmax),
         min((band_comm.rank + 1) * myM, basis.Mmax))
+    basis.grid = grid
     return basis
 
 
