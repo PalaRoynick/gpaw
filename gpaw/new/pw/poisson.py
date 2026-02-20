@@ -342,7 +342,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
                rhot_g) -> float:
         vHt_g.data[:] = 4 * np.pi * self.strength * rhot_g.data
         eps_R = self.grid.from_data(self.dielectric.eps_gradeps[0])
-        if 1:
+        if 0:
             z = eps_R.desc.xyz()[0, 0, :, 2]
             z1 = 11.3 / 0.529
             z2 = 13.9 / 0.529
@@ -352,6 +352,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
                 77 * np.exp(-a * (z - z1)**2) +
                 77 * np.exp(-a * (z - z2)**2))
             eps_R.data[:, :, np.logical_and(z > z1, z < z2)] = 78
+            eps_R.data[:] = 1
 
         self.eps0_R = eps_R.gather()
 
@@ -384,17 +385,18 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             vHt_g.data -= dphi_g.data * (v1 / v1s)
             vHt_g.data[0] -= v0 - (v1 / v1s) * v0s
             self.zero_vacuum = True
-            v = vHt_g.ifft(grid=self.grid0)
-            r = rhot_g.ifft(grid=self.grid0)
-            dr = self.drho_g.ifft(grid=self.grid0)
-            dv = dphi_g.ifft(grid=self.grid0)
-            print(dr.integrate())
-            print(rhot_g.integrate())
-            import matplotlib.pyplot as plt
-            plt.plot(eps_R.data[0, 0])
-            plt.plot(dv.data.mean(axis=(0, 1)))
-            plt.plot(dr.data.mean(axis=(0, 1)));plt.show()
-            sadfg
+            if 0:
+                v = vHt_g.ifft(grid=self.grid0)
+                r = rhot_g.ifft(grid=self.grid0)
+                dr = self.drho_g.ifft(grid=self.grid0)
+                dv = dphi_g.ifft(grid=self.grid0)
+                print(dr.integrate())
+                print(rhot_g.integrate())
+                import matplotlib.pyplot as plt
+                #plt.plot(eps_R.data[0, 0])
+                plt.plot(v.data.mean(axis=(0, 1)))
+                #plt.plot(r.data.mean(axis=(0, 1)));plt.show()
+                #sadfg
         epot = 0.5 * vHt_g.integrate(rhot_g)
         return epot
 

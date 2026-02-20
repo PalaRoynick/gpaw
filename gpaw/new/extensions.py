@@ -274,13 +274,13 @@ class FixedPotentialJelliumExtension(JelliumExtension):
         self.history.append((self.charge, fl1))
         if len(self.history) == 1:
             area = abs(np.linalg.det(self.mask_r.desc.cell_cv[:2, :2]))
-            dc = -(fl1 - fl) * area * 0.02
+            dc = -(fl1 - fl) * area * 0.02/10
         else:
             (c2, fl2), (c1, fl1) = self.history[-2:]
             c = c2 + (fl - fl2) / (fl1 - fl2) * (c1 - c2)
             dc = c - c1
-            if abs(dc) > 3 * abs(c2 - c1):
-                dc *= abs(3 * (c2 - c1) / dc)
+            if abs(dc) > 3/3 * abs(c2 - c1):
+                dc *= abs(3/3 * (c2 - c1) / dc)
         self.charge += dc
         nelectrons += dc
         ibzwfs.calculate_occs(occ_calc, nelectrons)

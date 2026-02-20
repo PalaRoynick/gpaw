@@ -21,7 +21,7 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         pytest.skip('Not implemented')
     # Solvent parameters
     u0 = 0.180  # eV
-    epsinf = 1#78.36  # dielectric constant of water at 298 K
+    epsinf = 78.36  # dielectric constant of water at 298 K
     gamma = 0.00114843767916  # 18.4*1e-3 * Pascal* m
     T = 298.15  # K
 
@@ -34,7 +34,8 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     potential = 4.5
     tol = 0.02
     sj = {'target_potential': potential,
-          'excess_electrons': -0.045,
+          # 'excess_electrons': -0.045,
+          'excess_electrons': -0.00045,
           'jelliumregion': {'top': 14.5},
           'tol': tol}
 
