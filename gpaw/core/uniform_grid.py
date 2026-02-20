@@ -101,10 +101,10 @@ class UGDesc(Domain['UGArray']):
         return tuple(self.size_c - self.zerobc_c)
 
     def __repr__(self):
-        return super().__repr__().replace(
-            'Domain(',
-            f'UGDesc(size={self.size_c.tolist()}, '
-            f'zerobc={self.zerobc_c.tolist()}, ')
+        args = f'size={self.size_c.tolist()}, '
+        if self.zerobc_c.any():
+            args += f'zerobc={self.zerobc_c.astype(int).tolist()}, '
+        return super().__repr__().replace('Domain(', f'UGDesc({args}')
 
     def _short_string(self, global_shape):
         return f'uniform wave function grid shape: {global_shape}'
