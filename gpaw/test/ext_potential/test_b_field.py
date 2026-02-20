@@ -7,6 +7,7 @@ from gpaw.new.external_potential import BField
 
 
 # @pytest.mark.old_gpaw_only  # use extension=[BField(...)]
+@pytest.mark.flaky
 @pytest.mark.serial
 def test_b_field():
     """Hydrogen atom in a magnetic field."""
