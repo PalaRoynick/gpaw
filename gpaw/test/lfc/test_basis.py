@@ -15,14 +15,9 @@ from gpaw.new.basis_functions_purepython \
     import BasisFunctionCollection_PurePython
 from gpaw.sphere.spherical_harmonics import Y
 from gpaw.spline import Spline
-from gpaw.mpi import world
+from gpaw.mpi import world, MPIComm
 from gpaw.gpu import cupy as cp, as_xp, as_np, cupy_is_fake
 from gpaw import GPAW_NO_C_EXTENSION
-
-
-if TYPE_CHECKING:
-    from gpaw.mpi import MPIComm
-    world = cast(MPIComm, world)
 
 
 def xp_params_no_cpupy():
@@ -73,7 +68,11 @@ def make_test_system() -> LFCSystem:
     """"""
     n = 24
     a = 3.0  # grid size in Bohr units ("unit cell"). NOT the lattice spacing
-    grid = UGDesc(cell=[a, a, a], size=(n, n, n))
+
+    # Grid does automatic domain decomp if running with MPI
+    global world
+    world = cast(MPIComm, world)
+    grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
 
     rng = np.random.default_rng(404)
 
@@ -103,7 +102,8 @@ def make_test_system_small() -> LFCSystem:
     """"""
     n = 4
     a = 2.0
-    grid = UGDesc(cell=[a, a, a], size=(n, n, n))
+    world = cast(MPIComm, world)
+    grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
 
     rng = np.random.default_rng(404)
 
@@ -251,10 +251,9 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
                                atol=1e-12)
 
 
-@pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-@pytest.mark.parametrize("num_spins", [1])
+@pytest.mark.parametrize("num_spins", [1, 2])
 def test_add_to_density(fixt_lfc_system: LFCSystem,
                         xp,
                         purepython: bool,
@@ -290,3 +289,15 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     basis_old.add_to_density(nt_sG_ref, f_asi)
 
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
+
+
+# def test_grid():
+#     """TEMP"""
+#     n = 4
+#     a = 2.0
+#     grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
+
+#     def mpiprint(s):
+#         print(f"Rank {world.rank}: {s}", flush=True)
+
+#     mpiprint(grid.xyz())

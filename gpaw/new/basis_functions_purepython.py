@@ -94,24 +94,22 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
         if self.has_precalculated_phi():
             for atom in self.atoms_a:
-                assert atom.phi_wmG is not None
 
                 """Loop over all basis funcs of the atom, including those
                 that extend from other cells. Compute also the range of
                 'i' indices corresponding to the phi; this is necessary
                 because some phi_j of the original atom may not extend to the
-                main cell from other cells, so we have not included them in
-                atom.phi_wmG."""
-                for w, phi_mG in enumerate(atom.phi_wmG):
-                    mu_start = atom.mu_range_w[w].start
-                    mu_end = atom.mu_range_w[w].stop
+                main cell from other cells."""
+                for phi in atom.phi_instances:
+                    mu_start = phi.first_mu
+                    mu_end = mu_start + phi.get_num_mu()  # exclusive
                     num_mu = mu_end - mu_start
 
                     i_start = mu_start - atom.first_mu
                     i_end = i_start + num_mu
                     nt_sG += np.einsum("sm, mxyz -> sxyz",
                                        f_asi[atom.index][:, i_start:i_end],
-                                       phi_mG**2,
+                                       phi.phi_mG**2,
                                        optimize=True)
 
                     # for m in range(mu_end - mu_start):

@@ -185,17 +185,11 @@ class LFCAtom:
         self.phi_instances: list[BasisFunctionInstance] = []
         """Includes periodic copies"""
 
-        self.phi_wmG: list[np.ndarray] | None = None
-        """Cached phi_mu(x) on the grid"""
-
         self.set_position(relpos_c, grid)
 
     def set_position(self, new_relpos_c: np.ndarray, grid: UGDesc):
         """"""
         self.phi_instances = []
-
-        self.mu_range_w: list[range] = []
-        # yeah...
 
         mu_work = self.first_mu
         for phi in self.phi_j:
@@ -232,7 +226,6 @@ class LFCAtom:
         # For now I compute these everywhere on the grid, not just in overlap regions
         grid_shape = (x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
 
-        self.phi_wmG = []
         for phi in self.phi_instances:
             shape = (phi.get_num_mu(), *grid_shape)
             phi_mG = np.zeros(shape)
@@ -250,15 +243,6 @@ class LFCAtom:
                     f_R_masked * Y(l**2 + m, *d_Rv_masked.T)
                 )
 
-            self.phi_wmG.append(phi_mG)
-
-            mu = phi.first_mu
-            self.mu_range_w.append(range(mu, mu + phi.get_num_mu()))
-
-            # Give the phi instance a view to its contribution to the phi_wmG
-            # array. Makes looping over all phi easier. In fact the whole
-            # atom.phi_wmG is pretty dumb because its a list of arrays,
-            # not a single contiguous array!
             phi.phi_mG = phi_mG
 
 
@@ -452,7 +436,7 @@ class BasisFunctionCollectionBase(ABC):
             position_av[atom_idx] = atom.position
 
         relpos_ac = position_av @ np.linalg.inv(self.grid.cell_cv)
-        self._place_atoms(relpos_ac)
+        self._init_atoms(relpos_ac)
 
         # Default is to always compute do the full V_munu matrix
         self.set_matrix_distribution(0, self.Mmax)
@@ -483,7 +467,7 @@ class BasisFunctionCollectionBase(ABC):
             self._basis_functions_t.append(phi_j)
         #
 
-    def _place_atoms(self, relpos_ac: np.ndarray):
+    def _init_atoms(self, relpos_ac: np.ndarray):
         """"""
         # TODO init mu ranges here
         self.atoms_a = []
@@ -493,7 +477,6 @@ class BasisFunctionCollectionBase(ABC):
             self.atoms_a.append(
                 LFCAtom(a, mu, phi_j, relpos_ac[a], self.grid)
             )
-
 
     @trace
     @abstractmethod
