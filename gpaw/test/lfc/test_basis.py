@@ -133,8 +133,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    #return make_test_system()
-    return make_test_system_small()
+    return make_test_system()
+    #return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -327,55 +327,62 @@ def test_domain_decomposition(
         shape_si = (num_spins, basis.get_num_phi_a(atom_idx))
         f_asi[atom_idx] = rng.random(shape_si)
 
-    # change use rank-based seed for the input density array
-    rng = xp.random.default_rng(world.rank + 121)
+    """Goal is to test that add_to_density on one rank (full grid) is
+    equivalent to add_to_density on the domain-decomposed grid. We need to
+    generate a random input density array on the full grid, then decompose it.
+    Easiest is to generate it on all ranks with same seed, then just copy
+    correct parts of it as the decomposed input. This avoids need for scatterv
+    or similar.
+    """
+
+    # FIXME: mpi_gather and mpi_scatter crash or deadlock if the nt_sG arrays
+    # are not same shape on all ranks. Such calls are invalid but we should
+    # raise exception, not crash/deadlock!
+
+    # Re-seed just in case
+    rng = xp.random.default_rng(841)
+    nt_sG_serial = rng.random((num_spins, *system.grid.size))
+    # Decomposed density array:
     sG_shape = (num_spins, *system.grid.mysize_c)
-    nt_sG = rng.random(sG_shape)
+    nt_sG = xp.empty(sG_shape)
 
-    # Get the input density on rank 0 for comparing with a serial calculation.
-    nt_sG_serial = xp.empty((num_spins, *system.grid.size))
-    for s in range(num_spins):
-        if world.rank == 0:
-            world.gather(nt_sG[s], 0, nt_sG_serial[s])
-        else:
-            world.gather(nt_sG[s], 0, None)
+    def manual_scatter(full_nt_sG, decomp_nt_sG):
+        start_c = system.grid.start_c
+        end_c = system.grid.end_c
+        decomp_nt_sG[:] = full_nt_sG[:,
+                                     start_c[0]:end_c[0],
+                                     start_c[1]:end_c[1],
+                                     start_c[2]:end_c[2]
+                                    ]
 
-    with broadcast_exception(world):
-        basis.add_to_density(nt_sG, f_asi)
-        if world.rank == 0:
-            serial_basis.add_to_density(nt_sG_serial, f_asi)
+    manual_scatter(nt_sG_serial, nt_sG)
 
-    # Scatter the serial result back to all ranks
+    basis.add_to_density(nt_sG, f_asi)
+    # Do the serial part separately in all ranks because this test doesn't
+    # actually use MPI for scattering the reference result
+    serial_basis.add_to_density(nt_sG_serial, f_asi)
+
     nt_sG_ref = xp.empty_like(nt_sG)
-    for s in range(num_spins):
-        if world.rank == 0:
-            world.scatter(nt_sG_serial[s], nt_sG_ref[s], 0)
-        else:
-            world.scatter(None, nt_sG_ref[s], 0)
+    # Scatter the serial result back to all ranks
+    manual_scatter(nt_sG_serial, nt_sG_ref)
 
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
-def test_grid():
-    """TEMP"""
+# def test_grid():
+#     """TEMP"""
 
-    global world
-    n = 4
-    a = 2.0
-    grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
+#     global world
+#     n = 4
+#     a = 2.0
+#     grid = UGDesc(cell=[a, a, a], size=(n, n, n), comm=world)
 
-    def mpiprint(s):
-        print(f"Rank {world.rank}: {s}", flush=True)
+#     def mpiprint(s):
+#         print(f"Rank {world.rank}: {s}", flush=True)
 
-    # size is 3D tuple, full grid shape. size_c is the same but as np array.
-    # myshape is 3D tuple shape of the decomposed domain, mysize_c is the same but as np array
-    # mypos_c is the location of this domain on "the grid of domains".
-    # start_c and end_c tell what range of indices of the full grid are included in this domain
-    # Old code uses grid._gc.n_c which seems to be the same as mysize_c
-    mpiprint(f"{grid.size=}, {grid.size_c=}, {grid.mysize_c=}, {grid.mypos_c=}, {grid.start_c=}, {grid.end_c=}, {grid._gd.n_c=}")
-
-    a = UGArray(grid, (2, *grid.size), world)
-    mpiprint(f"{a=}")
-    b = a.scatter_from(a.data)
-
-    mpiprint(f"{a=}, {b=}")
+#     # size is 3D tuple, full grid shape. size_c is the same but as np array.
+#     # myshape is 3D tuple shape of the decomposed domain, mysize_c is the same but as np array
+#     # mypos_c is the location of this domain on "the grid of domains".
+#     # start_c and end_c tell what range of indices of the full grid are included in this domain
+#     # Old code uses grid._gc.n_c which seems to be the same as mysize_c
+#     mpiprint(f"{grid.size=}, {grid.size_c=}, {grid.mysize_c=}, {grid.mypos_c=}, {grid.start_c=}, {grid.end_c=}, {grid._gd.n_c=}")
