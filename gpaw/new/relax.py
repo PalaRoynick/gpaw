@@ -209,7 +209,7 @@ class SymmeryAdaptedCellCoordinates:
         try:
             C_cv = np.linalg.cholesky(M_cc) @ self.rot_vv.T
         except np.linalg.LinAlgError:
-            print("Failed to create cell from metric", M_cc)
+            print("Failed to create cell from metric", M_cc, 'cell_z', cell_z)
             raise
         return Atoms(cell=C_cv).cell
 
@@ -554,6 +554,7 @@ class SymmetryAdaptedAtoms:
         return self.value_z.copy()
     
     def set_x(self, x):
+        print('Calling set_x', x)
         old_cell = self.cell_coordinates.get_cell(self.cell_z)
         self.value_z[:] = x
         try:
@@ -580,13 +581,29 @@ class SymmetryAdaptedAtoms:
         # dE/deps_vv deps_vv/dC_cv dC_cv/dz
 
         ncellz = len(self.cell_coordinates.dM_zcc)
+        A_zV = np.zeros((ncellz, 9)) # V = vv
         for z in range(ncellz):
             dC_cv = (
                 chol_derivative(M_cc, self.cell_coordinates.dM_zcc[z])
                 @ self.cell_coordinates.rot_vv.T
             )
-            grad_z[z] = V * np.sum(S_vv * (Cinv @ dC_cv +
-                                           dC_cv.T @ Cinv.T) / 2)
+            A_zV[z] = (V * (Cinv @ dC_cv + dC_cv.T @ Cinv.T) / 2).reshape((9,))
+        grad_z[:] = np.dot(A_zV, S_vv.reshape((9,))) 
+
+        if ncellz > 0:
+            back_Svv = (A_zV.T @ np.linalg.inv(A_zV @ A_zV.T) @ grad_z).reshape((3,3))
+        else:
+            # Even if there is degrees of freedom, it is possible to get symmetry violation
+            back_Svv = np.zeros((3,3))
+        
+        dS_vv = S_vv - back_Svv
+        dS = np.linalg.norm(dS_vv)
+        if dS > 1e-4:
+            print('Warning!!! Back projection of symmetry adapted'
+                  f' stresses to Cartesian space failed by {dS:7.13f}')
+            print('Cartesian stress', S_vv)
+            print('Back projected sttress', back_Svv)
+        self.symmetry_stress_violation = dS
 
         F_av = self.actual_atoms.get_forces()
         # dE/ds_z = dE/dR_av dR_av/ds_ac ds_ac/ds_z
@@ -619,6 +636,7 @@ class SymmetryAdaptedAtoms:
                 print(f'{a:5d} {F_v[0]:7.4f} {F_v[1]:7.4f} {F_v[2]:7.4f} {F2_v[0]:7.4f} {F2_v[1]:7.4f} {F2_v[2]:7.4f}')
 
         gradient = np.hstack([grad_z, atoms_grad_z])
+        print('Gradient returning', gradient)
         return gradient * self.get_preconditioner()
 
     def get_preconditioner(self):
@@ -715,7 +733,7 @@ class Relax:
         self.maxiter = steps
         i = 0
         dtitles = '    '.join([f'q{i:02d}' for i in range(len(self.symmetry_adapted_atoms.atoms_z))])
-        self.log(f'iter  time     E           maxF   maxS     maxG   a1    a2    a3    L1      L2       L3     {dtitles}   log_10 viol.')
+        self.log(f'iter  time     E           maxF   maxS     maxG   a1    a2    a3    L1      L2       L3     {dtitles}   log_10 viol. (F / S)')
         for _ in self.optimizer.irun(fmax=fmax):
             import time
             T = time.localtime()
@@ -748,7 +766,11 @@ class Relax:
             symviol = f'{syviol:4.1f}'
             if syviol < self.fmax:
                 symviol = GREEN + symviol + RESET
-            self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:7.3f} {cell}{dofs} {symviol}')
+            syviol2 = np.log10(self.symmetry_adapted_atoms.symmetry_stress_violation)
+            symviol2 = f'{syviol2:4.1f}'
+            if syviol2 < self.smax:
+                symviol2 = GREEN + symviol2 + RESET
+            self.log(f'{i:5d} {tstr} {E:9.5f} {sFmax} {sSmax} {gmax:7.3f} {cell}{dofs} {symviol} {symviol2}')
             i += 1
             if i > self.maxiter or i > 40:
                 self.log(f'Not converged in {self.maxiter} or 40 steps.')
