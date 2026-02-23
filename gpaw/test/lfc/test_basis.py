@@ -83,7 +83,7 @@ def make_test_system() -> LFCSystem:
     for i in range(2):
         s = make_random_phi(0, 0.98 * a, rng, num_points=100)
         p = make_random_phi(1, 1.35 * a, rng, num_points=100)
-        d = make_random_phi(2, 0.50 * a, rng, num_points=100)
+        d = make_random_phi(2, 0.1 * a, rng, num_points=100)
 
         funcs = [s, p, d] if i == 0 else [s, d]
         atom_defs.append(LFCAtomDefinition(i, funcs))
@@ -212,7 +212,6 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
         assert any(p is phi for p in maybe_all_phi)
 
 
-@pytest.mark.skipif(world.size > 1, reason="MPI is TODO")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
