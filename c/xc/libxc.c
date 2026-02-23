@@ -387,7 +387,7 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
       // don't break here since GGA also needs LDA ptrs
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
-      inlist.p[0].special = N_SG;
+      //inlist.p[0].special = N_SG;
       inlist.p[0].spinsize = 2;
       inlist.num += 1;
       outlist.p[0].p = DOUBLEP(py_e_g);
@@ -510,7 +510,7 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
       // don't break here since GGA also needs LDA ptrs
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
-      inlist.p[0].special = N_SG;
+      //inlist.p[0].special = N_SG;
       inlist.p[0].spinsize = 2;
       inlist.num += 1;
       outlist.p[0].p = DOUBLEP(py_v2rho2_xg);
