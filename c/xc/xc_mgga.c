@@ -94,6 +94,7 @@ void calc_mgga(void** params, int nspin, int ng,
               continue;
           }
           ntmp[0] = NMIN;
+      }
       if (ntmp[1] < NMIN)
           ntmp[1] = NMIN;
 
