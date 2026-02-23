@@ -186,6 +186,7 @@ XCFunctional_calculate(XCFunctionalObject *self, PyObject *args)
                   }
               continue;
               na = NMIN;
+              }
           }
           if (nb < NMIN)
             nb = NMIN;
