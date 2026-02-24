@@ -104,6 +104,10 @@ class BSEMatrix:
         """
         H_sS = self.H_sS
         comm = bse.context.comm
+        if comm.size == 1:
+            H_sS = np.delete(H_sS, exclude_S, axis=0)
+            H_sS = np.delete(H_sS, exclude_S, axis=1)
+            return H_sS, None
         grid = BlacsGrid(comm, comm.size, 1)
         nS = bse.nS
         ns = bse.ns
