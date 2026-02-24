@@ -12,8 +12,8 @@ def test_small():
     for xc in [LibXC(name),
                XCKernel(name)]:
         n0 = 1e-10
-        n_sr = np.array([[-2, -0.5, 0.0, 0.45, 0.55, 1.5]]) * n0
-        #n_sr = np.linspace(-17, -9, N)[np.newaxis]
+        #n_sr = np.array([[-2, -0.5, 0.0, 0.45, 0.55, 1.5]]) * n0
+        n_sr = np.linspace(-17, -9, N)[np.newaxis]
         # s_xr = np.zeros_like(n_sr)
         e_r = np.empty_like(n_sr[0])
         v_sr = np.zeros_like(n_sr)
@@ -24,12 +24,11 @@ def test_small():
         t = time() - t1
         print(t / N * 1e9)
         import matplotlib.pyplot as plt
-        # plt.plot(n_sr[0], v_sr[0])
+        plt.plot(n_sr[0], v_sr[0])
         # plt.plot(n_sr[0], e_r)
-        print(e_r)
-        print(v_sr[0])
-    return
-    plt.ylim(-1e-12, 0)
+        #print(e_r)
+        #print(v_sr[0])
+    # plt.ylim(-1e-12, 0)
     plt.show()
 
 

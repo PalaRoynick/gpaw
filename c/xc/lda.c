@@ -1,3 +1,6 @@
+#include "xc_gpaw.h"
+
+
 void fastlda(int N,
              double *e,
              const double *n,
