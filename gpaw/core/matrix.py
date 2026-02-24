@@ -221,11 +221,15 @@ class Matrix(XP):
                          dist=dist.comm)
         elif not isinstance(out, Matrix):
             out = out.matrix
-        if out.data is other.data:
-            # Repeatably call multiply using data_buffer
+        # if dist.comm.size > 1 and data_buffer is None:
+        #     assert False  # XXX: Remove this before merging!!!
+        if out.data is other.data or (data_buffer is not None
+                and dist.comm.size > 1 and opa == 'N' and opb == 'N'):
+            # Repeatably call multiply using data_buffer to
+            # save memory
             assert opa == 'N', 'Not implemented'
             assert opb == 'N', 'Not implemented'
-            assert not beta, 'Not implemented'
+            # assert not beta, 'Not implemented'
             assert other.shape[0] == self.shape[0]
 
             # Assert simple (only row distributed) distributions:
@@ -640,6 +644,15 @@ class Matrix(XP):
             return
         self.dist.add_hermitian_conjugate(self, scale)
 
+    def transpose(self, scale: float = 1.0, cc = False):
+        if self.dist.comm.size == 1:
+            if scale != 1.0:
+                self.data *= scale
+            self.data[:] = self.data.T.conj() if cc else \
+                self.data.T
+            return
+        self.dist.transpose(self, scale, cc)
+
     def tril2full(self) -> None:
         """Fill in upper triangle from lower triangle.
 
@@ -951,6 +964,14 @@ class BLACSDistribution(MatrixDistribution):
         cgpaw.pblas_tran(*self.full_shape, scale, tmp.data, scale, a.data,
                          self.desc, self.desc, True)
 
+    def transpose(self,
+                  a,
+                  scale: float = 1.0,
+                  cc: bool = False):
+        tmp = a.copy()
+        cgpaw.pblas_tran(*self.full_shape, scale, tmp.data, 0, a.data,
+                         self.desc, self.desc, cc)
+
     def to_xp(self, xp) -> MatrixDistribution:
         if xp is np:
             return self
@@ -1070,6 +1091,15 @@ class CuPyDistribution(MatrixDistribution):
         b.add_hermitian_conjugate(scale)
         a.data[:] = b.to_xp(cp).data
 
+    def transpose(self,
+                  a: Matrix,
+                  scale: float,
+                  cc: bool):
+        # Quick'n'dirty hack:
+        b = a.to_cpu()
+        b.transpose(scale, cc)
+        a.data[:] = b.to_xp(cp).data
+
     def eighl(self, H, L):
         """
         :::
@@ -1131,7 +1161,6 @@ def mmm_nn(m1, m2, m3, alpha, beta, mmm):
         r0 = (comm.rank + r) % comm.size
         n1 = min(r0 * n, N)
         n2 = min(n1 + n, N)
-        # Contiguity...
         mmm(alpha, m1.data[:, n1:n2], 'N', buf1[:n2 - n1], 'N', beta, m3.data)
 
         beta = 1.0

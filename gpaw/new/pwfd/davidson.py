@@ -256,6 +256,7 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
     comm = psit1_nX.comm
     b = psit1_nX.data.shape[0]
     blocksize = buffer_mX.data.shape[0]
+    max_blocksize = comm.max_scalar(blocksize)
     blocksize_world = comm.sum_scalar(blocksize)
     totalbands = comm.sum_scalar(b)
     for i1, N1 in enumerate(
@@ -265,33 +266,54 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
         if n2 > b:
             n2 = b
 
+        band_stride = (totalbands + comm.size - 1) // comm.size
+        global_n = []
+        for i2 in range(comm.size):
+            global_n.extend(range(i2 * band_stride + n1,
+                            i2 * band_stride + n1 + max_blocksize))
+        global_n = np.array(global_n)
+        global_n = global_n[global_n < totalbands]
+
         world_N = min(blocksize_world,
                       totalbands - N1)
 
         buffer_view_aX = buffer_mX.new(
             data=buffer_mX.data[:n2 - n1],
             dims=(world_N,) + buffer_mX.dims[1:])
+        # buffer_view_aX = buffer_mX[:n2 - n1]
         Ht(psit2_nX[n1:n2], out=buffer_view_aX)
 
-        out1 = Matrix(
-            M=world_N,
-            N=M1_nn.shape[1],
-            data=M1_nn.data[n1:n2, :],
+        # out1 = Matrix(
+        #     M=world_N,
+        #     N=M1_nn.shape[1],
+        #     data=M1_nn.data[n1:n2, :],
+        #     dist=(comm, -1, 1),
+        #     xp=M1_nn.xp)
+        # out2 = Matrix(
+        #     M=world_N,
+        #     N=M2_nn.shape[1],
+        #     data=M2_nn.data[n1:n2, :],
+        #     dist=(comm, -1, 1),
+        #     xp=M2_nn.xp)
+        out_buff = Matrix(
+            M=M1_nn.shape[0],
+            N=world_N,
             dist=(comm, -1, 1),
-            xp=M1_nn.xp)
-        out2 = Matrix(
-            M=world_N,
-            N=M2_nn.shape[1],
-            data=M2_nn.data[n1:n2, :],
-            dist=(comm, -1, 1),
-            xp=M2_nn.xp)
-        buffer_view_aX.matrix_elements(psit1_nX,
-                                       out=out1,
-                                       symmetric=False,
-                                       domain_sum=False,
-                                       cc=True)
-        buffer_view_aX.matrix_elements(psit2_nX,
-                                       out=out2,
-                                       symmetric=False,
-                                       domain_sum=False,
-                                       cc=True)
+            xp=M2_nn.xp,
+            dtype=M2_nn.dtype
+        )
+
+        psit1_nX.matrix_elements(buffer_view_aX,
+                                 out=out_buff,
+                                 symmetric=False,
+                                 domain_sum=False,
+                                 cc=True)
+        M1_nn.data[:, global_n] = out_buff.data
+        psit2_nX.matrix_elements(buffer_view_aX,
+                                 out=out_buff,
+                                 symmetric=False,
+                                 domain_sum=False,
+                                 cc=True)
+        M2_nn.data[:, global_n] = out_buff.data
+    M1_nn.transpose(cc=True)
+    # M1_nn.data[:] = M1_nn.data.T.conj().copy()

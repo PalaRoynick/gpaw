@@ -38,10 +38,11 @@ def test_pw_par_strategies(in_tmp_dir, d, k, gpu, gpaw_new):
     else:
         GPAW = AnyGPAW
     atoms.calc = GPAW(mode=PW(ecut),
-                      txt='hli.txt',
+                      # txt='hli.txt',
                       parallel=parallel,
                       kpts={'size': kpoints},
                       convergence={'density': 1e-6},
+                      eigensolver='davidson',
                       **{'mixer': {'backend': 'fft'},
                          'symmetry': 'off',
                          'random': True} if GPAW_NO_C_EXTENSION else {},

@@ -199,8 +199,8 @@ class XArray(Generic[DomainType], XP):
                          dtype=self.desc.dtype,
                          xp=self.xp)
 
-        if comm.size == 1:
-            assert other.comm.size == 1
+        if not symmetric or comm.size == 1:
+            # assert other.comm.size == comm.size
             if function:
                 assert symmetric
                 other = function(other)
@@ -240,7 +240,7 @@ class XArray(Generic[DomainType], XP):
                             min(blocksize, X - ind),
                             data=M2.data[:, ind:ind + blocksize],
                             xp=self.xp,
-                            dist=(comm, -1, 1))
+                            dist=(other.comm, -1, 1))
                 m1.multiply(m2, opb='C', alpha=self.dv,
                             symmetric=symmetric, out=out,
                             beta=0 if ind == 0 else 1)
@@ -248,10 +248,7 @@ class XArray(Generic[DomainType], XP):
             # functions needs a correction:
             self._matrix_elements_correction(M1, M2, out, symmetric)
         else:
-            if symmetric:
-                _parallel_me_sym(self, out, function)
-            else:
-                _parallel_me(self, other, out)
+            _parallel_me_sym(self, out, function)
 
         if not cc:
             out.complex_conjugate()
@@ -337,56 +334,6 @@ class XArray(Generic[DomainType], XP):
 
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
-
-
-def _parallel_me(psit1_nX: XArray,
-                 psit2_nX: XArray,
-                 M_nn: Matrix) -> None:
-
-    comm = psit2_nX.comm
-    nbands = psit2_nX.dims[0]
-
-    psit1_nX = psit1_nX[:]
-
-    B = (nbands + comm.size - 1) // comm.size
-
-    n_r = [min(r * B, nbands) for r in range(comm.size + 1)]
-
-    xp = psit1_nX.xp
-    buf1_nX = psit1_nX.desc.empty(B, xp=xp)
-    buf2_nX = psit1_nX.desc.empty(B, xp=xp)
-    psit_nX = psit2_nX
-
-    for shift in range(comm.size):
-        rrequest = None
-        srequest = None
-
-        if shift < comm.size - 1:
-            srank = (comm.rank + shift + 1) % comm.size
-            rrank = (comm.rank - shift - 1) % comm.size
-            n1 = n_r[rrank]
-            n2 = n_r[rrank + 1]
-            mynb = n2 - n1
-            if mynb > 0:
-                rrequest = comm.receive(buf1_nX.data[:mynb], rrank, 11, False)
-            if psit2_nX.data.size > 0:
-                srequest = comm.send(psit2_nX.data, srank, 11, False)
-
-        r2 = (comm.rank - shift) % comm.size
-        n1 = n_r[r2]
-        n2 = n_r[r2 + 1]
-        m_nn = psit1_nX.matrix_elements(psit_nX[:n2 - n1],
-                                        cc=True, domain_sum=False)
-
-        M_nn.data[:, n1:n2] = m_nn.data
-
-        if rrequest:
-            comm.wait(rrequest)
-        if srequest:
-            comm.wait(srequest)
-
-        psit_nX = buf1_nX
-        buf1_nX, buf2_nX = buf2_nX, buf1_nX
 
 
 def _parallel_me_sym(psit1_nX: XArray,
