@@ -275,7 +275,8 @@ static void data2block(const xcinfo *info,
       // don't copy sigma and tau for non-spin-polarized.
       // use input arrays instead to save time. have to
       // copy n_g however, because of the NMIN patch.
-      if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = (ptr[i]<NMIN) ? NMIN : ptr[i];
+      //if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = (ptr[i]<NMIN) ? NMIN : ptr[i];
+      if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = ptr[i];
     }
   }
 }
@@ -387,7 +388,7 @@ lxcXCFunctional_Calculate(lxcXCFunctionalObject *self, PyObject *args)
       // don't break here since GGA also needs LDA ptrs
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
-      inlist.p[0].special = 0;//N_SG;
+      inlist.p[0].special = N_SG;
       inlist.p[0].spinsize = 2;
       inlist.num += 1;
       outlist.p[0].p = DOUBLEP(py_e_g);
@@ -510,7 +511,7 @@ lxcXCFunctional_CalculateFXC(lxcXCFunctionalObject *self, PyObject *args)
       // don't break here since GGA also needs LDA ptrs
     case XC_FAMILY_LDA:
       inlist.p[0].p = DOUBLEP(py_n_sg);
-      inlist.p[0].special = 0;//N_SG;
+      inlist.p[0].special = N_SG;
       inlist.p[0].spinsize = 2;
       inlist.num += 1;
       outlist.p[0].p = DOUBLEP(py_v2rho2_xg);
