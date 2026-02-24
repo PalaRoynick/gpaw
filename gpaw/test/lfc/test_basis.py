@@ -211,6 +211,19 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     for phi in all_phi:
         assert any(p is phi for p in maybe_all_phi)
 
+    if basis.should_precalculate:
+        # If precalculation is on, every phi instance should have a non-zero
+        # array of precalculated values. If not, we likely mis-identified
+        # periodic phi copies. FIXME: maybe too strict because what if the
+        # spherical harmonic just happens to give 0 for all relevant points?
+        # FIXME 2: see comment in LFCAtom.set_position()
+        for phi in all_phi:
+            assert phi.phi_mG is not None
+            # has_nonzeros = np.any(phi.phi_mG != 0)
+            # assert has_nonzeros, \
+            # f"Phi with {phi.position=}, radius={phi.get_cutoff()} evaluated" \
+            # " to 0 everywhere. Likely a bug in periodic copy creation."
+
 
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
