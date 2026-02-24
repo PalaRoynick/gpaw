@@ -281,6 +281,7 @@ class BasisFunctionInstance:
     parent_atom: int
     first_mu: int
     position: np.ndarray
+    """Real-space position"""
     phi_mG: np.ndarray | None = None
     """Precalculated values on the grid"""
 
@@ -369,7 +370,7 @@ class LFCAtom:
             r = phi.cutoff
             center = position_v
 
-            # How many boxes does the sphere overlap in given direction
+            # How many cells does the sphere overlap in given direction
             n_min = np.floor((center - r) / L).astype(int)
             n_max = np.floor((center + r) / L).astype(int)
 
@@ -711,26 +712,11 @@ class BasisFunctionCollectionBase(ABC):
         (Axis Aligned Bounding Box) overlap test to find nearby boxes with
         possible overlap, then remove false positives by a proper spherical
         overlap test.
-
-
         """
-
-        def sphere_overlaps_box(
-            radius: float,
-            center: np.ndarray,   # 3D array, real space pos of sphere center
-            box_min: np.ndarray,  # 3D array, box "start" corner in real units
-            box_max: np.ndarray,  # 3D array, box "end" corner in real units
-            ) -> bool:
-            """"""
-            # closest point in the box to sphere center
-            closest = np.maximum(box_min, np.minimum(center, box_max))
-            dist2 = np.sum((closest - center)**2)
-            return dist2 <= radius*radius
-
 
         # Round division up: we allow last blocks to be "too large"
         num_blocks_c = -(self.grid.mysize_c // -self.block_size).astype(int)
-        real_block_size_v = self.block_size* np.diag(self.grid.cell_cv)
+        real_block_size_v = self.block_size * grid_spacing_v
 
         self._block_map: dict[BlockCoords, GridBlock] = {}
 
@@ -765,6 +751,8 @@ class BasisFunctionCollectionBase(ABC):
 
                 # OK to extend outside the grid domain (see clipped_end_c)
                 block_end_c = block_start_c + self.block_size
+                assert np.all(block_end_c >= block_start_c)
+                assert not np.all(block_end_c == block_start_c)
 
                 if sphere_overlaps_box(
                     radius,
@@ -776,25 +764,28 @@ class BasisFunctionCollectionBase(ABC):
                     block_coords = (bx, by, bz)
                     if block_coords in self._block_map:
                         block = self._block_map[block_coords]
-                        block.phi_j.append(phi)
-                        phi.blocks_with_overlap.append(block)
                     else:
-                        new_block = GridBlock(
+                        # first time in this block
+                        block = GridBlock(
                             self.grid,
                             block_coords,
                             block_start_c,
                             block_end_c,
                             [phi])
-                        self._block_map[block_coords] = new_block
+                        self._block_map[block_coords] = block
+
+                    block.phi_j.append(phi)
+                    phi.blocks_with_overlap.append(block)
                 # end block loop
 
             # Sort the block list for convenience
             phi.blocks_with_overlap = sorted(phi.blocks_with_overlap,
-                                            key=lambda x : x.coords)
+                                             key=lambda x : x.coords)
             # Every phi must overlap with some block; if not, we might've
             # messed up when creating phi instances
             assert len(phi.blocks_with_overlap) > 0,\
-                f"Failed for {phi.position=}, radius={phi.get_cutoff()}"
+                f"Failed for {phi.position=}, radius={phi.get_cutoff()}, " \
+                f"{real_block_size_v=}, {grid_spacing_v=}"
 
         # end phi loop
 
