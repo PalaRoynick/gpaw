@@ -119,6 +119,19 @@ need to pass splines to kernels, which is easier to do fully from C++.
 So we'd change the following so that BasisFunction is always purepython
 """
 
+def sphere_overlaps_box(
+    radius: float,
+    center: np.ndarray,   # 3D array, real space pos of sphere center
+    box_min: np.ndarray,  # 3D array, box "start" corner in real units
+    box_max: np.ndarray,  # 3D array, box "end" corner in real units
+    ) -> bool:
+    """Exact sphere-box overlap check."""
+    # closest point in the box to sphere center
+    closest = np.maximum(box_min, np.minimum(center, box_max))
+    dist2 = np.sum((closest - center)**2)
+    return dist2 <= radius*radius
+
+
 AtomTypeId: TypeAlias = int
 """Type alias used for labeling atom types"""
 
@@ -319,33 +332,82 @@ class LFCAtom:
         rank_changed = (self.rank != new_rank)
         self.rank = new_rank
 
-        # Place all basis funcs for this atom on the grid, including those
-        # extending from other cells
+
+        """Handle periodic boundaries: basis funcs from other unit cells
+        can extend to the "main" cell. Treat this as a problem of N
+        spheres (phi) in a box, and we want to know which spheres overlap
+        with a smaller box in the middle ("main" cell). We first have
+        to construct the "periodic images" of spheres, then perform
+        sphere-box overlap checks.
+        """
+        position_v = new_relpos_c @ self.grid.cell_cv
+        L = np.diag(self.grid.cell_cv)  # shape = (3,)
+
+        # Main cell "min" and "max" points. In principle just (0, 0, 0) and
+        # (L, L, L), but in practice the last grid point can be one spacing
+        # earlier, and that is the last point we need for overlap checks.
+        # FIXME: (L, L, L) is safer because it also sees possible phi that
+        # have radius smaller than the grid spacing. So go with L for now.
+        # TODO: 1. Warn about small-radius phi
+        #       2. Drop such phi from computations. More optimal and allows
+        #          assertions checks like "did we only include phi that
+        #          contribute"
+
+        main_cell_start_v = np.asarray([0, 0, 0])
+        main_cell_end_v = main_cell_start_v + L
+
+        # Enforce no overlap in directions without periodic b.c.
+        pbc_mask = ~np.array(self.grid.pbc_c)
+
         self.phi_instances = []
         mu_work = self.first_mu
         for phi in self.phi_j:
 
-            radius = phi.cutoff
+            # NOTE: there is a helper function in GridDescriptor called
+            # get_boxes(), but it seems to give false positives. The following
+            # does better.
+            r = phi.cutoff
+            center = position_v
 
-            """Use helper from GridDescriptor to find all units cells that
-            this spline overlaps with, including the main cell.
-            We get XYZ coords for box start and end corners, and relative
-            displacement that brings this atom to correct position in the
-            other box."""
-            # TODO actually not 100% sure what the first two outputs are
+            # How many boxes does the sphere overlap in given direction
+            n_min = np.floor((center - r) / L).astype(int)
+            n_max = np.floor((center + r) / L).astype(int)
 
-            # dunno what this is
-            cut: bool = True
-            boxes: list[tuple[np.ndarray, np.ndarray, np.ndarray]] \
-                = self.grid._gd.get_boxes(new_relpos_c, radius, cut)
+            # TODO test if this actually works with non-pbc
+            n_min = np.where(pbc_mask, 0, n_min)
+            n_max = np.where(pbc_mask, 0, n_max)
 
-            # Loop includes the "real" atom:
-            for beg_c, end_c, relative_displacement_c in boxes:
-                # real-space position of the replicated atom
-                pos_v = np.dot(new_relpos_c - relative_displacement_c,
-                               self.grid.cell_cv)
+            """Build a 3D shift grid. This Numpy magic is equivalent to:
+            for nx, ny, nz in itertools.product(
+                range(n_min[0], n_max[0] + 1),
+                range(n_min[1], n_max[1] + 1),
+                range(n_min[2], n_max[2] + 1),
+            ):
+                shift = np.array([nx, ny, nz])
+                ...
+            """
+            ranges = [np.arange(n_min[d], n_max[d] + 1) for d in range(3)]
+            grids = np.meshgrid(*ranges, indexing="ij")
+            shifts = np.stack(grids, axis=-1).reshape(-1, 3)
+            # includes (0, 0, 0), ie. the main cell
+            assert shifts.size > 0
+
+            # Where the periodic copy sphere would be
+            translated_centers = center - shifts * L
+
+            # Which shifted sphere actually overlap with the (0,0,0) cell.
+
+            mask = np.asarray(
+                [sphere_overlaps_box(r, sphere_pos,
+                                     main_cell_start_v,
+                                     main_cell_end_v)
+                 for sphere_pos in translated_centers]
+            )
+            assert np.any(mask)
+
+            for atom_pos in translated_centers[mask]:
                 self.phi_instances.append(
-                    BasisFunctionInstance(phi, self.index, mu_work, pos_v)
+                    BasisFunctionInstance(phi, self.index, mu_work, atom_pos)
                 )
 
             mu_work += phi.get_num_mu()
