@@ -185,7 +185,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         self.psit_nX.add_ked(occ_n, taut_sR[self.spin])
 
     @trace
-    def orthonormalize(self, psit2_nX=None):
+    def orthonormalize(self, psit2_nX=None, data_buffer=None):
         r"""Orthonormalize wave functions.
 
         Computes the overlap matrix:::
@@ -246,7 +246,8 @@ class PWFDWaveFunctions(WaveFunctions, XP):
     def build_hamiltonian(self,
                           Ht,
                           dH,
-                          psit2_nX):
+                          psit2_nX,
+                          data_buffer=None):
         """
         psit2_nX will be used as a buffer
         for the wave functions.
@@ -262,7 +263,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
           <𝜓 |p> ΔH  <p |𝜓>
             m  i   ij  j  n
         """
-        self.orthonormalize(psit2_nX)
+        self.orthonormalize(psit2_nX, data_buffer)
         psit_nX = self.psit_nX
         P_ani = self.P_ani
         P2_ani = P_ani.new()
@@ -351,7 +352,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
             m  i   ij  j  n
         """
 
-        H_nm = self.build_hamiltonian(Ht, dH, psit2_nX)
+        H_nm = self.build_hamiltonian(Ht, dH, psit2_nX, data_buffer)
         if nocc is not None:
             # decouple occupied from unoccupied orbitals
             H_nm.data[:nocc, nocc:] = 0

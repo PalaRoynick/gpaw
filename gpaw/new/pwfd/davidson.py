@@ -155,15 +155,18 @@ class Davidson(PWFDEigensolver):
                 P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
                 copy(H_NN.data[B:, :B], M_nn)
 
+                sliced_matrix_elements(psit_nX, psit2_nX,
+                                       buffer_mX=me_buffer_mX,
+                                       Ht=None,
+                                       M1_nn=M_nn,
+                                       M2_nn=M2_nn)
                 # <psi2 | S | psi2>
-                me(psit2_nX, psit2_nX)
                 P2_ani.block_diag_multiply(dS_aii, out_ani=P3_ani)
                 P2_ani.matrix.multiply(P3_ani, opb='C', symmetric=True, beta=1,
-                                       out=M_nn)
-                copy(S_NN.data[B:, B:], M_nn)
+                                       out=M2_nn)
+                copy(S_NN.data[B:, B:], M2_nn)
 
                 # <psi2 | S | psi>
-                me(psit2_nX, psit_nX)
                 P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
                 copy(S_NN.data[B:, :B], M_nn)
 
@@ -201,7 +204,8 @@ class Davidson(PWFDEigensolver):
                     M0_nn.redist(M_nn)
                 domain_comm.broadcast(M_nn.data, 0)
 
-                M_nn.multiply(psit2_nX, beta=1.0, out=psit_nX)
+                M_nn.multiply(psit2_nX, beta=1.0, out=psit_nX,
+                              data_buffer=data_buffer)
                 M_nn.multiply(P2_ani, beta=1.0, out=P3_ani)
                 P_ani, P3_ani = P3_ani, P_ani
                 wfs._P_ani = P_ani
@@ -281,7 +285,10 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
             data=buffer_mX.data[:n2 - n1],
             dims=(world_N,) + buffer_mX.dims[1:])
         # buffer_view_aX = buffer_mX[:n2 - n1]
-        Ht(psit2_nX[n1:n2], out=buffer_view_aX)
+        if Ht is not None:
+            Ht(psit2_nX[n1:n2], out=buffer_view_aX)
+        else:
+            buffer_view_aX.data[:] = psit2_nX.data[n1:n2]
 
         # out1 = Matrix(
         #     M=world_N,
