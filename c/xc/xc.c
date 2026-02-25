@@ -184,9 +184,9 @@ XCFunctional_calculate(XCFunctionalObject *self, PyObject *args)
                       dedsigma1_g[g] = 0.0;
                       dedsigma2_g[g] = 0.0;
                   }
-              continue;
-              na = NMIN;
+                  continue;
               }
+              na = NMIN;
           }
           if (nb < NMIN)
             nb = NMIN;
