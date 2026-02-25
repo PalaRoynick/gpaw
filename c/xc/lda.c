@@ -1,4 +1,5 @@
 #include "xc_gpaw.h"
+#include "extensions.h"
 
 
 void fastlda(int N,
