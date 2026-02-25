@@ -20,17 +20,17 @@ def test_small():
         # w_xr = np.zeros_like(n_sr)
         # xc.calculate(e_r, 10**n_sr, v_sr, s_xr, w_xr)
         t1 = time()
-        #xc.calculate(e_r, 10**n_sr, v_sr)
+        # xc.calculate(e_r, 10**n_sr, v_sr)
         xc.calculate(e_r, n_sr, v_sr)
         t = time() - t1
         print(t / N * 1e9)
-        import matplotlib.pyplot as plt
-        #plt.plot(n_sr[0], v_sr[0])
+        # import matplotlib.pyplot as plt
+        # plt.plot(n_sr[0], v_sr[0])
         # plt.plot(n_sr[0], e_r)
         print(e_r)
         print(v_sr[0])
     # plt.ylim(-1e-12, 0)
-    #plt.show()
+    # plt.show()
 
 
 if __name__ == '__main__':
