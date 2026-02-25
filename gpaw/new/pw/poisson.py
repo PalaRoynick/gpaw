@@ -383,7 +383,8 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             v0s, v1s = xy_average_at_boundary(dphi_g)
             v0, v1 = xy_average_at_boundary(vHt_g)
             vHt_g.data -= dphi_g.data * (v1 / v1s)
-            vHt_g.data[0] -= v0 - (v1 / v1s) * v0s
+            if self.pw.comm.rank == 0:
+                vHt_g.data[0] -= v0 - (v1 / v1s) * v0s
             self.zero_vacuum = True
             if 0:
                 v = vHt_g.ifft(grid=self.grid0)
