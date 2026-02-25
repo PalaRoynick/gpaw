@@ -31,11 +31,11 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     atoms.translate([0, 0, 6 - min(atoms.positions[:, 2])])
 
     # SJM parameters
-    potential = 4.5
+    potential = 4.2
     tol = 0.02
     sj = {'target_potential': potential,
           # 'excess_electrons': -0.045,
-          'excess_electrons': -0.00045,
+          'excess_electrons': -0.00095,
           'jelliumregion': {'top': 14.5},
           'tol': tol}
 
@@ -50,6 +50,7 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         xc='PBE',
         convergence=convergence,
         occupations=FermiDirac(0.1),
+        parallel=dict(kpt=1)
         )#txt=f'{gpaw_new}-{mode}.txt')
 
     solvation = dict(
@@ -86,9 +87,10 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         import matplotlib.pyplot as plt
         import numpy as np
         x, y = np.array(atoms.calc.dft.sjm.jellium.history).T
-        plt.plot(x, y)
-        plt.show()
-    if 1:
+        print(x, y)
+        # plt.plot(x, y)
+        # plt.show()
+    if 0:
         v = atoms.calc.get_electrostatic_potential()
         import matplotlib.pyplot as plt
         import numpy as np

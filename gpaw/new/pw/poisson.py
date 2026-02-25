@@ -420,7 +420,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
 def dipole_layer(grid: UGDesc, z0: float = 2.0):
     a_r = grid.empty()
     z_r = grid.xyz()[:, :, :, 2]
-    n = z_r.shape[2]
+    n = grid.size[2]
     h = grid.cell_cv[2, 2]
     d = h / n
     z0 = round(z0 / d) * d
