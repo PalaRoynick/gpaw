@@ -236,7 +236,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         domain_comm.broadcast(S.data, 0)
         # S now contains L^*
 
-        S.multiply(psit_nX, out=psit2_nX)
+        S.multiply(psit_nX, out=psit2_nX, data_buffer=data_buffer)
         S.multiply(P_ani, out=P2_ani)
         psit_nX.data[:] = psit2_nX.data
         P_ani.data[:] = P2_ani.data
