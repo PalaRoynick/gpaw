@@ -262,6 +262,8 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
     blocksize = buffer_mX.data.shape[0]
     max_blocksize = comm.max_scalar(blocksize)
     blocksize_world = comm.sum_scalar(blocksize)
+    blocksizes_r = np.empty(comm.size, dtype=int)
+    comm.all_gather(np.array(blocksize), blocksizes_r)
     totalbands = comm.sum_scalar(b)
     for i1, N1 in enumerate(
             range(0, totalbands, blocksize_world)):
@@ -271,10 +273,13 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
             n2 = b
 
         band_stride = (totalbands + comm.size - 1) // comm.size
+        tempb = totalbands
         global_n = []
-        for i2 in range(comm.size):
-            global_n.extend(range(i2 * band_stride + n1,
-                            i2 * band_stride + n1 + max_blocksize))
+        for i2, bsize in enumerate(blocksizes_r):
+            num_b = max(0, min(tempb, band_stride))
+            global_n.extend(range(i2 * band_stride + min(i1 * bsize, num_b),
+                            i2 * band_stride + min((i1 + 1) * bsize, num_b)))
+            tempb -= band_stride
         global_n = np.array(global_n)
         global_n = global_n[global_n < totalbands]
 
