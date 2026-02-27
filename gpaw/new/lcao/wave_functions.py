@@ -196,9 +196,10 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         Cf_nM = self.C_nM.data[n1:n2, M1:M2] * f_n[:, np.newaxis]
         rho_MM = self.xp.empty_like(self.T_MM.data)
         if self.xp is np:
-            mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
+            mmm(1.0, Cf_nM, 'C', self.C_nM.data[n1:n2], 'N', 0.0, rho_MM)
         else:
-            cublas_mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
+            cublas_mmm(
+                1.0, Cf_nM, 'C', self.C_nM.data[n1:n2], 'N', 0.0, rho_MM)
         if transposed and np.issubdtype(rho_MM.dtype, np.complexfloating):
             self.xp.negative(rho_MM.imag, rho_MM.imag)
         domain_comm.sum(rho_MM)
