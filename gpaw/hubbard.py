@@ -3,6 +3,8 @@ from ase.units import Ha
 
 from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike2D
 
+J = (2.0) / Ha
+
 
 def parse_hubbard_string(type: str) -> tuple[str, 'HubbardU']:
 
@@ -94,13 +96,17 @@ def hubbard(D_sii: Array3D,
             N_mm = N_mm / 2.0
             if s == 0:
                 eU1 = U / 2. * (N_mm - 0.5 * N_mm @ N_mm).trace()
+                eU1 += J / 4. * np.sum(np.square(N_mm))
 
                 dHU_mm = U / 2. * (np.eye(nm) - N_mm.T)
+                dHU_mm += J / 2. * N_mm
 
             else:
                 eU1 = -U / 2. * (0.5 * N_mm @ N_mm).trace()
+                eU1 -= J / 4. * np.sum(np.square(N_mm))
 
                 dHU_mm = -U / 2. * N_mm.T
+                dHU_mm -= J / 2. * N_mm
         else:
             eU1 = U / 2. * (N_mm - N_mm @ N_mm).trace()
 
