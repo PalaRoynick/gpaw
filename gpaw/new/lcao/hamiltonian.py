@@ -192,9 +192,9 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
                                                     include_kinetic=False)
 
     def calculate_kinetic_energy(self, wfs, skip_sum=False):
-        
+
         e_kin = 0.0
-        f = wfs.myocc_n > 1e10   # vedere da pw
+        f = wfs.myocc_n > 1e-10   # vedere da pw
         # occ = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1] > 1e-10
         x_nn = np.dot(wfs.C_nM[f],
                       np.dot(wfs.T_MM, wfs.C_nM[f].T.conj())).real
@@ -204,4 +204,3 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
             raise NotImplementedError
 
         return e_kin
-    
