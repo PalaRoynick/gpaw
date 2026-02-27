@@ -1,8 +1,6 @@
-from __future__ import division, print_function
-
-import sys
-from math import pi
 import pickle
+from math import pi
+from pathlib import Path
 
 import numpy as np
 
@@ -29,10 +27,10 @@ def frequency_grid(domega0, omega2, omegamax):
 
 
 class GWQEHCorrection:
-    def __init__(self, calc, gwfile=None, filename=None, kpts=[0], bands=None,
+    def __init__(self, calc, gwfile=None, savefile=None, kpts=[0], bands=None,
                  structure=None, d=None, layer=0,
                  dW_qw=None, qqeh=None, wqeh=None,
-                 txt=sys.stdout, world=mpi.world, domega0=0.025,
+                 txt='-', world=mpi.world, domega0=0.025,
                  omega2=10.0, eta=0.1, include_q0=True, metal=False,
                  restart=False):
         """
@@ -46,8 +44,9 @@ class GWQEHCorrection:
             GPAW calculator object or filename of saved calculator object.
         gwfile: str or None
             name of gw results file from the monolayer calculation
-        filename: str
-            filename for gwqeh output
+        savefile: str or None
+            Path to .npz file for saving/loading all calculation state.
+            If None, no state is saved to disk.
         kpts: list
             List of indices of sthe IBZ k-points to calculate the quasi
             particle energies for. Set to [0] by default since the QP
@@ -78,6 +77,9 @@ class GWQEHCorrection:
         wqeh: array of floats
             w-grid used for dW_qw. So far this have to be the same as for the
             GWQEH calculation.  (only needed if dW is given by hand).
+        txt: str or file-like or None
+            Log output destination. Use '-' for stdout, a filename for
+            file output, or None for no output.
         domega0: float
             Minimum frequency step (in eV) used in the generation of the non-
             linear frequency grid.
@@ -95,10 +97,11 @@ class GWQEHCorrection:
         """
         self.restart = restart
         self.gwfile = gwfile
+        self.savefile = savefile
 
         self.inputcalc = calc
         self.gs = ResponseGroundStateAdapter.from_input(calc)
-        self.context = ResponseContext(txt=filename + '.txt', comm=world)
+        self.context = ResponseContext(txt=txt, comm=world)
         self.world = world
 
         # Initialize parallelization communicators
@@ -114,12 +117,6 @@ class GWQEHCorrection:
         self.pair_calc = ActualPairDensityCalculator(self.kptpair_factory,
                                                      self.blockcomm)
 
-        if txt == sys.stdout:
-            self.fd = sys.stdout
-        else:
-            self.fd = self.context.fd
-
-        self.filename = filename
         self.ecut /= Hartree
         self.eta = eta / Hartree
         self.domega0 = domega0 / Hartree
@@ -172,19 +169,19 @@ class GWQEHCorrection:
 
         # Calculate screened potential of Heterostructure
         if dW_qw is None:
-            if restart:
-                try:
-                    data = np.load(filename + "_dW_qw.npz")
-                    self.qqeh = data['qqeh']
-                    self.wqeh = data['wqeh']
-                    dW_qw = data['dW_qw']
-                except IOError:
+            if restart and self.savefile is not None:
+                state = self._load_state(self.savefile)
+                if state is not None and 'dW_qw' in state:
+                    self.qqeh = state['qqeh']
+                    self.wqeh = state['wqeh']
+                    dW_qw = state['dW_qw']
+                else:
                     dW_qw = self.calculate_W_QEH(structure, d, layer)
             else:
                 dW_qw = self.calculate_W_QEH(structure, d, layer)
         else:
             self.qqeh = qqeh
-            self.wqeh = None  # wqeh
+            self.wqeh = wqeh
 
         self.dW_qw = self.get_W_on_grid(dW_qw, include_q0=include_q0,
                                         metal=metal)
@@ -197,11 +194,35 @@ class GWQEHCorrection:
 
         self.complete = False
         self.nq = 0
-        if self.load_state_file():
-            if self.complete:
-                print('Self-energy loaded from file', file=self.fd)
+        if restart and self.savefile is not None:
+            state = self._load_state(self.savefile)
+            if state is not None and self._state_is_compatible(state):
+                self._restore_state(state)
+                if self.complete:
+                    self.context.print('Self-energy loaded from file')
 
-        print('Initialized GWQEHCorrection object', file=self.fd)
+        self.context.print('Initialized GWQEHCorrection object')
+
+    @staticmethod
+    def _load_state(filepath):
+        """Load saved state from file. Returns dict or None."""
+        path = Path(filepath)
+        if not path.is_file():
+            return None
+        return dict(np.load(path))
+
+    def _state_is_compatible(self, state):
+        """Check that loaded state matches current calculation parameters."""
+        return (list(state['kpts']) == self.kpts
+                and np.array_equal(state['bands'], self.bands)
+                and state['nbands'] == self.nbands)
+
+    def _restore_state(self, state):
+        """Restore calculation state from loaded data."""
+        self.nq = int(state['last_q'])
+        self.complete = bool(state['complete'])
+        self.sigma_sin = state['sigma_sin']
+        self.dsigma_sin = state['dsigma_sin']
 
     def distribute_k_points_and_bands(self, band1, band2, kpts=None):
         """Distribute spins, k-points and bands."""
@@ -227,16 +248,16 @@ class GWQEHCorrection:
                     self.mysKn1n2.append((s, K, n1 + band1, n2 + band1))
                 i += nbands
 
-        print('BZ k-points:', self.gs.kd, file=self.fd)
-        print('Distributing spins, k-points and bands (%d x %d x %d)' %
-              (ns, nk, nbands),
-              'over %d process%s' %
-              (self.kncomm.size, ['es', ''][self.kncomm.size == 1]),
-              file=self.fd)
-        print('Number of blocks:', self.blockcomm.size, file=self.fd)
+        self.context.print('BZ k-points:', self.gs.kd)
+        self.context.print('Distributing spins, k-points and bands '
+                           '(%d x %d x %d)' % (ns, nk, nbands),
+                           'over %d process%s' %
+                           (self.kncomm.size,
+                            ['es', ''][self.kncomm.size == 1]))
+        self.context.print('Number of blocks:', self.blockcomm.size)
 
     def calculate_QEH(self):
-        print('Calculating QEH self-energy contribution', file=self.fd)
+        self.context.print('Calculating QEH self-energy contribution')
 
         kd = self.gs.kd
         # Use ResponseGroundStateAdapter's atomrotations
@@ -268,8 +289,9 @@ class GWQEHCorrection:
             self.save_state_file()
 
             qcstr = '(' + ', '.join(['%.3f' % x for x in q_c]) + ')'
-            print('Calculating contribution from IBZ q-point #%d/%d q_c=%s'
-                  % (nq, Nq, qcstr), file=self.fd)
+            self.context.print(
+                'Calculating contribution from IBZ q-point #%d/%d q_c=%s'
+                % (nq, Nq, qcstr))
 
             # Screened potential
             dW_w = self.dW_qw[nq]
@@ -380,14 +402,15 @@ class GWQEHCorrection:
     def calculate_qp_correction(self):
 
         if self.complete:
-            print('Self-energy loaded from file', file=self.fd)
+            self.context.print('Self-energy loaded from file')
         else:
             self.calculate_QEH()
 
         # Need GW result for renormalization factor
         b1, b2 = self.bands
         if self.gwfile is not None:
-            gwdata = pickle.load(open(self.gwfile, 'rb'))
+            with open(self.gwfile, 'rb') as f:
+                gwdata = pickle.load(f)
 
             self.dsigmagw_sin = gwdata['dsigma']
             self.qpgw_sin = gwdata['qp'] / Hartree
@@ -402,7 +425,7 @@ class GWQEHCorrection:
         else:
             # Z = 0.7 is a good estimate according to
             # https://doi.org/10.1038/s41524-020-00480-7
-            print('estimating quasiparticle weight Z = 0.7')
+            self.context.print('estimating quasiparticle weight Z = 0.7')
             self.Z_sin = 0.7
         self.qp_sin = self.Z_sin * self.sigma_sin
 
@@ -456,7 +479,9 @@ class GWQEHCorrection:
 
         return sigma, dsigma
 
-    def save_state_file(self, q=0):
+    def save_state_file(self):
+        if self.savefile is None or self.world.rank != 0:
+            return
         data = {'kpts': self.kpts,
                 'bands': self.bands,
                 'nbands': self.nbands,
@@ -464,31 +489,13 @@ class GWQEHCorrection:
                 'complete': self.complete,
                 'sigma_sin': self.sigma_sin,
                 'dsigma_sin': self.dsigma_sin,
-                'qp_sin': self.qp_sin,
-                'Qp_sin': self.Qp_sin}
-        if self.world.rank == 0:
-            np.savez(self.filename + '_qeh.npz',
-                     **data)
-
-    def load_state_file(self):
-        if not self.restart:
-            return False
-        try:
-            data = np.load(self.filename + '_qeh.npz')
-        except IOError:
-            return False
-        else:
-            if (data['kpts'] == self.kpts and
-                (data['bands'] == self.bands).all() and
-                    data['nbands'] == self.nbands):
-                self.nq = data['last_q']
-                self.complete = data['complete']
-                self.complete = data['complete']
-                self.sigma_sin = data['sigma_sin']
-                self.dsigma_sin = data['dsigma_sin']
-                return True
-            else:
-                return False
+                'qqeh': self.qqeh,
+                'wqeh': self.wqeh}
+        if self.qp_sin is not None:
+            data['qp_sin'] = self.qp_sin
+        if self.Qp_sin is not None:
+            data['Qp_sin'] = self.Qp_sin
+        np.savez(self.savefile, **data)
 
     def get_W_on_grid(self, dW_qw, include_q0=True, metal=False):
         """This function transforms the screened potential W(q,w) to the
@@ -562,7 +569,6 @@ class GWQEHCorrection:
         structure = expand_layers(structure)
         self.w_grid = self.omega_w
         wmax = self.w_grid[-1]
-        # qmax = (self.q_grid).max()
 
         # Single layer
         if len(d) == len(structure) - 1:
@@ -571,7 +577,6 @@ class GWQEHCorrection:
             BBfiles=[structure[layer]],
             layerwidth_l=[d[layer] / Bohr],
             wmax=wmax,
-            # qmax=qmax / Bohr
         )
 
         W0_qw = HS0.get_screened_potential()[..., 0, 0]
@@ -580,7 +585,6 @@ class GWQEHCorrection:
 
         HS = QEH.heterostructure(BBfiles=structure, layerwidth_l=d / Bohr,
                                  wmax=wmax,
-                                 # qmax=qmax / Bohr
                                  )
         basis_idx = 2 * layer
         W_qw = HS.get_screened_potential()[..., basis_idx, basis_idx]
@@ -589,13 +593,6 @@ class GWQEHCorrection:
         dW_qw = W_qw - W0_qw
         self.wqeh = HS.hs.omega_w
         self.qqeh = HS.hs.q_q
-
-        if self.world.rank == 0:
-            data = {'qqeh': self.qqeh,
-                    'wqeh': self.wqeh,
-                    'dW_qw': dW_qw}
-            np.savez(self.filename + "_dW_qw.npz",
-                     **data)
 
         return dW_qw
 
@@ -606,10 +603,10 @@ class GWQEHCorrection:
             self.epsmin = min(self.epsmin, kpt.eps_n[0])
             self.epsmax = max(self.epsmax, kpt.eps_n[self.nbands - 1])
 
-        print('Minimum eigenvalue: %10.3f eV' % (self.epsmin * Hartree),
-              file=self.fd)
-        print('Maximum eigenvalue: %10.3f eV' % (self.epsmax * Hartree),
-              file=self.fd)
+        self.context.print('Minimum eigenvalue: %10.3f eV'
+                           % (self.epsmin * Hartree))
+        self.context.print('Maximum eigenvalue: %10.3f eV'
+                           % (self.epsmax * Hartree))
 
         return self.epsmax - self.epsmin
 
