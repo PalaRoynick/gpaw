@@ -46,7 +46,8 @@ def test_nice_error_message(noprojs_gpw, mpi, parallel):
     calc = mpi.NewGPAW(noprojs_gpw, parallel=parallel)
 
     wfs = next(iter(calc.dft.ibzwfs))
-    with pytest.raises(RuntimeError, match='There are no proj'):
+    with pytest.raises(RuntimeError,
+                       match='Wave function collapse: no projections!'):
         wfs.P_ani
 
 
