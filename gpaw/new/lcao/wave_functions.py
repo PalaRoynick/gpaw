@@ -12,6 +12,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
+from gpaw.utilities.blas import mmm
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -183,22 +184,23 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         -------
         The density matrix in the LCAO basis
         """
-        if self.domain_comm.rank == 0:
-            f_n = self.weight * self.spin_degeneracy * self.myocc_n
-            if eigs:
-                f_n *= self.myeig_n
-            f_n = self.xp.asarray(f_n)
-            TempC_nM = self.C_nM.copy()
-            TempC_nM.data *= f_n[:, None]
-            rho_MM = TempC_nM.multiply(self.C_nM, opa='C')
-            if transposed:
-                rho_MM.complex_conjugate()
-            rho_MM_data = rho_MM.data
-        else:
-            rho_MM_data = np.empty_like(self.T_MM.data)
-        self.domain_comm.broadcast(rho_MM_data, 0)
-
-        return rho_MM_data
+        mynbands = len(self.myocc_n)
+        domain_comm = self.domain_comm
+        B = (mynbands + domain_comm.size - 1) // domain_comm.size
+        n1 = domain_comm.rank * B
+        n2 = n1 + B
+        f_n = self.weight * self.spin_degeneracy * self.myocc_n[n1:n2]
+        if eigs:
+            f_n *= self.myeig_n[n1:n2]
+        f_n = self.xp.asarray(f_n)
+        M1, M2 = self.T_MM.dist.my_row_range()
+        Cf_nM = self.C_nM.data[n1:n2, M1:M2] * f_n[:, np.newaxis]
+        rho_MM = np.empty_like(self.T_MM.data)
+        mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
+        if transposed:
+            rho_MM.complex_conjugate()
+        domain_comm.sum(rho_MM)
+        return rho_MM
 
     def to_uniform_grid_wave_functions(self,
                                        grid,
