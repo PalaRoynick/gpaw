@@ -45,6 +45,7 @@ double rpbe_exchange(const xc_parameters* par,
 double beefvdw_exchange(const xc_parameters* par,
                         double n, double rs, double a2,
                         double* dedrs, double* deda2);
+void fastlda(int N, double *e, const double *n, double *v);
 
 //
 typedef struct
@@ -113,8 +114,11 @@ XCFunctional_calculate(XCFunctionalObject *self, PyObject *args)
     }
 #endif
 
-  if (PyArray_DIM(n_array, 0) == 1)
-    {
+  if (PyArray_DIM(n_array, 0) == 1) {
+    if (par->gga == 0) {
+        fastlda(ng, e_g, n_g, v_g);
+        Py_RETURN_NONE;
+    }
     for (int g = 0; g < ng; g++)
       {
         double n = n_g[g];
