@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
-from gpaw.core.matrix import Matrix, cublas_mmm
+from gpaw.core.matrix import Matrix, cublas_mmm as cpmmm
 from gpaw.gpu import XP, as_np
 from gpaw.mpi import MPIComm, receive, send, serial_comm
 from gpaw.new.potential import Potential
@@ -11,7 +11,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
-from gpaw.utilities.blas import mmm
+from gpaw.utilities.blas import mmm as npmmm
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -183,27 +183,17 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         -------
         The density matrix in the LCAO basis
         """
-        mynbands = len(self.myocc_n)
-        domain_comm = self.domain_comm
-        B = (mynbands + domain_comm.size - 1) // domain_comm.size
-        n1 = domain_comm.rank * B
-        n2 = n1 + B
-        f_n = self.weight * self.spin_degeneracy * self.myocc_n[n1:n2]
+        C_nM = self.C_nM.new(dist=(self.domain_band_comm, 2, 2, ..., ...))
+        f_n = self.weight * self.spin_degeneracy * self.myocc_n
         if eigs:
-            f_n *= self.myeig_n[n1:n2]
+            f_n *= self.myeig_n
         f_n = self.xp.asarray(f_n)
-        M1, M2 = self.T_MM.dist.my_row_range()
-        Cf_nM = self.C_nM.data[n1:n2, M1:M2] * f_n[:, np.newaxis]
-        rho_MM = self.xp.empty_like(self.T_MM.data)
-        if self.xp is np:
-            mmm(1.0, Cf_nM, 'C', self.C_nM.data[n1:n2], 'N', 0.0, rho_MM)
-        else:
-            cublas_mmm(
-                1.0, Cf_nM, 'C', self.C_nM.data[n1:n2], 'N', 0.0, rho_MM)
-        if transposed and np.issubdtype(rho_MM.dtype, np.complexfloating):
-            self.xp.negative(rho_MM.imag, rho_MM.imag)
-        domain_comm.sum(rho_MM)
-        return rho_MM
+        Cf_nM = C_nM.copy()
+        Cf_nM.data *= f_n[:, np.newaxis]
+        rho_MM = Cf_nM.multiply(C_nM, opa='C')
+        if transposed:
+            rho_MM.complex_conjugate()
+        return rho_MM.redist(self.T_MM.dist)
 
     def to_uniform_grid_wave_functions(self,
                                        grid,
