@@ -197,8 +197,8 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         Cf_nM = self.C_nM.data[n1:n2, M1:M2] * f_n[:, np.newaxis]
         rho_MM = np.empty_like(self.T_MM.data)
         mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
-        if transposed:
-            rho_MM.complex_conjugate()
+        if transposed and np.issubdtype(rho_MM.dtype, np.complexfloating):
+            self.xp.negative(rho_MM.imag, rho_MM.imag)
         domain_comm.sum(rho_MM)
         return rho_MM
 
