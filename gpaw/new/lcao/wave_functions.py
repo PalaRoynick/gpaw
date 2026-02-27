@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
-
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
-from gpaw.core.matrix import Matrix
+from gpaw.core.matrix import Matrix, cublas_mmm
 from gpaw.gpu import XP, as_np
 from gpaw.mpi import MPIComm, receive, send, serial_comm
 from gpaw.new.potential import Potential
@@ -195,8 +194,11 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         f_n = self.xp.asarray(f_n)
         M1, M2 = self.T_MM.dist.my_row_range()
         Cf_nM = self.C_nM.data[n1:n2, M1:M2] * f_n[:, np.newaxis]
-        rho_MM = np.empty_like(self.T_MM.data)
-        mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
+        rho_MM = self.xp.empty_like(self.T_MM.data)
+        if self.xp is np:
+            mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
+        else:
+            cublas_mmm(1.0, Cf_nM, 'C', self.C_nM.data, 'N', 0.0, rho_MM)
         if transposed and np.issubdtype(rho_MM.dtype, np.complexfloating):
             self.xp.negative(rho_MM.imag, rho_MM.imag)
         domain_comm.sum(rho_MM)
