@@ -14,7 +14,7 @@ from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.new.pw.hamiltonian import PWHamiltonian
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
-from gpaw.new.rttddft.state import RTTDDFTState
+from gpaw.new.rttddft.dataclasses import RTTDDFTState
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.tddft.solvers.cscg import CSCG
 from gpaw.utilities.timing import nulltimer
@@ -143,7 +143,7 @@ class FDNumpyPropagator(WaveFunctionPropagator):
         if isinstance(hamiltonian, FDKickHamiltonian):
             self.dH = hamiltonian.dH
         else:
-            self.dH = state.potential.dH
+            self.dH = state.potential.deltaH
 
         wfs = state.ibzwfs._wfs_u[0]
         self.dS = partial(wfs.setups.get_overlap_corrections,

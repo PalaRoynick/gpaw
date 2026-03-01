@@ -5,7 +5,7 @@ from functools import partial
 
 import numpy as np
 
-from gpaw.core.arrays import DistributedArrays as XArray
+from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.mpi import broadcast_exception
 from gpaw.new import trace, zips
@@ -21,10 +21,11 @@ from gpaw.utilities.blas import axpy
 class PWFDEigensolver(Eigensolver):
     def __init__(self,
                  hamiltonian,
-                 converge_bands: int | str = 'occupied',
+                 convergence: dict,
                  blocksize: int = 10,
                  max_buffer_mem: int | None = 200 * 1024 ** 2):
-        self.converge_bands = converge_bands
+        self.converge_bands = convergence.get('bands', 'occupied')
+        self.residual_target = convergence.get('eigenstates', 4e-8)
         self.blocksize = blocksize
         self.preconditioner: Callable
         self.preconditioner_factory = hamiltonian.create_preconditioner
@@ -42,7 +43,7 @@ class PWFDEigensolver(Eigensolver):
                                                           xp=ibzwfs.xp)
 
     def _allocate_buffer_arrays(self, ibzwfs, shape):
-        G_max = np.prod(ibzwfs.get_max_shape())
+        G_max = max(1, np.prod(ibzwfs.get_max_shape()))
         b = max(wfs.n2 - wfs.n1 for wfs in ibzwfs)
         nbands = ibzwfs.nbands
         dtype_size = ibzwfs._wfs_u[0].psit_nX.data.dtype.itemsize
@@ -114,11 +115,11 @@ class PWFDEigensolver(Eigensolver):
         # Loop over k-points:
         with broadcast_exception(ibzwfs.kpt_comm):
             for wfs, weight_n in zips(ibzwfs, weight_un):
-                dH = partial(potential.dH, spin=wfs.spin)
                 Ht = partial(apply, spin=wfs.spin)
                 temp_wfs_error, temp_eig_error = \
                     self.iterate_kpt(wfs, weight_n, self.iterate1,
-                                     Ht=Ht, dH=dH, dS_aii=dS_aii)
+                                     Ht=Ht, potential=potential,
+                                     dS_aii=dS_aii)
                 wfs_error += wfs.weight * temp_wfs_error
                 if eig_error < temp_eig_error:
                     eig_error = temp_eig_error

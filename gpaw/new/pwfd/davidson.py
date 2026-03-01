@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from pprint import pformat
 
 import numpy as np
@@ -20,13 +21,13 @@ class Davidson(PWFDEigensolver):
                  wf_grid,
                  band_comm,
                  hamiltonian,
-                 converge_bands='occupied',
+                 convergence,
                  niter=2,
                  scalapack_parameters=None,
                  max_buffer_mem: int = 200 * 1024 ** 2):
         super().__init__(
             hamiltonian,
-            converge_bands,
+            convergence,
             max_buffer_mem=max_buffer_mem)
         self.niter = niter
         self.H_NN: Matrix
@@ -62,11 +63,13 @@ class Davidson(PWFDEigensolver):
 
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
-                 Ht, dH, dS_aii, weight_n):
+                 Ht, potential,
+                 dS_aii, weight_n):
         H_NN = self.H_NN
         S_NN = self.S_NN
         M_nn = self.M_nn
         M2_nn = self.M2_nn
+        dH = partial(potential.deltaH, spin=wfs.spin)
 
         xp = M_nn.xp
 

@@ -37,7 +37,8 @@ def calc_me(atoms, nbands):
                     'energy': 0.005,
                     'bands': nbands,
                     'eigenstates': 1e-4,
-                    'density': 1e-3})
+                    'density': 1e-3},
+                legacy_gpaw=True)
     atoms.calc = calc
     try:
         atoms.get_potential_energy()

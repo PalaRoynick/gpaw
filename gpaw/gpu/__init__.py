@@ -11,6 +11,7 @@ import numpy as np
 
 from gpaw import ENVVAR_GPAW_NO_GPU_MPI
 from gpaw.new.timer import trace
+from gpaw.cgpaw import have_magma
 
 device_id = None
 """Device id"""
@@ -218,8 +219,15 @@ if not TYPE_CHECKING:
             cupy.fft.ifftshift = ifftshift_patch
 
 
-def set_device(log, world):
+def set_device(log, world=None):
     global device_id
+
+    if device_id is not None:
+        return
+
+    from gpaw.mpi import normalize_communicator
+    world = normalize_communicator(world)
+
     if cupy_is_fake:
         device_id = 'CPU emulation of GPU'
         log(f'mpi rank {world.rank} has no GPU device!', parallel=True)
@@ -247,13 +255,19 @@ def set_device(log, world):
             cgpaw.gpaw_gpu_init()
             atexit.register(cgpaw.gpaw_gpu_delete)
 
+            # Initialize MAGMA library if available
+            if have_magma:
+                cgpaw.gpu.magma.magma_init()
+                atexit.register(cgpaw.gpu.magma.magma_finalize)
+
             # Generate a device id
             import os
             nodename = os.uname()[1]
             bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
             device_id = f'{nodename}:{bus_id}'
 
-    log(f'mpi rank {world.rank} has GPU device {device_id}', parallel=True)
+        log(f'mpi rank {world.rank} has GPU device {device_id}', parallel=True)
+
     if ENVVAR_GPAW_NO_GPU_MPI:
         log('Running without GPU aware MPI because \'GPAW_NO_GPU_MPI\' is'
             ' set in the environment. Comms will be staged through host.')
@@ -261,7 +275,6 @@ def set_device(log, world):
 
 __all__ = ['cupy', 'cupyx', 'as_xp', 'as_np', 'synchronize',
            'flush_pinned_arrays']
-
 
 try:
     from gpaw.cgpaw import _flush_pending_decrefs
