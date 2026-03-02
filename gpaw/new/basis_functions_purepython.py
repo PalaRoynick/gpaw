@@ -37,17 +37,6 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         """
         """
 
-        def get_block_xyz(block: GridBlock) -> np.ndarray:
-            """Gives real-space XYZ points for the given block.
-            Does NOT give points that extend beyond the grid domain boundary,
-            which can happen if the division into blocks was uneven.
-            4D array of shape (Nx, Ny, Nz, 3)."""
-            # See UGDesc.xyz()
-            shape = block.clipped_end_c - block.start_c
-            indices_Rc = np.indices(tuple(shape)).transpose((1, 2, 3, 0))
-            indices_Rc += block.start_c
-            return indices_Rc @ (block.grid.cell_cv.T / block.grid.size_c).T
-
         # TODO precalculation on GPU
         for block in self._block_map.values():
             num_m = len(block.M_m)
@@ -60,10 +49,9 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
             block.evaluated_phi_mg = np.zeros((num_m, *block_shape),
                                               dtype=np.float64)
 
-            x_Gv = get_block_xyz(block)
+            x_Gv = block.get_block_xyz()
 
             mu_local = 0
-
             for phi in block.phi_j:
                 # Get distance from phi (atom) center for each XYZ point
                 d_Gv = x_Gv - phi.position
@@ -74,6 +62,9 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 f_r = np.nan_to_num(f_r, nan=0.0)
 
                 l = phi.get_angular_momentum_number()
+                # ensure the order is what we expect
+                assert block.M_m[mu_local] == phi.first_mu
+
                 for m in range(0, phi.get_num_mu()):
                     block.evaluated_phi_mg[mu_local + m] = (
                         f_r * Y(l**2 + m, *d_Gv.T)

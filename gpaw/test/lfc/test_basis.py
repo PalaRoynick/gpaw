@@ -4,6 +4,7 @@ import pytest
 from dataclasses import dataclass
 from typing import cast, TYPE_CHECKING
 import copy
+import itertools
 
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.matrix import Matrix
@@ -216,6 +217,22 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
         for block in basis._block_map.values():
             assert any(p is phi for p in block.phi_j), \
                 "phi does not overlap with any block! Likely a bug in blocking"
+
+    # Each grid point should appear at most in one block. Blocks that don't
+    # overlap with any basis functions are ignored, so it's OK for a point
+    # to not be present in any block.
+    seen_points = []
+    for block in basis._block_map.values():
+        for xyz in itertools.product(
+            range(block.start_c[0], block.clipped_end_c[0]),
+            range(block.start_c[1], block.clipped_end_c[1]),
+            range(block.start_c[2], block.clipped_end_c[2])
+            ):
+            assert xyz not in seen_points
+            seen_points.append(xyz)
+
+    for block in basis._block_map.values():
+        assert np.all(block.get_block_xyz() == system.grid.xyz())
 
 
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())

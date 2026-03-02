@@ -237,6 +237,17 @@ class GridBlock:
         """
         return np.minimum(self.end_c, self.grid.end_c)
 
+    def get_block_xyz(self) -> np.ndarray:
+        """Gives real-space XYZ points for the given block.
+        Does NOT give points that extend beyond the grid domain boundary,
+        which can happen if the division into blocks was uneven.
+        4D array of shape (Nx, Ny, Nz, 3)."""
+        # See UGDesc.xyz()
+        shape = self.clipped_end_c - self.start_c
+        indices_Rc = np.indices(tuple(shape)).transpose((1, 2, 3, 0))
+        indices_Rc += self.start_c
+        return indices_Rc @ (self.grid.cell_cv.T / self.grid.size_c).T
+
 
 class BasisFunction():
     """"""
