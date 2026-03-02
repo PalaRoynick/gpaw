@@ -7,17 +7,16 @@ from gpaw.atom.aeatom import AllElectronAtom
 # from gpaw.atom.all_electron import AllElectron
 from gpaw.typing import Array1D
 from gpaw.utilities import hartree
-from gpaw.xc.numericalxc import NumericalXCGG, NumericalXCKernelGG
+from gpaw.xc.numericalxc import NXCRadialCalculator
 
 
 class _iKSAE:
-    def __init__(self, symbol, nt_g, weights="uniform"):
-        self.nt_g = nt_g
+    def __init__(self, symbol, nt_sg, weights="uniform"):
+        self.nt_sg = nt_sg
+        self.nspsins = len(nt_sg)
         self.niter = 0
         self.init_weights(weights)
-        self.init_xc()
-        self.mu_i = None
-        self.p_ij = None
+        self.xc = NXCRadialCalculator(self.fermi_amaldi()[:, None], "lebedev", True)
         self.L = 0.0
         self.prev_L = 0.0
         self.L_iter = []
@@ -25,53 +24,48 @@ class _iKSAE:
 
     def init_weights(self, weights: Union[str, Array1D]) -> None:
         if isinstance(weights, Array1D):
-            self.weights_g = weights
+            self.weights_sg = weights
         elif weights == "uniform":
-            self.weights_g = np.ones_like(self.nt_g)
+            self.weights_sg = np.ones_like(self.nt_sg)
         elif weights == "density":
-            self.weights_g = np.sum(self.nt_g, axis=0)
+            self.weights_sg = np.sum(self.nt_sg, axis=0)
         elif weights == "density_squared":
-            self.weights_g = np.sum(self.nt_g, axis=0)
+            self.weights_sg = np.sum(self.nt_sg, axis=0)
         elif weights == "inverse_density":
-            self.weights_g = 1.0 / (self.nt_g + 1e-10)
+            self.weights_sg = 1.0 / (self.nt_sg + 1e-10)
         elif weights == "inverse_density_squared":
-            self.weights_g = 1.0 / (self.nt_g**2 + 1e-20)
+            self.weights_sg = 1.0 / (self.nt_sg**2 + 1e-20)
         elif weights == "mask":
-            self.weights_g = np.zeros_like(self.nt_g)
-            self.weights_g[self.nt_g[0] > 1e-5] = 1.0
+            self.weights_sg = np.zeros_like(self.nt_sg)
+            self.weights_sg[self.nt_sg > 1e-5] = 1.0
         else:
             raise ValueError(
                 'weights must be one of "uniform", "density", \
                 "inverse_density", "inverse_density_squared" or "mask"'
             )
 
-    def init_xc(self):
-        self.xc = NumericalXCGG(NumericalXCKernelGG())
-        self.xc.kernel.set_rgd(self.rgd)
-        self.xc.kernel.vxc_asg = self.fermi_amaldi()[None, None]
-
     def fermi_amaldi(self):
-        vH = self.rgd.empty()
-        hartree(0, self.nt_g * self.rgd.r_g * self.rgd.dr_g, self.rgd.r_g, vH)
-        vH[1:] /= self.rgd.r_g[1:]
-        vH[0] = vH[1]
-        return -vH / self.Z
+        vH_sg = self.rgd.empty(self.nspins)
+        for s in range(self.nspins):
+            hartree(
+                0, self.nt_sg[s] * self.rgd.r_g * self.rgd.dr_g, self.rgd.r_g, vH_sg[s]
+            )
+            vH_sg[s, 1:] /= self.rgd.r_g[1:]
+            vH_sg[s, 0] = vH_sg[s, 1]
+        return -vH_sg / self.Z
 
-    def lagrangian(self, vxc_g=None):
+    def lagrangian(self):
         self.prev_L = self.L
-        if vxc_g is not None:
-            self.update(vxc_g)
-        self.L = self.rgd.integrate(self.diff_g**2 * self.weights_g)
+        self.L = self.rgd.integrate(self.diff_sg**2 * self.weights_sg).sum(0)
         return self.L
 
-    def jacobian(self, vxc_g=None):
-        if vxc_g is not None:
-            if not np.allclose(self.xc.vxc_asg[0, 0], vxc_g, atol=1e-30):
-                self.update(vxc_g)
-        self.J_g = np.einsum("ij,j...,i...->...", self.p_ij, self.phi_jg, self.phi_ig)
+    def jacobian(self):
+        self.J_sg = np.einsum(
+            "ij,sj...,si...->s...", self.p_sij, self.phi_sjg, self.phi_sig
+        )
         return self.J_g
 
-    def update(self, vxc_g):
+    def update(self):
         raise NotImplementedError
 
     def run_adam(
@@ -81,59 +75,56 @@ class _iKSAE:
         beta2=0.999,
         Ltol=1e-4,
         Jtol=1e-6,
-        lambda_reg=0.0,
         epsilon=1e-12,
         maxiter=300,
     ):
         self.niter = 0
         self.L_iter = []
-        vxc_g = self.xc.vxc_asg[0, 0]
+        vxc_sg = self.xc.vxc_szg[:, 0]
         # first moment vector
-        m_g = np.zeros_like(vxc_g)
+        m_sg = np.zeros_like(vxc_sg)
         # second moment vector
-        v_g = np.zeros_like(vxc_g)
+        mm_sg = np.zeros_like(vxc_sg)
         for t in range(1, maxiter + 1):
-            self.update(vxc_g)
+            self.update()
             L = self.lagrangian()
-            J_g = self.jacobian()
+            J_sg = self.jacobian()
             self.log(
-                f"iter: {t}, prev_L:{self.prev_L}, L: {
-                L}, J: {np.max(np.abs(J_g))}"
+                f"iter: {t}, prev_L:{self.prev_L}, L: {L}, J: {np.max(np.abs(J_sg))}"
             )
-            J_g += 2.0 * lambda_reg * vxc_g
-            m_g = beta1 * m_g + (1 - beta1) * J_g
-            v_g = beta2 * v_g + (1 - beta2) * (J_g**2)
-            vxc_g = vxc_g - learning_rate * m_g / (1 - beta1**t) / (
-                np.sqrt(v_g / (1 - beta2**t)) + epsilon
+            m_g = beta1 * m_sg + (1 - beta1) * J_sg
+            mm_sg = beta2 * mm_sg + (1 - beta2) * (J_sg**2)
+            vxc_sg[:] -= (
+                learning_rate
+                * m_g
+                / (1 - beta1**t)
+                / (np.sqrt(mm_sg / (1 - beta2**t)) + epsilon)
             )
             self.L_iter.append(L)
-            if t % 100 == 0:
-                np.save(f"iter{t}_vxc_g.npy", vxc_g)
-                np.save(f"iter{t}_J_g.npy", J_g)
-            if np.abs(L) < Ltol or np.max(np.abs(J_g)) < Jtol:
+            # if t % 100 == 0:
+            #     np.save(f"iter{t}_vxc_g.npy", vxc_sg)
+            #     np.save(f"iter{t}_J_g.npy", J_g)
+            if np.abs(L) < Ltol or np.max(np.abs(J_sg)) < Jtol:
                 break
-        self.update(vxc_g)
-        np.save("vxc_g.npy", vxc_g)
-        np.save("J_max.npy", self.J_max)
-        np.save("ortho.npy", self.ortho)
-        np.save("norm.npy", self.norm)
+        self.update()
+        # np.save("vxc_g.npy", vxc_g)
+        # np.save("J_max.npy", self.J_max)
+        # np.save("ortho.npy", self.ortho)
+        # np.save("norm.npy", self.norm)
         return self.L_iter
 
-    def run_gd(
-        self, maxiter=313, Ltol=1e-3, Jtol=1e-6, learning_rate=1.0, lambda_reg=0.0
-    ):
+    def run_fastest_descent(self, maxiter=313, Ltol=1e-3, Jtol=1e-6, learning_rate=1.0):
         self.niter = 0
         self.L_iter = []
-        vxc_g = self.xc.vxc_asg[0, 0]
+        vxc_sg = self.xc.vxc_szg[:, 0]
         for iter in range(maxiter):
-            self.update(vxc_g)
+            self.update()
             L = self.lagrangian()
-            J_g = self.jacobian()
-            J_g += 2.0 * lambda_reg * vxc_g
+            J_sg = self.jacobian()
             self.L_iter.append(L)
-            vxc_g -= learning_rate * J_g
-            self.log(f"iter: {iter}, L: {L}, J: {np.max(np.abs(J_g))}")
-            if np.abs(L) < Ltol or np.max(np.abs(J_g)) < Jtol:
+            vxc_sg -= learning_rate * J_sg
+            self.log(f"iter: {iter}, L: {L}, J: {np.max(np.abs(J_sg))}")
+            if np.abs(L) < Ltol or np.max(np.abs(J_sg)) < Jtol:
                 break
         return self.L_iter
 
@@ -142,7 +133,7 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
     def __init__(
         self,
         symbol,
-        nt_g,
+        nt_sg,
         weights="uniform",
         ngpts=2000,
         rcut=50.0,
@@ -156,7 +147,7 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
         self.initialize(
             ngpts=ngpts, rcut=rcut, ngauss=ngauss, alpha1=alpha1, alpha2=alpha2, eps=eps
         )
-        _iKSAE.__init__(self, symbol, nt_g, weights)
+        _iKSAE.__init__(self, symbol, nt_sg, weights)
         self.n_sg = None
         self.J_max = []
         self.ortho = []
@@ -164,31 +155,30 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
 
     def calculate_density(self) -> Array1D:
         if self.n_sg is None:
-            self.n_sg = np.copy(self.nt_g)[np.newaxis]
+            self.n_sg = np.copy(self.nt_sg)
 
     def radial_integrate(self, f):
         return self.rgd.integrate(f) / (4.0 * np.pi)
 
     @property
-    def na_g(self):
+    def na_sg(self):
         na_sg = self.rgd.zeros(self.nspins)
         for channel in self.channels:
             na_sg[channel.s] += channel.calculate_density()
-        return na_sg.sum(axis=0)
+        return na_sg
 
-    def update(self, vxc_g):
+    def update(self):
         if self.channels is None:
             self.initialize()
-        self.xc.kernel.vxc_asg = vxc_g[None, None]
         self.step()
         self.niter += 1
-        self.diff_g = self.nt_g - self.na_g
+        self.diff_sg = self.nt_sg - self.na_sg
         self.p_cij = {}
         self.phi_cig = {}
         self.phi_cjg = {}
         self.mu_ci = {}
-        tmp_g = self.weights_g * self.diff_g
         for c, ch in enumerate(self.channels):
+            tmp_g = self.weights_sg[ch.s] * self.diff_sg[ch.s]
             phi_jg = ch.basis.expand(ch.C_nb)
             phi_ig = phi_jg[: len(ch.f_n)]
             w_ij = (ch.e_n[:, np.newaxis] - ch.e_n[np.newaxis, : len(ch.f_n)]).T
@@ -205,39 +195,12 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
                 )
                 / w_ij
             )
-            # np.fill_diagonal(self.p_cij[c], 0.0)
-            self.log("max(p_ij):", np.max(np.abs(self.p_cij[c])))
-            self.log("diagonal coeffs:", self.p_cij[c].diagonal())
-            self.log(self.p_cij[c])
-            self.log("------------------------")
-            self.log(ch.e_n)
+            np.fill_diagonal(self.p_cij[c], 0.0)
             self.phi_cjg[c] = phi_jg
             self.phi_cig[c] = phi_ig
             self.mu_ci[c] = mu_i
 
     def jacobian_channel(self, ch):
-        self.log("jacobian_channel", ch)
-        self.log(
-            f"Normalization of phi_ig: {
-            np.sum(self.mu_ci[ch] * (self.radial_integrate(self.phi_cig[ch] ** 2) - 1.0))}"
-        )
-        self.norm.append(
-            (
-                ch,
-                np.sum(
-                    self.mu_ci[ch]
-                    * (self.radial_integrate(self.phi_cig[ch] ** 2) - 1.0)
-                ),
-            )
-        )
-        p_ig = np.einsum("ij,j...->i...", self.p_cij[ch], self.phi_cjg[ch])
-        self.log(
-            f"orthogonality of p_i and phi_i: {
-            self.radial_integrate(p_ig * self.phi_cig[ch])}"
-        )
-        self.ortho.append((ch, self.radial_integrate(p_ig * self.phi_cig[ch]).sum()))
-        self.log(self.radial_integrate(self.phi_cig[ch][0] * self.phi_cjg[ch][19]))
-        self.log("diagonal coeffs:", self.p_cij[ch].diagonal())
         J_g = (
             (2 * self.channels[ch].l + 1)
             / (4 * np.pi)
@@ -245,31 +208,22 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
                 "ij,j...,i...->...", self.p_cij[ch], self.phi_cjg[ch], self.phi_cig[ch]
             )
         )
-        self.log("max(J_cg):", np.max(np.abs(J_g)), np.argmax(np.abs(J_g)))
-        self.J_max.append((ch, np.argmax(np.abs(J_g)), np.max(np.abs(J_g))))
         return J_g
 
-    def jacobian(self, vxc_g=None):
-        if vxc_g is not None:
-            if not np.allclose(self.xc.vxc_asg[0, 0], vxc_g, atol=1e-30):
-                self.update(vxc_g)
-        if self.J_g is None:
-            self.J_g = self.rgd.zeros()
-        else:
-            self.J_g.fill(0.0)
+    def jacobian(self, vxc_sg=None):
+        self.J_sg = self.rgd.zeros(self.nspins)
         for c, ch in enumerate(self.channels):
-            self.J_g += self.jacobian_channel(c)
-        return self.J_g
+            self.J_sg[ch.s] += self.jacobian_channel(c)
+        return self.J_sg
 
 
 class iKSRadial(iKSAEAtom):
-    def update(self, vxc_g):
+    def update(self):
         if self.channels is None:
             self.initialize()
-        self.xc.kernel.vxc_asg = vxc_g[None, None]
         self.step()
         self.niter += 1
-        self.diff_g = self.nt_g - self.na_g
+        self.diff_sg = self.nt_sg - self.na_sg
         self.p_cij = {}
         self.phi_cig = {}
         self.phi_cjg = {}
@@ -280,8 +234,8 @@ class iKSRadial(iKSAEAtom):
                 * ch.f_n[:, None]
                 * (2 * ch.l + 1)
                 / (4 * np.pi)
-                * self.weights_g
-                * self.diff_g
+                * self.weights_sg[ch.s]
+                * self.diff_sg[ch.s]
             )
             phi_jg = ch.basis.expand(ch.C_nb)
             phi_ig = phi_jg[: len(ch.f_n)]
@@ -290,56 +244,23 @@ class iKSRadial(iKSAEAtom):
             mu_i = self.radial_integrate(tmp_g * phi_ig**2)
             self.p_cij[c] = (
                 self.radial_integrate(
-                    np.einsum(
-                        "j...,i...->ij...",
-                        phi_jg,
-                        2.0 * tmp_g * phi_ig - 2 * mu_i[:, None] * phi_ig,
-                    )
+                    np.einsum("j...,i...->ij...", phi_jg, 2.0 * tmp_g * phi_ig)
                 )
                 / w_ij
             )
-            # np.fill_diagonal(self.p_cij[c], 0.0)
-            self.log("max(p_ij):", np.max(np.abs(self.p_cij[c])))
-            self.log("diagonal coeffs:", self.p_cij[c].diagonal())
-            self.log(self.p_cij[c])
-            self.log("------------------------")
-            self.log(ch.e_n)
+            np.fill_diagonal(self.p_cij[c], 0.0)
             self.phi_cjg[c] = phi_jg
             self.phi_cig[c] = phi_ig
             self.mu_ci[c] = mu_i
 
     def jacobian_channel(self, ch):
-        self.log("jacobian_channel", ch)
-        self.log(
-            f"Normalization of phi_ig: {
-            np.sum(self.mu_ci[ch] * (self.radial_integrate(self.phi_cig[ch] ** 2) - 1.0))}"
-        )
-        self.norm.append(
-            (
-                ch,
-                np.sum(
-                    self.mu_ci[ch]
-                    * (self.radial_integrate(self.phi_cig[ch] ** 2) - 1.0)
-                ),
-            )
-        )
-        p_ig = np.einsum("ij,j...->i...", self.p_cij[ch], self.phi_cjg[ch])
-        self.log(
-            f"orthogonality of p_i and phi_i: {
-            self.radial_integrate(p_ig * self.phi_cig[ch])}"
-        )
-        self.ortho.append((ch, self.radial_integrate(p_ig * self.phi_cig[ch]).sum()))
-        self.log(self.radial_integrate(self.phi_cig[ch][0] * self.phi_cjg[ch][19]))
-        self.log("diagonal coeffs:", self.p_cij[ch].diagonal())
         J_g = (
             (2 * self.channels[ch].l + 1)
             / (4 * np.pi)
             * np.einsum(
                 "ij,j...,i...->...", self.p_cij[ch], self.phi_cjg[ch], self.phi_cig[ch]
             )
-            * self.rgd.r_g**2
+            # * self.rgd.r_g**2
         )
         J_g[0] = J_g[1]
-        self.log("max(J_cg):", np.max(np.abs(J_g)), np.argmax(np.abs(J_g)))
-        self.J_max.append((ch, np.argmax(np.abs(J_g)), np.max(np.abs(J_g))))
         return J_g
