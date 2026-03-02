@@ -56,10 +56,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 # Get distance from phi (atom) center for each XYZ point
                 d_Gv = x_Gv - phi.position
                 d_G = (d_Gv**2).sum(axis=3)**0.5
-                f_r = phi.phi_class.spline(d_G)
-
-                # purepython splines return NaN if r > rmax => change to 0.0
-                f_r = np.nan_to_num(f_r, nan=0.0)
+                f_r = phi.phi_class.evaluate_spline(d_G)
 
                 l = phi.get_angular_momentum_number()
                 # ensure the order is what we expect
@@ -67,7 +64,8 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
                 for m in range(0, phi.get_num_mu()):
                     block.evaluated_phi_mg[mu_local + m] = (
-                        f_r * Y(l**2 + m, *d_Gv.T)
+                        f_r * Y(l**2 + m,
+                                d_Gv[..., 0], d_Gv[..., 1], d_Gv[..., 2])
                     )
                 mu_local += phi.get_num_mu()
 
