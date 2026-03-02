@@ -323,7 +323,7 @@ def get_max_nblocks(world, calc, ecut, max_nblocks):
                         'the moment, load from file!')
         # nblocks_calc = calc
     else:
-        nblocks_calc = GPAW(calc, communicator=world)
+        nblocks_calc = GPAW(calc, communicator=world, legacy_gpaw=False)
     ngmax = []
     for q_c in nblocks_calc.wfs.kd.bzk_kc:
         qpd = SingleQPWDescriptor.from_q(q_c, np.min(ecut) / Ha,
@@ -1427,6 +1427,7 @@ class G0W0(G0W0Calculator):
 
 class EXXVXCCalculator:
     """EXX and Kohn-Sham XC contribution."""
+    _snapshot_postfix = '-vxc-exx.json'
 
     def __init__(self, gpwfile, snapshotfile_prefix, world=None):
         self._gpwfile = gpwfile
@@ -1434,6 +1435,12 @@ class EXXVXCCalculator:
         self.world = world
 
     def calculate(self, n1, n2, kpt_indices):
+        from gpaw.hybrids.eigenvalues import write_snapshot, read_snapshot
+        snapshot = Path(self._snapshotfile_prefix + self._snapshot_postfix)
+        dft_skn, vxc_skn, _, exx_skn, = read_snapshot(snapshot)
+        if exx_skn:
+            return np.array(vxc_skn) / Ha, np.array(exx_skn) / Ha
+
         from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
         dft = GPAW(self._gpwfile,
                    legacy_gpaw=False,
@@ -1452,4 +1459,5 @@ class EXXVXCCalculator:
             'EXX')
         dft_skn, vxc_skn, exx_skn = exx._calculate(
             ibzwfs, n1, n2, kpt_indices)
+        write_snapshot(dft_skn, vxc_skn, np.zeros_like(vxc_skn), exx_skn, snapshot, self.world)
         return vxc_skn / Ha, exx_skn / Ha

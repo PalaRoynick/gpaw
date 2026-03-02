@@ -127,7 +127,6 @@ class GPAW(Calculator):
                  txt='?',
                  parallel=None,
                  **kwargs):
-
         if txt == '?':
             txt = '-' if restart is None else None
 
