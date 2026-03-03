@@ -152,7 +152,7 @@ def test_D2():
     pg, _ = symmetry_from(read("twistane.xyz"))
     assert pg.spg_ops.pointgroup == "D2"
     assert set(pg.textbook_names_g) == {"E", "1C2_z", "1C2_y", "1C2_x"}
-    assert get_axis_span(pg) == ["B3", "B2", "B1"]
+    assert get_axis_span(pg) == ["B1", "B2", "B3"]
 
 
 def test_D2h():
