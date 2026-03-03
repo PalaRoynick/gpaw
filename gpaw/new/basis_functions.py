@@ -26,68 +26,6 @@ class SplineLike(Protocol):
         ...
 
 
-"""OK so Mikael's draft split the grid into 8x8x8 blocks,
-and furthermore defined a "subproblem" separately for each block AND each atom.
-So for each block there would be N_a subproblems if N_a is the number of atoms that
-have support in that block.
-
-class Subproblem:
-    atom_index: int
-    beg_c, end_c
-    phi_mg  # precalculated phi everywhere in this 8^3 block. Contains all phi of the atom that have support in the block
-    M_m: list[int]  # maps local basisfunc index to global mu. Required for cases where some phi of the atom don't have support in this block
-
-
-Then BasisFunctions would have:
-
-def add_to_density(nt_sG: np.ndarray, f_asi: dict[np.ndarray]) -> None:
-    sub_results = []
-    for subproblem in subproblems:
-        # TODO requires slicing the f_asi entry to match shape of phi_mg
-        temp = np.einsum('sm, mxyz -> sxyz', f_asi[subproblem.atm_index], subproblem.phi_mg**2)
-        sub_results.append(temp)
-        # store also info about the subproblem that produces this sub-result
-
-    # place sub-results in correct slots of the nt_sG array
-    for sub_res in sub_results:
-        nt_sG[:, beg_c[0]:end_c[0], beg_c[1]:end_c[1], beg_c[2]:end_c[2]] += sub_res
-
-
-def calculate_potential_matrix(vt_G: np.ndarray):
-    Vt_MM = np.zeros((self.Mstop - self.Mstart, self.Mmax))
-    for sub1 in get_subprobs_for_mu_range(...):
-        for sub2 in get_all_subprobs():
-            if no_overlap(sub1, sub2):
-                # will trigger a lot!
-                continue
-
-            # Messy index mu,nu clamping like I already do...
-            # not sure why this'd be much better than my current version??
-
-
-MEANWHILE: if I do
-class GridBlock:
-    beg_c, end_c  # define grid point ranges for this block
-    atoms_a: list[int]  # atoms that have support in this block
-    M_m: list[int]  # map block-local phi index to mu
-
-
-"""
-
-"""
-def calculate_potential_matrix(vt_G: np.ndarray):
-    v_g = vt_G[...]  # slice according to block grid indices
-    for block in grid_blocks:
-        # problem: this will do redundant (m,n) pairs because we only need m <= n
-        V_block_mn = np.einsum("mxyz, nxyz -> nm", v_g * phi_mg, phi_mg)
-
-    # Combine blocked V into full V_MN matrix
-    # TODO: how?? needs ugly mu, nu loops
-
-"""
-
-
-
 """
 Each atom has list of basis functions. A basis function is defined by its
 angular quantum numbers l, m and a radial function f(r). We also require a
@@ -102,22 +40,8 @@ that first are l=0 functions of atom a=0, then l=1 funcs of a=0, etc.
 
 Class BasisFunctionCollection describes the full set of all basis functions
 phi_mu and provides methods for calculating stuff with them.
-Note that integrals of phi_mu over the full grid can be optimized because
-the basis functions have a finite range => can avoid a lot of redundant
-"addition of 0". Challenge is to do this in a smart way.
 """
 
-"""NOTE TO SELF: I quite like the current BasisFunctionCollection setup where
-the base class handles indexing but does not dictate how the basis functions
-(splines) should be stored. However the BasisFunction class is very annoying,
-seems hard to handle both CPU and GPU cases?
-Perhaps we can reduce BasisFunction to a much simpler "dataclass" that is
-defined within the PurePython version of BasisFunctionCollection.
-For the C++ version we should create a pure-C++ class that holds the splines,
-and the python implementation wraps around it. This makes sense because we
-need to pass splines to kernels, which is easier to do fully from C++.
-So we'd change the following so that BasisFunction is always purepython
-"""
 
 def sphere_overlaps_box(
     radius: float,
