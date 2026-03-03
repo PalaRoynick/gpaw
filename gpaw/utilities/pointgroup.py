@@ -164,16 +164,16 @@ class SPGOperations:
         return CharacterTable.from_data(**character_tables[self.pointgroup])
 
     @classmethod
-    def from_atoms(cls, atoms, verbose=False, *, layergroup: bool):
+    def from_atoms(cls, atoms, verbose=False, *, layergroup: bool, symprec: float = 1e-1):
         # XXX: NOTE! This will modify the atoms!!!
         #print("Modifying atoms with translations (for now, temporarily)")
         if layergroup:
-            return cls.from_atoms_layergroup(atoms, verbose=verbose)
+            return cls.from_atoms_layergroup(atoms, verbose=verbose, symprec=symprec)
         else:
-            return cls.from_atoms_spacegroup(atoms, verbose=verbose)
+            return cls.from_atoms_spacegroup(atoms, verbose=verbose, symprec=symprec)
 
     @classmethod
-    def from_atoms_spacegroup(cls, atoms, verbose=False):
+    def from_atoms_spacegroup(cls, atoms, verbose=False, symprec=1e-1):
         if verbose:
             print("Detecting spacegroup (NOT layergroup) with spglib...")
         import spglib
@@ -184,13 +184,14 @@ class SPGOperations:
                 atoms.get_scaled_positions(),
                 atoms.get_atomic_numbers(),
             ),
-            symprec=1e-1,
+            symprec=symprec,
         )
         debugprint(f"{dataset=}")
+        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
-    def from_atoms_layergroup(cls, atoms, verbose=False):
+    def from_atoms_layergroup(cls, atoms, verbose=False, symprec=1e-1):
         if verbose:
             print("Detecting layergroup (NOT spacegroup) with spglib...")
         import spglib
@@ -202,7 +203,7 @@ class SPGOperations:
                 atoms.get_atomic_numbers(),
             ),
             aperiodic_dir=2,
-            symprec=1e-1,
+            symprec=symprec,
         )
         debugprint(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
@@ -212,15 +213,50 @@ class SPGOperations:
         W_scc = dataset.rotations
         w_sc = dataset.translations
         #origin_shift_c = dataset.origin_shift
-        origin_shift_c = dataset.transformation_matrix.T @ dataset.origin_shift
+        origin_shift_c = np.linalg.inv(dataset.transformation_matrix) @ dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         from gpaw.utilities.pointgroup_data import spglib_to_schoenflies
-        pointgroup = spglib_to_schoenflies[dataset.pointgroup]
+
+        # Filter glide/screw operations: w' = w + (W - I) @ t is ≈ 0 for
+        # pure point-group ops; non-zero for glides/screws.
+        # See _shifted_translations.
+        w_shifted = cls._shifted_translations(W_scc, w_sc, origin_shift_c)
+        pure_mask = np.all(np.abs(w_shifted) < 0.01, axis=1)
+        n_glides = int(np.sum(~pure_mask))
 
         if verbose:
-            print(f"Pointgroup: {pointgroup} ({dataset.pointgroup})")
-        unshifted = cls(
+            intl_before = spglib_to_schoenflies.get(
+                dataset.pointgroup, dataset.pointgroup)
+            print(f"  Before filtering: {len(W_scc)} operations, "
+                  f"PG={intl_before} ({dataset.pointgroup}), "
+                  f"origin_shift={origin_shift_c}",
+                  f"W_scc: {W_scc}, w_sc: {w_sc}",
+                  f"rot_vv: {cell_cv.T @ W_scc[0] @ np.linalg.inv(cell_cv).T}",)
+            for s in range(len(W_scc)):
+                info = OperationInfo.from_op(W_scc[s])
+                tag = "PURE" if pure_mask[s] else "GLIDE/SCREW"
+                print(f"    [{s:2d}] {tag:11s}  w={w_sc[s]}  "
+                      f"w'={w_shifted[s]}  {info}")
+
+        if n_glides > 0:
+            import spglib as _spglib
+            W_scc = W_scc[pure_mask]
+            w_sc = w_sc[pure_mask]
+            pg_info = _spglib.get_pointgroup(W_scc)
+            intl_symbol = pg_info[0].strip()
+            pointgroup = spglib_to_schoenflies.get(intl_symbol, "C1")
+            if verbose:
+                print(f"  After filtering: {len(W_scc)} operations kept, "
+                      f"{n_glides} glide/screw removed; "
+                      f"PG={pointgroup} ({intl_symbol})")
+        else:
+            pointgroup = spglib_to_schoenflies[dataset.pointgroup]
+            if verbose:
+                print(f"  No glides/screws; "
+                      f"PG={pointgroup} ({dataset.pointgroup})")
+
+        return cls(
             atoms,
             W_scc,
             w_sc,
@@ -229,24 +265,23 @@ class SPGOperations:
             pointgroup,
             allow_translations=True,
         )
-        #print(f"unshifted {unshifted}")
-        shifted = unshifted.apply_origin_shift(-origin_shift_c)
 
-        # We shift the operations with origin_shift_c
-        # and therefore, we expect that all translations are cancelled
-        # This is the requirement for the set of operations to be a point
-        # group.
-        if not np.allclose(shifted.w_sc, 0):
-            raise ValueError(
-                "After applying the origin shift from spglib, we still "
-                "have translations. Thus, this does not appear to"
-                f" be a point group. Shifts after shifting: {shifted.w_sc}.")
+    @staticmethod
+    def _shifted_translations(W_scc, w_sc, origin_shift_c):
+        """Residual translations after applying the origin shift.
 
-        #if not np.allclose(origin_shift_c, 0):
-        #    raise ValueError(
-        #        f"Presymmetrize your system to have origin_shift of 0. {dataset=}"
-        #    )
-        return unshifted
+        w'_sc = w_sc + (W_scc - I) @ origin_shift_c
+             = w_sc + W_scc @ origin_shift_c - origin_shift_c
+
+        Pure point-group operations have w' ≈ 0 (mod 1); glides/screws
+        retain a non-zero fractional translation.
+        """
+        w_shifted = (w_sc
+                     + np.einsum("scd,d->sc", W_scc, origin_shift_c)
+                     - origin_shift_c)
+        # Round and wrap to [-0.5, 0.5) so values near 0 stay near 0
+        w_shifted = (np.round(w_shifted * 100) / 100 + 0.5) % 1.0 - 0.5
+        return w_shifted
 
     @property
     def O_svv(self):
@@ -255,27 +290,6 @@ class SPGOperations:
                 self.cell_cv.T @ W_cc @ np.linalg.inv(self.cell_cv).T
                 for W_cc in self.W_scc
             ]
-        )
-
-    def apply_origin_shift(self, origin_shift_c):
-        """
-        spos'_c = W_cc spos_c + w_c
-
-        spos'_c = W_cc (spos_c - origin_shift_c) + w_c + origin_shift_c
-        """
-        w_sc = (
-            self.w_sc
-            - np.einsum("scd,d->sc", self.W_scc, -origin_shift_c)
-            + self.origin_shift_c
-        )
-        w_sc = (np.round(w_sc * 100) / 100) % 1.0 % 1.0  # XXX More robust
-        return SPGOperations(
-            self.atoms,  # XXX Should it apply the origin shift to the atoms
-            self.W_scc,
-            w_sc,
-            self.origin_shift_c - origin_shift_c,
-            self.cell_cv,
-            self.pointgroup,
         )
 
     def __repr__(self):
