@@ -357,8 +357,8 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     # Test density
     rng = xp.random.default_rng(432)
     sG_shape = (num_spins, *system.grid.mysize_c)
-    #nt_sG = rng.random(sG_shape)
-    nt_sG = xp.zeros(sG_shape)
+    nt_sG = xp.empty(sG_shape)
+    nt_sG[:] = 0.5
 
     nt_sG_ref = nt_sG.copy()
 
