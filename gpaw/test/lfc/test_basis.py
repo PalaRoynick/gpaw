@@ -135,8 +135,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    #return make_test_system()
-    return make_test_system_small()
+    return make_test_system()
+    #return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
