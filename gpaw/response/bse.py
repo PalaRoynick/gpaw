@@ -987,16 +987,22 @@ class BSEBackend:
 
         if C_tGG is not None:
             tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
-            chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
+            chi_wGG_local = np.empty((tmp_tw.shape[1], *C_tGG.shape[1:]), dtype=complex)
+            np.einsum('tw,tAB->wAB', tmp_tw, C_tGG, optimize=True, out=chi_wGG_local)
 
             if C_tGG1 is not None:
                 n_tmp_tw = - 1 / (w_w[None, :] / Hartree
                                   + w_t[:, None] + 1j * eta)
-                chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
+                chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1, optimize=True)
 
             chi_wGG_local *= 1 / self.gs.volume
 
-        comm.sum(chi_wGG_local)
+        try:
+            comm.sum(chi_wGG_local)
+        except Exception as e:
+            print(chi_wGG_local)
+            print(np.info(chi_wGG_local))
+            raise
         chi_wGG = chi_wGG_local
 
         return np.swapaxes(chi_wGG, -1, -2)
