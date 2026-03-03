@@ -135,8 +135,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    return make_test_system()
-    #return make_test_system_small()
+    #return make_test_system()
+    return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -279,8 +279,7 @@ def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
 @pytest.mark.parametrize("block_size", [None, 8])
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-#@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
-@pytest.mark.parametrize("row_range", [None])
+@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
 def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     block_size: int, row_range: range | None):
     """"""
@@ -316,9 +315,14 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
 
     V_MN_ref = xp.zeros(out_shape)
     basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
-    # Old code does include some elements in the upper matrix triangle,
-    # I guess this is done to avoid complex branching.
-    V_MN_ref = xp.tril(V_MN_ref)
+
+    """Old code does include some elements in the upper matrix triangle,
+    I guess this is done to avoid complex branching.
+    Remove them here, while accounting for possible row distribution in which
+    case we need to carefully pick which "diagonal" to use in xp.tril(...)
+    """
+    diagonal = 0 if row_range is None else row_range.start
+    V_MN_ref = xp.tril(V_MN_ref, k=diagonal)
 
     xp.testing.assert_allclose(V_MN,
                                V_MN_ref,

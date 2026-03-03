@@ -296,7 +296,6 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
                     if mu >= nu and mu in range(mu_start, mu_end):
                         # account for row-distributed output matrix
-                        mu -= mu_start
-                        out[mu, nu] += V_mn[m, n]
+                        out[mu - mu_start, nu] += V_mn[m, n]
         #
         out *= self.grid.dv
