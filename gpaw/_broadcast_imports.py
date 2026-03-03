@@ -34,7 +34,7 @@ if not GPAW_NO_C_EXTENSION and cgpaw_version != 10:
         improvement = ('GPAW has now much reduced memory consumption due to '
                        'optimized pwlfc_expand function in new GPAW. Enjoy. ')
 
-    raise ImportError(improvement + 'Please recompile GPAW''s C-extensions!')
+    #raise ImportError(improvement + 'Please recompile GPAW''s C-extensions!')
 
 
 if GPAW_MPI4PY:

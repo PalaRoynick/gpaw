@@ -446,10 +446,13 @@ def test_S6():
     pg, _ = symmetry_from(atoms)
     assert pg.spg_ops.pointgroup == "S6"
     assert set(pg.textbook_names_g) == {"E", "1C3", "1C3^2", "i", "1S6^5", "1S6"}
-    x = PolynomialProjectable(atoms.cell, [1, 0, 0])
-    y = PolynomialProjectable(atoms.cell, [0, 1, 0])
-    z = PolynomialProjectable(atoms.cell, [0, 0, 1])
+    x = PolynomialProjectable(cell, [1, 0, 0])
+    y = PolynomialProjectable(cell, [0, 1, 0])
+    z = PolynomialProjectable(cell, [0, 0, 1])
     assert get_span(pg, z) == ["Au"]
+    #print(get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])))
+    #print(get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])))
+    #asd 
     assert get_span(pg, LinearCombinationProjectable([1, 1j], [x, y])) == ["Eu(1)"]
     assert get_span(pg, LinearCombinationProjectable([1, -1j], [x, y])) == ["Eu(2)"]
 

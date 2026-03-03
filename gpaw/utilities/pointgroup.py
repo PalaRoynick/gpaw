@@ -221,7 +221,7 @@ class SPGOperations:
         # Filter glide/screw operations: w' = w + (W - I) @ t is ≈ 0 for
         # pure point-group ops; non-zero for glides/screws.
         # See _shifted_translations.
-        w_shifted = cls._shifted_translations(W_scc, w_sc, origin_shift_c)
+        w_shifted = cls._shifted_translations(W_scc, w_sc, -origin_shift_c)
         pure_mask = np.all(np.abs(w_shifted) < 0.01, axis=1)
         n_glides = int(np.sum(~pure_mask))
 

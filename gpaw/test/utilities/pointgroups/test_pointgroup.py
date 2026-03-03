@@ -17,7 +17,7 @@ def prepare_atoms(atoms):
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
     atoms.set_scaled_positions(
         atoms.get_scaled_positions()
-        + dataset.transformation_matrix.T @ dataset.origin_shift
+        + np.linalg.inv(dataset.transformation_matrix) @ dataset.origin_shift
     )
     dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
 

@@ -4,8 +4,10 @@ from gpaw.utilities import unpack_hermitian, unpack_density
 
 
 class PolynomialProjectable:
-    def __init__(self, cell_cv, weights_c, normalize=True):
-        self.cell_cv = cell_cv
+    def __init__(self, cell_cv, weights_v=None, weights_c=None, normalize=False):
+        self.cell_cv = np.array(cell_cv)
+        if weights_c is None:
+            weights_c = weights_v @ np.linalg.inv(self.cell_cv)
         if normalize:
             vector_v = weights_c @ cell_cv
             self.weights_c = weights_c / np.linalg.norm(vector_v)
@@ -21,7 +23,7 @@ class PolynomialProjectable:
         op_cc_int = np.asarray(np.round(op_cc), dtype=np.int64)
         assert np.allclose(op_cc, op_cc_int)
         return PolynomialProjectable(
-            self.cell_cv, op_cc_int @ self.weights_c, normalize=False
+            self.cell_cv, weights_c = op_cc_int @ self.weights_c, normalize=False
         )
 
 
@@ -34,7 +36,7 @@ class LinearCombinationProjectable:
         s = 0.0
         for w, projectable in zip(self.w_x, self.projectables_x):
             for w2, projectable2 in zip(other.w_x, other.projectables_x):
-                s += w * np.conjugate(w2) * projectable.dot(projectable2)
+                s += np.conjugate(w) * w2 * projectable.dot(projectable2)
         return s
 
     def operation(self, op_cc, w_c):
