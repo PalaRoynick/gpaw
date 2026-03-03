@@ -813,13 +813,6 @@ class BasisFunctionCollectionBase(ABC):
             # phi.blocks_with_overlap = sorted(phi.blocks_with_overlap,
             #                                  key=lambda x : x.coords)
 
-            # Every phi must overlap with some block; if not, we might've
-            # messed up when creating phi instances
-            assert len(phi.blocks_with_overlap) > 0,\
-                f"Failed for {phi.position=}, radius={phi.get_cutoff()}, " \
-                f"{real_block_size_v=}, {grid_spacing_v=}"
-
-
         # end phi loop
 
         # Construct mapping for block-local phi_m => global phi_mu

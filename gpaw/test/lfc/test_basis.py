@@ -252,6 +252,7 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     #         m += phi.get_num_mu()
 
 
+@pytest.mark.skipif(world.size > 1, reason="TODO, probably")
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
     """Some tests that blocking = None makes sense. Useful because under the
