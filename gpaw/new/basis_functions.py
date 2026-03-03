@@ -158,10 +158,8 @@ class GridBlock:
         assert all(x >= 0 for x in self.coords), \
             "Block coords are relative to MPI domain and must be >= 0"
 
-        # Checking np.all(end_c > start_c) would be too restrictive with
-        # domain decomp. It would rule out rare but valid shapes like slabs
-        assert np.all(self.end_c >= self.start_c)
-        assert np.any(self.end_c > self.start_c)
+        # end_c is exclusive so the following is OK even for non-3D shapes:
+        assert np.all(self.end_c > self.start_c)
         assert np.all(self.start_c >= self.grid.start_c)
         assert np.all(self.end_c <= self.grid.end_c)
 
@@ -179,15 +177,21 @@ class GridBlock:
         local_end_c = self.end_c - self.start_c
         return local_start_c, local_end_c
 
+    def get_domain_local_start_end_c(self) -> tuple[np.ndarray, np.ndarray]:
+        """Get start_c and end_c for this block relative to the grid domain.
+        These are safe to use when slicing or looping over domain-distributed
+        arrays.
+        """
+        domain_start_c = self.start_c - self.grid.start_c
+        domain_end_c = domain_start_c + self.shape
+        return domain_start_c, domain_end_c
+
     @cached_property
     def shape(self) -> tuple[int, int, int]:
         """Real shape of the block, ie. how many grid points it contains.
         This may in some situations be a 2D shape, but always contains at
         least one point."""
-        _shape = self.end_c - self.start_c
-        # Handle non-3D shapes: always at least one point in each direction
-        _shape = np.maximum(_shape, np.asarray([1, 1, 1]))
-        return tuple(_shape)
+        return tuple(self.end_c - self.start_c)
 
     def get_block_shape(self) -> tuple[int, int, int]:
         """Gives real shape of the block."""

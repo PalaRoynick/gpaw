@@ -190,6 +190,8 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         """"""
         xp = cp if isinstance(vt_G, cp.ndarray) else np
 
+        assert np.all(vt_G.shape == self.grid.mysize_c)
+
         num_work_rows = (self._matrix_distribution_rules.mu_end
                          - self._matrix_distribution_rules.mu_start)
         if (num_work_rows <= 0):
@@ -277,13 +279,15 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         mu_end: int) -> None:
         """"""
 
-        for block in self._block_map.values():
+        for block in self.get_relevant_blocks():
             assert block.evaluated_phi_mg is not None
 
-            # Get slice of the potential in this block
-            vt_g = vt_G[block.start_c[0]:block.end_c[0],
-                        block.start_c[1]:block.end_c[1],
-                        block.start_c[2]:block.end_c[2]]
+            # Get slice of the potential in this block (vt_G is domain aware)
+            start_c, end_c = block.get_domain_local_start_end_c()
+
+            vt_g = vt_G[start_c[0]:end_c[0],
+                        start_c[1]:end_c[1],
+                        start_c[2]:end_c[2]]
 
             phi_mg = block.evaluated_phi_mg
             phi_mu_vt_g = phi_mg * vt_g
