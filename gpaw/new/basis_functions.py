@@ -203,17 +203,18 @@ class GridBlock:
         grid.start_c + BLOCK_SIZE * [1, 0, 0],
     and so on.
 
-    If the MPI domain does not divide evenly into blocks, we allow
-    the last block in each direction to "overflow" into the next grid domain
-    in order to guarantee that each block has the same physical size.
-    These overflown points will not be used for anything."""
+    If the MPI domain does not divide evenly into blocks, we allow the last
+    blocks in each direction to be smaller as to not "overflow" into the next
+    domain."""
 
     grid: UGDesc
     coords: BlockCoords
 
     # these give the range of grid points this block represents
     start_c: np.ndarray
+    """Start indices to the (x,y,z) grid for this block. Inclusive."""
     end_c: np.ndarray
+    """End indices to the (x,y,z) grid for this block. Exclusive!"""
     phi_j: list["BasisFunctionInstance"] = field(default_factory=list)
     """List of all basis functions that have overlap with this block.
     Note indexing: each phi_j actually contains many values of m.
@@ -222,31 +223,35 @@ class GridBlock:
     M_m: list[int] = field(default_factory=list)
     """Maps block-local phi index 'm' to global mu"""
     evaluated_phi_mg: np.ndarray | None = None
-    """phi_mu(x) precalculated on the grid block."""
+    """phi_mu(x) precalculated on the grid block. The XYZ dimensions are
+    always allocated for a full BLOCK_SIZE^3 block."""
 
     def __post_init__(self):
         """"""
         assert all(x >= 0 for x in self.coords), \
-            "Block coords are relative to MPI domain and must thus be >= 0"
+            "Block coords are relative to MPI domain and must be >= 0"
         assert np.all(self.end_c - self.start_c > 0)
-
-    @property
-    def clipped_end_c(self) -> np.ndarray:
-        """Gives the clipped end indices range which can differ from end_c
-        if the grid division into fixed-size blocks was not even.
-        """
-        return np.minimum(self.end_c, self.grid.end_c)
+        assert np.all(self.start_c >= self.grid.start_c)
+        assert np.all(self.end_c <= self.grid.end_c)
 
     def get_block_xyz(self) -> np.ndarray:
         """Gives real-space XYZ points for the given block.
-        Does NOT give points that extend beyond the grid domain boundary,
-        which can happen if the division into blocks was uneven.
         4D array of shape (Nx, Ny, Nz, 3)."""
         # See UGDesc.xyz()
-        shape = self.clipped_end_c - self.start_c
+        shape = self.end_c - self.start_c
         indices_Rc = np.indices(tuple(shape)).transpose((1, 2, 3, 0))
         indices_Rc += self.start_c
         return indices_Rc @ (self.grid.cell_cv.T / self.grid.size_c).T
+
+    def get_local_start_end_c(self) -> tuple[np.ndarray, np.ndarray]:
+        """start_c and end_c for looping over block-local XYZ arrays."""
+        local_start_c = np.asarray([0, 0, 0])
+        local_end_c = self.end_c - self.start_c
+        return local_start_c, local_end_c
+
+    def get_block_shape(self) -> tuple[int, int, int]:
+        """"""
+        return tuple(self.end_c - self.start_c)
 
 
 class BasisFunction():
@@ -285,6 +290,16 @@ class BasisFunction():
         """
         return 2 * self.l + 1
 
+    def evaluate_spline(self, r: np.ndarray) -> np.ndarray:
+        """"""
+        # extrapolate=False means we get NaN for r > r_max,
+        # so mask that region out. Could also use np.nan_to_num instead
+        mask = (r < self.cutoff)
+        out = np.zeros_like(r)
+        out[mask] = self.spline(r[mask])
+        return out
+
+
 @dataclass
 class BasisFunctionInstance:
     """Instance of a basis function with fixed position and index range."""
@@ -308,6 +323,14 @@ class BasisFunctionInstance:
 
     def get_num_mu(self) -> int:
         return self.phi_class.get_num_mu()
+
+    def find_overlapping_points(self, R_Gv: np.ndarray) -> np.ndarray:
+        """"""
+        assert R_Gv.ndim == 4
+        diff = R_Gv - self.position
+        distance = (np.sum(diff**2, axis=3))**0.5
+        mask = (distance <= self.get_cutoff())
+        return R_Gv[mask]
 
 
 class LFCAtom:
@@ -424,32 +447,36 @@ class LFCAtom:
 
             mu_work += phi.get_num_mu()
 
+        # TODO: the above can still give phi instances that technically
+        # overlap the cell, but don't overlap with any grid point...?
+
         # Precalculate. TODO do in separate function
+        # TEMP TEMP keep this for testing because it at least worked
 
         # get all grid points in this domain in real units.
         # 4D array of shape (Nx, Ny, Nz, 3)
-        # x_Gv = self.grid.xyz()
-        # # For now I compute these everywhere on the grid, not just in overlap regions
-        # grid_shape = (x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
+        x_Gv = self.grid.xyz()
+        # For now I compute these everywhere on the grid, not just in overlap regions
+        grid_shape = (x_Gv.shape[0], x_Gv.shape[1], x_Gv.shape[2])
 
-        # for phi in self.phi_instances:
-        #     shape = (phi.get_num_mu(), *grid_shape)
-        #     phi_mG = np.zeros(shape)
+        for phi in self.phi_instances:
+            shape = (phi.get_num_mu(), *grid_shape)
+            phi_mG = np.zeros(shape)
 
-        #     d_Gv = x_Gv - phi.position
-        #     d_G = (d_Gv**2).sum(axis=3)**0.5
-        #     # Points that are too far from the atom are left at value 0
-        #     mask_G = (d_G < phi.get_cutoff())
-        #     f_R_masked = phi.phi_class.spline(d_G[mask_G])
-        #     d_Rv_masked = d_Gv[mask_G]
+            d_Gv = x_Gv - phi.position
+            d_G = (d_Gv**2).sum(axis=3)**0.5
+            # Points that are too far from the atom are left at value 0
+            mask_G = (d_G < phi.get_cutoff())
+            f_R_masked = phi.phi_class.spline(d_G[mask_G])
+            d_Rv_masked = d_Gv[mask_G]
 
-        #     l = phi.get_angular_momentum_number()
-        #     for m in range(0, phi.get_num_mu()):
-        #         phi_mG[m, mask_G] = (
-        #             f_R_masked * Y(l**2 + m, *d_Rv_masked.T)
-        #         )
+            l = phi.get_angular_momentum_number()
+            for m in range(0, phi.get_num_mu()):
+                phi_mG[m, mask_G] = (
+                    f_R_masked * Y(l**2 + m, *d_Rv_masked.T)
+                )
 
-        #     phi.phi_mG = phi_mG
+            phi.phi_mG = phi_mG
 
         return rank_changed
 
@@ -569,6 +596,8 @@ class BasisFunctionCollectionBase(ABC):
     to C functions anyway. Outside users do seems to access Mstart, Mend,
     why?!?"""
 
+    block_size: int
+
     blocks: list[GridBlock]
     # Store just those blocks that actually have phi overlap
 
@@ -579,7 +608,7 @@ class BasisFunctionCollectionBase(ABC):
                  system: LFCSystem,
                  use_gpu: bool = False,
                  mode: PrecalculationMode = PrecalculationMode.eIfPossible,
-                 block_size: int = 8):
+                 block_size: int | None = 8):
         """
         Initialize a BasisFunctionCollection.
 
@@ -600,11 +629,14 @@ class BasisFunctionCollectionBase(ABC):
             amounts of memory!
             Default is eIfPossible (precalculate if memory allows).
         block_size: int, optional
-            Size of each grid block.
+            Size of each grid block. None means no blocking.
         """
         self.grid = system.grid
 
-        self.block_size = min(block_size, np.min(self.grid.mysize_c))
+        if block_size is not None:
+            self.block_size = min(block_size, np.min(self.grid.mysize_c))
+        else:
+            self.block_size = np.max(self.grid.mysize_c)
 
         num_atoms = len(system.atoms)
         if num_atoms == 0:
@@ -703,20 +735,6 @@ class BasisFunctionCollectionBase(ABC):
         """Actually just fully rebuilds block info."""
 
         self.blocks = []
-
-        """Build a 3D grid of blocks. This Numpy magic is equivalent to:
-        for bx, by, bz in itertools.product(
-            range(num_blocks_c[0]),
-            range(num_blocks_c[1]),
-            range(num_blocks_c[2]),
-        ):
-            block_id = np.array([bx, by, bz])
-            ...
-        """
-        # ranges = [np.arange(num_blocks_c[d]) for d in range(3)]
-        # grids = np.meshgrid(*ranges, indexing="ij")
-        # block_ids = np.stack(grids, axis=-1).reshape(-1, 3).astype(int)
-
         grid_spacing_v = np.diag(self.grid._gd.h_cv)
 
         """For each phi, find which blocks they overlap. We start with an AABB
@@ -725,7 +743,7 @@ class BasisFunctionCollectionBase(ABC):
         overlap test.
         """
 
-        # Round division up: we allow last blocks to be "too large"
+        # Round division up. The last block is allowed to be smaller
         num_blocks_c = -(self.grid.mysize_c // -self.block_size).astype(int)
         real_block_size_v = self.block_size * grid_spacing_v
 
@@ -760,11 +778,13 @@ class BasisFunctionCollectionBase(ABC):
                 block_start_c = (self.grid.start_c
                                  + self.block_size * np.asarray([bx, by, bz]))
 
-                # OK to extend outside the grid domain (see clipped_end_c)
+                # Clip end corner so that it stays within the MPI domain
                 block_end_c = block_start_c + self.block_size
-                assert np.all(block_end_c >= block_start_c)
-                assert not np.all(block_end_c == block_start_c)
+                block_end_c = np.minimum(block_end_c, self.grid.mysize_c)
 
+                # FIXME can happen that a sphere DOES overlap the box,
+                # but NOT any grid points in the box => not needed.
+                # Happens already in LFCAtom.set_positions...
                 if sphere_overlaps_box(
                     radius,
                     phi.position,
@@ -781,8 +801,7 @@ class BasisFunctionCollectionBase(ABC):
                             self.grid,
                             block_coords,
                             block_start_c,
-                            block_end_c,
-                            [phi])
+                            block_end_c)
                         self._block_map[block_coords] = block
 
                     block.phi_j.append(phi)
@@ -790,13 +809,15 @@ class BasisFunctionCollectionBase(ABC):
                 # end block loop
 
             # Sort the block list for convenience
-            phi.blocks_with_overlap = sorted(phi.blocks_with_overlap,
-                                             key=lambda x : x.coords)
+            # phi.blocks_with_overlap = sorted(phi.blocks_with_overlap,
+            #                                  key=lambda x : x.coords)
+
             # Every phi must overlap with some block; if not, we might've
             # messed up when creating phi instances
             assert len(phi.blocks_with_overlap) > 0,\
                 f"Failed for {phi.position=}, radius={phi.get_cutoff()}, " \
                 f"{real_block_size_v=}, {grid_spacing_v=}"
+
 
         # end phi loop
 
@@ -810,6 +831,11 @@ class BasisFunctionCollectionBase(ABC):
                     block.M_m.append(mu + m)
             #
         #
+
+    def get_relevant_blocks(self) -> list[GridBlock]:
+        """Returns list of grid blocks that contribute, ie. have overlap with
+        some phi."""
+        return list(self._block_map.values())
 
     @trace
     @abstractmethod
@@ -1034,98 +1060,40 @@ class BasisFunctionCollectionBase(ABC):
         # TODO single precision. Do we need to allow complex phi?
         return num_sites * self.num_basis_functions() * 8
 
-    def _construct_periodic_images(self) -> None:
-        """For periodic boundary conditions it can happen that basis functions
-        from other unit cells overlap with grid points or basis
-        functions in this unit cell. This function creates "virtual images" of
-        basis functions that exist outside our unit cell to handle the
-        overlaps.
 
-        Must be called whenever atom positions change, which MUST happen only
-        from set_positions."""
-        self._virtual_phi_aj = {}
-
-        if not np.any(self.grid.pbc_c):
-            # No periodic boundaries, nothing to do
-            return
-
-        L = np.diag(self.grid.cell_cv)  # shape = (3,)
-
-        """Goal is to place "virtual" atoms in neighbor cells, including
-        only the basis funcs that have overlap with this "main" cell.
-        We first compute how many periodic unit cells a basis func
-        overlaps in each direction, giving a list of integer "shifts" like
-        [-2, -1, 0, 1] if the phi extends 2 cells in negative dir and 1 in
-        positive dir. Doing this for all 3 dimensions and taking cartesian
-        product gives a 3D grid of all possible shifts to cells to which
-        this phi may extend. We then check the overlap separately for each
-        shifted cell, handling possible virtual atoms in diagonal
-        directions.
+    def to_json(self, filename: str):
+        """Debugging routine. Stores info about the grid and basis functions
+        (spheres) to a JSON file which can be plotted in an external program.
         """
+        import json
+        data = {}
 
-        for atom_idx, phi_j in enumerate(self._phi_aj):
-            center = self._position_av[atom_idx]
+        def make_phi_data(phi: BasisFunctionInstance) -> dict:
+            out = {}
+            out["center"] = tuple(phi.position)
+            out["radius"] = phi.get_cutoff()
+            # just some ID for grouping phi of same spline type
+            out["type_id"] = id(phi.phi_class)
+            return out
 
-            virtual_copies: list[BasisFunctionInstance] = []
+        def make_block_data(block: GridBlock) -> dict:
+            out = {}
+            points = block.get_block_xyz()
+            # flatten to a nested list
+            points.reshape(-1, 3).tolist()
+            out["points"] = points.reshape(-1, 3).tolist()
+            return out
 
-            for phi in phi_j:
+        data["spheres"] = [make_phi_data(phi)
+                           for phi in self.get_phi_instances()]
 
-                r = phi.get_cutoff()
+        data["blocks"] = [make_block_data(block)
+                          for block in self._block_map.values()]
 
-                # How many boxes does the sphere overlap in given direction
-                n_min = np.floor((center - r) / L).astype(np.int64)
-                n_max = np.floor((center + r) / L).astype(np.int64)
+        with open(filename, "w") as f:
+            json.dump(data, f)
+        print("Exported BasisFunctions to " + filename)
 
-                # Enforce no overlap in directions without periodic b.c.
-                pbc_mask = ~np.array(self.grid.pbc_c)
-                n_min = np.where(pbc_mask, 0, n_min)
-                n_max = np.where(pbc_mask, 0, n_max)
-
-
-                """Build a 3D shift grid. This Numpy magic is equivalent to:
-                for nx, ny, nz in itertools.product(
-                    range(n_min[0], n_max[0] + 1),
-                    range(n_min[1], n_max[1] + 1),
-                    range(n_min[2], n_max[2] + 1),
-                ):
-                    shift = np.array([nx, ny, nz])
-                    ...
-                """
-                ranges = [np.arange(n_min[d], n_max[d] + 1) for d in range(3)]
-                grids = np.meshgrid(*ranges, indexing="ij")
-                shifts = np.stack(grids, axis=-1).reshape(-1, 3)
-
-                # remove (0,0,0)
-                shifts = shifts[np.any(shifts != 0, axis=1)]
-                if shifts.size == 0:
-                    continue
-
-                # Where the virtual atoms would be
-                translated_centers = center - shifts * L
-
-                lower = np.minimum(translated_centers, 0.0)
-                upper = np.maximum(translated_centers - L, 0.0)
-                d2 = np.sum(lower**2 + upper**2, axis=1)
-
-                # which virtual atoms actually overlap with the (0,0,0) cell
-                mask = (d2 <= r * r)
-                if not np.any(mask):
-                    continue
-
-                for shift_vec, virtual_pos in zip(shifts[mask],
-                                                  translated_centers[mask]):
-                    # Virtual phi gets the same mu indices as the real one
-                    virtual_copies.append(
-                        BasisFunctionInstance(
-                            phi_class=phi.phi_class,
-                            parent_atom=atom_idx,
-                            first_mu=phi.first_mu,
-                            position=virtual_pos.copy(),
-                        )
-                    )
-
-            if virtual_copies:
-                self._virtual_phi_aj[atom_idx] = virtual_copies
 
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""

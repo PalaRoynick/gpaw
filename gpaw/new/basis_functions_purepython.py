@@ -40,16 +40,19 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         # TODO precalculation on GPU
         for block in self._block_map.values():
             num_m = len(block.M_m)
-            block_shape = (self.block_size, self.block_size, self.block_size)
-            """Blocks at end boundary can be "too large" => treat still as
-            having the same shape as other blocks, leave phi_mg empty in
-            the extra points. This simplifies array operations between
+
+            """Blocks at end boundary can be "too small" => still allocate
+            the precalculated phi_mg as having the same size as other full
+            blocks, leaving its contents empty in points that extend outside
+            the MPI domain. This simplifies array operations between
             different blocks.
             """
-            block.evaluated_phi_mg = np.zeros((num_m, *block_shape),
-                                              dtype=np.float64)
+            block_shape = (self.block_size, self.block_size, self.block_size)
+            #phi_mg_shape = (num_m, *block.get_block_shape())
+            block.evaluated_phi_mg = np.zeros((num_m, *block_shape), dtype=np.float64)
 
             x_Gv = block.get_block_xyz()
+            local_start_c, local_end_c = block.get_local_start_end_c()
 
             mu_local = 0
             for phi in block.phi_j:
@@ -63,7 +66,13 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 assert block.M_m[mu_local] == phi.first_mu
 
                 for m in range(0, phi.get_num_mu()):
-                    block.evaluated_phi_mg[mu_local + m] = (
+                    # XYZ slicing here to handle smaller blocks, see above
+                    block.evaluated_phi_mg[
+                        mu_local + m,
+                        local_start_c[0]:local_end_c[0],
+                        local_start_c[1]:local_end_c[1],
+                        local_start_c[2]:local_end_c[2],
+                    ] = (
                         f_r * Y(l**2 + m,
                                 d_Gv[..., 0], d_Gv[..., 1], d_Gv[..., 2])
                     )
@@ -126,7 +135,13 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 sx, sy, sz = block.start_c
                 ex, ey, ez = block.end_c
 
-                phi2_mg = block.evaluated_phi_mg**2
+                # Take XYZ slice to handle smaller boundary blocks
+                local_start_c, local_end_c = block.get_local_start_end_c()
+                phi2_mg = block.evaluated_phi_mg[
+                    :,
+                    local_start_c[0]:local_end_c[0],
+                    local_start_c[1]:local_end_c[1],
+                    local_start_c[2]:local_end_c[2]]**2
 
                 for local_m, mu in enumerate(block.M_m):
 
@@ -276,14 +291,13 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
 
         # FIXME seems to be broken if row_range was non-default
 
-        all_phi = self.get_phi_instances()
         for block in self._block_map.values():
             assert block.evaluated_phi_mg is not None
 
             # Get slice of the potential in this block
-            vt_g = vt_G[block.start_c[0]:block.clipped_end_c[0],
-                        block.start_c[1]:block.clipped_end_c[1],
-                        block.start_c[2]:block.clipped_end_c[2]]
+            vt_g = vt_G[block.start_c[0]:block.end_c[0],
+                        block.start_c[1]:block.end_c[1],
+                        block.start_c[2]:block.end_c[2]]
 
             phi_mg = block.evaluated_phi_mg
             phi_mu_vt_g = phi_mg * vt_g

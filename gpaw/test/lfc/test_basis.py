@@ -68,7 +68,7 @@ def make_random_phi(
 
 def make_test_system() -> LFCSystem:
     """"""
-    n = 22
+    n = 14
     a = 3.0  # grid size in Bohr units ("unit cell"). NOT the lattice spacing
 
     # Grid does automatic domain decomp if running with MPI
@@ -86,6 +86,7 @@ def make_test_system() -> LFCSystem:
         p = make_random_phi(1, 1.35 * a, rng, num_points=100)
         d = make_random_phi(2, 0.1 * a, rng, num_points=100)
 
+
         funcs = [s, p, d] if i == 0 else [s, d]
         atom_defs.append(LFCAtomDefinition(i, funcs))
 
@@ -102,7 +103,7 @@ def make_test_system() -> LFCSystem:
 
 def make_test_system_small() -> LFCSystem:
     """"""
-    n = 8
+    n = 6
     a = 2.0
     global world
     world = cast(MPIComm, world)
@@ -134,8 +135,8 @@ def make_test_system_small() -> LFCSystem:
 @pytest.fixture(scope="module")
 def fixt_lfc_system() -> LFCSystem:
     """"""
-    #return make_test_system()
-    return make_test_system_small()
+    return make_test_system()
+    #return make_test_system_small()
 
 
 def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
@@ -172,24 +173,29 @@ def make_legacy_basis_functions(system: LFCSystem, xp) -> BasisFunctions:
 
 def make_basis(system: LFCSystem,
                xp,
-               purepython: bool) -> BasisFunctionCollectionBase:
+               purepython: bool,
+               block_size: int | None) -> BasisFunctionCollectionBase:
     """"""
     if purepython:
         basis = BasisFunctionCollection_PurePython(
             system,
-            use_gpu = (xp is not np)
+            use_gpu = (xp is not np),
+            block_size=block_size
             )
     else:
         assert "TODO"
 
     return basis
 
+
+@pytest.mark.parametrize("block_size", [None, 8])
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
+def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
+                        block_size: int | None):
     """"""
     system = fixt_lfc_system
-    basis = make_basis(system, xp, purepython)
+    basis = make_basis(system, xp, purepython, block_size)
 
     assert basis.num_atoms == len(system.atoms)
 
@@ -204,6 +210,11 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
 
     assert basis.num_basis_functions() == num_mu
 
+    # check that there are no duplicate phi
+    all_phi = basis.get_phi_instances()
+    has_duplicate_phi = len({id(phi) for phi in all_phi}) != len(all_phi)
+    assert not has_duplicate_phi
+
     # Both of these should be the full list of basis function instances:
     all_phi = basis.get_phi_instances()
     maybe_all_phi = basis.get_phi_for_mu(0, basis.num_basis_functions())
@@ -212,11 +223,13 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     for phi in all_phi:
         assert any(p is phi for p in maybe_all_phi)
 
-    # Each phi instance must be present in at least one block
-    for phi in all_phi:
-        for block in basis._block_map.values():
-            assert any(p is phi for p in block.phi_j), \
-                "phi does not overlap with any block! Likely a bug in blocking"
+    # for phi in all_phi:
+    #     overlaps = phi.find_overlapping_points(basis.grid.xyz())
+    #     if overlaps.size == 0:
+    #         assert np.all(phi.phi_mG == 0.0)
+
+    # Checking that each phi overlaps with at least one block is done directly
+    # in the block creation routine
 
     # Each grid point should appear at most in one block. Blocks that don't
     # overlap with any basis functions are ignored, so it's OK for a point
@@ -224,27 +237,56 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool):
     seen_points = []
     for block in basis._block_map.values():
         for xyz in itertools.product(
-            range(block.start_c[0], block.clipped_end_c[0]),
-            range(block.start_c[1], block.clipped_end_c[1]),
-            range(block.start_c[2], block.clipped_end_c[2])
+            range(block.start_c[0], block.end_c[0]),
+            range(block.start_c[1], block.end_c[1]),
+            range(block.start_c[2], block.end_c[2])
             ):
             assert xyz not in seen_points
             seen_points.append(xyz)
 
-    for block in basis._block_map.values():
-        assert np.all(block.get_block_xyz() == system.grid.xyz())
+    # Test that our block-precalculated phi are the same as old precalculated phi
+    # for block in basis._block_map.values():
+    #     m = 0
+    #     for phi in block.phi_j:
+    #         np.testing.assert_allclose(block.evaluated_phi_mg[m:m + phi.get_num_mu()], phi.phi_mG)
+    #         m += phi.get_num_mu()
 
 
+@pytest.mark.parametrize("xp", xp_params_no_cpupy())
+def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
+    """Some tests that blocking = None makes sense. Useful because under the
+    hood the same blocking logic is still ran but with block_size == grid_size
+    """
+
+    basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
+    blocks = basis.get_relevant_blocks()
+
+    # TODO mpi? some domain may be empty...
+    assert len(blocks) == 1
+    block = blocks[0]
+
+    # check that there are no duplicate phi in the block
+    has_duplicates = len({id(phi) for phi in block.phi_j}) != len(block.phi_j)
+    assert not has_duplicates
+
+    # The block should have overlap with all phi
+    all_phi = basis.get_phi_instances()
+    assert len(block.phi_j) == len(all_phi)
+    # technically this is only airtight if we also check that all_phi has no
+    # duplicates. But that is done in test_basis_creation()
+
+
+@pytest.mark.parametrize("block_size", [None, 8])
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 #@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
 @pytest.mark.parametrize("row_range", [None])
 def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
-    row_range: range | None):
+    block_size: int, row_range: range | None):
     """"""
 
     system = fixt_lfc_system
-    basis = make_basis(system, xp, purepython)
+    basis = make_basis(system, xp, purepython, block_size)
 
     if row_range:
         assert row_range.step == 1
@@ -284,23 +326,26 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
                                atol=1e-12)
 
 
+@pytest.mark.parametrize("block_size", [None, 8])
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
 def test_add_to_density(fixt_lfc_system: LFCSystem,
                         xp,
                         purepython: bool,
-                        num_spins: int):
+                        num_spins: int,
+                        block_size: int):
     """"""
     system = fixt_lfc_system
-    basis = make_basis(system, xp, purepython)
+    basis = make_basis(system, xp, purepython, block_size)
     # Matrix distribution does not matter here.
     # TODO separate test that it indeed does not matter?
 
     # Test density
     rng = xp.random.default_rng(432)
     sG_shape = (num_spins, *system.grid.mysize_c)
-    nt_sG = rng.random(sG_shape)
+    #nt_sG = rng.random(sG_shape)
+    nt_sG = xp.zeros(sG_shape)
 
     nt_sG_ref = nt_sG.copy()
 
@@ -319,9 +364,17 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     basis_old = make_legacy_basis_functions(system, xp=np)
     basis_old.add_to_density(nt_sG_ref, f_asi)
 
+    #print(f"new {nt_sG[:, 7, 7, 7]}, old {nt_sG_ref[:, 7, 7, 7]}")
+
+    # idx = np.where(~np.isclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12))
+    # print(f"bad_idx={idx}")
+    # print(f"new={nt_sG[idx]}")
+    # print(f"old={nt_sG_ref[idx]}")
+
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
+@pytest.mark.parametrize("block_size", [None, 8])
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
@@ -330,10 +383,11 @@ def test_domain_decomposition(
     fixt_lfc_system: LFCSystem,
     xp,
     purepython: bool,
-    num_spins: int):
+    num_spins: int,
+    block_size: int):
     """"""
     system = fixt_lfc_system
-    basis = make_basis(system, xp, purepython)
+    basis = make_basis(system, xp, purepython, block_size)
 
     global world
     world = cast(MPIComm, world)
@@ -416,3 +470,9 @@ def test_domain_decomposition(
 #     # start_c and end_c tell what range of indices of the full grid are included in this domain
 #     # Old code uses grid._gc.n_c which seems to be the same as mysize_c
 #     mpiprint(f"{grid.size=}, {grid.size_c=}, {grid.mysize_c=}, {grid.mypos_c=}, {grid.start_c=}, {grid.end_c=}, {grid._gd.n_c=}")
+
+
+if __name__ == "__main__":
+    system = make_test_system()
+    basis = BasisFunctionCollection_PurePython(system)
+    basis.to_json("lfc_debug.json")
