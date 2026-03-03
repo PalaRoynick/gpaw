@@ -369,13 +369,6 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     basis_old = make_legacy_basis_functions(system, xp=np)
     basis_old.add_to_density(nt_sG_ref, f_asi)
 
-    #print(f"new {nt_sG[:, 7, 7, 7]}, old {nt_sG_ref[:, 7, 7, 7]}")
-
-    # idx = np.where(~np.isclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12))
-    # print(f"bad_idx={idx}")
-    # print(f"new={nt_sG[idx]}")
-    # print(f"old={nt_sG_ref[idx]}")
-
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
@@ -403,7 +396,7 @@ def test_domain_decomposition(
 
     serial_system = copy.copy(system)
     serial_system.grid = system.grid.new(comm=serial_comm)
-    serial_basis = make_basis(serial_system, xp, purepython)
+    serial_basis = make_basis(serial_system, xp, purepython, block_size)
 
     assert serial_basis.num_atoms == basis.num_atoms
     assert serial_basis.num_basis_functions() == basis.num_basis_functions()

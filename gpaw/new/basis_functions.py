@@ -129,7 +129,8 @@ class GridBlock:
 
     If the MPI domain does not divide evenly into blocks, we allow the last
     blocks in each direction to be smaller as to not "overflow" into the next
-    domain."""
+    domain. Note that with this we can also get non-box shaped blocks, eg.
+    2D slab can be a valid block shape."""
 
     grid: UGDesc
     coords: BlockCoords
@@ -155,7 +156,11 @@ class GridBlock:
         """"""
         assert all(x >= 0 for x in self.coords), \
             "Block coords are relative to MPI domain and must be >= 0"
-        assert np.all(self.end_c - self.start_c > 0)
+
+        # Checking np.all(end_c > start_c) would be too restrictive with
+        # domain decomp. It would rule out rare but valid shapes like slabs
+        assert np.all(self.end_c >= self.start_c)
+        assert np.any(self.end_c > self.start_c)
         assert np.all(self.start_c >= self.grid.start_c)
         assert np.all(self.end_c <= self.grid.end_c)
 
@@ -668,11 +673,15 @@ class BasisFunctionCollectionBase(ABC):
         overlap test.
         """
 
+        self._block_map: dict[BlockCoords, GridBlock] = {}
+
+        # Can happen with domain decomposition, I guess? Nothing to block
+        if self.grid.mysize_c.size == 0:
+            return
+
         # Round division up. The last block is allowed to be smaller
         num_blocks_c = -(self.grid.mysize_c // -self.block_size).astype(int)
         real_block_size_v = self.block_size * grid_spacing_v
-
-        self._block_map: dict[BlockCoords, GridBlock] = {}
 
         for phi in self.get_phi_instances():
             # Compute AABB extents for the phi-sphere (real space units)
@@ -690,9 +699,6 @@ class BasisFunctionCollectionBase(ABC):
 
             min_block = np.maximum(min_block, 0).astype(int)
             max_block = np.minimum(max_block, num_blocks_c - 1).astype(int)
-
-            # AABB must overlap with some block (see below)
-            assert np.all(max_block >= min_block)
 
             for bx, by, bz in itertools.product(
                 range(min_block[0], max_block[0] + 1),
