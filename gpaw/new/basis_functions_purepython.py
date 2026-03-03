@@ -41,18 +41,10 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         for block in self._block_map.values():
             num_m = len(block.M_m)
 
-            """Blocks at end boundary can be "too small" => still allocate
-            the precalculated phi_mg as having the same size as other full
-            blocks, leaving its contents empty in points that extend outside
-            the MPI domain. This simplifies array operations between
-            different blocks.
-            """
-            block_shape = (self.block_size, self.block_size, self.block_size)
-            #phi_mg_shape = (num_m, *block.get_block_shape())
-            block.evaluated_phi_mg = np.zeros((num_m, *block_shape), dtype=np.float64)
+            phi_mg_shape = (num_m, *block.get_block_shape())
+            block.evaluated_phi_mg = np.zeros(phi_mg_shape, dtype=np.float64)
 
             x_Gv = block.get_block_xyz()
-            local_start_c, local_end_c = block.get_local_start_end_c()
 
             mu_local = 0
             for phi in block.phi_j:
@@ -66,13 +58,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
                 assert block.M_m[mu_local] == phi.first_mu
 
                 for m in range(0, phi.get_num_mu()):
-                    # XYZ slicing here to handle smaller blocks, see above
-                    block.evaluated_phi_mg[
-                        mu_local + m,
-                        local_start_c[0]:local_end_c[0],
-                        local_start_c[1]:local_end_c[1],
-                        local_start_c[2]:local_end_c[2],
-                    ] = (
+                    block.evaluated_phi_mg[mu_local + m] = (
                         f_r * Y(l**2 + m,
                                 d_Gv[..., 0], d_Gv[..., 1], d_Gv[..., 2])
                     )

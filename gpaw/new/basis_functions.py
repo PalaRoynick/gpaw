@@ -223,8 +223,9 @@ class GridBlock:
     M_m: list[int] = field(default_factory=list)
     """Maps block-local phi index 'm' to global mu"""
     evaluated_phi_mg: np.ndarray | None = None
-    """phi_mu(x) precalculated on the grid block. The XYZ dimensions are
-    always allocated for a full BLOCK_SIZE^3 block."""
+    """phi_mu(x) precalculated on the grid block. NOTE: the XYZ shape can be
+    smaller for some blocks if the grid blocking was uneven.
+    See also get_block_shape()"""
 
     def __post_init__(self):
         """"""
@@ -250,7 +251,7 @@ class GridBlock:
         return local_start_c, local_end_c
 
     def get_block_shape(self) -> tuple[int, int, int]:
-        """"""
+        """Gives real shape of the block."""
         return tuple(self.end_c - self.start_c)
 
 
