@@ -68,7 +68,7 @@ def make_random_phi(
 
 def make_test_system() -> LFCSystem:
     """"""
-    n = 14
+    n = 22
     a = 3.0  # grid size in Bohr units ("unit cell"). NOT the lattice spacing
 
     # Grid does automatic domain decomp if running with MPI
@@ -223,6 +223,12 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     for phi in all_phi:
         assert any(p is phi for p in maybe_all_phi)
 
+    for block in basis.get_relevant_blocks():
+        assert np.prod(block.shape) > 0
+        if block_size is None:
+            np.testing.assert_equal(block.shape, basis.grid.mysize_c)
+
+
     # for phi in all_phi:
     #     overlaps = phi.find_overlapping_points(basis.grid.xyz())
     #     if overlaps.size == 0:
@@ -235,7 +241,7 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     # overlap with any basis functions are ignored, so it's OK for a point
     # to not be present in any block.
     seen_points = []
-    for block in basis._block_map.values():
+    for block in basis.get_relevant_blocks():
         for xyz in itertools.product(
             range(block.start_c[0], block.end_c[0]),
             range(block.start_c[1], block.end_c[1]),
@@ -245,11 +251,11 @@ def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
             seen_points.append(xyz)
 
     # Test that our block-precalculated phi are the same as old precalculated phi
-    # for block in basis._block_map.values():
-    #     m = 0
-    #     for phi in block.phi_j:
-    #         np.testing.assert_allclose(block.evaluated_phi_mg[m:m + phi.get_num_mu()], phi.phi_mG)
-    #         m += phi.get_num_mu()
+    for block in basis.get_relevant_blocks():
+        m = 0
+        for phi in block.phi_j:
+            np.testing.assert_allclose(block.evaluated_phi_mg[m:m + phi.get_num_mu()], phi.phi_mG)
+            m += phi.get_num_mu()
 
 
 @pytest.mark.skipif(world.size > 1, reason="TODO, probably")

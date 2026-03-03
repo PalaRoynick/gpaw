@@ -41,7 +41,7 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         for block in self._block_map.values():
             num_m = len(block.M_m)
 
-            phi_mg_shape = (num_m, *block.get_block_shape())
+            phi_mg_shape = (num_m, *block.shape)
             block.evaluated_phi_mg = np.zeros(phi_mg_shape, dtype=np.float64)
 
             x_Gv = block.get_block_xyz()
@@ -118,8 +118,10 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
             for block in self._block_map.values():
                 assert block.evaluated_phi_mg is not None
 
-                sx, sy, sz = block.start_c
-                ex, ey, ez = block.end_c
+                # XYZ indices to the nt_sG array for this block (domain aware)
+                start_offset_c = block.start_c- self.grid.start_c
+                sx, sy, sz = start_offset_c
+                ex, ey, ez = start_offset_c + block.get_block_shape()
 
                 # Take XYZ slice to handle smaller boundary blocks
                 local_start_c, local_end_c = block.get_local_start_end_c()

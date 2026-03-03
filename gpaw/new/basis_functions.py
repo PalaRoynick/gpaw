@@ -135,11 +135,12 @@ class GridBlock:
     grid: UGDesc
     coords: BlockCoords
 
-    # these give the range of grid points this block represents
+    # these give the range of grid points this block represents on the full
+    # grid, NOT relative to the MPI domain
     start_c: np.ndarray
-    """Start indices to the (x,y,z) grid for this block. Inclusive."""
+    """Start indices to the full (x,y,z) grid for this block. Inclusive."""
     end_c: np.ndarray
-    """End indices to the (x,y,z) grid for this block. Exclusive!"""
+    """End indices to the full (x,y,z) grid for this block. Exclusive!"""
     phi_j: list["BasisFunctionInstance"] = field(default_factory=list)
     """List of all basis functions that have overlap with this block.
     Note indexing: each phi_j actually contains many values of m.
@@ -168,8 +169,7 @@ class GridBlock:
         """Gives real-space XYZ points for the given block.
         4D array of shape (Nx, Ny, Nz, 3)."""
         # See UGDesc.xyz()
-        shape = self.end_c - self.start_c
-        indices_Rc = np.indices(tuple(shape)).transpose((1, 2, 3, 0))
+        indices_Rc = np.indices(tuple(self.shape)).transpose((1, 2, 3, 0))
         indices_Rc += self.start_c
         return indices_Rc @ (self.grid.cell_cv.T / self.grid.size_c).T
 
@@ -179,10 +179,19 @@ class GridBlock:
         local_end_c = self.end_c - self.start_c
         return local_start_c, local_end_c
 
+    @cached_property
+    def shape(self) -> tuple[int, int, int]:
+        """Real shape of the block, ie. how many grid points it contains.
+        This may in some situations be a 2D shape, but always contains at
+        least one point."""
+        _shape = self.end_c - self.start_c
+        # Handle non-3D shapes: always at least one point in each direction
+        _shape = np.maximum(_shape, np.asarray([1, 1, 1]))
+        return tuple(_shape)
+
     def get_block_shape(self) -> tuple[int, int, int]:
         """Gives real shape of the block."""
-        return tuple(self.end_c - self.start_c)
-
+        return self.shape
 
 class BasisFunction():
     """"""
@@ -670,7 +679,10 @@ class BasisFunctionCollectionBase(ABC):
         """For each phi, find which blocks they overlap. We start with an AABB
         (Axis Aligned Bounding Box) overlap test to find nearby boxes with
         possible overlap, then remove false positives by a proper spherical
-        overlap test.
+        overlap test. The AABB check is done against boxes of size
+        block_size^3, which can be too large if the grid domain doesn't divide
+        evenly into blocks of this size. We compute real block shapes in the
+        latter overlap test.
         """
 
         self._block_map: dict[BlockCoords, GridBlock] = {}
@@ -705,13 +717,13 @@ class BasisFunctionCollectionBase(ABC):
                 range(min_block[1], max_block[1] + 1),
                 range(min_block[2], max_block[2] + 1),
             ):
-                # Exact overlap test: get block corners
+                # Exact overlap test with real blocks: get block corners
                 block_start_c = (self.grid.start_c
                                  + self.block_size * np.asarray([bx, by, bz]))
 
                 # Clip end corner so that it stays within the MPI domain
                 block_end_c = block_start_c + self.block_size
-                block_end_c = np.minimum(block_end_c, self.grid.mysize_c)
+                block_end_c = np.minimum(block_end_c, self.grid.end_c)
 
                 # FIXME can happen that a sphere DOES overlap the box,
                 # but NOT any grid points in the box => not needed.
@@ -755,6 +767,7 @@ class BasisFunctionCollectionBase(ABC):
                     block.M_m.append(mu + m)
             #
         #
+
 
     def get_relevant_blocks(self) -> list[GridBlock]:
         """Returns list of grid blocks that contribute, ie. have overlap with
