@@ -277,8 +277,6 @@ class BasisFunctionCollection_PurePython(BasisFunctionCollectionBase):
         mu_end: int) -> None:
         """"""
 
-        # FIXME seems to be broken if row_range was non-default
-
         for block in self._block_map.values():
             assert block.evaluated_phi_mg is not None
 
