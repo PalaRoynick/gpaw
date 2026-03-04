@@ -69,19 +69,23 @@ class Projectable:
         return result
 
     def operation(self, op_cc, w_c):
-        # For reciprocal space (plane waves), we need the transpose of the
-        # real-space rotation because reciprocal vectors transform with (R^-1)^T = (R^T)^-1
-        # Since op_cc is already integer in fractional coords,
-        # just transpose it.
-        op_cc_reciprocal = op_cc.T.copy()
-        op_cc_int = np.asarray(np.round(op_cc_reciprocal), dtype=np.int64)
-        assert np.allclose(op_cc_reciprocal, op_cc_int), (
-            f"Operation matrix is not integer: {op_cc_reciprocal}"
+        # The transform(U_cc) method remaps PW coefficients so that
+        # wf2[G'] = wf1[U_cc^{-1} G'].  Under the pushing-forward convention
+        # (gψ)(r) = ψ(Wr+w), the PW coefficients become:
+        #   c'_{G'} = c_{W^{-T}G'} * exp(2πi (W^{-T}G')^T w)
+        # Setting U_cc = W^T gives  U_cc^{-1} = W^{-T}  ✓
+        # The phase at G' is  exp(2πi G'^T W^{-1}w).
+        op_cc_int = np.asarray(np.round(op_cc.T), dtype=np.int64)
+        assert np.allclose(op_cc.T, op_cc_int), (
+            f"Operation matrix is not integer: {op_cc.T}"
         )
 
         if self.pseudo_wf:
             wf2 = self.wf.transform(op_cc_int)
-            wf2.data *= np.exp(2j * np.pi * w_c @ self.wf.desc.indices_cG)
+            # Phase factor: exp(2πi G'^T W^{-1}w) = exp(2πi (W^{-1}w)^T G')
+            op_cc_inv = np.round(np.linalg.inv(op_cc)).astype(np.int64)
+            w_c_eff = op_cc_inv @ w_c
+            wf2.data *= np.exp(2j * np.pi * w_c_eff @ self.wf.desc.indices_cG)
             return Projectable(self.calc, self.cell_cv, wf2)
         else:
             # This one does not in fact work

@@ -639,7 +639,7 @@ class ConjugacyClassClassifierClass:
                     Ds.append(np.dot(info.axis, principal_axis))
                     # print(info.op_cc)
                     # print(info.axis, 'D=', np.dot(info.axis, principal_axis))
-                if np.allclose(Ds, 1.0):
+                if np.allclose(np.abs(Ds), 1.0):
                     main_cc += "h"
                 elif np.allclose(Ds, 0.0):
                     main_cc += "v"  # XXX Might also be d sometimes
