@@ -1,5 +1,6 @@
 #include "lfc_python.hpp"
-#include "lfc_host.hpp"
+#include "lfc_base.hpp"
+#include "lfc_builder.hpp"
 #include "pybind11/stl.h"
 
 namespace py = pybind11;
@@ -29,6 +30,7 @@ bool bind_new_lfc(pybind11::module_ m)
         cls.def("add_block", &ThisClass::add_block);
         cls.def("add_phi", &ThisClass::add_phi);
         cls.def("enable_single_precision", &ThisClass::enable_single_precision);
+        cls.def("enable_gpu", &ThisClass::enable_gpu);
 
         cls.def("build", &ThisClass::build);
     }

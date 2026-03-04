@@ -1,10 +1,9 @@
-#include "lfc_host.hpp"
-#include <limits>
-#include <string>
-#include <stdexcept>
+#include "lfc_builder.hpp"
+#include "lfc_cpu.hpp"
 
 namespace gpaw
 {
+
 void BasisFunctionCollectionBuilder::reserve(size_t num_phi, size_t num_blocks)
 {
     blocks.clear();
@@ -52,28 +51,29 @@ BasisFunctionCollection BasisFunctionCollectionBuilder::build()
 {
     BasisFunctionCollection lfc(single_precision);
 
-    if (single_precision)
+    if (!use_gpu)
     {
-        lfc.impl32 = std::move(build_impl<float>());
+        if (!single_precision)
+        {
+            auto impl = build_impl<double, false>(std::move(grid), std::move(blocks), std::move(phi_data));
+            lfc.impl = std::move(impl);
+        }
     }
+#ifdef GPAW_GPU
     else
     {
-        lfc.impl64 = std::move(build_impl<double>());
+        // How do I get this symbol defined without including CUDA code ???
+        // The cpu version above works because I included lfc_gpu.hpp
+
+        // if (!single_precision)
+        // {
+        //     auto impl = build_impl<double, true>(std::move(grid), std::move(blocks), std::move(phi_data));
+        //     lfc.impl = std::move(impl);
+        // }
     }
+#endif
 
     return lfc;
-}
-
-void BasisFunctionCollection::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const
-{
-    if (is_single_precision())
-    {
-        impl32->add_to_density(nt_sG, f_sM);
-    }
-    else
-    {
-        impl64->add_to_density(nt_sG, f_sM);
-    }
 }
 
 } // namespace gpaw

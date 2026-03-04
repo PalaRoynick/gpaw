@@ -1,6 +1,7 @@
 #pragma once
 
-#include "lfc_staging.cuh"
+#include "lfc_base.hpp"
+#include "lfc_builder.hpp"
 #include "gpaw_utils.h"
 #include "gpu/cpp/gpu_core.hpp"
 
@@ -42,12 +43,15 @@ struct PhiDataGpu
 };
 
 template<typename T>
-class LFCGpu
+class LFCGpu : public LFCBase
 {
 
 public:
     // LFCGpu(const LFC_Impl<T>& lfc);
     // ~LFCGpu();
+
+    void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const;
+
 
 private:
 
@@ -55,5 +59,26 @@ private:
     BlockDataGpu block_data;
 
 };
+
+template<>
+std::unique_ptr<LFCBase> build_impl<double, true>(GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data)
+{
+    std::unique_ptr<LFCCpu<double>> lfc = std::make_unique<LFCGpu<double>>();
+    assert(lfc != nullptr);
+
+    // lfc->blocks = std::move(blocks);
+    // lfc->phi_data = std::move(phi_data);
+
+    //lfc->gpu_impl = std::move(lfc->upload_to_gpu());
+
+    return std::move(lfc);
+}
+
+
+
+template<typename T>
+inline void LFCGpu<T>::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const
+{
+}
 
 } // namespace gpaw
