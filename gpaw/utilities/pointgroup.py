@@ -481,8 +481,6 @@ class ConjugacyClassClassifierClass:
             det = np.linalg.det(
                 [self.principal_axis, operations[idx1].axis, operations[idx2].axis]
             )
-            
-            debugprint(f"DEBUG: _resolve_1C2 principal={self.principal_axis} axes={[op.axis for op in operations]} det={det}")
 
             if np.isclose(det, 1.0):
                 suffixes[idx1] = "_x"
@@ -496,8 +494,6 @@ class ConjugacyClassClassifierClass:
                 self.axes['x'] = operations[idx2].axis
             else:
                 raise ValueError(f"Determinant not +/- 1: {det}")
-            
-            debugprint(f"DEBUG: _resolve_1C2 suffixes={suffixes}")
 
             return suffixes
         raise NotImplementedError(f"1C2 count {count}")
@@ -619,8 +615,6 @@ class ConjugacyClassClassifierClass:
         # print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
-
-        # principal_axis = np.array([1,0,0])
 
         self.principal_axis = principal_axis
         names_g = []
