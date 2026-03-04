@@ -218,43 +218,43 @@ class SPGOperations:
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
         from gpaw.utilities.pointgroup_data import spglib_to_schoenflies
 
-        # Filter glide/screw operations: w' = w + (W - I) @ t is ≈ 0 for
-        # pure point-group ops; non-zero for glides/screws.
-        # See _shifted_translations.
+        # Deduplicate by rotation matrix: centering translations
+        # (e.g. C-centered cells) produce duplicate rotation matrices
+        # with extra lattice translations.  Keep only one copy of each
+        # unique rotation, preferring the one with smallest residual
+        # translation.  Non-symmorphic operations (screws/glides with
+        # unique rotation matrices) are preserved.
         w_shifted = cls._shifted_translations(W_scc, w_sc, -origin_shift_c)
-        pure_mask = np.all(np.abs(w_shifted) < 0.01, axis=1)
-        n_glides = int(np.sum(~pure_mask))
 
         if verbose:
+            pure_mask = np.all(np.abs(w_shifted) < 0.01, axis=1)
             intl_before = spglib_to_schoenflies.get(
                 dataset.pointgroup, dataset.pointgroup)
-            print(f"  Before filtering: {len(W_scc)} operations, "
+            print(f"  Before dedup: {len(W_scc)} operations, "
                   f"PG={intl_before} ({dataset.pointgroup}), "
-                  f"origin_shift={origin_shift_c}",
-                  f"W_scc: {W_scc}, w_sc: {w_sc}",
-                  f"rot_vv: {cell_cv.T @ W_scc[0] @ np.linalg.inv(cell_cv).T}",)
+                  f"origin_shift={origin_shift_c}")
             for s in range(len(W_scc)):
                 info = OperationInfo.from_op(W_scc[s])
                 tag = "PURE" if pure_mask[s] else "GLIDE/SCREW"
                 print(f"    [{s:2d}] {tag:11s}  w={w_sc[s]}  "
                       f"w'={w_shifted[s]}  {info}")
 
-        if n_glides > 0:
-            import spglib as _spglib
-            W_scc = W_scc[pure_mask]
-            w_sc = w_sc[pure_mask]
-            pg_info = _spglib.get_pointgroup(W_scc)
-            intl_symbol = pg_info[0].strip()
-            pointgroup = spglib_to_schoenflies.get(intl_symbol, "C1")
-            if verbose:
-                print(f"  After filtering: {len(W_scc)} operations kept, "
-                      f"{n_glides} glide/screw removed; "
-                      f"PG={pointgroup} ({intl_symbol})")
-        else:
-            pointgroup = spglib_to_schoenflies[dataset.pointgroup]
-            if verbose:
-                print(f"  No glides/screws; "
-                      f"PG={pointgroup} ({dataset.pointgroup})")
+        unique_ops = {}
+        for s in range(len(W_scc)):
+            key = tuple(W_scc[s].flatten())
+            w_norm = np.linalg.norm(w_shifted[s])
+            if key not in unique_ops or w_norm < unique_ops[key][1]:
+                unique_ops[key] = (s, w_norm)
+        keep = sorted([idx for idx, _ in unique_ops.values()])
+        n_removed = len(W_scc) - len(keep)
+        W_scc = W_scc[keep]
+        w_sc = w_sc[keep]
+
+        pointgroup = spglib_to_schoenflies[dataset.pointgroup]
+        if verbose:
+            print(f"  After dedup: {len(W_scc)} unique operations "
+                  f"({n_removed} centering duplicates removed); "
+                  f"PG={pointgroup} ({dataset.pointgroup})")
 
         return cls(
             atoms,
@@ -639,9 +639,10 @@ class ConjugacyClassClassifierClass:
                     Ds.append(np.dot(info.axis, principal_axis))
                     # print(info.op_cc)
                     # print(info.axis, 'D=', np.dot(info.axis, principal_axis))
-                if np.allclose(np.abs(Ds), 1.0):
+                abs_Ds = np.abs(Ds)
+                if np.allclose(abs_Ds, 1.0, atol=0.01):
                     main_cc += "h"
-                elif np.allclose(Ds, 0.0):
+                elif np.allclose(abs_Ds, 0.0, atol=0.01):
                     main_cc += "v"  # XXX Might also be d sometimes
                 else:
                     main_cc += "d"

@@ -327,11 +327,11 @@ def get_group_example(group):
     from ase.io import read
 
     examples = {
-        "C2v": ("structures/C2v.json", "A1,B2,A1,B1,A1,B2"),
-        "C2h": ("structures/C2h.json", "Ag,Bu,Ag,Au,Ag,Bu"),
+        "C2v": ("structures/C2v.json", "A1,B1,A2,B2,B1,A1"),
+        "C2h": ("structures/C2h.json", "Ag,Bu,Ag,Bu,Ag,Bu"),
         "C2": ("structures/C2.json", "A,B,A,B,A,B"),
         "S4": ("structures/S4.json", "Ag,Au,Ag,Bu,Ag,Au"),
-        "D2h": ("structures/D2h.json", "Ag,B1u,B2u,B3g,Ag,B1u"),
+        "D2h": ("structures/D2h.json", "Ag,B1u,B1g,Ag,Ag,B1u"),
     }
 
     try:
@@ -343,13 +343,6 @@ def get_group_example(group):
         atoms = read(fname)
     except FileNotFoundError:
         pytest.skip(reason=f"File {fname} not found.")
-    from ase.spacegroup.symmetrize import (
-        get_symmetrized_atoms,
-        spglib_get_symmetry_dataset,
-    )
-
-    atoms = get_symmetrized_atoms(atoms, symprec=0.1)[0]
-    prepare_atoms(atoms)
 
     return atoms, result
 
