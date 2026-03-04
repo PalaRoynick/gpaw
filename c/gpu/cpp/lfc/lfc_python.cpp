@@ -1,5 +1,5 @@
 #include "lfc_python.hpp"
-#include "lfc_staging.cuh"
+#include "lfc_host.hpp"
 #include "pybind11/stl.h"
 
 namespace py = pybind11;

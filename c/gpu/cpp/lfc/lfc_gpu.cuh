@@ -46,8 +46,8 @@ class LFCGpu
 {
 
 public:
-    LFCGpu(const LFC_Impl<T>& lfc);
-    ~LFCGpu();
+    // LFCGpu(const LFC_Impl<T>& lfc);
+    // ~LFCGpu();
 
 private:
 
@@ -55,16 +55,5 @@ private:
     BlockDataGpu block_data;
 
 };
-
-template<typename T>
-inline LFCGpu<T>::LFCGpu(const LFC_Impl<T>& lfc)
-{
-}
-
-template<typename T>
-inline LFCGpu<T>::~LFCGpu()
-{
-
-}
 
 } // namespace gpaw
