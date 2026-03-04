@@ -266,6 +266,9 @@ class SPGOperations:
             allow_translations=True,
         )
 
+    # have to be careful with removing the translations. Have to add
+    # non-symmporhic boolean if people want to remove the translations
+    # or not..
     @staticmethod
     def _shifted_translations(W_scc, w_sc, origin_shift_c):
         """Residual translations after applying the origin shift.

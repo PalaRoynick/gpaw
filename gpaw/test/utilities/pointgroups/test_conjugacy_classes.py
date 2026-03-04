@@ -156,7 +156,11 @@ def test_D2():
 
 
 def test_D2h():
-    pg, _ = symmetry_from("C2H4")
+    # Undo the 90° z-rotation applied by symmetry_from so the molecule is in
+    # ASE's native orientation, matching the orientation passed to Turbomole.
+    # D2h has no unique principal axis, so the x/y/z convention depends on
+    # the molecular geometry rather than any intrinsic symmetry element.
+    pg, _ = symmetry_from("C2H4", lambda atoms: atoms.rotate(-90, "z"))
 
     assert pg.spg_ops.pointgroup == "D2h"
     assert set(pg.textbook_names_g) == {
@@ -169,7 +173,7 @@ def test_D2h():
         "1s_xz",
         "1s_yz",
     }
-    assert get_axis_span(pg) == ["TODO", "TODO", "TODO"]
+    assert get_axis_span(pg) == ["B3u", "B2u", "B1u"]
 
 
 def test_D2d():
