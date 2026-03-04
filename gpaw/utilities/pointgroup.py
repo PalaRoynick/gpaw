@@ -266,6 +266,9 @@ class SPGOperations:
             allow_translations=True,
         )
 
+    # have to be careful with removing the translations. Have to add
+    # non-symmporhic boolean if people want to remove the translations
+    # or not..
     @staticmethod
     def _shifted_translations(W_scc, w_sc, origin_shift_c):
         """Residual translations after applying the origin shift.
@@ -558,20 +561,37 @@ class ConjugacyClassClassifierClass:
     def _resolve_3C2_prime(self, count, operations):
         if count != 2:
             raise NotImplementedError(f"3C2' count {count}")
-        raise NotImplementedError
-        return ["", "'"]
+        from numpy.linalg import norm
+
+        # C2' axes pass through lattice vertices, aligning with {a, b, a+b};
+        # C2'' axes bisect edges, between lattice directions.
+        axis = operations[0].axis
+        cell = self.atoms.cell
+        for v in [cell[0], cell[1], cell[0] + cell[1]]:
+            if np.isclose(abs(np.dot(axis, v / norm(v))), 1.0, atol=0.01):
+                return ["-3C2'", "-3C2''"]
+        return ["-3C2''", "-3C2'"]
 
     def _resolve_3sv(self, count, operations):
         if count != 2:
             raise NotImplementedError(f"3sv count {count}")
-        raise NotImplementedError
+        from numpy.linalg import norm
+
+        # In hexagonal symmetry, σd normals align with lattice directions
+        # {a, b, a+b} while σv normals bisect between them.
+        # operations[0] is just whichever one spglib happens to list first.
+        # We don't know which of the three it will be, so we check all
+        # three possible lattice directions.
+        axis = operations[0].axis
+        cell = self.atoms.cell
+        for v in [cell[0], cell[1], cell[0] + cell[1]]:
+            if np.isclose(abs(np.dot(axis, v / norm(v))), 1.0, atol=0.01):
+                return ["-3sd", "-3sv"]
         return ["-3sv", "-3sd"]
 
     def _detect_conjugacy_classes(self, class_names: list[str]):
         free_names = set(class_names)
-
         names_g = []
-
         main_conjugacy_classes = []
         # For each conjugacy class
         for g, classops in enumerate(self.ops_g):
