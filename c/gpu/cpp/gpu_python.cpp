@@ -1,6 +1,6 @@
 #include "python_utils.h"
 #include "gpu_python.h"
-#include "basis_functions_python.hpp"
+#include "lfc/lfc_python.hpp"
 #include "test_ndarray.hpp"
 
 #include "gpu/cpp/pyarray_utils.hpp"
@@ -118,7 +118,7 @@ bool bind_gpu_submodule(PyObject* module)
     gpaw::bind_gpu_splines(submodule);
 
     bool all_ok = true;
-    all_ok &= gpaw::bind_basis_functions(submodule);
+    all_ok &= gpaw::bind_new_lfc(submodule);
 
 #ifdef GPAW_WITH_MAGMA
     // creates gpaw.gpu.magma

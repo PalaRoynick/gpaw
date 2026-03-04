@@ -585,9 +585,9 @@ class BasisFunctionCollectionBase(ABC):
         if num_atoms == 0:
             raise RuntimeError("No atoms?!")
 
-        if use_gpu and cupy_is_fake:
-            raise RuntimeError(
-                "Can't use GPU BasisFunctionCollection with fake CuPy")
+        # if use_gpu and cupy_is_fake:
+        #     raise RuntimeError(
+        #         "Can't use GPU BasisFunctionCollection with fake CuPy")
 
         self.xp = cp if use_gpu else np
 
@@ -1039,11 +1039,15 @@ class BasisFunctionCollectionBase(ABC):
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""
 
+    # TODO is this safe to do here or should it be inside __init__?
+    # This file should be importable without GPU C-extension.
+
     @override
     def __init__(self,
                  system: LFCSystem,
                  use_gpu: bool = False,
-                 mode: PrecalculationMode = PrecalculationMode.eIfPossible):
+                 mode: PrecalculationMode = PrecalculationMode.eIfPossible,
+                 block_size: int | None = 8):
         """"""
         if GPAW_NO_C_EXTENSION:
             raise RuntimeError("Cannot construct BasisFunctionCollection" \
@@ -1052,8 +1056,26 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         if not use_gpu:
             raise RuntimeError("Only GPU version implemented for now")
-        super().__init__(system, use_gpu, mode)
-        # TODO: construct C++ side object that holds splines
+
+        # TEMP Force no precalculation, so that we can test stuff
+        mode = PrecalculationMode.eNever
+
+        super().__init__(system, use_gpu=use_gpu, mode=mode,
+                         block_size=block_size)
+        self._build_cpp_object()
+
+    def _build_cpp_object(self):
+        """"""
+        # FIXME would be nice to have this available at class level,
+        # but then importing this file requires GPU C-extension. So maybe
+        # move this whole thing to a new file?
+        from gpaw.cgpaw.gpu import (BasisFunctionCollection_cpp,
+                                    BasisFunctionCollectionBuilder)
+        builder = BasisFunctionCollectionBuilder()
+        builder.enable_single_precision(False)
+
+        #builder.add_block
+
 
     @override
     def precalculate_on_grid(self) -> None:
@@ -1079,6 +1101,12 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         # TODO call cpp function
 
+    @override
+    def calculate_potential_matrix(
+        self,
+        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
+        """"""
+        raise NotImplementedError("WIP")
 
     @override
     def calculate_potential_matrices(

@@ -11,6 +11,7 @@ from gpaw.core.matrix import Matrix
 from gpaw.lfc import BasisFunctions
 from gpaw.new.basis_functions import (BasisFunctionDesc,
                                       BasisFunctionCollectionBase,
+                                      BasisFunctionCollection,
                                       LFCAtomDefinition, LFCAtomInstance,
                                       LFCSystem, AtomTypeId)
 from gpaw.new.basis_functions_purepython \
@@ -38,21 +39,19 @@ def xp_params_no_cpupy():
         ),
     ]
 
-# def parametrize_purepython():
-#     """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
-#     to run both purepython and non-purepython versions, skipping the latter if
-#     not available.
-#     """
-#     return [True,
-#             pytest.param(
-#                 False,
-#                 marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
-#                                           reason="No C extension")]
-#             )
-#         ]
-
 def parametrize_purepython():
-    return [True]
+    """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
+    to run both purepython and non-purepython versions, skipping the latter if
+    not available.
+    """
+    return [True,
+            pytest.param(
+                False,
+                marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
+                                          reason="No C extension")]
+            )
+        ]
+
 
 def make_random_phi(
         l: int,
@@ -183,7 +182,13 @@ def make_basis(system: LFCSystem,
             block_size=block_size
             )
     else:
-        assert "TODO"
+        basis = BasisFunctionCollection(
+            system,
+            #use_gpu = (xp is not np),
+            # TEMP this always assumes GPU
+            use_gpu = True,
+            block_size=block_size
+        )
 
     return basis
 
