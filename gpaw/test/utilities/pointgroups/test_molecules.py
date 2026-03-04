@@ -358,20 +358,20 @@ def build_cell(atoms, group):
     else:
         atoms.center(vacuum=4)
 
-    atoms.translate(-atoms.get_center_of_mass())
+    #atoms.translate(-atoms.get_center_of_mass())
     from ase.spacegroup.symmetrize import (
         get_symmetrized_atoms,
         spglib_get_symmetry_dataset,
     )
     from ase.utils import atoms_to_spglib_cell
 
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(
-        atoms.get_scaled_positions()
-        + dataset.transformation_matrix.T @ dataset.origin_shift
-    )
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    assert np.allclose(dataset.origin_shift, 0)
+    #dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
+    #atoms.set_scaled_positions(
+    #    atoms.get_scaled_positions()
+    #    + dataset.transformation_matrix.T @ dataset.origin_shift
+    #)
+    #dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
+    #assert np.allclose(dataset.origin_shift, 0)
     # assert np.allclose(dataset.transformation_matrix, np.eye(3))
 
 

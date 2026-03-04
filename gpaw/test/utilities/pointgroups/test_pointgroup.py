@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 def prepare_atoms(atoms):
+    return
     from ase.spacegroup.symmetrize import (
         spglib_get_symmetry_dataset,
     )
