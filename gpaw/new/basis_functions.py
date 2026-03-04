@@ -1074,8 +1074,18 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         builder = BasisFunctionCollectionBuilder()
         builder.enable_single_precision(False)
 
-        #builder.add_block
+        blocks = self.get_relevant_blocks()
+        phi_i = self.get_phi_instances()
 
+        builder.reserve(len(phi_i), len(blocks))
+
+        for block in blocks:
+            builder.add_block(tuple(block.start_c), block.shape, block.M_m)
+
+        for phi in phi_i:
+            builder.add_phi(phi.get_angular_momentum_number(), phi.position, phi.first_mu)
+
+        self._impl = builder.build()
 
     @override
     def precalculate_on_grid(self) -> None:
@@ -1090,6 +1100,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         """"""
 
         # Copy the f_asi dict to a single contiguous array
+        # TODO is this something we could do once and cache?
         num_spins = nt_sG.shape[0]
         f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
 
@@ -1100,6 +1111,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
             )
 
         # TODO call cpp function
+
 
     @override
     def calculate_potential_matrix(
