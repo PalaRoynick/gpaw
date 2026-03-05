@@ -6,9 +6,15 @@ from gpaw.core import UGDesc
 from gpaw.gpu import cupy as cp, cupy_is_fake, as_xp
 from gpaw.sphere.spherical_harmonics import Y
 
-from typing import override, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import numpy as np
 import itertools
+
+try:
+    from typing import override
+except ImportError:
+    def override(func):
+        return func
 
 
     # def to_gpu(self,
