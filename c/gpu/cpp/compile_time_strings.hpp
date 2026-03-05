@@ -54,18 +54,19 @@ template<size_t SeparatorLength, typename... Parts>
 constexpr auto concat_with_separator(const FixedString<SeparatorLength>& sep, const Parts&... parts)
 {
     // NB: in C++20 could use "FixedString Sep" as template parameter instead.
+    // NB2: careful here, gcc allows some non-standard stuff that causes clang to just freak out.
+    // Specifically, sep.size() calls a function on a **runtime** object, so it's technically not constexpr(??)
 
     static_assert((is_fixed_string<Parts>::value && ...),
         "concat_with_separator only accepts FixedString arguments"
     );
 
-    constexpr size_t nonEmpty =
-        (0 + ... + (Parts::size() > 1));
+    constexpr size_t non_empty = (0 + ... + (Parts::size() > 1));
 
     constexpr size_t size =
         1
-        + (0 + ... + (Parts::size() - 1))
-        + (nonEmpty > 0 ? (nonEmpty - 1) * (sep.size() - 1) : 0);
+        + (size_t(0) + ... + (Parts::size() - 1))
+        + (non_empty > 0 ? (non_empty - 1) * (SeparatorLength - 1) : 0);
 
     FixedString<size> out{};
     size_t pos = 0;
@@ -73,17 +74,24 @@ constexpr auto concat_with_separator(const FixedString<SeparatorLength>& sep, co
 
     auto append = [&](auto const& p)
     {
-        if constexpr (p.size() > 1)
+        using P = std::decay_t<decltype(p)>;
+
+        if constexpr (P::size() > 1)
         {
             if (!first)
             {
-                for (size_t i = 0; i + 1 < sep.size(); ++i)
+                for (size_t i = 0; i + 1 < SeparatorLength; ++i)
+                {
                     out.data[pos++] = sep.data[i];
+                }
             }
+
             first = false;
 
-            for (size_t i = 0; i + 1 < p.size(); ++i)
+            for (size_t i = 0; i + 1 < P::size(); ++i)
+            {
                 out.data[pos++] = p.data[i];
+            }
         }
     };
 
