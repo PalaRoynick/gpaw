@@ -285,7 +285,7 @@ public:
 
     const int64_t* shape_ptr() const { return desc.shape.data(); }
     const int64_t* stride_ptr() const { return desc.strides.data(); }
-    bool is_valid() const { return handle != nullptr; }
+    bool is_valid() const { return handle.is(handle(nullptr)); }
 
     // Number of elements in the array
     size_t size() const
