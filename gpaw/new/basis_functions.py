@@ -8,7 +8,7 @@ from gpaw.old.grid_descriptor import GridBoundsError
 from gpaw.new.timer import trace
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.setup import Setups, Setup
-from typing import override, cast
+from typing import cast
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 import itertools
@@ -17,6 +17,13 @@ from collections import defaultdict
 from gpaw.sphere.spherical_harmonics import Y
 
 from typing import Protocol, runtime_checkable, TypeAlias
+
+# apparently @override requires python >= 3.12 ...
+try:
+    from typing import override
+except ImportError:
+    def override(func):
+        return func
 
 @runtime_checkable
 class SplineLike(Protocol):
@@ -1073,7 +1080,10 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                                     BasisFunctionCollectionBuilder)
         builder = BasisFunctionCollectionBuilder()
         builder.enable_single_precision(False)
-        builder.
+        builder.define_grid(self.grid.start_c,
+                            self.grid.end_c,
+                            np.diag(self.grid._gd.h_cv),
+                            self.grid.dv)
 
         blocks = self.get_relevant_blocks()
         phi_i = self.get_phi_instances()
