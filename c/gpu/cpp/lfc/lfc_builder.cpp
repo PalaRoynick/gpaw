@@ -1,5 +1,6 @@
 #include "lfc_builder.hpp"
 #include "lfc_cpu.hpp"
+#include "lfc_gpu_builder.hpp"
 
 namespace gpaw
 {
@@ -16,6 +17,14 @@ void BasisFunctionCollectionBuilder::reserve(size_t num_phi, size_t num_blocks)
     phi_data.position_iv.reserve(num_phi);
     phi_data.l_i.reserve(num_phi);
     phi_data.position_iv.reserve(num_phi);
+}
+
+void BasisFunctionCollectionBuilder::define_grid(const std::array<size_t, 3>& start_c, const std::array<size_t, 3>& end_c, const std::array<double, 3>& spacing, double dV)
+{
+    grid.start_c = start_c;
+    grid.end_c = end_c;
+    grid.spacing = spacing;
+    grid.dV = dV;
 }
 
 void BasisFunctionCollectionBuilder::add_phi(int32_t l, const Position& position_v, size_t first_mu)
@@ -53,23 +62,25 @@ BasisFunctionCollection BasisFunctionCollectionBuilder::build()
 
     if (!use_gpu)
     {
-        if (!single_precision)
+        if (single_precision)
         {
-            auto impl = build_impl<double, false>(std::move(grid), std::move(blocks), std::move(phi_data));
-            lfc.impl = std::move(impl);
+            lfc.impl = std::move(
+                build_impl_cpu<float>(std::move(grid), std::move(blocks), std::move(phi_data))
+            );
+        }
+        else
+        {
+            lfc.impl = std::move(
+                build_impl_cpu<double>(std::move(grid), std::move(blocks), std::move(phi_data))
+            );
         }
     }
 #ifdef GPAW_GPU
     else
     {
-        // How do I get this symbol defined without including CUDA code ???
-        // The cpu version above works because I included lfc_gpu.hpp
-
-        // if (!single_precision)
-        // {
-        //     auto impl = build_impl<double, true>(std::move(grid), std::move(blocks), std::move(phi_data));
-        //     lfc.impl = std::move(impl);
-        // }
+        lfc.impl = std::move(
+                build_impl_gpu_entry(single_precision, std::move(grid), std::move(blocks), std::move(phi_data))
+        );
     }
 #endif
 

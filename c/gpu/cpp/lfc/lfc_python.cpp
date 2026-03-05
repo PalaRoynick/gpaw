@@ -29,6 +29,7 @@ bool bind_new_lfc(pybind11::module_ m)
             num_phi is the number of basis function instances, including periodic copies. WARNING: This will reset the builder's state!)");
         cls.def("add_block", &ThisClass::add_block);
         cls.def("add_phi", &ThisClass::add_phi);
+        cls.def("define_grid", &ThisClass::define_grid);
         cls.def("enable_single_precision", &ThisClass::enable_single_precision);
         cls.def("enable_gpu", &ThisClass::enable_gpu);
 

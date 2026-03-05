@@ -25,6 +25,8 @@ struct GridInfo
 {
     std::array<size_t, 3> start_c;
     std::array<size_t, 3> end_c;
+    // Grid spacing in XYZ dirs
+    std::array<double, 3> spacing;
     // Volume element
     double dV;
 };
@@ -96,10 +98,6 @@ private:
         : single_precision(use_single_precision) {}
 
     friend class BasisFunctionCollectionBuilder;
-
-    // Only one of these gets allocated:
-    // std::unique_ptr<LFC_Impl<float>> impl32;
-    // std::unique_ptr<LFC_Impl<double>> impl64;
 
     std::unique_ptr<LFCBase> impl;
 

@@ -34,17 +34,16 @@ inline void LFCCpu<T>::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const N
 {
 }
 
-// PROBLEM: can't partially specialize a function AFAIK, so will need to put this inside a class probs.
-template<>
-std::unique_ptr<LFCBase> build_impl<double, false>(GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data)
+template<typename T>
+std::unique_ptr<LFCBase> build_impl_cpu(GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data)
 {
-    std::unique_ptr<LFCCpu<double>> lfc = std::make_unique<LFCCpu<double>>();
+    std::unique_ptr<LFCCpu<T>> lfc = std::make_unique<LFCCpu<T>>();
     assert(lfc != nullptr);
 
     lfc->blocks = std::move(blocks);
     lfc->phi_data = std::move(phi_data);
 
-    //lfc->gpu_impl = std::move(lfc->upload_to_gpu());
+    throw std::runtime_error("This is WIP");
 
     return std::move(lfc);
 }
