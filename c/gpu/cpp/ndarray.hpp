@@ -128,16 +128,16 @@ struct make_shape<ndim<N>>
 
 
 // Metaprogramming selector, used to extract specific traits from Args... using predicates from above
-template<typename Default, template<typename> class Pred, typename... Ts>
+template<typename Default, template<typename, typename...> class Pred, typename... Ts>
 struct Select;
 
-template<typename Default, template<typename> class Pred>
+template<typename Default, template<typename, typename...> class Pred>
 struct Select<Default, Pred>
 {
     using type = Default;
 };
 
-template<typename Default, template<typename> class Pred, typename T, typename... Ts>
+template<typename Default, template<typename, typename...> class Pred, typename T, typename... Ts>
 struct Select<Default, Pred, T, Ts...>
 {
     using type = std::conditional_t<
@@ -147,8 +147,10 @@ struct Select<Default, Pred, T, Ts...>
 };
 
 /* Used for ensuring that we only select each trait once. Eg. NDArray<float, double> is not valid.
-This relies on predicates being careful with SFINAE. */
-template<template<typename> class Pred, typename... Ts>
+This relies on predicates being careful with SFINAE.
+FIXME nested template needed for clang, figure out a better solution. Also in Select
+*/
+template<template<typename, typename...> class Pred, typename... Ts>
 constexpr size_t count_matches()
 {
     return (size_t(0) + ... + size_t(Pred<Ts>::value));
@@ -488,7 +490,10 @@ inline bool ndarray_import_impl(
     out.typenum = ArrayAccessors::typenum(arr);
     if constexpr (traits::has_dtype)
     {
-        if (out.typenum != py::dtype::num_of<typename traits::value_trait>())
+        // py::dtype::num_of() would be constexpr but requires fairly recent pybind11
+        //if (out.typenum != py::dtype::num_of<typename traits::value_trait>())
+
+        if (out.typenum != py::dtype::of<typename traits::value_trait>().normalized_num())
         {
             return false;
         }
