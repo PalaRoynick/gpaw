@@ -1073,12 +1073,14 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                                     BasisFunctionCollectionBuilder)
         builder = BasisFunctionCollectionBuilder()
         builder.enable_single_precision(False)
+        builder.
 
         blocks = self.get_relevant_blocks()
         phi_i = self.get_phi_instances()
 
         builder.reserve(len(phi_i), len(blocks))
 
+        builder.define_grid
         for block in blocks:
             builder.add_block(tuple(block.start_c), block.shape, block.M_m)
 
