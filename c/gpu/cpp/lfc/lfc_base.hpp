@@ -101,7 +101,7 @@ private:
 
     std::unique_ptr<LFCBase> impl;
 
-    const bool single_precision;
+    bool single_precision;
 };
 
 } // namespace gpaw
