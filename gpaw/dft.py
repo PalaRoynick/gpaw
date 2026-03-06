@@ -156,11 +156,13 @@ class TB(Mode):
 class Eigensolver(Parameter):
     @classmethod
     def from_param(cls, eigensolver):
-        from gpaw.new.do import DirectOptimization
+        from gpaw.new.do import DirectOptimization, DirectOptimizationLcao
         eigensolvers = {
             'davidson': Davidson,
             'rmm-diis': RMMDIIS,
             'etdm-fdpw': DirectOptimization,
+            'etdm-lcao': DirectOptimizationLcao,
+            'etdm': DirectOptimizationLcao,  # temporary!
             'ppcg': PPCG,
             'lcao': LCAOEigensolver,
             'hybrid-lcao': HybridLCAOEigensolver,
@@ -178,8 +180,8 @@ class Eigensolver(Parameter):
                 warnings.warn('Please use "davidson" instead of "dav"')
             if name in eigensolvers:
                 return eigensolvers[name](**eigensolver)
-            if name in {'etdm-lcao', 'etdm', 'direct'}:
-                raise NotImplementedError
+#            if name in {'etdm-lcao', 'etdm', 'direct'}:
+#                raise NotImplementedError
             raise ValueError(f'Unknown eigensolver: {name}')
         return DefaultEigensolver(eigensolver)
 
@@ -320,13 +322,13 @@ class RMMDIIS(PWFDEigensolverParamater):
 class LCAOEigensolver(Eigensolver):
     name = 'lcao'
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
         from gpaw.new.lcao.eigensolver import LCAOEigensolver as LCAOES
         return LCAOES(basis)
 
 
 class HybridLCAOEigensolver(LCAOEigensolver):
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
         from gpaw.new.lcao.hybrids import HybridLCAOEigensolver as HLCAOES
         return HLCAOES(basis, relpos_ac, cell_cv)
 
@@ -340,7 +342,7 @@ class Scissors(LCAOEigensolver):
     def todict(self):
         return {'shifts': self.shifts}
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
         from gpaw.lcao.scissors import ScissorsLCAOEigensolver
         return ScissorsLCAOEigensolver(basis,
                                        self.shifts,

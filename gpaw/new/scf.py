@@ -74,8 +74,8 @@ class SCFLoop:
         self.mixer.reset()
 
         self.occ_calc.initialize_reference_orbitals()
-
-        self.eigensolver.initialize(ibzwfs, self.hamiltonian, density, 
+             
+        self.eigensolver.initialize(ibzwfs, self.hamiltonian, density,
                                     potential)
 
         if self.update_density_and_potential:

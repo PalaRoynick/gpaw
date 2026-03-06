@@ -10,37 +10,33 @@ from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.etdm.searchdir import LBFGS
-from gpaw.new.etdm import ETDM
-
+from gpaw.new.etdm.etdm import ETDM
 from gpaw.directmin.tools import sort_orbitals_according_to_occ
-
-from gpaw.new.etmd.lcao.objfunc_lcao import LCAOObjectiveFunction
-
+from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 
 # eig_error, wfs_error, energies = self.eigensolver.iterate(
 #                ibzwfs, density, potential,
 #                self.hamiltonian, pot_calc, energies)
 
+
 class DirOptLCAO(LCAOEigensolver):
     def __init__(self,
-                 *,
+                 basis,
                  hamiltonian,
-                 excited_state: bool = False,
-                 converge_unocc: bool = False,
-                 scalapack_params=(None, 1, 1, None)):
+                 excited_socc: bool = False,
+                 sctate: bool = False,
+                 converge_unalapack_params=(None, 1, 1, None)):
         
         self.search_dir: LBFGS | None = None
+        self.name = "etdm-lcao"
         # altro?
-        self.scalapack = scalapack_params
+#        self.scalapack = scalapack_params
 
-
-
+        # move inside initialize?
+        super().__init__(basis)
 #--------------------------------------------------------------------
         # this will be called inside scf.py when the mode = 'lcao'
         def initialize(self, ibzwfs, hamiltonian, density, potential):
-
-            # move inside initialize?
-            super().__init__(ibzwfs._wfs_u.basis)
 
         # representation va definita qui? in old viene data
 

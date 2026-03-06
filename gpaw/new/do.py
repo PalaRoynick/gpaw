@@ -1,5 +1,6 @@
 from gpaw.dft import Eigensolver
 from gpaw.new.pwfd.dir_opt import DirOptPWFD
+from gpaw.new.lcao.dir_opt import DirOptLCAO
 
 
 class DirectOptimization(Eigensolver):
@@ -25,4 +26,24 @@ class DirectOptimization(Eigensolver):
               atoms):
         return DirOptPWFD(
             converge_unocc=self.converge_unocc,
+            hamiltonian=hamiltonian)
+
+
+class DirectOptimizationLcao(Eigensolver):
+    name = 'etdm-lcao'
+
+    def __init__(self,
+                 converge_unocc: bool = False,
+                 **kwargs):
+        if kwargs:
+            raise NotImplementedError
+        self.converge_unocc = converge_unocc
+
+    def todict(self):
+        return {'converge_unocc': self.converge_unocc}
+
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
+        
+        return DirOptLCAO(
+            basis,
             hamiltonian=hamiltonian)
