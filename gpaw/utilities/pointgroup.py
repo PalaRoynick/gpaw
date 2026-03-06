@@ -555,9 +555,18 @@ class ConjugacyClassClassifierClass:
     def _resolve_2C2_prime(self, count, operations):
         if count != 2:
             raise NotImplementedError(f"2C2' count {count}")
-        #raise NotImplementedError
-        print('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX resolve_C2C_prime needs to be implemented')
-        return ["", "'"]
+        from numpy.linalg import norm
+
+        # C2' axes align with lattice directions (a, b);
+        # C2'' axes bisect between them (at 45° to a, b).
+        cosines = []
+        for cell_v in self.atoms.cell:
+            cosines.append(np.dot(operations[0].axis, cell_v) / norm(cell_v))
+        cosines = np.array(cosines)
+        if np.allclose(cosines, np.round(cosines)):
+            return ["-2C2'", "-2C2''"]
+        else:
+            return ["-2C2''", "-2C2'"]
 
     def _resolve_3C2_prime(self, count, operations):
         if count != 2:
