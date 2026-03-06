@@ -117,7 +117,7 @@ def test_h2o_pani(translation, rotation_axis, permute_axes):
 
             # Find dominant irrep
             found = None
-            for irrep, s in zip(pg.character_table.irreps, irrep_weights):
+            for irrep, s in pg.character_table.merge_conjugate_weights(irrep_weights):
                 if s.real > 0.01:
                     if found is not None:
                         raise ValueError(f"Band {n} spans multiple irreps.")

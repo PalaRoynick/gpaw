@@ -63,24 +63,30 @@ def analyze_symmetry(calc, layergroup, expected):
     assert not layergroup
     spg_ops = SPGOperations.from_atoms(calc.atoms, layergroup=layergroup)
     assert spg_ops.pointgroup == expected
-    pg = PointGroup(spg_ops)  # [0, 0, 1] if layergroup else None)
+    pg = PointGroup(spg_ops)
+
+    # Compute signatures for the first 6 bands, normalized by identity element
+    nbands = 6
+    eig_n = calc.get_eigenvalues()[:nbands]
+    signatures = []
+    for band in range(nbands):
+        sig = pg.signature(Projectable.from_calc(calc, band))
+        norm = sig[0].real  # Identity element = <ψ|ψ>
+        if norm > 1e-10:
+            sig = sig / norm
+        signatures.append(sig)
+
+    # Group by eigenvalue degeneracy, then analyze per group
+    from gpaw.utilities.pointgroup_projections import group_eigenvalues
     results = []
-    failure = False
-    for band in range(6):
-        signature = pg.signature(Projectable.from_calc(calc, band))
-        found = None
-        for irrep, s in zip(
-            pg.character_table.irreps,
-            pg.detect_irrep(signature),
-        ):
-            if s > 0.01:
-                print(band, irrep, f"{s.real:.2f}")
-                results.append(irrep)
-                if found is not None:
-                    failure = True
-                found = irrep
-    if failure:
-        raise ValueError("Band spans multiple irreps.")
+    for group in group_eigenvalues(eig_n):
+        combined_sig = sum(signatures[n] for n in group)
+        for irrep, w in pg.detect_irrep_merged(combined_sig):
+            if w.real > 0.01:
+                deg = round(w.real)
+                print(group, irrep, f"{w.real:.2f}", f"deg={deg}")
+                for _ in range(deg):
+                    results.append(irrep)
     return results
 
 
@@ -330,7 +336,7 @@ def get_group_example(group):
         "C2v": ("structures/C2v.json", "A1,B1,A2,B2,B1,A1"),
         "C2h": ("structures/C2h.json", "Ag,Bu,Ag,Bu,Ag,Bu"),
         "C2": ("structures/C2.json", "A,B,A,B,A,B"),
-        "S4": ("structures/S4.json", "Ag,Au,Ag,Bu,Ag,Au"),
+        "S4": ("structures/S4.json", "A,E,E,B,B,A"),
         "D2h": ("structures/D2h.json", "Ag,B1u,B1g,Ag,Ag,B1u"),
     }
 

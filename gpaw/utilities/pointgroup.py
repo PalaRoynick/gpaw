@@ -27,26 +27,19 @@ class CharacterTable:
         E = self.classes.index("E")
         return np.sum(self.characters_ig[:, E] ** 2)
 
-    @property
-    def normalized_characters_ig(self):
-        # TODO: Actually pass on ng's
-        def extract_n(s):
-            if s == "E":
-                return 1
-            return int(s[0])
+    # @property
+    # def normalized_characters_ig(self):
+    #     # TODO: Actually pass on ng's
+    #     def extract_n(s):
+    #         if s == "E":
+    #             return 1
+    #         return int(s[0])
 
-        n_g = np.array([extract_n(cls) for cls in self.classes])
-        return np.conjugate(self.characters_ig) * n_g[None, :] / self.order
+    #     n_g = np.array([extract_n(cls) for cls in self.classes])
+    #     return np.conjugate(self.characters_ig) * n_g[None, :] / self.order
 
     @property
     def normalized_characters_ig2(self):
-        # TODO: Actually pass on ng's
-        def extract_n(s):
-            if s == "E":
-                return 1
-            return int(s[0])
-
-        # n_g = np.array([extract_n(cls) for cls in self.classes])
         return self.characters_ig / self.characters_ig[:, :1]
 
     @classmethod
@@ -62,23 +55,51 @@ class CharacterTable:
             [self.classes_textbook[idx] for idx in indices],
         )
 
-    def detect_irrep(self, signature_g):
-        return np, sum(self.normalized_characters_ig * signature_g[None, :], axis=1)
+    # def detect_irrep(self, signature_g):
+    #     return np, sum(self.normalized_characters_ig * signature_g[None, :], axis=1)
 
     def detect_irrep2(self, signature_g):
         return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
 
+    def merge_conjugate_weights(self, weights_i):
+        """Merge weights of complex conjugate irrep pairs.
+
+        Irreps named with (1)/(2) suffixes are complex conjugate pairs.
+        Their weights are summed and reported under the base name
+        (suffix stripped).  Non-paired irreps pass through unchanged.
+
+        Parameters
+        ----------
+        weights_i : array-like
+            Weight per irrep, as returned by detect_irrep2().
+
+        Returns
+        -------
+        list of (str, complex)
+            (irrep_name, weight) tuples with conjugate pairs merged.
+        """
+        result = []
+        skip = set()
+        for i, (name, w) in enumerate(zip(self.irreps, weights_i)):
+            if i in skip:
+                continue
+            if name.endswith('(1)'):
+                base = name[:-3]
+                partner = base + '(2)'
+                if partner in self.irreps:
+                    j = self.irreps.index(partner)
+                    result.append((base, w + weights_i[j]))
+                    skip.add(j)
+                    continue
+            result.append((name, w))
+        return result
+
     def print(self):
-        is_complex = np.any(np.iscomplex(self.characters_ig))
         symbols = [
             ("ε", np.exp(2j * np.pi / 3), "exp(2πi/3)"),
             ("ε*", np.exp(-2j * np.pi / 3), "exp(-2πi/3)"),
         ]
         used_values = []
-        # if is_complex:
-        #    columns = 12
-        # else:
-        #    columns = 7
         columns = 6
 
         def format_number(n):
@@ -827,6 +848,11 @@ class PointGroup:
     def detect_irrep(self, signature):
         return self.character_table.detect_irrep2(signature)
 
+    def detect_irrep_merged(self, signature):
+        """Detect irreps with complex conjugate pairs merged."""
+        weights = self.character_table.detect_irrep2(signature)
+        return self.character_table.merge_conjugate_weights(weights)
+
     def _detect_irreps(self):
         self.names_i = [
             self._detect_irrep(self.character_ig[i, :])
@@ -892,7 +918,8 @@ class PointGroup:
         for i, psi_no in enumerate(groups_i):
             # For each conjugacy class...
             for g, ops in enumerate(self.ops_g):
-                # It is not necessary to loop over all group operations. However, it will be a good sanity check.
+                # It is not necessary to loop over all group operations.
+                # However, it will be a good sanity check.
                 # Calculate the trace of this irrep under operation o
                 traces_o = np.array(
                     [
@@ -922,25 +949,3 @@ class PointGroup:
             groups_i[irrep].append(psi[:, eig_idx])
 
         return [np.array(x) for x in groups_i]
-
-
-def analyze_symmetry(calc, verbose, layergroup=False):
-    spg_ops = SPGOperations.from_atoms(
-        calc.atoms, layergroup=layergroup, verbose=verbose
-    )
-    return
-    pg = PointGroup(spg_ops, [0, 0, 1] if layergroup else None)
-    results = []
-    for band in range(6):
-        signature = pg.signature(Projectable.from_calc(calc, band))
-        found = None
-        for irrep, s in zip(
-            pg.character_table.irreps,
-            pg.detect_irrep(signature),
-        ):
-            if s > 0.01:
-                print(band, irrep, f"{s.real:.2f}")
-                results.append(irrep)
-                assert found is None
-                found = irrep
-    return results

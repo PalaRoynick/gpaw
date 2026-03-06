@@ -5,6 +5,23 @@ import numpy as np
 from gpaw.utilities.pointgroup import SPGOperations, PointGroup
 from gpaw.utilities.pointgroup_proj import Projectable, PaniProjectable
 
+
+def group_eigenvalues(eig_n, tol=1e-4):
+    """Group band indices by eigenvalue degeneracy.
+
+    Returns list of lists of band indices, e.g. [[0], [1, 2], [3], ...]
+    """
+    groups = []
+    current = [0]
+    for n in range(1, len(eig_n)):
+        if abs(eig_n[n] - eig_n[current[0]]) < tol:
+            current.append(n)
+        else:
+            groups.append(current)
+            current = [n]
+    groups.append(current)
+    return groups
+
 @dataclass
 class State:
     irrep: str
@@ -69,36 +86,51 @@ class SymmetryEigenvalues:
             else:
                 raise ValueError(f"Symmetry not found. {op_cc}.")
 
-        pg = PointGroup(spg_ops)  # , [0, 0, 1])  # if layergroup else None)
-        states = []
-        failure = False
+        pg = PointGroup(spg_ops)
         eig_n = calc.get_eigenvalues()
         occ_n = calc.get_occupation_numbers()
-        for band, (eig, occ) in enumerate(zip(eig_n, occ_n)):
+
+        # Compute signature for each band, normalized by <ψ̃|ψ̃>
+        # so that the identity element is 1.0 (corrects for pseudo-wf norm)
+        signatures = []
+        for band in range(len(eig_n)):
             if pani:
                 P_ai = {}
                 P_ani = calc.wfs.kpt_u[0].P_ani
                 for a in P_ani.keys():
                     P_ai[a] = P_ani[a][band]
                 proj = PaniProjectable(P_ai, calc.atoms, calc.wfs.setups)
-                signature = pg.signature(proj)
-
+                sig = pg.signature(proj)
             else:
-                signature = pg.signature(Projectable.from_calc(calc, band))
-            found = None
-            for irrep, s in zip(
-                pg.character_table.irreps,
-                pg.detect_irrep(signature),
-            ):
-                if s > 1e-5: # 0.01:
-                    print(band, eig, occ, irrep, f"{s.real:.2f}")
-                    states.append(State(irrep, eig, occ, 1, s))
-                    if found is not None:
-                        if occ > 1e-2:
-                            failure = True
-                    found = irrep
-        if failure:
-            raise ValueError("Band spans multiple irreps.")
+                sig = pg.signature(Projectable.from_calc(calc, band))
+            norm = sig[0].real  # Identity element = <ψ|ψ>
+            if norm > 1e-10:
+                sig = sig / norm
+            signatures.append(sig)
+
+        # Group bands by eigenvalue degeneracy, then analyze per group
+        states = []
+        for group in group_eigenvalues(eig_n):
+            # Sum signatures across the degenerate subspace
+            combined_sig = sum(signatures[n] for n in group)
+
+            # Detect irreps with conjugate pairs merged
+            detected = [(irrep, w)
+                        for irrep, w in pg.detect_irrep_merged(combined_sig)
+                        if w.real > 1e-5]
+
+            # Assign irrep names to individual bands in the group.
+            # Each detected irrep accounts for round(w) bands.
+            band_iter = iter(group)
+            for irrep, w in detected:
+                nbands_irrep = round(w.real)
+                for _ in range(nbands_irrep):
+                    n = next(band_iter)
+                    eig = eig_n[n]
+                    occ = occ_n[n]
+                    print(n, eig, occ, irrep, f"{w.real:.2f}")
+                    states.append(State(irrep, eig, occ, 1, w))
+
         return cls(spg_ops.pointgroup, states)
 
     def __isub__(self, value):

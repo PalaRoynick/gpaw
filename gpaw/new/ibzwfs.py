@@ -444,11 +444,7 @@ class IBZWaveFunctions(Generic[WFT]):
         def analyse_band(band):
             analysis = ''
             signature = pg.signature(Projectable.from_calc(atoms.calc, band))
-            found = None
-            for irrep, s in zip(
-                pg.character_table.irreps,
-                pg.detect_irrep(signature),
-            ):
+            for irrep, s in pg.detect_irrep_merged(signature):
                 if s > 0.01:
                     analysis += f'{irrep}'
             return analysis
