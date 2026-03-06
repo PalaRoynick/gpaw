@@ -27,17 +27,6 @@ class CharacterTable:
         E = self.classes.index("E")
         return np.sum(self.characters_ig[:, E] ** 2)
 
-    # @property
-    # def normalized_characters_ig(self):
-    #     # TODO: Actually pass on ng's
-    #     def extract_n(s):
-    #         if s == "E":
-    #             return 1
-    #         return int(s[0])
-
-    #     n_g = np.array([extract_n(cls) for cls in self.classes])
-    #     return np.conjugate(self.characters_ig) * n_g[None, :] / self.order
-
     @property
     def normalized_characters_ig2(self):
         return self.characters_ig / self.characters_ig[:, :1]
@@ -54,9 +43,6 @@ class CharacterTable:
             self.characters_ig[:, indices],
             [self.classes_textbook[idx] for idx in indices],
         )
-
-    # def detect_irrep(self, signature_g):
-    #     return np, sum(self.normalized_characters_ig * signature_g[None, :], axis=1)
 
     def detect_irrep2(self, signature_g):
         return np.linalg.solve(self.normalized_characters_ig2.T, signature_g)
@@ -168,7 +154,6 @@ class SPGOperations:
 
             operations_after = len(self.w_sc)
             if operations_now != operations_after:
-                import warnings
                 raise ValueError(f'Translational operations removed'
                               f'{operations_now} -> {operations_after}.'
                               'TODO: make sure they were actually correctly '
@@ -233,7 +218,6 @@ class SPGOperations:
     def from_dataset(cls, dataset, atoms, verbose=False):
         W_scc = dataset.rotations
         w_sc = dataset.translations
-        #origin_shift_c = dataset.origin_shift
         origin_shift_c = np.linalg.inv(dataset.transformation_matrix) @ dataset.origin_shift
         cell_cv = np.array(atoms.cell)
         # assert np.allclose(dataset.transformation_matrix, np.eye(3))
@@ -607,7 +591,6 @@ class ConjugacyClassClassifierClass:
         return ["-3sv", "-3sd"]
 
     def _detect_conjugacy_classes(self, class_names: list[str]):
-        free_names = set(class_names)
         names_g = []
         main_conjugacy_classes = []
         # For each conjugacy class
@@ -633,7 +616,6 @@ class ConjugacyClassClassifierClass:
         # Find the principal axis
         axis_determining_cc = max(main_conjugacy_classes, key=lambda x: x[3])
         principal_axis = axis_determining_cc[2][0].axis
-        # print(f'{principal_axis=} from {axis_determining_cc[2][0]=}')
         if principal_axis is not None:
             assert np.linalg.norm(principal_axis.imag) < 1e-5
 
@@ -653,13 +635,11 @@ class ConjugacyClassClassifierClass:
                 if principal_axis is None:
                     names_g.append(main_cc)
                     continue
-                # print('Analyzing reflection conjugacy class. Reflection planes:')
                 Ds = []
                 for info in operation_info_o:
                     assert info.reflection
                     Ds.append(np.dot(info.axis, principal_axis))
-                    # print(info.op_cc)
-                    # print(info.axis, 'D=', np.dot(info.axis, principal_axis))
+
                 abs_Ds = np.abs(Ds)
                 if np.allclose(abs_Ds, 1.0, atol=0.01):
                     main_cc += "h"
@@ -711,44 +691,8 @@ class ConjugacyClassClassifierClass:
                     names_g[idx] = extra[1:]
                 else:
                     names_g[idx] += extra
-        """
-        # We still might have two 1sv's
-        # Hack for C2v
-        one_es_vees = [g for g, name in enumerate(names_g) if name == '1sv']
-        if len(one_es_vees) == 2:
-            for g, add in zip(one_es_vees, ["_xz", "_yz"]):
-                # TODO: Actually use orientation (maybe crystal axes)
-                names_g[g] += add
-       
-        # Hack for D2
-        one_es_vees = [g for g, name in enumerate(names_g) if name == '1C2']
-        if len(one_es_vees) == 3:
-            for g, add in zip(one_es_vees, ["_x", "_y", "_z"]):
-                # TODO: Actually use some orientation
-                names_g[g] += add
-        """
+
         return names_g
-        asd
-        """
-            if suggestion in free_names:
-                names_g.append(suggestion)
-                free_names.remove(suggestion)
-            else:
-                for free_name in free_names:
-                    if free_name.startswith(suggestion):
-                        names_g.append(free_name)
-                        free_names.remove(free_name)
-                        break
-                else:
-                    print('Conjugacy class:')
-                    for info in operation_info_o:
-                        print(ppstr(info.op_cc))
-                        print(info)
-                    raise ValueError(
-                        f"Got unexpected conjugacy class {suggestion} free names: {free_names} all_names {class_names}"
-                    )
-        return names_g
-        """
 
     @property
     def names_g(self):
@@ -756,39 +700,21 @@ class ConjugacyClassClassifierClass:
 
 
 class PointGroup:
-    def __init__(self, spg_ops):  # , principal_axis=[0, 0, 1]):
-        # TODO: Create a class method to create from atoms
-        # Make spg_ops obsolete
+    def __init__(self, spg_ops):
         self.spg_ops = spg_ops
         print("POINTGROUP", spg_ops.pointgroup)
         self.verbose = True
-        # self.principal_axis = principal_axis
 
         self.operations = SymmmetryOperations(self.ops_occ)
-
-        # self._build_multiplication_table()
         character_table = self.spg_ops.character_table
 
         self.c4 = ConjugacyClassClassifierClass(
             self.operations,
             expected_classes=character_table.classes,
             atoms=spg_ops.atoms,
-            # principal_axis=principal_axis,
         )
 
         assert self.detected_pointgroup == self.spg_ops.pointgroup
-        # self._find_conjugacy_classes()
-        # self._build_character_table()
-
-        # from collections import defaultdict
-        # self.used_class_names = defaultdict(int)
-        # self._detect_conjugacy_classes(class_names=character_table.classes)
-
-        # self._detect_irreps()
-        # self._name_groups_and_classes()
-        # print(self.ops_g)
-        # print(self.names_g)
-        # self.print_character_table()
 
         if set(character_table.classes) != set(self.c4.names_g):
             print("Character tables classes", character_table.classes)
@@ -805,10 +731,6 @@ class PointGroup:
 
         character_table = character_table.in_conjugacy_order(self.c4.names_g)
         character_table.print()
-
-        # for i in range(self.character_ig.shape[0]):
-        #    print(character_table.detect_irrep(signature_g=self.character_ig[i]))
-
         self.character_table = character_table
 
     @property
@@ -874,30 +796,6 @@ class PointGroup:
             sig = "h" + str(h)
 
         return sig + str(signature)
-        if np.all(signature == 1):
-            return "A1"
-        return str(h)
-        # "AET"[len(signature)]
-        h = signature[self.class_id("E")]
-
-        # rotations = [ self.class_id(name) for name in self.names_g if ("C" in name) ]
-        # rotations = self.class_id("6C2")
-        ug = "g" if signature[self.class_id("i")] > 0 else "u"
-        C = "?"
-        N = ""
-        if signature[self.class_id("6C4")] > 0:
-            N = "1"
-        else:
-            N = "2"
-        if h == 1:
-            C = "A"
-        if h == 2:
-            C = "E"
-            N = ""
-        if h == 3:
-            C = "T"
-
-        return C + N + ug
 
     @property
     def ops_occ(self):  # XXX change to vv

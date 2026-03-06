@@ -8,21 +8,6 @@ from gpaw.new.ase_interface import GPAW
 from pathlib import Path
 
 
-def prepare_atoms(atoms):
-    return
-    from ase.spacegroup.symmetrize import (
-        spglib_get_symmetry_dataset,
-    )
-    from ase.utils import atoms_to_spglib_cell
-
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(
-        atoms.get_scaled_positions()
-        + np.linalg.inv(dataset.transformation_matrix) @ dataset.origin_shift
-    )
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-
-
 def test_Oh():
     from ase.build import bulk
     from ase.io import read

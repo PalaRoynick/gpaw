@@ -52,23 +52,6 @@ def symmetry_from(mol, filt=None):
     atoms.set_pbc((True, True, True))
 
     atoms.rotate(90, 'z')
-    """
-    from ase.spacegroup.symmetrize import (
-        get_symmetrized_atoms,
-        spglib_get_symmetry_dataset,
-    )
-    from ase.utils import atoms_to_spglib_cell
-
-   
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    atoms.set_scaled_positions(
-        atoms.get_scaled_positions()
-        + dataset.transformation_matrix.T @ dataset.origin_shift
-    )
-    dataset = spglib_get_symmetry_dataset(atoms_to_spglib_cell(atoms))
-    assert np.allclose(dataset.origin_shift, 0)
-    # assert np.allclose(dataset.transformation_matrix, np.eye(3))
-    """
     if filt:
         filt(atoms)
 
@@ -132,10 +115,6 @@ def test_C2v():
     xz = xz_plane_normal(atoms)
     xz_axis = pg.c4.operations.operation_info_o[pg.c4.names_g.index("1sv_xz")].axis
     assert np.allclose(np.abs(np.dot(xz, xz_axis)), 1), (xz, xz_axis)
-    # from code import interact
-    # interact(local=locals())
-    # print(xy)
-    # asd
     pg, atoms = symmetry_from(
         "H2O", lambda atoms: atoms.rotate(90, "x", rotate_cell=True)
     )
@@ -144,8 +123,6 @@ def test_C2v():
     xz = xz_plane_normal(atoms)
     xz_axis = pg.c4.operations.operation_info_o[pg.c4.names_g.index("1sv_xz")].axis
     assert np.allclose(np.abs(np.dot(xz, xz_axis)), 1), (xz, xz_axis)
-    # from code import interact
-    # interact(local=locals())
 
 
 def test_D2():
