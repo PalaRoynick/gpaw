@@ -83,9 +83,10 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
     const T z = grid.spacing.z * (block_start_c.z + bz);
 
     // Compute index into (MPI-distributed) grid arrays for this thread, and the total number of grid points (for striding)
-    const int gx = block_start_c.x + bx - grid.start_c.x;
-    const int gy = block_start_c.y + by - grid.start_c.y;
-    const int gz = block_start_c.z + bz - grid.start_c.z;
+    // TODO double check if block_start_c is relative to full grid or the MPI domain...? I think its full grid
+    const int gx = block_start_c.x + bx;
+    const int gy = block_start_c.y + by;
+    const int gz = block_start_c.z + bz;
 
     const long nx = grid.end_c.x - grid.start_c.x;
     const long ny = grid.end_c.y - grid.start_c.y;
@@ -103,12 +104,13 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
     // const size_t m_begin = blocks.start_m[block_idx];
     // const size_t m_end = blocks.start_m[block_idx + 1];
 
+
+    // spherical_harmonics macro wants to fill at max 9 elements
+    T phi_val[9];
+
     for (int s = 0; s < arrays.num_spins; ++s)
     {
         T accum = 0;
-
-        // spherical_harmonics macro wants to fill at max 9 elements
-        T phi_val[9];
 
         for (size_t j = j_begin; j < j_end; ++j)
         {
@@ -116,8 +118,8 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
 
             const GpuVec3<T>& phi_pos = phi.position_iv[phi_idx];
             const uint8_t l = phi.l_i[phi_idx];
-            size_t first_mu = phi.first_mu_i[phi_idx];
-            size_t spline_idx = phi.spline_idx_i[phi_idx];
+            const size_t first_mu = phi.first_mu_i[phi_idx];
+            const size_t spline_idx = phi.spline_idx_i[phi_idx];
 
             const TRadialSplineGpu<T>& spline = splines[spline_idx];
 
@@ -135,7 +137,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
             const int num_m = 2*l + 1;
             for (int m = 0; m < num_m; ++m)
             {
-                const int mu = phi.first_mu_i[phi_idx] + m;
+                const int mu = first_mu + m;
                 accum += arrays.f_sM[s * arrays.f_sM_first_stride + mu] * phi_val[m]*phi_val[m];
             }
         }

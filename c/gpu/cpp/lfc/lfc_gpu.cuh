@@ -138,7 +138,7 @@ inline void LFCGpu<T>::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const N
     int shmem = 0;
     const gpuStream_t stream = 0;
 
-    launch_kernel(add_to_density_kernel<T>, threads, blocks, shmem, stream, arrays, spline_pool->get_device_splines(), grid, phi_data, block_data);
+    launch_kernel(add_to_density_kernel<T>, blocks, threads, shmem, stream, arrays, spline_pool->get_device_splines(), grid, phi_data, block_data);
 }
 
 
