@@ -1,5 +1,6 @@
 #include "lfc_gpu_builder.hpp"
 #include "lfc_gpu.cuh"
+#include "gpu/cpp/splines/spline_pool_gpu.cuh"
 #include <vector>
 #include <array>
 
@@ -15,13 +16,21 @@ struct BlockDataStaging
 };
 
 template<typename T>
-std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data)
+std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data, std::shared_ptr<const SplinePoolGpu<T>> spline_pool)
 {
+    // We don't validate the dynamic cast of spline pool before getting here so it may have failed
+    if (!spline_pool)
+    {
+        throw std::runtime_error("Spline pool is invalid or has wrong type");
+    }
+
     auto out_lfc = std::make_unique<LFCGpu<T>>();
     assert(out_lfc);
 
     // Lifehack to help intellisense, tends to have trouble with smart pointers of template classes
     LFCGpu<T>* lfc = out_lfc.get();
+
+    lfc->spline_pool = std::move(spline_pool);
 
     // ###### Grid ######
     lfc->grid.dV = grid.dV;
@@ -57,16 +66,18 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
         staging_blocks.block_start_c[b] = { block.start_c[0], block.start_c[1], block.start_c[2] };
 
         // flattened index lookups
-        for (size_t m = 0; block.M_m.size(); ++m)
+        staging_blocks.start_m[b] = mu;
+        for (size_t m = 0; m < block.M_m.size(); ++m)
         {
             staging_blocks.all_blocks_M_m[mu + m] = block.M_m[m];
         }
 
-        staging_blocks.start_m[b] = mu;
+        mu += block.M_m.size();
     }
 
-    staging_blocks.start_m[blocks.size()] = mu + 1;
     assert(mu == num_mu);
+    // End mu for the last block
+    staging_blocks.start_m[blocks.size()] = mu;
 
     // Copy block data to GPU
     lfc->block_data.num_blocks = num_blocks;
@@ -92,20 +103,24 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
 
     Tgpu_memcpy(lfc->phi_data.l_i, phi_data.l_i.data(), num_phi, gpuMemcpyHostToDevice);
     Tgpu_memcpy(lfc->phi_data.first_mu_i, phi_data.first_mu_i.data(), num_phi, gpuMemcpyHostToDevice);
+    // FIXME this cast is probs unsafe
     Tgpu_memcpy(lfc->phi_data.position_iv, reinterpret_cast<GpuVec3<T>*>(phi_data.position_iv.data()), num_phi, gpuMemcpyHostToDevice);
 
     return out_lfc;
 }
 
-std::unique_ptr<LFCBase> build_impl_gpu_entry(bool single_precision, GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data)
+std::unique_ptr<LFCBase> build_impl_gpu_entry(bool single_precision, GridInfo&& grid, std::vector<GridBlock>&& blocks, PhiData&& phi_data,
+    std::shared_ptr<const SplinePoolImplBase> spline_pool)
 {
     if (single_precision)
     {
-        return build_impl_gpu<float>(std::move(grid), std::move(blocks), std::move(phi_data));
+        return build_impl_gpu<float>(std::move(grid), std::move(blocks), std::move(phi_data),
+            std::dynamic_pointer_cast<const SplinePoolGpu<float>>(spline_pool));
     }
     else
     {
-        return build_impl_gpu<double>(std::move(grid), std::move(blocks), std::move(phi_data));
+        return build_impl_gpu<double>(std::move(grid), std::move(blocks), std::move(phi_data),
+            std::dynamic_pointer_cast<const SplinePoolGpu<double>>(spline_pool));
     }
 }
 

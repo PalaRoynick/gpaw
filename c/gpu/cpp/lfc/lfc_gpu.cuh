@@ -4,6 +4,8 @@
 #include "lfc_builder.hpp"
 #include "gpaw_utils.h"
 #include "gpu/cpp/gpu_core.hpp"
+#include "gpu/cpp/splines/spline_pool_gpu.cuh"
+#include <memory>
 
 namespace gpaw
 {
@@ -37,11 +39,10 @@ using GpuVec3 = std::conditional_t<std::is_same_v<T, float>, float3, double3>;
 template<typename T>
 struct PhiDataGpu
 {
-
-    size_t num_phi;
     GpuVec3<T>* GPAW_RESTRICT position_iv;
     uint8_t* GPAW_RESTRICT l_i;
     size_t* GPAW_RESTRICT first_mu_i;
+    size_t num_phi;
 };
 
 // Probs no need to template this, not used for frequent ops
@@ -56,7 +57,7 @@ struct GridInfoGpu
 };
 
 template<typename T>
-class LFCGpu : public LFCBase
+class LFCGpu final : public LFCBase
 {
 public:
     // TODO actual cleanup
@@ -67,6 +68,8 @@ public:
     PhiDataGpu<T> phi_data;
     BlockDataGpu block_data;
     GridInfoGpu grid;
+
+    std::shared_ptr<const SplinePoolGpu<T>> spline_pool;
 };
 
 

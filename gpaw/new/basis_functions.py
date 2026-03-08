@@ -79,6 +79,17 @@ class BasisFunctionDesc:
     These values are used to construct a continuous spline. The
     final value at r = cutoff MUST be exactly zero."""
 
+    def __post_init__(self):
+        """"""
+        if self.cutoff <= 0:
+            raise ValueError("cutoff must be > 0")
+        if self.f_r.ndim != 1 or self.f_r.size < 3:
+            raise ValueError(
+                "Spline f_r needs to be 1D array with at 3 elements")
+        if self.f_r[-1] != 0.0:
+            raise ValueError("Last value in f_r must be 0")
+
+
     @staticmethod
     def from_legacy_spline(spline: Spline) -> "BasisFunctionDesc":
         """"""
@@ -205,11 +216,15 @@ class GridBlock:
         return self.shape
 
 class BasisFunction():
-    """"""
+    """TODO remove, we dont need this. We just need basis function instance that either refers
+    spline data, or index to spline data in the LFC containers.
+    Current hack is to copy and keep the desc here, because too lazy to refactor yet"""
 
     spline: SplineLike
 
-    def __init__(self, desc: BasisFunctionDesc, dtype, use_gpu: bool = False):
+    desc: BasisFunctionDesc
+
+    def __init__(self, desc: BasisFunctionDesc, dtype, id: int, use_gpu: bool = False):
         """"""
         assert not use_gpu
         assert dtype is np.float64
@@ -219,12 +234,17 @@ class BasisFunction():
         assert len(desc.f_r) > 2, "Need at least 3 points to define a spline"
         self.l = desc.l
         self.cutoff = desc.cutoff
+        # HACK copy the desc
+        self.desc = BasisFunctionDesc(desc.l, desc.cutoff, desc.f_r.copy())
 
+        self.id = id
         self._init_spline(desc.f_r)
 
     def _init_spline(self, f_r: np.ndarray) -> None:
         """Initializes spline on the CPU.
         """
+
+        # TODO LFC base should handle spline creations
 
         from scipy.interpolate import CubicSpline
         self.spline = CubicSpline(
@@ -600,7 +620,9 @@ class BasisFunctionCollectionBase(ABC):
 
         self.dtype = np.float64
 
+        # QUITE TEMPORARY:
         self._init_basis_functions(system.atom_types)
+        assert self.spline_lookup
 
         # Build lookup lists:
         #   atom -> type ID; atom -> mu range; mu -> atom idx.
@@ -653,6 +675,9 @@ class BasisFunctionCollectionBase(ABC):
                               atom_types: list[LFCAtomDefinition]) -> None:
         """Initializes all basis functions for the system.
         """
+        # Give each phi def a unique ID
+        i = 0
+        self.spline_lookup: list[BasisFunction] = []
         self._basis_functions_t = []
         for atom in atom_types:
             phi_j = []
@@ -660,8 +685,11 @@ class BasisFunctionCollectionBase(ABC):
                 phi_j.append(
                     BasisFunction(desc,
                     self.dtype,
+                    id=i,
                     use_gpu=False)
                 )
+                i += 1
+                self.spline_lookup.append(phi_j[-1])
             self._basis_functions_t.append(phi_j)
         #
 
@@ -1069,7 +1097,29 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         super().__init__(system, use_gpu=use_gpu, mode=mode,
                          block_size=block_size)
+
+        self.use_gpu = use_gpu
+        self.single_precision = False
+
+        self._init_splines()
         self._build_cpp_object()
+
+    def _init_splines(self):
+        """"""
+        assert self.spline_lookup
+        from gpaw.cgpaw.gpu import SplinePool, SplineData
+
+        spline_datas = []
+        for spline in self.spline_lookup:
+            a = SplineData(spline.cutoff, spline.desc.f_r)
+            spline_datas.append(a)
+
+        self.spline_pool = SplinePool(self.single_precision,
+                                      self.use_gpu,
+                                      spline_datas)
+
+        assert self.spline_pool.num_splines() == len(self.spline_lookup)
+
 
     def _build_cpp_object(self):
         """"""
@@ -1079,7 +1129,11 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         from gpaw.cgpaw.gpu import (BasisFunctionCollection_cpp,
                                     BasisFunctionCollectionBuilder)
         builder = BasisFunctionCollectionBuilder()
+
+        builder.enable_gpu(self.use_gpu)
         builder.enable_single_precision(False)
+
+        builder.set_spline_pool(self.spline_pool)
         builder.define_grid(self.grid.start_c,
                             self.grid.end_c,
                             np.diag(self.grid._gd.h_cv),
@@ -1090,14 +1144,20 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         builder.reserve(len(phi_i), len(blocks))
 
-        builder.define_grid
         for block in blocks:
             builder.add_block(tuple(block.start_c), block.shape, block.M_m)
 
         for phi in phi_i:
-            builder.add_phi(phi.get_angular_momentum_number(), phi.position, phi.first_mu)
+            builder.add_phi(phi.get_angular_momentum_number(),
+                            phi.phi_class.id, phi.position, phi.first_mu)
 
         self._impl = builder.build()
+
+    @override
+    def set_positions(self, relpos_ac: np.ndarray) -> bool:
+        migrations = super().set_positions(relpos_ac)
+        self._build_cpp_object()
+        return migrations
 
     @override
     def precalculate_on_grid(self) -> None:
@@ -1122,7 +1182,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                 f_asi[atom_idx]
             )
 
-        # TODO call cpp function
+        self._impl.add_to_density(nt_sG, f_sM)
 
 
     @override

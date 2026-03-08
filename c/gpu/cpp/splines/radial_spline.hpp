@@ -27,7 +27,7 @@ public:
 
     /* Create a uniformly-spaced cubic spline that interpolates the input data.
     Last element in the input data must be 0. */
-    TRadialSpline(T x_end, const std::vector<T>& data);
+    TRadialSpline(double x_end, const std::vector<double>& data);
 
     // Evaluate the spline S(x)
     T evaluate(T x) const;
@@ -47,7 +47,7 @@ private:
 
     /* Compute spline coefficients and store in the `coeffs` vector.
     Computation is done at double precision and cast to T at the end. */
-    void build_coefficients(const std::vector<T>& data);
+    void build_coefficients(const std::vector<double>& data);
 
     std::vector<SplineCoeffs<T>> coeffs;
 

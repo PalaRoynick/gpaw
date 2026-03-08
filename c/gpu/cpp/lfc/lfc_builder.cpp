@@ -1,6 +1,7 @@
 #include "lfc_builder.hpp"
 #include "lfc_cpu.hpp"
 #include "lfc_gpu_builder.hpp"
+#include "gpu/cpp/splines/spline_pool.hpp"
 
 namespace gpaw
 {
@@ -19,6 +20,11 @@ void BasisFunctionCollectionBuilder::reserve(size_t num_phi, size_t num_blocks)
     phi_data.position_iv.reserve(num_phi);
 }
 
+void BasisFunctionCollectionBuilder::set_spline_pool(std::shared_ptr<const SplinePoolImplBase> spline_pool)
+{
+    this->spline_pool = spline_pool;
+}
+
 void BasisFunctionCollectionBuilder::define_grid(const std::array<size_t, 3>& start_c, const std::array<size_t, 3>& end_c, const std::array<double, 3>& spacing, double dV)
 {
     grid.start_c = start_c;
@@ -27,7 +33,7 @@ void BasisFunctionCollectionBuilder::define_grid(const std::array<size_t, 3>& st
     grid.dV = dV;
 }
 
-void BasisFunctionCollectionBuilder::add_phi(int32_t l, const Position& position_v, size_t first_mu)
+void BasisFunctionCollectionBuilder::add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu)
 {
     constexpr auto l_max = std::numeric_limits<uint8_t>::max();
     if (l < 0)
@@ -42,6 +48,7 @@ void BasisFunctionCollectionBuilder::add_phi(int32_t l, const Position& position
     phi_data.l_i.push_back(l);
     phi_data.position_iv.push_back(position_v);
     phi_data.first_mu_i.push_back(first_mu);
+    phi_data.spline_index_i.push_back(spline_index);
 }
 
 
@@ -56,8 +63,26 @@ void BasisFunctionCollectionBuilder::add_block(const std::array<grid_index_t, 3>
     blocks.push_back(block);
 }
 
+void BasisFunctionCollectionBuilder::prebuild_validate()
+{
+    if (!spline_pool)
+    {
+        throw std::runtime_error("SplinePool is invalid! Did you forget set_spline_pool(...) ?");
+    }
+
+    for (size_t spline_idx : phi_data.spline_index_i)
+    {
+        if (spline_idx >= spline_pool->num_splines())
+        {
+            throw std::runtime_error("Invalid spline index " + std::to_string(spline_idx) \
+                + ", max in spline pool is: " + std::to_string(spline_pool->num_splines()));
+        }
+    }
+}
+
 BasisFunctionCollection BasisFunctionCollectionBuilder::build()
 {
+    prebuild_validate();
     BasisFunctionCollection lfc(single_precision);
 
     if (!use_gpu)
@@ -79,7 +104,7 @@ BasisFunctionCollection BasisFunctionCollectionBuilder::build()
     else
     {
         lfc.impl = std::move(
-                build_impl_gpu_entry(single_precision, std::move(grid), std::move(blocks), std::move(phi_data))
+                build_impl_gpu_entry(single_precision, std::move(grid), std::move(blocks), std::move(phi_data), std::move(spline_pool))
         );
     }
 #endif

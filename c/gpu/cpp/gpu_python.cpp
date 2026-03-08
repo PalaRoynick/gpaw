@@ -117,6 +117,8 @@ bool bind_gpu_submodule(PyObject* module)
 
     gpaw::bind_gpu_splines(submodule);
 
+    gpaw::bind_spline_pool(submodule);
+
     bool all_ok = true;
     all_ok &= gpaw::bind_new_lfc(submodule);
 

@@ -16,6 +16,7 @@
 namespace gpaw
 {
 
+class SplinePool;
 template<typename T> class TRadialSpline;
 
 using Position = std::array<double, 3>;
@@ -63,6 +64,8 @@ struct PhiData
     std::vector<size_t> first_mu_i;
     //std::vector<std::shared_ptr<TRadialSpline<T>>> spline_i;
 
+    std::vector<size_t> spline_index_i;
+
     size_t num() const { return position_iv.size(); }
 };
 
@@ -72,6 +75,7 @@ public:
     virtual ~LFCBase() = default;
     virtual void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const = 0;
 };
+
 
 class BasisFunctionCollection
 {
@@ -99,8 +103,8 @@ private:
 
     friend class BasisFunctionCollectionBuilder;
 
+    // Implementation should have shared ownership of appropriate SplinePoolImplBase object
     std::unique_ptr<LFCBase> impl;
-
     bool single_precision;
 };
 

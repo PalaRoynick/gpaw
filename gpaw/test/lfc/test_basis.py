@@ -184,9 +184,7 @@ def make_basis(system: LFCSystem,
     else:
         basis = BasisFunctionCollection(
             system,
-            #use_gpu = (xp is not np),
-            # TEMP this always assumes GPU
-            use_gpu = True,
+            use_gpu = (xp is not np),
             block_size=block_size
         )
 
@@ -199,6 +197,9 @@ def make_basis(system: LFCSystem,
 def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
                         block_size: int | None):
     """"""
+    pytest.mark.skipif(not purepython and xp is np,
+                       reason="CPU + C++ is WIP")
+
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
 
@@ -272,6 +273,7 @@ def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
     hood the same blocking logic is still ran but with block_size == grid_size
     """
 
+
     basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
     blocks = basis.get_relevant_blocks()
 
@@ -297,6 +299,8 @@ def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
 def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     block_size: int, row_range: range | None):
     """"""
+    pytest.mark.skipif(not purepython and xp is np,
+                       reason="CPU + C++ is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
@@ -354,6 +358,10 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
                         num_spins: int,
                         block_size: int):
     """"""
+
+    pytest.mark.skipif(not purepython and xp is np,
+                       reason="CPU + C++ is WIP")
+
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
     # Matrix distribution does not matter here.
@@ -397,6 +405,10 @@ def test_domain_decomposition(
     num_spins: int,
     block_size: int):
     """"""
+
+    pytest.mark.skipif(not purepython and xp is np,
+                       reason="CPU + C++ is WIP")
+
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
 

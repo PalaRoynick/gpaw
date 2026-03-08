@@ -7,7 +7,7 @@ namespace gpaw
 {
 
 template<typename T>
-inline TRadialSpline<T>::TRadialSpline(T x_end, const std::vector<T>& data)
+inline TRadialSpline<T>::TRadialSpline(double x_end, const std::vector<double>& data)
     : x_end(x_end)
 {
     if (data.size() < 3)
@@ -58,7 +58,7 @@ inline TRadialSpline<T> TRadialSpline<T>::from_legacy_spline(const bmgsspline& s
     const double x_start = 0.0;
     const double x_end = x_start + spline.nbins * spline.dr;
 
-    std::vector<T> data(spline.nbins + 1);
+    std::vector<double> data(spline.nbins + 1);
 
     // Compute spline values at its breakpoints
     for (size_t i = 0; i < data.size(); ++i)
@@ -81,7 +81,7 @@ inline std::vector<T> TRadialSpline<T>::get_breakpoints() const
 }
 
 template<typename T>
-inline void TRadialSpline<T>::build_coefficients(const std::vector<T>& data)
+inline void TRadialSpline<T>::build_coefficients(const std::vector<double>& data)
 {
     /* We have (N+1) data points and N spline sections (bins).
     * Need to solve spline coefficients {a_i, b_i, c_i, d_i} for i = 0, ..., N-1 such that
@@ -103,8 +103,8 @@ inline void TRadialSpline<T>::build_coefficients(const std::vector<T>& data)
     // We only store up to c_{N-1}
     coeffs.resize(num_bins);
 
-    // Ensure we compute with doubles
-    const std::vector<double> y(data.begin(), data.end());
+    // Shorthand
+    const std::vector<double>& y = data;
 
     std::vector<double> f2(num_bins + 1);
     std::vector<double> u(num_bins);

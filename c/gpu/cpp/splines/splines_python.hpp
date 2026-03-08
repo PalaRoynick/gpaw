@@ -24,8 +24,8 @@ TRadialSpline<T> spline_from_numpy(T r_max, py::array_t<T, py::array::c_style | 
         throw std::runtime_error("Input data must be 1D");
     }
 
-    T* data_ptr = static_cast<T*>(buf.ptr);
-    std::vector<T> data_copy(data_ptr, data_ptr + buf.size);
+    double* data_ptr = static_cast<double*>(buf.ptr);
+    std::vector<double> data_copy(data_ptr, data_ptr + buf.size);
     return TRadialSpline<T>(r_max, std::move(data_copy));
 }
 
@@ -130,5 +130,7 @@ void bind_spline(py::module_& m, const std::string& class_name)
         - S(x) = 0 for x >= x_max.
     )";
 }
+
+void bind_spline_pool(py::module_ m);
 
 } // namespace gpaw
