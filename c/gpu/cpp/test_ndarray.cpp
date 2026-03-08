@@ -18,6 +18,11 @@ static void accept_array(const NDArray<Args...>& a, py::handle same_array)
 {
     detail::ArrayDesc desc(same_array);
 
+    if (!a.is_valid())
+    {
+        throw std::runtime_error("Imported NDArray is invalid");
+    }
+
     if (!a.dtype().is(desc.dtype()))
     {
         throw std::runtime_error("dtype does not match");

@@ -285,7 +285,7 @@ public:
 
     const int64_t* shape_ptr() const { return desc.shape.data(); }
     const int64_t* stride_ptr() const { return desc.strides.data(); }
-    bool is_valid() const { return handle.is(handle(nullptr)); }
+    bool is_valid() const { return !handle.is(py::handle(nullptr)); }
 
     // Number of elements in the array
     size_t size() const
@@ -553,11 +553,7 @@ inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
         success &= ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
     }
 
-    if (!success)
-    {
-        return false;
-    }
-    else if (PyErr_Occurred())
+    if (PyErr_Occurred())
     {
         // Got CPython error that is not due to mismatched array traits. Either we miscategorized the PyObject (not Numpy nor Cupy)
         // or there is a bug in ArrayAccessors, or the error actually occurred much earlier and whoever caused it forgot to handle and clear it.
