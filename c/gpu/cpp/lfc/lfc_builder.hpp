@@ -22,6 +22,7 @@ public:
     BasisFunctionCollection build();
     void enable_single_precision(bool enabled) { single_precision = enabled; }
     void enable_gpu(bool enabled) { use_gpu = enabled; }
+    void set_block_size(size_t in_block_size) { block_size = in_block_size; }
 
     // Optional pre-allocs. But this resets the builder's state!
     void reserve(size_t num_phi, size_t num_blocks);
@@ -36,7 +37,7 @@ public:
     void define_grid(const std::array<size_t, 3>& start_c, const std::array<size_t, 3>& end_c, const std::array<double, 3>& spacing, double dV);
     // Use std::shared_ptr<Spline> instead of spline_index ?? But spline is templated so would need to hide the type too
     void add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu);
-    void add_block(const std::array<grid_index_t, 3>& block_start_c, const std::array<grid_index_t, 3>& block_shape, const std::vector<size_t>& M_m);
+    void add_block(const std::array<grid_index_t, 3>& block_start_c, const std::array<grid_index_t, 3>& block_shape, const std::vector<size_t>& M_m, const std::vector<size_t>& phi_idx_j);
 
 private:
 
@@ -49,6 +50,7 @@ private:
     std::shared_ptr<const SplinePoolImplBase> spline_pool;
     bool single_precision = false;
     bool use_gpu = false;
+    size_t block_size = 0;
 };
 
 }

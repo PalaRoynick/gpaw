@@ -11,8 +11,12 @@ struct BlockDataStaging
 {
     std::vector<long3> block_start_c;
     std::vector<long3> block_shape;
+    // FIXME redundant:
     std::vector<size_t> start_m;
     std::vector<size_t> all_blocks_M_m;
+    // j is block-local phi index; we need to map it to global phi index as in PhiDataGpu
+    std::vector<size_t> start_j;
+    std::vector<size_t> all_blocks_phi_idx_j;
 };
 
 template<typename T>
@@ -41,10 +45,12 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
     // ###### Blocks ######
 
     assert(!blocks.empty());
-    // Count how many mu indices we need in total
+    // Count how many mu indices we need in total, and how many j
+    size_t num_j = 0;
     size_t num_mu = 0;
     for (const GridBlock& block : blocks)
     {
+        num_j += block.phi_idx_j.size();
         num_mu += block.M_m.size();
     }
     assert(num_mu > 0);
@@ -58,7 +64,11 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
     staging_blocks.start_m.resize(num_blocks + 1);
     staging_blocks.all_blocks_M_m.resize(num_mu);
 
+    staging_blocks.start_j.resize(num_blocks + 1);
+    staging_blocks.all_blocks_phi_idx_j.resize(num_j);
+
     size_t mu = 0;
+    size_t j = 0;
     for (size_t b = 0; b < blocks.size(); ++b)
     {
         const GridBlock& block = blocks[b];
@@ -73,11 +83,19 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
         }
 
         mu += block.M_m.size();
+
+        staging_blocks.start_j[b] = j;
+        for (size_t k = 0; k < block.phi_idx_j.size(); ++k)
+        {
+            staging_blocks.all_blocks_phi_idx_j[j + k] = block.phi_idx_j[k];
+        }
+        j += block.phi_idx_j.size();
     }
 
     assert(mu == num_mu);
-    // End mu for the last block
+    // End mu, j for the last block
     staging_blocks.start_m[blocks.size()] = mu;
+    staging_blocks.start_j[blocks.size()] = j;
 
     // Copy block data to GPU
     lfc->block_data.num_blocks = num_blocks;
@@ -87,10 +105,17 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
     lfc->block_data.start_m = Tgpu_malloc<size_t>(blocks.size() + 1);
     lfc->block_data.all_blocks_M_m = Tgpu_malloc<size_t>(num_mu);
 
+    lfc->block_data.start_j = Tgpu_malloc<size_t>(blocks.size() + 1);
+    lfc->block_data.all_blocks_phi_idx_j = Tgpu_malloc<size_t>(num_j);
+
     Tgpu_memcpy(lfc->block_data.block_shape, staging_blocks.block_shape.data(), staging_blocks.block_shape.size(), gpuMemcpyHostToDevice);
     Tgpu_memcpy(lfc->block_data.block_start_c, staging_blocks.block_start_c.data(), staging_blocks.block_start_c.size(), gpuMemcpyHostToDevice);
     Tgpu_memcpy(lfc->block_data.start_m, staging_blocks.start_m.data(), staging_blocks.start_m.size(), gpuMemcpyHostToDevice);
     Tgpu_memcpy(lfc->block_data.all_blocks_M_m, staging_blocks.all_blocks_M_m.data(), staging_blocks.all_blocks_M_m.size(), gpuMemcpyHostToDevice);
+
+    Tgpu_memcpy(lfc->block_data.start_j, staging_blocks.start_j.data(), staging_blocks.start_j.size(), gpuMemcpyHostToDevice);
+    Tgpu_memcpy(lfc->block_data.all_blocks_phi_idx_j, staging_blocks.all_blocks_phi_idx_j.data(), staging_blocks.all_blocks_phi_idx_j.size(), gpuMemcpyHostToDevice);
+
 
     // ##### Phi ######
     const size_t num_phi = phi_data.l_i.size();
@@ -100,11 +125,13 @@ std::unique_ptr<LFCBase> build_impl_gpu(GridInfo&& grid, std::vector<GridBlock>&
     lfc->phi_data.l_i = Tgpu_malloc<uint8_t>(num_phi);
     lfc->phi_data.position_iv = Tgpu_malloc<GpuVec3<T>>(num_phi);
     lfc->phi_data.first_mu_i = Tgpu_malloc<size_t>(num_phi);
+    lfc->phi_data.spline_idx_i = Tgpu_malloc<size_t>(num_phi);
 
     Tgpu_memcpy(lfc->phi_data.l_i, phi_data.l_i.data(), num_phi, gpuMemcpyHostToDevice);
     Tgpu_memcpy(lfc->phi_data.first_mu_i, phi_data.first_mu_i.data(), num_phi, gpuMemcpyHostToDevice);
     // FIXME this cast is probs unsafe
     Tgpu_memcpy(lfc->phi_data.position_iv, reinterpret_cast<GpuVec3<T>*>(phi_data.position_iv.data()), num_phi, gpuMemcpyHostToDevice);
+    Tgpu_memcpy(lfc->phi_data.spline_idx_i, phi_data.spline_index_i.data(), num_phi, gpuMemcpyHostToDevice);
 
     return out_lfc;
 }

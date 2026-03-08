@@ -53,18 +53,25 @@ void BasisFunctionCollectionBuilder::add_phi(int32_t l, size_t spline_index, con
 
 
 void BasisFunctionCollectionBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c,
-    const std::array<grid_index_t, 3>& block_shape, const std::vector<size_t>& M_m)
+    const std::array<grid_index_t, 3>& block_shape, const std::vector<size_t>& M_m, const std::vector<size_t>& phi_idx_j)
 {
     GridBlock block;
     block.start_c = block_start_c;
     block.shape = block_shape;
     block.M_m = M_m;
+    block.phi_idx_j = phi_idx_j;
 
     blocks.push_back(block);
 }
 
 void BasisFunctionCollectionBuilder::prebuild_validate()
 {
+
+    if (block_size != ALLOWED_BLOCK_SIZE)
+    {
+        throw std::runtime_error("WIP: Block size must currently be 8");
+    }
+
     if (!spline_pool)
     {
         throw std::runtime_error("SplinePool is invalid! Did you forget set_spline_pool(...) ?");

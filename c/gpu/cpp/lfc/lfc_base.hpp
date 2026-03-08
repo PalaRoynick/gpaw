@@ -16,6 +16,8 @@
 namespace gpaw
 {
 
+static constexpr int32_t ALLOWED_BLOCK_SIZE = 8;
+
 class SplinePool;
 template<typename T> class TRadialSpline;
 
@@ -39,8 +41,10 @@ struct GridBlock
     std::array<grid_index_t, 3> start_c;
     // Shape of the grid block
     std::array<grid_index_t, 3> shape;
-    // Map block-local basis function index m to global mu
+    // Map block-local basis function index m to global mu (redundant! see below)
     std::vector<size_t> M_m;
+    // Map block-local m to global phi-index. Does not include the 2*l+1 internal indices of phi
+    std::vector<size_t> phi_idx_j;
 };
 
 

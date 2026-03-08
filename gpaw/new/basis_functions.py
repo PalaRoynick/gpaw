@@ -170,6 +170,8 @@ class GridBlock:
     """phi_mu(x) precalculated on the grid block. NOTE: the XYZ shape can be
     smaller for some blocks if the grid blocking was uneven.
     See also get_block_shape()"""
+    phi_idx_j: list[int] = field(default_factory=list)
+    """Maps block-local basis function index to global phi index"""
 
     def __post_init__(self):
         """"""
@@ -278,6 +280,10 @@ class BasisFunctionInstance:
     first_mu: int
     position: np.ndarray
     """Real-space position"""
+    index: int | None = None
+    """Global ID for this phi. FIXME this was missing from Purepython version
+    so everything related to this is a bit hacky """
+
     phi_mG: np.ndarray | None = None
     """Precalculated values on the grid"""
 
@@ -698,6 +704,7 @@ class BasisFunctionCollectionBase(ABC):
         # TODO init mu ranges here
         self.atoms_a = []
         self.my_atom_indices = []
+
         for a in range(self.num_atoms):
             mu = self.get_mu_range_a(a).start
             phi_j = self._basis_functions_t[self._atom_type_a[a]]
@@ -707,6 +714,10 @@ class BasisFunctionCollectionBase(ABC):
 
             if self.atoms_a[a].rank == self.grid.comm.rank:
                 self.my_atom_indices.append(a)
+
+            # Afterthought but very important for C++:
+            for i, phi in enumerate(self.get_phi_instances()):
+                phi.index = i
 
     @trace
     def _update_grid_blocks(self) -> None:
@@ -800,10 +811,13 @@ class BasisFunctionCollectionBase(ABC):
         for block in self._block_map.values():
             block.M_m = []
             block.phi_j = sorted(block.phi_j, key=lambda x : x.first_mu)
+            block.phi_idx_j = []
             for phi in block.phi_j:
                 mu = phi.first_mu
                 for m in range(phi.get_num_mu()):
                     block.M_m.append(mu + m)
+
+                block.phi_idx_j.append(phi.index)
             #
         #
 
@@ -1003,6 +1017,10 @@ class BasisFunctionCollectionBase(ABC):
                 e.args = (f'Atom {a} too close to edge: {e}',)
                 raise
 
+        # Afterthought but very important for C++:
+        for i, phi in enumerate(self.get_phi_instances()):
+            phi.index = i
+
         self._update_grid_blocks()
         if self.should_precalculate:
             self.precalculate_on_grid()
@@ -1130,6 +1148,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                                     BasisFunctionCollectionBuilder)
         builder = BasisFunctionCollectionBuilder()
 
+        builder.set_block_size(self.block_size)
         builder.enable_gpu(self.use_gpu)
         builder.enable_single_precision(False)
 
@@ -1145,7 +1164,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         builder.reserve(len(phi_i), len(blocks))
 
         for block in blocks:
-            builder.add_block(tuple(block.start_c), block.shape, block.M_m)
+            builder.add_block(tuple(block.start_c), block.shape, block.M_m, block.phi_idx_j)
 
         for phi in phi_i:
             builder.add_phi(phi.get_angular_momentum_number(),
@@ -1156,6 +1175,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
     @override
     def set_positions(self, relpos_ac: np.ndarray) -> bool:
         migrations = super().set_positions(relpos_ac)
+        # Needs to be rebuilt, at least if blocks or grid domains change:
         self._build_cpp_object()
         return migrations
 

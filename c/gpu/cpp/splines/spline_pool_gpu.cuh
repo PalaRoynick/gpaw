@@ -16,6 +16,9 @@ public:
 
     size_t num_splines() const override { return num; }
 
+    // Returns a device pointer to array holding the splines
+    const TRadialSplineGpu<T>* get_device_splines() const { return d_splines; }
+
 private:
     size_t num;
     TRadialSplineGpu<T>* d_splines = nullptr;

@@ -2,4 +2,5 @@
 
 void gpaw::BasisFunctionCollection::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const
 {
+    impl->add_to_density(nt_sG, f_sM);
 }

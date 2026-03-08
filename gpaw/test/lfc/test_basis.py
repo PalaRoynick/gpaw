@@ -53,6 +53,12 @@ def parametrize_purepython():
         ]
 
 
+def parametrize_blocksize():
+    """C++ is currently hardcoded to only accept 8"""
+    #return [None, 8]
+    return [8]
+
+
 def make_random_phi(
         l: int,
         cutoff: float,
@@ -191,14 +197,17 @@ def make_basis(system: LFCSystem,
     return basis
 
 
-@pytest.mark.parametrize("block_size", [None, 8])
+@pytest.mark.parametrize("block_size", parametrize_blocksize())
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 def test_basis_creation(fixt_lfc_system: LFCSystem, xp, purepython: bool,
                         block_size: int | None):
     """"""
-    pytest.mark.skipif(not purepython and xp is np,
-                       reason="CPU + C++ is WIP")
+    if not purepython and xp is np:
+        pytest.skip(reason="CPU + C++ is WIP")
+
+    if purepython and xp is cp:
+        pytest.skip(reason="Purepython + Cupy is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
@@ -292,15 +301,18 @@ def test_no_blocking(fixt_lfc_system: LFCSystem, xp):
     # duplicates. But that is done in test_basis_creation()
 
 
-@pytest.mark.parametrize("block_size", [None, 8])
+@pytest.mark.parametrize("block_size", parametrize_blocksize())
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
 def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     block_size: int, row_range: range | None):
     """"""
-    pytest.mark.skipif(not purepython and xp is np,
-                       reason="CPU + C++ is WIP")
+    if not purepython and xp is np:
+        pytest.skip(reason="CPU + C++ is WIP")
+
+    if purepython and xp is cp:
+        pytest.skip(reason="Purepython + Cupy is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
@@ -348,7 +360,7 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
                                atol=1e-12)
 
 
-@pytest.mark.parametrize("block_size", [None, 8])
+@pytest.mark.parametrize("block_size", parametrize_blocksize())
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
@@ -359,8 +371,11 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
                         block_size: int):
     """"""
 
-    pytest.mark.skipif(not purepython and xp is np,
-                       reason="CPU + C++ is WIP")
+    if not purepython and xp is np:
+        pytest.skip(reason="CPU + C++ is WIP")
+
+    if purepython and xp is cp:
+        pytest.skip(reason="Purepython + Cupy is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
@@ -393,7 +408,7 @@ def test_add_to_density(fixt_lfc_system: LFCSystem,
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
-@pytest.mark.parametrize("block_size", [None, 8])
+@pytest.mark.parametrize("block_size", parametrize_blocksize())
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
 @pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
@@ -405,9 +420,11 @@ def test_domain_decomposition(
     num_spins: int,
     block_size: int):
     """"""
+    if not purepython and xp is np:
+        pytest.skip(reason="CPU + C++ is WIP")
 
-    pytest.mark.skipif(not purepython and xp is np,
-                       reason="CPU + C++ is WIP")
+    if purepython and xp is cp:
+        pytest.skip(reason="Purepython + Cupy is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)

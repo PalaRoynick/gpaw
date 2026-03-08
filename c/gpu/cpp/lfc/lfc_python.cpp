@@ -37,6 +37,7 @@ bool bind_new_lfc(pybind11::module_ m)
             py::arg("spline_pool")
         );
 
+        cls.def("set_block_size", &ThisClass::set_block_size);
         cls.def("add_block", &ThisClass::add_block);
         cls.def("add_phi", &ThisClass::add_phi);
         cls.def("define_grid", &ThisClass::define_grid);
