@@ -32,6 +32,7 @@ private:
 template<typename T>
 inline void LFCCpu<T>::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const
 {
+
 }
 
 template<typename T>

@@ -150,5 +150,126 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
     }
 }
 
+template<typename T>
+__global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid, PhiDataGpu<T> phi, BlockDataGpu blocks)
+{
+    const int block_idx = blockIdx.x;
+    if (block_idx >= blocks.num_blocks)
+    {
+        return;
+    }
+
+    const long3 block_start_c = blocks.block_start_c[block_idx];
+    const long3 block_shape = blocks.block_shape[block_idx];
+
+    // Thread idx within the block; could go out of real-block bounds so check for that
+    const int bx = threadIdx.x;
+    const int by = threadIdx.y;
+    const int bz = threadIdx.z;
+
+    if (bx >= block_shape.x || by >= block_shape.y || bz >= block_shape.z)
+    {
+        return;
+    }
+
+    // XYZ of this thread in real units
+    const T x = grid.spacing.x * (block_start_c.x + bx);
+    const T y = grid.spacing.y * (block_start_c.y + by);
+    const T z = grid.spacing.z * (block_start_c.z + bz);
+
+    // Grid array indexing. TODO these are repeated in pretty much every kernel => move to function. Could also precalculate more grid stuff in GridInfo
+    const int gx = block_start_c.x + bx;
+    const int gy = block_start_c.y + by;
+    const int gz = block_start_c.z + bz;
+
+    const long nx = grid.end_c.x - grid.start_c.x;
+    const long ny = grid.end_c.y - grid.start_c.y;
+    const long nz = grid.end_c.z - grid.start_c.z;
+    const size_t grid_array_idx = (gx * ny + gy) * nz + gz;
+
+
+    // sph harmonic buffer
+    T phi_val[9];
+
+    const T vt = vt_G[grid_array_idx];
+
+    // Needs double loop over phi index. The following is not great because it computes the each spline more than once.
+    // TODO: more optimal would be to precalculate all phi for this gridpoint ?
+
+    const size_t j_begin = blocks.start_j[block_idx];
+    const size_t j_end = blocks.start_j[block_idx + 1];
+
+    for (size_t jm = j_begin; jm < j_end; ++jm)
+    {
+        const size_t phi_idx = blocks.all_blocks_phi_idx_j[jm];
+
+        const GpuVec3<T>& phi_pos = phi.position_iv[phi_idx];
+        const uint8_t l_m = phi.l_i[phi_idx];
+        const size_t first_mu = phi.first_mu_i[phi_idx];
+        const size_t spline_idx = phi.spline_idx_i[phi_idx];
+
+        const TRadialSplineGpu<T>& spline = splines[spline_idx];
+
+        // Find distance from the phi center, then evaluate phi(x)
+        T dx = x - phi_pos.x;
+        T dy = y - phi_pos.y;
+        T dz = z - phi_pos.z;
+        T distance_sq = dx*dx + dy*dy + dz*dz;
+        T distance = sqrt(distance_sq);
+
+        const T spline_val_m = spline.evaluate(r);
+        spherical_harmonics(l_m, spline_val_m, dx, dy, dz, distance_sq, phi_val);
+
+        const int num_m = 2*l_m + 1;
+
+        for (int m = 0; m < num_m; ++m)
+        {
+            const size_t mu = m + first_mu;
+            const T phi_mu_times_vt = phi_val[m] * vt;
+
+            // Inner phi loop. Basically repeats the phi(x) from above...
+            for (size_t jn = j_begin; jn < j_end; ++jn)
+            {
+                const size_t phi_idx_n = blocks.all_blocks_phi_idx_j[jn];
+
+                const GpuVec3<T>& phi_pos_n = phi.position_iv[phi_idx_n];
+                const uint8_t l_n = phi.l_i[phi_idx_n];
+                const size_t first_nu = phi.first_mu_i[phi_idx_n];
+                const size_t spline_idx_n = phi.spline_idx_i[phi_idx_n];
+
+                const TRadialSplineGpu<T>& spline_n = splines[spline_idx_n];
+                T dx_n = x - phi_pos_n.x;
+                T dy_n = y - phi_pos_n.y;
+                T dz_n = z - phi_pos_n.z;
+                T distance_sq_n = dx_n*dx_n + dy_n*dy_n + dz_n*dz_n;
+                T distance_n = sqrt(distance_sq_n);
+
+                T phi_val_n[9];
+                const T spline_val_n = spline_n.evaluate(distance_n);
+                spherical_harmonics(l_n, spline_val_n, dx_n, dy_n, dz_n, distance_sq_n, phi_val_n);
+
+                const int num_n = 2*l_n + 1;
+                for (int n = 0; n < num_n; ++n)
+                {
+                    const size_t nu = first_nu + n;
+
+                    if (mu >= nu)
+                    {
+                        const T phi_vt_phi = phi_mu_times_vt * phi_val_n[n] * grid.dV;
+
+                        atomicAdd(&arrays.V_MN[arrays.max_mu * mu + nu], phi_vt_phi);
+                    }
+
+                }
+
+            }
+
+
+        }
+
+    }
+
+}
+
 
 } // namespace gpaw

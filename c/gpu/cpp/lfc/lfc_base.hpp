@@ -78,6 +78,7 @@ class LFCBase
 public:
     virtual ~LFCBase() = default;
     virtual void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const = 0;
+    virtual void calculate_potential_matrix(const NDArray<c_contig, ndim<3>>& vt_G, NDArray<c_contig, ndim<2>>& out_V_MN) const = 0;
 };
 
 
@@ -98,6 +99,7 @@ public:
     // Would be useful here because in this layer we can't fix the dtype, but in the impl layer it should be fixed.
 
     void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const;
+    void calculate_potential_matrix(const NDArray<c_contig, ndim<3>>& vt_G, NDArray<c_contig, ndim<2>>& out_V_MN) const;
 
 private:
 

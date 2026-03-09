@@ -75,6 +75,7 @@ public:
     ~LFCGpu();
 
     void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const;
+    void calculate_potential_matrix(const NDArray<c_contig, ndim<3>>& vt_G, NDArray<c_contig, ndim<2>>& out_V_MN) const;
 
     PhiDataGpu<T> phi_data;
     BlockDataGpu block_data;
@@ -97,9 +98,22 @@ struct AddToDensityArrays
     size_t f_sM_first_stride;
 };
 
+template<typename T>
+struct CalculatePotentialMatrixArrays
+{
+    const T* GPAW_RESTRICT vt_G;
+    T* GPAW_RESTRICT V_MN;
+    // Used for striding the V_MN array
+    size_t max_mu;
+};
+
 // Kernel forward declarations
 template<typename T>
 __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid,
+    PhiDataGpu<T> phi, BlockDataGpu blocks);
+
+template<typename T>
+__global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid,
     PhiDataGpu<T> phi, BlockDataGpu blocks);
 //~
 
@@ -136,10 +150,33 @@ inline void LFCGpu<T>::add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const N
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
     // Launch blocks in 1D shape, so blockIdx.x gives block ID
     dim3 blocks(block_data.num_blocks);
-    int shmem = 0;
+    const int shmem = 0;
     const gpuStream_t stream = 0;
 
     launch_kernel(add_to_density_kernel<T>, blocks, threads, shmem, stream, arrays, spline_pool->get_device_splines(), grid, phi_data, block_data);
+}
+
+template<typename T>
+inline void LFCGpu<T>::calculate_potential_matrix(const NDArray<c_contig, ndim<3>>& vt_G, NDArray<c_contig, ndim<2>>& out_V_MN) const
+{
+    namespace py = pybind11;
+
+    // Check dtypes. TODO ndarray casting that would check these and add them to template traits
+    if (!vt_G.dtype().is(py::dtype::of<T>()) || !out_V_MN.dtype().is(py::dtype::of<T>()))
+    {
+        throw std::runtime_error("Wrong dtype in calculate_potential_matrix input array(s)");
+    }
+
+    CalculatePotentialMatrixArrays<T> arrays;
+    arrays.max_mu = vt_G.shape(0);
+
+    // One thread block per block of the real grid, and one thread for each point in that block.
+    dim3 threads(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    // Launch blocks in 1D shape, so blockIdx.x gives block ID
+    dim3 blocks(block_data.num_blocks);
+    const int shmem = 0;
+    const gpuStream_t stream = 0;
+
 }
 
 
