@@ -66,6 +66,7 @@ struct GridInfoGpu
     double dV;
 };
 
+
 template<typename T>
 class LFCGpu final : public LFCBase
 {

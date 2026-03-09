@@ -130,6 +130,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
             T distance_sq = dx*dx + dy*dy + dz*dz;
             T distance = sqrt(distance_sq);
 
+            // TODO remove branch inside evaluate?
             const T spline_val = spline.evaluate(distance);
 
             spherical_harmonics(l, spline_val, dx, dy, dz, distance_sq, phi_val);
