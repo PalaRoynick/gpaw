@@ -93,7 +93,7 @@ struct AddToDensityArrays
     T* GPAW_RESTRICT nt_sG;
     const T* GPAW_RESTRICT f_sM;
     int32_t num_spins;
-    // Needed to index f_sM[s * ... + mu]
+    // Needed to index f_sM[s * ... + mu]. The stride is in BYTES so take that into account.
     size_t f_sM_first_stride;
 };
 

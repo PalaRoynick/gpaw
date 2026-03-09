@@ -250,6 +250,7 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     // For now, just std::vector which is not optimal for this
 
     std::vector<int64_t> shape;
+    // Strides are given in BYTES
     std::vector<int64_t> strides;
     // Offset is TODO. Libraries don't really seem to use this ATM
     static constexpr uint64_t byte_offset = 0;
@@ -280,7 +281,7 @@ public:
     // Returns shape in the i. dimension. Does not check bounds!
     size_t shape(size_t i) const { return desc.shape[i]; }
 
-    // Returns stride in the i. dimension. Does not check bounds!
+    // Returns stride in the i. dimension, in bytes. Does not check bounds!
     int64_t stride(size_t i) const { return desc.strides[i]; }
 
     const int64_t* shape_ptr() const { return desc.shape.data(); }

@@ -105,6 +105,9 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
     // const size_t m_end = blocks.start_m[block_idx + 1];
 
 
+    // Array indexing is in units of T but the input stride is in bytes
+    const int64_t s_stride = arrays.f_sM_first_stride / sizeof(T);
+
     // spherical_harmonics macro wants to fill at max 9 elements
     T phi_val[9];
 
@@ -139,7 +142,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
             for (int m = 0; m < num_m; ++m)
             {
                 const int mu = first_mu + m;
-                accum += arrays.f_sM[s * arrays.f_sM_first_stride + mu] * phi_val[m]*phi_val[m];
+                accum += arrays.f_sM[s * s_stride + mu] * phi_val[m]*phi_val[m];
             }
         }
 
