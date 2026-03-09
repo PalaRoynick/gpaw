@@ -82,8 +82,7 @@ class GPWFiles(CachedFilesHandler):
     """Create gpw-files."""
 
     def __init__(self, folder: Path, comm):
-        super().__init__(folder, '.gpw')
-        self.comm = comm
+        super().__init__(folder, '.gpw', comm=comm)
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
@@ -2576,6 +2575,28 @@ class GPWFiles(CachedFilesHandler):
             txt=self.folder / 'diamond_lcao.txt')
         atoms.get_potential_energy()
         return atoms.calc
+
+    @gpwfile
+    def si_scs_lcao(self):
+        """
+        Silicon with self-consistent scissors eigensolver
+        """
+        shifts = [(0.0, -0.0, 2)]
+        atoms = bulk('Si')
+        Nk = 2
+        calc = self.GPAW(
+            legacy_gpaw=False,
+            mode='lcao',
+            basis='dzp',
+            xc='LDA',
+            nbands='nao',
+            kpts=dict(size=(Nk, Nk, Nk), gamma=True),
+            eigensolver={'name': 'scissors', 'shifts': shifts},
+            occupations=FermiDirac(0.001),
+            txt=self.folder / 'si_scs_lcao.txt')
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        return calc
 
 
 # We add Si fixtures with various symmetries to the GPWFiles namespace
