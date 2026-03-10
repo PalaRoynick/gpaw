@@ -74,9 +74,12 @@ class SCFLoop:
         self.mixer.reset()
 
         self.occ_calc.initialize_reference_orbitals()
-             
-        self.eigensolver.initialize(ibzwfs, self.hamiltonian, density,
-                                    potential)
+
+        if self.eigensolver.name == 'etdm-lcao':
+            self.eigensolver.initialize(ibzwfs, self.hamiltonian,
+                                        density, self.occ_calc,
+                                        pot_calc,
+                                        potential)
 
         if self.update_density_and_potential:
             dens_error = self.mixer.mix(density)
@@ -117,7 +120,7 @@ class SCFLoop:
             if converged:
             # fare canonical orbitals
             # come impostare l'if?
-                if self.eigensolver == "lcao":
+                if self.eigensolver.name == 'etdm-lcao':
                     for wfs in ibzwfs:
                         self.eigensolver.update_to_canonical_orbitals(wfs)
                 converged = all(

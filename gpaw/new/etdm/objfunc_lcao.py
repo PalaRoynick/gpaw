@@ -8,7 +8,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
     def __init__(self, ibzwfs, representation):
 
-        self._ibzwfs = ibzwfs
+        self.ibzwfs = ibzwfs
         self._representation = representation
         ndim = get_ndim(ibzwfs)
         dtype = self.ibzwfs.dtype
@@ -20,6 +20,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self._energy = None
         self._gradient = None
 
+    @property
+    def kpt_comm(self):
+        return self.ibzwfs.kpt_comm
+    
     def _calc_obf_value_and_matrix_elements(self):
         """Calculate value of the objective function (energy)
         and hamiltonian matrix elements at self._a_vec_u
@@ -36,10 +40,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         for wfs in self.ibzwfs:
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
-            h_unn.append(h_nn)  # i need it as a list
+            h_unn.append(h_nn.data)  # i need it as a list
 
         energy = self.update_density_and_potential()
-        return energy, np.array(h_unn)
+        return energy, h_unn
 
         # gli vanno date tutte le cose che servono sotto
         # mi serve ancora questo stratagemma?
@@ -47,12 +51,13 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                        pot_calc, ibzwfs, hamiltonian):
         """
         To be called from inside iterate of dir_opt to update
-        the quantities needed inside the etmd step
+        the quantities needed inside the etdm step
         """
         self.density = density
         self.potential = potential
         self.pot_calc = pot_calc
         self.ibzwfs = ibzwfs
+        self.hamiltonian = hamiltonian
         self.matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
 

@@ -150,6 +150,19 @@ class LCAOHamiltonian(Hamiltonian):
 
         return NonCollinearHamiltonianMatrixCalculator(matcalc)
 
+    def calculate_kinetic_energy(self, wfs, skip_sum=False):
+
+        e_kin = 0.0
+        f = wfs.myocc_n > 1e-10
+        x_nn = np.dot(wfs.C_nM.data[f],
+                      np.dot(wfs.T_MM.data, wfs.C_nM.data[f].T.conj())).real
+        e_kin += np.einsum('i,ii->', f[f], x_nn)
+
+        if not skip_sum:  # what does it do?
+            raise NotImplementedError
+
+        return e_kin
+
 
 class LCAOKickHamiltonian(LCAOHamiltonian):
 
@@ -191,16 +204,4 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
                                                     self.basis,
                                                     include_kinetic=False)
 
-    def calculate_kinetic_energy(self, wfs, skip_sum=False):
 
-        e_kin = 0.0
-        f = wfs.myocc_n > 1e-10   # vedere da pw
-        # occ = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1] > 1e-10
-        x_nn = np.dot(wfs.C_nM[f],
-                      np.dot(wfs.T_MM, wfs.C_nM[f].T.conj())).real
-        e_kin += np.einsum('i,ii->', f, x_nn)
-
-        if not skip_sum:  # what does it do?
-            raise NotImplementedError
-
-        return e_kin

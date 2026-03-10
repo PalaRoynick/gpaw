@@ -148,7 +148,7 @@ class SkewHermitian:
         """
         if self._evecs is None:
             # Convert vector to full skew-Hermitian matrix
-            a_mat = vec2skewmat(self.data, self.ndim, self.ind_up, self.dtype)
+            a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
             # Compute matrix exponential, eigenvectors, and eigenvalues
             self._rotation_mat, self._evecs, self._evals = expm_ed(
                 a_mat, evalevec=True
