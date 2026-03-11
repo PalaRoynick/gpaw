@@ -125,7 +125,8 @@ def precondition(psit_nG: PWArray,
       Kresse and Furthmüller, Phys. Rev. B 54, 11169 (1996)
     """
     xp = psit_nG.xp
-    G2_G = xp.asarray(psit_nG.desc.ekin_G * 2)
+    real_dtype = as_real_dtype(psit_nG.desc.dtype)
+    G2_G = xp.asarray(psit_nG.desc.ekin_G * 2, dtype=real_dtype)
     if ekin_n is None:
         ekin_n = psit_nG.norm2('kinetic')
 
@@ -151,7 +152,8 @@ def gpu_prec(ekin, G2, residual):
 
 
 def spinor_precondition(psit_nsG, residual_nsG, out):
-    G2_G = psit_nsG.desc.ekin_G * 2
+    G2_G = np.asarray(psit_nsG.desc.ekin_G * 2,
+                      dtype=as_real_dtype(psit_nsG.desc.dtype))
     for r_sG, o_sG, ekin in zips(residual_nsG.data,
                                  out.data,
                                  psit_nsG.norm2('kinetic').sum(1)):

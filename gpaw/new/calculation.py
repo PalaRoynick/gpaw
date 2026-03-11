@@ -201,11 +201,11 @@ class DFTCalculation:
 
         self.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
 
-        if self.params.mode.name == 'pw':
-            if self.params.mode.dtype == 'single':
-                if not (GPAW_NO_C_EXTENSION or self.ibzwfs.xp is cp):
-                    raise NotImplementedError(
-                        'Single precision is GPU or pure python only.')
+        #if self.params.mode.name == 'pw':
+        #    if self.params.mode.dtype == 'single':
+        #        if not (GPAW_NO_C_EXTENSION or self.ibzwfs.xp is cp):
+        #            raise NotImplementedError(
+        #                'Single precision is GPU or pure python only.')
 
         for ctx in self.scf_loop.iterate(self.ibzwfs,
                                          self.density,
