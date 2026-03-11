@@ -1,8 +1,11 @@
 #include "pw.h"
 #include "python_utils.h"
 
-#include "gpu/cpp/pyarray_utils.hpp"
-#include "gpu/cpp/pybind_cupy_type_caster.hpp"
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+
+//#include "gpu/cpp/pyarray_utils.hpp"
+//#include "gpu/cpp/pybind_cupy_type_caster.hpp"
 
 #include "gpaw_complex.h"
 
@@ -12,6 +15,8 @@
 #include <numeric>
 
 namespace py = pybind11;
+
+inline bool is_c_contiguous(pybind11::array arr) { return arr.flags() & pybind11::array::c_style; }
 
 #ifndef GPAW_WITHOUT_BLAS
 #ifdef GPAW_NO_UNDERSCORE_BLAS
@@ -331,9 +336,9 @@ void cpp_pw_insert(py::array c_G,
     assert(c_G.ndim() == 1);
     assert(Q_G.ndim() == 1);
     assert(tmp_Q.ndim() == 3);
-    assert(gpaw::is_c_contiguous(c_G));
-    assert(gpaw::is_c_contiguous(Q_G));
-    assert(gpaw::is_c_contiguous(tmp_Q));
+    assert(is_c_contiguous(c_G));
+    assert(is_c_contiguous(Q_G));
+    assert(is_c_contiguous(tmp_Q));
     int nG = c_G.shape()[0];
     int nQ = tmp_Q.size();
 
@@ -393,7 +398,7 @@ void cpp_add_to_density(double f,
     }
     else if (is_zdouble)
     {
-        assert(gpaw::is_c_contiguous(psit_R));
+        assert(is_c_contiguous(psit_R));
         _add_to_density_complex<double>(
             f,
             static_cast<const std::complex<double>*>(psit_R.data()),
@@ -402,7 +407,7 @@ void cpp_add_to_density(double f,
     }
     else if (is_zfloat)
     {
-        assert(gpaw::is_c_contiguous(psit_R));
+        assert(is_c_contiguous(psit_R));
         _add_to_density_complex<float>(
             f,
             static_cast<const std::complex<float>*>(psit_R.data()),
@@ -606,13 +611,13 @@ void cpp_pwlfc_expand_old(py::array f_Gs,
     assert(a_J.ndim() == 1);
     assert(s_J.ndim() == 1);
     assert(f_GI.ndim() == 2);
-    assert(gpaw::is_c_contiguous(f_Gs));
-    assert(gpaw::is_c_contiguous(emiGR_Ga));
-    assert(gpaw::is_c_contiguous(Y_GL));
-    assert(gpaw::is_c_contiguous(l_s));
-    assert(gpaw::is_c_contiguous(a_J));
-    assert(gpaw::is_c_contiguous(s_J));
-    assert(gpaw::is_c_contiguous(f_GI));
+    assert(is_c_contiguous(f_Gs));
+    assert(is_c_contiguous(emiGR_Ga));
+    assert(is_c_contiguous(Y_GL));
+    assert(is_c_contiguous(l_s));
+    assert(is_c_contiguous(a_J));
+    assert(is_c_contiguous(s_J));
+    assert(is_c_contiguous(f_GI));
     assert(l_s.dtype().is(py::dtype::of<npy_int32>()));
     assert(a_J.dtype().is(py::dtype::of<npy_int32>()));
     assert(s_J.dtype().is(py::dtype::of<npy_int32>()));
@@ -738,15 +743,15 @@ void cpp_pwlfc_expand(py::array f_Gs,
     assert(f_GI.ndim() == 2);
     assert(GK_Gv.shape()[1] == 3);
     assert(pos_av.shape()[1] == 3);
-    assert(gpaw::is_c_contiguous(f_Gs));
-    assert(gpaw::is_c_contiguous(GK_Gv));
-    assert(gpaw::is_c_contiguous(pos_av));
-    assert(gpaw::is_c_contiguous(eikR_a));
-    assert(gpaw::is_c_contiguous(Y_GL));
-    assert(gpaw::is_c_contiguous(l_s));
-    assert(gpaw::is_c_contiguous(a_J));
-    assert(gpaw::is_c_contiguous(s_J));
-    assert(gpaw::is_c_contiguous(f_GI));
+    assert(is_c_contiguous(f_Gs));
+    assert(is_c_contiguous(GK_Gv));
+    assert(is_c_contiguous(pos_av));
+    assert(is_c_contiguous(eikR_a));
+    assert(is_c_contiguous(Y_GL));
+    assert(is_c_contiguous(l_s));
+    assert(is_c_contiguous(a_J));
+    assert(is_c_contiguous(s_J));
+    assert(is_c_contiguous(f_GI));
     assert(l_s.dtype().is(py::dtype::of<npy_int32>()));
     assert(a_J.dtype().is(py::dtype::of<npy_int32>()));
     assert(s_J.dtype().is(py::dtype::of<npy_int32>()));
@@ -873,9 +878,9 @@ void cpp_pw_precond(py::array G2_G,
     assert(G2_G.ndim() == 1);
     assert(R_G.ndim() == 1);
     assert(out_G.ndim() == 1);
-    assert(gpaw::is_c_contiguous(G2_G));
-    assert(gpaw::is_c_contiguous(R_G));
-    assert(gpaw::is_c_contiguous(out_G));
+    assert(is_c_contiguous(G2_G));
+    assert(is_c_contiguous(R_G));
+    assert(is_c_contiguous(out_G));
 
     int nG = G2_G.shape()[0];
     assert(R_G.shape()[0] == nG);
@@ -916,8 +921,8 @@ py::array cpp_pawexxvv(py::array M_pp,
 {
     assert(M_pp.ndim() == 2);
     assert(D_ii.ndim() == 2);
-    assert(gpaw::is_c_contiguous(M_pp));
-    assert(gpaw::is_c_contiguous(D_ii));
+    assert(is_c_contiguous(M_pp));
+    assert(is_c_contiguous(D_ii));
 
     int NI = D_ii.shape()[0];
     int NP = M_pp.shape()[0];
@@ -1041,12 +1046,12 @@ void cpp_plane_wave_grid(py::array beg_c,
     assert(h_c.shape()[0] == 3);
     assert(k_c.shape()[0] == 3);
     assert(r0_c.shape()[0] == 3);
-    assert(gpaw::is_c_contiguous(beg_c));
-    assert(gpaw::is_c_contiguous(end_c));
-    assert(gpaw::is_c_contiguous(h_c));
-    assert(gpaw::is_c_contiguous(k_c));
-    assert(gpaw::is_c_contiguous(r0_c));
-    assert(gpaw::is_c_contiguous(pw_g));
+    assert(is_c_contiguous(beg_c));
+    assert(is_c_contiguous(end_c));
+    assert(is_c_contiguous(h_c));
+    assert(is_c_contiguous(k_c));
+    assert(is_c_contiguous(r0_c));
+    assert(is_c_contiguous(pw_g));
 
     bool is_double = (beg_c.dtype().is(py::dtype::of<long>()) &&
                       end_c.dtype().is(py::dtype::of<long>()) &&

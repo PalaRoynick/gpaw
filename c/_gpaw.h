@@ -436,10 +436,13 @@ static PyObject* moduleinit(void)
         return NULL;
     }
 #endif
+
+#ifdef __cplusplus   
     if (!bind_pw_submodule(m))
     {
         return NULL;
     }
+#endif
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
     PyObject_SetAttrString(m, "version", PyLong_FromLong(12));
