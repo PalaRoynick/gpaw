@@ -9,7 +9,7 @@ from gpaw.mpi import world
 @pytest.mark.new_gpaw_ready
 @pytest.mark.hybrids
 def test_pawexxvv():
-    from _gpaw import pawexxvv
+    from gpaw.cgpaw import pawexxvv
 
     from gpaw.hybrids.paw import python_pawexxvv
     for i in range(20):

@@ -4,7 +4,8 @@ if GPAW_NO_C_EXTENSION:
     from gpaw.purepython import *  # noqa: F401, F403
 else:
     from _gpaw import *  # noqa: F401, F403
-    from _gpaw.pw import pw_insert
+    from _gpaw.pw import (pawexxvv, plane_wave_grid, pw_insert,
+                          pw_precond, pwlfc_expand)
 
 
 def get_extension_module_path() -> str:
