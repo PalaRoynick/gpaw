@@ -16,7 +16,7 @@ else:
     _PYBIND_SINGLE_PRECISION_SAFE = set()
 
     if _GPAW_IS_CPP:
-        _pw = _cgpaw_ext.pw
+        _pw = _cgpaw_ext.pw # type: ignore
         add_to_density = _pw.add_to_density
         pawexxvv = _pw.pawexxvv
         plane_wave_grid = _pw.plane_wave_grid
