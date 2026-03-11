@@ -4,6 +4,7 @@ if GPAW_NO_C_EXTENSION:
     from gpaw.purepython import *  # noqa: F401, F403
 else:
     from _gpaw import *  # noqa: F401, F403
+    from _gpaw.pw import pw_insert
 
 
 def get_extension_module_path() -> str:
