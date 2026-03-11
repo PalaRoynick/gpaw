@@ -613,6 +613,9 @@ void cpp_pwlfc_expand_old(py::array f_Gs,
     assert(gpaw::is_c_contiguous(a_J));
     assert(gpaw::is_c_contiguous(s_J));
     assert(gpaw::is_c_contiguous(f_GI));
+    assert(l_s.dtype().is(py::dtype::of<npy_int32>()));
+    assert(a_J.dtype().is(py::dtype::of<npy_int32>()));
+    assert(s_J.dtype().is(py::dtype::of<npy_int32>()));
 
     int nG = emiGR_Ga.shape()[0];
     int nJ = a_J.shape()[0];
@@ -628,36 +631,24 @@ void cpp_pwlfc_expand_old(py::array f_Gs,
         f_Gs.dtype().is(py::dtype::of<double>()) &&
         emiGR_Ga.dtype().is(py::dtype::of<std::complex<double>>()) &&
         Y_GL.dtype().is(py::dtype::of<double>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<std::complex<double>>()));
 
     bool is_float_complex = (
         f_Gs.dtype().is(py::dtype::of<float>()) &&
         emiGR_Ga.dtype().is(py::dtype::of<std::complex<float>>()) &&
         Y_GL.dtype().is(py::dtype::of<float>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<std::complex<float>>()));
 
     bool is_double_real = (
         f_Gs.dtype().is(py::dtype::of<double>()) &&
         emiGR_Ga.dtype().is(py::dtype::of<std::complex<double>>()) &&
         Y_GL.dtype().is(py::dtype::of<double>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<double>()));
 
     bool is_float_real = (
         f_Gs.dtype().is(py::dtype::of<float>()) &&
         emiGR_Ga.dtype().is(py::dtype::of<std::complex<float>>()) &&
         Y_GL.dtype().is(py::dtype::of<float>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<float>()));
 
     if (is_double_complex)
@@ -756,6 +747,9 @@ void cpp_pwlfc_expand(py::array f_Gs,
     assert(gpaw::is_c_contiguous(a_J));
     assert(gpaw::is_c_contiguous(s_J));
     assert(gpaw::is_c_contiguous(f_GI));
+    assert(l_s.dtype().is(py::dtype::of<npy_int32>()));
+    assert(a_J.dtype().is(py::dtype::of<npy_int32>()));
+    assert(s_J.dtype().is(py::dtype::of<npy_int32>()));
 
     int nG = GK_Gv.shape()[0];
     int nJ = a_J.shape()[0];
@@ -772,9 +766,6 @@ void cpp_pwlfc_expand(py::array f_Gs,
         pos_av.dtype().is(py::dtype::of<double>()) &&
         eikR_a.dtype().is(py::dtype::of<std::complex<double>>()) &&
         Y_GL.dtype().is(py::dtype::of<double>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<std::complex<double>>()));
 
     bool is_float_complex = (
@@ -783,9 +774,6 @@ void cpp_pwlfc_expand(py::array f_Gs,
         pos_av.dtype().is(py::dtype::of<float>()) &&
         eikR_a.dtype().is(py::dtype::of<std::complex<float>>()) &&
         Y_GL.dtype().is(py::dtype::of<float>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<std::complex<float>>()));
 
     bool is_double_real = (
@@ -794,9 +782,6 @@ void cpp_pwlfc_expand(py::array f_Gs,
         pos_av.dtype().is(py::dtype::of<double>()) &&
         eikR_a.dtype().is(py::dtype::of<std::complex<double>>()) &&
         Y_GL.dtype().is(py::dtype::of<double>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<double>()));
 
     bool is_float_real = (
@@ -805,9 +790,6 @@ void cpp_pwlfc_expand(py::array f_Gs,
         pos_av.dtype().is(py::dtype::of<float>()) &&
         eikR_a.dtype().is(py::dtype::of<std::complex<float>>()) &&
         Y_GL.dtype().is(py::dtype::of<float>()) &&
-        l_s.dtype().is(py::dtype::of<npy_int32>()) &&
-        a_J.dtype().is(py::dtype::of<npy_int32>()) &&
-        s_J.dtype().is(py::dtype::of<npy_int32>()) &&
         f_GI.dtype().is(py::dtype::of<float>()));
 
     if (is_double_complex)
