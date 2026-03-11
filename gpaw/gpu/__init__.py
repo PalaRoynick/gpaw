@@ -56,16 +56,17 @@ else:
             # with hipcc, which means that cupy will recompile every kernel
             # every time, because the kernel hash has changed, because
             # the kernel hash includes the compilation output of an empty file.
-            # This hack overrides the _preprocess functions compiling an empty file
+            # This hack overrides the functions compiling an empty file
             # with a dummy function giving more determenistic output.
             # See _compile_with_cache_hip() in cupy/cuda/compiler.py
 
             # An alternative could be to use CUPY_CACHE_IN_MEMORY=1 instead.
 
+            def _run_output(args):
+                from subprocess import run
+                return run(args, capture_output=True, text=True).stdout.strip()
+
             def _preprocess(*args, **kwargs):
-                def _run_output(args):
-                    from subprocess import run
-                    return run(args, capture_output=True, text=True).stdout.strip()
                 hipcc = _run_output(["which", "hipcc"])
                 target = _run_output(["rocm_agent_enumerator", "-t", "GPU"])
                 return f"{hipcc};{target}"  # /opt/rocm-6.3.4/bin/hipcc;gfx90a
