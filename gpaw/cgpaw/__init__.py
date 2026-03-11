@@ -16,16 +16,25 @@ else:
     _PYBIND_SINGLE_PRECISION_SAFE = set()
 
     if _GPAW_IS_CPP:
-        from _gpaw.pw import (add_to_density, pawexxvv, plane_wave_grid,
-                              pw_insert, pw_precond, pwlfc_expand,
-                              pwlfc_expand_old)
+        _pw = _cgpaw_ext.pw
+        add_to_density = _pw.add_to_density
+        pawexxvv = _pw.pawexxvv
+        plane_wave_grid = _pw.plane_wave_grid
+        pw_insert = _pw.pw_insert
+        pw_precond = _pw.pw_precond
+        pwlfc_expand = _pw.pwlfc_expand
+        pwlfc_expand_old = _pw.pwlfc_expand_old
         try:
-            from _gpaw.pw import mmm
+            mmm = _pw.mmm
         except ImportError:
             pass
+        except AttributeError:
+            pass
         try:
-            from _gpaw.pw import r2k
+            r2k = _pw.r2k
         except ImportError:
+            pass
+        except AttributeError:
             pass
 
         _PYBIND_SINGLE_PRECISION_SAFE = {

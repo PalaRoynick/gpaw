@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from importlib import import_module
 
 from gpaw import GPAW_NO_C_EXTENSION
 import gpaw.cgpaw as cgpaw
@@ -7,30 +8,32 @@ import gpaw.cgpaw as cgpaw
 if GPAW_NO_C_EXTENSION:
     pytest.skip('GPAW_NO_C_EXTENSION', allow_module_level=True)
 
-import _gpaw
+_gpaw = import_module('_gpaw')
 
 if not getattr(_gpaw, 'gpaw_cpp', False):
     pytest.skip('Requires GPAW C++ build with _gpaw.pw bindings',
                 allow_module_level=True)
 
-from _gpaw import (pawexxvv as old_pawexxvv,
-                   add_to_density as old_add_to_density,
-                   mmm as old_mmm,
-                   r2k as old_r2k,
-                   plane_wave_grid as old_plane_wave_grid,
-                   pw_insert as old_pw_insert,
-                   pw_precond as old_pw_precond,
-                   pwlfc_expand as old_pwlfc_expand,
-                   pwlfc_expand_old as old_pwlfc_expand_old)
-from _gpaw.pw import (pawexxvv as new_pawexxvv,
-                      add_to_density as new_add_to_density,
-                      mmm as new_mmm,
-                      r2k as new_r2k,
-                      plane_wave_grid as new_plane_wave_grid,
-                      pw_insert as new_pw_insert,
-                      pw_precond as new_pw_precond,
-                      pwlfc_expand as new_pwlfc_expand,
-                      pwlfc_expand_old as new_pwlfc_expand_old)
+old_pawexxvv = _gpaw.pawexxvv
+old_add_to_density = _gpaw.add_to_density
+old_plane_wave_grid = _gpaw.plane_wave_grid
+old_pw_insert = _gpaw.pw_insert
+old_pw_precond = _gpaw.pw_precond
+old_pwlfc_expand = _gpaw.pwlfc_expand
+old_pwlfc_expand_old = _gpaw.pwlfc_expand_old
+old_mmm = getattr(_gpaw, 'mmm', None)
+old_r2k = getattr(_gpaw, 'r2k', None)
+
+_pw = _gpaw.pw
+new_pawexxvv = _pw.pawexxvv
+new_add_to_density = _pw.add_to_density
+new_plane_wave_grid = _pw.plane_wave_grid
+new_pw_insert = _pw.pw_insert
+new_pw_precond = _pw.pw_precond
+new_pwlfc_expand = _pw.pwlfc_expand
+new_pwlfc_expand_old = _pw.pwlfc_expand_old
+new_mmm = getattr(_pw, 'mmm', None)
+new_r2k = getattr(_pw, 'r2k', None)
 
 
 pytestmark = pytest.mark.new_gpaw_ready
@@ -140,7 +143,6 @@ def test_pybind_override_allows_single_precision():
 def test_add_to_density_old_vs_new(psit_dtype, make_view):
     rng = np.random.RandomState(seed)
     f = 0.37
-    single_precision = psit_dtype in (np.float32, np.complex64)
 
     if np.issubdtype(psit_dtype, np.complexfloating):
         make_view = False
@@ -151,7 +153,9 @@ def test_add_to_density_old_vs_new(psit_dtype, make_view):
     elif np.issubdtype(psit_dtype, np.floating):
         psit = rng.randn(2, 3, 4).astype(psit_dtype)
     else:
-        psit = (rng.randn(2, 3, 4) + 1j * rng.randn(2, 3, 4)).astype(psit_dtype)
+        psit = (
+            rng.randn(2, 3, 4) + 1j * rng.randn(2, 3, 4)
+        ).astype(psit_dtype)
 
     nt_ref = rng.randn(2, 3, 4)
     out = nt_ref.copy()
@@ -163,7 +167,12 @@ def test_add_to_density_old_vs_new(psit_dtype, make_view):
         assert_close(out, out_old, single_precision=False)
     else:
         expected = nt_ref.copy()
-        expected += f * np.abs(psit.astype(np.complex64 if psit_dtype == np.complex64 else np.float32))**2
+        expected += (
+            f *
+            np.abs(psit.astype(
+                np.complex64 if psit_dtype == np.complex64 else np.float32
+            ))**2
+        )
         assert_close(out, expected, single_precision=True)
 
 
@@ -176,8 +185,10 @@ def test_add_to_density_old_vs_new(psit_dtype, make_view):
 @pytest.mark.parametrize('opa', ['N', 'T', 'C'])
 @pytest.mark.parametrize('opb', ['N', 'T', 'C'])
 def test_mmm_old_vs_new(dtype, alpha, beta, opa, opb):
+    if old_mmm is None or new_mmm is None:
+        pytest.skip('BLAS not available')
+
     rng = np.random.RandomState(seed)
-    single_precision = dtype in (np.float32, np.complex64)
 
     if np.issubdtype(dtype, np.floating):
         a_ref = rng.randn(3, 4)
@@ -194,9 +205,15 @@ def test_mmm_old_vs_new(dtype, alpha, beta, opa, opb):
     b_input_ref = op(opb, b_ref).copy()
 
     if np.issubdtype(dtype, np.complexfloating):
-        ref = alpha * op(opa, a_ref).dot(op(opb, b_input_ref)) + beta * c_ref
+        ref = (
+            alpha * op(opa, a_ref).dot(op(opb, b_input_ref)) +
+            beta * c_ref
+        )
     else:
-        ref = float(alpha) * op(opa, a_ref).dot(op(opb, b_input_ref)) + float(beta) * c_ref
+        ref = (
+            float(alpha) * op(opa, a_ref).dot(op(opb, b_input_ref)) +
+            float(beta) * c_ref
+        )
 
     a = a_ref.astype(dtype)
     b = b_input_ref.astype(dtype)
@@ -205,7 +222,13 @@ def test_mmm_old_vs_new(dtype, alpha, beta, opa, opb):
 
     if dtype in (np.float64, np.complex128):
         c_old = c_ref.astype(dtype)
-        old_mmm(alpha, a_ref.astype(dtype), opa, b_input_ref.astype(dtype), opb, beta, c_old)
+        old_mmm(alpha,
+                a_ref.astype(dtype),
+                opa,
+                b_input_ref.astype(dtype),
+                opb,
+                beta,
+                c_old)
         assert_close(c, c_old, single_precision=False)
     else:
         assert_close(c, ref.astype(dtype), single_precision=True)
@@ -219,8 +242,10 @@ def test_mmm_old_vs_new(dtype, alpha, beta, opa, opb):
      (np.complex64, 0.5 + 0.25j, 0.2)])
 @pytest.mark.parametrize('trans', ['c', 'n'])
 def test_r2k_old_vs_new(dtype, alpha, beta, trans):
+    if old_r2k is None or new_r2k is None:
+        pytest.skip('BLAS not available')
+
     rng = np.random.RandomState(seed)
-    single_precision = dtype in (np.float32, np.complex64)
 
     if trans == 'c':
         ashape = (4, 3)
@@ -246,7 +271,12 @@ def test_r2k_old_vs_new(dtype, alpha, beta, trans):
 
     if dtype in (np.float64, np.complex128):
         c_old = c_ref.astype(dtype)
-        old_r2k(alpha, a_ref.astype(dtype), b_ref.astype(dtype), beta, c_old, trans)
+        old_r2k(alpha,
+                a_ref.astype(dtype),
+                b_ref.astype(dtype),
+                beta,
+                c_old,
+                trans)
         assert_close(c, c_old, single_precision=False)
     else:
         ref_dtype = np.float64 if dtype == np.float32 else np.complex128
@@ -421,8 +451,12 @@ def test_pwlfc_expand_old_old_vs_new(fgi_dtype, single_precision, cc):
         expected = ref.astype(fgi_dtype)
     else:
         out_old = np.zeros_like(ref)
-        old_pwlfc_expand_old(f_Gs_ref.copy(), emiGR_ref.copy(), Y_GL_ref.copy(),
-                             l_s.copy(), a_J.copy(), s_J.copy(),
+        old_pwlfc_expand_old(f_Gs_ref.copy(),
+                             emiGR_ref.copy(),
+                             Y_GL_ref.copy(),
+                             l_s.copy(),
+                             a_J.copy(),
+                             s_J.copy(),
                              cc, out_old)
         expected = out_old
 
