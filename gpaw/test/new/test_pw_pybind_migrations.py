@@ -233,19 +233,6 @@ def test_r2k_old_vs_new(dtype, alpha, beta, trans):
         c_ref = rng.randn(*cshape) + 1j * rng.randn(*cshape)
         np.fill_diagonal(c_ref, c_ref.diagonal().real)
 
-    if trans == 'c':
-        if np.issubdtype(dtype, np.floating):
-            ref = alpha * (a_ref @ b_ref.T + b_ref @ a_ref.T) + beta * c_ref
-        else:
-            ref = (alpha * (a_ref @ b_ref.conj().T + b_ref @ a_ref.conj().T)
-                   + beta * c_ref)
-    else:
-        if np.issubdtype(dtype, np.floating):
-            ref = alpha * (a_ref.T @ b_ref + b_ref.T @ a_ref) + beta * c_ref
-        else:
-            ref = (alpha * (a_ref.conj().T @ b_ref + b_ref.conj().T @ a_ref)
-                   + beta * c_ref)
-
     a = a_ref.astype(dtype)
     b = b_ref.astype(dtype)
     c = c_ref.astype(dtype)
@@ -256,7 +243,15 @@ def test_r2k_old_vs_new(dtype, alpha, beta, trans):
         old_r2k(alpha, a_ref.astype(dtype), b_ref.astype(dtype), beta, c_old, trans)
         assert_close(c, c_old, single_precision=False)
     else:
-        assert_close(np.triu(c), np.triu(ref.astype(dtype)), single_precision=True)
+        ref_dtype = np.float64 if dtype == np.float32 else np.complex128
+        a_old = a_ref.astype(ref_dtype)
+        b_old = b_ref.astype(ref_dtype)
+        c_old = c_ref.astype(ref_dtype)
+        alpha_old = float(alpha) if dtype == np.float32 else complex(alpha)
+        old_r2k(alpha_old, a_old, b_old, beta, c_old, trans)
+        assert_close(np.tril(c),
+                     np.tril(c_old.astype(dtype)),
+                     single_precision=True)
 
 
 @pytest.mark.parametrize('dtype', [np.complex128, np.complex64])
