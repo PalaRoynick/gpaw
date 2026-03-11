@@ -7,6 +7,12 @@ import gpaw.cgpaw as cgpaw
 if GPAW_NO_C_EXTENSION:
     pytest.skip('GPAW_NO_C_EXTENSION', allow_module_level=True)
 
+import _gpaw
+
+if not getattr(_gpaw, 'gpaw_cpp', False):
+    pytest.skip('Requires GPAW C++ build with _gpaw.pw bindings',
+                allow_module_level=True)
+
 from _gpaw import (pawexxvv as old_pawexxvv,
                    add_to_density as old_add_to_density,
                    mmm as old_mmm,

@@ -8,29 +8,37 @@ from gpaw import GPAW_NO_C_EXTENSION
 if GPAW_NO_C_EXTENSION:
     from gpaw.purepython import *  # noqa: F401, F403
 else:
-    from _gpaw import *  # noqa: F401, F403
-    from _gpaw.pw import (add_to_density, pawexxvv, plane_wave_grid, pw_insert,
-                          pw_precond, pwlfc_expand, pwlfc_expand_old)
-    try:
-        from _gpaw.pw import mmm
-    except ImportError:
-        pass
-    try:
-        from _gpaw.pw import r2k
-    except ImportError:
-        pass
+    import _gpaw as _cgpaw_ext
 
-    _PYBIND_SINGLE_PRECISION_SAFE = {
-        'mmm',
-        'r2k',
-        'add_to_density',
-        'pawexxvv',
-        'plane_wave_grid',
-        'pw_insert',
-        'pw_precond',
-        'pwlfc_expand',
-        'pwlfc_expand_old',
-    }
+    from _gpaw import *  # noqa: F401, F403
+    _GPAW_IS_CPP = getattr(_cgpaw_ext, 'gpaw_cpp', False)
+
+    _PYBIND_SINGLE_PRECISION_SAFE = set()
+
+    if _GPAW_IS_CPP:
+        from _gpaw.pw import (add_to_density, pawexxvv, plane_wave_grid,
+                              pw_insert, pw_precond, pwlfc_expand,
+                              pwlfc_expand_old)
+        try:
+            from _gpaw.pw import mmm
+        except ImportError:
+            pass
+        try:
+            from _gpaw.pw import r2k
+        except ImportError:
+            pass
+
+        _PYBIND_SINGLE_PRECISION_SAFE = {
+            'mmm',
+            'r2k',
+            'add_to_density',
+            'pawexxvv',
+            'plane_wave_grid',
+            'pw_insert',
+            'pw_precond',
+            'pwlfc_expand',
+            'pwlfc_expand_old',
+        }
 
     def _contains_single_precision(obj) -> bool:
         if isinstance(obj, np.ndarray):
