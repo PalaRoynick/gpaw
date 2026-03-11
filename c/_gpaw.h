@@ -19,6 +19,7 @@
 #ifdef GPAW_GPU
 #include "gpu/cpp/gpu_python.h"
 #endif
+#include "gpu/cpp/pw.h"
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -435,6 +436,10 @@ static PyObject* moduleinit(void)
         return NULL;
     }
 #endif
+    if (!bind_pw_submodule(m))
+    {
+        return NULL;
+    }
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
     PyObject_SetAttrString(m, "version", PyLong_FromLong(12));
