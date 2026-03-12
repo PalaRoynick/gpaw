@@ -241,6 +241,7 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     void* data = nullptr;
     int typenum = 0; // raw numpy typenum
     int32_t ndim = 0;
+    bool is_gpu = false;
 
     // For Numpy we could go for zero-copy but that seems fragile.
     // For Cupy this is harder because the shape/stride there are Python tuples (not contiguous C-style arrays)
@@ -287,6 +288,7 @@ public:
     const int64_t* shape_ptr() const { return desc.shape.data(); }
     const int64_t* stride_ptr() const { return desc.strides.data(); }
     bool is_valid() const { return !handle.is(py::handle(nullptr)); }
+    bool is_gpu() const { return desc.is_gpu; }
 
     // Number of elements in the array
     size_t size() const
@@ -484,6 +486,15 @@ inline bool ndarray_import_impl(
     else if constexpr (traits::is_gpu && framework != Framework::eCupy)
     {
         return false;
+    }
+
+    if constexpr (framework == Framework::eNumpy)
+    {
+        out.is_gpu = false;
+    }
+    else
+    {
+        out.is_gpu = true;
     }
 
     out.data = ArrayAccessors::data(arr);
