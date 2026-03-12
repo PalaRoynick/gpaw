@@ -191,7 +191,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
     // sph harmonic buffer
     T phi_val[9];
 
-    const T vt = vt_G[grid_array_idx];
+    const T vt = arrays.vt_G[grid_array_idx];
 
     // Needs double loop over phi index. The following is not great because it computes the each spline more than once.
     // TODO: more optimal would be to precalculate all phi for this gridpoint ?
@@ -217,7 +217,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
         T distance_sq = dx*dx + dy*dy + dz*dz;
         T distance = sqrt(distance_sq);
 
-        const T spline_val_m = spline.evaluate(r);
+        const T spline_val_m = spline.evaluate(distance);
         spherical_harmonics(l_m, spline_val_m, dx, dy, dz, distance_sq, phi_val);
 
         const int num_m = 2*l_m + 1;
