@@ -17,7 +17,7 @@ bool bind_new_lfc(pybind11::module_ m)
         py::class_<ThisClass> cls(m, "BasisFunctionCollection_cpp");
 
         cls.def("add_to_density", &ThisClass::add_to_density);
-
+        cls.def("calculate_potential_matrix", &ThisClass::calculate_potential_matrix);
     }
 
     // Builder

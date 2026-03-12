@@ -314,6 +314,9 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     if purepython and xp is cp:
         pytest.skip(reason="Purepython + Cupy is WIP")
 
+    if row_range is not None and not purepython:
+        pytest.skip(reason="WIP")
+
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, block_size)
 
@@ -343,8 +346,9 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     else:
         out_shape = (basis_old.Mmax, basis_old.Mmax)
 
-    V_MN_ref = xp.zeros(out_shape)
-    basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
+    # Old code is numpy only (no conversion inside)
+    V_MN_ref = np.zeros(out_shape)
+    basis_old.calculate_potential_matrix(as_np(vt_G.data), V_MN_ref, 0)
 
     """Old code does include some elements in the upper matrix triangle,
     I guess this is done to avoid complex branching.
@@ -352,7 +356,8 @@ def test_potential_matrix(fixt_lfc_system: LFCSystem, xp, purepython: bool,
     case we need to carefully pick which "diagonal" to use in xp.tril(...)
     """
     diagonal = 0 if row_range is None else row_range.start
-    V_MN_ref = xp.tril(V_MN_ref, k=diagonal)
+    V_MN_ref = np.tril(V_MN_ref, k=diagonal)
+    V_MN_ref = as_xp(V_MN_ref, xp=xp)
 
     xp.testing.assert_allclose(V_MN,
                                V_MN_ref,

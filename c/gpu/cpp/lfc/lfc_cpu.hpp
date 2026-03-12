@@ -15,8 +15,8 @@ public:
     static constexpr bool is_single_precision() { return std::is_same_v<T, float>; }
 
     // TODO fix dtype
-    void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const;
-
+    void add_to_density(NDArray<c_contig, ndim<4>>& nt_sG, const NDArray<c_contig, ndim<2>>& f_sM) const override;
+    void calculate_potential_matrix(const NDArray<c_contig, ndim<3>>& vt_G, NDArray<c_contig, ndim<2>>& out_V_MN) const override {}
 
     std::vector<GridBlock> blocks;
     PhiData phi_data;

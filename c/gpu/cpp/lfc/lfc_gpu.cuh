@@ -113,7 +113,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
     PhiDataGpu<T> phi, BlockDataGpu blocks);
 
 template<typename T>
-__global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid,
+__global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid,
     PhiDataGpu<T> phi, BlockDataGpu blocks);
 //~
 
@@ -167,8 +167,15 @@ inline void LFCGpu<T>::calculate_potential_matrix(const NDArray<c_contig, ndim<3
         throw std::runtime_error("Wrong dtype in calculate_potential_matrix input array(s)");
     }
 
+    if (!vt_G.is_gpu() || !out_V_MN.is_gpu())
+    {
+        throw std::runtime_error("In/out arrays must be in GPU memory");
+    }
+
     CalculatePotentialMatrixArrays<T> arrays;
-    arrays.max_mu = vt_G.shape(0);
+    arrays.max_mu = out_V_MN.shape(1);
+    arrays.vt_G = static_cast<T*>(vt_G.data());
+    arrays.V_MN = static_cast<T*>(out_V_MN.data()); // TODO should init the array to 0. Currently done on python side
 
     // One thread block per block of the real grid, and one thread for each point in that block.
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
@@ -177,6 +184,7 @@ inline void LFCGpu<T>::calculate_potential_matrix(const NDArray<c_contig, ndim<3
     const int shmem = 0;
     const gpuStream_t stream = 0;
 
+    launch_kernel(calculate_potential_matrix_kernel<T>, blocks, threads, shmem, stream, arrays, spline_pool->get_device_splines(), grid, phi_data, block_data);
 }
 
 

@@ -151,7 +151,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const TRadia
 }
 
 template<typename T>
-__global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid, PhiDataGpu<T> phi, BlockDataGpu blocks)
+__global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays<T> arrays, const TRadialSplineGpu<T>* splines, GridInfoGpu grid, PhiDataGpu<T> phi, BlockDataGpu blocks)
 {
     const int block_idx = blockIdx.x;
     if (block_idx >= blocks.num_blocks)
@@ -172,21 +172,18 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
         return;
     }
 
-    // XYZ of this thread in real units
     const T x = grid.spacing.x * (block_start_c.x + bx);
     const T y = grid.spacing.y * (block_start_c.y + by);
     const T z = grid.spacing.z * (block_start_c.z + bz);
 
-    // Grid array indexing. TODO these are repeated in pretty much every kernel => move to function. Could also precalculate more grid stuff in GridInfo
     const int gx = block_start_c.x + bx;
     const int gy = block_start_c.y + by;
     const int gz = block_start_c.z + bz;
 
-    const long nx = grid.end_c.x - grid.start_c.x;
+    //const long nx = grid.end_c.x - grid.start_c.x;
     const long ny = grid.end_c.y - grid.start_c.y;
     const long nz = grid.end_c.z - grid.start_c.z;
     const size_t grid_array_idx = (gx * ny + gy) * nz + gz;
-
 
     // sph harmonic buffer
     T phi_val[9];
@@ -259,16 +256,10 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
 
                         atomicAdd(&arrays.V_MN[arrays.max_mu * mu + nu], phi_vt_phi);
                     }
-
                 }
-
             }
-
-
-        }
-
+        } // mu loop
     }
-
 }
 
 

@@ -1041,8 +1041,8 @@ class BasisFunctionCollectionBase(ABC):
     def calculate_potential_matrices(
             self,
             vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
-        """Alias for calculate_potential_matrix"""
-        return self.calculate_potential_matrix(vt_G)
+        """"""
+        return self.calculate_potential_matrix(vt_G[self.xp.newaxis])
 
     def get_cache_size_estimate(self) -> int:
         """Estimate of how many bytes are needed to precalculate and cache the
@@ -1207,17 +1207,30 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
     @override
     def calculate_potential_matrix(
-        self,
-        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
+            self,
+            vt_G: np.ndarray | cp.ndarray,
+            out: np.ndarray | cp.ndarray | None = None) \
+            -> np.ndarray | cp.ndarray:
         """"""
-        raise NotImplementedError("WIP")
+        if not np.all(vt_G.shape == self.grid.mysize_c):
+            raise ValueError("vt_G has wrong shape")
 
-    @override
-    def calculate_potential_matrices(
-        self,
-        vt_G: np.ndarray | cp.ndarray) -> np.ndarray | cp.ndarray:
-        """"""
-        raise NotImplementedError("WIP")
+        M = self.num_basis_functions()
+        num_work_rows = (self._matrix_distribution_rules.mu_end
+                         - self._matrix_distribution_rules.mu_start)
+        if (num_work_rows <= 0):
+            # nothing to do
+            if out:
+                return out
+            else:
+                return self.xp.empty((0, M))
+
+        if out:
+            out[:] = 0
+
+        res = out or self.xp.zeros((num_work_rows, M))
+        self._impl.calculate_potential_matrix(vt_G, res)
+        return res
 
     @override
     def has_precalculated_phi(self) -> bool:
