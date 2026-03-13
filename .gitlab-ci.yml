@@ -685,6 +685,14 @@ check-agts:
       [[ `cut -d ' ' -f1 < task_count` -ge 501 ]] || (echo "Too few agts tasks"; exit 1)
 
 
+mi210:
+  stage: test
+  script:
+   - echo hello, world!
+  tags:
+   - mi210
+
+
 lint:
   image: $IMAGE_MAIN_LATEST
   stage: build
