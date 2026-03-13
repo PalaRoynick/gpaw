@@ -685,10 +685,13 @@ check-agts:
       [[ `cut -d ' ' -f1 < task_count` -ge 501 ]] || (echo "Too few agts tasks"; exit 1)
 
 
-mi210:
+test-mi210:
+  image: $IMAGE_MAIN_LATEST
   stage: test
   script:
    - echo hello, world!
+  needs:
+   - job: build-latest  # <-- We will need a new docker for this
   tags:
    - mi210
 
