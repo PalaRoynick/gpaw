@@ -193,7 +193,6 @@ class SPGOperations:
             symprec=symprec,
         )
         debugprint(f"{dataset=}")
-        print(f"{dataset=}")
         return cls.from_dataset(dataset, atoms, verbose=verbose)
 
     @classmethod
