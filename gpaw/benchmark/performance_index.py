@@ -11,11 +11,15 @@ from gpaw.calcinfo import get_calculation_info
 from gpaw.dft import GPAW
 from gpaw.mpi import normalize_communicator
 from gpaw.utilities.memory import maxrss
+from gpaw.mixer import Mixer
+
 
 PARAMS = dict(
     xc='PBE',
     mode={'name': 'pw', 'ecut': 800},
     kpts={'density': 5.0},
+    mixer=Mixer(beta=0.05, nmaxold=5, weight=50.0),
+    occupations={'name': 'fermi-dirac', 'width': 0.1},
     setups={'Cr': '14'})
 
 
@@ -42,7 +46,11 @@ REFERENCES0 = {
     'OPt24-2': (-153.25143, -1.61599, 40, 999.75),
     'CrSi2As4-2M': (-38.89434, -0.17154, 24, 100.10),
     'VI2-2M': (-9.29013, -0.77486, 24, 31.65),
-    'Ti2Br6-3': (-32.64699, -0.00286, 24, 155.44)}
+    'Ti2Br6-3': (-32.64699, -0.00286, 24, 155.44),
+    'Au309': (-999, -999, 56, 999999),
+    'C676': (-999, -999, 56, 999999),
+    'C1588': (-999, -999, 2*56, 999999)
+}
 
 RESCALE_FACTOR = 1.0
 
@@ -234,8 +242,8 @@ def read(folder: Path,
     return data
 
 
-def summary(folders: list[Path], mode: int) -> None:
-    from gpaw.new.logger import GREEN, RESET
+def summary(folders: list[Path], mode: int, reference_column) -> None:
+    from gpaw.new.logger import GREEN, RED, RESET
     alldata = [read(folder, mode) for folder in folders]
     for i, folder in enumerate(folders):
         print(i + 1, folder)
@@ -246,7 +254,10 @@ def summary(folders: list[Path], mode: int) -> None:
         print(f'{r + 1:2} {name:12} ', end='')
         times = [data[name][0] for data in alldata]
         iters = [data[name][1] for data in alldata]
-        t0 = min(times)
+        if reference_column == 0:
+            t0 = min(times)
+        else:
+            t0 = times[reference_column - 1]
         if t0 == np.inf:
             print()
             continue
@@ -258,7 +269,12 @@ def summary(folders: list[Path], mode: int) -> None:
             else:
                 percent = f'{(t / t0 - 1) * 100:+6.1f}%'
                 if t == t0:
+                    if reference_column == 0:
+                        percent = GREEN + percent + RESET
+                elif t < t0:
                     percent = GREEN + percent + RESET
+                else:
+                    percent = RED + percent + RESET
                 line = f' | {t:6.1f}({i:3}) {percent}'
             print(line, end='')
             if max(times) < np.inf:
@@ -269,6 +285,10 @@ def summary(folders: list[Path], mode: int) -> None:
     for s in scores:
         print(f'{(s / N - 1) * 100:+21.1f}%', end='')
     print('\n           ', end='')
+
+    # The reference data is only for both
+    if mode != 3:
+        return
     for data in alldata:
         s, _ = score({name: t for name, (t, i) in data.items()})
         print(f'{s:22.2f}', end='')
@@ -301,6 +321,9 @@ def main(arguments: list[str] | None = None, world=None):
         '-m', '--mode', type=int, default=3,
         help='1: first step, 2: second step, 3: both (default).')
     parser.add_argument(
+        '-r', '--reference-column', type=int, default=0,
+        help='Give presentages wrt to either fastest (0) or a given column.')
+    parser.add_argument(
         'folder', nargs='*',
         help='Folder with <name>.json files.')
     parser.add_argument(
@@ -309,7 +332,8 @@ def main(arguments: list[str] | None = None, world=None):
     args = parser.parse_args(arguments)
     if args.folder:
         folders = [Path(folder) for folder in args.folder]
-        summary(folders=folders, mode=args.mode)
+        summary(folders=folders, mode=args.mode,
+                reference_column=args.reference_column)
         if args.average:
             average(folders)
         return
