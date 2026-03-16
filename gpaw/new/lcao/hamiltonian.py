@@ -156,7 +156,7 @@ class LCAOHamiltonian(Hamiltonian):
         f = wfs.myocc_n > 1e-10
         x_nn = np.dot(wfs.C_nM.data[f],
                       np.dot(wfs.T_MM.data, wfs.C_nM.data[f].T.conj())).real
-        e_kin += np.einsum('i,ii->', f[f], x_nn)
+        e_kin += np.einsum('i,ii->', 2*f[f], x_nn)
 
         if not skip_sum:  # what does it do?
             raise NotImplementedError

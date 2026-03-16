@@ -50,6 +50,8 @@ class ObjectiveFunctionETDM(ABC):
         # with `ndim`, `dtype`, `f_n`, `representation`. 
         # These hold the independent parameters that will be optimized.
 
+        self.f_n = f_n
+
         self._a_vec_u = []
 
         for kpt in range(f_n.shape[1]):
@@ -156,6 +158,10 @@ class ObjectiveFunctionETDM(ABC):
 
         # Compute energy and Hamiltonian matrix elements
         energy, h_unn = self._calc_obf_value_and_matrix_elements()
+
+        # TEST TEST TEST
+        h_unn = self.f_n * h_unn
+        # TEST TEST TEST
 
         # Compute gradient for each SkewHermitian matrix
         # h_unn - h_unn.T.conj() ensures a skew-Hermitian
