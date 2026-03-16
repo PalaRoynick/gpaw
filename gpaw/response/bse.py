@@ -17,7 +17,6 @@ from gpaw.response.context import timer
 from gpaw.response.coulomb_kernels import CoulombKernel
 from gpaw.response.df import DielectricResponse, write_response_function
 from gpaw.response.frequencies import FrequencyDescriptor
-from gpaw.response.groundstate import CellDescriptor
 from gpaw.response.pair import KPointPairFactory, get_gs_and_context
 from gpaw.response.pw_parallelization import Blocks1D
 from gpaw.response.qpd import SingleQPWDescriptor
@@ -993,7 +992,7 @@ class BSEBackend:
         return np.swapaxes(chi_wGG, -1, -2)
 
     def compute_response(self, w_w, eta=0.1, optical=True,
-                          write_eig='eig.dat', mode_c=None):
+                         write_eig='eig.dat', mode_c=None):
         """Compute the BSE response, returning a BSEResponse object."""
         vchi_w = self.get_vchi(w_w=w_w, eta=eta, optical=optical,
                                write_eig=write_eig, mode_c=mode_c)
