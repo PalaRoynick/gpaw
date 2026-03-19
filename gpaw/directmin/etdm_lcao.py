@@ -505,7 +505,8 @@ class LCAOETDM:
                 self.ind_all_up[u] = self.ind_ov_up[u]
             if self.representation == 'sparse':
                 self.ind_all_up[u] = self.ind_sparse_up[u]
-            elif self.representation == 'full' and self.dtype == complex:
+            # elif self.representation == 'full' and self.dtype == complex:
+            elif self.representation == 'full':
                 # Take indices of all upper triangular and diagonal
                 # elements of A_BigMatrix
                 self.ind_all_up[u] = np.triu_indices(self.n_dim[u])
@@ -622,6 +623,10 @@ class LCAOETDM:
             else:
                 g_vec_u = self.g_vec_u_original if self.gmf \
                     and not self.subspace_optimization else self.g_vec_u
+            
+            #print("gradient OLD", g_vec_u[0])
+            print("norm of g OLD", np.linalg.norm(g_vec_u[0]))
+            print("max of g OLD", np.max(g_vec_u[0]))           
 
             make_pd = False
             if self.gmf and not self.subspace_optimization:
