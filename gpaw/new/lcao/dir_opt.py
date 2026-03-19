@@ -47,8 +47,9 @@ class DirOptLCAO(LCAOEigensolver):
         for u in range(len(self.objfunc.a_vec_u)):
             a.append(self.objfunc.a_vec_u[u].data)  # così accedo al vettore creato sopra
         a_u_init = np.array(a)
-        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=True)
-           
+        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
+        
+        self.precond = False
         # STEPS THAT IN OLD WERE IN ETDM_HELPER_LCAO
 
         # initialize_orbitals
@@ -94,13 +95,21 @@ class DirOptLCAO(LCAOEigensolver):
                                     pot_calc, ibzwfs, hamiltonian)
         # relative update, MISSING: counter=20 reset
 
+        # preconditioning
+        if not self.precond:
+            g_start = self.etdm.gradient  # the starting gradient is full of zero in old?
+            precond = self.get_preconditioner(ibzwfs)
+            g = self.apply_precond(g_start, precond)
+            self.precond = True
+            self.etdm.one_iteration(g)  # only the first step
+        
         # one step of etdm
         self.etdm.one_iteration()
 
         self.error = 0.0
         # update wavefunctions??
         for wfs in ibzwfs:
-            # wfs._P_ani = None 
+            # wfs._P_ani = None
             error = self.get_residual_error(wfs,
                                             potential,
                                             hamiltonian,
@@ -108,9 +117,8 @@ class DirOptLCAO(LCAOEigensolver):
             self.error += error
             # wfs.kd.comm.sum_scalar(self.error)?
 
-        print(self.objfunc.tot_energy)
+#        print(self.objfunc.tot_energy)
         return 0.0, self.error, self.objfunc.tot_energy
-
 
     def update_to_canonical_orbitals(self, wfs, hamiltonian, potential):
         """
@@ -176,9 +184,9 @@ class DirOptLCAO(LCAOEigensolver):
         """
         Update reference orbitals and reset search direction algorithm
         """
-            # for now we don't use it, relative update?
-            # MISSING: check if canonical orbitals are needed, or mom restart,
-            # get_canonical_representation
+        # for now we don't use it, relative update?
+        # MISSING: check if canonical orbitals are needed, or mom restart,
+        # get_canonical_representation
 
         counter = self.update_ref_orb_counter
 
@@ -214,3 +222,90 @@ class DirOptLCAO(LCAOEigensolver):
 
                 wfs.myocc_n = wfs.myocc_n[ind]
                 # update eps?
+
+    def get_preconditioner(self, ibzwfs):
+        """
+        Get the preconditioner for the search algorithm:
+        approximate analytical hessian and then apply correction
+        """
+        # for now beta0 = 1, no l-bfgs-p, to be added later
+        beta0 = 1.0
+        gamma = 0.0
+
+        # add a counter=1000 to recalculate? but the maxiter is 333
+
+        # need to understand what data structure they are/i need
+
+        # APPEND INSIDE A LIST AND CONVERT TO NUMPY ARRAY
+        prec = []
+
+        # when i do this does it span both kpt and spin?
+        for wfs in ibzwfs:  # the for is mainly just to count?
+            w = wfs.weight / (3.0 - wfs.nspins)
+
+            # the gradient is a numpy array of a list
+            # so i have to make a list also here?
+            # yes, span kpt and spin
+
+            #k = len(ibzwfs.ibz.kpt_kc) + wfs.nspins     # FIX (TOOLS)
+            # could one determine this value at the start of everything and
+            # use it to declare the size of all these structures?
+
+            hess = self.get_approx_analytical_hessian(
+                wfs, ibzwfs.dtype)
+            precond = np.zeros_like(hess)
+            correction = w * gamma * beta0 ** (-1)
+            # if self.searchdir_algo.name != 'l-bfgs-p':
+            correction = np.zeros_like(hess)
+            zeros = abs(hess) < 1.0e-4
+            correction[zeros] = 1.0
+
+            precond += 1. / ((1 - gamma) * hess.real + correction)
+            if ibzwfs.dtype == complex:
+                precond += 1.j / ((1 - gamma) * hess.imag + correction)
+
+            prec.append(precond)
+
+            return np.array(prec)
+
+    def apply_precond(self, prec, x, const=1.0):
+        """
+        Apply preconditioner to the gradient
+        """
+        # what is the constant?
+        # the preconditioner and gradient are both lists of arrays?
+        # arrays of lists?
+        y = []
+        for k in range(x.shape[0]):  # no longer a dictionary, fix
+            if prec[k].dtype == complex:
+                y[k] = const * (prec[k].real * x[k].real
+                                + 1.0j * prec[k].imag * x[k].imag)
+            else:
+                y.append(const * prec[k] * x[k])
+        return np.array(y)
+    
+    def get_approx_analytical_hessian(self, wfs, dtype):
+        """
+        Calculate the following diagonal approximation to the Hessian:
+        h_{lm, lm} = -2.0 * (eps_n[l] - eps_n[m]) * (f[l] - f[m])
+        """
+
+        # dtype taken from ibzwfs, extend to the whole file
+        # should be useful
+
+        f_n = wfs.myocc_n
+        eps_n = wfs.myeig_n
+        il1 = list(np.tril_indices(eps_n.shape[0], -1))
+
+        hess = np.zeros(len(il1[0]), dtype=dtype)
+        x = 0
+        for n, m in zip(*il1):
+            df = f_n[n] - f_n[m]
+            hess[x] = -2.0 * (eps_n[n] - eps_n[m]) * df
+            if abs(hess[x]) < 1.0e-10:
+                hess[x] = 0.0
+            if dtype == complex:
+                hess[x] += 1.0j * hess[x]
+            x += 1
+
+        return hess

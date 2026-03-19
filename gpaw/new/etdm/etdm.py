@@ -107,14 +107,18 @@ class ETDM:
             # here there should be a reset every tot iterations?
             self.a_u += p_u
 
-    def one_iteration(self):
+    def one_iteration(self, gradient=None):
 
         """
         Just one iteration of optimization using the search algorithm
         """
+        # it could be given (ie after preconditioning)
+        # or calculated
+        if gradient is None:
+            gradient = self.gradient
 
         # Update the search direction using LBFGS
-        self.searchdir_algo.update(self.a_u, self.gradient)
+        self.searchdir_algo.update(self.a_u, gradient)
 
         # Move parameters along the search direction
         self.move()

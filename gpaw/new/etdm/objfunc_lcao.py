@@ -104,6 +104,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         dimens1 = u_mat.shape[1]
         dimens2 = u_mat.shape[0]
 
+        print(wfs.C_nM.data[0])
+
         wfs.C_nM.data[:dimens2] = u_mat @ c_ref[:dimens1]
 
         # atomic_correction.calculate_projections
