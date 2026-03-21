@@ -55,7 +55,7 @@ module_cmds_all = """\
 module purge
 unset PYTHONPATH
 module load gpaw-data/1.0.1-{corechain}
-module load ELPA/2025.06.001-{fullchain}
+module load ELPA/2025.06.002-{fullchain}
 module load Wannier90/3.1.0-{fullchain}
 module load Tkinter/3.13.5-{corechain}
 module load libxc/7.0.0-{compchain}
