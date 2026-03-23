@@ -812,6 +812,11 @@ class MatrixDistribution:
                                 scale: float) -> None:
         raise NotImplementedError
 
+    def transpose(self,
+                  a: Matrix,
+                  scale: float = 1,
+                  cc: bool = False):
+        raise NotImplementedError
 
 class NoDistribution(MatrixDistribution):
     comm = serial_comm
