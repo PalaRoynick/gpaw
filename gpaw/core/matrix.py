@@ -815,8 +815,9 @@ class MatrixDistribution:
     def transpose(self,
                   a: Matrix,
                   scale: float = 1,
-                  cc: bool = False):
+                  cc: bool = False) -> None:
         raise NotImplementedError
+
 
 class NoDistribution(MatrixDistribution):
     comm = serial_comm
@@ -973,7 +974,7 @@ class BLACSDistribution(MatrixDistribution):
     def transpose(self,
                   a,
                   scale: float = 1.0,
-                  cc: bool = False):
+                  cc: bool = False) -> None:
         tmp = a.copy()
         cgpaw.pblas_tran(*self.full_shape, scale, tmp.data, 0, a.data,
                          self.desc, self.desc, cc)
@@ -1099,8 +1100,8 @@ class CuPyDistribution(MatrixDistribution):
 
     def transpose(self,
                   a: Matrix,
-                  scale: float,
-                  cc: bool):
+                  scale: float = 1,
+                  cc: bool = False) -> None:
         # Quick'n'dirty hack:
         b = a.to_cpu()
         b.transpose(scale, cc)
