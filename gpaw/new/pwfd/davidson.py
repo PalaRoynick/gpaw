@@ -260,7 +260,7 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
     comm = psit1_nX.comm
     b = psit1_nX.data.shape[0]
     blocksize = buffer_mX.data.shape[0]
-    max_blocksize = comm.max_scalar(blocksize)
+    # max_blocksize = comm.max_scalar(blocksize)
     blocksize_world = comm.sum_scalar(blocksize)
     blocksizes_r = np.empty(comm.size, dtype=int)
     comm.all_gather(np.array(blocksize), blocksizes_r)

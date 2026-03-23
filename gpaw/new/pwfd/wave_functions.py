@@ -247,7 +247,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
                           Ht,
                           dH,
                           psit2_nX,
-                          data_buffer=None):
+                          data_buffer=None,
                           calculate_energy=True):
         """
         psit2_nX will be used as a buffer

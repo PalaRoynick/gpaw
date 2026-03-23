@@ -223,8 +223,9 @@ class Matrix(XP):
             out = out.matrix
         # if dist.comm.size > 1 and data_buffer is None:
         #     assert False  # XXX: Remove this before merging!!!
-        if out.data is other.data or (data_buffer is not None
-                and dist.comm.size > 1 and opa == 'N' and opb == 'N'):
+        if out.data is other.data or (
+                data_buffer is not None and dist.comm.size > 1 and
+                opa == 'N' and opb == 'N'):
             # Repeatably call multiply using data_buffer to
             # save memory
             assert opa == 'N', 'Not implemented'
@@ -644,7 +645,7 @@ class Matrix(XP):
             return
         self.dist.add_hermitian_conjugate(self, scale)
 
-    def transpose(self, scale: float = 1.0, cc = False):
+    def transpose(self, scale: float = 1.0, cc=False):
         if self.dist.comm.size == 1:
             if scale != 1.0:
                 self.data *= scale
