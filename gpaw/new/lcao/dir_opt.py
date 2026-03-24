@@ -44,8 +44,10 @@ class DirOptLCAO(LCAOEigensolver):
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation)
         # a_vec_u is a list, needs to be unpacked into an array?
         a = []
+        self.ind_up = []
         for u in range(len(self.objfunc.a_vec_u)):
             a.append(self.objfunc.a_vec_u[u].data)  # così accedo al vettore creato sopra
+            self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)  # needed in hess calculation
         a_u_init = np.array(a)
         self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
         
@@ -97,11 +99,14 @@ class DirOptLCAO(LCAOEigensolver):
 
         # preconditioning
         if not self.precond:
+            print("---- FIRST GRADIENT ----")
             g_start = self.etdm.gradient  # the starting gradient is full of zero in old?
-            precond = self.get_preconditioner(ibzwfs)
+            print("-----")
+            precond = self.get_preconditioner(ibzwfs, self.ind_up)
             g = self.apply_precond(g_start, precond)
             self.precond = True
             self.etdm.one_iteration(g)  # only the first step
+            print("end of preconditioned step")
         
         # one step of etdm
         self.etdm.one_iteration()
@@ -155,20 +160,12 @@ class DirOptLCAO(LCAOEigensolver):
         h_mm_matrix = matrix_calculator.calculate_matrix(wfs)
         h_mm = h_mm_matrix.data
 
-        # get hamiltonian in molecular
-        # orbital representation
         c_nm = wfs.C_nM.data
         f_n = wfs.myocc_n > 1.0e-10
         occ = sum(f_n)
 
-        if representation in ['sparse', 'u-invar']:
-            hc_mn = h_mm.conj() @ c_nm[:occ].T
-            h_ij = hc_mn.T.conj() @ c_nm[:occ].T
-            h_ia = hc_mn.T.conj() @ c_nm[occ:].T
-        else:
-            hc_mn = h_mm.conj() @ c_nm.T
-            h_ij = c_nm.conj() @ hc_mn
-            h_ia = h_ij[:occ][:, occ:]
+        hc_mn, h_ij, h_ia = self.objfunc.\
+            get_ham_in_mol_orb_repr(h_mm, wfs, representation, True)
 
         # calculate residual
         S_MM = wfs.S_MM.data
@@ -223,7 +220,7 @@ class DirOptLCAO(LCAOEigensolver):
                 wfs.myocc_n = wfs.myocc_n[ind]
                 # update eps?
 
-    def get_preconditioner(self, ibzwfs):
+    def get_preconditioner(self, ibzwfs, ind_up):
         """
         Get the preconditioner for the search algorithm:
         approximate analytical hessian and then apply correction
@@ -252,7 +249,7 @@ class DirOptLCAO(LCAOEigensolver):
             # use it to declare the size of all these structures?
 
             hess = self.get_approx_analytical_hessian(
-                wfs, ibzwfs.dtype)
+                wfs, ibzwfs.dtype, ind_up)
             precond = np.zeros_like(hess)
             correction = w * gamma * beta0 ** (-1)
             # if self.searchdir_algo.name != 'l-bfgs-p':
@@ -284,7 +281,7 @@ class DirOptLCAO(LCAOEigensolver):
                 y.append(const * prec[k] * x[k])
         return np.array(y)
     
-    def get_approx_analytical_hessian(self, wfs, dtype):
+    def get_approx_analytical_hessian(self, wfs, dtype, ind_up):
         """
         Calculate the following diagonal approximation to the Hessian:
         h_{lm, lm} = -2.0 * (eps_n[l] - eps_n[m]) * (f[l] - f[m])
@@ -293,9 +290,13 @@ class DirOptLCAO(LCAOEigensolver):
         # dtype taken from ibzwfs, extend to the whole file
         # should be useful
 
-        f_n = wfs.myocc_n
+        f_n = 2 * wfs.myocc_n
         eps_n = wfs.myeig_n
-        il1 = list(np.tril_indices(eps_n.shape[0], -1))
+
+        if ind_up:
+            il1 = list(ind_up[0])
+        else:
+            il1 = list(np.tril_indices(eps_n.shape[0], -1))  # from dirmin tools
 
         hess = np.zeros(len(il1[0]), dtype=dtype)
         x = 0

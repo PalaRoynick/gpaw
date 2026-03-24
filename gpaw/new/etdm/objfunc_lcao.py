@@ -12,9 +12,9 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self._representation = representation
         ndim = get_ndim(ibzwfs)
         dtype = self.ibzwfs.dtype
-        f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
+        self.f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
 
-        super().__init__(ndim, f_n, dtype, self._representation)
+        super().__init__(ndim, self.f_n, dtype, self._representation)
 
         # initialize stored values
         self._energy = None
@@ -44,12 +44,17 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         for wfs in self.ibzwfs:
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
-            h_unn.append(h_nn.data)  # i need it as a list
+
+            hc_mn, h_ij, h_ia =\
+                self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
+                                             self._representation, False)
+
+            h_unn.append(h_ij.data)  # i need it as a list
 
         energy = self.update_density_and_potential()
         self.tot_energy = energy
         return energy, h_unn
-    
+
     @property
     def tot_energy(self):
         """
@@ -60,7 +65,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         float
         """
         return self._tot_energy
-    
+
     @tot_energy.setter
     def tot_energy(self, en):
 
@@ -104,10 +109,27 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         dimens1 = u_mat.shape[1]
         dimens2 = u_mat.shape[0]
 
-        print(wfs.C_nM.data[0])
+        #print(wfs.C_nM.data[0])
 
         wfs.C_nM.data[:dimens2] = u_mat @ c_ref[:dimens1]
 
-        # atomic_correction.calculate_projections
-        # dense or sparse atomic correction?
-        wfs._P_ani = None  # is this enough to update the projections?
+        # update projections
+        wfs._P_ani = None
+
+    def get_ham_in_mol_orb_repr(self, h_mm, wfs, representation,
+                                use_egdecomp):
+
+        c_nm = wfs.C_nM.data
+        f_n = wfs.myocc_n > 1.0e-10
+        occ = sum(f_n)
+
+        if representation in ['sparse', 'u-invar']:
+            hc_mn = h_mm.conj() @ c_nm[:occ].T
+            h_ij = hc_mn.T.conj() @ c_nm[:occ].T
+            h_ia = hc_mn.T.conj() @ c_nm[occ:].T
+        else:
+            hc_mn = h_mm.conj() @ c_nm.T
+            h_ij = c_nm.conj() @ hc_mn
+            h_ia = h_ij[:occ][:, occ:]
+
+        return hc_mn, h_ij, h_ia
