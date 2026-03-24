@@ -30,11 +30,10 @@ from ase.phonons import Phonons
 from ase.utils.filecache import MultiFileJSONCache
 from ase.utils.timing import Timer, timer
 
+from gpaw.elph.supercell import Supercell
 from gpaw.mpi import normalize_communicator
 from gpaw.old.calculator import GPAW
 from gpaw.typing import ArrayND
-
-from .supercell import Supercell
 
 OPTIMIZE = "optimal"
 
@@ -44,7 +43,7 @@ class ElectronPhononMatrix:
 
     def __init__(self, atoms: Atoms, supercell_cache: str, phonon,
                  load_sc_as_needed: bool = True, indices=None,
-                 world=None) -> None:
+                 comm=None) -> None:
         """Initialize with base class args and kwargs.
 
         Parameters
@@ -64,9 +63,10 @@ class ElectronPhononMatrix:
         indices: list
             List of atoms (indices) to use. Default: Use all.
         """
-        world = normalize_communicator(world)
+        # XXX Since no parallelization has been implemented for this class,
+        #     should the communicator input be removed?
+        self.comm = normalize_communicator(comm)
 
-        self.world = world
         if not load_sc_as_needed:
             assert indices is None, "Use 'load_sc_as_needed' with 'indices'"
 
@@ -323,13 +323,13 @@ class ElectronPhononMatrix:
                         g_lnn[0:3] = 0.0
                     g_sqklnn[s, q, k] += g_lnn
 
-        if self.world.rank == 0 and savetofile:
+        if self.comm.rank == 0 and savetofile:
             np.save("gsqklnn.npy", g_sqklnn)
 
         return g_sqklnn
 
     def __del__(self):
-        if self.world.rank == 0:
+        if self.comm.rank == 0:
             try:
                 self.timer.write()
             except ValueError:
