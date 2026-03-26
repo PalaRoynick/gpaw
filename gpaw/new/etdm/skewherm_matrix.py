@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import expm
 from gpaw.directmin.tools import d_matrix, expm_ed
 
 
@@ -26,7 +27,8 @@ class SkewHermitian:
     """
 
     def __init__(self, ndim: int, dtype: type,
-                 data: np.ndarray = None, representation='full'):
+                 data: np.ndarray = None, representation='full',
+                 method='egdecomp'):
         """
         Initialize a SkewHermitian object.
 
@@ -40,10 +42,20 @@ class SkewHermitian:
             1D vector of independent parameters (upper-triangular entries).
         representation : str
             Only 'full' is currently implemented.
+        method : str
+            Algorithm for computing the matrix exponential:
+                'egdecomp': Eigendecomposition (default). Also computes
+                    eigenvectors/eigenvalues needed for gradient.
+                'pade-approx': Pade approximant via scipy.linalg.expm.
+                    Eigenvectors/eigenvalues are computed lazily only
+                    when needed for gradient calculation.
         """
+        assert method in ('egdecomp', 'pade-approx'), (
+            f"method must be 'egdecomp' or 'pade-approx', got '{method}'")
 
         self.ndim = ndim
         self._dtype = dtype
+        self._method = method
 
         # Cached values: recomputed only when data changes
         self._data = None
@@ -157,8 +169,14 @@ class SkewHermitian:
             return None
         elif self._rotation_mat is None:  # compute only once
             a_mat = vec2skewmat(self.data, self.ndim, self.ind_up, self.dtype)
-            self._rotation_mat, self._evecs, self._evals = expm_ed(
-                a_mat, evalevec=True)
+            if self._method == 'pade-approx':
+                u_nn = expm(a_mat)
+                if self._dtype == float:
+                    u_nn = u_nn.real
+                self._rotation_mat = np.ascontiguousarray(u_nn)
+            else:
+                self._rotation_mat, self._evecs, self._evals = expm_ed(
+                    a_mat, evalevec=True)
         return self._rotation_mat
 
     # ------------------------

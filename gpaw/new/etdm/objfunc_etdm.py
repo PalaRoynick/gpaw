@@ -29,7 +29,8 @@ class ObjectiveFunctionETDM(ABC):
         Number of k-points or independent systems.
     """
 
-    def __init__(self, ndim: int, dtype: type, nkps: int):
+    def __init__(self, ndim: int, dtype: type, nkps: int,
+                 method='egdecomp'):
         """
         Initialize the objective function with default skew-Hermitian matrices.
 
@@ -41,12 +42,14 @@ class ObjectiveFunctionETDM(ABC):
             Data type, either float or complex.
         nkps : int
             Number of k-points.
+        method : str
+            Matrix exponential algorithm ('egdecomp' or 'pade-approx').
         """
         # Create a list of `nkps` SkewHermitian objects, each initialized
         # with `ndim` and `dtype`. These hold the independent parameters
         # that will be optimized.
         self._a_vec_u = [
-            SkewHermitian(ndim, dtype, representation='full')
+            SkewHermitian(ndim, dtype, representation='full', method=method)
             for _ in range(nkps)
         ]
 
