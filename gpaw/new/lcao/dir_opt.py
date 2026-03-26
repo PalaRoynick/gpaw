@@ -2,6 +2,8 @@ import numpy as np
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.new.density import Density
+from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.etdm.searchdir import LBFGS
