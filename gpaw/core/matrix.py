@@ -1180,9 +1180,11 @@ def mmm_nc_sym(a, b, out, alpha, mmm):
                 †
         c <- αab + c
 
-    This function utilizes the fact that c is symmetric, s.t.:
+    This function utilizes the fact that c is symmetric, s.t.:::
+
                        †     †
-        c <- 0.5 * (αab + αba) + c
+        c <- 0.5 * (αab + αba ) + c
+
     Only lower half of c is updated.
     """
     comm = a.dist.comm
