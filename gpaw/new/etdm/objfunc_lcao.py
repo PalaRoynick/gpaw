@@ -38,7 +38,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         """
         # should it be here or at the beginning of
         # iterate in dir_opt?
+
         self.rotate_wfs()
+
+        energy = self.update_density_and_potential()
 
         h_unn = []
 
@@ -51,7 +54,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
             h_unn.append(h_ij.data)  # i need it as a list
 
-        energy = self.update_density_and_potential()
         self.tot_energy = energy
         return energy, h_unn
 
@@ -82,8 +84,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.pot_calc = pot_calc
         self.ibzwfs = ibzwfs
         self.hamiltonian = hamiltonian
-        self.matrix_calculator = \
-            hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
     def update_density_and_potential(self):
         self.density.update(self.ibzwfs, ked=self.pot_calc.xc.type == 'MGGA')
@@ -93,6 +93,9 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         energies.set(kinetic=self.ibzwfs.calculate_kinetic_energy(
             self.hamiltonian,
             self.density), band=0.0)
+        print("NEW CALCULATOR")
+        self.matrix_calculator = \
+            self.hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
         return energies  # dictionary
 
@@ -109,8 +112,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         dimens1 = u_mat.shape[1]
         dimens2 = u_mat.shape[0]
 
-        #print(wfs.C_nM.data[0])
-
         wfs.C_nM.data[:dimens2] = u_mat @ c_ref[:dimens1]
 
         # update projections
@@ -122,6 +123,9 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         c_nm = wfs.C_nM.data
         f_n = wfs.myocc_n > 1.0e-10
         occ = sum(f_n)
+
+        #c_nm = np.load("/Users/giulia/Desktop/c_mn_OLD.npy")
+        #h_mm = np.load("/Users/giulia/Desktop/h_mm_OLD.npy")
 
         if representation in ['sparse', 'u-invar']:
             hc_mn = h_mm.conj() @ c_nm[:occ].T
