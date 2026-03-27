@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
                                    AtomDistribution)
-from gpaw.core.matrix import Matrix, cublas_mmm as cpmmm
+from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP, as_np
 from gpaw.mpi import MPIComm, receive, send, serial_comm
 from gpaw.new.potential import Potential
@@ -11,7 +11,6 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
-from gpaw.utilities.blas import mmm as npmmm
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -201,8 +200,13 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         rho_MM = Cf_nM.multiply(C_nM, opa='C')
         if transposed:
             rho_MM.complex_conjugate()
-        # rho_MM....
-        # rho_MM.redist(
+        rho2_MM = rho_MM.new(
+            dist=(self.domain_band_comm,
+                  self.band_comm.size, 1)
+        rho_MM.redist(rho2_MM)
+        rho_MM = self.S_MM.new(
+            data=rho2_MM.data if self.domain_comm.rank == 0 else None)
+        self.domain_comm.broadcast(rho_MM.data, 0)
         return rho_MM.data
 
     def to_uniform_grid_wave_functions(self,
