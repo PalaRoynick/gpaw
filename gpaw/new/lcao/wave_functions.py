@@ -183,17 +183,25 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         -------
         The density matrix in the LCAO basis
         """
-        C_nM = self.C_nM.new(dist=(self.domain_band_comm, 2, 2, ..., ...))
-        f_n = self.weight * self.spin_degeneracy * self.myocc_n
+        C_nM = self.C_nM.data
+        D = self.domain_comm.size
+        N = len(C_nM)
+        dn = (N + D - 1) // D
+        n1 = min(N, self.domain_comm.rank * dn)
+        n2 = min(N, (self.domain_comm.rank + 1) * dn)
+        rho_MM = self.T_MM.new()
+        M1, M2 = rho_MM.dist.my_row_range()
+        f_n = self.weight * self.spin_degeneracy * self.myocc_n[n1:n2]
         if eigs:
-            f_n *= self.myeig_n
+            f_n *= self.myeig_n[n1:n2]
         f_n = self.xp.asarray(f_n)
-        Cf_nM = C_nM.copy()
-        Cf_nM.data *= f_n[:, np.newaxis]
-        rho_MM = Cf_nM.multiply(C_nM, opa='C')
+        Cf_nM = C_nM[n1:n2, M1:M2] * f_n[:, np.newaxis]
+        mmm = npmmm if self.xp is np else cpmmm
+        mmm(1.0, Cf_nM, 'C', C_nM[n1:n2], 'N', 0.0, rho_MM.data)
+        self.domain_comm.sum(rho_MM.data)
         if transposed:
             rho_MM.complex_conjugate()
-        return rho_MM.redist(self.T_MM.dist)
+        return rho_MM.data
 
     def to_uniform_grid_wave_functions(self,
                                        grid,
