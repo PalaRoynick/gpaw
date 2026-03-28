@@ -32,6 +32,8 @@ def test_h2o(gpaw_new):
                     mixer={'backend': 'no-mixing'},
                     nbands='nao',
                     symmetry='off',
+                    maxiter=10,
+                    txt='-'
                 )
         else:
                 atm.calc = GPAW(

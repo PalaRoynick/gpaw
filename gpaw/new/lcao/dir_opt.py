@@ -47,9 +47,14 @@ class DirOptLCAO(LCAOEigensolver):
         # a_vec_u is a list, needs to be unpacked into an array?
         a = []
         self.ind_up = []
+        self.ref_orbitals = []
         for u in range(len(self.objfunc.a_vec_u)):
             a.append(self.objfunc.a_vec_u[u].data)  # così accedo al vettore creato sopra
             self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)  # needed in hess calculation
+
+        for wfs in ibzwfs:
+            self.ref_orbitals.append(wfs.C_nM.copy())
+
         a_u_init = np.array(a)
         self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
         
@@ -96,22 +101,25 @@ class DirOptLCAO(LCAOEigensolver):
         # this should update the quantities inside the objective 
         # function, to be used by etdm
         self.objfunc.update_objfunc(density, potential,
-                                    pot_calc, ibzwfs, hamiltonian)
+                                    pot_calc, ibzwfs,
+                                    hamiltonian,
+                                    self.ref_orbitals)
         # relative update, MISSING: counter=20 reset
 
         # preconditioning
         if not self.precond:
-            print("---- FIRST GRADIENT ----")
-            g_start = self.etdm.gradient  # the starting gradient is full of zero in old?
-            print("-----")
-            precond = self.get_preconditioner(ibzwfs, self.ind_up)
-            g = self.apply_precond(g_start, precond)
+            # print("---- FIRST GRADIENT ----")
+            # g_start = self.etdm.gradient  # the starting gradient is full of zero in old?
+            # print("-----")
+            self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
+            # g = self.apply_precond(g_start, precond)
             self.precond = True
-            self.etdm.one_iteration(g)  # only the first step
-            print("end of preconditioned step")
-        
+            # self.etdm.one_iteration(g_start, self.prec)  # only the first step
+            # self.etdm.one_iteration(precond=self.prec)
+            # print("end of preconditioned step")
+        # else:
         # one step of etdm
-        self.etdm.one_iteration()
+        self.etdm.one_iteration(precond=self.prec)
 
         self.error = 0.0
         # update wavefunctions??

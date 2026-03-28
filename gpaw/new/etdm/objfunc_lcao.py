@@ -48,11 +48,13 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         for wfs in self.ibzwfs:
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
 
+            h_nn.tril2full()
+
             hc_mn, h_ij, h_ia =\
                 self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
                                              self._representation, False)
 
-            h_unn.append(h_ij.data)  # i need it as a list
+            h_unn.append(h_ij)  # i need it as a list
 
         self.tot_energy = energy
         return energy, h_unn
@@ -74,7 +76,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self._tot_energy = en
 
     def update_objfunc(self, density, potential,
-                       pot_calc, ibzwfs, hamiltonian):
+                       pot_calc, ibzwfs, hamiltonian,
+                       ref_orbitals):
         """
         To be called from inside iterate of dir_opt to update
         the quantities needed inside the etdm step
@@ -84,6 +87,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.pot_calc = pot_calc
         self.ibzwfs = ibzwfs
         self.hamiltonian = hamiltonian
+        self.ref_orbitals = ref_orbitals
 
     def update_density_and_potential(self):
         self.density.update(self.ibzwfs, ked=self.pot_calc.xc.type == 'MGGA')
@@ -93,7 +97,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         energies.set(kinetic=self.ibzwfs.calculate_kinetic_energy(
             self.hamiltonian,
             self.density), band=0.0)
-        print("NEW CALCULATOR")
         self.matrix_calculator = \
             self.hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
@@ -101,18 +104,18 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
     def rotate_wfs(self):
 
-        for a, wfs in zip(self._a_vec_u, self.ibzwfs):
+        for u, (a, wfs) in enumerate(zip(self._a_vec_u, self.ibzwfs)):
 
             u_nn = a.rotation_mat
 
-            self.apply_transformation(u_nn.T, wfs, wfs.C_nM.data)
+            self.apply_transformation(u_nn.T, wfs, self.ref_orbitals[u])
 
     def apply_transformation(self, u_mat, wfs, c_ref):
 
         dimens1 = u_mat.shape[1]
         dimens2 = u_mat.shape[0]
 
-        wfs.C_nM.data[:dimens2] = u_mat @ c_ref[:dimens1]
+        wfs.C_nM.data[:dimens2] = u_mat @ c_ref.data[:dimens1]
 
         # update projections
         wfs._P_ani = None

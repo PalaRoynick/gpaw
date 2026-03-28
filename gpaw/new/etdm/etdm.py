@@ -107,7 +107,7 @@ class ETDM:
             # here there should be a reset every tot iterations?
             self.a_u += p_u
 
-    def one_iteration(self, gradient=None):
+    def one_iteration(self, gradient=None, precond=None):
 
         """
         Just one iteration of optimization using the search algorithm
@@ -117,11 +117,29 @@ class ETDM:
         if gradient is None:
             gradient = self.gradient
 
+        gradient_p = self.apply_precond(precond, gradient)
+
         # Update the search direction using LBFGS
-        self.searchdir_algo.update(self.a_u, gradient)
+        self.searchdir_algo.update(self.a_u, gradient_p)
 
         # Move parameters along the search direction
         self.move()
+
+    def apply_precond(self, prec, x, const=1.0):
+        """
+        Apply preconditioner to the gradient
+        """
+        # what is the constant?
+        # the preconditioner and gradient are both lists of arrays?
+        # arrays of lists?
+        y = []
+        for k in range(x.shape[0]):  # no longer a dictionary, fix
+            if prec[k].dtype == complex:
+                y[k] = const * (prec[k].real * x[k].real
+                                + 1.0j * prec[k].imag * x[k].imag)
+            else:
+                y.append(const * prec[k] * x[k])
+        return np.array(y)
 
     @property
     def a_u(self):

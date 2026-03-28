@@ -509,7 +509,7 @@ class LCAOETDM:
             elif self.representation == 'full':
                 # Take indices of all upper triangular and diagonal
                 # elements of A_BigMatrix
-                self.ind_all_up[u] = np.triu_indices(self.n_dim[u])
+                self.ind_all_up[u] = np.triu_indices(self.n_dim[u], 1)
 
             shape_of_oo = len(self.ind_oo_up[u][0])
             shape_of_ov = len(self.ind_ov_up[u][0])
