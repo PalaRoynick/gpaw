@@ -202,10 +202,10 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             rho_MM.complex_conjugate()
         rho2_MM = rho_MM.new(
             dist=(self.domain_band_comm,
-                  self.band_comm.size, 1)
+                  self.band_comm.size, 1))
         rho_MM.redist(rho2_MM)
         rho_MM = self.S_MM.new(
-            data=rho2_MM.data if self.domain_comm.rank == 0 else None))
+            data=rho2_MM.data if self.domain_comm.rank == 0 else None)
         self.domain_comm.broadcast(rho_MM.data, 0)
         return rho_MM.data
 
