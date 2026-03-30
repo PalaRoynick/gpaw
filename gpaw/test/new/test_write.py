@@ -30,3 +30,7 @@ def test_write_new_single(mode, kpts, in_tmp_dir):
             assert wfs1.C_nM.data == pytest.approx(wfs2.C_nM.data)
         else:
             assert wfs1.psit_nX.data == pytest.approx(wfs2.psit_nX.data)
+
+
+if __name__ == '__main__':
+    test_write_new_single('lcao', False, None)

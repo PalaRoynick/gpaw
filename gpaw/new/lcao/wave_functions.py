@@ -191,20 +191,21 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             dist=(self.domain_band_comm,
                   self.band_comm.size, self.domain_comm.size),
             data=self.xp.ascontiguousarray(self.C_nM.data[:, M1:M2]))
+        rho_MM = self.T_MM.new(dist=C_nM.dist)
         f_n = self.weight * self.spin_degeneracy * self.myocc_n
         if eigs:
             f_n *= self.myeig_n
         f_n = self.xp.asarray(f_n)
         Cf_nM = C_nM.copy()
         Cf_nM.data *= f_n[:, np.newaxis]
-        rho_MM = Cf_nM.multiply(C_nM, opa='C')
+        Cf_nM.multiply(C_nM, opa='C', out=rho_MM)
         if transposed:
             rho_MM.complex_conjugate()
         rho2_MM = rho_MM.new(
             dist=(self.domain_band_comm,
                   self.band_comm.size, 1))
         rho_MM.redist(rho2_MM)
-        rho_MM = self.S_MM.new(
+        rho_MM = self.T_MM.new(
             data=rho2_MM.data if self.domain_comm.rank == 0 else None)
         self.domain_comm.broadcast(rho_MM.data, 0)
         return rho_MM.data
