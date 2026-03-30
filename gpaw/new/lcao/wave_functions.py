@@ -191,7 +191,9 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             dist=(self.domain_band_comm,
                   self.band_comm.size, self.domain_comm.size),
             data=self.xp.ascontiguousarray(self.C_nM.data[:, M1:M2]))
-        rho_MM = self.T_MM.new(dist=C_nM.dist)
+        rho_MM = self.T_MM.new(
+            dist=(self.domain_band_comm,
+                  self.band_comm.size, self.domain_comm.size))
         f_n = self.weight * self.spin_degeneracy * self.myocc_n
         if eigs:
             f_n *= self.myeig_n
