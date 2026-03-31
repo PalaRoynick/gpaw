@@ -203,14 +203,17 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         Cf_nM.multiply(C_nM, opa='C', out=rho_MM)
         if transposed:
             rho_MM.complex_conjugate()
-        rho2_MM = rho_MM.new(
-            dist=(self.domain_band_comm,
-                  self.band_comm.size, self.domain_comm.size,
-                  dM, nbasis))
-        rho_MM.redist(rho2_MM)
-        rho_MM = self.T_MM.new(
-            data=rho2_MM.data if self.domain_comm.rank == 0 else None)
-        self.domain_comm.broadcast(rho_MM.data, 0)
+        if self.domain_comm.size > 1:
+            B = self.domain_comm.size
+            dMB = (nbasis + B - 1) // B
+            rho2_MM = rho_MM.new(
+                dist=(self.domain_band_comm,
+                      self.band_comm.size, self.domain_comm.size,
+                      dMB, nbasis))
+            rho_MM.redist(rho2_MM)
+            rho_MM = self.T_MM.new(
+                data=rho2_MM.data if self.domain_comm.rank == 0 else None)
+            self.domain_comm.broadcast(rho_MM.data, 0)
         return rho_MM.data
 
     def to_uniform_grid_wave_functions(self,
