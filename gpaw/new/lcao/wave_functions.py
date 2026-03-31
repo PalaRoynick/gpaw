@@ -204,7 +204,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         if transposed:
             rho_MM.complex_conjugate()
         if self.domain_comm.size > 1:
-            B = self.domain_comm.size
+            B = self.band_comm.size
             dMB = (nbasis + B - 1) // B
             rho2_MM = rho_MM.new(
                 dist=(self.domain_band_comm,
