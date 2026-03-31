@@ -42,7 +42,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.rotate_wfs()
 
         energy = self.update_density_and_potential()
-
+        self.error = 0.0
         h_unn = []
 
         for wfs in self.ibzwfs:
@@ -53,6 +53,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             hc_mn, h_ij, h_ia =\
                 self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
                                              self._representation, False)
+            
+            self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
             h_unn.append(h_ij)  # i need it as a list
 
@@ -140,3 +142,21 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             h_ia = h_ij[:occ][:, occ:]
 
         return hc_mn, h_ij, h_ia
+    
+    def get_residual_error(self, wfs,
+                           hc_mn, h_ij):
+        """
+        Calculate residual error of KS equations
+        """
+
+        c_nm = wfs.C_nM.data
+        f_n = wfs.myocc_n * 2
+        occ = sum(f_n > 1.0e-10)
+
+        # calculate residual
+        S_MM = wfs.S_MM.data
+        hc_mn = hc_mn[:, :occ] - \
+            S_MM.conj() @ c_nm[:occ].T @ h_ij[:occ, :occ]
+        norm = sum(hc_mn.conj() * hc_mn * f_n[:occ])
+        error = sum(norm.real)
+        return error

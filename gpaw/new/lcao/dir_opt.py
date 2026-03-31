@@ -121,21 +121,18 @@ class DirOptLCAO(LCAOEigensolver):
         # one step of etdm
         self.etdm.one_iteration(precond=self.prec)
 
-        self.error = 0.0
+        #self.objfunc.error = 0.0
         # update wavefunctions??
-        for wfs in ibzwfs:
-            # wfs._P_ani = None
-            error = self.get_residual_error(wfs,
-                                            potential,
-                                            hamiltonian,
-                                            self.representation)
-            self.error += error
+        #for wfs in ibzwfs:
+        error = self.objfunc.error
             # wfs.kd.comm.sum_scalar(self.error)?
 
 #        print(self.objfunc.tot_energy)
-        return 0.0, self.error, self.objfunc.tot_energy
+        return 0.0, error, self.objfunc.tot_energy
 
-    def update_to_canonical_orbitals(self, wfs, hamiltonian, potential):
+    def update_to_canonical_orbitals(self, wfs, hamiltonian,
+                                     potential,
+                                     update_orb_to_canonical=False):
         """
         update to canonical orbitals at the end of the scf cycle
         """
@@ -143,12 +140,23 @@ class DirOptLCAO(LCAOEigensolver):
         matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
         h_mm = matrix_calculator.calculate_matrix(wfs)
-
-        wfs.C_nM, eps = self.rotate_subspace(h_mm, wfs.C_nM)
-        # diagonalize entire matrix or equally occupied subspaces separately?
+        if update_orb_to_canonical:
+            # Diagonalize entire Hamiltonian matrix
+            wfs.C_nM.data, wfs.eig_n = \
+                self.rotate_subspace(h_mm.data, wfs.C_nM.data)
+        else:
+            # Diagonalize equally occupied subspaces separately
+            occ_n = wfs.myocc_n
+            f_unique = np.unique(occ_n)
+            for f in f_unique:
+                wfs.C_nM.data[occ_n == f, :], wfs.eig_n[occ_n == f] = \
+                    self.rotate_subspace(h_mm.data, wfs.C_nM.data[occ_n == f, :])
         # missing sic option
 
-    def rotate_subspace(h_mm, c_nm):
+        # update projections
+        wfs._P_ani = None        
+
+    def rotate_subspace(self, h_mm, c_nm):
         """
         choose canonical orbitals
         """
@@ -157,34 +165,6 @@ class DirOptLCAO(LCAOEigensolver):
         eps, w = np.linalg.eigh(l_nn)
         return w.T.conj() @ c_nm, eps
         
-    def get_residual_error(self, wfs,
-                           potential,
-                           hamiltonian,
-                           representation):
-        """
-        Calculate residual error of KS equations
-        """
-        # for now gets recalculated, also move the calculator
-        matrix_calculator = \
-            hamiltonian.create_hamiltonian_matrix_calculator(potential)
-        h_mm_matrix = matrix_calculator.calculate_matrix(wfs)
-        h_mm = h_mm_matrix.data
-
-        c_nm = wfs.C_nM.data
-        f_n = wfs.myocc_n > 1.0e-10
-        occ = sum(f_n)
-
-        hc_mn, h_ij, h_ia = self.objfunc.\
-            get_ham_in_mol_orb_repr(h_mm, wfs, representation, True)
-
-        # calculate residual
-        S_MM = wfs.S_MM.data
-        hc_mn = hc_mn[:, :occ] - \
-            S_MM.conj() @ c_nm[:occ].T @ h_ij[:occ, :occ]
-        norm = sum(hc_mn.conj() * hc_mn * f_n[:occ])
-        error = sum(norm.real)
-
-        return error
 
     def update_ref_orbitals(self, ibzwfs, hamiltonian, density):
 

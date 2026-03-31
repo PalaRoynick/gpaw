@@ -624,10 +624,6 @@ class LCAOETDM:
                 g_vec_u = self.g_vec_u_original if self.gmf \
                     and not self.subspace_optimization else self.g_vec_u
             
-            #print("gradient OLD", g_vec_u[0])
-            print("norm of g OLD", np.linalg.norm(g_vec_u[0]))
-            print("max of g OLD", np.max(g_vec_u[0]))           
-
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):

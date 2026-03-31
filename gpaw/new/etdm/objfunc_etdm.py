@@ -159,9 +159,7 @@ class ObjectiveFunctionETDM(ABC):
         # Compute energy and Hamiltonian matrix elements
         energy, h_unn = self._calc_obf_value_and_matrix_elements()
 
-        # TEST TEST TEST
         h_unn = 2 * self.f_n * h_unn
-        # TEST TEST TEST
 
         # Compute gradient for each SkewHermitian matrix
         # h_unn - h_unn.T.conj() ensures a skew-Hermitian
