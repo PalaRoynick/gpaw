@@ -33,11 +33,12 @@ class DirectOptimizationLcao(Eigensolver):
     name = 'etdm-lcao'
 
     def __init__(self,
+                 representation='sparse',
                  converge_unocc: bool = False,
-                 **kwargs):
-        if kwargs:
-            raise NotImplementedError
+                 ):
+        
         self.converge_unocc = converge_unocc
+        self.representation = representation
 
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
@@ -46,4 +47,4 @@ class DirectOptimizationLcao(Eigensolver):
         
         return DirOptLCAO(
             basis,
-            hamiltonian=hamiltonian)
+            representation=self.representation,)

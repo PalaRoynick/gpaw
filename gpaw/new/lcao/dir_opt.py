@@ -11,23 +11,19 @@ from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 
 
 class DirOptLCAO(LCAOEigensolver):
+
     def __init__(self,
                  basis,
-                 hamiltonian,
-                 excited_socc: bool = False,
-                 sctate: bool = False,
-                 converge_unalapack_params=(None, 1, 1, None)):
-        
+                 representation):
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
+        self.representation = representation
 
         super().__init__(basis)
 
     def initialize(self, ibzwfs, hamiltonian, density,
                    occ_calc, pot_calc,
                    potential):
-
-        self.representation = "full"  # for now
 
         super().iterate(ibzwfs, density, potential, hamiltonian)
 
@@ -59,7 +55,6 @@ class DirOptLCAO(LCAOEigensolver):
         # MISSING: localize for sic
         # MISSING: initialize mom
 
-
     def iterate(self,
                 ibzwfs: IBZWaveFunctions,
                 density: Density,
@@ -84,7 +79,7 @@ class DirOptLCAO(LCAOEigensolver):
 
             self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
             self.precond = True
-            
+
         # one step of etdm
         self.etdm.one_iteration(precond=self.prec)
 
@@ -210,7 +205,7 @@ class DirOptLCAO(LCAOEigensolver):
 
             prec.append(precond)
 
-            return np.array(prec)
+        return np.array(prec)
 
     def get_approx_analytical_hessian(self, wfs, dtype, ind_up):
         """
