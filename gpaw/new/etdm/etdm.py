@@ -129,11 +129,8 @@ class ETDM:
         """
         Apply preconditioner to the gradient
         """
-        # what is the constant?
-        # the preconditioner and gradient are both lists of arrays?
-        # arrays of lists?
         y = []
-        for k in range(x.shape[0]):  # no longer a dictionary, fix
+        for k in range(x.shape[0]):
             if prec[k].dtype == complex:
                 y[k] = const * (prec[k].real * x[k].real
                                 + 1.0j * prec[k].imag * x[k].imag)

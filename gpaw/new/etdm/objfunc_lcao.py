@@ -1,6 +1,4 @@
 from gpaw.new.etdm.objfunc_etdm import ObjectiveFunctionETDM
-from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
-import numpy as np
 from gpaw.new.etdm.tools2 import get_ndim
 
 
@@ -36,9 +34,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             Array of Hamiltonian matrix elements for each k-point or system.
             Shape = (nkps, ndim, ndim)
         """
-        # should it be here or at the beginning of
-        # iterate in dir_opt?
-
         self.rotate_wfs()
 
         energy = self.update_density_and_potential()
@@ -56,7 +51,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
-            h_unn.append(h_ij)  # i need it as a list
+            h_unn.append(h_ij)
 
         self.tot_energy = energy
         return energy, h_unn
@@ -102,7 +97,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.matrix_calculator = \
             self.hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
-        return energies  # dictionary
+        return energies
 
     def rotate_wfs(self):
 
@@ -128,9 +123,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         c_nm = wfs.C_nM.data
         f_n = wfs.myocc_n > 1.0e-10
         occ = sum(f_n)
-
-        #c_nm = np.load("/Users/giulia/Desktop/c_mn_OLD.npy")
-        #h_mm = np.load("/Users/giulia/Desktop/h_mm_OLD.npy")
 
         if representation in ['sparse', 'u-invar']:
             hc_mn = h_mm.conj() @ c_nm[:occ].T

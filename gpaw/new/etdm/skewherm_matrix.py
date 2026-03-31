@@ -1,7 +1,7 @@
 import numpy as np
 from gpaw.directmin.tools import (d_matrix, expm_ed, expm_ed_unit_inv)
 from gpaw.new.etdm.tools2 import get_n_occ
-# if repr u-invar use other expm_ed 
+
 
 class SkewHermitian:
     """

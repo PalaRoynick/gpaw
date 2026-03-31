@@ -1,6 +1,5 @@
 import numpy as np
 from gpaw.new.energies import DFTEnergies
-from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.density import Density
 from gpaw.new.hamiltonian import Hamiltonian
@@ -8,7 +7,6 @@ from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.etdm.etdm import ETDM
-#from gpaw.directmin.tools import sort_orbitals_according_to_occ
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 
 
@@ -22,13 +20,8 @@ class DirOptLCAO(LCAOEigensolver):
         
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
-        # altro?
-#        self.scalapack = scalapack_params
 
-        # move inside initialize?
         super().__init__(basis)
-#--------------------------------------------------------------------
-        # this will be called inside scf.py when the mode = 'lcao'
 
     def initialize(self, ibzwfs, hamiltonian, density,
                    occ_calc, pot_calc,
@@ -39,18 +32,17 @@ class DirOptLCAO(LCAOEigensolver):
         super().iterate(ibzwfs, density, potential, hamiltonian)
 
         nelectrons = density.nvalence - density.charge + pot_calc.charge
-        ibzwfs.calculate_occs(occ_calc, nelectrons)
+        ibzwfs.calculate_occs(occ_calc, nelectrons)  # missing: if read from file
         # initial sort orbitals (MISSING: changes with mom, sic)
         self.sort_orbitals_according_to_occ(ibzwfs)  # credo
 
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation)
-        # a_vec_u is a list, needs to be unpacked into an array?
         a = []
         self.ind_up = []
         self.ref_orbitals = []
         for u in range(len(self.objfunc.a_vec_u)):
-            a.append(self.objfunc.a_vec_u[u].data)  # così accedo al vettore creato sopra
-            self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)  # needed in hess calculation
+            a.append(self.objfunc.a_vec_u[u].data)  
+            self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
 
         for wfs in ibzwfs:
             self.ref_orbitals.append(wfs.C_nM.copy())
@@ -59,31 +51,14 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
         
         self.precond = False
-        # STEPS THAT IN OLD WERE IN ETDM_HELPER_LCAO
 
         # initialize_orbitals
-        # MISSING: coeff read from file, need_init_orb,
-        # need canon coeff?
 
         # MISSING: get functional, randomize orbitals
             
-        # calculate occupation numbers (MISSING: if not read from file)
-        
-        # moved above
-
         # MISSING: localize for sic
         # MISSING: initialize mom
 
-#        self.set_reference_orbitals(ibzwfs)
-
-        # set reference orbitals, serve anche sotto
-        # RIFARE, is it needed here?
-    def set_reference_orbitals(self, ibzwfs):
-        ndim = ibzwfs.nbands
-        # these are coefficients
-        for wfs in ibzwfs:   # ???????
-            u = self.kpointval(kpt)
-            self.reference_orbitals[u] = np.copy(wfs.C_nM[:ndim[u]])
 
     def iterate(self,
                 ibzwfs: IBZWaveFunctions,
@@ -96,10 +71,8 @@ class DirOptLCAO(LCAOEigensolver):
         One iteration of direct optimization for LCAO
         """
         # MISSING: set iters for counter=20
-        # MISSING SET REF ORBITALS E A VEC
 
-        # this should update the quantities inside the objective 
-        # function, to be used by etdm
+        # updates the quantities inside the objective function
         self.objfunc.update_objfunc(density, potential,
                                     pot_calc, ibzwfs,
                                     hamiltonian,
@@ -108,26 +81,15 @@ class DirOptLCAO(LCAOEigensolver):
 
         # preconditioning
         if not self.precond:
-            # print("---- FIRST GRADIENT ----")
-            # g_start = self.etdm.gradient  # the starting gradient is full of zero in old?
-            # print("-----")
+
             self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
-            # g = self.apply_precond(g_start, precond)
             self.precond = True
-            # self.etdm.one_iteration(g_start, self.prec)  # only the first step
-            # self.etdm.one_iteration(precond=self.prec)
-            # print("end of preconditioned step")
-        # else:
+            
         # one step of etdm
         self.etdm.one_iteration(precond=self.prec)
 
-        #self.objfunc.error = 0.0
-        # update wavefunctions??
-        #for wfs in ibzwfs:
         error = self.objfunc.error
-            # wfs.kd.comm.sum_scalar(self.error)?
 
-#        print(self.objfunc.tot_energy)
         return 0.0, error, self.objfunc.tot_energy
 
     def update_to_canonical_orbitals(self, wfs, hamiltonian,
@@ -154,20 +116,17 @@ class DirOptLCAO(LCAOEigensolver):
         # missing sic option
 
         # update projections
-        wfs._P_ani = None        
+        wfs._P_ani = None
 
     def rotate_subspace(self, h_mm, c_nm):
         """
         choose canonical orbitals
         """
         l_nn = c_nm @ h_mm @ c_nm.conj().T
-        # check if diagonal then don't rotate? it could save a bit of time
         eps, w = np.linalg.eigh(l_nn)
         return w.T.conj() @ c_nm, eps
-        
 
     def update_ref_orbitals(self, ibzwfs, hamiltonian, density):
-
         """
         Update reference orbitals and reset search direction algorithm
         """
@@ -180,6 +139,13 @@ class DirOptLCAO(LCAOEigensolver):
         if (self.iters % counter == 0 and self.iters > 1):
             self.set_reference_orbitals(ibzwfs)
             self.search_dir.reset()
+
+    #def set_reference_orbitals(self, ibzwfs):
+    #    ndim = ibzwfs.nbands
+    #    # these are coefficients
+    #    for wfs in ibzwfs:   # ???????
+    #        u = self.kpointval(kpt)
+    #        self.reference_orbitals[u] = np.copy(wfs.C_nM[:ndim[u]])
 
     def set_ref_orbitals_and_a_vec(self, ibzwfs):
 
@@ -208,7 +174,6 @@ class DirOptLCAO(LCAOEigensolver):
                 wfs._P_ani = None
 
                 wfs.myocc_n = wfs.myocc_n[ind]
-                # update eps?
 
     def get_preconditioner(self, ibzwfs, ind_up):
         """
@@ -219,20 +184,12 @@ class DirOptLCAO(LCAOEigensolver):
         beta0 = 1.0
         gamma = 0.0
 
-        # add a counter=1000 to recalculate? but the maxiter is 333
+        # add a counter=1000 to recalculate?
 
-        # need to understand what data structure they are/i need
-
-        # APPEND INSIDE A LIST AND CONVERT TO NUMPY ARRAY
         prec = []
 
-        # when i do this does it span both kpt and spin?
-        for wfs in ibzwfs:  # the for is mainly just to count?
+        for wfs in ibzwfs:
             w = wfs.weight / (3.0 - wfs.nspins)
-
-            # the gradient is a numpy array of a list
-            # so i have to make a list also here?
-            # yes, span kpt and spin
 
             #k = len(ibzwfs.ibz.kpt_kc) + wfs.nspins     # FIX (TOOLS)
             # could one determine this value at the start of everything and
@@ -255,30 +212,11 @@ class DirOptLCAO(LCAOEigensolver):
 
             return np.array(prec)
 
-    def apply_precond(self, prec, x, const=1.0):
-        """
-        Apply preconditioner to the gradient
-        """
-        # what is the constant?
-        # the preconditioner and gradient are both lists of arrays?
-        # arrays of lists?
-        y = []
-        for k in range(x.shape[0]):  # no longer a dictionary, fix
-            if prec[k].dtype == complex:
-                y[k] = const * (prec[k].real * x[k].real
-                                + 1.0j * prec[k].imag * x[k].imag)
-            else:
-                y.append(const * prec[k] * x[k])
-        return np.array(y)
-    
     def get_approx_analytical_hessian(self, wfs, dtype, ind_up):
         """
         Calculate the following diagonal approximation to the Hessian:
         h_{lm, lm} = -2.0 * (eps_n[l] - eps_n[m]) * (f[l] - f[m])
         """
-
-        # dtype taken from ibzwfs, extend to the whole file
-        # should be useful
 
         f_n = 2 * wfs.myocc_n
         eps_n = wfs.myeig_n
