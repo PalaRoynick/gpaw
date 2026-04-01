@@ -45,12 +45,17 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
             h_nn.tril2full()
 
+            # If True the full matrix is calculated below
+            use_edgedecomp = True
+
             hc_mn, h_ij, h_ia =\
                 self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
-                                             self._representation, False)
+                                             self._representation,
+                                             use_edgedecomp)
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
+            h_ij = 2 * wfs.myocc_n * h_ij
             h_unn.append(h_ij)
 
         self.tot_energy = energy
@@ -118,13 +123,27 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         wfs._P_ani = None
 
     def get_ham_in_mol_orb_repr(self, h_mm, wfs, representation,
-                                use_egdecomp):
+                                full_ham):
+
+        """
+        H = (C_nM @ H_MM @ C_nM.T.conj()).conj()
+        for sparse and u_inv representation we calculate
+        H_ij and H_ia, where i,j -- occupied and a - virtual
+        H_ij is really needed only to calculate the residual later
+        but it is not needed for u-invar representation.
+        When matrix exp calculated using egdecomp method
+        we need the whole matrix H though
+
+        :return: H@C_nM[:occ].T, H_ij, H_ia or
+                 H@C_nM.T, H, H_ia
+        """
 
         c_nm = wfs.C_nM.data
         f_n = wfs.myocc_n > 1.0e-10
         occ = sum(f_n)
 
-        if representation in ['sparse', 'u-invar']:
+        if representation in ['sparse', 'u-invar'] \
+                and not full_ham:
             hc_mn = h_mm.conj() @ c_nm[:occ].T
             h_ij = hc_mn.T.conj() @ c_nm[:occ].T
             h_ia = hc_mn.T.conj() @ c_nm[occ:].T
