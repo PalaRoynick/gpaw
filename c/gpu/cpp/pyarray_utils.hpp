@@ -64,10 +64,7 @@ private:
     PyGILState_STATE gil_state;
 };
 
-inline bool is_complex_dtype(pybind11::dtype dtype) { return dtype.kind() == 'c'; }
-/* Returns true if the input array has c_contiguous flag set.
-Note that contiguous 1D arrays are both C- and F-contiguous. */
-inline bool is_c_contiguous(pybind11::array arr) { return arr.flags() & pybind11::array::c_style; }
+inline bool is_numpy_array(PyObject* obj) noexcept { return PyArray_Check(obj); }
 
 /* Checks if the input object is a Cupy array (cupy.ndarray).
 Empty Cupy array is considered valid.
@@ -75,8 +72,19 @@ NOTE: Not quite foolproof: we assume that only Numpy and Cupy arrays are passed 
 so this will return true for anything that looks like an ndarray but is NOT a Numpy array. */
 bool is_cupy_array(PyObject* obj);
 
-// See the `is_cupy_array(PyObject*)` overload for docstring
 inline bool is_cupy_array(pybind11::handle obj) { return is_cupy_array(obj.ptr()); }
+
+/* Checks if the input object is a Numpy array, or implements the __dlpack__
+attribute (Cupy). Hence this will actually return true for any DLpack-compatible array from
+other libs like Pytorch, but we only care about Numpy or Cupy.
+*/
+inline bool ndarray_check(PyObject* obj) noexcept { return is_numpy_array(obj) || is_cupy_array(obj); }
+
+inline bool is_complex_dtype(pybind11::dtype dtype) { return dtype.kind() == 'c'; }
+/* Returns true if the input array has c_contiguous flag set.
+Note that contiguous 1D arrays are both C- and F-contiguous. */
+inline bool is_c_contiguous(pybind11::array arr) { return arr.flags() & pybind11::array::c_style; }
+
 
 /* Cheap, type-erased wrapper around a Python-side GPU array (cupy.ndarray).
 Does NOT take ownership or copy the data.
@@ -101,13 +109,14 @@ struct GPAW_HIDDEN_SYMBOL PyDeviceArray
     std::vector<int64_t> shape;
     std::vector<int64_t> strides;
 
-private:
     void from_cupy(pybind11::handle array);
     void from_cupy(PyObject* obj) { from_cupy(pybind11::handle(obj)); }
 
+private:
     // Let pybind11 type caster access private members
     friend class pybind11::detail::type_caster<gpaw::PyDeviceArray>;
 };
+
 
 // Old CPython-style stuff below
 
@@ -177,5 +186,6 @@ int64_t Array_NBYTES(PyArrayObject* a);
 int Array_TYPE(PyArrayObject* a);
 bool Array_ISCOMPLEX(PyArrayObject* a);
 //~ End Numpy
+
 
 } // namespace gpaw
