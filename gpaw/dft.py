@@ -168,7 +168,7 @@ class TB(Mode):
 class Eigensolver(Parameter):
     @classmethod
     def from_param(cls, eigensolver):
-        from gpaw.new.do import DirectOptimization
+        from gpaw.new.do import DirectOptimization, DirectOptimizationLcao
         from gpaw.new.eigensolver import Eigensolver as NewEigensolver
         from gpaw.old.eigensolvers.eigensolver import Eigensolver as OES
 
