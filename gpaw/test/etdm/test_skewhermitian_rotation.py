@@ -1,27 +1,25 @@
 import numpy as np
 import pytest
 from gpaw.new.etdm.skewherm_matrix import SkewHermitian
-from gpaw.new.etdm.tools2 import get_n_occ
+from gpaw.new.etdm.tools import get_n_occ
 from scipy.linalg import expm
 
 # Carry out various tests with different values of input parameters
 
+
 @pytest.mark.parametrize(
-    # DESCRIZIONE PARAMETRI
-    "ndim, dtype, nspin, nkpt, unocc",      
+    "ndim, dtype, nspin, nkpt, unocc",
     [
-        (4, float,   1, 1, 0),
-        (4, float,   1, 1, 1),  # one unoccupied 
-        (4, float,   1, 1, 2),  # two unoccupied
+        (4, float, 1, 1, 0),
+        (4, float, 1, 1, 1),  # one unoccupied
+        (4, float, 1, 1, 2),  # two unoccupied
         (4, complex, 1, 1, 1),
         (5, complex, 1, 1, 1),
-        (4, float,   2, 1, 1),  # corresponds to spinpol=True
-        (4, float,   1, 2, 1),  # more than one kpt
-        (4, float,   2, 2, 1),  # both previous conditions
+        (4, float, 2, 1, 1),  # corresponds to spinpol=True
+        (4, float, 1, 2, 1),  # more than one kpt
+        (4, float, 2, 2, 1),  # both previous conditions
     ],
 )
-
-# this is the function that the test will run?
 def test_run(ndim, nspin, nkpt, unocc, dtype, gpaw_new):
     """
     This test checks that the skewhermitian matrix is properly built
@@ -35,29 +33,33 @@ def test_run(ndim, nspin, nkpt, unocc, dtype, gpaw_new):
     f_n = initialize_f_n(ndim, nspin, nkpt, unocc)
     for kpt in range(f_n.shape[1]):
         for spin in range(f_n.shape[0]):
-            skewhermitian_rotation_full(ndim, f_n[spin, kpt, :], dtype)
-            skewhermitian_rotation_uinvar(ndim, f_n[spin, kpt, :], dtype)
-            skewhermitian_rotation_sparse(ndim, f_n[spin, kpt, :], dtype)
+            if unocc == 0:
+                skewhermitian_rotation_full(ndim, f_n[spin, kpt, :], dtype)
+            else:
+                skewhermitian_rotation_full(ndim, f_n[spin, kpt, :], dtype)
+                skewhermitian_rotation_uinvar(ndim, f_n[spin, kpt, :], dtype)
+                skewhermitian_rotation_sparse(ndim, f_n[spin, kpt, :], dtype)
 
 
 def initialize_f_n(ndim, nspin, nkpt, unocc):
     """
-    Builds a test occupation number vector depending on number of spins, kpoints 
-    and unoccupied orbitals
+    Builds a test occupation number vector depending on number of spins,
+    kpoints and unoccupied orbitals
     """
-    f_n = np.zeros((nspin,nkpt,ndim))
+    f_n = np.zeros((nspin, nkpt, ndim))
     if unocc == 0:
-        f_n[:,:,:] = 1.
-    else: 
-        f_n[:,:,:-unocc] = 1.
+        f_n[:, :, :] = 1.
+    else:
+        f_n[:, :, :-unocc] = 1.
     return f_n
+
 
 def skewhermitian_rotation_sparse(ndim, f_n, dtype):
     """
     Test that SkewHermitian rotation_mat correctly computes
     the matrix exponential of a manually reconstructed skew-Hermitian matrix.
     Representation = "sparse"
-    """  
+    """
 
     n_occ = get_n_occ(f_n)
 
@@ -70,8 +72,7 @@ def skewhermitian_rotation_sparse(ndim, f_n, dtype):
     param_vec = np.random.random(vec_len).astype(dtype)
 
     print("\n=== Parameter vector ===")
-    print(param_vec)    
-
+    print(param_vec)
 
 # Step 2: Manually reconstruct full skew-Hermitian matrix
 
@@ -94,7 +95,8 @@ def skewhermitian_rotation_sparse(ndim, f_n, dtype):
     print(U_manual)
 
     # Step 4: Use SkewHermitian class
-    sk = SkewHermitian(ndim, f_n, dtype, representation = "sparse", data=param_vec)
+    sk = SkewHermitian(ndim, f_n, dtype, representation="sparse",
+                       data=param_vec)
     U_class = sk.rotation_mat
 
     # Step 5: Compare results
@@ -119,10 +121,10 @@ def skewhermitian_rotation_uinvar(ndim, f_n, dtype):
     Test that SkewHermitian rotation_mat correctly computes
     the matrix exponential of a manually reconstructed skew-Hermitian matrix.
     Representation = "u-invar"
-    """ 
+    """
     n_occ = get_n_occ(f_n)
 
-    # Step 1: Create a random parameter vector: rectangular matrix 
+    # Step 1: Create a random parameter vector: rectangular matrix
 
     vec_len = (ndim - n_occ) * n_occ
 
@@ -130,13 +132,13 @@ def skewhermitian_rotation_uinvar(ndim, f_n, dtype):
     param_vec = np.random.random(vec_len).astype(dtype)
 
     print("\n=== Parameter vector ===")
-    print(param_vec)    
-
+    print(param_vec)
 
     # Step 2: Manually reconstruct full skew-Hermitian matrix
 
-    ind_up_uinv1, ind_up_uinv2  = np.indices((n_occ, (ndim - n_occ)))
-    ind_up = ( list(np.concatenate(ind_up_uinv1)), list(np.concatenate(ind_up_uinv2 + n_occ)) )
+    ind_up_uinv1, ind_up_uinv2 = np.indices((n_occ, (ndim - n_occ)))
+    ind_up = ((np.concatenate(ind_up_uinv1)).tolist(),
+              (np.concatenate(ind_up_uinv2 + n_occ)).tolist())
 
     a_mat_manual = np.zeros((ndim, ndim), dtype=dtype)
     a_mat_manual[ind_up] = param_vec
@@ -155,7 +157,8 @@ def skewhermitian_rotation_uinvar(ndim, f_n, dtype):
     print(U_manual)
 
     # Step 4: Use SkewHermitian class
-    sk = SkewHermitian(ndim, f_n, dtype, representation = "u-invar", data=param_vec)
+    sk = SkewHermitian(ndim, f_n, dtype, representation="u-invar",
+                       data=param_vec)
     U_class = sk.rotation_mat
 
     # Step 5: Compare results
@@ -174,6 +177,7 @@ def skewhermitian_rotation_uinvar(ndim, f_n, dtype):
         atol=1e-12,
     )
 
+
 def skewhermitian_rotation_full(ndim, f_n, dtype):
     """
     Test that SkewHermitian rotation_mat correctly computes
@@ -181,8 +185,7 @@ def skewhermitian_rotation_full(ndim, f_n, dtype):
     Representation = "full"
     """
 
-
-    # Step 1: Create a random parameter vector: number of upper triangle elements
+    # Step 1, Create a random parameter vector: number of upper triangle elem
     if dtype == float:
         vec_len = (ndim * (ndim - 1)) // 2  # excluding diagonal
     else:
@@ -218,7 +221,8 @@ def skewhermitian_rotation_full(ndim, f_n, dtype):
     print(U_manual)
 
     # Step 4: Use SkewHermitian class
-    sk = SkewHermitian(ndim, f_n, dtype, representation = "full", data=param_vec)
+    sk = SkewHermitian(ndim, f_n, dtype, representation="full",
+                       data=param_vec)
     U_class = sk.rotation_mat
 
     print("\n=== SkewHermitian.rotation_mat ===")
@@ -239,9 +243,6 @@ def skewhermitian_rotation_full(ndim, f_n, dtype):
         rtol=1e-12,
         atol=1e-12,
     )
-
-
-
 
 
 if __name__ == "__main__":

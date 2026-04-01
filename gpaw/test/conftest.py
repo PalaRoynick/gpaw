@@ -116,7 +116,7 @@ def use_fftw_estimate_flag(sessionscoped_monkeypatch):
 
 
 @pytest.fixture(scope='session')
-def gpw_files(request):
+def gpw_files(request, _not_world):
     """Reuse gpw-files.
 
     Returns a dict mapping names to paths to gpw-files.
@@ -274,7 +274,7 @@ def gpw_files(request):
     cache = request.config.cache
     gpaw_cachedir = cache.mkdir('gpaw_test_gpwfiles')
 
-    gpwfiles = GPWFiles(gpaw_cachedir)
+    gpwfiles = GPWFiles(gpaw_cachedir, _not_world)
 
     try:
         setup_paths.append(gpwfiles.testing_setup_path)
@@ -317,7 +317,6 @@ class GPAWPlugin:
             info()
 
     def pytest_terminal_summary(self, terminalreporter, exitstatus, config):
-        from gpaw.mpi import world
         terminalreporter.section('GPAW-MPI stuff')
         terminalreporter.write(f'size: {world.size}\n')
         terminalreporter.write(f'debug-mode: {debug}\n')
@@ -384,14 +383,22 @@ def pytest_runtest_setup(item):
         pytest.skip('No LibXC.')
 
 
-@pytest.fixture
-def scalapack():
+@pytest.fixture(scope='session')
+def scalapack(require_real_mpi):
     """Skip if not compiled with sl.
 
     This fixture otherwise does not return or do anything."""
     from gpaw.utilities import compiled_with_sl
     if not compiled_with_sl():
         pytest.skip('no scalapack')
+
+
+@pytest.fixture(scope='session')
+def require_real_mpi(_not_world):
+    try:
+        _not_world.get_c_object()
+    except RuntimeError:
+        pytest.skip('This test requires actual MPI to be enabled')
 
 
 @pytest.fixture
@@ -447,8 +454,6 @@ def no_touch_world(monkeypatch, _not_world):
 
 @pytest.fixture(scope='session')
 def _not_world():
-    from gpaw.mpi import world
-
     return world.new_communicator(range(world.size))
 
 
@@ -476,14 +481,21 @@ class MPIHelper:
         return GPAW(*args, communicator=self.comm, **kwargs)
 
     def NewGPAW(self, *args, **kwargs):
-        from gpaw.new.ase_interface import GPAW
-
-        return GPAW(*args, communicator=self.comm, **kwargs)
+        from gpaw.dft import GPAW
+        return GPAW(*args, communicator=self.comm, legacy_gpaw=False, **kwargs)
 
     def OldGPAW(self, *args, **kwargs):
         from gpaw.dft import GPAW as AnyGPAW
         return AnyGPAW(*args, communicator=self.comm,
-                       _use_old_gpaw=True, **kwargs)
+                       legacy_gpaw=True, **kwargs)
+
+    def restart(self, *args, **kwargs):
+        from gpaw import restart
+        return restart(*args, communicator=self.comm, **kwargs)
+
+    def print(self, *args, **kwargs):
+        if self.comm.rank == 0:
+            print(*args, **kwargs)
 
 
 @pytest.fixture
@@ -495,13 +507,3 @@ def mpi(comm):
 def gpaw_new() -> bool:
     """Are we testing the new code?"""
     return GPAW_NEW
-
-
-@pytest.fixture(params=[False, True])
-def gpaw_newp(request) -> bool:
-    import gpaw.dft as dft
-    try:
-        dft._USE_OLD_GPAW = not request.param
-        yield request.param
-    finally:
-        dft._USE_OLD_GPAW = None

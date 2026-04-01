@@ -1,6 +1,6 @@
 import numpy as np
 from gpaw.directmin.tools import (d_matrix, expm_ed, expm_ed_unit_inv)
-from gpaw.new.etdm.tools2 import get_n_occ
+from gpaw.new.etdm.tools import get_n_occ, vec2skewmat
 
 
 class SkewHermitian:
@@ -13,21 +13,27 @@ class SkewHermitian:
     Attributes
     ----------
     ndim : int
-        Dimension of the square matrix (number of rows/columns). Dimension "N"
-    n_occ: int 
-        Number of occupied orbitals, dimension "M"
+        Dimension of the square matrix (number of rows/columns). Dimension "N".
+    n_occ: int
+        Number of occupied orbitals, dimension "M".
     dtype : type
         Either float or complex.
         - float → real skew-symmetric matrices
         - complex → skew-Hermitian matrices
     data : ndarray
-        1D array storing the independent upper-triangular
-        entries of the matrix.
+        1D array of independent parameters of the skew-Hermitian matrix, as
+        selected by ``representation``.
     representation : str
-        can be either "full", "u-invar", "sparse" EXPLAIN DIFFERENCES 
+        Can be either "full" (default), "u-invar", or "sparse" for storing
+        the independent parameters (upper-triangular) of the full matrix A,
+        occupied-unoccupied block only, or occupied-occupied plus
+        occupied-unoccupied blocks, respectively.
     """
 
-    def __init__(self, ndim: int, f_n: np.ndarray, dtype: type, representation="full", data: np.ndarray = None):
+    def __init__(self, ndim: int, f_n: np.ndarray,
+                 dtype: type,
+                 representation='full',
+                 data: np.ndarray = None):
         """
         Initialize a SkewHermitian object.
 
@@ -35,7 +41,7 @@ class SkewHermitian:
         ----------.
         ndim: int
             ndim = ibzwfs.nbands
-        f_n: np.ndarray 
+        f_n: np.ndarray
             vector containing occupation numbers of given spin and kpt
         dtype : type
             Either float or complex.
@@ -54,45 +60,50 @@ class SkewHermitian:
         self._rotation_mat = None  # U = exp(A)
         self._representation = representation
 
-
-        # calculate ndim and nocc
-
         self._ndim = ndim
         self._n_occ = get_n_occ(f_n)
 
+        # if all the orbitals are occupied
+        # the only possible representation is full
+        if self._ndim == self._n_occ:
+            self._representation = 'full'
 
-        # if all the orbitals are occupied the only possible representation is full
-        if self._ndim == self._n_occ: self._representation = "full"
-        
-
-        # Calculate dimensions of the skew-hermitian matrix differently depending on the chosen representation. (ideally the representation is determined automatically?)
-
-        # Indices of the independent parameters:
-        # - if real → strictly upper triangle
-        # - if complex → include diagonal
-
-        if representation == "full": # M * M
-            if self._dtype == float:
-                self.ind_up = np.triu_indices(self._ndim, 1)
-            elif self._dtype == complex:
-                self.ind_up = np.triu_indices(self._ndim)
-
-        if representation == "u-invar": # N * (M - N)
-            ind_up_uinv1, ind_up_uinv2  = np.indices((self._n_occ, (self._ndim-self._n_occ)))
-            self.ind_up = ( list(np.concatenate(ind_up_uinv1)), list(np.concatenate(ind_up_uinv2+self._n_occ)) )
-
-        if representation == "sparse": # N * M
-            self.ind_up = np.triu_indices(self._n_occ, 1, self._ndim) 
+        self.ind_up = self._make_ind_up()
 
         # Number of independent parameters
         self._len = len(self.ind_up[0])
 
-        # Assign initial data, otherwise make it zero
-        # could/has to be done with the setter below?
-        if data is not None:
-            self.data = data
+        # Assign initial data (if provided)
+        self.data = data
+
+    def _make_ind_up(self):
+        # Choose which independent elements of the skew-Hermitian A are
+        # stored in self.data. For real dtype, A is skew-symmetric and only
+        # the strictly upper triangle is independent. For complex dtype, A
+        # is skew-Hermitian and the diagonal is also independent, so the
+        # upper triangle including the diagonal is stored.
+        if self._representation == 'full':
+            # Independent elements of the full N x N matrix
+            # - if real → strictly upper triangle
+            # - if complex → include diagonal
+            if self._dtype == float:
+                return np.triu_indices(self._ndim, 1)
+            elif self._dtype == complex:
+                return np.triu_indices(self._ndim)
+        elif self._representation == 'u-invar':
+            # Independent elements of the N * (M - N)
+            # occupied-unoccupied block
+            ind_up_uinv1, ind_up_uinv2 = \
+                np.indices((self._n_occ, (self._ndim - self._n_occ)))
+            return ((np.concatenate(ind_up_uinv1)).tolist(),
+                    (np.concatenate(ind_up_uinv2 + self._n_occ)).tolist())
+        elif self._representation == 'sparse':
+            # Independent elements of the N * M matrix made
+            # of the occupied-occupied and occupied-unoccupied blocks
+            return np.triu_indices(self._n_occ, 1, self._ndim)
         else:
-            self.data = np.zeros(shape=self._len, dtype=self._dtype)
+            raise ValueError(f'Unknown representation: '
+                             f'{self._representation}')
 
     # ------------------------
     # Properties
@@ -151,8 +162,7 @@ class SkewHermitian:
             a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
             # Compute matrix exponential, eigenvectors, and eigenvalues
             self._rotation_mat, self._evecs, self._evals = expm_ed(
-                a_mat, evalevec=True
-            )
+                a_mat, evalevec=True)
         return self._evecs
 
     @property
@@ -168,8 +178,7 @@ class SkewHermitian:
         if self._evecs is None:  # triggers only if not already computed
             a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
             self._rotation_mat, self._evecs, self._evals = expm_ed(
-                a_mat, evalevec=True
-            )
+                a_mat, evalevec=True)
         return self._evals
 
     @property
@@ -187,17 +196,16 @@ class SkewHermitian:
         elif self._rotation_mat is None:  # compute only once
             a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
 
-            if self._representation == "u-invar":
+            if self._representation == 'u-invar':
                 # it only needs the upper right block of the A matrix.
                 a_upp_r = a_mat[:self._n_occ, -(self._ndim - self._n_occ):]
                 self._rotation_mat = expm_ed_unit_inv(a_upp_r)
-                self._evals, self._evecs = np.linalg.eigh(1.0j * a_mat)     # they do not get calculated by expm_ed_unit_inv
+                # they do not get calculated by expm_ed_unit_inv
+                self._evals, self._evecs = np.linalg.eigh(1.0j * a_mat)
 
             else:
                 self._rotation_mat, self._evecs, self._evals = expm_ed(
-                a_mat, evalevec=True
-                )
-
+                    a_mat, evalevec=True)
 
         return self._rotation_mat
 
@@ -300,58 +308,3 @@ class SkewHermitian:
 
         # Step 7: return only the independent upper-triangular elements
         return 2.0 * g_mat[self.ind_up]
-
-
-# ------------------------
-# Utility functions
-# ------------------------
-def vec2skewmat(a_vec, dim, ind_up, dtype):
-    """
-    Convert parameter vector to full skew-Hermitian matrix.
-
-    Parameters
-    ----------
-    a_vec : ndarray
-        1D vector of independent upper-triangular entries.
-    dim : int
-        Dimension of the full matrix.
-    ind_up : tuple
-        Indices of the upper-triangular elements.
-    dtype : type
-        float or complex.
-
-    Returns
-    -------
-    a_mat : ndarray
-        Full skew-Hermitian matrix with A^\\dagger = -A.
-    """
-    a_mat = np.zeros((dim, dim), dtype=dtype)
-    a_mat[ind_up] = a_vec
-    a_mat -= a_mat.T.conj()  # enforce skew-Hermitian property
-    np.fill_diagonal(a_mat, a_mat.diagonal() * 0.5)  # fix diagonal factor
-    return a_mat
-
-
-def random_a(shape, dtype, seed=None):
-    """
-    Generate random parameter vector for skew-Hermitian matrices.
-
-    Parameters
-    ----------
-    shape : tuple
-        Shape of the vector.
-    dtype : type
-        float or complex.
-
-    Returns
-    -------
-    a : ndarray
-        Random vector of given dtype.
-    """
-    if seed:
-        np.random.seed(seed)
-    a = np.random.random_sample(shape)
-    if dtype == complex:
-        a = a.astype(complex)
-        a += 1.0j * np.random.random_sample(shape)
-    return a

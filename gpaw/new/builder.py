@@ -58,7 +58,10 @@ class DFTComponentsBuilder:
             log = Logger(log, comm)
 
         self.log = log
-        comm = log.comm
+        if comm is None:
+            comm = log.comm
+        else:
+            assert comm.size == log.comm.size
 
         parallel = params.parallel
         if self.gpu:
@@ -124,7 +127,7 @@ class DFTComponentsBuilder:
             comm=comm,
             use_time_reversal=use_time_reversal)
 
-        d = parallel.get('domain', 1 if xcfunc.type == 'HYB' else None)
+        d = parallel.get('domain', None)
         k = parallel.get('kpt', None)
         b = parallel.get('band', None)
         self.communicators = create_communicators(
@@ -144,7 +147,7 @@ class DFTComponentsBuilder:
             self.nbands *= 2
 
         self.dtype: DTypeLike
-        if params.mode.dtype is None:
+        if params.mode.dtype == 'double':
             if self.params.mode.force_complex_dtype:
                 self.dtype = complex
             else:
@@ -152,8 +155,16 @@ class DFTComponentsBuilder:
                     self.dtype = float
                 else:
                     self.dtype = complex
+        elif params.mode.dtype == 'single':
+            if self.params.mode.force_complex_dtype:
+                self.dtype = np.complex64
+            else:
+                if self.ibz.bz.gamma_only and self.ncomponents < 4:
+                    self.dtype = np.float32
+                else:
+                    self.dtype = np.complex64
         else:
-            self.dtype = params.mode.dtype
+            raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.grid, self.fine_grid = self.create_uniform_grids()
 
@@ -225,7 +236,7 @@ class DFTComponentsBuilder:
                     f'GPU calculation is requested via {parallel_source}, '
                     'but the requisite CuPy library is not found; '
                     'please set GPAW_CPUPY=1 if you really want to do "GPU" '
-                    'calculations with GPAW\'s fake CuPy library '
+                    "calculations with GPAW's fake CuPy library "
                     '(gpaw.gpu.cpupy)')
             return True
         return False
