@@ -34,11 +34,13 @@ class DirectOptimizationLcao(Eigensolver):
 
     def __init__(self,
                  representation='sparse',
+                 matrix_exp='egdecomp',
                  converge_unocc: bool = False,
                  ):
         
         self.converge_unocc = converge_unocc
         self.representation = representation
+        self.matrix_exp = matrix_exp
 
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
@@ -47,4 +49,5 @@ class DirectOptimizationLcao(Eigensolver):
         
         return DirOptLCAO(
             basis,
-            representation=self.representation,)
+            representation=self.representation,
+            matrix_exp=self.matrix_exp,)

@@ -4,13 +4,14 @@ from gpaw.new.etdm.tools2 import get_ndim
 
 class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
-    def __init__(self, ibzwfs, representation):
+    def __init__(self, ibzwfs, representation, matrix_exp):
 
         self.ibzwfs = ibzwfs
         self._representation = representation
         ndim = get_ndim(ibzwfs)
         dtype = self.ibzwfs.dtype
         self.f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
+        self.use_egdecomp = matrix_exp == 'egdecomp'
 
         super().__init__(ndim, self.f_n, dtype, self._representation)
 
@@ -23,7 +24,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         return self.ibzwfs.kpt_comm
     
     def _calc_obf_value_and_matrix_elements(self):
-        """Calculate value of the objective function (energy)
+        """
+        Calculate value of the objective function (energy)
         and hamiltonian matrix elements at self._a_vec_u
         
         Returns
@@ -45,17 +47,14 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
             h_nn.tril2full()
 
-            # If True the full matrix is calculated below
-            use_edgedecomp = True
-
             hc_mn, h_ij, h_ia =\
                 self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
                                              self._representation,
-                                             use_edgedecomp)
+                                             self.use_egdecomp)
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
-            h_ij = 2 * wfs.myocc_n * h_ij
+            h_ij = 2 * wfs.myocc_n * h_ij  # this is specific of egdecomp
             h_unn.append(h_ij)
 
         self.tot_energy = energy
@@ -92,6 +91,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.ref_orbitals = ref_orbitals
 
     def update_density_and_potential(self):
+
         self.density.update(self.ibzwfs, ked=self.pot_calc.xc.type == 'MGGA')
         potential, energies, _ = self.pot_calc.calculate(self.density,
                                                          self.ibzwfs,
@@ -105,7 +105,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         return energies
 
     def rotate_wfs(self):
-
+        """
+        Apply unitary transformation U = exp(A) to
+        the reference orbitals
+        """
         for u, (a, wfs) in enumerate(zip(self._a_vec_u, self.ibzwfs)):
 
             u_nn = a.rotation_mat

@@ -14,10 +14,12 @@ class DirOptLCAO(LCAOEigensolver):
 
     def __init__(self,
                  basis,
-                 representation):
+                 representation,
+                 matrix_exp):
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
         self.representation = representation
+        self.matrix_exp = matrix_exp
 
         super().__init__(basis)
 
@@ -32,12 +34,13 @@ class DirOptLCAO(LCAOEigensolver):
         # initial sort orbitals (MISSING: changes with mom, sic)
         self.sort_orbitals_according_to_occ(ibzwfs)  # credo
 
-        self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation)
+        self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
+                                             self.matrix_exp)
         a = []
         self.ind_up = []
         self.ref_orbitals = []
         for u in range(len(self.objfunc.a_vec_u)):
-            a.append(self.objfunc.a_vec_u[u].data)  
+            a.append(self.objfunc.a_vec_u[u].data) 
             self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
 
         for wfs in ibzwfs:
@@ -84,6 +87,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.one_iteration(precond=self.prec)
 
         error = self.objfunc.error
+        print("ERROR", error)
 
         return 0.0, error, self.objfunc.tot_energy
 
@@ -91,12 +95,13 @@ class DirOptLCAO(LCAOEigensolver):
                                      potential,
                                      update_orb_to_canonical=False):
         """
-        update to canonical orbitals at the end of the scf cycle
+        Update to canonical orbitals at the end of the scf cycle
         """
 
         matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
         h_mm = matrix_calculator.calculate_matrix(wfs)
+        # REMOVE FIRST OPTION
         if update_orb_to_canonical:
             # Diagonalize entire Hamiltonian matrix
             wfs.C_nM.data, wfs.eig_n = \
@@ -115,7 +120,7 @@ class DirOptLCAO(LCAOEigensolver):
 
     def rotate_subspace(self, h_mm, c_nm):
         """
-        choose canonical orbitals
+        Choose canonical orbitals
         """
         l_nn = c_nm @ h_mm @ c_nm.conj().T
         eps, w = np.linalg.eigh(l_nn)
@@ -149,7 +154,8 @@ class DirOptLCAO(LCAOEigensolver):
 
     def sort_orbitals_according_to_occ(self, ibzwfs):
 
-        """Sort orbitals according to the occupation
+        """
+        Sort orbitals according to the occupation
         numbers so that there are no holes in the
         distribution of occupation numbers
         :return:
