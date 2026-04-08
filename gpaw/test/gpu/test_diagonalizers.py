@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from gpaw.cgpaw import have_magma
+from gpaw.cgpaw.gpu import magma
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake, device_count
@@ -66,7 +66,7 @@ def diagonalizer_tester_common(
     if cupy_is_fake and diagonalizer_class is not CPUPYDiagonalizer:
         pytest.skip('CuPy is fake')
 
-    if not have_magma and diagonalizer_class is MagmaDiagonalizer:
+    if not magma.is_available() and diagonalizer_class is MagmaDiagonalizer:
         pytest.skip('No MAGMA')
 
     matrix_orig = matrix.copy()
@@ -84,7 +84,7 @@ def diagonalizer_tester_common(
         cp.testing.assert_allclose(matrix_orig.data, matrix.data)
 
     # Gather eigenvectors back to root rank for checking
-    eigvecs = eigvecs.gather(0, broadcast=False)
+    eigvecs = eigvecs.gather(broadcast=False)
 
     dtype = matrix.dtype
     atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5
