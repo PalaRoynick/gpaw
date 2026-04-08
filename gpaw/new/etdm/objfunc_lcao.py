@@ -1,5 +1,5 @@
 from gpaw.new.etdm.objfunc_etdm import ObjectiveFunctionETDM
-from gpaw.new.etdm.tools2 import get_ndim
+from gpaw.new.etdm.tools import get_ndim
 
 
 class LCAOObjectiveFunction(ObjectiveFunctionETDM):

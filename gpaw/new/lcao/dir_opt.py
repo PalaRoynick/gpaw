@@ -32,7 +32,7 @@ class DirOptLCAO(LCAOEigensolver):
         nelectrons = density.nvalence - density.charge + pot_calc.charge
         ibzwfs.calculate_occs(occ_calc, nelectrons)  # missing: if read from file
         # initial sort orbitals (MISSING: changes with mom, sic)
-        self.sort_orbitals_according_to_occ(ibzwfs)  # credo
+        self.sort_orbitals_according_to_occ(ibzwfs)
 
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
                                              self.matrix_exp)
@@ -68,6 +68,7 @@ class DirOptLCAO(LCAOEigensolver):
         """
         One iteration of direct optimization for LCAO
         """
+        
         # MISSING: set iters for counter=20
 
         # updates the quantities inside the objective function
@@ -175,6 +176,13 @@ class DirOptLCAO(LCAOEigensolver):
                 wfs._P_ani = None
 
                 wfs.myocc_n = wfs.myocc_n[ind]
+
+    def postprocess(self, ibzwfs, density, potential, hamiltonian,
+                    maxiter, cc, log):
+        for wfs in ibzwfs:
+            self.update_to_canonical_orbitals(wfs,
+                                              hamiltonian,
+                                              potential)
 
     def get_preconditioner(self, ibzwfs, ind_up):
         """

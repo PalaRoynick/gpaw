@@ -119,12 +119,6 @@ class SCFLoop:
                 write_iteration(cc, converged_items, entries, ctx, log)
 
             if converged:
-                if name == 'etdm-lcao':
-                    for wfs in ibzwfs:
-                        self.eigensolver \
-                            .update_to_canonical_orbitals(wfs,
-                                                          self.hamiltonian,
-                                                          potential)
                 converged = all(
                     ext.post_scf_convergence(
                         ibzwfs, nelectrons, self.occ_calc, self.mixer, log)

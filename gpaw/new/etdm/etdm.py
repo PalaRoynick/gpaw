@@ -128,7 +128,9 @@ class ETDM:
         gradient_p = self.apply_precond(precond, gradient)
 
         # Update the search direction using LBFGS
-        self.searchdir_algo.update(self.a_u, gradient_p)
+        self.searchdir_algo.update(
+            KArray(self.a_u, comm=self.objfunc.kpt_comm),
+            KArray(gradient_p, comm=self.objfunc.kpt_comm))
 
         # Move parameters along the search direction
         self.move()

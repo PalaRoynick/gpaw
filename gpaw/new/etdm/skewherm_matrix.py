@@ -74,7 +74,10 @@ class SkewHermitian:
         self._len = len(self.ind_up[0])
 
         # Assign initial data (if provided)
-        self.data = data
+        if data is not None:
+            self.data = data
+        else:
+            self.data = np.zeros(shape=self._len, dtype=self._dtype)
 
     def _make_ind_up(self):
         # Choose which independent elements of the skew-Hermitian A are

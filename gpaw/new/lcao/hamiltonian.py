@@ -13,7 +13,7 @@ from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
 
-from gpaw.new.etdm.tools2 import get_n_occ
+from gpaw.new.etdm.tools import get_n_occ
 
 
 class HamiltonianMatrixCalculator:
