@@ -686,12 +686,15 @@ check-agts:
 
 
 test-mi210:
-  image: $IMAGE_MAIN_LATEST
-  stage: test
+  image: docker.io/rocm/dev-ubuntu-24.04:7.2-complete
+  stage: build
+  before_script:
+   - echo hello
   script:
    - echo hello, world!
-  needs:
-   - job: build-latest  # <-- We will need a new docker for this
+   - rocm-smi
+   - amd-smi list
+   - rocminfo
   tags:
    - mi210
 
