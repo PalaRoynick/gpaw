@@ -20,36 +20,9 @@ class DirOptLCAO(LCAOEigensolver):
         self.name = "etdm-lcao"
         self.representation = representation
         self.matrix_exp = matrix_exp
+        self.iter = 0
 
         super().__init__(basis)
-
-    def initialize(self, ibzwfs, hamiltonian, density,
-                   occ_calc, pot_calc,
-                   potential):
-
-        super().iterate(ibzwfs, density, potential, hamiltonian)
-
-        nelectrons = density.nvalence - density.charge + pot_calc.charge
-        ibzwfs.calculate_occs(occ_calc, nelectrons)  # missing: if read from file
-        # initial sort orbitals (MISSING: changes with mom, sic)
-        self.sort_orbitals_according_to_occ(ibzwfs)
-
-        self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
-                                             self.matrix_exp)
-        a = []
-        self.ind_up = []
-        self.ref_orbitals = []
-        for u in range(len(self.objfunc.a_vec_u)):
-            a.append(self.objfunc.a_vec_u[u].data) 
-            self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
-
-        for wfs in ibzwfs:
-            self.ref_orbitals.append(wfs.C_nM.copy())
-
-        a_u_init = np.array(a)
-        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
-        
-        self.precond = False
 
         # initialize_orbitals
 
@@ -69,6 +42,42 @@ class DirOptLCAO(LCAOEigensolver):
         One iteration of direct optimization for LCAO
         """
         
+        # Initialization
+
+        if self.iter == 0:
+            eig_error, wfs_error, energies = super().iterate(ibzwfs, density,
+                                                             potential,
+                                                             hamiltonian)
+            self.iter += 1
+
+            energies = DFTEnergies(
+                coulomb=0.0, zero=0.0, xc=0.0, external=0.0,
+                kinetic_correction=0.0, spinorbit=0.0, band=0.0, entropy=0.0,
+                extrapolation=0.0)
+            return eig_error, wfs_error, energies
+
+        if self.iter == 1:
+
+            self.sort_orbitals_according_to_occ(ibzwfs)
+
+            self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
+                                                 self.matrix_exp)
+            a = []
+            self.ind_up = []
+            self.ref_orbitals = []
+            for u in range(len(self.objfunc.a_vec_u)):
+                a.append(self.objfunc.a_vec_u[u].data)
+                self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
+
+            for wfs in ibzwfs:
+                self.ref_orbitals.append(wfs.C_nM.copy())
+
+            a_u_init = np.array(a)
+            self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
+        
+            self.precond = False
+            self.iter += 1
+
         # MISSING: set iters for counter=20
 
         # updates the quantities inside the objective function
@@ -88,7 +97,6 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.one_iteration(precond=self.prec)
 
         error = self.objfunc.error
-        print("ERROR", error)
 
         return 0.0, error, self.objfunc.tot_energy
 

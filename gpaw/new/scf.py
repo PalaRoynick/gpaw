@@ -75,13 +75,6 @@ class SCFLoop:
 
         self.occ_calc.initialize_reference_orbitals()
 
-        name = getattr(self.eigensolver, 'name', None)
-        if name == 'etdm-lcao':
-            self.eigensolver.initialize(ibzwfs, self.hamiltonian,
-                                        density, self.occ_calc,
-                                        pot_calc,
-                                        potential)
-
         if self.update_density_and_potential:
             dens_error = self.mixer.mix(density)
         else:
