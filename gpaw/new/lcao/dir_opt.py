@@ -75,7 +75,7 @@ class DirOptLCAO(LCAOEigensolver):
             self.precond = False
 
         # Update reference orbitals according to counter
-        self.update_ref_orbitals(self.iter, ibzwfs)
+        self.update_ref_orbitals(ibzwfs)
 
         # updates the quantities inside the objective function
         self.objfunc.update_objfunc(density, potential,
@@ -133,7 +133,7 @@ class DirOptLCAO(LCAOEigensolver):
         eps, w = np.linalg.eigh(l_nn)
         return w.T.conj() @ c_nm, eps
 
-    def update_ref_orbitals(self, iter, ibzwfs):
+    def update_ref_orbitals(self, ibzwfs):
         """
         Update reference orbitals and reset search direction algorithm
         """
@@ -143,16 +143,16 @@ class DirOptLCAO(LCAOEigensolver):
 
         counter = self.update_ref_orbitals_counter
 
-        if (iter % counter == 0 and iter > 1):
+        if (self.iter % counter == 0 and self.iter > 1):
             # set reference orbitals
             for u, wfs in enumerate(ibzwfs):
                 n_dim = self.objfunc._a_vec_u[u]._ndim
-                self.ref_orbitals[u] = np.copy(wfs.C_nM.data[:n_dim])
-                self.objfunc.a_vec_u[u].data = np.zeros_like(
-                    self.objfunc.a_vec_u[u].data)
+                self.ref_orbitals[u].data = np.copy(wfs.C_nM.data[:n_dim])
+                self.etdm.a_u[u] = np.zeros_like(
+                    self.etdm.a_u[u])
 
+            self.iter = 1
             self.etdm.searchdir_algo.reset()
-
 
     def sort_orbitals_according_to_occ(self, ibzwfs):
 
