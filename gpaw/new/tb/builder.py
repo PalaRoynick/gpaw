@@ -303,7 +303,9 @@ class TBDFTComponentsBuilder(DFTComponentsBuilder):
         return es.build_lcao(self.basis,
                              self.relpos_ac,
                              self.grid.cell_cv,
-                             self.ibz.symmetries)
+                             self.ibz.symmetries,
+                             hamiltonian,
+                             self.create_occupation_number_calculator)
 
     def create_ibz_wave_functions(self,
                                   basis: BasisFunctions,

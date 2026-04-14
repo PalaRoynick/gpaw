@@ -15,19 +15,22 @@ class DirOptLCAO(LCAOEigensolver):
     def __init__(self,
                  basis,
                  representation,
-                 matrix_exp):
+                 matrix_exp,
+                 occ_calc):
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
         self.representation = representation
         self.matrix_exp = matrix_exp
+        self.occ_calc = occ_calc
         self.iter = 0
+        self.update_ref_orbitals_counter = 20
 
         super().__init__(basis)
 
         # initialize_orbitals
 
         # MISSING: get functional, randomize orbitals
-            
+       
         # MISSING: localize for sic
         # MISSING: initialize mom
 
@@ -45,40 +48,34 @@ class DirOptLCAO(LCAOEigensolver):
         # Initialization
 
         if self.iter == 0:
-            eig_error, wfs_error, energies = super().iterate(ibzwfs, density,
-                                                             potential,
-                                                             hamiltonian)
-            self.iter += 1
 
-            energies = DFTEnergies(
-                coulomb=0.0, zero=0.0, xc=0.0, external=0.0,
-                kinetic_correction=0.0, spinorbit=0.0, band=0.0, entropy=0.0,
-                extrapolation=0.0)
-            return eig_error, wfs_error, energies
+            super().iterate(ibzwfs, density, potential, hamiltonian)
 
-        if self.iter == 1:
-
+            nelectrons = density.nvalence - density.charge + pot_calc.charge
+            ibzwfs.calculate_occs(self.occ_calc, nelectrons)
             self.sort_orbitals_according_to_occ(ibzwfs)
 
             self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
                                                  self.matrix_exp)
+            # set a_u_init and indices
             a = []
             self.ind_up = []
-            self.ref_orbitals = []
             for u in range(len(self.objfunc.a_vec_u)):
                 a.append(self.objfunc.a_vec_u[u].data)
                 self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
 
+            # set reference orbitals
+            self.ref_orbitals = []
             for wfs in ibzwfs:
                 self.ref_orbitals.append(wfs.C_nM.copy())
 
             a_u_init = np.array(a)
             self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
-        
-            self.precond = False
-            self.iter += 1
 
-        # MISSING: set iters for counter=20
+            self.precond = False
+
+        # Update reference orbitals according to counter
+        self.update_ref_orbitals(self.iter, ibzwfs)
 
         # updates the quantities inside the objective function
         self.objfunc.update_objfunc(density, potential,
@@ -97,6 +94,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.one_iteration(precond=self.prec)
 
         error = self.objfunc.error
+        self.iter += 1
 
         return 0.0, error, self.objfunc.tot_energy
 
@@ -135,7 +133,7 @@ class DirOptLCAO(LCAOEigensolver):
         eps, w = np.linalg.eigh(l_nn)
         return w.T.conj() @ c_nm, eps
 
-    def update_ref_orbitals(self, ibzwfs, hamiltonian, density):
+    def update_ref_orbitals(self, iter, ibzwfs):
         """
         Update reference orbitals and reset search direction algorithm
         """
@@ -143,23 +141,18 @@ class DirOptLCAO(LCAOEigensolver):
         # MISSING: check if canonical orbitals are needed, or mom restart,
         # get_canonical_representation
 
-        counter = self.update_ref_orb_counter
+        counter = self.update_ref_orbitals_counter
 
-        if (self.iters % counter == 0 and self.iters > 1):
-            self.set_reference_orbitals(ibzwfs)
-            self.search_dir.reset()
+        if (iter % counter == 0 and iter > 1):
+            # set reference orbitals
+            for u, wfs in enumerate(ibzwfs):
+                n_dim = self.objfunc._a_vec_u[u]._ndim
+                self.ref_orbitals[u] = np.copy(wfs.C_nM.data[:n_dim])
+                self.objfunc.a_vec_u[u].data = np.zeros_like(
+                    self.objfunc.a_vec_u[u].data)
 
-    #def set_reference_orbitals(self, ibzwfs):
-    #    ndim = ibzwfs.nbands
-    #    # these are coefficients
-    #    for wfs in ibzwfs:   # ???????
-    #        u = self.kpointval(kpt)
-    #        self.reference_orbitals[u] = np.copy(wfs.C_nM[:ndim[u]])
+            self.etdm.searchdir_algo.reset()
 
-    def set_ref_orbitals_and_a_vec(self, ibzwfs):
-
-        self.set_reference_orbitals(ibzwfs)
-        self.a_vec_u = np.zeros_like(self.a_vec_u)
 
     def sort_orbitals_according_to_occ(self, ibzwfs):
 

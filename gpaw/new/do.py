@@ -46,9 +46,13 @@ class DirectOptimizationLcao(Eigensolver):
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
-        
+    def build_lcao(self, basis, relpos_ac,
+                   cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator):
+        occ_calc = create_occupation_number_calculator()
+
         return DirOptLCAO(
             basis,
             representation=self.representation,
-            matrix_exp=self.matrix_exp,)
+            matrix_exp=self.matrix_exp,
+            occ_calc=occ_calc)

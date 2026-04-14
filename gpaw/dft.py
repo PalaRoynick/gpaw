@@ -349,7 +349,8 @@ class RMMDIIS(PWFDEigensolverParameter):
 class LCAOEigensolver(Eigensolver):
     name = 'lcao'
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator):
         from gpaw.new.lcao.eigensolver import LCAOEigensolver as LCAOES
         return LCAOES(basis)
 
@@ -358,7 +359,8 @@ class LCAOEigensolver(Eigensolver):
 
 
 class HybridLCAOEigensolver(LCAOEigensolver):
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator):
         from gpaw.new.lcao.hybrids import HybridLCAOEigensolver as HLCAOES
         return HLCAOES(basis, relpos_ac, cell_cv)
 
@@ -372,7 +374,8 @@ class Scissors(LCAOEigensolver):
     def todict(self):
         return {'shifts': self.shifts}
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator):
         from gpaw.lcao.scissors import ScissorsLCAOEigensolver
         return ScissorsLCAOEigensolver(basis,
                                        self.shifts,
