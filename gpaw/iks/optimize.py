@@ -643,6 +643,8 @@ class iKSLBFGS:
             iks.initialize()
 
         opt_kwargs = {
+            "memory": self.m,
+            "max_ls": self.max_ls,
             "maxiter": self.maxiter,
             "smooth Lagrangian tolerance": self.Ltol,
             "atomic Lagrangian tolerance": self.LDtol,
