@@ -334,10 +334,10 @@ def c72():
 
 
 si_defect_shapes = {
-    383: (4, 4, 3),
+    127: (4, 2, 2),
+    255: (4, 4, 2),
     511: (4, 4, 4),
-    799: (5, 5, 4),
-    1151: (6, 6, 4),
+    1023: (8, 4, 4),
     1535: (6, 8, 4),
     2047: (8, 8, 4),
 }
@@ -382,10 +382,10 @@ systems = {'H2': system_H2,
            'Ti2Br6-3': ti2br6,
            'Fe8O8-3M': fe8o8,
            'C72-2': c72,
-           'Si383_defect': lambda: si_defect(383),
+           'Si127_defect': lambda: si_defect(127),
+           'Si255_defect': lambda: si_defect(255),
            'Si511_defect': lambda: si_defect(511),
-           'Si799_defect': lambda: si_defect(799),
-           'Si1151_defect': lambda: si_defect(1151),
+           'Si1023_defect': lambda: si_defect(1023),
            'Si1535_defect': lambda: si_defect(1535),
            'Si2047_defect': lambda: si_defect(2047)}
 
