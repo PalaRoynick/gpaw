@@ -190,6 +190,15 @@ for nickname, definition, req in benchmarks_list:
     benchmarks[nickname] = definition
     benchmarks_reqs[nickname] = parse_requirement(req)
 
+niflheim_gpu_only_benchmarks = {
+    'Si383_defect_gpu',
+    'Si511_defect_gpu',
+    'Si799_defect_gpu',
+    'Si1151_defect_gpu',
+    'Si1535_defect_gpu',
+    'Si2047_defect_gpu',
+}
+
 
 def recursive_update(d, u):
     for k, v in u.items():
