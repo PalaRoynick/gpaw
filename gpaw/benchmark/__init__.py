@@ -79,7 +79,25 @@ benchmarks_list = [
      '0:100G:1-4GPU'),
     ('pw_slab',
      'metalslab-pw.high:kpts.density10:xc.PBE:eigensolver.DAV3',
-     '56-:100G:2-GPU')]
+     '56-:100G:2-GPU'),
+    ('Si383_defect_gpu',
+     'Si383_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si511_defect_gpu',
+     'Si511_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si799_defect_gpu',
+     'Si799_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si1151_defect_gpu',
+     'Si1151_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si1535_defect_gpu',
+     'Si1535_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si2047_defect_gpu',
+     'Si2047_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU')]
 
 
 def get_domainband(size=None, world=None):
