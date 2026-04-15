@@ -30,7 +30,7 @@ class ObjectiveFunctionETDM(ABC):
     """
 
     def __init__(self, ndim: int, f_n: np.ndarray, dtype: type,
-                 representation='full'):
+                 representation='full', use_egdecomp=False):
         """
         Initialize the objective function with default skew-Hermitian matrices.
 
@@ -53,6 +53,7 @@ class ObjectiveFunctionETDM(ABC):
         # These hold the independent parameters that will be optimized.
 
         self.f_n = f_n
+        self.use_egdecomp = use_egdecomp
 
         self._a_vec_u = []
 
@@ -161,16 +162,21 @@ class ObjectiveFunctionETDM(ABC):
         # Compute energy and Hamiltonian matrix elements
         energy, h_unn = self._calc_obf_value_and_matrix_elements()
 
-        # Compute gradient for each SkewHermitian matrix
-        # h_unn - h_unn.T.conj() ensures a skew-Hermitian
-        # matrix for derivative
-        gradient = np.array(
-            [
-                a.calc_gradient(h_nn - h_nn.T.conj())
-                for (a, h_nn) in zip(self.a_vec_u, h_unn)
-            ]
-        )
-
+        if self.use_egdecomp:
+            # Compute gradient for each SkewHermitian matrix
+            # h_unn - h_unn.T.conj() ensures a skew-Hermitian
+            # matrix for derivative
+            gradient = np.array(
+                [
+                    a.calc_gradient(h_nn - h_nn.T.conj())
+                    for (a, h_nn) in zip(self.a_vec_u, h_unn)
+                ]
+            )
+        else:
+            # in this case h_nn has already been worked on in objfunc_lcao
+            gradient = np.array(
+                [h_nn for h_nn in h_unn]
+            )
         return energy, gradient
 
     @abstractmethod

@@ -112,7 +112,6 @@ class ETDM:
             self.a_u = p_u
         else:
             # Accumulated update: C_{j+1} = C_0 exp(sum_0^j A_j)
-            # here there should be a reset every tot iterations?
             self.a_u += p_u
 
     def one_iteration(self, gradient=None, precond=None):
@@ -120,8 +119,6 @@ class ETDM:
         """
         Just one iteration of optimization using the search algorithm
         """
-        # it could be given (ie after preconditioning)
-        # or calculated
         if gradient is None:
             gradient = self.gradient
 

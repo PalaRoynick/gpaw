@@ -27,13 +27,45 @@ class DirOptLCAO(LCAOEigensolver):
 
         super().__init__(basis)
 
-        # initialize_orbitals
-
         # MISSING: get functional, randomize orbitals
-       
         # MISSING: localize for sic
         # MISSING: initialize mom
 
+    def initialize(self, ibzwfs, density, potential, hamiltonian, pot_calc):
+        """
+        Initialization. One iteration of eigensolver, calculation of
+        occupation numbers, reordering of orbitals and creation of
+        objective function and etdm classes.
+        Set first reference orbitals and keyword for preconditioner
+        """
+
+        super().iterate(ibzwfs, density, potential, hamiltonian)
+
+        nelectrons = density.nvalence - density.charge + pot_calc.charge
+        ibzwfs.calculate_occs(self.occ_calc, nelectrons)
+        self.sort_orbitals_according_to_occ(ibzwfs)
+
+        self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
+                                             self.matrix_exp)
+
+        # set a_u_init and indices
+        a = []
+        self.ind_up = []
+        for u in range(len(self.objfunc.a_vec_u)):
+            a.append(self.objfunc.a_vec_u[u].data)
+            self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
+
+        # set reference orbitals
+        self.ref_orbitals = []
+        for wfs in ibzwfs:
+            self.ref_orbitals.append(wfs.C_nM.copy())
+
+        a_u_init = np.array(a)
+        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
+
+        self.precond = False
+        self.iter += 1
+        
     def iterate(self,
                 ibzwfs: IBZWaveFunctions,
                 density: Density,
@@ -44,56 +76,42 @@ class DirOptLCAO(LCAOEigensolver):
         """
         One iteration of direct optimization for LCAO
         """
-        
+
         # Initialization
-
         if self.iter == 0:
+            self.initialize(ibzwfs, density, potential, hamiltonian, pot_calc)
 
-            super().iterate(ibzwfs, density, potential, hamiltonian)
-
-            nelectrons = density.nvalence - density.charge + pot_calc.charge
-            ibzwfs.calculate_occs(self.occ_calc, nelectrons)
-            self.sort_orbitals_according_to_occ(ibzwfs)
-
-            self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
-                                                 self.matrix_exp)
-            # set a_u_init and indices
-            a = []
-            self.ind_up = []
-            for u in range(len(self.objfunc.a_vec_u)):
-                a.append(self.objfunc.a_vec_u[u].data)
-                self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
-
-            # set reference orbitals
-            self.ref_orbitals = []
-            for wfs in ibzwfs:
-                self.ref_orbitals.append(wfs.C_nM.copy())
-
-            a_u_init = np.array(a)
-            self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
-
-            self.precond = False
-
-        # Update reference orbitals according to counter
-        self.update_ref_orbitals(ibzwfs)
-
-        # updates the quantities inside the objective function
+        # Updates the quantities inside the objective function
         self.objfunc.update_objfunc(density, potential,
                                     pot_calc, ibzwfs,
                                     hamiltonian,
                                     self.ref_orbitals)
-        # relative update, MISSING: counter=20 reset
 
-        # preconditioning
+        # TEST: try to make it work more similar to old
+        if self.iter == 1:
+            self.etdm._energy, self.etdm._gradient = \
+                self.objfunc._calc_energy_and_gradient()
+            self.old_gradient = None
+        else:
+            self.etdm._gradient = self.old_gradient
+
+        # Update reference orbitals
+        self.update_ref_orbitals(ibzwfs)
+
+        # Preconditioning
         if not self.precond:
-
             self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
             self.precond = True
 
-        # one step of etdm
+        # One step of etdm
         self.etdm.one_iteration(precond=self.prec)
 
         error = self.objfunc.error
+#        print("ERROR", error)
+
+        self.etdm._gradient = None
+        self.old_gradient = self.etdm.gradient
+
         self.iter += 1
 
         return 0.0, error, self.objfunc.tot_energy
@@ -108,6 +126,7 @@ class DirOptLCAO(LCAOEigensolver):
         matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
         h_mm = matrix_calculator.calculate_matrix(wfs)
+
         # REMOVE FIRST OPTION
         if update_orb_to_canonical:
             # Diagonalize entire Hamiltonian matrix
@@ -120,6 +139,7 @@ class DirOptLCAO(LCAOEigensolver):
             for f in f_unique:
                 wfs.C_nM.data[occ_n == f, :], wfs.eig_n[occ_n == f] = \
                     self.rotate_subspace(h_mm.data, wfs.C_nM.data[occ_n == f, :])
+                
         # missing sic option
 
         # update projections
@@ -137,9 +157,7 @@ class DirOptLCAO(LCAOEigensolver):
         """
         Update reference orbitals and reset search direction algorithm
         """
-        # for now we don't use it, relative update?
         # MISSING: check if canonical orbitals are needed, or mom restart,
-        # get_canonical_representation
 
         counter = self.update_ref_orbitals_counter
 

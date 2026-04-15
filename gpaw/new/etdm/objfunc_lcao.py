@@ -1,5 +1,6 @@
 from gpaw.new.etdm.objfunc_etdm import ObjectiveFunctionETDM
 from gpaw.new.etdm.tools import get_ndim
+import numpy as np
 
 
 class LCAOObjectiveFunction(ObjectiveFunctionETDM):
@@ -11,9 +12,11 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         ndim = get_ndim(ibzwfs)
         dtype = self.ibzwfs.dtype
         self.f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
-        self.use_egdecomp = matrix_exp == 'egdecomp'
+        self.matrix_exp = matrix_exp
+        self.use_egdecomp = self.matrix_exp == 'egdecomp'
 
-        super().__init__(ndim, self.f_n, dtype, self._representation)
+        super().__init__(ndim, self.f_n, dtype, self._representation,
+                         self.use_egdecomp)
 
         # initialize stored values
         self._energy = None
@@ -39,6 +42,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.rotate_wfs()
 
         energy = self.update_density_and_potential()
+        
         self.error = 0.0
         h_unn = []
 
@@ -54,8 +58,32 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
-            h_ij = 2 * wfs.myocc_n * h_ij  # this is specific of egdecomp
-            h_unn.append(h_ij)
+            f_n = 2 * wfs.myocc_n
+            if self.use_egdecomp:
+                h_ij = f_n * h_ij  # this is specific of egdecomp
+                h_unn.append(h_ij)
+
+            else:
+                ind_up = self._a_vec_u[0].ind_up  # CHECK
+                if self._representation == 'u-invar':
+                    h_ij = h_ia
+                else:
+                    if self._representation == 'full' and wfs.dtype == complex:
+                        indl = np.tril_indices(h_ij.shape[0], -1)
+                    else:
+                        indl = np.tril_indices(h_ij.shape[0])
+                    h_ij[indl] = np.inf
+                    if self._representation == 'sparse':
+                        h_ij = np.concatenate((h_ij, h_ia), axis=1)
+                h_ij = h_ij.ravel()
+                h_ij = h_ij[h_ij != np.inf]
+
+                # CHECK IF self.f_n IS EQUAL TO HOW IT IS IN OLD
+                ones_mat = np.ones(shape=(len(f_n), len(f_n)))
+                anti_occ = f_n * ones_mat - \
+                    f_n[:, np.newaxis] * ones_mat
+                anti_occ = anti_occ[ind_up]
+                h_unn.append(anti_occ * h_ij)
 
         self.tot_energy = energy
         return energy, h_unn
