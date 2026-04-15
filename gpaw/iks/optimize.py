@@ -440,16 +440,16 @@ class PotState:
         # ignoring the coupling between atomic and pseudo quantities
         assert isinstance(other, PotState)
         assert self.gd is not None and self.setups is not None
-        I = np.zeros(1, dtype=float)
+        II = np.zeros(1, dtype=float)
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             for a in data_asz:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]
                 rgd = self.setups[a].xc_correction.rgd
-                I += np.einsum("n,sng,sng,g", weight_n,
-                               data_sng, other_sng, rgd.dv_g)
-        self.comm.sum(I)  # over all atoms
-        return self.gd.integrate(self.data_sg * other.data_sg).sum() + I.item()
+                II += np.einsum("n,sng,sng,g", weight_n,
+                                data_sng, other_sng, rgd.dv_g)
+        self.comm.sum(II)  # over all atoms
+        return self.gd.integrate(self.data_sg * other.data_sg).sum() + II.item()
 
     def norm(self):
         return np.sqrt(self.inner(self))

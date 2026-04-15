@@ -508,12 +508,12 @@ class iKS:
         if self.lambdareg != 0.0:
             grad_svg = self.xc.kernel.calculate_gradient(self.xc.vxc_sg)
             sigma_sg = np.einsum('sv...,sv...->s...', grad_svg, grad_svg)
-            I = self.lambdareg * \
+            II = self.lambdareg * \
                 self.finegd.integrate(sigma_sg, global_integral=True).sum()
             # print('regularization lag', I, self.calc.world.rank)
-            self.fmt.log(f'regularization correction: {I:.4e}')
-            L1 += I
-            L2 += I
+            self.fmt.log(f'regularization correction: {II:.4e}')
+            L1 += II
+            L2 += II
 
         LD1 = np.array([0.0])
         LD2 = np.array([0.0])
@@ -1101,9 +1101,8 @@ class iKS:
             "opt_kwargs": opt_kwargs,
         }
         self.preopt(
-            f"Mixed SciPy {
-                pseudo_method
-            } and fastest-descent optimization for the iKS procedure",
+            f"Mixed SciPy {pseudo_method} "
+            "and fastest-descent optimization for the iKS procedure",
             opts,
         )
         opt = iKSMixOpt(self)

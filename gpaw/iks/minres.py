@@ -144,12 +144,12 @@ class iKSLinearSolver:
         P_ani = kpt.P_ani
         p2_nG = p_nG.copy()
         for n in range(len(p2_nG)):
-            I = np.zeros(1, dtype=p2_nG.dtype)
+            II = np.zeros(1, dtype=p2_nG.dtype)
             for a, Pp_ni in Pp_ani.items():
-                I += np.einsum("i,ij,j", Pp_ni[n].conj(),
-                               wfs.setups[a].dO_ii, P_ani[a][n])
-            self.iks.hamiltonian.world.sum(I)
-            alpha = I + wfs.integrate(p_nG[n], psit_nG[n])
+                II += np.einsum("i,ij,j", Pp_ni[n].conj(),
+                                wfs.setups[a].dO_ii, P_ani[a][n])
+            self.iks.hamiltonian.world.sum(II)
+            alpha = II + wfs.integrate(p_nG[n], psit_nG[n])
             p2_nG[n] -= alpha * psit_nG[n]
         return p2_nG
 
@@ -261,10 +261,10 @@ class iKSLinearSolver:
             def integrate(a, b):
                 a = a.reshape(shape)
                 b = b.reshape(shape)
-                I = 0.0
+                II = 0.0
                 for n in range(len(p0_nG)):
-                    I += wfs.integrate(a[n], b[n])
-                return I
+                    II += wfs.integrate(a[n], b[n])
+                return II
 
             def apply(a):
                 return self.apply_lhs(a.reshape(shape)).ravel()

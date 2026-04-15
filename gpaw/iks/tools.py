@@ -174,9 +174,9 @@ def calculate_3phiproj_coeffs_supergaunt(
     # map L -> i and j -> i
     L_i = []
     j_i = []
-    for j, l in enumerate(setup.l_j):
-        for m in range(2 * l + 1):
-            L = l**2 + m
+    for j, ll in enumerate(setup.l_j):
+        for m in range(2 * ll + 1):
+            L = ll**2 + m
             L_i.append(L)
             j_i.append(j)
     # radial integral
