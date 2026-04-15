@@ -30,7 +30,7 @@ class ObjectiveFunctionETDM(ABC):
     """
 
     def __init__(self, ndim: int, f_n: np.ndarray, dtype: type,
-                 representation='full', use_egdecomp=False):
+                 representation='full', matrix_exp='egdecomp'):
         """
         Initialize the objective function with default skew-Hermitian matrices.
 
@@ -53,14 +53,14 @@ class ObjectiveFunctionETDM(ABC):
         # These hold the independent parameters that will be optimized.
 
         self.f_n = f_n
-        self.use_egdecomp = use_egdecomp
+        self.use_egdecomp = matrix_exp == 'egdecomp'
 
         self._a_vec_u = []
 
         for kpt in range(f_n.shape[1]):
             for spin in range(f_n.shape[0]):
                 skewherm = SkewHermitian(ndim, f_n[spin, kpt, :], dtype,
-                                         representation)
+                                         representation, matrix_exp)
                 self._a_vec_u.append(skewherm)
 
         # Initialize cached values for energy and gradient as None.

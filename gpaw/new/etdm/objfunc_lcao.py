@@ -16,7 +16,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.use_egdecomp = self.matrix_exp == 'egdecomp'
 
         super().__init__(ndim, self.f_n, dtype, self._representation,
-                         self.use_egdecomp)
+                         self.matrix_exp)
 
         # initialize stored values
         self._energy = None
