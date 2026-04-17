@@ -10,21 +10,6 @@ from gpaw.mpi import broadcast, world
 SUPERCELL = (2, 1, 1)
 
 
-@pytest.fixture(scope='session')
-def session_tmp_path(tmp_path_factory):
-    if world.rank == 0:
-        path = tmp_path_factory.mktemp('elph_session')
-    else:
-        path = None
-    path = broadcast(path, comm=world)
-    cwd = os.getcwd()
-    os.chdir(path)
-    try:
-        yield path
-    finally:
-        os.chdir(cwd)
-
-
 def get_calc(txt, parallel={}):
     return GPAW(mode='lcao',
                 basis='sz(dzp)',
