@@ -1,11 +1,9 @@
-import os
 import pytest
 
 from ase.build import bulk
 
 from gpaw import GPAW
 from gpaw.elph import DisplacementRunner, Supercell
-from gpaw.mpi import broadcast, world
 
 SUPERCELL = (2, 1, 1)
 
