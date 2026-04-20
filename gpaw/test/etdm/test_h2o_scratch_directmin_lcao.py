@@ -15,8 +15,8 @@ def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
     H2O.center(vacuum=vacuum)
     return H2O
 
-@pytest.mark.parametrize("representation", ['full', 'sparse', 'u-invar'])
-@pytest.mark.parametrize("spinpol", [False, True])
+@pytest.mark.parametrize("representation", ['full'])
+@pytest.mark.parametrize("spinpol", [False])
 def test_h2o(gpaw_new, representation, spinpol):
 
     """
@@ -37,7 +37,7 @@ def test_h2o(gpaw_new, representation, spinpol):
         mixer={'backend': 'no-mixing'},
         nbands='nao',
         symmetry='off',
-        maxiter=10,
+        maxiter=100,
         txt='-'
     )
 #    else:

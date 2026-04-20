@@ -76,6 +76,7 @@ class LBFGS:
 
             # Initial search direction is simply the negative gradient
             self.search_dir = -g_cur
+            print("search_dir NEW-DIR 1st", self.search_dir.a_ux[0])
 
             # Increment iteration counter
             self.local_iter += 1
@@ -90,6 +91,7 @@ class LBFGS:
             # Store changes in variables (ds) and gradients (dy)
             # For first few iterations, ds = previous search direction
             self.ds[m] = self.search_dir.copy()
+            print("ds NEW-DIR", self.ds[m].a_ux[0])
             self.dy[m] = g_cur - self.g_old
 
             # Compute curvature y^T * s
