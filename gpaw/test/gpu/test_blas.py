@@ -1,10 +1,12 @@
 import numpy as np
 import pytest
 
-from gpaw.gpu import cupy as cp, cupy_is_fake
-from gpaw.utilities.blas import (gpu_axpy, gpu_dotc, gpu_dotu, gpu_gemm,
-                                 gpu_gemv, gpu_mmm, gpu_r2k, gpu_rk, gpu_scal,
-                                 mmm, r2k, rk)
+from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy_is_fake
+from gpaw.utilities.blas import (no_c_blas, gpu_axpy, gpu_dotc, gpu_dotu,
+                                 gpu_gemm, gpu_gemv, gpu_mmm, gpu_r2k, gpu_rk,
+                                 gpu_scal, mmm, r2k, rk)
 
 
 @pytest.mark.gpu
@@ -55,54 +57,75 @@ def test_blas(dtype, set_device):
     gpu_mmm(0.5, a_gpu, 'N', b_gpu, 'N', 0.2, c_gpu)
     assert approx(c_gpu.get()) == c
 
-    # gemm
-    c *= 0.2
-    c += 0.5 * b @ a
-    gpu_gemm(0.5, a_gpu, b_gpu, 0.2, c_gpu)
-    assert approx(a_gpu.get()) == a
+    if not GPAW_NO_C_EXTENSION:
+        # gemm
+        c *= 0.2
+        c += 0.5 * b @ a
+        gpu_gemm(0.5, a_gpu, b_gpu, 0.2, c_gpu)
+        assert approx(a_gpu.get()) == a
 
-    # gemv
-    y *= 0.2
-    y += 0.5 * a @ x
-    gpu_gemv(0.5, a_gpu, x_gpu, 0.2, y_gpu)
-    assert approx(y_gpu.get()) == y
+        # gemv
+        y *= 0.2
+        y += 0.5 * a @ x
+        gpu_gemv(0.5, a_gpu, x_gpu, 0.2, y_gpu)
+        assert approx(y_gpu.get()) == y
 
-    # rk
-    rk(0.5, a, 0.2, c)
-    gpu_rk(0.5, a_gpu, 0.2, c_gpu)
-    assert approx(c_gpu.get()) == c
+        # rk
+        rk(0.5, a, 0.2, c)
+        gpu_rk(0.5, a_gpu, 0.2, c_gpu)
+        if no_c_blas:
+            # Our "purepython" rk() fills in the full matrix, unlike refernce
+            # BLAS which only does lower triangle. So compare only lower
+            c = np.tril(c)
+            c_gpu = cp.tril(c_gpu)
+        assert approx(c_gpu.get()) == c
 
     # r2k
-    c_gpu_ref = c_gpu.copy()
-    c_ref = c.copy()
-    r2k(0.5, a, b, 0.2, c)
-    gpu_r2k(0.5, a_gpu, b_gpu, 0.2, c_gpu)
-    assert approx(c_gpu.get()) == c
+    from cupy.cuda.stream import Stream
+    stream = Stream(non_blocking=True)
+    with stream:
+        c_gpu_ref = c_gpu.copy()
+        c_ref = c.copy()
 
-    # r2k sliced
-    bs = 11
-    for i in range(0, (N + bs - 1) // bs):
-        gpu_r2k(0.5, a_gpu[:, i * bs:(i + 1) * bs],
-                b_gpu[::, i * bs:(i + 1) * bs],
-                0.2 if (i == 0) else 1.0, c_gpu_ref)
-        r2k(0.5, a[:, i * bs:(i + 1) * bs],
-            b[:, i * bs:(i + 1) * bs],
-            0.2 if (i == 0) else 1.0, c_ref)
+        r2k(0.5, a, b, 0.2, c)
+        gpu_r2k(0.5, a_gpu, b_gpu, 0.2, c_gpu)
 
-    assert approx(c_gpu_ref.get()) == c
-    assert approx(c_ref) == c
+        if no_c_blas:
+            # Same caveats as with rk()
+            c = np.tril(c)
+            c_gpu = cp.tril(c_gpu)
 
-    # dotc
-    check_cpu = x.conj() @ y
-    check_gpu = gpu_dotc(x_gpu, y_gpu)
-    assert check_cpu == approx(check_gpu)
+        assert approx(c_gpu.get()) == c
 
-    # dotu
-    check_cpu = x @ y
-    check_gpu = gpu_dotu(x_gpu, y_gpu)
-    assert check_cpu == approx(check_gpu)
+        # r2k sliced
+        bs = 11
+        for i in range(0, (N + bs - 1) // bs):
+            gpu_r2k(0.5, a_gpu[:, i * bs:(i + 1) * bs],
+                    b_gpu[::, i * bs:(i + 1) * bs],
+                    0.2 if (i == 0) else 1.0, c_gpu_ref)
+            r2k(0.5, a[:, i * bs:(i + 1) * bs],
+                b[:, i * bs:(i + 1) * bs],
+                0.2 if (i == 0) else 1.0, c_ref)
 
-    # scal
-    a *= 0.5
-    gpu_scal(0.5, a_gpu)
-    assert approx(a_gpu.get()) == a
+        if no_c_blas:
+            c_ref = np.tril(c_ref)
+            c_gpu_ref = cp.tril(c_gpu_ref)
+
+        assert approx(c_gpu_ref.get()) == c
+        assert approx(c_ref) == c
+
+    if not GPAW_NO_C_EXTENSION:
+        # dotc
+        check_cpu = x.conj() @ y
+        check_gpu = gpu_dotc(x_gpu, y_gpu)
+        assert check_cpu == approx(check_gpu)
+
+        # dotu
+        check_cpu = x @ y
+        check_gpu = gpu_dotu(x_gpu, y_gpu)
+        assert check_cpu == approx(check_gpu)
+
+        # scal
+        a *= 0.5
+        gpu_scal(0.5, a_gpu)
+        assert approx(a_gpu.get()) == a

@@ -1,3 +1,6 @@
+#include "python_utils.h"
+#include <stdbool.h>
+
 // In the code, one utilizes calls equvalent to PyArray API,
 // except instead of PyArray_BYTES one uses Array_BYTES.
 // Then, if GPAW is built with GPAW_GPU_AWARE_MPI define, these macros are rewritten with wrappers.
@@ -12,7 +15,7 @@
 			 || !PyArray_ISCARRAY((PyArrayObject*)a)            \
                          || !PyArray_ISNUMBER((PyArrayObject*)a)) {         \
     PyErr_SetString(PyExc_TypeError,                                        \
-		    "Not a proper NumPy array for MPI communication.");     \
+		    "Not a proper NumPy array: needs to be c-contiguous, aligned and writeable.");     \
     return NULL; } else
 
 // Check that array is well-behaved, read-only  and contains data that
@@ -21,7 +24,7 @@
 			 || !PyArray_ISCARRAY_RO((PyArrayObject*)a)         \
 			 || !PyArray_ISNUMBER((PyArrayObject*)a)) {         \
     PyErr_SetString(PyExc_TypeError,                                        \
-		    "Not a proper NumPy array for MPI communication.");     \
+		    "Not a proper NumPy array: needs to be c-contiguous and aligned.");     \
     return NULL; } else
 
 // Check that two arrays have the same type, and the size of the
@@ -46,7 +49,16 @@
 
 #else // GPAW_ARRAY_ALLOW_CUPY
 
-#define CHK_ARRAY(a) // TODO
+#define CHK_ARRAY(x)                                                            \
+    do {                                                                        \
+        if (x == NULL || !Array_ISCARRAY(x))                                    \
+        {                                                                       \
+            PyErr_SetString(PyExc_TypeError,                                    \
+                "Not a contiguous array for MPI communication.");               \
+            return NULL;                                                        \
+        }                                                                       \
+    } while (0)
+
 #define CHK_ARRAY_RO(a) // TODO
 #define CHK_ARRAYS(a,b,n) // TODO
 
@@ -183,6 +195,31 @@ static inline int Array_ISCOMPLEX(PyObject* obj)
 {
     int result = PyTypeNum_ISCOMPLEX(Array_TYPE(obj));
     return result;
+}
+
+/* Checks if the array is C-contiguous.
+Does NOT check the equivalent of PyArray_ISBEHAVED() (dunno how to do that for CuPy). */
+static inline bool Array_ISCARRAY(PyObject* obj)
+{
+#ifndef GPAW_ARRAY_DISABLE_NUMPY
+    if (PyArray_Check(obj))
+    {
+	    return PyArray_ISCARRAY((PyArrayObject*)obj);
+    }
+#endif
+
+    PyObject* flags = PyObject_GetAttrString(obj, "flags");
+    if (!flags) return false;
+
+    PyObject* is_contiguous_flag = PyObject_GetAttrString(flags, "c_contiguous");
+    Py_DECREF(flags);
+
+    if (!is_contiguous_flag) return false;
+
+    bool is_contiguous = (bool) PyLong_AS_LONG(is_contiguous_flag);
+    Py_DECREF(is_contiguous_flag);
+
+    return is_contiguous;
 }
 
 static inline void print_array_info(PyObject* obj)

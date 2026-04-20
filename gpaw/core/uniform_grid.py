@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import cached_property
 from math import pi
-from typing import Sequence, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
 import numpy as np
 
 import gpaw.fftw as fftw
-from gpaw.core.arrays import DistributedArrays
+from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import UGAtomCenteredFunctions
 from gpaw.core.domain import Domain
-from gpaw.gpu import as_np, cupy_is_fake, as_xp
-from gpaw.old.grid_descriptor import GridDescriptor
+from gpaw.fd_operators import Gradient
+from gpaw.gpu import as_np, as_xp, cupy_is_fake
 from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import zips
+from gpaw.new.c import add_to_density, add_to_density_gpu, symmetrize_ft
+from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.typing import (Array1D, Array2D, Array3D, Array4D, ArrayLike1D,
                          ArrayLike2D, Vector)
-from gpaw.new.c import add_to_density, add_to_density_gpu, symmetrize_ft
-from gpaw.fd_operators import Gradient
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -79,7 +81,7 @@ class UGDesc(Domain['UGArray']):
                                in zips(self.decomp_cp, self.mypos_c)])
         self.mysize_c = self.end_c - self.start_c
 
-        Domain.__init__(self, cell, pbc, kpt, comm, dtype)
+        super().__init__(cell, pbc, kpt, comm, dtype)
         self.myshape = tuple(self.mysize_c)
 
         self.dv = self.volume / self.size_c.prod()
@@ -99,12 +101,17 @@ class UGDesc(Domain['UGArray']):
         return tuple(self.size_c - self.zerobc_c)
 
     def __repr__(self):
-        return Domain.__repr__(self).replace(
+        if self.zerobc_c.any():
+            zbc = f'zerobc={self.zerobc_c.astype(int).tolist()}, '
+        else:
+            zbc = ''
+        return super().__repr__().replace(
             'Domain(',
-            f'UGDesc(size={self.size_c.tolist()}, ')
+            f'UGDesc(size={self.size_c.tolist()}, ' +
+            zbc)
 
     def _short_string(self, global_shape):
-        return f'uniform wave function grid shape: {global_shape}'
+        return f'Uniform wave function grid shape: {global_shape}'
 
     @cached_property
     def phase_factor_cd(self):
@@ -186,6 +193,7 @@ class UGDesc(Domain['UGArray']):
                                 qspiral_v=None,
                                 atomdist=None,
                                 integrals=None,
+                                save_memory=True,
                                 cut=False,
                                 xp=None):
         """Create UGAtomCenteredFunctions object."""
@@ -298,7 +306,7 @@ class UGDesc(Domain['UGArray']):
                         scale=scale, n=n, dtype=self.dtype, xp=xp)
 
 
-class UGArray(DistributedArrays[UGDesc]):
+class UGArray(XArray[UGDesc]):
     def __init__(self,
                  grid: UGDesc,
                  dims: int | tuple[int, ...] = (),
@@ -318,9 +326,9 @@ class UGArray(DistributedArrays[UGDesc]):
         data:
             Data array for storage.
         """
-        DistributedArrays. __init__(self, dims, grid.myshape,
-                                    comm, grid.comm, data, grid.dv,
-                                    grid.dtype, xp)
+        XArray. __init__(self, dims, grid.myshape,
+                         comm, grid.comm, data, grid.dv,
+                         grid.dtype, xp)
         self.desc = grid
 
     def __repr__(self):
@@ -520,7 +528,7 @@ class UGArray(DistributedArrays[UGDesc]):
 
         return out
 
-    def norm2(self):
+    def norm2(self, kind: str = 'normal', skip_sum=False):
         """Calculate integral over cell of absolute value squared.
 
         :::
@@ -529,6 +537,9 @@ class UGArray(DistributedArrays[UGDesc]):
          ||a(r)| dr
          /
         """
+        if not kind == 'normal' or skip_sum:
+            raise NotImplementedError
+
         norm_x = []
         arrays_xR = self._arrays()
         for a_R in arrays_xR:
@@ -577,6 +588,7 @@ class UGArray(DistributedArrays[UGDesc]):
             self.data *= self.desc.eikr(kpt_c, xp=self.xp)
 
     def interpolate(self,
+                    *,
                     plan1: fftw.FFTPlans | None = None,
                     plan2: fftw.FFTPlans | None = None,
                     grid: UGDesc | None = None,
@@ -605,8 +617,8 @@ class UGArray(DistributedArrays[UGDesc]):
         if self.desc.comm.size > 1:
             input = self.gather()
             if input is not None:
-                output = input.interpolate(plan1, plan2,
-                                           out.desc.new(comm=None))
+                output = input.interpolate(plan1=plan1, plan2=plan2,
+                                           grid=out.desc.new(comm=None))
                 out.scatter_from(output.data)
             else:
                 out.scatter_from()
@@ -622,7 +634,7 @@ class UGArray(DistributedArrays[UGDesc]):
 
         if self.dims:
             for input, output in zips(self.flat(), out.flat()):
-                input.interpolate(plan1, plan2, grid, output)
+                input.interpolate(plan1=plan1, plan2=plan2, out=output)
             return out
 
         plan1.tmp_R[:] = self.data
@@ -883,3 +895,8 @@ class UGArray(DistributedArrays[UGDesc]):
         if show:
             go.Figure(data=[surf]).show()
         return surf
+
+    def trace_inner_product(self, other: UGArray) -> float:
+        assert self.desc.dtype == other.desc.dtype
+        return self.desc.comm.sum_scalar(
+            np.vdot(self.data, other.data).real * self.desc.dv)

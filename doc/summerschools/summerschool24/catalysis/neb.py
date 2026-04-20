@@ -100,7 +100,7 @@ for i in range(n_im):
 
 images.append(final)
 
-neb = NEB(images)
+neb = NEB(images, method='improvedtangent')
 neb.interpolate()
 view(images)
 
@@ -163,7 +163,7 @@ Note that the NEB class now needs to be initialized by using ```NEB(images,paral
 
 # %%
 # This code is just for illustration
-from ase.parallel import world
+from gpaw.mpi import world
 n_im = 4              # Number of images
 n = world.size // n_im      # number of cpu's per image
 j = 1 + world.rank // n     # image number on this cpu
@@ -188,7 +188,7 @@ for i in range(n_im):
                     nbands='130%',
                     xc='PBE',  # student: ...,
                     txt=f'{i}.txt',
-                    communicator=ranks)
+                    communicator=world.new_communicator(ranks))
         image.calc = calc
     images.append(image)
 images.append(final)
@@ -216,10 +216,9 @@ Some suitable parameters for the NEB are given below:
 
 # %%
 # teacher:
-from gpaw import GPAW, PW
-from ase.visualize import view
-from ase.optimize import BFGS
-from ase.parallel import world
+from gpaw.dft import GPAW, PW
+from ase.optimize import FIRE
+from gpaw.mpi import world
 
 initial = read('N2Ru.traj')
 final = read('2Nads.traj')
@@ -241,17 +240,16 @@ for i in range(N):
         calc = GPAW(xc='PBE',
                     mode=PW(350),
                     nbands='130%',
-                    communicator=ranks,
+                    communicator=world.new_communicator(ranks),
                     txt=f'{i}.txt',
-                    kpts={'size': (4, 4, 1), 'gamma': True},
-                    convergence={'eigenstates': 1e-7})
+                    kpts={'size': (4, 4, 1), 'gamma': True})
         image.calc = calc
     images.append(image)
 images.append(final)
 
-neb = NEB(images, k=1.0, parallel=True)
+neb = NEB(images, k=1.0, parallel=True, method='improvedtangent')
 neb.interpolate()
-qn = BFGS(neb, logfile='neb.log', trajectory='neb.traj')
+qn = FIRE(neb, logfile='neb.log', trajectory='neb.traj')
 qn.run(fmax=0.1)
 neb.climb = True
 qn.run(fmax=0.05)
@@ -273,4 +271,4 @@ emax = max(energies)
 assert energies[2] == emax
 assert abs(emax - energies[0] - 1.32) < 0.02
 d = images[2].get_distance(-1, -2)
-assert abs(d - 1.777) < 0.004
+assert abs(d - 1.772) < 0.004

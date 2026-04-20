@@ -1,7 +1,8 @@
 import numpy as np
+
 from gpaw.core import PWDesc
 from gpaw.mpi import broadcast_float
-from gpaw.new import zips, spinsum, trace
+from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
@@ -47,7 +48,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         self._dedtaut_g = None
 
     def interpolate(self, a_R, a_r=None):
-        return a_R.interpolate(self.fftplan, self.fftplan2,
+        return a_R.interpolate(plan1=self.fftplan, plan2=self.fftplan2,
                                grid=self.fine_grid, out=a_r)
 
     def restrict(self, a_r, a_R=None):

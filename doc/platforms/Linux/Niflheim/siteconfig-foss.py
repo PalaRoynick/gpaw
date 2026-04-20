@@ -2,11 +2,13 @@ import os
 
 scalapack = True
 fftw = True
+mpi = True
+compiler = "mpic++"
+use_cpp = True
 
 # Clean out any autodetected things, we only want the EasyBuild
 # definitions to be used.
 libraries = ['openblas', 'fftw3', 'readline', 'gfortran']
-mpi_libraries = []
 include_dirs = []
 undef_macros = []
 
@@ -38,27 +40,35 @@ if elpa:
     include_dirs.append(os.path.join(elpa, 'include', 'elpa-' + elpaversion))
 
 # Now add a EasyBuild "cover-all-bases" library_dirs
-library_dirs = os.getenv('LD_LIBRARY_PATH').split(':')
+library_dirs += os.getenv('LD_LIBRARY_PATH').split(':')
 
-if os.getenv('CPU_ARCH') == 'icelake':
+# CuPy and CUDA:
+cupy = os.getenv('EBROOTCUPY')
+cuda = os.getenv('EBROOTCUDA')
+if cupy:
+    assert cuda
     gpu = True
     gpu_target = 'cuda'
     gpu_compiler = 'nvcc'
-    gpu_compile_args = ['-O3',
-                        '-g',
-                        '-gencode', 'arch=compute_80,code=sm_80']
-    # '-gencode', 'arch=compute_90,code=sm_90']
-
     libraries += ['cudart', 'cublas']
-elif os.getenv('CPU_ARCH') == 'skylake_el8':
-    gpu = True
-    gpu_target = 'cuda'
-    gpu_compiler = 'nvcc'
-    gpu_compile_args = ['-O3',
-                        '-g',
-                        '-gencode', 'arch=compute_86,code=sm_86']
+    library_dirs += [os.path.join(cupy, 'lib'), os.path.join(cuda, 'lib')]
 
-    libraries += ['cudart', 'cublas']
-    undef_macros += ['GPAW_GPU_AWARE_MPI']
+    cpuarch = os.getenv('CPU_ARCH')
+    if cpuarch == 'icelake':  # Also covers sapphirelake
+        gpu_compile_args = ['-O3',
+                            '-g',
+                            '-gencode', 'arch=compute_80,code=sm_80']
+    elif cpuarch == 'sapphirerapids':
+        gpu_compile_args = ['-O3',
+                            '-g',
+                            '-gencode', 'arch=compute_90,code=sm_90']
+    elif cpuarch == 'skylake_el8':
+        gpu_compile_args = ['-O3',
+                            '-g',
+                            '-gencode', 'arch=compute_86,code=sm_86']
+        if os.getenv('EBVERSIONFOSS') < '2025a':
+            undef_macros += ['GPAW_GPU_AWARE_MPI']    # Not needed with newest toolchains
+    else:
+        raise RuntimeError(f'CuPy loaded but unknown $CPU_ARCH={cpuarch}')
 else:
     gpu = False

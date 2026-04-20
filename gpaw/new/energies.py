@@ -1,5 +1,6 @@
 """PAW-DFT energy-contributions."""
 
+import numpy as np
 from ase.units import Ha
 
 # Contributions to free energy:
@@ -56,7 +57,12 @@ class DFTEnergies:
                 for name in self._energies
                 if name not in OTHERS and name not in NAMES]
 
+    def sanity_check(self):
+        if np.isnan(list(self._energies.values())).any():
+            raise ValueError('Some energy terms are NaN!')
+
     def summary(self, log) -> None:
+        log('Energy contributions:')
         for name in NAMES:
             if name in OTHERS:
                 continue
@@ -65,15 +71,17 @@ class DFTEnergies:
                 if name != 'kinetic':
                     continue
                 e = self.kinetic
-            log(f'{name + ":":10}   {e * Ha:14.6f}')
+            log(f'  {name.title() + ":":10}   {e * Ha:14.6f}')
         extensions = self.extensions_energies
         if extensions:
-            log('--------extensions----------')
+            log('  --------extensions----------')
             for name, e in extensions:
-                log(f'{name + ":":12} {e * Ha:14.6f}')
-        log('----------------------------')
-        log(f'Free energy: {self.total_free * Ha:14.6f}')
-        log(f'Extrapolated:{self.total_extrapolated * Ha:14.6f}\n')
+                log(f'  {name.title() + ":":12} {e * Ha:14.6f}')
+        log('  ----------------------------')
+        log('  Free energy: '
+            f'{self.total_free * Ha:14.6f}')
+        log('  Extrapolated:'
+            f'{log.green}{self.total_extrapolated * Ha:14.6f}{log.reset}\n')
 
     def write_to_gpw(self, writer):
         writer.write(**{name: e * Ha for name, e in self._energies.items()})

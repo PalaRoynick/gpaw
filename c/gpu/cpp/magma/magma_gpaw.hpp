@@ -1,6 +1,10 @@
 #pragma once
 
-#include "magma_python_interface.h"
+// MAGMA needs stdbool.h but it is not properly included by their own headers.
+// Can remove this include once it's fixed in MAGMA.
+// See https://github.com/icl-utk-edu/magma/pull/41
+#include <stdbool.h>
+#include <magma_v2.h>
 
 #include <magma_auxiliary.h>
 #include <magma_types.h>
@@ -9,21 +13,27 @@
     #error "C++ needed for GPAW Magma wrappers"
 #endif
 
-#include "../utils.hpp"
+#include "gpu/cpp/utils.hpp"
 
 #include <cassert>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 
-// Check error code of a MAGMA function. Intended for fatal errors, so we exit on failure.
-#define MAGMA_CHECK(result) gpaw_magma_errcheck(result, __FILE__, __LINE__)
 
-inline void gpaw_magma_errcheck(magma_int_t result, const char *file, int line)
+// Check error code of a MAGMA function and throw std::runtime_error on failure
+#define MAGMA_CHECK(result) gpaw::magma_errcheck(result, __FILE__, __LINE__)
+
+namespace gpaw
 {
-    if (result != MAGMA_SUCCESS) {
-        printf("\n\n%s in %s at line %d\n", magma_strerror(result), file, line);
-        exit(EXIT_FAILURE);
+
+inline void magma_errcheck(magma_int_t result, const char *file, int line)
+{
+    if (result != MAGMA_SUCCESS)
+    {
+        std::string msg = "MAGMA error " + std::string(magma_strerror(result))
+            + " at " + std::string(file) +  ":" + std::to_string(line);
+        throw std::runtime_error(msg);
     }
 }
 
@@ -50,33 +60,16 @@ template<> struct _magma_complex_type<double> { using native_type = magmaDoubleC
 template<typename T>
 using magmaComplex = typename _magma_complex_type<T>::native_type;
 
-
-enum class EighSolverType : uint8_t
-{
-    eNone,              // invalid
-    eSsyevd,            // single precision real symmetric
-    eDsyevd,            // double precision real symmetric
-    eCheevd,            // single precision complex Hermitian
-    eZheevd,            // double precision complex Hermitian
-};
-
-
 // Info about the input matrix and on what the solver should do
 struct MagmaEighContext
 {
-    EighSolverType solver_type;
     // Do eigenvectors?
     magma_vec_t jobz;
     magma_uplo_t uplo;
     magma_int_t matrix_size;
     magma_int_t matrix_lda;
-};
-
-enum class EighErrorType
-{
-    eSuccess,
-    eInvalidArgument,
-    eFailedToConverge
+    // How many GPUs to use. Only for the version that has input/output on HOST
+    magma_int_t num_gpus;
 };
 
 template<typename T>
@@ -119,36 +112,4 @@ struct HeevdWorkspace_gpu : public HeevdWorkspace<T>
     magma_int_t ldwa = 0;
 };
 
-
-inline EighErrorType interpret_magma_status(magma_int_t status)
-{
-    if (status > 0)
-    {
-        return EighErrorType::eFailedToConverge;
-    }
-    else if (status < 0)
-    {
-        return EighErrorType::eInvalidArgument;
-    }
-    else
-    {
-        return EighErrorType::eSuccess;
-    }
-}
-
-// We do manual type erasure to implement polymorphic entry points for the solvers (ie. inputs are void*).
-// Functions called from Python operate on Python array objects and pass their data pointers to type-erased solvers.
-// Inside the entry functions we cast back to the correct types.
-
-/* Entry point to Magma CPU eigensolvers.
-* The pointers must point to accessible memory locations of correct size.
-* The input/output matrices are in Magma conventions, NOT in Numpy/Python style conventions.
-*/
-EighErrorType magma_eigh_cpu(const MagmaEighContext& context, const void* const in_matrix, void* inout_eigvals, void* inout_eigvecs);
-
-
-/* Entry point to Magma single-GPU eigensolvers.
-* The pointers must point to accessible memory on the device.
-* The input/output matrices are in Magma conventions, NOT in Numpy/Python style conventions.
-*/
-EighErrorType magma_eigh_gpu(const MagmaEighContext& context, const void* const in_matrix, void* inout_eigvals, void* inout_eigvecs);
+} // namespace gpaw

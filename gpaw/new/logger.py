@@ -6,9 +6,13 @@ import os
 import sys
 from functools import cache
 from pathlib import Path
-from typing import IO, Any, Sequence
+from typing import IO, Any
 
-from gpaw.mpi import MPIComm, world
+from gpaw.mpi import MPIComm, normalize_communicator
+
+RED = '\x1b[91m'
+GREEN = '\x1b[32m'
+RESET = '\x1b[0m'
 
 
 def indent(text: Any, indentation='  ') -> str:
@@ -24,14 +28,11 @@ def indent(text: Any, indentation='  ') -> str:
 
 class Logger:
     def __init__(self,
-                 filename: str | Path | IO[str] | None = '-',
-                 comm: MPIComm | Sequence[int] | None = None):
-        if comm is None:
-            comm = world
-        elif not hasattr(comm, 'rank'):
-            comm = world.new_communicator(list(comm))
+                 filename: str | Path | IO[str] | None,
+                 comm: MPIComm | None):
 
-        self.comm: MPIComm = comm  # type: ignore
+        self.close_fd = False  # To be set later
+        self.comm = normalize_communicator(comm)
 
         self.fd: IO[str]
 
@@ -52,11 +53,14 @@ class Logger:
 
         self.use_colors = can_colorize(file=self.fd)
         if self.use_colors:
-            self.green = '\x1b[32m'
-            self.reset = '\x1b[0m'
+            self.red = RED
+            self.green = GREEN
+            self.reset = RESET
         else:
+            self.red = ''
             self.green = ''
             self.reset = ''
+        self.table_line = ''
 
     def __del__(self):
         self.close()
@@ -81,13 +85,48 @@ class Logger:
             text = (i + text.replace('\n', '\n' + i)).rstrip(' ')
         print(text, file=self.fd, end=end, flush=flush)
         if parallel:
-            from gpaw.mpi import send_string, receive_string
+            from gpaw.mpi import receive_string, send_string
             if self.comm.rank:
                 send_string(text, 0, comm=self.comm)
             else:
                 for rank in range(1, self.comm.size):
                     self(receive_string(rank, comm=self.comm),
                          end=end, flush=flush, parallel=False)
+
+    def table(self,
+              name: str,
+              header: list[str],
+              rows: list[list[str]],
+              allign: str = '',
+              comment: str = '',
+              comments: list[str] | None = None) -> None:
+        if comment:
+            name += f'  # {comment}'
+        self(name)
+        widths = []
+        for i, h in enumerate(header):
+            widths.append(max(len(h),
+                              max((len(row[i]) for row in rows),
+                                  default=0)))
+        if not allign:
+            allign = '>' * len(header)
+        fmt = '| ' + ' | '.join(
+            f'{{:{a}{width}}}'
+            for a, width in zip(allign, widths)) + ' |'
+        self(fmt.format(*header))
+        self('|' + '|'.join('-' * (width + 2) for width in widths) + '|')
+        if comments is None:
+            for row in rows:
+                self(fmt.format(*row))
+        else:
+            for row, comment in zip(rows, comments):
+                self(fmt.format(*row) + f'  # {comment}')
+        self()
+
+    def dict(self, dct):
+        n = max(len(name) for name in dct)
+        for name, value in dct.items():
+            self(f'{name + ":":{n + 1}} {value}')
 
 
 def can_colorize(*, file: IO[str] | IO[bytes] | None = None) -> bool:

@@ -4,8 +4,8 @@ import numpy as np
 
 from gpaw import KohnShamConvergenceError
 from gpaw.convergence_criteria import check_convergence
+from gpaw.directmin.scf_helper import check_eigensolver_state, do_if_converged
 from gpaw.old.forces import calculate_forces
-from gpaw.directmin.scf_helper import do_if_converged, check_eigensolver_state
 
 
 class SCFLoop:
@@ -183,8 +183,9 @@ def write_iteration(criteria, converged_items, entries, ctx, log):
         if print_iloop:
             header1 += '{:>12s} '.format('iter')
             header2 += '{:>12s} '.format('inner loop')
-        log(header1.rstrip())
-        log(header2.rstrip())
+        log.begin_table(
+            title='SCF iterations',
+            header=header1.rstrip() + '\n' + header2.rstrip())
 
     def format_conv(fmt: str, name: str) -> str:
         """Add "c" to number and color it green if converged."""
@@ -223,7 +224,7 @@ def write_iteration(criteria, converged_items, entries, ctx, log):
     if print_iloop:
         iloop_counter = (ctx.wfs.eigensolver.eg_count_iloop +
                          ctx.wfs.eigensolver.eg_count_outer_iloop)
-        line += ('{:12d}'.format(iloop_counter))
+        line += (f'{iloop_counter:12d}')
 
     log(line.rstrip())
     log.fd.flush()

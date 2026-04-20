@@ -6,6 +6,7 @@ from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
+from gpaw.new.calculation import DFTCalculation
 
 
 class LCAOEigensolver(Eigensolver):
@@ -46,8 +47,7 @@ class LCAOEigensolver(Eigensolver):
         C_Mn = H_MM  # rename (H_MM now contains the eigenvectors)
         assert len(eig_M) >= wfs.nbands
         N = wfs.nbands
-        wfs._eig_n = np.empty(wfs.nbands)
-        wfs._eig_n[:] = as_np(eig_M[:N])
+        wfs.eig_n = as_np(eig_M[:N])
         comm = C_Mn.dist.comm
         if isinstance(wfs.C_nM, MatrixWithNoData):
             wfs.C_nM = wfs.C_nM.create()
@@ -60,3 +60,17 @@ class LCAOEigensolver(Eigensolver):
 
         # Make sure wfs.C_nM and (lazy) wfs.P_ani are in sync:
         wfs._P_ani = None
+
+
+def make_sure_we_have_lcao_coefs(dft: DFTCalculation) -> None:
+    """Calculate C_nM if not already there."""
+    for wfs in dft.ibzwfs:
+        assert isinstance(wfs, LCAOWaveFunctions)
+        if isinstance(wfs.C_nM, MatrixWithNoData):
+            break
+        return
+    hamiltonian = dft.scf_loop.hamiltonian
+    matrix_calculator = hamiltonian.create_hamiltonian_matrix_calculator(
+        dft.potential)
+    for wfs in dft.ibzwfs:
+        dft.scf_loop.eigensolver.iterate1(wfs, None, matrix_calculator)
