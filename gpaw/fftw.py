@@ -15,7 +15,7 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.gpu import is_hip
-from gpaw.new import trace
+from gpaw.new import trace, tracectx
 from gpaw.new.c import pw_insert_gpu
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
@@ -220,21 +220,43 @@ class NumpyFFTPlans(FFTPlans):
 
 
 def rfftn_patch(tmp_R):
-    from gpaw.gpu import cupyx
-    return cupyx.scipy.fft.fftn(tmp_R)[:, :, :tmp_R.shape[-1] // 2 + 1]
+    return cupy_regular_fftn(tmp_R)[:, :, :tmp_R.shape[-1] // 2 + 1]
 
 
 def irfftn_patch(B, shape):
     import cupy as xp
 
-    from gpaw.gpu import cupyx
     A = xp.empty(shape, dtype=complex)
     A[:, :, :B.shape[2]] = B
     inv_ind1 = -xp.arange(B.shape[0])[:, None, None]
     inv_ind2 = -xp.arange(B.shape[1])[None, :, None]
     inv_ind3 = -xp.arange(1, B.shape[2])[None, None, :]
     A[:, :, -(B.shape[2] - 1):] = B[inv_ind1, inv_ind2, inv_ind3].conj()
-    return cupyx.scipy.fft.ifftn(A).real
+    return cupy_regular_ifftn(A).real
+
+
+def cupy_regular_fftn(*args, **kwargs):
+    from gpaw.gpu import cupyx
+    with tracectx('CuPy regular_fft fftn', gpu=True):
+        return cupyx.scipy.fft.fftn(*args, **kwargs)
+
+
+def cupy_regular_ifftn(*args, **kwargs):
+    from gpaw.gpu import cupyx
+    with tracectx('CuPy regular_fft ifftn', gpu=True):
+        return cupyx.scipy.fft.ifftn(*args, **kwargs)
+
+
+def cupy_regular_rfftn(*args, **kwargs):
+    from gpaw.gpu import cupyx
+    with tracectx('CuPy regular_fft rfftn', gpu=True):
+        return cupyx.scipy.fft.rfftn(*args, **kwargs)
+
+
+def cupy_regular_irfftn(*args, **kwargs):
+    from gpaw.gpu import cupyx
+    with tracectx('CuPy regular_fft irfftn', gpu=True):
+        return cupyx.scipy.fft.irfftn(*args, **kwargs)
 
 
 class CuPyFFTPlans(FFTPlans):
@@ -247,31 +269,29 @@ class CuPyFFTPlans(FFTPlans):
         super().__init__(size_c, dtype, empty=cp.empty)
         self.Q_G_cache: dict[PWDesc, Array1D] = {}
 
-    @trace(gpu=True)
+    @trace
     def fft(self):
-        from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
                 self.tmp_Q[:] = rfftn_patch(self.tmp_R)
             else:
-                self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
+                self.tmp_Q[:] = cupy_regular_rfftn(self.tmp_R)
         else:
-            self.tmp_Q[:] = cupyx.scipy.fft.fftn(self.tmp_R)
+            self.tmp_Q[:] = cupy_regular_fftn(self.tmp_R)
 
-    @trace(gpu=True)
+    @trace
     def ifft(self):
-        from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
                 self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) \
                     * self.tmp_R.size
             else:
-                self.tmp_R[:] = cupyx.scipy.fft.irfftn(
+                self.tmp_R[:] = cupy_regular_irfftn(
                     self.tmp_Q, self.tmp_R.shape,
                     norm='forward',
                     overwrite_x=True)
         else:
-            self.tmp_R[:] = cupyx.scipy.fft.ifftn(
+            self.tmp_R[:] = cupy_regular_ifftn(
                 self.tmp_Q, self.tmp_R.shape,
                 norm='forward',
                 overwrite_x=True)
@@ -286,7 +306,7 @@ class CuPyFFTPlans(FFTPlans):
 
     @trace
     def ifft_sphere(self, coef_G, pw, out_R=None):
-        from gpaw.gpu import cupy, cupyx
+        from gpaw.gpu import cupy
         if out_R is not None:
             assert isinstance(out_R.data, cupy.ndarray)
 
@@ -314,14 +334,14 @@ class CuPyFFTPlans(FFTPlans):
                       *shape)
 
         if np.issubdtype(self.dtype, np.complexfloating):
-            array_R[:] = cupyx.scipy.fft.ifftn(
+            array_R[:] = cupy_regular_ifftn(
                 array_Q, array_Q.shape,
                 norm='forward', overwrite_x=True)
         else:
             if is_hip:
                 array_R[:] = irfftn_patch(array_Q, shape) * array_R.size
             else:
-                array_R[:] = cupyx.scipy.fft.irfftn(
+                array_R[:] = cupy_regular_irfftn(
                     array_Q, shape,
                     norm='forward', overwrite_x=True)
 
@@ -330,9 +350,8 @@ class CuPyFFTPlans(FFTPlans):
 
     @trace
     def fft_sphere(self, in_R, pw):
-        from gpaw.gpu import cupyx
         if np.issubdtype(self.dtype, np.complexfloating):
-            out_Q = cupyx.scipy.fft.fftn(in_R)
+            out_Q = cupy_regular_fftn(in_R)
         else:
             if is_hip:
                 out_Q = rfftn_patch(in_R)
@@ -344,7 +363,7 @@ class CuPyFFTPlans(FFTPlans):
                     from warnings import warn
                     warn('Circumventing GPU array alignment problem '
                          'with copy at rfftn.')
-                out_Q = cupyx.scipy.fft.rfftn(in_R)
+                out_Q = cupy_regular_rfftn(in_R)
 
         Q_G = self.indices(pw)
         coef_G = out_Q.ravel()[Q_G] * (1 / in_R.size)

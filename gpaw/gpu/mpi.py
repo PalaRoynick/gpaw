@@ -3,6 +3,15 @@ import numpy as np
 from gpaw.gpu import cupy as cp
 
 
+def copyto(dst, src):
+    if isinstance(dst, np.ndarray) and not isinstance(src, np.ndarray):
+        dst[...] = src.get()
+    elif not isinstance(dst, np.ndarray) and isinstance(src, np.ndarray):
+        dst[...] = cp.asarray(src)
+    else:
+        dst[...] = src
+
+
 class CuPyMPI:
     """Quick'n'dirty wrapper to make things work without a GPU-aware MPI."""
     def __init__(self, comm):
@@ -14,6 +23,8 @@ class CuPyMPI:
         return f'CuPyMPI({self.comm})'
 
     def sum(self, array, root=-1):
+        if self.size == 1:
+            return
         if isinstance(array, np.ndarray):
             self.comm.sum(array, root)
             return
@@ -31,12 +42,22 @@ class CuPyMPI:
         return self.comm.max_scalar(a, root)
 
     def max(self, array):
+        if self.size == 1:
+            return
         self.comm.max(array)
 
     def all_gather(self, a, b):
+        if self.size == 1:
+            if b is not a:
+                copyto(b, a)
+            return
         self.comm.all_gather(a, b)
 
     def gather(self, a, rank, b):
+        if self.size == 1:
+            if b is not None and b is not a:
+                copyto(b, a)
+            return
         if isinstance(a, np.ndarray):
             self.comm.gather(a, rank, b)
         else:
@@ -49,6 +70,10 @@ class CuPyMPI:
                 b[:] = cp.asarray(c)
 
     def scatter(self, fro, to, root=0):
+        if self.size == 1:
+            if fro is not None and fro is not to:
+                copyto(to, fro)
+            return
         if isinstance(to, np.ndarray):
             self.comm.scatter(fro, to, root)
             return
@@ -61,6 +86,8 @@ class CuPyMPI:
         to[:] = cp.asarray(b)
 
     def broadcast(self, a, root):
+        if self.size == 1:
+            return
         if isinstance(a, np.ndarray):
             self.comm.broadcast(a, root)
             return
@@ -95,6 +122,10 @@ class CuPyMPI:
     def alltoallv(self,
                   fro, ssizes, soffsets,
                   to, rsizes, roffsets):
+        if self.size == 1:
+            if fro is not to:
+                copyto(to, fro)
+            return
         a = np.empty(to.shape, to.dtype)
         self.comm.alltoallv(fro.get(), ssizes, soffsets,
                             a, rsizes, roffsets)

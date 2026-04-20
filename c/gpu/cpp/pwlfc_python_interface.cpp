@@ -73,7 +73,7 @@ PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args)
     evaluate_lda_launch_kernel(nspin, ng,
                                n_ptr, v_ptr, e_ptr, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -131,7 +131,7 @@ PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args)
                                dedsigma_ptr,
                                stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -203,7 +203,7 @@ PyObject* dH_aii_times_P_ani_gpu(PyObject* self, PyObject* args)
 
     dH_aii_times_P_ani_launch_kernel(dtypenum, nA, nn, nI, ni_a, dH_aii_dev, P_ani_dev, outP_ani_dev, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -270,7 +270,7 @@ PyObject* pwlfc_expand_gpu(PyObject* self, PyObject* args)
                                    l_s, a_J, s_J, f_GI,
                                    I_J, nG, nJ, nL, nI, natoms, nsplines, cc, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -334,7 +334,7 @@ PyObject* pw_insert_gpu(PyObject* self, PyObject* args)
                                 scale,
                                 tmp_nQ, rx, ry, rz, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -386,7 +386,7 @@ PyObject* pw_norm_gpu(PyObject* self, PyObject* args)
                               result_x,
                               C_xG, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -440,7 +440,7 @@ PyObject* pw_norm_kinetic_gpu(PyObject* self, PyObject* args)
                                       C_xG,
                                       kin_G, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -483,7 +483,7 @@ PyObject* pw_amend_insert_realwf_gpu(PyObject* self, PyObject* args)
 
     pw_amend_insert_realwf_gpu_launch_kernel(dtypenum, nb, nx, ny, nz, n, m, array_nQ, stream);
 
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -526,7 +526,7 @@ PyObject* add_to_density_gpu(PyObject* self, PyObject* args)
     pinner.commit();
 
     add_to_density_gpu_launch_kernel(nb, nR, f_n, psit_nR, rho_R, dtypenum, stream);
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {
@@ -566,7 +566,7 @@ PyObject* calculate_residual_gpu(PyObject* self, PyObject* args)
     pinner.commit();
 
     calculate_residual_launch_kernel(dtypenum, nG, nn, residual_nG, eps_n, wf_nG, stream);
-    pinner.schedule_unpin(0);
+    pinner.schedule_unpin(stream);
 
     if (PyErr_Occurred())
     {

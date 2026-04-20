@@ -10,7 +10,7 @@ from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.core.matrix import suggest_blocking
 from gpaw.mpi import MPIComm, broadcast_exception, serial_comm
-from gpaw.new import trace, zips
+from gpaw.new import trace, tracectx, zips
 from gpaw.new.c import calculate_residuals_gpu
 from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
@@ -143,40 +143,49 @@ class PWFDEigensolver(Eigensolver):
         """
 
         if not hasattr(self, 'preconditioner'):
-            self._initialize(ibzwfs)
+            with tracectx('PWFD eigensolver initialize'):
+                self._initialize(ibzwfs)
 
         wfs = ibzwfs._wfs_u[0]
-        dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
-                                                    wfs.xp)
+        with tracectx('PWFD overlap corrections'):
+            dS_aii = wfs.setups.get_overlap_corrections(
+                wfs.P_ani.layout.atomdist, wfs.xp)
 
-        ibzwfs.orthonormalize()
+        with tracectx('PWFD orthonormalize'):
+            ibzwfs.orthonormalize()
         # ibzwfs = kpad(ibzwfs)
-        hamiltonian.update_wave_functions(ibzwfs)
+        with tracectx('PWFD update wave functions'):
+            hamiltonian.update_wave_functions(ibzwfs)
 
-        apply = partial(hamiltonian.apply,
-                        potential.vt_sR,
-                        potential.dedtaut_sR,
-                        ibzwfs, density.D_asii)  # used by hybrids
+        with tracectx('PWFD build Hamiltonian apply'):
+            apply = partial(hamiltonian.apply,
+                            potential.vt_sR,
+                            potential.dedtaut_sR,
+                            ibzwfs, density.D_asii)  # used by hybrids
 
-        weight_un = calculate_weights(self.converge_bands, ibzwfs)
+        with tracectx('PWFD calculate band weights'):
+            weight_un = calculate_weights(self.converge_bands, ibzwfs)
 
         wfs_error = 0.0
         eig_error = 0.0
         # Loop over k-points:
-        with broadcast_exception(ibzwfs.kpt_comm):
-            for wfs, weight_n in zips(ibzwfs, weight_un):
-                Ht = partial(apply, spin=wfs.spin)
-                temp_wfs_error, temp_eig_error = \
-                    self.iterate_kpt(wfs, weight_n, self.iterate1,
-                                     Ht=Ht, potential=potential,
-                                     dS_aii=dS_aii)
-                wfs_error += wfs.weight * temp_wfs_error
-                if eig_error < temp_eig_error:
-                    eig_error = temp_eig_error
+        with tracectx('PWFD k-point loop'):
+            with broadcast_exception(ibzwfs.kpt_comm):
+                for wfs, weight_n in zips(ibzwfs, weight_un):
+                    with tracectx('PWFD iterate k-point'):
+                        Ht = partial(apply, spin=wfs.spin)
+                        temp_wfs_error, temp_eig_error = \
+                            self.iterate_kpt(wfs, weight_n, self.iterate1,
+                                             Ht=Ht, potential=potential,
+                                             dS_aii=dS_aii)
+                        wfs_error += wfs.weight * temp_wfs_error
+                        if eig_error < temp_eig_error:
+                            eig_error = temp_eig_error
 
-        wfs_error = ibzwfs.kpt_band_comm.sum_scalar(
-            float(wfs_error)) * ibzwfs.spin_degeneracy
-        eig_error = ibzwfs.kpt_band_comm.max_scalar(eig_error)
+        with tracectx('PWFD reduce errors'):
+            wfs_error = ibzwfs.kpt_band_comm.sum_scalar(
+                float(wfs_error)) * ibzwfs.spin_degeneracy
+            eig_error = ibzwfs.kpt_band_comm.max_scalar(eig_error)
 
         return eig_error, wfs_error, energies
 
