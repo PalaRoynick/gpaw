@@ -5,7 +5,6 @@ import contextlib
 from collections.abc import Generator, Iterable
 from time import time
 from types import ModuleType
-from collections.abc import Iterable
 from gpaw.new.timer import trace
 import os
 from typing import TYPE_CHECKING
@@ -13,7 +12,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from gpaw import ENVVAR_GPAW_NO_GPU_MPI
-from gpaw.new.timer import trace
 from gpaw.cgpaw.gpu import magma
 
 device_id = None
@@ -224,7 +222,7 @@ if not TYPE_CHECKING:
 
 def set_device(log, world=None):
     global device_id
-    from gpaw.mpi import world, rank
+    from gpaw.mpi import world
 
     if device_id is not None:
         return
@@ -254,7 +252,8 @@ def set_device(log, world=None):
         nodecomm = world.node_communicator()
         runtime.setDevice(nodecomm.rank % device_count)
         if nodecomm.size > device_count:
-            warning = f'WARNING: oversubscribing GPUs {nodecomm.size=} {device_count=}'
+            warning = ('WARNING: oversubscribing GPUs'
+                       f'{nodecomm.size=} {device_count=}')
 
         # initialise C parameters and memory buffers
         import gpaw.cgpaw as cgpaw
@@ -267,7 +266,6 @@ def set_device(log, world=None):
             atexit.register(magma.magma_finalize)
 
         # Generate a device id
-        import os
         nodename = os.uname()[1]
         bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
         # Generate a device id
