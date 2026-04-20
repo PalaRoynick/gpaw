@@ -65,9 +65,7 @@ def test_mpicomm(mpi):
         assert isinstance(world, cgpaw.Communicator)
         assert isinstance(comm, cgpaw.Communicator)
         assert isinstance(subcomm, cgpaw.Communicator)
-<<<<<<< HEAD
         assert isinstance(nodecomm, cgpaw.Communicator)
-=======
 
 
 def test_rank0_call(mpi):
@@ -84,4 +82,3 @@ def test_rank0_call(mpi):
 
     with pytest.raises(RuntimeError, match='division by zero'):
         rank0_call(inverse, comm)(comm.rank)
->>>>>>> master
