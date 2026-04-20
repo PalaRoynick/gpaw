@@ -123,8 +123,6 @@ class ETDM:
             gradient = self.gradient
 
         gradient_p = self.apply_precond(precond, gradient)
-        print("gradient_p NEW-DIR", gradient_p[0])
-        print("self.a_u NEW-DIR", self.a_u[0])
 
         # Update the search direction using LBFGS
         self.searchdir_algo.update(
