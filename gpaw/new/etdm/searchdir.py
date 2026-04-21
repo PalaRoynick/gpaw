@@ -3,6 +3,7 @@ import numpy as np
 
 class LBFGS:
     def __init__(self,
+                 p_key=False,
                  *,
                  memory=5):
         """
@@ -28,6 +29,11 @@ class LBFGS:
         # init empty arrays
         self.reset()
 
+        # Initialized
+        self.beta0 = 1.0
+        # Key to toggle l-bfgs-p
+        self.p_key = p_key
+
     def reset(self):
         # Counter for number of local iterations performed
         self.local_iter = 0
@@ -48,7 +54,7 @@ class LBFGS:
         # Scaling factors for L-BFGS (1 / (y^T * s))
         self.rho = np.zeros(self.memory)
 
-    def update(self, a_cur, g_cur):
+    def update(self, a_cur, g_cur, precond=None):
         """
         Compute the next search direction using L-BFGS two-loop recursion.
 
@@ -65,6 +71,8 @@ class LBFGS:
             Updated search direction for the next iteration.
         """
 
+        hess = precond
+
         # Step 1: First iteration initialization
         if self.local_iter == 0:
             self.ds = [0.0 * g_cur for _ in range(self.memory)]
@@ -74,8 +82,14 @@ class LBFGS:
             self.g_old = g_cur.copy()
             self.a_old = a_cur.copy()
 
-            # Initial search direction is simply the negative gradient
-            self.search_dir = -g_cur
+            # preconditioning and initial search direction
+            if precond is not None:
+                if self.p_key:
+                    g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
+                    self.search_dir = g_cur
+                else:
+                    g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
+                    self.search_dir = -g_cur
 
             # Increment iteration counter
             self.local_iter += 1
@@ -111,7 +125,7 @@ class LBFGS:
                     x[:] = 0.0
                 for x in self.dy:
                     x[:] = 0.0
-                return self.update(a_cur, g_cur)
+                return self.update(a_cur, g_cur, hess)
 
             # Step 4: Two-loop recursion to compute search direction
             q = g_cur.copy()
@@ -140,6 +154,24 @@ class LBFGS:
             devis = np.maximum(self.rho[m] * yy, 1.0e-20)
             self.search_dir = q * (1 / devis)
 
+            # l-bfgs-p:
+            if self.p_key:
+                self.rho_y = self.rho[m] * yy
+                if abs(self.rho_y) > 1.e-20:
+                    self.beta0 = 1.0 / self.rho_y
+                else:
+                    self.beta0 = 1.0e20
+                if hess is not None:
+                    self.search_dir.a_ux = apply_precond(hess,
+                                                         np.array(q.a_ux))
+                else:
+                    self.search_dir = q * self.beta0
+            else:
+                # avoid divide by zero
+                devis = np.maximum(self.rho[m] * yy, 1.0e-20)
+                self.search_dir = q * (1 / devis)
+
+
             # Second loop: forward over stored vectors
             for k in range(self.memory):
                 if self.local_iter < self.memory:
@@ -165,3 +197,17 @@ class LBFGS:
 
             # Return updated search direction
             return self.search_dir
+
+
+def apply_precond(prec, x, const=1.0):
+    """
+    Apply preconditioner to the gradient
+    """
+    y = []
+    for k in range(x.shape[0]):
+        if prec[k].dtype == complex:
+            y[k] = const * (prec[k].real * x[k].real
+                            + 1.0j * prec[k].imag * x[k].imag)
+        else:
+            y.append(const * prec[k] * x[k])
+    return np.array(y)

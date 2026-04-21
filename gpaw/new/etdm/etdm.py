@@ -21,6 +21,7 @@ class ETDM:
         maxiter=100,
         tolerance=5.0e-4,
         update_ref=False,
+        searchdir_algo_name='l-bfgs'
     ):
         """
         Initialize the ETDM optimizer.
@@ -47,7 +48,13 @@ class ETDM:
         # Initialize LBFGS search direction algorithm
         # `searchdir_algo` keeps track of the search direction `p_u`
         # and performs the quasi-Newton update.
-        self.searchdir_algo = LBFGS()
+        if searchdir_algo_name == 'l-bfgs-p':
+            self.searchdir_algo = LBFGS(p_key=True)
+        elif searchdir_algo_name == 'l-bfgs':
+            self.searchdir_algo = LBFGS(p_key=False)
+        else:
+            NotImplementedError
+
         # array_shape=a_u_init.shape,
         # dtype=objfunc._dtype,
         # kpt_comm=objfunc.kpt_comm)
@@ -103,7 +110,7 @@ class ETDM:
         p_u = np.array(p_u.a_ux)
 
         # Scale step to prevent too large updates
-        alpha = np.minimum(0.25 / strength, 1.0)
+        alpha = np.minimum(0.005 / strength, 1.0)
         p_u[:] = alpha * p_u  # Scale the search direction
 
         # Update the parameters
@@ -122,28 +129,14 @@ class ETDM:
         if gradient is None:
             gradient = self.gradient
 
-        gradient_p = self.apply_precond(precond, gradient)
-
         # Update the search direction using LBFGS
         self.searchdir_algo.update(
             KArray(self.a_u, comm=self.objfunc.kpt_comm),
-            KArray(gradient_p, comm=self.objfunc.kpt_comm))
+            KArray(gradient, comm=self.objfunc.kpt_comm),
+            precond)
 
         # Move parameters along the search direction
         self.move()
-
-    def apply_precond(self, prec, x, const=1.0):
-        """
-        Apply preconditioner to the gradient
-        """
-        y = []
-        for k in range(x.shape[0]):
-            if prec[k].dtype == complex:
-                y[k] = const * (prec[k].real * x[k].real
-                                + 1.0j * prec[k].imag * x[k].imag)
-            else:
-                y.append(const * prec[k] * x[k])
-        return np.array(y)
 
     @property
     def a_u(self):

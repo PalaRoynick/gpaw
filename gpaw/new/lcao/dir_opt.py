@@ -16,11 +16,13 @@ class DirOptLCAO(LCAOEigensolver):
                  basis,
                  representation,
                  matrix_exp,
+                 searchdir_algo_name,
                  occ_calc):
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
         self.representation = representation
         self.matrix_exp = matrix_exp
+        self.searchdir_algo_name = searchdir_algo_name
         self.occ_calc = occ_calc
         self.iter = 0
         self.update_ref_orbitals_counter = 20
@@ -61,7 +63,9 @@ class DirOptLCAO(LCAOEigensolver):
             self.ref_orbitals.append(wfs.C_nM.copy())
 
         a_u_init = np.array(a)
-        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False)
+
+        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False,
+                         searchdir_algo_name=self.searchdir_algo_name)
 
         self.precond = False
         self.iter += 1
@@ -99,7 +103,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.update_ref_orbitals(ibzwfs)
 
         # Preconditioning
-        if not self.precond:
+        if not self.precond or self.searchdir_algo_name == 'l-bfgs-p':
             self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
             self.precond = True
 
@@ -209,29 +213,27 @@ class DirOptLCAO(LCAOEigensolver):
         approximate analytical hessian and then apply correction
         """
         # for now beta0 = 1, no l-bfgs-p, to be added later
-        beta0 = 1.0
-        gamma = 0.0
-
-        # add a counter=1000 to recalculate?
+        if self.searchdir_algo_name == 'l-bfgs-p':
+            beta0 = self.etdm.searchdir_algo.beta0
+            gamma = 0.25
+        else:
+            beta0 = 1.0
+            gamma = 0.0
 
         prec = []
 
         for wfs in ibzwfs:
-            w = wfs.weight / (3.0 - wfs.nspins)
-
-            #k = len(ibzwfs.ibz.kpt_kc) + wfs.nspins     # FIX (TOOLS)
-            # could one determine this value at the start of everything and
-            # use it to declare the size of all these structures?
-
-            hess = self.get_approx_analytical_hessian(
-                wfs, ibzwfs.dtype, ind_up)
+            w = ((2.0 / wfs.nspins) * wfs.weight) / (3.0 - wfs.nspins)
+            if not self.precond:  # only calculate approx. hessian once
+                self.hess = self.get_approx_analytical_hessian(
+                    wfs, ibzwfs.dtype, ind_up)
+            hess = self.hess
             precond = np.zeros_like(hess)
             correction = w * gamma * beta0 ** (-1)
-            # if self.searchdir_algo.name != 'l-bfgs-p':
-            correction = np.zeros_like(hess)
-            zeros = abs(hess) < 1.0e-4
-            correction[zeros] = 1.0
-
+            if self.searchdir_algo_name != 'l-bfgs-p':
+                correction = np.zeros_like(hess)
+                zeros = abs(hess) < 1.0e-4
+                correction[zeros] = 1.0
             precond += 1. / ((1 - gamma) * hess.real + correction)
             if ibzwfs.dtype == complex:
                 precond += 1.j / ((1 - gamma) * hess.imag + correction)

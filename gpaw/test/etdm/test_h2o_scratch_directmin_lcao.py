@@ -17,45 +17,46 @@ def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
 
 @pytest.mark.parametrize("representation", ['full'])
 @pytest.mark.parametrize("spinpol", [False])
-def test_h2o(gpaw_new, representation, spinpol):
+@pytest.mark.parametrize("matrix_exp", ['egdecomp'])
+def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
 
     """
     temporary test that recalculates from scratch, slow
     """
 
     atm = h2o_maker(vacuum=5.0)
-
-    atm.calc = GPAW(
-        mode=LCAO(),
-        basis='dzp',
-        occupations={'name': 'fixed-uniform'},
-        eigensolver={'name': 'etdm',
-                     'representation': representation},
-        spinpol=spinpol,
-#                        'matrix_exp': 'egdecomp',
-#                        'searchdir_algo': 'l-bfgs'},
-        mixer={'backend': 'no-mixing'},
-        nbands='nao',
-        symmetry='off',
-        maxiter=100,
-        txt='-'
-    )
-#    else:
-#        atm.calc_OLD = GPAW(
-#            mode=LCAO(),
-#            basis='dzp',
-#            occupations={'name': 'fixed-uniform'},
-#            eigensolver={'name': 'etdm',
-#                         'representation': representation,
-#                         'matrix_exp': 'egdecomp',
-#                         'searchdir_algo': 'l-bfgs',
-#                         'linesearch_algo': {'name': 'max-step',
-#                                             'max_step': 0.25}},
-#            spinpol=spinpol,
-#            mixer={'backend': 'no-mixing'},
-#            nbands='nao',
-#            symmetry='off',
-#        )
+    if gpaw_new == 1:
+        atm.calc = GPAW(
+             mode=LCAO(),
+             basis='dzp',
+             occupations={'name': 'fixed-uniform'},
+             eigensolver={'name': 'etdm',
+                          'representation': representation,
+                          'matrix_exp': matrix_exp,
+                          'searchdir_algo': 'l-bfgs-p',},
+             mixer={'backend': 'no-mixing'},
+             spinpol=spinpol,
+             nbands='nao',
+             symmetry='off',
+             maxiter=100,
+             txt='-'
+        )
+    else:
+        atm.calc = GPAW(
+            mode=LCAO(),
+            basis='dzp',
+            occupations={'name': 'fixed-uniform'},
+            eigensolver={'name': 'etdm',
+                         'representation': representation,
+                         'matrix_exp': 'egdecomp',
+                         'searchdir_algo': 'l-bfgs-p',
+                         'linesearch_algo': {'name': 'max-step',
+                                             'max_step': 0.005}},
+            spinpol=spinpol,
+            mixer={'backend': 'no-mixing'},
+            nbands='nao',
+            symmetry='off',
+        )
 
     e = atm.get_potential_energy()
     f = atm.get_forces()
