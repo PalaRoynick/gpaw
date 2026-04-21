@@ -18,6 +18,7 @@ from gpaw.utilities.gauss import Gaussian
 from gpaw.utilities.grid import grid2grid
 from gpaw.utilities.timing import NullTimer
 from gpaw.utilities.tools import construct_reciprocal
+from gpaw.gpu import cupy_is_available
 
 POISSON_GRID_WARNING = """Grid unsuitable for FDPoissonSolver!
 
@@ -671,6 +672,14 @@ def irfst2(A_g, axes=[0,1]):
 
 use_scipy_transforms = True
 
+def xdst(Y, axis, type):
+    if hasattr(Y, 'device') and cupy_is_available:
+        from cupyx.scipy.fftpack import dst as cupy_dst
+        Y = cupy_dst(Y, axis=axis, type=1)
+    else:
+        # Standard SciPy path for CPU
+        Y = scipydst(Y, axis=axis, type=1)
+    return Y
 
 def rfst2(A_g, axes=[0, 1]):
     all = {0, 1, 2}
@@ -679,7 +688,7 @@ def rfst2(A_g, axes=[0, 1]):
     if use_scipy_transforms:
         Y = A_g
         for axis in axes:
-            Y = scipydst(Y, axis=axis, type=1)
+            Y = xdst(Y, axis=axis, type=1)
         Y *= 2**len(axes)
         return Y
 
@@ -698,7 +707,7 @@ def irfst2(A_g, axes=[0, 1]):
     if use_scipy_transforms:
         Y = A_g
         for axis in axes:
-            Y = scipydst(Y, axis=axis, type=1)
+            Y = xdst(Y, axis=axis, type=1)
         magic = 1.0 / (16 * np.prod([A_g.shape[axis] + 1 for axis in axes]))
         Y *= magic
         # Y /= 211200
@@ -783,7 +792,7 @@ def transform(A_g, axis=None, pbc=True):
         if not use_scipy_transforms:
             x = fst(A_g, axis)
             return x
-        y = scipydst(A_g, axis=axis, type=1)
+        y = xdst(A_g, axis=axis, type=1)
         y *= .5
         return y
 
@@ -817,7 +826,7 @@ def itransform(A_g, axis=None, pbc=True):
         if not use_scipy_transforms:
             x = ifst(A_g, axis)
             return x
-        y = scipydst(A_g, axis=axis, type=1)
+        y = xdst(A_g, axis=axis, type=1)
         magic = 1.0 / (A_g.shape[axis] + 1)
         y *= magic
         return y
