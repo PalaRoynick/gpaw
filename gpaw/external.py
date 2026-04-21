@@ -478,7 +478,7 @@ def apply_field_gradient(atoms,
     calc = atoms.calc
     external= PointChargePotential(charges, chargepostions*Bohr)
     calc.set(external=external)
-    atoms.set_calculator(calc)
+    atoms.calc = calc
 
     E = atoms.get_potential_energy()
     return E
@@ -528,7 +528,7 @@ def apply_field(atoms,
     calc = atoms.calc
     external= PointChargePotential(charges, chargepostions*Bohr)
     calc.set(external=external)
-    atoms.set_calculator(calc)
+    atoms.calc = calc
     E = atoms.get_potential_energy()
 
     return E
