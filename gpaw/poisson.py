@@ -18,7 +18,7 @@ from gpaw.utilities.gauss import Gaussian
 from gpaw.utilities.grid import grid2grid
 from gpaw.utilities.timing import NullTimer
 from gpaw.utilities.tools import construct_reciprocal
-from gpaw.gpu import cupy_is_available
+from gpaw.gpu import cupy_is_fake
 
 POISSON_GRID_WARNING = """Grid unsuitable for FDPoissonSolver!
 
@@ -673,9 +673,22 @@ def irfst2(A_g, axes=[0,1]):
 use_scipy_transforms = True
 
 def xdst(Y, axis, type):
-    if hasattr(Y, 'device') and cupy_is_available:
-        from cupyx.scipy.fftpack import dst as cupy_dst
-        Y = cupy_dst(Y, axis=axis, type=1)
+    if hasattr(Y, 'device') and not cupy_is_fake:
+        # Only DST-II and DST-III have been implemented.
+        # from cupyx.scipy.fft import dst as cupydst
+        # Y = cupydst(Y, axis=axis, type=1)
+        import cupy as cp
+        try:
+            from cupyx.scipy.fft import dst as cupydst
+            # Try to use GPU implementation
+            return cupydst(Y, axis=axis, type=type)
+        except (ImportError, NotImplementedError):
+            # Fallback to CPU if:
+            # 1. cupyx.scipy.fft is missing
+            # 2. DST type is not implemented (e.g., type=1)
+            Y_cpu = cp.asnumpy(Y)
+            Y_cpu = scipydst(Y_cpu, axis=axis, type=type)
+            return cp.asarray(Y_cpu)
     else:
         # Standard SciPy path for CPU
         Y = scipydst(Y, axis=axis, type=1)
