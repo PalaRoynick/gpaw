@@ -218,6 +218,11 @@ if not TYPE_CHECKING:
             cupy.fft.fftshift = fftshift_patch
             cupy.fft.ifftshift = ifftshift_patch
 
+        from gpaw import GPAW_TRACE
+        if GPAW_TRACE:
+            g = trace(gpu=True)
+            cupy.einsum = g(cupy.einsum)
+
 
 def set_device(log, world=None):
     global device_id
