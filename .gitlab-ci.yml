@@ -691,7 +691,7 @@ test-mi210:
   before_script:
    - echo hello
   script:
-   - echo hello, world!
+   - echo hello, again!
    - rocm-smi
    - amd-smi list
    - rocminfo
