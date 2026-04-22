@@ -13,7 +13,7 @@ from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.old.pw.descriptor import PWDescriptor
 from gpaw.response import ResponseContext, ResponseGroundStateAdapter
-from gpaw.response.localft import (LocalFTCalculator, MicroSetup, add_LSDA_Wxc,
+from gpaw.response.localft import (LocalFTCalculator, MicroSetup, add_Wxc,
                                    add_total_density)
 from gpaw.response.pair_functions import get_pw_coordinates
 from gpaw.test.response.test_site_kernels import get_pw_descriptor
@@ -104,7 +104,7 @@ def test_localft_grid_calculator(mpi, a):
                                                           rshelmax=None)
 
     # Compute the plane-wave components numerically
-    n_G = localft_calc._calculate(pd, n_sR, add_total_density)
+    n_G = localft_calc._calculate(pd, n_sR, None, None, add_total_density)
 
     # Check validity of results
     assert np.allclose(n_G, ntest_G, rtol=rtol)
@@ -173,6 +173,7 @@ def test_localft_paw_engine(mpi, a):
     # Set up pseudo and ae densities on the Lebedev quadrature
     from gpaw.sphere.lebedev import Y_nL
     Y_nL = Y_nL[:, :9]  # include only s, p and d
+    rnablaY_nLv = np.zeros((len(Y_nL), 9, 3))
     nL = Y_nL.shape[1]
     n_sLg = np.zeros((1, nL, Ng), dtype=float)
     nt_sLg = np.zeros((1, nL, Ng), dtype=float)
@@ -193,7 +194,7 @@ def test_localft_paw_engine(mpi, a):
     nt_sR = np.array([nt_R])
 
     # Create MicroSetup(s)
-    micro_setup = MicroSetup(rgd, Y_nL, n_sLg, nt_sLg)
+    micro_setup = MicroSetup(rgd, Y_nL, rnablaY_nLv, n_sLg, nt_sLg)
     micro_setups = [micro_setup]
 
     gs = EmptyGSAdapter()  # hack to pass isinstance in constructor
@@ -237,7 +238,7 @@ def test_Fe_bxc(gpw_files, mpi):
                             ecut=ecut,
                             gammacentered=True)
 
-    Wxc_G = localft_calc(pd0, add_LSDA_Wxc)
+    Wxc_G = localft_calc(pd0, add_Wxc)
 
     # Part 3: Check symmetry relation
     G1_G, G2_G = get_inversion_pairs(pd0)

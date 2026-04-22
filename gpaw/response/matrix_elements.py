@@ -8,7 +8,7 @@ import numpy as np
 from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.response import timer
 from gpaw.response.kspair import KohnShamKPointPair
-from gpaw.response.localft import add_LSDA_trans_fxc, calculate_LSDA_Wxc
+from gpaw.response.localft import add_LSDA_trans_fxc, calculate_Wxc
 from gpaw.response.pair import phase_shifted_fft_indices
 from gpaw.response.site_data import AtomicSiteData
 from gpaw.response.site_paw import (calculate_nonlocal_hubbard_potential,
@@ -313,7 +313,7 @@ class PlaneWaveMatrixElementCalculator(MatrixElementCalculator):
         # on a regular grid (unlike the wave functions).
         n_sR, gd = self.gs.get_all_electron_density(gridrefinement=1)
         f_R = gd.zeros()
-        self.add_f(gd, n_sR, f_R)
+        self.add_f(gd, n_sR, None, None, f_R)
 
         return nt_mytR * f_R[np.newaxis]
 
@@ -358,7 +358,7 @@ class NewPairDensityCalculator(PlaneWaveMatrixElementCalculator):
                          # involves l = 0
                          rshelmax=0)
 
-    def add_f(self, gd, n_sx, f_x):
+    def add_f(self, gd, n_sx, Y_L, rnablaY_nLv, f_x):
         f_x[:] += 1.
 
     def print_rshe_info(self, *args):
@@ -378,8 +378,8 @@ class TransversePairPotentialCalculator(PlaneWaveMatrixElementCalculator):
                 = <ψ_nks| e^-i(G+q)r f_LDA^-+(r) |ψ_n'k+qs'>
     """
 
-    def add_f(self, gd, n_sx, f_x):
-        return add_LSDA_trans_fxc(gd, n_sx, f_x, fxc='ALDA')
+    def add_f(self, gd, n_sx, Y_L, rnablaY_Lv, f_x):
+        return add_LSDA_trans_fxc(gd, n_sx, Y_L, rnablaY_Lv, f_x, fxc='ALDA')
 
 
 class SiteMatrixElement(MatrixElement):
@@ -446,7 +446,7 @@ class SiteMatrixElementCalculator(MatrixElementCalculator):
         self._F_apii = None
 
     @abstractmethod
-    def add_f(self, gd, n_sx, f_x):
+    def add_f(self, gd, n_sx, Y_L, rnablaY_nLv, f_x):
         """Add the local functional f(n(r)) to the f_x output array."""
 
     def print_rshe_info(self, a, info_string):
@@ -502,7 +502,7 @@ class SiteMatrixElementCalculator(MatrixElementCalculator):
         # on a regular grid (unlike the wave functions).
         n_sR, gd = self.gs.get_all_electron_density(gridrefinement=1)
         f_R = gd.zeros()
-        self.add_f(gd, n_sR, f_R)
+        self.add_f(gd, n_sR, None, None, f_R)
 
         # Set up spherical truncation function collection on the coarse
         # real-space grid with a KPointDescriptor including only the q-point.
@@ -563,7 +563,7 @@ class SitePairDensityCalculator(SiteMatrixElementCalculator):
                          # involves l = 0
                          rshelmax=0)
 
-    def add_f(self, gd, n_sx, f_x):
+    def add_f(self, gd, n_sx, Y_L, rnablaY_nLv, f_x):
         f_x[:] += 1.
 
     def print_rshe_info(self, *args):
@@ -580,8 +580,8 @@ class SiteZeemanPairEnergyCalculator(SiteMatrixElementCalculator):
 
     E^(Z,ap)_(nks,n'k+qs') = - <ψ_nks|Θ(r∊Ω_ap)W_xc^z(r)|ψ_n'k+qs'>
     """
-    def add_f(self, gd, n_sx, f_x):
-        f_x[:] += - calculate_LSDA_Wxc(gd, n_sx, self.gs.xcname)
+    def add_f(self, gd, n_sx, Y_L, rnablaY_nLv, f_x):
+        f_x[:] += - calculate_Wxc(gd, n_sx, Y_L, self.gs.xcname)
 
 
 class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
@@ -592,8 +592,9 @@ class SiteSpinPairEnergyCalculator(SiteMatrixElementCalculator):
 
     d^(xc,ap)_(nks,n'k+qs') = - <ψ_nks|Θ(r∊Ω_ap)|W_xc^z(r)||ψ_n'k+qs'>
     """
-    def add_f(self, gd, n_sx, f_x):
-        f_x[:] += - np.abs(calculate_LSDA_Wxc(gd, n_sx, self.gs.xcname))
+    def add_f(self, gd, n_sx, Y_L, rnablaY_nLv, f_x):
+        f_x[:] += - np.abs(calculate_Wxc(gd, n_sx, Y_L, rnablaY_nLv,
+                                         self.gs.xcname))
 
     def _add_paw_correction(self, P1_Amyti, P2_Amyti, matrix_element):
         # Add usual PAW correction to d^(xc,ap)

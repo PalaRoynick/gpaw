@@ -260,6 +260,18 @@ class GGA(XCFunctional):
         v_sg[:] = dedn_sg
         return rgd.integrate(e_g)
 
+    def calculate_radial(self, rgd, n_sLg, Y_L, rnablaY_Lv, v_sg):
+        dndr_sLg = np.empty_like(n_sLg)
+        for n_Lg, dndr_Lg in zip(n_sLg, dndr_sLg):
+            for n_g, dndr_g in zip(n_Lg, dndr_Lg):
+                rgd.derivative(n_g, dndr_g)
+
+        rcalc = GGARadialCalculator(self.kernel)
+
+        # For testing effect of transverse gradients
+        # rnablaY_Lv = np.zeros((len(Y_L), 3))
+        v_sg[:] = rcalc(rgd, n_sLg, Y_L, dndr_sLg, rnablaY_Lv, 0)[1]
+
 
 class PurePythonGGAKernel:
     def __init__(self, name):

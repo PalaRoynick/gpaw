@@ -116,9 +116,9 @@ class LDA(XCFunctional):
                                         setup, D_sp, dEdD_sp,
                                         addcoredensity, a)
 
-    def calculate_radial(self, rgd, n_sLg, Y_L):
+    def calculate_radial(self, rgd, n_sLg, Y_L, rnablaY_Lv, v_sg):
         rcalc = LDARadialCalculator(self.kernel)
-        return rcalc(rgd, n_sLg, Y_L)
+        v_sg[:] = rcalc(rgd, n_sLg, Y_L)[1]
 
     def calculate_spherical(self, rgd, n_sg, v_sg, e_g=None):
         if e_g is None:

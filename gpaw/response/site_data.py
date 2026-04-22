@@ -6,7 +6,7 @@ from ase.units import Bohr, Hartree
 
 from gpaw.response import (ResponseGroundStateAdaptable,
                            ResponseGroundStateAdapter)
-from gpaw.response.localft import add_LSDA_zeeman_energy, add_spin_polarization
+from gpaw.response.localft import add_zeeman_energy, add_spin_polarization
 from gpaw.sphere.integrate import (default_spherical_drcut,
                                    find_volume_conserving_lambd,
                                    integrate_lebedev,
@@ -217,7 +217,7 @@ class AtomicSiteData:
 
     def calculate_zeeman_energies(self):
         r"""Calculate the local Zeeman energy E_Z for each atomic site."""
-        EZ_ap = self.integrate_local_function(add_LSDA_zeeman_energy)
+        EZ_ap = self.integrate_local_function(add_zeeman_energy)
         return EZ_ap
 
     def integrate_local_function(self, add_f):
@@ -247,7 +247,7 @@ class AtomicSiteData:
         """
         # Evaluate the local function on the real-space grid
         ft_r = self.finegd.zeros()
-        add_f(self.finegd, self.nt_sr, ft_r)
+        add_f(self.finegd, self.nt_sr, None, None, ft_r)
 
         # Integrate θ(|r-r_a|<rc_ap) f(ñ(r))
         ftdict_ap = {a: np.empty(self.sites.npartitions)

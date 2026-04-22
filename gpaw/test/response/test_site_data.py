@@ -61,8 +61,8 @@ def test_Fe_site_magnetization(gpw_files, mpi):
     m_ng = np.array([micro_setup.rgd.zeros()
                      for n in range(micro_setup.Y_nL.shape[0])])
     for n, Y_L in enumerate(micro_setup.Y_nL):
-        n_sg = np.dot(Y_L, micro_setup.n_sLg)
-        add_spin_polarization(micro_setup.rgd, n_sg, m_ng[n, :])
+        add_spin_polarization(micro_setup.rgd, micro_setup.n_sLg,
+                              Y_L, None, m_ng[n, :])
     # Integrate with varrying radii
     m_g = integrate_lebedev(m_ng)
     ae_magmom_r = np.array([

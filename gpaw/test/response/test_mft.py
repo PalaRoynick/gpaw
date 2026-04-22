@@ -1,7 +1,6 @@
 """Calculate the Heisenberg exchange constants in Fe and Co using the MFT.
 Test with unrealisticly loose parameters to catch if the numerics change.
 """
-
 import numpy as np
 
 # General modules
@@ -237,7 +236,7 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
 
 @pytest.mark.response
 @pytest.mark.kspair
-@pytest.mark.parametrize('xc', ['LDA', 'LDA_X+LDA_C_PZ'])
+@pytest.mark.parametrize('xc', ['LDA', 'LDA_X+LDA_C_PZ', 'PBE'])
 def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
 
     a0 = 4.17
@@ -246,6 +245,8 @@ def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
 
     if xc == 'LDA':
         e0_q = np.array([0., -2.98733, -0.03207])
+    elif xc == 'PBE':
+        e0_q = np.array([0., -1.46999, -0.02046])
     else:
         e0_q = np.array([0., -3.18565137, -0.03267547])
         from gpaw.test import gen
@@ -279,6 +280,7 @@ def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
     J_q = np.array([jcalc(q_c).array[..., 0]  # dimension: J_abp
                     for q_c in q_qc])[:, 0, 0]
     e_q = calculate_single_site_magnon_energies(J_q, q_qc, m)
+    print(xc, e_q)
     assert e_q == pytest.approx(e0_q, abs=2e-2)
 
 

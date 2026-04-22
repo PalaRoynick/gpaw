@@ -11,7 +11,7 @@ from gpaw.response.chiks import (ChiKSCalculator, RealAxisWarning,
                                  get_smat_components,
                                  regularize_intraband_transitions, smat)
 from gpaw.response.frequencies import ComplexFrequencyDescriptor
-from gpaw.response.localft import LocalFTCalculator, add_LSDA_Wxc
+from gpaw.response.localft import LocalFTCalculator, add_Wxc
 from gpaw.response.matrix_elements import (SitePairDensityCalculator,
                                            SiteSpinPairEnergyCalculator,
                                            SiteZeemanPairEnergyCalculator)
@@ -35,7 +35,7 @@ class IsotropicExchangeCalculator:
 
     Entering the formula for the isotropic exchange constant at wave vector q
     between sublattice a and b is the unit cell volume V0, the functional
-    derivative of the (LDA) exchange-correlation energy with respect to the
+    derivative of the exchange-correlation energy with respect to the
     magnitude of the magnetization B^(xc), the sublattice site kernels K^a(q)
     and K^b(q) as well as the reactive part of the static transverse magnetic
     susceptibility of the Kohn-Sham system χ_KS^('+-)(q).
@@ -143,7 +143,7 @@ class IsotropicExchangeCalculator:
         # q_c is arbitrary, since we are assuming that chiks.gammacentered == 1
         qpd0 = self.chiks_calc.get_pw_descriptor([0., 0., 0.])
 
-        return self.localft_calc(qpd0, add_LSDA_Wxc)
+        return self.localft_calc(qpd0, add_Wxc)
 
     def get_chiksr(self, q_c, txt=None):
         """Get χ_KS^('+-)(q) from buffer."""

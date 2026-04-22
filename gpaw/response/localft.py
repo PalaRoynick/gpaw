@@ -166,16 +166,16 @@ class LocalGridFTCalculator(LocalFTCalculator):
         """Calculate f(G) directly from the all-electron density on the cubic
         real-space grid."""
         n_sR = self.get_all_electron_density(qpd.gd)
-        f_G = self._calculate(qpd, n_sR, add_f)
+        f_G = self._calculate(qpd, n_sR, None, None, add_f)
 
         return f_G
 
-    def _calculate(self, qpd, n_sR, add_f):
+    def _calculate(self, qpd, n_sR, Y_L, rnablaY_Lv, add_f):
         """In-place calculation of the plane-wave components."""
         # Calculate f(r)
         gd = qpd.gd
         f_R = gd.zeros()
-        add_f(gd, n_sR, f_R)
+        add_f(gd, n_sR, Y_L, rnablaY_Lv, f_R)
 
         # FFT to reciprocal space
         f_G = fft_from_grid(f_R, qpd)  # G = 1D grid of |G|^2/2 < ecut
@@ -227,9 +227,10 @@ class LocalPAWFTCalculator(LocalFTCalculator):
 
 class MicroSetup:
 
-    def __init__(self, rgd, Y_nL, n_sLg, nt_sLg):
+    def __init__(self, rgd, Y_nL, rnablaY_nLv, n_sLg, nt_sLg):
         self.rgd = rgd
         self.Y_nL = Y_nL
+        self.rnablaY_nLv = rnablaY_nLv
         self.n_sLg = n_sLg
         self.nt_sLg = nt_sLg
 
@@ -237,8 +238,7 @@ class MicroSetup:
         """Evaluate a given function f(r) on the angular and radial grids."""
         f_ng = np.array([self.rgd.zeros() for n in range(self.Y_nL.shape[0])])
         for n, Y_L in enumerate(self.Y_nL):
-            n_sg = Y_L @ self.n_sLg
-            add_f(self.rgd, n_sg, f_ng[n])
+            add_f(self.rgd, self.n_sLg, Y_L, self.rnablaY_nLv[n], f_ng[n])
         return f_ng
 
     def evaluate_paw_correction(self, add_f):
@@ -255,12 +255,9 @@ class MicroSetup:
         df_ng = np.array([rgd.zeros() for n in range(self.Y_nL.shape[0])])
         for n, Y_L in enumerate(self.Y_nL):
             f_g[:] = 0.
-            n_sg = Y_L @ self.n_sLg
-            add_f(rgd, n_sg, f_g)
-
+            add_f(rgd, self.n_sLg, Y_L, self.rnablaY_nLv[n], f_g)
             ft_g[:] = 0.
-            nt_sg = Y_L @ self.nt_sLg
-            add_f(rgd, nt_sg, ft_g)
+            add_f(rgd, self.nt_sLg, Y_L, self.rnablaY_nLv[n], ft_g)
 
             df_ng[n, :] = f_g - ft_g
 
@@ -285,10 +282,11 @@ def extract_micro_setup(pawdata, D_sp) -> MicroSetup:
     rgd = pawdata.xc_correction.rgd
     # Spherical harmonics on the Lebedev quadrature:
     Y_nL = pawdata.xc_correction.Y_nL
+    from gpaw.xc.pawcorrection import rnablaY_nLv
     n_sLg, nt_sLg = calculate_atom_centered_densities(pawdata,
                                                       # atomic density matrix
                                                       D_sp)
-    return MicroSetup(rgd, Y_nL, n_sLg, nt_sLg)
+    return MicroSetup(rgd, Y_nL, rnablaY_nLv, n_sLg, nt_sLg)
 
 
 def calculate_atom_centered_densities(pawdata, D_sp):
@@ -360,7 +358,7 @@ class LocalPAWFTEngine:
         # Calculate ft(r) (t=tilde=pseudo)
         gd = qpd.gd
         ft_R = gd.zeros()
-        self._add_f(gd, nt_sR, ft_R)
+        self._add_f(gd, nt_sR, None, None, ft_R)
 
         # FFT to reciprocal space
         ft_G = fft_from_grid(ft_R, qpd)  # G = 1D grid of |G|^2/2 < ecut
@@ -546,54 +544,66 @@ def fft_from_grid(f_R, qpd):
 # ---------- Local functions of the (spin-)density ---------- #
 
 
-def add_total_density(gd, n_sR, n_R):
+def add_total_density(gd, n_sR, Y_L, rnablaY_Lv, n_R):
+    if len(np.shape(n_sR)) == 3:
+        n_sR = np.dot(Y_L, n_sR)
     n_R += np.sum(n_sR, axis=0)
 
 
-def add_spin_polarization(gd, n_sR, nz_R):
-    nz_R += calculate_spin_polarization(n_sR)
+def add_spin_polarization(gd, n_sx, Y_L, rnablaY_Lv, nz_x):
+    if len(np.shape(n_sx)) == 3:
+        n_sx = np.dot(Y_L, n_sx)
+    nz_x += calculate_spin_polarization(n_sx)
 
 
 def calculate_spin_polarization(n_sR):
     return n_sR[0] - n_sR[1]
 
 
-def add_LSDA_Wxc(gd, n_sR, Wxc_R, xc='LDA'):
-    Wxc_R += calculate_LSDA_Wxc(gd, n_sR, xc=xc)
+def add_Wxc(gd, n_sx, Y_L, rnablaY_Lv, Wxc_x, xc='LDA'):
+    Wxc_x += calculate_Wxc(gd, n_sx, Y_L, rnablaY_Lv, xc=xc)
 
 
-def calculate_LSDA_Wxc(gd, n_sR, xc='LDA'):
+def calculate_Wxc(gd, n_sx, Y_L, rnablaY_Lv, xc='LDA'):
     """Calculate W_xc^z in the local spin-density approximation.
 
     For a collinear system:
 
                 δE_xc[n,n^z]   1
-    W_xc^z(r) = ‾‾‾‾‾‾‾‾‾‾‾‾ = ‾ [V_LSDA^↑(r) - V_LSDA^↓(r)]
+    W_xc^z(r) = ‾‾‾‾‾‾‾‾‾‾‾‾ = ‾ [V_xc^↑(r) - V_xc^↓(r)]
                    δn^z(r)     2
     """
-    # Allocate an array for the spin-dependent xc potential on the real
-    # space grid
-    v_sR = np.zeros(np.shape(n_sR))
 
-    # Calculate the spin-dependent potential
     xc = XC(xc)
-    assert xc.type == 'LDA'
-    xc.calculate(gd, n_sR, v_sg=v_sR)
+    assert xc.type in ['LDA', 'GGA']
+
+    if len(np.shape(n_sx)) == 3:
+        v_sR = np.zeros(np.shape(n_sx[:, 0]))
+        xc.calculate_radial(gd, n_sx, Y_L, rnablaY_Lv, v_sg=v_sR)
+        # For testing spherical approximation debug mode
+        # N = (4 * np.pi)**0.5
+        # xc.calculate_spherical(gd, n_sx[:, 0] / N, v_sg=v_sR)
+    else:
+        v_sR = np.zeros(np.shape(n_sx))
+        xc.calculate(gd, n_sx, v_sg=v_sR)
 
     return (v_sR[0] - v_sR[1]) / 2
 
 
-def add_LSDA_zeeman_energy(gd, n_sR, EZ_R):
-    """Calculate and add the LSDA Zeeman energy to the output array.
+def add_zeeman_energy(gd, n_sx, Y_L, rnablaY_Lv, EZ_R):
+    """Calculate and add the Zeeman energy to the output array.
 
     The Zeeman energy is defined as:
 
     E_Z(r) = - B^(xc)(r) m(r) = - W_xc^z n^z(r).
     """
-    EZ_R += - calculate_LSDA_Wxc(gd, n_sR) * calculate_spin_polarization(n_sR)
+    if len(np.shape(n_sx)) == 3:
+        n_sx = np.dot(Y_L, n_sx)
+    m_R = calculate_spin_polarization(n_sx)
+    EZ_R += - calculate_Wxc(gd, n_sx, Y_L, rnablaY_Lv) * m_R
 
 
-def add_LDA_dens_fxc(gd, n_sR, fxc_R, *, fxc):
+def add_LDA_dens_fxc(gd, n_sR, Y_L, rnablaY_Lv, fxc_R, *, fxc):
     r"""Calculate the LDA density kernel and add it to the output array fxc_R.
 
     The LDA density kernel is given by:
@@ -604,6 +614,9 @@ def add_LDA_dens_fxc(gd, n_sR, fxc_R, *, fxc):
     """
     assert len(n_sR) == 1, \
         'The density kernel is untested for spin-polarized systems'
+
+    if len(np.shape(n_sR)) == 3:
+        n_sR = np.dot(Y_L, n_sR)
 
     if fxc == 'ALDA_x':
         fxc_R += -1. / 3. * (3. / np.pi)**(1. / 3.) * n_sR[0]**(-2. / 3.)
@@ -616,7 +629,7 @@ def add_LDA_dens_fxc(gd, n_sR, fxc_R, *, fxc):
         fxc_R += fxc_sR[0]
 
 
-def add_LSDA_trans_fxc(gd, n_sR, fxc_R, *, fxc):
+def add_LSDA_trans_fxc(gd, n_sR, Y_L, rnablaY_Lv, fxc_R, *, fxc):
     r"""Calculate the transverse LDA kernel and add it to the output arr. fxc_R
 
     The transverse LDA kernel is given by:
@@ -630,6 +643,8 @@ def add_LSDA_trans_fxc(gd, n_sR, fxc_R, *, fxc):
                               n^z(r)
     """
     assert len(n_sR) == 2  # nspins
+    if len(np.shape(n_sR)) == 3:
+        n_sR = np.dot(Y_L, n_sR)
     nz_R = n_sR[0] - n_sR[1]
 
     if fxc == 'ALDA_x':
