@@ -9,6 +9,8 @@ from gpaw.sphere.gaunt import gaunt, super_gaunt
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_density, unpack_density
 from gpaw.xc.numericalxc import calculate_angular_density
+from gpaw.new.backwards_compatibility import FakeDensity
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -467,8 +469,28 @@ def get_weights(
     return weights_sG, weights_name
 
 
+def fakdensity2old(fake_density, old_density, old_hamiltonian):
+    args = [fake_density.gd,
+            fake_density.finegd,
+            fake_density.nspins,
+            fake_density.collinear,
+            old_density.charge,
+            old_density.redistributor,
+            old_density.background_charge]
+    from gpaw.old.pw.density import ReciprocalSpaceDensity
+    if isinstance(old_density, ReciprocalSpaceDensity):
+        args.insert(0, old_density.pd2.ecut)
+    density = old_density.__class__(*args)
+    density.initialize(old_density.setups, old_density.timer,
+                       old_density.magmom_av, old_density.hund)
+    density.set_positions(old_hamiltonian.spos_ac, old_density.atom_partition)
+    density.initialize_directly_from_arrays(
+        fake_density.nt_sG, None, fake_density.D_asp)
+    return density
+
+
 def update_density_from_density_matrix(
-    density: Density, wfs: WaveFunctions, P_snn: Array3D | None
+        density: Density | FakeDensity, wfs: WaveFunctions, P_snn: Array3D | None
 ) -> None:
     if P_snn is None:
         return

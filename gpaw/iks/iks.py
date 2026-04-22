@@ -15,6 +15,7 @@ from gpaw.sphere.lebedev import Y_nL, weight_n
 # from gpaw.transformers import Transformer
 from gpaw.utilities import pack_hermitian, unpack_hermitian
 from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
+from gpaw.new.backwards_compatibility import FakeDensity
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -237,7 +238,12 @@ class iKS:
             tdens = self.target
         else:
             tdens = self.target.density
-            update_density_from_density_matrix(tdens, self.target.wfs, P_snn)
+            if isinstance(tdens, FakeDensity):
+                from gpaw.iks.tools import fakdensity2old
+                tdens = fakdensity2old(
+                    tdens, self.calc.density, self.calc.hamiltonian)
+            update_density_from_density_matrix(
+                tdens, self.target.wfs, P_snn)
         density = self.density
         tdens.gd = density.gd
         tdens.finegd = density.finegd
@@ -334,7 +340,7 @@ class iKS:
             # we need to find the bug that in the k-point parallelization causes
             # the values of potentials (and consequently the densities) diverge on each node
             # this is a hack for now!
-            assert self.gd.comm.size == 1, "simultaneous domain and k-point parallelization is not supported by iKS"
+            # assert self.gd.comm.size == 1, "simultaneous domain and k-point parallelization is not supported by iKS"
             self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
             self.wfs.kptband_comm.broadcast(self.density.nt_sG, 0)
         self.run_scf()
