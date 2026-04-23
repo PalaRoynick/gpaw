@@ -8,46 +8,42 @@ from ase.lattice.hexagonal import Graphene
 from gpaw.benchmark.generate_twisted import make_heterostructure
 
 
+def get_bilayer(N):
+    graphene_bilayers = {
+        244: [[[-5, -9], [4, -5]], [[-4, -9], [5, -4]]],
+        364: [[[-6, -11], [5, -6]], [[-5, -11], [6, -5]]],
+        508: [[[-13, -6], [-7, -13]], [[-13, -7], [-6, -13]]],
+        676: [[[-7, 8], [-15, -7]], [[-8, 7], [-15, -8]]],
+        868: [[[-17, -8], [-9, -17]], [[-17, -9], [-8, -17]]],
+        1084: [[[-10, -19], [9, -10]], [[-9, -19], [10, -9]]],
+        1324: [[[-10, 11], [-21, -10]], [[-11, 10], [-21, -11]]],
+        1588: [[[-23, -11], [-12, -23]], [[-23, -12], [-11, -23]]],
+        1876: [[[-13, -25], [12, -13]], [[-12, -25], [13, -12]]],
+        2188: [[[27, 13], [14, 27]], [[27, 14], [13, 27]]],
+        2524: [[[-15, -29], [14, -15]], [[-14, -29], [15, -14]]],
+        2884: [[[15, -16], [31, 15]], [[16, -15], [31, 16]]],
+        3268: [[[-16, 17], [-33, -16]], [[-17, 16], [-33, -17]]],
+        3676: [[[18, 35], [-17, 18]], [[17, 35], [-18, 17]]],
+        4564: [[[-39, -19], [-20, -39]], [[-39, -20], [-19, -39]]],
+        5548: [[[21, -22], [43, 21]], [[22, -21], [43, 22]]],
+        10444: [[[29, -30], [59, 29]], [[30, -29], [59, 30]]],
+    }
+    transa_cc, transb_cc = graphene_bilayers[N]
+    atoms = make_heterostructure(
+        atoms,
+        atoms,
+        transa_cc=block_diag(transa_cc, [[1]]),
+        transb_cc=block_diag(transb_cc, [[1]]),
+        straina_vv=np.eye(3),
+        interlayer_dist=3.35,
+    )
+    return atoms
+
+
 def system_magic_graphene():
     atoms = graphene(vacuum=5)
     transa_cc = np.array([[29, -30, 0], [59, 29, 0], [0, 0, 1]])
     transb_cc = np.array([[30, -29, 0], [59, 30, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_2188_bl_graphene():
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[27, 13, 0], [14, 27, 0], [0, 0, 1]])
-    transb_cc = np.array([[27, 24, 0], [13, 27, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_6000_bl_graphene():
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[23, 45, 0], [-22, 23, 0], [0, 0, 1]])
-    transb_cc = np.array([[22, 45, 0], [-23, 22, 0], [0, 0, 1]])
-    atoms = make_heterostructure(atoms, atoms,
-                                 transa_cc=transa_cc,
-                                 transb_cc=transb_cc,
-                                 straina_vv=np.eye(3),
-                                 interlayer_dist=3.35)
-    return atoms
-
-
-def system_676_bl_graphene():
-    atoms = graphene(vacuum=5)
-    transa_cc = np.array([[7, -8, 0], [15, 7, 0], [0, 0, 1]])
-    transb_cc = np.array([[8, -7, 0], [15, 8, 0], [0, 0, 1]])
     atoms = make_heterostructure(atoms, atoms,
                                  transa_cc=transa_cc,
                                  transb_cc=transb_cc,
@@ -340,9 +336,6 @@ systems = {'H2': system_H2,
            'C60-0': system_C60,
            'MoS2_tube': system_MoS2_tube,
            'Mo60S120-1': system_MoS2_tube,
-           'C6000': system_6000_bl_graphene,
-           'C2188': system_2188_bl_graphene,
-           'C676': system_676_bl_graphene,
            'metalslab': system_metalslab,
            'Al96-2': system_metalslab,
            'magic_graphene': system_magic_graphene,
@@ -364,6 +357,11 @@ systems = {'H2': system_H2,
            'Ti2Br6-3': ti2br6,
            'Fe8O8-3M': fe8o8,
            'C72-2': c72}
+
+
+for N in graphene_bilayers:
+    systems['C' + str(N)] = lambda: get_bilayer(N)
+    assert N == len(get_bilayer(N)), (N, len(get_bilayer(N)))
 
 
 def parse_system(name):
