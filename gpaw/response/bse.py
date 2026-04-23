@@ -913,7 +913,7 @@ class BSEBackend:
         return vchi_w
 
     @timer('get_chi_wGG')
-    def get_chi_wGG(self, w_w=None, eta=0.1, readfile=None, optical=True,
+    def get_chi_wGG(self, w_w=None, eta=0.1, eta_slope=0.0, readfile=None, optical=True,
                     irreducible=False):
         """Returns chi_wGG'"""
 
@@ -975,14 +975,16 @@ class BSEBackend:
                 (C_tGG1.shape[0], nG, nG))
 
         eta /= Hartree
+        w_w = w_w / Hartree
+        eta_w = eta + eta_slope * Hartree * w_w**2
 
         if C_tGG is not None:
-            tmp_tw = 1 / (w_w[None, :] / Hartree - w_t[:, None] + 1j * eta)
+            tmp_tw = 1 / (w_w[None, :] - w_t[:, None] + 1j  * eta_w[None, :])
             chi_wGG_local = np.einsum('tw,tAB->wAB', tmp_tw, C_tGG)
 
             if C_tGG1 is not None:
-                n_tmp_tw = - 1 / (w_w[None, :] / Hartree
-                                  + w_t[:, None] + 1j * eta)
+                n_tmp_tw = - 1 / (w_w[None, :]
+                                  + w_t[:, None] + 1j * eta_w[None, :])
                 chi_wGG_local += np.einsum('tw,tAB->wAB', n_tmp_tw, C_tGG1)
 
             chi_wGG_local *= 1 / self.gs.volume
@@ -1314,6 +1316,7 @@ class BSEPlus:
                                        intraband=False,
                                        hilbert=False,
                                        eta=self.eta,
+                                       eta_slope=self.eta_slope,
                                        ecut=self.ecut,
                                        eshift=self.eshift)
 
@@ -1349,6 +1352,7 @@ class BSEPlus:
                                           intraband=False,
                                           hilbert=False,
                                           eta=self.eta,
+                                          eta_slope=self.eta_slope,
                                           ecut=self.ecut,
                                           eshift=self.eshift)
         return chi0calc_limited
@@ -1375,6 +1379,7 @@ class BSEPlus:
                  eshift=0.0,
                  bse_add_soc=False,
                  eta=0.1,
+                 eta_slope=0.0,
                  q_c=(0.0, 0.0, 0.0),
                  direction=0,
                  truncation=None,
@@ -1432,6 +1437,7 @@ class BSEPlus:
         self.eshift = eshift
         self.bse_add_soc = bse_add_soc
         self.eta = eta
+        self.eta_slope = eta_slope
         self.q_c = list(q_c)
         self.bse_direction = direction
         self.rpa_direction = ('x', 'y', 'z')[direction]
@@ -1465,6 +1471,7 @@ class BSEPlus:
         chi_irr_BSE_WGG = bse.get_chi_wGG(
             eta=self.eta,
             optical=optical,
+            eta_slope=self.eta_slope,
             irreducible=True,
             w_w=self.w_w)
         del bse

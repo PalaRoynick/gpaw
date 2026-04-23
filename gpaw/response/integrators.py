@@ -141,22 +141,21 @@ class GenericUpdate(IntegralTask):
         self.eshift = eshift or 0.0
 
     # @timer('CHI_0 update')
-    def run(self, wd, n_mG, deps_m, chi0_wGG):
-        """Update chi."""
 
+    def run(self, wd, n_mG, deps_m, chi0_wGG):
         deps_m += self.eshift * np.sign(deps_m)
-        deps1_m = deps_m + 1j * self.eta
-        deps2_m = deps_m - 1j * self.eta
+        eta_w = np.broadcast_to(np.asarray(self.eta), len(wd.omega_w))
 
         blocks1d = Blocks1D(self.blockcomm, chi0_wGG.shape[2])
         n_Gm = np.ascontiguousarray(n_mG.T)
-        for omega, chi0_GG in zip(wd.omega_w, chi0_wGG):
+        for (omega, chi0_GG, eta) in zip(wd.omega_w, chi0_wGG, eta_w):
+            deps1_m = deps_m + 1j * eta        # <-- was computed once, outside loop
+            deps2_m = deps_m - 1j * eta        # <-- same
             x_m = (1 / (omega + deps1_m) - 1 / (omega - deps2_m))
             if blocks1d.blockcomm.size > 1:
                 nx_mG = n_mG[:, blocks1d.myslice] * x_m[:, np.newaxis]
             else:
                 nx_mG = n_mG * x_m[:, np.newaxis]
-
             mmm(1.0, nx_mG, 'T', n_Gm, 'C', 1.0, chi0_GG)
 
 
@@ -283,17 +282,15 @@ class OpticalLimit(IntegralTask):
 
     # @timer('CHI_0 optical limit update')
     def run(self, wd, n_mG, deps_m, chi0_wxvG):
-        """Optical limit update of chi."""
         deps_m += self.eshift * np.sign(deps_m)
-
-        deps1_m = deps_m + 1j * self.eta
-        deps2_m = deps_m - 1j * self.eta
+        eta_w = np.broadcast_to(np.asarray(self.eta), len(wd.omega_w))
         nc_mG = n_mG.conj()
-        for w, omega in enumerate(wd.omega_w):
+        for w, (omega, eta) in enumerate(zip(wd.omega_w, eta_w)):
+            deps1_m = deps_m + 1j * eta
+            deps2_m = deps_m - 1j * eta
             x_m = (1 / (omega + deps1_m) - 1 / (omega - deps2_m))
             chi0_wxvG[w, 0] += np.dot(x_m * n_mG[:, :3].T, nc_mG)
             chi0_wxvG[w, 1] += np.dot(x_m * nc_mG[:, :3].T, n_mG)
-
 
 class HermitianOpticalLimit(IntegralTask):
     kind = 'hermitian response function wings'

@@ -283,7 +283,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
     def construct_literal_task(self):
         return GenericUpdate(
-            self.eta, self.integrator.blockcomm, eshift=self.eshift)
+            self.eta_w, self.integrator.blockcomm, eshift=self.eshift)
 
     def print_info(self, qpd: SingleQPWDescriptor):
 
@@ -469,7 +469,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         return HilbertOpticalLimitTetrahedron()
 
     def construct_literal_task(self):
-        return OpticalLimit(eta=self.eta, eshift=self.eshift)
+        return OpticalLimit(eta=self.eta_w, eshift=self.eshift)
 
     def print_info(self, qpd: SingleQPWDescriptor):
         """Print information about optical extension calculation."""

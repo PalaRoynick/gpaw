@@ -348,6 +348,7 @@ class Chi0ComponentPWCalculator(Chi0ComponentCalculator, ABC):
                  timeordered=False,
                  ecut=50.0,
                  eta=0.2,
+                 eta_slope=0.0,
                  **kwargs):
         """Set up attributes to calculate the chi0 body and optical extensions.
 
@@ -381,6 +382,9 @@ class Chi0ComponentPWCalculator(Chi0ComponentCalculator, ABC):
         self.wd = wd
         self.context.print(self.wd, flush=False)
         self.eta = eta / Ha
+        self.eta_slope = eta_slope
+        omega_w = np.asarray(wd.omega_w).real
+        self.eta_w = self.eta + self.eta_slope * Ha * omega_w**2
         self.hilbert = hilbert
         self.task = self.construct_integral_task()
 
