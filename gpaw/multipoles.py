@@ -197,6 +197,8 @@ class PolarTensor:
         _, d_y, _, _, _ = self.moment_field_pert_y 
         _, d_z, _, _, _ = self.moment_field_pert_z 
 
+
+        print("DIPOLES:", d_0, d_x, d_y, d_z, self.field_strength)
         alp_i_x = (d_x - d_0)/self.field_strength
         alp_i_y = (d_y - d_0)/self.field_strength
         alp_i_z = (d_z - d_0)/self.field_strength
