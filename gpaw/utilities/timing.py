@@ -2,7 +2,9 @@
 # Please see the accompanying LICENSE file for further information.
 
 import math
+import json
 import sys
+import threading
 import time
 
 import numpy as np
@@ -233,6 +235,8 @@ class Profiler(Timer):
         fname = f'{prefix}.{self.ranktxt}.json'
         self.txt = open(fname, 'w', buffering=-1)
         self.pid = 0  # os.getpid() creates more confusing output
+        self._trace_lock = threading.Lock()
+        self._finished = False
         atexit.register(Profiler.finish_trace, self)
         # legacy json format for perfetto always assumes microseconds
         self.u = 1_000_000
@@ -248,7 +252,17 @@ class Profiler(Timer):
         self.comm.broadcast(ref, 0)
         self.ref = ref[0]
 
+    def write_trace_event(self, event):
+        with self._trace_lock:
+            self.txt.write(json.dumps(event) + ',\n')
+
     def finish_trace(self):
+        if self._finished:
+            return
+        self._finished = True
+        before_finish = getattr(self, 'before_finish_trace', None)
+        if before_finish is not None:
+            before_finish()
         self.txt.close()
         self.comm.barrier()
         if self.comm.rank == 0:
@@ -267,18 +281,26 @@ class Profiler(Timer):
 
     def start(self, name):
         super().start(name)
-        self.txt.write(
-            f"""{{"name": "{name}", "cat": "PERF", "ph": "B","""
-            f""" "pid": {self.pid}, "tid": "{self.ranktxt}", """
-            f""""ts": {int((time.time() - self.ref) * self.u)} }},\n""")
+        self.write_trace_event({
+            'name': name,
+            'cat': 'PERF',
+            'ph': 'B',
+            'pid': self.pid,
+            'tid': self.ranktxt,
+            'ts': int((time.time() - self.ref) * self.u),
+        })
 
     def stop(self, name=None):
         if name is None:
             name = self.running[-1]
-        self.txt.write(
-            f"""{{"name": "{name}", "cat": "PERF", "ph": "E", """
-            f""""pid": {self.pid}, "tid": "{self.ranktxt}", """
-            f""""ts": {int((time.time() - self.ref) * self.u)}}},\n""")
+        self.write_trace_event({
+            'name': name,
+            'cat': 'PERF',
+            'ph': 'E',
+            'pid': self.pid,
+            'tid': self.ranktxt,
+            'ts': int((time.time() - self.ref) * self.u),
+        })
         super().stop(name)
 
 
@@ -286,6 +308,102 @@ class GPUProfiler(Profiler, GPUTimerBase):
     def __init__(self, prefix, comm=None):
         Profiler.__init__(self, prefix, comm=comm)
         GPUTimerBase.__init__(self, comm=comm)
+        self._nvml_thread = None
+        self._nvml_stop = threading.Event()
+        self._nvml_handle = None
+        self._nvml = None
+        self._start_nvml_polling()
+
+    def _start_nvml_polling(self):
+        try:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        except Exception:
+            return
+
+        self._nvml = pynvml
+        self._nvml_handle = handle
+        pid = 1
+        tid = f'NVML {self.ranktxt}'
+        self.write_trace_event({
+            'name': 'process_name',
+            'cat': '__metadata',
+            'ph': 'M',
+            'pid': pid,
+            'tid': tid,
+            'ts': 0,
+            'args': {'name': 'NVML GPU telemetry'},
+        })
+
+        def poll():
+            while not self._nvml_stop.wait(0.05):
+                try:
+                    util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                    power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+                except Exception:
+                    break
+
+                self.write_trace_event({
+                    'name': f'{power:.2f} W',
+                    'cat': 'NVML',
+                    'ph': 'i',
+                    's': 't',
+                    'pid': pid,
+                    'tid': tid,
+                    'ts': int((time.time() - self.ref) * self.u),
+                    'args': {
+                        'gpu_util_percent': util.gpu,
+                        'memory_util_percent': util.memory,
+                        'power_watts': power,
+                    },
+                })
+                ts = int((time.time() - self.ref) * self.u)
+                self.write_trace_event({
+                    'name': 'GPU power [W]',
+                    'cat': 'NVML',
+                    'ph': 'C',
+                    'pid': pid,
+                    'tid': tid,
+                    'ts': ts,
+                    'args': {'value': power},
+                })
+                self.write_trace_event({
+                    'name': 'GPU utilization [%]',
+                    'cat': 'NVML',
+                    'ph': 'C',
+                    'pid': pid,
+                    'tid': tid,
+                    'ts': ts,
+                    'args': {'value': util.gpu},
+                })
+                self.write_trace_event({
+                    'name': 'GPU memory utilization [%]',
+                    'cat': 'NVML',
+                    'ph': 'C',
+                    'pid': pid,
+                    'tid': tid,
+                    'ts': ts,
+                    'args': {'value': util.memory},
+                })
+
+        self._nvml_thread = threading.Thread(target=poll,
+                                             name='gpaw-nvml-profiler',
+                                             daemon=True)
+        self._nvml_thread.start()
+
+    def before_finish_trace(self):
+        self._nvml_stop.set()
+        if self._nvml_thread is not None:
+            self._nvml_thread.join()
+        if self._nvml is not None:
+            try:
+                self._nvml.nvmlShutdown()
+            except Exception:
+                pass
 
     def synchronize(self):
         from cupy.cuda import Event
@@ -330,11 +448,19 @@ class GPUProfiler(Profiler, GPUTimerBase):
 
         ms_start = get_time(event.start_event)
         ms_stop = get_time(event.stop_event)
-        self.txt.write(
-            f"""{{"name": "{event.name}", "cat": "PERF", "ph": "B","""
-            f""" "pid": {self.pid}, "tid": "GPU {self.ranktxt}", """
-            f""""ts": {int(ms_start * 1000)} }},\n""")
-        self.txt.write(
-            f"""{{"name": "{event.name}", "cat": "PERF", "ph": "E", """
-            f""""pid": {self.pid}, "tid": "GPU {self.ranktxt}", """
-            f""""ts": {int(ms_stop * 1000)} }},\n""")
+        self.write_trace_event({
+            'name': event.name,
+            'cat': 'PERF',
+            'ph': 'B',
+            'pid': self.pid,
+            'tid': f'GPU {self.ranktxt}',
+            'ts': int(ms_start * 1000),
+        })
+        self.write_trace_event({
+            'name': event.name,
+            'cat': 'PERF',
+            'ph': 'E',
+            'pid': self.pid,
+            'tid': f'GPU {self.ranktxt}',
+            'ts': int(ms_stop * 1000),
+        })

@@ -12,6 +12,7 @@ import numpy as np
 from gpaw import KohnShamConvergenceError
 from gpaw.convergence_criteria import (Criterion, check_convergence,
                                        dict2criterion)
+from gpaw.new import tracectx
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import indent
@@ -70,69 +71,82 @@ class SCFLoop:
                     log('- ' + criterion.description)
             log(f'maximum number of iterations: {self.maxiter}\n')
 
-        self.mixer.reset()
+        with tracectx('SCF setup'):
+            self.mixer.reset()
 
-        self.occ_calc.initialize_reference_orbitals()
-
-        if self.update_density_and_potential:
-            dens_error = self.mixer.mix(density)
-        else:
-            dens_error = 0.0
-
-        for self.niter in itertools.count(start=1):
-            eig_error, wfs_error, energies = self.eigensolver.iterate(
-                ibzwfs, density, potential,
-                self.hamiltonian, pot_calc, energies)
-            nelectrons = density.nvalence - density.charge + pot_calc.charge
-            e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
-                self.occ_calc,
-                nelectrons,
-                fix_fermi_level=self.fix_fermi_level)
-
-            energies.set(**pot_calc.xc.energies,
-                         band=e_band,
-                         entropy=e_entropy,
-                         extrapolation=e_extrapolation)
-
-            ctx = SCFContext(
-                log, self.niter, energies,
-                ibzwfs, density, potential,
-                wfs_error, dens_error, eig_error,
-                self.comm, calculate_forces,
-                pot_calc, self.update_density_and_potential)
-
-            yield ctx
-
-            converged, converged_items, entries = check_convergence(cc, ctx)
-            nconverged = self.comm.sum_scalar(int(converged))
-            assert nconverged in [0, self.comm.size], converged_items
-
-            if log:
-                write_iteration(cc, converged_items, entries, ctx, log)
-
-            if converged:
-                converged = all(
-                    ext.post_scf_convergence(
-                        ibzwfs, nelectrons, self.occ_calc, self.mixer, log)
-                    for ext in pot_calc.extensions)
-                if converged:
-                    break
-
-            if self.niter == maxiter:
-                if wfs_error < inf:
-                    raise KohnShamConvergenceError
-                raise TooFewBandsError
+            self.occ_calc.initialize_reference_orbitals()
 
             if self.update_density_and_potential:
-                density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
-                potential, energies, _ = pot_calc.calculate(
-                    density, ibzwfs, potential.vHt_x)
-                energies.sanity_check()
+            else:
+                dens_error = 0.0
 
-        self.eigensolver.postprocess(
-            ibzwfs, density, potential, self.hamiltonian,
-            maxiter=maxiter, cc=cc, log=log)
+        for self.niter in itertools.count(start=1):
+            with tracectx('SCF iteration'):
+                eig_error, wfs_error, energies = self.eigensolver.iterate(
+                    ibzwfs, density, potential,
+                    self.hamiltonian, pot_calc, energies)
+
+                with tracectx('SCF occupations'):
+                    nelectrons = (density.nvalence - density.charge +
+                                  pot_calc.charge)
+                    e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
+                        self.occ_calc,
+                        nelectrons,
+                        fix_fermi_level=self.fix_fermi_level)
+
+                    energies.set(**pot_calc.xc.energies,
+                                 band=e_band,
+                                 entropy=e_entropy,
+                                 extrapolation=e_extrapolation)
+
+                    ctx = SCFContext(
+                        log, self.niter, energies,
+                        ibzwfs, density, potential,
+                        wfs_error, dens_error, eig_error,
+                        self.comm, calculate_forces,
+                        pot_calc, self.update_density_and_potential)
+
+                yield ctx
+
+                with tracectx('SCF convergence check'):
+                    converged, converged_items, entries = check_convergence(
+                        cc, ctx)
+                    nconverged = self.comm.sum_scalar(int(converged))
+                    assert nconverged in [0, self.comm.size], converged_items
+
+                    if log:
+                        write_iteration(cc, converged_items, entries, ctx, log)
+
+                if converged:
+                    with tracectx('SCF post-convergence extensions'):
+                        converged = all(
+                            ext.post_scf_convergence(
+                                ibzwfs, nelectrons, self.occ_calc, self.mixer,
+                                log)
+                            for ext in pot_calc.extensions)
+                    if converged:
+                        break
+
+                if self.niter == maxiter:
+                    if wfs_error < inf:
+                        raise KohnShamConvergenceError
+                    raise TooFewBandsError
+
+                if self.update_density_and_potential:
+                    with tracectx('SCF density update'):
+                        density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
+                    with tracectx('SCF density mixing'):
+                        dens_error = self.mixer.mix(density)
+                    with tracectx('SCF potential update'):
+                        potential, energies, _ = pot_calc.calculate(
+                            density, ibzwfs, potential.vHt_x)
+                        energies.sanity_check()
+
+        with tracectx('SCF eigensolver postprocess'):
+            self.eigensolver.postprocess(
+                ibzwfs, density, potential, self.hamiltonian,
+                maxiter=maxiter, cc=cc, log=log)
 
 
 class SCFContext:

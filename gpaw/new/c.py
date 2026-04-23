@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 import gpaw.cgpaw as cgpaw
+import os
 from gpaw import ENVVAR_GPAW_NO_GPU_MPI, GPAW_NO_C_EXTENSION
 from gpaw.new.timer import trace
 
@@ -28,10 +29,18 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
                                 pw_norm_kinetic_gpu, pwlfc_expand_gpu)
 
         def s(fun):
+            seen_streams = set()
+
             @functools.wraps(fun)
             def wrapper(*args):
                 from cupy.cuda.stream import get_current_stream
-                return fun(*args, get_current_stream().ptr)
+                stream = get_current_stream().ptr
+                if os.environ.get('GPAW_DEBUG_GPU_STREAMS'):
+                    key = (fun.__name__, stream)
+                    if key not in seen_streams:
+                        print(f'{fun.__name__}: stream={stream}', flush=True)
+                        seen_streams.add(key)
+                return fun(*args, stream)
             return wrapper
 
         add_to_density_gpu = s(add_to_density_gpu)

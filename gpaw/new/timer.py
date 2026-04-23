@@ -1,4 +1,5 @@
 import inspect
+import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from functools import wraps
@@ -6,6 +7,15 @@ from io import StringIO
 from typing import TypeVar, overload
 
 from gpaw import GPAW_TRACE
+
+
+TRACE_GPU_EVERYTHING = os.environ.get('GPAW_TRACE_GPU_EVERYTHING') == '1'
+
+
+def effective_timer_params(timer_params):
+    if TRACE_GPU_EVERYTHING:
+        return {**timer_params, 'gpu': True}
+    return timer_params
 
 
 class GlobalTimer:
@@ -73,6 +83,7 @@ def _trace(meth: F | None = None,
         modname = method.__module__
         methname = method.__qualname__
         name = f'{modname}.{methname}'
+        params = effective_timer_params(timer_params)
 
         if inspect.isgeneratorfunction(method):
             @wraps(method)
@@ -92,11 +103,11 @@ def _trace(meth: F | None = None,
 
         @wraps(method)
         def wrapper(*args, **kwargs) -> T:
-            global_timer.start(name, **timer_params)
+            global_timer.start(name, **params)
             try:
                 return method(*args, **kwargs)
             finally:
-                global_timer.stop(**timer_params)
+                global_timer.stop(**params)
 
         return wrapper
 
@@ -119,6 +130,8 @@ def dummy_trace(meth: Callable[..., T] | None = None,
 
 @contextmanager
 def _tracectx(name, gpu=False):
+    if TRACE_GPU_EVERYTHING:
+        gpu = True
     global_timer.start(name, gpu=gpu)
     try:
         yield

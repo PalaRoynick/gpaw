@@ -11,6 +11,8 @@ from gpaw.gpu import cupy as cp
 from gpaw.new import trace, zips
 from gpaw.new.c import pw_insert_gpu, pw_precond
 from gpaw.new.hamiltonian import Hamiltonian
+from gpaw.fftw import (cupy_regular_fftn, cupy_regular_ifftn,
+                       cupy_regular_irfftn, cupy_regular_rfftn)
 from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 
@@ -212,21 +214,19 @@ def apply_local_potential_gpu(vt_R,
                               psit_nG,
                               out_nG,
                               blocksize=10):
-    from gpaw.gpu import cupyx
     pw = psit_nG.desc
     e_kin_G = cp.asarray(pw.ekin_G, dtype=as_real_dtype(pw.dtype))
     mynbands = psit_nG.mydims[0]
     size_c = vt_R.desc.size_c
     vt_R_data = cp.asarray(vt_R.data, dtype=as_real_dtype(pw.dtype))
-    w = trace(gpu=True)
     if np.issubdtype(pw.dtype, np.floating):
         shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
-        ifftn = w(cupyx.scipy.fft.irfftn)
-        fftn = w(cupyx.scipy.fft.rfftn)
+        ifftn = cupy_regular_irfftn
+        fftn = cupy_regular_rfftn
     else:
         shape = tuple(size_c)
-        ifftn = w(cupyx.scipy.fft.ifftn)
-        fftn = w(cupyx.scipy.fft.fftn)
+        ifftn = cupy_regular_ifftn
+        fftn = cupy_regular_fftn
     Q_G = cp.asarray(pw.indices(shape))
     psit_bQ = None
     for b1 in range(0, mynbands, blocksize):
