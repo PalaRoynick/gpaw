@@ -91,7 +91,6 @@ class DirOptLCAO(LCAOEigensolver):
                                     hamiltonian,
                                     self.ref_orbitals)
 
-        # TEST: try to make it work more similar to old
         if self.iter == 1:
             self.etdm._energy, self.etdm._gradient = \
                 self.objfunc._calc_energy_and_gradient()

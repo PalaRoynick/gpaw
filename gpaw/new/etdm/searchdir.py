@@ -71,8 +71,6 @@ class LBFGS:
             Updated search direction for the next iteration.
         """
 
-        hess = precond
-
         # Step 1: First iteration initialization
         if self.local_iter == 0:
             self.ds = [0.0 * g_cur for _ in range(self.memory)]
@@ -103,7 +101,7 @@ class LBFGS:
 
             # Store changes in variables (ds) and gradients (dy)
             # For first few iterations, ds = previous search direction
-            #self.ds[m] = self.search_dir.copy()
+            # self.ds[m] = self.search_dir.copy()
             self.ds[m] = a_cur - self.a_old
             self.dy[m] = g_cur - self.g_old
 
@@ -125,7 +123,7 @@ class LBFGS:
                     x[:] = 0.0
                 for x in self.dy:
                     x[:] = 0.0
-                return self.update(a_cur, g_cur, hess)
+                return self.update(a_cur, g_cur, precond)
 
             # Step 4: Two-loop recursion to compute search direction
             q = g_cur.copy()
@@ -150,9 +148,6 @@ class LBFGS:
 
             # Step 5: Scale by initial Hessian approximation
             yy = self.dy[m] @ self.dy[m]
-            # avoid divide by zero
-            devis = np.maximum(self.rho[m] * yy, 1.0e-20)
-            self.search_dir = q * (1 / devis)
 
             # l-bfgs-p:
             if self.p_key:
@@ -161,8 +156,8 @@ class LBFGS:
                     self.beta0 = 1.0 / self.rho_y
                 else:
                     self.beta0 = 1.0e20
-                if hess is not None:
-                    self.search_dir.a_ux = apply_precond(hess,
+                if precond is not None:
+                    self.search_dir.a_ux = apply_precond(precond,
                                                          np.array(q.a_ux))
                 else:
                     self.search_dir = q * self.beta0
@@ -199,6 +194,163 @@ class LBFGS:
             return self.search_dir
 
 
+class LSR1:
+    def __init__(self,
+                 memory=20,
+                 method='LSR1',
+                 phi=None):
+        """
+        Initialization of LSR1 algorithm
+        """
+
+        # Maximum number of previous steps to store for limited-memory Hessian
+        self.memory = memory
+
+        # init empty arrays
+        self.reset()
+
+        # possible variant
+        self.method = method
+
+        # parameter for linear combination
+        self.phi = phi
+
+    def reset(self):
+
+        # Counter for number of local iterations performed
+        self.local_iter = 0
+
+        # Current search direction
+        self.search_dir = None
+
+        # Previous gradient and variable arrays
+        self.g_old = None
+        self.a_old = None
+
+        # Arrays to store last 'memory' differences in variables and gradients
+        # ds[m] ~ change in parameters (search direction)
+        # dy[m] ~ change in gradients
+        self.du = ['None'] * self.memory
+        self.dj = ['None'] * self.memory
+        self.yj_k = np.zeros(self.memory)
+
+        # here or above?
+        self.phi_k = np.zeros(shape=self.memory)
+        self.phi_k.fill(1.0)  # FOR NOW DO NOT USE IT
+
+    def update(self, a_cur, g_cur, precond=None):
+        """
+        Compute the next search direction
+        """
+
+        # IS THIS OUTSIDE? ALWAYS DONE??
+        # preconditioning and initial search direction
+        self.search_dir = g_cur.copy()
+        if precond is not None:
+            self.search_dir.a_ux = apply_precond(precond, g_cur.a_ux)
+
+        # Step 1: First iteration initialization
+        if self.local_iter == 0:
+            # Store current gradient and variables
+            self.g_old = g_cur.copy()
+            self.a_old = a_cur.copy()
+
+            self.du = [0.0 * g_cur for _ in range(self.memory)]
+            self.dj = [0.0 * g_cur for _ in range(self.memory)]
+
+            # self.ds = [0.0 * g_cur for _ in range(self.memory)]
+            # self.dy = [0.0 * g_cur for _ in range(self.memory)]
+
+            # Increment iteration counter
+            self.local_iter += 1
+
+        else:
+            # Step 2: Determine memory index for circular storage
+            m = self.local_iter % self.memory
+
+            # Store changes in variables (ds) and gradients (dy)
+            self.ds = a_cur - self.a_old
+            self.dy = g_cur - self.g_old
+
+            # BY_K HAS TO BE DEFINED, IS IT A KARRAY? probably
+            if precond is not None:
+                by_k = self.g_old.copy()
+                by_k.a_ux = apply_precond(precond, np.array(self.dy.a_ux))
+            else:
+                by_k = self.dy.copy()
+
+            # first use of equation 19
+            by_k = self.update_bv(by_k, self.dy, self.du,
+                                  self.dj, self.yj_k,
+                                  np.maximum(1, self.local_iter
+                                             - self.memory), self.local_iter)
+
+            self.dj[m] = self.ds - by_k
+            self.yj_k[m] = self.dy @ self.dj[m]
+
+            if self.method == 'LSR1':
+                if abs(self.yj_k[m]) < 1e-12:
+                    self.yj_k[m] = 1e-12
+            
+            self.yy = self.dy @ self.dy
+            if abs(self.yy) > 1.0e-15:
+                self.du[m] = self.dy * (1.0 / self.yy)
+            else:
+                self.du[m] = self.dy * 1.0e15
+
+            # OTHER METHODS HERE(?)
+
+            self.search_dir = self.update_bv(self.search_dir,
+                                             g_cur, self.du, self.dj,
+                                             self.yj_k, np.maximum(
+                                                 1, self.local_iter -
+                                                 self.memory + 1),
+                                             self.local_iter + 1)
+                 
+            # Step 6: Update stored previous gradient and variable
+            self.g_old = g_cur.copy()
+            self.a_old = a_cur.copy()
+
+            self.local_iter += 1
+
+        # Return updated search direction
+        self.search_dir.a_ux *= -1
+        
+        return self.search_dir
+            
+    def update_bv(self, bv, dy, du, dj, yj_k, i_0, i_m):
+        """
+        """
+
+        # This is equivalent to equation 19
+
+        # First loop: backward over stored vectors
+        alpha = np.zeros(self.memory)
+
+        # Second loop: forward over stored vectors
+        # trust this part for now, i don't know what it does
+        #for k in range(self.memory):
+        #    if self.local_iter < self.memory:
+        #        c_ind = k
+        #    else:
+        #        c_ind = (k + m + 1) % self.memory
+        for c_ind in range(i_0, i_m):
+           # yr = self.dy[c_ind] @ self.search_dir
+            uv = du[c_ind] @ dy
+            jv = dj[c_ind] @ dy
+            alpha = jv - yj_k[c_ind] * uv
+            # only beta_p (no linear combination, phi=0)
+            beta_p = dj[c_ind] * uv + du[c_ind] * alpha
+            beta_ms = dj[c_ind] * (jv / yj_k[c_ind])
+            # Update search direction with alpha and beta corrections
+            # self.search_dir += self.ds[c_ind] * (alpha[c_ind] - beta)
+            phi = 0.0
+            beta = (1.0 - phi) * beta_ms + phi * beta_p
+            bv += beta
+
+        return bv
+    
+
 def apply_precond(prec, x, const=1.0):
     """
     Apply preconditioner to the gradient
@@ -206,8 +358,8 @@ def apply_precond(prec, x, const=1.0):
     y = []
     for k in range(x.shape[0]):
         if prec[k].dtype == complex:
-            y[k] = const * (prec[k].real * x[k].real
-                            + 1.0j * prec[k].imag * x[k].imag)
+            y.append(const * (prec[k].real * x[k].real +
+                              1.0j * prec[k].imag * x[k].imag))
         else:
             y.append(const * prec[k] * x[k])
     return np.array(y)

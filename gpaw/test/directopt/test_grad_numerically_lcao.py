@@ -3,10 +3,11 @@ import pytest
 
 from gpaw import GPAW
 from gpaw.directmin.derivatives import Derivatives
+from gpaw.new.lcao.derivatives import DerivativesNew
 
 
 @pytest.mark.do
-def test_gradient_numerically_lcao(in_tmp_dir, gpw_files):
+def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
     """
     test exponential transformation
     direct minimization method for KS-DFT in LCAO
@@ -52,23 +53,43 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files):
         wfs = calc.wfs
         dens = calc.density
 
-        # Do we get consistent results regardless of randomization?
-        rngs = [False,
-                np.random.default_rng(123456)]
-        num_ders = [Derivatives(wfs.eigensolver,
-                                wfs,
-                                random_amat=rng,
-                                update_c_ref=True)
-                    for rng in rngs]
+        if gpaw_new == 0:
 
-        analytical_results = [
-            der.get_analytical_derivatives(
-                wfs.eigensolver, ham, wfs, dens)[0]
-            for der in num_ders]
-        numerical_results = [
-            der.get_numerical_derivatives(
-                wfs.eigensolver, ham, wfs, dens)[0]
-            for der in num_ders]
-        for x, *ys in zip(*analytical_results, *numerical_results):
-            assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)
-            assert np.array(ys).imag == pytest.approx(x.imag, abs=1.0e-2)
+            # Do we get consistent results regardless of randomization?
+            rngs = [False,
+                    np.random.default_rng(123456)]
+            num_ders = [Derivatives(eigsolver,
+                                    wfs,
+                                    random_amat=rng,
+                                    update_c_ref=True)
+                        for rng in rngs]
+
+            analytical_results = [
+                der.get_analytical_derivatives(
+                    wfs.eigensolver, ham, wfs, dens)[0]
+                for der in num_ders]
+            numerical_results = [
+                der.get_numerical_derivatives(
+                    wfs.eigensolver, ham, wfs, dens)[0]
+                for der in num_ders]
+            for x, *ys in zip(*analytical_results, *numerical_results):
+                assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)
+                assert np.array(ys).imag == pytest.approx(x.imag, abs=1.0e-2)
+
+        else:
+
+            eigensolver = calc._dft.scf_loop.eigensolver
+            num_ders = [DerivativesNew(eigensolver,
+                                       wfs,
+                                       ham,
+                                       dens)]  # add rng stuff
+            
+            analytical_results = [
+                der.get_analytical_derivatives(
+                    eigensolver, ham, wfs, dens)[0]
+                for der in num_ders]
+            
+            numerical_results = [
+                der.get_numerical_derivatives(
+                    eigensolver, ham, wfs, dens)[0]
+                for der in num_ders]

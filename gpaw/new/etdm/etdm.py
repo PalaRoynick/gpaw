@@ -1,6 +1,6 @@
 import numpy as np
 from ase.parallel import parprint as print
-from gpaw.new.etdm.searchdir import LBFGS
+from gpaw.new.etdm.searchdir import LBFGS, LSR1
 
 
 class ETDM:
@@ -52,8 +52,8 @@ class ETDM:
             self.searchdir_algo = LBFGS(p_key=True)
         elif searchdir_algo_name == 'l-bfgs':
             self.searchdir_algo = LBFGS(p_key=False)
-        else:
-            NotImplementedError
+        elif searchdir_algo_name == 'LSR1':
+            self.searchdir_algo = LSR1()
 
         # array_shape=a_u_init.shape,
         # dtype=objfunc._dtype,
@@ -261,6 +261,12 @@ class KArray:
         for a_x, b_x in zip(self.a_ux, other.a_ux):
             a_x += b_x
         return self
+    
+    def __add__(self, other):
+        a_ux = self.copy()
+        for a_x, b_x in zip(a_ux.a_ux, other.a_ux):
+            a_x += b_x
+        return a_ux
 
     def __sub__(self, other):
         a_ux = self.copy()
