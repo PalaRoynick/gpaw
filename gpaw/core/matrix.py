@@ -766,7 +766,6 @@ class MatrixDistribution:
             return
 
 
-
 class NoDistribution(MatrixDistribution):
     comm = serial_comm
     rows = 1
@@ -1096,6 +1095,7 @@ class CuPyDistribution(MatrixDistribution):
         b = a.to_cpu()
         b.transpose(scale, cc)
         a.data[:] = b.to_xp(cp).data
+
     def eigh_serial(self,
                     H: Matrix,
                     S: Matrix | None,
