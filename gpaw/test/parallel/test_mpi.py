@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from gpaw.gpu import cupy
 from gpaw.mpi import broadcast_array, receive, send
 from gpaw.mpi4pywrapper import MPI4PYWrapper
 
@@ -40,6 +41,67 @@ def test_scalar_reduce(world):
     assert world.max_scalar(world.rank + 1) == world.size
     assert world.min_scalar(world.rank + 1.0) == 1.0
     assert world.max_scalar(world.rank + 1.0) == world.size * 1.0
+
+    root = world.size - 1
+    total = world.size * (world.size + 1) // 2
+    result = world.sum_scalar(world.rank + 1, root=root)
+    if world.rank == root:
+        assert result == total
+
+
+@pytest.mark.ci
+def test_array_reduce(world):
+    array = np.array([world.rank + 1.0, 2.0 * world.rank + 1.0])
+    expected_sum = np.array([world.size * (world.size + 1.0) / 2,
+                             world.size**2])
+    expected_min = np.array([1.0, 1.0])
+    expected_max = np.array([world.size * 1.0,
+                             2.0 * (world.size - 1) + 1.0])
+
+    summed = array.copy()
+    world.sum(summed)
+    assert np.allclose(summed, expected_sum)
+
+    root = world.size - 1
+    rooted = array.copy()
+    world.sum(rooted, root=root)
+    if world.rank == root:
+        assert np.allclose(rooted, expected_sum)
+    else:
+        assert np.allclose(rooted, array)
+
+    minimum = array.copy()
+    world.min(minimum)
+    assert np.allclose(minimum, expected_min)
+
+    maximum = array.copy()
+    world.max(maximum)
+    assert np.allclose(maximum, expected_max)
+
+
+@pytest.mark.ci
+def test_workaround_array_reduce(world, monkeypatch):
+    if not hasattr(world, 'comm'):
+        pytest.skip('Only relevant for gpaw.mpi communicator wrapper')
+
+    monkeypatch.setenv('GPAW_MPICH_CRAY_WORKAROUND', '1')
+
+    array = cupy.asarray(np.array([world.rank + 1.0, 2.0 * world.rank + 1.0]))
+    expected_sum = np.array([world.size * (world.size + 1.0) / 2,
+                             world.size**2])
+
+    summed = array.copy()
+    world.sum(summed)
+    assert np.allclose(cupy.asnumpy(summed), expected_sum)
+
+    root = world.size - 1
+    rooted = array.copy()
+    original = cupy.asnumpy(rooted).copy()
+    world.sum(rooted, root=root)
+    if world.rank == root:
+        assert np.allclose(cupy.asnumpy(rooted), expected_sum)
+    else:
+        assert np.allclose(cupy.asnumpy(rooted), original)
 
 
 def test_bcast_array(world):
