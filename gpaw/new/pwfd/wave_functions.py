@@ -354,8 +354,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
             m  i   ij  j  n
         """
 
-        H_nm = self.build_hamiltonian(Ht, dH, psit2_nX, data_buffer)
-        H_nm = self.build_hamiltonian(Ht, dH, psit2_nX,
+        H_nn = self.build_hamiltonian(Ht, dH, psit2_nX, data_buffer,
                                       calculate_energy=calculate_energy)
         if nocc is not None:
             # decouple occupied from unoccupied orbitals

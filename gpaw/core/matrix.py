@@ -703,6 +703,8 @@ class MatrixDistribution:
                   a: Matrix,
                   scale: float = 1,
                   cc: bool = False) -> None:
+        raise NotImplementedError
+
     def eigh_serial(self,
                     H: Matrix,
                     S: Matrix | None,
@@ -763,7 +765,6 @@ class MatrixDistribution:
                 comm.receive(m2data, 0)
             return
 
-        raise NotImplementedError
 
 
 class NoDistribution(MatrixDistribution):

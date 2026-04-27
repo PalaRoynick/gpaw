@@ -154,23 +154,22 @@ class Davidson(PWFDEigensolver):
                                    out=M2_nn)
             copy(H_NN.data[B:, B:], M2_nn)
 
-                sliced_matrix_elements(psit_nX, psit2_nX,
-                                       buffer_mX=me_buffer_mX,
-                                       Ht=None,
-                                       M1_nn=M_nn,
-                                       M2_nn=M2_nn)
-                # <psi2 | S | psi2>
-                P2_ani.block_diag_multiply(dS_aii, out_ani=P3_ani)
-                P2_ani.matrix.multiply(P3_ani, opb='C', symmetric=True, beta=1,
-                                       out=M2_nn)
-                copy(S_NN.data[B:, B:], M2_nn)
+            # <psi2 | H | psi>
+            P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
+            copy(H_NN.data[B:, :B], M_nn)
 
-                # <psi2 | S | psi>
-                P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
-                copy(S_NN.data[B:, :B], M_nn)
+            sliced_matrix_elements(psit_nX, psit2_nX,
+                                    buffer_mX=me_buffer_mX,
+                                    Ht=None,
+                                    M1_nn=M_nn,
+                                    M2_nn=M2_nn)
+            # <psi2 | S | psi2>
+            P2_ani.block_diag_multiply(dS_aii, out_ani=P3_ani)
+            P2_ani.matrix.multiply(P3_ani, opb='C', symmetric=True, beta=1,
+                                    out=M2_nn)
+            copy(S_NN.data[B:, B:], M2_nn)
 
             # <psi2 | S | psi>
-            me(psit2_nX, psit_nX)
             P3_ani.matrix.multiply(P_ani, opb='C', beta=1.0, out=M_nn)
             copy(S_NN.data[B:, :B], M_nn)
 
