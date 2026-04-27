@@ -1,6 +1,8 @@
-==========
-Benchmarks
-==========
+.. _benchmarks:
+
+===========================
+Perfomance index benchmarks
+===========================
 
 .. image:: pw-perf-index.svg
 .. image:: lcao-perf-index.svg
@@ -19,7 +21,7 @@ Test systems
     :header-rows: 1
 
 
-Paramaters
+Parameters
 ==========
 
 * PBE

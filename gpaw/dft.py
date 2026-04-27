@@ -12,7 +12,6 @@ from numpy.typing import DTypeLike
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 
-from gpaw import GPAW_NEW
 from gpaw.mpi import MPIComm
 from gpaw.new.calculation import DFTCalculation
 from gpaw.new.logger import Logger
@@ -190,9 +189,8 @@ class Eigensolver(Parameter):
                     return eigensolvers['davidson'](**kwargs)
                 if name in eigensolvers:
                     return eigensolvers[name](**kwargs)
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown name of eigensolver: {name}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown name of eigensolver: {name}')
             case {**kwargs}:
                 return DefaultEigensolver(kwargs)
             case NewEigensolver():
@@ -200,9 +198,8 @@ class Eigensolver(Parameter):
             case OES():
                 return cls.from_param(eigensolver.todict())
             case _:
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown eigensolver input: {eigensolver}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown eigensolver input: {eigensolver}')
 
 
 class DefaultEigensolver(Eigensolver):
@@ -227,6 +224,8 @@ class PWFDEigensolverParameter(Eigensolver):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -235,9 +234,11 @@ class PWFDEigensolverParameter(Eigensolver):
             nbands,
             wf_desc,
             band_comm,
+            domain_band_comm,
             hamiltonian,
             convergence,
             niter=self.niter,
+            scalapack_parameters=scalapack_parameters,
             max_buffer_mem=self.max_buffer_mem)
 
 
@@ -282,6 +283,8 @@ class PPCG(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -292,6 +295,8 @@ class PPCG(PWFDEigensolverParameter):
             band_comm,
             hamiltonian,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             min_niter=self.min_niter,
             max_buffer_mem=self.max_buffer_mem,
@@ -326,6 +331,8 @@ class RMMDIIS(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               create_preconditioner,
               convergence,
               setups,
@@ -336,6 +343,8 @@ class RMMDIIS(PWFDEigensolverParameter):
             band_comm,
             create_preconditioner,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             diis_steps=self.diis_steps,
             max_buffer_mem=self.max_buffer_mem,
@@ -604,7 +613,7 @@ class XC(Parameter):
     def functional(self, *, collinear: bool, atoms: Atoms | None = None):
         from gpaw.xc import XC as xc
         return xc({'name': self.name, **self.kwargs},
-                  collinear=collinear, atoms=atoms)
+                  collinear=collinear, atoms=atoms, legacy_gpaw=False)
 
     @classmethod
     def from_param(cls, xc):
@@ -853,6 +862,7 @@ def _parse_experimental(experimental: dict | None,
     unknown = experimental.keys() - {'backwards_compatible',
                                      'ccirs',
                                      'pw_pot_calc',
+                                     'paw_corr_mixer',
                                      'new_basis'}
     if unknown:
         warnings.warn(f'Unknown experimental keyword(s): {unknown}',
@@ -997,12 +1007,9 @@ def GPAW(
     params = None
     _use_old_if_reading_new_fails = False
     if legacy_gpaw is None:
-        if GPAW_NEW == 147:
-            can, params = _can_use_new(filename, kwargs)
-            legacy_gpaw = not can
-            _use_old_if_reading_new_fails = True
-        else:
-            legacy_gpaw = False
+        can, params = _can_use_new(filename, kwargs)
+        legacy_gpaw = not can
+        _use_old_if_reading_new_fails = True
 
     if legacy_gpaw:
         from gpaw.old.calculator import GPAW as OldGPAW
