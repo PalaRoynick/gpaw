@@ -213,11 +213,7 @@ class _Communicator:
             # Right now comm.sum is the only place where one needs this
             # extra malloc + intradevice memory copies for HIP and
             # gpu-aware MPI
-            with RegisteredPointer(a, enabled=GPU_AWARE_MPI,
-                                   _input=True,
-                                   _output=((root == -1) or
-                                            (root == self.rank))) as a:
-                self.comm.sum(a, root)
+            self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -312,8 +308,7 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            with RegisteredPointer(a, enabled=False) as a:
-                self.comm.min(a, root)
+            self.comm.min(a, root)
 
     def min_scalar(self, a, root=-1):
         assert isinstance(a, (int, float))
