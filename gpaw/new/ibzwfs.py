@@ -191,7 +191,7 @@ class IBZWaveFunctions(Generic[WFT]):
 
     def orthonormalize(self, work_array_nX: np.ndarray = None):
         for wfs in self:
-            wfs.orthonormalize(work_array_nX)
+            wfs.orthonormalize(data_buffer=work_array_nX)
 
     @trace
     def calculate_occs(self,

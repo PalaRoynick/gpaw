@@ -218,6 +218,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         psit_nX = self.psit_nX
         domain_comm = psit_nX.desc.comm
         P_ani = self.P_ani
+        buffer_mX = psit_nX.create_work_buffer(data_buffer)
 
         P2_ani = P_ani.new()
         if psit2_nX is None:
@@ -228,7 +229,8 @@ class PWFDWaveFunctions(WaveFunctions, XP):
             dtype=as_real_dtype(P_ani.data.dtype))
 
         # We are actually calculating S^*:
-        S = psit_nX.matrix_elements(psit_nX, domain_sum=False, cc=True)
+        S = psit_nX.matrix_elements(psit_nX, buffer_mX=buffer_mX,
+                                    domain_sum=False, cc=True)
         P_ani.block_diag_multiply(dS_aii, out_ani=P2_ani)
         P_ani.matrix.multiply(P2_ani, opb='C', symmetric=True, out=S, beta=1.0)
         domain_comm.sum(S.data, 0)
@@ -272,9 +274,12 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         P2_ani = P_ani.new()
         domain_comm = psit_nX.desc.comm
 
+        buffer_mX = psit_nX.create_work_buffer(data_buffer)
+
         Ht = partial(Ht, out=psit2_nX, spin=self.spin,
                      calculate_energy=calculate_energy)
         H_nn = psit_nX.matrix_elements(psit_nX,
+                                       buffer_mX=buffer_mX,
                                        function=Ht,
                                        domain_sum=False,
                                        cc=True)

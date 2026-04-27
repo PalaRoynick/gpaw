@@ -184,10 +184,11 @@ class XArray(Generic[DomainType], XP):
                         other: Self,
                         *,
                         out: Matrix | None = None,
+                        buffer_mX: Self | None = None,
+                        function: Callable[[Self, Self], Self] | None = None,
                         symmetric: bool | Literal['_default'] = '_default',
-                        function=None,
-                        domain_sum=True,
-                        cc: bool = False) -> Matrix:
+                        domain_sum: bool = True,
+                        cc: bool = False):
         if symmetric == '_default':
             symmetric = self is other
 
@@ -198,6 +199,82 @@ class XArray(Generic[DomainType], XP):
                          dist=(comm, -1, 1),
                          dtype=self.desc.dtype,
                          xp=self.xp)
+
+        if buffer_mX is None:
+            return self._matrix_elements(other, out=out,
+                                         function=function,
+                                         symmetric=symmetric,
+                                         domain_sum=domain_sum,
+                                         cc=cc)
+
+        # Time to slice and dice
+        psit1_nX = self
+        psit2_nX = other
+
+        b = psit1_nX.data.shape[0]
+        blocksize = buffer_mX.data.shape[0]
+        blocksize_world = comm.sum_scalar(blocksize)
+        blocksizes_r = np.empty(comm.size, dtype=int)
+        comm.all_gather(np.array(blocksize), blocksizes_r)
+        totalbands = comm.sum_scalar(b)
+        for i1, N1 in enumerate(
+                range(0, totalbands, blocksize_world)):
+            n1 = i1 * blocksize
+            n2 = n1 + blocksize
+            if n2 > b:
+                n2 = b
+
+            band_stride = (totalbands + comm.size - 1) // comm.size
+            tempb = totalbands
+            global_n = []
+            for i2, bsize in enumerate(blocksizes_r):
+                num_b = max(0, min(tempb, band_stride))
+                global_n.extend(range(i2 * band_stride + min(i1 * bsize, num_b),
+                                i2 * band_stride + min((i1 + 1) * bsize, num_b)))
+                tempb -= band_stride
+            global_n = np.array(global_n)
+            global_n = global_n[global_n < totalbands]
+
+            world_N = min(blocksize_world,
+                        totalbands - N1)
+
+            buffer_view_aX = buffer_mX.new(
+                data=buffer_mX.data[:n2 - n1],
+                dims=(world_N,) + buffer_mX.dims[1:])
+            if function is not None:
+                function(psit2_nX[n1:n2], out=buffer_view_aX)
+            else:
+                buffer_view_aX.data[:] = psit2_nX.data[n1:n2]
+            out_buff = Matrix(
+                M=out.shape[0],
+                N=world_N,
+                dist=(comm, -1, 1),
+                xp=out.xp,
+                dtype=out.dtype
+            )
+            psit2_nX.matrix_elements(buffer_view_aX,
+                                     out=out_buff,
+                                     symmetric=False,
+                                     domain_sum=domain_sum,
+                                     cc=cc)
+            out.data[:, global_n] = out_buff.data
+
+        if not symmetric:
+            out.transpose(cc=True)
+        return out
+
+    def _matrix_elements(self,
+                        other: Self,
+                        *,
+                        out: Matrix,
+                        symmetric: bool,
+                        function=None,
+                        domain_sum=True,
+                        cc: bool = False) -> Matrix:
+        if symmetric == '_default':
+            symmetric = self is other
+
+        comm = self.comm
 
         if not symmetric or comm.size == 1:
             # assert other.comm.size == comm.size

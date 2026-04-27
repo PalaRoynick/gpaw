@@ -285,6 +285,7 @@ class PPCG(PWFDEigensolver):
                                       precon=self.preconditioner)
                 wfs.pt_aiX.integrate(residual_nX, out=P2_ani)
                 residual_nX.matrix_elements(psit_nX, cc=True, out=M_nn,
+                                            buffer_mX=buffer_array_nX,
                                             domain_sum=False,
                                             symmetric=False)
                 P2_ani.matrix.multiply(Ptemp_ani, opb='C', symmetric=False,
@@ -490,7 +491,7 @@ class PPCG(PWFDEigensolver):
                         calculate_energy=False,
                         scalapack_parameters=self.scalapack_parameters)
                 else:
-                    wfs.orthonormalize(residual_nX)
+                    wfs.orthonormalize(residual_nX, self.data_buffers[0])
                     Ht(psit_nX, out=residual_nX)
 
                 calculate_residuals(wfs.psit_nX,
@@ -528,6 +529,7 @@ class PPCG(PWFDEigensolver):
             if self.include_cg:
                 with tracectx('P-update'):
                     P_nX.matrix_elements(psit_nX, cc=True, out=M_nn,
+                                         buffer_mX=buffer_array_nX,
                                          domain_sum=False,
                                          symmetric=False)
                     P3_ani.matrix.multiply(Ptemp_ani, opb='C',
@@ -538,7 +540,7 @@ class PPCG(PWFDEigensolver):
                     M_nn.multiply(P_ani, out=P3_ani, beta=1.0, alpha=-1.0)
 
         if not wfs.orthonormalized:
-            wfs.orthonormalize(residual_nX)
+            wfs.orthonormalize(residual_nX, self.data_buffers[0])
 
         if debug:
             psit_nX.sanity_check()
