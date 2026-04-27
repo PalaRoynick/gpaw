@@ -26,7 +26,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
     def kpt_comm(self):
         return self.ibzwfs.kpt_comm
     
-    def _calc_obf_value_and_matrix_elements(self):
+    def _calc_obf_value_and_matrix_elements(self, shuttle):
         """
         Calculate value of the objective function (energy)
         and hamiltonian matrix elements at self._a_vec_u
@@ -39,14 +39,26 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             Array of Hamiltonian matrix elements for each k-point or system.
             Shape = (nkps, ndim, ndim)
         """
-        self.rotate_wfs()
 
-        energy = self.update_density_and_potential()
+        # UNPACK SHUTTLE
+
+        ibzwfs = shuttle['ibzwfs']
+        density = shuttle['density']
+        ref_orbitals = shuttle['ref_orbitals']
+        pot_calc = shuttle['pot_calc']
+        potential = shuttle['potential']
+        hamiltonian = shuttle['hamiltonian']
+        a_vec_u = shuttle['a_vec_u']
+
+        self.rotate_wfs(a_vec_u, ibzwfs, ref_orbitals)
+
+        energy = self.update_density_and_potential(ibzwfs, density, pot_calc,
+                                                   potential, hamiltonian)
         
         self.error = 0.0
         h_unn = []
 
-        for wfs in self.ibzwfs:
+        for wfs in ibzwfs:
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
 
             h_nn.tril2full()
@@ -104,44 +116,48 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         self._tot_energy = en
 
-    def update_objfunc(self, density, potential,
-                       pot_calc, ibzwfs, hamiltonian,
-                       ref_orbitals):
-        """
-        To be called from inside iterate of dir_opt to update
-        the quantities needed inside the etdm step
-        """
-        self.density = density
-        self.potential = potential
-        self.pot_calc = pot_calc
-        self.ibzwfs = ibzwfs
-        self.hamiltonian = hamiltonian
-        self.ref_orbitals = ref_orbitals
+    #def update_objfunc(self, density, potential,
+    #                   pot_calc, ibzwfs, hamiltonian,
+    #                   ref_orbitals):
+    #    """
+    #    To be called from inside iterate of dir_opt to update
+    #    the quantities needed inside the etdm step
+    #    """
+    #    self.density = density
+    #    self.potential = potential
+    #    self.pot_calc = pot_calc
+    #    self.ibzwfs = ibzwfs
+    #    self.hamiltonian = hamiltonian
+    #    self.ref_orbitals = ref_orbitals
 
-    def update_density_and_potential(self):
+    def update_density_and_potential(self,
+                                     ibzwfs,
+                                     density,
+                                     pot_calc,
+                                     potential,
+                                     hamiltonian):
 
-        self.density.update(self.ibzwfs, ked=self.pot_calc.xc.type == 'MGGA')
-        potential, energies, _ = self.pot_calc.calculate(self.density,
-                                                         self.ibzwfs,
-                                                         self.potential.vHt_x)
-        energies.set(kinetic=self.ibzwfs.calculate_kinetic_energy(
-            self.hamiltonian,
-            self.density), band=0.0)
+        density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
+        potential, energies, _ = pot_calc.calculate(density,
+                                                    ibzwfs,
+                                                    potential.vHt_x)
+        energies.set(kinetic=ibzwfs.calculate_kinetic_energy(
+            hamiltonian, density), band=0.0)
         self.matrix_calculator = \
-            self.hamiltonian.create_hamiltonian_matrix_calculator(potential)
+            hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
         return energies
 
-    def rotate_wfs(self):
+    def rotate_wfs(self, a_vec_u, ibzwfs, ref_orbitals):
         """
         Apply unitary transformation U = exp(A) to
         the reference orbitals
         """
-        for u, (a, wfs) in enumerate(zip(self._a_vec_u, self.ibzwfs)):
+        for u, (a, wfs) in enumerate(zip(a_vec_u, ibzwfs)):
 
             u_nn = a.rotation_mat
 
-            self.apply_transformation(u_nn.T, wfs, self.ref_orbitals[u])
+            self.apply_transformation(u_nn.T, wfs, ref_orbitals[u])
 
     def apply_transformation(self, u_mat, wfs, c_ref):
 

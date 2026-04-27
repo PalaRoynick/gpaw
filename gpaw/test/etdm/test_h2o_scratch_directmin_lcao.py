@@ -16,7 +16,7 @@ def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
     return H2O
 
 @pytest.mark.parametrize("representation", ['full'])
-@pytest.mark.parametrize("spinpol", [False])
+@pytest.mark.parametrize("spinpol", [False, True])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp'])
 def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
 
@@ -33,7 +33,8 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
              eigensolver={'name': 'etdm',
                           'representation': representation,
                           'matrix_exp': matrix_exp,
-                          'searchdir_algo': 'l-bfgs',},
+                          'searchdir_algo': 'l-bfgs',
+                          'max_step_lenght': 0.005},
              mixer={'backend': 'no-mixing'},
              spinpol=spinpol,
              nbands='nao',

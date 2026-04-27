@@ -58,7 +58,7 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
             # Do we get consistent results regardless of randomization?
             rngs = [False,
                     np.random.default_rng(123456)]
-            num_ders = [Derivatives(eigsolver,
+            num_ders = [Derivatives(wfs.eigensolver,
                                     wfs,
                                     random_amat=rng,
                                     update_c_ref=True)
@@ -79,17 +79,26 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
         else:
 
             eigensolver = calc._dft.scf_loop.eigensolver
-            num_ders = [DerivativesNew(eigensolver,
-                                       wfs,
-                                       ham,
-                                       dens)]  # add rng stuff
+            pot_calc = calc._dft.pot_calc
+            potential = calc._dft.potential
+
+            shuttle = {'ibzwfs': wfs.ibzwfs,
+                   'density': calc._dft.density,
+                   'ref_orbitals': None,
+                   'pot_calc': pot_calc,
+                   'potential': potential,
+                   'hamiltonian': wfs.hamiltonian,
+                   'a_vec_u': None
+                   }
+            
+            num_ders = [DerivativesNew(eigensolver, shuttle)]  # add rng stuff
             
             analytical_results = [
                 der.get_analytical_derivatives(
-                    eigensolver, ham, wfs, dens)[0]
+                    eigensolver, shuttle)[0]
                 for der in num_ders]
             
             numerical_results = [
                 der.get_numerical_derivatives(
-                    eigensolver, ham, wfs, dens)[0]
+                    eigensolver, shuttle)[0]
                 for der in num_ders]
