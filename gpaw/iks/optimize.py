@@ -498,6 +498,7 @@ class iKSLBFGS:
         Ltol: float = 1e-6,
         LDtol: float = 1e-4,
         Jtol: float = 1e-9,
+        step_scale: float = 1.0,
     ):
         self.iks = iks
         if iks.use_coarse_grid:
@@ -509,6 +510,7 @@ class iKSLBFGS:
         self.Ltol = Ltol
         self.LDtol = LDtol
         self.Jtol = Jtol
+        self.step_scale = step_scale
         self.world = iks.hamiltonian.world
 
         self.s_hist: deque[PotState] = deque(maxlen=m)
@@ -520,7 +522,7 @@ class iKSLBFGS:
 
     def apply_lbfgs(self, gk: PotState) -> PotState:
         if not self.s_hist:
-            return -gk
+            return -gk * self.step_scale
         q = gk.copy()
         alpha_list: list[float] = []
         for s_i, y_i, rho_i in zip(reversed(self.s_hist),
@@ -586,7 +588,7 @@ class iKSLBFGS:
             g_new = PotState(J_sg, Jwork_xasz)
             phi_new = L_new + LD_new
 
-            # Track the best phi we have seen along this line
+            # track the best phi we have seen along this line
             if phi_new < best_phi:
                 best_phi = phi_new
                 x_best = PotState(xc.vxc_sg, xc.vxc_xasz).copy()
@@ -596,7 +598,7 @@ class iKSLBFGS:
             if phi_new <= phi0 + c1 * alpha * dphi0:
                 accepted = True
                 break
-            # quadratic Interpolation
+            # quadratic interpolation
             denom = 2.0 * (phi_new - phi0 - dphi0 * alpha)
             if denom > 0:
                 alpha_quad = - (dphi0 * alpha**2) / denom
@@ -716,7 +718,7 @@ class iKSLBFGS:
                 self.s_hist.clear()
                 self.y_hist.clear()
                 self.rho_hist.clear()
-                pk = -gk
+                pk = -gk * self.step_scale
                 pk.initialize(iks.finegd, self.world, iks.setups)
                 dphi0 = pk.inner(gk)
 
@@ -731,7 +733,7 @@ class iKSLBFGS:
                 self.y_hist.clear()
                 self.rho_hist.clear()
 
-                pk = -gk
+                pk = -gk * self.step_scale
                 pk.initialize(iks.finegd, self.world, iks.setups)
                 dphi0 = pk.inner(gk)
                 x_new, g_new, L_new, LD_new, alpha, accepted = self.line_search(
