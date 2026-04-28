@@ -1,3 +1,4 @@
+from scipy.special import genlaguerre
 import numpy as np
 from gpaw.atom.aeatom import AllElectronAtom
 from gpaw.atom.generator2 import PAWSetupGenerator
@@ -57,6 +58,35 @@ def main(symbol: str,
         plt.xlim(0, 3.0)
         plt.show()
 
+def howf(alpha, r, l=0, n=0, rc=np.inf):
+    L = genlaguerre(n, l + 0.5)
+    y = alpha * r**2
+    x = np.exp(-y)
+    p = L(2 * y)
+    z = x * p
+    if np.isinf(rc):
+        return z
+    # Subtract a + b * r**2 so that value and derivative at r=rc is zero:
+    y0 = alpha * rc**2
+    x0 = np.exp(-y0)
+    dx0 = -2 * alpha * rc * x0
+    p0 = L(2 * y0)
+    dp0 = 2 * alpha * rc * L.deriv(2 * y0)
+    b = (x0 * dp0 + dx0 * p0) / (2 * rc)
+    a = x0 * p0 - b * rc**2
+    z[r < rc] -= a + b * r[r < rc]**2
+    z[r >= rc] = 0.0
+    return z
+
 
 if __name__ == '__main__':
-    main('H', '1s,P', 0.8, 0.8, [0.9], 3.0)
+    import matplotlib.pyplot as plt
+    r = np.linspace(0, 4, 101)
+    for l in range(3):
+        for n in range(2):
+            p = howf(3.0, r, l=l, n=n)
+            plt.plot(r, p * r**l)
+            p = howf(3.0, r, l=l, n=n, rc=1.5)
+            plt.plot(r, p * r**l)
+    plt.show()
+    # main('H', '1s,P', 0.8, 0.8, [0.9], 3.0)
