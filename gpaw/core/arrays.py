@@ -200,7 +200,7 @@ class XArray(Generic[DomainType], XP):
                          dtype=self.desc.dtype,
                          xp=self.xp)
 
-        if buffer_mX is None:
+        if buffer_mX is None or comm.size == 1:
             return self._matrix_elements(other, out=out,
                                          function=function,
                                          symmetric=symmetric,
@@ -252,11 +252,11 @@ class XArray(Generic[DomainType], XP):
                 xp=out.xp,
                 dtype=out.dtype
             )
-            psit2_nX.matrix_elements(buffer_view_aX,
-                                     out=out_buff,
-                                     symmetric=False,
-                                     domain_sum=domain_sum,
-                                     cc=cc)
+            psit1_nX._matrix_elements(buffer_view_aX,
+                                      out=out_buff,
+                                      symmetric=False,
+                                      domain_sum=domain_sum,
+                                      cc=cc)
             out.data[:, global_n] = out_buff.data
 
         if not symmetric:

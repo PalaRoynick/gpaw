@@ -42,7 +42,7 @@ def test_pw_par_strategies(in_tmp_dir, d, k, gpu):
                       parallel=parallel,
                       kpts={'size': kpoints},
                       convergence={'density': 1e-6},
-                      eigensolver={'name': 'davidson',
+                      eigensolver={'name': 'ppcg',
                                    'max_buffer_mem': 100},
                       **{'mixer': {'backend': 'fft'},
                          'symmetry': 'off',

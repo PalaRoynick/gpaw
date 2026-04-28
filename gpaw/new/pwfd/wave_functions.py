@@ -240,9 +240,9 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         domain_comm.broadcast(S.data, 0)
         # S now contains L^*
 
-        S.multiply(psit_nX, out=psit2_nX, data_buffer=data_buffer)
+        S.multiply(psit_nX, out=psit_nX, data_buffer=data_buffer)
         S.multiply(P_ani, out=P2_ani)
-        psit_nX.data[:] = psit2_nX.data
+        # psit_nX.data[:] = psit2_nX.data
         P_ani.data[:] = P2_ani.data
         self.orthonormalized = True
 
@@ -283,6 +283,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
                                        function=Ht,
                                        domain_sum=False,
                                        cc=True)
+        Ht(psit_nX)
         dH(P_ani, out_ani=P2_ani, spin=self.spin)
         P_ani.matrix.multiply(P2_ani, opb='C', symmetric=True,
                               out=H_nn, beta=1.0)

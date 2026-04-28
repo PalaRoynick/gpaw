@@ -292,8 +292,10 @@ class PPCG(PWFDEigensolver):
                                        beta=1, out=M_nn)
                 domain_comm.sum(M_nn.data)
 
-                M_nn.multiply(psit_nX, out=residual_nX, beta=1.0, alpha=-1.0)
-                M_nn.multiply(P_ani, out=P2_ani, beta=1.0, alpha=-1.0)
+                M_nn.multiply(psit_nX, out=residual_nX, beta=1.0, alpha=-1.0,
+                    data_buffer=self.data_buffers[0])
+                M_nn.multiply(P_ani, out=P2_ani, beta=1.0, alpha=-1.0,
+                    data_buffer=self.data_buffers[0])
 
             loop_limit = len(active_indicies) if self.allow_dynamic_breakout \
                 else (psit_nX.dims[0] + band_comm.size - 1) // band_comm.size
@@ -536,8 +538,10 @@ class PPCG(PWFDEigensolver):
                                            symmetric=False,
                                            beta=1, out=M_nn)
                     domain_comm.sum(M_nn.data)
-                    M_nn.multiply(psit_nX, out=P_nX, beta=1.0, alpha=-1.0)
-                    M_nn.multiply(P_ani, out=P3_ani, beta=1.0, alpha=-1.0)
+                    M_nn.multiply(psit_nX, out=P_nX, beta=1.0, alpha=-1.0,
+                        data_buffer=self.data_buffers[0])
+                    M_nn.multiply(P_ani, out=P3_ani, beta=1.0, alpha=-1.0,
+                        data_buffer=self.data_buffers[0])
 
         if not wfs.orthonormalized:
             wfs.orthonormalize(residual_nX, self.data_buffers[0])

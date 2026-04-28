@@ -176,6 +176,9 @@ class Davidson(PWFDEigensolver):
             if is_domain_band_master:
                 H_NN.data[:B, :B] = xp.diag(eig_n)
                 S_NN.data[:B, :B] = xp.eye(B)
+
+            assert H_NN.shape[1] // 2 == eig_n.shape[0], f"Shape mismatch: {H_NN.shape[1] // 2} != {eig_n.shape[0]}"
+            assert H_NN.shape[0] // 2 == eig_n.shape[0], f"Shape mismatch: {H_NN.shape[0] // 2} != {eig_n.shape[0]}"
             # This may convert eigenvalues from single to double:
             eig_n[:] = H_NN.eigh(S_NN,
                                  limit=B,
@@ -290,18 +293,6 @@ def sliced_matrix_elements(psit1_nX, psit2_nX, buffer_mX, Ht, M1_nn, M2_nn):
         else:
             buffer_view_aX.data[:] = psit2_nX.data[n1:n2]
 
-        # out1 = Matrix(
-        #     M=world_N,
-        #     N=M1_nn.shape[1],
-        #     data=M1_nn.data[n1:n2, :],
-        #     dist=(comm, -1, 1),
-        #     xp=M1_nn.xp)
-        # out2 = Matrix(
-        #     M=world_N,
-        #     N=M2_nn.shape[1],
-        #     data=M2_nn.data[n1:n2, :],
-        #     dist=(comm, -1, 1),
-        #     xp=M2_nn.xp)
         out_buff = Matrix(
             M=M1_nn.shape[0],
             N=world_N,

@@ -725,6 +725,11 @@ class MatrixDistribution:
         else:
             if debug:
                 S.data[np.triu_indices(H.shape[0], 1)] = 42.0
+            assert eigs.shape[0] != 0
+            assert H.data.shape[1] != 0
+            assert S.data.shape[1] != 0
+            if limit is not None:
+                assert limit == len(eigs)
             eigs[:], evecs = sla.eigh(
                 H.data,
                 S.data,
