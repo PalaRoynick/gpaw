@@ -33,8 +33,14 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
-        if xp is not np and pw.comm.size == 1:
-            return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
+        if xp is not np:
+            vt_R = vt_R.gather(broadcast=True)
+            if pw.comm.size == 1:
+                return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
+            return apply_local_potential_gpu_domain(vt_R,
+                                                    psit_nG,
+                                                    out_nG,
+                                                    self.pw_cache)
         vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
         tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
@@ -212,10 +218,77 @@ def apply_local_potential_gpu(vt_R,
                               psit_nG,
                               out_nG,
                               blocksize=10):
-    from gpaw.gpu import cupyx
+    apply_local_hamiltonian_gpu(vt_R, psit_nG, out_nG, blocksize)
+
+
+@trace
+def apply_local_hamiltonian_gpu(vt_R,
+                                psit_nG,
+                                out_nG,
+                                blocksize=10):
     pw = psit_nG.desc
     e_kin_G = cp.asarray(pw.ekin_G, dtype=as_real_dtype(pw.dtype))
     mynbands = psit_nG.mydims[0]
+    vtpsit_bG = None
+    for b1 in range(0, mynbands, blocksize):
+        b2 = min(b1 + blocksize, mynbands)
+        vtpsit_bG = apply_local_potential_gpu_chunk(vt_R,
+                                                    pw,
+                                                    psit_nG.data[b1:b2],
+                                                    vtpsit_bG)
+        out_nG.data[b1:b2] = psit_nG.data[b1:b2]
+        out_nG.data[b1:b2] *= e_kin_G
+        out_nG.data[b1:b2] += vtpsit_bG[:b2 - b1]
+
+
+@trace
+def apply_local_potential_gpu_domain(vt_R,
+                                     psit_nG,
+                                     out_nG,
+                                     pw_cache,
+                                     blocksize=10):
+    pw = psit_nG.desc
+    key = tuple(pw.kpt_c)
+    pw_local = pw_cache.get(key)
+    if pw_local is None:
+        pw_local = pw.new(comm=None)
+        pw_cache[key] = pw_local
+
+    domain_comm = pw.comm
+    e_kin_G = cp.asarray(pw_local.ekin_G, dtype=as_real_dtype(pw.dtype))
+    mynbands = psit_nG.mydims[0]
+    psit_bG = pw_local.empty(blocksize, xp=cp).data
+    vtpsit_bG = None
+
+    for nstart in range(0, mynbands, domain_comm.size * blocksize):
+        batch = []
+        nb = 0
+        psit_bG[:] = 0.0
+        for b in range(blocksize):
+            n1 = nstart + b * domain_comm.size
+            if n1 >= mynbands:
+                break
+            n2 = min(n1 + domain_comm.size, mynbands)
+            psit_nG[n1:n2].gather_all(psit_bG[nb])
+            batch.append((n1, n2))
+            nb += 1
+
+        vtpsit_bG = apply_local_potential_gpu_chunk(vt_R,
+                                                    pw_local,
+                                                    psit_bG[:nb],
+                                                    vtpsit_bG)
+        vtpsit_bG[:nb] += psit_bG[:nb] * e_kin_G
+
+        for b, (n1, n2) in enumerate(batch):
+            out_nG[n1:n2].scatter_from_all(vtpsit_bG[b])
+
+
+@trace
+def apply_local_potential_gpu_chunk(vt_R,
+                                    pw,
+                                    psit_bG,
+                                    out_bG=None):
+    from gpaw.gpu import cupyx
     size_c = vt_R.desc.size_c
     vt_R_data = cp.asarray(vt_R.data, dtype=as_real_dtype(pw.dtype))
     w = trace(gpu=True)
@@ -228,31 +301,28 @@ def apply_local_potential_gpu(vt_R,
         ifftn = w(cupyx.scipy.fft.ifftn)
         fftn = w(cupyx.scipy.fft.fftn)
     Q_G = cp.asarray(pw.indices(shape))
-    psit_bQ = None
-    for b1 in range(0, mynbands, blocksize):
-        b2 = min(b1 + blocksize, mynbands)
-        nb = b2 - b1
-        if psit_bQ is None:
-            psit_bQ = cp.empty((nb,) + shape, as_complex_dtype(pw.dtype))
-        elif nb < blocksize:
-            psit_bQ = psit_bQ[:nb]
-        psit_bQ[:] = 0.0
-        pw_insert_gpu(psit_nG.data[b1:b2],
-                      Q_G,
-                      1.0,
-                      psit_bQ.reshape((nb, -1)),
-                      *size_c)
-        psit_bR = ifftn(
-            psit_bQ,
-            tuple(size_c),
-            norm='forward',
-            overwrite_x=True)
-        psit_bR *= vt_R_data
-        vtpsit_bQ = fftn(
-            psit_bR,
-            tuple(size_c),
-            norm='forward',
-            overwrite_x=True)
-        out_nG.data[b1:b2] = psit_nG.data[b1:b2]
-        out_nG.data[b1:b2] *= e_kin_G
-        out_nG.data[b1:b2] += vtpsit_bQ.reshape((nb, -1))[:, Q_G]
+    nbands = len(psit_bG)
+    if out_bG is None or len(out_bG) < nbands:
+        out_bG = cp.empty((nbands, pw.shape[0]), psit_bG.dtype)
+    else:
+        out_bG = out_bG[:nbands]
+    psit_bQ = cp.empty((nbands,) + shape, as_complex_dtype(pw.dtype))
+    psit_bQ[:] = 0.0
+    pw_insert_gpu(psit_bG,
+                  Q_G,
+                  1.0,
+                  psit_bQ.reshape((nbands, -1)),
+                  *size_c)
+    psit_bR = ifftn(
+        psit_bQ,
+        tuple(size_c),
+        norm='forward',
+        overwrite_x=True)
+    psit_bR *= vt_R_data
+    vtpsit_bQ = fftn(
+        psit_bR,
+        tuple(size_c),
+        norm='forward',
+        overwrite_x=True)
+    out_bG[:] = vtpsit_bQ.reshape((nbands, -1))[:, Q_G]
+    return out_bG
