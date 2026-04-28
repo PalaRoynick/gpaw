@@ -627,14 +627,15 @@ class PWArray(XArray[PWDesc]):
                 out.data[np.triu_indices(M1.shape[0], 1)] = 42.0
             out.data *= 2.0
             if self.desc.comm.rank == 0:
-                correction = M1.data[:, :1] @ M2.data[:, :1].T
-                if symmetric:
-                    correction *= 0.5 * self.dv
-                    out.data -= correction
-                    out.data -= correction.T
-                else:
-                    correction *= self.dv
-                    out.data -= correction
+                m2_b = M2.data[:, :1].T.copy()
+                m2_B = self.xp.zeros_like(m2_b, shape=(out.data.shape[1]))
+                myb = (len(m2_B) + self.comm.size - 1) // self.comm.size
+                m2_B[myb*self.comm.rank:myb*(self.comm.rank+1)] = m2_b
+                self.comm.sum(m2_B)
+
+                correction = M1.data[:, :1] @ m2_B[None, :]
+                correction *= self.dv
+                out.data -= correction
 
     def norm2(self, kind: str = 'normal', skip_sum=False) -> np.ndarray:
         r"""Calculate integral over cell.

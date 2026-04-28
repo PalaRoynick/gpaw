@@ -61,9 +61,9 @@ class XArray(Generic[DomainType], XP):
 
         if self.dims:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
-            d1 = min(comm.rank * mydims0, self.dims[0])
-            d2 = min((comm.rank + 1) * mydims0, self.dims[0])
-            mydims0 = d2 - d1
+            self.d1 = min(comm.rank * mydims0, self.dims[0])
+            self.d2 = min((comm.rank + 1) * mydims0, self.dims[0])
+            mydims0 = self.d2 - self.d1
             self.mydims = (mydims0,) + self.dims[1:]
         else:
             self.mydims = ()
@@ -236,7 +236,7 @@ class XArray(Generic[DomainType], XP):
             global_n = global_n[global_n < totalbands]
 
             world_N = min(blocksize_world,
-                        totalbands - N1)
+                          totalbands - N1)
 
             buffer_view_aX = buffer_mX.new(
                 data=buffer_mX.data[:n2 - n1],
