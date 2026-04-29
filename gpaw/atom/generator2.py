@@ -312,7 +312,8 @@ class PAWSetupGenerator:
                  fd=None,
                  yukawa_gamma=0.0,
                  ecut: float = None,
-                 omega=None):
+                 omega=None,
+                 refine=True):
         """fd: stream
             Text output.
 
@@ -371,7 +372,8 @@ class PAWSetupGenerator:
 
         aea.initialize()
         aea.run()
-        aea.refine()
+        if refine:
+            aea.refine()
 
         self.rgd = aea.rgd
 
@@ -553,17 +555,26 @@ class PAWSetupGenerator:
             self.waves_l.append(waves)
 
     def pseudize(self, type='poly', nderiv=6, rcore=None):
-        self.Q = -self.aea.Z + self.ncore
+        if type == 'harm':
+            from gpaw.atom.g3 import pseudize
+            for waves in self.waves_l:
+                pseudize(waves, self.aea.channels[waves.l], self.vtr_g)
+        else:
+            if type == 'poly':
+                pseudizer = partial(self.pseudizer, points=nderiv)
+            elif type == 'nc':
+                def pseudizer(a_g, gc, l=0, ecut=None, divergent=False):
+                    return self.rgd.pseudize_normalized(
+                        a_g, gc, l, points=nderiv)
+            else:
+                1 / 0
+            for waves in self.waves_l:
+                waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
+                               2.0 * self.rcmax, ecut=self.ecut)
 
+        self.Q = -self.aea.Z + self.ncore
         self.nt_g = self.rgd.zeros()
-        if type == 'poly':
-            pseudizer = partial(self.pseudizer, points=nderiv)
-        elif type == 'nc':
-            def pseudizer(a_g, gc, l=0, ecut=None, divergent=False):
-                return self.rgd.pseudize_normalized(a_g, gc, l, points=nderiv)
         for waves in self.waves_l:
-            waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
-                           2.0 * self.rcmax, ecut=self.ecut)
             self.nt_g += waves.nt_g
             self.Q += waves.Q
 
@@ -1325,7 +1336,8 @@ def get_parameters(symbol, args):
                 output=None,  # args.output,
                 yukawa_gamma=args.gamma,
                 ecut=args.ecut,
-                omega=args.omega)
+                omega=args.omega,
+                refine=not args.no_refine)
 
 
 def generate(symbol,
@@ -1345,7 +1357,8 @@ def generate(symbol,
              output=None,
              yukawa_gamma=0.0,
              ecut=None,
-             omega=None):
+             omega=None,
+             refine=True):
     aea = AllElectronAtom(symbol, xc, Z=Z,
                           configuration=configuration,
                           scalar_relativistic=scalar_relativistic)
@@ -1354,7 +1367,8 @@ def generate(symbol,
                             fd=output,
                             yukawa_gamma=yukawa_gamma,
                             ecut=ecut,
-                            omega=omega)
+                            omega=omega,
+                            refine=refine)
 
     gen.construct_shape_function(alpha, radii, eps=1e-10)
     gen.calculate_core_density()
@@ -1470,6 +1484,7 @@ class CLICommand:
         add('--omega', type=float, default=None,
             help='Calculate core-core and core-valence contributions'
                  ' to erfc screen HSE-potential')
+        add('--no-refine', action='store_true')
 
     @staticmethod
     def run(args):
