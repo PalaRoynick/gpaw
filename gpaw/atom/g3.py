@@ -12,6 +12,51 @@ def pseudize(waves: PAWWaves,
     B = len(channel.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
+    G = len(r_g)
+    print(l, N, B, waves.e_n)
+    for n, f in enumerate(waves.f_n):
+        if f == 111110.0:
+            waves.e_n[n] = channel.e_n[5]
+            waves.phi_ng[n] = channel.phi_ng[5]
+    phi_ng = waves.phi_ng = np.array(waves.phi_ng)
+    phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
+    pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
+    rc = waves.rcut
+    gc = rgd.ceil(rc)
+    gc2 = rgd.round(rc + 1.0)
+    alpha = 3.0 * (1.5 / rc)**2
+    h_kg = [howf(alpha, r_g, l, n, rc) for n in range(N)]
+    u0_g = np.zeros(G)
+    u1_g = np.zeros(G)
+    for n, e in enumerate(waves.e_n):
+        phi_g = phi_ng[n]
+        channel.integrate_outwards(u0_g, rgd, vtr_g, gc2, e,
+                                   scalar_relativistic=False)[0]
+        import matplotlib.pyplot as plt
+        for h_g in h_kg:
+            channel.integrate_outwards(
+                u1_g, rgd, vtr_g, gc2, e,
+                scalar_relativistic=False, pt_g=h_g)[0]
+            c0, c1 = np.linalg.solve(
+                [[u0_g[gc], u1_g[gc]],
+                 [u0_g[gc + 1], u1_g[gc + 1]]],
+                phi_g[gc:gc + 2] * r_g[gc:gc + 2])
+            phit_g = c0 * u0_g + c1 * u1_g
+            plt.plot(r_g, phit_g / r_g)
+            plt.plot(r_g, phi_g)
+        plt.xlim(0, 3)
+        plt.show()
+
+
+
+def pseudize0(waves: PAWWaves,
+             channel: Channel,
+             vtr_g: np.ndarray) -> None:
+    l = waves.l
+    N = len(waves.e_n)
+    B = len(channel.e_n)
+    rgd = waves.rgd
+    r_g = rgd.r_g
     print(l, N, B, waves.e_n)
     for n, f in enumerate(waves.f_n):
         if f == 0.0:
