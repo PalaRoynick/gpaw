@@ -158,7 +158,7 @@ class Channel:
         H_bb += self.basis.T_bb
         self.e_n, C_bn = eigh(H_bb)
         self.C_nb = C_bn.T
-        self.phi_ng = self.basis.expand(self.C_nb[:len(self.f_n)])
+        self.phi_ng = self.basis.expand(self.C_nb)#[:len(self.f_n)])
 
     def solve2(self, vr_g, scalar_relativistic=True, Z=None, rgd=None):
         rgd = rgd or self.basis.rgd
@@ -806,8 +806,7 @@ class AllElectronAtom:
         lmax = 0
         for ch in self.channels:
             l = ch.l
-            for n, phi_g in enumerate(ch.phi_ng):
-                f = ch.f_n[n]
+            for phi_g, f in zip(ch.phi_ng, ch.f_n):
                 if f > 0 and ch.s == s:
                     states.append((l, f * self.nspins / 2.0 / (2 * l + 1),
                                    phi_g))
