@@ -109,7 +109,8 @@ class DerivativesNew:
                     a = self.a_vec[u].data[i]
 
                     a_vec_cop = self.a_vec[u].data.copy()
-
+                    self.a_vec[u]._rotation_mat = None
+                    
                     self.a_vec[u].data[i] = a + step * self.eps
                     shuttle['a_vec_u'] = self.a_vec
                     fplus = egsolver.objfunc._calc_energy_and_gradient(shuttle.copy())[f]
@@ -166,4 +167,3 @@ def construct_real_hessian(hess):
         hess_real = hess
 
     return hess_real
-    
