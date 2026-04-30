@@ -316,9 +316,12 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         mynbands, M = self.C_nM.dist.shape
         if self.ncomponents < 4:
             psit_nG = pw.empty(nbands, self.band_comm)
-            psit_R = grid.empty()
+            assert mynbands == psit_nG.data.shape[0]
+            B = min(mynbands, 10)
+            psit_bR = grid.empty(B)
 
             if grid.dtype != pw.dtype:
+                1 / 0
                 psit0_R = grid.new(dtype=pw.dtype).empty()
             for C_M, psit_G in zip(self.C_nM.data, psit_nG, strict=False):
                 psit_R.data[:] = 0.0
