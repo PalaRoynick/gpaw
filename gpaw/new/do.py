@@ -37,6 +37,7 @@ class DirectOptimizationLcao(Eigensolver):
                  representation='sparse',
                  matrix_exp='egdecomp',
                  searchdir_algo='l-bfgs',
+                 max_step_lenght=0.25,
                  converge_unocc: bool = False,
                  ):
         
@@ -44,6 +45,7 @@ class DirectOptimizationLcao(Eigensolver):
         self.representation = representation
         self.matrix_exp = matrix_exp
         self.searchdir_algo = searchdir_algo
+        self.max_step_lenght = max_step_lenght
 
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
@@ -58,4 +60,5 @@ class DirectOptimizationLcao(Eigensolver):
             representation=self.representation,
             matrix_exp=self.matrix_exp,
             searchdir_algo_name=self.searchdir_algo,
-            occ_calc=occ_calc)
+            occ_calc=occ_calc,
+            max_step_lenght=self.max_step_lenght)

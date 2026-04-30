@@ -16,24 +16,24 @@ def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
     return H2O
 
 @pytest.mark.parametrize("representation", ['full'])
-@pytest.mark.parametrize("spinpol", [False])
+@pytest.mark.parametrize("spinpol", [False, True])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp'])
 def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
 
     """
     temporary test that recalculates from scratch, slow
     """
-
+    new_energies = []
     atm = h2o_maker(vacuum=5.0)
     if gpaw_new == 1:
-        atm.calc = GPAW(
+        calc = GPAW(
              mode=LCAO(),
              basis='dzp',
              occupations={'name': 'fixed-uniform'},
              eigensolver={'name': 'etdm',
                           'representation': representation,
                           'matrix_exp': matrix_exp,
-                          'searchdir_algo': 'LSR1',},
+                          'searchdir_algo': 'l-bfgs-p',},
              mixer={'backend': 'no-mixing'},
              spinpol=spinpol,
              nbands='nao',
@@ -41,15 +41,17 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
              maxiter=100,
              txt='-'
         )
+        atm.calc = calc
+
     else:
-        atm.calc = GPAW(
+        calc = GPAW(
             mode=LCAO(),
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
             eigensolver={'name': 'etdm',
                          'representation': representation,
                          'matrix_exp': 'egdecomp',
-                         'searchdir_algo': 'LSR1P',
+                         'searchdir_algo': 'l-bfgs',
                          'linesearch_algo': {'name': 'max-step',
                                              'max_step': 0.005}},
             spinpol=spinpol,
@@ -58,7 +60,10 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
             symmetry='off',
         )
 
+        atm.calc = calc
+
     e = atm.get_potential_energy()
+    print(new_energies)
     f = atm.get_forces()
     target_pot_en = -13.643156256566218
     abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
@@ -67,3 +72,6 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp):
                    [-0.34423, 1.33207, 0.0]])
     assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
     assert f == pytest.approx(f2, abs=abs_force_tol)
+
+
+

@@ -21,7 +21,8 @@ class ETDM:
         maxiter=100,
         tolerance=5.0e-4,
         update_ref=False,
-        searchdir_algo_name='l-bfgs'
+        searchdir_algo_name='l-bfgs',
+        max_step_lenght=0.25
     ):
         """
         Initialize the ETDM optimizer.
@@ -44,6 +45,7 @@ class ETDM:
         """
 
         self.objfunc = objfunc
+        self.max_step_lenght = max_step_lenght
 
         # Initialize LBFGS search direction algorithm
         # `searchdir_algo` keeps track of the search direction `p_u`
@@ -110,7 +112,7 @@ class ETDM:
         p_u = np.array(p_u.a_ux)
 
         # Scale step to prevent too large updates
-        alpha = np.minimum(0.005 / strength, 1.0)
+        alpha = np.minimum(self.max_step_lenght / strength, 1.0)
         p_u[:] = alpha * p_u  # Scale the search direction
 
         # Update the parameters
@@ -121,12 +123,14 @@ class ETDM:
             # Accumulated update: C_{j+1} = C_0 exp(sum_0^j A_j)
             self.a_u += p_u
 
-    def one_iteration(self, gradient=None, precond=None):
+    def one_iteration(self, shuttle,
+                      gradient=None, precond=None):
 
         """
         Just one iteration of optimization using the search algorithm
         """
         if gradient is None:
+            self.gradient = shuttle
             gradient = self.gradient
 
         # Update the search direction using LBFGS
@@ -174,9 +178,15 @@ class ETDM:
         -------
         float
         """
-        if self._energy is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._energy
+    
+    @energy.setter
+    def energy(self, shuttle):
+
+        if self._energy is None:
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
 
     @property
     def gradient(self):
@@ -187,9 +197,15 @@ class ETDM:
         -------
         ndarray
         """
-        if self._gradient is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._gradient
+
+    @gradient.setter
+    def gradient(self, shuttle):
+
+        if self._gradient is None:
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
 
     @property
     def error(self):
@@ -219,7 +235,7 @@ class ETDM:
             self._is_converged = False
         return self._is_converged
 
-    def _calc_energy_and_gradient(self):
+    def _calc_energy_and_gradient(self, shuttle):
         """
         Compute energy and gradient from the objective function.
 
@@ -233,6 +249,9 @@ class ETDM:
         gradient : ndarray
         """
         self.objfunc.a_vec_u = self.a_u
+        # shuttle['a_vec_u'] = self.a_u  # serve?
+        self.objfunc.energy = shuttle
+        self.objfunc.gradient = shuttle
         return self.objfunc.energy, self.objfunc.gradient
 
 
