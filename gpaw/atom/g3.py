@@ -30,72 +30,32 @@ def pseudize(waves: PAWWaves,
     u1_g = np.zeros(G)
     for n, e in enumerate(waves.e_n):
         phi_g = phi_ng[n]
-        channel.integrate_outwards(u0_g, rgd, vtr_g, gc2, e,
-                                   scalar_relativistic=False)[0]
-        import matplotlib.pyplot as plt
+        a1 = channel.integrate_outwards(u0_g, rgd, vtr_g, gc2, e,
+                                        scalar_relativistic=False)[1]
+        A_kk = []
+        phit_kg = []
         for h_g in h_kg:
-            channel.integrate_outwards(
+            a0 = channel.integrate_outwards(
                 u1_g, rgd, vtr_g, gc2, e,
-                scalar_relativistic=False, pt_g=h_g)[0]
+                scalar_relativistic=False, pt_g=h_g)[1]
             c0, c1 = np.linalg.solve(
                 [[u0_g[gc], u1_g[gc]],
                  [u0_g[gc + 1], u1_g[gc + 1]]],
                 phi_g[gc:gc + 2] * r_g[gc:gc + 2])
             phit_g = c0 * u0_g + c1 * u1_g
-            plt.plot(r_g, phit_g / r_g)
-            plt.plot(r_g, phi_g)
-        plt.xlim(0, 3)
-        plt.show()
-
-
-
-def pseudize0(waves: PAWWaves,
-             channel: Channel,
-             vtr_g: np.ndarray) -> None:
-    l = waves.l
-    N = len(waves.e_n)
-    B = len(channel.e_n)
-    rgd = waves.rgd
-    r_g = rgd.r_g
-    print(l, N, B, waves.e_n)
-    for n, f in enumerate(waves.f_n):
-        if f == 0.0:
-            waves.e_n[n] = channel.e_n[5]
-            waves.phi_ng[n] = channel.phi_ng[5]
-    basis = channel.basis
-    H = basis.T_bb + basis.calculate_potential_matrix(vtr_g)
-    phi_ng = waves.phi_ng = np.array(waves.phi_ng)
-    phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
-    pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
-    rc = waves.rcut*1.5
-    gc = rgd.round(rc)
-    alpha = 3.0 * (1.5 / rc)**2
-    h_kg = [howf(alpha, r_g, l, n, rc) for n in range(N)]
-    h_kb = [np.linalg.lstsq(basis.basis_bg.T, h_g)[0] for h_g in h_kg]
-    import matplotlib.pyplot as plt
-    for n, e in enumerate(waves.e_n):
-        f_kb = []
-        A_kk = []
-        for h_b in h_kb:
-            f_b = np.linalg.solve(H - e * np.eye(B), h_b)
-            f_kb.append(f_b)
-            A_kk.append([4 * np.pi * float(f_b @ h_b) for h_b in h_kb])
-        B_k = np.linalg.solve(A_kk,
+            phit_g[1:] /= r_g[1:]
+            phit_g[0] = c0 * a0 + c1 * a1
+            phit_kg.append(phit_g)
+            A_kk.append([rgd.integrate(phit_g * h_g) for h_g in h_kg])
+        c_k = np.linalg.solve(A_kk,
                               [1.0 if k == n else 0.0 for k in range(N)])
-        f_b = B_k @ f_kb
-        f_g = basis.expand(f_b)
-        x = waves.phi_ng[n][gc] / f_g[gc]
-        print(n, e, B_k, x)
-        print(h_kb @ f_b * 4 * np.pi)
-        print([rgd.integrate(f_g * h_g) for h_g in h_kg])
-        phit_ng[n] = x * f_g
+        print(c_k)
+        phit_ng[n] = c_k @ phit_kg
+        x = phi_ng[n, gc] / phit_ng[n, gc]
+        phit_ng[n] *= x
+        phit_ng[n, gc:] = phi_ng[n, gc:]
         pt_ng[n] = h_kg[n] / x
-        plt.plot(r_g, phit_ng[n])
-        plt.plot(r_g, phi_ng[n])
-    plt.xlim(0, 4)
-    plt.show()
-
-    waves.nt_g = waves.f_n @ waves.phit_ng**2 / 4 / np.pi
+    waves.nt_g = waves.f_n @ phit_ng**2 / 4 / np.pi
     waves.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
                    rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * np.pi)
     waves.Q = waves.f_n @ waves.dS_nn.diagonal()
