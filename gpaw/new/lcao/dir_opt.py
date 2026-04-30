@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.density import Density
@@ -51,6 +52,13 @@ class DirOptLCAO(LCAOEigensolver):
 
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
                                              self.matrix_exp)
+
+        for wfs in ibzwfs:
+            f_unique = np.unique(wfs.myocc_n)
+            if len(f_unique) > 2 and self.representation == 'u-invar':
+                warnings.warn("Use representation == 'sparse' when "
+                              "there are unequally occupied orbitals "
+                              "as the functional is not unitary invariant")
 
         # set a_u_init and indices
         a = []

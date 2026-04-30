@@ -1,5 +1,8 @@
 import numpy as np
 from gpaw.new.energies import DFTEnergies
+from gpaw.typing import RNG
+from typing import Any
+from gpaw.new.etdm.tools import random_a
 
 
 class DerivativesNew:
@@ -8,17 +11,26 @@ class DerivativesNew:
                  egsolver,
                  shuttle,
                  update_c_ref=True,
+                 random_amat=False,
+                 seed= None,
                  eps=1.0e-7):
 
         self.eps = eps
 
         self.a_vec = []
-        for a in egsolver.objfunc.a_vec_u:
+        self.ind_up = []
+        for i, a in enumerate(egsolver.objfunc.a_vec_u):
             self.a_vec.append(a)
+            self.ind_up.append(egsolver.objfunc.a_vec_u[i].ind_up)
 
-        #  add random a_mat (from tools prob)
+        if random_amat:
+            for i, a in enumerate(egsolver.objfunc.a_vec_u):
+                shape = a.data.shape
+                self.a_vec[i].data = random_a(shape, shuttle['ibzwfs'].dtype,
+                                              seed)
 
-        # reference orbitals (does it work correctly?)
+
+        # reference orbitals 
         self.c_ref = egsolver.ref_orbitals
 
         # FIX
@@ -50,15 +62,17 @@ class DerivativesNew:
 
         if what2calc == 'gradient':
             # calculate analytical gradient
-            # FIX
             analytical_der = egsolver.etdm._calc_energy_and_gradient(shuttle)[1]
         else:
             # Calculate analytical approximation to hessian
             # FIX
-            ind_up = etdm.ind_up
-            analytical_der = np.hstack([get_approx_analytical_hessian(
-                kpt, etdm.dtype,
-                ind_up[etdm.kpointval(kpt)]).copy() for kpt in wfs.kpt_u])
+            ibzwfs = shuttle['ibzwfs']
+            analytical_der = np.hstack([egsolver.get_approx_analytical_hessian(
+                wfs, wfs.dtype,
+                self.ind_up) for wfs in ibzwfs])
+                
+            analytical_der = construct_real_hessian(analytical_der)
+            analytical_der = np.diag(analytical_der)
 
         return analytical_der
             
@@ -90,30 +104,32 @@ class DerivativesNew:
         f = use_energy_or_gradient[what2calc]
 
         for step in steps:
-            for wfs in shuttle['ibzwfs']:
-#                u = etdm.kpointval(kpt)
-#                for i in range(len(self.a[u])):
-                for i, a in enumerate(self.a_vec):
-                    a = self.a_vec[i].data
+            for u in range(len(self.a_vec)):
+                for i in range(len(self.a_vec[u].data)):
+                    a = self.a_vec[u].data[i]
 
-                    self.a_vec[i].data = a + step * self.eps
+                    a_vec_cop = self.a_vec[u].data.copy()
+
+                    self.a_vec[u].data[i] = a + step * self.eps
                     shuttle['a_vec_u'] = self.a_vec
-                    fplus = egsolver.etdm._calc_energy_and_gradient(shuttle)[f]
-                    
-                    self.a_vec[i].data = a - step * self.eps
+                    fplus = egsolver.objfunc._calc_energy_and_gradient(shuttle.copy())[f]
+
+                    self.a_vec[u].data = a_vec_cop
+
+                    self.a_vec[u].data[i] = a - step * self.eps
                     shuttle['a_vec_u'] = self.a_vec
-                    fminus = egsolver.etdm._calc_energy_and_gradient(shuttle)[f]
+                    fminus = egsolver.objfunc._calc_energy_and_gradient(shuttle.copy())[f]
 
                     derf = apply_central_finite_difference_approx(
-                        fplus, fminus, self.eps)
+                        fplus, fminus, self.eps, what2calc)
 
                     if what2calc == 'gradient':
-                        numerical_der[i] += step * derf
+                        numerical_der[u][i] += step * derf
                     else:
                         numerical_der[row] = construct_real_hessian(derf)
 
                     row += 1
-                    self.a[i] = a
+                    self.a_vec[u].data[i] = a
 
         if what2calc == 'hessian':
             egsolver.matrix_exp = matrix_exp
@@ -121,13 +137,20 @@ class DerivativesNew:
         return numerical_der
     
 
-def apply_central_finite_difference_approx(fplus, fminus, eps):
+def apply_central_finite_difference_approx(fplus, fminus, eps, what2calc):
 
-    if isinstance(fplus, DFTEnergies) and isinstance(fminus, DFTEnergies):
-        assert (len(fplus._energies)) == (len(fminus._energies))
-        derf = np.stack([(fplus._energies[k] - fminus._energies[k]) * 0.5 / eps
-                         for k in fplus._energies.keys()])
-    elif isinstance(fplus, np.ndarray) and isinstance(fminus, np.ndarray):
+    if what2calc == 'gradient':
+        fplus = fplus.total_free
+        fminus = fminus.total_free
+
+    #if isinstance(fplus, DFTEnergies) and isinstance(fminus, DFTEnergies):
+    #    assert (len(fplus._energies)) == (len(fminus._energies))
+    #    derf = np.stack([(fplus[k] - fminus[k]) * 0.5 / eps
+    #                     for k in fplus._energies.keys()])
+        
+    if isinstance(fplus, np.ndarray) and isinstance(fminus, np.ndarray):
+        derf = (fplus - fminus) * 0.5 / eps
+    elif isinstance(fplus, float) and isinstance(fminus, float):
         derf = (fplus - fminus) * 0.5 / eps
     else:
         raise ValueError()
@@ -135,7 +158,6 @@ def apply_central_finite_difference_approx(fplus, fminus, eps):
     return derf
     
 
-    
 def construct_real_hessian(hess):
 
     if hess.dtype == complex:
@@ -144,3 +166,4 @@ def construct_real_hessian(hess):
         hess_real = hess
 
     return hess_real
+    

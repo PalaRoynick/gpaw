@@ -6,6 +6,7 @@ from gpaw.directmin.derivatives import Derivatives
 from gpaw.new.lcao.derivatives import DerivativesNew
 
 
+
 @pytest.mark.do
 def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
     """
@@ -66,11 +67,11 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
 
             analytical_results = [
                 der.get_analytical_derivatives(
-                    wfs.eigensolver, ham, wfs, dens)[0]
+                    wfs.eigensolver, ham, wfs, dens, what2calc='gradient')[0]
                 for der in num_ders]
             numerical_results = [
                 der.get_numerical_derivatives(
-                    wfs.eigensolver, ham, wfs, dens)[0]
+                    wfs.eigensolver, ham, wfs, dens, what2calc='grdient')[0]
                 for der in num_ders]
             for x, *ys in zip(*analytical_results, *numerical_results):
                 assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)
@@ -90,15 +91,25 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
                    'hamiltonian': wfs.hamiltonian,
                    'a_vec_u': None
                    }
-            
-            num_ders = [DerivativesNew(eigensolver, shuttle)]  # add rng stuff
-            
+
+            # Do we get consistent results regardless of randomization?
+            seeds = [42, 56, 77]
+             
+            num_ders = [DerivativesNew(eigensolver, shuttle,
+                                       random_amat=True,
+                                       seed=seed,
+                                       update_c_ref=True) for seed in seeds]
+           
             analytical_results = [
                 der.get_analytical_derivatives(
-                    eigensolver, shuttle)[0]
+                    eigensolver, shuttle, what2calc='gradient')[0]
                 for der in num_ders]
             
             numerical_results = [
                 der.get_numerical_derivatives(
-                    eigensolver, shuttle)[0]
+                    eigensolver, shuttle, what2calc='gradient')[0]
                 for der in num_ders]
+            
+            for x, *ys in zip(*analytical_results, *numerical_results):
+                assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)
+                assert np.array(ys).imag == pytest.approx(x.imag, abs=1.0e-2)
