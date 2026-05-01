@@ -12,49 +12,39 @@ def pseudize(waves: PAWWaves,
     B = len(channel.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
-    G = len(r_g)
     print(l, N, B, waves.e_n)
-    for n, f in enumerate(waves.f_n):
-        if f == 111110.0:
-            waves.e_n[n] = channel.e_n[5]
-            waves.phi_ng[n] = channel.phi_ng[5]
+    # for n, f in enumerate(waves.f_n):
+    #     if f == 111110.0:
+    #         waves.e_n[n] = channel.e_n[5]
+    #         waves.phi_ng[n] = channel.phi_ng[5]
     phi_ng = waves.phi_ng = np.array(waves.phi_ng)
     phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
     pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
     rc = waves.rcut
     gc = rgd.ceil(rc)
-    gc2 = rgd.round(rc + 1.0)
     alpha = 3.0 * (1.5 / rc)**2
-    h_kg = [howf(alpha, r_g, l, n, rc) for n in range(N)]
-    u0_g = np.zeros(G)
-    u1_g = np.zeros(G)
-    for n, e in enumerate(waves.e_n):
-        phi_g = phi_ng[n]
-        a1 = channel.integrate_outwards(u0_g, rgd, vtr_g, gc2, e,
-                                        scalar_relativistic=False)[1]
-        A_kk = []
-        phit_kg = []
-        for h_g in h_kg:
-            a0 = channel.integrate_outwards(
-                u1_g, rgd, vtr_g, gc2, e,
-                scalar_relativistic=False, pt_g=h_g)[1]
-            c0, c1 = np.linalg.solve(
-                [[u0_g[gc], u1_g[gc]],
-                 [u0_g[gc + 1], u1_g[gc + 1]]],
-                phi_g[gc:gc + 2] * r_g[gc:gc + 2])
-            phit_g = c0 * u0_g + c1 * u1_g
-            phit_g[1:] /= r_g[1:]
-            phit_g[0] = c0 * a0 + c1 * a1
-            phit_kg.append(phit_g)
-            A_kk.append([rgd.integrate(phit_g * h_g) for h_g in h_kg])
-        c_k = np.linalg.solve(A_kk,
-                              [1.0 if k == n else 0.0 for k in range(N)])
-        print(c_k)
-        phit_ng[n] = c_k @ phit_kg
-        x = phi_ng[n, gc] / phit_ng[n, gc]
-        phit_ng[n] *= x
-        phit_ng[n, gc:] = phi_ng[n, gc:]
-        pt_ng[n] = h_kg[n] / x
+    h0_g = howf(alpha, r_g, l, 0, rc)
+    e = waves.e_n[0]
+    phit_g, c = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[0])
+    print(c)
+    h0_g *= c
+    phit_ng[0] = phit_g
+    p0 = rgd.integrate(phit_g * h0_g)
+    pt_ng[0] = h0_g# / p0
+    if N == 2:
+        h1_g = h0_g * r_g**2
+        p1 = rgd.integrate(phit_g * h1_g)
+        h1_g = h0_g - p0 / p1 * h1_g
+        e = waves.e_n[1]
+        phit0_g = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[1])
+        phit1_g = solve(channel, rgd, vtr_g, gc, e, h1_g, phi_ng[1])
+        p0 = rgd.integrate(pt_ng[0] * phit0_g)
+        p1 = rgd.integrate(pt_ng[0] * phit1_g)
+        x = p1 / (p1 - p0)
+        phit_ng[1] = x * phit0_g + (1 - x) * phit1_g
+        p1 = rgd.integrate(phit_ng[1] * h1_g)
+    elif N > 2:
+        1 / 0
     waves.nt_g = waves.f_n @ phit_ng**2 / 4 / np.pi
     waves.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
                    rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * np.pi)
@@ -65,7 +55,29 @@ def pseudize(waves: PAWWaves,
     waves.dH_nn = waves.dS_nn @ np.diag(waves.e_n) - A_nn
     waves.dH_nn *= 0.5
     waves.dH_nn += waves.dH_nn.T.copy()
+    print(waves.dH_nn)
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
+
+
+def solve(channel, rgd, vtr_g, gc, e, h_g, phi_g):
+    u0_g = rgd.zeros()
+    u1_g = rgd.zeros()
+    a1 = channel.integrate_outwards(
+        u0_g, rgd, vtr_g, gc + 3, e,
+        scalar_relativistic=False)[1]
+    a0 = channel.integrate_outwards(
+        u1_g, rgd, vtr_g, gc + 3, e,
+        scalar_relativistic=False, pt_g=h_g)[1]
+    r_g = rgd.r_g
+    c0, c1 = np.linalg.solve(
+        [[u0_g[gc], u1_g[gc]],
+         [u0_g[gc + 1], u1_g[gc + 1]]],
+        phi_g[gc:gc + 2] * r_g[gc:gc + 2])
+    phit_g = c0 * u0_g + c1 * u1_g
+    phit_g[1:] /= r_g[1:]
+    phit_g[0] = phit_g[1]#c0 * a0 + c1 * a1
+    phit_g[gc:] = phi_g[gc:]
+    return phit_g, c1
 
 
 def howf(alpha, r, l=0, n=0, rc=np.inf):
