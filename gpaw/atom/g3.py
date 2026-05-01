@@ -9,10 +9,9 @@ def pseudize(waves: PAWWaves,
              vtr_g: np.ndarray) -> None:
     l = waves.l
     N = len(waves.e_n)
-    B = len(channel.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
-    print(l, N, B, waves.e_n)
+    print(l, N, waves.e_n)
     # for n, f in enumerate(waves.f_n):
     #     if f == 111110.0:
     #         waves.e_n[n] = channel.e_n[5]
@@ -65,10 +64,10 @@ def pseudize(waves: PAWWaves,
 def solve(channel, rgd, vtr_g, gc, e, h_g, phi_g):
     u0_g = rgd.zeros()
     u1_g = rgd.zeros()
-    a1 = channel.integrate_outwards(
+    channel.integrate_outwards(
         u0_g, rgd, vtr_g, gc + 3, e,
         scalar_relativistic=False)[1]
-    a0 = channel.integrate_outwards(
+    channel.integrate_outwards(
         u1_g, rgd, vtr_g, gc + 3, e,
         scalar_relativistic=False, pt_g=h_g)[1]
     r_g = rgd.r_g
@@ -78,7 +77,7 @@ def solve(channel, rgd, vtr_g, gc, e, h_g, phi_g):
         phi_g[gc:gc + 2] * r_g[gc:gc + 2])
     phit_g = c0 * u0_g + c1 * u1_g
     phit_g[1:] /= r_g[1:]
-    phit_g[0] = phit_g[1]#c0 * a0 + c1 * a1
+    phit_g[0] = phit_g[1]
     phit_g[gc:] = phi_g[gc:]
     return phit_g, c1
 
@@ -104,7 +103,75 @@ def howf(alpha, r, l=0, n=0, rc=np.inf):
     return z
 
 
-if __name__ == '__main__':
+PARAMS = {
+    'H': ('1s,s,P', 0.9),
+    'He': ('1s,s,P', 1.5),
+    'Li': ('2s,s,2p,D', 2.1),
+    'Be': ('2s,s,2p,D', 1.5),
+    'B': ('2s,s,2p,p,d,F', 1.2),
+    'C': ('2s,s,2p,p,d,F', 1.2),
+    'Ne': ('2s,s,2p,p,d,F', 1.8),
+    'Na': ('2s,3s,2p,3p,d,F', 2.3),
+    'Al': ('3s,s,3p,p,d,F', 2.1),
+    'P': ('3s,s,3p,p,d,F', 1.7),
+    'K': ('3s,4s,3p,4p,d,d,F', 2.1),
+    'Sc': ('3s,4s,3p,4p,3d,d,F', 2.3),
+    'Cu': ('4s,s,4p,p,3d,d,F', 2.1),
+    'As': ('4s,s,4p,p,d,F', 2.0)}
+
+
+def create(symbol):
+    from ase.data import chemical_symbols, atomic_numbers
+    from gpaw.atom.generator2 import generate
+    Z = atomic_numbers[symbol]
+    s = symbol
+    while s not in PARAMS:
+        Z -= 1
+        s = chemical_symbols[Z]
+    projectors, rc = PARAMS[s]
+    gen = generate(
+        symbol,
+        None,
+        projectors,
+        [rc],
+        rc * 0.9,
+        None,
+        5,
+        xc='PBE',
+        pseudize=('harm', -1))
+    gen.check_all()
+    setup = gen.make_paw_setup()
+    setup.write_xml()
+
+
+def create_all():
+    import os
+    from pathlib import Path
+    from ase.data import chemical_symbols
+    for symbol in chemical_symbols[1:37]:
+        Path(symbol).mkdir()
+        os.chdir(symbol)
+        create(symbol)
+        os.chdir('..')
+
+
+def eos(name, symbol):
+    from gpaw.utilities.acwf import run_eos_calculation
+    from gpaw import setup_paths
+    setup_paths[:1] = ['.']
+    run_eos_calculation(name, symbol)
+
+
+def workflow():
+    from pathlib import Path
+    from myqueue.workflow import run
+    from gpaw.utilities.acwf import acwf_structures
+    symbol = Path().resolve().name
+    for name in acwf_structures:
+        run(function=eos, args=[name, symbol], cores=24, name=name)
+
+
+def hmm():
     import matplotlib.pyplot as plt
     r = np.linspace(0, 4, 101)
     for l in range(3):
@@ -114,4 +181,7 @@ if __name__ == '__main__':
             p = howf(3.0, r, l=l, n=n, rc=1.5)
             plt.plot(r, p * r**l)
     plt.show()
-    # main('H', '1s,P', 0.8, 0.8, [0.9], 3.0)
+
+
+if __name__ == '__main__':
+    create_all()
