@@ -29,19 +29,24 @@ def collect_files_for_web_page(fro: Path, to: Path) -> None:
 
 def compare_all_files(root: Path,
                       references: Path) -> None:
+    paths = (set(path.relative_to(root)
+                 for path in root.glob('**/*.*')) |
+             set(path.relative_to(references)
+                 for path in references.glob('**/*.*')))
     errors = []
-    for path in find_created_files(root):
-        if not path.is_file():
-            print('MISSING', path)
+    for path in paths:
+        p1 = root / path
+        p2 = references / path
+        if not p1.is_file():
+            print('MISSING', p1)
             continue
-        ref = references / path.relative_to(root)
-        if not ref.is_file():
-            print('MISSING', ref)
+        if not p2.is_file():
+            print('MISSING', p2)
             continue
-        err = compare_files(path, ref)
+        err = compare_files(p1, p2)
         if err:
             print(err, path)
-            errors.append((err, path, ref))
+            errors.append((err, p1, p2))
     for err, path, ref in sorted(errors):
         print(path, ref, end=' ')
     print()

@@ -29,20 +29,23 @@ def pseudize(waves: PAWWaves,
     print(c)
     h0_g *= c
     phit_ng[0] = phit_g
-    p0 = rgd.integrate(phit_g * h0_g)
-    pt_ng[0] = h0_g# / p0
+    pt_ng[0] = h0_g
     if N == 2:
         h1_g = h0_g * r_g**2
+        p0 = rgd.integrate(phit_g * h0_g)
         p1 = rgd.integrate(phit_g * h1_g)
         h1_g = h0_g - p0 / p1 * h1_g
         e = waves.e_n[1]
-        phit0_g = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[1])
-        phit1_g = solve(channel, rgd, vtr_g, gc, e, h1_g, phi_ng[1])
+        phit0_g, c0 = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[1])
+        phit1_g, c1 = solve(channel, rgd, vtr_g, gc, e, h1_g, phi_ng[1])
+        h0_g *= c0
+        h1_g *= c1
         p0 = rgd.integrate(pt_ng[0] * phit0_g)
         p1 = rgd.integrate(pt_ng[0] * phit1_g)
         x = p1 / (p1 - p0)
         phit_ng[1] = x * phit0_g + (1 - x) * phit1_g
-        p1 = rgd.integrate(phit_ng[1] * h1_g)
+        h1_g = x * h0_g + (1 - x) * h1_g
+        pt_ng[1] = h1_g
     elif N > 2:
         1 / 0
     waves.nt_g = waves.f_n @ phit_ng**2 / 4 / np.pi
