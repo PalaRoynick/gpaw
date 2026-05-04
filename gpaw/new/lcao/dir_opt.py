@@ -268,8 +268,8 @@ class DirOptLCAO(LCAOEigensolver):
         Calculate the following diagonal approximation to the Hessian:
         h_{lm, lm} = -2.0 * (eps_n[l] - eps_n[m]) * (f[l] - f[m])
         """
-
-        f_n = 2 * wfs.myocc_n
+        k = 2 / wfs.nspins
+        f_n = k * wfs.myocc_n
         eps_n = wfs.myeig_n
 
         if ind_up:

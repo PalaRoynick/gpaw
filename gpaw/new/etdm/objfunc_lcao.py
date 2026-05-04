@@ -70,9 +70,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
-            f_n = 2 * wfs.myocc_n
+            k = 2 / wfs.nspins
+            f_n = k * wfs.myocc_n
             if self.use_egdecomp:
-                h_ij = f_n * h_ij  # this is specific of egdecomp
+                h_ij = f_n * h_ij
                 h_unn.append(h_ij)
 
             else:

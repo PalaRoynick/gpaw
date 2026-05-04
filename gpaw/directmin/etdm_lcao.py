@@ -1070,7 +1070,6 @@ class LCAOETDM:
 
 
 def vec2skewmat(a_vec, dim, ind_up, dtype):
-# commento test
     a_mat = np.zeros(shape=(dim, dim), dtype=dtype)
     a_mat[ind_up] = a_vec
     a_mat -= a_mat.T.conj()
