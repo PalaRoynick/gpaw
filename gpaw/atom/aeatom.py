@@ -158,7 +158,7 @@ class Channel:
         H_bb += self.basis.T_bb
         self.e_n, C_bn = eigh(H_bb)
         self.C_nb = C_bn.T
-        self.phi_ng = self.basis.expand(self.C_nb)#[:len(self.f_n)])
+        self.phi_ng = self.basis.expand(self.C_nb)
 
     def solve2(self, vr_g, scalar_relativistic=True, Z=None, rgd=None):
         rgd = rgd or self.basis.rgd

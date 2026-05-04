@@ -315,8 +315,7 @@ class PAWSetupGenerator:
                  fd=None,
                  yukawa_gamma=0.0,
                  ecut: float = None,
-                 omega=None,
-                 refine=True):
+                 omega=None):
         """fd: stream
             Text output.
 
@@ -375,8 +374,7 @@ class PAWSetupGenerator:
 
         aea.initialize()
         aea.run()
-        if refine:
-            aea.refine()
+        aea.refine()
 
         self.rgd = aea.rgd
 
@@ -1343,8 +1341,7 @@ def get_parameters(symbol, args):
                 output=None,  # args.output,
                 yukawa_gamma=args.gamma,
                 ecut=args.ecut,
-                omega=args.omega,
-                refine=not args.no_refine)
+                omega=args.omega)
 
 
 def generate(symbol,
@@ -1364,8 +1361,7 @@ def generate(symbol,
              output=None,
              yukawa_gamma=0.0,
              ecut=None,
-             omega=None,
-             refine=True):
+             omega=None):
     aea = AllElectronAtom(symbol, xc, Z=Z,
                           configuration=configuration,
                           scalar_relativistic=scalar_relativistic)
@@ -1374,8 +1370,7 @@ def generate(symbol,
                             fd=output,
                             yukawa_gamma=yukawa_gamma,
                             ecut=ecut,
-                            omega=omega,
-                            refine=refine)
+                            omega=omega)
 
     gen.construct_shape_function(alpha, radii, eps=1e-10)
     gen.calculate_core_density()
@@ -1491,7 +1486,6 @@ class CLICommand:
         add('--omega', type=float, default=None,
             help='Calculate core-core and core-valence contributions'
                  ' to erfc screen HSE-potential')
-        add('--no-refine', action='store_true')
 
     @staticmethod
     def run(args):
