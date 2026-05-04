@@ -54,7 +54,7 @@ class ETDM:
             self.searchdir_algo = LBFGS(p_key=True)
         elif searchdir_algo_name == 'l-bfgs':
             self.searchdir_algo = LBFGS(p_key=False)
-        elif searchdir_algo_name == 'LSR1':
+        elif searchdir_algo_name == 'LSR1' or searchdir_algo_name == 'LSR1P':
             self.searchdir_algo = LSR1()
 
         # array_shape=a_u_init.shape,
@@ -85,8 +85,8 @@ class ETDM:
                 KArray(self.a_u, comm=self.objfunc.kpt_comm),
                 KArray(self.gradient, comm=self.objfunc.kpt_comm))
 
-            # perform one iteration
-            self.one_iteration()
+            # Move parameters along the search direction
+            self.move()
 
             # Increment iteration counter
             self.iter += 1
