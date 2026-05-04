@@ -561,7 +561,11 @@ class PAWSetupGenerator:
         if type == 'harm':
             from gpaw.atom.g3 import pseudize
             for waves in self.waves_l:
-                pseudize(waves, self.aea.channels[waves.l], self.vtr_g)
+                if waves.l < len(self.aea.channels):
+                    channel = self.aea.channels[waves.l]
+                else:
+                    channel = Channel(waves.l)
+                pseudize(waves, channel, self.vtr_g)
         else:
             if type == 'poly':
                 pseudizer = partial(self.pseudizer, points=nderiv)

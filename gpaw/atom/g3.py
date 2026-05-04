@@ -11,7 +11,6 @@ def pseudize(waves: PAWWaves,
     N = len(waves.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
-    print(l, N, waves.e_n)
     # for n, f in enumerate(waves.f_n):
     #     if f == 111110.0:
     #         waves.e_n[n] = channel.e_n[5]
@@ -25,7 +24,6 @@ def pseudize(waves: PAWWaves,
     h0_g = howf(alpha, r_g, l, 0, rc)
     e = waves.e_n[0]
     phit_g, c = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[0])
-    print(c)
     h0_g *= c
     phit_ng[0] = phit_g
     pt_ng[0] = h0_g
@@ -51,13 +49,10 @@ def pseudize(waves: PAWWaves,
     waves.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
                    rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * np.pi)
     waves.Q = waves.f_n @ waves.dS_nn.diagonal()
-    print(waves.dS_nn, waves.Q, waves.e_n)
     A_nn = rgd.integrate(phit_ng[:, None] * pt_ng) / (4 * np.pi)
-    print(A_nn)
     waves.dH_nn = waves.dS_nn @ np.diag(waves.e_n) - A_nn
     waves.dH_nn *= 0.5
     waves.dH_nn += waves.dH_nn.T.copy()
-    print(waves.dH_nn)
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
 
 
@@ -108,7 +103,7 @@ PARAMS = {
     'He': ('1s,s,P', 1.5),
     'Li': ('2s,s,2p,D', 2.1),
     'Be': ('2s,s,2p,D', 1.5),
-    'B': ('2s,s,2p,p,d,F', 1.2),
+    'B': ('2s,s,2p,p,D', 1.2),
     'C': ('2s,s,2p,p,d,F', 1.2),
     'Ne': ('2s,s,2p,p,d,F', 1.8),
     'Na': ('2s,3s,2p,3p,d,F', 2.3),
@@ -149,17 +144,20 @@ def create_all():
     from pathlib import Path
     from ase.data import chemical_symbols
     for symbol in chemical_symbols[1:37]:
-        Path(symbol).mkdir()
-        os.chdir(symbol)
+        dir = Path(symbol)
+        if dir.is_dir():
+            continue
+        dir.mkdir()
+        os.chdir(dir)
         create(symbol)
         os.chdir('..')
 
 
-def eos(name, symbol):
-    from gpaw.utilities.acwf import run_eos_calculation
+def eos(structure, symbol):
+    from gpaw.utilities.acwf import work
     from gpaw import setup_paths
     setup_paths[:1] = ['.']
-    run_eos_calculation(name, symbol)
+    work(structure, symbol)
 
 
 def workflow():
