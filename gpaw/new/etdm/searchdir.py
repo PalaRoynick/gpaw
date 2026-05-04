@@ -88,6 +88,8 @@ class LBFGS:
                 else:
                     g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
                     self.search_dir = -g_cur
+            else:
+                self.search_dir = -g_cur
 
             # Increment iteration counter
             self.local_iter += 1
