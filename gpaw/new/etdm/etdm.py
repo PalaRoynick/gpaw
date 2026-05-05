@@ -111,6 +111,8 @@ class ETDM:
 
         p_u = np.array(p_u.a_ux)
 
+        self.searchdir_algo.search_dir.a_ux = p_u
+
         # Scale step to prevent too large updates
         alpha = np.minimum(self.max_step_lenght / strength, 1.0)
         p_u[:] = alpha * p_u  # Scale the search direction
