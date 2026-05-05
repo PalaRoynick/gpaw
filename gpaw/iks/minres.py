@@ -4,139 +4,47 @@ import numpy as np
 from typing import TYPE_CHECKING
 from gpaw.utilities import unpack_hermitian
 from gpaw.iks.tools import calculate_diff_overlap_matrix
-from scipy.sparse.linalg import (
-    LinearOperator, bicg, bicgstab, cg, cgs, gcrotmk, gmres, lgmres, minres, qmr, tfqmr,)
-
-scipy_linear_solvers = {
-    "minres-scipy": minres,
-    "cg": cg,
-    "gmres": gmres,
-    "lgmres": lgmres,
-    "bicg": bicg,
-    "bicgstab": bicgstab,
-    "cgs": cgs,
-    "qmr": qmr,
-    "tfqmr": tfqmr,
-    "gcrotmk": gcrotmk,
-}
 if TYPE_CHECKING:
     from gpaw.iks import iKS
     from gpaw.old.kpoint import KPoint
-    from gpaw.typing import Array1D
+    from gpaw.iks.tools import DegeneracyDescriptor
 
 
 class iKSLinearSolver:
-    mwork = 1
-    mstop = -1
 
-    def __init__(self, iks: iKS, method: str, ortho: bool = False, **ls_kwargs):
+    def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, ortho: bool = False, **ls_kwargs):
+        assert method == 'minres' or method is None or method.lower() == "none"
         self.iks = iks
-        self.msg_stop = np.array(self.mstop, dtype=int)
-        self.msg_work = np.array(self.mwork, dtype=int)
-        self.comm = iks.gd.comm
+        self.dd = dd
         self.method = method
         self.ortho = ortho
         self.ls_kwargs = ls_kwargs
-        self.reset()
-
-    def run(self, kpt, p0_nG, u_m) -> None:
-        self.reset()
-        self.update_kpt(kpt)
-        self.p_nG = self.calculate_p(kpt, p0_nG, u_m, **self.ls_kwargs)
-        self.Pp_ani = None  # in the apply correction or externally
-        self.u_m = u_m
-
-    def apply_occupation_correction(self, dfde_m, eta):
-        alpha_m = -0.5 * dfde_m * (self.u_m / self.f_n - eta)
-        self.p_nG[:] += np.einsum('m,m...->m...', alpha_m, self.psit_nG)
-        self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
-
-    def reset(self):
-        self.kpt: KPoint | None = None
+        self.nocc = len(dd.occ)
+        self.kpt = dd.kpt
         self.p_nG = None
         self.Pp_ani = None
-        self.eps_n = None
-        self.f_n = None
-        self.nG = None
-        self.psit_nG = None
-        self.dp_ani = None
+
+    def run(self, p0_nG) -> None:
+        self.p_nG = self.calculate_p(p0_nG)
+        self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
 
     def calculate_projections(self, kpt, p_nG):
         wfs = self.iks.wfs
-        P_ani = wfs.pt.dict((self.nG[0],))
+        P_ani = wfs.pt.dict((self.nocc,))
         wfs.pt.integrate(p_nG, P_ani, kpt.q)
         return P_ani
 
-    def apply_lhs_one_band(self, n, p_G):
-        iks = self.iks
-        p_xG = p_G[None]
-        Hp_xG = np.zeros_like(p_xG)
-        wfs = iks.wfs
-        kpt = self.kpt
-        ham = iks.hamiltonian
-        wfs.apply_pseudo_hamiltonian(kpt, ham, p_xG, Hp_xG)
-        P_axi = wfs.pt.dict((1,))
-        wfs.pt.integrate(p_xG, P_axi, kpt.q)
-        c_axi = wfs.pt.dict((1,))
-        for a, P_xi in P_axi.items():
-            dH_ii = unpack_hermitian(ham.dH_asp[a][kpt.s])
-            c_axi[a] = np.dot(P_xi, dH_ii)
-        wfs.pt.add(Hp_xG, c_axi, kpt.q)
-        eps = self.eps_n[n]
-        Sp_xG = p_xG * eps
-        for a, P_xi in P_axi.items():
-            c_axi[a][:] = eps * np.dot(P_xi[0], wfs.setups[a].dO_ii)
-        wfs.pt.add(Sp_xG, c_axi, q=kpt.q)
-        assert np.isfinite(Hp_xG).all() and np.isfinite(Sp_xG).all()
-        lhs_G = (Hp_xG - Sp_xG)[0]
-        return lhs_G
-
-    def apply_lhs(self, p_nG):
-        iks = self.iks
-        Hp_nG = np.zeros_like(p_nG)
-        wfs = iks.wfs
-        kpt = self.kpt
-        ham = iks.hamiltonian
-        wfs.apply_pseudo_hamiltonian(kpt, ham, p_nG, Hp_nG)
-        P_ani = wfs.pt.dict((self.nG[0],))
-        wfs.pt.integrate(p_nG, P_ani, kpt.q)
-        c_ani = wfs.pt.dict((self.nG[0],))
-        for a, P_ni in P_ani.items():
-            dH_ii = unpack_hermitian(ham.dH_asp[a][kpt.s])
-            c_ani[a] = np.dot(P_ni, dH_ii)
-        wfs.pt.add(Hp_nG, c_ani, kpt.q)
-        Sp_nG = p_nG.copy()
-        for n, eps in enumerate(self.eps_n):
-            Sp_nG[n] *= eps
-
-        for a, P_ni in P_ani.items():
-            c_ani[a] = self.eps_n[:, np.newaxis] * \
-                np.dot(wfs.setups[a].dO_ii, P_ni.T).T
-        wfs.pt.add(Sp_nG, c_ani, q=kpt.q)
-        assert np.isfinite(Hp_nG).all() and np.isfinite(Sp_nG).all()
-        return Hp_nG - Sp_nG
-
-    def apply_lhs_scipy(self, param: Array1D | None = None):
-        data_nG = self.iks.wfs.empty(
-            self.nG[0], q=self.kpt.q, global_array=True)
-        if self.comm.rank == 0:
-            data_nG[:] = param.reshape(self.nG)
-            self.comm.broadcast(self.msg_work, 0)
-        p_nG = self.dist_nG(data_nG)
-        lhs_nG = self.apply_lhs(p_nG)
-        lhs_nG = self.collect_nG(lhs_nG)
-        return np.ravel(lhs_nG)
-
-    # def Mop(self, param: Array1D):
-    #     # TODO
-    #     # prec = self.wfs.make_preconditioner()
-    #     # R_nG = v.reshape(nG)
-    #     # e_kin = prec.calculate_kinetic_energy(currentp_nG, kpt)
-    #     # pR_nG = np.zeros_like(R_nG)
-    #     # for R_G, pR_G, ek in zip(R_nG, pR_nG, e_kin):
-    #     #     pR_G[:] = prec(R_G, kpt, ek)
-    #     # return pR_nG.ravel()
-    #     return None
+    def apply_occupation_correction(self, dfde_n, eta):
+        for bm in self.dd.blocks_occ:
+            for m in bm:
+                for n in bm:
+                    coeff = self.dd.vdiff_nn[n, m]
+                    if n == m:
+                        coeff += eta
+                    self.p_nG[m] += 0.5 * coeff * \
+                        dfde_n[m] * self.kpt.psit_nG[n]
+        # recalculate the projections
+        self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
 
     def orthogonalize(self, kpt, p_nG, psit_nG):
         wfs = self.iks.wfs
@@ -153,181 +61,120 @@ class iKSLinearSolver:
             p2_nG[n] -= alpha * psit_nG[n]
         return p2_nG
 
-    def collect_nG(self, array_nG):
         wfs = self.iks.wfs
-        if wfs.mode == "pw":
-            b_nG = wfs.empty(self.nG[0], q=self.kpt.q, global_array=True)
-            for b_G, array_G in zip(b_nG, array_nG):
-                b_G[:] = wfs.pd.gather(array_G, self.kpt.q)
-        else:
-            b_nG = wfs.gd.collect(array_nG)
-        return b_nG
+        P_ani = wfs.pt.dict((self.nocc,))
+        wfs.pt.integrate(p_nG, P_ani, kpt.q)
+        return P_ani
 
-    def dist_nG(self, array_nG):
-        wfs = self.iks.wfs
-        p_nG = wfs.empty(self.nG[0], q=self.kpt.q)
-        if wfs.mode == "pw":
-            for n in range(self.nG[0]):
-                a_G = None
-                if wfs.pd.comm.rank == 0:
-                    a_G = array_nG[n]
-                p_nG[n] = wfs.pd.scatter(a_G, self.kpt.q)
-        else:
-            wfs.gd.distribute(array_nG, p_nG)
-        return p_nG
+    def apply_lhs(self, p_nG):
+        iks = self.iks
+        Hp_nG = np.zeros_like(p_nG)
+        wfs = iks.wfs
+        kpt = self.kpt
+        ham = iks.hamiltonian
+        wfs.apply_pseudo_hamiltonian(kpt, ham, p_nG, Hp_nG)
+        P_ani = wfs.pt.dict((self.nocc,))
+        wfs.pt.integrate(p_nG, P_ani, kpt.q)
+        c_ani = wfs.pt.dict((self.nocc,))
+        for a, P_ni in P_ani.items():
+            dH_ii = unpack_hermitian(ham.dH_asp[a][kpt.s])
+            c_ani[a] = np.dot(P_ni, dH_ii)
+        wfs.pt.add(Hp_nG, c_ani, kpt.q)
+        Sp_nG = p_nG.copy()
+        for n, eps in enumerate(kpt.eps_n[self.dd.occ]):
+            Sp_nG[n] *= eps
 
-    def calculate_rhs(self, kpt, u_m):
+        for a, P_ni in P_ani.items():
+            c_ani[a] = kpt.eps_n[self.dd.occ, np.newaxis] * \
+                np.dot(wfs.setups[a].dO_ii, P_ni.T).T
+        wfs.pt.add(Sp_nG, c_ani, q=kpt.q)
+        assert np.isfinite(Hp_nG).all() and np.isfinite(Sp_nG).all()
+        return Hp_nG - Sp_nG
+
+    def calculate_rhs(self):
         iks = self.iks
         wfs = iks.wfs
-        h_G = 2.0 * iks.weights_sG[kpt.s] * iks.dn_sG[kpt.s]
-        psit_nG = self.psit_nG
+        dd = self.dd
+        kpt = dd.kpt
+        vdiff_G = 2.0 * iks.weights_sG[kpt.s] * iks.dn_sG[kpt.s]
+        psit_nG = kpt.psit_nG[dd.occ]
         if wfs.mode == "pw":
-            psit_nG = iks.get_psit(kpt)[self.occupied_m]
+            psit_nG = np.asarray([wfs.pd.ifft(psit_G, q=kpt.q)
+                                 for psit_G in psit_nG])
         b_nG = np.zeros_like(psit_nG)
-        for f, psit_G, b_G in zip(self.f_n, psit_nG, b_nG):
-            b_G[:] = f * h_G * psit_G
+        for f, psit_G, b_G in zip(kpt.f_n[dd.occ], psit_nG, b_nG):
+            b_G[:] = f * vdiff_G * psit_G
         if wfs.mode == "pw":
             b_nR = b_nG.copy()
-            b_nG = wfs.empty(self.nG[0], q=kpt.q)
+            b_nG = wfs.empty(self.nocc, q=kpt.q)
             for b_G, b_R in zip(b_nG, b_nR):
                 b_G[:] = wfs.pd.fft(b_R, q=kpt.q)
-        wfs.pt.add(b_nG, self.dp_ani, q=kpt.q)
-        # -2 mu_n S psi_n
-        if iks.calculate_lagrange_mu:
-            muSpsi_nG = np.einsum("n,n...->n...", u_m, self.psit_nG)
-            c_ani = wfs.pt.dict(self.nG[0])
-            for a, c_ni in c_ani.items():
-                c_ni[:] = (
-                    u_m[:, np.newaxis]
-                    * np.dot(wfs.setups[a].dO_ii, kpt.P_ani[a][self.occupied_m].T).T
-                )
-            wfs.pt.add(muSpsi_nG, c_ani, q=kpt.q)
-            b_nG -= muSpsi_nG
+
+        for bm in self.dd.blocks_occ:
+            for m in bm:
+                for n in bm:
+                    b_nG[m] -= dd.vdiff_nn[n, m] * kpt.psit_nG[n]
+
+        self.apply_rhs_paw_correction(b_nG)
         return b_nG
 
-    def update_paw(self):
-        iks = self.iks
-        N = self.nG[0]
+    def apply_rhs_paw_correction(self, b_nG):
+        pt = self.iks.wfs.pt
         kpt = self.kpt
-        dp_ani = iks.wfs.pt.dict((N,))
-        for a, dD_sp in iks.dD_asp.items():
+        iks = self.iks
+        dp_ani = pt.dict((self.nocc,))
+        for a, dp_ni in dp_ani.items():
+            w_ng = iks.weights_asng[a][kpt.s]
             Phi_ii = calculate_diff_overlap_matrix(
-                iks.setups[a], iks.weights_asng[a][kpt.s], iks.atomic_weights, dD_sp[self.kpt.s], iks.mix_paw_error
+                iks.setups[a],
+                w_ng,
+                iks.atomic_weights,
+                iks.dD_asp[a][kpt.s],
+                iks.mix_paw_error,
             )
-            if np.isnan(Phi_ii).any():
-                # ae setups
-                dp_ani[a][:] = 0.0
-            else:
-                dp_ani[a] = np.einsum(
-                    "ij, nj,n->ni",
-                    Phi_ii,
-                    kpt.P_ani[a][self.occupied_m],
-                    2.0 * self.f_n,
-                )
-        self.dp_ani = dp_ani
+            dp_ni[:] = np.einsum(
+                'n,ij,nj->ni', -2.0 * kpt.f_n[self.dd.occ], Phi_ii, kpt.P_ani[a][self.dd.occ])
+            for bm in self.dd.blocks_occ:
+                for m in bm:
+                    for n in bm:
+                        dp_ni[m] += kpt.f_n[m] * self.dd.vdiff_nn[n, m] * \
+                            iks.wfs.setups[a].dO_ii @ kpt.P_ani[a][n]
+        pt.add(b_nG, dp_ani, q=kpt.q)
 
-    def update_kpt(self, kpt):
-        wfs = self.iks.wfs
-        bd = wfs.bd
-        self.kpt = kpt
-        f_n = bd.collect(kpt.f_n, broadcast=True)
-        occupied_m = self.occupied_m = np.flatnonzero(f_n > 1e-10)
-        f_n = self.f_n = f_n[occupied_m]
-        self.psit_nG = psit_nG = bd.collect(
-            kpt.psit_nG, broadcast=True)[occupied_m]
-        eps_n = wfs.bd.collect(kpt.eps_n, broadcast=True)[occupied_m]
-        self.eps_n = eps_n
-        if wfs.mode == "pw":
-            nG = (len(psit_nG), wfs.pd.ng_q[kpt.q])
-        else:
-            nG = (len(psit_nG), *wfs.gd.get_size_of_global_array())
-        self.nG = nG
-        self.update_paw()
-
-    def calculate_p(self, kpt: KPoint, p0_nG, u_m, prec: bool = False, **ls_kwargs):
+    def calculate_p(self, p0_nG):
         if self.method is None or self.method.lower() == "none":
             self.p_nG = p0_nG
             return self.p_nG
-        elif self.method in scipy_linear_solvers:
-            return self.calculate_p_scipy(kpt, p0_nG, u_m, prec, **ls_kwargs)
-        elif self.method == "minres":
-            wfs = self.iks.wfs
 
-            if prec:
-                raise NotImplementedError
-            rhs = self.calculate_rhs(kpt, u_m)
-            shape = p0_nG.shape
+        wfs = self.iks.wfs
+        kpt = self.kpt
 
-            def integrate(a, b):
-                a = a.reshape(shape)
-                b = b.reshape(shape)
-                II = 0.0
-                for n in range(len(p0_nG)):
-                    II += wfs.integrate(a[n], b[n])
-                return II
+        rhs = self.calculate_rhs()
+        shape = p0_nG.shape
 
-            def apply(a):
-                return self.apply_lhs(a.reshape(shape)).ravel()
+        def integrate(a, b):
+            a = a.reshape(shape)
+            b = b.reshape(shape)
+            II = 0.0
+            for n in range(len(p0_nG)):
+                II += wfs.integrate(a[n], b[n])
+            return II
 
-            p_nG, iters = minres_iks(
-                apply,
-                rhs.ravel(),
-                p0_nG.ravel(),
-                integrate,
-                None,
-                **ls_kwargs,
-            )
-            p_nG = p_nG.reshape(shape)
-            self.iks.fmt.log(f"minres finished in {iters} iterations.")
-            if self.ortho:
-                p_nG = self.orthogonalize(kpt, p_nG, self.psit_nG)
-            return p_nG
-        else:
-            raise ValueError(f"Unkown linear solver {self.method}")
+        def apply(a):
+            return self.apply_lhs(a.reshape(shape)).ravel()
 
-    def calculate_p_scipy(self, kpt, p0_nG, u_m, prec, **ls_kwargs):
-        iks = self.iks
-        npts = np.prod(self.nG)
-        lhs_op = LinearOperator(
-            (npts, npts), matvec=self.apply_lhs_scipy, dtype=iks.wfs.dtype
+        p_nG, iters = minres_iks(
+            apply,
+            rhs.ravel(),
+            p0_nG.ravel(),
+            integrate,
+            None,
+            **self.ls_kwargs,
         )
-        # Mop = LinearOperator((npts, npts), matvec=preconditioner, dtype=iks.wfs.dtype)
-        if prec:
-            raise NotImplementedError(
-                "preconditioer not implemented for scipy linear solvers"
-            )
-        Mop = None
-
-        rhs = np.ravel(self.collect_nG(self.calculate_rhs(kpt, u_m)))
-        # initial guess as the orbital expansion
-        p0_nG = self.collect_nG(p0_nG)
-        p_nG = None
-        if self.comm.rank == 0:
-            try:
-                method = scipy_linear_solvers[self.method]
-                p_nG, info = method(
-                    lhs_op, rhs, x0=p0_nG.ravel(), M=Mop, **ls_kwargs)
-                # iks.fmt.log(f"scipy {self.method} finished with info: {info}")
-                # iks.fmt.flush()
-                if info < 0:
-                    raise RuntimeError(f"minres breakdown {info=}")
-                p_nG = p_nG.reshape(self.nG)
-            finally:
-                self.comm.broadcast(self.msg_stop, 0)
-        else:
-            msg = np.empty(1, dtype=int)
-            while True:
-                self.comm.broadcast(msg, 0)
-                m = msg.item()
-                if m == self.mwork:
-                    self.apply_lhs_scipy()
-                elif m == self.mstop:
-                    break
-
-        p_nG = self.dist_nG(p_nG)
+        p_nG = p_nG.reshape(shape)
+        self.iks.fmt.log(f"minres finished in {iters} iterations.")
         if self.ortho:
-            p_nG = self.orthogonalize(kpt, p_nG, self.psit_nG)
-        self.p_nG = p_nG
+            p_nG = self.orthogonalize(kpt, p_nG, kpt.psit_nG[self.dd.occ])
         return p_nG
 
     def calculate_jacobian_one_k(self):
@@ -336,7 +183,7 @@ class iKSLinearSolver:
             p_nG = np.asarray(
                 [self.iks.wfs.pd.ifft(p_G, q=self.kpt.q) for p_G in self.p_nG]
             )
-        return 2.0 * np.sum((p_nG.conj() * self.iks.get_psit(self.kpt)[self.occupied_m]).real, axis=0)
+        return 2.0 * np.sum((p_nG.conj() * self.iks.get_realspace_psit(self.kpt)[self.dd.occ]).real, axis=0)
 
 
 def minres_iks(apply_lhs, rhs, x0, innerp, prec=None, rtol=1e-8, maxiter=1000):

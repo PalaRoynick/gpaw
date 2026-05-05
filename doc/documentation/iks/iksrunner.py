@@ -48,7 +48,8 @@ def argparser() -> argparse.Namespace:
     parser.add_argument("--ecut", type=float, default=500.0)
     parser.add_argument("--gridspacing", type=float, default=0.15)
     parser.add_argument("--weights", type=str, default="inverse_density")
-    parser.add_argument("--atomic-weights", type=str, default="radial_inverse_density")
+    parser.add_argument("--atomic-weights", type=str,
+                        default="radial_inverse_density")
     parser.add_argument("--paw-potmode", type=str, default="lebedev")
     parser.add_argument("--ls", type=str, default="minres")
     parser.add_argument("--thr", type=float, default=-1.0)
@@ -59,7 +60,6 @@ def argparser() -> argparse.Namespace:
     parser.add_argument("--eigsolver-method", type=str, default="dav")
     parser.add_argument("--eigsolver-niter", type=int, default=5)
     parser.add_argument("--interpolate-vt", action="store_true")
-    parser.add_argument("--lagmu", action="store_true")
     parser.add_argument("--kin-band", action="store_true")
     parser.add_argument("--virialxc", action="store_true")
     parser.add_argument("--ci", type=str, default=None)
@@ -80,11 +80,14 @@ def argparser() -> argparse.Namespace:
 
 def parallel_arg(par):
     if par == "bd":
-        parallel = {"domain": max(world.size // 2, 1), "band": max(world.size // 2, 1)}
+        parallel = {"domain": max(world.size // 2, 1),
+                    "band": max(world.size // 2, 1)}
     elif par == "bk":
-        parallel = {"kpt": max(world.size // 2, 1), "band": max(world.size // 2, 1)}
+        parallel = {"kpt": max(world.size // 2, 1),
+                    "band": max(world.size // 2, 1)}
     elif par == "kd":
-        parallel = {"kpt": max(world.size // 2, 1), "domain": max(world.size // 2, 1)}
+        parallel = {"kpt": max(world.size // 2, 1),
+                    "domain": max(world.size // 2, 1)}
     elif par == "bdk":
         parallel = {
             "domain": max(world.size // 3, 1),
@@ -162,7 +165,8 @@ def main():
             nbands=args.nbands,
             symmetry="off",
             kpts=(args.nkpts,) * 3,
-            eigensolver={"name": args.eigsolver_method, "niter": args.eigsolver_niter},
+            eigensolver={"name": args.eigsolver_method,
+                         "niter": args.eigsolver_niter},
             parallel=parallel_arg(args.par),
             setups={"H": args.hsetups},
         )
@@ -211,11 +215,13 @@ def main():
             save_path / "target.gpw",
             txt=save_path / f"{args.mol}_{args.xc}.txt",
         )
-        calc = GPAW(save_path / "iks.gpw", txt=save_path / f"{args.mol}_iks.txt")
+        calc = GPAW(save_path / "iks.gpw",
+                    txt=save_path / f"{args.mol}_iks.txt")
         if args.nbands != calc.parameters["nbands"]:
             xc = calc.hamiltonian.xc
             calc = calc.new(
-                xc=xc, nbands=args.nbands, txt=save_path / f"{args.mol}_iks.txt"
+                xc=xc, nbands=args.nbands, txt=save_path /
+                f"{args.mol}_iks.txt"
             )
 
     # iKS
@@ -230,7 +236,6 @@ def main():
         linear_solver=args.ls,
         stencil=args.stencil,
         nfixed=args.nfixed,
-        calculate_lagrange_mu=args.lagmu,
         kin_en_using_band=args.kin_band,
         use_coarse_grid=args.coarse,
         log_l1_ae=(args.hsetups != "ae"),

@@ -26,6 +26,55 @@ if TYPE_CHECKING:
     NaN = float
 
 
+class DegeneracyDescriptor:
+    def __init__(self, kpt, bd=None, tolerance=1e-3):
+        self.kpt = kpt
+        self.tolerance = tolerance
+        self.blocks = []
+        self.blocks_occ = []
+        self.occ = np.empty(1)
+        self.n_d = []
+        self.bd = bd
+        self.vdiff_nn = None
+
+    def __index__(self, array):
+        return self.ind(array)
+
+    def ind(self, array, copy=False, blocks=None):
+        if blocks is None:
+            blocks = self.blocks
+        view = {}
+        for b in blocks:
+            bt = tuple(b)
+            if copy:
+                view[bt] = array[b].copy()
+            else:
+                view[bt] = array[b]
+        return view
+
+    def indo(self, array, copy=False):
+        return self.ind(array, copy, self.blocks_occ)
+
+    def update(self):
+        f_n = self.kpt.f_n
+        if self.bd is not None:
+            f_n = self.bd.collect(f_n, broadcast=True)
+        self.occ = np.flatnonzero(f_n > 1e-10)
+        eps_n = self.kpt.eps_n
+        sort_idx = np.argsort(eps_n)
+        eps_sorted = eps_n[sort_idx]
+        gaps = np.diff(eps_sorted) > self.tolerance
+        break_indices = np.where(gaps)[0] + 1
+        groups = np.split(sort_idx, break_indices)
+        self.blocks = [g.tolist() for g in groups]
+        self.blocks_occ = [
+            g[np.isin(g, self.occ)].tolist()
+            for g in groups
+        ]
+        self.n_d = [len(b) for b in self.blocks]
+        self.blocks_occ = [b for b in self.blocks_occ if b]
+
+
 class LogFormatter:
     def __init__(self, log: GPAWLogger, width: int = 88):
         self.log = log

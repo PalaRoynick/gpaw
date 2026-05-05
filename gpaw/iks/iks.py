@@ -3,16 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from ase.units import Ha
-# from ase.dft.bandgap import bandgap
 from gpaw.calculator import GPAW
 from gpaw.old.density import Density
 from gpaw.iks.tools import (LogFormatter, calculate_diff_overlap_matrix,
-                            get_atomic_weights, get_weights, update_density_from_density_matrix)
+                            get_atomic_weights, get_weights, update_density_from_density_matrix, DegeneracyDescriptor)
 from gpaw.iks.optimize import iks_adam_opt, iKSMixOpt, iKSObj, iKSLBFGS, iKSOptimizable
 from gpaw.iks.minres import iKSLinearSolver
-from gpaw.old.projections import Projections
 from gpaw.sphere.lebedev import Y_nL, weight_n
-# from gpaw.transformers import Transformer
 from gpaw.utilities import pack_hermitian, unpack_hermitian
 from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
 from gpaw.new.backwards_compatibility import FakeDensity
@@ -106,9 +103,6 @@ class iKS:
         interpolated to the fine grid. If False, the Jacobian is interpolated and the
         xc potential remains on the fine grid.
 
-    calculate_lagrange_mu : bool, default=True
-        If True, computes Lagrange multipliers to enforce orthonormality of the Kohn–Sham orbitals.
-
     kin_en_using_band : bool, default=False
         If True, evaluates the kinetic energy using band energies.
 
@@ -174,7 +168,6 @@ class iKS:
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
         use_coarse_grid: bool = False,
-        calculate_lagrange_mu: bool = True,
         apply_occupation_correction: bool = True,
         kin_en_using_band: bool = True,
         log_l1_ae: bool = True,
@@ -191,7 +184,6 @@ class iKS:
         self.lambdareg = lambdareg
         self.stencil = stencil
         self.nfixed = nfixed
-        self.calculate_lagrange_mu = calculate_lagrange_mu
         self.apply_occupation_correction = apply_occupation_correction
         self.kin_en_using_band = kin_en_using_band
         if isinstance(linear_solver, dict):
@@ -257,10 +249,6 @@ class iKS:
         self.eigensolver_name: str = getattr(self.wfs.eigensolver, "name", "")
         self.gd: GridDescriptor = self.hamiltonian.gd
         self.finegd: GridDescriptor = self.hamiltonian.finegd
-        # self.coarse2fine: Callable[[ArrayND, Optional[ArrayND]], ArrayND] = Transformer(
-        #     self.gd, self.finegd, nn=self.stencil).apply
-        # self.fine2coarse: Callable[[ArrayND, Optional[ArrayND]], ArrayND] = Transformer(
-        #     self.finegd, self.gd, nn=self.stencil).apply
         self.coarse2fine = self.density.interpolate
 
         def fine2coarse(a_g):
@@ -269,13 +257,11 @@ class iKS:
 
         self.fine2coarse = fine2coarse
         self.init_xc()
-        self.p_umn: list[ArrayND] = []
         self.ls_u: list[iKSLinearSolver] = []
         self.dn_sG = self.gd.empty(self.density.nspins)
         self.dD_asp = self.atompart.arraydict(
             self.density.D_asp.shapes_a, self.density.D_asp.dtype
         )
-        # self.bg = 0.0
         self.initialized = True
 
     def init_xc(self) -> None:
@@ -297,13 +283,13 @@ class iKS:
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
 
-    def run_scf(self) -> None:
+    def irun_scf(self) -> None:
         """perform scf with the target density and update the inverted density from wfs"""
         scf = self.calc.scf
         scf.reset()
-        scf.niter = 0
+        scf.niter = 1
         self.density.mixer.reset()
-        while scf.niter < scf.maxiter:
+        while scf.niter <= scf.maxiter:
             if self.eigensolver_name == "etdm-fdpw":
                 raise NotImplementedError  # TODO
             else:
@@ -312,28 +298,28 @@ class iKS:
                     self.calc.scf.fix_fermi_level
                 )
             self.hamiltonian.get_energy(
-                e_entropy, self.wfs, kin_en_using_band=self.kin_en_using_band
+                e_entropy, self.wfs, kin_en_using_band=self.kin_en_using_band, e_sic=0.0
             )
+            ctx = scf.check_convergence(
+                self.density, self.hamiltonian, self.wfs, self.calc.log, lambda i: None
+            )
+            yield ctx
+
+            if scf.converged and (scf.niter >= self.nfixed):
+                break
+
             self.density.update(self.wfs)
             # update hamiltonian using the target density
             self.hamiltonian.update(
-                self.tdens, self.wfs, kin_en_using_band=self.kin_en_using_band
-            )
+                self.tdens, self.wfs, kin_en_using_band=self.kin_en_using_band)
             scf.niter += 1
-            scf.check_convergence(
-                self.density, self.hamiltonian, self.wfs, self.calc.log, lambda i: None
-            )
-            # if self.wfs.kptband_comm.size > 1:
-            #     comm = self.wfs.kptband_comm
-            #     converged_bands = np.empty(comm.size, dtype=np.bool)
-            #     comm.all_gather(
-            #         np.array(scf.converged, dtype=np.bool), converged_bands)
-            #     scf.converged = converged_bands.any()
-            if scf.converged and (scf.niter >= self.nfixed):
-                break
+            self.fmt.flush()
             if self.nfixed == 0:
                 break
-            self.fmt.flush()
+
+    def run_scf(self):
+        for _ in self.irun_scf():
+            pass
 
     def iterate(self) -> None:
         if self.wfs.kptband_comm.size > 1:
@@ -342,31 +328,83 @@ class iKS:
             # this is a hack for now!
             # assert self.gd.comm.size == 1, "simultaneous domain and k-point parallelization is not supported by iKS"
             self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
-            self.wfs.kptband_comm.broadcast(self.density.nt_sG, 0)
         self.run_scf()
         wfs = self.wfs
         wfs.orthonormalize()
         self.density.update(wfs)
         self.update_diff()
-        self.p_umn = []
-        self.ls_u = []
+        self.dd_u = []
         for kpt in wfs.kpt_u:
-            p_mn, u_m = self.calculate_expansion_coeffs(kpt)
-            self.p_umn.append(p_mn)
-            p0_nG = np.einsum("mn,n...->m...", p_mn, kpt.psit_nG)
-            ls = iKSLinearSolver(
-                self, method=self.linear_solver, **self.ls_kwargs)
-            ls.run(kpt, p0_nG, u_m)
-            self.ls_u.append(ls)
-        if wfs.occupations.name == 'zero-width' or not self.apply_occupation_correction:
-            for ls, kpt in zip(self.ls_u, wfs.kpt_u):
-                # find a better way to call calculate_projections
-                ls.Pp_ani = ls.calculate_projections(kpt, ls.p_nG)
-            return
-        # doesn't work for fixedmagmom:True
+            dd = DegeneracyDescriptor(kpt)
+            dd.update()
+            self.dd_u.append(dd)
+            vdiff_nn = self.calculate_vdiff_matrix_elements(kpt)
+            dd.vdiff_nn = vdiff_nn
+
+        # TODO: implement for multiple fermi levels (fixedmagmom=True)
         eta = self.eta = self.calculate_eta()
-        for ls, dfde_n in zip(self.ls_u, self.dfde_un):
-            ls.apply_occupation_correction(dfde_n, eta)
+        self.ls_u = []
+        for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
+            p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
+            ls = iKSLinearSolver(
+                self, dd=dd, method=self.linear_solver, **self.ls_kwargs)
+            ls.run(p0_nG)
+            self.ls_u.append(ls)
+            if wfs.occupations.name != 'zero-width' or self.apply_occupation_correction:
+                ls.apply_occupation_correction(dfde_n, eta)
+
+    def calculate_p_expansion(self, dd, vdiff_nn, eta, dfde_n) -> Array2D:
+        nbands = self.wfs.bd.nbands
+        nocc = len(dd.occ)
+        kpt = dd.kpt
+        p_mG = self.wfs.empty(nocc, q=kpt.q)
+        for bm in dd.blocks_occ:
+            for m in bm:
+                p_mG[m][:] = 0.0
+            for n in range(nbands):
+                if n in bm:
+                    for m in bm:
+                        coeff = vdiff_nn[n, m]
+                        if m == n:
+                            coeff += eta
+                        p_mG[m] += 0.5 * coeff * dfde_n[m] * kpt.psit_nG[n]
+                else:
+                    for m in bm:
+                        f_m = kpt.f_n[m]
+                        eps_m = kpt.eps_n[m]
+                        eps_n = kpt.eps_n[n]
+                        p_mG[m] += f_m / (eps_m - eps_n) * \
+                            vdiff_nn[n, m] * kpt.psit_nG[n]
+        return p_mG
+
+    def calculate_vdiff_matrix_elements(self, kpt):
+        psit_nR = self.get_realspace_psit(kpt)
+        vdiffpsit_nG = 2 * \
+            (self.weights_sG[kpt.s] * self.dn_sG[kpt.s])[np.newaxis] * psit_nR
+        if self.wfs.mode == "pw":
+            b_nR = vdiffpsit_nG.copy()
+            vdiffpsit_nG = self.wfs.empty(len(psit_nR), q=kpt.q)
+            for b_G, b_R in zip(vdiffpsit_nG, b_nR):
+                b_G[:] = self.wfs.pd.fft(b_R, q=kpt.q)
+        vdiff_nn = self.wfs.integrate(
+            kpt.psit_nG, vdiffpsit_nG, global_integral=True)
+
+        vdiffpaw_nn = np.zeros(vdiff_nn.shape, dtype=vdiff_nn.dtype)
+        # apply PAW corrections
+        for a, P_ni in kpt.P_ani.items():
+            w_ng = self.weights_asng[a][kpt.s]
+            Phi_ii = calculate_diff_overlap_matrix(
+                self.setups[a],
+                w_ng,
+                self.atomic_weights,
+                self.dD_asp[a][kpt.s],
+                self.mix_paw_error,
+            )
+            vdiffpaw_nn += 2 * \
+                np.einsum("ni,ij,mj->nm", P_ni.conj(), Phi_ii, P_ni).real
+        self.gd.comm.sum(vdiffpaw_nn)
+        vdiff_nn += vdiffpaw_nn
+        return vdiff_nn
 
     def calculate_eta(self):
         self.dfde_un = []
@@ -376,16 +414,15 @@ class iKS:
             degeneracy = 2
         else:
             degeneracy = 1
-
-        for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
+        for kpt, dd in zip(self.wfs.kpt_u, self.dd_u):
             f_n, dfde_n, _ = self.wfs.occupations.distribution(
                 kpt.eps_n * Ha, self.wfs.fermi_levels * Ha)
             # 1/eV -> 1/Ha
-            dfde_n = dfde_n[ls.occupied_m] * (Ha * kpt.weightk * degeneracy)
+            dfde_n = dfde_n[dd.occ] * (Ha * kpt.weightk * degeneracy)
             self.dfde_un.append(dfde_n)
-            dfdmu_n = -dfde_n
-            enum += np.sum(ls.u_m / ls.f_n * dfdmu_n)
-            denom += dfdmu_n.sum()
+            for n in dd.occ:
+                enum += dd.vdiff_nn[n, n] * dfde_n[n]
+                denom += dfde_n[n]
         enum = self.wfs.kptband_comm.sum_scalar(enum)
         denom = self.wfs.kptband_comm.sum_scalar(denom)
         if abs(denom) < 1e-20:
@@ -394,15 +431,7 @@ class iKS:
         # print('eta', eta, self.wfs.kptband_comm.rank)
         return eta
 
-    def calculate_deps(self, kpt):
-        eps_n = self.wfs.bd.collect(kpt.eps_n, broadcast=True)
-        deps_nn = eps_n[None, :] - eps_n[:, None]
-        np.fill_diagonal(deps_nn, 1.0)
-        # do not expand in terms of degenerate states
-        deps_nn[np.abs(deps_nn) <= 1e-10] = np.inf
-        return deps_nn
-
-    def get_psit(self, kpt):
+    def get_realspace_psit(self, kpt):
         if self.wfs.mode == "lcao":
             self.wfs.initialize_wave_functions_from_lcao()
         # no band parallelization in iKS
@@ -412,96 +441,6 @@ class iKS:
                 [self.wfs.pd.ifft(psit_G, q=kpt.q) for psit_G in psit_nG]
             )
         return psit_nG
-
-    def get_proj(self, kpt):
-        bd = self.wfs.bd
-        if bd.comm.size == 1:
-            return kpt.P_ani
-        # gather bands -> replace with bd.collect
-        P = kpt.projections
-        P2 = Projections(
-            bd.nbands,
-            P.nproj_a,
-            atom_partition=self.atompart,
-            collinear=P.collinear,
-            spin=P.spin,
-            dtype=P.matrix.dtype,
-            bdist=(None, 1),
-        )
-        P.matrix.redist(P2.matrix)
-        bd.comm.broadcast(P2.matrix.array, 0)
-        P_ani = P2.toarraydict()
-        return P_ani
-
-    def calculate_expansion_coeffs(self, kpt) -> Array2D:
-        f_n = self.wfs.bd.collect(kpt.f_n, broadcast=True)
-        occupied_m = np.flatnonzero(f_n > 1e-10)
-        f_m = f_n[occupied_m]
-        deps_nn = self.calculate_deps(kpt)
-        fdeps_mn = 2.0 * f_m[:, None] / deps_nn[occupied_m, :]
-        psit_nG = self.get_psit(kpt)
-        psit_mG = psit_nG[occupied_m]
-        p_mn, u_m = self.calculate_paw_correction_p(
-            kpt, fdeps_mn, occupied_m, f_m)
-        dn_G = self.dn_sG[kpt.s]
-        p_mn[:] += (
-            fdeps_mn
-            * self.gd.integrate(
-                psit_nG,
-                self.weights_sG[kpt.s] * self.dn_sG[kpt.s] * psit_mG,
-                global_integral=True,
-            ).T
-        )
-        if self.calculate_lagrange_mu:
-            for m in range(p_mn.shape[0]):
-                u_m[m] += (
-                    2.0
-                    * f_m[m]
-                    * self.gd.integrate(
-                        psit_mG[m].conj() * self.weights_sG[kpt.s] *
-                        dn_G * psit_mG[m]
-                    ).real
-                )
-                p_mn[m, m] -= u_m[m]
-        else:
-            np.fill_diagonal(p_mn, 0.0)
-        return p_mn, u_m
-
-    def calculate_paw_correction_p(self, kpt, fdeps_mn, occupied_m, f_m) -> Array2D:
-        """calculate paw correction for the expansion coefficients p_mn"""
-        p_mn = np.zeros((len(occupied_m), self.wfs.bd.nbands),
-                        dtype=self.wfs.dtype)
-        P_ani = self.get_proj(kpt)
-        u_m = np.zeros(len(occupied_m), dtype=float)
-        as_ = []
-        for a, P_ni in P_ani.items():
-            if P_ni.size == 0:
-                # ae
-                continue
-            w_ng = self.weights_asng[a][kpt.s]
-            Phi_ii = calculate_diff_overlap_matrix(
-                self.setups[a],
-                w_ng,
-                self.atomic_weights,
-                self.dD_asp[a][kpt.s],
-                self.mix_paw_error,
-            )
-            p_mn += fdeps_mn * np.einsum(
-                "ni,mj,ij->mn", P_ni.conj(), P_ni[occupied_m], Phi_ii
-            )
-            as_.append(a)
-            if self.calculate_lagrange_mu:
-                for m in occupied_m:
-                    u_m[m] += (
-                        2.0
-                        * f_m[m]
-                        * np.einsum("i,ij,j", P_ni[m].conj(), Phi_ii, P_ni[m]).real
-                    )
-        self.gd.comm.sum(p_mn)
-        self.gd.comm.sum(u_m)
-        # print(self.hamiltonian.world.rank,
-        #       self.wfs.kd.comm.rank, kpt.q, as_, np.any(u_m))
-        return p_mn, u_m
 
     def lagrangian(self) -> tuple[float, float, float, float]:
         L1 = self.gd.integrate(
@@ -585,7 +524,7 @@ class iKS:
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
                 # P_ani = self.get_proj(kpt)
                 dp_ii = np.einsum(
-                    "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.occupied_m])
+                    "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
                 dp_ii += dp_ii.conj().T
                 dp_sp[kpt.s] += pack_hermitian(dp_ii)
             self.wfs.kptband_comm.sum(dp_sp)
@@ -787,7 +726,6 @@ class iKS:
             nfixed=self.nfixed,
             linear_solver=linear_solver,
             use_coarse_grid=self.use_coarse_grid,
-            calculate_lagrange_mu=self.calculate_lagrange_mu,
             kin_en_using_band=self.kin_en_using_band,
             nxc_kwargs=self.nxc_kwargs,
             mix_paw_error=self.mix_paw_error,
