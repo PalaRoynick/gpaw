@@ -91,7 +91,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_ij = h_ij.ravel()
                 h_ij = h_ij[h_ij != np.inf]
 
-                # CHECK IF self.f_n IS EQUAL TO HOW IT IS IN OLD
                 ones_mat = np.ones(shape=(len(f_n), len(f_n)))
                 anti_occ = f_n * ones_mat - \
                     f_n[:, np.newaxis] * ones_mat

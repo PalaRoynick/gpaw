@@ -5,7 +5,7 @@ class LBFGS:
     def __init__(self,
                  p_key=False,
                  *,
-                 memory=5):
+                 memory=3):
         """
         L-BFGS optimizer initialization.
 
@@ -104,8 +104,8 @@ class LBFGS:
             # Store changes in variables (ds) and gradients (dy)
             # For first few iterations, ds = previous search direction
             # self.ds[m] = self.search_dir.copy()
-            # self.ds[m] = self.search_dir.copy()
-            self.ds[m] = a_cur - self.a_old
+            self.ds[m] = self.search_dir.copy()
+            # self.ds[m] = a_cur - self.a_old
             self.dy[m] = g_cur - self.g_old
 
             # Compute curvature y^T * s
