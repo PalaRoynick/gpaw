@@ -47,7 +47,8 @@ def test_hess_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
         assert hess_n == pytest.approx(hess_nt, abs=1e-4)
         assert hess_a == pytest.approx(hess_nt, abs=0.2)
 
-        a_mat_u = {0: [np.sqrt(2) * np.pi / 4.0 + 1.0j * np.sqrt(2) * np.pi / 4.0]}
+        a_mat_u = \
+            {0: [np.sqrt(2) * np.pi / 4.0 + 1.0j * np.sqrt(2) * np.pi / 4.0]}
         c_nm_ref = calc.wfs.eigensolver.dm_helper.reference_orbitals
         calc.wfs.eigensolver.rotate_wavefunctions(calc.wfs, a_mat_u, c_nm_ref)
         calc.wfs.eigensolver.update_ks_energy(
@@ -97,9 +98,9 @@ def test_hess_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
                }
         
         eigensolver.initialize(shuttle['ibzwfs'], shuttle['density'],
-                                    shuttle['potential'],
-                                    shuttle['hamiltonian'],
-                                    shuttle['pot_calc'])
+                               shuttle['potential'],
+                               shuttle['hamiltonian'],
+                               shuttle['pot_calc'])
         
         numder = DerivativesNew(eigensolver, shuttle)
 

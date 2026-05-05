@@ -8,6 +8,7 @@ from gpaw.new.lcao.derivatives import DerivativesNew
 
 
 @pytest.mark.do
+
 def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
     """
     test exponential transformation
@@ -71,7 +72,7 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
                 for der in num_ders]
             numerical_results = [
                 der.get_numerical_derivatives(
-                    wfs.eigensolver, ham, wfs, dens, what2calc='grdient')[0]
+                    wfs.eigensolver, ham, wfs, dens, what2calc='gradient')[0]
                 for der in num_ders]
             for x, *ys in zip(*analytical_results, *numerical_results):
                 assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)

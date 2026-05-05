@@ -18,7 +18,7 @@ class DirOptLCAO(LCAOEigensolver):
                  representation,
                  matrix_exp,
                  searchdir_algo_name,
-                 max_step_lenght,
+                 linesearch_algo,
                  occ_calc):
         self.search_dir: LBFGS | None = None
         self.name = "etdm-lcao"
@@ -26,7 +26,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.matrix_exp = matrix_exp
         self.searchdir_algo_name = searchdir_algo_name
         self.occ_calc = occ_calc
-        self.max_step_lenght = max_step_lenght
+        self.linesearch_algo = linesearch_algo
         self.iter = 0
         self.update_ref_orbitals_counter = 20
 
@@ -76,7 +76,7 @@ class DirOptLCAO(LCAOEigensolver):
 
         self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False,
                          searchdir_algo_name=self.searchdir_algo_name,
-                         max_step_lenght=self.max_step_lenght)
+                         linesearch_algo=self.linesearch_algo)
 
         self.precond = False
         self.iter += 1
