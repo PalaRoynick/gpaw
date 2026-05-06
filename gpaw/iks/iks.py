@@ -517,46 +517,85 @@ class iKS:
     def atomic_jacobian(self) -> list[ArrayDict]:
         if self.xc.paw_potmode is PAWPotMode.none:
             return []
-        dp_asp = self.atompart.arraydict(
-            self.density.D_asp.shapes_a, self.wfs.dtype)
-        for a, dp_sp in dp_asp.items():
-            dp_sp[:] = 0.0
+
+        shapes_a = {
+            a: (self.nspins, s.ni, s.ni)
+            for a, s in enumerate(self.setups)
+        }
+        dp_asii = self.atompart.arraydict(shapes_a, self.wfs.dtype)
+        # dp_asp = self.atompart.arraydict(
+        #     self.density.D_asp.shapes_a, self.wfs.dtype)
+        for a, dp_sii in dp_asii.items():
+            dp_sii[:] = 0.0
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
                 # P_ani = self.get_proj(kpt)
                 dp_ii = np.einsum(
                     "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
                 dp_ii += dp_ii.conj().T
-                dp_sp[kpt.s] += pack_hermitian(dp_ii)
-            self.wfs.kptband_comm.sum(dp_sp)
+                dp_sii[kpt.s] += dp_ii
+            self.wfs.kptband_comm.sum(dp_sii)
 
         if len(self.wfs.kd.symmetry.op_scc) != 0:
-            dp_asp.redistribute(self.atompart.as_serial())
+            dp_asii.redistribute(self.atompart.as_serial())
             self.symmetrize_atomic_adjoint_matrices(
-                dp_asp, self.wfs.kd.symmetry.a_sa)
-            dp_asp.redistribute(self.atompart)
+                dp_asii, self.wfs.kd.symmetry.a_sa)
+            dp_asii.redistribute(self.atompart)
+
+        dp_asp = self.atompart.arraydict(
+            self.density.D_asp.shapes_a, self.wfs.dtype)
+        for a, dp_sii in dp_asii.items():
+            for s in range(self.nspins):
+                dp_asp[a][s] = pack_hermitian(dp_sii[s])
         self.update_atomic_jacobian_from_adjoint_matrices(dp_asp)
         return self.J_xasz
 
-    def symmetrize_atomic_adjoint_matrices(self, dp_asp, a_sa):
-        # same as atomrotations.symmetrize_atomic_density_matrices but working with pack_hermitian method
-        if not dp_asp:
+    def symmetrize_atomic_adjoint_matrices(self, dp_asii, a_sa):
+        if not dp_asii:
             return
 
-        def symmetrize(rot, a, D_aii, map_sa):
+        time_reversal = self.wfs.kd.symmetry.time_reversal
+
+        def symmetrize(rot, a, dp_aii, map_sa):
             ni = rot.R_sii.shape[1]
-            D_ii = np.zeros((ni, ni), dtype=D_aii[0].dtype)
+            D_ii = np.zeros((ni, ni), dtype=dp_aii[0].dtype)
             for s, R_ii in enumerate(rot.R_sii):
-                D_ii += R_ii @ D_aii[map_sa[s][a]] @ R_ii.T
+                D_mapped = dp_aii[map_sa[s][a]]
+
+                if time_reversal:
+                    D_mapped = D_mapped.conj()
+
+                D_ii += R_ii @ D_mapped @ R_ii.T
             return D_ii / len(map_sa)
 
         atomrot = self.setups.atomrotations
-        nspins = next(iter(dp_asp.values())).shape[0]
+        nspins = next(iter(dp_asii.values())).shape[0]
+
         for s in range(nspins):
-            dp_aii = [unpack_hermitian(dp_asp[a][s])
-                      for a in range(len(dp_asp))]
+            dp_aii = [dp_asii[a][s] for a in range(len(dp_asii))]
             for a, dp_ii in enumerate(dp_aii):
-                dp_asp[a][s] = pack_hermitian(symmetrize(
-                    atomrot.get_by_a(a), a, dp_aii, a_sa))
+                dp_asii[a][s] = symmetrize(
+                    atomrot.get_by_a(a), a, dp_aii, a_sa)
+
+    # def symmetrize_atomic_adjoint_matrices(self, dp_asp, a_sa):
+    #     # same as atomrotations.symmetrize_atomic_density_matrices but working with pack_hermitian method
+    #     if not dp_asp:
+    #         return
+    #
+    #     def symmetrize(rot, a, D_aii, map_sa):
+    #         ni = rot.R_sii.shape[1]
+    #         D_ii = np.zeros((ni, ni), dtype=D_aii[0].dtype)
+    #         for s, R_ii in enumerate(rot.R_sii):
+    #             D_ii += R_ii @ D_aii[map_sa[s][a]].conj() @ R_ii.T
+    #         return D_ii / len(map_sa)
+    #
+    #     atomrot = self.setups.atomrotations
+    #     nspins = next(iter(dp_asp.values())).shape[0]
+    #     for s in range(nspins):
+    #         dp_aii = [unpack_hermitian(dp_asp[a][s])
+    #                   for a in range(len(dp_asp))]
+    #         for a, dp_ii in enumerate(dp_aii):
+    #             dp_asp[a][s] = pack_hermitian(symmetrize(
+    #                 atomrot.get_by_a(a), a, dp_aii, a_sa))
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
         for a, dp_sp in dp_asp.items():
@@ -896,8 +935,8 @@ class iKS:
     def run_fastest_descent(
         self,
         maxiter: int = 300,
-        alpha_pseudo: float = 1.0,
-        alpha_paw: float = 1.0,
+        alpha_pseudo: float | callable[[int], float] = 1.0,
+        alpha_paw: float | callable[[int], float] = 1.0,
         Ltol: float = 1e-6,
         LDtol: float = 1e-4,
         Jtol: float = 1e-9,
@@ -946,6 +985,10 @@ class iKS:
         if self.use_coarse_grid:
             vxc_sg = self.gd.zeros(self.nspins)
             self.fine2coarse(self.xc.vxc_sg, vxc_sg)
+
+        alphaps = alpha_pseudo
+        alphapaw = alpha_paw
+
         for t in range(1, maxiter):
             self.niter = t
             # step
@@ -960,14 +1003,18 @@ class iKS:
             J_sg = self.jacobian()
             self.atomic_jacobian()
             # update pseudo
-            vxc_sg -= alpha_pseudo * J_sg
+            if hasattr(alpha_pseudo, '__call__'):
+                alphaps = alpha_pseudo(t)
+            vxc_sg -= alphaps * J_sg
             if self.use_coarse_grid:
                 self.coarse2fine(vxc_sg, self.xc.vxc_sg)
             # update paw
+            if hasattr(alpha_paw, '__call__'):
+                alphapaw = alpha_paw(t)
             for vxc_asz, J_asz in zip(vxc_xasz, self.J_xasz):
                 J_asz = self.hamiltonian.atomdist.to_work(J_asz)
                 for a, vxc_sz in vxc_asz.items():
-                    vxc_sz[:] -= alpha_paw * J_asz[a]
+                    vxc_sz[:] -= alphapaw * J_asz[a]
 
             self.logiter(t, L1, L2, LD1, LD2, J_sg)
             # check convergence

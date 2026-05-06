@@ -42,7 +42,7 @@ class iKSLinearSolver:
                     if n == m:
                         coeff += eta
                     self.p_nG[m] += 0.5 * coeff * \
-                        dfde_n[m] * self.kpt.psit_nG[n]
+                        dfde_n[n] * self.kpt.psit_nG[n]
         # recalculate the projections
         self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
 
@@ -56,7 +56,7 @@ class iKSLinearSolver:
             for a, Pp_ni in Pp_ani.items():
                 II += np.einsum("i,ij,j", Pp_ni[n].conj(),
                                 wfs.setups[a].dO_ii, P_ani[a][n])
-            self.iks.hamiltonian.world.sum(II)
+            self.iks.gd.comm.sum(II)
             alpha = II + wfs.integrate(p_nG[n], psit_nG[n])
             p2_nG[n] -= alpha * psit_nG[n]
         return p2_nG
@@ -113,7 +113,7 @@ class iKSLinearSolver:
         for bm in self.dd.blocks_occ:
             for m in bm:
                 for n in bm:
-                    b_nG[m] -= dd.vdiff_nn[n, m] * kpt.psit_nG[n]
+                    b_nG[m] -= kpt.f_n[m] * dd.vdiff_nn[n, m] * kpt.psit_nG[n]
 
         self.apply_rhs_paw_correction(b_nG)
         return b_nG
@@ -133,11 +133,11 @@ class iKSLinearSolver:
                 iks.mix_paw_error,
             )
             dp_ni[:] = np.einsum(
-                'n,ij,nj->ni', -2.0 * kpt.f_n[self.dd.occ], Phi_ii, kpt.P_ani[a][self.dd.occ])
+                'n,ij,nj->ni', 2.0 * kpt.f_n[self.dd.occ], Phi_ii, kpt.P_ani[a][self.dd.occ])
             for bm in self.dd.blocks_occ:
                 for m in bm:
                     for n in bm:
-                        dp_ni[m] += kpt.f_n[m] * self.dd.vdiff_nn[n, m] * \
+                        dp_ni[m] -= kpt.f_n[m] * self.dd.vdiff_nn[n, m] * \
                             iks.wfs.setups[a].dO_ii @ kpt.P_ani[a][n]
         pt.add(b_nG, dp_ani, q=kpt.q)
 
