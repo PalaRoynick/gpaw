@@ -63,6 +63,10 @@ def test_kpts(xc: str, atoms: Atoms, gpaw_new, comm) -> None:
     k1, k2, gap = bandgap(e0)
     assert k1 == 4 and k2 == 5
     assert gap == pytest.approx(gaps['PBE'], abs=0.01)
+    if xc == 'HSE06':
+        from gpaw.new.pw.nschse import non_self_consistent_matrix_elements
+        H_unn = non_self_consistent_matrix_elements(c.dft, 'HSE06')
+        assert np.diag(H_unn[0].data) * Ha == pytest.approx(e[0, 0])
 
 
 def test_2d_non_self_consistent():
