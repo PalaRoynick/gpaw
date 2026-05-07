@@ -15,12 +15,52 @@ class DirOptLCAO(LCAOEigensolver):
 
     def __init__(self,
                  basis,
-                 representation,
-                 matrix_exp,
-                 searchdir_algo_name,
-                 linesearch_algo,
-                 occ_calc):
-        self.search_dir: LBFGS | None = None
+                 occ_calc,
+                 representation='sparse',
+                 matrix_exp='egdecomp',
+                 searchdir_algo_name='l-bfgs',
+                 linesearch_algo={'name': 'max-step',
+                                  'max_step': 0.25},
+                 ):
+        
+        """Class for direct orbital optimization in LCAO mode
+
+        Args:
+            basis : basis set
+            occ_calc : occupation number calculator
+            representation: str
+                How to store the elements of the anti-Hermitian matrix for the
+                matrix exponential. Can be one of 'sparse' (default), 'full',
+                'u-invar'. The latter can be used only for unitary invariant
+                functionals, such as Kohn-Sham functionals when the occupied
+                orbitals have the same occupation number, but not for orbital
+                density dependent functionals, such as when using PZ-SIC.
+                Defaults to 'sparse'.
+            matrix_exp: str
+                Algorithm for calculating the matrix exponential and the
+                gradient with respect to the elements of the anti-Hermitian
+                matrix for the exponential transformation.
+                Can be one of 'pade-approx' or 'egdecomp'
+                Defaults to 'egdecomp'.
+            searchdir_algo_name: str
+                Search direction algorithm. Can be one of the algorithms available
+                in searchdir.py:
+                'l-bfgs': Limited-memory BFGS
+                'l-bfgs-p': Limited-memory BFGS with preconditioner presented
+                    in :doi:`10.1016/j.cpc.2021.108047`
+                'LSR1': limited-memory SR1 algorithm presented in
+                    :doi:`10.1021/acs.jctc.0c00597`
+                Defaults to 'l-bfgs'.
+            linesearch_algo: dict
+                Line search algorithm, only max step is implemented.
+                'max-step': The quasi-Newton step is scaled if it exceeds a
+                    maximum step length.
+                    The default maximum step length is 0.25, and can be changed
+                    by supplying a dictionary:
+                    {'name': 'max-step', 'max_step': max_step}, where max_step
+                    should be a float
+                Defaults to {'name': 'max-step', 'max_step': 0.25}.
+        """
         self.name = "etdm-lcao"
         self.representation = representation
         self.matrix_exp = matrix_exp
@@ -99,7 +139,7 @@ class DirOptLCAO(LCAOEigensolver):
         if self.iter == 0:
             self.initialize(ibzwfs, density, potential, hamiltonian, pot_calc)
 
-        # Dictionary to "deliver" main quantities to 
+        # Dictionary to "deliver" main quantities to
         # various sections of the code
         shuttle = {'ibzwfs': ibzwfs,
                    'density': density,

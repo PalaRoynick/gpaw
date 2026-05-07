@@ -3,6 +3,7 @@ from gpaw.directmin.tools import (d_matrix, expm_ed, expm_ed_unit_inv)
 from gpaw.new.etdm.tools import get_n_occ, vec2skewmat
 from scipy.linalg import expm
 
+
 class SkewHermitian:
     """
     Class for working with skew-Hermitian matrices A (i.e., A^\\dagger = -A).

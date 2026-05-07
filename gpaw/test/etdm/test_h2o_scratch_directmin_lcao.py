@@ -92,7 +92,7 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 # ['l-bfgs', 'l-bfgs-p', 'LSR1P']
 
 # full, True, egdecomp, lbfgsp
-
+@pytest.mark.parametrize('gpaw_new', [False])
 @pytest.mark.parametrize("representation", ['full'])
 @pytest.mark.parametrize("spinpol", [True])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp'])
@@ -151,7 +151,7 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
             nbands='nao',
             symmetry='off',
             # txt=f'{pwd}temp_old_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
-            text='-'
+            txt='-'
         )
 
         atm.calc = calc

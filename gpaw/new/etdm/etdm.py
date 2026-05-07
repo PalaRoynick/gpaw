@@ -23,7 +23,7 @@ class ETDM:
         update_ref=False,
         searchdir_algo_name='l-bfgs',
         linesearch_algo={'name': 'max-step',
-                                  'max_step': 0.25}
+                                 'max_step': 0.25}
     ):
         """
         Initialize the ETDM optimizer.
@@ -43,6 +43,24 @@ class ETDM:
             Determines how the iterative update is applied:
                 - True:    C_{j+1} = C_j exp(A_j)
                 - False:   C_{j+1} = C_0 exp(sum_{0}^{j} A_j)
+        searchdir_algo_name: str
+                Search direction algorithm. Can be one of the algorithms 
+                available in searchdir.py:
+                'l-bfgs': Limited-memory BFGS
+                'l-bfgs-p': Limited-memory BFGS with preconditioner presented
+                    in :doi:`10.1016/j.cpc.2021.108047`
+                'LSR1': limited-memory SR1 algorithm presented in
+                    :doi:`10.1021/acs.jctc.0c00597`
+                Defaults to 'l-bfgs'.
+        linesearch_algo: dict
+                Line search algorithm, only max step is implemented.
+                'max-step': The quasi-Newton step is scaled if it exceeds a
+                    maximum step length.
+                    The default maximum step length is 0.25, and can be changed
+                    by supplying a dictionary:
+                    {'name': 'max-step', 'max_step': max_step}, where max_step
+                    should be a float
+                Defaults to {'name': 'max-step', 'max_step': 0.25}.
         """
 
         self.objfunc = objfunc

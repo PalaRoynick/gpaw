@@ -1,11 +1,15 @@
 from gpaw.new.etdm.objfunc_etdm import ObjectiveFunctionETDM
 from gpaw.new.etdm.tools import get_ndim
+from gpaw.new.ibzwfs import IBZWaveFunctions
 import numpy as np
 
 
 class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
-    def __init__(self, ibzwfs, representation, matrix_exp):
+    def __init__(self,
+                 ibzwfs: IBZWaveFunctions,
+                 representation: str,
+                 matrix_exp: str):
 
         self.ibzwfs = ibzwfs
         self._representation = representation
@@ -108,7 +112,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         Returns
         -------
-        float
+        DFTEnergy
         """
         return self._tot_energy
 
@@ -123,6 +127,13 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                                      pot_calc,
                                      potential,
                                      hamiltonian):
+        
+        """
+        Updates density and potential
+
+        Returns:
+            energies: DFTEnergy
+        """
 
         density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
         potential, energies, _ = pot_calc.calculate(density,
