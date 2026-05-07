@@ -77,7 +77,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_unn.append(h_ij)
 
             else:
-                ind_up = self._a_vec_u[0].ind_up  # CHECK
+                ind_up = self._a_vec_u[0].ind_up
                 if self._representation == 'u-invar':
                     h_ij = h_ia
                 else:
@@ -98,6 +98,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_unn.append(anti_occ * h_ij)
 
         self.tot_energy = energy
+        
         return energy, h_unn
 
     @property
@@ -116,20 +117,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         self._tot_energy = en
 
-    #def update_objfunc(self, density, potential,
-    #                   pot_calc, ibzwfs, hamiltonian,
-    #                   ref_orbitals):
-    #    """
-    #    To be called from inside iterate of dir_opt to update
-    #    the quantities needed inside the etdm step
-    #    """
-    #    self.density = density
-    #    self.potential = potential
-    #    self.pot_calc = pot_calc
-    #    self.ibzwfs = ibzwfs
-    #    self.hamiltonian = hamiltonian
-    #    self.ref_orbitals = ref_orbitals
-
     def update_density_and_potential(self,
                                      ibzwfs,
                                      density,
@@ -141,6 +128,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         potential, energies, _ = pot_calc.calculate(density,
                                                     ibzwfs,
                                                     potential.vHt_x)
+        # Recalculate kinetic energy directly
         energies.set(kinetic=ibzwfs.calculate_kinetic_energy(
             hamiltonian, density), band=0.0)
         self.matrix_calculator = \
@@ -155,6 +143,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         """
         for u, (a, wfs) in enumerate(zip(a_vec_u, ibzwfs)):
 
+            # Make exponential matrix
             u_nn = a.rotation_mat
 
             self.apply_transformation(u_nn.T, wfs, ref_orbitals[u])

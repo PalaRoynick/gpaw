@@ -22,7 +22,8 @@ class ETDM:
         tolerance=5.0e-4,
         update_ref=False,
         searchdir_algo_name='l-bfgs',
-        max_step_lenght=0.25
+        linesearch_algo={'name': 'max-step',
+                                  'max_step': 0.25}
     ):
         """
         Initialize the ETDM optimizer.
@@ -45,7 +46,7 @@ class ETDM:
         """
 
         self.objfunc = objfunc
-        self.max_step_lenght = max_step_lenght
+        self.max_step_lenght = linesearch_algo['max_step']
 
         # Initialize LBFGS search direction algorithm
         # `searchdir_algo` keeps track of the search direction `p_u`
@@ -251,7 +252,6 @@ class ETDM:
         gradient : ndarray
         """
         self.objfunc.a_vec_u = self.a_u
-        # shuttle['a_vec_u'] = self.a_u  # serve?
         self.objfunc.energy = shuttle
         self.objfunc.gradient = shuttle
         return self.objfunc.energy, self.objfunc.gradient

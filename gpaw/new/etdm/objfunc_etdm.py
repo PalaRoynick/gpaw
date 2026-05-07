@@ -184,7 +184,7 @@ class ObjectiveFunctionETDM(ABC):
                 ]
             )
         else:
-            # in this case h_nn has already been worked on in objfunc_lcao
+            # In this case h_nn is already modified in objfunc_lcao
             gradient = np.array(
                 [h_nn for h_nn in h_unn]
             )

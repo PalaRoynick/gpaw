@@ -44,12 +44,14 @@ class DirOptLCAO(LCAOEigensolver):
         Set first reference orbitals and keyword for preconditioner
         """
 
+        # First diagonalization
         super().iterate(ibzwfs, density, potential, hamiltonian)
 
         nelectrons = density.nvalence - density.charge + pot_calc.charge
         ibzwfs.calculate_occs(self.occ_calc, nelectrons)
         self.sort_orbitals_according_to_occ(ibzwfs)
 
+        # Initialize objective function
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
                                              self.matrix_exp)
 
@@ -60,20 +62,21 @@ class DirOptLCAO(LCAOEigensolver):
                               "there are unequally occupied orbitals "
                               "as the functional is not unitary invariant")
 
-        # set a_u_init and indices
+        # Set a_u_init and indices
         a = []
         self.ind_up = []
         for u in range(len(self.objfunc.a_vec_u)):
             a.append(self.objfunc.a_vec_u[u].data)
             self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
 
-        # set reference orbitals
+        # Set reference orbitals
         self.ref_orbitals = []
         for wfs in ibzwfs:
             self.ref_orbitals.append(wfs.C_nM.copy())
 
         a_u_init = np.array(a)
 
+        # Initialize ETDM
         self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False,
                          searchdir_algo_name=self.searchdir_algo_name,
                          linesearch_algo=self.linesearch_algo)
@@ -96,13 +99,8 @@ class DirOptLCAO(LCAOEigensolver):
         if self.iter == 0:
             self.initialize(ibzwfs, density, potential, hamiltonian, pot_calc)
 
-        # Updates the quantities inside the objective function
-        # TO BE REMOVED NOW
-        #self.objfunc.update_objfunc(density, potential,
-        #                            pot_calc, ibzwfs,
-        #                            hamiltonian,
-        #                            self.ref_orbitals)
-
+        # Dictionary to "deliver" main quantities to 
+        # various sections of the code
         shuttle = {'ibzwfs': ibzwfs,
                    'density': density,
                    'ref_orbitals': self.ref_orbitals,
@@ -112,6 +110,8 @@ class DirOptLCAO(LCAOEigensolver):
                    'a_vec_u': None
                    }
 
+        # If first iteration or the reference orbitals have been updated
+        # calculate energy and gradient here
         if self.iter == 1:
             self.etdm._energy, self.etdm._gradient = \
                 self.objfunc._calc_energy_and_gradient(shuttle)
@@ -131,8 +131,8 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.one_iteration(shuttle, precond=self.prec)
 
         error = self.objfunc.error
-#        print("ERROR", error)
 
+        # Calculate the gradient for the next iteration
         self.etdm._gradient = None
         self.etdm.gradient = shuttle
         self.old_gradient = self.etdm.gradient
@@ -233,7 +233,6 @@ class DirOptLCAO(LCAOEigensolver):
         Get the preconditioner for the search algorithm:
         approximate analytical hessian and then apply correction
         """
-        # for now beta0 = 1, no l-bfgs-p, to be added later
         if self.searchdir_algo_name == 'l-bfgs-p':
             beta0 = self.etdm.searchdir_algo.beta0
             gamma = 0.25
