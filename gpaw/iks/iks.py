@@ -523,12 +523,9 @@ class iKS:
             for a, s in enumerate(self.setups)
         }
         dp_asii = self.atompart.arraydict(shapes_a, self.wfs.dtype)
-        # dp_asp = self.atompart.arraydict(
-        #     self.density.D_asp.shapes_a, self.wfs.dtype)
         for a, dp_sii in dp_asii.items():
             dp_sii[:] = 0.0
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
-                # P_ani = self.get_proj(kpt)
                 dp_ii = np.einsum(
                     "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
                 dp_ii += dp_ii.conj().T
@@ -575,27 +572,6 @@ class iKS:
             for a, dp_ii in enumerate(dp_aii):
                 dp_asii[a][s] = symmetrize(
                     atomrot.get_by_a(a), a, dp_aii, a_sa)
-
-    # def symmetrize_atomic_adjoint_matrices(self, dp_asp, a_sa):
-    #     # same as atomrotations.symmetrize_atomic_density_matrices but working with pack_hermitian method
-    #     if not dp_asp:
-    #         return
-    #
-    #     def symmetrize(rot, a, D_aii, map_sa):
-    #         ni = rot.R_sii.shape[1]
-    #         D_ii = np.zeros((ni, ni), dtype=D_aii[0].dtype)
-    #         for s, R_ii in enumerate(rot.R_sii):
-    #             D_ii += R_ii @ D_aii[map_sa[s][a]].conj() @ R_ii.T
-    #         return D_ii / len(map_sa)
-    #
-    #     atomrot = self.setups.atomrotations
-    #     nspins = next(iter(dp_asp.values())).shape[0]
-    #     for s in range(nspins):
-    #         dp_aii = [unpack_hermitian(dp_asp[a][s])
-    #                   for a in range(len(dp_asp))]
-    #         for a, dp_ii in enumerate(dp_aii):
-    #             dp_asp[a][s] = pack_hermitian(symmetrize(
-    #                 atomrot.get_by_a(a), a, dp_aii, a_sa))
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
         for a, dp_sp in dp_asp.items():
