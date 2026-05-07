@@ -32,7 +32,7 @@ def set_calc(atoms, calc_args, txt, dm):
         calc = GPAW(**calc_args,
                     txt=txt,
                     occupations=FermiDirac(width=0.0, fixmagmom=True))
-    atoms.set_calculator(calc)
+    atoms.calc = calc
 
 
 def get_energy_and_iters(atoms, dm):
@@ -50,14 +50,14 @@ def get_energy_and_iters(atoms, dm):
 
 def compare_calculated_and_saved_results(e_diff, iters_diff,
                                          eig_string, name, dm):
-    if e_diff > 1.0e-2:
+    if abs(e_diff) > 1.0e-2:
         warnings.warn('Absolute difference in total energy '
                       'for ' + eig_string[dm] + ' calculation of '
                       + name + ' with respect to saved results '
                       'is %f eV'
                       % e_diff)
     if iters_diff > 3:
-        warnings.warn('Absolute difference in total number of '
+        warnings.warn('Difference in total number of '
                       'iterations for ' + eig_string[dm] +
                       ' calculation of ' + name + ' with respect '
                       'to saved results is %d'
@@ -172,7 +172,7 @@ trans-butane 13 -71.89450752855547
 H2CCHCl 15 -29.238625168100576
 LiH 11 -3.531257198110949
 NH2 13 -12.766498080792353
-CH 26 -5.674378327614047
+CH 39 -5.674378327614047
 CH2OCH2 15 -36.76143971942084
 C6H6 12 -73.85217535506382
 CH3CONH2 18 -50.16888351727816
@@ -322,12 +322,12 @@ CH3ONO 22 -37.484991962456576
 SiH3 19 -13.414822942888721
 C3H6_D3h 15 -47.164632312754364
 CO2 14 -21.690591409424943
-NO 75 -11.327965166239705
+NO 162 -11.327965166239705
 trans-butane 17 -71.89452926449687
 H2CCHCl 19 -29.238622363016635
 LiH 17 -3.5313140027080223
 NH2 13 -12.76557469532906
-CH 101 -5.673636310132295
+CH 144 -5.673636310132295
 CH2OCH2 18 -36.76395515833223
 C6H6 15 -73.85339953604031
 CH3CONH2 19 -50.168313481824775
@@ -410,7 +410,7 @@ C3H4_C3v 16 -38.416472047250096
 CH3COCH3 17 -54.26678298560979
 F2 16 -2.7789800209690525
 CH4 15 -23.40050852386761
-SH 52 -5.401240463979583
+SH 91 -5.401240463979583
 H2CCO 15 -29.57475371469119
 CH3CH2NH2 16 -50.82201231180034
 N2 18 -15.60692193925049

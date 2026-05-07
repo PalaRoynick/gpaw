@@ -1,4 +1,4 @@
-from gpaw.dft import Eigensolver
+from gpaw.dft import Eigensolver, LegacyGPAWError
 from gpaw.new.pwfd.diropt import DirOptPWFD
 from gpaw.new.lcao.dir_opt import DirOptLCAO
 
@@ -10,7 +10,7 @@ class DirectOptimization(Eigensolver):
                  converge_unocc: bool = False,
                  **kwargs):
         if kwargs:
-            raise NotImplementedError
+            raise LegacyGPAWError
         self.converge_unocc = converge_unocc
 
     def todict(self):
@@ -20,8 +20,10 @@ class DirectOptimization(Eigensolver):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
-              converge_bands,
+              convergence,
               setups,
               atoms):
         return DirOptPWFD(

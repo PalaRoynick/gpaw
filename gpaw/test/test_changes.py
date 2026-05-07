@@ -8,7 +8,6 @@ from gpaw.new.ase_interface import GPAW
 
 
 def test_changes():
-
     etot_hse = -9.773299
     fz = 1.44907
     forces_hse = np.array([[0, 0, fz], [0, 0, -fz]])
@@ -37,7 +36,7 @@ def test_changes():
         dft.change(xc='LDA')
 
     dft.change(xc=xc, eigensolver='davidson',
-               occupations=occ_fixed, convergence={'energy': 1e-3})
+               occupations=occ_fixed, convergence={'energy': 1e-5})
 
     ase_calc = dft.ase_calculator()
     etot_xc = ase_calc.get_potential_energy(atoms)
@@ -121,7 +120,6 @@ def test_lcao_to_x(mode):
 
     dft.change_mode(mode)
     dft.converge()
-
     atoms.positions[:] += 0.1
     dft.move_atoms(atoms)
     dft.converge()

@@ -19,9 +19,11 @@ class DirOptPWFD(PWFDEigensolver):
     def __init__(self,
                  *,
                  hamiltonian,
+                 nbands,
+                 domain_band_comm,
                  excited_state: bool = False,
                  converge_unocc: bool = False,
-                 converge_bands: int | str = 'occupied',
+                 convergence: dict,
                  alpha: float = 0.2,
                  scalapack_params=(None, 1, 1, None)):
 
@@ -33,7 +35,12 @@ class DirOptPWFD(PWFDEigensolver):
         self.scalapack = scalapack_params
         self.alpha = alpha
         self.converge_unocc = converge_unocc
-        super().__init__(hamiltonian, converge_bands)
+        super().__init__(
+            hamiltonian=hamiltonian,
+            convergence=convergence,
+            domain_band_comm=domain_band_comm,
+            nbands=nbands,
+            scalapack_parameters=scalapack_params)
 
     def new(self, **params) -> DirOptPWFD:
         return DirOptPWFD(**params)

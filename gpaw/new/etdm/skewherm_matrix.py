@@ -13,9 +13,9 @@ class SkewHermitian:
     Attributes
     ----------
     ndim : int
-        Dimension of the square matrix (number of rows/columns). Dimension "N".
-    n_occ: int
-        Number of occupied orbitals, dimension "M".
+        Dimension N of the skew-Hermitian matrix A (total number of orbitals).
+    nocc: int
+        Number M of occupied orbitals.
     dtype : type
         Either float or complex.
         - float → real skew-symmetric matrices
@@ -30,7 +30,9 @@ class SkewHermitian:
         occupied-unoccupied blocks, respectively.
     """
 
-    def __init__(self, ndim: int, f_n: np.ndarray,
+    def __init__(self,
+                 ndim: int,
+                 nocc: int,
                  dtype: type,
                  representation='full',
                  matrix_exp='egdecomp',
@@ -42,8 +44,8 @@ class SkewHermitian:
         ----------.
         ndim: int
             ndim = ibzwfs.nbands
-        f_n: np.ndarray
-            vector containing occupation numbers of given spin and kpt
+        nocc : int
+            Number M of occupied orbitals.
         dtype : type
             Either float or complex.
         data : np.ndarray
@@ -63,11 +65,11 @@ class SkewHermitian:
         self.matrix_exp = matrix_exp
 
         self._ndim = ndim
-        self._n_occ = get_n_occ(f_n)
+        self._nocc = nocc
 
         # if all the orbitals are occupied
         # the only possible representation is full
-        if self._ndim == self._n_occ:
+        if self._ndim == self._nocc:
             self._representation = 'full'
 
         self.ind_up = self._make_ind_up()
@@ -76,6 +78,10 @@ class SkewHermitian:
         self._len = len(self.ind_up[0])
 
         # Assign initial data (if provided)
+        if data is not None:
+            self.data = data
+        else:
+            self.data = np.zeros(shape=self._len, dtype=self._dtype)
         if data is not None:
             self.data = data
         else:
@@ -99,13 +105,13 @@ class SkewHermitian:
             # Independent elements of the N * (M - N)
             # occupied-unoccupied block
             ind_up_uinv1, ind_up_uinv2 = \
-                np.indices((self._n_occ, (self._ndim - self._n_occ)))
+                np.indices((self._nocc, (self._ndim - self._nocc)))
             return ((np.concatenate(ind_up_uinv1)).tolist(),
-                    (np.concatenate(ind_up_uinv2 + self._n_occ)).tolist())
+                    (np.concatenate(ind_up_uinv2 + self._nocc)).tolist())
         elif self._representation == 'sparse':
             # Independent elements of the N * M matrix made
             # of the occupied-occupied and occupied-unoccupied blocks
-            return np.triu_indices(self._n_occ, 1, self._ndim)
+            return np.triu_indices(self._nocc, 1, self._ndim)
         else:
             raise ValueError(f'Unknown representation: '
                              f'{self._representation}')
@@ -202,8 +208,8 @@ class SkewHermitian:
             a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
 
             if self._representation == 'u-invar':
-                # it only needs the upper right block of the A matrix.
-                a_upp_r = a_mat[:self._n_occ, -(self._ndim - self._n_occ):]
+                # it only needs the upper right block of the A matrix
+                a_upp_r = a_mat[:self._nocc, -(self._ndim - self._nocc):]
                 self._rotation_mat = expm_ed_unit_inv(a_upp_r)
                 # they do not get calculated by expm_ed_unit_inv
                 self._evals, self._evecs = np.linalg.eigh(1.0j * a_mat)

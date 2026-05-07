@@ -82,8 +82,7 @@ class GPWFiles(CachedFilesHandler):
     """Create gpw-files."""
 
     def __init__(self, folder: Path, comm):
-        super().__init__(folder, '.gpw')
-        self.comm = comm
+        super().__init__(folder, '.gpw', comm=comm)
 
     def _calculate_and_write(self, name, work_path):
         calc = getattr(self, name)()
@@ -486,6 +485,27 @@ class GPWFiles(CachedFilesHandler):
                 localizationtype='PM_PZ',
                 localizationseed=42,
                 functional={'name': 'PZ-SIC', 'scaling_factor': (0.5, 0.5)},
+            ),
+            convergence={'eigenstates': 1e-4},
+            mixer={'backend': 'no-mixing'},
+            nbands='nao',
+            symmetry='off',
+        )
+        atm.get_potential_energy()
+        return atm.calc
+
+    @gpwfile
+    def h2o_lcaosic_innerloop(self):
+        atm = self.h2o_maker(vacuum=4.0)
+        atm.calc = self.GPAW(
+            mode=LCAO(force_complex_dtype=True),
+            h=0.22,
+            occupations={'name': 'fixed-uniform'},
+            eigensolver=LCAOETDM(
+                localizationtype='PM_PZ',
+                localizationseed=42,
+                functional={'name': 'PZ-SIC', 'scaling_factor': (0.5, 0.5)},
+                localize_every=1,
             ),
             convergence={'eigenstates': 1e-4},
             mixer={'backend': 'no-mixing'},
@@ -1270,7 +1290,7 @@ class GPWFiles(CachedFilesHandler):
         si = bulk('Si', 'diamond', a=5.43)
         k = 3
         si.calc = self.GPAW(
-            mode='fd', kpts=(k, k, k,),
+            mode='fd', kpts=(k, k, k),
             symmetry={'point_group': False,
                       'time_reversal': False},
             txt=self.folder / 'si_fd_bz.txt')
@@ -1868,7 +1888,7 @@ class GPWFiles(CachedFilesHandler):
     def bi2i6_pw_nosym(self):
         return self._bi2i6(symmetry='off')
 
-    def _mos2(self, symmetry=None):
+    def _mos2(self, symmetry=None, legacy_gpaw=False):
         if symmetry is None:
             symmetry = {}
         from ase.build import mx2
@@ -1879,6 +1899,7 @@ class GPWFiles(CachedFilesHandler):
         nkpts = 6
         tag = '_nosym' if symmetry == 'off' else ''
         atoms.calc = self.GPAW(
+            legacy_gpaw=legacy_gpaw,
             mode=PW(ecut),
             xc='LDA',
             kpts={'size': (nkpts, nkpts, 1), 'gamma': True},
@@ -2576,6 +2597,28 @@ class GPWFiles(CachedFilesHandler):
             txt=self.folder / 'diamond_lcao.txt')
         atoms.get_potential_energy()
         return atoms.calc
+
+    @gpwfile
+    def si_scs_lcao(self):
+        """
+        Silicon with self-consistent scissors eigensolver
+        """
+        shifts = [(0.0, -0.0, 2)]
+        atoms = bulk('Si')
+        Nk = 2
+        calc = self.GPAW(
+            legacy_gpaw=False,
+            mode='lcao',
+            basis='dzp',
+            xc='LDA',
+            nbands='nao',
+            kpts=dict(size=(Nk, Nk, Nk), gamma=True),
+            eigensolver={'name': 'scissors', 'shifts': shifts},
+            occupations=FermiDirac(0.001),
+            txt=self.folder / 'si_scs_lcao.txt')
+        atoms.calc = calc
+        atoms.get_potential_energy()
+        return calc
 
 
 # We add Si fixtures with various symmetries to the GPWFiles namespace

@@ -6,7 +6,7 @@ from functools import cached_property
 import numpy as np
 import pytest
 
-from gpaw import debug, setup_paths, GPAW_NEW
+from gpaw import debug, setup_paths
 from gpaw.cli.info import info
 from gpaw.mpi import broadcast, world
 from gpaw.test.gpwfile import GPWFiles, _all_gpw_methodnames
@@ -302,12 +302,12 @@ def all_gpw_files(request, gpw_files, pytestconfig):
 
 
 @pytest.fixture(scope='session')
-def mme_files(request, gpw_files):
+def mme_files(request, gpw_files, _not_world):
     """Reuse mme files"""
     cache = request.config.cache
     mme_cachedir = cache.mkdir('gpaw_test_mmefiles')
 
-    return MMEFiles(mme_cachedir, gpw_files)
+    return MMEFiles(mme_cachedir, gpw_files, comm=_not_world)
 
 
 class GPAWPlugin:
@@ -401,15 +401,6 @@ def require_real_mpi(_not_world):
         pytest.skip('This test requires actual MPI to be enabled')
 
 
-@pytest.fixture
-def needs_ase_master():
-    from ase.utils.filecache import MultiFileJSONCache
-    try:
-        MultiFileJSONCache('bla-bla', comm=None)
-    except TypeError:
-        pytest.skip('ASE is too old')
-
-
 def pytest_report_header(config, start_path):
     # Use this to add custom information to the pytest printout.
     yield f'GPAW MPI rank={world.rank}, size={world.size}'
@@ -501,9 +492,3 @@ class MPIHelper:
 @pytest.fixture
 def mpi(comm):
     return MPIHelper(comm)
-
-
-@pytest.fixture
-def gpaw_new() -> bool:
-    """Are we testing the new code?"""
-    return GPAW_NEW

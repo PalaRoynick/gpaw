@@ -1,21 +1,29 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from pathlib import Path
+from typing import IO, TYPE_CHECKING, Any
 
 import numpy as np
 from ase import Atoms
+from ase.geometry import cell_to_cellpar
 from ase.units import Bohr, Ha
+
+from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.densities import Densities
 from gpaw.electrostatic_potential import ElectrostaticPotential
 from gpaw.gpu import as_np
+from gpaw.gpu import cupy as cp
+from gpaw.mpi import MPIComm
 from gpaw.mpi import broadcast as bcast
-from gpaw.mpi import broadcast_float, MPIComm, receive, send, serial_comm
-from gpaw.new import trace, zips
+from gpaw.mpi import broadcast_float, receive, send, serial_comm
+from gpaw.new import trace
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
+from gpaw.new.gpw import read_gpw
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger, indent
 from gpaw.new.potential import Potential
@@ -24,6 +32,7 @@ from gpaw.setup import Setups
 from gpaw.typing import Array1D, Array2D
 from gpaw.utilities import (check_atoms_too_close,
                             check_atoms_too_close_to_boundary)
+from gpaw.utilities.timing import simpletimer
 
 if TYPE_CHECKING:
     from gpaw.dft import Mode, Parameters
@@ -134,7 +143,7 @@ class DFTCalculation:
             ibzwfs.calculate_occs(scf_loop.occ_calc, nelectrons)
 
         write_atoms(atoms, builder.initial_magmom_av, builder.grid, log)
-        log(ibzwfs)
+        ibzwfs.summary(log)
         log(density)
         log(potential)
         log(builder.setups)
@@ -173,6 +182,9 @@ class DFTCalculation:
             self.density.update(self.ibzwfs)
         self.potential.move(atomdist)
         self.scf_loop.hamiltonian.move(self.relpos_ac)
+        if self.params.experimental.get('paw_corr_mixer', False):
+            for basemixer in self.scf_loop.mixer.basemixers:
+                basemixer.dotprod.atomdist = atomdist
 
         self.potential, self.energies, _ = self.pot_calc.calculate(
             self.density, self.ibzwfs, self.potential.vHt_x)
@@ -187,12 +199,20 @@ class DFTCalculation:
 
         return self
 
+    @trace
     def iconverge(self, maxiter=None, calculate_forces=None):
 
         if calculate_forces is None:
             calculate_forces = self._calculate_forces
 
         self.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
+
+        if self.params.mode.name == 'pw':
+            if self.params.mode.dtype == 'single':
+                if not (GPAW_NO_C_EXTENSION or self.ibzwfs.xp is cp):
+                    raise NotImplementedError(
+                        'Single precision is GPU or pure python only.')
+
         for ctx in self.scf_loop.iterate(self.ibzwfs,
                                          self.density,
                                          self.potential,
@@ -239,7 +259,7 @@ class DFTCalculation:
             return self.results['dipole'] * units['dipole']
         dipole_v = self.density.calculate_dipole_moment(self.relpos_ac)
         x, y, z = dipole_v * Bohr
-        self.log(f'dipole moment: [{x:.6f}, {y:.6f}, {z:.6f}]  # |e|*Ang\n')
+        self.log(f'dipole moment: ({x:.6f}, {y:.6f}, {z:.6f})  # |e|*Ang\n')
         self.results['dipole'] = dipole_v
         return self.results['dipole'] * units['dipole']
 
@@ -252,18 +272,20 @@ class DFTCalculation:
 
         if self.density.ncomponents > 1:
             x, y, z = mm_v
-            self.log(f'total magnetic moment: [{x:.6f}, {y:.6f}, {z:.6f}]\n')
-            self.log('local magnetic moments: [')
-            for a, (setup, m_v) in enumerate(zips(self.setups, mm_av)):
-                x, y, z = m_v
-                c = ',' if a < len(mm_av) - 1 else ']'
-                self.log(f'  [{x:9.6f}, {y:9.6f}, {z:9.6f}]{c}'
-                         f'  # {setup.symbol:2} {a}')
+            self.log(f'Total magnetic moment: ({x:.6f}, {y:.6f}, {z:.6f})\n')
+            self.log.table(
+                'Local magnetic moments',
+                header=['x', 'y', 'z'],
+                rows=[[f'{mm:.6f}' for mm in mm_v] for mm_v in mm_av],
+                comments=[f'{setup.symbol:2} {a:3}'
+                          for a, setup in enumerate(self.setups)])
             self.log()
         return mm_v, mm_av
 
     def calculate_forces(self):
         """Calculate atomic forces in eV / Angstrom."""
+
+        forcetimer = simpletimer()
 
         if 'forces' not in self.results:
             self._calculate_forces()
@@ -272,15 +294,19 @@ class DFTCalculation:
             return self.results['forces'] * units['forces']
 
         self.forces_have_been_printed = True
-        self.log('\nForces in eV/Ang:')
         F_av = self.results['forces'] * units['forces']
-        for a, setup in enumerate(self.setups):
-            x, y, z = F_av[a]
-            self.log(f'  {a:4} {setup.symbol:2} '
-                     f'{x:10.5f} {y:10.5f} {z:10.5f}')
+        self.log.table(
+            '\nForces',
+            comment='eV/Ang',
+            header=['x', 'y', 'z'],
+            rows=[[f'{f:.5f}' for f in F_v] for F_v in F_av],
+            comments=[f'{setup.symbol:2} {a:3}'
+                      for a, setup in enumerate(self.setups)])
+
+        self.log(f'\nForce computation time: {forcetimer():.3f}  # s')
         self.log.fd.flush()
 
-        return self.results['forces'] * units['forces']
+        return F_av
 
     def _calculate_forces(self):
         xc = self.pot_calc.xc
@@ -290,7 +316,8 @@ class DFTCalculation:
         F_av = self.ibzwfs.forces(self.potential, self.scf_loop.hamiltonian,
                                   self.density.D_asii)
 
-        getattr(xc.xc, 'add_forces', lambda F_av: None)(F_av)  # QNA
+        if xc.name == 'QNA':
+            getattr(xc.xc, 'add_forces', lambda F_av: None)(F_av)  # QNA
 
         pot_calc = self.pot_calc
         Q_aL = self.density.calculate_compensation_charge_coefficients()
@@ -332,14 +359,21 @@ class DFTCalculation:
     def calculate_stress(self) -> None:
         """Calculate stress in eV / Angstrom^3."""
 
+        stresstimer = simpletimer()
+
         if 'stress' in self.results:
             return self.results['stress'] * units['stress']
         stress_vv = self.pot_calc.stress(
             self.ibzwfs, self.density, self.potential)
-        self.log('\nstress tensor: [  # eV/Ang^3')
-        for (x, y, z), c in zips(stress_vv * units['stress'], ',,]'):
-            self.log(f'  [{x:13.6f}, {y:13.6f}, {z:13.6f}]{c}')
+        self.log.table(
+            '\nStress tensor',
+            comment='eV/Ang^3',
+            header=list('xyz'),
+            rows=[[f'{s:.6f}' for s in s_v]
+                  for s_v in stress_vv * units['stress']])
+
         self.results['stress'] = stress_vv.flat[[0, 4, 8, 5, 2, 1]]
+        self.log(f'\nStress computation time: {stresstimer():.3f}  # s\n')
         return self.results['stress'] * units['stress']
 
     def write_converged(self) -> None:
@@ -450,54 +484,55 @@ class DFTCalculation:
         comm = self.comm
 
         # gather data on master
-        ibz, ncomponents, wfs_u = self.ibzwfs.gather()
+        ibz, ncomponents, wfs_u, fermi_levels = self.ibzwfs.gather()
         dH_asp, vt_sR, dedtaut_sR, vHt_x = self.potential.gather()
         D_asp, nt_sR, taut_sR = self.density.gather()
 
         # only create new dft object on master
-        if comm.rank == 0:
+        if comm.rank != 0:
+            return None
 
-            params.parallel = {'kpt': 1, 'band': 1, 'domain': 1}
-            builder = params.dft_component_builder(atoms, log=txt,
-                                                   comm=serial_comm)
-            # make new wfs on master
-            if mode == 'lcao':
-                from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
-                IBZWFs = LCAOIBZWaveFunctions
-            else:
-                from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
-                IBZWFs = PWFDIBZWaveFunctions   # type: ignore
-
-            ibzwfs = IBZWFs(
-                ibz=ibz,
-                ncomponents=ncomponents,
-                wfs_u=wfs_u,
-                kpt_comm=serial_comm,
-                kpt_band_comm=serial_comm,
-                comm=serial_comm)
-
-            potential = Potential(vt_sR=vt_sR, dH_asii=dH_asp.to_full(),
-                                  dedtaut_sR=dedtaut_sR, vHt_x=vHt_x,
-                                  e_stress=self.potential.e_stress)
-
-            density = Density.from_data_and_setups(
-                nt_sR, taut_sR, D_asp.to_full(),
-                builder.params.charge,
-                builder.setups,
-                builder.get_pseudo_core_densities(),
-                builder.get_pseudo_core_ked())
-
-            dft = DFTCalculation(
-                atoms, ibzwfs, density, potential,
-                builder.setups,
-                builder.create_scf_loop(),
-                builder.create_potential_calculator(),
-                builder.log,
-                params=params,
-                energies=self.energies)
+        params.parallel = {'kpt': 1, 'band': 1, 'domain': 1}
+        builder = params.dft_component_builder(atoms, log=txt,
+                                               comm=serial_comm)
+        # make new wfs on master
+        if mode == 'lcao':
+            from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
+            IBZWFs = LCAOIBZWaveFunctions
         else:
-            dft = None
+            from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
+            IBZWFs = PWFDIBZWaveFunctions   # type: ignore
 
+        ibzwfs = IBZWFs(
+            ibz=ibz,
+            ncomponents=ncomponents,
+            wfs_u=wfs_u,
+            kpt_comm=serial_comm,
+            kpt_band_comm=serial_comm,
+            comm=serial_comm)
+        ibzwfs.fermi_levels = fermi_levels
+
+        potential = Potential(vt_sR=vt_sR, dH_asii=dH_asp.to_full(),
+                              dedtaut_sR=dedtaut_sR, vHt_x=vHt_x,
+                              e_stress=self.potential.e_stress)
+
+        density = Density.from_data_and_setups(
+            nt_sR, taut_sR, D_asp.to_full(),
+            builder.params.charge,
+            builder.setups,
+            builder.get_pseudo_core_densities(),
+            builder.get_pseudo_core_ked())
+
+        dft = DFTCalculation(
+            atoms, ibzwfs, density, potential,
+            builder.setups,
+            builder.create_scf_loop(),
+            builder.create_potential_calculator(),
+            builder.log,
+            params=params,
+            energies=self.energies)
+
+        dft.results = self.results.copy()
         return dft
 
     def change(self,
@@ -639,7 +674,7 @@ class DFTCalculation:
             comm=self.comm)
 
         write_atoms(atoms, builder.initial_magmom_av, builder.grid, log)
-        log(ibzwfs)
+        ibzwfs.summary(log)
         log(density)
         log(potential)
         log(builder.setups)
@@ -687,6 +722,60 @@ class DFTCalculation:
 
         self.results = {}
 
+    def write_gpw_file(self, filename,
+                       *,
+                       include_wfs: bool = False,
+                       precision: str = 'double',
+                       include_projections: bool = True):
+        """Write calculator object to a file.
+
+        Parameters
+        ----------
+        filename:
+            File to be written.
+        include_wfs:
+            Use ``include_wfs=True``
+            to include wave functions in the file.
+        precision:
+            'double' (the default) or 'single'.
+        include_projections:
+            Use ``include_projections=False`` to not include
+            the PAW-projections.
+        """
+        mode = ''
+        if include_wfs:
+            mode = 'all'
+        self.log(f'Writing to {filename} (mode={mode!r})\n')
+        self.ase_calculator().write(filename,
+                                    mode=mode,
+                                    precision=precision,
+                                    include_projections=include_projections)
+        self.comm.barrier()
+
+    @classmethod
+    def from_gpw_file(cls,
+                      filename: str | Path | IO[str],
+                      log: Logger | str | Path | IO[str] | None = None,
+                      comm=None,
+                      parallel: dict[str, Any] = None,
+                      dtype=None,
+                      force_complex_dtype: bool = False,
+                      object_hooks: dict[str,
+                                         Callable[[dict], Any]] | None = None
+                      ) -> DFTCalculation:
+
+        (atoms,
+         dft,
+         builder) = read_gpw(filename=filename,
+                             log=log,
+                             comm=comm,
+                             parallel=parallel,
+                             dtype=dtype,
+                             force_complex_dtype=force_complex_dtype,
+                             object_hooks=object_hooks)
+
+        return dft
+
     def get_state(self):
         return DFTState(self.ibzwfs, self.density, self.potential)
 
@@ -701,9 +790,34 @@ def write_atoms(atoms: Atoms,
                 magmom_av: Array2D,
                 grid: UGDesc,
                 log) -> None:
-    from gpaw.old.output import print_cell, print_positions
-    print_positions(atoms, log, magmom_av)
-    print_cell(grid._gd, grid.pbc, log)
+    symbols = atoms.get_chemical_symbols()
+    rows = []
+    for a, (x, y, z) in enumerate(atoms.positions):
+        symbol = symbols[a]
+        X, Y, Z = magmom_av[a]
+        rows.append([f'{a}',
+                     symbol,
+                     f'{x:.6f}', f'{y:.6f}', f'{z:.6f}',
+                     f'({X:7.4f}, {Y:7.4f}, {Z:7.4f})'])
+    log.table(
+        '\nAtoms',
+        comment='Å, Bohr magnetons',
+        header=',symbol,x,y,z,initial magnetic moments'.split(','),
+        rows=rows)
+
+    par = cell_to_cellpar(atoms.cell)
+    log.table(
+        '\nUnit cell',
+        comment='Å',
+        header='periodic,x,y,z,lengths,angles'.split(','),
+        rows=[['yes' if p else ' no',
+               f'{x:.6f}', f'{y:.6f}', f'{z:.6f}',
+               f'{L:.6f}', f'{A:.6f}']
+              for p, (x, y, z), L, A in zip(atoms.pbc,
+                                            atoms.cell,
+                                            par[:3],
+                                            par[3:])])
+    log()
 
 
 class DFTState:

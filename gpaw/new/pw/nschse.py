@@ -58,7 +58,7 @@ class NonSelfConsistentHybridXCCalculator:
             parse_name(xc)
         self.comm = ibzwfs.comm
         self.log = Logger(log, self.comm)
-        self.grid = density.nt_sR.desc.new(dtype=complex, comm=None)
+        self.grid = density.nt_sR.desc.new(dtype=ibzwfs.dtype, comm=None)
         self.delta_aiiL = [setup.Delta_iiL for setup in setups]
         self.nbzk = len(ibzwfs.ibz.bz)
         xp = np
@@ -94,7 +94,7 @@ class NonSelfConsistentHybridXCCalculator:
         mp = ibzwfs.ibz.bz
         assert isinstance(mp, MonkhorstPackKPoints)
         self.coulomb = truncated_coulomb(
-            self.grid.cell_cv, mp.size_c, exx_omega, yukawa)
+            self.grid.cell_cv, mp, exx_omega, yukawa)
 
     def calculate(self,
                   ibzwfs: PWFDIBZWaveFunctions,
@@ -254,8 +254,7 @@ class NonSelfConsistentHybridXCCalculator:
                 self.ghat_aLR.add_to(rhot_nR, Q_anL)
                 rhot_nG = pw.empty(len(rhot_nR))
                 rhot_nR.fft(out=rhot_nG, plan=self.plan)
-            rhot_nG.data *= v_G**0.5
-            e_n += rhot_nG.norm2() * f1_n[n1]
+            e_n += rhot_nG.norm2('weighted', v_G) * f1_n[n1]
         return e_n
 
     def _semi_local_xc_parts(self,

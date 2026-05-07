@@ -10,7 +10,6 @@ from gpaw.poisson import FDPoissonSolver
 
 @pytest.mark.ci
 @pytest.mark.lrtddft
-@pytest.mark.old_gpaw_only
 def test_inducedfield_lrtddft(in_tmp_dir):
     do_print_values = False  # Use this for printing the reference values
     poisson_eps = 1e-12
@@ -38,7 +37,7 @@ def test_inducedfield_lrtddft(in_tmp_dir):
     calc.write('na2_gs_casida.gpw', mode='all')
 
     # 2) Casida calculation
-    calc = GPAW('na2_gs_casida.gpw')
+    calc = GPAW('na2_gs_casida.gpw', legacy_gpaw=True)
     istart = 0
     jend = 20
     lr = LrTDDFT(calc, xc='LDA',
@@ -49,7 +48,7 @@ def test_inducedfield_lrtddft(in_tmp_dir):
     # Start from scratch
     del lr
     del calc
-    calc = GPAW('na2_gs_casida.gpw')
+    calc = GPAW('na2_gs_casida.gpw', legacy_gpaw=True)
     # calc.initialize_positions()
     # calc.set_positions()
     lr = LrTDDFT.read('na2_lr.dat.gz')

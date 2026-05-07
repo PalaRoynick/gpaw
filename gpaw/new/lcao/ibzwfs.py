@@ -5,11 +5,12 @@ from gpaw.new.density import Density
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
+from gpaw.core.matrix import MatrixWithNoData
 
 
 class LCAOIBZWaveFunctions(IBZWaveFunctions):
     def has_wave_functions(self):
-        return True
+        return not isinstance(self._wfs_u[0].C_nM, MatrixWithNoData)
 
     def move(self, relpos_ac, atomdist):
         from gpaw.new.lcao.builder import tci_helper
@@ -48,7 +49,7 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
         comp_charge = (4 * pi)**0.5 * sum(float(ccc_L[0])
                                           for ccc_L in ccc_aL.values())
         comp_charge = ccc_aL.layout.atomdist.comm.sum_scalar(comp_charge)
-        density.nt_sR.data *= -comp_charge / pseudo_charge
+        density.nt_sR.data *= (-comp_charge - density.charge) / pseudo_charge
 
     def convert_to(self,
                    mode: str,
@@ -86,6 +87,7 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
                 setups=lcaowfs.setups,
                 relpos_ac=lcaowfs.relpos_ac,
                 atomdist=lcaowfs.atomdist,
+                domain_band_comm=lcaowfs.domain_band_comm,
                 ncomponents=self.ncomponents,
                 qspiral_v=qspiral_v)
             wfs.eig_n = eig_n
@@ -94,10 +96,12 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
                 wfs._occ_n[:self.nbands] = lcaowfs._occ_n[:nbands]
             return wfs
 
-        return PWFDIBZWaveFunctions.create(
+        ibzwfs = PWFDIBZWaveFunctions.create(
             ibz=self.ibz,
             ncomponents=self.ncomponents,
             create_wfs_func=create_wfs,
             kpt_comm=self.kpt_comm,
             kpt_band_comm=self.kpt_band_comm,
             comm=self.comm)
+        ibzwfs.fermi_levels = self.fermi_levels
+        return ibzwfs

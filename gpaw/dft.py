@@ -12,7 +12,6 @@ from numpy.typing import DTypeLike
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 
-from gpaw import GPAW_NEW
 from gpaw.mpi import MPIComm
 from gpaw.new.calculation import DFTCalculation
 from gpaw.new.logger import Logger
@@ -192,7 +191,8 @@ class Eigensolver(Parameter):
                     return eigensolvers['davidson'](**kwargs)
                 if name in eigensolvers:
                     return eigensolvers[name](**kwargs)
-                raise ValueError(f'Unknown name of eigensolver: {name}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown name of eigensolver: {name}')
             case {**kwargs}:
                 return DefaultEigensolver(kwargs)
             case NewEigensolver():
@@ -200,9 +200,8 @@ class Eigensolver(Parameter):
             case OES():
                 return cls.from_param(eigensolver.todict())
             case _:
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown eigensolver input: {eigensolver}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown eigensolver input: {eigensolver}')
 
 
 class DefaultEigensolver(Eigensolver):
@@ -227,17 +226,21 @@ class PWFDEigensolverParameter(Eigensolver):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
-              converge_bands,
+              convergence,
               setups,
               atoms):
         return self.cls(
             nbands,
             wf_desc,
             band_comm,
+            domain_band_comm,
             hamiltonian,
-            converge_bands,
+            convergence,
             niter=self.niter,
+            scalapack_parameters=scalapack_parameters,
             max_buffer_mem=self.max_buffer_mem)
 
 
@@ -258,7 +261,7 @@ class PPCG(PWFDEigensolverParameter):
                  rr_modulo=5,
                  include_cg=True,
                  promote_inner_dtype=False,
-                 tolerances: tuple[float, float, float] = (0.0, 0.0, 4e-8)):
+                 tolerances: tuple[float, float, float] | None = None):
         self.niter = niter
         self.min_niter = min_niter
         self.max_buffer_mem = max_buffer_mem
@@ -267,10 +270,6 @@ class PPCG(PWFDEigensolverParameter):
         self.include_cg = include_cg
         self.promote_inner_dtype = promote_inner_dtype
         self.tolerances = tolerances
-
-        # Ensure backwards compatibity
-        if self.tolerances is None:
-            self.tolerances = (0.0, 0.0, 4e-8)
 
     def todict(self):
         return {'niter': self.niter,
@@ -286,8 +285,10 @@ class PPCG(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
-              converge_bands,
+              convergence,
               setups,
               atoms):
         return self.cls(
@@ -295,7 +296,9 @@ class PPCG(PWFDEigensolverParameter):
             wf_desc,
             band_comm,
             hamiltonian,
-            converge_bands,
+            convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             min_niter=self.min_niter,
             max_buffer_mem=self.max_buffer_mem,
@@ -330,8 +333,10 @@ class RMMDIIS(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               create_preconditioner,
-              converge_bands,
+              convergence,
               setups,
               atoms):
         return self.cls(
@@ -339,7 +344,9 @@ class RMMDIIS(PWFDEigensolverParameter):
             wf_desc,
             band_comm,
             create_preconditioner,
-            converge_bands,
+            convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             diis_steps=self.diis_steps,
             max_buffer_mem=self.max_buffer_mem,
@@ -505,9 +512,9 @@ class Symmetry(Parameter):
             atoms,
             setup_ids=setup_ids,
             magmoms=magmoms,
-            rotations=self.rotations,
-            translations=self.translations,
-            atommaps=self.atommaps,
+            rotation_scc=self.rotations,
+            translation_sc=self.translations,
+            atommap_sa=self.atommaps,
             extra_ids=self.extra_ids,
             tolerance=self.tolerance,
             point_group=self.point_group,
@@ -611,7 +618,7 @@ class XC(Parameter):
     def functional(self, *, collinear: bool, atoms: Atoms | None = None):
         from gpaw.xc import XC as xc
         return xc({'name': self.name, **self.kwargs},
-                  collinear=collinear, atoms=atoms)
+                  collinear=collinear, atoms=atoms, legacy_gpaw=False)
 
     @classmethod
     def from_param(cls, xc):
@@ -859,7 +866,9 @@ def _parse_experimental(experimental: dict | None,
         magmoms = experimental.pop('magmoms')
     unknown = experimental.keys() - {'backwards_compatible',
                                      'ccirs',
-                                     'pw_pot_calc'}
+                                     'pw_pot_calc',
+                                     'paw_corr_mixer',
+                                     'new_basis'}
     if unknown:
         warnings.warn(f'Unknown experimental keyword(s): {unknown}',
                       stacklevel=3)
@@ -981,7 +990,7 @@ def GPAW(
     communicator:
         MPI-communicator.  Default is to use ``gpaw.mpi.world``.
     object_hooks:
-        Dictionart of hook-functions to create custom parameter-objects.
+        Dictionary of hook-functions to create custom parameter-objects.
     """
     from gpaw.new.ase_interface import ASECalculator
     from gpaw.new.gpw import read_gpw
@@ -999,20 +1008,22 @@ def GPAW(
             legacy_gpaw = True
 
     # Sorry about the following mess, but it will become a lot simpler
-    # in the future!
+    # in the near future!
     params = None
+    _use_old_if_reading_new_fails = False
     if legacy_gpaw is None:
-        if GPAW_NEW == 147:
-            can, params = _can_use_new(filename, kwargs)
-            legacy_gpaw = not can
-        else:
-            legacy_gpaw = False
+        can, params = _can_use_new(filename, kwargs)
+        legacy_gpaw = not can
+        _use_old_if_reading_new_fails = True
 
     if legacy_gpaw:
         from gpaw.old.calculator import GPAW as OldGPAW
         kwargs = {key: value
                   for key, value in kwargs.items() if value is not None}
-        return OldGPAW(filename, txt=txt, communicator=communicator, **kwargs)
+        return OldGPAW(filename,
+                       txt=txt,
+                       communicator=communicator,
+                       **kwargs)
 
     if txt == '?':
         txt = '-' if filename is None else None
@@ -1025,11 +1036,21 @@ def GPAW(
             raise ValueError(
                 'Illegal argument(s) when reading from a file: '
                 f'{", ".join(args)}')
-        atoms, dft, params, _ = read_gpw(filename,
-                                         log=log,
-                                         parallel=parallel,
-                                         object_hooks=object_hooks)
-        return ASECalculator(params,
+
+        try:
+            atoms, dft, _ = read_gpw(filename,
+                                     log=log,
+                                     parallel=parallel,
+                                     object_hooks=object_hooks)
+        except LegacyGPAWError:
+            if not _use_old_if_reading_new_fails:
+                raise
+            return GPAW(filename,
+                        legacy_gpaw=True,
+                        txt=txt,
+                        communicator=communicator)
+
+        return ASECalculator(dft.params,
                              log=log, dft=dft, atoms=atoms)
 
     params = params or Parameters(**kwargs)

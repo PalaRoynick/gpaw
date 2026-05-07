@@ -1,6 +1,7 @@
 import numpy as np
 from .skewherm_matrix import SkewHermitian
 from abc import ABC, abstractmethod
+from gpaw.new.etdm.tools import get_n_occ
 
 
 class ObjectiveFunctionETDM(ABC):
@@ -43,25 +44,20 @@ class ObjectiveFunctionETDM(ABC):
                             f_n = [spin, kpt, occ]
             From: ibzwfs.get_all_eigs_and_occs
         dtype : type
-            Data type, either float or complex.
+            Data type, either float or complex
         nkps : int
-            Number of k-points.
+            Number of k-points
+        representation : str
+            Skew-Hermitian parameterization. Can be either "full" (default),
+            "u-invar", or "sparse".
         """
 
-        # Create a list of `nkps * nspins` (?) SkewHermitian objects,
+        # Create a list of `nkps * nspins` SkewHermitian objects,
         # each initialized with `ndim`, `dtype`, `f_n`, `representation`.
         # These hold the independent parameters that will be optimized.
-
-        self.f_n = f_n
-        self.use_egdecomp = matrix_exp == 'egdecomp'
-
-        self._a_vec_u = []
-
-        for kpt in range(f_n.shape[1]):
-            for spin in range(f_n.shape[0]):
-                skewherm = SkewHermitian(ndim, f_n[spin, kpt, :], dtype,
-                                         representation, matrix_exp)
-                self._a_vec_u.append(skewherm)
+        self._a_vec_u = self._create_skew_hermitian_objects(
+            ndim, f_n, dtype, representation
+        )
 
         # Initialize cached values for energy and gradient as None.
         # These will be computed lazily when requested.
@@ -71,6 +67,21 @@ class ObjectiveFunctionETDM(ABC):
         # Store dimensions and metadata
         self._ndim = ndim
         self._dtype = dtype
+
+    def _create_skew_hermitian_objects(self, ndim: int, f_n: np.ndarray,
+                                       dtype: type, representation: str):
+        nspins, nkpts = f_n.shape[:2]
+
+        return [
+            SkewHermitian(
+                ndim,
+                get_n_occ(f_n[spin, kpt, :]),
+                dtype,
+                representation,
+            )
+            for kpt in range(nkpts)
+            for spin in range(nspins)
+        ]
 
     @property
     def a_vec_u(self):

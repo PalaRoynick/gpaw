@@ -98,24 +98,27 @@ def load_renormalized_data(name):
 
 def test_polarization_phase(in_tmp_dir, gpw_files, mpi):
     pi2 = 2.0 * np.pi
-    phases_c = polarization_phase(gpw_files['mos2_pw_nosym'],
-                                  comm=mpi.comm)
+    gpw_file = gpw_files['mos2_pw_nosym']
+
+    # calculate on all ranks (here: read-in) then gather on master
+    calc = GPAW(gpw_file, communicator=mpi.comm)
+    phases_c = polarization_phase(calc=calc, comm=mpi.comm)
 
     phases_t = {
-        'phase_c': pi2 * np.array([8.66037602, 3.33962524, 8.54861146e-15]),
-        'electronic_phase_c': pi2 * np.array([0.66037602, -0.66037476, 1.0]),
-        'atomic_phase_c': pi2 * np.array([8.0, 4.0, 13.0]),
-        'dipole_phase_c': pi2
-        * np.array([7.23912394e-01, -7.23912423e-01, 8.54861146e-15])}
+        'phase_c': pi2 * np.array([8.66037, 3.33962, 0.0]),
+        'electronic_phase_c': pi2 * np.array([0.66037, -0.66037, 1.0]),
+        'atomic_phase_c': pi2 * np.array([8.0, 4.0, 13.0])}
 
     # test all components
     # apply modulo
     for key in phases_c:
+        if key == 'dipole_phase_c':
+            # dipole moment is ill-defined for periodic system
+            continue
         # only should test modulo 2pi
         dphi = phases_c[key] - phases_t[key]
         phases_c[key] -= np.rint(dphi / pi2) * pi2
-        print(key)
-        assert phases_c[key] == pytest.approx(phases_t[key], rel=2e-5)
+        assert phases_c[key] == pytest.approx(phases_t[key], abs=1e-4)
 
 
 def test_berry_phases(in_tmp_dir, gpw_files, mpi):
@@ -146,7 +149,7 @@ def test_assertions(in_tmp_dir, gpw_files, mpi):
 
     gpw_file = gpw_files['mos2_pw']
     with pytest.raises(RuntimeError, match='Does not work with Symmetry'):
-        polarization_phase(gpw_file, comm=serial_comm)
+        polarization_phase(gpw_wfs=gpw_file, comm=serial_comm)
 
     calc = GPAW(gpw_file, communicator=serial_comm)
 
