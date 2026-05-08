@@ -4,7 +4,7 @@ from gpaw.atom.aeatom import Channel
 from gpaw.atom.generator2 import PAWWaves
 
 
-def pseudize(waves: PAWWaves,
+def pseudiz0(waves: PAWWaves,
              channel: Channel,
              vtr_g: np.ndarray) -> None:
     l = waves.l
@@ -20,12 +20,14 @@ def pseudize(waves: PAWWaves,
     pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
     rc = waves.rcut
     gc = rgd.ceil(rc)
-    alpha = 3.0 * (1.5 / rc)**2
+    alpha = 2.0 * (1.5 / rc)**2
     h0_g = howf(alpha, r_g, l, 0, rc)
     e = waves.e_n[0]
     phit_g, c = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[0])
     h0_g *= c
     phit_ng[0] = phit_g
+    rgd.plot(phi_ng[0])
+    rgd.plot(phit_ng[0],show=1);sadg
     pt_ng[0] = h0_g
     if N == 2:
         h1_g = h0_g * r_g**2
@@ -54,6 +56,85 @@ def pseudize(waves: PAWWaves,
     waves.dH_nn *= 0.5
     waves.dH_nn += waves.dH_nn.T.copy()
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
+
+
+# gpaw -T dataset Be -p -zharm,6 -P 2s,2p,D -lspd -r 2.2
+def pseudize(waves: PAWWaves,
+             channel: Channel,
+             vtr_g: np.ndarray) -> None:
+    l = waves.l
+    N = len(waves.e_n)
+    rgd = waves.rgd
+    r_g = rgd.r_g
+    # for n, f in enumerate(waves.f_n):
+    #     if f == 111110.0:
+    #         waves.e_n[n] = channel.e_n[5]
+    #         waves.phi_ng[n] = channel.phi_ng[5]
+    phi_ng = waves.phi_ng = np.array(waves.phi_ng)
+    phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
+    pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
+    rc = waves.rcut
+    gc = rgd.ceil(rc)
+    e = waves.e_n[0]
+    phit_g, pt_g = first_partial_wave(rgd, phi_ng[0], rc, l, vtr_g, e)
+    phit_ng[0] = phit_g
+    pt_ng[0] = pt_g
+    if N == 2:
+        h1_g = h0_g * r_g**2
+        p0 = rgd.integrate(phit_g * h0_g)
+        p1 = rgd.integrate(phit_g * h1_g)
+        h1_g = h0_g - p0 / p1 * h1_g
+        e = waves.e_n[1]
+        phit0_g, c0 = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[1])
+        phit1_g, c1 = solve(channel, rgd, vtr_g, gc, e, h1_g, phi_ng[1])
+        h0_g *= c0
+        h1_g *= c1
+        p0 = rgd.integrate(pt_ng[0] * phit0_g)
+        p1 = rgd.integrate(pt_ng[0] * phit1_g)
+        x = p1 / (p1 - p0)
+        phit_ng[1] = x * phit0_g + (1 - x) * phit1_g
+        h1_g = x * h0_g + (1 - x) * h1_g
+        pt_ng[1] = h1_g
+    elif N > 2:
+        1 / 0
+    waves.nt_g = waves.f_n @ phit_ng**2 / 4 / np.pi
+    waves.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
+                   rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * np.pi)
+    waves.Q = waves.f_n @ waves.dS_nn.diagonal()
+    A_nn = rgd.integrate(phit_ng[:, None] * pt_ng) / (4 * np.pi)
+    waves.dH_nn = waves.dS_nn @ np.diag(waves.e_n) - A_nn
+    waves.dH_nn *= 0.5
+    waves.dH_nn += waves.dH_nn.T.copy()
+    pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
+
+
+def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
+    gcut = rgd.floor(rcut)
+    phit_g, c0 = rgd.pseudize(phi_g, gcut, l, 6)
+    logphit_g, c0 = rgd.pseudize(np.log(abs(phi_g)), gcut, l, 4)
+    phitL_g = np.exp(logphit_g)
+    phitL_g *= phi_g[gcut] / phitL_g[gcut]
+    rgd.plot(phi_g)
+    rgd.plot(phit_g)
+    rgd.plot(phitL_g, show=1);sadgf
+    a_g, dadg_g, d2adg2_g = rgd.zeros(3)
+    r_g = rgd.r_g
+    a_g[1:] = phit_g[1:] / r_g[1:]**l
+    a_g[0] = c0
+    dadg_g[1:-1] = 0.5 * (a_g[2:] - a_g[:-2])
+    d2adg2_g[1:-1] = a_g[2:] - 2 * a_g[1:-1] + a_g[:-2]
+    q_g = (vtr_g - eig * r_g) * phit_g
+    dgdr_g = 1 / rgd.dr_g
+    d2gdr2_g = rgd.d2gdr2()
+    q_g -= 0.5 * r_g**l * (
+        (2 * (l + 1) * dgdr_g + r_g * d2gdr2_g) * dadg_g +
+        r_g * d2adg2_g * dgdr_g**2)
+    # q_g[gcmax:] = 0
+    rgd.cut(q_g, rcut)
+    q_g[1:] /= r_g[1:]
+    if l == 0:
+        q_g[0] = q_g[1]
+    return phit_g, q_g
 
 
 def solve(channel, rgd, vtr_g, gc, e, h_g, phi_g):
@@ -182,4 +263,9 @@ def hmm():
 
 
 if __name__ == '__main__':
-    create_all()
+    from sympy import exp, integrate, var, Symbol
+    a = Symbol('a')
+    b = Symbol('b')
+    r = var('r')
+    print(integrate(exp(a * r**2 + b * r**4), r))
+    # create_all()
