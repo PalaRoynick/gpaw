@@ -177,7 +177,7 @@ def calculate_3phiproj_coeffs_lebedev(setup: Setup, w_ng: Array2D, dD_p: Array2D
                 for j1, l1 in enumerate(l_j):
                     dphipt_g *= phit_jg[j1]
                     for L in range(Lmax):
-                        dphi = np.dot(rgd.dr_g**2 * rgd.dr_g *
+                        dphi = np.dot(rgd.r_g**2 * rgd.dr_g *
                                       dphipt_g, dn_Lg[L])
                         for m1 in range(2 * l1 + 1):
                             L1 = l1**2 + m1
@@ -281,8 +281,8 @@ def calculate_diff_overlap_matrix_gaunt(
         i2_counter = 0
         for j2, l2 in enumerate(l_j):
             I_L = np.dot(
-                dn_Lg * rgd.dr_g[np.newaxis] * w_g * rgd.r_g**2, dn_jjg[j1, j2]
-            )
+                dn_Lg * w_g * rgd.r_g**2 * rgd.dr_g, dn_jjg[j1, j2]
+            )  # no 4pi because of G_LLL
             for m1 in range(2 * l1 + 1):
                 L1 = l1**2 + m1
                 i1 = i1_counter + m1

@@ -125,6 +125,8 @@ class iKSLinearSolver:
         dp_ani = pt.dict((self.nocc,))
         for a, dp_ni in dp_ani.items():
             w_ng = iks.weights_asng[a][kpt.s]
+            if "radial_" in iks.atomic_weights:
+                w_ng = w_ng[np.newaxis, ...]
             Phi_ii = calculate_diff_overlap_matrix(
                 iks.setups[a],
                 w_ng,

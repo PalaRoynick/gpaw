@@ -337,6 +337,7 @@ class iKS:
         for kpt in wfs.kpt_u:
             dd = DegeneracyDescriptor(kpt)
             dd.update()
+            # print('dd.blocks_occ', dd.kpt.q, dd.blocks_occ)
             self.dd_u.append(dd)
             vdiff_nn = self.calculate_vdiff_matrix_elements(kpt)
             dd.vdiff_nn = vdiff_nn
@@ -393,6 +394,8 @@ class iKS:
         # apply PAW corrections
         for a, P_ni in kpt.P_ani.items():
             w_ng = self.weights_asng[a][kpt.s]
+            if "radial_" in self.atomic_weights:
+                w_ng = w_ng[np.newaxis, ...]
             Phi_ii = calculate_diff_overlap_matrix(
                 self.setups[a],
                 w_ng,
@@ -476,7 +479,7 @@ class iKS:
             for s in range(self.nspins):
                 w_ng = self.weights_asng[a][s]
                 if "radial_" in self.atomic_weights:
-                    w_ng = w_ng.repeat(len(Y_nL), axis=0)
+                    w_ng = w_ng[np.newaxis, ...].repeat(len(Y_nL), axis=0)
                 for n, Y_L in enumerate(Y_nL[:, :Lmax]):
                     dn_g = np.dot(Y_L, dn_sLg[s])
                     LD1 += weight_n[n] * \
@@ -596,6 +599,53 @@ class iKS:
                     assert self.xc.paw_potmode is PAWPotMode.angular
                     self.J_xasz[0][a][s] = dv_sLg.real
                     self.J_xasz[1][a][s] = dvt_sLg.real
+
+    # def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
+    #     for a, dp_sp in dp_asp.items():
+    #         if self.xc.paw_potmode is PAWPotMode.direct:
+    #             self.J_xasz[0][a][:] = dp_asp[a]
+    #         else:
+    #             setup = self.setups[a]
+    #             if setup.xc_correction is None:
+    #                 continue
+    #             xcc = setup.xc_correction
+    #
+    #             # 1. Fetch the radial grid for this atom
+    #             rgd = xcc.rgd
+    #             r = rgd.r_g
+    #             rc = r.max()  # The cutoff radius of the PAW sphere
+    #
+    #             # 2. Create the radial preconditioner (Diagonal Metric)
+    #             # We use (r/rc)^2 to counteract the volume element.
+    #             # We add a tiny epsilon (1e-3) so the matrix remains positive-definite
+    #             # (L-BFGS will crash if a metric goes strictly to zero).
+    #             # damping_g = (r / rc)**2 + 1e-3
+    #             # Define a small screening radius (e.g., 5-10% of the PAW cutoff)
+    #             r_smooth = 0.1 * rc
+    #
+    #             # Gaussian envelope: 1.0 everywhere, drops to 0 only very close to r=0
+    #             damping_g = 1.0 - np.exp(-(r / r_smooth)**2)
+    #
+    #             # Add a moderate floor so the origin isn't permanently frozen, just restrained
+    #             damping_g += 0.05
+    #
+    #             dp_sLq = np.inner(dp_sp, xcc.B_pqL.T)
+    #
+    #             # 3. Apply the damping to the raw partial wave gradients
+    #             dv_sLg = np.dot(dp_sLq, xcc.n_qg) * damping_g
+    #             dvt_sLg = -np.dot(dp_sLq, xcc.nt_qg) * damping_g
+    #
+    #             if self.xc.paw_potmode is PAWPotMode.lebedev:
+    #                 Lmax = dvt_sLg.shape[1]
+    #                 for s in range(self.nspins):
+    #                     self.J_xasz[0][a][s] = np.dot(
+    #                         Y_nL[:, :Lmax], dv_sLg[s]).real
+    #                     self.J_xasz[1][a][s] = np.dot(
+    #                         Y_nL[:, :Lmax], dvt_sLg[s]).real
+    #             else:
+    #                 assert self.xc.paw_potmode is PAWPotMode.angular
+    #                 self.J_xasz[0][a][s] = dv_sLg.real
+    #                 self.J_xasz[1][a][s] = dvt_sLg.real
 
     def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
         Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
