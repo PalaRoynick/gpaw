@@ -11,6 +11,7 @@ from ase.utils.filecache import MultiFileJSONCache
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.dft import GPAW
+from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
@@ -37,14 +38,19 @@ class DFTAdapter:
                  grid: UGDesc,
                  dH_asii_template: AtomArrays,
                  log: Logger,
-                 kd) -> None:
+                 ibzwfs: IBZWaveFunctions) -> None:
         self.grid = grid
         self.dH_asii_template = dH_asii_template
         self.log = log
-        self.kd = kd
-        # Derived k-point info. Will move to a native ibzwfs source later.
-        self.trs = len(kd.ibzk_kc) != len(kd.bzk_kc)
-        gamma_idx = np.where(np.abs(kd.ibzk_kc).sum(axis=1) < 1e-13)[0]
+        self.ibzwfs = ibzwfs
+        # Derived k-point info from the native IBZ.
+        ibz = ibzwfs.ibz
+        bz = ibz.bz
+        self.gamma_only = bz.gamma_only
+        self.Nk_c = (np.array(bz.size_c)
+                     if hasattr(bz, 'size_c') else None)
+        self.trs = len(ibz.kpt_kc) != len(bz.kpt_Kc)
+        gamma_idx = np.where(np.abs(ibz.kpt_kc).sum(axis=1) < 1e-13)[0]
         self.gamma_k = int(gamma_idx[0]) if gamma_idx.size else None
 
     @classmethod
@@ -53,7 +59,7 @@ class DFTAdapter:
             grid=calc.dft.density.nt_sR.desc,
             dH_asii_template=calc.dft.potential.dH_asii,
             log=calc.log,
-            kd=calc.wfs.kd)
+            ibzwfs=calc.dft.ibzwfs)
 
 
 def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
@@ -69,18 +75,19 @@ def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
 
 def _finalize_g_sMM(g_sMM: ArrayND,
                     g_s_gammaMM: ArrayND | None,
-                    kd) -> ArrayND:
+                    kpt_comm,
+                    Nk_c: np.ndarray) -> ArrayND:
     """Reduce per-rank q-sums, apply TRS, normalise; return the real part.
 
     ``g_sMM`` is the per-rank IBZ-q sum at ``R = (0, 0, 0)``. With TRS folding
     half the BZ, ``g_s_gammaMM`` carries the Γ contribution on the rank that
     owns it (zeros elsewhere) so a comm-sum broadcasts it everywhere.
     """
-    kd.comm.sum(g_sMM)
+    kpt_comm.sum(g_sMM)
     if g_s_gammaMM is not None:
-        kd.comm.sum(g_s_gammaMM)
+        kpt_comm.sum(g_s_gammaMM)
         g_sMM = g_sMM + g_sMM.conj() - g_s_gammaMM
-    g_sMM /= np.prod(kd.N_c)
+    g_sMM /= np.prod(Nk_c)
     if not np.all(np.abs(g_sMM.imag) < 1e-10):
         raise ValueError(
             f'MAX Im(g_MM): {np.amax(np.abs(g_sMM.imag)):.2e}')
@@ -114,7 +121,7 @@ class Supercell:
             self.indices = indices
 
     def _create_gpaw_calculator(self, calcdict, fd_name='elph'):
-        """Build an LCAO calculator and return its ``(wfs, timer)``.
+        """Build an LCAO calculator and return ``(dft, timer)``.
 
         Parameters
         ----------
@@ -130,9 +137,8 @@ class Supercell:
 
         Returns
         -------
-        wfs, dft, timer:
-            ``wfs`` is the backwards-compat wave-function shim, ``dft`` a
-            :class:`DFTAdapter` with extracted DFT data, ``timer`` the
+        dft, timer:
+            A :class:`DFTAdapter` with the extracted native data and the
             calculator's ``Timer``.
         """
         cache = MultiFileJSONCache(fd_name)
@@ -158,11 +164,11 @@ class Supercell:
         gpaw_kwargs = {'basis': 'dzp', **calcdict, **internal}
         calc = GPAW(**gpaw_kwargs)
         calc.create_new_calculation(self.atoms * self.supercell)
-        return calc.wfs, DFTAdapter.from_calc(calc), calc.timer
+        return DFTAdapter.from_calc(calc), calc.timer
 
     def _calculate_supercell_entry(self, a, v,
                                    v1t_sR: UGArray, dH1_aii: AtomArrays,
-                                   wfs, dH_aii: AtomArrays,
+                                   dH_aii: AtomArrays,
                                    dft: DFTAdapter,
                                    ) -> tuple[ArrayND, ArrayND | None]:
         """One displacement → ``(g_sMM, g_s_gammaMM)``.
@@ -171,64 +177,63 @@ class Supercell:
         populated only on the Γ-owning rank when TRS folds the BZ, otherwise
         ``None``. Caller passes both to :func:`_finalize_g_sMM`.
         """
-        bfs = wfs.basis_functions
-        nspins = wfs.nspins
-        nao = wfs.setups.nao
-        dtype = wfs.dtype
+        ibzwfs = dft.ibzwfs
+        nspins = ibzwfs.nspins
+        # Basis / setups / dtype are shared across kpts; pull from any one.
+        wfs0 = ibzwfs._wfs_u[0]
+        bfs = wfs0.basis
+        nao = wfs0.setups.nao
+        dtype = wfs0.dtype
 
         # Per-displacement precomputes (size << old g_sqMM).
         V1t_sxMM = np.array([bfs.calculate_potential_matrices(v1t_R.data)
                              for v1t_R in v1t_sR])
-        P_aqMi = getattr(wfs, 'P_aqMi', None)
-        dPdR_aqvMi = wfs.manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
+        dPdR_aqvMi = wfs0.tci_derivatives.manytci.P_aqMi(
+            bfs.my_atom_indices, derivative=True)
 
         g_sMM = np.zeros((nspins, nao, nao), dtype)
         g_s_gammaMM = np.zeros_like(g_sMM) if dft.trs else None
 
-        for kpt in wfs.kpt_u:
-            g_qMM = self._local_qMM(kpt, V1t_sxMM, wfs)
-            g_qMM += self._nonlocal_qMM(kpt, a, v, dH1_aii, dH_aii, wfs,
-                                        P_aqMi, dPdR_aqvMi)
-            g_sMM[kpt.s] += g_qMM
-            if dft.trs and kpt.k == dft.gamma_k:
-                g_s_gammaMM[kpt.s] = g_qMM
+        for wfs in ibzwfs:
+            g_qMM = self._local_qMM(wfs, V1t_sxMM)
+            g_qMM += self._nonlocal_qMM(wfs, a, v, dH1_aii, dH_aii,
+                                        dPdR_aqvMi)
+            g_sMM[wfs.spin] += g_qMM
+            if dft.trs and wfs.k == dft.gamma_k:
+                g_s_gammaMM[wfs.spin] = g_qMM
         return g_sMM, g_s_gammaMM
 
-    def _local_qMM(self, kpt, V1t_sxMM: ArrayND, wfs) -> ArrayND:
+    def _local_qMM(self, wfs, V1t_sxMM: ArrayND) -> ArrayND:
         """Single-kpt LCAO matrix elements ``<M | dv_eff/dx | N>``."""
-        bfs = wfs.basis_functions
+        bfs = wfs.basis
         dtype = wfs.dtype
-        V_xMM = V1t_sxMM[kpt.s]
+        V_xMM = V1t_sxMM[wfs.spin]
         geff_MM = np.array(V_xMM[0], dtype=dtype)
         if np.issubdtype(dtype, np.complexfloating):
-            kpt_c = wfs.kd.ibzk_kc[kpt.k]
-            phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ kpt_c)
+            phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ wfs.kpt_c)
             geff_MM += np.einsum('x,xMN->MN', phase_x, V_xMM[1:],
                                  optimize=True)
             geff_MM += np.einsum('x,xMN->NM', phase_x.conj(), V_xMM[1:],
                                  optimize=True)
         return geff_MM
 
-    def _nonlocal_qMM(self, kpt, a, v,
+    def _nonlocal_qMM(self, wfs, a, v,
                       dH1_aii: AtomArrays, dH_aii: AtomArrays,
-                      wfs, P_aqMi, dPdR_aqvMi) -> ArrayND:
+                      dPdR_aqvMi) -> ArrayND:
         """Single-kpt PAW projector terms: ``dH^a`` (all atoms) + ``dP^a`` (atom a)."""
-        bfs = wfs.basis_functions
-        nao = wfs.setups.nao
-        g_MM = np.zeros((nao, nao), wfs.dtype)
+        bfs = wfs.basis
+        g_MM = np.zeros((wfs.setups.nao, wfs.setups.nao), wfs.dtype)
 
         for a_, dH1_sii in dH1_aii.items():
             if a_ not in bfs.my_atom_indices:
                 continue
-            P_Mi = (kpt.P_aMi[a_] if P_aqMi is None
-                    else P_aqMi[a_][kpt.q])
-            g_MM += P_Mi.conj() @ dH1_sii[kpt.s] @ P_Mi.T
+            P_Mi = wfs.P_aMi[a_]
+            g_MM += P_Mi.conj() @ dH1_sii[wfs.spin] @ P_Mi.T
 
         if a in bfs.my_atom_indices:
-            P_Mi = (kpt.P_aMi[a] if P_aqMi is None
-                    else P_aqMi[a][kpt.q])
-            dP_Mi = dPdR_aqvMi[a][kpt.q][v]
-            P1HP_MM = dP_Mi.conj() @ dH_aii[a][kpt.s] @ P_Mi.T
+            P_Mi = wfs.P_aMi[a]
+            dP_Mi = dPdR_aqvMi[a][wfs.q][v]
+            P1HP_MM = dP_Mi.conj() @ dH_aii[a][wfs.spin] @ P_Mi.T
             g_MM += P1HP_MM + P1HP_MM.T.conjugate()
         return g_MM
 
@@ -258,15 +263,14 @@ class Supercell:
             (default: None).
         """
 
-        wfs, dft, timer = self._create_gpaw_calculator(calcdict, fd_name)
+        dft, timer = self._create_gpaw_calculator(calcdict, fd_name)
 
         # JSON cache
         supercell_cache = MultiFileJSONCache(self.supercell_name)
 
-        # REFACTOR LATER: remove these when not needed anymore
-        kd = dft.kd
-        nao = wfs.setups.nao
-        nspins = wfs.nspins
+        ibzwfs = dft.ibzwfs
+        nspins = ibzwfs.nspins
+        nao = ibzwfs._wfs_u[0].setups.nao
 
         # FD cache: equilibrium read once; per-displacement entries inside
         # the loop via _read_displacement_cache.
@@ -280,10 +284,10 @@ class Supercell:
 
         with supercell_cache.lock("basis") as handle:
             if handle is not None:
-                basis_info = self.set_basis_info(wfs)
+                basis_info = self.set_basis_info(ibzwfs._wfs_u[0])
                 handle.save(basis_info)
 
-        if kd.gamma:
+        if dft.gamma_only:
             dft.log('WARNING: Gamma-point calculation. '
                     'Overlap with neighboring cell cannot be removed')
 
@@ -307,9 +311,10 @@ class Supercell:
                         dH1_aii = _dH_asp_to_aii(dH1_asp,
                                                  dft.dH_asii_template)
                         g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
-                            a, v, v1t_sR, dH1_aii, wfs, dH_aii, dft)
-                    if not (kd.gamma or kd.N_c is None):
-                        g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM, kd)
+                            a, v, v1t_sR, dH1_aii, dH_aii, dft)
+                    if not (dft.gamma_only or dft.Nk_c is None):
+                        g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM,
+                                                ibzwfs.kpt_comm, dft.Nk_c)
 
                     # Reshape to global unit cell indices
                     N = np.prod(self.supercell)
@@ -338,13 +343,15 @@ class Supercell:
         Parameters
         ----------
         args: tuple
-            Either a single LCAO ``wfs`` object, or the pair ``(M_a, nao_a)``
-          """
+            Either a single ``LCAOWaveFunctions`` object, or the pair
+            ``(M_a, nao_a)`` (used by ``load_supercell_matrix`` when the
+            calculator is no longer available).
+        """
         assert len(args) in (1, 2)
         if len(args) == 1:
             wfs = args[0]
             setups = wfs.setups
-            bfs = wfs.basis_functions
+            bfs = wfs.basis
             nao_a = [setups[a].nao for a in range(len(self.atoms))]
             M_a = [bfs.M_a[a] for a in range(len(self.atoms))]
         else:
