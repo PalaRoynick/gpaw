@@ -374,7 +374,11 @@ class Supercell:
         dH1_asp = {atom: (dHp_asp[atom] - dHm_asp[atom]) / (2 * delta / Bohr)
                    for atom in dHm_asp}
 
-        pb = (~grid.pbc_c) & (V1t_sG.shape[-3:] != grid.size_c)
+        # New GPAW gather/scatter expects shape ``size_c - zerobc_c``;
+        # legacy caches (full ``size_c``) get the leading zero-boundary
+        # point sliced off on non-PBC axes.
+        expected_c = grid.size_c - grid.zerobc_c
+        pb = (~grid.pbc_c) & (V1t_sG.shape[-3:] != expected_c)
         if pb.any():
             slices = tuple(slice(1, None) if p else slice(None) for p in pb)
             V1t_sG = V1t_sG[..., slices[0], slices[1], slices[2]]
