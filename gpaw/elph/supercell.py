@@ -2,16 +2,12 @@
 
 import numpy as np
 
-from typing import Union
-
 from ase import Atoms
 from ase.parallel import parprint
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
 
-from gpaw.lcao.tightbinding import TightBinding
 from gpaw.dft import GPAW
-from gpaw.new.ase_interface import ASECalculator
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
 
@@ -24,6 +20,58 @@ sc_version = 1
 class VersionError(Exception):
     """Error raised for wrong cache versions."""
     pass
+
+
+def _bloch_to_real_space(A_qxMM: ArrayND,
+                         R_c: tuple[int, int, int],
+                         kd) -> ArrayND:
+    """Fourier transform ``A_qxMM`` from Bloch to real space at ``R_c``.
+
+    Performs a single-vector version of
+    :meth:`gpaw.lcao.tightbinding.TightBinding.bloch_to_real_space`.
+    Handles the k-point parallel reduction and time-reversal symmetry.
+
+    Parameters
+    ----------
+    A_qxMM:
+        Bloch-space matrix, possibly distributed over k-points.
+    R_c:
+        Lattice vector at which the real-space matrix is evaluated.
+    kd:
+        ``KPointDescriptor`` providing ``ibzk_qc``, ``ibzk_kc``, ``bzk_kc``,
+        ``N_c``, ``nspins``, ``comm`` and ``get_rank_and_index``.
+    """
+    Nk_c = tuple(kd.N_c)
+    shape = A_qxMM.shape
+    A_qx = A_qxMM.reshape(shape[0], -1)
+
+    phase_q = np.exp(2j * np.pi * kd.ibzk_qc @ np.asarray(R_c))
+    A_x = np.sum(phase_q[:, np.newaxis] * A_qx, axis=0)
+    kd.comm.sum(A_x)
+    A_xMM = A_x.reshape(shape[1:])
+
+    # Time-reversal symmetry: ibzk_kc smaller than bzk_kc
+    if len(kd.ibzk_kc) != len(kd.bzk_kc):
+        gamma = np.where(np.abs(kd.ibzk_kc).sum(axis=1) < 1e-13)[0]
+        if gamma.size > 0:
+            rank, myu = kd.get_rank_and_index(gamma[0], 0)
+            assert kd.nspins == 1
+            if kd.comm.rank == rank:
+                A0_xMM = A_qxMM[myu]
+            else:
+                A0_xMM = np.zeros_like(A_xMM)
+            kd.comm.broadcast(A0_xMM, rank)
+        else:
+            A0_xMM = 0.0
+        # Add conjugate and subtract double-counted Gamma component
+        A_xMM = A_xMM + A_xMM.conj() - A0_xMM
+
+    A_xMM = A_xMM / np.prod(Nk_c)
+
+    if not np.all(np.abs(A_xMM.imag) < 1e-10):
+        raise ValueError(
+            f'MAX Im(A_MM): {np.amax(np.abs(A_xMM.imag)):.2e}')
+    return A_xMM.real
 
 
 class Supercell:
@@ -52,9 +100,8 @@ class Supercell:
         else:
             self.indices = indices
 
-    def _create_gpaw_calculator(
-            self, calcdict, fd_name='elph') -> ASECalculator:
-        """Create empty LCAO calculator to give us projectors.
+    def _create_gpaw_calculator(self, calcdict, fd_name='elph'):
+        """Build an LCAO calculator and return its ``(wfs, timer)``.
 
         Parameters
         ----------
@@ -67,12 +114,18 @@ class Supercell:
             is fixed by the cache.
         fd_name: str
             Name of the finite-difference JSON cache (default ``'elph'``).
-            Used to read the potential shape and spin information needed to
-            build the calculator.
+
+        Returns
+        -------
+        wfs:
+            The LCAO wave-function object of the freshly initialised
+            calculator.
+        timer:
+            The calculator's ``Timer`` instance.
         """
         cache = MultiFileJSONCache(fd_name)
         pot_shape = list(np.array(cache['eq']['Vt_sG']).shape)
-        assert pot_shape[0] in (1, 2), "only colinear spins"
+        assert pot_shape[0] in (1, 2), 'only colinear spins'
 
         internal = {
             'mode': 'lcao',
@@ -88,12 +141,12 @@ class Supercell:
             if key in calcdict and calcdict[key] != val:
                 raise ValueError(
                     f"'{key}' is set internally to {val!r}"
-                    " and cannot be overridden")
+                    ' and cannot be overridden')
 
         gpaw_kwargs = {'basis': 'dzp', **calcdict, **internal}
         calc = GPAW(**gpaw_kwargs)
         calc.create_new_calculation(self.atoms * self.supercell)
-        return calc
+        return calc.wfs, calc.timer
 
     def _calculate_supercell_entry(self, a, v, V1t_sG, dH1_asp, wfs,
                                    dH_asp, timer) -> ArrayND:
@@ -171,7 +224,7 @@ class Supercell:
         return g_sqMM
 
     def calculate_supercell_matrix(
-        self, calc: Union[ASECalculator, dict], fd_name: str = "elph",
+        self, calcdict: dict, fd_name: str = "elph",
         filter: str = None
     ) -> None:
         """Calculate matrix elements of the el-ph coupling in the LCAO basis.
@@ -182,12 +235,12 @@ class Supercell:
         approximations to the derivatives of the effective potential wrt to
         atomic displacements.
 
-        The resulting g_xsNNMM is saved into a JSON cache.
-
         Parameters
         ----------
-        calc: GPAW
-            LCAO calculator for the calculation of the supercell matrix.
+        calcdict: dict
+            GPAW keyword arguments used to build the LCAO calculator
+            internally via :meth:`_create_gpaw_calculator`. See that method
+            for the list of parameters set internally and forbidden keys.
         fd_name: str
             User specified name of the finite difference JSON cache.
             Default is 'elph'.
@@ -197,35 +250,15 @@ class Supercell:
             (default: None).
         """
 
-        # Supercell atoms
-        atoms_N = self.atoms * self.supercell
-
-        if isinstance(calc, dict):
-            calc = self._create_gpaw_calculator(calc, fd_name)
-        else:
-            if not calc.initialized:
-                calc.initialize(atoms_N)
-                calc.initialize_positions(atoms_N)
-                assert calc.wfs.mode == "lcao", "LCAO mode required."
-                assert not calc.symmetry.point_group, \
-                    "Point group symmetry not supported"
+        wfs, timer = self._create_gpaw_calculator(calcdict, fd_name)
 
         # JSON cache
         supercell_cache = MultiFileJSONCache(self.supercell_name)
 
-        # Extract useful objects from the calculator
-        wfs = calc.wfs
-        gd = calc.wfs.gd
-        kd = calc.wfs.kd
-        bd = calc.wfs.bd
+        gd = wfs.gd
+        kd = wfs.kd
         nao = wfs.setups.nao
         nspins = wfs.nspins
-        # FIXME: Domain parallelisation broken
-        assert gd.comm.size == 1
-        # FIXME: Band parallelisation broken - M is band parallel
-        assert bd.comm.size == 1
-
-        timer = calc.timer
 
         # Calculate finite-difference gradients (in Hartree / Bohr)
         V1t_xsG, dH1_xasp = self.calculate_gradient(fd_name, self.indices)
@@ -245,7 +278,7 @@ class Supercell:
         # Save basis information, after we checked the data is kosher
         with supercell_cache.lock("basis") as handle:
             if handle is not None:
-                basis_info = self.set_basis_info(calc)
+                basis_info = self.set_basis_info(wfs)
                 handle.save(basis_info)
 
         # Fourier filter the atomic gradients of the effective potential
@@ -257,9 +290,6 @@ class Supercell:
         if kd.gamma:
             print("WARNING: Gamma-point calculation. \
                    Overlap with neighboring cell cannot be removed")
-        else:
-            # Bloch to real-space converter
-            tb = TightBinding(atoms_N, calc)
 
         # Calculate < i k | grad H | j k >, i.e. matrix elements in LCAO basis
 
@@ -286,16 +316,10 @@ class Supercell:
                     if kd.gamma or kd.N_c is None:
                         g_sMM = g_sqMM[:, 0]
                     else:
-                        # Convert to array
-                        g_sMM_tmp = []
-                        for s in range(nspins):
-                            # bloch_to_real_space takes care of kd
-                            # parallel sum as well
-                            g_MM = tb.bloch_to_real_space(g_sqMM[s],
-                                                          R_c=(0, 0, 0))
-                            g_sMM_tmp.append(g_MM[0])  # [0] because of above
-                        g_sMM = np.array(g_sMM_tmp)
-                        del g_sMM_tmp
+                        g_sMM = np.array([
+                            _bloch_to_real_space(
+                                g_sqMM[s], R_c=(0, 0, 0), kd=kd)
+                            for s in range(nspins)])
 
                     # Reshape to global unit cell indices
                     N = np.prod(self.supercell)
@@ -324,16 +348,15 @@ class Supercell:
         Parameters
         ----------
         args: tuple
-            If the LCAO calculator is not available (e.g. if the supercell is
-            loaded from file), the ``load_supercell_matrix`` member function
-            provides the required info as arguments.
-
+            Either a single LCAO ``wfs`` object, or the pair ``(M_a, nao_a)``
+            (used by ``load_supercell_matrix`` when the calculator is no
+            longer available).
         """
         assert len(args) in (1, 2)
         if len(args) == 1:
-            calc = args[0]
-            setups = calc.wfs.setups
-            bfs = calc.wfs.basis_functions
+            wfs = args[0]
+            setups = wfs.setups
+            bfs = wfs.basis_functions
             nao_a = [setups[a].nao for a in range(len(self.atoms))]
             M_a = [bfs.M_a[a] for a in range(len(self.atoms))]
         else:
