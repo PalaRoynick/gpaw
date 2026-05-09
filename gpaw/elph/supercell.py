@@ -5,13 +5,13 @@ from __future__ import annotations
 import numpy as np
 
 from ase import Atoms
-from ase.parallel import parprint
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
 
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.dft import GPAW
+from gpaw.new.logger import Logger
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
 
@@ -35,15 +35,18 @@ class DFTAdapter:
 
     def __init__(self, *,
                  grid: UGDesc,
-                 dH_asii_template: AtomArrays) -> None:
+                 dH_asii_template: AtomArrays,
+                 log: Logger) -> None:
         self.grid = grid
         self.dH_asii_template = dH_asii_template
+        self.log = log
 
     @classmethod
     def from_calc(cls, calc) -> DFTAdapter:
         return cls(
             grid=calc.dft.density.nt_sR.desc,
-            dH_asii_template=calc.dft.potential.dH_asii)
+            dH_asii_template=calc.dft.potential.dH_asii,
+            log=calc.log)
 
 
 def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
@@ -185,40 +188,51 @@ class Supercell:
     def _calculate_supercell_entry(self, a, v,
                                    v1t_sR: UGArray, dH1_aii: AtomArrays,
                                    wfs, dH_aii: AtomArrays,
-                                   timer) -> ArrayND:
+                                   ) -> ArrayND:
+        g_sqMM = self._local_contribution(v1t_sR, wfs)
+        g_sqMM += self._nonlocal_contribution(a, v, dH1_aii, dH_aii, wfs)
+        return g_sqMM
 
+    def _local_contribution(self, v1t_sR: UGArray, wfs) -> ArrayND:
+        """LCAO matrix elements ``<M | dv_eff/dx | N>``."""
         kpt_u = wfs.kpt_u
-        setups = wfs.setups
-        nao = setups.nao
         bfs = wfs.basis_functions
         dtype = wfs.dtype
         nspins = wfs.nspins
+        nao = wfs.setups.nao
 
-        # Array for different k-point components
         g_sqMM = np.zeros((nspins, len(kpt_u) // nspins, nao, nao), dtype)
-
         V1t_sxMM = np.array([bfs.calculate_potential_matrices(v1t_R.data)
                              for v1t_R in v1t_sR])
         for kpt in kpt_u:
             V_xMM = V1t_sxMM[kpt.s]
-            # same-cell (lower triangle)
             geff_MM = np.array(V_xMM[0], dtype=dtype)
             if np.issubdtype(dtype, np.complexfloating):
-                kpt_c = wfs.kd.ibzk_kc[kpt.k]  # k-point coordinates
+                kpt_c = wfs.kd.ibzk_kc[kpt.k]
                 phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ kpt_c)
                 geff_MM += np.einsum('x,xMN->MN', phase_x, V_xMM[1:],
                                      optimize=True)
                 geff_MM += np.einsum('x,xMN->NM', phase_x.conj(), V_xMM[1:],
                                      optimize=True)
-
             g_sqMM[kpt.s, kpt.q] += geff_MM
-        # timer.stop('Potential matrix')
+        return g_sqMM
 
+    def _nonlocal_contribution(self, a, v,
+                               dH1_aii: AtomArrays,
+                               dH_aii: AtomArrays,
+                               wfs) -> ArrayND:
+        """PAW projector contributions: ``dH^a`` (all atoms) + ``dP^a`` (atom a)."""
+        kpt_u = wfs.kpt_u
+        bfs = wfs.basis_functions
+        dtype = wfs.dtype
+        nspins = wfs.nspins
+        nao = wfs.setups.nao
+
+        g_sqMM = np.zeros((nspins, len(kpt_u) // nspins, nao, nao), dtype)
         gp_MM = np.zeros((nao, nao), dtype)
-        # timer.start("Non-Local 1")
-        # 2) Gradient of non-local part (projectors)
         P_aqMi = getattr(wfs, 'P_aqMi', None)
-        # 2a) dH^a part has contributions from all atoms
+
+        # dH^a part: contributions from all atoms
         for kpt in kpt_u:
             gp_MM[:] = 0.0
             for a_, dH1_sii in dH1_aii.items():
@@ -231,13 +245,9 @@ class Supercell:
                     P_Mi = P_aqMi[a_][kpt.q]
                 gp_MM += P_Mi.conj() @ dH1_ii @ P_Mi.T
             g_sqMM[kpt.s, kpt.q] += gp_MM
-        # timer.stop("Non-Local 1")
 
-        # timer.start("Non-Local 2")
-        # 2b) dP^a part has only contributions from the same atoms
-        # For the contribution from the derivative of the projectors
-        manytci = wfs.manytci
-        dPdR_aqvMi = manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
+        # dP^a part: only the displaced atom contributes
+        dPdR_aqvMi = wfs.manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
         for kpt in kpt_u:
             gp_MM[:] = 0.0
             if a in bfs.my_atom_indices:
@@ -250,7 +260,6 @@ class Supercell:
                 P1HP_MM = dP_Mi.conj() @ dH_ii @ P_Mi.T
                 gp_MM += P1HP_MM + P1HP_MM.T.conjugate()
             g_sqMM[kpt.s, kpt.q] += gp_MM
-        # timer.stop("Non-Local 2")
         return g_sqMM
 
     def calculate_supercell_matrix(
@@ -319,8 +328,8 @@ class Supercell:
                                components=filter)
 
         if kd.gamma:
-            print("WARNING: Gamma-point calculation. \
-                   Overlap with neighboring cell cannot be removed")
+            dft.log('WARNING: Gamma-point calculation. '
+                    'Overlap with neighboring cell cannot be removed')
 
         # Calculate < i k | grad H | j k >, i.e. matrix elements in LCAO basis
 
@@ -337,8 +346,7 @@ class Supercell:
                     if handle is None:
                         continue
 
-                    parprint("%s-gradient of atom %u" %
-                             (["x", "y", "z"][v], a))
+                    dft.log(f'{["x", "y", "z"][v]}-gradient of atom {a}')
 
                     with timer('Supercell entry'):
                         v1t_sR = dft.grid.empty(dims=(nspins,))
@@ -347,7 +355,7 @@ class Supercell:
                                                  dft.dH_asii_template)
                         g_sqMM = self._calculate_supercell_entry(
                             a, v, v1t_sR, dH1_aii,
-                            wfs, dH_aii, timer)
+                            wfs, dH_aii)
                     # Extract R_c=(0, 0, 0) block by Fourier transforming
                     if kd.gamma or kd.N_c is None:
                         g_sMM = g_sqMM[:, 0]
