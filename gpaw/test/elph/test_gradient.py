@@ -1,11 +1,13 @@
-"""Basic test of elph/supercell/calculate_gradient
+"""Basic test of elph/supercell/_read_displacement_cache
 
-Check that calculate_gradient is capable of reading stuff properly.
+Check that the per-displacement cache loader is capable of reading
+the FD entries properly.
 """
 import ase.units as units
 import numpy as np
 import pytest
 from ase.build import bulk
+from ase.utils.filecache import MultiFileJSONCache
 
 from gpaw import GPAW
 from gpaw.elph import DisplacementRunner, Supercell
@@ -22,7 +24,6 @@ def test_gradient(in_tmp_dir):
     calc = GPAW(mode='lcao',
                 basis='sz(dzp)',
                 kpts={'size': (2, 2, 2), 'gamma': False},
-                # symmetry={'point_group': False},
                 txt='elph_displacements.txt')
     atoms.calc = calc
 
@@ -50,19 +51,19 @@ def test_gradient(in_tmp_dir):
                 with elph.cache.lock(disp.name) as handle:
                     if handle is None:
                         continue
-                    try:
-                        Vfake = Vt_sG + sign * 0.1 * (a + 1) * (i + 1)
-                        # dHfake = {}
-                        # for atom in dH_all_asp.keys():
-                        #    dHfake[atom] = dH_all_asp[atom] + (sign * 0.2 *
-                        #                                       (a+1) * (i+1))
-                        result = {'Vt_sG': Vfake, 'dH_all_asp': dH_all_asp}
-                        handle.save(result)
-                    finally:
-                        pass
+                    Vfake = Vt_sG + sign * 0.1 * (a + 1) * (i + 1)
+                    handle.save({'Vt_sG': Vfake, 'dH_all_asp': dH_all_asp})
 
-    # calculate gradient
-    V1t_xsG, dH1_xasp = Supercell.calculate_gradient('elph')
+    sc = Supercell(atoms)
+    cache = MultiFileJSONCache('elph')
+    grid = atoms.calc.dft.density.nt_sR.desc
+
+    V1t_xsG = []
+    for a in (0, 1):
+        for v in range(3):
+            V1t_sG, _ = sc._read_displacement_cache(cache, a, v, grid,
+                                                   filter=None)
+            V1t_xsG.append(V1t_sG)
+    V1t_xsG = np.array(V1t_xsG)
+
     assert np.array(V1expected) == pytest.approx(V1t_xsG[:, 0, 0, 0, 0])
-    # should probably add something about dH as well, but the principle is the
-    # same

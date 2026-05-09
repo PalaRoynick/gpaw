@@ -268,34 +268,20 @@ class Supercell:
         nao = wfs.setups.nao
         nspins = wfs.nspins
 
-        # REFACTOR LATER: move into loop and load only what is needed to save memory
-        # Calculate finite-difference gradients (in Hartree / Bohr)
-        V1t_xsG, dH1_xasp = self.calculate_gradient(fd_name, self.indices)
-
-        # New GPAW stores Vt_sG with full shape independent of PBC;
-        # truncate along non-periodic axes where sizes disagree.
-        # REFACTOR LATER: this might not be needed at the end. Check before merge
-        pb = (~dft.grid.pbc_c) & (V1t_xsG.shape[-3:] != dft.grid.size_c)
-        if pb.any():
-            slices = tuple(slice(1, None) if p else slice(None) for p in pb)
-            V1t_xsG = V1t_xsG[..., slices[0], slices[1], slices[2]]
-
-        # Equilibrium atomic Hamiltonian matrix (projector coefficients)
+        # FD cache: equilibrium read once; per-displacement entries inside
+        # the loop via _read_displacement_cache.
         fd_cache = MultiFileJSONCache(fd_name)
-        assert tuple(self.supercell) == tuple(fd_cache["info"]["supercell"])
-        dH_aii = _dH_asp_to_aii(fd_cache["eq"]["dH_all_asp"], dft.dH_asii_template)
+        if 'dr_version' not in fd_cache['info']:
+            print('Cache created with old version. Use electronphonon.py')
+            raise VersionError
+        assert tuple(self.supercell) == tuple(fd_cache['info']['supercell'])
+        dH_aii = _dH_asp_to_aii(fd_cache['eq']['dH_all_asp'],
+                                dft.dH_asii_template)
 
-        # Save basis information, after we checked the data is kosher
         with supercell_cache.lock("basis") as handle:
             if handle is not None:
                 basis_info = self.set_basis_info(wfs)
                 handle.save(basis_info)
-
-        # Fourier filter the atomic gradients of the effective potential
-        if filter is not None:
-            for s in range(nspins):
-                fourier_filter(self.atoms, self.supercell, V1t_xsG[:, s],
-                               components=filter)
 
         if kd.gamma:
             dft.log('WARNING: Gamma-point calculation. '
@@ -303,15 +289,10 @@ class Supercell:
 
         # Calculate < i k | grad H | j k >, i.e. matrix elements in LCAO basis
 
-        # Do each cartesian component separately
-        # NOTE: need to keep the gastly loop and xoutput naming scheme for backward compatibiluty of the caches
-        for i, a in enumerate(self.indices):
+        # NOTE: keep the xoutput naming scheme for backward-compat caches.
+        for a in self.indices:
             for v in range(3):
-                # Corresponding array index
                 xoutput = 3 * a + v
-                xinput = 3 * i + v
-
-                # If exist already, don't recompute
                 with supercell_cache.lock(str(xoutput)) as handle:
                     if handle is None:
                         continue
@@ -319,9 +300,11 @@ class Supercell:
                     dft.log(f'{["x", "y", "z"][v]}-gradient of atom {a}')
 
                     with timer('Supercell entry'):
+                        V1t_sG, dH1_asp = self._read_displacement_cache(
+                            fd_cache, a, v, dft.grid, filter)
                         v1t_sR = dft.grid.empty(dims=(nspins,))
-                        v1t_sR.scatter_from(V1t_xsG[xinput])
-                        dH1_aii = _dH_asp_to_aii(dH1_xasp[xinput],
+                        v1t_sR.scatter_from(V1t_sG)
+                        dH1_aii = _dH_asp_to_aii(dH1_asp,
                                                  dft.dH_asii_template)
                         g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
                             a, v, v1t_sR, dH1_aii, wfs, dH_aii, dft)
@@ -337,7 +320,7 @@ class Supercell:
                     g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()
                     handle.save(g_sNNMM)
 
-                if xinput == 0:
+                if a == self.indices[0] and v == 0:
                     with supercell_cache.lock("info") as handle:
                         if handle is not None:
                             info = {
@@ -369,55 +352,37 @@ class Supercell:
             nao_a = args[1]
         return {"M_a": M_a, "nao_a": nao_a}
 
-    @classmethod
-    def calculate_gradient(cls, fd_name: str,
-                           indices=None) -> tuple[ArrayND, list]:
-        """Calculate gradient of effective potential and projector coeffs.
+    def _read_displacement_cache(self, cache: MultiFileJSONCache,
+                                 a: int, v: int,
+                                 grid: UGDesc,
+                                 filter: str | None
+                                 ) -> tuple[ArrayND, dict]:
+        """Read FD cache for one displacement and return ``(V1t_sG, dH1_asp)``.
 
-        This function loads the generated json files and calculates
-        finite-difference derivatives.
-
-        Parameters
-        ----------
-        fd_name: str
-            name of finite difference JSON cache
+        Forms the central FD derivative from the ``±`` cache entries,
+        truncates ``V1t_sG`` along non-periodic axes if its stored shape
+        exceeds the calc grid, and applies the optional Fourier filter.
         """
-        cache = MultiFileJSONCache(fd_name)
-        if "dr_version" not in cache["info"]:
-            print("Cache created with old version. Use electronphonon.py")
-            raise VersionError
-        natom = cache["info"]["natom"]
-        delta = cache["info"]["delta"]
+        delta = cache['info']['delta']
+        name = f'{a}{"xyz"[v]}'
+        Vtm_sG = np.asarray(cache[name + '-']['Vt_sG'])
+        Vtp_sG = np.asarray(cache[name + '+']['Vt_sG'])
+        V1t_sG = (Vtp_sG - Vtm_sG) / (2 * delta / Bohr)
 
-        # Array and dict for finite difference derivatives
-        V1t_xsG = []
-        dH1_xasp = []
+        dHm_asp = cache[name + '-']['dH_all_asp']
+        dHp_asp = cache[name + '+']['dH_all_asp']
+        dH1_asp = {atom: (dHp_asp[atom] - dHm_asp[atom]) / (2 * delta / Bohr)
+                   for atom in dHm_asp}
 
-        if indices is None:
-            indices = np.arange(natom)
+        pb = (~grid.pbc_c) & (V1t_sG.shape[-3:] != grid.size_c)
+        if pb.any():
+            slices = tuple(slice(1, None) if p else slice(None) for p in pb)
+            V1t_sG = V1t_sG[..., slices[0], slices[1], slices[2]]
 
-        x = 0
-        for a in indices:
-            for v in "xyz":
-                name = "%d%s" % (a, v)
-                # Potential and atomic density matrix for atomic displacement
-                Vtm_sG = cache[name + "-"]["Vt_sG"]
-                dHm_asp = cache[name + "-"]["dH_all_asp"]
-                Vtp_sG = cache[name + "+"]["Vt_sG"]
-                dHp_asp = cache[name + "+"]["dH_all_asp"]
-
-                # FD derivatives in Hartree / Bohr
-                V1t_sG = (Vtp_sG - Vtm_sG) / (2 * delta / Bohr)
-                V1t_xsG.append(V1t_sG)
-
-                dH1_asp = {}
-                for atom in dHm_asp.keys():
-                    dH1_asp[atom] = (dHp_asp[atom] - dHm_asp[atom]) / (
-                        2 * delta / Bohr
-                    )
-                dH1_xasp.append(dH1_asp)
-                x += 1
-        return np.array(V1t_xsG), dH1_xasp
+        if filter is not None:
+            fourier_filter(self.atoms, self.supercell, V1t_sG,
+                           components=filter)
+        return V1t_sG, dH1_asp
 
     @classmethod
     def load_supercell_matrix(cls, name: str = "supercell"
