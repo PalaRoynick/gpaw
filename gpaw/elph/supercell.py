@@ -36,17 +36,24 @@ class DFTAdapter:
     def __init__(self, *,
                  grid: UGDesc,
                  dH_asii_template: AtomArrays,
-                 log: Logger) -> None:
+                 log: Logger,
+                 kd) -> None:
         self.grid = grid
         self.dH_asii_template = dH_asii_template
         self.log = log
+        self.kd = kd
+        # Derived k-point info. Will move to a native ibzwfs source later.
+        self.trs = len(kd.ibzk_kc) != len(kd.bzk_kc)
+        gamma_idx = np.where(np.abs(kd.ibzk_kc).sum(axis=1) < 1e-13)[0]
+        self.gamma_k = int(gamma_idx[0]) if gamma_idx.size else None
 
     @classmethod
     def from_calc(cls, calc) -> DFTAdapter:
         return cls(
             grid=calc.dft.density.nt_sR.desc,
             dH_asii_template=calc.dft.potential.dH_asii,
-            log=calc.log)
+            log=calc.log,
+            kd=calc.wfs.kd)
 
 
 def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
@@ -60,56 +67,24 @@ def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
             dH_aii[a][s] = unpack_hermitian(dH_p)
     return dH_aii
 
-def _bloch_to_real_space(A_qxMM: ArrayND,
-                         R_c: tuple[int, int, int],
-                         kd) -> ArrayND:
-    """Fourier transform ``A_qxMM`` from Bloch to real space at ``R_c``.
+def _finalize_g_sMM(g_sMM: ArrayND,
+                    g_s_gammaMM: ArrayND | None,
+                    kd) -> ArrayND:
+    """Reduce per-rank q-sums, apply TRS, normalise; return the real part.
 
-    Performs a single-vector version of
-    :meth:`gpaw.lcao.tightbinding.TightBinding.bloch_to_real_space`.
-    Handles the k-point parallel reduction and time-reversal symmetry.
-
-    Parameters
-    ----------
-    A_qxMM:
-        Bloch-space matrix, possibly distributed over k-points.
-    R_c:
-        Lattice vector at which the real-space matrix is evaluated.
-    kd:
-        ``KPointDescriptor`` providing ``ibzk_qc``, ``ibzk_kc``, ``bzk_kc``,
-        ``N_c``, ``nspins``, ``comm`` and ``get_rank_and_index``.
+    ``g_sMM`` is the per-rank IBZ-q sum at ``R = (0, 0, 0)``. With TRS folding
+    half the BZ, ``g_s_gammaMM`` carries the Γ contribution on the rank that
+    owns it (zeros elsewhere) so a comm-sum broadcasts it everywhere.
     """
-    Nk_c = tuple(kd.N_c)
-    shape = A_qxMM.shape
-    A_qx = A_qxMM.reshape(shape[0], -1)
-
-    phase_q = np.exp(2j * np.pi * kd.ibzk_qc @ np.asarray(R_c))
-    A_x = np.sum(phase_q[:, np.newaxis] * A_qx, axis=0)
-    kd.comm.sum(A_x)
-    A_xMM = A_x.reshape(shape[1:])
-
-    # Time-reversal symmetry: ibzk_kc smaller than bzk_kc
-    if len(kd.ibzk_kc) != len(kd.bzk_kc):
-        gamma = np.where(np.abs(kd.ibzk_kc).sum(axis=1) < 1e-13)[0]
-        if gamma.size > 0:
-            rank, myu = kd.get_rank_and_index(gamma[0], 0)
-            assert kd.nspins == 1
-            if kd.comm.rank == rank:
-                A0_xMM = A_qxMM[myu]
-            else:
-                A0_xMM = np.zeros_like(A_xMM)
-            kd.comm.broadcast(A0_xMM, rank)
-        else:
-            A0_xMM = 0.0
-        # Add conjugate and subtract double-counted Gamma component
-        A_xMM = A_xMM + A_xMM.conj() - A0_xMM
-
-    A_xMM = A_xMM / np.prod(Nk_c)
-
-    if not np.all(np.abs(A_xMM.imag) < 1e-10):
+    kd.comm.sum(g_sMM)
+    if g_s_gammaMM is not None:
+        kd.comm.sum(g_s_gammaMM)
+        g_sMM = g_sMM + g_sMM.conj() - g_s_gammaMM
+    g_sMM /= np.prod(kd.N_c)
+    if not np.all(np.abs(g_sMM.imag) < 1e-10):
         raise ValueError(
-            f'MAX Im(A_MM): {np.amax(np.abs(A_xMM.imag)):.2e}')
-    return A_xMM.real
+            f'MAX Im(g_MM): {np.amax(np.abs(g_sMM.imag)):.2e}')
+    return g_sMM.real
 
 
 class Supercell:
@@ -188,79 +163,74 @@ class Supercell:
     def _calculate_supercell_entry(self, a, v,
                                    v1t_sR: UGArray, dH1_aii: AtomArrays,
                                    wfs, dH_aii: AtomArrays,
-                                   ) -> ArrayND:
-        g_sqMM = self._local_contribution(v1t_sR, wfs)
-        g_sqMM += self._nonlocal_contribution(a, v, dH1_aii, dH_aii, wfs)
-        return g_sqMM
+                                   dft: DFTAdapter,
+                                   ) -> tuple[ArrayND, ArrayND | None]:
+        """One displacement → ``(g_sMM, g_s_gammaMM)``.
 
-    def _local_contribution(self, v1t_sR: UGArray, wfs) -> ArrayND:
-        """LCAO matrix elements ``<M | dv_eff/dx | N>``."""
-        kpt_u = wfs.kpt_u
+        ``g_sMM`` is the per-rank IBZ-q sum (no q axis); ``g_s_gammaMM`` is
+        populated only on the Γ-owning rank when TRS folds the BZ, otherwise
+        ``None``. Caller passes both to :func:`_finalize_g_sMM`.
+        """
         bfs = wfs.basis_functions
-        dtype = wfs.dtype
         nspins = wfs.nspins
         nao = wfs.setups.nao
+        dtype = wfs.dtype
 
-        g_sqMM = np.zeros((nspins, len(kpt_u) // nspins, nao, nao), dtype)
+        # Per-displacement precomputes (size << old g_sqMM).
         V1t_sxMM = np.array([bfs.calculate_potential_matrices(v1t_R.data)
                              for v1t_R in v1t_sR])
-        for kpt in kpt_u:
-            V_xMM = V1t_sxMM[kpt.s]
-            geff_MM = np.array(V_xMM[0], dtype=dtype)
-            if np.issubdtype(dtype, np.complexfloating):
-                kpt_c = wfs.kd.ibzk_kc[kpt.k]
-                phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ kpt_c)
-                geff_MM += np.einsum('x,xMN->MN', phase_x, V_xMM[1:],
-                                     optimize=True)
-                geff_MM += np.einsum('x,xMN->NM', phase_x.conj(), V_xMM[1:],
-                                     optimize=True)
-            g_sqMM[kpt.s, kpt.q] += geff_MM
-        return g_sqMM
+        P_aqMi = getattr(wfs, 'P_aqMi', None)
+        dPdR_aqvMi = wfs.manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
 
-    def _nonlocal_contribution(self, a, v,
-                               dH1_aii: AtomArrays,
-                               dH_aii: AtomArrays,
-                               wfs) -> ArrayND:
-        """PAW projector contributions: ``dH^a`` (all atoms) + ``dP^a`` (atom a)."""
-        kpt_u = wfs.kpt_u
+        g_sMM = np.zeros((nspins, nao, nao), dtype)
+        g_s_gammaMM = np.zeros_like(g_sMM) if dft.trs else None
+
+        for kpt in wfs.kpt_u:
+            g_qMM = self._local_qMM(kpt, V1t_sxMM, wfs)
+            g_qMM += self._nonlocal_qMM(kpt, a, v, dH1_aii, dH_aii, wfs,
+                                        P_aqMi, dPdR_aqvMi)
+            g_sMM[kpt.s] += g_qMM
+            if dft.trs and kpt.k == dft.gamma_k:
+                g_s_gammaMM[kpt.s] = g_qMM
+        return g_sMM, g_s_gammaMM
+
+    def _local_qMM(self, kpt, V1t_sxMM: ArrayND, wfs) -> ArrayND:
+        """Single-kpt LCAO matrix elements ``<M | dv_eff/dx | N>``."""
         bfs = wfs.basis_functions
         dtype = wfs.dtype
-        nspins = wfs.nspins
+        V_xMM = V1t_sxMM[kpt.s]
+        geff_MM = np.array(V_xMM[0], dtype=dtype)
+        if np.issubdtype(dtype, np.complexfloating):
+            kpt_c = wfs.kd.ibzk_kc[kpt.k]
+            phase_x = np.exp(-2j * np.pi * bfs.sdisp_xc[1:] @ kpt_c)
+            geff_MM += np.einsum('x,xMN->MN', phase_x, V_xMM[1:],
+                                 optimize=True)
+            geff_MM += np.einsum('x,xMN->NM', phase_x.conj(), V_xMM[1:],
+                                 optimize=True)
+        return geff_MM
+
+    def _nonlocal_qMM(self, kpt, a, v,
+                      dH1_aii: AtomArrays, dH_aii: AtomArrays,
+                      wfs, P_aqMi, dPdR_aqvMi) -> ArrayND:
+        """Single-kpt PAW projector terms: ``dH^a`` (all atoms) + ``dP^a`` (atom a)."""
+        bfs = wfs.basis_functions
         nao = wfs.setups.nao
+        g_MM = np.zeros((nao, nao), wfs.dtype)
 
-        g_sqMM = np.zeros((nspins, len(kpt_u) // nspins, nao, nao), dtype)
-        gp_MM = np.zeros((nao, nao), dtype)
-        P_aqMi = getattr(wfs, 'P_aqMi', None)
+        for a_, dH1_sii in dH1_aii.items():
+            if a_ not in bfs.my_atom_indices:
+                continue
+            P_Mi = (kpt.P_aMi[a_] if P_aqMi is None
+                    else P_aqMi[a_][kpt.q])
+            g_MM += P_Mi.conj() @ dH1_sii[kpt.s] @ P_Mi.T
 
-        # dH^a part: contributions from all atoms
-        for kpt in kpt_u:
-            gp_MM[:] = 0.0
-            for a_, dH1_sii in dH1_aii.items():
-                if a_ not in bfs.my_atom_indices:
-                    continue
-                dH1_ii = dH1_sii[kpt.s]
-                if P_aqMi is None:
-                    P_Mi = kpt.P_aMi[a_]
-                else:
-                    P_Mi = P_aqMi[a_][kpt.q]
-                gp_MM += P_Mi.conj() @ dH1_ii @ P_Mi.T
-            g_sqMM[kpt.s, kpt.q] += gp_MM
-
-        # dP^a part: only the displaced atom contributes
-        dPdR_aqvMi = wfs.manytci.P_aqMi(bfs.my_atom_indices, derivative=True)
-        for kpt in kpt_u:
-            gp_MM[:] = 0.0
-            if a in bfs.my_atom_indices:
-                dH_ii = dH_aii[a][kpt.s]
-                if P_aqMi is None:
-                    P_Mi = kpt.P_aMi[a]
-                else:
-                    P_Mi = P_aqMi[a][kpt.q]
-                dP_Mi = dPdR_aqvMi[a][kpt.q][v]
-                P1HP_MM = dP_Mi.conj() @ dH_ii @ P_Mi.T
-                gp_MM += P1HP_MM + P1HP_MM.T.conjugate()
-            g_sqMM[kpt.s, kpt.q] += gp_MM
-        return g_sqMM
+        if a in bfs.my_atom_indices:
+            P_Mi = (kpt.P_aMi[a] if P_aqMi is None
+                    else P_aqMi[a][kpt.q])
+            dP_Mi = dPdR_aqvMi[a][kpt.q][v]
+            P1HP_MM = dP_Mi.conj() @ dH_aii[a][kpt.s] @ P_Mi.T
+            g_MM += P1HP_MM + P1HP_MM.T.conjugate()
+        return g_MM
 
     def calculate_supercell_matrix(
         self, calcdict: dict, fd_name: str = "elph",
@@ -294,7 +264,7 @@ class Supercell:
         supercell_cache = MultiFileJSONCache(self.supercell_name)
 
         # REFACTOR LATER: remove these when not needed anymore
-        kd = wfs.kd
+        kd = dft.kd
         nao = wfs.setups.nao
         nspins = wfs.nspins
 
@@ -353,17 +323,10 @@ class Supercell:
                         v1t_sR.scatter_from(V1t_xsG[xinput])
                         dH1_aii = _dH_asp_to_aii(dH1_xasp[xinput],
                                                  dft.dH_asii_template)
-                        g_sqMM = self._calculate_supercell_entry(
-                            a, v, v1t_sR, dH1_aii,
-                            wfs, dH_aii)
-                    # Extract R_c=(0, 0, 0) block by Fourier transforming
-                    if kd.gamma or kd.N_c is None:
-                        g_sMM = g_sqMM[:, 0]
-                    else:
-                        g_sMM = np.array([
-                            _bloch_to_real_space(
-                                g_sqMM[s], R_c=(0, 0, 0), kd=kd)
-                            for s in range(nspins)])
+                        g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
+                            a, v, v1t_sR, dH1_aii, wfs, dH_aii, dft)
+                    if not (kd.gamma or kd.N_c is None):
+                        g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM, kd)
 
                     # Reshape to global unit cell indices
                     N = np.prod(self.supercell)
