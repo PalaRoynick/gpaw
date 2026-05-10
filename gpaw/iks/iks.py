@@ -270,7 +270,8 @@ class iKS:
             self.nxc_kwargs.setdefault("paw_potmode", "lebedev")
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
             self.nxc_kwargs.setdefault("stencil", self.stencil)
-            xc = FermiAmaldi(self.tdens, **self.nxc_kwargs)
+            xc = FermiAmaldi(
+                self.tdens, self.hamiltonian.poisson, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
@@ -394,8 +395,6 @@ class iKS:
         # apply PAW corrections
         for a, P_ni in kpt.P_ani.items():
             w_ng = self.weights_asng[a][kpt.s]
-            if "radial_" in self.atomic_weights:
-                w_ng = w_ng[np.newaxis, ...]
             Phi_ii = calculate_diff_overlap_matrix(
                 self.setups[a],
                 w_ng,
@@ -479,7 +478,7 @@ class iKS:
             for s in range(self.nspins):
                 w_ng = self.weights_asng[a][s]
                 if "radial_" in self.atomic_weights:
-                    w_ng = w_ng[np.newaxis, ...].repeat(len(Y_nL), axis=0)
+                    w_ng = w_ng.repeat(len(Y_nL), axis=0)
                 for n, Y_L in enumerate(Y_nL[:, :Lmax]):
                     dn_g = np.dot(Y_L, dn_sLg[s])
                     LD1 += weight_n[n] * \

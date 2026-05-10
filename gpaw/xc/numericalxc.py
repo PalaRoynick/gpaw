@@ -633,22 +633,24 @@ def lebedev2angular(vxc_sng, Lmax):
 def get_atomic_vxc_spline(setup, vxc_Lg, points=1000):
     xcc = setup.xc_correction
     rgd = xcc.rgd
-    # rcut = rgd.r_g.max()
-    rcut = rgd.r_g[-1]
     lmax = int(sqrt(xcc.Lmax))
     v_lg = rgd.zeros(lmax)
-    for l in range(lmax):
+    for ll in range(lmax):
         s = rgd.zeros()
-        for m in range(2 * l + 1):
-            L = l**2 + m
+        for m in range(2 * ll + 1):
+            L = ll**2 + m
             s += vxc_Lg[L]
-        v_lg[l] = s
+        v_lg[ll] = s
 
     v_j = []
 
-    for l, v_g in enumerate(v_lg):
+    # rcut = rgd.r_g[-1]
+    rcut = max(setup.rcut_j)
+    gcut = rgd.ceil(rcut)
+    v_lg[:, gcut:] = 0.0
+    for ll, v_g in enumerate(v_lg):
         v_j.append(rgd.spline(v_g, rcut=rcut,
-                              l=l, points=points))
+                              l=ll, points=points))
     return v_j
 
 
@@ -678,8 +680,8 @@ def calculate_atomic_potentials_from_kernel(
                 rgd.derivative(n_g, dndr_g)
         coeff_L = []
         for L in range(Lmax):
-            l, m = L_to_lm(L)
-            coeff_L.append(2 * l * (l + 1))
+            ll, m = L_to_lm(L)
+            coeff_L.append(2 * ll * (ll + 1))
         for n, Y_L in enumerate(Y_nL[:, :Lmax]):
             n_sg = np.dot(Y_L, n_sLg)
             rnablaY_Lv = rnablaY_nLv[n, :Lmax]
@@ -699,9 +701,9 @@ def calculate_atomic_potentials_from_kernel(
 
 def L_to_lm(L: int) -> tuple[int, int]:
     """convert L index to (l, m) index"""
-    l = int(sqrt(L))
-    m = L - l**2 - l
-    return l, m
+    ll = int(sqrt(L))
+    m = L - ll**2 - ll
+    return ll, m
 
 
 def atomic_fa_angular(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
@@ -716,9 +718,9 @@ def atomic_fa_angular(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
     vxc_sLg = rgd.zeros((nspins, Lmax))
     vxct_sLg = rgd.zeros((nspins, Lmax))
     for L in range(Lmax):
-        l, m = L_to_lm(L)
+        ll, m = L_to_lm(L)
         for s in range(nspins):
-            v_g = rgd.poisson(n_sLg[s, L], l=l)
+            v_g = rgd.poisson(n_sLg[s, L], l=ll)
             v_g[1:] /= rgd.r_g[1:]
             v_g[0] = v_g[1]
             v_g[-1] = 0.0  # calculations don't converge without this
@@ -726,7 +728,7 @@ def atomic_fa_angular(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
             if N < 1e-20:
                 N = np.inf
             vxc_sLg[s, L] = -v_g / N
-            v_g = rgd.poisson(nt_sLg[s, L], l=l)
+            v_g = rgd.poisson(nt_sLg[s, L], l=ll)
             v_g[1:] /= rgd.r_g[1:]
             v_g[0] = v_g[1]
             v_g[-1] = 0.0
@@ -821,7 +823,6 @@ def calculate_fa_atomic_potentials(
 def calculate_fa_potential(
     fapoisson: BasePoissonSolver, gd: GridDescriptor, n_sg: Array4D
 ) -> ArrayND:
-    # use hamiltonian.get_electrostatic_potential instead?
     nspins = len(n_sg)
     vHt_sg = gd.zeros(nspins)
     for s in range(nspins):
@@ -833,6 +834,7 @@ def calculate_fa_potential(
 
 def FermiAmaldi(
     density: Density,
+    poisson=None,
     setup_name: str = "LDA",
     paw_potmode: str | PAWPotMode = PAWPotMode.lebedev,
     virial_xc_energy: bool = False,
@@ -840,12 +842,27 @@ def FermiAmaldi(
     interpolate_vt: bool = False,
     **poisson_kwargs: dict[str, Any],
 ) -> NumericalXC:
-    poisson_kwargs.setdefault("use_charge_center", True)
-    poisson_kwargs.setdefault("use_charged_periodic_corrections", True)
-    poisson = create_poisson_solver(**poisson_kwargs)
-    poisson.set_grid_descriptor(density.finegd)
+    if poisson is None:
+        poisson_kwargs.setdefault("use_charge_center", True)
+        poisson_kwargs.setdefault("use_charged_periodic_corrections", True)
+        poisson = create_poisson_solver(**poisson_kwargs)
+        poisson.set_grid_descriptor(density.finegd)
     paw_potmode = PAWPotMode(paw_potmode)
-    vxc_sg = calculate_fa_potential(poisson, poisson.gd, density.nt_sg)
+    from gpaw.old.pw.poisson import ReciprocalSpacePoissonSolver
+    if isinstance(poisson, ReciprocalSpacePoissonSolver):
+        vxc_sg = density.finegd.zeros(density.nspins)
+        for s in range(density.nspins):
+            N = density.finegd.integrate(density.nt_sg[s])
+            # probably not correct for spin polarized systems
+            pd3 = density.pd3
+            v_q = pd3.zeros(q=0)
+            rhot_q = pd3.fft(density.nt_sg[s], q=0)
+            poisson._solve(v_q, rhot_q)
+            vxc_sg[s] = -pd3.ifft(v_q, q=0, distribute=False) / N
+    else:
+        vxc_sg = calculate_fa_potential(
+            poisson, poisson.gd, density.nt_sg)
+
     D_asp = density.atomdist.to_work(density.D_asp)
     vxc_xasz = calculate_fa_atomic_potentials(
         D_asp, density.setups, density.nspins, paw_potmode
@@ -934,29 +951,26 @@ def get_pbs_splines(setup, points=100, n_gauss=9):
     for phit_g in xcc.phit_jg:
         n_g += phit_g**2
     n_g[gcut2:] = 0.0
-
     X_j = []
-    # X_j.append(rgd.spline(rgd.zeros() + 1.0, rcut2, l=0, points=points))
-    # 1. density-shape basis: n(r) / max(n), l = 0
+    # density-shape basis: n(r) / max(n), l = 0
     nmax = float(n_g.max()) + 1e-10
     dens_shape_g = n_g / nmax
     X_j.append(rgd.spline(dens_shape_g, rcut2, l=0, points=points))
-
-    # 2. Hartree potential of n(r), l = 0
+    # Hartree potential
     vH_g = divrl(rgd.poisson(n_g, l=0), 1, rgd.r_g)
     vH_g[gcut2:] = 0.0
     X_j.append(rgd.spline(vH_g, rcut2, l=0, points=points))
-    # 3. Gaussians with Z-dependent even-tempered exponents
+    # Gaussians
     Z = setup.Z
     alpha1 = 0.01 * Z**2
     alpha2 = 50.0 * Z**2
     alpha_B = alpha1 * (alpha2 / alpha1) ** np.linspace(0.0, 1.0, n_gauss)
     r_g = rgd.r_g
-    for l in (0, 1, 2):
+    for ll in (0, 1, 2):
         for alpha in alpha_B:
             g_g = np.exp(-alpha * r_g**2)
             g_g[gcut2:] = 0.0
-            spl = Spline.from_data(l=l, rmax=rcut2, f_g=g_g)
+            spl = Spline.from_data(l=ll, rmax=rcut2, f_g=g_g)
             X_j.append(spl)
 
     return X_j
@@ -965,7 +979,6 @@ def get_pbs_splines(setup, points=100, n_gauss=9):
 def make_pbs(setups, gd, points=400, n_gauss=9):
     X_aj = []
     cache = {}
-
     for a, id_ in enumerate(setups.id_a):
         if id_ in cache:
             X_j = cache[id_]
@@ -975,34 +988,23 @@ def make_pbs(setups, gd, points=400, n_gauss=9):
             X_j = get_pbs_splines(setups[a], n_gauss=n_gauss, points=points)
             cache[id_] = X_j
         X_aj.append(X_j)
-
     vt = BasisFunctions(gd, X_aj)
     return vt
 
 
 def get_pbs_overlap_matrix(vt):
     """Return Gram/overlap matrix S as a gpaw.core.Matrix.
-
     vt: BasisFunctions (or LFC subclass with calculate_potential_matrices)
     """
     gd = vt.gd
-
-    # v(r) = 1  ->  S_{μν} = ∫ Φ_μ(r) Φ_ν(r) dr
     ones_G = np.ones(gd.n_c, dtype=float)
-
-    # Vt_xMM has shape (nx, Mstop - Mstart, Mmax).
-    # Gamma + real -> nx = 1 and Mstop-Mstart = Mmax.
     Vt_xMM = vt.calculate_potential_matrices(ones_G)
-    # (Mmax, Mmax), lower triangle filled
     S_MM = np.array(Vt_xMM[0], copy=True)
-
     M = vt.Mstop - vt.Mstart
     assert S_MM.shape == (M, M)
     # to prevent singular overlap matrix
     eps = 1e-9
     np.fill_diagonal(S_MM, S_MM.diagonal() + eps)
-
-    # Wrap in GPAW Matrix (no distribution => serial, but parallel-safe)
     S = Matrix(M, M, dtype=S_MM.dtype, data=S_MM)
     return S
 
@@ -1010,7 +1012,6 @@ def get_pbs_overlap_matrix(vt):
 def project_potential_onto_pbs(vt, v_sg, S,):
     """Project v_sg onto vt’s potential basis."""
     M = S.shape[0]
-
     # b_M = <Φ|v>
     nspins = len(v_sg)
     c_sM = np.zeros((nspins, vt.Mmax), dtype=float)
@@ -1018,22 +1019,15 @@ def project_potential_onto_pbs(vt, v_sg, S,):
     vt.integrate2(v_sg, c_sM)
     for s in range(len(c_sM)):
         B = Matrix(M, 1, dtype=c_sM.dtype, data=c_sM[s].reshape(M, 1))
-
-        # y = L b
         Y = S.multiply(alpha=1, b=B, opa="N", opb="N")
-
-        # c = L^T y
         C = S.multiply(alpha=1.0, b=Y, opa="T", opb="N")
-
         c_sM[s] = np.array(C.array.ravel(), copy=True)
-    vt.M_to_ai(c_sM, c_asi)  # src_xM has shape (1, Mmax)
-
+    vt.M_to_ai(c_sM, c_asi)
     return c_sM, c_asi
 
 
 def project_potential_onto_pbs2(vt, v_sg, S):
     """Project v_sg onto vt’s potential basis with a zero-mean-error constraint.
-
     Returns
     -------
     c_sM : 2D ndarray (nspins, M)
@@ -1044,63 +1038,38 @@ def project_potential_onto_pbs2(vt, v_sg, S):
     gd = vt.gd
     M = S.shape[0]
     nspins = len(v_sg)
-
-    # --- 0) <Phi | 1>  => f_M ---
-    # Make a spin=0 constant field
     ones_sg = np.ones((1,) + tuple(gd.n_c), dtype=float)
     c1_xM = np.zeros((1, vt.Mmax), dtype=float)
-    vt.integrate2(ones_sg, c1_xM)        # <Phi | 1>
-    f_M = c1_xM[0]                       # shape (M,)
-
-    # Wrap f_M as Matrix(M,1)
+    vt.integrate2(ones_sg, c1_xM)
+    f_M = c1_xM[0]
     F = Matrix(M, 1, dtype=f_M.dtype, data=f_M.reshape(M, 1))
-
-    # --- 1) w_M = S^{-1} f_M = L^T (L f_M) ---
-    # S is already the inverse-Cholesky factor L from invcholesky().
     Yf = S.multiply(alpha=1.0, opa="N", b=F, opb="N")  # y = L f
     W = S.multiply(alpha=1.0, opa="T", b=Yf, opb="N")  # w = L^T y
     w_M = np.array(W.array.ravel(), copy=True)
-
     denom = float(f_M @ w_M)  # f^T S^{-1} f
     tiny = 1e-14
-
-    # --- 2) Spin-resolved projection ---
     c_sM = np.zeros((nspins, vt.Mmax), dtype=float)
     c_asi = vt.dict(nspins)
-
-    # b_sM = <Phi | v_s> for each spin
     vt.integrate2(v_sg, c_sM)
-
     for s in range(nspins):
-        b_M = c_sM[s]  # <Phi|v_s>
-
-        # Unconstrained solution: c0 = S^{-1} b
+        b_M = c_sM[s]
         B = Matrix(M, 1, dtype=b_M.dtype, data=b_M.reshape(M, 1))
         Y = S.multiply(alpha=1.0, opa="N", b=B, opb="N")  # y = L b
         C = S.multiply(alpha=1.0, opa="T", b=Y, opb="N")  # c0 = L^T y
         c0_M = np.array(C.array.ravel(), copy=True)
-
-        # Mean of v_s: g_s = <1|v_s>
         g_s = float(gd.integrate(v_sg[s]))
-
-        # Constrained correction: c = c0 + w * (g - f^T c0) / (f^T S^{-1} f)
         if abs(denom) > tiny:
             num = g_s - float(f_M @ c0_M)
             c_M = c0_M + (num / denom) * w_M
         else:
-            # Fallback: denominator too small, keep unconstrained
             c_M = c0_M
-
         c_sM[s] = c_M
-
     vt.M_to_ai(c_sM, c_asi)
-
     return c_sM, c_asi
 
 
 def project_lfc_to_lebedev(vt, c_si, setup, Y_nL, a):
     """Compute v_sng[s, n, g] on Lebedev × radial grid for atom a.
-
     vt   : BasisFunctions / LFC with sphere_a[a].spline_j
     c_si : array (nspins, ni_a) – coefficients for atom a (i = compact n,l,m)
     setup: PAW setup for atom a (for radial grid)
@@ -1113,40 +1082,27 @@ def project_lfc_to_lebedev(vt, c_si, setup, Y_nL, a):
     r_g = rgd.r_g
     nspins, ni_a = c_si.shape
     n_lebedev = Y_nL.shape[0]
-
     v_sng = np.zeros((nspins, n_lebedev, rgd.N), dtype=float)
-
-    # Radial splines used by this LFC for atom a
     X_j = vt.sphere_a[a].spline_j
-
     for s in range(nspins):
-        i_counter = 0  # compact (n,l,m) index
+        i_counter = 0
         for spline in X_j:
-            l = spline.l
-
-            # spline.map gives the stored s(r) ≈ f(r)/r^l
+            ll = spline.l
             s_g = spline.map(r_g)
-
-            # Reconstruct the actual radial part f(r) used by LFC:
             # f(r) = s(r) * r^l
-            if l == 0:
+            if ll == 0:
                 R_g = s_g
             else:
-                R_g = s_g * (r_g ** l)
-
-            # Add all 2l+1 m-components for this radial channel
-            for m in range(2 * l + 1):
-                L = l * l + m               # compact L index
-                i = i_counter + m           # compact (n,l,m) coefficient index
+                R_g = s_g * (r_g ** ll)
+            for m in range(2 * ll + 1):
+                L = ll * ll + m
+                i = i_counter + m
                 c = c_si[s, i]
                 if c == 0.0:
                     continue
-
-                Y_n = Y_nL[:, L]            # shape (n_lebedev,)
+                Y_n = Y_nL[:, L]
                 v_sng[s] += c * (Y_n[:, None] * R_g[None, :])
-
-            i_counter += 2 * l + 1
-
+            i_counter += 2 * ll + 1
     return v_sng
 
 
@@ -1160,16 +1116,15 @@ def project_lfc_to_lebedev2(vt, c_si, setup, Y_nL, a):
     for s in range(nspins):
         i_counter = 0
         for j, spline in enumerate(X_j):
-            l = spline.l
+            ll = spline.l
             R_g = np.array([spline(r) for r in r_g])
-            for m in range(2 * l + 1):
-                L = l**2 + m
+            for m in range(2 * ll + 1):
+                L = ll**2 + m
                 i = i_counter + m
                 c = c_si[s, i]
                 Y_n = Y_nL[:, L]
                 x = c * (Y_n[:, np.newaxis] * R_g[np.newaxis, :])
-                x[:, 1:] *= r_g[1:]**l
+                x[:, 1:] *= r_g[1:]**ll
                 v_sng[s] += x
-            i_counter += 2 * l + 1
-
+            i_counter += 2 * ll + 1
     return v_sng

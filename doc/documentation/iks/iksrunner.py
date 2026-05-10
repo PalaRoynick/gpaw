@@ -187,6 +187,7 @@ def main():
         # FA
         fa = FermiAmaldi(
             target.density,
+            target.hamiltonian.poisson,
             setup_name=target.hamiltonian.xc.get_setup_name(),
             paw_potmode=args.paw_potmode,
             virial_xc_energy=args.virialxc,
