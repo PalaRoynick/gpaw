@@ -79,9 +79,6 @@ def pseudize(waves: PAWWaves,
     phit_g, pt_g = first_partial_wave(rgd, phi_ng[0], rc, l, vtr_g, e)
     phit_ng[0] = phit_g
     pt_ng[0] = pt_g
-    rgd.plot(phi_ng[0])
-    rgd.plot(phit_ng[0])
-    rgd.plot(pt_ng[0])
     if N == 2:
         e = waves.e_n[1]
         ha_g = pt_g.copy()
