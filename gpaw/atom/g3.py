@@ -107,19 +107,26 @@ def pseudize(waves: PAWWaves,
 
 
 def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
+    print(l, rcut, eig)
     gcut = rgd.floor(rcut)
-    logphit_g, c0 = rgd.pseudize(np.log(abs(phi_g)), gcut, l, 6)
-    sign = np.sign(phi_g[gcut])
-    phit_g = sign * np.exp(logphit_g)
-
-    c0 *= sign
-    a_g, dadg_g, d2adg2_g = rgd.zeros(3)
     r_g = rgd.r_g
-    a_g[1:] = phit_g[1:] / r_g[1:]**l
-    a_g[0] = c0
+    aphi_g = abs(phi_g)
+    aphi_g[1:] /= r_g[1:]**l
+    aphi_g[0] = aphi_g[1]
+    print(aphi_g.min())
+    logphit_g, _ = rgd.pseudize(np.log(aphi_g), gcut, 0, 6)
+    sign = np.sign(phi_g[gcut])
+    a_g = sign * np.exp(logphit_g)
+    phit_g = a_g * r_g**l
+    dadg_g, d2adg2_g = rgd.zeros(2)
+    # a_g[1:] = phit_g[1:] / r_g[1:]**l
+    # a_g[0] = c0
     dadg_g[1:-1] = 0.5 * (a_g[2:] - a_g[:-2])
     d2adg2_g[1:-1] = a_g[2:] - 2 * a_g[1:-1] + a_g[:-2]
-    assert d2adg2_g[1] * sign < 0.0
+    print(a_g[:5])
+    print(dadg_g[:5])
+    print(d2adg2_g[:5])
+    assert d2adg2_g[1] * sign < 0.0, l
     q_g = (vtr_g - eig * r_g) * phit_g
     dgdr_g = 1 / rgd.dr_g
     d2gdr2_g = rgd.d2gdr2()
@@ -202,10 +209,10 @@ def howf(alpha, r, l=0, n=0, rc=np.inf):
 PARAMS = {
     'H': ('1s,s,P', 0.9),
     'He': ('1s,s,P', 1.5),
-    'Li': ('2s,s,2p,D', 2.1),
-    'Be': ('2s,s,2p,D', 1.5),
-    'B': ('2s,s,2p,p,D', 1.2),
-    'C': ('2s,s,2p,p,d,F', 1.2),
+    'Li': ('2s,s,2p,D', 3.9),
+    'Be': ('2s,s,2p,D', 2.7),
+    'B': ('2s,s,2p,p,D', 2.0),
+    'C': ('2s,s,2p,p,d,F', 1.6),
     'Ne': ('2s,s,2p,p,d,F', 1.8),
     'Na': ('2s,3s,2p,3p,d,F', 2.3),
     'Al': ('3s,s,3p,p,d,F', 2.1),
@@ -283,9 +290,4 @@ def hmm():
 
 
 if __name__ == '__main__':
-    from sympy import exp, integrate, var, Symbol
-    a = Symbol('a')
-    b = Symbol('b')
-    r = var('r')
-    print(integrate(exp(a * r**2 + b * r**4), r))
-    # create_all()
+    create_all()
