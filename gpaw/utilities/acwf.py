@@ -80,14 +80,19 @@ def fit(strains: np.ndarray,
     return strain, e0, d2eds2
 
 
-def run_eos_calculation(structure: str, symbol: str, **params) -> dict:
+def run_eos_calculation(structure: str,
+                        symbol: str,
+                        tag: str = '',
+                        **params) -> dict:
     """Create GPAW calculator and do EOS calculation."""
     atoms = reference_structure(symbol, structure)
     builder = Parameters(**params).dft_component_builder(atoms, log=None)
     params['kpts'] = builder.ibz.bz.size_c  # type: ignore
     params['gpts'] = builder.grid.size
     params.pop('h', None)
-    atoms.calc = GPAW(txt=f'{builder.mode}-{structure}.txt', **params)
+    if tag:
+        tag += '-'
+    atoms.calc = GPAW(txt=f'{tag}{structure}.txt', **params)
     data = eos(atoms)
     return data
 
@@ -100,9 +105,9 @@ def workflow() -> None:
     from myqueue.workflow import run
     symbol, _, setup_name = Path().absolute().name.partition('.')
     for x in acwf_structures:
-        run(function=work, args=[x, symbol, setup_name, 'pw'],
+        run(function=work, args=[x, symbol, setup_name, 'pw', 'pw'],
             cores=24, tmax='1h', name=f'pw-{x}')
-        run(function=work, args=[x, symbol, setup_name, 'lcao'],
+        run(function=work, args=[x, symbol, setup_name, 'lcao', 'lcao'],
             cores=24, tmax='5h', name=f'lcao-{x}', restart=2)
 
 
@@ -110,6 +115,7 @@ def work(structure: str,
          symbol: str,
          setup_name: str = '',
          mode: str = 'pw',
+         tag: str = '',
          *,
          world=None):
     """Do single EOS calculations with PBE."""
@@ -130,9 +136,12 @@ def work(structure: str,
     data = run_eos_calculation(
         structure,
         symbol,
+        tag,
         **params)
     if world.rank == 0:
-        Path(f'{mode}-{structure}.json').write_text(
+        if tag:
+            tag += '-'
+        Path(f'{tag}{structure}.json').write_text(
             json.dumps(data, indent=1))
 
 
