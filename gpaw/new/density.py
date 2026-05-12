@@ -211,32 +211,6 @@ class Density:
 
         return ccc_aL
 
-    def compensate_my_charges(self) -> Grid:
-        charge_sR = self.nt_sR.copy().to_xp(np)
-
-        ccc_aL = self.calculate_compensation_charge_coefficients().to_xp(np)
-
-        # Normalize: (LCAO basis functions may extend outside box)
-        # comp_charge = (4 * pi)**0.5 * sum(float(ccc_L[0])
-        #                                   for ccc_L in ccc_aL.values())
-        # comp_charge = ccc_aL.layout.atomdist.comm.sum_scalar(comp_charge)
-        # pseudo_charge = charge_r.integrate()
-        # if abs(pseudo_charge) > 1e-10:
-        #     pc = (-comp_charge
-        #           - density.charge
-        #           + sum(ext.charge for ext in self.extensions))
-        #     charge_r.data *= pc / pseudo_charge
-
-        # for ext in self.extensions:
-        #     ext.update1(charge_r)
-
-        charge_R = self.grid.empty()
-        charge_R.data[:] = charge_sR.data.sum(0)
-        breakpoint()
-        self.ghat_aLr.add_to(charge_R, ccc_aL)
-        breakpoint()
-        return charge_sR
-
     def normalize(self, background_charge: float) -> None:
         comp_charge = 0.0
         xp = self.D_asii.layout.xp

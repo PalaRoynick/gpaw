@@ -11,6 +11,8 @@ from numpy.fft import fftn, ifftn
 import gpaw.mpi as mpi
 from gpaw.new import trace
 from gpaw.utilities.blas import axpy
+from gpaw.utilities import pack_density
+from gpaw.lfc import LFC, BasisFunctions
 
 """About mixing-related classes.
 
@@ -29,7 +31,6 @@ we don't have to implement it multiple times (estimate memory, etc.).
 
 In the end, what the user provides is probably a dictionary anyway, and the
 relevant objects are instantiated automatically."""
-
 
 class BaseMixer:
     name = 'pulay'
@@ -63,9 +64,15 @@ class BaseMixer:
         self.sigma = sigma
         self.world = None
 
-    def initialize_metric(self, gd):
+    def initialize_metric(self, gd, setups, nspins, spos_ac, atomdist):
+        from gpaw.old.density import CompensationChargeExpansionCoefficients
         self.gd = gd
         self.metric = ReciprocalMetric(gd, self.weight, self.sigma)
+        self.setups = setups
+        self.ghat = LFC(self.gd, [setup.ghat_l for setup in setups],
+                        integral=np.sqrt(4 * np.pi))
+        self.ghat.set_positions(spos_ac, atomdist)
+
 
     def reset(self):
         """Reset Density-history.
@@ -78,6 +85,7 @@ class BaseMixer:
         # History for Pulay mixing of densities:
         self.nt_isG = []  # Pseudo-electron densities
         self.R_isG = []  # Residuals
+        self.Rc_isG = []  # Compensated residuals
         self.A_ii = np.zeros((0, 0))
 
         self.D_iasp = []
@@ -86,9 +94,24 @@ class BaseMixer:
     def calculate_charge_sloshing(self, R_sG) -> float:
         return self.gd.integrate(np.fabs(R_sG)).sum()
 
+    def add_compensation(self, A_sG, D_asI):
+        return A_sG
+        comp_sG = A_sG.copy()
+        for s, comp_G in enumerate(comp_sG):
+            Q_aL = {}
+            for a, D_sI in enumerate(D_asI):
+                D_I = D_sI[s]
+                setup = self.setups[a]
+                i = int(np.sqrt(len(D_I)))
+                D_p = pack_density(D_I.reshape(i, i))
+                Q_aL[a] = D_p @ setup.Delta_pL
+            self.ghat.add(comp_G, Q_aL)
+        return comp_sG
+
     def mix_density(self, nt_sG, D_asp, g_ss=None):
         nt_isG = self.nt_isG
         R_isG = self.R_isG
+        Rc_isG = self.Rc_isG
         D_iasp = self.D_iasp
         dD_iasp = self.dD_iasp
         iold = len(self.nt_isG)
@@ -100,26 +123,31 @@ class BaseMixer:
                 del R_isG[0]
                 del D_iasp[0]
                 del dD_iasp[0]
+                del Rc_isG[0]
                 iold = self.nmaxold
 
             # Calculate new residual (difference between input and
             # output density):
             R_sG = nt_sG - nt_isG[-1]
-            dNt = self.calculate_charge_sloshing(R_sG)
             R_isG.append(R_sG)
+
 
             dD_iasp.append([])
             for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
                 dD_iasp[-1].append(D_sp - D_isp)
 
-            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
+            Rc_sG = self.add_compensation(R_sG, dD_iasp[-1])
+            dNt = self.calculate_charge_sloshing(Rc_sG)
+            Rc_isG.append(Rc_sG)
+
+            mR_sG, mD_asp = self.metric.apply(Rc_sG, dD_iasp[-1], g_ss)
 
             # Update matrix:
             A_ii = np.zeros((iold, iold))
             i2 = iold - 1
 
             a_i = self.dotprod(
-                R_isG, [mR_sG,], dD_iasp,
+                Rc_isG, [mR_sG,], dD_iasp,
                 [mD_asp,], self.gd, mode='gemm')[:, 0]
             A_ii[:, i2] = a_i
             A_ii[i2, :] = a_i
@@ -225,6 +253,7 @@ class MSR1Mixer(BaseMixer):
         super().__init__(beta, nmaxold, weight, sigma)
         self.mR_isG = []
         self.mD_iasp = []
+        self.ntc_isG = []
         self.gb_scale = gb_scale
         self.soft_bad_lim = soft_bad_lim
         self.hard_bad_lim = hard_bad_lim
@@ -234,11 +263,14 @@ class MSR1Mixer(BaseMixer):
         super().reset()
         self.mR_isG = []
         self.mD_iasp = []
+        self.ntc_isG = []
         self.last_dNt = np.inf
 
     def mix_density(self, nt_sG, D_asp, g_ss=None):
         nt_isG = self.nt_isG
+        ntc_isG = self.ntc_isG
         R_isG = self.R_isG
+        Rc_isG = self.Rc_isG
         mR_isG = self.mR_isG
         D_iasp = self.D_iasp
         dD_iasp = self.dD_iasp
@@ -253,7 +285,11 @@ class MSR1Mixer(BaseMixer):
             dD_iasp.append([])
             for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
                 dD_iasp[-1].append(D_sp - D_isp)
-            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
+
+            Rc_sG = self.add_compensation(R_sG, dD_iasp[-1])
+            Rc_isG.append(Rc_sG)
+
+            mR_sG, mD_asp = self.metric.apply(Rc_sG, dD_iasp[-1], g_ss)
 
             R_isG.append(R_sG)
             mR_isG.append(mR_sG)
@@ -265,7 +301,9 @@ class MSR1Mixer(BaseMixer):
                 # Throw away too old stuff:
                 to_del = 0
                 del nt_isG[to_del]
+                del ntc_isG[to_del]
                 del R_isG[to_del]
+                del Rc_isG[to_del]
                 del mR_isG[to_del]
                 del D_iasp[to_del]
                 del dD_iasp[to_del]
@@ -285,6 +323,10 @@ class MSR1Mixer(BaseMixer):
                 nt_isG.insert(insert_pos, tmp)
                 tmp = R_isG.pop()
                 R_isG.insert(insert_pos, tmp)
+                tmp = ntc_isG.pop()
+                ntc_isG.insert(insert_pos, tmp)
+                tmp = Rc_isG.pop()
+                Rc_isG.insert(insert_pos, tmp)
                 tmp = mR_isG.pop()
                 mR_isG.insert(insert_pos, tmp)
                 tmp = mD_iasp.pop()
@@ -301,7 +343,7 @@ class MSR1Mixer(BaseMixer):
                 backtracked = True
 
             # 1st order norm
-            ntnorm = self.calculate_charge_sloshing(nt_isG[-1])
+            ntnorm = self.calculate_charge_sloshing(ntc_isG[-1])
             dNt_normed = dNt / max(ntnorm, 1)
             if dNt_normed == 0:
                 dNt_normed = 1e-10
@@ -334,7 +376,9 @@ class MSR1Mixer(BaseMixer):
 
             # Calculate the multi-secants:
             s_isG = (nt_isG[:-1] - nt_isG[-1])
+            sc_isG = (ntc_isG[:-1] - ntc_isG[-1])
             y_isG = -(R_isG[:-1] - R_isG[-1])
+            yc_isG = -(Rc_isG[:-1] - Rc_isG[-1])
             ty_isG = -(mR_isG[:-1] - mR_isG[-1])
 
             sD_iasp = []
@@ -353,9 +397,9 @@ class MSR1Mixer(BaseMixer):
                 tyD_iasp.append(tyD_asp)
 
             # 2023 paper eq 22 - Limit good_broydenness
-            Ay_ii = self.dotprod(y_isG, ty_isG, yD_iasp,
+            Ay_ii = self.dotprod(yc_isG, ty_isG, yD_iasp,
                                  tyD_iasp, self.gd, mode='gemm')
-            As_ii = self.dotprod(s_isG, ty_isG, sD_iasp,
+            As_ii = self.dotprod(sc_isG, ty_isG, sD_iasp,
                                  tyD_iasp, self.gd, mode='gemm')
 
             YY_LIM = np.linalg.norm(Ay_ii, ord='fro')
@@ -407,8 +451,10 @@ class MSR1Mixer(BaseMixer):
             t_norm_expanded = np.expand_dims(
                 t_norm, axis=tuple(np.arange(1, y_isG.ndim)))
             y_isG *= t_norm_expanded
+            yc_isG *= t_norm_expanded
             ty_isG *= t_norm_expanded
             s_isG *= t_norm_expanded
+            sc_isG *= t_norm_expanded
             for i, (sD_asp, yD_asp, tyD_asp) in enumerate(
                     zip(sD_iasp, yD_iasp, tyD_iasp)):
                 for sD_sp, yD_sp, tyD_sp in zip(sD_asp, yD_asp, tyD_asp):
@@ -416,7 +462,7 @@ class MSR1Mixer(BaseMixer):
                     yD_sp *= t_norm[i]
                     tyD_sp *= t_norm[i]
 
-            t_isG = y_isG + good_broydenness * s_isG
+            t_isG = yc_isG + good_broydenness * sc_isG
             tD_iasp = []
             for i in range(iold - 1):
                 tD_asp = []
@@ -427,7 +473,7 @@ class MSR1Mixer(BaseMixer):
 
             A_ii = self.dotprod(t_isG, ty_isG, tD_iasp,
                                 tyD_iasp, self.gd, mode='gemm')
-            B_ii = self.dotprod(t_isG, s_isG, tD_iasp,
+            B_ii = self.dotprod(t_isG, sc_isG, tD_iasp,
                                 sD_iasp, self.gd, mode='gemm')
 
             A_diag = np.mean(np.diag(A_ii))
@@ -456,8 +502,8 @@ class MSR1Mixer(BaseMixer):
             A1 = self.dotprod(self.uk_sG, self.uk_sG, self.uD_asp, self.uD_asp,
                               self.gd, mode='scalar')
 
-            B1 = self.dotprod(self.R_isG[last_step] - self.uk_sG,
-                              self.R_isG[last_step] - self.uk_sG,
+            B1 = self.dotprod(self.Rc_isG[last_step] - self.uk_sG,
+                              self.Rc_isG[last_step] - self.uk_sG,
                               uRnoD_asp, uRnoD_asp, self.gd, mode='scalar')
 
             # From Eq 18 from dft mixing for dumies:
@@ -465,14 +511,14 @@ class MSR1Mixer(BaseMixer):
                 t_isG, [self.uk_sG, ], tD_iasp, [self.uD_asp, ], self.gd,
                 mode='gemm')[:, 0]
             A3_i = self.dotprod(
-                [self.uk_sG, ], y_isG, [self.uD_asp, ], yD_iasp, self.gd,
+                [self.uk_sG, ], yc_isG, [self.uD_asp, ], yD_iasp, self.gd,
                 mode='gemm')[0, :]
 
             B2_i = self.dotprod(
                 t_isG, [self.pk_sG, ], tD_iasp,
                 [self.pD_asp, ], self.gd, mode='gemm')[:, 0]
             B3_i = self.dotprod(
-                [self.R_isG[last_step] - self.uk_sG, ], y_isG, [uRnoD_asp, ],
+                [self.Rc_isG[last_step] - self.uk_sG, ], yc_isG, [uRnoD_asp, ],
                 yD_iasp, self.gd, mode='gemm')[0, :]
 
             A2 = A3_i @ B_ii @ A2_i * dampen
@@ -519,20 +565,18 @@ class MSR1Mixer(BaseMixer):
                 self.trust_radius = trust_radius
 
             # Clear previous step, so we can make a new one
-            self.uk_sG = np.zeros_like(nt_sG)
+            self.uk_sG = Rc_sG.copy()
             self.pk_sG = np.zeros_like(nt_sG)
 
             for pD_sp in self.pD_asp:
                 pD_sp[:] = 0
 
             for i1, alpha in enumerate(alpha_i):
-                self.uk_sG -= alpha * y_isG[i1]
-                self.pk_sG += alpha * s_isG[i1]
+                self.uk_sG -= alpha * yc_isG[i1]
+                self.pk_sG += alpha * sc_isG[i1]
 
                 for a1, sD_sp in enumerate(sD_iasp[i1]):
                     self.pD_asp[a1] += alpha * sD_sp
-
-            self.uk_sG += R_sG
 
             predicted_size = B0 * self.dotprod(
                 self.pk_sG, self.pk_sG, self.pD_asp, self.pD_asp,
@@ -545,7 +589,7 @@ class MSR1Mixer(BaseMixer):
             if predicted_size > self.trust_radius * 1.02:
                 BR_i = self.dotprod(t_isG, [mR_sG, ], tD_iasp,
                                     [mD_asp, ], self.gd, mode='gemm')[:, 0]
-                s_ii = self.dotprod(s_isG, s_isG, sD_iasp,
+                s_ii = self.dotprod(sc_isG, sc_isG, sD_iasp,
                                     sD_iasp, self.gd, mode='gemm') * B0**2
 
                 A_ii = np.linalg.inv(A_ii)
@@ -583,8 +627,12 @@ class MSR1Mixer(BaseMixer):
                 A0 *= np.clip(scale_factor, 0, 1)
                 A0 = max(A0, A0_lims[0])
             else:
-                uk_sG = self.uk_sG
-                pk_sG = self.pk_sG
+                uk_sG = R_sG.copy()
+                pk_sG = np.zeros_like(self.pk_sG)
+
+                for i1, (alpha, beta) in enumerate(zip(alpha_i, beta_i)):
+                    uk_sG -= y_isG[i1] * alpha
+                    pk_sG += s_isG[i1] * beta
 
             step_sG = A0 * uk_sG + B0 * pk_sG
 
@@ -613,7 +661,9 @@ class MSR1Mixer(BaseMixer):
             # If last step was really bad, we should just get rid of it
             if del_oldest:
                 del nt_isG[0]
+                del ntc_isG[0]
                 del R_isG[0]
+                del Rc_isG[0]
                 del dD_iasp[0]
                 del D_iasp[0]
                 del mR_isG[0]
@@ -624,10 +674,10 @@ class MSR1Mixer(BaseMixer):
             self.A0 = None
             A0 = self.beta
             # Pratt step
-            self.uk_sG = R_sG
+            self.uk_sG = Rc_sG
 
             self.pk_sG = np.zeros_like(self.uk_sG)
-            nt_sG[:] = nt_isG[-1] + A0 * self.uk_sG
+            nt_sG[:] = nt_isG[-1] + A0 * R_sG
 
             self.uD_asp = []
             self.pD_asp = []
@@ -638,6 +688,8 @@ class MSR1Mixer(BaseMixer):
 
         # Store new input density (and new atomic density matrices):
         nt_isG.append(nt_sG.copy())
+        ntc_sG = self.add_compensation(nt_sG, D_asp)
+        ntc_isG.append(ntc_sG)
         D_iasp.append([])
         for D_sp in D_asp:
             D_iasp[-1].append(D_sp.copy())
@@ -651,7 +703,6 @@ class ExperimentalDotProd:
         self.atomdist = atomdist
 
     def __call__(self, R1_isG, R2_isG, dD1_iasp, dD2_iasp, gd, mode='scalar'):
-        from gpaw.utilities import pack_density
         setups = self.setups
         comm = gd.comm
 
@@ -1236,12 +1287,12 @@ def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
 
 # This is the only object which will be used by Density, sod the others
 class MixerWrapper:
-    def __init__(self, driver, nspins, gd, world=None):
+    def __init__(self, driver, nspins, gd, setups, spos_ac, atomdist, world=None):
         self.driver = driver
 
         self.basemixers = self.driver.get_basemixers(nspins)
         for basemixer in self.basemixers:
-            basemixer.initialize_metric(gd)
+            basemixer.initialize_metric(gd, setups, nspins, spos_ac, atomdist)
             basemixer.world = world
         if len(self.basemixers) > 0:
             # Basemixer 0 have the standard kwargs
@@ -1265,8 +1316,6 @@ class MixerWrapper:
         density = nt_sR
         nspins = density.nt_sR.dims[0]
         nt_sR = density.nt_sR.to_xp(np)
-        comp_sR = density.compensate_my_charges()
-        breakpoint()
         D_asii = density.D_asii.to_xp(np)
         D_asp = {a: D_sii.copy().reshape((nspins, -1))
                  for a, D_sii in D_asii.items()}

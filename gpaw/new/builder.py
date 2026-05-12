@@ -348,6 +348,9 @@ class DFTComponentsBuilder:
                                     **self.params.mixer.params),
             self.ncomponents,
             self.grid._gd,
+            self.setups,
+            self.relpos_ac,
+            self.atomdist,
             world=self.communicators['w'])
 
         if self.params.experimental.get('paw_corr_mixer', False):
