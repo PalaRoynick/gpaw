@@ -404,10 +404,56 @@ def get_atomic_dens_lebedev(D_sp: Array2D, xcc: PAWXCCorrection) -> Array3D:
     return n_sng
 
 
+def name_to_weight(weights, n_sg):
+    weights_sg = np.zeros_like(n_sg)
+    if weights == "uniform":
+        weights_sg[:] = 1.0
+    elif weights == "zero":
+        weights_sg[:] = 0.0
+    elif weights == "density_sqrt":
+        weights_sg[:] = np.sqrt(n_sg)
+    elif weights == "density":
+        weights_sg[:] = n_sg
+    elif weights == "density_squared":
+        weights_sg[:] = n_sg**2
+    elif weights == "inverse_density":
+        weights_sg[:] = 1.0 / (n_sg + 1e-10)
+    elif weights == "inverse_density_squared":
+        weights_sg[:] = 1.0 / (n_sg**2 + 1e-10)
+    elif weights == "mask":
+        weights_sg[:] = np.zeros_like(n_sg)
+        weights_sg[:][n_sg > 1e-7] = 1.0
+    elif weights == "fr":
+        weights_sg[:] = n_sg / (n_sg + 1e-6)
+    else:
+        raise ValueError(
+            "weights must either be an array or one of the predefined weights: %s"
+            % ", ".join(
+                [
+                    "uniform",
+                    "zeros",
+                    "density_sqrt",
+                    "density",
+                    "inverse_density",
+                    "inverse_density_squared",
+                    "mask",
+                    "fr",
+                ]
+            )
+        )
+    return weights_sg
+
+
 def get_atomic_weights(
     weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict
 ) -> tuple[MutableMapping, str]:
     if isinstance(weights, MutableMapping):
+        for a, w in weights.items():
+            if isinstance(w, str):
+                w_clean = w.removeprefix("radial_")
+                n_s1g = get_atomic_dens_radial(
+                    D_asp[a], setups[a].xc_correction)
+                weights[a] = name_to_weight(w_clean, n_s1g)
         return weights, "radial_custom"
 
     nspins = D_asp.shapes_a[0][0]
@@ -450,23 +496,7 @@ def get_atomic_weights(
         if setups[a].xc_correction is None:
             continue
         n_sng = get_atomic_dens(D_sp, setups[a].xc_correction)
-        if weights_clean == "density_sqrt":
-            weights_asng[a][:] = np.sqrt(n_sng)
-        elif weights_clean == "density":
-            weights_asng[a][:] = n_sng
-        elif weights_clean == "density_squared":
-            weights_asng[a][:] = n_sng
-        elif weights_clean == "inverse_density":
-            weights_asng[a][:] = 1.0 / (n_sng + 1e-10)
-        elif weights_clean == "inverse_density_squared":
-            weights_asng[a][:] = 1.0 / (n_sng**2 + 1e-20)
-        elif weights_clean == "mask":
-            weights_asng[a][:] = np.zeros_like(n_sng)
-            weights_asng[a][:][n_sng > 1e-5] = 1.0
-        elif weights_clean == "fr":
-            weights_asng[a][:] = n_sng / (n_sng + 1e-6)
-        else:
-            raise ValueError(f"Unknown atomic weight {weights}")
+        weights_asng[a][:] = name_to_weight(weights_clean, n_sng)
     weights_asng.check_consistency()
     return weights_asng, weights
 
@@ -480,41 +510,8 @@ def get_weights(
     if isinstance(weights, np.ndarray):
         weights_sG[:] = weights
         weights_name = "custom"
-    elif weights == "uniform":
-        weights_sG[:] = 1.0
-    elif weights == "zero":
-        weights_sG[:] = 0.0
-    elif weights == "density_sqrt":
-        weights_sG[:] = np.sqrt(nt_sG)
-    elif weights == "density":
-        weights_sG[:] = nt_sG
-    elif weights == "density_squared":
-        weights_sG[:] = nt_sG**2
-    elif weights == "inverse_density":
-        weights_sG[:] = 1.0 / (nt_sG + 1e-10)
-    elif weights == "inverse_density_squared":
-        weights_sG[:] = 1.0 / (nt_sG**2 + 1e-10)
-    elif weights == "mask":
-        weights_sG[:] = np.zeros_like(nt_sG)
-        weights_sG[:][nt_sG > 1e-7] = 1.0
-    elif weights == "fr":
-        weights_sG[:] = nt_sG / (nt_sG + 1e-6)
     else:
-        raise ValueError(
-            "weights must either be an array or one of the predefined weights: %s"
-            % ", ".join(
-                [
-                    "uniform",
-                    "zeros",
-                    "density_sqrt",
-                    "density",
-                    "inverse_density",
-                    "inverse_density_squared",
-                    "mask",
-                    "fr",
-                ]
-            )
-        )
+        weights_sG[:] = name_to_weight(weights, nt_sG)
     return weights_sG, weights_name
 
 
