@@ -80,16 +80,18 @@ Git master branch
 
   * mixer (with pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.05 -> 0.08
-    * nmaxold: 5 -> 16
-    * weight: 50 -> 70
+    * beta: 0.05 -> 0.05
+    * nmaxold: 5 -> 10
+    * weight: 50 -> 20
 
   * mixer (without pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.25 -> 0.25
-    * nmaxold: 3 -> 16
+    * beta: 0.25 -> 0.2
+    * nmaxold: 3 -> 10
     * weight: 1 -> 1
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'

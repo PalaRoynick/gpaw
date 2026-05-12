@@ -715,7 +715,7 @@ class ExperimentalDotProd:
 
 
 class ReciprocalMetric:
-    '''
+    """
     The idea behind this metric is to have the Mixer prioritize
     long-range contributions over short ones, while the short-range
     contributions are handled by the residual step. This builds on
@@ -728,7 +728,7 @@ class ReciprocalMetric:
         The weight parameter for the reciprocal metric, i.e. how large
     sigma: float
         The width parameter for the reciprocal metric,
-    '''
+    """
 
     def __init__(self, gd, weight, sigma):
         self.weight = weight
@@ -736,38 +736,38 @@ class ReciprocalMetric:
             return
 
         self.gd = gd
-        pbc_c = gd.pbc_c
-        self.pbcaxes = np.where(pbc_c)[0]
         gd1 = gd.new_descriptor(comm=mpi.serial_comm)
-        k_Qc = np.empty((*gd1.n_c[pbc_c],
-                         len(self.pbcaxes)), float)
+        self.gd1 = gd1
+        k_Qc = np.empty((*gd1.N_c, 3), float)
         icell_cv = 2 * np.pi * gd.icell_cv
-        for ind, pbcaxis in enumerate(self.pbcaxes):
-            nums = np.fft.fftfreq(gd1.n_c[pbcaxis]) \
-                * gd1.n_c[pbcaxis]
+        for ind, N in enumerate(gd1.N_c):
+            nums = np.fft.fftfreq(N) * N
             other_axes = [
-                i for i in range(len(self.pbcaxes)) if i != ind]
+                i for i in range(3) if i != ind]
             k_Qc[..., ind] = np.expand_dims(nums, other_axes)
-        k_Qv = k_Qc @ icell_cv[pbc_c, :]
+        k_Qv = k_Qc @ icell_cv
         k2_Q = np.vecdot(k_Qv, k_Qv)
 
-        non_periodic = [i for i in range(3) if not pbc_c[i]]
-        w_Q = weight * (sigma + k2_Q) / (sigma + weight * k2_Q)
-        self.w_Q = np.expand_dims(w_Q, axis=non_periodic)
+        self.w_Q = weight * (sigma + k2_Q) / (sigma + weight * k2_Q)
 
     def apply(self, a_sQ, dD_asp, g_ss):
         b_sQ = a_sQ.copy()
-
         if self.weight != 1:
-            # TODO: Parallel fft? Parallelize over non-pbc directions?
+            # TODO: Parallel fft?
             a1_sQ = np.ascontiguousarray(
                 [self.gd.collect(a_Q) for a_Q in a_sQ])
             if self.gd.comm.rank == 0:
                 a1_sQ = fftn(
-                    a1_sQ, norm='ortho', axes=self.pbcaxes + 1)
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c
+                )
                 a1_sQ[:] = a1_sQ * self.w_Q
                 a1_sQ = ifftn(
-                    a1_sQ, norm='ortho', axes=self.pbcaxes + 1).real
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c).real
+                n_c = self.gd1.n_c
+                a1_sQ = np.ascontiguousarray(
+                    a1_sQ[:, :n_c[0], :n_c[1], :n_c[2]])
             else:
                 a1_sQ = np.empty((len(a1_sQ), 0, 0, 0), dtype=float)
             b_sQ[:] = np.array(

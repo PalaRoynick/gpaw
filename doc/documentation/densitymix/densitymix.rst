@@ -55,9 +55,6 @@ weight, given as the input parameter `\beta`.
 Special Metric
 --------------
 
-
-XXX: This is all outdated.
-
 Convergence is improved by an optimized metric `\hat{M}` for
 calculation of scalar products in the mixing scheme, `\langle A | B
 \rangle _s = \langle A | \hat{M} | B \rangle`, where `\langle \rangle
@@ -130,8 +127,6 @@ in most cases. When using this mixer we recommend the settings::
 
 Specifying a Mixing Scheme in GPAW
 ----------------------------------
-
-XXX: This section is mostly outdated as well
 
 Specifying the mixing scheme and metric is done using the ``mixer``
 keyword of the GPAW calculator::
