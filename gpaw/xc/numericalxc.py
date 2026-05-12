@@ -739,7 +739,7 @@ def atomic_fa_angular(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
     return vxc_sLg, vxct_sLg
 
 
-def atomic_fa_lebedev(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
+def atomic_fa_lebedev(setup: Setup, D_sp: Array2D, mix_spin: bool = False) -> tuple[Array3D, Array3D]:
     xcc = setup.xc_correction
     if xcc is None:
         return np.zeros(1), np.zeros(1)
@@ -754,24 +754,36 @@ def atomic_fa_lebedev(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
     for n, Y_L in enumerate(Y_nL[:, :Lmax]):
         n_sg = np.dot(Y_L, n_sLg)
         nt_sg = np.dot(Y_L, nt_sLg)
-        for s in range(nspins):
-            N = rgd.integrate(n_sg[s])
-            # what to do if the density is charge neutral!
-            # it might never happen with a soft enough shell
+        if mix_spin:
+            n_g = n_sg.sum(axis=0)
+            nt_g = nt_sg.sum(axis=0)
+            N = rgd.integrate(n_g)
             if N == 0.0:
                 N = np.inf
-            Nt = rgd.integrate(nt_sg[s])
+            Nt = rgd.integrate(nt_g)
             if Nt == 0.0:
                 Nt = np.inf
-            vxc_sng[s, n] = -divrl(rgd.poisson(n_sg[s]), 1, rgd.r_g) / N
-            vxct_sng[s, n] = -divrl(rgd.poisson(nt_sg[s]), 1, rgd.r_g) / Nt
+            vxc_sng[:, n] = -divrl(rgd.poisson(n_g), 1, rgd.r_g) / N
+            vxct_sng[:, n] = -divrl(rgd.poisson(nt_g), 1, rgd.r_g) / Nt
+        else:
+            for s in range(nspins):
+                N = rgd.integrate(n_sg[s])
+                # what to do if the density is charge neutral!
+                # it might never happen with a soft enough shell
+                if N == 0.0:
+                    N = np.inf
+                Nt = rgd.integrate(nt_sg[s])
+                if Nt == 0.0:
+                    Nt = np.inf
+                vxc_sng[s, n] = -divrl(rgd.poisson(n_sg[s]), 1, rgd.r_g) / N
+                vxct_sng[s, n] = -divrl(rgd.poisson(nt_sg[s]), 1, rgd.r_g) / Nt
     return vxc_sng, vxct_sng
 
 
-def atomic_fa(setup: Setup, D_sp: Array2D, mode: PAWPotMode | str) -> tuple[ArrayND, ...]:
+def atomic_fa(setup: Setup, D_sp: Array2D, mode: PAWPotMode | str, mix_spin: bool = False) -> tuple[ArrayND, ...]:
     mode = PAWPotMode(mode)
     if mode is PAWPotMode.lebedev:
-        return atomic_fa_lebedev(setup, D_sp)
+        return atomic_fa_lebedev(setup, D_sp, mix_spin)
     elif mode is PAWPotMode.angular:
         return atomic_fa_angular(setup, D_sp)
     elif mode is PAWPotMode.none:
@@ -805,7 +817,7 @@ def get_atomic_potential_shapes(
 
 
 def calculate_fa_atomic_potentials(
-    D_asp: ArrayDict, setups: Setups, nspins: int, mode
+    D_asp: ArrayDict, setups: Setups, nspins: int, mode, mix_spin=False
 ) -> list[ArrayDict]:
     mode = PAWPotMode(mode)
     atompart = D_asp.partition
@@ -814,21 +826,28 @@ def calculate_fa_atomic_potentials(
         atompart.arraydict(shapes_a, dtype=float) for _ in range(num_pawpots[mode])
     ]
     for a, D_sp in D_asp.items():
-        vfa_xsz = atomic_fa(setups[a], D_sp, mode)
+        vfa_xsz = atomic_fa(setups[a], D_sp, mode, mix_spin)
         for vxc_asz, vfa_sz in zip(vxc_xasz, vfa_xsz):
             vxc_asz[a][:] = vfa_sz
     return vxc_xasz
 
 
 def calculate_fa_potential(
-    fapoisson: BasePoissonSolver, gd: GridDescriptor, n_sg: Array4D
+    fapoisson: BasePoissonSolver, gd: GridDescriptor, n_sg: Array4D, mix_spin=False
 ) -> ArrayND:
     nspins = len(n_sg)
     vHt_sg = gd.zeros(nspins)
-    for s in range(nspins):
-        N = gd.integrate(n_sg[s])
-        fapoisson.solve(vHt_sg[s], n_sg[s] / N)
-        vHt_sg[s] *= -1.0
+    if mix_spin:
+        n_g = n_sg.sum(axis=0)
+        N = gd.integrate(n_g)
+        vH_g = np.zeros_like(n_g)
+        fapoisson.solve(vH_g, n_g / N)
+        vHt_sg[:] = -1.0 * vH_g
+    else:
+        for s in range(nspins):
+            N = gd.integrate(n_sg[s])
+            fapoisson.solve(vHt_sg[s], n_sg[s] / N)
+            vHt_sg[s] *= -1.0
     return vHt_sg
 
 
@@ -839,6 +858,7 @@ def FermiAmaldi(
     paw_potmode: str | PAWPotMode = PAWPotMode.lebedev,
     virial_xc_energy: bool = False,
     stencil: int = 3,
+    mix_spin_fa: bool = False,
     interpolate_vt: bool = False,
     **poisson_kwargs: dict[str, Any],
 ) -> NumericalXC:
@@ -861,11 +881,11 @@ def FermiAmaldi(
             vxc_sg[s] = -pd3.ifft(v_q, q=0, distribute=False) / N
     else:
         vxc_sg = calculate_fa_potential(
-            poisson, poisson.gd, density.nt_sg)
+            poisson, poisson.gd, density.nt_sg, mix_spin_fa)
 
     D_asp = density.atomdist.to_work(density.D_asp)
     vxc_xasz = calculate_fa_atomic_potentials(
-        D_asp, density.setups, density.nspins, paw_potmode
+        D_asp, density.setups, density.nspins, paw_potmode, mix_spin_fa
     )
     xc = NumericalXC(
         NumericalXCKernel(virial_xc_energy=virial_xc_energy),
