@@ -10,7 +10,7 @@ from gpaw.iks.tools import (LogFormatter, calculate_diff_overlap_matrix,
 from gpaw.iks.optimize import iks_adam_opt, iKSMixOpt, iKSObj, iKSLBFGS, iKSOptimizable
 from gpaw.iks.minres import iKSLinearSolver
 from gpaw.sphere.lebedev import Y_nL, weight_n
-from gpaw.utilities import pack_hermitian, unpack_hermitian
+from gpaw.utilities import pack_hermitian
 from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
 from gpaw.new.backwards_compatibility import FakeDensity
 
@@ -323,12 +323,16 @@ class iKS:
             pass
 
     def iterate(self) -> None:
-        if self.wfs.kptband_comm.size > 1:
-            # we need to find the bug that in the k-point parallelization causes
-            # the values of potentials (and consequently the densities) diverge on each node
-            # this is a hack for now!
-            # assert self.gd.comm.size == 1, "simultaneous domain and k-point parallelization is not supported by iKS"
-            self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
+        # if self.wfs.kptband_comm.size > 1:
+        #     # we need to find the bug that in the k-point parallelization causes
+        #     # the values of potentials (and consequently the densities) diverge on each node
+        #     # this is a hack for now!
+        #     self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
+        #     for v_asz in self.xc.vxc_xasz:
+        #         partition = v_asz.partition
+        #         v_asz.redistribute(partition.as_serial())
+        #         v_asz.redistribute(partition)
+
         self.run_scf()
         wfs = self.wfs
         wfs.orthonormalize()
@@ -344,7 +348,12 @@ class iKS:
             dd.vdiff_nn = vdiff_nn
 
         # TODO: implement for multiple fermi levels (fixedmagmom=True)
-        eta = self.eta = self.calculate_eta()
+        if self.apply_occupation_correction:
+            eta = self.calculate_eta()
+        else:
+            eta = 0.0
+            self.dfde_un = np.zeros(
+                (len(wfs.kpt_u), self.wfs.bd.nbands), dtype=float)
         self.ls_u = []
         for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
             p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
@@ -546,6 +555,8 @@ class iKS:
             for s in range(self.nspins):
                 dp_asp[a][s] = pack_hermitian(dp_sii[s])
         self.update_atomic_jacobian_from_adjoint_matrices(dp_asp)
+        for J_asz in self.J_xasz:
+            J_asz.check_consistency()
         return self.J_xasz
 
     def symmetrize_atomic_adjoint_matrices(self, dp_asii, a_sa):
@@ -599,58 +610,8 @@ class iKS:
                     self.J_xasz[0][a][s] = dv_sLg.real
                     self.J_xasz[1][a][s] = dvt_sLg.real
 
-    # def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
-    #     for a, dp_sp in dp_asp.items():
-    #         if self.xc.paw_potmode is PAWPotMode.direct:
-    #             self.J_xasz[0][a][:] = dp_asp[a]
-    #         else:
-    #             setup = self.setups[a]
-    #             if setup.xc_correction is None:
-    #                 continue
-    #             xcc = setup.xc_correction
-    #
-    #             # 1. Fetch the radial grid for this atom
-    #             rgd = xcc.rgd
-    #             r = rgd.r_g
-    #             rc = r.max()  # The cutoff radius of the PAW sphere
-    #
-    #             # 2. Create the radial preconditioner (Diagonal Metric)
-    #             # We use (r/rc)^2 to counteract the volume element.
-    #             # We add a tiny epsilon (1e-3) so the matrix remains positive-definite
-    #             # (L-BFGS will crash if a metric goes strictly to zero).
-    #             # damping_g = (r / rc)**2 + 1e-3
-    #             # Define a small screening radius (e.g., 5-10% of the PAW cutoff)
-    #             r_smooth = 0.1 * rc
-    #
-    #             # Gaussian envelope: 1.0 everywhere, drops to 0 only very close to r=0
-    #             damping_g = 1.0 - np.exp(-(r / r_smooth)**2)
-    #
-    #             # Add a moderate floor so the origin isn't permanently frozen, just restrained
-    #             damping_g += 0.05
-    #
-    #             dp_sLq = np.inner(dp_sp, xcc.B_pqL.T)
-    #
-    #             # 3. Apply the damping to the raw partial wave gradients
-    #             dv_sLg = np.dot(dp_sLq, xcc.n_qg) * damping_g
-    #             dvt_sLg = -np.dot(dp_sLq, xcc.nt_qg) * damping_g
-    #
-    #             if self.xc.paw_potmode is PAWPotMode.lebedev:
-    #                 Lmax = dvt_sLg.shape[1]
-    #                 for s in range(self.nspins):
-    #                     self.J_xasz[0][a][s] = np.dot(
-    #                         Y_nL[:, :Lmax], dv_sLg[s]).real
-    #                     self.J_xasz[1][a][s] = np.dot(
-    #                         Y_nL[:, :Lmax], dvt_sLg[s]).real
-    #             else:
-    #                 assert self.xc.paw_potmode is PAWPotMode.angular
-    #                 self.J_xasz[0][a][s] = dv_sLg.real
-    #                 self.J_xasz[1][a][s] = dvt_sLg.real
-
     def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
         Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
-        # bg_old = self.bg
-        # self.bg, *_ = bandgap(self.calc)
-        # and abs(self.bg - bg_old) < bg_tol
         return (L < Ltol) and (Jmax < Jtol) and (LD < LDtol)
 
     def update_diff(self) -> None:
@@ -796,7 +757,6 @@ class iKS:
         )
 
     def get_xcpotential_space_size(self):
-        # size = self.tdens.nt_sg.size
         if self.use_coarse_grid:
             size = np.prod(self.gd.get_size_of_global_array()) * self.nspins
         else:
@@ -808,7 +768,6 @@ class iKS:
 
     def preopt(self, title, opt_params):
         self.niter = 0
-        # self.bg, *_ = bandgap(self.calc)
         self.fmt.boxed_title(title)
         self.fmt.key_value(
             "number of (xc) parameters",
@@ -1028,18 +987,19 @@ class iKS:
             J_sg = self.jacobian()
             self.atomic_jacobian()
             # update pseudo
-            if hasattr(alpha_pseudo, '__call__'):
+            if callable(alpha_pseudo):
                 alphaps = alpha_pseudo(t)
             vxc_sg -= alphaps * J_sg
             if self.use_coarse_grid:
                 self.coarse2fine(vxc_sg, self.xc.vxc_sg)
             # update paw
-            if hasattr(alpha_paw, '__call__'):
+            if callable(alpha_paw):
                 alphapaw = alpha_paw(t)
             for vxc_asz, J_asz in zip(vxc_xasz, self.J_xasz):
                 J_asz = self.hamiltonian.atomdist.to_work(J_asz)
                 for a, vxc_sz in vxc_asz.items():
                     vxc_sz[:] -= alphapaw * J_asz[a]
+                vxc_asz.check_consistency()
 
             self.logiter(t, L1, L2, LD1, LD2, J_sg)
             # check convergence

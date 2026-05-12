@@ -449,7 +449,7 @@ class PotState:
                 II += np.einsum("n,sng,sng,g", weight_n,
                                 data_sng, other_sng, rgd.dv_g)
         self.comm.sum(II)  # over all atoms
-        return self.gd.integrate(self.data_sg * other.data_sg).sum() + II.item()
+        return self.gd.integrate(self.data_sg * other.data_sg, global_integral=True).sum() + II.item()
 
     def norm(self):
         return np.sqrt(self.inner(self))
@@ -503,7 +503,7 @@ class iKSLBFGS:
         self.iks = iks
         if iks.use_coarse_grid:
             raise NotImplementedError(
-                '`use_coarse_grid` is not implemented for iKSLBFGS')
+                '`use_coarse_grid=True` is not implemented for iKSLBFGS')
         self.m = m
         self.maxiter = maxiter
         self.max_ls = max_ls
@@ -571,11 +571,12 @@ class iKSLBFGS:
 
         for il in range(max_ls):
             xc.vxc_sg[:] = x.data_sg + alpha * pk.data_sg
-            for block_xc, block_x, block_p in zip(
+            for vxc_asz, newvxc_asz, p_asz in zip(
                 xc.vxc_xasz, x.data_xasz, pk.data_xasz
             ):
-                for a in block_xc.keys():
-                    block_xc[a][:] = block_x[a] + alpha * block_p[a]
+                for a in vxc_asz.keys():
+                    vxc_asz[a][:] = newvxc_asz[a] + alpha * p_asz[a]
+                vxc_asz.check_consistency()
             iks.iterate()
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
             J_sg = iks.jacobian()
@@ -623,9 +624,9 @@ class iKSLBFGS:
             x_best, g_best, L_best, LD_best, alpha_best = best_state
             # make sure xc matches x_best
             xc.vxc_sg[:] = x_best.data_sg
-            for block_xc, block_best in zip(xc.vxc_xasz, x_best.data_xasz):
-                for a in block_xc.keys():
-                    block_xc[a][:] = block_best[a]
+            for vxc_asz, vbest_asz in zip(xc.vxc_xasz, x_best.data_xasz):
+                for a in vxc_asz.keys():
+                    vxc_asz[a][:] = vbest_asz[a]
 
             return x_best, g_best, L_best, LD_best, alpha_best, True
         # nothing along this direction improves phi
@@ -633,9 +634,9 @@ class iKSLBFGS:
             "Warning: L-BFGS line search: no step reduced Lagrangian; rejecting direction.")
         # restore potentials to x
         xc.vxc_sg[:] = x.data_sg
-        for block_xc, block_x in zip(xc.vxc_xasz, x.data_xasz):
-            for a in block_xc.keys():
-                block_xc[a][:] = block_x[a]
+        for vxc_asz, newvxc_asz in zip(xc.vxc_xasz, x.data_xasz):
+            for a in vxc_asz.keys():
+                vxc_asz[a][:] = newvxc_asz[a]
         return x.copy(), gk, L0, LD0, 0.0, False
 
     def run(self) -> list[float]:
