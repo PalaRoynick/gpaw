@@ -29,7 +29,8 @@ class Density:
                              charge: float,
                              setups: Setups,
                              nct_aX: AtomCenteredFunctions,
-                             tauct_aX: AtomCenteredFunctions) -> Density:
+                             tauct_aX: AtomCenteredFunctions,
+                             ghat_aLr: AtomCenteredFunctions) -> Density:
         xp = nt_sR.xp
         return cls(nt_sR,
                    taut_sR,
@@ -42,7 +43,8 @@ class Density:
                    [setup.n_j for setup in setups],
                    [setup.l_j for setup in setups],
                    nct_aX,
-                   tauct_aX)
+                   tauct_aX,
+                   ghat_aLr)
 
     @classmethod
     def from_superposition(cls,
@@ -76,13 +78,18 @@ class Density:
             D_sii[:] = unpack_density(
                 setups[a].initialize_density_matrix(f_asi[a]))
 
+        ghat_aLr = setups.create_compensation_charges(grid,
+                                                      nct_aX.relpos_ac,
+                                                      atomdist)
+
         density = cls.from_data_and_setups(nt_sR,
                                            None,
                                            D_asii.to_xp(xp),
                                            charge,
                                            setups,
                                            nct_aX,
-                                           tauct_aX)
+                                           tauct_aX,
+                                           ghat_aLr)
         ndensities = ncomponents % 3
         density.nt_sR.data[:ndensities] += density.nct_R.data
         if mgga:
@@ -102,7 +109,9 @@ class Density:
                  n_aj: list[list[int]],
                  l_aj: list[list[int]],
                  nct_aX: AtomCenteredFunctions,
-                 tauct_aX: AtomCenteredFunctions):
+                 tauct_aX: AtomCenteredFunctions,
+                 ghat_aLr: Grid | None = None,
+        ):
         self.nt_sR = nt_sR
         self.taut_sR = taut_sR
         self.D_asii = D_asii
@@ -115,6 +124,7 @@ class Density:
         self.nvalence = nvalence
         self.nct_aX = nct_aX
         self.tauct_aX = tauct_aX
+        self.ghat_aLr = ghat_aLr
 
         self.grid = nt_sR.desc
         self.ncomponents = nt_sR.dims[0]
@@ -201,6 +211,32 @@ class Density:
 
         return ccc_aL
 
+    def compensate_my_charges(self) -> Grid:
+        charge_sR = self.nt_sR.copy().to_xp(np)
+
+        ccc_aL = self.calculate_compensation_charge_coefficients().to_xp(np)
+
+        # Normalize: (LCAO basis functions may extend outside box)
+        # comp_charge = (4 * pi)**0.5 * sum(float(ccc_L[0])
+        #                                   for ccc_L in ccc_aL.values())
+        # comp_charge = ccc_aL.layout.atomdist.comm.sum_scalar(comp_charge)
+        # pseudo_charge = charge_r.integrate()
+        # if abs(pseudo_charge) > 1e-10:
+        #     pc = (-comp_charge
+        #           - density.charge
+        #           + sum(ext.charge for ext in self.extensions))
+        #     charge_r.data *= pc / pseudo_charge
+
+        # for ext in self.extensions:
+        #     ext.update1(charge_r)
+
+        charge_R = self.grid.empty()
+        charge_R.data[:] = charge_sR.data.sum(0)
+        breakpoint()
+        self.ghat_aLr.add_to(charge_R, ccc_aL)
+        breakpoint()
+        return charge_sR
+
     def normalize(self, background_charge: float) -> None:
         comp_charge = 0.0
         xp = self.D_asii.layout.xp
@@ -278,7 +314,9 @@ class Density:
         self._tauct_R = None
         self.nt_sR.data[:self.ndensities] += self.nct_R.data
         self.D_asii = self.D_asii.moved(atomdist)
-
+        self.ghat_aLr = setups.create_compensation_charges(self.grid,
+                                                           relpos_ac,
+                                                           atomdist)
     @trace
     def redist(self,
                grid: UGDesc,

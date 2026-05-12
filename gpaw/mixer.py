@@ -1265,6 +1265,8 @@ class MixerWrapper:
         density = nt_sR
         nspins = density.nt_sR.dims[0]
         nt_sR = density.nt_sR.to_xp(np)
+        comp_sR = density.compensate_my_charges()
+        breakpoint()
         D_asii = density.D_asii.to_xp(np)
         D_asp = {a: D_sii.copy().reshape((nspins, -1))
                  for a, D_sii in D_asii.items()}
