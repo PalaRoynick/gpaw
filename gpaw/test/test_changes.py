@@ -115,7 +115,8 @@ def test_lcao_to_x(mode):
     atoms = Atoms('H', magmoms=[1])
     atoms.center(vacuum=1.5)
 
-    dft = DFT(atoms, mode='lcao', symmetry='off')
+    dft = DFT(atoms, mode='lcao', symmetry='off',
+              convergence={'density': 1e-5})
     dft.converge()
 
     dft.change_mode(mode)
@@ -125,7 +126,7 @@ def test_lcao_to_x(mode):
     dft.converge()
     e1 = dft.calculate_energy()
 
-    dft = DFT(atoms, mode=mode)
+    dft = DFT(atoms, mode=mode, convergence={'density': 1e-5})
     dft.converge()
     e2 = dft.calculate_energy()
     assert e1 == pytest.approx(e2)

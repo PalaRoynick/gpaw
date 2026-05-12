@@ -9,10 +9,8 @@ import numpy as np
 from numpy.fft import fftn, ifftn
 
 import gpaw.mpi as mpi
-from gpaw.fd_operators import FDOperator
 from gpaw.new import trace
 from gpaw.utilities.blas import axpy
-from gpaw.utilities.tools import construct_reciprocal
 
 """About mixing-related classes.
 
@@ -37,7 +35,11 @@ class BaseMixer:
     name = 'pulay'
 
     """Pulay density mixer."""
-    def __init__(self, beta, nmaxold, weight):
+    def __init__(self,
+                 beta=0.08,
+                 nmaxold=16,
+                 weight=20,
+                 sigma=1.1):
         """Construct density-mixer object.
 
         Parameters:
@@ -50,40 +52,20 @@ class BaseMixer:
         weight: float
             Weight parameter for special metric (for long wave-length
             changes).
-
+        sigma: float
+            Width paramter between zero and infinity for the special
+            metric.
         """
 
         self.beta = beta
         self.nmaxold = nmaxold
         self.weight = weight
+        self.sigma = sigma
         self.world = None
 
     def initialize_metric(self, gd):
         self.gd = gd
-
-        if self.weight == 1:
-            self.metric = None
-        else:
-            a = 0.125 * (self.weight + 7)
-            b = 0.0625 * (self.weight - 1)
-            c = 0.03125 * (self.weight - 1)
-            d = 0.015625 * (self.weight - 1)
-            self.metric = FDOperator([a,
-                                      b, b, b, b, b, b,
-                                      c, c, c, c, c, c, c, c, c, c, c, c,
-                                      d, d, d, d, d, d, d, d],
-                                     [(0, 0, 0),  # a
-                                      (-1, 0, 0), (1, 0, 0),  # b
-                                      (0, -1, 0), (0, 1, 0),
-                                      (0, 0, -1), (0, 0, 1),
-                                      (1, 1, 0), (1, 0, 1), (0, 1, 1),  # c
-                                      (1, -1, 0), (1, 0, -1), (0, 1, -1),
-                                      (-1, 1, 0), (-1, 0, 1), (0, -1, 1),
-                                      (-1, -1, 0), (-1, 0, -1), (0, -1, -1),
-                                      (1, 1, 1), (1, 1, -1), (1, -1, 1),  # d
-                                      (-1, 1, 1), (1, -1, -1), (-1, -1, 1),
-                                      (-1, 1, -1), (-1, -1, -1)],
-                                     gd, float).apply
+        self.metric = ReciprocalMetric(gd, self.weight, self.sigma)
 
     def reset(self):
         """Reset Density-history.
@@ -118,9 +100,6 @@ class BaseMixer:
                 del R_isG[0]
                 del D_iasp[0]
                 del dD_iasp[0]
-                # for D_p, D_ip, dD_ip in self.D_a:
-                #     del D_ip[0]
-                #     del dD_ip[0]
                 iold = self.nmaxold
 
             # Calculate new residual (difference between input and
@@ -133,17 +112,17 @@ class BaseMixer:
             for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
                 dD_iasp[-1].append(D_sp - D_isp)
 
-            mR_sG, mD_asp = self.apply_metric(R_sG, dD_iasp[-1], g_ss)
+            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
 
             # Update matrix:
             A_ii = np.zeros((iold, iold))
             i2 = iold - 1
 
-            for i1, R_1sG in enumerate(R_isG):
-                a = self.dotprod(
-                    R_1sG, mR_sG, dD_iasp[i1], mD_asp, self.gd)
-                A_ii[i1, i2] = a
-                A_ii[i2, i1] = a
+            a_i = self.dotprod(
+                R_isG, [mR_sG,], dD_iasp,
+                [mD_asp,], self.gd, mode='gemm')[:, 0]
+            A_ii[:, i2] = a_i
+            A_ii[i2, :] = a_i
             A_ii[:i2, :i2] = self.A_ii[-i2:, -i2:]
             self.A_ii = A_ii
 
@@ -213,21 +192,6 @@ class BaseMixer:
         prod = prod.real
         return prod[0] if mode == 'scalar' else prod
 
-    def apply_metric(self, R_sG, dD_asp, g_ss):
-        mR_sG = R_sG.copy()
-        if self.metric is not None:
-            for R_G, mR_G in zip(R_sG, mR_sG):
-                self.metric(R_G, mR_G)
-        mD_asp = []
-        if g_ss is not None:
-            mR_sG[:] = np.tensordot(g_ss, mR_sG, axes=(1, 0))
-        for dD_sp in dD_asp:
-            if g_ss is not None:
-                mD_asp.append(np.tensordot(g_ss, dD_sp, axes=(1, 0)))
-            else:
-                mD_asp.append(dD_sp.copy())
-        return mR_sG, mD_asp
-
     def estimate_memory(self, mem, gd):
         gridbytes = gd.bytecount()
         mem.subnode('nt_iG, R_iG', 2 * self.nmaxold * gridbytes)
@@ -243,13 +207,14 @@ class MSR1Mixer(BaseMixer):
     name = 'msr1'
 
     def __init__(self,
-                 beta=0.035,
-                 nmaxold=8,
-                 weight=70,
-                 trust_scalar=8.0,
+                 beta=0.05,
+                 nmaxold=10,
+                 weight=20,
+                 sigma=1.1,
+                 trust_scalar=2.0,
                  soft_bad_lim=1.5,
                  hard_bad_lim=2.0,
-                 gb_scale=0.9):
+                 gb_scale=1.0):
         """
         This is an implementation of the MSR1 mixer.
         References:
@@ -257,7 +222,7 @@ class MSR1Mixer(BaseMixer):
           -  http://www.wien2k.at/reg_user/textbooks/Mixing_For_Dummies.pdf
           -  and other mixer related papers by Laurence Marks (wien2k dev)
         """
-        super().__init__(beta, nmaxold, weight)
+        super().__init__(beta, nmaxold, weight, sigma)
         self.mR_isG = []
         self.mD_iasp = []
         self.gb_scale = gb_scale
@@ -285,11 +250,12 @@ class MSR1Mixer(BaseMixer):
             # output density):
             R_sG = nt_sG - nt_isG[-1]
             dNt = self.calculate_charge_sloshing(R_sG)
-            R_isG.append(R_sG)
             dD_iasp.append([])
             for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
                 dD_iasp[-1].append(D_sp - D_isp)
-            mR_sG, mD_asp = self.apply_metric(R_sG, dD_iasp[-1], g_ss)
+            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
+
+            R_isG.append(R_sG)
             mR_isG.append(mR_sG)
             mD_iasp.append(mD_asp)
 
@@ -327,7 +293,7 @@ class MSR1Mixer(BaseMixer):
                 D_iasp.insert(insert_pos, tmp)
                 tmp = dD_iasp.pop()
                 dD_iasp.insert(insert_pos, tmp)
-                dNt = self.last_dNt * 1.1  # Avoid infinite loop
+                dNt = self.last_dNt * 1.2  # Avoid infinite loop
 
                 R_sG = R_isG[-1]
                 mR_sG = mR_isG[-1]
@@ -336,7 +302,9 @@ class MSR1Mixer(BaseMixer):
 
             # 1st order norm
             ntnorm = self.calculate_charge_sloshing(nt_isG[-1])
-            dNt_normed = dNt / ntnorm
+            dNt_normed = dNt / max(ntnorm, 1)
+            if dNt_normed == 0:
+                dNt_normed = 1e-10
 
             # Here are some hardcoded parameters for the mixer.
             # I have collected them all here, for simplicity,
@@ -346,20 +314,20 @@ class MSR1Mixer(BaseMixer):
             # optimize them - if so - good luck and have fun.
             dampen = 1  # Dampen the greeds
             # How much to reduce greed when backtracing
-            punishment_factor = 0.8 if del_oldest else 1.0
+            punishment_factor = 0.9 if del_oldest else 1.0
             # Scaling factor for the trust radius.
             trust_scalar = self.trust_scalar
-            abs_gb_lim = 20  # Maximum value of good Broyden.
+            abs_gb_lim = 2000  # Maximum value of good Broyden.
             # Scaling factor for maximum good Broyden.
             max_gb_fact = self.gb_scale * np.clip(
-                (2e-2 / dNt_normed), 0.05, 1)
+                (3e-2 / dNt_normed), 0.05, 1)
             # Scaling factor for the final amount of good Broyden
-            post_gb_fact = 0.9 if del_oldest else (
-                0.9 if backtracked else 0.9)
+            post_gb_fact = 0.95 if del_oldest else (
+                0.95 if backtracked else 0.95)
             weight = 8e-4  # Weight for regularization.
             B0_boost = 1e-1  # Favor the predicted greed towards 1
-            B0_lims = [0.4, 1.0]   # Limits for predicted greed
-            A0_lims = [0.015, 0.45]   # Limits for unpredicted greed
+            B0_lims = [0.4, 1.05]   # Limits for predicted greed
+            A0_lims = [0.02, 0.45]   # Limits for unpredicted greed
             rate_ratio = [  # Rate ratio for clipping
                 0.7, 1.3 if not backtracked else punishment_factor]
             initial_B0 = 1.0
@@ -510,8 +478,9 @@ class MSR1Mixer(BaseMixer):
             A2 = A3_i @ B_ii @ A2_i * dampen
             B2 = B3_i @ B_ii @ B2_i
 
+            trig_fact = A0_lims[-1] * 2 / np.pi
             A0_target = np.clip(
-                np.abs(A1 / A2),
+                np.arctan(np.abs(A1 / (A2 * trig_fact))) * trig_fact,
                 *A0_lims
             )
             if self.A0 is not None:
@@ -525,9 +494,10 @@ class MSR1Mixer(BaseMixer):
                 self.B0 = np.clip(self.B0, *B0_lims)
                 A0_ratio_GEOM = np.sqrt(A0_target * self.A0) / self.A0
                 self.A0 *= np.clip(A0_ratio_GEOM, *rate_ratio)
+                self.A0 = np.clip(self.A0, *A0_lims)
             else:
                 self.B0 = initial_B0
-                self.A0 = np.sqrt(A0_target * self.beta)
+                self.A0 = A0_target
 
             A0 = self.A0
             B0 = self.B0
@@ -569,6 +539,7 @@ class MSR1Mixer(BaseMixer):
                 self.gd, mode='scalar')**0.5
 
             beta_i = alpha_i.copy()
+            gamma_i = beta_i.copy()
 
             # Trust radius control:
             if predicted_size > self.trust_radius * 1.02:
@@ -610,7 +581,7 @@ class MSR1Mixer(BaseMixer):
                 new_step_size = self.trust_radius
                 scale_factor = (new_step_size / predicted_size)
                 A0 *= np.clip(scale_factor, 0, 1)
-                A0 = max(A0, min(self.A0, A0_lims[0]))
+                A0 = max(A0, A0_lims[0])
             else:
                 uk_sG = self.uk_sG
                 pk_sG = self.pk_sG
@@ -630,8 +601,8 @@ class MSR1Mixer(BaseMixer):
                 for a1, D_sp in enumerate(D_asp):
                     D_sp -= A0 * alpha * yD_iasp[i1][a1]
                     D_sp += B0 * beta * sD_iasp[i1][a1]
-                    self.uD_asp[a1] -= alpha * yD_iasp[i1][a1]
-                    self.pD_asp[a1] += beta * sD_iasp[i1][a1]
+                    self.uD_asp[a1] -= gamma_i[i1] * yD_iasp[i1][a1]
+                    self.pD_asp[a1] += gamma_i[i1] * sD_iasp[i1][a1]
 
             # Sync the density, because apparantly they cant agree...
             if self.world:
@@ -649,13 +620,15 @@ class MSR1Mixer(BaseMixer):
                 del mD_iasp[0]
 
         elif iold > 0:
-            # Pratt step
             self.trust_radius = None
             self.A0 = None
             A0 = self.beta
+            # Pratt step
             self.uk_sG = R_sG
+
             self.pk_sG = np.zeros_like(self.uk_sG)
             nt_sG[:] = nt_isG[-1] + A0 * self.uk_sG
+
             self.uD_asp = []
             self.pD_asp = []
             for a1, D_sp in enumerate(D_asp):
@@ -678,7 +651,7 @@ class ExperimentalDotProd:
         self.atomdist = atomdist
 
     def __call__(self, R1_isG, R2_isG, dD1_iasp, dD2_iasp, gd, mode='scalar'):
-        from gpaw.utilities import unpack_hermitian
+        from gpaw.utilities import pack_density
         setups = self.setups
         comm = gd.comm
 
@@ -709,27 +682,30 @@ class ExperimentalDotProd:
         prod *= gd.dv
         assert self.atomdist.comm.rank == comm.rank
         my_atoms_inds = np.where(self.atomdist.rank_a == comm.rank)[0]
+
         for a, a_s in enumerate(my_atoms_inds):
             setup = setups[a_s]
-            ni = setup.ni
             I4_pp = setup.four_phi_integrals()
-            I4_pp = unpack_hermitian(I4_pp).reshape(-1, ni**2).T.copy()
-            I4_pp = unpack_hermitian(I4_pp).reshape(ni**2, ni**2)
 
-            if mode == 'gemm':
+            template = dD1_iasp[0][a]
+            buffer1 = np.empty_like(template, shape=(len(dD1_iasp),
+                                                     I4_pp.shape[0]))
+            buffer2 = np.empty_like(template, shape=(len(dD2_iasp),
+                                                     I4_pp.shape[1]))
+            P = int(np.sqrt(template.shape[1]))
+            for spin in range(template.shape[0]):
                 for i1, dD1_asp in enumerate(dD1_iasp):
-                    dD1_sp = dD1_asp[a].conj()
-                    for i2, dD2_asp in enumerate(dD2_iasp):
-                        dD2_sp = dD2_asp[a]
-                        for dD1_p, dD2_p in zip(dD1_sp, dD2_sp):
-                            prod[i1, i2] += dD1_p @ I4_pp @ dD2_p
-            elif mode == 'vecdot' or mode == 'scalar':
-                for i, (dD1_asp, dD2_asp) in enumerate(
-                        zip(dD1_iasp, dD2_iasp)):
-                    dD1_sp = dD1_asp[a].conj()
-                    dD2_sp = dD2_asp[a]
-                    for dD1_p, dD2_p in zip(dD1_sp, dD2_sp):
-                        prod[i] += dD1_p @ I4_pp @ dD2_p
+                    buffer1[i1] = pack_density(
+                        dD1_asp[a][spin].conj().reshape(P, P))
+                for i2, dD2_asp in enumerate(dD2_iasp):
+                    buffer2[i2] = pack_density(
+                        dD2_asp[a][spin].reshape(P, P))
+
+                if mode == 'gemm':
+                    prod += (buffer1 @ I4_pp @ buffer2.T).real
+                elif mode == 'vecdot' or mode == 'scalar':
+                    prod += np.vecdot((buffer1 @ I4_pp).conj(), buffer2).real
+
         comm.sum(prod)
         assert (prod.imag < 1e-10).all()
         prod = prod.real
@@ -739,72 +715,98 @@ class ExperimentalDotProd:
 
 
 class ReciprocalMetric:
-    def __init__(self, weight, k2_Q, gd):
-        k2_min = np.min(k2_Q)
-        self.q1 = (weight - 1) * k2_min
-        self.k2_Q = gd.distribute(k2_Q)
+    """
+    The idea behind this metric is to have the Mixer prioritize
+    long-range contributions over short ones, while the short-range
+    contributions are handled by the residual step. This builds on
+    the idea that, the true gradient of the density is approximately
+    the residual weighed with short range interactions.
 
-    def __call__(self, R_Q, mR_Q):
-        mR_Q[:] = R_Q * (1.0 + self.q1 / self.k2_Q)
+    gd : GridDescriptor
+        The grid descriptor for the density.
+    weight : float
+        The weight parameter for the reciprocal metric, i.e. how large
+    sigma: float
+        The width parameter for the reciprocal metric,
+    """
+
+    def __init__(self, gd, weight, sigma):
+        self.weight = weight
+        if weight == 1:
+            return
+
+        self.gd = gd
+        gd1 = gd.new_descriptor(comm=mpi.serial_comm)
+        self.gd1 = gd1
+        k_Qc = np.empty((*gd1.N_c, 3), float)
+        icell_cv = 2 * np.pi * gd.icell_cv
+        for ind, N in enumerate(gd1.N_c):
+            nums = np.fft.fftfreq(N) * N
+            other_axes = [
+                i for i in range(3) if i != ind]
+            k_Qc[..., ind] = np.expand_dims(nums, other_axes)
+        k_Qv = k_Qc @ icell_cv
+        k2_Q = np.vecdot(k_Qv, k_Qv)
+
+        self.w_Q = weight * (sigma + k2_Q) / (sigma + weight * k2_Q)
+
+    def apply(self, a_sQ, dD_asp, g_ss):
+        b_sQ = a_sQ.copy()
+        if self.weight != 1:
+            # TODO: Parallel fft?
+            a1_sQ = np.ascontiguousarray(
+                [self.gd.collect(a_Q) for a_Q in a_sQ])
+            if self.gd.comm.rank == 0:
+                a1_sQ = fftn(
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c
+                )
+                a1_sQ[:] = a1_sQ * self.w_Q
+                a1_sQ = ifftn(
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c).real
+                n_c = self.gd1.n_c
+                a1_sQ = np.ascontiguousarray(
+                    a1_sQ[:, :n_c[0], :n_c[1], :n_c[2]])
+            else:
+                a1_sQ = np.empty((len(a1_sQ), 0, 0, 0), dtype=float)
+            b_sQ[:] = np.array(
+                [self.gd.distribute(a1_Q) for a1_Q in a1_sQ])
+
+        mD_asp = []
+        if g_ss is not None:
+            b_sQ[:] = np.tensordot(g_ss, b_sQ, axes=(1, 0))
+        for dD_sp in dD_asp:
+            if g_ss is not None:
+                mD_asp.append(np.tensordot(g_ss, dD_sp, axes=(1, 0)))
+            else:
+                mD_asp.append(dD_sp.copy())
+        return b_sQ, mD_asp
 
 
-class FFTBaseMixer(BaseMixer):  # This should be able to wrap MSR1
+class FFTBaseMixer(BaseMixer):
     name = 'fft'
 
     """Mix the density in Fourier space"""
     def __init__(self, beta, nmaxold, weight):
+        raise DeprecationWarning(
+            'The fft-backend is deprecated, use pulay or msr1 instead.')
         super().__init__(beta, nmaxold, weight)
-        self.gd1 = None
-
-    def initialize_metric(self, gd):
-        self.gd = gd
-
-        self.gd1 = gd.new_descriptor(comm=mpi.serial_comm)
-        k2_Q, _ = construct_reciprocal(self.gd1)
-        self.metric = ReciprocalMetric(self.weight, k2_Q, self.gd)
-
-    def calculate_charge_sloshing(self, R_sQ):
-        assert R_sQ.ndim == 4  # and len(R_sQ) == 1
-        cs = 0.0
-        for R_Q in R_sQ:
-            R_X = self.gd.collect(R_Q)
-            if self.gd.comm.rank == 0:
-                cs += self.gd1.integrate(np.abs(ifftn(R_X, norm='ortho')).real)
-
-        return self.gd.comm.sum_scalar(cs)
-
-    def mix_density(self, nt_sR, D_asp, g_ss=None):
-        # Transform real-space density to Fourier space
-        nt1_sR = [self.gd.collect(nt_R) for nt_R in nt_sR]
-        if self.gd.comm.rank == 0:
-            nt1_sG = np.ascontiguousarray(
-                [fftn(nt_R, norm='ortho') for nt_R in nt1_sR])
-        else:
-            nt1_sG = np.empty((len(nt_sR), 0, 0, 0), dtype=complex)
-        nt_sG = np.array([self.gd.distribute(nt1_G) for nt1_G in nt1_sG])
-
-        dNt = super().mix_density(nt_sG, D_asp)
-
-        nt1_sG = [self.gd.collect(nt_G) for nt_G in nt_sG]
-        # Return density in real space
-        for nt_G, nt_R in zip(nt1_sG, nt_sR):
-            if self.gd.comm.rank == 0:
-                nt1_R = ifftn(nt_G, norm='ortho').real
-            else:
-                nt1_R = None
-            self.gd.distribute(nt1_R, nt_R)
-
-        return dNt
 
 
 class BroydenBaseMixer:
     name = 'broyden'
 
-    def __init__(self, beta, nmaxold, weight):
+    def __init__(self,
+                 beta=0.05,
+                 nmaxold=12,
+                 weight=1.0,
+                 sigma=1.0):
         self.verbose = False
         self.beta = beta
         self.nmaxold = nmaxold
         self.weight = 1.0  # XXX discards argument
+        self.sigma = 1.0
 
     def initialize_metric(self, gd):
         self.gd = gd
@@ -927,7 +929,11 @@ class DummyMixer:
 class NotMixingMixer:
     name = 'no-mixing'
 
-    def __init__(self, beta, nmaxold, weight):
+    def __init__(self,
+                 beta=0,
+                 nmaxold=0,
+                 weight=0,
+                 sigma=0):
         """Construct density-mixer object.
         Parameters: they are ignored for this mixer
         """
@@ -936,6 +942,7 @@ class NotMixingMixer:
         self.beta = 0
         self.nmaxold = 0
         self.weight = 0
+        self.sigma = 0
 
     def initialize_metric(self, gd):
         self.gd = gd
@@ -984,15 +991,13 @@ class NotMixingMixer:
 class SeparateSpinMixerDriver:
     name = 'separate'
 
-    def __init__(self, basemixerclass, beta, nmaxold, weight, *args, **kwargs):
+    def __init__(self, basemixerclass, **kwargs):
         self.basemixerclass = basemixerclass
 
-        self.beta = beta
-        self.nmaxold = nmaxold
-        self.weight = weight
+        self.kwargs = kwargs
 
     def get_basemixers(self, nspins):
-        return [self.basemixerclass(self.beta, self.nmaxold, self.weight)
+        return [self.basemixerclass(**self.kwargs)
                 for _ in range(nspins)]
 
     def mix(self, basemixers, nt_sG, D_asp):
@@ -1010,17 +1015,15 @@ class SpinSumMixerDriver:
     name = 'sum'
     mix_atomic_density_matrices = False
 
-    def __init__(self, basemixerclass, beta, nmaxold, weight):
+    def __init__(self, basemixerclass, **kwargs):
         self.basemixerclass = basemixerclass
 
-        self.beta = beta
-        self.nmaxold = nmaxold
-        self.weight = weight
+        self.kwargs = kwargs
 
     def get_basemixers(self, nspins):
         if nspins == 1:
             raise ValueError('Spin sum mixer expects 2 or 4 components')
-        return [self.basemixerclass(self.beta, self.nmaxold, self.weight)]
+        return [self.basemixerclass(**self.kwargs)]
 
     def mix(self, basemixers, nt_sG, D_asp):
         assert len(basemixers) == 1
@@ -1069,31 +1072,26 @@ class SpinSumMixerDriver2(SpinSumMixerDriver):
 class SpinDifferenceMixerDriver:
     name = 'difference'
 
-    def __init__(self, basemixerclass, beta, nmaxold, weight,
-                 beta_m=0.7, nmaxold_m=2, weight_m=10.0):
+    def __init__(self, basemixerclass, *, beta_m=0.7,
+                 nmaxold_m=2, weight_m=10.0, **kwargs):
         self.basemixerclass = basemixerclass
-        self.beta = beta
-        self.nmaxold = nmaxold
-        self.weight = weight
-        self.beta_m = beta_m
-        self.nmaxold_m = nmaxold_m
-        self.weight_m = weight_m
+        self.kwargs = kwargs
+        self.kwargs_m = kwargs.copy()
+        self.kwargs_m['beta'] = beta_m
+        self.kwargs_m['nmaxold'] = nmaxold_m
+        self.kwargs_m['weight'] = weight_m
 
     def get_basemixers(self, nspins):
         if nspins == 1:
             raise ValueError('Spin difference mixer expects 2 or 4 components')
-        basemixer = self.basemixerclass(self.beta, self.nmaxold, self.weight)
+        basemixer = self.basemixerclass(**self.kwargs)
         if nspins == 2:
-            basemixer_m = self.basemixerclass(self.beta_m, self.nmaxold_m,
-                                              self.weight_m)
+            basemixer_m = self.basemixerclass(**self.kwargs_m)
             return basemixer, basemixer_m
         else:
-            basemixer_x = self.basemixerclass(self.beta_m, self.nmaxold_m,
-                                              self.weight_m)
-            basemixer_y = self.basemixerclass(self.beta_m, self.nmaxold_m,
-                                              self.weight_m)
-            basemixer_z = self.basemixerclass(self.beta_m, self.nmaxold_m,
-                                              self.weight_m)
+            basemixer_x = self.basemixerclass(**self.kwargs_m)
+            basemixer_y = self.basemixerclass(**self.kwargs_m)
+            basemixer_z = self.basemixerclass(**self.kwargs_m)
             return basemixer, basemixer_x, basemixer_y, basemixer_z
 
     def mix(self, basemixers, nt_sG, D_asp):
@@ -1143,18 +1141,16 @@ class SpinDifferenceMixerDriver:
 class FullSpinMixerDriver:
     name = 'fullspin'
 
-    def __init__(self, basemixerclass, beta, nmaxold, weight, g=None):
+    def __init__(self, basemixerclass, g=None, **kwargs):
         self.basemixerclass = basemixerclass
-        self.beta = beta
-        self.nmaxold = nmaxold
-        self.weight = weight
         self.g_ss = g
+        self.kwargs = kwargs
 
     def get_basemixers(self, nspins):
         if nspins == 1:
             raise ValueError('Full-spin mixer expects 2 or 4 spin channels')
 
-        basemixer = self.basemixerclass(self.beta, self.nmaxold, self.weight)
+        basemixer = self.basemixerclass(**self.kwargs)
         return [basemixer]
 
     def mix(self, basemixers, nt_sG, D_asp):
@@ -1184,6 +1180,8 @@ for dcls in [SeparateSpinMixerDriver, SpinSumMixerDriver,
 # that the user did not explicitly provide, i.e., it fills out
 # everything that is missing and returns a mixer "driver".
 def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
+    mixerkwargs = mixerkwargs.copy()  # avoid modifying the original dict
+
     if mixerkwargs.get('name') == 'dummy':
         return DummyMixer()
 
@@ -1197,22 +1195,20 @@ def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
 
     # The plan is to first establish a kwargs dictionary with all the
     # defaults, then we update it with values from the user.
-    kwargs = {'backend': BaseMixer}
-
-    if np.any(pbc):  # Works on array or boolean
-        kwargs.update(beta=0.08, history=16, weight=70.0)
-    else:
-        kwargs.update(beta=0.25, history=16, weight=1.0)
+    kwargs = {'backend': MSR1Mixer}
 
     if nspins == 1:
         kwargs['method'] = SeparateSpinMixerDriver
     else:
         kwargs['method'] = FullSpinMixerDriver
 
+    if not pbc and 'weight' not in mixerkwargs:
+        mixerkwargs['weight'] = 1
+
     # Clean up mixerkwargs (compatibility)
-    if 'nmaxold' in mixerkwargs:
-        assert 'history' not in mixerkwargs
-        mixerkwargs['history'] = mixerkwargs.pop('nmaxold')
+    if 'history' in mixerkwargs:
+        assert 'nmaxold' not in mixerkwargs
+        mixerkwargs['nmaxold'] = mixerkwargs.pop('history')
 
     # Now the user override:
     for key in kwargs:
@@ -1221,15 +1217,20 @@ def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
         if val is not None:
             kwargs[key] = val
 
+    keys = list(mixerkwargs.keys())
+    for key in keys:
+        # Clean any 'None' values out as if they had never been passed:
+        val = mixerkwargs.pop(key, None)
+        if val is not None:
+            mixerkwargs[key] = val
+
     # Resolve keyword strings (like 'fft') into classes (like FFTBaseMixer):
     driver = _methods.get(kwargs['method'], kwargs['method'])
     baseclass = _backends.get(kwargs['backend'], kwargs['backend'])
 
     # We forward any remaining mixer kwargs to the actual mixer object.
     # Any user defined variables that do not really exist will cause an error.
-    mixer = driver(baseclass, beta=kwargs['beta'],
-                   nmaxold=kwargs['history'], weight=kwargs['weight'],
-                   **mixerkwargs)
+    mixer = driver(baseclass, **mixerkwargs)
     return mixer
 
 
@@ -1238,15 +1239,22 @@ class MixerWrapper:
     def __init__(self, driver, nspins, gd, world=None):
         self.driver = driver
 
-        self.beta = driver.beta
-        self.nmaxold = driver.nmaxold
-        self.weight = driver.weight
-        assert self.weight is not None, driver
-
         self.basemixers = self.driver.get_basemixers(nspins)
         for basemixer in self.basemixers:
             basemixer.initialize_metric(gd)
             basemixer.world = world
+        if len(self.basemixers) > 0:
+            # Basemixer 0 have the standard kwargs
+            self.beta = self.basemixers[0].beta
+            self.nmaxold = self.basemixers[0].nmaxold
+            self.weight = self.basemixers[0].weight
+            self.sigma = self.basemixers[0].sigma
+        else:
+            # No mixing
+            self.beta = None
+            self.nmaxold = None
+            self.weight = None
+            self.sigma = None
 
     @trace
     def mix(self, nt_sR, D_asp=None):
@@ -1286,6 +1294,7 @@ class MixerWrapper:
                  'Backend: ' + self.driver.basemixerclass.name,
                  'Linear mixing parameter: %g' % self.beta,
                  f'old densities: {self.nmaxold}',
+                 'Width of damping distribution: %g' % self.sigma,
                  'Damping of long wavelength oscillations: %g' % self.weight]
         if self.weight == 1:
             lines[-1] += '  # (no daming)'

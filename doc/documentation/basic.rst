@@ -770,15 +770,15 @@ The mixer can be specified as a dict, e.g.::
 which happenns to be the default option. A powerful alternative is the
 msr1 mixer::
 
-    mixer={'backend': 'msr1', 'beta': 0.04, 'nmaxold': 8}
+    mixer={'backend': 'msr1', 'beta': 0.05, 'nmaxold': 10}
 
 The parameters which determine how GPAW does mixing of the densities are:
 
 * ``method``: the spin mixing method to use. Options are ``fullspin``,
   ``difference``, ``sum``, and ``separate``. Default is ``fullspin``.
 * ``backend``: the mixing algorithm to use. Options are ``pulay``,
-  ``msr1``,  ``broyden`` (not recommended), ``fft`` (not recommended),
-  and ``no-mixing`` (not for scf-calculations). Default: ``pulay``.
+  ``msr1``, and ``no-mixing`` (not for scf-calculations).
+  Default: ``pulay``.
 * ``beta``: linear mixing coefficient. Default: ``0.08`` for periodic
   systems and ``0.25`` for non-periodic systems.
 * ``nmaxold``: number of old densities to mix, default is ``16``.
