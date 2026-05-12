@@ -221,6 +221,21 @@ PARAMS = {
     'Sc': ('3s,4s,3p,4p,3d,d,F', 2.3),
     'Cu': ('4s,s,4p,p,3d,d,F', 2.1),
     'As': ('4s,s,4p,p,d,F', 2.0)}
+PARAMS2 = {
+    'H': ('1s,s,p,D', 0.9),
+    'He': ('1s,s,p,D', 1.5),
+    'Li': ('1s,2s,2p,D', 1.6),
+    'Be': ('2s,s,2p,D', 2.7),
+    'B': ('2s,s,2p,p,D', 2.0),
+    'C': ('2s,s,2p,p,d,F', 1.6),
+    'Ne': ('2s,s,2p,p,d,F', 1.8),
+    'Na': ('2s,3s,2p,3p,d,F', 2.3),
+    'Al': ('3s,s,3p,p,d,F', 2.1),
+    'P': ('3s,s,3p,p,d,F', 1.7),
+    'K': ('3s,4s,3p,4p,d,d,F', 2.1),
+    'Sc': ('3s,4s,3p,4p,3d,d,F', 2.3),
+    'Cu': ('4s,s,4p,p,3d,d,F', 2.1),
+    'As': ('4s,s,4p,p,d,F', 2.0)}
 
 
 def create(symbol):
@@ -228,7 +243,7 @@ def create(symbol):
     from gpaw.atom.generator2 import generate
     Z = atomic_numbers[symbol]
     s = symbol
-    while s not in PARAMS:
+    while s not in PARAMS2:
         Z -= 1
         s = chemical_symbols[Z]
     projectors, rc = PARAMS[s]
