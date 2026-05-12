@@ -172,7 +172,9 @@ class iKSLinearSolver:
             **self.ls_kwargs,
         )
         p_nG = p_nG.reshape(shape)
+        # TODO: print in case of k-point parallelization
         self.iks.fmt.log(f"minres finished in {iters} iterations.")
+        self.iks.fmt.log(f"degenerate indices: {self.dd.blocks_occ}")
         if self.ortho:
             p_nG = self.orthogonalize(kpt, p_nG, kpt.psit_nG[self.dd.occ])
         return p_nG
