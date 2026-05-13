@@ -151,6 +151,9 @@ class LCAOHamiltonian(Hamiltonian):
         return NonCollinearHamiltonianMatrixCalculator(matcalc)
 
     def calculate_kinetic_energy(self, wfs, skip_sum=False):
+        """ 
+        Calculate kinetic energy directly with the operator
+        """
 
         e_kin = 0.0
         f = wfs.myocc_n > 1e-10

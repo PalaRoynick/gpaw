@@ -28,8 +28,11 @@ class DirectOptimization(Eigensolver):
               atoms):
         return DirOptPWFD(
             converge_unocc=self.converge_unocc,
-            converge_bands=converge_bands,
-            hamiltonian=hamiltonian)
+            convergence=convergence,
+            hamiltonian=hamiltonian,
+            domain_band_comm=domain_band_comm,
+            nbands=nbands,
+            scalapack_params=scalapack_parameters)
 
 
 class DirectOptimizationLcao(Eigensolver):
