@@ -11,10 +11,6 @@ def pseudiz0(waves: PAWWaves,
     N = len(waves.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
-    # for n, f in enumerate(waves.f_n):
-    #     if f == 111110.0:
-    #         waves.e_n[n] = channel.e_n[5]
-    #         waves.phi_ng[n] = channel.phi_ng[5]
     phi_ng = waves.phi_ng = np.array(waves.phi_ng)
     phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
     pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
@@ -26,8 +22,6 @@ def pseudiz0(waves: PAWWaves,
     phit_g, c = solve(channel, rgd, vtr_g, gc, e, h0_g, phi_ng[0])
     h0_g *= c
     phit_ng[0] = phit_g
-    rgd.plot(phi_ng[0])
-    rgd.plot(phit_ng[0],show=1);sadg
     pt_ng[0] = h0_g
     if N == 2:
         h1_g = h0_g * r_g**2
@@ -66,10 +60,6 @@ def pseudize(waves: PAWWaves,
     N = len(waves.e_n)
     rgd = waves.rgd
     r_g = rgd.r_g
-    # for n, f in enumerate(waves.f_n):
-    #     if f == 111110.0:
-    #         waves.e_n[n] = channel.e_n[5]
-    #         waves.phi_ng[n] = channel.phi_ng[5]
     phi_ng = waves.phi_ng = np.array(waves.phi_ng)
     phit_ng = waves.phit_ng = np.empty((N, len(r_g)))
     pt_ng = waves.pt_ng = np.empty((N, len(r_g)))
@@ -103,6 +93,7 @@ def pseudize(waves: PAWWaves,
     waves.dH_nn = waves.dS_nn @ np.diag(waves.e_n) - A_nn
     waves.dH_nn *= 0.5
     waves.dH_nn += waves.dH_nn.T.copy()
+    print(l, N, A_nn)
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
 
 
@@ -123,10 +114,11 @@ def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
     # a_g[0] = c0
     dadg_g[1:-1] = 0.5 * (a_g[2:] - a_g[:-2])
     d2adg2_g[1:-1] = a_g[2:] - 2 * a_g[1:-1] + a_g[:-2]
-    print(a_g[:5])
-    print(dadg_g[:5])
-    print(d2adg2_g[:5])
-    assert d2adg2_g[1] * sign < 0.0, l
+    # print(a_g[:5])
+    # print(dadg_g[:5])
+    # print(d2adg2_g[:5])
+    if d2adg2_g[1] * sign > 0.0:
+        print('BAD CURVATURE:', l)
     q_g = (vtr_g - eig * r_g) * phit_g
     dgdr_g = 1 / rgd.dr_g
     d2gdr2_g = rgd.d2gdr2()
@@ -207,27 +199,16 @@ def howf(alpha, r, l=0, n=0, rc=np.inf):
 
 
 PARAMS = {
-    'H': ('1s,s,P', 0.9),
-    'He': ('1s,s,P', 1.5),
-    'Li': ('2s,s,2p,D', 3.9),
+    'H': ('1s,s,p', 0.9),
+    'He': ('1s,s,p', 1.5),
+    'Li': ('2s,s,2p,D', 3.0),
+    'Li.3': ('1s,2s,2p,D', 1.6),
     'Be': ('2s,s,2p,D', 2.7),
     'B': ('2s,s,2p,p,D', 2.0),
-    'C': ('2s,s,2p,p,d,F', 1.6),
-    'Ne': ('2s,s,2p,p,d,F', 1.8),
-    'Na': ('2s,3s,2p,3p,d,F', 2.3),
-    'Al': ('3s,s,3p,p,d,F', 2.1),
-    'P': ('3s,s,3p,p,d,F', 1.7),
-    'K': ('3s,4s,3p,4p,d,d,F', 2.1),
-    'Sc': ('3s,4s,3p,4p,3d,d,F', 2.3),
-    'Cu': ('4s,s,4p,p,3d,d,F', 2.1),
-    'As': ('4s,s,4p,p,d,F', 2.0)}
-PARAMS2 = {
-    'H': ('1s,s,p,D', 0.9),
-    'He': ('1s,s,p,D', 1.5),
-    'Li': ('1s,2s,2p,D', 1.6),
-    'Be': ('2s,s,2p,D', 2.7),
-    'B': ('2s,s,2p,p,D', 2.0),
-    'C': ('2s,s,2p,p,d,F', 1.6),
+    'C': ('2s,s,2p,p,d,', 1.6),
+    'N': ('2s,s,2p,p,d,', 1.6),
+    'O': ('2s,s,2p,p,d,', 1.6),
+    'F': ('2s,s,2p,p,d,', 1.6),
     'Ne': ('2s,s,2p,p,d,F', 1.8),
     'Na': ('2s,3s,2p,3p,d,F', 2.3),
     'Al': ('3s,s,3p,p,d,F', 2.1),
@@ -239,16 +220,10 @@ PARAMS2 = {
 
 
 def create(symbol):
-    from ase.data import chemical_symbols, atomic_numbers
     from gpaw.atom.generator2 import generate
-    Z = atomic_numbers[symbol]
-    s = symbol
-    while s not in PARAMS2:
-        Z -= 1
-        s = chemical_symbols[Z]
-    projectors, rc = PARAMS[s]
+    projectors, rc = PARAMS[symbol]
     gen = generate(
-        symbol,
+        symbol.split('.')[0],
         None,
         projectors,
         [rc],
@@ -263,17 +238,15 @@ def create(symbol):
 
 
 def create_all():
-    import os
+    from contextlib import chdir
     from pathlib import Path
-    from ase.data import chemical_symbols
-    for symbol in chemical_symbols[1:37]:
+    for symbol in PARAMS:
         dir = Path(symbol)
         if dir.is_dir():
             continue
         dir.mkdir()
-        os.chdir(dir)
-        create(symbol)
-        os.chdir('..')
+        with chdir(dir):
+            create(symbol)
 
 
 def eos(structure, symbol):
