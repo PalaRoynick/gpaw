@@ -141,7 +141,7 @@ class BaseMixer:
 
             Rc_sG = self.add_compensation(nt_sG, D_asp)
             Rc_sG -= self.add_compensation(nt_isG[-1], D_iasp[-1])
-            dNt = self.calculate_charge_sloshing(Rc_sG)
+            dNt = self.calculate_charge_sloshing(R_sG)
             Rc_isG.append(Rc_sG)
 
             mR_sG, mD_asp = self.metric.apply(Rc_sG, dD_iasp[-1], g_ss)
@@ -291,7 +291,7 @@ class MSR1Mixer(BaseMixer):
 
             Rc_sG = self.add_compensation(nt_sG, D_asp)
             Rc_sG -= ntc_isG[-1]
-            dNt = self.calculate_charge_sloshing(Rc_sG)
+            dNt = self.calculate_charge_sloshing(R_sG)
             Rc_isG.append(Rc_sG)
 
             mR_sG, mD_asp = self.metric.apply(Rc_sG, dD_iasp[-1], g_ss)
@@ -347,8 +347,9 @@ class MSR1Mixer(BaseMixer):
                 backtracked = True
 
             # 1st order norm
+            dNtc = self.calculate_charge_sloshing(Rc_sG)
             ntnorm = self.calculate_charge_sloshing(ntc_isG[-1])
-            dNt_normed = dNt / max(ntnorm, 1)
+            dNt_normed = dNtc / max(ntnorm, 1)
             if dNt_normed == 0:
                 dNt_normed = 1e-10
 
