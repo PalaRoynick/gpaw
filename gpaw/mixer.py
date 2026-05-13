@@ -101,8 +101,9 @@ class BaseMixer:
         comp_sG = A_sG.copy()
         for s, comp_G in enumerate(comp_sG):
             Q_aL = {}
-            for a, a_s in enumerate(my_atoms_inds):
-                D_I = D_asI[a][s]
+            for a, D_sI in enumerate(D_asI):
+                D_I = D_sI[s]
+                a_s = my_atoms_inds[a]
                 setup = self.setups[a_s]
                 i = int(np.sqrt(len(D_I)))
                 D_p = pack_density(D_I.reshape(i, i))
