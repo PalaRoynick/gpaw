@@ -69,7 +69,7 @@ class BaseMixer:
         self.gd = gd
         self.metric = ReciprocalMetric(gd, self.weight, self.sigma)
         self.setups = setups
-        self.ghat = LFC(self.gd, [setup.ghat_l for setup in setups],
+        self.ghat = LFC(gd, [setup.ghat_l for setup in setups],
                         integral=np.sqrt(4 * np.pi))
         self.ghat.set_positions(spos_ac, atomdist)
         self.atomdist = atomdist
@@ -106,8 +106,8 @@ class BaseMixer:
                 setup = self.setups[a_s]
                 i = int(np.sqrt(len(D_I)))
                 D_p = pack_density(D_I.reshape(i, i))
-                Q_aL[a] = D_p @ setup.Delta_pL
-                Q_aL[a][0] += setup.Delta0 / len(comp_sG)
+                Q_aL[a_s] = D_p @ setup.Delta_pL
+                Q_aL[a_s][0] += setup.Delta0 / len(comp_sG)
             self.ghat.add(comp_G, Q_aL)
         return comp_sG
 
