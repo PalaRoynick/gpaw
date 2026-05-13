@@ -93,7 +93,7 @@ def pseudize(waves: PAWWaves,
     waves.dH_nn = waves.dS_nn @ np.diag(waves.e_n) - A_nn
     waves.dH_nn *= 0.5
     waves.dH_nn += waves.dH_nn.T.copy()
-    print(l, N, A_nn)
+    print(l, N, A_nn, waves.dH_nn, waves.dS_nn)
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
 
 
@@ -105,7 +105,7 @@ def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
     aphi_g[1:] /= r_g[1:]**l
     aphi_g[0] = aphi_g[1]
     print(aphi_g.min())
-    logphit_g, _ = rgd.pseudize(np.log(aphi_g), gcut, 0, 6)
+    logphit_g, _ = rgd.pseudize(np.log(aphi_g), gcut, 0, 5)
     sign = np.sign(phi_g[gcut])
     a_g = sign * np.exp(logphit_g)
     phit_g = a_g * r_g**l
@@ -130,6 +130,9 @@ def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
     q_g[1:] /= r_g[1:]
     if l == 0:
         q_g[0] = q_g[1]
+    if l == 111111110:
+        rgd.plot(phit_g)
+        rgd.plot(q_g, show=1)
     return phit_g, q_g
 
 
@@ -205,10 +208,13 @@ PARAMS = {
     'Li.3': ('1s,2s,2p,D', 1.6),
     'Be': ('2s,s,2p,D', 2.7),
     'B': ('2s,s,2p,p,D', 2.0),
-    'C': ('2s,s,2p,p,d,', 1.6),
-    'N': ('2s,s,2p,p,d,', 1.6),
-    'O': ('2s,s,2p,p,d,', 1.6),
-    'F': ('2s,s,2p,p,d,', 1.6),
+    'C': ('2s,1.0s,2p,p,d', 1.6),
+    'C.a': ('2s,1.0s,2p,p,d,F', 1.6),
+    'C.b': ('2s,1.0s,2p,p,D', 1.6),
+    'C.c': ('2s,1.0s,2p,D', 1.6),
+    'N': ('2s,s,2p,p,d', 1.6),
+    'O': ('2s,s,2p,p,d', 1.6),
+    'F': ('2s,s,2p,p,d', 1.6),
     'Ne': ('2s,s,2p,p,d,F', 1.8),
     'Na': ('2s,3s,2p,3p,d,F', 2.3),
     'Al': ('3s,s,3p,p,d,F', 2.1),
@@ -242,9 +248,10 @@ def create_all():
     from pathlib import Path
     for symbol in PARAMS:
         dir = Path(symbol)
-        if dir.is_dir():
+        s = symbol.split('.')[0]
+        if (dir / f'{s}.PBE').is_file():
             continue
-        dir.mkdir()
+        dir.mkdir(exist_ok=True)
         with chdir(dir):
             create(symbol)
 
