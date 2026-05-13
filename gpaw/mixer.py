@@ -12,7 +12,7 @@ import gpaw.mpi as mpi
 from gpaw.new import trace
 from gpaw.utilities.blas import axpy
 from gpaw.utilities import pack_density
-from gpaw.lfc import LFC, BasisFunctions
+from gpaw.lfc import LFC
 
 """About mixing-related classes.
 
@@ -31,6 +31,7 @@ we don't have to implement it multiple times (estimate memory, etc.).
 
 In the end, what the user provides is probably a dictionary anyway, and the
 relevant objects are instantiated automatically."""
+
 
 class BaseMixer:
     name = 'pulay'
@@ -65,14 +66,12 @@ class BaseMixer:
         self.world = None
 
     def initialize_metric(self, gd, setups, spos_ac, atomdist):
-        from gpaw.old.density import CompensationChargeExpansionCoefficients
         self.gd = gd
         self.metric = ReciprocalMetric(gd, self.weight, self.sigma)
         self.setups = setups
         self.ghat = LFC(self.gd, [setup.ghat_l for setup in setups],
                         integral=np.sqrt(4 * np.pi))
         self.ghat.set_positions(spos_ac, atomdist)
-
 
     def reset(self):
         """Reset Density-history.
@@ -547,7 +546,6 @@ class MSR1Mixer(BaseMixer):
 
             A0 = self.A0
             B0 = self.B0
-            print(f'A0={A0}, B0={B0}')
 
             trust_step = (A0 * self.uk_sG + B0 * self.pk_sG)
             dstep_asp = []
@@ -588,7 +586,6 @@ class MSR1Mixer(BaseMixer):
 
             # Trust radius control:
             if predicted_size > self.trust_radius * 1.02:
-                print(f'predicted_size={predicted_size}, trust_radius={self.trust_radius}')
                 BR_i = self.dotprod(t_isG, [mR_sG, ], tD_iasp,
                                     [mD_asp, ], self.gd, mode='gemm')[:, 0]
                 s_ii = self.dotprod(sc_isG, sc_isG, sD_iasp,
@@ -1289,7 +1286,8 @@ def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
 
 # This is the only object which will be used by Density, sod the others
 class MixerWrapper:
-    def __init__(self, driver, nspins, gd, setups, spos_ac, atomdist, world=None):
+    def __init__(self, driver, nspins, gd, setups,
+                 spos_ac, atomdist, world=None):
         self.driver = driver
 
         self.basemixers = self.driver.get_basemixers(nspins)

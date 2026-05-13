@@ -102,8 +102,7 @@ class Density:
                  n_aj: list[list[int]],
                  l_aj: list[list[int]],
                  nct_aX: AtomCenteredFunctions,
-                 tauct_aX: AtomCenteredFunctions,
-        ):
+                 tauct_aX: AtomCenteredFunctions):
         self.nt_sR = nt_sR
         self.taut_sR = taut_sR
         self.D_asii = D_asii
