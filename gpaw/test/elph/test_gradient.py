@@ -88,8 +88,8 @@ def test_gradient(in_tmp_dir, pbc, legacy_format):
     V1t_xsG = []
     for a in (0, 1):
         for v in range(3):
-            V1t_sG, _ = sc._read_displacement_cache(cache, a, v, grid,
-                                                   filter=None)
+            V1t_sG, _ = sc._read_displacement_cache(
+                cache, a, v, grid, filter=None)
             assert V1t_sG.shape[-3:] == expected_shape
             V1t_xsG.append(V1t_sG)
     V1t_xsG = np.array(V1t_xsG)

@@ -29,9 +29,6 @@ class VersionError(Exception):
 
 class DFTAdapter:
     """Lightweight DFT data extracted from a GPAW calculator.
-
-    Holds only the arrays/scalars needed by the elph supercell code so
-    inner functions don't depend on full GPAW objects.
     """
 
     def __init__(self, *,
@@ -63,15 +60,12 @@ class DFTAdapter:
 
 
 def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
-    """Unpack packed-Hermitian per-atom dict into a native ``AtomArrays``.
-
-    ``template`` provides the layout and ``dims=(ncomponents,)``.
-    """
     dH_aii = template.new()
     for a in dH_aii.keys():
         for s, dH_p in enumerate(dH_asp[a]):
             dH_aii[a][s] = unpack_hermitian(dH_p)
     return dH_aii
+
 
 def _finalize_g_sMM(g_sMM: ArrayND,
                     g_s_gammaMM: ArrayND | None,
@@ -220,7 +214,7 @@ class Supercell:
     def _nonlocal_qMM(self, wfs, a, v,
                       dH1_aii: AtomArrays, dH_aii: AtomArrays,
                       dPdR_aqvMi) -> ArrayND:
-        """Single-kpt PAW projector terms: ``dH^a`` (all atoms) + ``dP^a`` (atom a)."""
+        """Single-kpt PAW projector terms: ``dH^a`` and ``dP^a`` (atom a)."""
         bfs = wfs.basis
         g_MM = np.zeros((wfs.setups.nao, wfs.setups.nao), wfs.dtype)
 
@@ -365,10 +359,6 @@ class Supercell:
                                  filter: str | None
                                  ) -> tuple[ArrayND, dict]:
         """Read FD cache for one displacement and return ``(V1t_sG, dH1_asp)``.
-
-        Forms the central FD derivative from the ``±`` cache entries,
-        truncates ``V1t_sG`` along non-periodic axes if its stored shape
-        exceeds the calc grid, and applies the optional Fourier filter.
         """
         delta = cache['info']['delta']
         name = f'{a}{"xyz"[v]}'
