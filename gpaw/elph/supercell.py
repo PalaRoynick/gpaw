@@ -194,6 +194,7 @@ class Supercell:
                                         dPdR_aqvMi)
             g_sMM[wfs.spin] += g_qMM
             if dft.trs and wfs.k == dft.gamma_k:
+                assert g_s_gammaMM is not None
                 g_s_gammaMM[wfs.spin] = g_qMM
         return g_sMM, g_s_gammaMM
 
