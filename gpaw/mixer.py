@@ -1292,12 +1292,14 @@ def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
 # This is the only object which will be used by Density, sod the others
 class MixerWrapper:
     def __init__(self, driver, nspins, gd, setups,
-                 spos_ac, atomdist, world=None):
+                 relpos_ac, atomdist, world=None):
         self.driver = driver
+        self.gd = gd
+        self.setups = setups
 
         self.basemixers = self.driver.get_basemixers(nspins)
         for basemixer in self.basemixers:
-            basemixer.initialize_metric(gd, setups, spos_ac, atomdist)
+            basemixer.initialize_metric(gd, setups, relpos_ac, atomdist)
             basemixer.world = world
         if len(self.basemixers) > 0:
             # Basemixer 0 have the standard kwargs
@@ -1335,6 +1337,11 @@ class MixerWrapper:
             density.nt_sR.data[:] = xp.asarray(nt_sR.data)
             density.D_asii.data[:] = xp.asarray(D_asii.data)
         return error
+
+    def move(self, relpos_ac, atomdist):
+        for basemixer in self.basemixers:
+            basemixer.initialize_metric(self.gd, self.setups,
+                                        relpos_ac, atomdist)
 
     def estimate_memory(self, mem, gd):
         for i, basemixer in enumerate(self.basemixers):
