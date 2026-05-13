@@ -29,8 +29,7 @@ class Density:
                              charge: float,
                              setups: Setups,
                              nct_aX: AtomCenteredFunctions,
-                             tauct_aX: AtomCenteredFunctions,
-                             ghat_aLr: AtomCenteredFunctions) -> Density:
+                             tauct_aX: AtomCenteredFunctions) -> Density:
         xp = nt_sR.xp
         return cls(nt_sR,
                    taut_sR,
@@ -43,8 +42,7 @@ class Density:
                    [setup.n_j for setup in setups],
                    [setup.l_j for setup in setups],
                    nct_aX,
-                   tauct_aX,
-                   ghat_aLr)
+                   tauct_aX)
 
     @classmethod
     def from_superposition(cls,
@@ -78,18 +76,13 @@ class Density:
             D_sii[:] = unpack_density(
                 setups[a].initialize_density_matrix(f_asi[a]))
 
-        ghat_aLr = setups.create_compensation_charges(grid,
-                                                      nct_aX.relpos_ac,
-                                                      atomdist)
-
         density = cls.from_data_and_setups(nt_sR,
                                            None,
                                            D_asii.to_xp(xp),
                                            charge,
                                            setups,
                                            nct_aX,
-                                           tauct_aX,
-                                           ghat_aLr)
+                                           tauct_aX)
         ndensities = ncomponents % 3
         density.nt_sR.data[:ndensities] += density.nct_R.data
         if mgga:
@@ -110,7 +103,6 @@ class Density:
                  l_aj: list[list[int]],
                  nct_aX: AtomCenteredFunctions,
                  tauct_aX: AtomCenteredFunctions,
-                 ghat_aLr: Grid | None = None,
         ):
         self.nt_sR = nt_sR
         self.taut_sR = taut_sR
@@ -124,7 +116,6 @@ class Density:
         self.nvalence = nvalence
         self.nct_aX = nct_aX
         self.tauct_aX = tauct_aX
-        self.ghat_aLr = ghat_aLr
 
         self.grid = nt_sR.desc
         self.ncomponents = nt_sR.dims[0]
@@ -288,9 +279,7 @@ class Density:
         self._tauct_R = None
         self.nt_sR.data[:self.ndensities] += self.nct_R.data
         self.D_asii = self.D_asii.moved(atomdist)
-        self.ghat_aLr = setups.create_compensation_charges(self.grid,
-                                                           relpos_ac,
-                                                           atomdist)
+
     @trace
     def redist(self,
                grid: UGDesc,
