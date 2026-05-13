@@ -72,6 +72,7 @@ class BaseMixer:
         self.ghat = LFC(self.gd, [setup.ghat_l for setup in setups],
                         integral=np.sqrt(4 * np.pi))
         self.ghat.set_positions(spos_ac, atomdist)
+        self.atomdist = atomdist
 
     def reset(self):
         """Reset Density-history.
@@ -94,12 +95,15 @@ class BaseMixer:
         return self.gd.integrate(np.fabs(R_sG)).sum()
 
     def add_compensation(self, A_sG, D_asI):
+        assert self.atomdist.comm.rank == self.gd.comm.rank
+        my_atoms_inds = np.where(
+            self.atomdist.rank_a == self.gd.comm.rank)[0]
         comp_sG = A_sG.copy()
         for s, comp_G in enumerate(comp_sG):
             Q_aL = {}
-            for a, D_sI in enumerate(D_asI):
-                D_I = D_sI[s]
-                setup = self.setups[a]
+            for a, a_s in enumerate(my_atoms_inds):
+                D_I = D_asI[a][s]
+                setup = self.setups[a_s]
                 i = int(np.sqrt(len(D_I)))
                 D_p = pack_density(D_I.reshape(i, i))
                 Q_aL[a] = D_p @ setup.Delta_pL
