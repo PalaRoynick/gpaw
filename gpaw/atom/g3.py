@@ -267,7 +267,7 @@ def workflow():
     from pathlib import Path
     # from myqueue.workflow import run
     from gpaw.utilities.acwf import acwf_structures
-    symbol = Path().resolve().name
+    symbol = Path().resolve().name.split('.')[0]
     for name in acwf_structures:
         # run(function=eos, args=[name, symbol], cores=24, name=name)
         eos(name, symbol)
