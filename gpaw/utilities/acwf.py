@@ -117,6 +117,7 @@ def work(structure: str,
          mode: str = 'pw',
          tag: str = '',
          *,
+         backwards_compatible=True,
          world=None):
     """Do single EOS calculations with PBE."""
     world = normalize_communicator(world)

@@ -260,7 +260,7 @@ def eos(structure, symbol):
     from gpaw.utilities.acwf import work
     from gpaw import setup_paths
     setup_paths[:1] = ['.']
-    work(structure, symbol)
+    work(structure, symbol, backwards_compatible=False)
 
 
 def workflow():
