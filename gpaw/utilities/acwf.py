@@ -239,7 +239,7 @@ def check(dir: Path) -> None:
              (v['X2O'] - 2 * ex - eo) / 3]
         symbol = dir.stem
         dE = np.array(E) - ENERGIES[symbol]
-        ee = dE.max()
+        ee = abs(dE).max()
     else:
         ee = np.nan
 

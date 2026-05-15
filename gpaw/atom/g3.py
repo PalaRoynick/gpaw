@@ -308,6 +308,15 @@ def ecuts(paw_pot_name):
     return results
 
 
+def get_ecut(ecuts, energies, de):
+    y = abs(energies - energies[-1])
+    i = len(energies) - 2
+    while y[i] < de:
+        i -= 1
+    return (ecuts[i] * (de - y[i + 1]) +
+            ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
+
+
 def hmm():
     import matplotlib.pyplot as plt
     r = np.linspace(0, 4, 101)
