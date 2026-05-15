@@ -289,9 +289,10 @@ def ecuts(paw_pot_name):
             dft = DFT(
                 atoms,
                 xc='PBE',
-                txt=f'{symbol}.txt',
                 mode=PW(ecut),
-                kpts=MonkhorstPack(density=3.0))
+                txt=f'{symbol}.txt',
+                kpts=MonkhorstPack(density=3.0),
+                experimental={'backwards_compatible': False})
             dft.converge()
         else:
             params = Parameters(**dict(dft.params.todict(), mode=PW(ecut)))
@@ -300,8 +301,10 @@ def ecuts(paw_pot_name):
         e = dft.calculate_energy()
         results.append((ecut, e))
     if dft.comm.rank == 0:
-        Path(f'{symbol}-ecuts.csv').write(
-            '\n'.join(f'{ecut:6.0f}, {e}' for ecut, e in results) + '\n')
+        Path(f'{symbol}-ecuts.json').write(
+            '[' +
+            ',\n '.join(f'[{ecut:6.1f}, {e}]' for ecut, e in results) +
+            ']\n')
     return results
 
 
@@ -318,5 +321,5 @@ def hmm():
 
 
 if __name__ == '__main__':
-    #create_all()
-    convergence_check('H')
+    create_all()
+    # convergence_check('H')
