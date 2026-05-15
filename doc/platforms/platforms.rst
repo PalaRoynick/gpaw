@@ -36,6 +36,7 @@ Linux:
    Linux/odyssey
    Linux/Mahti/Mahti
    Linux/Puhti/Puhti
+   Linux/roihu
 
 WSL:
 
