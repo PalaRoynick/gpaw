@@ -271,6 +271,38 @@ def workflow():
     for name in acwf_structures:
         # run(function=eos, args=[name, symbol], cores=24, name=name)
         eos(name, symbol)
+    ecuts(symbol)
+
+
+def ecuts(paw_pot_name):
+    from gpaw.utilities.acwf import reference_structure
+    from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
+    from gpaw import setup_paths
+    from pathlib import Path
+    setup_paths[:1] = ['.']
+    symbol = paw_pot_name.split('.')[0]
+    atoms = reference_structure(symbol, 'FCC')
+    dft = None
+    results = []
+    for ecut in range(300, 1100, 100):
+        if dft is None:
+            dft = DFT(
+                atoms,
+                xc='PBE',
+                txt=f'{symbol}.txt',
+                mode=PW(ecut),
+                kpts=MonkhorstPack(density=3.0))
+            dft.converge()
+        else:
+            params = Parameters(**dict(dft.params.todict(), mode=PW(ecut)))
+            dft = dft.new(atoms, params, log=dft.log)
+            dft.converge()
+        e = dft.calculate_energy()
+        results.append((ecut, e))
+    if dft.comm.rank == 0:
+        Path(f'{symbol}-ecuts.csv').write(
+            '\n'.join(f'{ecut:6.0f}, {e}' for ecut, e in results) + '\n')
+    return results
 
 
 def hmm():
@@ -286,4 +318,5 @@ def hmm():
 
 
 if __name__ == '__main__':
-    create_all()
+    #create_all()
+    convergence_check('H')
