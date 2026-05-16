@@ -8,6 +8,7 @@ from gpaw.old.density import Density
 from gpaw.iks.tools import (LogFormatter, calculate_diff_overlap_matrix,
                             get_atomic_weights, get_weights, update_density_from_density_matrix, DegeneracyDescriptor)
 from gpaw.iks.optimize import iks_adam_opt, iKSMixOpt, iKSObj, iKSLBFGS, iKSOptimizable
+
 from gpaw.iks.minres import iKSLinearSolver
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_hermitian
@@ -172,6 +173,7 @@ class iKS:
         kin_en_using_band: bool = True,
         log_l1_ae: bool = True,
         mix_paw_error: bool = True,
+        degeneracy_tol: float = 1e-3,
         **nxc_kwargs: dict[str, Any],
     ):
         self.target = target
@@ -203,6 +205,7 @@ class iKS:
         self.log_l1_ae = log_l1_ae
         self.nxc_kwargs = nxc_kwargs
         self.niter: int = 0
+        self.degeneracy_tol = degeneracy_tol
 
     def initialize_from_calc(self, target, calc, atoms, weights, atomic_weights):
         self.calc = calc
@@ -323,16 +326,18 @@ class iKS:
             pass
 
     def iterate(self) -> None:
-        # if self.wfs.kptband_comm.size > 1:
-        #     # we need to find the bug that in the k-point parallelization causes
-        #     # the values of potentials (and consequently the densities) diverge on each node
-        #     # this is a hack for now!
-        #     self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
-        #     for v_asz in self.xc.vxc_xasz:
-        #         partition = v_asz.partition
-        #         v_asz.redistribute(partition.as_serial())
-        #         v_asz.redistribute(partition)
-
+        if self.wfs.kptband_comm.size > 1:
+            # we need to find the bug that in the k-point parallelization causes
+            # the values of potentials (and consequently the densities) diverge on each node
+            # this is a hack for now!
+            self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
+            for v_asz in self.xc.vxc_xasz:
+                partition = v_asz.partition
+                v_asz.redistribute(partition.as_serial())
+                v_asz.redistribute(partition)
+        self.xc.set_grid_descriptor(self.hamiltonian.finegd)
+        self.finegd = self.hamiltonian.finegd
+        self.gd = self.hamiltonian.gd
         self.run_scf()
         wfs = self.wfs
         wfs.orthonormalize()
@@ -340,7 +345,7 @@ class iKS:
         self.update_diff()
         self.dd_u = []
         for kpt in wfs.kpt_u:
-            dd = DegeneracyDescriptor(kpt)
+            dd = DegeneracyDescriptor(kpt, tolerance=self.degeneracy_tol)
             dd.update()
             # print('dd.blocks_occ', dd.kpt.q, dd.blocks_occ)
             self.dd_u.append(dd)
@@ -363,10 +368,31 @@ class iKS:
             self.ls_u.append(ls)
             if wfs.occupations.name != 'zero-width' or self.apply_occupation_correction:
                 ls.apply_occupation_correction(dfde_n, eta)
+        self.logminres()
+
+    def logminres(self):
+        from gpaw.mpi import broadcast_string
+        kd = self.wfs.kd
+        ls_u = self.ls_u
+        self.fmt.log(
+            'k-index    spin    minres-iters    degenaracy')
+        self.fmt.log('................................................')
+        for k in range(kd.nibzkpts):
+            for s in range(kd.nspins):
+                rank, u = kd.get_rank_and_index(k, s)
+                if kd.comm.rank == rank:
+                    ls = ls_u[u]
+                    msg = f"  {k}          {s}           {ls.iters}      {ls.blocks_msg}"
+                else:
+                    msg = None
+                msg = broadcast_string(msg, root=rank, comm=kd.comm)
+                self.fmt.log(msg)
 
     def calculate_p_expansion(self, dd, vdiff_nn, eta, dfde_n) -> Array2D:
         nbands = self.wfs.bd.nbands
         nocc = len(dd.occ)
+        if nocc == 0:
+            return np.zeros(1, dtype=float)
         kpt = dd.kpt
         p_mG = self.wfs.empty(nocc, q=kpt.q)
         for bm in dd.blocks_occ:
@@ -432,7 +458,7 @@ class iKS:
             dfde_n = dfde_n[dd.occ] * (Ha * kpt.weightk * degeneracy)
             self.dfde_un.append(dfde_n)
             for n in dd.occ:
-                enum += dd.vdiff_nn[n, n] * dfde_n[n]
+                enum += dd.vdiff_nn[n, n].real * dfde_n[n]
                 denom += dfde_n[n]
         enum = self.wfs.kptband_comm.sum_scalar(enum)
         denom = self.wfs.kptband_comm.sum_scalar(denom)
@@ -525,6 +551,22 @@ class iKS:
         self.J_sg = J_sg
         return J_sg
 
+    # def calc_core_atomic_potentials(self):
+    #     from gpaw.xc import XC
+    #     v_a = {}
+    #     xc = XC(self.xc.setup_name)
+    #     assert xc.type == 'LDA'
+    #     for a, setup in enumerate(self.setups):
+    #         nc_sg = setup.xc_correction.nc_g[np.newaxis]
+    #         nct_sg = setup.xc_correction.nct_g[np.newaxis]
+    #         e_g = np.zeros_like(nc_sg)
+    #         v = np.zeros_like(nc_sg)
+    #         vt = np.zeros_like(nc_sg)
+    #         xc.kernel.calculate(e_g, nc_sg, v)
+    #         xc.kernel.calculate(e_g, nct_sg, vt)
+    #         v_a[a] = (v.ravel(), vt.ravel())
+    #     return v_a
+
     def atomic_jacobian(self) -> list[ArrayDict]:
         if self.xc.paw_potmode is PAWPotMode.none:
             return []
@@ -587,6 +629,9 @@ class iKS:
                     atomrot.get_by_a(a), a, dp_aii, a_sa)
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
+        # vc_a = self.calc_core_atomic_potentials()
+        # vxc_a = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0]).copy()
+        # vxct_a = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1]).copy()
         for a, dp_sp in dp_asp.items():
             if self.xc.paw_potmode is PAWPotMode.direct:
                 self.J_xasz[0][a][:] = dp_asp[a]
@@ -605,6 +650,11 @@ class iKS:
                             Y_nL[:, :Lmax], dv_sLg[s]).real
                         self.J_xasz[1][a][s] = np.dot(
                             Y_nL[:, :Lmax], dvt_sLg[s]).real
+                        # if self.niter <= 50:
+                        #     dv = vxc_a[a][s, :, 0] - vc_a[a][0][0]
+                        #     self.J_xasz[0][a][s, :, 0] += 1e-4 * dv
+                        #     # dv = vxct_a[a][s] - vc_a[a][1]
+                        #     # self.J_xasz[1][a][s] += 1e-3 * dv
                 else:
                     assert self.xc.paw_potmode is PAWPotMode.angular
                     self.J_xasz[0][a][s] = dv_sLg.real
