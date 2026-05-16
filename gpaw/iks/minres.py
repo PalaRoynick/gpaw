@@ -23,9 +23,15 @@ class iKSLinearSolver:
         self.kpt = dd.kpt
         self.p_nG = None
         self.Pp_ani = None
+        self.iters = 0
+        self.blocks_msg = ''
 
     def run(self, p0_nG) -> None:
-        self.p_nG = self.calculate_p(p0_nG)
+        self.nocc = len(self.dd.occ)
+        if self.nocc == 0:
+            self.p_nG = p0_nG
+        else:
+            self.p_nG = self.calculate_p(p0_nG)
         self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
 
     def calculate_projections(self, kpt, p_nG):
@@ -172,15 +178,16 @@ class iKSLinearSolver:
             **self.ls_kwargs,
         )
         p_nG = p_nG.reshape(shape)
-        # TODO: print in case of k-point parallelization
-        self.iks.fmt.log(f"minres finished in {iters} iterations.")
-        self.iks.fmt.log(f"degenerate indices: {self.dd.blocks_occ}")
+        self.iters = iters
+        self.blocks_msg = str(self.dd.blocks_occ)
         if self.ortho:
             p_nG = self.orthogonalize(kpt, p_nG, kpt.psit_nG[self.dd.occ])
         return p_nG
 
     def calculate_jacobian_one_k(self):
         p_nG = self.p_nG
+        if self.nocc == 0:
+            return self.iks.gd.zeros()
         if self.iks.wfs.mode == "pw":
             p_nG = np.asarray(
                 [self.iks.wfs.pd.ifft(p_G, q=self.kpt.q) for p_G in self.p_nG]
