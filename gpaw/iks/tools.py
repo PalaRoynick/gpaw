@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from gpaw.atom.radialgd import RadialGridDescriptor
     from gpaw.old.density import Density
     from gpaw.old.grid_descriptor import GridDescriptor
-    from gpaw.io.logger import GPAWLogger
+    from gpaw.old.logger import GPAWLogger
     from gpaw.setup import Setup, Setups
     from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
     from gpaw.old.wavefunctions.base import WaveFunctions
@@ -385,8 +385,20 @@ def calculate_diff_overlap_matrix_gaunt_separate(
 #     return Phi_ii
 
 
-def get_atomic_dens_radial(D_sp: Array2D, xcc: PAWXCCorrection) -> Array2D:
+def get_atomic_ae_dens_radial(D_sp: Array2D, xcc: PAWXCCorrection) -> Array2D:
     n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
+    Lmax = n_sLg.shape[1]
+    nspins = len(n_sLg)
+    n_s1g = xcc.rgd.zeros((nspins, 1))
+    # integrate the angular part out
+    for s in range(nspins):
+        for w, Y_L in zip(weight_n, Y_nL[:, :Lmax]):
+            n_s1g[s] += 4 * np.pi * w * np.dot(Y_L, n_sLg[s])
+    return n_s1g
+
+
+def get_atomic_ps_dens_radial(D_sp: Array2D, xcc: PAWXCCorrection) -> Array2D:
+    n_sLg = calculate_angular_density(xcc, D_sp, xcc.nt_qg, xcc.nct_g)
     Lmax = n_sLg.shape[1]
     nspins = len(n_sLg)
     n_s1g = xcc.rgd.zeros((nspins, 1))
@@ -447,18 +459,24 @@ def name_to_weight(weights, n_sg):
 def get_atomic_weights(
     weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict
 ) -> tuple[MutableMapping, str]:
+    nspins = D_asp.shapes_a[0][0]
     if isinstance(weights, MutableMapping):
-        for a, w in weights.items():
+        for a, D_sp in D_asp.items():
+            w = weights[a]
             if isinstance(w, str):
                 w_clean = w.removeprefix("radial_")
-                n_s1g = get_atomic_dens_radial(
+                n_s1g = get_atomic_ae_dens_radial(
                     D_asp[a], setups[a].xc_correction)
-                weights[a] = name_to_weight(w_clean, n_s1g)
+                if w == 'density_ratio':
+                    nt_s1g = get_atomic_ps_dens_radial(
+                        D_asp[a], setups[a].xc_correction)
+                    weights[a] = nt_s1g / n_s1g
+                else:
+                    weights[a] = name_to_weight(w_clean, n_s1g)
         return weights, "radial_custom"
 
-    nspins = D_asp.shapes_a[0][0]
     if "radial_" in weights:
-        get_atomic_dens = get_atomic_dens_radial
+        get_atomic_dens = get_atomic_ae_dens_radial
 
         def shapes_a(a):
             if setups[a].xc_correction is None:
