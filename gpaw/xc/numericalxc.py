@@ -10,10 +10,8 @@ import numpy as np
 from ase.units import Ha
 from gpaw.fd_operators import Gradient, Laplace
 from gpaw.lfc import LFC, BasisFunctions
-from gpaw.old.matrix import Matrix
 from gpaw.poisson import create_poisson_solver
 from gpaw.sphere.lebedev import Y_nL, weight_n
-from gpaw.spline import Spline
 from gpaw.utilities import divrl
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional
@@ -258,25 +256,23 @@ class NumericalXC(XCFunctional):
         paw_potmode: str | PAWPotMode = PAWPotMode.lebedev,
         virial_xc_energy: bool = False,
         stencil: int = 3,
-        interpolate_vt=False,
-        n_gauss=9,
         vxc_sg: ArrayND | None = None,
         vxc_xasz: list[ArrayDict] = [],
+        vc_xag: list[ArrayDict] = None,
+        interpolate_vt=False,  # deprecated
     ):
         super().__init__(kernel.name, kernel.type)
         self.stencil = stencil
         self.kernel: NumericalXCKernel = kernel
         self.setup_name = setup_name
         self.vxc_xasz = vxc_xasz
+        self.vc_xag = vc_xag
         self.paw_potmode = PAWPotMode(paw_potmode)
         self.virial_xc_energy = (
             False if virial_xc_energy == "False" else bool(virial_xc_energy)
         )
-        self.interpolate_vt = interpolate_vt
         self._vxc_sg = vxc_sg
-        self.n_gauss = n_gauss
-        self.c_sM = None
-        self.c_asi = None
+        self.ham = None
 
     @property
     def vxc_sg(self):
@@ -286,21 +282,6 @@ class NumericalXC(XCFunctional):
     def vxc_sg(self, _vxc_sg):
         self._vxc_sg = _vxc_sg
         self.kernel.vxc_sg = _vxc_sg
-        # if self.interpolate_vt:
-        #     self.vt_asz = self.interpolate_atomic_potential(_vxc_sg)
-
-    def interpolate_atomic_potential(self, vxc_sg):
-        assert self.paw_potmode is PAWPotMode.lebedev and self.vt is not None
-        vt = self.vt
-        c_sM, c_asi = project_potential_onto_pbs(
-            vt, vxc_sg, self.vt_overlap_inv)
-        self.c_sM = c_sM
-        self.c_asi = c_asi
-        v_asz = self.ham.atomdist.from_work(self.vxc_xasz[1].copy())
-        for a, vt_sng in v_asz.items():
-            vt_sng[:] = project_lfc_to_lebedev(
-                vt, c_asi[a], self.ham.setups[a], Y_nL, a)
-        return self.ham.atomdist.to_work(v_asz)
 
     @classmethod
     def from_other_xc(
@@ -311,10 +292,8 @@ class NumericalXC(XCFunctional):
         setup_name: None | str = None,
         virial_xc_energy: bool = False,
         stencil: int = 3,
-        interpolate_vt=False,
         ham: Hamiltonian | None = None,
         wfs: WaveFunctions | None = None,
-        n_gauss=9,
     ) -> "NumericalXC":
         """
         Returns a NumericalXC object by evaluating the given functional over the density.
@@ -331,7 +310,6 @@ class NumericalXC(XCFunctional):
             xc.initialize(density, ham, wfs)
             xc.set_positions(ham.spos_ac)
         nspins = density.nspins
-        assert density.nt_sg is not None, "execute density.interpolate_pseudo_density"
         vxc_sg = gd.zeros(nspins)
         xc.calculate(gd, density.nt_sg, vxc_sg)
         D_asp = density.atomdist.to_work(density.D_asp)
@@ -372,11 +350,9 @@ class NumericalXC(XCFunctional):
             setup_name=setup_name or xc.get_setup_name(),
             paw_potmode=paw_potmode,
             stencil=stencil,
-            interpolate_vt=interpolate_vt,
             vxc_sg=vxc_sg,
             vxc_xasz=vxc_xasz,
             virial_xc_energy=virial_xc_energy,
-            n_gauss=n_gauss
         )
 
     def todict(self) -> dict[str, str | bool | int]:
@@ -385,7 +361,6 @@ class NumericalXC(XCFunctional):
             "setup_name": self.setup_name,
             "stencil": self.stencil,
             "paw_potmode": self.paw_potmode.value,
-            "interpolate_vt": self.interpolate_vt,
             "virial_xc_energy": self.virial_xc_energy,
         }
 
@@ -400,19 +375,11 @@ class NumericalXC(XCFunctional):
         self.gd: GridDescriptor | None = None
         self.vt = None
         self.vt_overlap_inv = None
-        if self.interpolate_vt:
-            self.vt = make_pbs(hamiltonian.setups,
-                               hamiltonian.finegd, n_gauss=self.n_gauss)
-
-    def set_positions(self, spos_ac, atom_partition=None):
-        if self.interpolate_vt:
-            self.vt.set_positions(spos_ac)
-            self.vt_overlap_inv = get_pbs_overlap_matrix(self.vt)
-            self.vt_overlap_inv.invcholesky()
 
     def calculate_impl(
         self, gd: GridDescriptor, n_sg: Array4D, v_sg: Array4D, e_g: Array3D
     ) -> None:
+        assert self.gd is self.ham.finegd
         self.kernel.vxc_sg = self._vxc_sg
         self.kernel.virial_xc_energy = self.virial_xc_energy
         self.set_grid_descriptor(gd)
@@ -423,9 +390,34 @@ class NumericalXC(XCFunctional):
 
     def write(self, writer, natoms=None) -> None:
         assert self.gd is not None
-        writer.write(xcpots=self.pack_pots(self.gd) * Ha)
+        writer.write(vxc_sg=self.gd.collect(self.vxc_sg) * Ha,
+                     vxc_xZ=self.pack_atomic_potentials(self.vxc_xasz) * Ha)
+        if self.vc_xag is not None:
+            writer.write(vc_xag=self.pack_atomic_potentials(self.vc_xag) * Ha)
 
     def read(self, reader) -> None:
+        h = reader.hamiltonian.xc
+        if hasattr(h, 'xcpots'):
+            return self.read_old(reader)
+        nspins = self.ham.nspins
+        self._vxc_sg = self.ham.finegd.zeros(self.ham.nspins)
+        self.ham.finegd.distribute(h.vxc_sg / reader.ha, self.vxc_sg)
+        self.kernel.vxc_sg = self._vxc_sg
+        setups = self.ham.setups
+        shapes_a = get_atomic_potential_shapes(
+            setups, nspins, self.paw_potmode)
+        self.vxc_xasz = self.unpack_atomic_potentials(
+            h.vxc_xZ / reader.ha, shapes_a)
+        if hasattr(h, 'vc_xag'):
+            corepots_shapes_a = [(s.xc_correction.rgd.N,) for s in setups]
+            self.vc_xag = self.unpack_atomic_potentials(
+                h.vc_xag / reader.ha, corepots_shapes_a)
+
+    def write_old(self, writer, natoms=None) -> None:
+        assert self.gd is not None
+        writer.write(xcpots=self.pack_pots(self.gd) * Ha)
+
+    def read_old(self, reader) -> None:
         h = reader.hamiltonian.xc
         nspins = self.ham.nspins
         self._vxc_sg = self.ham.finegd.zeros(self.ham.nspins)
@@ -449,6 +441,14 @@ class NumericalXC(XCFunctional):
                 gd.distribute(v_sg, self._vxc_sg)
         self.gd = gd
         self.kernel.set_grid_descriptor(gd, self.stencil)
+        if self.ham is not None:
+            for v_asz in self.vxc_xasz:
+                if v_asz.partition is not self.ham.atomdist.work_partition:
+                    v_asz.redistribute(self.ham.atomdist.work_partition)
+            if self.vc_xag is not None:
+                for v_asz in self.vc_xag:
+                    if v_asz.partition is not self.ham.atomdist.work_partition:
+                        v_asz.redistribute(self.ham.atomdist.work_partition)
 
     def calculate_paw_correction(
         self,
@@ -458,10 +458,9 @@ class NumericalXC(XCFunctional):
         addcoredensity: bool = True,
         a: int = None,
     ) -> float:
-        if self.interpolate_vt and self.c_asi is None:
-            self.vt_asz = self.interpolate_atomic_potential(self.vxc_sg)
-
         assert a is not None
+        for v_asz in self.vxc_xasz:
+            assert v_asz.partition is self.ham.atomdist.work_partition
         if setup.xc_correction is None:
             return 0.0
         if self.paw_potmode is PAWPotMode.direct:
@@ -477,6 +476,9 @@ class NumericalXC(XCFunctional):
             # lebedev and angular
             v_sz = self.vxc_xasz[0][a]
             vt_sz = self.vxc_xasz[1][a]
+            if self.vc_xag is not None:
+                v_sz = v_sz + self.vc_xag[0][a]
+                vt_sz = vt_sz + self.vc_xag[1][a]
             rcalc = NXCRadialCalculator(
                 v_sz, self.paw_potmode, self.virial_xc_energy)
             rcalct = NXCRadialCalculator(
@@ -542,18 +544,55 @@ class NumericalXC(XCFunctional):
         else:
             return np.nan
 
+    def pack_atomic_potentials(self, vxc_xaz):
+        data_xZ = []
+        for v_asz in vxc_xaz:
+            v_asz = self.ham.atomdist.from_work(v_asz).copy()
+            v_asz.redistribute(self.ham.atom_partition.as_serial())
+            if self.ham.atom_partition.comm.rank == 0:
+                data_xZ.append(v_asz.toarray())
+        if self.ham.atom_partition.comm.rank == 0:
+            return np.vstack(data_xZ)
+        else:
+            return np.nan
+
+    def unpack_atomic_potentials(self, data_xZ, shapes_a):
+        vxc_xasz = []
+        for x in range(num_pawpots[self.paw_potmode]):
+            v_asz = self.ham.atom_partition.arraydict(shapes_a, dtype=float)
+            v_asz.redistribute(self.ham.atom_partition.as_serial())
+            if self.ham.atom_partition.comm.rank == 0:
+                v_asz.fromarray(data_xZ[x])
+            v_asz.redistribute(self.ham.atom_partition)
+            vxc_xasz.append(self.ham.atomdist.to_work(v_asz))
+        return vxc_xasz
+
     def collect_angular_atomic_potentials(self) -> list[dict[int, Array3D]]:
+        # probably not correct for periodic
         assert self.paw_potmode in (PAWPotMode.lebedev, PAWPotMode.angular)
         vxc_xasz: list[dict[int, Array3D]] = [{} for _ in self.vxc_xasz]
         for a, setup in enumerate(self.ham.setups):
             for x, vxc_asz in enumerate(self.vxc_xasz):
                 vxc_sz = vxc_asz.get(a)
+                if self.vc_xag is not None:
+                    vc_g = self.vc_xag[x].get(a)
                 if vxc_sz is None:
                     vxc_sz = np.empty(vxc_asz.shapes_a[a], dtype=float)
+                    if self.vc_xag is not None:
+                        vc_g = np.empty(
+                            self.vc_xags[x].shapes_a[a], dtype=float)
                 rank = vxc_asz.partition.rank_a[a]
                 vxc_asz.partition.comm.broadcast(vxc_sz, rank)
+                if self.vc_xag is not None:
+                    vxc_asz.partition.comm.broadcast(vc_g, rank)
                 if self.paw_potmode is PAWPotMode.lebedev:
-                    vxc_sz = lebedev2angular(vxc_sz, setup.xc_correction.Lmax)
+                    if self.vc_xag is None:
+                        vxc_sz = lebedev2angular(
+                            vxc_sz, setup.xc_correction.Lmax)
+                    else:
+                        vxc_sz = lebedev2angular(
+                            vxc_sz + vc_g, setup.xc_correction.Lmax)
+
                 vxc_xasz[x][a] = vxc_sz
         return vxc_xasz
 
@@ -858,8 +897,8 @@ def FermiAmaldi(
     paw_potmode: str | PAWPotMode = PAWPotMode.lebedev,
     virial_xc_energy: bool = False,
     stencil: int = 3,
+    add_core_potential: bool = False,
     mix_spin_fa: bool = False,
-    interpolate_vt: bool = False,
     **poisson_kwargs: dict[str, Any],
 ) -> NumericalXC:
     if poisson is None:
@@ -878,7 +917,7 @@ def FermiAmaldi(
             v_q = pd3.zeros(q=0)
             rhot_q = pd3.fft(density.nt_sg[s], q=0)
             poisson._solve(v_q, rhot_q)
-            vxc_sg[s] = -pd3.ifft(v_q, q=0, distribute=False) / N
+            vxc_sg[s] = -pd3.ifft(v_q, q=0, distribute=True) / N
     else:
         vxc_sg = calculate_fa_potential(
             poisson, poisson.gd, density.nt_sg, mix_spin_fa)
@@ -887,6 +926,34 @@ def FermiAmaldi(
     vxc_xasz = calculate_fa_atomic_potentials(
         D_asp, density.setups, density.nspins, paw_potmode, mix_spin_fa
     )
+    vc_xag = None
+    if add_core_potential:
+        assert paw_potmode is PAWPotMode.lebedev
+        setup_xc = XC(setup_name)
+
+        def core_potentials_shape(a):
+            return (density.setups[a].xc_correction.rgd.N,)
+        vc_ag = D_asp.partition.arraydict(
+            core_potentials_shape, dtype=float)
+        vct_ag = D_asp.partition.arraydict(
+            core_potentials_shape, dtype=float)
+        for a in vc_ag:
+            vc_ag[a][:] = 0.0
+            vct_ag[a][:] = 0.0
+            nc_g = density.setups[a].xc_correction.nc_g
+            nct_g = density.setups[a].xc_correction.nct_g
+            if setup_xc.kernel.type == 'LDA':
+                e_g = np.zeros_like(nc_g)
+                setup_xc.kernel.calculate(
+                    e_g, nc_g[np.newaxis], vc_ag[a][np.newaxis])
+                setup_xc.kernel.calculate(
+                    e_g, nct_g[np.newaxis], vct_ag[a][np.newaxis])
+            else:
+                raise NotImplementedError
+            # vxc_xasz[0][a] -= vc_ag[a]
+            # vxc_xasz[1][a] -= vct_ag[a]
+        vc_xag = [vc_ag, vct_ag]
+
     xc = NumericalXC(
         NumericalXCKernel(virial_xc_energy=virial_xc_energy),
         setup_name,
@@ -895,7 +962,7 @@ def FermiAmaldi(
         stencil=stencil,
         vxc_sg=vxc_sg,
         vxc_xasz=vxc_xasz,
-        interpolate_vt=interpolate_vt,
+        vc_xag=vc_xag,
     )
     return xc
 
@@ -909,7 +976,7 @@ def get_all_electron_xc_proj(
     """
     This is not the actual AE effective potential but rather the projection of
     the atomic corrections to the Hamiltonian (multipled by the projectors) +
-    the xc potential over the pseudo space (contributions to the Hamtiltonian)
+    the xc potential over the pseudo space (contributions to the Hamiltonian)
     """
     gd = hamiltonian.finegd
     nspins = hamiltonian.nspins
@@ -952,199 +1019,3 @@ def get_all_electron_xc_proj(
             M1 = M2
         pt.construct_density(vxc_MM, v_sg[s], -1)
     return v_sg, exc
-
-
-def get_pbs_splines(setup, points=100, n_gauss=9):
-    """
-    potential basis functions similar to the ones used in DOI: 10.1039/c9cp03633d
-      1) n(r) / max(n)                  (l = 0)
-      2) Hartree potential of n(r)      (l = 0)
-      3) n_gauss Gaussians for l = 0, 1, 2
-         with Z-dependent even-tempered exponents.
-    """
-    xcc = setup.xc_correction
-    rgd = xcc.rgd
-    rcut2 = 2 * max(setup.rcut_j)
-    gcut2 = rgd.ceil(rcut2)
-    # n_g = xcc.nct_g.copy()
-    n_g = rgd.zeros()
-    for phit_g in xcc.phit_jg:
-        n_g += phit_g**2
-    n_g[gcut2:] = 0.0
-    X_j = []
-    # density-shape basis: n(r) / max(n), l = 0
-    nmax = float(n_g.max()) + 1e-10
-    dens_shape_g = n_g / nmax
-    X_j.append(rgd.spline(dens_shape_g, rcut2, l=0, points=points))
-    # Hartree potential
-    vH_g = divrl(rgd.poisson(n_g, l=0), 1, rgd.r_g)
-    vH_g[gcut2:] = 0.0
-    X_j.append(rgd.spline(vH_g, rcut2, l=0, points=points))
-    # Gaussians
-    Z = setup.Z
-    alpha1 = 0.01 * Z**2
-    alpha2 = 50.0 * Z**2
-    alpha_B = alpha1 * (alpha2 / alpha1) ** np.linspace(0.0, 1.0, n_gauss)
-    r_g = rgd.r_g
-    for ll in (0, 1, 2):
-        for alpha in alpha_B:
-            g_g = np.exp(-alpha * r_g**2)
-            g_g[gcut2:] = 0.0
-            spl = Spline.from_data(l=ll, rmax=rcut2, f_g=g_g)
-            X_j.append(spl)
-
-    return X_j
-
-
-def make_pbs(setups, gd, points=400, n_gauss=9):
-    X_aj = []
-    cache = {}
-    for a, id_ in enumerate(setups.id_a):
-        if id_ in cache:
-            X_j = cache[id_]
-        else:
-            if not hasattr(setups[a], "xc_correction"):
-                raise NotImplementedError(f"No xc_correction for setup {id_}")
-            X_j = get_pbs_splines(setups[a], n_gauss=n_gauss, points=points)
-            cache[id_] = X_j
-        X_aj.append(X_j)
-    vt = BasisFunctions(gd, X_aj)
-    return vt
-
-
-def get_pbs_overlap_matrix(vt):
-    """Return Gram/overlap matrix S as a gpaw.core.Matrix.
-    vt: BasisFunctions (or LFC subclass with calculate_potential_matrices)
-    """
-    gd = vt.gd
-    ones_G = np.ones(gd.n_c, dtype=float)
-    Vt_xMM = vt.calculate_potential_matrices(ones_G)
-    S_MM = np.array(Vt_xMM[0], copy=True)
-    M = vt.Mstop - vt.Mstart
-    assert S_MM.shape == (M, M)
-    # to prevent singular overlap matrix
-    eps = 1e-9
-    np.fill_diagonal(S_MM, S_MM.diagonal() + eps)
-    S = Matrix(M, M, dtype=S_MM.dtype, data=S_MM)
-    return S
-
-
-def project_potential_onto_pbs(vt, v_sg, S,):
-    """Project v_sg onto vt’s potential basis."""
-    M = S.shape[0]
-    # b_M = <Φ|v>
-    nspins = len(v_sg)
-    c_sM = np.zeros((nspins, vt.Mmax), dtype=float)
-    c_asi = vt.dict(nspins)
-    vt.integrate2(v_sg, c_sM)
-    for s in range(len(c_sM)):
-        B = Matrix(M, 1, dtype=c_sM.dtype, data=c_sM[s].reshape(M, 1))
-        Y = S.multiply(alpha=1, b=B, opa="N", opb="N")
-        C = S.multiply(alpha=1.0, b=Y, opa="T", opb="N")
-        c_sM[s] = np.array(C.array.ravel(), copy=True)
-    vt.M_to_ai(c_sM, c_asi)
-    return c_sM, c_asi
-
-
-def project_potential_onto_pbs2(vt, v_sg, S):
-    """Project v_sg onto vt’s potential basis with a zero-mean-error constraint.
-    Returns
-    -------
-    c_sM : 2D ndarray (nspins, M)
-        Global M coefficients per spin.
-    c_asi : dict[a] -> ndarray[s, ni]
-        Per-atom coefficients for vt.add.
-    """
-    gd = vt.gd
-    M = S.shape[0]
-    nspins = len(v_sg)
-    ones_sg = np.ones((1,) + tuple(gd.n_c), dtype=float)
-    c1_xM = np.zeros((1, vt.Mmax), dtype=float)
-    vt.integrate2(ones_sg, c1_xM)
-    f_M = c1_xM[0]
-    F = Matrix(M, 1, dtype=f_M.dtype, data=f_M.reshape(M, 1))
-    Yf = S.multiply(alpha=1.0, opa="N", b=F, opb="N")  # y = L f
-    W = S.multiply(alpha=1.0, opa="T", b=Yf, opb="N")  # w = L^T y
-    w_M = np.array(W.array.ravel(), copy=True)
-    denom = float(f_M @ w_M)  # f^T S^{-1} f
-    tiny = 1e-14
-    c_sM = np.zeros((nspins, vt.Mmax), dtype=float)
-    c_asi = vt.dict(nspins)
-    vt.integrate2(v_sg, c_sM)
-    for s in range(nspins):
-        b_M = c_sM[s]
-        B = Matrix(M, 1, dtype=b_M.dtype, data=b_M.reshape(M, 1))
-        Y = S.multiply(alpha=1.0, opa="N", b=B, opb="N")  # y = L b
-        C = S.multiply(alpha=1.0, opa="T", b=Y, opb="N")  # c0 = L^T y
-        c0_M = np.array(C.array.ravel(), copy=True)
-        g_s = float(gd.integrate(v_sg[s]))
-        if abs(denom) > tiny:
-            num = g_s - float(f_M @ c0_M)
-            c_M = c0_M + (num / denom) * w_M
-        else:
-            c_M = c0_M
-        c_sM[s] = c_M
-    vt.M_to_ai(c_sM, c_asi)
-    return c_sM, c_asi
-
-
-def project_lfc_to_lebedev(vt, c_si, setup, Y_nL, a):
-    """Compute v_sng[s, n, g] on Lebedev × radial grid for atom a.
-    vt   : BasisFunctions / LFC with sphere_a[a].spline_j
-    c_si : array (nspins, ni_a) – coefficients for atom a (i = compact n,l,m)
-    setup: PAW setup for atom a (for radial grid)
-    Y_nL : Lebedev real SH values, shape (n_lebedev, Lmax)
-           with L = l**2 + m convention.
-    a    : atom index
-    """
-    xcc = setup.xc_correction
-    rgd = xcc.rgd
-    r_g = rgd.r_g
-    nspins, ni_a = c_si.shape
-    n_lebedev = Y_nL.shape[0]
-    v_sng = np.zeros((nspins, n_lebedev, rgd.N), dtype=float)
-    X_j = vt.sphere_a[a].spline_j
-    for s in range(nspins):
-        i_counter = 0
-        for spline in X_j:
-            ll = spline.l
-            s_g = spline.map(r_g)
-            # f(r) = s(r) * r^l
-            if ll == 0:
-                R_g = s_g
-            else:
-                R_g = s_g * (r_g ** ll)
-            for m in range(2 * ll + 1):
-                L = ll * ll + m
-                i = i_counter + m
-                c = c_si[s, i]
-                if c == 0.0:
-                    continue
-                Y_n = Y_nL[:, L]
-                v_sng[s] += c * (Y_n[:, None] * R_g[None, :])
-            i_counter += 2 * ll + 1
-    return v_sng
-
-
-def project_lfc_to_lebedev2(vt, c_si, setup, Y_nL, a):
-    """Compute v_sng[s, n, g] on Lebedev × radial grid for atom a. """
-    rgd = setup.xc_correction.rgd
-    r_g = rgd.r_g
-    nspins = c_si.shape[0]
-    v_sng = np.zeros((nspins, len(Y_nL), rgd.N), dtype=float)
-    X_j = vt.sphere_a[a].spline_j
-    for s in range(nspins):
-        i_counter = 0
-        for j, spline in enumerate(X_j):
-            ll = spline.l
-            R_g = np.array([spline(r) for r in r_g])
-            for m in range(2 * ll + 1):
-                L = ll**2 + m
-                i = i_counter + m
-                c = c_si[s, i]
-                Y_n = Y_nL[:, L]
-                x = c * (Y_n[:, np.newaxis] * R_g[np.newaxis, :])
-                x[:, 1:] *= r_g[1:]**ll
-                v_sng[s] += x
-            i_counter += 2 * ll + 1
-    return v_sng
