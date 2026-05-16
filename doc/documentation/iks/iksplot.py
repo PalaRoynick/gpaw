@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from gpaw import GPAW
-from gpaw.grid_descriptor import GridDescriptor
+from gpaw import GPAW, setup_paths
+from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.typing import ArrayND
 from gpaw.xc.numericalxc import NumericalXC
 from numpy.linalg import norm
 from scipy.interpolate import RegularGridInterpolator
+
+setup_paths.append('.')
 
 
 def load(load_path: Path, name, gd: Optional[GridDescriptor] = None) -> ArrayND:
@@ -216,9 +218,9 @@ def main():
     iks, nxc = load_stuff(path / "iks.gpw", None, args.no_ae)
     target, _ = load_stuff(path / "target.gpw",
                            nxc.paw_potmode.name, args.no_ae)
-    fa_scf, _ = load_stuff(
-        path / "fermi-amaldi-scf.gpw", nxc.paw_potmode.name, args.no_ae
-    )
+    # fa_scf, _ = load_stuff(
+    #     path / "fermi-amaldi-scf.gpw", nxc.paw_potmode.name, args.no_ae
+    # )
     fa_warmup, _ = load_stuff(
         path / "fermi-amaldi-warmup.gpw", nxc.paw_potmode.name, args.no_ae
     )
@@ -232,8 +234,8 @@ def main():
     cz = slice(args.z_lower, args.z_upper)
     cut = (0, cut_x, cut_y, cz)
     print(target["n_sg"].shape)
-    dat = [target, fa_warmup, iks, fa_scf]
-    names = ["Target", "FA", "iKS", "FA scf"]
+    dat = [target, fa_warmup, iks]
+    names = ["Target", "FA", "iKS"]
     linestyles = ["-", "-.", "--", ":"]
     colors = ["black", "darkgreen", "red", "orange"]
 
@@ -506,8 +508,8 @@ def main():
     savefig(path, prefix + "vxc_sg_diagonal_line")
 
     # atomic parts
-    dat = [target, fa_warmup, iks, fa_scf]
-    names = ["Target", "FA", "iKS", "FA scf"]
+    dat = [target, fa_warmup, iks]
+    names = ["Target", "FA", "iKS"]
     linestyles = ["-", "-.", "--", ":"]
     colors = ["black", "darkgreen", "red", "orange"]
     markers = [("v", 6), ("*", 5), ("o", 3), ("s", 2)]
