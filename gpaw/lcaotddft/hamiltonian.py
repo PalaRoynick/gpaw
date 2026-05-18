@@ -169,7 +169,7 @@ class TimeDependentHamiltonian:
         # Reset the density mixer
         # XXX: density mixer is not written to the gpw file
         # XXX: so we need to set it always
-        self.density.set_mixer(DummyMixer())
+        self.density.set_mixer(DummyMixer(), paw.spos_ac)
         self.update()
 
         # Initialize fxc

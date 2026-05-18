@@ -220,7 +220,7 @@ class OldTDDFT(GPAW):
         self.log('Charge epsilon:', self.density.charge_eps)
 
         # Density mixer
-        self.td_density.density.set_mixer(DummyMixer())
+        self.td_density.density.set_mixer(DummyMixer(), self.spos_ac)
 
         # Solver
         self.solver.initialize(self.wfs.gd, self.timer)
