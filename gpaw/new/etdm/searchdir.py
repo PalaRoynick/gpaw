@@ -5,7 +5,7 @@ class LBFGS:
     def __init__(self,
                  p_key=False,
                  *,
-                 memory=3):
+                 memory=3):  # set to 5 for FD
         """
         L-BFGS optimizer initialization.
 
@@ -100,8 +100,8 @@ class LBFGS:
 
             # FIX: these two statements should be
             # identical for both lcao and pw
-            self.ds[m] = self.search_dir.copy()
-            # self.ds[m] = a_cur - self.a_old
+            self.ds[m] = self.search_dir.copy()  # use for PW/FD
+            # self.ds[m] = a_cur - self.a_old  # use for LCAO
             self.dy[m] = g_cur - self.g_old
 
             # Compute curvature y^T * s
