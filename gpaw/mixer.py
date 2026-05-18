@@ -529,9 +529,10 @@ class MSR1Mixer(BaseMixer):
             A2 = A3_i @ B_ii @ A2_i * dampen
             B2 = B3_i @ B_ii @ B2_i
 
-            trig_fact = A0_lims[-1] * 2 / np.pi
+            # trig_fact = A0_lims[-1] * 2 / np.pi
             A0_target = np.clip(
-                np.arctan(np.abs(A1 / (A2 * trig_fact))) * trig_fact,
+                np.abs(A1 / A2),
+                # np.arctan(np.abs(A1 / (A2 * trig_fact))) * trig_fact,
                 *A0_lims
             )
             if self.A0 is not None:
