@@ -442,6 +442,7 @@ class PotState:
         assert self.gd is not None and self.setups is not None
         II = np.zeros(1, dtype=float)
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
+            assert tuple(data_asz.keys()) == tuple(other_asz.keys())
             for a in data_asz:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]

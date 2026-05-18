@@ -526,8 +526,9 @@ class iKS:
                             xcc.rgd.integrate(w_ng[n] * np.abs(dnt_g))
                         LD2 += weight_n[n] * \
                             xcc.rgd.integrate(w_ng[n] * (dnt_g**2))
-        self.hamiltonian.world.sum(LD1)
-        self.hamiltonian.world.sum(LD2)
+        comm = self.dD_asp.partition.comm
+        comm.sum(LD1)
+        comm.sum(LD2)
         return L1, L2, LD1.item(), LD2.item()
 
     def jacobian(self) -> ArrayND:
@@ -756,8 +757,9 @@ class iKS:
                         l2_atomic += weight_n[n] * \
                             xcc.rgd.integrate(dnt_g**2) / Nc
 
-        l1_atomic = self.hamiltonian.world.sum_scalar(l1_atomic)
-        l2_atomic = self.hamiltonian.world.sum_scalar(l2_atomic)
+        comm = self.dD_asp.partition.comm
+        l1_atomic = comm.sum_scalar(l1_atomic)
+        l2_atomic = comm.sum_scalar(l2_atomic)
         l1_ae = np.nan
         l2_ae = np.nan
         if ae and self.log_l1_ae:

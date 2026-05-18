@@ -67,11 +67,6 @@ class iKSLinearSolver:
             p2_nG[n] -= alpha * psit_nG[n]
         return p2_nG
 
-        wfs = self.iks.wfs
-        P_ani = wfs.pt.dict((self.nocc,))
-        wfs.pt.integrate(p_nG, P_ani, kpt.q)
-        return P_ani
-
     def apply_lhs(self, p_nG):
         iks = self.iks
         Hp_nG = np.zeros_like(p_nG)
