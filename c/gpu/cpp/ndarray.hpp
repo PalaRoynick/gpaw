@@ -329,7 +329,6 @@ enum class Framework
 };
 
 /* Aggressive CPython-style accessors to array attributes.
-* No ownership (borrows only), no error checking, no exceptions.
 * For Numpy these are trivial wrappers around Numpy C-API.
 */
 struct ArrayAccessors
@@ -392,10 +391,10 @@ struct ArrayAccessors
     {
         // obj.data.ptr (device pointer)
         PyObject* data_obj = PyObject_GetAttrString(obj, "data");
-        PyObject* data_ptr_obj = PyObject_GetAttrString(data_obj, "ptr");
-        void* ptr = PyLong_AsVoidPtr(data_ptr_obj);
-        Py_DECREF(data_ptr_obj);
-        Py_DECREF(data_obj);
+        PyObject* data_ptr_obj = data_obj ? PyObject_GetAttrString(data_obj, "ptr") : nullptr;
+        void* ptr = data_ptr_obj ? PyLong_AsVoidPtr(data_ptr_obj) : nullptr;
+        Py_XDECREF(data_ptr_obj);
+        Py_XDECREF(data_obj);
         return ptr;
     }
 
@@ -403,10 +402,10 @@ struct ArrayAccessors
     {
         // obj.dtype.num
         PyObject* dtype = PyObject_GetAttrString(obj, "dtype");
-        PyObject* typenum_obj = PyObject_GetAttrString(dtype, "num");
-        int typenum = static_cast<int>(PyLong_AsLong(typenum_obj));
-        Py_DECREF(typenum_obj);
-        Py_DECREF(dtype);
+        PyObject* typenum_obj = dtype ? PyObject_GetAttrString(dtype, "num") : nullptr;
+        const int typenum = typenum_obj ? static_cast<int>(PyLong_AsLong(typenum_obj)) : -1;
+        Py_XDECREF(typenum_obj);
+        Py_XDECREF(dtype);
         return typenum;
     }
 
@@ -414,10 +413,10 @@ struct ArrayAccessors
     {
         // obj.flags.c_contiguous
         PyObject* flags = PyObject_GetAttrString(obj, "flags");
-        PyObject* c_contig_obj = PyObject_GetAttrString(flags, "c_contiguous");
-        bool value = PyObject_IsTrue(c_contig_obj);
-        Py_DECREF(c_contig_obj);
-        Py_DECREF(flags);
+        PyObject* c_contig_obj = flags ? PyObject_GetAttrString(flags, "c_contiguous") : nullptr;
+        const bool value = c_contig_obj ? PyObject_IsTrue(c_contig_obj) : false;
+        Py_XDECREF(c_contig_obj);
+        Py_XDECREF(flags);
         return value;
     }
 
@@ -425,10 +424,10 @@ struct ArrayAccessors
     {
         // obj.flags.f_contiguous
         PyObject* flags = PyObject_GetAttrString(obj, "flags");
-        PyObject* f_contig_obj = PyObject_GetAttrString(flags, "f_contiguous");
-        bool value = PyObject_IsTrue(f_contig_obj);
-        Py_DECREF(f_contig_obj);
-        Py_DECREF(flags);
+        PyObject* f_contig_obj = flags ? PyObject_GetAttrString(flags, "f_contiguous") : nullptr;
+        const bool value = f_contig_obj ? PyObject_IsTrue(f_contig_obj) : false;
+        Py_XDECREF(f_contig_obj);
+        Py_XDECREF(flags);
         return value;
     }
 
@@ -436,8 +435,8 @@ struct ArrayAccessors
     {
         // obj.ndim
         PyObject* ndim_obj = PyObject_GetAttrString(obj, "ndim");
-        int32_t ndim = static_cast<int32_t>(PyLong_AsLong(ndim_obj));
-        Py_DECREF(ndim_obj);
+        const int32_t ndim = ndim_obj ? static_cast<int32_t>(PyLong_AsLong(ndim_obj)) : -1;
+        Py_XDECREF(ndim_obj);
         return ndim;
     }
 
@@ -445,6 +444,11 @@ struct ArrayAccessors
     {
         // obj.shape (tuple)
         PyObject* shape_tuple = PyObject_GetAttrString(obj, "shape");
+        if (!shape_tuple) [[unlikely]]
+        {
+            return {};
+        }
+
         const Py_ssize_t num_dims = PyTuple_GET_SIZE(shape_tuple);
 
         std::vector<int64_t> out(num_dims);
@@ -461,6 +465,11 @@ struct ArrayAccessors
     {
         // obj.strides (tuple)
         PyObject* strides_tuple = PyObject_GetAttrString(obj, "strides");
+        if (!strides_tuple) [[unlikely]]
+        {
+            return {};
+        }
+
         const Py_ssize_t num_dims = PyTuple_GET_SIZE(strides_tuple);
 
         std::vector<int64_t> out(num_dims);
