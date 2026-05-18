@@ -97,8 +97,11 @@ class BaseMixer:
     def add_compensation(self, A_sG, D_asI):
         # return A_sG.copy()
         assert self.atomdist.comm.rank == self.gd.comm.rank
+        gpaw_new = hasattr(self.atomdist, 'rank_a')
+        atomdist = self.atomdist if gpaw_new \
+            else self.atomdist.partition
         my_atoms_inds = np.where(
-            self.atomdist.rank_a == self.gd.comm.rank)[0]
+            atomdist.rank_a == self.gd.comm.rank)[0]
         comp_sG = A_sG.copy()
         for s, comp_G in enumerate(comp_sG):
             Q_aL = {}
@@ -106,8 +109,11 @@ class BaseMixer:
                 D_I = D_sI[s]
                 a_s = my_atoms_inds[a]
                 setup = self.setups[a_s]
-                i = int(np.sqrt(len(D_I)))
-                D_p = pack_density(D_I.reshape(i, i))
+                if gpaw_new:
+                    i = int(np.sqrt(len(D_I)))
+                    D_p = pack_density(D_I.reshape(i, i))
+                else:
+                    D_p = D_I
                 Q_aL[a_s] = (D_p @ setup.Delta_pL).real
                 Q_aL[a_s][0] += setup.Delta0 / len(comp_sG)
             self.ghat.add(comp_G, Q_aL)
