@@ -392,7 +392,9 @@ struct ArrayAccessors
     {
         // obj.data.ptr (device pointer)
         PyObject* data_obj = PyObject_GetAttrString(obj, "data");
-        void* ptr = PyLong_AsVoidPtr(PyObject_GetAttrString(data_obj, "ptr"));
+        PyObject* data_ptr_obj = PyObject_GetAttrString(data_obj, "ptr");
+        void* ptr = PyLong_AsVoidPtr(data_ptr_obj);
+        Py_DECREF(data_ptr_obj);
         Py_DECREF(data_obj);
         return ptr;
     }
@@ -401,7 +403,9 @@ struct ArrayAccessors
     {
         // obj.dtype.num
         PyObject* dtype = PyObject_GetAttrString(obj, "dtype");
-        int typenum = static_cast<int>(PyLong_AsLong(PyObject_GetAttrString(dtype, "num")));
+        PyObject* typenum_obj = PyObject_GetAttrString(dtype, "num");
+        int typenum = static_cast<int>(PyLong_AsLong(typenum_obj));
+        Py_DECREF(typenum_obj);
         Py_DECREF(dtype);
         return typenum;
     }
@@ -410,7 +414,9 @@ struct ArrayAccessors
     {
         // obj.flags.c_contiguous
         PyObject* flags = PyObject_GetAttrString(obj, "flags");
-        bool value = PyObject_IsTrue(PyObject_GetAttrString(flags, "c_contiguous"));
+        PyObject* c_contig_obj = PyObject_GetAttrString(flags, "c_contiguous");
+        bool value = PyObject_IsTrue(c_contig_obj);
+        Py_DECREF(c_contig_obj);
         Py_DECREF(flags);
         return value;
     }
@@ -419,7 +425,9 @@ struct ArrayAccessors
     {
         // obj.flags.f_contiguous
         PyObject* flags = PyObject_GetAttrString(obj, "flags");
-        bool value = PyObject_IsTrue(PyObject_GetAttrString(flags, "f_contiguous"));
+        PyObject* f_contig_obj = PyObject_GetAttrString(flags, "f_contiguous");
+        bool value = PyObject_IsTrue(f_contig_obj);
+        Py_DECREF(f_contig_obj);
         Py_DECREF(flags);
         return value;
     }
@@ -427,7 +435,10 @@ struct ArrayAccessors
     static int32_t ndim(PyObject* obj) noexcept
     {
         // obj.ndim
-        return static_cast<int32_t>(PyLong_AsLong(PyObject_GetAttrString(obj, "ndim")));
+        PyObject* ndim_obj = PyObject_GetAttrString(obj, "ndim");
+        int32_t ndim = static_cast<int32_t>(PyLong_AsLong(ndim_obj));
+        Py_DECREF(ndim_obj);
+        return ndim;
     }
 
     static std::vector<int64_t> shape(PyObject* obj) noexcept
@@ -544,14 +555,14 @@ inline bool ndarray_import_impl(
 template<typename... Args>
 inline bool ndarray_import(PyObject* obj, ArrayDesc& out) noexcept
 {
-    bool success = true;
+    bool success = false;
     if (is_numpy_array(obj))
     {
-        success &= ndarray_import_impl<Framework::eNumpy, Args...>(obj, out);
+        success = ndarray_import_impl<Framework::eNumpy, Args...>(obj, out);
     }
     else if (is_cupy_array(obj))
     {
-        success &= ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
+        success = ndarray_import_impl<Framework::eCupy, Args...>(obj, out);
     }
 
     if (PyErr_Occurred())
