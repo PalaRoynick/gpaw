@@ -107,7 +107,7 @@ class BaseMixer:
                 setup = self.setups[a_s]
                 i = int(np.sqrt(len(D_I)))
                 D_p = pack_density(D_I.reshape(i, i))
-                Q_aL[a_s] = D_p @ setup.Delta_pL
+                Q_aL[a_s] = (D_p @ setup.Delta_pL).real
                 Q_aL[a_s][0] += setup.Delta0 / len(comp_sG)
             self.ghat.add(comp_G, Q_aL)
         return comp_sG
