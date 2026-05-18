@@ -11,8 +11,9 @@ from ase.utils.filecache import MultiFileJSONCache
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.dft import GPAW
+from gpaw.new.brillouin import MonkhorstPackKPoints
 from gpaw.new.ibzwfs import IBZWaveFunctions
-from gpaw.new.logger import Logger
+from gpaw.response import ResponseContext, ResponseContextInput, timer
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
 
@@ -34,18 +35,18 @@ class DFTAdapter:
     def __init__(self, *,
                  grid: UGDesc,
                  dH_asii_template: AtomArrays,
-                 log: Logger,
                  ibzwfs: IBZWaveFunctions) -> None:
         self.grid = grid
         self.dH_asii_template = dH_asii_template
-        self.log = log
-        self.ibzwfs = ibzwfs
-        # Derived k-point info from the native IBZ.
+        self.ibzwfs = ibzwfs  # might still be overkill
         ibz = ibzwfs.ibz
         bz = ibz.bz
+        if not isinstance(bz, MonkhorstPackKPoints):
+            raise ValueError(
+                'Supercell el-ph requires a Monkhorst-Pack k-point grid; '
+                f'got {type(bz).__name__}.')
         self.gamma_only = bz.gamma_only
-        self.Nk_c = (np.array(bz.size_c)
-                     if hasattr(bz, 'size_c') else None)
+        self.Nk_c = np.array(bz.size_c)
         self.trs = len(ibz.kpt_kc) != len(bz.kpt_Kc)
         gamma_idx = np.where(np.abs(ibz.kpt_kc).sum(axis=1) < 1e-13)[0]
         self.gamma_k = int(gamma_idx[0]) if gamma_idx.size else None
@@ -55,7 +56,6 @@ class DFTAdapter:
         return cls(
             grid=calc.dft.density.nt_sR.desc,
             dH_asii_template=calc.dft.potential.dH_asii,
-            log=calc.log,
             ibzwfs=calc.dft.ibzwfs)
 
 
@@ -92,7 +92,8 @@ class Supercell:
     """Class for supercell-related stuff."""
 
     def __init__(self, atoms: Atoms, supercell_name: str = "supercell",
-                 supercell: tuple = (1, 1, 1), indices=None) -> None:
+                 supercell: tuple = (1, 1, 1), indices=None,
+                 context: ResponseContextInput = '-') -> None:
         """Initialize supercell class.
 
         Parameters
@@ -105,6 +106,11 @@ class Supercell:
         supercell: tuple
             Size of supercell given by the number of repetitions (l, m, n) of
             the small unit cell in each direction.
+        context:
+            Log/timer/comm bundle. Accepts a :class:`ResponseContext`, a dict
+            of its kwargs, or a filename ('-' for stdout, None to silence).
+            A fresh context is created from the input; the calculator's own
+            logger/timer are not reused.
         """
         self.atoms = atoms
         self.supercell_name = supercell_name
@@ -113,9 +119,11 @@ class Supercell:
             self.indices = np.arange(len(atoms))
         else:
             self.indices = indices
+        self.context = ResponseContext.from_input(context)
 
-    def _create_gpaw_calculator(self, calcdict, fd_name='elph'):
-        """Build an LCAO calculator and return ``(dft, timer)``.
+    @timer('Init')
+    def _create_gpaw_calculator(self, calcdict, fd_name='elph') -> DFTAdapter:
+        """Build an LCAO calculator.
 
         Parameters
         ----------
@@ -128,12 +136,6 @@ class Supercell:
             is fixed by the cache.
         fd_name: str
             Name of the finite-difference JSON cache (default ``'elph'``).
-
-        Returns
-        -------
-        dft, timer:
-            A :class:`DFTAdapter` with the extracted native data and the
-            calculator's ``Timer``.
         """
         cache = MultiFileJSONCache(fd_name)
         pot_shape = list(np.array(cache['eq']['Vt_sG']).shape)
@@ -158,8 +160,9 @@ class Supercell:
         gpaw_kwargs = {'basis': 'dzp', **calcdict, **internal}
         calc = GPAW(**gpaw_kwargs)
         calc.create_new_calculation(self.atoms * self.supercell)
-        return DFTAdapter.from_calc(calc), calc.timer
+        return DFTAdapter.from_calc(calc)
 
+    @timer('Supercell entry')
     def _calculate_supercell_entry(self, a, v,
                                    v1t_sR: UGArray, dH1_aii: AtomArrays,
                                    dH_aii: AtomArrays,
@@ -198,6 +201,7 @@ class Supercell:
                 g_s_gammaMM[wfs.spin] = g_qMM
         return g_sMM, g_s_gammaMM
 
+    @timer('Local qMM')
     def _local_qMM(self, wfs, V1t_sxMM: ArrayND) -> ArrayND:
         """Single-kpt LCAO matrix elements ``<M | dv_eff/dx | N>``."""
         bfs = wfs.basis
@@ -212,6 +216,7 @@ class Supercell:
                                  optimize=True)
         return geff_MM
 
+    @timer('Nonlocal qMM')
     def _nonlocal_qMM(self, wfs, a, v,
                       dH1_aii: AtomArrays, dH_aii: AtomArrays,
                       dPdR_aqvMi) -> ArrayND:
@@ -257,8 +262,7 @@ class Supercell:
             specified components (``normal`` or ``umklapp``) are removed
             (default: None).
         """
-
-        dft, timer = self._create_gpaw_calculator(calcdict, fd_name)
+        dft = self._create_gpaw_calculator(calcdict, fd_name)
 
         # JSON cache
         supercell_cache = MultiFileJSONCache(self.supercell_name)
@@ -266,12 +270,14 @@ class Supercell:
         ibzwfs = dft.ibzwfs
         nspins = ibzwfs.nspins
         nao = ibzwfs._wfs_u[0].setups.nao
+        self._log_summary(dft)
 
         # FD cache: equilibrium read once; per-displacement entries inside
         # the loop via _read_displacement_cache.
         fd_cache = MultiFileJSONCache(fd_name)
         if 'dr_version' not in fd_cache['info']:
-            print('Cache created with old version. Use electronphonon.py')
+            self.context.print('Cache created with old version. '
+                               'Use older GPAW with electronphonon.py')
             raise VersionError
         assert tuple(self.supercell) == tuple(fd_cache['info']['supercell'])
         dH_aii = _dH_asp_to_aii(fd_cache['eq']['dH_all_asp'],
@@ -283,8 +289,9 @@ class Supercell:
                 handle.save(basis_info)
 
         if dft.gamma_only:
-            dft.log('WARNING: Gamma-point calculation. '
-                    'Overlap with neighboring cell cannot be removed')
+            self.context.print(
+                'WARNING: Gamma-point calculation. '
+                'Overlap with neighboring cell cannot be removed')
 
         # Calculate < i k | grad H | j k >, i.e. matrix elements in LCAO basis
 
@@ -296,18 +303,19 @@ class Supercell:
                     if handle is None:
                         continue
 
-                    dft.log(f'{["x", "y", "z"][v]}-gradient of atom {a}')
+                    self.context.print(
+                        f'{["x", "y", "z"][v]}-gradient of atom {a}')
 
-                    with timer('Supercell entry'):
+                    with self.context.timer('Gradients'):
                         V1t_sG, dH1_asp = self._read_displacement_cache(
                             fd_cache, a, v, dft.grid, filter)
                         v1t_sR = dft.grid.empty(dims=(nspins,))
                         v1t_sR.scatter_from(V1t_sG)
                         dH1_aii = _dH_asp_to_aii(dH1_asp,
                                                  dft.dH_asii_template)
-                        g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
-                            a, v, v1t_sR, dH1_aii, dH_aii, dft)
-                    if not (dft.gamma_only or dft.Nk_c is None):
+                    g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
+                        a, v, v1t_sR, dH1_aii, dH_aii, dft)
+                    if not dft.gamma_only:
                         g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM,
                                                 ibzwfs.kpt_comm, dft.Nk_c)
 
@@ -316,6 +324,7 @@ class Supercell:
                     # Number of basis function in the primitive cell
                     assert (nao % N) == 0, "Alarm ...!"
                     nao_cell = nao // N
+                    # NOTE: might try to make this more memory friendly
                     g_sNMNM = g_sMM.reshape((nspins, N, nao_cell, N, nao_cell))
                     g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()
                     handle.save(g_sNNMM)
@@ -331,6 +340,8 @@ class Supercell:
                                 "gtype": g_sNNMM.dtype.name,
                             }
                             handle.save(info)
+
+        self.context.write_timer()
 
     def set_basis_info(self, *args) -> dict:
         """Store LCAO basis info for atoms in reference cell in attribute.
@@ -385,6 +396,27 @@ class Supercell:
             fourier_filter(self.atoms, self.supercell, V1t_sG,
                            components=filter)
         return V1t_sG, dH1_asp
+
+    def _log_summary(self, dft: DFTAdapter) -> None:
+        """Print a summary of the supercell-matrix calculation."""
+        ibzwfs = dft.ibzwfs
+        nibzk = len(ibzwfs.ibz.kpt_kc)
+        nbzk = len(ibzwfs.ibz.bz.kpt_Kc)
+        ndisp = 3 * len(self.indices)
+        nao = ibzwfs._wfs_u[0].setups.nao
+        self.context.print('Supercell matrix calculation')
+        self.context.print('  Supercell:        '
+                           f'{tuple(int(n) for n in self.supercell)}')
+        self.context.print(f'  Atoms (prim):     {len(self.atoms)}')
+        self.context.print(f'  Displacements:    {ndisp}')
+        self.context.print(f'  Spins:            {ibzwfs.nspins}')
+        self.context.print(f'  k-points (BZ):    {nbzk}')
+        self.context.print(f'  k-points (IBZ):   {nibzk}'
+                           f'  (TRS folded: {dft.trs})')
+        self.context.print(f'  Basis funcs (M):  {nao}')
+        self.context.print(f'  MPI Cores (total):    {self.context.comm.size}')
+        self.context.print(f'  MPI Cores (k-points): {ibzwfs.kpt_comm.size}')
+        self.context.print('')
 
     @classmethod
     def load_supercell_matrix(cls, name: str = "supercell"
