@@ -374,7 +374,7 @@ class MSR1Mixer(BaseMixer):
             # Scaling factor for the final amount of good Broyden
             post_gb_fact = 0.95 if del_oldest else (
                 0.95 if backtracked else 0.95)
-            B0_boost = 0.1 # 1e-1  # Favor the predicted greed towards 1
+            B0_boost = 0.1  # Favor the predicted greed towards 1
             B0_lims = [0.4, 1.0]   # Limits for predicted greed
             A0_lims = [0.02, 0.45]   # Limits for unpredicted greed
             rate_ratio = [  # Rate ratio for clipping
