@@ -1286,7 +1286,9 @@ class MixerWrapper:
 
         self.basemixers = self.driver.get_basemixers(nspins)
         for basemixer in self.basemixers:
-            basemixer.initialize_metric(gd, setups, relpos_ac, atomdist)
+            if setups is not None:
+                basemixer.initialize_metric(gd, setups,
+                                            relpos_ac, atomdist)
             basemixer.world = world
         if len(self.basemixers) > 0:
             # Basemixer 0 have the standard kwargs

@@ -124,7 +124,7 @@ class Density:
         # XXX at least one test will fail because None has no 'reset()'
         # So we need DummyMixer I guess
         self.mixer = None
-        self.set_mixer(None)
+        self.set_mixer(None, [])
 
         self.timer = nulltimer
         self.error = None
