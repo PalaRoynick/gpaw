@@ -270,18 +270,19 @@ def workflow():
     symbol = Path().resolve().name.split('.')[0]
     for name in acwf_structures:
         # run(function=eos, args=[name, symbol], cores=24, name=name)
+        break
         eos(name, symbol)
-    ecuts(symbol)
+    ecuts(symbol, 'Diamond', 1)
 
 
-def ecuts(paw_pot_name):
+def ecuts(paw_pot_name, name='FCC', bc=False):
     from gpaw.utilities.acwf import reference_structure
     from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
     from gpaw import setup_paths
     from pathlib import Path
     setup_paths[:1] = ['.']
     symbol = paw_pot_name.split('.')[0]
-    atoms = reference_structure(symbol, 'FCC')
+    atoms = reference_structure(symbol, name)
     dft = None
     results = []
     for ecut in range(300, 1100, 100):
@@ -292,7 +293,7 @@ def ecuts(paw_pot_name):
                 mode=PW(ecut),
                 txt=f'{symbol}.txt',
                 kpts=MonkhorstPack(density=3.0),
-                experimental={'backwards_compatible': False})
+                experimental={'backwards_compatible': bc})
             dft.converge()
         else:
             params = Parameters(**dict(dft.params.todict(), mode=PW(ecut)))
@@ -301,7 +302,7 @@ def ecuts(paw_pot_name):
         e = dft.calculate_energy()
         results.append((ecut, e))
     if dft.comm.rank == 0:
-        Path(f'{symbol}-ecuts.json').write(
+        Path(f'{symbol}-{name}-ecuts.json').write_text(
             '[' +
             ',\n '.join(f'[{ecut:6.1f}, {e}]' for ecut, e in results) +
             ']\n')
