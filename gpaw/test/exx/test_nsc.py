@@ -14,10 +14,15 @@ def test_2h():
     ecut = 200.0
     h2 = molecule('H2', cell=[a, a, 18.4, 90, 90, 120], pbc=(1, 1, 0))
     h2.center()
-    dft = DFT(h2, mode=PW(ecut, force_complex_dtype=True), kpts=(k, k, 1))
+    dft = DFT(h2,
+              mode=PW(ecut, force_complex_dtype=True),
+              kpts=(k, k, 1),
+              convergence={'density': 1e-6})
     dft.converge()
     exx = NonSelfConsistentHybridXCCalculator.from_dft_calculation(
         dft, 'EXX')
     elda_skn, eexx_skn = exx.calculate(dft.ibzwfs, ibz_indices=[0])
-    assert elda_skn[0, 0] == pytest.approx([-10.12370942, -0.57308455])
-    assert eexx_skn[0, 0] == pytest.approx([-16.12300273, 1.30214902])
+    assert elda_skn[0, 0] == pytest.approx(
+        [-10.12370942, -0.57308455], abs=1e-4)
+    assert eexx_skn[0, 0] == pytest.approx(
+        [-16.12300273, 1.30214902], abs=1e-4)

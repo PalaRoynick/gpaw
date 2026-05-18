@@ -80,16 +80,18 @@ Git master branch
 
   * mixer (with pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.05 -> 0.08
-    * nmaxold: 5 -> 16
-    * weight: 50 -> 70
+    * beta: 0.05 -> 0.05
+    * nmaxold: 5 -> 10
+    * weight: 50 -> 20
 
   * mixer (without pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.25 -> 0.25
-    * nmaxold: 3 -> 16
+    * beta: 0.25 -> 0.2
+    * nmaxold: 3 -> 10
     * weight: 1 -> 1
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
@@ -157,6 +159,12 @@ Git master branch
 * Added symmetry labels to symmetry-matrices in log-file
   (E, i, σ, C\ `_n`, S\ `_n`).
 
+* Removed the old stencil metric in mixing, due to it being wrong for non-
+  orthorhombic cells. The metric is now applied in reciprocal space instead.
+
+* Updated the reciprocal density metric to not deal with the G=(0,0,0)
+  component in an arbitrary manner. This should ensure more consistent SCF
+  performance.
 
 Version 25.7.0
 ==============

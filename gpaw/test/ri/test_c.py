@@ -48,6 +48,7 @@ def test_diamond(in_tmp_dir, add_cwd_to_setup_paths):
     calc = GPAW(
         legacy_gpaw=True,
         h=0.12,
+        mixer={'backend': 'no-mixing'},
         mode='lcao',
         basis='qzdp',
         xc='HSE06WIP:backend=ri',

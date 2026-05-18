@@ -29,7 +29,8 @@ def test_all(kb):
 
     kwargs = dict(
         mode=PW(400),
-        convergence={'density': 1e-7},
+        convergence={'density': 1e-7,
+                     'forces': 1e-6},
         mixer={'beta': 0.25},
         xc='HSE06')
     a.calc = GPAW(
