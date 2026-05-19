@@ -1,7 +1,38 @@
+#pragma once
+
 #include "ndarray.hpp"
 
 namespace gpaw::detail
 {
+
+// Stores array metadata. OLD STUFF, WILL REMOVE
+struct GPAW_HIDDEN_SYMBOL ArrayDesc
+{
+    ArrayDesc() = default;
+
+    // Pick array metadata from Numpy or Cupy ndarray. Suboptimal, used for tests only
+    ArrayDesc(py::handle handle);
+
+    py::dtype dtype() { return py::dtype(typenum); }
+
+    // Use signed integers for compatibility with dlpack
+    void* data = nullptr;
+    int typenum = 0; // raw numpy typenum
+    int32_t ndim = 0;
+
+    // For Numpy shape/strides we could go for zero-copy (assuming we don't take ownership).
+    // For Cupy this is harder because the shape/stride there are Python tuples (not contiguous C-style arrays)
+    // So we opt for copies. Hardcode limit on NDIM to avoid heap allocations.
+
+    // TODO!! Figure out a good pattern for memory management.
+    // For now, just std::vector which is not optimal for this
+
+    std::vector<int64_t> shape;
+
+    std::vector<int64_t> strides;
+
+    static constexpr size_t byte_offset = 0;
+};
 
 ArrayDesc::ArrayDesc(py::handle handle)
 {

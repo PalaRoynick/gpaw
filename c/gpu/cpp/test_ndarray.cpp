@@ -2,6 +2,7 @@
 #include "gpu/gpu_utils.h"
 #include "ndarray.hpp"
 #include "test_ndarray.hpp"
+#include "array_desc.hpp"
 
 namespace py = pybind11;
 
