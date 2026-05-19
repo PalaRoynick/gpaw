@@ -234,15 +234,18 @@ class iKS:
         else:
             if hasattr(self.target, 'density'):
                 tdens = self.target.density
+                wfs = self.target.wfs
             else:
                 tdens = self.target  # FakeDensity
+                wfs = None
+                assert P_snn is None, "Provide the target calculator (for wfs)"
 
             if isinstance(tdens, FakeDensity):
                 from gpaw.iks.tools import fakdensity2old
                 tdens = fakdensity2old(
                     tdens, self.calc.density, self.calc.hamiltonian)
             update_density_from_density_matrix(
-                tdens, self.target.wfs, P_snn)
+                tdens, wfs, P_snn)
         density = self.density
         tdens.gd = density.gd
         tdens.finegd = density.finegd
