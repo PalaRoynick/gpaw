@@ -8,17 +8,18 @@ from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
 from gpaw.utilities.acwf import reference_structure, work
 
 
-def eos(structure, symbol):
+def eos(structure, symbol=None):
     """EOS helper function."""
     setup_paths[:1] = ['.']
+    symbol = symbol or Path.cwd().name.split('.')[0]
     work(structure, symbol, backwards_compatible=False)
 
 
-def ecuts(symbol: str,
-          name: str = 'FCC',
+def ecuts(symbol: str = None,
           _bc=False) -> list[float]:
     """Plane-wave cutoff-energy convergence test."""
     setup_paths[:1] = ['.']
+    symbol = symbol or Path.cwd().name.split('.')[0]
     energies = list(range(300, 1300, 100))
     results = []
     for name in ['FCC', 'Diamond']:
