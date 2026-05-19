@@ -563,7 +563,7 @@ class PAWSetupGenerator:
                     channel = self.aea.channels[waves.l]
                 else:
                     channel = Channel(waves.l)
-                pseudize(waves, channel, self.vtr_g)
+                pseudize(waves, channel, self.vtr_g, nderiv)
         else:
             if type == 'poly':
                 pseudizer = partial(self.pseudizer, points=nderiv)

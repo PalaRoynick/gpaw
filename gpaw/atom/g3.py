@@ -55,7 +55,8 @@ def pseudiz0(waves: PAWWaves,
 # gpaw -T dataset Be -p -zharm,6 -P 2s,2p,D -lspd -r 2.2
 def pseudize(waves: PAWWaves,
              channel: Channel,
-             vtr_g: np.ndarray) -> None:
+             vtr_g: np.ndarray,
+             nderiv: int = 5) -> None:
     l = waves.l
     N = len(waves.e_n)
     rgd = waves.rgd
@@ -66,7 +67,7 @@ def pseudize(waves: PAWWaves,
     rc = waves.rcut
     gc = rgd.ceil(rc)
     e = waves.e_n[0]
-    phit_g, pt_g = first_partial_wave(rgd, phi_ng[0], rc, l, vtr_g, e)
+    phit_g, pt_g = first_partial_wave(rgd, phi_ng[0], rc, l, vtr_g, e, nderiv)
     phit_ng[0] = phit_g
     pt_ng[0] = pt_g
     if N == 2:
@@ -97,7 +98,7 @@ def pseudize(waves: PAWWaves,
     pt_ng[:] = np.linalg.inv(A_nn.T) @ pt_ng
 
 
-def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
+def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig, nderiv):
     print(l, rcut, eig)
     gcut = rgd.floor(rcut)
     r_g = rgd.r_g
@@ -105,7 +106,7 @@ def first_partial_wave(rgd, phi_g, rcut, l, vtr_g, eig):
     aphi_g[1:] /= r_g[1:]**l
     aphi_g[0] = aphi_g[1]
     print(aphi_g.min())
-    logphit_g, _ = rgd.pseudize(np.log(aphi_g), gcut, 0, 5)
+    logphit_g, _ = rgd.pseudize(np.log(aphi_g), gcut, 0, nderiv)
     sign = np.sign(phi_g[gcut])
     a_g = sign * np.exp(logphit_g)
     phit_g = a_g * r_g**l
@@ -213,6 +214,8 @@ PARAMS = {
     'C.b': ('2s,1.0s,2p,p,D', 1.6),
     'C.c': ('2s,1.0s,2p,D', 1.6),
     'N': ('2s,s,2p,p,d', 1.6),
+    'N.r17': ('2s,s,2p,p,d', 1.7),
+    'N.r18': ('2s,s,2p,p,d', 1.8),
     'O': ('2s,s,2p,p,d', 1.6),
     'F': ('2s,s,2p,p,d', 1.6),
     'Ne': ('2s,s,2p,p,d,F', 1.8),
@@ -254,80 +257,6 @@ def create_all():
         dir.mkdir(exist_ok=True)
         with chdir(dir):
             create(symbol)
-
-
-def eos(structure, symbol):
-    from gpaw.utilities.acwf import work
-    from gpaw import setup_paths
-    setup_paths[:1] = ['.']
-    work(structure, symbol, backwards_compatible=False)
-
-
-def workflow():
-    from pathlib import Path
-    # from myqueue.workflow import run
-    from gpaw.utilities.acwf import acwf_structures
-    symbol = Path().resolve().name.split('.')[0]
-    for name in acwf_structures:
-        # run(function=eos, args=[name, symbol], cores=24, name=name)
-        break
-        eos(name, symbol)
-    ecuts(symbol, 'Diamond', 1)
-
-
-def ecuts(paw_pot_name, name='FCC', bc=False):
-    from gpaw.utilities.acwf import reference_structure
-    from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
-    from gpaw import setup_paths
-    from pathlib import Path
-    setup_paths[:1] = ['.']
-    symbol = paw_pot_name.split('.')[0]
-    atoms = reference_structure(symbol, name)
-    dft = None
-    results = []
-    for ecut in range(300, 1100, 100):
-        if dft is None:
-            dft = DFT(
-                atoms,
-                xc='PBE',
-                mode=PW(ecut),
-                txt=f'{symbol}.txt',
-                kpts=MonkhorstPack(density=3.0),
-                experimental={'backwards_compatible': bc})
-            dft.converge()
-        else:
-            params = Parameters(**dict(dft.params.todict(), mode=PW(ecut)))
-            dft = dft.new(atoms, params, log=dft.log)
-            dft.converge()
-        e = dft.calculate_energy()
-        results.append((ecut, e))
-    if dft.comm.rank == 0:
-        Path(f'{symbol}-{name}-ecuts.json').write_text(
-            '[' +
-            ',\n '.join(f'[{ecut:6.1f}, {e}]' for ecut, e in results) +
-            ']\n')
-    return results
-
-
-def get_ecut(ecuts, energies, de):
-    y = abs(energies - energies[-1])
-    i = len(energies) - 2
-    while y[i] < de:
-        i -= 1
-    return (ecuts[i] * (de - y[i + 1]) +
-            ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
-
-
-def hmm():
-    import matplotlib.pyplot as plt
-    r = np.linspace(0, 4, 101)
-    for l in range(3):
-        for n in range(2):
-            p = howf(3.0, r, l=l, n=n)
-            plt.plot(r, p * r**l)
-            p = howf(3.0, r, l=l, n=n, rc=1.5)
-            plt.plot(r, p * r**l)
-    plt.show()
 
 
 if __name__ == '__main__':
