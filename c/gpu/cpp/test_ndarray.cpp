@@ -11,7 +11,8 @@ namespace gpaw
 /* Bind this to a Python function and call from pytest, passing the same
 Numpy or Cupy array as both arguments. Should raise TypeError if the input array
 has invalid traits. If the imported metadata does not match, will raise RuntimeError.
-Former is a user error, latter hints at a bug in NDArray import code.
+Former is a user error (trying to call function with wrong kind of array),
+latter hints at a bug in NDArray import code.
 */
 template<typename... Args>
 static void accept_array(const NDArray<Args...>& a, py::handle same_array)
