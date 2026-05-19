@@ -274,6 +274,12 @@ public:
     // Must be default constructible for pybind11 type caster
     NDArray() = default;
 
+    // Internal constructor for use in the type-caster only
+    NDArray(detail::ArrayDesc _desc, py::handle _handle) noexcept
+        : desc(std::move(_desc)), handle(_handle)
+    {
+    }
+
     // FIXME: not optimal, py::dtype(typenum) constructor is not constexpr and may throw
     py::dtype dtype() const { return py::dtype(desc.typenum); }
 
@@ -314,10 +320,8 @@ public:
     }
 
 private:
-    py::handle handle = nullptr;
     detail::ArrayDesc desc;
-
-    friend struct pybind11::detail::type_caster<NDArray<Args...>>;
+    py::handle handle = nullptr;
 };
 
 namespace detail
@@ -627,17 +631,19 @@ struct type_caster<gpaw::NDArray<Args...>>
 
     /* Python -> C++ conversion. Must return false on failure, which raises a TypeError on Python side.
     */
-    bool load(handle src, bool implicit_convert) noexcept
+    bool load(handle src, [[maybe_unused]] bool implicit_convert) noexcept
     {
         PyObject* obj = src.ptr();
         assert(obj);
 
-        if (!gpaw::detail::ndarray_import<Args...>(obj, value.desc))
+        gpaw::detail::ArrayDesc desc;
+
+        if (!gpaw::detail::ndarray_import<Args...>(obj, desc))
         {
             return false;
         }
 
-        value.handle = src;
+        value = gpaw::NDArray<Args...>(std::move(desc), src);
         return true;
     }
 };
