@@ -95,7 +95,6 @@ class BaseMixer:
         return self.gd.integrate(np.fabs(R_sG)).sum()
 
     def add_compensation(self, A_sG, D_asI):
-        # return A_sG.copy()
         assert self.atomdist.comm.rank == self.gd.comm.rank
         gpaw_new = hasattr(self.atomdist, 'rank_a')
         atomdist = self.atomdist if gpaw_new \
@@ -992,7 +991,7 @@ class NotMixingMixer:
         self.weight = 0
         self.sigma = 0
 
-    def initialize_metric(self, gd):
+    def initialize_metric(self, gd, *args, **kwargs):
         self.gd = gd
         self.metric = None
 
