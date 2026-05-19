@@ -34,17 +34,17 @@ def test_invalid_input(matrix_dtype: np.dtype):
 
     # test wrong eigenvalue array shape
     eigvals_bad = np.zeros(1)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         magma.eigh_magma_numpy(matrix, eigvals_bad, "U", 1)
 
     # test non-C-contiguous input matrix
     matrix_bad = np.zeros_like(matrix, order='F')
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         magma.eigh_magma_numpy(matrix_bad, eigvals, "U", 1)
 
     # test strided eigenvalue array (non-contiguous 1D)
     eigvals_bad = np.arange(4, dtype=np.float64)[::2]
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         magma.eigh_magma_numpy(matrix, eigvals_bad, "U", 1)
 
     # test dtype mismatch

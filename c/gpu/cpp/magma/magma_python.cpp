@@ -272,7 +272,7 @@ bool bind_magma_submodule(pybind11::module_ gpu_module)
     );
 
     submodule.def("eigh_magma_cupy", &gpaw::eigh_magma<gpaw::device::gpu>,
-        py::arg("inout_matrix"), py::arg("inout_eigenvalues"), py::arg("uplo"), py::arg("num_gpus"),
+        py::arg("inout_matrix"), py::arg("inout_eigenvalues"), py::arg("uplo"), py::arg("num_gpus") = 1,
         R"(
         Solves eigensystem on the GPU with Cupy input/output. This is an in-place solver:
         the input matrix will be overwritten with resulting eigenvectors. The input eigenvalue array
