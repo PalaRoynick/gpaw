@@ -232,7 +232,11 @@ class iKS:
             assert P_snn is None, "Provide the target calculator (for wfs)"
             tdens = self.target
         else:
-            tdens = self.target.density
+            if hasattr(self.target, 'density'):
+                tdens = self.target.density
+            else:
+                tdens = self.target  # FakeDensity
+
             if isinstance(tdens, FakeDensity):
                 from gpaw.iks.tools import fakdensity2old
                 tdens = fakdensity2old(
