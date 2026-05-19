@@ -240,7 +240,7 @@ def create(symbol):
         None,
         5,
         xc='PBE',
-        pseudize=('harm', -1))
+        pseudize=('harm', 5))
     gen.check_all()
     setup = gen.make_paw_setup()
     setup.write_xml()
