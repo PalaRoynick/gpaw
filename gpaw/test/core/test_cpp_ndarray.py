@@ -8,12 +8,12 @@ from gpaw.gpu import cupy as cp, cupy_is_fake
 
 def test_non_array_input():
     """"""
-    a = np.zeros((1,1))
+    a = np.zeros((1, 1))
 
     not_arrays = [42, [1., 2.], [[42.]]]
     for not_array in not_arrays:
         with pytest.raises(TypeError):
-           arraytests.accept_any(not_array, a)
+            arraytests.accept_any(not_array, a)
 
 
 @pytest.mark.parametrize("xp", [np, cp])
