@@ -2,8 +2,16 @@ import pytest
 import numpy as np
 from typing import cast, Callable
 
-from gpaw.cgpaw.gpu import arraytests
 from gpaw.gpu import cupy as cp, cupy_is_fake
+from gpaw.new.c import GPU_ENABLED
+
+
+# TODO the NDArray stuff should eventually move to non-GPU part of the code
+if GPU_ENABLED:
+    from gpaw.cgpaw.gpu import arraytests
+else:
+    pytest.skip("Currently needs GPAW compiled with GPU",
+                allow_module_level=True)
 
 
 def test_non_array_input():
