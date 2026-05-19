@@ -21,6 +21,8 @@ namespace py = pybind11;
 namespace gpaw
 {
 
+
+// Device trait for NDArrays
 namespace device
 {
 // Array is in CPU memory
@@ -28,6 +30,16 @@ struct cpu { static constexpr FixedString name = "CPU"; };
 // Array is in GPU memory
 struct gpu { static constexpr FixedString name = "GPU"; };
 }
+/* NB: With C++20 concepts we could make device templating more convenient. We could eg. have
+    enum class Device {cpu, gpu};
+    template<typename T> concept DeviceTrait = is_device<T>::value;
+
+Which would allow a function such as
+    template<DeviceTrait device> void somefunc(NDArray<device>& arr);
+
+Overall many things here could be cleaner with concepts.
+*/
+
 
 // C-contiguous memory layout
 struct c_contig { static constexpr FixedString name = "order=C"; };
@@ -307,13 +319,17 @@ public:
     // Total number of bytes occupied by the array
     constexpr size_t nbytes() const { return itemsize() * size(); }
 
-    // TODO: do we want to have a dedicated accessor for non-const access? eg. mutable_data()
-
-    /* Get access to the underlying data pointer. Pointer type will match the value trait if it was specified,
+    /* Get read/write access to the underlying data pointer. Pointer type will match the value trait if it was specified,
     otherwise will return a void pointer. */
-    Scalar* data() const
+    Scalar* data()
     {
         return reinterpret_cast<Scalar*>(static_cast<std::byte*>(data_ptr) + byte_offset);
+    }
+
+    // Get read-only access to the underlying data pointer.
+    const Scalar* data() const
+    {
+        return reinterpret_cast<const Scalar*>(static_cast<std::byte*>(data_ptr) + byte_offset);
     }
 
     /* Import an array from Numpy or Cupy. Import will fail if not all requested traits are satisfied,
