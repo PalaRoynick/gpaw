@@ -378,6 +378,7 @@ class Density:
             raise ValueError('Not a mixer: %s' % mixer)
         self.mixer = MixerWrapper(mixer, self.ncomponents, self.gd,
                                   self.setups, spos_ac, self.atomdist)
+        self.mixer.reset()
 
     def calculate_magnetic_moments(self):
         magmom_av = np.zeros_like(self.magmom_av)
