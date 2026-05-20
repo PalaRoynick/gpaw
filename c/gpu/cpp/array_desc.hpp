@@ -18,6 +18,7 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     // Use signed integers for compatibility with dlpack
     void* data = nullptr;
     int typenum = 0; // raw numpy typenum
+    bool on_gpu = false;
     int32_t ndim = 0;
 
     // For Numpy shape/strides we could go for zero-copy (assuming we don't take ownership).
@@ -28,9 +29,7 @@ struct GPAW_HIDDEN_SYMBOL ArrayDesc
     // For now, just std::vector which is not optimal for this
 
     std::vector<int64_t> shape;
-
     std::vector<int64_t> strides;
-
     static constexpr size_t byte_offset = 0;
 };
 
@@ -45,6 +44,7 @@ ArrayDesc::ArrayDesc(py::handle handle)
         data = arr.mutable_data();
         typenum = arr.dtype().num();
         ndim = static_cast<int32_t>(arr.ndim());
+        on_gpu = false;
 
         shape.resize(ndim);
         strides.resize(ndim);
@@ -61,6 +61,7 @@ ArrayDesc::ArrayDesc(py::handle handle)
         pybind11::object dtype_obj = array.attr("dtype");
         pybind11::object num_obj = dtype_obj.attr("num");
         typenum = num_obj.cast<int>();
+        on_gpu = true;
 
         // Get data pointer
         data = reinterpret_cast<void*>(

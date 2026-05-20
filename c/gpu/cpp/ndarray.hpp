@@ -325,6 +325,13 @@ public:
     // Total number of bytes occupied by the array
     constexpr size_t nbytes() const { return itemsize() * size(); }
 
+    // Returns true if the data is on GPU
+    constexpr bool on_gpu() const
+    {
+        if constexpr (traits::has_device) return traits::is_gpu;
+        else return data_on_gpu;
+    }
+
     /* Get read/write access to the underlying data pointer. Pointer type will match the value trait if it was specified,
     otherwise will return a void pointer. */
     Scalar* data()
@@ -353,6 +360,7 @@ private:
 
     void* data_ptr;
     int typenum;
+    bool data_on_gpu;
     ShapeData shape_data;
 
     // Offset is TODO. Libraries don't really seem to use this ATM
@@ -401,6 +409,15 @@ inline bool NDArray<Args...>::import_from_python_impl(PyObject* obj) noexcept
     else if constexpr (traits::is_gpu && framework != Framework::eCupy)
     {
         return false;
+    }
+
+    if constexpr (traits::has_device)
+    {
+        data_on_gpu = traits::is_gpu;
+    }
+    else
+    {
+        data_on_gpu = (framework == detail::Framework::eCupy);
     }
 
     // For Numpy, cast to PyArrayObject* so that we trigger faster overloads of array accessors

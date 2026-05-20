@@ -25,6 +25,11 @@ static void accept_array(const NDArray<Args...>& a, py::handle same_array)
         throw std::runtime_error("Imported NDArray is invalid");
     }
 
+    if (a.on_gpu() != desc.on_gpu)
+    {
+        throw std::runtime_error("Device does not match");
+    }
+
     if (!a.dtype().is(desc.dtype()))
     {
         throw std::runtime_error("dtype does not match");
