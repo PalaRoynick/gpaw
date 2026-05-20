@@ -108,7 +108,9 @@ struct is_numpy_scalar : std::false_type {};
 However, using py::dtype::num_of<T>() here doesn't work very well because it's not SFINAE-friendly.
 It always tries to call py::detail::npy_format_descriptor<T>::value which only exists for valid T.
 Dunno if this could be made to work with num_of<T>().
-This instead relies on SFINAE on py::detail::npy_format_descriptor<T>(). */
+This instead relies on SFINAE on py::detail::npy_format_descriptor<T>().
+Not great either since we now depend on pybind internals.
+FIXME: just introduce our own dtype enum that is trivially castable to numpy typenum? */
 template<typename T>
 struct is_numpy_scalar<T, std::void_t<
     decltype(py::detail::npy_format_descriptor<T>::value)
