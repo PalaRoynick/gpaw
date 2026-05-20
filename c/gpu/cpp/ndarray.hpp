@@ -446,7 +446,7 @@ inline bool NDArray<Args...>::import_from_python_impl(PyObject* obj) noexcept
     {
         if (ndim > detail::ShapeDataDynamic::MAX_NDIM)
         {
-            printf("gpaw::NDArray only supports up to 8 dynamical array dimension. Your array has: %d. Please use the compile-time trait gpaw::ndim<%d>\n", (int)ndim, (int)ndim);
+            fprintf(stderr, "gpaw::NDArray only supports up to 8 dynamical array dimension. Your array has: %d. Please use the compile-time trait gpaw::ndim<%d>\n", (int)ndim, (int)ndim);
             return false;
         }
         shape_data.ndim = ndim;
