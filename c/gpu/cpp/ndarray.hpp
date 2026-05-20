@@ -82,7 +82,8 @@ struct ndim {};
 
 namespace detail
 {
-// Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_trait is unused.
+/* Sentinel for representing unused traits, eg. NDArray<> has no dtype trait so value_trait is unused.
+Name is "" so that concat_with_separator skips in string_repr. */
 struct unused { static constexpr FixedString name = ""; };
 
 // Sentinel for when ndim is not known at compile time
@@ -144,7 +145,9 @@ public:
 };
 
 
-// Metaprogramming selector, used to extract specific traits from Args... using predicates from above
+/* Type-list find_if: scans Ts... and returns the first type T for which Pred<T>::value is true.
+Pred is a metafunction predicate passed as a template template parameter.
+Returns Default if no match is found. */
 template<typename Default, template<typename, typename...> class Pred, typename... Ts>
 struct Select;
 
@@ -165,7 +168,6 @@ struct Select<Default, Pred, T, Ts...>
 
 /* Used for ensuring that we only select each trait once. Eg. NDArray<float, double> is not valid.
 This relies on predicates being careful with SFINAE.
-FIXME nested template needed for clang, figure out a better solution. Also in Select
 */
 template<template<typename, typename...> class Pred, typename... Ts>
 constexpr size_t count_matches()
@@ -238,11 +240,14 @@ struct NDArrayTraits
         }
     }();
 
-    // Get FixedString string representation of all traits.
-    static constexpr auto string_repr()
-    {
-        return concat_with_separator(FixedString(", "), value_type_name, device_trait::name, layout_trait::name, shape_trait::name);
-    }
+    // FixedString string representation of all traits.
+    static constexpr auto string_repr = concat_with_separator(
+        FixedString(", "),
+        value_type_name,
+        device_trait::name,
+        layout_trait::name,
+        shape_trait::name
+    );
 };
 
 
@@ -491,7 +496,7 @@ struct type_caster<gpaw::NDArray<Args...>>
     But still need to define Python-side generics to make editors understand the stubs => combine with a manual stub file?
     */
     static constexpr auto ndarray_str = gpaw::concat(gpaw::FixedString("\"NDArray["),
-                                                     traits::string_repr(),
+                                                     traits::string_repr,
                                                      gpaw::FixedString("]\""));
 
     PYBIND11_TYPE_CASTER(gpaw::NDArray<Args...>, const_name(ndarray_str.data));
