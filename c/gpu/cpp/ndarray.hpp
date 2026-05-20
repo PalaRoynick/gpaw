@@ -122,10 +122,6 @@ template<int32_t N> struct is_shape_like<ndim<N>> : std::true_type {};
 
 // Shape is either unused, given directly as shape<Dims...> or indirectly as ndim<N>. For ndim<N> we build a corresponding shape<Dims...>
 
-template<int32_t N, size_t... I>
-constexpr auto make_ndim_shape(std::index_sequence<I...>)
-    -> shape<((void)I, -1)...>;
-
 template<typename T>
 struct make_shape
 {
@@ -139,7 +135,12 @@ struct make_shape
 template<int32_t N>
 struct make_shape<ndim<N>>
 {
-    using type = decltype(detail::make_ndim_shape<N>(std::make_index_sequence<N>{}));
+private:
+    template<size_t... I>
+    static shape<((void)I, int64_t(-1))...> helper(std::index_sequence<I...>);
+
+public:
+    using type = decltype(helper(std::make_index_sequence<N>{}));
 };
 
 
@@ -210,7 +211,7 @@ struct NDArrayTraits
         if constexpr (!has_shape) return detail::ndim_dynamic;
         else return shape_trait::ndim;
     }();
-    static constexpr auto shape = []()
+    static constexpr auto static_shape = []()
     {
         if constexpr (!has_shape) return std::array<int64_t, 0>{};
         else return shape_trait::dims;
@@ -454,7 +455,7 @@ inline bool NDArray<Args...>::import_from_python_impl(PyObject* obj) noexcept
         // Check that obtained shape matches the compile-time shape. Shape == -1 is wildcard and can be anything
         for (int32_t i = 0; i < traits::ndim; ++i)
         {
-            if (traits::shape[i] != -1 && shape_data.shape[i] != traits::shape[i])
+            if (traits::static_shape[i] != -1 && shape_data.shape[i] != traits::static_shape[i])
             {
                 return false;
             }
