@@ -173,7 +173,7 @@ constexpr size_t count_matches()
 }
 //~
 
-// NDArrayTraits collects static array metadata traits, eg. dtype, data layout and shape
+// NDArrayTraits collects static array metadata traits, eg. dtype, data layout and shape, if they are known at compile time
 template<typename... Args>
 struct NDArrayTraits
 {
@@ -271,8 +271,8 @@ enum class Framework
     eNumpy, eCupy
 };
 
-
 } // namespace detail
+
 
 /* Class NDArray<>: generic multidimensional array that is convertible from Python ndarrays.
 Use template parameters to specify requirements like datatype, shape and whether the data is in CPU or GPU memory.
