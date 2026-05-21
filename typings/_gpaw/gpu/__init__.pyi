@@ -1,13 +1,10 @@
-import cupy
-from . import magma as magma
-
-def test_array_metadata(array: object, same_array: cupy.ndarray) -> None:
-    """test_array_metadata(array: object, same_array: cupy.ndarray) -> None
-
-    Tests that the array type caster correctly copies metadata from cupy ndarray. Use by passing the same array as both inputs. Raises RuntimeError on failure.
+"""
+GPU specific C++ bindings for GPAW. (EXPERIMENTAL)
+"""
+from __future__ import annotations
+from . import arraytests
+__all__: list[str] = ['arraytests', 'inspect']
+def inspect(arg0: "NDArray[]") -> None:
     """
-def test_cupy_input(a: cupy.ndarray) -> None:
-    """test_cupy_input(a: cupy.ndarray) -> None
-
-    Simply tests that our type caster works, ie. that we can pass a Cupy ndarray to a C++ function accepting gpaw::PyDeviceArray
+    NDArray tester: gets an array from Python side, wraps it with NDArray and prints its metadata
     """
