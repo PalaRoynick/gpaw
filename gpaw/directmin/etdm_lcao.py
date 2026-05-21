@@ -56,6 +56,8 @@ class LCAOETDM:
                  excited_state=False,
                  searchdir_algo=None,
                  linesearch_algo=None,
+                 searchdir_algo_pz=None,
+                 linesearch_algo_pz=None,
                  partial_diagonalizer='Davidson',
                  update_ref_orbs_counter=20,
                  update_ref_orbs_canonical=False,
@@ -219,6 +221,8 @@ class LCAOETDM:
         self.in_subspace_loop = False
         self.sda = searchdir_algo
         self.lsa = linesearch_algo
+        self.sda_pz = searchdir_algo_pz
+        self.lsa_pz = linesearch_algo_pz
         self.partial_diagonalizer = partial_diagonalizer
         self.localizationseed = localizationseed
         self.update_ref_orbs_counter = update_ref_orbs_counter
@@ -308,6 +312,10 @@ class LCAOETDM:
             self.sda = defaults['searchdir_algo']
         if self.lsa is None:
             self.lsa = defaults['linesearch_algo']
+        if self.sda_pz is None:
+            self.sda_pz = defaults['searchdir_algo_pz']
+        if self.lsa_pz is None:
+            self.lsa_pz = defaults['linesearch_algo_pz']
         if self.need_init_orbs is None:
             self.need_init_orbs = defaults['need_init_orbs']
         if self.localizationtype is None:
@@ -315,6 +323,8 @@ class LCAOETDM:
 
         self.searchdir_algo = search_direction(
             self.sda, self, self.partial_diagonalizer)
+        self.searchdir_algo_pz = search_direction(
+            self.sda_pz, self, self.partial_diagonalizer)
         sd_name = self.searchdir_algo.name.split('_')
         if sd_name[0] == 'l-bfgs-p' and not self.use_prec:
             raise ValueError('Use l-bfgs-p with use_prec=True')
@@ -328,12 +338,20 @@ class LCAOETDM:
         self.line_search = line_search_algorithm(self.lsa,
                                                  self.evaluate_phi_and_der_phi,
                                                  self.searchdir_algo)
+        self.line_search_pz = line_search_algorithm(
+            self.lsa_pz, self.evaluate_phi_and_der_phi, self.searchdir_algo)
 
     def set_defaults(self):
         if self.excited_state:
             return {'searchdir_algo': 'l-sr1p',
                     'linesearch_algo': 'max-step',
                     'need_init_orbs': False}
+        elif self.need_localization:
+            return {'searchdir_algo': 'l-sr1p',
+                    'linesearch_algo': 'max-step',
+                    'need_init_orbs': False,
+                    'searchdir_algo_pz': 'l-bfgs-p',
+                    'linesearch_algo_pz': 'swc-awc'}
         else:
             return {'searchdir_algo': 'l-bfgs-p',
                     'linesearch_algo': 'swc-awc',
@@ -615,7 +633,7 @@ class LCAOETDM:
         self.phi_2i = [None, None]
         self.der_phi_2i = [None, None]
 
-    def iterate(self, ham, wfs, dens):
+    def iterate(self, ham, wfs, dens, inner_loop=False):
         """
         One iteration of direct optimization
         for occupied orbitals
@@ -655,8 +673,12 @@ class LCAOETDM:
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):
-                    self.searchdir_algo.update_eigenpairs(
-                        g_vec_u, wfs, ham, dens)
+                    if inner_loop:
+                        self.searchdir_algo_pz.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens) 
+                    else:
+                        self.searchdir_algo.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens)
                 # The diagonal Hessian approximation must be positive-definite
                 make_pd = True
 
@@ -667,9 +689,14 @@ class LCAOETDM:
             with wfs.timer('Get Search Direction'):
                 # calculate search direction according to chosen
                 # optimization algorithm (e.g. L-BFGS)
-                p_vec_u = self.searchdir_algo.update_data(
-                    wfs, a_vec_u, g_vec_u, precond=precond,
-                    subspace=self.subspace_optimization)
+                if inner_loop:
+                    p_vec_u = self.searchdir_algo_pz.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
+                else:
+                    p_vec_u = self.searchdir_algo.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
 
             # recalculate derivative with new search direction
             der_phi_2i[0] = 0.0
@@ -678,12 +705,20 @@ class LCAOETDM:
             der_phi_2i[0] = der_phi_2i[0].real
             der_phi_2i[0] = wfs.kd.comm.sum_scalar(der_phi_2i[0])
 
-            alpha, phi_alpha, der_phi_alpha, g_vec_u = \
-                self.line_search.step_length_update(
-                    a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
-                    der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
-                    der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
-                    kpdescr=wfs.kd)
+            if inner_loop:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search_pz.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
+            else:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
 
             if wfs.gd.comm.size > 1:
                 with wfs.timer('Broadcast gradients'):

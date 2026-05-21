@@ -34,6 +34,7 @@ class LCAOETDMLocalize:
         self.log_header()
         self.solver.lock_subspace('oo')
         self.solver.searchdir_algo.reset()
+        self.solver.searchdir_algo_pz.reset()
         self.solver.dm_helper.set_reference_orbitals(
             self.wfs, self.solver.n_dim)
 
@@ -42,7 +43,7 @@ class LCAOETDMLocalize:
         counter = 0
         converged = False
         while not converged:
-            self.solver.iterate(self.ham, self.wfs, self.dens)
+            self.solver.iterate(self.ham, self.wfs, self.dens, True)
             counter += 1
 
             e_total = self.solver.phi_2i[0]
@@ -60,7 +61,6 @@ class LCAOETDMLocalize:
         self.solver.dm_helper.set_reference_orbitals(
             self.wfs, self.solver.n_dim
         )
-        self.solver.searchdir_algo.reset()
         for k, kpt in enumerate(self.wfs.kpt_u):
             self.solver.hess[k] = get_approx_analytical_hessian(
                 kpt, self.solver.dtype, ind_up=self.solver.ind_up[k])
