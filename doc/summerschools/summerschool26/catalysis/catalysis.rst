@@ -69,8 +69,6 @@ See :ref:`gbar submitting`.
 Part 3: Learning about Nudged Elastic Band
 ==========================================
 
-:download:`neb.ipynb`
-
 While the calculations from the previous step runs, you can learn about the
 Nudged Elastic Band method for finding transition states and barriers from the
 notebook ``neb.ipynb``.
@@ -84,7 +82,6 @@ notebook ``neb.ipynb``.
 Part 4: Run a parallel NEB calculation
 ======================================
 
-
 Prepare a script running NEB using the GPAW calculator and the initial and
 final states from part 2 to find the barrier for :mol:`N_2` dissociation.
 
@@ -92,8 +89,6 @@ When doing this you should parallelize over the images in the NEB
 calculation. A more detailed description of how to do this can be found in
 the *Exercise* part of the ``neb.ipynb`` along with some suitable input
 parameters for the NEB.
-
-
 
 
 Extra exercise: Vibrational energy
