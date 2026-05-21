@@ -19,6 +19,11 @@ def test_non_array_input():
     a = np.zeros((1, 1))
 
     not_arrays = [42, [1., 2.], [[42.]]]
+
+    # Currently we also reject fake-cupy arrays
+    if cupy_is_fake:
+        not_arrays.append(cp.zeros((1)))
+
     for not_array in not_arrays:
         with pytest.raises(TypeError):
             arraytests.accept_any(not_array, a)
