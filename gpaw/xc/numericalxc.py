@@ -1,7 +1,6 @@
 from __future__ import annotations
-from gpaw.xc.pawcorrection import rnablaY_nLv
-from gpaw.xc.gga import GGARadialCalculator
 
+import warnings
 from enum import Enum
 from math import pi, sqrt
 from typing import TYPE_CHECKING
@@ -15,6 +14,8 @@ from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import divrl
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional
+from gpaw.xc.pawcorrection import rnablaY_nLv
+from gpaw.xc.gga import GGARadialCalculator
 
 if TYPE_CHECKING:
     from typing import Any
@@ -294,6 +295,7 @@ class NumericalXC(XCFunctional):
         stencil: int = 3,
         ham: Hamiltonian | None = None,
         wfs: WaveFunctions | None = None,
+        add_core: bool = True,
     ) -> "NumericalXC":
         """
         Returns a NumericalXC object by evaluating the given functional over the density.
@@ -335,14 +337,14 @@ class NumericalXC(XCFunctional):
                 # angular and lebedev
                 rgd = xcc.rgd
                 n_sLg = calculate_angular_density(
-                    xcc, D_sp, xcc.n_qg, xcc.nc_g, setups[a].Nc)
+                    xcc, D_sp, xcc.n_qg, xcc.nc_g, setups[a].Nc, add_core)
                 nt_sLg = calculate_angular_density(
-                    xcc, D_sp, xcc.nt_qg, xcc.nct_g, setups[a].Nct)
+                    xcc, D_sp, xcc.nt_qg, xcc.nct_g, setups[a].Nct, add_core)
                 vxc_xasz[0][a] = calculate_atomic_potentials_from_kernel(
-                    rgd, xc.kernel, n_sLg, paw_potmode
+                    rgd, xc.kernel, n_sLg, paw_potmode,
                 )
                 vxc_xasz[1][a] = calculate_atomic_potentials_from_kernel(
-                    rgd, xc.kernel, nt_sLg, paw_potmode
+                    rgd, xc.kernel, nt_sLg, paw_potmode,
                 )
 
         return cls(
@@ -459,10 +461,10 @@ class NumericalXC(XCFunctional):
         a: int = None,
     ) -> float:
         assert a is not None
-        for v_asz in self.vxc_xasz:
-            assert v_asz.partition is self.ham.atomdist.work_partition
         if setup.xc_correction is None:
             return 0.0
+        for v_asz in self.vxc_xasz:
+            assert v_asz.partition is self.ham.atomdist.work_partition
         if self.paw_potmode is PAWPotMode.direct:
             dExc_sp = self.vxc_xasz[0][a]
             if dEdD_sp is not None:
@@ -508,6 +510,8 @@ class NumericalXC(XCFunctional):
 
     def set_pots(self, gd: GridDescriptor, v: Array1D | None) -> None:
         """sets the packed potentials from the master to their respective ranks"""
+        warnings.warn(
+            "set_pots() does not work properly in case of kpt parallelization")
         v_sg = None
         fsize = 0
         if gd.comm.rank == 0:
@@ -531,6 +535,8 @@ class NumericalXC(XCFunctional):
 
     def pack_pots(self, gd: GridDescriptor) -> Array1D | float:
         # does not work for kpt parallelization
+        warnings.warn(
+            "pack_pots() does not work properly in case of kpt parallelization")
         v_sg = gd.collect(self.vxc_sg)
         if gd.comm.rank == 0:
             v = [v_sg.ravel()]
@@ -651,15 +657,16 @@ class NumericalXC(XCFunctional):
             return vxc_sg
 
 
-def calculate_angular_density(xcc, D_sp, n_qg, nc_g, _Z=1):
+def calculate_angular_density(xcc, D_sp, n_qg, nc_g, add_core=True, _Z=1):
     nspins = len(D_sp)
     rgd = xcc.rgd
-    nc0_sg = rgd.empty(nspins)
-    nc0_sg[:] = sqrt(4 * pi) / nspins * nc_g
     D_sLq = np.inner(D_sp, xcc.B_pqL.T)
     n_sLg = np.dot(D_sLq, n_qg)
     # not considering core_hole
-    n_sLg[:, 0] += nc0_sg
+    if add_core:
+        nc0_sg = rgd.empty(nspins)
+        nc0_sg[:] = sqrt(4 * pi) / nspins * nc_g
+        n_sLg[:, 0] += nc0_sg
     return n_sLg
 
 
@@ -950,8 +957,8 @@ def FermiAmaldi(
                     e_g, nct_g[np.newaxis], vct_ag[a][np.newaxis])
             else:
                 raise NotImplementedError
-            # vxc_xasz[0][a] -= vc_ag[a]
-            # vxc_xasz[1][a] -= vct_ag[a]
+            vxc_xasz[0][a] -= vc_ag[a]
+            vxc_xasz[1][a] -= vct_ag[a]
         vc_xag = [vc_ag, vct_ag]
 
     xc = NumericalXC(
