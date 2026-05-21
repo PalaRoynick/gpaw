@@ -1,6 +1,7 @@
 #include "python_utils.h"
 #include "gpu_python.h"
 #include "test_ndarray.hpp"
+#include "ndarray.hpp"
 
 #include "gpu/cpp/pyarray_utils.hpp"
 
@@ -9,6 +10,26 @@
 #endif
 
 namespace py = pybind11;
+
+namespace gpaw
+{
+
+// NDArray tester: gets an array from Python side, wraps it with NDArray and prints its metadata
+static void inspect(NDArray<>& a)
+{
+    printf("Array data pointer : %p\n", a.data());
+    printf("Array dimension : %d\n", (int)a.ndim());
+    for (int32_t i = 0; i < a.ndim(); ++i)
+    {
+        printf("Array dimension [%d] : %ld\n", i, a.shape(i));
+        printf("Array stride    [%d] : %ld\n", i, a.stride(i));
+    }
+    printf("Is on GPU: %d\n", a.on_gpu());
+    printf("Array dtype number: %d\n", a.dtype().num());
+}
+
+} // namespace gpaw
+
 
 bool bind_gpu_submodule(PyObject* module)
 {
@@ -26,6 +47,7 @@ bool bind_gpu_submodule(PyObject* module)
     py::module_ submodule = m.def_submodule("gpu", "GPU specific C++ bindings for GPAW. (EXPERIMENTAL)");
 
     bind_ndarray_tests(submodule);
+    submodule.def("inspect", gpaw::inspect, R"(NDArray tester: gets an array from Python side, wraps it with NDArray and prints its metadata)");
 
     bool all_ok = true;
 
