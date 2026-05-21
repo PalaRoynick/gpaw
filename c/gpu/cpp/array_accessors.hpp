@@ -137,7 +137,7 @@ struct ArrayAccessors
     static void fill_shape(PyObject* obj, int64_t* out, int32_t n) noexcept
     {
         PyObject* shape_tuple = PyObject_GetAttrString(obj, "shape");
-        if (!shape_tuple) [[unlikely]]
+        if (!shape_tuple)
         {
             return;
         }
@@ -146,13 +146,13 @@ struct ArrayAccessors
         {
             out[i] = static_cast<int64_t>(PyLong_AsLongLong(PyTuple_GET_ITEM(shape_tuple, i)));
         }
-        Py_XDECREF(shape_tuple);
+        Py_DECREF(shape_tuple);
     }
 
     static void fill_strides(PyObject* obj, int64_t* out, int32_t n) noexcept
     {
         PyObject* strides_tuple = PyObject_GetAttrString(obj, "strides");
-        if (!strides_tuple) [[unlikely]]
+        if (!strides_tuple)
         {
             return;
         }
@@ -161,14 +161,14 @@ struct ArrayAccessors
         {
             out[i] = static_cast<int64_t>(PyLong_AsLongLong(PyTuple_GET_ITEM(strides_tuple, i)));
         }
-        Py_XDECREF(strides_tuple);
+        Py_DECREF(strides_tuple);
     }
 
     static std::vector<int64_t> shape(PyObject* obj) noexcept
     {
         // obj.shape (tuple)
         PyObject* shape_tuple = PyObject_GetAttrString(obj, "shape");
-        if (!shape_tuple) [[unlikely]]
+        if (!shape_tuple)
         {
             return {};
         }
@@ -189,7 +189,7 @@ struct ArrayAccessors
     {
         // obj.strides (tuple)
         PyObject* strides_tuple = PyObject_GetAttrString(obj, "strides");
-        if (!strides_tuple) [[unlikely]]
+        if (!strides_tuple)
         {
             return {};
         }
