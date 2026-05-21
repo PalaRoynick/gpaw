@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from gpaw import setup_paths
 from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
-from gpaw.utilities.acwf import reference_structure, work
+from gpaw.utilities.acwf import reference_structure, work, acwf_structures
 
 
 def eos(structure, symbol=None):
@@ -51,6 +51,15 @@ def ecuts(symbol: str = None,
                                                 results[n:])) +
             ']\n')
     return results
+
+
+def workflow():
+    from myqueue.workflow import run
+    for name in acwf_structures:
+        if not Path(f'{name}.json').is_file():
+            run(function=eos, args=[name], cores=24)
+    if not Path('ecuts.json').is_file():
+        run(function=ecuts, cores=24)
 
 
 def get_ecut(ecuts: np.ndarray,
