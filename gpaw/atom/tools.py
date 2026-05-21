@@ -64,6 +64,8 @@ def get_ecut(ecuts: np.ndarray,
     y = abs(energies - energies[-1])
     i = len(energies) - 2
     while y[i] < de:
+        if i == 0:
+            return ecuts[0]
         i -= 1
     return (ecuts[i] * (de - y[i + 1]) +
             ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
