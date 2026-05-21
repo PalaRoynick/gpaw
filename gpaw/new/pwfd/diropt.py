@@ -344,8 +344,9 @@ def project_wfs(grad_nX: XArray, wfs,
     M_nm *= 0.5
 
     # Reshape is needed here for FD-mode:
-    grad_nX.data -= (M_nm @ psit_mX.data.reshape((mbands, -1))).reshape(
-        grad_nX.data.shape)
+    if mbands:
+        grad_nX.data -= (M_nm @ psit_mX.data.reshape((mbands, -1))).reshape(
+            grad_nX.data.shape)
 
     # PAW contribution
     if dS_aii is not None:
@@ -409,8 +410,8 @@ def find_number_of_occupied_bands(ibzwfs: IBZWaveFunctions) -> list[int]:
 def find_highest_occupied_bands(ibzwfs: IBZWaveFunctions) -> list[int]:
     nocc_s = [-1] * ibzwfs.nspins
     for wfs in ibzwfs:
-        nocc = max(oo for oo, occ in enumerate(wfs.occ_n)
-                   if occ > 0.4) + 1
+        nocc = max((oo for oo, occ in enumerate(wfs.occ_n) if occ > 0.4),
+                   default=-1) + 1
         n = nocc_s[wfs.spin]
         if n != -1:
             assert nocc == n
