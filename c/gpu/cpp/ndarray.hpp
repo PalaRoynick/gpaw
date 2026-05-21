@@ -413,13 +413,18 @@ inline bool NDArray<Args...>::import_from_python_impl(PyObject* obj) noexcept
         return false;
     }
 
+    if constexpr (!gpaw::compiled_with_gpu_support && framework == Framework::eCupy)
+    {
+        fprintf(stderr, "You are importing a Cupy array into GPAW C++ extension, but the extension has not been compiled with GPU support (missing -DGPAW_GPU). This is most likely an error\n");
+    }
+
     if constexpr (traits::has_device)
     {
         data_on_gpu = traits::is_gpu;
     }
     else
     {
-        data_on_gpu = (framework == detail::Framework::eCupy);
+        data_on_gpu = (framework == Framework::eCupy);
     }
 
     // For Numpy, cast to PyArrayObject* so that we trigger faster overloads of array accessors
