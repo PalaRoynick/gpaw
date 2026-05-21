@@ -8,6 +8,7 @@ import numpy as np
 from gpaw.sphere.gaunt import gaunt, super_gaunt
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_density, unpack_density
+from gpaw.xc import XC
 from gpaw.xc.numericalxc import calculate_angular_density
 from gpaw.new.backwards_compatibility import FakeDensity
 
@@ -531,6 +532,35 @@ def get_weights(
     else:
         weights_sG[:] = name_to_weight(weights, nt_sG)
     return weights_sG, weights_name
+
+
+def calculate_regularization_weights(setups, n=4, m=3):
+    w_ag = {}
+    for a, setup in enumerate(setups):
+        xcc = setup.xc_correction
+        if xcc is None:
+            w_ag[a] = np.zeros((1,), dtype=float)  # AE
+            continue
+        rgd = xcc.rgd
+        rc = rgd.r_g.max()
+        w_ag[a] = (1.0 - (rgd.r_g / rc)**n)**m
+    return w_ag
+
+
+def calc_core_atomic_potentials(setups, setup_name):
+    v_a = {}
+    xc = XC(setup_name)
+    assert xc.type == 'LDA'
+    for a, setup in enumerate(setups):
+        nc_sg = setup.xc_correction.nc_g[np.newaxis]
+        nct_sg = setup.xc_correction.nct_g[np.newaxis]
+        e_g = np.zeros_like(nc_sg)
+        v = np.zeros_like(nc_sg)
+        vt = np.zeros_like(nc_sg)
+        xc.kernel.calculate(e_g, nc_sg, v)
+        xc.kernel.calculate(e_g, nct_sg, vt)
+        v_a[a] = (v.ravel(), vt.ravel())
+    return v_a
 
 
 def fakdensity2old(fake_density, old_density, old_hamiltonian):
