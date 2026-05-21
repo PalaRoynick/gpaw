@@ -248,147 +248,10 @@ class iKSObj:
         self.xc.set_pots(iks.finegd, vopt)
 
 
-class iKSMixOpt:
-    mstop = -1
-    mcalc = 1
-    mstep = 2
-
-    def __init__(self, iks: iKS):
-        self.iks = iks
-        self.msg_stop = np.array(self.mstop, dtype=int)
-        self.msg_calc = np.array(self.mcalc, dtype=int)
-        self.msg_step = np.array(self.mstep, dtype=int)
-        if iks.use_coarse_grid:
-            self.gd = iks.gd
-        else:
-            self.gd = iks.finegd
-        self.alpha_paw: float | None = None
-        self.method: str | None = None
-        self.L_eval = []
-        self.LD_eval = []
-        self.n_eval = 0
-
-    def dist_vxc_sg(self, v, v_sg=None):
-        gd = self.gd
-        nspins = self.iks.nspins
-        if v_sg is None:
-            v_sg = gd.empty(nspins)
-        if gd.comm.rank == 0:
-            v = v.reshape((nspins, *gd.get_size_of_global_array(pad=False)))
-        gd.distribute(v, v_sg)
-        if self.iks.use_coarse_grid:
-            v_sG = v_sg.copy()
-            v_sg = self.iks.finegd.empty(len(v_sG))
-            self.iks.coarse2fine(v_sG, v_sg)
-        return v_sg
-
-    def calculate_lagrangian_and_jacobian(self, v=None):
-        self.n_eval += 1
-        iks = self.iks
-        v_sg = self.dist_vxc_sg(v)
-        iks.xc.vxc_sg[:] = v_sg
-        # step
-        iks.fmt.log(
-            f"{self.method} evaluation #{self.n_eval}, iter={iks.niter}:")
-        iks.iterate()
-        # L and J
-        L1, L2, LD1, LD2 = iks.lagrangian()
-        J_sg = iks.jacobian()
-        iks.atomic_jacobian()  # for logging
-        # log
-        iks.logiter(iks.niter, L1, L2, LD1, LD2, J_sg, sep="")
-        J = self.gd.collect(J_sg)
-        self.L_eval.append(L2)
-        self.LD_eval.append(LD2)
-        if self.gd.comm.rank == 0:
-            return (L2 + LD2), J.ravel()
-
-    def _calculate_lagrangian_and_jacobian(self, param: Array1D | None):
-        if self.gd.comm.rank == 0:
-            self.gd.comm.broadcast(self.msg_calc, 0)
-        return self.calculate_lagrangian_and_jacobian(param)
-
-    def step(self, v=None, apply_grads=True):
-        iks = self.iks
-        iks.niter += 1
-        v_sg = self.dist_vxc_sg(v)
-        iks.xc.vxc_sg[:] = v_sg
-        if apply_grads:
-            iks.fmt.log("Updating the atomic potentials:")
-            iks.iterate()
-            J_xasz = iks.atomic_jacobian()
-            for J_asz, v_asz in zip(J_xasz, iks.xc.vxc_xasz):
-                J_a = iks.hamiltonian.atomdist.to_work(J_asz)
-                for a, J in J_a.items():
-                    v_asz[a][:] -= self.alpha_paw * J
-        iks.fmt.log(f"{self.method} optimization step iter={iks.niter}:")
-        iks.iterate()
-        L1, L2, LD1, LD2 = iks.lagrangian()
-        J_sg = iks.jacobian()
-        iks.atomic_jacobian()
-        iks.L_iter.append(L2)
-        iks.LD_iter.append(LD2)
-        iks.logiter(iks.niter, L1, L2, LD1, LD2, J_sg)
-        iks.calc.call_observers(iks.niter)
-
-    def _step(self, param: Array1D | None):
-        if self.gd.comm.rank == 0:
-            self.gd.comm.broadcast(self.msg_step, 0)
-        return self.step(param)
-
-    def run(self, alpha_paw: float = 1.0, method: str = "L-BFGS-B", **opt_kwargs):
-        self.alpha_paw = alpha_paw
-        self.method = method
-        iks = self.iks
-        comm = self.gd.comm
-        if iks.use_coarse_grid:
-            v_sg = self.gd.empty(iks.nspins)
-            iks.fine2coarse(iks.xc.vxc_sg, v_sg)
-        else:
-            v_sg = iks.xc.vxc_sg.copy()
-        v0 = self.gd.collect(v_sg)
-
-        vopt: Array1D | None = None
-        if comm.rank == 0:
-            try:
-                self.result = minimize(
-                    self._calculate_lagrangian_and_jacobian,
-                    v0.ravel(),
-                    method=method,
-                    **opt_kwargs,
-                    jac=True,
-                    callback=self._step,
-                )
-                iks.fmt.log("Optimization result:")
-                iks.fmt.log(self.result)
-                iks.fmt.flush()
-                vopt = self.result.x
-            finally:
-                comm.broadcast(self.msg_stop, 0)
-
-        else:
-            msg = np.empty(1, dtype=int)
-            while True:
-                comm.broadcast(msg, 0)
-                m = msg.item()
-                if m == self.mcalc:
-                    self.calculate_lagrangian_and_jacobian()
-                elif m == self.mstep:
-                    self.step()
-                elif m == self.mstop:
-                    break
-        self.step(vopt, apply_grads=False)
-
-
 class PotState:
-    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping]):
+    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], gd=None, comm=None, setups=None):
         self.data_sg = data_sg
         self.data_xasz = data_xasz
-        self.gd = None
-        self.setups = None
-        self.comm = None
-
-    def initialize(self, gd, comm, setups):
         self.gd = gd
         self.comm = comm
         self.setups = setups
@@ -399,7 +262,7 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] + other_asz[a] for a in data_asz})
-        return PotState(self.data_sg + other.data_sg, new_xasz)
+        return PotState(self.data_sg + other.data_sg, new_xasz, self.gd, self.comm, self.setups)
 
     def __sub__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -407,13 +270,13 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] - other_asz[a] for a in data_asz})
-        return PotState(self.data_sg - other.data_sg, new_xasz)
+        return PotState(self.data_sg - other.data_sg, new_xasz, self.gd, self.comm, self.setups)
 
     def __neg__(self) -> "PotState":
         new_xasz = []
         for data_asz in self.data_xasz:
             new_xasz.append({a: -data_asz[a] for a in data_asz})
-        return PotState(-self.data_sg, new_xasz)
+        return PotState(-self.data_sg, new_xasz, self.gd, self.comm, self.setups)
 
     def __mul__(self, other: "PotState" | float) -> "PotState":
         if isinstance(other, PotState):
@@ -421,19 +284,22 @@ class PotState:
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
                 new_xasz.append(
                     {a: data_asz[a] * other_asz[a] for a in data_asz})
-            return PotState(self.data_sg * other.data_sg, new_xasz)
+            return PotState(self.data_sg * other.data_sg, new_xasz, self.gd, self.comm, self.setups)
         else:
             new_xasz = []
             for data_asz in self.data_xasz:
                 new_xasz.append({a: v * other for a, v in data_asz.items()})
-            return PotState(self.data_sg * other, new_xasz)
+            return PotState(self.data_sg * other, new_xasz, self.gd, self.comm, self.setups)
+
+    def __rmul__(self, other: float) -> "PotState":
+        return self.__mul__(other)
 
     def copy(self) -> "PotState":
         copy_xasz = []
         for array_asz in self.data_xasz:
             copy_xasz.append({a: v.copy() for a, v in array_asz.items()})
-        x = PotState(self.data_sg.copy(), copy_xasz)
-        x.initialize(self.gd, self.comm, self.setups)
+        x = PotState(self.data_sg.copy(), copy_xasz,
+                     self.gd, self.comm, self.setups)
         return x
 
     def inner(self, other):
@@ -518,8 +384,10 @@ class iKSLBFGS:
         self.y_hist: deque[PotState] = deque(maxlen=m)
         self.rho_hist: deque[float] = deque(maxlen=m)
 
-        self.L_iter: list[float] = []
-        self.LD_iter: list[float] = []
+    @property
+    def potstate_args(self):
+        iks = self.iks
+        return (iks.gd, iks.hamiltonian.world, iks.setups)
 
     def apply_lbfgs(self, gk: PotState) -> PotState:
         if not self.s_hist:
@@ -529,13 +397,11 @@ class iKSLBFGS:
         for s_i, y_i, rho_i in zip(reversed(self.s_hist),
                                    reversed(self.y_hist),
                                    reversed(self.rho_hist)):
-            s_i.initialize(self.iks.finegd, self.world, self.iks.setups)
             alpha_i = rho_i * s_i.inner(q)
             alpha_list.append(alpha_i)
             q.add_scaled(y_i, -alpha_i)
         s_last = self.s_hist[-1]
         y_last = self.y_hist[-1]
-        y_last.initialize(self.iks.finegd, self.world, self.iks.setups)
 
         sy = y_last.inner(s_last)
         yy = y_last.inner(y_last)
@@ -550,12 +416,11 @@ class iKSLBFGS:
         alpha_list.reverse()
         for alpha_i, (s_i, y_i, rho_i) in zip(alpha_list,
                                               zip(self.s_hist, self.y_hist, self.rho_hist)):
-            s_i.initialize(self.iks.finegd, self.world, self.iks.setups)
             beta_i = rho_i * y_i.inner(r)
             r.add_scaled(s_i, (alpha_i - beta_i))
         return -r
 
-    def line_search(self, x, gk, pk, L0, LD0, phi0, dphi0, c1=1e-4, tau=0.5, max_ls=10):
+    def line_search(self, x, gk, pk, L0, LD0, phi0, dphi0, c1=1e-4, c2=0.9, tau=0.5, max_ls=10):
         """
         Backtracking Armijo line search with quadratic interpolation.
         """
@@ -587,19 +452,31 @@ class iKSLBFGS:
             iks.fmt.log(f"line search {il}")
             iks.logiter(il, self.L1, L_new, self.LD1,
                         LD_new, g_new.data_sg, sep="")
-            g_new = PotState(J_sg, Jwork_xasz)
+            g_new = PotState(J_sg, Jwork_xasz, *self.potstate_args)
             phi_new = L_new + LD_new
 
             # track the best phi we have seen along this line
             if phi_new < best_phi:
                 best_phi = phi_new
-                x_best = PotState(xc.vxc_sg, xc.vxc_xasz).copy()
+                x_best = PotState(xc.vxc_sg, xc.vxc_xasz, *
+                                  self.potstate_args).copy()
                 g_best = g_new.copy()
                 best_state = (x_best, g_best, L_new, LD_new, alpha)
 
             if phi_new <= phi0 + c1 * alpha * dphi0:
-                accepted = True
-                break
+                dphi_new = pk.inner(g_new)
+                # Check Wolfe Curvature condition
+                if dphi_new >= c2 * dphi0:
+                    accepted = True
+                    break
+                else:
+                    self.iks.fmt.log(
+                        f"  Warning: Armijo passed but Wolfe curvature failed "
+                        f"(dphi_new={dphi_new:.2e} < req={c2 * dphi0:.2e}). "
+                        "L-BFGS update may be skipped to prevent instability."
+                    )
+                    accepted = True
+                    break
             # quadratic interpolation
             denom = 2.0 * (phi_new - phi0 - dphi0 * alpha)
             if denom > 0:
@@ -613,7 +490,8 @@ class iKSLBFGS:
                 # fallback to simple backtracking if curvature is negative
                 alpha *= tau
         if accepted:
-            x_new = PotState(xc.vxc_sg, xc.vxc_xasz).copy()
+            x_new = PotState(xc.vxc_sg, xc.vxc_xasz, *
+                             self.potstate_args).copy()
             return x_new, g_new, L_new, LD_new, alpha, True
 
         # no Armijo, but we found some alpha with phi_new < phi0
@@ -670,14 +548,22 @@ class iKSLBFGS:
         Jwork_xasz = []
         for J_asz in J_xasz:
             Jwork_xasz.append(iks.hamiltonian.atomdist.to_work(J_asz))
-        gk = PotState(J_sg, Jwork_xasz).copy()
-        x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz).copy()
+        gk = PotState(J_sg, Jwork_xasz, *self.potstate_args).copy()
+        x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz,
+                     *self.potstate_args).copy()
 
         x_prev = None
         g_prev = None
 
         for t in range(1, self.maxiter + 1):
             iks.niter = t
+            if iks.lambdacore != 0.0:
+                # reset the history right after the regularization has been turned off
+                if t == iks.n_regularization + 1:
+                    # reset history
+                    self.s_hist.clear()
+                    self.y_hist.clear()
+                    self.rho_hist.clear()
 
             # convergence check with current (L, LD, gk) at x
             if iks.converged(L, LD, gk.data_sg, self.Ltol, self.LDtol, self.Jtol):
@@ -688,8 +574,6 @@ class iKSLBFGS:
             if x_prev is not None and g_prev is not None:
                 s_k = x - x_prev
                 y_k = gk - g_prev
-                s_k.initialize(iks.finegd, self.world, iks.setups)
-                y_k.initialize(iks.finegd, self.world, iks.setups)
 
                 sy = s_k.inner(y_k)
                 ss = s_k.inner(s_k)
@@ -709,19 +593,16 @@ class iKSLBFGS:
                     )
             # search direction
             pk = self.apply_lbfgs(gk)
-            pk.initialize(iks.finegd, self.world, iks.setups)
             dphi0 = pk.inner(gk)
             norm_p = pk.norm()
-            gk.initialize(iks.finegd, self.world, iks.setups)
             norm_g = gk.norm()
-            cosine = -pk.inner(gk) / (norm_p * norm_g)
+            cosine = -pk.inner(gk) / max(norm_p * norm_g, 1e-16)
             if cosine < 1e-4:
                 # direction is almost orthogonal to gradient -> reset history
                 self.s_hist.clear()
                 self.y_hist.clear()
                 self.rho_hist.clear()
                 pk = -gk * self.step_scale
-                pk.initialize(iks.finegd, self.world, iks.setups)
                 dphi0 = pk.inner(gk)
 
             # line search along pk
@@ -736,7 +617,6 @@ class iKSLBFGS:
                 self.rho_hist.clear()
 
                 pk = -gk * self.step_scale
-                pk.initialize(iks.finegd, self.world, iks.setups)
                 dphi0 = pk.inner(gk)
                 x_new, g_new, L_new, LD_new, alpha, accepted = self.line_search(
                     x, gk, pk, L, LD, phi, dphi0, max_ls=self.max_ls
@@ -755,7 +635,7 @@ class iKSLBFGS:
             x, gk, L, LD = x_new, g_new, L_new, LD_new
 
         iks.afteropt()
-        return self.L_iter
+        return self.iks.L_iter
 
 
 class iKSOptimizable(Optimizable):
@@ -782,6 +662,11 @@ class iKSOptimizable(Optimizable):
         self.t = 0
         self.pool_started = False
         self.initialized = True
+
+    @property
+    def potstate_args(self):
+        iks = self.iks
+        return (iks.gd, iks.hamiltonian.world, iks.setups)
 
     def start_pool(self):
         self.pool_started = True
@@ -895,9 +780,7 @@ class iKSOptimizable(Optimizable):
         if self.world.rank == 0 and signal:
             self.signal_pool(self.code['gradient_norm'])
         J_sg, J_xasz = self.unpack_jac(self.iks.finegd, gradient)
-        gk = PotState(J_sg, J_xasz)
-        gk.initialize(self.iks.finegd,
-                      self.world, self.iks.setups)
+        gk = PotState(J_sg, J_xasz, *self.potstate_args)
         norm = gk.norm()
         return norm
 
