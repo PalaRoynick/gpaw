@@ -1,0 +1,2 @@
+# Allow test fixture JSON files in this directory
+!*.json
