@@ -323,8 +323,9 @@ class LCAOETDM:
 
         self.searchdir_algo = search_direction(
             self.sda, self, self.partial_diagonalizer)
-        self.searchdir_algo_pz = search_direction(
-            self.sda_pz, self, self.partial_diagonalizer)
+        if self.sda_pz is not None:
+            self.searchdir_algo_pz = search_direction(
+                self.sda_pz, self, self.partial_diagonalizer)
         sd_name = self.searchdir_algo.name.split('_')
         if sd_name[0] == 'l-bfgs-p' and not self.use_prec:
             raise ValueError('Use l-bfgs-p with use_prec=True')
@@ -338,24 +339,38 @@ class LCAOETDM:
         self.line_search = line_search_algorithm(self.lsa,
                                                  self.evaluate_phi_and_der_phi,
                                                  self.searchdir_algo)
-        self.line_search_pz = line_search_algorithm(
-            self.lsa_pz, self.evaluate_phi_and_der_phi, self.searchdir_algo)
+        if self.lsa_pz is not None:
+            self.line_search_pz = line_search_algorithm(
+                self.lsa_pz, self.evaluate_phi_and_der_phi, 
+                self.searchdir_algo)
 
     def set_defaults(self):
         if self.excited_state:
-            return {'searchdir_algo': 'l-sr1p',
-                    'linesearch_algo': 'max-step',
-                    'need_init_orbs': False}
-        elif self.need_localization:
-            return {'searchdir_algo': 'l-sr1p',
-                    'linesearch_algo': 'max-step',
-                    'need_init_orbs': False,
-                    'searchdir_algo_pz': 'l-bfgs-p',
-                    'linesearch_algo_pz': 'swc-awc'}
+            if self.need_localization:
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:            
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
         else:
-            return {'searchdir_algo': 'l-bfgs-p',
-                    'linesearch_algo': 'swc-awc',
-                    'need_init_orbs': True}
+            if self.need_localization:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
 
     def __repr__(self):
 
