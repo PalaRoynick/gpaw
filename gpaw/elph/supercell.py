@@ -1,6 +1,13 @@
-"""Module for electron-phonon supercell properties."""
+"""Module for electron-phonon supercell properties.
+
+Performance note: ``_local_qMM`` is not scaling well with MPI ranks.
+Possible fix is to batch the phase-weighted k-sum so that ``V1t_sxMM[1:]``
+is read once instead of once per k-point. Would however reduce readability.
+"""
 
 from __future__ import annotations
+
+from typing import Sequence
 
 import numpy as np
 
@@ -91,8 +98,10 @@ def _finalize_g_sMM(g_sMM: ArrayND,
 class Supercell:
     """Class for supercell-related stuff."""
 
-    def __init__(self, atoms: Atoms, supercell_name: str = "supercell",
-                 supercell: tuple = (1, 1, 1), indices=None,
+    def __init__(self, atoms: Atoms,
+                 supercell_name: str = 'supercell',
+                 supercell: tuple[int, int, int] = (1, 1, 1),
+                 indices: Sequence[int] | None = None,
                  context: ResponseContextInput = '-') -> None:
         """Initialize supercell class.
 
@@ -122,7 +131,8 @@ class Supercell:
         self.context = ResponseContext.from_input(context)
 
     @timer('Init')
-    def _create_gpaw_calculator(self, calcdict, fd_name='elph') -> DFTAdapter:
+    def _create_gpaw_calculator(self, calcdict: dict,
+                                fd_name: str = 'elph') -> DFTAdapter:
         """Build an LCAO calculator.
 
         Parameters
@@ -238,8 +248,8 @@ class Supercell:
         return g_MM
 
     def calculate_supercell_matrix(
-        self, calcdict: dict, fd_name: str = "elph",
-        filter: str = None
+        self, calcdict: dict, fd_name: str = 'elph',
+        filter: str | None = None,
     ) -> None:
         """Calculate matrix elements of the el-ph coupling in the LCAO basis.
 
@@ -283,7 +293,7 @@ class Supercell:
         dH_aii = _dH_asp_to_aii(fd_cache['eq']['dH_all_asp'],
                                 dft.dH_asii_template)
 
-        with supercell_cache.lock("basis") as handle:
+        with supercell_cache.lock('basis') as handle:
             if handle is not None:
                 basis_info = self.set_basis_info(ibzwfs._wfs_u[0])
                 handle.save(basis_info)
@@ -304,7 +314,7 @@ class Supercell:
                         continue
 
                     self.context.print(
-                        f'{["x", "y", "z"][v]}-gradient of atom {a}')
+                        f'{"xyz"[v]}-gradient of atom {a}')
 
                     with self.context.timer('Gradients'):
                         V1t_sG, dH1_asp = self._read_displacement_cache(
@@ -321,49 +331,33 @@ class Supercell:
 
                     # Reshape to global unit cell indices
                     N = np.prod(self.supercell)
-                    # Number of basis function in the primitive cell
-                    assert (nao % N) == 0, "Alarm ...!"
                     nao_cell = nao // N
-                    # NOTE: might try to make this more memory friendly
                     g_sNMNM = g_sMM.reshape((nspins, N, nao_cell, N, nao_cell))
                     g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()
                     handle.save(g_sNNMM)
 
                 if a == self.indices[0] and v == 0:
-                    with supercell_cache.lock("info") as handle:
+                    with supercell_cache.lock('info') as handle:
                         if handle is not None:
                             info = {
-                                "sc_version": sc_version,
-                                "natom": len(self.atoms),
-                                "supercell": self.supercell,
-                                "gshape": g_sNNMM.shape,
-                                "gtype": g_sNNMM.dtype.name,
+                                'sc_version': sc_version,
+                                'natom': len(self.atoms),
+                                'supercell': self.supercell,
+                                'gshape': g_sNNMM.shape,
+                                'gtype': g_sNNMM.dtype.name,
                             }
                             handle.save(info)
 
         self.context.write_timer()
 
-    def set_basis_info(self, *args) -> dict:
-        """Store LCAO basis info for atoms in reference cell in attribute.
-
-        Parameters
-        ----------
-        args: tuple
-            Either a single ``LCAOWaveFunctions`` object, or the pair
-            ``(M_a, nao_a)`` (used by ``load_supercell_matrix`` when the
-            calculator is no longer available).
-        """
-        assert len(args) in (1, 2)
-        if len(args) == 1:
-            wfs = args[0]
-            setups = wfs.setups
-            bfs = wfs.basis
-            nao_a = [setups[a].nao for a in range(len(self.atoms))]
-            M_a = [bfs.M_a[a] for a in range(len(self.atoms))]
-        else:
-            M_a = args[0]
-            nao_a = args[1]
-        return {"M_a": M_a, "nao_a": nao_a}
+    def set_basis_info(self, wfs) -> dict:
+        """Return LCAO basis info (``M_a``, ``nao_a``) for atoms in the
+        reference cell."""
+        setups = wfs.setups
+        bfs = wfs.basis
+        natoms = len(self.atoms)
+        return {'M_a': [bfs.M_a[a] for a in range(natoms)],
+                'nao_a': [setups[a].nao for a in range(natoms)]}
 
     def _read_displacement_cache(self, cache: MultiFileJSONCache,
                                  a: int, v: int,
@@ -419,7 +413,7 @@ class Supercell:
         self.context.print('')
 
     @classmethod
-    def load_supercell_matrix(cls, name: str = "supercell"
+    def load_supercell_matrix(cls, name: str = 'supercell'
                               ) -> tuple[ArrayND, dict]:
         """Load supercell matrix from cache.
 
@@ -430,15 +424,15 @@ class Supercell:
         """
         # TODO: load by indices?
         supercell_cache = MultiFileJSONCache(name)
-        if "sc_version" not in supercell_cache["info"]:
-            print("Cache created with old version. Use electronphonon.py")
+        if 'sc_version' not in supercell_cache['info']:
+            print('Cache created with old version. Use electronphonon.py')
             raise VersionError
-        shape = supercell_cache["info"]["gshape"]
-        dtype = supercell_cache["info"]["gtype"]
-        natom = supercell_cache["info"]["natom"]
+        shape = supercell_cache['info']['gshape']
+        dtype = supercell_cache['info']['gtype']
+        natom = supercell_cache['info']['natom']
         nx = natom * 3
         g_xsNNMM = np.empty([nx, ] + list(shape), dtype=dtype)
         for x in range(nx):
             g_xsNNMM[x] = supercell_cache[str(x)]
-        basis_info = supercell_cache["basis"]
+        basis_info = supercell_cache['basis']
         return g_xsNNMM, basis_info
