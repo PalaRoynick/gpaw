@@ -10,8 +10,10 @@ from typing import Any
 
 import numpy as np
 from gpaw import KohnShamConvergenceError
+from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.convergence_criteria import (Criterion, check_convergence,
                                        dict2criterion)
+from gpaw.mpi import serial_comm
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import indent
@@ -133,6 +135,8 @@ class SCFLoop:
             if self.update_density_and_potential:
                 density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
+                density = distribute_density_to_all_ranks_and_back(
+                    density, ibzwfs.kpt_band_comm, self.comm)
                 potential, energies, _ = pot_calc.calculate(
                     density, ibzwfs, potential.vHt_x)
                 energies.sanity_check()
@@ -140,6 +144,54 @@ class SCFLoop:
         self.eigensolver.postprocess(
             ibzwfs, density, potential, self.hamiltonian,
             maxiter=maxiter, cc=cc, log=log)
+
+
+def distribute_density_to_all_ranks_and_back(density,
+                                             kpt_band_comm,
+                                             world_comm):
+    if kpt_band_comm.size == 1:
+        return density
+
+    grid = density.nt_sR.desc
+    if getattr(density.nt_sR, 'data', None) is None:
+        return density
+
+    full_grid = grid.new(comm=world_comm)
+    full_atomdist = AtomDistribution(
+        full_grid.ranks_from_fractional_positions(density.nct_aX.relpos_ac),
+        full_grid.comm)
+    xdesc = density_xdesc(density)
+    full_xdesc = xdesc.new(comm=world_comm)
+
+    full_density = density.redist(full_grid,
+                                  full_xdesc,
+                                  full_atomdist,
+                                  kpt_band_comm,
+                                  serial_comm)
+
+    roundtrip_density = full_density.redist(
+        grid,
+        xdesc,
+        density.D_asii.layout.atomdist,
+        serial_comm,
+        kpt_band_comm)
+
+    density.nt_sR = roundtrip_density.nt_sR
+    density.taut_sR = roundtrip_density.taut_sR
+    density.D_asii = roundtrip_density.D_asii
+    density.nct_aX = roundtrip_density.nct_aX
+    density.tauct_aX = roundtrip_density.tauct_aX
+    density.grid = roundtrip_density.grid
+    density._nct_R = None
+    density._tauct_R = None
+    density.symplan = None
+    return density
+
+
+def density_xdesc(density):
+    if hasattr(density.nct_aX, 'grid'):
+        return density.nct_aX.grid
+    return density.nct_aX.pw
 
 
 class SCFContext:
