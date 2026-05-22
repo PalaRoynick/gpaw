@@ -7,8 +7,6 @@ is read once instead of once per k-point. Would however reduce readability.
 
 from __future__ import annotations
 
-from typing import Sequence
-
 import numpy as np
 
 from ase import Atoms
@@ -101,7 +99,7 @@ class Supercell:
     def __init__(self, atoms: Atoms,
                  supercell_name: str = 'supercell',
                  supercell: tuple[int, int, int] = (1, 1, 1),
-                 indices: Sequence[int] | None = None,
+                 indices=None,
                  context: ResponseContextInput = '-') -> None:
         """Initialize supercell class.
 
@@ -139,11 +137,12 @@ class Supercell:
         ----------
         calcdict: dict
             GPAW keyword arguments forwarded to the calculator.  ``basis``
-            defaults to ``'dzp'`` if not supplied.  The following parameters
-            are set internally from the finite-difference cache and may not
-            be overridden: ``mode``, ``gpts``, ``spinpol``, ``symmetry``,
-            ``parallel``.  Passing ``h`` is also forbidden because the grid
-            is fixed by the cache.
+            and ``parallel`` have defaults (``'dzp'`` and
+            ``{'domain': 1, 'band': 1}``) which the user can override.  The
+            following are set internally from the finite-difference cache
+            and may not be overridden: ``mode``, ``gpts``, ``spinpol``,
+            ``symmetry``.  Passing ``h`` is also forbidden because the
+            grid is fixed by the cache.
         fd_name: str
             Name of the finite-difference JSON cache (default ``'elph'``).
         """
@@ -156,6 +155,9 @@ class Supercell:
             'gpts': pot_shape[1:],
             'spinpol': pot_shape[0] == 2,
             'symmetry': {'point_group': False},
+        }
+        defaults = {
+            'basis': 'dzp',
             'parallel': {'domain': 1, 'band': 1},
         }
         if 'h' in calcdict:
@@ -167,7 +169,7 @@ class Supercell:
                     f"'{key}' is set internally to {val!r}"
                     ' and cannot be overridden')
 
-        gpaw_kwargs = {'basis': 'dzp', **calcdict, **internal}
+        gpaw_kwargs = {**defaults, **calcdict, **internal}
         calc = GPAW(**gpaw_kwargs)
         calc.create_new_calculation(self.atoms * self.supercell)
         return DFTAdapter.from_calc(calc)
@@ -192,7 +194,7 @@ class Supercell:
         nao = wfs0.setups.nao
         dtype = wfs0.dtype
 
-        # Per-displacement precomputes (size << old g_sqMM).
+        # Per-displacement precomputes
         V1t_sxMM = np.array([bfs.calculate_potential_matrices(v1t_R.data)
                              for v1t_R in v1t_sR])
         dPdR_aqvMi = wfs0.tci_derivatives.manytci.P_aqMi(
@@ -360,7 +362,7 @@ class Supercell:
                 'nao_a': [setups[a].nao for a in range(natoms)]}
 
     def _read_displacement_cache(self, cache: MultiFileJSONCache,
-                                 a: int, v: int,
+                                 a, v: int,
                                  grid: UGDesc,
                                  filter: str | None
                                  ) -> tuple[ArrayND, dict]:
