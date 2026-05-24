@@ -374,7 +374,13 @@ class Wannier90:
         proj_k = []
         for ik in range(Nk):
             if spinors:
-                proj_k.append(soc[ik].projections)
+                # wavefunctions() pre-slices spinor states to len(bands);
+                # slice projections to match so both use local indexing.
+                _p = soc[ik].projections
+                _ps = _p.new(nbands=len(bands))
+                _ps.array[:] = _p.array[list(bands)]
+                assert _ps.array.shape[0] == len(bands)
+                proj_k.append(_ps)
             else:
                 proj_k.append(get_projections_in_bz(calc.wfs,
                                                     ik, spin,
@@ -401,7 +407,9 @@ class Wannier90:
                 bG_c = kpts_kc[ik2] - kpts_kc[ik1] + G_c
                 phase_shifted_dO_aii = get_phase_shifted_overlap_coefficients(
                     dO_aii, spos_ac, -bG_c)
-                M_mm = get_overlap(bands,
+                # spinor wfs+proj are pre-sliced -> local indices;
+                # non-spinor arrays are full -> global band indices.
+                M_mm = get_overlap(range(len(bands)) if spinors else bands,
                                    wfs.gd,
                                    u1_nG,
                                    u2_nG,
