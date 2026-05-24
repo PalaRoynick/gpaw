@@ -1,4 +1,4 @@
-from math import pi
+from math import pi, sqrt
 
 import numpy as np
 
@@ -112,6 +112,58 @@ def add_radial_gradient_correction(rgd, sigma_xg, dedsigma_xg, a_sg):
     return vv_sg
 
 
+def calculate_paw_correction_c(kernel, setup, D_sp, dEdD_sp=None,
+                               addcoredensity=True):
+    xcc = setup.xc_correction
+    if xcc is None:
+        return 0.0
+
+    if not hasattr(kernel, 'xc'):
+        return None
+
+    if dEdD_sp is not None and (
+            dEdD_sp.dtype != np.float64 or not dEdD_sp.flags.c_contiguous):
+        return None
+
+    try:
+        from gpaw.cgpaw import paw_gga_single_atom_correction
+    except ImportError:
+        return None
+
+    rgd = xcc.rgd
+    nspins = len(D_sp)
+    if addcoredensity:
+        nc0_sg = rgd.empty(nspins)
+        nct0_sg = rgd.empty(nspins)
+        nc0_sg[:] = sqrt(4 * pi) / nspins * xcc.nc_g
+        nct0_sg[:] = sqrt(4 * pi) / nspins * xcc.nct_g
+        if xcc.nc_corehole_g is not None and nspins == 2:
+            nc0_sg[0] -= 0.5 * sqrt(4 * pi) * xcc.nc_corehole_g
+            nc0_sg[1] += 0.5 * sqrt(4 * pi) * xcc.nc_corehole_g
+    else:
+        nc0_sg = rgd.zeros(nspins)
+        nct0_sg = rgd.zeros(nspins)
+
+    Lmax = xcc.B_pqL.shape[2]
+    return paw_gga_single_atom_correction(
+        kernel.xc.calculate,
+        np.ascontiguousarray(D_sp, dtype=np.float64),
+        dEdD_sp if dEdD_sp is not None else None,
+        np.ascontiguousarray(xcc.B_pqL, dtype=np.float64),
+        np.ascontiguousarray(xcc.n_qg, dtype=np.float64),
+        np.ascontiguousarray(xcc.nt_qg, dtype=np.float64),
+        np.ascontiguousarray(nc0_sg, dtype=np.float64),
+        np.ascontiguousarray(nct0_sg, dtype=np.float64),
+        np.ascontiguousarray(rgd.dr_g, dtype=np.float64),
+        np.ascontiguousarray(rgd.dv_g, dtype=np.float64),
+        np.ascontiguousarray(rgd.r_g, dtype=np.float64),
+        np.ascontiguousarray(Y_nL[:, :Lmax], dtype=np.float64),
+        np.ascontiguousarray(weight_n, dtype=np.float64),
+        np.ascontiguousarray(rnablaY_nLv[:, :Lmax], dtype=np.float64),
+        float(xcc.e_xc0),
+        int(addcoredensity))
+
+
 class GGARadialCalculator:
     def __init__(self, kernel):
         self.kernel = kernel
@@ -222,6 +274,11 @@ class GGA(XCFunctional):
 
     def calculate_paw_correction(self, setup, D_sp, dEdD_sp=None,
                                  addcoredensity=True, a=None):
+        e = calculate_paw_correction_c(self.kernel, setup, D_sp, dEdD_sp,
+                                       addcoredensity)
+        if e is not None:
+            return e
+
         rcalc = GGARadialCalculator(self.kernel)
         expansion = GGARadialExpansion(rcalc)
         return calculate_paw_correction(expansion,

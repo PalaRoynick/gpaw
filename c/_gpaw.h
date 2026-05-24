@@ -4,6 +4,7 @@
  *  Please see the accompanying LICENSE file for further information. */
 
 #include "python_utils.h"
+#include "gpaw_utils.h"
 
 #ifdef PARALLEL
 #include <mpi.h>
@@ -153,6 +154,16 @@ PyObject* adjust_positions(PyObject *self, PyObject *args);
 PyObject* adjust_momenta(PyObject *self, PyObject *args);
 // TIP3P forces
 PyObject* calculate_forces_H2O(PyObject *self, PyObject *args);
+CLINKAGE PyObject* paw_gga_project_density(PyObject *self, PyObject *args);
+CLINKAGE PyObject* paw_gga_radial_gradient_correction(PyObject *self,
+                                                      PyObject *args);
+CLINKAGE PyObject* paw_gga_back_project_density(PyObject *self,
+                                                PyObject *args);
+CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject *self,
+                                                 PyObject *args);
+CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject *self, PyObject *args);
+CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject *self,
+                                                  PyObject *args);
 
 
 #ifdef GPAW_GPU
@@ -197,6 +208,18 @@ static PyMethodDef functions[] = {
     {"integrate_inwards", integrate_inwards, METH_VARARGS, 0},
     {"localize", localize, METH_VARARGS, 0},
     {"XCFunctional", NewXCFunctionalObject, METH_VARARGS, 0},
+    {"paw_gga_project_density",
+     paw_gga_project_density, METH_VARARGS, 0},
+    {"paw_gga_radial_gradient_correction",
+     paw_gga_radial_gradient_correction, METH_VARARGS, 0},
+    {"paw_gga_back_project_density",
+     paw_gga_back_project_density, METH_VARARGS, 0},
+    {"paw_gga_back_project_gradient",
+     paw_gga_back_project_gradient, METH_VARARGS, 0},
+    {"paw_gga_finish_lebedev",
+     paw_gga_finish_lebedev, METH_VARARGS, 0},
+    {"paw_gga_single_atom_correction",
+     paw_gga_single_atom_correction, METH_VARARGS, 0},
 #ifndef GPAW_WITHOUT_LIBXC
     {"lxcXCFunctional", NewlxcXCFunctionalObject, METH_VARARGS, 0},
     {"lxcXCFuncNum", lxcXCFuncNum, METH_VARARGS, 0},
