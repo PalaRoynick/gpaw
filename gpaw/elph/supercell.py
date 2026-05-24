@@ -7,6 +7,9 @@ is read once instead of once per k-point. Would however reduce readability.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from itertools import product
+
 import numpy as np
 
 from ase import Atoms
@@ -16,9 +19,10 @@ from ase.utils.filecache import MultiFileJSONCache
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.dft import GPAW
+from gpaw.mpi import SerialCommunicator, broadcast
 from gpaw.new.brillouin import MonkhorstPackKPoints
 from gpaw.new.ibzwfs import IBZWaveFunctions
-from gpaw.response import ResponseContext, ResponseContextInput, timer
+from gpaw.response import ResponseContext, timer
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
 
@@ -40,10 +44,12 @@ class DFTAdapter:
     def __init__(self, *,
                  grid: UGDesc,
                  dH_asii_template: AtomArrays,
-                 ibzwfs: IBZWaveFunctions) -> None:
+                 ibzwfs: IBZWaveFunctions,
+                 comm) -> None:
         self.grid = grid
         self.dH_asii_template = dH_asii_template
-        self.ibzwfs = ibzwfs  # might still be overkill
+        self.ibzwfs = ibzwfs
+        self.comm = comm
         ibz = ibzwfs.ibz
         bz = ibz.bz
         if not isinstance(bz, MonkhorstPackKPoints):
@@ -61,7 +67,8 @@ class DFTAdapter:
         return cls(
             grid=calc.dft.density.nt_sR.desc,
             dH_asii_template=calc.dft.potential.dH_asii,
-            ibzwfs=calc.dft.ibzwfs)
+            ibzwfs=calc.dft.ibzwfs,
+            comm=calc.comm)
 
 
 def _dH_asp_to_aii(dH_asp: dict, template: AtomArrays) -> AtomArrays:
@@ -100,7 +107,7 @@ class Supercell:
                  supercell_name: str = 'supercell',
                  supercell: tuple[int, int, int] = (1, 1, 1),
                  indices=None,
-                 context: ResponseContextInput = '-') -> None:
+                 txt: str = '-') -> None:
         """Initialize supercell class.
 
         Parameters
@@ -113,11 +120,8 @@ class Supercell:
         supercell: tuple
             Size of supercell given by the number of repetitions (l, m, n) of
             the small unit cell in each direction.
-        context:
-            Log/timer/comm bundle. Accepts a :class:`ResponseContext`, a dict
-            of its kwargs, or a filename ('-' for stdout, None to silence).
-            A fresh context is created from the input; the calculator's own
-            logger/timer are not reused.
+        txt: str
+            Log filename ('-' for stdout, None to silence).
         """
         self.atoms = atoms
         self.supercell_name = supercell_name
@@ -126,9 +130,9 @@ class Supercell:
             self.indices = np.arange(len(atoms))
         else:
             self.indices = indices
-        self.context = ResponseContext.from_input(context)
+        self.txt = txt
+        self.context: ResponseContext = None  # type: ignore[assignment]
 
-    @timer('Init')
     def _create_gpaw_calculator(self, calcdict: dict,
                                 fd_name: str = 'elph') -> DFTAdapter:
         """Build an LCAO calculator.
@@ -275,9 +279,16 @@ class Supercell:
             (default: None).
         """
         dft = self._create_gpaw_calculator(calcdict, fd_name)
+        # Initialise the context now that we know the calc's communicator,
+        # so logging/timer and our rank-0 cache gates use the same comm.
+        self.context = ResponseContext(txt=self.txt, comm=dft.comm)
+        comm = self.context.comm
 
-        # JSON cache
-        supercell_cache = MultiFileJSONCache(self.supercell_name)
+        # JSON cache. Use a serial communicator so the cache itself does
+        # no MPI; we gate lock/save on rank 0 explicitly (see g0w0.py for
+        # the same pattern).
+        supercell_cache = MultiFileJSONCache(self.supercell_name,
+                                             comm=SerialCommunicator())
 
         ibzwfs = dft.ibzwfs
         nspins = ibzwfs.nspins
@@ -295,10 +306,24 @@ class Supercell:
         dH_aii = _dH_asp_to_aii(fd_cache['eq']['dH_all_asp'],
                                 dft.dH_asii_template)
 
-        with supercell_cache.lock('basis') as handle:
-            if handle is not None:
-                basis_info = self.set_basis_info(ibzwfs._wfs_u[0])
-                handle.save(basis_info)
+        N = int(np.prod(self.supercell))
+        nao_cell = nao // N
+        gshape = (nspins, N, N, nao_cell, nao_cell)
+
+        if comm.rank == 0:
+            supercell_cache.strip_empties()
+            with supercell_cache.lock('basis') as handle:
+                if handle is not None:
+                    handle.save(self.set_basis_info(ibzwfs._wfs_u[0]))
+            with supercell_cache.lock('info') as handle:
+                if handle is not None:
+                    handle.save({
+                        'sc_version': sc_version,
+                        'natom': len(self.atoms),
+                        'supercell': self.supercell,
+                        'gshape': gshape,
+                        'gtype': np.dtype(float).name,
+                    })
 
         if dft.gamma_only:
             self.context.print(
@@ -308,48 +333,42 @@ class Supercell:
         # Calculate < i k | grad H | j k >, i.e. matrix elements in LCAO basis
 
         # NOTE: keep the xoutput naming scheme for backward-compat caches.
-        for a in self.indices:
-            for v in range(3):
-                xoutput = 3 * a + v
-                with supercell_cache.lock(str(xoutput)) as handle:
-                    if handle is None:
-                        continue
+        for a, v in product(self.indices, range(3)):
+            xoutput = 3 * a + v
+            lock = (supercell_cache.lock(str(xoutput))
+                    if comm.rank == 0 else nullcontext(None))
+            with lock as handle:
+                skip = None
+                if comm.rank == 0:
+                    skip = handle is None
+                skip = broadcast(skip, comm=comm)
+                if skip:
+                    continue
 
-                    self.context.print(
-                        f'{"xyz"[v]}-gradient of atom {a}')
+                self.context.print(
+                    f'{"xyz"[v]}-gradient of atom {a}')
 
-                    with self.context.timer('Gradients'):
-                        V1t_sG, dH1_asp = self._read_displacement_cache(
-                            fd_cache, a, v, dft.grid, filter)
-                        v1t_sR = dft.grid.empty(dims=(nspins,))
-                        v1t_sR.scatter_from(V1t_sG)
-                        dH1_aii = _dH_asp_to_aii(dH1_asp,
-                                                 dft.dH_asii_template)
-                    g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
-                        a, v, v1t_sR, dH1_aii, dH_aii, dft)
-                    if not dft.gamma_only:
-                        g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM,
-                                                ibzwfs.kpt_comm, dft.Nk_c)
+                with self.context.timer('Gradients'):
+                    V1t_sG, dH1_asp = self._read_displacement_cache(
+                        fd_cache, a, v, dft.grid, filter)
+                    v1t_sR = dft.grid.empty(dims=(nspins,))
+                    v1t_sR.scatter_from(V1t_sG)
+                    dH1_aii = _dH_asp_to_aii(dH1_asp,
+                                             dft.dH_asii_template)
+                g_sMM, g_s_gammaMM = self._calculate_supercell_entry(
+                    a, v, v1t_sR, dH1_aii, dH_aii, dft)
+                if not dft.gamma_only:
+                    g_sMM = _finalize_g_sMM(g_sMM, g_s_gammaMM,
+                                            ibzwfs.kpt_comm, dft.Nk_c)
 
-                    # Reshape to global unit cell indices
-                    N = np.prod(self.supercell)
-                    nao_cell = nao // N
-                    g_sNMNM = g_sMM.reshape((nspins, N, nao_cell, N, nao_cell))
+                if comm.rank == 0:
+                    assert handle is not None
+                    g_sNMNM = g_sMM.reshape(
+                        (nspins, N, nao_cell, N, nao_cell))
                     g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()
                     handle.save(g_sNNMM)
 
-                if a == self.indices[0] and v == 0:
-                    with supercell_cache.lock('info') as handle:
-                        if handle is not None:
-                            info = {
-                                'sc_version': sc_version,
-                                'natom': len(self.atoms),
-                                'supercell': self.supercell,
-                                'gshape': g_sNNMM.shape,
-                                'gtype': g_sNNMM.dtype.name,
-                            }
-                            handle.save(info)
-
+        comm.barrier()
         self.context.write_timer()
 
     def set_basis_info(self, wfs) -> dict:

@@ -61,7 +61,7 @@ def supercell_cache(session_tmp_path, elph_cache):
     elph_cache
 
     # create supercell cache
-    sc = Supercell(atoms, supercell=SUPERCELL, context='sc_li.txt')
+    sc = Supercell(atoms, supercell=SUPERCELL, txt='sc_li.txt')
     calcdict = dict(basis='dz(dzp)',
                     kpts={'size': (1, 3, 3), 'gamma': False})
     sc.calculate_supercell_matrix(calcdict)
