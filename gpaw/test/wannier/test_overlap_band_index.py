@@ -27,7 +27,8 @@ def test_get_overlap_band_index_equivalence():
     ni = 3                   # partial waves on a single atom
     ngrid = 4 * 4 * 4
 
-    shape = (nbands, 2, ngrid)   # spinor: extra spin axis flattened by get_overlap
+    # spinor: the extra spin axis is flattened inside get_overlap
+    shape = (nbands, 2, ngrid)
 
     def cnoise(s):
         return rng.standard_normal(s) + 1j * rng.standard_normal(s)
@@ -49,8 +50,10 @@ def test_get_overlap_band_index_equivalence():
     M_global = get_overlap(sel, gd, ut1, ut2, p1, p2, dO_aii)
 
     # (b) pre-slice, then local indices  -- what the fix does
-    q1 = p1.new(nbands=len(sel)); q1.array[:] = p1.array[sel]
-    q2 = p2.new(nbands=len(sel)); q2.array[:] = p2.array[sel]
+    q1 = p1.new(nbands=len(sel))
+    q1.array[:] = p1.array[sel]
+    q2 = p2.new(nbands=len(sel))
+    q2.array[:] = p2.array[sel]
     M_local = get_overlap(range(len(sel)), gd,
                           ut1[sel], ut2[sel], q1, q2, dO_aii)
 
