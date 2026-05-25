@@ -89,15 +89,17 @@ static void row_dgemm(char transa,
 }
 
 
+template<int N>
 class SelectedDim;
 
 
+template<int N>
 class DoubleArray {
 public:
     DoubleArray(PyObject* object)
-        : array_(nullptr), data_(nullptr), ndim_(0), c_contiguous_(0)
+        : array_(nullptr), data_(nullptr), c_contiguous_(0)
     {
-        for (int i = 0; i < NPY_MAXDIMS; i++) {
+        for (int i = 0; i < N; i++) {
             dims_[i] = 1;
             strides_[i] = 0;
         }
@@ -115,30 +117,31 @@ public:
 
         array_ = array;
         data_ = DOUBLEP(array);
-        ndim_ = PyArray_NDIM(array_);
+        if (PyArray_NDIM(array_) != N) {
+            PyErr_SetString(PyExc_ValueError,
+                            "unexpected number of array dimensions");
+            array_ = nullptr;
+            data_ = nullptr;
+            return;
+        }
         c_contiguous_ = PyArray_ISCARRAY(array_);
-        for (int i = 0; i < ndim_; i++)
+        for (int i = 0; i < N; i++)
             dims_[i] = PyArray_DIM(array_, i);
-        for (int i = 0; i < ndim_; i++)
+        for (int i = 0; i < N; i++)
             strides_[i] = PyArray_STRIDE(array_, i);
     }
 
     DoubleArray(double* data,
-                int ndim,
                 const npy_intp* dims,
                 const npy_intp* strides)
-        : array_(nullptr), data_(data), ndim_(ndim), c_contiguous_(1)
+        : array_(nullptr), data_(data), c_contiguous_(1)
     {
-        for (int i = 0; i < NPY_MAXDIMS; i++) {
-            dims_[i] = 1;
-            strides_[i] = 0;
-        }
-        for (int i = 0; i < ndim_; i++) {
+        for (int i = 0; i < N; i++) {
             dims_[i] = dims[i];
             strides_[i] = strides[i];
         }
         npy_intp expected = sizeof(double);
-        for (int i = ndim_ - 1; i >= 0; i--) {
+        for (int i = N - 1; i >= 0; i--) {
             if (strides_[i] != expected)
                 c_contiguous_ = 0;
             expected *= dims_[i];
@@ -152,7 +155,7 @@ public:
 
     int ndim() const
     {
-        return ndim_;
+        return N;
     }
 
     int dim(int axis) const
@@ -185,8 +188,7 @@ public:
                 double alpha = 1.0,
                 double beta = 0.0) const
     {
-        if (a.ndim() != 2 || b.ndim() != 2 || ndim() != 2)
-            throw std::invalid_argument("matmul expects 2D arrays");
+        static_assert(N == 2, "matmul output must be a 2D array");
         if (a.dim(1) != b.dim(0) ||
             dim(0) != a.dim(0) ||
             dim(1) != b.dim(1))
@@ -271,54 +273,66 @@ public:
         throw std::invalid_argument("unsupported transpose rank");
     }
 
-    SelectedDim select(int dim) const;
+    SelectedDim<N> select(int dim) const;
 
 private:
     PyArrayObject* array_;
     double* data_;
-    int ndim_;
-    npy_intp dims_[NPY_MAXDIMS];
-    npy_intp strides_[NPY_MAXDIMS];
+    npy_intp dims_[N];
+    npy_intp strides_[N];
     int c_contiguous_;
 
+    template<int M>
     friend class SelectedDim;
-    friend void contract(const SelectedDim& left,
-                         const SelectedDim& right,
-                         const DoubleArray& out);
 };
 
 
+template<int N>
 class SelectedDim {
 public:
-    SelectedDim(const DoubleArray& array, int dim)
+    SelectedDim(const DoubleArray<N>& array, int dim)
         : array_(array), dim_(dim)
     {
     }
 
-private:
-    const DoubleArray array_;
-    const int dim_;
+    const DoubleArray<N>& array() const
+    {
+        return array_;
+    }
 
-    friend void contract(const SelectedDim& left,
-                         const SelectedDim& right,
-                         const DoubleArray& out);
+    int dim() const
+    {
+        return dim_;
+    }
+
+private:
+    const DoubleArray<N> array_;
+    const int dim_;
 };
 
 
-SelectedDim DoubleArray::select(int dim) const
+template<int N>
+SelectedDim<N> DoubleArray<N>::select(int dim) const
 {
-    return SelectedDim(*this, dim);
+    return SelectedDim<N>(*this, dim);
 }
 
 
-void contract(const SelectedDim& left,
-              const SelectedDim& right,
-              const DoubleArray& out)
-{
-    const DoubleArray& a = left.array_;
-    const DoubleArray& b = right.array_;
+static DoubleArray<2> view2(double* data,
+                            npy_intp n0,
+                            npy_intp n1,
+                            npy_intp stride0,
+                            npy_intp stride1);
 
-    if (left.dim_ != 1 || right.dim_ != 0)
+
+void contract(const SelectedDim<2>& left,
+              const SelectedDim<2>& right,
+              const DoubleArray<2>& out)
+{
+    const DoubleArray<2>& a = left.array();
+    const DoubleArray<2>& b = right.array();
+
+    if (left.dim() != 1 || right.dim() != 0)
         throw std::invalid_argument("unsupported contraction dimensions");
     if (a.dim(1) != b.dim(0) ||
         out.dim(0) != a.dim(0) ||
@@ -329,11 +343,78 @@ void contract(const SelectedDim& left,
 }
 
 
-static int require_array(const DoubleArray& array, int ndim)
+void contract(const SelectedDim<2>& left,
+              const SelectedDim<3>& right,
+              const DoubleArray<3>& out)
+{
+    const DoubleArray<2>& a = left.array();
+    const DoubleArray<3>& b = right.array();
+
+    if (left.dim() != 1 || right.dim() != 1)
+        throw std::invalid_argument("unsupported 2D-3D contraction dimensions");
+    if (a.dim(1) != b.dim(1) ||
+        out.dim(0) != a.dim(0) ||
+        out.dim(1) != b.dim(0) ||
+        out.dim(2) != b.dim(2))
+        throw std::invalid_argument("2D-3D contract dimension mismatch");
+
+    for (int i = 0; i < b.dim(0); i++) {
+        const DoubleArray<2> b_i =
+            view2(b.data() + i * b.stride(0),
+                  b.dim(1), b.dim(2),
+                  b.stride(1), b.stride(2));
+        const DoubleArray<2> out_i =
+            view2(out.data() + i * out.stride(1),
+                  out.dim(0), out.dim(2),
+                  out.stride(0), out.stride(2));
+        out_i.matmul(a, b_i);
+    }
+}
+
+
+void contract(const SelectedDim<3>& left,
+              const SelectedDim<3>& right,
+              const DoubleArray<4>& out)
+{
+    const DoubleArray<3>& a = left.array();
+    const DoubleArray<3>& b = right.array();
+
+    if (left.dim() != 2 || right.dim() != 1)
+        throw std::invalid_argument("unsupported 3D-3D contraction dimensions");
+    if (a.dim(2) != b.dim(1) ||
+        out.dim(0) != a.dim(0) ||
+        out.dim(1) != a.dim(1) ||
+        out.dim(2) != b.dim(0) ||
+        out.dim(3) != b.dim(2))
+        throw std::invalid_argument("3D-3D contract dimension mismatch");
+
+    for (int i = 0; i < a.dim(0); i++) {
+        const DoubleArray<2> a_i =
+            view2(a.data() + i * a.stride(0),
+                  a.dim(1), a.dim(2),
+                  a.stride(1), a.stride(2));
+        for (int j = 0; j < b.dim(0); j++) {
+            const DoubleArray<2> b_j =
+                view2(b.data() + j * b.stride(0),
+                      b.dim(1), b.dim(2),
+                      b.stride(1), b.stride(2));
+            const DoubleArray<2> out_ij =
+                view2(out.data() + i * out.stride(0) +
+                      j * out.stride(2),
+                      out.dim(1), out.dim(3),
+                      out.stride(1), out.stride(3));
+            out_ij.matmul(a_i, b_j);
+        }
+    }
+}
+
+
+template<int N>
+static int require_array(const DoubleArray<N>& array, int ndim)
 {
     if (!array.ok())
         return 0;
-    if (array.ndim() != ndim) {
+    if (N != ndim) {
         PyErr_SetString(PyExc_ValueError,
                         "unexpected number of array dimensions");
         return 0;
@@ -408,54 +489,54 @@ static void derivative2_term(const double* dr_g,
 }
 
 
-static DoubleArray view2(double* data,
-                         npy_intp n0,
-                         npy_intp n1,
-                         npy_intp stride0,
-                         npy_intp stride1)
+static DoubleArray<2> view2(double* data,
+                            npy_intp n0,
+                            npy_intp n1,
+                            npy_intp stride0,
+                            npy_intp stride1)
 {
     const npy_intp dims[2] = {n0, n1};
     const npy_intp strides[2] = {
         stride0 * (npy_intp)sizeof(double),
         stride1 * (npy_intp)sizeof(double)};
-    return DoubleArray(data, 2, dims, strides);
+    return DoubleArray<2>(data, dims, strides);
 }
 
 
-static DoubleArray view1(double* data, npy_intp n0, npy_intp stride0)
+static DoubleArray<1> view1(double* data, npy_intp n0, npy_intp stride0)
 {
     const npy_intp dims[1] = {n0};
     const npy_intp strides[1] = {stride0 * (npy_intp)sizeof(double)};
-    return DoubleArray(data, 1, dims, strides);
+    return DoubleArray<1>(data, dims, strides);
 }
 
 
-static DoubleArray view3(double* data,
-                         npy_intp n0,
-                         npy_intp n1,
-                         npy_intp n2,
-                         npy_intp stride0,
-                         npy_intp stride1,
-                         npy_intp stride2)
+static DoubleArray<3> view3(double* data,
+                            npy_intp n0,
+                            npy_intp n1,
+                            npy_intp n2,
+                            npy_intp stride0,
+                            npy_intp stride1,
+                            npy_intp stride2)
 {
     const npy_intp dims[3] = {n0, n1, n2};
     const npy_intp strides[3] = {
         stride0 * (npy_intp)sizeof(double),
         stride1 * (npy_intp)sizeof(double),
         stride2 * (npy_intp)sizeof(double)};
-    return DoubleArray(data, 3, dims, strides);
+    return DoubleArray<3>(data, dims, strides);
 }
 
 
-static DoubleArray view4(double* data,
-                         npy_intp n0,
-                         npy_intp n1,
-                         npy_intp n2,
-                         npy_intp n3,
-                         npy_intp stride0,
-                         npy_intp stride1,
-                         npy_intp stride2,
-                         npy_intp stride3)
+static DoubleArray<4> view4(double* data,
+                            npy_intp n0,
+                            npy_intp n1,
+                            npy_intp n2,
+                            npy_intp n3,
+                            npy_intp stride0,
+                            npy_intp stride1,
+                            npy_intp stride2,
+                            npy_intp stride3)
 {
     const npy_intp dims[4] = {n0, n1, n2, n3};
     const npy_intp strides[4] = {
@@ -463,84 +544,48 @@ static DoubleArray view4(double* data,
         stride1 * (npy_intp)sizeof(double),
         stride2 * (npy_intp)sizeof(double),
         stride3 * (npy_intp)sizeof(double)};
-    return DoubleArray(data, 4, dims, strides);
+    return DoubleArray<4>(data, dims, strides);
 }
 
 
-static DoubleArray spin_Lg_view(const DoubleArray& array, int s)
+static DoubleArray<3> spin_middle_view(const DoubleArray<3>& array)
 {
-    return view2(array.data() + s * array.stride(0),
-                 array.dim(1), array.dim(2),
-                 array.stride(1), array.stride(2));
+    return view3(array.data(), array.dim(1), array.dim(0), array.dim(2),
+                 array.stride(1), array.stride(0), array.stride(2));
 }
 
 
-static DoubleArray spin_ng_view(const DoubleArray& array, int s)
+static void project_density_and_derivative(const DoubleArray<3>& n_sLg,
+                                           const DoubleArray<3>& dndr_sLg,
+                                           const DoubleArray<2>& Y_nL,
+                                           const DoubleArray<3>& n_sng,
+                                           const DoubleArray<3>& a_sng)
 {
-    return view2(array.data() + s * array.stride(0),
-                 array.dim(1), array.dim(2),
-                 array.stride(1), array.stride(2));
+    const DoubleArray<3> n_nsg = spin_middle_view(n_sng);
+    const DoubleArray<3> a_nsg = spin_middle_view(a_sng);
+
+    contract(Y_nL.select(1), n_sLg.select(1), n_nsg);
+    contract(Y_nL.select(1), dndr_sLg.select(1), a_nsg);
 }
 
 
-static DoubleArray vector_nL_view(const DoubleArray& array, int v)
-{
-    return view2(array.data() + v * array.stride(0),
-                 array.dim(1), array.dim(2),
-                 array.stride(1), array.stride(2));
-}
-
-
-static DoubleArray vector_spin_ng_view(const DoubleArray& array, int v, int s)
-{
-    return view2(array.data() + v * array.stride(0) + s * array.stride(2),
-                 array.dim(1), array.dim(3),
-                 array.stride(1), array.stride(3));
-}
-
-
-static void project_density_and_derivative(const DoubleArray& n_sLg,
-                                           const DoubleArray& dndr_sLg,
-                                           const DoubleArray& Y_nL,
-                                           const DoubleArray& n_sng,
-                                           const DoubleArray& a_sng)
-{
-    for (int s = 0; s < n_sLg.dim(0); s++) {
-        const DoubleArray n_Lg = spin_Lg_view(n_sLg, s);
-        const DoubleArray dndr_Lg = spin_Lg_view(dndr_sLg, s);
-        const DoubleArray n_ng = spin_ng_view(n_sng, s);
-        const DoubleArray a_ng = spin_ng_view(a_sng, s);
-
-        contract(Y_nL.select(1), n_Lg.select(0), n_ng);
-        contract(Y_nL.select(1), dndr_Lg.select(0), a_ng);
-    }
-}
-
-
-static void transpose_angular_gradient(const DoubleArray& rnablaY_nLv,
-                                       const DoubleArray& rnablaY_vnL)
+static void transpose_angular_gradient(const DoubleArray<3>& rnablaY_nLv,
+                                       const DoubleArray<3>& rnablaY_vnL)
 {
     rnablaY_vnL.transpose_from(rnablaY_nLv, 2, 0, 1);
 }
 
 
-static void project_angular_gradient(const DoubleArray& n_sLg,
-                                     const DoubleArray& rnablaY_vnL,
-                                     const DoubleArray& b_vnsg)
+static void project_angular_gradient(const DoubleArray<3>& n_sLg,
+                                     const DoubleArray<3>& rnablaY_vnL,
+                                     const DoubleArray<4>& b_vnsg)
 {
-    for (int v = 0; v < 3; v++) {
-        const DoubleArray rnablaY_nL = vector_nL_view(rnablaY_vnL, v);
-        for (int s = 0; s < n_sLg.dim(0); s++) {
-            const DoubleArray n_Lg = spin_Lg_view(n_sLg, s);
-            const DoubleArray b_ng = vector_spin_ng_view(b_vnsg, v, s);
-            contract(rnablaY_nL.select(1), n_Lg.select(0), b_ng);
-        }
-    }
+    contract(rnablaY_vnL.select(2), n_sLg.select(1), b_vnsg);
 }
 
 
-static void calculate_angular_sigma(const DoubleArray& b_vnsg,
-                                    const DoubleArray& sigma_xng)
+static void calculate_angular_sigma(const DoubleArray<4>& b_vnsg,
+                                    const DoubleArray<3>& sigma_xng)
 {
     const int nspins = b_vnsg.dim(2);
     const int nlebedev = b_vnsg.dim(1);
@@ -583,8 +628,8 @@ static void calculate_angular_sigma(const DoubleArray& b_vnsg,
 }
 
 
-static void scale_angular_sigma(const DoubleArray& r_g,
-                                const DoubleArray& sigma_xng)
+static void scale_angular_sigma(const DoubleArray<1>& r_g,
+                                const DoubleArray<3>& sigma_xng)
 {
     for (int n = 0; n < sigma_xng.dim(1); n++) {
         for (int x = 0; x < sigma_xng.dim(0); x++) {
@@ -604,8 +649,8 @@ static void scale_angular_sigma(const DoubleArray& r_g,
 }
 
 
-static void add_radial_sigma(const DoubleArray& a_sng,
-                             const DoubleArray& sigma_xng)
+static void add_radial_sigma(const DoubleArray<3>& a_sng,
+                             const DoubleArray<3>& sigma_xng)
 {
     const int nspins = a_sng.dim(0);
 
@@ -636,16 +681,16 @@ static void add_radial_sigma(const DoubleArray& a_sng,
 }
 
 
-static void project_density_compute(const DoubleArray& n_sLg,
-                                    const DoubleArray& dndr_sLg,
-                                    const DoubleArray& Y_nL,
-                                    const DoubleArray& rnablaY_nLv,
-                                    const DoubleArray& r_g,
-                                    const DoubleArray& n_sng,
-                                    const DoubleArray& a_sng,
-                                    const DoubleArray& b_vnsg,
-                                    const DoubleArray& sigma_xng,
-                                    const DoubleArray& rnablaY_vnL)
+static void project_density_compute(const DoubleArray<3>& n_sLg,
+                                    const DoubleArray<3>& dndr_sLg,
+                                    const DoubleArray<2>& Y_nL,
+                                    const DoubleArray<3>& rnablaY_nLv,
+                                    const DoubleArray<1>& r_g,
+                                    const DoubleArray<3>& n_sng,
+                                    const DoubleArray<3>& a_sng,
+                                    const DoubleArray<4>& b_vnsg,
+                                    const DoubleArray<3>& sigma_xng,
+                                    const DoubleArray<3>& rnablaY_vnL)
 {
     project_density_and_derivative(n_sLg, dndr_sLg, Y_nL, n_sng, a_sng);
     transpose_angular_gradient(rnablaY_nLv, rnablaY_vnL);
@@ -898,18 +943,18 @@ static double integrate_energy_compute(const double* e_ng,
 }
 
 
-static int expansion_shape_check(const DoubleArray& dEdD_sqL,
-                                 const DoubleArray& e_ng,
-                                 const DoubleArray& dedn_sng,
-                                 const DoubleArray& dedsigma_xng,
-                                 const DoubleArray& a_sng,
-                                 const DoubleArray& b_vnsg,
-                                 const DoubleArray& n_qg,
-                                 const DoubleArray& dr_g,
-                                 const DoubleArray& dv_g,
-                                 const DoubleArray& weight_n,
-                                 const DoubleArray& Y_nL,
-                                 const DoubleArray& rnablaY_nLv)
+static int expansion_shape_check(const DoubleArray<3>& dEdD_sqL,
+                                 const DoubleArray<2>& e_ng,
+                                 const DoubleArray<3>& dedn_sng,
+                                 const DoubleArray<3>& dedsigma_xng,
+                                 const DoubleArray<3>& a_sng,
+                                 const DoubleArray<4>& b_vnsg,
+                                 const DoubleArray<2>& n_qg,
+                                 const DoubleArray<1>& dr_g,
+                                 const DoubleArray<1>& dv_g,
+                                 const DoubleArray<1>& weight_n,
+                                 const DoubleArray<2>& Y_nL,
+                                 const DoubleArray<3>& rnablaY_nLv)
 {
     const int nspins = dEdD_sqL.dim(0);
     const int nq = dEdD_sqL.dim(1);
@@ -976,15 +1021,15 @@ CLINKAGE PyObject* paw_gga_project_density(PyObject* self, PyObject* args)
                           &sigma_xng_obj))
         return NULL;
 
-    DoubleArray n_sLg(n_sLg_obj);
-    DoubleArray dndr_sLg(dndr_sLg_obj);
-    DoubleArray Y_nL(Y_nL_obj);
-    DoubleArray rnablaY_nLv(rnablaY_nLv_obj);
-    DoubleArray r_g(r_g_obj);
-    DoubleArray n_sng(n_sng_obj);
-    DoubleArray a_sng(a_sng_obj);
-    DoubleArray b_vnsg(b_vnsg_obj);
-    DoubleArray sigma_xng(sigma_xng_obj);
+    DoubleArray<3> n_sLg(n_sLg_obj);
+    DoubleArray<3> dndr_sLg(dndr_sLg_obj);
+    DoubleArray<2> Y_nL(Y_nL_obj);
+    DoubleArray<3> rnablaY_nLv(rnablaY_nLv_obj);
+    DoubleArray<1> r_g(r_g_obj);
+    DoubleArray<3> n_sng(n_sng_obj);
+    DoubleArray<3> a_sng(a_sng_obj);
+    DoubleArray<4> b_vnsg(b_vnsg_obj);
+    DoubleArray<3> sigma_xng(sigma_xng_obj);
     if (!require_array(n_sLg, 3) ||
         !require_array(dndr_sLg, 3) ||
         !require_array(Y_nL, 2) ||
@@ -1036,7 +1081,7 @@ CLINKAGE PyObject* paw_gga_project_density(PyObject* self, PyObject* args)
         (double*)malloc(rnablaY_vnL_size * sizeof(double));
     if (rnablaY_vnL_data == NULL)
         return PyErr_NoMemory();
-    const DoubleArray rnablaY_vnL =
+    const DoubleArray<3> rnablaY_vnL =
         view3(rnablaY_vnL_data, 3, nlebedev, Lmax,
               (npy_intp)nlebedev * Lmax, Lmax, 1);
 
@@ -1068,11 +1113,11 @@ CLINKAGE PyObject* paw_gga_radial_gradient_correction(PyObject* self,
                           &vv_sng_obj))
         return NULL;
 
-    DoubleArray dr_g(dr_g_obj);
-    DoubleArray dv_g(dv_g_obj);
-    DoubleArray dedsigma_xng(dedsigma_xng_obj);
-    DoubleArray a_sng(a_sng_obj);
-    DoubleArray vv_sng(vv_sng_obj);
+    DoubleArray<1> dr_g(dr_g_obj);
+    DoubleArray<1> dv_g(dv_g_obj);
+    DoubleArray<3> dedsigma_xng(dedsigma_xng_obj);
+    DoubleArray<3> a_sng(a_sng_obj);
+    DoubleArray<3> vv_sng(vv_sng_obj);
     if (!require_array(dr_g, 1) ||
         !require_array(dv_g, 1) ||
         !require_array(dedsigma_xng, 3) ||
@@ -1137,12 +1182,12 @@ CLINKAGE PyObject* paw_gga_back_project_density(PyObject* self,
                           &Y_nL_obj))
         return NULL;
 
-    DoubleArray dEdD_sqL(dEdD_sqL_obj);
-    DoubleArray dv_g(dv_g_obj);
-    DoubleArray dedn_sng(dedn_sng_obj);
-    DoubleArray n_qg(n_qg_obj);
-    DoubleArray weight_n(weight_n_obj);
-    DoubleArray Y_nL(Y_nL_obj);
+    DoubleArray<3> dEdD_sqL(dEdD_sqL_obj);
+    DoubleArray<1> dv_g(dv_g_obj);
+    DoubleArray<3> dedn_sng(dedn_sng_obj);
+    DoubleArray<2> n_qg(n_qg_obj);
+    DoubleArray<1> weight_n(weight_n_obj);
+    DoubleArray<2> Y_nL(Y_nL_obj);
     if (!require_array(dEdD_sqL, 3) ||
         !require_array(dv_g, 1) ||
         !require_array(dedn_sng, 3) ||
@@ -1151,9 +1196,9 @@ CLINKAGE PyObject* paw_gga_back_project_density(PyObject* self,
         !require_array(Y_nL, 2))
         return NULL;
 
-    DoubleArray* vv_sng = NULL;
+    DoubleArray<3>* vv_sng = NULL;
     if (vv_sng_arg != Py_None) {
-        vv_sng = new DoubleArray(vv_sng_arg);
+        vv_sng = new DoubleArray<3>(vv_sng_arg);
         if (!require_array(*vv_sng, 3)) {
             delete vv_sng;
             return NULL;
@@ -1219,12 +1264,12 @@ CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject* self,
                           &rnablaY_nLv_obj))
         return NULL;
 
-    DoubleArray dEdD_sqL(dEdD_sqL_obj);
-    DoubleArray dedsigma_xng(dedsigma_xng_obj);
-    DoubleArray b_vnsg(b_vnsg_obj);
-    DoubleArray n_qg(n_qg_obj);
-    DoubleArray weight_n(weight_n_obj);
-    DoubleArray rnablaY_nLv(rnablaY_nLv_obj);
+    DoubleArray<3> dEdD_sqL(dEdD_sqL_obj);
+    DoubleArray<3> dedsigma_xng(dedsigma_xng_obj);
+    DoubleArray<4> b_vnsg(b_vnsg_obj);
+    DoubleArray<2> n_qg(n_qg_obj);
+    DoubleArray<1> weight_n(weight_n_obj);
+    DoubleArray<3> rnablaY_nLv(rnablaY_nLv_obj);
     if (!require_array(dEdD_sqL, 3) ||
         !require_array(dedsigma_xng, 3) ||
         !require_array(b_vnsg, 4) ||
@@ -1306,18 +1351,18 @@ CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject* self, PyObject* args)
                           &rnablaY_nLv_obj))
         return NULL;
 
-    DoubleArray dEdD_sqL(dEdD_sqL_obj);
-    DoubleArray e_ng(e_ng_obj);
-    DoubleArray dedn_sng(dedn_sng_obj);
-    DoubleArray dedsigma_xng(dedsigma_xng_obj);
-    DoubleArray a_sng(a_sng_obj);
-    DoubleArray b_vnsg(b_vnsg_obj);
-    DoubleArray n_qg(n_qg_obj);
-    DoubleArray dr_g(dr_g_obj);
-    DoubleArray dv_g(dv_g_obj);
-    DoubleArray weight_n(weight_n_obj);
-    DoubleArray Y_nL(Y_nL_obj);
-    DoubleArray rnablaY_nLv(rnablaY_nLv_obj);
+    DoubleArray<3> dEdD_sqL(dEdD_sqL_obj);
+    DoubleArray<2> e_ng(e_ng_obj);
+    DoubleArray<3> dedn_sng(dedn_sng_obj);
+    DoubleArray<3> dedsigma_xng(dedsigma_xng_obj);
+    DoubleArray<3> a_sng(a_sng_obj);
+    DoubleArray<4> b_vnsg(b_vnsg_obj);
+    DoubleArray<2> n_qg(n_qg_obj);
+    DoubleArray<1> dr_g(dr_g_obj);
+    DoubleArray<1> dv_g(dv_g_obj);
+    DoubleArray<1> weight_n(weight_n_obj);
+    DoubleArray<2> Y_nL(Y_nL_obj);
+    DoubleArray<3> rnablaY_nLv(rnablaY_nLv_obj);
     if (!require_array(dEdD_sqL, 3) ||
         !require_array(e_ng, 2) ||
         !require_array(dedn_sng, 3) ||
@@ -1491,32 +1536,32 @@ static int calculate_expansion(PyObject* kernel_calculate,
     }
 
     {
-        const DoubleArray n_sLg_view =
+        const DoubleArray<3> n_sLg_view =
             view3(n_sLg, nspins, Lmax, ngrids,
                   (npy_intp)Lmax * ngrids, ngrids, 1);
-        const DoubleArray dndr_sLg_view =
+        const DoubleArray<3> dndr_sLg_view =
             view3(dndr_sLg, nspins, Lmax, ngrids,
                   (npy_intp)Lmax * ngrids, ngrids, 1);
-        const DoubleArray Y_nL_view =
+        const DoubleArray<2> Y_nL_view =
             view2((double*)Y_nL, nlebedev, Lmax, Lmax, 1);
-        const DoubleArray rnablaY_nLv_view =
+        const DoubleArray<3> rnablaY_nLv_view =
             view3((double*)rnablaY_nLv, nlebedev, Lmax, 3,
                   (npy_intp)Lmax * 3, 3, 1);
-        const DoubleArray r_g_view = view1((double*)r_g, ngrids, 1);
-        const DoubleArray n_sng_view =
+        const DoubleArray<1> r_g_view = view1((double*)r_g, ngrids, 1);
+        const DoubleArray<3> n_sng_view =
             view3(n_sng, nspins, nlebedev, ngrids,
                   (npy_intp)nlebedev * ngrids, ngrids, 1);
-        const DoubleArray a_sng_view =
+        const DoubleArray<3> a_sng_view =
             view3(a_sng, nspins, nlebedev, ngrids,
                   (npy_intp)nlebedev * ngrids, ngrids, 1);
-        const DoubleArray b_vnsg_view =
+        const DoubleArray<4> b_vnsg_view =
             view4(b_vnsg, 3, nlebedev, nspins, ngrids,
                   (npy_intp)nlebedev * nspins * ngrids,
                   (npy_intp)nspins * ngrids, ngrids, 1);
-        const DoubleArray sigma_xng_view =
+        const DoubleArray<3> sigma_xng_view =
             view3(sigma_xng, 2 * nspins - 1, nlebedev, ngrids,
                   (npy_intp)nlebedev * ngrids, ngrids, 1);
-        const DoubleArray rnablaY_vnL =
+        const DoubleArray<3> rnablaY_vnL =
             view3(rnablaY_vnL_data, 3, nlebedev, Lmax,
                   (npy_intp)nlebedev * Lmax, Lmax, 1);
 
@@ -1690,18 +1735,18 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
         return NULL;
     }
 
-    DoubleArray D_sp(D_sp_obj);
-    DoubleArray B_pqL(B_pqL_obj);
-    DoubleArray n_qg(n_qg_obj);
-    DoubleArray nt_qg(nt_qg_obj);
-    DoubleArray nc0_sg(nc0_sg_obj);
-    DoubleArray nct0_sg(nct0_sg_obj);
-    DoubleArray dr_g(dr_g_obj);
-    DoubleArray dv_g(dv_g_obj);
-    DoubleArray r_g(r_g_obj);
-    DoubleArray Y_nL(Y_nL_obj);
-    DoubleArray weight_n(weight_n_obj);
-    DoubleArray rnablaY_nLv(rnablaY_nLv_obj);
+    DoubleArray<2> D_sp(D_sp_obj);
+    DoubleArray<3> B_pqL(B_pqL_obj);
+    DoubleArray<2> n_qg(n_qg_obj);
+    DoubleArray<2> nt_qg(nt_qg_obj);
+    DoubleArray<2> nc0_sg(nc0_sg_obj);
+    DoubleArray<2> nct0_sg(nct0_sg_obj);
+    DoubleArray<1> dr_g(dr_g_obj);
+    DoubleArray<1> dv_g(dv_g_obj);
+    DoubleArray<1> r_g(r_g_obj);
+    DoubleArray<2> Y_nL(Y_nL_obj);
+    DoubleArray<1> weight_n(weight_n_obj);
+    DoubleArray<3> rnablaY_nLv(rnablaY_nLv_obj);
     if (!require_array(D_sp, 2) ||
         !require_array(B_pqL, 3) ||
         !require_array(n_qg, 2) ||
@@ -1716,9 +1761,9 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
         !require_array(rnablaY_nLv, 3))
         return NULL;
 
-    DoubleArray* dEdD_sp_array = NULL;
+    DoubleArray<2>* dEdD_sp_array = NULL;
     if (dEdD_sp_arg != Py_None) {
-        dEdD_sp_array = new DoubleArray(dEdD_sp_arg);
+        dEdD_sp_array = new DoubleArray<2>(dEdD_sp_arg);
         if (!require_array(*dEdD_sp_array, 2)) {
             delete dEdD_sp_array;
             return NULL;
