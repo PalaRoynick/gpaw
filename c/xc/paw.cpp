@@ -4,6 +4,7 @@
 
 #include <array>
 #include <climits>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -444,6 +445,21 @@ public:
         check_compatible(rhs);
         const npy_intp n = size();
         for (npy_intp i = 0; i < n; i++) data_[i] *= rhs.data_[i];
+        return *this;
+    }
+
+    const DoubleArrayView& operator*=(
+        std::initializer_list<DoubleArrayView<N>> factors) const
+    {
+        for (const auto& f : factors)
+            check_compatible(f);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) {
+            double val = data_[i];
+            for (const auto& f : factors)
+                val *= f.data_[i];
+            data_[i] = val;
+        }
         return *this;
     }
 
@@ -1045,8 +1061,7 @@ static void derivative2_term(const DoubleArrayView<1>& dr_g,
     // c[g] = scale * dv[g] * dedsigma[g] * a[g] / dr[g]
     DoubleArray<1> c({ngrids});
     c.assign(a_g);
-    c *= dedsigma_g;
-    c *= dv_g;
+    c *= {dedsigma_g, dv_g};
     c /= dr_g;
     c *= scale;
 
