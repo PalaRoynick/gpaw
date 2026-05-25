@@ -108,9 +108,15 @@ def test_paw_gga_project_density(nspins):
     actual_b_vnsg = np.empty((3, nlebedev, nspins, ngrids))
     actual_sigma_xng = np.empty((2 * nspins - 1, nlebedev, ngrids))
 
-    paw_gga_project_density(n_sLg, dndr_sLg, Y_nL, rnablaY_nLv, r_g,
-                            actual_n_sng, actual_a_sng, actual_b_vnsg,
-                            actual_sigma_xng)
+    paw_gga_project_density(n_sLg=n_sLg,
+                            dndr_sLg=dndr_sLg,
+                            Y_nL=Y_nL,
+                            rnablaY_nLv=rnablaY_nLv,
+                            r_g=r_g,
+                            n_sng=actual_n_sng,
+                            a_sng=actual_a_sng,
+                            b_vnsg=actual_b_vnsg,
+                            sigma_xng=actual_sigma_xng)
 
     expected = project_density_reference(
         n_sLg, dndr_sLg, Y_nL, rnablaY_nLv, r_g)
@@ -136,8 +142,11 @@ def test_paw_gga_radial_gradient_correction(nspins):
     a_sng = rng.normal(size=(nspins, nlebedev, ngrids))
 
     actual_sng = np.empty_like(a_sng)
-    paw_gga_radial_gradient_correction(
-        dr_g, dv_g, dedsigma_xng, a_sng, actual_sng)
+    paw_gga_radial_gradient_correction(dr_g=dr_g,
+                                       dv_g=dv_g,
+                                       dedsigma_xng=dedsigma_xng,
+                                       a_sng=a_sng,
+                                       vv_sng=actual_sng)
 
     expected_sng = radial_gradient_correction_reference(
         dr_g, dv_g, dedsigma_xng, a_sng)
@@ -181,8 +190,12 @@ def test_paw_gga_back_project_gradient(nspins):
     rnablaY_nLv = rng.normal(size=(nlebedev, Lmax, 3))
 
     actual_sqL = dEdD0_sqL.copy()
-    paw_gga_back_project_gradient(
-        actual_sqL, dedsigma_xng, b_vnsg, n_qg, weight_n, rnablaY_nLv)
+    paw_gga_back_project_gradient(dEdD_sqL=actual_sqL,
+                                  dedsigma_xng=dedsigma_xng,
+                                  b_vnsg=b_vnsg,
+                                  n_qg=n_qg,
+                                  weight_n=weight_n,
+                                  rnablaY_nLv=rnablaY_nLv)
 
     expected_sqL = dEdD0_sqL.copy()
     back_project_gradient_reference(
@@ -241,9 +254,18 @@ def test_paw_gga_finish_lebedev(nspins):
     rnablaY_nLv = rng.normal(size=(nlebedev, Lmax, 3))
 
     actual_sqL = dEdD0_sqL.copy()
-    actual_E = paw_gga_finish_lebedev(
-        actual_sqL, e_ng, dedn_sng, dedsigma_xng, a_sng, b_vnsg,
-        n_qg, dr_g, dv_g, weight_n, Y_nL, rnablaY_nLv)
+    actual_E = paw_gga_finish_lebedev(dEdD_sqL=actual_sqL,
+                                      e_ng=e_ng,
+                                      dedn_sng=dedn_sng,
+                                      dedsigma_xng=dedsigma_xng,
+                                      a_sng=a_sng,
+                                      b_vnsg=b_vnsg,
+                                      n_qg=n_qg,
+                                      dr_g=dr_g,
+                                      dv_g=dv_g,
+                                      weight_n=weight_n,
+                                      Y_nL=Y_nL,
+                                      rnablaY_nLv=rnablaY_nLv)
 
     expected_sqL = dEdD0_sqL.copy()
     expected_E = finish_lebedev_reference(

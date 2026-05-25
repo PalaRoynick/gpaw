@@ -154,14 +154,19 @@ PyObject* adjust_positions(PyObject *self, PyObject *args);
 PyObject* adjust_momenta(PyObject *self, PyObject *args);
 // TIP3P forces
 PyObject* calculate_forces_H2O(PyObject *self, PyObject *args);
-CLINKAGE PyObject* paw_gga_project_density(PyObject *self, PyObject *args);
+CLINKAGE PyObject* paw_gga_project_density(PyObject *self, PyObject *args,
+                                           PyObject *kwargs);
 CLINKAGE PyObject* paw_gga_radial_gradient_correction(PyObject *self,
-                                                      PyObject *args);
+                                                      PyObject *args,
+                                                      PyObject *kwargs);
 CLINKAGE PyObject* paw_gga_back_project_density(PyObject *self,
-                                                PyObject *args);
+                                                PyObject *args,
+                                                PyObject *kwargs);
 CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject *self,
-                                                 PyObject *args);
-CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject *self, PyObject *args);
+                                                 PyObject *args,
+                                                 PyObject *kwargs);
+CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject *self, PyObject *args,
+                                          PyObject *kwargs);
 CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject *self,
                                                   PyObject *args,
                                                   PyObject *kwargs);
@@ -212,15 +217,20 @@ static PyMethodDef functions[] = {
     {"localize", localize, METH_VARARGS, 0},
     {"XCFunctional", NewXCFunctionalObject, METH_VARARGS, 0},
     {"paw_gga_project_density",
-     paw_gga_project_density, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_project_density,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"paw_gga_radial_gradient_correction",
-     paw_gga_radial_gradient_correction, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_radial_gradient_correction,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"paw_gga_back_project_density",
-     paw_gga_back_project_density, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_back_project_density,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"paw_gga_back_project_gradient",
-     paw_gga_back_project_gradient, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_back_project_gradient,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"paw_gga_finish_lebedev",
-     paw_gga_finish_lebedev, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_finish_lebedev,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"paw_gga_single_atom_correction",
      (PyCFunction)paw_gga_single_atom_correction,
      METH_VARARGS | METH_KEYWORDS, 0},
