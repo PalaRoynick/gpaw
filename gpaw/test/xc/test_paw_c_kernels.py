@@ -30,6 +30,25 @@ def test_paw_double_array_matmul_transposed_views():
                                    rtol=0.0, atol=2.0e-14)
 
 
+def test_paw_double_array_elementwise_expression():
+    expression = pytest.importorskip(
+        '_gpaw')._test_paw_double_array_expression
+
+    rng = np.random.default_rng(682)
+    cases = [
+        (rng.normal(size=(4, 5)), rng.normal(size=(4, 5)),
+         np.empty((4, 5))),
+        (rng.normal(size=(4, 10))[:, ::2],
+         rng.normal(size=(4, 10))[:, ::2],
+         np.empty((4, 10))[:, ::2]),
+    ]
+
+    for a, b, actual in cases:
+        expression(a, b, actual)
+        np.testing.assert_allclose(actual, a + b,
+                                   rtol=0.0, atol=2.0e-14)
+
+
 def derivative2_reference(dr_g, a_g):
     c_g = a_g / dr_g
     b_g = np.empty_like(a_g)

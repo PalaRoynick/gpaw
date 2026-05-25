@@ -172,6 +172,8 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject *self,
                                                   PyObject *kwargs);
 CLINKAGE PyObject* test_paw_double_array_matmul(PyObject *self,
                                                 PyObject *args);
+CLINKAGE PyObject* test_paw_double_array_expression(PyObject *self,
+                                                    PyObject *args);
 
 
 #ifdef GPAW_GPU
@@ -236,6 +238,8 @@ static PyMethodDef functions[] = {
      METH_VARARGS | METH_KEYWORDS, 0},
     {"_test_paw_double_array_matmul",
      test_paw_double_array_matmul, METH_VARARGS, 0},
+    {"_test_paw_double_array_expression",
+     test_paw_double_array_expression, METH_VARARGS, 0},
 #ifndef GPAW_WITHOUT_LIBXC
     {"lxcXCFunctional", NewlxcXCFunctionalObject, METH_VARARGS, 0},
     {"lxcXCFuncNum", lxcXCFuncNum, METH_VARARGS, 0},

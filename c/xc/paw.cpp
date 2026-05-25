@@ -159,10 +159,15 @@ static void row_dgemm(char transa,
 template<int N, int M = 1>
 class SelectedDim;
 
+template<int N, typename Op>
+class RHSBinaryElementwiseExpression;
+
 
 template<int N>
 class DoubleArrayView {
 public:
+    using Shape = std::array<npy_intp, N>;
+
     DoubleArrayView(PyObject* object)
         : array_(nullptr), data_(nullptr), c_contiguous_(0)
     {
@@ -220,6 +225,14 @@ public:
         return dims_[axis];
     }
 
+    Shape shape() const
+    {
+        Shape result;
+        for (int i = 0; i < N; i++)
+            result[i] = dims_[i];
+        return result;
+    }
+
     npy_intp stride(int axis) const
     {
         return strides_[axis] / sizeof(double);
@@ -249,8 +262,8 @@ public:
     }
 
     static DoubleArrayView<N> view(double* data,
-                               const std::array<npy_intp, N>& dims,
-                               const std::array<npy_intp, N>& strides)
+                               const Shape& dims,
+                               const Shape& strides)
     {
         std::array<npy_intp, N> byte_strides;
         for (int i = 0; i < N; i++)
@@ -259,7 +272,7 @@ public:
     }
 
     static DoubleArrayView<N> contiguous(double* data,
-                                     const std::array<npy_intp, N>& dims)
+                                     const Shape& dims)
     {
         std::array<npy_intp, N> strides;
         strides[N - 1] = 1;
@@ -423,11 +436,10 @@ public:
         const int n = (int)dims_[axis];
         if (start < 0) start += n;
         if (end < 0) end += n;
-        npy_intp new_dims[N];
-        for (int i = 0; i < N; i++) new_dims[i] = dims_[i];
+        Shape new_dims = shape();
         new_dims[axis] = end - start;
         return DoubleArrayView<N>(data_ + (npy_intp)start * stride(axis),
-                                  new_dims, strides_);
+                                  new_dims.data(), strides_);
     }
 
     // 1D convenience: slice(start, end) == slice(0, start, end).
@@ -439,10 +451,21 @@ public:
         return slice(0, start, end);
     }
 
+    DoubleArrayView<N> slice_last(int start, int end) const
+    {
+        return slice(N - 1, start, end);
+    }
+
     // Element-wise copy from src.
     void assign(const DoubleArrayView<N>& src) const
     {
         apply_binary(src, [](double& l, double r) { l = r; });
+    }
+
+    template<typename Op>
+    void assign(const RHSBinaryElementwiseExpression<N, Op>& expression) const
+    {
+        expression.assign_to(*this);
     }
 
     // In-place element-wise operators.
@@ -512,6 +535,21 @@ public:
             throw std::invalid_argument(
                 "broadcast_multiply: size mismatch on last axis");
         apply_broadcast_strided<0>(data_, rhs.data(), rhs.stride(0),
+            [](double& l, double r) { l *= r; });
+    }
+
+    void broadcast_multiply_axis(int axis,
+                                 const DoubleArrayView<1>& rhs) const
+    {
+        if (axis < 0)
+            axis += N;
+        if (axis < 0 || axis >= N)
+            throw std::invalid_argument("broadcast axis out of range");
+        if (rhs.dim(0) != dim(axis))
+            throw std::invalid_argument(
+                "broadcast_multiply_axis: size mismatch on broadcast axis");
+        apply_axis_broadcast_strided<0>(
+            data_, axis, rhs.data(), rhs.stride(0),
             [](double& l, double r) { l *= r; });
     }
 
@@ -628,6 +666,32 @@ private:
         }
     }
 
+    template<int Axis, typename Op>
+    void apply_axis_broadcast_strided(double* lhs,
+                                      int broadcast_axis,
+                                      const double* rhs,
+                                      npy_intp rhs_stride,
+                                      Op op) const
+    {
+        const npy_intp ls = stride(Axis);
+        if constexpr (Axis == N - 1) {
+            for (npy_intp i = 0; i < dims_[Axis]; i++) {
+                const double value =
+                    rhs[(Axis == broadcast_axis ? i : 0) * rhs_stride];
+                op(lhs[i * ls], value);
+            }
+        } else {
+            for (npy_intp i = 0; i < dims_[Axis]; i++) {
+                apply_axis_broadcast_strided<Axis + 1>(
+                    lhs + i * ls,
+                    broadcast_axis,
+                    rhs + (Axis == broadcast_axis ? i * rhs_stride : 0),
+                    rhs_stride,
+                    op);
+            }
+        }
+    }
+
     char blas_transpose() const
     {
         static_assert(N == 2, "BLAS layout is implemented for 2D arrays");
@@ -658,6 +722,132 @@ private:
     template<int ON, int CM>
     friend class SelectedDim;
 };
+
+
+struct RHSAdd {
+    static double apply(double a, double b) { return a + b; }
+};
+
+struct RHSSubtract {
+    static double apply(double a, double b) { return a - b; }
+};
+
+struct RHSMultiply {
+    static double apply(double a, double b) { return a * b; }
+};
+
+struct RHSDivide {
+    static double apply(double a, double b) { return a / b; }
+};
+
+
+template<int N, typename Op>
+class RHSBinaryElementwiseExpression {
+public:
+    RHSBinaryElementwiseExpression(const DoubleArrayView<N>& left,
+                                   const DoubleArrayView<N>& right)
+        : left_(left), right_(right)
+    {
+        check_same_shape(left_, right_);
+    }
+
+    void assign_to(const DoubleArrayView<N>& out) const
+    {
+        check_same_shape(out, left_);
+
+        if (out.c_contiguous() && left_.c_contiguous() &&
+            right_.c_contiguous()) {
+            const npy_intp n = out.size();
+            for (npy_intp i = 0; i < n; i++)
+                out.data()[i] = Op::apply(left_.data()[i], right_.data()[i]);
+            return;
+        }
+
+        npy_intp out_strides[N], left_strides[N], right_strides[N];
+        for (int i = 0; i < N; i++) {
+            out_strides[i] = out.stride(i);
+            left_strides[i] = left_.stride(i);
+            right_strides[i] = right_.stride(i);
+        }
+        const auto shape = out.shape();
+        assign_strided<0>(out.data(), left_.data(), right_.data(),
+                          out_strides, left_strides, right_strides,
+                          shape.data());
+    }
+
+private:
+    const DoubleArrayView<N> left_;
+    const DoubleArrayView<N> right_;
+
+    static void check_same_shape(const DoubleArrayView<N>& a,
+                                 const DoubleArrayView<N>& b)
+    {
+        for (int i = 0; i < N; i++)
+            if (a.dim(i) != b.dim(i))
+                throw std::invalid_argument(
+                    "element-wise expression: dimension mismatch on axis " +
+                    std::to_string(i) + " (" + std::to_string(a.dim(i)) +
+                    " vs " + std::to_string(b.dim(i)) + ")");
+    }
+
+    template<int Axis>
+    static void assign_strided(double* out,
+                               const double* left,
+                               const double* right,
+                               const npy_intp* out_strides,
+                               const npy_intp* left_strides,
+                               const npy_intp* right_strides,
+                               const npy_intp* shape)
+    {
+        if constexpr (Axis == N - 1) {
+            for (npy_intp i = 0; i < shape[Axis]; i++) {
+                out[i * out_strides[Axis]] = Op::apply(
+                    left[i * left_strides[Axis]],
+                    right[i * right_strides[Axis]]);
+            }
+        } else {
+            for (npy_intp i = 0; i < shape[Axis]; i++) {
+                assign_strided<Axis + 1>(
+                    out + i * out_strides[Axis],
+                    left + i * left_strides[Axis],
+                    right + i * right_strides[Axis],
+                    out_strides, left_strides, right_strides, shape);
+            }
+        }
+    }
+};
+
+
+template<int N>
+RHSBinaryElementwiseExpression<N, RHSAdd>
+operator+(const DoubleArrayView<N>& left, const DoubleArrayView<N>& right)
+{
+    return RHSBinaryElementwiseExpression<N, RHSAdd>(left, right);
+}
+
+
+template<int N>
+RHSBinaryElementwiseExpression<N, RHSSubtract>
+operator-(const DoubleArrayView<N>& left, const DoubleArrayView<N>& right)
+{
+    return RHSBinaryElementwiseExpression<N, RHSSubtract>(left, right);
+}
+
+
+template<int N>
+RHSBinaryElementwiseExpression<N, RHSMultiply>
+operator*(const DoubleArrayView<N>& left, const DoubleArrayView<N>& right)
+{
+    return RHSBinaryElementwiseExpression<N, RHSMultiply>(left, right);
+}
+
+
+template<int N>
+RHSBinaryElementwiseExpression<N, RHSDivide>
+operator/(const DoubleArrayView<N>& left, const DoubleArrayView<N>& right)
+{
+    return RHSBinaryElementwiseExpression<N, RHSDivide>(left, right);
+}
 
 
 template<int N, int M>
@@ -855,7 +1045,9 @@ private:
 
 template<int N>
 class DoubleArray : private Buffer, public DoubleArrayView<N> {
-    static size_t count(const std::array<npy_intp, N>& dims)
+    using Shape = typename DoubleArrayView<N>::Shape;
+
+    static size_t count(const Shape& dims)
     {
         size_t n = 1;
         for (int i = 0; i < N; i++)
@@ -863,10 +1055,9 @@ class DoubleArray : private Buffer, public DoubleArrayView<N> {
         return n;
     }
 
-    static std::array<npy_intp, N>
-    byte_strides(const std::array<npy_intp, N>& dims)
+    static Shape byte_strides(const Shape& dims)
     {
-        std::array<npy_intp, N> strides;
+        Shape strides;
         strides[N - 1] = sizeof(double);
         for (int i = N - 2; i >= 0; i--)
             strides[i] = strides[i + 1] * dims[i + 1];
@@ -874,7 +1065,7 @@ class DoubleArray : private Buffer, public DoubleArrayView<N> {
     }
 
 public:
-    explicit DoubleArray(const std::array<npy_intp, N>& dims)
+    explicit DoubleArray(const Shape& dims)
         : Buffer(count(dims)),
           DoubleArrayView<N>(Buffer::data(), dims.data(),
                              byte_strides(dims).data())
@@ -953,7 +1144,7 @@ public:
     template<int N>
     DoubleArray<N> new_array(const char* dims)
     {
-        std::array<npy_intp, N> shape;
+        typename DoubleArrayView<N>::Shape shape;
         int len = 0;
         while (dims[len]) ++len;
         if (len != N) {
@@ -1144,18 +1335,50 @@ CLINKAGE PyObject* test_paw_double_array_matmul(PyObject* self,
 }
 
 
+CLINKAGE PyObject* test_paw_double_array_expression(PyObject* self,
+                                                    PyObject* args)
+{
+    PyObject* a_obj;
+    PyObject* b_obj;
+    PyObject* out_obj;
+
+    if (!PyArg_ParseTuple(args, "OOO", &a_obj, &b_obj, &out_obj))
+        return NULL;
+
+    return translate_exceptions([&]() -> PyObject* {
+        DoubleArrayView<2> a(a_obj);
+        DoubleArrayView<2> b(b_obj);
+        DoubleArrayView<2> out(out_obj);
+        out.assign(a + b);
+        Py_RETURN_NONE;
+    });
+}
+
+
 static void derivative_term(const DoubleArrayView<1>& dr_g,
                             const DoubleArrayView<1>& in_g,
                             const DoubleArrayView<1>& out_g)
 {
-    const int ngrids = in_g.dim(0);
-    const double* dr = dr_g.data();
-    const double* in = in_g.data();
-    double* out = out_g.data();
-    out[0] = (in[1] - in[0]) / dr[0];
-    for (int g = 1; g < ngrids - 1; g++)
-        out[g] = 0.5 * (in[g + 1] - in[g - 1]) / dr[g];
-    out[ngrids - 1] = (in[ngrids - 1] - in[ngrids - 2]) / dr[ngrids - 1];
+    const int ngrids = out_g.dim(0);
+    if (in_g.dim(0) != ngrids || dr_g.dim(0) != ngrids)
+        throw std::invalid_argument("derivative_term dimension mismatch");
+    if (ngrids < 2)
+        throw std::invalid_argument(
+            "derivative_term needs at least two grid points");
+
+    auto out_left = out_g.slice(0, 1);
+    out_left.assign(in_g.slice(1, 2) - in_g.slice(0, 1));
+    out_left /= dr_g.slice(0, 1);
+
+    auto out_mid = out_g.slice(1, ngrids - 1);
+    out_mid.assign(in_g.slice(2, ngrids) - in_g.slice(0, ngrids - 2));
+    out_mid *= 0.5;
+    out_mid /= dr_g.slice(1, ngrids - 1);
+
+    auto out_right = out_g.slice(ngrids - 1, ngrids);
+    out_right.assign(in_g.slice(ngrids - 1, ngrids) -
+                     in_g.slice(ngrids - 2, ngrids - 1));
+    out_right /= dr_g.slice(ngrids - 1, ngrids);
 }
 
 
@@ -1173,10 +1396,8 @@ static void derivative2_term(const DoubleArrayView<1>& dr_g,
 {
     const int ngrids = out.dim(N - 1);
 
-    std::array<npy_intp, N> shape;
-    for (int i = 0; i < N; i++) shape[i] = a.dim(i);
-    DoubleArray<N> c(shape);
-    DoubleArray<N> d(shape);
+    DoubleArray<N> c(a.shape());
+    DoubleArray<N> d(a.shape());
 
     // c = scale * dv * dedsigma * a / dr  (dv, dr broadcast over leading axes)
     c.assign(a);
@@ -1186,9 +1407,9 @@ static void derivative2_term(const DoubleArrayView<1>& dr_g,
     c *= scale;
 
     // Interior: d[..., 1:-2] = 0.5 * (c[..., 2:-1] - c[..., :-3])
-    auto d_mid = d.slice(N - 1, 1, ngrids - 2);
-    d_mid.assign(c.slice(N - 1, 2, ngrids - 1));
-    d_mid -= c.slice(N - 1, 0, ngrids - 3);
+    auto d_mid = d.slice_last(1, ngrids - 2);
+    d_mid.assign(c.slice_last(2, ngrids - 1) -
+                 c.slice_last(0, ngrids - 3));
     d_mid *= 0.5;
 
     // Boundary conditions applied per row (last-axis slice).
@@ -1395,8 +1616,9 @@ static void radial_gradient_correction_compute(const DoubleArrayView<1>& dr_g,
     // Final: vv[s, n, 1:] /= dv[1:];  vv[s, n, 0] = vv[s, n, 1].
     for (int s = 0; s < nspins; s++) {
         const auto vv_ng = vv_sng.getitem(s);
-        vv_ng.slice(1, 1, ngrids).broadcast_divide(dv_g.slice(1, ngrids));
-        vv_ng.slice(1, 0, 1).assign(vv_ng.slice(1, 1, 2));
+        vv_ng.slice_last(1, ngrids).broadcast_divide(
+            dv_g.slice_last(1, ngrids));
+        vv_ng.slice_last(0, 1).assign(vv_ng.slice_last(1, 2));
     }
 }
 
@@ -1411,74 +1633,27 @@ static void back_project_density_compute(const DoubleArrayView<3>& dEdD_sqL,
 {
     const int nspins = dEdD_sqL.dim(0);
     const int nq = dEdD_sqL.dim(1);
-    const int Lmax = dEdD_sqL.dim(2);
     const int nlebedev = dedn_sng.dim(1);
     const int ngrids = dedn_sng.dim(2);
-    double* dEdD = dEdD_sqL.data();
-    const double* dv = dv_g.data();
-    const double* dedn = dedn_sng.data();
-    const double* vv = vv_sng == nullptr ? nullptr : vv_sng->data();
-    const double* n_qg_ = n_qg.data();
-    const double* wn = weight_n.data();
-    const double* Y = Y_nL.data();
 
-    double* work_ng = (double*)malloc(
-        (size_t)nlebedev * ngrids * sizeof(double));
-    double* work_nq = (double*)malloc(
-        (size_t)nlebedev * nq * sizeof(double));
-    double* weighted_Y_nL = (double*)malloc(
-        (size_t)nlebedev * Lmax * sizeof(double));
-    if (work_ng != NULL && work_nq != NULL && weighted_Y_nL != NULL) {
-        for (int n = 0; n < nlebedev; n++) {
-            for (int L = 0; L < Lmax; L++)
-                weighted_Y_nL[n * Lmax + L] = wn[n] * Y[n * Lmax + L];
-        }
+    DoubleArray<2> weighted_Y_nL(Y_nL.shape());
+    weighted_Y_nL.assign(Y_nL);
+    weighted_Y_nL.broadcast_multiply_axis(0, weight_n);
 
-        for (int s = 0; s < nspins; s++) {
-            for (int n = 0; n < nlebedev; n++) {
-                for (int g = 0; g < ngrids; g++) {
-                    double dedn_val = dedn[idx3(s, n, g, nlebedev, ngrids)];
-                    if (vv != nullptr)
-                        dedn_val += vv[idx3(s, n, g, nlebedev, ngrids)];
-                    work_ng[n * ngrids + g] = dv[g] * dedn_val;
-                }
-            }
-            row_dgemm('N', 'T', nlebedev, nq, ngrids,
-                      1.0, work_ng, ngrids,
-                      n_qg_, ngrids,
-                      0.0, work_nq, nq);
-            row_dgemm('T', 'N', nq, Lmax, nlebedev,
-                      1.0, work_nq, nq,
-                      weighted_Y_nL, Lmax,
-                      1.0, dEdD + idx3(s, 0, 0, nq, Lmax),
-                      Lmax);
-        }
-        free(work_ng);
-        free(work_nq);
-        free(weighted_Y_nL);
-        return;
-    }
-    free(work_ng);
-    free(work_nq);
-    free(weighted_Y_nL);
+    DoubleArray<2> work_ng({nlebedev, ngrids});
+    DoubleArray<2> work_nq({nlebedev, nq});
 
     for (int s = 0; s < nspins; s++) {
-        for (int q = 0; q < nq; q++) {
-            for (int L = 0; L < Lmax; L++) {
-                double sum = 0.0;
-                for (int n = 0; n < nlebedev; n++) {
-                    const double wY = wn[n] * Y[n * Lmax + L];
-                    for (int g = 0; g < ngrids; g++) {
-                        double dedn_val = dedn[idx3(s, n, g,
-                                                     nlebedev, ngrids)];
-                        if (vv != nullptr)
-                            dedn_val += vv[idx3(s, n, g, nlebedev, ngrids)];
-                        sum += dv[g] * dedn_val * n_qg_[q * ngrids + g] * wY;
-                    }
-                }
-                dEdD[idx3(s, q, L, nq, Lmax)] += sum;
-            }
-        }
+        const auto dedn_ng = dedn_sng.getitem(s);
+        if (vv_sng == nullptr)
+            work_ng.assign(dedn_ng);
+        else
+            work_ng.assign(dedn_ng + vv_sng->getitem(s));
+        work_ng.broadcast_multiply(dv_g);
+
+        work_nq.matmul(work_ng, n_qg.transpose());
+        dEdD_sqL.getitem(s).matmul(work_nq.transpose(), weighted_Y_nL,
+                                   1.0, 1.0);
     }
 }
 
@@ -1771,20 +1946,19 @@ static void call_kernel(PyObject* kernel_calculate,
                         const DoubleArrayView<3>& sigma_xng,
                         const DoubleArrayView<3>& dedsigma_xng)
 {
-    npy_intp e_dims[2]     = {e_ng.dim(0), e_ng.dim(1)};
-    npy_intp sng_dims[3]   = {n_sng.dim(0), n_sng.dim(1), n_sng.dim(2)};
-    npy_intp sigma_dims[3] = {sigma_xng.dim(0), sigma_xng.dim(1),
-                               sigma_xng.dim(2)};
+    const auto e_shape = e_ng.shape();
+    const auto sng_shape = n_sng.shape();
+    const auto sigma_shape = sigma_xng.shape();
     PyArrayObject* e_ng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-        2, e_dims, NPY_DOUBLE, e_ng.data());
+        2, e_shape.data(), NPY_DOUBLE, e_ng.data());
     PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-        3, sng_dims, NPY_DOUBLE, n_sng.data());
+        3, sng_shape.data(), NPY_DOUBLE, n_sng.data());
     PyArrayObject* dedn_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-        3, sng_dims, NPY_DOUBLE, dedn_sng.data());
+        3, sng_shape.data(), NPY_DOUBLE, dedn_sng.data());
     PyArrayObject* sigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-        3, sigma_dims, NPY_DOUBLE, sigma_xng.data());
+        3, sigma_shape.data(), NPY_DOUBLE, sigma_xng.data());
     PyArrayObject* dedsigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-        3, sigma_dims, NPY_DOUBLE, dedsigma_xng.data());
+        3, sigma_shape.data(), NPY_DOUBLE, dedsigma_xng.data());
 
     if (e_ng_obj && n_sng_obj && dedn_sng_obj &&
         sigma_xng_obj && dedsigma_xng_obj) {
