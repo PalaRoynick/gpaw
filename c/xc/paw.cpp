@@ -607,6 +607,16 @@ public:
         return Buffer::ok() && DoubleArrayView<N>::ok();
     }
 
+    double* data() const
+    {
+        return DoubleArrayView<N>::data();
+    }
+
+    npy_intp size() const
+    {
+        return DoubleArrayView<N>::size();
+    }
+
     void zero() const
     {
         memset(this->data(), 0, this->size() * sizeof(double));
