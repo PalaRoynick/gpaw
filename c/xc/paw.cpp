@@ -391,12 +391,115 @@ public:
     SelectedDim<N, 1 + sizeof...(Dims)> select(int dim,
                                                Dims... dims) const;
 
+    // Slice along axis with Python-style negative-index support.
+    DoubleArrayView<N> slice(int axis, int start, int end) const
+    {
+        const int n = (int)dims_[axis];
+        if (start < 0) start += n;
+        if (end < 0) end += n;
+        npy_intp new_dims[N];
+        for (int i = 0; i < N; i++) new_dims[i] = dims_[i];
+        new_dims[axis] = end - start;
+        return DoubleArrayView<N>(data_ + (npy_intp)start * stride(axis),
+                                  new_dims, strides_);
+    }
+
+    // 1D convenience: slice(start, end) == slice(0, start, end).
+    DoubleArrayView<N> slice(int start, int end) const
+    {
+        static_assert(N == 1,
+            "slice(start, end) is only for 1D views; "
+            "use slice(axis, start, end) for higher dimensions");
+        return slice(0, start, end);
+    }
+
+    // Element-wise copy from src.
+    void assign(const DoubleArrayView<N>& src) const
+    {
+        check_compatible(src);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++)
+            data_[i] = src.data_[i];
+    }
+
+    // In-place element-wise operators.
+    const DoubleArrayView& operator+=(const DoubleArrayView& rhs) const
+    {
+        check_compatible(rhs);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] += rhs.data_[i];
+        return *this;
+    }
+
+    const DoubleArrayView& operator-=(const DoubleArrayView& rhs) const
+    {
+        check_compatible(rhs);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] -= rhs.data_[i];
+        return *this;
+    }
+
+    const DoubleArrayView& operator*=(const DoubleArrayView& rhs) const
+    {
+        check_compatible(rhs);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] *= rhs.data_[i];
+        return *this;
+    }
+
+    const DoubleArrayView& operator/=(const DoubleArrayView& rhs) const
+    {
+        check_compatible(rhs);
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] /= rhs.data_[i];
+        return *this;
+    }
+
+    const DoubleArrayView& operator*=(double s) const
+    {
+        if (!c_contiguous_)
+            throw std::invalid_argument(
+                "element-wise scalar operation requires a contiguous array");
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] *= s;
+        return *this;
+    }
+
+    const DoubleArrayView& operator/=(double s) const
+    {
+        if (!c_contiguous_)
+            throw std::invalid_argument(
+                "element-wise scalar operation requires a contiguous array");
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++) data_[i] /= s;
+        return *this;
+    }
+
 private:
     PyArrayObject* array_;
     double* data_;
     npy_intp dims_[N];
     npy_intp strides_[N];
     int c_contiguous_;
+
+    void check_compatible(const DoubleArrayView& other) const
+    {
+        if (!c_contiguous_ || !other.c_contiguous_)
+            throw std::invalid_argument(
+                "element-wise operation requires contiguous arrays");
+        for (int i = 0; i < N; i++) {
+            if (dims_[i] != other.dims_[i])
+                throw std::invalid_argument(
+                    "element-wise operation: dimension mismatch on axis " +
+                    std::to_string(i) + " (" + std::to_string(dims_[i]) +
+                    " vs " + std::to_string(other.dims_[i]) + ")");
+            if (strides_[i] != other.strides_[i])
+                throw std::invalid_argument(
+                    "element-wise operation: stride mismatch on axis " +
+                    std::to_string(i) + " (" + std::to_string(strides_[i]) +
+                    " vs " + std::to_string(other.strides_[i]) + ")");
+        }
+    }
 
     char blas_transpose() const
     {
@@ -938,46 +1041,33 @@ static void derivative2_term(const DoubleArrayView<1>& dr_g,
                              int add)
 {
     const int ngrids = out_g.dim(0);
-    const double* dr = dr_g.data();
-    const double* dv = dv_g.data();
-    const double* dedsigma = dedsigma_g.data();
-    const double* a = a_g.data();
-    double* out = out_g.data();
 
-    double c0 = scale * dv[0] * dedsigma[0] * a[0] / dr[0];
-    double c1 = scale * dv[1] * dedsigma[1] * a[1] / dr[1];
+    // c[g] = scale * dv[g] * dedsigma[g] * a[g] / dr[g]
+    DoubleArray<1> c({ngrids});
+    c.assign(a_g);
+    c *= dedsigma_g;
+    c *= dv_g;
+    c /= dr_g;
+    c *= scale;
 
-    if (add)
-        out[0] += 0.5 * c1 + c0;
-    else
-        out[0] = 0.5 * c1 + c0;
-
-    for (int g = 1; g < ngrids - 2; g++) {
-        double cm1 = scale * dv[g - 1] * dedsigma[g - 1] * a[g - 1] / dr[g - 1];
-        double cp1 = scale * dv[g + 1] * dedsigma[g + 1] * a[g + 1] / dr[g + 1];
-        double value = 0.5 * (cp1 - cm1);
-        if (add)
-            out[g] += value;
-        else
-            out[g] = value;
-    }
-
-    double cm3 = scale * dv[ngrids - 3] * dedsigma[ngrids - 3] *
-        a[ngrids - 3] / dr[ngrids - 3];
-    double cm2 = scale * dv[ngrids - 2] * dedsigma[ngrids - 2] *
-        a[ngrids - 2] / dr[ngrids - 2];
-    double cm1 = scale * dv[ngrids - 1] * dedsigma[ngrids - 1] *
-        a[ngrids - 1] / dr[ngrids - 1];
+    // Apply finite-difference stencil into d, then write to out.
+    // Interior:  d[1:-2] = 0.5 * (c[2:-1] - c[:-3])
+    // Boundary:  d[0]    =  c[0]    + 0.5*c[1]
+    //            d[-2]   =  c[-1]   - 0.5*c[-3]
+    //            d[-1]   = -c[-1]   - 0.5*c[-2]
+    DoubleArray<1> d({ngrids});
+    auto d_mid = d.slice(1, ngrids - 2);
+    d_mid.assign(c.slice(2, ngrids - 1));
+    d_mid -= c.slice(0, ngrids - 3);
+    d_mid *= 0.5;
+    d.data()[0]        =  c.data()[0]        + 0.5 * c.data()[1];
+    d.data()[ngrids-2] =  c.data()[ngrids-1] - 0.5 * c.data()[ngrids-3];
+    d.data()[ngrids-1] = -c.data()[ngrids-1] - 0.5 * c.data()[ngrids-2];
 
     if (add)
-        out[ngrids - 2] += cm1 - 0.5 * cm3;
+        out_g += d;
     else
-        out[ngrids - 2] = cm1 - 0.5 * cm3;
-
-    if (add)
-        out[ngrids - 1] += -cm1 - 0.5 * cm2;
-    else
-        out[ngrids - 1] = -cm1 - 0.5 * cm2;
+        out_g.assign(d);
 }
 
 
