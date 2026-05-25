@@ -276,6 +276,31 @@ public:
         return DoubleArrayView<M>::view(data_ + offset, dims, strides);
     }
 
+    template<int M = N, typename std::enable_if<(M > 1), int>::type = 0>
+    DoubleArrayView<N - 1> getitem(int index) const
+    {
+        if (index < 0)
+            index += (int)dims_[0];
+        if (index < 0 || index >= dims_[0])
+            throw std::out_of_range("getitem index out of range");
+
+        std::array<npy_intp, N - 1> new_dims;
+        std::array<npy_intp, N - 1> new_strides;
+        for (int i = 1; i < N; i++) {
+            new_dims[i - 1] = dims_[i];
+            new_strides[i - 1] = stride(i);
+        }
+        return DoubleArrayView<N - 1>::view(
+            data_ + (npy_intp)index * stride(0), new_dims, new_strides);
+    }
+
+    template<int M = N>
+    typename std::enable_if<(M > 2), DoubleArrayView<N - 2>>::type
+    getitem(int index0, int index1) const
+    {
+        return getitem(index0).getitem(index1);
+    }
+
     DoubleArrayView<N> transpose() const
     {
         static_assert(N == 2, "transpose view is implemented for 2D arrays");
@@ -1346,58 +1371,30 @@ static void radial_gradient_correction_compute(const DoubleArrayView<1>& dr_g,
                                                const DoubleArrayView<3>& vv_sng)
 {
     const int nspins = a_sng.dim(0);
-    const int nlebedev = a_sng.dim(1);
     const int ngrids = a_sng.dim(2);
 
     // Diagonal spin terms: one derivative2_term call per spin over all nlebedev.
     for (int s = 0; s < nspins; s++) {
-        const auto dedsigma_ng = dedsigma_xng.view<2>(
-            2 * s * dedsigma_xng.stride(0),
-            {nlebedev, ngrids},
-            {dedsigma_xng.stride(1), dedsigma_xng.stride(2)});
-        const auto a_ng = a_sng.view<2>(
-            s * a_sng.stride(0),
-            {nlebedev, ngrids},
-            {a_sng.stride(1), a_sng.stride(2)});
-        const auto vv_ng = vv_sng.view<2>(
-            s * vv_sng.stride(0),
-            {nlebedev, ngrids},
-            {vv_sng.stride(1), vv_sng.stride(2)});
+        const auto dedsigma_ng = dedsigma_xng.getitem(2 * s);
+        const auto a_ng = a_sng.getitem(s);
+        const auto vv_ng = vv_sng.getitem(s);
         derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a_ng, -2.0, vv_ng, 0);
     }
 
     // Cross-spin terms (nspins == 2 only): dedsigma_xng[1] couples s=0 and s=1.
     if (nspins == 2) {
-        const auto dedsigma_ng = dedsigma_xng.view<2>(
-            dedsigma_xng.stride(0),
-            {nlebedev, ngrids},
-            {dedsigma_xng.stride(1), dedsigma_xng.stride(2)});
-        const auto a0_ng = a_sng.view<2>(
-            0,
-            {nlebedev, ngrids},
-            {a_sng.stride(1), a_sng.stride(2)});
-        const auto a1_ng = a_sng.view<2>(
-            a_sng.stride(0),
-            {nlebedev, ngrids},
-            {a_sng.stride(1), a_sng.stride(2)});
-        const auto vv0_ng = vv_sng.view<2>(
-            0,
-            {nlebedev, ngrids},
-            {vv_sng.stride(1), vv_sng.stride(2)});
-        const auto vv1_ng = vv_sng.view<2>(
-            vv_sng.stride(0),
-            {nlebedev, ngrids},
-            {vv_sng.stride(1), vv_sng.stride(2)});
+        const auto dedsigma_ng = dedsigma_xng.getitem(1);
+        const auto a0_ng = a_sng.getitem(0);
+        const auto a1_ng = a_sng.getitem(1);
+        const auto vv0_ng = vv_sng.getitem(0);
+        const auto vv1_ng = vv_sng.getitem(1);
         derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a1_ng, -1.0, vv0_ng, 1);
         derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a0_ng, -1.0, vv1_ng, 1);
     }
 
     // Final: vv[s, n, 1:] /= dv[1:];  vv[s, n, 0] = vv[s, n, 1].
     for (int s = 0; s < nspins; s++) {
-        const auto vv_ng = vv_sng.view<2>(
-            s * vv_sng.stride(0),
-            {nlebedev, ngrids},
-            {vv_sng.stride(1), vv_sng.stride(2)});
+        const auto vv_ng = vv_sng.getitem(s);
         vv_ng.slice(1, 1, ngrids).broadcast_divide(dv_g.slice(1, ngrids));
         vv_ng.slice(1, 0, 1).assign(vv_ng.slice(1, 1, 2));
     }
@@ -1870,12 +1867,8 @@ static void calculate_expansion(PyObject* kernel_calculate,
                     n_sLg.data()[idx3(s, L, g, Lmax, ngrids)] +=
                         nc0_sg.data()[s * ngrids + g];
             derivative_term(dr_g,
-                            n_sLg.view<1>(s * n_sLg.stride(0) +
-                                          L * n_sLg.stride(1),
-                                          {ngrids}, {1}),
-                            dndr_sLg.view<1>(s * dndr_sLg.stride(0) +
-                                             L * dndr_sLg.stride(1),
-                                             {ngrids}, {1}));
+                            n_sLg.getitem(s, L),
+                            dndr_sLg.getitem(s, L));
         }
     }
     project_density_compute(n_sLg, dndr_sLg, Y_nL,
