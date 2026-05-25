@@ -2,6 +2,7 @@
 #include "extensions.h"
 #include "gpaw_utils.h"
 
+#include <array>
 #include <climits>
 #include <stdexcept>
 
@@ -183,6 +184,24 @@ public:
         return data_;
     }
 
+    static DoubleArray<N> view(double* data,
+                               const std::array<npy_intp, N>& dims,
+                               const std::array<npy_intp, N>& strides)
+    {
+        std::array<npy_intp, N> byte_strides;
+        for (int i = 0; i < N; i++)
+            byte_strides[i] = strides[i] * (npy_intp)sizeof(double);
+        return DoubleArray<N>(data, dims.data(), byte_strides.data());
+    }
+
+    template<int M>
+    DoubleArray<M> view(npy_intp offset,
+                        const std::array<npy_intp, M>& dims,
+                        const std::array<npy_intp, M>& strides) const
+    {
+        return DoubleArray<M>::view(data_ + offset, dims, strides);
+    }
+
     void matmul(const DoubleArray& a,
                 const DoubleArray& b,
                 double alpha = 1.0,
@@ -318,13 +337,6 @@ SelectedDim<N> DoubleArray<N>::select(int dim) const
 }
 
 
-static DoubleArray<2> view2(double* data,
-                            npy_intp n0,
-                            npy_intp n1,
-                            npy_intp stride0,
-                            npy_intp stride1);
-
-
 void contract(const SelectedDim<2>& left,
               const SelectedDim<2>& right,
               const DoubleArray<2>& out)
@@ -360,13 +372,13 @@ void contract(const SelectedDim<2>& left,
 
     for (int i = 0; i < b.dim(0); i++) {
         const DoubleArray<2> b_i =
-            view2(b.data() + i * b.stride(0),
-                  b.dim(1), b.dim(2),
-                  b.stride(1), b.stride(2));
+            b.view<2>(i * b.stride(0),
+                      {b.dim(1), b.dim(2)},
+                      {b.stride(1), b.stride(2)});
         const DoubleArray<2> out_i =
-            view2(out.data() + i * out.stride(1),
-                  out.dim(0), out.dim(2),
-                  out.stride(0), out.stride(2));
+            out.view<2>(i * out.stride(1),
+                        {out.dim(0), out.dim(2)},
+                        {out.stride(0), out.stride(2)});
         out_i.matmul(a, b_i);
     }
 }
@@ -390,19 +402,18 @@ void contract(const SelectedDim<3>& left,
 
     for (int i = 0; i < a.dim(0); i++) {
         const DoubleArray<2> a_i =
-            view2(a.data() + i * a.stride(0),
-                  a.dim(1), a.dim(2),
-                  a.stride(1), a.stride(2));
+            a.view<2>(i * a.stride(0),
+                      {a.dim(1), a.dim(2)},
+                      {a.stride(1), a.stride(2)});
         for (int j = 0; j < b.dim(0); j++) {
             const DoubleArray<2> b_j =
-                view2(b.data() + j * b.stride(0),
-                      b.dim(1), b.dim(2),
-                      b.stride(1), b.stride(2));
+                b.view<2>(j * b.stride(0),
+                          {b.dim(1), b.dim(2)},
+                          {b.stride(1), b.stride(2)});
             const DoubleArray<2> out_ij =
-                view2(out.data() + i * out.stride(0) +
-                      j * out.stride(2),
-                      out.dim(1), out.dim(3),
-                      out.stride(1), out.stride(3));
+                out.view<2>(i * out.stride(0) + j * out.stride(2),
+                            {out.dim(1), out.dim(3)},
+                            {out.stride(1), out.stride(3)});
             out_ij.matmul(a_i, b_j);
         }
     }
@@ -489,69 +500,12 @@ static void derivative2_term(const double* dr_g,
 }
 
 
-static DoubleArray<2> view2(double* data,
-                            npy_intp n0,
-                            npy_intp n1,
-                            npy_intp stride0,
-                            npy_intp stride1)
-{
-    const npy_intp dims[2] = {n0, n1};
-    const npy_intp strides[2] = {
-        stride0 * (npy_intp)sizeof(double),
-        stride1 * (npy_intp)sizeof(double)};
-    return DoubleArray<2>(data, dims, strides);
-}
-
-
-static DoubleArray<1> view1(double* data, npy_intp n0, npy_intp stride0)
-{
-    const npy_intp dims[1] = {n0};
-    const npy_intp strides[1] = {stride0 * (npy_intp)sizeof(double)};
-    return DoubleArray<1>(data, dims, strides);
-}
-
-
-static DoubleArray<3> view3(double* data,
-                            npy_intp n0,
-                            npy_intp n1,
-                            npy_intp n2,
-                            npy_intp stride0,
-                            npy_intp stride1,
-                            npy_intp stride2)
-{
-    const npy_intp dims[3] = {n0, n1, n2};
-    const npy_intp strides[3] = {
-        stride0 * (npy_intp)sizeof(double),
-        stride1 * (npy_intp)sizeof(double),
-        stride2 * (npy_intp)sizeof(double)};
-    return DoubleArray<3>(data, dims, strides);
-}
-
-
-static DoubleArray<4> view4(double* data,
-                            npy_intp n0,
-                            npy_intp n1,
-                            npy_intp n2,
-                            npy_intp n3,
-                            npy_intp stride0,
-                            npy_intp stride1,
-                            npy_intp stride2,
-                            npy_intp stride3)
-{
-    const npy_intp dims[4] = {n0, n1, n2, n3};
-    const npy_intp strides[4] = {
-        stride0 * (npy_intp)sizeof(double),
-        stride1 * (npy_intp)sizeof(double),
-        stride2 * (npy_intp)sizeof(double),
-        stride3 * (npy_intp)sizeof(double)};
-    return DoubleArray<4>(data, dims, strides);
-}
-
-
 static DoubleArray<3> spin_middle_view(const DoubleArray<3>& array)
 {
-    return view3(array.data(), array.dim(1), array.dim(0), array.dim(2),
-                 array.stride(1), array.stride(0), array.stride(2));
+    return array.view<3>(0,
+                         {array.dim(1), array.dim(0), array.dim(2)},
+                         {array.stride(1), array.stride(0),
+                          array.stride(2)});
 }
 
 
@@ -1082,8 +1036,9 @@ CLINKAGE PyObject* paw_gga_project_density(PyObject* self, PyObject* args)
     if (rnablaY_vnL_data == NULL)
         return PyErr_NoMemory();
     const DoubleArray<3> rnablaY_vnL =
-        view3(rnablaY_vnL_data, 3, nlebedev, Lmax,
-              (npy_intp)nlebedev * Lmax, Lmax, 1);
+        DoubleArray<3>::view(rnablaY_vnL_data,
+                             {3, nlebedev, Lmax},
+                             {(npy_intp)nlebedev * Lmax, Lmax, 1});
 
     Py_BEGIN_ALLOW_THREADS
     project_density_compute(n_sLg, dndr_sLg, Y_nL, rnablaY_nLv, r_g,
@@ -1537,33 +1492,45 @@ static int calculate_expansion(PyObject* kernel_calculate,
 
     {
         const DoubleArray<3> n_sLg_view =
-            view3(n_sLg, nspins, Lmax, ngrids,
-                  (npy_intp)Lmax * ngrids, ngrids, 1);
+            DoubleArray<3>::view(n_sLg,
+                                 {nspins, Lmax, ngrids},
+                                 {(npy_intp)Lmax * ngrids, ngrids, 1});
         const DoubleArray<3> dndr_sLg_view =
-            view3(dndr_sLg, nspins, Lmax, ngrids,
-                  (npy_intp)Lmax * ngrids, ngrids, 1);
+            DoubleArray<3>::view(dndr_sLg,
+                                 {nspins, Lmax, ngrids},
+                                 {(npy_intp)Lmax * ngrids, ngrids, 1});
         const DoubleArray<2> Y_nL_view =
-            view2((double*)Y_nL, nlebedev, Lmax, Lmax, 1);
+            DoubleArray<2>::view((double*)Y_nL,
+                                 {nlebedev, Lmax},
+                                 {Lmax, 1});
         const DoubleArray<3> rnablaY_nLv_view =
-            view3((double*)rnablaY_nLv, nlebedev, Lmax, 3,
-                  (npy_intp)Lmax * 3, 3, 1);
-        const DoubleArray<1> r_g_view = view1((double*)r_g, ngrids, 1);
+            DoubleArray<3>::view((double*)rnablaY_nLv,
+                                 {nlebedev, Lmax, 3},
+                                 {(npy_intp)Lmax * 3, 3, 1});
+        const DoubleArray<1> r_g_view =
+            DoubleArray<1>::view((double*)r_g, {ngrids}, {1});
         const DoubleArray<3> n_sng_view =
-            view3(n_sng, nspins, nlebedev, ngrids,
-                  (npy_intp)nlebedev * ngrids, ngrids, 1);
+            DoubleArray<3>::view(n_sng,
+                                 {nspins, nlebedev, ngrids},
+                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
         const DoubleArray<3> a_sng_view =
-            view3(a_sng, nspins, nlebedev, ngrids,
-                  (npy_intp)nlebedev * ngrids, ngrids, 1);
+            DoubleArray<3>::view(a_sng,
+                                 {nspins, nlebedev, ngrids},
+                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
         const DoubleArray<4> b_vnsg_view =
-            view4(b_vnsg, 3, nlebedev, nspins, ngrids,
-                  (npy_intp)nlebedev * nspins * ngrids,
-                  (npy_intp)nspins * ngrids, ngrids, 1);
+            DoubleArray<4>::view(
+                b_vnsg,
+                {3, nlebedev, nspins, ngrids},
+                {(npy_intp)nlebedev * nspins * ngrids,
+                 (npy_intp)nspins * ngrids, ngrids, 1});
         const DoubleArray<3> sigma_xng_view =
-            view3(sigma_xng, 2 * nspins - 1, nlebedev, ngrids,
-                  (npy_intp)nlebedev * ngrids, ngrids, 1);
+            DoubleArray<3>::view(sigma_xng,
+                                 {2 * nspins - 1, nlebedev, ngrids},
+                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
         const DoubleArray<3> rnablaY_vnL =
-            view3(rnablaY_vnL_data, 3, nlebedev, Lmax,
-                  (npy_intp)nlebedev * Lmax, Lmax, 1);
+            DoubleArray<3>::view(rnablaY_vnL_data,
+                                 {3, nlebedev, Lmax},
+                                 {(npy_intp)nlebedev * Lmax, Lmax, 1});
 
         Py_BEGIN_ALLOW_THREADS
         for (int s = 0; s < nspins; s++) {
