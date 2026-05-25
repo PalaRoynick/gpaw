@@ -90,7 +90,7 @@ static void row_dgemm(char transa,
 }
 
 
-template<int N>
+template<int N, int M = 1>
 class SelectedDim;
 
 
@@ -322,7 +322,9 @@ public:
         throw std::invalid_argument("unsupported transpose rank");
     }
 
-    SelectedDim<N> select(int dim) const;
+    template<typename... Dims>
+    SelectedDim<N, 1 + sizeof...(Dims)> select(int dim,
+                                               Dims... dims) const;
 
 private:
     PyArrayObject* array_;
@@ -358,16 +360,16 @@ private:
         return stride(1);
     }
 
-    template<int M>
+    template<int ON, int CM>
     friend class SelectedDim;
 };
 
 
-template<int N>
+template<int N, int M>
 class SelectedDim {
 public:
-    SelectedDim(const DoubleArray<N>& array, int dim)
-        : array_(array), dim_(dim)
+    SelectedDim(const DoubleArray<N>& array, const std::array<int, M>& dims)
+        : array_(array), dims_(dims)
     {
     }
 
@@ -378,24 +380,32 @@ public:
 
     int dim() const
     {
-        return dim_;
+        static_assert(M == 1, "dim() is only valid for one selected axis");
+        return dims_[0];
+    }
+
+    int dim(int axis) const
+    {
+        return dims_[axis];
     }
 
 private:
     const DoubleArray<N> array_;
-    const int dim_;
+    const std::array<int, M> dims_;
 };
 
 
 template<int N>
-SelectedDim<N> DoubleArray<N>::select(int dim) const
+template<typename... Dims>
+SelectedDim<N, 1 + sizeof...(Dims)>
+DoubleArray<N>::select(int dim, Dims... dims) const
 {
-    return SelectedDim<N>(*this, dim);
+    return SelectedDim<N, 1 + sizeof...(Dims)>(*this, {dim, dims...});
 }
 
 
-void contract(const SelectedDim<2>& left,
-              const SelectedDim<2>& right,
+void contract(const SelectedDim<2, 1>& left,
+              const SelectedDim<2, 1>& right,
               const DoubleArray<2>& out)
 {
     const DoubleArray<2>& a = left.array();
@@ -412,8 +422,8 @@ void contract(const SelectedDim<2>& left,
 }
 
 
-void contract(const SelectedDim<2>& left,
-              const SelectedDim<3>& right,
+void contract(const SelectedDim<2, 1>& left,
+              const SelectedDim<3, 1>& right,
               const DoubleArray<3>& out)
 {
     const DoubleArray<2>& a = left.array();
@@ -466,8 +476,8 @@ void contract(const SelectedDim<2>& left,
 }
 
 
-void contract(const SelectedDim<3>& left,
-              const SelectedDim<3>& right,
+void contract(const SelectedDim<3, 1>& left,
+              const SelectedDim<3, 1>& right,
               const DoubleArray<4>& out)
 {
     const DoubleArray<3>& a = left.array();
@@ -499,6 +509,32 @@ void contract(const SelectedDim<3>& left,
             out_ij.matmul(a_i, b_j);
         }
     }
+}
+
+
+double contract(const SelectedDim<1, 1>& left,
+                const SelectedDim<1, 1>& middle,
+                const SelectedDim<2, 2>& right)
+{
+    const DoubleArray<1>& a = left.array();
+    const DoubleArray<1>& b = middle.array();
+    const DoubleArray<2>& c = right.array();
+
+    if (left.dim() != 0 || middle.dim() != 0 ||
+        right.dim(0) != 0 || right.dim(1) != 1)
+        throw std::invalid_argument("unsupported scalar contraction dimensions");
+    if (a.dim(0) != c.dim(0) || b.dim(0) != c.dim(1))
+        throw std::invalid_argument("scalar contract dimension mismatch");
+
+    double value = 0.0;
+    for (int i = 0; i < c.dim(0); i++) {
+        double row_value = 0.0;
+        for (int j = 0; j < c.dim(1); j++)
+            row_value += b.data()[j * b.stride(0)] *
+                c.data()[i * c.stride(0) + j * c.stride(1)];
+        value += a.data()[i * a.stride(0)] * row_value;
+    }
+    return value;
 }
 
 
@@ -990,20 +1026,11 @@ static void back_project_gradient_compute(double* dEdD_sqL,
 }
 
 
-static double integrate_energy_compute(const double* e_ng,
-                                       const double* dv_g,
-                                       const double* weight_n,
-                                       int nlebedev,
-                                       int ngrids)
+static double integrate_energy_compute(const DoubleArray<2>& e_ng,
+                                       const DoubleArray<1>& dv_g,
+                                       const DoubleArray<1>& weight_n)
 {
-    double E = 0.0;
-    for (int n = 0; n < nlebedev; n++) {
-        double integral = 0.0;
-        for (int g = 0; g < ngrids; g++)
-            integral += e_ng[n * ngrids + g] * dv_g[g];
-        E += weight_n[n] * integral;
-    }
-    return E;
+    return contract(weight_n.select(0), dv_g.select(0), e_ng.select(0, 1));
 }
 
 
@@ -1482,10 +1509,7 @@ CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject* self, PyObject* args)
                                   weight_n.data(),
                                   rnablaY_nLv.data(),
                                   nspins, nq, Lmax, nlebedev, ngrids);
-    E = integrate_energy_compute(e_ng.data(),
-                                 dv_g.data(),
-                                 weight_n.data(),
-                                 nlebedev, ngrids);
+    E = integrate_energy_compute(e_ng, dv_g, weight_n);
     Py_END_ALLOW_THREADS
 
     free(vv_sng);
@@ -1685,22 +1709,32 @@ static int calculate_expansion(PyObject* kernel_calculate,
         goto fail;
     }
 
-    Py_BEGIN_ALLOW_THREADS
-    radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng,
-                                       a_sng, vv_sng,
-                                       nspins, nlebedev, ngrids);
-    back_project_density_compute(dEdD_sqL, dv_g,
-                                 dedn_sng, vv_sng, n_qg,
-                                 weight_n, Y_nL, nspins, nq, Lmax,
-                                 nlebedev, ngrids);
-    back_project_gradient_compute(dEdD_sqL,
-                                  dedsigma_xng,
-                                  b_vnsg,
-                                  n_qg, dr_g, weight_n, rnablaY_nLv,
-                                  nspins, nq, Lmax, nlebedev, ngrids);
-    *E = integrate_energy_compute(e_ng, dv_g, weight_n,
-                                  nlebedev, ngrids);
-    Py_END_ALLOW_THREADS
+    {
+        const DoubleArray<2> e_ng_view =
+            DoubleArray<2>::view(e_ng,
+                                 {nlebedev, ngrids},
+                                 {(npy_intp)ngrids, 1});
+        const DoubleArray<1> dv_g_view =
+            DoubleArray<1>::view((double*)dv_g, {ngrids}, {1});
+        const DoubleArray<1> weight_n_view =
+            DoubleArray<1>::view((double*)weight_n, {nlebedev}, {1});
+
+        Py_BEGIN_ALLOW_THREADS
+        radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng,
+                                           a_sng, vv_sng,
+                                           nspins, nlebedev, ngrids);
+        back_project_density_compute(dEdD_sqL, dv_g,
+                                     dedn_sng, vv_sng, n_qg,
+                                     weight_n, Y_nL, nspins, nq, Lmax,
+                                     nlebedev, ngrids);
+        back_project_gradient_compute(dEdD_sqL,
+                                      dedsigma_xng,
+                                      b_vnsg,
+                                      n_qg, dr_g, weight_n, rnablaY_nLv,
+                                      nspins, nq, Lmax, nlebedev, ngrids);
+        *E = integrate_energy_compute(e_ng_view, dv_g_view, weight_n_view);
+        Py_END_ALLOW_THREADS
+    }
 
     free(vv_sng);
     vv_sng = NULL;
