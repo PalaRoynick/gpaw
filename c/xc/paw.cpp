@@ -624,6 +624,111 @@ public:
 };
 
 
+// Tracks named dimensions discovered from argument arrays and allocates
+// temporary arrays from compact dimension strings such as "sng".
+class DimSpace {
+    std::map<char, npy_intp> known_dims_;
+    bool ok_ = true;
+
+    static const char* dim_suffix(const char* name)
+    {
+        const char* last = nullptr;
+        for (const char* p = name; *p; ++p)
+            if (*p == '_') last = p;
+        return last ? last + 1 : name;
+    }
+
+public:
+    bool ok() const
+    {
+        return ok_;
+    }
+
+    template<int N>
+    void register_array(const char* name, const DoubleArrayView<N>& arr)
+    {
+        const char* suffix = dim_suffix(name);
+        int len = 0;
+        while (suffix[len]) ++len;
+        if (len != N)
+            return;
+        for (int i = 0; i < N; i++) {
+            char label = suffix[i];
+            npy_intp size = (npy_intp)arr.dim(i);
+            auto result = known_dims_.emplace(label, size);
+            if (!result.second && result.first->second != size) {
+                PyErr_Format(PyExc_ValueError,
+                    "array '%s': dimension '%c' has size %lld but "
+                    "expected %lld from a previous array",
+                    name, label, (long long)size,
+                    (long long)result.first->second);
+                ok_ = false;
+                return;
+            }
+        }
+    }
+
+    // Assert that a registered dimension label equals a fixed value.
+    void require_dim(char label, npy_intp expected)
+    {
+        auto it = known_dims_.find(label);
+        if (it == known_dims_.end()) {
+            PyErr_Format(PyExc_SystemError,
+                "require_dim: dimension '%c' not yet registered", label);
+            ok_ = false;
+            return;
+        }
+        if (it->second != expected) {
+            PyErr_Format(PyExc_ValueError,
+                "dimension '%c' must be %lld but is %lld",
+                label, (long long)expected, (long long)it->second);
+            ok_ = false;
+        }
+    }
+
+    template<int N>
+    DoubleArray<N> new_array(const char* dims)
+    {
+        std::array<npy_intp, N> shape;
+        int len = 0;
+        while (dims[len]) ++len;
+        if (len != N) {
+            PyErr_Format(PyExc_SystemError,
+                "new_array: dimension string '%s' has length %d, expected %d",
+                dims, len, N);
+            ok_ = false;
+            shape.fill(0);
+            return DoubleArray<N>(shape);
+        }
+
+        for (int i = 0; i < N; i++) {
+            auto it = known_dims_.find(dims[i]);
+            if (it == known_dims_.end()) {
+                PyErr_Format(PyExc_SystemError,
+                    "new_array: unknown dimension '%c' in '%s'",
+                    dims[i], dims);
+                ok_ = false;
+                shape.fill(0);
+                return DoubleArray<N>(shape);
+            }
+            shape[i] = it->second;
+        }
+        return DoubleArray<N>(shape);
+    }
+
+    void set_dim(char label, npy_intp size)
+    {
+        auto result = known_dims_.emplace(label, size);
+        if (!result.second && result.first->second != size) {
+            PyErr_Format(PyExc_ValueError,
+                "dimension '%c' has size %lld but expected %lld",
+                label, (long long)result.first->second, (long long)size);
+            ok_ = false;
+        }
+    }
+};
+
+
 // Parses keyword arguments from a Python C extension call.
 // Constructor takes both args and kwargs; it rejects any positional args.
 // array() / optional_array() fetch numpy arrays, verify they are float64 and
@@ -646,40 +751,8 @@ class Args {
 
     PyObject* kwargs_;
     std::vector<std::unique_ptr<ArrayBase>> storage_;
-    std::map<char, npy_intp> known_dims_;
+    DimSpace dimspace_;
     bool ok_ = true;
-
-    static const char* dim_suffix(const char* name)
-    {
-        const char* last = nullptr;
-        for (const char* p = name; *p; ++p)
-            if (*p == '_') last = p;
-        return last ? last + 1 : name;
-    }
-
-    template<int N>
-    void register_dims(const char* name, const DoubleArrayView<N>& arr)
-    {
-        const char* suffix = dim_suffix(name);
-        int len = 0;
-        while (suffix[len]) ++len;
-        if (len != N)
-            return;
-        for (int i = 0; i < N; i++) {
-            char label = suffix[i];
-            npy_intp size = (npy_intp)arr.dim(i);
-            auto result = known_dims_.emplace(label, size);
-            if (!result.second && result.first->second != size) {
-                PyErr_Format(PyExc_ValueError,
-                    "array '%s': dimension '%c' has size %lld but "
-                    "expected %lld from a previous array",
-                    name, label, (long long)size,
-                    (long long)result.first->second);
-                ok_ = false;
-                return;
-            }
-        }
-    }
 
     template<int N>
     DoubleArrayView<N>& store(DoubleArrayView<N> arr)
@@ -720,7 +793,7 @@ class Args {
                 "argument '%s': array must be C-contiguous", name);
             ok_ = false;
         } else {
-            register_dims(name, arr);
+            dimspace_.register_array(name, arr);
         }
         return store(arr);
     }
@@ -735,7 +808,12 @@ public:
         }
     }
 
-    bool ok() const { return ok_; }
+    bool ok() const { return ok_ && dimspace_.ok(); }
+
+    DimSpace& dimspace()
+    {
+        return dimspace_;
+    }
 
     // Fetch a callable object; sets ok_=false if missing or not callable.
     PyObject* callable(const char* name)
@@ -779,22 +857,9 @@ public:
         }
     }
 
-    // Assert that a registered dimension label equals a fixed value.
     void require_dim(char label, npy_intp expected)
     {
-        auto it = known_dims_.find(label);
-        if (it == known_dims_.end()) {
-            PyErr_Format(PyExc_SystemError,
-                "require_dim: dimension '%c' not yet registered", label);
-            ok_ = false;
-            return;
-        }
-        if (it->second != expected) {
-            PyErr_Format(PyExc_ValueError,
-                "dimension '%c' must be %lld but is %lld",
-                label, (long long)expected, (long long)it->second);
-            ok_ = false;
-        }
+        dimspace_.require_dim(label, expected);
     }
 
     template<int N>
@@ -1826,6 +1891,7 @@ static int call_kernel(PyObject* kernel_calculate,
 
 
 static int calculate_expansion(PyObject* kernel_calculate,
+                               DimSpace& dimspace,
                                const DoubleArrayView<3>& D_sLq,
                                const DoubleArrayView<2>& n_qg,
                                const DoubleArrayView<2>& nc0_sg,
@@ -1847,20 +1913,21 @@ static int calculate_expansion(PyObject* kernel_calculate,
     const int ngrids   = n_qg.dim(1);
     const int nlebedev = Y_nL.dim(0);
 
-    const DoubleArray<3> n_sLg({nspins, Lmax, ngrids});
-    const DoubleArray<3> dndr_sLg({nspins, Lmax, ngrids});
-    const DoubleArray<3> rnablaY_vnL({3, nlebedev, Lmax});
-    const DoubleArray<3> n_sng({nspins, nlebedev, ngrids});
-    const DoubleArray<3> a_sng({nspins, nlebedev, ngrids});
-    const DoubleArray<4> b_vnsg({3, nlebedev, nspins, ngrids});
-    const DoubleArray<3> sigma_xng({2 * nspins - 1, nlebedev, ngrids});
-    const DoubleArray<2> e_ng({nlebedev, ngrids});
-    const DoubleArray<3> dedn_sng({nspins, nlebedev, ngrids});
-    const DoubleArray<3> dedsigma_xng({2 * nspins - 1, nlebedev, ngrids});
-    const DoubleArray<3> dEdD_sqL({nspins, nq, Lmax});
-    const DoubleArray<3> vv_sng({nspins, nlebedev, ngrids});
+    const DoubleArray<3> n_sLg = dimspace.new_array<3>("sLg");
+    const DoubleArray<3> dndr_sLg = dimspace.new_array<3>("sLg");
+    const DoubleArray<3> rnablaY_vnL = dimspace.new_array<3>("vnL");
+    const DoubleArray<3> n_sng = dimspace.new_array<3>("sng");
+    const DoubleArray<3> a_sng = dimspace.new_array<3>("sng");
+    const DoubleArray<4> b_vnsg = dimspace.new_array<4>("vnsg");
+    const DoubleArray<3> sigma_xng = dimspace.new_array<3>("xng");
+    const DoubleArray<2> e_ng = dimspace.new_array<2>("ng");
+    const DoubleArray<3> dedn_sng = dimspace.new_array<3>("sng");
+    const DoubleArray<3> dedsigma_xng = dimspace.new_array<3>("xng");
+    const DoubleArray<3> dEdD_sqL = dimspace.new_array<3>("sqL");
+    const DoubleArray<3> vv_sng = dimspace.new_array<3>("sng");
 
-    if (!n_sLg.ok() || !dndr_sLg.ok() || !rnablaY_vnL.ok() ||
+    if (!dimspace.ok() ||
+        !n_sLg.ok() || !dndr_sLg.ok() || !rnablaY_vnL.ok() ||
         !n_sng.ok() || !a_sng.ok() || !b_vnsg.ok() ||
         !sigma_xng.ok() || !e_ng.ok() ||
         !dedn_sng.ok() || !dedsigma_xng.ok() ||
@@ -1950,7 +2017,7 @@ static int calculate_expansion(PyObject* kernel_calculate,
         const auto B_pqL_flat = B_pqL.view<2>(0,
             {(npy_intp)np, (npy_intp)nq * Lmax},
             {(npy_intp)nq * Lmax, 1});
-        const DoubleArray<2> dEdD_tmp({nspins, np});
+        const DoubleArray<2> dEdD_tmp = dimspace.new_array<2>("sp");
         if (!dEdD_tmp.ok())
             return 0;
 
@@ -1985,6 +2052,7 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
     auto& weight_n         = a.array<1>("weight_n");
     auto& rnablaY_nLv      = a.array<3>("rnablaY_nLv");
     auto* dEdD_sp          = a.optional_array<2>("dEdD_sp");
+    DimSpace& dimspace     = a.dimspace();
     a.require_dim('v', 3);
     if (!a.ok())
         return NULL;
@@ -1994,13 +2062,16 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
         return NULL;
     }
 
-    const DoubleArray<3> D_sLq({D_sp.dim(0), B_pqL.dim(2), B_pqL.dim(1)});
+    dimspace.set_dim('x', 2 * D_sp.dim(0) - 1);
+    if (!a.ok())
+        return NULL;
+
+    const DoubleArray<3> D_sLq = dimspace.new_array<3>("sLq");
     if (!D_sLq.ok())
         return NULL;
 
     {
-        const DoubleArray<3> D_sqL({D_sp.dim(0), B_pqL.dim(1),
-                                    B_pqL.dim(2)});
+        const DoubleArray<3> D_sqL = dimspace.new_array<3>("sqL");
         if (!D_sqL.ok())
             return NULL;
         Py_BEGIN_ALLOW_THREADS
@@ -2011,13 +2082,13 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
 
     double E = 0.0;
     double Et = 0.0;
-    if (!calculate_expansion(kernel_calculate, D_sLq,
+    if (!calculate_expansion(kernel_calculate, dimspace, D_sLq,
                              n_qg, nc0_sg, B_pqL,
                              dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
                              dEdD_sp, 1.0, &E))
         return NULL;
 
-    if (!calculate_expansion(kernel_calculate, D_sLq,
+    if (!calculate_expansion(kernel_calculate, dimspace, D_sLq,
                              nt_qg, nct0_sg, B_pqL,
                              dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
                              dEdD_sp, -1.0, &Et))
