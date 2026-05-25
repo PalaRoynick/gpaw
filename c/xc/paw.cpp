@@ -417,42 +417,40 @@ public:
     // Element-wise copy from src.
     void assign(const DoubleArrayView<N>& src) const
     {
-        check_compatible(src);
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++)
-            data_[i] = src.data_[i];
+        apply_binary(src, [](double& l, double r) { l = r; });
     }
 
     // In-place element-wise operators.
     const DoubleArrayView& operator+=(const DoubleArrayView& rhs) const
     {
-        check_compatible(rhs);
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] += rhs.data_[i];
+        apply_binary(rhs, [](double& l, double r) { l += r; });
         return *this;
     }
 
     const DoubleArrayView& operator-=(const DoubleArrayView& rhs) const
     {
-        check_compatible(rhs);
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] -= rhs.data_[i];
+        apply_binary(rhs, [](double& l, double r) { l -= r; });
         return *this;
     }
 
     const DoubleArrayView& operator*=(const DoubleArrayView& rhs) const
     {
-        check_compatible(rhs);
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] *= rhs.data_[i];
+        apply_binary(rhs, [](double& l, double r) { l *= r; });
         return *this;
     }
 
     const DoubleArrayView& operator*=(
         std::initializer_list<DoubleArrayView<N>> factors) const
     {
-        for (const auto& f : factors)
+        if (!c_contiguous_)
+            throw std::invalid_argument(
+                "multi-factor *= requires contiguous destination");
+        for (const auto& f : factors) {
             check_compatible(f);
+            if (!f.c_contiguous_)
+                throw std::invalid_argument(
+                    "multi-factor *= requires contiguous factors");
+        }
         const npy_intp n = size();
         for (npy_intp i = 0; i < n; i++) {
             double val = data_[i];
@@ -465,30 +463,42 @@ public:
 
     const DoubleArrayView& operator/=(const DoubleArrayView& rhs) const
     {
-        check_compatible(rhs);
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] /= rhs.data_[i];
+        apply_binary(rhs, [](double& l, double r) { l /= r; });
         return *this;
     }
 
     const DoubleArrayView& operator*=(double s) const
     {
-        if (!c_contiguous_)
-            throw std::invalid_argument(
-                "element-wise scalar operation requires a contiguous array");
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] *= s;
+        apply_scalar(s, [](double& l, double r) { l *= r; });
         return *this;
     }
 
     const DoubleArrayView& operator/=(double s) const
     {
-        if (!c_contiguous_)
-            throw std::invalid_argument(
-                "element-wise scalar operation requires a contiguous array");
-        const npy_intp n = size();
-        for (npy_intp i = 0; i < n; i++) data_[i] /= s;
+        apply_scalar(s, [](double& l, double r) { l /= r; });
         return *this;
+    }
+
+    // Multiply each element by the corresponding element of a 1D rhs,
+    // broadcast over all axes except the last.
+    void broadcast_multiply(const DoubleArrayView<1>& rhs) const
+    {
+        if (rhs.dim(0) != (int)dims_[N - 1])
+            throw std::invalid_argument(
+                "broadcast_multiply: size mismatch on last axis");
+        apply_broadcast_strided<0>(data_, rhs.data(), rhs.stride(0),
+            [](double& l, double r) { l *= r; });
+    }
+
+    // Divide each element by the corresponding element of a 1D rhs,
+    // broadcast over all axes except the last.
+    void broadcast_divide(const DoubleArrayView<1>& rhs) const
+    {
+        if (rhs.dim(0) != (int)dims_[N - 1])
+            throw std::invalid_argument(
+                "broadcast_divide: size mismatch on last axis");
+        apply_broadcast_strided<0>(data_, rhs.data(), rhs.stride(0),
+            [](double& l, double r) { l /= r; });
     }
 
 private:
@@ -500,20 +510,96 @@ private:
 
     void check_compatible(const DoubleArrayView& other) const
     {
-        if (!c_contiguous_ || !other.c_contiguous_)
-            throw std::invalid_argument(
-                "element-wise operation requires contiguous arrays");
         for (int i = 0; i < N; i++) {
             if (dims_[i] != other.dims_[i])
                 throw std::invalid_argument(
                     "element-wise operation: dimension mismatch on axis " +
                     std::to_string(i) + " (" + std::to_string(dims_[i]) +
                     " vs " + std::to_string(other.dims_[i]) + ")");
-            if (strides_[i] != other.strides_[i])
-                throw std::invalid_argument(
-                    "element-wise operation: stride mismatch on axis " +
-                    std::to_string(i) + " (" + std::to_string(strides_[i]) +
-                    " vs " + std::to_string(other.strides_[i]) + ")");
+        }
+    }
+
+    // Fast/slow dispatch for binary view-vs-view operations.
+    template<typename Op>
+    void apply_binary(const DoubleArrayView& rhs, Op op) const
+    {
+        check_compatible(rhs);
+        if (c_contiguous_ && rhs.c_contiguous_) {
+            const npy_intp n = size();
+            for (npy_intp i = 0; i < n; i++)
+                op(data_[i], rhs.data_[i]);
+        } else {
+            npy_intp ls[N], rs[N];
+            for (int i = 0; i < N; i++) {
+                ls[i] = stride(i);
+                rs[i] = rhs.stride(i);
+            }
+            apply_binary_strided<0>(data_, rhs.data_, ls, rs, dims_, op);
+        }
+    }
+
+    // Fast/slow dispatch for scalar operations.
+    template<typename Op>
+    void apply_scalar(double s, Op op) const
+    {
+        if (c_contiguous_) {
+            const npy_intp n = size();
+            for (npy_intp i = 0; i < n; i++)
+                op(data_[i], s);
+        } else {
+            npy_intp strides[N];
+            for (int i = 0; i < N; i++) strides[i] = stride(i);
+            apply_scalar_strided<0>(data_, strides, dims_, s, op);
+        }
+    }
+
+    // Stride-aware binary op: iterates all elements of lhs and rhs using
+    // their respective element strides.
+    template<int Axis, typename Op>
+    static void apply_binary_strided(double* lhs, const double* rhs,
+                                     const npy_intp* ls, const npy_intp* rs,
+                                     const npy_intp* dims, Op op)
+    {
+        if constexpr (Axis == N - 1) {
+            for (npy_intp i = 0; i < dims[Axis]; i++)
+                op(lhs[i * ls[Axis]], rhs[i * rs[Axis]]);
+        } else {
+            for (npy_intp i = 0; i < dims[Axis]; i++)
+                apply_binary_strided<Axis + 1>(lhs + i * ls[Axis],
+                                               rhs + i * rs[Axis],
+                                               ls, rs, dims, op);
+        }
+    }
+
+    // Stride-aware scalar op.
+    template<int Axis, typename Op>
+    static void apply_scalar_strided(double* data, const npy_intp* strides,
+                                     const npy_intp* dims, double s, Op op)
+    {
+        if constexpr (Axis == N - 1) {
+            for (npy_intp i = 0; i < dims[Axis]; i++)
+                op(data[i * strides[Axis]], s);
+        } else {
+            for (npy_intp i = 0; i < dims[Axis]; i++)
+                apply_scalar_strided<Axis + 1>(data + i * strides[Axis],
+                                               strides, dims, s, op);
+        }
+    }
+
+    // Stride-aware broadcast: applies 1D rhs along the last axis of this view.
+    template<int Axis, typename Op>
+    void apply_broadcast_strided(double* lhs, const double* rhs,
+                                 npy_intp rhs_stride, Op op) const
+    {
+        if constexpr (Axis == N - 1) {
+            const npy_intp ls = stride(Axis);
+            for (npy_intp i = 0; i < dims_[Axis]; i++)
+                op(lhs[i * ls], rhs[i * rhs_stride]);
+        } else {
+            const npy_intp ls = stride(Axis);
+            for (npy_intp i = 0; i < dims_[Axis]; i++)
+                apply_broadcast_strided<Axis + 1>(lhs + i * ls, rhs,
+                                                  rhs_stride, op);
         }
     }
 
@@ -1048,41 +1134,53 @@ static void derivative_term(const DoubleArrayView<1>& dr_g,
 }
 
 
+// Templated over rank N: dr_g/dv_g are always 1D; dedsigma/a/out have rank N
+// with the radial grid on the last axis. For N>1 the leading axes are batch
+// dimensions (e.g. nlebedev) that are processed together.
+template<int N>
 static void derivative2_term(const DoubleArrayView<1>& dr_g,
                              const DoubleArrayView<1>& dv_g,
-                             const DoubleArrayView<1>& dedsigma_g,
-                             const DoubleArrayView<1>& a_g,
+                             const DoubleArrayView<N>& dedsigma,
+                             const DoubleArrayView<N>& a,
                              double scale,
-                             const DoubleArrayView<1>& out_g,
+                             const DoubleArrayView<N>& out,
                              int add)
 {
-    const int ngrids = out_g.dim(0);
+    const int ngrids = out.dim(N - 1);
 
-    // c[g] = scale * dv[g] * dedsigma[g] * a[g] / dr[g]
-    DoubleArray<1> c({ngrids});
-    c.assign(a_g);
-    c *= {dedsigma_g, dv_g};
-    c /= dr_g;
+    std::array<npy_intp, N> shape;
+    for (int i = 0; i < N; i++) shape[i] = a.dim(i);
+    DoubleArray<N> c(shape);
+    DoubleArray<N> d(shape);
+
+    // c = scale * dv * dedsigma * a / dr  (dv, dr broadcast over leading axes)
+    c.assign(a);
+    c *= dedsigma;
+    c.broadcast_multiply(dv_g);
+    c.broadcast_divide(dr_g);
     c *= scale;
 
-    // Apply finite-difference stencil into d, then write to out.
-    // Interior:  d[1:-2] = 0.5 * (c[2:-1] - c[:-3])
-    // Boundary:  d[0]    =  c[0]    + 0.5*c[1]
-    //            d[-2]   =  c[-1]   - 0.5*c[-3]
-    //            d[-1]   = -c[-1]   - 0.5*c[-2]
-    DoubleArray<1> d({ngrids});
-    auto d_mid = d.slice(1, ngrids - 2);
-    d_mid.assign(c.slice(2, ngrids - 1));
-    d_mid -= c.slice(0, ngrids - 3);
+    // Interior: d[..., 1:-2] = 0.5 * (c[..., 2:-1] - c[..., :-3])
+    auto d_mid = d.slice(N - 1, 1, ngrids - 2);
+    d_mid.assign(c.slice(N - 1, 2, ngrids - 1));
+    d_mid -= c.slice(N - 1, 0, ngrids - 3);
     d_mid *= 0.5;
-    d.data()[0]        =  c.data()[0]        + 0.5 * c.data()[1];
-    d.data()[ngrids-2] =  c.data()[ngrids-1] - 0.5 * c.data()[ngrids-3];
-    d.data()[ngrids-1] = -c.data()[ngrids-1] - 0.5 * c.data()[ngrids-2];
+
+    // Boundary conditions applied per row (last-axis slice).
+    // c and d are contiguous, so rows are ngrids elements apart.
+    const npy_intp batch = c.size() / ngrids;
+    for (npy_intp b = 0; b < batch; b++) {
+        const double* cr = c.data() + b * ngrids;
+        double* dr = d.data() + b * ngrids;
+        dr[0]          =  cr[0]          + 0.5 * cr[1];
+        dr[ngrids - 2] =  cr[ngrids - 1] - 0.5 * cr[ngrids - 3];
+        dr[ngrids - 1] = -cr[ngrids - 1] - 0.5 * cr[ngrids - 2];
+    }
 
     if (add)
-        out_g += d;
+        out += d;
     else
-        out_g.assign(d);
+        out.assign(d);
 }
 
 
@@ -1251,47 +1349,57 @@ static void radial_gradient_correction_compute(const DoubleArrayView<1>& dr_g,
     const int nlebedev = a_sng.dim(1);
     const int ngrids = a_sng.dim(2);
 
+    // Diagonal spin terms: one derivative2_term call per spin over all nlebedev.
     for (int s = 0; s < nspins; s++) {
-        for (int n = 0; n < nlebedev; n++) {
-            const auto dedsigma_g = dedsigma_xng.view<1>(
-                2 * s * dedsigma_xng.stride(0) + n * dedsigma_xng.stride(1),
-                {ngrids}, {1});
-            const auto a_g = a_sng.view<1>(
-                s * a_sng.stride(0) + n * a_sng.stride(1),
-                {ngrids}, {1});
-            const auto vv_g = vv_sng.view<1>(
-                s * vv_sng.stride(0) + n * vv_sng.stride(1),
-                {ngrids}, {1});
-            derivative2_term(dr_g, dv_g, dedsigma_g, a_g, -2.0, vv_g, 0);
-        }
+        const auto dedsigma_ng = dedsigma_xng.view<2>(
+            2 * s * dedsigma_xng.stride(0),
+            {nlebedev, ngrids},
+            {dedsigma_xng.stride(1), dedsigma_xng.stride(2)});
+        const auto a_ng = a_sng.view<2>(
+            s * a_sng.stride(0),
+            {nlebedev, ngrids},
+            {a_sng.stride(1), a_sng.stride(2)});
+        const auto vv_ng = vv_sng.view<2>(
+            s * vv_sng.stride(0),
+            {nlebedev, ngrids},
+            {vv_sng.stride(1), vv_sng.stride(2)});
+        derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a_ng, -2.0, vv_ng, 0);
     }
 
+    // Cross-spin terms (nspins == 2 only): dedsigma_xng[1] couples s=0 and s=1.
     if (nspins == 2) {
-        for (int n = 0; n < nlebedev; n++) {
-            const auto dedsigma_g = dedsigma_xng.view<1>(
-                dedsigma_xng.stride(0) + n * dedsigma_xng.stride(1),
-                {ngrids}, {1});
-            const auto a1_g = a_sng.view<1>(
-                a_sng.stride(0) + n * a_sng.stride(1), {ngrids}, {1});
-            const auto a0_g = a_sng.view<1>(
-                n * a_sng.stride(1), {ngrids}, {1});
-            const auto vv0_g = vv_sng.view<1>(
-                n * vv_sng.stride(1), {ngrids}, {1});
-            const auto vv1_g = vv_sng.view<1>(
-                vv_sng.stride(0) + n * vv_sng.stride(1), {ngrids}, {1});
-            derivative2_term(dr_g, dv_g, dedsigma_g, a1_g, -1.0, vv0_g, 1);
-            derivative2_term(dr_g, dv_g, dedsigma_g, a0_g, -1.0, vv1_g, 1);
-        }
+        const auto dedsigma_ng = dedsigma_xng.view<2>(
+            dedsigma_xng.stride(0),
+            {nlebedev, ngrids},
+            {dedsigma_xng.stride(1), dedsigma_xng.stride(2)});
+        const auto a0_ng = a_sng.view<2>(
+            0,
+            {nlebedev, ngrids},
+            {a_sng.stride(1), a_sng.stride(2)});
+        const auto a1_ng = a_sng.view<2>(
+            a_sng.stride(0),
+            {nlebedev, ngrids},
+            {a_sng.stride(1), a_sng.stride(2)});
+        const auto vv0_ng = vv_sng.view<2>(
+            0,
+            {nlebedev, ngrids},
+            {vv_sng.stride(1), vv_sng.stride(2)});
+        const auto vv1_ng = vv_sng.view<2>(
+            vv_sng.stride(0),
+            {nlebedev, ngrids},
+            {vv_sng.stride(1), vv_sng.stride(2)});
+        derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a1_ng, -1.0, vv0_ng, 1);
+        derivative2_term<2>(dr_g, dv_g, dedsigma_ng, a0_ng, -1.0, vv1_ng, 1);
     }
 
+    // Final: vv[s, n, 1:] /= dv[1:];  vv[s, n, 0] = vv[s, n, 1].
     for (int s = 0; s < nspins; s++) {
-        for (int n = 0; n < nlebedev; n++) {
-            double* vv_g = vv_sng.data() +
-                s * vv_sng.stride(0) + n * vv_sng.stride(1);
-            for (int g = 1; g < ngrids; g++)
-                vv_g[g] /= dv_g.data()[g];
-            vv_g[0] = vv_g[1];
-        }
+        const auto vv_ng = vv_sng.view<2>(
+            s * vv_sng.stride(0),
+            {nlebedev, ngrids},
+            {vv_sng.stride(1), vv_sng.stride(2)});
+        vv_ng.slice(1, 1, ngrids).broadcast_divide(dv_g.slice(1, ngrids));
+        vv_ng.slice(1, 0, 1).assign(vv_ng.slice(1, 1, 2));
     }
 }
 
@@ -1540,7 +1648,6 @@ CLINKAGE PyObject* paw_gga_radial_gradient_correction(PyObject* self,
         DimSpace& dimspace  = a.dimspace();
 
         const int nspins = a_sng.dim(0);
-        const int nlebedev = a_sng.dim(1);
         const int ngrids = a_sng.dim(2);
 
         if (nspins != 1 && nspins != 2)
