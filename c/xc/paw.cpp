@@ -206,6 +206,16 @@ public:
         return DoubleArray<N>(data, dims.data(), byte_strides.data());
     }
 
+    static DoubleArray<N> contiguous(double* data,
+                                     const std::array<npy_intp, N>& dims)
+    {
+        std::array<npy_intp, N> strides;
+        strides[N - 1] = 1;
+        for (int i = N - 2; i >= 0; i--)
+            strides[i] = strides[i + 1] * dims[i + 1];
+        return DoubleArray<N>::view(data, dims, strides);
+    }
+
     template<int M>
     DoubleArray<M> view(npy_intp offset,
                         const std::array<npy_intp, M>& dims,
@@ -540,6 +550,28 @@ double contract(const SelectedDim<1, 1>& left,
     }
     return value;
 }
+
+
+// RAII wrapper around a malloc'd double buffer. Calls PyErr_NoMemory() on
+// allocation failure; check ok() before use.
+class Buffer {
+public:
+    explicit Buffer(size_t n)
+        : n_(n), data_(n ? (double*)malloc(n * sizeof(double)) : nullptr)
+    {
+        if (n && !data_)
+            PyErr_NoMemory();
+    }
+    ~Buffer() { free(data_); }
+    bool ok() const { return n_ == 0 || data_ != nullptr; }
+    double* data() const { return data_; }
+    size_t size() const { return n_; }
+    Buffer(const Buffer&) = delete;
+    Buffer& operator=(const Buffer&) = delete;
+private:
+    size_t n_;
+    double* data_;
+};
 
 
 // Parses keyword arguments from a Python C extension call.
@@ -1765,224 +1797,145 @@ static int calculate_expansion(PyObject* kernel_calculate,
     const int ngrids   = n_qg.dim(1);
     const int nlebedev = Y_nL.dim(0);
 
-    npy_intp n_sng_dims[3] = {nspins, nlebedev, ngrids};
-    npy_intp sigma_dims[3] = {2 * nspins - 1, nlebedev, ngrids};
-    npy_intp e_dims[2] = {nlebedev, ngrids};
-    npy_intp dEdD_dims[3] = {nspins, nq, Lmax};
-    double* n_sLg = NULL;
-    double* dndr_sLg = NULL;
-    double* rnablaY_vnL_data = NULL;
-    double* vv_sng = NULL;
-    double* n_sng = NULL;
-    double* a_sng = NULL;
-    double* b_vnsg = NULL;
-    double* sigma_xng = NULL;
-    double* e_ng = NULL;
-    double* dedn_sng = NULL;
-    double* dedsigma_xng = NULL;
-    double* dEdD_sqL = NULL;
-    const size_t n_sLg_size = (size_t)nspins * Lmax * ngrids;
-    const size_t rnablaY_vnL_size = (size_t)3 * nlebedev * Lmax;
-    const size_t vv_size = (size_t)nspins * nlebedev * ngrids;
+    Buffer n_sLg_buf        ((size_t)nspins * Lmax * ngrids);
+    Buffer dndr_sLg_buf     ((size_t)nspins * Lmax * ngrids);
+    Buffer rnablaY_vnL_buf  ((size_t)3 * nlebedev * Lmax);
+    Buffer n_sng_buf        ((size_t)nspins * nlebedev * ngrids);
+    Buffer a_sng_buf        ((size_t)nspins * nlebedev * ngrids);
+    Buffer b_vnsg_buf       ((size_t)3 * nlebedev * nspins * ngrids);
+    Buffer sigma_xng_buf    ((size_t)(2 * nspins - 1) * nlebedev * ngrids);
+    Buffer e_ng_buf         ((size_t)nlebedev * ngrids);
+    Buffer dedn_sng_buf     ((size_t)nspins * nlebedev * ngrids);
+    Buffer dedsigma_xng_buf ((size_t)(2 * nspins - 1) * nlebedev * ngrids);
+    Buffer dEdD_sqL_buf     ((size_t)nspins * nq * Lmax);
+    Buffer vv_sng_buf       ((size_t)nspins * nlebedev * ngrids);
 
-    PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNew(
-        3, n_sng_dims, NPY_DOUBLE);
-    PyArrayObject* a_sng_obj = (PyArrayObject*)PyArray_SimpleNew(
-        3, n_sng_dims, NPY_DOUBLE);
-    npy_intp b_vnsg_dims[4] = {3, nlebedev, nspins, ngrids};
-    PyArrayObject* b_vnsg_obj = (PyArrayObject*)PyArray_SimpleNew(
-        4, b_vnsg_dims, NPY_DOUBLE);
-    PyArrayObject* sigma_xng_obj = (PyArrayObject*)PyArray_SimpleNew(
-        3, sigma_dims, NPY_DOUBLE);
-    PyArrayObject* e_ng_obj = (PyArrayObject*)PyArray_SimpleNew(
-        2, e_dims, NPY_DOUBLE);
-    PyArrayObject* dedn_sng_obj = (PyArrayObject*)PyArray_ZEROS(
-        3, n_sng_dims, NPY_DOUBLE, 0);
-    PyArrayObject* dedsigma_xng_obj = (PyArrayObject*)PyArray_ZEROS(
-        3, sigma_dims, NPY_DOUBLE, 0);
-    PyArrayObject* dEdD_sqL_obj = (PyArrayObject*)PyArray_ZEROS(
-        3, dEdD_dims, NPY_DOUBLE, 0);
+    if (!n_sLg_buf.ok() || !dndr_sLg_buf.ok() || !rnablaY_vnL_buf.ok() ||
+        !n_sng_buf.ok() || !a_sng_buf.ok() || !b_vnsg_buf.ok() ||
+        !sigma_xng_buf.ok() || !e_ng_buf.ok() ||
+        !dedn_sng_buf.ok() || !dedsigma_xng_buf.ok() ||
+        !dEdD_sqL_buf.ok() || !vv_sng_buf.ok())
+        return 0;
 
-    if (n_sng_obj == NULL || a_sng_obj == NULL || b_vnsg_obj == NULL ||
-        sigma_xng_obj == NULL || e_ng_obj == NULL ||
-        dedn_sng_obj == NULL || dedsigma_xng_obj == NULL ||
-        dEdD_sqL_obj == NULL)
-        goto fail;
+    memset(dedn_sng_buf.data(), 0, dedn_sng_buf.size() * sizeof(double));
+    memset(dedsigma_xng_buf.data(), 0, dedsigma_xng_buf.size() * sizeof(double));
+    memset(dEdD_sqL_buf.data(), 0, dEdD_sqL_buf.size() * sizeof(double));
 
-    n_sng = DOUBLEP(n_sng_obj);
-    a_sng = DOUBLEP(a_sng_obj);
-    b_vnsg = DOUBLEP(b_vnsg_obj);
-    sigma_xng = DOUBLEP(sigma_xng_obj);
-    e_ng = DOUBLEP(e_ng_obj);
-    dedn_sng = DOUBLEP(dedn_sng_obj);
-    dedsigma_xng = DOUBLEP(dedsigma_xng_obj);
-    dEdD_sqL = DOUBLEP(dEdD_sqL_obj);
+    const auto n_sLg        = DoubleArray<3>::contiguous(n_sLg_buf.data(),
+                                  {nspins, Lmax, ngrids});
+    const auto dndr_sLg     = DoubleArray<3>::contiguous(dndr_sLg_buf.data(),
+                                  {nspins, Lmax, ngrids});
+    const auto rnablaY_vnL  = DoubleArray<3>::contiguous(rnablaY_vnL_buf.data(),
+                                  {3, nlebedev, Lmax});
+    const auto n_sng        = DoubleArray<3>::contiguous(n_sng_buf.data(),
+                                  {nspins, nlebedev, ngrids});
+    const auto a_sng        = DoubleArray<3>::contiguous(a_sng_buf.data(),
+                                  {nspins, nlebedev, ngrids});
+    const auto b_vnsg       = DoubleArray<4>::contiguous(b_vnsg_buf.data(),
+                                  {3, nlebedev, nspins, ngrids});
+    const auto sigma_xng    = DoubleArray<3>::contiguous(sigma_xng_buf.data(),
+                                  {2 * nspins - 1, nlebedev, ngrids});
+    const auto e_ng         = DoubleArray<2>::contiguous(e_ng_buf.data(),
+                                  {nlebedev, ngrids});
+    const auto dedn_sng     = DoubleArray<3>::contiguous(dedn_sng_buf.data(),
+                                  {nspins, nlebedev, ngrids});
+    const auto dedsigma_xng = DoubleArray<3>::contiguous(dedsigma_xng_buf.data(),
+                                  {2 * nspins - 1, nlebedev, ngrids});
+    const auto dEdD_sqL     = DoubleArray<3>::contiguous(dEdD_sqL_buf.data(),
+                                  {nspins, nq, Lmax});
 
-    n_sLg = (double*)malloc(n_sLg_size * sizeof(double));
-    dndr_sLg = (double*)malloc(n_sLg_size * sizeof(double));
-    rnablaY_vnL_data = (double*)malloc(rnablaY_vnL_size * sizeof(double));
-    if (n_sLg == NULL || dndr_sLg == NULL || rnablaY_vnL_data == NULL) {
-        PyErr_NoMemory();
-        free(n_sLg);
-        free(dndr_sLg);
-        free(rnablaY_vnL_data);
-        goto fail;
-    }
-
-    {
-        const DoubleArray<3> n_sLg_view =
-            DoubleArray<3>::view(n_sLg,
-                                 {nspins, Lmax, ngrids},
-                                 {(npy_intp)Lmax * ngrids, ngrids, 1});
-        const DoubleArray<3> dndr_sLg_view =
-            DoubleArray<3>::view(dndr_sLg,
-                                 {nspins, Lmax, ngrids},
-                                 {(npy_intp)Lmax * ngrids, ngrids, 1});
-        const DoubleArray<3> n_sng_view =
-            DoubleArray<3>::view(n_sng,
-                                 {nspins, nlebedev, ngrids},
-                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
-        const DoubleArray<3> a_sng_view =
-            DoubleArray<3>::view(a_sng,
-                                 {nspins, nlebedev, ngrids},
-                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
-        const DoubleArray<4> b_vnsg_view =
-            DoubleArray<4>::view(
-                b_vnsg,
-                {3, nlebedev, nspins, ngrids},
-                {(npy_intp)nlebedev * nspins * ngrids,
-                 (npy_intp)nspins * ngrids, ngrids, 1});
-        const DoubleArray<3> sigma_xng_view =
-            DoubleArray<3>::view(sigma_xng,
-                                 {2 * nspins - 1, nlebedev, ngrids},
-                                 {(npy_intp)nlebedev * ngrids, ngrids, 1});
-        const DoubleArray<3> rnablaY_vnL =
-            DoubleArray<3>::view(rnablaY_vnL_data,
-                                 {3, nlebedev, Lmax},
-                                 {(npy_intp)nlebedev * Lmax, Lmax, 1});
-
-        Py_BEGIN_ALLOW_THREADS
-        for (int s = 0; s < nspins; s++) {
-            row_dgemm('N', 'N', Lmax, ngrids, nq,
-                      1.0, D_sLq.data() + idx3(s, 0, 0, Lmax, nq), nq,
-                      n_qg.data(), ngrids,
-                      0.0, n_sLg + idx3(s, 0, 0, Lmax, ngrids),
-                      ngrids);
-            for (int L = 0; L < Lmax; L++) {
-                if (L == 0)
-                    for (int g = 0; g < ngrids; g++)
-                        n_sLg[idx3(s, L, g, Lmax, ngrids)] +=
-                            nc0_sg.data()[s * ngrids + g];
-                derivative_term(dr_g.data(),
-                                n_sLg + idx3(s, L, 0, Lmax, ngrids),
-                                dndr_sLg + idx3(s, L, 0, Lmax, ngrids),
-                                ngrids);
-            }
+    Py_BEGIN_ALLOW_THREADS
+    for (int s = 0; s < nspins; s++) {
+        row_dgemm('N', 'N', Lmax, ngrids, nq,
+                  1.0, D_sLq.data() + idx3(s, 0, 0, Lmax, nq), nq,
+                  n_qg.data(), ngrids,
+                  0.0, n_sLg.data() + idx3(s, 0, 0, Lmax, ngrids),
+                  ngrids);
+        for (int L = 0; L < Lmax; L++) {
+            if (L == 0)
+                for (int g = 0; g < ngrids; g++)
+                    n_sLg.data()[idx3(s, L, g, Lmax, ngrids)] +=
+                        nc0_sg.data()[s * ngrids + g];
+            derivative_term(dr_g.data(),
+                            n_sLg.data() + idx3(s, L, 0, Lmax, ngrids),
+                            dndr_sLg.data() + idx3(s, L, 0, Lmax, ngrids),
+                            ngrids);
         }
-
-        project_density_compute(n_sLg_view, dndr_sLg_view, Y_nL,
-                                rnablaY_nLv, r_g,
-                                n_sng_view, a_sng_view, b_vnsg_view,
-                                sigma_xng_view, rnablaY_vnL);
-        Py_END_ALLOW_THREADS
     }
-
-    free(n_sLg);
-    free(dndr_sLg);
-    free(rnablaY_vnL_data);
-    n_sLg = NULL;
-    dndr_sLg = NULL;
-    rnablaY_vnL_data = NULL;
-
-    if (!call_kernel(kernel_calculate, e_ng_obj, n_sng_obj, dedn_sng_obj,
-                     sigma_xng_obj, dedsigma_xng_obj))
-        goto fail;
-
-    vv_sng = (double*)malloc(vv_size * sizeof(double));
-    if (vv_sng == NULL) {
-        PyErr_NoMemory();
-        goto fail;
-    }
+    project_density_compute(n_sLg, dndr_sLg, Y_nL,
+                            rnablaY_nLv, r_g,
+                            n_sng, a_sng, b_vnsg,
+                            sigma_xng, rnablaY_vnL);
+    Py_END_ALLOW_THREADS
 
     {
-        const DoubleArray<2> e_ng_view =
-            DoubleArray<2>::view(e_ng,
-                                 {nlebedev, ngrids},
-                                 {(npy_intp)ngrids, 1});
-
-        Py_BEGIN_ALLOW_THREADS
-        radial_gradient_correction_compute(dr_g.data(), dv_g.data(),
-                                           dedsigma_xng, a_sng, vv_sng,
-                                           nspins, nlebedev, ngrids);
-        back_project_density_compute(dEdD_sqL, dv_g.data(),
-                                     dedn_sng, vv_sng, n_qg.data(),
-                                     weight_n.data(), Y_nL.data(),
-                                     nspins, nq, Lmax, nlebedev, ngrids);
-        back_project_gradient_compute(dEdD_sqL, dedsigma_xng, b_vnsg,
-                                      n_qg.data(), dr_g.data(),
-                                      weight_n.data(), rnablaY_nLv.data(),
-                                      nspins, nq, Lmax, nlebedev, ngrids);
-        *E = integrate_energy_compute(e_ng_view, dv_g, weight_n);
-        Py_END_ALLOW_THREADS
+        npy_intp e_dims[2]     = {nlebedev, ngrids};
+        npy_intp sng_dims[3]   = {nspins, nlebedev, ngrids};
+        npy_intp sigma_dims[3] = {2 * nspins - 1, nlebedev, ngrids};
+        PyArrayObject* e_ng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+            2, e_dims, NPY_DOUBLE, e_ng.data());
+        PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+            3, sng_dims, NPY_DOUBLE, n_sng.data());
+        PyArrayObject* dedn_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+            3, sng_dims, NPY_DOUBLE, dedn_sng.data());
+        PyArrayObject* sigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+            3, sigma_dims, NPY_DOUBLE, sigma_xng.data());
+        PyArrayObject* dedsigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+            3, sigma_dims, NPY_DOUBLE, dedsigma_xng.data());
+        int ok;
+        if (e_ng_obj && n_sng_obj && dedn_sng_obj &&
+            sigma_xng_obj && dedsigma_xng_obj) {
+            ok = call_kernel(kernel_calculate, e_ng_obj, n_sng_obj,
+                             dedn_sng_obj, sigma_xng_obj, dedsigma_xng_obj);
+        } else {
+            PyErr_NoMemory();
+            ok = 0;
+        }
+        Py_XDECREF(e_ng_obj);
+        Py_XDECREF(n_sng_obj);
+        Py_XDECREF(dedn_sng_obj);
+        Py_XDECREF(sigma_xng_obj);
+        Py_XDECREF(dedsigma_xng_obj);
+        if (!ok)
+            return 0;
     }
 
-    free(vv_sng);
-    vv_sng = NULL;
+    Py_BEGIN_ALLOW_THREADS
+    radial_gradient_correction_compute(dr_g.data(), dv_g.data(),
+                                       dedsigma_xng.data(), a_sng.data(),
+                                       vv_sng_buf.data(),
+                                       nspins, nlebedev, ngrids);
+    back_project_density_compute(dEdD_sqL.data(), dv_g.data(),
+                                 dedn_sng.data(), vv_sng_buf.data(),
+                                 n_qg.data(), weight_n.data(), Y_nL.data(),
+                                 nspins, nq, Lmax, nlebedev, ngrids);
+    back_project_gradient_compute(dEdD_sqL.data(), dedsigma_xng.data(),
+                                  b_vnsg.data(), n_qg.data(), dr_g.data(),
+                                  weight_n.data(), rnablaY_nLv.data(),
+                                  nspins, nq, Lmax, nlebedev, ngrids);
+    *E = integrate_energy_compute(e_ng, dv_g, weight_n);
+    Py_END_ALLOW_THREADS
 
     if (dEdD_sp != nullptr) {
-        double* dEdD_tmp_data = (double*)malloc(
-            (size_t)nspins * np * sizeof(double));
-        if (dEdD_tmp_data == NULL) {
-            PyErr_NoMemory();
-            goto fail;
-        }
-
-        const DoubleArray<3> dEdD_sqL_view =
-            DoubleArray<3>::view(dEdD_sqL,
-                                 {nspins, nq, Lmax},
-                                 {(npy_intp)nq * Lmax, Lmax, 1});
-        const DoubleArray<2> dEdD_sqL_flat =
-            dEdD_sqL_view.view<2>(0,
-                                  {(npy_intp)nspins, (npy_intp)nq * Lmax},
-                                  {(npy_intp)nq * Lmax, 1});
-        const DoubleArray<2> B_pqL_flat =
-            B_pqL.view<2>(0,
-                          {(npy_intp)np, (npy_intp)nq * Lmax},
-                          {(npy_intp)nq * Lmax, 1});
-        const DoubleArray<2> dEdD_tmp =
-            DoubleArray<2>::view(dEdD_tmp_data, {nspins, np}, {np, 1});
+        const auto dEdD_sqL_flat = dEdD_sqL.view<2>(0,
+            {(npy_intp)nspins, (npy_intp)nq * Lmax},
+            {(npy_intp)nq * Lmax, 1});
+        const auto B_pqL_flat = B_pqL.view<2>(0,
+            {(npy_intp)np, (npy_intp)nq * Lmax},
+            {(npy_intp)nq * Lmax, 1});
+        Buffer dEdD_tmp_buf((size_t)nspins * np);
+        if (!dEdD_tmp_buf.ok())
+            return 0;
+        const auto dEdD_tmp = DoubleArray<2>::contiguous(dEdD_tmp_buf.data(),
+            {nspins, np});
 
         Py_BEGIN_ALLOW_THREADS
         dEdD_tmp.matmul(dEdD_sqL_flat, B_pqL_flat.transpose());
         dEdD_sp->add_scaled(dEdD_tmp, dEdD_scale);
         Py_END_ALLOW_THREADS
-        free(dEdD_tmp_data);
     }
 
-    Py_DECREF(n_sng_obj);
-    Py_DECREF(a_sng_obj);
-    Py_DECREF(b_vnsg_obj);
-    Py_DECREF(sigma_xng_obj);
-    Py_DECREF(e_ng_obj);
-    Py_DECREF(dedn_sng_obj);
-    Py_DECREF(dedsigma_xng_obj);
-    Py_DECREF(dEdD_sqL_obj);
     return 1;
-
-fail:
-    free(n_sLg);
-    free(dndr_sLg);
-    free(rnablaY_vnL_data);
-    free(vv_sng);
-    Py_XDECREF(n_sng_obj);
-    Py_XDECREF(a_sng_obj);
-    Py_XDECREF(b_vnsg_obj);
-    Py_XDECREF(sigma_xng_obj);
-    Py_XDECREF(e_ng_obj);
-    Py_XDECREF(dedn_sng_obj);
-    Py_XDECREF(dedsigma_xng_obj);
-    Py_XDECREF(dEdD_sqL_obj);
-    return 0;
 }
 
 
@@ -2016,54 +1969,38 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
         return NULL;
     }
 
-    const size_t D_size =
-        (size_t)D_sp.dim(0) * B_pqL.dim(1) * B_pqL.dim(2);
-    double* D_sLq_data = (double*)malloc(D_size * sizeof(double));
-    if (D_sLq_data == NULL)
-        return PyErr_NoMemory();
+    Buffer D_sLq_buf((size_t)D_sp.dim(0) * B_pqL.dim(1) * B_pqL.dim(2));
+    if (!D_sLq_buf.ok())
+        return NULL;
+    const auto D_sLq = DoubleArray<3>::contiguous(D_sLq_buf.data(),
+        {D_sp.dim(0), B_pqL.dim(2), B_pqL.dim(1)});
 
-    double* D_sqL_data = (double*)malloc(D_size * sizeof(double));
-    if (D_sqL_data == NULL) {
-        free(D_sLq_data);
-        return PyErr_NoMemory();
+    {
+        Buffer D_sqL_buf(D_sLq_buf.size());
+        if (!D_sqL_buf.ok())
+            return NULL;
+        const auto D_sqL = DoubleArray<3>::contiguous(D_sqL_buf.data(),
+            {D_sp.dim(0), B_pqL.dim(1), B_pqL.dim(2)});
+        Py_BEGIN_ALLOW_THREADS
+        contract(D_sp.select(1), B_pqL.select(0), D_sqL);
+        D_sLq.transpose_from(D_sqL, 0, 2, 1);
+        Py_END_ALLOW_THREADS
     }
-
-    const DoubleArray<3> D_sqL =
-        DoubleArray<3>::view(D_sqL_data,
-                             {D_sp.dim(0), B_pqL.dim(1), B_pqL.dim(2)},
-                             {(npy_intp)B_pqL.dim(1) * B_pqL.dim(2),
-                              B_pqL.dim(2), 1});
-    const DoubleArray<3> D_sLq =
-        DoubleArray<3>::view(D_sLq_data,
-                             {D_sp.dim(0), B_pqL.dim(2), B_pqL.dim(1)},
-                             {(npy_intp)B_pqL.dim(2) * B_pqL.dim(1),
-                              B_pqL.dim(1), 1});
-
-    Py_BEGIN_ALLOW_THREADS
-    contract(D_sp.select(1), B_pqL.select(0), D_sqL);
-    D_sLq.transpose_from(D_sqL, 0, 2, 1);
-    Py_END_ALLOW_THREADS
-    free(D_sqL_data);
 
     double E = 0.0;
     double Et = 0.0;
     if (!calculate_expansion(kernel_calculate, D_sLq,
                              n_qg, nc0_sg, B_pqL,
                              dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
-                             dEdD_sp, 1.0, &E)) {
-        free(D_sLq_data);
+                             dEdD_sp, 1.0, &E))
         return NULL;
-    }
 
     if (!calculate_expansion(kernel_calculate, D_sLq,
                              nt_qg, nct0_sg, B_pqL,
                              dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
-                             dEdD_sp, -1.0, &Et)) {
-        free(D_sLq_data);
+                             dEdD_sp, -1.0, &Et))
         return NULL;
-    }
 
-    free(D_sLq_data);
     double energy = E - Et;
     if (addcoredensity)
         energy -= e_xc0;
