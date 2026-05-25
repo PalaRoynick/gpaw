@@ -914,64 +914,70 @@ CLINKAGE PyObject* test_paw_double_array_matmul(PyObject* self,
 }
 
 
-static void derivative_term(const double* dr_g,
-                            const double* in_g,
-                            double* out_g,
-                            int ngrids)
+static void derivative_term(const DoubleArrayView<1>& dr_g,
+                            const DoubleArrayView<1>& in_g,
+                            const DoubleArrayView<1>& out_g)
 {
-    out_g[0] = (in_g[1] - in_g[0]) / dr_g[0];
+    const int ngrids = in_g.dim(0);
+    const double* dr = dr_g.data();
+    const double* in = in_g.data();
+    double* out = out_g.data();
+    out[0] = (in[1] - in[0]) / dr[0];
     for (int g = 1; g < ngrids - 1; g++)
-        out_g[g] = 0.5 * (in_g[g + 1] - in_g[g - 1]) / dr_g[g];
-    out_g[ngrids - 1] = (in_g[ngrids - 1] - in_g[ngrids - 2]) /
-        dr_g[ngrids - 1];
+        out[g] = 0.5 * (in[g + 1] - in[g - 1]) / dr[g];
+    out[ngrids - 1] = (in[ngrids - 1] - in[ngrids - 2]) / dr[ngrids - 1];
 }
 
 
-static void derivative2_term(const double* dr_g,
-                             const double* dv_g,
-                             const double* dedsigma_g,
-                             const double* a_g,
+static void derivative2_term(const DoubleArrayView<1>& dr_g,
+                             const DoubleArrayView<1>& dv_g,
+                             const DoubleArrayView<1>& dedsigma_g,
+                             const DoubleArrayView<1>& a_g,
                              double scale,
-                             double* out_g,
-                             int ngrids,
+                             const DoubleArrayView<1>& out_g,
                              int add)
 {
-    double c0 = scale * dv_g[0] * dedsigma_g[0] * a_g[0] / dr_g[0];
-    double c1 = scale * dv_g[1] * dedsigma_g[1] * a_g[1] / dr_g[1];
+    const int ngrids = out_g.dim(0);
+    const double* dr = dr_g.data();
+    const double* dv = dv_g.data();
+    const double* dedsigma = dedsigma_g.data();
+    const double* a = a_g.data();
+    double* out = out_g.data();
+
+    double c0 = scale * dv[0] * dedsigma[0] * a[0] / dr[0];
+    double c1 = scale * dv[1] * dedsigma[1] * a[1] / dr[1];
 
     if (add)
-        out_g[0] += 0.5 * c1 + c0;
+        out[0] += 0.5 * c1 + c0;
     else
-        out_g[0] = 0.5 * c1 + c0;
+        out[0] = 0.5 * c1 + c0;
 
     for (int g = 1; g < ngrids - 2; g++) {
-        double cm1 = scale * dv_g[g - 1] * dedsigma_g[g - 1] *
-            a_g[g - 1] / dr_g[g - 1];
-        double cp1 = scale * dv_g[g + 1] * dedsigma_g[g + 1] *
-            a_g[g + 1] / dr_g[g + 1];
+        double cm1 = scale * dv[g - 1] * dedsigma[g - 1] * a[g - 1] / dr[g - 1];
+        double cp1 = scale * dv[g + 1] * dedsigma[g + 1] * a[g + 1] / dr[g + 1];
         double value = 0.5 * (cp1 - cm1);
         if (add)
-            out_g[g] += value;
+            out[g] += value;
         else
-            out_g[g] = value;
+            out[g] = value;
     }
 
-    double cm3 = scale * dv_g[ngrids - 3] * dedsigma_g[ngrids - 3] *
-        a_g[ngrids - 3] / dr_g[ngrids - 3];
-    double cm2 = scale * dv_g[ngrids - 2] * dedsigma_g[ngrids - 2] *
-        a_g[ngrids - 2] / dr_g[ngrids - 2];
-    double cm1 = scale * dv_g[ngrids - 1] * dedsigma_g[ngrids - 1] *
-        a_g[ngrids - 1] / dr_g[ngrids - 1];
+    double cm3 = scale * dv[ngrids - 3] * dedsigma[ngrids - 3] *
+        a[ngrids - 3] / dr[ngrids - 3];
+    double cm2 = scale * dv[ngrids - 2] * dedsigma[ngrids - 2] *
+        a[ngrids - 2] / dr[ngrids - 2];
+    double cm1 = scale * dv[ngrids - 1] * dedsigma[ngrids - 1] *
+        a[ngrids - 1] / dr[ngrids - 1];
 
     if (add)
-        out_g[ngrids - 2] += cm1 - 0.5 * cm3;
+        out[ngrids - 2] += cm1 - 0.5 * cm3;
     else
-        out_g[ngrids - 2] = cm1 - 0.5 * cm3;
+        out[ngrids - 2] = cm1 - 0.5 * cm3;
 
     if (add)
-        out_g[ngrids - 1] += -cm1 - 0.5 * cm2;
+        out[ngrids - 1] += -cm1 - 0.5 * cm2;
     else
-        out_g[ngrids - 1] = -cm1 - 0.5 * cm2;
+        out[ngrids - 1] = -cm1 - 0.5 * cm2;
 }
 
 
@@ -1130,65 +1136,82 @@ static void project_density_compute(const DoubleArrayView<3>& n_sLg,
 }
 
 
-static void radial_gradient_correction_compute(const double* dr_g,
-                                               const double* dv_g,
-                                               const double* dedsigma_xng,
-                                               const double* a_sng,
-                                               double* vv_sng,
-                                               int nspins,
-                                               int nlebedev,
-                                               int ngrids)
+static void radial_gradient_correction_compute(const DoubleArrayView<1>& dr_g,
+                                               const DoubleArrayView<1>& dv_g,
+                                               const DoubleArrayView<3>& dedsigma_xng,
+                                               const DoubleArrayView<3>& a_sng,
+                                               const DoubleArrayView<3>& vv_sng)
 {
+    const int nspins = a_sng.dim(0);
+    const int nlebedev = a_sng.dim(1);
+    const int ngrids = a_sng.dim(2);
+
     for (int s = 0; s < nspins; s++) {
         for (int n = 0; n < nlebedev; n++) {
-            const double* dedsigma_g =
-                dedsigma_xng + (2 * s * nlebedev + n) * ngrids;
-            const double* a_g = a_sng + (s * nlebedev + n) * ngrids;
-            double* vv_g = vv_sng + (s * nlebedev + n) * ngrids;
-            derivative2_term(dr_g, dv_g, dedsigma_g, a_g, -2.0,
-                             vv_g, ngrids, 0);
+            const auto dedsigma_g = dedsigma_xng.view<1>(
+                2 * s * dedsigma_xng.stride(0) + n * dedsigma_xng.stride(1),
+                {ngrids}, {1});
+            const auto a_g = a_sng.view<1>(
+                s * a_sng.stride(0) + n * a_sng.stride(1),
+                {ngrids}, {1});
+            const auto vv_g = vv_sng.view<1>(
+                s * vv_sng.stride(0) + n * vv_sng.stride(1),
+                {ngrids}, {1});
+            derivative2_term(dr_g, dv_g, dedsigma_g, a_g, -2.0, vv_g, 0);
         }
     }
 
     if (nspins == 2) {
         for (int n = 0; n < nlebedev; n++) {
-            const double* dedsigma_g = dedsigma_xng + nlebedev * ngrids +
-                n * ngrids;
-            const double* a1_g = a_sng + (nlebedev + n) * ngrids;
-            const double* a0_g = a_sng + n * ngrids;
-            double* vv0_g = vv_sng + n * ngrids;
-            double* vv1_g = vv_sng + (nlebedev + n) * ngrids;
-            derivative2_term(dr_g, dv_g, dedsigma_g, a1_g, -1.0,
-                             vv0_g, ngrids, 1);
-            derivative2_term(dr_g, dv_g, dedsigma_g, a0_g, -1.0,
-                             vv1_g, ngrids, 1);
+            const auto dedsigma_g = dedsigma_xng.view<1>(
+                dedsigma_xng.stride(0) + n * dedsigma_xng.stride(1),
+                {ngrids}, {1});
+            const auto a1_g = a_sng.view<1>(
+                a_sng.stride(0) + n * a_sng.stride(1), {ngrids}, {1});
+            const auto a0_g = a_sng.view<1>(
+                n * a_sng.stride(1), {ngrids}, {1});
+            const auto vv0_g = vv_sng.view<1>(
+                n * vv_sng.stride(1), {ngrids}, {1});
+            const auto vv1_g = vv_sng.view<1>(
+                vv_sng.stride(0) + n * vv_sng.stride(1), {ngrids}, {1});
+            derivative2_term(dr_g, dv_g, dedsigma_g, a1_g, -1.0, vv0_g, 1);
+            derivative2_term(dr_g, dv_g, dedsigma_g, a0_g, -1.0, vv1_g, 1);
         }
     }
 
     for (int s = 0; s < nspins; s++) {
         for (int n = 0; n < nlebedev; n++) {
-            double* vv_g = vv_sng + (s * nlebedev + n) * ngrids;
+            double* vv_g = vv_sng.data() +
+                s * vv_sng.stride(0) + n * vv_sng.stride(1);
             for (int g = 1; g < ngrids; g++)
-                vv_g[g] /= dv_g[g];
+                vv_g[g] /= dv_g.data()[g];
             vv_g[0] = vv_g[1];
         }
     }
 }
 
 
-static void back_project_density_compute(double* dEdD_sqL,
-                                         const double* dv_g,
-                                         const double* dedn_sng,
-                                         const double* vv_sng,
-                                         const double* n_qg,
-                                         const double* weight_n,
-                                         const double* Y_nL,
-                                         int nspins,
-                                         int nq,
-                                         int Lmax,
-                                         int nlebedev,
-                                         int ngrids)
+static void back_project_density_compute(const DoubleArrayView<3>& dEdD_sqL,
+                                         const DoubleArrayView<1>& dv_g,
+                                         const DoubleArrayView<3>& dedn_sng,
+                                         const DoubleArrayView<3>* vv_sng,
+                                         const DoubleArrayView<2>& n_qg,
+                                         const DoubleArrayView<1>& weight_n,
+                                         const DoubleArrayView<2>& Y_nL)
 {
+    const int nspins = dEdD_sqL.dim(0);
+    const int nq = dEdD_sqL.dim(1);
+    const int Lmax = dEdD_sqL.dim(2);
+    const int nlebedev = dedn_sng.dim(1);
+    const int ngrids = dedn_sng.dim(2);
+    double* dEdD = dEdD_sqL.data();
+    const double* dv = dv_g.data();
+    const double* dedn = dedn_sng.data();
+    const double* vv = vv_sng == nullptr ? nullptr : vv_sng->data();
+    const double* n_qg_ = n_qg.data();
+    const double* wn = weight_n.data();
+    const double* Y = Y_nL.data();
+
     double* work_ng = (double*)malloc(
         (size_t)nlebedev * ngrids * sizeof(double));
     double* work_nq = (double*)malloc(
@@ -1198,28 +1221,26 @@ static void back_project_density_compute(double* dEdD_sqL,
     if (work_ng != NULL && work_nq != NULL && weighted_Y_nL != NULL) {
         for (int n = 0; n < nlebedev; n++) {
             for (int L = 0; L < Lmax; L++)
-                weighted_Y_nL[n * Lmax + L] =
-                    weight_n[n] * Y_nL[n * Lmax + L];
+                weighted_Y_nL[n * Lmax + L] = wn[n] * Y[n * Lmax + L];
         }
 
         for (int s = 0; s < nspins; s++) {
             for (int n = 0; n < nlebedev; n++) {
                 for (int g = 0; g < ngrids; g++) {
-                    double dedn =
-                        dedn_sng[idx3(s, n, g, nlebedev, ngrids)];
-                    if (vv_sng != NULL)
-                        dedn += vv_sng[idx3(s, n, g, nlebedev, ngrids)];
-                    work_ng[n * ngrids + g] = dv_g[g] * dedn;
+                    double dedn_val = dedn[idx3(s, n, g, nlebedev, ngrids)];
+                    if (vv != nullptr)
+                        dedn_val += vv[idx3(s, n, g, nlebedev, ngrids)];
+                    work_ng[n * ngrids + g] = dv[g] * dedn_val;
                 }
             }
             row_dgemm('N', 'T', nlebedev, nq, ngrids,
                       1.0, work_ng, ngrids,
-                      n_qg, ngrids,
+                      n_qg_, ngrids,
                       0.0, work_nq, nq);
             row_dgemm('T', 'N', nq, Lmax, nlebedev,
                       1.0, work_nq, nq,
                       weighted_Y_nL, Lmax,
-                      1.0, dEdD_sqL + idx3(s, 0, 0, nq, Lmax),
+                      1.0, dEdD + idx3(s, 0, 0, nq, Lmax),
                       Lmax);
         }
         free(work_ng);
@@ -1236,36 +1257,43 @@ static void back_project_density_compute(double* dEdD_sqL,
             for (int L = 0; L < Lmax; L++) {
                 double sum = 0.0;
                 for (int n = 0; n < nlebedev; n++) {
-                    const double wY = weight_n[n] * Y_nL[n * Lmax + L];
+                    const double wY = wn[n] * Y[n * Lmax + L];
                     for (int g = 0; g < ngrids; g++) {
-                        double dedn = dedn_sng[idx3(s, n, g,
+                        double dedn_val = dedn[idx3(s, n, g,
                                                      nlebedev, ngrids)];
-                        if (vv_sng != NULL)
-                            dedn += vv_sng[idx3(s, n, g,
-                                                nlebedev, ngrids)];
-                        sum += dv_g[g] * dedn * n_qg[q * ngrids + g] * wY;
+                        if (vv != nullptr)
+                            dedn_val += vv[idx3(s, n, g, nlebedev, ngrids)];
+                        sum += dv[g] * dedn_val * n_qg_[q * ngrids + g] * wY;
                     }
                 }
-                dEdD_sqL[idx3(s, q, L, nq, Lmax)] += sum;
+                dEdD[idx3(s, q, L, nq, Lmax)] += sum;
             }
         }
     }
 }
 
 
-static void back_project_gradient_compute(double* dEdD_sqL,
-                                          const double* dedsigma_xng,
-                                          const double* b_vnsg,
-                                          const double* n_qg,
-                                          const double* dr_g,
-                                          const double* weight_n,
-                                          const double* rnablaY_nLv,
-                                          int nspins,
-                                          int nq,
-                                          int Lmax,
-                                          int nlebedev,
-                                          int ngrids)
+static void back_project_gradient_compute(const DoubleArrayView<3>& dEdD_sqL,
+                                          const DoubleArrayView<3>& dedsigma_xng,
+                                          const DoubleArrayView<4>& b_vnsg,
+                                          const DoubleArrayView<2>& n_qg,
+                                          const DoubleArrayView<1>* dr_g,
+                                          const DoubleArrayView<1>& weight_n,
+                                          const DoubleArrayView<3>& rnablaY_nLv)
 {
+    const int nspins = dEdD_sqL.dim(0);
+    const int nq = dEdD_sqL.dim(1);
+    const int Lmax = dEdD_sqL.dim(2);
+    const int nlebedev = dedsigma_xng.dim(1);
+    const int ngrids = dedsigma_xng.dim(2);
+    double* dEdD = dEdD_sqL.data();
+    const double* dedsigma = dedsigma_xng.data();
+    const double* b = b_vnsg.data();
+    const double* n_qg_ = n_qg.data();
+    const double* dr = dr_g == nullptr ? nullptr : dr_g->data();
+    const double* wn = weight_n.data();
+    const double* rnablaY = rnablaY_nLv.data();
+
     const double prefactor = 8.0 * M_PI;
     double* work_ng = (double*)malloc(
         (size_t)nlebedev * ngrids * sizeof(double));
@@ -1278,35 +1306,31 @@ static void back_project_gradient_compute(double* dEdD_sqL,
             for (int v = 0; v < 3; v++) {
                 for (int n = 0; n < nlebedev; n++) {
                     for (int L = 0; L < Lmax; L++) {
-                        weighted_R_nL[n * Lmax + L] = weight_n[n] *
-                            rnablaY_nLv[idx3(n, L, v, Lmax, 3)];
+                        weighted_R_nL[n * Lmax + L] = wn[n] *
+                            rnablaY[idx3(n, L, v, Lmax, 3)];
                     }
                     for (int g = 0; g < ngrids; g++) {
                         double value =
-                            dedsigma_xng[idx3(2 * s, n, g,
-                                              nlebedev, ngrids)] *
-                            b_vnsg[idx4(v, n, s, g,
-                                        nlebedev, nspins, ngrids)];
+                            dedsigma[idx3(2 * s, n, g, nlebedev, ngrids)] *
+                            b[idx4(v, n, s, g, nlebedev, nspins, ngrids)];
                         if (nspins == 2) {
                             value += 0.5 *
-                                dedsigma_xng[idx3(1, n, g,
-                                                  nlebedev, ngrids)] *
-                                b_vnsg[idx4(v, n, 1 - s, g,
-                                            nlebedev, nspins, ngrids)];
+                                dedsigma[idx3(1, n, g, nlebedev, ngrids)] *
+                                b[idx4(v, n, 1 - s, g,
+                                       nlebedev, nspins, ngrids)];
                         }
-                        const double radial_scale = dr_g == NULL ?
-                            1.0 : dr_g[g];
+                        const double radial_scale = dr == nullptr ? 1.0 : dr[g];
                         work_ng[n * ngrids + g] = radial_scale * value;
                     }
                 }
                 row_dgemm('N', 'T', nlebedev, nq, ngrids,
                           1.0, work_ng, ngrids,
-                          n_qg, ngrids,
+                          n_qg_, ngrids,
                           0.0, work_nq, nq);
                 row_dgemm('T', 'N', nq, Lmax, nlebedev,
                           prefactor, work_nq, nq,
                           weighted_R_nL, Lmax,
-                          1.0, dEdD_sqL + idx3(s, 0, 0, nq, Lmax),
+                          1.0, dEdD + idx3(s, 0, 0, nq, Lmax),
                           Lmax);
             }
         }
@@ -1324,31 +1348,29 @@ static void back_project_gradient_compute(double* dEdD_sqL,
             for (int L = 0; L < Lmax; L++) {
                 double sum = 0.0;
                 for (int n = 0; n < nlebedev; n++) {
-                    const double weight = weight_n[n];
+                    const double weight = wn[n];
                     for (int v = 0; v < 3; v++) {
                         double B = 0.0;
                         for (int g = 0; g < ngrids; g++) {
                             double value =
-                                dedsigma_xng[idx3(2 * s, n, g,
-                                                  nlebedev, ngrids)] *
-                                b_vnsg[idx4(v, n, s, g,
-                                            nlebedev, nspins, ngrids)];
+                                dedsigma[idx3(2 * s, n, g,
+                                              nlebedev, ngrids)] *
+                                b[idx4(v, n, s, g,
+                                       nlebedev, nspins, ngrids)];
                             if (nspins == 2) {
                                 value += 0.5 *
-                                    dedsigma_xng[idx3(1, n, g,
-                                                      nlebedev, ngrids)] *
-                                    b_vnsg[idx4(v, n, 1 - s, g,
-                                                nlebedev, nspins, ngrids)];
+                                    dedsigma[idx3(1, n, g,
+                                                  nlebedev, ngrids)] *
+                                    b[idx4(v, n, 1 - s, g,
+                                           nlebedev, nspins, ngrids)];
                             }
-                            const double radial_scale = dr_g == NULL ?
-                                1.0 : dr_g[g];
-                            B += value * radial_scale * n_qg[q * ngrids + g];
+                            const double radial_scale = dr == nullptr ? 1.0 : dr[g];
+                            B += value * radial_scale * n_qg_[q * ngrids + g];
                         }
-                        sum += weight *
-                            rnablaY_nLv[idx3(n, L, v, Lmax, 3)] * B;
+                        sum += weight * rnablaY[idx3(n, L, v, Lmax, 3)] * B;
                     }
                 }
-                dEdD_sqL[idx3(s, q, L, nq, Lmax)] += prefactor * sum;
+                dEdD[idx3(s, q, L, nq, Lmax)] += prefactor * sum;
             }
         }
     }
@@ -1424,10 +1446,8 @@ CLINKAGE PyObject* paw_gga_radial_gradient_correction(PyObject* self,
         dimspace.set_dim('x', 2 * nspins - 1);
 
         Py_BEGIN_ALLOW_THREADS
-        radial_gradient_correction_compute(dr_g.data(), dv_g.data(),
-                                           dedsigma_xng.data(), a_sng.data(),
-                                           vv_sng.data(), nspins, nlebedev,
-                                           ngrids);
+        radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng,
+                                           a_sng, vv_sng);
         Py_END_ALLOW_THREADS
 
         Py_RETURN_NONE;
@@ -1449,22 +1469,9 @@ CLINKAGE PyObject* paw_gga_back_project_density(PyObject* self,
         auto& weight_n = a.array<1>("weight_n");
         auto& Y_nL = a.array<2>("Y_nL");
 
-        const int nspins = dEdD_sqL.dim(0);
-        const int nq = dEdD_sqL.dim(1);
-        const int Lmax = dEdD_sqL.dim(2);
-        const int nlebedev = dedn_sng.dim(1);
-        const int ngrids = dedn_sng.dim(2);
-        const double* vv_sng_data = vv_sng == nullptr ? NULL : vv_sng->data();
-
         Py_BEGIN_ALLOW_THREADS
-        back_project_density_compute(dEdD_sqL.data(),
-                                     dv_g.data(),
-                                     dedn_sng.data(),
-                                     vv_sng_data,
-                                     n_qg.data(),
-                                     weight_n.data(),
-                                     Y_nL.data(),
-                                     nspins, nq, Lmax, nlebedev, ngrids);
+        back_project_density_compute(dEdD_sqL, dv_g, dedn_sng, vv_sng,
+                                     n_qg, weight_n, Y_nL);
         Py_END_ALLOW_THREADS
         Py_RETURN_NONE;
     });
@@ -1486,10 +1493,6 @@ CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject* self,
         DimSpace& dimspace = a.dimspace();
 
         const int nspins = dEdD_sqL.dim(0);
-        const int nq = dEdD_sqL.dim(1);
-        const int Lmax = dEdD_sqL.dim(2);
-        const int nlebedev = dedsigma_xng.dim(1);
-        const int ngrids = dedsigma_xng.dim(2);
 
         if (nspins != 1 && nspins != 2)
             throw std::invalid_argument(
@@ -1498,14 +1501,8 @@ CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject* self,
         dimspace.set_dim('x', 2 * nspins - 1);
 
         Py_BEGIN_ALLOW_THREADS
-        back_project_gradient_compute(dEdD_sqL.data(),
-                                      dedsigma_xng.data(),
-                                      b_vnsg.data(),
-                                      n_qg.data(),
-                                      NULL,
-                                      weight_n.data(),
-                                      rnablaY_nLv.data(),
-                                      nspins, nq, Lmax, nlebedev, ngrids);
+        back_project_gradient_compute(dEdD_sqL, dedsigma_xng, b_vnsg,
+                                      n_qg, nullptr, weight_n, rnablaY_nLv);
         Py_END_ALLOW_THREADS
 
         Py_RETURN_NONE;
@@ -1534,10 +1531,6 @@ CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject* self,
         DimSpace& dimspace = a.dimspace();
 
         const int nspins = dEdD_sqL.dim(0);
-        const int nq = dEdD_sqL.dim(1);
-        const int Lmax = dEdD_sqL.dim(2);
-        const int nlebedev = e_ng.dim(0);
-        const int ngrids = e_ng.dim(1);
 
         if (nspins != 1 && nspins != 2)
             throw std::invalid_argument("spin dimension must be 1 or 2");
@@ -1548,28 +1541,12 @@ CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject* self,
 
         double E;
         Py_BEGIN_ALLOW_THREADS
-        radial_gradient_correction_compute(dr_g.data(),
-                                           dv_g.data(),
-                                           dedsigma_xng.data(),
-                                           a_sng.data(),
-                                           vv_sng.data(),
-                                           nspins, nlebedev, ngrids);
-        back_project_density_compute(dEdD_sqL.data(),
-                                     dv_g.data(),
-                                     dedn_sng.data(),
-                                     vv_sng.data(),
-                                     n_qg.data(),
-                                     weight_n.data(),
-                                     Y_nL.data(),
-                                     nspins, nq, Lmax, nlebedev, ngrids);
-        back_project_gradient_compute(dEdD_sqL.data(),
-                                      dedsigma_xng.data(),
-                                      b_vnsg.data(),
-                                      n_qg.data(),
-                                      dr_g.data(),
-                                      weight_n.data(),
-                                      rnablaY_nLv.data(),
-                                      nspins, nq, Lmax, nlebedev, ngrids);
+        radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng,
+                                           a_sng, vv_sng);
+        back_project_density_compute(dEdD_sqL, dv_g, dedn_sng, &vv_sng,
+                                     n_qg, weight_n, Y_nL);
+        back_project_gradient_compute(dEdD_sqL, dedsigma_xng, b_vnsg,
+                                      n_qg, &dr_g, weight_n, rnablaY_nLv);
         E = integrate_energy_compute(e_ng, dv_g, weight_n);
         Py_END_ALLOW_THREADS
 
@@ -1579,23 +1556,53 @@ CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject* self,
 
 
 static void call_kernel(PyObject* kernel_calculate,
-                        PyArrayObject* e_ng_obj,
-                        PyArrayObject* n_sng_obj,
-                        PyArrayObject* dedn_sng_obj,
-                        PyArrayObject* sigma_xng_obj,
-                        PyArrayObject* dedsigma_xng_obj)
+                        const DoubleArrayView<2>& e_ng,
+                        const DoubleArrayView<3>& n_sng,
+                        const DoubleArrayView<3>& dedn_sng,
+                        const DoubleArrayView<3>& sigma_xng,
+                        const DoubleArrayView<3>& dedsigma_xng)
 {
-    PyObject* result = PyObject_CallFunctionObjArgs(
-        kernel_calculate,
-        (PyObject*)e_ng_obj,
-        (PyObject*)n_sng_obj,
-        (PyObject*)dedn_sng_obj,
-        (PyObject*)sigma_xng_obj,
-        (PyObject*)dedsigma_xng_obj,
-        NULL);
-    if (result == NULL)
-        throw PropagatePythonError();
-    Py_DECREF(result);
+    npy_intp e_dims[2]     = {e_ng.dim(0), e_ng.dim(1)};
+    npy_intp sng_dims[3]   = {n_sng.dim(0), n_sng.dim(1), n_sng.dim(2)};
+    npy_intp sigma_dims[3] = {sigma_xng.dim(0), sigma_xng.dim(1),
+                               sigma_xng.dim(2)};
+    PyArrayObject* e_ng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+        2, e_dims, NPY_DOUBLE, e_ng.data());
+    PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+        3, sng_dims, NPY_DOUBLE, n_sng.data());
+    PyArrayObject* dedn_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+        3, sng_dims, NPY_DOUBLE, dedn_sng.data());
+    PyArrayObject* sigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+        3, sigma_dims, NPY_DOUBLE, sigma_xng.data());
+    PyArrayObject* dedsigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
+        3, sigma_dims, NPY_DOUBLE, dedsigma_xng.data());
+
+    if (e_ng_obj && n_sng_obj && dedn_sng_obj &&
+        sigma_xng_obj && dedsigma_xng_obj) {
+        PyObject* result = PyObject_CallFunctionObjArgs(
+            kernel_calculate,
+            (PyObject*)e_ng_obj,
+            (PyObject*)n_sng_obj,
+            (PyObject*)dedn_sng_obj,
+            (PyObject*)sigma_xng_obj,
+            (PyObject*)dedsigma_xng_obj,
+            NULL);
+        Py_XDECREF(e_ng_obj);
+        Py_XDECREF(n_sng_obj);
+        Py_XDECREF(dedn_sng_obj);
+        Py_XDECREF(sigma_xng_obj);
+        Py_XDECREF(dedsigma_xng_obj);
+        if (result == NULL)
+            throw PropagatePythonError();
+        Py_DECREF(result);
+    } else {
+        Py_XDECREF(e_ng_obj);
+        Py_XDECREF(n_sng_obj);
+        Py_XDECREF(dedn_sng_obj);
+        Py_XDECREF(sigma_xng_obj);
+        Py_XDECREF(dedsigma_xng_obj);
+        throw std::bad_alloc();
+    }
 }
 
 
@@ -1615,12 +1622,11 @@ static void calculate_expansion(PyObject* kernel_calculate,
                                 double dEdD_scale,
                                 double* E)
 {
-    const int nspins   = D_sLq.dim(0);
-    const int Lmax     = D_sLq.dim(1);
-    const int nq       = D_sLq.dim(2);
-    const int np       = B_pqL.dim(0);
-    const int ngrids   = n_qg.dim(1);
-    const int nlebedev = Y_nL.dim(0);
+    const int nspins = D_sLq.dim(0);
+    const int Lmax   = D_sLq.dim(1);
+    const int nq     = D_sLq.dim(2);
+    const int np     = B_pqL.dim(0);
+    const int ngrids = n_qg.dim(1);
 
     const DoubleArray<3> n_sLg = dimspace.new_array<3>("sLg");
     const DoubleArray<3> dndr_sLg = dimspace.new_array<3>("sLg");
@@ -1651,10 +1657,13 @@ static void calculate_expansion(PyObject* kernel_calculate,
                 for (int g = 0; g < ngrids; g++)
                     n_sLg.data()[idx3(s, L, g, Lmax, ngrids)] +=
                         nc0_sg.data()[s * ngrids + g];
-            derivative_term(dr_g.data(),
-                            n_sLg.data() + idx3(s, L, 0, Lmax, ngrids),
-                            dndr_sLg.data() + idx3(s, L, 0, Lmax, ngrids),
-                            ngrids);
+            derivative_term(dr_g,
+                            n_sLg.view<1>(s * n_sLg.stride(0) +
+                                          L * n_sLg.stride(1),
+                                          {ngrids}, {1}),
+                            dndr_sLg.view<1>(s * dndr_sLg.stride(0) +
+                                             L * dndr_sLg.stride(1),
+                                             {ngrids}, {1}));
         }
     }
     project_density_compute(n_sLg, dndr_sLg, Y_nL,
@@ -1663,61 +1672,16 @@ static void calculate_expansion(PyObject* kernel_calculate,
                             sigma_xng, rnablaY_vnL);
     Py_END_ALLOW_THREADS
 
-    {
-        npy_intp e_dims[2]     = {nlebedev, ngrids};
-        npy_intp sng_dims[3]   = {nspins, nlebedev, ngrids};
-        npy_intp sigma_dims[3] = {2 * nspins - 1, nlebedev, ngrids};
-        PyArrayObject* e_ng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-            2, e_dims, NPY_DOUBLE, e_ng.data());
-        PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-            3, sng_dims, NPY_DOUBLE, n_sng.data());
-        PyArrayObject* dedn_sng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-            3, sng_dims, NPY_DOUBLE, dedn_sng.data());
-        PyArrayObject* sigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-            3, sigma_dims, NPY_DOUBLE, sigma_xng.data());
-        PyArrayObject* dedsigma_xng_obj = (PyArrayObject*)PyArray_SimpleNewFromData(
-            3, sigma_dims, NPY_DOUBLE, dedsigma_xng.data());
-        if (e_ng_obj && n_sng_obj && dedn_sng_obj &&
-            sigma_xng_obj && dedsigma_xng_obj) {
-            try {
-                call_kernel(kernel_calculate, e_ng_obj, n_sng_obj,
-                            dedn_sng_obj, sigma_xng_obj, dedsigma_xng_obj);
-            } catch (...) {
-                Py_XDECREF(e_ng_obj);
-                Py_XDECREF(n_sng_obj);
-                Py_XDECREF(dedn_sng_obj);
-                Py_XDECREF(sigma_xng_obj);
-                Py_XDECREF(dedsigma_xng_obj);
-                throw;
-            }
-        } else {
-            Py_XDECREF(e_ng_obj);
-            Py_XDECREF(n_sng_obj);
-            Py_XDECREF(dedn_sng_obj);
-            Py_XDECREF(sigma_xng_obj);
-            Py_XDECREF(dedsigma_xng_obj);
-            throw std::bad_alloc();
-        }
-        Py_XDECREF(e_ng_obj);
-        Py_XDECREF(n_sng_obj);
-        Py_XDECREF(dedn_sng_obj);
-        Py_XDECREF(sigma_xng_obj);
-        Py_XDECREF(dedsigma_xng_obj);
-    }
+    call_kernel(kernel_calculate, e_ng, n_sng, dedn_sng, sigma_xng,
+                dedsigma_xng);
 
     Py_BEGIN_ALLOW_THREADS
-    radial_gradient_correction_compute(dr_g.data(), dv_g.data(),
-                                       dedsigma_xng.data(), a_sng.data(),
-                                       vv_sng.data(),
-                                       nspins, nlebedev, ngrids);
-    back_project_density_compute(dEdD_sqL.data(), dv_g.data(),
-                                 dedn_sng.data(), vv_sng.data(),
-                                 n_qg.data(), weight_n.data(), Y_nL.data(),
-                                 nspins, nq, Lmax, nlebedev, ngrids);
-    back_project_gradient_compute(dEdD_sqL.data(), dedsigma_xng.data(),
-                                  b_vnsg.data(), n_qg.data(), dr_g.data(),
-                                  weight_n.data(), rnablaY_nLv.data(),
-                                  nspins, nq, Lmax, nlebedev, ngrids);
+    radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng, a_sng,
+                                       vv_sng);
+    back_project_density_compute(dEdD_sqL, dv_g, dedn_sng, &vv_sng,
+                                 n_qg, weight_n, Y_nL);
+    back_project_gradient_compute(dEdD_sqL, dedsigma_xng, b_vnsg,
+                                  n_qg, &dr_g, weight_n, rnablaY_nLv);
     *E = integrate_energy_compute(e_ng, dv_g, weight_n);
     Py_END_ALLOW_THREADS
 
