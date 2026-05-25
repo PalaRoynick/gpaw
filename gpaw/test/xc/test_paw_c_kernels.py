@@ -332,9 +332,22 @@ def test_paw_gga_single_atom_correction(nspins):
 
     actual_dEdD_sp = dEdD0_sp.copy()
     actual_E = paw_gga_single_atom_correction(
-        fake_gga_kernel, D_sp, actual_dEdD_sp, B_pqL, n_qg, nt_qg,
-        nc0_sg, nct0_sg, dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
-        e_xc0, True)
+        kernel_calculate=fake_gga_kernel,
+        D_sp=D_sp,
+        dEdD_sp=actual_dEdD_sp,
+        B_pqL=B_pqL,
+        n_qg=n_qg,
+        nt_qg=nt_qg,
+        nc0_sg=nc0_sg,
+        nct0_sg=nct0_sg,
+        dr_g=dr_g,
+        dv_g=dv_g,
+        r_g=r_g,
+        Y_nL=Y_nL,
+        weight_n=weight_n,
+        rnablaY_nLv=rnablaY_nLv,
+        e_xc0=e_xc0,
+        addcoredensity=True)
 
     expected_dEdD_sp = dEdD0_sp.copy()
     D_sLq = np.inner(D_sp, B_pqL.T)

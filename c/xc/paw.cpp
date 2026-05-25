@@ -4,7 +4,10 @@
 
 #include <array>
 #include <climits>
+#include <map>
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 
 #ifndef GPAW_WITHOUT_BLAS
@@ -536,6 +539,124 @@ double contract(const SelectedDim<1, 1>& left,
     }
     return value;
 }
+
+
+// Parses numpy arrays from a Python kwargs dict.
+// Splitting the variable name at the last '_' yields one dimension label per
+// character in the suffix (e.g. "B_pqL" -> p=dim0, q=dim1, L=dim2).
+// Every dimension that shares a label across arrays is verified to have the
+// same size.  Call ok() after all array() / optional_array() calls before
+// using the returned references.
+class Args {
+    struct ArrayBase {
+        virtual ~ArrayBase() = default;
+    };
+
+    template<int N>
+    struct ArrayHolder : ArrayBase {
+        DoubleArray<N> value;
+        explicit ArrayHolder(DoubleArray<N> a) : value(a) {}
+    };
+
+    PyObject* kwargs_;
+    std::vector<std::unique_ptr<ArrayBase>> storage_;
+    std::map<char, npy_intp> known_dims_;
+    bool ok_ = true;
+
+    static const char* dim_suffix(const char* name)
+    {
+        const char* last = nullptr;
+        for (const char* p = name; *p; ++p)
+            if (*p == '_') last = p;
+        return last ? last + 1 : name;
+    }
+
+    template<int N>
+    void register_dims(const char* name, const DoubleArray<N>& arr)
+    {
+        const char* suffix = dim_suffix(name);
+        int len = 0;
+        while (suffix[len]) ++len;
+        if (len != N)
+            return;
+        for (int i = 0; i < N; i++) {
+            char label = suffix[i];
+            npy_intp size = (npy_intp)arr.dim(i);
+            auto result = known_dims_.emplace(label, size);
+            if (!result.second && result.first->second != size) {
+                PyErr_Format(PyExc_ValueError,
+                    "array '%s': dimension '%c' has size %lld but "
+                    "expected %lld from a previous array",
+                    name, label, (long long)size,
+                    (long long)result.first->second);
+                ok_ = false;
+                return;
+            }
+        }
+    }
+
+    template<int N>
+    DoubleArray<N>& store(DoubleArray<N> arr)
+    {
+        auto holder = std::make_unique<ArrayHolder<N>>(arr);
+        DoubleArray<N>& ref = holder->value;
+        storage_.push_back(std::move(holder));
+        return ref;
+    }
+
+public:
+    explicit Args(PyObject* kwargs) : kwargs_(kwargs) {}
+
+    bool ok() const { return ok_; }
+
+    template<int N>
+    DoubleArray<N>& array(const char* name)
+    {
+        PyObject* obj = PyDict_GetItemString(kwargs_, name);
+        if (obj == nullptr) {
+            ok_ = false;
+            if (!PyErr_Occurred())
+                PyErr_Format(PyExc_TypeError,
+                    "missing required keyword argument '%s'", name);
+            // Construct a dummy; preserve the error we just set.
+            PyObject *t, *v, *tb;
+            PyErr_Fetch(&t, &v, &tb);
+            DoubleArray<N> dummy(Py_None);
+            PyErr_Clear();
+            PyErr_Restore(t, v, tb);
+            return store(dummy);
+        }
+        DoubleArray<N> arr(obj);
+        if (!arr.ok()) {
+            ok_ = false;
+        } else if (!arr.c_contiguous()) {
+            PyErr_Format(PyExc_ValueError,
+                "argument '%s': array must be C-contiguous", name);
+            ok_ = false;
+        } else {
+            register_dims(name, arr);
+        }
+        return store(arr);
+    }
+
+    // Returns nullptr if the value is None; returns a pointer into the Args
+    // storage otherwise.  The key must still be present in kwargs.
+    template<int N>
+    DoubleArray<N>* optional_array(const char* name)
+    {
+        PyObject* obj = PyDict_GetItemString(kwargs_, name);
+        if (obj == nullptr) {
+            ok_ = false;
+            if (!PyErr_Occurred())
+                PyErr_Format(PyExc_TypeError,
+                    "missing keyword argument '%s'", name);
+            return nullptr;
+        }
+        if (obj == Py_None)
+            return nullptr;
+        return &array<N>(name);
+    }
+};
 
 
 template<int N>
@@ -1803,134 +1924,91 @@ fail:
 
 
 CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
-                                                  PyObject* args)
+                                                  PyObject* args,
+                                                  PyObject* kwargs)
 {
-    PyObject* kernel_calculate;
-    PyObject* D_sp_obj;
-    PyObject* dEdD_sp_arg;
-    PyObject* B_pqL_obj;
-    PyObject* n_qg_obj;
-    PyObject* nt_qg_obj;
-    PyObject* nc0_sg_obj;
-    PyObject* nct0_sg_obj;
-    PyObject* dr_g_obj;
-    PyObject* dv_g_obj;
-    PyObject* r_g_obj;
-    PyObject* Y_nL_obj;
-    PyObject* weight_n_obj;
-    PyObject* rnablaY_nLv_obj;
-    double e_xc0;
-    int addcoredensity;
-
-    if (!PyArg_ParseTuple(args, "OOOOOOOOOOOOOOdi",
-                          &kernel_calculate,
-                          &D_sp_obj,
-                          &dEdD_sp_arg,
-                          &B_pqL_obj,
-                          &n_qg_obj,
-                          &nt_qg_obj,
-                          &nc0_sg_obj,
-                          &nct0_sg_obj,
-                          &dr_g_obj,
-                          &dv_g_obj,
-                          &r_g_obj,
-                          &Y_nL_obj,
-                          &weight_n_obj,
-                          &rnablaY_nLv_obj,
-                          &e_xc0,
-                          &addcoredensity))
+    if (PyTuple_Size(args) != 0) {
+        PyErr_SetString(PyExc_TypeError,
+            "paw_gga_single_atom_correction() takes keyword arguments only");
         return NULL;
+    }
 
+    PyObject* kernel_calculate = PyDict_GetItemString(kwargs, "kernel_calculate");
+    if (!kernel_calculate) {
+        PyErr_SetString(PyExc_TypeError,
+            "missing required keyword argument 'kernel_calculate'");
+        return NULL;
+    }
     if (!PyCallable_Check(kernel_calculate)) {
         PyErr_SetString(PyExc_TypeError, "kernel_calculate must be callable");
         return NULL;
     }
 
-    DoubleArray<2> D_sp(D_sp_obj);
-    DoubleArray<3> B_pqL(B_pqL_obj);
-    DoubleArray<2> n_qg(n_qg_obj);
-    DoubleArray<2> nt_qg(nt_qg_obj);
-    DoubleArray<2> nc0_sg(nc0_sg_obj);
-    DoubleArray<2> nct0_sg(nct0_sg_obj);
-    DoubleArray<1> dr_g(dr_g_obj);
-    DoubleArray<1> dv_g(dv_g_obj);
-    DoubleArray<1> r_g(r_g_obj);
-    DoubleArray<2> Y_nL(Y_nL_obj);
-    DoubleArray<1> weight_n(weight_n_obj);
-    DoubleArray<3> rnablaY_nLv(rnablaY_nLv_obj);
-    if (!require_array(D_sp, 2) ||
-        !require_array(B_pqL, 3) ||
-        !require_array(n_qg, 2) ||
-        !require_array(nt_qg, 2) ||
-        !require_array(nc0_sg, 2) ||
-        !require_array(nct0_sg, 2) ||
-        !require_array(dr_g, 1) ||
-        !require_array(dv_g, 1) ||
-        !require_array(r_g, 1) ||
-        !require_array(Y_nL, 2) ||
-        !require_array(weight_n, 1) ||
-        !require_array(rnablaY_nLv, 3))
+    PyObject* e_xc0_obj = PyDict_GetItemString(kwargs, "e_xc0");
+    if (!e_xc0_obj) {
+        PyErr_SetString(PyExc_TypeError,
+            "missing required keyword argument 'e_xc0'");
+        return NULL;
+    }
+    const double e_xc0 = PyFloat_AsDouble(e_xc0_obj);
+    if (e_xc0 == -1.0 && PyErr_Occurred())
         return NULL;
 
-    DoubleArray<2>* dEdD_sp_array = NULL;
-    if (dEdD_sp_arg != Py_None) {
-        dEdD_sp_array = new DoubleArray<2>(dEdD_sp_arg);
-        if (!require_array(*dEdD_sp_array, 2)) {
-            delete dEdD_sp_array;
-            return NULL;
-        }
+    PyObject* addcoredensity_obj = PyDict_GetItemString(kwargs,
+                                                        "addcoredensity");
+    if (!addcoredensity_obj) {
+        PyErr_SetString(PyExc_TypeError,
+            "missing required keyword argument 'addcoredensity'");
+        return NULL;
     }
+    const int addcoredensity = PyObject_IsTrue(addcoredensity_obj);
+    if (addcoredensity == -1)
+        return NULL;
 
-    const int nspins = D_sp.dim(0);
-    const int np = D_sp.dim(1);
-    const int nq = B_pqL.dim(1);
-    const int Lmax = B_pqL.dim(2);
-    const int ngrids = n_qg.dim(1);
+    Args a(kwargs);
+    auto& D_sp        = a.array<2>("D_sp");
+    auto& B_pqL       = a.array<3>("B_pqL");
+    auto& n_qg        = a.array<2>("n_qg");
+    auto& nt_qg       = a.array<2>("nt_qg");
+    auto& nc0_sg      = a.array<2>("nc0_sg");
+    auto& nct0_sg     = a.array<2>("nct0_sg");
+    auto& dr_g        = a.array<1>("dr_g");
+    auto& dv_g        = a.array<1>("dv_g");
+    auto& r_g         = a.array<1>("r_g");
+    auto& Y_nL        = a.array<2>("Y_nL");
+    auto& weight_n    = a.array<1>("weight_n");
+    auto& rnablaY_nLv = a.array<3>("rnablaY_nLv");
+    auto* dEdD_sp     = a.optional_array<2>("dEdD_sp");
+    if (!a.ok())
+        return NULL;
+
+    const int nspins   = D_sp.dim(0);
+    const int np       = D_sp.dim(1);
+    const int nq       = B_pqL.dim(1);
+    const int Lmax     = B_pqL.dim(2);
+    const int ngrids   = n_qg.dim(1);
     const int nlebedev = Y_nL.dim(0);
 
     if (nspins != 1 && nspins != 2) {
-        delete dEdD_sp_array;
         PyErr_SetString(PyExc_ValueError, "D_sp spin dimension must be 1 or 2");
         return NULL;
     }
-    if (B_pqL.dim(0) != np ||
-        n_qg.dim(0) != nq ||
-        nt_qg.dim(0) != nq ||
-        nt_qg.dim(1) != ngrids ||
-        nc0_sg.dim(0) != nspins ||
-        nc0_sg.dim(1) != ngrids ||
-        nct0_sg.dim(0) != nspins ||
-        nct0_sg.dim(1) != ngrids ||
-        dr_g.dim(0) != ngrids ||
-        dv_g.dim(0) != ngrids ||
-        r_g.dim(0) != ngrids ||
-        Y_nL.dim(1) != Lmax ||
-        weight_n.dim(0) != nlebedev ||
-        rnablaY_nLv.dim(0) != nlebedev ||
-        rnablaY_nLv.dim(1) != Lmax ||
-        rnablaY_nLv.dim(2) != 3 ||
-        (dEdD_sp_array != NULL &&
-         (dEdD_sp_array->dim(0) != nspins ||
-          dEdD_sp_array->dim(1) != np))) {
-        delete dEdD_sp_array;
+    if (rnablaY_nLv.dim(2) != 3) {
         PyErr_SetString(PyExc_ValueError,
-                        "incompatible PAW GGA single-atom array shapes");
+            "rnablaY_nLv last dimension must be 3");
         return NULL;
     }
 
     const size_t D_size = (size_t)nspins * Lmax * nq;
     double* D_sLq = (double*)malloc(D_size * sizeof(double));
-    if (D_sLq == NULL) {
-        delete dEdD_sp_array;
+    if (D_sLq == NULL)
         return PyErr_NoMemory();
-    }
 
     const double* B_pqL_data = B_pqL.data();
 
     double* D_sqL = (double*)malloc(D_size * sizeof(double));
     if (D_sqL == NULL) {
         free(D_sLq);
-        delete dEdD_sp_array;
         return PyErr_NoMemory();
     }
 
@@ -1949,7 +2027,7 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
     Py_END_ALLOW_THREADS
     free(D_sqL);
 
-    double* dEdD_sp = dEdD_sp_array == NULL ? NULL : dEdD_sp_array->data();
+    double* dEdD_sp_data = dEdD_sp == nullptr ? nullptr : dEdD_sp->data();
     double E = 0.0;
     double Et = 0.0;
     if (!calculate_expansion(kernel_calculate, D_sLq, n_qg.data(),
@@ -1958,10 +2036,9 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
                              r_g.data(), Y_nL.data(),
                              weight_n.data(),
                              rnablaY_nLv.data(),
-                             dEdD_sp, 1.0, &E, nspins, np, nq, Lmax,
+                             dEdD_sp_data, 1.0, &E, nspins, np, nq, Lmax,
                              ngrids, nlebedev)) {
         free(D_sLq);
-        delete dEdD_sp_array;
         return NULL;
     }
 
@@ -1971,15 +2048,13 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
                              r_g.data(), Y_nL.data(),
                              weight_n.data(),
                              rnablaY_nLv.data(),
-                             dEdD_sp, -1.0, &Et, nspins, np, nq, Lmax,
+                             dEdD_sp_data, -1.0, &Et, nspins, np, nq, Lmax,
                              ngrids, nlebedev)) {
         free(D_sLq);
-        delete dEdD_sp_array;
         return NULL;
     }
 
     free(D_sLq);
-    delete dEdD_sp_array;
     double energy = E - Et;
     if (addcoredensity)
         energy -= e_xc0;

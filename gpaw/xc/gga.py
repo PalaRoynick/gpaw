@@ -146,22 +146,22 @@ def calculate_paw_correction_c(kernel, setup, D_sp, dEdD_sp=None,
 
     Lmax = xcc.B_pqL.shape[2]
     return paw_gga_single_atom_correction(
-        kernel.xc.calculate,
-        np.ascontiguousarray(D_sp, dtype=np.float64),
-        dEdD_sp if dEdD_sp is not None else None,
-        np.ascontiguousarray(xcc.B_pqL, dtype=np.float64),
-        np.ascontiguousarray(xcc.n_qg, dtype=np.float64),
-        np.ascontiguousarray(xcc.nt_qg, dtype=np.float64),
-        np.ascontiguousarray(nc0_sg, dtype=np.float64),
-        np.ascontiguousarray(nct0_sg, dtype=np.float64),
-        np.ascontiguousarray(rgd.dr_g, dtype=np.float64),
-        np.ascontiguousarray(rgd.dv_g, dtype=np.float64),
-        np.ascontiguousarray(rgd.r_g, dtype=np.float64),
-        np.ascontiguousarray(Y_nL[:, :Lmax], dtype=np.float64),
-        np.ascontiguousarray(weight_n, dtype=np.float64),
-        np.ascontiguousarray(rnablaY_nLv[:, :Lmax], dtype=np.float64),
-        float(xcc.e_xc0),
-        int(addcoredensity))
+        kernel_calculate=kernel.xc.calculate,
+        D_sp=np.ascontiguousarray(D_sp, dtype=np.float64),
+        dEdD_sp=dEdD_sp,
+        B_pqL=np.ascontiguousarray(xcc.B_pqL, dtype=np.float64),
+        n_qg=np.ascontiguousarray(xcc.n_qg, dtype=np.float64),
+        nt_qg=np.ascontiguousarray(xcc.nt_qg, dtype=np.float64),
+        nc0_sg=np.ascontiguousarray(nc0_sg, dtype=np.float64),
+        nct0_sg=np.ascontiguousarray(nct0_sg, dtype=np.float64),
+        dr_g=np.ascontiguousarray(rgd.dr_g, dtype=np.float64),
+        dv_g=np.ascontiguousarray(rgd.dv_g, dtype=np.float64),
+        r_g=np.ascontiguousarray(rgd.r_g, dtype=np.float64),
+        Y_nL=np.ascontiguousarray(Y_nL[:, :Lmax], dtype=np.float64),
+        weight_n=np.ascontiguousarray(weight_n, dtype=np.float64),
+        rnablaY_nLv=np.ascontiguousarray(rnablaY_nLv[:, :Lmax], dtype=np.float64),
+        e_xc0=float(xcc.e_xc0),
+        addcoredensity=int(addcoredensity))
 
 
 class GGARadialCalculator:

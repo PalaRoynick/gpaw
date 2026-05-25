@@ -163,7 +163,8 @@ CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject *self,
                                                  PyObject *args);
 CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject *self, PyObject *args);
 CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject *self,
-                                                  PyObject *args);
+                                                  PyObject *args,
+                                                  PyObject *kwargs);
 CLINKAGE PyObject* test_paw_double_array_matmul(PyObject *self,
                                                 PyObject *args);
 
@@ -221,7 +222,8 @@ static PyMethodDef functions[] = {
     {"paw_gga_finish_lebedev",
      paw_gga_finish_lebedev, METH_VARARGS, 0},
     {"paw_gga_single_atom_correction",
-     paw_gga_single_atom_correction, METH_VARARGS, 0},
+     (PyCFunction)paw_gga_single_atom_correction,
+     METH_VARARGS | METH_KEYWORDS, 0},
     {"_test_paw_double_array_matmul",
      test_paw_double_array_matmul, METH_VARARGS, 0},
 #ifndef GPAW_WITHOUT_LIBXC
