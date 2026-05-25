@@ -164,6 +164,8 @@ CLINKAGE PyObject* paw_gga_back_project_gradient(PyObject *self,
 CLINKAGE PyObject* paw_gga_finish_lebedev(PyObject *self, PyObject *args);
 CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject *self,
                                                   PyObject *args);
+CLINKAGE PyObject* test_paw_double_array_matmul(PyObject *self,
+                                                PyObject *args);
 
 
 #ifdef GPAW_GPU
@@ -220,6 +222,8 @@ static PyMethodDef functions[] = {
      paw_gga_finish_lebedev, METH_VARARGS, 0},
     {"paw_gga_single_atom_correction",
      paw_gga_single_atom_correction, METH_VARARGS, 0},
+    {"_test_paw_double_array_matmul",
+     test_paw_double_array_matmul, METH_VARARGS, 0},
 #ifndef GPAW_WITHOUT_LIBXC
     {"lxcXCFunctional", NewlxcXCFunctionalObject, METH_VARARGS, 0},
     {"lxcXCFuncNum", lxcXCFuncNum, METH_VARARGS, 0},

@@ -8,6 +8,28 @@ from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.xc.pawcorrection import rnablaY_nLv
 
 
+def test_paw_double_array_matmul_transposed_views():
+    matmul = pytest.importorskip('_gpaw')._test_paw_double_array_matmul
+
+    rng = np.random.default_rng(472)
+    cases = [
+        (rng.normal(size=(4, 3)),
+         rng.normal(size=(3, 5))),
+        (rng.normal(size=(3, 4)).T,
+         rng.normal(size=(3, 5))),
+        (rng.normal(size=(4, 3)),
+         rng.normal(size=(5, 3)).T),
+        (rng.normal(size=(3, 4)).T,
+         rng.normal(size=(5, 3)).T),
+    ]
+
+    for a, b in cases:
+        actual = np.empty((a.shape[0], b.shape[1]))
+        matmul(a, b, actual)
+        np.testing.assert_allclose(actual, a @ b,
+                                   rtol=0.0, atol=2.0e-14)
+
+
 def derivative2_reference(dr_g, a_g):
     c_g = a_g / dr_g
     b_g = np.empty_like(a_g)

@@ -179,6 +179,14 @@ public:
         return c_contiguous_;
     }
 
+    npy_intp size() const
+    {
+        npy_intp result = 1;
+        for (int i = 0; i < N; i++)
+            result *= dims_[i];
+        return result;
+    }
+
     double* data() const
     {
         return data_;
@@ -202,6 +210,14 @@ public:
         return DoubleArray<M>::view(data_ + offset, dims, strides);
     }
 
+    DoubleArray<N> transpose() const
+    {
+        static_assert(N == 2, "transpose view is implemented for 2D arrays");
+        return DoubleArray<N>::view(data_,
+                                    {dim(1), dim(0)},
+                                    {stride(1), stride(0)});
+    }
+
     void matmul(const DoubleArray& a,
                 const DoubleArray& b,
                 double alpha = 1.0,
@@ -212,21 +228,35 @@ public:
             dim(0) != a.dim(0) ||
             dim(1) != b.dim(1))
             throw std::invalid_argument("matmul dimension mismatch");
-        if (a.stride(1) != 1 || b.stride(1) != 1 || stride(1) != 1)
-            throw std::invalid_argument("matmul requires unit column strides");
-        if (a.stride(0) < MAX(1, a.dim(1)) ||
-            b.stride(0) < MAX(1, b.dim(1)) ||
-            stride(0) < MAX(1, dim(1)))
-            throw std::invalid_argument("matmul row stride is too small");
-        if (a.stride(0) > INT_MAX ||
-            b.stride(0) > INT_MAX ||
-            stride(0) > INT_MAX)
+
+        const char transa = a.blas_transpose();
+        const char transb = b.blas_transpose();
+        const npy_intp lda = a.blas_leading_dimension(transa);
+        const npy_intp ldb = b.blas_leading_dimension(transb);
+        if (stride(1) != 1)
+            throw std::invalid_argument("matmul output must be row-major");
+        if (stride(0) < MAX(1, dim(1)))
+            throw std::invalid_argument("matmul output row stride is too small");
+        if (lda > INT_MAX || ldb > INT_MAX || stride(0) > INT_MAX)
             throw std::invalid_argument("matmul row stride is too large");
 
-        row_dgemm('N', 'N', a.dim(0), b.dim(1), a.dim(1),
-                  alpha, a.data(), (int)a.stride(0),
-                  b.data(), (int)b.stride(0),
+        row_dgemm(transa, transb, a.dim(0), b.dim(1), a.dim(1),
+                  alpha, a.data(), (int)lda,
+                  b.data(), (int)ldb,
                   beta, data_, (int)stride(0));
+    }
+
+    void add_scaled(const DoubleArray<N>& source, double scale) const
+    {
+        for (int i = 0; i < N; i++)
+            if (dim(i) != source.dim(i))
+                throw std::invalid_argument("add_scaled dimension mismatch");
+        if (!c_contiguous() || !source.c_contiguous())
+            throw std::invalid_argument("add_scaled requires contiguous arrays");
+
+        const npy_intp n = size();
+        for (npy_intp i = 0; i < n; i++)
+            data_[i] += scale * source.data_[i];
     }
 
     void transpose_from(const DoubleArray& source,
@@ -301,6 +331,33 @@ private:
     npy_intp strides_[N];
     int c_contiguous_;
 
+    char blas_transpose() const
+    {
+        static_assert(N == 2, "BLAS layout is implemented for 2D arrays");
+        if (stride(1) == 1)
+            return 'N';
+        if (stride(0) == 1)
+            return 'T';
+        throw std::invalid_argument("matmul requires row-major arrays or "
+                                    "their transposed views");
+    }
+
+    npy_intp blas_leading_dimension(char transpose) const
+    {
+        static_assert(N == 2, "BLAS layout is implemented for 2D arrays");
+        if (transpose == 'N') {
+            if (stride(0) < MAX(1, dim(1)))
+                throw std::invalid_argument(
+                    "matmul left/right row stride is too small");
+            return stride(0);
+        }
+
+        if (stride(1) < MAX(1, dim(0)))
+            throw std::invalid_argument(
+                "matmul transposed row stride is too small");
+        return stride(1);
+    }
+
     template<int M>
     friend class SelectedDim;
 };
@@ -362,25 +419,50 @@ void contract(const SelectedDim<2>& left,
     const DoubleArray<2>& a = left.array();
     const DoubleArray<3>& b = right.array();
 
-    if (left.dim() != 1 || right.dim() != 1)
-        throw std::invalid_argument("unsupported 2D-3D contraction dimensions");
-    if (a.dim(1) != b.dim(1) ||
+    if (left.dim() != 1 || (right.dim() != 1 && right.dim() != 0))
+        throw std::invalid_argument(
+            "unsupported 2D-3D contraction dimensions");
+
+    if (right.dim() == 1) {
+        if (a.dim(1) != b.dim(1) ||
+            out.dim(0) != a.dim(0) ||
+            out.dim(1) != b.dim(0) ||
+            out.dim(2) != b.dim(2))
+            throw std::invalid_argument("2D-3D contract dimension mismatch");
+
+        for (int i = 0; i < b.dim(0); i++) {
+            const DoubleArray<2> b_i =
+                b.view<2>(i * b.stride(0),
+                          {b.dim(1), b.dim(2)},
+                          {b.stride(1), b.stride(2)});
+            const DoubleArray<2> out_i =
+                out.view<2>(i * out.stride(1),
+                            {out.dim(0), out.dim(2)},
+                            {out.stride(0), out.stride(2)});
+            out_i.matmul(a, b_i);
+        }
+        return;
+    }
+
+    if (a.dim(1) != b.dim(0) ||
         out.dim(0) != a.dim(0) ||
-        out.dim(1) != b.dim(0) ||
+        out.dim(1) != b.dim(1) ||
         out.dim(2) != b.dim(2))
         throw std::invalid_argument("2D-3D contract dimension mismatch");
+    if (b.stride(2) != 1 || b.stride(1) != b.dim(2) ||
+        out.stride(2) != 1 || out.stride(1) != out.dim(2))
+        throw std::invalid_argument(
+            "2D-3D contract requires contiguous trailing dimensions");
 
-    for (int i = 0; i < b.dim(0); i++) {
-        const DoubleArray<2> b_i =
-            b.view<2>(i * b.stride(0),
-                      {b.dim(1), b.dim(2)},
-                      {b.stride(1), b.stride(2)});
-        const DoubleArray<2> out_i =
-            out.view<2>(i * out.stride(1),
-                        {out.dim(0), out.dim(2)},
-                        {out.stride(0), out.stride(2)});
-        out_i.matmul(a, b_i);
-    }
+    const DoubleArray<2> b_pqL =
+        b.view<2>(0,
+                  {b.dim(0), b.dim(1) * b.dim(2)},
+                  {b.stride(0), 1});
+    const DoubleArray<2> out_sqL =
+        out.view<2>(0,
+                    {out.dim(0), out.dim(1) * out.dim(2)},
+                    {out.stride(0), 1});
+    out_sqL.matmul(a, b_pqL);
 }
 
 
@@ -436,6 +518,34 @@ static int require_array(const DoubleArray<N>& array, int ndim)
         return 0;
     }
     return 1;
+}
+
+
+CLINKAGE PyObject* test_paw_double_array_matmul(PyObject* self,
+                                                PyObject* args)
+{
+    PyObject* a_obj;
+    PyObject* b_obj;
+    PyObject* out_obj;
+
+    if (!PyArg_ParseTuple(args, "OOO", &a_obj, &b_obj, &out_obj))
+        return NULL;
+
+    DoubleArray<2> a(a_obj);
+    DoubleArray<2> b(b_obj);
+    DoubleArray<2> out(out_obj);
+    if (!a.ok() || !b.ok() || !out.ok())
+        return NULL;
+
+    try {
+        out.matmul(a, b);
+    }
+    catch (const std::exception& err) {
+        PyErr_SetString(PyExc_ValueError, err.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
 }
 
 
@@ -1598,37 +1708,37 @@ static int calculate_expansion(PyObject* kernel_calculate,
     if (dEdD_sp != NULL) {
         double* dEdD_tmp_sp = (double*)malloc(
             (size_t)nspins * np * sizeof(double));
-        if (dEdD_tmp_sp != NULL) {
-            Py_BEGIN_ALLOW_THREADS
-            row_dgemm('N', 'T', nspins, np, nq * Lmax,
-                      1.0, dEdD_sqL, nq * Lmax,
-                      B_pqL, nq * Lmax,
-                      0.0, dEdD_tmp_sp, np);
-            for (int s = 0; s < nspins; s++) {
-                for (int p = 0; p < np; p++) {
-                    dEdD_sp[s * np + p] +=
-                        dEdD_scale * dEdD_tmp_sp[s * np + p];
-                }
-            }
-            Py_END_ALLOW_THREADS
-            free(dEdD_tmp_sp);
+        if (dEdD_tmp_sp == NULL) {
+            PyErr_NoMemory();
+            goto fail;
         }
-        else {
-            Py_BEGIN_ALLOW_THREADS
-            for (int s = 0; s < nspins; s++) {
-                for (int p = 0; p < np; p++) {
-                    double value = 0.0;
-                    for (int q = 0; q < nq; q++) {
-                        for (int L = 0; L < Lmax; L++) {
-                            value += dEdD_sqL[idx3(s, q, L, nq, Lmax)] *
-                                B_pqL[idx3(p, q, L, nq, Lmax)];
-                        }
-                    }
-                    dEdD_sp[s * np + p] += dEdD_scale * value;
-                }
-            }
-            Py_END_ALLOW_THREADS
-        }
+
+        const DoubleArray<3> dEdD_sqL_view =
+            DoubleArray<3>::view(dEdD_sqL,
+                                 {nspins, nq, Lmax},
+                                 {(npy_intp)nq * Lmax, Lmax, 1});
+        const DoubleArray<2> dEdD_sqL_flat =
+            dEdD_sqL_view.view<2>(0,
+                                  {nspins, nq * Lmax},
+                                  {(npy_intp)nq * Lmax, 1});
+        const DoubleArray<2> B_pqL_flat =
+            DoubleArray<2>::view((double*)B_pqL,
+                                 {np, nq * Lmax},
+                                 {(npy_intp)nq * Lmax, 1});
+        const DoubleArray<2> dEdD_tmp =
+            DoubleArray<2>::view(dEdD_tmp_sp,
+                                 {nspins, np},
+                                 {np, 1});
+        const DoubleArray<2> dEdD_sp_view =
+            DoubleArray<2>::view(dEdD_sp,
+                                 {nspins, np},
+                                 {np, 1});
+
+        Py_BEGIN_ALLOW_THREADS
+        dEdD_tmp.matmul(dEdD_sqL_flat, B_pqL_flat.transpose());
+        dEdD_sp_view.add_scaled(dEdD_tmp, dEdD_scale);
+        Py_END_ALLOW_THREADS
+        free(dEdD_tmp_sp);
     }
 
     Py_DECREF(n_sng_obj);
@@ -1781,42 +1891,29 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
         return PyErr_NoMemory();
     }
 
-    const double* D_sp_data = D_sp.data();
     const double* B_pqL_data = B_pqL.data();
 
     double* D_sqL = (double*)malloc(D_size * sizeof(double));
-    if (D_sqL != NULL) {
-        Py_BEGIN_ALLOW_THREADS
-        row_dgemm('N', 'N', nspins, nq * Lmax, np,
-                  1.0, D_sp_data, np,
-                  B_pqL_data, nq * Lmax,
-                  0.0, D_sqL, nq * Lmax);
-        for (int s = 0; s < nspins; s++) {
-            for (int L = 0; L < Lmax; L++) {
-                for (int q = 0; q < nq; q++) {
-                    D_sLq[idx3(s, L, q, Lmax, nq)] =
-                        D_sqL[idx3(s, q, L, nq, Lmax)];
-                }
-            }
-        }
-        Py_END_ALLOW_THREADS
-        free(D_sqL);
+    if (D_sqL == NULL) {
+        free(D_sLq);
+        delete dEdD_sp_array;
+        return PyErr_NoMemory();
     }
-    else {
-        Py_BEGIN_ALLOW_THREADS
-        for (int s = 0; s < nspins; s++) {
-            for (int L = 0; L < Lmax; L++) {
-                for (int q = 0; q < nq; q++) {
-                    double value = 0.0;
-                    for (int p = 0; p < np; p++)
-                        value += D_sp_data[s * np + p] *
-                            B_pqL_data[idx3(p, q, L, nq, Lmax)];
-                    D_sLq[idx3(s, L, q, Lmax, nq)] = value;
-                }
-            }
-        }
-        Py_END_ALLOW_THREADS
-    }
+
+    const DoubleArray<3> D_sqL_view =
+        DoubleArray<3>::view(D_sqL,
+                             {nspins, nq, Lmax},
+                             {(npy_intp)nq * Lmax, Lmax, 1});
+    const DoubleArray<3> D_sLq_view =
+        DoubleArray<3>::view(D_sLq,
+                             {nspins, Lmax, nq},
+                             {(npy_intp)Lmax * nq, nq, 1});
+
+    Py_BEGIN_ALLOW_THREADS
+    contract(D_sp.select(1), B_pqL.select(0), D_sqL_view);
+    D_sLq_view.transpose_from(D_sqL_view, 0, 2, 1);
+    Py_END_ALLOW_THREADS
+    free(D_sqL);
 
     double* dEdD_sp = dEdD_sp_array == NULL ? NULL : dEdD_sp_array->data();
     double E = 0.0;
