@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 
@@ -541,12 +542,15 @@ double contract(const SelectedDim<1, 1>& left,
 }
 
 
-// Parses numpy arrays from a Python kwargs dict.
-// Splitting the variable name at the last '_' yields one dimension label per
-// character in the suffix (e.g. "B_pqL" -> p=dim0, q=dim1, L=dim2).
-// Every dimension that shares a label across arrays is verified to have the
-// same size.  Call ok() after all array() / optional_array() calls before
-// using the returned references.
+// Parses keyword arguments from a Python C extension call.
+// Constructor takes both args and kwargs; it rejects any positional args.
+// array() / optional_array() fetch numpy arrays, verify they are float64 and
+// C-contiguous, and cross-check shared dimension labels: splitting the name at
+// the last '_' yields one label per axis (e.g. "B_pqL" -> p=dim0, q=dim1,
+// L=dim2); any two arrays sharing a label are checked to agree on that size.
+// scalar<T>() and callable() fetch non-array arguments.
+// require_dim(label, n) asserts a registered label has a specific size.
+// Call ok() after all fetch calls before using the returned values.
 class Args {
     struct ArrayBase {
         virtual ~ArrayBase() = default;
@@ -604,28 +608,28 @@ class Args {
         return ref;
     }
 
-public:
-    explicit Args(PyObject* kwargs) : kwargs_(kwargs) {}
-
-    bool ok() const { return ok_; }
-
-    template<int N>
-    DoubleArray<N>& array(const char* name)
+    PyObject* get_obj(const char* name)
     {
-        PyObject* obj = PyDict_GetItemString(kwargs_, name);
-        if (obj == nullptr) {
+        if (!kwargs_) {
             ok_ = false;
             if (!PyErr_Occurred())
                 PyErr_Format(PyExc_TypeError,
                     "missing required keyword argument '%s'", name);
-            // Construct a dummy; preserve the error we just set.
-            PyObject *t, *v, *tb;
-            PyErr_Fetch(&t, &v, &tb);
-            DoubleArray<N> dummy(Py_None);
-            PyErr_Clear();
-            PyErr_Restore(t, v, tb);
-            return store(dummy);
+            return nullptr;
         }
+        PyObject* obj = PyDict_GetItemString(kwargs_, name);
+        if (!obj) {
+            ok_ = false;
+            if (!PyErr_Occurred())
+                PyErr_Format(PyExc_TypeError,
+                    "missing required keyword argument '%s'", name);
+        }
+        return obj;
+    }
+
+    template<int N>
+    DoubleArray<N>& make_array(const char* name, PyObject* obj)
+    {
         DoubleArray<N> arr(obj);
         if (!arr.ok()) {
             ok_ = false;
@@ -639,22 +643,101 @@ public:
         return store(arr);
     }
 
+public:
+    explicit Args(PyObject* args, PyObject* kwargs) : kwargs_(kwargs)
+    {
+        if (args && PyTuple_Size(args) != 0) {
+            PyErr_SetString(PyExc_TypeError,
+                "function takes keyword arguments only");
+            ok_ = false;
+        }
+    }
+
+    bool ok() const { return ok_; }
+
+    // Fetch a callable object; sets ok_=false if missing or not callable.
+    PyObject* callable(const char* name)
+    {
+        PyObject* obj = get_obj(name);
+        if (!obj) return nullptr;
+        if (!PyCallable_Check(obj)) {
+            PyErr_Format(PyExc_TypeError,
+                "argument '%s' must be callable", name);
+            ok_ = false;
+            return nullptr;
+        }
+        return obj;
+    }
+
+    // Fetch a scalar. Supported types: double, bool, and integer types.
+    // double uses PyFloat_AsDouble (accepts Python int too).
+    // bool uses PyObject_IsTrue.
+    // Other integral types use PyLong_AsLong.
+    template<typename T>
+    T scalar(const char* name)
+    {
+        PyObject* obj = get_obj(name);
+        if (!obj) return T{};
+        if constexpr (std::is_same_v<T, double>) {
+            double val = PyFloat_AsDouble(obj);
+            if (val == -1.0 && PyErr_Occurred()) ok_ = false;
+            return val;
+        } else if constexpr (std::is_same_v<T, bool>) {
+            int val = PyObject_IsTrue(obj);
+            if (val == -1) { ok_ = false; return false; }
+            return val != 0;
+        } else if constexpr (std::is_integral_v<T>) {
+            long val = PyLong_AsLong(obj);
+            if (val == -1 && PyErr_Occurred()) ok_ = false;
+            return static_cast<T>(val);
+        } else {
+            static_assert(sizeof(T) == 0,
+                "unsupported scalar type for Args::scalar");
+            return T{};
+        }
+    }
+
+    // Assert that a registered dimension label equals a fixed value.
+    void require_dim(char label, npy_intp expected)
+    {
+        auto it = known_dims_.find(label);
+        if (it == known_dims_.end()) {
+            PyErr_Format(PyExc_SystemError,
+                "require_dim: dimension '%c' not yet registered", label);
+            ok_ = false;
+            return;
+        }
+        if (it->second != expected) {
+            PyErr_Format(PyExc_ValueError,
+                "dimension '%c' must be %lld but is %lld",
+                label, (long long)expected, (long long)it->second);
+            ok_ = false;
+        }
+    }
+
+    template<int N>
+    DoubleArray<N>& array(const char* name)
+    {
+        PyObject* obj = get_obj(name);
+        if (!obj) {
+            // Build a null dummy (data==nullptr -> ok()==false) without
+            // calling the PyObject* constructor, which would misinterpret
+            // arbitrary pointers as PyArrayObject* under inlining.
+            std::array<npy_intp, N> zeros{};
+            return store(DoubleArray<N>::view(nullptr, zeros, zeros));
+        }
+        return make_array<N>(name, obj);
+    }
+
     // Returns nullptr if the value is None; returns a pointer into the Args
     // storage otherwise.  The key must still be present in kwargs.
     template<int N>
     DoubleArray<N>* optional_array(const char* name)
     {
-        PyObject* obj = PyDict_GetItemString(kwargs_, name);
-        if (obj == nullptr) {
-            ok_ = false;
-            if (!PyErr_Occurred())
-                PyErr_Format(PyExc_TypeError,
-                    "missing keyword argument '%s'", name);
-            return nullptr;
-        }
-        if (obj == Py_None)
-            return nullptr;
-        return &array<N>(name);
+        PyObject* obj = get_obj(name);
+        if (!obj) return nullptr;
+        if (obj == Py_None) return nullptr;
+        return &make_array<N>(name, obj);
     }
 };
 
@@ -1661,26 +1744,27 @@ static int call_kernel(PyObject* kernel_calculate,
 
 
 static int calculate_expansion(PyObject* kernel_calculate,
-                               const double* D_sLq,
-                               const double* n_qg,
-                               const double* nc0_sg,
-                               const double* B_pqL,
-                               const double* dr_g,
-                               const double* dv_g,
-                               const double* r_g,
-                               const double* Y_nL,
-                               const double* weight_n,
-                               const double* rnablaY_nLv,
-                               double* dEdD_sp,
+                               const DoubleArray<3>& D_sLq,
+                               const DoubleArray<2>& n_qg,
+                               const DoubleArray<2>& nc0_sg,
+                               const DoubleArray<3>& B_pqL,
+                               const DoubleArray<1>& dr_g,
+                               const DoubleArray<1>& dv_g,
+                               const DoubleArray<1>& r_g,
+                               const DoubleArray<2>& Y_nL,
+                               const DoubleArray<1>& weight_n,
+                               const DoubleArray<3>& rnablaY_nLv,
+                               DoubleArray<2>* dEdD_sp,
                                double dEdD_scale,
-                               double* E,
-                               int nspins,
-                               int np,
-                               int nq,
-                               int Lmax,
-                               int ngrids,
-                               int nlebedev)
+                               double* E)
 {
+    const int nspins   = D_sLq.dim(0);
+    const int Lmax     = D_sLq.dim(1);
+    const int nq       = D_sLq.dim(2);
+    const int np       = B_pqL.dim(0);
+    const int ngrids   = n_qg.dim(1);
+    const int nlebedev = Y_nL.dim(0);
+
     npy_intp n_sng_dims[3] = {nspins, nlebedev, ngrids};
     npy_intp sigma_dims[3] = {2 * nspins - 1, nlebedev, ngrids};
     npy_intp e_dims[2] = {nlebedev, ngrids};
@@ -1697,9 +1781,9 @@ static int calculate_expansion(PyObject* kernel_calculate,
     double* dedn_sng = NULL;
     double* dedsigma_xng = NULL;
     double* dEdD_sqL = NULL;
-    size_t n_sLg_size = (size_t)nspins * Lmax * ngrids;
-    size_t rnablaY_vnL_size = (size_t)3 * nlebedev * Lmax;
-    size_t vv_size = (size_t)nspins * nlebedev * ngrids;
+    const size_t n_sLg_size = (size_t)nspins * Lmax * ngrids;
+    const size_t rnablaY_vnL_size = (size_t)3 * nlebedev * Lmax;
+    const size_t vv_size = (size_t)nspins * nlebedev * ngrids;
 
     PyArrayObject* n_sng_obj = (PyArrayObject*)PyArray_SimpleNew(
         3, n_sng_dims, NPY_DOUBLE);
@@ -1754,16 +1838,6 @@ static int calculate_expansion(PyObject* kernel_calculate,
             DoubleArray<3>::view(dndr_sLg,
                                  {nspins, Lmax, ngrids},
                                  {(npy_intp)Lmax * ngrids, ngrids, 1});
-        const DoubleArray<2> Y_nL_view =
-            DoubleArray<2>::view((double*)Y_nL,
-                                 {nlebedev, Lmax},
-                                 {Lmax, 1});
-        const DoubleArray<3> rnablaY_nLv_view =
-            DoubleArray<3>::view((double*)rnablaY_nLv,
-                                 {nlebedev, Lmax, 3},
-                                 {(npy_intp)Lmax * 3, 3, 1});
-        const DoubleArray<1> r_g_view =
-            DoubleArray<1>::view((double*)r_g, {ngrids}, {1});
         const DoubleArray<3> n_sng_view =
             DoubleArray<3>::view(n_sng,
                                  {nspins, nlebedev, ngrids},
@@ -1790,24 +1864,24 @@ static int calculate_expansion(PyObject* kernel_calculate,
         Py_BEGIN_ALLOW_THREADS
         for (int s = 0; s < nspins; s++) {
             row_dgemm('N', 'N', Lmax, ngrids, nq,
-                      1.0, D_sLq + idx3(s, 0, 0, Lmax, nq), nq,
-                      n_qg, ngrids,
+                      1.0, D_sLq.data() + idx3(s, 0, 0, Lmax, nq), nq,
+                      n_qg.data(), ngrids,
                       0.0, n_sLg + idx3(s, 0, 0, Lmax, ngrids),
                       ngrids);
             for (int L = 0; L < Lmax; L++) {
                 if (L == 0)
                     for (int g = 0; g < ngrids; g++)
                         n_sLg[idx3(s, L, g, Lmax, ngrids)] +=
-                            nc0_sg[s * ngrids + g];
-                derivative_term(dr_g,
+                            nc0_sg.data()[s * ngrids + g];
+                derivative_term(dr_g.data(),
                                 n_sLg + idx3(s, L, 0, Lmax, ngrids),
                                 dndr_sLg + idx3(s, L, 0, Lmax, ngrids),
                                 ngrids);
             }
         }
 
-        project_density_compute(n_sLg_view, dndr_sLg_view, Y_nL_view,
-                                rnablaY_nLv_view, r_g_view,
+        project_density_compute(n_sLg_view, dndr_sLg_view, Y_nL,
+                                rnablaY_nLv, r_g,
                                 n_sng_view, a_sng_view, b_vnsg_view,
                                 sigma_xng_view, rnablaY_vnL);
         Py_END_ALLOW_THREADS
@@ -1835,35 +1909,30 @@ static int calculate_expansion(PyObject* kernel_calculate,
             DoubleArray<2>::view(e_ng,
                                  {nlebedev, ngrids},
                                  {(npy_intp)ngrids, 1});
-        const DoubleArray<1> dv_g_view =
-            DoubleArray<1>::view((double*)dv_g, {ngrids}, {1});
-        const DoubleArray<1> weight_n_view =
-            DoubleArray<1>::view((double*)weight_n, {nlebedev}, {1});
 
         Py_BEGIN_ALLOW_THREADS
-        radial_gradient_correction_compute(dr_g, dv_g, dedsigma_xng,
-                                           a_sng, vv_sng,
+        radial_gradient_correction_compute(dr_g.data(), dv_g.data(),
+                                           dedsigma_xng, a_sng, vv_sng,
                                            nspins, nlebedev, ngrids);
-        back_project_density_compute(dEdD_sqL, dv_g,
-                                     dedn_sng, vv_sng, n_qg,
-                                     weight_n, Y_nL, nspins, nq, Lmax,
-                                     nlebedev, ngrids);
-        back_project_gradient_compute(dEdD_sqL,
-                                      dedsigma_xng,
-                                      b_vnsg,
-                                      n_qg, dr_g, weight_n, rnablaY_nLv,
+        back_project_density_compute(dEdD_sqL, dv_g.data(),
+                                     dedn_sng, vv_sng, n_qg.data(),
+                                     weight_n.data(), Y_nL.data(),
+                                     nspins, nq, Lmax, nlebedev, ngrids);
+        back_project_gradient_compute(dEdD_sqL, dedsigma_xng, b_vnsg,
+                                      n_qg.data(), dr_g.data(),
+                                      weight_n.data(), rnablaY_nLv.data(),
                                       nspins, nq, Lmax, nlebedev, ngrids);
-        *E = integrate_energy_compute(e_ng_view, dv_g_view, weight_n_view);
+        *E = integrate_energy_compute(e_ng_view, dv_g, weight_n);
         Py_END_ALLOW_THREADS
     }
 
     free(vv_sng);
     vv_sng = NULL;
 
-    if (dEdD_sp != NULL) {
-        double* dEdD_tmp_sp = (double*)malloc(
+    if (dEdD_sp != nullptr) {
+        double* dEdD_tmp_data = (double*)malloc(
             (size_t)nspins * np * sizeof(double));
-        if (dEdD_tmp_sp == NULL) {
+        if (dEdD_tmp_data == NULL) {
             PyErr_NoMemory();
             goto fail;
         }
@@ -1874,26 +1943,20 @@ static int calculate_expansion(PyObject* kernel_calculate,
                                  {(npy_intp)nq * Lmax, Lmax, 1});
         const DoubleArray<2> dEdD_sqL_flat =
             dEdD_sqL_view.view<2>(0,
-                                  {nspins, nq * Lmax},
+                                  {(npy_intp)nspins, (npy_intp)nq * Lmax},
                                   {(npy_intp)nq * Lmax, 1});
         const DoubleArray<2> B_pqL_flat =
-            DoubleArray<2>::view((double*)B_pqL,
-                                 {np, nq * Lmax},
-                                 {(npy_intp)nq * Lmax, 1});
+            B_pqL.view<2>(0,
+                          {(npy_intp)np, (npy_intp)nq * Lmax},
+                          {(npy_intp)nq * Lmax, 1});
         const DoubleArray<2> dEdD_tmp =
-            DoubleArray<2>::view(dEdD_tmp_sp,
-                                 {nspins, np},
-                                 {np, 1});
-        const DoubleArray<2> dEdD_sp_view =
-            DoubleArray<2>::view(dEdD_sp,
-                                 {nspins, np},
-                                 {np, 1});
+            DoubleArray<2>::view(dEdD_tmp_data, {nspins, np}, {np, 1});
 
         Py_BEGIN_ALLOW_THREADS
         dEdD_tmp.matmul(dEdD_sqL_flat, B_pqL_flat.transpose());
-        dEdD_sp_view.add_scaled(dEdD_tmp, dEdD_scale);
+        dEdD_sp->add_scaled(dEdD_tmp, dEdD_scale);
         Py_END_ALLOW_THREADS
-        free(dEdD_tmp_sp);
+        free(dEdD_tmp_data);
     }
 
     Py_DECREF(n_sng_obj);
@@ -1927,134 +1990,80 @@ CLINKAGE PyObject* paw_gga_single_atom_correction(PyObject* self,
                                                   PyObject* args,
                                                   PyObject* kwargs)
 {
-    if (PyTuple_Size(args) != 0) {
-        PyErr_SetString(PyExc_TypeError,
-            "paw_gga_single_atom_correction() takes keyword arguments only");
-        return NULL;
-    }
-
-    PyObject* kernel_calculate = PyDict_GetItemString(kwargs, "kernel_calculate");
-    if (!kernel_calculate) {
-        PyErr_SetString(PyExc_TypeError,
-            "missing required keyword argument 'kernel_calculate'");
-        return NULL;
-    }
-    if (!PyCallable_Check(kernel_calculate)) {
-        PyErr_SetString(PyExc_TypeError, "kernel_calculate must be callable");
-        return NULL;
-    }
-
-    PyObject* e_xc0_obj = PyDict_GetItemString(kwargs, "e_xc0");
-    if (!e_xc0_obj) {
-        PyErr_SetString(PyExc_TypeError,
-            "missing required keyword argument 'e_xc0'");
-        return NULL;
-    }
-    const double e_xc0 = PyFloat_AsDouble(e_xc0_obj);
-    if (e_xc0 == -1.0 && PyErr_Occurred())
-        return NULL;
-
-    PyObject* addcoredensity_obj = PyDict_GetItemString(kwargs,
-                                                        "addcoredensity");
-    if (!addcoredensity_obj) {
-        PyErr_SetString(PyExc_TypeError,
-            "missing required keyword argument 'addcoredensity'");
-        return NULL;
-    }
-    const int addcoredensity = PyObject_IsTrue(addcoredensity_obj);
-    if (addcoredensity == -1)
-        return NULL;
-
-    Args a(kwargs);
-    auto& D_sp        = a.array<2>("D_sp");
-    auto& B_pqL       = a.array<3>("B_pqL");
-    auto& n_qg        = a.array<2>("n_qg");
-    auto& nt_qg       = a.array<2>("nt_qg");
-    auto& nc0_sg      = a.array<2>("nc0_sg");
-    auto& nct0_sg     = a.array<2>("nct0_sg");
-    auto& dr_g        = a.array<1>("dr_g");
-    auto& dv_g        = a.array<1>("dv_g");
-    auto& r_g         = a.array<1>("r_g");
-    auto& Y_nL        = a.array<2>("Y_nL");
-    auto& weight_n    = a.array<1>("weight_n");
-    auto& rnablaY_nLv = a.array<3>("rnablaY_nLv");
-    auto* dEdD_sp     = a.optional_array<2>("dEdD_sp");
+    Args a(args, kwargs);
+    auto  kernel_calculate = a.callable("kernel_calculate");
+    auto  e_xc0            = a.scalar<double>("e_xc0");
+    auto  addcoredensity   = a.scalar<bool>("addcoredensity");
+    auto& D_sp             = a.array<2>("D_sp");
+    auto& B_pqL            = a.array<3>("B_pqL");
+    auto& n_qg             = a.array<2>("n_qg");
+    auto& nt_qg            = a.array<2>("nt_qg");
+    auto& nc0_sg           = a.array<2>("nc0_sg");
+    auto& nct0_sg          = a.array<2>("nct0_sg");
+    auto& dr_g             = a.array<1>("dr_g");
+    auto& dv_g             = a.array<1>("dv_g");
+    auto& r_g              = a.array<1>("r_g");
+    auto& Y_nL             = a.array<2>("Y_nL");
+    auto& weight_n         = a.array<1>("weight_n");
+    auto& rnablaY_nLv      = a.array<3>("rnablaY_nLv");
+    auto* dEdD_sp          = a.optional_array<2>("dEdD_sp");
+    a.require_dim('v', 3);
     if (!a.ok())
         return NULL;
 
-    const int nspins   = D_sp.dim(0);
-    const int np       = D_sp.dim(1);
-    const int nq       = B_pqL.dim(1);
-    const int Lmax     = B_pqL.dim(2);
-    const int ngrids   = n_qg.dim(1);
-    const int nlebedev = Y_nL.dim(0);
-
-    if (nspins != 1 && nspins != 2) {
+    if (D_sp.dim(0) != 1 && D_sp.dim(0) != 2) {
         PyErr_SetString(PyExc_ValueError, "D_sp spin dimension must be 1 or 2");
         return NULL;
     }
-    if (rnablaY_nLv.dim(2) != 3) {
-        PyErr_SetString(PyExc_ValueError,
-            "rnablaY_nLv last dimension must be 3");
-        return NULL;
-    }
 
-    const size_t D_size = (size_t)nspins * Lmax * nq;
-    double* D_sLq = (double*)malloc(D_size * sizeof(double));
-    if (D_sLq == NULL)
+    const size_t D_size =
+        (size_t)D_sp.dim(0) * B_pqL.dim(1) * B_pqL.dim(2);
+    double* D_sLq_data = (double*)malloc(D_size * sizeof(double));
+    if (D_sLq_data == NULL)
         return PyErr_NoMemory();
 
-    const double* B_pqL_data = B_pqL.data();
-
-    double* D_sqL = (double*)malloc(D_size * sizeof(double));
-    if (D_sqL == NULL) {
-        free(D_sLq);
+    double* D_sqL_data = (double*)malloc(D_size * sizeof(double));
+    if (D_sqL_data == NULL) {
+        free(D_sLq_data);
         return PyErr_NoMemory();
     }
 
-    const DoubleArray<3> D_sqL_view =
-        DoubleArray<3>::view(D_sqL,
-                             {nspins, nq, Lmax},
-                             {(npy_intp)nq * Lmax, Lmax, 1});
-    const DoubleArray<3> D_sLq_view =
-        DoubleArray<3>::view(D_sLq,
-                             {nspins, Lmax, nq},
-                             {(npy_intp)Lmax * nq, nq, 1});
+    const DoubleArray<3> D_sqL =
+        DoubleArray<3>::view(D_sqL_data,
+                             {D_sp.dim(0), B_pqL.dim(1), B_pqL.dim(2)},
+                             {(npy_intp)B_pqL.dim(1) * B_pqL.dim(2),
+                              B_pqL.dim(2), 1});
+    const DoubleArray<3> D_sLq =
+        DoubleArray<3>::view(D_sLq_data,
+                             {D_sp.dim(0), B_pqL.dim(2), B_pqL.dim(1)},
+                             {(npy_intp)B_pqL.dim(2) * B_pqL.dim(1),
+                              B_pqL.dim(1), 1});
 
     Py_BEGIN_ALLOW_THREADS
-    contract(D_sp.select(1), B_pqL.select(0), D_sqL_view);
-    D_sLq_view.transpose_from(D_sqL_view, 0, 2, 1);
+    contract(D_sp.select(1), B_pqL.select(0), D_sqL);
+    D_sLq.transpose_from(D_sqL, 0, 2, 1);
     Py_END_ALLOW_THREADS
-    free(D_sqL);
+    free(D_sqL_data);
 
-    double* dEdD_sp_data = dEdD_sp == nullptr ? nullptr : dEdD_sp->data();
     double E = 0.0;
     double Et = 0.0;
-    if (!calculate_expansion(kernel_calculate, D_sLq, n_qg.data(),
-                             nc0_sg.data(), B_pqL_data,
-                             dr_g.data(), dv_g.data(),
-                             r_g.data(), Y_nL.data(),
-                             weight_n.data(),
-                             rnablaY_nLv.data(),
-                             dEdD_sp_data, 1.0, &E, nspins, np, nq, Lmax,
-                             ngrids, nlebedev)) {
-        free(D_sLq);
+    if (!calculate_expansion(kernel_calculate, D_sLq,
+                             n_qg, nc0_sg, B_pqL,
+                             dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
+                             dEdD_sp, 1.0, &E)) {
+        free(D_sLq_data);
         return NULL;
     }
 
-    if (!calculate_expansion(kernel_calculate, D_sLq, nt_qg.data(),
-                             nct0_sg.data(), B_pqL_data,
-                             dr_g.data(), dv_g.data(),
-                             r_g.data(), Y_nL.data(),
-                             weight_n.data(),
-                             rnablaY_nLv.data(),
-                             dEdD_sp_data, -1.0, &Et, nspins, np, nq, Lmax,
-                             ngrids, nlebedev)) {
-        free(D_sLq);
+    if (!calculate_expansion(kernel_calculate, D_sLq,
+                             nt_qg, nct0_sg, B_pqL,
+                             dr_g, dv_g, r_g, Y_nL, weight_n, rnablaY_nLv,
+                             dEdD_sp, -1.0, &Et)) {
+        free(D_sLq_data);
         return NULL;
     }
 
-    free(D_sLq);
+    free(D_sLq_data);
     double energy = E - Et;
     if (addcoredensity)
         energy -= e_xc0;
