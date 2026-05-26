@@ -12,10 +12,19 @@ def workflow():
             if not file.is_file():
                 shutil.copyfile(dir / file, file)
 
-    run(script='relax-graphite.py', tmax='1h')
-    with run(script='solution2.py', tmax='1h', cores=8):
-        with run(script='solution3.py', tmax='1h', cores=8):
-            run(script='solution4.py', tmax='1h', cores=8)
-        run(script='solution5.py', tmax='1h', cores=8)
-        with run(script='batteries2.py', tmax='3h'):
-            run(script='batteries3.py', tmax='1h', cores=8)
+    # batteries1:
+    run(script='relax_graphite.py', tmax='1h')
+    s2 = run(script='relax_graphite_xc.py', tmax='1h', cores=8)
+    s3 = run(script='li_metal_xc.py', tmax='1h', cores=8)
+    with (s2, s3):
+        run(script='lic8.py', tmax='1h', cores=8)
+        run(script='lic6.py', tmax='1h', cores=8)
+
+    # batteries2:
+    d1 = run(script='fepo4.py', tmax='1h', cores=8)
+    d2 = run(script='lifepo4.py', tmax='1h', cores=8)
+    d3 = run(script='li_metal.py', tmax='1h', cores=8, deps=[s3])
+    run(script='eq_pot.py', deps=[d1, d2, d3])
+
+    # batteries3:
+    run(script='batteries3.py', tmax='1h', cores=8, deps=[d1, d2, d3])
