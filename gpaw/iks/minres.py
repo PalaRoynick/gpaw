@@ -7,7 +7,7 @@ from gpaw.iks.tools import calculate_diff_overlap_matrix
 if TYPE_CHECKING:
     from gpaw.iks import iKS
     from gpaw.old.kpoint import KPoint
-    from gpaw.iks.tools import DegeneracyDescriptor
+    from gpaw.iks.iks import DegeneracyDescriptor
 
 
 class iKSLinearSolver:
@@ -47,7 +47,7 @@ class iKSLinearSolver:
                     coeff = self.dd.vdiff_nn[n, m]
                     if n == m:
                         coeff += eta
-                    self.p_nG[m] += 0.5 * coeff * \
+                    self.p_nG[self.dd.idx_map[m]] += 0.5 * coeff * \
                         dfde_n[n] * self.kpt.psit_nG[n]
         # recalculate the projections
         self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
@@ -61,7 +61,7 @@ class iKSLinearSolver:
             II = np.zeros(1, dtype=p2_nG.dtype)
             for a, Pp_ni in Pp_ani.items():
                 II += np.einsum("i,ij,j", Pp_ni[n].conj(),
-                                wfs.setups[a].dO_ii, P_ani[a][n])
+                                wfs.setups[a].dO_ii, P_ani[a][self.dd.occ[n]])
             self.iks.gd.comm.sum(II)
             alpha = II + wfs.integrate(p_nG[n], psit_nG[n])
             p2_nG[n] -= alpha * psit_nG[n]
@@ -114,7 +114,8 @@ class iKSLinearSolver:
         for bm in self.dd.blocks_occ:
             for m in bm:
                 for n in bm:
-                    b_nG[m] -= kpt.f_n[m] * dd.vdiff_nn[n, m] * kpt.psit_nG[n]
+                    b_nG[self.dd.idx_map[m]] -= kpt.f_n[m] * \
+                        dd.vdiff_nn[n, m] * kpt.psit_nG[n]
 
         self.apply_rhs_paw_correction(b_nG)
         return b_nG
@@ -138,14 +139,13 @@ class iKSLinearSolver:
             for bm in self.dd.blocks_occ:
                 for m in bm:
                     for n in bm:
-                        dp_ni[m] -= kpt.f_n[m] * self.dd.vdiff_nn[n, m] * \
+                        dp_ni[self.dd.idx_map[m]] -= kpt.f_n[m] * self.dd.vdiff_nn[n, m] * \
                             iks.wfs.setups[a].dO_ii @ kpt.P_ani[a][n]
         pt.add(b_nG, dp_ani, q=kpt.q)
 
     def calculate_p(self, p0_nG):
         if self.method is None or self.method.lower() == "none":
-            self.p_nG = p0_nG
-            return self.p_nG
+            return p0_nG
 
         wfs = self.iks.wfs
         kpt = self.kpt

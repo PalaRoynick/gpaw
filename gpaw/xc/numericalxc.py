@@ -258,7 +258,7 @@ class NumericalXC(XCFunctional):
         virial_xc_energy: bool = False,
         stencil: int = 3,
         vxc_sg: ArrayND | None = None,
-        vxc_xasz: list[ArrayDict] = [],
+        vxc_xasz: list[ArrayDict] | None = None,
         vc_xag: list[ArrayDict] = None,
         interpolate_vt=False,  # deprecated
     ):
@@ -266,7 +266,7 @@ class NumericalXC(XCFunctional):
         self.stencil = stencil
         self.kernel: NumericalXCKernel = kernel
         self.setup_name = setup_name
-        self.vxc_xasz = vxc_xasz
+        self.vxc_xasz = vxc_xasz or []
         self.vc_xag = vc_xag
         self.paw_potmode = PAWPotMode(paw_potmode)
         self.virial_xc_energy = (
@@ -586,7 +586,7 @@ class NumericalXC(XCFunctional):
                     vxc_sz = np.empty(vxc_asz.shapes_a[a], dtype=float)
                     if self.vc_xag is not None:
                         vc_g = np.empty(
-                            self.vc_xags[x].shapes_a[a], dtype=float)
+                            self.vc_xag[x].shapes_a[a], dtype=float)
                 rank = vxc_asz.partition.rank_a[a]
                 vxc_asz.partition.comm.broadcast(vxc_sz, rank)
                 if self.vc_xag is not None:

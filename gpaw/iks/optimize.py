@@ -557,13 +557,17 @@ class iKSLBFGS:
 
         for t in range(1, self.maxiter + 1):
             iks.niter = t
-            if iks.lambdacore != 0.0:
+            val_core, reset_core = iks.coresched.step(t)
+            val_reg, reset_reg = iks.regsched.step(t)
+            if reset_core or reset_reg:
+                iks.lambdacore = val_core
+                iks.lambdareg = val_reg
+                iks.fmt.log(
+                    f'Regularization scheduler: lambdareg={val_reg:.4e} lambdacore={val_core:.4e}')
                 # reset the history right after the regularization has been turned off
-                if t == iks.n_regularization + 1:
-                    # reset history
-                    self.s_hist.clear()
-                    self.y_hist.clear()
-                    self.rho_hist.clear()
+                self.s_hist.clear()
+                self.y_hist.clear()
+                self.rho_hist.clear()
 
             # convergence check with current (L, LD, gk) at x
             if iks.converged(L, LD, gk.data_sg, self.Ltol, self.LDtol, self.Jtol):
@@ -799,3 +803,38 @@ class iKSOptimizable(Optimizable):
             opt.run(**opt_run_kwargs)
         self.finish_pool()
         self.iks.afteropt()
+
+
+class StaircaseScheduler:
+    def __init__(
+        self,
+        start_val: float,
+        decay_rate: float,
+        min_val: float,
+        start_iter: int,
+        step_size: int,
+        n_regularization: int | None = None
+    ):
+        self.start_val = start_val
+        self.decay_rate = decay_rate
+        self.min_val = min_val
+        self.start_iter = start_iter
+        self.step_size = step_size
+        self.n_regularization = n_regularization
+        self.current_val = start_val
+
+    def step(self, current_iter: int) -> tuple[float, bool]:
+        if self.n_regularization is not None and current_iter > self.n_regularization:
+            self.current_val = 0.0
+            return 0.0, False
+        if self.current_val == 0.0:
+            return 0.0, False
+        if current_iter <= self.start_iter:
+            return self.start_val, False
+        is_drop_step = (current_iter - self.start_iter) % self.step_size == 0
+        if is_drop_step:
+            new_val = max(self.min_val, self.current_val * self.decay_rate)
+            if new_val < self.current_val:
+                self.current_val = new_val
+                return self.current_val, True
+        return self.current_val, False

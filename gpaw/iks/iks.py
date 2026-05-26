@@ -23,13 +23,48 @@ if TYPE_CHECKING:
     from gpaw.old.grid_descriptor import GridDescriptor
     from gpaw.typing import Array2D, ArrayND
 
+
+class DegeneracyDescriptor:
+    def __init__(self, kpt, bd=None, tolerance=1e-3, occ_tolerance=1e-10):
+        self.kpt = kpt
+        self.tolerance = tolerance
+        self.occ_tolerance = occ_tolerance
+        self.blocks = []
+        self.blocks_occ = []
+        self.occ = np.empty(1)
+        self.n_d = []
+        self.bd = bd
+        self.vdiff_nn = None
+        self.idx_map = {}
+
+    def update(self):
+        f_n = self.kpt.f_n
+        if self.bd is not None:
+            f_n = self.bd.collect(f_n, broadcast=True)
+        self.occ = np.flatnonzero(f_n > self.occ_tolerance)
+        eps_n = self.kpt.eps_n
+        sort_idx = np.argsort(eps_n)
+        eps_sorted = eps_n[sort_idx]
+        gaps = np.diff(eps_sorted) > self.tolerance
+        break_indices = np.where(gaps)[0] + 1
+        groups = np.split(sort_idx, break_indices)
+        self.blocks = [g.tolist() for g in groups]
+        self.blocks_occ = [
+            g[np.isin(g, self.occ)].tolist()
+            for g in groups
+        ]
+        self.n_d = [len(b) for b in self.blocks]
+        self.blocks_occ = [b for b in self.blocks_occ if b]
+        self.idx_map = {band_idx: array_idx for array_idx,
+                        band_idx in enumerate(self.occ)}
+
+
 # throughout it's been assumed that finegd and gd (both for the hamiltonian and the density)
 # all have the same distribution which (I think) is not always true.
 # for example look at density.get_all_electron_density to see how to properly handle different distributions.
 
-
 class iKS:
-    # TODO: add explaination on lambdareg, lambdacore and n_regularization
+    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol
     """
     OECO-iKS: Orbital Expansion Constrained Optimization Inverse Kohn–Sham procedure.
     This class implements an inverse Kohn–Sham (iKS) approach using orbital expansion
@@ -166,7 +201,7 @@ class iKS:
         atoms: Atoms | None = None,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
-        n_regularization: int = 100,
+        reg_scheduler_params=None,
         stencil: int = 3,
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
@@ -176,7 +211,8 @@ class iKS:
         log_l1_ae: bool = True,
         mix_paw_error: bool = True,
         degeneracy_tol: float = 1e-3,
-        **nxc_kwargs: dict[str, Any],
+        occ_tol: float = 1e-10,
+        nxc_kwargs: dict[str, Any] | None = None,
     ):
         self.target = target
         atoms = calc.atoms or atoms
@@ -186,8 +222,17 @@ class iKS:
         self.P_snn = P_snn
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
+        if reg_scheduler_params is None:
+            reg_scheduler_params = {'decay_rate': 0.5, 'min_val': 1e-10,
+                                    'start_iter': 0, 'step_size': 25,
+                                    'n_regularization': None}
+        self.reg_scheduler_params = reg_scheduler_params
+        self.regsched = iks_optimize.StaircaseScheduler(
+            lambdareg, **reg_scheduler_params)
+        self.coresched = iks_optimize.StaircaseScheduler(
+            lambdacore, **reg_scheduler_params)
         self.niter: int = 0
-        self.n_regularization = n_regularization
+
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
         self.stencil = stencil
         self.nfixed = nfixed
@@ -210,6 +255,7 @@ class iKS:
         self.log_l1_ae = log_l1_ae
         self.nxc_kwargs = nxc_kwargs
         self.degeneracy_tol = degeneracy_tol
+        self.occ_tol = occ_tol
 
     def initialize_from_calc(self, target, calc, atoms, weights, atomic_weights):
         self.calc = calc
@@ -301,7 +347,7 @@ class iKS:
         # regularization stuff
         self.wreg_ag = None
         self.vc_axg = None
-        if self.lambdacore != 0.0 and self.niter <= self.n_regularization:
+        if self.lambdacore != 0.0:
             self.wreg_ag = iks_tools.calculate_regularization_weights(
                 self.setups)
             self.vc_axg = iks_tools.calc_core_atomic_potentials(
@@ -369,8 +415,8 @@ class iKS:
         self.update_diff()
         self.dd_u = []
         for kpt in wfs.kpt_u:
-            dd = iks_tools.DegeneracyDescriptor(
-                kpt, tolerance=self.degeneracy_tol)
+            dd = DegeneracyDescriptor(
+                kpt, tolerance=self.degeneracy_tol, occ_tolerance=self.occ_tol)
             dd.update()
             # print('dd.blocks_occ', dd.kpt.q, dd.blocks_occ)
             self.dd_u.append(dd)
@@ -422,20 +468,21 @@ class iKS:
         p_mG = self.wfs.empty(nocc, q=kpt.q)
         for bm in dd.blocks_occ:
             for m in bm:
-                p_mG[m][:] = 0.0
+                p_mG[dd.idx_map[m]][:] = 0.0
             for n in range(nbands):
                 if n in bm:
                     for m in bm:
                         coeff = vdiff_nn[n, m]
                         if m == n:
                             coeff += eta
-                        p_mG[m] += 0.5 * coeff * dfde_n[m] * kpt.psit_nG[n]
+                        p_mG[dd.idx_map[m]] += 0.5 * \
+                            coeff * dfde_n[m] * kpt.psit_nG[n]
                 else:
                     for m in bm:
                         f_m = kpt.f_n[m]
                         eps_m = kpt.eps_n[m]
                         eps_n = kpt.eps_n[n]
-                        p_mG[m] += f_m / (eps_m - eps_n) * \
+                        p_mG[dd.idx_map[m]] += f_m / (eps_m - eps_n) * \
                             vdiff_nn[n, m] * kpt.psit_nG[n]
         return p_mG
 
@@ -480,7 +527,7 @@ class iKS:
             f_n, dfde_n, _ = self.wfs.occupations.distribution(
                 kpt.eps_n * Ha, self.wfs.fermi_levels * Ha)
             # 1/eV -> 1/Ha
-            dfde_n = dfde_n[dd.occ] * (Ha * kpt.weightk * degeneracy)
+            dfde_n = dfde_n * (Ha * kpt.weightk * degeneracy)
             self.dfde_un.append(dfde_n)
             for n in dd.occ:
                 enum += dd.vdiff_nn[n, n].real * dfde_n[n]
@@ -511,10 +558,11 @@ class iKS:
         L2 = self.gd.integrate(
             self.weights_sG * (self.dn_sG**2), global_integral=True
         ).sum()
-        if self.lambdareg != 0.0:
+        lambdareg = self.lambdareg
+        if lambdareg != 0.0:
             grad_svg = self.xc.kernel.calculate_gradient(self.xc.vxc_sg)
             sigma_sg = np.einsum('sv...,sv...->s...', grad_svg, grad_svg)
-            II = self.lambdareg * \
+            II = lambdareg * \
                 self.finegd.integrate(sigma_sg, global_integral=True).sum()
             # print('regularization lag', I, self.calc.world.rank)
             self.fmt.log(f'regularization correction: {II:.4e}')
@@ -525,8 +573,8 @@ class iKS:
         LD2 = np.array([0.0])
         Lreg = 0.0
         vxc_asz = None
-        atomic_reg = self.lambdacore != 0.0 and self.niter <= self.n_regularization
-        if atomic_reg:
+        lambdacore = self.lambdacore
+        if lambdacore != 0.0:
             assert self.xc.paw_potmode is PAWPotMode.lebedev
             vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
             vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
@@ -557,13 +605,13 @@ class iKS:
                             xcc.rgd.integrate(w_ng[n] * np.abs(dnt_g))
                         LD2 += weight_n[n] * \
                             xcc.rgd.integrate(w_ng[n] * (dnt_g**2))
-                    if atomic_reg:
+                    if lambdacore != 0.0:
                         dv_g = vxc_asz[a][s][n] - self.vc_axg[a][0]
-                        Lreg += self.lambdacore * \
+                        Lreg += lambdacore * \
                             weight_n[n] * \
                             xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
                         dv_g = vxct_asz[a][s][n] - self.vc_axg[a][1]
-                        Lreg += self.lambdacore * \
+                        Lreg += lambdacore * \
                             weight_n[n] * \
                             xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
 
@@ -572,7 +620,7 @@ class iKS:
         comm = self.dD_asp.partition.comm
         comm.sum(LD1)
         comm.sum(LD2)
-        if atomic_reg:
+        if lambdacore != 0.0:
             Lreg = comm.sum_scalar(Lreg)
             self.fmt.log(f'Atomic regularization: {Lreg:.4e}')
         return L1, L2, LD1.item(), LD2.item()
@@ -589,12 +637,13 @@ class iKS:
         else:
             J_sg = self.finegd.zeros(self.density.nspins)
             self.coarse2fine(J_sG, J_sg)
-        if self.lambdareg != 0.0:
+        lambdareg = self.lambdareg
+        if lambdareg != 0.0:
             lapl_sg = self.xc.kernel.calculate_lapl(self.xc.vxc_sg)
             if self.use_coarse_grid:
-                J_sg -= 2 * self.lambdareg * self.fine2coarse(lapl_sg)
+                J_sg -= 2 * lambdareg * self.fine2coarse(lapl_sg)
             else:
-                J_sg -= 2 * self.lambdareg * lapl_sg
+                J_sg -= 2 * lambdareg * lapl_sg
         self.J_sg = J_sg
         return J_sg
 
@@ -660,8 +709,8 @@ class iKS:
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
         vxc_asz = None
         vxct_asz = None
-        atomic_reg = self.lambdacore != 0.0 and self.niter <= self.n_regularization
-        if atomic_reg:
+        lambdacore = self.lambdacore
+        if lambdacore != 0.0:
             vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
             vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
         for a, dp_sp in dp_asp.items():
@@ -682,16 +731,16 @@ class iKS:
                             Y_nL[:, :Lmax], dv_sLg[s]).real
                         self.J_xasz[1][a][s] = np.dot(
                             Y_nL[:, :Lmax], dvt_sLg[s]).real
-                        if atomic_reg:
+                        if lambdacore != 0.0:
                             dv = vxc_asz[a][s, :] - \
                                 self.vc_axg[a][0][np.newaxis]
                             self.J_xasz[0][a][s, :] += 2 * \
-                                self.lambdacore * \
+                                lambdacore * \
                                 self.wreg_ag[a][np.newaxis] * dv
                             dv = vxct_asz[a][s, :] - \
                                 self.vc_axg[a][1][np.newaxis]
                             self.J_xasz[1][a][s, :] += 2 * \
-                                self.lambdacore * \
+                                lambdacore * \
                                 self.wreg_ag[a][np.newaxis] * dv
                 else:
                     assert self.xc.paw_potmode is PAWPotMode.angular
@@ -838,7 +887,7 @@ class iKS:
             apply_occupation_correction=self.apply_occupation_correction,
             lambdareg=self.lambdareg,
             lambdacore=self.lambdacore,
-            n_regularization=self.n_regularization,
+            reg_scheduler_params=self.reg_scheduler_params,
             stencil=self.stencil,
             nfixed=self.nfixed,
             linear_solver=linear_solver,
