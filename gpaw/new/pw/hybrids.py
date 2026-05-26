@@ -14,7 +14,7 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.pwacf import PWAtomCenteredFunctions
 from gpaw.mpi import broadcast
 from gpaw.new import zips as zip
-from gpaw.new.calculation import DFTCalculation
+from gpaw.dft import DFT
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger
 from gpaw.new.pw.hamiltonian import PWHamiltonian
@@ -547,7 +547,7 @@ def forces(ghat_aLG, vrhot2_nG, P2_ani, Q2_anL, f1, f2_n, nbzk, delta_aiiL,
 
 
 def non_self_consistent_hybrid_xc_energy(
-    dft: DFTCalculation,
+    dft: DFT,
     xc: str,
     *,
     log: str | Path | IO[str] | Logger | None = '-') -> np.ndarray:
@@ -623,7 +623,7 @@ def non_self_consistent_hybrid_xc_energy(
          evv]) * Ha
 
 
-def _semilocal_xc_energy(dft: DFTCalculation,
+def _semilocal_xc_energy(dft: DFT,
                          xc: str) -> float:
     from gpaw.hybrids import parse_name
     semilocal_xc_name, exx_fraction, exx_omega, yukawa = parse_name(xc)

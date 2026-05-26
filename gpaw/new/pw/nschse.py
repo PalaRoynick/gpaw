@@ -25,13 +25,13 @@ from gpaw.setup import Setups
 from gpaw.utilities import pack_density, unpack_hermitian
 
 if TYPE_CHECKING:
-    from gpaw.new.calculation import DFTCalculation
+    from gpaw.dft import DFT
 
 
 class NonSelfConsistentHybridXCCalculator:
     @classmethod
     def from_dft_calculation(cls,
-                             dft: DFTCalculation,
+                             dft: DFT,
                              xc: str,
                              *,
                              log: str | Path | IO[str] | None = '-',
@@ -332,7 +332,7 @@ def nsc_corrections(density: Density,
     return dxc_sR, dhyb_sR, dxc_asii, dhyb_asii
 
 
-def non_self_consistent_matrix_elements(dft: DFTCalculation,
+def non_self_consistent_matrix_elements(dft: DFT,
                                         xc: str = 'HSE06') -> np.ndarray:
     """Calculate non self-consistent matrix elements of hybrid XC.
 
@@ -375,7 +375,7 @@ def non_self_consistent_matrix_elements(dft: DFTCalculation,
 class NonSelfConsistentHSE06(NonSelfConsistentHybridXCCalculator):
     @classmethod
     def from_dft_calculation(cls,
-                             dft: DFTCalculation,
+                             dft: DFT,
                              xc: str = 'HSE06',
                              *,
                              log: str | Path | IO[str] | None = '-',

@@ -46,8 +46,7 @@ from gpaw.new.potential import Potential
 from gpaw.utilities import as_dtype_precision, unpack_density, unpack_hermitian
 
 if TYPE_CHECKING:
-    from gpaw.dft import Parameters
-    from gpaw.new.calculation import DFTCalculation
+    from gpaw.dft import Parameters, DFT
 
 
 def as_single_precision(array):
@@ -92,7 +91,7 @@ class GPWFlags:
 
 
 def write_gpw(filename: str | Path,
-              dft: DFTCalculation,
+              dft: DFT,
               flags: GPWFlags) -> None:
     from gpaw.new.calculation import units
     comm = dft.comm
@@ -145,7 +144,7 @@ def write_dft_state(writer: ulm.Writer | ulm.DummyWriter,
                     potential: Potential,
                     energies: DFTEnergies,
                     flags: GPWFlags) -> None:
-    """ Common function shared between DFTCalculation and RTTDDFT. """
+    """Common function shared between DFT and RTTDDFT. """
     density.write_to_gpw(writer.child('density'), flags)
     potential.write_to_gpw(writer.child('hamiltonian'), flags)
     writer.write(e_stress=potential.e_stress * Ha)
@@ -199,11 +198,9 @@ def read_gpw(filename: str | Path | IO[str],
              dtype=None,
              force_complex_dtype: bool = False,
              object_hooks: dict[str, Callable[[dict], Any]] | None = None
-             ) -> tuple[Atoms,
-                        DFTCalculation,
-                        DFTComponentsBuilder]:
-    from gpaw.dft import Parameters
-    from gpaw.new.calculation import DFTCalculation, units
+             ) -> tuple[Atoms, DFT, DFTComponentsBuilder]:
+    from gpaw.dft import Parameters, DFT
+    from gpaw.new.calculation import units
     """
     Read gpw file
 
@@ -255,14 +252,15 @@ def read_gpw(filename: str | Path | IO[str],
         singlep=singlep, log=log, **kwargs)
     ibzwfs, density, potential, energies = state
 
-    dft = DFTCalculation(
+    dft = DFT.from_components(
         atoms, ibzwfs, density, potential,
         builder.setups,
         builder.create_scf_loop(),
         pot_calc=builder.create_potential_calculator(),
         params=params,
         energies=energies,
-        log=log)
+        log=log,
+        converge=False)
 
     results = {key: value / units[key]
                for key, value in reader.results.asdict().items()}

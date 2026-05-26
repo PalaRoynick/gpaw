@@ -3,13 +3,12 @@ from __future__ import annotations
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, Sequence
 
 import numpy as np
 from ase import Atoms
 from ase.geometry import cell_to_cellpar
 from ase.units import Bohr, Ha
-
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.atom_arrays import AtomDistribution
@@ -35,7 +34,9 @@ from gpaw.utilities import (check_atoms_too_close,
 from gpaw.utilities.timing import simpletimer
 
 if TYPE_CHECKING:
-    from gpaw.dft import Mode, Parameters
+    from gpaw.dft import (XC, Eigensolver, ExtensionInput, KptsType, Mixer,
+                          Mode, MonkhorstPack, Occupations, Parameters,
+                          PoissonSolver, Symmetry)
 
 
 class ReuseWaveFunctionsError(Exception):
@@ -68,33 +69,118 @@ units = {'energy': Ha,
          'non_collinear_magmoms': 1.0}
 
 
-class DFTCalculation:
-    def __init__(self,
-                 atoms: Atoms,
-                 ibzwfs: IBZWaveFunctions,
-                 density: Density,
-                 potential: Potential,
-                 setups: Setups,
-                 scf_loop: SCFLoop,
-                 pot_calc,
-                 log: Logger,
-                 params: Parameters,
-                 energies: DFTEnergies | None = None):
-        self.atoms = atoms
-        self.ibzwfs = ibzwfs
-        self.density = density
-        self.potential = potential
-        self.setups = setups
-        self.scf_loop = scf_loop
-        self.pot_calc = pot_calc
-        self.log = log
-        self.comm = log.comm
-        self.params = params
+class DFT:
+    def __init__(
+        self,
+        atoms: Atoms,
+        *,
+        mode: str | dict | Mode,
+        basis: str | dict[str | int | None, str] | None = None,
+        charge: float | None = None,
+        convergence: dict | None = None,
+        eigensolver: str | dict | Eigensolver | None = None,
+        experimental: dict | None = None,
+        extensions: Sequence[ExtensionInput] | None = None,
+        gpts: Sequence[int] | None = None,
+        h: float | None = None,
+        hund: bool | None = None,
+        interpolation: int | None = None,
+        kpts: KptsType | MonkhorstPack | None = None,
+        magmoms: Sequence[float] | Sequence[Sequence[float]] | None = None,
+        maxiter: int | None = None,
+        mixer: dict | Mixer | None = None,
+        nbands: int | str | None = None,
+        occupations: dict | Occupations | None = None,
+        parallel: dict | None = None,
+        poissonsolver: dict | PoissonSolver | None = None,
+        random: bool | None = None,
+        setups: str | dict | None = None,
+        soc: bool | None = None,
+        spinpol: bool | None = None,
+        symmetry: str | dict | Symmetry | None = None,
+        xc: str | dict | XC | None = None,
+        txt: str | Path | IO[str] | Logger | None = '-',
+        communicator: MPIComm | None = None,
+        converge=True,
+        _components=None,
+        _parameters=None):
+        """Create a DFT object.
 
+        See :class:`gpaw.dft.Parameters` for the complete list of parameters.
+
+        Parameters
+        ==========
+        atoms:
+            ASE-Atoms object.
+        txt:
+            Text log-file.  Use ``None`` for no logging and ``'-'`` for using
+            standard out.
+        communicator:
+            MPI-communicator.  Default is to use ``gpaw.mpi.world``.
+
+        """
+        from gpaw.dft import PARAMETER_NAMES, Parameters
+
+        self.atoms = atoms.copy()
+
+        if _components is None:
+            if _parameters is None:
+                kwargs = {k: v for k, v in locals().items()
+                          if k in PARAMETER_NAMES}
+                params = Parameters(**kwargs)
+            else:
+                params = _parameters
+            _components = params.create_dft_calculation_components(
+                self.atoms, communicator, txt)
+
+        (self.ibzwfs, self.density, self.potential,
+         self.setups, self.scf_loop, self.pot_calc,
+         self.log, self.params, energies) = _components
+
+        self.comm = self.ibzwfs.comm
         self.results: dict[str, Any] = {}
         self.relpos_ac = self.pot_calc.relpos_ac
         self.energies = energies or DFTEnergies()
         self.forces_have_been_printed = False
+
+        if converge:
+            self.converge()
+
+    @classmethod
+    def from_parameters(cls,
+                        atoms: Atoms,
+                        params: Parameters,
+                        comm,
+                        log: Logger | str | None = None,
+                        converge=True):
+        return cls(
+            atoms,
+            mode='',
+            communicator=comm,
+            txt=log,
+            converge=converge,
+            _parameters=params)
+
+    @classmethod
+    def from_components(cls,
+                        atoms: Atoms,
+                        ibzwfs: IBZWaveFunctions,
+                        density: Density,
+                        potential: Potential,
+                        setups: Setups,
+                        scf_loop: SCFLoop,
+                        pot_calc,
+                        log: Logger,
+                        params: Parameters,
+                        energies: DFTEnergies | None = None,
+                        converge=True):
+        return cls(
+            atoms,
+            mode='',
+            _components=(ibzwfs, density, potential,
+                         setups, scf_loop, pot_calc,
+                         log, params, energies),
+            converge=converge)
 
     def __getattr__(self, name):
         matches = [ext
@@ -103,56 +189,6 @@ class DFTCalculation:
         if len(matches) != 1:
             raise AttributeError
         return matches[0]
-
-    @classmethod
-    def from_parameters(cls,
-                        atoms: Atoms,
-                        params: Parameters,
-                        comm: MPIComm,
-                        log=None) -> DFTCalculation:
-        """Create DFTCalculation object from parameters and atoms."""
-        check_atoms_too_close(atoms)
-        check_atoms_too_close_to_boundary(atoms)
-
-        if not isinstance(log, Logger):
-            log = Logger(log, comm)
-
-        builder = params.dft_component_builder(atoms, log=log, comm=comm)
-
-        basis_set = builder.create_basis_set()
-
-        # The SCF-loop has a Hamiltonian that has an fft-plan that is
-        # cached for later use, so best to create the SCF-loop first
-        # FIX this!
-        scf_loop = builder.create_scf_loop()
-
-        pot_calc = builder.create_potential_calculator()
-
-        density = builder.density_from_superposition(basis_set)
-        if len(atoms) == 0:
-            density.nt_sR.data[:] = 1.0
-        density.normalize(pot_calc.charge)
-
-        potential, energies, _ = pot_calc.calculate_without_orbitals(
-            density, kpt_band_comm=builder.communicators['D'])
-        ibzwfs = builder.create_ibz_wave_functions(
-            basis_set, potential)
-
-        if ibzwfs._wfs_u[0].has_eigs:
-            nelectrons = density.nvalence - density.charge + pot_calc.charge
-            ibzwfs.calculate_occs(scf_loop.occ_calc, nelectrons)
-
-        write_atoms(atoms, builder.initial_magmom_av, builder.grid, log)
-        ibzwfs.summary(log)
-        log(density)
-        log(potential)
-        log(builder.setups)
-        log(scf_loop)
-        log(pot_calc)
-
-        return cls(atoms, ibzwfs, density, potential,
-                   builder.setups, scf_loop, pot_calc, log,
-                   params=params, energies=energies)
 
     def ase_calculator(self):
         """Create ASE-compatible GPAW calculator.
@@ -163,7 +199,7 @@ class DFTCalculation:
                              dft=self,
                              atoms=self.atoms)
 
-    def move_atoms(self, atoms) -> DFTCalculation:
+    def move_atoms(self, atoms) -> DFT:
         check_atoms_too_close(atoms)
 
         self.atoms = atoms
@@ -473,9 +509,9 @@ class DFTCalculation:
             return None
         return psit_nR.scaled(cell=Bohr, values=Bohr**-1.5)
 
-    def gather(self, txt='-') -> DFTCalculation | None:
-        """Gather calculation data from DFTCalculation object
-           on master and return new DFTCalculation
+    def gather(self, txt='-') -> DFT | None:
+        """Gather calculation data from DFT object
+           on master and return new DFT object
            (only on master, None everywhere else)."""
 
         atoms = self.atoms
@@ -523,14 +559,15 @@ class DFTCalculation:
             builder.get_pseudo_core_densities(),
             builder.get_pseudo_core_ked())
 
-        dft = DFTCalculation(
+        dft = DFT.from_components(
             atoms, ibzwfs, density, potential,
             builder.setups,
             builder.create_scf_loop(),
             builder.create_potential_calculator(),
             builder.log,
             params=params,
-            energies=self.energies)
+            energies=self.energies,
+            converge=False)
 
         dft.results = self.results.copy()
         return dft
@@ -613,8 +650,8 @@ class DFTCalculation:
     def new(self,
             atoms: Atoms,
             params: Parameters,
-            log=None) -> DFTCalculation:
-        """Create new DFTCalculation object."""
+            log=None) -> DFT:
+        """Create new DFT object."""
         if params.mode.name != 'pw':
             raise ReuseWaveFunctionsError
 
@@ -681,10 +718,11 @@ class DFTCalculation:
         log(scf_loop)
         log(pot_calc)
 
-        return DFTCalculation(
+        return DFT.from_components(
             atoms, ibzwfs, density, potential,
             builder.setups, scf_loop, pot_calc, log,
-            params=params, energies=energies)
+            params=params, energies=energies,
+            converge=False)
 
     def change_mode(self,
                     mode: str | dict | Mode,
@@ -762,7 +800,7 @@ class DFTCalculation:
                       force_complex_dtype: bool = False,
                       object_hooks: dict[str,
                                          Callable[[dict], Any]] | None = None
-                      ) -> DFTCalculation:
+                      ) -> DFT:
 
         (atoms,
          dft,
@@ -781,7 +819,7 @@ class DFTCalculation:
 
     @property
     def state(self):
-        warnings.warn('Use of deprecated DFTCalculation.state attribute. '
+        warnings.warn('Use of deprecated DFT.state attribute. '
                       'Use ibzwfs, density and potential attributes instead.')
         return self.get_state()
 
