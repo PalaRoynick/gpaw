@@ -528,6 +528,7 @@ class iKSLBFGS:
             "memory": self.m,
             "max_ls": self.max_ls,
             "maxiter": self.maxiter,
+            "step_scale": self.step_scale,
             "smooth Lagrangian tolerance": self.Ltol,
             "atomic Lagrangian tolerance": self.LDtol,
             "gradients-tolerance": self.Jtol,
@@ -809,10 +810,10 @@ class StaircaseScheduler:
     def __init__(
         self,
         start_val: float,
-        decay_rate: float,
-        min_val: float,
-        start_iter: int,
-        step_size: int,
+        decay_rate: float = 0.5,
+        min_val: float = 1e-10,
+        start_iter: int = 0,
+        step_size: int = 25,
         n_regularization: int | None = None
     ):
         self.start_val = start_val
@@ -822,6 +823,17 @@ class StaircaseScheduler:
         self.step_size = step_size
         self.n_regularization = n_regularization
         self.current_val = start_val
+
+    def todict(self):
+        return dict(
+            start_val=self.start_val,
+            decay_rate=self.decay_rate,
+            min_val=self.min_val,
+            start_iter=self.start_iter,
+            step_size=self.step_size,
+            n_regularization=self.n_regularization,
+            current_val=self.current_val,
+        )
 
     def step(self, current_iter: int) -> tuple[float, bool]:
         if self.n_regularization is not None and current_iter > self.n_regularization:

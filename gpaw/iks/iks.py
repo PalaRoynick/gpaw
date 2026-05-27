@@ -222,11 +222,7 @@ class iKS:
         self.P_snn = P_snn
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
-        if reg_scheduler_params is None:
-            reg_scheduler_params = {'decay_rate': 0.5, 'min_val': 1e-10,
-                                    'start_iter': 0, 'step_size': 25,
-                                    'n_regularization': None}
-        self.reg_scheduler_params = reg_scheduler_params
+        reg_scheduler_params = reg_scheduler_params or {}
         self.regsched = iks_optimize.StaircaseScheduler(
             lambdareg, **reg_scheduler_params)
         self.coresched = iks_optimize.StaircaseScheduler(
@@ -253,7 +249,7 @@ class iKS:
         self.opt: Optional[Any] = None
         self.initialized = False
         self.log_l1_ae = log_l1_ae
-        self.nxc_kwargs = nxc_kwargs
+        self.nxc_kwargs = nxc_kwargs or {}
         self.degeneracy_tol = degeneracy_tol
         self.occ_tol = occ_tol
 
@@ -453,7 +449,8 @@ class iKS:
                 rank, u = kd.get_rank_and_index(k, s)
                 if kd.comm.rank == rank:
                     ls = ls_u[u]
-                    msg = f"  {k}          {s}           {ls.iters}      {ls.blocks_msg}"
+                    msg = f"  {k}          {s}           {
+                        ls.iters}      {ls.blocks_msg}"
                 else:
                     msg = None
                 msg = broadcast_string(msg, root=rank, comm=kd.comm)
@@ -775,7 +772,8 @@ class iKS:
         scf = calc.scf
         if scf.converged:
             self.fmt.log(
-                f"Single-point calculation converged after {scf.niter} iterations"
+                f"Single-point calculation converged after {
+                    scf.niter} iterations"
             )
         else:
             self.fmt.log(
@@ -885,9 +883,8 @@ class iKS:
             weights=self.weights,
             atomic_weights=self.atomic_weights,
             apply_occupation_correction=self.apply_occupation_correction,
-            lambdareg=self.lambdareg,
-            lambdacore=self.lambdacore,
-            reg_scheduler_params=self.reg_scheduler_params,
+            reg_params=self.regsched.todict(),
+            core_reg_params=self.coresched.todict(),
             stencil=self.stencil,
             nfixed=self.nfixed,
             linear_solver=linear_solver,
