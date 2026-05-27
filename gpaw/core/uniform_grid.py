@@ -110,10 +110,9 @@ class UGDesc(Domain['UGArray']):
             f'UGDesc(size={self.size_c.tolist()}, ' +
             zbc)
 
-    def __eq__(self, other):
-        if not isinstance(other, UGDesc):
-            return NotImplemented
-        return (self.comm.size == other.comm.size and
+    def desc_match(self, other) -> bool:
+        return (isinstance(other, UGDesc) and
+                self.comm.size == other.comm.size and
                 self.comm.rank == other.comm.rank and
                 self.dtype == other.dtype and
                 np.allclose(self.cell_cv, other.cell_cv) and

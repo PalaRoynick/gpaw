@@ -20,6 +20,10 @@ from gpaw.typing import Array3D, Vector
 from gpaw.utilities import unpack_density, unpack_hermitian
 
 
+def xdesc_match(desc1, desc2) -> bool:
+    return hasattr(desc1, 'desc_match') and desc1.desc_match(desc2)
+
+
 class Density:
     @classmethod
     def from_data_and_setups(cls,
@@ -141,9 +145,10 @@ class Density:
         if not hasattr(pot_calc, 'grid'):
             return True
 
-        if self.nt_sR.desc != pot_calc.grid:
+        if not xdesc_match(self.nt_sR.desc, pot_calc.grid):
             return False
-        if self.taut_sR is not None and self.taut_sR.desc != pot_calc.grid:
+        if (self.taut_sR is not None and
+                not xdesc_match(self.taut_sR.desc, pot_calc.grid)):
             return False
 
         atomdist = self.D_asii.layout.atomdist
@@ -157,13 +162,13 @@ class Density:
             return False
 
         if hasattr(self.nct_aX, 'grid'):
-            return (self.nct_aX.grid == pot_calc.grid and
-                    self.tauct_aX.grid == pot_calc.grid)
+            return (xdesc_match(self.nct_aX.grid, pot_calc.grid) and
+                    xdesc_match(self.tauct_aX.grid, pot_calc.grid))
 
         if not hasattr(pot_calc, 'pw'):
             return False
-        return (self.nct_aX.pw == pot_calc.pw and
-                self.tauct_aX.pw == pot_calc.pw)
+        return (xdesc_match(self.nct_aX.pw, pot_calc.pw) and
+                xdesc_match(self.tauct_aX.pw, pot_calc.pw))
 
     @property
     def nct_R(self):

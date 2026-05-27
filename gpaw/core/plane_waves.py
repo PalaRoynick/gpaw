@@ -102,10 +102,9 @@ class PWDesc(Domain['PWArray']):
             'Domain(',
             f'PWDesc(ecut={self.ecut} <coefs={m}/{n}>, ')
 
-    def __eq__(self, other):
-        if not isinstance(other, PWDesc):
-            return NotImplemented
-        return (self.comm.size == other.comm.size and
+    def desc_match(self, other) -> bool:
+        return (isinstance(other, PWDesc) and
+                self.comm.size == other.comm.size and
                 self.comm.rank == other.comm.rank and
                 self.dtype == other.dtype and
                 np.allclose(self.cell_cv, other.cell_cv) and
