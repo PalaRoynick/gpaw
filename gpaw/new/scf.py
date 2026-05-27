@@ -173,9 +173,35 @@ def calculate_potential(density,
             density, ibzwfs, potential.vHt_x)
         return potential, energies
 
+    disabled_reason = getattr(pot_calc, '_full_potential_disabled_reason',
+                              None)
+    if disabled_reason is not None:
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
+
     full_density = distribute_density_to_all_ranks(
         density, kpt_band_comm, world_comm)
-    full_pot_calc = create_full_potential_calculator(pot_calc, full_density)
+    construction_error = None
+    try:
+        full_pot_calc = create_full_potential_calculator(pot_calc,
+                                                         full_density)
+    except ValueError as err:
+        if not is_full_potential_construction_error(err):
+            raise
+        construction_error = str(err)
+
+    construction_failed = world_comm.sum_scalar(
+        int(construction_error is not None))
+    if construction_failed:
+        reason = (construction_error or
+                  'full potential calculator construction failed on '
+                  'another rank')
+        pot_calc._full_potential_disabled_reason = reason
+        warn_full_potential_fallback(reason, world_comm)
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
     if full_pot_calc is None:
         warn_full_potential_fallback(
             f'{pot_calc.__class__.__name__} is not supported by '
@@ -265,6 +291,10 @@ def warn_full_potential_fallback(reason, comm):
         warnings.warn(
             f"Falling back from parallel={{'potential': 'full'}}: {reason}",
             RuntimeWarning)
+
+
+def is_full_potential_construction_error(err):
+    return str(err).startswith('Cannot construct interpolator.')
 
 
 def create_full_potential_calculator(pot_calc, full_density):
