@@ -504,15 +504,20 @@ def calculate_regularization_weights(setups):
 def calc_core_atomic_potentials(setups, setup_name):
     v_a = {}
     xc = XC(setup_name)
-    assert xc.type == 'LDA'
+    # assert xc.type in {'LDA', 'GGA'}
     for a, setup in enumerate(setups):
-        nc_sg = setup.xc_correction.nc_g[np.newaxis]
-        nct_sg = setup.xc_correction.nct_g[np.newaxis]
-        e_g = np.zeros_like(nc_sg)
+        xcc = setup.xc_correction
+        if xcc is None:
+            # AE
+            v_a[a] = (np.zeros(1, float), np.zeros(1, float))
+            continue
+        nc_sg = xcc.nc_g[np.newaxis]
+        nct_sg = xcc.nct_g[np.newaxis]
         v = np.zeros_like(nc_sg)
         vt = np.zeros_like(nc_sg)
-        xc.kernel.calculate(e_g, nc_sg, v)
-        xc.kernel.calculate(e_g, nct_sg, vt)
+        rgd = xcc.rgd
+        xc.calculate_spherical(rgd, nc_sg, v)
+        xc.calculate_spherical(rgd, nct_sg, vt)
         v_a[a] = (v.ravel(), vt.ravel())
     return v_a
 
@@ -533,7 +538,7 @@ def fakdensity2old(fake_density, old_density, old_hamiltonian):
                        old_density.magmom_av, old_density.hund)
     density.set_positions(old_hamiltonian.spos_ac, old_density.atom_partition)
     density.initialize_directly_from_arrays(
-        fake_density.nt_sG, None, fake_density.D_asp)
+        fake_density.nt_sG, None, fake_density.D_asp.copy())
     return density
 
 
@@ -552,7 +557,7 @@ def update_density_from_density_matrix(
         psit_nG = wfs.bd.collect(kpt.psit_nG, broadcast=True)
         if wfs.mode == "pw":
             psit_nG = np.asarray([wfs.pd.ifft(psit_G, q=kpt.q)
-                                 for psit_G in psit_nG])
+                                  for psit_G in psit_nG])
         nt_sG[kpt.s] += (
             kpt.weightk
             * np.einsum(

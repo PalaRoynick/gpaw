@@ -811,9 +811,9 @@ class StaircaseScheduler:
         self,
         start_val: float,
         decay_rate: float = 0.5,
-        min_val: float = 1e-10,
+        min_val: float = 1e-8,
         start_iter: int = 0,
-        step_size: int = 25,
+        step_size: int = 50,
         n_regularization: int | None = None
     ):
         self.start_val = start_val
