@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os  # temporary
 import importlib
 import warnings
 from collections.abc import Sequence
@@ -778,7 +779,9 @@ class Parameters:
         self.mixer = Mixer.from_param(mixer or {})
         self.nbands = nbands
         self.occupations = Occupations.from_param(occupations or {})
-        self.parallel = parallel or {}
+        self.parallel = dict(parallel or {})
+        if 'GPAW_TEST_FULL_POTENTIAL' in os.environ:  # temporary
+            self.parallel['potential'] = 'full'  # temporary
         self.poissonsolver = PoissonSolver.from_param(poissonsolver or {})
         self.random = random or False
         setups = setups or 'paw'

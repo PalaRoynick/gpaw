@@ -23,6 +23,7 @@ variables:
   # this.  This problem was not observed on camd-runner2 because it
   # uses hyperthreading and so was equipped to redistribute the load.
   GPAW_MPI_OPTIONS: "--bind-to none"
+  GPAW_TEST_FULL_POTENTIAL: "1"  # temporary
 
 default:
   before_script:
