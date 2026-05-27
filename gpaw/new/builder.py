@@ -361,7 +361,9 @@ class DFTComponentsBuilder:
                        {key: value
                         for key, value in self.params.convergence.items()
                         if key != 'bands'},
-                       self.params.maxiter)
+                       self.params.maxiter,
+                       potential_parallelization=(
+                           self.params.parallel.get('potential')))
 
     def read_ibz_wave_functions(self, reader):
         raise NotImplementedError

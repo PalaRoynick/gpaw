@@ -18,6 +18,7 @@ from typing import DefaultDict
 import numpy as np
 from ase.units import Ha
 
+from gpaw.core import PWDesc, UGDesc
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
@@ -109,6 +110,7 @@ class PotentialCalculator:
                   vHt_x: XArray | None = None,
                   kpt_band_comm: MPIComm | None = None
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+        self._assert_density_matches(density)
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
 
@@ -161,6 +163,53 @@ class PotentialCalculator:
         return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
                 DFTEnergies(**energies),
                 V_aL)
+
+    def _assert_density_matches(self, density) -> None:
+        if not hasattr(self, 'grid'):
+            return
+
+        self._assert_same_domain(
+            'density.nt_sR', density.nt_sR.desc, self.grid)
+        if density.taut_sR is not None:
+            self._assert_same_domain(
+                'density.taut_sR', density.taut_sR.desc, self.grid)
+
+        atomdist = density.D_asii.layout.atomdist
+        expected_rank_a = self.grid.ranks_from_fractional_positions(
+            density.nct_aX.relpos_ac)
+        assert atomdist.comm.size == self.grid.comm.size
+        assert atomdist.comm.rank == self.grid.comm.rank
+        assert np.array_equal(atomdist.rank_a, expected_rank_a)
+
+        if hasattr(density.nct_aX, 'grid'):
+            self._assert_same_domain(
+                'density.nct_aX.grid', density.nct_aX.grid, self.grid)
+            self._assert_same_domain(
+                'density.tauct_aX.grid', density.tauct_aX.grid, self.grid)
+        else:
+            assert hasattr(self, 'pw')
+            self._assert_same_domain(
+                'density.nct_aX.pw', density.nct_aX.pw, self.pw)
+            self._assert_same_domain(
+                'density.tauct_aX.pw', density.tauct_aX.pw, self.pw)
+
+    @staticmethod
+    def _assert_same_domain(name, actual, expected) -> None:
+        assert type(actual) is type(expected), name
+        assert actual.comm.size == expected.comm.size, name
+        assert actual.comm.rank == expected.comm.rank, name
+        assert actual.dtype == expected.dtype, name
+        np.testing.assert_allclose(actual.cell_cv, expected.cell_cv)
+        np.testing.assert_array_equal(actual.pbc_c, expected.pbc_c)
+        if isinstance(actual, UGDesc):
+            assert tuple(actual.size_c) == tuple(expected.size_c), name
+            assert tuple(actual.myshape) == tuple(expected.myshape), name
+            assert tuple(actual.start_c) == tuple(expected.start_c), name
+            assert tuple(actual.end_c) == tuple(expected.end_c), name
+        elif isinstance(actual, PWDesc):
+            assert actual.global_shape() == expected.global_shape(), name
+            assert tuple(actual.myshape) == tuple(expected.myshape), name
+            assert actual.ecut == expected.ecut, name
 
 
 @trace

@@ -32,7 +32,8 @@ class SCFLoop:
                  mixer,
                  comm,
                  convergence,
-                 maxiter):
+                 maxiter,
+                 potential_parallelization=None):
         self.hamiltonian = hamiltonian
         self.eigensolver = eigensolver
         self.mixer = mixer
@@ -43,6 +44,7 @@ class SCFLoop:
         self.niter = 0
         self.update_density_and_potential = True
         self.fix_fermi_level = False
+        self.potential_parallelization = potential_parallelization
 
     def __repr__(self):
         return 'SCFLoop(...)'
@@ -135,15 +137,88 @@ class SCFLoop:
             if self.update_density_and_potential:
                 density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
-                density = distribute_density_to_all_ranks_and_back(
-                    density, ibzwfs.kpt_band_comm, self.comm)
-                potential, energies, _ = pot_calc.calculate(
-                    density, ibzwfs, potential.vHt_x)
+                potential, energies = calculate_potential(
+                    density, potential, pot_calc, ibzwfs, self.comm,
+                    self.potential_parallelization)
                 energies.sanity_check()
 
         self.eigensolver.postprocess(
             ibzwfs, density, potential, self.hamiltonian,
             maxiter=maxiter, cc=cc, log=log)
+
+
+def calculate_potential(density,
+                        potential,
+                        pot_calc,
+                        ibzwfs,
+                        world_comm,
+                        potential_parallelization):
+    kpt_band_comm = ibzwfs.kpt_band_comm
+    use_full = potential_parallelization == 'full'
+    if not use_full or kpt_band_comm.size == 1:
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
+
+    if getattr(density.nt_sR, 'data', None) is None:
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
+
+    if pot_calc.extensions:
+        warn_full_potential_fallback(
+            'extensions are not supported by full potential parallelization',
+            world_comm)
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
+
+    full_density = distribute_density_to_all_ranks(
+        density, kpt_band_comm, world_comm)
+    full_pot_calc = create_full_potential_calculator(pot_calc, full_density)
+    if full_pot_calc is None:
+        warn_full_potential_fallback(
+            f'{pot_calc.__class__.__name__} is not supported by '
+            'full potential parallelization',
+            world_comm)
+        potential, energies, _ = pot_calc.calculate(
+            density, ibzwfs, potential.vHt_x)
+        return potential, energies
+
+    full_vHt_x = None
+    if potential.vHt_x is not None:
+        full_vHt_x = potential.vHt_x.redist(
+            electrostatic_desc(full_pot_calc),
+            kpt_band_comm,
+            serial_comm)
+
+    full_potential, energies, _ = full_pot_calc.calculate(
+        full_density, None, full_vHt_x, serial_comm)
+    potential = full_potential.redist(
+        pot_calc.grid,
+        electrostatic_desc(pot_calc),
+        density.D_asii.layout.atomdist,
+        serial_comm,
+        kpt_band_comm)
+    return potential, energies
+
+
+def distribute_density_to_all_ranks(density,
+                                    kpt_band_comm,
+                                    world_comm):
+    grid = density.nt_sR.desc
+    full_grid = grid.new(comm=world_comm)
+    full_atomdist = AtomDistribution(
+        full_grid.ranks_from_fractional_positions(density.nct_aX.relpos_ac),
+        full_grid.comm)
+    xdesc = density_xdesc(density)
+    full_xdesc = xdesc.new(comm=world_comm)
+
+    return density.redist(full_grid,
+                          full_xdesc,
+                          full_atomdist,
+                          kpt_band_comm,
+                          serial_comm)
 
 
 def distribute_density_to_all_ranks_and_back(density,
@@ -152,22 +227,13 @@ def distribute_density_to_all_ranks_and_back(density,
     if kpt_band_comm.size == 1:
         return density
 
-    grid = density.nt_sR.desc
     if getattr(density.nt_sR, 'data', None) is None:
         return density
 
-    full_grid = grid.new(comm=world_comm)
-    full_atomdist = AtomDistribution(
-        full_grid.ranks_from_fractional_positions(density.nct_aX.relpos_ac),
-        full_grid.comm)
+    grid = density.nt_sR.desc
     xdesc = density_xdesc(density)
-    full_xdesc = xdesc.new(comm=world_comm)
-
-    full_density = density.redist(full_grid,
-                                  full_xdesc,
-                                  full_atomdist,
-                                  kpt_band_comm,
-                                  serial_comm)
+    full_density = distribute_density_to_all_ranks(
+        density, kpt_band_comm, world_comm)
 
     roundtrip_density = full_density.redist(
         grid,
@@ -192,6 +258,125 @@ def density_xdesc(density):
     if hasattr(density.nct_aX, 'grid'):
         return density.nct_aX.grid
     return density.nct_aX.pw
+
+
+def warn_full_potential_fallback(reason, comm):
+    if comm.rank == 0:
+        warnings.warn(
+            f"Falling back from parallel={{'potential': 'full'}}: {reason}",
+            RuntimeWarning)
+
+
+def create_full_potential_calculator(pot_calc, full_density):
+    signature = full_potential_signature(pot_calc, full_density)
+    cached = getattr(pot_calc, '_full_potential_calculator', None)
+    if cached is not None and getattr(cached, '_signature', None) == signature:
+        return cached
+
+    full_pot_calc = _create_full_potential_calculator(pot_calc, full_density)
+    if full_pot_calc is not None:
+        full_pot_calc.density_atomdist = full_density.D_asii.layout.atomdist
+        full_pot_calc._signature = signature
+        pot_calc._full_potential_calculator = full_pot_calc
+    return full_pot_calc
+
+
+def full_potential_signature(pot_calc, full_density):
+    grid = full_density.nt_sR.desc
+    atomdist = full_density.D_asii.layout.atomdist
+    return (pot_calc.__class__,
+            tuple(grid.size_c),
+            grid.comm.size,
+            grid.comm.rank,
+            tuple(atomdist.rank_a.tolist()),
+            atomdist.comm.size,
+            atomdist.comm.rank,
+            pot_calc.relpos_ac.tobytes())
+
+
+def _create_full_potential_calculator(pot_calc, full_density):
+    from gpaw.new.fd.pot_calc import FDPotentialCalculator
+    from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
+
+    if isinstance(pot_calc, FDPotentialCalculator):
+        return create_full_fd_potential_calculator(pot_calc, full_density)
+    if isinstance(pot_calc, PlaneWavePotentialCalculator):
+        return create_full_pw_potential_calculator(pot_calc, full_density)
+    return None
+
+
+def create_full_fd_potential_calculator(pot_calc, full_density):
+    from gpaw.new.fd.pot_calc import FDPotentialCalculator
+    from gpaw.new.xc import create_functional
+
+    full_grid = full_density.nt_sR.desc
+    full_fine_grid = pot_calc.fine_grid.new(comm=full_grid.comm)
+    try:
+        poisson_solver = pot_calc.poisson_solver.new(
+            grid=full_fine_grid, xp=pot_calc.xp)
+    except NotImplementedError:
+        return None
+
+    xc = create_functional(pot_calc.xc.name, full_fine_grid, pot_calc.xp)
+    return FDPotentialCalculator(
+        full_grid,
+        full_fine_grid,
+        pot_calc.setups,
+        xc,
+        poisson_solver,
+        relpos_ac=pot_calc.relpos_ac,
+        atomdist=full_density.D_asii.layout.atomdist,
+        interpolation_stencil_range=pot_calc.interpolation_stencil_range,
+        extensions=[],
+        xp=pot_calc.xp)
+
+
+def create_full_pw_potential_calculator(pot_calc, full_density):
+    from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
+    from gpaw.new.xc import create_functional
+
+    if pot_calc.xc.exx_fraction != 0.0:
+        return None
+
+    full_grid = full_density.nt_sR.desc
+    full_fine_grid = pot_calc.fine_grid.new(comm=full_grid.comm)
+    full_pw = pot_calc.pw.new(comm=full_grid.comm)
+    try:
+        poisson_solver = pot_calc.poisson_solver.new(
+            pwg=pot_calc.poisson_solver.pwg.new(comm=full_grid.comm),
+            pwh=electrostatic_desc(pot_calc).new(comm=full_grid.comm),
+            grid=full_grid,
+            fine_grid=full_fine_grid,
+            setups=pot_calc.setups,
+            relpos_ac=pot_calc.relpos_ac,
+            atomdist=full_density.D_asii.layout.atomdist,
+            xp=pot_calc.xp)
+    except NotImplementedError:
+        return None
+
+    xc = create_functional(pot_calc.xc.name, full_fine_grid, pot_calc.xp)
+    return PlaneWavePotentialCalculator(
+        full_grid,
+        full_fine_grid,
+        full_pw,
+        pot_calc.setups,
+        xc,
+        poisson_solver,
+        relpos_ac=pot_calc.relpos_ac,
+        atomdist=full_density.D_asii.layout.atomdist,
+        soc=pot_calc.soc,
+        xp=pot_calc.xp,
+        extensions=[])
+
+
+def electrostatic_desc(pot_calc):
+    if hasattr(pot_calc, 'pw'):
+        ps = pot_calc.poisson_solver
+        if hasattr(ps, 'pwh'):
+            return ps.pwh
+        if hasattr(ps, 'pwg'):
+            return ps.pwg
+    return pot_calc.fine_grid
 
 
 class SCFContext:

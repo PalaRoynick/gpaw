@@ -30,3 +30,6 @@ class PoissonSolverWrapper(PoissonSolver):
             return self.solver.correction
         except AttributeError:
             raise NotImplementedError
+
+    def new(self, *, grid, xp):
+        return self.solver.new(grid=grid, xp=xp)

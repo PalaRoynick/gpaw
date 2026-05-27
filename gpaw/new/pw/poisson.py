@@ -59,6 +59,11 @@ class PWPoissonSolver(PoissonSolver):
             txt += f'  uniform background charge: {self.charge}  # electrons\n'
         return txt
 
+    def new(self, *, pw=None, grid=None):
+        return PWPoissonSolver(pw or self.pw,
+                               self.charge,
+                               self.strength)
+
     def solve(self,
               vHt_g: PWArray,
               rhot_g: PWArray) -> float:
@@ -161,6 +166,14 @@ class ChargedPWPoissonSolver(PWPoissonSolver):
             f'  alpha: {self.alpha}   # bohr^-2')
         return txt
 
+    def new(self, *, pw=None, grid=None):
+        assert grid is not None
+        return ChargedPWPoissonSolver(pw or self.pw,
+                                      grid,
+                                      self.charge,
+                                      self.strength,
+                                      alpha=self.alpha)
+
     def _solve(self,
                vHt_g,
                rhot_g) -> float:
@@ -217,6 +230,15 @@ class DipoleLayerPWPoissonSolver(PoissonSolver):
             if vHt_g.desc.comm.rank == 0:
                 vHt_g.data[0] += self.correction - v0
         return epot + 2 * np.pi * dip_v[c]**2 / self.grid.volume
+
+    def new(self, *, pw=None, grid=None):
+        grid = grid or self.grid
+        ps = self.ps.new(pw=pw, grid=grid)
+        return DipoleLayerPWPoissonSolver(
+            ps,
+            grid,
+            width=self.width * Bohr,
+            zero_vacuum=self.zero_vacuum)
 
     def dipole_layer_correction(self) -> float:
         return self.correction
