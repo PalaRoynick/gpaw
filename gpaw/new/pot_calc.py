@@ -109,7 +109,7 @@ class PotentialCalculator:
                   vHt_x: XArray | None = None,
                   kpt_band_comm: MPIComm | None = None
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
-        self._assert_density_matches(density)
+        assert density.decompositions_equal(self), (density, self)
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
 
@@ -162,40 +162,6 @@ class PotentialCalculator:
         return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
                 DFTEnergies(**energies),
                 V_aL)
-
-    def _assert_density_matches(self, density) -> None:
-        if not hasattr(self, 'grid'):
-            return
-
-        assert density.nt_sR.desc == self.grid, (
-            f'density.nt_sR: {density.nt_sR.desc!r} != {self.grid!r}')
-        if density.taut_sR is not None:
-            assert density.taut_sR.desc == self.grid, (
-                f'density.taut_sR: {density.taut_sR.desc!r} != '
-                f'{self.grid!r}')
-
-        atomdist = density.D_asii.layout.atomdist
-        expected_rank_a = self.grid.ranks_from_fractional_positions(
-            density.nct_aX.relpos_ac)
-        assert atomdist.comm.size == self.grid.comm.size
-        assert atomdist.comm.rank == self.grid.comm.rank
-        assert np.array_equal(atomdist.rank_a, expected_rank_a)
-
-        if hasattr(density.nct_aX, 'grid'):
-            assert density.nct_aX.grid == self.grid, (
-                f'density.nct_aX.grid: {density.nct_aX.grid!r} != '
-                f'{self.grid!r}')
-            assert density.tauct_aX.grid == self.grid, (
-                f'density.tauct_aX.grid: {density.tauct_aX.grid!r} != '
-                f'{self.grid!r}')
-        else:
-            assert hasattr(self, 'pw')
-            assert density.nct_aX.pw == self.pw, (
-                f'density.nct_aX.pw: {density.nct_aX.pw!r} != '
-                f'{self.pw!r}')
-            assert density.tauct_aX.pw == self.pw, (
-                f'density.tauct_aX.pw: {density.tauct_aX.pw!r} != '
-                f'{self.pw!r}')
 
 
 @trace

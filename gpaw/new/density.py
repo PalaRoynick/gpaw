@@ -137,6 +137,34 @@ class Density:
                 f'  Grid points: {self.nt_sR.desc.size}\n'
                 f'  Charge: {self.charge}  # |e|\n')
 
+    def decompositions_equal(self, pot_calc) -> bool:
+        if not hasattr(pot_calc, 'grid'):
+            return True
+
+        if self.nt_sR.desc != pot_calc.grid:
+            return False
+        if self.taut_sR is not None and self.taut_sR.desc != pot_calc.grid:
+            return False
+
+        atomdist = self.D_asii.layout.atomdist
+        expected_rank_a = pot_calc.grid.ranks_from_fractional_positions(
+            self.nct_aX.relpos_ac)
+        if atomdist.comm.size != pot_calc.grid.comm.size:
+            return False
+        if atomdist.comm.rank != pot_calc.grid.comm.rank:
+            return False
+        if not np.array_equal(atomdist.rank_a, expected_rank_a):
+            return False
+
+        if hasattr(self.nct_aX, 'grid'):
+            return (self.nct_aX.grid == pot_calc.grid and
+                    self.tauct_aX.grid == pot_calc.grid)
+
+        if not hasattr(pot_calc, 'pw'):
+            return False
+        return (self.nct_aX.pw == pot_calc.pw and
+                self.tauct_aX.pw == pot_calc.pw)
+
     @property
     def nct_R(self):
         if self._nct_R is None:
