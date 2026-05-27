@@ -18,7 +18,6 @@ from typing import DefaultDict
 import numpy as np
 from ase.units import Ha
 
-from gpaw.core import PWDesc, UGDesc
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
@@ -195,21 +194,7 @@ class PotentialCalculator:
 
     @staticmethod
     def _assert_same_domain(name, actual, expected) -> None:
-        assert type(actual) is type(expected), name
-        assert actual.comm.size == expected.comm.size, name
-        assert actual.comm.rank == expected.comm.rank, name
-        assert actual.dtype == expected.dtype, name
-        np.testing.assert_allclose(actual.cell_cv, expected.cell_cv)
-        np.testing.assert_array_equal(actual.pbc_c, expected.pbc_c)
-        if isinstance(actual, UGDesc):
-            assert tuple(actual.size_c) == tuple(expected.size_c), name
-            assert tuple(actual.myshape) == tuple(expected.myshape), name
-            assert tuple(actual.start_c) == tuple(expected.start_c), name
-            assert tuple(actual.end_c) == tuple(expected.end_c), name
-        elif isinstance(actual, PWDesc):
-            assert actual.global_shape() == expected.global_shape(), name
-            assert tuple(actual.myshape) == tuple(expected.myshape), name
-            assert actual.ecut == expected.ecut, name
+        assert actual == expected, f'{name}: {actual!r} != {expected!r}'
 
 
 @trace
