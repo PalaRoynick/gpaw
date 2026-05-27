@@ -1023,6 +1023,10 @@ def GPAW(
         from gpaw.old.calculator import GPAW as OldGPAW
         kwargs = {key: value
                   for key, value in kwargs.items() if value is not None}
+        if 'GPAW_TEST_FULL_POTENTIAL' in os.environ:  # temporary
+            parallel = dict(kwargs.get('parallel') or {})  # temporary
+            parallel.pop('potential', None)  # temporary
+            kwargs['parallel'] = parallel  # temporary
         return OldGPAW(filename,
                        txt=txt,
                        communicator=communicator,
