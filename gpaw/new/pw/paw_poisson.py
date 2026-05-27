@@ -69,8 +69,15 @@ class SlowPAWPoissonSolver(PAWPoissonSolver):
              atomdist: AtomDistribution) -> None:
         self.ghat_aLh.move(relpos_ac, atomdist)
 
-    def new(self, *, pwg=None, pwh=None, grid=None, fine_grid=None, setups=None,
-            relpos_ac=None, atomdist=None, xp=None):
+    def new(self, *,
+            pwg=None,
+            pwh=None,
+            grid=None,
+            fine_grid=None,
+            setups=None,
+            relpos_ac=None,
+            atomdist=None,
+            xp=None):
         pwh = pwh or self.pwh
         return SlowPAWPoissonSolver(
             pwg or self.pwg,

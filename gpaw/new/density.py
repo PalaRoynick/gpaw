@@ -21,7 +21,7 @@ from gpaw.utilities import unpack_density, unpack_hermitian
 
 
 def xdesc_match(desc1, desc2) -> bool:
-    return hasattr(desc1, 'desc_match') and desc1.desc_match(desc2)
+    return bool(hasattr(desc1, 'desc_match') and desc1.desc_match(desc2))
 
 
 class Density:
@@ -161,14 +161,18 @@ class Density:
         if not np.array_equal(atomdist.rank_a, expected_rank_a):
             return False
 
-        if hasattr(self.nct_aX, 'grid'):
-            return (xdesc_match(self.nct_aX.grid, pot_calc.grid) and
-                    xdesc_match(self.tauct_aX.grid, pot_calc.grid))
+        nct_grid = getattr(self.nct_aX, 'grid', None)
+        if nct_grid is not None:
+            tauct_grid = getattr(self.tauct_aX, 'grid')
+            return (xdesc_match(nct_grid, pot_calc.grid) and
+                    xdesc_match(tauct_grid, pot_calc.grid))
 
         if not hasattr(pot_calc, 'pw'):
             return False
-        return (xdesc_match(self.nct_aX.pw, pot_calc.pw) and
-                xdesc_match(self.tauct_aX.pw, pot_calc.pw))
+        nct_pw = getattr(self.nct_aX, 'pw', None)
+        tauct_pw = getattr(self.tauct_aX, 'pw', None)
+        return (xdesc_match(nct_pw, pot_calc.pw) and
+                xdesc_match(tauct_pw, pot_calc.pw))
 
     @property
     def nct_R(self):
