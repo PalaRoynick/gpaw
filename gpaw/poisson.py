@@ -110,6 +110,11 @@ class _PoissonSolver:
         self.set_grid_descriptor(grid._gd)
         return PoissonSolverWrapper(self)
 
+    def new(self, *, grid, xp):
+        params = self.todict().copy()
+        name = params.pop('name')
+        return PoissonSolver(name, **params, xp=xp).build(grid, xp)
+
 
 class BasePoissonSolver(_PoissonSolver):
     def __init__(self, *, remove_moment=None,
