@@ -111,21 +111,22 @@ class UGDesc(Domain['UGArray']):
             zbc)
 
     def desc_match(self, other) -> bool:
-        return (isinstance(other, UGDesc) and
-                self.comm.size == other.comm.size and
-                self.comm.rank == other.comm.rank and
-                self.dtype == other.dtype and
-                np.allclose(self.cell_cv, other.cell_cv) and
-                np.array_equal(self.pbc_c, other.pbc_c) and
-                np.allclose(self.kpt_c, other.kpt_c) and
-                np.array_equal(self.size_c, other.size_c) and
-                np.array_equal(self.zerobc_c, other.zerobc_c) and
-                all(np.array_equal(d1_p, d2_p)
-                    for d1_p, d2_p in zip(self.decomp_cp,
-                                          other.decomp_cp)) and
-                tuple(self.myshape) == tuple(other.myshape) and
-                np.array_equal(self.start_c, other.start_c) and
-                np.array_equal(self.end_c, other.end_c))
+        return bool(
+            isinstance(other, UGDesc) and
+            self.comm.size == other.comm.size and
+            self.comm.rank == other.comm.rank and
+            self.dtype == other.dtype and
+            np.allclose(self.cell_cv, other.cell_cv) and
+            np.array_equal(self.pbc_c, other.pbc_c) and
+            np.allclose(self.kpt_c, other.kpt_c) and
+            np.array_equal(self.size_c, other.size_c) and
+            np.array_equal(self.zerobc_c, other.zerobc_c) and
+            all(np.array_equal(d1_p, d2_p)
+                for d1_p, d2_p in zip(self.decomp_cp,
+                                      other.decomp_cp)) and
+            tuple(self.myshape) == tuple(other.myshape) and
+            np.array_equal(self.start_c, other.start_c) and
+            np.array_equal(self.end_c, other.end_c))
 
     def _short_string(self, global_shape):
         return f'Uniform wave function grid shape: {global_shape}'
