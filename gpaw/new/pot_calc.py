@@ -167,11 +167,12 @@ class PotentialCalculator:
         if not hasattr(self, 'grid'):
             return
 
-        self._assert_same_domain(
-            'density.nt_sR', density.nt_sR.desc, self.grid)
+        assert density.nt_sR.desc == self.grid, (
+            f'density.nt_sR: {density.nt_sR.desc!r} != {self.grid!r}')
         if density.taut_sR is not None:
-            self._assert_same_domain(
-                'density.taut_sR', density.taut_sR.desc, self.grid)
+            assert density.taut_sR.desc == self.grid, (
+                f'density.taut_sR: {density.taut_sR.desc!r} != '
+                f'{self.grid!r}')
 
         atomdist = density.D_asii.layout.atomdist
         expected_rank_a = self.grid.ranks_from_fractional_positions(
@@ -181,20 +182,20 @@ class PotentialCalculator:
         assert np.array_equal(atomdist.rank_a, expected_rank_a)
 
         if hasattr(density.nct_aX, 'grid'):
-            self._assert_same_domain(
-                'density.nct_aX.grid', density.nct_aX.grid, self.grid)
-            self._assert_same_domain(
-                'density.tauct_aX.grid', density.tauct_aX.grid, self.grid)
+            assert density.nct_aX.grid == self.grid, (
+                f'density.nct_aX.grid: {density.nct_aX.grid!r} != '
+                f'{self.grid!r}')
+            assert density.tauct_aX.grid == self.grid, (
+                f'density.tauct_aX.grid: {density.tauct_aX.grid!r} != '
+                f'{self.grid!r}')
         else:
             assert hasattr(self, 'pw')
-            self._assert_same_domain(
-                'density.nct_aX.pw', density.nct_aX.pw, self.pw)
-            self._assert_same_domain(
-                'density.tauct_aX.pw', density.tauct_aX.pw, self.pw)
-
-    @staticmethod
-    def _assert_same_domain(name, actual, expected) -> None:
-        assert actual == expected, f'{name}: {actual!r} != {expected!r}'
+            assert density.nct_aX.pw == self.pw, (
+                f'density.nct_aX.pw: {density.nct_aX.pw!r} != '
+                f'{self.pw!r}')
+            assert density.tauct_aX.pw == self.pw, (
+                f'density.tauct_aX.pw: {density.tauct_aX.pw!r} != '
+                f'{self.pw!r}')
 
 
 @trace
