@@ -818,7 +818,7 @@ class StaircaseScheduler:
     ):
         self.start_val = start_val
         self.decay_rate = decay_rate
-        self.min_val = min_val
+        self.min_val = min(start_val, min_val)
         self.start_iter = start_iter
         self.step_size = step_size
         self.n_regularization = n_regularization

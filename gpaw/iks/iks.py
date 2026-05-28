@@ -202,6 +202,7 @@ class iKS:
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
         reg_scheduler_params=None,
+        corereg_scheduler_params=None,
         stencil: int = 3,
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
@@ -223,10 +224,11 @@ class iKS:
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
         reg_scheduler_params = reg_scheduler_params or {}
+        corereg_scheduler_params = corereg_scheduler_params or {}
         self.regsched = iks_optimize.StaircaseScheduler(
             lambdareg, **reg_scheduler_params)
         self.coresched = iks_optimize.StaircaseScheduler(
-            lambdacore, **reg_scheduler_params)
+            lambdacore, **corereg_scheduler_params)
         self.niter: int = 0
 
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
