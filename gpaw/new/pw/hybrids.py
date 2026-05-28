@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from math import pi
 from pathlib import Path
 from time import time
-from typing import IO, Callable
+from typing import IO, Callable, TYPE_CHECKING
 
 import numpy as np
 from ase.units import Ha
@@ -14,7 +14,6 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.pwacf import PWAtomCenteredFunctions
 from gpaw.mpi import broadcast
 from gpaw.new import zips as zip
-from gpaw.dft import DFT
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger
 from gpaw.new.pw.hamiltonian import PWHamiltonian
@@ -25,6 +24,8 @@ from gpaw.setup import Setups
 from gpaw.utilities import unpack_hermitian, pack_density
 from gpaw.utilities.blas import mmm
 from scipy.linalg.blas import get_blas_funcs
+if TYPE_CHECKING:
+    from gpaw.dft import DFT
 
 
 @dataclass
