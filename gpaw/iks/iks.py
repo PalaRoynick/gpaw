@@ -201,8 +201,9 @@ class iKS:
         atoms: Atoms | None = None,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
-        reg_scheduler_params=None,
-        corereg_scheduler_params=None,
+        reg_scheduler_params: dict[str, int | float] | None = None,
+        corereg_scheduler_params: dict[str, int | float] | None = None,
+        correg_xc: str = None,
         stencil: int = 3,
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
@@ -225,6 +226,7 @@ class iKS:
         self.lambdacore = lambdacore
         reg_scheduler_params = reg_scheduler_params or {}
         corereg_scheduler_params = corereg_scheduler_params or {}
+        self.correg_xc = correg_xc
         self.regsched = iks_optimize.StaircaseScheduler(
             lambdareg, **reg_scheduler_params)
         self.coresched = iks_optimize.StaircaseScheduler(
@@ -349,7 +351,7 @@ class iKS:
             self.wreg_ag = iks_tools.calculate_regularization_weights(
                 self.setups)
             self.vc_axg = iks_tools.calc_core_atomic_potentials(
-                self.setups, self.xc.setup_name)
+                self.setups, self.correg_xc or self.xc.setup_name)
 
     def irun_scf(self) -> None:
         """perform scf with the target density and update the inverted density from wfs"""
