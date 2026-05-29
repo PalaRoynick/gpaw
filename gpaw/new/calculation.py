@@ -9,13 +9,11 @@ import numpy as np
 from ase import Atoms
 from ase.geometry import cell_to_cellpar
 from ase.units import Bohr, Ha
-from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.densities import Densities
 from gpaw.electrostatic_potential import ElectrostaticPotential
 from gpaw.gpu import as_np
-from gpaw.gpu import cupy as cp
 from gpaw.mpi import MPIComm
 from gpaw.mpi import broadcast as bcast
 from gpaw.mpi import broadcast_float, receive, send, serial_comm
