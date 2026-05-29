@@ -70,6 +70,8 @@ class PotentialCalculator:
         raise NotImplementedError
 
     def move(self, relpos_ac, atomdist):
+        self.relpos_ac = relpos_ac
+
         for ext in self.extensions:
             ext.move_atoms(relpos_ac)
 

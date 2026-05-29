@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -84,6 +85,26 @@ class Functional:
 
     def __str__(self):
         return f'name: {self.xc.get_description()}'
+
+    def new(self, *,
+            grid: UGDesc | None = None,
+            xp=None) -> Functional:
+        functional = create_functional(
+            self._clone_xc(),
+            self.grid if grid is None else grid,
+            self.xp if xp is None else xp)
+        functional.exx_fraction = self.exx_fraction
+        functional.exx_omega = self.exx_omega
+        functional.exx_yukawa = self.exx_yukawa
+        functional.setup_name = self.setup_name
+        return functional
+
+    def _clone_xc(self) -> OldXCFunctional | str:
+        if self.name == 'QNA':
+            from gpaw.xc import XC
+            qna: Any = self.xc
+            return XC(qna.todict(), atoms=qna.atoms)
+        return self.name
 
     def calculate(self,
                   nt_sr: UGArray,

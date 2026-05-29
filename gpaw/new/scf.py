@@ -165,17 +165,17 @@ def calculate_potential(density,
             density, ibzwfs, potential.vHt_x)
         return potential, energies
 
-    if pot_calc.extensions:
-        warn_full_potential_fallback(
-            'extensions are not supported by full potential parallelization',
-            world_comm)
+    disabled_reason = getattr(pot_calc, '_full_potential_disabled_reason',
+                              None)
+    if disabled_reason is not None:
         potential, energies, _ = pot_calc.calculate(
             density, ibzwfs, potential.vHt_x)
         return potential, energies
 
-    disabled_reason = getattr(pot_calc, '_full_potential_disabled_reason',
-                              None)
-    if disabled_reason is not None:
+    unsupported_reason = full_potential_unsupported_reason(pot_calc, density)
+    if unsupported_reason is not None:
+        pot_calc._full_potential_disabled_reason = unsupported_reason
+        warn_full_potential_fallback(unsupported_reason, world_comm)
         potential, energies, _ = pot_calc.calculate(
             density, ibzwfs, potential.vHt_x)
         return potential, energies
@@ -293,6 +293,23 @@ def warn_full_potential_fallback(reason, comm):
             RuntimeWarning)
 
 
+def full_potential_unsupported_reason(pot_calc, density):
+    if density.ncomponents != 1:
+        return ('spin-dependent densities are not supported by full '
+                'potential parallelization')
+
+    if pot_calc.extensions:
+        return 'extensions are not supported by full potential parallelization'
+
+    poisson_solver = getattr(pot_calc, 'poisson_solver', None)
+    solver = getattr(poisson_solver, 'solver', None)
+    if getattr(solver, 'use_charge_center', False):
+        return ('Poisson solvers using charge-center compensation are not '
+                'supported by full potential parallelization')
+
+    return None
+
+
 def is_full_potential_construction_error(err):
     return str(err).startswith('Cannot construct interpolator.')
 
@@ -337,7 +354,6 @@ def _create_full_potential_calculator(pot_calc, full_density):
 
 def create_full_fd_potential_calculator(pot_calc, full_density):
     from gpaw.new.fd.pot_calc import FDPotentialCalculator
-    from gpaw.new.xc import create_functional
 
     full_grid = full_density.nt_sR.desc
     full_fine_grid = pot_calc.fine_grid.new(comm=full_grid.comm)
@@ -347,7 +363,7 @@ def create_full_fd_potential_calculator(pot_calc, full_density):
     except NotImplementedError:
         return None
 
-    xc = create_functional(pot_calc.xc.name, full_fine_grid, pot_calc.xp)
+    xc = pot_calc.xc.new(grid=full_fine_grid, xp=pot_calc.xp)
     return FDPotentialCalculator(
         full_grid,
         full_fine_grid,
@@ -363,7 +379,6 @@ def create_full_fd_potential_calculator(pot_calc, full_density):
 
 def create_full_pw_potential_calculator(pot_calc, full_density):
     from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
-    from gpaw.new.xc import create_functional
 
     if pot_calc.xc.exx_fraction != 0.0:
         return None
@@ -384,7 +399,7 @@ def create_full_pw_potential_calculator(pot_calc, full_density):
     except NotImplementedError:
         return None
 
-    xc = create_functional(pot_calc.xc.name, full_fine_grid, pot_calc.xp)
+    xc = pot_calc.xc.new(grid=full_fine_grid, xp=pot_calc.xp)
     return PlaneWavePotentialCalculator(
         full_grid,
         full_fine_grid,
