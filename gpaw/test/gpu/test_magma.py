@@ -34,7 +34,7 @@ def test_invalid_input(matrix_dtype: np.dtype):
 
     # test wrong eigenvalue array shape
     eigvals_bad = np.zeros(1)
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         magma.eigh_magma_numpy(matrix, eigvals_bad, "U", 1)
 
     # test non-C-contiguous input matrix
