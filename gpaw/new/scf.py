@@ -298,6 +298,9 @@ def full_potential_unsupported_reason(pot_calc, density):
         return ('spin-dependent densities are not supported by full '
                 'potential parallelization')
 
+    if pot_calc.xc.name == 'QNA':
+        return 'QNA is not supported by full potential parallelization'
+
     if pot_calc.extensions:
         return 'extensions are not supported by full potential parallelization'
 

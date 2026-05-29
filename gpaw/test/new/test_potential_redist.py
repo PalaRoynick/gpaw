@@ -325,6 +325,48 @@ def test_full_potential_spin_density_warns_and_falls_back(monkeypatch):
     assert energies == 'energies'
 
 
+@pytest.mark.ci
+def test_full_potential_qna_warns_and_falls_back(monkeypatch):
+    class Comm:
+        size = 2
+        rank = 0
+
+    class Nt:
+        data = object()
+
+    class Density:
+        ncomponents = 1
+        nt_sR = Nt()
+
+    class Potential:
+        vHt_x = None
+
+    class Ibzwfs:
+        kpt_band_comm = Comm()
+
+    class XC:
+        name = 'QNA'
+
+    class PotCalc:
+        extensions = []
+        xc = XC()
+
+        def calculate(self, density, ibzwfs, vHt_x):
+            return 'potential', 'energies', None
+
+    def unsupported(*args):
+        raise AssertionError('full potential path should not be reached')
+
+    monkeypatch.setattr(scf, 'distribute_density_to_all_ranks', unsupported)
+
+    with pytest.warns(RuntimeWarning, match='QNA is not supported'):
+        potential, energies = scf.calculate_potential(
+            Density(), Potential(), PotCalc(), Ibzwfs(), Comm(), 'full')
+
+    assert potential == 'potential'
+    assert energies == 'energies'
+
+
 def test_create_full_xc_preserves_qna_parameters():
     from gpaw.core import UGDesc
     from gpaw.new.xc import create_functional
