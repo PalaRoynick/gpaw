@@ -495,6 +495,27 @@ class GPWFiles(CachedFilesHandler):
         return atm.calc
 
     @gpwfile
+    def h2o_lcaosic_innerloop(self):
+        atm = self.h2o_maker(vacuum=4.0)
+        atm.calc = self.GPAW(
+            mode=LCAO(force_complex_dtype=True),
+            h=0.22,
+            occupations={'name': 'fixed-uniform'},
+            eigensolver=LCAOETDM(
+                localizationtype='PM_PZ',
+                localizationseed=42,
+                functional={'name': 'PZ-SIC', 'scaling_factor': (0.5, 0.5)},
+                localize_every=1,
+            ),
+            convergence={'eigenstates': 1e-4},
+            mixer={'backend': 'no-mixing'},
+            nbands='nao',
+            symmetry='off',
+        )
+        atm.get_potential_energy()
+        return atm.calc
+
+    @gpwfile
     def h2o_mom_lcaosic(self):
         atm = self.h2o_maker(vacuum=3.0)
         calc = self.GPAW(
@@ -1164,6 +1185,7 @@ class GPWFiles(CachedFilesHandler):
         co.center(vacuum=4.0)
         co.calc = self.GPAW(
             mode='lcao',
+            convergence={'density': 1e-5},
             txt=self.folder / 'co_lcao.txt')
         co.get_potential_energy()
         return co.calc
@@ -1207,7 +1229,8 @@ class GPWFiles(CachedFilesHandler):
     def h2o_lcao(self):
         atoms = molecule('H2O', cell=[8, 8, 8], pbc=1)
         atoms.center()
-        atoms.calc = self.GPAW(mode='lcao', txt=self.folder / 'h2o_lcao.txt')
+        atoms.calc = self.GPAW(mode='lcao', txt=self.folder / 'h2o_lcao.txt',
+                               convergence={'density': 1e-5})
         atoms.get_potential_energy()
         return atoms.calc
 
@@ -1269,7 +1292,7 @@ class GPWFiles(CachedFilesHandler):
         si = bulk('Si', 'diamond', a=5.43)
         k = 3
         si.calc = self.GPAW(
-            mode='fd', kpts=(k, k, k,),
+            mode='fd', kpts=(k, k, k),
             symmetry={'point_group': False,
                       'time_reversal': False},
             txt=self.folder / 'si_fd_bz.txt')
@@ -1867,7 +1890,7 @@ class GPWFiles(CachedFilesHandler):
     def bi2i6_pw_nosym(self):
         return self._bi2i6(symmetry='off')
 
-    def _mos2(self, symmetry=None):
+    def _mos2(self, symmetry=None, legacy_gpaw=False):
         if symmetry is None:
             symmetry = {}
         from ase.build import mx2
@@ -1878,6 +1901,7 @@ class GPWFiles(CachedFilesHandler):
         nkpts = 6
         tag = '_nosym' if symmetry == 'off' else ''
         atoms.calc = self.GPAW(
+            legacy_gpaw=legacy_gpaw,
             mode=PW(ecut),
             xc='LDA',
             kpts={'size': (nkpts, nkpts, 1), 'gamma': True},
@@ -2131,7 +2155,7 @@ class GPWFiles(CachedFilesHandler):
         conv = {'bands': band_cutoff + 1,
                 'density': 1.e-9}
         a = 2.867
-        mm = 2.21
+        mm = 3  # Ensure there are enough empty bands.
         atoms = bulk('Fe', 'bcc', a=a)
         # It is necessary to rattle the atoms to make sure that all tests pass
         # on all machines - see https://gitlab.com/gpaw/gpaw/-/issues/1397
@@ -2607,5 +2631,5 @@ for name, method in si_gpwfiles().items():
 if __name__ == '__main__':
     import sys
     name = sys.argv[1]
-    calc = getattr(GPWFiles(Path()), name)()
+    calc = getattr(GPWFiles(Path(), comm=world), name)()
     calc.write(name + '.gpw', mode='all')

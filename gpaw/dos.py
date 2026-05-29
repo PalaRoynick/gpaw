@@ -191,6 +191,7 @@ class DOSCalculator:
             return gaussian_dos(eig_kn, weight_kn,
                                 self.weight_k, energies, width)
         else:
+            assert self.cell is not None
             return linear_tetrahedron_dos(
                 eig_kn, weight_kn, energies,
                 self.cell, self.wfs.size, self.wfs.bz2ibz_map)

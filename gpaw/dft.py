@@ -12,14 +12,15 @@ from numpy.typing import DTypeLike
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 
-from gpaw import GPAW_NEW
 from gpaw.mpi import MPIComm
-from gpaw.new.calculation import DFTCalculation
+from gpaw.new.calculation import write_atoms, DFT
 from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
+from gpaw.utilities import (check_atoms_too_close,
+                            check_atoms_too_close_to_boundary)
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -190,9 +191,8 @@ class Eigensolver(Parameter):
                     return eigensolvers['davidson'](**kwargs)
                 if name in eigensolvers:
                     return eigensolvers[name](**kwargs)
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown name of eigensolver: {name}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown name of eigensolver: {name}')
             case {**kwargs}:
                 return DefaultEigensolver(kwargs)
             case NewEigensolver():
@@ -200,9 +200,8 @@ class Eigensolver(Parameter):
             case OES():
                 return cls.from_param(eigensolver.todict())
             case _:
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown eigensolver input: {eigensolver}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown eigensolver input: {eigensolver}')
 
 
 class DefaultEigensolver(Eigensolver):
@@ -227,6 +226,8 @@ class PWFDEigensolverParameter(Eigensolver):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -235,9 +236,11 @@ class PWFDEigensolverParameter(Eigensolver):
             nbands,
             wf_desc,
             band_comm,
+            domain_band_comm,
             hamiltonian,
             convergence,
             niter=self.niter,
+            scalapack_parameters=scalapack_parameters,
             max_buffer_mem=self.max_buffer_mem)
 
 
@@ -282,6 +285,8 @@ class PPCG(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -292,6 +297,8 @@ class PPCG(PWFDEigensolverParameter):
             band_comm,
             hamiltonian,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             min_niter=self.min_niter,
             max_buffer_mem=self.max_buffer_mem,
@@ -326,6 +333,8 @@ class RMMDIIS(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               create_preconditioner,
               convergence,
               setups,
@@ -336,6 +345,8 @@ class RMMDIIS(PWFDEigensolverParameter):
             band_comm,
             create_preconditioner,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             diis_steps=self.diis_steps,
             max_buffer_mem=self.max_buffer_mem,
@@ -604,7 +615,7 @@ class XC(Parameter):
     def functional(self, *, collinear: bool, atoms: Atoms | None = None):
         from gpaw.xc import XC as xc
         return xc({'name': self.name, **self.kwargs},
-                  collinear=collinear, atoms=atoms)
+                  collinear=collinear, atoms=atoms, legacy_gpaw=False)
 
     @classmethod
     def from_param(cls, xc):
@@ -818,13 +829,61 @@ class Parameters:
         return self.mode.dft_components_builder(
             atoms, self, comm=comm, log=log)
 
+    def create_dft_calculation_components(self,
+                                          atoms: Atoms,
+                                          comm: MPIComm | None = None,
+                                          log=None) -> tuple:
+        """Create DFT object from parameters and atoms."""
+        check_atoms_too_close(atoms)
+        check_atoms_too_close_to_boundary(atoms)
+
+        if not isinstance(log, Logger):
+            log = Logger(log, comm)
+
+        builder = self.dft_component_builder(atoms, log=log, comm=log.comm)
+
+        basis_set = builder.create_basis_set()
+
+        # The SCF-loop has a Hamiltonian that has an fft-plan that is
+        # cached for later use, so best to create the SCF-loop first
+        # FIX this!
+        scf_loop = builder.create_scf_loop()
+
+        pot_calc = builder.create_potential_calculator()
+
+        density = builder.density_from_superposition(basis_set)
+        if len(atoms) == 0:
+            density.nt_sR.data[:] = 1.0
+        density.normalize(pot_calc.charge)
+
+        potential, energies, _ = pot_calc.calculate_without_orbitals(
+            density, kpt_band_comm=builder.communicators['D'])
+        ibzwfs = builder.create_ibz_wave_functions(
+            basis_set, potential)
+
+        if ibzwfs._wfs_u[0].has_eigs:
+            nelectrons = density.nvalence - density.charge + pot_calc.charge
+            ibzwfs.calculate_occs(scf_loop.occ_calc, nelectrons)
+
+        write_atoms(atoms, builder.initial_magmom_av, builder.grid, log)
+        ibzwfs.summary(log)
+        log(density)
+        log(potential)
+        log(builder.setups)
+        log(scf_loop)
+        log(pot_calc)
+
+        return (ibzwfs, density, potential,
+                builder.setups, scf_loop, pot_calc,
+                log, self, energies)
+
     def dft_calculation(self,
                         atoms,
                         txt: str | Path | IO[str] | None = '-',
                         communicator: MPIComm | None = None
-                        ) -> DFTCalculation:
+                        ) -> DFT:
         log = Logger(txt, communicator)
-        return DFTCalculation.from_parameters(atoms, self, log.comm, log)
+        return DFT.from_parameters(atoms, self, log.comm, log)
 
     def dft_info(self, atoms):
         ...
@@ -852,7 +911,9 @@ def _parse_experimental(experimental: dict | None,
         magmoms = experimental.pop('magmoms')
     unknown = experimental.keys() - {'backwards_compatible',
                                      'ccirs',
-                                     'pw_pot_calc'}
+                                     'pw_pot_calc',
+                                     'paw_corr_mixer',
+                                     'new_basis'}
     if unknown:
         warnings.warn(f'Unknown experimental keyword(s): {unknown}',
                       stacklevel=3)
@@ -870,56 +931,6 @@ def _fix_legacy_stuff(params: Parameters) -> None:
             params.eigensolver.todict())
     if not isinstance(params.mixer, Mixer):
         params.mixer = Mixer.from_param(params.mixer.todict())
-
-
-def DFT(
-    atoms: Atoms,
-    *,
-    mode: str | dict | Mode,
-    basis: str | dict[str | int | None, str] | None = None,
-    charge: float | None = None,
-    convergence: dict | None = None,
-    eigensolver: str | dict | Eigensolver | None = None,
-    experimental: dict | None = None,
-    extensions: Sequence[ExtensionInput] | None = None,
-    gpts: Sequence[int] | None = None,
-    h: float | None = None,
-    hund: bool | None = None,
-    interpolation: int | None = None,
-    kpts: KptsType | MonkhorstPack | None = None,
-    magmoms: Sequence[float] | Sequence[Sequence[float]] | None = None,
-    maxiter: int | None = None,
-    mixer: dict | Mixer | None = None,
-    nbands: int | str | None = None,
-    occupations: dict | Occupations | None = None,
-    parallel: dict | None = None,
-    poissonsolver: dict | PoissonSolver | None = None,
-    random: bool | None = None,
-    setups: str | dict | None = None,
-    soc: bool | None = None,
-    spinpol: bool | None = None,
-    symmetry: str | dict | Symmetry | None = None,
-    xc: str | dict | XC | None = None,
-    txt: str | Path | IO[str] | None = '-',
-    communicator: MPIComm | None = None) -> DFTCalculation:
-    """Create a DFTCalculation object.
-
-    See :class:`gpaw.dft.Parameters` for the complete list of parameters.
-
-    Parameters
-    ==========
-    atoms:
-        ASE-Atoms object.
-    txt:
-        Text log-file.  Use ``None`` for no logging and ``'-'`` for using
-        standard out.
-    communicator:
-        MPI-communicator.  Default is to use ``gpaw.mpi.world``.
-
-    """
-    params = Parameters(**{k: v for k, v in locals().items()
-                           if k in PARAMETER_NAMES})
-    return params.dft_calculation(atoms, txt, communicator)
 
 
 class LegacyGPAWError(Exception):
@@ -996,12 +1007,9 @@ def GPAW(
     params = None
     _use_old_if_reading_new_fails = False
     if legacy_gpaw is None:
-        if GPAW_NEW == 147:
-            can, params = _can_use_new(filename, kwargs)
-            legacy_gpaw = not can
-            _use_old_if_reading_new_fails = True
-        else:
-            legacy_gpaw = False
+        can, params = _can_use_new(filename, kwargs)
+        legacy_gpaw = not can
+        _use_old_if_reading_new_fails = True
 
     if legacy_gpaw:
         from gpaw.old.calculator import GPAW as OldGPAW

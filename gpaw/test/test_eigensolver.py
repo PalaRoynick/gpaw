@@ -9,12 +9,8 @@ from gpaw.mpi import world
 @pytest.mark.parametrize('mode', ['pw'])
 @pytest.mark.parametrize('eigensolver', ['ppcg', 'etdm-fdpw'])
 @pytest.mark.parametrize('setup', ['paw', 'ae'])
-def test_ae(mode, eigensolver, setup, gpaw_new):
-    if not gpaw_new:
-        pytest.skip('Only implemented for new GPAW')
-
+def test_ae(mode, eigensolver, setup):
     occupations = {'name': 'fermi-dirac', 'width': 0.01}
-    mixer = {'backend': 'fft'}
     if eigensolver == 'etdm-fdpw':
         eigensolver = {'name': 'etdm-fdpw', 'converge_unocc': True}
         occupations = {'name': 'fixed',
@@ -23,6 +19,7 @@ def test_ae(mode, eigensolver, setup, gpaw_new):
         energy_tolerance = 5e-4
     else:
         energy_tolerance = 5e-5
+        mixer = {}
     eig_tolerance = 1e-3
     spinpol = False
 
@@ -45,8 +42,8 @@ def test_ae(mode, eigensolver, setup, gpaw_new):
               'eigensolver': eigensolver,
               'spinpol': spinpol,
               'occupations': occupations,
-              'mixer': mixer,
               'setups': setup,
+              'mixer': mixer,
               'convergence': {'eigenstates': 1e-8,
                               'energy': 1e-5,
                               'bands': 'all'}}
@@ -70,10 +67,7 @@ def test_ae(mode, eigensolver, setup, gpaw_new):
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 @pytest.mark.parametrize('element', ['Al', 'Si'])
 @pytest.mark.parametrize('eigensolver', ['davidson', 'ppcg', 'etdm-fdpw'])
-def test_eigensolver(mode, element, eigensolver, gpaw_new):
-    if not gpaw_new:
-        pytest.skip('Only implemented for new GPAW')
-
+def test_eigensolver(mode, element, eigensolver):
     energy_tolerance = 1e-4
     eig_tolerance = 5e-3
     spinpol = False

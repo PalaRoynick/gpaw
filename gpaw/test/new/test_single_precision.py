@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from ase.build import bulk, molecule
 
-from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.ase_interface import GPAW
 
@@ -100,8 +99,6 @@ def run_single_precision(dtype, gpu):
                                    'forces': 1e-3,
                                    'eigenstates': 1e-6},
                       eigensolver={'name': 'ppcg', 'include_cg': True},
-                      **{'mixer': {'backend': 'fft'}}
-                      if GPAW_NO_C_EXTENSION else {},
                       mode={'name': 'pw',
                             'ecut': 200.0,
                             'dtype': dtype},
@@ -128,9 +125,7 @@ def run_single_precision_rmmdiis(dtype):
                             'ecut': 200.0,
                             'dtype': dtype},
                       nbands=125,
-                      **{'random': True,
-                         'mixer': {'backend': 'fft'}}
-                      if GPAW_NO_C_EXTENSION else {},
+                      random=True,
                       eigensolver={'name': 'rmm-diis'},
                       parallel={'gpu': True}
                       )

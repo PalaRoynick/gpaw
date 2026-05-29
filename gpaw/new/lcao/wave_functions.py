@@ -27,7 +27,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                  relpos_ac: Array2D,
                  atomdist: AtomDistribution,
                  kpt_c=(0.0, 0.0, 0.0),
-                 domain_comm: MPIComm = serial_comm,
+                 domain_band_comm: MPIComm = serial_comm,
                  spin: int = 0,
                  q: int = 0,
                  k: int = 0,
@@ -44,7 +44,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                          atomdist=atomdist,
                          ncomponents=ncomponents,
                          dtype=C_nM.dtype,
-                         domain_comm=domain_comm,
+                         domain_band_comm=domain_band_comm,
                          band_comm=C_nM.dist.comm)
         XP.__init__(self, C_nM.xp)
         self.tci_derivatives = tci_derivatives
@@ -160,7 +160,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         f_n = self.weight * self.spin_degeneracy * self.myocc_n
         self.add_to_atomic_density_matrices(f_n, D_asii)
 
-    def gather_wave_function_coefficients(self) -> np.ndarray:
+    def gather_wave_function_coefficients(self) -> np.ndarray | None:
         C_nM = self.C_nM.gather()
         if C_nM is not None:
             return C_nM.data
@@ -235,7 +235,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             P_aMi=self.P_aMi,
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
-            domain_comm=self.domain_comm,
+            domain_band_comm=self.domain_band_comm,
             kpt_c=self.kpt_c,
             spin=self.spin,
             q=self.q,
@@ -261,6 +261,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                                 P_aMi=self.P_aMi,
                                 relpos_ac=self.relpos_ac,
                                 atomdist=self.atomdist,
+                                domain_band_comm=self.domain_band_comm,
                                 kpt_c=self.kpt_c,
                                 spin=self.spin,
                                 q=self.q,
@@ -306,6 +307,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         return wfs
 
     def to_pw_expansion(self, nbands, pw):
+        """Evaluate wave-functions in real-space, then FFT to plane-waves."""
         grid = self.basis.grid.new(kpt=self.kpt_c, dtype=self.dtype)
         pw = pw.new(kpt=self.kpt_c)
 
@@ -315,20 +317,31 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         mynbands, M = self.C_nM.dist.shape
         if self.ncomponents < 4:
             psit_nG = pw.empty(nbands, self.band_comm)
-            psit_R = grid.empty()
+            assert mynbands <= psit_nG.data.shape[0]
+
+            # In order to save memory for the wave functions in real-space,
+            # we do maximum 30 bands at a time:
+            B = max(min(mynbands, 30), 1)
+            psit_bR = grid.empty(B)
 
             if grid.dtype != pw.dtype:
-                psit0_R = grid.new(dtype=pw.dtype).empty()
-            for C_M, psit_G in zip(self.C_nM.data, psit_nG, strict=False):
-                psit_R.data[:] = 0.0
-                self.basis.lcao_to_grid(as_np(C_M), psit_R.data, self.q)
+                psit0_bR = grid.new(dtype=pw.dtype).empty(B)
+            for n1 in range(0, mynbands, B):
+                n2 = n1 + B
+                if n2 > mynbands:
+                    n2 = mynbands
+                    psit_bR = psit_bR[:n2 - n1]
+                C_bM = self.C_nM.data[n1:n2]
+                psit_bR.data[:] = 0.0
+                self.basis.lcao_to_grid(as_np(C_bM), psit_bR.data, self.q,
+                                        block_size=n2 - n1)
                 if np.issubdtype(self.dtype, np.complexfloating):
-                    psit_R.data *= emikr_R
+                    psit_bR.data *= emikr_R
                 if grid.dtype != pw.dtype:
-                    psit0_R.data[:] = psit_R.data
-                    psit0_R.fft(out=psit_G)
+                    psit0_bR.data[:] = psit_bR.data
+                    psit0_bR.fft(out=psit_nG[n1:n2])
                 else:
-                    psit_R.to_pbc_grid().fft(out=psit_G)
+                    psit_bR.to_pbc_grid().fft(out=psit_nG[n1:n2])
             return psit_nG.to_xp(self.xp)
 
         psit_nsG = pw.empty((nbands, 2), self.band_comm)

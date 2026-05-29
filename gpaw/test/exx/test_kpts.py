@@ -2,12 +2,12 @@
 import numpy as np
 import pytest
 from ase import Atoms
-
+from ase.units import Ha
 from gpaw import GPAW, PW
+from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 from gpaw.hybrids.eigenvalues import non_self_consistent_eigenvalues
 from gpaw.mpi import world
 from gpaw.new.ase_interface import GPAW as NewGPAW
-from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 
 
 @pytest.fixture(scope='module')
@@ -49,11 +49,8 @@ gaps = {'EXX': 21.04,
 
 @pytest.mark.libxc
 @pytest.mark.hybrids
-@pytest.mark.new_gpaw_ready
 @pytest.mark.parametrize('xc', ['EXX', 'PBE0', 'HSE06'])
-def test_kpts(xc: str, atoms: Atoms, gpaw_new, comm) -> None:
-    if gpaw_new and comm.size >= 4:
-        pytest.skip('only parallel over domain')
+def test_kpts(xc: str, atoms: Atoms, comm) -> None:
     c = atoms.calc
     e0, v0, v = non_self_consistent_eigenvalues(c, xc)
     e = e0 - v0 + v
@@ -63,6 +60,11 @@ def test_kpts(xc: str, atoms: Atoms, gpaw_new, comm) -> None:
     k1, k2, gap = bandgap(e0)
     assert k1 == 4 and k2 == 5
     assert gap == pytest.approx(gaps['PBE'], abs=0.01)
+    if xc == 'HSE06':
+        from gpaw.hybrids import non_self_consistent_matrix_elements
+        H_sknn = non_self_consistent_matrix_elements(c.dft, 'HSE06')
+        H_kn = np.diagonal(H_sknn[0], axis1=1, axis2=2) * Ha
+        assert H_kn == pytest.approx(e[0])
 
 
 def test_2d_non_self_consistent():

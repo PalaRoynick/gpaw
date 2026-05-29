@@ -123,7 +123,6 @@ def test_2d():
     dft = DFT(
         atoms,
         mode={'name': 'pw'},
-        mixer={'backend': 'fft'},  # avoid FD-stencil in mixer-metric
         spinpol=True,
         random=True,
         xc='LDA',

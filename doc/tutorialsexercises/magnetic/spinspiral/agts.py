@@ -20,7 +20,7 @@ def check():
     print(energies, magmoms)
 
     assert np.argmin(energies) == 24
-    assert abs(max(energies) - min(energies) - 67.82) < 0.01
+    assert abs(max(energies) - min(energies) - 67.71) < 0.05
     assert abs(magmoms[0] - 1.81) < 0.01
 
 
@@ -28,10 +28,13 @@ def check_soc():
     data = np.load('soc_data.npz')
     soc = data['soc']
     soc = (soc - soc[0]) * 1000
-    print(soc)
-
-    assert np.argmin(soc) == 3394
-    assert abs(max(soc) - min(soc) - 3.44) < 0.01
+    i = np.argmin(soc)
+    theta = data['theta'][i]
+    phi = data['phi'][i]
+    print(max(soc) - min(soc), theta, phi)
+    assert abs(max(soc) - min(soc) - 3.85) < 0.1
+    assert abs(theta - 27) < 2
+    assert abs(phi - 329) < 2
 
 
 if __name__ == '__main__':

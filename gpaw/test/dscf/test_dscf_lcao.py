@@ -9,10 +9,13 @@ from gpaw import GPAW
 
 @pytest.mark.dscf
 def test_dscf_dscf_lcao():
+    mixer = {'backend': 'pulay', 'nmaxold': 6}
+
     calc = GPAW(legacy_gpaw=True,
                 mode='lcao',
                 basis='dzp',
                 nbands=8,
+                mixer=mixer,
                 h=0.2,
                 xc='PBE',
                 spinpol=True,
@@ -32,6 +35,7 @@ def test_dscf_dscf_lcao():
                    mode='lcao',
                    basis='dzp',
                    nbands=8,
+                   mixer=mixer,
                    h=0.2,
                    symmetry='off',
                    xc='PBE',

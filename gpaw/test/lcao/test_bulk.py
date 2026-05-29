@@ -32,7 +32,7 @@ def test_lcao_bulk(in_tmp_dir):
 
     print(e)
     energy_tolerance = 0.0003
-    niter_tolerance = 0
+    niter_tolerance = 1  # MSR1 vs Pulay
 
     for i in range(len(A)):
         assert e[i] == pytest.approx(e_ref[i], abs=energy_tolerance)
