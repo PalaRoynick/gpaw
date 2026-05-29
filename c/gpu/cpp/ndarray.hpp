@@ -315,7 +315,7 @@ public:
     constexpr size_t size() const
     {
         size_t res = (size_t)is_valid();
-        for (size_t i = 0; i < ndim(); ++i)
+        for (int32_t i = 0; i < ndim(); ++i)
         {
             res *= shape(i);
         }

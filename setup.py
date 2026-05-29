@@ -520,7 +520,10 @@ sources += Path('c').glob('*.c')
 if gpu:
     sources += Path('c/gpu').glob('*.c')
 elif use_cpp:
-    sources += [Path('c/gpu/cpp/pw.cpp')]
+    sources += [
+        Path('c/gpu/cpp/pw.cpp'),
+        Path('c/gpu/cpp/pyarray_utils.cpp'),
+    ]
 
 sources += Path('c/xc').glob('*.c')
 
