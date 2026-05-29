@@ -147,11 +147,15 @@ def test_scf_uses_full_potential_calculator(comm, mode):
     if comm.size != 4:
         pytest.skip('Test needs exactly 4 MPI ranks')
 
-    atoms = molecule('H2', vacuum=1.0)
     if mode == 'fd':
+        atoms = molecule('H2', vacuum=1.0)
         modeobj = 'fd'
         kwargs = {'gpts': (16, 16, 16)}
     else:
+        atoms = Atoms('H2',
+                      positions=[(1.35, 1.5, 1.5), (1.65, 1.5, 1.5)],
+                      cell=[3.0, 3.0, 3.0],
+                      pbc=True)
         modeobj = {'name': 'pw', 'ecut': 80}
         kwargs = {}
 
