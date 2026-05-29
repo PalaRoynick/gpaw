@@ -36,8 +36,6 @@ new_mmm = getattr(_pw, 'mmm', None)
 new_r2k = getattr(_pw, 'r2k', None)
 
 
-pytestmark = pytest.mark.new_gpaw_ready
-
 seed = 42
 
 
