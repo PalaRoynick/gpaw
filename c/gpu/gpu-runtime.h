@@ -12,6 +12,8 @@
 
 #include <stdio.h>
 
+#ifdef GPAW_GPU
+
 #define gpuSafeCall(err)          __gpuSafeCall(err, __FILE__, __LINE__)
 #define gpublasSafeCall(err)      __gpublasSafeCall(err, __FILE__, __LINE__)
 
@@ -79,5 +81,7 @@ static inline gpublasStatus_t __gpublasSafeCall(gpublasStatus_t err,
     }
     return err;
 }
+
+#endif // GPAW_GPU
 
 #endif

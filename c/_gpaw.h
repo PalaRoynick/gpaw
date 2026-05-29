@@ -437,7 +437,7 @@ static PyObject* moduleinit(void)
     }
 #endif
 
-#ifdef __cplusplus   
+#ifdef __cplusplus
     if (!bind_pw_submodule(m))
     {
         return NULL;

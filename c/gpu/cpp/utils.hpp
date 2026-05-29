@@ -16,6 +16,12 @@
 namespace gpaw
 {
 
+#ifdef GPAW_GPU
+inline constexpr bool compiled_with_gpu_support = true;
+#else
+inline constexpr bool compiled_with_gpu_support = false;
+#endif
+
 /* Like std::source_location but works in C++17. Uses Clang/GCC extensions.
 TODO: replace with std::source_location when using C++20. */
 struct SourceLocation
