@@ -519,6 +519,9 @@ sources = [Path('c/bmgs/bmgs.c')]
 sources += Path('c').glob('*.c')
 if gpu:
     sources += Path('c/gpu').glob('*.c')
+elif use_cpp:
+    sources += [Path('c/gpu/cpp/pw.cpp')]
+
 sources += Path('c/xc').glob('*.c')
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
