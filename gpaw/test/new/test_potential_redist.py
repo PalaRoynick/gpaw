@@ -218,8 +218,12 @@ def test_full_potential_interpolator_error_warns_and_falls_back(monkeypatch):
     class Ibzwfs:
         kpt_band_comm = Comm()
 
+    class XC:
+        name = 'LDA'
+
     class PotCalc:
         extensions = []
+        xc = XC()
 
         def calculate(self, density, ibzwfs, vHt_x):
             return 'potential', 'energies', None
@@ -267,8 +271,12 @@ def test_full_potential_charge_center_warns_and_falls_back(monkeypatch):
     class PoissonSolver:
         solver = Solver()
 
+    class XC:
+        name = 'LDA'
+
     class PotCalc:
         extensions = []
+        xc = XC()
         poisson_solver = PoissonSolver()
 
         def calculate(self, density, ibzwfs, vHt_x):
@@ -306,8 +314,12 @@ def test_full_potential_spin_density_warns_and_falls_back(monkeypatch):
     class Ibzwfs:
         kpt_band_comm = Comm()
 
+    class XC:
+        name = 'LDA'
+
     class PotCalc:
         extensions = []
+        xc = XC()
 
         def calculate(self, density, ibzwfs, vHt_x):
             return 'potential', 'energies', None
