@@ -86,8 +86,8 @@ def test_density_redist_between_parallel_layouts(comm, mode):
     assert source_builder.communicators['D'].size == 2
     assert [builder.grid.comm.size for builder in target_builders] == [
         4, 1, 1, 2]
-    assert [builder.communicators['D'].size for builder in target_builders] == [
-        1, 4, 4, 2]
+    assert [builder.communicators['D'].size
+            for builder in target_builders] == [1, 4, 4, 2]
 
     source_data = snapshot(source_density)
 
@@ -103,5 +103,6 @@ def test_density_redist_between_parallel_layouts(comm, mode):
         roundtrip_density = redist_density(target_density,
                                            target_builder,
                                            source_builder)
-        assert roundtrip_density.grid.comm.size == source_builder.grid.comm.size
+        assert (roundtrip_density.grid.comm.size ==
+                source_builder.grid.comm.size)
         assert_same_density(roundtrip_density, source_data)
