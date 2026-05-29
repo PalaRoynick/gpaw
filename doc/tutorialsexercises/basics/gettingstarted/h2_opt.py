@@ -1,6 +1,6 @@
 # creates: h2.traj
 from ase import Atoms
-from gpaw.calculator import GPAW
+from gpaw import GPAW
 from ase.optimize import QuasiNewton
 
 d = 1.0

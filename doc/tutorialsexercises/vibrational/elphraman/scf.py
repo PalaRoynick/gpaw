@@ -5,6 +5,7 @@ from gpaw import GPAW, FermiDirac
 atoms = read("MoS2_2H_relaxed_PBE.json")
 
 calc = GPAW(mode='lcao',
+            basis='dzp',
             parallel={'sl_auto': True, 'augment_grids': True},
             xc='PBE',
             h=0.14,
@@ -13,10 +14,9 @@ calc = GPAW(mode='lcao',
             convergence={'energy': 1e-6,
                          'density': 1e-6,
                          'bands': 34},
-            symmetry='off',
-            )
+            symmetry='off')
 
 atoms.calc = calc
 atoms.get_potential_energy()
 
-calc.write("scf.gpw", 'all')
+calc.write('scf.gpw', 'all')

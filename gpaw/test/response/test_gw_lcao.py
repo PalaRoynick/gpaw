@@ -1,13 +1,13 @@
 import pytest
 from gpaw.response.g0w0 import G0W0
-from gpaw.new.calculation import DFTCalculation
+from gpaw.dft import DFT
 
 
 @pytest.mark.ci
 @pytest.mark.response
 def test_lcao_gw(in_tmp_dir, gpw_files, mpi):
-    dft = DFTCalculation.from_gpw_file(gpw_files['diamond_lcao'],
-                                       comm=mpi.comm)
+    dft = DFT.from_gpw_file(gpw_files['diamond_lcao'],
+                            comm=mpi.comm)
     dft.change_mode('pw')
     dft.write_gpw_file('diamond_pw.gpw', include_wfs=True)
 

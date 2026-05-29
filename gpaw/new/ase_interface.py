@@ -15,7 +15,7 @@ from gpaw.dft import GPAW as AnyGPAW, Parameters
 from gpaw.dos import DOSCalculator
 from gpaw.mpi import broadcast, synchronize_atoms
 from gpaw.new import Timer, trace
-from gpaw.new.calculation import (CalculationModeError, DFTCalculation,
+from gpaw.new.calculation import (CalculationModeError, DFT,
                                   ReuseWaveFunctionsError, units)
 from gpaw.new.gpw import GPWFlags, write_gpw
 from gpaw.new.logger import Logger
@@ -82,7 +82,7 @@ class ASECalculator:
                  params: Parameters,
                  *,
                  log: Logger,
-                 dft: DFTCalculation | None = None,
+                 dft: DFT | None = None,
                  atoms: Atoms | None = None):
         self.params = params
         self.log = log
@@ -95,7 +95,7 @@ class ASECalculator:
         self._wfs_dft = -1, -1
 
     @property
-    def dft(self) -> DFTCalculation:
+    def dft(self) -> DFT:
         if self._dft is None:
             raise AttributeError
         return self._dft
@@ -255,8 +255,9 @@ class ASECalculator:
     @trace
     def create_new_calculation(self, atoms: Atoms) -> None:
         with self.timer('Init'):
-            self._dft = DFTCalculation.from_parameters(
-                atoms, self.params, self.comm, self.log)
+            self._dft = DFT.from_parameters(
+                atoms, self.params, self.comm, self.log,
+                converge=False)
         self._atoms = atoms.copy()
 
     def create_new_calculation_from_old(self, atoms: Atoms) -> None:
@@ -688,7 +689,7 @@ class ASECalculator:
         for name in ['energy', 'density', 'forces']:
             scf_loop.convergence.pop(name, None)
 
-        dft = DFTCalculation(
+        dft = DFT.from_components(
             self.atoms, ibzwfs, density, potential,
             builder.setups,
             scf_loop,
@@ -696,8 +697,6 @@ class ASECalculator:
             log,
             params=params,
             energies=self.dft.energies)
-
-        dft.converge()
 
         return ASECalculator(params,
                              log=log,

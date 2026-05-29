@@ -529,10 +529,14 @@ class LCAOETDM:
                 self.ind_all_up[u] = self.ind_ov_up[u]
             if self.representation == 'sparse':
                 self.ind_all_up[u] = self.ind_sparse_up[u]
-            elif self.representation == 'full' and self.dtype == complex:
+            # elif self.representation == 'full' and self.dtype == complex:
+            elif self.representation == 'full':
                 # Take indices of all upper triangular and diagonal
                 # elements of A_BigMatrix
-                self.ind_all_up[u] = np.triu_indices(self.n_dim[u])
+                if self.dtype == complex:
+                    self.ind_all_up[u] = np.triu_indices(self.n_dim[u])
+                elif self.dtype == float:
+                    self.ind_all_up[u] = np.triu_indices(self.n_dim[u], 1)
 
             shape_of_oo = len(self.ind_oo_up[u][0])
             shape_of_ov = len(self.ind_ov_up[u][0])

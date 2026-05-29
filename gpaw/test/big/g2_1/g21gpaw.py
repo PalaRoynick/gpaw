@@ -25,3 +25,4 @@ for name in molecule_names + atom_names:
         opt = BFGS(atoms, logfile=name + '.gpaw.log')
         opt.run(0.01)
         c.write(atoms, name=name, relaxed=True)
+    atoms.calc.__del__()
