@@ -6,6 +6,6 @@ def workflow():
     with run(script='check_convergence.py', tmax='1h', cores=8):
         run(script='convergence.py')
 
-    with run(script='n2_on_metal.py', tmax='2h'):
-        with run(script='neb.py', tmax='30h', cores=8):
+    with run(script='part1/n2_on_metal.py', tmax='2h'):
+        with run(script='part3/neb.py', tmax='30h', cores=8):
             run(script='vibrations.py', tmax='12h', cores=24)

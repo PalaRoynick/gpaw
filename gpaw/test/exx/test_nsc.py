@@ -18,7 +18,6 @@ def test_2h():
               mode=PW(ecut, force_complex_dtype=True),
               kpts=(k, k, 1),
               convergence={'density': 1e-6})
-    dft.converge()
     exx = NonSelfConsistentHybridXCCalculator.from_dft_calculation(
         dft, 'EXX')
     elda_skn, eexx_skn = exx.calculate(dft.ibzwfs, ibz_indices=[0])

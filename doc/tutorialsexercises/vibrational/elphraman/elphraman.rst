@@ -96,9 +96,10 @@ cell. (:git:`~doc/tutorialsexercises/vibrational/elphraman/dipolemoment.py`)
 Phonon mode projected electron-phonon matrix
 ============================================
 
-With all the above calculations finished we can extract the electron-phonon
-matrix in the Bloch basis of the primitive cell projected onto the phonon modes:
-(:git:`~doc/tutorialsexercises/vibrational/elphraman/gmatrix.py`)
+With all the above calculations finished we can extract the
+electron-phonon matrix in the Bloch basis of the primitive cell projected
+onto the phonon modes
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/gmatrix.py`):
 
 .. literalinclude:: gmatrix.py
 
@@ -109,19 +110,21 @@ save lots of memory for larger systems with hundreds of atoms, where the
 supercell matrix can be over 100GiB large.
 
 
-Note: This part has not been tested properly for parallel runs and should be done
-in serial mode only.
+Note: This part has not been tested properly for parallel runs and should
+be done in serial mode only.
 
 
 Raman spectrum
 ==============
 
 With all ingredients provided we can now commence with the computation of the
-Raman tensor which is saved in a file cache.(:git:`~doc/tutorialsexercises/vibrational/elphraman/raman.py`)
+Raman tensor which is saved in a file cache
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/raman.py`):
 
 .. literalinclude:: raman.py
 
-The final result can then be plotted:(:git:`~doc/tutorialsexercises/vibrational/elphraman/plot_spectrum.py`)
+The final result can then be plotted
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/plot_spectrum.py`):
 
 .. literalinclude:: plot_spectrum.py
     :start-at: from gpaw.elph import RamanData
