@@ -6,6 +6,7 @@
 
 //#include "gpu/cpp/pyarray_utils.hpp"
 //#include "gpu/cpp/pybind_cupy_type_caster.hpp"
+#include "gpu/cpp/ndarray.hpp"
 
 #include "gpaw_complex.h"
 
@@ -328,45 +329,26 @@ template <typename T> void _pwlfc_expand_old_real(int nG,
 }
 
 
-void cpp_pw_insert(py::array c_G,
-                   py::array Q_G,
+template <typename T>
+void cpp_pw_insert(gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
+                                 gpaw::c_contig, gpaw::ndim<1>> c_G,
+                   gpaw::NDArray<int32_t, gpaw::device::cpu,
+                                 gpaw::c_contig, gpaw::ndim<1>> Q_G,
                    double scale,
-                   py::array tmp_Q)
+                   gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
+                                 gpaw::c_contig, gpaw::ndim<3>> tmp_Q)
 {
-    assert(c_G.ndim() == 1);
-    assert(Q_G.ndim() == 1);
-    assert(tmp_Q.ndim() == 3);
-    assert(is_c_contiguous(c_G));
-    assert(is_c_contiguous(Q_G));
-    assert(is_c_contiguous(tmp_Q));
-    int nG = c_G.shape()[0];
-    int nQ = tmp_Q.size();
+    if (Q_G.shape(0) != c_G.shape(0))
+    {
+        throw std::invalid_argument("pw_insert: Q_G and c_G must have the same length.");
+    }
 
-    bool is_double = c_G.dtype().is(py::dtype::of<std::complex<double>>());
-    bool is_float = c_G.dtype().is(py::dtype::of<std::complex<float>>());
-
-    if (is_double)
-    {
-        _pw_insert<double>(nG, nQ,
-                   static_cast<const std::complex<double>*>(c_G.data()),
-                   static_cast<const npy_int32*>(Q_G.data()),
-                   scale,
-                   static_cast<std::complex<double>*>(tmp_Q.mutable_data()));
-    }
-    else if (is_float)
-    {
-        _pw_insert<float>(nG, nQ,
-                   static_cast<const std::complex<float>*>(c_G.data()),
-                   static_cast<const npy_int32*>(Q_G.data()),
-                   static_cast<float>(scale),
-                   static_cast<std::complex<float>*>(tmp_Q.mutable_data()));
-    }
-    else
-    {
-        throw std::invalid_argument("Supports only double and float arrays.");
-    }
-//    nG =
-//    _pw_insert(nG, nQ, c_G, Q_G, scale, tmp_Q)
+    _pw_insert<T>(static_cast<int>(c_G.shape(0)),
+                  static_cast<int>(tmp_Q.size()),
+                  c_G.data(),
+                  reinterpret_cast<const npy_int32*>(Q_G.data()),
+                  static_cast<T>(scale),
+                  tmp_Q.data());
 }
 
 void cpp_add_to_density(double f,
@@ -870,50 +852,23 @@ void cpp_pwlfc_expand(py::array f_Gs,
     }
 }
 
-void cpp_pw_precond(py::array G2_G,
-                    py::array R_G,
+template <typename T>
+void cpp_pw_precond(gpaw::NDArray<T, gpaw::device::cpu,
+                                  gpaw::c_contig, gpaw::ndim<1>> G2_G,
+                    gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
+                                  gpaw::c_contig, gpaw::ndim<1>> R_G,
                     double ekin,
-                    py::array out_G)
+                    gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
+                                  gpaw::c_contig, gpaw::ndim<1>> out_G)
 {
-    assert(G2_G.ndim() == 1);
-    assert(R_G.ndim() == 1);
-    assert(out_G.ndim() == 1);
-    assert(is_c_contiguous(G2_G));
-    assert(is_c_contiguous(R_G));
-    assert(is_c_contiguous(out_G));
-
-    int nG = G2_G.shape()[0];
-    assert(R_G.shape()[0] == nG);
-    assert(out_G.shape()[0] == nG);
-
-    bool is_double = (G2_G.dtype().is(py::dtype::of<double>()) &&
-                      R_G.dtype().is(py::dtype::of<std::complex<double>>()) &&
-                      out_G.dtype().is(py::dtype::of<std::complex<double>>()));
-    bool is_float = (G2_G.dtype().is(py::dtype::of<float>()) &&
-                     R_G.dtype().is(py::dtype::of<std::complex<float>>()) &&
-                     out_G.dtype().is(py::dtype::of<std::complex<float>>()));
-
-    if (is_double)
-    {
-        _pw_precond<double>(nG,
-            static_cast<const double*>(G2_G.data()),
-            static_cast<const std::complex<double>*>(R_G.data()),
-            ekin,
-            static_cast<std::complex<double>*>(out_G.mutable_data()));
-    }
-    else if (is_float)
-    {
-        _pw_precond<float>(nG,
-            static_cast<const float*>(G2_G.data()),
-            static_cast<const std::complex<float>*>(R_G.data()),
-            static_cast<float>(ekin),
-            static_cast<std::complex<float>*>(out_G.mutable_data()));
-    }
-    else
+    const int nG = static_cast<int>(G2_G.shape(0));
+    if (R_G.shape(0) != nG || out_G.shape(0) != nG)
     {
         throw std::invalid_argument(
-            "Supports only matching float/complex64 or double/complex128 arrays.");
+            "pw_precond: G2_G, R_G and out_G must have the same length.");
     }
+
+    _pw_precond<T>(nG, G2_G.data(), R_G.data(), static_cast<T>(ekin), out_G.data());
 }
 
 py::array cpp_pawexxvv(py::array M_pp,
@@ -1028,67 +983,31 @@ template <typename T> void _plane_wave_grid(const long* beg,
     }
 }
 
-void cpp_plane_wave_grid(py::array beg_c,
-                         py::array end_c,
-                         py::array h_c,
-                         py::array k_c,
-                         py::array r0_c,
-                         py::array pw_g)
+template <typename T>
+void cpp_plane_wave_grid(gpaw::NDArray<long, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::shape<3>> beg_c,
+                         gpaw::NDArray<long, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::shape<3>> end_c,
+                         gpaw::NDArray<T, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::shape<3>> h_c,
+                         gpaw::NDArray<T, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::shape<3>> k_c,
+                         gpaw::NDArray<T, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::shape<3>> r0_c,
+                         gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
+                                       gpaw::c_contig, gpaw::ndim<3>> pw_g)
 {
-    assert(beg_c.ndim() == 1);
-    assert(end_c.ndim() == 1);
-    assert(h_c.ndim() == 1);
-    assert(k_c.ndim() == 1);
-    assert(r0_c.ndim() == 1);
-    assert(pw_g.ndim() == 3);
-    assert(beg_c.shape()[0] == 3);
-    assert(end_c.shape()[0] == 3);
-    assert(h_c.shape()[0] == 3);
-    assert(k_c.shape()[0] == 3);
-    assert(r0_c.shape()[0] == 3);
-    assert(is_c_contiguous(beg_c));
-    assert(is_c_contiguous(end_c));
-    assert(is_c_contiguous(h_c));
-    assert(is_c_contiguous(k_c));
-    assert(is_c_contiguous(r0_c));
-    assert(is_c_contiguous(pw_g));
+    for (int c = 0; c < 3; c++)
+    {
+        if (pw_g.shape(c) != end_c.data()[c] - beg_c.data()[c])
+        {
+            throw std::invalid_argument(
+                "plane_wave_grid: pw_g shape must match end_c - beg_c.");
+        }
+    }
 
-    bool is_double = (beg_c.dtype().is(py::dtype::of<long>()) &&
-                      end_c.dtype().is(py::dtype::of<long>()) &&
-                      h_c.dtype().is(py::dtype::of<double>()) &&
-                      k_c.dtype().is(py::dtype::of<double>()) &&
-                      r0_c.dtype().is(py::dtype::of<double>()) &&
-                      pw_g.dtype().is(py::dtype::of<std::complex<double>>()));
-    bool is_float = (beg_c.dtype().is(py::dtype::of<long>()) &&
-                     end_c.dtype().is(py::dtype::of<long>()) &&
-                     h_c.dtype().is(py::dtype::of<float>()) &&
-                     k_c.dtype().is(py::dtype::of<float>()) &&
-                     r0_c.dtype().is(py::dtype::of<float>()) &&
-                     pw_g.dtype().is(py::dtype::of<std::complex<float>>()));
-
-    if (is_double)
-    {
-        _plane_wave_grid<double>(static_cast<const long*>(beg_c.data()),
-                                 static_cast<const long*>(end_c.data()),
-                                 static_cast<const double*>(h_c.data()),
-                                 static_cast<const double*>(k_c.data()),
-                                 static_cast<const double*>(r0_c.data()),
-                                 static_cast<std::complex<double>*>(pw_g.mutable_data()));
-    }
-    else if (is_float)
-    {
-        _plane_wave_grid<float>(static_cast<const long*>(beg_c.data()),
-                                static_cast<const long*>(end_c.data()),
-                                static_cast<const float*>(h_c.data()),
-                                static_cast<const float*>(k_c.data()),
-                                static_cast<const float*>(r0_c.data()),
-                                static_cast<std::complex<float>*>(pw_g.mutable_data()));
-    }
-    else
-    {
-        throw std::invalid_argument(
-            "Supports long index arrays and matching float/complex64 or double/complex128 arrays.");
-    }
+    _plane_wave_grid<T>(beg_c.data(), end_c.data(),
+                        h_c.data(), k_c.data(), r0_c.data(), pw_g.data());
 }
 
 bool bind_pw_submodule(PyObject* module)
@@ -1109,7 +1028,12 @@ bool bind_pw_submodule(PyObject* module)
     // Bind Cupy conversion testers (call from Python-side test)
 
     submodule.def("pw_insert",
-        &cpp_pw_insert,
+        &cpp_pw_insert<double>,
+        py::arg("c_G"), py::arg("Q_G"), py::arg("scale"), py::arg("tmp_Q"),
+        R"(Docstring for pw_insert.)"
+    );
+    submodule.def("pw_insert",
+        &cpp_pw_insert<float>,
         py::arg("c_G"), py::arg("Q_G"), py::arg("scale"), py::arg("tmp_Q"),
         R"(Docstring for pw_insert.)"
     );
@@ -1133,7 +1057,12 @@ bool bind_pw_submodule(PyObject* module)
     );
 #endif
     submodule.def("pw_precond",
-        &cpp_pw_precond,
+        &cpp_pw_precond<double>,
+        py::arg("G2_G"), py::arg("R_G"), py::arg("ekin"), py::arg("out_G"),
+        R"(Docstring for pw_precond.)"
+    );
+    submodule.def("pw_precond",
+        &cpp_pw_precond<float>,
         py::arg("G2_G"), py::arg("R_G"), py::arg("ekin"), py::arg("out_G"),
         R"(Docstring for pw_precond.)"
     );
@@ -1157,7 +1086,13 @@ bool bind_pw_submodule(PyObject* module)
         R"(Docstring for pawexxvv.)"
     );
     submodule.def("plane_wave_grid",
-        &cpp_plane_wave_grid,
+        &cpp_plane_wave_grid<double>,
+        py::arg("beg_c"), py::arg("end_c"), py::arg("h_c"),
+        py::arg("k_c"), py::arg("r0_c"), py::arg("pw_g"),
+        R"(Docstring for plane_wave_grid.)"
+    );
+    submodule.def("plane_wave_grid",
+        &cpp_plane_wave_grid<float>,
         py::arg("beg_c"), py::arg("end_c"), py::arg("h_c"),
         py::arg("k_c"), py::arg("r0_c"), py::arg("pw_g"),
         R"(Docstring for plane_wave_grid.)"
