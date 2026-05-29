@@ -304,6 +304,10 @@ def full_potential_unsupported_reason(pot_calc, density):
     if pot_calc.extensions:
         return 'extensions are not supported by full potential parallelization'
 
+    if hasattr(pot_calc, 'pw') and not pot_calc.grid.pbc_c.all():
+        return ('non-periodic plane-wave calculations are not supported by '
+                'full potential parallelization')
+
     poisson_solver = getattr(pot_calc, 'poisson_solver', None)
     solver = getattr(poisson_solver, 'solver', None)
     if getattr(solver, 'use_charge_center', False):
