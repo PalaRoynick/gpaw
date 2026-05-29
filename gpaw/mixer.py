@@ -12,6 +12,13 @@ import gpaw.mpi as mpi
 from gpaw.new import trace
 from gpaw.utilities.blas import axpy
 
+
+def _vecdot(a, b):
+    if hasattr(np, 'vecdot'):  # numpy 2.0+
+        return np.vecdot(a, b)
+    return np.einsum('...i,...i->...', np.conjugate(a), b)
+
+
 """About mixing-related classes.
 
 (FFT/Broyden)BaseMixer: These classes know how to mix one density
@@ -175,17 +182,9 @@ class BaseMixer:
                 @ np.reshape(R2_isG, (shape2[0], -1)).T
         elif mode == 'vecdot' or mode == 'scalar':
             assert len(R1_isG) == len(R2_isG)
-            if hasattr(np, 'vecdot'):  # numpy 2.0+
-                prod = np.vecdot(
-                    np.reshape(R1_isG, (len(R1_isG), -1)),
-                    np.reshape(R2_isG, (len(R2_isG), -1))
-                )
-            else:
-                prod = np.einsum(
-                    'ix, ix -> i',
-                    np.reshape(R1_isG, (len(R1_isG), -1)).conj(),
-                    np.reshape(R2_isG, (len(R2_isG), -1))
-                )
+            prod = _vecdot(
+                np.reshape(R1_isG, (len(R1_isG), -1)),
+                np.reshape(R2_isG, (len(R2_isG), -1)))
         prod *= gd.dv
         comm.sum(prod)
         assert (prod.imag < 1e-10).all()
@@ -661,24 +660,17 @@ class ExperimentalDotProd:
             R2_isG = [R2_isG, ]
             dD2_iasp = [dD2_iasp, ]
 
+        Ni = len(R1_isG)
+        assert Ni == len(R2_isG)
+        R1_iX = np.reshape(R1_isG, (Ni, -1))
+        R2_iX = np.reshape(R2_isG, (Ni, -1))
+
         if mode == 'gemm':
-            shape1 = np.array(R1_isG).shape
-            shape2 = np.array(R2_isG).shape
-            prod = np.reshape(R1_isG, (shape1[0], -1)).conj() \
-                @ np.reshape(R2_isG, (shape2[0], -1)).T
-        elif mode == 'vecdot' or mode == 'scalar':
-            assert len(R1_isG) == len(R2_isG)
-            if hasattr(np, 'vecdot'):  # numpy 2.0+
-                prod = np.vecdot(
-                    np.reshape(R1_isG, (len(R1_isG), -1)),
-                    np.reshape(R2_isG, (len(R2_isG), -1))
-                )
-            else:
-                prod = np.einsum(
-                    'ix, ix -> i',
-                    np.reshape(R1_isG, (len(R1_isG), -1)).conj(),
-                    np.reshape(R2_isG, (len(R2_isG), -1))
-                )
+            prod = R1_iX.conj() @ R2_iX.T
+        else:
+            assert mode == 'vecdot' or mode == 'scalar'
+            prod = _vecdot(R1_iX, R2_iX)
+
         prod *= gd.dv
         assert self.atomdist.comm.rank == comm.rank
         my_atoms_inds = np.where(self.atomdist.rank_a == comm.rank)[0]
@@ -704,7 +696,7 @@ class ExperimentalDotProd:
                 if mode == 'gemm':
                     prod += (buffer1 @ I4_pp @ buffer2.T).real
                 elif mode == 'vecdot' or mode == 'scalar':
-                    prod += np.vecdot((buffer1 @ I4_pp).conj(), buffer2).real
+                    prod += _vecdot((buffer1 @ I4_pp).conj(), buffer2).real
 
         comm.sum(prod)
         assert (prod.imag < 1e-10).all()
@@ -746,7 +738,7 @@ class ReciprocalMetric:
                 i for i in range(3) if i != ind]
             k_Qc[..., ind] = np.expand_dims(nums, other_axes)
         k_Qv = k_Qc @ icell_cv
-        k2_Q = np.vecdot(k_Qv, k_Qv)
+        k2_Q = _vecdot(k_Qv, k_Qv)
 
         self.w_Q = weight * (sigma + k2_Q) / (sigma + weight * k2_Q)
 
