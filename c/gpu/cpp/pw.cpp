@@ -416,16 +416,20 @@ void cpp_mmm(py::object alpha_obj,
              py::object beta_obj,
              py::array M3)
 {
-    assert(M1.ndim() == 2);
-    assert(M2.ndim() == 2);
-    assert(M3.ndim() == 2);
-    assert(M1.size() == 0 || M1.strides()[1] == M3.itemsize());
-    assert(M2.size() == 0 || M2.strides()[1] == M3.itemsize());
-    assert(M3.size() == 0 || M3.strides()[1] == M3.itemsize());
-    assert(M1.dtype().is(M2.dtype()));
-    assert(M1.dtype().is(M3.dtype()));
-    assert(!trans1.empty());
-    assert(!trans2.empty());
+    if (M1.ndim() != 2 || M2.ndim() != 2 || M3.ndim() != 2)
+    {
+        throw std::invalid_argument("mmm expects three 2D arrays.");
+    }
+    if (trans1.empty() || trans2.empty())
+    {
+        throw std::invalid_argument("mmm transpose arguments must not be empty.");
+    }
+    if ((M1.size() != 0 && M1.strides()[1] != M3.itemsize()) ||
+        (M2.size() != 0 && M2.strides()[1] != M3.itemsize()) ||
+        (M3.size() != 0 && M3.strides()[1] != M3.itemsize()))
+    {
+        throw std::invalid_argument("mmm expects unit stride in the last dimension.");
+    }
 
     char t1 = trans1[0];
     char t2 = trans2[0];
@@ -452,18 +456,7 @@ void cpp_mmm(py::object alpha_obj,
         ldb = std::max(std::max(1, n), ldb);
     }
 
-    if (M3.dtype().is(py::dtype::of<double>()))
-    {
-        double alpha = py::cast<double>(alpha_obj);
-        double beta = py::cast<double>(beta_obj);
-        dgemm_(&t2, &t1, &m, &n, &k,
-               &alpha,
-               static_cast<const double*>(M2.data()), &lda,
-               static_cast<const double*>(M1.data()), &ldb,
-               &beta,
-               static_cast<double*>(M3.mutable_data()), &ldc);
-    }
-    else if (M3.dtype().is(py::dtype::of<float>()))
+    if (M3.dtype().is(py::dtype::of<float>()))
     {
         float alpha = py::cast<float>(alpha_obj);
         float beta = py::cast<float>(beta_obj);
@@ -474,22 +467,33 @@ void cpp_mmm(py::object alpha_obj,
                &beta,
                static_cast<float*>(M3.mutable_data()), &ldc);
     }
-    else if (M3.dtype().is(py::dtype::of<std::complex<double>>()))
+    else if (M3.dtype().is(py::dtype::of<std::complex<float>>()))
     {
-        std::complex<double> alpha = py::cast<std::complex<double>>(alpha_obj);
-        std::complex<double> beta = py::cast<std::complex<double>>(beta_obj);
-        zgemm_(&t2, &t1, &m, &n, &k,
+        std::complex<float> alpha = py::cast<std::complex<float>>(alpha_obj);
+        std::complex<float> beta = py::cast<std::complex<float>>(beta_obj);
+        cgemm_(&t2, &t1, &m, &n, &k,
                &alpha,
                const_cast<void*>(static_cast<const void*>(M2.data())), &lda,
                const_cast<void*>(static_cast<const void*>(M1.data())), &ldb,
                &beta,
                static_cast<void*>(M3.mutable_data()), &ldc);
     }
-    else if (M3.dtype().is(py::dtype::of<std::complex<float>>()))
+    else if (M3.itemsize() == 8)
     {
-        std::complex<float> alpha = py::cast<std::complex<float>>(alpha_obj);
-        std::complex<float> beta = py::cast<std::complex<float>>(beta_obj);
-        cgemm_(&t2, &t1, &m, &n, &k,
+        double alpha = py::cast<double>(alpha_obj);
+        double beta = py::cast<double>(beta_obj);
+        dgemm_(&t2, &t1, &m, &n, &k,
+               &alpha,
+               static_cast<const double*>(M2.data()), &lda,
+               static_cast<const double*>(M1.data()), &ldb,
+               &beta,
+               static_cast<double*>(M3.mutable_data()), &ldc);
+    }
+    else if (M3.itemsize() == 16)
+    {
+        std::complex<double> alpha = py::cast<std::complex<double>>(alpha_obj);
+        std::complex<double> beta = py::cast<std::complex<double>>(beta_obj);
+        zgemm_(&t2, &t1, &m, &n, &k,
                &alpha,
                const_cast<void*>(static_cast<const void*>(M2.data())), &lda,
                const_cast<void*>(static_cast<const void*>(M1.data())), &ldb,
