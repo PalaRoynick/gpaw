@@ -337,9 +337,9 @@ class NumericalXC(XCFunctional):
                 # angular and lebedev
                 rgd = xcc.rgd
                 n_sLg = calculate_angular_density(
-                    xcc, D_sp, xcc.n_qg, xcc.nc_g, setups[a].Nc, add_core)
+                    xcc, D_sp, xcc.n_qg, xcc.nc_g, add_core)
                 nt_sLg = calculate_angular_density(
-                    xcc, D_sp, xcc.nt_qg, xcc.nct_g, setups[a].Nct, add_core)
+                    xcc, D_sp, xcc.nt_qg, xcc.nct_g, add_core)
                 vxc_xasz[0][a] = calculate_atomic_potentials_from_kernel(
                     rgd, xc.kernel, n_sLg, paw_potmode,
                 )
@@ -551,6 +551,8 @@ class NumericalXC(XCFunctional):
             return np.nan
 
     def pack_atomic_potentials(self, vxc_xaz):
+        if self.paw_potmode is PAWPotMode.none:
+            return np.nan
         data_xZ = []
         for v_asz in vxc_xaz:
             v_asz = self.ham.atomdist.from_work(v_asz).copy()
@@ -657,7 +659,7 @@ class NumericalXC(XCFunctional):
             return vxc_sg
 
 
-def calculate_angular_density(xcc, D_sp, n_qg, nc_g, add_core=True, _Z=1):
+def calculate_angular_density(xcc, D_sp, n_qg, nc_g, add_core=True):
     nspins = len(D_sp)
     rgd = xcc.rgd
     D_sLq = np.inner(D_sp, xcc.B_pqL.T)
@@ -674,6 +676,12 @@ def lebedev2angular(vxc_sng, Lmax):
     vxc_sLg = 4 * np.pi * np.einsum("n,nL,sng->sLg",
                                     weight_n, Y_nL[:, :Lmax], vxc_sng)
     return vxc_sLg
+
+
+def angular2lebedev(vxc_sLg):
+    Lmax = vxc_sLg.shape[1]
+    vxc_sng = np.einsum("nL,sLg->sng", Y_nL[:, :Lmax], vxc_sLg)
+    return vxc_sng
 
 
 def get_atomic_vxc_spline(setup, vxc_Lg, points=1000):
@@ -756,29 +764,30 @@ def atomic_fa_angular(setup: Setup, D_sp: Array2D) -> tuple[Array3D, Array3D]:
     xcc = setup.xc_correction
     if xcc is None:
         return np.zeros(1), np.zeros(1)
-    n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g, setup.Nc)
-    nt_sLg = calculate_angular_density(
-        xcc, D_sp, xcc.nt_qg, xcc.nct_g, setup.Nct)
+    n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
+    nt_sLg = calculate_angular_density(xcc, D_sp, xcc.nt_qg, xcc.nct_g)
     nspins, Lmax = n_sLg.shape[:2]
     rgd = xcc.rgd
     vxc_sLg = rgd.zeros((nspins, Lmax))
     vxct_sLg = rgd.zeros((nspins, Lmax))
+    N_ae = rgd.integrate(n_sLg[:, 0]) / np.sqrt(4 * np.pi)
+    N_ps = rgd.integrate(nt_sLg[:, 0]) / np.sqrt(4 * np.pi)
     for L in range(Lmax):
         ll, m = L_to_lm(L)
         for s in range(nspins):
             v_g = rgd.poisson(n_sLg[s, L], l=ll)
             v_g[1:] /= rgd.r_g[1:]
             v_g[0] = v_g[1]
-            v_g[-1] = 0.0  # calculations don't converge without this
-            N = rgd.integrate(n_sLg[s, L])
+            # N = rgd.integrate(n_sLg[s, L])
+            N = N_ae[s]
             if N < 1e-20:
                 N = np.inf
             vxc_sLg[s, L] = -v_g / N
             v_g = rgd.poisson(nt_sLg[s, L], l=ll)
             v_g[1:] /= rgd.r_g[1:]
             v_g[0] = v_g[1]
-            v_g[-1] = 0.0
-            Nt = rgd.integrate(nt_sLg[s, L])
+            # Nt = rgd.integrate(nt_sLg[s, L])
+            Nt = N_ps[s]
             if Nt < 1e-20:
                 Nt = np.inf
             vxct_sLg[s, L] = -v_g / Nt
@@ -789,9 +798,9 @@ def atomic_fa_lebedev(setup: Setup, D_sp: Array2D, mix_spin: bool = False) -> tu
     xcc = setup.xc_correction
     if xcc is None:
         return np.zeros(1), np.zeros(1)
-    n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g, setup.Nc)
+    n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
     nt_sLg = calculate_angular_density(
-        xcc, D_sp, xcc.nt_qg, xcc.nct_g, setup.Nct)
+        xcc, D_sp, xcc.nt_qg, xcc.nct_g)
     rgd = xcc.rgd
     nspins = len(D_sp)
     Lmax = n_sLg.shape[1]
@@ -823,6 +832,10 @@ def atomic_fa_lebedev(setup: Setup, D_sp: Array2D, mix_spin: bool = False) -> tu
                     Nt = np.inf
                 vxc_sng[s, n] = -divrl(rgd.poisson(n_sg[s]), 1, rgd.r_g) / N
                 vxct_sng[s, n] = -divrl(rgd.poisson(nt_sg[s]), 1, rgd.r_g) / Nt
+
+    # vxc_sLg, vxct_sLg = atomic_fa_angular(setup, D_sp)
+    # vxc_sng = angular2lebedev(vxc_sLg)
+    # vxct_sng = angular2lebedev(vxct_sLg)
     return vxc_sng, vxct_sng
 
 

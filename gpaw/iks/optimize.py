@@ -9,7 +9,7 @@ from scipy.optimize import minimize
 from ase.parallel import DummyMPI
 from ase.utils.abc import Optimizable
 from gpaw.xc.numericalxc import broadcast_arraydict_data, dist_arraydict_data
-from gpaw.sphere.lebedev import weight_n
+from gpaw.sphere.lebedev import weight_n, Y_nL
 
 if TYPE_CHECKING:
     from gpaw.typing import Array1D, Array4D, ArrayND
@@ -249,12 +249,13 @@ class iKSObj:
 
 
 class PotState:
-    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], gd=None, comm=None, setups=None):
+    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], gd=None, comm=None, setups=None, angular=False):
         self.data_sg = data_sg
         self.data_xasz = data_xasz
         self.gd = gd
         self.comm = comm
         self.setups = setups
+        self.angular = angular
 
     def __add__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -262,7 +263,7 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] + other_asz[a] for a in data_asz})
-        return PotState(self.data_sg + other.data_sg, new_xasz, self.gd, self.comm, self.setups)
+        return PotState(self.data_sg + other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
 
     def __sub__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -270,13 +271,13 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] - other_asz[a] for a in data_asz})
-        return PotState(self.data_sg - other.data_sg, new_xasz, self.gd, self.comm, self.setups)
+        return PotState(self.data_sg - other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
 
     def __neg__(self) -> "PotState":
         new_xasz = []
         for data_asz in self.data_xasz:
             new_xasz.append({a: -data_asz[a] for a in data_asz})
-        return PotState(-self.data_sg, new_xasz, self.gd, self.comm, self.setups)
+        return PotState(-self.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
 
     def __mul__(self, other: "PotState" | float) -> "PotState":
         if isinstance(other, PotState):
@@ -284,12 +285,12 @@ class PotState:
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
                 new_xasz.append(
                     {a: data_asz[a] * other_asz[a] for a in data_asz})
-            return PotState(self.data_sg * other.data_sg, new_xasz, self.gd, self.comm, self.setups)
+            return PotState(self.data_sg * other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
         else:
             new_xasz = []
             for data_asz in self.data_xasz:
                 new_xasz.append({a: v * other for a, v in data_asz.items()})
-            return PotState(self.data_sg * other, new_xasz, self.gd, self.comm, self.setups)
+            return PotState(self.data_sg * other, new_xasz, self.gd, self.comm, self.setups, self.angular)
 
     def __rmul__(self, other: float) -> "PotState":
         return self.__mul__(other)
@@ -299,7 +300,7 @@ class PotState:
         for array_asz in self.data_xasz:
             copy_xasz.append({a: v.copy() for a, v in array_asz.items()})
         x = PotState(self.data_sg.copy(), copy_xasz,
-                     self.gd, self.comm, self.setups)
+                     self.gd, self.comm, self.setups, self.angular)
         return x
 
     def inner(self, other):
@@ -313,6 +314,12 @@ class PotState:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]
                 rgd = self.setups[a].xc_correction.rgd
+                if self.angular:
+                    Lmax = data_sng.shape[1]
+                    data_sng = np.einsum(
+                        'nL,sLg->sng', Y_nL[:, :Lmax], data_sng)
+                    other_sng = np.einsum(
+                        'nL,sLg->sng', Y_nL[:, :Lmax], other_sng)
                 II += np.einsum("n,sng,sng,g", weight_n,
                                 data_sng, other_sng, rgd.dv_g)
         self.comm.sum(II)  # over all atoms
@@ -387,7 +394,7 @@ class iKSLBFGS:
     @property
     def potstate_args(self):
         iks = self.iks
-        return (iks.gd, iks.hamiltonian.world, iks.setups)
+        return (iks.gd, iks.hamiltonian.world, iks.setups, iks.xc.paw_potmode.name == 'angular')
 
     def apply_lbfgs(self, gk: PotState) -> PotState:
         if not self.s_hist:

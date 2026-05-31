@@ -576,7 +576,8 @@ class iKS:
         vxc_asz = None
         lambdacore = self.lambdacore
         if lambdacore != 0.0:
-            assert self.xc.paw_potmode is PAWPotMode.lebedev
+            assert self.xc.paw_potmode in [
+                PAWPotMode.lebedev, PAWPotMode.angular]
             vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
             vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
         for a, dD_sp in self.dD_asp.items():
@@ -607,14 +608,23 @@ class iKS:
                         LD2 += weight_n[n] * \
                             xcc.rgd.integrate(w_ng[n] * (dnt_g**2))
                     if lambdacore != 0.0:
-                        dv_g = vxc_asz[a][s][n] - self.vc_axg[a][0]
-                        Lreg += lambdacore * \
-                            weight_n[n] * \
-                            xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
-                        dv_g = vxct_asz[a][s][n] - self.vc_axg[a][1]
-                        Lreg += lambdacore * \
-                            weight_n[n] * \
-                            xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+                        if self.xc.paw_potmode is PAWPotMode.lebedev:
+                            dv_g = vxc_asz[a][s][n] - self.vc_axg[a][0]
+                            Lreg += lambdacore * \
+                                weight_n[n] * \
+                                xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+                            dv_g = vxct_asz[a][s][n] - self.vc_axg[a][1]
+                            Lreg += lambdacore * \
+                                weight_n[n] * \
+                                xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+
+                if lambdacore != 0.0 and self.xc.paw_potmode is PAWPotMode.angular:
+                    dv_g = vxc_asz[a][s][0] - self.vc_axg[a][0]
+                    Lreg += lambdacore * \
+                        xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+                    dv_g = vxct_asz[a][s][0] - self.vc_axg[a][1]
+                    Lreg += lambdacore * \
+                        xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
 
         LD1 += Lreg
         LD2 += Lreg
@@ -745,8 +755,19 @@ class iKS:
                                 self.wreg_ag[a][np.newaxis] * dv
                 else:
                     assert self.xc.paw_potmode is PAWPotMode.angular
-                    self.J_xasz[0][a][s] = dv_sLg.real
-                    self.J_xasz[1][a][s] = dvt_sLg.real
+                    self.J_xasz[0][a][:] = dv_sLg.real
+                    self.J_xasz[1][a][:] = dvt_sLg.real
+                    if lambdacore != 0.0:
+                        dv = vxc_asz[a][s, :] - \
+                            self.vc_axg[a][0][np.newaxis]
+                        self.J_xasz[0][a][s, :] += 2 * \
+                            lambdacore * \
+                            self.wreg_ag[a][np.newaxis] * dv
+                        dv = vxct_asz[a][s, :] - \
+                            self.vc_axg[a][1][np.newaxis]
+                        self.J_xasz[1][a][s, :] += 2 * \
+                            lambdacore * \
+                            self.wreg_ag[a][np.newaxis] * dv
 
     def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
         Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
