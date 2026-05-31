@@ -11,6 +11,7 @@
 #include "gpaw_complex.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <numeric>
@@ -20,7 +21,17 @@ namespace py = pybind11;
 template <typename T, typename Shape>
 using CPUCArray = gpaw::NDArray<T, gpaw::device::cpu, gpaw::c_contig, Shape>;
 
-inline bool is_c_contiguous(pybind11::array arr) { return arr.flags() & pybind11::array::c_style; }
+template <typename T>
+using CPUCAnyArray = gpaw::NDArray<T, gpaw::device::cpu>;
+
+template <typename T>
+using CPUCContiguousArray = gpaw::NDArray<T, gpaw::device::cpu, gpaw::c_contig>;
+
+template <typename T>
+std::complex<T> exp_i(T phase)
+{
+    return {std::cos(phase), std::sin(phase)};
+}
 
 #ifndef GPAW_WITHOUT_BLAS
 #ifdef GPAW_NO_UNDERSCORE_BLAS
@@ -70,268 +81,6 @@ void zgemm_(const char* transa, const char* transb, int* m, int* n,
 }
 #endif
 
-template <typename T> void _pw_insert(int nG,
-                int nQ,
-                const std::complex<T>* c_G,
-                const npy_int32* Q_G,
-                T scale,
-                std::complex<T>* tmp_Q)
-// Does the same as these two lines of Python:
-//
-//     tmp_Q[:] = 0.0
-//     tmp_Q.ravel()[Q_G] = c_G * scale
-{
-    int Q1 = 0;
-    for (int G = 0; G < nG; G++) {
-        int Q2 = Q_G[G];
-        for (; Q1 < Q2; Q1++)
-            tmp_Q[Q1] = 0.0;
-        tmp_Q[Q1++] = c_G[G] * scale;
-        }
-    for (; Q1 < nQ; Q1++)
-        tmp_Q[Q1] = 0.0;
-}
-
-template <typename T>
-void _add_to_density_real(double f,
-                          const py::buffer_info& psit_info,
-                          double* nt_R)
-{
-    const auto* psit_base = static_cast<const char*>(psit_info.ptr);
-    const ssize_t ndim = static_cast<ssize_t>(psit_info.ndim);
-    std::vector<ssize_t> index(ndim, 0);
-    const ssize_t n = std::accumulate(psit_info.shape.begin(),
-                                      psit_info.shape.end(),
-                                      ssize_t{1},
-                                      std::multiplies<ssize_t>());
-
-    for (ssize_t i = 0; i < n; i++) {
-        ssize_t offset = 0;
-        for (ssize_t d = 0; d < ndim; d++) {
-            offset += index[d] * psit_info.strides[d];
-        }
-        T value = *reinterpret_cast<const T*>(psit_base + offset);
-        nt_R[i] += f * value * value;
-
-        for (ssize_t d = ndim - 1; d >= 0; d--) {
-            index[d]++;
-            if (index[d] < psit_info.shape[d]) {
-                break;
-            }
-            index[d] = 0;
-        }
-    }
-}
-
-template <typename T>
-void _add_to_density_complex(double f,
-                             const std::complex<T>* psit_R,
-                             double* nt_R,
-                             ssize_t n)
-{
-    for (ssize_t i = 0; i < n; i++) {
-        nt_R[i] += f * std::norm(psit_R[i]);
-    }
-}
-
-template <typename T> void _pw_precond(int nG,
-                const T* G2_G,
-                const std::complex<T>* R_G,
-                T ekin,
-                std::complex<T>* out_G)
-{
-    for (int G = 0; G < nG; G++) {
-        T x = G2_G[G] / (ekin * T(3.0));
-        T a = T(27.0) + x * (T(18.0) + x * (T(12.0) + x * T(8.0)));
-        T xx = x * x;
-        out_G[G] = (-T(4.0) / (T(3.0) * ekin) *
-                    a / (a + T(16.0) * xx * xx) * R_G[G]);
-    }
-}
-
-template <typename T> void _pwlfc_expand_complex(int nG,
-                int nJ,
-                int nL,
-                int nsplines,
-                const T* f_Gs,
-                const T* GK_Gv,
-                const T* pos_av,
-                const std::complex<T>* eikR_a,
-                const T* Y_GL,
-                const npy_int32* l_s,
-                const npy_int32* a_J,
-                const npy_int32* s_J,
-                bool cc,
-                std::complex<T>* f_GI)
-{
-    const std::complex<T> imag_powers[4] = {
-        std::complex<T>(1.0, 0.0),
-        std::complex<T>(0.0, -1.0),
-        std::complex<T>(-1.0, 0.0),
-        std::complex<T>(0.0, 1.0)
-    };
-
-    std::complex<T> emiGR(0.0, 0.0);
-
-    for (int G = 0; G < nG; G++) {
-        int a_old = -1;
-        for (int J = 0; J < nJ; J++) {
-            int s = s_J[J];
-            int l = l_s[s];
-
-            if (a_J[J] != a_old) {
-                a_old = a_J[J];
-                T f0 = (GK_Gv[0] * pos_av[0 + 3 * a_old] +
-                        GK_Gv[1] * pos_av[1 + 3 * a_old] +
-                        GK_Gv[2] * pos_av[2 + 3 * a_old]);
-                emiGR = std::complex<T>(std::cos(f0), -std::sin(f0)) * eikR_a[a_old];
-            }
-
-            std::complex<T> f1 = emiGR * f_Gs[s] * imag_powers[l % 4];
-            for (int m = 0; m < 2 * l + 1; m++) {
-                std::complex<T> f = f1 * Y_GL[l * l + m];
-                *f_GI++ = cc ? std::conj(f) : f;
-            }
-        }
-        f_Gs += nsplines;
-        GK_Gv += 3;
-        Y_GL += nL;
-    }
-}
-
-template <typename T> void _pwlfc_expand_real(int nG,
-                int nJ,
-                int nL,
-                int nsplines,
-                const T* f_Gs,
-                const T* GK_Gv,
-                const T* pos_av,
-                const std::complex<T>* eikR_a,
-                const T* Y_GL,
-                const npy_int32* l_s,
-                const npy_int32* a_J,
-                const npy_int32* s_J,
-                bool cc,
-                T* f_GI,
-                int nI)
-{
-    const std::complex<T> imag_powers[4] = {
-        std::complex<T>(1.0, 0.0),
-        std::complex<T>(0.0, -1.0),
-        std::complex<T>(-1.0, 0.0),
-        std::complex<T>(0.0, 1.0)
-    };
-
-    std::complex<T> emiGR(0.0, 0.0);
-
-    for (int G = 0; G < nG; G++) {
-        int a_old = -1;
-        for (int J = 0; J < nJ; J++) {
-            int s = s_J[J];
-            int l = l_s[s];
-
-            if (a_J[J] != a_old) {
-                a_old = a_J[J];
-                T f0 = (GK_Gv[0] * pos_av[0 + 3 * a_old] +
-                        GK_Gv[1] * pos_av[1 + 3 * a_old] +
-                        GK_Gv[2] * pos_av[2 + 3 * a_old]);
-                emiGR = std::complex<T>(std::cos(f0), -std::sin(f0)) * eikR_a[a_old];
-            }
-
-            std::complex<T> f1 = emiGR * f_Gs[s] * imag_powers[l % 4];
-            for (int m = 0; m < 2 * l + 1; m++) {
-                std::complex<T> f = f1 * Y_GL[l * l + m];
-                f_GI[0] = std::real(f);
-                f_GI[nI] = cc ? -std::imag(f) : std::imag(f);
-                f_GI++;
-            }
-        }
-        f_Gs += nsplines;
-        GK_Gv += 3;
-        Y_GL += nL;
-        f_GI += nI;
-    }
-}
-
-template <typename T> void _pwlfc_expand_old_complex(int nG,
-                int nJ,
-                int nL,
-                int natoms,
-                int nsplines,
-                const T* f_Gs,
-                const std::complex<T>* emiGR_Ga,
-                const T* Y_GL,
-                const npy_int32* l_s,
-                const npy_int32* a_J,
-                const npy_int32* s_J,
-                bool cc,
-                std::complex<T>* f_GI)
-{
-    const std::complex<T> imag_powers[4] = {
-        std::complex<T>(1.0, 0.0),
-        std::complex<T>(0.0, -1.0),
-        std::complex<T>(-1.0, 0.0),
-        std::complex<T>(0.0, 1.0)
-    };
-
-    for (int G = 0; G < nG; G++) {
-        for (int J = 0; J < nJ; J++) {
-            int s = s_J[J];
-            int l = l_s[s];
-            std::complex<T> f1 = emiGR_Ga[a_J[J]] * f_Gs[s] * imag_powers[l % 4];
-            for (int m = 0; m < 2 * l + 1; m++) {
-                std::complex<T> f = f1 * Y_GL[l * l + m];
-                *f_GI++ = cc ? std::conj(f) : f;
-            }
-        }
-        f_Gs += nsplines;
-        emiGR_Ga += natoms;
-        Y_GL += nL;
-    }
-}
-
-template <typename T> void _pwlfc_expand_old_real(int nG,
-                int nJ,
-                int nL,
-                int natoms,
-                int nsplines,
-                const T* f_Gs,
-                const std::complex<T>* emiGR_Ga,
-                const T* Y_GL,
-                const npy_int32* l_s,
-                const npy_int32* a_J,
-                const npy_int32* s_J,
-                bool cc,
-                T* f_GI,
-                int nI)
-{
-    const std::complex<T> imag_powers[4] = {
-        std::complex<T>(1.0, 0.0),
-        std::complex<T>(0.0, -1.0),
-        std::complex<T>(-1.0, 0.0),
-        std::complex<T>(0.0, 1.0)
-    };
-
-    for (int G = 0; G < nG; G++) {
-        for (int J = 0; J < nJ; J++) {
-            int s = s_J[J];
-            int l = l_s[s];
-            std::complex<T> f1 = emiGR_Ga[a_J[J]] * f_Gs[s] * imag_powers[l % 4];
-            for (int m = 0; m < 2 * l + 1; m++) {
-                std::complex<T> f = f1 * Y_GL[l * l + m];
-                f_GI[0] = std::real(f);
-                f_GI[nI] = cc ? -std::imag(f) : std::imag(f);
-                f_GI++;
-            }
-        }
-        f_Gs += nsplines;
-        emiGR_Ga += natoms;
-        Y_GL += nL;
-        f_GI += nI;
-    }
-}
-
-
 template <typename T>
 void cpp_pw_insert(gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
                                  gpaw::c_contig, gpaw::ndim<1>> c_G,
@@ -346,64 +95,74 @@ void cpp_pw_insert(gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
         throw std::invalid_argument("pw_insert: Q_G and c_G must have the same length.");
     }
 
-    _pw_insert<T>(static_cast<int>(c_G.shape(0)),
-                  static_cast<int>(tmp_Q.size()),
-                  c_G.data(),
-                  reinterpret_cast<const npy_int32*>(Q_G.data()),
-                  static_cast<T>(scale),
-                  tmp_Q.data());
+    const int nG = static_cast<int>(c_G.shape(0));
+    int Q1 = 0;
+    for (int G = 0; G < nG; G++)
+    {
+        int Q2 = Q_G(G);
+        for (; Q1 < Q2; Q1++)
+        {
+            tmp_Q.flat(Q1) = 0.0;
+        }
+        tmp_Q.flat(Q1++) = c_G(G) * static_cast<T>(scale);
+    }
+    for (; Q1 < static_cast<int>(tmp_Q.size()); Q1++)
+    {
+        tmp_Q.flat(Q1) = 0.0;
+    }
 }
 
-void cpp_add_to_density(double f,
-                        py::array psit_R,
-                        py::array nt_R)
+template <typename T>
+void cpp_add_to_density_real(double f,
+                             CPUCAnyArray<T> psit_R,
+                             CPUCContiguousArray<double> nt_R)
 {
-    assert(nt_R.dtype().is(py::dtype::of<double>()));
-    assert(psit_R.size() == nt_R.size());
-
-    double* nt = static_cast<double*>(nt_R.mutable_data());
-    auto nt_info = nt_R.request();
-
-    bool is_double = psit_R.dtype().is(py::dtype::of<double>());
-    bool is_float = psit_R.dtype().is(py::dtype::of<float>());
-    bool is_zdouble = psit_R.dtype().is(py::dtype::of<std::complex<double>>());
-    bool is_zfloat = psit_R.dtype().is(py::dtype::of<std::complex<float>>());
-
-    if (is_double)
-    {
-        auto psit_info = psit_R.request();
-        assert(psit_info.ndim == nt_info.ndim);
-        _add_to_density_real<double>(f, psit_info, nt);
-    }
-    else if (is_float)
-    {
-        auto psit_info = psit_R.request();
-        assert(psit_info.ndim == nt_info.ndim);
-        _add_to_density_real<float>(f, psit_info, nt);
-    }
-    else if (is_zdouble)
-    {
-        assert(is_c_contiguous(psit_R));
-        _add_to_density_complex<double>(
-            f,
-            static_cast<const std::complex<double>*>(psit_R.data()),
-            nt,
-            psit_R.size());
-    }
-    else if (is_zfloat)
-    {
-        assert(is_c_contiguous(psit_R));
-        _add_to_density_complex<float>(
-            f,
-            static_cast<const std::complex<float>*>(psit_R.data()),
-            nt,
-            psit_R.size());
-    }
-    else
+    if (psit_R.size() != nt_R.size() || psit_R.ndim() != nt_R.ndim())
     {
         throw std::invalid_argument(
-            "add_to_density supports float32/float64/complex64/complex128 "
-            "wave functions and float64 density output.");
+            "add_to_density: psit_R and nt_R must have the same shape.");
+    }
+    for (int32_t d = 0; d < psit_R.ndim(); d++)
+    {
+        if (psit_R.shape(d) != nt_R.shape(d))
+        {
+            throw std::invalid_argument(
+                "add_to_density: psit_R and nt_R must have the same shape.");
+        }
+    }
+
+    std::array<int64_t, 8> index = {};
+    for (size_t i = 0; i < nt_R.size(); i++)
+    {
+        T value = psit_R.at(index.data());
+        nt_R.flat(i) += f * value * value;
+
+        for (int32_t d = psit_R.ndim() - 1; d >= 0; d--)
+        {
+            index[d]++;
+            if (index[d] < psit_R.shape(d))
+            {
+                break;
+            }
+            index[d] = 0;
+        }
+    }
+}
+
+template <typename T>
+void cpp_add_to_density_complex(double f,
+                                CPUCContiguousArray<std::complex<T>> psit_R,
+                                CPUCContiguousArray<double> nt_R)
+{
+    if (psit_R.size() != nt_R.size())
+    {
+        throw std::invalid_argument(
+            "add_to_density: psit_R and nt_R must have the same size.");
+    }
+
+    for (size_t i = 0; i < nt_R.size(); i++)
+    {
+        nt_R.flat(i) += f * std::norm(psit_R.flat(i));
     }
 }
 
@@ -615,6 +374,7 @@ void cpp_pwlfc_expand_old_complex(
     CPUCArray<std::complex<T>, gpaw::ndim<2>> f_GI)
 {
     const int nG = static_cast<int>(emiGR_Ga.shape(0));
+    const int nJ = static_cast<int>(a_J.shape(0));
     check_pwlfc_shapes(f_Gs, Y_GL, a_J, s_J, nG);
     if (f_GI.shape(0) != nG)
     {
@@ -622,14 +382,30 @@ void cpp_pwlfc_expand_old_complex(
             "pwlfc_expand_old: complex f_GI first dimension must be nG.");
     }
 
-    _pwlfc_expand_old_complex<T>(
-        nG, static_cast<int>(a_J.shape(0)), static_cast<int>(Y_GL.shape(1)),
-        static_cast<int>(emiGR_Ga.shape(1)), static_cast<int>(f_Gs.shape(1)),
-        f_Gs.data(), emiGR_Ga.data(), Y_GL.data(),
-        reinterpret_cast<const npy_int32*>(l_s.data()),
-        reinterpret_cast<const npy_int32*>(a_J.data()),
-        reinterpret_cast<const npy_int32*>(s_J.data()),
-        cc, f_GI.data());
+    const std::complex<T> imag_powers[4] = {
+        std::complex<T>(1.0, 0.0),
+        std::complex<T>(0.0, -1.0),
+        std::complex<T>(-1.0, 0.0),
+        std::complex<T>(0.0, 1.0)
+    };
+
+    for (int G = 0; G < nG; G++)
+    {
+        int I = 0;
+        for (int J = 0; J < nJ; J++)
+        {
+            int s = s_J(J);
+            int l = l_s(s);
+            std::complex<T> f1 = (emiGR_Ga(G, a_J(J)) *
+                                  f_Gs(G, s) *
+                                  imag_powers[l % 4]);
+            for (int m = 0; m < 2 * l + 1; m++)
+            {
+                std::complex<T> f = f1 * Y_GL(G, l * l + m);
+                f_GI(G, I++) = cc ? std::conj(f) : f;
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -644,6 +420,7 @@ void cpp_pwlfc_expand_old_real(
     CPUCArray<T, gpaw::ndim<2>> f_GI)
 {
     const int nG = static_cast<int>(emiGR_Ga.shape(0));
+    const int nJ = static_cast<int>(a_J.shape(0));
     check_pwlfc_shapes(f_Gs, Y_GL, a_J, s_J, nG);
     if (f_GI.shape(0) != 2 * nG)
     {
@@ -651,14 +428,32 @@ void cpp_pwlfc_expand_old_real(
             "pwlfc_expand_old: real f_GI first dimension must be 2 * nG.");
     }
 
-    _pwlfc_expand_old_real<T>(
-        nG, static_cast<int>(a_J.shape(0)), static_cast<int>(Y_GL.shape(1)),
-        static_cast<int>(emiGR_Ga.shape(1)), static_cast<int>(f_Gs.shape(1)),
-        f_Gs.data(), emiGR_Ga.data(), Y_GL.data(),
-        reinterpret_cast<const npy_int32*>(l_s.data()),
-        reinterpret_cast<const npy_int32*>(a_J.data()),
-        reinterpret_cast<const npy_int32*>(s_J.data()),
-        cc, f_GI.data(), static_cast<int>(f_GI.shape(1)));
+    const std::complex<T> imag_powers[4] = {
+        std::complex<T>(1.0, 0.0),
+        std::complex<T>(0.0, -1.0),
+        std::complex<T>(-1.0, 0.0),
+        std::complex<T>(0.0, 1.0)
+    };
+
+    for (int G = 0; G < nG; G++)
+    {
+        int I = 0;
+        for (int J = 0; J < nJ; J++)
+        {
+            int s = s_J(J);
+            int l = l_s(s);
+            std::complex<T> f1 = (emiGR_Ga(G, a_J(J)) *
+                                  f_Gs(G, s) *
+                                  imag_powers[l % 4]);
+            for (int m = 0; m < 2 * l + 1; m++)
+            {
+                std::complex<T> f = f1 * Y_GL(G, l * l + m);
+                f_GI(2 * G, I) = std::real(f);
+                f_GI(2 * G + 1, I) = cc ? -std::imag(f) : std::imag(f);
+                I++;
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -675,6 +470,7 @@ void cpp_pwlfc_expand_complex(
     CPUCArray<std::complex<T>, gpaw::ndim<2>> f_GI)
 {
     const int nG = static_cast<int>(GK_Gv.shape(0));
+    const int nJ = static_cast<int>(a_J.shape(0));
     check_pwlfc_shapes(f_Gs, Y_GL, a_J, s_J, nG);
     if (f_GI.shape(0) != nG)
     {
@@ -682,14 +478,39 @@ void cpp_pwlfc_expand_complex(
             "pwlfc_expand: complex f_GI first dimension must be nG.");
     }
 
-    _pwlfc_expand_complex<T>(
-        nG, static_cast<int>(a_J.shape(0)), static_cast<int>(Y_GL.shape(1)),
-        static_cast<int>(f_Gs.shape(1)),
-        f_Gs.data(), GK_Gv.data(), pos_av.data(), eikR_a.data(), Y_GL.data(),
-        reinterpret_cast<const npy_int32*>(l_s.data()),
-        reinterpret_cast<const npy_int32*>(a_J.data()),
-        reinterpret_cast<const npy_int32*>(s_J.data()),
-        cc, f_GI.data());
+    const std::complex<T> imag_powers[4] = {
+        std::complex<T>(1.0, 0.0),
+        std::complex<T>(0.0, -1.0),
+        std::complex<T>(-1.0, 0.0),
+        std::complex<T>(0.0, 1.0)
+    };
+
+    for (int G = 0; G < nG; G++)
+    {
+        int I = 0;
+        int a_old = -1;
+        std::complex<T> emiGR(0.0, 0.0);
+        for (int J = 0; J < nJ; J++)
+        {
+            int s = s_J(J);
+            int l = l_s(s);
+            if (a_J(J) != a_old)
+            {
+                a_old = a_J(J);
+                T f0 = (GK_Gv(G, 0) * pos_av(a_old, 0) +
+                        GK_Gv(G, 1) * pos_av(a_old, 1) +
+                        GK_Gv(G, 2) * pos_av(a_old, 2));
+                emiGR = std::complex<T>(std::cos(f0), -std::sin(f0)) * eikR_a(a_old);
+            }
+
+            std::complex<T> f1 = emiGR * f_Gs(G, s) * imag_powers[l % 4];
+            for (int m = 0; m < 2 * l + 1; m++)
+            {
+                std::complex<T> f = f1 * Y_GL(G, l * l + m);
+                f_GI(G, I++) = cc ? std::conj(f) : f;
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -706,6 +527,7 @@ void cpp_pwlfc_expand_real(
     CPUCArray<T, gpaw::ndim<2>> f_GI)
 {
     const int nG = static_cast<int>(GK_Gv.shape(0));
+    const int nJ = static_cast<int>(a_J.shape(0));
     check_pwlfc_shapes(f_Gs, Y_GL, a_J, s_J, nG);
     if (f_GI.shape(0) != 2 * nG)
     {
@@ -713,14 +535,41 @@ void cpp_pwlfc_expand_real(
             "pwlfc_expand: real f_GI first dimension must be 2 * nG.");
     }
 
-    _pwlfc_expand_real<T>(
-        nG, static_cast<int>(a_J.shape(0)), static_cast<int>(Y_GL.shape(1)),
-        static_cast<int>(f_Gs.shape(1)),
-        f_Gs.data(), GK_Gv.data(), pos_av.data(), eikR_a.data(), Y_GL.data(),
-        reinterpret_cast<const npy_int32*>(l_s.data()),
-        reinterpret_cast<const npy_int32*>(a_J.data()),
-        reinterpret_cast<const npy_int32*>(s_J.data()),
-        cc, f_GI.data(), static_cast<int>(f_GI.shape(1)));
+    const std::complex<T> imag_powers[4] = {
+        std::complex<T>(1.0, 0.0),
+        std::complex<T>(0.0, -1.0),
+        std::complex<T>(-1.0, 0.0),
+        std::complex<T>(0.0, 1.0)
+    };
+
+    for (int G = 0; G < nG; G++)
+    {
+        int I = 0;
+        int a_old = -1;
+        std::complex<T> emiGR(0.0, 0.0);
+        for (int J = 0; J < nJ; J++)
+        {
+            int s = s_J(J);
+            int l = l_s(s);
+            if (a_J(J) != a_old)
+            {
+                a_old = a_J(J);
+                T f0 = (GK_Gv(G, 0) * pos_av(a_old, 0) +
+                        GK_Gv(G, 1) * pos_av(a_old, 1) +
+                        GK_Gv(G, 2) * pos_av(a_old, 2));
+                emiGR = std::complex<T>(std::cos(f0), -std::sin(f0)) * eikR_a(a_old);
+            }
+
+            std::complex<T> f1 = emiGR * f_Gs(G, s) * imag_powers[l % 4];
+            for (int m = 0; m < 2 * l + 1; m++)
+            {
+                std::complex<T> f = f1 * Y_GL(G, l * l + m);
+                f_GI(2 * G, I) = std::real(f);
+                f_GI(2 * G + 1, I) = cc ? -std::imag(f) : std::imag(f);
+                I++;
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -739,7 +588,14 @@ void cpp_pw_precond(gpaw::NDArray<T, gpaw::device::cpu,
             "pw_precond: G2_G, R_G and out_G must have the same length.");
     }
 
-    _pw_precond<T>(nG, G2_G.data(), R_G.data(), static_cast<T>(ekin), out_G.data());
+    for (int G = 0; G < nG; G++)
+    {
+        T x = G2_G(G) / (static_cast<T>(ekin) * T(3.0));
+        T a = T(27.0) + x * (T(18.0) + x * (T(12.0) + x * T(8.0)));
+        T xx = x * x;
+        out_G(G) = (-T(4.0) / (T(3.0) * static_cast<T>(ekin)) *
+                    a / (a + T(16.0) * xx * xx) * R_G(G));
+    }
 }
 
 template <typename T>
@@ -754,9 +610,7 @@ py::array cpp_pawexxvv(CPUCArray<T, gpaw::ndim<2>> M_pp,
     }
 
     py::array_t<T> V_ii({NI, NI});
-    const auto* M = M_pp.data();
-    const auto* D = D_ii.data();
-    auto* V = static_cast<T*>(V_ii.mutable_data());
+    auto V_ii_view = V_ii.template mutable_unchecked<2>();
 
     for (int i1 = 0; i1 < NI; i1++)
     {
@@ -773,69 +627,33 @@ py::array cpp_pawexxvv(CPUCArray<T, gpaw::ndim<2>> M_pp,
                     int p24 = (std::min(i2, i4) *
                                (2 * NI - 1 - std::min(i2, i4)) / 2) +
                               std::max(i2, i4);
-                    value += M[p13 * NP + p24] * D[i3 * NI + i4];
+                    value += M_pp(p13, p24) * D_ii(i3, i4);
                 }
             }
-            V[i1 * NI + i2] = value;
+            V_ii_view(i1, i2) = value;
         }
     }
 
     return V_ii;
 }
 
-template <typename T> void _plane_wave_grid(const long* beg,
-                const long* end,
-                const T* h,
-                const T* vk,
-                const T* vr0,
-                std::complex<T>* pw)
-{
-    T kr[3];
-    T kr0[3];
-    int n[3];
-    int ij;
-    for (int c = 0; c < 3; c++) {
-        n[c] = end[c] - beg[c];
-        kr0[c] = vk[c] * vr0[c];
-    }
-    for (int i = 0; i < n[0]; i++) {
-        kr[0] = vk[0] * h[0] * (beg[0] + i) - kr0[0];
-        for (int j = 0; j < n[1]; j++) {
-            kr[1] = kr[0] + vk[1] * h[1] * (beg[1] + j) - kr0[1];
-            ij = (i * n[1] + j) * n[2];
-            for (int k = 0; k < n[2]; k++) {
-                kr[2] = kr[1] + vk[2] * h[2] * (beg[2] + k) - kr0[2];
-                pw[ij + k] = std::complex<T>(std::cos(kr[2]), std::sin(kr[2]));
-            }
-        }
-    }
-}
-
 template <typename T>
-void cpp_plane_wave_grid(gpaw::NDArray<long, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::shape<3>> beg_c,
-                         gpaw::NDArray<long, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::shape<3>> end_c,
-                         gpaw::NDArray<T, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::shape<3>> h_c,
-                         gpaw::NDArray<T, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::shape<3>> k_c,
-                         gpaw::NDArray<T, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::shape<3>> r0_c,
-                         gpaw::NDArray<std::complex<T>, gpaw::device::cpu,
-                                       gpaw::c_contig, gpaw::ndim<3>> pw_g)
+void cpp_plane_wave_grid(gpaw::IndexArray<long, 3> beg_c,
+                         gpaw::IndexArray<long, 3> end_c,
+                         gpaw::IndexArray<T, 3> h_c,
+                         gpaw::IndexArray<T, 3> k_c,
+                         gpaw::IndexArray<T, 3> r0_c,
+                         CPUCArray<std::complex<T>, gpaw::ndim<3>> pw_g)
 {
-    for (int c = 0; c < 3; c++)
-    {
-        if (pw_g.shape(c) != end_c.data()[c] - beg_c.data()[c])
-        {
-            throw std::invalid_argument(
-                "plane_wave_grid: pw_g shape must match end_c - beg_c.");
-        }
-    }
+    pw_g.require_shape(end_c - beg_c,
+        "plane_wave_grid: pw_g shape must match end_c - beg_c.");
 
-    _plane_wave_grid<T>(beg_c.data(), end_c.data(),
-                        h_c.data(), k_c.data(), r0_c.data(), pw_g.data());
+    pw_g.for_each_index([&](gpaw::IndexArray<long, 3> i_c) {
+        gpaw::IndexArray<long, 3> I_c = beg_c + i_c;
+        gpaw::IndexArray<T, 3> s_c = h_c * I_c;
+        T phase = gpaw::dot(k_c, s_c - r0_c);
+        pw_g(i_c) = exp_i(phase);
+    });
 }
 
 bool bind_pw_submodule(PyObject* module)
@@ -866,7 +684,22 @@ bool bind_pw_submodule(PyObject* module)
         R"(Docstring for pw_insert.)"
     );
     submodule.def("add_to_density",
-        &cpp_add_to_density,
+        &cpp_add_to_density_real<double>,
+        py::arg("f"), py::arg("psit_R"), py::arg("nt_R"),
+        R"(Docstring for add_to_density.)"
+    );
+    submodule.def("add_to_density",
+        &cpp_add_to_density_real<float>,
+        py::arg("f"), py::arg("psit_R"), py::arg("nt_R"),
+        R"(Docstring for add_to_density.)"
+    );
+    submodule.def("add_to_density",
+        &cpp_add_to_density_complex<double>,
+        py::arg("f"), py::arg("psit_R"), py::arg("nt_R"),
+        R"(Docstring for add_to_density.)"
+    );
+    submodule.def("add_to_density",
+        &cpp_add_to_density_complex<float>,
         py::arg("f"), py::arg("psit_R"), py::arg("nt_R"),
         R"(Docstring for add_to_density.)"
     );

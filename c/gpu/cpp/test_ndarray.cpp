@@ -151,6 +151,18 @@ static void accept_array(const NDArray<Args...>& a, py::handle same_array)
     }
 }
 
+template<typename T>
+static T sum_index3(IndexArray<T, 3> index)
+{
+    return index[0] + index[1] + index[2];
+}
+
+static long extent_product(IndexArray<long, 3> beg, IndexArray<long, 3> end)
+{
+    IndexArray<long, 3> extent = end - beg;
+    return extent[0] * extent[1] * extent[2];
+}
+
 } // namespace gpaw
 
 void bind_ndarray_tests(py::module_ parent_module)
@@ -174,5 +186,8 @@ void bind_ndarray_tests(py::module_ parent_module)
     m.def("accept_double_c_contig_3D", &accept_array<double, c_contig, ndim<3>>);
     m.def("accept_complexdouble_f_contig_cpu_shape_2_3", &accept_array<std::complex<double>, f_contig, device::cpu, shape<2, 3>>);
     m.def("accept_complexfloat_c_contig_gpu_shape_any_any", &accept_array<std::complex<float>, c_contig, device::gpu, shape<-1, -1>>);
+    m.def("sum_index3_long", &sum_index3<long>);
+    m.def("sum_index3_double", &sum_index3<double>);
+    m.def("extent_product", &extent_product);
 
 }

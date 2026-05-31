@@ -11,6 +11,8 @@
 #include "compile_time_strings.hpp"
 #include <type_traits>
 #include <array>
+#include <cstddef>
+#include <stdexcept>
 #include <string>
 
 #include "pyarray_utils.hpp"
@@ -20,6 +22,73 @@ namespace py = pybind11;
 
 namespace gpaw
 {
+
+template<typename T, size_t N>
+class GPAW_HIDDEN_SYMBOL IndexArray
+{
+public:
+    using value_type = T;
+    static constexpr size_t size = N;
+
+    constexpr IndexArray() = default;
+    constexpr explicit IndexArray(const std::array<T, N>& values) : values_(values) {}
+
+    constexpr T& operator[](size_t i) { return values_[i]; }
+    constexpr const T& operator[](size_t i) const { return values_[i]; }
+
+    constexpr const std::array<T, N>& values() const { return values_; }
+
+private:
+    std::array<T, N> values_{};
+};
+
+template<typename A, typename B, size_t N>
+constexpr auto operator+(const IndexArray<A, N>& a, const IndexArray<B, N>& b)
+{
+    using R = std::common_type_t<A, B>;
+    std::array<R, N> out{};
+    for (size_t i = 0; i < N; i++)
+    {
+        out[i] = static_cast<R>(a[i]) + static_cast<R>(b[i]);
+    }
+    return IndexArray<R, N>(out);
+}
+
+template<typename A, typename B, size_t N>
+constexpr auto operator-(const IndexArray<A, N>& a, const IndexArray<B, N>& b)
+{
+    using R = std::common_type_t<A, B>;
+    std::array<R, N> out{};
+    for (size_t i = 0; i < N; i++)
+    {
+        out[i] = static_cast<R>(a[i]) - static_cast<R>(b[i]);
+    }
+    return IndexArray<R, N>(out);
+}
+
+template<typename A, typename B, size_t N>
+constexpr auto operator*(const IndexArray<A, N>& a, const IndexArray<B, N>& b)
+{
+    using R = std::common_type_t<A, B>;
+    std::array<R, N> out{};
+    for (size_t i = 0; i < N; i++)
+    {
+        out[i] = static_cast<R>(a[i]) * static_cast<R>(b[i]);
+    }
+    return IndexArray<R, N>(out);
+}
+
+template<typename A, typename B, size_t N>
+constexpr auto dot(const IndexArray<A, N>& a, const IndexArray<B, N>& b)
+{
+    using R = std::common_type_t<A, B>;
+    R out = 0;
+    for (size_t i = 0; i < N; i++)
+    {
+        out += static_cast<R>(a[i]) * static_cast<R>(b[i]);
+    }
+    return out;
+}
 
 
 // Device trait for NDArrays
@@ -347,6 +416,189 @@ public:
         return reinterpret_cast<const Scalar*>(static_cast<std::byte*>(data_ptr) + byte_offset);
     }
 
+    template<typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    S& at(const int64_t* indices)
+    {
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::at() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::at() cannot be used with GPU arrays.");
+        }
+
+        std::byte* ptr = reinterpret_cast<std::byte*>(data());
+        for (int32_t i = 0; i < ndim(); ++i)
+        {
+            ptr += indices[i] * stride(i);
+        }
+        return *reinterpret_cast<S*>(ptr);
+    }
+
+    template<typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    const S& at(const int64_t* indices) const
+    {
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::at() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::at() cannot be used with GPU arrays.");
+        }
+
+        const std::byte* ptr = reinterpret_cast<const std::byte*>(data());
+        for (int32_t i = 0; i < ndim(); ++i)
+        {
+            ptr += indices[i] * stride(i);
+        }
+        return *reinterpret_cast<const S*>(ptr);
+    }
+
+    template<typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    S& flat(size_t index)
+    {
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::flat() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::flat() cannot be used with GPU arrays.");
+        }
+        return data()[index];
+    }
+
+    template<typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    const S& flat(size_t index) const
+    {
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::flat() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::flat() cannot be used with GPU arrays.");
+        }
+        return data()[index];
+    }
+
+    template<typename I, size_t N, typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    S& operator()(const IndexArray<I, N>& indices)
+    {
+        if (N != static_cast<size_t>(ndim()))
+        {
+            throw std::invalid_argument("NDArray::operator() called with wrong number of indices.");
+        }
+
+        std::array<int64_t, N> index{};
+        for (size_t i = 0; i < N; i++)
+        {
+            index[i] = static_cast<int64_t>(indices[i]);
+        }
+        return at(index.data());
+    }
+
+    template<typename I, size_t N, typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    const S& operator()(const IndexArray<I, N>& indices) const
+    {
+        if (N != static_cast<size_t>(ndim()))
+        {
+            throw std::invalid_argument("NDArray::operator() called with wrong number of indices.");
+        }
+
+        std::array<int64_t, N> index{};
+        for (size_t i = 0; i < N; i++)
+        {
+            index[i] = static_cast<int64_t>(indices[i]);
+        }
+        return at(index.data());
+    }
+
+    template<typename... Indices, typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    S& operator()(Indices... indices)
+    {
+        static_assert((std::is_integral_v<Indices> && ...),
+            "NDArray indices must be integral.");
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::operator() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::operator() cannot be used with GPU arrays.");
+        }
+        if (sizeof...(Indices) != static_cast<size_t>(ndim()))
+        {
+            throw std::invalid_argument("NDArray::operator() called with wrong number of indices.");
+        }
+
+        std::array<int64_t, sizeof...(Indices)> index = {
+            static_cast<int64_t>(indices)...
+        };
+        return at(index.data());
+    }
+
+    template<typename... Indices, typename S = Scalar,
+             std::enable_if_t<!std::is_void_v<S>, int> = 0>
+    const S& operator()(Indices... indices) const
+    {
+        static_assert((std::is_integral_v<Indices> && ...),
+            "NDArray indices must be integral.");
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::operator() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::operator() cannot be used with GPU arrays.");
+        }
+        if (sizeof...(Indices) != static_cast<size_t>(ndim()))
+        {
+            throw std::invalid_argument("NDArray::operator() called with wrong number of indices.");
+        }
+
+        std::array<int64_t, sizeof...(Indices)> index = {
+            static_cast<int64_t>(indices)...
+        };
+        return at(index.data());
+    }
+
+    template<typename I, size_t N>
+    void require_shape(const IndexArray<I, N>& expected, const char* message) const
+    {
+        if (N != static_cast<size_t>(ndim()))
+        {
+            throw std::invalid_argument(message);
+        }
+        for (size_t i = 0; i < N; i++)
+        {
+            if (shape(i) != static_cast<int64_t>(expected[i]))
+            {
+                throw std::invalid_argument(message);
+            }
+        }
+    }
+
+    template<typename F>
+    void for_each_index(F&& f) const
+    {
+        static_assert(traits::ndim != detail::ndim_dynamic,
+            "NDArray::for_each_index() requires compile-time ndim.");
+        static_assert(!(traits::has_device && traits::is_gpu),
+            "NDArray::for_each_index() cannot be used with GPU arrays.");
+
+        if (on_gpu())
+        {
+            throw std::runtime_error("NDArray::for_each_index() cannot be used with GPU arrays.");
+        }
+
+        IndexArray<long, static_cast<size_t>(traits::ndim)> index;
+        for_each_index_impl<0>(index, f);
+    }
+
     /* Import an array from Numpy or Cupy. Import will fail if not all requested traits are satisfied,
     in which case this returns false and the NDArray will be in invalid state.
     NB: this is intended to be used in type-casters only. */
@@ -369,6 +621,23 @@ private:
     static constexpr uint64_t byte_offset = 0;
     // Non-owning reference to the actual array PyObject
     py::handle handle = nullptr;
+
+    template<size_t D, size_t N, typename F>
+    void for_each_index_impl(IndexArray<long, N>& index, F& f) const
+    {
+        if constexpr (D == N)
+        {
+            f(index);
+        }
+        else
+        {
+            for (long i = 0; i < static_cast<long>(shape(D)); i++)
+            {
+                index[D] = i;
+                for_each_index_impl<D + 1>(index, f);
+            }
+        }
+    }
 
     template<detail::Framework framework>
     bool import_from_python_impl(PyObject* obj) noexcept;
@@ -502,6 +771,56 @@ inline bool NDArray<Args...>::import_from_python_impl(PyObject* obj) noexcept
 // Pybind11 type casters
 namespace pybind11::detail
 {
+
+template<typename T, size_t N>
+struct type_caster<gpaw::IndexArray<T, N>>
+{
+    using Type = gpaw::IndexArray<T, N>;
+    PYBIND11_TYPE_CASTER(Type, const_name("IndexArray"));
+
+    static handle cast(const gpaw::IndexArray<T, N>& array, return_value_policy policy, handle parent) noexcept
+    {
+        assert(false && "Passing gpaw::IndexArray back to Python is not implemented");
+        return handle();
+    }
+
+    bool load(handle src, [[maybe_unused]] bool implicit_convert) noexcept
+    {
+        if (!PySequence_Check(src.ptr()))
+        {
+            return false;
+        }
+
+        try
+        {
+            pybind11::sequence sequence = pybind11::reinterpret_borrow<pybind11::sequence>(src);
+            if (sequence.size() != N)
+            {
+                return false;
+            }
+
+            std::array<T, N> values{};
+            for (size_t i = 0; i < N; i++)
+            {
+                values[i] = sequence[i].cast<T>();
+            }
+            value = gpaw::IndexArray<T, N>(values);
+            return true;
+        }
+        catch (const pybind11::error_already_set&)
+        {
+            if (PyErr_Occurred())
+            {
+                PyErr_Clear();
+            }
+            return false;
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+    }
+};
 
 // Try to follow nanobind semantics here so that we have easier time porting to it later if needed.
 // https://nanobind.readthedocs.io/en/latest/porting.html#type-casters

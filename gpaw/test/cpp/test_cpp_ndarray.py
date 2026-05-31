@@ -29,6 +29,21 @@ def test_non_array_input():
             arraytests.accept_any(not_array, a)
 
 
+def test_index_array_conversion():
+    assert arraytests.sum_index3_long([1, 2, 3]) == 6
+    assert arraytests.sum_index3_long((1, 2, 3)) == 6
+    assert arraytests.sum_index3_long(np.array([1, 2, 3],
+                                               dtype=np.int64)) == 6
+    assert arraytests.sum_index3_double(np.array([0.5, 1.0, 1.5])) == 3.0
+    assert arraytests.extent_product([1, 2, 3], [4, 6, 8]) == 60
+
+
+@pytest.mark.parametrize("bad_index", [[1, 2], [1, 2, 3, 4], object()])
+def test_index_array_rejects_invalid_inputs(bad_index):
+    with pytest.raises(TypeError):
+        arraytests.sum_index3_long(bad_index)
+
+
 @pytest.mark.parametrize("xp", [np, cp])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64,
                                    np.complex128])
