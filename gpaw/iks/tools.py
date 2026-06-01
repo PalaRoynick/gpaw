@@ -542,6 +542,33 @@ def fakdensity2old(fake_density, old_density, old_hamiltonian):
     return density
 
 
+def transform_rdm1(gd: GridDescriptor, wfs: WaveFunctions, mo_iG: Array4D, rdm1_sij: Array3D, interpolater=None) -> Array3D:
+    """
+    Transforms density matrices rdm1_sij obtained in the set of molecular orbitals mo_iG to the current wfs orbitals basis (only works in serial).
+    """
+    assert wfs.kd.gamma
+    # maybe we should take the AE wfs instead?
+    # if wfs.mode == 'pw':
+    # mo_iG = np.asarray([wfs.pd.fft(gto_G) for gto_G in mo_iG])
+    nbands = wfs.bd.nbands
+    P_snm = np.empty((len(wfs.kpt_u), nbands, nbands), dtype=wfs.dtype)
+    for kpt in wfs.kpt_u:
+        psit_nG = kpt.psit_nG
+
+        if wfs.mode == 'pw':
+            psit_nG = np.asarray([wfs.pd.ifft(psit_G) for psit_G in psit_nG])
+        if interpolater is not None:
+            psit_nG = np.asarray([interpolater(psit_G) for psit_G in psit_nG])
+        if not isinstance(psit_nG, np.ndarray):
+            # ArrayReader
+            psit_nG = np.asarray(psit_nG)
+        # C_ni = wfs.integrate(psit_nG, mo_iG)
+        C_ni = gd.integrate(psit_nG, mo_iG)
+        P_snm[kpt.s] = np.einsum('ni, ij, mj -> nm',
+                                 C_ni, rdm1_sij[kpt.s], C_ni.conj())
+    return P_snm
+
+
 def update_density_from_density_matrix(
         density: Density | FakeDensity, wfs: WaveFunctions, P_snn: Array3D | None
 ) -> None:
@@ -573,6 +600,8 @@ def update_density_from_density_matrix(
     wfs.kd.comm.sum(nt_sG)
     for a in D_asp:
         wfs.kd.comm.sum(D_asp[a])
+    # add pseudo core density
+    nt_sG[:] += density.nct_G
     density.initialize_directly_from_arrays(nt_sG, density.nt_vG, D_asp)
 
 

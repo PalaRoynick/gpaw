@@ -295,6 +295,8 @@ class iKS:
                 tdens = fakdensity2old(
                     tdens, self.calc.density, self.calc.hamiltonian)
 
+            tdens.set_positions(self.hamiltonian.spos_ac,
+                                self.density.atom_partition)  # for nct_G
             iks_tools.update_density_from_density_matrix(tdens, wfs, P_snn)
 
         density = self.density
