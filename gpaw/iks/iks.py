@@ -305,7 +305,7 @@ class iKS:
         tdens.redistributor = density.redistributor
         tdens.set_positions(self.hamiltonian.spos_ac, density.atom_partition)
         tdens.calculate_normalized_charges_and_mix()
-        tdens.fixed = True
+        # tdens.fixed = True
         self.tdens = tdens
 
     def initialize(self) -> None:

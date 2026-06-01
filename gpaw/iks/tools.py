@@ -601,7 +601,8 @@ def update_density_from_density_matrix(
     for a in D_asp:
         wfs.kd.comm.sum(D_asp[a])
     # add pseudo core density
-    nt_sG[:] += density.nct_G
+    if density.nct_G is not None:
+        nt_sG[:] += density.nct_G
     density.initialize_directly_from_arrays(nt_sG, density.nt_vG, D_asp)
 
 
