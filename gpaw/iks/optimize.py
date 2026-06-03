@@ -249,13 +249,18 @@ class iKSObj:
 
 
 class PotState:
-    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], gd=None, comm=None, setups=None, angular=False):
+    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], gd=None, comm=None, setups=None, angular=False, kpt_par=False):
         self.data_sg = data_sg
         self.data_xasz = data_xasz
         self.gd = gd
         self.comm = comm
         self.setups = setups
         self.angular = angular
+        self.kpt_par = kpt_par
+
+    @property
+    def args(self):
+        return (self.gd, self.comm, self.setups, self.angular, self.kpt_par)
 
     def __add__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -263,7 +268,7 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] + other_asz[a] for a in data_asz})
-        return PotState(self.data_sg + other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
+        return PotState(self.data_sg + other.data_sg, new_xasz, *self.args)
 
     def __sub__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -271,13 +276,13 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] - other_asz[a] for a in data_asz})
-        return PotState(self.data_sg - other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
+        return PotState(self.data_sg - other.data_sg, new_xasz, *self.args)
 
     def __neg__(self) -> "PotState":
         new_xasz = []
         for data_asz in self.data_xasz:
             new_xasz.append({a: -data_asz[a] for a in data_asz})
-        return PotState(-self.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
+        return PotState(-self.data_sg, new_xasz, *self.args)
 
     def __mul__(self, other: "PotState" | float) -> "PotState":
         if isinstance(other, PotState):
@@ -285,12 +290,12 @@ class PotState:
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
                 new_xasz.append(
                     {a: data_asz[a] * other_asz[a] for a in data_asz})
-            return PotState(self.data_sg * other.data_sg, new_xasz, self.gd, self.comm, self.setups, self.angular)
+            return PotState(self.data_sg * other.data_sg, new_xasz, *self.args)
         else:
             new_xasz = []
             for data_asz in self.data_xasz:
                 new_xasz.append({a: v * other for a, v in data_asz.items()})
-            return PotState(self.data_sg * other, new_xasz, self.gd, self.comm, self.setups, self.angular)
+            return PotState(self.data_sg * other, new_xasz, *self.args)
 
     def __rmul__(self, other: float) -> "PotState":
         return self.__mul__(other)
@@ -299,8 +304,7 @@ class PotState:
         copy_xasz = []
         for array_asz in self.data_xasz:
             copy_xasz.append({a: v.copy() for a, v in array_asz.items()})
-        x = PotState(self.data_sg.copy(), copy_xasz,
-                     self.gd, self.comm, self.setups, self.angular)
+        x = PotState(self.data_sg.copy(), copy_xasz, *self.args)
         return x
 
     def inner(self, other):
@@ -323,7 +327,14 @@ class PotState:
                 II += np.einsum("n,sng,sng,g", weight_n,
                                 data_sng, other_sng, rgd.dv_g)
         self.comm.sum(II)  # over all atoms
-        return self.gd.integrate(self.data_sg * other.data_sg, global_integral=True).sum() + II.item()
+        # return self.gd.integrate(self.data_sg * other.data_sg, global_integral=True).sum() + II.item()
+        It = self.gd.integrate(
+            self.data_sg * other.data_sg, global_integral=True).sum()
+        total = np.array([It + II.item()], dtype=float)
+        if self.kpt_par:
+            # prevent divergence in case of kpt-parallelization
+            self.comm.broadcast(total, 0)
+        return total.item()
 
     def norm(self):
         return np.sqrt(self.inner(self))
@@ -394,7 +405,8 @@ class iKSLBFGS:
     @property
     def potstate_args(self):
         iks = self.iks
-        return (iks.gd, iks.hamiltonian.world, iks.setups, iks.xc.paw_potmode.name == 'angular')
+        return (iks.gd, iks.hamiltonian.world, iks.setups,
+                iks.xc.paw_potmode.name == 'angular', iks.wfs.kptband_comm.size > 1)
 
     def apply_lbfgs(self, gk: PotState) -> PotState:
         if not self.s_hist:

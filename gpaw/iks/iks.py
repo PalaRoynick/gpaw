@@ -400,8 +400,8 @@ class iKS:
     def iterate(self) -> None:
         if self.wfs.kptband_comm.size > 1:
             # we need to find the bug that in the k-point parallelization causes
-            # the values of potentials (and consequently the densities) diverge on each node
-            # this is a hack for now!
+            # the values of potentials (and consequently the densities or vice versa) diverge on each core
+            # this is a hack for now which along the syncing in the optimizers and lagrangian fixes the issue.
             self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
             for v_asz in self.xc.vxc_xasz:
                 partition = v_asz.partition
@@ -636,7 +636,17 @@ class iKS:
         if lambdacore != 0.0:
             Lreg = comm.sum_scalar(Lreg)
             self.fmt.log(f'Atomic regularization: {Lreg:.4e}')
-        return L1, L2, LD1.item(), LD2.item()
+
+        # return L1, L2, LD1.item(), LD2.item()
+        # sync kpoints :()
+        L1_val, L2_val = L1, L2
+        LD1_val, LD2_val = LD1.item(), LD2.item()
+        if self.wfs.kptband_comm.size > 1:
+            lags = np.array([L1_val, L2_val, LD1_val, LD2_val], dtype=float)
+            self.wfs.kptband_comm.broadcast(lags, 0)
+            L1_val, L2_val, LD1_val, LD2_val = lags[0], lags[1], lags[2], lags[3]
+
+        return L1_val, L2_val, LD1_val, LD2_val
 
     def jacobian(self) -> ArrayND:
         J_sG = self.gd.zeros(self.density.nspins)
