@@ -6,10 +6,11 @@ from gpaw.new.density import Density
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
-from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.etdm.etdm import ETDM
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
-
+from gpaw.new.etdm.objfunc_lcao_sic import LCAOObjectiveFunctionSIC
+# from gpaw.directmin.functional.lcao import get_functional
+from gpaw.new.lcao.sic import PZSICLCAO
 
 class DirOptLCAO(LCAOEigensolver):
 
@@ -21,6 +22,7 @@ class DirOptLCAO(LCAOEigensolver):
                  searchdir_algo_name='l-bfgs',
                  linesearch_algo={'name': 'max-step',
                                   'max_step': 0.25},
+                 functional='floptropica'
                  ):
         
         """Class for direct orbital optimization in LCAO mode
@@ -69,6 +71,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.linesearch_algo = linesearch_algo
         self.iter = 0
         self.update_ref_orbitals_counter = 20
+        self.functional = functional
 
         super().__init__(basis)
 
@@ -92,8 +95,16 @@ class DirOptLCAO(LCAOEigensolver):
         self.sort_orbitals_according_to_occ(ibzwfs)
 
         # Initialize objective function
-        self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
-                                             self.matrix_exp)
+        if self.functional =='PZ-SIC':
+            sic_calc = PZSICLCAO(ibzwfs, density, pot_calc)
+            self.objfunc = LCAOObjectiveFunctionSIC(ibzwfs, self.representation,
+                                                self.matrix_exp,sic_calc)
+            
+            
+            
+        else:
+            self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
+                                                self.matrix_exp)
 
         for wfs in ibzwfs:
             f_unique = np.unique(wfs.myocc_n)

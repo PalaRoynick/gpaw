@@ -45,6 +45,7 @@ class DirectOptimizationLcao(Eigensolver):
                  linesearch_algo={'name': 'max-step',
                                   'max_step': 0.25},
                  converge_unocc: bool = False,
+                 functional='floptropica'
                  ):
         
         self.converge_unocc = converge_unocc
@@ -52,6 +53,7 @@ class DirectOptimizationLcao(Eigensolver):
         self.matrix_exp = matrix_exp
         self.searchdir_algo = searchdir_algo
         self.linesearch_algo = linesearch_algo
+        self.functional = functional
 
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
@@ -67,4 +69,5 @@ class DirectOptimizationLcao(Eigensolver):
             matrix_exp=self.matrix_exp,
             searchdir_algo_name=self.searchdir_algo,
             occ_calc=occ_calc,
-            linesearch_algo=self.linesearch_algo)
+            linesearch_algo=self.linesearch_algo,
+            functional=self.functional)
