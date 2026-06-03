@@ -81,9 +81,9 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
             # lcao/sic.py
             # PZSICLCAO
 
-            sic_energy = self.sic_calc.get_full_orb_dependent_potential_matrix(wfs,ibzwfs)
-            energy += sic_energy
 
+            F_MM, sic_energy = self.sic_calc.get_full_orb_dependent_potential_matrix(wfs,ibzwfs, n)
+            energy += sic_energy
             
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
