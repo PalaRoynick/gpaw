@@ -3,7 +3,7 @@
 from gpaw.lfc import LFC
 import numpy as np
 from gpaw.poisson import PoissonSolver
-from gpaw.utilities import pack_density
+from gpaw.utilities import pack_density, unpack_hermitian
 # from gpaw.new.poisson import PoissonSolver
 
 
@@ -30,15 +30,15 @@ class PZSICLCAO:
         # LFC allows us to describe the augmentation refion around the atom. It contains
         # functions to couple information on the regular mesh with information on the 
         # atomic radial grid
-        self.ghat_coarse_gd = LFC(
+        self.ghat = LFC(
             self.coarse_gd,
             [setup.ghat_l for setup in self.setups],
             integral=np.sqrt(4 * np.pi),
             forces=True,
         )
 
-        self.ghat_coarse_gd.set_positions(self.scaled_atom_pos)
-        self.ghat_fine_gd = None
+        self.ghat.set_positions(self.scaled_atom_pos)
+        # self.ghat_fine_gd = None
         # else:
 
         #     # Only in LCAO
@@ -73,7 +73,7 @@ class PZSICLCAO:
         self.e_sic_by_orbitals = {}
         self.num_kpts = len(ibzwfs.ibz)
 
-    def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,occupied_only=False):
+    def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,m,occupied_only=False):
         f_n = wfs.myocc_n
         n_occ = 0
         nbands = ibzwfs.nbands
@@ -114,9 +114,44 @@ class PZSICLCAO:
         rho_MM,nt_G = self.get_density(f_n, c_nm, wfs, ibzwfs, m)
         Q_aL, D_ap= self.get_comp_charges(rho_MM, wfs,setup)
 
-        e_sic_m, vt_mG, vHt_g = self.get_pseudo_pot(nt_G, Q_aL, m)
+        if self.use_coarse_grid:
+            e_sic_m, vt_mG, vHt_g = self.get_pseudo_pot(nt_G, Q_aL, self.coarse_gd)
+            e_sic_paw_m, dH_ap = self.get_paw_corrections_to_energy_and_pot_matrix(D_ap, vHt_g, self.coarse_gd)
+        else:
+            e_sic_m, vt_mG, vHt_g = self.get_pseudo_pot(nt_G, Q_aL, self.fine_gd)
+            e_sic_paw_m, dH_ap = self.get_paw_corrections_to_energy_and_pot_matrix(D_ap, vHt_g, self.fine_gd)
 
-        pass
+        e_sic_m += e_sic_paw_m
+
+        # ODD Potential Matrices
+        Vt_MM = np.zeros_like(F_MM)
+        self.basis_functions.calculate_potential_matrix(vt_mG, Vt_MM, wfs.q)
+        # make matrix hermitian
+        ind_l = np.tril_indices(Vt_MM.shape[0], -1)
+        Vt_MM[(ind_l[1], ind_l[0])] = Vt_MM[ind_l].conj()
+
+        # PAW to potential matrix
+        
+        for a, dH_p in dH_ap.items():
+            P_Mj = wfs.P_aMi[a]
+            dH_ij = unpack_hermitian(dH_p)
+
+            if self.dtype == complex:
+                F_MM += P_Mj @ dH_ij @ P_Mj.T.conj()
+            else:
+                F_MM += P_Mj @ dH_ij @ P_Mj.T
+
+        if self.dtype == complex:
+            F_MM += Vt_MM.astype(complex)
+        else:
+            F_MM += Vt_MM
+        if self.use_coarse_grid:
+            self.coarse_gd.comm.sum(F_MM)
+        else:
+            self.fine_gd.comm.sum(F_MM)
+
+
+        return F_MM, e_sic_m * f_n[m]
 
     def get_density(self,f_n,c_nm, wfs,ibzwfs,m):
         if f_n[m] > 1.0 + 1.0e-4:
@@ -171,9 +206,58 @@ class PZSICLCAO:
         return Q_aL, D_ap
     
 
-    def get_pseudo_pot(self):
-        pass
+    def get_pseudo_pot(self, nt, Q_aL, gd):
+        # if not self.use_coarse_grid:
 
+        # Total potential, Hartree potential, orbital density
+        vt_sg = gd.zeros(2)
+        vHt_g = gd.zeros()
+        nt_sg = gd.zeros(2)
+        
+        nt_sg[0] = nt
+
+        e_xc = self.xc.calculate(gd, nt_sg, vt_sg)
+        self.ghat.add(nt_sg[0], Q_aL)
+        ec = 0.5 * gd.integrate(nt_sg[0] * vHt_g)
+
+        vt_sg[0] -= vHt_g
+
+        vt_G = vt_sg[0]
+
+        return np.array([-ec, -e_xc]), vt_G, vHt_g
+    
+
+    def get_paw_corrections_to_energy_and_pot_matrix(self, D_ap, vHt_g, gd):
+        # Potential matrix
+        dH_ap = {}
+        exc = 0.0
+        for a, D_p in D_ap.items():
+            setup = self.setups[a]
+            dH_sp = np.zeros((2, len(D_p)))
+            D_sp = np.array([D_p, np.zeros_like(D_p)])
+            exc += self.xc.calculate_paw_correction(
+                setup, D_sp, dH_sp, addcoredensity=False, a=a
+            )
+            dH_ap[a] = -dH_sp[0]
+
+        # ghat PAW corrections
+        W_aL = self.ghat.dict()
+        self.ghat.integrate(vHt_g, W_aL)
+        ec = 0.0
+
+        # Hartree PAW corrections
+        for a, D_p in D_ap.items():
+            setup = self.setups[a]
+            M_p = np.dot(setup.M_pp, D_p)
+            ec += np.dot(D_p, M_p)
+            dH_ap[a] += -(2.0 * M_p + np.dot(setup.Delta_pL, W_aL[a]))
+        
+
+        ec = gd.comm.sum_scalar(ec)
+        exc = gd.comm.sum_scalar(exc)
+
+
+        return np.array([-ec, -exc]), dH_ap
 
 
             # D_ii = np.zeros(
