@@ -64,7 +64,7 @@ class DegeneracyDescriptor:
 # for example look at density.get_all_electron_density to see how to properly handle different distributions.
 
 class iKS:
-    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol
+    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol, weights_sum_spins
     """
     OECO-iKS: Orbital Expansion Constrained Optimization Inverse Kohn–Sham procedure.
     This class implements an inverse Kohn–Sham (iKS) approach using orbital expansion
@@ -215,6 +215,7 @@ class iKS:
         degeneracy_tol: float = 1e-3,
         occ_tol: float = 1e-10,
         nxc_kwargs: dict[str, Any] | None = None,
+        weights_sum_spins: bool = True,
     ):
         self.target = target
         atoms = calc.atoms or atoms
@@ -232,6 +233,7 @@ class iKS:
         self.coresched = iks_optimize.StaircaseScheduler(
             lambdacore, **corereg_scheduler_params)
         self.niter: int = 0
+        self.weights_sum_spins = weights_sum_spins
 
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
         self.stencil = stencil
@@ -272,9 +274,9 @@ class iKS:
         self.init_target_density(self.P_snn)
         self.nspins: int = self.tdens.nspins
         self.weights_sG, self.weights = iks_tools.get_weights(
-            weights, self.tdens.nt_sG, self.density.gd)
+            weights, self.tdens.nt_sG, self.density.gd, self.weights_sum_spins)
         self.weights_asng, self.atomic_weights = iks_tools.get_atomic_weights(
-            atomic_weights, calc.setups, self.tdens.D_asp
+            atomic_weights, calc.setups, self.tdens.D_asp, self.weights_sum_spins
         )
 
     def init_target_density(self, P_snn: Optional[ArrayND] = None) -> None:
@@ -447,16 +449,15 @@ class iKS:
         from gpaw.mpi import broadcast_string
         kd = self.wfs.kd
         ls_u = self.ls_u
-        self.fmt.log(
-            'k-index    spin    minres-iters    degenaracy')
+        self.fmt.log(' k-index    spin    minres-iters    degenaracy')
         self.fmt.log('................................................')
         for k in range(kd.nibzkpts):
             for s in range(kd.nspins):
                 rank, u = kd.get_rank_and_index(k, s)
                 if kd.comm.rank == rank:
                     ls = ls_u[u]
-                    msg = f"  {k}          {s}           {
-                        ls.iters}      {ls.blocks_msg}"
+                    msg = (f'  {k}          {s}          '
+                           f'{ls.iters}      {ls.blocks_msg}')
                 else:
                     msg = None
                 msg = broadcast_string(msg, root=rank, comm=kd.comm)
@@ -808,10 +809,8 @@ class iKS:
         calc = self.calc
         scf = calc.scf
         if scf.converged:
-            self.fmt.log(
-                f"Single-point calculation converged after {
-                    scf.niter} iterations"
-            )
+            self.fmt.log("Single-point calculation converged after "
+                         f"{scf.niter} iterations")
         else:
             self.fmt.log(
                 "warning: Single-point calculation did not converge after "

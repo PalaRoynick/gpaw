@@ -232,9 +232,8 @@ def calculate_diff_overlap_matrix_gaunt(
     for j1, l1 in enumerate(l_j):
         i2_counter = 0
         for j2, l2 in enumerate(l_j):
-            I_L = np.dot(
-                dn_Lg * w_g * rgd.r_g**2 * rgd.dr_g, dn_jjg[j1, j2]
-            )  # no 4pi because of G_LLL
+            # no 4pi because of G_LLL
+            I_L = np.dot(dn_Lg * w_g * rgd.r_g**2 * rgd.dr_g, dn_jjg[j1, j2])
             for m1 in range(2 * l1 + 1):
                 L1 = l1**2 + m1
                 i1 = i1_counter + m1
@@ -368,48 +367,50 @@ def get_atomic_dens_lebedev(D_sp: Array2D, xcc: PAWXCCorrection) -> Array3D:
     return n_sng
 
 
-def name_to_weight(weights, n_sg):
+VALID_WEIGHTS = (
+    "uniform", "zero", "density_sqrt", "density", "density_squared",
+    "inverse_density", "inverse_density_squared", "mask", "fr"
+)
+
+
+def name_to_weight(weights, n_sg, sum_spins=True):
+    if isinstance(weights, np.ndarray):
+        return weights
+
+    if weights not in VALID_WEIGHTS:
+        raise ValueError(
+            f"weights must either be an array or one of the predefined weights: {', '.join(VALID_WEIGHTS)}"
+        )
+
     weights_sg = np.zeros_like(n_sg)
+    n = n_sg.sum(0) if sum_spins else n_sg
     if weights == "uniform":
         weights_sg[:] = 1.0
     elif weights == "zero":
-        weights_sg[:] = 0.0
+        pass  # Already initialized to zeros
     elif weights == "density_sqrt":
-        weights_sg[:] = np.sqrt(n_sg)
+        weights_sg[:] = np.sqrt(n)
     elif weights == "density":
-        weights_sg[:] = n_sg
+        weights_sg[:] = n
     elif weights == "density_squared":
-        weights_sg[:] = n_sg**2
+        weights_sg[:] = n**2
     elif weights == "inverse_density":
-        weights_sg[:] = 1.0 / (n_sg + 1e-10)
+        weights_sg[:] = 1.0 / (n + 1e-10)
     elif weights == "inverse_density_squared":
-        weights_sg[:] = 1.0 / (n_sg**2 + 1e-10)
+        weights_sg[:] = 1.0 / (n**2 + 1e-10)
     elif weights == "mask":
-        weights_sg[:] = np.zeros_like(n_sg)
-        weights_sg[:][n_sg > 1e-7] = 1.0
+        if sum_spins:
+            weights_sg[:, n > 1e-7] = 1.0
+        else:
+            weights_sg[n > 1e-7] = 1.0
     elif weights == "fr":
-        weights_sg[:] = n_sg / (n_sg + 1e-6)
-    else:
-        raise ValueError(
-            "weights must either be an array or one of the predefined weights: %s"
-            % ", ".join(
-                [
-                    "uniform",
-                    "zeros",
-                    "density_sqrt",
-                    "density",
-                    "inverse_density",
-                    "inverse_density_squared",
-                    "mask",
-                    "fr",
-                ]
-            )
-        )
+        weights_sg[:] = n / (n + 1e-6)
+
     return weights_sg
 
 
 def get_atomic_weights(
-    weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict
+    weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict, sum_spins=True,
 ) -> tuple[MutableMapping, str]:
     nspins = D_asp.shapes_a[0][0]
     if isinstance(weights, MutableMapping):
@@ -424,7 +425,7 @@ def get_atomic_weights(
                         D_asp[a], setups[a].xc_correction)
                     weights[a] = nt_s1g / n_s1g
                 else:
-                    weights[a] = name_to_weight(w_clean, n_s1g)
+                    weights[a] = name_to_weight(w_clean, n_s1g, sum_spins)
         return weights, "radial_custom"
 
     if "radial_" in weights:
@@ -466,13 +467,13 @@ def get_atomic_weights(
         if setups[a].xc_correction is None:
             continue
         n_sng = get_atomic_dens(D_sp, setups[a].xc_correction)
-        weights_asng[a][:] = name_to_weight(weights_clean, n_sng)
+        weights_asng[a][:] = name_to_weight(weights_clean, n_sng, sum_spins)
     weights_asng.check_consistency()
     return weights_asng, weights
 
 
 def get_weights(
-    weights: Array4D | str, nt_sG: Array4D, gd: GridDescriptor
+    weights: Array4D | str, nt_sG: Array4D, gd: GridDescriptor, sum_spins=True,
 ) -> tuple[Array4D, str]:
     weights_sG = gd.empty(len(nt_sG))
     nt_sG = nt_sG.clip(0.0)
@@ -481,7 +482,7 @@ def get_weights(
         weights_sG[:] = weights
         weights_name = "custom"
     else:
-        weights_sG[:] = name_to_weight(weights, nt_sG)
+        weights_sG[:] = name_to_weight(weights, nt_sG, sum_spins=sum_spins)
     return weights_sG, weights_name
 
 
