@@ -798,44 +798,44 @@ def atomic_fa_lebedev(setup: Setup, D_sp: Array2D, mix_spin: bool = False) -> tu
     xcc = setup.xc_correction
     if xcc is None:
         return np.zeros(1), np.zeros(1)
-    n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
-    nt_sLg = calculate_angular_density(
-        xcc, D_sp, xcc.nt_qg, xcc.nct_g)
-    rgd = xcc.rgd
-    nspins = len(D_sp)
-    Lmax = n_sLg.shape[1]
-    vxc_sng = rgd.zeros((nspins, len(Y_nL)))
-    vxct_sng = rgd.zeros((nspins, len(Y_nL)))
-    for n, Y_L in enumerate(Y_nL[:, :Lmax]):
-        n_sg = np.dot(Y_L, n_sLg)
-        nt_sg = np.dot(Y_L, nt_sLg)
-        if mix_spin:
-            n_g = n_sg.sum(axis=0)
-            nt_g = nt_sg.sum(axis=0)
-            N = rgd.integrate(n_g)
-            if N == 0.0:
-                N = np.inf
-            Nt = rgd.integrate(nt_g)
-            if Nt == 0.0:
-                Nt = np.inf
-            vxc_sng[:, n] = -divrl(rgd.poisson(n_g), 1, rgd.r_g) / N
-            vxct_sng[:, n] = -divrl(rgd.poisson(nt_g), 1, rgd.r_g) / Nt
-        else:
-            for s in range(nspins):
-                N = rgd.integrate(n_sg[s])
-                # what to do if the density is charge neutral!
-                # it might never happen with a soft enough shell
-                if N == 0.0:
-                    N = np.inf
-                Nt = rgd.integrate(nt_sg[s])
-                if Nt == 0.0:
-                    Nt = np.inf
-                vxc_sng[s, n] = -divrl(rgd.poisson(n_sg[s]), 1, rgd.r_g) / N
-                vxct_sng[s, n] = -divrl(rgd.poisson(nt_sg[s]), 1, rgd.r_g) / Nt
+    # n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
+    # nt_sLg = calculate_angular_density(
+    #     xcc, D_sp, xcc.nt_qg, xcc.nct_g)
+    # rgd = xcc.rgd
+    # nspins = len(D_sp)
+    # Lmax = n_sLg.shape[1]
+    # vxc_sng = rgd.zeros((nspins, len(Y_nL)))
+    # vxct_sng = rgd.zeros((nspins, len(Y_nL)))
+    # for n, Y_L in enumerate(Y_nL[:, :Lmax]):
+    #     n_sg = np.dot(Y_L, n_sLg)
+    #     nt_sg = np.dot(Y_L, nt_sLg)
+    #     if mix_spin:
+    #         n_g = n_sg.sum(axis=0)
+    #         nt_g = nt_sg.sum(axis=0)
+    #         N = rgd.integrate(n_g)
+    #         if N == 0.0:
+    #             N = np.inf
+    #         Nt = rgd.integrate(nt_g)
+    #         if Nt == 0.0:
+    #             Nt = np.inf
+    #         vxc_sng[:, n] = -divrl(rgd.poisson(n_g), 1, rgd.r_g) / N
+    #         vxct_sng[:, n] = -divrl(rgd.poisson(nt_g), 1, rgd.r_g) / Nt
+    #     else:
+    #         for s in range(nspins):
+    #             N = rgd.integrate(n_sg[s])
+    #             # what to do if the density is charge neutral!
+    #             # it might never happen with a soft enough shell
+    #             if N == 0.0:
+    #                 N = np.inf
+    #             Nt = rgd.integrate(nt_sg[s])
+    #             if Nt == 0.0:
+    #                 Nt = np.inf
+    #             vxc_sng[s, n] = -divrl(rgd.poisson(n_sg[s]), 1, rgd.r_g) / N
+    #             vxct_sng[s, n] = -divrl(rgd.poisson(nt_sg[s]), 1, rgd.r_g) / Nt
 
-    # vxc_sLg, vxct_sLg = atomic_fa_angular(setup, D_sp)
-    # vxc_sng = angular2lebedev(vxc_sLg)
-    # vxct_sng = angular2lebedev(vxct_sLg)
+    vxc_sLg, vxct_sLg = atomic_fa_angular(setup, D_sp)
+    vxc_sng = angular2lebedev(vxc_sLg)
+    vxct_sng = angular2lebedev(vxct_sLg)
     return vxc_sng, vxct_sng
 
 
