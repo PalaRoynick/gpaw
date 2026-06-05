@@ -576,7 +576,6 @@ class NumericalXC(XCFunctional):
         return vxc_xasz
 
     def collect_angular_atomic_potentials(self) -> list[dict[int, Array3D]]:
-        # probably not correct for periodic
         assert self.paw_potmode in (PAWPotMode.lebedev, PAWPotMode.angular)
         vxc_xasz: list[dict[int, Array3D]] = [{} for _ in self.vxc_xasz]
         for a, setup in enumerate(self.ham.setups):
