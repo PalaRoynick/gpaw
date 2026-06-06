@@ -981,7 +981,8 @@ def FermiAmaldi(
             spos_c = spos_ac[a]
             rank = gd.get_rank_from_position(spos_c)
             vref_s = np.empty(len(vxc_sg), dtype=float)
-            index_c = gd.get_nearest_grid_point(spos_c)
+            index_c = gd.get_nearest_grid_point(
+                spos_c, force_to_this_domain=True)
             if gd.comm.rank == rank:
                 vref_s[:] = vxc_sg[:, *index_c]
             gd.comm.broadcast(vref_s, rank)
