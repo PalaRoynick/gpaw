@@ -336,7 +336,7 @@ class iKS:
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
             self.nxc_kwargs.setdefault("stencil", self.stencil)
             xc = FermiAmaldi(
-                self.tdens, **self.nxc_kwargs)
+                self.tdens, self.hamiltonian.spos_ac, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
