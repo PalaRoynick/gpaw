@@ -20,15 +20,15 @@ from gpaw.xc.gga import GGARadialCalculator
 if TYPE_CHECKING:
     from typing import Any
 
-    from gpaw.arraydict import ArrayDict
+    from gpaw.old.arraydict import ArrayDict
     from gpaw.atom.radialgd import RadialGridDescriptor
-    from gpaw.density import Density
-    from gpaw.grid_descriptor import GridDescriptor
+    from gpaw.old.density import Density
+    from gpaw.old.grid_descriptor import GridDescriptor
     from gpaw.hamiltonian import Hamiltonian
     from gpaw.poisson import BasePoissonSolver
     from gpaw.setup import Setup, Setups
     from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
-    from gpaw.wavefunctions.base import WaveFunctions
+    from gpaw.old.wavefunctions.base import WaveFunctions
 
 
 def dist_arraydict_data(v_asz: ArrayDict, data: Array1D) -> None:
@@ -509,7 +509,7 @@ class NumericalXC(XCFunctional):
         return rgd.integrate(e_g)
 
     def set_pots(self, gd: GridDescriptor, v: Array1D | None) -> None:
-        """sets the packed potentials from the master to their respective ranks"""
+        # deprecated
         warnings.warn(
             "set_pots() does not work properly in case of kpt parallelization")
         v_sg = None
@@ -534,7 +534,7 @@ class NumericalXC(XCFunctional):
             dist_arraydict_data(vxc_asz, data_asz)
 
     def pack_pots(self, gd: GridDescriptor) -> Array1D | float:
-        # does not work for kpt parallelization
+        # deprecated
         warnings.warn(
             "pack_pots() does not work properly in case of kpt parallelization")
         v_sg = gd.collect(self.vxc_sg)
@@ -911,6 +911,7 @@ def calculate_fa_potential(
 
 def FermiAmaldi(
     density: Density,
+    spos_ac,
     poisson=None,
     setup_name: str = "LDA",
     paw_potmode: str | PAWPotMode = PAWPotMode.lebedev,
@@ -972,6 +973,26 @@ def FermiAmaldi(
             vxc_xasz[0][a] -= vc_ag[a]
             vxc_xasz[1][a] -= vct_ag[a]
         vc_xag = [vc_ag, vct_ag]
+    if paw_potmode in [PAWPotMode.lebedev, PAWPotMode.angular]:
+        # shift the potentials to assure PAW continuity
+        gd: GridDescriptor = poisson.gd
+        vref_as = []
+        for a in range(len(density.setups)):
+            spos_c = spos_ac[a]
+            rank = gd.get_rank_from_position(spos_c)
+            vref_s = np.empty(len(vxc_sg), dtype=float)
+            index_c = gd.get_nearest_grid_point(spos_c)
+            if gd.comm.rank == rank:
+                vref_s[:] = vxc_sg[:, *index_c]
+            gd.comm.broadcast(vref_s, rank)
+            vref_as.append(vref_s)
+
+        for a in D_asp:
+            for s in range(len(vxc_sg)):
+                vref = vref_as[a][s]
+                for v_g, vt_g in zip(vxc_xasz[0][a][s], vxc_xasz[1][a][s]):
+                    vt_g += vref - vt_g[0]
+                    v_g += vt_g[-1] - v_g[-1]
 
     xc = NumericalXC(
         NumericalXCKernel(virial_xc_energy=virial_xc_energy),
