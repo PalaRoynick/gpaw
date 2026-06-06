@@ -747,7 +747,7 @@ class iKS:
                 xcc = setup.xc_correction
                 dp_sLq = np.inner(dp_sp, xcc.B_pqL.T)
                 dv_sLg = np.dot(dp_sLq, xcc.n_qg)
-                dvt_sLg = -np.dot(dp_sLq, xcc.nt_qg)
+                dvt_sLg = np.dot(dp_sLq, xcc.nt_qg)
                 if self.xc.paw_potmode is PAWPotMode.lebedev:
                     Lmax = dvt_sLg.shape[1]
                     for s in range(self.nspins):
