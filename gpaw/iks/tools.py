@@ -502,6 +502,21 @@ def calculate_regularization_weights(setups):
     return w_ag
 
 
+def calculate_boundary_weights(setups, power=12):
+    w_bound_ag = {}
+    for a, setup in enumerate(setups):
+        xcc = setup.xc_correction
+        if xcc is None:
+            w_bound_ag[a] = np.zeros((1,), dtype=float)  # AE
+            continue
+
+        r = setup.rgd.r_g[:len(xcc.nc_g)]
+        rc = r[-1]
+        w_bound_ag[a] = (r / rc)**power
+
+    return w_bound_ag
+
+
 def calc_core_atomic_potentials(setups, setup_name):
     v_a = {}
     xc = XC(setup_name)

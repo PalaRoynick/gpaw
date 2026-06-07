@@ -199,6 +199,7 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
+        lambdabound: float = 0.1,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
@@ -223,6 +224,7 @@ class iKS:
             assert isinstance(target, GPAW)
             atoms = target.atoms
         self.P_snn = P_snn
+        self.lambdabound = lambdabound
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
         reg_scheduler_params = reg_scheduler_params or {}
@@ -349,6 +351,7 @@ class iKS:
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
         # regularization stuff
+        self.wbound_ag = iks_tools.calculate_boundary_weights(self.setups)
         self.wreg_ag = None
         self.vc_axg = None
         if self.lambdacore != 0.0:
@@ -568,7 +571,6 @@ class iKS:
             sigma_sg = np.einsum('sv...,sv...->s...', grad_svg, grad_svg)
             II = lambdareg * \
                 self.finegd.integrate(sigma_sg, global_integral=True).sum()
-            # print('regularization lag', I, self.calc.world.rank)
             self.fmt.log(f'regularization correction: {II:.4e}')
             L1 += II
             L2 += II
@@ -576,13 +578,16 @@ class iKS:
         LD1 = np.array([0.0])
         LD2 = np.array([0.0])
         Lreg = 0.0
-        vxc_asz = None
+
         lambdacore = self.lambdacore
+        lambdabound = self.lambdabound
+
         if lambdacore != 0.0:
             assert self.xc.paw_potmode in [
                 PAWPotMode.lebedev, PAWPotMode.angular]
-            vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
-            vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
+        vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
+        vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
+
         for a, dD_sp in self.dD_asp.items():
             xcc = self.setups[a].xc_correction
             if xcc is None:
@@ -594,10 +599,12 @@ class iKS:
                 dn_sLg = np.dot(dD_sLq, xcc.n_qg)
                 dnt_sLg = np.dot(dD_sLq, xcc.nt_qg)
             Lmax = dn_sLg.shape[1]
+
             for s in range(self.nspins):
                 w_ng = self.weights_asng[a][s]
                 if "radial_" in self.atomic_weights:
                     w_ng = w_ng.repeat(len(Y_nL), axis=0)
+
                 for n, Y_L in enumerate(Y_nL[:, :Lmax]):
                     dn_g = np.dot(Y_L, dn_sLg[s])
                     LD1 += weight_n[n] * \
@@ -610,36 +617,41 @@ class iKS:
                             xcc.rgd.integrate(w_ng[n] * np.abs(dnt_g))
                         LD2 += weight_n[n] * \
                             xcc.rgd.integrate(w_ng[n] * (dnt_g**2))
-                    if lambdacore != 0.0:
-                        if self.xc.paw_potmode is PAWPotMode.lebedev:
+
+                    if self.xc.paw_potmode is PAWPotMode.lebedev:
+                        dv_diff = vxc_asz[a][s][n] - vxct_asz[a][s][n]
+                        Lreg += lambdabound * weight_n[n] * \
+                            xcc.rgd.integrate(self.wbound_ag[a] * dv_diff**2)
+                        # core Regularization
+                        if lambdacore != 0.0:
                             dv_g = vxc_asz[a][s][n] - self.vc_axg[a][0]
-                            Lreg += lambdacore * \
-                                weight_n[n] * \
+                            Lreg += lambdacore * weight_n[n] * \
                                 xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
                             dv_g = vxct_asz[a][s][n] - self.vc_axg[a][1]
-                            Lreg += lambdacore * \
-                                weight_n[n] * \
+                            Lreg += lambdacore * weight_n[n] * \
                                 xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
 
-                if lambdacore != 0.0 and self.xc.paw_potmode is PAWPotMode.angular:
-                    dv_g = vxc_asz[a][s][0] - self.vc_axg[a][0]
-                    Lreg += lambdacore * \
-                        xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
-                    dv_g = vxct_asz[a][s][0] - self.vc_axg[a][1]
-                    Lreg += lambdacore * \
-                        xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+                if self.xc.paw_potmode is PAWPotMode.angular:
+                    dv_diff = vxc_asz[a][s][0] - vxct_asz[a][s][0]
+                    Lreg += lambdabound * \
+                        xcc.rgd.integrate(self.wbound_ag[a] * dv_diff**2)
+                    # Core Regularization
+                    if lambdacore != 0.0:
+                        dv_g = vxc_asz[a][s][0] - self.vc_axg[a][0]
+                        Lreg += lambdacore * \
+                            xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
+                        dv_g = vxct_asz[a][s][0] - self.vc_axg[a][1]
+                        Lreg += lambdacore * \
+                            xcc.rgd.integrate(self.wreg_ag[a] * dv_g**2)
 
         LD1 += Lreg
         LD2 += Lreg
         comm = self.dD_asp.partition.comm
         comm.sum(LD1)
         comm.sum(LD2)
-        if lambdacore != 0.0:
-            Lreg = comm.sum_scalar(Lreg)
-            self.fmt.log(f'Atomic regularization: {Lreg:.4e}')
+        Lreg = comm.sum_scalar(Lreg)
+        self.fmt.log(f'Atomic regularization: {Lreg:.4e}')
 
-        # return L1, L2, LD1.item(), LD2.item()
-        # sync kpoints :()
         L1_val, L2_val = L1, L2
         LD1_val, LD2_val = LD1.item(), LD2.item()
         if self.wfs.kptband_comm.size > 1:
@@ -734,52 +746,58 @@ class iKS:
         vxc_asz = None
         vxct_asz = None
         lambdacore = self.lambdacore
-        if lambdacore != 0.0:
-            vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
-            vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
+        lambdabound = self.lambdabound
+        vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
+        vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
+
         for a, dp_sp in dp_asp.items():
             if self.xc.paw_potmode is PAWPotMode.direct:
                 self.J_xasz[0][a][:] = dp_asp[a]
-            else:
-                setup = self.setups[a]
-                if setup.xc_correction is None:
-                    continue
-                xcc = setup.xc_correction
-                dp_sLq = np.inner(dp_sp, xcc.B_pqL.T)
-                dv_sLg = np.dot(dp_sLq, xcc.n_qg)
-                dvt_sLg = np.dot(dp_sLq, xcc.nt_qg)
-                if self.xc.paw_potmode is PAWPotMode.lebedev:
-                    Lmax = dvt_sLg.shape[1]
-                    for s in range(self.nspins):
-                        self.J_xasz[0][a][s] = np.dot(
-                            Y_nL[:, :Lmax], dv_sLg[s]).real
-                        self.J_xasz[1][a][s] = np.dot(
-                            Y_nL[:, :Lmax], dvt_sLg[s]).real
-                        if lambdacore != 0.0:
-                            dv = vxc_asz[a][s, :] - \
-                                self.vc_axg[a][0][np.newaxis]
-                            self.J_xasz[0][a][s, :] += 2 * \
-                                lambdacore * \
-                                self.wreg_ag[a][np.newaxis] * dv
-                            dv = vxct_asz[a][s, :] - \
-                                self.vc_axg[a][1][np.newaxis]
-                            self.J_xasz[1][a][s, :] += 2 * \
-                                lambdacore * \
-                                self.wreg_ag[a][np.newaxis] * dv
-                else:
-                    assert self.xc.paw_potmode is PAWPotMode.angular
-                    self.J_xasz[0][a][:] = dv_sLg.real
-                    self.J_xasz[1][a][:] = dvt_sLg.real
+                continue
+            setup = self.setups[a]
+            if setup.xc_correction is None:
+                continue
+            xcc = setup.xc_correction
+            dp_sLq = np.inner(dp_sp, xcc.B_pqL.T)
+            dv_sLg = np.dot(dp_sLq, xcc.n_qg)
+            dvt_sLg = -np.dot(dp_sLq, xcc.nt_qg)
+
+            if self.xc.paw_potmode is PAWPotMode.lebedev:
+                Lmax = dvt_sLg.shape[1]
+                for s in range(self.nspins):
+                    self.J_xasz[0][a][s] = np.dot(
+                        Y_nL[:, :Lmax], dv_sLg[s]).real
+                    self.J_xasz[1][a][s] = np.dot(
+                        Y_nL[:, :Lmax], dvt_sLg[s]).real
+                    dv_diff = vxc_asz[a][s, :] - vxct_asz[a][s, :]
+                    self.J_xasz[0][a][s, :] += 2 * lambdabound * \
+                        self.wbound_ag[a][np.newaxis] * dv_diff
+                    self.J_xasz[1][a][s, :] -= 2 * lambdabound * \
+                        self.wbound_ag[a][np.newaxis] * dv_diff
                     if lambdacore != 0.0:
-                        dv = vxc_asz[a][s, :] - \
-                            self.vc_axg[a][0][np.newaxis]
-                        self.J_xasz[0][a][s, :] += 2 * \
-                            lambdacore * \
+                        dv = vxc_asz[a][s, :] - self.vc_axg[a][0][np.newaxis]
+                        self.J_xasz[0][a][s, :] += 2 * lambdacore * \
                             self.wreg_ag[a][np.newaxis] * dv
-                        dv = vxct_asz[a][s, :] - \
-                            self.vc_axg[a][1][np.newaxis]
-                        self.J_xasz[1][a][s, :] += 2 * \
-                            lambdacore * \
+                        dv = vxct_asz[a][s, :] - self.vc_axg[a][1][np.newaxis]
+                        self.J_xasz[1][a][s, :] += 2 * lambdacore * \
+                            self.wreg_ag[a][np.newaxis] * dv
+
+            else:
+                assert self.xc.paw_potmode is PAWPotMode.angular
+                self.J_xasz[0][a][:] = dv_sLg.real
+                self.J_xasz[1][a][:] = dvt_sLg.real
+                for s in range(self.nspins):
+                    dv_diff = vxc_asz[a][s, :] - vxct_asz[a][s, :]
+                    self.J_xasz[0][a][s, :] += 2 * lambdabound * \
+                        self.wbound_ag[a][np.newaxis] * dv_diff
+                    self.J_xasz[1][a][s, :] -= 2 * lambdabound * \
+                        self.wbound_ag[a][np.newaxis] * dv_diff
+                    if lambdacore != 0.0:
+                        dv = vxc_asz[a][s, :] - self.vc_axg[a][0][np.newaxis]
+                        self.J_xasz[0][a][s, :] += 2 * lambdacore * \
+                            self.wreg_ag[a][np.newaxis] * dv
+                        dv = vxct_asz[a][s, :] - self.vc_axg[a][1][np.newaxis]
+                        self.J_xasz[1][a][s, :] += 2 * lambdacore * \
                             self.wreg_ag[a][np.newaxis] * dv
 
     def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
@@ -919,6 +937,7 @@ class iKS:
             weights=self.weights,
             atomic_weights=self.atomic_weights,
             apply_occupation_correction=self.apply_occupation_correction,
+            lambdabound=self.lambdabound,
             reg_params=self.regsched.todict(),
             core_reg_params=self.coresched.todict(),
             stencil=self.stencil,
