@@ -126,6 +126,8 @@ class iKSLinearSolver:
         iks = self.iks
         dp_ani = pt.dict((self.nocc,))
         for a, dp_ni in dp_ani.items():
+            if iks.setups[a].xc_correction is None:
+                continue # ae
             w_ng = iks.weights_asng[a][kpt.s]
             Phi_ii = calculate_diff_overlap_matrix(
                 iks.setups[a],

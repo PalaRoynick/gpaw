@@ -989,6 +989,8 @@ def FermiAmaldi(
             vref_as.append(vref_s)
 
         for a in D_asp:
+            if density.setups[a].xc_correction is None:
+                continue  # AE
             for s in range(len(vxc_sg)):
                 vref = vref_as[a][s]
                 for v_g, vt_g in zip(vxc_xasz[0][a][s], vxc_xasz[1][a][s]):

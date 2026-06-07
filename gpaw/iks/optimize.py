@@ -317,7 +317,10 @@ class PotState:
             for a in data_asz:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]
-                rgd = self.setups[a].xc_correction.rgd
+                xcc = self.setups[a].xc_correction
+                if xcc is None:
+                    continue
+                rgd = xcc.rgd
                 if self.angular:
                     Lmax = data_sng.shape[1]
                     data_sng = np.einsum(

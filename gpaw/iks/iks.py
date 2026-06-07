@@ -512,6 +512,8 @@ class iKS:
         vdiffpaw_nn = np.zeros(vdiff_nn.shape, dtype=vdiff_nn.dtype)
         # apply PAW corrections
         for a, P_ni in kpt.P_ani.items():
+            if self.setups[a].xc_correction is None:
+                continue
             w_ng = self.weights_asng[a][kpt.s]
             Phi_ii = iks_tools.calculate_diff_overlap_matrix(
                 self.setups[a],
