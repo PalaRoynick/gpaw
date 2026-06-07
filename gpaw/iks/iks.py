@@ -199,12 +199,13 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
-        lambdabound: float = 0.001,
+        lambdabound: float = 0.0,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
+        boundreg_scheduler_params: dict[str, int | float] | None = None,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,
-        correg_xc: str = None,
+        corereg_xc: str = None,
         stencil: int = 3,
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
@@ -227,13 +228,16 @@ class iKS:
         self.lambdabound = lambdabound
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
+        boundreg_scheduler_params = boundreg_scheduler_params or {}
         reg_scheduler_params = reg_scheduler_params or {}
         corereg_scheduler_params = corereg_scheduler_params or {}
-        self.correg_xc = correg_xc
+        self.boundsched = iks_optimize.StaircaseScheduler(
+            lambdabound, **boundreg_scheduler_params)
         self.regsched = iks_optimize.StaircaseScheduler(
             lambdareg, **reg_scheduler_params)
         self.coresched = iks_optimize.StaircaseScheduler(
             lambdacore, **corereg_scheduler_params)
+        self.corereg_xc = corereg_xc
         self.niter: int = 0
         self.weights_sum_spins = weights_sum_spins
 
@@ -358,7 +362,7 @@ class iKS:
             self.wreg_ag = iks_tools.calculate_regularization_weights(
                 self.setups)
             self.vc_axg = iks_tools.calc_core_atomic_potentials(
-                self.setups, self.correg_xc or self.xc.setup_name)
+                self.setups, self.corereg_xc or self.xc.setup_name)
 
     def irun_scf(self) -> None:
         """perform scf with the target density and update the inverted density from wfs"""
@@ -743,8 +747,6 @@ class iKS:
                     atomrot.get_by_a(a), a, dp_aii, a_sa)
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
-        vxc_asz = None
-        vxct_asz = None
         lambdacore = self.lambdacore
         lambdabound = self.lambdabound
         vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
@@ -937,9 +939,10 @@ class iKS:
             weights=self.weights,
             atomic_weights=self.atomic_weights,
             apply_occupation_correction=self.apply_occupation_correction,
-            lambdabound=self.lambdabound,
+            boundreg_params=self.boundsched.todict(),
             reg_params=self.regsched.todict(),
             core_reg_params=self.coresched.todict(),
+            corereg_xc=self.corereg_xc or self.xc.setup_name,
             stencil=self.stencil,
             nfixed=self.nfixed,
             linear_solver=linear_solver,

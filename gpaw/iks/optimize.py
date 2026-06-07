@@ -577,13 +577,15 @@ class iKSLBFGS:
 
         for t in range(1, self.maxiter + 1):
             iks.niter = t
+            val_bound, reset_bound = iks.boundsched.step(t)
             val_core, reset_core = iks.coresched.step(t)
             val_reg, reset_reg = iks.regsched.step(t)
-            if reset_core or reset_reg:
+            if reset_bound or reset_core or reset_reg:
+                iks.lambdabound = val_bound
                 iks.lambdacore = val_core
                 iks.lambdareg = val_reg
-                iks.fmt.log(
-                    f'Regularization scheduler: lambdareg={val_reg:.4e} lambdacore={val_core:.4e}')
+                iks.fmt.log(f'Regularization scheduler: lambdabound={val_bound}, '
+                            f'lambdareg={val_reg:.4e}, lambdacore={val_core:.4e}')
                 # reset the history right after the regularization has been turned off
                 self.s_hist.clear()
                 self.y_hist.clear()
