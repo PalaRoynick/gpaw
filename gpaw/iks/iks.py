@@ -199,7 +199,7 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
-        lambdabound: float = 0.1,
+        lambdabound: float = 0.001,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
