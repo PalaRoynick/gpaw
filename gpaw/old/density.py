@@ -124,7 +124,7 @@ class Density:
         # XXX at least one test will fail because None has no 'reset()'
         # So we need DummyMixer I guess
         self.mixer = None
-        self.set_mixer(None)
+        self.set_mixer(None, [])
 
         self.timer = nulltimer
         self.error = None
@@ -195,6 +195,7 @@ class Density:
         self.nct.set_positions(spos_ac, atom_partition)
         self.ghat.set_positions(spos_ac, atom_partition)
         self.mixer.reset()
+        self.mixer.move(spos_ac, self.atomdist)
 
         self.nt_xg = None
         self.nt_sg = None
@@ -367,7 +368,7 @@ class Density:
         self.normalize(comp_charge)
         self.mix(comp_charge)
 
-    def set_mixer(self, mixer):
+    def set_mixer(self, mixer, spos_ac):
         if mixer is None:
             mixer = {}
         if isinstance(mixer, dict):
@@ -375,7 +376,9 @@ class Density:
                                             self.ncomponents, **mixer)
         if not hasattr(mixer, 'mix'):
             raise ValueError('Not a mixer: %s' % mixer)
-        self.mixer = MixerWrapper(mixer, self.ncomponents, self.gd)
+        self.mixer = MixerWrapper(mixer, self.ncomponents, self.gd,
+                                  self.setups, spos_ac, self.atomdist)
+        self.mixer.reset()
 
     def calculate_magnetic_moments(self):
         magmom_av = np.zeros_like(self.magmom_av)

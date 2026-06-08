@@ -1021,7 +1021,7 @@ class GPAW(Calculator):
         # This surely is a bug!
         self.density.initialize(self.setups, self.timer,
                                 magmom_av, par.hund)
-        self.density.set_mixer(par.mixer)
+        self.density.set_mixer(par.mixer, self.spos_ac)
         if self.density.mixer.driver.name == 'dummy' or par.fixdensity:
             self.log('No density mixing\n')
         else:

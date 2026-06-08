@@ -331,6 +331,8 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                 if n2 > mynbands:
                     n2 = mynbands
                     psit_bR = psit_bR[:n2 - n1]
+                    if grid.dtype != pw.dtype:
+                        psit0_bR = psit0_bR[:n2 - n1]
                 C_bM = self.C_nM.data[n1:n2]
                 psit_bR.data[:] = 0.0
                 self.basis.lcao_to_grid(as_np(C_bM), psit_bR.data, self.q,
