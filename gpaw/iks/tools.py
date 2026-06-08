@@ -517,6 +517,39 @@ def calculate_boundary_weights(setups, power=12):
     return w_bound_ag
 
 
+def calculate_weight_dn_sng(setups, D_asp):
+    from gpaw.xc.numericalxc import calculate_angular_density, angular2lebedev
+    dn_asng = {}
+    for a, D_sp in D_asp.items():
+        xcc = setups[a].xc_correction
+        if xcc is None:
+            dn_asng[a] = 0.0
+            continue
+
+        # 1. Core must be True to capture the massive 1s difference at r=0
+        n_sLg = calculate_angular_density(
+            xcc, D_sp, xcc.n_qg, xcc.nc_g, add_core=True)
+        nt_sLg = calculate_angular_density(
+            xcc, D_sp, xcc.nt_qg, xcc.nct_g, add_core=True)
+
+        dn_sLg = n_sLg - nt_sLg
+        dn_sng = angular2lebedev(dn_sLg)
+
+        # 2. Absolute value is mandatory to handle negative nodal crossings
+        dn_abs_sng = np.abs(dn_sng)
+
+        # 3. Find the radial maximum per Lebedev ray
+        max_sng = dn_abs_sng.max(axis=2, keepdims=True)
+
+        # 4. Safe division guard (prevent NaNs on empty rays/spins)
+        max_sng[max_sng < 1e-12] = 1.0
+
+        # 5. Normalize and clip
+        dn_asng[a] = np.clip(dn_abs_sng / max_sng, 0.0, 1.0)
+
+    return dn_asng
+
+
 def calc_core_atomic_potentials(setups, setup_name):
     v_a = {}
     xc = XC(setup_name)

@@ -443,101 +443,115 @@ class iKSLBFGS:
         return -r
 
     def line_search(self, x, gk, pk, L0, LD0, phi0, dphi0, c1=1e-4, c2=0.9, tau=0.5, max_ls=10):
-        """
-        Backtracking Armijo line search with quadratic interpolation.
-        """
         iks = self.iks
         xc = iks.xc
         alpha = 1.0
+        accepted = False
+        best_phi = phi0
+        best_state = None
+        g_new = gk
         L_new = L0
         LD_new = LD0
-        g_new = gk
-        accepted = False
-
-        best_phi = phi0
-        best_state = None  # (x_best, g_best, L_best, LD_best, alpha_best)
 
         for il in range(max_ls):
             xc.vxc_sg[:] = x.data_sg + alpha * pk.data_sg
-            for vxc_asz, newvxc_asz, p_asz in zip(
-                xc.vxc_xasz, x.data_xasz, pk.data_xasz
-            ):
-                for a in vxc_asz.keys():
-                    vxc_asz[a][:] = newvxc_asz[a] + alpha * p_asz[a]
+
+            x_new_AE = {}
+            x_new_PS = {}
+
+            for a in x.data_xasz[0].keys():
+                # Unconstrained step in abstract basis
+                x_AE = x.data_xasz[0][a] + alpha * pk.data_xasz[0][a]
+                x_PS = x.data_xasz[1][a] + alpha * pk.data_xasz[1][a]
+
+                x_new_AE[a] = x_AE
+                x_new_PS[a] = x_PS
+
+                # Envelope E & Forward mapping
+                E_sng = iks.wdn_work_asng[a]
+                xc.vxc_xasz[1][a][:] = x_PS
+                xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
+
+            for vxc_asz in xc.vxc_xasz:
                 vxc_asz.check_consistency()
+
             iks.iterate()
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
             J_sg = iks.jacobian()
             J_xasz = iks.atomic_jacobian()
             Jwork_xasz = [iks.hamiltonian.atomdist.to_work(
                 J_asz) for J_asz in J_xasz]
+
             iks.fmt.log(f"line search {il}")
             iks.logiter(il, self.L1, L_new, self.LD1,
                         LD_new, g_new.data_sg, sep="")
+
             g_new = PotState(J_sg, Jwork_xasz, *self.potstate_args)
             phi_new = L_new + LD_new
 
-            # track the best phi we have seen along this line
             if phi_new < best_phi:
                 best_phi = phi_new
-                x_best = PotState(xc.vxc_sg, xc.vxc_xasz, *
-                                  self.potstate_args).copy()
+                # save the abstract state, not the physical xc.vxc_xasz
+                x_best = PotState(xc.vxc_sg.copy(), [
+                                  x_new_AE.copy(), x_new_PS.copy()], *self.potstate_args)
                 g_best = g_new.copy()
                 best_state = (x_best, g_best, L_new, LD_new, alpha)
 
             if phi_new <= phi0 + c1 * alpha * dphi0:
                 dphi_new = pk.inner(g_new)
-                # Check Wolfe Curvature condition
                 if dphi_new >= c2 * dphi0:
                     accepted = True
                     break
                 else:
                     self.iks.fmt.log(
-                        f"  Warning: Armijo passed but Wolfe curvature failed "
-                        f"(dphi_new={dphi_new:.2e} < req={c2 * dphi0:.2e}). "
-                        "L-BFGS update may be skipped to prevent instability."
-                    )
+                        "  Warning: Armijo passed but Wolfe curvature failed. L-BFGS update may be skipped.")
                     accepted = True
                     break
-            # quadratic interpolation
+
             denom = 2.0 * (phi_new - phi0 - dphi0 * alpha)
             if denom > 0:
                 alpha_quad = - (dphi0 * alpha**2) / denom
-                # don't reduce alpha too slowly or too fast
                 alpha_new = max(0.1 * alpha, min(0.9 * alpha, alpha_quad))
                 iks.fmt.log(
                     f"  iKSLBFGS LS Interpolation: {alpha:.4e} -> {alpha_new:.4e}")
                 alpha = alpha_new
             else:
-                # fallback to simple backtracking if curvature is negative
                 alpha *= tau
+
         if accepted:
-            x_new = PotState(xc.vxc_sg, xc.vxc_xasz, *
-                             self.potstate_args).copy()
+            # return abstract variables
+            x_new = PotState(xc.vxc_sg.copy(), [
+                             x_new_AE, x_new_PS], *self.potstate_args)
             return x_new, g_new, L_new, LD_new, alpha, True
 
-        # no Armijo, but we found some alpha with phi_new < phi0
         if best_state is not None and best_phi < phi0:
             self.iks.fmt.log(
-                "L-BFGS line search: Armijo failed, but found decreasing lagrangian; "
-                "using best lagrangian step along direction."
-            )
+                "L-BFGS line search: Armijo failed, using best lagrangian step.")
             x_best, g_best, L_best, LD_best, alpha_best = best_state
-            # make sure xc matches x_best
+
+            # forward map x_best back to physical arrays
             xc.vxc_sg[:] = x_best.data_sg
-            for vxc_asz, vbest_asz in zip(xc.vxc_xasz, x_best.data_xasz):
-                for a in vxc_asz.keys():
-                    vxc_asz[a][:] = vbest_asz[a]
+            for a in x_best.data_xasz[0].keys():
+                x_AE = x_best.data_xasz[0][a]
+                x_PS = x_best.data_xasz[1][a]
+                E_sng = iks.wdn_work_asng[a]
+                xc.vxc_xasz[1][a][:] = x_PS
+                xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
 
             return x_best, g_best, L_best, LD_best, alpha_best, True
-        # nothing along this direction improves phi
+
         self.iks.fmt.log(
             "Warning: L-BFGS line search: no step reduced Lagrangian; rejecting direction.")
-        # restore potentials to x
+
+        # forward map original abstract x back to physical arrays
         xc.vxc_sg[:] = x.data_sg
-        for vxc_asz, newvxc_asz in zip(xc.vxc_xasz, x.data_xasz):
-            for a in vxc_asz.keys():
-                vxc_asz[a][:] = newvxc_asz[a]
+        for a in x.data_xasz[0].keys():
+            x_AE = x.data_xasz[0][a]
+            x_PS = x.data_xasz[1][a]
+            E_sng = iks.wdn_work_asng[a]
+            xc.vxc_xasz[1][a][:] = x_PS
+            xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
+
         return x.copy(), gk, L0, LD0, 0.0, False
 
     def run(self) -> list[float]:
@@ -572,7 +586,25 @@ class iKSLBFGS:
         for J_asz in J_xasz:
             Jwork_xasz.append(iks.hamiltonian.atomdist.to_work(J_asz))
         gk = PotState(J_sg, Jwork_xasz, *self.potstate_args).copy()
-        x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz,
+        # x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz,
+        #              *self.potstate_args).copy()
+
+        xAE_asz = {}
+        xPS_asz = {}
+        for a in iks.xc.vxc_xasz[0].keys():
+            v_AE = iks.xc.vxc_xasz[0][a]
+            v_PS = iks.xc.vxc_xasz[1][a]
+            # v_PS is the independent base variable
+            xPS_asz[a] = v_PS.copy()
+            # Envelope E: 1 at core, 0 at boundary
+            E_sng = iks.wdn_work_asng[a]
+            x_AE_init = v_PS.copy()
+            mask = E_sng > 1e-8
+            x_AE_init[mask] = v_PS[mask] + \
+                (v_AE[mask] - v_PS[mask]) / E_sng[mask]
+            xAE_asz[a] = x_AE_init
+
+        x = PotState(iks.xc.vxc_sg, [xAE_asz, xPS_asz],
                      *self.potstate_args).copy()
 
         x_prev = None
@@ -580,14 +612,12 @@ class iKSLBFGS:
 
         for t in range(1, self.maxiter + 1):
             iks.niter = t
-            val_bound, reset_bound = iks.boundsched.step(t)
             val_core, reset_core = iks.coresched.step(t)
             val_reg, reset_reg = iks.regsched.step(t)
-            if reset_bound or reset_core or reset_reg:
-                iks.lambdabound = val_bound
+            if reset_core or reset_reg:
                 iks.lambdacore = val_core
                 iks.lambdareg = val_reg
-                iks.fmt.log(f'Regularization scheduler: lambdabound={val_bound}, '
+                iks.fmt.log(f'Regularization scheduler: '
                             f'lambdareg={val_reg:.4e}, lambdacore={val_core:.4e}')
                 # reset the history right after the regularization has been turned off
                 self.s_hist.clear()
