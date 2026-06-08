@@ -212,13 +212,14 @@ def check(dir: Path) -> None:
     d = []
     v = {}
     for p in dir.glob('*.json'):
-        if p.name[0].islower():
+        name = p.stem.split('-')[-1]
+        if name[0].islower():
             continue
         data = json.loads(p.read_text())
         x = data['strain']
         d.append(x * 100)
         e = data['energy']
-        v[p.stem.rsplit('-')[-1]] = e
+        v[name] = e
 
     n = len(d)
     mean = sum(d) / n

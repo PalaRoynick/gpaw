@@ -84,6 +84,8 @@ def convergence_check(dir: Path) -> None:
     """Write summary."""
     ecuts, efcc, de = np.array(
         json.loads((dir / 'ecuts.json').read_text())).T
+    import matplotlib.pyplot as plt
+    plt.plot(ecuts, efcc, label=dir)
     ecut1 = get_ecut(ecuts, efcc, 0.1)
     ecut2 = get_ecut(ecuts, efcc, 0.01)
     ecut3 = get_ecut(ecuts, efcc, 0.001)
@@ -103,3 +105,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     for path in args.path:
         convergence_check(Path(path))
+    import matplotlib.pyplot as plt
+    plt.legend()
+    plt.show()
+    
