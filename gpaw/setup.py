@@ -275,7 +275,7 @@ class BaseSetup:
             raise WrongMagmomForHundsRuleError(
                 f'Bad magnetic moment {magmom:g} for {self.symbol} atom!')
 
-        # print('fsi=', f_si)
+        # print('f_sI =', f_sI)
         return f_sI
 
     def get_hunds_rule_moment(self, charge=0):
