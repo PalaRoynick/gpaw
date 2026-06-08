@@ -31,7 +31,8 @@ class TwoElectronIntegrals(object):
         self.calc = calc
         self.ibzwfs = calc.wfs.ibzwfs
         self.eigensolver = calc._dft.scf_loop.eigensolver
-        self.ham = calc.hamiltonian
+        #self.ham = calc.hamiltonian
+        self.ham = self.calc._dft.scf_loop.hamiltonian
         self.dens = calc.density
         self.potential = calc._dft.potential
         self.pot_calc = calc._dft.pot_calc
@@ -157,14 +158,14 @@ class TwoElectronIntegrals(object):
             # ADAPT/FIX
             grad_knG = self.get_gradients_2(self.ham, self.ibzwfs, 
                                             scalewithocc=False)
-            for k, kpt in enumerate(self.ibzwfs.kpt_u):
-                n_occ = get_n_occ(kpt)[0]
-                dim = self.ibzwfs.eigensolver.bd.nbands - n_occ
-                grad_knG[k][n_occ: n_occ + dim] = \
-                    self.ibzwfs.eigensolver.get_gradients_unocc_kpt(
-                        self.ham, self.ibzwfs, kpt)
-                self.H_nn = self.ibzwfs.integrate(
-                    kpt.psit_nG[:], grad_knG[k][:], True)
+            for k, wfs in enumerate(self.ibzwfs._wfs_u):
+                n_occ = int(wfs.myocc_n[0])
+                dim = int(self.n_bands - n_occ)
+                grad_knG[k][n_occ:n_occ + dim] = \
+                    self.get_gradients_unocc_kpt(
+                        self.ham, self.ibzwfs, wfs)
+                self.H_nn = self.cgd.integrate(
+                    wfs.psit_nX.data.read()[:], grad_knG[k][:], True)
 
     # ROTATE RANK 2 TENSOR
 
@@ -238,7 +239,7 @@ class TwoElectronIntegrals(object):
 
             # ignore the xcdc?
 
-            self.ghat.add_to(rhot_gij, Q_aLij)
+            self.ghat.add(rhot_gij, Q_aLij)
 
             vHt_gij = self.finegd.zeros()
             self.poiss.solve(vHt_gij, rhot_gij, zero_initial_phi=False,
@@ -334,7 +335,8 @@ class TwoElectronIntegrals(object):
 
         import itertools
 
-        iter_array = np.array(list(itertools.product(range(nbands), repeat=4)))
+        iter_array = np.array(list(itertools.product(range(nbands), repeat=4)),
+                              dtype=int)
         #print(iter_array)
         #print(iter_array.size)
         #print(iter_array.shape)
@@ -398,32 +400,45 @@ class TwoElectronIntegrals(object):
 
         nbands = ibzwfs.nbands
         # from backwards compatibility
-        Hpsi_nG = np.empty((nbands) + self.ibzwfs._wfs_u
+        Hpsi_nG = np.empty((nbands,) + self.ibzwfs._wfs_u
                            [self.ibzwfs.u_q[wfs.q]]
                            .psit_nX.data.shape[1:],
-                           complex if self.mode == 'pw' else self.dtype)
+                           complex if self.ibzwfs.mode == 'pw' else self.dtype)
+        desc = self.ibzwfs._wfs_u[self.ibzwfs.u_q[wfs.q]].psit_nX.desc
+        self.ham.apply(
+            self.potential.vt_sR,
+            None,
+            self.ibzwfs,  # needed for hybrids
+            getattr(self.density, 'D_asii', None),  # needed for hybrids
+            desc.from_data(data=wfs.psit_nX.data.read()),  # CAMBIARE, nG non esiste!
+            desc.from_data(data=Hpsi_nG),
+            wfs.spin)
+        
         #Hpsi_nG = wfs.empty(nbands, q=kpt.q)
-        wfs.apply_pseudo_hamiltonian(kpt, ham, kpt.psit_nG, Hpsi_nG)
+        #wfs.apply_pseudo_hamiltonian(kpt, ham, kpt.psit_nG, Hpsi_nG)
 
         c_axi = {}
-        for a, P_xi in kpt.P_ani.items():
-            dH_ii = unpack_density(ham.dH_asp[a][kpt.s])
+        for a, P_xi in wfs.P_ani.items():
+            dH_ii = unpack_density(self.potential.gather()[0][a][wfs.spin])
             c_xi = np.dot(P_xi, dH_ii)
             c_axi[a] = c_xi
 
         # not sure about this:
-        ham.xc.add_correction(
-            kpt, kpt.psit_nG, Hpsi_nG, kpt.P_ani, c_axi, n_x=None,
+        self.ham.xc.xc.add_correction(
+            wfs, wfs.psit_nX, Hpsi_nG, wfs.P_ani, c_axi, n_x=None,
             calculate_change=False)
         # add projectors to the H|psi_i>
-        wfs.pt.add(Hpsi_nG, c_axi, kpt.q)
+
+        from gpaw.new.backwards_compatibility import PT
+        pt = PT(ibzwfs)
+        pt.add(Hpsi_nG, c_axi, wfs.q)
         # scale with occupation numbers
         if scalewithocc:
-            for i, f in enumerate(kpt.f_n):
+            for i, f in enumerate(wfs.myocc_n):
                 Hpsi_nG[i] *= f
         return Hpsi_nG
 
-    def get_gradients_unocc_kpt(self, ham, wfs, kpt):
+    def get_gradients_unocc_kpt(self, ham, ibzwfs, wfs):
         """
         FROM ETDM! NEEDED FOR CALCULATION OF HAMILTONIAN MATRIX IN
         two_electron_integrals.py!
@@ -437,31 +452,52 @@ class TwoElectronIntegrals(object):
         """
         orbital_dependent = ham.xc.orbital_dependent
 
-        n_occ = get_n_occ(kpt)[0]
+        n_occ = int(wfs.myocc_n[0])
         if not orbital_dependent:
-            dim = self.bd.nbands - n_occ
-            n0 = n_occ
+            dim = int(self.n_bands - n_occ)
+            n0 = int(n_occ)
         else:
-            dim = self.bd.nbands
+            dim = int(self.n_bands)
             n0 = 0
 
         # calculate gradients:
-        psi = kpt.psit_nG[n0:n0 + dim].copy()
-        P1_ai = wfs.pt.dict(shape=dim)
-        wfs.pt.integrate(psi, P1_ai, kpt.q)
-        Hpsi_nG = wfs.empty(dim, q=kpt.q)
-        wfs.apply_pseudo_hamiltonian(kpt, ham, psi, Hpsi_nG)
+        psi = wfs.psit_nX.data.read()[n0:n0 + dim].copy()
+
+        from gpaw.new.backwards_compatibility import PT
+        pt = PT(ibzwfs)
+
+        P1_ai = pt.dict(shape=dim)
+        pt.integrate(psi, P1_ai, wfs.q)
+
+        # from backwards compatibility
+        Hpsi_nG = np.empty((self.n_bands,) + self.ibzwfs._wfs_u
+                           [self.ibzwfs.u_q[wfs.q]]
+                           .psit_nX.data.shape[1:],
+                           complex if self.ibzwfs.mode == 'pw' else self.dtype)
+
+        #Hpsi_nG = wfs.empty(dim, q=wfs.q)
+        desc = self.ibzwfs._wfs_u[self.ibzwfs.u_q[wfs.q]].psit_nX.desc
+        self.ham.apply(
+            self.potential.vt_sR,
+            None,
+            self.ibzwfs,  # needed for hybrids
+            getattr(self.density, 'D_asii', None),  # needed for hybrids
+            desc.from_data(data=wfs.psit_nX.data.read()),
+            desc.from_data(data=Hpsi_nG),
+            wfs.spin)
+        #wfs.apply_pseudo_hamiltonian(kpt, ham, psi, Hpsi_nG)
+        
         c_axi = {}
         for a, P_xi in P1_ai.items():
-            dH_ii = unpack_density(ham.dH_asp[a][kpt.s])
+            dH_ii = unpack_density(self.potential.gather()[0][a][wfs.spin])
             c_xi = np.dot(P_xi, dH_ii)
             c_axi[a] = c_xi
         # not sure about this:
-        ham.xc.add_correction(kpt, psi, Hpsi_nG,
-                              P1_ai, c_axi, n_x=None,
-                              calculate_change=False)
+        ham.xc.xc.add_correction(wfs, psi, Hpsi_nG,
+                                 P1_ai, c_axi, n_x=None,
+                                 calculate_change=False)
         # add projectors to the H|psi_i>
-        wfs.pt.add(Hpsi_nG, c_axi, kpt.q)
+        pt.add(Hpsi_nG, c_axi, wfs.q)
 
         if orbital_dependent:
             Hpsi_nG = Hpsi_nG[n_occ:n_occ + dim]

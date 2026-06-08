@@ -33,6 +33,7 @@ class HybridXC:
         self.exx_fraction = fraction
         self.omega = omega
         self.yukawa = yukawa
+        self.orbital_dependent = True  # should it be like this?
 
         if xcname == 'null':
             self.description = ''

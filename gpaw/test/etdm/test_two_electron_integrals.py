@@ -45,6 +45,7 @@ def test_two_electron_integrals(in_tmp_dir):
 
     calc = GPAW(mode=PW(300),
                 h=0.3,
+                legacy_gpaw = False,
                 xc={'name': 'EXX', 'backend': 'pw'},
                 basis='sz(dzp)',
                 eigensolver={'name': 'etdm-fdpw', 'converge_unocc': True},
@@ -97,7 +98,7 @@ def test_two_electron_integrals(in_tmp_dir):
     sort_orbitals_according_to_energies(
         calc.hamiltonian, calc.wfs, use_eps=True)
 
-    Ucalc = TwoeIntegrals(calc, hamilton_how=1)
+    Ucalc = TwoElectronIntegrals(calc, hamilton_how=1)
     Ucalc.update_wf_ref()
     Ucalc.obtain_hopping_matrix()
     Ucalc.evaluate_two_e_integrals()

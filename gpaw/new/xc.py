@@ -32,6 +32,8 @@ def create_functional(xc: OldXCFunctional | str | dict,
     exx_fraction = 0.0
     exx_omega = 0.0
     exx_yukawa = False
+    orbital_dependent = False
+    
     if isinstance(xc, (str, dict)):
         xc = XC(xc)
     setup_name = xc.get_setup_name()
@@ -41,6 +43,7 @@ def create_functional(xc: OldXCFunctional | str | dict,
         exx_fraction = xc.exx_fraction
         exx_omega = xc.omega
         exx_yukawa = xc.yukawa
+        orbital_dependent = xc.orbital_dependent
         xc = xc.xc
 
     if xc.type == 'LDA':
@@ -59,6 +62,7 @@ def create_functional(xc: OldXCFunctional | str | dict,
     functional.exx_omega = exx_omega
     functional.exx_yukawa = exx_yukawa
     functional.setup_name = setup_name
+    functional.orbital_dependent = orbital_dependent
 
     return functional
 
@@ -80,6 +84,7 @@ class Functional:
         self.exx_fraction = 0.0
         self.exx_omega = 0.0
         self.exx_yukawa = False
+        self.orbital_dependent = False
         self.energies: dict[str, float] = {}
 
     def __str__(self):
