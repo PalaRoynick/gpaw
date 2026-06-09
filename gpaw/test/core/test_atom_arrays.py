@@ -52,7 +52,7 @@ def test_gather(comm):
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('xp', [np, cp])
-def test_P_ani_dH_aii(domain_band_comms, xp):
+def test_P_ani_dH_aii(domain_band_comms, xp, set_device_if_xp_is_cupy):
     domain_comm, band_comm = domain_band_comms
     ni_a = [2, 3, 4, 17]
     dH_asii = AtomArraysLayout([(n, n) for n in ni_a],

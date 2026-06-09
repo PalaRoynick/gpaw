@@ -4,6 +4,10 @@ import pytest
 from gpaw.gpu import cupy as cp
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.serial
 def test_basics():

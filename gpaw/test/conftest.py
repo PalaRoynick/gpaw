@@ -43,6 +43,19 @@ def set_device():
     set_device(log, world)
 
 
+@pytest.fixture
+def set_device_if_xp_is_cupy(request):
+    callspec = getattr(request.node, 'callspec', None)
+    if callspec is None:
+        return
+    xp = callspec.params.get('xp')
+    if xp is None:
+        return
+    from gpaw.gpu import cupy
+    if xp is cupy:
+        request.getfixturevalue('set_device')
+
+
 @pytest.fixture(scope='module')
 def dftd3():
     from ase.calculators.dftd3 import PureDFTD3

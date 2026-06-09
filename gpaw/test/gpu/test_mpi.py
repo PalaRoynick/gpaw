@@ -6,6 +6,10 @@ from gpaw.gpu import cupy as cp
 from gpaw.gpu.mpi import CuPyMPI
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 def test_mpi():
     a = cp.ones(1)

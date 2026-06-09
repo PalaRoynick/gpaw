@@ -9,6 +9,10 @@ from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.transformers import Transformer
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize('pbc', [True, False])

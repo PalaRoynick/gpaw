@@ -13,6 +13,10 @@ So we manually test the FFT at least until Cupy's ROCm support matures.
 """
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.skipif(cupy_is_fake, reason="No need to test with CPUPY")
 @pytest.mark.parametrize(

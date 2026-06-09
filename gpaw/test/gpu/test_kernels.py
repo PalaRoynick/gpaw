@@ -9,6 +9,10 @@ from gpaw.utilities import as_real_dtype
 seed = 42
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize("dtype", [np.float32, np.float64,

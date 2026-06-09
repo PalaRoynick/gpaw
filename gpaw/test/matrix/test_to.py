@@ -7,7 +7,7 @@ from gpaw.mpi import world
 
 
 @pytest.mark.parametrize('xp', [np, cp])
-def test_to_xp_dtype(xp):
+def test_to_xp_dtype(xp, set_device_if_xp_is_cupy):
     N = 21
     m1 = Matrix(N, N, dist=(world, -1, 1))
     m1.data[:] = world.rank

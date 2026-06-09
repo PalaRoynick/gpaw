@@ -5,6 +5,10 @@ from gpaw.gpu import cupy as cp
 from gpaw.new.pw.hamiltonian import apply_local_potential_gpu
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.serial
 @pytest.mark.parametrize('dtype', [float, complex])

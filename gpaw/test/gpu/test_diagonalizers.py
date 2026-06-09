@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from gpaw.gpu.diagonalization import GPUDiagonalizer
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 def eigh_test_matrix(n: int,
                      dtype: np.dtype = np.float64,
                      backend: str = 'numpy',
