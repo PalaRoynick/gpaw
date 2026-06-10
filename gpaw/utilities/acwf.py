@@ -245,8 +245,8 @@ def check(dir: Path) -> None:
         ee = np.nan
 
     print(f'{dir.name:15} {n:2}',
-          f'{mean:7.2f} {meanabs:7.2f} {rms:7.2f} {maxabs:7.2f}',
-          f'{ee:8.3f}')
+          f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
+          f'{ee:8.3f} eV')
 
 
 def reference_structure(symbol: str,
