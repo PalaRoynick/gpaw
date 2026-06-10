@@ -1,0 +1,4 @@
+project-includes = ["gpaw"]
+search-path = ["typings"]
+preset = "legacy"
+ignore-missing-imports = ["*"]

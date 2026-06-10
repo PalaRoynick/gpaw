@@ -87,7 +87,7 @@ class WaveFunctions:
                    taut_sR: UGArray) -> None:
         raise NotImplementedError
 
-    def orthonormalize(self, work_array_nX: ArrayND = None):
+    def orthonormalize(self, work_array_nX: ArrayND | None = None):
         raise NotImplementedError
 
     def move(self,

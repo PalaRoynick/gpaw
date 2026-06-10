@@ -10,7 +10,7 @@ import traceback
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 from ase.parallel import MPI as ASE_MPI
@@ -721,9 +721,6 @@ class _Communicator:
         return self.comm.get_c_object()
 
 
-MPIComm = _Communicator  # for type hints
-
-
 # Serial communicator
 class SerialCommunicator:
     size = 1
@@ -837,6 +834,8 @@ class SerialCommunicator:
             return None  # won't actually be passed to C
         raise RuntimeError('No real C object')
 
+
+MPIComm = TypeAlias[_Communicator | SerialCommunicator]  # for type hints
 
 _serial_comm = SerialCommunicator()
 

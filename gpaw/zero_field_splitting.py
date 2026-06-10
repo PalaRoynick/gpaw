@@ -70,8 +70,8 @@ class WaveFunctions:
                  P_ani: dict[int, Array2D],
                  spin: int,
                  setups: list[Setup],
-                 gd: GridDescriptor = None,
-                 pd: PWDescriptor = None):
+                 gd: GridDescriptor | None = None,
+                 pd: PWDescriptor | None = None):
         """Container for wave function in real-space and projections."""
 
         self.pd = pd or PWDescriptor(ecut=None, gd=gd)
@@ -218,7 +218,7 @@ def convert_tensor(D_vv: Array2D,
     return float(D), float(E), axis, D_vv * scale
 
 
-def main(argv: list[str] = None) -> Array2D:
+def main(argv: list[str] | None = None) -> Array2D:
     """CLI interface."""
     import argparse
 
