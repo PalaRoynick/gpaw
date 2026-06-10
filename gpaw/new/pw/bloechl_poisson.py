@@ -21,7 +21,7 @@ from gpaw.lcao.overlap import (FourierTransformer, LazySphericalHarmonics,
                                TwoSiteOverlapCalculator)
 from gpaw.new.pw.paw_poisson import PAWPoissonSolver
 from gpaw.spline import Spline
-
+from gpaw.new import trace
 
 def vg(r_r: np.ndarray, rc: float) -> np.ndarray:
     v_lr = np.empty((3, len(r_r)))
@@ -153,6 +153,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         self._force_av = None
         self._stress_vv = None
 
+    @trace
     def solve(self,
               nt0_g: PWArray,
               Q_aL: AtomArrays,
@@ -218,6 +219,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
                                     e_coulomb3)
         return e_coulomb, vHt_g, V_aL
 
+    @trace
     def force_contribution(self, Q_aL, vHt_g, nt_g):
         force_av = self.xp.zeros((len(Q_aL), 3))
 

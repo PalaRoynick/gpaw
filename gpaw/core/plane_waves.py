@@ -8,6 +8,7 @@ from functools import cached_property
 import numpy as np
 from ase.units import Ha
 
+from gpaw.new import trace
 import gpaw.fftw as fftw
 from gpaw import debug
 from gpaw.core.arrays import XArray
@@ -1051,6 +1052,8 @@ def find_reciprocal_vectors(ecut: float,
 
 def abs_square_gpu(psit_nG, weight_n, nt_R):
     from gpaw.gpu import cupyx
+    ifftn = trace(gpu=True)(cupyx.scipy.fft.ifftn)
+
     pw = psit_nG.desc
     dtype = as_complex_dtype(psit_nG.data.dtype)
     plan = nt_R.desc.fft_plans(xp=cp, dtype=dtype)
@@ -1075,7 +1078,7 @@ def abs_square_gpu(psit_nG, weight_n, nt_R):
                       Q_G,
                       1.0,
                       psit_bR.reshape((nb, -1)), *psit_bR.shape[1:])
-        psit_bR[:] = cupyx.scipy.fft.ifftn(
+        psit_bR[:] = ifftn(
             psit_bR,
             shape,
             norm='forward',

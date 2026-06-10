@@ -7,6 +7,7 @@ from ase.units import Bohr, Ha
 from scipy.sparse.linalg import LinearOperator, cg
 from scipy.special import erf
 
+from gpaw.new import trace
 from gpaw import get_scipy_version
 from gpaw.core import PWArray, PWDesc, UGDesc
 from gpaw.new.poisson import PoissonSolver
@@ -59,6 +60,7 @@ class PWPoissonSolver(PoissonSolver):
             txt += f'  uniform background charge: {self.charge}  # electrons\n'
         return txt
 
+    @trace
     def solve(self,
               vHt_g: PWArray,
               rhot_g: PWArray) -> float:

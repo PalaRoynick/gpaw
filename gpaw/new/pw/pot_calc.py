@@ -47,14 +47,17 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         self._vt_g = None
         self._dedtaut_g = None
 
+    @trace
     def interpolate(self, a_R, a_r=None):
         return a_R.interpolate(plan1=self.fftplan, plan2=self.fftplan2,
                                grid=self.fine_grid, out=a_r)
 
+    @trace
     def restrict(self, a_r, a_R=None):
         return a_r.fft_restrict(self.fftplan2, self.fftplan,
                                 grid=self.grid, out=a_R)
 
+    @trace
     def _interpolate_density(self, nt_sR):
         nt_sr = self.fine_grid.empty(nt_sR.dims, xp=self.xp)
         pw = self.vbar_g.desc
@@ -75,6 +78,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         return nt_sr, nt0_g
 
+    @trace
     def _interpolate_and_calculate_xc(self, xc, density):
         nt_sr, nt0_g = self._interpolate_density(density.nt_sR)
 
