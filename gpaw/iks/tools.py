@@ -556,11 +556,8 @@ def calculate_smooth_weights(setups, D_asp):
             w_ag[a] = 0.0
             continue
         r = xcc.rgd.r_g
-        rc = r[-1]  # The exact augmentation sphere boundary
-        # Smooth cosine transition: 1.0 at nucleus, exactly 0.0 at r_c
+        rc = r[-1]
         E_g = 0.5 * (1.0 + np.cos(np.pi * r / rc))
-        # Store as a 1D array. NumPy broadcasting will automatically handle
-        # the (nspins, n_lebedev, n_radial) multiplications in the optimizer!
         w_ag[a] = E_g
     return w_ag
 
