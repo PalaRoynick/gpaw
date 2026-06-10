@@ -468,9 +468,9 @@ class iKSLBFGS:
                 x_new_PS[a] = x_PS
 
                 # Envelope E & Forward mapping
-                E_sng = iks.wdn_work_asng[a]
+                E_g = iks.sw_work_ag[a]
                 xc.vxc_xasz[1][a][:] = x_PS
-                xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
+                xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
 
             for vxc_asz in xc.vxc_xasz:
                 vxc_asz.check_consistency()
@@ -534,9 +534,9 @@ class iKSLBFGS:
             for a in x_best.data_xasz[0].keys():
                 x_AE = x_best.data_xasz[0][a]
                 x_PS = x_best.data_xasz[1][a]
-                E_sng = iks.wdn_work_asng[a]
+                E_g = iks.sw_work_ag[a]
                 xc.vxc_xasz[1][a][:] = x_PS
-                xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
+                xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
 
             return x_best, g_best, L_best, LD_best, alpha_best, True
 
@@ -548,9 +548,9 @@ class iKSLBFGS:
         for a in x.data_xasz[0].keys():
             x_AE = x.data_xasz[0][a]
             x_PS = x.data_xasz[1][a]
-            E_sng = iks.wdn_work_asng[a]
+            E_g = iks.sw_work_ag[a]
             xc.vxc_xasz[1][a][:] = x_PS
-            xc.vxc_xasz[0][a][:] = x_AE * E_sng + x_PS * (1.0 - E_sng)
+            xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
 
         return x.copy(), gk, L0, LD0, 0.0, False
 
@@ -597,11 +597,11 @@ class iKSLBFGS:
             # v_PS is the independent base variable
             xPS_asz[a] = v_PS.copy()
             # Envelope E: 1 at core, 0 at boundary
-            E_sng = iks.wdn_work_asng[a]
+            E_g = iks.sw_work_ag[a]
             x_AE_init = v_PS.copy()
-            mask = E_sng > 1e-8
-            x_AE_init[mask] = v_PS[mask] + \
-                (v_AE[mask] - v_PS[mask]) / E_sng[mask]
+            mask = E_g > 1e-8
+            x_AE_init[..., mask] = v_PS[..., mask] + \
+                (v_AE[..., mask] - v_PS[..., mask]) / E_g[mask]
             xAE_asz[a] = x_AE_init
 
         x = PotState(iks.xc.vxc_sg, [xAE_asz, xPS_asz],

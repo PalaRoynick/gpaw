@@ -64,7 +64,7 @@ class DegeneracyDescriptor:
 # for example look at density.get_all_electron_density to see how to properly handle different distributions.
 
 class iKS:
-    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol, weights_sum_spins
+    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol
     """
     OECO-iKS: Orbital Expansion Constrained Optimization Inverse Kohn–Sham procedure.
     This class implements an inverse Kohn–Sham (iKS) approach using orbital expansion
@@ -215,7 +215,6 @@ class iKS:
         degeneracy_tol: float = 1e-3,
         occ_tol: float = 1e-10,
         nxc_kwargs: dict[str, Any] | None = None,
-        weights_sum_spins: bool = True,
     ):
         self.target = target
         atoms = calc.atoms or atoms
@@ -233,7 +232,6 @@ class iKS:
             lambdacore, **corereg_scheduler_params)
         self.corereg_xc = corereg_xc
         self.niter: int = 0
-        self.weights_sum_spins = weights_sum_spins
 
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
         self.stencil = stencil
@@ -274,9 +272,9 @@ class iKS:
         self.init_target_density(self.P_snn)
         self.nspins: int = self.tdens.nspins
         self.weights_sG, self.weights = iks_tools.get_weights(
-            weights, self.tdens.nt_sG, self.density.gd, self.weights_sum_spins)
+            weights, self.tdens.nt_sG, self.density.gd)
         self.weights_asng, self.atomic_weights = iks_tools.get_atomic_weights(
-            atomic_weights, calc.setups, self.tdens.D_asp, self.weights_sum_spins
+            atomic_weights, calc.setups, self.tdens.D_asp
         )
 
     def init_target_density(self, P_snn: Optional[ArrayND] = None) -> None:
@@ -349,10 +347,10 @@ class iKS:
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
         # regularization stuff
-        self.wdn_asng = iks_tools.calculate_weight_dn_sng(
+        self.sw_ag = iks_tools.calculate_smooth_weights(
             self.setups, self.tdens.D_asp)
         D_work_asp = self.hamiltonian.atomdist.to_work(self.tdens.D_asp)
-        self.wdn_work_asng = iks_tools.calculate_weight_dn_sng(
+        self.sw_work_ag = iks_tools.calculate_smooth_weights(
             self.setups, D_work_asp)
         self.wreg_ag = None
         self.vc_axg = None
@@ -759,7 +757,7 @@ class iKS:
             if self.xc.paw_potmode is PAWPotMode.lebedev:
                 Lmax = dvt_sLg.shape[1]
                 for s in range(self.nspins):
-                    E_ng = self.wdn_asng[a][s]
+                    E_g = self.sw_ag[a]
                     J_AE = np.dot(Y_nL[:, :Lmax], dv_sLg[s]).real
                     J_PS = np.dot(Y_nL[:, :Lmax], dvt_sLg[s]).real
                     if lambdacore != 0.0:
@@ -772,8 +770,8 @@ class iKS:
                         J_PS += 2 * lambdacore * \
                             self.wreg_ag[a][np.newaxis] * dv_PS
                     # flipped chain rule mapping
-                    self.J_xasz[0][a][s] = E_ng * J_AE
-                    self.J_xasz[1][a][s] = (1.0 - E_ng) * J_AE + J_PS
+                    self.J_xasz[0][a][s] = E_g * J_AE
+                    self.J_xasz[1][a][s] = (1.0 - E_g) * J_AE + J_PS
 
             else:
                 assert self.xc.paw_potmode is PAWPotMode.angular

@@ -373,7 +373,7 @@ VALID_WEIGHTS = (
 )
 
 
-def name_to_weight(weights, n_sg, sum_spins=True):
+def name_to_weight(weights, n_sg):
     if isinstance(weights, np.ndarray):
         return weights
 
@@ -383,34 +383,30 @@ def name_to_weight(weights, n_sg, sum_spins=True):
         )
 
     weights_sg = np.zeros_like(n_sg)
-    n = n_sg.sum(0) if sum_spins else n_sg
     if weights == "uniform":
         weights_sg[:] = 1.0
     elif weights == "zero":
         pass  # Already initialized to zeros
     elif weights == "density_sqrt":
-        weights_sg[:] = np.sqrt(n)
+        weights_sg[:] = np.sqrt(n_sg)
     elif weights == "density":
-        weights_sg[:] = n
+        weights_sg[:] = n_sg
     elif weights == "density_squared":
-        weights_sg[:] = n**2
+        weights_sg[:] = n_sg**2
     elif weights == "inverse_density":
-        weights_sg[:] = 1.0 / (n + 1e-10)
+        weights_sg[:] = 1.0 / (n_sg + 1e-6)
     elif weights == "inverse_density_squared":
-        weights_sg[:] = 1.0 / (n**2 + 1e-10)
+        weights_sg[:] = 1.0 / (n_sg**2 + 1e-12)
     elif weights == "mask":
-        if sum_spins:
-            weights_sg[:, n > 1e-7] = 1.0
-        else:
-            weights_sg[n > 1e-7] = 1.0
+        weights_sg[n_sg > 1e-6] = 1.0
     elif weights == "fr":
-        weights_sg[:] = n / (n + 1e-6)
+        weights_sg[:] = n_sg / (n_sg + 1e-6)
 
     return weights_sg
 
 
 def get_atomic_weights(
-    weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict, sum_spins=True,
+    weights: str | MutableMapping, setups: Setups, D_asp: ArrayDict,
 ) -> tuple[MutableMapping, str]:
     nspins = D_asp.shapes_a[0][0]
     if isinstance(weights, MutableMapping):
@@ -425,7 +421,7 @@ def get_atomic_weights(
                         D_asp[a], setups[a].xc_correction)
                     weights[a] = nt_s1g / n_s1g
                 else:
-                    weights[a] = name_to_weight(w_clean, n_s1g, sum_spins)
+                    weights[a] = name_to_weight(w_clean, n_s1g)
         return weights, "radial_custom"
 
     if "radial_" in weights:
@@ -467,13 +463,13 @@ def get_atomic_weights(
         if setups[a].xc_correction is None:
             continue
         n_sng = get_atomic_dens(D_sp, setups[a].xc_correction)
-        weights_asng[a][:] = name_to_weight(weights_clean, n_sng, sum_spins)
+        weights_asng[a][:] = name_to_weight(weights_clean, n_sng)
     weights_asng.check_consistency()
     return weights_asng, weights
 
 
 def get_weights(
-    weights: Array4D | str, nt_sG: Array4D, gd: GridDescriptor, sum_spins=True,
+    weights: Array4D | str, nt_sG: Array4D, gd: GridDescriptor,
 ) -> tuple[Array4D, str]:
     weights_sG = gd.empty(len(nt_sG))
     nt_sG = nt_sG.clip(0.0)
@@ -482,7 +478,7 @@ def get_weights(
         weights_sG[:] = weights
         weights_name = "custom"
     else:
-        weights_sG[:] = name_to_weight(weights, nt_sG, sum_spins=sum_spins)
+        weights_sG[:] = name_to_weight(weights, nt_sG)
     return weights_sG, weights_name
 
 
@@ -517,37 +513,56 @@ def calculate_boundary_weights(setups, power=12):
     return w_bound_ag
 
 
-def calculate_weight_dn_sng(setups, D_asp):
-    from gpaw.xc.numericalxc import calculate_angular_density, angular2lebedev
-    dn_asng = {}
-    for a, D_sp in D_asp.items():
+# def calculate_weight_dn_sng(setups, D_asp):
+#     from gpaw.xc.numericalxc import calculate_angular_density, angular2lebedev
+#     dn_asng = {}
+#     for a, D_sp in D_asp.items():
+#         xcc = setups[a].xc_correction
+#         if xcc is None:
+#             dn_asng[a] = 0.0
+#             continue
+#
+#         # 1. Core must be True to capture the massive 1s difference at r=0
+#         n_sLg = calculate_angular_density(
+#             xcc, D_sp, xcc.n_qg, xcc.nc_g, add_core=True)
+#         nt_sLg = calculate_angular_density(
+#             xcc, D_sp, xcc.nt_qg, xcc.nct_g, add_core=True)
+#
+#         dn_sLg = n_sLg - nt_sLg
+#         dn_sng = angular2lebedev(dn_sLg)
+#
+#         # 2. Absolute value is mandatory to handle negative nodal crossings
+#         dn_abs_sng = np.abs(dn_sng)
+#
+#         # 3. Find the radial maximum per Lebedev ray
+#         max_sng = dn_abs_sng.max(axis=2, keepdims=True)
+#
+#         # 4. Safe division guard (prevent NaNs on empty rays/spins)
+#         max_sng[max_sng < 1e-12] = 1.0
+#
+#         # 5. Normalize and clip
+#         dn_asng[a] = np.clip(dn_abs_sng / max_sng, 0.0, 1.0)
+#
+#     return dn_asng
+def calculate_smooth_weights(setups, D_asp):
+    """
+    Constructs a smooth, isotropic geometric envelope for the PAW transformation.
+    E(r) = 0.5 * (1 + cos(pi * r / rc))
+    """
+    w_ag = {}
+    for a in D_asp.keys():
         xcc = setups[a].xc_correction
         if xcc is None:
-            dn_asng[a] = 0.0
+            w_ag[a] = 0.0
             continue
-
-        # 1. Core must be True to capture the massive 1s difference at r=0
-        n_sLg = calculate_angular_density(
-            xcc, D_sp, xcc.n_qg, xcc.nc_g, add_core=True)
-        nt_sLg = calculate_angular_density(
-            xcc, D_sp, xcc.nt_qg, xcc.nct_g, add_core=True)
-
-        dn_sLg = n_sLg - nt_sLg
-        dn_sng = angular2lebedev(dn_sLg)
-
-        # 2. Absolute value is mandatory to handle negative nodal crossings
-        dn_abs_sng = np.abs(dn_sng)
-
-        # 3. Find the radial maximum per Lebedev ray
-        max_sng = dn_abs_sng.max(axis=2, keepdims=True)
-
-        # 4. Safe division guard (prevent NaNs on empty rays/spins)
-        max_sng[max_sng < 1e-12] = 1.0
-
-        # 5. Normalize and clip
-        dn_asng[a] = np.clip(dn_abs_sng / max_sng, 0.0, 1.0)
-
-    return dn_asng
+        r = xcc.rgd.r_g
+        rc = r[-1]  # The exact augmentation sphere boundary
+        # Smooth cosine transition: 1.0 at nucleus, exactly 0.0 at r_c
+        E_g = 0.5 * (1.0 + np.cos(np.pi * r / rc))
+        # Store as a 1D array. NumPy broadcasting will automatically handle
+        # the (nspins, n_lebedev, n_radial) multiplications in the optimizer!
+        w_ag[a] = E_g
+    return w_ag
 
 
 def calc_core_atomic_potentials(setups, setup_name):
