@@ -45,13 +45,27 @@ def set_device():
 
 @pytest.fixture
 def set_device_if_xp_is_cupy(request):
+    """
+    If xp is cupy, execute the set_device fixture.
+
+    Usage:
+    @pytest.mark.parametrize("xp", [numpy, cupy])
+    def test_gpu_and_xp(xp, set_device_if_xp_is_cupy):
+        ...
+    """
+
     callspec = getattr(request.node, 'callspec', None)
-    if callspec is None:
-        return
-    xp = callspec.params.get('xp')
-    if xp is None:
-        return
+
+    if callspec is None or 'xp' not in callspec.params:
+        pytest.fail(
+            f"{request.node.nodeid} uses "
+            "set_device_if_xp_is_cupy but has no 'xp' parameter."
+        )
+
+    xp = callspec.params['xp']
+
     from gpaw.gpu import cupy
+
     if xp is cupy:
         request.getfixturevalue('set_device')
 
