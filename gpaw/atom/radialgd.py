@@ -385,8 +385,19 @@ class RadialGridDescriptor(ABC):
             b_g[:gc] = np.polyval(c_x, r_g[:gc]**2) * r_g[:gc]**l
             g_k, b_k = self.fft(b_g * r_g, l)
             kc = int(Gcut / g_k[1])
-            f_k = g_k[kc:] * b_k[kc:]
+            f_k = g_k[kc:]**2 * b_k[kc:]
+            print(x, f_k @ f_k)
             return f_k @ f_k
+
+        if 0:
+            import matplotlib.pyplot as plt
+            X = np.linspace(0.5, 0.8, 70)
+            Y = []
+            for x in X:
+                y = f([x])
+                Y.append(y)
+            plt.plot(X, Y)
+            plt.show();dsagf
 
         from scipy.optimize import minimize
         minimize(f, x0)
