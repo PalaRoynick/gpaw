@@ -31,7 +31,7 @@ from gpaw.utilities.timing import NullTimer
 class TBHamiltonianMatrixCalculator(CollinearHamiltonianMatrixCalculator):
     def _calculate_potential_matrix(self,
                                     wfs: LCAOWaveFunctions,
-                                    V_xMM: Array3D = None) -> Matrix:
+                                    V_xMM: Array3D | None = None) -> Matrix:
         return wfs.V_MM
 
 

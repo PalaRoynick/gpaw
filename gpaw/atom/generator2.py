@@ -311,7 +311,7 @@ class PAWSetupGenerator:
                  core_hole=None,
                  fd=None,
                  yukawa_gamma=0.0,
-                 ecut: float = None,
+                 ecut: float | None = None,
                  omega=None):
         """fd: stream
             Text output.

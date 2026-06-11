@@ -147,7 +147,7 @@ class EdmistonRuedenbergUpdateRef(EdmistonRuedenberg):
             for a, P_ni in wfs.P_ani.items():
                 P_ni[self._indices] = u_nn.T @ P_ni[self._indices]
 
-    def _calc_energy_and_gradient(self, a_u: np.ndarray = None):
+    def _calc_energy_and_gradient(self, a_u: np.ndarray | None = None):
         """Calculate value of the objective function
         (energy) and gradient at a_u
 

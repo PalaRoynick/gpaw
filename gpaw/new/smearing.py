@@ -69,7 +69,7 @@ class OccupationNumberCalculator:
                   eigenvalues: list[list[float]],
                   weights: list[float],
                   spins: list[int],
-                  fermi_levels_guess: list[float] = None,
+                  fermi_levels_guess: list[float] | None = None,
                   fix_fermi_level: bool = False
                   ) -> tuple[Array2D, list[float], float]:
         occs, fls, e = self.occ.calculate(nelectrons, eigenvalues, weights,

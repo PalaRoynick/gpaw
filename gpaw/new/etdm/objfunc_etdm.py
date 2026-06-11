@@ -147,7 +147,7 @@ class ObjectiveFunctionETDM(ABC):
             self._energy, self._gradient = self._calc_energy_and_gradient()
         return self._gradient
 
-    def _calc_energy_and_gradient(self, a_u: np.ndarray = None):
+    def _calc_energy_and_gradient(self, a_u: np.ndarray | None = None):
         """
         Calculate the objective function value (energy) and its gradient
         with respect to the skew-Hermitian parameters.

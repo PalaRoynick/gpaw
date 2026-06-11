@@ -54,11 +54,11 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
                                    optimize=True)
         return V_MM
 
-    def _calculate_matrix_without_kinetic(self,
-                                          wfs: LCAOWaveFunctions,
-                                          V_xMM: Array3D = None,
-                                          dH_aii: dict[int, Array2D] = None
-                                          ) -> Matrix:
+    def _calculate_matrix_without_kinetic(
+            self,
+            wfs: LCAOWaveFunctions,
+            V_xMM: Array3D | None = None,
+            dH_aii: dict[int, Array2D] | None = None) -> Matrix:
         if V_xMM is None:
             V_xMM = self.V_sxMM[wfs.spin]
 

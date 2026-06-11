@@ -795,7 +795,7 @@ class DFT:
                       filename: str | Path | IO[str],
                       log: Logger | str | Path | IO[str] | None = None,
                       comm=None,
-                      parallel: dict[str, Any] = None,
+                      parallel: dict[str, Any] | None = None,
                       dtype=None,
                       force_complex_dtype: bool = False,
                       object_hooks: dict[str,

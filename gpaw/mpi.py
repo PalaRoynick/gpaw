@@ -10,7 +10,7 @@ import traceback
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import numpy as np
 from ase.parallel import MPI as ASE_MPI
@@ -834,8 +834,11 @@ class SerialCommunicator:
             return None  # won't actually be passed to C
         raise RuntimeError('No real C object')
 
+    def receive(self, a, src, tag=123, block=True):
+        raise NotImplementedError
 
-MPIComm = TypeAlias[_Communicator | SerialCommunicator]  # for type hints
+
+MPIComm = _Communicator | SerialCommunicator  # for type hints
 
 _serial_comm = SerialCommunicator()
 

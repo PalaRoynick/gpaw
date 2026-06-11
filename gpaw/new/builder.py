@@ -433,8 +433,8 @@ class DFTComponentsBuilder:
 def create_communicators(comm: MPIComm,
                          nibzkpts: int = 1,
                          domain: int | tuple[int, int, int] | None = None,
-                         kpt: int = None,
-                         band: int = None,
+                         kpt: int | None = None,
+                         band: int | None = None,
                          xp: ModuleType = np) -> dict[str, MPIComm]:
     parallelization = Parallelization(comm, nibzkpts)
     if domain is not None and not isinstance(domain, int):
@@ -580,7 +580,7 @@ def create_uniform_grid(mode: str,
                         symmetries,
                         h: float | None = None,
                         interpolation: int | str | None = None,
-                        ecut: float = None,
+                        ecut: float | None = None,
                         comm: MPIComm = serial_comm) -> UGDesc:
     """Create grid in a backwards compatible way."""
     cell = cell / Bohr

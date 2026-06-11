@@ -404,7 +404,7 @@ class ASECalculator:
             raise ValueError('Only one Fermi-level.')
         return fl * Ha
 
-    def get_homo_lumo(self, spin: int = None) -> Array1D:
+    def get_homo_lumo(self, spin: int | None = None) -> Array1D:
         return self.dft.ibzwfs.get_homo_lumo(spin) * Ha
 
     def get_number_of_electrons(self):

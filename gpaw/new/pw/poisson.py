@@ -89,7 +89,7 @@ class ChargedPWPoissonSolver(PWPoissonSolver):
                  grid: UGDesc,
                  charge: float,
                  strength: float = 1.0,
-                 alpha: float = None,
+                 alpha: float | None = None,
                  eps: float = 1e-5):
         """Reciprocal-space Poisson solver for charged molecules.
 

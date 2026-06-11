@@ -35,7 +35,7 @@ class SkewHermitian:
                  nocc: int,
                  dtype: type,
                  representation='full',
-                 data: np.ndarray = None):
+                 data: np.ndarray | None = None):
         """
         Initialize a SkewHermitian object.
 

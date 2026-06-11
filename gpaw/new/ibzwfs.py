@@ -189,7 +189,7 @@ class IBZWaveFunctions(Generic[WFT]):
         for wfs in self:
             wfs.move(relpos_ac, atomdist, self.move_wave_functions)
 
-    def orthonormalize(self, work_array_nX: np.ndarray = None):
+    def orthonormalize(self, work_array_nX: np.ndarray | None = None):
         for wfs in self:
             wfs.orthonormalize(work_array_nX)
 
@@ -544,7 +544,7 @@ class IBZWaveFunctions(Generic[WFT]):
                 self.read_from_file_init_wfs_dm = True
                 psit_nX.data = np.ascontiguousarray(psit_nX.data[:])  # read
 
-    def get_homo_lumo(self, spin: int = None) -> Array1D:
+    def get_homo_lumo(self, spin: int | None = None) -> Array1D:
         """Return HOMO and LUMO eigenvalues."""
         if self.ncomponents == 1:
             assert spin == 0 or spin is None

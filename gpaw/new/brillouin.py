@@ -33,7 +33,7 @@ class BZPoints:
     def reduce(self,
                symmetries: Symmetries,
                *,
-               comm: MPIComm = None,
+               comm: MPIComm | None = None,
                strict: bool = True,
                use_time_reversal=True,
                tolerance=1e-7) -> IBZ:
