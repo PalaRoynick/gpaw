@@ -27,15 +27,9 @@ class WrongMagmomForHundsRuleError(ValueError):
     """
 
 
-def create_setup(symbol,
-                 xc='LDA',
-                 lmax=0,
-                 type='paw',
-                 basis=None,
-                 setupdata=None,
-                 filter=None,
-                 world=None,
-                 backwards_compatible=True) -> LeanSetup:
+def create_setup(symbol, xc='LDA', lmax=0,
+                 type='paw', basis=None, setupdata=None,
+                 filter=None, world=None, backwards_compatible=True):
     if isinstance(xc, str):
         xc = XC(xc)
 

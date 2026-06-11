@@ -15,7 +15,7 @@ from ase.units import Bohr, Ha
 
 from gpaw import setup_paths
 from gpaw.atom.radialgd import (AbinitRadialGridDescriptor,
-                                AERadialGridDescriptor, RadialGridDescriptor)
+                                AERadialGridDescriptor)
 from gpaw.atom.shapefunc import shape_functions
 from gpaw.mpi import broadcast
 from gpaw.xc.pawcorrection import PAWXCCorrection
@@ -48,7 +48,7 @@ class SetupData:
         self.eps_j = []
         self.e_kin_jj = None  # <phi | T | phi> - <phit | T | phit>
 
-        self.rgd: RadialGridDescriptor = None
+        self.rgd = None
 
         # Parameters for compensation charge expansion functions:
         self.shape_function = {'type': 'undefined', 'rc': np.nan}
