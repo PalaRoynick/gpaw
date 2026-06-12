@@ -4,7 +4,7 @@ from gpaw.xc.gllb.nonlocalfunctional import NonLocalFunctional
 def get_nonlocal_functional(name: str,
                             stencil: int = 2,
                             metallic: bool = False,
-                            width: float = None,
+                            width: float | None = None,
                             eps: float = 0.05) -> NonLocalFunctional:
     """Function for building GLLB functionals.
 

@@ -15,8 +15,8 @@ class HybridXC:
 
     def __init__(self,
                  xcname: str,
-                 fraction: float = None,
-                 omega: float = None,
+                 fraction: float | None = None,
+                 omega: float | None = None,
                  yukawa=None):
         from . import parse_name
         if xcname in ['EXX', 'PBE0', 'HSE03', 'HSE06', 'B3LYP', 'YS-PBE0']:

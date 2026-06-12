@@ -25,7 +25,7 @@ def get_subspace(A_MM: Array2D, indices: Sequence[int]):
 
 def get_orthonormal_subspace(H_MM: Array2D,
                              S_MM: Array2D,
-                             indices: Sequence[int] = None):
+                             indices: Sequence[int] | None = None):
     """Get orthonormal eigenvalues and -vectors of subspace listed in index."""
     if indices is not None:
         h_ww = get_subspace(H_MM, indices)
@@ -140,7 +140,7 @@ class BasisTransform:
 
     """
 
-    def __init__(self, U_MM: Array2D, indices: Sequence[int] = None) -> None:
+    def __init__(self, U_MM: Array2D, indices: Sequence[int] | None = None) -> None:
         """
 
         Parameters
@@ -197,7 +197,7 @@ class EffectiveModel(BasisTransform):
     def __init__(self,
                  U_MM: Array2D,
                  indices: Sequence[int],
-                 S_MM: Array2D = None) -> None:
+                 S_MM: Array2D | None = None) -> None:
         """
 
         See Also
@@ -447,8 +447,8 @@ class LocalOrbitals(TightBinding):
                     "Must include central unit cell, i.e. R=[0,0,0].") from exc
 
     def subdiagonalize(self,
-                       symbols: Array1D = None,
-                       blocks: Sequence[Sequence[int]] = None,
+                       symbols: Array1D | None = None,
+                       blocks: Sequence[Sequence[int]] | None = None,
                        groupby: str = 'energy'):
         """Subdiagonalize Hamiltonian and overlap matrices.
 
@@ -503,7 +503,7 @@ class LocalOrbitals(TightBinding):
         self.model = None
 
     def take_model(self,
-                   indices: list[int] = None,
+                   indices: list[int] | None = None,
                    minimal: bool = True,
                    cutoff: float = 1e-3,
                    ortho: bool = False):

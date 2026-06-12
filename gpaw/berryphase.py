@@ -171,7 +171,7 @@ def get_berry_phases(calc, spin=0, dir=0, check2d=False):
 
 
 def polarization_phase(*, calc=None,
-                       gpw_wfs: Path = None,
+                       gpw_wfs: Path | None = None,
                        comm=serial_comm):
     """
 

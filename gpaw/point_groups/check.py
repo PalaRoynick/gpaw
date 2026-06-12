@@ -22,9 +22,9 @@ class SymmetryChecker:
                  group: str | PointGroup,
                  center: ArrayLike,
                  radius: float = 2.0,
-                 x: Axis = None,
-                 y: Axis = None,
-                 z: Axis = None,
+                 x: Axis | None = None,
+                 y: Axis | None = None,
+                 z: Axis | None = None,
                  grid_spacing: float = 0.2):
         """Check point-group symmetries.
 
@@ -62,7 +62,7 @@ class SymmetryChecker:
 
     def check_function(self,
                        function: Array3D,
-                       grid_vectors: Array2D = None) -> dict[str, Any]:
+                       grid_vectors: Array2D | None = None) -> dict[str, Any]:
         """Check function on uniform grid."""
         if grid_vectors is None:
             grid_vectors = np.eye(3)

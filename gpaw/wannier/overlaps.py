@@ -23,8 +23,8 @@ class WannierOverlaps:
                  fermi_level: float,
                  directions: dict[tuple[int, ...], int],
                  overlaps: Array4D,
-                 projections: Array3D = None,
-                 proj_indices_a: list[list[int]] = None):
+                 projections: Array3D | None = None,
+                 proj_indices_a: list[list[int]] | None = None):
 
         self.atoms = atoms
         self.nwannier = nwannier
@@ -67,7 +67,7 @@ class WannierOverlaps:
     def localize_w90(self,
                      prefix: str = 'wannier',
                      folder: Path | str = 'W90',
-                     nwannier: int = None,
+                     nwannier: int | None = None,
                      **kwargs) -> WannierFunctions:
         from .w90 import Wannier90
         w90 = Wannier90(prefix, folder)
@@ -104,7 +104,7 @@ def dict_to_proj_indices(dct: dict[int | str, str],
 
 def calculate_overlaps(calc: GPAW,
                        nwannier: int,
-                       projections: dict[int | str, str] = None,
+                       projections: dict[int | str, str] | None = None,
                        n1: int = 0,
                        n2: int = 0,
                        spinors: bool = False,

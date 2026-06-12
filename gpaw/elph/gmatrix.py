@@ -248,7 +248,7 @@ class ElectronPhononMatrix:
                 g_xNkMn.append(g_NkMn)
         return np.array(g_xNkMn)
 
-    def bloch_matrix(self, calc: GPAW, k_qc: ArrayND = None,
+    def bloch_matrix(self, calc: GPAW, k_qc: ArrayND | None = None,
                      savetofile: bool = True, prefactor: bool = True,
                      accoustic: bool = True) -> ArrayND:
         r"""Calculate el-ph coupling in the Bloch basis for the electrons.

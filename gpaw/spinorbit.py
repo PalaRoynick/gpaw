@@ -32,7 +32,7 @@ class WaveFunction:
     def __init__(self,
                  eigenvalues: Array1D,
                  projections: Projections,
-                 bz_index: int = None):
+                 bz_index: int | None = None):
         self.eig_m = eigenvalues
         self.projections = projections
         self.spin_projection_mv: Array2D | None = None
@@ -317,7 +317,7 @@ class BZWaveFunctions:
 
     def _collect(self,
                  func: Callable[[WaveFunction], ArrayND],
-                 shape: tuple[int, ...] = None,
+                 shape: tuple[int, ...] | None = None,
                  dtype=float,
                  broadcast: bool = True,
                  sum_over_domain: bool = False) -> ArrayND:
@@ -409,7 +409,7 @@ def extract_ibz_wave_functions(kpt_qs: list[list[KPoint]],
                                gd: GridDescriptor,
                                n1: int,
                                n2: int,
-                               eigenvalues: Array3D = None
+                               eigenvalues: Array3D | None = None
                                ) -> Iterator[tuple[int, WaveFunction]]:
     """Yield tuples of IBZ-index and wave functions.
 
@@ -473,13 +473,13 @@ def extract_ibz_wave_functions(kpt_qs: list[list[KPoint]],
 
 
 def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
-                    n1: int = None,
-                    n2: int = None,
+                    n1: int | None = None,
+                    n2: int | None = None,
                     scale: float = 1.0,
                     theta: float = 0.0,  # degrees
                     phi: float = 0.0,  # degrees
-                    eigenvalues: Array3D = None,  # eV
-                    occcalc: OccupationNumberCalculator = None,
+                    eigenvalues: Array3D | None = None,  # eV
+                    occcalc: OccupationNumberCalculator | None = None,
                     projected: bool = False,
                     ignore_xc_potential: bool = False) -> BZWaveFunctions:
     """Calculate SOC eigenstates.

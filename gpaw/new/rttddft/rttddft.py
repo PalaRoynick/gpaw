@@ -52,7 +52,7 @@ class RTTDDFT:
                  pot_calc: PotentialCalculator,
                  hamiltonian,
                  history: RTTDDFTHistory,
-                 td_algorithm: TDAlgorithmLike = None,
+                 td_algorithm: TDAlgorithmLike | None = None,
                  *,
                  dft_params: Parameters,
                  world=None):
@@ -105,7 +105,7 @@ class RTTDDFT:
     @classmethod
     def from_dft_calculation(cls,
                              calc: ASECalculator,
-                             td_algorithm: TDAlgorithmLike = None):
+                             td_algorithm: TDAlgorithmLike | None = None):
         """ Set up the RTTDDFT object from a DFT calculation file.
 
         Parameters
@@ -132,7 +132,7 @@ class RTTDDFT:
     @classmethod
     def from_dft_file(cls,
                       filepath: str,
-                      td_algorithm: TDAlgorithmLike = None,
+                      td_algorithm: TDAlgorithmLike | None = None,
                       world=None):
         """ Set up the RTTDDFT object from a DFT calculation file.
 

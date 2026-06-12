@@ -50,7 +50,7 @@ def dipole_matrix_elements_from_calc(calc: ASECalculator,
     return d_snnv
 
 
-def main(argv: list[str] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     import argparse
 
     parser = argparse.ArgumentParser(

@@ -205,7 +205,7 @@ class GPAW(Calculator):
     def fixed_density(self, *,
                       update_fermi_level: bool = False,
                       txt='-',
-                      parallel: dict[str, Any] = None,
+                      parallel: dict[str, Any] | None = None,
                       **kwargs) -> 'GPAW':
         """Create new calculator and do SCF calculation with fixed density.
 

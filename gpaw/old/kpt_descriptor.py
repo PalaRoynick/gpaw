@@ -392,7 +392,7 @@ class KPointDescriptor:
                                           kbz_c)
         return index_G, phase_G
 
-    def find_k_plus_q(self, q_c, kpts_k: Sequence[int] = None) -> list[int]:
+    def find_k_plus_q(self, q_c, kpts_k: Sequence[int] | None = None) -> list[int]:
         """Find the indices of k+q for all kpoints in the Brillouin zone.
 
         In case that k+q is outside the BZ, the k-point inside the BZ

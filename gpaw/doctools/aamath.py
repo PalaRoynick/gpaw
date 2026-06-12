@@ -64,7 +64,7 @@ class ParseError(Exception):
     """Bad ascii-art math."""
 
 
-def cut(lines: list[str], i1: int, i2: int = None) -> list[str]:
+def cut(lines: list[str], i1: int, i2: int | None = None) -> list[str]:
     """Cut out block.
 
     >>> cut(['012345', 'abcdef'], 1, 3)
@@ -98,7 +98,7 @@ def block(lines: list[str]) -> dict[int, str]:
     return blocks
 
 
-def parse(lines: str | list[str], n: int = None) -> str:
+def parse(lines: str | list[str], n: int | None = None) -> str:
     r"""Parse ascii-art math to LaTeX.
 
     >>> parse([' /   ~      ',

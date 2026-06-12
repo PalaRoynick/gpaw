@@ -16,7 +16,7 @@ class Projections(Mapping):
                  nbands: int,
                  nproj_a: ArrayLike1D,
                  atom_partition: AtomPartition,
-                 bcomm: MPIComm = None,
+                 bcomm: MPIComm | None = None,
                  collinear=True,
                  spin=0,
                  dtype=None,

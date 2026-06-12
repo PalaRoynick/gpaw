@@ -13,7 +13,7 @@ from gpaw.dft import DFT
 from gpaw.mpi import world
 
 
-def main(args: str | list[str] = None) -> int:
+def main(args: str | list[str] | None = None) -> int:
     if isinstance(args, str):
         args = args.split()
 

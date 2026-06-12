@@ -27,7 +27,7 @@ class Coefficients:
     """
     def __init__(self,
                  eps: float = 0.05,
-                 width: float = None):
+                 width: float | None = None):
         self.width: float | None
         if width is not None:
             self.width = width / Ha

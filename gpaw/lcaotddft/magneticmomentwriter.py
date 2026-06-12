@@ -320,11 +320,11 @@ class MagneticMomentWriter(TDDFTObserver):
     version = 5
 
     def __init__(self, paw, filename: str, *,
-                 origin: str = None,
-                 origin_shift: Vector = None,
-                 dmat: DensityMatrix = None,
-                 calculate_on_grid: bool = None,
-                 only_pseudo: bool = None,
+                 origin: str | None = None,
+                 origin_shift: Vector | None = None,
+                 dmat: DensityMatrix | None = None,
+                 calculate_on_grid: bool | None = None,
+                 only_pseudo: bool | None = None,
                  interval: int = 1):
         super().__init__(paw, interval)
         self.ioctx = IOContext()

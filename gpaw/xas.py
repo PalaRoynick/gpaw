@@ -267,7 +267,7 @@ class XAS:
     def get_oscillator_strength(
             self, dks: float | list, kpoint=None,
             proj=None, proj_xyz: bool = True,
-            w: Array1D = None,
+            w: Array1D | None = None,
             raw: bool = False) -> tuple[Array1D, ArrayND]:
         """Calculate stick spectra.
 
@@ -356,7 +356,7 @@ class XAS:
     def get_spectra(self, fwhm=0.5, E_in=None, linbroad=None,
                     N=1000, kpoint=None, proj=None, proj_xyz=True,
                     stick=False, dks: float | list = [0],
-                    w: Array1D = None):
+                    w: Array1D | None = None):
         """Calculate spectra.
 
         Parameters:

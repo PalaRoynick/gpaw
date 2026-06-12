@@ -172,7 +172,7 @@ class Supercell:
 
     def calculate_supercell_matrix(
         self, calc: Union[ASECalculator, dict], fd_name: str = "elph",
-        filter: str = None
+        filter: str | None = None
     ) -> None:
         """Calculate matrix elements of the el-ph coupling in the LCAO basis.
 

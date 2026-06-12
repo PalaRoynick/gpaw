@@ -618,7 +618,7 @@ class GridDescriptor(Domain):
 
     def dipole_moment(self,
                       rho_R: Array3D,
-                      center_v: Vector = None) -> Array1D:
+                      center_v: Vector | None = None) -> Array1D:
         """Calculate dipole moment of density.
 
         Integration region will be centered on center_v.  Default center

@@ -48,7 +48,7 @@ def obtain_gpts_suggestion(cell_cv, ecut, h, print_suggestions=False):
     return Nopt_c
 
 
-def main(argv: list[str] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     import argparse
 
     from ase.io import read

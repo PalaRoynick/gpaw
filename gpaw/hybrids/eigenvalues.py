@@ -33,7 +33,7 @@ def non_self_consistent_eigenvalues(
         xcname: str,
         n1: int = 0,
         n2: int = 0,
-        kpt_indices: list[int] = None,
+        kpt_indices: list[int] | None = None,
         snapshot: str | Path | None = None,
         ftol: float = 1e-9) -> tuple[Array3D,
                                      Array3D,

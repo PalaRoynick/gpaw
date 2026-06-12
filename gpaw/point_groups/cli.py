@@ -26,7 +26,7 @@ class CubeCalc:
         return 1
 
 
-def main(argv: list[str] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog='python3 -m gpaw.point_groups',
         description='Analyse point-group of atoms and wave-functions.')

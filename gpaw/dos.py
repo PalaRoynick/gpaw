@@ -184,7 +184,7 @@ class DOSCalculator:
     def calculate(self,
                   energies: ArrayLike1D,
                   eig_kn: Array2D,
-                  weight_kn: Array2D = None,
+                  weight_kn: Array2D | None = None,
                   width: float = 0.1):
         energies = np.asarray(energies)
         if width > 0.0:

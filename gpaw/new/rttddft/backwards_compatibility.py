@@ -252,7 +252,7 @@ class RTTDDFTAdapter:
     @classmethod
     def from_dft_calculation(cls,
                              calc: ASECalculator,
-                             propagator: TDAlgorithmLike = None):
+                             propagator: TDAlgorithmLike | None = None):
         rttddft = RTTDDFT.from_dft_calculation(calc,
                                                td_algorithm=propagator)
         return cls(rttddft)
@@ -260,7 +260,7 @@ class RTTDDFTAdapter:
     @classmethod
     def from_dft_file(cls,
                       filepath: str,
-                      propagator: TDAlgorithmLike = None):
+                      propagator: TDAlgorithmLike | None = None):
         rttddft = RTTDDFT.from_dft_file(filepath,
                                         td_algorithm=propagator)
         return cls(rttddft)

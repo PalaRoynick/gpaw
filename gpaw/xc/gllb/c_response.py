@@ -431,7 +431,7 @@ class C_Response(Contribution):
 
     def calculate_discontinuity(self,
                                 dxc_pot: ResponsePotential,
-                                spin: int = None):
+                                spin: int | None = None):
         r"""Calculate the derivative discontinuity.
 
         This function evaluates the perturbation theory expression

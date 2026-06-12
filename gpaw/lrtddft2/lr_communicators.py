@@ -2,7 +2,7 @@ import gpaw.mpi
 
 
 class LrCommunicators:
-    def __init__(self, world, dd_size: int, eh_size: int = None):
+    def __init__(self, world, dd_size: int, eh_size: int | None = None):
         """Create communicators for LrTDDFT calculation.
 
         Parameters

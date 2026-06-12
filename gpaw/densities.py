@@ -38,8 +38,8 @@ class Densities:
                    calculation.setups)
 
     def pseudo_densities(self,
-                         grid_spacing: float = None,  # Ang
-                         grid_refinement: int = None,
+                         grid_spacing: float | None = None,  # Ang
+                         grid_refinement: int | None = None,
                          add_compensation_charges: bool = True
                          ) -> UGArray:
         nt_sR = self._pseudo_densities(grid_spacing, grid_refinement)
@@ -70,8 +70,8 @@ class Densities:
         return nt_sR.scaled(Bohr, Bohr**-3)
 
     def _pseudo_densities(self,
-                          grid_spacing: float = None,  # Ang
-                          grid_refinement: int = None,
+                          grid_spacing: float | None = None,  # Ang
+                          grid_refinement: int | None = None,
                           ) -> UGArray:
         nt_sR = self.nt_sR.to_pbc_grid()
         grid = nt_sR.desc
@@ -88,8 +88,8 @@ class Densities:
 
     def all_electron_densities(self,
                                *,
-                               grid_spacing: float = None,  # Ang
-                               grid_refinement: int = None,
+                               grid_spacing: float | None = None,  # Ang
+                               grid_refinement: int | None = None,
                                skip_core: bool = False,
                                ) -> UGArray:
         n_sR = self._pseudo_densities(grid_spacing, grid_refinement)

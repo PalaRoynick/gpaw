@@ -107,7 +107,7 @@ class OccupationNumberCalculator:
     extrapolate_factor: float
 
     def __init__(self,
-                 parallel_layout: ParallelLayout = None):
+                 parallel_layout: ParallelLayout | None = None):
         """Object for calculating fermi level(s) and occupation numbers.
 
         If fixmagmom=True then the fixed_magmom_value attribute must be set
@@ -129,8 +129,8 @@ class OccupationNumberCalculator:
         return {'name': self.name}
 
     def copy(self,
-             parallel_layout: ParallelLayout = None,
-             bz2ibzmap: list[int] = None) -> OccupationNumberCalculator:
+             parallel_layout: ParallelLayout | None = None,
+             bz2ibzmap: list[int] | None = None) -> OccupationNumberCalculator:
         return create_occ_calc(
             self.todict(),
             parallel_layout=parallel_layout or self.parallel_layout)
@@ -140,7 +140,7 @@ class OccupationNumberCalculator:
                   eigenvalues: list[list[float]],
                   weights: list[float],
                   spins: list[int] | None = None,
-                  fermi_levels_guess: list[float] = None,
+                  fermi_levels_guess: list[float] | None = None,
                   fix_fermi_level: bool = False) -> tuple[Array2D,
                                                           list[float],
                                                           float]:
@@ -231,7 +231,7 @@ class FixMagneticMomentOccupationNumberCalculator(OccupationNumberCalculator):
                   eigenvalues: list[list[float]],
                   weights: list[float],
                   spins=None,
-                  fermi_levels_guess: list[float] = None,
+                  fermi_levels_guess: list[float] | None = None,
                   fix_fermi_level: bool = False) -> tuple[Array2D,
                                                           list[float],
                                                           float]:
@@ -269,7 +269,7 @@ class FixMagneticMomentOccupationNumberCalculator(OccupationNumberCalculator):
 
 class SmoothDistribution(OccupationNumberCalculator):
     """Base class for Fermi-Dirac and other smooth distributions."""
-    def __init__(self, width: float, parallel_layout: ParallelLayout = None):
+    def __init__(self, width: float, parallel_layout: ParallelLayout | None = None):
         """Smooth distribution.
 
         width: float
@@ -360,7 +360,7 @@ class MarzariVanderbiltCalculator(SmoothDistribution):
 class MethfesselPaxtonCalculator(SmoothDistribution):
     name = 'methfessel_paxton'
 
-    def __init__(self, width, order=0, parallel_layout: ParallelLayout = None):
+    def __init__(self, width, order=0, parallel_layout: ParallelLayout | None = None):
         super().__init__(width, parallel_layout)
         self.order = order
         self.extrapolate_factor = -1.0 / (self.order + 2)
@@ -604,7 +604,7 @@ class ZeroWidth(OccupationNumberCalculator):
 class FixedOccupationNumbers(OccupationNumberCalculator):
     extrapolate_factor = 0.0
 
-    def __init__(self, numbers, parallel_layout: ParallelLayout = None):
+    def __init__(self, numbers, parallel_layout: ParallelLayout | None = None):
         """Fixed occupation numbers.
 
         f_sn: ndarray, shape=(nspins, nbands)
@@ -644,7 +644,7 @@ class FixedOccupationNumbersUniform(OccupationNumberCalculator):
     name = 'fixed-uniform'
 
     def __init__(self, nelectrons, nspins, magmom, nkpts, nbands,
-                 parallel_layout: ParallelLayout = None):
+                 parallel_layout: ParallelLayout | None = None):
         """
         Uniform distribution of occupation numbers: each
         k-point per spin has the same number of occupied states
@@ -775,7 +775,7 @@ class ThomasFermiOccupations(OccupationNumberCalculator):
 
 def create_occ_calc(dct: dict[str, Any],
                     *,
-                    parallel_layout: ParallelLayout = None,
+                    parallel_layout: ParallelLayout | None = None,
                     fixed_magmom_value=None,
                     rcell=None,
                     monkhorst_pack_size=None,

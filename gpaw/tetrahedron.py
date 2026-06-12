@@ -133,8 +133,8 @@ class TetrahedronMethod(OccupationNumberCalculator):
                  rcell: ArrayLike2D,
                  size: ArrayLike1D,
                  improved=False,
-                 bz2ibzmap: ArrayLike1D = None,
-                 parallel_layout: ParallelLayout = None):
+                 bz2ibzmap: ArrayLike1D | None = None,
+                 parallel_layout: ParallelLayout | None = None):
         """Tetrahedron method for calculating occupation numbers.
 
         The reciprocal cell, *rcell*, can be given in arbitrary units
@@ -179,8 +179,8 @@ class TetrahedronMethod(OccupationNumberCalculator):
             '>)')
 
     def copy(self,
-             parallel_layout: ParallelLayout = None,
-             bz2ibzmap: list[int] = None
+             parallel_layout: ParallelLayout | None = None,
+             bz2ibzmap: list[int] | None = None
              ) -> OccupationNumberCalculator:
         return TetrahedronMethod(
             self.rcell_cv,

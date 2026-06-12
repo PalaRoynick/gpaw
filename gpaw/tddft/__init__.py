@@ -86,13 +86,13 @@ class OldTDDFT(GPAW):
     """
 
     def __init__(self, filename: str, *,
-                 td_potential: object = None,
+                 td_potential: object | None = None,
                  calculate_energy: bool = True,
-                 propagator: dict = None,
-                 solver: dict = None,
-                 tolerance: float = None,  # deprecated
-                 parallel: dict = None,
-                 communicator: object = None,
+                 propagator: dict | None = None,
+                 solver: dict | None = None,
+                 tolerance: float | None = None,  # deprecated
+                 parallel: dict | None = None,
+                 communicator: object | None = None,
                  txt: str = '-'):
         """
         Parameters
@@ -285,9 +285,9 @@ class OldTDDFT(GPAW):
                 kick_strength=self.kick_strength)
 
     def propagate(self, time_step: float, iterations: int,
-                  dipole_moment_file: str = None,  # deprecated
-                  restart_file: str = None,  # deprecated
-                  dump_interval: int = None,  # deprecated
+                  dipole_moment_file: str | None = None,  # deprecated
+                  restart_file: str | None = None,  # deprecated
+                  dump_interval: int | None = None,  # deprecated
                   ):
         """Propagates wavefunctions.
 

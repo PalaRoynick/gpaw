@@ -90,7 +90,7 @@ def hyperfine_parameters(calc: GPAW,
 def smooth_part(spin_density_R: Array3D,
                 gd: GridDescriptor,
                 spos_ac: Array2D,
-                ecut: float = None) -> Array3D:
+                ecut: float | None = None) -> Array3D:
     """Contribution from pseudo spin-density."""
     pd = PWDescriptor(ecut, gd)
     spin_density_G = pd.fft(spin_density_R)
@@ -148,7 +148,7 @@ Y2_mvv = np.array([[[0, 1, 0],
 
 def paw_correction(density_sii: Array3D,
                    setup: Setup,
-                   xc: XCFunctional = None,
+                   xc: XCFunctional | None = None,
                    exclude_core: bool = False) -> Array2D:
     """Corrections from 1-center expansions of spin-density."""
     # Spherical part:
@@ -318,7 +318,7 @@ gyromagnetic_ratios = {'H': (1, 42.577478518),
                        'Xe': (129, -11.777)}
 
 
-def main(argv: list[str] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     """Command-line interface."""
     parser = argparse.ArgumentParser(
         prog='python3 -m gpaw.hyperfine',

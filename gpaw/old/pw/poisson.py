@@ -56,7 +56,7 @@ class ChargedReciprocalSpacePoissonSolver(ReciprocalSpacePoissonSolver):
     def __init__(self,
                  pd: PWDescriptor,
                  charge: float,
-                 alpha: float = None,
+                 alpha: float | None = None,
                  eps: float = 1e-5):
         """Reciprocal-space Poisson solver for charged molecules.
 
