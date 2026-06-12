@@ -10,7 +10,7 @@ from gpaw.iks import optimize as iks_optimize
 
 from gpaw.iks.minres import iKSLinearSolver
 from gpaw.sphere.lebedev import Y_nL, weight_n
-from gpaw.utilities import pack_hermitian
+from gpaw.utilities import pack_hermitian, unpack_hermitian
 from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
 from gpaw.new.backwards_compatibility import FakeDensity
 
@@ -199,6 +199,7 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
+        sw_pow: float = 0.0,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
@@ -222,6 +223,7 @@ class iKS:
             assert isinstance(target, GPAW)
             atoms = target.atoms
         self.P_snn = P_snn
+        self.sw_pow = sw_pow
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
         reg_scheduler_params = reg_scheduler_params or {}
@@ -346,12 +348,26 @@ class iKS:
         self.hamiltonian.xc = xc
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
+        ###
+        from gpaw.lfc import BasisFunctions
+        splines = {}
+        phit_aj = []
+        for a, id in enumerate(self.setups.id_a):
+            if id in splines:
+                phi_j, phit_j, nc, nct = splines[id]
+            else:
+                # Load splines:
+                phi_j, phit_j, nc, nct = self.setups[a].get_partial_waves()[:4]
+                splines[id] = (phi_j, phit_j, nc, nct)
+            phit_aj.append(phit_j)
+        self.phit = BasisFunctions(self.finegd, phit_aj)
+        self.phit.set_positions(self.hamiltonian.spos_ac)
         # regularization stuff
         self.sw_ag = iks_tools.calculate_smooth_weights(
-            self.setups, self.tdens.D_asp)
+            self.setups, self.tdens.D_asp, self.sw_pow)
         D_work_asp = self.hamiltonian.atomdist.to_work(self.tdens.D_asp)
         self.sw_work_ag = iks_tools.calculate_smooth_weights(
-            self.setups, D_work_asp)
+            self.setups, D_work_asp, self.sw_pow)
         self.wreg_ag = None
         self.vc_axg = None
         if self.lambdacore != 0.0:
@@ -675,6 +691,7 @@ class iKS:
                 J_sg -= 2 * lambdareg * self.fine2coarse(lapl_sg)
             else:
                 J_sg -= 2 * lambdareg * lapl_sg
+        J_sg += self.Jt_atomic
         self.J_sg = J_sg
         return J_sg
 
@@ -707,6 +724,31 @@ class iKS:
         for a, dp_sii in dp_asii.items():
             for s in range(self.nspins):
                 dp_asp[a][s] = pack_hermitian(dp_sii[s])
+        # --------------------------------
+        self.Jt_atomic = self.finegd.zeros(self.nspins)
+        phit = self.phit
+        rho_MM = np.zeros((phit.Mmax, phit.Mmax))
+        for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
+            M1 = 0
+            for a, setup in enumerate(self.setups):
+                P_ni = kpt.P_ani.get(a)
+                ni = setup.ni
+                if P_ni is None:
+                    dp_ii = np.empty((ni, ni), dtype=self.wfs.dtype)
+                else:
+                    dp_ii = np.einsum(
+                        "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
+                    dp_ii += dp_ii.conj().T
+
+                rank = dp_asp.partition.rank_a[a]
+                dp_asp.partition.comm.broadcast(dp_ii, rank)
+                M2 = M1 + ni
+                rho_MM[M1:M2, M1:M2] = dp_ii
+                M1 = M2
+            phit.construct_density(-rho_MM, self.Jt_atomic[kpt.s], kpt.q)
+        self.wfs.kptband_comm.sum(self.Jt_atomic)
+        # -------------------------
+
         self.update_atomic_jacobian_from_adjoint_matrices(dp_asp)
         for J_asz in self.J_xasz:
             J_asz.check_consistency()

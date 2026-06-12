@@ -477,8 +477,8 @@ class iKSLBFGS:
 
             iks.iterate()
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
-            J_sg = iks.jacobian()
             J_xasz = iks.atomic_jacobian()
+            J_sg = iks.jacobian()
             Jwork_xasz = [iks.hamiltonian.atomdist.to_work(
                 J_asz) for J_asz in J_xasz]
 
@@ -580,8 +580,8 @@ class iKSLBFGS:
         iks.iterate()
         L1, L, LD1, LD = iks.lagrangian()
         phi = L + LD
-        J_sg = iks.jacobian()
         J_xasz = iks.atomic_jacobian()
+        J_sg = iks.jacobian()
         Jwork_xasz = []
         for J_asz in J_xasz:
             Jwork_xasz.append(iks.hamiltonian.atomdist.to_work(J_asz))

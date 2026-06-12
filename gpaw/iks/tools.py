@@ -544,7 +544,7 @@ def calculate_boundary_weights(setups, power=12):
 #         dn_asng[a] = np.clip(dn_abs_sng / max_sng, 0.0, 1.0)
 #
 #     return dn_asng
-def calculate_smooth_weights(setups, D_asp):
+def calculate_smooth_weights(setups, D_asp, pow=0):
     """
     Constructs a smooth, isotropic geometric envelope for the PAW transformation.
     E(r) = 0.5 * (1 + cos(pi * r / rc))
@@ -557,7 +557,7 @@ def calculate_smooth_weights(setups, D_asp):
             continue
         r = xcc.rgd.r_g
         rc = r[-1]
-        E_g = 0.5 * (1.0 + np.cos(np.pi * r / rc))
+        E_g = (0.5 * (1.0 + np.cos(np.pi * r / rc)))**pow
         w_ag[a] = E_g
     return w_ag
 
