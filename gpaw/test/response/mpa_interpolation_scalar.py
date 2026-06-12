@@ -25,8 +25,7 @@ def Xeval(Omega_GGp, residues_GGp, omega_w):
 
 
 def mpa_cond1(z: tuple[complex, complex] | Array1D,
-              E2: tuple[complex] | Array1D) -> \
-        tuple[[complex], [float]] | Array2D:
+              E2: tuple[complex] | Array1D):
     PPcond_rate = 0
     if abs(E2) < null_pole_thr:  # need to check also NAN(abs(E))
         PPcond_rate = 1
@@ -71,7 +70,7 @@ def pole_is_out(i, wmax, thr, E):
 
 
 def mpa_cond(npols: int, z: list[complex], E) ->\
-        tuple[int, list[bool], list[complex]]:
+        tuple[list[complex], int, list[bool]]:
     PPcond = np.full(npols, False)
     npr = npols
     wmax = np.max(np.real(np.emath.sqrt(z))) * 1.5

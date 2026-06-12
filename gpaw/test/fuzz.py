@@ -98,13 +98,13 @@ def run_random_calculation(seed: int,
         log(energy)
 
 
-def completely_random(rnd):
+def completely_random(rng):
     ...
 
 
 def random_atoms(rng: Random) -> Atoms:
     if rng.random() < -0.3:
-        atoms = completely_random()
+        atoms = completely_random(rng)
     else:
         atoms_candidates = create_atoms_objects()
         atoms = rng.choice(atoms_candidates)

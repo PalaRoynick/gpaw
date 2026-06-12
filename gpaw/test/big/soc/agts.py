@@ -21,7 +21,7 @@ def check(array1_mx, array2_mx, k, tol=1e-6):
         m += 1
 
 
-def soc(params: dict) -> list:
+def soc(params: dict):
     """Do DFT + SOC calculations in memory and from gpw-file."""
     name = 'Fe-sym-' + params.get('symmetry', 'on')
     atoms.calc = GPAW(txt=name + '.txt', **params)

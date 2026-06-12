@@ -63,7 +63,7 @@ def op(a: np.ndarray, o: str) -> np.ndarray:
         return a
     if o == 'C':
         return a.T.conj()
-    1 / 0
+    raise ValueError
 
 
 @pytest.mark.gpu

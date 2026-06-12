@@ -113,7 +113,3 @@ def test_fnv_3d(gpw_files, cell, mpi):
         plot_potentials(profile)
 
     assert E_fnv == pytest.approx(E_fnv_t, abs=tol)
-
-
-if __name__ == "__main__":
-    test_fnv_model()

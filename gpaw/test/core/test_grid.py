@@ -112,7 +112,3 @@ def test_isosurface(comm):
     pytest.importorskip('plotly')
     f = py(4.0, comm=comm)
     f.isosurface(show=False)
-
-
-if __name__ == '__main__':
-    py(4.0).isosurface()

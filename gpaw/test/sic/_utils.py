@@ -53,7 +53,7 @@ def extract_lagrange_section(log_output: str) -> str:
 
 
 def mk_arr_from_str(log_out: str, row_elems: int = 3,
-                    skip_rows: int = 0) -> str:
+                    skip_rows: int = 0) -> np.ndarray:
     if skip_rows > 0:
         ldat = log_out.split("\n")[skip_rows:]
         ldat = "\n".join(ldat)

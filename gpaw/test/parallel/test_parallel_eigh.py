@@ -78,7 +78,3 @@ def test_parallel_parallel_eigh(in_tmp_dir, scalapack):
     if world.rank == 0:
         assert abs(eps - range(1, 51)).sum() < 1e-5
         assert abs(U - np.identity(50)).sum() < 1e-5
-
-
-if __name__ == '__main__':
-    test_parallel_parallel_eigh(0)
