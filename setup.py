@@ -507,10 +507,9 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-
-sources = [Path('c/bmgs/bmgs.cpp')]
-sources += Path('c').glob('*.cpp')
-sources += Path('c/xc').glob('*.cpp')
+# Get all .cpp files, excluding those in c/gpu (handled by the GPU builder)
+sources = [p for p in Path('c').rglob('*.cpp')
+           if Path('c/gpu') not in p.parents]
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
     for name in ['libxc.cpp', 'm06l.cpp',
