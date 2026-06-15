@@ -498,65 +498,19 @@ def calculate_regularization_weights(setups):
     return w_ag
 
 
-def calculate_boundary_weights(setups, power=12):
-    w_bound_ag = {}
+def calculate_smooth_weights(setups, pow=1):
+    """
+    E(r) = (0.5 * (1 + cos(pi * r / rc)))**pow
+    """
+    w_ag = {}
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
         if xcc is None:
-            w_bound_ag[a] = np.zeros((1,), dtype=float)  # AE
-            continue
-
-        r = setup.rgd.r_g[:len(xcc.nc_g)]
-        rc = r[-1]
-        w_bound_ag[a] = (r / rc)**power
-
-    return w_bound_ag
-
-
-# def calculate_weight_dn_sng(setups, D_asp):
-#     from gpaw.xc.numericalxc import calculate_angular_density, angular2lebedev
-#     dn_asng = {}
-#     for a, D_sp in D_asp.items():
-#         xcc = setups[a].xc_correction
-#         if xcc is None:
-#             dn_asng[a] = 0.0
-#             continue
-#
-#         # 1. Core must be True to capture the massive 1s difference at r=0
-#         n_sLg = calculate_angular_density(
-#             xcc, D_sp, xcc.n_qg, xcc.nc_g, add_core=True)
-#         nt_sLg = calculate_angular_density(
-#             xcc, D_sp, xcc.nt_qg, xcc.nct_g, add_core=True)
-#
-#         dn_sLg = n_sLg - nt_sLg
-#         dn_sng = angular2lebedev(dn_sLg)
-#
-#         # 2. Absolute value is mandatory to handle negative nodal crossings
-#         dn_abs_sng = np.abs(dn_sng)
-#
-#         # 3. Find the radial maximum per Lebedev ray
-#         max_sng = dn_abs_sng.max(axis=2, keepdims=True)
-#
-#         # 4. Safe division guard (prevent NaNs on empty rays/spins)
-#         max_sng[max_sng < 1e-12] = 1.0
-#
-#         # 5. Normalize and clip
-#         dn_asng[a] = np.clip(dn_abs_sng / max_sng, 0.0, 1.0)
-#
-#     return dn_asng
-def calculate_smooth_weights(setups, D_asp, pow=0):
-    """
-    Constructs a smooth, isotropic geometric envelope for the PAW transformation.
-    E(r) = 0.5 * (1 + cos(pi * r / rc))
-    """
-    w_ag = {}
-    for a in D_asp.keys():
-        xcc = setups[a].xc_correction
-        if xcc is None:
             w_ag[a] = 0.0
             continue
-        r = xcc.rgd.r_g
-        rc = r[-1]
+        r = xcc.rgd.r_g.copy()
+        rc = max(setup.rcut_j)
+        r[r > rc] = rc
         E_g = (0.5 * (1.0 + np.cos(np.pi * r / rc)))**pow
         w_ag[a] = E_g
     return w_ag

@@ -1,18 +1,19 @@
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
+
 import numpy as np
 from ase.units import Ha
+
 from gpaw.calculator import GPAW
 from gpaw.old.density import Density
+from gpaw.sphere.lebedev import Y_nL, weight_n
+from gpaw.utilities import pack_hermitian
+from gpaw.new.backwards_compatibility import FakeDensity
+
+from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
 from gpaw.iks import tools as iks_tools
 from gpaw.iks import optimize as iks_optimize
-
 from gpaw.iks.minres import iKSLinearSolver
-from gpaw.sphere.lebedev import Y_nL, weight_n
-from gpaw.utilities import pack_hermitian, unpack_hermitian
-from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode
-from gpaw.new.backwards_compatibility import FakeDensity
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -59,9 +60,7 @@ class DegeneracyDescriptor:
                         band_idx in enumerate(self.occ)}
 
 
-# throughout it's been assumed that finegd and gd (both for the hamiltonian and the density)
-# all have the same distribution which (I think) is not always true.
-# for example look at density.get_all_electron_density to see how to properly handle different distributions.
+# throughout it's been assumed that finegd and gd (for the hamiltonian, wfs and density) all have the same distribution
 
 class iKS:
     # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol
@@ -199,7 +198,6 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
-        sw_pow: float = 0.0,
         lambdareg: float = 0.0,
         lambdacore: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
@@ -223,7 +221,6 @@ class iKS:
             assert isinstance(target, GPAW)
             atoms = target.atoms
         self.P_snn = P_snn
-        self.sw_pow = sw_pow
         self.lambdareg = lambdareg
         self.lambdacore = lambdacore
         reg_scheduler_params = reg_scheduler_params or {}
@@ -335,8 +332,7 @@ class iKS:
             self.nxc_kwargs.setdefault("paw_potmode", "lebedev")
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
             self.nxc_kwargs.setdefault("stencil", self.stencil)
-            xc = FermiAmaldi(
-                self.tdens, self.hamiltonian.spos_ac, **self.nxc_kwargs)
+            xc = FermiAmaldi(self.tdens, self.hamiltonian.spos_ac, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
@@ -348,29 +344,12 @@ class iKS:
         self.hamiltonian.xc = xc
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
-        ###
-        from gpaw.lfc import BasisFunctions
-        splines = {}
-        phit_aj = []
-        for a, id in enumerate(self.setups.id_a):
-            if id in splines:
-                phi_j, phit_j, nc, nct = splines[id]
-            else:
-                # Load splines:
-                phi_j, phit_j, nc, nct = self.setups[a].get_partial_waves()[:4]
-                splines[id] = (phi_j, phit_j, nc, nct)
-            phit_aj.append(phit_j)
-        self.phit = BasisFunctions(self.finegd, phit_aj)
-        self.phit.set_positions(self.hamiltonian.spos_ac)
         # regularization stuff
-        self.sw_ag = iks_tools.calculate_smooth_weights(
-            self.setups, self.tdens.D_asp, self.sw_pow)
-        D_work_asp = self.hamiltonian.atomdist.to_work(self.tdens.D_asp)
-        self.sw_work_ag = iks_tools.calculate_smooth_weights(
-            self.setups, D_work_asp, self.sw_pow)
+        self.sw_ag = iks_tools.calculate_smooth_weights(self.setups)
         self.wreg_ag = None
         self.vc_axg = None
         if self.lambdacore != 0.0:
+            assert xc.paw_potmode is PAWPotMode.lebedev
             self.wreg_ag = iks_tools.calculate_regularization_weights(
                 self.setups)
             self.vc_axg = iks_tools.calc_core_atomic_potentials(
@@ -421,8 +400,8 @@ class iKS:
     def iterate(self) -> None:
         if self.wfs.kptband_comm.size > 1:
             # we need to find the bug that in the k-point parallelization causes
-            # the values of potentials (and consequently the densities or vice versa) diverge on each core
-            # this is a hack for now which along the syncing in the optimizers and lagrangian fixes the issue.
+            # the values of potentials (and consequently the densities or vice versa) diverge on each rank
+            # this is a hack for now which along with the syncing in the optimizers and lagrangian fixes the issue.
             self.wfs.kptband_comm.broadcast(self.xc.vxc_sg, 0)
             for v_asz in self.xc.vxc_xasz:
                 partition = v_asz.partition
@@ -684,6 +663,7 @@ class iKS:
         else:
             J_sg = self.finegd.zeros(self.density.nspins)
             self.coarse2fine(J_sG, J_sg)
+
         lambdareg = self.lambdareg
         if lambdareg != 0.0:
             lapl_sg = self.xc.kernel.calculate_lapl(self.xc.vxc_sg)
@@ -691,7 +671,7 @@ class iKS:
                 J_sg -= 2 * lambdareg * self.fine2coarse(lapl_sg)
             else:
                 J_sg -= 2 * lambdareg * lapl_sg
-        J_sg += self.Jt_atomic
+
         self.J_sg = J_sg
         return J_sg
 
@@ -724,34 +704,11 @@ class iKS:
         for a, dp_sii in dp_asii.items():
             for s in range(self.nspins):
                 dp_asp[a][s] = pack_hermitian(dp_sii[s])
-        # --------------------------------
-        self.Jt_atomic = self.finegd.zeros(self.nspins)
-        phit = self.phit
-        rho_MM = np.zeros((phit.Mmax, phit.Mmax))
-        for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
-            M1 = 0
-            for a, setup in enumerate(self.setups):
-                P_ni = kpt.P_ani.get(a)
-                ni = setup.ni
-                if P_ni is None:
-                    dp_ii = np.empty((ni, ni), dtype=self.wfs.dtype)
-                else:
-                    dp_ii = np.einsum(
-                        "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
-                    dp_ii += dp_ii.conj().T
-
-                rank = dp_asp.partition.rank_a[a]
-                dp_asp.partition.comm.broadcast(dp_ii, rank)
-                M2 = M1 + ni
-                rho_MM[M1:M2, M1:M2] = dp_ii
-                M1 = M2
-            phit.construct_density(-rho_MM, self.Jt_atomic[kpt.s], kpt.q)
-        self.wfs.kptband_comm.sum(self.Jt_atomic)
-        # -------------------------
 
         self.update_atomic_jacobian_from_adjoint_matrices(dp_asp)
         for J_asz in self.J_xasz:
             J_asz.check_consistency()
+
         return self.J_xasz
 
     def symmetrize_atomic_adjoint_matrices(self, dp_asii, a_sa):
@@ -781,8 +738,9 @@ class iKS:
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
         lambdacore = self.lambdacore
-        vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
-        vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
+        if lambdacore != 0.0:
+            vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
+            vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
 
         for a, dp_sp in dp_asp.items():
             if self.xc.paw_potmode is PAWPotMode.direct:
@@ -797,23 +755,21 @@ class iKS:
             dvt_sLg = -np.dot(dp_sLq, xcc.nt_qg)
 
             if self.xc.paw_potmode is PAWPotMode.lebedev:
+                E_g = self.sw_ag[a]
                 Lmax = dvt_sLg.shape[1]
                 for s in range(self.nspins):
-                    E_g = self.sw_ag[a]
-                    J_AE = np.dot(Y_nL[:, :Lmax], dv_sLg[s]).real
-                    J_PS = np.dot(Y_nL[:, :Lmax], dvt_sLg[s]).real
+                    J_sng = np.dot(Y_nL[:, :Lmax], dv_sLg[s]).real
+                    Jt_sng = np.dot(Y_nL[:, :Lmax], dvt_sLg[s]).real
+
                     if lambdacore != 0.0:
-                        dv_AE = vxc_asz[a][s, :] - \
-                            self.vc_axg[a][0][np.newaxis]
-                        J_AE += 2 * lambdacore * \
-                            self.wreg_ag[a][np.newaxis] * dv_AE
-                        dv_PS = vxct_asz[a][s, :] - \
-                            self.vc_axg[a][1][np.newaxis]
-                        J_PS += 2 * lambdacore * \
-                            self.wreg_ag[a][np.newaxis] * dv_PS
-                    # flipped chain rule mapping
-                    self.J_xasz[0][a][s] = E_g * J_AE
-                    self.J_xasz[1][a][s] = (1.0 - E_g) * J_AE + J_PS
+                        dv_sng = vxc_asz[a][s, :] - self.vc_axg[a][0][np.newaxis]
+                        J_sng += 2 * lambdacore * self.wreg_ag[a][np.newaxis] * dv_sng
+
+                        dvt_sng = vxct_asz[a][s, :] - self.vc_axg[a][1][np.newaxis]
+                        Jt_sng += 2 * lambdacore * self.wreg_ag[a][np.newaxis] * dvt_sng
+
+                    self.J_xasz[0][a][s] = J_sng * E_g
+                    self.J_xasz[1][a][s] = Jt_sng + J_sng * (1.0 - E_g)
 
             else:
                 assert self.xc.paw_potmode is PAWPotMode.angular
@@ -821,12 +777,11 @@ class iKS:
                 self.J_xasz[1][a][:] = dvt_sLg.real
                 for s in range(self.nspins):
                     if lambdacore != 0.0:
-                        dv = vxc_asz[a][s, :] - self.vc_axg[a][0][np.newaxis]
-                        self.J_xasz[0][a][s, :] += 2 * lambdacore * \
-                            self.wreg_ag[a][np.newaxis] * dv
-                        dv = vxct_asz[a][s, :] - self.vc_axg[a][1][np.newaxis]
-                        self.J_xasz[1][a][s, :] += 2 * lambdacore * \
-                            self.wreg_ag[a][np.newaxis] * dv
+                        dv_sng = vxc_asz[a][s, :] - self.vc_axg[a][0][np.newaxis]
+                        self.J_xasz[0][a][s, :] += 2 * lambdacore * self.wreg_ag[a][np.newaxis] * dv_sng
+
+                        dvt_sng = vxct_asz[a][s, :] - self.vc_axg[a][1][np.newaxis]
+                        self.J_xasz[1][a][s, :] += 2 * lambdacore * self.wreg_ag[a][np.newaxis] * dvt_sng
 
     def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
         Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
@@ -978,11 +933,8 @@ class iKS:
         )
 
     def get_xcpotential_space_size(self):
-        if self.use_coarse_grid:
-            size = np.prod(self.gd.get_size_of_global_array()) * self.nspins
-        else:
-            size = np.prod(
-                self.finegd.get_size_of_global_array()) * self.nspins
+        gd = self.gd if self.use_coarse_grid else self.finegd
+        size = np.prod(gd.get_size_of_global_array()) * self.nspins
         for v_asz in self.xc.vxc_xasz:
             size += sum([np.prod(shape) for shape in v_asz.shapes_a])
         return size
@@ -1026,16 +978,8 @@ class iKS:
         self.calc.results["energy"] = e_extrapolated * Ha
         self.calc.results["free_energy"] = e_free * Ha
 
-    def logiter(
-        self,
-        t: int,
-        L1: float,
-        L2: float,
-        LD1: float,
-        LD2: float,
-        J_sg: ArrayND,
-        sep="-",
-    ) -> None:
+    def logiter(self, t: int, L1: float, L2: float, LD1: float,
+                LD2: float, J_sg: ArrayND, sep="-",) -> None:
         Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
         Jmax_x = self.get_atomic_jac_maximum()
         L1_uw, L2_uw, LD1_uw, LD2_uw = self.uwnorm()
@@ -1171,13 +1115,8 @@ class iKS:
         self.afteropt()
         return self.L_iter
 
-    def run_scipy(
-        self,
-        method: str = "CG",
-        options: dict[str, str | float | int] = {},
-        scale: float = 1.0,
-        **opt_kwargs,
-    ) -> list[float]:
+    def run_scipy(self, method: str = "CG", options: dict[str, str | float | int] = {},
+                  scale: float = 1.0, **opt_kwargs) -> list[float]:
         """
         Optimize the Lagrangian using :func:`~scipy.optimize.minimize`.
 
@@ -1227,14 +1166,8 @@ class iKS:
         self.afteropt()
         return self.L_iter
 
-    def run(
-        self,
-        method: str = "LBFGS",
-        maxiter: int = 1000,
-        Ltol: float = 1e-6,
-        Jtol: float = 1e-9,
-        **kwargs,
-    ) -> list[float]:
+    def run(self, method: str = "LBFGS", maxiter: int = 1000,
+            Ltol: float = 1e-6, Jtol: float = 1e-9, **kwargs) -> list[float]:
         """
         Run the iKS optimization using the specified algorithm.
 

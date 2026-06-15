@@ -22,16 +22,8 @@ if TYPE_CHECKING:
     NaN = float
 
 
-def adam_step(
-    alpha: float,
-    vxc: ArrayND,
-    J: ArrayND,
-    m: ArrayND,
-    mm: ArrayND,
-    t: int,
-    beta1: float,
-    beta2: float,
-) -> None:
+def adam_step(alpha: float, vxc: ArrayND, J: ArrayND, m: ArrayND,
+              mm: ArrayND, t: int, beta1: float, beta2: float) -> None:
     epsilon = 1e-8
     # Update biased first and second moment estimate
     m[:] = beta1 * m + (1.0 - beta1) * J
@@ -43,17 +35,9 @@ def adam_step(
     vxc[:] = vxc - alpha * m_hat / (np.sqrt(mm_hat) + epsilon)
 
 
-def iks_adam_opt(
-    iks: iKS,
-    maxiter: int,
-    eta_pseudo: float,
-    eta_paw: float,
-    Ltol: float,
-    LDtol: float,
-    Jtol: float,
-    beta1: float,
-    beta2: float,
-) -> list[float]:
+def iks_adam_opt(iks: iKS, maxiter: int, eta_pseudo: float, eta_paw: float,
+                 Ltol: float, LDtol: float, Jtol: float,
+                 beta1: float, beta2: float,) -> list[float]:
     assert iks.xc.vxc_sg is not None
     if iks.use_coarse_grid:
         gd = iks.gd
@@ -360,34 +344,26 @@ class PotState:
         if isinstance(other, PotState):
             self.data_sg *= other.data_sg
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
-                for a, v in data_asz.items():
-                    v *= other_asz[a]
+                for a in data_asz.keys():
+                    data_asz[a] *= other_asz[a]
         else:
             self.data_sg *= other
             for data_asz in self.data_xasz:
-                for v in data_asz.values():
-                    v *= other
+                for a in data_asz.keys():
+                    data_asz[a] *= other
         return self
 
     def add_scaled(self, other: "PotState", factor: float) -> None:
         self.data_sg += factor * other.data_sg
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
-            for a, v in data_asz.items():
-                v += factor * other_asz[a]
+            for a in data_asz.keys():
+                data_asz[a] += factor * other_asz[a]
 
 
 class iKSLBFGS:
-    def __init__(
-        self,
-        iks: iKS,
-        m: int = 10,
-        max_ls=10,
-        maxiter: int = 300,
-        Ltol: float = 1e-6,
-        LDtol: float = 1e-4,
-        Jtol: float = 1e-9,
-        step_scale: float = 1.0,
-    ):
+    def __init__(self, iks: iKS, m: int = 10, max_ls=15,
+                 maxiter: int = 300, Ltol: float = 1e-6, LDtol: float = 1e-4,
+                 Jtol: float = 1e-9, step_scale: float = 1.0):
         self.iks = iks
         if iks.use_coarse_grid:
             raise NotImplementedError(
@@ -442,7 +418,8 @@ class iKSLBFGS:
             r.add_scaled(s_i, (alpha_i - beta_i))
         return -r
 
-    def line_search(self, x, gk, pk, L0, LD0, phi0, dphi0, c1=1e-4, c2=0.9, tau=0.5, max_ls=10):
+    def line_search(self, x, gk, pk, L0, LD0, phi0, dphi0, c1=1e-4, c2=0.9, tau=0.5, max_ls=15):
+        # TODO: reduce the amount of unnecessary copies
         iks = self.iks
         xc = iks.xc
         alpha = 1.0
@@ -455,20 +432,18 @@ class iKSLBFGS:
 
         for il in range(max_ls):
             xc.vxc_sg[:] = x.data_sg + alpha * pk.data_sg
-
+            # for v_asz, x_asz, p_asz in zip(xc.vxc_xasz, x.data_xasz, pk.data_xasz):
+            #     for a in v_asz.keys():
+            #         v_asz[a][:] = x_asz[a] + alpha * p_asz[a]
             x_new_AE = {}
             x_new_PS = {}
-
             for a in x.data_xasz[0].keys():
-                # Unconstrained step in abstract basis
                 x_AE = x.data_xasz[0][a] + alpha * pk.data_xasz[0][a]
                 x_PS = x.data_xasz[1][a] + alpha * pk.data_xasz[1][a]
-
                 x_new_AE[a] = x_AE
                 x_new_PS[a] = x_PS
 
-                # Envelope E & Forward mapping
-                E_g = iks.sw_work_ag[a]
+                E_g = iks.sw_ag[a]
                 xc.vxc_xasz[1][a][:] = x_PS
                 xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
 
@@ -491,7 +466,7 @@ class iKSLBFGS:
 
             if phi_new < best_phi:
                 best_phi = phi_new
-                # save the abstract state, not the physical xc.vxc_xasz
+                # x_best = PotState(xc.vxc_sg.copy(), [v_asz.copy() for v_asz in xc.vxc_xasz], *self.potstate_args)
                 x_best = PotState(xc.vxc_sg.copy(), [
                                   x_new_AE.copy(), x_new_PS.copy()], *self.potstate_args)
                 g_best = g_new.copy()
@@ -504,7 +479,7 @@ class iKSLBFGS:
                     break
                 else:
                     self.iks.fmt.log(
-                        "  Warning: Armijo passed but Wolfe curvature failed. L-BFGS update may be skipped.")
+                        "  Warning: Armijo passed but Wolfe curvature failed. Performing gradient descent.")
                     accepted = True
                     break
 
@@ -519,36 +494,41 @@ class iKSLBFGS:
                 alpha *= tau
 
         if accepted:
-            # return abstract variables
+            # x_new = PotState(xc.vxc_sg.copy(), [v_asz.copy() for v_asz in xc.vxc_xasz], *self.potstate_args)
             x_new = PotState(xc.vxc_sg.copy(), [
                              x_new_AE, x_new_PS], *self.potstate_args)
-            return x_new, g_new, L_new, LD_new, alpha, True
+            return x_new, g_new.copy(), L_new, LD_new, alpha, True
 
         if best_state is not None and best_phi < phi0:
             self.iks.fmt.log(
                 "L-BFGS line search: Armijo failed, using best lagrangian step.")
             x_best, g_best, L_best, LD_best, alpha_best = best_state
-
-            # forward map x_best back to physical arrays
             xc.vxc_sg[:] = x_best.data_sg
-            for a in x_best.data_xasz[0].keys():
-                x_AE = x_best.data_xasz[0][a]
-                x_PS = x_best.data_xasz[1][a]
-                E_g = iks.sw_work_ag[a]
+            # for v_asz, best_asz in zip(xc.vxc_xasz, x_best.data_xasz):
+            #     for a in v_asz.keys():
+            #         v_asz[a][:] = best_asz[a]
+            #     v_asz.check_consistency()
+            for a in x.data_xasz[0].keys():
+                x_AE = x.data_xasz[0][a]
+                x_PS = x.data_xasz[1][a]
+                E_g = iks.sw_ag[a]
                 xc.vxc_xasz[1][a][:] = x_PS
                 xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
-
             return x_best, g_best, L_best, LD_best, alpha_best, True
 
         self.iks.fmt.log(
             "Warning: L-BFGS line search: no step reduced Lagrangian; rejecting direction.")
 
-        # forward map original abstract x back to physical arrays
+        # restore
         xc.vxc_sg[:] = x.data_sg
+        # for v_asz, x_asz in zip(xc.vxc_xasz, x.data_xasz):
+        #     for a in v_asz.keys():
+        #         v_asz[a][:] = x_asz[a]
+        #     v_asz.check_consistency()
         for a in x.data_xasz[0].keys():
             x_AE = x.data_xasz[0][a]
             x_PS = x.data_xasz[1][a]
-            E_g = iks.sw_work_ag[a]
+            E_g = iks.sw_ag[a]
             xc.vxc_xasz[1][a][:] = x_PS
             xc.vxc_xasz[0][a][:] = x_AE * E_g + x_PS * (1.0 - E_g)
 
@@ -586,18 +566,14 @@ class iKSLBFGS:
         for J_asz in J_xasz:
             Jwork_xasz.append(iks.hamiltonian.atomdist.to_work(J_asz))
         gk = PotState(J_sg, Jwork_xasz, *self.potstate_args).copy()
-        # x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz,
-        #              *self.potstate_args).copy()
-
+        # x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, *self.potstate_args).copy()
         xAE_asz = {}
         xPS_asz = {}
         for a in iks.xc.vxc_xasz[0].keys():
             v_AE = iks.xc.vxc_xasz[0][a]
             v_PS = iks.xc.vxc_xasz[1][a]
-            # v_PS is the independent base variable
             xPS_asz[a] = v_PS.copy()
-            # Envelope E: 1 at core, 0 at boundary
-            E_g = iks.sw_work_ag[a]
+            E_g = iks.sw_ag[a]
             x_AE_init = v_PS.copy()
             mask = E_g > 1e-8
             x_AE_init[..., mask] = v_PS[..., mask] + \
@@ -606,7 +582,6 @@ class iKSLBFGS:
 
         x = PotState(iks.xc.vxc_sg, [xAE_asz, xPS_asz],
                      *self.potstate_args).copy()
-
         x_prev = None
         g_prev = None
 
