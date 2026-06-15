@@ -481,7 +481,7 @@ DFT-components
    :members:
    :undoc-members:
 
-.. autoclass:: gpaw.new.extensions.Extension
+.. autoclass:: gpaw.extensions.Extension
    :members:
    :undoc-members:
 .. autoclass:: gpaw.new.logger.Logger

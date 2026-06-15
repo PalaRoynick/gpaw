@@ -3,7 +3,7 @@ import pytest
 from ase.units import Bohr, Hartree
 
 from gpaw import restart
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 
 
 class Spring:

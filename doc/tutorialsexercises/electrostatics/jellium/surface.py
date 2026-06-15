@@ -5,7 +5,7 @@ from ase import Atoms
 from ase.units import Bohr
 from gpaw import GPAW, PW
 from gpaw.core import UGArray
-from gpaw.new.extensions import Jellium
+from gpaw.extensions.jellium import Jellium
 
 rs = 5.0 * Bohr  # Wigner-Seitz radius
 h = 0.2          # grid-spacing

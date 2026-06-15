@@ -1,5 +1,5 @@
 from gpaw import GPAW
-from gpaw.new.extensions import D3
+from gpaw.extensions.d3 import D3
 from gpaw import PW
 from ase.build import mx2
 

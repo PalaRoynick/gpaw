@@ -53,6 +53,28 @@ class Parameter:
         return dct
 
 
+class ExtensionInput(Parameter):
+    @classmethod
+    def from_input(self, extension: ExtensionInput | dict):
+        if isinstance(extension, dict):
+            dct = extension.copy()
+            name = dct.pop('name')
+            if name == 'd3':
+                from gpaw.extensions.d3 import D3
+                return D3(**dct)
+            if name == 'spin_direction_constraint':
+                from gpaw.new.constraints import SpinDirectionConstraint
+                return SpinDirectionConstraint(**dct)
+            if name == 'sjm':
+                from gpaw.new.sjm import SJM
+                return SJM(**dct)
+            if name == 'solvation':
+                from gpaw.new.solvation import Solvation
+                return Solvation(**dct)
+            raise ValueError(f'Unknown extension: {name}')
+        return extension
+
+
 class Mode(Parameter):
     qspiral = None
 
@@ -384,28 +406,6 @@ class Scissors(LCAOEigensolver):
         return ScissorsLCAOEigensolver(basis,
                                        self.shifts,
                                        symmetries)
-
-
-class ExtensionInput(Parameter):
-    @classmethod
-    def from_input(self, extension: ExtensionInput | dict):
-        if isinstance(extension, dict):
-            dct = extension.copy()
-            name = dct.pop('name')
-            if name == 'd3':
-                from gpaw.new.extensions import D3
-                return D3(**dct)
-            if name == 'spin_direction_constraint':
-                from gpaw.new.constraints import SpinDirectionConstraint
-                return SpinDirectionConstraint(**dct)
-            if name == 'sjm':
-                from gpaw.new.sjm import SJM
-                return SJM(**dct)
-            if name == 'solvation':
-                from gpaw.new.solvation import Solvation
-                return Solvation(**dct)
-            raise ValueError(f'Unknown extension: {name}')
-        return extension
 
 
 class Mixer(Parameter):
