@@ -20,7 +20,7 @@
 #include "gpu/cpp/gpu_python.h"
 #endif
 
-#include "splines/splines_python.h"
+#include "splines/splines_python.hpp"
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -431,7 +431,7 @@ static PyObject* moduleinit(void)
     PyObject_SetAttrString(m, "have_openmp", Py_False);
 #endif
 
-    if (!bind_new_splines(m))
+    if (!gpaw::bind_new_splines(m))
     {
         return NULL;
     }

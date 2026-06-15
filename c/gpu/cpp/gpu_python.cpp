@@ -8,6 +8,8 @@
     #include "gpu/cpp/magma/magma_python.h"
 #endif
 
+#include "gpu/splines/spline_gpu_tests_python.hpp"
+
 namespace py = pybind11;
 
 namespace gpaw
@@ -105,6 +107,8 @@ bool bind_gpu_submodule(PyObject* module)
         py::arg("array"), py::arg("same_array"),
         R"(Tests that the array type caster correctly copies metadata from cupy ndarray. Use by passing the same array as both inputs. Raises RuntimeError on failure.)"
     );
+
+    gpaw::bind_gpu_spline_tests(submodule);
 
     bool submodules_ok = true;
 #ifdef GPAW_WITH_MAGMA
