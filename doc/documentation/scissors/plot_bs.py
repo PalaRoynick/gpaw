@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from ase.units import Ha
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from matplotlib.collections import LineCollection
 
 

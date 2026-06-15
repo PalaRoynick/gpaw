@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ase.build import mx2
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 
 

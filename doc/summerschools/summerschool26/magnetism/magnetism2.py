@@ -274,7 +274,7 @@ conditions using the command `path = atoms.cell.bandpath('GK', npoints=7).kpts`.
 # %%
 import numpy as np
 from ase.io import read
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 atoms = layer.copy()
 magmoms = np.zeros((3, 3), float)
