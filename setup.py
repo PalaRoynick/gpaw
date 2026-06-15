@@ -520,6 +520,9 @@ sources += Path('c').glob('*.c')
 if gpu:
     sources += Path('c/gpu').glob('*.c')
 sources += Path('c/xc').glob('*.c')
+# Get all .cpp files apart from those in the c/gpu folder
+sources += [p for p in Path('c').rglob('*.cpp')
+            if Path('c/gpu') not in p.parents]
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
     for name in ['libxc.c', 'm06l.c',

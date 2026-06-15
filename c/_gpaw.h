@@ -20,6 +20,8 @@
 #include "gpu/cpp/gpu_python.h"
 #endif
 
+#include "splines/splines_python.h"
+
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
 PyObject* symmetrize(PyObject *self, PyObject *args);
@@ -428,6 +430,11 @@ static PyObject* moduleinit(void)
 #else
     PyObject_SetAttrString(m, "have_openmp", Py_False);
 #endif
+
+    if (!bind_new_splines(m))
+    {
+        return NULL;
+    }
 
 #ifdef GPAW_GPU
     if (!bind_gpu_submodule(m))
