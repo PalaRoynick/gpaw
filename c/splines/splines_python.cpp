@@ -1,4 +1,4 @@
-#include "splines_python.h"
+#include "splines_python.hpp"
 #include "radial_spline.hpp"
 #include "spline.h"  // Legacy SplineType
 #include <pybind11/pybind11.h>
@@ -9,19 +9,6 @@ namespace py = pybind11;
 
 namespace gpaw
 {
-
-template<typename T>
-static TRadialSpline<T> spline_from_numpy(T r_max, py::array_t<T, py::array::c_style | py::array::forcecast> data)
-{
-    py::buffer_info buf = data.request();
-    if (buf.ndim != 1)
-    {
-        throw std::runtime_error("Input data must be 1D");
-    }
-
-    T* data_ptr = static_cast<T*>(buf.ptr);
-    return TRadialSpline<T>(r_max, data_ptr, buf.size);
-}
 
 template<typename T>
 void bind_spline(py::module_& m, const std::string& class_name)
@@ -123,8 +110,6 @@ void bind_spline(py::module_& m, const std::string& class_name)
        - S(x) = 0 for x >= x_max.)";
 }
 
-} // namespace gpaw
-
 bool bind_new_splines(PyObject* module)
 {
     if (!module || module == Py_None)
@@ -145,8 +130,10 @@ bool bind_new_splines(PyObject* module)
         return false;
     }
 
-    gpaw::bind_spline<float>(submodule, "Spline32");
-    gpaw::bind_spline<double>(submodule, "Spline64");
+    bind_spline<float>(submodule, "Spline32");
+    bind_spline<double>(submodule, "Spline64");
 
     return true;
 }
+
+} // namespace gpaw

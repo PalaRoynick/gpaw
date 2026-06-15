@@ -656,6 +656,12 @@ class BuildGPU:
             p for p in gpu_dpath.rglob('*.cpp')
             if not any(skip in p.parents for skip in skip_paths)
         ]
+        cuda_files = [
+            p for p in gpu_dpath.rglob("*.cu")
+            if not any(skip in p.parents for skip in skip_paths)
+        ]
+
+        cpp_files += cuda_files
 
         # Glob all kernel files, but remove those #included by other kernels
         kernels = sorted(kernels_dpath.glob('*.cpp'))
