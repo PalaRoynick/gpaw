@@ -5,9 +5,6 @@ def get_fHxc_Gr(xcflags, rs, q, qF, s2_g):
     xc = xcflags.xc
     if xc == 'rALDA':
         return fHxc_ralda(q, qF)
-
-    elif xcflags.is_apbe:
-        return fHxc_apbe(rs, q, s2_g)
     else:
         raise ValueError(f'Unknown xc: {xc}')
 
