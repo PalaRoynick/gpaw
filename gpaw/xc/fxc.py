@@ -8,12 +8,11 @@ from ase.units import Ha
 from scipy.special import p_roots, sici
 
 from gpaw.blacs import BlacsGrid, Redistributor
-from gpaw.fd_operators import Gradient
 from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.old.pw.descriptor import PWDescriptor
 from gpaw.response import timer
 from gpaw.response.qpd import SingleQPWDescriptor
-from gpaw.utilities.blas import axpy, gemmdot
+from gpaw.utilities.blas import gemmdot
 from gpaw.xc.fxc_kernels import get_fHxc_Gr, get_fspinHxc_Gr_rALDA
 from gpaw.xc.rpa import RPACorrelation
 
