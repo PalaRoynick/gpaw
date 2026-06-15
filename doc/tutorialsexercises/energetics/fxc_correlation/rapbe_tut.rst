@@ -1,4 +1,4 @@
-.. _rapbe_tut:
+.. _ralda_tut:
 
 ===============================
 Correlation energies from TDDFT
@@ -122,7 +122,7 @@ This is done with the script:
 .. literalinclude:: CO.ralda_01_pbe_exx.py
 
 which takes on the order of 6-7 CPU hours.  The script generates three
-gpw files containing the wavefunctions, which are the input to the rAPBE
+gpw files containing the wavefunctions, which are the input to the rALDA
 calculation.  The PBE and non self-consistent Hartree-Fock atomization
 energies are also calculated and written to the file
 ``CO.ralda.PBE_HF_CO.dat``. Be aware that using symmetries (i.  e.  not
@@ -184,7 +184,7 @@ obtained by extrapolation with the script
 The results are summarized below
 
 ====   ====   ====   ======       ============
-PBE     HF     RPA    rAPBE       Experimental
+PBE     HF     RPA    rALDA       Experimental
 ====   ====   ====   ======       ============
 7.75   5.17   7.06   6.65         7.55
 ====   ====   ====   ======       ============
@@ -197,22 +197,23 @@ value.
 Example 4: Correlation energy of diamond with different kernels
 ===============================================================
 
-Finally we provide an example where we try different exchange-correlation kernels.
-For illustrative purposes we use a basic computational setup - as a result these numbers
-should not be considered converged!
-As usual we start with a ground state calculation to get the electron density and wavefunctions
-for diamond:
+Finally we provide an example where we try different exchange-correlation
+kernels.  For illustrative purposes we use a basic computational setup -
+as a result these numbers should not be considered converged!  As usual
+we start with a ground state calculation to get the electron density and
+wavefunctions for diamond:
 
 .. literalinclude:: diam_kern.ralda_01_lda.py
 
-The default method of constructing the kernel is to use a two-point density average.
-Therefore the following simple script gets the rALDA correlation energy within this averaging scheme:
+The default method of constructing the kernel is to use a two-point
+density average.  Therefore the following simple script gets the rALDA
+correlation energy within this averaging scheme:
 
 .. literalinclude:: diam_kern.ralda_02_ralda_dens.py
 
-However, an alternative method of constructing the kernel is to work in reciprocal space,
-and average over wavevectors rather than density.
-To use this averaging scheme, we add the flag ``avg_scheme='wavevector'``:
+However, an alternative method of constructing the kernel is to work in
+reciprocal space, and average over wavevectors rather than density.  To
+use this averaging scheme, we add the flag ``avg_scheme='wavevector'``:
 
 .. literalinclude:: diam_kern.ralda_03_ralda_wave.py
 
@@ -222,8 +223,8 @@ For further comparison we include an RPA calculation as well.
 
 .. literalinclude:: diam_kern.ralda_04_rpa.py
 
-Here we summarize the above calculations and show the correlation energy/electron (in eV),
-obtained at an (unconverged) cutoff of 131 eV:
+Here we summarize the above calculations and show the correlation
+energy/electron (in eV), obtained at an (unconverged) cutoff of 131 eV:
 
 =================  ================   ======
 rALDA (dens. av.)  rALDA (wave. av)   RPA
@@ -234,12 +235,13 @@ rALDA (dens. av.)  rALDA (wave. av)   RPA
 Incidentally, a fully converged RPA calculation gives a correlation energy
 of -1.781 eV per electron.
 
-We conclude with some practical points.  The wavevector-averaging scheme is less intuitive
-than the density-average, but avoids some difficulties such as having to describe the `1/r`
-divergence of the Coulomb interaction in real space.  It also can be faster to construct for
-systems with many k points.
-Finally we point out that the rALDA and rAPBE kernels are also special because they have
-explicit spin-polarized forms.
+We conclude with some practical points.  The wavevector-averaging scheme
+is less intuitive than the density-average, but avoids some difficulties
+such as having to describe the `1/r` divergence of the Coulomb
+interaction in real space.  It also can be faster to construct for
+systems with many k points.  Finally we point out that the rALDA
+kernel is also special because they have explicit spin-polarized
+forms.
 
 .. [#Olsen1] T. Olsen and K. S. Thygesen
               *Phys. Rev. B* **86**, 081103(R) (2012)
