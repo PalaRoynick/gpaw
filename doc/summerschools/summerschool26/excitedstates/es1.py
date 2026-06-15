@@ -13,7 +13,7 @@ In this exercise we study some of the key properties of materials for photovolta
 * band structure
 * compare how different exchange correlation functionals perform
 
-We will use ASE and GPAW packages and at the end of this notebook, you will be requested to write your own scripts and submit them to the supercomputer. You will be asked to compare your results to each other and to discuss your results with other groups studying different materials.
+We will use ASE and GPAW packages and at the end of this tutorial, you will be requested to write your own scripts and submit them to the supercomputer. You will be asked to compare your results to each other and to discuss your results with other groups studying different materials.
 """
 
 # %%
