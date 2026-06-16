@@ -21,6 +21,7 @@
 #endif
 
 #include "splines/splines_python.hpp"
+#include "new_lfc/lfc_python.hpp"
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -432,6 +433,11 @@ static PyObject* moduleinit(void)
 #endif
 
     if (!gpaw::bind_new_splines(m))
+    {
+        return NULL;
+    }
+
+    if (!bind_lfc_submodule(m))
     {
         return NULL;
     }
