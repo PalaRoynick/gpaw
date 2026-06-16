@@ -1,7 +1,7 @@
 # snippet-basic-imports-start
 # basic imports
 import numpy as np
-from ase import Atoms  # Import atoms
+from ase import Atoms
 from ase.build import bulk
 # snippet-basic-imports-end
 
@@ -10,7 +10,14 @@ Ge = bulk('Ge', 'diamond', a=5.7)  # student:
 C = bulk('C', 'diamond', a=3.6)  # student:
 CdTe = bulk('CdTe', 'zincblende', 6.5)  # student:
 GaAs = bulk('GaAs', 'zincblende', a=5.6)  # student:
-BN = Atoms('BN', pbc=[True, True, False], positions=[[0., 0., 7.],[0., 2.5/np.sqrt(3), 7.]], cell=[[2.50, 0., 0.],[-2.5/2., 2.5 * np.sqrt(3.)/2., 0.],[0., 0., 14.]])  # student:
+BN = Atoms(
+    'BN',
+    pbc=[True, True, False],
+    positions=[[0., 0., 7.],
+               [0., 2.5 / np.sqrt(3), 7.]],
+    cell=[[2.50, 0., 0.],
+          [-2.5 / 2, 2.5 * np.sqrt(3.) / 2, 0],
+          [0, 0, 14]])
 
 atoms = Si  # student: atoms = ???
 label = 'Si'  # student: label = '???'
@@ -29,20 +36,18 @@ kpts = ...
 xc = 'PBE'
 occupations = FermiDirac(0.01)
 mode = PW(600)
-kpts = {'size': (6,6,6)}
+kpts = {'size': (6, 6, 6)}
 
 # snippet-calculator-start
 # We create the calculator object
-calc = GPAW(xc = xc,
-            txt = label + '_relax.txt',
-            occupations = occupations, # smearing the occupation
-            mode = mode, # plane wave basis
-            kpts = kpts
-)
+calc = GPAW(xc=xc,
+            txt=label + '_relax.txt',
+            occupations=occupations,  # smearing the occupation
+            mode=mode,  # plane wave basis
+            kpts=kpts)
 
 atoms.calc = calc
 # snippet-calculator-end
-
 
 # snippet-opt-start-student
 from ase.filters import UnitCellFilter

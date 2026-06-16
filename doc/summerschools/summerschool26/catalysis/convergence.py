@@ -171,7 +171,7 @@ script that also contains the definition of the `adsorb()` function.  The
 script will do a bunch of calculations with different parameters and store
 the results in a database file (`convergence.db`) that we analyse below ...
 
-[7]: https://gitlab.com/gpaw/gpaw/blob/master/doc/summerschools/summerschool18/catalysis/check_convergence.py
+[7]: doc/summerschools/summerschool18/catalysis/check_convergence.py
 """
 
 
@@ -287,7 +287,8 @@ You can inspect database file with the
 """
 
 # %%
-# magic: !ase db convergence.db -c ++ -L 0  # show all columns (-c ++); show all rows (-L 0)
+# magic: !ase db convergence.db -c ++ -L 0
+# show all columns (-c ++); show all rows (-L 0)
 
 # %%
 # magic: !ase db convergence.db formula=Ru2N,nkpts=7 -c ecut,height -s ecut

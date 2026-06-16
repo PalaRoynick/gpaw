@@ -2,8 +2,6 @@
 label = ...  # Use the same label as in the previous exercise
 # snippet-re-from-relaxed-end-student
 
-
-
 label = "Si"
 label = label  # Use the same label as in the previous exercise
 # snippet-restart-from-relaxed-start
@@ -17,9 +15,6 @@ from gpaw import GPAW, PW, FermiDirac
 # read only the structure
 atoms = read(label + '_gs.gpw')
 # snippet-restart-from-relaxed-end
-
-
-
 
 # snippet-lda-calculator-start
 # self consistency in LDA
@@ -49,15 +44,12 @@ vbm, cbm = calc.get_homo_lumo()
 # snippet-band-gap-start
 # Potential energy
 E = E
-vbm, cbm = vbm, cbm 
+vbm, cbm = vbm, cbm
 
 print('E=', E)
 print('VBM=', vbm, 'CBM=', cbm)
 print('band gap=', cbm - vbm)
 # snippet-band-gap-end
-
-
-
 
 # snippet-save-lda-start
 # Save the ground state to file
@@ -66,11 +58,13 @@ calc.write(label + '_gs_LDA.gpw')
 
 
 # sni-fixed-density-start-student
-nbands = ... # Write the number of bands you are going to compute here, try 2x nbands
-path = ...  # write your path here e.g. GXWKL/GMKG
-convergence = ... # Your number of occupied orbitals comes here, e.g. 8/'occupied'
+# Write the number of bands you are going to compute here, try 2x nbands
+nbands = ...
+# Write your path here e.g. GXWKL/GMKG
+path = ...
+# Your number of occupied orbitals comes here, e.g. 8/'occupied'
+convergence = ...
 # sni-fixed-density-end-student
-
 
 nbands = 16
 path = 'GXWKL'
@@ -79,15 +73,12 @@ convergence = {'bands': 'occupied'}
 # snippet-fixed-density-start
 # Restart from ground state and fix potential:
 calc = GPAW(label + '_gs_LDA.gpw').fixed_density(
-    nbands=nbands,  
+    nbands=nbands,
     symmetry='off',
-    kpts={'path': path,  
+    kpts={'path': path,
           'npoints': 60},
-    convergence=convergence
-    )
+    convergence=convergence)
 # snippet-fixed-density-end
-
-
 
 # snippet-band-structure-doc-start
 # Have a look at the documentation of the band structure method
@@ -96,7 +87,10 @@ calc = GPAW(label + '_gs_LDA.gpw').fixed_density(
 
 # snippet-plot-band-structure-start
 bs = calc.band_structure()
-bs.plot(filename=label + '_bandstructure_LDA.png', show=True, emin = -10, emax=10)
+bs.plot(filename=label + '_bandstructure_LDA.png',
+        show=True,
+        emin=-10,
+        emax=10)
 # snippet-plot-band-structure-end
 
 # snippet-save-band-structure-start

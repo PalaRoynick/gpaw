@@ -162,7 +162,7 @@ Now try to calculate how the different contributions change with temperature.
 You can for example make a `for` loop and use the `get_entropy()` and
 `get_internal_energy()` methods [(see description here)][5].
 
-[5]: https://ase-lib.org/ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_enthalpy
+[5]: ase.thermochemistry.IdealGasThermo.get_enthalpy
 """
 
 # %%
