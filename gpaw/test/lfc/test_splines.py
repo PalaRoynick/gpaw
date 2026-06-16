@@ -103,22 +103,25 @@ def test_radial_spline(fixt_random_data: np.ndarray):
                                rtol=rtol, atol=atol)
 
 
-# @pytest.mark.gpu
-# @pytest.mark.skipif(cupy_is_fake, reason="Fake cupy")
-# def test_gpu_spline(fixt_random_data: np.ndarray):
-#     """"""
-#     from gpaw.cgpaw.gpu import SplineTester32, SplineTester64
-#     dtype = fixt_random_data.dtype
+@pytest.mark.gpu
+@pytest.mark.skipif(cupy_is_fake, reason="Fake cupy")
+def test_gpu_spline(fixt_random_data: np.ndarray):
+    """"""
+    from gpaw.cgpaw.gpu import SplineTester32, SplineTester64
+    dtype = fixt_random_data.dtype
 
-#     cutoff = 33.2
-#     if dtype == np.float32:
-#         tester = SplineTester32(cutoff, fixt_random_data)
-#     else:
-#         tester = SplineTester64(cutoff, fixt_random_data)
+    cutoff = 33.2
+    if dtype == np.float32:
+        tester = SplineTester32(cutoff, fixt_random_data)
+    else:
+        tester = SplineTester64(cutoff, fixt_random_data)
 
-#     rng = np.random.default_rng(99)
-#     r = rng.uniform(0.0, cutoff, (8)).astype(dtype)
+    rng = np.random.default_rng(99)
+    r = rng.uniform(0.0, cutoff, (8)).astype(dtype)
 
-#     res_cpu = tester.evaluate_cpu(r)
-#     res_gpu = tester.evaluate_gpu(as_xp(r, xp=cp))
-#     np.testing.assert_allclose(res_gpu, res_cpu)
+    rtol = 1e-12 if dtype == np.float64 else 1e-6
+    atol = 1e-12 if dtype == np.float64 else 1e-6
+
+    res_cpu = tester.evaluate_cpu(r)
+    res_gpu = tester.evaluate_gpu(as_xp(r, xp=cp))
+    np.testing.assert_allclose(res_gpu, res_cpu, rtol=rtol, atol=atol)
