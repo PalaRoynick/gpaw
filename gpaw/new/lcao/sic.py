@@ -87,7 +87,7 @@ class PZSICLCAO:
         else:
             nbs = c_nm.shape[0]
         
-        # n_set is equal to 2 * nao
+        # n_set is equal to 2 * nao.
         n_set = c_nm.shape[1]
 
         b_mn = np.zeros(shape=(n_set, nbs), dtype=self.dtype)

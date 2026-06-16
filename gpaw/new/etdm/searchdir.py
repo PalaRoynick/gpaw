@@ -2,10 +2,9 @@ import numpy as np
 
 
 class LBFGS:
-    def __init__(self,
-                 p_key=False,
-                 *,
-                 memory=3):
+    def __init__(
+        self, p_key=False, *, memory=5
+    ):  # memory should bet set to 5 for PW/FD, 3 for LCAO
         """
         L-BFGS optimizer initialization.
 
@@ -42,8 +41,8 @@ class LBFGS:
         # Arrays to store last 'memory' differences in variables and gradients
         # ds[m] ~ change in parameters (search direction)
         # dy[m] ~ change in gradients
-        self.ds = ['None'] * self.memory
-        self.dy = ['None'] * self.memory
+        self.ds = ["None"] * self.memory
+        self.dy = ["None"] * self.memory
 
         # Scaling factors for L-BFGS (1 / (y^T * s))
         self.rho = np.zeros(self.memory)
@@ -100,8 +99,10 @@ class LBFGS:
 
             # FIX: these two statements should be
             # identical for both lcao and pw
-            self.ds[m] = self.search_dir.copy()
-            # self.ds[m] = a_cur - self.a_old
+
+            self.ds[m] = self.search_dir.copy()  # For FD and PW
+            # self.ds[m] = a_cur - self.a_old # For LCAO
+
             self.dy[m] = g_cur - self.g_old
 
             # Compute curvature y^T * s
@@ -151,20 +152,18 @@ class LBFGS:
             # l-bfgs-p:
             if self.p_key:
                 self.rho_y = self.rho[m] * yy
-                if abs(self.rho_y) > 1.e-20:
+                if abs(self.rho_y) > 1.0e-20:
                     self.beta0 = 1.0 / self.rho_y
                 else:
                     self.beta0 = 1.0e20
                 if precond is not None:
-                    self.search_dir.a_ux = apply_precond(precond,
-                                                         np.array(q.a_ux))
+                    self.search_dir.a_ux = apply_precond(precond, np.array(q.a_ux))
                 else:
                     self.search_dir = q * self.beta0
             else:
                 # avoid divide by zero
                 devis = np.maximum(self.rho[m] * yy, 1.0e-20)
                 self.search_dir = q * (1 / devis)
-
 
             # Second loop: forward over stored vectors
             for k in range(self.memory):
@@ -194,10 +193,7 @@ class LBFGS:
 
 
 class LSR1:
-    def __init__(self,
-                 memory=20,
-                 method='LSR1',
-                 phi=None):
+    def __init__(self, memory=20, method="LSR1", phi=None):
         """
         Initialization of LSR1 algorithm
 
@@ -237,8 +233,8 @@ class LSR1:
         # Arrays to store last 'memory' differences in variables and gradients
         # ds[m] ~ change in parameters (search direction)
         # dy[m] ~ change in gradients
-        self.du = ['None'] * self.memory
-        self.dj = ['None'] * self.memory
+        self.du = ["None"] * self.memory
+        self.dj = ["None"] * self.memory
         self.yj_k = np.zeros(self.memory)
 
         # here or above?
@@ -287,18 +283,23 @@ class LSR1:
                 by_k = self.dy.copy()
 
             # first use of equation 19
-            by_k = self.update_bv(by_k, self.dy, self.du,
-                                  self.dj, self.yj_k,
-                                  np.maximum(1, self.local_iter
-                                             - self.memory), self.local_iter)
+            by_k = self.update_bv(
+                by_k,
+                self.dy,
+                self.du,
+                self.dj,
+                self.yj_k,
+                np.maximum(1, self.local_iter - self.memory),
+                self.local_iter,
+            )
 
             self.dj[m] = self.ds - by_k
             self.yj_k[m] = self.dy @ self.dj[m]
 
-            if self.method == 'LSR1':
+            if self.method == "LSR1":
                 if abs(self.yj_k[m]) < 1e-12:
                     self.yj_k[m] = 1e-12
-            
+
             self.yy = self.dy @ self.dy
             if abs(self.yy) > 1.0e-15:
                 self.du[m] = self.dy * (1.0 / self.yy)
@@ -307,13 +308,16 @@ class LSR1:
 
             # OTHER METHODS HERE(?)
 
-            self.search_dir = self.update_bv(self.search_dir,
-                                             g_cur, self.du, self.dj,
-                                             self.yj_k, np.maximum(
-                                                 1, self.local_iter -
-                                                 self.memory + 1),
-                                             self.local_iter + 1)
-                 
+            self.search_dir = self.update_bv(
+                self.search_dir,
+                g_cur,
+                self.du,
+                self.dj,
+                self.yj_k,
+                np.maximum(1, self.local_iter - self.memory + 1),
+                self.local_iter + 1,
+            )
+
             # Step 6: Update stored previous gradient and variable
             self.g_old = g_cur.copy()
             self.a_old = a_cur.copy()
@@ -322,11 +326,10 @@ class LSR1:
 
         # Return updated search direction
         self.search_dir.a_ux *= -1
-        
-        return self.search_dir
-            
-    def update_bv(self, bv, dy, du, dj, yj_k, i_0, i_m):
 
+        return self.search_dir
+
+    def update_bv(self, bv, dy, du, dj, yj_k, i_0, i_m):
         """
         Recursive formula (Eq 19 from Journal of Chemical Theory and
         Computation, 16(11), 6968-6982.
@@ -337,7 +340,7 @@ class LSR1:
         alpha = np.zeros(self.memory)
 
         for c_ind in range(i_0, i_m):
-           # yr = self.dy[c_ind] @ self.search_dir
+            # yr = self.dy[c_ind] @ self.search_dir
             uv = du[c_ind] @ dy
             jv = dj[c_ind] @ dy
             alpha = jv - yj_k[c_ind] * uv
@@ -360,8 +363,9 @@ def apply_precond(prec, x, const=1.0):
     y = []
     for k in range(x.shape[0]):
         if prec[k].dtype == complex:
-            y.append(const * (prec[k].real * x[k].real +
-                              1.0j * prec[k].imag * x[k].imag))
+            y.append(
+                const * (prec[k].real * x[k].real + 1.0j * prec[k].imag * x[k].imag)
+            )
         else:
             y.append(const * prec[k] * x[k])
     return np.array(y)

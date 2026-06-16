@@ -111,6 +111,8 @@ class PZSICLCAO:
         n_set = c_nm.shape[1]
 
         timer.start('Construct Gradient Matrix')
+
+        # get hamiltonian in molecular orbital representation
         hc_mn = np.dot(h_mm.conj(), c_nm[:nbs].T)
         h_mm = np.dot(c_nm[:nbs].conj(), hc_mn)
         # odd part
