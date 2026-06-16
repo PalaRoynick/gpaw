@@ -24,14 +24,33 @@ In the next example, we will calculate the absorption spectrum using the Bethe-S
 We start by calculating the ground state density and diagonalizing the resulting Hamiltonian. The last line in the script creates a .gpw file which contains all the informations of the system, including the wavefunctions.
 
 
+.. code::
+
+   atoms = bulk(...)
+   pw_cut_off = ...
+   kpts_grid = (..., ..., ...)
+   gamma = ...
+
+
 .. literalinclude:: solution4.py
    :start-after: # snippet-bse-groundstate-start
    :end-before: # snippet-bse-groundstate-end
 
 
-Below we will set up the Bethe-Salpeter Hamiltonian in a basis of the ?? valence bands and ?? conduction bands.
+Below we will set up the Bethe-Salpeter Hamiltonian in a basis of valence bands and conduction bands (hint: the number of valence and conduction bands should be in the single digits).
 However, the screened interaction that enters the Hamiltonian needs to be converged with respect the number of unoccupied bands. Next we calculate the dynamical dielectric function using the Bethe-Salpeter equation. The imaginary part is proportional to the absorption spectrum. We will calculate the dielectric function within the Random Phase Approximation (with the same convergence parameters for comparison).
 
+
+.. code::
+
+   ecut = ...
+   nbands = ...
+   valence_bands = np.range(..., ...)
+   conduction_bands = np.range(..., ...)
+   nbands = ...
+
+Hint: The end of the valence band range should be the same as the start of 
+conduction band range.
 
 .. literalinclude:: solution4.py
    :start-after: # snippet-bse-spectrum-start
