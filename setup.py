@@ -134,7 +134,7 @@ generator after building the extension.
 
 
 def ensure_cpp_standard(compile_args: list):
-    """GPAW C++ code requires -std=c++17. This adds it to the input compile
+    """GPAW C++ code requires -std=c++20. This adds it to the input compile
     args list if it's missing. Don't override existing flags, but warn if the
     user-specified standard is too low.
     """
@@ -144,13 +144,13 @@ def ensure_cpp_standard(compile_args: list):
         if m:
             old_std = m.group(1)
             version = int(m.group(2))
-            if version < 17:
+            if version < 20:
                 warnings.warn(f'C++ standard {old_std} is too low, '
-                              'GPAW requires -std=c++17 or newer')
+                              'GPAW requires -std=c++20 or newer')
             break
 
     if old_std is None:
-        compile_args.append('-std=c++17')
+        compile_args.append('-std=c++20')
 
 
 # Search and store current git hash if possible
