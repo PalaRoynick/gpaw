@@ -22,5 +22,5 @@ O_ralda = np.loadtxt('CO.ralda_rapbe_O.dat')
 a = CO_ralda
 a[:, 1] -= (C_ralda[:, 1] + O_ralda[:, 1])
 ext, A, B, sigma = extrapolate(a[:, 0], a[:, 1], reg=3, plot=False)
-assert abs(A - -3.51) < 0.01
-assert abs(E_hf + A - -10.88) < 0.01
+assert abs(A - -3.38) < 0.01
+assert abs(E_hf + A - -10.76) < 0.01

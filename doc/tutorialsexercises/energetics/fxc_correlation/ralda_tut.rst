@@ -144,14 +144,14 @@ converged result is obtained by extrapolation using the script
 .. literalinclude:: CO.ralda_05_extrapolate.py
 
 If graphic backend (e.g.  matplotlib) is installed, the plot=False can be
-change to plot=True to visualize the quality of the extrapolation.  The
+changed to plot=True to visualize the quality of the extrapolation.  The
 final results are displayed below
 
-======   =====   =====   ======       ============
-PBE      HF      RPA     rALDA        Experimental
-======   =====   =====   ======       ============
-11.74    7.37    10.64   10.88        11.23
-======   =====   =====   ======       ============
+====== ===== ===== ====== ============
+PBE    HF    RPA   rALDA  Experimental
+====== ===== ===== ====== ============
+11.74  7.37  10.64 10.76  11.23
+====== ===== ===== ====== ============
 
 
 Example 3: Cohesive energy of diamond
@@ -229,7 +229,7 @@ energy/electron (in eV), obtained at an (unconverged) cutoff of 131 eV:
 =================  ================   ======
 rALDA (dens. av.)  rALDA (wave. av)   RPA
 =================  ================   ======
--1.16              -1.13              -1.40
+-1.01              -0.97              -1.40
 =================  ================   ======
 
 Incidentally, a fully converged RPA calculation gives a correlation energy
