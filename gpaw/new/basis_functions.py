@@ -295,7 +295,7 @@ class GeometryHelpers:
         self.num_blocks_c = num_blocks_c
         """Number of blocks in this MPI domain in each grid direction."""
 
-        # Compute grid domain AABB
+        # Compute grid domain AABB (Axis-Aligned Bounding Box)
         aabb_corners_c = np.array(list(itertools.product([0, 1], repeat=3)))
         span_c = self.grid.end_c - self.grid.start_c
         domain_aabb_corners_ic = (
@@ -731,7 +731,8 @@ class BasisFunctionCollectionBase(ABC):
             atom_idx: int) -> list[BasisFunctionInstance]:
         """Returns list of current basis function instances originating from
         given atom. Only includes basis funcs that overlap with the current
-        grid domain."""
+        grid domain.
+        This is cheap to call and does not incur data copying."""
         return self.phi_instances_ai[atom_idx]
 
     def get_nonempty_blocks(self) -> list[BlockCoords]:
