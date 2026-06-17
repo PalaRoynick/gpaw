@@ -30,6 +30,15 @@ private:
     std::vector<Spline> splines;
 };
 
+/* Staging struct for block data. Easy to work with but not efficient for actual computations. */
+struct BlockDataStaging
+{
+    std::array<grid_index_t, 3> block_shape;
+    std::vector<std::array<grid_index_t, 3>> block_start_bc;
+    // Maps block-local phi_j to global phi_i index
+    std::vector<std::vector<size_t>> block_phi_j_to_phi_i;
+};
+
 /* Python sees this. Currently this builds splines pools too because I'm too lazy to separate and expose that to Python */
 class LFCBuilder
 {
@@ -43,9 +52,8 @@ class LFCBuilder
 public:
 
     //std::unique_ptr<LFCGPU> build_gpu();
-    //void enable_single_precision(bool enabled) { single_precision = enabled; }
-    //void enable_gpu(bool enabled) { use_gpu = enabled; }
-    void set_block_size(const std::array<int32_t, 3>& in_block_size) { block_size = in_block_size; }
+
+    void set_block_size(const std::array<grid_index_t, 3>& in_block_size);
 
     // Optional pre-allocs. But this resets the builder's state!
     //void reserve(size_t num_phi, size_t num_blocks);
@@ -59,12 +67,13 @@ public:
     std::shared_ptr<SplinePool> build_spline_pool();
 
     //void set_spline_pool(std::shared_ptr<const SplinePoolImplBase> spline_pool_impl);
-    // MPI aware grid bounds
-    // void define_grid(const std::array<size_t, 3>& start_c, const std::array<size_t, 3>& end_c, const std::array<double, 3>& spacing, double dV);
 
+    // start_c and end_c are the MPI-aware domain start and end ranges
+    void define_grid(const std::array<grid_index_t, 3>& start_c, const std::array<grid_index_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV);
     void add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu, const std::array<grid_index_t, 3>& cell_coords);
-
-    //void add_block(const std::array<grid_index_t, 3>& block_start_c, const std::array<grid_index_t, 3>& block_shape, const std::vector<size_t>& M_m, const std::vector<size_t>& phi_idx_j);
+    /* Add a new grid block. Shape is implied to be the same as that defined by set_block_size()
+    * `phi_idx_j` should map block-local phi indices to the global phi index for all phi_j in that block. */
+    void add_block(const std::array<grid_index_t, 3>& block_start_c, std::span<const size_t> phi_idx_j);
 
     // constexpr bool is_allowed_block_size(int32_t block)
     // {
@@ -76,9 +85,9 @@ private:
     // Does some moderate checking on the inputs before build, throws if something is off
     void prebuild_validate();
 
-    // GridInfo grid;
-    // std::vector<GridBlock> blocks;
+    GridInfo grid;
     PhiData phi_data;
+    BlockDataStaging block_staging;
     //std::shared_ptr<const SplinePoolImplBase> spline_pool;
     bool single_precision = false;
     bool use_gpu = false;

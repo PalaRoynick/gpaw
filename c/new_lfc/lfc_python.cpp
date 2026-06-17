@@ -32,8 +32,23 @@ static void bind_lfc_builder(py::module_ m)
 
     //cls.def("enable_gpu", &LFCBuilder::enable_gpu);
 
-    cls.def("set_block_size", &LFCBuilder::set_block_size);
+    cls.def("define_grid",&LFCBuilder::define_grid,
+        py::arg("start_c"), py::arg("end_c"), py::arg("spacing_cv"), py::arg("dV"));
+    cls.def("set_block_size", &LFCBuilder::set_block_size, py::arg("block_size"));
     cls.def("add_phi", &LFCBuilder::add_phi);
+
+    auto add_block = [](
+        LFCBuilder& self,
+        const std::array<grid_index_t, 3>& block_start_c,
+        const std::vector<size_t>& block_phi_idx_to_global)
+    {
+        self.add_block(block_start_c,
+            std::span<const size_t>(block_phi_idx_to_global.begin(), block_phi_idx_to_global.end())
+        );
+    };
+
+    cls.def("add_block", add_block,
+        py::arg("block_start_c"), py::arg("block_phi_idx_to_global"));
 }
 
 bool bind_lfc_submodule(PyObject* module)

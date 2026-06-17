@@ -16,6 +16,11 @@ SplinePool::SplinePool(std::vector<SplineData> spline_datas)
     }
 }
 
+void LFCBuilder::set_block_size(const std::array<int32_t, 3>& in_block_size)
+{
+    block_staging.block_shape = in_block_size;
+}
+
 void LFCBuilder::add_spline(double cutoff, std::span<const double> data)
 {
     SplineData new_spline;
@@ -33,6 +38,14 @@ void LFCBuilder::add_spline(double cutoff, std::span<const double> data)
 std::shared_ptr<SplinePool> LFCBuilder::build_spline_pool()
 {
     return std::make_shared<SplinePool>(std::move(spline_datas));
+}
+
+void LFCBuilder::define_grid(const std::array<grid_index_t, 3>& start_c, const std::array<grid_index_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV)
+{
+    grid.start_c = start_c;
+    grid.end_c = end_c;
+    grid.spacing_cv = spacing_cv;
+    grid.dV = dV;
 }
 
 void LFCBuilder::add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu, const std::array<grid_index_t, 3>& cell_coords)
@@ -54,6 +67,20 @@ void LFCBuilder::add_phi(int32_t l, size_t spline_index, const Position& positio
     phi_data.cell_coords_i.push_back(cell_coords);
 }
 
+void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, std::span<const size_t> phi_idx_j)
+{
+    block_staging.block_start_bc.push_back(block_start_c);
+
+    std::vector<size_t> phi_j_to_phi_i(phi_idx_j.size());
+    for (size_t j : phi_idx_j)
+    {
+        phi_j_to_phi_i.push_back(j);
+    }
+
+    block_staging.block_phi_j_to_phi_i.push_back(phi_j_to_phi_i);
+}
+
 void LFCBuilder::prebuild_validate()
 {
+    // TODO ensure phi indices in block data are valid
 }

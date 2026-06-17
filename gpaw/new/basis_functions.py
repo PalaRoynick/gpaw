@@ -178,6 +178,8 @@ class BasisFunctionInstance:
     """Phi metadata"""
     spline_index: int
     first_mu: int
+    """Starting global mu index for this instance.
+    Spans [first_mu, first_mu + 2*l+1) indices."""
     position: np.ndarray
     """Real-space position"""
     cell_coords: np.ndarray

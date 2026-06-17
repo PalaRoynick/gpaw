@@ -6,30 +6,56 @@
 
 
 using Position = std::array<double, 3>;
+// Describes spacings on a generic parallelepipid grid. 3x3 matrix
+using GridSpacing = std::array<std::array<double, 3>, 3>;
 using grid_index_t = int32_t;
 
 struct GridInfo
 {
     std::array<grid_index_t, 3> start_c;
     std::array<grid_index_t, 3> end_c;
-    // Grid spacing in XYZ dirs
-    std::array<double, 3> spacing;
+    GridSpacing spacing_cv;
     // Volume element
     double dV;
 };
 
 // CPU side staging struct. TODO might as well turn this into SoA as well?
-struct GridBlock
+// struct GridBlock
+// {
+//     // Start indices to the full (x,y,z) grid for this block. Inclusive.
+//     std::array<grid_index_t, 3> start_c;
+//     // Shape of the grid block
+//     std::array<grid_index_t, 3> shape;
+//     // Map block-local basis function index m to global mu (redundant! see below)
+//     std::vector<size_t> M_m;
+//     // Map block-local m to global phi-index. Does not include the 2*l+1 internal indices of phi
+//     std::vector<size_t> phi_idx_j;
+// };
+
+/* SoA style data for grid blocks. */
+struct BlockData
 {
-    // Start indices to the full (x,y,z) grid for this block. Inclusive.
-    std::array<grid_index_t, 3> start_c;
-    // Shape of the grid block
-    std::array<grid_index_t, 3> shape;
-    // Map block-local basis function index m to global mu (redundant! see below)
-    std::vector<size_t> M_m;
-    // Map block-local m to global phi-index. Does not include the 2*l+1 internal indices of phi
-    std::vector<size_t> phi_idx_j;
+    size_t get_num_blocks() const { return block_start_j.size() - 1; }
+
+    std::array<grid_index_t, 3> block_shape;
+
+    // Start grid indices of each block
+    std::vector<std::array<grid_index_t, 3>> block_start_bc;
+
+    /* Index buffers for implementing CSR (Compressed Sparse Row) style index lookup.
+    *   - `all_blocks_phi_idx_j` maps block-local phi indices j to the global phi indices i.
+    *     This is over all blocks => need a separate lookup array for giving (start_j, end_j) indices for a given block.
+    *   - `block_start_j[b]` gives the first index into `all_blocks_phi_idx_j` for block `b`.
+    *     `block_start_j[b+1]` gives the last index for that block.
+    */
+    std::vector<size_t> all_blocks_phi_idx_j;
+
+    // Size is (num_blocks + 1). One extra element for holding the end index for the last block
+    std::vector<size_t> block_start_j;
+
+    // Original implementation had also similar lookups for block-local m to global mu but at least for now, we don't need them.
 };
+
 
 /* SoA style data for basis function instances ("spheres") in the system.
 * We have N such phi instances phi_i, each having a quantum number l and a spline reference.
