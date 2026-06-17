@@ -1,7 +1,8 @@
 #pragma once
-#include "utils.hpp"
+#include "gpu/cpp/utils.hpp"
 #include <type_traits>
 #include <cstdint>
+#include <memory>
 
 // TODO move under the gpu/ folder?
 
@@ -10,7 +11,8 @@ class SplinePoolGpu;
 template<typename T>
 using GpuVec3 = std::conditional_t<std::is_same_v<T, float>, float3, double3>;
 
-//Contains info about all blocks in a SoA manner. So kernel uses block index to index these arrays (except for d_all_blocks_M_m)
+
+/* Analogous to CPU-side BlockData, see comments in lfc_common.hpp for explanations. */
 struct BlockDataGpu
 {
     size_t num_blocks;
@@ -18,21 +20,7 @@ struct BlockDataGpu
     long3* GPAW_RESTRICT block_start_c;
     long3* GPAW_RESTRICT block_shape;
 
-    /* CSR (Compressed Sparse Row) style index lookup. d_start_m[block_idx] gives the first index into d_all_blocks_M_m for that block
-    and d_start_m[block_idx+1] gives the end index (exclusive) */
-    size_t* GPAW_RESTRICT start_m; // size (num_blocks+1): one extra element to give end m for the last block
-
-    /* Maps block local m to global mu index. But this is now over all blocks: use like
-    int block_idx = ...;
-    int m_offset = d_start_m[block_idx];
-    for (int m = 0; m < d_start_m[block_idx + 1]; m++)
-    {
-        int mu = all_blocks_M_m[m + m_offset];
-    }
-    */
-    size_t* GPAW_RESTRICT all_blocks_M_m;
-
-    // Same as M_m but for phi index. This is really the one we need, so TODO get rid of hte above
+    // CSR style index buffers
     size_t* GPAW_RESTRICT start_j;
     size_t* GPAW_RESTRICT all_blocks_phi_idx_j;
 };
@@ -63,12 +51,19 @@ struct GridInfoGpu
 
 class LFCGpu
 {
+public:
     // TODO actual cleanup
     ~LFCGpu() {}
+
+private:
+    LFCGpu() = default;
 
     PhiDataGpu phi_data;
     BlockDataGpu block_data;
     GridInfoGpu grid;
 
     std::shared_ptr<const SplinePoolGpu> spline_pool;
+
+    friend class LFCBuilderGpu;
 };
+
