@@ -122,13 +122,14 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
         """"""
 
-        # Copy the f_asi dict to a single contiguous array
-        # TODO is this something we could do once and cache?
         num_spins = nt_sG.shape[0]
-        f_sM = self.xp.empty((num_spins, self.num_basis_functions()))
+        assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
+
+        # Flatten f_asi dict to a single array, ordered by global mu.
+        f_sM = np.zeros((num_spins, self.Mmax))
 
         for atom_idx in range(self.num_atoms):
-            atom_mu_range = self._mu_range_a[atom_idx]
+            atom_mu_range = self.get_mu_range_a(atom_idx)
             f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
                 f_asi[atom_idx]
             )
@@ -142,7 +143,38 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         out: np.ndarray | cp.ndarray | None = None
     ) -> np.ndarray | cp.ndarray:
         """"""
-        raise NotImplementedError("WIP")
+        assert self._impl is not None
+        xp = cp if isinstance(vt_G, cp.ndarray) else np
+
+        assert np.all(vt_G.shape == self.grid.mysize_c)
+
+        num_work_rows = (self._matrix_distribution_rules.mu_end
+                         - self._matrix_distribution_rules.mu_start)
+        if (num_work_rows <= 0):
+            # nothing to do
+            if out:
+                return out
+            else:
+                return xp.empty((0))
+
+        M = self.Mmax
+        if out is not None:
+            if out.ndim != 2:
+                raise ValueError("out array must be 2D and have enough rows")
+            rows, cols = out.shape
+            if rows < num_work_rows or cols != M:
+                raise ValueError("Not enough rows or columns in out array")
+            out[:] = 0
+            res = out
+        else:
+            res = xp.zeros((num_work_rows, M))
+
+        if self.has_precalculated_phi():
+            raise NotImplementedError("BasisFunctionCollection with precalc")
+        else:
+            # FIXME won't work currently if using nontrivial matrix dist
+            self._impl.calculate_potential_matrix(vt_G, res)
+        return res
 
     @override
     def construct_density(self,
