@@ -26,7 +26,7 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArra
     {
         throw std::invalid_argument("f_sM must be 2D and C-contiguous");
     }
-    if (nt_sG.dtype != f_sM.dtype)
+    if (!nt_sG.dtype.is(f_sM.dtype))
     {
         throw std::invalid_argument("dtype mismatch: nt_sG and f_sM must have same dtype");
     }
@@ -59,7 +59,7 @@ void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::P
     {
         throw std::invalid_argument("out_V_MN must be 2D and C-contiguous");
     }
-    if (vt_G.dtype != out_V_MN.dtype)
+    if (!vt_G.dtype.is(out_V_MN.dtype))
     {
         throw std::invalid_argument("dtype mismatch: vt_G and out_V_MN must have same dtype");
     }
