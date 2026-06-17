@@ -3,9 +3,11 @@ from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core import PWDesc, UGDesc
 from gpaw.lfc import BasisFunctions
 from gpaw.mpi import serial_comm
-from gpaw.new.basis_functions import build_lfc_system
+from gpaw.new.basis_functions import \
+    build_lfc_system, BasisFunctionCollectionBase
 from gpaw.new.basis_functions_purepython import \
     BasisFunctionCollectionPurePython
+from gpaw.new.basis_functions_cpp import BasisFunctionCollection
 from gpaw.new.brillouin import IBZ
 
 
@@ -28,7 +30,7 @@ def create_basis(ibz: IBZ,
     basis_dtype = complex if \
         np.issubdtype(dtype, np.complexfloating) else float
 
-    basis: BasisFunctions | BasisFunctionCollectionPurePython
+    basis: BasisFunctions | BasisFunctionCollectionBase
     if not new_basis:
         basis = BasisFunctions(
             grid._gd,
@@ -42,10 +44,16 @@ def create_basis(ibz: IBZ,
 
     else:
         system = build_lfc_system(setups, grid, relpos_ac)
-        # Only the purepython version is implemented for now
-        basis = BasisFunctionCollectionPurePython(
-            system,
-            use_gpu=(xp is not np))
+        # New LFC supports GPU in the C++ extension and CPU in purepython
+        needs_purepython = GPAW_NO_C_EXTENSION or (xp is np)
+        if needs_purepython:
+            basis = BasisFunctionCollectionPurePython(
+                system,
+                use_gpu=(xp is not np))
+        else:
+            basis = BasisFunctionCollection(
+                system,
+                use_gpu=(xp is not np))
 
     myM = (basis.Mmax + band_comm.size - 1) // band_comm.size
     basis.set_matrix_distribution(
