@@ -19,19 +19,6 @@ struct GridInfo
     double dV;
 };
 
-// CPU side staging struct. TODO might as well turn this into SoA as well?
-// struct GridBlock
-// {
-//     // Start indices to the full (x,y,z) grid for this block. Inclusive.
-//     std::array<grid_index_t, 3> start_c;
-//     // Shape of the grid block
-//     std::array<grid_index_t, 3> shape;
-//     // Map block-local basis function index m to global mu (redundant! see below)
-//     std::vector<size_t> M_m;
-//     // Map block-local m to global phi-index. Does not include the 2*l+1 internal indices of phi
-//     std::vector<size_t> phi_idx_j;
-// };
-
 /* SoA style data for grid blocks. */
 struct BlockData
 {

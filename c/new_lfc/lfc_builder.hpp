@@ -31,6 +31,7 @@ private:
 /* Staging struct for block data. Easy to work with but not efficient for actual computations. */
 struct BlockDataStaging
 {
+    size_t num_blocks() const { return block_start_bc.size(); }
     std::array<grid_index_t, 3> block_shape;
     std::vector<std::array<grid_index_t, 3>> block_start_bc;
     // Maps block-local phi_j to global phi_i index
@@ -78,16 +79,20 @@ public:
     //     return std::find(gpu_allowed_block_sizes.begin(), gpu_allowed_block_sizes.end(), block) != gpu_allowed_block_sizes.end();
     // }
 
-private:
+    // Turns staged block data into a format that is more suitable for computations.
+    static BlockData build_flattened_block_data(BlockDataStaging&& staging_data);
 
     // Does some moderate checking on the inputs before build, throws if something is off
     void prebuild_validate();
+
+    // These are public because the GPU side builder needs to access/steal them. Not ideal but works
 
     GridInfo grid;
     PhiData phi_data;
     BlockDataStaging block_staging;
     std::array<int32_t, 3> block_size = {};
 
+private:
     // Staging data for splines
     std::vector<SplineData> spline_datas;
 };

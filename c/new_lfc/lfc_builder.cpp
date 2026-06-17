@@ -80,6 +80,35 @@ void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, std
     block_staging.block_phi_j_to_phi_i.push_back(phi_j_to_phi_i);
 }
 
+BlockData LFCBuilder::build_flattened_block_data(BlockDataStaging&& staging_data)
+{
+    BlockData out;
+    const size_t num_blocks = staging_data.num_blocks();
+
+    out.block_shape = std::move(staging_data.block_shape);
+    out.block_start_bc = std::move(staging_data.block_start_bc);
+
+    // Build CSR lookups
+    out.block_start_j.resize(num_blocks + 1);
+    out.all_blocks_phi_idx_j.reserve(num_blocks); // will need at least this many
+    size_t j = 0;
+    for (size_t b = 0; b < num_blocks; ++b)
+    {
+        const std::vector<size_t>& phi_j_to_global = staging_data.block_phi_j_to_phi_i[b];
+        out.block_start_j[b] = j;
+
+        for (size_t global_phi_idx : phi_j_to_global)
+        {
+            out.all_blocks_phi_idx_j.push_back(global_phi_idx);
+        }
+        j += phi_j_to_global.size();
+    }
+    // End CSR index for the last block
+    out.block_start_j[num_blocks] = j;
+
+    return out;
+}
+
 void LFCBuilder::prebuild_validate()
 {
     // TODO ensure phi indices in block data are valid
