@@ -4,6 +4,11 @@
 #include <pybind11/stl.h>
 #include <span>
 
+#ifdef GPAW_GPU
+// LFCGpu builder will be bound to the same Python-side LFCBuilder object
+#include "gpu/new_lfc/lfc_gpu_python.hpp"
+#endif
+
 namespace py = pybind11;
 
 static void bind_spline_pool(py::module m)
@@ -49,6 +54,10 @@ static void bind_lfc_builder(py::module_ m)
 
     cls.def("add_block", add_block,
         py::arg("block_start_c"), py::arg("block_phi_idx_to_global"));
+
+#ifdef GPAW_GPU
+    bind_lfc_gpu(m, cls);
+#endif
 }
 
 bool bind_lfc_submodule(PyObject* module)
@@ -69,7 +78,6 @@ bool bind_lfc_submodule(PyObject* module)
     {
         return false;
     }
-
 
     bind_spline_pool(submodule);
     bind_lfc_builder(submodule);

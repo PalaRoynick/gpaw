@@ -8,8 +8,6 @@
 #include <span>
 #include <cstdint>
 
-class LFCGPU;
-
 struct SplineData
 {
     double cutoff;
@@ -88,9 +86,6 @@ private:
     GridInfo grid;
     PhiData phi_data;
     BlockDataStaging block_staging;
-    //std::shared_ptr<const SplinePoolImplBase> spline_pool;
-    bool single_precision = false;
-    bool use_gpu = false;
     std::array<int32_t, 3> block_size = {};
 
     // Staging data for splines
