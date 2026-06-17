@@ -6,7 +6,7 @@ from gpaw.new.basis_functions import (
 from gpaw.new.basis_functions_purepython \
     import BasisFunctionCollectionPurePython
 from gpaw.spline import Spline
-from gpaw.gpu import as_np
+from gpaw.gpu import as_np, cupy as cp, cupy_is_fake
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.mpi import world, MPIComm
 
@@ -21,19 +21,17 @@ def xp_params_no_cpupy():
     """Use as @pytest.mark.parametrize("xp", xp_params_no_cpupy())
     to run both xp=np and xp=cp cases, but skipping fake Cupy.
     """
-    # return [
-    #     pytest.param(np, id="numpy"),
-    #     pytest.param(
-    #         cp,
-    #         id="cupy",
-    #         marks=[
-    #             pytest.mark.gpu,
-    #             pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
-    #         ],
-    #     ),
-    # ]
-    # WIP: doesn't work with Cupy ATM
-    return [pytest.param(np, id="numpy")]
+    return [
+        pytest.param(np, id="numpy"),
+        pytest.param(
+            cp,
+            id="cupy",
+            marks=[
+                pytest.mark.gpu,
+                pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
+            ],
+        ),
+    ]
 
 
 def parametrize_purepython():
@@ -261,7 +259,7 @@ def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
     hood the same blocking logic is still ran but with block_size == grid_size
     """
 
-    basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
+    basis = make_basis(fixt_lfc_system, xp, purepython=False, block_size=None)
     block_to_phi = basis.get_block_to_phi_map()
 
     # Should have only the (0, 0, 0) block

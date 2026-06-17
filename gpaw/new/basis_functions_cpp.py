@@ -23,8 +23,8 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
             "without GPAW C++ extension." \
             "Use BasisFunctionCollection_PurePython instead.")
 
-        # if not use_gpu:
-        #     raise RuntimeError("Only GPU version implemented for now")
+        if not use_gpu:
+            raise RuntimeError("Only GPU version implemented for now")
 
         # TEMP Force no precalculation, so that we can test stuff
         mode = PrecalculationMode.eNever
@@ -43,11 +43,14 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
             builder.add_spline(phi.cutoff, phi.f_r)
 
         self._spline_pool_cpu = builder.build_spline_pool()
-        """Cached reference to the created spline pool."""
+        """Cached reference to the CPU spline pool."""
 
-        # TODO for the gpu pool, we can expose it directly to python and
-        # construct if here from the CPU pool. Then pass it to LFC builder
-        # when building the actual LFC impl
+        if self.uses_gpu():
+            from gpaw.cgpaw.lfc import SplinePoolGpu
+            self._spline_pool_gpu = SplinePoolGpu(self._spline_pool_cpu)
+            """Cached reference to the GPU spline pool."""
+        else:
+            self._spline_pool_gpu = None
 
     def _build_cpp_object(self):
         """"""
@@ -93,7 +96,11 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                 builder.add_block(self.geometry.block_start_Bc[block_coords],
                                 block_phi_idx_to_global)
 
-        # self._impl = builder.build()
+        if self.uses_gpu():
+            assert self._spline_pool_gpu is not None
+            self._impl = builder.build_gpu(self._spline_pool_gpu)
+        else:
+            raise NotImplementedError("New LFC only support GPU for now")
 
     @override
     def set_positions(self, relpos_ac: np.ndarray, force_update: bool) -> bool:

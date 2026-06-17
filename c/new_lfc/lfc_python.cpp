@@ -35,8 +35,6 @@ static void bind_lfc_builder(py::module_ m)
     cls.def("build_spline_pool", &LFCBuilder::build_spline_pool,
         "Finalizes spline creation and returns a shared SplinePool object.");
 
-    //cls.def("enable_gpu", &LFCBuilder::enable_gpu);
-
     cls.def("define_grid",&LFCBuilder::define_grid,
         py::arg("start_c"), py::arg("end_c"), py::arg("spacing_cv"), py::arg("dV"));
     cls.def("set_block_size", &LFCBuilder::set_block_size, py::arg("block_size"));
@@ -57,6 +55,7 @@ static void bind_lfc_builder(py::module_ m)
 
 #ifdef GPAW_GPU
     bind_lfc_gpu(m, cls);
+    bind_gpu_spline_pool(m);
 #endif
 }
 
