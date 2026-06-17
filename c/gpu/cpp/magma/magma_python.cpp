@@ -280,7 +280,7 @@ static void finalize_magma_internals()
 
 bool bind_magma_submodule(pybind11::module_ gpu_module)
 {
-    if (!gpu_module || gpu_module == Py_None)
+    if (!gpu_module || gpu_module.is_none())
     {
         return false;
     }

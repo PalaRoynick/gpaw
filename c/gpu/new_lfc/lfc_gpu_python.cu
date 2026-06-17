@@ -1,4 +1,6 @@
 #include <pybind11/pybind11.h>
+#include "gpu/cpp/pybind_cupy_type_caster.hpp"
+
 #include "lfc_gpu.cuh"
 #include "lfc_builder_gpu.hpp"
 #include "new_lfc/lfc_builder.hpp"
