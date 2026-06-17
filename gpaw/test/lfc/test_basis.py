@@ -1,3 +1,17 @@
+from gpaw.core import UGArray, UGDesc
+from gpaw.lfc import BasisFunctions
+from gpaw.new.basis_functions import (
+    BasisFunctionDesc, BasisFunctionCollectionBase, LFCSystemDesc)
+
+from gpaw.new.basis_functions_purepython \
+    import BasisFunctionCollectionPurePython
+from gpaw.spline import Spline
+from gpaw.gpu import as_np
+from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.mpi import world, MPIComm
+
+import numpy as np
+import pytest
 import copy
 from collections import namedtuple
 from typing import cast
@@ -41,13 +55,13 @@ def parametrize_purepython():
     to run both purepython and non-purepython versions, skipping the latter if
     not available.
     """
-    return [True]
     # return [True,
     #         pytest.param(
     #             False,
     #             marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
     #                                       reason="No C extension")]
     #         )]
+    return [False]
 
 
 def make_random_phi(
@@ -208,13 +222,12 @@ def make_basis(system: LFCSystemDesc,
             use_gpu=(xp is not np),
             block_size=block_size)
     else:
-        raise NotImplementedError("WIP")
-        # from gpaw.new.basis_functions_cpp import BasisFunctionCollection
-        # basis = BasisFunctionCollection(
-        #     system,
-        #     use_gpu = (xp is not np),
-        #     block_size=block_size
-        # )
+        from gpaw.new.basis_functions_cpp import BasisFunctionCollection
+        basis = BasisFunctionCollection(
+            system,
+            use_gpu = (xp is not np),
+            block_size=block_size
+        )
 
     return basis
 
@@ -224,8 +237,8 @@ def make_basis(system: LFCSystemDesc,
 def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
                         fixt_block_size):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
+    # if not purepython and xp is np:
+    #     pytest.skip(reason="CPU + C++ is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)

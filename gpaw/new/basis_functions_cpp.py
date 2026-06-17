@@ -45,6 +45,9 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         self._spline_pool_cpu = builder.build_spline_pool()
         """Cached reference to the created spline pool."""
 
+        # TODO for the gpu pool, we can expose it directly to python and
+        # construct if here from the CPU pool. Then pass it to LFC builder
+        # when building the actual LFC impl
 
     def _build_cpp_object(self):
         """"""
@@ -52,6 +55,8 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         assert self._spline_pool_cpu is not None
 
         builder = LFCBuilder()
+        builder.define_grid(self.grid.start_c, self.grid.end_c,
+                            self.geometry.h_cv, self.grid.dv)
         builder.set_block_size(self.geometry.block_size_c)
 
         for a in self.atom_indices:
@@ -59,34 +64,34 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                 builder.add_phi(phi.desc.l, phi.spline_index, phi.position,
                                 phi.first_mu, phi.cell_coords)
 
-        #
 
-        # from gpaw.cgpaw.gpu import (BasisFunctionCollection_cpp,
-        #                             BasisFunctionCollectionBuilder)
-        # builder = BasisFunctionCollectionBuilder()
+        # TODO figure out a fast way of getting required block data
+        # From set_positions() we already have:
+        # - self.phi_instances_ai: all relevant phi_i for given atom
+        # - self._block_overlaps_a: list of dicts, one for each atom.
+        #   The dict maps BlockCoords to overlapping phi_i for that atom
 
-        # builder.set_block_size(self.block_size)
-        # builder.enable_gpu(self.uses_gpu())
-        # builder.enable_single_precision(self.is_single_precision())
+        # We need:
+        # - start_c for each block (easy)
+        # - map block-local phi_j to global phi_i (hard)
+        # Note that depending on a global phi index is not very scalable as it
+        # practically necessitates a full rebuild of associated arrays whenever any atom moves
 
-        # builder.set_spline_pool(self.spline_pool)
-        # builder.define_grid(self.grid.start_c,
-        #                     self.grid.end_c,
-        #                     np.diag(self.grid._gd.h_cv),  # FIXME handle more general grid shape
-        #                     self.grid.dv)
+        # This is hacky and inefficient!
+        phi_idx_map = {}
+        num_phi = 0
+        for block_coords, block_phi_j in self.get_block_to_phi_map().items():
+            block_phi_idx_to_global = []
+            for phi in block_phi_j:
+                phi_id = id(phi)
+                if phi_id not in phi_idx_map:
+                    phi_idx_map[phi_id] = num_phi
+                    num_phi += 1
+                block_phi_idx_to_global.append(phi_idx_map[phi_id])
 
-        # blocks = self.get_relevant_blocks()
-        # phi_i = self.get_phi_instances()
-
-        # builder.reserve(len(phi_i), len(blocks))
-
-        # for block in blocks:
-        #     builder.add_block(
-        #         tuple(block.start_c), block.shape, block.M_m, block.phi_idx_j)
-
-        # for phi in phi_i:
-        #     builder.add_phi(phi.get_angular_momentum_number(),
-        #                     phi.index, phi.position, phi.first_mu)
+            if block_phi_idx_to_global:
+                builder.add_block(self.geometry.block_start_Bc[block_coords],
+                                block_phi_idx_to_global)
 
         # self._impl = builder.build()
 
