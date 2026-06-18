@@ -49,7 +49,8 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArra
     }
 }
 
-void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN) const
+void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
+                                        size_t mu_start, size_t mu_end) const
 {
     if (!vt_G.c_contiguous || vt_G.ndim() != 3)
     {
@@ -70,9 +71,9 @@ void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::P
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_calculate_potential_matrix<float>(*this, vt_G, out_V_MN); break;
+        LFCGpuImpl::launch_calculate_potential_matrix<float>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_calculate_potential_matrix<double>(*this, vt_G, out_V_MN); break;
+        LFCGpuImpl::launch_calculate_potential_matrix<double>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }

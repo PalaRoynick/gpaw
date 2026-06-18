@@ -97,9 +97,11 @@ public:
     void add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArray& f_sM) const;
 
     /* vt_G: const NDArray<device::gpu, c_contig, ndim<3>>
-    *  out_V_MN: NDArray<c_contig, ndim<2>>
+    *  out_V_MN: NDArray<c_contig, ndim<2>, shape=(mu_end-mu_start, Mmax)>
+    *  mu_start, mu_end: row distribution range — only rows [mu_start, mu_end) are written
     */
-    void calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN) const;
+    void calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
+                                    size_t mu_start, size_t mu_end) const;
 
 private:
     // Construction only via LFCBuilderGpu
