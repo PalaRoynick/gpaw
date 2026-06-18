@@ -126,7 +126,7 @@ def fixt_bc(request) -> BoundaryConds:
 
 
 @pytest.fixture(scope="module", params=[
-    #pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
+    # pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
     pytest.param(8, id="Block8"),
     pytest.param([5, 6, 7], id="Block567")
 ])
@@ -223,7 +223,7 @@ def make_basis(system: LFCSystemDesc,
         from gpaw.new.basis_functions_cpp import BasisFunctionCollection
         basis = BasisFunctionCollection(
             system,
-            use_gpu = (xp is not np),
+            use_gpu=(xp is not np),
             block_size=block_size
         )
 
@@ -350,28 +350,39 @@ def test_potential_matrix(
     V_MN_ref = xp.zeros(out_shape)
     basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
 
-    """Old code does include some elements in the upper matrix triangle,
-    I guess this is done to avoid complex branching.
-    Remove them here, while accounting for possible row distribution in which
-    case we need to carefully pick which "diagonal" to use in xp.tril(...)
-    """
+    # Old code does include some elements in the upper matrix triangle,
+    # I guess this is done to avoid complex branching.
+    # Remove them here, while accounting for possible row distribution in which
+    # case we need to carefully pick which "diagonal" to use in xp.tril(...)
     diagonal = 0 if row_range is None else row_range.start
     V_MN_ref = xp.tril(V_MN_ref, k=diagonal)
 
-    xp.testing.assert_allclose(V_MN,
-                               V_MN_ref,
-                               rtol=1e-10,
-                               atol=1e-12)
+    # Gotta be a bit careful with tolerances here. The GPU implementation uses
+    # atomicAdd when writing to V_MN which accumulates float errors due to
+    # the order of writes being nondeterministic. Error from one addition is
+    # ~1e-16 for 64bit floats but we are doing tons of them (many GPU threads),
+    # so the error accumulates. For example, with rtol=1e-10, atol=1e-12 and
+    # blocks smaller than 8x8x8 (more blocks => more partial-sum atomics),
+    # I confirmed that the following comparison tends to fail with just one
+    # element having a very slight discrepancy. Furthermore, the failing
+    # element was always in the first column of V_MN, which makes sense since
+    # the loop in kernel has condition mu >= nu, ie. the first column nu=0
+    # always qualifies and gets more atomic adds than the others. Therefore
+    # float errors tend to accumulate in the first column(s).
+    #
+    # TLDR: we are using somewhat relaxed tolerances because the kernel
+    # accumulates floating-point associtativity errors due to many atomicAdds
+    rtol = 1e-9
+    atol = 1e-11
+
+    xp.testing.assert_allclose(V_MN, V_MN_ref, rtol=rtol, atol=atol)
 
     # Test also using the optional 'out' argument
     V_MN_out = xp.empty_like(V_MN)
     dummy_out = basis.calculate_potential_matrix(vt_G.data, out=V_MN_out)
     assert dummy_out is V_MN_out
 
-    xp.testing.assert_allclose(V_MN,
-                               V_MN_out,
-                               rtol=1e-10,
-                               atol=1e-12)
+    xp.testing.assert_allclose(V_MN, V_MN_out, rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize("xp", xp_params_no_cpupy())
