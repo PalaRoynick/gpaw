@@ -126,7 +126,8 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
 
         # Flatten f_asi dict to a single array, ordered by global mu.
-        f_sM = np.zeros((num_spins, self.Mmax))
+        xp = np if isinstance(f_asi, np.ndarray) else cp
+        f_sM = xp.zeros((num_spins, self.Mmax))
 
         for atom_idx in range(self.num_atoms):
             atom_mu_range = self.get_mu_range_a(atom_idx)
