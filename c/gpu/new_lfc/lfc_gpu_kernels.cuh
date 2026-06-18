@@ -96,7 +96,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     const int by = threadIdx.y;
     const int bz = threadIdx.z;
 
-    // TODO double check if block_start_c is relative to full grid or the MPI domain...? I think its full grid
+    // Each thread does one grid point. gx, gy, gz are the global grid indices for this thread
     const int gx = block_start_c.x + bx;
     const int gy = block_start_c.y + by;
     const int gz = block_start_c.z + bz;
@@ -113,7 +113,8 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     const long nx = grid.end_c.x - grid.start_c.x;
     const long ny = grid.end_c.y - grid.start_c.y;
     const long nz = grid.end_c.z - grid.start_c.z;
-    const size_t grid_array_idx = (gx * ny + gy) * nz + gz;
+    // Compute index into grid arrays. Note offsetting by grid.start_c to get back to "domain local coordinates"
+    const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
 
     // nt_sG(x) += f_sM * |phi_M|^2.
@@ -209,7 +210,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
     //const long nx = grid.end_c.x - grid.start_c.x;
     const long ny = grid.end_c.y - grid.start_c.y;
     const long nz = grid.end_c.z - grid.start_c.z;
-    const size_t grid_array_idx = (gx * ny + gy) * nz + gz;
+    const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
 
     // sph harmonic buffer
