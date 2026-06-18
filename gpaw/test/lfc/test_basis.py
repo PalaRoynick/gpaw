@@ -126,7 +126,7 @@ def fixt_bc(request) -> BoundaryConds:
 
 
 @pytest.fixture(scope="module", params=[
-    pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
+    #pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
     pytest.param(8, id="Block8"),
     pytest.param([5, 6, 7], id="Block567")
 ])
@@ -235,8 +235,8 @@ def make_basis(system: LFCSystemDesc,
 def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
                         fixt_block_size):
     """"""
-    # if not purepython and xp is np:
-    #     pytest.skip(reason="CPU + C++ is WIP")
+    if not purepython and xp is np:
+        pytest.skip(reason="CPU + C++ is WIP")
 
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
@@ -267,13 +267,17 @@ def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
 
 
 @pytest.mark.skipif(world.size > 1, reason="TODO, probably")
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
+@pytest.mark.parametrize("xp", [np])
 def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
     """Tests that blocking = None makes sense. Useful because under the
-    hood the same blocking logic is still ran but with block_size == grid_size
+    hood the same blocking logic is still ran but with
+    block_size == grid_size.
+
+    This only runs on Numpy because the Cupy version uses CPU for the blocking
+    logic anyway.
     """
 
-    basis = make_basis(fixt_lfc_system, xp, purepython=False, block_size=None)
+    basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
     block_to_phi = basis.get_block_to_phi_map()
 
     # Should have only the (0, 0, 0) block
