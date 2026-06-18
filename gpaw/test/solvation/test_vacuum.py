@@ -26,8 +26,8 @@ def test_solvation_vacuum(gpaw_new):
     adjust_cell(atoms, vac, h)
 
     convergence = {
-        'energy': energy_eps * 0.1,
-        'forces': forces_eps * 0.1,
+        'energy': energy_eps * 1e-2,
+        'forces': forces_eps * 1e-2,
         'density': 10.0,
         'eigenstates': 10.0}
 
@@ -48,6 +48,7 @@ def test_solvation_vacuum(gpaw_new):
         mode='fd',
         xc='LDA',
         h=h,
+        eigensolver={'name': 'davidson', 'niter': 3},
         convergence=convergence,
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii=atomic_radii,

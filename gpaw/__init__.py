@@ -169,11 +169,11 @@ def _lazy_import(attr: str) -> Any:
 
 
 all_lazy_imports = dict(
-    Mixer='gpaw.mixer.Mixer',
-    MixerSum='gpaw.mixer.MixerSum',
-    MixerDif='gpaw.mixer.MixerDif',
-    MixerSum2='gpaw.mixer.MixerSum2',
-    MixerFull='gpaw.mixer.MixerFull',
+    Mixer='gpaw.old.mixer.Mixer',
+    MixerSum='gpaw.old.mixer.MixerSum',
+    MixerDif='gpaw.old.mixer.MixerDif',
+    MixerSum2='gpaw.old.mixer.MixerSum2',
+    MixerFull='gpaw.old.mixer.MixerFull',
 
     Davidson='gpaw.old.eigensolvers.Davidson',
     RMMDIIS='gpaw.old.eigensolvers.RMMDIIS',
