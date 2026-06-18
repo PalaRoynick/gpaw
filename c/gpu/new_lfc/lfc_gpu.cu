@@ -22,7 +22,7 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArra
     {
         throw std::invalid_argument("nt_sG must be 4D and C-contiguous");
     }
-    if (!f_sM.c_contiguous || nt_sG.ndim() != 2)
+    if (!f_sM.c_contiguous || f_sM.ndim() != 2)
     {
         throw std::invalid_argument("f_sM must be 2D and C-contiguous");
     }
