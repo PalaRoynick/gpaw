@@ -71,13 +71,8 @@ void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, std
 {
     block_staging.block_start_bc.push_back(block_start_c);
 
-    std::vector<size_t> phi_j_to_phi_i(phi_idx_j.size());
-    for (size_t j : phi_idx_j)
-    {
-        phi_j_to_phi_i.push_back(j);
-    }
-
-    block_staging.block_phi_j_to_phi_i.push_back(phi_j_to_phi_i);
+    block_staging.block_phi_j_to_phi_i.push_back(
+        std::vector<size_t>(phi_idx_j.begin(), phi_idx_j.end()));
 }
 
 BlockData LFCBuilder::build_flattened_block_data(BlockDataStaging&& staging_data)
