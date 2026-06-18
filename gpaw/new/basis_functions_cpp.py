@@ -62,11 +62,16 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                             self.geometry.h_cv, self.grid.dv)
         builder.set_block_size(self.geometry.block_size_c)
 
+        # phi_idx_map must be built in the same order as add_phi so that block
+        # data indices match the C++ phi data array
+        phi_idx_map = {}
+        num_phi = 0
         for a in self.atom_indices:
             for phi in self.get_phi_instances_for_atom(a):
                 builder.add_phi(phi.desc.l, phi.spline_index, phi.position,
                                 phi.first_mu, phi.cell_coords)
-
+                phi_idx_map[id(phi)] = num_phi
+                num_phi += 1
 
         # TODO figure out a fast way of getting required block data
         # From set_positions() we already have:
@@ -78,23 +83,18 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         # - start_c for each block (easy)
         # - map block-local phi_j to global phi_i (hard)
         # Note that depending on a global phi index is not very scalable as it
-        # practically necessitates a full rebuild of associated arrays whenever any atom moves
+        # practically necessitates a full rebuild of associated arrays
+        # whenever any atom moves.
 
         # This is hacky and inefficient!
-        phi_idx_map = {}
-        num_phi = 0
         for block_coords, block_phi_j in self.get_block_to_phi_map().items():
             block_phi_idx_to_global = []
             for phi in block_phi_j:
-                phi_id = id(phi)
-                if phi_id not in phi_idx_map:
-                    phi_idx_map[phi_id] = num_phi
-                    num_phi += 1
-                block_phi_idx_to_global.append(phi_idx_map[phi_id])
+                block_phi_idx_to_global.append(phi_idx_map[id(phi)])
 
             if block_phi_idx_to_global:
                 builder.add_block(self.geometry.block_start_Bc[block_coords],
-                                block_phi_idx_to_global)
+                                  block_phi_idx_to_global)
 
         if self.uses_gpu():
             assert self._spline_pool_gpu is not None
