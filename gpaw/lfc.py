@@ -1129,9 +1129,11 @@ class BasisFunctions(LocalizedFunctionsCollection):
                       /
 
         Overwrites the elements of the target matrix Vt_MM. """
-        Vt_MM[:] = 0.0
-        self.lfc.calculate_potential_matrix(vt_G, Vt_MM, q,
-                                            self.Mstart, self.Mstop)
+        vt_G = as_np(vt_G)
+        with as_numpy(Vt_MM) as Vt_MM:
+            Vt_MM[:] = 0.0
+            self.lfc.calculate_potential_matrix(vt_G, Vt_MM, q,
+                                                self.Mstart, self.Mstop)
 
     def lcao_to_grid(self,
                      C_xM: np.ndarray,
