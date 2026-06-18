@@ -39,13 +39,12 @@ def parametrize_purepython():
     to run both purepython and non-purepython versions, skipping the latter if
     not available.
     """
-    # return [True,
-    #         pytest.param(
-    #             False,
-    #             marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
-    #                                       reason="No C extension")]
-    #         )]
-    return [False]
+    return [True,
+            pytest.param(
+                False,
+                marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
+                                          reason="No C extension")]
+            )]
 
 
 def make_random_phi(
@@ -117,7 +116,10 @@ def fixt_bc(request) -> BoundaryConds:
     pytest.param([5, 6, 7], id="Block567")
 ])
 def fixt_block_size(request) -> int | tuple[int, int, int] | None:
-    """"""
+    """Currently the GPU implementation couples Python-side blocking
+    with kernel-side blocking, so there's a hard limit on max allowed block
+    size.
+    FIXME: decouple these. Until then, run tests only with small blocks."""
     return request.param
 
 
