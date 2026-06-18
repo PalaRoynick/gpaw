@@ -644,7 +644,6 @@ lint:
       flake8
       --doctests
       --extend-ignore E402,E501
-      doc/summerschools/summerschool26/catalysis
       doc/platforms/Linux/Niflheim
 
 

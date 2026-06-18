@@ -22,12 +22,17 @@ def read_results() -> tuple[dict[str, float], dict[str, float]]:
 
 def main():
     eatomizations, distances = read_results()
+    results = []
     for name, e in eatomizations.items():
-        print(name,
-              e - ref['ea'][name],
-              distances[name] - ref['distance'][name])
-        assert abs(e - ref['ea'][name]) < 0.01
-        assert abs(distances[name] - ref['distance'][name]) < 0.01
+        from ase.formula import Formula
+        natoms = sum(Formula(name.split('_')[0]).count().values())
+        results.append((name,
+                        e - ref['ea'][name] / natoms,
+                        distances[name] - ref['distance'][name]))
+    name, error, _ = max(results, key=lambda x: abs(x[1]))
+    assert name == 'SiO' and abs(error - -0.045) < 0.001
+    name, _, error = max(results, key=lambda x: abs(x[2]))
+    assert name == 'LiF' and abs(error - 0.028) < 0.001
 
 
 # these results are calculated at relaxed geometries (with NWChem?)

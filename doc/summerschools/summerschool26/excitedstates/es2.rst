@@ -25,12 +25,12 @@ Next, we set up the G0W0 calculator and calculate the quasi-particle spectrum fo
 
 
 .. code::
-   
+
    nbands = ...
    bands = (..., ...)
    ecut = ...
 
-Hint: The bands keyword takes a tuple of two elements, the number of valence bands and the 
+Hint: The bands keyword takes a tuple of two elements, the number of valence bands and the
 number of conduction bands,
 
 .. literalinclude:: solution2.py
@@ -71,9 +71,9 @@ The converted groundstate is stored in ``Si_pw_from_lcao_groundstate.gpw``. From
    bands = (..., ...)
    ecut = ...
 
-Hint: The number of bands cannot exceed the number of basis functions. So for 
-example in Si with 2 atoms in a unit cell using the dzp basis there are 
-:math:`2 \cdot 13=26` basis functions and therefore :code:`nbands` can at most 
+Hint: The number of bands cannot exceed the number of basis functions. So for
+example in Si with 2 atoms in a unit cell using the dzp basis there are
+`2 \cdot 13=26` basis functions and therefore :code:`nbands` can at most
 be 26. Consider why we don't worry about this with a planewave calculation.
 
 .. literalinclude:: solution2.py

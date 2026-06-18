@@ -111,9 +111,6 @@ well-converged NEB transition state.
 Extra material: Convergence test
 ================================
 
-:download:`convergence.ipynb`, :download:`convergence.db`,
-:download:`check_convergence.py`
-
 We look at the adsorption energy and height of a nitrogen atom on a Ru(0001)
 surface in the hcp site.  We check for convergence with respect to:
 
@@ -124,7 +121,7 @@ surface in the hcp site.  We check for convergence with respect to:
 .. toctree::
    :maxdepth: 1
 
-   part5/convergence
+   convergence/convergence
 
 
 .. |N2| replace:: N\ :sub:`2`

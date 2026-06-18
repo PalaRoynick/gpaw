@@ -20,7 +20,7 @@ Vibrational energy of the initial and final states
 a) Calculating vibrations requires tighter convergence than normal energy
    calculations. Therefore you should first take your already optimised initial
    and final state geometries from the NEB calculations and relax them further
-   to :math:`f_\mathrm{max}=0.01` eV/Å with the QuasiNewton optimiser and an energy cutoff of
+   to `f_\mathrm{max}=0.01` eV/Å with the QuasiNewton optimiser and an energy cutoff of
    500 eV. Converge the eigenstates to 1e-8. (Note that for other systems you
    might need even tighter convergence!)
 
@@ -80,7 +80,7 @@ e) To make sure that your NEB is converged you should also calculate the
    vibrational energy of the transition state. Again, this requires tighter
    convergence than we have used in the NEB exercise. This takes a while to run
    so to save time, we provide the transition state geometry from a reasonably
-   converged NEB (i.e. :math:`f_\mathrm{max}=0.01`, a cutoff energy of 800eV and 6x6
+   converged NEB (i.e. `f_\mathrm{max}=0.01`, a cutoff energy of 800eV and 6x6
    k-points) in the file :code:`TS.xyz`. Calculate the vibrations with these
    parameters. How many imaginary modes do you get and how do they look? What
    does this mean?

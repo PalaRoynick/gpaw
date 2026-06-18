@@ -22,12 +22,12 @@ As you have already learnd in the previous session, when investigating the elect
 
 Here is some information to help you build the :class:`ase:ase.Atoms` object:
 
-* Silicon crystalizes in the diamond structure with lattice constant :math:`a=5.43` Å
-* Germanium crystalizes in the diamond structure with lattice constant :math:`a=5.66` Å
-* Diamond has diamond structure (!) with lattice constant :math:`a=3.56` Å
-* CdTe crystalizes in the zincblende structure with lattice constant :math:`a=6.48` Å
-* GaAs crystalizes in the zincblende structure with lattice constant :math:`a=5.65` Å
-* Monolayer BN centered in a hexagonal unit cell with :math:`a=2.5` Å (and :math:`7` Å of vacuum at each side to prevent it from interacting with its periodic copies) and a basis of :math:`(0,0)` and :math:`(0, a / \sqrt{3})`
+* Silicon crystalizes in the diamond structure with lattice constant `a=5.43` Å
+* Germanium crystalizes in the diamond structure with lattice constant `a=5.66` Å
+* Diamond has diamond structure (!) with lattice constant `a=3.56` Å
+* CdTe crystalizes in the zincblende structure with lattice constant `a=6.48` Å
+* GaAs crystalizes in the zincblende structure with lattice constant `a=5.65` Å
+* Monolayer BN centered in a hexagonal unit cell with `a=2.5` Å (and `7` Å of vacuum at each side to prevent it from interacting with its periodic copies) and a basis of `(0,0)` and `(0, a / \sqrt{3})`
 
 The first thing you should do is to create an :class:`ase:ase.Atoms` object (click the link to see ways to build atoms objects). In order to do so, you might find it useful to use one of the crystal structures included in :func:`ase.build.bulk` (hint: if you have an element of the IV group you might be interested to follow this link :func:`ase:ase.build.bulk`) or you might have to create a list/array for the atomic positions and another one for the unit cell and then create an atoms object (hint: see above).
 
@@ -54,9 +54,9 @@ The first thing you should do is to create an :class:`ase:ase.Atoms` object (cli
 We are now going to relax the structure. To do so, we need to add a calculator, GPAW, to get DFT energies, and forces. We are going to use PBE exchange correlation functional.
 
 Since we are going to relax the unit cell, we need to use the plane wave mode, since it is the only that includes the stress-tensor. In order to do so, remember this mode requires you to specify the plane wave cut-off
-(hint: We recommend plane wave cut-off of :math:`600` eV and the k-point mesh size could be :math:`(6,6,6)` if you want it to run reasonably fast and to get a reasonable result). We will discuss convergence further in the next section.
+(hint: We recommend plane wave cut-off of `600` eV and the k-point mesh size could be `(6,6,6)` if you want it to run reasonably fast and to get a reasonable result). We will discuss convergence further in the next section.
 
-The materials we are looking at are semiconductors. Thus, the default value for the Fermi-Dirac smearing (i.e. occupations function) is too high (it is set up to :math:`0.1` eV to work with metals). We recommend setting it to :math:`0.01` eV.
+The materials we are looking at are semiconductors. Thus, the default value for the Fermi-Dirac smearing (i.e. occupations function) is too high (it is set up to `0.1` eV to work with metals). We recommend setting it to `0.01` eV.
 
 These links might be helpful for you:
 
@@ -108,7 +108,7 @@ The starting point for this section (and you might also want to use it in your o
 
 
 We are now going to restart the calculator and recompute the ground state, saving it to a new gpw file. As we are dealing with small bulk system, plane wave mode is the most appropriate here.
-To speed up the computations for this toy example, we use a plane wave cut-off of :math:`200` eV and a very coarse k-point mesh :math:`(2,2,2)`. For production-level computations, it is generally a good idea to choose a finer kpoint mesh and higher cut-off for the band structure.
+To speed up the computations for this toy example, we use a plane wave cut-off of `200` eV and a very coarse k-point mesh `(2,2,2)`. For production-level computations, it is generally a good idea to choose a finer kpoint mesh and higher cut-off for the band structure.
 Additionally, we are  going to use LDA, which is faster than PBE but not very good at predicting bandgaps (yes, we know, you are going to get a silly value here).
 
 
