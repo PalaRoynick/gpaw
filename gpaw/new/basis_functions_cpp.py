@@ -175,8 +175,10 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         if self.has_precalculated_phi():
             raise NotImplementedError("BasisFunctionCollection with precalc")
         else:
-            # FIXME won't work currently if using nontrivial matrix dist
-            self._impl.calculate_potential_matrix(vt_G, res)
+            self._impl.calculate_potential_matrix(
+                vt_G, res,
+                self._matrix_distribution_rules.mu_start,
+                self._matrix_distribution_rules.mu_end)
         return res
 
     @override

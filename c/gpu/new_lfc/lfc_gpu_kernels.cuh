@@ -18,8 +18,11 @@ struct CalculatePotentialMatrixArrays
 {
     const T* GPAW_RESTRICT vt_G;
     T* GPAW_RESTRICT V_MN;
-    // Used for striding the V_MN array
-    size_t max_mu;
+    // Row distribution: only rows [mu_start, mu_end) are computed
+    size_t mu_start;
+    size_t mu_end;
+    // Column count of V_MN (= Mmax); used for striding
+    size_t ncols;
 };
 
 /* Output goes to p; does all values of m for given l. r2 is the distance squared and xyz are real-space coords (relative to the phi??)
@@ -278,11 +281,11 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
                 {
                     const size_t nu = first_nu + n;
 
-                    if (mu >= nu)
+                    if (mu >= nu && mu >= arrays.mu_start && mu < arrays.mu_end)
                     {
                         const T phi_vt_phi = phi_mu_times_vt * phi_val_n[n] * grid.dV;
 
-                        atomicAdd(&arrays.V_MN[arrays.max_mu * mu + nu], phi_vt_phi);
+                        atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], phi_vt_phi);
                     }
 
                 }

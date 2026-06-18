@@ -38,12 +38,16 @@ struct LFCGpuImpl
     static void launch_calculate_potential_matrix(
         const LFCGpu& lfc,
         const gpaw::PyDeviceArray& vt_G,
-        gpaw::PyDeviceArray& out_V_MN)
+        gpaw::PyDeviceArray& out_V_MN,
+        size_t mu_start,
+        size_t mu_end)
     {
         CalculatePotentialMatrixArrays<T> arrays;
         arrays.vt_G = static_cast<const T*>(vt_G.data);
         arrays.V_MN = static_cast<T*>(out_V_MN.data);
-        arrays.max_mu = out_V_MN.shape[0];
+        arrays.mu_start = mu_start;
+        arrays.mu_end = mu_end;
+        arrays.ncols = static_cast<size_t>(out_V_MN.shape[1]);
 
         const dim3 threads(lfc.block_data.block_shape.x,
                            lfc.block_data.block_shape.y,
