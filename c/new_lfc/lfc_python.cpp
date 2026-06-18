@@ -2,7 +2,6 @@
 #include "lfc_python.hpp"
 #include "lfc_builder.hpp"
 #include <pybind11/stl.h>
-#include <span>
 
 #ifdef GPAW_GPU
 // LFCGpu builder will be bound to the same Python-side LFCBuilder object
@@ -27,7 +26,7 @@ static void bind_lfc_builder(py::module_ m)
 
     auto add_spline = [](LFCBuilder& self, double cutoff, py::array_t<double, pybind11::array::c_style | pybind11::array::forcecast> arr)
     {
-        std::span<const double> data(arr.data(), arr.size());
+        gpaw::Span<const double> data(arr.data(), arr.size());
         self.add_spline(cutoff, data);
     };
 
@@ -45,9 +44,7 @@ static void bind_lfc_builder(py::module_ m)
         const std::array<grid_index_t, 3>& block_start_c,
         const std::vector<size_t>& block_phi_idx_to_global)
     {
-        self.add_block(block_start_c,
-            std::span<const size_t>(block_phi_idx_to_global.begin(), block_phi_idx_to_global.end())
-        );
+        self.add_block(block_start_c, gpaw::Span<const size_t>(block_phi_idx_to_global));
     };
 
     cls.def("add_block", add_block,

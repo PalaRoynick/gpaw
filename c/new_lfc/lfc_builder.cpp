@@ -21,7 +21,7 @@ void LFCBuilder::set_block_size(const std::array<int32_t, 3>& in_block_size)
     block_staging.block_shape = in_block_size;
 }
 
-void LFCBuilder::add_spline(double cutoff, std::span<const double> data)
+void LFCBuilder::add_spline(double cutoff, gpaw::Span<const double> data)
 {
     SplineData new_spline;
     new_spline.cutoff = cutoff;
@@ -67,7 +67,7 @@ void LFCBuilder::add_phi(int32_t l, size_t spline_index, const Position& positio
     phi_data.cell_coords_i.push_back(cell_coords);
 }
 
-void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, std::span<const size_t> phi_idx_j)
+void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, gpaw::Span<const size_t> phi_idx_j)
 {
     block_staging.block_start_bc.push_back(block_start_c);
 
