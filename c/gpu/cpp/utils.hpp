@@ -16,6 +16,34 @@
 namespace gpaw
 {
 
+/* Like std::span but works in C++17.
+TODO: replace with std::span when using C++20. */
+template<typename T>
+class Span
+{
+public:
+    constexpr Span() noexcept : ptr_(nullptr), size_(0) {}
+    constexpr Span(T* ptr, size_t size) noexcept : ptr_(ptr), size_(size) {}
+
+    template<typename Container>
+    constexpr Span(Container& c) noexcept : ptr_(c.data()), size_(c.size()) {}
+
+    template<typename Container>
+    constexpr Span(const Container& c) noexcept : ptr_(c.data()), size_(c.size()) {}
+
+    constexpr T& operator[](size_t i) const noexcept { return ptr_[i]; }
+    constexpr T* data() const noexcept { return ptr_; }
+    constexpr size_t size() const noexcept { return size_; }
+    constexpr bool empty() const noexcept { return size_ == 0; }
+    constexpr T* begin() const noexcept { return ptr_; }
+    constexpr T* end() const noexcept { return ptr_ + size_; }
+
+private:
+    T* ptr_;
+    size_t size_;
+};
+
+
 /* Like std::source_location but works in C++17. Uses Clang/GCC extensions.
 TODO: replace with std::source_location when using C++20. */
 struct SourceLocation

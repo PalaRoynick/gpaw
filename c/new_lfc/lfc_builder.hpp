@@ -2,10 +2,10 @@
 
 #include "lfc_common.hpp"
 #include "splines/radial_spline.hpp"
+#include "gpu/cpp/utils.hpp"
 #include <memory>
 #include <array>
 #include <vector>
-#include <span>
 #include <cstdint>
 
 struct SplineData
@@ -62,7 +62,7 @@ public:
     // Volume element
     double dV;
 
-    void add_spline(double cutoff, std::span<const double> data);
+    void add_spline(double cutoff, gpaw::Span<const double> data);
     std::shared_ptr<SplinePool> build_spline_pool();
 
     //void set_spline_pool(std::shared_ptr<const SplinePoolImplBase> spline_pool_impl);
@@ -72,7 +72,7 @@ public:
     void add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu, const std::array<grid_index_t, 3>& cell_coords);
     /* Add a new grid block. Shape is implied to be the same as that defined by set_block_size()
     * `phi_idx_j` should map block-local phi indices to the global phi index for all phi_j in that block. */
-    void add_block(const std::array<grid_index_t, 3>& block_start_c, std::span<const size_t> phi_idx_j);
+    void add_block(const std::array<grid_index_t, 3>& block_start_c, gpaw::Span<const size_t> phi_idx_j);
 
     // constexpr bool is_allowed_block_size(int32_t block)
     // {

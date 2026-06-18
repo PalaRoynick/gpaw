@@ -14,30 +14,36 @@ using LFCGpuSpline = gpaw::TRadialSplineGpu<double>;
 
 /**************************************************************/
 // Some template helpers. Define GpuVec3<T> as an alias to matchng int3, float3, long3, ...
-// CPU side uses grid_index_t for grid point indexing so we should use the same type in GPU structs
+// CPU side uses grid_index_t for grid point indexing so we want to use the same type in GPU structs.
+// FIXME: would be cleaner with C++20 concepts
 
 template<typename> inline constexpr bool always_false = false;
 
-template<typename T>
+template<typename T, typename = void>
 struct GpuVec3Type
 {
     static_assert(always_false<T>, "GpuVec3<T>: unsupported scalar type");
 };
 
-template<typename T> requires std::is_same_v<T, float>
-struct GpuVec3Type<T> { using type = float3; };
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_same_v<T, float>>>
+{ using type = float3; };
 
-template<typename T> requires std::is_same_v<T, double>
-struct GpuVec3Type<T> { using type = double3; };
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_same_v<T, double>>>
+{ using type = double3; };
 
-template<typename T> requires (std::is_integral_v<T> && sizeof(T) == 4 && std::is_signed_v<T>)
-struct GpuVec3Type<T> { using type = int3; };
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 4 && std::is_signed_v<T>>>
+{ using type = int3; };
 
-template<typename T> requires (std::is_integral_v<T> && sizeof(T) == 4 && std::is_unsigned_v<T>)
-struct GpuVec3Type<T> { using type = uint3; };
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 4 && std::is_unsigned_v<T>>>
+{ using type = uint3; };
 
-template<typename T> requires (std::is_integral_v<T> && sizeof(T) == 8 && std::is_signed_v<T>)
-struct GpuVec3Type<T> { using type = long3; };
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 8 && std::is_signed_v<T>>>
+{ using type = long3; };
 
 template<typename T>
 using GpuVec3 = typename GpuVec3Type<T>::type;
