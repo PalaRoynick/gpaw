@@ -44,6 +44,16 @@ std::unique_ptr<LFCGpu> LFCBuilderGpu::build(LFCBuilder&& cpu_builder, std::shar
     lfc->block_data.num_blocks = num_blocks;
     lfc->block_data.block_shape = make_gpu_vec3<grid_index_t>(cpu_blocks.block_shape[0], cpu_blocks.block_shape[1], cpu_blocks.block_shape[2]);
 
+    // CUDA/HIP thread block limitation. TODO: separate logical blocking from GPU kernel blocking
+    constexpr size_t max_block_points = 1024;
+    if (cpu_blocks.block_shape[0] * cpu_blocks.block_shape[1] * cpu_blocks.block_shape[2] > max_block_points)
+    {
+        throw std::runtime_error(
+            "Logical block size exceeds GPU thread block limit of 1024 threads!"
+            "This limitation will be addressed in a future update to blocked LFC");
+    }
+
+
     lfc->block_data.block_start_bc = gpu::Tmalloc<GpuVec3<grid_index_t>>(num_blocks);
     lfc->block_data.start_j = gpu::Tmalloc<size_t>(cpu_blocks.block_start_j.size());
     lfc->block_data.all_blocks_phi_idx_j = gpu::Tmalloc<size_t>(cpu_blocks.all_blocks_phi_idx_j.size());
