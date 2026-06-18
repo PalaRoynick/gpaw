@@ -438,6 +438,9 @@ class iKSLBFGS:
             x_new_AE = {}
             x_new_PS = {}
             for a in x.data_xasz[0].keys():
+                if iks.setups[a].xc_correction is None:
+                    x_new_AE[a] = np.zeros(1)
+                    x_new_PS[a] = np.zeros(1)
                 x_AE = x.data_xasz[0][a] + alpha * pk.data_xasz[0][a]
                 x_PS = x.data_xasz[1][a] + alpha * pk.data_xasz[1][a]
                 x_new_AE[a] = x_AE
@@ -570,6 +573,8 @@ class iKSLBFGS:
         xAE_asz = {}
         xPS_asz = {}
         for a in iks.xc.vxc_xasz[0].keys():
+            if iks.setups[a].xc_correction is None:
+                continue
             v_AE = iks.xc.vxc_xasz[0][a]
             v_PS = iks.xc.vxc_xasz[1][a]
             xPS_asz[a] = v_PS.copy()

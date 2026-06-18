@@ -129,8 +129,7 @@ def calculate_3phiproj_coeffs_lebedev(setup: Setup, w_ng: Array2D, dD_p: Array2D
                 for j1, l1 in enumerate(l_j):
                     dphipt_g *= phit_jg[j1]
                     for L in range(Lmax):
-                        dphi = np.dot(rgd.r_g**2 * rgd.dr_g *
-                                      dphipt_g, dn_Lg[L])
+                        dphi = np.dot(rgd.r_g**2 * rgd.dr_g * dphipt_g, dn_Lg[L])
                         for m1 in range(2 * l1 + 1):
                             L1 = l1**2 + m1
                             i1 = i1_counter + m1
@@ -280,8 +279,7 @@ def calculate_diff_overlap_matrix_gaunt_separate(
         for j2, l2 in enumerate(l_j):
             for dn_Lg, dn_jjg in zip([n_Lg, nt_Lg], [n_jjg, nt_jjg]):
                 I_L = np.dot(
-                    dn_Lg * rgd.dr_g *
-                    w_g * rgd.r_g**2, dn_jjg[j1, j2]
+                    dn_Lg * rgd.dr_g * w_g * rgd.r_g**2, dn_jjg[j1, j2]
                 )
                 for m1 in range(2 * l1 + 1):
                     L1 = l1**2 + m1
@@ -514,6 +512,21 @@ def calculate_smooth_weights(setups, pow=1):
         E_g = (0.5 * (1.0 + np.cos(np.pi * r / rc)))**pow
         w_ag[a] = E_g
     return w_ag
+
+
+def bound_weights(D_asp, setups):
+    from gpaw.xc.numericalxc import angular2lebedev
+    w_asng = {}
+    for a, D_sp in D_asp.items():
+        xcc = setups[a].xc_correction
+        if xcc is None:
+            w_asng[a] = 0.0
+            continue
+        n_sng = angular2lebedev(calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g))
+        nt_sng = angular2lebedev(calculate_angular_density(xcc, D_sp, xcc.nt_qg, xcc.nct_g))
+        dn_sng = abs(n_sng - nt_sng)
+        w_asng[a] = 1.0 / (dn_sng + 1e-2)
+    return w_asng
 
 
 def calc_core_atomic_potentials(setups, setup_name):

@@ -11,6 +11,7 @@ from gpaw.fd_operators import Gradient, Laplace
 from gpaw.lfc import LFC, BasisFunctions
 from gpaw.poisson import create_poisson_solver
 from gpaw.sphere.lebedev import Y_nL, weight_n
+from gpaw.utilities import divrl
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional
 from gpaw.xc.pawcorrection import rnablaY_nLv
@@ -608,6 +609,64 @@ class NumericalXC(XCFunctional):
         else:
             return vxc_sg
 
+    def calculate_atomic_potential_lapl(self, a: int, v_sz: Array3D) -> Array3D:
+        setup = self.ham.setups[a]
+        xcc = setup.xc_correction
+        if xcc is None:
+            return np.zeros_like(v_sz)
+
+        rgd = xcc.rgd
+        Lmax = xcc.Lmax
+        lapl_sz = np.zeros_like(v_sz)
+
+        if self.paw_potmode is PAWPotMode.angular:
+            lapl_sz[:] = calculate_angular_potential_laplacian(rgd, v_sz)
+
+        elif self.paw_potmode is PAWPotMode.lebedev:
+            v_sLg = lebedev2angular(v_sz, Lmax)
+            lapl_sz[:] = angular2lebedev(calculate_angular_potential_laplacian(rgd, v_sLg))
+        else:
+            raise ValueError('Only angular and lebedev modes are supported')
+        return lapl_sz
+
+    def calculate_atomic_potential_grad_squared(self, a: int, v_sz: Array3D) -> Array3D:
+        setup = self.ham.setups[a]
+        xcc = setup.xc_correction
+        if xcc is None:
+            return np.zeros_like(v_sz)
+
+        rgd = xcc.rgd
+        nspins = v_sz.shape[0]
+        Lmax = xcc.Lmax
+        if self.paw_potmode is PAWPotMode.lebedev:
+            v_sLg = lebedev2angular(v_sz, Lmax)
+        else:
+            v_sLg = v_sz
+        dvdr_sLg = np.zeros_like(v_sLg)
+        for s in range(nspins):
+            for L in range(Lmax):
+                rgd.derivative(v_sLg[s, L], dvdr_sLg[s, L])
+
+        grad2_sng = rgd.zeros((nspins, len(Y_nL)))
+
+        for n, Y_L in enumerate(Y_nL[:, :Lmax]):
+            a_sg = np.dot(Y_L, dvdr_sLg)
+            # sum_L (r * nabla Y_L) * v_L
+            rnablaY_Lv = rnablaY_nLv[n, :Lmax]
+            b_vsg = np.dot(rnablaY_Lv.T, v_sLg)
+            # |nabla v|^2 = |a_sg|^2 + |b_vsg|^2 / r^2
+            grad2_sg = a_sg**2
+            ang_sg = np.sum(b_vsg**2, axis=0)
+            for ang_g in ang_sg:
+                ang_g[:] = divrl(ang_g, 2, rgd.r_g)
+            grad2_sg += ang_sg
+            grad2_sng[:, n] = grad2_sg
+
+        if self.paw_potmode is PAWPotMode.angular:
+            # Project back to angular momentum basis
+            return lebedev2angular(grad2_sng, Lmax)
+        return grad2_sng
+
 
 def L_to_lm(L: int) -> tuple[int, int]:
     """convert L index to (l, m) index"""
@@ -708,6 +767,25 @@ def calculate_atomic_potentials_from_kernel(
         return vxc_sng
     else:
         return lebedev2angular(vxc_sng, Lmax)
+
+
+def calculate_angular_potential_laplacian(rgd, v_sLg):
+    lapl_sLg = np.zeros_like(v_sLg)
+    nspins, Lmax = v_sLg.shape[:2]
+    for s in range(nspins):
+        for L in range(Lmax):
+            v_g = v_sLg[s, L]
+
+            lapl_g = rgd.empty()
+            rgd.laplace(v_g, lapl_g)
+
+            ll, m = L_to_lm(L)
+            if ll > 0:
+                ang_g = -ll * (ll + 1) * divrl(v_g, 2, rgd.r_g)
+                lapl_g += ang_g
+            # lapl_g[0] = 0.0
+            lapl_sLg[s, L] = lapl_g
+    return lapl_sLg
 
 
 def calculate_compensation_charges(dens):
