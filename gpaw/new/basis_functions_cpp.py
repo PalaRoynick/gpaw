@@ -19,9 +19,10 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                  block_size: int | None = 8):
         """"""
         if GPAW_NO_C_EXTENSION:
-            raise RuntimeError("Cannot construct BasisFunctionCollection" \
-            "without GPAW C++ extension." \
-            "Use BasisFunctionCollection_PurePython instead.")
+            raise RuntimeError(
+                "Cannot construct BasisFunctionCollection"
+                "without GPAW C++ extension."
+                "Use BasisFunctionCollection_PurePython instead.")
 
         if not use_gpu:
             raise RuntimeError("Only GPU version implemented for now")
@@ -119,7 +120,8 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
     def add_to_density(
         self,
         nt_sG: np.ndarray | cp.ndarray,
-        f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]) -> None:
+        f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]
+    ) -> None:
         """"""
 
         num_spins = nt_sG.shape[0]
