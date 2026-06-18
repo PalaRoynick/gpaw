@@ -16,7 +16,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                  system: LFCSystemDesc,
                  use_gpu: bool = False,
                  mode: PrecalculationMode = PrecalculationMode.eIfPossible,
-                 block_size: int | None = 8):
+                 block_size: int | tuple[int, int, int] | None = 8):
         """"""
         if GPAW_NO_C_EXTENSION:
             raise RuntimeError(
