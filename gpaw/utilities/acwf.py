@@ -238,15 +238,17 @@ def check(dir: Path) -> None:
              (v['XO2'] - ex - 2 * eo) / 3,
              (v['X4O10'] - 4 * ex - 10 * eo) / 14,
              (v['X2O'] - 2 * ex - eo) / 3]
-        symbol = dir.stem
+        symbol = dir.stem.split('.')[0]
         dE = np.array(E) - ENERGIES[symbol]
         ee = abs(dE).max()
     else:
         ee = np.nan
 
-    print(f'{dir.name:15} {n:2}',
+    print(f'{dir.name:25} {n:2}',
           f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
           f'{ee:8.3f} eV')
+
+    return maxabs
 
 
 def reference_structure(symbol: str,
@@ -1589,8 +1591,12 @@ ENERGIES = {
 
 if __name__ == '__main__':
     import sys
+    results = []
     for x in sys.argv[1:]:
-        check(Path(x))
+        e = check(Path(x))
+        results.append((e, x))
+    for e, x in sorted(results):
+        print(f'{e:7.2f} {x}')
     # d1 = energies(Path(sys.argv[2]))
     # print(d1['H'])
     # for s, v1 in d1.items():

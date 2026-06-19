@@ -80,12 +80,13 @@ def get_ecut(ecuts: np.ndarray,
             ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
 
 
-def convergence_check(dir: Path) -> None:
+def convergence_check(dir: Path, plot=False) -> None:
     """Write summary."""
     ecuts, efcc, de = np.array(
         json.loads((dir / 'ecuts.json').read_text())).T
-    import matplotlib.pyplot as plt
-    plt.plot(ecuts, efcc, label=dir)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.plot(ecuts, efcc, label=dir)
     ecut1 = get_ecut(ecuts, efcc, 0.1)
     ecut2 = get_ecut(ecuts, efcc, 0.01)
     ecut3 = get_ecut(ecuts, efcc, 0.001)
@@ -93,19 +94,25 @@ def convergence_check(dir: Path) -> None:
     ecut2d = get_ecut(ecuts, de, 0.01)
     ecut3d = get_ecut(ecuts, de, 0.001)
 
-    print(f'{dir.name:15}',
+    print(f'{dir.name:25}',
           f'({ecut1d:4.0f} {ecut2d:4.0f} {ecut3d:4.0f}) ',
           f'({ecut1:4.0f} {ecut2:4.0f} {ecut3:4.0f}) ')
+    return ecut2d, ecut2
 
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('path', nargs='+')
+    parser.add_argument('-p', '--plot', action='store_true')
     args = parser.parse_args()
+    results = []
     for path in args.path:
-        convergence_check(Path(path))
-    import matplotlib.pyplot as plt
-    plt.legend()
-    plt.show()
-    
+        de, e = convergence_check(Path(path), args.plot)
+        results.append((de, e, path))
+    for de, e, p in sorted(results):
+        print(f'{de:7.1f} {e:7.1f} {p}')
+    if args.plot:
+        import matplotlib.pyplot as plt
+        plt.legend()
+        plt.show()
