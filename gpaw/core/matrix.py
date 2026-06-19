@@ -821,8 +821,9 @@ class BLACSDistribution(MatrixDistribution):
         self.all_data_on_rank_zero = (br == M and bc == N)
 
         if context is None:
-            assert c == 1
+            # assert c == 1, (M, N, r, c, br, bc, self.all_data_on_rank_zero)
             assert br == (M + r - 1) // r
+            assert bc == N, (M, N, r, c, br, bc, self.all_data_on_rank_zero)
             n = N
             m = min((comm.rank + 1) * br, M) - min(comm.rank * br, M)
         else:
@@ -831,8 +832,9 @@ class BLACSDistribution(MatrixDistribution):
             n = m = 0
         self.shape = (m, n)
         lld = max(1, n)
-        if context is not None:
-            self.desc = np.array([1, context, N, M, bc, br, 0, 0, lld],
+        if 1:#context is not None:
+            self.desc = np.array([1, context if context is not None else -1,
+                                  N, M, bc, br, 0, 0, lld],
                                  np.intc)
 
     def __str__(self):
@@ -908,8 +910,11 @@ class BLACSDistribution(MatrixDistribution):
             self.comm, self.rows, self.columns, self.br, self.bc)
 
     def redist(self, other, m1data, m2data):
-        c = self.comm if self.comm.size > other.comm.size else other.comm
+        if self.all_data_on_rank_zero and other.all_data_on_rank_zero:
+            m2data[:] = m1data
+            return
         M, N = self.full_shape
+        c = self.comm if self.comm.size > other.comm.size else other.comm
         d1 = create_distribution(M, N, c,
                                  self.rows, self.columns, self.br, self.bc)
         d2 = create_distribution(M, N, c,
