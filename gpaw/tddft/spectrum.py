@@ -520,7 +520,7 @@ def calculate_electric_magnetic_tensor_G(magnetic_moment_files, tensor_file,
                                          folding='Gauss', width=0.2123,
                                          e_min=0.0, e_max=30.0, delta_e=0.05,
                                          world=None):
-    """Calculates rotatory strength spectrum from the time-dependent
+    """Calculates electric-magnetic tensor from the time-dependent
     magnetic moment.
 
     Parameters
