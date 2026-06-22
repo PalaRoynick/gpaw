@@ -224,8 +224,7 @@ class VDWFunctionalBase:
                                           vLDAc_sg[0],
                                           dedn_sg[0], dedsigma_xg[0])
         else:
-            n_sg = n_sg.sum(0)
-            n_sg.shape = (1,) + n_sg.shape
+            n_sg = n_sg.sum(0).reshape((1,) + n_sg.shape[1:])
             self.LDAc.calculate(eLDAc_g, n_sg, vLDAc_sg)
             v_g = np.zeros_like(e_g)
             deda2nl_g = np.zeros_like(e_g)
