@@ -224,8 +224,10 @@ class FXCCorrelation:
             chi0.body.get_distributed_frequencies_array() for chi0 in chi0_s
         ])
         wblocks = chi0_s[0].body.get_distributed_frequencies_blocks1d()
-        if wblocks.blockcomm.size > 1:  # why???
+        if chi0_s[0].body.blockdist.blockcomm.size > 1:
             chi0_swGG = np.swapaxes(chi0_swGG, 2, 3)
+        # if wblocks.blockcomm.size > 1:  # why???
+        #     chi0_swGG = np.swapaxes(chi0_swGG, 2, 3)
 
         # XXX Gamma-point code is NOT well tested!
         # Changed from qpd.kd.gamma to qpd.optical_limit cf. #1178.
