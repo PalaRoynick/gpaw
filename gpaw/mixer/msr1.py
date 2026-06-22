@@ -5,6 +5,8 @@ from scipy.optimize import root_scalar
 from gpaw.new.density import Density
 from gpaw.mixer.base import DensityHistory, BaseMixer
 from gpaw.typing import ArrayND
+from gpaw.core.arrays import XArray
+from gpaw.core.atom_arrays import AtomArrays
 
 
 class MSR1Mixer(BaseMixer):

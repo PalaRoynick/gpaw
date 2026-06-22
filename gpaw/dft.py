@@ -459,6 +459,9 @@ class Mixer(Parameter):
             case _:
                 raise ValueError(f'Unknown mixer: {mixer}')
 
+    def build(self, **kwargs):
+        raise NotImplementedError
+
 
 class NoMixing(Mixer):
     name = 'no-mixing'
@@ -565,6 +568,7 @@ class Multi_Mixer(Mixer):
                         mixer_a=self.mixer_a,
                         mixer_b=self.mixer_b,
                         **kwargs)
+
 
 class Occupations(Parameter):
     def __init__(self, params: dict):

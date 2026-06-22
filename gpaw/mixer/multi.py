@@ -1,11 +1,14 @@
 import numpy as np
 from typing import TYPE_CHECKING
 
+from gpaw.core.atom_arrays import AtomDistribution
+from gpaw.typing import ArrayND
 from gpaw.new.density import Density
 from gpaw.mixer.base import BaseMixer
 
 if TYPE_CHECKING:
     from gpaw.dft import Mixer
+
 
 class MultiMixer(BaseMixer):
     def __init__(self,
@@ -21,8 +24,8 @@ class MultiMixer(BaseMixer):
         self.mixers_b = [mixer_b.build(ncomponents=1, xp=xp, **kwargs)
                          for comp in range(ncomponents - 1)]
         self.method = method
-        super().__init__(metric=None, xp=xp, ncomponents=ncomponents, **kwargs)
-
+        super().__init__(metric=self.mixer_a.metric, xp=xp,
+                         ncomponents=ncomponents, **kwargs)
 
     def _initialize_history_(self):
         # Create buffers:
@@ -65,7 +68,8 @@ class MultiMixer(BaseMixer):
 
         # Mix the densities:
         dnt_a = self.mixer_a._mix(nta_sX, Da_asii, density)
-        dntb_m = [mixer._mix(ntb_sX, Db_asii, density) for mixer, ntb_sX, Db_asii
+        dntb_m = [mixer._mix(ntb_sX, Db_asii, density)
+                  for mixer, ntb_sX, Db_asii
                   in zip(self.mixers_b, ntb_msX, Db_masii)]
 
         # Put the densities in their place:
