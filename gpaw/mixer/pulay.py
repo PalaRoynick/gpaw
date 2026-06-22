@@ -49,16 +49,14 @@ class PulayMixer(BaseMixer):
         self.H_hh = self.xp.empty(
             (self.nmaxold, self.nmaxold), dtype=float)
 
-    def mix(self, density: Density) -> float:
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
+             density: Density) -> float:
         # Step 1: Initialize
         nh = self.Rc_hsX.nold
         nold = self.nt_hsX.nold
         if nold == 0:
-            self.nt_hsX.add_density(density)
+            self.nt_hsX.add(nt_sX, D_asii)
             return np.inf
-
-        nt_sX = density.nt_sR
-        D_asii = density.D_asii
 
         R_sX, R_asii = self.R_hsX.next()
         self.calculate_residual(nt_sX, self.nt_hsX[-1][0], R_sX)
@@ -95,7 +93,7 @@ class PulayMixer(BaseMixer):
             D_asii.data[:] += self.beta * alpha * self.R_hsX[h][1]
 
         # Step 4: Update the density history
-        self.nt_hsX.add_density(density)
+        self.nt_hsX.add(nt_sX, D_asii)
 
         # Step 5: Return the mixing error
         return self.calculate_charge_sloshing(Rc_sX)

@@ -21,6 +21,7 @@ from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
 from gpaw.mixer.base import BaseMixer
 from gpaw.mixer.pulay import PulayMixer
 from gpaw.mixer.msr1 import MSR1Mixer
+from gpaw.mixer.multi import MultiMixer
 from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
@@ -432,7 +433,8 @@ class Mixer(Parameter):
         mixer_names = {
             'no-mixing': NoMixing,
             'pulay': Pulay,
-            'msr1': MSR1
+            'msr1': MSR1,
+            'multi': MultiMixer
         }
 
         # Clean for dict for backwards compatibility
@@ -539,6 +541,30 @@ class MSR1(Mixer):
         metric = self._build_metric(**self.metric_params, **kwargs)
         return self.cls(metric=metric, **self.mixer_params, **kwargs)
 
+
+class Multi_Mixer(Mixer):
+    name = 'multi'
+    cls = MultiMixer
+
+    def __init__(self,
+                 method: str = 'diff',
+                 mixer_a: Mixer | dict | str = 'msr1',
+                 mixer_b: Mixer | dict | str = 'msr1'):
+        self.mixer_a = Mixer.from_param(mixer_a)
+        self.mixer_b = Mixer.from_param(mixer_b)
+        self.method = method
+
+    def todict(self):
+        return {'name': self.name,
+                'method': self.method,
+                'mixer_a': self.mixer_a.todict(),
+                'mixer_b': self.mixer_b.todict()}
+
+    def build(self, **kwargs):
+        return MultiMixer(method=self.method,
+                          mixer_a=self.mixer_a,
+                          mixer_b=self.mixer_b,
+                          **kwargs)
 
 class Occupations(Parameter):
     def __init__(self, params: dict):

@@ -72,6 +72,10 @@ class BaseMixer:
     def mix(self, density: Density) -> float:
         nt_sX = density.nt_sR
         D_asii = density.D_asii
+        return self._mix(nt_sX, D_asii, density)
+
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
+             density: Density) -> float:
         ntc_sX = self.add_compensation_charge(nt_sX, D_asii, density,
                                               add_delta0=True)
         if self.density_history.nold == 0:
