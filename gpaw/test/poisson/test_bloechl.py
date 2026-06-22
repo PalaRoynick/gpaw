@@ -141,9 +141,10 @@ def test_psolve(xp):
         print(vt_g.data[:5])
 
 
-def fast_slow(fast):
+@pytest.mark.parametrize('fast', [False, True])
+def test_fast_slow(fast):
     atoms = Atoms('H2', [[0, 0, 0], [0.1, 0.2, 0.8]], pbc=True)
-    atoms.center(vacuum=3.5)
+    atoms.center(vacuum=1.3)
     atoms.calc = GPAW(mode={'name': 'pw', 'ecut': 600},
                       poissonsolver={'fast': fast},
                       convergence={'forces': 1e-3},
@@ -151,15 +152,30 @@ def fast_slow(fast):
                       symmetry='off')
     atoms.get_potential_energy()
     f = atoms.get_forces()
-    eps = 0.001 / 2
-    atoms.positions[1, 2] += eps
-    ep = atoms.get_potential_energy()
-    atoms.positions[1, 2] -= 2 * eps
-    em = atoms.get_potential_energy()
-    print(f[1, 2], (em - ep) / (2 * eps))
+    assert f.flat == pytest.approx(
+        [-0.2640062, -0.4944148, -1.53906957,
+         +0.2640062, +0.4944148, +1.53906957], abs=0.004)
+    s = atoms.get_stress()
+    assert s == pytest.approx(
+        [0.22736192, 0.20610764, 0.10164977,
+         -0.01686461, -0.00882771, -0.00239787], abs=0.0001)
+    if 0:
+        x = 0.001
+        atoms.set_cell(atoms.cell * (1 + x), scale_atoms=True)
+        ep = atoms.get_potential_energy()
+        atoms.set_cell(atoms.cell / (1 + x) * (1 - x), scale_atoms=True)
+        em = atoms.get_potential_energy()
+        print(sum(s[:3]), (ep - em) / (2 * x) / atoms.get_volume())
+    if 0:
+        eps = 0.001 / 2
+        atoms.positions[1, 2] += eps
+        ep = atoms.get_potential_energy()
+        atoms.positions[1, 2] -= 2 * eps
+        em = atoms.get_potential_energy()
+        print(f[1, 2], (em - ep) / (2 * eps))
 
 
 if __name__ == '__main__':
     # test_psolve()
     import sys
-    fast_slow(int(sys.argv[1]))
+    test_fast_slow(int(sys.argv[1]))
