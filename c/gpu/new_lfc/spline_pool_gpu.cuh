@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gpu/splines/radial_spline_gpu.cuh"
+#include <vector>
 
 class SplinePool;
 
@@ -23,4 +24,7 @@ public:
 private:
     size_t num = 0;
     GpuSpline* d_splines = nullptr;
+
+    // Host-side copies of the GpuSpline structs, used both as a staging buffer and for doing cleanup in the destructor
+    std::vector<GpuSpline> h_splines;
 };
