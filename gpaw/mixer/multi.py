@@ -1,5 +1,4 @@
 import numpy as np
-from typing import TYPE_CHECKING
 
 from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.typing import ArrayND

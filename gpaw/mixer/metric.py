@@ -99,7 +99,7 @@ class FFTMetric(BaseMetric):
         if n_sX_pbc is n_sX:
             n_sX_pbc = n_sX_pbc.copy()
         n_sG = n_sX_pbc.fft(pw=self.pw)
-        n_sG.data *= w_G
+        n_sG.data[0] *= w_G  # Only the charge density
         n_sG.ifft(grid=n_sX_pbc, out=n_sX_pbc)
         out.from_pbc_grid(n_sX_pbc)
 

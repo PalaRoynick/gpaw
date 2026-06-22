@@ -72,7 +72,29 @@ class BaseMixer:
     def mix(self, density: Density) -> float:
         nt_sX = density.nt_sR
         D_asii = density.D_asii
-        return self._mix(nt_sX, D_asii, density)
+
+        if self.ncomponents == 2:
+            # Don't mix each channel,
+            # mix combined and spin instead
+            nt2_sX = nt_sX.copy()
+            D2_asii = D_asii.copy()
+            nt2_sX.data[0] = nt_sX.data[0] + nt_sX.data[1]
+            D2_asii.data[0] = D_asii.data[0] + D_asii.data[1]
+            nt2_sX.data[1] = nt_sX.data[0] - nt_sX.data[1]
+            D2_asii.data[1] = D_asii.data[0] - D_asii.data[1]
+        else:
+            nt2_sX = nt_sX
+            D2_asii = D_asii
+
+        dnt = self._mix(nt2_sX, D2_asii, density)
+
+        if self.ncomponents == 2:
+            nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])
+            nt_sX.data[1] = 0.5 * (nt2_sX.data[0] - nt2_sX.data[1])
+            D_asii.data[0] = 0.5 * (D2_asii.data[0] + D2_asii.data[1])
+            D_asii.data[1] = 0.5 * (D2_asii.data[0] - D2_asii.data[1])
+
+        return dnt
 
     def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
              density: Density) -> float:
