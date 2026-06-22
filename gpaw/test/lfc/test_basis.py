@@ -17,36 +17,6 @@ from collections import namedtuple
 from typing import cast
 
 
-def xp_params_no_cpupy():
-    """Use as @pytest.mark.parametrize("xp", xp_params_no_cpupy())
-    to run both xp=np and xp=cp cases, but skipping fake Cupy.
-    """
-    return [
-        pytest.param(np, id="numpy"),
-        pytest.param(
-            cp,
-            id="cupy",
-            marks=[
-                pytest.mark.gpu,
-                pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
-            ],
-        ),
-    ]
-
-
-def parametrize_purepython():
-    """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
-    to run both purepython and non-purepython versions, skipping the latter if
-    not available.
-    """
-    return [True,
-            pytest.param(
-                False,
-                marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
-                                          reason="No C extension")]
-            )]
-
-
 def make_random_phi(
         l: int,
         cutoff: float,
@@ -120,6 +90,27 @@ def fixt_block_size(request) -> int | tuple[int, int, int] | None:
     with kernel-side blocking, so there's a hard limit on max allowed block
     size.
     FIXME: decouple these. Until then, run tests only with small blocks."""
+    return request.param
+
+
+# Generate "implementation" fixture: combines [np, cp] and a purepython flag
+ImplDesc = namedtuple("ImplDesc", ["xp", "purepython"])
+
+
+@pytest.fixture(scope="module", params=[
+    pytest.param(ImplDesc(xp=np, purepython=True), id="numpy-purepython"),
+    pytest.param(
+        ImplDesc(xp=cp, purepython=False),
+        id="cupy-cpp",
+        marks=[
+            pytest.mark.gpu,
+            pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
+            pytest.mark.skipif(GPAW_NO_C_EXTENSION, reason="No C extension"),
+        ]
+    ),
+])
+def fixt_impl(request) -> ImplDesc:
+    """Valid (xp, purepython) implementation combinations."""
     return request.param
 
 
@@ -218,14 +209,10 @@ def make_basis(system: LFCSystemDesc,
     return basis
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
+def test_basis_creation(fixt_lfc_system: LFCSystemDesc, fixt_impl: ImplDesc,
                         fixt_block_size):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
@@ -255,8 +242,7 @@ def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
 
 
 @pytest.mark.skipif(world.size > 1, reason="TODO, probably")
-@pytest.mark.parametrize("xp", [np])
-def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
+def test_no_blocking(fixt_lfc_system: LFCSystemDesc):
     """Tests that blocking = None makes sense. Useful because under the
     hood the same blocking logic is still ran but with
     block_size == grid_size.
@@ -265,7 +251,7 @@ def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
     logic anyway.
     """
 
-    basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
+    basis = make_basis(fixt_lfc_system, np, purepython=True, block_size=None)
     block_to_phi = basis.get_block_to_phi_map()
 
     # Should have only the (0, 0, 0) block
@@ -292,20 +278,15 @@ def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
     # duplicates. But that is done in test_basis_creation()
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
 def test_potential_matrix(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     fixt_block_size,
     row_range: range | None
 ):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
@@ -373,21 +354,15 @@ def test_potential_matrix(
     xp.testing.assert_allclose(V_MN, V_MN_out, rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
 def test_add_to_density(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     num_spins: int,
     fixt_block_size
 ):
     """"""
-
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
     # Matrix distribution does not matter here.
@@ -419,21 +394,16 @@ def test_add_to_density(
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
 @pytest.mark.skipif(world.size < 2, reason="Not enough MPI ranks")
 def test_domain_decomposition(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     num_spins: int,
     fixt_block_size
 ):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
