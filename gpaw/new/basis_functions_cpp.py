@@ -7,7 +7,6 @@ from gpaw.typing import override
 from gpaw.gpu import cupy as cp
 import numpy as np
 
-
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""
 
@@ -30,6 +29,13 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         # TEMP Force no precalculation, so that we can test stuff
         mode = PrecalculationMode.eNever
 
+        from typing import TYPE_CHECKING
+        if TYPE_CHECKING:
+            from gpaw.cgpaw.lfc import SplinePool, SplinePoolGpu
+
+        self._spline_pool_cpu: SplinePool | None = None
+        self._spline_pool_gpu: SplinePoolGpu | None = None
+
         super().__init__(system, use_gpu=use_gpu, mode=mode,
                          block_size=block_size)
 
@@ -50,8 +56,6 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
             from gpaw.cgpaw.lfc import SplinePoolGpu
             self._spline_pool_gpu = SplinePoolGpu(self._spline_pool_cpu)
             """Cached reference to the GPU spline pool."""
-        else:
-            self._spline_pool_gpu = None
 
     def _build_cpp_object(self):
         """"""
