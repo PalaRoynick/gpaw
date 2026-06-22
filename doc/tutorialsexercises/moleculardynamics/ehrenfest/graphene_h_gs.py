@@ -44,7 +44,8 @@ conv_fast = {'energy': 1.0, 'density': 1.0, 'eigenstates': 1.0}
 conv_par = {'energy': 0.001, 'density': 1e-3, 'eigenstates': 1e-7}
 
 if charge == 0:
-    calc = GPAW(mode='fd',
+    calc = GPAW(legacy_gpaw=True,
+                mode='fd',
                 gpts=h2gpts(0.2, gra.get_cell(), idiv=8),
                 nbands=110,
                 mixer={'beta': 0.15},
@@ -57,7 +58,7 @@ if charge == 0:
     atoms.get_potential_energy()
     calc.write(name + '.gpw', mode='all')
 
-if charge == 1:
+elif charge == 1:
     const_pot = ConstantPotential(1.0)
 
     calc = GPAW(mode='fd',
