@@ -6,14 +6,11 @@ from gpaw.typing import ArrayND
 from gpaw.new.density import Density
 from gpaw.mixer.base import BaseMixer
 
-if TYPE_CHECKING:
-    from gpaw.dft import Mixer
-
 
 class MultiMixer(BaseMixer):
     def __init__(self,
-                 mixer_a: Mixer,
-                 mixer_b: Mixer,
+                 mixer_a,  # : Mixer from gpaw.dft
+                 mixer_b,  # : Mixer from gpaw.dft
                  method: str,
                  ncomponents: int,
                  xp=np,
