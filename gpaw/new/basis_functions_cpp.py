@@ -7,6 +7,7 @@ from gpaw.typing import override
 from gpaw.gpu import cupy as cp
 import numpy as np
 
+
 class BasisFunctionCollection(BasisFunctionCollectionBase):
     """Version that uses GPAW C++ extension."""
 
