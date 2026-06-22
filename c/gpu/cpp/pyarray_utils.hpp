@@ -6,7 +6,6 @@
 #include "python_utils.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include "gpu/gpu-runtime.h"
 #include "utils.hpp"
 #include "gpaw_utils.h"
 
