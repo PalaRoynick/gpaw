@@ -45,7 +45,7 @@ std::unique_ptr<LFCGpu> LFCBuilderGpu::build(LFCBuilder&& cpu_builder, std::shar
     lfc->block_data.block_shape = make_gpu_vec3<grid_index_t>(cpu_blocks.block_shape[0], cpu_blocks.block_shape[1], cpu_blocks.block_shape[2]);
 
     // CUDA/HIP thread block limitation. TODO: separate logical blocking from GPU kernel blocking
-    constexpr size_t max_block_points = 1024;
+    constexpr grid_index_t max_block_points = static_cast<grid_index_t>(1024);
     if (cpu_blocks.block_shape[0] * cpu_blocks.block_shape[1] * cpu_blocks.block_shape[2] > max_block_points)
     {
         throw std::runtime_error(
