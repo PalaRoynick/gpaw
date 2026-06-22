@@ -434,7 +434,7 @@ class Mixer(Parameter):
             'no-mixing': NoMixing,
             'pulay': Pulay,
             'msr1': MSR1,
-            'multi': MultiMixer
+            'multi': Multi_Mixer
         }
 
         # Clean for dict for backwards compatibility
@@ -547,7 +547,7 @@ class Multi_Mixer(Mixer):
     cls = MultiMixer
 
     def __init__(self,
-                 method: str = 'diff',
+                 method: str = 'dif',
                  mixer_a: Mixer | dict | str = 'msr1',
                  mixer_b: Mixer | dict | str = 'msr1'):
         self.mixer_a = Mixer.from_param(mixer_a)
@@ -561,10 +561,10 @@ class Multi_Mixer(Mixer):
                 'mixer_b': self.mixer_b.todict()}
 
     def build(self, **kwargs):
-        return MultiMixer(method=self.method,
-                          mixer_a=self.mixer_a,
-                          mixer_b=self.mixer_b,
-                          **kwargs)
+        return self.cls(method=self.method,
+                        mixer_a=self.mixer_a,
+                        mixer_b=self.mixer_b,
+                        **kwargs)
 
 class Occupations(Parameter):
     def __init__(self, params: dict):

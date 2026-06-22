@@ -1,35 +1,46 @@
 import numpy as np
+from typing import TYPE_CHECKING
 
 from gpaw.new.density import Density
 from gpaw.mixer.base import BaseMixer
-from gpaw.dft import Mixer
+
+if TYPE_CHECKING:
+    from gpaw.dft import Mixer
 
 class MultiMixer(BaseMixer):
     def __init__(self,
                  mixer_a: Mixer,
                  mixer_b: Mixer,
                  method: str,
-                 ncomponents: int
+                 ncomponents: int,
+                 xp=np,
                  **kwargs):
         if method not in ['dif', 'sep']:
             raise ValueError(f'Invalid method: {method}')
-        self.mixer_a = mixer_a.build(ncomponents=1, **kwargs)
-        self.mixers_b = [mixer_b.build(ncomponents=1, **kwargs)
+        self.mixer_a = mixer_a.build(ncomponents=1, xp=xp, **kwargs)
+        self.mixers_b = [mixer_b.build(ncomponents=1, xp=xp, **kwargs)
                          for comp in range(ncomponents - 1)]
         self.method = method
-        self.ncomponents = ncomponents
+        super().__init__(metric=None, xp=xp, ncomponents=ncomponents, **kwargs)
+
+
+    def _initialize_history_(self):
+        # Create buffers:
+        self.nta_sX = self.desc.empty(1, xp=self.xp)
+        self.ntb_msX = [self.desc.empty(1, xp=self.xp) for comp in
+                        range(self.ncomponents - 1)]
+        self.Da_asii = self.atom_layout.empty(1)
+        self.Db_masii = [self.atom_layout.empty(1) for comp in
+                         range(self.ncomponents - 1)]
 
     def mix(self, density: Density) -> float:
-        nt_sX = density.nt_sX
+        nt_sX = density.nt_sR
         D_asii = density.D_asii
 
-        # Get buffers:
-        nta_sX = nt_sX.new(1)
-        ntb_msX = [nt_sX.new(1) for comp in
-                   range(self.ncomponents - 1)]
-        Da_asii = D_asii.new(1)
-        Db_masii = [D_asii.new(1) for comp in
-                    range(self.ncomponents - 1)]
+        nta_sX = self.nta_sX
+        ntb_msX = self.ntb_msX
+        Da_asii = self.Da_asii
+        Db_masii = self.Db_masii
 
         method = self.method
         if self.method == 'dif' and not self.ncomponents == 2:
@@ -69,10 +80,10 @@ class MultiMixer(BaseMixer):
             case 'dif':
                 ntb_sX = ntb_msX[0]
                 Db_asii = Db_masii[0]
-                nt_sX.data[0] = 0.5 * (nta_msX.data[0] + ntb_sX.data[0])
+                nt_sX.data[0] = 0.5 * (nta_sX.data[0] + ntb_sX.data[0])
                 D_asii.data[0] = 0.5 * (Da_asii.data[0] + Db_asii.data[0])
-                nt_sX.data[1] = 0.5 * (nta_msX.data[1] - ntb_sX.data[1])
-                D_asii.data[1] = 0.5 * (Da_asii.data[1] - Db_asii.data[1])
+                nt_sX.data[1] = 0.5 * (nta_sX.data[0] - ntb_sX.data[0])
+                D_asii.data[1] = 0.5 * (Da_asii.data[0] - Db_asii.data[0])
                 dnt = dnt_a
 
         return dnt
@@ -96,5 +107,5 @@ class MultiMixer(BaseMixer):
           Mixer A:
           {self.mixer_a}
           Mixers B:
-          {self.mixers_b}
+          {self.mixers_b[0] if self.ncomponents > 1 else '  N/A'}
         '''
