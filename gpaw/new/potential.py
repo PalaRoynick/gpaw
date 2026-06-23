@@ -84,7 +84,8 @@ class Potential:
             None if self.dedtaut_sR is None else self.dedtaut_sR.redist(
                 grid, comm1, comm2),
             None if self.vHt_x is None else self.vHt_x.redist(
-                desc, comm1, comm2))
+                desc, comm1, comm2),
+            self.e_stress)
 
     def gather(self):
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()

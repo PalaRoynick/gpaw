@@ -494,6 +494,25 @@ test-minimal:
       pytest -v -m ci -We
 
 
+test-distributed-potential:
+  image: $IMAGE_MAIN_LATEST
+  extends:
+    - .test
+  needs:
+    - job: build-latest
+  variables:
+    GPAW_DISTRIBUTE_POTENTIAL: "1"
+    GPAW_MPI_OPTIONS: "--bind-to none --oversubscribe"
+  script:
+    - gpaw info
+    - >
+      gpaw -P 4 python -m pytest -v
+      gpaw/test/new/test_potential_redist.py::test_scf_uses_full_potential_calculator
+    - >
+      gpaw -P 8 python -m pytest -v
+      gpaw/test/new/test_potential_redist.py::test_benzene_scf_uses_kpt_band_domain_potential_distribution
+
+
 test-cuda-minimal:
   image: $IMAGE_CUDA
   extends:
