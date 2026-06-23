@@ -25,6 +25,7 @@ boolean_envvars = {
     'GPAW_CPUPY',
     'GPAW_USE_GPUS',
     'GPAW_TRACE',
+    'GPAW_DISTRIBUTE_POTENTIAL',
     'GPAW_NO_C_EXTENSION',
     'GPAW_DEBUG',
     'GPAW_INITIALIZE_MPI',

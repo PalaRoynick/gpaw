@@ -13,6 +13,7 @@ from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
+from gpaw.new.pot_calc import DistributedPotentialCalculator
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.hamiltonian import PWHamiltonian, SpinorPWHamiltonian
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
@@ -91,6 +92,15 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return self.interpolation_desc.new(ecut=8 * self.ecut)
 
     @cached_property
+    def distributed_interpolation_desc(self):
+        return self.interpolation_desc.new(comm=self.communicators['w'])
+
+    @cached_property
+    def distributed_electrostatic_potential_desc(self):
+        return self.electrostatic_potential_desc.new(
+            comm=self.communicators['w'])
+
+    @cached_property
     def fast_poisson_solver(self) -> bool:
         fast = self.params.poissonsolver.params.get('fast', False)
         if fast:
@@ -119,56 +129,120 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 xp=self.xp)
         return self._tauct_ag
 
-    def create_poisson_solver(self, extensions):
+    def create_poisson_solver(self,
+                              extensions,
+                              *,
+                              grid=None,
+                              fine_grid=None,
+                              interpolation_desc=None,
+                              electrostatic_potential_desc=None,
+                              atomdist=None):
+        grid = grid or self.grid
+        fine_grid = fine_grid or self.fine_grid
+        interpolation_desc = interpolation_desc or self.interpolation_desc
+        electrostatic_potential_desc = (electrostatic_potential_desc or
+                                        self.electrostatic_potential_desc)
+        atomdist = atomdist or self.atomdist
         try:
             ps = super().create_poisson_solver(extensions)
         except NotImplementedError:
             pass
         else:
             return SlowPAWPoissonSolver(
-                self.interpolation_desc,
+                interpolation_desc,
                 self.setups,
-                ps, self.relpos_ac, self.atomdist, self.xp)
+                ps, self.relpos_ac, atomdist, self.xp)
 
         psparams = (self.params.poissonsolver.params.copy() or
                     {'strength': 1.0})
         psparams.pop('fast', False)
 
         if self.fast_poisson_solver:
-            grid = self.grid
+            ps_grid = grid
         else:
-            grid = self.fine_grid
+            ps_grid = fine_grid
 
-        pw = self.electrostatic_potential_desc
+        pw = electrostatic_potential_desc
         ps = make_poisson_solver(pw,
-                                 grid,
+                                 ps_grid,
                                  self.charge,
                                  **psparams)
 
         if self.fast_poisson_solver:
             cutoff_a = [s.data.shape_function['rc'] for s in self.setups]
             return BloechlPAWPoissonSolver(
-                pw, cutoff_a, ps, self.relpos_ac, self.atomdist, self.xp)
+                pw, cutoff_a, ps, self.relpos_ac, atomdist, self.xp)
 
         return SlowPAWPoissonSolver(
-            self.interpolation_desc,
+            interpolation_desc,
             self.setups,
-            ps, self.relpos_ac, self.atomdist, self.xp)
+            ps, self.relpos_ac, atomdist, self.xp)
 
-    def create_potential_calculator(self):
-        extensions = self.get_extensions()
+    def _create_potential_calculator(self,
+                                     grid,
+                                     fine_grid,
+                                     interpolation_desc,
+                                     electrostatic_potential_desc,
+                                     xc,
+                                     atomdist,
+                                     extensions):
         return PlaneWavePotentialCalculator(
-            self.grid,
-            self.fine_grid,
-            self.interpolation_desc,
+            grid,
+            fine_grid,
+            interpolation_desc,
             self.setups,
-            self.xc,
-            self.create_poisson_solver(extensions),
+            xc,
+            self.create_poisson_solver(
+                extensions,
+                grid=grid,
+                fine_grid=fine_grid,
+                interpolation_desc=interpolation_desc,
+                electrostatic_potential_desc=electrostatic_potential_desc,
+                atomdist=atomdist),
             relpos_ac=self.relpos_ac,
-            atomdist=self.atomdist,
+            atomdist=atomdist,
             soc=self.soc,
             xp=self.xp,
             extensions=extensions)
+
+    def create_potential_calculator(self):
+        extensions = self.get_extensions()
+        normal_calc = self._create_potential_calculator(
+            self.grid,
+            self.fine_grid,
+            self.interpolation_desc,
+            self.electrostatic_potential_desc,
+            self.xc,
+            self.atomdist,
+            extensions)
+        if not self.distribute_potential:
+            return normal_calc
+
+        distributed_xc = create_functional(
+            self.xcfunc, self.distributed_fine_grid, self.xp)
+        distributed_calc = self._create_potential_calculator(
+            self.distributed_grid,
+            self.distributed_fine_grid,
+            self.distributed_interpolation_desc,
+            self.distributed_electrostatic_potential_desc,
+            distributed_xc,
+            self.distributed_atomdist,
+            [])
+        distributed_calc.density_atomdist = self.distributed_atomdist
+        return DistributedPotentialCalculator(
+            normal_calc,
+            distributed_calc,
+            grid=self.grid,
+            interpolation_desc=self.interpolation_desc,
+            electrostatic_potential_desc=self.electrostatic_potential_desc,
+            atomdist=self.atomdist,
+            distributed_grid=self.distributed_grid,
+            distributed_interpolation_desc=self.distributed_interpolation_desc,
+            distributed_electrostatic_potential_desc=(
+                self.distributed_electrostatic_potential_desc),
+            distributed_atomdist=self.distributed_atomdist,
+            comm1=self.communicators['D'],
+            comm2=self.communicators['D'])
 
     def create_hamiltonian_operator(self, blocksize=10):
         if self.ncomponents < 4:

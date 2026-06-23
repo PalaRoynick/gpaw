@@ -109,6 +109,10 @@ class PotentialCalculator:
                   vHt_x: XArray | None = None,
                   kpt_band_comm: MPIComm | None = None
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+        if hasattr(self, 'grid'):
+            assert density.nt_sR.desc.comm.size == self.grid.comm.size
+            assert density.nt_sR.desc.comm.rank == self.grid.comm.rank
+
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
 
@@ -161,6 +165,135 @@ class PotentialCalculator:
         return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
                 DFTEnergies(**energies),
                 V_aL)
+
+
+class DistributedPotentialCalculator:
+    def __init__(self,
+                 normal_calc,
+                 distributed_calc,
+                 *,
+                 grid,
+                 interpolation_desc,
+                 electrostatic_potential_desc,
+                 atomdist,
+                 distributed_grid,
+                 distributed_interpolation_desc,
+                 distributed_electrostatic_potential_desc,
+                 distributed_atomdist,
+                 comm1,
+                 comm2):
+        self.normal_calc = normal_calc
+        self.distributed_calc = distributed_calc
+        self.grid = grid
+        self.interpolation_desc = interpolation_desc
+        self.electrostatic_potential_desc = electrostatic_potential_desc
+        self.atomdist = atomdist
+        self.distributed_grid = distributed_grid
+        self.distributed_interpolation_desc = distributed_interpolation_desc
+        self.distributed_electrostatic_potential_desc = (
+            distributed_electrostatic_potential_desc)
+        self.distributed_atomdist = distributed_atomdist
+        self.comm1 = comm1
+        self.comm2 = comm2
+
+    def __str__(self):
+        return str(self.normal_calc)
+
+    def __getattr__(self, name):
+        return getattr(self.normal_calc, name)
+
+    @property
+    def _full_potential_calculator(self):
+        return self.distributed_calc
+
+    @property
+    def charge(self):
+        return self.normal_calc.charge
+
+    @property
+    def xc(self):
+        return self.normal_calc.xc
+
+    @xc.setter
+    def xc(self, value):
+        self.normal_calc.xc = value
+
+    @property
+    def poisson_solver(self):
+        return self.normal_calc.poisson_solver
+
+    @property
+    def extensions(self):
+        return self.normal_calc.extensions
+
+    def calculate_without_orbitals(self,
+                                   density,
+                                   ibzwfs=None,
+                                   vHt_x: XArray | None = None,
+                                   kpt_band_comm: MPIComm | None = None
+                                   ) -> tuple[Potential,
+                                              DFTEnergies,
+                                              AtomArrays]:
+        xc = self.xc
+        if xc.exx_fraction != 0.0:
+            from gpaw.new.xc import create_functional
+            self.xc = create_functional('PBE', xc.grid)
+        potential, energies, V_aL = self.calculate(
+            density, ibzwfs, vHt_x, kpt_band_comm)
+        if xc.exx_fraction != 0.0:
+            self.xc = xc
+        return potential, energies, V_aL
+
+    @trace
+    def calculate(self,
+                  density,
+                  ibzwfs=None,
+                  vHt_x: XArray | None = None,
+                  kpt_band_comm: MPIComm | None = None
+                  ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+        distributed_density = density.redist(
+            self.distributed_grid,
+            self.distributed_interpolation_desc,
+            self.distributed_atomdist,
+            self.comm1,
+            serial_comm)
+
+        if vHt_x is not None:
+            vHt_x = vHt_x.redist(
+                self.distributed_electrostatic_potential_desc,
+                self.comm1,
+                serial_comm)
+
+        potential, energies, V_aL = self.distributed_calc.calculate(
+            distributed_density,
+            ibzwfs=None,
+            vHt_x=vHt_x,
+            kpt_band_comm=serial_comm)
+
+        potential = potential.redist(
+            self.grid,
+            self.electrostatic_potential_desc,
+            self.atomdist,
+            serial_comm,
+            self.comm2)
+        V_aL = V_aL.redist(self.atomdist, serial_comm, self.comm2)
+        return potential, energies, V_aL
+
+    def move(self, relpos_ac, atomdist):
+        self.normal_calc.move(relpos_ac, atomdist)
+        self.distributed_calc.move(relpos_ac, self.distributed_atomdist)
+
+    def calculate_non_selfconsistent_exc(self, xc, density):
+        return self.normal_calc.calculate_non_selfconsistent_exc(xc, density)
+
+    def restrict(self, a_r, a_R=None):
+        return self.normal_calc.restrict(a_r, a_R)
+
+    def force_contributions(self, Q_aL, density, potential):
+        return self.normal_calc.force_contributions(Q_aL, density, potential)
+
+    def stress(self, ibzwfs, density, potential):
+        return self.normal_calc.stress(ibzwfs, density, potential)
 
 
 @trace
