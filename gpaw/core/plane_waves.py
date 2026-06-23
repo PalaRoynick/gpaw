@@ -102,6 +102,22 @@ class PWDesc(Domain['PWArray']):
             'Domain(',
             f'PWDesc(ecut={self.ecut} <coefs={m}/{n}>, ')
 
+    def desc_match(self, other) -> bool:
+        return bool(
+            isinstance(other, PWDesc) and
+            self.comm.size == other.comm.size and
+            self.comm.rank == other.comm.rank and
+            self.dtype == other.dtype and
+            np.allclose(self.cell_cv, other.cell_cv) and
+            np.array_equal(self.pbc_c, other.pbc_c) and
+            np.allclose(self.kpt_c, other.kpt_c) and
+            np.isclose(self.ecut, other.ecut) and
+            np.isclose(self.gcut, other.gcut) and
+            self.global_shape() == other.global_shape() and
+            tuple(self.myshape) == tuple(other.myshape) and
+            self.ng1 == other.ng1 and
+            self.ng2 == other.ng2)
+
     def _short_string(self, global_shape):
         return (f'Plane wave coefficients: {global_shape[-1]}\n'
                 f'Cutoff: {self.ecut * Ha} eV\n')

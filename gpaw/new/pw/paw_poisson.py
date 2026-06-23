@@ -37,6 +37,9 @@ class PAWPoissonSolver:
                                                      AtomArrays]:
         raise NotImplementedError
 
+    def new(self, **kwargs):
+        raise NotImplementedError(self.__class__.__name__)
+
 
 class SlowPAWPoissonSolver(PAWPoissonSolver):
     """Solve Poisson-equation on very fine grid."""
@@ -51,6 +54,7 @@ class SlowPAWPoissonSolver(PAWPoissonSolver):
         super().__init__(poisson_solver)
         self.xp = xp
         self.pwg = pwg
+        self.setups = setups
         self.pwg0 = pwg.new(comm=None)  # not distributed
         self.pwh = poisson_solver.pw
         self.ghat_aLh = setups.create_compensation_charges(
@@ -67,6 +71,24 @@ class SlowPAWPoissonSolver(PAWPoissonSolver):
              relpos_ac: np.ndarray,
              atomdist: AtomDistribution) -> None:
         self.ghat_aLh.move(relpos_ac, atomdist)
+
+    def new(self, *,
+            pwg=None,
+            pwh=None,
+            grid=None,
+            fine_grid=None,
+            setups=None,
+            relpos_ac=None,
+            atomdist=None,
+            xp=None):
+        pwh = pwh or self.pwh
+        return SlowPAWPoissonSolver(
+            pwg or self.pwg,
+            self.setups if setups is None else setups,
+            self.poisson_solver.new(pw=pwh, grid=fine_grid or grid),
+            self.relpos_ac if relpos_ac is None else relpos_ac,
+            self.ghat_aLh.atomdist if atomdist is None else atomdist,
+            self.xp if xp is None else xp)
 
     def solve(self,
               nt0_g: PWArray,

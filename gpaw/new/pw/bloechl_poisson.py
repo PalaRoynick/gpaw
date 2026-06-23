@@ -129,6 +129,17 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         self._force_av: np.ndarray | None = None
         self._stress_vv: np.ndarray | None = None
 
+    def new(self, *, pwg=None, pwh=None, grid=None, fine_grid=None,
+            setups=None, relpos_ac=None, atomdist=None, xp=None):
+        pwg = pwg or self.pwg
+        return BloechlPAWPoissonSolver(
+            pwg,
+            self.cutoff_a,
+            self.poisson_solver.new(pw=pwg, grid=grid),
+            self.relpos_ac if relpos_ac is None else relpos_ac,
+            self.ghat_aLg.atomdist if atomdist is None else atomdist,
+            self.xp if xp is None else xp)
+
     def get_neighbors(self):
         if self._neighbors is None:
             pw = self.pwg

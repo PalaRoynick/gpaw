@@ -20,6 +20,10 @@ from gpaw.typing import Array3D, Vector
 from gpaw.utilities import unpack_density, unpack_hermitian
 
 
+def xdesc_match(desc1, desc2) -> bool:
+    return bool(hasattr(desc1, 'desc_match') and desc1.desc_match(desc2))
+
+
 class Density:
     @classmethod
     def from_data_and_setups(cls,
@@ -136,6 +140,39 @@ class Density:
                 f'  Components: {self.ncomponents}\n'
                 f'  Grid points: {self.nt_sR.desc.size}\n'
                 f'  Charge: {self.charge}  # |e|\n')
+
+    def decompositions_equal(self, pot_calc) -> bool:
+        if not hasattr(pot_calc, 'grid'):
+            return True
+
+        if not xdesc_match(self.nt_sR.desc, pot_calc.grid):
+            return False
+        if (self.taut_sR is not None and
+                not xdesc_match(self.taut_sR.desc, pot_calc.grid)):
+            return False
+
+        atomdist = self.D_asii.layout.atomdist
+        expected_rank_a = pot_calc.grid.ranks_from_fractional_positions(
+            self.nct_aX.relpos_ac)
+        if atomdist.comm.size != pot_calc.grid.comm.size:
+            return False
+        if atomdist.comm.rank != pot_calc.grid.comm.rank:
+            return False
+        if not np.array_equal(atomdist.rank_a, expected_rank_a):
+            return False
+
+        nct_grid = getattr(self.nct_aX, 'grid', None)
+        if nct_grid is not None:
+            tauct_grid = getattr(self.tauct_aX, 'grid')
+            return (xdesc_match(nct_grid, pot_calc.grid) and
+                    xdesc_match(tauct_grid, pot_calc.grid))
+
+        if not hasattr(pot_calc, 'pw'):
+            return False
+        nct_pw = getattr(self.nct_aX, 'pw', None)
+        tauct_pw = getattr(self.tauct_aX, 'pw', None)
+        return (xdesc_match(nct_pw, pot_calc.pw) and
+                xdesc_match(tauct_pw, pot_calc.pw))
 
     @property
     def nct_R(self):

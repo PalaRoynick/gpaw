@@ -751,7 +751,8 @@ KptsType = Union[Sequence[int], dict, Sequence[Sequence[float]]]
 PARALLEL_KEYS = {
     'kpt', 'domain', 'band', 'order', 'stridebands', 'augment_grids',
     'sl_auto', 'sl_default', 'sl_diagonalize', 'sl_inverse_cholesky',
-    'sl_lcao', 'sl_lrtddft', 'use_elpa', 'elpasolver', 'buffer_size', 'gpu'}
+    'sl_lcao', 'sl_lrtddft', 'use_elpa', 'elpasolver', 'buffer_size', 'gpu',
+    'potential'}
 
 
 class Parameters:
@@ -913,6 +914,10 @@ class Parameters:
                 raise ValueError(
                     f'Unknown key: {key!r}.  '
                     f'Must be one of {", ".join(PARALLEL_KEYS)}')
+        potential = self.parallel.get('potential')
+        if potential not in [None, 'full']:
+            raise ValueError(
+                "parallel['potential'] must be 'full' when specified")
 
     def __repr__(self) -> str:
         lines = []
