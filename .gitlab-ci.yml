@@ -138,7 +138,7 @@ build-latest:
   script:
     - >
       pip install --upgrade
-      pytest pytest-cov coverage pytest-xdist pytest-test-groups
+      "pytest<9.1" pytest-cov coverage pytest-xdist pytest-test-groups
     - |
       cat << EOF >> siteconfig.py
       define_macros += [('NDEBUG', None)]
@@ -616,7 +616,7 @@ check-agts:
     - mq init
     - mq workflow -p agts.py -zT | tail -1 | tee task_count
     - >
-      [[ `cut -d ' ' -f1 < task_count` -ge 501 ]] || (echo "Too few agts tasks"; exit 1)
+      [[ `cut -d ' ' -f1 < task_count` -ge 649 ]] || (echo "Too few agts tasks"; exit 1)
 
 
 lint:
@@ -637,14 +637,13 @@ lint:
     - >
       flake8
       --doctests
-      --exclude "doc/platforms/*,doc/*/summerschool26/*/"
+      --exclude "doc/platforms/*,doc/summerschools/summerschool26/machinelearning/*"
       --extend-ignore E402
       doc
     - >
       flake8
       --doctests
       --extend-ignore E402,E501
-      doc/summerschools/summerschool26/catalysis
       doc/platforms/Linux/Niflheim
 
 

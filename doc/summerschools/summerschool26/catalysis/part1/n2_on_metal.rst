@@ -43,7 +43,7 @@ right.  This pops up a new window.
 To optimise the slab we need a calculator. We use the GPAW calculator in
 plane wave (PW) mode with the PBE exchange—correlation functional. The
 convergence with respect to the cutoff energy and k-point sampling should
-always be checked — see :ref:`catalysis_part5_convergence`
+always be checked — see :ref:`catalysis_convergence`
 for more information on how this
 can be done. For this exercise an energy cutoff of 350eV and 4x4x1 k-point
 mesh is chosen to give reasonable results with a limited computation time.
@@ -128,8 +128,7 @@ The calculation will take a while (10-15 minutes). While it is running please
 follow the guidelines in the **Exercise** section below.
 
 Once the calculation is finished we can calculate the adsorption energy as:
-
-:math:`E_{\mathrm{ads}} = E_{\mathrm{slab+N}_2} - (E_{\mathrm{slab}} + E_{\mathrm{N}_2})`
+`E_{\mathrm{ads}} = E_{\mathrm{slab+N}_2} - (E_{\mathrm{slab}} + E_{\mathrm{N}_2})`.
 
 
 

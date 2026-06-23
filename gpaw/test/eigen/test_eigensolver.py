@@ -32,12 +32,12 @@ def test_eigensolver(k, b, d, s):
         mode='pw',
         eigensolver='davidson',
         kpts=(4, 1, 1),
-        mixer={'weight': 1, 'backend': 'pulay', 'beta': 0.08},
+        mixer={'backend': 'no-mixing'},
         parallel=parallel,
         converge=False)
     dft.converge(steps=3)
     e = dft.calculate_energy()
-    assert e == pytest.approx(-11.84554, rel=1e-6)
+    assert e == pytest.approx(-11.30653, rel=1e-6)
 
 
 if __name__ == '__main__':

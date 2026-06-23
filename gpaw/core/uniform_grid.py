@@ -575,11 +575,16 @@ class UGArray(XArray[UGDesc]):
         if not self.desc.zerobc_c.any():
             return self
         grid = self.desc.new(zerobc=False)
-        new = grid.empty(self.dims)
+        new = grid.empty(self.dims, xp=self.xp)
         new.data[:] = 0.0
         *_, i, j, k = self.data.shape
         new.data[..., -i:, -j:, -k:] = self.data
         return new
+
+    def from_pbc_grid(self, pbc_array):
+        """Undo ``to_pbc_grid``."""
+        *_, i, j, k = self.data.shape
+        self.data[:] = pbc_array.data[..., -i:, -j:, -k:]
 
     def multiply_by_eikr(self, kpt_c: Vector | None = None) -> None:
         """Multiply by `exp(ik.r)`."""

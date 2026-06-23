@@ -17,7 +17,7 @@ li_metal.get_potential_energy()
 li_metal.write('li_metal.traj')
 # snippet-beef
 ens = BEEFEnsemble(calc)
-li_metal_ens_cell= ens.get_ensemble_energies(2000)
+li_metal_ens_cell = ens.get_ensemble_energies(2000)
 with paropen('ensemble_li_metal.dat', 'a') as result:
     for e in li_metal_ens_cell:
         print(e, file=result)

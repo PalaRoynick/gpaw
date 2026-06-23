@@ -10,10 +10,11 @@ a model to identify good candidate materials for light harvesting, based on a
 small database of organic/inorganic perovskites. Afterwards, you will validate
 the model predictions by running DFT calculations on selected systems.
 
+
 Part 1: Inspection of database
 ==============================
 
-:download:`machinelearning.ipynb`, :download:`organometal.db`
+:download:`machinelearning.py`, :download:`organometal.db`
 
 The first part of the exercise is an inspection of the existing database.
 Understanding what is available from other sources is a necessary step before
@@ -42,10 +43,10 @@ In this part, you will implement the machine learning model:
 
 * Improve the input vectors and the model.
 
+
 Part 3: Test and Evaluate the Model
 ===================================
 
 In the last part, you will test the prediction model and run DFT calculations
 for the heat of formation and the band gap to compare these results with the
 model.
-

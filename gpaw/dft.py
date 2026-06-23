@@ -18,7 +18,12 @@ from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
+from gpaw.mixer.base import BaseMixer
+from gpaw.mixer.pulay import PulayMixer
+from gpaw.mixer.msr1 import MSR1Mixer
+from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
+from gpaw.typing import ArrayND
 from gpaw.utilities import (check_atoms_too_close,
                             check_atoms_too_close_to_boundary)
 
@@ -51,6 +56,28 @@ class Parameter:
             if value is not None:
                 dct[key] = value
         return dct
+
+
+class ExtensionInput(Parameter):
+    @classmethod
+    def from_input(self, extension: ExtensionInput | dict):
+        if isinstance(extension, dict):
+            dct = extension.copy()
+            name = dct.pop('name')
+            if name == 'd3':
+                from gpaw.extensions.d3 import D3
+                return D3(**dct)
+            if name == 'spin_direction_constraint':
+                from gpaw.new.constraints import SpinDirectionConstraint
+                return SpinDirectionConstraint(**dct)
+            if name == 'sjm':
+                from gpaw.new.sjm import SJM
+                return SJM(**dct)
+            if name == 'solvation':
+                from gpaw.new.solvation import Solvation
+                return Solvation(**dct)
+            raise ValueError(f'Unknown extension: {name}')
+        return extension
 
 
 class Mode(Parameter):
@@ -386,40 +413,131 @@ class Scissors(LCAOEigensolver):
                                        symmetries)
 
 
-class ExtensionInput(Parameter):
-    @classmethod
-    def from_input(self, extension: ExtensionInput | dict):
-        if isinstance(extension, dict):
-            dct = extension.copy()
-            name = dct.pop('name')
-            if name == 'd3':
-                from gpaw.new.extensions import D3
-                return D3(**dct)
-            if name == 'spin_direction_constraint':
-                from gpaw.new.constraints import SpinDirectionConstraint
-                return SpinDirectionConstraint(**dct)
-            if name == 'sjm':
-                from gpaw.new.sjm import SJM
-                return SJM(**dct)
-            if name == 'solvation':
-                from gpaw.new.solvation import Solvation
-                return Solvation(**dct)
-            raise ValueError(f'Unknown extension: {name}')
-        return extension
-
-
 class Mixer(Parameter):
-    def __init__(self, params: dict):
-        self.params = params
-
-    def todict(self):
-        return self.params
+    def _build_metric(self, weight, sigma, g_ss, **kwargs):
+        metric_kwargs = {'ncomponents': kwargs['ncomponents'],
+                         'grid': kwargs['desc'],
+                         'xp': kwargs['xp']}
+        if weight == 1:
+            return BaseMetric(g_ss=g_ss,
+                              **metric_kwargs)
+        else:
+            return FFTMetric(g_ss=g_ss,
+                             weight=weight,
+                             sigma=sigma,
+                             **metric_kwargs)
 
     @classmethod
     def from_param(cls, mixer):
-        if isinstance(mixer, Mixer):
-            return mixer
-        return Mixer(mixer)
+        mixer_names = {
+            'no-mixing': NoMixing,
+            'pulay': Pulay,
+            'msr1': MSR1
+        }
+
+        # Clean for dict for backwards compatibility
+        if isinstance(mixer, dict):
+            mixer = mixer.copy()
+            mixer.pop('method', None)
+            backend = mixer.pop('backend', None)
+            if 'name' not in mixer and backend is not None:
+                mixer['name'] = backend
+
+        match mixer:
+            case str(name):
+                return cls.from_param({'backend': name})
+            case {'name': name, **kwargs}:
+                if name in mixer_names:
+                    return mixer_names[name](**kwargs)
+                raise ValueError(f'Unknown mixer: {name}')
+            case {**kwargs}:
+                return MSR1(**kwargs)
+            case cls():
+                return mixer
+            case _:
+                raise ValueError(f'Unknown mixer: {mixer}')
+
+
+class NoMixing(Mixer):
+    name = 'no-mixing'
+    cls = BaseMixer
+
+    def __init__(self):
+        self.weight = 1.0
+        self.sigma = 1.0
+        self.g_ss = None
+
+    def todict(self):
+        return {'name': self.name}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(self.weight, self.sigma, self.g_ss,
+                                    **kwargs)
+        return self.cls(metric=metric, **kwargs)
+
+
+class Pulay(Mixer):
+    name = 'pulay'
+    cls = PulayMixer
+
+    def __init__(self,
+                 nmaxold: int = 16,
+                 beta: float = 0.08,
+                 weight: float = 200.0,
+                 sigma: float = 0.02,
+                 g_ss: ArrayND | None = None):
+        self.mixer_params = {'nmaxold': nmaxold,
+                             'beta': beta}
+        self.metric_params = {'weight': weight,
+                              'sigma': sigma,
+                              'g_ss': g_ss}
+
+    def todict(self):
+        return {'name': self.name,
+                **self.mixer_params,
+                **self.metric_params}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(**self.metric_params, **kwargs)
+        return self.cls(metric=metric, **self.mixer_params, **kwargs)
+
+
+class MSR1(Mixer):
+    name = 'msr1'
+    cls = MSR1Mixer
+
+    def __init__(self,
+                 nmaxold: int = 10,
+                 beta: float = 0.05,
+                 reg: float = 5e-3,
+                 gb_scale: float = 1.0,
+                 max_A: float = 0.75,
+                 trust_scale: float = 1.0,
+                 soft_lim: float = 1.5,
+                 hard_lim: float = 2.0,
+                 weight: float = 200.0,
+                 sigma: float = 0.02,
+                 g_ss: ArrayND | None = None):
+        self.mixer_params = {'nmaxold': nmaxold,
+                             'beta': beta,
+                             'reg': reg,
+                             'gb_scale': gb_scale,
+                             'max_A': max_A,
+                             'trust_scale': trust_scale,
+                             'soft_lim': soft_lim,
+                             'hard_lim': hard_lim}
+        self.metric_params = {'weight': weight,
+                              'sigma': sigma,
+                              'g_ss': g_ss}
+
+    def todict(self):
+        return {'name': self.name,
+                **self.mixer_params,
+                **self.metric_params}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(**self.metric_params, **kwargs)
+        return self.cls(metric=metric, **self.mixer_params, **kwargs)
 
 
 class Occupations(Parameter):

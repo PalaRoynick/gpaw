@@ -989,6 +989,9 @@ class SeparateSpinMixerDriver:
         self.kwargs = kwargs
 
     def get_basemixers(self, nspins):
+        if 'name' in self.kwargs:
+            # Forwards compatibility
+            self.kwargs.pop('name')
         return [self.basemixerclass(**self.kwargs)
                 for _ in range(nspins)]
 
@@ -1300,6 +1303,8 @@ def _definemixerfunc(method, backend):
         d = dict(method=method, backend=backend,
                  beta=beta, nmaxold=nmaxold, weight=weight)
         d.update(kwargs)
+        # Clear none values:
+        d = {k: v for k, v in d.items() if v is not None}
         return d
     return getmixer
 

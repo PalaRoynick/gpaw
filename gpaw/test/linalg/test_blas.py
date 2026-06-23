@@ -71,7 +71,7 @@ def test_linalg_blas():
     assert not c.any()
 
     # Check gemmdot for transa='n'
-    a2.shape = 3, 7, 5, 1
+    a2 = a2.reshape((3, 7, 5, 1))
     c = np.tensordot(a, a2, [-1, 0])
     gemmdot(a, a2, beta=-1., out=c, trans='n')
     assert not c.any()
