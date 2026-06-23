@@ -75,7 +75,7 @@ class BaseMixer:
 
         if self.ncomponents == 2:
             # Don't mix each channel,
-            # mix combined and spin instead
+            # mix total and magnetization instead (for metric reasons)
             nt2_sX = nt_sX.copy()
             D2_asii = D_asii.copy()
             nt2_sX.data[0] = nt_sX.data[0] + nt_sX.data[1]
@@ -170,12 +170,11 @@ class BaseMixer:
             if add_delta0:
                 # Not important for mixing, and should never be done
                 # for residuals.
-                Q_sL[0] += density.delta0_a[a] / self.ncomponents
+                Q_sL[0][0] += density.delta0_a[a]
             ccc_asL[a] = Q_sL
 
         # Add compensation charge to output
         self.ghat_aLr.add_to(out, ccc_asL)
-
         return out
 
     def move(self, relpos_ac: ArrayND, atomdist: AtomDistribution):

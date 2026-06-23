@@ -488,8 +488,8 @@ class Pulay(Mixer):
     def __init__(self,
                  nmaxold: int = 16,
                  beta: float = 0.08,
-                 weight: float = 200.0,
-                 sigma: float = 0.02,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
                  g_ss: ArrayND | None = None):
         self.mixer_params = {'nmaxold': nmaxold,
                              'beta': beta}
@@ -518,10 +518,10 @@ class MSR1(Mixer):
                  gb_scale: float = 1.0,
                  max_A: float = 0.75,
                  trust_scale: float = 1.0,
-                 soft_lim: float = 1.5,
-                 hard_lim: float = 2.0,
-                 weight: float = 200.0,
-                 sigma: float = 0.02,
+                 soft_lim: float = 4.0,
+                 hard_lim: float = 6.0,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
                  g_ss: ArrayND | None = None):
         self.mixer_params = {'nmaxold': nmaxold,
                              'beta': beta,
