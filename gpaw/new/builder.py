@@ -85,6 +85,7 @@ class DFTComponentsBuilder:
 
         xcfunc = params.xc.functional(collinear=(self.ncomponents < 4),
                                       atoms=self.atoms)
+        self.xcfunc = xcfunc
 
         if self.ncomponents == 4 and xcfunc.type != 'LDA':
             raise ValueError('Only LDA supported for '
@@ -172,6 +173,9 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.grid, self.fine_grid = self.create_uniform_grids()
+        self.distributed_grid = self.grid.new(comm=self.communicators['w'])
+        self.distributed_fine_grid = self.fine_grid.new(
+            comm=self.communicators['w'])
 
         self.xc = create_functional(xcfunc, self.fine_grid, self.xp)
 
@@ -197,6 +201,13 @@ class DFTComponentsBuilder:
         return AtomDistribution(
             self.grid.ranks_from_fractional_positions(self.relpos_ac),
             self.grid.comm)
+
+    @cached_property
+    def distributed_atomdist(self) -> AtomDistribution:
+        return AtomDistribution(
+            self.distributed_grid.ranks_from_fractional_positions(
+                self.relpos_ac),
+            self.distributed_grid.comm)
 
     def create_uniform_grids(self):
         raise NotImplementedError

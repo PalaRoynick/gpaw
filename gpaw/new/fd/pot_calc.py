@@ -24,6 +24,9 @@ class FDPotentialCalculator(PotentialCalculator):
                  xp=np):
         self.fine_grid = fine_grid
         self.grid = wf_grid
+        self.density_xdesc = wf_grid
+        self.electrostatic_potential_desc = fine_grid
+        self.atomdist = atomdist
 
         self.vbar_ar = setups.create_local_potentials(fine_grid, relpos_ac,
                                                       atomdist, xp=xp)
@@ -149,6 +152,9 @@ class FDPotentialCalculator(PotentialCalculator):
         self.vbar_ar.to_uniform_grid(out=self.vbar_r)
 
     def force_contributions(self, Q_aL, density, potential):
+        Q_aL = self._atom_arrays_to_calculator_layout(Q_aL)
+        density = self._density_to_calculator_layout(density)
+        potential = self._potential_to_calculator_layout(potential)
         nt_R = spinsum(density.nt_sR)
         vt_R = spinsum(potential.vt_sR, mean=True)
         dedtaut_sR = potential.dedtaut_sR

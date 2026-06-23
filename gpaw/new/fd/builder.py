@@ -8,6 +8,7 @@ from gpaw.new.fd.hamiltonian import FDHamiltonian
 from gpaw.new.fd.pot_calc import FDPotentialCalculator
 from gpaw.new.gpw import as_double_precision
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
+from gpaw.new.xc import create_functional
 
 
 class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
@@ -59,7 +60,8 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 self.grid, self.relpos_ac, atomdist=self.atomdist)
         return self._tauct_aR
 
-    def create_poisson_solver(self, extensions):
+    def create_poisson_solver(self, extensions, fine_grid=None):
+        fine_grid = fine_grid or self.fine_grid
         from gpaw.poisson import PoissonSolver as make_poisson_solver
         try:
             solver = super().create_poisson_solver(extensions)
@@ -71,23 +73,33 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 psparams = {'name': ps}
             solver = make_poisson_solver(
                 **psparams,
-                xp=self.xp).build(self.fine_grid, self.xp)
+                xp=self.xp).build(fine_grid, self.xp)
         return solver
 
     def create_potential_calculator(self):
         extensions = self.get_extensions()
-        poisson_solver = self.create_poisson_solver(extensions)
-        return FDPotentialCalculator(
-            self.grid,
-            self.fine_grid,
+        poisson_solver = self.create_poisson_solver(
+            extensions, self.distributed_fine_grid)
+        xc = create_functional(
+            self.xcfunc, self.distributed_fine_grid, self.xp)
+        pot_calc = FDPotentialCalculator(
+            self.distributed_grid,
+            self.distributed_fine_grid,
             self.setups,
-            self.xc,
+            xc,
             poisson_solver,
             relpos_ac=self.relpos_ac,
-            atomdist=self.atomdist,
+            atomdist=self.distributed_atomdist,
             interpolation_stencil_range=self.interpolation_stencil_range,
             extensions=extensions,
             xp=self.xp)
+        pot_calc.set_input_layout(
+            self.grid,
+            self.grid,
+            self.electrostatic_potential_desc,
+            self.atomdist,
+            self.communicators['D'])
+        return pot_calc
 
     def create_hamiltonian_operator(self):
         return FDHamiltonian(self.wf_desc,

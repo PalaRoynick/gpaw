@@ -24,6 +24,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  xp=np):
         self.xp = xp
         self.pw = pw
+        self.density_xdesc = pw
         super().__init__(xc, poisson_solver, setups,
                          relpos_ac=relpos_ac,
                          extensions=extensions,
@@ -37,6 +38,11 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         self.grid = grid
         self.fine_grid = fine_grid
+        if hasattr(poisson_solver, 'pwh'):
+            self.electrostatic_potential_desc = poisson_solver.pwh
+        else:
+            self.electrostatic_potential_desc = poisson_solver.pwg
+        self.atomdist = atomdist
 
         self.vbar_g = pw.zeros(xp=xp)
         self.vbar_ag.add_to(self.vbar_g)
@@ -184,6 +190,9 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         return self._vt_g, self._nt_g, self._dedtaut_g
 
     def force_contributions(self, Q_aL, density, potential):
+        Q_aL = self._atom_arrays_to_calculator_layout(Q_aL)
+        density = self._density_to_calculator_layout(density)
+        potential = self._potential_to_calculator_layout(potential)
         if potential.vHt_x is None:
             raise RuntimeError(ERROR.format(thing='forces'))
         vt_g, nt_g, dedtaut_g = self._force_stress_helper(density, potential)
@@ -206,6 +215,10 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
             ext_force_av)
 
     def stress(self, ibzwfs, density, potential):
+        input_potential = potential
+        density = self._density_to_calculator_layout(density)
+        potential = self._potential_to_calculator_layout(potential)
+        potential.dH_asii = input_potential.dH_asii
         if potential.vHt_x is None:
             raise RuntimeError(ERROR.format(thing='stress'))
         vt_g, nt_g, dedtaut_g = self._force_stress_helper(density, potential)

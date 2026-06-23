@@ -57,6 +57,53 @@ class PotentialCalculator:
     def charge(self):
         return sum(ext.charge for ext in self.extensions)
 
+    def set_input_layout(self,
+                         grid,
+                         density_xdesc,
+                         electrostatic_potential_desc,
+                         atomdist,
+                         comm) -> None:
+        self.input_grid = grid
+        self.input_density_xdesc = density_xdesc
+        self.input_electrostatic_potential_desc = (
+            electrostatic_potential_desc)
+        self.input_atomdist = atomdist
+        self.input_comm = comm
+
+    def _density_is_calculator_layout(self, density) -> bool:
+        grid = density.nt_sR.desc
+        return (grid.comm.size == self.grid.comm.size and
+                grid.comm.rank == self.grid.comm.rank)
+
+    def _density_to_calculator_layout(self, density):
+        if self._density_is_calculator_layout(density):
+            return density
+        return density.redist(
+            self.grid,
+            self.density_xdesc,
+            self.atomdist,
+            self.input_comm,
+            serial_comm)
+
+    def _potential_to_calculator_layout(self, potential):
+        grid = potential.vt_sR.desc
+        if (grid.comm.size == self.grid.comm.size and
+                grid.comm.rank == self.grid.comm.rank):
+            return potential
+        return potential.redist(
+            self.grid,
+            self.electrostatic_potential_desc,
+            self.atomdist,
+            self.input_comm,
+            serial_comm)
+
+    def _atom_arrays_to_calculator_layout(self, atom_arrays):
+        atomdist = atom_arrays.layout.atomdist
+        if (atomdist.comm.size == self.atomdist.comm.size and
+                atomdist.comm.rank == self.atomdist.comm.rank):
+            return atom_arrays
+        return atom_arrays.redist(self.atomdist, self.input_comm, serial_comm)
+
     def calculate_pseudo_potential(self,
                                    density,
                                    ibzwfs,
@@ -109,6 +156,47 @@ class PotentialCalculator:
                   vHt_x: XArray | None = None,
                   kpt_band_comm: MPIComm | None = None
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
+        if not hasattr(self, 'input_grid'):
+            return self._calculate(density, ibzwfs, vHt_x, kpt_band_comm)
+
+        input_grid = density.nt_sR.desc
+        input_is_calculator_layout = (
+            input_grid.comm.size == self.grid.comm.size and
+            input_grid.comm.rank == self.grid.comm.rank)
+        if input_is_calculator_layout:
+            calc_density = density
+            calc_vHt_x = vHt_x
+        else:
+            calc_density = self._density_to_calculator_layout(density)
+            calc_vHt_x = None if vHt_x is None else vHt_x.redist(
+                self.electrostatic_potential_desc,
+                self.input_comm,
+                serial_comm)
+
+        potential, energies, V_aL = self._calculate(
+            calc_density,
+            ibzwfs=None,
+            vHt_x=calc_vHt_x,
+            kpt_band_comm=serial_comm)
+
+        if input_is_calculator_layout:
+            return potential, energies, V_aL
+
+        potential = potential.redist(
+            self.input_grid,
+            self.input_electrostatic_potential_desc,
+            self.input_atomdist,
+            serial_comm,
+            self.input_comm)
+        V_aL = V_aL.redist(self.input_atomdist, serial_comm, self.input_comm)
+        return potential, energies, V_aL
+
+    def _calculate(self,
+                   density,
+                   ibzwfs=None,
+                   vHt_x: XArray | None = None,
+                   kpt_band_comm: MPIComm | None = None
+                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
 
