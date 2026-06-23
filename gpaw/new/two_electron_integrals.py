@@ -118,8 +118,8 @@ class TwoElectronIntegrals(object):
 
         else:  # anche qui da capire come funzionano le pw
             if self.ibzwfs.mode == 'pw':
-                pw = self.pot_calc.pw
-                self.G2_G = deepcopy(pw.G_plus_k_Gv[0])  # NON SO COME è IN NEW
+                pw = self.ibzwfs._wfs_u[0].psit_nX[0].desc  # credo
+                self.G2_G = 2 * deepcopy(pw.ekin_G.T)   # va moltiplicato per 2 (why??)
                 psit_nG = self.cgd.zeros(
                     self.n_bands, dtype=self.ibzwfs.dtype, global_array=False) # Default. Correct?
                 
@@ -151,7 +151,7 @@ class TwoElectronIntegrals(object):
             H_MM.trilfull()
             self.H_nn = self.wf_ref.conj() @ H_MM.conj() @ self.wf_ref.T
         
-        # here definitions from eigensolver which where written especially for 
+        # here definitions from eigensolver which where written especially for
         # this are used, i have to choose where to move them
 
         else:  # we only do hamilton_how=1
@@ -404,13 +404,13 @@ class TwoElectronIntegrals(object):
                            [self.ibzwfs.u_q[wfs.q]]
                            .psit_nX.data.shape[1:],
                            complex if self.ibzwfs.mode == 'pw' else self.dtype)
-        desc = self.ibzwfs._wfs_u[self.ibzwfs.u_q[wfs.q]].psit_nX.desc
+        desc = self.ibzwfs._wfs_u[0].psit_nX[0].desc
         self.ham.apply(
             self.potential.vt_sR,
             None,
             self.ibzwfs,  # needed for hybrids
             getattr(self.density, 'D_asii', None),  # needed for hybrids
-            desc.from_data(data=wfs.psit_nX.data.read()),  # CAMBIARE, nG non esiste!
+            desc.from_data(data=wfs.psit_nX.data.read()),
             desc.from_data(data=Hpsi_nG),
             wfs.spin)
         

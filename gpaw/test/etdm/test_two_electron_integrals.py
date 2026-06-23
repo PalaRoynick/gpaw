@@ -45,7 +45,7 @@ def test_two_electron_integrals(in_tmp_dir):
 
     calc = GPAW(mode=PW(300),
                 h=0.3,
-                legacy_gpaw = False,
+                legacy_gpaw=False,
                 xc={'name': 'EXX', 'backend': 'pw'},
                 basis='sz(dzp)',
                 eigensolver={'name': 'etdm-fdpw', 'converge_unocc': True},
@@ -63,13 +63,15 @@ def test_two_electron_integrals(in_tmp_dir):
     # calc.set_positions()
     calc.initialize_positions(h2)
     
-    #eigensolver = calc._dft.scf_loop.eigensolver
+    eigensolver = calc._dft.scf_loop.eigensolver
 
     # do i need to do it here?
     # there is no dm helper in new, what is the equivalent in pw?
     # calc.wfs.eigensolver.initialize_dm_helper(calc.wfs,
     #                                           calc.hamiltonian,
     #                                           calc.density, calc.log)
+   # eigensolver.postprocess(calc.wfs.ibzwfs, calc.density, calc._dft.potential,
+   #                         calc._dft.scf_loop.hamiltonian, 0, 0, 0)
 
     Ucalc = TwoElectronIntegrals(calc, hamilton_how=1)
     Ucalc.update_wf_ref()

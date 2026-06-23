@@ -312,7 +312,7 @@ def apply_hamiltonian(ibzwfs, psit_unX, Ht, potential):
     grad_unX = []
     for psit_nX, wfs in zips(psit_unX, ibzwfs):
         grad_nX = psit_nX.new()
-        Ht(psit_nX, out=grad_nX, spin=wfs.spin)
+        Ht(psit_nX, out=grad_nX, spin=wfs.spin, calculate_energy=True)
         apply_non_local_hamiltonian(grad_nX, wfs, potential)
         grad_unX.append(grad_nX)
 
