@@ -19,6 +19,7 @@
 #ifdef GPAW_GPU
 #include "gpu/cpp/gpu_python.h"
 #endif
+#include "gpu/cpp/pw.h"
 
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
@@ -431,6 +432,13 @@ static PyObject* moduleinit(void)
 
 #ifdef GPAW_GPU
     if (!bind_gpu_submodule(m))
+    {
+        return NULL;
+    }
+#endif
+
+#ifdef __cplusplus   
+    if (!bind_pw_submodule(m))
     {
         return NULL;
     }

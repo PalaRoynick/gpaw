@@ -71,4 +71,4 @@ def pawexxvv(M_pp, D_ii):
 python_pawexxvv = pawexxvv
 
 if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
-    from _gpaw import pawexxvv  # noqa: F811
+    from gpaw.cgpaw import pawexxvv  # noqa: F811

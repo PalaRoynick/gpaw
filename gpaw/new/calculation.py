@@ -9,7 +9,6 @@ import numpy as np
 from ase import Atoms
 from ase.geometry import cell_to_cellpar
 from ase.units import Bohr, Ha
-from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core import UGArray, UGDesc
 from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.densities import Densities
@@ -241,11 +240,8 @@ class DFT:
 
         self.ibzwfs.make_sure_wfs_are_read_from_gpw_file()
 
-        if self.params.mode.name == 'pw':
-            if self.params.mode.dtype == 'single':
-                if not (GPAW_NO_C_EXTENSION or self.ibzwfs.xp is cp):
-                    raise NotImplementedError(
-                        'Single precision is GPU or pure python only.')
+        # if self.params.mode.name == 'pw':
+        #     ...
 
         for ctx in self.scf_loop.iterate(self.ibzwfs,
                                          self.density,

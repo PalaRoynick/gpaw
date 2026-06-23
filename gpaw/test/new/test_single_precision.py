@@ -3,7 +3,7 @@ import sys
 
 import numpy as np
 import pytest
-from ase.build import molecule
+from ase.build import bulk, molecule
 
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.ase_interface import GPAW
@@ -52,6 +52,38 @@ def test_single_precision_gpu(dtype):
                           np.float32])
 def test_single_precision_rmmdiis_gpu(dtype):
     run_single_precision_rmmdiis(dtype=dtype)
+
+
+@pytest.mark.serial
+def test_pw_single_and_double_smoke():
+    atoms = molecule('H2')
+    atoms.center(vacuum=4.0)
+
+    energies = {}
+    for dtype in ['single', 'double']:
+        calc = GPAW(mode={'name': 'pw', 'dtype': dtype})
+        atoms.calc = calc
+        energy = atoms.get_potential_energy()
+        assert np.isfinite(energy)
+        energies[dtype] = energy
+
+    assert energies['single'] == pytest.approx(energies['double'], rel=1e-4)
+
+
+@pytest.mark.serial
+def test_pw_single_and_double_kpoints_smoke():
+    atoms = bulk('Si')
+
+    energies = {}
+    for dtype in ['single', 'double']:
+        calc = GPAW(mode={'name': 'pw', 'dtype': dtype},
+                    kpts=(2, 2, 2))
+        atoms.calc = calc
+        energy = atoms.get_potential_energy()
+        assert np.isfinite(energy)
+        energies[dtype] = energy
+
+    assert energies['single'] == pytest.approx(energies['double'], rel=1e-4)
 
 
 def run_single_precision(dtype, gpu):
