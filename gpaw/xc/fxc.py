@@ -8,14 +8,12 @@ from ase.units import Ha
 from scipy.special import p_roots, sici
 
 from gpaw.blacs import BlacsGrid, Redistributor
-from gpaw.fd_operators import Gradient
 from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.old.pw.descriptor import PWDescriptor
 from gpaw.response import timer
 from gpaw.response.qpd import SingleQPWDescriptor
-from gpaw.utilities.blas import axpy, gemmdot
-from gpaw.xc.fxc_kernels import (get_fHxc_Gr, get_fspinHxc_Gr_rALDA,
-                                 get_fspinHxc_Gr_rAPBE, get_pbe_fxc)
+from gpaw.utilities.blas import gemmdot
+from gpaw.xc.fxc_kernels import get_fHxc_Gr, get_fspinHxc_Gr_rALDA
 from gpaw.xc.rpa import RPACorrelation
 
 
@@ -302,7 +300,7 @@ class FXCCorrelation:
         # energy depending on kernel and/or averaging scheme.
 
         # Option (1) - Spin-polarized form of kernel exists
-        #              e.g. rALDA, rAPBE.
+        #              e.g. rALDA.
         #              Then, solve block diagonal form of Dyson
         #              equation (dimensions (ns*nG) * (ns*nG))
         #              (note this does not necessarily mean that
@@ -409,40 +407,6 @@ class KernelWave(KernelIntegrator):
         self.gridsize = len(self.x_g)
         assert len(self.n_g) == self.gridsize
 
-        # Enhancement factor for GGA
-        if self.xcflags.is_apbe:
-            nf_g = self.gs.hacky_all_electron_density(gridrefinement=4)
-            gdf = self.gd.refine().refine()
-            grad_v = [Gradient(gdf, v, n=1).apply for v in range(3)]
-            gradnf_vg = gdf.empty(3)
-
-            for v in range(3):
-                grad_v[v](nf_g, gradnf_vg[v])
-
-            self.s2_g = np.sqrt(np.sum(gradnf_vg[:, ::2, ::2, ::2]**2.0,
-                                       0)).flatten()  # |\nabla\rho|
-            self.s2_g *= 1.0 / (2.0 * (3.0 * np.pi**2.0)**(1.0 / 3.0) *
-                                self.n_g**(4.0 / 3.0))
-            # |\nabla\rho|/(2kF\rho) = s
-            self.s2_g = self.s2_g**2  # s^2
-            assert len(self.n_g) == len(self.s2_g)
-
-            # Now we find all the regions where the
-            # APBE kernel wants to be positive, and hack s to = 0,
-            # so that we are really using the ALDA kernel
-            # at these points
-            apbe_g = get_pbe_fxc(self.n_g, self.s2_g)
-            poskern_ind = np.where(apbe_g >= 0.0)
-            if len(poskern_ind[0]) > 0:
-                self.context.print(
-                    'The APBE kernel takes positive values at '
-                    + '%s grid points out of a total of %s (%3.2f%%).'
-                    % (len(poskern_ind[0]), self.gridsize, 100.0 * len(
-                        poskern_ind[0]) / self.gridsize), flush=False)
-                self.context.print('The ALDA kernel will be used at these '
-                                   'points')
-                self.s2_g[poskern_ind] = 0.0
-
     def _calculate_fhxc(self):
         for iq, q_c in enumerate(self.ibzq_qc):
             if iq < self.q_empty:  # don't recalculate q vectors
@@ -476,8 +440,7 @@ class KernelWave(KernelIntegrator):
         my_Gv_G = Gv_G[my_Gints]
 
         # XXX Should this be if self.ns == 2 and self.xcflags.spin_kernel?
-        calc_spincorr = (self.ns == 2) and (self.xc == 'rALDA'
-                                            or self.xc == 'rAPBE')
+        calc_spincorr = (self.ns == 2) and (self.xc == 'rALDA')
 
         if calc_spincorr:
             # Form spin-dependent kernel according to
@@ -512,15 +475,6 @@ class KernelWave(KernelIntegrator):
                     min_Gpq = np.amin(mod_Gpq)
                     rho_min = min_Gpq**3.0 / (24.0 * np.pi**2.0)
                     small_ind = np.where(self.n_g >= rho_min)
-                elif self.xcflags.is_apbe:
-                    # rAPBE trick: the Hartree-XC kernel
-                    # is exactly zero at grid points where
-                    # min_Gpq > cutoff wavevector
-
-                    min_Gpq = np.amin(mod_Gpq)
-                    small_ind = np.where(min_Gpq <= np.sqrt(
-                        -4.0 * np.pi /
-                        get_pbe_fxc(self.n_g, self.s2_g)))
                 else:
                     small_ind = np.arange(self.gridsize)
 
@@ -612,12 +566,7 @@ class KernelWave(KernelIntegrator):
         # Apply scaling
         rho = self.n_g[sel_points]
 
-        # GGA enhancement factor s is lambda independent,
-        # but we might want to truncate it
-        if self.xcflags.is_apbe:
-            s2_g = self.s2_g[sel_points]
-        else:
-            s2_g = None
+        s2_g = None
 
         l = 1.0  # Leftover from the age of non-linear kernels.
         # This would be an integration weight or something.
@@ -653,9 +602,6 @@ class KernelWave(KernelIntegrator):
         if self.xc == 'rALDA':
             fspinHxc_Gr = get_fspinHxc_Gr_rALDA(qF, q)
 
-        elif self.xc == 'rAPBE':
-            fspinHxc_Gr = get_fspinHxc_Gr_rAPBE(rs, q, s2_g)
-
         fspinHxc_Gr *= Gphase
         fspinHxc_GG = np.sum(fspinHxc_Gr, 1) / self.gridsize
         return fspinHxc_GG
@@ -671,15 +617,6 @@ class KernelDens(KernelIntegrator):
         self.A_x = -(3 / 4.) * (3 / np.pi)**(1 / 3.)
 
         self.n_g = self.gs.hacky_all_electron_density(gridrefinement=1)
-
-        if self.xc[-3:] == 'PBE':
-            nf_g = self.gs.hacky_all_electron_density(gridrefinement=2)
-            gdf = self.gd.refine()
-            grad_v = [Gradient(gdf, v, n=1).apply for v in range(3)]
-            gradnf_vg = gdf.empty(3)
-            for v in range(3):
-                grad_v[v](nf_g, gradnf_vg[v])
-            self.gradn_vg = gradnf_vg[:, ::2, ::2, ::2]
 
         qd = KPointDescriptor(self.ibzq_qc)
         self.pd = PWDescriptor(self.ecut / Ha, self.gd, complex, qd)
@@ -940,41 +877,20 @@ class KernelDens(KernelIntegrator):
     def get_fxc_g(self, n_g, index=None):
         if self.xc[-3:] == 'LDA':
             return self.get_lda_g(n_g)
-        elif self.xc[-3:] == 'PBE':
-            return self.get_pbe_g(n_g, index=index)
         else:
             raise '%s kernel not recognized' % self.xc
 
     def get_lda_g(self, n_g):
         return (4. / 9.) * self.A_x * n_g**(-2. / 3.)
 
-    def get_pbe_g(self, n_g, index=None):
-        if index is None:
-            gradn_vg = self.gradn_vg
-        else:
-            gradn_vg = self.gs.density.gd.empty(3)
-            for v in range(3):
-                gradn_vg[v] = (self.gradn_vg[v] +
-                               self.gradn_vg[v].flatten()[index]) / 2
-
-        kf_g = (3. * np.pi**2 * n_g)**(1 / 3.)
-        s2_g = np.zeros_like(n_g)
-        for v in range(3):
-            axpy(1.0, gradn_vg[v]**2, s2_g)
-        s2_g /= 4 * kf_g**2 * n_g**2
-
-        from gpaw.xc.fxc_kernels import get_pbe_fxc
-        return get_pbe_fxc(n_g, s2_g)
-
 
 class XCFlags:
     _accepted_flags = {
         'RPA',
         'rALDA',
-        'rAPBE',
         'ALDA'}
 
-    _spin_kernels = {'rALDA', 'rAPBE', 'ALDA'}
+    _spin_kernels = {'rALDA', 'ALDA'}
 
     def __init__(self, xc):
         if xc not in self._accepted_flags:
@@ -984,14 +900,8 @@ class XCFlags:
 
     @property
     def spin_kernel(self):
-        # rALDA/rAPBE are the only kernels which have spin-dependent forms
+        # rALDA is the only kernels which have spin-dependent forms
         return self.xc in self._spin_kernels
-
-    @property
-    def is_apbe(self):
-        # If new GGA kernels are added, maybe there should be an
-        # is_gga property.
-        return self.xc in {'rAPBE'}
 
     def choose_avg_scheme(self, avg_scheme=None):
         xc = self.xc
@@ -999,11 +909,11 @@ class XCFlags:
         if self.spin_kernel:
             if avg_scheme is None:
                 avg_scheme = 'density'
-                # Two-point scheme default for rALDA and rAPBE
+                # Two-point scheme default for rALDA
 
         if avg_scheme == 'density':
             assert self.spin_kernel, ('Two-point density average '
-                                      'only implemented for rALDA and rAPBE')
+                                      'only implemented for rALDA')
 
         elif xc != 'RPA':
             avg_scheme = 'wavevector'

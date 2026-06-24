@@ -27,7 +27,7 @@ Git master branch
   * partitioning (Hirshfeld and Wigner-Seitz)
   * XAS
   * real-space density interpolation for PW-mode
-  * Special XC-functionals: FD-mode hybrids, GLLBSC, TB09, RALDA and RAPBE
+  * Special XC-functionals: FD-mode hybrids, GLLBSC, TB09 and RALDA
 
   For these you will need to explicitly create old-style GPAW calculator
   objects like this:
@@ -1406,7 +1406,7 @@ Mar 17, 2016: :git:`1.0.0 <../1.0.0>`.
   within the accuracy of the model.
 
 * New `f_{\text{xc}}` kernels for correlation energy calculations.  See this
-  updated :ref:`tutorial <rapbe_tut>`.
+  updated :ref:`tutorial <ralda_tut>`.
 
 * Correlation energies within the range-separated RPA.
 
