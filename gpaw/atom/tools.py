@@ -57,7 +57,7 @@ def workflow():
     from myqueue.workflow import run
     for name in acwf_structures:
         if not Path(f'{name}.json').is_file():
-            run(function=eos, args=[name], cores=24)
+            run(function=eos, args=[name], name=name, cores=24)
     if not Path('ecuts.json').is_file():
         run(function=ecuts, cores=24)
 
@@ -82,8 +82,11 @@ def get_ecut(ecuts: np.ndarray,
 
 def convergence_check(dir: Path, plot=False) -> None:
     """Write summary."""
-    ecuts, efcc, de = np.array(
-        json.loads((dir / 'ecuts.json').read_text())).T
+    try:
+        ecuts, efcc, de = np.array(
+            json.loads((dir / 'ecuts.json').read_text())).T
+    except FileNotFoundError:
+        return np.inf, np.inf
     if plot:
         import matplotlib.pyplot as plt
         plt.plot(ecuts, efcc, label=dir)
