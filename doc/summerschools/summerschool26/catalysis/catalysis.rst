@@ -94,7 +94,7 @@ parameters for the NEB.
 Extra exercise: Vibrational energy
 ======================================
 
-:download:`vibrations.ipynb`, :download:`TS.xyz`
+:download:`TS.xyz`
 
 The notebook ``vibrations.ipynb`` will guide you through how to calculate the
 vibrations of the adsorbate in the initial and final state and use the
@@ -102,12 +102,14 @@ Thermochemistry module to calculate the reaction free energy. The final part
 of the exercise shows what happens when you calculate the vibrations of a
 well-converged NEB transition state.
 
+.. toctree::
+   :maxdepth: 1
+
+   part_extra/vibrations
+
 
 Extra material: Convergence test
 ================================
-
-:download:`convergence.ipynb`, :download:`convergence.db`,
-:download:`check_convergence.py`
 
 We look at the adsorption energy and height of a nitrogen atom on a Ru(0001)
 surface in the hcp site.  We check for convergence with respect to:
@@ -119,7 +121,7 @@ surface in the hcp site.  We check for convergence with respect to:
 .. toctree::
    :maxdepth: 1
 
-   part5/convergence
+   convergence/convergence
 
 
 .. |N2| replace:: N\ :sub:`2`

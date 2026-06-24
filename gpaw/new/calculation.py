@@ -218,9 +218,7 @@ class DFT:
             self.density.update(self.ibzwfs)
         self.potential.move(atomdist)
         self.scf_loop.hamiltonian.move(self.relpos_ac)
-        if self.params.experimental.get('paw_corr_mixer', False):
-            for basemixer in self.scf_loop.mixer.basemixers:
-                basemixer.dotprod.atomdist = atomdist
+        self.scf_loop.mixer.move(self.relpos_ac, atomdist)
 
         self.potential, self.energies, _ = self.pot_calc.calculate(
             self.density, self.ibzwfs, self.potential.vHt_x)

@@ -18,6 +18,11 @@ As discussed earlier, it is of greatest importance to make sure our calculations
 The new ground state is calculated below. For BN use (24,24,1) k-points while for the bulk materials use (12,12,4) k-points.
 
 
+.. code::
+
+   kpts_grid = (..., ..., ...)
+
+
 .. literalinclude:: solution3.py
    :start-after: # snippet-rpa-groundstate-start
    :end-before: # snippet-rpa-groundstate-end
@@ -27,7 +32,7 @@ Now that we have obtained the ground state, it is time to calculate the dielectr
 
 These calculations are both time-wise and memory-wise heavier than what you previously encountered. Therefore we will need to submit these calculations to the databar so they can run over night. Open a new SSH terminal, edit and copy the below code into a script format (.py file), and submit the calculations from the terminal using the following command:
 
-mq submit -R 8:15h script.py
+:code:`mq submit -R 8:15h script.py`
 
 This will submit the script with the name "script.py" to 8 cores with a maximum time of 15 hours.
 

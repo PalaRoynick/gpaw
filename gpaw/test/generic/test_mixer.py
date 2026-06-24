@@ -1,5 +1,5 @@
-from gpaw.mixer import (MixerSum, SeparateSpinMixerDriver, SpinSumMixerDriver,
-                        get_mixer_from_keywords)
+from gpaw.old.mixer import (MixerSum, SeparateSpinMixerDriver,
+                            SpinSumMixerDriver, get_mixer_from_keywords)
 
 
 def test_mixer_sum_with_spin_paired_calc():

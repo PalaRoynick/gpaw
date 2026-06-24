@@ -4,21 +4,14 @@
 Excited States
 ==============
 
-
-This exercise investigates the properties and usability of
-several materials in terms of applications in photovoltaics.
-
-The exercise will teach you how to set up your material
-and investigate the most important parameters
-like the band gap and the absorption spectrum from
-first principles calculations.
-The first part shows how to calculate a converged band structure.
-In the second part you will learn to calculate the quasiparticle
-band gap. The third part involves learning how to calculate
-an absorption spectrum within the random phase approximation.
-Finally, you will calculate the absorption spectrum including
-excitonic effects and compare different materials in the
-fourth part.
+This exercise goes through how to calculate some of the most important 
+properties for photovoltaics. The first exercise is about how to 
+calculate the bandstructure and how different functionals affect it. 
+In the second exercise the GW approximation is used to get more accurate 
+bandgaps at a higher computational cost. The third part involves 
+calculating the absorption spectrum with the random phase approximation (RPA). 
+In the final exercise the excitonic effects are include in the absorption 
+spectrum calculations.
 
 
 Part 1: Setup of the structure and bandstructure calculations

@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 # snippet-read
 from ase.io import read
-fepo4 = read('fepo4.traj')
-lifepo4 = read('lifepo4.traj')
+fepo4 = read('fepo4_out.traj')
+lifepo4 = read('lifepo4_out.traj')
 li_metal = read('li_metal.traj')
 epot_fepo4_cell = fepo4.get_potential_energy()
 epot_lifepo4_cell = lifepo4.get_potential_energy()

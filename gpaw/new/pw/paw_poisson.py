@@ -60,6 +60,9 @@ class SlowPAWPoissonSolver(PAWPoissonSolver):
             self.h_g = cp.asarray(self.h_g)
             self.g_r = [cp.asarray(g) for g in self.g_r]
 
+    def __str__(self):
+        return str(self.poisson_solver)
+
     def move(self,
              relpos_ac: np.ndarray,
              atomdist: AtomDistribution) -> None:

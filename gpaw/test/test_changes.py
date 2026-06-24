@@ -116,7 +116,7 @@ def test_lcao_to_x(mode):
     atoms.center(vacuum=1.5)
 
     dft = DFT(atoms, mode='lcao', symmetry='off',
-              convergence={'density': 1e-5})
+              convergence={'density': 1e-6})
     dft.converge()
 
     dft.change_mode(mode)

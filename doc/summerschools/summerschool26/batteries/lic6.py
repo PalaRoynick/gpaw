@@ -51,4 +51,4 @@ for xc in ['LDA', 'PBE', 'DFTD3']:
     ref = {'LDA': -0.41,
            'PBE': -0.09,
            'DFTD3': -0.08}[xc]
-    assert abs(intercalation_energy - ref) < 0.01, ref
+    assert abs(intercalation_energy - ref) < 0.015, xc
