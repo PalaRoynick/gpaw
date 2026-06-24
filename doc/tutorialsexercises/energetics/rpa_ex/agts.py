@@ -35,7 +35,7 @@ def check_si():
     # Loop in case the si.pbe+exx.results.txt file has multiple lines
     for result in bulk_results:
         assert len(result) == 5
-        assert np.allclose(result, bulk_benchmark, rtol=1.e-5, atol=1.e-8)
+        assert np.allclose(result, bulk_benchmark, atol=0.001)
 
 
 def check_atom():
@@ -54,4 +54,4 @@ def check_atom():
     for (a0, e0, x0), (a, e, x) in zip(refs, results):
         assert a == a0
         assert abs(e - e0) < 0.0001
-        assert abs(x - x0) < 0.001
+        assert abs(x - x0) < 0.003

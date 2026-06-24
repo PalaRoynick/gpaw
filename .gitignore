@@ -52,6 +52,7 @@ doc/setups/[A-Z]*.rst
 !doc/devel/gpaw-logo.svg
 !doc/templates/breadcrumbs.html
 !doc/tutorialsexercises/opticalresponse/bseplus_tutorial/*.csv
+*_student.py
 
 # If you run the tests, these may write out files
 *.gpw

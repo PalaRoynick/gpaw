@@ -525,13 +525,18 @@ class AllElectronAtom:
             f_n.extend([0] * (n - l - len(f_n)))
         f_n[n - l - 1] += df
 
-    def initialize(self, ngpts=2000, rcut=50.0,
-                   alpha1=0.01, alpha2=None, ngauss=50,
+    def initialize(self,
+                   ngpts=0,
+                   rcut=50.0,
+                   alpha1=0.01,
+                   alpha2=None,
+                   ngauss=50,
                    eps=1.0e-7):
         """Initialize basis sets and radial grid.
 
         ngpts: int
-            Number of grid points for radial grid.
+            Number of grid points for radial grid.  Default is
+            (max-number-of-nodes + 2) * 500, but not less than 2000.
         rcut: float
             Cutoff for radial grid.
         alpha1: float
@@ -542,6 +547,10 @@ class AllElectronAtom:
             Number of gaussians.
         eps: float
             Cutoff for eigenvalues of overlap matrix."""
+
+        if ngpts == 0:
+            maxnodes = max(len(f_sn[0]) for f_sn in self.f_lsn.values()) - 1
+            ngpts = max((maxnodes + 2) * 500, 2000)
 
         if alpha2 is None:
             alpha2 = 50.0 * self.Z**2

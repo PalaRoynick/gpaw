@@ -1221,7 +1221,9 @@ class GPWFiles(CachedFilesHandler):
     def c6h12_pw(self):
         pe = self._c2h4()
         pe = pe.repeat((3, 1, 1))
-        pe.calc = self.GPAW(mode='pw', txt=self.folder / 'c6h12_pw.txt')
+        pe.calc = self.GPAW(mode='pw',
+                            txt=self.folder / 'c6h12_pw.txt',
+                            convergence={'density': 1e-6})
         pe.get_potential_energy()
         return pe.calc
 
@@ -1785,7 +1787,7 @@ class GPWFiles(CachedFilesHandler):
             nbands=50,
             occupations=FermiDirac(0.001),
             parallel={'domain': 1},
-            convergence={'bands': 26},
+            convergence={'bands': 26, 'density': 1e-6},
             kpts={'size': (3, 3, 1), 'gamma': True},
             symmetry=symmetry)
         atoms.get_potential_energy()

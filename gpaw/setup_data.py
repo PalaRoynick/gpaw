@@ -129,7 +129,7 @@ class SetupData:
         PAWXMLParser(setupdata).parse(source=source, world=world)
 
         nj = len(setupdata.l_j)
-        setupdata.e_kin_jj.shape = (nj, nj)
+        setupdata.e_kin_jj = setupdata.e_kin_jj.reshape((nj, nj))
 
         return setupdata
 
@@ -162,7 +162,7 @@ class SetupData:
     def read_xml(self, source=None, world=None):
         PAWXMLParser(self).parse(source=source, world=world)
         nj = len(self.l_j)
-        self.e_kin_jj.shape = (nj, nj)
+        self.e_kin_jj = self.e_kin_jj.reshape((nj, nj))
 
     def is_compatible(self, xc):
         return xc.get_setup_name() == self.setupname

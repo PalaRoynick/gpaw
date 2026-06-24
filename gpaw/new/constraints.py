@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from ase.units import Ha
 
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 from gpaw.typing import Array1D, Array3D, Vector
 
 

@@ -4,28 +4,20 @@
 Excited States
 ==============
 
-
-This exercise investigates the properties and usability of
-several materials in terms of applications in photovoltaics.
-
-The exercise will teach you how to set up your material
-and investigate the most important parameters
-like the band gap and the absorption spectrum from
-first principles calculations.
-The first part shows how to calculate a converged band structure.
-In the second part you will learn to calculate the quasiparticle
-band gap. The third part involves learning how to calculate
-an absorption spectrum within the random phase approximation.
-Finally, you will calculate the absorption spectrum including
-excitonic effects and compare different materials in the
-fourth part.
+This exercise goes through how to calculate some of the most important 
+properties for photovoltaics. The first exercise is about how to 
+calculate the bandstructure and how different functionals affect it. 
+In the second exercise the GW approximation is used to get more accurate 
+bandgaps at a higher computational cost. The third part involves 
+calculating the absorption spectrum with the random phase approximation (RPA). 
+In the final exercise the excitonic effects are include in the absorption 
+spectrum calculations.
 
 
 Part 1: Setup of the structure and bandstructure calculations
 =============================================================
 
-The notebook :download:`es1.ipynb` shows how to set up the
-material and how to calculate a converged band structure.
+The tutorial shows how to set up the material and how to calculate a converged band structure.
 
 * Set up the atomic structure and optimize its geometry
 
@@ -35,11 +27,17 @@ material and how to calculate a converged band structure.
 * Compare the performance of different exchange correlation
   functionals
 
+.. toctree::
+    es1
+
 
 Part 2: Quasiparticle bandgap
 =============================
 
-The notebook :download:`es2.ipynb` teaches how to set up
+.. toctree::
+   es2
+
+This tutorial teaches how to set up
 calculations to find the quasiparticle band gap using GW
 approximation.
 
@@ -54,7 +52,10 @@ approximation.
 Part 3: Absorption spectrum
 ===========================
 
-The notebook :download:`es3.ipynb` teaches how to set up
+.. toctree::
+    es3
+
+The tutorial teaches how to set up
 calculations of the dielectric function to find the absorption spectrum.
 
 * Understanding the dielectric function
@@ -68,7 +69,10 @@ calculations of the dielectric function to find the absorption spectrum.
 Part 4: Excitonic effects and Discussion
 ========================================
 
-In the last notebook :download:`es4.ipynb` the results for different
+.. toctree::
+    es4
+
+In the final tutorial the results for different
 materials are plotted and discussed. Next the absorption spectra
 is calculated including the excitonic effects (Bethe-Salpeter formalism).
 

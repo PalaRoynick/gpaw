@@ -768,6 +768,9 @@ class PWArray(XArray[PWDesc]):
     def to_pbc_grid(self):
         return self
 
+    def from_pbc_grid(self, pbc_array):
+        self.data[:] = pbc_array.data
+
     def randomize(self, seed: int | None = None) -> None:
         """Insert random numbers between -0.5 and 0.5 into data."""
         if seed is None:

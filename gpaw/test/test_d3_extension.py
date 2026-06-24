@@ -4,7 +4,7 @@ from ase import Atoms
 
 from gpaw import restart
 from gpaw.new.ase_interface import GPAW
-from gpaw.new.extensions import D3
+from gpaw.extensions.d3 import D3
 
 
 @pytest.mark.parametrize('parallel', [(1, 1), (1, 2), (2, 2), (2, 1)])

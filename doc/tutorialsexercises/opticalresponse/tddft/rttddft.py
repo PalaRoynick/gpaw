@@ -10,7 +10,7 @@ poissonsolver = {'name': 'MomentCorrectionPoissonSolver',
                  'poissonsolver': 'fast'}
 
 # Ground-state calculation
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 calc = GPAW(mode='lcao', h=0.3, basis='dzp',
             setups={'Na': '1'},
             poissonsolver=poissonsolver,

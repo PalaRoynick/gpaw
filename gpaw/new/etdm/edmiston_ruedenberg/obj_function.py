@@ -12,20 +12,26 @@ import numpy as np
 
 
 class EdmistonRuedenberg(ObjectiveFunctionETDM):
-    def __init__(self, ibzwfs, loctype='pseudo-paw', indices='all'):
+    def __init__(self, ibzwfs, loctype='pseudo-paw', indices='all',
+                 representation='full'):
 
         dtype, nkps = (
             ibzwfs.dtype,
             ibzwfs.nspins * len(ibzwfs.ibz),
         )
 
+        # Edmiston-Ruedenberg localization currently supports only
+        # one spin/k-point
         assert nkps == 1
+
+        # get array of occupation numbers for all spins and kpoints
+        # f_n is a np array (nspins, nkpts, nbands)
+        f_n = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1]
 
         if indices == 'all':
             ndim = ibzwfs.nbands
             self._indices = range(ndim)
         elif indices == 'occupied':
-            f_n = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1]
             if ibzwfs.domain_comm.rank != 0:
                 f_n = np.zeros(ibzwfs.nbands)
             ibzwfs.domain_comm.broadcast(f_n, 0)
@@ -41,7 +47,7 @@ class EdmistonRuedenberg(ObjectiveFunctionETDM):
         else:
             raise NotImplementedError
 
-        super().__init__(ndim, dtype, nkps)
+        super().__init__(ndim, f_n, dtype, representation)
         self._ibzwfs = ibzwfs
         self._rpsi_unX = []  # r is for reference
         self._rP_uani = []  # r is for reference
@@ -125,8 +131,9 @@ class EdmistonRuedenberg(ObjectiveFunctionETDM):
 
 
 class EdmistonRuedenbergUpdateRef(EdmistonRuedenberg):
-    def __init__(self, ibzwfs, loctype='pseudo-paw', indices='all'):
-        super().__init__(ibzwfs, loctype, indices)
+    def __init__(self, ibzwfs, loctype='pseudo-paw', indices='all',
+                 representation='full'):
+        super().__init__(ibzwfs, loctype, indices, representation)
 
     def rotate_wfs(self):
 

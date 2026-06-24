@@ -2,7 +2,7 @@ import numpy as np
 
 import gpaw
 import gpaw.cgpaw as cgpaw
-from gpaw.mpi import have_mpi, normalize_communicator
+from gpaw.mpi import normalize_communicator, world
 from gpaw.utilities import compiled_with_libvdwxc
 from gpaw.utilities.grid_redistribute import Domains, general_redistribute
 from gpaw.utilities.timing import nulltimer
@@ -14,11 +14,11 @@ from gpaw.xc.mgga import MGGA
 
 
 def libvdwxc_has_mpi():
-    return have_mpi and cgpaw.libvdwxc_has('mpi')
+    return world.backend != 'serial' and cgpaw.libvdwxc_has('mpi')
 
 
 def libvdwxc_has_pfft():
-    return have_mpi and cgpaw.libvdwxc_has('pfft')
+    return world.backend != 'serial' and cgpaw.libvdwxc_has('pfft')
 
 
 def libvdwxc_has_spin():
@@ -102,7 +102,7 @@ class LibVDWXC:
                 mode = 'serial'
         assert mode in ['serial', 'mpi', 'pfft']
 
-        if mode != 'serial' and not have_mpi:
+        if mode != 'serial' and comm.backend == 'serial':
             raise ImportError('MPI not available for libvdwxc-%s '
                               'because GPAW is serial' % mode)
 

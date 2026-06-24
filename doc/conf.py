@@ -48,7 +48,7 @@ autoclass_content = 'both'
 modindex_common_prefix = ['gpaw.']
 intersphinx_mapping = {
     'python': (f'https://docs.python.org/3.{year - 2012}', None),
-    'ase': ('https://ase-lib.org', None),
+    'ase': ('https://docs.ase-lib.org', None),
     'numpy': ('https://numpy.org/doc/stable', None),
     'cupy': ('https://docs.cupy.dev/en/stable', None),
     'scipy': ('https://docs.scipy.org/doc/scipy', None),

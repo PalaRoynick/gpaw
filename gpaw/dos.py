@@ -141,8 +141,8 @@ class DOSCalculator:
         if self.collinear:
             self.degeneracy = 2 / len(self.eig_skn)
         else:
-            self.eig_skn = np.array([self.eig_skn, self.eig_skn])
-            self.degeneracy = 0.5
+            self.eig_skn = np.array([self.eig_skn])
+            self.degeneracy = 1
 
         self.nspins = len(self.eig_skn)
         self.weight_k = wfs.weights()
@@ -165,7 +165,7 @@ class DOSCalculator:
         filename: str
             Name of restart-file or GPAW calculator object.
         """
-        from gpaw.old.calculator import GPAW
+        from gpaw import GPAW
         if not isinstance(filename, (str, Path)):
             calc = filename
         else:
@@ -241,21 +241,32 @@ class DOSCalculator:
         """
         indices = get_projector_numbers(self.setups[a], l)
         if m is not None:
-            indices = indices[m::(2 * l) + 1]
+            indices = indices[m::2 * l + 1]
         weight_kns = self.wfs.pdos_weights(a, indices)
 
-        if spin is None:
-            dos = sum(self.calculate(energies,
-                                     eig_kn,
-                                     weight_nk.T,
+        if self.collinear:
+            if spin is None:
+                dos = sum(self.calculate(energies,
+                                         eig_kn,
+                                         weight_nk.T,
+                                         width=width)
+                          for eig_kn, weight_nk
+                          in zip(self.eig_skn, weight_kns.T))
+                dos *= self.degeneracy
+            else:
+                dos = self.calculate(energies,
+                                     self.eig_skn[spin],
+                                     weight_kns[:, :, spin],
                                      width=width)
-                      for eig_kn, weight_nk
-                      in zip(self.eig_skn, weight_kns.T))
-            dos *= self.degeneracy
         else:
-            dos = self.calculate(energies,
-                                 self.eig_skn[spin],
-                                 weight_kns[:, :, spin],
-                                 width=width)
-
+            if spin is None:
+                dos = self.calculate(energies,
+                                     self.eig_skn[0],
+                                     weight_kns.sum(axis=2),
+                                     width=width)
+            else:
+                dos = self.calculate(energies,
+                                     self.eig_skn[0],
+                                     weight_kns[:, :, spin],
+                                     width=width)
         return dos
