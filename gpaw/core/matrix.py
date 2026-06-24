@@ -821,8 +821,7 @@ class BLACSDistribution(MatrixDistribution):
         self.all_data_on_rank_zero = (br == M and bc == N)
 
         if context is None:
-            # assert c == 1, (M, N, r, c, br, bc, self.all_data_on_rank_zero)
-            assert br == (M + r - 1) // r
+            assert br == (M + r - 1) // r or br == M
             assert bc == N, (M, N, r, c, br, bc, self.all_data_on_rank_zero)
             n = N
             m = min((comm.rank + 1) * br, M) - min(comm.rank * br, M)

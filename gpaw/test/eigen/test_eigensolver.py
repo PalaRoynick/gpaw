@@ -3,6 +3,7 @@ from ase import Atoms
 from gpaw.core.matrix import suggest_blocking
 from gpaw.dft import DFT
 from gpaw.mpi import world
+from gpaw.utilities import compiled_with_sl
 
 
 def parallelizations(size: int) -> list[tuple[int, int, int, int]]:
@@ -20,6 +21,8 @@ def parallelizations(size: int) -> list[tuple[int, int, int, int]]:
 
 @pytest.mark.parametrize('k, b, d, s', parallelizations(world.size))
 def test_eigensolver(k, b, d, s):
+    #if b > 1 and not compiled_with_sl():
+    #    pytest.skip()
     parallel = dict(
         kpt=k,
         band=b,
