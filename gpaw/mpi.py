@@ -18,7 +18,6 @@ from ase.parallel import world as aseworld
 from ase.parallel import broadcast as asebroadcast
 
 import gpaw
-import gpaw.cgpaw as cgpaw
 from gpaw.gpu import cupy, is_hip
 from gpaw.new.c import GPU_AWARE_MPI
 
@@ -136,6 +135,8 @@ def rank0_call(func, comm):
 
 
 class _Communicator:
+    backend = 'cgpaw_debug'
+
     def __init__(self, comm, parent=None):
         """Construct a wrapper of the C-object for any MPI-communicator.
 
@@ -726,6 +727,7 @@ MPIComm = _Communicator  # for type hints
 
 # Serial communicator
 class SerialCommunicator:
+    backend = 'serial'
     size = 1
     rank = 0
 
@@ -840,10 +842,7 @@ class SerialCommunicator:
 
 _serial_comm = SerialCommunicator()
 
-have_mpi = _world is not None
-compiled_with_mpi = hasattr(cgpaw, 'Communicator')
-
-if not have_mpi:
+if _world is None:
     _world = _serial_comm  # type: ignore
 
 if gpaw.debug:

@@ -16,13 +16,6 @@ variables:
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
   COV: "--cov=gpaw --cov-report= "
-  # OpenMPI binds processes to specific physical cores (cf. mpiexec
-  # manpage) when there are <= 2 cores.  This will cause it to
-  # oversubscribe the /same/ physical cores when running simultaneous
-  # size==2 jobs.  We therefore tell GPAW to tell mpiexec not to do
-  # this.  This problem was not observed on camd-runner2 because it
-  # uses hyperthreading and so was equipped to redistribute the load.
-  GPAW_MPI_OPTIONS: "--bind-to none"
 
 default:
   before_script:
@@ -124,7 +117,7 @@ build:
   script:
     - cat siteconfig.py
     - pip install --user --log build.log --editable . -v
-    - gpaw -P 1 info
+    - gpaw info
   cache:
     key: cache-build-oldest
     paths:
@@ -169,7 +162,7 @@ build-latest:
     - pip install --user --upgrade numpy scipy
     - pip install --user --upgrade mpi4py
     - pip install --user --editable . -v
-    - gpaw -P 1 info
+    - gpaw info
   cache:
     key: cache-build-latest
     paths:
@@ -412,7 +405,7 @@ build-libxc:
       EOF
     - cat siteconfig.py
     - pip install --user --log build.log --editable .
-    - gpaw -P 1 info
+    - gpaw info
 
 
 gpwfiles:
@@ -535,8 +528,8 @@ test-cuda-mpi:
   script:
     - nvidia-smi
     - gpaw info
-    - GPAW_DEBUG=1 gpaw -P 2 python -m pytest -v -x -m gpu
-    - gpaw -P 4 python -m pytest -v -x -m gpu
+    - GPAW_DEBUG=1 mpiexec -n 2 gpaw python -m pytest -v -x -m gpu
+    - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
 
 
 test-cuda-mpi-makefile-build:
@@ -551,7 +544,7 @@ test-cuda-mpi-makefile-build:
     - nvidia-smi
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
-    - GPAW_USE_GPUS=1 gpaw -P 2 test
+    - GPAW_USE_GPUS=1 mpiexec -n 2 gpaw test
 
 
 test-hip-cuda:
@@ -591,7 +584,7 @@ test-lumi-g-mpi:
   script:
     - rocm-smi || true  # rocm-smi yields non-zero return code
     - gpaw info
-    - srun pytest -v -m gpu
+    - srun gpaw python -m pytest -v -m gpu
 
 
 test-libxc:
@@ -703,7 +696,7 @@ nightly-all:
 .nightly:
   image: $IMAGE_MAIN_LATEST
   variables:
-    GPAW_MPI_NPROCS: "1"
+    RUNNER_MPI_NPROCS: "1"
     GPAW_TESTGROUPS: "1"
     GPAW_MYTESTGROUP: "1"
   extends:
@@ -726,7 +719,7 @@ nightly-all:
       EOF
 
     # Now split "nightly-mpi-8-group-2-3" into into variables we need:
-    - export GPAW_MPI_NPROCS=$(python parse_jobname.py 2)
+    - export RUNNER_MPI_NPROCS=$(python parse_jobname.py 2)
     - export GPAW_MYTESTGROUP=$(python parse_jobname.py 4)
     - export GPAW_TESTGROUPS=$(python parse_jobname.py 5)
 
@@ -744,7 +737,7 @@ nightly-all:
     - export GPAW_PREEXEC_SCRIPT=$(realpath preexec.py)
   script:
     - >
-      gpaw -P $GPAW_MPI_NPROCS python -m pytest
+      mpiexec -n $RUNNER_MPI_NPROCS gpaw python -m pytest
       --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
       --test-group-random-seed=42
       $COV --instafail -r s --durations 30
