@@ -98,7 +98,7 @@ def hook(parser, args):
         # Use a clean set of environment variables without any MPI stuff:
         env = dict(os.environ)
         if 'GPAW_MPI_BACKEND' not in env:
-            env['GPAW_MPI_BACKEND'] = 'cgpaw'
+            env['GPAW_MPI_BACKEND'] = 'mpi4py'#cgpaw'
         if 'OMP_NUM_THREADS' not in env:
             env['OMP_NUM_THREADS'] = '1'
 
