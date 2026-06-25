@@ -6,7 +6,7 @@ from gpaw.cli.main import main
 if gpaw.GPAW_MPI_BACKEND is None:
     import gpaw.cgpaw as cgpaw
     if cgpaw.have_mpi:
-        gpaw.GPAW_MPI_BACKEND = "cgpaw"
+        gpaw.GPAW_MPI_BACKEND = "mpi4py"#cgpaw"
     else:
         gpaw.GPAW_MPI_BACKEND = "serial"
 

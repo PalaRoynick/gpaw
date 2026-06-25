@@ -33,7 +33,7 @@ from gpaw import GPAW_NO_C_EXTENSION
 # This should happen if the environment variable was not set
 # and user is executing plain `python` (not `gpaw python`)
 if gpaw.GPAW_MPI_BACKEND is None:
-    gpaw.GPAW_MPI_BACKEND = "serial"
+    gpaw.GPAW_MPI_BACKEND = 'serial'
 GPAW_MPI_BACKEND = gpaw.GPAW_MPI_BACKEND
 
 cgpaw_version = getattr(cgpaw, 'version', 0)
