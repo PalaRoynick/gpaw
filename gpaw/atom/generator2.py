@@ -293,13 +293,10 @@ class PAWWaves:
         self.dS_nn = (rgd.integrate(phi_ng[:, None] * phi_ng) -
                       rgd.integrate(phit_ng[:, None] * phit_ng)) / (4 * pi)
         self.Q = np.dot(self.f_n, self.dS_nn.diagonal())
-        print(self.dS_nn, self.Q, self.e_n)
         A_nn = rgd.integrate(phit_ng[:, None] * pt_ng) / (4 * pi)
-        print(A_nn)
         self.dH_nn = np.dot(self.dS_nn, np.diag(self.e_n)) - A_nn
         self.dH_nn *= 0.5
         self.dH_nn += self.dH_nn.T.copy()
-        print(self.dH_nn)
         pt_ng[:] = np.dot(np.linalg.inv(A_nn.T), pt_ng)
 
     def construct_projectors(self, vtr_g, rcmax):
@@ -1374,7 +1371,8 @@ def generate(symbol,
              omega=None):
     aea = AllElectronAtom(symbol, xc, Z=Z,
                           configuration=configuration,
-                          scalar_relativistic=scalar_relativistic)
+                          scalar_relativistic=scalar_relativistic,
+                          log=output)
     gen = PAWSetupGenerator(aea, projectors,
                             core_hole=core_hole,
                             fd=output,
