@@ -119,6 +119,9 @@ Git master branch
   and will allow us to discover performance regressions
   (and improvements).
 
+* Self-consistent band-structure calculations using hybrid functionals has
+  been implemented (see this tutorial: :ref:`hse06 on lda`).
+
 * Fixed bug in BSE code for systems without inversion symmetry.
   Some off-diagonal elements of `W_{GG'}` were wrongly conjugated,
   resulting in the BSE Hamiltonian not being Hermitian under
