@@ -378,8 +378,9 @@ class PPCG(PWFDEigensolver):
             cmin = buffer_bb[:block, :nblocks]
         else:
             cmin = H_bb[:block, :nblocks].conj()
+
         if not xp.isfinite(H_bb).all():
-            return True
+            return True  # linalg error occured
 
         wfs.myeig_n[block_slice] = as_np(eig_b[:block])
 
@@ -415,6 +416,7 @@ class PPCG(PWFDEigensolver):
                      wfs: PWFDWaveFunctions,
                      Ht, potential,
                      dS_aii, weight_n):
+        raise NotImplementedError
         with tracectx('Initialize'):
             M_nn = self.M_nn
 

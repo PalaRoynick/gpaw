@@ -249,6 +249,7 @@ class PWFDEigensolver(Eigensolver):
             P2_ani = P_ani.new()
             P3_ani = P_ani.new()
             Ptemp_ani = P_ani.new()
+            P_ani.block_diag_multiply(dS_aii, out_ani=Ptemp_ani)
             calculate_residuals(psit_nX, residual_nX, wfs.pt_aiX, wfs.P_ani,
                                 wfs.myeig_n, dH, dS_aii, P2_ani, P3_ani)
             error_n = as_np(residual_nX.norm2())
@@ -261,7 +262,7 @@ class PWFDEigensolver(Eigensolver):
 
         for i in range(self.niter):
             linalg_error = False
-            eps = np.finfo(psit_nX.data.dtype).eps**2
+            eps = 0
             active_indicies = np.where(error_n > eps)[0]
             loop_limit = (psit_nX.dims[0] + band_comm.size - 1) // band_comm.size \
                 or len(active_indicies)
@@ -284,6 +285,10 @@ class PWFDEigensolver(Eigensolver):
                 # TODO: Sync band eigenvalues
 
             if b_error < self.residual_target or linalg_error:
+                if linalg_error:
+                    print(f"linalg_error, {i}")
+                else:
+                    print(f"b_error < residual_target {i}: b_error={b_error}, residual_target={self.residual_target}")
                 break
 
             self.poststep(wfs, residual_nX, Ht, P2_ani, P3_ani,
