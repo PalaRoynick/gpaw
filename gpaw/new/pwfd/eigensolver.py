@@ -9,8 +9,9 @@ import numpy as np
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.core.matrix import suggest_blocking
+from gpaw.gpu import as_np
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import trace, zips
+from gpaw.new import trace, tracectx, zips
 from gpaw.new.c import calculate_residuals_gpu
 from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
@@ -41,8 +42,8 @@ def slparams(nbands: int,
 
 
 class PWFDEigensolver(Eigensolver):
-    min_work_array: int = 0
-    min_buffer_array: int = 0
+    min_work_array: int = 1
+    min_buffer_array: int = 1
 
     def __init__(self,
                  *,
@@ -105,10 +106,14 @@ class PWFDEigensolver(Eigensolver):
                 # GPU's prefer larger blocksizes
                 self.max_blocksize = 512
 
+        X_max = max(1, np.prod(ibzwfs.get_max_shape()))
+        self.max_blocksize = np.clip(self.max_blocksize, 1,
+                                     self.max_buffer_mem // X_max)
+
         if isinstance(self.wf_grid, PWDesc):
             S = self.wf_grid.comm.size
             # Use a multiple of S for maximum efficiency
-            self.max_blocksize = int(np.ceil(self.max_blocksize / S)) * S
+            self.max_blocksize = max((self.max_blocksize // S) * S, 1)
 
         self.blocksize = max(min(self.max_blocksize, b),
                              1)
@@ -217,15 +222,79 @@ class PWFDEigensolver(Eigensolver):
 
         return eig_error, wfs_error, energies
 
-    def iterate_kpt(self, wfs, weight_n, iterate, *, Ht, potential, dS_aii):
-        temp_wfs_error, temp_eig_error = \
-            super().iterate_kpt(wfs, weight_n, iterate, Ht=Ht,
-                                potential=potential, dS_aii=dS_aii)
+    def iterate1(self, wfs, Ht, potential, dS_aii, weight_n):
+        with tracectx('Initialize'):
+            dH = partial(potential.deltaH, spin=wfs.spin)
+            xp = self.M_nn.xp
+            psit_nX = wfs.psit_nX
+            band_comm = psit_nX.comm
+            domain_comm = psit_nX.desc.comm
 
-        return temp_wfs_error, temp_eig_error
+            b = psit_nX.mydims[0]
+            residual_nX = psit_nX.new(data=self.work_arrays[0, :b])
 
-    def iterate1(self, wfs, Ht, dH, dS_aii, weight_n):
-        raise NotImplementedError
+            wfs.subspace_diagonalize(
+                Ht, dH,
+                psit2_nX=residual_nX,
+                data_buffer=self.data_buffers[0],
+                scalapack_parameters=self.scalapack_parameters)
+
+            if weight_n is None:
+                weight_n = np.zeros(b)
+                weight_n[:(len(weight_n) * 4) // 5] = 1.0
+
+            P_ani = wfs.P_ani
+            P2_ani = P_ani.new()
+            P3_ani = P_ani.new()
+            Ptemp_ani = P_ani.new()
+            calculate_residuals(psit_nX, residual_nX, wfs.pt_aiX, wfs.P_ani,
+                                wfs.myeig_n, dH, dS_aii, P2_ani, P3_ani)
+            error_n = as_np(residual_nX.norm2())
+            if len(error_n.shape) > 1:
+                error_n = error_n.sum(axis=1)
+            error = weight_n @ error_n
+            b_error = band_comm.sum_scalar(error)  # XXX
+
+        loop_limit = (psit_nX.dims[0] + band_comm.size - 1) // band_comm.size
+
+        for i in range(self.niter):
+            self.prestep(wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani)
+
+            for j in range(0, loop_limit, self.max_blocksize):
+                block_slice_base = \
+                    slice(min(j, b),  # XXX
+                        min(j + self.max_blocksize, b))
+                block = \
+                    block_slice_base.stop - block_slice_base.start
+                block_slice = block_slice_base # XXX: active_indicies[block_slice_base]
+
+                self.bandstep(wfs, Ht, dH, block, block_slice, i, P2_ani, P3_ani, dS_aii)
+
+                # TODO: Sync band eigenvalues
+
+            if b_error < self.residual_target:
+                break
+
+            self.poststep(wfs, residual_nX, Ht, P2_ani, P3_ani, Ptemp_ani, dH, i, dS_aii)
+
+            error_n = as_np(residual_nX.norm2())
+            if len(error_n.shape) > 1:
+                error_n = error_n.sum(axis=1)
+            error = weight_n @ error_n
+            b_error = band_comm.sum_scalar(b_error)  # XXX
+
+        wfs.orthonormalize(residual_nX)
+        return error
+
+    def prestep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani) -> None:
+        pass
+
+    def bandstep(self, wfs, residual_nX, eig_n,
+                 P1_ani, P2_ani, P3_ani, Ptemp_ani) -> None:
+        pass
+
+    def poststep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani) -> None:
+        pass
 
 
 @trace
