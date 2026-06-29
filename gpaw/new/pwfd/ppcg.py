@@ -98,6 +98,8 @@ class PPCG(PWFDEigensolver):
             nbands=nbands,
             domain_band_comm=domain_band_comm)
 
+        self.min_work_array = 2 if include_cg else 1
+        self.min_buffer_array = 1
         self.nbands = nbands
         self.wf_grid = wf_grid
         self.band_comm = band_comm
@@ -118,63 +120,24 @@ class PPCG(PWFDEigensolver):
         return super().__str__() + f'niter={self.niter}\n'
 
     def _initialize(self, ibzwfs):
-        xp = ibzwfs.xp
-
-        if self.max_blocksize is None:
-            if xp == np:
-                self.max_blocksize = 32
-            else:
-                self.max_blocksize = 512
-
-        if isinstance(self.wf_grid, PWDesc):
-            S = self.wf_grid.comm.size
-            # Use a multiple of S for maximum efficiency
-            self.max_blocksize = int(np.ceil(self.max_blocksize / S)) * S
-
         super()._initialize(ibzwfs)
-        if self.include_cg:
-            self._allocate_work_arrays(ibzwfs, shape=(2,))
-        else:
-            self._allocate_work_arrays(ibzwfs, shape=(1,))
-        self._allocate_buffer_arrays(ibzwfs, shape=(1,))
+        xp = ibzwfs.xp
+        B = ibzwfs.nbands
+        wfs = ibzwfs._wfs_u[0]
+        b = wfs.psit_nX.mydims[0]
 
         band_comm = ibzwfs.band_comm
-        wfs = ibzwfs._wfs_u[0]
         assert isinstance(wfs, PWFDWaveFunctions)
-        B = ibzwfs.nbands
-        b = wfs.psit_nX.mydims[0]
-        self.blocksize = max(min(self.max_blocksize, b),
-                             1)
         self.nblocksizes = 3 * self.blocksize \
             if self.include_cg else 2 * self.blocksize
         dtype = wfs.psit_nX.desc.dtype
 
-        if self.tolerances is None:
-            self.tolerances = (0, 0, self.residual_target)
+        if self.tolerances is not None:
+            # XXX: Warn
+            print('oof')
 
-        assert len(self.tolerances) == 3
-        # --------------- Convergence parameters ---------------
-        # Mostly relevant for single precision, however the
-        # breakout_tolerance could be used to speed up convergence
-        # in double precision.
-        #
-        # tol_factor :
-        #   Freeze bands with residual < tol_factor * max(residual_ns).
-        #   improves numerical stability at the cost of
-        #   convergence speed - up to a certain point.
-        #   Probably best to not use this one.
-        self.tol_factor = self.tolerances[0]
-        # tolerance :
-        #   Freeze bands with residual < tolerance
-        #   improves numerical stability at the cost of
-        #   minimum achievable residual.
-        self.tolerance = self.tolerances[1]
-        # breakout_tolerance :
-        #   Stop iteration if sum(residual_ns) < breakout_tolerance
-        #   breakout_tolerance saves time at the cost of minimum
-        #   achievable residual. Can also be used to improve numerical
-        #   stability.
-        self.breakout_tolerance = self.tolerances[2] / Ha**2
+        self.tol_factor = 0
+        self.tolerance = 0
 
         self.M_nn = Matrix(B, B, dtype=dtype,
                            dist=(band_comm, band_comm.size),
@@ -270,7 +233,7 @@ class PPCG(PWFDEigensolver):
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
             if band_comm.sum_scalar(len(active_indicies)) == 0  \
-                    or b_error < self.breakout_tolerance and \
+                    or b_error < self.residual_target and \
                     self.min_niter <= 1:
                 if debug:
                     psit_nX.sanity_check()
@@ -516,7 +479,7 @@ class PPCG(PWFDEigensolver):
                     max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
                 if band_comm.sum_scalar(len(active_indicies)) == 0 \
-                        or (b_error < self.breakout_tolerance
+                        or (b_error < self.residual_target
                             and i + 2 >= self.min_niter):
                     # Set 'break_after_update = True', causing the
                     # loop to break at the next iteration. This gives us

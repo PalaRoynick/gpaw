@@ -19,6 +19,7 @@ from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.utilities import as_real_dtype
 from gpaw.utilities.blas import axpy
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
+from gpaw.core import PWDesc  # , PWArray
 
 
 def slparams(nbands: int,
@@ -40,6 +41,9 @@ def slparams(nbands: int,
 
 
 class PWFDEigensolver(Eigensolver):
+    min_work_array: int = 0
+    min_buffer_array: int = 0
+
     def __init__(self,
                  *,
                  hamiltonian,
@@ -51,7 +55,7 @@ class PWFDEigensolver(Eigensolver):
                  scalapack_parameters: tuple[int, int, int] | None = None):
         self.converge_bands = convergence.get('bands', 'occupied')
         self.residual_target = convergence.get('eigenstates', 4e-8)
-        self.blocksize = blocksize
+        self.max_blocksize = blocksize
         self.preconditioner: Callable
         self.preconditioner_factory = hamiltonian.create_preconditioner
         self.work_arrays: np.ndarray
@@ -88,9 +92,34 @@ class PWFDEigensolver(Eigensolver):
         return txt
 
     def _initialize(self, ibzwfs):
-        # First time: allocate work-arrays
+        xp = ibzwfs.xp
+        B = ibzwfs.nbands
+        wfs = ibzwfs._wfs_u[0]
+        b = wfs.psit_nX.mydims[0]
+
+        # Decide on blocksize (used for band slicing)
+        if self.max_blocksize is None:
+            if xp == np:
+                self.max_blocksize = 32
+            else:
+                # GPU's prefer larger blocksizes
+                self.max_blocksize = 512
+
+        if isinstance(self.wf_grid, PWDesc):
+            S = self.wf_grid.comm.size
+            # Use a multiple of S for maximum efficiency
+            self.max_blocksize = int(np.ceil(self.max_blocksize / S)) * S
+
+        self.blocksize = max(min(self.max_blocksize, b),
+                             1)
+
+        # Build preconditioner
         self.preconditioner = self.preconditioner_factory(self.blocksize,
                                                           xp=ibzwfs.xp)
+
+        # Allocate work-arrays
+        self._allocate_work_arrays(ibzwfs, shape=(self.min_work_array,))
+        self._allocate_buffer_arrays(ibzwfs, shape=(self.min_buffer_array,))
 
     def _allocate_buffer_arrays(self, ibzwfs, shape):
         G_max = max(1, np.prod(ibzwfs.get_max_shape()))
@@ -187,6 +216,13 @@ class PWFDEigensolver(Eigensolver):
         eig_error = ibzwfs.kpt_band_comm.max_scalar(eig_error)
 
         return eig_error, wfs_error, energies
+
+    def iterate_kpt(self, wfs, weight_n, iterate, *, Ht, potential, dS_aii):
+        temp_wfs_error, temp_eig_error = \
+            super().iterate_kpt(wfs, weight_n, iterate, Ht=Ht,
+                                potential=potential, dS_aii=dS_aii)
+
+        return temp_wfs_error, temp_eig_error
 
     def iterate1(self, wfs, Ht, dH, dS_aii, weight_n):
         raise NotImplementedError
