@@ -203,44 +203,45 @@ def howf(alpha, r, l=0, n=0, rc=np.inf):
 
 
 PARAMS = {
-    'H': ('1s,s,p', 0.9),
-    'He': ('1s,s,p', 1.5),
-    'Li': ('2s,s,2p,D', 3.0),
-    'Li.3': ('1s,2s,2p,D', 1.6),
-    'Be': ('2s,s,2p,D', 2.7),
-    'B': ('2s,s,2p,p,D', 2.0),
-    'C': ('2s,1.0s,2p,p,d', 1.6),
-    'C.a': ('2s,1.0s,2p,p,d,F', 1.6),
-    'C.b': ('2s,1.0s,2p,p,D', 1.6),
-    'C.c': ('2s,1.0s,2p,D', 1.6),
-    'N': ('2s,s,2p,p,d', 1.6),
-    'N.r17': ('2s,s,2p,p,d', 1.7),
-    'N.r18': ('2s,s,2p,p,d', 1.8),
-    'O': ('2s,s,2p,p,d', 1.6),
-    'F': ('2s,s,2p,p,d', 1.6),
-    'Ne': ('2s,s,2p,p,d,F', 1.8),
-    'Na': ('2s,3s,2p,3p,d,F', 2.3),
-    'Al': ('3s,s,3p,p,d,F', 2.1),
-    'P': ('3s,s,3p,p,d,F', 1.7),
-    'K': ('3s,4s,3p,4p,d,d,F', 2.1),
-    'Sc': ('3s,4s,3p,4p,3d,d,F', 2.3),
-    'Cu': ('4s,s,4p,p,3d,d,F', 2.1),
-    'As': ('4s,s,4p,p,d,F', 2.0)}
+    'H': '1s,s,p 0.9',
+    'He': '1s,s,p 1.5',
+    'Li.1': '2s,s,2p,D 3.0',
+    'Li.3': '1s,2s,2p,D 1.6',
+    'Be': '2s,s,2p,D 2.7',
+    'B': '2s,s,2p,p,D 2.0',
+    'C': '2s,1.0s,2p,p,d,F 1.5',
+    'N': '2s,s,2p,p,d 1.4 0.9',
+    'O': '2s,s,2p,p,d 1.6',
+    'F': '2s,s,2p,p,d 1.6',
+    'Ne': '2s,s,2p,p,d,F 1.8',
+    'Na': '2s,3s,2p,3p,d,F 2.3',
+    'Al': '3s,s,3p,p,d,F 2.1',
+    'P': '3s,s,3p,p,d,F 2.1',
+    'K': '3s,4s,3p,4p,d,d,F 2.1',
+    'Sc': '3s,4s,3p,4p,3d,d,F 2.3',
+    'Cu': '4s,s,4p,p,3d,d,F 2.1',
+    'As': '4s,s,4p,p,d,F 2.0'}
 
 
-def create(symbol):
+def create(symbol, conf):
     from gpaw.atom.generator2 import generate
-    projectors, rc = PARAMS[symbol]
+    proj, rcs, *r0 = conf.split()
+    rcs = [float(s) for s in rcs.split(',')]
+    if r0:
+        r0, = r0
+        r0 = float(r0)
+    else:
+        r0 = 0.9 * min(rcs)
     gen = generate(
-        symbol.split('.')[0],
+        symbol,
         None,
-        projectors,
-        [rc],
-        rc * 0.9,
+        proj,
+        rcs,
+        r0,
         None,
-        5,
+        2,
         xc='PBE',
-        pseudize=('harm', 5))
+        pseudize=('poly', 5))
     gen.check_all()
     setup = gen.make_paw_setup()
     setup.write_xml()
@@ -249,14 +250,14 @@ def create(symbol):
 def create_all():
     from contextlib import chdir
     from pathlib import Path
-    for symbol in PARAMS:
-        dir = Path(symbol)
-        s = symbol.split('.')[0]
-        if (dir / f'{s}.PBE').is_file():
+    for name, conf in PARAMS.items():
+        dir = Path(name)
+        symbol = name.split('.')[0]
+        if (dir / f'{symbol}.PBE').is_file():
             continue
         dir.mkdir(exist_ok=True)
         with chdir(dir):
-            create(symbol)
+            create(symbol, conf)
 
 
 if __name__ == '__main__':
