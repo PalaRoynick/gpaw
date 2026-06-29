@@ -24,19 +24,39 @@ import os
 import sys
 from importlib.machinery import ModuleSpec, PathFinder
 
+import gpaw
 import gpaw.cgpaw as cgpaw
-from gpaw import (probably_get_mpiexec_implementation, GPAW_INITIALIZE_MPI,
-                  GPAW_MPI_BACKEND, GPAW_NO_C_EXTENSION)
+from gpaw import GPAW_NO_C_EXTENSION
 
+
+# Set default MPI backend to 'serial' if no-one has set it yet.
+# This should happen if the environment variable was not set
+# and user is executing plain `python` (not `gpaw python`)
+if gpaw.GPAW_MPI_BACKEND is None:
+    gpaw.GPAW_MPI_BACKEND = "serial"
+GPAW_MPI_BACKEND = gpaw.GPAW_MPI_BACKEND
 
 cgpaw_version = getattr(cgpaw, 'version', 0)
-if not GPAW_NO_C_EXTENSION and cgpaw_version != 12:
+if not GPAW_NO_C_EXTENSION and cgpaw_version != 13:
     improvement = ''
     if cgpaw_version == 9:
         improvement = ('GPAW has now much reduced memory consumption due to '
                        'optimized pwlfc_expand function in new GPAW. Enjoy. ')
 
     raise ImportError(improvement + 'Please recompile GPAW''s C-extensions!')
+
+
+def probably_executed_by_mpi_launcher() -> bool:
+    if 'PMIX_RANK' in os.environ:
+        return True
+    if 'OMPI_COMM_WORLD_SIZE' in os.environ:
+        return True
+    if 'PMI_SIZE' in os.environ:
+        return True
+    if 'I_MPI_MPIRUN' in os.environ:
+        # I have not been able to test this case.  --askhl
+        return True
+    return False
 
 
 def init_mpi4py():
@@ -56,38 +76,54 @@ def init_cgpaw():
     return cgpaw.Communicator()
 
 
-if GPAW_INITIALIZE_MPI:
-    if GPAW_MPI_BACKEND == 'mpi4py':
-        world = init_mpi4py()
-    elif GPAW_MPI_BACKEND == 'cgpaw':
-        if hasattr(cgpaw, 'Communicator'):
-            world = init_cgpaw()
-        else:
-            # Would be cleaner for this to be an error since we are not
-            # quite obeying the envvar.
-            world = None  # type: ignore
-    elif GPAW_MPI_BACKEND == 'serial':
-        world = None  # type: ignore
+if GPAW_MPI_BACKEND == 'mpi4py':
+    world = init_mpi4py()
+elif GPAW_MPI_BACKEND == 'cgpaw':
+    if cgpaw.have_mpi:
+        world = init_cgpaw()
     else:
         raise ValueError(
-            "GPAW_MPI_BACKEND must be one of 'serial', 'cgpaw', 'mpi4py'")
-else:
+            "GPAW_MPI_BACKEND='cgpaw' requested "
+            "but GPAW is not compiled with MPI"
+        )
+elif GPAW_MPI_BACKEND == 'serial':
+    if probably_executed_by_mpi_launcher():
+        msg = (
+'''\n
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! WARNING!                                                    !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! GPAW appears to be running inside MPI launcher,             !
+! but MPI parallelism is disabled.                            !
+! Steps required to enable MPI parallelization:               !
+'''  # noqa: E122
+        )
+        if not cgpaw.have_mpi:
+            msg += (
+'''
+! - Build GPAW with MPI support                               !
+'''.lstrip()  # noqa: E122
+            )
+        msg += (
+'''
+! - Run GPAW using `gpaw python` and MPI launcher:            !
+!   - `mpiexec -n N gpaw python script.py` or                 !
+!   - `srun gpaw python script.py` or                         !
+!   - a variation thereof                                     !
+! - Alternatively to `gpaw python`, set                       !
+!   the environment variable GPAW_MPI_BACKEND=cgpaw           !
+!   before running python                                     !
+! More information here:                                      !
+!   https://gpaw.readthedocs.io/releasenotes.html#mpichanges  !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+'''.lstrip()  # noqa: E122
+        )
+        raise RuntimeError(msg)
+
     world = None  # type: ignore
-
-
-if world is None:
-    probable_mpiexec = probably_get_mpiexec_implementation()
-    # Check whether we might not have the same ideas about parallelism
-    # as the caller.
-    #
-    # This check is not portable to other MPIs.  Maybe we can have this
-    # sanity check for a few MPI implementations since it's nasty to get
-    # inconsistent MPI communicators.
-    if probable_mpiexec is not None:
-        raise RuntimeError(
-            'We appear to be running inside mpiexec using {probable_mpiexec} '
-            'or a variation thereof, but parallelism is disabled.  Please run '
-            'gpaw -P <nprocs> python to ensure that MPI is enabled.')
+else:
+    raise ValueError(
+        "GPAW_MPI_BACKEND must be one of 'serial', 'cgpaw', 'mpi4py'")
 
 
 def marshal_broadcast(obj):

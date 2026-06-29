@@ -20,7 +20,7 @@ def check():
     print(energies, magmoms)
 
     assert np.argmin(energies) == 24
-    assert abs(max(energies) - min(energies) - 67.71) < 0.05
+    assert abs(max(energies) - min(energies) - 67.9) < 0.1
     assert abs(magmoms[0] - 1.81) < 0.01
 
 

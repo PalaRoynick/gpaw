@@ -28,7 +28,7 @@ Submit the structures to the queue. The optimisation should take 10-15 mins
 for each structure on 8 cores.
 
 b) Once you have done this you can calculate the vibrations using the
-   `vibrations module in ASE <https://ase-lib.org/ase/vibrations/vibrations.html>`__ following
+   `vibrations module in ASE <https://docs.ase-lib.org/ase/vibrations/vibrations.html>`__ following
    the template below. We only calculate the vibrations of the adsorbate and
    assume that the frequencies of the substrate are unchanged - this is a
    common assumption. Use 4 displacements to fit the frequencies and the same
@@ -64,12 +64,12 @@ c) Analyse the frequencies in the harmonic approximation:
 The :code:`verbose` keyword gives a detailed description of the different
 contributions to the free energy. For more information on what the different
 contributions are, see the
-`ASE background webpage <https://ase-lib.org/ase/thermochemistry/thermochemistry.html#harmonic-limit>`__.
+`ASE background webpage <https://docs.ase-lib.org/ase/thermochemistry/thermochemistry.html#harmonic-limit>`__.
 
 Now try to calculate how the different contributions change with temperature.
 You can for example make a :code:`for` loop and use the :code:`get_entropy()` and
 :code:`get_internal_energy()` methods (see description
-`here <https://ase-lib.org/ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_enthalpy>`__).
+`here <https://docs.ase-lib.org/ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_enthalpy>`__).
 
 d) Calculate how the vibrational energy affects the overall reaction energy.
    How does it change with temperature? Which contribution is important for the

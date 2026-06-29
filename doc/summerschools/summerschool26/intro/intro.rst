@@ -292,7 +292,7 @@ Plotting a countour
 ASE (atomic simulation environment)
 ===================================
 
-More details can be found here: https://ase-lib.org/index.html
+More details can be found here: https://ase-lib.org/
 
 
 Everything starts with a structure!
@@ -342,7 +342,7 @@ adsorption energy is obtained as the sum of the isolated energies minus the
 energy of the composite system.
 
 You can read more about the optimizers in ASE here:
-https://ase-lib.org/ase/optimize.html
+https://docs.ase-lib.org/ase/optimize.html
 
 1. Try to go through the script so you understand what is going on
 
@@ -367,7 +367,7 @@ Using ASE to setup band structures for Al using a Freelectron model and DFT
 1. What is the crystal structure of Al?
 
 2. Try and look up the recommeded Brillouin zone path for crystal structure
-   `here <https://ase-lib.org/ase/dft/kpoints.html>`__
+   `here <https://docs.ase-lib.org/ase/dft/kpoints.html>`__
 
 3. Can you figure out what the ``nbands=-10`` and
    ``convergence={'bands': -5}`` parameters means in the GPAW DFT
