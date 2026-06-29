@@ -4,6 +4,11 @@ if GPAW_NO_C_EXTENSION:
     from gpaw.purepython import *  # noqa: F401, F403
 else:
     from _gpaw import *  # noqa: F401, F403
+    try:
+        from _gpaw import Communicator  # noqa: F401
+        have_mpi = True
+    except ImportError:
+        have_mpi = False
 
 
 def get_extension_module_path() -> str:

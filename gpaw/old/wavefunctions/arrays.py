@@ -240,8 +240,7 @@ class PlaneWaveExpansionWaveFunctions(ArrayWaveFunctions):
     def new(self, buf=None, dist='inherit', nbands=None):
         if buf is not None:
             array = self.array
-            buf = buf.ravel()[:array.size]
-            buf.shape = array.shape
+            buf = buf.ravel()[:array.size].reshape(array.shape)
         if dist == 'inherit':
             dist = self.matrix.dist
         return PlaneWaveExpansionWaveFunctions(nbands or len(self),

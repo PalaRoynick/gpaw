@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gpaw = 'gpaw.cli.main:main'
+gpaw = 'gpaw.__main__:main'
 gpaw-analyse-basis = 'gpaw.lcao.analyse_basis:main'
 gpaw-basis = 'gpaw.atom.gpaw_basis:main'
 gpaw-plot-parallel-timings = 'gpaw.tools.gpaw_plot_parallel_timings:main'

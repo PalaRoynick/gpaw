@@ -2624,6 +2624,31 @@ class GPWFiles(CachedFilesHandler):
         atoms.get_potential_energy()
         return calc
 
+    @gpwfile
+    def li2_pw_lda(self):
+        return self._li2('LDA')
+
+    @gpwfile
+    def li2_pw_hse06(self):
+        return self._li2('HSE06')
+
+    def _li2(self, xc: str):
+        """Chain of Li2 dimers."""
+        L = 2.6
+        a = Atoms('Li2',
+                  [[0, 0, 0], [0.9, 0.9, 0]],
+                  cell=[L, L, 1.4],
+                  pbc=1)
+        a.center()
+        a.calc = GPAW(
+            kpts={'size': (1, 1, 4), 'gamma': True},
+            mode=PW(400),
+            convergence={'density': 1e-7},
+            xc=xc,
+            txt=self.folder / f'li2_pw_{xc.lower()}')
+        a.get_potential_energy()
+        return a.calc
+
 
 # We add Si fixtures with various symmetries to the GPWFiles namespace
 for name, method in si_gpwfiles().items():
