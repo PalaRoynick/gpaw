@@ -418,7 +418,7 @@ class PAWSetupGenerator:
 
             self.alpha = fsolve(f, 7.0)[0]
 
-            self.alpha = round(self.alpha, 1)
+            # self.alpha = round(self.alpha, 1)
         elif alpha < 0:
             rc = min(rc)
             self.log('Shape function: (sin(pi*r/rc)/r)^2, rc={rc:.2f} Bohr'
