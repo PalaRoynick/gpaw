@@ -174,21 +174,11 @@ class PPCG(PWFDEigensolver):
                                     domain_sum=False,
                                     symmetric=False)
         P2_ani.matrix.multiply(Ptemp_ani, opb='C', symmetric=False,
-                            beta=1, out=M_nn)
+                               beta=1, out=M_nn)
         psit_nX.desc.comm.sum(M_nn.data)
 
         M_nn.multiply(psit_nX, out=residual_nX, beta=1.0, alpha=-1.0)
         M_nn.multiply(P_ani, out=P2_ani, beta=1.0, alpha=-1.0)
-
-        # XXX: Not super happy about having these here, and Not
-        # preallocated in __init__... But since PWDesc size changes
-        # that is slightly annoying to do, maye later.
-        self.buff_bX = psit_nX.desc.empty(
-            (self.nblocksizes, ) +
-            psit_nX.dims[1:], xp=psit_nX.xp)
-        self.Hbuff_bX = psit_nX.desc.empty(
-            (self.nblocksizes - self.blocksize, ) +
-            psit_nX.dims[1:], xp=psit_nX.xp)
 
         wfs.orthonormalized = False
 
@@ -247,10 +237,10 @@ class PPCG(PWFDEigensolver):
         buff2 = self.data_buffers[3:5].ravel().view(psit_nX.data.dtype)[:]
         data_size = self.blocksize * prod(desc.myshape)
         buff_bX = desc.from_data(
-            data=buff1[:3 * data_size].reshape(3 * block, -1)
+            data=buff1[:3 * data_size].reshape(3 * self.blocksize, -1)
         )
         Hbuff_bX = desc.from_data(
-            data=buff2[:2 * data_size].reshape(2 * block, -1)
+            data=buff2[:2 * data_size].reshape(2 * self.blocksize, -1)
         )
 
         Pbuf_abi = P_ani.layout.empty(
@@ -267,8 +257,10 @@ class PPCG(PWFDEigensolver):
         Pbuf_abi.matrix.data[block:2 * block] = \
             P2_ani.matrix.data[block_slice]
 
-        if i > 0 and self.include_cg:
+        if self.include_cg:
             P_nX = psit_nX.new(data=self.work_arrays[1, :b])
+
+        if i > 0 and self.include_cg:
             nblocks = 3 * block
             buff_bX.matrix.data[2 * block:3 * block] = \
                 P_nX.matrix.data[block_slice]
@@ -353,10 +345,6 @@ class PPCG(PWFDEigensolver):
         MS_bb.tril2full()
 
         if nblocks > 2 * block:
-            # Eigh approach
-            # A, temp_bb = xp.linalg.eigh(S_bb, 'L')
-            # if xp is not np:
-            #     pos_defness = A.get()[0]
             # Eigvalsh approach
             with tracectx('eigvalsh', gpu=xp is not np):
                 try:
@@ -391,8 +379,8 @@ class PPCG(PWFDEigensolver):
         else:
             cmin = H_bb[:block, :nblocks].conj()
         if not xp.isfinite(H_bb).all():
-            break_after_update = True
-            return
+            return True
+
         wfs.myeig_n[block_slice] = as_np(eig_b[:block])
 
         with tracectx('rotations', gpu=xp is not np):
@@ -421,6 +409,7 @@ class PPCG(PWFDEigensolver):
                 Pbuf_abi.matrix.data[:block] \
                 + Pbuf_abi.matrix.data[block:2 * block]
 
+            return False
 
     def iterate1_old(self,
                      wfs: PWFDWaveFunctions,
