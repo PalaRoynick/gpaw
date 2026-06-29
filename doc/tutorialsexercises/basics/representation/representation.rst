@@ -63,7 +63,7 @@ that only one process writes.  ASE provides the handy
 Apply the above modifications to the script and run it in parallel
 e.g. on four CPUs::
 
-    $ gpaw -P 4 python script.py
+    $ mpiexec -n 4 gpaw python script.py
 
 Verify by checking the logfile that GPAW is actually using multiple
 CPUs.  The logfile should reveal that the :mol:`H_2O` calculation
@@ -156,7 +156,7 @@ Compare the calculated energies to those calculated in plane-wave mode.  Do
 the energies deviate a lot?  What about the atomization energy?  Is
 the energy variational with respect to the quality of the basis?
 
-.. note:: 
+.. note::
     Binding energies from LCAO calculation should be considered with caution
     (although these can be improved considerably by manually generating
     optimized basis functions) - however the method is well suited
