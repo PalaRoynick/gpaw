@@ -201,8 +201,6 @@ class PPCG(PWFDEigensolver):
         b = psit_nX.mydims[0]
         domain_comm = psit_nX.desc.comm
 
-        P_nX = psit_nX.new(data=self.work_arrays[1, :b])
-
         # Subspace diagonialization needed every once in a while
         if (i + 1) % self.rr_modulo == 0:
             wfs.subspace_diagonalize(
@@ -224,6 +222,7 @@ class PPCG(PWFDEigensolver):
 
         P_ani.block_diag_multiply(dS_aii, out_ani=Ptemp_ani)
         if self.include_cg:
+            P_nX = psit_nX.new(data=self.work_arrays[1, :b])
             P_nX.matrix_elements(psit_nX, cc=True, out=M_nn,
                                  domain_sum=False,
                                  symmetric=False)
@@ -243,7 +242,6 @@ class PPCG(PWFDEigensolver):
         P_ani = wfs.P_ani
         b = psit_nX.mydims[0]
         residual_nX = psit_nX.new(self.work_arrays[0, :b])
-        P_nX = psit_nX.new(data=self.work_arrays[1, :b])
 
         buff1 = self.data_buffers[0:3].ravel().view(psit_nX.data.dtype)[:]
         buff2 = self.data_buffers[3:5].ravel().view(psit_nX.data.dtype)[:]
@@ -270,6 +268,7 @@ class PPCG(PWFDEigensolver):
             P2_ani.matrix.data[block_slice]
 
         if i > 0 and self.include_cg:
+            P_nX = psit_nX.new(data=self.work_arrays[1, :b])
             nblocks = 3 * block
             buff_bX.matrix.data[2 * block:3 * block] = \
                 P_nX.matrix.data[block_slice]

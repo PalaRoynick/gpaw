@@ -267,7 +267,6 @@ class PWFDEigensolver(Eigensolver):
                 block = \
                     block_slice_base.stop - block_slice_base.start
                 block_slice = block_slice_base # XXX: active_indicies[block_slice_base]
-
                 self.bandstep(wfs, Ht, dH, block, block_slice, i, P2_ani, P3_ani, dS_aii)
 
                 # TODO: Sync band eigenvalues
