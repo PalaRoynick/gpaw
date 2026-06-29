@@ -161,8 +161,8 @@ A full G0W0 calculation with (8x8x8) k-points and extrapolated to infinite cutof
 
 A simpler method for carrying out the frequency integration is the Plasmon Pole
 approximation (PPA), which only needs to evaluate W in two frequency points. Read more
-about it here :ref:`gw_theory_ppa`. This is turned on by setting ``ppa = True`` in the 
-G0W0 calculator (see :download:`C_converged_ppa.py`). Carrying out a full `G_0W_0` 
+about it here :ref:`gw_theory_ppa`. This is turned on by setting ``ppa = True`` in the
+G0W0 calculator (see :download:`C_converged_ppa.py`). Carrying out a full `G_0W_0`
 calculation with the PPA using (8x8x8) k-points and extrapolating from calculations at
 a cutoff of 300 and 400 eV gives a direct band gap of 7.52 eV, which is in very good
 agreement with the result for the full frequency integration but the calculation took
@@ -176,7 +176,7 @@ G0W0 calculator (see :download:`C_converged_mpa.py`). `G_0W_0` MPA calculations 
 gap of 7.23 eV, which is much closer to the reference value of the full frequency
 numerical integration.
 
-.. [#Leon] Dario A Leon, Claudia Cardoso, Tommaso Chiarotti, Daniele Varsano, Elisa 
+.. [#Leon] Dario A Leon, Claudia Cardoso, Tommaso Chiarotti, Daniele Varsano, Elisa
            Molinari, Andrea Ferretti
            :doi:`Frequency dependence in GW made simple using a multipole approximation
            <10.1103/PhysRevB.104.115157>` (Sep 27, 2021)
@@ -235,7 +235,7 @@ More information can be found here:
 
 A `GW\Gamma` calculation requires that two additional keywords are specified in the GW calculator:
 
-1) Which kernel to use: ``xc='rALDA'``, ``xc='rAPBE'`` etc..
+1) Which kernel to use: ``xc='rALDA'`` etc..
 
 2) How to apply the kernel: ``fxc_mode = 'GWG'``, ``fxc_mode='GWP'`` or ``fxc_mode='GWS'``.
 
