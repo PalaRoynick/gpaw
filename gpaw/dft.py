@@ -12,6 +12,7 @@ from numpy.typing import DTypeLike
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 
+import gpaw
 from gpaw.mpi import MPIComm
 from gpaw.new.calculation import write_atoms, DFT
 from gpaw.new.logger import Logger
@@ -990,6 +991,9 @@ class Parameters:
         log(builder.setups)
         log(scf_loop)
         log(pot_calc)
+
+        if gpaw.dry_run:
+            raise SystemExit()
 
         return (ibzwfs, density, potential,
                 builder.setups, scf_loop, pot_calc,

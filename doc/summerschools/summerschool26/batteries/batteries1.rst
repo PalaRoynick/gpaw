@@ -336,7 +336,7 @@ Some hints:
 
 3. The DFTD3 correction is done *a posteriori*, this means the calculator
    should be created a little differently, see [the second example
-   here](https://ase-lib.org/ase/calculators/dftd3.html#examples)
+   here](https://docs.ase-lib.org/ase/calculators/dftd3.html#examples)
 
 4. See also the :mod:`equation of state module <ase.eos>`
 

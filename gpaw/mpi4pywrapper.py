@@ -10,6 +10,8 @@ def maybe_sync(arr):
 
 
 class MPI4PYWrapper:
+    backend = 'mpi4py'
+
     def __init__(self, comm, parent=None):
         self.comm = comm
         self.size = comm.size
