@@ -3,7 +3,7 @@ from ase.units import Hartree
 from gpaw.xc.rpa import RPACorrelation
 from gpaw.xc.fxc import FXCCorrelation
 
-fxc = FXCCorrelation('diamond.ralda.pbe_wfcs.gpw', xc='rAPBE',
+fxc = FXCCorrelation('diamond.ralda.pbe_wfcs.gpw', xc='rALDA',
                      ecut=400,
                      nblocks=8,
                      txt='diamond.ralda_02_rapbe.txt')
