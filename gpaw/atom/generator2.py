@@ -1130,7 +1130,7 @@ class PAWSetupGenerator:
         self.calculate_exx_integrals()
         setup.ExxC = self.exxcc
         setup.ExxC_w = self.exxcc_w  # erfc screened core contributions
-        setup.X_p = pack_hermitian(self.exxcv_ii[I][:, I])
+        setup.X_p = pack_hermitian(self.exxcv_ii[I][:, I], tolerance=1e-9)
         setup.X_wp = {omega: pack_hermitian(self.exxcv_wii[omega][I][:, I])
                       for omega in self.exxcv_wii}
 
