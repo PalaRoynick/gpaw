@@ -181,12 +181,12 @@ Get access to the software
 To give access to the software you need for this course, please run
 the command::
 
-  source ~jasc/setup2024
+  source ~jasc/setup2026
 
 Note the tilde in the beginning of the second word.
 The script installs ASE, GPAW and related software.
 The script will also copy a selection of draft notebooks to a folder
-called CAMD2024 in your DTU databar account.
+called CAMD2026 in your DTU databar account.
 
 
 Carrying on
