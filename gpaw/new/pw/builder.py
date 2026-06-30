@@ -59,7 +59,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
             comm=self.communicators['d'])
-        fine_grid = grid.new(size=grid.size_c * 2)
+        fine_grid = grid.new(size=grid.size_c * 2, comm=self.communicators['w'])
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid
 
@@ -157,6 +157,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
     def create_potential_calculator(self):
         extensions = self.get_extensions()
+        #comm = self.communicators['w']
+        #grid = self.grid.new(comm=comm)
+        #fine_grid = self.fine_grid.new(comm=comm)
+        #interpolation_desc = self.interpolation_desc.new(comm=comm) 
+        #xc = self.xc.new(comm=comm)
         return PlaneWavePotentialCalculator(
             self.grid,
             self.fine_grid,
@@ -164,6 +169,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.setups,
             self.xc,
             self.create_poisson_solver(extensions),
+            kpt_band_comm=self.communicators['D'],
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
             soc=self.soc,

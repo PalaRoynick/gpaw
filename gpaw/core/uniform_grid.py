@@ -600,7 +600,9 @@ class UGArray(XArray[UGDesc]):
                     plan1: fftw.FFTPlans | None = None,
                     plan2: fftw.FFTPlans | None = None,
                     grid: UGDesc | None = None,
-                    out: UGArray | None = None) -> UGArray:
+                    out: UGArray | None = None,
+                    in_complementary_comm: MPIComm | None = None,
+                    out_complementary_comm: MPIComm | None = None) -> UGArray:
         """Interpolate to finer grid.
 
         Parameters
@@ -613,6 +615,10 @@ class UGArray(XArray[UGDesc]):
             Target grid.
         out:
             Target UGArray object.
+        in_complementary_comm:
+            Communicator over ranks that hold equivalent input data.
+        out_complementary_comm:
+            Communicator over ranks that should hold equivalent output data.
         """
         if out is None:
             if grid is None:
@@ -621,6 +627,22 @@ class UGArray(XArray[UGDesc]):
 
         if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
             raise ValueError('Grids must have zerobc=False!')
+        if (in_complementary_comm is not None or
+                out_complementary_comm is not None):
+            in_complementary_comm = in_complementary_comm or serial_comm
+            out_complementary_comm = out_complementary_comm or serial_comm
+            output_data = None
+            if in_complementary_comm.rank == 0:
+                input_data = self.gather()
+                if input_data is not None:
+                    output = input_data.interpolate(
+                        plan1=plan1, plan2=plan2,
+                        grid=out.desc.new(comm=None))
+                    output_data = output.data
+            if out_complementary_comm.rank == 0:
+                out.scatter_from(output_data)
+            out_complementary_comm.broadcast(out.data, 0)
+            return out
 
         if self.desc.comm.size > 1:
             input = self.gather()

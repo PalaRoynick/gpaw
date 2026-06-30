@@ -1,7 +1,7 @@
 import numpy as np
 
 from gpaw.core import PWDesc
-from gpaw.mpi import broadcast_float
+from gpaw.mpi import broadcast_float, serial_comm
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
@@ -16,6 +16,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  setups: Setups,
                  xc,
                  poisson_solver,
+                 kpt_band_comm,
                  *,
                  relpos_ac,
                  atomdist,
@@ -46,10 +47,15 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         self._nt_g = None
         self._vt_g = None
         self._dedtaut_g = None
+        self.kpt_band_comm = kpt_band_comm
 
     def interpolate(self, a_R, a_r=None):
+        # Interpolate from a domain-distributed grid replicated over
+        # k-points/bands to a fine grid distributed over the world.
         return a_R.interpolate(plan1=self.fftplan, plan2=self.fftplan2,
-                               grid=self.fine_grid, out=a_r)
+                               grid=self.fine_grid, out=a_r,
+                               in_complementary_comm=self.kpt_band_comm,
+                               out_complementary_comm=serial_comm)
 
     def restrict(self, a_r, a_R=None):
         return a_r.fft_restrict(self.fftplan2, self.fftplan,
