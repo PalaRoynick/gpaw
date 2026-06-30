@@ -58,8 +58,9 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                                out_complementary_comm=serial_comm)
 
     def restrict(self, a_r, a_R=None):
-        return a_r.fft_restrict(self.fftplan2, self.fftplan,
-                                grid=self.grid, out=a_R)
+        return a_r.fft_restrict(plan1=self.fftplan2, plan2=self.fftplan,
+                                grid=self.grid, out=a_R,
+                                out_complementary_comm=self.kpt_band_comm)
 
     def _interpolate_density(self, nt_sR):
         nt_sr = self.fine_grid.empty(nt_sR.dims, xp=self.xp)
@@ -67,17 +68,22 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         if pw.comm.rank == 0:
             pw0 = self.poisson_solver.pwg0
-            indices = self.xp.asarray(pw0.indices(self.fftplan.shape))
             nt0_g = pw0.zeros(xp=self.xp)
+            if self.kpt_band_comm.rank == 0:
+                indices = self.xp.asarray(pw0.indices(self.fftplan.shape))
         else:
             nt0_g = None
 
         ndensities = nt_sR.dims[0] % 3
         for spin, (nt_R, nt_r) in enumerate(zips(nt_sR, nt_sr)):
             self.interpolate(nt_R, nt_r)
-            if spin < ndensities and pw.comm.rank == 0:
+            if (spin < ndensities and pw.comm.rank == 0 and
+                    self.kpt_band_comm.rank == 0):
                 nt0_g.data += self.xp.asarray(
                     self.fftplan.tmp_Q.ravel()[indices])
+
+        if nt0_g is not None:
+            self.kpt_band_comm.broadcast(nt0_g.data, 0)
 
         return nt_sr, nt0_g
 
