@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# This script should be source'd by the students to set up
+# their accounts.  Use this command:
+#
+# source ~jasc/setup2026
+#
+
+set -e
+
+echo
+echo
+echo "SETTING UP DATABAR ACCOUNT FOR USER" $USER
+echo
+
+
+if [[ "`uname`" != "Linux" ]]; then
+    echo "ERROR: Should be run on a Linux machine, not `uname`"
+    exit 1
+fi
+
+if [[ `hostname` != n-* ]]; then
+    echo "ERROR: Please run this on a compute node, not `hostname`"
+    echo "Did you forget to run linuxsh -X ?"
+    exit 1
+fi
+
+# Make sure we are in home folder
+cd
+
+# Make sure there is no setup from the last summer school
+OLDJUNK=`grep --max-count=1 'bin/activate' .bashrc | grep -v CAMD2026 | grep -v '^#' || true`
+if [[ -n "$OLDJUNK" ]]; then
+    echo
+    echo "**** ERROR ****"
+    echo 
+    echo "You have stuff from a previous course or summer school"
+    echo "in your .bashrc file.  Please edit the file .bashrc"
+    echo "and remove the line"
+    echo "    $OLDJUNK"
+    echo
+    echo "You can edit it with the command"
+    echo '    nano $HOME/.bashrc'
+    echo
+    exit 2
+fi
+
+echo
+if [[ -d CAMD2026 ]]; then
+    echo "The folder CAMD2026 (for your Python files) already exists.  Good."
+else
+    echo "Creating folder name 'CAMD2026' for your Python files."
+    mkdir CAMD2026
+fi
+
+# Set up venv
+
+if [[ -d venv_CAMD2026 ]]; then
+    echo "Virtual folder structure found.  If you want to start over, please"
+    echo "delete the folder venv_CAMD2026 and run the installation script again."
+    sleep 3
+else
+    echo "Populating pip cache"
+    tar xf ~jasc/CAMD2026/pipcache.tgz
+    echo "Installinge ASE and GPAW into virtual environment"
+    bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv_CAMD2026
+    source ~/venv_CAMD2026/bin/activate
+    pushd venv_CAMD2026
+    git clone https://gitlab.com/taskblaster/taskblaster.git
+    pip install -e taskblaster
+    popd
+    pip install git+https://gitlab.com/asr-dev/asr-lib.git@main
+    pip cache purge
+    deactivate
+    # cp /zhome/9f/f/2737/CAMD2022/camdnotebook venv/bin
+fi
+
+source ~/venv_CAMD2026/bin/activate
+
+# Copy the exercise files
+SUMMERSOURCEDIR=~/venv_CAMD2026/gpaw/doc/summerschools/summerschool26
+
+echo "Preparing Python scripts."
+(cd $SUMMERSOURCEDIR && python student.py)
+
+echo "Copying exercise files into CAMD2026 (if missing)."
+# # Order is important, the FIRST matching pattern counts.
+rsync -vrltbm --ignore-existing --include="*/" --include="*.traj" --exclude="*.master.db" --include="*.db" --exclude="*_teacher.py" --exclude='student.py' --include="*.py" --include="*/*.png" --include="*.xyz" --exclude="*" $SUMMERSOURCEDIR/. CAMD2026/.
+
+echo
+if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
+    echo "MyQueue configuration found, assuming it makes sense."
+else
+    echo "Installing MyQueue configuration."
+    mkdir -p $HOME/CAMD2026/.myqueue
+    cp ~jasc/CAMD2026/myqueue/config.py $HOME/CAMD2026/.myqueue
+fi
+
+#echo "Enabling Jupyter Notebook extensions."
+#jupyter nbextension enable nglview --py 
+### jupyter nbextension enable widgetsnbextension --py
+
+echo
+echo "Preparing Jupyter for use in virtual environment"
+python -m ipykernel install --user --name=CAMD2026
+
+
+# Set up .bashrc
+cd
+BRCSCRIPT=$HOME/venv_CAMD2026/bin/activate
+if grep -q "source $BRCSCRIPT" .bashrc ; then
+    echo "Your .bashrc file is already set up.  Good."
+else
+    echo "Setting up your .bashrc file."
+    echo "" >> .bashrc
+    echo "# The line below was added by the CAMD 2026 Summer School setup script." >> .bashrc
+    echo "source $BRCSCRIPT" >> .bashrc
+    echo "" >> .bashrc
+    # source $BRCSCRIPT
+fi
