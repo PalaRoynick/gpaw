@@ -153,7 +153,7 @@ def create_folders() -> None:
 
 
 def collect_data() -> None:
-    """Collect everything need for a table on the web-page."""
+    """Collect everything we need for a table on the web-page."""
     results = {}
     for name in all_names:
         result: dict[str, list[tuple[str, float]]] = {'pw': [], 'lcao': []}
@@ -195,6 +195,9 @@ def _energies(p: Path) -> dict[str, list[float]]:
         D[s][name] = v['E0']
     d = {}
     for s, v in D.items():
+        if s == 'O':
+            v['XO'] *= 2
+            v['X2O5'] *= 2
         ex = v['FCC']
         eo = v['XO'] - ex
         d[s] = [v['Diamond'] / 2 - ex,
@@ -1547,7 +1550,7 @@ ENERGIES = {
     'Ne': [0.008, 0.003, 0.001, -0.147, -0.251, -0.442, -1.177, 0.013],
     'Ni': [1.247, 0.678, 0.066, 1.169, 0.028, 0.391, 1.484, 0.641],
     'Np': [1.456, -0.433, -0.341, 0.987, 0.042, -0.101, 1.101, 0.901],
-    'O': [-0.805, -0.831, -0.185, -1532, -1226, -1361, -437, -681.056],
+    'O': [-0.805, -0.831, -0.185, 0.801, 0.372, 0.837, 0.913, 0.283],
     'Os': [1.166, 1.397, 0.747, -2.919, -1.841, -2.397, -1.144, 0.613],
     'P': [-0.304, -0.751, -0.164, -1.239, -0.399, -0.507, 0.707, 0.415],
     'Pa': [1.701, 0.643, 0.170, 1.176, 0.413, -0.333, 0.793, 1.101],
