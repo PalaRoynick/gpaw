@@ -52,7 +52,7 @@ with ``gauge='length' or 'velocity'`` and different kick directions:
     When running the script with ``gpaw``-command, one must add
     ``--`` before the actual arguments to ensure they are correctly
     passed the script. For example:
-        ``$ mpiexec -n 4 gpaw python td.py -- --gauge=length --kick=x``.
+    ``$ mpiexec -n 4 gpaw python td.py -- --gauge=length --kick=x``.
 
 After repeating the calculation for kicks in x, y, and z directions in length gauge and velocity gauge, respectively,
 we calculate the rotatory strength spectrum from the magnetic moments:
@@ -124,6 +124,7 @@ The resulting spectrum:
 
 The spectrum compares well with the one obtained
 with LCAO mode and augmented basis sets.
+
 
 References
 ----------
