@@ -45,7 +45,16 @@ between theory, implementation and example sections.
 
 If you don't already have your own copy of the GPAW package, then
 see :ref:`development workflow` for how to set up your environment.
-You will also need to ``pip install sphinx-rtd-theme``.
+Basically, you will need to do::
+
+  $ cd ~/gpaw
+  $ pip install -e .[docs]
+
+This will give you an editable install of gpaw
+(``-e`` or ``--editable`` option to pip) and the ``[docs]`` part will
+make ``pip`` install all the packages required to build the web-page
+such as ``sphinx-rtd-theme`` and the
+https://gitlab.com/gpaw/gpaw-web-page repository.
 
 Then :command:`cd` to the :file:`doc` directory and build the html-pages::
 
