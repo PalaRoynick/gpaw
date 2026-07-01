@@ -175,7 +175,9 @@ class DFTComponentsBuilder:
         self.distributed_grid = self.grid.new(comm=comm)
         self.distributed_fine_grid = self.fine_grid.new(comm=comm)
 
-        self.xc = create_functional(xcfunc, self.distributed_fine_grid, self.xp)
+        self.xc = create_functional(xcfunc,
+                                    self.distributed_fine_grid,
+                                    self.xp)
 
         self.interpolation_desc: Domain
         self.electrostatic_potential_desc: Domain

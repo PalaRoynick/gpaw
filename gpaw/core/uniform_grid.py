@@ -685,6 +685,7 @@ class UGArray(XArray[UGDesc]):
         out_complementary_comm:
             Communicator over ranks that should hold equivalent output data.
         """
+        assert out is not None
         size1_c = self.desc.size_c
         size2_c = out.desc.size_c
         if (size2_c <= size1_c).any():
@@ -770,6 +771,7 @@ class UGArray(XArray[UGDesc]):
         out_complementary_comm:
             Communicator over ranks that should hold equivalent output data.
         """
+        assert out is not None
         size1_c = self.desc.size_c
         size2_c = out.desc.size_c
 
