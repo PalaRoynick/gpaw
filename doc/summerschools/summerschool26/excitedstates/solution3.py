@@ -11,7 +11,7 @@ calc_old = GPAW('Si_gs_LDA.gpw', txt=None)
 nval = int(calc_old.wfs.nvalence)
 
 # Do new ground state calculations with more k-points.
-# This is because in general RPA calculations requires more k-poins
+# This is because in general RPA calculations require more k-points
 # to be converged.
 
 calc = GPAW('Si_gs_LDA.gpw').fixed_density(
@@ -60,7 +60,7 @@ kwargs = {
 df = DielectricFunction(gpw_file_name, **kwargs)
 
 
-# Finally we calculate he polarizability in the x, y, and z direction.
+# Finally we calculate the polarizability in the x, y, and z direction.
 # The output is a .csv file (one for each direction) which can be plotted.
 # Consider the symmetries of your material and figure out if calculating
 # the absorption spectrum in all 3 directions
