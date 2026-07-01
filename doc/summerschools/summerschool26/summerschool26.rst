@@ -66,12 +66,13 @@ Setting up thinlinc for the first time
    setupthinlinc
 
 
-Submitting to DTU computers
----------------------------
+Using the DTU computers
+-----------------------
 
 .. toctree::
    :maxdepth: 1
 
+   using_gbar
    submitting
 
 
