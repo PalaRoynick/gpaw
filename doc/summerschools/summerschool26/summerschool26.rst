@@ -27,39 +27,43 @@ The computer system
 The DTU computer system (known as the 'G-databar' for obscure reasons)
 consists of a login node (named ``login.gbar.dtu.dk`` or ``gbarlogin``)
 and a number of compute nodes.  Some of the compute nodes are reserved for
-batch jobs, some allow interactive jobs.  You will be running a Jupyter
-Notebook server on an interactive compute node, this server will run the
-Python jobs and will allow the browser on your laptop to see the output.
-The latter unfortunately requires bypassing a firewall which would
-normally prevent you from accessing the compute nodes directly from the
-summer school site.
+batch jobs, some allow interactive jobs.  You need to run on the interactive
+compute nodes, running on the login node will overload it.
+
 
 
 Instructions
 ============
 
-The instructions depend on whether your laptop runs Windows, MacOS or
-Linux - the latter two are very similar in this context.
+There are two main ways to log in to the DTU system, *ssh* and *thinlinc*.
+
+**ssh** is probably the most convenient.  Programs on the remote system will be able to open windows on your computer just like local programs.
+
+**thinlinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
+
+Which one you choose is a matter of taste.  We find ssh slightly more convenient once it is set up, but thinlinc may be a bit easier to set up initially.
 
 
-Windows users
--------------
+Setting up ssh for the first time
+---------------------------------
+
+The instructions depend on the operating system you use
+
 
 .. toctree::
    :maxdepth: 1
 
    setupwin
-   accesswin
+   setuplinmac
 
 
-Mac and Linux users
--------------------
+Setting up thinlinc for the first time
+--------------------------------------
 
 .. toctree::
    :maxdepth: 1
 
-   setuplinmac
-   accesslinmac
+   setupthinlinc
 
 
 Submitting to DTU computers

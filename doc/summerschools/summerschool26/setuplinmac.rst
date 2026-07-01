@@ -1,8 +1,8 @@
 .. _setuplinmac:
 
-=========================================
-Setting up the first time (Linux / macOS)
-=========================================
+=================================================
+Setting up SSH for the first time (Linux / macOS)
+=================================================
 
 You will be using the command line in a Terminal to access the DTU
 central computers, and to set up the connections you need to display
@@ -16,9 +16,7 @@ Linux users should skip this step as an X11 server is part of all
 normal Linux distributions.
 
 As a Mac user, you should install an X11 server, it is needed to
-display the ASE Graphical User Interface on your laptop.  If you do
-not install it, you can still run Jupyter Notebooks, but the command
-to view structures with the GUI will not work.
+display the ASE Graphical User Interface on your laptop.
 
 Go to https://www.xquartz.org/ and download the newest version of
 XQuartz.  It is an open-source port of the X11 windows system for
@@ -192,6 +190,6 @@ called CAMD2026 in your DTU databar account.
 Carrying on
 ===========
 
-Now read the guide for :ref:`Starting and accessing a Jupyter Notebook
-<accesslinmac>`
+Now read the guide for XXXXX
+
 

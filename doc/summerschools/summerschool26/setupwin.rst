@@ -1,8 +1,8 @@
 .. _setupwin:
 
-===================================
-Setting up the first time (Windows)
-===================================
+===========================================
+Setting up SSH for the first time (Windows)
+===========================================
 
 You will need the program MobaXterm which will help you with the
 following tasks
@@ -10,8 +10,6 @@ following tasks
   * Logging in to the databar.
 
   * Displaying the ASE graphical user interface on your laptop.
-
-  * Forward a connection to the Jupyter server (SSH tunnel).
 
   * Accessing files on the remote server from your laptop.
 
@@ -121,6 +119,5 @@ called CAMD2026 in your DTU databar account.
 Carrying on
 ===========
 
-Now read the guide for :ref:`Starting and accessing a Jupyter Notebook
-<accesswin>`
+Now read the guide for XXXXXX
 
