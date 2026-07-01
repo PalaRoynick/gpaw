@@ -10,15 +10,13 @@ https://www.fysik.dtu.dk/english/research-sections/camd/events/summer-school-202
 .. highlight:: bash
 
 
-Summer school exercises in Jupyter notebooks
-============================================
+Summer school exercises
+=======================
 
-The Summer School includes a number of :ref:`projects`, which are partly
-formulated as Jupyter Notebooks.  In a Jupyter Notebook you are running the
-calculations on the DTU central computing facilities, but the output is
-displayed in your local browser.
-
-Unfortunately, this requires some setup, which is described below.
+The Summer School includes a number of :ref:`projects`, where you will
+need to run
+calculations on the DTU central computing facilities.
+This requires some setup, which is described below.
 
 
 The computer system

@@ -13,20 +13,21 @@ In this exercise we study some of the key properties of materials for photovolta
 * band structure
 * compare how different exchange correlation functionals perform
 
-We will use the ASE and GPAW packages, and at the end of this excercise, you will write your own scripts and submit them to the supercomputer. You will be asked to compare your results to each other and to discuss your results with other groups studying different materials.
+We will use the ASE and GPAW packages, and at the end of this exercise, you will write your own scripts and submit them to the supercomputer. You will be asked to compare your results to each other and to discuss your results with other groups studying different materials.
+
 
 Atomic structure
 ================
 
-As you have already learnd in the previous session, when investigating the electronic structure of a material, the first thing to do  is to find the atomic positions by relaxing the atoms, i.e. minimizing the forces.
+As you have already learned in the previous session, when investigating the electronic structure of a material, the first thing to do  is to find the atomic positions by relaxing the atoms, i.e. minimizing the forces.
 
 Here is some information to help you build the :class:`ase:ase.Atoms` object:
 
-* Silicon crystalizes in the diamond structure with lattice constant `a=5.43` Å
-* Germanium crystalizes in the diamond structure with lattice constant `a=5.66` Å
+* Silicon crystallizes in the diamond structure with lattice constant `a=5.43` Å
+* Germanium crystallizes in the diamond structure with lattice constant `a=5.66` Å
 * Diamond has diamond structure (!) with lattice constant `a=3.56` Å
-* CdTe crystalizes in the zincblende structure with lattice constant `a=6.48` Å
-* GaAs crystalizes in the zincblende structure with lattice constant `a=5.65` Å
+* CdTe crystallizes in the zincblende structure with lattice constant `a=6.48` Å
+* GaAs crystallizes in the zincblende structure with lattice constant `a=5.65` Å
 * Monolayer BN centered in a hexagonal unit cell with `a=2.5` Å (and `7` Å of vacuum at each side to prevent it from interacting with its periodic copies) and a basis of `(0,0)` and `(0, a / \sqrt{3})`
 
 The first thing you should do is to create an :class:`ase:ase.Atoms` object (click the link to see ways to build atoms objects). In order to do so, you might find it useful to use one of the crystal structures included in :func:`ase.build.bulk` (hint: if you have an element of the IV group you might be interested to follow this link :func:`ase:ase.build.bulk`) or you might have to create a list/array for the atomic positions and another one for the unit cell and then create an atoms object (hint: see above).
@@ -173,12 +174,13 @@ The following image shows the bandstructure we obtain for Silicon.
 
 .. image:: Si_bandstructure_LDA.png
 
+
 Convergence (optional but recommended)
 ======================================
 In this section, we study the convergence of the results with the parameters that improve the completeness of the basis. Numerical convergence of DFT calculations should always be checked to avoid obtaining spurious results that are caused by a very coarse discretization. In this tutorial you can find an example on how to find a converged lattice constant for aluminum:
 :ref:`lattice_constants`.
 
-**Note**: If your are running out of time to complete the exercise (i.e., you are left 20 minutes), contact us, we will help you to jump to the next section. You might be able to come back to discuss convergence in DFT in the last day of the summer school.
+**Note**: If you are running out of time to complete the exercise (i.e., you are left 20 minutes), contact us, we will help you to jump to the next section. You might be able to come back to discuss convergence in DFT in the last day of the summer school.
 
 Look at what happened to the results in the previous section? Did they look reasonable, or did something go wrong? We suggest that you play around with the number of k-points and the plane wave cut-off rerunning the previous band structure example. Increasing their value produces better results, but also increases the computation time.
 

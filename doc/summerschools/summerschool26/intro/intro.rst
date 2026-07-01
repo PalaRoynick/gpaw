@@ -15,8 +15,8 @@ programming and computer science.  One of the advantages of the language
 is that it is relatively easy to read and understand pre-existing code.
 
 
-Importing the necesary modules
-==============================
+Importing the necessary modules
+===============================
 
 A lot of helper packages for e.g.  numeric calculations, plotting,
 atomic-scale simulations etc are available in Python, but you need to

@@ -3,8 +3,7 @@
 Inclusion of excitonic effects and Discussion
 =============================================
 
-
-Now, we will finally visualize the absorption spectra we have calculated. The script below is setup for plotting and saving the absorption spectra for BN with 24x24x1 k-points. First we load the x, y, and z components and plot all three curves in different colors.
+Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for BN with 24x24x1 k-points. First we load the x, y, and z components and plot all three curves in different colors.
 
 
 .. literalinclude:: solution4.py
@@ -30,6 +29,7 @@ We start by calculating the ground state density and diagonalizing the resulting
    pw_cut_off = ...
    kpts_grid = (..., ..., ...)
    gamma = ...
+   nbands = ...
 
 
 .. literalinclude:: solution4.py
@@ -38,18 +38,17 @@ We start by calculating the ground state density and diagonalizing the resulting
 
 
 Below we will set up the Bethe-Salpeter Hamiltonian in a basis of valence bands and conduction bands (hint: the number of valence and conduction bands should be in the single digits).
-However, the screened interaction that enters the Hamiltonian needs to be converged with respect the number of unoccupied bands. Next we calculate the dynamical dielectric function using the Bethe-Salpeter equation. The imaginary part is proportional to the absorption spectrum. We will calculate the dielectric function within the Random Phase Approximation (with the same convergence parameters for comparison).
+However, the screened interaction that enters the Hamiltonian needs to be converged with respect to the number of unoccupied bands. Next we calculate the dynamical dielectric function using the Bethe-Salpeter equation. The imaginary part is proportional to the absorption spectrum. We will calculate the dielectric function within the Random Phase Approximation (with the same convergence parameters for comparison).
 
 
 .. code::
 
    ecut = ...
-   nbands = ...
-   valence_bands = np.range(..., ...)
-   conduction_bands = np.range(..., ...)
+   valence_bands = range(..., ...)
+   conduction_bands = range(..., ...)
    nbands = ...
 
-Hint: The end of the valence band range should be the same as the start of 
+Hint: The end of the valence band range should be the same as the start of
 conduction band range.
 
 .. literalinclude:: solution4.py
