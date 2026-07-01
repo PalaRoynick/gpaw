@@ -4,6 +4,8 @@
 Quasiparticle bandgap using GW approximation
 ============================================
 
+Plane-waves (PW-mode)
+=====================
 
 In this exercise we will calculate the quasiparticle band gap of the compound using the GW approximation. For a brief introduction to the GW theory and the details of its implementation in GPAW, see :ref:`GW theory <gw_theory>`
 
@@ -49,6 +51,10 @@ Can we trust the calculated value of the direct bandgap? A check for convergence
 For more details on the convergence and other parameters you can look at this tutorial: :ref:`GW tutorial <gw tutorial>`
 
 Typical convergence would require ``ecut=300 eV``, ``8x8x8 k-points`` and ``ecut_extrapolation=.True.`` for Silicon.
+
+
+Linear combination of atomic orbitals (LCAO-mode)
+=================================================
 
 When doing convergence checks, you will notice the G0W0 computations becoming increasingly expensive with higher k point grid and plane wave cutoff energy. In order to decrease the computational cost of the G0W0 computations, we can start with a groundstate calculation in LCAO mode using the ``dzp`` basis set. Here, we the number of bands should reflect the number of atomic orbitals present in the computation.
 
