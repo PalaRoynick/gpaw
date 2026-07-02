@@ -49,6 +49,7 @@ class PWFDEigensolver(Eigensolver):
 
     def __init__(self,
                  *,
+                 wf_grid,
                  hamiltonian,
                  convergence: dict,
                  nbands: int,
@@ -56,6 +57,7 @@ class PWFDEigensolver(Eigensolver):
                  blocksize: int = 10,
                  max_buffer_mem: int | None = 200 * 1024 ** 2,
                  scalapack_parameters: tuple[int, int, int] | None = None):
+        self.wf_grid = wf_grid
         self.converge_bands = convergence.get('bands', 'occupied')
         self.residual_target = convergence.get('eigenstates', 4e-8) / Ha**2
         self.max_blocksize = blocksize
@@ -227,7 +229,7 @@ class PWFDEigensolver(Eigensolver):
     def iterate1(self, wfs, Ht, potential, dS_aii, weight_n):
         with tracectx('Initialize'):
             dH = partial(potential.deltaH, spin=wfs.spin)
-            xp = self.M_nn.xp
+            xp = wfs.psit_nX.xp
             psit_nX = wfs.psit_nX
             band_comm = psit_nX.comm
             domain_comm = psit_nX.desc.comm
@@ -259,7 +261,6 @@ class PWFDEigensolver(Eigensolver):
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
-
         for i in range(self.niter):
             linalg_error = False
             eps = 0
@@ -281,7 +282,7 @@ class PWFDEigensolver(Eigensolver):
                 block_slice = active_indicies[block_slice_base]
                 linalg_error = linalg_error or \
                     self.bandstep(wfs, Ht, dH, block, block_slice,
-                                  i, P2_ani, P3_ani, dS_aii)
+                                  i, P2_ani, P3_ani, Ptemp_ani, dS_aii)
                 # TODO: Sync band eigenvalues
 
             if b_error < self.residual_target or linalg_error:
@@ -302,6 +303,7 @@ class PWFDEigensolver(Eigensolver):
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
         if not wfs.orthonormalized:
+            # wfs._P_ani = None
             wfs.orthonormalize(residual_nX)
 
         if debug:
@@ -312,11 +314,11 @@ class PWFDEigensolver(Eigensolver):
     def prestep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani) -> None:
         pass
 
-    def bandstep(self, wfs, residual_nX, eig_n,
-                 P1_ani, P2_ani, P3_ani, Ptemp_ani) -> None:
+    def bandstep(self, wfs, Ht, dH, block, block_slice,
+                 i, P2_ani, P3_ani, Ptemp_ani, dS_aii) -> None:
         pass
 
-    def poststep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani) -> None:
+    def poststep(self, wfs, residual_nX, Ht, P2_ani, P3_ani, Ptemp_ani, dH, i, dS_aii) -> None:
         pass
 
 
