@@ -23,40 +23,28 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
                      nt_g: PWArray,
                      dedtaut_g: PWArray | None) -> Array2D:
     """Calculate symmetrized stress tensor."""
-    print('asd')
     comm = ibzwfs.comm
     xp = density.nt_sR.xp
     dom = density.nt_sR.desc
 
     ibzwfs.make_sure_wfs_are_read_from_gpw_file()
-    print('asd I')
     s_vv = get_wfs_stress(ibzwfs, potential.dH_asii)
-    print('asd II')
     s_vv += pot_calc.xc.stress_contribution(
         ibzwfs, density, pot_calc.interpolate)
-    print('asd III')
-    #asd
-    if 1: #ibzwfs.kpt_comm.rank == 0 and ibzwfs.band_comm.rank == 0:
+    if ibzwfs.kpt_comm.rank == 0 and ibzwfs.band_comm.rank == 0:
         vHt_h = potential.vHt_x
         assert vHt_h is not None
         pw = vHt_h.desc
         G_Gv = xp.asarray(pw.G_plus_k_Gv)
-        print('asd IV')
-        print(pw)
-        print(len(G_Gv), 'G len')
         vHt2_hz = vHt_h.data.view(float).reshape((len(G_Gv), 2))**2
-        comm.sum(s_vv, -1) # XXREMOVE ME!!! # XXREMOVE ME!!!!!
-        print('s_vv up to here', s_vv)
-        asd
         s_vv += (xp.einsum('Gz, Gv, Gw -> vw', vHt2_hz, G_Gv, G_Gv) *
                  pw.dv / (2 * np.pi))
+
         Q_aL = density.calculate_compensation_charge_coefficients()
-        print('asd V')
         s_vv += pot_calc.poisson_solver.stress_contribution(vHt_h, nt_g, Q_aL)
-        print('asd VI')
         s_vv += pot_calc.vbar_ag.stress_contribution(nt_g)
         s_vv += density.nct_aX.stress_contribution(vt_g)
-        if comm.rank == 0: #ibzwfs.domain_comm.rank == 0:
+        if ibzwfs.domain_comm.rank == 0:
             s_vv -= xp.eye(3) * potential.e_stress
         if dedtaut_g is not None:
             s_vv += density.tauct_aX.stress_contribution(dedtaut_g)
