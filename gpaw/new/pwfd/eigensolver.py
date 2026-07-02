@@ -46,6 +46,7 @@ def slparams(nbands: int,
 class PWFDEigensolver(Eigensolver):
     min_work_array: int = 1
     min_buffer_array: int = 1
+    niter: int = 1
 
     def __init__(self,
                  *,
@@ -261,7 +262,8 @@ class PWFDEigensolver(Eigensolver):
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
-        for i in range(self.niter):
+        i = 0
+        while i < self.niter:
             linalg_error = False
             eps = 0
             active_indicies = np.where(error_n > eps)[0]
@@ -287,10 +289,6 @@ class PWFDEigensolver(Eigensolver):
                 # TODO: Sync band eigenvalues
 
             if b_error < self.residual_target or linalg_error:
-                if linalg_error:
-                    print(f"linalg_error, {i}")
-                else:
-                    print(f"b_error < residual_target {i}: b_error={b_error}, residual_target={self.residual_target}")
                 break
 
             self.poststep(wfs, residual_nX, Ht, P2_ani, P3_ani,
@@ -302,6 +300,7 @@ class PWFDEigensolver(Eigensolver):
             error = weight_n @ error_n
             b_error = band_comm.sum_scalar(b_error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
+            i += 1
 
         if not wfs.orthonormalized:
             # wfs._P_ani = None

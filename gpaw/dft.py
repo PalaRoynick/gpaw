@@ -19,6 +19,7 @@ from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
+from gpaw.new.pwfd.multieigen import MultiEigensolver
 from gpaw.mixer.base import BaseMixer
 from gpaw.mixer.pulay import PulayMixer
 from gpaw.mixer.msr1 import MSR1Mixer
@@ -209,7 +210,8 @@ class Eigensolver(Parameter):
             'ppcg': PPCG,
             'lcao': LCAOEigensolver,
             'hybrid-lcao': HybridLCAOEigensolver,
-            'scissors': Scissors}
+            'scissors': Scissors,
+            'multi': Multi_Eigensolver}
 
         match eigensolver:
             case str(name):
@@ -364,7 +366,7 @@ class RMMDIIS(PWFDEigensolverParameter):
               band_comm,
               domain_band_comm,
               scalapack_parameters,
-              create_preconditioner,
+              hamiltonian,
               convergence,
               setups,
               atoms):
@@ -372,7 +374,7 @@ class RMMDIIS(PWFDEigensolverParameter):
             nbands,
             wf_desc,
             band_comm,
-            create_preconditioner,
+            hamiltonian,
             convergence,
             domain_band_comm=domain_band_comm,
             scalapack_parameters=scalapack_parameters,
@@ -380,6 +382,46 @@ class RMMDIIS(PWFDEigensolverParameter):
             diis_steps=self.diis_steps,
             max_buffer_mem=self.max_buffer_mem,
             trial_step=self.trial_step)
+
+
+class Multi_Eigensolver(Eigensolver):
+    name = 'multi'
+    cls = MultiEigensolver
+
+    def __init__(self,
+                 solvers: dict[str | dict | Eigensolver],
+                 max_buffer_mem: int = 200 * 1024**2):
+        for cond, solver in solvers.items():
+            solvers[cond] = Eigensolver.from_param(solver)
+        self.solvers = solvers
+        self.max_buffer_mem = max_buffer_mem
+
+    def todict(self):
+        return {'solvers': self.solvers,
+                'max_buffer_mem': self.max_buffer_mem}
+
+    def build(self,
+              nbands,
+              wf_desc,
+              band_comm,
+              domain_band_comm,
+              scalapack_parameters,
+              hamiltonian,
+              convergence,
+              setups,
+              atoms):
+        return self.cls(
+            nbands=nbands,
+            wf_grid=wf_desc,
+            band_comm=band_comm,
+            hamiltonian=hamiltonian,
+            convergence=convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
+            max_buffer_mem=self.max_buffer_mem,
+            solvers=self.solvers,
+            setups=setups,
+            atoms=atoms)
 
 
 class LCAOEigensolver(Eigensolver):
