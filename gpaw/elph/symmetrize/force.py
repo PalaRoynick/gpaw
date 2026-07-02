@@ -1,9 +1,7 @@
-import warnings
-
 import numpy as np
 from ase.utils.filecache import MultiFileJSONCache
 
-from .atom_mapper import AtomMapper, disp_key_to_index, disp_index_to_key
+from gpaw.new.symmetry import create_symmetries_object
 
 _SKIP_KEYS = frozenset({'info'})
 
@@ -12,14 +10,27 @@ class ForceSymmetrizer:
     """
     Symmetrize atomic forces using crystal symmetry.
 
+    Builds a :class:`gpaw.new.symmetry.Symmetries` object from ``atoms`` and
+    analyses the symmetries that survive each single-atom displacement
+    (``analyze_displacements``).  Equilibrium forces are symmetrized over the
+    full point group (``Symmetries.symmetrize_forces``); displaced forces are
+    symmetrized over the operations that survive that displacement
+    (``Symmetries.symmetrize_displaced_forces``).
+
     Parameters
     ----------
-    mapper : AtomMapper
-        Provides ``symmetries`` (rotation_scc, atommap_sa) and ``disp_map_sd``.
+    atoms : ase.Atoms
+        The primitive / reference structure whose displacements are catalogued.
+        Symmetry (and the displacement orbits) come from this cell, so pass the
+        primitive cell -- not ``atoms * supercell`` -- to keep the full point
+        group (a supercell drops operations and breaks phonon degeneracies).
+        Forces may still be measured on a larger (supercell) atom set.
     """
 
-    def __init__(self, mapper: AtomMapper):
-        self.mapper = mapper
+    def __init__(self, atoms):
+        self.atoms = atoms
+        self.symmetries = create_symmetries_object(atoms)
+        self.symmetries.analyze_displacements()
 
     def symmetrize_equilibrium(self, F_av: np.ndarray) -> np.ndarray:
         """
@@ -34,13 +45,7 @@ class ForceSymmetrizer:
         F_sym : ndarray, shape (n_atoms, 3)
             Symmetrized forces; ≈ 0 for a well-converged calculation.
         """
-        sym = self.mapper.symmetries
-        n_ops = len(sym.rotation_scc)
-        F_sym = np.zeros_like(F_av)
-        for s in range(n_ops):
-            F_sym += F_av @ sym.rotation_scc[s]
-        F_sym /= n_ops
-        return F_sym
+        return self.symmetries.symmetrize_forces(np.asarray(F_av))
 
     def symmetrize_displaced(self, disp_key: str, forces: dict) -> np.ndarray:
         """
@@ -52,48 +57,22 @@ class ForceSymmetrizer:
             Target displacement identifier, e.g. '0x-'.
         forces : dict[str, ndarray]
             Mapping from displacement key to force array (n_atoms, 3).
-            Only the keys present in this dict are used; missing source
-            displacements are silently skipped.
 
         Returns
         -------
         F_sym : ndarray, shape (n_atoms, 3)
-            Symmetrized force array.  If no symmetry operations contribute,
-            the initial unsymmetrized array is returned and a warning is shown.
+            Symmetrized force array for ``disp_key``.
         """
-        sym = self.mapper.symmetries
-        n_ops = len(sym.rotation_scc)
-        d_tgt = disp_key_to_index(disp_key)
-        F_sym = np.zeros_like(forces[disp_key])
-        count = 0
+        return self.symmetries.symmetrize_displaced_forces(
+            [disp_key], forces)[disp_key]
 
-        for s in range(n_ops):
-            d_src = int(self.mapper.disp_map_sd[s, d_tgt])
-            if d_src == -1:
-                continue
-            src_key = disp_index_to_key(d_src)
-            if src_key not in forces:
-                continue
-            F_sym += forces[src_key] @ sym.rotation_scc[s]
-            count += 1
-
-        if count == 0:
-            warnings.warn(
-                f'No symmetry operations contributed to {disp_key!r}; '
-                'returning unsymmetrized forces.'
-            )
-            return np.array(forces[disp_key])
-
-        F_sym /= count
-        return F_sym
-
-    def symmetrize_all_displaced(self, disp_keys: set, forces: dict) -> dict:
+    def symmetrize_all_displaced(self, disp_keys, forces: dict) -> dict:
         """
         Symmetrize forces for a set of displaced configurations.
 
         Parameters
         ----------
-        disp_keys : set[str]
+        disp_keys : iterable[str]
             Displacement identifiers to symmetrize.
         forces : dict[str, ndarray]
             Full force mapping (may contain more keys than ``disp_keys``).
@@ -103,7 +82,7 @@ class ForceSymmetrizer:
         dict[str, ndarray]
             Symmetrized force arrays keyed by displacement identifier.
         """
-        return {k: self.symmetrize_displaced(k, forces) for k in disp_keys}
+        return self.symmetries.symmetrize_displaced_forces(disp_keys, forces)
 
     def symmetrize_cache(
         self, cache: MultiFileJSONCache, out_name: str
