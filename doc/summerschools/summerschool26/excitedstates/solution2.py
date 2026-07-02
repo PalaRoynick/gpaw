@@ -1,4 +1,5 @@
 from ase.build import bulk
+
 atoms = bulk('Si', 'diamond', a=5.4)
 pw_cut_off = 300
 kpts_grid = (3, 3, 3)
@@ -6,6 +7,8 @@ kpts_grid = (3, 3, 3)
 # snippet-pw-groundstate-start
 from gpaw import GPAW, FermiDirac
 from gpaw import PW
+from gpaw.utilities.bs_fi import  bandstructure_plot
+
 
 print(len(atoms))
 calc = GPAW(mode=PW(pw_cut_off),
@@ -47,7 +50,7 @@ direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-pw-direct-gap-end
 
-
+kpts_grid = (8,8,8)
 # snippet-lcao-groundstate-start
 calc = GPAW(mode="lcao",   # student mode lcao
             basis="dzp",   # basis set dzp
@@ -72,7 +75,7 @@ dft.write_gpw_file('Si_pw_from_lcao_groundstate.gpw', include_wfs=True)
 # snippet-lcao-to-pw-end
 
 nbands = 26
-bands = (3, 5)
+bands = (0, 26)
 ecut = 20.0
 
 # snippet-lcao-g0w0-start
@@ -91,3 +94,24 @@ direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
 
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
+
+
+delta_ibz_kn = (
+        results["qp"][0,:,:] - results["eps"][0,:,:]
+)
+calc_gs = GPAW("Si_lcao_groundstate.gpw")
+bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
+
+
+for cutoff in [15]:
+    bandstructure_plot(
+        calc_gs,
+        bandpath,
+        cutoff=cutoff,
+        delta_ibz_kn=delta_ibz_kn,
+        emin=-10,
+        emax=20,
+        filename=f"bs_{cutoff}.png",
+        plot_also_unshifted=True,
+    )
+plt.clf()
