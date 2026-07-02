@@ -68,7 +68,8 @@ def get_ecut(ecuts: np.ndarray,
              de: float) -> float:
     """Get ecut where energy has converged to within de.
 
-    >>> get_ecuts([300, 400, 500], [0.3, 0.1, 0.0], 0.2)
+    >>> get_ecut(np.array([300, 400, 500]),
+    ...          np.array([0.5, 0.25, 0.0]), 0.375)
     350.0
     """
     y = abs(energies - energies[-1])
@@ -77,8 +78,9 @@ def get_ecut(ecuts: np.ndarray,
         if i == 0:
             return ecuts[0]
         i -= 1
-    return (ecuts[i] * (de - y[i + 1]) +
-            ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
+    return float(
+        (ecuts[i] * (de - y[i + 1]) +
+         ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1]))
 
 
 def convergence_check(dir: Path, plot=False) -> tuple[float, float]:
