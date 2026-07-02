@@ -89,7 +89,7 @@ def convergence_check(dir: Path, plot=False) -> None:
         return np.inf, np.inf
     if plot:
         import matplotlib.pyplot as plt
-        plt.plot(ecuts, efcc, label=dir)
+        plt.plot(ecuts[:-1], np.log10(abs(efcc[:-1] - efcc[-1])), label=dir)
     ecut1 = get_ecut(ecuts, efcc, 0.1)
     ecut2 = get_ecut(ecuts, efcc, 0.01)
     ecut3 = get_ecut(ecuts, efcc, 0.001)
