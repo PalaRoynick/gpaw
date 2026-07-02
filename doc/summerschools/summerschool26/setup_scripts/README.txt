@@ -13,5 +13,5 @@ setup2026_student and then activates the created venv ~/venv_CAMD2026
 
 The script installs the Python packages necessary to run GPAW and the
 summer school exercises.  In addition, it installs the Spyder IDE as
-version installed in the databar does not work with a virtual
+the version installed in the databar does not work with a virtual
 environment.
