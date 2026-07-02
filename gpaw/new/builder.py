@@ -172,7 +172,6 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.grid, self.fine_grid = self.create_uniform_grids()
-        self.distributed_grid = self.grid.new(comm=comm)
         self.distributed_fine_grid = self.fine_grid.new(comm=comm)
 
         self.xc = create_functional(xcfunc,
