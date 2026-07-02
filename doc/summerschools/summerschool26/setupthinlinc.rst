@@ -87,7 +87,7 @@ Carrying on
 
 In the following instructions you might see comments about remembering to run ``linuxsh``.  **As a ThinLinc users you should not do that.**  It is done automatically when you open a command line window!
 
-Now read the guide for XXXXX
+Now read the guide for :ref:`gbar using`.
 
 
 
