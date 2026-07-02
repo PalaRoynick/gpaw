@@ -130,7 +130,7 @@ class RMMDIIS(PWFDEigensolver):
 
     @trace
     def bandstep(self, wfs, Ht, dH, block, block_slice,
-                 i, P2_ani, P3_ani, Ptemp_ani, dS_aii) -> None:
+                 i, P2_aNi, P3_aNi, Ptemp_aNi, dS_aii) -> None:
         """See here:
 
                 https://gpaw.readthedocs.io/documentation/rmm-diis.html
@@ -139,15 +139,15 @@ class RMMDIIS(PWFDEigensolver):
         eig_n = wfs.myeig_n[block_slice]  # Is a copy
         pt_aiX = wfs.pt_aiX
         xp = psit_nX.xp
-        R_nX = psit_nX.new(self.work_arrays[0, block_slice])  # Is a copy
-        P1_ani = Ptemp_ani[:, :block]
-        P2_ani = P2_ani[:, :block]
-        P3_ani = P3_ani[:, :block]
+        b = wfs.psit_nX.data.shape[0]
+        R_nX = wfs.psit_nX.new(self.work_arrays[0, :b])[block_slice]  # Is a copy
+        P1_ani = Ptemp_aNi[:, :block]
+        P2_ani = P2_aNi[:, :block]
+        P3_ani = P3_aNi[:, :block]
 
         # RMM Part:
         PR_nX = psit_nX.create_work_buffer(self.data_buffers[0])
         dR_nX = psit_nX.create_work_buffer(self.data_buffers[1])
-
         ekin_n = self.preconditioner(psit_nX, R_nX, out=PR_nX)
         Ht(PR_nX, out=dR_nX)
         pt_aiX.integrate(PR_nX, out=P1_ani)  # XXX: This is expensive

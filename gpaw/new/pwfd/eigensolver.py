@@ -109,7 +109,7 @@ class PWFDEigensolver(Eigensolver):
                 self.max_blocksize = 32
             else:
                 # GPU's prefer larger blocksizes
-                self.max_blocksize = 12
+                self.max_blocksize = 512
 
         X_max = max(1, np.prod(ibzwfs.get_max_shape()))
         self.max_blocksize = np.clip(self.max_blocksize, 1,
