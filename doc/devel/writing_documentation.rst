@@ -63,14 +63,24 @@ Then :command:`cd` to the :file:`doc` directory and build the html-pages::
 
 Make your changes to the ``.rst`` files, run the
 :command:`make` command again, check the results and if things
-looks ok, commit::
+looks ok, make a branch, commit and push::
 
     $ emacs index.rst
     $ make
     $ make browse
+    $ git switch -c my-changes-xyz
     $ git add index.rst
     $ git commit -m "..."
+    $ git push -u origin my-changes-xyz
 
+.. tip::
+
+   You can also let gitlab-CI build the web-pages:
+
+   * go to the pipeline of you merge request on gitlab.com
+   * click the "docs" CI-job to start it
+   * when the job has successfully finished, click "Browse" in the right
+     sidebar under "Job artifacts"
 
 **Adding figures and tables**
 
