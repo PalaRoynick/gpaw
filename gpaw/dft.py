@@ -128,8 +128,7 @@ class Mode(Parameter):
         mode = mode.copy()
         return {'pw': PW,
                 'lcao': LCAO,
-                'fd': FD,
-                'tb': TB}[mode.pop('name')](**mode)
+                'fd': FD}[mode.pop('name')](**mode)
 
     def dft_components_builder(self, atoms, params, *, log=None, comm=None):
         module = importlib.import_module(f'gpaw.new.{self.name}.builder')
@@ -188,10 +187,6 @@ class FD(Mode):
         if self.nn != 3:
             dct['nn'] = self.nn
         return dct
-
-
-class TB(Mode):
-    distribution = '?'
 
 
 class Eigensolver(Parameter):
