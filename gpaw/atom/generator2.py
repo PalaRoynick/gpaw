@@ -561,28 +561,19 @@ class PAWSetupGenerator:
             self.waves_l.append(waves)
 
     def pseudize(self, type='poly', nderiv=6, rcore=None):
-        if type == 'harm':
-            from gpaw.atom.g3 import pseudize
-            for waves in self.waves_l:
-                if waves.l < len(self.aea.channels):
-                    channel = self.aea.channels[waves.l]
-                else:
-                    channel = Channel(waves.l)
-                pseudize(waves, channel, self.vtr_g, nderiv)
+        if type == 'poly':
+            pseudizer = partial(self.pseudizer,
+                                points=abs(nderiv))
+        elif type == 'nc':
+            def pseudizer(a_g, gc, l=0, ecut=None, divergent=False):
+                return self.rgd.pseudize_normalized(
+                    a_g, gc, l, points=nderiv)
         else:
-            if type == 'poly':
-                pseudizer = partial(self.pseudizer,
-                                    points=abs(nderiv))
-            elif type == 'nc':
-                def pseudizer(a_g, gc, l=0, ecut=None, divergent=False):
-                    return self.rgd.pseudize_normalized(
-                        a_g, gc, l, points=nderiv)
-            else:
-                1 / 0
-            for waves in self.waves_l:
-                waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
-                               2.0 * self.rcmax, ecut=self.ecut,
-                               positive=nderiv < 0)
+            1 / 0
+        for waves in self.waves_l:
+            waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
+                           2.0 * self.rcmax, ecut=self.ecut,
+                           positive=nderiv < 0)
 
         self.Q = -self.aea.Z + self.ncore
         self.nt_g = self.rgd.zeros()

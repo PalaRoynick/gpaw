@@ -1600,9 +1600,3 @@ if __name__ == '__main__':
         results.append((e, x))
     for e, x in sorted(results):
         print(f'{e:7.2f} {x}')
-    # d1 = energies(Path(sys.argv[2]))
-    # print(d1['H'])
-    # for s, v1 in d1.items():
-    #    print(f'    {s!r}: [' +
-    #          ', '.join(f'{e:.3f}' for e in v1) + '],')
-    # print(work('FCC', 'H'))
