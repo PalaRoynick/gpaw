@@ -112,5 +112,6 @@ Instructions for the people testing and developing the projects can be
 found here:
 
 .. toctree::
+   :maxdepth: 1
 
    instructors

@@ -1,9 +1,5 @@
 .. _projects:
 
-========
-Projects
-========
-
 .. toctree::
 
     intro/intro
