@@ -78,6 +78,10 @@ else
     # cp /zhome/9f/f/2737/CAMD2022/camdnotebook venv/bin
 fi
 
+# Make sure that GPAW is not running on a compute node
+mkdir -p ~/.gpaw
+cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_compute_node.py ~/.gpaw/rc.py
+
 source ~/CAMD2026/venv/bin/activate
 
 # Copy the exercise files
