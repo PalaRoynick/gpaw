@@ -6,4 +6,6 @@ import os
 
 _hostname = os.getenv('HOSTNAME', '')
 if 'login' in _hostname:
-    raise RuntimeError(f'\n\nERROR:\nAttempting to run GPAW on login node {_hostname}\nDid you forget to run linuxsh?\n')
+    raise RuntimeError('\n\nERROR:\n'
+                       + f'Attempting to run GPAW on login node {_hostname}'
+                       + '\nDid you forget to run linuxsh?\n')
