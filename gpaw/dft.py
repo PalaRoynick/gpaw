@@ -346,9 +346,9 @@ class RMMDIIS(PWFDEigensolverParameter):
 
     def __init__(self,
                  niter: int = 1,
-                 diis_steps: int = 1,
+                 diis_steps: int = 4,
                  max_buffer_mem: int = 200 * 1024**2,
-                 trial_step: float | None = None):
+                 trial_step: float | None = 0.05):
         self.niter = niter
         self.diis_steps = diis_steps
         self.max_buffer_mem = max_buffer_mem

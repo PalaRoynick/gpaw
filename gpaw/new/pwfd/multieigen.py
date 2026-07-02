@@ -63,7 +63,6 @@ class MultiEigensolver(PWFDEigensolver):
                 break
         self.niter = self.active_solver.niter
         self.active_solver.prestep(*args, b_error=b_error, i=i, **kwargs)
-        print(f'iter {i} from {self.active_solver}')
 
     def bandstep(self, *args, **kwargs):
         self.active_solver.bandstep(*args, **kwargs)

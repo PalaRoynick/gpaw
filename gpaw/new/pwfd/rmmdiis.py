@@ -21,8 +21,8 @@ class RMMDIIS(PWFDEigensolver):
                  convergence,
                  domain_band_comm,
                  niter: int = 1,
-                 diis_steps: int = 3,
-                 trial_step: float | None = None,
+                 diis_steps: int = 4,
+                 trial_step: float | None = 0.1,
                  scalapack_parameters=None,
                  max_buffer_mem: int = 200 * 1024 ** 2):
         """RMM-DIIS eigensolver.
@@ -189,9 +189,9 @@ class RMMDIIS(PWFDEigensolver):
                 if i < self.diis_steps:
                     # Create some buffers
                     psit_new_nX = psit_nX.create_work_buffer(
-                        self.data_buffers[0, i])
+                        self.data_buffers[0 + 2 * i])
                     R_new_nX = psit_nX.create_work_buffer(
-                        self.data_buffers[1, i])
+                        self.data_buffers[1 + 2 * i])
                 else:
                     # Last step, overwrite original wave functions
                     psit_new_nX = psit_nX
@@ -237,8 +237,8 @@ class RMMDIIS(PWFDEigensolver):
                     else:
                         PR_new_nX = R_new_nX
                     # Take the step!
-                    preconditioner(psit_nX, R_new_nX,
-                                   out=PR_new_nX, ekin_n=ekin_n)
+                    self.preconditioner(psit_nX, R_new_nX,
+                                        out=PR_new_nX, ekin_n=ekin_n)
                     psit_new_nX.data += PR_new_nX.data * lambda_n
 
                     # Get the next trial vector
@@ -257,6 +257,6 @@ class RMMDIIS(PWFDEigensolver):
         if self.trial_step is None:
             PR_nX.data *= lambda_n
         else:
-            PR_nX.data *= trial_step
+            PR_nX.data *= self.trial_step
         psit_nX.data[:] += PR_nX.data
         wfs.psit_nX.data[block_slice] = psit_nX.data
