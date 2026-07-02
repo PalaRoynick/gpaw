@@ -190,6 +190,6 @@ called CAMD2026 in your DTU databar account.
 Carrying on
 ===========
 
-Now read the guide for XXXXX
+Now read the guide for :ref:`gbar using`.
 
 

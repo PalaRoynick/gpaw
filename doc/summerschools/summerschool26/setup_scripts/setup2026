@@ -5,10 +5,17 @@
 #
 # source ~jasc/setup2022
 #
- 
+
+
+# Deactivate any active venv
+if [[ -n $VIRTUAL_ENV ]]; then
+    echo Deactivating virtual environment $VIRTUAL_ENV
+    deactivate
+fi
+
 bash ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/setup2026_student || return 1
 
-source ~/venv_CAMD2026/bin/activate
+source ~/CAMD2026/venv/bin/activate
 
 echo
 echo "SUCCESS - your account has been prepared for the CAMD 2026 Summer School"
