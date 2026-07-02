@@ -58,6 +58,8 @@ The instructions depend on the operating system you use
 Setting up thinlinc for the first time
 --------------------------------------
 
+IMPORTANT: You should either set up SSH or ThinLinc, **no need to do both!**
+
 .. toctree::
    :maxdepth: 1
 
