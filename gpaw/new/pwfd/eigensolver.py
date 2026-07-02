@@ -288,7 +288,8 @@ class PWFDEigensolver(Eigensolver):
                                   i, P2_ani, P3_ani, Ptemp_ani, dS_aii)
                 # TODO: Sync band eigenvalues
 
-            if b_error < self.residual_target or linalg_error:
+            if b_error < self.residual_target or linalg_error \
+                    or i + 1 >= self.niter:
                 break
 
             self.poststep(wfs, residual_nX, Ht, P2_ani, P3_ani,

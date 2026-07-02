@@ -21,7 +21,7 @@ class RMMDIIS(PWFDEigensolver):
                  convergence,
                  domain_band_comm,
                  niter: int = 1,
-                 diis_steps: int = 4,
+                 diis_steps: int = 2,
                  trial_step: float | None = 0.1,
                  scalapack_parameters=None,
                  max_buffer_mem: int = 200 * 1024 ** 2):
@@ -138,7 +138,6 @@ class RMMDIIS(PWFDEigensolver):
         eig_n = wfs.eig_n[block_slice]
         pt_aiX = wfs.pt_aiX
         xp = psit_nX.xp
-        b = wfs.psit_nX.mydims[0]
         R_nX = psit_nX.new(self.work_arrays[0, block_slice])
         P1_ani = Ptemp_ani[:, block_slice]
         P2_ani = P2_ani[:, block_slice]
@@ -260,3 +259,5 @@ class RMMDIIS(PWFDEigensolver):
             PR_nX.data *= self.trial_step
         psit_nX.data[:] += PR_nX.data
         wfs.psit_nX.data[block_slice] = psit_nX.data
+
+        return False
