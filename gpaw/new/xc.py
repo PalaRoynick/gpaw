@@ -102,8 +102,11 @@ class Functional:
                             ibzwfs, density,
                             interpolate: Callable[[UGArray], UGArray]
                             ) -> Array2D:
+        from gpaw.mpi import world
+        print('here 1', world.rank)
         args, kwargs = self._args(ibzwfs, density, interpolate)
-        if ibzwfs.kpt_band_comm.rank == 0:
+        if 1: #fine_domains_complementary_comm.rank == 0: #ibzwfs.kpt_band_comm.rank == 0:
+            print('one of them should be 0')
             if self.xp is np:
                 if isinstance(self.xc, VDWXC):
                     xck = self.xc.semilocal_xc.kernel
@@ -125,6 +128,7 @@ class Functional:
                                  sigma_xr.data, dedsigma_xr.data)
             else:
                 1 / 0
+            print('here 2')
             return self._stress(*args, **kwargs)
         return self.xp.zeros((3, 3))
 
@@ -158,21 +162,28 @@ class LDAFunctional(Functional):
         return exc, vxct_sr, None
 
     def _args(self, ibzwfs, density, interpolate):
-        if ibzwfs.kpt_band_comm.rank != 0:
-            return (), {}
+        #if ibzwfs.kpt_band_comm.rank != 0:
+        #    return (), {}
+        print('ghj 1')
         nt_sR = density.nt_sR
         e_r = self.grid.empty(xp=self.xp)
         nt_sr = interpolate(nt_sR)
         vt_sr = nt_sr.new(zeroed=True)
+        print('ghj 2')
         return (e_r, nt_sr, vt_sr), {}
 
     def _stress(self,  # type: ignore
                 e_r: UGArray,
                 nt_sr: UGArray,
                 vt_sr: UGArray) -> Array2D:
+        print('kkk 1')
         P = e_r.integrate(skip_sum=True)
         for vt_r, nt_r in zip(vt_sr, nt_sr):
             P -= vt_r.integrate(nt_r, skip_sum=True)
+        print('kkk 2')
+        print('Diagonal xc stress', P)
+        from gpaw.mpi import world
+        print('Comm summed xc stress', world.sum_scalar(P))
         return float(P) * self.xp.eye(3)
 
 
