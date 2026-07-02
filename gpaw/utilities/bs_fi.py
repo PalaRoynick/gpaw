@@ -235,7 +235,7 @@ class ReciprocalLCAOOperator(LCAOOperator):
 
 
 def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
-    # Setup H_RMM, S_RMM, scissor_RMM
+    # Setup BZ operators needed to interpolate the scissor correction.
     calc_bz = calc_ibz.fixed_density(
         symmetry="off",
         **(
@@ -244,35 +244,62 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
             else {}
         ),
     )
-    k_bz = calc_bz.get_ibz_k_points()
+
+    scissor_RMM = None
+    if shift_kn is None:
+        return calc_bz, scissor_RMM
+
     H_kMM, S_kMM = operators_from_calc(calc_bz)
     N_c = calc_bz.wfs.kd.N_c
-    # k -> R
-    H_RMM = H_kMM.fourier_transform(cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c)
-    S_RMM = S_kMM.fourier_transform(cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c)
-    scissor_RMM = None
-    if shift_kn is not None:
-        reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
-        delta_Kn = reciprocal.ibz2bz(shift_kn)
-        scissor_kMM = ScissorOperator.from_operators(H_kMM, S_kMM, delta_Kn, s_power)
-        scissor_RMM = scissor_kMM.fourier_transform(
-            cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c
-        )
-    return calc_bz, H_RMM, S_RMM, scissor_RMM
 
-
-def create_bandstructure(calc, bandpath, cutoff=13, shift_kn=None, s_power=1 / 2):
-
-    calc_bz, H_RMM, S_RMM, scissor_power_RMM = create_realspace_lcao_operators(
-        calc,
-        cutoff=cutoff,
-        shift_kn=shift_kn,
-        s_power=s_power,
+    reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
+    delta_Kn = reciprocal.ibz2bz(shift_kn)
+    scissor_kMM = ScissorOperator.from_operators(H_kMM, S_kMM, delta_Kn, s_power)
+    scissor_RMM = scissor_kMM.fourier_transform(
+        cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c
     )
+    return calc_bz, scissor_RMM
 
-    # R -> k on  band path
-    H_bandpath_kMM = H_RMM.inverse_fourier_transform(bandpath.kpts)
-    S_bandpath_kMM = S_RMM.inverse_fourier_transform(bandpath.kpts)
+
+def exact_lcao_operators(calc, kpts, shift_kn=None):
+    kwargs = {}
+    if shift_kn is not None:
+        nbands = shift_kn.shape[1]
+        kwargs.update(nbands=nbands, convergence={"bands": nbands})
+
+    calc_bandpath = calc.fixed_density(
+        symmetry="off",
+        kpts=kpts,
+        **kwargs,
+    )
+    H_kMM, S_kMM = operators_from_calc(calc_bandpath)
+    assert np.allclose(H_kMM.kpt_kc, kpts)
+    assert np.allclose(S_kMM.kpt_kc, kpts)
+    return H_kMM, S_kMM
+
+
+def create_bandstructure(
+    calc,
+    bandpath,
+    cutoff=13,
+    shift_kn=None,
+    s_power=1 / 2,
+):
+
+    scissor_power_RMM = None
+    if shift_kn is not None:
+        _calc_bz, scissor_power_RMM = create_realspace_lcao_operators(
+            calc,
+            cutoff=cutoff,
+            shift_kn=shift_kn,
+            s_power=s_power,
+        )
+
+    H_bandpath_kMM, S_bandpath_kMM = exact_lcao_operators(
+        calc,
+        bandpath.kpts,
+        shift_kn=shift_kn,
+    )
 
     scissor_power_bandpath_kMM = None
     if shift_kn is not None:
@@ -339,7 +366,7 @@ def bandstructure_plot(
     )
 
 
-def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power):
+def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
     bs_shifted_fromRSpace = create_bandstructure(
         calc=calc_ibz,
         bandpath=bandpath,
@@ -376,9 +403,6 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power):
     k_bz_kc = reciprocal.kpt_Kc
     exact_bz_eps_kn = reciprocal.ibz2bz(exact_ibz_eps_kn)
 
-    bs_shifted_fromRSpace = create_bandstructure(
-        calc_ibz, bandpath, cutoff=cutoff, shift_kn=delta_ibz_kn, s_power=s_power
-    )
     no_shift_bs = create_bandstructure(calc_ibz, bandpath, cutoff=cutoff, shift_kn=None)
 
     bs_no_FT = create_non_FT_bandstructure(calc_ibz, bandpath)

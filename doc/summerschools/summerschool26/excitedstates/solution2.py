@@ -75,7 +75,7 @@ dft.write_gpw_file('Si_pw_from_lcao_groundstate.gpw', include_wfs=True)
 # snippet-lcao-to-pw-end
 
 nbands = 26
-bands = (0, 26)
+bands = (3, 5)
 ecut = 20.0
 
 # snippet-lcao-g0w0-start
@@ -90,7 +90,7 @@ gw.calculate()
 
 # snippet-lcao-direct-gap-start
 results = pickle.load(open('Si-from-lcao-g0w0_results_GW.pckl', 'rb'))
-direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
+direct_gap = results['qp'][0, 0, 4] - results['qp'][0, 0, 3]
 
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
@@ -101,6 +101,10 @@ delta_ibz_kn = (
 )
 calc_gs = GPAW("Si_lcao_groundstate.gpw")
 bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
+
+
+#plot_gw_bandstructure(calc_gs, bandpath, 'Si-from...pckl')
+#gpaw plot-gw a.gpw gw.pckl --bandpath GLM
 
 
 for cutoff in [15]:
