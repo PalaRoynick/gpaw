@@ -181,7 +181,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
           code-data/
     """
     d = json.loads(p.read_text())['BM_fit_data']
-    D = {}
+    D: dict[str, dict] = {}
     for k, v in d.items():
         s, name = k.split('-')
         if s not in D:
@@ -211,7 +211,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
     return d
 
 
-def check(dir: Path) -> None:
+def check(dir: Path) -> float:
     d = []
     v = {}
     for p in dir.glob('*.json'):

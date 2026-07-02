@@ -6,6 +6,7 @@ import numpy as np
 from gpaw import setup_paths
 from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
 from gpaw.utilities.acwf import reference_structure, work, acwf_structures
+from gpaw.mpi import world
 
 
 def eos(structure, symbol=None):
@@ -41,7 +42,7 @@ def ecuts(symbol: str = None,
                 dft.converge()
             e = dft.calculate_energy() / len(atoms)
             results.append(e)
-    if dft.comm.rank == 0:
+    if world.rank == 0:
         n = len(energies)
         Path('ecuts.json').write_text(
             '[' +
@@ -80,7 +81,7 @@ def get_ecut(ecuts: np.ndarray,
             ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1])
 
 
-def convergence_check(dir: Path, plot=False) -> None:
+def convergence_check(dir: Path, plot=False) -> tuple[float, float]:
     """Write summary."""
     try:
         ecuts, efcc, de = np.array(
