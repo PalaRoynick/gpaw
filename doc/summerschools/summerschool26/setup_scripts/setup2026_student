@@ -65,6 +65,7 @@ else
     echo "Installinge ASE and GPAW into virtual environment"
     bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv_CAMD2026
     source ~/venv_CAMD2026/bin/activate
+    pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl
     pushd venv_CAMD2026
     git clone https://gitlab.com/taskblaster/taskblaster.git
     pip install -e taskblaster
