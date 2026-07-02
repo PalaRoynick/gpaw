@@ -63,6 +63,7 @@ class RMMDIIS(PWFDEigensolver):
     def prestep(self, wfs, residual_nX,
                 P2_ani, P3_ani, Ptemp_ani):
         wfs.orthonormalized = False
+        wfs._P_ani = None
 
     def iterate1_old(self,
                  wfs: PWFDWaveFunctions,
@@ -81,7 +82,6 @@ class RMMDIIS(PWFDEigensolver):
 
         residual_nX = psit_nX.new(data=self.work_arrays[0, :mynbands])
 
-        P_ani = wfs.P_ani
         work1_ani = P_ani.new()
         work2_ani = P_ani.new()
         work_nX = psit_nX.create_work_buffer(self.data_buffers[0, 0])
@@ -138,8 +138,7 @@ class RMMDIIS(PWFDEigensolver):
         pt_aiX = wfs.pt_aiX
         xp = psit_nX.xp
         b = wfs.psit_nX.mydims[0]
-        R_nX = psit_nX.new(self.work_arrays[0, :b])[block_slice]
-        P_ani = wfs.P_ani[:, block_slice]
+        R_nX = psit_nX.new(self.work_arrays[0, block_slice])
         P1_ani = Ptemp_ani[:, block_slice]
         P2_ani = P2_ani[:, block_slice]
         P3_ani = P3_ani[:, block_slice]
@@ -258,4 +257,5 @@ class RMMDIIS(PWFDEigensolver):
             PR_nX.data *= lambda_n
         else:
             PR_nX.data *= trial_step
-        psit_nX.data += PR_nX.data
+        psit_nX.data[:] += PR_nX.data
+        wfs.psit_nX.data[block_slice] = psit_nX.data
