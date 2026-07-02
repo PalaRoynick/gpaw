@@ -4,7 +4,18 @@ from pathlib import Path
 def setup(app):
     # Get png and csv files and other stuff from the AGTS scripts that run
     # every weekend:
-    import gpaw_web_page_data
+    try:
+        import gpaw_web_page_data
+    except ImportError:
+        print("""
+Please clone and pip install the gpaw_web_page_data package
+from git@gitlab.com:gpaw/gpaw_web_page_data.git or use:
+
+   cd root-of-gpaw-clone
+   pip install -e .[docs]
+
+""")
+        raise
     data = Path(gpaw_web_page_data.__file__).parent
     print('Using gpaw-web-page-data from', data)
     doc = Path()
