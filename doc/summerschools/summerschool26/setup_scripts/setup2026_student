@@ -84,29 +84,14 @@ cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_c
 
 source ~/CAMD2026/venv/bin/activate
 
-# Copy the exercise files
-SUMMERSOURCEDIR=~/CAMD2026/venv/gpaw/doc/summerschools/summerschool26
-
-# echo "Preparing Python scripts."
-# (cd $SUMMERSOURCEDIR && python student.py)
-
-# echo "Copying exercise files into CAMD2026 (if missing)."
-# # Order is important, the FIRST matching pattern counts.
-# rsync -vrltbm --ignore-existing --include="*/" --include="*.traj" --exclude="*.master.db" --include="*.db" --exclude setup_scripts --exclude="*_teacher.py" --exclude='student.py' --include="*.py" --include="*/*.png" --include="*.xyz" --exclude="*" $SUMMERSOURCEDIR/. CAMD2026/.
-
 echo
 if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
     echo "MyQueue configuration found, assuming it makes sense."
 else
     echo "Installing MyQueue configuration."
     mkdir -p $HOME/CAMD2026/.myqueue
-    # cp $SUMMERSOURCEDIR/setup_scripts/myqueue_config.py $HOME/CAMD2026/.myqueue/config.py
     cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/CAMD2026/.myqueue/config.py
 fi
-
-#echo "Enabling Jupyter Notebook extensions."
-#jupyter nbextension enable nglview --py 
-### jupyter nbextension enable widgetsnbextension --py
 
 echo
 echo "Preparing Jupyter for use in virtual environment"
