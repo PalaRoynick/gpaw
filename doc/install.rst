@@ -124,7 +124,7 @@ Make sure that everything works by running a simple test::
 
 If this worked then try also a parallel calculation::
 
-    $ gpaw -P 4 test
+    $ mpiexec -n 3 gpaw test
 
 Please report errors to the ``gpaw-users`` mailing list so that we
 can fix them (see :ref:`mail list`).

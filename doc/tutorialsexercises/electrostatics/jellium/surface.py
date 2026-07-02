@@ -6,6 +6,7 @@ from ase.units import Bohr
 from gpaw import GPAW, PW
 from gpaw.core import UGArray
 from gpaw.extensions.jellium import Jellium
+from gpaw.mpi import world
 
 rs = 5.0 * Bohr  # Wigner-Seitz radius
 h = 0.2          # grid-spacing
@@ -36,4 +37,5 @@ surf.calc = GPAW(mode=PW(400.0),
                  txt='surface.txt')
 e = surf.get_potential_energy()
 density = surf.calc.get_pseudo_density()[0, 0]
-Path('surface.json').write_text(json.dumps(density.tolist()))
+if world.rank == 0:
+    Path('surface.json').write_text(json.dumps(density.tolist()))
