@@ -67,7 +67,7 @@ Start it by running the  command ``spyder -p .`` in the ``CAMD2026`` folder - th
     cd CAMD2026
     spyder -p .
 
-ThinLinc users: Please open ``spyder`` with the command line above.  You may be able to find an ancient version in one of the application menus, but that will be a really old version.
+ThinLinc users: Please open ``spyder`` with the command line above.  You may be able to find an ancient version in one of the application menus, but that will not work with the virtual enviroment.  The correct version is version 6, the old one is version 5.  The version number is displayed on the splash screen.
 
 You can run the selected file by clicking on the green Run triangle.  Any plots will be shown in the Plot pane of the upper right panel.
 

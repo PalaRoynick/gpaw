@@ -33,11 +33,11 @@ compute nodes, running on the login node will overload it.
 Instructions
 ============
 
-There are two main ways to log in to the DTU system, *ssh* and *thinlinc*.
+There are two main ways to log in to the DTU system, *SSH* and *ThinLinc*.
 
-**ssh** is probably the most convenient.  Programs on the remote system will be able to open windows on your computer just like local programs.
+**SSH** is probably the most convenient.  Programs on the remote system will be able to open windows on your computer just like local programs.
 
-**thinlinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
+**ThinLinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
 
 Which one you choose is a matter of taste.  We find ssh slightly more convenient once it is set up, but thinlinc may be a bit easier to set up initially.
 
@@ -57,6 +57,8 @@ The instructions depend on the operating system you use
 
 Setting up thinlinc for the first time
 --------------------------------------
+
+IMPORTANT: You should either set up SSH or ThinLinc, **no need to do both!**
 
 .. toctree::
    :maxdepth: 1
