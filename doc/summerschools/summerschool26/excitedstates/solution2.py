@@ -7,7 +7,7 @@ kpts_grid = (3, 3, 3)
 # snippet-pw-groundstate-start
 from gpaw import GPAW, FermiDirac
 from gpaw import PW
-from gpaw.utilities.bs_fi import  bandstructure_plot
+from gpaw.utilities.bs_fi import  plot_G0W0_bandstructure
 
 
 print(len(atoms))
@@ -50,7 +50,7 @@ direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-pw-direct-gap-end
 
-kpts_grid = (8,8,8)
+kpts_grid = (4,4,4)
 # snippet-lcao-groundstate-start
 calc = GPAW(mode="lcao",   # student mode lcao
             basis="dzp",   # basis set dzp
@@ -75,7 +75,7 @@ dft.write_gpw_file('Si_pw_from_lcao_groundstate.gpw', include_wfs=True)
 # snippet-lcao-to-pw-end
 
 nbands = 26
-bands = (3, 5)
+bands = (0,8)
 ecut = 20.0
 
 # snippet-lcao-g0w0-start
@@ -95,27 +95,6 @@ direct_gap = results['qp'][0, 0, 4] - results['qp'][0, 0, 3]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
 
-
-delta_ibz_kn = (
-        results["qp"][0,:,:] - results["eps"][0,:,:]
-)
 calc_gs = GPAW("Si_lcao_groundstate.gpw")
 bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
-
-
-#plot_gw_bandstructure(calc_gs, bandpath, 'Si-from...pckl')
-#gpaw plot-gw a.gpw gw.pckl --bandpath GLM
-
-
-for cutoff in [15]:
-    bandstructure_plot(
-        calc_gs,
-        bandpath,
-        cutoff=cutoff,
-        delta_ibz_kn=delta_ibz_kn,
-        emin=-10,
-        emax=20,
-        filename=f"bs_{cutoff}.png",
-        plot_also_unshifted=True,
-    )
-plt.clf()
+plot_G0W0_bandstructure(calc_gs,bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
