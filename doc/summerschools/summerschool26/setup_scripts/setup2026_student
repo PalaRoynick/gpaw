@@ -55,38 +55,40 @@ fi
 
 # Set up venv
 
-if [[ -d venv_CAMD2026 ]]; then
+if [[ -d CAMD2026/venv ]]; then
     echo "Virtual folder structure found.  If you want to start over, please"
-    echo "delete the folder venv_CAMD2026 and run the installation script again."
+    echo "delete the folder CAMD2026/venv and run the installation script again."
     sleep 3
 else
     echo "Populating pip cache"
     tar xf ~jasc/CAMD2026/pipcache.tgz
     echo "Installinge ASE and GPAW into virtual environment"
-    bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv_CAMD2026
-    source ~/venv_CAMD2026/bin/activate
+    pushd CAMD2026
+    bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv
+    source venv/bin/activate
     pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl
-    pushd venv_CAMD2026
+    pushd venv
     git clone https://gitlab.com/taskblaster/taskblaster.git
     pip install -e taskblaster
     popd
     pip install git+https://gitlab.com/asr-dev/asr-lib.git@main
     pip cache purge
     deactivate
+    popd
     # cp /zhome/9f/f/2737/CAMD2022/camdnotebook venv/bin
 fi
 
-source ~/venv_CAMD2026/bin/activate
+source ~/CAMD2026/venv/bin/activate
 
 # Copy the exercise files
-SUMMERSOURCEDIR=~/venv_CAMD2026/gpaw/doc/summerschools/summerschool26
+SUMMERSOURCEDIR=~/CAMD2026/venv/gpaw/doc/summerschools/summerschool26
 
-echo "Preparing Python scripts."
-(cd $SUMMERSOURCEDIR && python student.py)
+# echo "Preparing Python scripts."
+# (cd $SUMMERSOURCEDIR && python student.py)
 
-echo "Copying exercise files into CAMD2026 (if missing)."
+# echo "Copying exercise files into CAMD2026 (if missing)."
 # # Order is important, the FIRST matching pattern counts.
-rsync -vrltbm --ignore-existing --include="*/" --include="*.traj" --exclude="*.master.db" --include="*.db" --exclude setup_scripts --exclude="*_teacher.py" --exclude='student.py' --include="*.py" --include="*/*.png" --include="*.xyz" --exclude="*" $SUMMERSOURCEDIR/. CAMD2026/.
+# rsync -vrltbm --ignore-existing --include="*/" --include="*.traj" --exclude="*.master.db" --include="*.db" --exclude setup_scripts --exclude="*_teacher.py" --exclude='student.py' --include="*.py" --include="*/*.png" --include="*.xyz" --exclude="*" $SUMMERSOURCEDIR/. CAMD2026/.
 
 echo
 if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
@@ -109,7 +111,7 @@ python -m ipykernel install --user --name=CAMD2026
 
 # Set up .bashrc
 cd
-BRCSCRIPT=$HOME/venv_CAMD2026/bin/activate
+BRCSCRIPT=$HOME/CAMD2026/venv/bin/activate
 if grep -q "source $BRCSCRIPT" .bashrc ; then
     echo "Your .bashrc file is already set up.  Good."
 else

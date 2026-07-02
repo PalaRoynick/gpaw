@@ -9,7 +9,7 @@ In the home folder (~jasc) a softlink is placed to
 ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/setup2026
 
 When the students source ~jasc/setup2026, that script first executes
-setup2026_student and then activates the created venv ~/venv_CAMD2026
+setup2026_student and then activates the created venv ~/CAMD2026/venv
 
 The script installs the Python packages necessary to run GPAW and the
 summer school exercises.  In addition, it installs the Spyder IDE as

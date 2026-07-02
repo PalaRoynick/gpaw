@@ -116,7 +116,7 @@ once)::
 (This is the same script the students will be running to set up their account).
 
 This will create a folder ``CAMD2026``, a virtual environment in
-``venv_CAMD2026``, and a MyQueue configuration.
+``CAMD2026/venv``, and a MyQueue configuration.
 
 A line is added to your .bashrc to automatically activate the virtual
 environment.  Remove it and activate manually if it causes trouble.
