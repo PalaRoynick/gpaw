@@ -128,20 +128,21 @@ class RMMDIIS(PWFDEigensolver):
         wfs.orthonormalize(residual_nX)
         return error
 
+    @trace
     def bandstep(self, wfs, Ht, dH, block, block_slice,
                  i, P2_ani, P3_ani, Ptemp_ani, dS_aii) -> None:
         """See here:
 
                 https://gpaw.readthedocs.io/documentation/rmm-diis.html
         """
-        psit_nX = wfs.psit_nX[block_slice]
-        eig_n = wfs.eig_n[block_slice]
+        psit_nX = wfs.psit_nX[block_slice]  # Is a copy
+        eig_n = wfs.myeig_n[block_slice]  # Is a copy
         pt_aiX = wfs.pt_aiX
         xp = psit_nX.xp
-        R_nX = psit_nX.new(self.work_arrays[0, block_slice])
-        P1_ani = Ptemp_ani[:, block_slice]
-        P2_ani = P2_ani[:, block_slice]
-        P3_ani = P3_ani[:, block_slice]
+        R_nX = psit_nX.new(self.work_arrays[0, block_slice])  # Is a copy
+        P1_ani = Ptemp_ani[:, :block]
+        P2_ani = P2_ani[:, :block]
+        P3_ani = P3_ani[:, :block]
 
         # RMM Part:
         PR_nX = psit_nX.create_work_buffer(self.data_buffers[0])
@@ -257,7 +258,7 @@ class RMMDIIS(PWFDEigensolver):
             PR_nX.data *= lambda_n
         else:
             PR_nX.data *= self.trial_step
-        psit_nX.data[:] += PR_nX.data
-        wfs.psit_nX.data[block_slice] = psit_nX.data
+        psit_nX.data += PR_nX.data
+        # wfs.psit_nX.data[block_slice] = psit_nX.data
 
         return False

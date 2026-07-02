@@ -55,7 +55,7 @@ class PWFDEigensolver(Eigensolver):
                  convergence: dict,
                  nbands: int,
                  domain_band_comm,
-                 blocksize: int = 10,
+                 blocksize: int | None = None,
                  max_buffer_mem: int | None = 200 * 1024 ** 2,
                  scalapack_parameters: tuple[int, int, int] | None = None):
         self.wf_grid = wf_grid
@@ -109,7 +109,7 @@ class PWFDEigensolver(Eigensolver):
                 self.max_blocksize = 32
             else:
                 # GPU's prefer larger blocksizes
-                self.max_blocksize = 512
+                self.max_blocksize = 12
 
         X_max = max(1, np.prod(ibzwfs.get_max_shape()))
         self.max_blocksize = np.clip(self.max_blocksize, 1,
@@ -276,16 +276,16 @@ class PWFDEigensolver(Eigensolver):
             self.prestep(wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani,
                          b_error=b_error, i=i)
 
-            for j in range(0, loop_limit, self.max_blocksize):
+            for j in range(0, loop_limit, self.blocksize):
                 block_slice_base = \
                     slice(min(j, len(active_indicies)),  # XXX
-                        min(j + self.max_blocksize, len(active_indicies)))
+                          min(j + self.blocksize, len(active_indicies)))
                 block = \
                     block_slice_base.stop - block_slice_base.start
-                block_slice = active_indicies[block_slice_base]
-                linalg_error = linalg_error or \
-                    self.bandstep(wfs, Ht, dH, block, block_slice,
-                                  i, P2_ani, P3_ani, Ptemp_ani, dS_aii)
+                block_slice = block_slice_base # active_indicies[block_slice_base]
+                linalg_error = self.bandstep(wfs, Ht, dH, block, block_slice,
+                                             i, P2_ani, P3_ani, Ptemp_ani, dS_aii) \
+                    or linalg_error
                 # TODO: Sync band eigenvalues
 
             if b_error < self.residual_target or linalg_error \
@@ -318,7 +318,7 @@ class PWFDEigensolver(Eigensolver):
 
     def bandstep(self, wfs, Ht, dH, block, block_slice,
                  i, P2_ani, P3_ani, Ptemp_ani, dS_aii) -> None:
-        pass
+        return False
 
     def poststep(self, wfs, residual_nX, Ht, P2_ani, P3_ani, Ptemp_ani, dH, i, dS_aii) -> None:
         pass
