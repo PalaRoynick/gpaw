@@ -161,7 +161,8 @@ class PPCG(PWFDEigensolver):
 
     @trace
     def prestep(self, wfs, residual_nX,
-                P2_ani, P3_ani, Ptemp_ani):
+                P2_ani, P3_ani, Ptemp_ani,
+                b_error, i):
         M_nn = self.M_nn
         psit_nX = wfs.psit_nX
         P_ani = wfs.P_ani

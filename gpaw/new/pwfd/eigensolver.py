@@ -271,7 +271,8 @@ class PWFDEigensolver(Eigensolver):
             if len(active_indicies) == 0:
                 break
 
-            self.prestep(wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani)
+            self.prestep(wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani,
+                         b_error=b_error, i=i)
 
             for j in range(0, loop_limit, self.max_blocksize):
                 block_slice_base = \
@@ -311,7 +312,8 @@ class PWFDEigensolver(Eigensolver):
 
         return error
 
-    def prestep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani) -> None:
+    def prestep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani,
+                b_error, i) -> None:
         pass
 
     def bandstep(self, wfs, Ht, dH, block, block_slice,

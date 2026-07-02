@@ -61,7 +61,8 @@ class RMMDIIS(PWFDEigensolver):
 
     @trace
     def prestep(self, wfs, residual_nX,
-                P2_ani, P3_ani, Ptemp_ani):
+                P2_ani, P3_ani, Ptemp_ani,
+                b_error, i):
         wfs.orthonormalized = False
         wfs._P_ani = None
 
