@@ -313,6 +313,30 @@ def match_kpoints_tol(kpts1_kc, kpts2_kc, tol=1e-12):
 
     return np.array(i1), np.array(i2)
 
+def plot_G0W0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
+    import pickle
+    results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
+    delta_ibz_kn = (
+            results["qp"][0,:,:] - results["eps"][0,:,:]
+    )
+    bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
+
+
+    cutoff = 100 
+    bandstructure_plot(
+            calc_gs,
+            bandpath,
+            cutoff=cutoff,
+            delta_ibz_kn=delta_ibz_kn,
+            emin=-10,
+            emax=20,
+            filename=f"bs.png",
+            plot_also_unshifted=True,
+    )
+    plt.clf()
+
+
+
 
 def bandstructure_plot(
     calc_ibz,
