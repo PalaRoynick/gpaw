@@ -231,7 +231,6 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
             dV_all_aL[a2] += Q_all_aL[a1] @ v_LL / 2
             e_coulomb3 -= float(Q_all_aL[a1] @ vQ2_L)
         e_coulomb3 *= -0.5
-        self._e_coulomb3 = e_coulomb3
 
         return e_coulomb3, dV_all_aL
 
@@ -276,7 +275,6 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
             force_av[a2] -= f_v
             stress_vv += xp.outer(xp.asarray(d_v), f_v)
         e_coulomb3 *= -0.5
-        assert abs(self._e_coulomb3 - e_coulomb3) < 1e-10
 
         stress_vv += xp.eye(3) * e_coulomb3
         self._force_av = force_av
