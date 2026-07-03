@@ -76,8 +76,10 @@ Using the DTU computers
    submitting
 
 
-iPad users (not recommended)
-----------------------------
+iPad users (strongly discouraged)
+---------------------------------
+
+Working from an Ipad is *very* inconvenient, but possible.
 
 .. toctree::
    :maxdepth: 1
