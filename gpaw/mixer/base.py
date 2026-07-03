@@ -72,6 +72,32 @@ class BaseMixer:
     def mix(self, density: Density) -> float:
         nt_sX = density.nt_sR
         D_asii = density.D_asii
+
+        if self.ncomponents == 2:
+            # Don't mix each channel,
+            # mix total and magnetization instead (for metric reasons)
+            nt2_sX = nt_sX.copy()
+            D2_asii = D_asii.copy()
+            nt2_sX.data[0] = nt_sX.data[0] + nt_sX.data[1]
+            D2_asii.data[0] = D_asii.data[0] + D_asii.data[1]
+            nt2_sX.data[1] = nt_sX.data[0] - nt_sX.data[1]
+            D2_asii.data[1] = D_asii.data[0] - D_asii.data[1]
+        else:
+            nt2_sX = nt_sX
+            D2_asii = D_asii
+
+        dnt = self._mix(nt2_sX, D2_asii, density)
+
+        if self.ncomponents == 2:
+            nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])
+            nt_sX.data[1] = 0.5 * (nt2_sX.data[0] - nt2_sX.data[1])
+            D_asii.data[0] = 0.5 * (D2_asii.data[0] + D2_asii.data[1])
+            D_asii.data[1] = 0.5 * (D2_asii.data[0] - D2_asii.data[1])
+
+        return dnt
+
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
+             density: Density) -> float:
         ntc_sX = self.add_compensation_charge(nt_sX, D_asii, density,
                                               add_delta0=True)
         if self.density_history.nold == 0:
@@ -144,12 +170,11 @@ class BaseMixer:
             if add_delta0:
                 # Not important for mixing, and should never be done
                 # for residuals.
-                Q_sL[0] += density.delta0_a[a] / self.ncomponents
+                Q_sL[0][0] += density.delta0_a[a]
             ccc_asL[a] = Q_sL
 
         # Add compensation charge to output
         self.ghat_aLr.add_to(out, ccc_asL)
-
         return out
 
     def move(self, relpos_ac: ArrayND, atomdist: AtomDistribution):
