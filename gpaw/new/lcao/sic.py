@@ -4,6 +4,7 @@ from gpaw.lfc import LFC
 import numpy as np
 from gpaw.poisson import PoissonSolver
 from gpaw.utilities import pack_density, unpack_hermitian
+from gpaw.directmin.tools import d_matrix
 # from gpaw.new.poisson import PoissonSolver
 
 
@@ -67,13 +68,111 @@ class PZSICLCAO:
         #         use_charge_center=True,
         #         use_charged_periodic_corrections=True,
         #     )
-
+        self.counter = 0  # number of calls of this class
         self.dtype = ibzwfs.dtype  # or self.dtype = ibzwfs._wfs_u[0].dtype
 
         self.e_sic_by_orbitals = {}
         self.num_kpts = len(ibzwfs.ibz)
 
-    def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,m,occupied_only=False):
+
+    def get_sic_gradient(self, wfs,ibzwfs,h_mm,hc_mn,occupied_only=False):
+
+        f_n = wfs.myocc_n
+        n_occ = 0
+        nbands = ibzwfs.nbands
+        while n_occ < nbands and f_n[n_occ] > 1e-10:
+            n_occ += 1
+
+
+        c_nm=wfs.C_nM.data
+        if occupied_only:
+            nbs = n_occ
+        else:
+            nbs = c_nm.shape[0]
+
+
+        
+        ########'Construct Gradient Matrix'########
+        b_mn, e_total_sic = self.get_full_orb_dependent_potential_matrix(wfs,ibzwfs,occupied_only=False)
+
+        l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
+        print(l_odd.shape)
+        print(c_nm[:nbs].shape, b_mn.shape)
+
+
+        # f = f_n[:nbs]
+        # grad = f * (h_mm[:nbs, :nbs] + l_odd) - \
+        #     f[:, np.newaxis] * (h_mm[:nbs, :nbs] + l_odd.T.conj())
+        
+
+        # if self.use_egdecomp:
+        #     grad = np.dot(evec.T.conj(), np.dot(grad, evec))
+        #     grad = grad * d_matrix(evals)
+        #     grad = np.dot(evec, np.dot(grad, evec.T.conj()))
+        #     for i in range(grad.shape[0]):
+        #         grad[i][i] *= 0.5
+        # else:
+        # grad = np.ascontiguousarray(grad)
+
+        # else:
+        #     raise NotImplementedError('Check the keyword '
+        #                               'for matrix_exp. \n'
+        #                               'Must be '
+        #                               '\'pade-approx\' or '
+        #                               '\'egdecomp\'')
+
+
+        # if self.dtype == float:
+        #     grad = grad.real
+        # if self._representation in ['sparse', 'u-invar']:
+        #     grad = grad[ind_up]
+        ########'Construct Gradient Matrix'########
+
+
+        # u = wfs.spin * self.num_kpts + wfs.q
+        # self.e_sic_by_orbitals[u] = \
+        #     e_total_sic.reshape(e_total_sic.shape[0] // 2, 2)
+        
+
+
+        ######## RESIDUAL ########
+        # hc_mn += b_mn
+        # h_mm += l_odd
+
+        # rhs2 = wfs.S_MM.data.conj() @ c_nm[:n_occ].T @ h_mm[:n_occ, :n_occ]
+        # hc_mn = hc_mn[:, :n_occ] - rhs2[:, :n_occ]
+
+        # if constraints:
+        #     # Zero out the components of the residual that are constrained,
+        #     # so that the constrained degrees of freedom are always considered
+        #     # converged
+        #     for con in constraints:
+        #         con1 = con[0]
+        #         hc_mn[:, con1] = 0.0
+
+        # norm = []
+        # for i in range(n_occ):
+        #     norm.append(np.dot(hc_mn[:, i].conj(),
+        #                        hc_mn[:, i]).real * f_n[i])
+
+        # error = sum(norm)
+        # del rhs2, hc_mn, norm
+
+        ######## RESIDUAL ########
+        
+
+        # if self.counter == 0:
+        #     h_mm = 0.5 * (h_mm + h_mm.T.conj())
+        #     wfs.myeig_n[:nbs] = np.linalg.eigh(h_mm)[0]
+        # self.counter += 1
+
+        # if constraints:
+        #     constrain_grad(grad, constraints, ind_up)
+            
+        return l_odd, e_total_sic
+
+
+    def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,occupied_only=False):
         f_n = wfs.myocc_n
         n_occ = 0
         nbands = ibzwfs.nbands
@@ -99,8 +198,9 @@ class PZSICLCAO:
 
             b_mn[:, m] = np.dot(c_nm[m], F_MM.conj()).T
             e_total_sic = np.append(e_total_sic, sic_energy_n, axis=0)
+        
 
-        return F_MM, e_total_sic
+        return b_mn, e_total_sic
 
 
     def get_potential_matrix_and_sic_energy(self, f_n, c_nm, wfs,ibzwfs,setup,m, n_set):
