@@ -22,6 +22,7 @@ from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
 from gpaw.mixer.base import BaseMixer
 from gpaw.mixer.pulay import PulayMixer
 from gpaw.mixer.msr1 import MSR1Mixer
+from gpaw.mixer.multi import MultiMixer
 from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
@@ -428,7 +429,8 @@ class Mixer(Parameter):
         mixer_names = {
             'no-mixing': NoMixing,
             'pulay': Pulay,
-            'msr1': MSR1
+            'msr1': MSR1,
+            'multi': Multi_Mixer
         }
 
         # Clean for dict for backwards compatibility
@@ -452,6 +454,9 @@ class Mixer(Parameter):
                 return mixer
             case _:
                 raise ValueError(f'Unknown mixer: {mixer}')
+
+    def build(self, **kwargs):
+        raise NotImplementedError
 
 
 class NoMixing(Mixer):
@@ -479,8 +484,8 @@ class Pulay(Mixer):
     def __init__(self,
                  nmaxold: int = 16,
                  beta: float = 0.08,
-                 weight: float = 200.0,
-                 sigma: float = 0.02,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
                  g_ss: ArrayND | None = None):
         self.mixer_params = {'nmaxold': nmaxold,
                              'beta': beta}
@@ -509,10 +514,10 @@ class MSR1(Mixer):
                  gb_scale: float = 1.0,
                  max_A: float = 0.75,
                  trust_scale: float = 1.0,
-                 soft_lim: float = 1.5,
-                 hard_lim: float = 2.0,
-                 weight: float = 200.0,
-                 sigma: float = 0.02,
+                 soft_lim: float = 4.0,
+                 hard_lim: float = 6.0,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
                  g_ss: ArrayND | None = None):
         self.mixer_params = {'nmaxold': nmaxold,
                              'beta': beta,
@@ -534,6 +539,31 @@ class MSR1(Mixer):
     def build(self, **kwargs):
         metric = self._build_metric(**self.metric_params, **kwargs)
         return self.cls(metric=metric, **self.mixer_params, **kwargs)
+
+
+class Multi_Mixer(Mixer):
+    name = 'multi'
+    cls = MultiMixer
+
+    def __init__(self,
+                 method: str = 'dif',
+                 mixer_a: Mixer | dict | str = 'msr1',
+                 mixer_b: Mixer | dict | str = 'msr1'):
+        self.mixer_a = Mixer.from_param(mixer_a)
+        self.mixer_b = Mixer.from_param(mixer_b)
+        self.method = method
+
+    def todict(self):
+        return {'name': self.name,
+                'method': self.method,
+                'mixer_a': self.mixer_a.todict(),
+                'mixer_b': self.mixer_b.todict()}
+
+    def build(self, **kwargs):
+        return self.cls(method=self.method,
+                        mixer_a=self.mixer_a,
+                        mixer_b=self.mixer_b,
+                        **kwargs)
 
 
 class Occupations(Parameter):

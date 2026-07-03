@@ -285,9 +285,9 @@ def summary(folders: list[Path], mode: int) -> None:
                 line = ' | -------(---) -------%'
             else:
                 percent = f'{(t / t0 - 1) * 100:+7.1f}%'
-                if t < t0:
+                if t < (0.98 * t0):
                     percent = GREEN + percent + RESET
-                elif t > t0:
+                elif t > (1.02 * t0):
                     percent = RED + percent + RESET
                 line = f' | {t:7.1f}({i:3}) {percent}'
             print(line, end='')
