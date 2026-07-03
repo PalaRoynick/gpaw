@@ -5,8 +5,9 @@
 ==============
 
 Using an iPad for the computer exercises is **not recommended,** mainly
-because you cannot run the ASE graphical user interface.  But it is a
-possibility if there are no other options.
+because you cannot run the ASE graphical user interface, and because viewing plots is tedious.
+
+But it is a possibility **if there are no other options.**
 
 
 Terminal app
@@ -39,13 +40,32 @@ sign at the top.  Select "New Host"
 * Password: Your DTU password
 * Key: Select the private key you just created.
 
-Click on the new profile, you should be logged in.
+Click on the new profile, you should be logged in.  Run the ``linuxsh`` command to
+connect to an interactive compute node.
 
-Now follow the instructions for :ref:`logging in the first time with a Mac
-<setuplinmac>`, with the important change that the command ``linuxsh -X``
-should be replaced with ``linuxsh``.  The omitted ``-X`` makes it possible
-for the graphical user interface to show atomic structures on your screen,
-that does not work on an iPad and a workaround is described below.
+Finding the control keys etc
+----------------------------
+
+On the left pane, you can find control keys etc needed to navigate the Linux command line.  See the screen shot:
+
+.. image:: Termius_ipad.png
+   :width: 100%
+
+Get access to the software
+==========================
+
+After logging in, and running ``linuxsh`` to connect to a compute node, you can install the software by running the command::
+
+    source ~jasc/setup2026
+
+You only need to do this once!  Next time you log in, just run ``linuxsh`` to connect to an interactive compute node, and the software is available.
+
+Viewing plots
+=============
+
+When running on the ipad, you need to save the plots as ``.png`` files with the ``fig.savefig()`` matplotlib command.  Then you can view them in an SFTP pane using Termius.
+
+**Opening an SFTP connection:** On the tab labeled "Personal", choose the hosts section.  Press the three dots next to the name of the host, and select "Connect via SFTP".  Now you can see the file system on the DTU computer system, and you can navigate to the folder where your figures are.  Clicking on a ``.png`` file will display it.
 
 
 Viewing atomic structures
@@ -60,3 +80,5 @@ have an  X11 server on your ipad.  Instead use the ``plot_atoms`` command::
 You rotate the atoms like this (45 degrees along the x-axis)::
 
   plot_atoms(atoms, rotation='45x')
+
+You need to save the figure and view it through the SFTP connection.
