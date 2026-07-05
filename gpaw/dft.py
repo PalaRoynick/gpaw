@@ -69,6 +69,9 @@ class ExtensionInput(Parameter):
             if name == 'd3':
                 from gpaw.extensions.d3 import D3
                 return D3(**dct)
+            if name == 'd4':
+                from gpaw.extensions.d4 import D4
+                return D4(**dct)
             if name == 'spin_direction_constraint':
                 from gpaw.new.constraints import SpinDirectionConstraint
                 return SpinDirectionConstraint(**dct)
