@@ -9,12 +9,8 @@ from ase.parallel import paropen
 from gpaw import GPAW, FermiDirac
 from gpaw.analyse.hirshfeld import HirshfeldPartitioning
 from gpaw.analyse.vdwradii import vdWradii
+from gpaw.extensions.d4 import D4
 from gpaw.utilities.adjust_cell import adjust_cell
-
-try:
-    from dftd4 import D4_model
-except ModuleNotFoundError:
-    pass
 
 h = 0.18
 box = 4.
@@ -35,7 +31,12 @@ for molecule in data:
     s1 = ss[connected_indices(ss, 0)]
     s2 = ss[connected_indices(ss, -1)]
     assert len(ss) == len(s1) + len(s2)
-    if xc == 'TS09' or xc == 'TPSS' or xc == 'M06-L' or xc == 'dftd4':
+    if xc == 'dftd4':
+        c = GPAW(mode='fd', xc='PBE', h=h, nbands=-6,
+                 occupations=FermiDirac(width=0.1),
+                 extensions=[D4(xc='PBE')],
+                 legacy_gpaw=False)
+    elif xc == 'TS09' or xc == 'TPSS' or xc == 'M06-L':
         c = GPAW(mode='fd', xc='PBE', h=h, nbands=-6,
                  occupations=FermiDirac(width=0.1), legacy_gpaw=True)
     else:
@@ -50,10 +51,6 @@ for molecule in data:
             cc = vdWTkatchenko09prl(
                 HirshfeldPartitioning(c),
                 vdWradii(s.get_chemical_symbols(), 'PBE', world=c.world))
-            s.calc = cc
-        elif xc == 'dftd4':
-            s.get_potential_energy()
-            cc = D4_model(xc='PBE', calc=c)
             s.calc = cc
         if xc == 'TPSS' or xc == 'M06-L':
             ene = s.get_potential_energy()
