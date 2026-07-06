@@ -12,7 +12,7 @@ New release
 * Upload to PyPI::
 
       $ python3 -m build
-      $ twine upload dist/*
+      $ twine upload dist/gpaw-26.7.0.tar.gz
 
 * Push and make a tag.
 
