@@ -10,6 +10,12 @@ Git master branch
 
 :git:`master <>`.
 
+
+Version 26.7.0
+==============
+
+July 6, 2026: :git:`26.7.0 <../26.7.0>`
+
 .. _new gpaw notes:
 
 * Minimum version requirements: Python 3.10, ASE 3.27.0.
