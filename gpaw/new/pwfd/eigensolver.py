@@ -106,7 +106,7 @@ class PWFDEigensolver(Eigensolver):
         # Decide on blocksize (used for band slicing)
         if self.max_blocksize is None:
             if xp == np:
-                self.max_blocksize = 32
+                self.max_blocksize = 64
             else:
                 # GPU's prefer larger blocksizes
                 self.max_blocksize = 512
@@ -246,7 +246,7 @@ class PWFDEigensolver(Eigensolver):
 
             if weight_n is None:
                 weight_n = np.zeros(b)
-                weight_n[:(len(weight_n) * 4) // 5] = 1.0
+                weight_n[:((1 + len(weight_n)) * 4) // 5] = 1.0
 
             P_ani = wfs.P_ani
             P2_ani = P_ani.new()
@@ -299,7 +299,7 @@ class PWFDEigensolver(Eigensolver):
             if len(error_n.shape) > 1:
                 error_n = error_n.sum(axis=1)
             error = weight_n @ error_n
-            b_error = band_comm.sum_scalar(b_error) / \
+            b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
             i += 1
 

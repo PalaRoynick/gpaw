@@ -29,6 +29,7 @@ class MultiEigensolver(PWFDEigensolver):
                          scalapack_parameters=scalapack_parameters)
         self.solvers = {}
         for condition, solver in solvers.items():
+            condition = float(condition)
             solver.max_buffer_mem = self.max_buffer_mem
             self.solvers[condition] = solver.build(
                 wf_desc=wf_grid,
@@ -57,9 +58,9 @@ class MultiEigensolver(PWFDEigensolver):
             solver.data_buffers = self.data_buffers
 
     def prestep(self, *args, b_error, i, **kwargs):
-        for condition, solver in self.solvers.items():
-            self.active_solver = solver
-            if b_error > condition / Ha**2:  # XXX
+        for condition in sorted(self.solvers.keys()):
+            self.active_solver = self.solvers[condition]
+            if b_error * Ha**2 < condition:  # XXX
                 break
         self.niter = self.active_solver.niter
         self.active_solver.prestep(*args, b_error=b_error, i=i, **kwargs)

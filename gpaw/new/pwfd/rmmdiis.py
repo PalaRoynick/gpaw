@@ -257,7 +257,7 @@ class RMMDIIS(PWFDEigensolver):
         if self.trial_step is None:
             PR_nX.data *= lambda_n
         else:
-            PR_nX.data *= self.trial_step
+            PR_nX.data *= lambda_n * self.trial_step
         psit_nX.data += PR_nX.data
         # wfs.psit_nX.data[block_slice] = psit_nX.data
 

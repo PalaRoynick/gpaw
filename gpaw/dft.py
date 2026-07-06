@@ -226,12 +226,14 @@ class Eigensolver(Parameter):
                 # raise ValueError(f'Unknown name of eigensolver: {name}')
             case {**kwargs}:
                 return DefaultEigensolver(kwargs)
+            case cls():
+                return eigensolver
             case NewEigensolver():
                 return eigensolver
             case OES():
                 return cls.from_param(eigensolver.todict())
             case _:
-                raise LegacyGPAWError
+                raise LegacyGPAWError(f'Unknown eigensolver input: {eigensolver}')
                 # raise ValueError(f'Unknown eigensolver input: {eigensolver}')
 
 
@@ -346,9 +348,9 @@ class RMMDIIS(PWFDEigensolverParameter):
 
     def __init__(self,
                  niter: int = 1,
-                 diis_steps: int = 3,
+                 diis_steps: int = 2,
                  max_buffer_mem: int = 200 * 1024**2,
-                 trial_step: float | None = None):
+                 trial_step: float | None = 0.25):
         self.niter = niter
         self.diis_steps = diis_steps
         self.max_buffer_mem = max_buffer_mem
