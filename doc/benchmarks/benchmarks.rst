@@ -43,7 +43,7 @@ PW-mode performance index
 The total time for one material is the sum of two steps
 (`t=\Delta t_1 + \Delta t_2`):
 
-1) time for for a complete SCF calculation
+1) time for a complete SCF calculation
 2) time for second SCF calculation after a small displacement
    of positions (or cell)
 

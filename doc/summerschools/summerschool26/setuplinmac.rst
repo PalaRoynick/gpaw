@@ -126,7 +126,7 @@ The output should look something like::
   -rw-r--r--  1 myname  staff    401 Sep  8  2010 id_rsa.pub
   -rw-------  1 myname  staff  80395 Jul  1 15:55 known_hosts
 
-Check that the line for the secret key file file starts with ``-rw-------``
+Check that the line for the secret key file starts with ``-rw-------``
 (there may be a @ or another character at the end, that is OK).
 
 Your key file should now automatically be used when logging into the

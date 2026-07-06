@@ -199,7 +199,7 @@ News
 
 * This site is now powered by Sphinx_ (Jul 31, 2008)
 
-* GPAW is now based on numpy_ instead of of Numeric (Jan 22, 2008)
+* GPAW is now based on numpy_ instead of Numeric (Jan 22, 2008)
 
 * :ref:`GPAW version 0.3 <releasenotes>` released (Dec 19, 2007)
 

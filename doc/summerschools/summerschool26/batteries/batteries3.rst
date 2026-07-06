@@ -170,7 +170,7 @@ transition state (TS) image using the
    :start-after: snippet-barrier
    :end-before: snippet-strain
 
-New change the graphite layer distance by changing the the size of the
+New change the graphite layer distance by changing the size of the
 unit cell in the *z* direction by ±3 %. and use the same calculator
 object as you did above and calculate the potential energy of the
 compressed initial and final state.
