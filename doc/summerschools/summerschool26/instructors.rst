@@ -4,7 +4,7 @@ The summer school exercises will be running in the DTU Databar, not on
 Niflheim.  You can log in with your DTU username and password.  Like
 Niflheim, it has a login node and a number of compute node, but unlike
 Niflheim it also has *interactive compute nodes* where the students
-and you can run e.g. your Jupyter notebooks.
+and you can run e.g. your python scripts.
 
 Logging in
 ----------
