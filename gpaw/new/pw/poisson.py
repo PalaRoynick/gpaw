@@ -224,7 +224,7 @@ class DipoleLayerPWPoissonSolver(PoissonSolver):
     @cached_property
     def sawtooth_g(self) -> PWArray:
         grid = self.grid
-        if grid.comm.rank == 0:
+        if self.ps.pw.comm.rank == 0:
             c = self.axis
             L = grid.cell_cv[c, c]
             w = self.width / 2

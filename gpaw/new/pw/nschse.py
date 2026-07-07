@@ -300,13 +300,13 @@ def nsc_corrections(density: Density,
        v    (r)
         σ,XC
     """
-    nt_sr = density.nt_sR.interpolate(grid=pot_calc.fine_grid)
+    nt_sr, _ = pot_calc._interpolate_density(density.nt_sR)
     xc = pot_calc.xc
     _, dxc_sr, _ = xc.calculate(nt_sr)
     hyb = create_functional(semilocal_xc_name, pot_calc.fine_grid)
     _, dhyb_sr, _ = hyb.calculate(nt_sr)
-    dxc_sr = dxc_sr.gather()
-    dhyb_sr = dhyb_sr.gather()
+    dxc_sr = dxc_sr.gather(broadcast=True)
+    dhyb_sr = dhyb_sr.gather(broadcast=True)
     if dxc_sr is not None:
         grid = density.nt_sR.desc.new(comm=None)
         dxc_sR = dxc_sr.fft_restrict(grid=grid)

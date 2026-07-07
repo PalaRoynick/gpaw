@@ -630,7 +630,7 @@ def _semilocal_xc_energy(dft: DFT,
     semilocal_xc_name, exx_fraction, exx_omega, yukawa = parse_name(xc)
     fine_grid = dft.pot_calc.fine_grid
     slxc = create_functional(semilocal_xc_name, fine_grid)
-    nt_sr = dft.density.nt_sR.interpolate(grid=fine_grid)
+    nt_sr, _ = dft.pot_calc._interpolate_density(dft.density.nt_sR)
     energy = 0.0
     for a, D_sii in dft.density.D_asii.items():
         D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
