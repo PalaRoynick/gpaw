@@ -1,8 +1,13 @@
 from contextlib import chdir
+from functools import cache
 from pathlib import Path
 
 import numpy as np
+from gpaw import setup_paths
 from gpaw.atom.generator2 import generate
+from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
+from gpaw.mpi import world
+from gpaw.utilities.acwf import reference_structure
 
 PARAMS = {
     # 1-2:
@@ -205,7 +210,7 @@ def create_all():
 def analyse(folders):
     from collections import defaultdict
 
-    from ase.data import chemical_symbols, atomic_numbers
+    from ase.data import atomic_numbers, chemical_symbols
     from gpaw.atom.tools import convergence_check
     from gpaw.utilities.acwf import check
 
@@ -248,6 +253,102 @@ def oldvsnew():
         plt.plot(x1, y1[:, i], 'o-')
         plt.plot(x2, y2[:, i], 'x-')
         plt.show()
+
+
+def optimize(f, x):
+    y = f(tuple(x))
+    while True:
+        D = []
+        for i, xi in enumerate(x):
+            for d in [-1, 1]:
+                xi += d
+                if i > 0 and d == 0:
+                    continue
+                x2 = list(x)
+                x2[i] = xi
+                y2 = f(tuple(x2))
+                D.append((y2, x2))
+        y2, x2 = min(D)
+        if y2 >= y:
+            return x, y
+        y = y2
+        x = x2
+
+
+def opt(ecut=600):
+    setup_paths[:0] = ['.']
+    name = Path.cwd().name
+    symbol = name.split('.')[0]
+    conf = PARAMS[name]
+    proj, rcs, *r0 = conf.split()
+    rcs = [float(s) for s in rcs.split(',')]
+    if r0:
+        r0, = r0
+        r0 = float(r0)
+    else:
+        r0 = round(0.9 * min(rcs), 1)
+
+    if 'f' in proj:
+        n = 5
+    elif 'd' in proj:
+        n = 4
+    else:
+        n = 3
+
+    @cache
+    def f(x):
+        r0x = r0 + x[0] * 0.1
+        R = ','.join(str(r0x + xi * 0.1) for xi in x[1:])
+        conf = f'{proj} {R} {r0x}'
+        if world.rank == 0:
+            create(symbol, conf)
+        world.barrier()
+        return pfunc(symbol, ecut)
+
+    assert len(rcs) == 1
+    i = int(round((rcs[0] - r0) * 10))
+    x = [0] + [i for _ in range(n - 1)]
+
+    x, y = optimize(f, x)
+    if world.rank == 0:
+        print(x, y)
+
+
+def pfunc(symbol, ecut=600):
+    name = 'FCC'
+    kwargs = dict(
+        xc='PBE',
+        occupations=dict(name='fermi-dirac', width=0.0612),
+        convergence=dict(density=1e-6),
+        kpts=MonkhorstPack(density=3.0),
+        experimental={'backwards_compatible': False})
+    atoms = reference_structure(symbol, name)
+    dft = DFT(
+        atoms,
+        mode=PW(ecut),
+        **kwargs,
+        txt='ecuts.txt')
+    e = dft.calculate_energy()
+    params = Parameters(**kwargs, mode=PW(1200))
+    dft = dft.new(atoms, params, log=dft.log)
+    dft.converge()
+    e0 = dft.calculate_energy()
+
+    kwargs['kpts'] = MonkhorstPack(density=6.0)
+    name = 'Diamond'
+    atoms = reference_structure(symbol, name)
+    dft = DFT(
+        atoms,
+        mode=PW(1200),
+        **kwargs,
+        txt='stress.txt')
+    s = dft.calculate_stress()
+    return ((e - e0) / 0.001)**2 + s[0]**2
+
+
+def workflow():
+    from myqueue.workflow import run
+    run(function=opt, cores=24, tmax='1d')
 
 
 if __name__ == '__main__':
