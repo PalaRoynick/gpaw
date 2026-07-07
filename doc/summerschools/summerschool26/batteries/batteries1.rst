@@ -160,6 +160,7 @@ Determine the equilibrium lattice constant.  We use a
     ax.plot(x, poly(x))
     ax.set_xlabel('C-C distance [Ang]')
     ax.set_ylabel('energy [eV]')
+    plt.show()
 
 .. testcode::
 
