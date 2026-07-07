@@ -58,8 +58,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
             comm=self.communicators['d'])
-        fine_grid = grid.new(size=grid.size_c * 2,
-                             comm=self.communicators['w'])
+        comm = (self.communicators['d'] if self._xcfunc.type == 'HYB'
+                else self.communicators['w'])
+        fine_grid = grid.new(size=grid.size_c * 2, comm=comm)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid
 
