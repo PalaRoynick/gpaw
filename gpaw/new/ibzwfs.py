@@ -608,7 +608,7 @@ class IBZWaveFunctions(Generic[WFT]):
 
 
 def bytes_for_projectors(ibzwfs: IBZWaveFunctions) -> int:
-    """Calculate number of bytest used for PAW projectors.
+    """Calculate number of bytes used for PAW projectors.
 
     Without creating them!
     """

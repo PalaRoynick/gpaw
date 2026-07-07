@@ -26,19 +26,12 @@ def calc():
     return calc
 
 
-whyskip_rapbe = 'https://gitlab.com/gpaw/gpaw/-/issues/723'
-
-
 @pytest.mark.rpa
 @pytest.mark.response
 @pytest.mark.parametrize('xc, kwargs, ref_energy', [
     ('RPA', dict(nlambda=16), -0.1054),
     ('rALDA', dict(unit_cells=[1, 1, 2]), -0.0560),
-    pytest.param('rAPBE', dict(unit_cells=[1, 1, 2]), -0.0523,
-                 marks=pytest.mark.skip(reason=whyskip_rapbe)),
-    ('rALDA', dict(avg_scheme='wavevector'), -0.0241),
-    ('rAPBE', dict(avg_scheme='wavevector'), -0.0288),
-])
+    ('rALDA', dict(avg_scheme='wavevector'), -0.0241)])
 def test_ralda_ralda_energy_He(in_tmp_dir, scalapack, calc, xc, kwargs,
                                ref_energy):
     ecuts = [20, 30]

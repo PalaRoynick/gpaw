@@ -27,7 +27,7 @@ def functioning_scalapack(require_real_mpi):
         pytest.skip('not compiled with scalapack')
 
 
-# may need to be be increased if the mprocs-by-nprocs
+# may need to be increased if the mprocs-by-nprocs
 # BLACS grid becomes larger
 tol = 5.0e-13
 

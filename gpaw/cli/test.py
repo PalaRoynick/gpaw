@@ -51,4 +51,4 @@ for details.""", file=sys.stderr)
     parprint('Done', comm=comm)
     if comm.size == 1:
         print()
-        print('Test parallel calculation with "gpaw -P 4 test".')
+        print('Test parallel calculation with "mpirun -n 4 gpaw test".')

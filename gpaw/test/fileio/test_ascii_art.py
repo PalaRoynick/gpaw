@@ -1,6 +1,6 @@
 from ase import Atoms
 
-from gpaw.old.output import plot
+from gpaw.io.plot_atoms import plot_atoms
 
 
 def test_ascii_art():
@@ -24,4 +24,4 @@ def test_ascii_art():
                              [2.596074392674, -1.72948648768, 7.520563066099],
                              [-0.00000000001, 0.0, 9.018096809202]],
                   pbc=True)
-    print(plot(atoms))
+    print(plot_atoms(atoms))

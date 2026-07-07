@@ -32,7 +32,7 @@ def test_lcao_largecellforce():
     calc = GPAW(h=0.23,
                 mode='lcao',
                 basis=basis,
-                convergence={'density': 1e-4, 'energy': 1e-7})
+                convergence={'density': 1e-6, 'energy': 1e-7})
 
     system.calc = calc
 

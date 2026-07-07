@@ -15,7 +15,7 @@ from gpaw.typing import Array1D, ArrayLike2D
 from gpaw.utilities import pack_density
 
 if TYPE_CHECKING:
-    from gpaw.new.calculation import DFTCalculation
+    from gpaw.dft import DFT
 
 
 class ElectrostaticPotential:
@@ -38,7 +38,7 @@ class ElectrostaticPotential:
         self._vHt_R: UGArray | None = None
 
     @classmethod
-    def from_calculation(cls, calculation: DFTCalculation):
+    def from_calculation(cls, calculation: DFT):
         density = calculation.density
         potential, _, W_aL = calculation.pot_calc.calculate(density)
         Q_aL = density.calculate_compensation_charge_coefficients()

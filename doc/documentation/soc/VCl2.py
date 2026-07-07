@@ -1,4 +1,4 @@
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from ase import Atoms
 import numpy as np
 

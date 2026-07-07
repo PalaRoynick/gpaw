@@ -1185,6 +1185,7 @@ class GPWFiles(CachedFilesHandler):
         co.center(vacuum=4.0)
         co.calc = self.GPAW(
             mode='lcao',
+            convergence={'density': 1e-5},
             txt=self.folder / 'co_lcao.txt')
         co.get_potential_energy()
         return co.calc
@@ -1220,7 +1221,9 @@ class GPWFiles(CachedFilesHandler):
     def c6h12_pw(self):
         pe = self._c2h4()
         pe = pe.repeat((3, 1, 1))
-        pe.calc = self.GPAW(mode='pw', txt=self.folder / 'c6h12_pw.txt')
+        pe.calc = self.GPAW(mode='pw',
+                            txt=self.folder / 'c6h12_pw.txt',
+                            convergence={'density': 1e-6})
         pe.get_potential_energy()
         return pe.calc
 
@@ -1228,7 +1231,8 @@ class GPWFiles(CachedFilesHandler):
     def h2o_lcao(self):
         atoms = molecule('H2O', cell=[8, 8, 8], pbc=1)
         atoms.center()
-        atoms.calc = self.GPAW(mode='lcao', txt=self.folder / 'h2o_lcao.txt')
+        atoms.calc = self.GPAW(mode='lcao', txt=self.folder / 'h2o_lcao.txt',
+                               convergence={'density': 1e-5})
         atoms.get_potential_energy()
         return atoms.calc
 
@@ -1783,7 +1787,7 @@ class GPWFiles(CachedFilesHandler):
             nbands=50,
             occupations=FermiDirac(0.001),
             parallel={'domain': 1},
-            convergence={'bands': 26},
+            convergence={'bands': 26, 'density': 1e-6},
             kpts={'size': (3, 3, 1), 'gamma': True},
             symmetry=symmetry)
         atoms.get_potential_energy()
@@ -1916,11 +1920,7 @@ class GPWFiles(CachedFilesHandler):
 
     @gpwfile
     def mos2_pw_nosym(self):
-        return self._mos2(
-            symmetry='off',
-            # The test_berryphase.py::test_polarization_phase[False]
-            # need this:
-            legacy_gpaw=True)
+        return self._mos2(symmetry='off')
 
     @gpwfile
     def mos2_5x5_pw(self):
@@ -2157,7 +2157,7 @@ class GPWFiles(CachedFilesHandler):
         conv = {'bands': band_cutoff + 1,
                 'density': 1.e-9}
         a = 2.867
-        mm = 2.21
+        mm = 3  # Ensure there are enough empty bands.
         atoms = bulk('Fe', 'bcc', a=a)
         # It is necessary to rattle the atoms to make sure that all tests pass
         # on all machines - see https://gitlab.com/gpaw/gpaw/-/issues/1397
@@ -2624,6 +2624,31 @@ class GPWFiles(CachedFilesHandler):
         atoms.get_potential_energy()
         return calc
 
+    @gpwfile
+    def li2_pw_lda(self):
+        return self._li2('LDA')
+
+    @gpwfile
+    def li2_pw_hse06(self):
+        return self._li2('HSE06')
+
+    def _li2(self, xc: str):
+        """Chain of Li2 dimers."""
+        L = 2.6
+        a = Atoms('Li2',
+                  [[0, 0, 0], [0.9, 0.9, 0]],
+                  cell=[L, L, 1.4],
+                  pbc=1)
+        a.center()
+        a.calc = GPAW(
+            kpts={'size': (1, 1, 4), 'gamma': True},
+            mode=PW(400),
+            convergence={'density': 1e-7},
+            xc=xc,
+            txt=self.folder / f'li2_pw_{xc.lower()}')
+        a.get_potential_energy()
+        return a.calc
+
 
 # We add Si fixtures with various symmetries to the GPWFiles namespace
 for name, method in si_gpwfiles().items():
@@ -2633,5 +2658,5 @@ for name, method in si_gpwfiles().items():
 if __name__ == '__main__':
     import sys
     name = sys.argv[1]
-    calc = getattr(GPWFiles(Path()), name)()
+    calc = getattr(GPWFiles(Path(), comm=world), name)()
     calc.write(name + '.gpw', mode='all')

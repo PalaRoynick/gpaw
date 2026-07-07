@@ -14,6 +14,7 @@ def test_max_buffer_mem(mode, eigensolver, max_mem, comm):
                 eigensolver={'name': eigensolver,
                              'max_buffer_mem': max_mem},
                 xc='LDA',
+                mixer={'backend': 'pulay', 'beta': 0.25},
                 gpts=(12, 12, 12) if mode == 'fd' else None,
                 convergence={'maximum iterations': 2},
                 parallel={'domain': domain_size},

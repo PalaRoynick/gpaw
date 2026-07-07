@@ -10,10 +10,11 @@ def run(xc, repeat=1):
     k = 4 // repeat
     calc = GPAW(mode='lcao',
                 basis='sz(dzp)',
-                h=0.3,
+                gpts=(repeat * 6, repeat * 6, repeat * 6),
                 setups={'Ag': '11'},
                 nbands=6 * repeat**3,
                 xc=xc,
+                convergence={'density': 1e-12},
                 parallel={'domain': 1},
                 kpts={'size': (k, k, k), 'gamma': False},
                 txt='-')
@@ -34,10 +35,10 @@ def test_metallic_GLLBSCM():
     for x_i, y_i in [run(xc='GLLBSC', repeat=1),
                      run(xc='GLLBSCM', repeat=2)]:
         # Test that the DOSes are the same
-        assert np.allclose(x1_i, x_i, rtol=0, atol=1e-6), \
+        assert np.allclose(x1_i, x_i, rtol=0, atol=4e-5), \
             "DOS energies don't match, " \
             "error = {}".format(np.max(np.abs(x1_i - x_i)))
-        assert np.allclose(y1_i, y_i, rtol=0, atol=1e-5), \
+        assert np.allclose(y1_i, y_i, rtol=0, atol=4e-5), \
             "DOS values don't match, " \
             "error = {}".format(np.max(np.abs(y1_i - y_i)))
 

@@ -1,6 +1,6 @@
 r"""Finite difference calculation of changes in potential.
 
-The implementation is based on finite-difference calculations of the the atomic
+The implementation is based on finite-difference calculations of the atomic
 gradients of the effective potential expressed on a real-space grid. The el-ph
 couplings are obtained from LCAO representations of the atomic gradients of the
 effective potential and the electronic states.
@@ -36,7 +36,8 @@ DFT Hamiltonian.
 
 Note: It is a bit difficult to find good references for how spin-polarisation
 is supposed to be handled. Here we just handle the spin channels separately.
-Use with care.
+Use with care. Non-collinear calculations are not supported at this point in
+time.
 
 """
 from __future__ import annotations
@@ -86,7 +87,7 @@ class DisplacementRunner(Displacement):
         delta: float
             Magnitude of displacements. (default: 0.01 A)
         calculate_forces: bool
-            If true, also calculate and store the dynamical matrix.
+            If true, also calculate and store the forces.
         """
 
         # Init base class and make the center cell in the supercell the

@@ -36,7 +36,7 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/*
-	python3 -m ase.utils.sphinx clean
+	python3 -m ase.utils.sphinx_create_png clean
 
 linkcheck:
 	$(SPHINXBUILD) -b linkcheck $(ALLSPHINXOPTS) $(BUILDDIR)/linkcheck
@@ -48,7 +48,7 @@ browse:
 	firefox build/html/index.html
 
 doctest:
-	$(SPHINXBUILD) -b doctest $(ALLSPHINXOPTS) $(BUILDDIR)/doctest tutorialsexercises/basics/gettingstarted/gettingstarted.rst documentation/core.rst index.rst
+	$(SPHINXBUILD) -b doctest $(ALLSPHINXOPTS) $(BUILDDIR)/doctest tutorialsexercises/basics/gettingstarted/gettingstarted.rst documentation/core.rst index.rst summerschools/summerschool26/intro/intro.rst summerschools/summerschool26/batteries/batteries1.rst
 
 spelling:
 	$(SPHINXBUILD) -b spelling $(ALLSPHINXOPTS) $(BUILDDIR)/spelling

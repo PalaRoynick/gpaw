@@ -47,6 +47,8 @@ Force: -0.64 eV/Å
 News
 ====
 
+* :ref:`GPAW version 26.7.0 <releasenotes>` released (Jul 6, 2026).
+
 * :ref:`GPAW version 25.7.0 <releasenotes>` released (Jul 29, 2025).
 
 * :ref:`GPAW version 25.1.0 <releasenotes>` released (Jan 6, 2025).
@@ -199,7 +201,7 @@ News
 
 * This site is now powered by Sphinx_ (Jul 31, 2008)
 
-* GPAW is now based on numpy_ instead of of Numeric (Jan 22, 2008)
+* GPAW is now based on numpy_ instead of Numeric (Jan 22, 2008)
 
 * :ref:`GPAW version 0.3 <releasenotes>` released (Dec 19, 2007)
 

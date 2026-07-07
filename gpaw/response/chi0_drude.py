@@ -55,7 +55,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         q_c = [0., 0., 0.]
         # symmetries: QSymmetries from gpaw.response.symmetry
         # generator: KPointDomainGenerator from gpaw.response.kpoints
-        # domain: Domain from from gpaw.response.integrators
+        # domain: Domain from gpaw.response.integrators
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             q_c=q_c, spins=range(self.gs.nspins))
 

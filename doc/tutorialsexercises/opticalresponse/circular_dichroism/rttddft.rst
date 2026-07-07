@@ -49,7 +49,10 @@ with ``gauge='length' or 'velocity'`` and different kick directions:
 
 .. tip::
 
-    When running the script with ``gpaw``-command, one must add ``--`` before the actual arguments to ensure they are correctly passed the script. For example: ``$ gpaw -P 4 python td.py -- --gauge=length --kick=x``.
+    When running the script with ``gpaw``-command, one must add
+    ``--`` before the actual arguments to ensure they are correctly
+    passed the script. For example:
+    ``$ mpiexec -n 4 gpaw python td.py -- --gauge=length --kick=x``.
 
 After repeating the calculation for kicks in x, y, and z directions in length gauge and velocity gauge, respectively,
 we calculate the rotatory strength spectrum from the magnetic moments:
@@ -70,7 +73,7 @@ Length gauge
 ~~~~~~~~~~~~
 
 Circular dichroism spectra obtained in length gauge can exhibit pronounced origin dependence.
-Below, this is demonstrated by plotting the circular dichroism spectra calculated in the length gauge using different origins. 
+Below, this is demonstrated by plotting the circular dichroism spectra calculated in the length gauge using different origins.
 See the documentation of :class:`~gpaw.tddft.MagneticMomentWriter`
 for parameters controlling the origin location.
 
@@ -121,6 +124,7 @@ The resulting spectrum:
 
 The spectrum compares well with the one obtained
 with LCAO mode and augmented basis sets.
+
 
 References
 ----------

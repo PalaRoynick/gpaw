@@ -1,4 +1,5 @@
-mpicompiler = 'mpiicc'
+mpi = True
+compiler = 'mpiicpx'
 
 # FFTW should be configured from environment variables, but they do
 # not report the correct names for a dynamically loaded library.
