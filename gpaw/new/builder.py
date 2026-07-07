@@ -19,7 +19,6 @@ from gpaw.core.domain import Domain
 from gpaw.gpu import cpupy as fake_cupy
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.lfc import BasisFunctions
-from gpaw.mixer import MixerWrapper, get_mixer_from_keywords
 from gpaw.mpi import (MPIComm, Parallelization, broadcast,
                       normalize_communicator, serial_comm, synchronize_atoms)
 from gpaw.new import prod
@@ -58,7 +57,10 @@ class DFTComponentsBuilder:
             log = Logger(log, comm)
 
         self.log = log
-        comm = log.comm
+        if comm is None:
+            comm = log.comm
+        else:
+            assert comm.size == log.comm.size
 
         parallel = params.parallel
         if self.gpu:
@@ -124,12 +126,18 @@ class DFTComponentsBuilder:
             comm=comm,
             use_time_reversal=use_time_reversal)
 
-        d = parallel.get('domain', 1 if xcfunc.type == 'HYB' else None)
+        d = parallel.get('domain', None)
         k = parallel.get('kpt', None)
         b = parallel.get('band', None)
         self.communicators = create_communicators(
             comm, len(self.ibz) * self.nspins,
             d, k, b, self.xp)
+        k = self.communicators['k'].size
+        if len(self.ibz) * self.nspins < k:
+            raise ValueError(
+                f'Too few spins ({self.nspins}) '
+                f'and IBZ k-points ({len(self.ibz)}) '
+                f'for {k} ranks')
 
         if self.mode == 'fd':
             pass  # filter = create_fourier_filter(grid)
@@ -233,7 +241,7 @@ class DFTComponentsBuilder:
                     f'GPU calculation is requested via {parallel_source}, '
                     'but the requisite CuPy library is not found; '
                     'please set GPAW_CPUPY=1 if you really want to do "GPU" '
-                    'calculations with GPAW\'s fake CuPy library '
+                    "calculations with GPAW's fake CuPy library "
                     '(gpaw.gpu.cpupy)')
             return True
         return False
@@ -258,18 +266,20 @@ class DFTComponentsBuilder:
         raise NotImplementedError
 
     def create_basis_set(self):
-        return create_basis(self.ibz,
-                            self.ncomponents % 3,
-                            self.atoms.pbc,
-                            self.grid,
-                            self.setups,
-                            self.dtype,
-                            self.relpos_ac,
-                            self.communicators['w'],
-                            self.communicators['k'],
-                            self.communicators['b'],
-                            self.xp,
-                            gpu_add_and_integrate=False)
+        return create_basis(
+            self.ibz,
+            self.ncomponents % 3,
+            self.atoms.pbc,
+            self.grid,
+            self.setups,
+            self.dtype,
+            self.relpos_ac,
+            self.communicators['w'],
+            self.communicators['k'],
+            self.communicators['b'],
+            self.xp,
+            gpu_add_and_integrate=False,
+            new_basis=self.params.experimental.get('new_basis', False))
 
     def density_from_superposition(self, basis_set):
         return Density.from_superposition(
@@ -315,6 +325,15 @@ class DFTComponentsBuilder:
         assert not psparams
         return poisson_solvers[0]
 
+    def create_mixer(self):
+        return self.params.mixer.build(desc=self.grid,
+                                       atomdist=self.atomdist,
+                                       setups=self.setups,
+                                       relpos_ac=self.relpos_ac,
+                                       world=self.communicators['w'],
+                                       ncomponents=self.ncomponents,
+                                       xp=self.xp)
+
     def create_ibz_wave_functions(self,
                                   basis: BasisFunctions,
                                   potential: Potential) -> IBZWaveFunctions:
@@ -329,16 +348,8 @@ class DFTComponentsBuilder:
     def create_scf_loop(self):
         hamiltonian = self.create_hamiltonian_operator()
         occ_calc = self.create_occupation_number_calculator()
+        mixer = self.create_mixer()
         eigensolver = self.create_eigensolver(hamiltonian)
-
-        mixer = MixerWrapper(
-            get_mixer_from_keywords(self.atoms.pbc.any(),
-                                    self.ncomponents,
-                                    **self.params.mixer.params),
-            self.ncomponents,
-            self.grid._gd,
-            world=self.communicators['w'])
-
         return SCFLoop(hamiltonian, occ_calc,
                        eigensolver, mixer, self.communicators['w'],
                        {key: value

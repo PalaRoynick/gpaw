@@ -1,5 +1,5 @@
 from ase.build import mx2
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 import numpy as np
 
 atoms = mx2('NiI2', kind='1T', a=3.969662131560825,

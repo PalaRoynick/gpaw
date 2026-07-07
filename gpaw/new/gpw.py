@@ -18,13 +18,15 @@ Versions:
 
 6) Write energy contributions to "energy_contributions".
 
+7) Changed sign of wave_functions.kpts.translations.
+
 """
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, TYPE_CHECKING
 
 import ase.io.ulm as ulm
 import numpy as np
@@ -35,15 +37,16 @@ from ase.units import Bohr, Ha
 import gpaw
 import gpaw.mpi as mpi
 from gpaw.core.atom_arrays import AtomArraysLayout
-from gpaw.dft import Parameters
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.calculation import DFTCalculation, units
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.logger import Logger
 from gpaw.new.potential import Potential
 from gpaw.utilities import as_dtype_precision, unpack_density, unpack_hermitian
+
+if TYPE_CHECKING:
+    from gpaw.dft import Parameters, DFT
 
 
 def as_single_precision(array):
@@ -88,9 +91,9 @@ class GPWFlags:
 
 
 def write_gpw(filename: str | Path,
-              dft: DFTCalculation,
+              dft: DFT,
               flags: GPWFlags) -> None:
-
+    from gpaw.new.calculation import units
     comm = dft.comm
 
     writer: ulm.Writer | ulm.DummyWriter
@@ -100,7 +103,7 @@ def write_gpw(filename: str | Path,
         writer = ulm.DummyWriter()
 
     with writer:
-        writer.write(version=6,
+        writer.write(version=7,
                      gpaw_version=gpaw.__version__,
                      ha=Ha,
                      bohr=Bohr,
@@ -141,7 +144,7 @@ def write_dft_state(writer: ulm.Writer | ulm.DummyWriter,
                     potential: Potential,
                     energies: DFTEnergies,
                     flags: GPWFlags) -> None:
-    """ Common function shared between DFTCalculation and RTTDDFT. """
+    """Common function shared between DFT and RTTDDFT. """
     density.write_to_gpw(writer.child('density'), flags)
     potential.write_to_gpw(writer.child('hamiltonian'), flags)
     writer.write(e_stress=potential.e_stress * Ha)
@@ -195,10 +198,9 @@ def read_gpw(filename: str | Path | IO[str],
              dtype=None,
              force_complex_dtype: bool = False,
              object_hooks: dict[str, Callable[[dict], Any]] | None = None
-             ) -> tuple[Atoms,
-                        DFTCalculation,
-                        Parameters,
-                        DFTComponentsBuilder]:
+             ) -> tuple[Atoms, DFT, DFTComponentsBuilder]:
+    from gpaw.dft import Parameters, DFT
+    from gpaw.new.calculation import units
     """
     Read gpw file
 
@@ -250,14 +252,15 @@ def read_gpw(filename: str | Path | IO[str],
         singlep=singlep, log=log, **kwargs)
     ibzwfs, density, potential, energies = state
 
-    dft = DFTCalculation(
+    dft = DFT.from_components(
         atoms, ibzwfs, density, potential,
         builder.setups,
         builder.create_scf_loop(),
         pot_calc=builder.create_potential_calculator(),
         params=params,
         energies=energies,
-        log=log)
+        log=log,
+        converge=False)
 
     results = {key: value / units[key]
                for key, value in reader.results.asdict().items()}
@@ -279,7 +282,7 @@ def read_gpw(filename: str | Path | IO[str],
     else:
         reader.close()
 
-    return atoms, dft, params, builder
+    return atoms, dft, builder
 
 
 def read_dft_state(reader: ulm.Reader,
@@ -296,6 +299,7 @@ def read_dft_state(reader: ulm.Reader,
                                     Density,
                                     Potential,
                                     DFTEnergies]]:
+    from gpaw.dft import Parameters
     bohr = reader.bohr
     ha = reader.ha
 
@@ -345,6 +349,8 @@ def read_dft_state(reader: ulm.Reader,
         kwargs['symmetry'] = {'rotations': rotation_scc,
                               'translations': kpts.translations,
                               'atommaps': kpts.atommap}
+        if reader.version < 7:
+            kwargs['symmetry']['translations'] *= -1
         params = Parameters(**kwargs)
         builder = params.dft_component_builder(atoms, log=log)
 
@@ -421,6 +427,8 @@ def read_dft_state(reader: ulm.Reader,
                  'band', 'stress', 'spinorbit']
         ec = {name: reader.hamiltonian.get(f'e_{name}', np.nan) / ha
               for name in NAMES}
+        if np.isnan(ec['spinorbit']):
+            ec['spinorbit'] = 0.0
         ec['kinetic_correction'] = ec['kinetic'] - ec['band']
         ec['extrapolation'] = (ec.pop('total_extrapolated') -
                                ec.pop('total_free'))
@@ -429,7 +437,6 @@ def read_dft_state(reader: ulm.Reader,
     energies = DFTEnergies(**ec)
 
     potential = Potential(vt_sR, dH_asp.to_full(), dedtaut_sR, vHt_x, e_stress)
-
     ibzwfs = builder.read_ibz_wave_functions(reader)
 
     return builder, params, (ibzwfs, density, potential, energies)

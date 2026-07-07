@@ -4,6 +4,7 @@ from math import ceil, log, pi, sqrt
 import numpy as np
 from ase.units import Hartree
 
+from gpaw.old import assert_legacy_gpaw
 from gpaw.overlap import Overlap
 from gpaw.sphere.gaunt import gaunt
 from gpaw.typing import Array1D, Array2D, Array3D, ArrayND
@@ -80,7 +81,7 @@ class XAS:
             nocc_cor (int, optional): correction for number of occupied states
             used in e.g. XCH XAS simulations. Defaults to 0.
         """
-        paw = paw._to_old()
+        assert_legacy_gpaw(paw)
         self.log = paw.log
         wfs = paw.wfs
         self.world = paw.world
@@ -490,7 +491,7 @@ class RecursionMethod:
                  proj_xyz=True):
 
         if paw is not None:
-            paw = paw._to_old()
+            assert_legacy_gpaw(paw)
             wfs = paw.wfs
             assert wfs.gd.orthogonal
 
@@ -578,9 +579,9 @@ class RecursionMethod:
                 kpt_comm.sum(self.spin_k, 0)
                 kpt_comm.sum(self.weight_k, 0)
 
-                a_kci.shape = (self.nkpts, dim, ni)
-                b_kci.shape = (self.nkpts, dim, ni)
-                data = {'ab': (a_kci, b_kci),
+                shape = (self.nkpts, dim, ni)
+                data = {'ab': (a_kci.reshape(shape),
+                               b_kci.reshape(shape)),
                         'nkpts': self.nkpts,
                         'symmetry operations': self.op_scc,
                         'weight_k': self.weight_k,

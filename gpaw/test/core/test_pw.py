@@ -125,17 +125,18 @@ def test_find_g():
 
 
 def test_random(comm):
-    pw = PWDesc(ecut=20, cell=[1, 1, 1], comm=comm)
+    pw = PWDesc(ecut=40, cell=[1, 1, 1], comm=comm)
     a = pw.empty(2)
     a.randomize()
     assert comm.rank != 0 or (a.data[:, 0].imag == 0.0).all()
 
 
 def test_morph(comm):
-    pw1 = PWDesc(ecut=20, cell=[1, 1, 1], comm=comm)
+    pw1 = PWDesc(ecut=40, cell=[1, 1, 1], comm=comm)
     a = pw1.empty()
     a.randomize()
-    pw2 = PWDesc(ecut=20, cell=[1, 1, 1.1], comm=comm)
+    print(a.data)
+    pw2 = PWDesc(ecut=40, cell=[1, 1, 1.1], comm=comm)
     b = a.morph(pw2)
     c = b.morph(pw1)
     assert (a.data == c.data).all()

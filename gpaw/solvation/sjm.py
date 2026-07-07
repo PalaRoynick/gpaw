@@ -3,7 +3,7 @@ The solvated jellium method is contained in this module.
 This enables electronically grand-canonical calculations to be calculated,
 typically for simulating electrochemical interfaces.
 
-This version the the solvated jellium method has been modified
+This version the solvated jellium method has been modified
 and includes the Fluctuation Dissipation Theorem.
 """
 
@@ -24,7 +24,7 @@ from scipy.signal import find_peaks
 from scipy.stats import linregress
 
 import gpaw.mpi
-from gpaw import GPAW_NEW, ConvergenceError
+from gpaw import ConvergenceError
 from gpaw.dipole_correction import DipoleCorrection
 from gpaw.fd_operators import Gradient
 from gpaw.jellium import Jellium, JelliumSlab
@@ -36,19 +36,19 @@ from gpaw.solvation.hamiltonian import SolvationRealSpaceHamiltonian
 from gpaw.solvation.poisson import WeightedFDPoissonSolver
 
 
-def SJM(*args, **kwargs):
+def SJM(*args, legacy_gpaw=True, **kwargs):
     """Backwards compatibility ..."""
-    if GPAW_NEW == 1:
-        from gpaw.new.ase_interface import GPAW
-        from gpaw.new.sjm import SJM
-        environment = SJM(cavity=kwargs.pop('cavity'),
-                          dielectric=kwargs.pop('dielectric'),
-                          interactions=kwargs.pop('interactions', None),
-                          **kwargs.pop('sj'))
-        return GPAW(
-            *args, **kwargs,
-            environment=environment)
-    return OldSJM(*args, **kwargs)
+    if legacy_gpaw:
+        return OldSJM(*args, **kwargs)
+    from gpaw.new.ase_interface import GPAW
+    from gpaw.new.sjm import SJM
+    environment = SJM(cavity=kwargs.pop('cavity'),
+                      dielectric=kwargs.pop('dielectric'),
+                      interactions=kwargs.pop('interactions', None),
+                      **kwargs.pop('sj'))
+    return GPAW(
+        *args, **kwargs,
+        environment=environment)
 
 
 class OldSJM(OldSolvationGPAW):

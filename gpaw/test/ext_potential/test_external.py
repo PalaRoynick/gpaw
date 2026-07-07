@@ -5,7 +5,6 @@ from gpaw import GPAW
 from gpaw.external import ConstantPotential
 
 
-@pytest.mark.old_gpaw_only
 def test_ext_potential_external():
     sc = 2.9
     R = 0.7  # approx. experimental bond length
@@ -20,7 +19,7 @@ def test_ext_potential_external():
     txt = None
 
     convergence = {'eigenstates': 1.e-4 * 40 * 1.5**3,
-                   'density': 1.e-2,
+                   'density': 1.e-3,
                    'energy': 0.1}
 
     # without potential

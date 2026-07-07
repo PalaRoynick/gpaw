@@ -28,19 +28,15 @@ calculator object need to be good for the supercell, not the primitive cell.
 .. literalinclude:: displacement.py
 
 This calculation merely dumped the effective potential at various displacements
-onto the harddrive. We now need to calculate the actual derivative and project them onto a set of LCAO basis functions.
-
-For this we first need to complete a ground-state calculation for the supercell. This calculation needs to be done in LCAO mode with
-parallelization over domains and bands disabled. (:git:`~doc/tutorialsexercises/vibrational/elphraman/supercell.py`)
+onto the harddrive. We now need to calculate the actual derivative and project them onto a set of LCAO basis functions. (:git:`~doc/tutorialsexercises/vibrational/elphraman/supercell.py`)
 
 .. literalinclude:: supercell.py
 
+You need to provide a dictionary with the basis and supercell k-point grid used for the internally created GPAW object.
 The ``calculate_supercell_matrix()`` method will then compute the gradients and
 calculate the matrix elements. The results are saved in a file cache in a
-basis of LCAO orbitals and supercell indices.
+basis of LCAO orbitals and supercell indices. This step should only take a few minutes as no self-consistent calculation is performed.
 
-
-If you use the planewave mode for the displacement calculation, please see the note in :ref:`elph`.
 
 Phonons
 =======
@@ -55,6 +51,8 @@ obtain accurate phonon frequencies. We already calculated the forces in the prev
 .. literalinclude:: phonons.py
     :start-at: # Phonon calculation
     :end-at: np.save
+
+The ``center_refcell=True`` parameter is crucial when using a phonon cache created with the electron-phonon module.
 
 As exercise, check the dependence of the phonon frequencies with the calculation
 mode, supercell size and convergence parameters.
@@ -98,9 +96,10 @@ cell. (:git:`~doc/tutorialsexercises/vibrational/elphraman/dipolemoment.py`)
 Phonon mode projected electron-phonon matrix
 ============================================
 
-With all the above calculations finished we can extract the electron-phonon
-matrix in the Bloch basis of the primitive cell projected onto the phonon modes:
-(:git:`~doc/tutorialsexercises/vibrational/elphraman/gmatrix.py`)
+With all the above calculations finished we can extract the
+electron-phonon matrix in the Bloch basis of the primitive cell projected
+onto the phonon modes
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/gmatrix.py`):
 
 .. literalinclude:: gmatrix.py
 
@@ -111,19 +110,21 @@ save lots of memory for larger systems with hundreds of atoms, where the
 supercell matrix can be over 100GiB large.
 
 
-Note: This part has not been tested properly for parallel runs and should be done
-in serial mode only.
+Note: This part has not been tested properly for parallel runs and should
+be done in serial mode only.
 
 
 Raman spectrum
 ==============
 
 With all ingredients provided we can now commence with the computation of the
-Raman tensor which is saved in a file cache.(:git:`~doc/tutorialsexercises/vibrational/elphraman/raman.py`)
+Raman tensor which is saved in a file cache
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/raman.py`):
 
 .. literalinclude:: raman.py
 
-The final result can then be plotted:(:git:`~doc/tutorialsexercises/vibrational/elphraman/plot_spectrum.py`)
+The final result can then be plotted
+(:git:`~doc/tutorialsexercises/vibrational/elphraman/plot_spectrum.py`):
 
 .. literalinclude:: plot_spectrum.py
     :start-at: from gpaw.elph import RamanData

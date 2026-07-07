@@ -5,8 +5,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 from ase.calculators.tip3p import TIP3P, angleHOH, rOH
-from ase.constraints import FixBondLengths
-from ase.io import read
+from ase.constraints import FixBondLengths, FixCom
 from ase.io.trajectory import Trajectory
 from ase.md import Langevin as Langevin0
 
@@ -22,7 +21,7 @@ def Langevin(*args, **kwargs):
 
 
 @pytest.mark.slow
-def test_watermodel(in_tmp_dir):
+def test_watermodel(in_tmp_dir, mpi):
     NSTEPS = 600
     SCALE = 200
 
@@ -49,19 +48,25 @@ def test_watermodel(in_tmp_dir):
 
     # Create atoms object with old constraints for reference
     atoms_ref = atoms.copy()
-    atoms_ref.constraints = FixBondLengths(pairs)
+    atoms_ref.constraints = [FixBondLengths(pairs), FixCom()]
 
     # RATTLE-type constraints on O-H1, O-H2, H1-H2.
-    atoms.constraints = FixBondLengthsWaterModel(pairs)
+    atoms.constraints = [FixBondLengthsWaterModel(pairs), FixCom()]
 
     atoms.calc = TIP3PWaterModel(rc=cutoff)
     atoms_ref.calc = TIP3P(rc=cutoff)
 
     rng = np.random.RandomState(123)
-    md = Langevin(atoms, 1 * units.fs, temperature_K=300,
-                  rng=rng,
-                  friction=0.01, logfile='C.log')
-    traj = Trajectory('C.traj', 'w', atoms)
+    md = Langevin(
+        atoms,
+        1 * units.fs,
+        temperature_K=300,
+        rng=rng,
+        fixcm=False,
+        friction=0.01,
+        logfile='C.log',
+        comm=mpi.comm)
+    traj = Trajectory('C.traj', 'w', atoms, comm=mpi.comm)
     md.attach(traj.write, interval=1)
 
     start = time.time()
@@ -69,33 +74,42 @@ def test_watermodel(in_tmp_dir):
         md.run(NSTEPS)
     end = time.time()
     Cversion = end - start
-    print("%d steps of C-MD took %.3fs (%.0f ms/step)" % (
+    print('%d steps of C-MD took %.3fs (%.0f ms/step)' % (
         NSTEPS, Cversion,
         Cversion / NSTEPS * 1000))
     traj.close()
 
     rng = np.random.RandomState(123)
-    md_ref = Langevin(atoms_ref, 1 * units.fs, temperature_K=300,
-                      rng=rng,
-                      friction=0.01, logfile='ref.log')
-    traj_ref = Trajectory('ref.traj', 'w', atoms_ref)
+    md_ref = Langevin(
+        atoms_ref,
+        1 * units.fs,
+        temperature_K=300,
+        rng=rng,
+        fixcm=False,
+        friction=0.01,
+        logfile='ref.log',
+        comm=mpi.comm)
+    traj_ref = Trajectory('ref.traj', 'w', atoms_ref, comm=mpi.comm)
     md_ref.attach(traj_ref.write, interval=1)
     start = time.time()
     with md_ref:
         md_ref.run(NSTEPS / SCALE)
     end = time.time()
     Pyversion = (end - start) * SCALE
-    print("%d steps of Py-MD took %.3fs (%.0f ms/step)" % (
+    print('%d steps of Py-MD took %.3fs (%.0f ms/step)' % (
         NSTEPS / SCALE,
         Pyversion / SCALE, Pyversion / NSTEPS * 1000))
     traj_ref.close()
 
     # Compare trajectories
-    images = read('C.traj@:')
-    images_ref = read('ref.traj@:')
+    with Trajectory('C.traj', comm=mpi.comm) as traj:
+        images = [*traj]
+    with Trajectory('ref.traj', comm=mpi.comm) as traj:
+        images_ref = [*traj]
+
     for img1, img2 in zip(images, images_ref):
         norm = np.linalg.norm(img1.get_positions() - img2.get_positions())
         print(norm)
         assert norm < 1e-11
 
-    print("Speedup", Pyversion / Cversion)
+    print('Speedup', Pyversion / Cversion)

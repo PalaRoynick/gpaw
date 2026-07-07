@@ -37,7 +37,9 @@ def test_exx_exx(in_tmp_dir):
         calc = GPAW(mode='fd',
                     xc=xc,
                     h=0.21,
-                    eigensolver='rmm-diis',
+                    mixer={'beta': 0.35, 'nmaxold': 6},
+                    eigensolver={'name': 'rmm-diis',
+                                 'niter': 3},
                     nbands=3,
                     convergence={'eigenstates': 1e-6},
                     txt='exx.txt')

@@ -35,7 +35,7 @@ created with the :func:`gpaw.dft.GPAW` function:
 ASECalculator(mode=PW(ecut=400.0))
 
 The ``atoms.calc`` object manages a
-:class:`gpaw.new.calculation.DFTCalculation` object that does the actual work.
+:class:`gpaw.new.calculation.DFT` object that does the actual work.
 When we do this:
 
 >>> e = atoms.get_potential_energy()
@@ -44,7 +44,7 @@ the :meth:`gpaw.new.ase_interface.ASECalculator.get_potential_energy`
 method gets called (``atoms.calc.get_potential_energy(atoms)``)
 and the following will happen:
 
-* create :class:`gpaw.new.calculation.DFTCalculation` object if not already done
+* create :class:`gpaw.new.calculation.DFT` object if not already done
 * update positions/unit cell if they have changed
 * start SCF loop and converge if needed
 * calculate energy
@@ -56,7 +56,7 @@ DFT-calculation object
 
 .. module:: gpaw.core
 
-An instance of the :class:`gpaw.new.calculation.DFTCalculation` class has
+An instance of the :class:`gpaw.new.calculation.DFT` class has
 the following attributes:
 
 .. list-table::
@@ -107,10 +107,11 @@ Overview:
 
 See also: :download:`code.svg`.
 
-There are three ways to create a :class:`~gpaw.new.calculation.DFTCalculation`
+There are several ways to create a
+:class:`~gpaw.dft.DFT`
 object:
 
-* Via the the :func:`gpaw.dft.GPAW` function which will create an
+* Via the :func:`gpaw.dft.GPAW` function which will create an
   :class:`gpaw.new.ase_interface.ASECalculator` object that has a
   ``dft`` attribute::
 
@@ -118,12 +119,8 @@ object:
     atoms.get_potential_energy()
     dft = atoms.calc.dft
 
-* Directly using the :class:`~gpaw.new.calculation.DFTCalculation`
-  constructor (not recommended)::
-
-    dft = DFTCalculation(...)
-
-* Using the :func:`gpaw.dft.DFT` function::
+* Using the :class:`~gpaw.dft.DFT`
+  constructor::
 
     dft = DFT(atoms, <parameters>)
 
@@ -131,8 +128,8 @@ object:
 
     dft = Parameters(<parameters>).dft_calculation(atoms)
 
-  The :class:`~gpaw.dft.Parameters` is used by both the
-  :func:`gpaw.dft.DFT` and :func:`gpaw.dft.GPAW` functions to
+  The :class:`~gpaw.dft.Parameters` is used by both
+  the :class:`gpaw.dft.DFT` class and the :func:`gpaw.dft.GPAW` function to
   handle:
 
   * error checking
@@ -253,7 +250,7 @@ grid:
 >>> pw = PWDesc(ecut=100, cell=grid.cell)
 >>> func_G = pw.empty()
 >>> func_R.fft(out=func_G)
-PWArray(pw=PWDesc(ecut=100 <coefs=1536/1536>, cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
+PWArray(pw=PWDesc(ecut=100 <coefs=1536/1536>, cell=[4.0, 4.0, 4.0], pbc=[1, 1, 1], comm=0/1, dtype=float64), dims=())
 >>> G = pw.reciprocal_vectors()
 >>> G.shape
 (1536, 3)
@@ -262,7 +259,7 @@ array([0., 0., 0.])
 >>> func_G.data[0]
 np.complex128(1+0j)
 >>> func_G.ifft(out=func_R)
-UGArray(grid=UGDesc(size=[20, 20, 20], cell=[4.0, 4.0, 4.0], pbc=[True, True, True], comm=0/1, dtype=float64), dims=())
+UGArray(grid=UGDesc(size=[20, 20, 20], cell=[4.0, 4.0, 4.0], pbc=[1, 1, 1], comm=0/1, dtype=float64), dims=())
 >>> round(func_R.data[0, 0, 0], 15)
 np.float64(1.0)
 
@@ -438,7 +435,7 @@ Input-parameter objects
 DFT-components
 --------------
 
-.. autoclass:: gpaw.new.calculation.DFTCalculation
+.. autoclass:: gpaw.dft.DFT
     :members:
     :undoc-members:
 .. autoclass:: gpaw.new.calculation.DFTState
@@ -468,7 +465,6 @@ DFT-components
 .. autoclass:: gpaw.new.ase_interface.ASECalculator
     :members:
     :undoc-members:
-.. autofunction:: gpaw.dft.DFT
 .. autofunction:: gpaw.dft.GPAW
 .. autofunction:: gpaw.new.pwfd.move_wfs.move_wave_functions
 
@@ -485,7 +481,10 @@ DFT-components
    :members:
    :undoc-members:
 
-.. autoclass:: gpaw.new.extensions.Extension
+.. autoclass:: gpaw.extensions.Extension
+   :members:
+   :undoc-members:
+.. autoclass:: gpaw.new.logger.Logger
    :members:
    :undoc-members:
 

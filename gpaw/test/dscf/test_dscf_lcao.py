@@ -9,9 +9,13 @@ from gpaw import GPAW
 
 @pytest.mark.dscf
 def test_dscf_dscf_lcao():
-    calc = GPAW(mode='lcao',
+    mixer = {'backend': 'pulay', 'nmaxold': 6}
+
+    calc = GPAW(legacy_gpaw=True,
+                mode='lcao',
                 basis='dzp',
                 nbands=8,
+                mixer=mixer,
                 h=0.2,
                 xc='PBE',
                 spinpol=True,
@@ -27,9 +31,11 @@ def test_dscf_dscf_lcao():
 
     # Excited state calculation
 
-    calc_es = GPAW(mode='lcao',
+    calc_es = GPAW(legacy_gpaw=True,
+                   mode='lcao',
                    basis='dzp',
                    nbands=8,
+                   mixer=mixer,
                    h=0.2,
                    symmetry='off',
                    xc='PBE',

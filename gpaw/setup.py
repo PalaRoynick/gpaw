@@ -19,7 +19,6 @@ from gpaw.sphere.gaunt import gaunt, nabla
 from gpaw.spline import Spline
 from gpaw.utilities import pack_density, unpack_hermitian
 from gpaw.xc import XC
-from gpaw.xc.ri.spherical_hse_kernel import RadialHSE
 
 
 class WrongMagmomForHundsRuleError(ValueError):
@@ -519,6 +518,7 @@ class BaseSetup:
     def calculate_erfc_interaction(self, omega):
         """Calculate and return erfc based valence valence
            exchange interactions."""
+        from gpaw.xc.ri.spherical_hse_kernel import RadialHSE
         hse = RadialHSE(self.local_corr.rgd2, omega).screened_coulomb_dv
 
         def erfc_interaction(n_g, l):
@@ -671,7 +671,7 @@ class Setup(BaseSetup):
     ``type``   Type-name of setup (eg. 'paw')
     ``symbol`` Chemical element label (eg. 'Mg')
     ``xcname`` Name of xc
-    ``data``   Container class for information on the the atom, eg.
+    ``data``   Container class for information on the atom, eg.
                Nc, Nv, n_j, l_j, f_j, eps_j, rcut_j.
                It defines the radial grid by ng and beta, from which
                r_g = beta * arange(ng) / (ng - arange(ng)).
@@ -1359,8 +1359,7 @@ class Setups(list):
             output = StringIO()
             setup.print_info(functools.partial(print, file=output))
             txt = output.getvalue()
-            txt += '  # ' + setup.get_basis_description().replace('\n',
-                                                                  '\n  # ')
+            txt += '  ' + setup.get_basis_description().replace('\n', '\n  ')
             txt = txt.replace('\n', '\n  ')
             s += '  ' + txt + '\n\n'
 

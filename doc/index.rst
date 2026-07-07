@@ -32,8 +32,8 @@ Energy: -6.631 eV
 >>> forces = h2.get_forces()
 >>> forces.shape
 (2, 3)
->>> print(f'Force: {forces[0, 2]:.3f} eV/Å')
-Force: -0.639 eV/Å
+>>> print(f'Force: {forces[0, 2]:.2f} eV/Å')
+Force: -0.64 eV/Å
 
 .. image:: https://badge.fury.io/py/gpaw.svg
     :target: https://pypi.org/project/gpaw/
@@ -46,6 +46,8 @@ Force: -0.639 eV/Å
 
 News
 ====
+
+* :ref:`GPAW version 26.7.0 <releasenotes>` released (Jul 6, 2026).
 
 * :ref:`GPAW version 25.7.0 <releasenotes>` released (Jul 29, 2025).
 
@@ -199,7 +201,7 @@ News
 
 * This site is now powered by Sphinx_ (Jul 31, 2008)
 
-* GPAW is now based on numpy_ instead of of Numeric (Jan 22, 2008)
+* GPAW is now based on numpy_ instead of Numeric (Jan 22, 2008)
 
 * :ref:`GPAW version 0.3 <releasenotes>` released (Dec 19, 2007)
 

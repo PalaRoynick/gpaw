@@ -60,12 +60,12 @@ def plot_partial_waves(ax: Axes,
             color = _blend_colors(colors[l],
                                   background=bg_color,
                                   foreground_weight=weight)
-            ax.plot(r_g[:gc], (phi_g * r_g)[:gc], color=color, label=label)
-            ax.plot(r_g[:gc], (phit_g * r_g)[:gc], '--', color=color)
+            ax.plot(r_g[:gc], phi_g[:gc], color=color, label=label)
+            ax.plot(r_g[:gc], phit_g[:gc], '--', color=color)
     ax.axis(xmin=0, xmax=3 * cutoff)
     ax.set_title(f'Partial waves: {symbol} {name}')
     ax.set_xlabel('radius [Bohr]')
-    ax.set_ylabel(r'$r\phi_{n\ell}(r)$')
+    ax.set_ylabel(r'$\phi_{n\ell}(r)$')
     ax.legend()
 
 
@@ -87,7 +87,7 @@ def plot_projectors(ax: Axes,
                 label = '*{} ({:.2f} Ha)'.format('spdf'[l], e)
             else:
                 label = '%d%s (%.2f Ha)' % (n, 'spdf'[l], e)
-            ax.plot(r_g, pt_g * r_g,
+            ax.plot(r_g, pt_g,
                     color=_blend_colors(colors[l],
                                         background=bg_color,
                                         foreground_weight=weight),
@@ -95,7 +95,7 @@ def plot_projectors(ax: Axes,
     ax.axis(xmin=0, xmax=cutoff)
     ax.set_title(f'Projectors: {symbol} {name}')
     ax.set_xlabel('radius [Bohr]')
-    ax.set_ylabel(r'$r\tilde{p}(r)$')
+    ax.set_ylabel(r'$\tilde{p}(r)$')
     ax.legend()
 
 

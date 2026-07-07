@@ -11,7 +11,7 @@ from gpaw.elph import ElectronPhononMatrix
 
 @pytest.mark.serial
 @pytest.mark.elph
-def test_gmatrix(module_tmp_path, supercell_cache):
+def test_gmatrix(session_tmp_path, supercell_cache):
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     supercell_cache
     elph = ElectronPhononMatrix(atoms, 'supercell', 'elph')
@@ -30,6 +30,7 @@ def test_gmatrix(module_tmp_path, supercell_cache):
                 basis='sz(dzp)',
                 kpts={'size': (2, 2, 2), 'gamma': False},
                 symmetry='off',
+                convergence={'density': 1e-8},
                 txt='li_gs_nosym.txt')
     atoms.calc = calc
     atoms.get_potential_energy()

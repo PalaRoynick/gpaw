@@ -117,7 +117,7 @@ def einsum(indices, *args, optimize=False, **kwargs):
 
 
 def diag(a):
-    return ndarray(np.diag(a._data))
+    return ndarray(np.diag(asarray(a)._data))
 
 
 def abs(a):
@@ -126,6 +126,18 @@ def abs(a):
 
 def exp(a):
     return ndarray(np.exp(a._data))
+
+
+def mean(a, axis=None):
+    return ndarray(np.mean(a._data, axis=axis))
+
+
+def min(a, *args, **kwargs):
+    return ndarray(np.min(a._data, *args, **kwargs))
+
+
+def max(a, *args, **kwargs):
+    return ndarray(np.max(a._data, *args, **kwargs))
 
 
 def conjugate(a):
@@ -183,6 +195,12 @@ def isfinite(a):
 
 def isnan(a):
     return ndarray(np.isnan(a._data))
+
+
+def nan_to_num(a: ndarray, copy=True, nan=0.0, posinf=None, neginf=None):
+    """"""
+    return ndarray(np.nan_to_num(a._data, copy=copy, nan=nan, posinf=posinf,
+                                 neginf=neginf))
 
 
 def real(a: ndarray) -> ndarray:
@@ -246,10 +264,11 @@ class ndarray:
     def all(self):
         return ndarray(self._data.all())
 
-    def sum(self, out=None, **kwargs):
+    def sum(self, axis=None, dtype=None, out=None, **kwargs):
         if out is not None:
             out = out._data
-        return ndarray(self._data.sum(out=out, **kwargs))
+        return ndarray(self._data.sum(axis=axis, dtype=dtype,
+                                      out=out, **kwargs))
 
     def __repr__(self):
         return 'cp.' + np.array_repr(self._data)

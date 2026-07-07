@@ -7,7 +7,6 @@ import numpy as np
 
 from gpaw.core import UGArray, UGDesc
 from gpaw.gpu import einsum
-from gpaw.hybrids import HybridXC
 from gpaw.new import zips
 from gpaw.new.c import (add_to_density, add_to_density_gpu, evaluate_lda_gpu,
                         evaluate_pbe_gpu)
@@ -26,6 +25,7 @@ from gpaw.xc.hybrid import HybridXC as OldHybridXC
 def create_functional(xc: OldXCFunctional | str | dict,
                       grid: UGDesc,
                       xp=np) -> Functional:
+    from gpaw.hybrids import HybridXC
     if isinstance(xc, OldHybridXC):
         raise NotImplementedError
 
@@ -34,6 +34,7 @@ def create_functional(xc: OldXCFunctional | str | dict,
     exx_yukawa = False
     if isinstance(xc, (str, dict)):
         xc = XC(xc)
+    setup_name = xc.get_setup_name()
 
     if xc.type == 'HYB':
         assert isinstance(xc, HybridXC)
@@ -49,13 +50,15 @@ def create_functional(xc: OldXCFunctional | str | dict,
     elif xc.type == 'MGGA':
         functional = MGGAFunctional(xc, grid)
     elif xc.type == 'GLLB':
-        raise NotImplementedError
+        from gpaw.dft import LegacyGPAWError
+        raise LegacyGPAWError
     else:
         raise ValueError(f'{xc.type} not supported')
 
     functional.exx_fraction = exx_fraction
     functional.exx_omega = exx_omega
     functional.exx_yukawa = exx_yukawa
+    functional.setup_name = setup_name
 
     return functional
 
@@ -72,8 +75,7 @@ class Functional:
         self.name = self.xc.name
         self.type = self.xc.type
         self.xc.xp = xp
-        if grid.size.any():  # not TB-mode
-            self.xc.set_grid_descriptor(grid._gd)
+        self.xc.set_grid_descriptor(grid._gd)
         self.exx_fraction = 0.0
         self.exx_omega = 0.0
         self.exx_yukawa = False
@@ -93,7 +95,7 @@ class Functional:
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
 
     def get_setup_name(self) -> str:
-        return self.name
+        return self.setup_name
 
     def stress_contribution(self,
                             ibzwfs, density,
@@ -180,8 +182,7 @@ class GGAFunctional(LDAFunctional):
                  xp=np):
         super().__init__(xc, grid, xp)
         # xc already has Gradient.apply bound methods!!!
-        if grid.size.any():  # not TB-mode
-            self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
+        self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
     def _evaluate_xc_cpu(self, args):
         if 'vdW' not in self.name:

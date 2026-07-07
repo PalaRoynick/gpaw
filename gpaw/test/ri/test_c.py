@@ -45,8 +45,14 @@ def test_diamond(in_tmp_dir, add_cwd_to_setup_paths):
     # atoms.calc = calc
     # atoms.get_potential_energy()
 
-    calc = GPAW(h=0.12, mode='lcao', basis='qzdp',
-                xc='HSE06WIP:backend=ri', charge=4)
+    calc = GPAW(
+        legacy_gpaw=True,
+        h=0.12,
+        mixer={'backend': 'no-mixing'},
+        mode='lcao',
+        basis='qzdp',
+        xc='HSE06WIP:backend=ri',
+        charge=4)
     atoms.calc = calc
     atoms.get_potential_energy()
 
@@ -59,14 +65,19 @@ def test_diamond(in_tmp_dir, add_cwd_to_setup_paths):
                        atoms.get_potential_energy(), atol=0.1)
 
     atoms = bulk('C', 'diamond')
-    atoms.calc = GPAW(kpts={'size': (2, 2, 2), 'gamma': True},
-                      mode='lcao', basis='dzp',
-                      xc='HSE06WIP:backend=ri')
+    atoms.calc = GPAW(
+        legacy_gpaw=True,
+        kpts={'size': (2, 2, 2), 'gamma': True},
+        mode='lcao',
+        basis='dzp',
+        xc='HSE06WIP:backend=ri')
 
     # NOTE: HSE06 does not yet work. This is just a placeholder for
     # integration test.
-    assert np.allclose(atoms.get_potential_energy(), 3.291175, atol=4e-5)
-
+    assert np.allclose(
+        atoms.get_potential_energy(),
+        3.2910105535337113,
+        atol=4e-5)
     calc = atoms.calc
 
     setup = calc.density.setups[0]

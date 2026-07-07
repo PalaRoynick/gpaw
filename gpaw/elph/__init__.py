@@ -23,7 +23,7 @@ displacements. The implementation supports calculations of the el-ph coupling
 in both finite and periodic systems, i.e. expressed in a basis of molecular
 orbitals or Bloch states.
 
-The implementation is based on finite-difference calculations of the the atomic
+The implementation is based on finite-difference calculations of the atomic
 gradients of the effective potential expressed on a real-space grid. The el-ph
 couplings are obtained from LCAO representations of the atomic gradients of the
 effective potential and the electronic states.

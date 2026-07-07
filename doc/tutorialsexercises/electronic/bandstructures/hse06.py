@@ -3,8 +3,8 @@ from pathlib import Path
 
 from ase.build import mx2
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
-from gpaw.new.pw.nschse import NonSelfConsistentHSE06
+from gpaw import GPAW
+from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 
 
 def mos2():
@@ -30,10 +30,9 @@ def bandstructure(gs_calc, bp):
         convergence={'bands': N},
         symmetry='off',
         txt='gmkg.txt')
-    lda_skn = bs_calc.eigenvalues()
-    hse = NonSelfConsistentHSE06.from_dft_calculation(
-        gs_calc.dft, 'hse06.txt')
-    hse_skn = hse.calculate(bs_calc.dft.ibzwfs, na=0, nb=N)
+    hse = NonSelfConsistentHybridXCCalculator.from_dft_calculation(
+        gs_calc.dft, 'HSE06', log='hse06.txt')
+    lda_skn, hse_skn = hse.calculate(bs_calc.dft.ibzwfs, na=0, nb=N)
     # Return energies relative to vacuum level:
     return (lda_skn[0, :, :N] - vacuum_level,
             hse_skn[0] - vacuum_level,

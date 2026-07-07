@@ -43,7 +43,7 @@ The script can be found here:
 Below we will walk through the script.
 
 As explained in the :mod:`ASE manual <ase.transport>`,
-we need need to define a principal layer, and a scattering region. To
+we need to define a principal layer, and a scattering region. To
 be able to describe second nearest neighbor hopping, we choose a
 principal layer of two Pt atoms. The scattering region is chosen
 minimal: i.e. the molecule plus one principal layer on each side, as
@@ -203,9 +203,3 @@ eV.
 Which orbital do you think is responsible for the high conductance?
 Try to cut the relevant orbitals from the basis set, as we did for the
 TB model.
-
-The TransportCalculator class
------------------------------
-
-.. autoclass:: ase.transport.calculators.TransportCalculator
-

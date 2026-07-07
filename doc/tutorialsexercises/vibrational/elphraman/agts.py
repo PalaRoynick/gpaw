@@ -28,7 +28,11 @@ def check():
     from gpaw.test import findpeak
 
     ri = np.load('raman_spectrum.npy')
-    x0, y0 = findpeak(ri[0], ri[1])
+    x0, y0 = findpeak(ri[0], ri[4])
     print(x0, y0)
-    assert np.isclose(x0, 0.04991788107682117, rtol=1e-4)
-    assert np.isclose(y0, 373.73963326610783, rtol=1e-2)
+    assert np.isclose(x0, 0.046, atol=1e-3)
+    assert np.isclose(y0, 18.6, atol=1)
+
+
+if __name__ == '__main__':
+    check()

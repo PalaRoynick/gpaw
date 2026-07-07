@@ -8,7 +8,8 @@ from gpaw.solvation import (EffectivePotentialCavity, LinearDielectric,
 from gpaw.utilities.adjust_cell import adjust_cell
 
 
-def test_solvation_vacuum():
+@pytest.mark.parametrize('gpaw_new', [False, True])
+def test_solvation_vacuum(gpaw_new):
     SKIP_REF_CALC = True
 
     energy_eps = 0.0005 / 8
@@ -25,8 +26,8 @@ def test_solvation_vacuum():
     adjust_cell(atoms, vac, h)
 
     convergence = {
-        'energy': energy_eps * 0.1,
-        'forces': forces_eps * 0.1,
+        'energy': energy_eps * 1e-2,
+        'forces': forces_eps * 1e-2,
         'density': 10.0,
         'eigenstates': 10.0}
 
@@ -43,9 +44,11 @@ def test_solvation_vacuum():
                          [0.0, -1.60924, 0.05999]])
 
     atoms.calc = SolvationGPAW(
+        legacy_gpaw=not gpaw_new,
         mode='fd',
         xc='LDA',
         h=h,
+        eigensolver={'name': 'davidson', 'niter': 3},
         convergence=convergence,
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii=atomic_radii,
@@ -53,10 +56,10 @@ def test_solvation_vacuum():
             temperature=T),
         dielectric=LinearDielectric(epsinf=1.0))
     Etest = atoms.get_potential_energy()
-    if atoms.calc.old:
-        Eeltest = atoms.calc.get_electrostatic_energy()
-    else:
+    if gpaw_new:
         Eeltest = Etest - atoms.calc.dft.solvation.interaction_energy()
+    else:
+        Eeltest = atoms.calc.get_electrostatic_energy()
     Ftest = atoms.get_forces()
     assert Etest == pytest.approx(
         Eref, abs=energy_eps * atoms.calc.get_number_of_electrons())

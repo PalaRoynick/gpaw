@@ -9,8 +9,10 @@ def test_lcao_bulk(in_tmp_dir):
     bulk = Atoms('Li', pbc=True)
     k = 4
     g = 8
-    calc = GPAW(gpts=(g, g, g), kpts=(k, k, k),
-                mode='lcao', basis='dzp')
+    calc = GPAW(gpts=(g, g, g),
+                kpts=(k, k, k),
+                mode='lcao',
+                basis='dzp')
     bulk.calc = calc
     e = []
     niter = []
@@ -30,7 +32,7 @@ def test_lcao_bulk(in_tmp_dir):
 
     print(e)
     energy_tolerance = 0.0003
-    niter_tolerance = 0
+    niter_tolerance = 1  # MSR1 vs Pulay
 
     for i in range(len(A)):
         assert e[i] == pytest.approx(e_ref[i], abs=energy_tolerance)

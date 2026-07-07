@@ -22,15 +22,15 @@ class Potential:
         self.dH_asii = dH_asii
         self.dedtaut_sR = dedtaut_sR
         self.vHt_x = vHt_x  # initial guess for Hartree potential
-        self.e_stress = e_stress  # idotropic contribution to stress tensor
+        self.e_stress = e_stress  # isotropic stress contribution
 
     def __repr__(self):
         return (f'Potential({self.vt_sR}, {self.dH_asii}, '
                 f'{self.dedtaut_sR})')
 
     def __str__(self) -> str:
-        return (f'potential:\n'
-                f'  grid points: {self.vt_sR.desc.size}\n')
+        return (f'Potential:\n'
+                f'  Grid points: {self.vt_sR.desc.size}\n')
 
     def deltaH(self, P_ani, out_ani, spin):
         if len(P_ani.dims) == 1:  # collinear wave functions
@@ -86,13 +86,20 @@ class Potential:
             None if self.vHt_x is None else self.vHt_x.redist(
                 desc, comm1, comm2))
 
-    def write_to_gpw(self, writer, flags):
+    def gather(self):
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()
         vt_sR = self.vt_sR.to_xp(np).gather()
+        dedtaut_sR = None
+        vHt_x = None
         if self.dedtaut_sR is not None:
             dedtaut_sR = self.dedtaut_sR.to_xp(np).gather()
         if self.vHt_x is not None:
             vHt_x = self.vHt_x.to_xp(np).gather()
+        return dH_asp, vt_sR, dedtaut_sR, vHt_x
+
+    def write_to_gpw(self, writer, flags):
+        dH_asp, vt_sR, dedtaut_sR, vHt_x = self.gather()
+
         if dH_asp is None:
             return
 
@@ -117,14 +124,14 @@ class Potential:
             raise ValueError('No electrostatic potential')
         if isinstance(self.vHt_x, UGArray):
             vHt_r = self.vHt_x.gather()
-        elif isinstance(self.vHt_x, PWArray):
+        else:
+            assert isinstance(self.vHt_x, PWArray)
             vHt_g = self.vHt_x.gather()
             if vHt_g is not None:
                 vHt_r = vHt_g.ifft(grid=vHt_g.desc.minimal_uniform_grid())
             else:
                 vHt_r = None
-        else:
-            return np.nan  # TB-mode
+
         vacuum_level = 0.0
         if vHt_r is not None:
             for c, periodic in enumerate(grid.pbc_c):

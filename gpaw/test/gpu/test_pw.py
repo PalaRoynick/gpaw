@@ -1,6 +1,5 @@
 import pytest
 from ase import Atoms
-from ase.units import Ha
 
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.dft import DFT
@@ -37,15 +36,14 @@ def test_gpu(dtype, gpu, mode, random):
             mode={'name': mode,
                   'force_complex_dtype': dtype == complex},
             random=random,
-            **{'symmetry': 'off',
-               'mixer': {'backend': 'fft'}} if GPAW_NO_C_EXTENSION else {},
+            **{'symmetry': 'off'} if GPAW_NO_C_EXTENSION else {},
             convergence={'density': 1e-8},
             parallel={'gpu': gpu},
             setups='paw',
             **kwargs)
         dft.converge()
-        dft.energy()
-        energy = dft.results['energy'] * Ha
+
+        energy = dft.calculate_energy()
         if mode == 'pw':
             assert energy == pytest.approx(-16.032945, abs=1e-6)
         else:
@@ -98,19 +96,17 @@ def test_gpu_k(gpu, par, mode, xc):
         convergence={'density': 1e-8},
         kpts=(4, 1, 1),
         **{'random': 'True',
-           'mixer': {'backend': 'fft'},
            'symmetry': 'off'} if GPAW_NO_C_EXTENSION else {},
         poissonsolver=poisson,
         parallel={'gpu': gpu,
                   par: world.size},
         setups='paw')
     dft.converge()
-    dft.energy()
+    energy = dft.calculate_energy()
     if mode == 'pw':
-        dft.forces()
+        dft.calculate_forces()
         if not GPAW_NO_C_EXTENSION:
-            dft.stress()
-    energy = dft.results['energy'] * Ha
+            dft.calculate_stress()
     ref = {'LDAfd': -17.685022604078714,
            'PBEfd': -17.336991943070384,
            'PBEpw': -17.304186,
@@ -125,7 +121,6 @@ def test_2d():
     dft = DFT(
         atoms,
         mode={'name': 'pw'},
-        mixer={'backend': 'fft'},  # avoid FD-stencil in mixer-metric
         spinpol=True,
         random=True,
         xc='LDA',
@@ -135,14 +130,11 @@ def test_2d():
         parallel={'gpu': True})
     dft.converge()
     assert dft.potential.get_vacuum_level() == pytest.approx(2.9436, 1e-2)
-    dft.energy()
-    dft.forces()
-    E = dft.results['energy']
-    F = dft.results['forces']
-    assert E == pytest.approx(0.1769, 1e-2)
+    E = dft.calculate_energy()
+    F = dft.calculate_forces()
+    assert E == pytest.approx(4.81369, 1e-2)
     assert F[0] == pytest.approx([0, 0, 0], abs=1e-8)
     if not GPAW_NO_C_EXTENSION:
-        dft.stress()
-        S = dft.results['stress']
-        assert S == pytest.approx([-0.0110, -0.0110, 0.0002,
-                                   0.0, 0.0, 0.0], abs=0.001)
+        S = dft.calculate_stress()
+        assert S == pytest.approx([-2.0199, -2.0199, 0.0367,
+                                   0.0, 0.0, 0.0], abs=1e-2)
