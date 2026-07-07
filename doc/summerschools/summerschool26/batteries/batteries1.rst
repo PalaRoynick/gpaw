@@ -153,7 +153,6 @@ Determine the equilibrium lattice constant.  We use a
     # Fit a polynomial:
     poly = np.polynomial.Polynomial.fit(dists, energies, 3)
     # and plot it:
-    # magic: %matplotlib notebook
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1, 1)
     ax.plot(dists, energies, '*r')
