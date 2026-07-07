@@ -272,8 +272,9 @@ distances.
     layer-distance: 3.213 Å
 
 Now we need to try a GGA type functional (e.g.  PBE) and also try to add
-van der Waals forces on top of PBE (i.e.  PBE+DFTD3). These functionals
-will require more computational time, thus the following might be
+van der Waals forces on top of PBE (i.e.  PBE+DFTD3).
+The DFTD3 correction can be applied using the GPAW extensions :ref:`d3correction`.
+These functionals will require more computational time, thus the following might be
 beneficial to read.
 
 If the relaxation takes too long time, we can submit it to be run in
@@ -335,11 +336,7 @@ Some hints:
 
 2. A k-point density of approximately 2.4 points / Angstrom will be sufficient
 
-3. The DFTD3 correction is done *a posteriori*, this means the calculator
-   should be created a little differently, see [the second example
-   here](https://docs.ase-lib.org/ase/calculators/dftd3.html#examples)
-
-4. See also the :mod:`equation of state module <ase.eos>`
+3. See also the :mod:`equation of state module <ase.eos>`
 
 In the end try to compare the different functionals with experimental values:
 
