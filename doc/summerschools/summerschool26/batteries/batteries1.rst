@@ -7,12 +7,14 @@
 
 .. _batteries1:
 
-===================================
-Li intercalation energy in graphite
-===================================
+===========================================
+Part 1: Li intercalation energy in graphite
+===========================================
 
-The :ref:`batteries1` page will guide you through the first day of the
-battery exercise.
+Outline
+=======
+
+In this part of the battery exercise we will:
 
 * Setup a graphite structure
 
@@ -31,11 +33,12 @@ battery exercise.
 
   - Compare the results of different functionals with experimental values.
 
+.. contents::
 
-Day 2 - Li intercalation energy
-===============================
+Theory
+======
 
-Today we will calculate the energy cost/gain associated with
+We will calculate the energy cost/gain associated with
 intercalating a lithium atom into graphite using approaches at different
 levels of theory.  After today you should be able to:
 
@@ -63,9 +66,6 @@ the layers.
 
 In the sections below we will calculate the lowest energy structures of
 each compound.  This is needed to determine the intercalation energy.
-
-.. contents::
-
 
 Graphite
 ========
