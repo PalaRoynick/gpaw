@@ -113,37 +113,12 @@ differences.
 
     Energy of graphite: 15.84 eV
 
-The cell below requires some input.  We set up a loop that should
-calculate the energy of graphite for a series of C-C distances.
+We set up a loop that should calculate the energy
+of graphite for a series of C-C distances.
 
-.. testcode::
-
-    import numpy as np
-
-    # Provide some initial guesses on the distances
-    ccdist = 1.3
-    layerdist = 3.7
-
-    # We will explore distances around the initial guess
-    dists = np.linspace(ccdist * .8, ccdist * 1.2, 10)
-    # The resulting energies are put in the following list
-    energies = []
-    for cc in dists:
-        # Calculate the lattice parameters a and c from the C-C distance
-        # and interlayer distance, respectively
-        a = cc * np.sqrt(3)
-        c = 2 * layerdist
-
-        gra = Graphite('C', latticeconstant={'a': a, 'c': c})
-
-        # Set the calculator and attach it to the Atoms object with
-        # the graphite structure
-        calc = EMT()
-        gra.calc = calc
-
-        energy = gra.get_potential_energy()
-        # Append results to the list
-        energies.append(energy)
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- energy-volume
+   :end-before: end -- energy-volume
 
 Determine the equilibrium lattice constant.  We use a
 :mod:`numpy.polynomial`.
@@ -182,8 +157,7 @@ Determine the equilibrium lattice constant.  We use a
     C-C dist: 1.319 Å
     C-C dist: 1.319 Å
 
-Make a script that calculates the interlayer distance with EMT in the
-cell below
+Make a script that calculates the interlayer distance with EMT
 
 .. testcode::
 
@@ -193,7 +167,7 @@ cell below
     from ase.lattice.hexagonal import Graphite
     import numpy as np
 
-    # ccdist is already defined in the previous cell
+    # ccdist is already defined previously
     # Start from a small guess
     layerdist = 2.0
     ...
