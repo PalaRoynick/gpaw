@@ -393,8 +393,7 @@ the intercallation energy of Li in graphite, that you calculated on Day
 2. What equilibrium potential do you find?  How does that compare to the
 cell voltage you can obtain from :mol:`FePO_4/C` batteries?
 
-Make sure you are able to discuss the bullet points at the top of this
-notebook.
+Make sure you are able to discuss the bullet points at the top of this tutorial part.
 
 
 Bonus
