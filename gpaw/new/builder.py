@@ -172,11 +172,7 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.grid, self.fine_grid = self.create_uniform_grids()
-        self.distributed_fine_grid = self.fine_grid.new(comm=comm)
-
-        self.xc = create_functional(xcfunc,
-                                    self.distributed_fine_grid,
-                                    self.xp)
+        self.xc = self.create_xc_functional(xcfunc)
 
         self.interpolation_desc: Domain
         self.electrostatic_potential_desc: Domain
@@ -203,6 +199,9 @@ class DFTComponentsBuilder:
 
     def create_uniform_grids(self):
         raise NotImplementedError
+
+    def create_xc_functional(self, xcfunc):
+        return create_functional(xcfunc, self.fine_grid, self.xp)
 
     def check_cell(self, cell):
         number_of_lattice_vectors = cell.rank

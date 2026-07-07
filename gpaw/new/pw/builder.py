@@ -20,7 +20,6 @@ from gpaw.new.pw.paw_poisson import SlowPAWPoissonSolver
 from gpaw.new.pw.poisson import make_poisson_solver
 from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
-from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D
 
 
@@ -69,10 +68,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                       cell=self.grid.cell,
                       comm=self.grid.comm,
                       dtype=self.dtype)
-
-    def create_xc_functional(self):
-        return create_functional(self._xc,
-                                 self.fine_grid, self.xp)
 
     @cached_property
     def interpolation_desc(self):
