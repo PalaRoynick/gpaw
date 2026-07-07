@@ -216,8 +216,8 @@ same parameters.
 First we set up an initial guess of the structure as before.
 
 .. literalinclude:: relax_graphite.py
-   :start-after: web
-   :end-before: xc
+   :start-after: start -- build
+   :end-before: end -- build
 
 Then we create the GPAW calculator object.  The parameters are explained
 :ref:`here <parameters>`,
@@ -232,8 +232,8 @@ We will start by using the LDA exchange-correlation functional.  Later
 you will try other functionals.
 
 .. literalinclude:: relax_graphite.py
-   :start-at: xc
-   :end-before: sf
+   :start-after: start -- calc
+   :end-before: end -- calc
 
 Check out the contents of the output file (:download:`graphite-LDA.txt`),
 all relevant information about the scf cycle are printed therein.
@@ -246,7 +246,8 @@ interlayer distance.  We employ the
 minimize the strain on the unit cell.
 
 .. literalinclude:: relax_graphite.py
-   :start-at: sf
+   :start-after: start -- relax
+   :end-before: end -- relax
 
 Read in the result of the relaxation and determine the C-C and interlayer
 distances.
