@@ -70,7 +70,6 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
     # different cores involving BLAS might give slightly different
     # results):
     comm.broadcast(sigma_vv, 0)
-    print('asd2')
     return sigma_vv
 
 

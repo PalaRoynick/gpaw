@@ -89,7 +89,7 @@ class DFTComponentsBuilder:
         if self.ncomponents == 4 and xcfunc.type != 'LDA':
             raise ValueError('Only LDA supported for '
                              'SC Non-collinear calculations')
-        self._xcfunc = xcfunc
+        self.is_hybrid = xcfunc.type == 'HYB'
 
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
