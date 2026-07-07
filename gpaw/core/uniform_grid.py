@@ -33,6 +33,7 @@ class UGDesc(Domain['UGArray']):
                  zerobc=(False, False, False),
                  kpt: Vector | None = None,  # in units of reciprocal cell
                  comm: MPIComm = serial_comm,
+                 complementary_comm: MPIComm | None = None,
                  decomp: Sequence[Sequence[int]] | None = None,
                  dtype=None):
         """Description of 3D uniform grid.
@@ -52,6 +53,8 @@ class UGDesc(Domain['UGArray']):
             (assumed to be zero).
         comm:
             Communicator for domain-decomposition.
+        complementary_comm:
+            Communicator over ranks with equivalent local-domain data.
         kpt:
             K-point for Block-boundary conditions specified in units of the
             reciprocal cell.
@@ -61,6 +64,7 @@ class UGDesc(Domain['UGArray']):
             Data-type (float or complex).
         """
         self.size_c = np.array(size, int)
+        self.complementary_comm = complementary_comm
         if isinstance(zerobc, int):
             zerobc = (zerobc,) * 3
         self.zerobc_c = np.array(zerobc, bool)
@@ -130,6 +134,9 @@ class UGDesc(Domain['UGArray']):
             kpt=None,
             dtype=None,
             comm: MPIComm | Literal['inherit'] | None = 'inherit',
+            complementary_comm: (MPIComm |
+                                 Literal['inherit'] |
+                                 None) = 'inherit',
             size=None,
             pbc=None,
             zerobc=None,
@@ -140,6 +147,8 @@ class UGDesc(Domain['UGArray']):
         if reuse_decomp:
             decomp = self.decomp_cp
         comm = self.comm if comm == 'inherit' else comm
+        if complementary_comm == 'inherit':
+            complementary_comm = self.complementary_comm
         return UGDesc(cell=self.cell_cv,
                       size=self.size_c if size is None else size,
                       pbc=self.pbc_c if pbc is None else pbc,
@@ -147,6 +156,7 @@ class UGDesc(Domain['UGArray']):
                       kpt=(self.kpt_c if self.kpt_c.any() else None)
                       if kpt is None else kpt,
                       comm=comm or serial_comm,
+                      complementary_comm=complementary_comm,
                       decomp=decomp,
                       dtype=self.dtype if dtype is None else dtype)
 
@@ -306,6 +316,14 @@ class UGDesc(Domain['UGArray']):
                         scale=scale, n=n, dtype=self.dtype, xp=xp)
 
 
+def _same_communicator(comm1: MPIComm, comm2: MPIComm) -> bool:
+    if comm1 is comm2:
+        return True
+    if comm1.size == comm2.size == 1:
+        return True
+    return False
+
+
 def _with_complementary_comm_redistribution(method):
     @wraps(method)
     def wrapper(self,
@@ -324,10 +342,26 @@ def _with_complementary_comm_redistribution(method):
         if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
             raise ValueError('Grids must have zerobc=False!')
 
-        if (in_complementary_comm is not None or
+        if in_complementary_comm is None:
+            in_complementary_comm = self.desc.complementary_comm
+        if out_complementary_comm is None:
+            out_complementary_comm = out.desc.complementary_comm
+
+        needs_complementary_redist = (
+            in_complementary_comm is not None or
+            out_complementary_comm is not None)
+        if (in_complementary_comm is not None and
                 out_complementary_comm is not None):
-            in_complementary_comm = in_complementary_comm or serial_comm
-            out_complementary_comm = out_complementary_comm or serial_comm
+            needs_complementary_redist = not _same_communicator(
+                in_complementary_comm, out_complementary_comm)
+
+        if needs_complementary_redist:
+            if (in_complementary_comm is None or
+                    out_complementary_comm is None):
+                raise ValueError(
+                    'Complementary communicators are required for '
+                    'redistributed interpolation/restriction.')
+
             output_data = None
             if in_complementary_comm.rank == 0:
                 input_data = self.gather()

@@ -11,6 +11,7 @@ from gpaw.core import PWDesc, UGDesc
 from gpaw.core.domain import Domain
 from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
+from gpaw.mpi import serial_comm
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
@@ -57,10 +58,15 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
-            comm=self.communicators['d'])
+            comm=self.communicators['d'],
+            complementary_comm=self.communicators['D'])
         comm = (self.communicators['d'] if self.is_hybrid
                 else self.communicators['w'])
-        fine_grid = grid.new(size=grid.size_c * 2, comm=comm)
+        complementary_comm = (self.communicators['D'] if self.is_hybrid
+                              else serial_comm)
+        fine_grid = grid.new(size=grid.size_c * 2,
+                             comm=comm,
+                             complementary_comm=complementary_comm)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid
 

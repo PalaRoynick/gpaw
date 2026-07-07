@@ -1,7 +1,7 @@
 import pytest
 
 from gpaw.core import UGDesc
-from gpaw.mpi import world
+from gpaw.mpi import serial_comm, world
 from gpaw.new.builder import create_communicators
 
 
@@ -73,15 +73,18 @@ def test_fft_interpolation_with_input_complementary_comm(domain_size):
     complementary_comm = comms['D']
     grid = UGDesc(cell=[1, 2, 3],
                   size=(4, 4, 4),
-                  comm=domain_comm)
-    fine_grid = grid.new(size=(8, 8, 8), comm=world)
+                  comm=domain_comm,
+                  complementary_comm=complementary_comm)
+    fine_grid = grid.new(size=(8, 8, 8),
+                         comm=world,
+                         complementary_comm=serial_comm)
 
     serial_data, expected = _serial_interpolation()
     a_R = grid.empty()
     _set_domain_data(a_R, serial_data)
     b_r = fine_grid.empty()
 
-    a_R.interpolate(out=b_r, in_complementary_comm=complementary_comm)
+    a_R.interpolate(out=b_r)
 
     result = b_r.gather()
     if world.rank == 0:
@@ -104,15 +107,18 @@ def test_fft_interpolation_with_output_complementary_comm(domain_size):
     complementary_comm = comms['D']
     grid = UGDesc(cell=[1, 2, 3],
                   size=(4, 4, 4),
-                  comm=world)
-    fine_grid = grid.new(size=(8, 8, 8), comm=domain_comm)
+                  comm=world,
+                  complementary_comm=serial_comm)
+    fine_grid = grid.new(size=(8, 8, 8),
+                         comm=domain_comm,
+                         complementary_comm=complementary_comm)
 
     serial_data, expected = _serial_interpolation()
     a_R = grid.empty()
     _set_domain_data(a_R, serial_data)
     b_r = fine_grid.empty()
 
-    a_R.interpolate(out=b_r, out_complementary_comm=complementary_comm)
+    a_R.interpolate(out=b_r)
 
     _assert_local_data(b_r, expected)
 
@@ -132,15 +138,18 @@ def test_fft_restrict_with_output_complementary_comm(domain_size):
     complementary_comm = comms['D']
     fine_grid = UGDesc(cell=[1, 2, 3],
                        size=(8, 8, 8),
-                       comm=world)
-    grid = fine_grid.new(size=(4, 4, 4), comm=domain_comm)
+                       comm=world,
+                       complementary_comm=serial_comm)
+    grid = fine_grid.new(size=(4, 4, 4),
+                         comm=domain_comm,
+                         complementary_comm=complementary_comm)
 
     fine_data, expected = _serial_restriction()
     a_r = fine_grid.empty()
     _set_domain_data(a_r, fine_data)
     b_R = grid.empty()
 
-    a_r.fft_restrict(out=b_R, out_complementary_comm=complementary_comm)
+    a_r.fft_restrict(out=b_R)
 
     _assert_local_data(b_R, expected)
 
@@ -155,17 +164,51 @@ def test_fft_interpolation_with_shifted_input_complementary_comm():
 
     grid = UGDesc(cell=[1, 2, 3],
                   size=(4, 4, 4),
-                  comm=domain_comm)
-    fine_grid = grid.new(size=(8, 8, 8), comm=world)
+                  comm=domain_comm,
+                  complementary_comm=complementary_comm)
+    fine_grid = grid.new(size=(8, 8, 8),
+                         comm=world,
+                         complementary_comm=serial_comm)
 
     serial_data, expected = _serial_interpolation()
     a_R = grid.empty()
     _set_domain_data(a_R, serial_data)
     b_r = fine_grid.empty()
 
-    a_R.interpolate(out=b_r, in_complementary_comm=complementary_comm)
+    a_R.interpolate(out=b_r)
 
     result = b_r.gather()
     if world.rank == 0:
         assert result is not None
         assert result.data == pytest.approx(expected, abs=1e-12)
+
+
+@pytest.mark.ci
+@pytest.mark.skipif(world.size == 1, reason='Only run in parallel')
+def test_fft_requires_complementary_comm_for_redist():
+    comms = create_communicators(world, domain=1, kpt=world.size, band=1)
+    grid = UGDesc(cell=[1, 2, 3],
+                  size=(4, 4, 4),
+                  comm=comms['d'],
+                  complementary_comm=comms['D'])
+    fine_grid = grid.new(size=(8, 8, 8),
+                         comm=world,
+                         complementary_comm=None)
+    a_R = grid.empty()
+    b_r = fine_grid.empty()
+
+    with pytest.raises(ValueError, match='Complementary communicators'):
+        a_R.interpolate(out=b_r)
+
+    fine_grid = UGDesc(cell=[1, 2, 3],
+                       size=(8, 8, 8),
+                       comm=world,
+                       complementary_comm=serial_comm)
+    grid = fine_grid.new(size=(4, 4, 4),
+                         comm=comms['d'],
+                         complementary_comm=None)
+    a_r = fine_grid.empty()
+    b_R = grid.empty()
+
+    with pytest.raises(ValueError, match='Complementary communicators'):
+        a_r.fft_restrict(out=b_R)

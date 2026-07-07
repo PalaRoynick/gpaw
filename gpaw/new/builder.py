@@ -578,7 +578,8 @@ def create_uniform_grid(mode: str,
                         h: float | None = None,
                         interpolation: int | str | None = None,
                         ecut: float = None,
-                        comm: MPIComm = serial_comm) -> UGDesc:
+                        comm: MPIComm = serial_comm,
+                        complementary_comm: MPIComm | None = None) -> UGDesc:
     """Create grid in a backwards compatible way."""
     cell = cell / Bohr
     if h is not None:
@@ -596,4 +597,9 @@ def create_uniform_grid(mode: str,
         modeobj = SimpleNamespace(name=mode, ecut=ecut)
         size = get_number_of_grid_points(cell, h, modeobj, realspace,
                                          symmetries)
-    return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
+    return UGDesc(cell=cell,
+                  pbc=pbc,
+                  zerobc=zerobc,
+                  size=size,
+                  comm=comm,
+                  complementary_comm=complementary_comm)

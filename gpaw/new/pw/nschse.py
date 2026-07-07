@@ -300,7 +300,9 @@ def nsc_corrections(density: Density,
        v    (r)
         σ,XC
     """
-    fine_grid = pot_calc.fine_grid.new(comm=pot_calc.grid.comm)
+    fine_grid = pot_calc.fine_grid.new(
+        comm=pot_calc.grid.comm,
+        complementary_comm=pot_calc.grid.complementary_comm)
     nt_sr = density.nt_sR.interpolate(grid=fine_grid)
     xc = create_functional(pot_calc.xc.name, fine_grid, pot_calc.xp)
     _, dxc_sr, _ = xc.calculate(nt_sr)
