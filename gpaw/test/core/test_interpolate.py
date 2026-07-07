@@ -212,3 +212,48 @@ def test_fft_requires_complementary_comm_for_redist():
 
     with pytest.raises(ValueError, match='Complementary communicators'):
         a_r.fft_restrict(out=b_R)
+
+
+@pytest.mark.ci
+@pytest.mark.skipif(world.size == 1, reason='Only run in parallel')
+@pytest.mark.parametrize('domain_size', [1, 2, 4])
+def test_grid_redist_uses_complementary_comm(domain_size):
+    if world.size % domain_size:
+        pytest.skip('world size must be divisible by domain size')
+
+    comms = create_communicators(world,
+                                 domain=domain_size,
+                                 kpt=world.size // domain_size,
+                                 band=1)
+    grid = UGDesc(cell=[1, 2, 3],
+                  size=(4, 4, 4),
+                  comm=comms['d'],
+                  complementary_comm=comms['D'])
+    target_grid = grid.new(comm=world, complementary_comm=serial_comm)
+
+    serial_grid = UGDesc(cell=[1, 2, 3], size=(4, 4, 4))
+    i, j, k = serial_grid.xyz().transpose((3, 0, 1, 2))
+    serial_data = 1.0 + 0.3 * i + 0.2 * j - 0.1 * k
+    a_R = grid.empty()
+    _set_domain_data(a_R, serial_data)
+
+    b_R = a_R.redist(target_grid)
+
+    result = b_R.gather()
+    if world.rank == 0:
+        assert result is not None
+        assert result.data == pytest.approx(serial_data, abs=1e-12)
+
+
+@pytest.mark.ci
+@pytest.mark.skipif(world.size == 1, reason='Only run in parallel')
+def test_grid_redist_requires_complementary_comm():
+    comms = create_communicators(world, domain=1, kpt=world.size, band=1)
+    grid = UGDesc(cell=[1, 2, 3],
+                  size=(4, 4, 4),
+                  comm=comms['d'],
+                  complementary_comm=comms['D'])
+    target_grid = grid.new(comm=world, complementary_comm=None)
+
+    with pytest.raises(ValueError, match='Complementary communicators'):
+        grid.empty().redist(target_grid)

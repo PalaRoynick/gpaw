@@ -301,7 +301,8 @@ class XArray(Generic[DomainType], XP):
 
     def redist(self,
                domain,
-               comm1: MPIComm, comm2: MPIComm) -> XArray:
+               comm1: MPIComm | None = None,
+               comm2: MPIComm | None = None) -> XArray:
         """Redistribute to new domain.
 
         The "world" is spanned by::
@@ -312,6 +313,15 @@ class XArray(Generic[DomainType], XP):
 
             (domain.comm, comm2).
         """
+        if comm1 is None:
+            comm1 = getattr(self.desc, 'complementary_comm', None)
+        if comm2 is None:
+            comm2 = getattr(domain, 'complementary_comm', None)
+        if comm1 is None or comm2 is None:
+            raise ValueError(
+                'Complementary communicators are required for '
+                'redistribution.')
+
         result = domain.empty(self.dims, xp=self.xp)
         if comm1.rank == 0:
             a = self.gather()

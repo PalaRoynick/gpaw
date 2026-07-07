@@ -957,7 +957,8 @@ class UGArray(XArray[UGDesc]):
 
     def redist(self,
                domain: UGDesc,
-               comm1: MPIComm, comm2: MPIComm) -> UGArray:
+               comm1: MPIComm | None = None,
+               comm2: MPIComm | None = None) -> UGArray:
         a = super().redist(domain, comm1, comm2)
         assert isinstance(a, UGArray)
         return a
