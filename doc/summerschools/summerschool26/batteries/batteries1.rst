@@ -217,7 +217,7 @@ First we set up an initial guess of the structure as before.
 
 .. literalinclude:: relax_graphite.py
    :start-after: web
-   :end-before: LDA
+   :end-before: xc
 
 Then we create the GPAW calculator object.  The parameters are explained
 :ref:`here <parameters>`,
@@ -232,7 +232,7 @@ We will start by using the LDA exchange-correlation functional.  Later
 you will try other functionals.
 
 .. literalinclude:: relax_graphite.py
-   :start-at: LDA
+   :start-at: xc
    :end-before: sf
 
 Check out the contents of the output file (:download:`graphite-LDA.txt`),
