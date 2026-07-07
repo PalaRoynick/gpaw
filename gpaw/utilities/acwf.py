@@ -225,6 +225,8 @@ def check(dir: Path) -> float:
         v[name] = e
 
     n = len(d)
+    if n == 0:
+        return np.nan
     mean = sum(d) / n
     meanabs = sum([abs(s) for s in d]) / n
     rms = (sum([s**2 for s in d]) / n)**0.5
@@ -252,6 +254,16 @@ def check(dir: Path) -> float:
           f'{ee:8.3f} eV')
 
     return maxabs
+
+
+def main():
+    import sys
+    results = []
+    for x in sys.argv[1:]:
+        e = check(Path(x))
+        results.append((e, x))
+    for e, x in sorted(results):
+        print(f'{e:7.2f} {x}')
 
 
 def reference_structure(symbol: str,
@@ -1593,10 +1605,4 @@ ENERGIES = {
     'Zr': [2.359, 0.838, 0.043, 1.610, -0.231, -0.325, 1.593, 0.732]}
 
 if __name__ == '__main__':
-    import sys
-    results = []
-    for x in sys.argv[1:]:
-        e = check(Path(x))
-        results.append((e, x))
-    for e, x in sorted(results):
-        print(f'{e:7.2f} {x}')
+    main()
