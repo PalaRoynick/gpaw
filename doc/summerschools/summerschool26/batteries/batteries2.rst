@@ -2,9 +2,12 @@
 Part 2: Equilibrium potential of a LiFePO4/C battery
 ====================================================
 
-You will calculate the equilibrium potential and use Bayesian error estimation
-to quantify how sensitive the calculated equilibrium potential is towards
-choice of functional. The notebook is ``batteries2.ipynb``.
+Outline
+=======
+
+In this part of the exercise we will calculate the equilibrium potential
+and use Bayesian error estimation to quantify how sensitive the calculated
+equilibrium potential is towards choice of functional. For that we:
 
 * Setup and calculate :mol:`FePO_4` and :mol:`LiFePO_4` structures
 
@@ -17,11 +20,12 @@ choice of functional. The notebook is ``batteries2.ipynb``.
 * Using values from the previous day calculate the equilibrium potential of
   the full Li :mol:`FePO_4/C` battery
 
+.. contents::
 
-Day 3 - Equilibrium potential
-=============================
+Theory
+======
 
-Today you will study the :mol:`LiFePO_4` cathode.  You will calculate the
+We will study the :mol:`LiFePO_4` cathode. We will calculate the
 equilibrium potential and use Bayesian error estimation to quantify how
 sensitive the calculated equilibrium potential is towards choice of
 functional.  After today you should be able to discuss:
@@ -34,12 +38,10 @@ functional.  After today you should be able to discuss:
 
 - Uncertainty in the calculations.
 
-Some of calculations you will perform today will be tedious to be run in
-this notebook.  You will automatically submit some calculations to the HPC
-cluster directly from this notebook.  When you have to wait for
-calculations to finish you can get started on addressing the bullet points
-above.
-
+Some of calculations we will perform today will be tedious to be run in
+the terminal, so we will submit them to the HPC cluster.
+When you have to wait for calculations to finish you can get
+started on addressing the bullet points above.
 
 :mol:`FePO_4`
 =============
@@ -285,8 +287,8 @@ log-file.
 Li metal
 --------
 
-We use a Li metal reference to calculate the equilibrium potential.  On
-exercise day 2 you used a Li metal reference to calculate the
+We use a Li metal reference to calculate the equilibrium potential.
+In part 1 you used a Li metal reference to calculate the
 intercalation energy in the graphite anode.  The approach is similar
 here.  Just read in the result of the calculation with DFTD3 and attach
 a new calulator to it.
