@@ -64,7 +64,7 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         return self.builder.get_pseudo_core_ked()
 
     def create_xc_functional(self, xcfunc):
-        if self.params.xc['name'] in ['HSE06', 'PBE0', 'EXX']:
+        if self.params.xc.name in ['HSE06', 'PBE0', 'EXX']:
             return HybridXCFunctional(self.params.xc)
         return super().create_xc_functional(xcfunc)
 
