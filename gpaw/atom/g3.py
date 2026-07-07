@@ -1,6 +1,7 @@
 from contextlib import chdir
 from pathlib import Path
 
+import numpy as np
 from gpaw.atom.generator2 import generate
 
 PARAMS = {
@@ -201,9 +202,61 @@ def create_all():
             create(symbol, conf)
 
 
+def analyse(folders):
+    from collections import defaultdict
+
+    from ase.data import chemical_symbols, atomic_numbers
+    from gpaw.atom.tools import convergence_check
+    from gpaw.utilities.acwf import check
+
+    data = defaultdict(list)
+    for f in folders:
+        y = [f.name]
+        try:
+            ecuts, efcc, de, ecuts_tot, ecuts_diff = convergence_check(f)
+        except FileNotFoundError:
+            y += [np.nan, np.nan, np.nan]
+        else:
+            y += [efcc[0] - efcc[-1], ecuts_tot[2], ecuts_diff[2]]
+        maxabs, dea = check(f)
+        symbol = f.name.split('.')[0]
+        data[symbol].append(y + [maxabs, dea])
+    x = []
+    y = []
+    z = []
+    for symbol in chemical_symbols:
+        if symbol not in data:
+            continue
+        best = np.inf
+        for name, de, ec, ecd, maxabs, dea in data[symbol]:
+            print(f'{name:7} {de:9.6f} {ecd:6.1f} {ec:6.1f} '
+                  f'{maxabs:7.4f} {dea:7.4f}')
+            Z = atomic_numbers[symbol]
+            x.append(Z)
+            y.append([de, ecd, ec, maxabs, dea])
+            best = min(best, maxabs)
+        z.append(best)
+    print(sum(z) / len(z), len(z))
+    return x, np.array(y)
+
+
+def oldvsnew():
+    x1, y1 = analyse(list(Path('old').glob('*/')))
+    x2, y2 = analyse(list(Path('3').glob('*/')))
+    import matplotlib.pyplot as plt
+    for i in range(5):
+        plt.plot(x1, y1[:, i], 'o-')
+        plt.plot(x2, y2[:, i], 'x-')
+        plt.show()
+
+
 if __name__ == '__main__':
     import sys
-    if len(sys.argv) == 1:
+    if 1:
+        oldvsnew()
+    elif len(sys.argv) == 1:
         create_all()
-    else:
+    elif 0:
         create(sys.argv[1], sys.argv[2])
+    else:
+        analyse((Path(a) for a in sys.argv[1:]))

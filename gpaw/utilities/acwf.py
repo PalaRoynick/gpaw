@@ -211,7 +211,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
     return d
 
 
-def check(dir: Path) -> float:
+def check(dir: Path, silent=True) -> float:
     d = []
     v = {}
     for p in dir.glob('*.json'):
@@ -249,18 +249,19 @@ def check(dir: Path) -> float:
     else:
         ee = np.nan
 
-    print(f'{dir.name:25} {n:2}',
-          f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
-          f'{ee:8.3f} eV')
+    if not silent:
+        print(f'{dir.name:25} {n:2}',
+              f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
+              f'{ee:8.3f} eV')
 
-    return maxabs
+    return maxabs, ee
 
 
 def main():
     import sys
     results = []
     for x in sys.argv[1:]:
-        e = check(Path(x))
+        e = check(Path(x), silent=False)
         results.append((e, x))
     for e, x in sorted(results):
         print(f'{e:7.2f} {x}')
