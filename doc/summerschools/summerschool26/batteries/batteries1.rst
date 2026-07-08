@@ -120,35 +120,13 @@ of graphite for a series of C-C distances.
 Determine the equilibrium lattice constant.  We use a
 :mod:`numpy.polynomial`.
 
-.. testcode::
-    import numpy as np
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- fit-poly
+   :end-before: end -- fit-poly
 
-    # Fit a polynomial:
-    poly = np.polynomial.Polynomial.fit(dists, energies, 3)
-    # and plot it:
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(dists, energies, '*r')
-    x = np.linspace(1, 2, 100)
-    ax.plot(x, poly(x))
-    ax.set_xlabel('C-C distance [Ang]')
-    ax.set_ylabel('energy [eV]')
-    # plt.show()
-
-.. testcode::
-
-    poly1 = poly.deriv()
-    poly1.roots()  # two extrema
-    # Find the minimum:
-    emin, ccdist = min((poly(d), d) for d in poly1.roots())
-    print(f'C-C dist: {ccdist:.3f} Å')
-    # alternatively:
-    poly2 = poly1.deriv()
-    for ccdist in poly1.roots():
-        if poly2(ccdist) > 0:
-            break
-    print(f'C-C dist: {ccdist:.3f} Å')
-    from pathlib import Path
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- opt-layer
+   :end-before: end -- opt-layer
 
 .. testoutput::
 
