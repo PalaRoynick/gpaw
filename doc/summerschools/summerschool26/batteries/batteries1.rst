@@ -128,7 +128,7 @@ Determine the equilibrium lattice constant.  We use a
    :start-after: start -- opt-layer
    :end-before: end -- opt-layer
 
-.. testoutput::
+.. code::
 
     C-C dist: 1.319 Å
     C-C dist: 1.319 Å
