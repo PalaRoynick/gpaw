@@ -285,7 +285,7 @@ log-file.
 
 
 Li metal
---------
+========
 
 We use a Li metal reference to calculate the equilibrium potential.
 In part 1 you used a Li metal reference to calculate the
@@ -328,8 +328,8 @@ energy per formula unit.  The
     print(epot_fepo4, ...)
 
 No calculate the equilibrium potential under the assumption that it is
-given by `V_{eq} = \Delta U / e`, where `U` is the electronic potential
-energy of the system and `e` is the number of electrons transfered.
+given by `V_{eq} = \Delta U / n_e`, where `U` is the electronic potential
+energy of the system and `n_e` is the number of electrons transfered.
 
 .. code::
 
@@ -351,7 +351,7 @@ value as before.
 
 .. code::
 
-    # fepo4_ens = fepo4_ens_cell / ...
+    # epot_fepo4_ens = epot_fepo4_ens_cell / ...
     # ...
     # ...
 
@@ -359,7 +359,7 @@ Make a list of equilibrium potentials.
 
 .. code::
 
-    # V_eq_ens = lifepo4_ens - ...
+    # V_eq_ens = epot_lifepo4_ens - ...
 
 Use the plot command below to visualize the distribution.
 
