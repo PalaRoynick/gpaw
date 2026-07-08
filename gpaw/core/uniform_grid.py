@@ -347,13 +347,8 @@ def _with_complementary_comm_redistribution(method):
         if out_complementary_comm is None:
             out_complementary_comm = out.desc.complementary_comm
 
-        needs_complementary_redist = (
-            in_complementary_comm is not None or
-            out_complementary_comm is not None)
-        if (in_complementary_comm is not None and
-                out_complementary_comm is not None):
-            needs_complementary_redist = not _same_communicator(
-                in_complementary_comm, out_complementary_comm)
+        needs_complementary_redist = not _same_communicator(
+            self.desc.comm, out.desc.comm)
 
         if needs_complementary_redist:
             if (in_complementary_comm is None or

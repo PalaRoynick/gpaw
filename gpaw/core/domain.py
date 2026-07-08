@@ -163,4 +163,7 @@ class Domain(Generic[X]):
                       pbc=self.pbc_c,
                       kpt=self.kpt_c,
                       dtype=self.dtype,
-                      comm=self.comm)
+                      comm=self.comm,
+                      complementary_comm=getattr(self,
+                                                 'complementary_comm',
+                                                 None))

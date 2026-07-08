@@ -17,6 +17,20 @@ def test_fft_interpolation():
     assert a.integrate() == pytest.approx(b.integrate(), abs=1e-12)
 
 
+@pytest.mark.ci
+def test_fft_same_comm_allows_missing_complementary_comm():
+    a = UGDesc(cell=[1, 1, 1],
+               size=(4, 4, 4),
+               complementary_comm=serial_comm).zeros()
+    b = a.desc.new(size=(8, 8, 8), complementary_comm=None).zeros()
+    a.data[2, 2, 2] = 1.0
+    a.interpolate(out=b)
+    assert (b.data[::2, ::2, ::2] == a.data).all()
+
+    b.fft_restrict(out=a)
+    assert a.integrate() == pytest.approx(b.integrate(), abs=1e-12)
+
+
 def _serial_interpolation(size1=(4, 4, 4), size2=(8, 8, 8)):
     a = UGDesc(cell=[1, 2, 3], size=size1).empty()
     i, j, k = a.desc.xyz().transpose((3, 0, 1, 2))
