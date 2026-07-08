@@ -391,8 +391,10 @@ battery is thus as a good estimate:
 
 You can get the equilibrium potential for the :mol:`FePO_4/C` battery using
 the intercalation energy of Li in graphite, that you calculated in Part 1.
-What equilibrium potential do you find?  How does that compare to the
-cell voltage you can obtain from :mol:`FePO_4/C` batteries?
+
+    * What equilibrium potential do you find?
+
+    * How does that compare to the cell voltage you can obtain from :mol:`FePO_4/C` batteries?
 
 Make sure you are able to discuss the bullet points at the top of this tutorial part.
 
@@ -402,4 +404,6 @@ Bonus
 
 How does the predicted error estimate change if you consider the full
 reaction from Li in graphite + :mol:`FePO_4` to empty graphite +
-:mol:`LiFePO_4`.
+:mol:`LiFePO_4`:
+
+.. math:: LiC_x + FePO_4 \rightarrow LiFePO_4 + C_x^{graphite}
