@@ -1,10 +1,10 @@
-======================================
-Transport barriers and Voltage profile
-======================================
+==============================================
+Part 3: Transport barriers and Voltage profile
+==============================================
 
-You will calculate the energy barriers for transport of Li intercalated in the
-graphite anode. You will examine how sensitive this barrier is to the
-interlayer distance in graphite. You will also examine the energy of
+We will calculate the energy barriers for transport of Li intercalated in the
+graphite anode. We will examine how sensitive this barrier is to the
+interlayer distance in graphite. We will also examine the energy of
 intermediate states during the charge/discharge process. This will allow some
 basic discussion of the voltage profile of the battery.
 
@@ -22,12 +22,14 @@ basic discussion of the voltage profile of the battery.
 
   - What can they tell you about the charge/discharge potential curves?
 
-You will in general be provided less code than yesterday, especially
-towards the end of this notebook.  You will have to use what you have
+You will in general be provided less code than before, especially
+towards the end of this tutorial.  You will have to use what you have
 already seen and learned so far.
 
 There will be some natural pauses while you wait for calculations to
-finish.  If you do not finish this entire notebook today, do not despair.
+finish.  If you do not finish this entire tutorial today, do not despair.
+
+.. contents::
 
 
 Transport barrier of Li in graphite

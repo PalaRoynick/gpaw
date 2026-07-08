@@ -2,9 +2,6 @@
 Part 2: Equilibrium potential of a LiFePO4/C battery
 ====================================================
 
-Outline
-=======
-
 In this part of the exercise we will calculate the equilibrium potential
 and use Bayesian error estimation to quantify how sensitive the calculated
 equilibrium potential is towards choice of functional. For that we:
@@ -22,8 +19,8 @@ equilibrium potential is towards choice of functional. For that we:
 
 .. contents::
 
-Theory
-======
+Equilibrium potential
+=====================
 
 We will study the :mol:`LiFePO_4` cathode. We will calculate the
 equilibrium potential and use Bayesian error estimation to quantify how

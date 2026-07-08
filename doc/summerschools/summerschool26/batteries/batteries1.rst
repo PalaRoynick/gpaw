@@ -11,9 +11,6 @@
 Part 1: Li intercalation energy in graphite
 ===========================================
 
-Outline
-=======
-
 In this part of the battery exercise we will:
 
 * Setup a graphite structure
@@ -35,8 +32,8 @@ In this part of the battery exercise we will:
 
 .. contents::
 
-Theory
-======
+Li intercalation in graphite
+============================
 
 We will calculate the energy cost/gain associated with
 intercalating a lithium atom into graphite using approaches at different
