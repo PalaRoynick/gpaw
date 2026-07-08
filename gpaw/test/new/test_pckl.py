@@ -11,10 +11,13 @@ from gpaw.setup import Setups
 
 @pytest.mark.serial
 def test_pckl(in_tmp_dir):
-    g1 = UGDesc(cell=[1, 2, 3], size=(5, 10, 15)).zeros((1, 2))
+    g1 = UGDesc(cell=[1, 2, 3],
+                size=(5, 10, 15),
+                complementary_comm=serial_comm).zeros((1, 2))
     p1 = PWDesc(cell=g1.desc.cell, ecut=5.0).zeros(2)
     p1.data[0, 0] = 117.0
     g2, p2 = pickle.loads(pickle.dumps((g1, p1)))
+    assert g2.desc.complementary_comm is None
     print(g2, p2)
     wfs1 = PWFDWaveFunctions(
         p1,
