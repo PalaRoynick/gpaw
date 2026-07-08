@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 # -- start -- energy-volume
 import numpy as np
+import matplotlib.pyplot as plt
 from ase.calculators.emt import EMT
 from ase.lattice.hexagonal import Graphite
 
@@ -38,10 +39,9 @@ for cc in dists:
 # Fit a polynomial:
 poly = np.polynomial.Polynomial.fit(dists, energies, 3)
 # and plot it:
-import matplotlib.pyplot as plt
 fig, ax = plt.subplots(1, 1)
 ax.plot(dists, energies, '*r')
-x = np.linspace(dists.min()-0.1, dists.max()+0.1, 100)
+x = np.linspace(dists.min() - 0.1, dists.max() + 0.1, 100)
 ax.plot(x, poly(x))
 ax.set_xlabel('C-C distance [Ang]')
 ax.set_ylabel('energy [eV]')
