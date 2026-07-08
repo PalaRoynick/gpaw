@@ -221,7 +221,7 @@ energies.  This should not require any new DFT calculations.
    :start-after: snippet-results
    :end-before: snippet-results-end
 
-Calculate the energy of intercalting a single Li in the :mol:`FePO_4` cell.
+Calculate the energy of intercalating a single Li in the :mol:`FePO_4` cell.
 How does this energy compare with the equilibirum potential?  What can it
 tell you about the charge/discharge potential curves?
 
