@@ -120,11 +120,9 @@ of graphite for a series of C-C distances.
 Determine the equilibrium lattice constant.  We use a
 :mod:`numpy.polynomial`.
 
-.. testsetup::
-    import numpy as np
-    from matplotlib import pyplot as plt
-
 .. testcode::
+    import numpy as np
+
     # Fit a polynomial:
     poly = np.polynomial.Polynomial.fit(dists, energies, 3)
     # and plot it:
@@ -135,12 +133,7 @@ Determine the equilibrium lattice constant.  We use a
     ax.plot(x, poly(x))
     ax.set_xlabel('C-C distance [Ang]')
     ax.set_ylabel('energy [eV]')
-    plt.show()
-
-.. testsetup::
-    import numpy as np
-    from matplotlib import pyplot as plt
-    poly = np.polynomial.Polynomial.fit(dists, energies, 3)
+    # plt.show()
 
 .. testcode::
 
