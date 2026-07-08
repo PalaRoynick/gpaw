@@ -152,8 +152,8 @@ For more complicated MEP's, use the :ref:`ase:climbingimage` method to
 determine the transition state.  Why is it not required here?
 
 
-Bonus
-=====
+Bonus: Barrier dependence on interlayer distance
+================================================
 
 We will now study the influence of changing the interlayer graphite
 distance on the energy barrier.  Due to the high degree of symmetry, this
@@ -252,8 +252,8 @@ How does this energy compare with the equilibirum potential?  What can it
 tell you about the charge/discharge potential curves?
 
 
-Bonus
-=====
+Bonus: BEEF for :mol:`FePO_4` + Li and :mol:`LiFePO_4` - Li
+===========================================================
 
 Calculate the error estimates of the energy for the added Li atom and
 vacancy formation using the ensembles.
