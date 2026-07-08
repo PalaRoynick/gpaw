@@ -137,6 +137,11 @@ Determine the equilibrium lattice constant.  We use a
     ax.set_ylabel('energy [eV]')
     plt.show()
 
+.. testsetup::
+    import numpy as np
+    from matplotlib import pyplot as plt
+    poly = np.polynomial.Polynomial.fit(dists, energies, 3)
+
 .. testcode::
 
     poly1 = poly.deriv()
