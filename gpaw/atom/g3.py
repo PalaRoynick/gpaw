@@ -3,11 +3,12 @@ from functools import cache
 from pathlib import Path
 
 import numpy as np
-from gpaw import setup_paths
+from gpaw import setup_paths, KohnShamConvergenceError
 from gpaw.atom.generator2 import generate
 from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
-from gpaw.mpi import world
-from gpaw.utilities.acwf import reference_structure
+from gpaw.mpi import world, broadcast
+from gpaw.utilities.acwf import reference_structure, acwf_structures
+from gpaw.atom.tools import eos, ecuts as ecuts_check
 
 PARAMS = {
     # 1-2:
@@ -178,20 +179,27 @@ def create(symbol, conf):
         r0 = float(r0)
     else:
         r0 = 0.9 * min(rcs)
-    gen = generate(
-        symbol,
-        None,
-        proj,
-        rcs,
-        r0,
-        None,
-        5 if proj[-1].isupper() else 3,
-        xc='PBE',
-        pseudize=('poly', 5))
-    ok = gen.check_all()
-    assert ok
-    setup = gen.make_paw_setup()
-    setup.write_xml()
+    with open('gen.out', 'w') as fd:
+        gen = generate(
+            symbol,
+            None,
+            proj,
+            rcs,
+            r0,
+            None,
+            5 if proj[-1].isupper() else 3,
+            xc='PBE',
+            pseudize=('poly', 5),
+            output=fd)
+        try:
+            ok = gen.check_all()
+        except np.linalg.LinAlgError:
+            ok = False
+        if not ok:
+            return False
+        setup = gen.make_paw_setup()
+        setup.write_xml()
+    return True
 
 
 def create_all():
@@ -261,11 +269,10 @@ def optimize(f, x):
         D = []
         for i, xi in enumerate(x):
             for d in [-1, 1]:
-                xi += d
-                if i > 0 and d == 0:
+                if i > 0 and xi + d == 0:
                     continue
                 x2 = list(x)
-                x2[i] = xi
+                x2[i] = xi + d
                 y2 = f(tuple(x2))
                 D.append((y2, x2))
         y2, x2 = min(D)
@@ -297,21 +304,34 @@ def opt(ecut=600):
 
     @cache
     def f(x):
-        r0x = r0 + x[0] * 0.1
-        R = ','.join(str(r0x + xi * 0.1) for xi in x[1:])
-        conf = f'{proj} {R} {r0x}'
+        ok = None
         if world.rank == 0:
-            create(symbol, conf)
-        world.barrier()
-        return pfunc(symbol, ecut)
+            r0x = r0 + x[0] * 0.1
+            R = ','.join(f'{r0x + xi * 0.1:.1f}' for xi in x[1:])
+            conf = f'{proj} {R} {r0x:.1f}'
+            ok = create(symbol, conf)
+        ok = broadcast(ok, comm=world)
+        if not ok:
+            return np.inf
+        de, s = pfunc(symbol, ecut)
+        y = abs(de / 0.001) + abs(s) * 10000
+        if world.rank == 0:
+            print(f'OPT: {conf:15} {de:10.6f} {s:10.6f} {y}')
+        # return (de / 0.001)**2 + s**2 * 1000000
+        return y
 
-    assert len(rcs) == 1
-    i = int(round((rcs[0] - r0) * 10))
-    x = [0] + [i for _ in range(n - 1)]
+    rcs += [rcs[-1]] * (n - 1 - len(rcs))
+    x = [0] + [int(round((r - r0) * 10))
+               for r in rcs]
 
     x, y = optimize(f, x)
     if world.rank == 0:
         print(x, y)
+    f.cache_clear()
+    f(tuple(x))
+    for name in acwf_structures:
+        eos(name, symbol)
+    ecuts_check(symbol)
 
 
 def pfunc(symbol, ecut=600):
@@ -327,11 +347,19 @@ def pfunc(symbol, ecut=600):
         atoms,
         mode=PW(ecut),
         **kwargs,
-        txt='ecuts.txt')
+        txt='ecuts.txt',
+        converge=False)
+    try:
+        dft.converge()
+    except KohnShamConvergenceError:
+        return np.inf, np.inf
     e = dft.calculate_energy()
     params = Parameters(**kwargs, mode=PW(1200))
     dft = dft.new(atoms, params, log=dft.log)
-    dft.converge()
+    try:
+        dft.converge()
+    except (KohnShamConvergenceError, AssertionError):
+        return np.inf, np.inf
     e0 = dft.calculate_energy()
 
     kwargs['kpts'] = MonkhorstPack(density=6.0)
@@ -343,7 +371,7 @@ def pfunc(symbol, ecut=600):
         **kwargs,
         txt='stress.txt')
     s = dft.calculate_stress()
-    return ((e - e0) / 0.001)**2 + s[0]**2
+    return e - e0, s[0]
 
 
 def workflow():
@@ -355,6 +383,24 @@ if __name__ == '__main__':
     import sys
     if 1:
         oldvsnew()
+    elif 0:
+        for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
+                     'Pa.13': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'U.14': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Np.15': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Pu.16': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Am.17': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Cm.18': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Bk.19': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Cf.20': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Es.21': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Fm.22': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'Md.23': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+                     'No.24': '6s,7s,6p,7p,6d,d,5f,f,G 2.5'}:
+            dir = Path(name)
+            print(dir, end=' ')
+            # dir.mkdir()
     elif len(sys.argv) == 1:
         create_all()
     elif 0:
