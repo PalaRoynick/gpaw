@@ -66,7 +66,12 @@ else
     pushd CAMD2026
     bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv
     source venv/bin/activate
+    pip install asap3
     pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl
+
+    # nequip is needed for the machine learning exercise, but it installs 7 GB stuff, so
+    # it is installed by setup2026ml, run by those who want that exercise.
+    # pip install nequip openequivariance
     pushd venv
     git clone https://gitlab.com/taskblaster/taskblaster.git
     pip install -e taskblaster
@@ -85,12 +90,12 @@ cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_c
 source ~/CAMD2026/venv/bin/activate
 
 echo
-if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
+if [[ -f $HOME/.myqueue/config.py ]]; then
     echo "MyQueue configuration found, assuming it makes sense."
 else
     echo "Installing MyQueue configuration."
-    mkdir -p $HOME/CAMD2026/.myqueue
-    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/CAMD2026/.myqueue/config.py
+    mkdir -p $HOME/.myqueue
+    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/.myqueue/config.py
 fi
 
 echo
