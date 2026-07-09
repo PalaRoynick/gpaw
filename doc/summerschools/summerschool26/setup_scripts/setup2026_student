@@ -66,6 +66,7 @@ else
     pushd CAMD2026
     bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv
     source venv/bin/activate
+    pip install asap3
     pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl
 
     # nequip is needed for the machine learning exercise, but it installs 7 GB stuff, so
