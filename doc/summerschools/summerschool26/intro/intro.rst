@@ -148,7 +148,6 @@ Traceback (most recent call last):
 TypeError: 'tuple' object does not support item assignment
 
 
-=====
 NumPy
 =====
 
@@ -244,7 +243,6 @@ after sorting:  [-2.369 -0.692  0.258  0.93   1.979  6.149]
 True
 
 
-========================
 Plotting with matplotlib
 ========================
 
@@ -288,7 +286,6 @@ Plotting a countour
 .. image:: f4.svg
 
 
-===================================
 ASE (atomic simulation environment)
 ===================================
 
@@ -296,7 +293,7 @@ More details can be found here: https://ase-lib.org/
 
 
 Everything starts with a structure!
-===================================
+-----------------------------------
 
 In ASE the most important ingredient is :class:`~ase.Atoms`
 object used to setup an atomic structure.

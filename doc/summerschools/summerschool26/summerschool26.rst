@@ -1,7 +1,7 @@
 .. _summerschool26:
 
 =======================
-CAMd Summer School 2026
+CAMD Summer School 2026
 =======================
 
 Announcement:
@@ -94,17 +94,24 @@ The slides from the introduction to the exercises (Sunday) can be
 found here: :download:`Intro_ASE_Databar.pdf`
 
 
+.. _projects:
+
 Projects
 ========
 
 Choose a project according to your interests.  The projects contain
 brief descriptions of what aspects of GPAW you learn from them.
 
-
 .. toctree::
    :maxdepth: 3
 
-   projects
+   intro/intro
+   catalysis/catalysis
+   magnetism/magnetism
+   machinelearning/machinelearning
+   excitedstates/excitedstates
+   batteries/batteries
+   workflows/workflows
 
 
 Instructions for instructors
@@ -114,5 +121,6 @@ Instructions for the people testing and developing the projects can be
 found here:
 
 .. toctree::
+   :maxdepth: 3
 
    instructors

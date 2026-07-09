@@ -4,7 +4,7 @@
 Submitting jobs on the DTU computers
 ====================================
 
-Smaller calculations can be run in a Jupyter Notebook, but larger calculations
+Smaller calculations can be run in the terminal, but larger calculations
 require running on multiple CPU cores for an extended time.  Such jobs should
 be submitted with the MyQueue tool.  MyQueue_ is a unified frontend
 for a number of different queuing systems available on HPC
