@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# This script should be source'd by the students to set up
+# their accounts FOR THE MACHINE LEARNING PROJECT.  Use this command:
+#
+# source ~jasc/setup2026ml
+#
+
+
+
+# Deactivate any active venv
+if [[ -n $VIRTUAL_ENV ]]; then
+    echo Deactivating virtual environment $VIRTUAL_ENV
+    deactivate
+fi
+
+bash ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/setup2026_student || return 1
+
+source ~/CAMD2026/venv/bin/activate
+
+echo
+echo 'Preparing to install machine learning tools - torch and NequIP.'
+
+echo 'Populating pip cache.'
+pushd $HOME
+tar xf ~jasc/CAMD2026/pipcache-ml.tgz
+
+# Install specific versions to avoid nasty surprises at the summer school.
+pip install torch==2.13.0 lightning==2.6.5 pytorch-lightning==2.6.5 nequip==0.18.0
+pip cache purge
+
+popd
+
+echo
+echo "SUCCESS - your account has been prepared for the CAMD 2026 Summer School machine learning project"
