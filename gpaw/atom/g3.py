@@ -1,4 +1,3 @@
-from contextlib import chdir
 from functools import cache
 from pathlib import Path
 
@@ -203,6 +202,7 @@ def create(symbol, conf):
 
 
 def create_all():
+    from contextlib import chdir
     for name, conf in PARAMS.items():
         # if not conf.split()[0][-1].isupper():
         #     continue
@@ -381,7 +381,7 @@ def workflow():
 
 if __name__ == '__main__':
     import sys
-    if 1:
+    if 0:
         oldvsnew()
     elif 0:
         for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',

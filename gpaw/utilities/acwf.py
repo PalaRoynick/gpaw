@@ -211,7 +211,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
     return d
 
 
-def check(dir: Path, silent=True) -> float:
+def check(dir: Path, silent=True) -> tuple[float, float]:
     d = []
     v = {}
     for p in dir.glob('*.json'):
@@ -226,7 +226,7 @@ def check(dir: Path, silent=True) -> float:
 
     n = len(d)
     if n == 0:
-        return np.nan
+        return np.nan, np.nan
     mean = sum(d) / n
     meanabs = sum([abs(s) for s in d]) / n
     rms = (sum([s**2 for s in d]) / n)**0.5

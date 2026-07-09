@@ -85,7 +85,11 @@ def get_ecut(ecuts: np.ndarray,
 
 def convergence_check(dir: Path,
                       plot=False,
-                      ) -> tuple[float, float, float, float, float, float]:
+                      ) -> tuple[np.ndarray,
+                                 np.ndarray,
+                                 np.ndarray,
+                                 list[float],
+                                 list[float]]:
     """Write summary."""
     ecuts, efcc, de = np.array(
         json.loads((dir / 'ecuts.json').read_text())).T
