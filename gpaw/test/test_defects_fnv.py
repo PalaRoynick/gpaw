@@ -98,8 +98,10 @@ def test_fnv_3d(gpw_files, cell, mpi):
     epsilon = 12.7  # dielectric constant
     charge = -3     # defect charge
     def_idx = 0     # defect index in pristine system
-    calc_prs = mpi.GPAW(gpw_files[f'gaas_{cell}_pristine'], parallel={'distribute_density': False})
-    calc_def = mpi.GPAW(gpw_files[f'gaas_{cell}_defect'], parallel={'distribute_density': False})
+    calc_prs = mpi.GPAW(gpw_files[f'gaas_{cell}_pristine'],
+                        parallel={'distribute_density': False})
+    calc_def = mpi.GPAW(gpw_files[f'gaas_{cell}_defect'],
+                        parallel={'distribute_density': False})
 
     elc = charged_defect_corrections(calc_pristine=calc_prs,
                                      calc_defect=calc_def,

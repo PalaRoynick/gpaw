@@ -33,7 +33,8 @@ def test_response_iron_sf_pawALDA(in_tmp_dir, gpw_files, scalapack, mpi):
     # ---------- Script ---------- #
 
     context = ResponseContext(txt='iron_susceptibility.txt', comm=mpi.comm)
-    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1, distribute_density=False))
+    calc = mpi.GPAW(gpw_files['fe_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff['fe_pw']
     gs = ResponseGroundStateAdapter(calc)
 

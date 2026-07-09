@@ -54,7 +54,8 @@ def test_response_iron_sf_ALDA(in_tmp_dir, gpw_files, scalapack, mpi):
 
     # ---------- Script ---------- #
 
-    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1, distribute_density=True))
+    calc = mpi.GPAW(gpw_files['fe_pw'],
+                    parallel=dict(domain=1, distribute_density=True))
     nbands = response_band_cutoff['fe_pw']
     gs = ResponseGroundStateAdapter(calc)
 

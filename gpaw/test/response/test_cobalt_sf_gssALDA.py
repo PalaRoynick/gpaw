@@ -40,7 +40,8 @@ def test_response_cobalt_sf_gssALDA(in_tmp_dir, gpw_files, mpi):
 
     # Initialize objects to calculat Chi
     context = ResponseContext(comm=mpi.comm)
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1, distribute_density=False))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff['co_pw']
     gs = ResponseGroundStateAdapter(calc)
     chiks_calc = ChiKSCalculator(gs, context,
