@@ -1,4 +1,5 @@
 # web-page: graphite-LDA.traj, graphite-LDA.txt
+# -- start -- build
 import numpy as np
 from ase.lattice.hexagonal import Graphite
 from gpaw import GPAW, PW
@@ -10,7 +11,9 @@ layerdist = 3.33
 a = ccdist * np.sqrt(3)
 c = 2 * layerdist
 gra = Graphite('C', latticeconstant={'a': a, 'c': c})
+# -- end -- build
 
+# -- start -- calc
 xc = 'LDA'
 calcname = f'graphite-{xc}'
 calc = GPAW(mode=PW(500),
@@ -19,7 +22,10 @@ calc = GPAW(mode=PW(500),
             txt=calcname + '.txt')
 gra.calc = calc  # Connect system and calculator
 print(gra.get_potential_energy())
+# -- end -- calc
 
+# -- start -- relax
 sf = StrainFilter(gra, mask=[1, 1, 1, 0, 0, 0])
 opt = BFGS(sf, trajectory=calcname + '.traj', logfile=calcname + '.log')
 opt.run(fmax=0.01)
+# -- end -- relax
