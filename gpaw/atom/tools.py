@@ -111,7 +111,7 @@ if __name__ == '__main__':
     results = []
     for path in args.path:
         try:
-            _, _, _, _, ecuts_tot, ecuts_diff = convergence_check(
+            _, _, _, ecuts_tot, ecuts_diff = convergence_check(
                 Path(path), args.plot)
         except FileNotFoundError:
             print(path.name)

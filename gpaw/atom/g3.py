@@ -256,10 +256,12 @@ def analyse(folders):
 def oldvsnew():
     x1, y1 = analyse(list(Path('old').glob('*/')))
     x2, y2 = analyse(list(Path('3').glob('*/')))
+    x3, y3 = analyse(list(Path('opt/400').glob('*/')))
     import matplotlib.pyplot as plt
     for i in range(5):
         plt.plot(x1, y1[:, i], 'o-')
         plt.plot(x2, y2[:, i], 'x-')
+        plt.plot(x3, y3[:, i], 's-')
         plt.show()
 
 
@@ -381,7 +383,7 @@ def workflow():
 
 if __name__ == '__main__':
     import sys
-    if 0:
+    if 1:
         oldvsnew()
     elif 0:
         for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
