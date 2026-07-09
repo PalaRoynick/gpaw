@@ -356,8 +356,8 @@ attention to the cathode.  If you have lots of time left though see if
 you can handle the bonus exercise.
 
 
-Bonus
-=====
+Bonus: Smaller supercell
+========================
 
 In the calculation of the intercalated Li we used a graphene layer with 8
 Carbon atoms per unit cell.  We can actually use only 6 Carbon by
