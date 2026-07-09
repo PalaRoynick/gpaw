@@ -382,25 +382,28 @@ def pfunc(symbol, ecut=600):
         converge=False)
     try:
         dft.converge()
-    except KohnShamConvergenceError:
+    except (KohnShamConvergenceError, AssertionError, np.linalg.LinAlgError):
         return np.inf, np.inf
     e = dft.calculate_energy()
     params = Parameters(**kwargs, mode=PW(1200))
     dft = dft.new(atoms, params, log=dft.log)
     try:
         dft.converge()
-    except (KohnShamConvergenceError, AssertionError):
+    except (KohnShamConvergenceError, AssertionError, np.linalg.LinAlgError):
         return np.inf, np.inf
     e0 = dft.calculate_energy()
 
     kwargs['kpts'] = MonkhorstPack(density=6.0)
     name = 'Diamond'
     atoms = reference_structure(symbol, name)
-    dft = DFT(
-        atoms,
-        mode=PW(1200),
-        **kwargs,
-        txt='stress.txt')
+    try:
+        dft = DFT(
+            atoms,
+            mode=PW(1200),
+            **kwargs,
+            txt='stress.txt')
+    except (KohnShamConvergenceError, AssertionError, np.linalg.LinAlgError):
+        return np.inf, np.inf
     s = dft.calculate_stress()
     return e - e0, s[0]
 
