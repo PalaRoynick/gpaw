@@ -232,7 +232,7 @@ parallel on the computer cluster.  Remember we can then run different
 calculations simultaneously.
 
 Log in to the gbar terminal, save a full script in a file
-(e.g. `calc.py`) and submit that file to be calculated in parallel
+(e.g. ``calc.py``) and submit that file to be calculated in parallel
 (e.g. ``mq submit calc.py -R 8:1h`` (1 hour on 8 cores)).
 
 .. note::
