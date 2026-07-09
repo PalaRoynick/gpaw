@@ -44,7 +44,7 @@ def test_parallel_extract_kptdata(in_tmp_dir, gpw_files, mpi,
     assert not serial_gs.is_parallelized()
 
     # Initialize parallel ground state adapter
-    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff[wfs]
     parallel_gs = ResponseGroundStateAdapter(calc)
     assert parallel_gs.is_parallelized()

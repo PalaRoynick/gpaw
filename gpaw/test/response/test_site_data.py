@@ -16,7 +16,7 @@ from gpaw.sphere.integrate import integrate_lebedev
 @pytest.mark.response
 def test_Fe_site_magnetization(gpw_files, mpi):
     # Set up ground state adapter
-    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
 
     # Extract valid site radii range
@@ -84,7 +84,7 @@ def test_Fe_site_magnetization(gpw_files, mpi):
 @pytest.mark.response
 def test_Co_site_data(gpw_files, mpi):
     # Set up ground state adapter
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
 
     # Extract valid site radii range

@@ -43,7 +43,7 @@ def test_jdos(in_tmp_dir, gpw_files, mpi, system, qrel):
     # ---------- Script ---------- #
 
     # Set up the ground state adapter based on the fixture
-    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files[wfs], parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff[wfs]
     gs = ResponseGroundStateAdapter(calc)
 

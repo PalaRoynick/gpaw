@@ -75,12 +75,10 @@ class ResponseGroundStateAdapter:
         # GridDescriptor from gpaw.old.grid_descriptor.
         # Describes a grid in real space.  Response code assumes serial
         # real-space grids, so expose serial descriptors here.
-        self._gd = wfs.gd
-        self.gd = self._gd.new_descriptor(comm=mpi.serial_comm)
+        self.gd = wfs.gd
 
         # Also a GridDescriptor, with a finer grid.
-        self._finegd = calc.density.finegd
-        self.finegd = self._finegd.new_descriptor(comm=mpi.serial_comm)
+        self.finegd = calc.density.finegd
         self.bd = wfs.bd  # BandDescriptor from gpaw.old.band_descriptor
         self.nspins = wfs.nspins  # number of spins: int
         self.dtype = wfs.dtype  # data type of wavefunctions, real or complex
@@ -190,27 +188,24 @@ class ResponseGroundStateAdapter:
     @property
     def nt_sR(self):
         # Used by localft and fxc_kernels
-        return self._density.gd.collect(self._density.nt_sG, broadcast=True)
+        return self._density.nt_sG
 
     @property
     def nt_sr(self):
         # Used by localft
         if self._density.nt_sg is None:
             self._density.interpolate_pseudo_density()
-        return self._density.finegd.collect(
-            self._density.nt_sg, broadcast=True)
+        return self._density.nt_sg
 
     @cached_property
     def n_sR(self):
-        n_sR, gd = self._density.get_all_electron_density(
-            atoms=self.atoms, gridrefinement=1)
-        return gd.collect(n_sR, broadcast=True)
+        return self._density.get_all_electron_density(
+            atoms=self.atoms, gridrefinement=1)[0]
 
     @cached_property
     def n_sr(self):
-        n_sr, gd = self._density.get_all_electron_density(
-            atoms=self.atoms, gridrefinement=2)
-        return gd.collect(n_sr, broadcast=True)
+        return self._density.get_all_electron_density(
+            atoms=self.atoms, gridrefinement=2)[0]
 
     @property
     def D_asp(self):

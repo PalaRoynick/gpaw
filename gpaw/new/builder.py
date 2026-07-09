@@ -89,7 +89,18 @@ class DFTComponentsBuilder:
         if self.ncomponents == 4 and xcfunc.type != 'LDA':
             raise ValueError('Only LDA supported for '
                              'SC Non-collinear calculations')
-        self.is_distributed = xcfunc.type not in {'HYB', 'MGGA'}
+
+        self.is_distributed = parallel.get('distribute_density', None)
+
+        distribution_supported = (xcfunc.type not in {'HYB', 'MGGA'} and
+                                  xcfunc.name != 'QNA')
+
+        if self.is_distributed is None:
+            self.is_distributed = distribution_supported
+
+        if not distribution_supported and self.is_distributed:
+            raise ValueError('Hybrids and MGGA do not '
+                             'support distributed_density.')
 
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
