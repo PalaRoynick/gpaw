@@ -60,10 +60,10 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             ecut=self.ecut,
             comm=self.communicators['d'],
             complementary_comm=self.communicators['D'])
-        comm = (self.communicators['d'] if self.is_hybrid
-                else self.communicators['w'])
-        complementary_comm = (self.communicators['D'] if self.is_hybrid
-                              else serial_comm)
+        comm = (self.communicators['w'] if self.is_distributed
+                else self.communicators['d'])
+        complementary_comm = (serial_comm if self.is_distributed
+                              else self.communicators['D'])
         fine_grid = grid.new(size=grid.size_c * 2,
                              comm=comm,
                              complementary_comm=complementary_comm)

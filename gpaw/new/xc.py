@@ -375,6 +375,9 @@ class MGGAFunctional(GGAFunctional):
                 taut_swR,
                 interpolate
                 ) -> Array2D:  # type: ignore
+        if taut_swR is None:
+            return np.zeros((3, 3))
+
         stress_vv = GGAFunctional._stress(
             self, e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr,
             gradn_svr=gradn_svr)
