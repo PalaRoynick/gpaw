@@ -42,19 +42,19 @@ PARAMS = {
     'Ca.10': '3s,4s,3p,4p,3d,d,F 2.1',
     'Sc.3': '4s,s,4p,p,3d,d,F 3.2',
     'Sc.11': '3s,4s,3p,4p,3d,d,F 2.3',
-    'Ti.4': '4s,s,4p,p,3d,d 2.7',
+    'Ti.4': '4s,s,4p,p,3d,d 3.0',
     'Ti.12': '3s,4s,3p,4p,3d,d,F 2.2,2.2,2.3',
-    'V.5': '4s,s,4p,p,3d,d 2.6',
+    'V.5': '4s,s,4p,p,3d,d 2.9',
     'V.13': '3s,4s,3p,4p,3d,d,F 2.1,2.1,2.3',
-    'Cr.6': '4s,s,4p,p,3d,d 2.5',
+    'Cr.6': '4s,s,4p,p,3d,d 2.8',
     'Cr.14': '3s,4s,3p,4p,3d,d,F 2.1,2.1,2.3',
-    'Mn.7': '4s,s,4p,p,3d,d 2.4',
+    'Mn.7': '4s,s,4p,p,3d,d 2.8',
     'Mn.15': '3s,4s,3p,4p,3d,d,F 2.0,2.0,2.2',
-    'Fe.8': '4s,s,4p,p,3d,d 2.2',
+    'Fe.8': '4s,s,4p,p,3d,d 2.5',
     'Fe.16': '3s,4s,3p,4p,3d,d,F 2.1',
     'Co.9': '4s,s,4p,p,3d,d 2.2',
     'Co.17': '3s,4s,3p,4p,3d,d,F 2.1',
-    'Ni.10': '4s,s,4p,p,3d,d 2.1',
+    'Ni.10': '4s,s,4p,p,3d,d 2.4',
     'Ni.18': '3s,4s,3p,4p,3d,d,F 2.0',
     'Cu.11': '4s,s,4p,p,3d,d 2.1',
     'Cu.19': '3s,4s,3p,4p,3d,d,F 1.9',
@@ -91,7 +91,7 @@ PARAMS = {
     'Pd.18': '4s,5s,4p,5p,4d,d,F 2.5',
     'Ag.11': '5s,s,5p,p,4d,d,F 3.3',
     'Ag.19': '4s,5s,4p,5p,4d,d,F 2.5',
-    'Cd.12': '5s,s,5p,p,4d,d,f 3.3',
+    'Cd.12': '5s,s,5p,p,4d,d,F 3.3',
     'Cd.20': '4s,5s,4p,5p,4d,d,F 2.5',
     'In.13': '5s,s,5p,p,4d,d,F 2.6',
     'Sn.14': '5s,s,5p,p,4d,d,F 2.5',
@@ -151,8 +151,10 @@ PARAMS = {
     # 87-88:
     'Fr.1': '7s,s,6p,5d,F 5.0',
     'Fr.9': '6s,7s,6p,7p,6d,d,F 2.7,2.5',
-    'Ra.2': '6s,s,6p,5d 4.5',
-    'Ra.10': '6s,7s,6p,7p,6d,d,F 2.7,2.5',
+    'Ra.2': '6s,s,6p,5d 5.0',
+    'Ra.10': '6s,7s,6p,7p,6d,d,F 2.7,2.5'}
+
+EXTRA = {
     # 89-102:
     'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
     'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
@@ -178,6 +180,11 @@ def create(symbol, conf):
         r0 = float(r0)
     else:
         r0 = 0.9 * min(rcs)
+
+    if not proj[-1].isupper():
+        l = 'SPDF'['spdf'.index(proj[-1]) + 1]
+        proj += f',{l}'
+
     with open('gen.out', 'w') as fd:
         gen = generate(
             symbol,
@@ -204,15 +211,34 @@ def create(symbol, conf):
 def create_all():
     from contextlib import chdir
     for name, conf in PARAMS.items():
-        # if not conf.split()[0][-1].isupper():
-        #     continue
+        c1, c2 = conf.split(' ', 1)
+        if not c1[-1].isupper():
+            l = 'SPDF'['spdf'.index(c1[-1]) + 1]
+            conf = f'{c1},{l} {c2}'
+        elif name == 'Cd.12':
+            pass
+        else:
+            continue
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
             continue
         dir.mkdir(exist_ok=True)
         with chdir(dir):
-            create(symbol, conf)
+            ok = create(symbol, conf)
+            assert ok
+
+
+def read_paw_pot(path):
+    from xml.etree import ElementTree as ET
+    root = ET.parse(path).getroot()
+    states = root.find('valence_states')
+    r = {}
+    for state in states:
+        r[int(state.get('l'))] = float(state.get('rc'))
+    v0 = root.find('zero_potential')
+    return v0.get('type'), float(v0.get('r0')), [rl for _, rl
+                                                 in sorted(r.items())]
 
 
 def analyse(folders):
@@ -233,7 +259,8 @@ def analyse(folders):
             y += [efcc[0] - efcc[-1], ecuts_tot[2], ecuts_diff[2]]
         maxabs, dea = check(f)
         symbol = f.name.split('.')[0]
-        data[symbol].append(y + [maxabs, dea])
+        type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
+        data[symbol].append(y + [maxabs, dea, f, type, r0, rcs])
     x = []
     y = []
     z = []
@@ -241,9 +268,11 @@ def analyse(folders):
         if symbol not in data:
             continue
         best = np.inf
-        for name, de, ec, ecd, maxabs, dea in data[symbol]:
+        D = sorted(data[symbol], key=lambda x: (x[0], x[6]))
+        for name, de, ec, ecd, maxabs, dea, f, type, r0, rcs in D:
+            R = ','.join(f'{r:.1f}' for r in rcs)
             print(f'{name:7} {de:9.6f} {ecd:6.1f} {ec:6.1f} '
-                  f'{maxabs:7.4f} {dea:7.4f}')
+                  f'{maxabs:7.4f} {dea:7.4f} {R} {r0:.1f} {type}', f)
             Z = atomic_numbers[symbol]
             x.append(Z)
             y.append([de, ecd, ec, maxabs, dea])
@@ -383,7 +412,7 @@ def workflow():
 
 if __name__ == '__main__':
     import sys
-    if 1:
+    if 0:
         oldvsnew()
     elif 0:
         for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
