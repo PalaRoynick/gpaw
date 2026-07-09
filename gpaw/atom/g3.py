@@ -1,13 +1,17 @@
+from collections import defaultdict
 from functools import cache
 from pathlib import Path
 
 import numpy as np
-from gpaw import setup_paths, KohnShamConvergenceError
+from ase.data import atomic_numbers, chemical_symbols
+from gpaw import KohnShamConvergenceError, setup_paths
 from gpaw.atom.generator2 import generate
+from gpaw.atom.tools import convergence_check
+from gpaw.atom.tools import ecuts as ecuts_check
+from gpaw.atom.tools import eos
 from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
-from gpaw.mpi import world, broadcast
-from gpaw.utilities.acwf import reference_structure, acwf_structures
-from gpaw.atom.tools import eos, ecuts as ecuts_check
+from gpaw.mpi import broadcast, world
+from gpaw.utilities.acwf import acwf_structures, check, reference_structure
 
 PARAMS = {
     # 1-2:
@@ -242,11 +246,6 @@ def read_paw_pot(path):
 
 
 def analyse(folders):
-    from collections import defaultdict
-
-    from ase.data import atomic_numbers, chemical_symbols
-    from gpaw.atom.tools import convergence_check
-    from gpaw.utilities.acwf import check
 
     data = defaultdict(list)
     for f in folders:
@@ -280,6 +279,31 @@ def analyse(folders):
         z.append(best)
     print(sum(z) / len(z), len(z))
     return x, np.array(y)
+
+
+def acwf_plot():
+    p = Path.home() / 'nh/H-U/old'
+    D = []
+    for f in p.glob('*/'):
+        if '.' in f.name:
+            continue
+        Z = atomic_numbers[f.name]
+        # if Z <= 56 or 72 <= Z <= 83:
+        if 84 <= Z <= 96:
+            maxabs, dea, d = check(f)
+            D += d
+    D.sort()
+    n = len(D)
+    print(n)
+    V = [(1 + x)**3 - 1 for x in D]
+    n1 = n // 4
+    n2 = n // 2
+    n3 = n * 3 // 4
+    Q1 = (V[n1] + V[n1 + 1]) / 2
+    Q2 = (V[n2] + V[n2 + 1]) / 2
+    Q3 = (V[n3] + V[n3 + 1]) / 2
+    IQR = Q3 - Q1
+    print(Q1 - 1.5 * IQR, Q1, Q2, Q3, Q3 + 1.5 * IQR)
 
 
 def oldvsnew():
@@ -417,6 +441,8 @@ if __name__ == '__main__':
     import sys
     if 0:
         oldvsnew()
+    elif 1:
+        acwf_plot()
     elif 0:
         for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
                      'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
