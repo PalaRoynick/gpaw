@@ -85,12 +85,12 @@ cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_c
 source ~/CAMD2026/venv/bin/activate
 
 echo
-if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
+if [[ -f $HOME/.myqueue/config.py ]]; then
     echo "MyQueue configuration found, assuming it makes sense."
 else
     echo "Installing MyQueue configuration."
-    mkdir -p $HOME/CAMD2026/.myqueue
-    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/CAMD2026/.myqueue/config.py
+    mkdir -p $HOME/.myqueue
+    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/.myqueue/config.py
 fi
 
 echo
