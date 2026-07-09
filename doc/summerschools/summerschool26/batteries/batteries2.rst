@@ -14,7 +14,7 @@ equilibrium potential is towards choice of functional. For that we:
 * Get an uncertainty estimation on the potential by using an ensemble of
   functionals called a ``BEEFEnsemble``
 
-* Using values from the previous day calculate the equilibrium potential of
+* Using values from the previous part calculate the equilibrium potential of
   the full Li :mol:`FePO_4/C` battery
 
 .. contents::
