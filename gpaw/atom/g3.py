@@ -298,10 +298,6 @@ def create(symbol, conf):
     else:
         r0 = 0.9 * min(rcs)
 
-    if not proj[-1].isupper():
-        l = 'SPDF'['spdf'.index(proj[-1]) + 1]
-        proj += f',{l}'
-
     with open('gen.out', 'w') as fd:
         gen = generate(
             symbol,
@@ -328,8 +324,6 @@ def create(symbol, conf):
 def create_all():
     from contextlib import chdir
     for name, conf in PARAMS2.items():
-        if name not in 'NOF':
-            continue
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
