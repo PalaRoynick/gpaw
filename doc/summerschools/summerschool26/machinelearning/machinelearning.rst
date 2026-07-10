@@ -14,11 +14,13 @@ Setting up your account
 
 This project requires the Torch and NequIP packages, adding more than seven gigabytes to your installation. For that reason the packages are not installed for all students, but should only be installed if you plan to follow this project.
 
-To install the machine learning tools, run this command in a terminal.
+To install the machine learning tools, run this command in a terminal::
 
     setup ~jasc/setup2026ml
 
 Now download the NequIP-OAM-S foundational model, and prepare to run it on the DTU computer system, using CPUs.  While GPUs give significant acceleration of the larger models, we gain little with the small model, and we only have access to very limited GPU power, so we will only use that for training.
+
+::
 
     cd CAMD2026
 

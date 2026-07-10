@@ -3,6 +3,7 @@
 # creates: magnetism/CrI3_anisotropy_student.py
 # creates: magnetism/VI2_gs_student.py
 # creates: magnetism/VI2_afm_student.py
+# creates: machinelearning/machinelearning_intro_student.py
 
 from pathlib import Path
 
