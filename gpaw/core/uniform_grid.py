@@ -113,10 +113,10 @@ class UGDesc(Domain['UGArray']):
             f'UGDesc(size={self.size_c.tolist()}, ' +
             zbc)
 
-    #def __getstate__(self):
-    #    state = self.__dict__.copy()
-    #    state['complementary_comm'] = None
-    #    return state
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['complementary_comm'] = None
+        return state
 
     def _short_string(self, global_shape):
         return f'Uniform wave function grid shape: {global_shape}'
