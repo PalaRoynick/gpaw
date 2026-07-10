@@ -56,7 +56,10 @@ class ResponseGroundStateAdapter:
     def __init__(self, calc: GPAWCalculator, lazy=False):
         self.gs_info = ''
 
-        parallel = calc.parallel if calc.old else calc.params.parallel
+        if isinstance(calc, OldGPAW):
+            parallel = calc.parallel
+        else:
+            parallel = calc.params.parallel
         if (calc.world.size > 1 and
                 parallel.get('distribute_density') is not False):
             raise ValueError(
