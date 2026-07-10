@@ -16,7 +16,7 @@ def gpwfile(in_tmp_dir, mpi):
                     xc={'name': 'RPBE', 'stencil': 1},
                     nbands=16,
                     eigensolver='rmm-diis',
-                    parallel={'domain': 1},
+                    parallel={'domain': 1, 'distribute_density': False},
                     occupations=FermiDirac(0.01))
 
     cluster.calc = calc
