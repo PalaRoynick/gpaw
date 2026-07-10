@@ -14,7 +14,7 @@ def main():
         for line in path.read_text().splitlines():
             if ' # student:' in line:
                 a, b = (x.strip() for x in line.split('# student:'))
-                line = line.split(a)[0] + b + '\n'
+                line = line.split(a)[0] + b
             lines.append(line)
         path.with_name(path.name.replace('_teacher', '_student')).write_text(
             '\n'.join(lines) + '\n')
