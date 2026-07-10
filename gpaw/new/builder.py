@@ -95,6 +95,9 @@ class DFTComponentsBuilder:
         distribution_supported = (xcfunc.type not in {'HYB', 'MGGA'} and
                                   xcfunc.name != 'QNA')
 
+        # Running the entire test suite with False as well to get more coverage
+        distribution_supported = False
+
         if self.is_distributed is None:
             self.is_distributed = distribution_supported
 
