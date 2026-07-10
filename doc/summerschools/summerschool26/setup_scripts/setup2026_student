@@ -89,6 +89,10 @@ cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_c
 
 source ~/CAMD2026/venv/bin/activate
 
+# Copy the exercise files
+SUMMERSOURCEDIR=~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/demofiles
+rsync -vrltbm --ignore-existing $SUMMERSOURCEDIR/. CAMD2026/.
+
 echo
 if [[ -f $HOME/.myqueue/config.py ]]; then
     echo "MyQueue configuration found, assuming it makes sense."
@@ -101,7 +105,6 @@ fi
 echo
 echo "Preparing Jupyter for use in virtual environment"
 python -m ipykernel install --user --name=CAMD2026
-
 
 # Set up .bashrc
 cd
