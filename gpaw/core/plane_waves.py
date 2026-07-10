@@ -67,7 +67,8 @@ class PWDesc(Domain['PWArray']):
             gcut = (2.0 * ecut)**0.5
         self.gcut = gcut
         self.ecut = ecut
-        super().__init__(cell, (True, True, True), kpt, comm, complementary_comm, dtype)
+        super().__init__(cell, (True, True, True),
+                         kpt, comm, complementary_comm, dtype)
 
         G_plus_k_Gv, ekin_G, self.indices_cG = find_reciprocal_vectors(
             ecut, self.cell_cv, self.kpt_c, self.dtype)
