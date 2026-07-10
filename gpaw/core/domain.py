@@ -43,6 +43,7 @@ class Domain(Generic[X]):
                  pbc=(True, True, True),
                  kpt: Vector | None = None,
                  comm: MPIComm = serial_comm,
+                 complementary_comm: MPIComm | None = None,
                  dtype: DTypeLike | None = None):
         """"""
         if isinstance(pbc, int):
@@ -50,6 +51,7 @@ class Domain(Generic[X]):
         self.cell_cv = normalize_cell(cell)
         self.pbc_c = np.array(pbc, bool)
         self.comm = comm
+        self.complementary_comm = complementary_comm
 
         self.volume = abs(np.linalg.det(self.cell_cv))
         self.orthogonal = not (self.cell_cv -
@@ -164,6 +166,4 @@ class Domain(Generic[X]):
                       kpt=self.kpt_c,
                       dtype=self.dtype,
                       comm=self.comm,
-                      complementary_comm=getattr(self,
-                                                 'complementary_comm',
-                                                 None))
+                      complementary_comm=self.complementary_comm)

@@ -64,7 +64,6 @@ class UGDesc(Domain['UGArray']):
             Data-type (float or complex).
         """
         self.size_c = np.array(size, int)
-        self.complementary_comm = complementary_comm
         if isinstance(zerobc, int):
             zerobc = (zerobc,) * 3
         self.zerobc_c = np.array(zerobc, bool)
@@ -85,7 +84,7 @@ class UGDesc(Domain['UGArray']):
                                in zips(self.decomp_cp, self.mypos_c)])
         self.mysize_c = self.end_c - self.start_c
 
-        super().__init__(cell, pbc, kpt, comm, dtype)
+        super().__init__(cell, pbc, kpt, comm, complementary_comm, dtype)
         self.myshape = tuple(self.mysize_c)
 
         self.dv = self.volume / self.size_c.prod()
@@ -114,10 +113,10 @@ class UGDesc(Domain['UGArray']):
             f'UGDesc(size={self.size_c.tolist()}, ' +
             zbc)
 
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state['complementary_comm'] = None
-        return state
+    #def __getstate__(self):
+    #    state = self.__dict__.copy()
+    #    state['complementary_comm'] = None
+    #    return state
 
     def _short_string(self, global_shape):
         return f'Uniform wave function grid shape: {global_shape}'

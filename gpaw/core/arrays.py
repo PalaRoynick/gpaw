@@ -313,10 +313,8 @@ class XArray(Generic[DomainType], XP):
 
             (domain.comm, comm2).
         """
-        if comm1 is None:
-            comm1 = getattr(self.desc, 'complementary_comm', None)
-        if comm2 is None:
-            comm2 = getattr(domain, 'complementary_comm', None)
+        comm1 = comm1 or self.desc.complementary_comm
+        comm2 = comm2 or domain.complementary_comm
         if comm1 is None or comm2 is None:
             raise ValueError(
                 'Complementary communicators are required for '

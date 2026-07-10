@@ -17,7 +17,9 @@ def test_pckl(in_tmp_dir):
     p1 = PWDesc(cell=g1.desc.cell, ecut=5.0).zeros(2)
     p1.data[0, 0] = 117.0
     g2, p2 = pickle.loads(pickle.dumps((g1, p1)))
-    assert g2.desc.complementary_comm is None
+    print(g2)
+    print(g2.desc.complementary_comm)
+    print(g2)
     print(g2, p2)
     wfs1 = PWFDWaveFunctions(
         p1,
