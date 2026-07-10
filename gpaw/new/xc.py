@@ -111,20 +111,27 @@ class Functional:
                 stress_vv = wrapper.calculate(args[1].data, args[3].data,
                                               args[2].data, args[4].data,
                                               get_stress=True)[1]
-                return stress_vv + self._stress(*args, **kwargs)
+                stress_vv += self._stress(*args, **kwargs)
             else:
                 self.xc.kernel.calculate(*[array.data for array in args])
+                stress_vv = self._stress(*args, **kwargs)
         # Special GPU cases:
         elif self.name == 'LDA':
             e_r, nt_sr, vt_sr = args
             evaluate_lda_gpu(nt_sr.data, vt_sr.data, e_r.data)
+            stress_vv = self._stress(*args, **kwargs)
         elif self.name == 'PBE':
             e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr = args
             evaluate_pbe_gpu(nt_sr.data, vt_sr.data, e_r.data,
                              sigma_xr.data, dedsigma_xr.data)
+            stress_vv = self._stress(*args, **kwargs)
         else:
             1 / 0
-        return self._stress(*args, **kwargs)
+
+        comm = self.grid.complementary_comm
+        if comm is not None and comm.size > 1 and comm.rank != 0:
+            return self.xp.zeros((3, 3))
+        return stress_vv
 
     def _args(self,
               ibzwfs,
@@ -329,6 +336,7 @@ class MGGAFunctional(GGAFunctional):
             taut_sr = nt_sr.new(zeroed=True)
         else:
             taut_sr = taut_sr.to_xp(np)
+        assert taut_sr is not None
         dedtaut_sr = taut_sr.new()
         vxct_sr = taut_sr.new()
         vxct_sr.data[:] = 0.0

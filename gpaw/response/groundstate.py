@@ -56,6 +56,13 @@ class ResponseGroundStateAdapter:
     def __init__(self, calc: GPAWCalculator, lazy=False):
         self.gs_info = ''
 
+        parallel = calc.parallel if calc.old else calc.params.parallel
+        if (calc.world.size > 1 and
+                parallel.get('distribute_density') is not False):
+            raise ValueError(
+                'Response calculations with more than one MPI rank require '
+                'parallel={"distribute_density": False}.')
+
         if calc.old and calc.wfs.mode == 'lcao':
             calc.initialize_positions()
             for kpt in calc.wfs.kpt_u:

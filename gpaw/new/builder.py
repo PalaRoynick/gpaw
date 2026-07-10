@@ -102,8 +102,8 @@ class DFTComponentsBuilder:
             self.is_distributed = distribution_supported
 
         if not distribution_supported and self.is_distributed:
-            raise ValueError('Hybrids and MGGA do not '
-                             'support distributed_density.')
+            raise ValueError('HYB, MGGA, and QNA functionals do not support '
+                             'parallel={"distribute_density": True}.')
 
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
