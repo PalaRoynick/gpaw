@@ -14,7 +14,7 @@ equilibrium potential is towards choice of functional. For that we:
 * Get an uncertainty estimation on the potential by using an ensemble of
   functionals called a ``BEEFEnsemble``
 
-* Using values from the previous day calculate the equilibrium potential of
+* Using values from the previous part calculate the equilibrium potential of
   the full Li :mol:`FePO_4/C` battery
 
 .. contents::
@@ -394,13 +394,17 @@ the intercalation energy of Li in graphite, that you calculated in Part 1.
     * How does that compare to the cell voltage you can obtain from :mol:`FePO_4/C` batteries?
 
 Make sure you are able to discuss the bullet points at the top of this tutorial part.
+Experimentally :mol:`FePO_4/C` batteries have a maximum voltage of about 3.6 V (see table 1 in ref [#Sui]_).
 
 
-Bonus
-=====
+Bonus: BEEF-Error for :mol:`FePO_4/C`
+=====================================
 
 How does the predicted error estimate change if you consider the full
 reaction from Li in graphite + :mol:`FePO_4` to empty graphite +
 :mol:`LiFePO_4`:
 
 .. math:: LiC_x + FePO_4 \rightarrow LiFePO_4 + C_x^{graphite}
+
+.. [#Sui] X. Sui, M. Świerczyński, R. Teodorescu, and D.-I. Stroe
+	    :doi:`10.3390/en14061732`
