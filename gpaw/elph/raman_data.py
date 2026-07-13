@@ -40,7 +40,7 @@ class RamanData:
         """
         Calculates Raman intensities from Raman tensor.
 
-        Returns bare `|R|^2` and and Bose occupation weighted values
+        Returns bare `|R|^2` and Bose occupation weighted values
 
         Parameters
         ----------

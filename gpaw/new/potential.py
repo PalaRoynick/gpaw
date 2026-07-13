@@ -124,14 +124,14 @@ class Potential:
             raise ValueError('No electrostatic potential')
         if isinstance(self.vHt_x, UGArray):
             vHt_r = self.vHt_x.gather()
-        elif isinstance(self.vHt_x, PWArray):
+        else:
+            assert isinstance(self.vHt_x, PWArray)
             vHt_g = self.vHt_x.gather()
             if vHt_g is not None:
                 vHt_r = vHt_g.ifft(grid=vHt_g.desc.minimal_uniform_grid())
             else:
                 vHt_r = None
-        else:
-            return np.nan  # TB-mode
+
         vacuum_level = 0.0
         if vHt_r is not None:
             for c, periodic in enumerate(grid.pbc_c):

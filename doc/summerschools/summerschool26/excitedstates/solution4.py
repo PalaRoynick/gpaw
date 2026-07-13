@@ -4,9 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 plt.figure()
 
-# Of course you need to input the name you gave the files earlier own
-# yourself and only plot the components you calculated.
-# Here is only showed hot to plot the x-component.
+# Of course you need to input the name you gave the files
+# yourself earlier and only plot the components you calculated.
+# Here is only showed how to plot the x-component.
 
 absox = np.loadtxt('Si_rpa_x.csv', delimiter=',')
 plt.plot(absox[:, 0], absox[:, 4], label='RPA_x Si 12x12x4', lw=2, color='b')

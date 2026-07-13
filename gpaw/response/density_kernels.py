@@ -58,7 +58,7 @@ class DensityXCKernel(ABC):
 
         v(q) = 4π/|G+q| -> 4π for G==0 and 4π/|G| otherwise if q==0,
 
-        we need to account to account for it here. That is,
+        we need to account for it here. That is,
 
         For q→0, the head and wings of the returned K_xc(q) needs to be
         rescaled according to K_xc(q) -> q K_xc(q) q

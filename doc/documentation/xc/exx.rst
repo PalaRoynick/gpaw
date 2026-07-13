@@ -84,7 +84,7 @@ The current implementation *lacks* the following features:
   each SCF cycle. This should be optimized.
 
 One way to speed up an exact-exchange (or hybrid) calculation is to use the
-coarse grid (used for wave functions) instead of the finegrid (used for for
+coarse grid (used for wave functions) instead of the finegrid (used for
 densities) for the Fock potentials. This should give a speed-up factor of 8.
 This can be specified in the ``xc`` keyword like in this example
 :git:`~gpaw/test/exx/test_coarse.py`

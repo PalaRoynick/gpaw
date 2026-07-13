@@ -57,9 +57,6 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         self.bytes_per_band = (self.array_shape(global_shape=True)[0] *
                                C_nM.data.itemsize)
 
-        # This is for TB-mode (and MYPY):
-        self.V_MM: Matrix
-
         self._L_MM = None
 
     def move(self,
