@@ -25,6 +25,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
         self._energy = None
         self._gradient = None
         self.sic_calc = sic_calc
+        self.counter = 0  # number of calls of this class
 
     @property
     def kpt_comm(self):
@@ -63,6 +64,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
         self.error = 0.0
         h_unn = []
 
+        self.e_sic=0
         for wfs in ibzwfs:
 
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
@@ -73,47 +75,68 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
                 h_nn.data, wfs, self._representation, self.use_egdecomp
             )
 
-            # Add SIC energy, so the get orbital potential matrix
-            # lcao/sic.py
-            # PZSICLCAO
-            print(self._representation) # full
-            print(self.use_egdecomp) # False
+            # print(self._representation) # full
+            # print(self.use_egdecomp) # False
 
+            
+            l_odd, b_mn,sic_energy_by_orb = self.sic_calc.get_sic_gradient(wfs,ibzwfs, h_ij,hc_mn)
+            hc_mn+=b_mn
+            h_ij+=l_odd
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
-            l_odd, sic_energy = self.sic_calc.get_sic_gradient(wfs,ibzwfs, h_ij,hc_mn)
-            energy._energies['xc'] += sic_energy.sum()
+            # print(sic_energy_by_orb.sum())
+            self.e_sic +=sic_energy_by_orb.sum()
+            
+            # energy += sic_energy.sum()
 
-            # placeholder
             f_n = wfs.myocc_n
             n_occ = 0
             nbands = ibzwfs.nbands
             while n_occ < nbands and f_n[n_occ] > 1e-10:
                 n_occ += 1
             c_nm=wfs.C_nM.data
+            nbs = c_nm.shape[0]
+
+            ############## From old, I dont get it  ##############
+            # print(self.counter)
+            if self.counter <2: # alpha and beta channel 
+                hc_mn = 0.5 * (hc_mn + hc_mn.T.conj())
+                wfs.myeig_n[:nbs] = np.linalg.eigh(hc_mn)[0]
+            
+            ############## From old, I dont get it  ##############
+
+            # placeholder
+            
             # if occupied_only:
             #     nbs = n_occ
             # else:
-            nbs = c_nm.shape[0]
+            # nbs = c_nm.shape[0]
             # placeholder
 
             if self.use_egdecomp:
-                h_ij = f_n * (h_ij+  + l_odd) #- f_n[:, np.newaxis] * (h_ij + l_odd.T.conj())
+                h_ij = f_n *h_ij #- f_n[:, np.newaxis] * (h_ij -l_odd + l_odd.T.conj())
                 h_unn.append(h_ij)
 
-            else:
-                print(nbs,'nbs')
-                ind_up = self._a_vec_u[0].ind_up
-                print(h_ij.shape)
-                print(h_ij[:nbs, :nbs].shape)
-                print(l_odd.shape)
-                h_ij = f_n * (h_ij[:nbs, :nbs] + l_odd) - f_n[:, np.newaxis] * (h_ij[:nbs, :nbs] + l_odd.T.conj())
-                h_ij = np.ascontiguousarray(h_ij)
-                if self._representation in ['sparse', 'u-invar']:
-                    h_ij = h_ij[ind_up]
-                print(h_ij.shape)
-                h_unn.append(h_ij)
+            # else:
+            #     print(nbs,'nbs')
+            #     ind_up = self._a_vec_u[0].ind_up
+            #     print(h_ij.shape)
+            #     print(h_ij[:nbs, :nbs].shape)
+            #     print(l_odd.shape)
+            #     h_ij = f_n * (h_ij[:nbs, :nbs] + l_odd) - f_n[:, np.newaxis] * (h_ij[:nbs, :nbs] + l_odd.T.conj())
+            #     h_ij = np.ascontiguousarray(h_ij)
+            #     if self._representation in ['sparse', 'u-invar']:
+            #         h_ij = h_ij[ind_up]
+            #     print(h_ij.shape)
+            #     h_unn.append(h_ij)
 
+        
         self.tot_energy = energy
+        # ?????????????? OR UPDATE DIFFERENT OVJECT HERE??? COMPARE OLD TO NEW!!!
+        self.counter += 1
+        # energy._total_free += sic_energy
+
+        # copy_energy_sic = energy
+        
 
 
         return energy, h_unn

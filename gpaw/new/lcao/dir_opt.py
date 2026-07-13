@@ -11,6 +11,7 @@ from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 from gpaw.new.etdm.objfunc_lcao_sic import LCAOObjectiveFunctionSIC
 # from gpaw.directmin.functional.lcao import get_functional
 from gpaw.new.lcao.sic import PZSICLCAO
+from ase.units import Hartree as Ha
 
 class DirOptLCAO(LCAOEigensolver):
 
@@ -189,6 +190,12 @@ class DirOptLCAO(LCAOEigensolver):
         self.old_gradient = self.etdm.gradient
 
         self.iter += 1
+
+        if self.objfunc.e_sic is not None:
+            print(self.objfunc.e_sic)
+            self.objfunc.tot_energy._energies['xc'] += self.objfunc.e_sic
+            # tot_free += self.objfunc.e_sic
+            # self.objfunc.tot_energy._total_free += self.objfunc.e_sic
 
         return 0.0, error, self.objfunc.tot_energy
 

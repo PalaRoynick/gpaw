@@ -96,8 +96,8 @@ class PZSICLCAO:
         b_mn, e_total_sic = self.get_full_orb_dependent_potential_matrix(wfs,ibzwfs,occupied_only=False)
 
         l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
-        print(l_odd.shape)
-        print(c_nm[:nbs].shape, b_mn.shape)
+        # print(l_odd.shape)
+        # print(c_nm[:nbs].shape, b_mn.shape)
 
 
         # f = f_n[:nbs]
@@ -169,7 +169,7 @@ class PZSICLCAO:
         # if constraints:
         #     constrain_grad(grad, constraints, ind_up)
             
-        return l_odd, e_total_sic
+        return l_odd,b_mn, e_total_sic
 
 
     def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,occupied_only=False):
@@ -318,7 +318,9 @@ class PZSICLCAO:
 
         e_xc = self.xc.calculate(gd, nt_sg, vt_sg)
         self.ghat.add(nt_sg[0], Q_aL)
-        ec = 0.5 * gd.integrate(nt_sg[0] * vHt_g)
+
+        self.poisson.solve(vHt_g, nt_sg[0])
+        ec = 0.5 * self.coarse_gd.integrate(nt_sg[0] * vHt_g)
 
         vt_sg[0] -= vHt_g
 

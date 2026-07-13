@@ -72,9 +72,6 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_nn.data, wfs, self._representation, self.use_egdecomp
             )
 
-            # Add SIC energy, so the get orbital potential matrix
-            # lcao/sic.py
-            # PZSICLCAO
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
             k = 2 / wfs.nspins
@@ -104,6 +101,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_unn.append(anti_occ * h_ij)
 
         self.tot_energy = energy
+
+        # print(h_unn)
 
         return energy, h_unn
 

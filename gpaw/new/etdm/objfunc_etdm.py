@@ -204,6 +204,8 @@ class ObjectiveFunctionETDM(ABC):
             gradient = np.array(
                 [h_nn for h_nn in h_unn]
             )
+            # print(gradient.shape)
+            # gradient = h_unn
         return gradient
 
     @abstractmethod

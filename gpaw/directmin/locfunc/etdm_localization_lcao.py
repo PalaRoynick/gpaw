@@ -42,7 +42,7 @@ class LCAOETDMLocalize:
         counter = 0
         converged = False
         while not converged:
-            self.solver.iterate(self.ham, self.wfs, self.dens)
+            self.solver.iterate(self.ham, self.wfs, self.dens, occupied_only=True)
             counter += 1
 
             e_total = self.solver.phi_2i[0]

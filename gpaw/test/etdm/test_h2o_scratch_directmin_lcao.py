@@ -4,7 +4,7 @@ from gpaw import LCAO
 import numpy as np
 from ase import Atoms
 import os
-
+from gpaw.directmin.etdm_lcao import LCAOETDM
 
 def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
 
@@ -93,7 +93,7 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 
 # full, True, egdecomp, lbfgsp
 @pytest.mark.parametrize('gpaw_new', [False])
-@pytest.mark.parametrize("representation", ['full'])
+@pytest.mark.parametrize("representation", ['sparse'])
 @pytest.mark.parametrize("spinpol", [True])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp'])
 @pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
@@ -107,17 +107,23 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
 
     # if gpaw_new == 1:
     calc = GPAW(
-            legacy_gpaw=False,
+            legacy_gpaw=True,
+            # legacy_gpaw=False,
             mode=LCAO(),
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
-            eigensolver={'name': 'etdm',
-                        'representation': representation,
-                        'matrix_exp': matrix_exp,
-                        'searchdir_algo': searchdir_algo,
-                        'linesearch_algo': {'name': 'max-step',
-                                            'max_step': 0.005},
-                        'functional': 'PZ-SIC'},
+            eigensolver=LCAOETDM(searchdir_algo={"name": "L-BFGS-P"},
+                                 functional={"name": "PZ-SIC",},
+                                 representation=representation,
+                                #  localizationtype=None,
+                                 matrix_exp=matrix_exp),
+            # eigensolver={'name': 'etdm',
+            #             'representation': representation,
+            #             'matrix_exp': matrix_exp,
+            #             'searchdir_algo': searchdir_algo,
+            #             # 'linesearch_algo': {'name': 'max-step',
+            #             #                     'max_step': 0.005},
+            #             'functional': 'PZ-SIC'},
             mixer={'backend': 'no-mixing'},
             spinpol=spinpol,
             nbands='nao',

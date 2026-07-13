@@ -104,10 +104,16 @@ class PZSICLCAO:
         while n_occ < nbands and f_n[n_occ] > 1e-10:
             n_occ += 1
 
+        # print(occupied_only)
         if occupied_only is True:
             nbs = n_occ
         else:
             nbs = c_nm.shape[0]
+        
+        # PZ-localization with egdecomp        
+        # nbs = n_occ
+        # PZ-localization with egdecomp
+
         n_set = c_nm.shape[1]
 
         timer.start('Construct Gradient Matrix')
@@ -117,6 +123,10 @@ class PZSICLCAO:
         h_mm = np.dot(c_nm[:nbs].conj(), hc_mn)
         # odd part
         b_mn = np.zeros(shape=(n_set, nbs), dtype=self.dtype)
+
+        # print('hc_mn',hc_mn.shape)
+        # print('h_mm',h_mm.shape)
+        # print('b_mn',b_mn.shape)
         e_total_sic = np.array([])
         for n in range(n_occ):
             F_MM, sic_energy_n =\
@@ -128,14 +138,22 @@ class PZSICLCAO:
             e_total_sic = np.append(e_total_sic, sic_energy_n, axis=0)
         l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
 
+        # print(nbs, n_occ,c_nm.shape[0])
         f = f_n[:nbs]
         grad = f * (h_mm[:nbs, :nbs] + l_odd) - \
             f[:, np.newaxis] * (h_mm[:nbs, :nbs] + l_odd.T.conj())
+        
+        # print('l_odd',l_odd.shape)
+        # print('grad',grad.shape)
 
         if matrix_exp in ['pade-approx', 'egdecomp2']:
             grad = np.ascontiguousarray(grad)
         elif matrix_exp == 'egdecomp':
             timer.start('Use Eigendecomposition')
+            # print('grad,evec')
+            # print(grad.shape)
+            # print(evec.shape)
+            
             grad = np.dot(evec.T.conj(), np.dot(grad, evec))
             grad = grad * d_matrix(evals)
             grad = np.dot(evec, np.dot(grad, evec.T.conj()))
@@ -150,8 +168,9 @@ class PZSICLCAO:
                                       '\'egdecomp\'')
         if self.dtype == float:
             grad = grad.real
-        if repr_name in ['sparse', 'u-invar']:
-            grad = grad[ind_up]
+        # if repr_name in ['sparse', 'u-invar']:
+        grad = grad[ind_up]
+       
 
         timer.stop('Construct Gradient Matrix')
 
@@ -187,7 +206,7 @@ class PZSICLCAO:
             h_mm = 0.5 * (h_mm + h_mm.T.conj())
             kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]
         self.counter += 1
-
+        
         if constraints:
             constrain_grad(grad, constraints, ind_up)
 

@@ -642,7 +642,7 @@ class LCAOETDM:
         self.phi_2i = [None, None]
         self.der_phi_2i = [None, None]
 
-    def iterate(self, ham, wfs, dens):
+    def iterate(self, ham, wfs, dens,occupied_only=False):
         """
         One iteration of direct optimization
         for occupied orbitals
@@ -677,7 +677,7 @@ class LCAOETDM:
                 or (self.subspace_optimization and self.subspace_iters == 1)
             ):
                 phi_2i[0], g_vec_u = self.get_energy_and_gradients(
-                    a_vec_u, ham, wfs, dens, c_ref
+                    a_vec_u, ham, wfs, dens, c_ref, occupied_only=occupied_only
                 )
                 self.released_subspace = False
             else:
@@ -770,7 +770,7 @@ class LCAOETDM:
             norm += np.linalg.norm(self.g_vec_u[k])
         return norm
 
-    def get_energy_and_gradients(self, a_vec_u, ham, wfs, dens, c_ref):
+    def get_energy_and_gradients(self, a_vec_u, ham, wfs, dens, c_ref,occupied_only=False):
         """
         Energy E = E[C_ref exp(A)]. Gradients G_ij[C, A] = dE/dA_ij
 
@@ -804,6 +804,7 @@ class LCAOETDM:
                     self.representation,
                     self.ind_up[k],
                     self.constraints[k],
+                    occupied_only=occupied_only
                 )
 
                 if hasattr(self.dm_helper.func, "e_sic_by_orbitals"):
@@ -833,7 +834,7 @@ class LCAOETDM:
                 tmp = np.linalg.norm(g_mat)
                 if self._norm_grad < tmp:
                     self._norm_grad = tmp
-
+        # print(self.e_sic)
         return e_total + self.e_sic, g_vec_u
 
     def update_ks_energy(self, ham, wfs, dens):
@@ -857,7 +858,11 @@ class LCAOETDM:
         """
         if phi is None or g_vec_u is None:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
-            phi, g_vec_u = self.get_energy_and_gradients(x_mat_u, ham, wfs, dens, c_ref)
+            if self.need_localization:
+                occupied_only=True
+            else:
+                occupied_only=False
+            phi, g_vec_u = self.get_energy_and_gradients(x_mat_u, ham, wfs, dens, c_ref,occupied_only=occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
