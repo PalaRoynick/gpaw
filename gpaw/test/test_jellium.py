@@ -18,7 +18,9 @@ ne = a**2 * L / (4 * np.pi / 3 * rs**3)
 
 
 @pytest.mark.libxc
-def test_jellium(in_tmp_dir, mpi):
+@pytest.mark.parametrize('mode', [{'name': 'pw', 'ecut': 300},
+                                  'fd'])
+def test_jellium(in_tmp_dir, mpi, mode):
     x = h / 4  # make sure surfaces are between grid-points
     z1 = v - x
     z2 = v + L + x
@@ -26,7 +28,7 @@ def test_jellium(in_tmp_dir, mpi):
     surf = Atoms(pbc=(True, True, False),
                  cell=(a, a, v + L + v))
     params = dict(
-        mode='fd',
+        mode=mode,
         poissonsolver={'dipolelayer': 'xy'},
         xc='LDA_X+LDA_C_WIGNER',
         kpts=[k, k, 1],
@@ -49,7 +51,7 @@ def test_jellium(in_tmp_dir, mpi):
     v_r = surf.calc.get_electrostatic_potential()
     efermi = surf.calc.get_fermi_level()
     phi = v_r[:, :, -1].mean() - efermi
-    assert phi == pytest.approx(2.715, abs=1e-3)
+    assert phi == pytest.approx(2.716, abs=0.002)
     # Reference value: Lang and Kohn, 1971, Theory of Metal Surfaces:
     # Work function
     # DOI 10.1103/PhysRevB.3.1215
