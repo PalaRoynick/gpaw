@@ -36,7 +36,7 @@ calc = GPAW(mode=PW(1000),
             nbands=80,
             convergence={'density': 1.0e-6, 'bands': Nb},
             kpts={'size': (Nk, Nk, Nk), 'gamma': True},
-            parallel={'domain': 1},
+            parallel={'domain': 1, 'distribute_density': False},
             txt='gs.txt',
             )
 bulk.calc = calc
@@ -97,7 +97,7 @@ calc = GPAW(mode=PW(1000),
             setups={'Ni': ':d,5.5'},
             convergence={'density': 1.0e-6, 'bands': Nb},
             kpts={'size': (Nk, Nk, Nk), 'gamma': True},
-            parallel={'domain': 1},
+            parallel={'domain': 1, 'distribute_density': False},
             txt='gs_U.txt',
             )
 bulk.calc = calc
