@@ -32,7 +32,7 @@ calc = GPAW(xc='LDA',
                          'eigenstates': 1e-14,
                          'bands': nbands},
             occupations=FermiDirac(0.001),
-            parallel={'domain': 1},
+            parallel={'domain': 1, 'distribute_density': False},
             txt='Co_gs.txt')
 atoms.calc = calc
 atoms.get_potential_energy()

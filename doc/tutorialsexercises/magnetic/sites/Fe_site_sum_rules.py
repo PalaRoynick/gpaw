@@ -15,7 +15,7 @@ from gpaw.response.mft import (calculate_single_particle_site_zeeman_energy,
 # Converge additional empty-shell bands
 nocc = 6  # 4s, 3d
 nunocc = 32
-calc = GPAW('Fe.gpw', parallel={'domain': 1})  # reuse the ground state density
+calc = GPAW('Fe.gpw', parallel={'domain': 1, 'distribute_density': False})  # reuse the ground state density
 calc = calc.fixed_density(nbands=nocc + nunocc + 6,
                           convergence={'bands': nocc + nunocc,
                                        'eigenstates': 1.e-14},
