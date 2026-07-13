@@ -10,7 +10,7 @@ from gpaw.core.matrix import MatrixWithNoData
 
 class LCAOIBZWaveFunctions(IBZWaveFunctions):
     def has_wave_functions(self):
-        return not isinstance(self._wfs_u[0].C_nM, MatrixWithNoData)
+        return True#not isinstance(self._wfs_u[0].C_nM, MatrixWithNoData)
 
     def move(self, relpos_ac, atomdist):
         from gpaw.new.lcao.builder import tci_helper
