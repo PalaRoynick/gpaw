@@ -9,6 +9,20 @@ This exercise illustrates the use of Machine Learning Interatomic Potentials (ML
 We have chosen to base the simulation on the NequIP_ package and their small pretrained model NequIP-OAM-S.  This is their smallest model, chosen for performance over accuracy.  The medium sized model is more than twenty times slower and gives very similar results!
 *For scientific purposes you probably want the medium or even the large model for anything beyond initial testing.*
 
+Overview
+========
+
+In this exercise we use MLIPs to perform molecular dynamics (MD) simulations that would be too long and computationally constly with DFT.  We will look at the impact of rapid atoms in 2D materials, inspired by ion implantation experiments (but without modelling the charge of the incoming atom).
+
+In the exercise you will
+
+* Select an appropriate 2D material
+* Use MD to thermalize the material
+* Use MD to model the impact of an atom into the material
+* Use DFT calculations to validate the MLIP
+* Use fine-tuning to improve the MLIP for the problem being studied.
+
+
 Setting up your account
 =======================
 
@@ -70,3 +84,5 @@ Exercises
 .. toctree::
 
    machinelearning_intro
+   machinelearning_projectile
+   

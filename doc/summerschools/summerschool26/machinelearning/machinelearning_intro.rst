@@ -76,6 +76,7 @@ IMPORTANT: The energy minimization will have changed the unit cell slightly, and
 
 Molecular dynamics test of the Machine Learning potential
 =========================================================
+.. _md_test:
 
 Now we can run a molecular dynamics (MD) simulation and see if the structure remains stable over a short simulation.  This example also illustrates how data can be collected during the simulation and then plottet - most of that information is also stored in the trajectory file.
 

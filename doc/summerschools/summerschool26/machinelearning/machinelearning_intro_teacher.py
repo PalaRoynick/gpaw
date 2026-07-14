@@ -37,7 +37,10 @@ mlip = 'NequIP-OAM-S_cpu.nequip.pt2'
 
 # Read the structure and verify visually that it makes sense
 atoms = read(unitcellfile) * supercell
+atoms.center(vacuum=8.0, axis=2)  # Ensure enough vacuum in the unit cell
 print(atoms.get_chemical_formula())
+# Check that the periodic boundaries are as expected
+assert (atoms.get_pbc() == [True, True, False]).all()
 view(atoms)
 # snippet-initialize-end
 
