@@ -149,10 +149,8 @@ class ASECalculator:
                         converged = False
                         changes = set()
 
-        x=0
         if self._dft is None:
             self.create_new_calculation(atoms)
-            x=1
             converged = False
         elif changes:
             self.move_atoms(atoms)
@@ -166,9 +164,10 @@ class ASECalculator:
         if converged:
             return
 
-        if not self.dft.ibzwfs.has_wave_functions() and x==0:
+        if not self.dft.ibzwfs.has_wave_functions():
             # We have started from a gpw-file without wave functions
-            self.create_new_calculation(atoms)
+            if self.dft.params.mode.name != 'lcao':
+                self.create_new_calculation(atoms)
 
         assert self.hooks.keys() <= {'scf_step', 'converged'}
         self.log(f'Initialization done in: {inittimer():.3f} s\n')
