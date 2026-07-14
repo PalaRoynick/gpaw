@@ -346,11 +346,12 @@ class MSR1Mixer(BaseMixer):
             A_hh *= norm_vec[:, None]
             try:
                 eigs = self.xp.linalg.eigvals(A_hh)
-                min_real = self.xp.min(eigs.real)
-                max_imag = self.xp.max(self.xp.abs(eigs.imag))
             except Exception:
+                raise
                 good_broydenness -= 2**(-iter) * max_gb
                 continue
+            min_real = self.xp.min(eigs.real)
+            max_imag = self.xp.max(self.xp.abs(eigs.imag))
             if min_real > max_imag:
                 good_broydenness += 2**(-iter) * max_gb
             else:
