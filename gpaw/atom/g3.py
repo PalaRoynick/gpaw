@@ -359,7 +359,10 @@ def analyse(folders):
             y += [efcc[0] - efcc[-1], ecuts_tot[2], ecuts_diff[2]]
         maxabs, dea, _ = check(f)
         symbol = f.name.split('.')[0]
-        type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
+        try:
+            type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
+        except FileNotFoundError:
+            type, r0, rcs = 'old', 0.0, []
         data[symbol].append(y + [maxabs, dea, f, type, r0, rcs])
     x = []
     y = []
@@ -409,13 +412,13 @@ def acwf_plot():
 
 def oldvsnew():
     x1, y1 = analyse(list(Path('old').glob('*/')))
-    x2, y2 = analyse(list(Path('3').glob('*/')))
-    x3, y3 = analyse(list(Path('opt/400').glob('*/')))
+    x2, y2 = analyse(list(Path('4').glob('*/')))
+    #x3, y3 = analyse(list(Path('4-opt-500b').glob('*/')))
     import matplotlib.pyplot as plt
     for i in range(5):
-        plt.plot(x1, y1[:, i], 'o-')
-        plt.plot(x2, y2[:, i], 'x-')
-        plt.plot(x3, y3[:, i], 's-')
+        plt.plot(x1, np.log10(abs(y1[:, i])), 'o-')
+        plt.plot(x2, np.log10(abs(y2[:, i])), 'x-')
+        #plt.plot(x3, y3[:, i], 's-')
         plt.show()
 
 
@@ -540,7 +543,7 @@ def workflow():
 
 if __name__ == '__main__':
     import sys
-    if 0:
+    if 1:
         oldvsnew()
     elif 0:
         acwf_plot()
