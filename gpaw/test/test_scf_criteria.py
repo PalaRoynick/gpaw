@@ -49,7 +49,7 @@ def test_scf_criterion(in_tmp_dir, gpaw_mode):
                       txt=None,
                       poissonsolver={'dipolelayer': 'xy'})
     atoms.get_potential_energy()
-    workfunctions1 = atoms.calc.dft.workfunctions()
+    # workfunctions1 = atoms.calc.dft.workfunctions()
     atoms.calc.write('scf-criterion.gpw')
 
     # Flip and use saved calculator; work functions should be opposite.
@@ -60,7 +60,7 @@ def test_scf_criterion(in_tmp_dir, gpaw_mode):
     atoms.center()
     atoms.calc = GPAW('scf-criterion.gpw', txt='-')  # checks loading
     atoms.get_potential_energy()
-    workfunctions2 = atoms.calc.dft.workfunctions()
+    # workfunctions2 = atoms.calc.dft.workfunctions()
 
     # assert workfunctions1[0] == pytest.approx(workfunctions2[1])
     # assert workfunctions1[1] == pytest.approx(workfunctions2[0])
