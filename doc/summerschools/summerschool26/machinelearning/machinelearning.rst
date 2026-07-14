@@ -85,4 +85,5 @@ Exercises
 
    machinelearning_intro
    machinelearning_projectile
-   
+   machinelearning_verify
+

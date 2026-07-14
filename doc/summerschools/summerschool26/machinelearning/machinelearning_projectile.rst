@@ -36,7 +36,7 @@ You need to place your atoms in a reasonable position.  It is easiest to visuali
 
 The projectile atom can then be added to the system like this:
 
-.. literalinclude:: machinelearning_projectile_student.py
+.. literalinclude:: machinelearning_projectile.py
    :start-after: snippet-addprojectile-start
    :end-before: snippet-addprojectile-end
 
@@ -50,7 +50,7 @@ We therefore use the simplest MD algorithm available, ``VelocityVerlet``, which 
 
 The Velocity Verlet integrator is set up like this:
 
-.. literalinclude:: machinelearning_projectile_student.py
+.. literalinclude:: machinelearning_projectile.py
    :start-after: snippet-mdsetup-start
    :end-before: snippet-mdsetup-end
 
@@ -63,3 +63,26 @@ You can plot the resulting simulation with ``ase gui md_impact.traj``
 
 Now you can experiment with various projectiles and collision energies.  Also, it will matter which atom in the 2D material you hit, and whether you hit it off-center.
 
+
+Multilayer simulations and van der Waals forces
+===============================================
+
+Multilayer structures of 2D materials are held together with *van der Waals forces*.  These forces are not described by quasi-local exchange-correlation potentials in DFT, and as most MLIPs are trained to such calculations the MLIP will not include vdW forces.  This is usually handled by adding empirical vdW forces to the DFT calculations, typically using the `DFT-D3 model <https://docs.ase-lib.org/ase/calculators/dftd3.html>`_ of `Grimme *et al.* <https://www.chemie.uni-bonn.de/pctc/mulliken-center/software/dft-d3/>`_. It adds the van der Waals correction on top of a DFT calculation, but will also work with an MLIP.
+
+The code below illustrates how to use DFT-D3 with an MLIP.  It finds the equilibrium layer distance by making fully periodic systems with varying interatomic distances.
+
+First, we set up the system from scratch, i.e. without the thermal vibrations:
+
+.. literalinclude:: machinelearning_dftd3.py
+   :start-after: snippet-initialize-start
+   :end-before: snippet-initialize-end
+
+Then we set up the MLIP with DFT-D3 corrections.  Note that
+
+* The DFT-D3 correction is informed about the kind of exchange-correlation energy that was used to fit the MLIP, this is necessary to correctly add only the part of the vdW ineraction that this not already included in the exchange-correlation potential.
+* A temporary folder is used to communicate with DFT-D3, this prevents incorrect results if multiple scripts run in the same folder (which is bound to happen when you submit batch jobs to the queue).
+* ``atoms.center`` adds vacuum to both sides of the system, so the desired distance should be halved.
+
+.. literalinclude:: machinelearning_dftd3.py
+   :start-after: snippet-dftd3-start
+   :end-before: snippet-dftd3-end
