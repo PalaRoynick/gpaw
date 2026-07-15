@@ -373,7 +373,7 @@ class LBFGS(SearchDirectionBase):
 
 class LBFGS_P(SearchDirectionBase):
 
-    def __init__(self, memory=3, beta_0=1.0):
+    def __init__(self, memory=5, beta_0=1.0):
         """
         :param memory: amount of previous steps to use
         """
