@@ -350,8 +350,9 @@ class MSR1Mixer(BaseMixer):
             A_hh = Ay_hh + As_hh * good_broydenness
             A_hh *= norm_vec[None, :]
             A_hh *= norm_vec[:, None]
-            eigs = eigvals(A_hh)
-            if 0:  # old code from "except Exception:"
+            try:
+                eigs = eigvals(A_hh)
+            except np.linalg.LinAlgError:
                 good_broydenness -= 2**(-iter) * max_gb
                 continue
             min_real = self.xp.min(eigs.real)
