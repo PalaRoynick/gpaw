@@ -77,7 +77,11 @@ class PZSICLCAO:
 
     def get_sic_gradient(self, wfs,ibzwfs,h_mm,hc_mn,occupied_only=False):
 
-        f_n = wfs.myocc_n
+        # f_n = wfs.myocc_n
+
+        k = 2 / wfs.nspins
+        f_n = k * wfs.myocc_n
+
         n_occ = 0
         nbands = ibzwfs.nbands
         while n_occ < nbands and f_n[n_occ] > 1e-10:
@@ -173,7 +177,9 @@ class PZSICLCAO:
 
 
     def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,occupied_only=False):
-        f_n = wfs.myocc_n
+        # f_n = wfs.myocc_n
+        k = 2 / wfs.nspins
+        f_n = k * wfs.myocc_n
         n_occ = 0
         nbands = ibzwfs.nbands
         while n_occ < nbands and f_n[n_occ] > 1e-10:
@@ -198,6 +204,7 @@ class PZSICLCAO:
 
             b_mn[:, m] = np.dot(c_nm[m], F_MM.conj()).T
             e_total_sic = np.append(e_total_sic, sic_energy_n, axis=0)
+            # print(e_total_sic)
         
 
         return b_mn, e_total_sic
@@ -212,7 +219,11 @@ class PZSICLCAO:
         # m is the occupation number i.e. for m in range(n_occ)
         # orb_dens, comp_charges, atomic_dens_matrix
         rho_MM,nt_G = self.get_density(f_n, c_nm, wfs, ibzwfs, m)
+        # print(f_n)
+        # print(m)
+        # print(nt_G.sum())
         Q_aL, D_ap= self.get_comp_charges(rho_MM, wfs,setup)
+        # print(Q_aL)
 
         if self.use_coarse_grid:
             e_sic_m, vt_mG, vHt_g = self.get_pseudo_pot(nt_G, Q_aL, self.coarse_gd)
@@ -317,6 +328,9 @@ class PZSICLCAO:
         nt_sg[0] = nt
 
         e_xc = self.xc.calculate(gd, nt_sg, vt_sg)
+        # print(e_xc)
+        
+        vt_sg*=-1
         self.ghat.add(nt_sg[0], Q_aL)
 
         self.poisson.solve(vHt_g, nt_sg[0])
@@ -325,6 +339,7 @@ class PZSICLCAO:
         vt_sg[0] -= vHt_g
 
         vt_G = vt_sg[0]
+
 
         return np.array([-ec, -e_xc]), vt_G, vHt_g
     

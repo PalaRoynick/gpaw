@@ -66,6 +66,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
 
         self.e_sic=0
         for wfs in ibzwfs:
+            # print('iteration')
 
             h_nn = self.matrix_calculator.calculate_matrix(wfs)
 
@@ -88,7 +89,11 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
             
             # energy += sic_energy.sum()
 
-            f_n = wfs.myocc_n
+            # f_n = wfs.myocc_n
+
+            k = 2 / wfs.nspins
+            f_n = k * wfs.myocc_n
+
             n_occ = 0
             nbands = ibzwfs.nbands
             while n_occ < nbands and f_n[n_occ] > 1e-10:
@@ -98,9 +103,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
 
             ############## From old, I dont get it  ##############
             # print(self.counter)
-            if self.counter <2: # alpha and beta channel 
-                hc_mn = 0.5 * (hc_mn + hc_mn.T.conj())
-                wfs.myeig_n[:nbs] = np.linalg.eigh(hc_mn)[0]
+            
             
             ############## From old, I dont get it  ##############
 
@@ -112,9 +115,23 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
             # nbs = c_nm.shape[0]
             # placeholder
 
+            
+            
+            if self.counter <2: # alpha and beta channel 
+                h_new = 0.5 * (h_ij + h_ij.T.conj())
+                wfs.myeig_n[:nbs] = np.linalg.eigh(h_new)[0]
+
+
             if self.use_egdecomp:
                 h_ij = f_n *h_ij #- f_n[:, np.newaxis] * (h_ij -l_odd + l_odd.T.conj())
                 h_unn.append(h_ij)
+
+
+            # # GRADIENT RIGHT PRECONDITIONIN WRONG
+            # if self.counter <2: # alpha and beta channel 
+            #     h_ij = 0.5 * (h_ij + h_ij.T.conj())
+            #     wfs.myeig_n[:nbs] = np.linalg.eigh(h_ij)[0]
+            
 
             # else:
             #     print(nbs,'nbs')
@@ -136,6 +153,11 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
         # energy._total_free += sic_energy
 
         # copy_energy_sic = energy
+        # if self.objfunc.e_sic is not None:
+            # print('energie added')
+        self.tot_energy._energies['xc'] += self.e_sic
+            # tot_free += self.objfunc.e_sic
+            # self.objfunc.tot_energy._total_free += self.objfunc.e_sic
         
 
 

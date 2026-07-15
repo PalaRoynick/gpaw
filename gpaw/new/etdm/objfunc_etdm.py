@@ -309,7 +309,9 @@ class ObjectiveFunctionETDM(ABC):
         """
 
         c_nm = wfs.C_nM.data
-        f_n = wfs.myocc_n * 2
+        k = 2 / wfs.nspins
+        f_n = k * wfs.myocc_n
+        # f_n =  wfs.myocc_n
         occ = sum(f_n > 1.0e-10)
 
         # calculate residual

@@ -136,6 +136,7 @@ class PZSICLCAO:
 
             b_mn[:, n] = np.dot(c_nm[n], F_MM.conj()).T
             e_total_sic = np.append(e_total_sic, sic_energy_n, axis=0)
+            # print(e_total_sic)
         l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
 
         # print(nbs, n_occ,c_nm.shape[0])
@@ -240,6 +241,10 @@ class PZSICLCAO:
             self.get_density(f_n,
                              C_nM, kpt,
                              wfs, setup, m)
+        # print(f_n)
+        # print(m)
+        # print(nt_G.sum())
+        # print(Q_aL)
         timer.stop('Construct Density, Charge, and DM')
 
         # calculate sic energy,
@@ -349,6 +354,7 @@ class PZSICLCAO:
             e_xc = self.xc.calculate(self.cgd, nt_sg, vt_sg)
         timer.stop('ODD XC 3D grid')
         vt_sg[0] *= -self.beta_x
+        # print(e_xc)
 
         # Hartree
         if self.sic_coarse_grid is False:
@@ -388,6 +394,7 @@ class PZSICLCAO:
         else:
             vt_G = vt_sg[0]
 
+        # print(ec,e_xc)
         return np.array([-ec * self.beta_c,
                          -e_xc * self.beta_x]), vt_G, vHt_g
 

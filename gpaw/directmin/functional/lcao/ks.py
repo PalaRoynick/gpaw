@@ -19,7 +19,7 @@ class KSLCAO:
         return {'name': self.name}
 
     def get_gradients(self, h_mm, c_nm, f_n, evec, evals, kpt, wfs, timer,
-                      matrix_exp, representation, ind_up, constraints):
+                      matrix_exp, representation, ind_up, constraints, occupied_only=False):
 
         with timer('Construct Gradient Matrix'):
             use_egdecomp = matrix_exp == 'egdecomp'

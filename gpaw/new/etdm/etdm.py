@@ -124,6 +124,7 @@ class ETDM:
         p_u = self.searchdir_algo.search_dir  # Current LBFGS search direction
 
         # Compute norm of search direction across all k-points
+        
         # strength = np.sum(p_u.conj() * p_u)
         # strength = self.objfunc.kpt_comm.sum(strength.real) ** 0.5
         strength = (p_u @ p_u)**0.5
