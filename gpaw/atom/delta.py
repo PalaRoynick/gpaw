@@ -18,7 +18,7 @@ def delta():
         xc='PBE',
         occupations=dict(name='fermi-dirac', width=0.0612),
         kpts=dict(density=6.0),
-        convergence=dict(density=1e-6),
+        convergence=dict(density=1e-6, gamma=True),
         mode=dict(name='pw', ecut=1000))
     builder = Parameters(**params).dft_component_builder(atoms, log=None)
     params['kpts'] = builder.ibz.bz.size_c
@@ -39,12 +39,13 @@ def delta():
     volume = v0 * (1 + strain0)**3
     data = dict(
         volume=volume,
+        v0=v0,
         strains=strains.tolist(),
         energies=energies,
         energy=e0,
         strain=strain0,
         d2eds2=d2eds2)
     if world.rank == 0:
-        Path('result.json').write_text(json.dumps(data))
+        Path('result.json').write_text(json.dumps(data, indent=1))
 
 

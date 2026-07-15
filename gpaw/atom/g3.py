@@ -483,8 +483,8 @@ def opt(ecut=600):
     def f(x):
         ok = None
         if world.rank == 0:
-            r0x = r0 + x[0] * 0.1
-            R = ','.join(f'{r0x + xi * 0.1:.1f}' for xi in x[1:])
+            r0x = x[0] * 0.1
+            R = ','.join(f'{xi * 0.1:.1f}' for xi in x[1:])
             conf = f'{proj} {R} {r0x:.1f}'
             ok = create(symbol, conf)
         ok = broadcast(ok, comm=world)
@@ -498,8 +498,8 @@ def opt(ecut=600):
         return y
 
     rcs += [rcs[-1]] * (n - 1 - len(rcs))
-    x = [0] + [int(round((r - r0) * 10))
-               for r in rcs]
+    x = [int(round(r * 10))
+         for r in [r0] + rcs]
 
     x, y = optimize(f, x)
     if world.rank == 0:
