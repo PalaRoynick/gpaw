@@ -110,6 +110,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     results = []
     for path in args.path:
+        path = Path(path)
         try:
             _, _, _, ecuts_tot, ecuts_diff = convergence_check(
                 Path(path), args.plot)

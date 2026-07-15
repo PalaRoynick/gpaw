@@ -158,23 +158,6 @@ PARAMS = {
     'Ra.2': '6s,s,6p,5d 5.0',
     'Ra.10': '6s,7s,6p,7p,6d,d,F 2.7,2.5'}
 
-EXTRA = {
-    # 89-102:
-    'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
-    'Pa.13': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'U.14': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Np.15': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Pu.16': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Am.17': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Cm.18': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Bk.19': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Cf.20': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Es.21': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Fm.22': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'Md.23': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-    'No.24': '6s,7s,6p,7p,6d,d,5f,f,G 2.5'}
-
 PARAMS2 = {
     'H': '1s,s,p,D 1.3,1.2 1.1',
     'He': '1s,s,p,D 2.1,2.0 1.9',
@@ -288,6 +271,33 @@ PARAMS2 = {
     'Fr': '6s,7s,6p,7p,6d,d,F 2.5,2.4,2.8 2.1',
     'Ra': '6s,7s,6p,7p,6d,d,F 2.9,2.4,2.3 2.1'}
 
+EXTRA = {
+    'He.b': '1s,s,p,D 2.0,1.9 1.8',
+    'O.b': '2s,3.0s,2p,3.0p,d,F 1.4,1.4,1.4 0.9',
+    'O.c': '2s,5.0s,2p,5.0p,d,F 1.4,1.4,1.4 0.9',
+    'O.d': '2s,s,2p,p,d,F 1.4,1.4,1.4 1.0',
+    'Cs.b': '5s,6s,5p,6p,5d,d,F 3.2,3.2,3.2 2.9',  # !!!
+    'Cs.c': '5s,6s,5p,6p,5d,0.5d,F 2.4,2.4,2.4 2.3',  # !!!
+    'Cs.d': '5s,6s,5p,6p,5d,0.5d,F 2.5,2.5,2.5 2.3',  # !!!
+    'Ba.b': '5s,6s,5p,6p,5d,d,F 2.1,2.1,2.1 2.0',  # !!!
+    'Ba.c': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # !!!
+    'Ba.d': '5s,6s,5p,6p,5d,d,f,G 2.5,2.5,2.5 2.3',  # !!!
+    'La.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Ce.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Pr.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',  # !!!
+    'Nd.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Pm.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Sm.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Eu.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Gd.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Tb.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Dy.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Ho.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Er.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Tm.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Yb.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'Lu.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0'}
+
 
 def create(symbol, conf):
     proj, rcs, *r0 = conf.split()
@@ -323,7 +333,8 @@ def create(symbol, conf):
 
 def create_all():
     from contextlib import chdir
-    for name, conf in PARAMS2.items():
+    # for name, conf in PARAMS2.items():
+    for name, conf in EXTRA.items():
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
@@ -347,7 +358,6 @@ def read_paw_pot(path):
 
 
 def analyse(folders):
-
     data = defaultdict(list)
     for f in folders:
         y = [f.name]
@@ -413,13 +423,21 @@ def acwf_plot():
 def oldvsnew():
     x1, y1 = analyse(list(Path('old').glob('*/')))
     x2, y2 = analyse(list(Path('4').glob('*/')))
-    #x3, y3 = analyse(list(Path('4-opt-500b').glob('*/')))
+    x3, y3 = analyse(list(Path('4-opt-500b').glob('*/')))
+    x4, y4 = analyse(list(Path('4-opt-500b-plus').glob('*/')))
     import matplotlib.pyplot as plt
-    for i in range(5):
-        plt.plot(x1, np.log10(abs(y1[:, i])), 'o-')
-        plt.plot(x2, np.log10(abs(y2[:, i])), 'x-')
-        #plt.plot(x3, y3[:, i], 's-')
-        plt.show()
+    fig = plt.figure()
+    gs = fig.add_gridspec(5, hspace=0)
+    axes = gs.subplots(sharex=True)
+    # fig, axes = plt.subplots(nrows=5, sharex=True)
+    for i, ax in enumerate(axes):
+        ax.plot(x1, np.log10(abs(y1[:, i])), 'o-')
+        ax.plot(x2, np.log10(abs(y2[:, i])), 'x-')
+        ax.plot(x3, np.log10(abs(y3[:, i])), 's-')
+        ax.plot(x4, np.log10(abs(y4[:, i])), '+-')
+    for ax in axes:
+        ax.label_outer()
+    plt.show()
 
 
 def optimize(f, x):
@@ -543,28 +561,10 @@ def workflow():
 
 if __name__ == '__main__':
     import sys
-    if 1:
+    if 0:
         oldvsnew()
     elif 0:
         acwf_plot()
-    elif 0:
-        for name in {'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
-                     'Pa.13': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'U.14': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Np.15': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Pu.16': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Am.17': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Cm.18': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Bk.19': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Cf.20': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Es.21': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Fm.22': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'Md.23': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
-                     'No.24': '6s,7s,6p,7p,6d,d,5f,f,G 2.5'}:
-            dir = Path(name)
-            print(dir, end=' ')
-            # dir.mkdir()
     elif len(sys.argv) == 1:
         create_all()
     elif 0:
