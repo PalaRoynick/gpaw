@@ -1,5 +1,5 @@
 from ase.io import read, write
-from gpaw import GPAW, PW, FermiDirac, Mixer
+from gpaw import GPAW, PW, FermiDirac
 from ase.dft.bee import BEEFEnsemble
 from ase.parallel import paropen
 
@@ -18,10 +18,6 @@ params = dict(
     spinpol=True,
     xc='BEEF-vdW',
     occupations=FermiDirac(width=0.1),
-    convergence={'eigenstates': 1.0e-4,
-                 'energy': 2.0e-4,
-                 'density': 1.0e-3},
-    mixer=Mixer(0.1, 5, weight=100.0),
     setups={'Fe': ':d,4.3'})
 calc = GPAW(**params)
 fepo4_1li.calc = calc
