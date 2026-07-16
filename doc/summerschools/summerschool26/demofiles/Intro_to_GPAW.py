@@ -1,10 +1,10 @@
-# %% 
+# %%
 # Intro to GPAW
 
 from ase import Atoms
 from gpaw import GPAW, PW
 
-# %% 
+# %%
 # Set up a single Hydrogen atom
 
 a = 4.  # Size of unit cell (Angstrom)
@@ -34,11 +34,9 @@ molecule = Atoms('H2',
 molecule.calc = calc
 e2 = molecule.get_potential_energy()
 
-# %% 
+# %%
 # Print the results
 
 print('Hydrogen atom energy:     {:6.2f} eV'.format(e1))
 print('Hydrogen molecule energy: {:6.2f} eV'.format(e2))
 print('Atomization energy:       {:6.2f} eV'.format(2 * e1 - e2))
-
-

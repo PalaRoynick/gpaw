@@ -24,3 +24,7 @@ You could follow a procedure like the following:
 Running DFT calculations
 ========================
 
+We run DFT calculations on individual frames of the MD trajectory.  Suitable parameters for the DFT calculations are a plane-wave cutoff of 350 eV and a k-point sampling of XXX Å, meaning that the number of k-point multiplied by the size of the system should be this number in both in-plane directions.  If you get an odd number of k-points you may get slightly more accuracy at the same computational cost by increasing the number of k-point by one.
+
+The necessary plane-wave cutoff and k-point sampling depend on the chemical elements in the system, and a convergence test would be appropriate if time permits.
+
