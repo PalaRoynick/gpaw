@@ -21,7 +21,7 @@ source ~/CAMD2026/venv/bin/activate
 echo
 echo 'Preparing to install machine learning tools - torch and NequIP.'
 
-echo 'Populating pip cache.'
+echo 'Populating pip cache (4 GB, please be patient).'
 pushd $HOME
 tar xf ~jasc/CAMD2026/pipcache-ml.tgz
 
