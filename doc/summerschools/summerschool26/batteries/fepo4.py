@@ -1,6 +1,6 @@
 from ase.io import write
 from ase.parallel import paropen
-from gpaw import GPAW, FermiDirac, Mixer, PW
+from gpaw import GPAW, FermiDirac, PW
 from ase.dft.bee import BEEFEnsemble
 from ase import Atoms
 fepo4 = Atoms(

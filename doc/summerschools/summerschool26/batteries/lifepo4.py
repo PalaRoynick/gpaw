@@ -2,7 +2,7 @@ from ase.dft.bee import BEEFEnsemble
 from ase.io import read, write
 from ase.io.trajectory import Trajectory
 from ase.parallel import paropen
-from gpaw import GPAW, PW, FermiDirac, Mixer
+from gpaw import GPAW, PW, FermiDirac
 
 lifepo4_wo_li = read('lifepo4_wo_li.traj')
 lifepo4 = lifepo4_wo_li.copy()

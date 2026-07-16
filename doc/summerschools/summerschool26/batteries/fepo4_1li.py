@@ -1,5 +1,5 @@
 from ase.io import read, write
-from gpaw import GPAW, PW, FermiDirac, Mixer
+from gpaw import GPAW, PW, FermiDirac
 from ase.dft.bee import BEEFEnsemble
 from ase.parallel import paropen
 

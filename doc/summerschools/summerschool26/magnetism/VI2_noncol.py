@@ -1,7 +1,7 @@
 import numpy as np
 from ase.io import read
 from ase.visualize import view
-from gpaw import GPAW, PW, MixerDif
+from gpaw import GPAW, PW
 
 layer = read('VI2_relaxed.gpw')
 m = 3
