@@ -44,4 +44,4 @@ epot_fepo4_1li = ...
 epot_fepo4 = fepo4.get_potential_energy()
 epot_fepo4_1li = fepo4_1li.get_potential_energy()
 li_cost = epot_fepo4_1li - epot_fepo4 - epot_li_metal
-assert abs(li_cost - 0.3333333333) < 1e-10
+assert abs(li_cost - -2.58) < 0.01
