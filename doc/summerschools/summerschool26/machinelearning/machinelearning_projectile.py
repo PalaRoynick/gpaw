@@ -5,8 +5,6 @@ if True:
 
 from ase.io import read, write, Trajectory
 from ase.visualize import view
-from ase.constraints import FixCom, FixSubsetCom
-from ase.md.velocitydistribution import thermalize_momenta
 from ase.md import Langevin, Bussi, VelocityVerlet
 from ase import units, Atom
 from nequip.integrations.ase import NequIPCalculator

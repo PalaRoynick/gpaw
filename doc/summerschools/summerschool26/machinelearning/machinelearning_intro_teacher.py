@@ -95,6 +95,7 @@ class DataCollector:
 
 # Read the atoms from the input file
 atoms = read(unitcellfile) * supercell
+atoms.center(vacuum=8.0, axis=2)  # Ensure enough vacuum in the unit cell
 print(atoms.get_chemical_formula())
 
 elements_dict = {e:e for e in atoms.get_chemical_symbols()}
