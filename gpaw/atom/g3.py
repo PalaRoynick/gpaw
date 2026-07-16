@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from functools import cache
 from pathlib import Path
@@ -308,6 +309,60 @@ EXTRA = {
     'Au.b': '5s,6s,5p,6p,5d,d,F 2.4,2.5,2.4 2.2',
     'Hg.b': '5s,6s,5p,6p,5d,d,F 2.4,2.5,2.4 2.2'}
 
+PARAMS5 = {
+    'H': '1s,s,p,D 1.2,1.1 1.0',
+    'He': '1s,s,p,D 1.8,1.8 2.0',
+    'N': '2s,3.0s,2p,3.0p,d,F 1.4,1.4,1.0 0.9',
+    'O': '2s,s,2p,p,d,F 1.4,1.4,1.4 1.0',
+    'F': '2s,s,2p,p,d,F       1.2,1.4,1.4 1.1',
+    'Cl': '3s,s,3p,p,d,F 1.7,1.7,1.7 1.5',
+    'As': '4s,s,4p,p,d,F 2.0,2.0,2.0 1.9',
+    'Cs': '5s,6s,5p,6p,5d,0.5d,F 2.3,2.3,2.3 2.2',
+    'Ba': '5s,6s,5p,6p,5d,d,f,G 2.0,2.0,2.0 1.9',
+    'La': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Ce': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Pr': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Nd': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Pm': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Sm': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Eu': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Gd': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Tb': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Dy': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Ho': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Er': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Tm': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Yb': '5s,6s,5p,6p,5d,d,4f,f,G 2.1,2.1,2.1,2.1 2.0',
+    'Lu': '5s,6s,5p,6p,5d,d,4f,f,G 2.2,2.2,2.2,2.2 2.0',
+    'Hg': '5s,6s,5p,6p,5d,d,F 2.2,2.2,2.2 2.0'}
+
+PARAMS5SOFT = {
+    'Li.1e': '2s,s,2p,D 2.9,2.4 2.3',
+    'Be.2e': '2s,s,2p,D 1.6,1.6 1.5',
+    'Na.1e': '3s,s,3p,D 3.0,3.1 2.6',
+    'Mg.2e': '3s,s,3p,D 2.4,2.5 2.2',
+    'Sc.3e': '4s,s,4p,p,3d,d,F 2.8,2.8,2.8 2.7',
+    'Ti.4e': '4s,s,4p,p,3d,d,F 2.7,2.7,2.7 2.6',
+    'V.5e': '4s,s,4p,p,3d,d,F 2.8,2.8,2.8 2.7',  # !!!
+    'Cr.6e': '4s,s,4p,p,3d,d,F 2.5,2.7,2.7 2.4',
+    'Mn.7e': '4s,s,4p,p,3d,d,F 2.4,2.4,2.3 2.5',  # !!!
+    'Fe.8e': '4s,s,4p,p,3d,d,F 2.6,3.2,2.4 2.3',
+    'Co.9e': '4s,s,4p,p,3d,d,F 2.1,2.1,2.1 2.0',
+    'Ni.10e': '4s,s,4p,p,3d,d,F 2.2,2.2,2.2 2.0',
+    'Cu.11e': '4s,s,4p,p,3d,d,F 2.2,2.1,2.1 2.3',  # !!!
+    'Zn.12e': '4s,s,4p,p,3d,F 2.0,2.0,2.0 1.9',
+    'Ga.3e': '4s,s,4p,p,d,F 2.3,2.3,2.2 2.0',
+    'Ge.4e': '4s,s,4p,p,d,F 2.1,2.1,2.1 1.9',
+    'Pd.10e': '5s,s,5p,p,4d,d,F 3.1,3.2,3.1 2.9',  # !!!
+    'Ag.11e': '5s,s,5p,p,4d,d,F 3.9,3.7,3.6 3.0',  # !!!
+    'Cd.12e': '5s,s,5p,p,4d,d,F 2.6,2.4,2.6 2.3',
+    'Os.8e': ' 6s,s,6p,p,5d,d,F 2.9,2.9,2.9 2.6',
+    'Ir.9e': ' 6s,s,6p,p,5d,d,F 2.9,2.9,2.9 2.6',
+    'Pt.10e': '6s,s,6p,p,5d,d,F 2.9,2.9,2.9 2.6',
+    'Au.11e': '6s,s,6p,p,5d,d,F 2.7,2.7,2.7 2.5',
+    'Hg.12e': '6s,s,6p,p,5d,d,F 2.6,2.5,2.8 2.3',
+    'Bi.5e': '6s,s,6p,p,d,F 2.8,2.8,2.8 2.5'}
+
 
 def create(symbol, conf):
     proj, rcs, *r0 = conf.split()
@@ -343,8 +398,9 @@ def create(symbol, conf):
 
 def create_all():
     from contextlib import chdir
+
     # for name, conf in PARAMS2.items():
-    for name, conf in EXTRA.items():
+    for name, conf in PARAMS5.items():
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
@@ -383,7 +439,13 @@ def analyse(folders):
             type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
         except FileNotFoundError:
             type, r0, rcs = 'old', 0.0, []
-        data[symbol].append(y + [maxabs, dea, f, type, r0, rcs])
+        try:
+            d = json.loads((f / 'result.json').read_text())
+            delta = d['strain']
+        except FileNotFoundError:
+            delta = np.nan
+        data[symbol].append(y + [maxabs, dea, f, type, r0, rcs, delta])
+
     x = []
     y = []
     z = []
@@ -392,10 +454,11 @@ def analyse(folders):
             continue
         best = np.inf
         D = sorted(data[symbol], key=lambda x: (x[0], x[6]))
-        for name, de, ec, ecd, maxabs, dea, f, type, r0, rcs in D:
+        for name, de, ec, ecd, maxabs, dea, f, type, r0, rcs, delta in D:
             R = ','.join(f'{r:.1f}' for r in rcs)
             print(f'{name:7} {de:9.6f} {ecd:6.1f} {ec:6.1f} '
-                  f'{maxabs:7.4f} {dea:7.4f} {R} {r0:.1f} {type}', f)
+                  f'{maxabs:7.4f} {dea:7.4f} {delta:7.4f} '
+                  f'{R} {r0:.1f} {type}', f)
             Z = atomic_numbers[symbol]
             x.append(Z)
             y.append([de, ecd, ec, maxabs, dea])
