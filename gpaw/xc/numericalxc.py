@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from enum import Enum
-from math import pi, sqrt
+from math import pi, sqrt, isqrt
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -196,7 +196,8 @@ class NumericalXCKernel:
         self.grad_v = [
             Gradient(gd, v, n=nn, xp=np).apply for v in range(3)]
         self.lapl = Laplace(gd, n=nn + 1).apply
-        self.origin = 0.5 * np.linalg.norm(gd.cell_cv, axis=0)
+        # self.origin = 0.5 * np.linalg.norm(gd.cell_cv, axis=0)
+        self.origin = 0.5 * gd.cell_cv.sum(axis=0)
         self.r_vg = gd.get_grid_point_distance_vectors(self.origin)
         # self.r_vg = gd.get_grid_point_coordinates()
         self.gd = gd
@@ -384,8 +385,10 @@ class NumericalXC(XCFunctional):
         self.ham.finegd.distribute(h.vxc_sg / reader.ha, self.vxc_sg)
         self.kernel.vxc_sg = self._vxc_sg
         setups = self.ham.setups
-        shapes_a = get_atomic_potential_shapes(self.paw_potmode, setups, nspins)
-        self.vxc_xasz = self.unpack_atomic_potentials(h.vxc_xZ / reader.ha, shapes_a)
+        shapes_a = get_atomic_potential_shapes(
+            self.paw_potmode, setups, nspins)
+        self.vxc_xasz = self.unpack_atomic_potentials(
+            h.vxc_xZ / reader.ha, shapes_a)
 
     def write_old(self, writer, natoms=None) -> None:
         assert self.gd is not None
@@ -396,7 +399,8 @@ class NumericalXC(XCFunctional):
         nspins = self.ham.nspins
         self._vxc_sg = self.ham.finegd.zeros(self.ham.nspins)
         setups = self.ham.setups
-        shapes_a = get_atomic_potential_shapes(self.paw_potmode, setups, nspins)
+        shapes_a = get_atomic_potential_shapes(
+            self.paw_potmode, setups, nspins)
         work_partition = self.ham.atomdist.work_partition
         self.vxc_xasz = [
             work_partition.arraydict(shapes_a, dtype=float)
@@ -589,27 +593,26 @@ class NumericalXC(XCFunctional):
         setups = self.ham.setups
         vxc_asLg, vxct_asLg = self.collect_angular_atomic_potentials()
         for s in range(nspins):
-            v_aj = []
-            vt_aj = []
+            dv_aj = []
+            coeff_aj = []
             for a, id_ in enumerate(setups.id_a):
-                if not hasattr(setups[a], "xc_correction"):
-                    raise NotImplementedError(id_)
-                v_aj.append(get_atomic_vxc_spline(
-                    setups[a], vxc_asLg[a][s], points=lfc_points))
-                vt_aj.append(get_atomic_vxc_spline(
-                    setups[a], vxct_asLg[a][s], points=lfc_points))
-            v = LFC(gd, v_aj)
-            v.set_positions(spos_ac=spos_ac)
-            v.add(vxc_sg[s], c_axi=1.0)
-            vt = LFC(gd, vt_aj)
-            vt.set_positions(spos_ac=spos_ac)
-            vt.add(vxc_sg[s], c_axi=-1.0)
+                dv_j, coeff_j = get_atomic_vxc_spline(
+                    setups[a], vxc_asLg[a][s] - vxct_asLg[a][s], points=lfc_points)
+                dv_aj.append(dv_j)
+                coeff_aj.append(coeff_j)
+            dv = LFC(gd, dv_aj)
+            dv.set_positions(spos_ac=spos_ac)
+            c_ai = dv.dict(zero=True)
+            for a, c_i in c_ai.items():
+                c_i[:] = coeff_aj[a]
+            dv.add(vxc_sg[s], c_axi=c_ai)
         if return_gd:
             return vxc_sg, gd
         else:
             return vxc_sg
 
     def calculate_atomic_potential_lapl(self, a: int, v_sz: Array3D) -> Array3D:
+        assert False
         setup = self.ham.setups[a]
         xcc = setup.xc_correction
         if xcc is None:
@@ -624,12 +627,14 @@ class NumericalXC(XCFunctional):
 
         elif self.paw_potmode is PAWPotMode.lebedev:
             v_sLg = lebedev2angular(v_sz, Lmax)
-            lapl_sz[:] = angular2lebedev(calculate_angular_potential_laplacian(rgd, v_sLg))
+            lapl_sz[:] = angular2lebedev(
+                calculate_angular_potential_laplacian(rgd, v_sLg))
         else:
             raise ValueError('Only angular and lebedev modes are supported')
         return lapl_sz
 
     def calculate_atomic_potential_grad_squared(self, a: int, v_sz: Array3D) -> Array3D:
+        assert False
         setup = self.ham.setups[a]
         xcc = setup.xc_correction
         if xcc is None:
@@ -670,7 +675,7 @@ class NumericalXC(XCFunctional):
 
 def L_to_lm(L: int) -> tuple[int, int]:
     """convert L index to (l, m) index"""
-    ll = int(sqrt(L))
+    ll = isqrt(L)
     m = L - ll**2 - ll
     return ll, m
 
@@ -703,25 +708,24 @@ def calculate_angular_density(xcc, D_sp, n_qg, nc_g, add_core=True):
 def get_atomic_vxc_spline(setup, vxc_Lg, points=1000):
     xcc = setup.xc_correction
     rgd = xcc.rgd
-    lmax = int(sqrt(xcc.Lmax))
-    v_lg = rgd.zeros(lmax)
-    for ll in range(lmax):
-        s = rgd.zeros()
-        for m in range(2 * ll + 1):
-            L = ll**2 + m
-            s += vxc_Lg[L]
-        v_lg[ll] = s
-
-    v_j = []
-
-    # rcut = rgd.r_g[-1]
+    Lmax = len(vxc_Lg)
+    l_L = [isqrt(L) for L in range(Lmax)]
+    v_Lg = vxc_Lg.copy()
     rcut = max(setup.rcut_j)
     gcut = rgd.ceil(rcut)
-    v_lg[:, gcut:] = 0.0
-    for ll, v_g in enumerate(v_lg):
-        v_j.append(rgd.spline(v_g, rcut=rcut,
-                              l=ll, points=points))
-    return v_j
+    v_Lg[:, gcut:] = 0.0
+    v_j = []
+    coeff_j = []
+    for L in range(Lmax):
+        l = l_L[L]
+        v_j.append(rgd.spline(v_Lg[L], rcut=rcut,
+                              l=l, points=points))
+        mpl = L - l * l  # m + l
+        coeff_m = np.zeros(2 * l + 1)
+        coeff_m[mpl] = 1.0
+        coeff_j.append(coeff_m)
+
+    return v_j, np.concatenate(coeff_j)
 
 
 def calculate_atomic_potentials_from_kernel(
@@ -752,6 +756,8 @@ def calculate_atomic_potentials_from_kernel(
         for L in range(Lmax):
             ll, m = L_to_lm(L)
             coeff_L.append(2 * ll * (ll + 1))
+        N_leb = len(Y_nL)
+        dedsigma_xng = rgd.zeros((2 * (nspins - 1) + 1, N_leb))
         for n, Y_L in enumerate(Y_nL[:, :Lmax]):
             n_sg = np.dot(Y_L, n_sLg)
             rnablaY_Lv = rnablaY_nLv[n, :Lmax]
@@ -760,8 +766,20 @@ def calculate_atomic_potentials_from_kernel(
             vv_sg = dedsigma_xg[::2] * \
                 np.einsum('L,sLg,L->sg', coeff_L, n_sLg, Y_L)
             vv_sg[:, 1:] /= rgd.r_g[1:]**2
-            vv_sg[:, 0] = vv_sg[:, 1]
+            # vv_sg[:, 0] = vv_sg[:, 1]
             vxc_sng[:, n] = dedn_sg + vv_sg
+            dedsigma_xng[:, n] = dedsigma_xg
+        # angular components of de/dVn
+        Lmaxmax = Y_nL.shape[-1]
+        dedsigma_xLg = lebedev2angular(
+            dedsigma_xng, Lmaxmax)  # truncated approximation
+        vv_sng = np.einsum(
+            'sLg,nLv,sKg,nKv->sng', dedsigma_xLg[::2], rnablaY_nLv[:, :Lmaxmax], n_sLg, rnablaY_nLv[:, :Lmax])
+        vv_sng[..., 1:] /= rgd.r_g[1:]**2
+        # vv_sng[..., 0] = vv_sng[..., 1]
+        vxc_sng -= 2 * vv_sng
+        # r=0
+        vxc_sng[..., 0] = np.einsum('n,sng->sg', weight_n, vxc_sng[..., 1])
 
     if paw_potmode is PAWPotMode.lebedev:
         return vxc_sng

@@ -129,7 +129,8 @@ def calculate_3phiproj_coeffs_lebedev(setup: Setup, w_ng: Array2D, dD_p: Array2D
                 for j1, l1 in enumerate(l_j):
                     dphipt_g *= phit_jg[j1]
                     for L in range(Lmax):
-                        dphi = np.dot(rgd.r_g**2 * rgd.dr_g * dphipt_g, dn_Lg[L])
+                        dphi = np.dot(rgd.r_g**2 * rgd.dr_g *
+                                      dphipt_g, dn_Lg[L])
                         for m1 in range(2 * l1 + 1):
                             L1 = l1**2 + m1
                             i1 = i1_counter + m1
@@ -480,8 +481,9 @@ def get_weights(
     return weights_sG, weights_name
 
 
-def calculate_regularization_weights(setups):
+def calculate_corereg_weights(setups, power=1):
     w_ag = {}
+    wt_ag = {}
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
         if xcc is None:
@@ -490,27 +492,53 @@ def calculate_regularization_weights(setups):
         nc_g = xcc.nc_g
         max_nc = nc_g.max()
         if max_nc > 0:
-            w_ag[a] = nc_g / max_nc
+            w_ag[a] = (nc_g / max_nc)**power
         else:
             w_ag[a] = np.zeros_like(nc_g)
-    return w_ag
+        # PS
+        nc_g = xcc.nct_g
+        max_nc = nc_g.max()
+        if max_nc > 0:
+            wt_ag[a] = (nc_g / max_nc)**power
+        else:
+            wt_ag[a] = np.zeros_like(nc_g)
+    return w_ag, wt_ag
 
 
-def calculate_smooth_weights(setups, pow=1):
+def calculate_smooth_weights(setups, power=1.0, shape=2.0):
     """
-    E(r) = (0.5 * (1 + cos(pi * r / rc)))**pow
+    Less aggressive cosine switching weight:
+
+        E(r) = [0.5 * (1 + cos(pi * (r / rc)**shape))]**pow
+
+    shape > 1 delays the decay toward the augmentation boundary.
+    A good starting value is shape=2.0, pow=1.0.
     """
     w_ag = {}
+
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
+
         if xcc is None:
             w_ag[a] = 0.0
             continue
-        r = xcc.rgd.r_g.copy()
+
+        r_g = xcc.rgd.r_g
         rc = max(setup.rcut_j)
-        r[r > rc] = rc
-        E_g = (0.5 * (1.0 + np.cos(np.pi * r / rc)))**pow
+
+        x_g = np.clip(r_g / rc, 0.0, 1.0)
+
+        E_g = (
+            0.5
+            * (
+                1.0
+                + np.cos(np.pi * x_g**shape)
+            )
+        )**power
+
+        E_g[r_g >= rc] = 0.0
         w_ag[a] = E_g
+
     return w_ag
 
 
@@ -522,14 +550,16 @@ def bound_weights(D_asp, setups):
         if xcc is None:
             w_asng[a] = 0.0
             continue
-        n_sng = angular2lebedev(calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g))
-        nt_sng = angular2lebedev(calculate_angular_density(xcc, D_sp, xcc.nt_qg, xcc.nct_g))
+        n_sng = angular2lebedev(calculate_angular_density(
+            xcc, D_sp, xcc.n_qg, xcc.nc_g))
+        nt_sng = angular2lebedev(calculate_angular_density(
+            xcc, D_sp, xcc.nt_qg, xcc.nct_g))
         dn_sng = abs(n_sng - nt_sng)
         w_asng[a] = 1.0 / (dn_sng + 1e-2)
     return w_asng
 
 
-def calc_core_atomic_potentials(setups, setup_name):
+def calc_core_atomic_potentials(setups, setup_name, nspins):
     v_a = {}
     xc = XC(setup_name)
     # assert xc.type in {'LDA', 'GGA'}
@@ -539,14 +569,16 @@ def calc_core_atomic_potentials(setups, setup_name):
             # AE
             v_a[a] = (np.zeros(1, float), np.zeros(1, float))
             continue
-        nc_sg = xcc.nc_g[np.newaxis]
-        nct_sg = xcc.nct_g[np.newaxis]
+        rgd = xcc.rgd
+        nc_sg = rgd.zeros(nspins)
+        nc_sg[:] = xcc.nc_g / nspins
+        nct_sg = rgd.zeros(nspins)
+        nct_sg[:] = xcc.nct_g / nspins
         v = np.zeros_like(nc_sg)
         vt = np.zeros_like(nc_sg)
-        rgd = xcc.rgd
         xc.calculate_spherical(rgd, nc_sg, v)
         xc.calculate_spherical(rgd, nct_sg, vt)
-        v_a[a] = (v.ravel(), vt.ravel())
+        v_a[a] = (v, vt)
     return v_a
 
 
