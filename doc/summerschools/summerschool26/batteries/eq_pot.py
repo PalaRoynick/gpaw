@@ -32,7 +32,7 @@ epot_li_metal_ens = epot_li_metal_ens_cell / len(li_metal)
 V_eq_ens = epot_lifepo4_ens - epot_fepo4_ens - epot_li_metal_ens
 error = np.std(V_eq_ens)
 print(error)
-assert abs(V_eq_ens - 3.6) < 0.1
+assert abs(V_eq_ens.mean() - -3.6) < 0.1
 assert abs(error - 0.6) < 0.1
 plt.hist(V_eq_ens, 50)
 plt.grid(True)
