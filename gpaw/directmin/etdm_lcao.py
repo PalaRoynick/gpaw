@@ -309,6 +309,8 @@ class LCAOETDM:
         self.printinnerloop = printinnerloop
 
         self.initialized = False
+        self.occupied_only=False
+        self.inner_loop=False
 
     def check_inputs_and_init_search_algo(self):
         defaults = self.set_defaults()
@@ -659,8 +661,11 @@ class LCAOETDM:
             and self.iters % self.localize_every == 0
         )
         if should_localize and not self.in_subspace_loop:
+            # self.occupied_only=True
             with wfs.timer("Periodic PZ-SIC Localization"):
                 self._run_periodic_localization(wfs, ham, dens)
+        # else:
+            # self.occupied_only=False
 
         with wfs.timer("Direct Minimisation step"):
             self.update_ref_orbitals(wfs, ham, dens)
@@ -858,11 +863,16 @@ class LCAOETDM:
         """
         if phi is None or g_vec_u is None:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
-            if self.need_localization:
-                occupied_only=True
-            else:
-                occupied_only=False
-            phi, g_vec_u = self.get_energy_and_gradients(x_mat_u, ham, wfs, dens, c_ref,occupied_only=occupied_only)
+
+            if not self.inner_loop:
+                if self.need_localization:
+                    self.occupied_only=True
+                # elif self.localize_every != None:
+                #     occupied_only=False
+                else:
+                    self.occupied_only=False
+
+            phi, g_vec_u = self.get_energy_and_gradients(x_mat_u, ham, wfs, dens, c_ref,occupied_only=self.occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
@@ -1161,17 +1171,21 @@ class LCAOETDM:
         Delegates to the same class used for initial localization,
         with preconditioning disabled during the inner loop.
         """
+        self.occupied_only=True
         original_use_prec = self.use_prec
         self.use_prec = False
         self.in_subspace_loop = True
         log = self.log if self.printinnerloop else None
         original_eg = self.eg_count
         try:
+            self.inner_loop=True
             dm = LCAOETDMLocalize(self, wfs, log, tol=self.subspace_convergence)
             dm.run(ham, dens)
             self.eg_count_iloop = self.eg_count - original_eg
             self.total_eg_count_iloop += self.eg_count_iloop
+            self.occupied_only=False
         finally:
+            self.inner_loop=False
             self.use_prec = original_use_prec
             self.in_subspace_loop = False
 

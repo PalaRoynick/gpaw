@@ -94,8 +94,8 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 # full, True, egdecomp, lbfgsp
 @pytest.mark.parametrize('gpaw_new', [False])
 @pytest.mark.parametrize("representation", ['sparse'])
-@pytest.mark.parametrize("spinpol", [False])
-@pytest.mark.parametrize("matrix_exp", ['egdecomp'])
+@pytest.mark.parametrize("spinpol", [True])
+@pytest.mark.parametrize("matrix_exp", ['pade-approx'])
 @pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
 def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
 
@@ -107,8 +107,8 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
 
     # if gpaw_new == 1:
     calc = GPAW(
-            # legacy_gpaw=True,
-            legacy_gpaw=False,
+            legacy_gpaw=True,
+            # legacy_gpaw=False,
             mode=LCAO(),
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
@@ -124,8 +124,11 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
                         'matrix_exp': matrix_exp,
                         'searchdir_algo': searchdir_algo,
                         'linesearch_algo': {'name': 'max-step',
-                                            'max_step': 0.0005},
-                        'functional': 'PZ-SIC'},
+                                            'max_step': 0.1},
+                        'functional': 'PZ-SIC',
+                        'localizationtype':'pm',
+                        'localize_every':5
+                        },
             mixer={'backend': 'no-mixing'},
             spinpol=spinpol,
             nbands='nao',

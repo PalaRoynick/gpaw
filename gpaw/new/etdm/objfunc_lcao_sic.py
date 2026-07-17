@@ -72,6 +72,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
 
             h_nn.tril2full()
 
+            # In old, full representation is always used to compute these, even when using sparse
             hc_mn, h_ij, h_ia = self.get_ham_in_mol_orb_repr(
                 h_nn.data, wfs, self._representation, self.use_egdecomp
             )
@@ -93,11 +94,13 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
 
             k = 2 / wfs.nspins
             f_n = k * wfs.myocc_n
+            
 
-            n_occ = 0
-            nbands = ibzwfs.nbands
-            while n_occ < nbands and f_n[n_occ] > 1e-10:
-                n_occ += 1
+            # Add if statement for occupied_only
+            # n_occ = 0
+            # nbands = ibzwfs.nbands
+            # while n_occ < nbands and f_n[n_occ] > 1e-10:
+            #     n_occ += 1
             c_nm=wfs.C_nM.data
             nbs = c_nm.shape[0]
 
@@ -116,10 +119,11 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
             # placeholder
 
             
-            
-            if self.counter <2: # alpha and beta channel 
-                h_new = 0.5 * (h_ij + h_ij.T.conj())
-                wfs.myeig_n[:nbs] = np.linalg.eigh(h_new)[0]
+            # print(self.counter,wfs.spin)
+            # if self.counter ==0: 
+            #     h_new = 0.5 * (h_ij + h_ij.T.conj())
+            #     wfs.myeig_n[:nbs] = np.linalg.eigh(h_new)[0]
+            # self.counter += 1
 
 
             if self.use_egdecomp:
@@ -149,7 +153,7 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
         
         self.tot_energy = energy
         # ?????????????? OR UPDATE DIFFERENT OVJECT HERE??? COMPARE OLD TO NEW!!!
-        self.counter += 1
+        
         # energy._total_free += sic_energy
 
         # copy_energy_sic = energy

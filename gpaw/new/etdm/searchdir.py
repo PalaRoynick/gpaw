@@ -100,8 +100,8 @@ class LBFGS:
             # FIX: these two statements should be
             # identical for both lcao and pw
 
-            self.ds[m] = self.search_dir.copy()  # For FD and PW
-            # self.ds[m] = a_cur - self.a_old # For LCAO
+            # self.ds[m] = self.search_dir.copy()  # For FD and PW
+            self.ds[m] = a_cur - self.a_old # For LCAO
 
             self.dy[m] = g_cur - self.g_old
 

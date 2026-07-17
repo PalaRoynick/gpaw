@@ -203,6 +203,7 @@ class PZSICLCAO:
         del rhs2, hc_mn, norm
         timer.stop('Residual')
 
+        # print(self.counter,kpt.s)
         if self.counter == 0:
             h_mm = 0.5 * (h_mm + h_mm.T.conj())
             kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]

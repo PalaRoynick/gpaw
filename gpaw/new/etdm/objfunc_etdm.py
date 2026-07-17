@@ -274,7 +274,7 @@ class ObjectiveFunctionETDM(ABC):
         # update projections
         wfs._P_ani = None
 
-    def get_ham_in_mol_orb_repr(self, h_mm, wfs, representation, full_ham):
+    def get_ham_in_mol_orb_repr(self, h_mm, wfs, representation, full_ham, occupied_only=False):
         """
         H = (C_nM @ H_MM @ C_nM.T.conj()).conj()
         for sparse and u_inv representation we calculate
@@ -288,17 +288,23 @@ class ObjectiveFunctionETDM(ABC):
                  H@C_nM.T, H, H_ia
         """
 
+        
         c_nm = wfs.C_nM.data
         f_n = wfs.myocc_n > 1.0e-10
-        occ = sum(f_n)
+        if occupied_only:
+            occ = sum(f_n)
+        else:
+            occ = c_nm.shape[0]
 
         if representation in ["sparse", "u-invar"] and not full_ham:
             hc_mn = h_mm.conj() @ c_nm[:occ].T
             h_ij = hc_mn.T.conj() @ c_nm[:occ].T
             h_ia = hc_mn.T.conj() @ c_nm[occ:].T
         else:
-            hc_mn = h_mm.conj() @ c_nm.T
-            h_ij = c_nm.conj() @ hc_mn
+            # hc_mn = h_mm.conj() @ c_nm.T
+            # h_ij = c_nm.conj() @ hc_mn
+            hc_mn = np.dot(h_mm.conj(), c_nm[:occ].T)
+            h_ij = np.dot(c_nm[:occ].conj(), hc_mn)
             h_ia = h_ij[:occ][:, occ:]
 
         return hc_mn, h_ij, h_ia
