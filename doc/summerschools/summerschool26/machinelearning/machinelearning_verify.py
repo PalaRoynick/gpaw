@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import time
 
 # Specify input file (structure), size, and MLIP model
-supercell = (3, 3, 1)
+supercell = (2, 2, 1)
 unitcellfile = 'MoS2.xyz'  # student: unitcellfile = ????  # Your chosen material .xyz file
 mlip = 'NequIP-OAM-S_cpu.nequip.pt2'
 
@@ -114,7 +114,7 @@ atoms.calc = NequIPCalculator.from_compiled_model(
 # Run the MD:
 timestep = 1.0
 dyn = VelocityVerlet(atoms, timestep * units.fs, logfile='-')
-traj = Trajectory('md_impact.traj', 'w', atoms)
+traj = Trajectory('md_impact_small.traj', 'w', atoms)
 dyn.attach(traj)  # Save every time step.
 traj.write()  # Write starting configuration
 
