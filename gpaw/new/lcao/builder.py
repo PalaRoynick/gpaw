@@ -260,7 +260,7 @@ def add_atomic_overlap_corrections(
             continue
 
         dO_II = sparse.block_diag(
-            [setups[a].dO_ii for a in P_aMi],
+            [sparse.coo_array(setups[a].dO_ii) for a in P_aMi],
             format='csr')
         P_MI = sparse.hstack(
             [sparse.coo_matrix(P_Mi) for P_Mi in P_aMi.values()],

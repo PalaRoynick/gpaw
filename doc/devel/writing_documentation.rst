@@ -45,7 +45,16 @@ between theory, implementation and example sections.
 
 If you don't already have your own copy of the GPAW package, then
 see :ref:`development workflow` for how to set up your environment.
-You will also need to ``pip install sphinx-rtd-theme``.
+Basically, you will need to do::
+
+  $ cd ~/gpaw
+  $ pip install -e .[docs]
+
+This will give you an editable install of gpaw
+(``-e`` or ``--editable`` option to pip) and the ``[docs]`` part will
+make ``pip`` install all the packages required to build the web-page
+such as ``sphinx-rtd-theme`` and the
+https://gitlab.com/gpaw/gpaw-web-page repository.
 
 Then :command:`cd` to the :file:`doc` directory and build the html-pages::
 
@@ -54,14 +63,24 @@ Then :command:`cd` to the :file:`doc` directory and build the html-pages::
 
 Make your changes to the ``.rst`` files, run the
 :command:`make` command again, check the results and if things
-looks ok, commit::
+looks ok, make a branch, commit and push::
 
     $ emacs index.rst
     $ make
     $ make browse
+    $ git switch -c my-changes-xyz
     $ git add index.rst
     $ git commit -m "..."
+    $ git push -u origin my-changes-xyz
 
+.. tip::
+
+   You can also let gitlab-CI build the web-pages:
+
+   * go to the pipeline of you merge request on gitlab.com
+   * click the "docs" CI-job to start it
+   * when the job has successfully finished, click "Browse" in the right
+     sidebar under "Job artifacts"
 
 **Adding figures and tables**
 

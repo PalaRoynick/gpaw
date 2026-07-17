@@ -33,8 +33,12 @@ def test_response_chi0(in_tmp_dir, mpi):
             kpts=kpts,
             symmetry={'point_group': sym},
             mode=PW(150),
+            eigensolver={'min_niter': 2},
+            nbands=10,
             occupations=FermiDirac(width=0.001),
-            convergence={'bands': 8},
+            convergence={'bands': 8,
+                         'eigenstates': 1e-10,
+                         'density': 1e-5},
             txt=name + '.txt')
         a.get_potential_energy()
         calc.write(name, 'all')
@@ -45,7 +49,7 @@ def test_response_chi0(in_tmp_dir, mpi):
         chi0_calc = Chi0Calculator(
             gs=calc, context=context,
             wd=FrequencyDescriptor.from_array_or_dict([0, 1.0, 2.0]),
-            hilbert=False, ecut=100)
+            hilbert=False, ecut=100, nbands=8)
         chi0 = chi0_calc.calculate(q_c)
         assert chi0.body.blockdist.blockcomm.size == 1
         chi0_wGG = chi0.chi0_WgG  # no block distribution

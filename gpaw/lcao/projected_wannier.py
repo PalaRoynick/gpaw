@@ -202,7 +202,7 @@ class ProjectedWannierFunctions:
            4) calculate_hamiltonian_matrix -> self.H_ii
 
            -- get_eigenvalues --
-           gives the eigenvalues of of the hamiltonian in the
+           gives the eigenvalues of the hamiltonian in the
            projected wannier function basis.
 
            -- indices --

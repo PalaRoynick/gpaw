@@ -54,7 +54,7 @@ def hilbert(f, ker=None, nfft=None, axis=0,
        *nfft* is the number of grid points used in the fft. If *nfft* is larger
        than *f* along the transform axis, *f* will be zero-padded to make up
        the difference. If *nfft* is smaller, the first *nfft* elements of *f*
-       will be used. *nfft* defaults to two times the the length of *f* along
+       will be used. *nfft* defaults to two times the length of *f* along
        *axis*.
 
        *kerneltype* specifies the kerneltype, and can be one of 'interpolate'

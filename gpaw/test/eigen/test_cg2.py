@@ -12,8 +12,8 @@ def test_eigen_cg2():
                                            [0.0, 0.1, 0.1, 0.9]])),
                           (2, 2, 1, 2))
     A.sum = lambda x: x
-    b = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
-    b.shape = (2, 2, 1, 2)
+    b = np.array([[1.0, 0.0, 0.0, 0.0],
+                  [0.0, 1.0, 0.0, 0.0]]).reshape((2, 2, 1, 2))
     x = b.copy()
     niter, error = CG(A, x, b, verbose=1)
     assert niter < 5
@@ -27,8 +27,8 @@ def test_eigen_cg2():
                           (2, 2, 1, 2))
     A.sum = lambda x: x
 
-    b = np.array([[1.0, 0.1j, 0.01 + 0.1j, 0.0], [0.0, 1.0, 0.0, 0.0]])
-    b.shape = (2, 2, 1, 2)
+    b = np.array([[1.0, 0.1j, 0.01 + 0.1j, 0.0],
+                  [0.0, 1.0, 0.0, 0.0]]).reshape((2, 2, 1, 2))
     x = b.copy()
     niter, error = CG(A, x, b, verbose=1)
     assert niter < 5

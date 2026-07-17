@@ -7,6 +7,7 @@ def test_force_as_stop(mpi):
     H2.center()
     calc = mpi.GPAW(
         mode='fd',
+        mixer='no-mixing',
         convergence={'forces': 0.01,
                      'density': 100,
                      'energy': 100,

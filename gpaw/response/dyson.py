@@ -182,7 +182,7 @@ class DysonEquation:
     χ(q,z) = χ_KS(q,z) + Ξ(q,z) χ(q,z),
 
     where the self-enhancement function encodes the electron correlations
-    induced by by the effective (Hartree-exchange-correlation) interaction:
+    induced by the effective (Hartree-exchange-correlation) interaction:
 
     Ξ(q,z) = χ_KS(q,z) K_hxc(q,z)
 

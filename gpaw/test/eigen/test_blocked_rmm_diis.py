@@ -1,7 +1,7 @@
 import pytest
 from ase import Atoms
 
-from gpaw import GPAW, Mixer
+from gpaw import GPAW
 
 
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
@@ -26,7 +26,7 @@ def test_eigen_blocked_rmm_diis(in_tmp_dir,
               'force_complex_dtype': force_complex_dtype},
         gpts=(n, n, n),
         nbands=4,
-        mixer=Mixer(0.25, 3, 1))
+        mixer={'backend': 'msr1', 'beta': 0.25})
     es = {'name': 'rmm-diis',
           'niter': 1,
           'diis_steps': 2,
@@ -47,4 +47,5 @@ def test_eigen_blocked_rmm_diis(in_tmp_dir,
     e1 = atoms.get_potential_energy()
     niter1 = calc.get_number_of_iterations()
     assert e0 == pytest.approx(e1, abs=0.000001)
-    assert niter0 == pytest.approx(niter1, abs=0) == 19 if mode == 'fd' else 14
+    assert niter0 == niter1
+    assert niter0 == (13 if mode == 'fd' else 10)

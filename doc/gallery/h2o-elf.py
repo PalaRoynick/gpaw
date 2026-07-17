@@ -4,7 +4,7 @@ from ase.build import molecule
 from ase.units import Bohr
 
 from gpaw.elf import elf_from_dft_calculation
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 # DFT calculation:
 h2o = molecule('H2O')

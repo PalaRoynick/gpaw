@@ -285,7 +285,7 @@ def write_iteration(criteria, converged_items, entries, ctx, log):
     if ctx.wfs.nspins == 2 or not ctx.wfs.collinear:
         totmom_v, _ = ctx.dens.calculate_magnetic_moments()
         if ctx.wfs.collinear:
-            line += f'  {totmom_v[2]:+.4f}|'
+            line += f'{totmom_v[2]:+9.4f}|'
         else:
             line += ' {:+.1f},{:+.1f},{:+.1f}|'.format(*totmom_v)
 

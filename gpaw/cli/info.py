@@ -98,8 +98,7 @@ def info(comm=None) -> None:
     results.append(('_gpaw' + githash,
                     os.path.normpath(cgpaw.get_extension_module_path())))
 
-    have_mpi = hasattr(cgpaw, 'Communicator')
-    results.append(('MPI enabled', have_mpi))
+    results.append(('MPI enabled', cgpaw.have_mpi))
     results.append(('OpenMP enabled', cgpaw.have_openmp))
     results.append(('Compiled as C++', GPAW_IS_CPP))
     if not GPAW_IS_CPP:
@@ -124,7 +123,7 @@ def info(comm=None) -> None:
                                   '(gpaw.gpu.cpupy) for testing purposes')
     from gpaw.cgpaw.gpu import magma
     results.append(('MAGMA', magma.is_available()))
-    if have_mpi:
+    if cgpaw.have_mpi:
         have_sl = compiled_with_sl()
         have_elpa = LibElpa.have_elpa()
         if have_elpa:

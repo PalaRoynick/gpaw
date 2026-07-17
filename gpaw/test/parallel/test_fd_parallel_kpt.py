@@ -19,7 +19,7 @@ def test_parallel_fd_parallel_kpt():
     parallel = dict()
 
     basekwargs = dict(mode='fd',
-                      eigensolver='rmm-diis',
+                      eigensolver='davidson',
                       maxiter=3,
                       # basis='dzp',
                       # nbands=18,
@@ -117,7 +117,7 @@ def test_parallel_fd_parallel_kpt():
     parallel = dict()
 
     basekwargs = dict(mode='fd',
-                      eigensolver='rmm-diis',
+                      eigensolver='davidson',
                       maxiter=3,
                       nbands=6,
                       kpts=(4, 4, 4),  # 8 kpts in the IBZ

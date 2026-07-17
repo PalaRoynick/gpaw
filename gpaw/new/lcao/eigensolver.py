@@ -6,7 +6,7 @@ from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.new.calculation import DFTCalculation
+from gpaw.new.calculation import DFT
 
 
 class LCAOEigensolver(Eigensolver):
@@ -62,7 +62,7 @@ class LCAOEigensolver(Eigensolver):
         wfs._P_ani = None
 
 
-def make_sure_we_have_lcao_coefs(dft: DFTCalculation) -> None:
+def make_sure_we_have_lcao_coefs(dft: DFT) -> None:
     """Calculate C_nM if not already there."""
     for wfs in dft.ibzwfs:
         assert isinstance(wfs, LCAOWaveFunctions)

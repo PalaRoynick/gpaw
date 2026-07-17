@@ -3,7 +3,7 @@ import os
 # This is recommended to be set as an environment variable
 os.environ['GPAW_TRACE'] = '1'
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.new.timer import global_timer
 from gpaw.utilities.timing import GPUProfiler
 from ase.build import graphene

@@ -55,7 +55,7 @@ The ``gpaw_venv.py`` script does the following:
 * install some other Python packages from PyPI: sklearn, graphviz,
   matplotlib, pytest-xdist, myqueue, ase-ext, spglib
 * enable tab-completion for command-line tools:
-  `ase <https://ase-lib.org/cmdline.html>`__,
+  `ase <https://docs.ase-lib.org/cmdline.html>`__,
   `gpaw <https://gpaw.readthedocs.io/documentation/cmdline.html>`__,
   `mq <https://myqueue.readthedocs.io/cli.html>`__
 

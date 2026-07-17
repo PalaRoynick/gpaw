@@ -11,7 +11,7 @@ A short introduction
 
 The nonlinear optical (NLO) response of an extended system can be obtained
 from its ground state electronic structure. Due to large computational cost,
-the local field effect effect is neglected. Hence, the NLO response is only
+the local field effect is neglected. Hence, the NLO response is only
 frequency-dependent. The NLO response can be described by nonlinear
 susceptibility tensors. There are numerous NLO processes, depending on the
 number of photons involved in the process.

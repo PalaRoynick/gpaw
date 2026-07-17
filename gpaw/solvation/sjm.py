@@ -3,7 +3,7 @@ The solvated jellium method is contained in this module.
 This enables electronically grand-canonical calculations to be calculated,
 typically for simulating electrochemical interfaces.
 
-This version the the solvated jellium method has been modified
+This version the solvated jellium method has been modified
 and includes the Fluctuation Dissipation Theorem.
 """
 

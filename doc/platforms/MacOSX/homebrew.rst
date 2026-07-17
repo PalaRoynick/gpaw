@@ -71,7 +71,7 @@ you have fixed something in ``siteconfig.py``)
 Test GPAW::
 
     $ gpaw test
-    $ gpaw -P 4 test
+    $ mpiexec -n 4 gpaw test
 
 Check the output to see that it was compiled with MPI, scalapack and
 FFTW.  If not, it failed to find the ``siteconfig.py`` file.

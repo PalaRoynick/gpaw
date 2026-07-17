@@ -128,6 +128,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         self._neighbors = None
         self._force_av: np.ndarray | None = None
         self._stress_vv: np.ndarray | None = None
+        self._v_aaLL = None
 
     def get_neighbors(self):
         if self._neighbors is None:
@@ -152,6 +153,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         self._neighbors = None
         self._force_av = None
         self._stress_vv = None
+        self._v_aaLL = None
 
     def solve(self,
               nt0_g: PWArray,
@@ -186,23 +188,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         V_aL = self.ghat_aLg.integrate(vHt_g)
         self.vhat_aLg.integrate(nt_g, V_aL, add_to=True)
 
-        Q_all_aL = Q_aL.to_cpu().gather(broadcast=True)
-        dV_all_aL = Q_all_aL.new()
-        dV_all_aL.data[:] = 0.0
-
-        e_coulomb3 = 0.0
-        for a1, a2, d, d_v in zip(*self.get_neighbors()):
-            rlY_lm = LazySphericalHarmonics(d_v)
-            ex1, ex2 = self.expansions
-            I1 = self.I_a[a1]
-            I2 = self.I_a[a2]
-            v_LL = (ex1.tsoe_II[I1, I2].evaluate(d, rlY_lm) +
-                    ex2.tsoe_II[I1, I2].evaluate(d, rlY_lm))
-            vQ2_L = v_LL @ Q_all_aL[a2]
-            dV_all_aL[a1] += vQ2_L / 2
-            dV_all_aL[a2] += Q_all_aL[a1] @ v_LL / 2
-            e_coulomb3 -= float(Q_all_aL[a1] @ vQ2_L)
-        e_coulomb3 *= -0.5
+        e_coulomb3, dV_all_aL = self.pair_pot_correction(Q_aL)
 
         comm.sum(dV_all_aL.data)
         dV_aL = Q_aL.new(xp=np)
@@ -216,7 +202,37 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         e_coulomb = comm.sum_scalar(e_coulomb1 / comm.size +
                                     e_coulomb2 +
                                     e_coulomb3)
+
         return e_coulomb, vHt_g, V_aL
+
+    def pair_pot_correction(self, Q_aL):
+        Q_all_aL = Q_aL.to_cpu().gather(broadcast=True)
+        dV_all_aL = Q_all_aL.new()
+        dV_all_aL.data[:] = 0.0
+
+        if self._v_aaLL is None:
+            self._v_aaLL = {}
+            for a1, a2, d, d_v in zip(*self.get_neighbors()):
+                rlY_lm = LazySphericalHarmonics(d_v)
+                ex1, ex2 = self.expansions
+                I1 = self.I_a[a1]
+                I2 = self.I_a[a2]
+                v_LL = (ex1.tsoe_II[I1, I2].evaluate(d, rlY_lm) +
+                        ex2.tsoe_II[I1, I2].evaluate(d, rlY_lm))
+                if (a1, a2) in self._v_aaLL:
+                    self._v_aaLL[(a1, a2)] += v_LL
+                else:
+                    self._v_aaLL[(a1, a2)] = v_LL
+
+        e_coulomb3 = 0.0
+        for (a1, a2), v_LL in self._v_aaLL.items():
+            vQ2_L = v_LL @ Q_all_aL[a2]
+            dV_all_aL[a1] += vQ2_L / 2
+            dV_all_aL[a2] += Q_all_aL[a1] @ v_LL / 2
+            e_coulomb3 -= float(Q_all_aL[a1] @ vQ2_L)
+        e_coulomb3 *= -0.5
+
+        return e_coulomb3, dV_all_aL
 
     def force_contribution(self, Q_aL, vHt_g, nt_g):
         force_av = self.xp.zeros((len(Q_aL), 3))
@@ -235,15 +251,21 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
         xp = self.xp
         force_av = xp.zeros((len(Q_aL), 3))
         stress_vv = xp.zeros((3, 3))
+        e_coulomb3 = 0.0
         Q_aL = Q_aL.gather(broadcast=True)
         for a1, a2, d, d_v in zip(*self.get_neighbors()):
-            if d == 0.0:
-                continue
             rlY_lm = LazySphericalHarmonics(d_v)
-            drlYdR_lmv = LazySphericalHarmonicsDerivative(d_v)
             ex1, ex2 = self.expansions
             I1 = self.I_a[a1]
             I2 = self.I_a[a2]
+            v_LL = xp.asarray(
+                (ex1.tsoe_II[I1, I2].evaluate(d, rlY_lm) +
+                 ex2.tsoe_II[I1, I2].evaluate(d, rlY_lm)))
+            vQ2_L = v_LL @ Q_aL[a2]
+            e_coulomb3 -= float(Q_aL[a1] @ vQ2_L)
+            if d == 0.0:
+                continue
+            drlYdR_lmv = LazySphericalHarmonicsDerivative(d_v)
             n_v = d_v / d
             v_vLL = xp.asarray(
                 ex1.tsoe_II[I1, I2].derivative(d, n_v, rlY_lm, drlYdR_lmv) +
@@ -252,10 +274,15 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
             force_av[a1] += f_v
             force_av[a2] -= f_v
             stress_vv += xp.outer(xp.asarray(d_v), f_v)
+        e_coulomb3 *= -0.5
+
+        stress_vv += xp.eye(3) * e_coulomb3
         self._force_av = force_av
         self._stress_vv = stress_vv
         return force_av, stress_vv
 
-    def stress_contribution(self, vHt_g, Q_aL):
+    def stress_contribution(self, vHt_g, nt_g, Q_aL):
         _, pair_pot_stress_vv = self._force_and_stress(Q_aL)
-        return self.ghat_aLg.stress_contribution(vHt_g, Q_aL)
+        v_vv = self.vhat_aLg.stress_contribution(nt_g, Q_aL)
+        g_vv = self.ghat_aLg.stress_contribution(vHt_g, Q_aL)
+        return v_vv + g_vv + pair_pot_stress_vv

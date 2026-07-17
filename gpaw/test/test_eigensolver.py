@@ -11,7 +11,6 @@ from gpaw.mpi import world
 @pytest.mark.parametrize('setup', ['paw', 'ae'])
 def test_ae(mode, eigensolver, setup):
     occupations = {'name': 'fermi-dirac', 'width': 0.01}
-    mixer = {'backend': 'fft'}
     if eigensolver == 'etdm-fdpw':
         eigensolver = {'name': 'etdm-fdpw', 'converge_unocc': True}
         occupations = {'name': 'fixed',
@@ -20,6 +19,7 @@ def test_ae(mode, eigensolver, setup):
         energy_tolerance = 5e-4
     else:
         energy_tolerance = 5e-5
+        mixer = {}
     eig_tolerance = 1e-3
     spinpol = False
 
@@ -42,8 +42,8 @@ def test_ae(mode, eigensolver, setup):
               'eigensolver': eigensolver,
               'spinpol': spinpol,
               'occupations': occupations,
-              'mixer': mixer,
               'setups': setup,
+              'mixer': mixer,
               'convergence': {'eigenstates': 1e-8,
                               'energy': 1e-5,
                               'bands': 'all'}}

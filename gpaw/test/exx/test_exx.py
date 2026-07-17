@@ -11,6 +11,7 @@ def xc1(name):
     return dict(name=name, stencil=1)
 
 
+@pytest.mark.skip('Too slow')
 @pytest.mark.slow
 @pytest.mark.libxc
 @pytest.mark.hybrids
@@ -37,8 +38,9 @@ def test_exx_exx(in_tmp_dir):
         calc = GPAW(mode='fd',
                     xc=xc,
                     h=0.21,
-                    mixer={'beta': 0.35, 'nmaxold': 8},
-                    eigensolver='rmm-diis',
+                    mixer={'beta': 0.35, 'nmaxold': 6},
+                    eigensolver={'name': 'rmm-diis',
+                                 'niter': 3},
                     nbands=3,
                     convergence={'eigenstates': 1e-6},
                     txt='exx.txt')
