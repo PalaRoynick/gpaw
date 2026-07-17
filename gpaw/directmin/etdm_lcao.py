@@ -55,6 +55,7 @@ from gpaw.directmin.tools import (
 
 class LCAOETDM:
 
+<<<<<<< HEAD
     def __init__(
         self,
         excited_state=False,
@@ -80,6 +81,34 @@ class LCAOETDM:
         localize_every=None,
         printinnerloop=False,
     ):
+=======
+    def __init__(self,
+                 excited_state=False,
+                 searchdir_algo=None,
+                 linesearch_algo=None,
+                 searchdir_algo_pz=None,
+                 linesearch_algo_pz=None,
+                 partial_diagonalizer='Davidson',
+                 update_ref_orbs_counter=20,
+                 update_ref_orbs_canonical=False,
+                 update_precond_counter=1000,
+                 use_prec=True,
+                 matrix_exp='pade-approx',
+                 representation='sparse',
+                 functional='ks',
+                 need_init_orbs=None,
+                 orthonormalization='gramschmidt',
+                 randomizeorbitals=None,
+                 checkgraderror=False,
+                 need_localization=True,
+                 localizationtype=None,
+                 localizationseed=None,
+                 constraints=None,
+                 subspace_convergence=5e-4,
+                 localize_every=None,
+                 printinnerloop=False,
+                 ):
+>>>>>>> lcao-innerloop
         """Class for direct orbital optimization in LCAO mode.
 
         Parameters
@@ -226,6 +255,8 @@ class LCAOETDM:
         self.in_subspace_loop = False
         self.sda = searchdir_algo
         self.lsa = linesearch_algo
+        self.sda_pz = searchdir_algo_pz
+        self.lsa_pz = linesearch_algo_pz
         self.partial_diagonalizer = partial_diagonalizer
         self.localizationseed = localizationseed
         self.update_ref_orbs_counter = update_ref_orbs_counter
@@ -317,18 +348,36 @@ class LCAOETDM:
         if self.sda is None:
             self.sda = defaults["searchdir_algo"]
         if self.lsa is None:
+<<<<<<< HEAD
             self.lsa = defaults["linesearch_algo"]
+=======
+            self.lsa = defaults['linesearch_algo']
+        if self.sda_pz is None:
+            self.sda_pz = defaults['searchdir_algo_pz']
+        if self.lsa_pz is None:
+            self.lsa_pz = defaults['linesearch_algo_pz']
+>>>>>>> lcao-innerloop
         if self.need_init_orbs is None:
             self.need_init_orbs = defaults["need_init_orbs"]
         if self.localizationtype is None:
             self.need_localization = False
 
         self.searchdir_algo = search_direction(
+<<<<<<< HEAD
             self.sda, self, self.partial_diagonalizer
         )
         sd_name = self.searchdir_algo.name.split("_")
         if sd_name[0] == "l-bfgs-p" and not self.use_prec:
             raise ValueError("Use l-bfgs-p with use_prec=True")
+=======
+            self.sda, self, self.partial_diagonalizer)
+        if self.sda_pz is not None:
+            self.searchdir_algo_pz = search_direction(
+                self.sda_pz, self, self.partial_diagonalizer)
+        sd_name = self.searchdir_algo.name.split('_')
+        if sd_name[0] == 'l-bfgs-p' and not self.use_prec:
+            raise ValueError('Use l-bfgs-p with use_prec=True')
+>>>>>>> lcao-innerloop
         if len(sd_name) == 2:
             if sd_name[1] == "gmf":
                 self.searchdir_algo.name = sd_name[0]
@@ -336,6 +385,7 @@ class LCAOETDM:
                 self.g_vec_u_original = None
                 self.pd = self.partial_diagonalizer
 
+<<<<<<< HEAD
         self.line_search = line_search_algorithm(
             self.lsa, self.evaluate_phi_and_der_phi, self.searchdir_algo
         )
@@ -353,6 +403,43 @@ class LCAOETDM:
                 "linesearch_algo": "swc-awc",
                 "need_init_orbs": True,
             }
+=======
+        self.line_search = line_search_algorithm(self.lsa,
+                                                 self.evaluate_phi_and_der_phi,
+                                                 self.searchdir_algo)
+        if self.lsa_pz is not None:
+            self.line_search_pz = line_search_algorithm(
+                self.lsa_pz, self.evaluate_phi_and_der_phi, 
+                self.searchdir_algo)
+
+    def set_defaults(self):
+        if self.excited_state:
+            if self.need_localization:
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:            
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
+        else:
+            if self.need_localization:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
+>>>>>>> lcao-innerloop
 
     def __repr__(self):
 
@@ -644,7 +731,11 @@ class LCAOETDM:
         self.phi_2i = [None, None]
         self.der_phi_2i = [None, None]
 
+<<<<<<< HEAD
     def iterate(self, ham, wfs, dens,occupied_only=False):
+=======
+    def iterate(self, ham, wfs, dens, inner_loop=False):
+>>>>>>> lcao-innerloop
         """
         One iteration of direct optimization
         for occupied orbitals
@@ -694,8 +785,18 @@ class LCAOETDM:
 
             make_pd = False
             if self.gmf and not self.subspace_optimization:
+<<<<<<< HEAD
                 with wfs.timer("Partial Hessian diagonalization"):
                     self.searchdir_algo.update_eigenpairs(g_vec_u, wfs, ham, dens)
+=======
+                with wfs.timer('Partial Hessian diagonalization'):
+                    if inner_loop:
+                        self.searchdir_algo_pz.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens) 
+                    else:
+                        self.searchdir_algo.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens)
+>>>>>>> lcao-innerloop
                 # The diagonal Hessian approximation must be positive-definite
                 make_pd = True
 
@@ -705,6 +806,7 @@ class LCAOETDM:
             with wfs.timer("Get Search Direction"):
                 # calculate search direction according to chosen
                 # optimization algorithm (e.g. L-BFGS)
+<<<<<<< HEAD
                 p_vec_u = self.searchdir_algo.update_data(
                     wfs,
                     a_vec_u,
@@ -712,6 +814,16 @@ class LCAOETDM:
                     precond=precond,
                     subspace=self.subspace_optimization,
                 )
+=======
+                if inner_loop:
+                    p_vec_u = self.searchdir_algo_pz.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
+                else:
+                    p_vec_u = self.searchdir_algo.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
+>>>>>>> lcao-innerloop
 
             # recalculate derivative with new search direction
             der_phi_2i[0] = 0.0
@@ -720,6 +832,7 @@ class LCAOETDM:
             der_phi_2i[0] = der_phi_2i[0].real
             der_phi_2i[0] = wfs.kd.comm.sum_scalar(der_phi_2i[0])
 
+<<<<<<< HEAD
             alpha, phi_alpha, der_phi_alpha, g_vec_u = (
                 self.line_search.step_length_update(
                     a_vec_u,
@@ -737,6 +850,22 @@ class LCAOETDM:
                     kpdescr=wfs.kd,
                 )
             )
+=======
+            if inner_loop:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search_pz.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
+            else:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
+>>>>>>> lcao-innerloop
 
             if wfs.gd.comm.size > 1:
                 with wfs.timer("Broadcast gradients"):
