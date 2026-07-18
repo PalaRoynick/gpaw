@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import time
 
 # Specify input file (structure), size, and MLIP model
-supercell = (2, 2, 1)
+supercell = (3, 3, 1)
 unitcellfile = 'MoS2.xyz'  # student: unitcellfile = ????  # Your chosen material .xyz file
 mlip = 'NequIP-OAM-S_cpu.nequip.pt2'
 
