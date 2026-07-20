@@ -233,21 +233,21 @@ class iKSObj:
 
 
 class PotState:
-    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], cvbar_a: MutableMapping,
-                 gd=None, comm=None, setups=None, angular=False, kpt_par=False, cvbar_inner: callable = None):
+    def __init__(self, data_sg: Array4D, data_xasz: list[MutableMapping], cbar_a: MutableMapping,
+                 gd=None, comm=None, setups=None, angular=False, kpt_par=False, cbar_inner: callable = None):
         self.data_sg = data_sg
         self.data_xasz = data_xasz
-        self.cvbar_a = cvbar_a
+        self.cbar_a = cbar_a
         self.gd = gd
         self.comm = comm
         self.setups = setups
         self.angular = angular
         self.kpt_par = kpt_par
-        self.cvbar_inner = cvbar_inner
+        self.cbar_inner = cbar_inner
 
     @property
     def args(self):
-        return (self.gd, self.comm, self.setups, self.angular, self.kpt_par, self.cvbar_inner)
+        return (self.gd, self.comm, self.setups, self.angular, self.kpt_par, self.cbar_inner)
 
     def __add__(self, other: "PotState") -> "PotState":
         if not isinstance(other, PotState):
@@ -255,8 +255,8 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] + other_asz[a] for a in data_asz})
-        newc_a = {a: self.cvbar_a[a] +
-                  other.cvbar_a[a] for a in self.cvbar_a}
+        newc_a = {a: self.cbar_a[a] +
+                  other.cbar_a[a] for a in self.cbar_a}
         return PotState(self.data_sg + other.data_sg, new_xasz, newc_a, *self.args)
 
     def __sub__(self, other: "PotState") -> "PotState":
@@ -265,15 +265,15 @@ class PotState:
         new_xasz = []
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             new_xasz.append({a: data_asz[a] - other_asz[a] for a in data_asz})
-        newc_a = {a: self.cvbar_a[a] -
-                  other.cvbar_a[a] for a in self.cvbar_a}
+        newc_a = {a: self.cbar_a[a] -
+                  other.cbar_a[a] for a in self.cbar_a}
         return PotState(self.data_sg - other.data_sg, new_xasz, newc_a, *self.args)
 
     def __neg__(self) -> "PotState":
         new_xasz = []
         for data_asz in self.data_xasz:
             new_xasz.append({a: -data_asz[a] for a in data_asz})
-        newc_a = {a: -self.cvbar_a[a] for a in self.cvbar_a}
+        newc_a = {a: -self.cbar_a[a] for a in self.cbar_a}
         return PotState(-self.data_sg, new_xasz, newc_a, *self.args)
 
     def __mul__(self, other: "PotState" | float) -> "PotState":
@@ -282,14 +282,14 @@ class PotState:
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
                 new_xasz.append(
                     {a: data_asz[a] * other_asz[a] for a in data_asz})
-            newc_a = {a: self.cvbar_a[a] *
-                      other.cvbar_a[a] for a in self.cvbar_a}
+            newc_a = {a: self.cbar_a[a] *
+                      other.cbar_a[a] for a in self.cbar_a}
             return PotState(self.data_sg * other.data_sg, new_xasz, newc_a, *self.args)
         else:
             new_xasz = []
             for data_asz in self.data_xasz:
                 new_xasz.append({a: v * other for a, v in data_asz.items()})
-            newc_a = {a: c * other for a, c in self.cvbar_a.items()}
+            newc_a = {a: c * other for a, c in self.cbar_a.items()}
             return PotState(self.data_sg * other, new_xasz, newc_a, *self.args)
 
     def __rmul__(self, other: float) -> "PotState":
@@ -299,18 +299,18 @@ class PotState:
         copy_xasz = []
         for array_asz in self.data_xasz:
             copy_xasz.append({a: v.copy() for a, v in array_asz.items()})
-        cvbar_a = {a: v.copy() for a, v in self.cvbar_a.items()}
-        x = PotState(self.data_sg.copy(), copy_xasz, cvbar_a, *self.args)
+        cbar_a = {a: v.copy() for a, v in self.cbar_a.items()}
+        x = PotState(self.data_sg.copy(), copy_xasz, cbar_a, *self.args)
         return x
 
     def inner(self, other):
         # ignoring the coupling between atomic and pseudo quantities
         assert isinstance(other, PotState)
-        assert self.gd is not None and self.setups is not None and self.cvbar_inner is not None
+        assert self.gd is not None and self.setups is not None and self.cbar_inner is not None
         II = np.zeros(1, dtype=float)
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             assert tuple(data_asz.keys()) == tuple(other_asz.keys())
-            assert tuple(data_asz.keys()) == tuple(self.cvbar_a.keys())
+            assert tuple(data_asz.keys()) == tuple(self.cbar_a.keys())
             for a in data_asz:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]
@@ -330,7 +330,7 @@ class PotState:
         # return self.gd.integrate(self.data_sg * other.data_sg, global_integral=True).sum() + II.item()
         It = self.gd.integrate(
             self.data_sg * other.data_sg, global_integral=True).sum()
-        Ic = self.cvbar_inner(self.cvbar_a, other.cvbar_a)
+        Ic = self.cbar_inner(self.cbar_a, other.cbar_a)
         total = np.array([It + II.item() + Ic], dtype=float)
         if self.kpt_par:
             # prevent divergence in case of kpt-parallelization
@@ -345,8 +345,8 @@ class PotState:
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             for a, v in data_asz.items():
                 v += other_asz[a]
-        for a in self.cvbar_a:
-            self.cvbar_a[a] += other.cvbar_a[a]
+        for a in self.cbar_a:
+            self.cbar_a[a] += other.cbar_a[a]
         return self
 
     def __isub__(self, other: "PotState") -> "PotState":
@@ -354,8 +354,8 @@ class PotState:
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             for a, v in data_asz.items():
                 v -= other_asz[a]
-        for a in self.cvbar_a:
-            self.cvbar_a[a] -= other.cvbar_a[a]
+        for a in self.cbar_a:
+            self.cbar_a[a] -= other.cbar_a[a]
         return self
 
     def __imul__(self, other: "PotState | float") -> "PotState":
@@ -364,15 +364,15 @@ class PotState:
             for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
                 for a in data_asz.keys():
                     data_asz[a] *= other_asz[a]
-            for a in self.cvbar_a:
-                self.cvbar_a[a] *= other.cvbar_a[a]
+            for a in self.cbar_a:
+                self.cbar_a[a] *= other.cbar_a[a]
         else:
             self.data_sg *= other
             for data_asz in self.data_xasz:
                 for a in data_asz.keys():
                     data_asz[a] *= other
-            for a in self.cvbar_a:
-                self.cvbar_a[a] *= other
+            for a in self.cbar_a:
+                self.cbar_a[a] *= other
         return self
 
     def add_scaled(self, other: "PotState", factor: float) -> None:
@@ -380,14 +380,14 @@ class PotState:
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             for a in data_asz.keys():
                 data_asz[a] += factor * other_asz[a]
-        for a in self.cvbar_a:
-            self.cvbar_a[a] += factor * other.cvbar_a[a]
+        for a in self.cbar_a:
+            self.cbar_a[a] += factor * other.cbar_a[a]
 
 
 class iKSLBFGS:
     def __init__(self, iks: iKS, m: int = 10, max_ls=15,
                  maxiter: int = 300, Ltol: float = 1e-6, LDtol: float = 1e-4,
-                 Jtol: float = 1e-9, step_scale: float = 1.0):
+                 Jtol: float = 1e-7, step_scale: float = 1.0, gauge: bool = False, wolfe: bool = True):
         self.iks = iks
         if iks.use_coarse_grid:
             raise NotImplementedError(
@@ -399,6 +399,8 @@ class iKSLBFGS:
         self.LDtol = LDtol
         self.Jtol = Jtol
         self.step_scale = step_scale
+        self.gauge = gauge
+        self.wolfe = wolfe
         self.world = iks.hamiltonian.world
 
         self.s_hist: deque[PotState] = deque(maxlen=m)
@@ -409,17 +411,18 @@ class iKSLBFGS:
     def potstate_args(self):
         iks = self.iks
         return (iks.finegd, iks.hamiltonian.world, iks.setups,
-                iks.xc.paw_potmode.name == 'angular', iks.wfs.kptband_comm.size > 1, self.cvbar_inner)
+                iks.xc.paw_potmode.name == 'angular', iks.wfs.kptband_comm.size > 1, self.cbar_inner)
 
-    def from_workdict(self, w_a):
+    def from_workdict(self, w_a, scale=1.0):
         iks = self.iks
         wpart = iks.xc.vxc_xasz[1].partition
-        c_a = wpart.arraydict(
-            [(1,) for a in range(len(iks.setups))])
-        c_a.update(w_a)
-        return iks.hamiltonian.atomdist.from_work(c_a)
+        c_as = wpart.arraydict(
+            [(iks.nspins,) for a in range(len(iks.setups))])
+        for a in c_as.keys():
+            c_as[a][:] = scale * w_a[a]
+        return iks.hamiltonian.atomdist.from_work(c_as)
 
-    def cvbar_inner(self, c1_a, c2_a) -> float:
+    def cbar_inner(self, c1_a, c2_a) -> float:
         II = 0.0
 
         assert set(c1_a) == set(c2_a)
@@ -467,47 +470,61 @@ class iKSLBFGS:
             r.add_scaled(s_i, (alpha_i - beta_i))
         return -r * self.step_scale
 
+    def fix_gauge(self, x: PotState) -> PotState:
+        gd = self.iks.finegd
+        for s in range(len(x.data_sg)):
+            c = gd.integrate(x.data_sg[s]) / gd.volume
+            x.data_sg[s] -= c
+
+            for data_asz in x.data_xasz:
+                for a in data_asz:
+                    data_asz[a][s] -= c
+        return x
+
     def set_potentials_and_iterate(self, x: PotState):
+        if self.gauge:
+            self.fix_gauge(x)
         iks = self.iks
         xc = iks.xc
-        xc.vxc_sg[:] = x.data_sg + iks.lambda_vbar * \
-            iks.get_vbar(self.from_workdict(x.cvbar_a))
+        xc.vxc_sg[:] = x.data_sg
+        iks.vct.add(xc.vxc_sg, self.from_workdict(
+            x.cbar_a, scale=iks.pseudo_core_scale))
         for a in x.data_xasz[0].keys():
-            c = x.cvbar_a[a]
+            c = x.cbar_a[a]
             v_sz = x.data_xasz[0][a]
             vt_sz = x.data_xasz[1][a]
-            E_g = iks.sw_ag[a]
-            xc.vxc_xasz[1][a][:] = vt_sz + iks.lambda_vbar * \
-                c * iks.vbar_ag[a][None, None, :]
-            xc.vxc_xasz[0][a][:] = v_sz * E_g + vt_sz * (1.0 - E_g)
+            xc.vxc_xasz[1][a][:] = vt_sz + \
+                iks.pseudo_core_scale * c * iks.vct_asg[a][:, None]
+            xc.vxc_xasz[0][a][:] = v_sz
         for vxc_asz in xc.vxc_xasz:
             vxc_asz.check_consistency()
         iks.iterate()
 
-    def get_cvbar_grad(self, J_sg, Jt_asz):
+    def get_cbar_grad(self, J_sg, Jt_asz):
         iks = self.iks
         Jc_a = {}
         partition = Jt_asz.partition
+        fgd = iks.finegd
         for a in range(partition.natoms):
             Jc = 0.0
             coeff_a = {a_: np.zeros(1) for a_ in partition.my_indices}
             if a in partition.my_indices:
                 coeff_a[a][:] = 1.0
-            vbar_g = iks.get_vbar(self.from_workdict(coeff_a))
-            for s in range(iks.nspins):
-                Jc += iks.finegd.integrate(vbar_g * J_sg[s])
+            vct_sg = fgd.zeros(iks.nspins)
+            iks.vct.add(vct_sg, self.from_workdict(coeff_a))
+            Jc += fgd.integrate(vct_sg * J_sg).sum()
             if a in partition.my_indices:
                 xcc = iks.setups[a].xc_correction
-                for s in range(iks.nspins):
-                    Jt_ng = Jt_asz[a][s]
-                    for n, weight in enumerate(weight_n):
-                        Jc += weight * \
-                            xcc.rgd.integrate(
-                                Jt_ng[n] * iks.vbar_ag[a])
-                Jc_a[a] = iks.lambda_vbar * np.array([Jc])
+                for n, weight in enumerate(weight_n):
+                    Jc += weight * \
+                        xcc.rgd.integrate(
+                            Jt_asz[a][:, n] * iks.vct_asg[a]).sum()
+                Jc_a[a] = iks.pseudo_core_scale * np.array([Jc])
         return Jc_a
 
     def transform_gradients(self, J_xasz: list[ArrayDict]) -> list[ArrayDict]:
+        return J_xasz
+
         partition = J_xasz[0].partition
         JT_xasz: list[ArrayDict] = [
             partition.arraydict(J_asz.shapes_a) for J_asz in J_xasz]
@@ -521,22 +538,44 @@ class iKSLBFGS:
             JT_asz.check_consistency()
         return JT_xasz
 
-    def line_search(self, x: PotState, gk: PotState, pk: PotState,
-                    L0: float, LD0: float, phi0: float, dphi0: float,
-                    c1: float = 1e-4, c2: float = 0.9, tau: float = 0.5,
-                    max_ls: int = 15
-                    ) -> tuple[PotState, PotState, float, float, float, bool]:
+    def get_gradients(self):
+        iks = self.iks
+        J_xasz = iks.atomic_jacobian()
+        J_sg = iks.jacobian()
+        # transform atomic
+        towork = iks.hamiltonian.atomdist.to_work
+        JT_xasz = self.transform_gradients(J_xasz)
+        Jwork_xasz = [towork(J_asz) for J_asz in JT_xasz]
+        # cbar
+        Jc_a = self.get_cbar_grad(J_sg, towork(J_xasz[1]))
+        return J_sg, Jwork_xasz, Jc_a
+
+    def log_cbar(self, x):
+        iks = self.iks
+        atomdist = iks.hamiltonian.atomdist
+        cbar = atomdist.work_partition.arraydict(shapes=lambda a: (1,))
+        cbar.update({a: x.cbar_a[a].copy() for a in x.cbar_a})
+        cbar = atomdist.from_work(cbar)
+        cbar.redistribute(cbar.partition.as_serial())
+        cbardict = {int(a): c.item() for a, c in cbar.items()}
+        iks.fmt.log(f"cbar: {cbardict}")
+
+    def line_search(self, *args, **kwargs) -> tuple[PotState, PotState, float, float, float, bool]:
+        if self.wolfe:
+            return self.line_search_wolfe(*args, **kwargs)
+        else:
+            return self.line_search_armijo(*args, **kwargs)
+
+    def line_search_wolfe(self, x: PotState, gk: PotState, pk: PotState,
+                          L0: float, LD0: float, phi0: float, dphi0: float,
+                          c1: float = 1e-4, c2: float = 0.9, tau: float = 0.5,
+                          max_ls: int = 15
+                          ) -> tuple[PotState, PotState, float, float, float, bool]:
         """Line search satisfying the strong Wolfe conditions."""
 
         iks = self.iks
 
-        if not 0.0 < c1 < c2 < 1.0:
-            raise ValueError(
-                f'Require 0 < c1 < c2 < 1, got c1={c1}, c2={c2}')
-
-        if not 0.0 < tau < 1.0:
-            raise ValueError(
-                f'Require 0 < tau < 1, got tau={tau}')
+        assert 0.0 < c1 < c2 < 1.0 and 0.0 < tau < 1.0
 
         if not np.isfinite(dphi0) or dphi0 >= 0.0:
             iks.fmt.log(
@@ -567,29 +606,9 @@ class iKSLBFGS:
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
             phi_new = float(L_new + LD_new)
 
-            J_xasz = iks.atomic_jacobian()
-            JT_xasz = self.transform_gradients(J_xasz)
-            J_sg = iks.jacobian()
+            J_sg, J_xasz, Jc_a = self.get_gradients()
 
-            atomdist = iks.hamiltonian.atomdist
-
-            Jwork_xasz = [
-                atomdist.to_work(J_asz)
-                for J_asz in JT_xasz
-            ]
-
-            # Use the raw physical pseudo gradient for c^a.
-            Jc_a = self.get_cvbar_grad(
-                J_sg,
-                atomdist.to_work(J_xasz[1])
-            )
-
-            g_new = PotState(
-                J_sg,
-                Jwork_xasz,
-                Jc_a,
-                *self.potstate_args
-            )
+            g_new = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args)
 
             dphi_new = float(pk.inner(g_new))
 
@@ -599,7 +618,7 @@ class iKSLBFGS:
                 f'phi={phi_new:.5e}, '
                 f'dphi={dphi_new:.5e}'
             )
-            self.log_cvbar(x_new)
+            self.log_cbar(x_new)
 
             iks.logiter(il, self.L1, L_new, self.LD1,
                         LD_new, g_new.data_sg, sep='')
@@ -670,91 +689,57 @@ class iKSLBFGS:
 
         return (x.copy(), gk.copy(), L0, LD0, 0.0, False)
 
-    def log_cvbar(self, x):
+    def line_search_armijo(self, x: PotState, gk: PotState, pk: PotState,
+                           L0: float, LD0: float, phi0: float, dphi0: float,
+                           c1: float = 1e-4, tau: float = 0.5,
+                           max_ls: int = 15) -> tuple[PotState, PotState, float, float, float, bool]:
+        """Backtracking line search satisfying the Armijo condition."""
         iks = self.iks
-        atomdist = iks.hamiltonian.atomdist
-        cvbar = atomdist.work_partition.arraydict(shapes=lambda a: (1,))
-        cvbar.update({a: x.cvbar_a[a].copy() for a in x.cvbar_a})
-        cvbar = atomdist.from_work(cvbar)
-        cvbar.redistribute(cvbar.partition.as_serial())
-        iks.fmt.log(f"cvbar: {dict(cvbar)}")
 
-    def line_search_armijo_only(self, x: PotState, gk: PotState, pk: PotState,
-                                L0: float, LD0: float, phi0: float, dphi0: float,
-                                c1: float = 1e-4, c2: float = 0.9, tau: float = 0.5,
-                                max_ls: int = 15) -> tuple[PotState, PotState, float, float, float, bool]:
-        iks = self.iks
+        assert 0.0 < c1 < 1.0 and 0.0 < tau < 1.0
+
+        if not np.isfinite(dphi0) or dphi0 >= 0.0:
+            iks.fmt.log(
+                'Armijo line search received a non-descent direction: '
+                f'dphi0={dphi0:.5e}')
+
+            self.set_potentials_and_iterate(x)
+
+            return x.copy(), gk.copy(), L0, LD0, 0.0, False
+
         alpha = 1.0
-        accepted = False
-        best_phi = phi0
-        best_state = None
-        g_new = gk
-        L_new = L0
-        LD_new = LD0
 
         for il in range(max_ls):
             x_new = x + alpha * pk
             self.set_potentials_and_iterate(x_new)
 
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
-            phi_new = L_new + LD_new
+            phi_new = float(L_new + LD_new)
 
-            J_xasz = iks.atomic_jacobian()
-            JT_xasz = self.transform_gradients(J_xasz)
-            J_sg = iks.jacobian()
-            Jwork_xasz = [iks.hamiltonian.atomdist.to_work(
-                J_asz) for J_asz in JT_xasz]
-            Jc_a = self.get_cvbar_grad(
-                J_sg, iks.hamiltonian.atomdist.to_work(J_xasz[1]))
-            g_new = PotState(J_sg, Jwork_xasz, Jc_a, *self.potstate_args)
+            iks.fmt.log(
+                f'line search {il}: '
+                f'alpha={alpha:.5e}, '
+                f'phi={phi_new:.5e}')
 
-            iks.fmt.log(f"line search {il}")
-            iks.logiter(il, self.L1, L_new, self.LD1,
-                        LD_new, g_new.data_sg, sep="")
+            if np.isfinite(phi_new) and \
+                    phi_new <= phi0 + c1 * alpha * dphi0:
+                J_sg, J_xasz, Jc_a = self.get_gradients()
+                g_new = PotState(
+                    J_sg, J_xasz, Jc_a, *self.potstate_args)
 
-            if phi_new < best_phi:
-                best_phi = phi_new
-                x_best = x_new.copy()
-                g_best = g_new.copy()
-                best_state = (x_best, g_best, L_new, LD_new, alpha)
-
-            if phi_new <= phi0 + c1 * alpha * dphi0:
-                dphi_new = pk.inner(g_new)
-                if dphi_new >= c2 * dphi0:
-                    accepted = True
-                    break
-                else:
-                    self.iks.fmt.log(
-                        "  Warning: Armijo passed but Wolfe curvature failed.")
-                    accepted = True
-                    break
-
-            denom = 2.0 * (phi_new - phi0 - dphi0 * alpha)
-            if denom > 0:
-                alpha_quad = - (dphi0 * alpha**2) / denom
-                alpha_new = max(0.1 * alpha, min(0.9 * alpha, alpha_quad))
                 iks.fmt.log(
-                    f"  iKSLBFGS LS Interpolation: {alpha:.5e} -> {alpha_new:.5e}")
-                alpha = alpha_new
-            else:
-                alpha *= tau
+                    f'Armijo condition satisfied: alpha={alpha:.5e}')
 
-        if accepted:
-            return x_new.copy(), g_new.copy(), L_new, LD_new, alpha, True
+                return (x_new.copy(), g_new.copy(),
+                        L_new, LD_new, alpha, True)
 
-        if best_state is not None and best_phi < phi0:
-            self.iks.fmt.log(
-                "L-BFGS line search: Armijo failed, using best lagrangian step.")
-            x_best, g_best, L_best, LD_best, alpha_best = best_state
-            self.set_potentials_and_iterate(x_best)
-            return x_best, g_best, L_best, LD_best, alpha_best, True
+            alpha *= tau
 
-        self.iks.fmt.log(
-            "Warning: L-BFGS line search: no step reduced Lagrangian; rejecting direction.")
-
-        # restore
+        iks.fmt.log(
+            'Armijo line search failed; restoring current state.')
         self.set_potentials_and_iterate(x)
-        return x.copy(), gk, L0, LD0, 0.0, False
+
+        return x.copy(), gk.copy(), L0, LD0, 0.0, False
 
     def run(self) -> list[float]:
         iks = self.iks
@@ -782,35 +767,10 @@ class iKSLBFGS:
         iks.iterate()
         L1, L, LD1, LD = iks.lagrangian()
         phi = L + LD
-        J_xasz = iks.atomic_jacobian()
-        JT_xasz = self.transform_gradients(J_xasz)
-        J_sg = iks.jacobian()
-        Jwork_xasz = []
-        atomdist = iks.hamiltonian.atomdist
-        for J_asz in JT_xasz:
-            Jwork_xasz.append(atomdist.to_work(J_asz))
-        Jc_a = self.get_cvbar_grad(J_sg, atomdist.to_work(J_xasz[1]))
-        gk = PotState(J_sg, Jwork_xasz, Jc_a, *self.potstate_args).copy()
-        # x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, *self.potstate_args).copy()
-        xAE_asz = {}
-        xPS_asz = {}
-        c_a = {}
-        for a in iks.xc.vxc_xasz[0].keys():
-            if iks.setups[a].xc_correction is None:
-                continue
-            v_AE = iks.xc.vxc_xasz[0][a]
-            v_PS = iks.xc.vxc_xasz[1][a]
-            xPS_asz[a] = v_PS.copy()
-            E_g = iks.sw_ag[a]
-            x_AE_init = v_PS.copy()
-            mask = E_g > 1e-8
-            x_AE_init[..., mask] = v_PS[..., mask] + \
-                (v_AE[..., mask] - v_PS[..., mask]) / E_g[mask]
-            xAE_asz[a] = x_AE_init
-            c_a[a] = np.zeros(1)
-
-        x = PotState(iks.xc.vxc_sg, [xAE_asz, xPS_asz], c_a,
-                     *self.potstate_args).copy()
+        J_sg, J_xasz, Jc_a = self.get_gradients()
+        gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
+        x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, {a: np.zeros(
+            1) for a in iks.xc.vxc_xasz[0].keys()}, *self.potstate_args).copy()
         x_prev = None
         g_prev = None
 
@@ -819,10 +779,10 @@ class iKSLBFGS:
             val_core, reset_core = iks.coresched.step(t)
             val_reg, reset_reg = iks.regsched.step(t)
             if reset_core or reset_reg:
-                iks.lambdacore = val_core
-                iks.lambdareg = val_reg
+                iks.lambda_core = val_core
+                iks.lambda_reg = val_reg
                 iks.fmt.log(f'Regularization scheduler: '
-                            f'lambdareg={val_reg:.5e}, lambdacore={val_core:.5e}')
+                            f'lambda_reg={val_reg:.5e}, lambda_core={val_core:.5e}')
                 # reset the history right after the regularization has been turned off
                 self.s_hist.clear()
                 self.y_hist.clear()
@@ -833,18 +793,8 @@ class iKSLBFGS:
                 self.L1, L, self.LD1, LD = iks.lagrangian()
                 phi = L + LD
 
-                J_xasz = iks.atomic_jacobian()
-                JT_xasz = self.transform_gradients(J_xasz)
-                J_sg = iks.jacobian()
-                atomdist = iks.hamiltonian.atomdist
-                Jwork_xasz = [atomdist.to_work(J_asz) for J_asz in JT_xasz]
-                Jc_a = self.get_cvbar_grad(J_sg, atomdist.to_work(J_xasz[1]))
-
-                gk = PotState(
-                    J_sg,
-                    Jwork_xasz,
-                    Jc_a,
-                    *self.potstate_args).copy()
+                J_sg, J_xasz, Jc_a = self.get_gradients()
+                gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
 
             # convergence check with current (L, LD, gk) at x
             if iks.converged(L, LD, gk.data_sg, self.Ltol, self.LDtol, self.Jtol):
@@ -1086,14 +1036,16 @@ class StaircaseScheduler:
     def __init__(
         self,
         start_val: float,
-        decay_rate: float = 0.5,
-        min_val: float = 1e-8,
+        decay_rate: float = 0.85,
+        min_val: float = 1e-9,
         start_iter: int = 0,
-        step_size: int = 50,
-        n_regularization: int | None = None
+        step_size: int = 25,
+        n_regularization: int | None = None,
+        current_val: None = None,
     ):
         self.start_val = start_val
         self.decay_rate = decay_rate
+        assert 0.0 < decay_rate <= 1.0
         self.min_val = min(start_val, min_val)
         self.start_iter = start_iter
         self.step_size = step_size
@@ -1113,13 +1065,18 @@ class StaircaseScheduler:
 
     def step(self, current_iter: int) -> tuple[float, bool]:
         if self.n_regularization is not None and current_iter > self.n_regularization:
+            changed = self.current_val != 0.0
             self.current_val = 0.0
-            return 0.0, False
+            return 0.0, changed
         if self.current_val == 0.0:
             return 0.0, False
         if current_iter <= self.start_iter:
             return self.start_val, False
         is_drop_step = (current_iter - self.start_iter) % self.step_size == 0
+
+        if self.n_regularization is not None and current_iter == self.n_regularization:
+            is_drop_step = False  # right after n_regularization
+
         if is_drop_step:
             new_val = max(self.min_val, self.current_val * self.decay_rate)
             if new_val < self.current_val:

@@ -46,7 +46,7 @@ class iKSLinearSolver:
                 for n in bm:
                     coeff = self.dd.vdiff_nn[n, m]
                     if n == m:
-                        coeff += eta
+                        coeff -= eta
                     self.p_nG[self.dd.idx_map[m]] += 0.5 * coeff * \
                         dfde_n[n] * self.kpt.psit_nG[n]
         # recalculate the projections
@@ -127,7 +127,7 @@ class iKSLinearSolver:
         dp_ani = pt.dict((self.nocc,))
         for a, dp_ni in dp_ani.items():
             if iks.setups[a].xc_correction is None:
-                continue # ae
+                continue  # ae
             w_ng = iks.weights_asng[a][kpt.s]
             Phi_ii = calculate_diff_overlap_matrix(
                 iks.setups[a],

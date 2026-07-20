@@ -6,10 +6,10 @@ from ase.units import Ha
 
 from gpaw.calculator import GPAW
 from gpaw.old.density import Density
+from gpaw.lfc import LFC
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_hermitian
 from gpaw.new.backwards_compatibility import FakeDensity
-from gpaw.xc import XC
 
 from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode, lebedev2angular, angular2lebedev
 from gpaw.iks import tools as iks_tools
@@ -61,10 +61,11 @@ class DegeneracyDescriptor:
                         band_idx in enumerate(self.occ)}
 
 
-# throughout it's been assumed that finegd and gd (for the hamiltonian, wfs and density) all have the same distribution
+# assuming finegd and gd, for the hamiltonian, wfs and density, have the same distribution
 
 class iKS:
-    # TODO: add explaination on lambdareg, lambdacore and n_regularization, degeneracy_tol, occ_tol
+    # TODO: add explaination on lambda_reg, lambda_core, pseudo_core_scale, lambda_boundary, degeneracy_tol, occ_tol
+    # remove legacy flags
     """
     OECO-iKS: Orbital Expansion Constrained Optimization Inverse Kohn–Sham procedure.
     This class implements an inverse Kohn–Sham (iKS) approach using orbital expansion
@@ -117,10 +118,6 @@ class iKS:
     atoms : Atoms or None, optional
         An ASE ``Atoms`` object used to initialize the calculator.
         Defaults to ``calc.atoms or atoms or target.atoms``.
-
-    stencil : int, default=3
-        The stencil radius used for Jacobian interpolation to the fine grid and for evaluating
-        the xc energy via the virial theorem (when ``virial_xc_energy=True``).
 
     nfixed : int, default=1
         Minimum number of SCF steps performed with fixed potentials after each update.
@@ -199,13 +196,13 @@ class iKS:
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
-        lambdareg: float = 0.0,
-        lambdacore: float = 0.0,
-        lambda_vbar: float = 0.0,
+        lambda_reg: float = 1e-6,
+        lambda_boundary: float = 1e-4,
+        lambda_core: float = 1e-4,
+        pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,
-        corereg_xc: str = None,
-        stencil: int = 3,
+        corereg_xc: str | None = "LDA_X",
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
         use_coarse_grid: bool = False,
@@ -216,29 +213,35 @@ class iKS:
         degeneracy_tol: float = 1e-3,
         occ_tol: float = 1e-10,
         nxc_kwargs: dict[str, Any] | None = None,
-        sw_pow=1,
     ):
-        self.lambda_vbar = lambda_vbar
-        self.sw_pow = sw_pow
         self.target = target
         atoms = calc.atoms or atoms
         if atoms is None:
             assert isinstance(target, GPAW)
             atoms = target.atoms
         self.P_snn = P_snn
-        self.lambdareg = lambdareg
-        self.lambdacore = lambdacore
-        reg_scheduler_params = reg_scheduler_params or {}
-        corereg_scheduler_params = corereg_scheduler_params or {}
-        self.regsched = iks_optimize.StaircaseScheduler(
-            lambdareg, **reg_scheduler_params)
-        self.coresched = iks_optimize.StaircaseScheduler(
-            lambdacore, **corereg_scheduler_params)
-        self.corereg_xc = corereg_xc
-        self.niter: int = 0
 
+        # regularization
+        self.lambda_reg = lambda_reg
+        self.lambda_core = lambda_core
+        self.pseudo_core_scale = pseudo_core_scale
+        self.lambda_boundary = lambda_boundary
+        reg_scheduler_params = reg_scheduler_params or {}
+        reg_scheduler_params.setdefault("decay_rate", 1.0)
+        reg_scheduler_params.setdefault("min_val", lambda_reg)
+
+        corereg_scheduler_params = corereg_scheduler_params or {}
+        corereg_scheduler_params.setdefault("decay_rate", 1.0)
+        corereg_scheduler_params.setdefault("min_val", lambda_core)
+
+        self.regsched = iks_optimize.StaircaseScheduler(
+            lambda_reg, **reg_scheduler_params)
+        self.coresched = iks_optimize.StaircaseScheduler(
+            lambda_core, **corereg_scheduler_params)
+        self.corereg_xc = corereg_xc
+
+        self.niter: int = 0
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
-        self.stencil = stencil
         self.nfixed = nfixed
         self.apply_occupation_correction = apply_occupation_correction
         self.kin_en_using_band = kin_en_using_band
@@ -291,8 +294,10 @@ class iKS:
             wfs = target.wfs
         else:
             tdens = target  # FakeDensity
+
         if wfs is None:
             assert P_snn is None, "Provide the target calculator (for wfs) to use P_snn"
+
         if not isinstance(target, Density):
             if isinstance(tdens, FakeDensity):
                 from gpaw.iks.tools import fakdensity2old
@@ -300,7 +305,7 @@ class iKS:
                     tdens, self.calc.density, self.calc.hamiltonian)
 
             tdens.set_positions(self.hamiltonian.spos_ac,
-                                self.density.atom_partition)  # for nct_G
+                                self.density.atom_partition)
             iks_tools.update_density_from_density_matrix(tdens, wfs, P_snn)
 
         density = self.density
@@ -324,6 +329,7 @@ class iKS:
 
         self.fine2coarse = fine2coarse
         self.init_xc()
+        self.init_regularization()
         self.ls_u: list[iKSLinearSolver] = []
         self.dn_sG = self.gd.empty(self.density.nspins)
         self.dD_asp = self.atompart.arraydict(
@@ -336,7 +342,7 @@ class iKS:
         if not isinstance(xc, NumericalXC):
             self.nxc_kwargs.setdefault("paw_potmode", "lebedev")
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
-            self.nxc_kwargs.setdefault("stencil", self.stencil)
+            self.nxc_kwargs.setdefault("stencil", 3)
             xc = FermiAmaldi(self.tdens, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
@@ -349,63 +355,36 @@ class iKS:
         self.hamiltonian.xc = xc
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
-        # regularization stuff
-        self.sw_ag = iks_tools.calculate_smooth_weights(
-            self.setups, self.sw_pow)
-        self.vc_sg = None
-        self.wcore_g = None
-        self.wcore_ag = None
-        self.wcoret_ag = None
-        self.vc_axsg = None
-        if self.lambdacore != 0.0:
-            nspins = self.nspins
-            nct_g = self.finegd.zeros()
-            self.density.interpolate(self.density.nct_G, nct_g)
-            nct_max = nct_g.max()
-            nct_max = self.finegd.comm.max_scalar(nct_max)
-            if nct_max > 1e-8:
-                power = 1
-                self.wcore_g = (nct_g / nct_max)**power
-            else:
-                self.wcore_g = self.finegd.zeros()
-            # disbale ps core
-            self.wcore_g.fill(0.0)
-            nct_sg = self.finegd.zeros(nspins)
-            nct_sg[:] = nct_g / nspins
-            corereg_xc = XC(self.corereg_xc or self.xc.setup_name)
-            corereg_xc.set_grid_descriptor(self.finegd)
-            self.vc_sg = self.finegd.zeros(nspins)
-            corereg_xc.calculate(self.finegd, nct_sg, self.vc_sg)
-            # atomic
-            self.wcore_ag, self.wcoret_ag = iks_tools.calculate_corereg_weights(
-                self.setups, power=1)
-            # disable ps core
-            self.wcoret_ag = {a: np.zeros_like(w)
-                              for a, w in self.wcoret_ag.items()}
-            self.vc_axsg = iks_tools.calc_core_atomic_potentials(
-                self.setups, self.corereg_xc or self.xc.setup_name, nspins)
-        vbar_ag = {}
-        for a, setup in enumerate(self.setups):
-            xcc = setup.xc_correction
-            # vbar_ag[a] = setup.data.vbar_g[:xcc.rgd.N]
-            vbar_ag[a] = xcc.nct_g
-        self.vbar_ag = vbar_ag
 
-    def get_vbar(self, c_a):
-        vbar_g = self.finegd.zeros()
-        if self.wfs.mode == 'pw':
-            pd2 = self.hamiltonian.pd2
-            pd3 = self.hamiltonian.pd3
-            vbar_Q = pd2.zeros()
-            # self.hamiltonian.vbar.add(vbar_Q, c_a, q=-1)
-            self.density.nct.add(vbar_Q, c_a, q=-1)
-            vbar_q = pd3.zeros()
-            self.density.map23.add_to2(vbar_q, vbar_Q)
-            vbar_g[:] = pd3.ifft(vbar_q, q=-1)
-        else:
-            # self.hamiltonian.vbar.add(vbar_g, c_a, q=-1)
-            self.density.nct.add(vbar_g, c_a, q=-1)
-        return vbar_g
+    def init_regularization(self):
+        self.wboundary_ag = iks_tools.get_paw_boundary_weights(self.setups)
+        nspins = self.nspins
+        self.wcore_ag = iks_tools.get_core_regularization_weights(self.setups)
+        self.vc_asg, self.vct_asg = iks_tools.calculate_core_atomic_potentials(
+            self.setups, self.corereg_xc or self.xc.setup_name, nspins)
+
+        splines = {}
+        vct_a = []
+        for a, id_ in enumerate(self.setups.id_a):
+            if id_ in splines:
+                vct_a.append(splines[id_])
+            else:
+                setup = self.setups[a]
+                xcc = setup.xc_correction
+                if xcc is None:
+                    raise NotImplementedError
+                rcut2 = 2 * max(setup.rcut_j)
+                gcut2 = xcc.rgd.ceil(rcut2)
+                # both spin-channels are the same
+                vct_g = self.vct_asg[a][0].copy()
+                vct_g[gcut2:] = 0.0
+                vct_spl = xcc.rgd.spline(vct_g, rcut2, points=2000)
+                vct_a.append([vct_spl])
+                splines[id_] = [vct_spl]
+        vct = LFC(self.finegd, vct_a)
+        vct.set_positions(self.hamiltonian.spos_ac,
+                          self.hamiltonian.atom_partition)
+        self.vct = vct
 
     def irun_scf(self) -> None:
         """perform scf with the target density and update the inverted density from wfs"""
@@ -528,7 +507,7 @@ class iKS:
                     for m in bm:
                         coeff = vdiff_nn[n, m]
                         if m == n:
-                            coeff += eta
+                            coeff -= eta
                         p_mG[dd.idx_map[m]] += 0.5 * \
                             coeff * dfde_n[m] * kpt.psit_nG[n]
                 else:
@@ -536,8 +515,8 @@ class iKS:
                         f_m = kpt.f_n[m]
                         eps_m = kpt.eps_n[m]
                         eps_n = kpt.eps_n[n]
-                        p_mG[dd.idx_map[m]] += f_m / (eps_m - eps_n) * \
-                            vdiff_nn[n, m] * kpt.psit_nG[n]
+                        p_mG[dd.idx_map[m]] += f_m / \
+                            (eps_n - eps_m) * vdiff_nn[n, m] * kpt.psit_nG[n]
         return p_mG
 
     def calculate_vdiff_matrix_elements(self, kpt):
@@ -593,7 +572,7 @@ class iKS:
         if abs(denom) < 1e-20:
             denom = np.inf
         eta = enum / denom
-        self.fmt.log(f'occuupation correction eta: {eta:.4e}')
+        self.fmt.log(f'occupation correction eta: {eta:.4e}')
         return eta
 
     def get_realspace_psit(self, kpt):
@@ -614,23 +593,15 @@ class iKS:
         L2 = self.gd.integrate(
             self.weights_sG * (self.dn_sG**2), global_integral=True
         ).sum()
-        lambdareg = self.lambdareg
-        lambdacore = self.lambdacore
-        if lambdareg != 0.0:
+        lambda_reg = self.lambda_reg
+        if lambda_reg != 0.0:
             grad_svg = self.xc.kernel.calculate_gradient(self.xc.vxc_sg)
             sigma_sg = np.einsum('sv...,sv...->s...', grad_svg, grad_svg)
-            II = lambdareg * \
+            II = lambda_reg * \
                 self.finegd.integrate(sigma_sg, global_integral=True).sum()
             self.fmt.log(f'regularization correction: {II:.4e}')
             L1 += II
             L2 += II
-        if lambdacore != 0.0:
-            Ic = self.lambdacore * \
-                self.finegd.integrate(
-                    self.wcore_g[np.newaxis] * (self.xc.vxc_sg - self.vc_sg)**2).sum()
-            self.fmt.log(f'pseudized core regularization: {Ic:.4e}')
-            L1 += Ic
-            L2 += Ic
 
         LD1, LD2 = self.atomic_lagrangian()
         L1_val, L2_val = L1, L2
@@ -667,8 +638,7 @@ class iKS:
                     dn_g = np.dot(Y_L, dn_sLg[s])
                     LD1 += weight_n[n] * \
                         xcc.rgd.integrate(w_ng[n] * np.abs(dn_g))
-                    LD2 += weight_n[n] * \
-                        xcc.rgd.integrate(w_ng[n] * (dn_g**2))
+                    LD2 += weight_n[n] * xcc.rgd.integrate(w_ng[n] * (dn_g**2))
                     if not self.mix_paw_error:
                         dnt_g = np.dot(Y_L, dnt_sLg[s])
                         LD1 += weight_n[n] * \
@@ -682,14 +652,18 @@ class iKS:
         Lreg = self.calculate_atomic_regularization()
         LD1 += Lreg
         LD2 += Lreg
-        self.fmt.log(f'Atomic regularization: {Lreg:.4e}')
+        self.fmt.log(f'Atomic regularization (total): {Lreg:.4e}')
         return LD1, LD2
 
     def calculate_atomic_regularization(self) -> float:
         Lreg = 0.0
-        lambdareg, lambdacore = self.lambdareg, self.lambdacore
-        if lambdareg == 0.0 and lambdacore == 0.0:
+        lambda_core = self.lambda_core
+        lambda_boundary = self.lambda_boundary
+        if lambda_core == 0.0 and lambda_boundary == 0.0:
             return Lreg
+
+        L_core = 0.0
+        L_boundary = 0.0
 
         def integrate(rgd, a_sz):
             II = 0.0
@@ -710,29 +684,31 @@ class iKS:
             if xcc is None:
                 continue
             rgd = xcc.rgd
-            if lambdacore != 0.0:
-                vxc_sz = vxc_asz[a]
-                vxct_sz = vxct_asz[a]
-                if self.xc.paw_potmode is PAWPotMode.angular:
-                    vxc_sng = angular2lebedev(vxc_sz)
-                    vxct_sng = angular2lebedev(vxct_sz)
-                else:
-                    vxc_sng = vxc_sz
-                    vxct_sng = vxct_sz
+            vxc_sz = vxc_asz[a]
+            vxct_sz = vxct_asz[a]
+            if self.xc.paw_potmode is PAWPotMode.angular:
+                assert False, "TODO"
+                vxc_sng = angular2lebedev(vxc_sz)
+            else:
+                vxc_sng = vxc_sz
+                vxct_sng = vxct_sz
 
-                for s in range(self.nspins):
-                    for n in range(vxc_sng.shape[1]):
-                        dv2_g = self.wcore_ag[a] * \
-                            (vxc_sng[s, n] - self.vc_axsg[a][0][s])**2
-                        Lreg += lambdacore * weight_n[n] * rgd.integrate(dv2_g)
-
-                        dvt2_g = self.wcoret_ag[a] * \
-                            (vxct_sng[s, n] - self.vc_axsg[a][1][s])**2
-                        Lreg += lambdacore * \
-                            weight_n[n] * rgd.integrate(dvt2_g)
+            for s in range(self.nspins):
+                for n in range(vxc_sng.shape[1]):
+                    dv2_g = self.wcore_ag[a] * \
+                        (vxc_sng[s, n] - self.vc_asg[a][s])**2
+                    L_core += lambda_core * weight_n[n] * rgd.integrate(dv2_g)
+                    dv2_g = self.wboundary_ag[a] * \
+                        (vxc_sng[s, n] - vxct_sng[s, n])**2
+                    L_boundary += lambda_boundary * \
+                        weight_n[n] * rgd.integrate(dv2_g)
 
         comm = self.dD_asp.partition.comm
-        return comm.sum_scalar(Lreg)
+        L_core = comm.sum_scalar(L_core)
+        L_boundary = comm.sum_scalar(L_boundary)
+        self.fmt.log(f"L_core={L_core:.4e}, L_boundary={L_boundary:.4e}")
+        Lreg = L_core + L_boundary
+        return Lreg
 
     def jacobian(self) -> ArrayND:
         J_sG = self.gd.zeros(self.density.nspins)
@@ -747,20 +723,13 @@ class iKS:
             J_sg = self.finegd.zeros(self.density.nspins)
             self.coarse2fine(J_sG, J_sg)
 
-        lambdareg = self.lambdareg
-        lambdacore = self.lambdacore
-        if lambdareg != 0.0:
+        lambda_reg = self.lambda_reg
+        if lambda_reg != 0.0:
             lapl_sg = self.xc.kernel.calculate_lapl(self.xc.vxc_sg)
             if self.use_coarse_grid:
-                J_sg -= 2 * lambdareg * self.fine2coarse(lapl_sg)
-                assert lambdacore == 0.0
+                J_sg -= 2 * lambda_reg * self.fine2coarse(lapl_sg)
             else:
-                J_sg -= 2 * lambdareg * lapl_sg
-        if lambdacore != 0.0:
-            assert not self.use_coarse_grid
-            J_sg += 2 * lambdacore * \
-                self.wcore_g[np.newaxis] * \
-                (self.xc.vxc_sg - self.vc_sg)
+                J_sg -= 2 * lambda_reg * lapl_sg
 
         self.J_sg = J_sg
         return J_sg
@@ -827,9 +796,9 @@ class iKS:
                     atomrot.get_by_a(a), a, dp_aii, a_sa)
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
-        lambdacore = self.lambdacore
-
-        if lambdacore != 0.0:
+        lambda_core = self.lambda_core
+        lambda_boundary = self.lambda_boundary
+        if lambda_core != 0.0 or lambda_boundary != 0.0:
             vxc_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[0])
             vxct_asz = self.hamiltonian.atomdist.from_work(self.xc.vxc_xasz[1])
 
@@ -850,33 +819,24 @@ class iKS:
             if self.xc.paw_potmode is PAWPotMode.lebedev:
                 J_sz = angular2lebedev(dv_sLg)
                 Jt_sz = angular2lebedev(dvt_sLg)
-                # self.vbar_coeff * self.vbar_ag[a]
             else:
                 J_sz = dv_sLg
                 Jt_sz = dvt_sLg
 
-            # if lambdareg != 0.0:
-            #     lapl_sz = self.xc.calculate_atomic_potential_lapl(
-            #         a, vxct_asz[a])
-            #     Jt_sz -= 2.0 * lambdareg * lapl_sz
-
-            if lambdacore != 0.0:
+            if lambda_core != 0.0:
                 if self.xc.paw_potmode is PAWPotMode.angular:
                     Lmax = vxc_asz[a].shape[1]
                     dv_sng = angular2lebedev(
-                        vxc_asz[a]) - self.vc_axsg[a][0][np.newaxis, :]
-                    dvt_sng = angular2lebedev(
-                        vxct_asz[a]) - self.vc_axsg[a][1][np.newaxis, :]
+                        vxc_asz[a]) - self.vc_asg[a][:, np.newaxis]
                     dv_sz = lebedev2angular(dv_sng, Lmax)
-                    dvt_sz = lebedev2angular(dvt_sng, Lmax)
                 else:
-                    dv_sz = vxc_asz[a] - \
-                        self.vc_axsg[a][0][np.newaxis, :]
-                    dvt_sz = vxct_asz[a] - \
-                        self.vc_axsg[a][1][np.newaxis, :]
-
-                J_sz += 2.0 * lambdacore * self.wcore_ag[a] * dv_sz
-                Jt_sz += 2.0 * lambdacore * self.wcoret_ag[a] * dvt_sz
+                    dv_sz = vxc_asz[a] - self.vc_asg[a][:, np.newaxis]
+                J_sz += 2.0 * lambda_core * self.wcore_ag[a] * dv_sz
+            if lambda_boundary != 0.0:
+                assert self.xc.paw_potmode is PAWPotMode.lebedev
+                dv_sz = vxc_asz[a] - vxct_asz[a]
+                J_sz += 2.0 * lambda_boundary * self.wboundary_ag[a] * dv_sz
+                Jt_sz -= 2.0 * lambda_boundary * self.wboundary_ag[a] * dv_sz
 
             self.J_xasz[0][a][:] = J_sz
             self.J_xasz[1][a][:] = Jt_sz
@@ -1019,9 +979,10 @@ class iKS:
             atomic_weights=self.atomic_weights,
             apply_occupation_correction=self.apply_occupation_correction,
             reg_params=self.regsched.todict(),
+            lambda_boundary=self.lambda_boundary,
             core_reg_params=self.coresched.todict(),
+            pseudo_core_scale=self.pseudo_core_scale,
             corereg_xc=self.corereg_xc or self.xc.setup_name,
-            stencil=self.stencil,
             nfixed=self.nfixed,
             linear_solver=linear_solver,
             use_coarse_grid=self.use_coarse_grid,
@@ -1265,7 +1226,7 @@ class iKS:
         return self.L_iter
 
     def run(self, method: str = "LBFGS", maxiter: int = 1000,
-            Ltol: float = 1e-6, Jtol: float = 1e-9, **kwargs) -> list[float]:
+            Ltol: float = 1e-6, Jtol: float = 1e-7, **kwargs) -> list[float]:
         """
         Run the iKS optimization using the specified algorithm.
 

@@ -481,105 +481,107 @@ def get_weights(
     return weights_sG, weights_name
 
 
-def calculate_corereg_weights(setups, power=1):
+# def calculate_corereg_weights(setups, power=1):
+#     """
+#         w = n_c / max(n_c)
+#     """
+#     w_ag = {}
+#     for a, setup in enumerate(setups):
+#         xcc = setup.xc_correction
+#         if xcc is None:
+#             w_ag[a] = np.zeros((1,), dtype=float)  # AE
+#             continue
+#         nc_g = xcc.nc_g
+#         max_nc = nc_g.max()
+#         if max_nc > 0:
+#             w_ag[a] = (nc_g / max_nc)**power
+#         else:
+#             w_ag[a] = np.zeros_like(nc_g)
+#     return w_ag
+
+def get_core_regularization_weights(setups: Setups, p: float = 1.0, t: float = 1.0, c: float = 1.0) -> dict[int, Array1D]:
+    """
+        E(r) = [0.5 * (1 + cos(pi * (r / (c * rc))**t))]**p
+        The weights are zeroed for setup.xc_correction.nc_g == 0.0
+    """
     w_ag = {}
-    wt_ag = {}
+
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
         if xcc is None:
-            w_ag[a] = np.zeros((1,), dtype=float)  # AE
+            w_ag[a] = np.zeros(1)
+
+        elif np.all(xcc.nc_g == 0.0):  # No core
+            w_ag[a] = np.zeros_like(xcc.nc_g)
+
+        elif p == 0.0:
+            w_ag[a] = np.ones(xcc.rgd.N)
+
+        else:
+            r_g = xcc.rgd.r_g
+            rc = c * max(setup.rcut_j)
+
+            x_g = np.clip(r_g / rc, 0.0, 1.0)
+
+            E_g = (0.5 * (1.0 + np.cos(np.pi * x_g**t)))**p
+            w_ag[a] = E_g
+
+    return w_ag
+
+
+def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 1.0, c: float = 2.0) -> dict[int, Array1D]:
+    """
+        E(r) = 1.0 - [0.5 * (1 + cos(pi * (r / (c * rc))**t))]**p
+    """
+    w_ag = {}
+
+    for a, setup in enumerate(setups):
+        xcc = setup.xc_correction
+
+        if xcc is None:
+            w_ag[a] = np.zeros(1)
             continue
-        nc_g = xcc.nc_g
-        max_nc = nc_g.max()
-        if max_nc > 0:
-            w_ag[a] = (nc_g / max_nc)**power
-        else:
-            w_ag[a] = np.zeros_like(nc_g)
-        # PS
-        nc_g = xcc.nct_g
-        max_nc = nc_g.max()
-        if max_nc > 0:
-            wt_ag[a] = (nc_g / max_nc)**power
-        else:
-            wt_ag[a] = np.zeros_like(nc_g)
-    return w_ag, wt_ag
 
-
-def calculate_smooth_weights(setups, power=1.0, shape=2.0):
-    """
-    Less aggressive cosine switching weight:
-
-        E(r) = [0.5 * (1 + cos(pi * (r / rc)**shape))]**pow
-
-    shape > 1 delays the decay toward the augmentation boundary.
-    A good starting value is shape=2.0, pow=1.0.
-    """
-    w_ag = {}
-
-    for a, setup in enumerate(setups):
-        xcc = setup.xc_correction
-
-        if xcc is None:
-            w_ag[a] = 0.0
+        if p == 0.0:
+            w_ag[a] = xcc.rgd.zeros()
             continue
 
         r_g = xcc.rgd.r_g
-        rc = max(setup.rcut_j)
+        rc = c * max(setup.rcut_j)
 
         x_g = np.clip(r_g / rc, 0.0, 1.0)
 
-        E_g = (
-            0.5
-            * (
-                1.0
-                + np.cos(np.pi * x_g**shape)
-            )
-        )**power
-
-        E_g[r_g >= rc] = 0.0
+        E_g = 1.0 - (0.5 * (1.0 + np.cos(np.pi * x_g**t)))**p
         w_ag[a] = E_g
 
     return w_ag
 
 
-def bound_weights(D_asp, setups):
-    from gpaw.xc.numericalxc import angular2lebedev
-    w_asng = {}
-    for a, D_sp in D_asp.items():
-        xcc = setups[a].xc_correction
-        if xcc is None:
-            w_asng[a] = 0.0
-            continue
-        n_sng = angular2lebedev(calculate_angular_density(
-            xcc, D_sp, xcc.n_qg, xcc.nc_g))
-        nt_sng = angular2lebedev(calculate_angular_density(
-            xcc, D_sp, xcc.nt_qg, xcc.nct_g))
-        dn_sng = abs(n_sng - nt_sng)
-        w_asng[a] = 1.0 / (dn_sng + 1e-2)
-    return w_asng
-
-
-def calc_core_atomic_potentials(setups, setup_name, nspins):
+def calculate_core_atomic_potentials(setups, xc, nspins):
     v_a = {}
-    xc = XC(setup_name)
+    vt_a = {}
+    xc = XC(xc)
     # assert xc.type in {'LDA', 'GGA'}
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
         if xcc is None:
-            # AE
-            v_a[a] = (np.zeros(1, float), np.zeros(1, float))
+            # AE setup
+            v_a[a] = np.zeros(1, float)
             continue
         rgd = xcc.rgd
+        # v_a
         nc_sg = rgd.zeros(nspins)
         nc_sg[:] = xcc.nc_g / nspins
+        v = np.zeros_like(nc_sg)
+        xc.calculate_spherical(rgd, nc_sg, v)
+        v_a[a] = v
+        # vt_a
         nct_sg = rgd.zeros(nspins)
         nct_sg[:] = xcc.nct_g / nspins
-        v = np.zeros_like(nc_sg)
         vt = np.zeros_like(nc_sg)
-        xc.calculate_spherical(rgd, nc_sg, v)
         xc.calculate_spherical(rgd, nct_sg, vt)
-        v_a[a] = (v, vt)
-    return v_a
+        vt_a[a] = vt
+    return v_a, vt_a
 
 
 def fakdensity2old(fake_density, old_density, old_hamiltonian):
