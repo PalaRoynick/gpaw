@@ -387,7 +387,7 @@ class PotState:
 class iKSLBFGS:
     def __init__(self, iks: iKS, m: int = 10, max_ls=15,
                  maxiter: int = 300, Ltol: float = 1e-6, LDtol: float = 1e-4,
-                 Jtol: float = 1e-7, step_scale: float = 1.0, gauge: bool = False, wolfe: bool = True):
+                 Jtol: float = 1e-7, step_scale: float = 1.0, gauge: bool = False, wolfe: bool = False):
         self.iks = iks
         if iks.use_coarse_grid:
             raise NotImplementedError(
@@ -479,6 +479,13 @@ class iKSLBFGS:
             for data_asz in x.data_xasz:
                 for a in data_asz:
                     data_asz[a][s] -= c
+        return x
+
+    def fix_origin(self, x: PotState) -> PotState:
+        for data_asz in x.data_xasz:
+            for v_sz in data_asz.values():
+                if v_sz.shape[-1] > 1:
+                    v_sz[..., 0] = v_sz[..., 1]
         return x
 
     def set_potentials_and_iterate(self, x: PotState):
@@ -601,6 +608,7 @@ class iKSLBFGS:
 
         for il in range(max_ls):
             x_new = x + alpha * pk
+            self.fix_origin(x_new)
             self.set_potentials_and_iterate(x_new)
 
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
@@ -771,6 +779,7 @@ class iKSLBFGS:
         gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
         x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, {a: np.zeros(
             1) for a in iks.xc.vxc_xasz[0].keys()}, *self.potstate_args).copy()
+        self.fix_origin(x)
         x_prev = None
         g_prev = None
 
@@ -824,6 +833,7 @@ class iKSLBFGS:
                     )
             # search direction
             pk = self.apply_lbfgs(gk)
+            self.fix_origin(pk)
             dphi0 = pk.inner(gk)
             norm_p = pk.norm()
             norm_g = gk.norm()

@@ -789,11 +789,28 @@ class iKS:
 
         atomrot = self.setups.atomrotations
         nspins = next(iter(dp_asii.values())).shape[0]
+        # for s in range(nspins):
+        #     dp_aii = [dp_asii[a][s] for a in range(len(dp_asii))]
+        #     for a, dp_ii in enumerate(dp_aii):
+        #         dp_asii[a][s] = symmetrize(atomrot.get_by_a(a), a, dp_aii, a_sa)
         for s in range(nspins):
-            dp_aii = [dp_asii[a][s] for a in range(len(dp_asii))]
-            for a, dp_ii in enumerate(dp_aii):
-                dp_asii[a][s] = symmetrize(
-                    atomrot.get_by_a(a), a, dp_aii, a_sa)
+            source_aii = [
+                dp_asii[a][s].copy()
+                for a in range(len(dp_asii))
+            ]
+
+            symmetrized_aii = [
+                symmetrize(
+                    atomrot.get_by_a(a),
+                    a,
+                    source_aii,
+                    a_sa,
+                )
+                for a in range(len(source_aii))
+            ]
+
+            for a, dp_ii in enumerate(symmetrized_aii):
+                dp_asii[a][s] = dp_ii
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
         lambda_core = self.lambda_core
