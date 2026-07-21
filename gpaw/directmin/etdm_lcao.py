@@ -77,6 +77,8 @@ class LCAOETDM:
                  subspace_convergence=5e-4,
                  localize_every=None,
                  printinnerloop=False,
+                 maxiter_initloc_pz=200,
+                 maxiter_innerloop=200,
                  ):
         """Class for direct orbital optimization in LCAO mode.
 
@@ -217,6 +219,12 @@ class LCAOETDM:
         printinnerloop: bool
             If True, print the iterations of the inner loop optimization
             for PZ-SIC localization to standard output. Default is False.
+        maxiter_initloc_pz: int
+            Maximum number of iterations for the initial PZ localization.
+            Default : 200
+        maxiter_innerloop: int
+            Maximum number of iterations for the PZ-SIC inner loop
+            Default : 200
         """
 
         assert representation in ['sparse', 'u-invar', 'full'], 'Value Error'
@@ -319,6 +327,11 @@ class LCAOETDM:
                 'Do not use representation u-invar with SIC functional')
 
         self.initialized = False
+        self.occupied_only = False
+        self.inner_loop = False
+
+        self.maxiter_innerloop = maxiter_innerloop
+        self.maxiter_initloc_pz = maxiter_initloc_pz
 
     def check_inputs_and_init_search_algo(self):
         defaults = self.set_defaults()
@@ -635,7 +648,8 @@ class LCAOETDM:
         if self.need_localization:
             localize_orbitals(
                 wfs, dens, ham, log, self.localizationtype,
-                seed=self.localizationseed)
+                seed=self.localizationseed,
+                maxiter_pz=self.maxiter_initloc_pz)
             self.need_localization = False
 
     def lock_subspace(self, subspace='oo'):
@@ -682,7 +696,8 @@ class LCAOETDM:
                            and self.iters % self.localize_every == 0)
         if should_localize and not self.in_subspace_loop:
             with wfs.timer('Periodic PZ-SIC Localization'):
-                self._run_periodic_localization(wfs, ham, dens)
+                self._run_periodic_localization(wfs, ham, dens,
+                                                self.maxiter_innerloop)
 
         with wfs.timer('Direct Minimisation step'):
             self.update_ref_orbitals(wfs, ham, dens)
@@ -870,12 +885,14 @@ class LCAOETDM:
         """
         if phi is None or g_vec_u is None:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
-            if self.need_localization:
-                occupied_only = True
-            else:
-                occupied_only = False
+            if not self.inner_loop:
+                if self.need_localization:
+                    self.occupied_only = True
+                else:
+                    self.occupied_only = False
             phi, g_vec_u = self.get_energy_and_gradients(
-                x_mat_u, ham, wfs, dens, c_ref, occupied_only=occupied_only)
+                x_mat_u, ham, wfs, dens, c_ref, 
+                occupied_only=self.occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
@@ -1165,25 +1182,30 @@ class LCAOETDM:
     def error(self, e):
         self._error = e
 
-    def _run_periodic_localization(self, wfs, ham, dens):
+    def _run_periodic_localization(self, wfs, ham, dens, maxiter):
         """Run PZ-SIC localization using LCAOETDMLocalize.
 
         Delegates to the same class used for initial localization,
         with preconditioning disabled during the inner loop.
         """
+        self.occupied_only = True
         original_use_prec = self.use_prec
         self.use_prec = False
         self.in_subspace_loop = True
         log = self.log if self.printinnerloop else None
         original_eg = self.eg_count
         try:
+            self.inner_loop = True
             dm = LCAOETDMLocalize(
                 self, wfs, log,
-                tol=self.subspace_convergence)
+                tol=self.subspace_convergence,
+                maxiter=maxiter)
             dm.run(ham, dens)
             self.eg_count_iloop = self.eg_count - original_eg
             self.total_eg_count_iloop += self.eg_count_iloop
+            self.occupied_only = False
         finally:
+            self.inner_loop = False
             self.use_prec = original_use_prec
             self.in_subspace_loop = False
 
