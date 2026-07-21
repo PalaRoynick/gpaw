@@ -325,6 +325,11 @@ class LCAOETDM:
         if self.func_settings == 'PZ-SIC' and self.representation == 'u-invar':
             raise ValueError(
                 'Do not use representation u-invar with SIC functional')
+        if self.localizationtype is None and self.func_settings == 'PZ-SIC':
+            print(
+                'WARNING: Please choose a localization type with PZ-SIC ' +
+                'functional')
+                
 
         self.initialized = False
         self.inner_loop = False

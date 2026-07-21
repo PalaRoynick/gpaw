@@ -14,7 +14,7 @@ from gpaw.test.sic._utils import (MockWorld, extract_lagrange_section,
 @pytest.mark.sic
 @pytest.mark.parametrize("representation", ['full', 'sparse'])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp', 'pade-approx'])
-@pytest.mark.parametrize("loc_type", [None])
+@pytest.mark.parametrize("loc_type", ['pm', 'pz'])
 def test_lcaosic_innerloop(in_tmp_dir, gpw_files, representation,
                            matrix_exp, loc_type):
     """Compare energies with and without periodic PZ inner loop.
@@ -30,7 +30,7 @@ def test_lcaosic_innerloop(in_tmp_dir, gpw_files, representation,
                      'matrix_exp': matrix_exp,
                      'searchdir_algo': 'l-bfgs-p',
                      'linesearch_algo': {'name': 'max-step',
-                                         'max_step': 0.2},
+                                         'max_step': 0.05},
                      'functional': 'PZ-SIC',
                      'localizationtype': loc_type,
                      },
@@ -46,10 +46,10 @@ def test_lcaosic_innerloop(in_tmp_dir, gpw_files, representation,
                      'matrix_exp': matrix_exp,
                      'searchdir_algo': 'l-bfgs-p',
                      'linesearch_algo': {'name': 'max-step',
-                                         'max_step': 0.2},
+                                         'max_step': 0.05},
                      'functional': 'PZ-SIC',
                      'localizationtype': loc_type,
-                     'localize_every': 2
+                     'localize_every': 4
                      },
         txt='-'
     )
