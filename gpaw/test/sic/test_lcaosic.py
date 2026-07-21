@@ -3,7 +3,6 @@ import io
 import numpy as np
 import numpy.testing as npt
 import pytest
-
 from gpaw import GPAW
 from gpaw.mpi import world
 from gpaw.old.logger import GPAWLogger
@@ -12,69 +11,53 @@ from gpaw.test.sic._utils import (MockWorld, extract_lagrange_section,
                                   mk_arr_from_str)
 
 
-from gpaw.directmin.etdm_lcao import LCAOETDM
-
 @pytest.mark.sic
-@pytest.mark.parametrize("representation", ['full'])
-@pytest.mark.parametrize("spinpol", [True])
-@pytest.mark.parametrize("matrix_exp", ['egdecomp'])
-@pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
-@pytest.mark.parametrize("loc_type", ['pz', 'pm', None])
-def test_lcaosic_innerloop(in_tmp_dir, gpw_files, representation, spinpol,
-                           matrix_exp, searchdir_algo, loc_type):
+@pytest.mark.parametrize("representation", ['full', 'sparse'])
+@pytest.mark.parametrize("matrix_exp", ['egdecomp', 'pade-approx'])
+@pytest.mark.parametrize("loc_type", [None])
+def test_lcaosic_innerloop(in_tmp_dir, gpw_files, representation,
+                           matrix_exp, loc_type):
     """Compare energies with and without periodic PZ inner loop.
 
     The inner loop runs during fixture generation (h2o_lcaosic_innerloop
     in gpwfile.py). This test loads the pre-converged .gpw files and
     checks that both paths converge to the same energy.
     """
-    #calc_no_inner = GPAW(gpw_files['h2o_lcaosic'])
-    # testign various parameters
-    #calc_no_inner.set(
-    #    eigensolver={'name': 'etdm',
-    #                    'representation': representation,
-    #                    'matrix_exp': matrix_exp,
-    #                    'searchdir_algo': searchdir_algo,
-    #                    # 'linesearch_algo': {'name': 'max-step',
-    #                    #                     'max_step': 0.1},
-    #                    'linesearch_algo': {'name': 'swc-awc'},
-    #                    'functional': 'PZ-SIC',
-    #                    'localizationtype': loc_type,
-    #                    #'localize_every': 1
-    #                    },
-    #                    txt='-'
-    #)    
-    #atoms_no_inner = calc_no_inner.atoms
-    #atoms_no_inner.calc = calc_no_inner
-    #e_no_inner = atoms_no_inner.get_potential_energy()
-    #print(representation, spinpol, matrix_exp, searchdir_algo, loc_type,
-    #      e_no_inner)
-
+    calc_no_inner = GPAW(gpw_files['h2o_lcaosic'])
+    calc_no_inner.set(
+        eigensolver={'name': 'etdm',
+                     'representation': representation,
+                     'matrix_exp': matrix_exp,
+                     'searchdir_algo': 'l-bfgs-p',
+                     'linesearch_algo': {'name': 'max-step',
+                                         'max_step': 0.2},
+                     'functional': 'PZ-SIC',
+                     'localizationtype': loc_type,
+                     },
+        txt='-'
+    )    
+    atoms_no_inner = calc_no_inner.atoms
+    atoms_no_inner.calc = calc_no_inner
+    e_no_inner = atoms_no_inner.get_potential_energy()
     calc_inner = GPAW(gpw_files['h2o_lcaosic_innerloop'])
     calc_inner.set(
         eigensolver={'name': 'etdm',
-                        'representation': representation,
-                        'matrix_exp': matrix_exp,
-                        'searchdir_algo': searchdir_algo,
-                        # 'linesearch_algo': {'name': 'max-step',
-                        #                     'max_step': 0.1},
-                         'linesearch_algo': {'name': 'swc-awc'},
-                        'functional': 'PZ-SIC',
-                        'localizationtype':loc_type,
-                        'maxiter_initloc_pz' : 10,
-                        'maxiter_innerloop' : 100,
-                        'printinnerloop' : False,
-                        'localize_every':1
-                        },
+                     'representation': representation,
+                     'matrix_exp': matrix_exp,
+                     'searchdir_algo': 'l-bfgs-p',
+                     'linesearch_algo': {'name': 'max-step',
+                                         'max_step': 0.2},
+                     'functional': 'PZ-SIC',
+                     'localizationtype': loc_type,
+                     'localize_every': 2
+                     },
         txt='-'
     )
     atoms_inner = calc_inner.atoms
     atoms_inner.calc = calc_inner
     e_inner = atoms_inner.get_potential_energy()
-    print(representation, spinpol, matrix_exp, searchdir_algo, loc_type,
-          e_inner)
 
-    #assert e_no_inner == pytest.approx(e_inner, abs=1e-3)
+    assert e_no_inner == pytest.approx(e_inner, abs=1e-3)
 
 
 #@pytest.mark.sic

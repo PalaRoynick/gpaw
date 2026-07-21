@@ -327,7 +327,6 @@ class LCAOETDM:
                 'Do not use representation u-invar with SIC functional')
 
         self.initialized = False
-        self.occupied_only = False
         self.inner_loop = False
 
         self.maxiter_innerloop = maxiter_innerloop
@@ -690,6 +689,9 @@ class LCAOETDM:
         :param dens:
         :return:
         """
+
+        self.inner_loop = inner_loop
+
         # Periodic PZ-SIC localization (controlled by localize_every)
         should_localize = (self.localize_every is not None
                            and self.iters > 1
@@ -722,7 +724,7 @@ class LCAOETDM:
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):
-                    if inner_loop:
+                    if self.inner_loop:
                         self.searchdir_algo_pz.update_eigenpairs(
                             g_vec_u, wfs, ham, dens) 
                     else:
@@ -738,7 +740,7 @@ class LCAOETDM:
             with wfs.timer('Get Search Direction'):
                 # calculate search direction according to chosen
                 # optimization algorithm (e.g. L-BFGS)
-                if inner_loop:
+                if self.inner_loop:
                     p_vec_u = self.searchdir_algo_pz.update_data(
                         wfs, a_vec_u, g_vec_u, precond=precond,
                         subspace=self.subspace_optimization)
@@ -754,7 +756,7 @@ class LCAOETDM:
             der_phi_2i[0] = der_phi_2i[0].real
             der_phi_2i[0] = wfs.kd.comm.sum_scalar(der_phi_2i[0])
 
-            if inner_loop:
+            if self.inner_loop:
                 alpha, phi_alpha, der_phi_alpha, g_vec_u = \
                     self.line_search_pz.step_length_update(
                         a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
@@ -887,12 +889,14 @@ class LCAOETDM:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
             if not self.inner_loop:
                 if self.need_localization:
-                    self.occupied_only = True
+                    occupied_only = True
                 else:
-                    self.occupied_only = False
+                    occupied_only = False
+            else:
+                occupied_only = True
             phi, g_vec_u = self.get_energy_and_gradients(
                 x_mat_u, ham, wfs, dens, c_ref, 
-                occupied_only=self.occupied_only)
+                occupied_only=occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
@@ -1188,22 +1192,20 @@ class LCAOETDM:
         Delegates to the same class used for initial localization,
         with preconditioning disabled during the inner loop.
         """
-        self.occupied_only = True
         original_use_prec = self.use_prec
         self.use_prec = False
         self.in_subspace_loop = True
         log = self.log if self.printinnerloop else None
         original_eg = self.eg_count
         try:
-            self.inner_loop = True
             dm = LCAOETDMLocalize(
                 self, wfs, log,
                 tol=self.subspace_convergence,
-                maxiter=maxiter)
+                maxiter=maxiter,
+                inner_loop=True)
             dm.run(ham, dens)
             self.eg_count_iloop = self.eg_count - original_eg
             self.total_eg_count_iloop += self.eg_count_iloop
-            self.occupied_only = False
         finally:
             self.inner_loop = False
             self.use_prec = original_use_prec
