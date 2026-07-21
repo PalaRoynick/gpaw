@@ -57,14 +57,11 @@ class DataCollector:
         e = self.atoms.get_potential_energy() + self.atoms.get_kinetic_energy()
         T = self.atoms.get_temperature()
         self.energies.append(e)
-        self.temperatures.append(T)
-
-elements_dict = {e:e for e in atoms.get_chemical_symbols()}
-print('Elements dictionary:', elements_dict)
+        self.temperatures.append(T))
 
 atoms.calc = NequIPCalculator.from_compiled_model(
              compile_path=mlip,
-             chemical_species_to_atom_type_map = elements_dict,
+             chemical_species_to_atom_type_map = True,
              device='cpu')
 
 # snippet-mdsetup-start

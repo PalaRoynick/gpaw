@@ -63,6 +63,8 @@ You can plot the resulting simulation with ``ase gui md_impact.traj``
 
 Now you can experiment with various projectiles and collision energies.  Also, it will matter which atom in the 2D material you hit, and whether you hit it off-center.
 
+You may then proceed to :ref:`machinelearning_verify`, or you may want to experiment with multilayer structures first.
+
 
 Multilayer simulations and van der Waals forces
 ===============================================

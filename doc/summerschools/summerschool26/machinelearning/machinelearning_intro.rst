@@ -8,9 +8,9 @@ Selecting and testing a 2D material
 
 For this exercise, you should select a 2D material to work with.  The material should not have a huge unit cell, and it should be well described by the foundational model we start to work with.  The latter has to be checked.
 
-Select a 2D material from the `Computational 2D-Materials Database (C2DB) <https://c2db.fysik.dtu.dk>`_.  It contains around 17000 2D materials, many of them hypothetical.  All the well-known ones are there, such as C (graphene), BN (hexagonal boron nitride), MoS<sub>2</sub> (molybdenum disulphide, a transition metal dichalchogenide), Ti<sub>2</sub>C (titanium carbide, an MXene).  There are also more exotic materials, like CrBrS - still experimentally observed but with a more complicated structure.
+Select a 2D material from the `Computational 2D-Materials Database (C2DB) <https://c2db.fysik.dtu.dk>`_.  It contains around 17000 2D materials, many of them hypothetical.  All the well-known ones are there, such as C (graphene), BN (hexagonal boron nitride), MoS\ :sub:`2` (molybdenum disulphide, a transition metal dichalchogenide), Ti\ :sub:`2`\ C (titanium carbide, an MXene).  There are also more exotic materials, like CrBrS - still experimentally observed but with a more complicated structure.
 
-Search for a composition in C2DB.  In this example, we look for MoS2 you write MoS2 in the search box.  Look for the material with the lowest "Energy above hull", if that is zero the material is thermodynamically stable, if it is low it is possibly metastable.  In this case we find two structures, the stable so-called 2H phase and the metastable 1T phase with twice as many atoms in the unit cell.
+Search for a composition in C2DB.  In this example, we look for MoS\ :sub:`2` you write MoS2 in the search box.  Look for the material with the lowest "Energy above hull", if that is zero the material is thermodynamically stable, if it is low it is possibly metastable.  In this case we find two structures, the stable so-called 2H phase and the metastable 1T phase with twice as many atoms in the unit cell.
 
 .. image:: c2db_MoS2_search.png
    :width: 80%
@@ -52,7 +52,7 @@ We start by loading the structure.
    :start-after: snippet-initialize-start
    :end-before: snippet-initialize-end
 
-The we set up the machine learning potential.  We need to tell it which elements are present in the simulation.  Potentially, the elements could also have different names in the model, but that is not the case here, so the dictionary maps existing chemical symbols to themselves.
+The we set up the machine learning potential.  Potentially, the elements could have different names in the model, but that is not the case here; to prevent a warning we explictily tell the MLIP that it does not need to map elements:
 
 .. literalinclude:: machinelearning_intro_student.py
    :start-after: snippet-mlip-start
@@ -78,7 +78,7 @@ Molecular dynamics test of the Machine Learning potential
 =========================================================
 .. _md_test:
 
-Now we can run a molecular dynamics (MD) simulation and see if the structure remains stable over a short simulation.  This example also illustrates how data can be collected during the simulation and then plottet - most of that information is also stored in the trajectory file.
+Now we can run a molecular dynamics (MD) simulation and see if the structure remains stable over a short simulation.  This example also illustrates how data can be collected during the simulation and then plotted - most of that information is also stored in the trajectory file.
 
 Spend the time needed to understand the following code.  We use the Langevin dynamics to couple the atoms to a heat bath.  This may cause the center of mass to fluctuate, which is annoying when visualizing, so we fix those three degrees of freedom.
 
