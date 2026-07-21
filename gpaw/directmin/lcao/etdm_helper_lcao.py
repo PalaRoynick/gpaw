@@ -77,7 +77,7 @@ class ETDMHelperLCAO(DirectLCAO):
         self.need_init_orbs = False
 
     def calc_grad(self, wfs, ham, kpt, evecs, evals, matrix_exp,
-                  representation, ind_up, constraints):
+                  representation, ind_up, constraints, occupied_only=False):
         """
         Gradient w.r.t. skew-Hermitian matrices
         """
@@ -89,7 +89,7 @@ class ETDMHelperLCAO(DirectLCAO):
         g_mat, error = self.func.get_gradients(
             h_mm, kpt.C_nM, kpt.f_n, evecs, evals,
             kpt, wfs, wfs.timer, matrix_exp,
-            representation, ind_up, constraints)
+            representation, ind_up, constraints, occupied_only=occupied_only)
 
         return g_mat, error
 

@@ -55,8 +55,8 @@ class LCAOETDM:
     def __init__(self,
                  excited_state=False,
                  searchdir_algo=None,
-                 linesearch_algo=None,
                  searchdir_algo_pz=None,
+                 linesearch_algo=None,
                  linesearch_algo_pz=None,
                  partial_diagonalizer='Davidson',
                  update_ref_orbs_counter=20,
@@ -108,6 +108,11 @@ class LCAOETDM:
             To use the generalized mode following (GMF) method for excited
             states, append '_gmf' to the search direction algorithm name. E.g.
             'l-bfgs-p_gmf'.
+        searchdir_algo_pz: str, dict or instance
+            Keyword to choose the search direction algorithm to be used inside
+            the PZ-SIC inner loop localization. Same as searchdir_algo.
+            Set by default to 'l-bfgs-p' in 'set defaults' when
+            need_localization=True.
         linesearch_algo: str, dict or instance
             Line search algorithm. Can be one of the algorithms available
             in ls_etdm.py:
@@ -119,6 +124,11 @@ class LCAOETDM:
                     should be a float
                 'swc-awc': Line search with Wolfe conditions (default when
                     excited_state is False)
+        linesearch_algo_pz: str, dict or instance
+            Keyword to choose the line search algorithm to be used inside
+            the PZ-SIC inner loop localization. Same as linesearch_algo.
+            Set by default to 'swc-awc' in 'set defaults' when
+            need_localization=True.
         partial_diagonalizer: 'str' or dict
             Algorithm for partial diagonalization of the electronic Hessian if
             GMF is used. Default is 'Davidson'.
@@ -303,6 +313,10 @@ class LCAOETDM:
                 'localize_every must be a positive integer, '
                 f'got {self.localize_every}')
         self.printinnerloop = printinnerloop
+
+        if self.func_settings == 'PZ-SIC' and self.representation == 'u-invar':
+            raise ValueError(
+                'Do not use representation u-invar with SIC functional')
 
         self.initialized = False
 
@@ -652,7 +666,7 @@ class LCAOETDM:
         self.phi_2i = [None, None]
         self.der_phi_2i = [None, None]
 
-    def iterate(self, ham, wfs, dens, inner_loop=False):
+    def iterate(self, ham, wfs, dens, inner_loop=False, occupied_only=False):
         """
         One iteration of direct optimization
         for occupied orbitals
@@ -683,7 +697,8 @@ class LCAOETDM:
                     (self.subspace_optimization and self.subspace_iters == 1):
                 phi_2i[0], g_vec_u = \
                     self.get_energy_and_gradients(
-                        a_vec_u, ham, wfs, dens, c_ref)
+                        a_vec_u, ham, wfs, dens, c_ref,
+                        occupied_only=occupied_only)
                 self.released_subspace = False
             else:
                 g_vec_u = self.g_vec_u_original if self.gmf \
@@ -775,7 +790,7 @@ class LCAOETDM:
         return norm
 
     def get_energy_and_gradients(self, a_vec_u, ham, wfs, dens,
-                                 c_ref):
+                                 c_ref, occupied_only=False):
 
         """
         Energy E = E[C_ref exp(A)]. Gradients G_ij[C, A] = dE/dA_ij
@@ -803,7 +818,7 @@ class LCAOETDM:
                 g_vec_u[k], error = self.dm_helper.calc_grad(
                     wfs, ham, kpt, self.evecs[k], self.evals[k],
                     self.matrix_exp, self.representation, self.ind_up[k],
-                    self.constraints[k])
+                    self.constraints[k], occupied_only=occupied_only)
 
                 if hasattr(self.dm_helper.func, 'e_sic_by_orbitals'):
                     self.e_sic \
@@ -855,8 +870,12 @@ class LCAOETDM:
         """
         if phi is None or g_vec_u is None:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
+            if self.need_localization:
+                occupied_only = True
+            else:
+                occupied_only = False
             phi, g_vec_u = self.get_energy_and_gradients(
-                x_mat_u, ham, wfs, dens, c_ref)
+                x_mat_u, ham, wfs, dens, c_ref, occupied_only=occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
