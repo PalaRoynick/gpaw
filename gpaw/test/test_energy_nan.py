@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 from gpaw import GPAW
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 
 
 class EnergyNaNifier(Extension):

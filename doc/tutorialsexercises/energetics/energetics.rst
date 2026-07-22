@@ -12,4 +12,4 @@ Energetics
    defects/defects
    rpa_tut/rpa_tut
    rpa_ex/rpa
-   fxc_correlation/rapbe_tut
+   fxc_correlation/ralda_tut

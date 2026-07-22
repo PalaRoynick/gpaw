@@ -33,6 +33,6 @@ def test_lcao_lcao_hamiltonian(in_tmp_dir, add_cwd_to_setup_paths):
         assert abs(sum(eigs - eigs2)) < 1e-8
 
         energy_tolerance = 0.0003
-        niter_tolerance = 0
+        niter_tolerance = 1  # Pulay vs MSR1
         assert e == pytest.approx(-1.82847, abs=energy_tolerance)
         assert niter == pytest.approx(5, abs=niter_tolerance)

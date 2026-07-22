@@ -10,7 +10,80 @@ Git master branch
 
 :git:`master <>`.
 
+
+Version 26.7.0
+==============
+
+July 6, 2026: :git:`26.7.0 <../26.7.0>`
+
 .. _new gpaw notes:
+
+* Minimum version requirements: Python 3.10, ASE 3.29.0.
+
+* **Important changes in launching GPAW with MPI parallelization**
+  (see also :ref:`parallel_running_jobs`)
+
+  .. _mpichanges:
+
+  * GPAW no longer enables MPI automatically when imported from a normal
+    Python interpreter (``python``).
+    To run GPAW with MPI parallelization, use ``gpaw python`` or
+    ``python -m gpaw python``.
+
+  * GPAW now makes a clear distinction between **library use** and
+    **application use**:
+
+    * **Library use**: run ``python`` and import ``gpaw`` in the script
+
+      * MPI is not initialized automatically.
+      * This behavior can be changed explicitly through an
+        environment variable (see below).
+        The default behavior is equivalent to ``GPAW_MPI_BACKEND=serial``.
+
+    * **Application use**: run the ``gpaw`` executable or run
+      the gpaw module (``python -m gpaw``), e.g.,
+      ``gpaw python`` or ``gpaw test``
+
+      * MPI is initialized automatically, including serial runs.
+      * To use multiple MPI ranks, GPAW must be launched through an
+        MPI launcher, for example ``mpiexec -n N gpaw python`` or
+        ``srun gpaw python``.
+      * This behavior can be changed explicitly through an
+        environment variable (see below).
+        The default behavior is equivalent to ``GPAW_MPI_BACKEND=cgpaw``.
+
+  * The default MPI backend selection can be overridden by setting
+    ``GPAW_MPI_BACKEND`` environment variable.
+
+    * Supported values are:
+
+      * ``serial``: disable MPI parallelism
+      * ``cgpaw``: use GPAW's internal MPI implementation
+      * ``mpi4py``: use ``mpi4py`` as the MPI backend
+
+    * The active backend can be inspected by ``backend`` attribute of the
+      communicator object, for example:
+
+      .. code::
+
+          from gpaw.mpi import world
+          world.backend  # 'serial', 'cgpaw', or 'mpi4py'
+
+  * The parallel ``gpaw-python`` interpreter has been removed.
+
+    * Use ``gpaw python`` instead.
+    * The ``parallel_python_interpreter`` setting in ``siteconfig.py``
+      is no longer used and should be removed.
+
+  * The ``gpaw -P N python`` shortcut and ``GPAW_MPI_OPTIONS`` environment
+    variable has been deprecated.
+
+    Instead of the previous
+    ``GPAW_MPI_OPTIONS="--mpi-options" gpaw -P N python``
+    triggering hard-coded ``mpiexec``,
+    GPAW should now be launched explicitly through the MPI
+    launcher, for example with ``mpiexec -n N --mpi-options gpaw python`` or
+    ``srun gpaw python``.
 
 * :ref:`newgpaw` is now the default.
 
@@ -27,7 +100,7 @@ Git master branch
   * partitioning (Hirshfeld and Wigner-Seitz)
   * XAS
   * real-space density interpolation for PW-mode
-  * Special XC-functionals: FD-mode hybrids, GLLBSC, TB09, RALDA and RAPBE
+  * Special XC-functionals: FD-mode hybrids, GLLBSC, TB09 and RALDA
 
   For these you will need to explicitly create old-style GPAW calculator
   objects like this:
@@ -52,14 +125,15 @@ Git master branch
   and will allow us to discover performance regressions
   (and improvements).
 
+* Self-consistent band-structure calculations using hybrid functionals has
+  been implemented (see this tutorial: :ref:`hse06 on lda`).
+
 * Fixed bug in BSE code for systems without inversion symmetry.
   Some off-diagonal elements of `W_{GG'}` were wrongly conjugated,
   resulting in the BSE Hamiltonian not being Hermitian under
   the Tamm-Dancoff approximation.
   Systems with inversion symmetry and calculations with ``symmetry='off'``
   were not affected by this bug.
-
-* Minimum version requirements: Python 3.10, ASE 3.27.0.
 
 * PW and FD eigensolvers will now automatically use Scalapack for sub-space
   diagonalization when we have 1000 or more bands.
@@ -80,19 +154,24 @@ Git master branch
 
   * mixer (with pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.05 -> 0.08
-    * nmaxold: 5 -> 16
-    * weight: 50 -> 70
+    * beta: 0.05 -> 0.05
+    * nmaxold: 5 -> 10
+    * weight: 50 -> 20
 
   * mixer (without pbc):
 
+    * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
-    * beta: 0.25 -> 0.25
-    * nmaxold: 3 -> 16
+    * beta: 0.25 -> 0.2
+    * nmaxold: 3 -> 10
     * weight: 1 -> 1
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
+
+* Experimental support for :ref:`gpu` calculations in PW-mode.
+  Both single and double precision calculations are possible.
 
 * :ref:`newgpaw`: Ported the dipole moment writer to the new RT-TDDFT interface.
 
@@ -118,21 +197,6 @@ Git master branch
   finer grid.  This is equivalent to the way things are done in PW-mode.
   Turn this on by using ``experimental={'pw_pot_calc': True}``.
 
-* The parallel ``gpaw-python`` interpreter has been removed.
-  You can use ``gpaw python`` as a replacement. The variable
-  ``parallel_python_interpreter`` in ``siteconfig.py``
-  should not be used.
-
-* GPAW will no longer run in parallel when imported from a normal
-  Python interpreter.
-  To run in parallel, be sure to use ``gpaw python``
-  or see below.
-
-* To control MPI parallelism with the ``gpaw python`` command,
-  use the environment ``GPAW_MPI_BACKEND``.
-  Current valid values are ``serial``, ``cgpaw`` for GPAW's C implementation,
-  and ``mpi4py``.
-
 * The FDTD code has been removed.  If this code is important to you,
   please contact the developers.  You will probably need to port the code
   to :ref:`newgpaw` in order to use it in the future.
@@ -156,6 +220,13 @@ Git master branch
 
 * Added symmetry labels to symmetry-matrices in log-file
   (E, i, σ, C\ `_n`, S\ `_n`).
+
+* Removed the old stencil metric in mixing, due to it being wrong for non-
+  orthorhombic cells. The metric is now applied in reciprocal space instead.
+
+* Updated the reciprocal density metric to not deal with the G=(0,0,0)
+  component in an arbitrary manner. This should ensure more consistent SCF
+  performance.
 
 
 Version 25.7.0
@@ -1398,7 +1469,7 @@ Mar 17, 2016: :git:`1.0.0 <../1.0.0>`.
   within the accuracy of the model.
 
 * New `f_{\text{xc}}` kernels for correlation energy calculations.  See this
-  updated :ref:`tutorial <rapbe_tut>`.
+  updated :ref:`tutorial <ralda_tut>`.
 
 * Correlation energies within the range-separated RPA.
 
@@ -1568,7 +1639,7 @@ Mar 7, 2012: :git:`0.9.0 <../0.9.0>`.
 * Much improved :ref:`cli` now based on the `new tool`_ in ASE.
 
 
-.. _new tool: https://ase-lib.org/ase/cmdline.html
+.. _new tool: https://docs.ase-lib.org/ase/cmdline.html
 
 
 Version 0.8.0

@@ -13,7 +13,7 @@ from gpaw.poisson import FDPoissonSolver
 def test_inducedfield_lrtddft(in_tmp_dir):
     do_print_values = False  # Use this for printing the reference values
     poisson_eps = 1e-12
-    density_eps = 1e-6
+    density_eps = 1e-7
 
     # 0) PoissonSolver
     poissonsolver = FDPoissonSolver(eps=poisson_eps)

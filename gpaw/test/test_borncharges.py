@@ -11,8 +11,8 @@ def test_born_charges_wf(in_tmp_dir, gpw_files, comm):
     calc = GPAW(gpw_file, txt=None, communicator=comm)
     atoms = calc.get_atoms()
 
-    Z_t = np.array([np.diag([-2.83, -2.83, -0.35]),
-                    np.diag([2.83, 2.83, 0.35])])
+    Z_t = np.array([np.diag([-2.83, -2.83, -0.36]),
+                    np.diag([2.83, 2.83, 0.36])])
 
     Z_avv = born_charges_wf(atoms, calc, cleanup=True, world=comm)['Z_avv']
 

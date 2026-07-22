@@ -86,14 +86,21 @@ def run_random_calculation(seed: int,
         # dft.calculate_stress()
     except Exception as ex:
         log(ex.__class__, ex)
-        if isinstance(ex, AssertionError) or not isinstance(ex.args[0], str):
+        bad = False
+        if isinstance(ex, AssertionError):
+            bad = True
+        elif not isinstance(ex.args[0], str):
+            bad = True
+        else:
+            frame = inspect.trace()[-1]
+            if 'raise' not in ''.join(frame.code_context):
+                bad = True
+        if bad:
             log('****** Bad error *******')
             if world.rank == 0 and not use_stdout:
                 Path(f'{seed}-{world.size}.txt').write_text(out.getvalue())
             if raise_exceptions:
                 raise
-            frame = inspect.trace()[-1]
-            assert frame  # ...
     else:
         log(energy)
 

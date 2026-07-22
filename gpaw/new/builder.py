@@ -19,7 +19,6 @@ from gpaw.core.domain import Domain
 from gpaw.gpu import cpupy as fake_cupy
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.lfc import BasisFunctions
-from gpaw.mixer import MixerWrapper, get_mixer_from_keywords
 from gpaw.mpi import (MPIComm, Parallelization, broadcast,
                       normalize_communicator, serial_comm, synchronize_atoms)
 from gpaw.new import prod
@@ -326,6 +325,15 @@ class DFTComponentsBuilder:
         assert not psparams
         return poisson_solvers[0]
 
+    def create_mixer(self):
+        return self.params.mixer.build(desc=self.grid,
+                                       atomdist=self.atomdist,
+                                       setups=self.setups,
+                                       relpos_ac=self.relpos_ac,
+                                       world=self.communicators['w'],
+                                       ncomponents=self.ncomponents,
+                                       xp=self.xp)
+
     def create_ibz_wave_functions(self,
                                   basis: BasisFunctions,
                                   potential: Potential) -> IBZWaveFunctions:
@@ -340,22 +348,8 @@ class DFTComponentsBuilder:
     def create_scf_loop(self):
         hamiltonian = self.create_hamiltonian_operator()
         occ_calc = self.create_occupation_number_calculator()
+        mixer = self.create_mixer()
         eigensolver = self.create_eigensolver(hamiltonian)
-
-        mixer = MixerWrapper(
-            get_mixer_from_keywords(self.atoms.pbc.any(),
-                                    self.ncomponents,
-                                    **self.params.mixer.params),
-            self.ncomponents,
-            self.grid._gd,
-            world=self.communicators['w'])
-
-        if self.params.experimental.get('paw_corr_mixer', False):
-            from gpaw.mixer import ExperimentalDotProd
-            for basemixer in mixer.basemixers:
-                basemixer.dotprod = ExperimentalDotProd(
-                    self.setups, self.atomdist)
-
         return SCFLoop(hamiltonian, occ_calc,
                        eigensolver, mixer, self.communicators['w'],
                        {key: value

@@ -37,7 +37,7 @@ H   1.8684   0.8649   0.5908
         occupations=FermiDirac(width=0.1),
         nbands=15,
         convergence={
-            'eigenstates': 1e-4,
+            'eigenstates': 1e-5,
             'bands': jend},
         txt=None)
     atoms.get_potential_energy()

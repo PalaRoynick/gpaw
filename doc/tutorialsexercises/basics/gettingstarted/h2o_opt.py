@@ -1,6 +1,6 @@
 # creates: h2o.txt
 from ase import Atoms
-from gpaw.calculator import GPAW
+from gpaw import GPAW
 from ase.optimize import QuasiNewton
 
 a = 6.0

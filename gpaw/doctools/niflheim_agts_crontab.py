@@ -24,6 +24,9 @@ def submit():
     d = date.today()
     root = Path(f'{d.year}-{d.month:02}-{d.day:02}')
     root.mkdir()
+    latest = Path('latest')
+    latest.unlink()
+    latest.symlink_to(root)
     os.chdir(root)
     url = REPO + '-/raw/master/doc/platforms/Linux/Niflheim/gpaw_venv.py'
     subprocess.run(['wget', url])

@@ -121,8 +121,8 @@ new MSR1 mixer [#MSR1]_ which promises faster and more stable convergence
 in most cases. When using this mixer we recommend the settings::
 
     mixer = {'backend': 'msr1',
-             'beta': 0.035,
-             'nmaxold': 8}
+             'beta': 0.05,
+             'nmaxold': 10}
 
 
 Specifying a Mixing Scheme in GPAW

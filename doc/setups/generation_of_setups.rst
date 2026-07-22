@@ -57,7 +57,7 @@ and use it in you calculations with ``setups={'N': 'new'}``.
 What an OK dataset looks like will depend on what you want:
 
 * If you want a very accurate dataset then you will want to include semi-core
-  states and reduce the cutoff radii.  Also, you should try to get get
+  states and reduce the cutoff radii.  Also, you should try to get
   correct scattering properties at high energies (check this by looking at
   the logarithmic derivatives).
 

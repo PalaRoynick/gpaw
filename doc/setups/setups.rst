@@ -158,7 +158,8 @@ ACWF-benchmark
 ==============
 
 Equation-of-state calculations for the 10 reference systems from
-the `AiiDA common workflows (ACWF) benchmark <ACWF>`_:
+the `AiiDA common workflows (ACWF) benchmark
+<https://acwf-verification.materialscloud.org/>`_:
 DIAMOND, FCC, SC, BCC, XO3, XO, X4O6, XO2, X4O10, X2O.
 
 See :git:`gpaw/utilities/acwf.py` for how to run these calculation.
@@ -183,9 +184,6 @@ The columns are:
 .. csv-table::
    :file: acwf.csv
    :header: number, name, errors, max, mean, errors, max, mean
-
-.. _ACWF: https://acwf-verification.materialscloud.org/
-
 
 .. _24.11.0:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-24.11.0.tar.gz

@@ -15,6 +15,7 @@ def test_lcao_h2o():
                 pbc=False, cell=[a, a, a])
     calc = GPAW(gpts=(32, 32, 32),
                 nbands=4,
+                mixer={'beta': 0.3},
                 mode='lcao',
                 poissonsolver=FDPoissonSolver())
     mol.calc = calc
@@ -28,6 +29,7 @@ def test_lcao_h2o():
     # gamma point calculations
     calc = GPAW(gpts=(32, 32, 32),
                 nbands=4,
+                mixer={'beta': 0.3},
                 mode=LCAO(force_complex_dtype=True),
                 poissonsolver=FDPoissonSolver())
     mol.calc = calc

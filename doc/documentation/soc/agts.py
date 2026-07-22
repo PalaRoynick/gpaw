@@ -1,6 +1,6 @@
 from math import cos, pi, sin
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from myqueue.workflow import run
 
 

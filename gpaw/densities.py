@@ -15,7 +15,7 @@ from gpaw.spline import Spline
 from gpaw.typing import Array1D, Array2D, Array3D, Vector
 
 if TYPE_CHECKING:
-    from gpaw.new.calculation import DFTCalculation
+    from gpaw.dft import DFT
 
 
 class Densities:
@@ -30,7 +30,7 @@ class Densities:
         self.setups = setups
 
     @classmethod
-    def from_calculation(cls, calculation: DFTCalculation):
+    def from_calculation(cls, calculation: DFT):
         density = calculation.density
         return cls(density.nt_sR,
                    density.D_asii,
