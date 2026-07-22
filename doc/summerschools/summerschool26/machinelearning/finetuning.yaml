@@ -63,13 +63,12 @@ trainer:
   accelerator: gpu
   enable_checkpointing: true
   max_epochs: 300
-  max_time: 00:47:30:00
+  max_time: 00:01:55:00
   check_val_every_n_epoch: 1
   log_every_n_steps: 20
 
   logger:
-    _target_: lightning.pytorch.loggers.wandb.WandbLogger
-    project: finetuning
+    _target_: lightning.pytorch.loggers.csv_logs.CSVLogger
     name: OAM-S
     save_dir: outputs/finetuned/OAM_S
 
@@ -135,7 +134,6 @@ training_module:
     _target_: nequip.model.modify
 
     modifiers:
-      - modifier: enable_OpenEquivariance
       - modifier: modify_PerTypeScaleShift
         shifts:
           B: -0.3646081866040635
