@@ -204,10 +204,10 @@ class PZSICLCAO:
         timer.stop('Residual')
 
         # print(self.counter,kpt.s)
-        if self.counter == 0:
-            h_mm = 0.5 * (h_mm + h_mm.T.conj())
-            kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]
-        self.counter += 1
+        # if self.counter == 0:
+        #     h_mm = 0.5 * (h_mm + h_mm.T.conj())
+        #     kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]
+        # self.counter += 1
         
         if constraints:
             constrain_grad(grad, constraints, ind_up)

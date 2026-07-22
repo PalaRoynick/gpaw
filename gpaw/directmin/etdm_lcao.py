@@ -1201,21 +1201,21 @@ class LCAOETDM:
         Delegates to the same class used for initial localization,
         with preconditioning disabled during the inner loop.
         """
-        self.occupied_only=True
+        self.occupied_only = True
         original_use_prec = self.use_prec
         self.use_prec = False
         self.in_subspace_loop = True
         log = self.log if self.printinnerloop else None
         original_eg = self.eg_count
         try:
-            self.inner_loop=True
-            dm = LCAOETDMLocalize(self, wfs, log, tol=self.subspace_convergence)
+            self.inner_loop = True
+            dm = LCAOETDMLocalize(self, wfs, log, tol = self.subspace_convergence)
             dm.run(ham, dens)
             self.eg_count_iloop = self.eg_count - original_eg
             self.total_eg_count_iloop += self.eg_count_iloop
-            self.occupied_only=False
+            self.occupied_only = False
         finally:
-            self.inner_loop=False
+            self.inner_loop = False
             self.use_prec = original_use_prec
             self.in_subspace_loop = False
 
