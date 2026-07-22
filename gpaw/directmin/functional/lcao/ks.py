@@ -50,7 +50,6 @@ class KSLCAO:
                 anti_occ = f_n * ones_mat - f_n[:, np.newaxis] * ones_mat
                 anti_occ = anti_occ[ind_up]
                 grad = np.ascontiguousarray(anti_occ * h_ij)
-                print(h_ij.shape)
 
             else:
                 h_ij = f_n * h_ij - f_n[:, np.newaxis] * h_ij
