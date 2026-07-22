@@ -10,11 +10,11 @@ def test_broydenmixer(in_tmp_dir, mpi):
     k = 2
     g = 16
     calc = mpi.GPAW(mode='fd', gpts=(g, g, g), kpts=(k, k, k), nbands=2,
-                    mixer=BroydenMixer())
+                    mixer=BroydenMixer(), legacy_gpaw=True)
     bulk.calc = calc
     e = bulk.get_potential_energy()
     calc.write('Li.gpw')
-    mpi.GPAW('Li.gpw')
+    mpi.GPAW('Li.gpw', legacy_gpaw=True)
 
     energy_tolerance = 0.0001
     assert e == pytest.approx(-1.20258, abs=energy_tolerance)

@@ -39,7 +39,8 @@ def test_ofdft_ofdft(in_tmp_dir):
                     txt='-',
                     xc=xcname,
                     setups=setups,
-                    eigensolver='rmm-diis',
+                    eigensolver={'name': 'rmm-diis',
+                                 'diis_steps': 3},
                     mixer=mixer,
                     charge=charge)
 

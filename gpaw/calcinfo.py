@@ -6,7 +6,7 @@ from gpaw.core import UGDesc
 from gpaw.core.domain import Domain
 from gpaw.dft import Parameters
 from gpaw.mpi import MPIComm, normalize_communicator
-from gpaw.new.calculation import DFTCalculation
+from gpaw.dft import DFT
 from gpaw.new.ibzwfs import IBZ
 from gpaw.new.logger import Logger
 from gpaw.setup import Setups
@@ -37,8 +37,8 @@ class CalcInfo:
         params.update(updated_params)
         return get_calculation_info(self.atoms, **params)
 
-    def dft_calculation(self) -> DFTCalculation:
-        return DFTCalculation.from_parameters(
+    def dft_calculation(self) -> DFT:
+        return DFT.from_parameters(
             self.atoms.copy(),
             Parameters(**self.input_params),
             comm=normalize_communicator(self.comm),
@@ -100,7 +100,7 @@ def get_calculation_info(atoms: Atoms,
     update_params
         Update input parameters and return new CalcInfo object
     dft_calculation
-        Return DFTCalculation object with the given input parameters
+        Return DFT object with the given input parameters
     ase_calculator
         Return ASECalculation object with the given input parameters
     """

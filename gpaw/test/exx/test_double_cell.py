@@ -18,7 +18,8 @@ def test_exx_double_cell(in_tmp_dir, use_sym):
 
     kwargs = dict(
         mode=PW(400),
-        convergence={'density': 1e-6},
+        convergence={'density': 1e-6,
+                     'forces': 1e-5},
         mixer={'beta': 0.25},
         spinpol=True,
         xc='HSE06')

@@ -58,8 +58,11 @@ To build GPAW with GPU support, siteconfig.py needs to be updated. To see how to
     5. ``gpu_compile_args`` is essential, and proper target architecture needs to be supplied in most cases.
 
 
-If you intend to go to really large systems, you need to enable 64-bit array indexing in kernels. This is done by adding `define_macros += [('GPAW_64_BIT_INDEXING', None)]` to the `siteconfig.py`.
-Note: In GPAW master, GPAW's MPI wrappers are only equiped to send int32 messages (the int64 MPI is coming, but not yet merged to master.
+If you intend to go to really large systems, you need to enable 64-bit
+array indexing in kernels.  This is done by adding ``define_macros +=
+[('GPAW_64_BIT_INDEXING', None)]`` to the ``siteconfig.py``. Note: In GPAW
+master, GPAW's MPI wrappers are only equiped to send int32 messages (the
+int64 MPI is coming, but not yet merged to master.
 
 
 In addition, libraries list should be appended by GPU blas and GPU runtime libraries. See the examples below for examples of how to utilize these commands.
@@ -194,9 +197,9 @@ Modern CUDA/HIP installations do this automatically, and GPAW installation also 
 In case you still face issues:
 1. If your ``siteconfig.py`` adds ``'-std=...''`` to ``gpu_compile_args``, update the standard there.
 GPAW will not override a user-defined standard.
-1. If using HIP to compile CUDA code (`hipcc` as a wrapper to `nvcc`), you may need to set the standard through an environment variable:
+1. If using HIP to compile CUDA code (``hipcc`` as a wrapper to ``nvcc``), you may need to set the standard through an environment variable:
 ``export HIPCC_COMPILE_FLAGS_APPEND="-std=c++17"``.
-However, we generally recommend using `nvcc` and the CUDA toolkit directly if building for Nvidia GPUs.
+However, we generally recommend using ``nvcc`` and the CUDA toolkit directly if building for Nvidia GPUs.
 
 You can use the ``gpaw.cgpaw.gpu.magma.is_available()`` function to check if MAGMA is available
 within your GPAW installation. GPAW eigensystem routines will default to the MAGMA implementation

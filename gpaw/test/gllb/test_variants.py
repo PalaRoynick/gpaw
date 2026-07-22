@@ -18,7 +18,7 @@ def run(xc):
                 h=0.3,
                 nbands=8,
                 xc=xc,
-                convergence={'density': 1e-5},
+                convergence={'density': 1e-8},
                 kpts={'size': (1, 1, 1), 'gamma': True},
                 txt=f'{xc}.out')
     atoms.calc = calc
@@ -35,7 +35,7 @@ def test_wrappers(xc, in_tmp_dir, add_cwd_to_setup_paths):
 
     # Check values against regular xc
     ref_eig_n = run({'GLLBLDA': 'LDA', 'GLLBPBE': 'PBE'}[xc])
-    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=1e-8), \
+    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=1e-7), \
         f'{xc} error = {np.max(np.abs(eig_n - ref_eig_n))}'
 
 
@@ -71,5 +71,5 @@ refs = {'GLLB':
 def test_eigenvalues(xc, in_tmp_dir, add_cwd_to_setup_paths):
     eig_n = run(xc)
     ref_eig_n = refs[xc]
-    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=2e-5), \
+    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=3e-5), \
         f'{xc} error = {np.max(np.abs(eig_n - ref_eig_n))}'

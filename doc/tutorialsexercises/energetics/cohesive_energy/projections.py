@@ -2,7 +2,7 @@ from gpaw import GPAW
 from gpaw.sphere.spherical_harmonics import names
 from ase.units import Ha
 
-calc = GPAW('pt-atom.gpw', legacy_gpaw=True)
+calc = GPAW('pt-atom.gpw')
 setup = calc.setups[0]
 labels = [f'{n}{"spd"[l]}({names[l][m]})'
           for n, l in zip(setup.n_j, setup.l_j)
@@ -12,12 +12,12 @@ lines = ['#,eig. [eV],occ,character,eig. [eV],occ,character']
 for n in range(11):
     line = str(n)
     for spin in [0, 1]:
-        kpt = calc.wfs.kpt_qs[0][spin]
+        kpt = calc.dft.ibzwfs._wfs_u[spin]
         P_i = kpt.P_ani[0][n]
         i = abs(P_i).argmax()
         label = labels
-        eig = kpt.eps_n[n] * Ha
-        occ = kpt.f_n[n]
+        eig = kpt.eig_n[n] * Ha
+        occ = kpt.occ_n[n]
         line += f',{eig:.3f},{occ:.1f},{labels[i]}'
     lines.append(line)
 

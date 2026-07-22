@@ -62,7 +62,7 @@ class PWDescriptor:
 
         # Calculate reciprocal lattice vectors:
         B_cv = 2.0 * pi * gd.icell_cv
-        i_Qc.shape = (-1, 3)
+        i_Qc = i_Qc.reshape((-1, 3))
         self.G_Qv = np.dot(i_Qc, B_cv)
 
         self.kd = kd
@@ -570,7 +570,7 @@ def count_reciprocal_vectors(ecut, gd, q_c):
     i_Qc -= N_c // 2
 
     B_cv = 2.0 * pi * gd.icell_cv
-    i_Qc.shape = (-1, 3)
+    i_Qc = i_Qc.reshape((-1, 3))
     Gpq_Qv = np.dot(i_Qc, B_cv) + np.dot(q_c, B_cv)
 
     G2_Q = (Gpq_Qv**2).sum(axis=1)

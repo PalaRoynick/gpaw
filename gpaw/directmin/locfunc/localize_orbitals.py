@@ -9,7 +9,7 @@ from gpaw.directmin.locfunc.etdm_localization_lcao import LCAOETDMLocalize
 
 def localize_orbitals(
         wfs, dens, ham, log, localizationtype, tol=None, seed=None,
-        func_settings=None):
+        func_settings=None, maxiter_pz=200):
     from gpaw.wannier.pipekmezey.pipek_mezey_wannier import PipekMezey
     from gpaw.wannier.pipekmezey.wannier_basic import WannierLocalization
 
@@ -58,7 +58,8 @@ def localize_orbitals(
             else:
                 dm = LCAOETDMLocalize(
                     wfs.eigensolver, wfs, log,
-                    tol=wfs.eigensolver.subspace_convergence)
+                    tol=wfs.eigensolver.subspace_convergence, 
+                    maxiter=maxiter_pz)
                 dm.run(ham, dens)
         elif name == 'ks':
             log('ETDM minimization using occupied and virtual orbitals',

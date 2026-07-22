@@ -11,6 +11,14 @@ request adding link and descriptive paragraph.
 Software using GPAW
 -------------------
 
+* `abTEM <https://github.com/abTEM/abTEM/pulls>`__.
+  ``abTEM`` is the most widely used TEM/STEM simulation package, which 
+  directly interfaces with GPAW for all-electron electrostatic potentials and 
+  core ionization transition potentials.
+  See examples for `ab initio potentials with GPAW <https://abtem.github.io/doc/user_guide/tutorials/charge_density.html>`__,
+  and `core-loss filtered imaging <https://abtem.github.io/doc/user_guide/tutorials/core_loss.html>`__.
+
+
 * `rhodent <https://rhodent.materialsmodeling.org/>`__.
   ``rhodent`` allows one to analyze hot-carrier distributions based
   on input from real-time time-dependent density functional theory simulations.

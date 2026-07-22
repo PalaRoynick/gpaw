@@ -10,7 +10,7 @@ from ase.units import Bohr
 
 from gpaw import debug
 from gpaw.lfc import LFC, BasisFunctions
-from gpaw.mixer import MixerWrapper, get_mixer_from_keywords
+from gpaw.old.mixer import MixerWrapper, get_mixer_from_keywords
 from gpaw.old.arraydict import ArrayDict
 from gpaw.old.wavefunctions.lcao import LCAOWaveFunctions
 from gpaw.transformers import Transformer

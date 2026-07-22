@@ -4,7 +4,6 @@ from ase.build import molecule
 from ase.units import Hartree, kcal, mol
 
 from gpaw import GPAW
-from gpaw.mixer import Mixer, MixerSum
 from gpaw.mpi import world
 from gpaw.occupations import FermiDirac
 from gpaw.test import gen
@@ -102,9 +101,11 @@ def calculate(element, vacuum, xc, magmom, comm):
 
     atom.center(vacuum=vacuum)
 
-    mixer = MixerSum(beta=0.4)
+    mixer = {'nmaxold': 8,
+             'backend': 'msr1'}
     if element == 'O':
-        mixer = MixerSum(0.4, nmaxold=1, weight=100)
+        mixer = {'nmaxold': 8,
+                 'backend': 'msr1'}
         atom.set_positions(atom.get_positions() + [0.0, 0.0, 0.0001])
 
     calc_atom = GPAW(legacy_gpaw=True,
@@ -115,15 +116,18 @@ def calculate(element, vacuum, xc, magmom, comm):
                      occupations=FermiDirac(0.0, fixmagmom=True),
                      mixer=mixer,
                      parallel=dict(augment_grids=True),
+                     convergence={'density': 1e-5},
                      nbands=-2,
                      communicator=comm,
                      txt=f'{element}.{xc}.txt')
     atom.calc = calc_atom
 
-    mixer = Mixer(beta=0.4, weight=100)
+    mixer = {'nmaxold': 8,
+             'backend': 'msr1'}
     compound = molecule(element + '2')
     if compound == 'O2':
-        mixer = MixerSum(beta=0.4)
+        mixer = {'nmaxold': 8,
+                 'backend': 'msr1'}
         mms = [1.0 for i in range(len(compound))]
         compound.set_initial_magnetic_moments(mms)
 
@@ -134,6 +138,7 @@ def calculate(element, vacuum, xc, magmom, comm):
                 eigensolver='rmm-diis',
                 mixer=mixer,
                 parallel=dict(augment_grids=True),
+                convergence={'density': 1e-5},
                 communicator=comm,
                 txt=f'{element}2.{xc}.txt')
     compound.set_distance(0, 1, data[element]['R_AA_B3LYP'])

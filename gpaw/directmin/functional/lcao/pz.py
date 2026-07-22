@@ -169,9 +169,8 @@ class PZSICLCAO:
                                       '\'egdecomp\'')
         if self.dtype == float:
             grad = grad.real
-        # if repr_name in ['sparse', 'u-invar']:
+        #if repr_name in ['sparse', 'u-invar']:
         grad = grad[ind_up]
-       
 
         timer.stop('Construct Gradient Matrix')
 

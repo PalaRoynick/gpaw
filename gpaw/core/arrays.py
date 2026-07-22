@@ -333,6 +333,9 @@ class XArray(Generic[DomainType], XP):
     def integrate(self, other: Self | None = None) -> np.ndarray:
         raise NotImplementedError
 
+    def from_pbc_grid(self, pbc_array):
+        raise NotImplementedError
+
     def norm2(self,
               kind: str = 'normal',
               weights: np.ndarray | None = None,

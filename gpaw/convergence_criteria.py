@@ -115,7 +115,7 @@ class Criterion:
 
 
 # Built-in criteria follow. Make sure that any new criteria added below
-# are also added to to the list in get_criterion() so that it can import
+# are also added to the list in get_criterion() so that it can import
 # them correctly by name.
 
 

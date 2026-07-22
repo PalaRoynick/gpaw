@@ -579,9 +579,9 @@ class RecursionMethod:
                 kpt_comm.sum(self.spin_k, 0)
                 kpt_comm.sum(self.weight_k, 0)
 
-                a_kci.shape = (self.nkpts, dim, ni)
-                b_kci.shape = (self.nkpts, dim, ni)
-                data = {'ab': (a_kci, b_kci),
+                shape = (self.nkpts, dim, ni)
+                data = {'ab': (a_kci.reshape(shape),
+                               b_kci.reshape(shape)),
                         'nkpts': self.nkpts,
                         'symmetry operations': self.op_scc,
                         'weight_k': self.weight_k,
