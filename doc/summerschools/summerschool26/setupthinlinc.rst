@@ -9,7 +9,7 @@ Configuring your secret key
 
 For security reasons, all access to DTU's HPC from outside the university requires an encryption key (SSH key).  You get
 your secret SSH key by connecting to
-https://www.student.dtu.dk/~dccidmgr/CAMD24 then add your user name to
+https://www.student.dtu.dk/~dccidmgr/CAMD26 then add your user name to
 the end of the URL and press enter  (Guest accounts only, DTU users
 please :ref:`do this instead <keypair>`).  You will now be asked to
 authenticate with username and password, when you have done that

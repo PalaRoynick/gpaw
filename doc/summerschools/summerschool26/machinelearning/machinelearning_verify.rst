@@ -24,7 +24,26 @@ You could follow a procedure like the following:
 Running DFT calculations
 ========================
 
-We run DFT calculations on individual frames of the MD trajectory.  Suitable parameters for the DFT calculations are a plane-wave cutoff of 350 eV and a k-point sampling of XXX Å, meaning that the number of k-point multiplied by the size of the system should be this number in both in-plane directions.  If you get an odd number of k-points you may get slightly more accuracy at the same computational cost by increasing the number of k-point by one.
+We run DFT calculations on individual frames of the MD trajectory.  Suitable parameters for the DFT calculations are a plane-wave cutoff of 350 eV and a k-point sampling of around 20 Å, meaning that the number of k-point multiplied by the size of the system should be this number in both in-plane directions.
 
 The necessary plane-wave cutoff and k-point sampling depend on the chemical elements in the system, and a convergence test would be appropriate if time permits.
 
+You can then compare the DFT forces with the machine learning forces.  Note that the forces vary dramatically in magnitude, that makes comparison difficult - the large forces may have large absolute errors but moderate relative errors, while for small forces it is the opposite.
+
+The following lines set up the GPAW calculator for the DFT calculations.  You can build a script around it that calculates the DFT energy and forces for a single frame in the trajectory file, or for a selected list of frames.
+
+.. literalinclude:: machinelearning_dft_multi.py
+   :start-after: snippet-gpaw-start
+   :end-before: snippet-gpaw-end
+
+You can access both the MLIP and the GPAW forces in the script: the MLIP forces are available in the trajectory files, and can be obtained from the atoms *before* the GPAW calculator is attached, then the DFT forces can be calculated and obtained *after* it is attached.
+
+The code below also includes a sanity check: that no atom has passed outside the simulation cell in the *z*-direction.  This is because we run the MLIP without periodic boundary conditions in the *z*-direction, but GPAW will (at least in plane-wave mode) ignore the boundary conditions specified on the atoms and always assume periodic boundaries.
+
+.. literalinclude:: machinelearning_dft_multi.py
+   :start-after: snippet-oldforces-start
+   :end-before: snippet-oldforces-end
+
+Be sure to save the DFT forces to one or more trajectory files.  Now you can try to analyse the difference between the forces calculated by the MLIP and by DFT.  Try to critically evaluate if the MLIP is doing reasonably well.
+
+You can then proceed to :ref:`fine-tuning the MLIP <machinelearning_finetune>`.
