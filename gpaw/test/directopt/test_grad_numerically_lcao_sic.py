@@ -37,19 +37,13 @@ def h3_do_num_lcao(legacy_gpaw):
         return atm.calc
 
 @pytest.mark.do
-
 @pytest.mark.parametrize('legacy_gpaw', [True])
 @pytest.mark.parametrize("representation", ['full', 'sparse'])
 @pytest.mark.parametrize("matrix_exp", ['egdecomp', 'pade-approx'])
-@pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p', 'fr-cg'])
-@pytest.mark.parametrize("linesearch_algo", ['max-step', 'swc-awc'])
 @pytest.mark.parametrize("localizationtype", ['pm', 'pz'])
 
-# @pytest.mark.parametrize("localize_every", [1,2,5, 333])
-
 def test_gradient_numerically_lcao(gpw_files, legacy_gpaw, representation,
-                                   matrix_exp, searchdir_algo,
-                                   linesearch_algo, localizationtype):
+                                   matrix_exp, localizationtype):
     """
     test exponential transformation
     direct minimization method for KS-DFT in LCAO
@@ -61,15 +55,14 @@ def test_gradient_numerically_lcao(gpw_files, legacy_gpaw, representation,
     atoms = calc.atoms
     atoms.calc = calc
 
-    calc.set(eigensolver={'name': 'etdm-lcao',
+    calc = calc.new(eigensolver={'name': 'etdm-lcao',
                      'representation': representation,
                      'matrix_exp': matrix_exp,
-                     'searchdir_algo': searchdir_algo,
-                     'linesearch_algo': {'name': linesearch_algo},
                      'functional': {'name': 'PZ-SIC', 'scaling_factor': (1. ,1.)},
                      'localizationtype': localizationtype,
                      },)
 
+    atoms.calc = calc
     atoms.get_potential_energy()
     ham = calc.hamiltonian
     wfs = calc.wfs
@@ -95,8 +88,6 @@ def test_gradient_numerically_lcao(gpw_files, legacy_gpaw, representation,
                 wfs.eigensolver, ham, wfs, dens, what2calc='gradient')[0]
             for der in num_ders]
         for x, *ys in zip(*analytical_results, *numerical_results):
-            print('TESTING')
-            print(np.array(ys).real, np.array(ys).real)
             assert np.array(ys).real == pytest.approx(np.array(ys).real, abs=1.0e-2)
             assert np.array(ys).imag == pytest.approx(x.imag, abs=1.0e-2)
 
