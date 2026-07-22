@@ -1,0 +1,149 @@
+# ===========
+#     RUN
+# ===========
+run: [train, val, test]
+
+monitored_metric: val0_epoch/weighted_sum
+
+
+# ============
+#     DATA
+# ============
+data:
+  _target_: nequip.data.datamodule.ASEDataModule
+  seed: 567
+
+  split_dataset:
+    file_path: PATH_TO_TRAINING_TRAJFILE
+    train: 0.8
+    val: 0.1
+    test: 0.1
+
+  transforms:
+    - _target_: nequip.data.transforms.ChemicalSpeciesToAtomTypeMapper
+      model_type_names: ${model_type_names}
+
+    - _target_: nequip.data.transforms.NeighborListTransform
+      r_max: ${cutoff_radius}
+
+  train_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 1
+    num_workers: 3
+    shuffle: true
+
+  val_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 4
+    num_workers: ${data.train_dataloader.num_workers}
+
+  test_dataloader: ${data.val_dataloader}
+
+  stats_manager:
+    _target_: nequip.data.CommonDataStatisticsManager
+    dataloader_kwargs:
+      batch_size: 10
+    type_names: ${model_type_names}
+
+
+# =================
+#    MODEL SETUP
+# =================
+
+cutoff_radius: ${cutoff_radius_from_package:PATH_TO_ZIP}
+
+model_type_names: ${type_names_from_package:PATH_TO_ZIP}
+
+
+# =============
+#    TRAINER
+# =============
+trainer:
+  _target_: lightning.Trainer
+  accelerator: gpu
+  enable_checkpointing: true
+  max_epochs: 300
+  max_time: 00:47:30:00
+  check_val_every_n_epoch: 1
+  log_every_n_steps: 20
+
+  logger:
+    _target_: lightning.pytorch.loggers.wandb.WandbLogger
+    project: finetuning
+    name: OAM-S
+    save_dir: outputs/finetuned/OAM_S
+
+  callbacks:
+    - _target_: lightning.pytorch.callbacks.EarlyStopping
+      monitor: ${monitored_metric}
+      min_delta: 1e-3
+      patience: 30
+
+    - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+      monitor: ${monitored_metric}
+      dirpath: outputs/finetuned/OAM_S
+      filename: best
+      save_last: true
+
+    - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+      logging_interval: epoch
+
+
+# =====================
+#    TRAINING MODULE
+# =====================
+training_module:
+  _target_: nequip.train.EMALightningModule
+
+  ema_decay: 0.999
+
+  loss:
+    _target_: nequip.train.EnergyForceMetrics
+    coeffs:
+      per_atom_energy_rmse: 1.0
+      forces_rmse: 4.0
+
+  val_metrics:
+    _target_: nequip.train.EnergyForceMetrics
+    coeffs:
+      per_atom_energy_rmse: 1.0
+      forces_rmse: 4.0
+
+  train_metrics: ${training_module.val_metrics}
+  test_metrics: ${training_module.val_metrics}
+
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 1e-3
+
+  lr_scheduler:
+    scheduler:
+      _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+      factor: 0.6
+      patience: 5
+      threshold: 0.01
+      min_lr: 1e-6
+    monitor: ${monitored_metric}
+    interval: epoch
+    frequency: 1
+
+
+  # ======================
+  #        MODEL
+  # ======================
+  model:
+    _target_: nequip.model.modify
+
+    modifiers:
+      - modifier: enable_OpenEquivariance
+      - modifier: modify_PerTypeScaleShift
+        shifts:
+          B: -0.3646081866040635
+          N: -3.147865175768043
+          C: -1.3300585575731647
+        shifts_trainable: false
+        scales_trainable: false
+
+    model:
+      _target_: nequip.model.ModelFromPackage
+      package_path: PATH_TO_ZIP
