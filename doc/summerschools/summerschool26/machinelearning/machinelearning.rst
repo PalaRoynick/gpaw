@@ -12,7 +12,7 @@ We have chosen to base the simulation on the NequIP_ package and their small pre
 Overview
 ========
 
-In this exercise we use MLIPs to perform molecular dynamics (MD) simulations that would be too long and computationally constly with DFT.  We will look at the impact of rapid atoms in 2D materials, inspired by ion implantation experiments (but without modelling the charge of the incoming atom).
+In this exercise we use MLIPs to perform molecular dynamics (MD) simulations that would be too long and computationally costly with DFT.  We will look at the impact of rapid atoms in 2D materials, inspired by ion implantation experiments (but without modeling the charge of the incoming atom).
 
 In the exercise you will
 
@@ -51,11 +51,11 @@ An MLIP is a mathematical function, taking an atomic structure as input and retu
 The potential energy of an atomic system has a number of symmetries that the MLIP must respect.  The most important are
 
 * Invariance under *permutation of identical atoms*.
-* Invariance under *translations*, *rotations* and *mirroring*, i.e. invariance under the elements of the 3-dimensional Euclidian group E(3).
+* Invariance under *translations*, *rotations* and *mirroring*, i.e. invariance under the elements of the 3-dimensional Euclidean group E(3).
 
 Invariance under permutation is obtained by defining a per-atom energy: each atom has an energy that only depends on the relative positions of the surrounding atoms.  The total energy is then the sum of the atomic energies.  This is in contrast to Density Functional Theory, where atomic energies are not defined, and indeed cannot be defined, only the total energy exists in DFT.
 
-As only relative positions enter the expression for the atomic energy, tranlsational invariance is trivially fulfilled.  Invariance under rotations and mirroring/inversion can be obtained in two ways.
+As only relative positions enter the expression for the atomic energy, translational invariance is trivially fulfilled.  Invariance under rotations and mirroring/inversion can be obtained in two ways.
 
 * In an *invariant model,* a (large) number of invariant descriptors are calculated from the atomic positions, and are fed as input to the neural network (or another machine learning method).
 * In an *equivariant model*, the interatomic distance vectors are fed into an *equivariant* neural network.  All elements of the network then operate on quantities that transform correctly under rotations and inversions (think of them as scalars, vectors and tensors, although in reality they are irreducible representations of the O(3) group, which transform like the spherical harmonics :math:`Y_{lm}` that you know from quantum mechanics).

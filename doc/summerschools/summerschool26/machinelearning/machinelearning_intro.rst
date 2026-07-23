@@ -10,7 +10,7 @@ For this exercise, you should select a 2D material to work with.  The material s
 
 Select a 2D material from the `Computational 2D-Materials Database (C2DB) <https://c2db.fysik.dtu.dk>`_.  It contains around 17000 2D materials, many of them hypothetical.  All the well-known ones are there, such as C (graphene), BN (hexagonal boron nitride), MoS\ :sub:`2` (molybdenum disulphide, a transition metal dichalchogenide), Ti\ :sub:`2`\ C (titanium carbide, an MXene).  There are also more exotic materials, like CrBrS - still experimentally observed but with a more complicated structure.
 
-Search for a composition in C2DB.  In this example, we look for MoS\ :sub:`2` you write MoS2 in the search box.  Look for the material with the lowest "Energy above hull", if that is zero the material is thermodynamically stable, if it is low it is possibly metastable.  In this case we find two structures, the stable so-called 2H phase and the metastable 1T phase with twice as many atoms in the unit cell.
+Search for a composition in C2DB.  In this example, we look for MoS\ :sub:`2` you write MoS2 in the search box.  Look for the material with the lowest "Energy above hull", if that is zero the material is thermodynamically stable, if it is low it is possibly meta stable.  In this case we find two structures, the stable so-called 2H phase and the meta stable 1T phase with twice as many atoms in the unit cell.
 
 .. image:: c2db_MoS2_search.png
    :width: 80%
@@ -52,13 +52,13 @@ We start by loading the structure.
    :start-after: snippet-initialize-start
    :end-before: snippet-initialize-end
 
-The we set up the machine learning potential.  Potentially, the elements could have different names in the model, but that is not the case here; to prevent a warning we explictily tell the MLIP that it does not need to map elements:
+The we set up the machine learning potential.  Potentially, the elements could have different names in the model, but that is not the case here; to prevent a warning we explicitly tell the MLIP that it does not need to map elements:
 
 .. literalinclude:: machinelearning_intro_student.py
    :start-after: snippet-mlip-start
    :end-before: snippet-mlip-end
 
-Now we test if running an energy minimization changes something dramatical.  We check if the unit cell changes significantly or if any atom moves significantly during the energy minimization.  The ``FrechetCellFilter`` presents atomic degrees of freedom and unit cell degrees of freedom in a unified way, so they can be minimized together.  It is important to mask out the non-periodic z-axis from the unit cell, as there is no energy change associated with changing it.  The order of the unit cell components are the commonly used Voigt ordering: ``xx``, ``yy``, ``zz``, ``yz``, ``xz``, ``xy``.
+Now we test if running an energy minimization changes something dramatically.  We check if the unit cell changes significantly or if any atom moves significantly during the energy minimization.  The ``FrechetCellFilter`` presents atomic degrees of freedom and unit cell degrees of freedom in a unified way, so they can be minimized together.  It is important to mask out the non-periodic z-axis from the unit cell, as there is no energy change associated with changing it.  The order of the unit cell components are the commonly used Voigt ordering: ``xx``, ``yy``, ``zz``, ``yz``, ``xz``, ``xy``.
 
 .. literalinclude:: machinelearning_intro_student.py
    :start-after: snippet-minimization-start

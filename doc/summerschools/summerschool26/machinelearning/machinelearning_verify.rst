@@ -44,6 +44,6 @@ The code below also includes a sanity check: that no atom has passed outside the
    :start-after: snippet-oldforces-start
    :end-before: snippet-oldforces-end
 
-Be sure to save the DFT forces to one or more trajectory files.  Now you can try to analyse the difference between the forces calculated by the MLIP and by DFT.  Try to critically evaluate if the MLIP is doing reasonably well.
+Be sure to save the DFT forces to one or more trajectory files.  Now you can try to analyze the difference between the forces calculated by the MLIP and by DFT.  Try to critically evaluate if the MLIP is doing reasonably well.
 
 You can then proceed to :ref:`fine-tuning the MLIP <machinelearning_finetune>`.
