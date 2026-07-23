@@ -91,6 +91,7 @@ class LBFGS:
             self.local_iter += 1
 
             # Return initial search direction
+            self.beta0 = 1.0
             return self.search_dir
 
         else:
