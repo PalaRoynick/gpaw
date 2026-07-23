@@ -161,9 +161,26 @@ class DirOptLCAO(LCAOEigensolver):
                    'hamiltonian': hamiltonian,
                    'a_vec_u': None
                    }
+        if shuttle['a_vec_u'] is not None:
+            self.objfunc._a_vec_u = shuttle['a_vec_u']
+        else:
+            shuttle['a_vec_u'] = self.objfunc._a_vec_u
 
         # If first iteration or the reference orbitals have been updated
         # calculate energy and gradient here
+        # if self.iter == 1:
+        #     self.etdm._energy, self.etdm._gradient = \
+        #         self.objfunc._calc_energy_and_gradient(shuttle)
+        #     self.old_gradient = None
+        # else:
+        #     self.etdm._gradient = self.old_gradient
+
+        # print('grad before')
+        # print(self.etdm._gradient[0,:10])
+
+        # Update reference orbitals
+        self.update_ref_orbitals(ibzwfs)
+
         if self.iter == 1:
             self.etdm._energy, self.etdm._gradient = \
                 self.objfunc._calc_energy_and_gradient(shuttle)
@@ -171,13 +188,14 @@ class DirOptLCAO(LCAOEigensolver):
         else:
             self.etdm._gradient = self.old_gradient
 
-        # Update reference orbitals
-        self.update_ref_orbitals(ibzwfs)
+        
 
         # Preconditioning
         if not self.precond or self.searchdir_algo_name == 'l-bfgs-p':
             self.prec = self.get_preconditioner(ibzwfs, self.ind_up)
             self.precond = True
+        # print('precond')
+        # print(self.prec[0,:10])
 
         # One step of etdm
         self.etdm.one_iteration(shuttle, precond=self.prec)
@@ -188,6 +206,10 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm._gradient = None
         self.etdm.gradient = shuttle
         self.old_gradient = self.etdm.gradient
+
+        # print('grad after')
+        # print(self.etdm.gradient[0,:10])
+        # print(self.etdm._gradient[0,:10])
 
         self.iter += 1
         # if self.objfunc.e_sic is not None:
@@ -248,8 +270,10 @@ class DirOptLCAO(LCAOEigensolver):
             for u, wfs in enumerate(ibzwfs):
                 n_dim = self.objfunc._a_vec_u[u]._ndim
                 self.ref_orbitals[u].data = np.copy(wfs.C_nM.data[:n_dim])
-                self.etdm.a_u[u] = np.zeros_like(
-                    self.etdm.a_u[u])
+                # self.etdm.a_u[u] = np.zeros_like(
+                #     self.etdm.a_u[u])
+                self.objfunc._a_vec_u[u].data = np.zeros_like(
+                    self.objfunc._a_vec_u[u].data)
 
             self.iter = 1
             self.etdm.searchdir_algo.reset()
@@ -297,6 +321,8 @@ class DirOptLCAO(LCAOEigensolver):
             beta0 = 1.0
             gamma = 0.0
 
+        print('self.beta')
+        print(beta0)
         prec = []
 
         for wfs in ibzwfs:
@@ -305,8 +331,11 @@ class DirOptLCAO(LCAOEigensolver):
                 self.hess = self.get_approx_analytical_hessian(
                     wfs, ibzwfs.dtype, ind_up)
             hess = self.hess
+            
             precond = np.zeros_like(hess)
             correction = w * gamma * beta0 ** (-1)
+            # print('beta0')
+            # print(beta0)
             if self.searchdir_algo_name != 'l-bfgs-p':
                 correction = np.zeros_like(hess)
                 zeros = abs(hess) < 1.0e-4

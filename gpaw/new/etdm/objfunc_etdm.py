@@ -177,10 +177,10 @@ class ObjectiveFunctionETDM(ABC):
         """
         # If a new parameter vector is given,
         # update the internal SkewHermitian objects
-        if shuttle['a_vec_u'] is not None:
-            self._a_vec_u = shuttle['a_vec_u']
-        else:
-            shuttle['a_vec_u'] = self._a_vec_u
+        # if shuttle['a_vec_u'] is not None:
+        #     self._a_vec_u = shuttle['a_vec_u']
+        # else:
+        #     shuttle['a_vec_u'] = self._a_vec_u
 
         # Compute energy and Hamiltonian matrix elements
         energy, h_unn = self._calc_obf_value_and_matrix_elements(shuttle)

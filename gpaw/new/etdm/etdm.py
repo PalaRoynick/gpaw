@@ -154,6 +154,8 @@ class ETDM:
         if gradient is None:
             self.gradient = shuttle
             gradient = self.gradient
+            self.a_u = [shuttle['a_vec_u'][k].data for k, a in
+                        enumerate(shuttle['a_vec_u'])]
 
         # Update the search direction using LBFGS
         self.searchdir_algo.update(
