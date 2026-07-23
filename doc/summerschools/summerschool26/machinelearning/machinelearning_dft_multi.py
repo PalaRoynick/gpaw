@@ -20,8 +20,10 @@ calc = GPAW(xc='PBE',
 )
 # snippet-gpaw-end
 
+# snippet-traj-start
 traj = Trajectory(output + '.traj', 'w',
                   properties=['energy', 'forces', 'magmom', 'magmoms'])
+#snippet-traj-end
 
 for f in framenumbers:
     # snippet-oldforces-start

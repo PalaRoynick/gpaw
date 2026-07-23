@@ -42,6 +42,8 @@ Now download the NequIP-OAM-S foundational model, and prepare to run it on the D
 
 Note that there are only two lines, the second is long and may wrap in your browser!
 
+**FALLBACK:** We have seen the zenodo.com web server where the model is stored being down.  In that case you can copy the file ``~jasc/CAMD2026/NequIP-OAM-S-0.1.nequip.zip`` to the current folder, and then run the command above replacing ``nequip.net:mir-group/NequIP-OAM-S:0.1`` with the name of the ZIP file.
+
 
 Theory
 ======

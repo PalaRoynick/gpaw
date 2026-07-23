@@ -50,6 +50,18 @@ Be very careful when editing the ``.yaml`` file that your editor does not replac
 .. literalinclude:: finetuning.yaml
 
 
+Make an output folder on a fast disk
+====================================
+
+The fine-tuning script will overload the normal disk server.  Please make an output folder on the fast parallel disk system.  In a terminal window, go to the folder where you run the script and make a soft-link to a folder on the fast disk::
+
+    cd folder_where_you_run_your_scripts
+    mkdir $BLACKHOLE/outputs
+    ln -s $BLACKHOLE/outputs
+
+(Do not be scared by the "black hole" name, your files will stay there during the summer school)
+	    
+
 Running the fine-tuning on GPUs
 ===============================
 
@@ -58,4 +70,4 @@ The fine tuning script is a shell-script, not a Python script, so it cannot be s
 :download:`train.bsub <train.bsub>`:
 
 .. literalinclude:: train.bsub
-    
+
