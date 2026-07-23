@@ -84,9 +84,9 @@ understand what it does:
 .. literalinclude:: convergence.py
 
 If you run the script, the ``main()`` function will run and all the
-convergence calculations will be run.  You can run the script yourself or
+convergence calculations will be run. You can run the script yourself or
 you can just download the results here: :download:`results.json`. We will
-now analyse the results.
+now analyze the results.
 
 Try this:
 
