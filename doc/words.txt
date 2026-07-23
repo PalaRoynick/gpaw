@@ -1454,3 +1454,6 @@ Frederiksen
 Sethna
 Bligaard
 Nitride
+facto
+Spyder
+MacOS
