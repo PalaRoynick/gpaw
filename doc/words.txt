@@ -1480,3 +1480,10 @@ dichalchogenide
 disulphide
 Voigt
 thermostatting
+Ising
+bosonic
+parameterizes
+trigonal
+antiferromagnetic
+isotropy
+anisotropies
