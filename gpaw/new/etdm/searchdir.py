@@ -68,15 +68,12 @@ class LBFGS:
         # Step 1: First iteration initialization
         # print('self.local_iter')
         # print(self.local_iter)
-        if self.local_iter == 0:
-            self.ds = [0.0 * g_cur for _ in range(self.memory)]
-            self.dy = [0.0 * g_cur for _ in range(self.memory)]
 
-            # Store current gradient and variables
-            self.g_old = g_cur.copy()
-            self.a_old = a_cur.copy()
 
-            # preconditioning and initial search direction
+        # Fixes problems with l-bfgs for 0.05
+
+        
+        if not self.p_key:
             if precond is not None:
                 if self.p_key:
                     g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
@@ -86,6 +83,26 @@ class LBFGS:
                     self.search_dir = -g_cur
             else:
                 self.search_dir = -g_cur
+
+        if self.local_iter == 0:
+            self.ds = [0.0 * g_cur for _ in range(self.memory)]
+            self.dy = [0.0 * g_cur for _ in range(self.memory)]
+
+            # Store current gradient and variables
+            self.g_old = g_cur.copy()
+            self.a_old = a_cur.copy()
+
+            # preconditioning and initial search direction
+            if self.p_key:
+                if precond is not None:
+                    if self.p_key:
+                        g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
+                        self.search_dir = g_cur
+                    else:
+                        g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
+                        self.search_dir = -g_cur
+                else:
+                    self.search_dir = -g_cur
 
             # Increment iteration counter
             self.local_iter += 1
@@ -145,7 +162,11 @@ class LBFGS:
 
                 # Scaling factor for this step
                 alpha[c_ind] = self.rho[c_ind] * sq
-
+                # The problem with 0.005 max step seems to be here, since
+                # NEW has more non zero elements than old. When I change while k > -1
+                # to k > 1, this is fixed here. But then we get the same problem with yr and 
+                # beta later on. On slack I sent you the comparisons
+                print(alpha, k)
                 # Update q
                 q += -alpha[c_ind] * self.dy[c_ind]
 
@@ -180,6 +201,9 @@ class LBFGS:
                 # Compute beta = rho * y^T * r
                 yr = self.dy[c_ind] @ self.search_dir
                 beta = self.rho[c_ind] * yr
+
+                
+                print(self.dy[c_ind].a_ux[0][:10], c_ind)
 
                 # Update search direction with alpha and beta corrections
                 self.search_dir += self.ds[c_ind] * (alpha[c_ind] - beta)
