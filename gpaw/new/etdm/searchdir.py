@@ -65,6 +65,8 @@ class LBFGS:
         """
 
         # Step 1: First iteration initialization
+        # print('self.local_iter')
+        # print(self.local_iter)
         if self.local_iter == 0:
             self.ds = [0.0 * g_cur for _ in range(self.memory)]
             self.dy = [0.0 * g_cur for _ in range(self.memory)]
@@ -117,12 +119,13 @@ class LBFGS:
 
             # Step 3: Stability check
             if self.rho[m] < 0:
-                self.local_iter = 0
-                self.rho[:] = 0.0
-                for x in self.ds:
-                    x[:] = 0.0
-                for x in self.dy:
-                    x[:] = 0.0
+                self.__init__(memory=self.memory, p_key=self.p_key) # BUG ALSO CHECK WITH NO SIC
+                # self.local_iter = 0
+                # self.rho[:] = 0.0
+                # for x in self.ds:
+                #     x[:] = 0.0
+                # for x in self.dy:
+                #     x[:] = 0.0
                 return self.update(a_cur, g_cur, precond)
 
             # Step 4: Two-loop recursion to compute search direction
