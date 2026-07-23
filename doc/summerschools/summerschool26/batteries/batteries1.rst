@@ -57,7 +57,7 @@ Where `x` is the number of Carbon atoms in your computational cell.
 
 We will calculate these energies using Density Functional Theory (DFT)
 with different exchange-correlation functionals.  Graphite is
-characterised by graphene layers with strongly bound carbon atoms in
+characterized by graphene layers with strongly bound carbon atoms in
 hexagonal rings and weak long-range van der Waals interactions between
 the layers.
 
@@ -362,7 +362,7 @@ Bonus: Smaller supercell
 In the calculation of the intercalated Li we used a graphene layer with 8
 Carbon atoms per unit cell.  We can actually use only 6 Carbon by
 rotating the x and y cell vectors.  This structure will be faster to
-calculate and still have neglible Li-Li interaction.
+calculate and still have negligible Li-Li interaction.
 
 .. testcode::
 
