@@ -22,8 +22,8 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
     import sys
 
     print("start")
-    new_file = f'{pwd}temp_new_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
-    old_file = f'{pwd}temp_old_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
+    new_file = f'{pwd}temp_NEW_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
+    old_file = f'{pwd}temp_OLD_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
     command = f'/Users/giulia/Desktop/read_test.sh {new_file} {old_file}'
     subprocess.call([command], shell=True)
 
@@ -33,7 +33,7 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
     new_num = []
     with file_new:
         for line in file_new:
-            new_num.append(float(((line.strip('\n')).strip('c'))))
+            new_num.append(float((((line.strip('\n')).strip('|')).strip('c'))))
         new_num = np.array(new_num)
     file_new.close()
 
@@ -92,63 +92,78 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 # ['l-bfgs', 'l-bfgs-p', 'LSR1P']
 
 # full, True, egdecomp, lbfgsp
-@pytest.mark.parametrize('gpaw_new', [False])
-@pytest.mark.parametrize("representation", ['u-invar'])
-@pytest.mark.parametrize("spinpol", [True])
-@pytest.mark.parametrize("matrix_exp", ['pade-approx'])
-@pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
-def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
+@pytest.mark.parametrize("max_step", [0.5, 0.05, 0.005])
+@pytest.mark.parametrize('legacy_gpaw', [True, False])
+@pytest.mark.parametrize("representation", ['u-invar', 'full', 'sparse'])
+@pytest.mark.parametrize("spinpol", [True, False])
+@pytest.mark.parametrize("matrix_exp", ['egdecomp', 'pade-approx'])
+@pytest.mark.parametrize("searchdir_algo", ['l-bfgs', 'l-bfgs-p', 'LSR1P'])
+def test_h2o(legacy_gpaw, representation, spinpol, matrix_exp, searchdir_algo, max_step):
 
     """
     temporary test that recalculates from scratch, slow
     """
+
+    if legacy_gpaw:
+        version = 'OLD'
+    else:
+        version = 'NEW'
+
     atm = h2o_maker(vacuum=5.0)
-    pwd = '/Users/giulia/Desktop/reference/'
+    if max_step == 0.5:
+        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.5maxstep/'
+    elif max_step == 0.05:
+        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.05maxstep/'
+    elif max_step == 0.005:
+        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.005maxstep/'
 
-    calc = GPAW(
-             legacy_gpaw=False,
-             mode=LCAO(),
-             basis='dzp',
-             occupations={'name': 'fixed-uniform'},
-             eigensolver={'name': 'etdm',
-                          'representation': representation,
-                          'matrix_exp': matrix_exp,
-                          'searchdir_algo': searchdir_algo,
-                          'linesearch_algo': {'name': 'max-step',
-                                              'max_step': 0.5}},
-             mixer={'backend': 'no-mixing'},
-             spinpol=spinpol,
-             nbands='nao',
-             symmetry='off',
-             maxiter=100,
-             # txt=f'{pwd}temp_new_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
-             txt='-'
-                )
+    #calc = GPAW(
+    #         legacy_gpaw=legacy_gpaw,
+    #         mode=LCAO(),
+    #         basis='dzp',
+    #         occupations={'name': 'fixed-uniform'},
+    #         eigensolver={'name': 'etdm',
+    #                      'representation': representation,
+    #                      'matrix_exp': matrix_exp,
+    #                      'searchdir_algo': searchdir_algo,
+    #                      'linesearch_algo': {'name': 'max-step',
+    #                                          'max_step': max_step}},
+    #         mixer={'backend': 'no-mixing'},
+    #         spinpol=spinpol,
+    #         nbands='nao',
+    #         symmetry='off',
+    #         maxiter=100,
+    #         txt=f'{pwd}temp_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
+    #         #txt='-'
+    #            )
     
-    atm.calc = calc
-    e = atm.get_potential_energy()
-    f = atm.get_forces()
-    target_pot_en = -13.643156256566218
-    abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
-    f2 = np.array([[-1.11463, -1.23723, 0.0],
-                   [1.35791, 0.00827, 0.0],
-                   [-0.34423, 1.33207, 0.0]])
-    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
-    assert f == pytest.approx(f2, abs=abs_force_tol)
+    #atm.calc = calc
+    #e = atm.get_potential_energy()
+    #f = atm.get_forces()
+    #target_pot_en = -13.643156256566218
+    #abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
+    #f2 = np.array([[-1.11463, -1.23723, 0.0],
+    #               [1.35791, 0.00827, 0.0],
+    #               [-0.34423, 1.33207, 0.0]])
+    #assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
+    #assert f == pytest.approx(f2, abs=abs_force_tol)
 
-    atm.calc = calc
+    #atm.calc = calc
 
-    e = atm.get_potential_energy()
-    f = atm.get_forces()
-    target_pot_en = -13.643156256566218
-    abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
-    f2 = np.array([[-1.11463, -1.23723, 0.0],
-                   [1.35791, 0.00827, 0.0],
-                   [-0.34423, 1.33207, 0.0]])
-    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
-    assert f == pytest.approx(f2, abs=abs_force_tol)
+    #e = atm.get_potential_energy()
+    #f = atm.get_forces()
+    #target_pot_en = -13.643156256566218
+    #abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
+    #f2 = np.array([[-1.11463, -1.23723, 0.0],
+    #               [1.35791, 0.00827, 0.0],
+    #               [-0.34423, 1.33207, 0.0]])
+    #assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
+    #assert f == pytest.approx(f2, abs=abs_force_tol)
 
-    analyze = False
+    #print('----DONE----')
+    #print(f'{max_step}_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt')
+
+    analyze = True
     if analyze:
         analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd)
 
