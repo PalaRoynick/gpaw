@@ -30,7 +30,7 @@ This project requires the Torch and NequIP packages, adding more than seven giga
 
 To install the machine learning tools, run this command in a terminal::
 
-    setup ~jasc/setup2026ml
+    source ~jasc/setup2026ml
 
 Now download the NequIP-OAM-S foundational model, and prepare to run it on the DTU computer system, using CPUs.  While GPUs give significant acceleration of the larger models, we gain little with the small model, and we only have access to very limited GPU power, so we will only use that for training.
 
@@ -41,6 +41,8 @@ Now download the NequIP-OAM-S foundational model, and prepare to run it on the D
     nequip-compile nequip.net:mir-group/NequIP-OAM-S:0.1 NequIP-OAM-S_cpu.nequip.pt2 --mode aotinductor --device cpu --target ase
 
 Note that there are only two lines, the second is long and may wrap in your browser!
+
+**FALLBACK:** We have seen the zenodo.com web server where the model is stored being down.  In that case you can copy the file ``~jasc/CAMD2026/NequIP-OAM-S-0.1.nequip.zip`` to the current folder, and then run the command above replacing ``nequip.net:mir-group/NequIP-OAM-S:0.1`` with the name of the ZIP file.
 
 
 Theory

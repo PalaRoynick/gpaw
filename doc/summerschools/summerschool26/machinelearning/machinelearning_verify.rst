@@ -46,4 +46,10 @@ The code below also includes a sanity check: that no atom has passed outside the
 
 Be sure to save the DFT forces to one or more trajectory files.  Now you can try to analyse the difference between the forces calculated by the MLIP and by DFT.  Try to critically evaluate if the MLIP is doing reasonably well.
 
+When you save the DFT results, you need to prevent GPAW from saving the dipole moment of the system, as that would trigger a bug in NequIP when you later try to use the calculation for fine tuning the MLIP (the symptom of the bug is a crash when reading the file).  To prevent saving the dipole moment, you need to explicitly state what you want saved in the Trajectory file:
+
+.. literalinclude:: machinelearning_dft_multi.py
+   :start-after: snippet-traj-start
+   :end-before: snippet-traj-end
+
 You can then proceed to :ref:`fine-tuning the MLIP <machinelearning_finetune>`.
