@@ -56,8 +56,11 @@
 #define gpuCmulf                  hipCmulf
 #define gpuConj                   hipConj
 #endif
-#define gpublasDoubleComplex      hipblasDoubleComplex
-#define gpublasComplex            hipblasComplex
+// ROCm >= 6 hipBLAS always builds with the HIPBLAS_V2 API (hip complex types);
+// the legacy hipblasDoubleComplex/hipblasComplex typedefs were removed. Use the
+// hip_complex.h types, which are layout-compatible double2/float2 (.x/.y).
+#define gpublasDoubleComplex      hipDoubleComplex
+#define gpublasComplex            hipComplex
 #define make_gpuDoubleComplex     make_hipDoubleComplex
 #define make_gpuFloatComplex      make_hipFloatComplex
 
