@@ -92,12 +92,12 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 # ['l-bfgs', 'l-bfgs-p', 'LSR1P']
 
 # full, True, egdecomp, lbfgsp
-@pytest.mark.parametrize('gpaw_new', [False])
+
 @pytest.mark.parametrize("representation", ['full'])
 @pytest.mark.parametrize("spinpol", [False])
-@pytest.mark.parametrize("matrix_exp", ['egdecomp'])
+@pytest.mark.parametrize("matrix_exp", ['pade-approx'])
 @pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
-def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
+def test_h2o(representation, spinpol, matrix_exp, searchdir_algo):
 
     """
     temporary test that recalculates from scratch, slow
@@ -107,10 +107,10 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
 
     # if gpaw_new == 1:
     calc = GPAW(
-            legacy_gpaw=True,
-            # legacy_gpaw=False,
+            # legacy_gpaw=True,
+             legacy_gpaw=False,
             mode=LCAO(),
-            # basis='dzp',
+            basis='dzp',
             occupations={'name': 'fixed-uniform'},
             # eigensolver=LCAOETDM(searchdir_algo={"name": "L-BFGS-P"},
             #                      functional={"name": "PZ-SIC",},
@@ -123,11 +123,11 @@ def test_h2o(gpaw_new, representation, spinpol, matrix_exp, searchdir_algo):
                         'representation': representation,
                         'matrix_exp': matrix_exp,
                         'searchdir_algo': searchdir_algo,
-                        # 'linesearch_algo': {'name': 'max-step',
-                        #                     'max_step': 0.1},
-                         'linesearch_algo': {'name': 'swc-awc'},
-                        'functional': 'PZ-SIC',
-                        'localizationtype':'pz',
+                        'linesearch_algo': {'name': 'max-step',
+                                            'max_step': 0.05},
+                        #  'linesearch_algo': {'name': 'swc-awc'},
+                        # 'functional': 'PZ-SIC',
+                        # 'localizationtype':'pz',
                         # 'localize_every':1
                         },
             mixer={'backend': 'no-mixing'},

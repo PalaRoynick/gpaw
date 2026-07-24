@@ -175,8 +175,7 @@ class DirOptLCAO(LCAOEigensolver):
         # else:
         #     self.etdm._gradient = self.old_gradient
 
-        # print('grad before')
-        # print(self.etdm._gradient[0,:10])
+        
 
         # Update reference orbitals
         self.update_ref_orbitals(ibzwfs)
@@ -188,6 +187,8 @@ class DirOptLCAO(LCAOEigensolver):
         else:
             self.etdm._gradient = self.old_gradient
 
+        print('grad before')
+        print(self.etdm._gradient[0,:10])
         
 
         # Preconditioning
@@ -207,9 +208,8 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.gradient = shuttle
         self.old_gradient = self.etdm.gradient
 
-        # print('grad after')
-        # print(self.etdm.gradient[0,:10])
-        # print(self.etdm._gradient[0,:10])
+        print('grad after')
+        print(self.etdm.gradient[0,:10])
 
         self.iter += 1
         # if self.objfunc.e_sic is not None:
@@ -321,8 +321,8 @@ class DirOptLCAO(LCAOEigensolver):
             beta0 = 1.0
             gamma = 0.0
 
-        print('self.beta')
-        print(beta0)
+        # print('self.beta')
+        # print(beta0)
         prec = []
 
         for wfs in ibzwfs:

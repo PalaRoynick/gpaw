@@ -734,6 +734,7 @@ class LCAOETDM:
             der_phi_2i = self.der_phi_2i
             c_ref = self.dm_helper.reference_orbitals
 
+            
             if self.iters == 1 or self.released_subspace or \
                     (self.subspace_optimization and self.subspace_iters == 1):
                 phi_2i[0], g_vec_u = \
@@ -748,6 +749,8 @@ class LCAOETDM:
                     else self.g_vec_u
                 )
 
+            print('grad before')
+            print(np.array(g_vec_u[0])[:10])
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):
@@ -762,7 +765,8 @@ class LCAOETDM:
 
             with wfs.timer("Preconditioning:"):
                 precond = self.get_preconditioning(wfs, self.use_prec, make_pd=make_pd)
-
+            # print('precond')
+            # print(np.array(precond[0])[:10])
             with wfs.timer("Get Search Direction"):
                 # calculate search direction according to chosen
                 # optimization algorithm (e.g. L-BFGS)
@@ -796,6 +800,9 @@ class LCAOETDM:
                         der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
                         der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
                         kpdescr=wfs.kd)
+                
+            print('grad after')
+            print(np.array(g_vec_u[0])[:10])
 
             if wfs.gd.comm.size > 1:
                 with wfs.timer("Broadcast gradients"):
@@ -984,6 +991,11 @@ class LCAOETDM:
             beta0 = 1.0
             gamma = 0.0
 
+        # print('self.beta')
+        # print(beta0)
+
+        # print('beta0')
+        # print(beta0)
         counter = self.update_precond_counter
         precond = {}
         for kpt in wfs.kpt_u:

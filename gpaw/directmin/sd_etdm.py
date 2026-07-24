@@ -408,6 +408,8 @@ class LBFGS_P(SearchDirectionBase):
         # function consistent, the term precond is still used in the signature
         hess_1 = precond
         self.iters += 1
+        # print('self.k')
+        # print(self.k)
         if self.k == 0:
             self.kp[self.k] = self.p
             self.x_k = copy.deepcopy(x_k1)
@@ -421,6 +423,7 @@ class LBFGS_P(SearchDirectionBase):
                 p = minus(g_k1)
             else:
                 p = apply_prec(hess_1, g_k1, -1.0, wfs, mode)
+            
             self.beta_0 = 1.0
             return p
 

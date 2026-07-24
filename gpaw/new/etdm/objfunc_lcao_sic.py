@@ -72,21 +72,20 @@ class LCAOObjectiveFunctionSIC(ObjectiveFunctionETDM):
 
             h_nn.tril2full()
 
-            # In old, full representation is always used to compute these, even when using sparse
+            # In old, full representation is always used to compute these,
+            # even when using sparse
             hc_mn, h_ij, h_ia = self.get_ham_in_mol_orb_repr(
                 h_nn.data, wfs, self._representation, self.use_egdecomp
             )
-
             # print(self._representation) # full
             # print(self.use_egdecomp) # False
-
-            
-            l_odd, b_mn,sic_energy_by_orb = self.sic_calc.get_sic_gradient(wfs,ibzwfs, h_ij,hc_mn)
-            hc_mn+=b_mn
-            h_ij+=l_odd
+            l_odd, b_mn, sic_energy_by_orb = self.sic_calc.get_sic_gradient(
+                wfs, ibzwfs, h_ij, hc_mn)
+            hc_mn += b_mn
+            h_ij += l_odd
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
             # print(sic_energy_by_orb.sum())
-            self.e_sic +=sic_energy_by_orb.sum()
+            self.e_sic += sic_energy_by_orb.sum()
             
             # energy += sic_energy.sum()
 
