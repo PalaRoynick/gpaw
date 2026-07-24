@@ -71,3 +71,33 @@ The fine tuning script is a shell-script, not a Python script, so it cannot be s
 
 .. literalinclude:: train.bsub
 
+After the job has completed, you need to "package" and "compile" the trained model before it can be used.  Start by checking that the training job produce the expected output - the folder path in the ``ls`` command should match the output path appearing a few times in the ``finetuning.yaml`` file::
+
+    ls -l outputs/finetuned/OAM_S
+
+The output will look something like this::
+
+    total 19392
+    drwxr-xr-x 3 jasc fys      31 Jul 24 12:31 OAM-S
+    -rw-r--r-- 1 jasc fys 9927963 Jul 24 12:35 best.ckpt      <--- Look for this file!
+    -rw-r--r-- 1 jasc fys 9927963 Jul 24 12:35 last.ckpt
+
+Then you can package and compile the new potential::
+
+    nequip-package build outputs/finetuned/OAM_S/best.ckpt outputs/finetuned/OAM_S_finetuned.nequip.zip
+    nequip-compile outputs/finetuned/OAM_S_finetuned.nequip.zip NequIP-OAM-S_finetuned_cpu.nequip.pt2 --mode aotinductor --device cpu --target ase
+
+This should produce a new file ``NequIP-OAM-S_finetuned_cpu.nequip.pt2`` that can be used in your scripts.
+
+Testing if finetuning helped
+============================
+
+To test you need to produce a *test set* of configurations that have not been used during training.  For example, run the same script you produced to generate the training data, but with a slightly different position and/or energy of the projectile atom.  Select a number of frames, calculate their energies with DFT.  Then load those frames one at a time and recalculate the energies with both the old and the new MLIP, and compare.
+
+Real scientific work requires larger data sets
+==============================================
+
+Obviously, you have been using a small foundational model and a ridiculously small training set for the fine tuning, so do not expect miracles.  Real scientific work requires larger models and larger data sets.
+
+**This concludes the Machine Learning exercise.**  Note that it might be possible to try out some of the other exercises with a MLIP instead of DFT...
+
