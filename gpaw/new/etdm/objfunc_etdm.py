@@ -203,7 +203,7 @@ class ObjectiveFunctionETDM(ABC):
         else:
             # In this case h_nn is already modified in objfunc_lcao
             gradient = np.array(
-                [h_nn for h_nn in h_unn]
+                [h_nn * 2. for h_nn in h_unn]
             )
             # print(gradient.shape)
             # gradient = h_unn
