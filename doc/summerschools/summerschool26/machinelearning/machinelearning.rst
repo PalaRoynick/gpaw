@@ -30,7 +30,7 @@ This project requires the Torch and NequIP packages, adding more than seven giga
 
 To install the machine learning tools, run this command in a terminal::
 
-    setup ~jasc/setup2026ml
+    source ~jasc/setup2026ml
 
 Now download the NequIP-OAM-S foundational model, and prepare to run it on the DTU computer system, using CPUs.  While GPUs give significant acceleration of the larger models, we gain little with the small model, and we only have access to very limited GPU power, so we will only use that for training.
 
