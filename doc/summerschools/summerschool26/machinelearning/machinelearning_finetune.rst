@@ -50,6 +50,18 @@ Be very careful when editing the ``.yaml`` file that your editor does not replac
 .. literalinclude:: finetuning.yaml
 
 
+Make an output folder on a fast disk
+====================================
+
+The fine-tuning script will overload the normal disk server.  Please make an output folder on the fast parallel disk system.  In a terminal window, go to the folder where you run the script and make a soft-link to a folder on the fast disk::
+
+    cd folder_where_you_run_your_scripts
+    mkdir $BLACKHOLE/outputs
+    ln -s $BLACKHOLE/outputs
+
+(Do not be scared by the "black hole" name, your files will stay there during the summer school)
+	    
+
 Running the fine-tuning on GPUs
 ===============================
 
@@ -58,4 +70,34 @@ The fine tuning script is a shell-script, not a Python script, so it cannot be s
 :download:`train.bsub <train.bsub>`:
 
 .. literalinclude:: train.bsub
-    
+
+After the job has completed, you need to "package" and "compile" the trained model before it can be used.  Start by checking that the training job produce the expected output - the folder path in the ``ls`` command should match the output path appearing a few times in the ``finetuning.yaml`` file::
+
+    ls -l outputs/finetuned/OAM_S
+
+The output will look something like this::
+
+    total 19392
+    drwxr-xr-x 3 jasc fys      31 Jul 24 12:31 OAM-S
+    -rw-r--r-- 1 jasc fys 9927963 Jul 24 12:35 best.ckpt      <--- Look for this file!
+    -rw-r--r-- 1 jasc fys 9927963 Jul 24 12:35 last.ckpt
+
+Then you can package and compile the new potential::
+
+    nequip-package build outputs/finetuned/OAM_S/best.ckpt outputs/finetuned/OAM_S_finetuned.nequip.zip
+    nequip-compile outputs/finetuned/OAM_S_finetuned.nequip.zip NequIP-OAM-S_finetuned_cpu.nequip.pt2 --mode aotinductor --device cpu --target ase
+
+This should produce a new file ``NequIP-OAM-S_finetuned_cpu.nequip.pt2`` that can be used in your scripts.
+
+Testing if finetuning helped
+============================
+
+To test you need to produce a *test set* of configurations that have not been used during training.  For example, run the same script you produced to generate the training data, but with a slightly different position and/or energy of the projectile atom.  Select a number of frames, calculate their energies with DFT.  Then load those frames one at a time and recalculate the energies with both the old and the new MLIP, and compare.
+
+Real scientific work requires larger data sets
+==============================================
+
+Obviously, you have been using a small foundational model and a ridiculously small training set for the fine tuning, so do not expect miracles.  Real scientific work requires larger models and larger data sets.
+
+**This concludes the Machine Learning exercise.**  Note that it might be possible to try out some of the other exercises with a MLIP instead of DFT...
+

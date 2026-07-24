@@ -15,7 +15,7 @@ complete workflows.
 
 
 Using MyQueue
-=================
+=============
 
 The command ``mq`` acts as a front-end to the queue system.
 Usage::
@@ -86,3 +86,14 @@ check how GPAW will parallelize::
 
 where ``PROCESSES`` is the number of processes you want to use.  In this case,
 gpaw will print how it will parallelize the calculation when running for real.
+
+Cancelling a job
+================
+
+You may need to cancel a job - maybe something was wrong, maybe you monitor the output and see that it is not converging.
+
+Myqueue can cancel a job, you use the job id printed in the first column of the ``mq ls`` output::
+
+  mq rm -i 123456789
+
+Where you of course insert the correct job id.  If the job is running, a request is sent to the underlying LSF queue system to stop it, this may take up to 30 seconds.  The job will also be deleted from the ``mq ls`` output.
