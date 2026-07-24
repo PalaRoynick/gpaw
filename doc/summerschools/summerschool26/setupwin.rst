@@ -30,7 +30,7 @@ work.
 You must unpack the downloaded ZIP file before you run the installer,
 running it from inside the ZIP does not work!
 
-
+When you start MobaXterm the first time, the Windows firewall may ask if you want to give access to the "Embedded X server".  You need to allow this!
 
 Configuring your secret key
 ===========================
@@ -71,9 +71,9 @@ shown below.
    :width: 66%
 
 In the tab *Basic SSH settings* you should choose *Remote host* to be
-``login.gbar.dtu.dk``.  Click the "specify user name" checkbox.  The
+``login.gbar.dtu.dk``.   The
 user name is your DTU user name (external participants got it in the
-registration material).  The port number must remain 22.  Click *OK*
+registration material).  If there is a "specify user name" checkbox you need to click it (older versions of MobaXterm only).  The port number must remain 22.  Click *OK*
 and give your DTU password in the text window when prompted.  **NOTE**
 Nothing is written when you type the password, not even stars.
 
