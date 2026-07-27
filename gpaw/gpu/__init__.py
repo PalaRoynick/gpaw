@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+from functools import partial
 from collections.abc import Generator, Iterable
 from time import time
 from types import ModuleType
@@ -63,6 +64,7 @@ if not TYPE_CHECKING:
         from cupy.cublas import (_change_order_if_necessary, _get_scalar_ptr,
                                  _trans_to_cublas_op, device)
         from cupy_backends.cuda.libs import cublas as _cublas
+        from cupy._core import _dtype
 
         def _decide_ld_and_trans(a, trans):
             ld = None
@@ -94,16 +96,34 @@ if not TYPE_CHECKING:
             assert a.ndim == b.ndim == 2
             assert a.dtype == b.dtype
             dtype = a.dtype.char
-            if dtype == 'f':
-                func = _cublas.sgemm
-            elif dtype == 'd':
-                func = _cublas.dgemm
-            elif dtype == 'F':
-                func = _cublas.cgemm
-            elif dtype == 'D':
-                func = _cublas.zgemm
+
+            if dtype in ['f', 'F']:
+                # compute_type = _cublas.CUBLAS_COMPUTE_32F
+                # compute_type = _cublas.CUBLAS_COMPUTE_32F_EMULATED_16BFX9
+                # I assume this is the code for:
+                #  _cublas.CUBLAS_COMPUTE_32F_EMULATED_16BFX9
+                compute_type = 78
+            elif dtype in ['d', 'D']:
+                compute_type = _cublas.CUBLAS_COMPUTE_64F
             else:
                 raise TypeError('invalid dtype')
+
+            func = partial(_cublas.gemmEx,
+                           Atype=_dtype.to_cuda_dtype(a.dtype),
+                           Btype=_dtype.to_cuda_dtype(b.dtype),
+                           Ctype=_dtype.to_cuda_dtype(out.dtype),
+                           computeType=compute_type,
+                           algo=_cublas.CUBLAS_GEMM_DEFAULT)
+            # if dtype == 'f':
+            #     func = _cublas.sgemm
+            # elif dtype == 'd':
+            #     func = _cublas.dgemm
+            # elif dtype == 'F':
+            #     func = _cublas.cgemm
+            # elif dtype == 'D':
+            #     func = _cublas.zgemm
+            # else:
+            #     raise TypeError('invalid dtype')
 
             transa = _trans_to_cublas_op(transa)
             transb = _trans_to_cublas_op(transb)
@@ -155,9 +175,11 @@ if not TYPE_CHECKING:
                 if out._c_contiguous:
                     # Computes out.T = alpha * b.T @ a.T + beta * out.T
                     try:
-                        func(handle, 1 - transb, 1 - transa, n, m, k,
-                             alpha_ptr, b.data.ptr, ldb, a.data.ptr, lda,
-                             beta_ptr, out.data.ptr, n)
+                        func(handle=handle, transa=1 - transb, transb=1 - transa,
+                             m=n, n=m, k=k,
+                             alpha=alpha_ptr, A=b.data.ptr, lda=ldb,
+                             B=a.data.ptr, ldb=lda,
+                             beta=beta_ptr, C=out.data.ptr, ldc=n)
                     finally:
                         _cublas.setPointerMode(handle, orig_mode)
                     return out
@@ -174,12 +196,16 @@ if not TYPE_CHECKING:
                     # Computes out.T = alpha * b.T @ a.T + beta * out.T
                     try:
                         ld_out = out.strides[-2] // out.strides[-1]
-                        func(handle, 1 - transb, 1 - transa, n, m, k,
-                             alpha_ptr, b.data.ptr, ldb, a.data.ptr, lda,
-                             beta_ptr, out.data.ptr, ld_out)
+                        func(handle=handle, transa=1 - transb, transb=1 - transa,
+                             m=n, n=m, k=k,
+                             alpha=alpha_ptr, A=b.data.ptr, lda=ldb,
+                             B=a.data.ptr, ldb=lda,
+                             beta=beta_ptr, C=out.data.ptr, ldc=ld_out)
                     finally:
                         _cublas.setPointerMode(handle, orig_mode)
                     return out
+
+            raise NotImplementedError
 
             # Backup plan with copies
             a, lda = _change_order_if_necessary(a, lda)

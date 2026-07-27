@@ -217,7 +217,7 @@ class XArray(Generic[DomainType], XP):
             # numerical stability. This is especially important
             # for single precision.
             if self.data.dtype in (np.float32, np.complex64):
-                blocksize = 4096
+                blocksize = 16777216  # 4096
                 # 4096 = 2**12. Largest blocksize, that yields
                 # good numerical stability. This results in some
                 # overhead, however, numericaly stability is
@@ -242,11 +242,11 @@ class XArray(Generic[DomainType], XP):
                             xp=self.xp,
                             dist=(comm, -1, 1))
                 m1.multiply(m2, opb='C', alpha=self.dv,
-                            symmetric=symmetric, out=out,
+                            symmetric=False, out=out,
                             beta=0 if ind == 0 else 1)
 
             # functions needs a correction:
-            self._matrix_elements_correction(M1, M2, out, symmetric)
+            self._matrix_elements_correction(M1, M2, out, False)
         else:
             if symmetric:
                 _parallel_me_sym(self, out, function)
