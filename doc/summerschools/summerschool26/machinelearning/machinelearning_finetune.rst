@@ -65,7 +65,15 @@ The fine-tuning script will overload the normal disk server.  Please make an out
 Running the fine-tuning on GPUs
 ===============================
 
-The fine tuning script is a shell-script, not a Python script, so it cannot be submitted to the HPC cluster through MyQueue - instead to have to use the underlying LSF queue system.  You need a script that calls the Nequip training program with the YAML file as its argument.  The file needs to contain the correct instructions to the LSF queuing system as well.  Such a file can be found here:
+The fine tuning script is a shell-script, not a Python script, so it cannot be submitted to the HPC cluster through MyQueue - instead to have to use the underlying LSF queue system.  You need a script that calls the Nequip training program with the YAML file as its argument.  The file needs to contain the correct instructions to the LSF queuing system as well.
+
+Use this command line to submit the script::
+
+    bsub < train.bsub
+
+*Do not forget the less-than character, or you will submit a weird job that fails.*
+
+A sample script file can be found here:
 
 :download:`train.bsub <train.bsub>`:
 
