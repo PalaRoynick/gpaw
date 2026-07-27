@@ -484,8 +484,7 @@ class iKSLBFGS:
     def fix_origin(self, x: PotState) -> PotState:
         for data_asz in x.data_xasz:
             for v_sz in data_asz.values():
-                if v_sz.shape[-1] > 1:
-                    v_sz[..., 0] = v_sz[..., 1]
+                v_sz[..., 0] = v_sz[..., 1]
         return x
 
     def set_potentials_and_iterate(self, x: PotState):
@@ -729,12 +728,10 @@ class iKSLBFGS:
                 f'alpha={alpha:.5e}, '
                 f'phi={phi_new:.5e}')
 
-            if np.isfinite(phi_new) and \
-                    phi_new <= phi0 + c1 * alpha * dphi0:
+            if np.isfinite(phi_new) and phi_new <= phi0 + c1 * alpha * dphi0:
                 J_sg, J_xasz, Jc_a = self.get_gradients()
                 g_new = PotState(
                     J_sg, J_xasz, Jc_a, *self.potstate_args)
-
                 iks.fmt.log(
                     f'Armijo condition satisfied: alpha={alpha:.5e}')
 
@@ -742,7 +739,9 @@ class iKSLBFGS:
                         L_new, LD_new, alpha, True)
 
             alpha *= tau
-
+            self.log_cbar(x_new)
+            iks.logiter(il, self.L1, L_new, self.LD1,
+                        LD_new, iks.jacobian(), sep='')
         iks.fmt.log(
             'Armijo line search failed; restoring current state.')
         self.set_potentials_and_iterate(x)
@@ -777,6 +776,7 @@ class iKSLBFGS:
         phi = L + LD
         J_sg, J_xasz, Jc_a = self.get_gradients()
         gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
+
         x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, {a: np.zeros(
             1) for a in iks.xc.vxc_xasz[0].keys()}, *self.potstate_args).copy()
         self.fix_origin(x)

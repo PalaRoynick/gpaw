@@ -779,7 +779,7 @@ def calculate_atomic_potentials_from_kernel(
         # vv_sng[..., 0] = vv_sng[..., 1]
         vxc_sng -= 2 * vv_sng
         # r=0
-        vxc_sng[..., 0] = np.einsum('n,sng->sg', weight_n, vxc_sng[..., 1])
+        vxc_sng[..., 0] = np.einsum('n,sn->s', weight_n, vxc_sng[..., 1])
 
     if paw_potmode is PAWPotMode.lebedev:
         return vxc_sng

@@ -198,7 +198,7 @@ class iKS:
         atoms: Atoms | None = None,
         lambda_reg: float = 1e-6,
         lambda_boundary: float = 1e-4,
-        lambda_core: float = 1e-4,
+        lambda_core: float = 5e-4,
         pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,

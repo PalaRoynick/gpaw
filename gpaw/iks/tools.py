@@ -481,55 +481,27 @@ def get_weights(
     return weights_sG, weights_name
 
 
-# def calculate_corereg_weights(setups, power=1):
-#     """
-#         w = n_c / max(n_c)
-#     """
-#     w_ag = {}
-#     for a, setup in enumerate(setups):
-#         xcc = setup.xc_correction
-#         if xcc is None:
-#             w_ag[a] = np.zeros((1,), dtype=float)  # AE
-#             continue
-#         nc_g = xcc.nc_g
-#         max_nc = nc_g.max()
-#         if max_nc > 0:
-#             w_ag[a] = (nc_g / max_nc)**power
-#         else:
-#             w_ag[a] = np.zeros_like(nc_g)
-#     return w_ag
-
-def get_core_regularization_weights(setups: Setups, p: float = 1.0, t: float = 1.0, c: float = 1.0) -> dict[int, Array1D]:
+def get_core_regularization_weights(setups, power=1):
     """
-        E(r) = [0.5 * (1 + cos(pi * (r / (c * rc))**t))]**p
-        The weights are zeroed for setup.xc_correction.nc_g == 0.0
+        w = n_c / max(n_c)
     """
     w_ag = {}
-
     for a, setup in enumerate(setups):
         xcc = setup.xc_correction
         if xcc is None:
-            w_ag[a] = np.zeros(1)
-
-        elif np.all(xcc.nc_g == 0.0):  # No core
-            w_ag[a] = np.zeros_like(xcc.nc_g)
-
-        elif p == 0.0:
-            w_ag[a] = np.ones(xcc.rgd.N)
-
+            w_ag[a] = np.zeros((1,), dtype=float)  # AE
+            continue
+        nc_g = xcc.nc_g
+        max_nc = nc_g.max()
+        if max_nc > 1e-6:
+            w_ag[a] = (nc_g / max_nc)**power
         else:
-            r_g = xcc.rgd.r_g
-            rc = c * max(setup.rcut_j)
-
-            x_g = np.clip(r_g / rc, 0.0, 1.0)
-
-            E_g = (0.5 * (1.0 + np.cos(np.pi * x_g**t)))**p
-            w_ag[a] = E_g
+            w_ag[a] = np.zeros_like(nc_g)
 
     return w_ag
 
 
-def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 1.0, c: float = 2.0) -> dict[int, Array1D]:
+def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c_=1.5) -> dict[int, Array1D]:
     """
         E(r) = 1.0 - [0.5 * (1 + cos(pi * (r / (c * rc))**t))]**p
     """
@@ -545,6 +517,11 @@ def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 1.0, c: 
         if p == 0.0:
             w_ag[a] = xcc.rgd.zeros()
             continue
+
+        c = c_
+        if np.all(xcc.nc_g <= 1e-6):
+            # all-electron/no-core setups, expand the constraint region
+            c = 0.25
 
         r_g = xcc.rgd.r_g
         rc = c * max(setup.rcut_j)
@@ -566,7 +543,8 @@ def calculate_core_atomic_potentials(setups, xc, nspins):
         xcc = setup.xc_correction
         if xcc is None:
             # AE setup
-            v_a[a] = np.zeros(1, float)
+            v_a[a] = np.zeros(nspins, float)
+            vt_a[a] = np.zeros(nspins, float)
             continue
         rgd = xcc.rgd
         # v_a
