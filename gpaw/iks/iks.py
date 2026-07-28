@@ -372,7 +372,11 @@ class iKS:
                 setup = self.setups[a]
                 xcc = setup.xc_correction
                 if xcc is None:
-                    raise NotImplementedError
+                    from gpaw.spline import Spline
+                    vct_spl = [Spline.from_data(0, 1.0, np.zeros(2))]
+                    vct_a.append(vct_spl)
+                    splines[id_] = vct_spl
+                    continue
                 rcut2 = 2 * max(setup.rcut_j)
                 gcut2 = xcc.rgd.ceil(rcut2)
                 # both spin-channels are the same

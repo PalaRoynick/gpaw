@@ -519,9 +519,9 @@ def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c_=
             continue
 
         c = c_
-        if np.all(xcc.nc_g <= 1e-6):
-            # all-electron/no-core setups, expand the constraint region
-            c = 0.25
+        # if np.all(xcc.nc_g <= 1e-6):
+        #     # all-electron/no-core setups, expand the constraint region
+        #     c = 0.25
 
         r_g = xcc.rgd.r_g
         rc = c * max(setup.rcut_j)

@@ -547,6 +547,10 @@ class NumericalXC(XCFunctional):
         assert self.paw_potmode in (PAWPotMode.lebedev, PAWPotMode.angular)
         vxc_xasz: list[dict[int, Array3D]] = [{} for _ in self.vxc_xasz]
         for a, setup in enumerate(self.ham.setups):
+            if setup.xc_correction is None:
+                vxc_xasz[0][a] = np.zeros(1)
+                vxc_xasz[1][a] = np.zeros(1)
+                continue
             for x, vxc_asz in enumerate(self.vxc_xasz):
                 vxc_sz = vxc_asz.get(a)
                 if vxc_sz is None:
@@ -707,6 +711,11 @@ def calculate_angular_density(xcc, D_sp, n_qg, nc_g, add_core=True):
 
 def get_atomic_vxc_spline(setup, vxc_Lg, points=1000):
     xcc = setup.xc_correction
+    if xcc is None:
+        from gpaw.spline import Spline
+        v_j = [Spline.from_data(0, 1.0, np.zeros(2))]
+        coeff_j = [0.0]
+        return v_j, coeff_j
     rgd = xcc.rgd
     Lmax = len(vxc_Lg)
     l_L = [isqrt(L) for L in range(Lmax)]

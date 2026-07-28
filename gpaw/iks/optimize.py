@@ -308,9 +308,10 @@ class PotState:
         assert isinstance(other, PotState)
         assert self.gd is not None and self.setups is not None and self.cbar_inner is not None
         II = np.zeros(1, dtype=float)
+        assert tuple(self.data_xasz[1].keys()) == tuple(
+            self.cbar_a.keys()), f"{self.data_xasz[1].keys()} != {self.cbar_a.keys()}"
         for data_asz, other_asz in zip(self.data_xasz, other.data_xasz):
             assert tuple(data_asz.keys()) == tuple(other_asz.keys())
-            assert tuple(data_asz.keys()) == tuple(self.cbar_a.keys())
             for a in data_asz:
                 data_sng = data_asz[a]
                 other_sng = other_asz[a]
@@ -482,10 +483,11 @@ class iKSLBFGS:
         return x
 
     def fix_origin(self, x: PotState) -> PotState:
-        for data_asz in x.data_xasz:
-            for v_sz in data_asz.values():
-                v_sz[..., 0] = v_sz[..., 1]
         return x
+        # for data_asz in x.data_xasz:
+        #     for v_sz in data_asz.values():
+        #         v_sz[..., 0] = v_sz[..., 1]
+        # return x
 
     def set_potentials_and_iterate(self, x: PotState):
         if self.gauge:
@@ -512,6 +514,11 @@ class iKSLBFGS:
         partition = Jt_asz.partition
         fgd = iks.finegd
         for a in range(partition.natoms):
+            xcc = iks.setups[a].xc_correction
+            if xcc is None:
+                if a in partition.my_indices:
+                    Jc_a[a] = np.zeros(1)
+                continue
             Jc = 0.0
             coeff_a = {a_: np.zeros(1) for a_ in partition.my_indices}
             if a in partition.my_indices:
@@ -520,7 +527,6 @@ class iKSLBFGS:
             iks.vct.add(vct_sg, self.from_workdict(coeff_a))
             Jc += fgd.integrate(vct_sg * J_sg).sum()
             if a in partition.my_indices:
-                xcc = iks.setups[a].xc_correction
                 for n, weight in enumerate(weight_n):
                     Jc += weight * \
                         xcc.rgd.integrate(
@@ -778,7 +784,7 @@ class iKSLBFGS:
         gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
 
         x = PotState(iks.xc.vxc_sg, iks.xc.vxc_xasz, {a: np.zeros(
-            1) for a in iks.xc.vxc_xasz[0].keys()}, *self.potstate_args).copy()
+            1) for a in iks.xc.vxc_xasz[1].keys()}, *self.potstate_args).copy()
         self.fix_origin(x)
         x_prev = None
         g_prev = None
