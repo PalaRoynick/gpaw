@@ -418,7 +418,7 @@ class iKSLBFGS:
         iks = self.iks
         wpart = iks.xc.vxc_xasz[1].partition
         c_as = wpart.arraydict(
-            [(iks.nspins,) for a in range(len(iks.setups))])
+            [(iks.nspins, 1) for a in range(len(iks.setups))])
         for a in c_as.keys():
             c_as[a][:] = scale * w_a[a]
         return iks.hamiltonian.atomdist.from_work(c_as)

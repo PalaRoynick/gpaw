@@ -501,7 +501,7 @@ def get_core_regularization_weights(setups, power=1):
     return w_ag
 
 
-def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c_=1.5) -> dict[int, Array1D]:
+def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c=1.5) -> dict[int, Array1D]:
     """
         E(r) = 1.0 - [0.5 * (1 + cos(pi * (r / (c * rc))**t))]**p
     """
@@ -517,11 +517,6 @@ def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c_=
         if p == 0.0:
             w_ag[a] = xcc.rgd.zeros()
             continue
-
-        c = c_
-        # if np.all(xcc.nc_g <= 1e-6):
-        #     # all-electron/no-core setups, expand the constraint region
-        #     c = 0.25
 
         r_g = xcc.rgd.r_g
         rc = c * max(setup.rcut_j)

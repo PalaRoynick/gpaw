@@ -10,7 +10,7 @@ from ase.units import Ha
 from gpaw.fd_operators import Gradient, Laplace
 from gpaw.lfc import LFC, BasisFunctions
 from gpaw.poisson import create_poisson_solver
-from gpaw.sphere.lebedev import Y_nL, weight_n
+from gpaw.sphere.lebedev import Y_nL, weight_n, R_nv
 from gpaw.utilities import divrl
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional
@@ -564,7 +564,8 @@ class NumericalXC(XCFunctional):
         return vxc_xasz
 
     def get_all_electron_xc(
-        self, gridrefinement: int = 2, proj=False, return_gd=True, lfc_points=1000
+        self, gridrefinement: int = 2, proj=False, return_gd=True,
+        lfc_points=1000, angular_projected_lebedev=True,
     ) -> tuple[Array4D, GridDescriptor] | Array4D:
         if self.paw_potmode is PAWPotMode.direct or proj:
             v_sg, exc = get_all_electron_xc_proj(
@@ -595,21 +596,26 @@ class NumericalXC(XCFunctional):
                 return vxc_sg
         spos_ac = self.ham.spos_ac
         setups = self.ham.setups
-        vxc_asLg, vxct_asLg = self.collect_angular_atomic_potentials()
-        for s in range(nspins):
-            dv_aj = []
-            coeff_aj = []
-            for a, id_ in enumerate(setups.id_a):
-                dv_j, coeff_j = get_atomic_vxc_spline(
-                    setups[a], vxc_asLg[a][s] - vxct_asLg[a][s], points=lfc_points)
-                dv_aj.append(dv_j)
-                coeff_aj.append(coeff_j)
-            dv = LFC(gd, dv_aj)
-            dv.set_positions(spos_ac=spos_ac)
-            c_ai = dv.dict(zero=True)
-            for a, c_i in c_ai.items():
-                c_i[:] = coeff_aj[a]
-            dv.add(vxc_sg[s], c_axi=c_ai)
+        if self.paw_potmode == PAWPotMode.lebedev and not angular_projected_lebedev:
+            lebdev2gd = Lebedev2GD(gd, spos_ac, setups, nspins)
+            vxc_sg -= lebdev2gd.transform(self.vxc_xasz[1])
+            vxc_sg += lebdev2gd.transform(self.vxc_xasz[0])
+        else:
+            vxc_asLg, vxct_asLg = self.collect_angular_atomic_potentials()
+            for s in range(nspins):
+                dv_aj = []
+                coeff_aj = []
+                for a, id_ in enumerate(setups.id_a):
+                    dv_j, coeff_j = get_atomic_vxc_spline(
+                        setups[a], vxc_asLg[a][s] - vxct_asLg[a][s], points=lfc_points)
+                    dv_aj.append(dv_j)
+                    coeff_aj.append(coeff_j)
+                dv = LFC(gd, dv_aj)
+                dv.set_positions(spos_ac=spos_ac)
+                c_ai = dv.dict(zero=True)
+                for a, c_i in c_ai.items():
+                    c_i[:] = coeff_aj[a]
+                dv.add(vxc_sg[s], c_axi=c_ai)
         if return_gd:
             return vxc_sg, gd
         else:
@@ -1056,3 +1062,120 @@ def broadcast_arraydict_data(v_asz: ArrayDict) -> Array1D:
             acomm.send(v_asz[a].ravel(), 0, tag=1213)
     acomm.broadcast(data_asz, 0)
     return data_asz
+
+
+class Lebedev2GD:
+    def __init__(
+        self,
+        gd: GridDescriptor,
+        spos_ac: list[Array1D] | None = None,
+        setups: Setups | None = None,
+        nspins: int = 1,
+    ):
+        self.gd = gd
+        self.spos_ac = spos_ac
+        self.setups = setups
+        self.nspins = nspins
+        assert gd.comm.size == 1, 'TODO: parallel'
+
+    def transform_1atom(
+        self,
+        a: int,
+        rgd: RadialGridDescriptor,
+        rcut: float,
+        b_sng: Array3D,
+    ) -> Array4D:
+        gd = self.gd
+        cellinv_cv = np.linalg.inv(gd.cell_cv)
+
+        a_sg = gd.zeros(self.nspins, dtype=b_sng.dtype)
+
+        origin_v = self.spos_ac[a] @ gd.cell_cv
+
+        gcut = min(rgd.ceil(rcut), rgd.N)
+        radial_g = rgd.r_g[:gcut]
+
+        # Shape: (nlebedev, nradial, 3)
+        position_ngv = (
+            origin_v
+            + R_nv[:, None, :] * radial_g[None, :, None]
+        )
+        # Continuous global grid coordinates.
+        grid_qc = (
+            (position_ngv @ cellinv_cv) * gd.N_c
+        ).reshape(-1, 3)
+
+        value_sq = b_sng[:, :, :gcut].reshape(self.nspins, -1)
+
+        lower_qc = np.floor(grid_qc).astype(int)
+        fraction_qc = grid_qc - lower_qc
+
+        # Eight corners surrounding each sample.
+        corner_ec = np.indices((2, 2, 2)).reshape(3, -1).T
+
+        index_qec = lower_qc[:, None, :] + corner_ec[None, :, :]
+
+        weight_qe = np.where(
+            corner_ec[None, :, :] == 1,
+            fraction_qc[:, None, :],
+            1.0 - fraction_qc[:, None, :],
+        ).prod(axis=2)
+
+        index_rc = index_qec.reshape(-1, 3)
+        weight_r = weight_qe.reshape(-1)
+
+        weighted_value_sr = (
+            value_sq[:, :, None] * weight_qe[None, :, :]
+        ).reshape(self.nspins, -1)
+
+        # Wrap global indices in periodic directions.
+        pbc_c = np.asarray(gd.pbc_c, dtype=bool)
+        index_rc[:, pbc_c] %= gd.N_c[pbc_c]
+
+        # Global -> local array indices.
+        index_rc -= gd.beg_c
+
+        inside_r = np.logical_and(
+            index_rc >= 0,
+            index_rc < gd.n_c,
+        ).all(axis=1)
+
+        index_rc = index_rc[inside_r]
+        weight_r = weight_r[inside_r]
+        weighted_value_sr = weighted_value_sr[:, inside_r]
+
+        i_r, j_r, k_r = index_rc.T
+
+        weight_g = gd.zeros(dtype=float)
+
+        np.add.at(
+            a_sg,
+            (slice(None), i_r, j_r, k_r),
+            weighted_value_sr,
+        )
+        np.add.at(
+            weight_g,
+            (i_r, j_r, k_r),
+            weight_r,
+        )
+
+        occupied_g = weight_g > 1.0e-14
+        a_sg[:, occupied_g] /= weight_g[occupied_g]
+        return a_sg
+
+    def transform(self, b_asng: ArrayDict) -> Array4D:
+        a_sg = self.gd.zeros(self.nspins)
+
+        for a, b_sng in b_asng.items():
+            setup = self.setups[a]
+            xcc = setup.xc_correction
+            if xcc is None:
+                continue
+
+            expected_shape = (self.nspins, len(R_nv), xcc.rgd.N)
+            assert b_sng.shape == expected_shape, f'unexpected shape {b_sng.shape} != {expected_shape}'
+
+            rcut = 2.0 * max(setup.rcut_j)
+            a_sg += self.transform_1atom(a, xcc.rgd, rcut, b_sng)
+
+        return a_sg
