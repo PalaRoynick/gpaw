@@ -639,29 +639,3 @@ def update_density_from_density_matrix(
     if density.nct_G is not None:
         nt_sG[:] += density.nct_G
     density.initialize_directly_from_arrays(nt_sG, density.nt_vG, D_asp)
-
-
-def calculate_paw_correction_u(iks, kpt, occupied_m, f_m) -> Array1D:
-    """calculate paw correction for the lagrange multiplier μ"""
-    # not used anywhere
-    P_ani = iks.get_proj(kpt)
-    u_m = np.zeros(len(occupied_m), dtype=iks.wfs.dtype)
-    for a, P_ni in P_ani.items():
-        if P_ni.size == 0:  # ae
-            continue
-        dD_ii = unpack_density(iks.dD_asp[a][kpt.s])
-        w_ng = iks.weights_asng[a][kpt.s]
-        Phi_ii = calculate_diff_overlap_matrix(
-            iks.setups[a], w_ng, iks.atomic_weights, dD_ii)
-        u_m += (
-            2.0
-            * f_m
-            * np.einsum(
-                "mi, mj, ij->m",
-                P_ni[occupied_m].conj(),
-                P_ni[occupied_m],
-                Phi_ii,
-            )
-        )
-    iks.hamiltonian.world.sum(u_m)
-    return u_m

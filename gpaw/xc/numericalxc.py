@@ -9,6 +9,7 @@ import numpy as np
 from ase.units import Ha
 from gpaw.fd_operators import Gradient, Laplace
 from gpaw.lfc import LFC, BasisFunctions
+from gpaw.old.pw.density import ReciprocalSpaceDensity
 from gpaw.poisson import create_poisson_solver
 from gpaw.sphere.lebedev import Y_nL, weight_n, R_nv
 from gpaw.utilities import divrl
@@ -844,7 +845,6 @@ def calculate_compensation_charges(dens):
 
 
 def calculate_rho(dens, Q_aL):
-    from gpaw.old.pw.density import ReciprocalSpaceDensity
     if isinstance(dens, ReciprocalSpaceDensity):
         rhot_q = dens.pd3.zeros()
         dens.ghat.add(rhot_q, Q_aL)
@@ -943,7 +943,8 @@ def FermiAmaldi(
     virial_xc_energy: bool = False,
     stencil: int = 3,
     add_core_potential: bool = False,
-    **poisson_kwargs: dict[str, Any],
+    align_tail_to_setupxc: bool = False,
+    ** poisson_kwargs: dict[str, Any],
 ) -> NumericalXC:
     paw_potmode = PAWPotMode(paw_potmode)
 
@@ -963,6 +964,12 @@ def FermiAmaldi(
     Qwork_aL = density.atomdist.to_work(Q_aL)
     vxc_xasz = calculate_fa_atomic_potentials(
         paw_potmode, density.setups, D_asp, Qwork_aL, density.nspins, N_total)
+
+    if align_tail_to_setupxc:
+        # TODO: PS
+        nxc_ref = NumericalXC.from_other_xc(
+            setup_name, density, paw_potmode=paw_potmode)
+        align_atomic_potential_tails_to_nxc(vxc_xasz, nxc_ref, density.setups)
 
     xc = NumericalXC(
         NumericalXCKernel(virial_xc_energy=virial_xc_energy),
@@ -1179,3 +1186,35 @@ class Lebedev2GD:
             a_sg += self.transform_1atom(a, xcc.rgd, rcut, b_sng)
 
         return a_sg
+
+
+def align_atomic_potential_tails_to_nxc(
+        vxc_xasng: list[ArrayDict],
+        nxc: NumericalXC,
+        setups: Setups) -> None:
+    assert nxc.paw_potmode is PAWPotMode.lebedev, f"{nxc.paw_potmode} != lebedev"
+
+    partition = vxc_xasng[0].partition
+    for v_asz in nxc.vxc_xasz:
+        assert partition == v_asz.partition, f"{partition} != {v_asz.partition}"
+
+    for a in vxc_xasng[0]:
+        xcc = setups[a].xc_correction
+        if xcc is None:
+            continue
+
+        rcut = max(setups[a].rcut_j)
+        wd_g = (xcc.rgd.r_g >= rcut) * xcc.rgd.dv_g
+
+        norm = np.einsum('g,n->', wd_g, weight_n)
+        if norm == 0.0:
+            continue
+
+        for vt_asng, va_asng in zip(nxc.vxc_xasz, vxc_xasng):
+            vt_sng = vt_asng[a]
+            va_sng = va_asng[a]
+
+            dc_s = np.einsum('g,n,sng->s', wd_g, weight_n,
+                             vt_sng - va_sng) / norm
+
+            va_sng[:] += dc_s[:, None, None]
