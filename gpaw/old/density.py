@@ -482,7 +482,7 @@ class Density:
             phit_aj.append(phit_j)
             nc_a.append([nc])
             nct_a.append([nct])
-            if self.setups[a].data.has_corehole and not skip_core and \
+            if hasattr(self.setups[a], 'data') and self.setups[a].data.has_corehole and not skip_core and \
                     self.nspins > 1:
                 work_setup = self.setups[a].data
                 rmax = nc.get_cutoff()
@@ -540,7 +540,7 @@ class Density:
 
                     if not skip_core:
                         I_a[a] -= setup.Nc / self.nspins
-                        if self.setups[a].data.has_corehole and \
+                        if hasattr(self.setups[a], 'data') and self.setups[a].data.has_corehole and \
                                 self.nspins > 1:
                             I_a[a] += pow(-1, s) * \
                                 self.setups[a].data.fcorehole / 2
