@@ -22,6 +22,7 @@ class ETDM:
         tolerance=5.0e-4,
         update_ref=False,
         searchdir_algo_name='l-bfgs',
+        mode='lcao',
         linesearch_algo={'name': 'max-step',
                                  'max_step': 0.25}
     ):
@@ -64,6 +65,7 @@ class ETDM:
         """
 
         self.objfunc = objfunc
+        self.mode = mode
         self.max_step_lenght = linesearch_algo['max_step']
 
         # Initialize LBFGS search direction algorithm
@@ -102,7 +104,8 @@ class ETDM:
             # Update the search direction using LBFGS
             self.searchdir_algo.update(
                 KArray(self.a_u, comm=self.objfunc.kpt_comm),
-                KArray(self.gradient, comm=self.objfunc.kpt_comm))
+                KArray(self.gradient, comm=self.objfunc.kpt_comm),
+                mode=self.mode)
 
             # Move parameters along the search direction
             self.move()
@@ -160,7 +163,7 @@ class ETDM:
         self.searchdir_algo.update(
             KArray(self.a_u, comm=self.objfunc.kpt_comm),
             KArray(gradient, comm=self.objfunc.kpt_comm),
-            precond)
+            precond=precond, mode=self.mode)
 
         # Move parameters along the search direction
         self.move()

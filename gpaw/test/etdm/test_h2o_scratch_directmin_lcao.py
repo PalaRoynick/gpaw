@@ -92,12 +92,12 @@ def analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd):
 # ['l-bfgs', 'l-bfgs-p', 'LSR1P']
 
 # full, True, egdecomp, lbfgsp
-@pytest.mark.parametrize("max_step", [0.5, 0.05, 0.005])
-@pytest.mark.parametrize('legacy_gpaw', [True, False])
-@pytest.mark.parametrize("representation", ['u-invar', 'full', 'sparse'])
-@pytest.mark.parametrize("spinpol", [True, False])
-@pytest.mark.parametrize("matrix_exp", ['egdecomp', 'pade-approx'])
-@pytest.mark.parametrize("searchdir_algo", ['l-bfgs', 'l-bfgs-p', 'LSR1P'])
+@pytest.mark.parametrize("max_step", [0.005])
+@pytest.mark.parametrize('legacy_gpaw', [False])
+@pytest.mark.parametrize("representation", ['full'])
+@pytest.mark.parametrize("spinpol", [True])
+@pytest.mark.parametrize("matrix_exp", ['egdecomp'])
+@pytest.mark.parametrize("searchdir_algo", ['l-bfgs-p'])
 def test_h2o(legacy_gpaw, representation, spinpol, matrix_exp, searchdir_algo, max_step):
 
     """
@@ -111,59 +111,55 @@ def test_h2o(legacy_gpaw, representation, spinpol, matrix_exp, searchdir_algo, m
 
     atm = h2o_maker(vacuum=5.0)
     if max_step == 0.5:
-        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.5maxstep/'
+        pwd = '/Users/giulia/Desktop/testing/final_check/0.5/'
     elif max_step == 0.05:
-        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.05maxstep/'
+        pwd = '/Users/giulia/Desktop/testing/final_check/0.05/'
     elif max_step == 0.005:
-        pwd = '/Users/giulia/Desktop/testing/after_fixes/0.005maxstep/'
+        pwd = '/Users/giulia/Desktop/testing/final_check/0.005/'
 
-    #calc = GPAW(
-    #         legacy_gpaw=legacy_gpaw,
-    #         mode=LCAO(),
-    #         basis='dzp',
-    #         occupations={'name': 'fixed-uniform'},
-    #         eigensolver={'name': 'etdm',
-    #                      'representation': representation,
-    #                      'matrix_exp': matrix_exp,
-    #                      'searchdir_algo': searchdir_algo,
-    #                      'linesearch_algo': {'name': 'max-step',
-    #                                          'max_step': max_step}},
-    #         mixer={'backend': 'no-mixing'},
-    #         spinpol=spinpol,
-    #         nbands='nao',
-    #         symmetry='off',
-    #         maxiter=100,
-    #         txt=f'{pwd}temp_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
-    #         #txt='-'
-    #            )
-    
-    #atm.calc = calc
-    #e = atm.get_potential_energy()
-    #f = atm.get_forces()
-    #target_pot_en = -13.643156256566218
-    #abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
-    #f2 = np.array([[-1.11463, -1.23723, 0.0],
-    #               [1.35791, 0.00827, 0.0],
-    #               [-0.34423, 1.33207, 0.0]])
-    #assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
-    #assert f == pytest.approx(f2, abs=abs_force_tol)
+    calc = GPAW(
+             legacy_gpaw=legacy_gpaw,
+             mode=LCAO(),
+             basis='dzp',
+             occupations={'name': 'fixed-uniform'},
+             eigensolver={'name': 'etdm',
+                          'representation': representation,
+                          'matrix_exp': matrix_exp,
+                          'searchdir_algo': searchdir_algo,
+                          'linesearch_algo': {'name': 'max-step',
+                                              'max_step': max_step}},
+             mixer={'backend': 'no-mixing'},
+             spinpol=spinpol,
+             nbands='nao',
+             symmetry='off',
+             maxiter=100,
+             #txt=f'{pwd}temp_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt'
+             txt='-'
+                )
+    atm.calc = calc
+    e = atm.get_potential_energy()
+    f = atm.get_forces()
+    target_pot_en = -13.643156256566218
+    abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
+    f2 = np.array([[-1.11463, -1.23723, 0.0],
+                   [1.35791, 0.00827, 0.0],
+                   [-0.34423, 1.33207, 0.0]])
+    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
+    assert f == pytest.approx(f2, abs=abs_force_tol)
+    atm.calc = calc
+    e = atm.get_potential_energy()
+    f = atm.get_forces()
+    target_pot_en = -13.643156256566218
+    abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
+    f2 = np.array([[-1.11463, -1.23723, 0.0],
+                   [1.35791, 0.00827, 0.0],
+                   [-0.34423, 1.33207, 0.0]])
+    assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
+    assert f == pytest.approx(f2, abs=abs_force_tol)
+    print('----DONE----')
+    print(f'{max_step}_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt')
 
-    #atm.calc = calc
-
-    #e = atm.get_potential_energy()
-    #f = atm.get_forces()
-    #target_pot_en = -13.643156256566218
-    #abs_force_tol, abs_en_tol = 1e-2, 1.0e-4
-    #f2 = np.array([[-1.11463, -1.23723, 0.0],
-    #               [1.35791, 0.00827, 0.0],
-    #               [-0.34423, 1.33207, 0.0]])
-    #assert e == pytest.approx(target_pot_en, abs=abs_en_tol)
-    #assert f == pytest.approx(f2, abs=abs_force_tol)
-
-    #print('----DONE----')
-    #print(f'{max_step}_{version}_{representation}_{spinpol}_{matrix_exp}_{searchdir_algo}.txt')
-
-    analyze = True
+    analyze = False
     if analyze:
         analyze_energies(representation, spinpol, matrix_exp, searchdir_algo, pwd)
 

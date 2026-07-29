@@ -48,7 +48,7 @@ class LBFGS:
         # Scaling factors for L-BFGS (1 / (y^T * s))
         self.rho = np.zeros(self.memory)
 
-    def update(self, a_cur, g_cur, precond=None):
+    def update(self, a_cur, g_cur, precond=None, mode='lcao'):
         """
         Compute the next search direction using L-BFGS two-loop recursion.
 
@@ -66,23 +66,11 @@ class LBFGS:
         """
 
         # Step 1: First iteration initialization
-        # print('self.local_iter')
-        # print(self.local_iter)
-
-
-        # Fixes problems with l-bfgs for 0.05
-
-        
-        if not self.p_key:
-            if precond is not None:
-                if self.p_key:
-                    g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
-                    self.search_dir = g_cur
-                else:
-                    g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
-                    self.search_dir = -g_cur
-            else:
-                self.search_dir = -g_cur
+        if not self.p_key and precond is not None:
+            g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
+            self.search_dir = -g_cur
+        else:
+            self.search_dir = -g_cur
 
         if self.local_iter == 0:
             self.ds = [0.0 * g_cur for _ in range(self.memory)]
@@ -93,16 +81,11 @@ class LBFGS:
             self.a_old = a_cur.copy()
 
             # preconditioning and initial search direction
-            if self.p_key:
-                if precond is not None:
-                    if self.p_key:
-                        g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
-                        self.search_dir = g_cur
-                    else:
-                        g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=1)
-                        self.search_dir = -g_cur
-                else:
-                    self.search_dir = -g_cur
+            if self.p_key and precond is not None:
+                g_cur.a_ux = apply_precond(precond, g_cur.a_ux, const=-1)
+                self.search_dir = g_cur
+            else:
+                self.search_dir = -g_cur
 
             # Increment iteration counter
             self.local_iter += 1
@@ -120,8 +103,11 @@ class LBFGS:
 
             # FIX: these two statements should be
             # identical for both lcao and pw
-            self.ds[m] = self.search_dir.copy()  # use for PW/FD
-            # self.ds[m] = a_cur - self.a_old  # use for LCAO
+            if mode == 'lcao':
+                self.ds[m] = a_cur - self.a_old  # use for LCAO
+            elif mode == 'pwfd':
+                self.ds[m] = self.search_dir.copy() # use for PW/FD
+
             self.dy[m] = g_cur - self.g_old
 
             # Compute curvature y^T * s
@@ -136,13 +122,8 @@ class LBFGS:
 
             # Step 3: Stability check
             if self.rho[m] < 0:
-                self.__init__(memory=self.memory, p_key=self.p_key) # BUG ALSO CHECK WITH NO SIC
-                # self.local_iter = 0
-                # self.rho[:] = 0.0
-                # for x in self.ds:
-                #     x[:] = 0.0
-                # for x in self.dy:
-                #     x[:] = 0.0
+                # BUG ALSO CHECK WITH NO SIC
+                self.__init__(memory=self.memory, p_key=self.p_key) 
                 return self.update(a_cur, g_cur, precond)
 
             # Step 4: Two-loop recursion to compute search direction
@@ -151,7 +132,7 @@ class LBFGS:
             # First loop: backward over stored vectors
             k = self.memory - 1
             alpha = np.zeros_like(self.rho)
-
+            #print("k at the start:", k)
             while k > -1:
                 # Circular indexing over memory
                 c_ind = (k + m + 1) % self.memory
@@ -162,11 +143,6 @@ class LBFGS:
 
                 # Scaling factor for this step
                 alpha[c_ind] = self.rho[c_ind] * sq
-                # The problem with 0.005 max step seems to be here, since
-                # NEW has more non zero elements than old. When I change while k > -1
-                # to k > 1, this is fixed here. But then we get the same problem with yr and 
-                # beta later on. On slack I sent you the comparisons
-                print(alpha, k)
                 # Update q
                 q += -alpha[c_ind] * self.dy[c_ind]
 
@@ -201,10 +177,7 @@ class LBFGS:
                 # Compute beta = rho * y^T * r
                 yr = self.dy[c_ind] @ self.search_dir
                 beta = self.rho[c_ind] * yr
-
                 
-                print(self.dy[c_ind].a_ux[0][:10], c_ind)
-
                 # Update search direction with alpha and beta corrections
                 self.search_dir += self.ds[c_ind] * (alpha[c_ind] - beta)
 

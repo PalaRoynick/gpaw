@@ -117,9 +117,12 @@ class DirOptLCAO(LCAOEigensolver):
         a_u_init = np.array(a)
 
         # Initialize ETDM
-        self.etdm = ETDM(self.objfunc, a_u_init, update_ref=False,
+        self.etdm = ETDM(self.objfunc, a_u_init,
+                         mode='lcao',
+                         update_ref=False,
                          searchdir_algo_name=self.searchdir_algo_name,
-                         linesearch_algo=self.linesearch_algo)
+                         linesearch_algo=self.linesearch_algo,
+                         )
 
         self.precond = False
         self.iter += 1
@@ -304,8 +307,8 @@ class DirOptLCAO(LCAOEigensolver):
             beta0 = 1.0
             gamma = 0.0
 
-        print('self.beta')
-        print(beta0)
+        #print('self.beta')
+        #print(beta0)
         prec = []
 
         for wfs in ibzwfs:
