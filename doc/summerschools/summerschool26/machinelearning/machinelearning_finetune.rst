@@ -102,6 +102,87 @@ Testing if finetuning helped
 
 To test you need to produce a *test set* of configurations that have not been used during training.  For example, run the same script you produced to generate the training data, but with a slightly different position and/or energy of the projectile atom.  Select a number of frames, calculate their energies with DFT.  Then load those frames one at a time and recalculate the energies with both the old and the new MLIP, and compare.
 
+Experimenting with finetuning
+=============================
+
+*If you feel inclined, you can experiment with the fine tuning hyperparameters*
+
+The YAML file above provides a good starting
+point for fine-tuning. Using these settings is
+likely to significantly improve the accuracy of the
+foundational model. The size of the training set
+is still the main limiting factor, but there are a
+few parameters that can be adjusted to squeeze
+a little more performance out of the available data.
+
+**Data set size:**  You can run one or two MD trajectories with the finetuned model, calculated DFT energies for selected frames, and add to the training set.
+
+**Train/Validation/Test split:**
+The dataset is divided into three parts. The training
+set is used to update the model parameters, the
+validation set is used to monitor performance
+during training, and the test set is used for
+final evaluation. Since we are testing the model
+ourselves, we have per default removed the test set entirely.
+Especially for small datasets, playing with the split between training and validation set might be beneficial.
+
+**Batch size:**
+The batch size used during training is specified
+under train dataloader. This determines how many
+structures are evaluated before the model updates
+its weights. Larger batch sizes make more efficient
+use of the GPU, but they also result in fewer
+parameter updates per epoch. Very large batch
+sizes can therefore reduce the effectiveness of
+training, particularly for small datasets. The batch
+size should always be smaller than the size of the
+training set, and if you encounter GPU memory
+limitations, reducing the batch size is usually the
+first parameter to adjust.
+
+**EMA decay:**
+The ”ema decay” parameter controls the
+exponential moving average (EMA) of the
+model parameters during training. The EMA
+keeps a separate, smoothed version of the model
+weights that changes more slowly than the regular
+model weights. These slowly changing weights are
+used for validation, testing, and saving the final
+model. A value chosen close to 1, means that the
+EMA weights are updated slowly and average over
+many previous training steps. Lower values make
+the EMA follow the training weights more closely.
+
+**Learning rate:**
+The learning rate determines how large each
+optimization step is, i.e. by how much the model
+can update the weights. Since we are fine-tuning
+a foundational model, this becomes a somewhat
+tricky parameter. The benefit of fine-tuning a
+foundational model is that it has been trained
+on a large dataset, from which it has learned
+transferable information. However, we also want
+to adapt it to our specific material and use case.
+If the learning rate is too high, you risk the
+model ”forgetting” what it has already learned,
+but setting the learning rate too low means it will
+learn very little from the additional frames.
+
+**Loss function:**
+Lastly, the loss function can also be changed.
+The loss function determines what the model
+tries to optimize during training. The validation
+metrics are used to assess performance during
+validation. In the provided YAML file, the loss
+function combines the RMSE of the forces and
+the per-atom RMSE of the energies, with weights
+4 and 1 respectively. NequIP provides a lot of
+options for different metrics as can be seen here:
+https://nequip.readthedocs.io/en/latest/api/metrics.html
+It is even possible to use different metrics
+for training and validation, although this is
+generally not recommended.
+
 Real scientific work requires larger data sets
 ==============================================
 
