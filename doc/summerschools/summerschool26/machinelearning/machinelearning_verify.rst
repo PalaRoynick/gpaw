@@ -52,4 +52,21 @@ When you save the DFT results, you need to prevent GPAW from saving the dipole m
    :start-after: snippet-traj-start
    :end-before: snippet-traj-end
 
-You can then proceed to :ref:`fine-tuning the MLIP <machinelearning_finetune>`.
+You can run the DFT code on the interactive node where you are logged in, but it will be significantly faster to submit it to the batch system on e.g. 8 CPUs.  You can see instructions for submitting Python jobs with MyQueue `here <gbar submitting>`_.
+
+You may want to "dry-run" GPAW and see how many k-points it actually uses in the reduced Brilloin zone.  Choosing the number of CPUs to be an integer multiple (or divisor) of this number gives the best performance.  You dry-run a GPAW script with this command::
+
+   gpaw python --dry-run=1 script.py
+
+This will run your script, but abort as soon as GPAW would start the actual calculation.  It will write the same ``.txt`` file as would otherwise be written (but it is cut short, of course).  In this file, you should look at the line ``Number of IBZ points:``, the context would be like this::
+
+   BZ-sampling:
+     Number of BZ points: 4
+     Number of IBZ points: 2
+
+     Monkhorst-Pack size: [2, 2, 1]
+     Monkhorst-Pack shift: [0, 0, 0]
+
+In this case, the irreducible Brillouin zone (IBZ) contains two k-points, and the number of CPUs should be an even number.  Preferably the remainder of the number should have small divisors, so a number of CPUs like 2, 4, 6, 8, 12 etc would work reasonably well.  If the number of IBZ points is 5, then you need to choose 5 or 10 CPUs, not 4 or 8!
+
+After running the DFT tests and evaluated the results, you can then proceed to :ref:`fine-tuning the MLIP <machinelearning_finetune>`.
