@@ -102,7 +102,7 @@ def coordinates(gd, origin=None, tiny=1e-12):
 
 def pick(a_ix, i):
     """Take integer index of a, or a linear combination of the elements of a"""
-    if isinstance(i, int):
+    if isinstance(i, np.int64):
         return a_ix[i]
     shape = a_ix.shape
     a_x = np.dot(i, a_ix[:].reshape(shape[0], -1))
