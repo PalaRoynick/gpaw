@@ -25,7 +25,7 @@ calc = GPAW('Si_gs_LDA.gpw').fixed_density(
 calc.get_potential_energy()
 # Now save the .gpw file. 'all' means we save all the wave functions to
 # the gpw file. This is required for the rpa calculations
-gpw_file_name = 'Si_{kpts_grid[0]}x{kpts_grid[1]}x{kpts_grid[2]}.gpw'
+gpw_file_name = f'Si_{kpts_grid[0]}x{kpts_grid[1]}x{kpts_grid[2]}.gpw'
 calc.write(gpw_file_name, 'all')
 # snippet-rpa-groundstate-end
 
@@ -44,17 +44,31 @@ nval = int(calc_old.wfs.nvalence)
 # This truncates the Coulomb interaction in the lateral direction to
 # avoid non-physical periodic interactions.
 
+# snippet-rpa-parameters-start-student
 kwargs = {
     'frequencies': {
         'type': 'nonlinear',
-        'domega0': 0.01},  # Define spacing of frequency grid
-    'eta': 0.05,           # Broadening parameter
-    'intraband': False,    # Here we do not include intraband transitions
-                           # for calculating the absorption spectrum
-    'nblocks': 8,          # Number of blocks used for parallelization
-    'ecut': 50,            # Plane wave cutoff in eV
-    'nbands': 3 * nval}    # Number of bands included in rpa calculation
+        'domega0': ...},  # Define spacing of frequency grid
+    'eta': ...,           # Broadening parameter
+    'intraband': False,   # Here we do not include intraband transitions
+                          # for calculating the absorption spectrum
+    'nblocks': 8,         # Number of blocks used for parallelization
+    'ecut': ...,          # Plane wave cutoff in eV
+    'nbands': ...,        # Number of bands included in rpa calculation
+}
+# snippet-rpa-parameters-end-student
 
+# snippet-rpa-parameters-solution-start
+kwargs = {
+    'frequencies': {
+        'type': 'nonlinear',
+        'domega0': 0.01},
+    'eta': 0.05,
+    'intraband': False,
+    'nblocks': 8,
+    'ecut': 50,
+    'nbands': 3 * nval}
+# snippet-rpa-parameters-solution-end
 # Calculate dielectric function. Takes ground state calculation
 # and defined parameters in "kwargs" as input:
 df = DielectricFunction(gpw_file_name, **kwargs)
@@ -68,18 +82,18 @@ df = DielectricFunction(gpw_file_name, **kwargs)
 # do the directions you will need (this is for saving
 # time and memory). Also remember to change the filename so it fits
 # with your calculation.
+# snippet-rpa-directions-start-student
+directions = [...]
+# snippet-rpa-directions-end-student
 
-df.get_polarizability(xc='RPA',
-                      q_c=[0, 0, 0],  # We consider the 0-momentum wave vector
-                      direction='x',  # Define real space direction
-                      filename='Si_rpa_x.csv')
-
-df.get_polarizability(xc='RPA',
-                      q_c=[0, 0, 0],
-                      direction='y',
-                      filename='Si_rpa_y.csv')
-df.get_polarizability(xc='RPA',
-                      q_c=[0, 0, 0],
-                      direction='z',
-                      filename='Si_rpa_z.csv')
+# snippet-rpa-directions-solution-start
+directions = ['x', 'y', 'z']
+# snippet-rpa-directions-solution-end
+for direction in directions:
+    df.get_polarizability(
+        xc='RPA',
+        q_c=[0, 0, 0],
+        direction=direction,
+        filename=f'Si_rpa_{direction}.csv',
+    )
 # snippet-rpa-polarizability-end
