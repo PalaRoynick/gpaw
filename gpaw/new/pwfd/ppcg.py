@@ -96,6 +96,7 @@ class PPCG(PWFDEigensolver):
             convergence=convergence,
             scalapack_parameters=scalapack_parameters,
             nbands=nbands,
+            max_buffer_mem=max_buffer_mem,
             domain_band_comm=domain_band_comm)
 
         self.nbands = nbands
