@@ -117,9 +117,7 @@ Additionally, we are  going to use LDA, which is faster than PBE but not very go
    :end-before: # snippet-lda-calculator-end
 
 
-Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM.
-
-For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
+Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM. To obtain the potential energy, we first call :meth:`ase:ase.Atoms.get_potential_energy`. For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
 
 
 .. literalinclude:: solution1b.py
