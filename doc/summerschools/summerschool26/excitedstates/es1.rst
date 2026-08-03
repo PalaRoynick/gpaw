@@ -110,7 +110,7 @@ The starting point for this section (and you might also want to use it in your o
 
 We are now going to restart the calculator and recompute the ground state, saving it to a new gpw file. As we are dealing with small bulk system, plane wave mode is the most appropriate here.
 To speed up the computations for this toy example, we use a plane wave cut-off of `200` eV and a very coarse k-point mesh `(2,2,2)`. For production-level computations, it is generally a good idea to choose a finer kpoint mesh and higher cut-off for the band structure.
-Additionally, we are  going to use LDA, which is faster than PBE but not very good at predicting bandgaps (yes, we know, you are going to get a silly value here).
+Additionally, we are  going to use LDA, which is faster than PBE but not very good at predicting band gaps (yes, we know, you are going to get a silly value here).
 
 
 .. literalinclude:: solution1b.py

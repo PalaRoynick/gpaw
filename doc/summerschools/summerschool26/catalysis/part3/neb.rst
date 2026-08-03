@@ -23,7 +23,7 @@ First we set up the initial state and check that it looks ok:
   :end-before: snippet-setup-surface-end
 
 
-Then we optimise the structure and save it.
+Then we optimize the structure and save it.
 
 .. literalinclude:: neb.py
   :start-after: snippet-optimize-start
@@ -31,14 +31,14 @@ Then we optimise the structure and save it.
 
 
 We make the final state by moving the Au atom by one lattice constant and
-optimise again.
+optimize again.
 
 .. literalinclude:: neb.py
   :start-after: snippet-optimize-finalstate-start
   :end-before: snippet-optimize-finalstate-end
 
 
-Now we make a NEB calculation with 3 images between the inital and final
+Now we make a NEB calculation with 3 images between the initial and final
 states. The images are initially made as copies of the initial state and the
 call ``interpolate()`` performs a linear interpolation between the initial and
 final states. As always, we check that everything looks ok before we run the
@@ -80,10 +80,10 @@ Now you should set up your own NEB using the configuration with :mol:`N_2`
 lying down as the initial state and the configuration with two N-atoms
 adsorbed on the surface as the final state.
 
-Parallelisation
+Parallelization
 ===============
 
-The NEB should be parallelised over images. An example can be found in
+The NEB should be parallelized over images. An example can be found in
 :ref:`this GPAW tutorial <neb>`. The
 script enumerates the CPUs and uses this number (``rank``) along with the
 total number of CPUs (``size``) to distribute the tasks.

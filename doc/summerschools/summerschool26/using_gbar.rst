@@ -67,7 +67,7 @@ Start it by running the  command ``spyder -p .`` in the ``CAMD2026`` folder - th
     cd CAMD2026
     spyder -p .
 
-ThinLinc users: Please open ``spyder`` with the command line above.  You may be able to find an ancient version in one of the application menus, but that will not work with the virtual enviroment.  The correct version is version 6, the old one is version 5.  The version number is displayed on the splash screen.
+ThinLinc users: Please open ``spyder`` with the command line above.  You may be able to find an ancient version in one of the application menus, but that will not work with the virtual environment.  The correct version is version 6, the old one is version 5.  The version number is displayed on the splash screen.
 
 You can run the selected file by clicking on the green Run triangle.  Any plots will be shown in the Plot pane of the upper right panel.
 
@@ -75,7 +75,7 @@ You can run the selected file by clicking on the green Run triangle.  Any plots 
 Using gedit
 -----------
 
-You can start gedit by typing ``gedit filename.py &`` in the command window.  The ambersand after the file name is optional, it puts the command in the background so you can still use the command line windows for other things (although gedit may print a warning or two that then appears out of context).
+You can start gedit by typing ``gedit filename.py &`` in the command window.  The ampersand after the file name is optional, it puts the command in the background so you can still use the command line windows for other things (although gedit may print a warning or two that then appears out of context).
 
 ThinLinc users can also open the file browser and opening gedit by clicking on the Python file (the desktop environment calls the editor Text Edit instead of gedit).
 
