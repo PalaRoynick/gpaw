@@ -8,6 +8,4 @@
 
 source $HOME/CAMD2026/venv/bin/activate
 
-nvidia-smi
-
 nequip-train -cn finetuning.yaml

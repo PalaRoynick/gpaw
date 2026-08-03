@@ -1,4 +1,4 @@
-# create
+# creates: f1.svg, f2.svg, f3.svg, f4.svg
 import matplotlib.pyplot as p
 p.show = lambda: None
 

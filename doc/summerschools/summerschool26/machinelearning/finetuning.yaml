@@ -16,8 +16,8 @@ data:
   split_dataset:
     file_path: PATH_TO_TRAINING_TRAJFILE
     train: 0.8
-    val: 0.1
-    test: 0.1
+    val: 0.2
+    test: 0.0
 
   transforms:
     - _target_: nequip.data.transforms.ChemicalSpeciesToAtomTypeMapper
@@ -28,7 +28,7 @@ data:
 
   train_dataloader:
     _target_: torch.utils.data.DataLoader
-    batch_size: 1
+    batch_size: 4
     num_workers: 3
     shuffle: true
 
@@ -65,7 +65,7 @@ trainer:
   max_epochs: 300
   max_time: 00:01:55:00
   check_val_every_n_epoch: 1
-  log_every_n_steps: 20
+  log_every_n_steps: 1
 
   logger:
     _target_: lightning.pytorch.loggers.csv_logs.CSVLogger
@@ -76,7 +76,7 @@ trainer:
     - _target_: lightning.pytorch.callbacks.EarlyStopping
       monitor: ${monitored_metric}
       min_delta: 1e-3
-      patience: 30
+      patience: 15
 
     - _target_: lightning.pytorch.callbacks.ModelCheckpoint
       monitor: ${monitored_metric}
