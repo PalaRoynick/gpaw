@@ -27,9 +27,10 @@ The new ground state is calculated below. For BN use (24,24,1) k-points while fo
 
 Now that we have obtained the ground state, it is time to calculate the dielectric function. This is done below where we first initialize the parameters needed for an RPA calculation, then calculate the dielectric function, and finally obtain the polarizability. Note that one also would have to converge the parameters initialized below, for a fully converged study, however in the interest of time and computational power we will not consider this here. The principle is however exactly the same, as you will see with the different k-point meshes we will employ here.
 
-These calculations are both time-wise and memory-wise heavier than what you previously encountered. Therefore we will need to submit these calculations to the databar so they can run over night. Open a new SSH terminal, edit and copy the below code into a script format (.py file), and submit the calculations from the terminal using the following command:
+These calculations are both time-wise and memory-wise heavier than what you previously encountered. Therefore we will need to submit these calculations to the databar so they can run over night. To review how to submit jobs using MyQueue, see :ref:`gbar submitting`.  Open a new SSH terminal, edit and copy the below code into a script format (.py file), and submit the calculations from the terminal using the following command:
 
 :code:`mq submit -R 8:15h script.py`
+
 
 This will submit the script with the name "script.py" to 8 cores with a maximum time of 15 hours.
 
