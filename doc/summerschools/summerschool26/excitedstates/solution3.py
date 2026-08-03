@@ -54,8 +54,8 @@ kwargs = {
                           # for calculating the absorption spectrum
     'nblocks': 8,         # Number of blocks used for parallelization
     'ecut': ...,          # Plane wave cutoff in eV
-    'nbands': ...,        # Number of bands included in rpa calculation
-}
+    'nbands': ...}        # Number of bands included in rpa calculation
+
 # snippet-rpa-parameters-end-student
 
 # snippet-rpa-parameters-solution-start
@@ -65,7 +65,7 @@ kwargs = {
         'domega0': 0.01},
     'eta': 0.05,
     'intraband': False,
-    'nblocks': 8,
+    'nblocks': 1,
     'ecut': 50,
     'nbands': 3 * nval}
 # snippet-rpa-parameters-solution-end
@@ -94,6 +94,5 @@ for direction in directions:
         xc='RPA',
         q_c=[0, 0, 0],
         direction=direction,
-        filename=f'Si_rpa_{direction}.csv',
-    )
+        filename=f'Si_rpa_{direction}.csv')
 # snippet-rpa-polarizability-end
