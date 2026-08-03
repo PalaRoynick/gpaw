@@ -71,19 +71,19 @@ two V atoms in the unit cell and it is shown how do a DFT calculation for the an
 Calculating J
 =============
 
-Finally, we are in a position to calculate the nearest neighbour Heisenberg exchange coupling `J`. Before doing so, please compare the
+Finally, we are in a position to calculate the nearest neighbor Heisenberg exchange coupling `J`. Before doing so, please compare the
 output of the antiferromagnetic and ferromagnetic calculations from the code above.
 
 1.   Which state has the lowest energy?
 2.   What will the sign of `J` be?
 
 You should find that the antiferromagnetic state has a lower energy than the ferromagnetic one, but does this also mean that the calculated
-configuration is the correct magnetic ground state? Rather, it implies that the spins prefer to be antialigned, i.e. that the exchange
+configuration is the correct magnetic ground state? Rather, it implies that the spins prefer to be anti aligned, i.e. that the exchange
 coupling `J` is negative.
 
 3.   Draw the structural arrangement of the V atoms on a piece of paper. Which type of magnetic lattice do they form?
-4.   Fill in the spin configuration of the magnetic lattice and convince yourself that all spins cannot be antialigned to their nearest
-     neighbours.
+4.   Fill in the spin configuration of the magnetic lattice and convince yourself that all spins cannot be anti aligned to their nearest
+     neighbors.
 
 The latter finding means that the antiferromagnetic system is frustrated and the antiferromagnetic configuration we have computed will not
 be the true ground state of the system.
@@ -127,7 +127,7 @@ You should get a value for `J` around -1.4 meV.
 Noncollinear configuration using a super cell
 =============================================
 
-As it turn out, the optimal spin structure on a trigonal lattice with antiferromagntice exchange coupling is to place all spins at
+As it turn out, the optimal spin structure on a trigonal lattice with antiferromagnetic exchange coupling is to place all spins at
 120\ `^\circ` angles with respect its neighbors.
 
 1.   Draw this structure and convince yourself that it is indeed possible to put every spin at a 120\ `^\circ` angle with respect to its
@@ -216,7 +216,7 @@ is more convenient for us to exclude it such that we can explicitly compute the 
 localized spin Hamiltonian with nearest neighbor exchange interactions is a good model, we should be able to obtain both `J` and `A` from
 the noncollinear calculation as well.
 
-1.   Make a script that computes the nearest neighbour exchange coupling `J` based on the noncollinear calculations performed above.
+1.   Make a script that computes the nearest neighbor exchange coupling `J` based on the noncollinear calculations performed above.
 2.   Then make a script (could be the same one) that computes the spin-orbit coupling corrected energies of the ferromagnetic state. Check that
      you get the same either using a collinear configuration in the minimal unit cell or the non-collinear ferromagnetic configuration.
      You should calculate the energies of spins directed along the `x`, `y` and `z` directions (Hint: the anisotropy is calculated by rotating
@@ -242,7 +242,7 @@ aligned to the `x` or the `y` direction.
 4.   What implications does this have for the critical temperature of the monolayer?
 
 You might be able to convince yourself that some degree of in-plane anisotropy is required to obtain a finite critical temperature for the
-120\ `^\circ` noncollinear magnetic order. Again, bear in mind that all the calculations in the present tutorialk ought to be properly
+120\ `^\circ` noncollinear magnetic order. Again, bear in mind that all the calculations in the present tutorial ought to be properly
 converged with respect to `k`\ -points, plane wave cut-off etc. to achieve an accurate estimate of e.g. the in-plane anisotropy.
 
 Clearly the noncollinear spin state of :mol:`VI_2` is more difficult to describe than the ferromagnetic state in :mol:`CrI_3` and we do not yet have

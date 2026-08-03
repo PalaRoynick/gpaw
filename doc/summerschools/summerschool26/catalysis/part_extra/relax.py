@@ -16,8 +16,7 @@ for name in ['N2Ru-top.traj', '2Nads.traj']:
     slab.calc = GPAW(xc='PBE',
                      mode=PW(500),
                      txt='tight-' + name[:-4] + 'txt',
-                     kpts={'size': (4, 4, 1), 'gamma': True},
-                     convergence={'eigenstates': 1e-8})
+                     kpts={'size': (4, 4, 1), 'gamma': True})
 
     dyn = QuasiNewton(slab,
                       trajectory='tight-' + name,

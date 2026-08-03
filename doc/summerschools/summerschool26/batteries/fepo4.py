@@ -1,6 +1,6 @@
 from ase.io import write
 from ase.parallel import paropen
-from gpaw import GPAW, FermiDirac, Mixer, PW
+from gpaw import GPAW, FermiDirac, PW
 from ase.dft.bee import BEEFEnsemble
 from ase import Atoms
 fepo4 = Atoms(
@@ -46,11 +46,7 @@ params = dict(
     spinpol=True,  # performing spin polarized calculations
     xc='BEEF-vdW',  # exchange-correlation functional
     occupations=FermiDirac(
-        width=0.1),  # smearing
-    convergence={'eigenstates': 1.0e-4,  # eV^2 / electron
-                 'energy': 2.0e-4,  # eV / electron
-                 'density': 1.0e-3},
-    mixer=Mixer(0.1, 5, weight=100.0))  # mixer used during SCF optimization
+        width=0.1))  # smearing
 # snippet-u
 params['setups'] = {'Fe': ':d,4.3'}  # U=4.3 applied to d orbitals
 # snippet-calc

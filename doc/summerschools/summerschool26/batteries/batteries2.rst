@@ -255,8 +255,8 @@ trajectory file.
 
     write('lifepo4.traj', lifepo4)
 
-You should now calculate the potential energy of this sytem using the
-method and same calculational parameters as for :mol:`FePO_4` above.
+You should now calculate the potential energy of this system using the
+same method and parameters as for :mol:`FePO_4` above.
 Make a full script in the cell below similar to what you did above for
 :mol:`FePO_4` and make sure that it runs.  If the code runs, submit to
 the HPC cluster as you did above.  The calculation takes approximately
@@ -288,7 +288,7 @@ We use a Li metal reference to calculate the equilibrium potential.
 In part 1 you used a Li metal reference to calculate the
 intercalation energy in the graphite anode.  The approach is similar
 here.  Just read in the result of the calculation with DFTD3 and attach
-a new calulator to it.
+a new calculator to it.
 
 .. literalinclude:: li_metal.py
    :end-before: snippet-beef
@@ -304,7 +304,7 @@ Calculate equilibrium potential and uncertainty
 ===============================================
 
 You can now calculate the equilibrium potential for the case of a
-:mol:`FePO_4/Li` metal battery from the intercallation energy of Li in
+:mol:`FePO_4/Li` metal battery from the intercalation energy of Li in
 :mol:`FePO_4`. For simplicity, use that assumption that all vibrational
 energies and entropic terms cancel each other.  You should now have
 completed all submitted calculations before you proceed.
@@ -326,13 +326,13 @@ energy per formula unit.  The
 
 No calculate the equilibrium potential under the assumption that it is
 given by `V_{eq} = \Delta U / n_e`, where `U` is the electronic potential
-energy of the system and `n_e` is the number of electrons transfered.
+energy of the system and `n_e` is the number of electrons transferred.
 
 .. code::
 
     # V_eq = ...
 
-You will now calculate the error estimate for the Li intercallation
+You will now calculate the error estimate for the Li intercalation
 energy in :mol:`FePO_4` using the BEEF ensemble results.  Start by
 loading in the files.  Wait a few minutes and rerun the cell if the
 number is not 2000 for all of them.

@@ -25,7 +25,6 @@ plt.ylabel('Label of the y-axis')
 plt.legend()  # make a legend, let matplotlib decide where to place it
 plt.show()
 plt.savefig('f1.svg')
-
 plt.figure()
 plt.plot(x, y, 'bo-', label='Series 1')
 plt.plot(x, y2, 'rx--', label='Series 2')
@@ -40,7 +39,6 @@ plt.legend(loc='upper left',
 plt.tight_layout()   # Fixes that otherwise some of the labels are cropped.
 plt.show()
 plt.savefig('f2.svg')
-
 fig, axs = plt.subplots(1, 2, sharey=True)
 x = np.linspace(0, 2 * np.pi, 100)
 axs[0].plot(x, np.cos(x), label='cos')
@@ -49,7 +47,6 @@ axs[0].legend()
 axs[1].legend()
 plt.show()
 plt.savefig('f3.svg')
-
 x = np.linspace(-1, 1, 100)
 y = np.linspace(-2, 2, 100)
 X, Y = np.meshgrid(x, y)

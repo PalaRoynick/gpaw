@@ -26,7 +26,6 @@ view(a)
 Nk = 2
 calc = GPAW(mode=PW(200),
             xc='PBE',
-            convergence={'density': 0.001, 'eigenstates': 0.1},
             kpts=(Nk, Nk, 1))
 a.calc = calc
 
