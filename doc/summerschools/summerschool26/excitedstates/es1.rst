@@ -74,8 +74,7 @@ These links might be helpful for you:
    :end-before: # snippet-calculator-end
 
 
-We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer.
-
+We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer. The ``fmax`` parameter defines the convergence criterion for the optimization. The optimization stops when the magnitude of the force of all individual atoms is below ``fmax``.  A smaller value gives a more tightly relaxed structure, but requires more optimization steps. Try ``fmax = 0.1``, ``0.05`` and ``0.01`` eV/Å. What do you observe? 
 
 .. literalinclude:: solution1.py
    :start-after: # snippet-opt-start-student
