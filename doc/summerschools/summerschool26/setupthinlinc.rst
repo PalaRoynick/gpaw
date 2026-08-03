@@ -42,7 +42,7 @@ Error: The specified key has too open permissions
 This happens on MacOS and Linux if the secret key is readable by other users (even if you are the only user of the system).
 
 * **MacOS:** Right-click the file, then choose **Get Info**.  At the bottom, open Sharing and Permissions.  To fix it, you need to click on the padlock in the lower right to unlock.  Then change permissions for ``everyone`` and ``staff`` to ``No Access``.  If you cannot set staff to No Access, then select the line and use the minus button to remove it altogether.  Then close the Info window and try to connect with thinlinc again.
-* **Linux:** You need to open a terminal window, then use the ``cd`` command to navigate to the folder where the file is (or sometimes you can find the file in the file viewer, and then there is a menu option to open a terminal).  Then type this command line.  The cryptical middle word is two letters, a minus, and two letters, without spaces inbetween.
+* **Linux:** You need to open a terminal window, then use the ``cd`` command to navigate to the folder where the file is (or sometimes you can find the file in the file viewer, and then there is a menu option to open a terminal).  Then type this command line.  The cryptic middle word is two letters, a minus, and two letters, without spaces in between.
   But remember the space between the command and before the file name::
 
     chmod og-rw filename
@@ -59,7 +59,7 @@ ThinLinc should remember your settings, so you just need to click Connect to con
 
 Once logged in, you see a desktop (as shown below).  Click on your Home icon to see your files, and on the Terminal icon to open a terminal (green circles in the screenshot below). Only click once, it takes a few seconds before the new window appears.
 
-**IMPORTANT: Logging out.**  When you are done, please log out by clicking on your name (orange oval) then select Log Out.  Failing to log out may keep your session alive and consume computational ressources.
+**IMPORTANT: Logging out.**  When you are done, please log out by clicking on your name (orange oval) then select Log Out.  Failing to log out may keep your session alive and consume computational resources.
 
 Now proceed to set up the software (next section, below the screenshot).
 

@@ -56,7 +56,7 @@ conduction band range.
    :end-before: # snippet-bse-spectrum-end
 
 
-Note the .csv output files that contains the spectre. The script also generates a .dat file that contains the
+Note the .csv output files that contains the spectrum. The script also generates a .dat file that contains the
 BSE eigenvalues. The spectrum essentially consists of a number of peaks centered on the eigenvalues. Below we will
 plot it along with the RPA spectrum for comparison.
 

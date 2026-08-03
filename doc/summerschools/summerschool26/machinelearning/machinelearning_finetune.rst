@@ -60,7 +60,7 @@ The fine-tuning script will overload the normal disk server.  Please make an out
     ln -s $BLACKHOLE/outputs
 
 (Do not be scared by the "black hole" name, your files will stay there during the summer school)
-	    
+
 
 Running the fine-tuning on GPUs
 ===============================
