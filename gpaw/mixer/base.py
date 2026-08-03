@@ -199,7 +199,8 @@ class BaseMixer:
             self.desc,
             relpos_ac,
             atomdist,
-            xp=self.xp)
+            xp=np)
+        # XXX: np -> self.xp when GPU LFC works
         self._initialize_history_()
 
     def reset(self):
