@@ -170,7 +170,7 @@ and
 methods useful.
 
 Now you should optimize the structure as you did before with the
-:mol:`N_2` molecule standing.  The calculation will probably bee too long
+:mol:`N_2` molecule standing.  The calculation will probably be too long
 to run interactively.  Prototype it in the terminal, then interrupt the
 calculation.
 
