@@ -39,7 +39,7 @@ slab.calc = calc
 z = slab.positions[:, 2]
 constraint = FixAtoms(mask=(z < z.min() + 1.0))
 slab.set_constraint(constraint)
-dyn = QuasiNewton(slab, trajectory='Ru.traj')
+dyn = QuasiNewton(slab, trajectory='Ru.traj', logfile= "Ru.log")
 t = time.time()
 dyn.run(fmax=0.05)
 print(f'Wall time: {(time.time() - t) / 60} min.')
