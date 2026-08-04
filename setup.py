@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import functools
 import os
-import re
 import runpy
 import shlex
 import sys
@@ -135,7 +134,7 @@ generator after building the extension.
 
 def ensure_cpp_standard(compile_args: list):
     """GPAW C++ code requires -std=c++17 or newer. This adds it to the input
-    compile args list if it's missing. Does not override user-specified -std=xyz
+    compile args list if it's missing. Does not override user-specified flags.
     """
     if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
         compile_args.append('-std=c++17')
@@ -515,8 +514,8 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
 
 
 if not check_cpp_version():
-    raise RuntimeError("Unsupported C++ standard (see error above)." \
-        "Ensure you are using -std=c++17 or newer")
+    raise RuntimeError("Unsupported C++ standard (see error above)."
+                       "Ensure you are using -std=c++17 or newer")
 
 
 sources = [Path('c/bmgs/bmgs.c')]
@@ -649,8 +648,8 @@ class BuildGPU:
         """
         ARCH_FLAGS = ('-arch', '--gpu-architecture', '-gencode',
                       '--generate-code')
-        if not any(arg.lstrip().startswith(flag) for arg in compile_args
-                                                 for flag  in ARCH_FLAGS):
+        if not any(arg.lstrip().startswith(flag)
+                   for arg in compile_args for flag in ARCH_FLAGS):
             compile_args.append(f'-arch={self._REQUIRED_CUDA_ARCH}')
 
     def try_compiling_gpu(self, cflags: list[str]) -> None:
