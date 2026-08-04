@@ -17,8 +17,8 @@ def delta():
     params = dict(
         xc='PBE',
         occupations=dict(name='fermi-dirac', width=0.0612),
-        kpts=dict(density=6.0),
-        convergence=dict(density=1e-6, gamma=True),
+        kpts=dict(density=6.0, gamma=True),
+        convergence=dict(density=1e-6),
         mode=dict(name='pw', ecut=1000))
     builder = Parameters(**params).dft_component_builder(atoms, log=None)
     params['kpts'] = builder.ibz.bz.size_c
