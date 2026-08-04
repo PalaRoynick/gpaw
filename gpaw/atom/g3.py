@@ -286,9 +286,9 @@ EXTRA = {
     'Cs.c': '5s,6s,5p,6p,5d,0.5d,F 2.4,2.4,2.4 2.3',  # !!!
     'Cs.d': '5s,6s,5p,6p,5d,0.5d,F 2.5,2.5,2.5 2.3',  # !!!
     'Ba.b': '5s,6s,5p,6p,5d,d,F 2.1,2.1,2.1 2.0',  # !!!
-    'Ba.c': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # !!!
+    'Ba.c': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # OK
     'Ba.d': '5s,6s,5p,6p,5d,d,f,G 2.5,2.5,2.5 2.3',  # !!!
-    'La.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
+    'La.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',  # OK
     'Ce.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
     'Pr.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',  # !!!
     'Nd.b': '5s,6s,5p,6p,5d,d,4f,f,G 3.0,2.2,2.2,2.2 2.0',
@@ -363,6 +363,23 @@ PARAMS5SOFT = {
     'Hg.12e': '6s,s,6p,p,5d,d,F 2.6,2.5,2.8 2.3',
     'Bi.5e': '6s,s,6p,p,d,F 2.8,2.8,2.8 2.5'}
 
+PARAMS6 = {
+    'La': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Ce': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Pr': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Nd': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Pm': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Sm': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Eu': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Gd': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Tb': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Dy': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Ho': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Er': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Tm': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Yb': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0',
+    'Lu': '5s,6s,5p,6p,5d,d,4f,f,G 3.5,3.0,2.3,2.3 2.0'}
+
 
 def create(symbol, conf):
     proj, rcs, *r0 = conf.split()
@@ -400,7 +417,7 @@ def create_all():
     from contextlib import chdir
 
     # for name, conf in PARAMS2.items():
-    for name, conf in PARAMS5.items():
+    for name, conf in PARAMS6.items():
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
