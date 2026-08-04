@@ -72,8 +72,9 @@ Make a band consisting of 7 images including the initial and final.
    :start-after: snippet-neb1
    :end-before: snippet-neb2
 
-It this point ``images`` consist of 6 copies of ``initial`` and one entry of
-``final``. Use the :meth:`~ase.mep.neb.NEB.interpolate` method to create
+At this point ``images`` consist of 6 copies of ``initial`` and one entry of
+``final``. Use the ``interpolate()`` method of the :class:`~ase.mep.neb.NEB`
+object to create
 an initial guess for the minimum energy path (MEP). Below, a simple
 interpolation between the ``initial`` and ``final`` image is used as
 initial guess.

@@ -1,4 +1,4 @@
-.. _catalysis1::
+.. _catalysis1:
 
 Catalysis: Dissociative adsorption of :mol:`N_2` on a metal surface
 ===================================================================
