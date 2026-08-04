@@ -74,8 +74,7 @@ These links might be helpful for you:
    :end-before: # snippet-calculator-end
 
 
-We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer.
-
+We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer. The ``fmax`` parameter defines the convergence criterion for the optimization. The optimization stops when the magnitude of the force of all individual atoms is below ``fmax``.  A smaller value gives a more tightly relaxed structure, but requires more optimization steps. Try ``fmax = 0.1``, ``0.05`` and ``0.01`` eV/Å. What do you observe? 
 
 .. literalinclude:: solution1.py
    :start-after: # snippet-opt-start-student
@@ -118,9 +117,7 @@ Additionally, we are  going to use LDA, which is faster than PBE but not very go
    :end-before: # snippet-lda-calculator-end
 
 
-Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM.
-
-For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
+Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM. To obtain the potential energy, we first call :meth:`ase:ase.Atoms.get_potential_energy`. For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
 
 
 .. literalinclude:: solution1b.py
