@@ -64,13 +64,6 @@ class LBFGS:
             Updated search direction for the next iteration.
         """
 
-        # Step 1: First iteration initialization
-        # print('self.local_iter')
-        # print(self.local_iter)
-
-
-        # Fixes problems with l-bfgs for 0.05
-
         
         if not self.p_key:
             if precond is not None:
@@ -136,14 +129,8 @@ class LBFGS:
                 self.rho[m] = 1.0e20
 
             # Step 3: Stability check
-            if self.rho[m] < 0:
-                self.__init__(memory=self.memory, p_key=self.p_key) # BUG ALSO CHECK WITH NO SIC
-                # self.local_iter = 0
-                # self.rho[:] = 0.0
-                # for x in self.ds:
-                #     x[:] = 0.0
-                # for x in self.dy:
-                #     x[:] = 0.0
+            if self.rho[m] < 0 and self.p_key:
+                self.__init__(memory=self.memory, p_key=self.p_key)  # BUG ALSO CHECK WITH NO SIC
                 return self.update(a_cur, g_cur, precond)
 
             # Step 4: Two-loop recursion to compute search direction
@@ -163,11 +150,7 @@ class LBFGS:
 
                 # Scaling factor for this step
                 alpha[c_ind] = self.rho[c_ind] * sq
-                # The problem with 0.005 max step seems to be here, since
-                # NEW has more non zero elements than old. When I change while k > -1
-                # to k > 1, this is fixed here. But then we get the same problem with yr and 
-                # beta later on. On slack I sent you the comparisons
-                print(alpha, k)
+
                 # Update q
                 q += -alpha[c_ind] * self.dy[c_ind]
 
@@ -186,8 +169,11 @@ class LBFGS:
                 else:
                     self.search_dir = q * self.beta0
             else:
-                # avoid divide by zero
-                devis = np.maximum(self.rho[m] * yy, 1.0e-20)
+                rho_yy = self.rho[m] * yy
+                if np.abs(rho_yy) < 1.0e-20:
+                    devis = 1.0e-20
+                else:
+                    devis = rho_yy
                 self.search_dir = q * (1 / devis)
 
             # Second loop: forward over stored vectors
@@ -200,9 +186,6 @@ class LBFGS:
                 # Compute beta = rho * y^T * r
                 yr = self.dy[c_ind] @ self.search_dir
                 beta = self.rho[c_ind] * yr
-
-                
-                print(self.dy[c_ind].a_ux[0][:10], c_ind)
 
                 # Update search direction with alpha and beta corrections
                 self.search_dir += self.ds[c_ind] * (alpha[c_ind] - beta)

@@ -80,6 +80,10 @@ class DirOptLCAO(LCAOEigensolver):
         # MISSING: localize for sic
         # MISSING: initialize mom
 
+        if self.functional == 'PZ-SIC' and self.representation == 'u-invar':
+            raise ValueError(
+                'Do not use representation u-invar with SIC functional')
+
     def initialize(self, ibzwfs, density, potential, hamiltonian, pot_calc):
         """
         Initialization. One iteration of eigensolver, calculation of
@@ -175,7 +179,7 @@ class DirOptLCAO(LCAOEigensolver):
         # else:
         #     self.etdm._gradient = self.old_gradient
 
-        
+       
 
         # Update reference orbitals
         self.update_ref_orbitals(ibzwfs)
@@ -187,8 +191,9 @@ class DirOptLCAO(LCAOEigensolver):
         else:
             self.etdm._gradient = self.old_gradient
 
-        print('grad before')
-        print(self.etdm._gradient[0,:10])
+
+        # print('grad before')
+        # print(self.etdm._gradient[0,:10])
         
 
         # Preconditioning
@@ -208,8 +213,9 @@ class DirOptLCAO(LCAOEigensolver):
         self.etdm.gradient = shuttle
         self.old_gradient = self.etdm.gradient
 
-        print('grad after')
-        print(self.etdm.gradient[0,:10])
+        # print('grad after')
+        # print(self.etdm.gradient[0,:10])
+        # print(self.etdm._gradient[0,:10])
 
         self.iter += 1
         # if self.objfunc.e_sic is not None:

@@ -75,7 +75,7 @@ class PZSICLCAO:
         self.num_kpts = len(ibzwfs.ibz)
 
 
-    def get_sic_gradient(self, wfs,ibzwfs,h_mm,hc_mn,occupied_only=False):
+    def get_sic_gradient(self, wfs,ibzwfs,occupied_only=False):
 
         # f_n = wfs.myocc_n
 
@@ -95,89 +95,15 @@ class PZSICLCAO:
             nbs = c_nm.shape[0]
 
 
-        
-        ########'Construct Gradient Matrix'########
         b_mn, e_total_sic = self.get_full_orb_dependent_potential_matrix(wfs,ibzwfs,occupied_only=False)
 
         l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
-        # print(l_odd.shape)
-        # print(c_nm[:nbs].shape, b_mn.shape)
 
-
-        # f = f_n[:nbs]
-        # grad = f * (h_mm[:nbs, :nbs] + l_odd) - \
-        #     f[:, np.newaxis] * (h_mm[:nbs, :nbs] + l_odd.T.conj())
-        
-
-        # if self.use_egdecomp:
-        #     grad = np.dot(evec.T.conj(), np.dot(grad, evec))
-        #     grad = grad * d_matrix(evals)
-        #     grad = np.dot(evec, np.dot(grad, evec.T.conj()))
-        #     for i in range(grad.shape[0]):
-        #         grad[i][i] *= 0.5
-        # else:
-        # grad = np.ascontiguousarray(grad)
-
-        # else:
-        #     raise NotImplementedError('Check the keyword '
-        #                               'for matrix_exp. \n'
-        #                               'Must be '
-        #                               '\'pade-approx\' or '
-        #                               '\'egdecomp\'')
-
-
-        # if self.dtype == float:
-        #     grad = grad.real
-        # if self._representation in ['sparse', 'u-invar']:
-        #     grad = grad[ind_up]
-        ########'Construct Gradient Matrix'########
-
-
-        # u = wfs.spin * self.num_kpts + wfs.q
-        # self.e_sic_by_orbitals[u] = \
-        #     e_total_sic.reshape(e_total_sic.shape[0] // 2, 2)
-        
-
-
-        ######## RESIDUAL ########
-        # hc_mn += b_mn
-        # h_mm += l_odd
-
-        # rhs2 = wfs.S_MM.data.conj() @ c_nm[:n_occ].T @ h_mm[:n_occ, :n_occ]
-        # hc_mn = hc_mn[:, :n_occ] - rhs2[:, :n_occ]
-
-        # if constraints:
-        #     # Zero out the components of the residual that are constrained,
-        #     # so that the constrained degrees of freedom are always considered
-        #     # converged
-        #     for con in constraints:
-        #         con1 = con[0]
-        #         hc_mn[:, con1] = 0.0
-
-        # norm = []
-        # for i in range(n_occ):
-        #     norm.append(np.dot(hc_mn[:, i].conj(),
-        #                        hc_mn[:, i]).real * f_n[i])
-
-        # error = sum(norm)
-        # del rhs2, hc_mn, norm
-
-        ######## RESIDUAL ########
-        
-
-        # if self.counter == 0:
-        #     h_mm = 0.5 * (h_mm + h_mm.T.conj())
-        #     wfs.myeig_n[:nbs] = np.linalg.eigh(h_mm)[0]
-        # self.counter += 1
-
-        # if constraints:
-        #     constrain_grad(grad, constraints, ind_up)
-            
         return l_odd,b_mn, e_total_sic
 
 
     def get_full_orb_dependent_potential_matrix(self,wfs,ibzwfs,occupied_only=False):
-        # f_n = wfs.myocc_n
+
         k = 2 / wfs.nspins
         f_n = k * wfs.myocc_n
         n_occ = 0
@@ -219,11 +145,9 @@ class PZSICLCAO:
         # m is the occupation number i.e. for m in range(n_occ)
         # orb_dens, comp_charges, atomic_dens_matrix
         rho_MM,nt_G = self.get_density(f_n, c_nm, wfs, ibzwfs, m)
-        # print(f_n)
-        # print(m)
-        # print(nt_G.sum())
+
         Q_aL, D_ap= self.get_comp_charges(rho_MM, wfs,setup)
-        # print(Q_aL)
+
 
         if self.use_coarse_grid:
             e_sic_m, vt_mG, vHt_g = self.get_pseudo_pot(nt_G, Q_aL, self.coarse_gd)
@@ -289,13 +213,6 @@ class PZSICLCAO:
         D_ap = {}
         Q_aL = {}
 
-        # This object should be added to ibzwfs at some point maybe
-        # P_aMi = wfs.P_aMi
-        # P_aMi=P_qaMi[q],
-
-        # P_qaMi = [{a: np.asarray(P_Mi) for a, P_Mi in P_aMi.items()}
-        #       for P_aMi in P_qaMi]
-
         for a in wfs.P_aMi.keys():
             P_Mi = wfs.P_aMi[a]
 
@@ -318,7 +235,6 @@ class PZSICLCAO:
     
 
     def get_pseudo_pot(self, nt, Q_aL, gd):
-        # if not self.use_coarse_grid:
 
         # Total potential, Hartree potential, orbital density
         vt_sg = gd.zeros(2)
@@ -328,7 +244,6 @@ class PZSICLCAO:
         nt_sg[0] = nt
 
         e_xc = self.xc.calculate(gd, nt_sg, vt_sg)
-        # print(e_xc)
         
         vt_sg*=-1
         self.ghat.add(nt_sg[0], Q_aL)
@@ -339,7 +254,6 @@ class PZSICLCAO:
         vt_sg[0] -= vHt_g
 
         vt_G = vt_sg[0]
-
 
         return np.array([-ec, -e_xc]), vt_G, vHt_g
     
@@ -377,16 +291,4 @@ class PZSICLCAO:
         return np.array([-ec, -exc]), dH_ap
 
 
-            # D_ii = np.zeros(
-            #     (wfs.P_aqMi[a].shape[2], wfs.P_aqMi[a].shape[2]), dtype=self.dtype
-            # )
-            # rhoP_Mi = rho_MM @ P_Mi
-            # D_ii = P_Mi.T.conj() @ rhoP_Mi
-            # if self.dtype == complex:
-            #     D_ap[a] = D_p = pack_density(D_ii.real)
-            # else:
-            #     D_ap[a] = D_p = pack_density(D_ii)
-
-            # Q_aL[a] = np.dot(D_p, setup[a].Delta_pL)
-
-        # return nt_G, Q_aL, D_ap
+          
