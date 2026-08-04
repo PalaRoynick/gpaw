@@ -7,12 +7,11 @@
 
 .. _batteries1:
 
-===================================
-Li intercalation energy in graphite
-===================================
+===========================================
+Part 1: Li intercalation energy in graphite
+===========================================
 
-The :ref:`batteries1` page will guide you through the first day of the
-battery exercise.
+In this part of the battery exercise we will:
 
 * Setup a graphite structure
 
@@ -31,11 +30,12 @@ battery exercise.
 
   - Compare the results of different functionals with experimental values.
 
+.. contents::
 
-Day 2 - Li intercalation energy
-===============================
+Li intercalation in graphite
+============================
 
-Today we will calculate the energy cost/gain associated with
+We will calculate the energy cost/gain associated with
 intercalating a lithium atom into graphite using approaches at different
 levels of theory.  After today you should be able to:
 
@@ -57,15 +57,12 @@ Where `x` is the number of Carbon atoms in your computational cell.
 
 We will calculate these energies using Density Functional Theory (DFT)
 with different exchange-correlation functionals.  Graphite is
-characterised by graphene layers with strongly bound carbon atoms in
+characterized by graphene layers with strongly bound carbon atoms in
 hexagonal rings and weak long-range van der Waals interactions between
 the layers.
 
 In the sections below we will calculate the lowest energy structures of
 each compound.  This is needed to determine the intercalation energy.
-
-.. contents::
-
 
 Graphite
 ========
@@ -113,77 +110,30 @@ differences.
 
     Energy of graphite: 15.84 eV
 
-The cell below requires some input.  We set up a loop that should
-calculate the energy of graphite for a series of C-C distances.
+We set up a loop that should calculate the energy
+of graphite for a series of C-C distances.
 
-.. testcode::
-
-    import numpy as np
-
-    # Provide some initial guesses on the distances
-    ccdist = 1.3
-    layerdist = 3.7
-
-    # We will explore distances around the initial guess
-    dists = np.linspace(ccdist * .8, ccdist * 1.2, 10)
-    # The resulting energies are put in the following list
-    energies = []
-    for cc in dists:
-        # Calculate the lattice parameters a and c from the C-C distance
-        # and interlayer distance, respectively
-        a = cc * np.sqrt(3)
-        c = 2 * layerdist
-
-        gra = Graphite('C', latticeconstant={'a': a, 'c': c})
-
-        # Set the calculator and attach it to the Atoms object with
-        # the graphite structure
-        calc = EMT()
-        gra.calc = calc
-
-        energy = gra.get_potential_energy()
-        # Append results to the list
-        energies.append(energy)
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- energy-volume
+   :end-before: end -- energy-volume
 
 Determine the equilibrium lattice constant.  We use a
 :mod:`numpy.polynomial`.
 
-.. testcode::
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- fit-poly
+   :end-before: end -- fit-poly
 
-    # Fit a polynomial:
-    poly = np.polynomial.Polynomial.fit(dists, energies, 3)
-    # and plot it:
-    # magic: %matplotlib notebook
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(dists, energies, '*r')
-    x = np.linspace(1, 2, 100)
-    ax.plot(x, poly(x))
-    ax.set_xlabel('C-C distance [Ang]')
-    ax.set_ylabel('energy [eV]')
+.. literalinclude:: graphite_emt.py
+   :start-after: start -- opt-layer
+   :end-before: end -- opt-layer
 
-.. testcode::
-
-    poly1 = poly.deriv()
-    poly1.roots()  # two extrema
-    # Find the minimum:
-    emin, ccdist = min((poly(d), d) for d in poly1.roots())
-    print(f'C-C dist: {ccdist:.3f} Å')
-    # alternatively:
-    poly2 = poly1.deriv()
-    for ccdist in poly1.roots():
-        if poly2(ccdist) > 0:
-            break
-    print(f'C-C dist: {ccdist:.3f} Å')
-    from pathlib import Path
-
-.. testoutput::
+.. code::
 
     C-C dist: 1.319 Å
     C-C dist: 1.319 Å
 
-Make a script that calculates the interlayer distance with EMT in the
-cell below
+Make a script that calculates the interlayer distance with EMT
 
 .. testcode::
 
@@ -193,7 +143,7 @@ cell below
     from ase.lattice.hexagonal import Graphite
     import numpy as np
 
-    # ccdist is already defined in the previous cell
+    # ccdist is already defined previously
     # Start from a small guess
     layerdist = 2.0
     ...
@@ -216,8 +166,8 @@ same parameters.
 First we set up an initial guess of the structure as before.
 
 .. literalinclude:: relax_graphite.py
-   :start-after: web
-   :end-before: LDA
+   :start-after: start -- build
+   :end-before: end -- build
 
 Then we create the GPAW calculator object.  The parameters are explained
 :ref:`here <parameters>`,
@@ -232,8 +182,8 @@ We will start by using the LDA exchange-correlation functional.  Later
 you will try other functionals.
 
 .. literalinclude:: relax_graphite.py
-   :start-at: LDA
-   :end-before: sf
+   :start-after: start -- calc
+   :end-before: end -- calc
 
 Check out the contents of the output file (:download:`graphite-LDA.txt`),
 all relevant information about the scf cycle are printed therein.
@@ -246,7 +196,8 @@ interlayer distance.  We employ the
 minimize the strain on the unit cell.
 
 .. literalinclude:: relax_graphite.py
-   :start-at: sf
+   :start-after: start -- relax
+   :end-before: end -- relax
 
 Read in the result of the relaxation and determine the C-C and interlayer
 distances.
@@ -271,8 +222,9 @@ distances.
     layer-distance: 3.213 Å
 
 Now we need to try a GGA type functional (e.g.  PBE) and also try to add
-van der Waals forces on top of PBE (i.e.  PBE+DFTD3). These functionals
-will require more computational time, thus the following might be
+van der Waals forces on top of PBE (i.e.  PBE+DFTD3).
+The DFTD3 correction can be applied using the GPAW extensions :ref:`d3correction`.
+These functionals will require more computational time, thus the following might be
 beneficial to read.
 
 If the relaxation takes too long time, we can submit it to be run in
@@ -280,7 +232,7 @@ parallel on the computer cluster.  Remember we can then run different
 calculations simultaneously.
 
 Log in to the gbar terminal, save a full script in a file
-(e.g. `calc.py`) and submit that file to be calculated in parallel
+(e.g. ``calc.py``) and submit that file to be calculated in parallel
 (e.g. ``mq submit calc.py -R 8:1h`` (1 hour on 8 cores)).
 
 .. note::
@@ -334,11 +286,7 @@ Some hints:
 
 2. A k-point density of approximately 2.4 points / Angstrom will be sufficient
 
-3. The DFTD3 correction is done *a posteriori*, this means the calculator
-   should be created a little differently, see [the second example
-   here](https://docs.ase-lib.org/ase/calculators/dftd3.html#examples)
-
-4. See also the :mod:`equation of state module <ase.eos>`
+3. See also the :mod:`equation of state module <ase.eos>`
 
 In the end try to compare the different functionals with experimental values:
 
@@ -408,13 +356,13 @@ attention to the cathode.  If you have lots of time left though see if
 you can handle the bonus exercise.
 
 
-Bonus
-=====
+Bonus: Smaller supercell
+========================
 
 In the calculation of the intercalated Li we used a graphene layer with 8
 Carbon atoms per unit cell.  We can actually use only 6 Carbon by
 rotating the x and y cell vectors.  This structure will be faster to
-calculate and still have neglible Li-Li interaction.
+calculate and still have negligible Li-Li interaction.
 
 .. testcode::
 

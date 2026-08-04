@@ -2,9 +2,9 @@
 Part 2: Equilibrium potential of a LiFePO4/C battery
 ====================================================
 
-You will calculate the equilibrium potential and use Bayesian error estimation
-to quantify how sensitive the calculated equilibrium potential is towards
-choice of functional. The notebook is ``batteries2.ipynb``.
+In this part of the exercise we will calculate the equilibrium potential
+and use Bayesian error estimation to quantify how sensitive the calculated
+equilibrium potential is towards choice of functional. For that we:
 
 * Setup and calculate :mol:`FePO_4` and :mol:`LiFePO_4` structures
 
@@ -14,14 +14,15 @@ choice of functional. The notebook is ``batteries2.ipynb``.
 * Get an uncertainty estimation on the potential by using an ensemble of
   functionals called a ``BEEFEnsemble``
 
-* Using values from the previous day calculate the equilibrium potential of
+* Using values from the previous part calculate the equilibrium potential of
   the full Li :mol:`FePO_4/C` battery
 
+.. contents::
 
-Day 3 - Equilibrium potential
-=============================
+Equilibrium potential
+=====================
 
-Today you will study the :mol:`LiFePO_4` cathode.  You will calculate the
+We will study the :mol:`LiFePO_4` cathode. We will calculate the
 equilibrium potential and use Bayesian error estimation to quantify how
 sensitive the calculated equilibrium potential is towards choice of
 functional.  After today you should be able to discuss:
@@ -34,12 +35,10 @@ functional.  After today you should be able to discuss:
 
 - Uncertainty in the calculations.
 
-Some of calculations you will perform today will be tedious to be run in
-this notebook.  You will automatically submit some calculations to the HPC
-cluster directly from this notebook.  When you have to wait for
-calculations to finish you can get started on addressing the bullet points
-above.
-
+Some of calculations we will perform today will be tedious to be run in
+the terminal, so we will submit them to the HPC cluster.
+When you have to wait for calculations to finish you can get
+started on addressing the bullet points above.
 
 :mol:`FePO_4`
 =============
@@ -256,8 +255,8 @@ trajectory file.
 
     write('lifepo4.traj', lifepo4)
 
-You should now calculate the potential energy of this sytem using the
-method and same calculational parameters as for :mol:`FePO_4` above.
+You should now calculate the potential energy of this system using the
+same method and parameters as for :mol:`FePO_4` above.
 Make a full script in the cell below similar to what you did above for
 :mol:`FePO_4` and make sure that it runs.  If the code runs, submit to
 the HPC cluster as you did above.  The calculation takes approximately
@@ -283,13 +282,13 @@ log-file.
 
 
 Li metal
---------
+========
 
-We use a Li metal reference to calculate the equilibrium potential.  On
-exercise day 2 you used a Li metal reference to calculate the
+We use a Li metal reference to calculate the equilibrium potential.
+In part 1 you used a Li metal reference to calculate the
 intercalation energy in the graphite anode.  The approach is similar
 here.  Just read in the result of the calculation with DFTD3 and attach
-a new calulator to it.
+a new calculator to it.
 
 .. literalinclude:: li_metal.py
    :end-before: snippet-beef
@@ -305,7 +304,7 @@ Calculate equilibrium potential and uncertainty
 ===============================================
 
 You can now calculate the equilibrium potential for the case of a
-:mol:`FePO_4/Li` metal battery from the intercallation energy of Li in
+:mol:`FePO_4/Li` metal battery from the intercalation energy of Li in
 :mol:`FePO_4`. For simplicity, use that assumption that all vibrational
 energies and entropic terms cancel each other.  You should now have
 completed all submitted calculations before you proceed.
@@ -326,14 +325,14 @@ energy per formula unit.  The
     print(epot_fepo4, ...)
 
 No calculate the equilibrium potential under the assumption that it is
-given by `V_{eq} = \Delta U / e`, where `U` is the electronic potential
-energy of the system and `e` is the number of electrons transfered.
+given by `V_{eq} = \Delta U / n_e`, where `U` is the electronic potential
+energy of the system and `n_e` is the number of electrons transferred.
 
 .. code::
 
     # V_eq = ...
 
-You will now calculate the error estimate for the Li intercallation
+You will now calculate the error estimate for the Li intercalation
 energy in :mol:`FePO_4` using the BEEF ensemble results.  Start by
 loading in the files.  Wait a few minutes and rerun the cell if the
 number is not 2000 for all of them.
@@ -349,7 +348,7 @@ value as before.
 
 .. code::
 
-    # fepo4_ens = fepo4_ens_cell / ...
+    # epot_fepo4_ens = epot_fepo4_ens_cell / ...
     # ...
     # ...
 
@@ -357,7 +356,7 @@ Make a list of equilibrium potentials.
 
 .. code::
 
-    # V_eq_ens = lifepo4_ens - ...
+    # V_eq_ens = epot_lifepo4_ens - ...
 
 Use the plot command below to visualize the distribution.
 
@@ -365,6 +364,7 @@ Use the plot command below to visualize the distribution.
 
     plt.hist(V_eq_ens, 50)
     plt.grid(True)
+    plt.show()
 
 The result should look like this:
 
@@ -387,17 +387,24 @@ battery is thus as a good estimate:
     print(f'{V_eq:.2f} V +- {error:.2f} V')
 
 You can get the equilibrium potential for the :mol:`FePO_4/C` battery using
-the intercallation energy of Li in graphite, that you calculated on Day
-2. What equilibrium potential do you find?  How does that compare to the
-cell voltage you can obtain from :mol:`FePO_4/C` batteries?
+the intercalation energy of Li in graphite, that you calculated in Part 1.
 
-Make sure you are able to discuss the bullet points at the top of this
-notebook.
+    * What equilibrium potential do you find?
+
+    * How does that compare to the cell voltage you can obtain from :mol:`FePO_4/C` batteries?
+
+Make sure you are able to discuss the bullet points at the top of this tutorial part.
+Experimentally :mol:`FePO_4/C` batteries have a maximum voltage of about 3.6 V (see table 1 in ref [#Sui]_).
 
 
-Bonus
-=====
+Bonus: BEEF-Error for :mol:`FePO_4/C`
+=====================================
 
 How does the predicted error estimate change if you consider the full
 reaction from Li in graphite + :mol:`FePO_4` to empty graphite +
-:mol:`LiFePO_4`.
+:mol:`LiFePO_4`:
+
+.. math:: LiC_x + FePO_4 \rightarrow LiFePO_4 + C_x^{graphite}
+
+.. [#Sui] X. Sui, M. Świerczyński, R. Teodorescu, and D.-I. Stroe
+	    :doi:`10.3390/en14061732`

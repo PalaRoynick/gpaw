@@ -1,7 +1,7 @@
 .. _summerschool24:
 
 =======================
-CAMd Summer School 2024
+CAMD Summer School 2024
 =======================
 
 Announcement:

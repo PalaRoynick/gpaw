@@ -15,7 +15,7 @@ Now open the saved figure and inspect the absorption spectra. Does it look as yo
 
 Now plot the absorption spectra for the other k-point meshes you calculated and compare. You could for instance modify the script above to plot, in different colors, all spectra in the same plot for comparison. Would you say that the calculation is converged?
 
-Finally, talk with the other groups and compare your absorption spectra with their absorption spectra. Is the same number of k-points needed to obtain same degree of convergence for the different materials? Is there any difference for the 2D material (Boron-Nitride)?
+Finally, compare your absorption spectrum with those obtained by others and discuss similarities and differences. Is the same number of k-points needed to obtain same degree of convergence for the different materials? Is there any difference for the 2D material (Boron-Nitride)?
 
 For a more realistic description one would have to include excitonic effects (i.e. the electron-hole interaction).
 In the next example, we will calculate the absorption spectrum using the Bethe-Salpeter equation (BSE). For theoretical understanding you can read the brief description provided as in the link below: https://gpaw.readthedocs.io/documentation/bse/bse.html
@@ -56,7 +56,7 @@ conduction band range.
    :end-before: # snippet-bse-spectrum-end
 
 
-Note the .csv output files that contains the spectre. The script also generates a .dat file that contains the
+Note the .csv output files that contains the spectrum. The script also generates a .dat file that contains the
 BSE eigenvalues. The spectrum essentially consists of a number of peaks centered on the eigenvalues. Below we will
 plot it along with the RPA spectrum for comparison.
 

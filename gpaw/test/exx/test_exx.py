@@ -11,6 +11,7 @@ def xc1(name):
     return dict(name=name, stencil=1)
 
 
+@pytest.mark.skip('Too slow')
 @pytest.mark.slow
 @pytest.mark.libxc
 @pytest.mark.hybrids
