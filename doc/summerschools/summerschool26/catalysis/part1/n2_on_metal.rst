@@ -25,7 +25,7 @@ some modules from the ASE and GPAW packages
 Setting up the metal surface
 ----------------------------
 
-Ru crystalises in the hcp structure with a lattice constants a = 2.706 Å and
+Ru crystallizes in the hcp structure with a lattice constants a = 2.706 Å and
 c = 4.282 Å.  It is often better to use the lattice constants corresponding
 to the DFT variant used (here PBE with PAW).  We get this from
 https://oqmd.org.
@@ -40,7 +40,7 @@ right.  This pops up a new window.
    :start-after: snippet-setup-slab-start
    :end-before: snippet-setup-slab-end
 
-To optimise the slab we need a calculator. We use the GPAW calculator in
+To optimize the slab we need a calculator. We use the GPAW calculator in
 plane wave (PW) mode with the PBE exchange—correlation functional. The
 convergence with respect to the cutoff energy and k-point sampling should
 always be checked — see :ref:`catalysis_convergence`
@@ -52,8 +52,8 @@ mesh is chosen to give reasonable results with a limited computation time.
    :start-after: snippet-calc-define-start
    :end-before: snippet-calc-define-end
 
-The bottom layer of the slab is fixed during optimisation. The structure is
-optimised until the forces on all atoms are below 0.05 eV/Å.
+The bottom layer of the slab is fixed during optimization. The structure is
+optimized until the forces on all atoms are below 0.05 eV/Å.
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-optimize-slab-start
@@ -81,7 +81,7 @@ Often you are only interested in the final energy which can be found like this:
 Making a Nitrogen molecule
 --------------------------
 
-We now make an :mol:`N_2` molecule and optimise it in the same unit cell
+We now make an :mol:`N_2` molecule and optimize it in the same unit cell
 as we used for the slab.
 
 .. literalinclude:: n2_on_metal.py
@@ -116,7 +116,7 @@ adsorbed, so we build a new molecule with a better starting guess.
    :start-after: snippet-setup-adsorption-start
    :end-before: snippet-setup-adsorption-end
 
-We optimise the structure.  Since we have cheated and have a good guess for
+We optimize the structure.  Since we have cheated and have a good guess for
 the initial configuration we prevent that the optimization algorithm takes
 too large steps.
 
@@ -150,7 +150,7 @@ Exercise
 .. image:: ../N2Ru_hollow.png
 
 Remember that you can read in the `traj` files you have saved, so you don't
-need to optimise the surface again.
+need to optimize the surface again.
 
 View the combined system before you optimize the structure to ensure that you
 created what you intended.
@@ -187,6 +187,6 @@ alternative would be to have them on nearest neighbor sites.  If you feel
 energetic you could investigate that as well.  Also, there are two different
 kinds of hollow sites, they are not completely equivalent!
 
-Optimise the structure and get the final energy. Is it favourable to
+Optimize the structure and get the final energy. Is it favorable to
 dissociate :mol:`N_2` on the surface? What is the N—N distance now? What
 does that mean for catalysis?

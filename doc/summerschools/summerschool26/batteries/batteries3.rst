@@ -46,7 +46,7 @@ load in the initial atomic configuration from file.
    :end-before: snippet-final
 
 We will now make a final structure, where the Li atom has been moved to a
-neighbouring equivalent site.  The
+neighboring equivalent site.  The
 :meth:`~ase.Atoms.get_positions`,
 :meth:`~ase.Atoms.set_positions` and
 :meth:`~ase.Atoms.get_cell` methods
@@ -222,7 +222,7 @@ energies.  This should not require any new DFT calculations.
    :end-before: snippet-results-end
 
 Calculate the energy of intercalating a single Li in the :mol:`FePO_4` cell.
-How does this energy compare with the equilibirum potential?  What can it
+How does this energy compare with the equilibrium potential?  What can it
 tell you about the charge/discharge potential curves?
 
 
@@ -230,8 +230,8 @@ Bonus: :mol:`LiFePO_4` with one vacancy
 =======================================
 
 If time permits, we will now do a similar calculation but this time with
-:mol:`LiFePO_4` contraining one vacancy.  Once again you should assume that
-the cell dimension remain unchanged compaired to :mol:`LiFePO_4`.
+:mol:`LiFePO_4` containing one vacancy.  Once again you should assume that
+the cell dimension remain unchanged compared to :mol:`LiFePO_4`.
 
 There are numerous ways to obtain this structure.  You can get
 inspiration from the way :mol:`LiFePO_4` was made in Part 2.  Use
@@ -248,7 +248,7 @@ obtain the potential energies.  This should not require any calculations.
    :start-after: snippet-results
    :end-before: snippet-results-end
 
-How does this energy compare with the equilibirum potential?  What can it
+How does this energy compare with the equilibrium potential?  What can it
 tell you about the charge/discharge potential curves?
 
 

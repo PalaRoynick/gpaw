@@ -45,12 +45,9 @@ view(atoms)
 # snippet-initialize-end
 
 # snippet-mlip-start
-elements_dict = {e:e for e in atoms.get_chemical_symbols()}
-print('Elements dictionary:', elements_dict)
-
 atoms.calc = NequIPCalculator.from_compiled_model(
              compile_path=mlip,
-             chemical_species_to_atom_type_map = elements_dict,
+             chemical_species_to_atom_type_map = True,
              device='cpu')
 
 print('Potential energy of system:', atoms.get_potential_energy())
@@ -98,13 +95,11 @@ atoms = read(unitcellfile) * supercell
 atoms.center(vacuum=8.0, axis=2)  # Ensure enough vacuum in the unit cell
 print(atoms.get_chemical_formula())
 
-elements_dict = {e:e for e in atoms.get_chemical_symbols()}
-print('Elements dictionary:', elements_dict)
 print('Machine learning potential:', mlip)
 
 atoms.calc = NequIPCalculator.from_compiled_model(
              compile_path=mlip,
-             chemical_species_to_atom_type_map = elements_dict,
+             chemical_species_to_atom_type_map = True,
              device='cpu')
 
 T_wanted = 300  # Kelvin
