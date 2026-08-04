@@ -15,7 +15,7 @@ viz.view = lambda atoms, repeat=None: None
 
 # snippet-setup-slab-start
 a_Ru = 2.704  # PBE value from OQMD.org; expt value is 2.706
-c_Ru =  4.282 
+c_Ru = 4.282
 slab = hcp0001('Ru', a=a_Ru, c=c_Ru, size=(2, 2, 2), vacuum=5.0)
 
 # Other metals are possible, for example Rhodium
@@ -90,7 +90,8 @@ view(slabN2)
 
 # snippet-optimize-adsorption-start
 slabN2.calc = calc
-dyn = QuasiNewton(slabN2, trajectory='N2Ru-top.traj', logfile='N2Ru-top.log', maxstep=0.02)
+dyn = QuasiNewton(slabN2, trajectory='N2Ru-top.traj',
+                  logfile='N2Ru-top.log', maxstep=0.02)
 t = time.time()
 dyn.run(fmax=0.05)
 print(f'Wall time: {(time.time() - t) / 60} min.')
@@ -132,7 +133,8 @@ calc = GPAW(xc='PBE',
             mode=PW(350),
             kpts={'size': (4, 4, 1), 'gamma': True})
 slabN2_new.calc = calc
-dyn = QuasiNewton(slabN2_new, trajectory='N2Ru.traj', logfile='N2Ru.log', maxstep=0.02)
+dyn = QuasiNewton(slabN2_new, trajectory='N2Ru.traj',
+                  logfile='N2Ru.log', maxstep=0.02)
 t = time.time()
 dyn.run(fmax=0.05)
 print('Wall time:', time.time() - t)
@@ -160,7 +162,8 @@ calc = GPAW(xc='PBE',
             mode=PW(350),
             kpts={'size': (4, 4, 1), 'gamma': True})
 slab2Nads.calc = calc
-dyn = QuasiNewton(slab2Nads, trajectory='2Nads.traj',logfile='2Nads.log')
+dyn = QuasiNewton(slab2Nads,
+                  trajectory='2Nads.traj', logfile='2Nads.log')
 dyn.run(fmax=0.05)
 e_slab = slab.get_potential_energy()
 e_N2 = read('N2.traj').get_potential_energy()
