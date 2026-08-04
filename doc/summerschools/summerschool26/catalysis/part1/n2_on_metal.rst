@@ -7,7 +7,7 @@ This is the rate limiting step for ammonia synthesis.
 In reality, the process takes place at the foot of an atomic step on the
 surface.  Doing calculations on this more realistic system would be too slow
 for these exercises.  For the same reason, we use a metal slab with only two
-layers, a realistic calculation would require the double.
+layers; a realistic calculation would require double as many layers.
 
 
 :mol:`N_2` Adsorption on a metal surface
@@ -15,7 +15,8 @@ layers, a realistic calculation would require the double.
 
 This tutorial shows how to calculate the adsorption energy of an
 :mol:`N_2` molecule on a closepacked Ru surface. The first cell imports
-some modules from the ASE and GPAW packages
+some modules from the ASE and GPAW packages.
+
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-imports-header-start
@@ -25,53 +26,62 @@ some modules from the ASE and GPAW packages
 Setting up the metal surface
 ----------------------------
 
-Ru crystallizes in the hcp structure with a lattice constants a = 2.706 Å and
-c = 4.282 Å.  It is often better to use the lattice constants corresponding
+Ru crystallizes in the hcp structure with lattice constants a = 2.706 Å and
+c = 4.282 Å ((c is not used in the code examples)). It is often better to use the lattice constants corresponding
 to the DFT variant used (here PBE with PAW).  We get this from
 https://oqmd.org.
 
-We model the surface by a 2 layer slab of metal atoms, and add 5Å vacuum on
-each side.
+We model the surface as an infinite a 2-layer slab of metal atoms with 5 Å of vacuum
+on each side. The latter is done to prevent spurious interactions between the slab 
+images. For charged, polar, or magnetic systems a dipole layer correction is used 
+in combination with vacuum layer ((reference to the dipole layer correction)). Convergence with respect to the 
+vacuum layer should always be checked, see ((reference to the convergence stuff here))
 
-We visualize the system with ASE GUI, so you can check that everything looks
-right.  This pops up a new window.
+The newly created geometry can be inspected with ASE GUI. 
+This pops up a new window. 
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-setup-slab-start
    :end-before: snippet-setup-slab-end
 
-To optimize the slab we need a calculator. We use the GPAW calculator in
-plane wave (PW) mode with the PBE exchange—correlation functional. The
+The built geometry is not necessarily a true energy minimum of the system,
+and an optimization is often performed to minimize the forces 
+between the atoms. First, a calculator needs to be attached to our Atoms-object to 
+perform any calculations. We use the GPAW calculator in
+plane wave (PW) mode with the PBE exchange-correlation functional. The
 convergence with respect to the cutoff energy and k-point sampling should
 always be checked — see :ref:`catalysis_convergence`
-for more information on how this
-can be done. For this exercise an energy cutoff of 350eV and 4x4x1 k-point
-mesh is chosen to give reasonable results with a limited computation time.
+for more information on how this can be done. For this exercise, an energy cutoff of
+350 eV and a 4x4x1 k-point mesh are chosen to give reasonable results with a limited 
+computation time.
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-calc-define-start
    :end-before: snippet-calc-define-end
 
-The bottom layer of the slab is fixed during optimization. The structure is
-optimized until the forces on all atoms are below 0.05 eV/Å.
+Constraints can be used to limit movement of some atoms in the system as shown below.
+Here, only the top layer atoms are allowed to move during the optimization to mimic 
+surface reconstruction while the bottom atoms are fixed. The code below demonstrates
+the use of the QuasiNewton() optimization algorithm to optimize the slab geometry until 
+the forces on all atoms are below 0.05 eV/Å. ((mention the log file and add to the code example))
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-optimize-slab-start
    :end-before: snippet-optimize-slab-end
 
-The calculation will take ca. 5 minutes. While the calculation is running you
-can take a look at the output. How many k-points are there in total and how
+The calculation will take ca. 5 minutes. While the calculation is running, you
+can take a look at the GPAW output. How many k-points are there in total, and how
 many are there in the irreducible part of the Brillouin zone? What does this
 mean for the speed of the calculation?
 
-What are the forces and the energy after each iteration? You can read it
-directly in the output above, or from the saved .traj file like this:
+What are the forces and the energy after each iteration? ((log file mention here as well))
+You can read it directly in the output above, or from the saved .traj file like this:
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-read-traj-start
    :end-before: snippet-read-traj-end
 
-Often you are only interested in the final energy which can be found like this:
+Often, you are only interested in the final energy which can be found like this:
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-final-energy-start
@@ -101,14 +111,14 @@ How does this compare with the experimental value?
 Adsorbing the molecule
 ----------------------
 
-Now we adsorb the molecule on top of one of the Ru atoms.
+Now we adsorb the molecule on top of one of the Ru atoms on the surface.
 
-Here, it would be natural to just add the molecule to the slab, and minimize.
-However, that takes 45 minutes to an hour to converge, **so we cheat to speed
+Here, it would be natural to just add the molecule to the slab and minimize
+the forces. However, that takes 45 minutes to an hour to converge, **so we cheat to speed
 up the calculation.**
 
 The main slowing-down comes from the relaxation of the topmost metal atom
-where the :mol:`N_2` molecule binds, this atom moves a quarter of an
+where the :mol:`N_2` molecule binds; this atom moves a quarter of an
 Ångström out.  Also, the binding length of the molecule changes when it is
 adsorbed, so we build a new molecule with a better starting guess.
 
@@ -116,9 +126,9 @@ adsorbed, so we build a new molecule with a better starting guess.
    :start-after: snippet-setup-adsorption-start
    :end-before: snippet-setup-adsorption-end
 
-We optimize the structure.  Since we have cheated and have a good guess for
+We optimize the structure. Since we have cheated and have a good guess for
 the initial configuration we prevent that the optimization algorithm takes
-too large steps.
+too large steps. ((why is maxstep explicitly set so low in the code then?))
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-optimize-adsorption-start
@@ -172,7 +182,7 @@ methods useful.
 Now you should optimize the structure as you did before with the
 :mol:`N_2` molecule standing.  The calculation will probably be too long
 to run interactively.  Prototype it in the terminal, then interrupt the
-calculation.
+calculation once the calculator is initialized.
 
 Check the number of irreducible k-points and then submit the job as a batch
 job running on that number of CPU cores.
@@ -182,10 +192,10 @@ job running on that number of CPU cores.
 
 .. image:: ../2NadsRu.png
 
-Note that here the two N atoms sit on next-nearest hollow sites.  An
+Note that here the two N atoms sit on second-nearest hollow sites.  An
 alternative would be to have them on nearest neighbor sites.  If you feel
-energetic you could investigate that as well.  Also, there are two different
-kinds of hollow sites, they are not completely equivalent!
+energetic, you could investigate that as well.  Also, there are two different
+kinds of hollow sites, and they are not completely equivalent!
 
 Optimize the structure and get the final energy. Is it favorable to
 dissociate :mol:`N_2` on the surface? What is the N—N distance now? What
