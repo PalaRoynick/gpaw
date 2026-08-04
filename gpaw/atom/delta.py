@@ -49,3 +49,32 @@ def delta():
         Path('result.json').write_text(json.dumps(data, indent=1))
 
 
+def analyse(paths):
+    D = []
+    for path in paths:
+        try:
+            data = json.loads((path / 'result.json').read_text())
+        except FileNotFoundError:
+            continue
+        D.append((path.name.split('.')[0], path, abs(data['strain'])))
+    for s, p, e in sorted(D):
+        print(s, p, e)
+    return D
+
+
+if __name__ == '__main__':
+    import sys
+    from ase.data import atomic_numbers
+    if 0:
+        analyse((Path(x) for x in sys.argv[1:]))
+    else:
+        d1 = analyse(Path('old').glob('*/'))
+        d2 = analyse(Path('4').glob('*/'))
+        x1, y1 = np.array(sorted([(atomic_numbers[s], e)
+                                  for s, p, e in d1])).T
+        x2, y2 = np.array(sorted([(atomic_numbers[s], e)
+                                  for s, p, e in d2])).T
+        import matplotlib.pyplot as plt
+        plt.plot(x1, np.log10(y1), '*-')
+        plt.plot(x2, np.log10(y2), 'o-')
+        plt.show()
