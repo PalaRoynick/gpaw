@@ -33,10 +33,10 @@ https://oqmd.org.
 
 We model the surface as an infinite a 2-layer slab of metal atoms with 5 Å of vacuum
 on each side. The latter is done to prevent interactions between the slab and its periodic images
-images. As a side note, a dipole layer correction ought to be used 
-in combination with vacuum layer for polar systems, see :ref:`dipole`.
+images. As a side note, a dipole-layer correction ought to be used 
+in combination with vacuum layer for e.g. polar systems (see :ref:`dipole`).
 Convergence with respect to the vacuum layer should always be checked, see :ref:`catalysis_convergence`
-for examples.
+for examples of how to set it up.
 
 The newly created geometry can be inspected with ASE GUI. 
 This pops up a new window. 
