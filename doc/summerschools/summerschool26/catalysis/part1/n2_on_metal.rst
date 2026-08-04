@@ -27,15 +27,16 @@ Setting up the metal surface
 ----------------------------
 
 Ru crystallizes in the hcp structure with lattice constants a = 2.706 Å and
-c = 4.282 Å ((c is not used in the code examples)). It is often better to use the lattice constants corresponding
+c = 4.282 Å. It is often better to use the lattice constants corresponding
 to the DFT variant used (here PBE with PAW).  We get this from
 https://oqmd.org.
 
 We model the surface as an infinite a 2-layer slab of metal atoms with 5 Å of vacuum
-on each side. The latter is done to prevent spurious interactions between the slab 
-images. For charged, polar, or magnetic systems a dipole layer correction is used 
-in combination with vacuum layer ((reference to the dipole layer correction)). Convergence with respect to the 
-vacuum layer should always be checked, see ((reference to the convergence stuff here))
+on each side. The latter is done to prevent interactions between the slab and its periodic images
+images. As a side note, a dipole layer correction ought to be used 
+in combination with vacuum layer for polar systems ((reference to the dipole layer correction)).
+Convergence with respect to the vacuum layer should always be checked, see :ref:`catalysis_convergence`
+for examples.
 
 The newly created geometry can be inspected with ASE GUI. 
 This pops up a new window. 
@@ -46,7 +47,7 @@ This pops up a new window.
 
 The built geometry is not necessarily a true energy minimum of the system,
 and an optimization is often performed to minimize the forces 
-between the atoms. First, a calculator needs to be attached to our Atoms-object to 
+between the atoms. First, a calculator needs to be attached to our Atoms object to 
 perform any calculations. We use the GPAW calculator in
 plane wave (PW) mode with the PBE exchange-correlation functional. The
 convergence with respect to the cutoff energy and k-point sampling should
@@ -60,10 +61,12 @@ computation time.
    :end-before: snippet-calc-define-end
 
 Constraints can be used to limit movement of some atoms in the system as shown below.
-Here, only the top layer atoms are allowed to move during the optimization to mimic 
-surface reconstruction while the bottom atoms are fixed. The code below demonstrates
-the use of the QuasiNewton() optimization algorithm to optimize the slab geometry until 
-the forces on all atoms are below 0.05 eV/Å. ((mention the log file and add to the code example))
+Here, only the top layer atoms are allowed to move during the optimization while the bottom
+atoms are fixed to mimic the bulk behavior. The code below demonstrates the use of the
+QuasiNewton() optimization algorithm to optimize the slab geometry until 
+the forces on all atoms are below 0.05 eV/Å. The attached log file shows the total energy and 
+the maximum forces for each iteration as well as the time at which the iteration was 
+completed.
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-optimize-slab-start
@@ -74,8 +77,8 @@ can take a look at the GPAW output. How many k-points are there in total, and ho
 many are there in the irreducible part of the Brillouin zone? What does this
 mean for the speed of the calculation?
 
-What are the forces and the energy after each iteration? ((log file mention here as well))
-You can read it directly in the output above, or from the saved .traj file like this:
+What are the forces and the energy after each iteration? Apart from inspecting the log file,
+you can read it directly in the output above, or from the saved .traj file like this:
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-read-traj-start
@@ -127,8 +130,8 @@ adsorbed, so we build a new molecule with a better starting guess.
    :end-before: snippet-setup-adsorption-end
 
 We optimize the structure. Since we have cheated and have a good guess for
-the initial configuration we prevent that the optimization algorithm takes
-too large steps. ((why is maxstep explicitly set so low in the code then?))
+the initial configuration, we ensure that the algorithm does not
+miss the local minimum by using the ``maxstep`` argument:
 
 .. literalinclude:: n2_on_metal.py
    :start-after: snippet-optimize-adsorption-start
