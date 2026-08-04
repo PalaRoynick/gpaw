@@ -1,3 +1,5 @@
+.. _catalysis_extra::
+
 Extra exercise - Vibrational energy
 ===================================
 
