@@ -599,9 +599,9 @@ class NumericalXC(XCFunctional):
         spos_ac = self.ham.spos_ac
         setups = self.ham.setups
         if self.paw_potmode == PAWPotMode.lebedev and not angular_projected_lebedev:
-            lebdev2gd = Lebedev2GD(gd, spos_ac, setups, nspins)
-            vxc_sg -= lebdev2gd.transform(self.vxc_xasz[1])
-            vxc_sg += lebdev2gd.transform(self.vxc_xasz[0])
+            lebedev2gd = Lebedev2GD(gd, spos_ac, setups, nspins)
+            vxc_sg -= lebedev2gd.transform(self.vxc_xasz[1])
+            vxc_sg += lebedev2gd.transform(self.vxc_xasz[0])
         else:
             vxc_asLg, vxct_asLg = self.collect_angular_atomic_potentials()
             for s in range(nspins):
@@ -982,6 +982,54 @@ def FermiAmaldi(
         vxc_xasz=vxc_xasz,
     )
     return xc
+
+
+def calculate_atomic_vacuum_detector(D_sp, setup, paw_potmode=PAWPotMode.lebedev, eps=1e-2):
+    paw_potmode = PAWPotMode(paw_potmode)
+    assert paw_potmode in [PAWPotMode.lebedev, PAWPotMode.angular]
+    xcc = setup.xc_correction
+    if xcc is None:
+        return np.zeros(1), np.zeros(1)
+    n_z = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g).sum(axis=0)
+    nt_z = calculate_angular_density(
+        xcc, D_sp, xcc.nt_qg, xcc.nct_g).sum(axis=0)
+    if paw_potmode is PAWPotMode.lebedev:
+        n_z = angular2lebedev(n_z[None])[0]
+        nt_z = angular2lebedev(nt_z[None])[0]
+    f = n_z / (eps + n_z)
+    ft = nt_z / (eps + nt_z)
+    return f, ft
+
+
+def KZG_LDA_FA(density: Density, xc_DFT: str = 'LDA_X+LDA_C_PW',
+               alpha: float = 1.0, eps: float = 1e-2, fa_kwargs=None, **nxc_kwargs) -> NumericalXC:
+    # from arXiv:2510.10529
+    # use xc_DFT = 'GGA_X_FD_LB94+LDA_C_PW' for the LB94 version
+    fa_kwargs = fa_kwargs or {}
+    fa = FermiAmaldi(density, **nxc_kwargs, **fa_kwargs)
+    # the default of nxc.from_other_xc is the xc.name not LDA
+    nxc_kwargs.setdefault('setup_name', fa.setup_name)
+    nxc = NumericalXC.from_other_xc(
+        xc_DFT, density, **nxc_kwargs)
+    # PS
+    nt_g = density.nt_sg.sum(axis=0)
+    maskt_g = nt_g / (eps + nt_g)
+    nxc.vxc_sg[:] = maskt_g[np.newaxis] * nxc.vxc_sg + \
+        (1.0 - maskt_g[np.newaxis]) * alpha * fa.vxc_sg
+
+    # Atomic
+    if nxc.paw_potmode in [PAWPotMode.none, PAWPotMode.direct]:
+        return nxc
+
+    D_asp = density.atomdist.to_work(density.D_asp)
+    for a, D_sp in D_asp.items():
+        mask_z, maskt_z = calculate_atomic_vacuum_detector(
+            D_sp, density.setups[a], nxc.paw_potmode, eps=eps)
+        nxc.vxc_xasz[0][a][:] = mask_z[np.newaxis] * nxc.vxc_xasz[0][a] + \
+            (1.0 - mask_z[np.newaxis]) * alpha * fa.vxc_xasz[0][a]
+        nxc.vxc_xasz[1][a][:] = maskt_z[np.newaxis] * nxc.vxc_xasz[1][a] + \
+            (1.0 - maskt_z[np.newaxis]) * alpha * fa.vxc_xasz[1][a]
+    return nxc
 
 
 def get_all_electron_xc_proj(
