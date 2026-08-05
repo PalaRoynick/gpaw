@@ -199,7 +199,7 @@ class OldSJM(OldSolvationGPAW):
         'capacitance': float, capacitance in the equation. Default 1 muF
         'resistance': float, resistance, Default 100 so that
             the relaxation-time constant of potentiostat. Default: 100.
-        'th_temp': float
+        'temp_K': float
             Thermal temperature for the FDT calculation in K. Default: 300.
 
     slope_regression_depth : int
@@ -446,9 +446,9 @@ class OldSJM(OldSolvationGPAW):
             # Default parameters if fdt is True
             self.parameters['sj']['fdt'] = {
                 'dt': 0.5,
-                'capacitance': 1.0, 
-                'resistance':100.,
-                'th_temp': 300.0}
+                'capacitance': 1.0,
+                'resistance': 100.,
+                'temp_K': 300.0}
         elif isinstance(self.parameters['sj']['fdt'], dict):
             # If fdt is a dict, ensure the dictionary is complete
             fdt_dict = self.parameters['sj']['fdt']
@@ -456,7 +456,7 @@ class OldSJM(OldSolvationGPAW):
                 'dt': fdt_dict.get('dt', 0.5),
                 'capacitance': fdt_dict.get('capacitance', 1.0),
                 'resistance': fdt_dict.get('resistance', 100.0),
-                'th_temp': fdt_dict.get('th_temp', 300.0)}
+                'temp_K': fdt_dict.get('temp_K', 300.0)}
 
     def _quick_reinitialization(self):
         """Minimal reinitialization of electronic-structure stuff when only
@@ -670,7 +670,7 @@ class OldSJM(OldSolvationGPAW):
                 dt = fdt_dict['dt']
                 capacitance = fdt_dict['capacitance']
                 resistance = fdt_dict['resistance']
-                th_temp = fdt_dict['th_temp']
+                temp_K = fdt_dict['temp_K']
 
                 rn = np.random.standard_normal(1)
 
@@ -681,14 +681,12 @@ class OldSJM(OldSolvationGPAW):
                     raise ValueError(
                         "Slope cannot be zero when calculating capacitance.")
 
-                #capacitance = - _e * 1e22 / (area * p.slope) #this is out because i have a constant vacuum capacitance at the beginning 
-
                 p.excess_electrons += (
                     capacitance * (true_potential - p.target_potential)
-                    * (1 - np.exp(-dt / (capacitance*resistance)))
+                    * (1 - np.exp(-dt / (capacitance * resistance)))
                     + rn[0] * np.sqrt(
-                        kB * th_temp * capacitance
-                            * (1 - np.exp(-2 * dt / (capacitance*resistance)))
+                        kB * temp_K * capacitance
+                            * (1 - np.exp(-2 * dt / (capacitance * resistance)))
                     )
                 )
                 self.log(
