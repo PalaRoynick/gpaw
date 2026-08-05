@@ -106,7 +106,7 @@ class AllElectron(IOContext):
         self.f_j = [f for n, l, f, e in nlfe_j]
         self.e_j = [e for n, l, f, e in nlfe_j]
 
-        if configuration is not None:
+        if configuration is not None and isinstance(configuration, str):
             j = 0
             for conf in configuration.split(','):
                 if conf[0].isdigit():

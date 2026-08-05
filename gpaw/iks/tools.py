@@ -1,4 +1,5 @@
 from __future__ import annotations
+from math import sqrt, pi
 
 import warnings
 from collections.abc import MutableMapping
@@ -337,26 +338,12 @@ def calculate_diff_overlap_matrix_gaunt_separate(
 
 def get_atomic_ae_dens_radial(D_sp: Array2D, xcc: PAWXCCorrection) -> Array2D:
     n_sLg = calculate_angular_density(xcc, D_sp, xcc.n_qg, xcc.nc_g)
-    Lmax = n_sLg.shape[1]
-    nspins = len(n_sLg)
-    n_s1g = xcc.rgd.zeros((nspins, 1))
-    # integrate the angular part out
-    for s in range(nspins):
-        for w, Y_L in zip(weight_n, Y_nL[:, :Lmax]):
-            n_s1g[s] += 4 * np.pi * w * np.dot(Y_L, n_sLg[s])
-    return n_s1g
+    return n_sLg[:, :1] / sqrt(4 * pi)
 
 
 def get_atomic_ps_dens_radial(D_sp: Array2D, xcc: PAWXCCorrection) -> Array2D:
     n_sLg = calculate_angular_density(xcc, D_sp, xcc.nt_qg, xcc.nct_g)
-    Lmax = n_sLg.shape[1]
-    nspins = len(n_sLg)
-    n_s1g = xcc.rgd.zeros((nspins, 1))
-    # integrate the angular part out
-    for s in range(nspins):
-        for w, Y_L in zip(weight_n, Y_nL[:, :Lmax]):
-            n_s1g[s] += 4 * np.pi * w * np.dot(Y_L, n_sLg[s])
-    return n_s1g
+    return n_sLg[:, :1] / sqrt(4 * pi)
 
 
 def get_atomic_dens_lebedev(D_sp: Array2D, xcc: PAWXCCorrection) -> Array3D:
@@ -523,7 +510,7 @@ def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c=1
 
         x_g = np.clip(r_g / rc, 0.0, 1.0)
 
-        E_g = 1.0 - (0.5 * (1.0 + np.cos(np.pi * x_g**t)))**p
+        E_g = 1.0 - (0.5 * (1.0 + np.cos(pi * x_g**t)))**p
         w_ag[a] = E_g
 
     return w_ag

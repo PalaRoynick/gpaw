@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 class iKSLinearSolver:
 
-    def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, ortho: bool = False, **ls_kwargs):
+    def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, p0_nG: np.ndarray = None, ortho: bool = False, **ls_kwargs):
         assert method == 'minres' or method is None or method.lower() == "none"
         self.iks = iks
         self.dd = dd
@@ -22,6 +22,7 @@ class iKSLinearSolver:
         self.nocc = len(dd.occ)
         self.kpt = dd.kpt
         self.p_nG = None
+        self.p0_nG = p0_nG
         self.Pp_ani = None
         self.iters = 0
         self.blocks_msg = ''
@@ -147,6 +148,7 @@ class iKSLinearSolver:
 
     def calculate_p(self, p0_nG):
         if self.method is None or self.method.lower() == "none":
+            self.blocks_msg = str(self.dd.blocks_occ)
             return p0_nG
 
         wfs = self.iks.wfs

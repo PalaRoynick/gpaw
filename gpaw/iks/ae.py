@@ -16,7 +16,7 @@ class _iKSAE:
         self.nspsins = len(nt_sg)
         self.niter = 0
         self.init_weights(weights)
-        self.xc = NXCRadialCalculator(self.fermi_amaldi()[:, None], "lebedev", True)
+        self.xc = NXCRadialCalculator(None, "lebedev", True)
         self.L = 0.0
         self.prev_L = 0.0
         self.L_iter = []
@@ -48,7 +48,8 @@ class _iKSAE:
         vH_sg = self.rgd.empty(self.nspins)
         for s in range(self.nspins):
             hartree(
-                0, self.nt_sg[s] * self.rgd.r_g * self.rgd.dr_g, self.rgd.r_g, vH_sg[s]
+                0, self.nt_sg[s] * self.rgd.r_g *
+                self.rgd.dr_g, self.rgd.r_g, vH_sg[s]
             )
             vH_sg[s, 1:] /= self.rgd.r_g[1:]
             vH_sg[s, 0] = vH_sg[s, 1]
@@ -73,7 +74,7 @@ class _iKSAE:
         learning_rate=0.001,
         beta1=0.9,
         beta2=0.999,
-        Ltol=1e-4,
+        Ltol=1e-5,
         Jtol=1e-6,
         epsilon=1e-12,
         maxiter=300,
@@ -113,7 +114,7 @@ class _iKSAE:
         # np.save("norm.npy", self.norm)
         return self.L_iter
 
-    def run_fastest_descent(self, maxiter=313, Ltol=1e-3, Jtol=1e-6, learning_rate=1.0):
+    def run_steepest_descent(self, maxiter=313, Ltol=1e-5, Jtol=1e-6, learning_rate=1.0):
         self.niter = 0
         self.L_iter = []
         vxc_sg = self.xc.vxc_szg[:, 0]
@@ -134,6 +135,7 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
         self,
         symbol,
         nt_sg,
+        vxc0_sg=None,
         weights="uniform",
         ngpts=2000,
         rcut=50.0,
@@ -141,13 +143,19 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
         alpha2=None,
         eps=1.0e-7,
         ngauss=50,
+        silent=True,
         **aekwargs,
     ):
-        AllElectronAtom.__init__(self, symbol, **aekwargs)
+        self.silent = silent
+        _iKSAE.__init__(self, symbol, nt_sg, weights)
+        AllElectronAtom.__init__(self, symbol, xc=self.xc, **aekwargs)
         self.initialize(
             ngpts=ngpts, rcut=rcut, ngauss=ngauss, alpha1=alpha1, alpha2=alpha2, eps=eps
         )
-        _iKSAE.__init__(self, symbol, nt_sg, weights)
+        if vxc0_sg is None:
+            self.xc.vxc_szg = self.fermi_amaldi()[:, None]
+        else:
+            self.xc.vxc_szg = vxc0_sg[:, None]
         self.n_sg = None
         self.J_max = []
         self.ortho = []
@@ -157,8 +165,13 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
         if self.n_sg is None:
             self.n_sg = np.copy(self.nt_sg)
 
-    def radial_integrate(self, f):
-        return self.rgd.integrate(f) / (4.0 * np.pi)
+    def log(self, *args, **kwargs):
+        if not self.silent:
+            return super().log(*args, **kwargs)
+
+    def radial_integrate(self, a_xg):
+        rgd = self.rgd
+        return np.dot(a_xg[..., 1:], (rgd.r_g**2 * rgd.dr_g)[1:])
 
     @property
     def na_sg(self):
@@ -181,7 +194,8 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
             tmp_g = self.weights_sg[ch.s] * self.diff_sg[ch.s]
             phi_jg = ch.basis.expand(ch.C_nb)
             phi_ig = phi_jg[: len(ch.f_n)]
-            w_ij = (ch.e_n[:, np.newaxis] - ch.e_n[np.newaxis, : len(ch.f_n)]).T
+            w_ij = (ch.e_n[:, np.newaxis] -
+                    ch.e_n[np.newaxis, : len(ch.f_n)]).T
             np.fill_diagonal(w_ij, 1.0)
             mu_i = 2.0 * ch.f_n * self.radial_integrate(tmp_g * phi_ig**2)
             self.p_cij[c] = (
@@ -190,7 +204,8 @@ class iKSAEAtom(_iKSAE, AllElectronAtom):
                     np.einsum(
                         "j...,i...->ij...",
                         phi_jg,
-                        tmp_g * phi_ig * ch.f_n[:, None] - 0.5 * mu_i[:, None] * phi_ig,
+                        tmp_g * phi_ig * ch.f_n[:, None] -
+                        0.5 * mu_i[:, None] * phi_ig,
                     )
                 )
                 / w_ij
@@ -239,12 +254,13 @@ class iKSRadial(iKSAEAtom):
             )
             phi_jg = ch.basis.expand(ch.C_nb)
             phi_ig = phi_jg[: len(ch.f_n)]
-            w_ij = (ch.e_n[:, np.newaxis] - ch.e_n[np.newaxis, : len(ch.f_n)]).T
+            w_ij = (ch.e_n[:, np.newaxis] -
+                    ch.e_n[np.newaxis, : len(ch.f_n)]).T
             np.fill_diagonal(w_ij, 1.0)
             mu_i = self.radial_integrate(tmp_g * phi_ig**2)
             self.p_cij[c] = (
                 self.radial_integrate(
-                    np.einsum("j...,i...->ij...", phi_jg, 2.0 * tmp_g * phi_ig)
+                    np.einsum("j...,i...->ij...", phi_jg, 4.0 * tmp_g * phi_ig)
                 )
                 / w_ij
             )

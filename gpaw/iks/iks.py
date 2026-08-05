@@ -471,7 +471,7 @@ class iKS:
         for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
             p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
             ls = iKSLinearSolver(
-                self, dd=dd, method=self.linear_solver, **self.ls_kwargs)
+                self, dd=dd, method=self.linear_solver, p0_nG=p0_nG, **self.ls_kwargs)
             ls.run(p0_nG)
             self.ls_u.append(ls)
             if wfs.occupations.name != 'zero-width' or self.apply_occupation_correction:
@@ -750,6 +750,7 @@ class iKS:
         for a, dp_sii in dp_asii.items():
             dp_sii[:] = 0.0
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
+                Pp_ani = ls.Pp_ani
                 dp_ii = np.einsum(
                     "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
                 dp_ii += dp_ii.conj().T

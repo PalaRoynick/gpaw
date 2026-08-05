@@ -65,6 +65,7 @@ def get_atomic_potential_shapes(mode: PAWPotMode, setups: Setups, nspins: int) -
 
 class NXCRadialCalculator:
     def __init__(self, vxc_szg: Array3D, mode: PAWPotMode, virial_xc_energy: bool):
+        self.name = 'NXC'
         self.vxc_szg = vxc_szg
         self.mode = PAWPotMode(mode)
         assert self.mode is PAWPotMode.lebedev or self.mode is PAWPotMode.angular
@@ -692,8 +693,8 @@ def L_to_lm(L: int) -> tuple[int, int]:
 
 
 def lebedev2angular(vxc_sng, Lmax):
-    vxc_sLg = 4 * np.pi * np.einsum("n,nL,sng->sLg",
-                                    weight_n, Y_nL[:, :Lmax], vxc_sng)
+    vxc_sLg = 4 * pi * np.einsum("n,nL,sng->sLg",
+                                 weight_n, Y_nL[:, :Lmax], vxc_sng)
     return vxc_sLg
 
 
@@ -838,7 +839,7 @@ def calculate_compensation_charges(dens):
             r_g = xcc.rgd.r_g
             dr_g = xcc.rgd.dr_g
             Delta0 = np.dot(xcc.nc_g - xcc.nct_g,
-                            np.sqrt(4 * np.pi) * r_g**2 * dr_g)
+                            sqrt(4 * pi) * r_g**2 * dr_g)
         Q_L[0] += Delta0
         Q_aL[a] = Q_L
     return Q_aL
