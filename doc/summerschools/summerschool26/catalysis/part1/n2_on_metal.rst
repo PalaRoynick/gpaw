@@ -1,3 +1,5 @@
+.. _catalysis1:
+
 Catalysis: Dissociative adsorption of :mol:`N_2` on a metal surface
 ===================================================================
 
@@ -139,6 +141,7 @@ Once the calculation is finished we can calculate the adsorption energy as:
 Try to calculate the bond length of :mol:`N_2` adsorbed on the surface.
 Has it changed?  What is the distance between the :mol:`N_2` molecule and
 the surface?
+
 
 Exercise
 --------

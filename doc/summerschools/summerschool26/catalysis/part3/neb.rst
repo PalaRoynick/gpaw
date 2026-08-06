@@ -1,3 +1,5 @@
+.. _catalysis3:
+
 Introduction to Nudged Elastic Band (NEB) calculations
 ======================================================
 
@@ -72,6 +74,8 @@ or you can make a script using :class:`ase.mep.neb.NEBTools`, e.g.:
   :start-after: snippet-nebtools-start
   :end-before: snippet-nebtools-end
 
+
+.. _catalysis_exercise:
 
 Exercise
 --------
