@@ -686,9 +686,7 @@ class OldSJM(OldSolvationGPAW):
                     * (1 - np.exp(-dt / (capacitance * resistance)))
                     + rn[0] * np.sqrt(
                         kB * temp_K * capacitance
-                            * (1 - np.exp(-2 * dt / (capacitance * resistance)))
-                    )
-                )
+                        * (1 - np.exp(-2 * dt / (capacitance * resistance)))))
                 self.log(
                     f'Number of electrons is {p.excess_electrons:.4f} '
                     f'using the FDT, with slope of {p.slope:.4f} V/electron '
