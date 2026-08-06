@@ -149,7 +149,7 @@ done by the code below.
 5.   Replace the `...` with code to make a noncollinear LSDA calculation for the ferromagnetic state as well (we will need this for a later
      comparison).
 
-Run the cell and verify that the energy per magnetic atom is lower in the 120\ `^\circ` noncollinear configuration compared to both of the
+Run the code and verify that the energy per magnetic atom is lower in the 120\ `^\circ` noncollinear configuration compared to both of the
 previous calculated states.
 
 
