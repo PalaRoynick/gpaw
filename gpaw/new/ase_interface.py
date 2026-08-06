@@ -166,7 +166,8 @@ class ASECalculator:
 
         if not self.dft.ibzwfs.has_wave_functions():
             # We have started from a gpw-file without wave functions
-            self.create_new_calculation(atoms)
+            if self.dft.params.mode.name != 'lcao':
+                self.create_new_calculation(atoms)
 
         assert self.hooks.keys() <= {'scf_step', 'converged'}
         self.log(f'Initialization done in: {inittimer():.3f} s\n')

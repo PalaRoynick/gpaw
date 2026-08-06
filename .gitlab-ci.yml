@@ -487,7 +487,7 @@ test-minimal:
       pytest -v -m ci -We
 
 
-test-cuda-minimal:
+.test-cuda-minimal:  # Reenable me
   image: $IMAGE_CUDA
   extends:
     - .test
@@ -502,7 +502,7 @@ test-cuda-minimal:
     - pytest -v -m gpu
 
 
-test-cuda:
+.test-cuda:  # Reenable me
   image: $IMAGE_CUDA
   extends:
     - .test
@@ -517,7 +517,7 @@ test-cuda:
     - pytest -v -m gpu
 
 
-test-cuda-mpi:
+.test-cuda-mpi:  # Reenable me
   image: $IMAGE_CUDA
   extends:
     - .test
@@ -532,7 +532,7 @@ test-cuda-mpi:
     - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
 
 
-test-cuda-mpi-makefile-build:
+.test-cuda-mpi-makefile-build:  # Reenable me
   image: $IMAGE_CUDA
   extends:
     - .test

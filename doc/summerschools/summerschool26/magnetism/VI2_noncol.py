@@ -1,7 +1,7 @@
 import numpy as np
 from ase.io import read
 from ase.visualize import view
-from gpaw import GPAW, PW, MixerDif
+from gpaw import GPAW, PW
 
 layer = read('VI2_relaxed.gpw')
 m = 3
@@ -20,7 +20,6 @@ magmoms[6] = [m * np.cos(2 * np.pi / 3), -m * np.sin(2 * np.pi / 3), 0]
 
 calc = GPAW(mode=PW(400),
             xc='LDA',
-            mixer=MixerDif(),
             symmetry='off',
             magmoms=magmoms,
             soc=False,
@@ -36,7 +35,6 @@ calc.write('nc_nosoc.gpw')
 magmoms[:] = [m, 0, 0]
 calc = GPAW(mode=PW(400),
             xc='LDA',
-            mixer=MixerDif(),
             symmetry='off',
             magmoms=magmoms,
             soc=False,

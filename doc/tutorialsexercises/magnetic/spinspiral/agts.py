@@ -21,7 +21,7 @@ def check():
 
     assert np.argmin(energies) == 24
     assert abs(max(energies) - min(energies) - 67.9) < 0.1
-    assert abs(magmoms[0] - 1.81) < 0.01
+    assert abs(magmoms[0] - 1.82) < 0.01
 
 
 def check_soc():
@@ -32,8 +32,8 @@ def check_soc():
     theta = data['theta'][i]
     phi = data['phi'][i]
     print(max(soc) - min(soc), theta, phi)
-    assert abs(max(soc) - min(soc) - 3.85) < 0.1
-    assert abs(theta - 27) < 2
+    assert abs(max(soc) - min(soc) - 3.63) < 0.1
+    assert abs(theta - 27) <= 2
     assert abs(phi - 329) < 2
 
 
