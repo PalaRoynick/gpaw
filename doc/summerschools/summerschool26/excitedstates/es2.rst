@@ -98,6 +98,10 @@ Additionally, we can calculate all LCAO bands using ``bands=(0, nbands)`` and pl
         :start-after: # snippet-lcao-plot-start
         :end-before: # snippet-lcao-plot-end
 
+The following image shows the bandstructure we obtain for Silicon.
+
+.. image:: bs.png
+
 
 Again we can check for convergence with respect to the number of k points. Typical convergence would require ``8x8x8 k-points`` for Silicon. Why does the calculated value of the direct bandgap change compared to the plane wave mode ?
 
