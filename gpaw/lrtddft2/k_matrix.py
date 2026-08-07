@@ -186,7 +186,7 @@ class Kmatrix:
             kss_ip = self.ks_singles.kss_list[ip]
             kss_jq = self.ks_singles.kss_list[jq]
 
-            # if (ip,jq) on this this proc
+            # if (ip,jq) on this proc
             lip = self.lr_comms.get_local_eh_index(ip)
             ljq = self.lr_comms.get_local_dd_index(jq)
             if lip is not None and ljq is not None:
@@ -200,7 +200,7 @@ class Kmatrix:
                 else:
                     raise RuntimeError('Invalid K-matrix file format')
 
-            # if (jq,ip) on this this proc
+            # if (jq,ip) on this proc
             ljq = self.lr_comms.get_local_eh_index(jq)
             lip = self.lr_comms.get_local_dd_index(ip)
             if lip is not None and ljq is not None:

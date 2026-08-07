@@ -10,9 +10,15 @@ Git master branch
 
 :git:`master <>`.
 
+
+Version 26.7.0
+==============
+
+July 6, 2026: :git:`26.7.0 <../26.7.0>`
+
 .. _new gpaw notes:
 
-* Minimum version requirements: Python 3.10, ASE 3.27.0.
+* Minimum version requirements: Python 3.10, ASE 3.29.0.
 
 * **Important changes in launching GPAW with MPI parallelization**
   (see also :ref:`parallel_running_jobs`)
@@ -163,6 +169,9 @@ Git master branch
     * weight: 1 -> 1
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
+
+* Experimental support for :ref:`gpu` calculations in PW-mode.
+  Both single and double precision calculations are possible.
 
 * :ref:`newgpaw`: Ported the dipole moment writer to the new RT-TDDFT interface.
 

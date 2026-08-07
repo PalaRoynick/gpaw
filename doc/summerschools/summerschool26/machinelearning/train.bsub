@@ -1,0 +1,11 @@
+#BSUB -J Train_GPU_test
+#BSUB -q gpucamd26
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -W 01:00
+#BSUB -R "rusage[mem=2GB]"
+#BSUB -gpu "num=1:mode=exclusive_process"
+
+source $HOME/CAMD2026/venv/bin/activate
+
+nequip-train -cn finetuning.yaml

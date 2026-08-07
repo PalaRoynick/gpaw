@@ -1,10 +1,10 @@
-======================================
-Transport barriers and Voltage profile
-======================================
+==============================================
+Part 3: Transport barriers and Voltage profile
+==============================================
 
-You will calculate the energy barriers for transport of Li intercalated in the
-graphite anode. You will examine how sensitive this barrier is to the
-interlayer distance in graphite. You will also examine the energy of
+We will calculate the energy barriers for transport of Li intercalated in the
+graphite anode. We will examine how sensitive this barrier is to the
+interlayer distance in graphite. We will also examine the energy of
 intermediate states during the charge/discharge process. This will allow some
 basic discussion of the voltage profile of the battery.
 
@@ -22,29 +22,31 @@ basic discussion of the voltage profile of the battery.
 
   - What can they tell you about the charge/discharge potential curves?
 
-You will in general be provided less code than yesterday, especially
-towards the end of this notebook.  You will have to use what you have
+You will in general be provided less code than before, especially
+towards the end of this tutorial.  You will have to use what you have
 already seen and learned so far.
 
 There will be some natural pauses while you wait for calculations to
-finish.  If you do not finish this entire notebook today, do not despair.
+finish.  If you do not finish this entire tutorial today, do not despair.
+
+.. contents::
 
 
 Transport barrier of Li in graphite
 ===================================
 
-You will now calculate the energy barrier for Li diffusion in the graphite
-anode.  You will do this using the :class:`Nudged Elastic Band (NEB)
+We will now calculate the energy barrier for Li diffusion in the graphite
+anode.  We will do this using the :class:`Nudged Elastic Band (NEB)
 method <ase.mep.neb.NEB>`.
 
-You can use your work from Day 2, but for simplicity you are advised to
+You can use your work from Part 2, but for simplicity you are advised to
 load in the initial atomic configuration from file.
 
 .. literalinclude:: li_barrier.py
    :end-before: snippet-final
 
-You will now make a final structure, where the Li atom has been moved to a
-neighbouring equivalent site.  The
+We will now make a final structure, where the Li atom has been moved to a
+neighboring equivalent site.  The
 :meth:`~ase.Atoms.get_positions`,
 :meth:`~ase.Atoms.set_positions` and
 :meth:`~ase.Atoms.get_cell` methods
@@ -57,7 +59,7 @@ are highly useful for such a task.  HINT: Displace the Li atom
     ...
     ...
 
-Visualize that you have made the final strcuture correctly.
+Visualize that you have made the final structure correctly.
 
 .. code::
 
@@ -70,10 +72,12 @@ Make a band consisting of 7 images including the initial and final.
    :start-after: snippet-neb1
    :end-before: snippet-neb2
 
-It this point ``images`` consist of 6 copies of ``initial`` and one entry of
-``final``. Use the ``NEB`` method to create an initial guess for the minimum
-energy path (MEP). In the cell below a simple interpolation between the
-``initial`` and ``final`` image is used as initial guess.
+At this point ``images`` consist of 6 copies of ``initial`` and one entry of
+``final``. Use the ``interpolate()`` method of the :class:`~ase.mep.neb.NEB`
+object to create
+an initial guess for the minimum energy path (MEP). Below, a simple
+interpolation between the ``initial`` and ``final`` image is used as
+initial guess.
 
 .. literalinclude:: li_barrier.py
    :start-after: snippet-neb2
@@ -102,7 +106,7 @@ Start by calculating the energy and forces of the first (``initial``) and
 last (``final``) images as this is not done during the actual NEB
 calculation.
 
-Note, that this can take a while if you opt to do it inside the notebook.
+Note, that this can take a while if you opt to do it inside the terminal.
 
 .. literalinclude:: li_barrier.py
    :start-after: snippet-initial-final
@@ -116,8 +120,7 @@ larger for this tutorial example than you would normally use.
    :start-after: snippet-optimize
 
 Submit the calculation to the HPC cluster.  Do this by first building a
-complete script in the cell below using the cells above (minus the
-``view()`` commands). Make sure the cell runs and then interrupt the kernel.
+complete script using the code above (minus the ``view()`` commands).
 
 .. code:: bash
 
@@ -151,10 +154,10 @@ For more complicated MEP's, use the :ref:`ase:climbingimage` method to
 determine the transition state.  Why is it not required here?
 
 
-Bonus
-=====
+Bonus: Barrier dependence on interlayer distance
+================================================
 
-You will now study the influence of changing the interlayer graphite
+We will now study the influence of changing the interlayer graphite
 distance on the energy barrier.  Due to the high degree of symmetry, this
 can be done easily in this case.  Load in the initial state (IS) and
 transition state (TS) images from the converged MEP.
@@ -170,7 +173,7 @@ transition state (TS) image using the
    :start-after: snippet-barrier
    :end-before: snippet-strain
 
-New change the graphite layer distance by changing the the size of the
+New change the graphite layer distance by changing the size of the
 unit cell in the *z* direction by ±3 %. and use the same calculator
 object as you did above and calculate the potential energy of the
 compressed initial and final state.
@@ -185,12 +188,12 @@ How does the energy barrier change?
 :mol:`FePO_4` with one Li
 =========================
 
-You will now calculate the energy gain of adding a single Li atom into
-the :mol:`FePO_4` cell you made on Day 3. This corresponds to a charge of 25
+We will now calculate the energy gain of adding a single Li atom into
+the :mol:`FePO_4` cell you made in Part 2. This corresponds to a charge of 25
 %. You can compare this energy to the equilibrium potential.
 
 Start preparing a new Python script (say, ``fepo4_1li.py``) and load in the :mol:`FePO_4` structure you wrote to file on in a previous
-exercise and add Li.  Assume that the cell dimension remain unchanged.
+exercise and add Li. Assume that the cell dimension remain unchanged.
 
 .. literalinclude:: fepo4_1li.py
    :end-before: snippet-li
@@ -220,20 +223,20 @@ energies.  This should not require any new DFT calculations.
    :start-after: snippet-results
    :end-before: snippet-results-end
 
-Calculate the energy of intercalting a single Li in the :mol:`FePO_4` cell.
-How does this energy compare with the equilibirum potential?  What can it
+Calculate the energy of intercalating a single Li in the :mol:`FePO_4` cell.
+How does this energy compare with the equilibrium potential?  What can it
 tell you about the charge/discharge potential curves?
 
 
 Bonus: :mol:`LiFePO_4` with one vacancy
 =======================================
 
-If time permits, you will now do a similar calculation but this time with
-:mol:`LiFePO_4` contraining one vacancy.  Once again you should assume that
-the cell dimension remain unchanged compaired to :mol:`LiFePO_4`.
+If time permits, we will now do a similar calculation but this time with
+:mol:`LiFePO_4` containing one vacancy.  Once again you should assume that
+the cell dimension remain unchanged compared to :mol:`LiFePO_4`.
 
 There are numerous ways to obtain this structure.  You can get
-inspiration from the way :mol:`LiFePO_4` was made on Exercise day 3.  Use
+inspiration from the way :mol:`LiFePO_4` was made in Part 2.  Use
 ``del atoms[index]``, the :meth:`ase.Atoms.pop` method
 or even the GUI to delete an atom and save the structure afterwards.
 
@@ -247,12 +250,12 @@ obtain the potential energies.  This should not require any calculations.
    :start-after: snippet-results
    :end-before: snippet-results-end
 
-How does this energy compare with the equilibirum potential?  What can it
+How does this energy compare with the equilibrium potential?  What can it
 tell you about the charge/discharge potential curves?
 
 
-Bonus
-=====
+Bonus: BEEF for :mol:`FePO_4` + Li and :mol:`LiFePO_4` - Li
+===========================================================
 
 Calculate the error estimates of the energy for the added Li atom and
 vacancy formation using the ensembles.

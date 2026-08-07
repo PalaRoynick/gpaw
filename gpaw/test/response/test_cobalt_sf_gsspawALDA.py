@@ -95,6 +95,7 @@ def test_response_cobalt_sf_gsspawALDA(in_tmp_dir, gpw_files, mpi):
         #                  lambd=refi_scaling.lambd, nmodes=nmodes)
 
     context.write_timer()
+    mpi.comm.barrier()  # make sure csv-files have been written
 
     # Compare scaling coefficient to reference
     assert base_scaling.lambd == pytest.approx(1.0541, abs=0.001)

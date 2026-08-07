@@ -1,17 +1,10 @@
 .. _instructors:
 
-============================
-Instructions for instructors
-============================
-
-The DTU databar
-===============
-
 The summer school exercises will be running in the DTU Databar, not on
 Niflheim.  You can log in with your DTU username and password.  Like
 Niflheim, it has a login node and a number of compute node, but unlike
 Niflheim it also has *interactive compute nodes* where the students
-and you can run e.g. your Jupyter notebooks.
+and you can run e.g. your python scripts.
 
 Logging in
 ----------
@@ -116,7 +109,7 @@ once)::
 (This is the same script the students will be running to set up their account).
 
 This will create a folder ``CAMD2026``, a virtual environment in
-``venv_CAMD2026``, and a MyQueue configuration.
+``CAMD2026/venv``, and a MyQueue configuration.
 
 A line is added to your .bashrc to automatically activate the virtual
 environment.  Remove it and activate manually if it causes trouble.

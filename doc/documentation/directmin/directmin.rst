@@ -35,7 +35,7 @@ If you want to converge the unoccupied orbitals too then set:
 .. warning::
 
    The use of ``converge_unocc=True`` is **not recommended**, as it may lead
-   to incorrect results.  
+   to incorrect results.
    It is safer to always keep ``converge_unocc=False``.
 
 LCAO mode
@@ -156,7 +156,7 @@ change in density smaller than `10^{-6}` electrons per valence electron.
 The ratio of the elapsed times spent by the default LCAO eigensolver and
 the direct minimization methods as a function of the number of
 water molecules is shown below. In direct minimization, the unitary invariant representation
-has been used [#Hutter]_ (see `Implementation Details`_). 
+has been used [#Hutter]_ (see `Implementation Details`_).
 As can be seen, direct minimization converges faster
 by around a factor of 1.5 for 32 molecules and around a factor of 2 for 128 molecules.
 
@@ -198,7 +198,7 @@ matrix exponential:
    Since :math:`A/2^{m}` has a small norm, then :math:`\exp(A/2^{m})`
    can be effectively estimated using a Pade approximant
    of order :math:`[q/q]`. Here q and m are positive integers.
-   The scaling and squaring algorithm algorithm of Al-Moly and Higham [#AlMoly]_
+   The scaling and squaring algorithm of Al-Moly and Higham [#AlMoly]_
    from the SciPy library is used.
 
 2. Using the eigendecompostion of the matrix :math:`iA`.

@@ -31,8 +31,7 @@ view(slab)
 # snippet-calc-define-start
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slab.calc = calc
 # snippet-calc-define-end
 
@@ -130,8 +129,7 @@ write('N2Ru_hollow.png', a, show_unit_cell=1)
 # teacher:
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slabN2_new.calc = calc
 dyn = QuasiNewton(slabN2_new, trajectory='N2Ru.traj', maxstep=0.02)
 t = time.time()
@@ -159,8 +157,7 @@ constraint = FixAtoms(mask=(z < z.min() + 1.0))
 slab2Nads.set_constraint(constraint)
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slab2Nads.calc = calc
 dyn = QuasiNewton(slab2Nads, trajectory='2Nads.traj')
 dyn.run(fmax=0.05)

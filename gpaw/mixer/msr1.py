@@ -5,6 +5,8 @@ from scipy.optimize import root_scalar
 from gpaw.new.density import Density
 from gpaw.mixer.base import DensityHistory, BaseMixer
 from gpaw.typing import ArrayND
+from gpaw.core.arrays import XArray
+from gpaw.core.atom_arrays import AtomArrays
 
 
 class MSR1Mixer(BaseMixer):
@@ -96,13 +98,12 @@ class MSR1Mixer(BaseMixer):
         self.pk_1sX = self.desc.empty((1, self.ncomponents), xp=self.xp)
         self.last_dNt = np.inf
 
-    def mix(self, density: Density) -> float:
+    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
+             density: Density) -> float:
         # Step 1: Initialize
         nold = self.nt_hsX.nold
-        nt_sX = density.nt_sR
-        D_asii = density.D_asii
         if nold == 0:
-            self.nt_hsX.add_density(density)
+            self.nt_hsX.add(nt_sX, D_asii)
             self.add_compensation_charge(nt_sX, D_asii, density,
                                          out=self.ntc_hsX.next(),
                                          add_delta0=True)
@@ -119,7 +120,7 @@ class MSR1Mixer(BaseMixer):
 
         # Step 2: Do a pratt-step if nold <= 1, else discard bad steps
         if nold <= 1:
-            return self.pratt_step(density)
+            return self.pratt_step(nt_sX, D_asii, density)
 
         Rc_last_sX = self.Rc_hsX[-2]
         dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
@@ -308,7 +309,7 @@ class MSR1Mixer(BaseMixer):
         if increased_error > self.hard_lim:
             for hist in self.histories:
                 hist.delete_oldest()
-        self.nt_hsX.add_density(density)
+        self.nt_hsX.add(nt_sX, D_asii)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)
@@ -336,6 +337,12 @@ class MSR1Mixer(BaseMixer):
             max_gb = min(max_gb,
                          self.xp.min(-fracs_i[fracs_i <= 0]))
 
+        # Fix for cupy<13.0:
+        eigvals = getattr(
+            self.xp.linalg,
+            'eigvals',
+            lambda A: self.xp.asarray(np.linalg.eigvals(A.get())))
+
         good_broydenness = 0.5 * max_gb
         for iter in range(2, 12):
             norm_vec = 1 / (y_norm + s_norm *
@@ -344,12 +351,12 @@ class MSR1Mixer(BaseMixer):
             A_hh *= norm_vec[None, :]
             A_hh *= norm_vec[:, None]
             try:
-                eigs = self.xp.linalg.eigvals(A_hh)
-                min_real = self.xp.min(eigs.real)
-                max_imag = self.xp.max(self.xp.abs(eigs.imag))
-            except Exception:
+                eigs = eigvals(A_hh)
+            except np.linalg.LinAlgError:
                 good_broydenness -= 2**(-iter) * max_gb
                 continue
+            min_real = self.xp.min(eigs.real)
+            max_imag = self.xp.max(self.xp.abs(eigs.imag))
             if min_real > max_imag:
                 good_broydenness += 2**(-iter) * max_gb
             else:
@@ -358,15 +365,14 @@ class MSR1Mixer(BaseMixer):
         good_broydenness *= self.gb_scale
         return good_broydenness
 
-    def pratt_step(self, density: Density) -> float:
-        nt_sX = density.nt_sR
-        D_asii = density.D_asii
+    def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
+                   density: Density) -> float:
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
         D_asii.data += self.beta * self.R_hsX[-1][1]
 
-        self.nt_hsX.add_density(density)
+        self.nt_hsX.add(nt_sX, D_asii)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)

@@ -111,7 +111,7 @@ There are several ways to create a
 :class:`~gpaw.dft.DFT`
 object:
 
-* Via the the :func:`gpaw.dft.GPAW` function which will create an
+* Via the :func:`gpaw.dft.GPAW` function which will create an
   :class:`gpaw.new.ase_interface.ASECalculator` object that has a
   ``dft`` attribute::
 

@@ -1,7 +1,7 @@
 .. _summerschool26:
 
 =======================
-CAMd Summer School 2026
+CAMD Summer School 2026
 =======================
 
 Announcement:
@@ -33,11 +33,11 @@ compute nodes, running on the login node will overload it.
 Instructions
 ============
 
-There are two main ways to log in to the DTU system, *ssh* and *thinlinc*.
+There are two main ways to log in to the DTU system, *SSH* and *ThinLinc*.
 
-**ssh** is probably the most convenient.  Programs on the remote system will be able to open windows on your computer just like local programs.
+**SSH** is probably the most convenient.  Programs on the remote system will be able to open windows on your computer just like local programs.
 
-**thinlinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
+**ThinLinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
 
 Which one you choose is a matter of taste.  We find ssh slightly more convenient once it is set up, but thinlinc may be a bit easier to set up initially.
 
@@ -58,6 +58,8 @@ The instructions depend on the operating system you use
 Setting up thinlinc for the first time
 --------------------------------------
 
+IMPORTANT: You should either set up SSH or ThinLinc, **no need to do both!**
+
 .. toctree::
    :maxdepth: 1
 
@@ -74,8 +76,10 @@ Using the DTU computers
    submitting
 
 
-iPad users (not recommended)
-----------------------------
+iPad users (strongly discouraged)
+---------------------------------
+
+Working from an Ipad is *very* inconvenient, but possible.
 
 .. toctree::
    :maxdepth: 1
@@ -90,17 +94,24 @@ The slides from the introduction to the exercises (Sunday) can be
 found here: :download:`Intro_ASE_Databar.pdf`
 
 
+.. _projects:
+
 Projects
 ========
 
 Choose a project according to your interests.  The projects contain
 brief descriptions of what aspects of GPAW you learn from them.
 
-
 .. toctree::
    :maxdepth: 3
 
-   projects
+   intro/intro
+   catalysis/catalysis
+   magnetism/magnetism
+   machinelearning/machinelearning
+   excitedstates/excitedstates
+   batteries/batteries
+   workflows/workflows
 
 
 Instructions for instructors
@@ -110,5 +121,6 @@ Instructions for the people testing and developing the projects can be
 found here:
 
 .. toctree::
+   :maxdepth: 3
 
    instructors
