@@ -330,19 +330,13 @@ PARAMS8 = {
     'Cs': '5s,6s,5p,6p,5d,d,F 2.1,2.1,2.1 2.0',  # !!!
     'Ba': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # OK
     'La': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
-    'Ce': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
+    'Ce': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
     'Pr': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
-    'Pr.a': '5s,6s,5p,6p,5d,d,4f,f,G     2.1,2.1,2.1,2.1 2.0',
-    'Pr.b': '5s,6s,5p,6p,5d,d,4f,f,G     2.1,2.1,2.1,2.1 1.9',
-    'Pr.c': '5s,6s,5p,6p,5d,d,4f,f,G     2.2,2.2,2.2,2.2 2.0',
     'Nd': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
     'Pm': '5s,6s,5p,6p,5d,d,4f,f,G       3.4,2.3,2.0,2.1 1.8',
     'Sm': '5s,6s,5p,6p,5d,d,4f,f,G       3.5,2.0,2.1,2.2 1.7',
     'Eu': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
-    'Gd': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
-    'Gd.a': '5s,6s,5p,6p,5d,d,4f,f,G     2.2,2.2,2.2,2.2 2.0',
-    'Gd.b': '5s,6s,5p,6p,5d,d,4f,f,G     2.1,2.1,2.1,2.1 2.0',
-    'Gd.c': '5s,6s,5p,6p,5d,d,4f,f,G     2.2,2.2,2.2,2.2 1.9',
+    'Gd': '5s,6s,5p,6p,5d,d,4f,f,G     2.2,2.2,2.2,2.2 2.0',
     'Tb': '5s,6s,5p,6p,5d,d,4f,f,G       2.2,2.2,2.2,2.2 2.0',
     'Dy': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
     'Ho': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
@@ -502,6 +496,7 @@ def create(symbol, conf):
             5 if proj[-1].isupper() else 3,
             xc='PBE',
             pseudize=('poly', 5),
+            ecut=-0.4,
             output=fd)
         try:
             ok = gen.check_all()
@@ -522,6 +517,7 @@ def create_all():
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
             continue
+        print(name, conf)
         dir.mkdir(exist_ok=True)
         with chdir(dir):
             ok = create(symbol, conf)
