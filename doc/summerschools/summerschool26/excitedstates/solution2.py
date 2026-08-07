@@ -95,6 +95,23 @@ direct_gap = results['qp'][0, 0, 4] - results['qp'][0, 0, 3]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
 
-calc_gs = GPAW("Si_lcao_groundstate.gpw")
-bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
-plot_G0W0_bandstructure(calc_gs,bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
+#needs full number of bands for trafo to realspace
+nbands = 26
+bands = (0,26)
+ecut = 20.0
+
+gw = G0W0(calc='Si_pw_from_lcao_groundstate.gpw',
+          nbands=nbands,  # number of bands for calculation of self-energy
+          bands=bands,  # VB and CB
+          ecut=ecut,  # plane-wave cutoff for self-energy (20-200)
+          integrate_gamma='WS',  # Use supercell Wigner-Seitz truncation for W.
+          filename='Si-from-lcao-g0w0')
+gw.calculate()
+
+
+# snippet-lcao-plot-start
+from gpaw.utilities.bs_fi import plot_G0W0_bandstructure
+bandpath = calc.atoms.cell.bandpath(npoints=250)
+plot_G0W0_bandstructure(calc, bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
+# snippet-lcao-plot-end
+
