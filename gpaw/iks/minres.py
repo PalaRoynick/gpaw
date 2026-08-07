@@ -20,7 +20,7 @@ class iKSLinearSolver:
         self.ortho = ortho
         self.ls_kwargs = ls_kwargs
         self.nocc = len(dd.occ)
-        self.kpt = dd.kpt
+        self.kpt: KPoint = dd.kpt
         self.p_nG = None
         self.p0_nG = p0_nG
         self.Pp_ani = None

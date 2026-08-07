@@ -516,31 +516,38 @@ def get_paw_boundary_weights(setups: Setups, p: float = 1.0, t: float = 2.0, c=1
     return w_ag
 
 
-def calculate_core_atomic_potentials(setups, xc, nspins):
+def calculate_core_atomic_potentials(D_asp, setups, xc, nspins):
     v_a = {}
     vt_a = {}
     xc = XC(xc)
     # assert xc.type in {'LDA', 'GGA'}
-    for a, setup in enumerate(setups):
+    for a, D_sp in D_asp.items():
+        setup = setups[a]
         xcc = setup.xc_correction
         if xcc is None:
             # AE setup
             v_a[a] = np.zeros(nspins, float)
-            vt_a[a] = np.zeros(nspins, float)
             continue
         rgd = xcc.rgd
         # v_a
-        nc_sg = rgd.zeros(nspins)
-        nc_sg[:] = xcc.nc_g / nspins
-        v = np.zeros_like(nc_sg)
-        xc.calculate_spherical(rgd, nc_sg, v)
+        n_sg = get_atomic_ae_dens_radial(D_sp, xcc).squeeze(axis=1)
+        v = np.zeros_like(n_sg)
+        xc.calculate_spherical(rgd, n_sg, v)
         v_a[a] = v
+    for a, setup in enumerate(setups):
         # vt_a
+        xcc = setup.xc_correction
+        if xcc is None:
+            # AE setup
+            vt_a[a] = np.zeros(nspins, float)
+            continue
+        rgd = xcc.rgd
         nct_sg = rgd.zeros(nspins)
         nct_sg[:] = xcc.nct_g / nspins
-        vt = np.zeros_like(nc_sg)
+        vt = np.zeros_like(nct_sg)
         xc.calculate_spherical(rgd, nct_sg, vt)
         vt_a[a] = vt
+
     return v_a, vt_a
 
 

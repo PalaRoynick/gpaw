@@ -11,7 +11,7 @@ from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_hermitian
 from gpaw.new.backwards_compatibility import FakeDensity
 
-from gpaw.xc.numericalxc import FermiAmaldi, NumericalXC, PAWPotMode, lebedev2angular, angular2lebedev
+from gpaw.xc.numericalxc import Mix_LDA_FA, NumericalXC, PAWPotMode, lebedev2angular, angular2lebedev
 from gpaw.iks import tools as iks_tools
 from gpaw.iks import optimize as iks_optimize
 from gpaw.iks.minres import iKSLinearSolver
@@ -86,7 +86,7 @@ class iKS:
         Note that differing grid spacings or plane-wave cutoffs between ``target`` and
         ``calc`` are not supported. If the exchange–correlation functional is not a
         :class:`~gpaw.xc.numericalxc.NumericalXC` object, it will be replaced by the
-        Fermi–Amaldi potential (initialized with the same PAW setups as
+        KZG_LDA_FA potential (initialized with the same PAW setups as
         ``calc.hamiltonian.xc``) as a starting guess. The resulting inverted potentials
         can be saved by writing the calculator to a ``.gpw`` file (e.g.,
         ``calc.hamiltonian.xc.vxc_sg`` for the smooth grid and ``xc.vxc_xasz`` for the
@@ -198,7 +198,7 @@ class iKS:
         atoms: Atoms | None = None,
         lambda_reg: float = 1e-6,
         lambda_boundary: float = 1e-4,
-        lambda_core: float = 0.0,
+        lambda_core: float = 1e-4,
         pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,
@@ -264,7 +264,8 @@ class iKS:
         self.degeneracy_tol = degeneracy_tol
         self.occ_tol = occ_tol
 
-    def initialize_from_calc(self, target, calc, atoms, weights, atomic_weights):
+    def initialize_from_calc(self, target: GPAW | Density, calc: GPAW, atoms: Atoms,
+                             weights: str | np.ndarray, atomic_weights: str | np.ndarray) -> None:
         self.calc = calc
         if not calc.initialized:
             calc.initialize(atoms)
@@ -343,7 +344,7 @@ class iKS:
             self.nxc_kwargs.setdefault("paw_potmode", "lebedev")
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
             self.nxc_kwargs.setdefault("stencil", 3)
-            xc = FermiAmaldi(self.tdens, **self.nxc_kwargs)
+            xc = Mix_LDA_FA(self.tdens, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
@@ -360,8 +361,9 @@ class iKS:
         self.wboundary_ag = iks_tools.get_paw_boundary_weights(self.setups)
         nspins = self.nspins
         self.wcore_ag = iks_tools.get_core_regularization_weights(self.setups)
+        D_asp = self.tdens.D_asp
         self.vc_asg, self.vct_asg = iks_tools.calculate_core_atomic_potentials(
-            self.setups, self.corereg_xc or self.xc.setup_name, nspins)
+            D_asp, self.setups, self.corereg_xc or self.xc.setup_name, nspins)
 
         splines = {}
         vct_a = []
@@ -750,7 +752,6 @@ class iKS:
         for a, dp_sii in dp_asii.items():
             dp_sii[:] = 0.0
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
-                Pp_ani = ls.Pp_ani
                 dp_ii = np.einsum(
                     "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
                 dp_ii += dp_ii.conj().T

@@ -1001,7 +1001,7 @@ def calculate_atomic_vacuum_detector(D_sp, setup, paw_potmode=PAWPotMode.lebedev
     return f, ft
 
 
-def KZG_LDA_FA(density: Density, xc_DFT: str = 'LDA_X+LDA_C_PW',
+def Mix_LDA_FA(density: Density, xc_DFT: str = 'LDA_X+LDA_C_PW',
                alpha: float = 1.0, eps: float = 1e-2, fa_kwargs=None, **nxc_kwargs) -> NumericalXC:
     # from arXiv:2510.10529
     # use xc_DFT = 'GGA_X_FD_LB94+LDA_C_PW' for the LB94 version
