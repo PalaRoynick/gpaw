@@ -49,52 +49,61 @@ struct CalculatePotentialMatrixArrays
     size_t ncols;
 };
 
-/* Output goes to p; does all values of m for given l. r2 is the distance squared and xyz are real-space coords (relative to the phi??)
-f is the spline value, apparently. Could use some cleanup! */
-#define spherical_harmonics(l, f, x, y, z, r2, p) (\
-    {\
-      switch(l)\
-        {\
-          case 0:\
-            p[0] = f * 0.28209479177387814;\
-            break;\
-          case 1:\
-            p[0] = f * 0.48860251190291992 * y;\
-            p[1] = f * 0.48860251190291992 * z;\
-            p[2] = f * 0.48860251190291992 * x;\
-            break;\
-          case 2:\
-            p[0] = f * 1.0925484305920792 * x*y;\
-            p[1] = f * 1.0925484305920792 * y*z;\
-            p[2] = f * 0.31539156525252005 * (-r2+3*z*z);\
-            p[3] = f * 1.0925484305920792 * x*z;\
-            p[4] = f * 0.54627421529603959 * (-y*y+x*x);\
-            break;\
-          case 3:\
-            p[0] = f * 0.59004358992664352 * (-y*y*y+3*x*x*y);\
-            p[1] = f * 2.8906114426405538 * x*y*z;\
-            p[2] = f * 0.45704579946446577 * (5*y*z*z-y*r2);\
-            p[3] = f * 0.3731763325901154 * (-3*z*r2+5*z*z*z);\
-            p[4] = f * 0.45704579946446577 * (-x*r2+5*x*z*z);\
-            p[5] = f * 1.4453057213202769 * (-y*y*z+x*x*z);\
-            p[6] = f * 0.59004358992664352 * (x*x*x-3*x*y*y);\
-            break;\
-          case 4:\
-            p[0] = f * 2.5033429417967046 * (x*x*x*y-x*y*y*y);\
-            p[1] = f * 1.7701307697799307 * (3*x*x*y*z-y*y*y*z);\
-            p[2] = f * 0.94617469575756008 * (-x*y*r2+7*x*y*z*z);\
-            p[3] = f * 0.66904654355728921 * (-3*y*z*r2+7*y*z*z*z);\
-            p[4] = f * 0.10578554691520431 * (3*r2*r2-30*z*z*r2+35*z*z*z*z);\
-            p[5] = f * 0.66904654355728921 * (7*x*z*z*z-3*x*z*r2);\
-            p[6] = f * 0.47308734787878004 * (y*y*r2+7*x*x*z*z-x*x*r2-7*y*y*z*z);\
-            p[7] = f * 1.7701307697799307 * (x*x*x*z-3*x*y*y*z);\
-            p[8] = f * 0.62583573544917614 * (-6*x*x*y*y+x*x*x*x+y*y*y*y);\
-            break;\
-          default:\
-            assert(0 == 1);\
-        }\
-    }\
-)\
+// Helpers for computing spherical harmonics
+struct SphericalHarmonicStatics
+{
+    // We don't support Y_lm with l larger than this
+    static constexpr uint8_t max_l = 4;
+    static constexpr uint8_t OUT_ARRAY_SIZE = 2*max_l + 1;
+
+    /* Computes f * Y_lm(R) for all allowed values of m. In practice, f will be the radial spline and this then gives the associated basis function(s) phi_lm(R).
+    Only the first 2*l + 1 elements of the output array will be touched.
+    x, y, z are the components of R and r2 is the length-squared of this vector. r2 is assumed to be precomputed anyway for spline evaluation. */
+    template<typename T>
+    __device__ static void fr_times_Ylm(uint8_t l, T f, T x, T y, T z, T r2, T (&out_m)[OUT_ARRAY_SIZE])
+    {
+        switch (l)
+        {
+        case 0:
+            out_m[0] = f * 0.28209479177387814;
+            break;
+        case 1:
+            out_m[0] = f * 0.48860251190291992 * y;
+            out_m[1] = f * 0.48860251190291992 * z;
+            out_m[2] = f * 0.48860251190291992 * x;
+            break;
+        case 2:
+            out_m[0] = f * 1.0925484305920792 * x*y;
+            out_m[1] = f * 1.0925484305920792 * y*z;
+            out_m[2] = f * 0.31539156525252005 * (-r2+3*z*z);
+            out_m[3] = f * 1.0925484305920792 * x*z;
+            out_m[4] = f * 0.54627421529603959 * (-y*y+x*x);
+            break;
+        case 3:
+            out_m[0] = f * 0.59004358992664352 * (-y*y*y+3*x*x*y);
+            out_m[1] = f * 2.8906114426405538 * x*y*z;
+            out_m[2] = f * 0.45704579946446577 * (5*y*z*z-y*r2);
+            out_m[3] = f * 0.3731763325901154 * (-3*z*r2+5*z*z*z);
+            out_m[4] = f * 0.45704579946446577 * (-x*r2+5*x*z*z);
+            out_m[5] = f * 1.4453057213202769 * (-y*y*z+x*x*z);
+            out_m[6] = f * 0.59004358992664352 * (x*x*x-3*x*y*y);
+            break;
+        case 4:
+            out_m[0] = f * 2.5033429417967046 * (x*x*x*y-x*y*y*y);
+            out_m[1] = f * 1.7701307697799307 * (3*x*x*y*z-y*y*y*z);
+            out_m[2] = f * 0.94617469575756008 * (-x*y*r2+7*x*y*z*z);
+            out_m[3] = f * 0.66904654355728921 * (-3*y*z*r2+7*y*z*z*z);
+            out_m[4] = f * 0.10578554691520431 * (3*r2*r2-30*z*z*r2+35*z*z*z*z);
+            out_m[5] = f * 0.66904654355728921 * (7*x*z*z*z-3*x*z*r2);
+            out_m[6] = f * 0.47308734787878004 * (y*y*r2+7*x*x*z*z-x*x*r2-7*y*y*z*z);
+            out_m[7] = f * 1.7701307697799307 * (x*x*x*z-3*x*y*y*z);
+            out_m[8] = f * 0.62583573544917614 * (-6*x*x*y*y+x*x*x*x+y*y*y*y);
+            break;
+        default:
+            assert(false && "We only support spherical harmonics up to l=4");
+        }
+    }
+};
 
 /* Real-space XYZ coords for grid point (gx, gy, gz) on a parallelepipid grid.
 * spacing_cv[c] is the Cartesian displacement vector for one step along grid axis c. */
@@ -158,8 +167,8 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     // Array indexing is in units of T but the input stride is in bytes
     const int64_t s_stride = arrays.f_sM_first_stride / sizeof(T);
 
-    // spherical_harmonics macro wants to fill at max 9 elements
-    T phi_val[9];
+    // Array for holding phi_lm components for all possible m
+    T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
 
     for (int s = 0; s < arrays.num_spins; ++s)
     {
@@ -186,13 +195,13 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
             // TODO remove branch inside evaluate?
             const T spline_val = spline.evaluate(distance);
 
-            spherical_harmonics(l, spline_val, dx, dy, dz, distance_sq, phi_val);
+            SphericalHarmonicStatics::fr_times_Ylm(l, spline_val, dx, dy, dz, distance_sq, phi_m);
 
             const int num_m = 2*l + 1;
             for (int m = 0; m < num_m; ++m)
             {
                 const int mu = first_mu + m;
-                accum += arrays.f_sM[s * s_stride + mu] * phi_val[m]*phi_val[m];
+                accum += arrays.f_sM[s * s_stride + mu] * phi_m[m]*phi_m[m];
             }
         }
 
@@ -240,8 +249,8 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
     const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
 
-    // sph harmonic buffer
-    T phi_val[9];
+    // Array for holding phi_lm components for all possible m
+    T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
 
     const T vt = arrays.vt_G[grid_array_idx];
 
@@ -270,14 +279,14 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
         T distance = sqrt(distance_sq);
 
         const T spline_val_m = spline.evaluate(distance);
-        spherical_harmonics(l_m, spline_val_m, dx, dy, dz, distance_sq, phi_val);
+        SphericalHarmonicStatics::fr_times_Ylm(l_m, spline_val_m, dx, dy, dz, distance_sq, phi_m);
 
         const int num_m = 2*l_m + 1;
 
         for (int m = 0; m < num_m; ++m)
         {
             const size_t mu = m + first_mu;
-            const T phi_mu_times_vt = phi_val[m] * vt;
+            const T phi_mu_times_vt = phi_m[m] * vt;
 
             // Inner phi loop. Basically repeats the phi(x) from above...
             for (size_t jn = j_begin; jn < j_end; ++jn)
@@ -296,9 +305,9 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
                 T distance_sq_n = dx_n*dx_n + dy_n*dy_n + dz_n*dz_n;
                 T distance_n = sqrt(distance_sq_n);
 
-                T phi_val_n[9];
+                T phi_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
                 const T spline_val_n = spline_n.evaluate(distance_n);
-                spherical_harmonics(l_n, spline_val_n, dx_n, dy_n, dz_n, distance_sq_n, phi_val_n);
+                SphericalHarmonicStatics::fr_times_Ylm(l_n, spline_val_n, dx_n, dy_n, dz_n, distance_sq_n, phi_n);
 
                 const int num_n = 2*l_n + 1;
                 for (int n = 0; n < num_n; ++n)
@@ -307,8 +316,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
 
                     if (mu >= nu && mu >= arrays.mu_start && mu < arrays.mu_end)
                     {
-                        const T phi_vt_phi = phi_mu_times_vt * phi_val_n[n] * grid.dV;
-
+                        const T phi_vt_phi = phi_mu_times_vt * phi_n[n] * grid.dV;
                         atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], phi_vt_phi);
                     }
 
