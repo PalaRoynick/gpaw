@@ -92,7 +92,7 @@ Next, the G0W0 bandgap can be computed.
         :start-after: # snippet-lcao-direct-gap-start
         :end-before: # snippet-lcao-direct-gap-end
 
-Additionally, we can calculate all LCAO bands using ``bands=(0, nbands)`` and plot the interpolated band structure using::
+Additionally, we can calculate all LCAO bands using ``bands=(0, nbands)`` and plot the interpolated band structure using:
 
 .. literalinclude:: solution2.py
         :start-after: # snippet-lcao-plot-start
