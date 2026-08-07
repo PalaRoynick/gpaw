@@ -7,7 +7,7 @@ import scipy.linalg
 from ase import Atoms
 import scipy
 from gpaw import GPAW
-
+import matplotlib.pyplot as plt
 
 def mpower(O_MM, power):
     if power == 0:
