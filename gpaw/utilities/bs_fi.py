@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import scipy.linalg
 from ase import Atoms
 import scipy
-from gpaw import GPAW
 import matplotlib.pyplot as plt
 
 
