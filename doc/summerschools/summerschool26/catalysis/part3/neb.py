@@ -57,7 +57,7 @@ for i in range(n_im):
 
 images.append(final)
 
-neb = NEB(images)
+neb = NEB(images, method='improvedtangent')
 neb.interpolate()
 view(images)
 
@@ -148,7 +148,7 @@ for i in range(N):
     images.append(image)
 images.append(final)
 
-neb = NEB(images, k=1.0, parallel=True)
+neb = NEB(images, k=1.0, parallel=True, method='improvedtangent')
 neb.interpolate()
 qn = MDMin(neb, logfile='neb.log', trajectory='neb.traj')
 qn.run(fmax=0.1)
