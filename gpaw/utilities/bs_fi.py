@@ -7,7 +7,7 @@ import scipy.linalg
 from ase import Atoms
 import scipy
 import matplotlib.pyplot as plt
-
+from gpaw.calculator import GPAW
 
 def mpower(O_MM, power):
     if power == 0:
@@ -92,7 +92,7 @@ class LCAOOperator:
 class GPAWLCAOOperator(LCAOOperator):
     """Construct"""
 
-    calc_bz: object
+    calc_bz: GPAW
 
     @property
     def operator_kMM(self):
