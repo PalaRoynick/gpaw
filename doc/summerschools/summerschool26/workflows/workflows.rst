@@ -94,7 +94,7 @@ Write a workflow class called ``MaterialsWorkflow`` which:
    that includes optimizing the unit cell.
 
 The wise scientist first writes a relax task which only prints the
-atoms. .  That is enough to verify that the workflow works, and that the
+atoms.  That is enough to verify that the workflow works, and that the
 atoms are passed and encoded correctly.  After that, unrun, edit,
 rerun, and fix it until it works. When setting up a workflow and 
 having to unrun tasks it can be useful to use the ``--rerun`` flag to 
