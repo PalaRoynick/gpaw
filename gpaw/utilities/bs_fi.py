@@ -9,6 +9,7 @@ import scipy
 import matplotlib.pyplot as plt
 from gpaw.calculator import GPAW
 
+
 def mpower(O_MM, power):
     if power == 0:
         return np.eye(len(O_MM))
