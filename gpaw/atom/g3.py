@@ -274,22 +274,32 @@ PARAMS2 = {
 
 PARAMS8 = {
     'H': '1s,s,p,D 1.2,1.1 1.0',
+    'H.a': '1s,s,p,D 1.1,1.1 1.0',
     'He': '1s,s,p,D 1.7,1.5 1.4',
+    'He.a': '1s,s,p,D 1.6,1.4 1.3',
     'Li': '1s,2s,2p,p,D 1.7,1.5 1.4',
     'Be': '1s,2s,2p,p,d,F 1.9,1.9,1.8 1.7',
     'B': '2s,s,2p,p,d,F 2.0,1.5,1.5 1.4',
     'C': '2s,3.0s,2p,3.0p,d,F 1.5,1.5,1.2 1.0',  # !!!
     'N': '2s,5.6s,2p,5.6p,d,F 1.4,1.4,1.0 0.9',
     'O': '2s,s,2p,p,d,F       1.4,1.4,1.4 0.9',
+    'O.a': '2s,5.6s,2p,5.6p,d,F 1.4,1.4,1.4 0.9',
+    'O.b': '2s,s,2p,p,d,F       1.4,1.4,1.0 0.9',
     'F': '2s,s,2p,p,d,F       1.2,1.4,1.4 1.1',
+    'F.a': '2s,5.6s,2p,5.6p,d,F       1.2,1.4,1.4 1.1',
+    'F.b': '2s,s,2p,p,d,F       1.2,1.4,1.3 1.0',
     'Ne': '2s,s,2p,p,d,F 2.4,2.4,2.0 1.9',
+    'Ne.a': '2s,s,2p,p,d,F 2.3,2.3,2.0 1.8',
     'Na': '2s,3s,2p,3p,d,F 2.4,2.4,2.6 2.2',
+    'Na.a': '2s,3s,2p,3p,d,F 2.3,2.3,2.5 2.1',
     'Mg': '2s,3s,2p,3p,d,F 2.4,2.4,2.6 2.2',
+    'Mg.a': '2s,3s,2p,3p,d,F 2.3,2.3,2.5 2.1',
     'Al': '3s,s,3p,p,d,F 2.1,2.3,2.2 1.9',
     'Si': '3s,s,3p,p,d,F 1.9,1.9,1.9 1.7',
     'P': '3s,s,3p,p,d,F 2.3,2.1,1.7 1.6',
     'S': '3s,s,3p,p,d,F 2.3,1.8,1.6 1.5',
     'Cl': '3s,s,3p,p,d,F 2.1,2.0,1.5 1.4',
+    'Cl.a': '3s,s,3p,p,d,F 2.0,1.9,1.5 1.4',
     'Ar': '3s,s,3p,p,d,F 1.9,1.8,1.8 1.6',
     'K': '3s,4s,3p,4p,d,d,F 2.0,2.0,2.0 1.8',
     'Ca': '3s,4s,3p,4p,3d,d,F 2.1,2.1,2.1 1.9',
@@ -297,7 +307,9 @@ PARAMS8 = {
     'Ti': '3s,4s,3p,4p,3d,d,F 2.0,2.0,2.1 1.8',
     'V': '3s,4s,3p,4p,3d,d,F 1.9,2.0,2.1 1.7',
     'Cr': '3s,4s,3p,4p,3d,d,F 2.0,2.3,2.1 1.8',
+    'Cr.a': '3s,4s,3p,4p,3d,d,F 1.9,1.9,2.1 1.7',
     'Mn': '3s,4s,3p,4p,3d,d,F 1.9,1.8,2.0 1.7',
+    'Mn.a': '3s,4s,3p,4p,3d,d,F 2.0,1.9,2.0 1.8',
     'Fe': '3s,4s,3p,4p,3d,d,F 2.0,1.9,2.0 1.8',
     'Co': '3s,4s,3p,4p,3d,d,F 2.0,1.9,2.0 1.8',
     'Ni': '3s,4s,3p,4p,3d,d,F 2.0,1.9,2.1 1.8',
@@ -310,6 +322,7 @@ PARAMS8 = {
     'Br': '4s,s,4p,p,d,F 2.0,2.0,2.1 1.8',
     'Kr': '4s,s,4p,p,d,F 2.0,2.0,2.1 1.8',
     'Rb': '4s,5s,4p,5p,d,d,F 2.5,2.3,2.3 2.1',  # !!!
+    'Rb.a': '4s,5s,4p,5p,d,d,F 2.4,2.2,2.2 2.0',  # !!!
     'Sr': '4s,5s,4p,5p,4d,d,F 2.5,2.3,2.3 2.1',
     'Y': '4s,5s,4p,5p,4d,d,F 2.5,2.3,2.3 2.1',
     'Zr': '4s,5s,4p,5p,4d,d,F 2.8,2.3,2.4 2.1',
@@ -328,6 +341,7 @@ PARAMS8 = {
     'I': '5s,s,5p,p,d,F 2.4,2.3,2.6 2.2',
     'Xe': '5s,s,5p,p,d,F 2.2,2.3,2.2 2.1',
     'Cs': '5s,6s,5p,6p,5d,d,F 2.1,2.1,2.1 2.0',  # !!!
+    'Cs.a': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # !!!
     'Ba': '5s,6s,5p,6p,5d,d,f,G 2.1,2.1,2.1 2.0',  # OK
     'La': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
     'Ce': '5s,6s,5p,6p,5d,2.0d,4f,0.5f,G 3.5,3.0,2.8,2.5 2.2',
@@ -336,9 +350,11 @@ PARAMS8 = {
     'Pm': '5s,6s,5p,6p,5d,d,4f,f,G       3.4,2.3,2.0,2.1 1.8',
     'Sm': '5s,6s,5p,6p,5d,d,4f,f,G       3.5,2.0,2.1,2.2 1.7',
     'Eu': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
-    'Gd': '5s,6s,5p,6p,5d,d,4f,f,G     2.2,2.2,2.2,2.2 2.0',
+    'Gd': '5s,6s,5p,6p,5d,d,4f,f,G       2.2,2.2,2.2,2.2 2.0',
+    'Gd.a': '5s,6s,5p,6p,5d,d,4f,f,G     3.0,2.6,2.5,2.4 2.1',
     'Tb': '5s,6s,5p,6p,5d,d,4f,f,G       2.2,2.2,2.2,2.2 2.0',
     'Dy': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
+    'Dy.a': '5s,6s,5p,6p,5d,d,4f,f,G     3.0,2.6,2.5,2.4 2.0',
     'Ho': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
     'Er': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
     'Tm': '5s,6s,5p,6p,5d,d,4f,f,G       2.1,2.1,2.1,2.1 2.0',
@@ -359,7 +375,8 @@ PARAMS8 = {
     'At': '6s,s,6p,p,d,F 2.5,2.6,3.5 2.1',
     'Rn': '6s,s,6p,p,d,F 2.3,2.8,2.4 2.1',
     'Fr': '6s,7s,6p,7p,6d,d,F 2.5,2.4,2.8 2.1',
-    'Ra': '6s,7s,6p,7p,6d,d,F 2.5,2.4,2.3 2.1'}
+    'Ra': '6s,7s,6p,7p,6d,d,F 2.5,2.4,2.3 2.1',
+    'Ra.a': '6s,7s,6p,7p,6d,d,F 2.4,2.3,2.3 2.1'}
 
 EXTRA = {
     'H.b': '1s,s,p,D 1.2,1.1 1.0',
@@ -513,6 +530,8 @@ def create_all():
     from contextlib import chdir
 
     for name, conf in PARAMS8.items():
+        if '.' not in name:
+            continue
         dir = Path(name)
         symbol = name.split('.')[0]
         if (dir / f'{symbol}.PBE').is_file():
@@ -537,6 +556,7 @@ def read_paw_pot(path):
 
 
 def analyse(folders):
+    results = {}
     data = defaultdict(list)
     for f in folders:
         y = [f.name]
@@ -546,7 +566,7 @@ def analyse(folders):
             y += [np.nan, np.nan, np.nan]
         else:
             y += [efcc[0] - efcc[-1], ecuts_tot[2], ecuts_diff[2]]
-        maxabs, dea, _ = check(f)
+        maxabs, dea, strains = check(f)
         symbol = f.name.split('.')[0]
         try:
             type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
@@ -558,7 +578,9 @@ def analyse(folders):
         except FileNotFoundError:
             delta = np.nan
         data[symbol].append(y + [maxabs, dea, f, type, r0, rcs, delta])
-
+        results[f.name] = (y[2], y[3], strains, delta)
+    Path('results.json').write_text(
+        json.dumps(results))
     x = []
     y = []
     z = []
@@ -740,6 +762,24 @@ def pfunc(symbol, ecut=600):
     return e - e0, s[0]
 
 
+def plotrc():
+    r0 = []
+    rc = [[], [], [], []]
+    for p in PARAMS8.values():
+        _, r1, r2 = p.split()
+        r0.append(float(r2))
+        for l, r in enumerate(r1.split(',')):
+            rc[l].append(float(r))
+        for l in range(l + 1, 4):
+            rc[l].append(np.nan)
+    import matplotlib.pyplot as plt
+    for l, y in enumerate(rc):
+        plt.plot(y, label=str(l))
+    plt.plot(r0)
+    plt.legend()
+    plt.show()
+
+
 def workflow():
     from myqueue.workflow import run
     run(function=opt, cores=24, tmax='1d')
@@ -751,6 +791,8 @@ if __name__ == '__main__':
         oldvsnew()
     elif 0:
         acwf_plot()
+    elif 0:
+        plotrc()
     elif len(sys.argv) == 1:
         create_all()
     elif 0:
