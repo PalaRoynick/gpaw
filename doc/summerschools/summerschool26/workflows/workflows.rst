@@ -3,19 +3,19 @@ Computational workflows
 =======================
 
 In this exercise we will write and run computational workflows
-with `TaskBlaster <https://taskblaster.readthedocs.io/en/latest/>`_.
+with `Taskblaster <https://taskblaster.readthedocs.io/en/latest/>`_.
 
-The basic unit of computation in TaskBlaster is a *task*.  A task is a Python
+The basic unit of computation in Taskblaster is a *task*.  A task is a Python
 function along with a specification of the inputs to that function.
 The inputs can be either concrete values like lists, strings, or numbers,
 or references to the outputs of other tasks.
 Tasks that depend on one another and form a graph.  A
-TaskBlaster workflow is a Python class which defines such a graph, along with
+Taskblaster workflow is a Python class which defines such a graph, along with
 metadata about how the tasks should run and be stored.  Workflows can
 then be parametrized so they run on a collection of materials,
 for example.
 
-When using TaskBlaster, we define workflows and tasks using Python.
+When using Taskblaster, we define workflows and tasks using Python.
 However, the tools used to *run* workflows and tasks are command-line
 tools.  Therefore, for this exercise we will be using the terminal
 rather than the usual notebooks.  Basic knowledge of shell commands
@@ -23,7 +23,7 @@ is an advantage.
 
 This exercise consists of multiple parts:
 
- * Introductory tutorials to TaskBlaster
+ * Introductory tutorials to Taskblaster
  * Write a workflow which defines a structure optimization task
    followed by electronic ground-state and band structure computation
    using GPAW
@@ -34,15 +34,15 @@ When actually using ASR, many tasks and workflows are already written.
 Thus, we would be able to import and use those features directly.
 But in this tutorial we write everything from scratch.
 
-Part 0: The TaskBlaster tutorials and documentation
+Part 0: The Taskblaster tutorials and documentation
 ===================================================
 
-TaskBlaster comes with its own documentation and tutorials.
+Taskblaster comes with its own documentation and tutorials.
 These are not related to physics or materials, but provide a generic
 introduction to the framework:
 
  * To get started, go through the basic
-   `TaskBlaster tutorials <https://taskblaster.readthedocs.io/en/latest/tutorial/module.html>`_,
+   `Taskblaster tutorials <https://taskblaster.readthedocs.io/en/latest/tutorial/module.html>`_,
    specifically
    `“Hello world” <https://taskblaster.readthedocs.io/en/latest/tutorial/hello_world/hello_world.html>`_ and
    `“My first workflow” <https://taskblaster.readthedocs.io/en/latest/tutorial/my_first_workflow/my_first_workflow.html>`_.
@@ -52,7 +52,7 @@ introduction to the framework:
  * It may be illustrating to read the explanation page on
    `Basic Concepts <https://taskblaster.readthedocs.io/en/latest/explanation/basic_concepts/basic_concepts.html>`_.
 
-We have now acquired a basic familiarity with TaskBlaster commands,
+We have now acquired a basic familiarity with Taskblaster commands,
 although we may still not see the full picture of how one runs
 scientific high-throughput projects in practice.  We will deal with this
 over the course of the next exercises.
@@ -65,13 +65,13 @@ In this exercise we will develop a first materials workflow using the
 GPAW electronic structure code.
 This exercise will be more open-ended.
 Be sure to make good use of the different command-line tools'
-:option:`--help` pages as well as TaskBlaster's online documentation.
+:option:`--help` pages as well as Taskblaster's online documentation.
 
-TaskBlaster itself does not know anything about electronic structure,
+Taskblaster itself does not know anything about electronic structure,
 materials, atoms, or ASE.
 However we will want tasks to have ASE objects as input
 and output, and that requires being able to save those objects.
-TaskBlaster can be extended with the ability to encode and decode arbitrary
+Taskblaster can be extended with the ability to encode and decode arbitrary
 objects, and doing so requires a plugin.
 Such a plugin is provided by asr-lib, the
 `Atomic Simulation Recipes <https://gitlab.com/asr-dev/asr-lib>`_ library.
@@ -149,7 +149,7 @@ Add a ``groundstate()`` function to ``tasks.py``:
    :pyobject: groundstate
 
 In order to "return" the gpw file, we actually return a ``Path`` object
-pointing to it.  When passing the path to another task, TaskBlaster
+pointing to it.  When passing the path to another task, Taskblaster
 resolves it with respect to the task's own directory such
 that the human will not need to remember or care about the actual directories
 where the tasks run.
@@ -221,9 +221,9 @@ This way, we can comfortably work with larger numbers of tasks and we do
 not have to care about running or changing them in the right order.
 
 If we edit the workflow such that tasks receive different inputs,
-TaskBlaster will mark the affected tasks with a conflict.
+Taskblaster will mark the affected tasks with a conflict.
 Such a conflict can be solved by removing the old calculations
-or by telling TaskBlaster to consider it “resolved”, which we
+or by telling Taskblaster to consider it “resolved”, which we
 have seen in a previous tutorial.
 
 
@@ -269,7 +269,7 @@ Once the tasks are generated, we can run a few of the materials to
 make sure everything works.  We can then look into how to submit
 workers and use myqueue to execute the rest of them at larger scale.
 
-Read the resources and tagging howto from the TaskBlaster documentation
+Read the resources and tagging howto from the Taskblaster documentation
 and find a way to mark selections of tasks for execution as well as worker processes
 to execute them.
 
