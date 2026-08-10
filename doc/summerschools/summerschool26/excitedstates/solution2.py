@@ -104,7 +104,7 @@ gw = G0W0(calc='Si_pw_from_lcao_groundstate.gpw',
           bands=bands,  # VB and CB
           ecut=ecut,  # plane-wave cutoff for self-energy (20-200)
           integrate_gamma='WS',  # Use supercell Wigner-Seitz truncation for W.
-          filename='Si-from-lcao-g0w0')
+          filename='Si-from-lcao-g0w0-full')
 gw.calculate()
 
 
