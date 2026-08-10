@@ -3,7 +3,7 @@
 Inclusion of excitonic effects and Discussion
 =============================================
 
-Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for BN with 24x24x1 k-points. First we load the x, y, and z components and plot all three curves in different colors.
+Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for Si with 12x12x4 k-points along the x direction. 
 
 
 .. literalinclude:: solution4.py
@@ -15,7 +15,7 @@ Now open the saved figure and inspect the absorption spectra. The following imag
 
 .. image:: rpa_Si.png
 
-Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated in exercise 2 does it match?
+Now, load the x, y, and z components and plot all three curves in different colors. Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated in exercise 2 does it match?
 
 Now plot the absorption spectra for the other k-point meshes you calculated and compare. You could for instance modify the script above to plot, in different colors, all spectra in the same plot for comparison. Would you say that the calculation is converged?
 
