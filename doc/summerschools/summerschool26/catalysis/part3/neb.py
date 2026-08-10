@@ -64,8 +64,6 @@ view(images)
 # snippet-setupneb-end
 
 # snippet-bfgsneb-start
-from ase.optimize import MDMin
-
 qn = MDMin(neb, trajectory='neb.traj', logfile='neb.log')
 qn.run(fmax=0.05)
 # snippet-bfgsneb-end
@@ -110,7 +108,7 @@ for i in range(n_im):
     image.set_constraint(constraint)
     if world.rank in ranks:
         calc = GPAW(mode=PW(350),
-                    kpts = {'size': (4, 4, 1), 'gamma': True},
+                    kpts={'size': (4, 4, 1), 'gamma': True},
                     xc='PBE',
                     txt=f'{i}.txt',
                     communicator=world.new_communicator(ranks))
@@ -121,7 +119,6 @@ images.append(final)
 
 # teacher:
 from gpaw.dft import GPAW, PW
-from ase.optimize import FIRE
 from gpaw.mpi import world
 
 initial = read('N2Ru.traj')
