@@ -6,6 +6,10 @@ from gpaw.gpu import cupy_is_fake
 from gpaw.xc import XC
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.skipif(cupy_is_fake, reason='No cupy')
 @pytest.mark.parametrize('nspins', [1, 2])

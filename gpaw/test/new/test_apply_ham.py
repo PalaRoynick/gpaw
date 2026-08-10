@@ -32,7 +32,7 @@ def apply(a: float,  # lattice constant
                          [np,
                           pytest.param(cp, marks=pytest.mark.gpu)])
 @pytest.mark.parametrize('nbands', [2, 17])
-def test_apply_ham(xp, nbands):
+def test_apply_ham(xp, nbands, set_device_if_xp_is_cupy):
     apply(a=2.5, N=6, B=nbands, xp=xp)
 
 

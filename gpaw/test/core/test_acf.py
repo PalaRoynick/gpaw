@@ -51,7 +51,7 @@ def test_acf_fd(testgrid, xp):
 @pytest.mark.ci
 @pytest.mark.gpu
 @pytest.mark.parametrize('xp', [np, cp])
-def test_acf_pw(testgrid, xp, comm):
+def test_acf_pw(testgrid, xp, comm, set_device_if_xp_is_cupy):
     if comm.size > 1 and xp is cp:
         pytest.skip()
     if xp is cp and cupy_is_fake or not GPU_AWARE_MPI:

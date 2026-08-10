@@ -14,7 +14,7 @@ from gpaw.setup import create_setup
 @pytest.mark.parametrize('xp',
                          [np,
                           pytest.param(cp, marks=pytest.mark.gpu)])
-def test_move(xp):
+def test_move(xp, set_device_if_xp_is_cupy):
     comm = world if GPU_AWARE_MPI else CuPyMPI(world)
     pw = PWDesc(ecut=25, cell=[2, 2, 2], kpt=[0.25, 0.25, 0.0], comm=comm)
     psit_nG = pw.zeros(2, xp=xp)

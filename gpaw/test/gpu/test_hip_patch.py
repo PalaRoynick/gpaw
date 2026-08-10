@@ -4,6 +4,10 @@ from gpaw.fftw import irfftn_patch, rfftn_patch
 from gpaw.gpu import cupy_is_fake, is_hip
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 def test_hip_patch_on_cuda():
     if is_hip:

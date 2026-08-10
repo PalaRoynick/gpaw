@@ -9,6 +9,10 @@ from gpaw.new.c import GPU_AWARE_MPI
 from gpaw.spline import Spline
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize('dtype', [float, complex])
 def test_acf(dtype):

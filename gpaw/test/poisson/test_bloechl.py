@@ -61,7 +61,7 @@ def force(charges, a):
 @pytest.mark.parametrize('xp',
                          [np,
                           pytest.param(cp, marks=pytest.mark.gpu)])
-def test_psolve(xp):
+def test_psolve(xp, set_device_if_xp_is_cupy):
     """Unit-test for Blöchl's fast Poisson-solver."""
     if GPAW_NO_C_EXTENSION:
         pytest.skip('GPAW_NO_C_EXTENSION')

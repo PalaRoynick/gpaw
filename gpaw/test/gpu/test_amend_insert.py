@@ -4,6 +4,10 @@ from gpaw.gpu import cupy_is_fake
 from gpaw.new.c import pw_amend_insert_realwf_gpu
 
 
+# All of these tests will use set_device fixture
+pytestmark = pytest.mark.usefixtures('set_device')
+
+
 def reference_pw_amend_insert_realwf_gpu(array_nQ, n, m):
     for array_Q in array_nQ:
         t = array_Q[:, :, 0]

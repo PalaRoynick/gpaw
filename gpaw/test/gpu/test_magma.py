@@ -75,7 +75,8 @@ def test_invalid_input(matrix_dtype: np.dtype):
 @pytest.mark.parametrize("xp", [np, cp])
 def test_magma_eigh(dtype: np.dtype,
                     uplo: str,
-                    xp):
+                    xp,
+                    set_device_if_xp_is_cupy):
     """"""
     matrix_size = 3
     matrix_orig: np.ndarray | cp.ndarray = eigh_test_matrix(

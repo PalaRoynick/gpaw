@@ -15,7 +15,8 @@ if cupy_is_fake:
     pytest.skip("Fake cupy", allow_module_level=True)
 
 # Mark everything as gpu tests
-pytestmark = pytest.mark.gpu
+# All of these tests will use set_device fixture
+pytestmark = [pytest.mark.gpu, pytest.mark.usefixtures('set_device')]
 
 
 def test_cupy_array_input():

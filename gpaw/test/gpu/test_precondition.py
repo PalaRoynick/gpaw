@@ -9,7 +9,7 @@ from gpaw.new.pw.hamiltonian import precondition
 
 @pytest.mark.gpu
 @pytest.mark.parametrize('xp', [np, cp])
-def test_prec(xp):
+def test_prec(xp, set_device_if_xp_is_cupy):
     a = 2
     pw = PWDesc(cell=[a, a, a], ecut=200 / 27, dtype=complex)
     n = 2
