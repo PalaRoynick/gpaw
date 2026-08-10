@@ -73,7 +73,7 @@ def asebulk(symbol):
 
 
 @tb.workflow
-class ParametrizableMaterialsWorkflow:
+class ComputeMaterialsWorkflow:
     symbol = tb.var()
     calculator = tb.var()
 
@@ -94,5 +94,5 @@ def parametrize_materials_workflow(calculator):
     ]
 
     for symbol in material_symbols:
-        yield f'mat-{symbol}', ParametrizableMaterialsWorkflow(
+        yield f'mat-{symbol}', ComputeMaterialsWorkflow(
             symbol=symbol, calculator=calculator)
