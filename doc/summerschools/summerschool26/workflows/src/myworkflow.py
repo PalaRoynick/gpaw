@@ -97,7 +97,6 @@ def parametrize_materials_workflow(calculator):
             symbol=symbol, calculator=calculator)
 
 
-
 def workflow(runner):
     from tasks import MaterialsWorkflow
     from ase.build import bulk
@@ -107,4 +106,3 @@ def workflow(runner):
                     'kpts': (4, 4, 4),
                     'txt': 'gpaw.txt'})
     runner.run_workflow(wf)
-
