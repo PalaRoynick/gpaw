@@ -278,3 +278,29 @@ and find a way to mark selections of tasks for execution as well as worker proce
 to execute them.
 
 Feel free to expand the selection of materials on which the workflow runs.
+
+
+Part 4: Extract data from a workflow
+====================================================
+
+Sometimes we want to extract the data from a workflow into a single file. Maybe we 
+want to plot it or send it to a colleague. For this example we'll want to extract the 
+lattice constants of all the relaxed structures. To get the data out of a repository 
+we use the ``Collect`` object. To use it we will create a new file called ``collect.py``.
+
+.. literalinclude:: collect.py
+
+This code collects all the relax tasks in a list of ``record`` objects. This object has 
+several attributes that are of use to us
+
+* *record.name*: task name relative to the repository tree.
+* *record.directory*: path to the task directory.
+* *record.inputs*: decoded task inputs, if all parents are available.
+* *record.output*: decoded task output, or `None` if no output is available.
+* *record.state*: task state.
+
+So in the above example we access the output of the tasks which are the relaxed atoms objects. 
+As an exercise modify the above script to also extract unrelaxed atoms which are passed into 
+the relax task and compare them. 
+
+*Hint:* Check what type ``r.input`` is
