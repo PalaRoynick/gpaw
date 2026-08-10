@@ -72,18 +72,20 @@ materials, atoms, or ASE.
 However we will want tasks to have ASE objects as input
 and output, and that requires being able to save those objects.
 Taskblaster can be extended with the ability to encode and decode arbitrary
-objects, and doing so requires a plugin.
-Such a plugin is provided by asr-lib, the
-`Atomic Simulation Recipes <https://gitlab.com/asr-dev/asr-lib>`_ library.
-We will create a project using asr-lib as a plugin and so facilitate
-our work with ASE objects.
+objects.  Doing so requires a plugin.
+To enable basic support for numpy and ASE objects, use the
+`ase-taskblaster <https://gitlab.com/taskblaster/ase-taskblaster>`__ plugin.
+We will create a project using using this plugin.
 
-Go to a clean directory and create repository using the ``asrlib`` plugin::
+Go to a clean directory and create a repository using the
+`asetaskblaster <https://pypi.org/project/ase-taskblaster/>`
+plugin::
 
-  $ tb init asrlib
+  $ tb init asetaskblaster
 
+This creates a ``tree/`` directory where tasks will be stored.
 You can use the ``tb info`` command to see global information about
-the repository and verify that it uses ``asrlib``.
+the repository and verify that it uses ``asetaskblaster``.
 
 Set up structure optimization
 -----------------------------
@@ -102,15 +104,28 @@ atoms are passed and encoded correctly.  After that, unrun, edit,
 rerun, and fix it until it works. The workflow should function
 correctly when called on a bulk silicon system like this:
 
-.. literalinclude:: workflow.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: workflow
 
 Here we have chosen some generic GPAW parameters that will be fine
 for testing, but not for production.
 
+It must be possible for Taskblaster to import the tasks and workflows,
+i.e., the Python code must be installed or otherwise visible to Python.
+Taskblaster will always look for code inside the ``src/`` subdirectory
+of the repository (``tb info`` shows this as “Pythonpath”.), which
+can be handy for writing quick examples.
+So put the code in a Python file under ``src/`` and name the files
+in a way that does not conflict with other Python packages.
+We'll assume that the file is ``src/myworkflow.py``.
+
+
+For a real project, it is a good idea to develop the code
+using version control and ship it as a proper Python package.
+
 The relaxation task can be implemented like this:
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: optimize_cell
 
 Users unfamiliar with ASE may want to take a while to look up
@@ -132,8 +147,8 @@ go to the task directory and use the ASE GUI (e.g. ``ase gui opt.traj``)
 to visualize the trajectory.
 
 GPAW also writes a log file to ``gpaw.txt``.
-It is wise to have a brief look and observe that
-the calculation used the parameters we expect.
+It is a good idea to have a brief look and verify that
+the calculation used the parameters we wanted.
 
 
 Part 2: Add ground state and band structure tasks
@@ -143,9 +158,9 @@ After the relaxation, we want to run a ground state
 calculation to save a ``.gpw`` file, which we subsequently want
 to pass to a non self-consistent calculation to get the band structure.
 
-Add a ``groundstate()`` function to ``tasks.py``:
+Add a ``groundstate()`` function to ``src/myworkflow.py``:
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: groundstate
 
 In order to "return" the gpw file, we actually return a ``Path`` object
@@ -155,7 +170,7 @@ that the human will not need to remember or care about the actual directories
 where the tasks run.
 
 Next, add a ``groundstate()`` task to the workflow which calls the groundstate
-function just added to ``tasks.py``.
+function just added to ``myworkflow.py``.
 By calling ``tb.node(..., atoms=self.relax)``, we can specify
 that the atoms should be taken as the *output* of the ``relax`` task,
 creating a dependency.
@@ -172,7 +187,7 @@ band path in the Brillouin zone.
 That can be done using the ``ase.cell.bandpath()`` method.  It is useful
 to do this as a standalone task, so we can visualize it independently:
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: bandpath
 
 Run the workflow and the resulting task.  Go to the directory.  The
@@ -182,10 +197,10 @@ using ASE's reciprocal cell tool::
   ase reciprocal tree/bandstructure/output.json
 
 
-Finally, we write a band structure task in ``tasks.py`` which takes the
+Finally, we write a band structure task in ``src/myworkflow.py`` which takes the
 ground state (gpw file) and band path as an input:
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: bandstructure
 
 Add the corresponding tasks to the workflow such that these computations
@@ -237,17 +252,17 @@ Note that the syntax for some of these features is still being worked
 on, and is a little bit convoluted.  This will be simplified in the
 future, but for now we need some slightly verbose and specific
 modifications.  First, create a workflow file which specifies
-a parameterization:
+a parameterization and save it in e.g. ``src/materials.py``:
 
-.. literalinclude:: materials.py
+.. literalinclude:: src/materials.py
 
-Then include in ``tasks.py``:
+Then include in ``src/myworkflow.py``:
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: ParametrizableMaterialsWorkflow
 
 
-.. literalinclude:: tasks.py
+.. literalinclude:: src/myworkflow.py
    :pyobject: parametrize_materials_workflow
 
 
