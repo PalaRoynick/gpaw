@@ -296,7 +296,7 @@ several attributes that are of use to us
 * *record.state*: task state.
 
 So in the above example we access the output of the tasks which are the relaxed atoms objects. 
-As an exercise modify the above script to also extract unrelaxed atoms which are passed onto 
+As an exercise modify the above script to also extract unrelaxed atoms which are passed into 
 the relax task and compare them. 
 
 *Hint:* Check what type ``r.input`` is
