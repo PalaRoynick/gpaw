@@ -229,6 +229,11 @@ have seen in a previous tutorial.
 Part 3: Parametrize workflow over multiple materials
 ====================================================
 
+Before continuing to work on our materials workflow it is instructive to go through the 
+`“Workflow generator and for loops” <https://taskblaster.readthedocs.io/en/latest/tutorial/wf_generator/wf_generator.html>`_ 
+tutorial in Taskblasters documentation. Once we have done that, we can then use dynamical 
+workflows to parametrize our workflow over many materials for high-troughput calculations.
+
 We next want to run the workflow to generate all the tasks for later
 submission using myqueue or slurm.
 
