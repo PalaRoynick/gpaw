@@ -298,3 +298,5 @@ several attributes that are of use to us
 So in the above example we access the output of the tasks which are the relaxed atoms objects. 
 As an exercise modify the above script to also extract unrelaxed atoms which are passed onto 
 the relax task and compare them. 
+
+`Hint:` Check what type ``record.input`` is
