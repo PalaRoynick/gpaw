@@ -30,9 +30,6 @@ This exercise consists of multiple parts:
  * Parametrize the workflow to comprise multiple materials
  * Submit multiple workers to execute the computational tasks at scale
 
-When actually using ASR, many tasks and workflows are already written.
-Thus, we would be able to import and use those features directly.
-But in this tutorial we write everything from scratch.
 
 Part 0: The Taskblaster tutorials and documentation
 ===================================================
@@ -101,7 +98,9 @@ Write a workflow class called ``MaterialsWorkflow`` which:
 The wise scientist first writes a relax task which only prints the
 atoms.  That is enough to verify that the workflow works, and that the
 atoms are passed and encoded correctly.  After that, unrun, edit,
-rerun, and fix it until it works. The workflow should function
+rerun, and fix it until it works. When setting up a workflow and 
+having to unrun tasks it can be useful to use the ``--rerun`` flag to 
+immediatly rerun a failed task. The workflow should function
 correctly when called on a bulk silicon system like this:
 
 .. literalinclude:: src/myworkflow.py
@@ -244,6 +243,11 @@ have seen in a previous tutorial.
 
 Part 3: Parametrize workflow over multiple materials
 ====================================================
+
+Before continuing to work on our materials workflow it is instructive to go through the 
+`“Workflow generator and for loops” <https://taskblaster.readthedocs.io/en/latest/tutorial/wf_generator/wf_generator.html>`_ 
+tutorial in Taskblasters documentation. Once we have done that, we can then use dynamical 
+workflows to parametrize our workflow over many materials for high-troughput calculations.
 
 We next want to run the workflow to generate all the tasks for later
 submission using myqueue or slurm.

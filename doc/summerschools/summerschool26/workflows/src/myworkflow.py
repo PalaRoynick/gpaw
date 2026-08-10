@@ -72,7 +72,7 @@ def asebulk(symbol):
 
 
 @tb.workflow
-class ParametrizableMaterialsWorkflow:
+class ComputeMaterial:
     symbol = tb.var()
     calculator = tb.var()
 
@@ -87,21 +87,20 @@ class ParametrizableMaterialsWorkflow:
 
 @tb.dynamical_workflow_generator_task
 def parametrize_materials_workflow(calculator):
-
     material_symbols = [
         'Al', 'Si', 'Ti', 'Cu', 'Ag', 'Au', 'Pd', 'Pt',
     ]
 
     for symbol in material_symbols:
-        yield f'mat-{symbol}', ParametrizableMaterialsWorkflow(
+        yield f'mat-{symbol}', ComputeMaterial(
             symbol=symbol, calculator=calculator)
 
 
 def workflow(runner):
-    from tasks import MaterialsWorkflow
     from ase.build import bulk
+
     wf = MaterialsWorkflow(
-        atoms=bulk('Si'),
+        atoms=bulk('Si', a=4.0),
         calculator={'mode': 'pw',
                     'kpts': (4, 4, 4),
                     'txt': 'gpaw.txt'})
