@@ -248,83 +248,87 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
     const long nz = grid.end_c.z - grid.start_c.z;
     const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
-
-    // Array for holding phi_lm components for all possible m
-    T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-
     const T vt = arrays.vt_G[grid_array_idx];
 
-    // Needs double loop over phi index. The following is not great because it computes the each spline more than once.
-    // TODO: more optimal would be to precalculate all phi for this gridpoint ?
-
+    // Needs to integrate phi_mu * vt * phi_nu, so we need a double loop over the phi index.
+    // Call them phi_r and phi_s in the following to avoid confusion with m, n and mu, nu that we already use.
     const size_t j_begin = blocks.start_j[block_idx];
     const size_t j_end = blocks.start_j[block_idx + 1];
 
-    for (size_t jm = j_begin; jm < j_end; ++jm)
+    // phi_r loop
+    for (size_t j_r = j_begin; j_r < j_end; ++j_r)
     {
-        const size_t phi_idx = blocks.all_blocks_phi_idx_j[jm];
+        const size_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
 
-        const GpuVec3<double>& phi_pos = phi.position_iv[phi_idx];
-        const uint8_t l_m = phi.l_i[phi_idx];
-        const size_t first_mu = phi.first_mu_i[phi_idx];
-        const size_t spline_idx = phi.spline_idx_i[phi_idx];
+        const GpuVec3<double>& phi_pos_r = phi.position_iv[phi_idx_r];
+        const uint8_t l_r = phi.l_i[phi_idx_r];
+        const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
+        const size_t spline_idx_r = phi.spline_idx_i[phi_idx_r];
 
-        const auto& spline = splines[spline_idx];
+        const T dx_r = x - static_cast<T>(phi_pos_r.x);
+        const T dy_r = y - static_cast<T>(phi_pos_r.y);
+        const T dz_r = z - static_cast<T>(phi_pos_r.z);
+        const T distance_sq_r = dx_r*dx_r + dy_r*dy_r + dz_r*dz_r;
+        const T distance_r = sqrt(distance_sq_r);
 
-        // Find distance from the phi center, then evaluate phi(x)
-        T dx = x - static_cast<T>(phi_pos.x);
-        T dy = y - static_cast<T>(phi_pos.y);
-        T dz = z - static_cast<T>(phi_pos.z);
-        T distance_sq = dx*dx + dy*dy + dz*dz;
-        T distance = sqrt(distance_sq);
-
-        const T spline_val_m = spline.evaluate(distance);
-        SphericalHarmonicStatics::fr_times_Ylm(l_m, spline_val_m, dx, dy, dz, distance_sq, phi_m);
-
-        const int num_m = 2*l_m + 1;
-
-        for (int m = 0; m < num_m; ++m)
+        const T spline_val_r = splines[spline_idx_r].evaluate(distance_r);
+        if (spline_val_r == T(0))
         {
-            const size_t mu = m + first_mu;
-            const T phi_mu_times_vt = phi_m[m] * vt;
-
-            // Inner phi loop. Basically repeats the phi(x) from above...
-            for (size_t jn = j_begin; jn < j_end; ++jn)
-            {
-                const size_t phi_idx_n = blocks.all_blocks_phi_idx_j[jn];
-
-                const GpuVec3<double>& phi_pos_n = phi.position_iv[phi_idx_n];
-                const uint8_t l_n = phi.l_i[phi_idx_n];
-                const size_t first_nu = phi.first_mu_i[phi_idx_n];
-                const size_t spline_idx_n = phi.spline_idx_i[phi_idx_n];
-
-                const auto& spline_n = splines[spline_idx_n];
-                T dx_n = x - static_cast<T>(phi_pos_n.x);
-                T dy_n = y - static_cast<T>(phi_pos_n.y);
-                T dz_n = z - static_cast<T>(phi_pos_n.z);
-                T distance_sq_n = dx_n*dx_n + dy_n*dy_n + dz_n*dz_n;
-                T distance_n = sqrt(distance_sq_n);
-
-                T phi_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-                const T spline_val_n = spline_n.evaluate(distance_n);
-                SphericalHarmonicStatics::fr_times_Ylm(l_n, spline_val_n, dx_n, dy_n, dz_n, distance_sq_n, phi_n);
-
-                const int num_n = 2*l_n + 1;
-                for (int n = 0; n < num_n; ++n)
-                {
-                    const size_t nu = first_nu + n;
-
-                    if (mu >= nu && mu >= arrays.mu_start && mu < arrays.mu_end)
-                    {
-                        const T phi_vt_phi = phi_mu_times_vt * phi_n[n] * grid.dV;
-                        atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], phi_vt_phi);
-                    }
-
-                }
-
-            }
+            continue;
         }
 
-    }
+        // Array for holding phi_lm components for all possible m
+        T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+        SphericalHarmonicStatics::fr_times_Ylm(l_r, spline_val_r, dx_r, dy_r, dz_r, distance_sq_r, phi_r_m);
+
+        // phi_s loop
+        for (size_t j_s = j_begin; j_s < j_end; ++j_s)
+        {
+            const size_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
+
+            const GpuVec3<double>& phi_pos_s = phi.position_iv[phi_idx_s];
+            const uint8_t l_s = phi.l_i[phi_idx_s];
+            const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+            const size_t spline_idx_s = phi.spline_idx_i[phi_idx_s];
+
+            const T dx_s = x - static_cast<T>(phi_pos_s.x);
+            const T dy_s = y - static_cast<T>(phi_pos_s.y);
+            const T dz_s = z - static_cast<T>(phi_pos_s.z);
+            const T distance_sq_s = dx_s*dx_s + dy_s*dy_s + dz_s*dz_s;
+            const T distance_s = sqrt(distance_sq_s);
+
+            const T spline_val_s = splines[spline_idx_s].evaluate(distance_s);
+            if (spline_val_s == T(0))
+            {
+                continue;
+            }
+
+            T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+            SphericalHarmonicStatics::fr_times_Ylm(l_s, spline_val_s, dx_s, dy_s, dz_s, distance_sq_s, phi_s_n);
+
+            // Accumulate phi_rm * vt * phi_sn for each phi component m,n
+            for (int m = 0; m < 2*l_r + 1; ++m)
+            {
+                const size_t mu = first_mu_r + m;
+                // temp until parallel V_MN properly implemented?
+                if (mu < arrays.mu_start || mu >= arrays.mu_end)
+                {
+                    continue;
+                }
+
+                const T phi_rm_times_vt = phi_r_m[m] * vt * grid.dV;
+
+                for (int n = 0; n < 2*l_s + 1; ++n)
+                {
+                    const size_t nu = first_mu_s + n;
+                    if (mu >= nu)
+                    {
+                        const T phi_vt_phi = phi_rm_times_vt * phi_s_n[n];
+                        atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], phi_vt_phi);
+                    }
+                }
+            }
+        } // j_s (phi_nu)
+    } // j_r (phi_mu)
 
 }
