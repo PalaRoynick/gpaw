@@ -64,7 +64,7 @@ view(images)
 # snippet-setupneb-end
 
 # snippet-bfgsneb-start
-qn = BFGS(neb, trajectory='neb.traj')
+qn = BFGS(neb, trajectory='neb.traj', logfile='neb.log')
 qn.run(fmax=0.05)
 # snippet-bfgsneb-end
 
