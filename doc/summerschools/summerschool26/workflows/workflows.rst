@@ -73,10 +73,12 @@ objects.  Doing so requires a plugin.
 To enable basic support for numpy and ASE objects, use the
 `ase-taskblaster <https://gitlab.com/taskblaster/ase-taskblaster>`__ plugin.
 We will create a project using using this plugin.
+Make sure ``ase-taskblaster`` is installed by running, e.g.,
+``pip install ase-taskblaster``.
 
-Go to a clean directory and create a repository using the
+Go to a clean directory and create a repository using
 `asetaskblaster <https://pypi.org/project/ase-taskblaster/>`
-plugin::
+as plugin::
 
   $ tb init asetaskblaster
 
@@ -98,9 +100,9 @@ Write a workflow class called ``MaterialsWorkflow`` which:
 The wise scientist first writes a relax task which only prints the
 atoms.  That is enough to verify that the workflow works, and that the
 atoms are passed and encoded correctly.  After that, unrun, edit,
-rerun, and fix it until it works. When setting up a workflow and 
-having to unrun tasks it can be useful to use the ``--rerun`` flag to 
-immediatly rerun a failed task. The workflow should function
+rerun, and fix it until it works. When setting up a workflow and
+having to unrun tasks it can be useful to use the ``--rerun`` flag to
+immediately rerun a failed task. The workflow should function
 correctly when called on a bulk silicon system like this:
 
 .. literalinclude:: src/myworkflow.py
@@ -127,7 +129,7 @@ The relaxation task can be implemented like this:
 .. literalinclude:: src/myworkflow.py
    :pyobject: optimize_cell
 
-Users unfamiliar with ASE may want to take a while to look up
+Users unfamiliar with ASE may want to take a few moments to look up
 ASE concepts like atoms and calculators.  What the function does is:
 
  * Attach a GPAW calculator to the atoms
@@ -193,7 +195,7 @@ Run the workflow and the resulting task.  Go to the directory.  The
 band path object was saved in ASE's JSON format, so it can be visualized
 using ASE's reciprocal cell tool::
 
-  ase reciprocal tree/bandstructure/output.json
+  ase reciprocal tree/bandpath/output.json
 
 
 Finally, we write a band structure task in ``src/myworkflow.py`` which takes the
@@ -244,9 +246,10 @@ have seen in a previous tutorial.
 Part 3: Parametrize workflow over multiple materials
 ====================================================
 
-Before continuing to work on our materials workflow it is instructive to go through the 
-`“Workflow generator and for loops” <https://taskblaster.readthedocs.io/en/latest/tutorial/wf_generator/wf_generator.html>`_ 
-tutorial in Taskblasters documentation. Once we have done that, we can then use dynamical 
+Before continuing to work on our materials workflow it is instructive to go through the
+`“Workflow generator and for loops”
+<https://taskblaster.readthedocs.io/en/latest/tutorial/wf_generator/wf_generator.html>`_
+tutorial in Taskblasters documentation. Once we have done that, we can then use dynamical
 workflows to parametrize our workflow over many materials for high-troughput calculations.
 
 We next want to run the workflow to generate all the tasks for later
@@ -263,7 +266,7 @@ a parameterization and save it in e.g. ``src/materials.py``:
 Then include in ``src/myworkflow.py``:
 
 .. literalinclude:: src/myworkflow.py
-   :pyobject: ParametrizableMaterialsWorkflow
+   :pyobject: ComputeMaterial
 
 
 .. literalinclude:: src/myworkflow.py
