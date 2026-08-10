@@ -21,7 +21,7 @@ def ecuts(symbol: str = None,
     """Plane-wave cutoff-energy convergence test."""
     setup_paths[:1] = ['.']
     symbol = symbol or Path.cwd().name.split('.')[0]
-    energies = list(range(300, 1300, 100))
+    energies = list(range(250, 1300, 50))
     results = []
     for name in ['FCC', 'Diamond']:
         atoms = reference_structure(symbol, name)
