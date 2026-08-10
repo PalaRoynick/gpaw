@@ -57,7 +57,7 @@ for i in range(n_im):
 
 images.append(final)
 
-neb = NEB(images, method='improvedtangent')
+neb = NEB(images)
 neb.interpolate()
 view(images)
 
