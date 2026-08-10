@@ -11,7 +11,11 @@ Now, we will finally visualize the absorption spectra we have calculated. The sc
    :end-before: # snippet-plot-rpa-end
 
 
-Now open the saved figure and inspect the absorption spectra. Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated on day 2 does it match?
+Now open the saved figure and inspect the absorption spectra. The following image shows the reference absorption spectrum for comparison.
+
+.. image:: rpa_Si.png
+
+Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated in exercise 2 does it match?
 
 Now plot the absorption spectra for the other k-point meshes you calculated and compare. You could for instance modify the script above to plot, in different colors, all spectra in the same plot for comparison. Would you say that the calculation is converged?
 
@@ -65,5 +69,6 @@ plot it along with the RPA spectrum for comparison.
    :start-after: # snippet-plot-bse-start
    :end-before: # snippet-plot-bse-end
 
+.. image:: bse_atoms.png
 
 Note: The parameters that need to be converged in the calculation are the k-points in the initial ground state calculation. In addition the following keywords in the BSE object should be converged: the plane wave cutoff, the numbers of bands used to calculate the screened interaction, the list of valence bands and the list of conduction bands included in the Hamiltonian. You can find an example calculation for Silicon in the link below: https://gpaw.readthedocs.io/tutorialsexercises/opticalresponse/bse_tutorial/bse_tutorial.html
