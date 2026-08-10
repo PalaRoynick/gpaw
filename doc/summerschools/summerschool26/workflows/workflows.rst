@@ -27,8 +27,9 @@ This exercise consists of multiple parts:
  * Write a workflow which defines a structure optimization task
    followed by electronic ground-state and band structure computation
    using GPAW
- * Parametrize the workflow to comprise multiple materials
- * Submit multiple workers to execute the computational tasks at scale
+ * Parametrize the workflow over an existing tree of materials
+ * Generate a parametrized workflow dynamically and submit multiple workers
+   to execute the computational tasks at scale
 
 When actually using ASR, many tasks and workflows are already written.
 Thus, we would be able to import and use those features directly.
@@ -227,17 +228,66 @@ or by telling TaskBlaster to consider it “resolved”, which we
 have seen in a previous tutorial.
 
 
-Part 3: Parametrize workflow over multiple materials
-====================================================
+Part 3: Parametrize workflow from a material tree
+=================================================
+
+The previous workflow takes one ``atoms`` object as input.
+In realistic material workflows we often first create a tree of material
+definitions and then apply a workflow to every matching material using
+``tb.parametrize_glob``.
+
+The small ``totree.py`` file creates one ``material`` definition task per
+element:
+
+.. literalinclude:: totree.py
+
+Run it to create folders such as ``tree/Al/material`` and
+``tree/Si/material``::
+
+  tb workflow totree.py
+
+Now write a top-level workflow which is parametrized over all tasks matching
+``*/material``:
+
+.. literalinclude:: materials_glob.py
+
+The decorated ``workflow(material)`` function is called once for each matching
+material task.  TaskBlaster places each returned ``MaterialsWorkflow`` in the
+same parent folder as the matched material, so the silicon calculation will
+contain tasks such as ``tree/Si/relax``, ``tree/Si/groundstate``, and
+``tree/Si/bandstructure``.
+
+Generate the parametrized workflow::
+
+  tb workflow materials_glob.py
+
+At this point only the task tree has been created.
+Run a single material first, for example::
+
+  tb run tree/Si/bandstructure
+
+Then inspect the task list and outputs before running a larger set::
+
+  tb ls --parents tree/Si/bandstructure
+
+This is the pattern used by many ASR material workflows:
+``totree`` defines the materials once, and ``parametrize_glob`` attaches the
+computational workflow to every material matching the glob.
+
+
+Part 4: Dynamic workflow generation and submission
+==================================================
 
 We next want to run the workflow to generate all the tasks for later
 submission using myqueue or slurm.
 
-Note that the syntax for some of these features is still being worked
-on, and is a little bit convoluted.  This will be simplified in the
-future, but for now we need some slightly verbose and specific
-modifications.  First, create a workflow file which specifies
-a parameterization:
+The parametrized glob approach above is the usual one when the material
+definitions already exist in the tree.
+TaskBlaster can also let a task create subworkflows dynamically.
+The syntax for this feature is still being worked on, and is a little bit
+convoluted.  This will be simplified in the future, but for now we need some
+slightly verbose and specific modifications.
+First, create a workflow file which specifies a dynamic generator:
 
 .. literalinclude:: materials.py
 
