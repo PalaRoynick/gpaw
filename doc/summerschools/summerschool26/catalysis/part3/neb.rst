@@ -6,7 +6,7 @@ barrier for an Au atom on Al(001). If you are not familiar with the NEB
 method, some relevant references are listed on ASE's
 documentation page on the :mod:`ase.mep.neb` module.
 
-The tutorial uses the EMT potential instead of DFT, as this is a lot faster.
+The initial tutorial uses the EMT potential instead of DFT, as this is a lot faster.
 It is based on a :ref:`tutorial found on the ASE
 webpage <ase:selfdiffusion_example>`.
 
@@ -15,7 +15,8 @@ webpage <ase:selfdiffusion_example>`.
   :end-before: snippet-imports-end
 
 
-First, we set up the initial state and check that it looks ok:
+In NEB, we define an initial and a final state and will then optimize the
+reaction path between the two. We start by setting up the initial state and check that it looks ok:
 
 
 .. literalinclude:: neb.py
@@ -30,7 +31,7 @@ Then, we optimize the structure and save it.
   :end-before: snippet-optimize-end
 
 
-We make the final state by editing the relaxed initial stucture: the Au atom is moved by one 
+Next, we make the final state by editing the relaxed initial stucture: the Au atom is moved by one
 lattice constant in the x-direction. We then optimize again and save the output.
 
 .. literalinclude:: neb.py
@@ -38,7 +39,7 @@ lattice constant in the x-direction. We then optimize again and save the output.
   :end-before: snippet-optimize-finalstate-end
 
 
-Now we make a NEB calculation with 3 images between the initial and final
+Now we perform a NEB calculation with 3 images between the initial and final
 states. The images are initially made as copies of the initial state, and the
 call ``interpolate()`` performs a linear interpolation between the initial and
 final states. As always, we check that everything looks ok before we run the
@@ -52,7 +53,9 @@ rotations. In this case an improved starting guess can be made with the
   :start-after: snippet-setupneb-start
   :end-before: snippet-setupneb-end
 
-After verifying the structure, we can run the optimization:
+After verifying the structure, we can run the optimization. We will use
+the ``MDMin`` optimizer, which is more reliable than BFGS for NEB
+calculations:
 
 .. literalinclude:: neb.py
    :start-after: snippet-bfgsneb-start
@@ -76,10 +79,12 @@ or you can make a script using :class:`ase.mep.neb.NEBTools`, e.g.:
 Exercise
 --------
 
-Now you should set up your own NEB using the configuration with :mol:`N_2`
-lying down as the initial state and the configuration with two N-atoms
-adsorbed on the surface as the final state. Use the example above combined with
-your results from Parts 1 and 2 and the the instructions below to build your code.
+Now you should set up your own NEB using the previously optimized configurations
+of adsorbed :mol:`N_2` as the initial state and two separated N-atoms
+adsorbed on the surface as the final state. Thus, we will calculate the
+dissociation barrier of :mol:`N_2` on the surface. Use the example above
+combined with your results from Parts 1 and 2 and the
+instructions below to build your code.
 
 Parallelization
 ===============
@@ -104,9 +109,9 @@ numbers are given to the calculator associated with this image.
    :end-before: snippet-gpaw-end
 
 When running the parallel NEB, you should choose the number of CPU cores
-properly.  Let ``Ncore = N_im * Nk`` where ``N_im``
-is the number of images, and ``Nk`` is a divisor of the number of k-points;
-i.e., if there are 6 irreducible k-points, ``Nk`` should be 1, 2, 3 or 6.  
+properly.  Let ``ncore = n_im * nk`` where ``n_im``
+is the number of images, and ``nk`` is a divisor of the number of k-points;
+i.e., if there are 6 irreducible k-points, ``nk`` should be 1, 2, 3 or 6.
 Keep the total number of cores to 24 or less, or your job will wait too long in the queue.
 
 Input parameters
@@ -114,10 +119,13 @@ Input parameters
 
 Some suitable parameters for the NEB are given below:
 
-* Use the same calculator and constraints as for the initial and final images, but remember to set the ``communicator`` as described above
-* Use the total of 6 images. This gives a reasonable description of the energy landscape and can be run e.g. on 12 cores.
-* Use a spring constant of 1.0 between the images. A lower value will slow the convergence
-* Relax the initial NEB until ``fmax = 0.1`` eV/Å, then switch on the climbing image and relax until ``fmax = 0.05`` eV/Å.
+* Use the same calculator and constraints as for the initial and final images,
+  but remember to set the ``communicator`` as described above
+* Use the total of 6 images, two endstates and 4 images in between,
+  by setting ``n_im=4``. This gives a reasonable description of the
+  energy landscape and can be run e.g. on 12 cores.
+* Relax the initial NEB until ``fmax = 0.1`` eV/Å, then switch on
+  the climbing image and relax until ``fmax = 0.05`` eV/Å.
 
 Once the calculation is done, you should check that the final path looks
 reasonable. What is the N—N distance at the saddle point? Use NEBTools to
