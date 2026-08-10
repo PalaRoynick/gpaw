@@ -9,6 +9,7 @@ import scipy
 from gpaw import GPAW
 import matplotlib.pyplot as plt
 
+
 def mpower(O_MM, power):
     if power == 0:
         return np.eye(len(O_MM))
@@ -87,6 +88,7 @@ class LCAOOperator:
         # Convert back to fourier space with higher k-mesh
         return operator_RMM.inverse_fourier_transform(higher_k_mesh)
 
+
 @dataclass
 class GPAWLCAOOperator(LCAOOperator):
     """Construct"""
@@ -114,13 +116,16 @@ class GPAWLCAOOperator(LCAOOperator):
     def build(self, S_MM, C_nM, u):
         raise NotImplementedError
 
+
 @dataclass
 class ReciprocalSpace:
     """Conversion for IBZ to BZ kpoint mapping
 
     Attributes:
-        bz2ibz_K: mapping table which BZ k-point K is mapped to IBZ k-point k either provided by user or given by GPAW calc.wfs.kd.bz2ibz_k
-        kpt_Kc: Optional for plotting; BZ k-point coordinates from GPAW calc.wfs.kd.bzk_kc
+        bz2ibz_K: mapping table which BZ k-point K is mapped to IBZ k-point k
+        either provided by user or given by GPAW calc.wfs.kd.bz2ibz_k
+        kpt_Kc: Optional for plotting; BZ k-point coordinates
+        from GPAW calc.wfs.kd.bzk_kc
 
     """
 
@@ -134,6 +139,7 @@ class ReciprocalSpace:
     def ibz2bz(self, delta_ibz_kn):
         "Mapping scalar IBZ k-points to BZ K-points"
         return np.array([delta_ibz_kn[k] for k in self.bz2ibz_K])
+
 
 def operators_from_calc(calc_bz):
     # Get the full BZ Hamiltonian
@@ -156,6 +162,7 @@ def operators_from_calc(calc_bz):
     #
     return H_kMM, S_kMM
 
+
 @dataclass
 class RealSpaceOperator:
     """ """
@@ -177,7 +184,6 @@ class RealSpaceOperator:
             operator_MM[:] = (operator_MM + operator_MM.T.conj()) / 2
 
         return ReciprocalLCAOOperator(kpt_kc, self.cell_cv, operator_kMM)
-
 
 
 @dataclass
@@ -239,7 +245,10 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
     calc_bz = calc_ibz.fixed_density(
         symmetry="off",
         **(
-            dict(nbands=shift_kn.shape[1], convergence={"bands": shift_kn.shape[1]})
+
+            dict(
+                nbands=shift_kn.shape[1],
+                convergence={"bands": shift_kn.shape[1]})
             if shift_kn is not None
             else {}
         ),
@@ -254,7 +263,11 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
 
     reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
     delta_Kn = reciprocal.ibz2bz(shift_kn)
-    scissor_kMM = ScissorOperator.from_operators(H_kMM, S_kMM, delta_Kn, s_power)
+    scissor_kMM = ScissorOperator.from_operators(
+        H_kMM,
+        S_kMM,
+        delta_Kn,
+        s_power)
     scissor_RMM = scissor_kMM.fourier_transform(
         cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c
     )
@@ -303,8 +316,8 @@ def create_bandstructure(
 
     scissor_power_bandpath_kMM = None
     if shift_kn is not None:
-        scissor_power_bandpath_kMM = scissor_power_RMM.inverse_fourier_transform(
-            bandpath.kpts
+        scissor_power_bandpath_kMM = (
+            scissor_power_RMM.inverse_fourier_transform(bandpath.kpts)
         )
     return bandstructure_from_reciprocal_operators(
         H_bandpath_kMM,
@@ -340,29 +353,26 @@ def match_kpoints_tol(kpts1_kc, kpts2_kc, tol=1e-12):
 
     return np.array(i1), np.array(i2)
 
+
 def plot_G0W0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
     import pickle
     results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
     delta_ibz_kn = (
-            results["qp"][0,:,:] - results["eps"][0,:,:]
+        results["qp"][0, :, :] - results["eps"][0, :, :]
     )
     bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
-
-
-    cutoff = 100 
+    cutoff = 100
     bandstructure_plot(
-            calc_gs,
-            bandpath,
-            cutoff=cutoff,
-            delta_ibz_kn=delta_ibz_kn,
-            emin=-10,
-            emax=20,
-            filename=f"bs.png",
-            plot_also_unshifted=True,
+        calc_gs,
+        bandpath,
+        cutoff=cutoff,
+        delta_ibz_kn=delta_ibz_kn,
+        emin=-10,
+        emax=20,
+        filename="bs.png",
+        plot_also_unshifted=True,
     )
     plt.clf()
-
-
 
 
 def bandstructure_plot(
@@ -417,7 +427,11 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         exact_ibz_eps_kn = np.array(
             [
                 np.linalg.eigvalsh(
-                    np.diag(calc_ibz.get_eigenvalues(kpt=kpt)[: delta_ibz_kn.shape[1]])
+                    np.diag(
+                        calc_ibz.get_eigenvalues(kpt=kpt)[
+                            : delta_ibz_kn.shape[1]
+                        ]
+                    )
                     + delta_ibz_kn[kpt]
                 )
                 for kpt in range(len(k_ibz_kc))
@@ -427,7 +441,11 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
     k_bz_kc = reciprocal.kpt_Kc
     exact_bz_eps_kn = reciprocal.ibz2bz(exact_ibz_eps_kn)
 
-    no_shift_bs = create_bandstructure(calc_ibz, bandpath, cutoff=cutoff, shift_kn=None)
+    no_shift_bs = create_bandstructure(
+        calc_ibz,
+        bandpath,
+        cutoff=cutoff,
+        shift_kn=None)
 
     bs_no_FT = create_non_FT_bandstructure(calc_ibz, bandpath)
 
@@ -508,7 +526,12 @@ def bandstructure_from_reciprocal_operators(
 
 
 def bandstructure_from_realspace(
-    H_RMM, S_RMM, bandpath, reference=0, correction_power_RMM=None, s_power=1 / 2
+    H_RMM,
+    S_RMM,
+    bandpath,
+    reference=0,
+    correction_power_RMM=None,
+    s_power=1 / 2
 ):
     H_kMM = H_RMM.inverse_fourier_transform(bandpath.kpts)
     S_kMM = S_RMM.inverse_fourier_transform(bandpath.kpts)
@@ -554,7 +577,8 @@ class BandStructureInterpolationPlot:
         from ase.spectrum.band_structure import BandStructurePlot
 
         bsp_shifted_fromRSpace = BandStructurePlot(self.bs_shifted_fromRSpace)
-        ax = bsp_shifted_fromRSpace.plot(show=False, emin=emin, emax=emax, colors="k")
+        ax = bsp_shifted_fromRSpace.plot(
+            show=False, emin=emin, emax=emax, colors="k")
 
         if plot_also_unshifted:
             bsp_unshifted = BandStructurePlot(self.no_shift_bs)
@@ -562,7 +586,12 @@ class BandStructureInterpolationPlot:
 
         if plot_also_non_FT:
             bsp_no_FT = BandStructurePlot(self.bs_no_FT)
-            bsp_no_FT.plot(ax=ax, emin=emin, emax=emax, colors="r", linestyle="dashed")
+            bsp_no_FT.plot(
+                ax=ax,
+                emin=emin,
+                emax=emax,
+                colors="r",
+                linestyle="dashed")
 
         point_x_kn = np.repeat(
             bsp_shifted_fromRSpace.xcoords[self.bp_ind, None],
