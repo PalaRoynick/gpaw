@@ -9,7 +9,7 @@ globals().update(runpy.run_path(tasks_path))
 def workflow(runner):
     from ase.build import bulk
     wf = MaterialsWorkflow(  # noqa: F821
-        atoms=bulk('Si'),
+        atoms=bulk('Si', a=4.0),
         calculator={'mode': 'pw',
                     'kpts': (4, 4, 4),
                     'txt': 'gpaw.txt'})
