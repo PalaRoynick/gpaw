@@ -286,17 +286,17 @@ we use the ``Collect`` object. To use it we will create a new file called ``coll
 
 .. literalinclude:: collect.py
 
-This code collects all the relax tasks in a list of ``records`` objects. This object has 
+This code collects all the relax tasks in a list of ``record`` objects. This object has 
 several attributes that are of use to us
 
-* `record.name`: task name relative to the repository tree.
-* `record.directory`: path to the task directory.
-* `record.inputs`: decoded task inputs, if all parents are available.
-* `record.output`: decoded task output, or `None` if no output is available.
-* `record.state`: task state.
+* *record.name*: task name relative to the repository tree.
+* *record.directory*: path to the task directory.
+* *record.inputs*: decoded task inputs, if all parents are available.
+* *record.output*: decoded task output, or `None` if no output is available.
+* *record.state*: task state.
 
 So in the above example we access the output of the tasks which are the relaxed atoms objects. 
 As an exercise modify the above script to also extract unrelaxed atoms which are passed onto 
 the relax task and compare them. 
 
-`Hint:` Check what type ``record.input`` is
+*Hint:* Check what type ``r.input`` is
