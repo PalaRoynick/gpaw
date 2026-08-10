@@ -7,7 +7,6 @@ kpts_grid = (3, 3, 3)
 # snippet-pw-groundstate-start
 from gpaw import GPAW, FermiDirac
 from gpaw import PW
-from gpaw.utilities.bs_fi import  plot_G0W0_bandstructure
 
 
 print(len(atoms))
@@ -50,7 +49,7 @@ direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-pw-direct-gap-end
 
-kpts_grid = (4,4,4)
+kpts_grid = (4, 4, 4)
 # snippet-lcao-groundstate-start
 calc = GPAW(mode="lcao",   # student mode lcao
             basis="dzp",   # basis set dzp
@@ -75,7 +74,7 @@ dft.write_gpw_file('Si_pw_from_lcao_groundstate.gpw', include_wfs=True)
 # snippet-lcao-to-pw-end
 
 nbands = 26
-bands = (0,8)
+bands = (0, 8)
 ecut = 20.0
 
 # snippet-lcao-g0w0-start
@@ -97,7 +96,7 @@ print('Direct bandgap of Si:', direct_gap)
 
 #needs full number of bands for trafo to realspace
 nbands = 26
-bands = (0,26)
+bands = (0, 26)
 ecut = 20.0
 
 gw = G0W0(calc='Si_pw_from_lcao_groundstate.gpw',
@@ -114,4 +113,3 @@ from gpaw.utilities.bs_fi import plot_G0W0_bandstructure
 bandpath = calc.atoms.cell.bandpath(npoints=250)
 plot_G0W0_bandstructure(calc, bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
 # snippet-lcao-plot-end
-
