@@ -93,7 +93,7 @@ class LCAOOperator:
 class GPAWLCAOOperator(LCAOOperator):
     """Construct"""
 
-    calc_bz: GPAW
+    calc_bz: object
 
     @property
     def operator_kMM(self):
@@ -563,7 +563,7 @@ class BandStructureInterpolationPlot:
     no_shift_bs: object
     k_bz_kc: np.ndarray
     bp_ind: np.ndarray
-    point_e_kn: np.array
+    point_e_kn: np.ndarray
     calc_ibz: object
 
     def plot(
