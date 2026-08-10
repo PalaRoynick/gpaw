@@ -94,7 +94,7 @@ direct_gap = results['qp'][0, 0, 4] - results['qp'][0, 0, 3]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
 
-#needs full number of bands for trafo to realspace
+# needs full number of bands for trafo to realspace
 nbands = 26
 bands = (0, 26)
 ecut = 20.0
