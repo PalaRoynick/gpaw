@@ -6,7 +6,10 @@ from gpaw import GPAW, restart
 from gpaw.atom.basis import BasisMaker
 from gpaw.lcao.tools import get_lcao_hamiltonian
 from gpaw.mpi import world
-from gpaw.utilities.bs_fi import create_bandstructure, create_non_FT_bandstructure
+from gpaw.utilities.bs_fi import (
+    create_bandstructure,
+    create_non_FT_bandstructure,
+)
 
 
 def test_lcao_lcao_hamiltonian(in_tmp_dir, add_cwd_to_setup_paths):
@@ -77,5 +80,5 @@ def test_bandstructure_interpolation_uses_exact_lcao_matrices(
         cutoff=5,
         shift_kn=shift_kn,
     )
-    assert bs_from_zero_shift.energies == pytest.approx(bs_direct.energies,
-                                                        abs=1e-10)
+    assert bs_from_zero_shift.energies == pytest.approx(
+        bs_direct.energies, abs=1e-10)
