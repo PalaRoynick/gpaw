@@ -355,7 +355,7 @@ def get_atomic_dens_lebedev(D_sp: Array2D, xcc: PAWXCCorrection) -> Array3D:
 
 VALID_WEIGHTS = (
     "uniform", "zero", "density_sqrt", "density", "density_squared",
-    "inverse_density", "inverse_density_squared", "mask", "fr"
+    "inverse_density", "inverse_total_density", "inverse_density_squared", "mask", "fr"
 )
 
 
@@ -381,6 +381,8 @@ def name_to_weight(weights, n_sg):
         weights_sg[:] = n_sg**2
     elif weights == "inverse_density":
         weights_sg[:] = 1.0 / (n_sg + 1e-6)
+    elif weights == "inverse_total_density":
+        weights_sg[:] = 1.0 / (n_sg.sum(axis=0) + 1e-6)
     elif weights == "inverse_density_squared":
         weights_sg[:] = 1.0 / (n_sg**2 + 1e-12)
     elif weights == "mask":
@@ -471,6 +473,7 @@ def get_weights(
 def get_core_regularization_weights(setups, power=1):
     """
         w = n_c / max(n_c)
+        if n_c == 0 the weights are only one for regions r <= 2rcut
     """
     w_ag = {}
     for a, setup in enumerate(setups):
@@ -483,8 +486,10 @@ def get_core_regularization_weights(setups, power=1):
         if max_nc > 1e-6:
             w_ag[a] = (nc_g / max_nc)**power
         else:
-            w_ag[a] = np.zeros_like(nc_g)
-
+            w = np.zeros_like(nc_g)
+            rcut2 = 2 * max(setup.rcut_j)
+            w[xcc.rgd.r_g <= 2 * rcut2] = 1.0
+            w_ag[a] = w
     return w_ag
 
 
