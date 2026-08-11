@@ -332,13 +332,13 @@ Tagging tasks
 
 When the workflow becomes complex and we have many different types of tasks, then we might want to 
 control that some big tasks get picked up by workers with a lot of resources and small simple tasks 
-det picked up by small workers. This can be done with tags. Firstly we will submit all the rest of the 
-tasks, but the bandpath is a simple calculation that does not need a lot of cores compare to calculating 
+get picked up by small workers. This can be done with tags. Firstly we will submit all the rest of the 
+tasks, but the bandpath is a simple calculation that does not need a lot of cores compared to calculating 
 the actual band structure. We will tag the bandpath tasks serial with 
-``tb tag tree/*/bandpath --add serial``. After that tag the bandstructure tasks with parallel. When 
+``tb tag tree/*/bandpath --add serial``. After that, tag the bandstructure tasks with parallel. When 
 submitting workers now we will use the ``--require`` flag to tell the worker that it can only pick up 
-tasks that have the given tag. Submit a worker with 1 core and ``--require serial``. This workers will 
-do all the bandpath tasks, but once they are done the only available tasks have another tag an as such 
+tasks that have the given tag. Submit a worker with 1 core and ``--require serial``. This worker will 
+do all the bandpath tasks, but once they are done the only available tasks have different tags. Thus 
 the worker will end. Also submit a couple of workers with 8 cores and the parallel tag.
 
 *Hint:* On most HPC clusters it is easier to get a job running if the time allocated is small. So 
