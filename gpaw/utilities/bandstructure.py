@@ -4,7 +4,6 @@ from ase.spectrum.band_structure import BandStructure
 # Future TODO: def bandstructure_interpolate(calc, bandpath, shift_kn):
 from dataclasses import dataclass
 import scipy.linalg
-from ase import Atoms
 import scipy
 import matplotlib.pyplot as plt
 from gpaw.calculator import GPAW
@@ -48,15 +47,12 @@ class LCAOOperator:
             operator_KMM.append(self.get_operator(k))
         return operator_KMM
 
-    def fourier_transform(self, cutoff, N_c, atoms=None):
+    def fourier_transform(self, cutoff, N_c, atoms):
         operator_KMM = np.array(self.construct())
 
         from ase.neighborlist import NeighborList
 
-        if atoms is None:
-            atoms = Atoms("H", cell=self.cell_cv, pbc=True)
-        else:
-            assert np.allclose(self.cell_cv, atoms.cell)
+        assert np.allclose(self.cell_cv, atoms.cell)
 
         cutoffs = [cutoff / 2] * len(atoms)
         nl = NeighborList(cutoffs, self_interaction=True, bothways=True)
@@ -82,9 +78,9 @@ class LCAOOperator:
 
         return RealSpaceOperator(self.cell_cv, offsets_Rc, operator_RMM)
 
-    def fourier_interpolate(self, higher_k_mesh, cutoff, N_c):
+    def fourier_interpolate(self, higher_k_mesh, cutoff, N_c, atoms):
         # Take kMM operator, and convert to real space
-        operator_RMM = self.fourier_transform(cutoff, N_c)
+        operator_RMM = self.fourier_transform(cutoff, N_c, atoms)
         # Convert back to fourier space with higher k-mesh
         return operator_RMM.inverse_fourier_transform(higher_k_mesh)
 
