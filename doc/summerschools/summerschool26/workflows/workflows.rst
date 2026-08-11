@@ -298,7 +298,55 @@ to execute them.
 Feel free to expand the selection of materials on which the workflow runs.
 
 
-Part 4: Extract data from a workflow
+Part 4: Submitting workers
+====================================================
+
+So far we have been running our calculations with crude parameters so that the calculations finish 
+quickly. If we want to calculate our material properties more accurately we'll have 
+to increase the parameters. But quickly the computational cost becomes to high to do locally, 
+and when we run ``tb run .``, it only runs one task at a time. To really test this, unrun all 
+the relax tasks with ``tb unrun tree/*/relax``. This will also unrun all the tasks that depend on 
+the relaxed structures. Then change the calculator parameter to something that gives more accurate 
+results and run ``tb workflow workflow.py``. For example:
+
+.. code-block:: python
+   
+   calculator = {'mode': 'pw',
+                 'ecut': 800,
+                 'xc': 'pbe',
+                 'kpts': {'density': 8.0},
+                 'txt': 'gpaw.txt'}
+
+So fare we have only encountered three states that the tasks can be in; new, done and failed. Now we 
+will need a fourth state, submitted. We need that because in taskblaster you don't submit a single 
+task to a cluster. You submit a worker and this worker then picks up tasks to be computed. The workers 
+only pick up tasks that have been submitted. To submit the relax tasks run ``tb submit tree/*/relax``. 
+Running ``tb ls`` you should see that the atoms tasks are done, the relax tasks are queued and 
+rest are in the new state.
+
+Basic structure of submitting a worker is ``tb workers submit -R [cores]:[time]`` and one can then 
+submit many of these workers and they will start picking up queued tasks. 
+
+Tagging tasks
+-------------
+
+When the workflow becomes complex and we have many different types of tasks, then we might want to 
+control that some big tasks get picked up by workers with a lot of resources and small simple tasks 
+get picked up by small workers. This can be done with tags. Firstly we will submit all the rest of the 
+tasks, but the bandpath is a simple calculation that does not need a lot of cores compared to calculating 
+the actual band structure. We will tag the bandpath tasks serial with 
+``tb tag tree/*/bandpath --add serial``. After that, tag the bandstructure tasks with parallel. When 
+submitting workers now we will use the ``--require`` flag to tell the worker that it can only pick up 
+tasks that have the given tag. Submit a worker with 1 core and ``--require serial``. This worker will 
+do all the bandpath tasks, but once they are done the only available tasks have different tags. Thus 
+the worker will end. Also submit a couple of workers with 8 cores and the parallel tag.
+
+*Hint:* On most HPC clusters it is easier to get a job running if the time allocated is small. So 
+it can be an advantage to try and guess how little time one needs. For example if you expect a task 
+to take 30 min then submit it with 1 hour of time instead of 1 day.
+
+
+Part 5: Extract data from a workflow
 ====================================================
 
 Sometimes we want to extract the data from a workflow into a single file. Maybe we 
