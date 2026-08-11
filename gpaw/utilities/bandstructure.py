@@ -16,7 +16,7 @@ def mpower(O_MM, power):
         return scipy.linalg.sqrtm(O_MM)
     elif power == 1:
         return O_MM
-    raise ValueError("Provided s_power is not implemented. Use 1, 1/2 or 0.")
+    raise ValueError('Provided s_power is not implemented. Use 1, 1/2 or 0.')
 
 
 @dataclass
@@ -239,12 +239,12 @@ class ReciprocalLCAOOperator(LCAOOperator):
 def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
     # Setup BZ operators needed to interpolate the scissor correction.
     calc_bz = calc_ibz.fixed_density(
-        symmetry="off",
+        symmetry='off',
         **(
 
             dict(
                 nbands=shift_kn.shape[1],
-                convergence={"bands": shift_kn.shape[1]})
+                convergence={'bands': shift_kn.shape[1]})
             if shift_kn is not None
             else {}
         ),
@@ -274,10 +274,10 @@ def exact_lcao_operators(calc, kpts, shift_kn=None):
     kwargs = {}
     if shift_kn is not None:
         nbands = shift_kn.shape[1]
-        kwargs.update(nbands=nbands, convergence={"bands": nbands})
+        kwargs.update(nbands=nbands, convergence={'bands': nbands})
 
     calc_bandpath = calc.fixed_density(
-        symmetry="off",
+        symmetry='off',
         kpts=kpts,
         **kwargs,
     )
@@ -325,7 +325,7 @@ def create_bandstructure(
 
 
 def create_non_ft_bandstructure(calc, bandpath):
-    calc_bz = calc.fixed_density(symmetry="off", kpts=bandpath.kpts)
+    calc_bz = calc.fixed_density(symmetry='off', kpts=bandpath.kpts)
     eps_kn = []
     for kpt in range(len(bandpath.kpts)):
         eps_n = calc_bz.get_eigenvalues(kpt=kpt)
@@ -354,7 +354,7 @@ def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
     import pickle
     results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
     delta_ibz_kn = (
-        results["qp"][0, :, :] - results["eps"][0, :, :]
+        results['qp'][0, :, :] - results['eps'][0, :, :]
     )
     bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
     cutoff = 100
@@ -365,7 +365,7 @@ def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
         delta_ibz_kn=delta_ibz_kn,
         emin=-10,
         emax=20,
-        filename="bs.png",
+        filename='bs.png',
         plot_also_unshifted=True,
     )
     plt.clf()
@@ -378,7 +378,7 @@ def bandstructure_plot(
     delta_ibz_kn=None,
     emin=-10,
     emax=5,
-    filename="bs.png",
+    filename='bs.png',
     plot_also_unshifted=True,
     plot_also_non_FT=False,
     s_power=1 / 2,
@@ -404,7 +404,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         shift_kn=delta_ibz_kn,
         s_power=s_power,
     )
-    bs_shifted_fromRSpace.write(f"bs_fromRSpace_{cutoff}.json")
+    bs_shifted_fromRSpace.write(f'bs_fromRSpace_{cutoff}.json')
     reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
 
     k_ibz_kc = calc_ibz.get_ibz_k_points()
@@ -566,7 +566,7 @@ class BandStructureInterpolationPlot:
         self,
         emin=-10,
         emax=5,
-        filename="bs.png",
+        filename='bs.png',
         plot_also_unshifted=True,
         plot_also_non_FT=False,
     ):
@@ -574,11 +574,11 @@ class BandStructureInterpolationPlot:
 
         bsp_shifted_fromRSpace = BandStructurePlot(self.bs_shifted_fromRSpace)
         ax = bsp_shifted_fromRSpace.plot(
-            show=False, emin=emin, emax=emax, colors="k")
+            show=False, emin=emin, emax=emax, colors='k')
 
         if plot_also_unshifted:
             bsp_unshifted = BandStructurePlot(self.no_shift_bs)
-            bsp_unshifted.plot(ax=ax, emin=emin, emax=emax, colors="b")
+            bsp_unshifted.plot(ax=ax, emin=emin, emax=emax, colors='b')
 
         if plot_also_non_FT:
             bsp_no_FT = BandStructurePlot(self.bs_no_FT)
@@ -586,8 +586,8 @@ class BandStructureInterpolationPlot:
                 ax=ax,
                 emin=emin,
                 emax=emax,
-                colors="r",
-                linestyle="dashed")
+                colors='r',
+                linestyle='dashed')
 
         point_x_kn = np.repeat(
             bsp_shifted_fromRSpace.xcoords[self.bp_ind, None],
@@ -599,11 +599,11 @@ class BandStructureInterpolationPlot:
             point_x_kn.ravel(),
             self.point_e_kn.ravel(),
             s=16,
-            facecolors="none",
-            edgecolors="k",
+            facecolors='none',
+            edgecolors='k',
             linewidths=0.7,
-            label="Exact mesh values",
+            label='Exact mesh values',
         )
-        ax.legend(loc="best")
-        ax.figure.savefig(filename, dpi=300, bbox_inches="tight")
+        ax.legend(loc='best')
+        ax.figure.savefig(filename, dpi=300, bbox_inches='tight')
         return ax
