@@ -110,7 +110,7 @@ gw.calculate()
 
 
 # snippet-lcao-plot-start
-from gpaw.utilities.bs_fi import plot_G0W0_bandstructure
+from gpaw.utilities.bandstructure import plot_g0w0_bandstructure
 bandpath = calc.atoms.cell.bandpath(npoints=250)
-plot_G0W0_bandstructure(calc, bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
+plot_g0w0_bandstructure(calc, bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
 # snippet-lcao-plot-end

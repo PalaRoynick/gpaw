@@ -328,7 +328,7 @@ def create_bandstructure(
     )
 
 
-def create_non_FT_bandstructure(calc, bandpath):
+def create_non_ft_bandstructure(calc, bandpath):
     calc_bz = calc.fixed_density(symmetry="off", kpts=bandpath.kpts)
     eps_kn = []
     for kpt in range(len(bandpath.kpts)):
@@ -354,7 +354,7 @@ def match_kpoints_tol(kpts1_kc, kpts2_kc, tol=1e-12):
     return np.array(i1), np.array(i2)
 
 
-def plot_G0W0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
+def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
     import pickle
     results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
     delta_ibz_kn = (
@@ -447,7 +447,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         cutoff=cutoff,
         shift_kn=None)
 
-    bs_no_FT = create_non_FT_bandstructure(calc_ibz, bandpath)
+    bs_no_FT = create_non_ft_bandstructure(calc_ibz, bandpath)
 
     bp_ind, mesh_ind = match_kpoints_tol(bandpath.kpts, k_bz_kc)
     point_e_kn = exact_bz_eps_kn[mesh_ind]

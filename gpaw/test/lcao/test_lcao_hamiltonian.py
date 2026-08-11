@@ -6,9 +6,9 @@ from gpaw import GPAW, restart
 from gpaw.atom.basis import BasisMaker
 from gpaw.lcao.tools import get_lcao_hamiltonian
 from gpaw.mpi import world
-from gpaw.utilities.bs_fi import (
+from gpaw.utilities.bandstructure import (
     create_bandstructure,
-    create_non_FT_bandstructure,
+    create_non_ft_bandstructure,
 )
 
 
