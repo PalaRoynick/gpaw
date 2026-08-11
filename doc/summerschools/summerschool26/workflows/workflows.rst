@@ -232,7 +232,7 @@ Part 3: Parametrize workflow over multiple materials
 Before continuing to work on our materials workflow it is instructive to go through the 
 `“Workflow generator and for loops” <https://taskblaster.readthedocs.io/en/latest/tutorial/wf_generator/wf_generator.html>`_ 
 tutorial in Taskblasters documentation. Once we have done that, we can then use dynamical 
-workflows to parametrize our workflow over many materials for high-troughput calculations.
+workflows to parametrize our workflow over many materials for high-throughput calculations.
 
 We next want to run the workflow to generate all the tasks for later
 submission using myqueue or slurm.
@@ -289,7 +289,7 @@ to increase the parameters. But quickly the computational cost becomes to high t
 and when we run ``tb run .``, it only runs one task at a time. To really test this, unrun all 
 the relax tasks with ``tb unrun tree/*/relax``. This will also unrun all the tasks that depend on 
 the relaxed structures. Then change the calculator parameter to something that gives more accurate 
-results. For example:
+results and run ``tb workflow workflow.py``. For example:
 
 .. code-block:: python
    
@@ -309,11 +309,23 @@ rest are in the new state.
 Basic structure of submitting a worker is ``tb workers submit -R [cores]:[time]`` and one can then 
 submit many of these workers and they will start picking up queued tasks. 
 
-[How to use tags]
+Tagging tasks
+-------------
+
+When the workflow becomes complex and we have many different types of tasks, then we might want to 
+control that some big tasks get picked up by workers with a lot of resources and small simple tasks 
+det picked up by small workers. This can be done with tags. Firstly we will submit all the rest of the 
+tasks, but the bandpath is a simple calculation that does not need a lot of cores compare to calculating 
+the actual band structure. We will tag the bandpath tasks serial with 
+``tb tag tree/*/bandpath --add serial``. After that tag the bandstructure tasks with parallel. When 
+submitting workers now we will use the ``--require`` flag to tell the worker that it can only pick up 
+tasks that have the given tag. Submit a worker with 1 core and ``--require serial``. This workers will 
+do all the bandpath tasks, but once they are done the only available tasks have another tag an as such 
+the worker will end. Also submit a couple of workers with 8 cores and the parallel tag.
 
 *Hint:* On most HPC clusters it is easier to get a job running if the time allocated is small. So 
 it can be an advantage to try and guess how little time one needs. For example if you expect a task 
-to take 30 min then submit it with time 1 hour of time instead of 1 day.
+to take 30 min then submit it with 1 hour of time instead of 1 day.
 
 
 Part 5: Extract data from a workflow
