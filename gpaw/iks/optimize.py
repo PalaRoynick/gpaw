@@ -403,6 +403,8 @@ class iKSLBFGS:
         self.gauge = gauge
         self.wolfe = wolfe
         self.world = iks.hamiltonian.world
+        self.armijo_alpha = 2.0
+        self.armijo_successes = 0
 
         self.s_hist: deque[PotState] = deque(maxlen=m)
         self.y_hist: deque[PotState] = deque(maxlen=m)
@@ -464,6 +466,7 @@ class iKSLBFGS:
             gamma = 1.0
         r = q
         r *= gamma
+        self.iks.fmt.log(f'LBFGS gamma={gamma:.5e}')
         alpha_list.reverse()
         for alpha_i, (s_i, y_i, rho_i) in zip(alpha_list,
                                               zip(self.s_hist, self.y_hist, self.rho_hist)):
@@ -702,6 +705,57 @@ class iKSLBFGS:
 
         return (x.copy(), gk.copy(), L0, LD0, 0.0, False)
 
+    # def line_search_armijo(self, x: PotState, gk: PotState, pk: PotState,
+    #                        L0: float, LD0: float, phi0: float, dphi0: float,
+    #                        c1: float = 1e-4, tau: float = 0.5,
+    #                        max_ls: int = 15) -> tuple[PotState, PotState, float, float, float, bool]:
+    #     """Backtracking line search satisfying the Armijo condition."""
+    #     iks = self.iks
+    #
+    #     assert 0.0 < c1 < 1.0 and 0.0 < tau < 1.0
+    #
+    #     if not np.isfinite(dphi0) or dphi0 >= 0.0:
+    #         iks.fmt.log(
+    #             'Armijo line search received a non-descent direction: '
+    #             f'dphi0={dphi0:.5e}')
+    #
+    #         self.set_potentials_and_iterate(x)
+    #
+    #         return x.copy(), gk.copy(), L0, LD0, 0.0, False
+    #
+    #     alpha = 1.0
+    #
+    #     for il in range(max_ls):
+    #         x_new = x + alpha * pk
+    #         self.set_potentials_and_iterate(x_new)
+    #
+    #         self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
+    #         phi_new = float(L_new + LD_new)
+    #
+    #         iks.fmt.log(
+    #             f'line search {il}: '
+    #             f'alpha={alpha:.5e}, '
+    #             f'phi={phi_new:.5e}')
+    #
+    #         if np.isfinite(phi_new) and phi_new <= phi0 + c1 * alpha * dphi0:
+    #             J_sg, J_xasz, Jc_a = self.get_gradients()
+    #             g_new = PotState(
+    #                 J_sg, J_xasz, Jc_a, *self.potstate_args)
+    #             iks.fmt.log(
+    #                 f'Armijo condition satisfied: alpha={alpha:.5e}')
+    #
+    #             return (x_new.copy(), g_new.copy(),
+    #                     L_new, LD_new, alpha, True)
+    #
+    #         alpha *= tau
+    #         self.log_cbar(x_new)
+    #         iks.logiter(il, self.L1, L_new, self.LD1,
+    #                     LD_new, iks.jacobian(), sep='')
+    #     iks.fmt.log(
+    #         'Armijo line search failed; restoring current state.')
+    #     self.set_potentials_and_iterate(x)
+    #
+    #     return x.copy(), gk.copy(), L0, LD0, 0.0, False
     def line_search_armijo(self, x: PotState, gk: PotState, pk: PotState,
                            L0: float, LD0: float, phi0: float, dphi0: float,
                            c1: float = 1e-4, tau: float = 0.5,
@@ -717,14 +771,23 @@ class iKSLBFGS:
                 f'dphi0={dphi0:.5e}')
 
             self.set_potentials_and_iterate(x)
+            self.armijo_alpha = 1.0
+            self.armijo_successes = 0
 
             return x.copy(), gk.copy(), L0, LD0, 0.0, False
 
-        alpha = 1.0
+        alpha = self.armijo_alpha
 
         for il in range(max_ls):
             x_new = x + alpha * pk
-            self.set_potentials_and_iterate(x_new)
+            try:
+                self.set_potentials_and_iterate(x_new)
+            except ValueError as e:
+                # due to failure of scf / the step is too large!
+                iks.fmt.log(
+                    f'line search {il}: alpha={alpha:.5e}, invalid step: {e}')
+                alpha *= tau
+                continue
 
             self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
             phi_new = float(L_new + LD_new)
@@ -738,6 +801,18 @@ class iKSLBFGS:
                 J_sg, J_xasz, Jc_a = self.get_gradients()
                 g_new = PotState(
                     J_sg, J_xasz, Jc_a, *self.potstate_args)
+
+                if il == 0:
+                    self.armijo_successes += 1
+                    if self.armijo_successes >= 3:
+                        self.armijo_alpha = min((1.0 / tau) * alpha, 16.0)
+                        self.armijo_successes = 0
+                    else:
+                        self.armijo_alpha = alpha
+                else:
+                    self.armijo_alpha = alpha
+                    self.armijo_successes = 0
+
                 iks.fmt.log(
                     f'Armijo condition satisfied: alpha={alpha:.5e}')
 
@@ -748,9 +823,13 @@ class iKSLBFGS:
             self.log_cbar(x_new)
             iks.logiter(il, self.L1, L_new, self.LD1,
                         LD_new, iks.jacobian(), sep='')
+
         iks.fmt.log(
             'Armijo line search failed; restoring current state.')
         self.set_potentials_and_iterate(x)
+
+        self.armijo_alpha = 1.0
+        self.armijo_successes = 0
 
         return x.copy(), gk.copy(), L0, LD0, 0.0, False
 
