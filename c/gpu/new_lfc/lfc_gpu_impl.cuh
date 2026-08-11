@@ -7,8 +7,10 @@
 #include "spline_pool_gpu.cuh"
 #include "gpu/cpp/gpu_core.hpp"
 
-struct LFCGpuImpl
+class LFCGpuImpl
 {
+public:
+
     template<typename T>
     static void launch_add_to_density(
         const LFCGpu& lfc,
