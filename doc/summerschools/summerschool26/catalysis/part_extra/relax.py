@@ -6,7 +6,7 @@ from ase.io import read
 from gpaw import GPAW, PW
 
 
-for name in ['N2Ru-top.traj', '2Nads.traj']:
+for name in ['N2Ru.traj', '2Nads.traj']:
     slab = read(name)
 
     z = slab.positions[:, 2]
