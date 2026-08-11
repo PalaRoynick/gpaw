@@ -311,8 +311,7 @@ results and run ``tb workflow workflow.py``. For example:
 
 .. code-block:: python
    
-   calculator = {'mode': 'pw',
-                 'ecut': 800,
+   calculator = {'mode':{'name': 'pw', 'ecut': 800},
                  'xc': 'pbe',
                  'kpts': {'density': 8.0},
                  'txt': 'gpaw.txt'}
