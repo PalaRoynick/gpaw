@@ -285,8 +285,8 @@ Part 4: Submitting workers
 
 So far we have been running our calculations with crude parameters so that the calculations finish 
 quickly. If we want to calculate our material properties more accurately we'll have 
-to increase the parameters. But quickly the computational cost becomes to much to do locally 
-and when we run ``tb run .`` it only runs one task at a time. To really test this unrun all 
+to increase the parameters. But quickly the computational cost becomes to high to do locally, 
+and when we run ``tb run .``, it only runs one task at a time. To really test this, unrun all 
 the relax tasks with ``tb unrun tree/*/relax``. This will also unrun all the tasks that depend on 
 the relaxed structures. Then change the calculator parameter to something that gives more accurate 
 results. For example:
@@ -295,12 +295,13 @@ results. For example:
    
    calculator = {'mode': 'pw',
                  'ecut': 800,
+                 'xc': 'pbe',
                  'kpts': {'density': 8.0},
                  'txt': 'gpaw.txt'}
 
 So fare we have only encountered three states that the tasks can be in; new, done and failed. Now we 
 will need a fourth state, submitted. We need that because in taskblaster you don't submit a single 
-task to a cluser. You submit a worker and this worker then picks up tasks to be computed. The workers 
+task to a cluster. You submit a worker and this worker then picks up tasks to be computed. The workers 
 only pick up tasks that have been submitted. To submit the relax tasks run ``tb submit tree/*/relax``. 
 Running ``tb ls`` you should see that the atoms tasks are done, the relax tasks are queued and 
 rest are in the new state.
@@ -308,7 +309,9 @@ rest are in the new state.
 Basic structure of submitting a worker is ``tb workers submit -R [cores]:[time]`` and one can then 
 submit many of these workers and they will start picking up queued tasks. 
 
-*Hint:* One most HPC clusters it is easier to get a job running if the time allocated is small. So 
+[How to use tags]
+
+*Hint:* On most HPC clusters it is easier to get a job running if the time allocated is small. So 
 it can be an advantage to try and guess how little time one needs. For example if you expect a task 
 to take 30 min then submit it with time 1 hour of time instead of 1 day.
 
