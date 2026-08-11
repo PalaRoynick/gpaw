@@ -15,9 +15,8 @@ webpage <ase:selfdiffusion_example>`.
   :end-before: snippet-imports-end
 
 
-In NEB, we define an initial and a final state and will then optimize the
-reaction path between the two. We start by setting up the initial state and check that it looks ok:
-
+In NEB, an interpolation between an initial and a final state of a system is
+generated and optimized. We start by setting up the initial state and check that it looks ok: 
 
 .. literalinclude:: neb.py
   :start-after: snippet-setup-surface-start
@@ -32,7 +31,10 @@ Then, we optimize the structure and save it.
 
 
 Next, we make the final state by editing the relaxed initial stucture: the Au atom is moved by one
-lattice constant in the x-direction. We then optimize again and save the output.
+lattice constant in the x-direction. We then optimize again and save the output in a new trajectory file.
+
+Next, we generate the final state by taking the optimised initial state and altering it: the Au atom is moved 
+by one lattice constant along x-axis. We then optimize again and save the output.
 
 .. literalinclude:: neb.py
   :start-after: snippet-optimize-finalstate-start
@@ -46,7 +48,7 @@ final states. As always, we check that everything looks ok before we run the
 calculation.
 
 NOTE: The linear interpolation works well in this case but not for e.g.
-rotations. In this case an improved starting guess can be made with the
+rotations. In that case an improved starting guess can be made with the
 :ref:`IDPP method <neb_idpp_tutorial>`.
 
 .. literalinclude:: neb.py
@@ -120,9 +122,10 @@ Input parameters
 Some suitable parameters for the NEB are given below:
 
 * Use the same calculator and constraints as for the initial and final images,
-  but remember to set the ``communicator`` as described above
-* Use the total of 6 images, two endstates and 4 images in between,
-  by setting ``n_im=4``. This gives a reasonable description of the
+  but remember to set the ``communicator`` as described above.
+* Use the total of 6 images in the NEB calculation by setting ``n_im=4``
+  such that there are two images for the intial and the final states with 4 images
+  in between. This gives a reasonable description of the
   energy landscape and can be run e.g. on 12 cores.
 * Relax the initial NEB until ``fmax = 0.1`` eV/Å, then switch on
   the climbing image and relax until ``fmax = 0.05`` eV/Å.
