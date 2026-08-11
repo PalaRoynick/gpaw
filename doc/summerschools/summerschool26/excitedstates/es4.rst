@@ -3,7 +3,7 @@
 Inclusion of excitonic effects and Discussion
 =============================================
 
-Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for Si with 12x12x4 k-points along the x direction. 
+Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for Si with 8x8x8 k-points along the x direction. 
 
 
 .. literalinclude:: solution4.py
