@@ -1093,7 +1093,8 @@ Aug 1, 2019: :git:`19.8.0 <../19.8.0>`
   other convergence criteria (energy, eigenstates and density) are fulfilled.
   This can save a bit of time.
 
-* Experimental support for JTH_ PAW-datasets.
+* Experimental support for JTH_ PAW-datasets
+  (see also :git:`gpaw/utilities/jth.py`).
 
 * Fast C implementation of bond-length constraints and associated hidden
   constraints for water models. This allows efficient explicit solvent QMMM
@@ -1108,7 +1109,7 @@ Aug 1, 2019: :git:`19.8.0 <../19.8.0>`
 * Removed unnecessary application of H-operator in Davidson algorithm making
   it a bit faster.
 
-.. _JTH: https://www.abinit.org/psp-tables
+.. _JTH: https://www.abinit.org/atomic_data/paw/
 
 
 Version 1.5.2
