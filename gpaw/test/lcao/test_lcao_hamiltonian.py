@@ -68,7 +68,7 @@ def test_bandstructure_interpolation_uses_exact_lcao_matrices(
         cutoff=5,
         shift_kn=None,
     )
-    bs_direct = create_non_FT_bandstructure(calc, bandpath)
+    bs_direct = create_non_ft_bandstructure(calc, bandpath)
 
     assert bs_from_matrices.energies == pytest.approx(bs_direct.energies,
                                                       abs=1e-10)
