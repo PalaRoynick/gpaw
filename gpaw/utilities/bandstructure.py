@@ -94,8 +94,7 @@ class GPAWLCAOOperator(LCAOOperator):
     @property
     def operator_kMM(self):
         return np.array(
-            [self.get_operator(k) for k in range(len(self.calc_bz.wfs.kpt_u))]
-        )
+            [self.get_operator(k) for k in range(len(self.calc_bz.wfs.kpt_u))])
 
     @classmethod
     def create(cls, calc_bz, **kwargs):
@@ -106,8 +105,7 @@ class GPAWLCAOOperator(LCAOOperator):
 
     def get_operator(self, k: int):
         return self.build(
-            self.calc_bz.wfs.kpt_u[k].S_MM, self.calc_bz.wfs.kpt_u[k].C_nM, k
-        )
+            self.calc_bz.wfs.kpt_u[k].S_MM, self.calc_bz.wfs.kpt_u[k].C_nM, k)
 
     def build(self, S_MM, C_nM, u):
         raise NotImplementedError
@@ -148,14 +146,12 @@ def operators_from_calc(calc_bz):
     cell_cv = calc_bz.atoms.cell
     hamiltonian_kMM = H_skMM[0]
     H_kMM = ReciprocalLCAOOperator(
-        kpt_kc=k_bz, cell_cv=cell_cv, operator_kMM=hamiltonian_kMM
-    )
-    #
+        kpt_kc=k_bz, cell_cv=cell_cv, operator_kMM=hamiltonian_kMM)
+
     overlap_kMM = S_kMM
     S_kMM = ReciprocalLCAOOperator(
-        kpt_kc=k_bz, cell_cv=cell_cv, operator_kMM=overlap_kMM
-    )
-    #
+        kpt_kc=k_bz, cell_cv=cell_cv, operator_kMM=overlap_kMM)
+
     return H_kMM, S_kMM
 
 
@@ -206,8 +202,7 @@ class ScissorOperator(GPAWLCAOOperator):
             S_MM = S_kMM.operator_kMM[k]
             S_MM_pow = mpower(S_MM, s_power)
             e_n, C_Mn = scipy.linalg.eigh(
-                H_MM, S_MM
-            )  # this here is C_Mn not C_nM thats why
+                H_MM, S_MM)  # this here is C_Mn not C_nM thats why
             C_Mn = C_Mn[:, : delta_Kn.shape[1]]
             X_nM = C_Mn.conj().T @ S_MM_pow
             delta = delta_Kn[k]
@@ -218,8 +213,7 @@ class ScissorOperator(GPAWLCAOOperator):
         return ReciprocalLCAOOperator(
             kpt_kc=H_kMM.kpt_kc,
             cell_cv=H_kMM.cell_cv,
-            operator_kMM=np.array(scissor_kMM),
-        )
+            operator_kMM=np.array(scissor_kMM))
 
 
 @dataclass
@@ -246,9 +240,7 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
                 nbands=shift_kn.shape[1],
                 convergence={'bands': shift_kn.shape[1]})
             if shift_kn is not None
-            else {}
-        ),
-    )
+            else {}))
 
     scissor_RMM = None
     if shift_kn is None:
@@ -265,8 +257,7 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
         delta_Kn,
         s_power)
     scissor_RMM = scissor_kMM.fourier_transform(
-        cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c
-    )
+        cutoff=cutoff, atoms=calc_bz.atoms, N_c=N_c)
     return calc_bz, scissor_RMM
 
 
@@ -279,21 +270,18 @@ def exact_lcao_operators(calc, kpts, shift_kn=None):
     calc_bandpath = calc.fixed_density(
         symmetry='off',
         kpts=kpts,
-        **kwargs,
-    )
+        **kwargs)
     H_kMM, S_kMM = operators_from_calc(calc_bandpath)
     assert np.allclose(H_kMM.kpt_kc, kpts)
     assert np.allclose(S_kMM.kpt_kc, kpts)
     return H_kMM, S_kMM
 
 
-def create_bandstructure(
-    calc,
-    bandpath,
-    cutoff=13,
-    shift_kn=None,
-    s_power=1 / 2,
-):
+def create_bandstructure(calc,
+                         bandpath,
+                         cutoff=13,
+                         shift_kn=None,
+                         s_power=1 / 2):
 
     scissor_power_RMM = None
     if shift_kn is not None:
@@ -301,27 +289,23 @@ def create_bandstructure(
             calc,
             cutoff=cutoff,
             shift_kn=shift_kn,
-            s_power=s_power,
-        )
+            s_power=s_power)
 
     H_bandpath_kMM, S_bandpath_kMM = exact_lcao_operators(
         calc,
         bandpath.kpts,
-        shift_kn=shift_kn,
-    )
+        shift_kn=shift_kn)
 
     scissor_power_bandpath_kMM = None
     if shift_kn is not None:
         scissor_power_bandpath_kMM = (
-            scissor_power_RMM.inverse_fourier_transform(bandpath.kpts)
-        )
+            scissor_power_RMM.inverse_fourier_transform(bandpath.kpts))
     return bandstructure_from_reciprocal_operators(
         H_bandpath_kMM,
         S_bandpath_kMM,
         bandpath,
         correction_power_kMM=scissor_power_bandpath_kMM,
-        s_power=s_power,
-    )
+        s_power=s_power)
 
 
 def create_non_ft_bandstructure(calc, bandpath):
@@ -332,8 +316,7 @@ def create_non_ft_bandstructure(calc, bandpath):
         eps_kn.append(eps_n)
     eps_kn = np.array(eps_kn)
     band_structure = BandStructure(
-        path=bandpath, energies=eps_kn[np.newaxis, :, :], reference=0
-    )
+        path=bandpath, energies=eps_kn[np.newaxis, :, :], reference=0)
     return band_structure
 
 
@@ -354,8 +337,7 @@ def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
     import pickle
     results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
     delta_ibz_kn = (
-        results['qp'][0, :, :] - results['eps'][0, :, :]
-    )
+        results['qp'][0, :, :] - results['eps'][0, :, :])
     bandpath = calc_gs.atoms.cell.bandpath(npoints=250)
     cutoff = 100
     bandstructure_plot(
@@ -366,34 +348,29 @@ def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
         emin=-10,
         emax=20,
         filename='bs.png',
-        plot_also_unshifted=True,
-    )
+        plot_also_unshifted=True)
     plt.clf()
 
 
-def bandstructure_plot(
-    calc_ibz,
-    bandpath,
-    cutoff=14,
-    delta_ibz_kn=None,
-    emin=-10,
-    emax=5,
-    filename='bs.png',
-    plot_also_unshifted=True,
-    plot_also_non_FT=False,
-    s_power=1 / 2,
-):
+def bandstructure_plot(calc_ibz,
+                       bandpath,
+                       cutoff=14,
+                       delta_ibz_kn=None,
+                       emin=-10,
+                       emax=5,
+                       filename='bs.png',
+                       plot_also_unshifted=True,
+                       plot_also_non_FT=False,
+                       s_power=1 / 2):
 
     bs_interpolate_fromRspace = bandstructure(
-        calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=s_power
-    )
+        calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=s_power)
     return bs_interpolate_fromRspace.plot(
         emin=emin,
         emax=emax,
         filename=filename,
         plot_also_unshifted=plot_also_unshifted,
-        plot_also_non_FT=plot_also_non_FT,
-    )
+        plot_also_non_FT=plot_also_non_FT)
 
 
 def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
@@ -402,8 +379,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         bandpath=bandpath,
         cutoff=cutoff,
         shift_kn=delta_ibz_kn,
-        s_power=s_power,
-    )
+        s_power=s_power)
     bs_shifted_fromRSpace.write(f'bs_fromRSpace_{cutoff}.json')
     reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
 
@@ -416,9 +392,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
                     : delta_ibz_kn.shape[1]
                 ]  # if eps_kn more bands than correction
                 + delta_ibz_kn[kpt]
-                for kpt in range(len(k_ibz_kc))
-            ]
-        )
+                for kpt in range(len(k_ibz_kc))])
     else:  # delta_knn
         exact_ibz_eps_kn = np.array(
             [
@@ -430,9 +404,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
                     )
                     + delta_ibz_kn[kpt]
                 )
-                for kpt in range(len(k_ibz_kc))
-            ]
-        )
+                for kpt in range(len(k_ibz_kc))])
 
     k_bz_kc = reciprocal.kpt_Kc
     exact_bz_eps_kn = reciprocal.ibz2bz(exact_ibz_eps_kn)
@@ -456,8 +428,7 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         k_bz_kc,
         bp_ind,
         point_e_kn,
-        calc_ibz,
-    )
+        calc_ibz)
 
 
 def correction_to_covariant(correction_power_kMM, S_kMM, s_power):
@@ -467,25 +438,21 @@ def correction_to_covariant(correction_power_kMM, S_kMM, s_power):
         return correction_power_kMM.operator_kMM
 
     correction_cov_kMM = []
-    for S_MM, correction_power_MM in zip(
-        S_kMM.operator_kMM, correction_power_kMM.operator_kMM
-    ):
+    for S_MM, correction_power_MM in zip(S_kMM.operator_kMM,
+                                         correction_power_kMM.operator_kMM):
         S_MM_pow = mpower(S_MM, 1 - s_power)
         correction_cov_kMM.append(S_MM_pow @ correction_power_MM @ S_MM_pow)
     return np.array(correction_cov_kMM)
 
 
-def eigenvalues_from_reciprocal_operators(
-    H_kMM,
-    S_kMM,
-    correction_power_kMM=None,
-    s_power=1 / 2,
-):
+def eigenvalues_from_reciprocal_operators(H_kMM,
+                                          S_kMM,
+                                          correction_power_kMM=None,
+                                          s_power=1 / 2):
     correction_cov_kMM = correction_to_covariant(
         correction_power_kMM,
         S_kMM,
-        s_power,
-    )
+        s_power)
     H_operator_kMM = H_kMM.operator_kMM
     if correction_cov_kMM is not None:
         H_operator_kMM = H_operator_kMM + correction_cov_kMM
@@ -498,52 +465,44 @@ def eigenvalues_from_reciprocal_operators(
     return np.asarray(eigenvalues)
 
 
-def bandstructure_from_reciprocal_operators(
-    H_kMM,
-    S_kMM,
-    bandpath,
-    reference=0,
-    correction_power_kMM=None,
-    s_power=1 / 2,
-):
+def bandstructure_from_reciprocal_operators(H_kMM,
+                                            S_kMM,
+                                            bandpath,
+                                            reference=0,
+                                            correction_power_kMM=None,
+                                            s_power=1 / 2):
 
     eps_kn = eigenvalues_from_reciprocal_operators(
         H_kMM,
         S_kMM,
         correction_power_kMM,
-        s_power,
-    )
+        s_power)
 
     return BandStructure(
         path=bandpath,
         energies=eps_kn[np.newaxis, :, :],
-        reference=reference,
-    )
+        reference=reference)
 
 
-def bandstructure_from_realspace(
-    H_RMM,
-    S_RMM,
-    bandpath,
-    reference=0,
-    correction_power_RMM=None,
-    s_power=1 / 2
-):
+def bandstructure_from_realspace(H_RMM,
+                                 S_RMM,
+                                 bandpath,
+                                 reference=0,
+                                 correction_power_RMM=None,
+                                 s_power=1 / 2):
     H_kMM = H_RMM.inverse_fourier_transform(bandpath.kpts)
     S_kMM = S_RMM.inverse_fourier_transform(bandpath.kpts)
     correction_power_kMM = None
     if correction_power_RMM is not None:
         correction_power_kMM = correction_power_RMM.inverse_fourier_transform(
-            bandpath.kpts
-        )
+            bandpath.kpts)
     return bandstructure_from_reciprocal_operators(
         H_kMM,
         S_kMM,
         bandpath,
         reference,
         correction_power_kMM=correction_power_kMM,
-        s_power=s_power,
-    )
+        s_power=s_power)
 
 
 @dataclass
@@ -562,14 +521,12 @@ class BandStructureInterpolationPlot:
     point_e_kn: np.ndarray
     calc_ibz: object
 
-    def plot(
-        self,
-        emin=-10,
-        emax=5,
-        filename='bs.png',
-        plot_also_unshifted=True,
-        plot_also_non_FT=False,
-    ):
+    def plot(self,
+             emin=-10,
+             emax=5,
+             filename='bs.png',
+             plot_also_unshifted=True,
+             plot_also_non_FT=False):
         from ase.spectrum.band_structure import BandStructurePlot
 
         bsp_shifted_fromRSpace = BandStructurePlot(self.bs_shifted_fromRSpace)
@@ -592,8 +549,7 @@ class BandStructureInterpolationPlot:
         point_x_kn = np.repeat(
             bsp_shifted_fromRSpace.xcoords[self.bp_ind, None],
             self.exact_bz_eps_kn.shape[1],
-            axis=1,
-        )
+            axis=1)
 
         ax.scatter(
             point_x_kn.ravel(),
@@ -602,8 +558,7 @@ class BandStructureInterpolationPlot:
             facecolors='none',
             edgecolors='k',
             linewidths=0.7,
-            label='Exact mesh values',
-        )
+            label='Exact mesh values')
         ax.legend(loc='best')
         ax.figure.savefig(filename, dpi=300, bbox_inches='tight')
         return ax
