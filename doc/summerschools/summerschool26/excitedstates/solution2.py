@@ -1,3 +1,4 @@
+# web-page: bs.png
 from ase.build import bulk
 
 atoms = bulk('Si', 'diamond', a=5.4)

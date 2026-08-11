@@ -1,3 +1,4 @@
+# web-page: rpa_Si.png, bse_atoms.png
 # snippet-plot-rpa-start
 # Plot the absorption spectrum:
 import numpy as np
