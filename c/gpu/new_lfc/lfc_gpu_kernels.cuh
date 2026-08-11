@@ -248,7 +248,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
     const long nz = grid.end_c.z - grid.start_c.z;
     const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
-    const T vt = arrays.vt_G[grid_array_idx];
+    const T vt_dV = arrays.vt_G[grid_array_idx] * grid.dV;
 
     // Needs to integrate phi_mu * vt * phi_nu, so we need a double loop over the phi index.
     // Call them phi_r and phi_s in the following to avoid confusion with m, n and mu, nu that we already use.
@@ -277,7 +277,8 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
             continue;
         }
 
-        // Array for holding phi_lm components for all possible m
+        // Array for holding phi_lm components for all possible m.
+        // TODO this is wasting VGPRs for systems that don't need l=4. We should template based on max l
         T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
         SphericalHarmonicStatics::fr_times_Ylm(l_r, spline_val_r, dx_r, dy_r, dz_r, distance_sq_r, phi_r_m);
 
@@ -316,7 +317,7 @@ __global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arr
                     continue;
                 }
 
-                const T phi_rm_times_vt = phi_r_m[m] * vt * grid.dV;
+                const T phi_rm_times_vt = phi_r_m[m] * vt_dV;
 
                 for (int n = 0; n < 2*l_s + 1; ++n)
                 {
