@@ -1,4 +1,6 @@
+# web-page: bs.png
 from ase.build import bulk
+
 atoms = bulk('Si', 'diamond', a=5.4)
 pw_cut_off = 300
 kpts_grid = (3, 3, 3)
@@ -6,6 +8,7 @@ kpts_grid = (3, 3, 3)
 # snippet-pw-groundstate-start
 from gpaw import GPAW, FermiDirac
 from gpaw import PW
+
 
 print(len(atoms))
 calc = GPAW(mode=PW(pw_cut_off),
@@ -47,7 +50,7 @@ direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
 print('Direct bandgap of Si:', direct_gap)
 # snippet-pw-direct-gap-end
 
-
+kpts_grid = (4, 4, 4)
 # snippet-lcao-groundstate-start
 calc = GPAW(mode="lcao",   # student mode lcao
             basis="dzp",   # basis set dzp
@@ -72,7 +75,7 @@ dft.write_gpw_file('Si_pw_from_lcao_groundstate.gpw', include_wfs=True)
 # snippet-lcao-to-pw-end
 
 nbands = 26
-bands = (3, 5)
+bands = (0, 8)
 ecut = 20.0
 
 # snippet-lcao-g0w0-start
@@ -87,7 +90,27 @@ gw.calculate()
 
 # snippet-lcao-direct-gap-start
 results = pickle.load(open('Si-from-lcao-g0w0_results_GW.pckl', 'rb'))
-direct_gap = results['qp'][0, 0, -1] - results['qp'][0, 0, -2]
+direct_gap = results['qp'][0, 0, 4] - results['qp'][0, 0, 3]
 
 print('Direct bandgap of Si:', direct_gap)
 # snippet-lcao-direct-gap-end
+
+# needs full number of bands for trafo to realspace
+nbands = 26
+bands = (0, 26)
+ecut = 20.0
+
+gw = G0W0(calc='Si_pw_from_lcao_groundstate.gpw',
+          nbands=nbands,  # number of bands for calculation of self-energy
+          bands=bands,  # VB and CB
+          ecut=ecut,  # plane-wave cutoff for self-energy (20-200)
+          integrate_gamma='WS',  # Use supercell Wigner-Seitz truncation for W.
+          filename='Si-from-lcao-g0w0-full')
+gw.calculate()
+
+
+# snippet-lcao-plot-start
+from gpaw.utilities.bandstructure import plot_g0w0_bandstructure
+bandpath = calc.atoms.cell.bandpath(npoints=250)
+plot_g0w0_bandstructure(calc, bandpath, 'Si-from-lcao-g0w0_results_GW.pckl')
+# snippet-lcao-plot-end
