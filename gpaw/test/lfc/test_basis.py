@@ -368,6 +368,36 @@ def test_potential_matrix(
     xp.testing.assert_allclose(V_MN, V_MN_out, rtol=rtol, atol=atol)
 
 
+def test_construct_density(
+    fixt_lfc_system: LFCSystemDesc,
+    fixt_impl: ImplDesc,
+    fixt_block_size,
+):
+    """"""
+    xp, purepython = fixt_impl
+    system = fixt_lfc_system
+    basis = make_basis(system, xp, purepython, fixt_block_size)
+
+    # Starting electron density
+    nt_G = xp.empty(system.grid.mysize_c)
+    nt_G[:] = 0.5
+    nt_G_ref = as_np(nt_G.copy())
+
+    # Density matrix, must be symmetric (hardcoded assumption in old code)
+    rng = xp.random.default_rng(444)
+    rho_MM = rng.random((basis.Mmax, basis.Mmax))
+    rho_MM = rho_MM + rho_MM.T
+    q = 0 # ?????
+
+    basis.construct_density(rho_MM, nt_G, q)
+
+    # Repeat with old code and compare
+    basis_old = make_legacy_basis_functions(basis, xp=np)
+    basis_old.construct_density(rho_MM, nt_G_ref, q)
+
+    xp.testing.assert_allclose(as_np(nt_G), nt_G_ref, rtol=1e-10, atol=1e-12)
+
+
 @pytest.mark.parametrize("num_spins", [1, 2])
 def test_add_to_density(
     fixt_lfc_system: LFCSystemDesc,

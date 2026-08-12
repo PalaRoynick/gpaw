@@ -197,7 +197,17 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                           nt_G: np.ndarray | cp.ndarray,
                           q):
         """"""
-        raise NotImplementedError("WIP")
+        assert np.all(nt_G.shape == self.grid.mysize_c)
+
+        xp = np if isinstance(nt_G, np.ndarray) else cp
+        rho_MM = as_xp(rho_MM, xp)
+
+        if self.has_precalculated_phi():
+            raise NotImplementedError("construct_density with precalc")
+        else:
+            raise NotImplementedError("WIP")
+
+
 
     @override
     def has_precalculated_phi(self) -> bool:
