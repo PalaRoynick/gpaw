@@ -7,8 +7,8 @@ Part 1: Critical temperature of :mol:`CrI_3`
 In 2017, ferromagnetic order was observed in a monolayer of :mol:`CrI_3` below 45 `K` [*Nature* **546** 270 (2017)]. It comprises the first demonstration of magnetic order in a 2D material and has received a lot of attention due to the peculiar properties of magnetism in 2D. The physics of magnetic order in 2D is rather different than in 3D and in order to understand what is going on we will need to introduce a bit of theory. But before we get to that let us get started with the calculations.
 
 
-In this turorial you will set up and relax a monolayer of
-:mol:`CrI_3` after which you will calculate its exchange contants and critical
+In this tutorial you will set up and relax a monolayer of
+:mol:`CrI_3` after which you will calculate its exchange constants and critical
 temperature using different models
 
 The procedure will be as follows:
@@ -50,7 +50,7 @@ A bit of theory
 The Heisenberg model
 --------------------
 
-If we want to calculate the Curie temperature of :mol:`CrI_3` it is, in principle, clear what we have to do. We should calculate the magnetization as a function of temperature using standard methods from statistical physics, and record the temperature where the magnetization vanishes. Unfortunately, this requires knowledge of all the excited states of the system, which we do not have access to. In particular, the magnetization will be dominated by collective magnetic exciations, and these are not directly accessible from the Kohn-Sham spectrum produced by our DFT calculations.
+If we want to calculate the Curie temperature of :mol:`CrI_3` it is, in principle, clear what we have to do. We should calculate the magnetization as a function of temperature using standard methods from statistical physics, and record the temperature where the magnetization vanishes. Unfortunately, this requires knowledge of all the excited states of the system, which we do not have access to. In particular, the magnetization will be dominated by collective magnetic excitations, and these are not directly accessible from the Kohn-Sham spectrum produced by our DFT calculations.
 
 Instead we will consider the Heisenberg Hamiltonian, which captures the basic physics of typical spin systems. It is given by
 
@@ -65,7 +65,7 @@ where `\mathbf{S}_i` denotes the spin operator at site `i` in units of `\hbar` a
 3.   What are the possible values of `S_i^z` for a magnetic site in :mol:`CrI_3`?
 4.   What is the unit of `J_{ij}`?
 
-In the following, we will assume that the physics is dominated by neareast neighbor interactions such that `J_{ij}\equiv J` if atoms `i` and `j` are nearest neighbors and zero otherwise. In 3D systems a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
+In the following, we will assume that the physics is dominated by nearest neighbor interactions such that `J_{ij}\equiv J` if atoms `i` and `j` are nearest neighbors and zero otherwise. In 3D systems a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
 
 .. math::
 
@@ -78,7 +78,7 @@ where `k_B` is Boltzmann's constant, `N` is the number of nearest neighbors, and
 DFT calculation of `J`
 ======================
 
-We now want to make a first principles calculation of the nearest neighbor exchange coupling constant `J`. Since the exchange coupling parametrizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
+We now want to make a first principles calculation of the nearest neighbor exchange coupling constant `J`. Since the exchange coupling parameterizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
 
 .. math::
 
@@ -88,13 +88,13 @@ where `E_{\mathrm{FM}}` and `E_{\mathrm{AFM}}` are the energies *per magnetic at
 
 1.   Derive the expression for `J` from the classical Heisenberg model yourself. In particular, how does the factor of 3 arise?
 
-We have compiled a database of various 2D materials at https://cmrdb.fysik.dtu.dk/c2db/, which are relaxed with the PBE functional. We will therefore refrain from doing a full coverged geometry optimization and simply download the optimized structure from the database. Search the database for :mol:`CrI_3` (it appears as :mol:`Cr_2I_6` on the webpage). If you like, you can take a look at various properties of the material like band structure and stability. Download the ``.xyz`` file and save it as ``CrI3.xyz``. You can also setup the atomic structure similar by simply defining an atoms object with positions and lattice parameters stated at the webpage. With this input structure, run the code below to obtain a ``.gpw`` file containing a converged ferromagnetic calculation. The calculation will take about 30 minutes. To speed up the process, you can copy the code to a python script and submit it as a batch job to the DTU computers with multiple CPU cores. Try for example to send it to 16 cores for 30 minutes. If the relaxation in the code above did not finish you may kill it. It is not crucial to complete in order to proceed with the rest of the exercise. Continue with the theory below while you wait for the calculations to finish.
+We have compiled a database of various 2D materials at https://cmrdb.fysik.dtu.dk/c2db/, which are relaxed with the PBE functional. We will therefore refrain from doing a full converged geometry optimization and simply download the optimized structure from the database. Search the database for :mol:`CrI_3` (it appears as :mol:`Cr_2I_6` on the webpage). If you like, you can take a look at various properties of the material like band structure and stability. Download the ``.xyz`` file and save it as ``CrI3.xyz``. You can also setup the atomic structure similar by simply defining an atoms object with positions and lattice parameters stated at the webpage. With this input structure, run the code below to obtain a ``.gpw`` file containing a converged ferromagnetic calculation. The calculation will take about 30 minutes. To speed up the process, you can copy the code to a python script and submit it as a batch job to the DTU computers with multiple CPU cores. Try for example to send it to 16 cores for 30 minutes. If the relaxation in the code above did not finish you may kill it. It is not crucial to complete in order to proceed with the rest of the exercise. Continue with the theory below while you wait for the calculations to finish.
 
 
 .. literalinclude:: CrI3_fm.py
 
 
-Now run the code again (copy it into a new script with a different name) but change the initial magnetic configuration such that it becomes antiferromagnetic (remember to change the name of the ``.gpw`` file so you do not overwrite the ``CrI3_fm.gpw`` file). In practise, we do not need to constrain the antiferromagnetic calculation because it comprises a local minimum, but check the magnetic moments in the output to verify that we do indeed end up with an antiferromagnetic state!
+Now run the code again (copy it into a new script with a different name) but change the initial magnetic configuration such that it becomes antiferromagnetic (remember to change the name of the ``.gpw`` file so you do not overwrite the ``CrI3_fm.gpw`` file). In practice, we do not need to constrain the antiferromagnetic calculation because it comprises a local minimum, but check the magnetic moments in the output to verify that we do indeed end up with an antiferromagnetic state!
 
 Finally, we can calculate `J` and `T_c^{\mathrm{MF}}` by extracting the *ab initio* energy difference from the ``.gpw`` files. Fill in the formulas for `J` and `T_c` below and run the code.
 

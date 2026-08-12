@@ -8,9 +8,9 @@ atomic simulation environment (ASE_).  The wave functions can be described
 with:
 
 * Plane-waves (:ref:`pw <manual_mode>`)
-* Real-space uniform grids, multigrid methods and the finite-difference approximation
-  (:ref:`fd <manual_stencils>`)
 * Atom-centered basis-functions (:ref:`lcao <lcao>`)
+* Real-space uniform grids, multigrid methods and the finite-difference
+  approximation (:ref:`fd <manual_stencils>`)
 
 >>> # H2-molecule example:
 >>> import numpy as np
@@ -196,7 +196,7 @@ News
 
 * :ref:`GPAW version 0.4 <releasenotes>` released (Nov 13, 2008)
 
-* The :ref:`tutorialsexercises` are finally ready for use in the `CAMd summer
+* The :ref:`tutorialsexercises` are finally ready for use in the `CAMD summer
   school 2008`_ (Aug 15, 2008)
 
 * This site is now powered by Sphinx_ (Jul 31, 2008)
@@ -220,7 +220,7 @@ News
 .. _CSC: https://www.csc.fi
 .. _GPAW course: https://www.csc.fi/english/csc/courses/archive/gpaw-2008-01
 .. _Sphinx: https://www.sphinx-doc.org
-.. _CAMd summer school 2008: https://www.camd.dtu.dk/English/Events/CAMD_Summer_School_2008/Programme.aspx
+.. _CAMD summer school 2008: https://www.camd.dtu.dk/English/Events/CAMD_Summer_School_2008/Programme.aspx
 .. _code sprint 2007: https://www.dtu.dk/Nyheder/Nyt_fra_Institutterne.aspx?guid={38B92D63-FB09-4DFA-A074-504146A2D678}
 .. _Virtual NanoLab: https://www.quantumwise.com/products/12-products/28-atk-se-200906#GPAW
 .. _scientific highlight of the month: https://www.psi-k.org/newsletters/News_98/Highlight_98.pdf

@@ -31,18 +31,43 @@ These calculations are both time-wise and memory-wise heavier than what you prev
 
 :code:`mq submit -R 8:15h script.py`
 
-This will submit the script with the name "script.py" to 8 cores with a maximum time of 15 hours.
 
+This will submit the script with the name "script.py" to 8 cores with a maximum time of 15 hours. To review how to submit jobs using MyQueue, see :ref:`gbar submitting`.  
+
+Consider the following questions: 
+
+* What effect does increasing ``eta`` have on the spectrum?
+* Why must unoccupied bands be included?
+
+Reasonable values are ``domega0 = 0.01`` eV, ``eta = 0.05`` eV, ``ecut = 50`` eV and ``nbands = 3 * nval``.
 
 .. literalinclude:: solution3.py
    :start-after: # snippet-rpa-polarizability-start
+   :end-before: # snippet-rpa-parameters-start-student
+
+.. literalinclude:: solution3.py
+   :start-after: # snippet-rpa-parameters-start-student
+   :end-before: # snippet-rpa-parameters-end-student
+
+.. literalinclude:: solution3.py
+   :start-after: # snippet-rpa-parameters-solution-end
+   :end-before: # snippet-rpa-directions-start-student
+
+Select only the inequivalent polarization directions for your material. Which
+directions do you expect to be equivalent based on its symmetry?
+
+.. literalinclude:: solution3.py
+   :start-after: # snippet-rpa-directions-start-student
+   :end-before: # snippet-rpa-directions-end-student
+
+.. literalinclude:: solution3.py
+   :start-after: # snippet-rpa-directions-solution-end
    :end-before: # snippet-rpa-polarizability-end
 
 
 Now it is time to do more calculations with finer k-point mesh to see the importance of converging our calculations. Repeat the above calculations with the following parameters:
 
-For BN try: (24,24,1), (40,40,1), and (60,60,1) k-points
-and for bulk materials try e.g.: (12,12,4), (18,18,6), and (24,24,8) k-points
-(Remember to use a mesh according to the length of lattice vectors.)
+Remember to use a mesh according to the length of lattice vectors. For BN try: ``(24,24,1)``, ``(40,40,1)``, and ``(60,60,1)`` k-points
+and for bulk materials try e.g.: ``(12,12,4)``, ``(18,18,6)`` and ``(24,24,8)`` k-points
 
 For the calculations with more k-points you probably want to combine the (new) ground state calculation and the calculation of the absorption spectrum into one script which you will submit over night.

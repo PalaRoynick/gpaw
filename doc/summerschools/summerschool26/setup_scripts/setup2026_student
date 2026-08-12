@@ -25,8 +25,17 @@ if [[ `hostname` != n-* ]]; then
     exit 1
 fi
 
+if [[ -z $BLACKHOLE ]]; then
+    echo XXXX $BLACKHOLE
+    echo 'WARNING: $BLACKHOLE not defined, using $HOME/CAMD2026 instead.'
+    export BLACKHOLE=$HOME/CAMD2026
+fi
+
+VENVROOT=$BLACKHOLE
+
 # Make sure we are in home folder
 cd
+chmod og+rx . $BLACKHOLE
 
 # Make sure there is no setup from the last summer school
 OLDJUNK=`grep --max-count=1 'bin/activate' .bashrc | grep -v CAMD2026 | grep -v '^#' || true`
@@ -51,22 +60,32 @@ if [[ -d CAMD2026 ]]; then
 else
     echo "Creating folder name 'CAMD2026' for your Python files."
     mkdir CAMD2026
+    ln -s $BLACKHOLE CAMD2026/fastdisk
 fi
 
 # Set up venv
 
-if [[ -d CAMD2026/venv ]]; then
+if [[ -d $VENVROOT/venv ]]; then
     echo "Virtual folder structure found.  If you want to start over, please"
-    echo "delete the folder CAMD2026/venv and run the installation script again."
+    echo "delete the folder $VENVROOT/venv and run the installation script again."
     sleep 3
 else
     echo "Populating pip cache"
     tar xf ~jasc/CAMD2026/pipcache.tgz
     echo "Installinge ASE and GPAW into virtual environment"
     pushd CAMD2026
+    rm -rf venv
+    pushd $VENVROOT
     bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv
+    popd
+    ln -sf $VENVROOT/venv
     source venv/bin/activate
+    pip install asap3
     pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl
+
+    # nequip is needed for the machine learning exercise, but it installs 7 GB stuff, so
+    # it is installed by setup2026ml, run by those who want that exercise.
+    # pip install nequip openequivariance
     pushd venv
     git clone https://gitlab.com/taskblaster/taskblaster.git
     pip install -e taskblaster
@@ -84,19 +103,22 @@ cp -f ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/check_c
 
 source ~/CAMD2026/venv/bin/activate
 
+# Copy the exercise files
+SUMMERSOURCEDIR=~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/demofiles
+rsync -vrltbm --ignore-existing $SUMMERSOURCEDIR/. CAMD2026/.
+
 echo
-if [[ -f $HOME/CAMD2026/.myqueue/config.py ]]; then
+if [[ -f $HOME/.myqueue/config.py ]]; then
     echo "MyQueue configuration found, assuming it makes sense."
 else
     echo "Installing MyQueue configuration."
-    mkdir -p $HOME/CAMD2026/.myqueue
-    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/CAMD2026/.myqueue/config.py
+    mkdir -p $HOME/.myqueue
+    cp ~jasc/CAMD2026/gpaw/doc/summerschools/summerschool26/setup_scripts/myqueue_config.py $HOME/.myqueue/config.py
 fi
 
 echo
 echo "Preparing Jupyter for use in virtual environment"
 python -m ipykernel install --user --name=CAMD2026
-
 
 # Set up .bashrc
 cd

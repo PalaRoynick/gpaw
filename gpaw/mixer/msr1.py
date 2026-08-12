@@ -337,6 +337,12 @@ class MSR1Mixer(BaseMixer):
             max_gb = min(max_gb,
                          self.xp.min(-fracs_i[fracs_i <= 0]))
 
+        # Fix for cupy<13.0:
+        eigvals = getattr(
+            self.xp.linalg,
+            'eigvals',
+            lambda A: self.xp.asarray(np.linalg.eigvals(A.get())))
+
         good_broydenness = 0.5 * max_gb
         for iter in range(2, 12):
             norm_vec = 1 / (y_norm + s_norm *
@@ -345,12 +351,12 @@ class MSR1Mixer(BaseMixer):
             A_hh *= norm_vec[None, :]
             A_hh *= norm_vec[:, None]
             try:
-                eigs = self.xp.linalg.eigvals(A_hh)
-                min_real = self.xp.min(eigs.real)
-                max_imag = self.xp.max(self.xp.abs(eigs.imag))
-            except Exception:
+                eigs = eigvals(A_hh)
+            except np.linalg.LinAlgError:
                 good_broydenness -= 2**(-iter) * max_gb
                 continue
+            min_real = self.xp.min(eigs.real)
+            max_imag = self.xp.max(self.xp.abs(eigs.imag))
             if min_real > max_imag:
                 good_broydenness += 2**(-iter) * max_gb
             else:

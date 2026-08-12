@@ -170,6 +170,9 @@ July 6, 2026: :git:`26.7.0 <../26.7.0>`
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
 
+* Experimental support for :ref:`gpu` calculations in PW-mode.
+  Both single and double precision calculations are possible.
+
 * :ref:`newgpaw`: Ported the dipole moment writer to the new RT-TDDFT interface.
 
 * :ref:`newgpaw`: Calculations can now be parallelized over

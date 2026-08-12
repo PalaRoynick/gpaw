@@ -9,7 +9,7 @@
 Introduction to Python and ASE and some useful libraries
 ========================================================
 
-Python is a programming language that has become a de-facto standard
+Python is a programming language that has become a de facto standard
 within scientific programming.  It is also very popular for teaching
 programming and computer science.  One of the advantages of the language
 is that it is relatively easy to read and understand pre-existing code.
@@ -92,7 +92,7 @@ A ``list`` is an ordered collection of arbitrary objects
 --------------------------------------------------------
 
 You will need lists of data.  A list of data can be specified at once, or
-built gradually.  The latter is demonstated later.
+built gradually.  The latter is demonstrated later.
 
 >>> primes = [2, 3, 5, 7, 11, 13, 17, 19, 23]
 
@@ -148,11 +148,10 @@ Traceback (most recent call last):
 TypeError: 'tuple' object does not support item assignment
 
 
-=====
 NumPy
 =====
 
-NumPy arrays are heavely used in `ASE <https://ase-lib.org/>`__. ASE makes
+NumPy arrays are heavily used in `ASE <https://ase-lib.org/>`__. ASE makes
 heavy use of an extension to Python called NumPy.  The NumPy module
 defines an :class:`~numpy.ndarray` type that can hold large arrays of
 uniform multidimensional numeric data.  An array is similar to a ``list``
@@ -244,7 +243,6 @@ after sorting:  [-2.369 -0.692  0.258  0.93   1.979  6.149]
 True
 
 
-========================
 Plotting with matplotlib
 ========================
 
@@ -288,7 +286,6 @@ Plotting a countour
 .. image:: f4.svg
 
 
-===================================
 ASE (atomic simulation environment)
 ===================================
 
@@ -296,7 +293,7 @@ More details can be found here: https://ase-lib.org/
 
 
 Everything starts with a structure!
-===================================
+-----------------------------------
 
 In ASE the most important ingredient is :class:`~ase.Atoms`
 object used to setup an atomic structure.
@@ -362,11 +359,11 @@ https://docs.ase-lib.org/ase/optimize.html
 Band structure
 ==============
 
-Using ASE to setup band structures for Al using a Freelectron model and DFT
+Using ASE to setup band structures for Al using a free electron model and DFT
 
 1. What is the crystal structure of Al?
 
-2. Try and look up the recommeded Brillouin zone path for crystal structure
+2. Try and look up the recommended Brillouin zone path for crystal structure
    `here <https://docs.ase-lib.org/ase/dft/kpoints.html>`__
 
 3. Can you figure out what the ``nbands=-10`` and

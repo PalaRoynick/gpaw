@@ -21,7 +21,7 @@ def ecuts(symbol: str = None,
     """Plane-wave cutoff-energy convergence test."""
     setup_paths[:1] = ['.']
     symbol = symbol or Path.cwd().name.split('.')[0]
-    energies = list(range(300, 1300, 100))
+    energies = list(range(250, 1300, 50))
     results = []
     for name in ['FCC', 'Diamond']:
         atoms = reference_structure(symbol, name)
@@ -110,6 +110,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     results = []
     for path in args.path:
+        path = Path(path)
         try:
             _, _, _, ecuts_tot, ecuts_diff = convergence_check(
                 Path(path), args.plot)

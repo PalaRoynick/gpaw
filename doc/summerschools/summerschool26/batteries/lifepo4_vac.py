@@ -12,9 +12,6 @@ params = dict(
           'gamma': True},
     xc='BEEF-vdW',
     occupations=FermiDirac(width=0.1),
-    convergence={'eigenstates': 1.0e-4,
-                 'energy': 2.0e-4,
-                 'density': 1.0e-3},
     setups={'Fe': ':d,4.3'})
 calc = GPAW(**params)
 lifepo4_vac.calc = calc

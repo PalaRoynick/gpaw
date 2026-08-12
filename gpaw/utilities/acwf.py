@@ -211,7 +211,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
     return d
 
 
-def check(dir: Path, silent=True) -> tuple[float, float]:
+def check(dir: Path, silent=True) -> tuple[float, float, list[float]]:
     d = []
     v = {}
     for p in dir.glob('*.json'):
@@ -226,7 +226,7 @@ def check(dir: Path, silent=True) -> tuple[float, float]:
 
     n = len(d)
     if n == 0:
-        return np.nan, np.nan
+        return np.nan, np.nan, []
     mean = sum(d) / n
     meanabs = sum([abs(s) for s in d]) / n
     rms = (sum([s**2 for s in d]) / n)**0.5
@@ -254,14 +254,14 @@ def check(dir: Path, silent=True) -> tuple[float, float]:
               f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
               f'{ee:8.3f} eV')
 
-    return maxabs, ee
+    return maxabs, ee, d
 
 
 def main():
     import sys
     results = []
     for x in sys.argv[1:]:
-        e = check(Path(x), silent=False)
+        e, _, _ = check(Path(x), silent=False)
         results.append((e, x))
     for e, x in sorted(results):
         print(f'{e:7.2f} {x}')
