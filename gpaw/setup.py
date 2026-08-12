@@ -432,6 +432,85 @@ class BaseSetup:
 
         return self.I4_pp
 
+
+    def asd_four_phi_integrals(self):
+        """Calculate four-phi integral for only pseudo.
+
+        Calculate the integral over the product of four all electron
+        functions in the augmentation sphere, i.e.::
+
+          /
+          | d vr  ( phi_i1 phi_i2 phi_i3 phi_i4)
+          /         
+
+        where phi_i1 is an all electron function.
+        """
+        if hasattr(self, 'asd_I4_pp'):
+            return self.asd_I4_pp
+
+        # radial grid
+        r2dr_g = self.rgd.r_g**2 * self.rgd.dr_g
+
+        phi_jg = self.data.phi_jg
+        phit_jg = self.data.phit_jg
+
+        # compute radial parts
+        nj = len(self.l_j)
+        R_jjjj = np.empty((nj, nj, nj, nj))
+        for j1 in range(nj):
+            for j2 in range(nj):
+                for j3 in range(nj):
+                    for j4 in range(nj):
+                        R_jjjj[j1, j2, j3, j4] = np.dot(
+                            r2dr_g,
+                            phi_jg[j1] * phi_jg[j2] *
+                            phi_jg[j3] * phi_jg[j4])
+
+        # prepare for angular parts
+        L_i = []
+        j_i = []
+        for j, l in enumerate(self.l_j):
+            for m in range(2 * l + 1):
+                L_i.append(l**2 + m)
+                j_i.append(j)
+        ni = len(L_i)
+        # j_i is the list of j values
+        # L_i is the list of L (=l**2+m for 0<=m<2*l+1) values
+        # https://gpaw.readthedocs.io/devel/overview.html
+
+        G_LLL = gaunt(max(self.l_j))
+
+        # calculate the integrals
+        _np = ni * (ni + 1) // 2  # length for packing
+        self.asd_I4_pp = np.empty((_np, _np))
+        p1 = 0
+        for i1 in range(ni):
+            L1 = L_i[i1]
+            j1 = j_i[i1]
+            for i2 in range(i1, ni):
+                L2 = L_i[i2]
+                j2 = j_i[i2]
+                p2 = 0
+                for i3 in range(ni):
+                    L3 = L_i[i3]
+                    j3 = j_i[i3]
+                    for i4 in range(i3, ni):
+                        L4 = L_i[i4]
+                        j4 = j_i[i4]
+                        self.asd_I4_pp[p1, p2] = (np.dot(G_LLL[L1, L2],
+                                                         G_LLL[L3, L4]) *
+                                                  R_jjjj[j1, j2, j3, j4])
+                        p2 += 1
+                p1 += 1
+
+        # To unpack into I4_iip do:
+        # from gpaw.utilities import unpack_hermitian
+        # I4_iip = np.empty((ni, ni, _np)):
+        # for p in range(_np):
+        #     I4_iip[..., p] = unpack_hermitian(I4_pp[:, p])
+
+        return self.asd_I4_pp
+
     def get_default_nbands(self):
         assert len(self.l_orb_J) == len(self.n_j), (self.l_orb_J, self.n_j)
         return sum([2 * l + 1 for (l, n) in zips(self.l_orb_J, self.n_j)
