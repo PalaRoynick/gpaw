@@ -11,7 +11,7 @@ magnetic order at finite temperatures also requires the presence of magnetic ani
 which typically arises from the spin-orbit coupling.
 
 This exercise will teach you how to extract magnetic exchange and anisotropy
-parameters for a localized spin model based on first principles calculations.
+parameters for a localized spin model based on first-principles calculations.
 It will also touch upon the Mermin-Wagner theorem and show why anisotropy is
 crucial in order to sustain magnetic order in two dimensions.
 

@@ -24,6 +24,16 @@ Determining the atomic structure of :mol:`CrI_3`
 ================================================
 
 We start by setting up the atomic structure of a :mol:`CrI_3` monolayer in order to optimize its unit cell parameters and the atomic positions within.
+
+Try to understand the individual lines in the code below, copy it to a file and run the script.
+The view function will open the ase GUI to show the initial atomic structure.
+You may use the GUI to get a better feel for the structure of the material,
+for example, by rotating the structure, repeating the structure, etc. (under the 'view' tab)
+
+.. literalinclude:: relax.py
+   :start-after: snippet-define-atoms-start
+   :end-before: snippet-define-atoms-end
+
 There are two formula units in the minimal unit cell and only the Cr atoms bear significant magnetic moments.
 A spin-polarized calculation is initiated by specifying the initial magnetic moments of all of the atoms in units of `\mu_\mathrm{B}`.
 
@@ -31,14 +41,9 @@ A spin-polarized calculation is initiated by specifying the initial magnetic mom
    (Hint: Use Hund's rule. The electronic configuration of a Cr atom is `\mathrm{[Ar]3d}^5\mathrm{4s}^1` and each of the iodine atoms will steal one electron).
    Use your answer to fill in the spin state `S` in the code below.
 
-Try to understand the individual lines in the code below, copy it to a file and run the script.
-The calculation will open the ase GUI to show the initial atomic structure. You may use the GUI to get a better feel for the structure of the material,
-for example, by rotating the structure, repeating the structure, etc. (under the 'view' tab)
-
-.. literalinclude:: CrI3_gs.py
-   :start-after: snippet-setup-slab-start
-   :end-before: snippet-setup-slab-end
-
+.. literalinclude:: relax.py
+   :start-after: snippet-relax-start
+   :end-before: snippet-relax-end
 
 Afterwards, you can look at the text output from the DFT calculation and answer the following questions:
 
@@ -47,25 +52,23 @@ Afterwards, you can look at the text output from the DFT calculation and answer 
 4.  What is the number of irreducible k-points (k-points not related by symmetry) in the calculation?
 5.  What is the maximum force on the atoms after the first DFT calculation? Does it become smaller after subsequent calculations?
 
-In order to get the script running fast, we have set a few of the computational parameters to values which are expected to produce a somewhat inaccurate result. Can you identify what parameters one would need to converge or modify in order to produce more accurate results?
+In order to get the script running fast, we have set a few of the computational parameters to values which are expected to produce a somewhat inaccurate final structure. Can you identify what parameters one would need to converge or modify in order to yield a more accurate crystal strucure?
 
-Leave the script running and continue with the theory section below.
+You can increase your calculation parameters and leave the script running while you continue with the theory section below.
 
+Theory: The Heisenberg model
+============================
 
+If we want to calculate the Curie temperature of :mol:`CrI_3` it is, in principle, clear what we have to do.
+We should calculate the magnetization as a function of temperature using standard methods from statistical physics and record the temperature where the magnetization vanishes.
+Unfortunately, this requires knowledge of all the excited states of the system, which we do not have access to.
+In particular, the magnetization will be dominated by collective magnetic excitations, and these are not directly accessible from the Kohn-Sham spectrum produced by our DFT calculations.
 
-A bit of theory
-===============
-
-The Heisenberg model
---------------------
-
-If we want to calculate the Curie temperature of :mol:`CrI_3` it is, in principle, clear what we have to do. We should calculate the magnetization as a function of temperature using standard methods from statistical physics, and record the temperature where the magnetization vanishes. Unfortunately, this requires knowledge of all the excited states of the system, which we do not have access to. In particular, the magnetization will be dominated by collective magnetic excitations, and these are not directly accessible from the Kohn-Sham spectrum produced by our DFT calculations.
-
-Instead we will consider the Heisenberg Hamiltonian, which captures the basic physics of typical spin systems. It is given by
+Instead we will consider the Heisenberg Hamiltonian which captures the basic physics of typical spin systems. It is given by
 
 .. math::
 
-  H = -\frac{1}{2}\sum_{i,j}J_{ij}\mathbf{S}_i\cdot \mathbf{S}_j,
+  \mathcal{H} = -\frac{1}{2}\sum_{i,j}J_{ij}\mathbf{S}_i\cdot \mathbf{S}_j,
 
 where `\mathbf{S}_i` denotes the spin operator at site `i` in units of `\hbar` and `J_{ij}` are magnetic exchange coupling constants. If we want to model a real material with the Heisenberg model we then need to identify a set of magnetic sites and calculate the exchange coupling constants `J_{ij}`.
 
@@ -82,12 +85,10 @@ In the following, we will assume that the physics is dominated by nearest-neighb
 
 where `k_\mathrm{B}` is Boltzmann's constant, `N` is the number of nearest neighbors, and `S` is the maximum value of `S^z_i`
 
+Determining isotropic exchange parameters using DFT
+===================================================
 
-
-DFT calculation of `J`
-======================
-
-We now want to make a first principles calculation of the nearest-neighbor exchange coupling constant `J`. Since the exchange coupling parameterizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
+We now want to make a first-principles calculation of the nearest-neighbor exchange coupling constant `J`. Since the exchange coupling parameterizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
 
 .. math::
 
@@ -103,7 +104,10 @@ We have compiled a database of various 2D materials at https://cmrdb.fysik.dtu.d
 .. literalinclude:: CrI3_fm.py
 
 
-Now run the code again (copy it into a new script with a different name) but change the initial magnetic configuration such that it becomes antiferromagnetic (remember to change the name of the ``.gpw`` file so you do not overwrite the ``CrI3_fm.gpw`` file). In practice, we do not need to constrain the antiferromagnetic calculation because it comprises a local minimum, but check the magnetic moments in the output to verify that we do indeed end up with an antiferromagnetic state!
+Now run the code again (copy it into a new script with a different name) but change the initial magnetic configuration such that it becomes antiferromagnetic
+(remember to change the name of the ``.gpw`` file so you do not overwrite the ``CrI3_fm.gpw`` file).
+In practice, we do not need to constrain the antiferromagnetic calculation because it comprises a local minimum,
+but you should still check that the magnetic moments in the output to verify that we do indeed end up with an antiferromagnetic state!
 
 Finally, we can calculate `J` and `T_c^{\mathrm{MF}}` by extracting the *ab initio* energy difference from the ``.gpw`` files. Fill in the formulas for `J` and `T_c` below and run the code.
 
@@ -112,12 +116,10 @@ Finally, we can calculate `J` and `T_c^{\mathrm{MF}}` by extracting the *ab init
 
 
 
-More theory
-===========
+Theory: The Mermin-Wagner theorem and magnetic anisotropy
+=========================================================
 
 
-The Mermin-Wagner theorem
--------------------------
 Completing the previous calculations, you should have obtained a value of `T_c`, which is on the order of 100 K. This is much larger than the experimental value.  However in 2D materials mean-field theory fails miserably and the results cannot be trusted. In fact, at finite temperatures the Heisenberg model stated above does not exhibit magnetic order in two dimensions. The reason is that entropy is dominant over enthalpy, such that the free energy is always minimized by disordered configurations at finite temperatures. This is summarized by the Mermin-Wagner theorem, which states that:
 
 *Continuous symmetries cannot be spontaneously broken at finite temperature for systems with short range interactions in dimensions* `d\le2`.
@@ -143,24 +145,19 @@ where `M_0` is the ground state magnetization and `g(\varepsilon)` is the densit
 
 The divergence of the integral for `d\le2` shows that the ferromagnetic ground state is thermodynamically unstable and comprises an example of the Mermin-Wagner theorem: In `d\le2`, the free energy is always dominated by entropy at finite temperatures and magnetic order cannot be maintained if a material preserves the rotational symmetry of the spin degrees of freedom. The instability in two dimensions is closely related to the vanishing energy of magnetic excitations in the limit of `q\rightarrow 0`, which in turn is a consequence of the rotational symmetry.
 
-
-Magnetic anisotropy
--------------------
 Thanks to the Mermin-Wagner theorem, magnetic order is only possible in two dimensions if the rotational symmetry of the spins is *explicitly broken*. That is, there must be an additional term in the Hamiltonian that breaks the symmetry. Such a term can be provided by spin-orbit coupling which couples the spin to the lattice through the electronic orbitals.
 We assume that :mol:`CrI_3` is isotropic in the plane of the monolayer and introduce an anisotropy term in the Heisenberg Hamiltonian of the form
 
 .. math::
 
-  H_{\mathrm{ani}}=A\sum_i(S_i^z)^2,
+  \mathcal{H}_{\mathrm{ani}}=A\sum_i(S_i^z)^2,
 
 where we have chosen the `z`-direction to be orthogonal to the plane.
 
 3.   Describe the physics of this term in the cases of `A<0` and `A>0`. Does the term fully break rotational symmetry of the ground state in both cases?
 
-
-
-Magnetic anisotropy from DFT
-============================
+Determining magnetic anisotropy parameters from DFT
+===================================================
 
 In the code below, the magnetic anisotropy is calculated for the ferromagnetic ground state. The function ``calculate_band_energy()`` will return the sum of Kohn-Sham eigenvalues for the occupied states. This energy will depend on the direction of the spins, which is specified by the polar and azimuthal angles `\theta` and `\varphi` respectively.
 
@@ -200,6 +197,5 @@ where `T_c^{\mathrm{Ising}}=1.52\cdot S^2J/k_B` is the critical temperature of t
    T0 = 1.52 # Ising limit
    T_c = ???
    print(f'T_c = {T_c:.1f} K')
-
 
 The result for `T_c` should be in reasonable agreement with the experimental value of 45 K (expect to obtain a value around 30 K). Of course one should carefully check the convergence of all calculations in the present tutorial. In fact a converged calculation yields `J = 3.1` meV and `A=-0.38` meV, which results in `T_c = 37` K.
