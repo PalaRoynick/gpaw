@@ -71,7 +71,7 @@ two V atoms in the unit cell and it is shown how do a DFT calculation for the an
 Calculating J
 =============
 
-Finally, we are in a position to calculate the nearest neighbor Heisenberg exchange coupling `J`. Before doing so, please compare the
+Finally, we are in a position to calculate the nearest-neighbor Heisenberg exchange coupling `J`. Before doing so, please compare the
 output of the antiferromagnetic and ferromagnetic calculations from the code above.
 
 1.   Which state has the lowest energy?
@@ -82,7 +82,7 @@ configuration is the correct magnetic ground state? Rather, it implies that the 
 coupling `J` is negative.
 
 3.   Draw the structural arrangement of the V atoms on a piece of paper. Which type of magnetic lattice do they form?
-4.   Fill in the spin configuration of the magnetic lattice and convince yourself that all spins cannot be anti aligned to their nearest
+4.   Fill in the spin configuration of the magnetic lattice and convince yourself that all spins cannot be anti-aligned to their nearest
      neighbors.
 
 The latter finding means that the antiferromagnetic system is frustrated and the antiferromagnetic configuration we have computed will not

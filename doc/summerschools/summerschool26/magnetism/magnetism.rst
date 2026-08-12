@@ -1,14 +1,14 @@
 .. _magnetism:
 
-===============
-Magnetism in 2D
-===============
+======================================
+Magnetism in two-dimensional materials
+======================================
 
-This exercise investigates magnetic order in two dimensions. While a collinear
-spin-density functional theory calculation might reveal that it is
-energetically favorable for a given 2D material to order magnetically, two
-dimensional magnetic order at finite temperatures also requires presence of
-magnetic anisotropy, usually arising from the spin-orbit coupling.
+This exercise investigates magnetic ordering within atomically thin (2D) materials.
+While a collinear spin-density functional theory calculation might reveal that it is
+energetically favorable for a given 2D material to order magnetically, two-dimensional
+magnetic order at finite temperatures also requires the presence of magnetic anisotropy
+which typically arises from the spin-orbit coupling.
 
 This exercise will teach you how to extract magnetic exchange and anisotropy
 parameters for a localized spin model based on first principles calculations.
@@ -23,6 +23,6 @@ with high critical temperatures based on a database of hypothetical monolayers.
 
 .. toctree::
    
-   magnetism1
-   magnetism2
-   magnetism3
+   part1_ferromagnetism/text
+   part2_noncollinear/text
+   part3_discovery/text

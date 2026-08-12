@@ -4,33 +4,43 @@
 Part 1: Critical temperature of :mol:`CrI_3`
 ============================================
 
-In 2017, ferromagnetic order was observed in a monolayer of :mol:`CrI_3` below 45 `K` [*Nature* **546** 270 (2017)]. It comprises the first demonstration of magnetic order in a 2D material and has received a lot of attention due to the peculiar properties of magnetism in 2D. The physics of magnetic order in 2D is rather different than in 3D and in order to understand what is going on we will need to introduce a bit of theory. But before we get to that let us get started with the calculations.
+In 2017, ferromagnetic order was observed in a monolayer of :mol:`CrI_3` below 45 `K` [*Nature* **546** 270 (2017)].
+It comprises the first demonstration of magnetic order in a 2D material and has received a lot of attention due to
+the peculiar properties of magnetism in 2D. The physics of magnetic order in 2D is rather different than in 3D and
+in order to understand what is going on we will need to introduce a bit of theory. But before we get to that let us
+get started with the calculations.
 
-
-In this tutorial you will set up and relax a monolayer of
-:mol:`CrI_3` after which you will calculate its exchange constants and critical
-temperature using different models
+In this tutorial you will set up and relax a monolayer of :mol:`CrI_3` after which you will calculate its exchange
+constants and critical temperature using different models.
 
 The procedure will be as follows:
 
 1) Set up the atomic structure and optimize the geometry of :mol:`CrI_3`
-2) Calculate the nearest neighbor Heisenberg exchange coupling based on a total
-   energy mapping analysis
-3) Show that the magnetic ground state is thermodynamically unstable when
-   anisotropy is neglected (The Mermin-Wagner theorem)
-4) Calculate the single-ion magnetic anisotropy and estimate the critical
-   temperature
+2) Calculate the nearest-neighbor Heisenberg exchange coupling based on a total energy mapping analysis
+3) Show that the magnetic ground state is thermodynamically unstable when anisotropy is neglected (the Mermin-Wagner theorem)
+4) Calculate the single-ion magnetic anisotropy and estimate the critical temperature
+
+Determining the atomic structure of :mol:`CrI_3`
+================================================
+
+We start by setting up the atomic structure of a :mol:`CrI_3` monolayer in order to optimize its unit cell parameters and the atomic positions within.
+There are two formula units in the minimal unit cell and only the Cr atoms bear significant magnetic moments.
+A spin-polarized calculation is initiated by specifying the initial magnetic moments of all of the atoms in units of `\mu_\mathrm{B}`.
+
+1. What do you expect the ionic value for the magnetic moment of the Cr atoms to be?
+   (Hint: Use Hund's rule. The electronic configuration of a Cr atom is `\mathrm{[Ar]3d}^5\mathrm{4s}^1` and each of the iodine atoms will steal one electron).
+   Use your answer to fill in the spin state `S` in the code below.
+
+Try to understand the individual lines in the code below, copy it to a file and run the script.
+The calculation will open the ase GUI to show the initial atomic structure. You may use the GUI to get a better feel for the structure of the material,
+for example, by rotating the structure, repeating the structure, etc. (under the 'view' tab)
+
+.. literalinclude:: CrI3_gs.py
+   :start-after: snippet-setup-slab-start
+   :end-before: snippet-setup-slab-end
 
 
-
-DFT calculation - finding the atomic structure of :mol:`CrI_3`
-==============================================================
-
-We start by setting up the atomic structure of a :mol:`CrI_3` monolayer and optimizing the atomic positions and unit cell. There are two formula units in the minimal unit cell and only the Cr atoms bear significant magnetic moments. A spin-polarized calculation is initiated by specifying the initial magnetic moments of the all the atoms in units of `\mu_B`.
-
-1. What do you expect the ionic value for the magnetic moment of the Cr atoms to be? (Hint: Use Hund's rule. The electronic configuration of a Cr atom is [Ar]3d`^5`4s`^1` and each of the iodine atoms will steal one electron). Use your answer to fill in the spin state `S` in the code below.
-
-Try to understand the individual lines in the code below, copy it to a file and run the script. The calculation will open the ase gui to show the initial atomic structure. You may, for example, try to repeat the structure (under view) to get a better feeling for the material. Then look at the text output from the calculation and answer the following questions:
+Afterwards, you can look at the text output from the DFT calculation and answer the following questions:
 
 2.  How many electrons are used in the calculation? Which valence states of Cr and I are included?
 3.  What is the total magnetic moment after the first DFT calculation and on which atoms are the magnetic moments located?
@@ -41,7 +51,6 @@ In order to get the script running fast, we have set a few of the computational 
 
 Leave the script running and continue with the theory section below.
 
-.. literalinclude:: CrI3_gs_student.py
 
 
 A bit of theory
@@ -65,20 +74,20 @@ where `\mathbf{S}_i` denotes the spin operator at site `i` in units of `\hbar` a
 3.   What are the possible values of `S_i^z` for a magnetic site in :mol:`CrI_3`?
 4.   What is the unit of `J_{ij}`?
 
-In the following, we will assume that the physics is dominated by nearest neighbor interactions such that `J_{ij}\equiv J` if atoms `i` and `j` are nearest neighbors and zero otherwise. In 3D systems a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
+In the following, we will assume that the physics is dominated by nearest-neighbor interactions such that `J_{ij}\equiv J` if atoms `i` and `j` are nearest neighbors and zero otherwise. In 3D systems a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
 
 .. math::
 
   T_c^{\mathrm{MF}}=\frac{NJS(S+1)}{3k_B},
 
-where `k_B` is Boltzmann's constant, `N` is the number of nearest neighbors, and `S` is the maximum value of `S^z_i`
+where `k_\mathrm{B}` is Boltzmann's constant, `N` is the number of nearest neighbors, and `S` is the maximum value of `S^z_i`
 
 
 
 DFT calculation of `J`
 ======================
 
-We now want to make a first principles calculation of the nearest neighbor exchange coupling constant `J`. Since the exchange coupling parameterizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
+We now want to make a first principles calculation of the nearest-neighbor exchange coupling constant `J`. Since the exchange coupling parameterizes the energy difference between aligned and anti-aligned spin configurations, we can obtain `J` by considering the energy difference between a ferromagnetic and an antiferromagnetic calculation. Note that both can be obtained as collinear DFT ground states subject to different spin constraints. For the :mol:`CrI_3` system, `J` can calculated as
 
 .. math::
 
