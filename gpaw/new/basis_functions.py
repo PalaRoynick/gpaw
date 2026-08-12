@@ -665,9 +665,25 @@ class BasisFunctionCollectionBase(ABC):
 
     @abstractmethod
     def construct_density(self,
-                          rho_MM,
+                          rho_MM: np.ndarray | cp.ndarray,
                           nt_G: np.ndarray | cp.ndarray,
                           q):
+        """Calculate electron density from density matrix.
+        ::
+
+          ~        --      *
+          n(r) +=  >    Phi (r) rho     Phi (r)
+                   --     M1       M1M2   M2
+                  M1,M2
+
+        rho_MM: ndarray
+            The density matrix as a 2D Numpy or Cupy array. Assumed to be
+            symmetric.
+        nt_G: ndarray
+            Pseudo electron density. Modified in-place.
+        q: ?????
+            what even is this argument
+        """
         raise NotImplementedError
 
     @abstractmethod
