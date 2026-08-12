@@ -15,6 +15,7 @@ void bind_lfc_gpu(py::module_ m, py::class_<LFCBuilder> builder_cls)
     cls.doc() = "Control object for GPU-LFC calculations (new LFC). No Python constructor: must be constructed using LFCBuilder";
 
     cls.def("add_to_density", &LFCGpu::add_to_density, py::arg("nt_sG"), py::arg("f_sM"));
+    cls.def("construct_density", &LFCGpu::construct_density, py::arg("nt_G"), py::arg("rho_MM"));
     cls.def("calculate_potential_matrix", &LFCGpu::calculate_potential_matrix,
         py::arg("vt_G"), py::arg("out_V_MN"), py::arg("mu_start"), py::arg("mu_end"));
 

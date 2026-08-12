@@ -37,6 +37,28 @@ public:
     }
 
     template<typename T>
+    static void launch_construct_density(
+        const LFCGpu& lfc,
+        gpaw::PyDeviceArray& nt_G,
+        const gpaw::PyDeviceArray& rho_MM
+    )
+    {
+        ConstructDensityArrays<T> inputs;
+        inputs.nt_G = static_cast<T*>(nt_G.data);
+        inputs.rho_MM = static_cast<T*>(rho_MM.data);
+
+        const dim3 threads(lfc.block_data.block_shape.x,
+                           lfc.block_data.block_shape.y,
+                           lfc.block_data.block_shape.z);
+        const dim3 blocks(lfc.block_data.num_blocks);
+
+        gpaw::launch_kernel(construct_density_kernel<T>, blocks, threads, 0, nullptr,
+            inputs,
+            lfc.spline_pool->get_device_splines(),
+            lfc.grid, lfc.phi_data, lfc.block_data);
+    }
+
+    template<typename T>
     static void launch_calculate_potential_matrix(
         const LFCGpu& lfc,
         const gpaw::PyDeviceArray& vt_G,
@@ -56,7 +78,7 @@ public:
                            lfc.block_data.block_shape.z);
         const dim3 blocks(lfc.block_data.num_blocks);
 
-        gpaw::launch_kernel(calculate_potential_matrix<T>, blocks, threads, 0, nullptr,
+        gpaw::launch_kernel(calculate_potential_matrix_kernel<T>, blocks, threads, 0, nullptr,
             arrays,
             lfc.spline_pool->get_device_splines(),
             lfc.grid, lfc.phi_data, lfc.block_data);

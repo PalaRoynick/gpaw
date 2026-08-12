@@ -38,6 +38,13 @@ struct AddToDensityArrays
 };
 
 template<typename T>
+struct ConstructDensityArrays
+{
+    T* GPAW_RESTRICT nt_G;
+    const T* GPAW_RESTRICT rho_MM;
+};
+
+template<typename T>
 struct CalculatePotentialMatrixArrays
 {
     const T* GPAW_RESTRICT vt_G;
@@ -210,7 +217,12 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
 }
 
 template<typename T>
-__global__ void calculate_potential_matrix(CalculatePotentialMatrixArrays<T> arrays, const LFCGpuSpline* splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
+__global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const LFCGpuSpline* GPAW_RESTRICT splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
+{
+}
+
+template<typename T>
+__global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays<T> arrays, const LFCGpuSpline* splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
 {
     const int block_idx = blockIdx.x;
     if (block_idx >= blocks.num_blocks)

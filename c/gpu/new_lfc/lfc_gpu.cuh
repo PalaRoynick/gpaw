@@ -102,6 +102,11 @@ public:
     */
     void add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArray& f_sM) const;
 
+    /* nt_G: NDArray<device::gpu, c_contig, ndim<3>>
+    *  rho_MM: NDArray<device::gpu, c_contig, ndim<2>>
+    */
+    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM) const;
+
     /* vt_G: const NDArray<device::gpu, c_contig, ndim<3>>
     *  out_V_MN: NDArray<c_contig, ndim<2>, shape=(mu_end-mu_start, Mmax)>
     *  mu_start, mu_end: row distribution range — only rows [mu_start, mu_end) are written
