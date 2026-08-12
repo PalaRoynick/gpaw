@@ -1,4 +1,7 @@
 #include "lfc_gpu_impl.cuh"
+#include "lfc_gpu.cuh"
+
+namespace py = pybind11;
 
 LFCGpu::~LFCGpu()
 {
@@ -16,7 +19,35 @@ LFCGpu::~LFCGpu()
     gpu::Tfree(block_data.block_start_bc);
 }
 
-void LFCGpu::add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArray& f_sM) const
+void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM) const
+{
+    if (!nt_G.c_contiguous || nt_G.ndim() != 3)
+    {
+        throw std::invalid_argument("nt_G must be 3D and C-contiguous");
+    }
+    if (!rho_MM.c_contiguous || rho_MM.ndim() != 2)
+    {
+        throw std::invalid_argument("rho_MM must be 2D and C-contiguous");
+    }
+    if (!nt_G.dtype.is(rho_MM.dtype))
+    {
+        throw std::invalid_argument("dtype mismatch: nt_G and rho_MM must have same dtype");
+    }
+
+    const py::dtype dtype = nt_G.dtype;
+    switch (dtype.normalized_num())
+    {
+    case py::dtype::num_of<float>():
+        LFCGpuImpl::launch_construct_density<float>(*this, nt_G, rho_MM); break;
+    case py::dtype::num_of<double>():
+        LFCGpuImpl::launch_construct_density<double>(*this, nt_G, rho_MM); break;
+    default:
+        throw std::runtime_error("Unsupported dtype");
+    }
+
+}
+
+void LFCGpu::add_to_density(gpaw::PyDeviceArray &nt_sG, const gpaw::PyDeviceArray &f_sM) const
 {
     if (!nt_sG.c_contiguous || nt_sG.ndim() != 4)
     {
@@ -35,9 +66,7 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArra
         throw std::invalid_argument("Shape mismatch: nt_sG and f_sM first dimensions must match");
     }
 
-    namespace py = pybind11;
     const py::dtype dtype = nt_sG.dtype;
-
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
@@ -65,9 +94,7 @@ void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::P
         throw std::invalid_argument("dtype mismatch: vt_G and out_V_MN must have same dtype");
     }
 
-    namespace py = pybind11;
     const py::dtype dtype = vt_G.dtype;
-
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
