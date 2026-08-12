@@ -39,6 +39,7 @@ class Chi0Calculator:
                  context: ResponseContextInput = '-',
                  nblocks=1,
                  eshift=None,
+                 deps_max=None,
                  intraband=True,
                  rate='eta',
                  **kwargs):
@@ -47,16 +48,22 @@ class Chi0Calculator:
             ----------
             eshift : float or None
                 Energy shift of the conduction bands in eV.
+            deps_max: float or None
+                Maximum absolute value of transition energy for pair
+                to be included in chi0
         """
         self.eshift = eshift / Ha if eshift else None
+        self.deps_max = deps_max / Ha if deps_max is not None else None
         self.gs = ResponseGroundStateAdapter.from_input(gs)
         self.context = ResponseContext.from_input(context)
         self.chi0_body_calc = Chi0BodyCalculator(
             self.gs, self.context,
-            nblocks=nblocks, eshift=self.eshift, **kwargs)
+            nblocks=nblocks, eshift=self.eshift, deps_max=self.deps_max,
+            **kwargs)
         self.chi0_opt_ext_calc = Chi0OpticalExtensionCalculator(
             self.gs, self.context,
-            intraband=intraband, rate=rate, eshift=self.eshift, **kwargs)
+            intraband=intraband, rate=rate, eshift=self.eshift,
+            deps_max=self.deps_max, **kwargs)
 
     @property
     def wd(self) -> FrequencyDescriptor:
@@ -151,6 +158,7 @@ class Chi0Calculator:
 class Chi0BodyCalculator(Chi0ComponentPWCalculator):
     def __init__(self, *args,
                  eshift: float | None = None,
+                 deps_max: float | None = None,
                  **kwargs):
         """Construct the Chi0BodyCalculator.
 
@@ -161,7 +169,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         """
 
         self.eshift = eshift
-
+        self.deps_max = deps_max
         super().__init__(*args, **kwargs)
 
         if self.gs.metallic:
@@ -237,7 +245,8 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=False, n1=n1, n2=n2, m1=m1, m2=m2)
+                                  optical=False, n1=n1, n2=n2, m1=m1, m2=m2,
+                                  deps_max=self.deps_max, eshift=self.eshift)
 
         chi0_body.data_WgG[:] /= prefactor
         if self.hilbert:
@@ -330,6 +339,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
                  eshift=None,
                  intraband=True,
                  rate='eta',
+                 deps_max=None,
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
@@ -349,7 +359,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         # Serial block distribution
 
         self.eshift = eshift
-
+        self.deps_max = deps_max
         super().__init__(*args, nblocks=1, **kwargs)
 
         if self.gs.metallic:
@@ -427,7 +437,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
-                                  optical=True, n1=n1, n2=n2, m1=m1, m2=m2)
+                                  optical=True, n1=n1, n2=n2, m1=m1, m2=m2,
+                                  deps_max=self.deps_max, eshift=self.eshift)
 
         # We integrate the head and wings together, using the combined index P
         # index v = (x, y, z)
