@@ -292,6 +292,8 @@ ASE (atomic simulation environment)
 More details can be found here: https://ase-lib.org/
 
 
+.. _intro_ase_atoms:
+
 Everything starts with a structure!
 -----------------------------------
 
