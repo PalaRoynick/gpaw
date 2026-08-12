@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from ase.build import fcc100, add_adsorbate
 from ase.constraints import FixAtoms
 from ase.calculators.emt import EMT
-from ase.optimize import BFGS
+from ase.optimize import BFGS, MDMin
 from ase.visualize import view
 from ase.mep import NEB
 from ase.io import read
@@ -64,7 +64,7 @@ view(images)
 # snippet-setupneb-end
 
 # snippet-bfgsneb-start
-qn = BFGS(neb, trajectory='neb.traj')
+qn = MDMin(neb, trajectory='neb.traj', logfile='neb.log')
 qn.run(fmax=0.05)
 # snippet-bfgsneb-end
 
@@ -108,8 +108,8 @@ for i in range(n_im):
     image.set_constraint(constraint)
     if world.rank in ranks:
         calc = GPAW(mode=PW(350),
-                    nbands='130%',
-                    xc='PBE',  # student: ...,
+                    kpts={'size': (4, 4, 1), 'gamma': True},
+                    xc='PBE',
                     txt=f'{i}.txt',
                     communicator=world.new_communicator(ranks))
         image.calc = calc
@@ -119,7 +119,6 @@ images.append(final)
 
 # teacher:
 from gpaw.dft import GPAW, PW
-from ase.optimize import FIRE
 from gpaw.mpi import world
 
 initial = read('N2Ru.traj')
@@ -151,7 +150,7 @@ images.append(final)
 
 neb = NEB(images, k=1.0, parallel=True, method='improvedtangent')
 neb.interpolate()
-qn = FIRE(neb, logfile='neb.log', trajectory='neb.traj')
+qn = MDMin(neb, logfile='neb.log', trajectory='neb.traj')
 qn.run(fmax=0.1)
 neb.climb = True
 qn.run(fmax=0.05)
