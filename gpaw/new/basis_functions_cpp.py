@@ -4,7 +4,7 @@ from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
 
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.typing import override
-from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy as cp, as_xp
 import numpy as np
 
 
@@ -132,14 +132,19 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         num_spins = nt_sG.shape[0]
         assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
 
+        # FIXME: Ideally the caller should be responsible that the arrays in
+        # f_asi are consistently Numpy or Cupy depending on nt_sG. But old
+        # BasisFunctions always worked with Numpy arrays => callers currently
+        # are not careful about this. For now, we convert them internally here.
+
+        xp = np if isinstance(nt_sG, np.ndarray) else cp
         # Flatten f_asi dict to a single array, ordered by global mu.
-        xp = np if isinstance(f_asi, np.ndarray) else cp
         f_sM = xp.zeros((num_spins, self.Mmax))
 
         for atom_idx in range(self.num_atoms):
             atom_mu_range = self.get_mu_range_a(atom_idx)
             f_sM[:, atom_mu_range.start:atom_mu_range.stop] = (
-                f_asi[atom_idx]
+                as_xp(f_asi[atom_idx], xp)
             )
 
         self._impl.add_to_density(nt_sG, f_sM)
