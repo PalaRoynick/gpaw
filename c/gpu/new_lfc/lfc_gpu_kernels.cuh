@@ -3,6 +3,8 @@
 #include "gpaw_utils.h"
 #include "lfc_gpu.cuh"
 
+// FIXME tons of code duplication in the kernels. Eg. when computing grid array strides and computing distances for splines and spherical harmonics
+
 /* atomicAdd not supported for doubles on devices with compute capability < 6.0.
 * These are ancient, but currently the CI build still includes these devices since the siteconfigs there don't specify the arch.
 * This implementation is from https://docs.nvidia.com/cuda/archive/11.6.0/cuda-c-programming-guide/index.html#atomic-functions.
@@ -54,6 +56,68 @@ struct CalculatePotentialMatrixArrays
     size_t mu_end;
     // Column count of V_MN (= Mmax); used for striding
     size_t ncols;
+};
+
+template<typename T>
+struct LFCThreadGridData
+{
+    // Real-space coordinates of the thread on the full grid
+    GpuVec3<T> xyz;
+    // Flattened index into 3D grid arrays for this thread
+    size_t grid_array_idx;
+
+    // Number of grid points in this domain. Needed only in some kernels, unused in others (compiler should optimize them out)
+    [[maybe_unused]]
+    long nx, ny, nz;
+};
+
+namespace LFCKernelUtils
+{
+    /* Common helper for computing coordinates on the simulation grid for a GPU thread.
+    * Returns false if the thread is out of grid bounds, in which case the calling kernel should return immediately.
+    *  thread_block_idx: index of the calling thread block
+    */
+    template<typename T, bool should_store_domain_sizes = false>
+    __device__ bool compute_thread_coords(uint thread_block_idx, const GridInfoGpu& grid, const BlockDataGpu& blocks, LFCThreadGridData<T>& out)
+    {
+        // In current implementation the thread-block index and the real-grid-block index are the same:
+        if (thread_block_idx >= blocks.num_blocks)
+        {
+            return false;
+        }
+
+        const auto block_start_c = blocks.block_start_bc[thread_block_idx];
+
+        // Global indices on the full simulation grid
+        const int gx = block_start_c.x + threadIdx.x;
+        const int gy = block_start_c.y + threadIdx.y;
+        const int gz = block_start_c.z + threadIdx.z;
+
+        if (gx >= grid.end_c.x || gy >= grid.end_c.y || gz >= grid.end_c.z)
+        {
+            return false;
+        }
+
+        // Compute flattened index into 3D grid arrays like vt_G. Strides:
+        const long ny = grid.end_c.y - grid.start_c.y;
+        const long nz = grid.end_c.z - grid.start_c.z;
+        // Offset by grid.start_c to account for domain decomposition
+        out.grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
+
+        // Compute XYZ coords of the grid point in real units
+        out.xyz.x = static_cast<T>(gx * grid.spacing_cv[0].x + gy * grid.spacing_cv[1].x + gz * grid.spacing_cv[2].x);
+        out.xyz.y = static_cast<T>(gx * grid.spacing_cv[0].y + gy * grid.spacing_cv[1].y + gz * grid.spacing_cv[2].y);
+        out.xyz.z = static_cast<T>(gx * grid.spacing_cv[0].z + gy * grid.spacing_cv[1].z + gz * grid.spacing_cv[2].z);
+
+        if constexpr (should_store_domain_sizes)
+        {
+            out.nx = grid.end_c.x - grid.start_c.x;
+            out.ny = ny;
+            out.nz = nz;
+        }
+
+        return true;
+    }
 };
 
 // Helpers for computing spherical harmonics
@@ -112,53 +176,16 @@ struct SphericalHarmonicStatics
     }
 };
 
-/* Real-space XYZ coords for grid point (gx, gy, gz) on a parallelepipid grid.
-* spacing_cv[c] is the Cartesian displacement vector for one step along grid axis c. */
-template<typename T>
-__device__ inline void grid_coords_to_xyz(int gx, int gy, int gz, const GridInfoGpu& grid, T& x, T& y, T& z)
-{
-    x = static_cast<T>(gx * grid.spacing_cv[0].x + gy * grid.spacing_cv[1].x + gz * grid.spacing_cv[2].x);
-    y = static_cast<T>(gx * grid.spacing_cv[0].y + gy * grid.spacing_cv[1].y + gz * grid.spacing_cv[2].y);
-    z = static_cast<T>(gx * grid.spacing_cv[0].z + gy * grid.spacing_cv[1].z + gz * grid.spacing_cv[2].z);
-}
-
 template<typename T>
 __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpuSpline* splines, GridInfoGpu grid,
     PhiDataGpu phi, BlockDataGpu blocks)
 {
-    const int block_idx = blockIdx.x;
-    if (block_idx >= blocks.num_blocks)
+    LFCThreadGridData<T> thread_coords;
+    if (LFCKernelUtils::compute_thread_coords<T, true>(blockIdx.x, grid, blocks, thread_coords))
     {
         return;
     }
-
-    const auto block_start_c = blocks.block_start_bc[block_idx];
-
-    // Thread idx within the block
-    const int bx = threadIdx.x;
-    const int by = threadIdx.y;
-    const int bz = threadIdx.z;
-
-    // Each thread does one grid point. gx, gy, gz are the global grid indices for this thread
-    const int gx = block_start_c.x + bx;
-    const int gy = block_start_c.y + by;
-    const int gz = block_start_c.z + bz;
-
-    // Return here if grid point is outside our domain (can happen if the blocking was uneven)
-    if (gx >= grid.end_c.x || gy >= grid.end_c.y || gz >= grid.end_c.z)
-    {
-        return;
-    }
-
-    T x, y, z;
-    grid_coords_to_xyz(gx, gy, gz, grid, x, y, z);
-
-    const long nx = grid.end_c.x - grid.start_c.x;
-    const long ny = grid.end_c.y - grid.start_c.y;
-    const long nz = grid.end_c.z - grid.start_c.z;
-    // Compute index into grid arrays. Note offsetting by grid.start_c to get back to "domain local coordinates"
-    const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
-
+    const uint block_idx = blockIdx.x;
 
     // nt_sG(x) += f_sM * |phi_M|^2.
     // Each block does phi_M that it has overlap with and writes to a unique index in the grid array
@@ -177,6 +204,8 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     // Array for holding phi_lm components for all possible m
     T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
 
+    const long spin_stride = thread_coords.nx * thread_coords.ny * thread_coords.nz;
+
     for (int s = 0; s < arrays.num_spins; ++s)
     {
         T accum = 0;
@@ -193,9 +222,9 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
             const auto& spline = splines[spline_idx];
 
             // Find distance from the phi center, then evaluate phi(x)
-            T dx = x - static_cast<T>(phi_pos.x);
-            T dy = y - static_cast<T>(phi_pos.y);
-            T dz = z - static_cast<T>(phi_pos.z);
+            const T dx = thread_coords.xyz.x - static_cast<T>(phi_pos.x);
+            const T dy = thread_coords.xyz.y - static_cast<T>(phi_pos.y);
+            const T dz = thread_coords.xyz.z - static_cast<T>(phi_pos.z);
             T distance_sq = dx*dx + dy*dy + dz*dz;
             T distance = sqrt(distance_sq);
 
@@ -212,55 +241,46 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
             }
         }
 
-        arrays.nt_sG[s * nx * ny * nz + grid_array_idx] += accum;
+        arrays.nt_sG[s * spin_stride + thread_coords.grid_array_idx] += accum;
     }
 }
 
+/* nt_G(x) += sum_{mu, nu} phi_mu(x) * rho_{mu,nu} * phi_nu(x)
+* Each thread does one grid point x.
+*/
 template<typename T>
 __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const LFCGpuSpline* GPAW_RESTRICT splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
 {
+    LFCThreadGridData<T> thread_coords;
+    if (LFCKernelUtils::compute_thread_coords<T>(blockIdx.x, grid, blocks, thread_coords))
+    {
+        return;
+    }
+    // const uint block_idx = blockIdx.x;
+
+    // T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+
+    // // Loop over phi instances overlapping this block
+    // const size_t j_begin = blocks.start_j[block_idx];
+    // const size_t j_end = blocks.start_j[block_idx + 1];
+    // for (size_t j = j_begin; j < j_end; ++j)
+    // {
+    //     // TODO needs a similar double loop as in calc_pot_mat. Before writing it, write some helpers that reduce code duplication
+    // }
+
 }
 
 template<typename T>
 __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays<T> arrays, const LFCGpuSpline* splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
 {
-    const int block_idx = blockIdx.x;
-    if (block_idx >= blocks.num_blocks)
+    LFCThreadGridData<T> thread_coords;
+    if (LFCKernelUtils::compute_thread_coords<T>(blockIdx.x, grid, blocks, thread_coords))
     {
         return;
     }
+    const uint block_idx = blockIdx.x;
 
-    const auto block_start_c = blocks.block_start_bc[block_idx];
-    const auto block_shape = blocks.block_shape;
-
-    // Thread idx within the block; could go out of real-block bounds so check for that
-    const int bx = threadIdx.x;
-    const int by = threadIdx.y;
-    const int bz = threadIdx.z;
-
-    if (bx >= block_shape.x || by >= block_shape.y || bz >= block_shape.z)
-    {
-        return;
-    }
-
-    const int gx = block_start_c.x + bx;
-    const int gy = block_start_c.y + by;
-    const int gz = block_start_c.z + bz;
-
-    if (gx >= grid.end_c.x || gy >= grid.end_c.y || gz >= grid.end_c.z)
-    {
-        return;
-    }
-
-    T x, y, z;
-    grid_coords_to_xyz(gx, gy, gz, grid, x, y, z);
-
-    //const long nx = grid.end_c.x - grid.start_c.x;
-    const long ny = grid.end_c.y - grid.start_c.y;
-    const long nz = grid.end_c.z - grid.start_c.z;
-    const size_t grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
-
-    const T vt_dV = arrays.vt_G[grid_array_idx] * grid.dV;
+    const T vt_dV = arrays.vt_G[thread_coords.grid_array_idx] * grid.dV;
 
     // Needs to integrate phi_mu * vt * phi_nu, so we need a double loop over the phi index.
     // Call them phi_r and phi_s in the following to avoid confusion with m, n and mu, nu that we already use.
@@ -277,9 +297,9 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
         const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
         const size_t spline_idx_r = phi.spline_idx_i[phi_idx_r];
 
-        const T dx_r = x - static_cast<T>(phi_pos_r.x);
-        const T dy_r = y - static_cast<T>(phi_pos_r.y);
-        const T dz_r = z - static_cast<T>(phi_pos_r.z);
+        const T dx_r = thread_coords.xyz.x - static_cast<T>(phi_pos_r.x);
+        const T dy_r = thread_coords.xyz.y - static_cast<T>(phi_pos_r.y);
+        const T dz_r = thread_coords.xyz.z - static_cast<T>(phi_pos_r.z);
         const T distance_sq_r = dx_r*dx_r + dy_r*dy_r + dz_r*dz_r;
         const T distance_r = sqrt(distance_sq_r);
 
@@ -304,9 +324,9 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
             const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
             const size_t spline_idx_s = phi.spline_idx_i[phi_idx_s];
 
-            const T dx_s = x - static_cast<T>(phi_pos_s.x);
-            const T dy_s = y - static_cast<T>(phi_pos_s.y);
-            const T dz_s = z - static_cast<T>(phi_pos_s.z);
+            const T dx_s = thread_coords.xyz.x - static_cast<T>(phi_pos_s.x);
+            const T dy_s = thread_coords.xyz.y - static_cast<T>(phi_pos_s.y);
+            const T dz_s = thread_coords.xyz.z - static_cast<T>(phi_pos_s.z);
             const T distance_sq_s = dx_s*dx_s + dy_s*dy_s + dz_s*dz_s;
             const T distance_s = sqrt(distance_sq_s);
 
