@@ -297,7 +297,7 @@ More details can be found here: https://ase-lib.org/
 Everything starts with a structure!
 -----------------------------------
 
-In ASE the most important ingredient is :class:`~ase.Atoms`
+In ASE the most important ingredient is the :class:`~ase.Atoms`
 object used to setup an atomic structure.
 
 
