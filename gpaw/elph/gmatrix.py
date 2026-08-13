@@ -92,7 +92,8 @@ class ElectronPhononMatrix:
 
     def _set_supercell_cache(self, supercell_cache: str,
                              load_sc_as_needed: bool):
-        self.supercell_cache = MultiFileJSONCache(supercell_cache, comm=comm)
+        self.supercell_cache = MultiFileJSONCache(
+            supercell_cache, comm=self.comm)
         self.R_cN = self._get_lattice_vectors()
 
         if load_sc_as_needed:
@@ -106,7 +107,7 @@ class ElectronPhononMatrix:
         if isinstance(phonon, Phonons):
             self.phonon = phonon
         elif isinstance(phonon, str):
-            info = MultiFileJSONCache(phonon, comm=comm)["info"]
+            info = MultiFileJSONCache(phonon, comm=self.comm)["info"]
             assert "dr_version" in info, "use valid cache created by elph"
             # our version of phonons
             self.phonon = Phonons(atoms, supercell=info["supercell"],
