@@ -153,3 +153,137 @@ def fxc_coefficient_fields_mgga_tau(ops):
     c[('z', 'y')] = 4*grad_rho_y*grad_rho_z*v2sigma2
     c[('z', 'z')] = 4*grad_rho_z**2*v2sigma2 + 2*vsigma
     return c
+
+def fxc_pair_coefficients_lda_spin(ops):
+    """Spin-polarized per-point coefficient channels of the
+    fxc contraction with the pair fields labelled p1: keys
+    'rho_a'/'rho_b' (local), 'grad_a'/'grad_b' (vector), and
+    'tau_a'/'tau_b' (tau families).  Polarized Libxc arrays
+    carry their flat component packing (v2rho2_0..)."""
+    rho_a_p1 = ops['rho_a_p1']
+    rho_b_p1 = ops['rho_b_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    v2rho2_2 = ops['v2rho2_2']
+    u_a = rho_a_p1*v2rho2_0 + rho_b_p1*v2rho2_1
+    v_a_x = 0
+    v_a_y = 0
+    v_a_z = 0
+    u_b = rho_a_p1*v2rho2_1 + rho_b_p1*v2rho2_2
+    v_b_x = 0
+    v_b_y = 0
+    v_b_z = 0
+    return {'rho_a': u_a, 'grad_a': [v_a_x, v_a_y, v_a_z], 'rho_b': u_b, 'grad_b': [v_b_x, v_b_y, v_b_z]}
+
+def fxc_pair_coefficients_gga_spin(ops):
+    """Spin-polarized per-point coefficient channels of the
+    fxc contraction with the pair fields labelled p1: keys
+    'rho_a'/'rho_b' (local), 'grad_a'/'grad_b' (vector), and
+    'tau_a'/'tau_b' (tau families).  Polarized Libxc arrays
+    carry their flat component packing (v2rho2_0..)."""
+    grad_rho_a_p1_x = ops['grad_rho_a_p1_x']
+    grad_rho_a_p1_y = ops['grad_rho_a_p1_y']
+    grad_rho_a_p1_z = ops['grad_rho_a_p1_z']
+    grad_rho_a_x = ops['grad_rho_a_x']
+    grad_rho_a_y = ops['grad_rho_a_y']
+    grad_rho_a_z = ops['grad_rho_a_z']
+    grad_rho_b_p1_x = ops['grad_rho_b_p1_x']
+    grad_rho_b_p1_y = ops['grad_rho_b_p1_y']
+    grad_rho_b_p1_z = ops['grad_rho_b_p1_z']
+    grad_rho_b_x = ops['grad_rho_b_x']
+    grad_rho_b_y = ops['grad_rho_b_y']
+    grad_rho_b_z = ops['grad_rho_b_z']
+    rho_a_p1 = ops['rho_a_p1']
+    rho_b_p1 = ops['rho_b_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    v2rho2_2 = ops['v2rho2_2']
+    v2rhosigma_0 = ops['v2rhosigma_0']
+    v2rhosigma_1 = ops['v2rhosigma_1']
+    v2rhosigma_2 = ops['v2rhosigma_2']
+    v2rhosigma_3 = ops['v2rhosigma_3']
+    v2rhosigma_4 = ops['v2rhosigma_4']
+    v2rhosigma_5 = ops['v2rhosigma_5']
+    v2sigma2_0 = ops['v2sigma2_0']
+    v2sigma2_1 = ops['v2sigma2_1']
+    v2sigma2_2 = ops['v2sigma2_2']
+    v2sigma2_3 = ops['v2sigma2_3']
+    v2sigma2_4 = ops['v2sigma2_4']
+    v2sigma2_5 = ops['v2sigma2_5']
+    vsigma_0 = ops['vsigma_0']
+    vsigma_1 = ops['vsigma_1']
+    vsigma_2 = ops['vsigma_2']
+    u_a = 2*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_0 + grad_rho_a_p1_x*grad_rho_b_x*v2rhosigma_1 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_0 + grad_rho_a_p1_y*grad_rho_b_y*v2rhosigma_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_0 + grad_rho_a_p1_z*grad_rho_b_z*v2rhosigma_1 + grad_rho_a_x*grad_rho_b_p1_x*v2rhosigma_1 + grad_rho_a_y*grad_rho_b_p1_y*v2rhosigma_1 + grad_rho_a_z*grad_rho_b_p1_z*v2rhosigma_1 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2rhosigma_2 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2rhosigma_2 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2rhosigma_2 + rho_a_p1*v2rho2_0 + rho_b_p1*v2rho2_1
+    v_a_x = 4*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_0 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x**2*v2sigma2_3 + 2*grad_rho_a_p1_x*vsigma_0 + 4*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 + 2*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_b_y*v2sigma2_1 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_x**2*grad_rho_b_p1_x*v2sigma2_1 + 2*grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_y*v2sigma2_1 + 2*grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_3 + 4*grad_rho_a_x*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + 4*grad_rho_a_x*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + 2*grad_rho_a_x*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_x*rho_b_p1*v2rhosigma_3 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_x*v2sigma2_3 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_b_p1_x*grad_rho_b_x**2*v2sigma2_4 + grad_rho_b_p1_x*vsigma_1 + 2*grad_rho_b_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_b_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + grad_rho_b_x*rho_a_p1*v2rhosigma_1 + grad_rho_b_x*rho_b_p1*v2rhosigma_4
+    v_a_y = 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 + 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_y*v2sigma2_1 + 2*grad_rho_a_p1_x*grad_rho_a_y*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_0 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_y**2*v2sigma2_3 + 2*grad_rho_a_p1_y*vsigma_0 + 4*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_x*v2sigma2_1 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_y**2*grad_rho_b_p1_y*v2sigma2_1 + 2*grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_y*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + 4*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_y*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + 2*grad_rho_a_y*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_y*rho_b_p1*v2rhosigma_3 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_b_p1_y*grad_rho_b_y**2*v2sigma2_4 + grad_rho_b_p1_y*vsigma_1 + 2*grad_rho_b_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + grad_rho_b_y*rho_a_p1*v2rhosigma_1 + grad_rho_b_y*rho_b_p1*v2rhosigma_4
+    v_a_z = 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_x*grad_rho_a_z*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_y*grad_rho_a_z*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_0 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_z**2*v2sigma2_3 + 2*grad_rho_a_p1_z*vsigma_0 + 2*grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_x*v2sigma2_1 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_y*v2sigma2_1 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_z**2*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_z*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + 4*grad_rho_a_z*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + 4*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_z*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_z*rho_b_p1*v2rhosigma_3 + 2*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_b_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_b_p1_z*grad_rho_b_z**2*v2sigma2_4 + grad_rho_b_p1_z*vsigma_1 + grad_rho_b_z*rho_a_p1*v2rhosigma_1 + grad_rho_b_z*rho_b_p1*v2rhosigma_4
+    u_b = 2*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_3 + grad_rho_a_p1_x*grad_rho_b_x*v2rhosigma_4 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_3 + grad_rho_a_p1_y*grad_rho_b_y*v2rhosigma_4 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_3 + grad_rho_a_p1_z*grad_rho_b_z*v2rhosigma_4 + grad_rho_a_x*grad_rho_b_p1_x*v2rhosigma_4 + grad_rho_a_y*grad_rho_b_p1_y*v2rhosigma_4 + grad_rho_a_z*grad_rho_b_p1_z*v2rhosigma_4 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2rhosigma_5 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2rhosigma_5 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2rhosigma_5 + rho_a_p1*v2rho2_1 + rho_b_p1*v2rho2_2
+    v_b_x = 2*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x**2*v2sigma2_4 + grad_rho_a_p1_x*vsigma_1 + 2*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_a_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_x*v2sigma2_2 + 2*grad_rho_a_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_a_x*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_x*v2sigma2_2 + 2*grad_rho_a_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x**2*grad_rho_b_p1_x*v2sigma2_3 + grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_y*v2sigma2_3 + grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_3 + 4*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_x*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_x*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x*rho_a_p1*v2rhosigma_1 + grad_rho_a_x*rho_b_p1*v2rhosigma_4 + 2*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_x*v2sigma2_4 + 4*grad_rho_b_p1_x*grad_rho_b_x**2*v2sigma2_5 + 2*grad_rho_b_p1_x*vsigma_2 + 4*grad_rho_b_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_5 + 4*grad_rho_b_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_5 + 2*grad_rho_b_x*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_x*rho_b_p1*v2rhosigma_5
+    v_b_y = 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_y*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_y*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_2 + grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_p1_y*grad_rho_b_y**2*v2sigma2_4 + grad_rho_a_p1_y*vsigma_1 + 2*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_a_y*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_y*v2sigma2_2 + 2*grad_rho_a_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_x*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_y*v2sigma2_4 + grad_rho_a_y**2*grad_rho_b_p1_y*v2sigma2_3 + grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 4*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_y*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_y*rho_a_p1*v2rhosigma_1 + grad_rho_a_y*rho_b_p1*v2rhosigma_4 + 2*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_y*v2sigma2_4 + 4*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_5 + 4*grad_rho_b_p1_y*grad_rho_b_y**2*v2sigma2_5 + 2*grad_rho_b_p1_y*vsigma_2 + 4*grad_rho_b_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_5 + 2*grad_rho_b_y*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_y*rho_b_p1*v2rhosigma_5
+    v_b_z = 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_z*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_y*grad_rho_a_z*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_1 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_p1_z*grad_rho_b_z**2*v2sigma2_4 + grad_rho_a_p1_z*vsigma_1 + grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_x*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_z*v2sigma2_4 + grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_y*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z**2*grad_rho_b_p1_z*v2sigma2_3 + 2*grad_rho_a_z*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_z*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 4*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z*rho_a_p1*v2rhosigma_1 + grad_rho_a_z*rho_b_p1*v2rhosigma_4 + 4*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_z*grad_rho_b_z**2*v2sigma2_5 + 2*grad_rho_b_p1_z*vsigma_2 + 2*grad_rho_b_z*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_z*rho_b_p1*v2rhosigma_5
+    return {'rho_a': u_a, 'grad_a': [v_a_x, v_a_y, v_a_z], 'rho_b': u_b, 'grad_b': [v_b_x, v_b_y, v_b_z]}
+
+def fxc_pair_coefficients_mgga_tau_spin(ops):
+    """Spin-polarized per-point coefficient channels of the
+    fxc contraction with the pair fields labelled p1: keys
+    'rho_a'/'rho_b' (local), 'grad_a'/'grad_b' (vector), and
+    'tau_a'/'tau_b' (tau families).  Polarized Libxc arrays
+    carry their flat component packing (v2rho2_0..)."""
+    grad_rho_a_p1_x = ops['grad_rho_a_p1_x']
+    grad_rho_a_p1_y = ops['grad_rho_a_p1_y']
+    grad_rho_a_p1_z = ops['grad_rho_a_p1_z']
+    grad_rho_a_x = ops['grad_rho_a_x']
+    grad_rho_a_y = ops['grad_rho_a_y']
+    grad_rho_a_z = ops['grad_rho_a_z']
+    grad_rho_b_p1_x = ops['grad_rho_b_p1_x']
+    grad_rho_b_p1_y = ops['grad_rho_b_p1_y']
+    grad_rho_b_p1_z = ops['grad_rho_b_p1_z']
+    grad_rho_b_x = ops['grad_rho_b_x']
+    grad_rho_b_y = ops['grad_rho_b_y']
+    grad_rho_b_z = ops['grad_rho_b_z']
+    rho_a_p1 = ops['rho_a_p1']
+    rho_b_p1 = ops['rho_b_p1']
+    tau_a_p1 = ops['tau_a_p1']
+    tau_b_p1 = ops['tau_b_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    v2rho2_2 = ops['v2rho2_2']
+    v2rhosigma_0 = ops['v2rhosigma_0']
+    v2rhosigma_1 = ops['v2rhosigma_1']
+    v2rhosigma_2 = ops['v2rhosigma_2']
+    v2rhosigma_3 = ops['v2rhosigma_3']
+    v2rhosigma_4 = ops['v2rhosigma_4']
+    v2rhosigma_5 = ops['v2rhosigma_5']
+    v2rhotau_0 = ops['v2rhotau_0']
+    v2rhotau_1 = ops['v2rhotau_1']
+    v2rhotau_2 = ops['v2rhotau_2']
+    v2rhotau_3 = ops['v2rhotau_3']
+    v2sigma2_0 = ops['v2sigma2_0']
+    v2sigma2_1 = ops['v2sigma2_1']
+    v2sigma2_2 = ops['v2sigma2_2']
+    v2sigma2_3 = ops['v2sigma2_3']
+    v2sigma2_4 = ops['v2sigma2_4']
+    v2sigma2_5 = ops['v2sigma2_5']
+    v2sigmatau_0 = ops['v2sigmatau_0']
+    v2sigmatau_1 = ops['v2sigmatau_1']
+    v2sigmatau_2 = ops['v2sigmatau_2']
+    v2sigmatau_3 = ops['v2sigmatau_3']
+    v2sigmatau_4 = ops['v2sigmatau_4']
+    v2sigmatau_5 = ops['v2sigmatau_5']
+    v2tau2_0 = ops['v2tau2_0']
+    v2tau2_1 = ops['v2tau2_1']
+    v2tau2_2 = ops['v2tau2_2']
+    vsigma_0 = ops['vsigma_0']
+    vsigma_1 = ops['vsigma_1']
+    vsigma_2 = ops['vsigma_2']
+    u_a = 2*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_0 + grad_rho_a_p1_x*grad_rho_b_x*v2rhosigma_1 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_0 + grad_rho_a_p1_y*grad_rho_b_y*v2rhosigma_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_0 + grad_rho_a_p1_z*grad_rho_b_z*v2rhosigma_1 + grad_rho_a_x*grad_rho_b_p1_x*v2rhosigma_1 + grad_rho_a_y*grad_rho_b_p1_y*v2rhosigma_1 + grad_rho_a_z*grad_rho_b_p1_z*v2rhosigma_1 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2rhosigma_2 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2rhosigma_2 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2rhosigma_2 + rho_a_p1*v2rho2_0 + rho_b_p1*v2rho2_1 + tau_a_p1*v2rhotau_0 + tau_b_p1*v2rhotau_1
+    v_a_x = 4*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_0 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x**2*v2sigma2_3 + 2*grad_rho_a_p1_x*vsigma_0 + 4*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 + 2*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_b_y*v2sigma2_1 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_x**2*grad_rho_b_p1_x*v2sigma2_1 + 2*grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_y*v2sigma2_1 + 2*grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_3 + 4*grad_rho_a_x*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + 4*grad_rho_a_x*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + 2*grad_rho_a_x*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_x*rho_b_p1*v2rhosigma_3 + 2*grad_rho_a_x*tau_a_p1*v2sigmatau_0 + 2*grad_rho_a_x*tau_b_p1*v2sigmatau_1 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_x*v2sigma2_3 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_b_p1_x*grad_rho_b_x**2*v2sigma2_4 + grad_rho_b_p1_x*vsigma_1 + 2*grad_rho_b_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_b_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + grad_rho_b_x*rho_a_p1*v2rhosigma_1 + grad_rho_b_x*rho_b_p1*v2rhosigma_4 + grad_rho_b_x*tau_a_p1*v2sigmatau_2 + grad_rho_b_x*tau_b_p1*v2sigmatau_3
+    v_a_y = 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 + 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_y*v2sigma2_1 + 2*grad_rho_a_p1_x*grad_rho_a_y*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_0 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_y**2*v2sigma2_3 + 2*grad_rho_a_p1_y*vsigma_0 + 4*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_x*v2sigma2_1 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_y**2*grad_rho_b_p1_y*v2sigma2_1 + 2*grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_y*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + 4*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_y*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + 2*grad_rho_a_y*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_y*rho_b_p1*v2rhosigma_3 + 2*grad_rho_a_y*tau_a_p1*v2sigmatau_0 + 2*grad_rho_a_y*tau_b_p1*v2sigmatau_1 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_b_p1_y*grad_rho_b_y**2*v2sigma2_4 + grad_rho_b_p1_y*vsigma_1 + 2*grad_rho_b_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + grad_rho_b_y*rho_a_p1*v2rhosigma_1 + grad_rho_b_y*rho_b_p1*v2rhosigma_4 + grad_rho_b_y*tau_a_p1*v2sigmatau_2 + grad_rho_b_y*tau_b_p1*v2sigmatau_3
+    v_a_z = 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_x*grad_rho_a_z*grad_rho_b_x*v2sigma2_1 + grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_z*v2sigma2_1 + 2*grad_rho_a_p1_y*grad_rho_a_z*grad_rho_b_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_0 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_b_z**2*v2sigma2_3 + 2*grad_rho_a_p1_z*vsigma_0 + 2*grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_x*v2sigma2_1 + grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_y*v2sigma2_1 + grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_z**2*grad_rho_b_p1_z*v2sigma2_1 + 4*grad_rho_a_z*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_2 + 4*grad_rho_a_z*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_2 + 4*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_2 + grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_z*rho_a_p1*v2rhosigma_0 + 2*grad_rho_a_z*rho_b_p1*v2rhosigma_3 + 2*grad_rho_a_z*tau_a_p1*v2sigmatau_0 + 2*grad_rho_a_z*tau_b_p1*v2sigmatau_1 + 2*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_b_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_b_p1_z*grad_rho_b_z**2*v2sigma2_4 + grad_rho_b_p1_z*vsigma_1 + grad_rho_b_z*rho_a_p1*v2rhosigma_1 + grad_rho_b_z*rho_b_p1*v2rhosigma_4 + grad_rho_b_z*tau_a_p1*v2sigmatau_2 + grad_rho_b_z*tau_b_p1*v2sigmatau_3
+    w_a = 2*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_0 + grad_rho_a_p1_x*grad_rho_b_x*v2sigmatau_2 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_0 + grad_rho_a_p1_y*grad_rho_b_y*v2sigmatau_2 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_0 + grad_rho_a_p1_z*grad_rho_b_z*v2sigmatau_2 + grad_rho_a_x*grad_rho_b_p1_x*v2sigmatau_2 + grad_rho_a_y*grad_rho_b_p1_y*v2sigmatau_2 + grad_rho_a_z*grad_rho_b_p1_z*v2sigmatau_2 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2sigmatau_4 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2sigmatau_4 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2sigmatau_4 + rho_a_p1*v2rhotau_0 + rho_b_p1*v2rhotau_2 + tau_a_p1*v2tau2_0 + tau_b_p1*v2tau2_1
+    u_b = 2*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_3 + grad_rho_a_p1_x*grad_rho_b_x*v2rhosigma_4 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_3 + grad_rho_a_p1_y*grad_rho_b_y*v2rhosigma_4 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_3 + grad_rho_a_p1_z*grad_rho_b_z*v2rhosigma_4 + grad_rho_a_x*grad_rho_b_p1_x*v2rhosigma_4 + grad_rho_a_y*grad_rho_b_p1_y*v2rhosigma_4 + grad_rho_a_z*grad_rho_b_p1_z*v2rhosigma_4 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2rhosigma_5 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2rhosigma_5 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2rhosigma_5 + rho_a_p1*v2rho2_1 + rho_b_p1*v2rho2_2 + tau_a_p1*v2rhotau_2 + tau_b_p1*v2rhotau_3
+    v_b_x = 2*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x**2*v2sigma2_4 + grad_rho_a_p1_x*vsigma_1 + 2*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_1 + grad_rho_a_p1_y*grad_rho_a_x*grad_rho_b_y*v2sigma2_3 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_x*v2sigma2_2 + 2*grad_rho_a_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_a_x*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_x*v2sigma2_2 + 2*grad_rho_a_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x**2*grad_rho_b_p1_x*v2sigma2_3 + grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_y*v2sigma2_3 + grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_3 + 4*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_x*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_x*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x*rho_a_p1*v2rhosigma_1 + grad_rho_a_x*rho_b_p1*v2rhosigma_4 + grad_rho_a_x*tau_a_p1*v2sigmatau_2 + grad_rho_a_x*tau_b_p1*v2sigmatau_3 + 2*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_x*v2sigma2_4 + 4*grad_rho_b_p1_x*grad_rho_b_x**2*v2sigma2_5 + 2*grad_rho_b_p1_x*vsigma_2 + 4*grad_rho_b_p1_y*grad_rho_b_x*grad_rho_b_y*v2sigma2_5 + 4*grad_rho_b_p1_z*grad_rho_b_x*grad_rho_b_z*v2sigma2_5 + 2*grad_rho_b_x*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_x*rho_b_p1*v2rhosigma_5 + 2*grad_rho_b_x*tau_a_p1*v2sigmatau_4 + 2*grad_rho_b_x*tau_b_p1*v2sigmatau_5
+    v_b_y = 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_y*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_y*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_2 + grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_p1_y*grad_rho_b_y**2*v2sigma2_4 + grad_rho_a_p1_y*vsigma_1 + 2*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_1 + grad_rho_a_p1_z*grad_rho_a_y*grad_rho_b_z*v2sigma2_3 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_y*v2sigma2_2 + 2*grad_rho_a_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + grad_rho_a_x*grad_rho_a_y*grad_rho_b_p1_x*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_y*v2sigma2_4 + grad_rho_a_y**2*grad_rho_b_p1_y*v2sigma2_3 + grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_z*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 4*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 2*grad_rho_a_y*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_y*rho_a_p1*v2rhosigma_1 + grad_rho_a_y*rho_b_p1*v2rhosigma_4 + grad_rho_a_y*tau_a_p1*v2sigmatau_2 + grad_rho_a_y*tau_b_p1*v2sigmatau_3 + 2*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_y*v2sigma2_4 + 4*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_y*v2sigma2_5 + 4*grad_rho_b_p1_y*grad_rho_b_y**2*v2sigma2_5 + 2*grad_rho_b_p1_y*vsigma_2 + 4*grad_rho_b_p1_z*grad_rho_b_y*grad_rho_b_z*v2sigma2_5 + 2*grad_rho_b_y*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_y*rho_b_p1*v2rhosigma_5 + 2*grad_rho_b_y*tau_a_p1*v2sigmatau_4 + 2*grad_rho_b_y*tau_b_p1*v2sigmatau_5
+    v_b_z = 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_z*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_y*grad_rho_a_z*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_1 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_p1_z*grad_rho_b_z**2*v2sigma2_4 + grad_rho_a_p1_z*vsigma_1 + grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_x*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_z*v2sigma2_4 + grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_y*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z**2*grad_rho_b_p1_z*v2sigma2_3 + 2*grad_rho_a_z*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_z*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 4*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z*rho_a_p1*v2rhosigma_1 + grad_rho_a_z*rho_b_p1*v2rhosigma_4 + grad_rho_a_z*tau_a_p1*v2sigmatau_2 + grad_rho_a_z*tau_b_p1*v2sigmatau_3 + 4*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_z*grad_rho_b_z**2*v2sigma2_5 + 2*grad_rho_b_p1_z*vsigma_2 + 2*grad_rho_b_z*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_z*rho_b_p1*v2rhosigma_5 + 2*grad_rho_b_z*tau_a_p1*v2sigmatau_4 + 2*grad_rho_b_z*tau_b_p1*v2sigmatau_5
+    w_b = 2*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_1 + grad_rho_a_p1_x*grad_rho_b_x*v2sigmatau_3 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_1 + grad_rho_a_p1_y*grad_rho_b_y*v2sigmatau_3 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_1 + grad_rho_a_p1_z*grad_rho_b_z*v2sigmatau_3 + grad_rho_a_x*grad_rho_b_p1_x*v2sigmatau_3 + grad_rho_a_y*grad_rho_b_p1_y*v2sigmatau_3 + grad_rho_a_z*grad_rho_b_p1_z*v2sigmatau_3 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2sigmatau_5 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2sigmatau_5 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2sigmatau_5 + rho_a_p1*v2rhotau_1 + rho_b_p1*v2rhotau_3 + tau_a_p1*v2tau2_1 + tau_b_p1*v2tau2_2
+    return {'rho_a': u_a, 'grad_a': [v_a_x, v_a_y, v_a_z], 'tau_a': w_a, 'rho_b': u_b, 'grad_b': [v_b_x, v_b_y, v_b_z], 'tau_b': w_b}
