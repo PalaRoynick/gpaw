@@ -36,7 +36,8 @@ a.set_initial_magnetic_moments([m, m, 0, 0, 0, 0, 0, 0])
 Nk = 2
 calc = GPAW(mode=PW(200),
             xc='PBE',
-            kpts=(Nk, Nk, 1))
+            kpts=(Nk, Nk, 1),
+            txt='CrI3_relax.txt')
 a.calc = calc
 
 uf = UnitCellFilter(a, mask=[1, 1, 0, 0, 0, 1])

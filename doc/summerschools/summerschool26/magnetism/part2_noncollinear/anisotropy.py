@@ -1,3 +1,5 @@
+import numpy as np
+
 from gpaw import GPAW
 from gpaw.spinorbit import soc_eigenstates
 
@@ -9,6 +11,8 @@ de_zx = e_z - e_x
 de_zy = e_z - e_y
 print(f'dE_zx = {de_zx * 1000:1.3f} meV')
 print(f'dE_zy = {de_zy * 1000:1.3f} meV')
-S = 1.5
+S = 3 / 2
 A = (de_zx + de_zy) / 2 / S**2
 print(f'A = {A * 1000:1.3f} meV')
+
+assert np.isclose(A * 1000, -1)

@@ -13,8 +13,8 @@ which is already in the  Computational 2D Materials Database (C2DB).
 
 1. Go to the C2DB website at https://cmrdb.fysik.dtu.dk/c2db and search for
    magnetic monolayers with finite band gaps (the theory developed so far is
-   not applicable to metals, since these typically have long range
-   interactions). (Hint: Toggle ``Magnetic`` to ``yes`` and set a minimum
+   not applicable to metals since these typically have long range
+   interactions). (Hint: Toggle ``Magnetic`` to ``Yes`` and set a minimum
    value for the ``Band gap range`` in the search menu, then press the search
    icon.)
 
@@ -24,11 +24,11 @@ which is already in the  Computational 2D Materials Database (C2DB).
 
 3. Show the spin state, exchange coupling and magnetic anisotropy in the
    property overview.  (Hint: You can add key values to the overview through
-   the ``Add Column`` button.)
+   the ``Add column`` button.)
 
 4. Decide on a material you find promising to have a high Curie
-   temperature, based on what you learned in :ref:`part 1 <magnetism1>`
-   and :ref:`part 2 <magnetism2>`.  You may also
+   temperature, based on what you learned in :ref:`part 1 <part1_ferromagnetism/text>`
+   and :ref:`part 2 <part2_noncollinear/text>`. You may also
    want to choose a material with a limited number of atoms in the unit cell
    in order for the calculations to run fast.
 

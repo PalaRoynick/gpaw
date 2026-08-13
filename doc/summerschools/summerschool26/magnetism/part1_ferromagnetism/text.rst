@@ -212,7 +212,7 @@ We can also plot the total energy of the ground state as a function of the polar
 
 .. literalinclude:: anisotropy_plot.py
 
-.. image:: CrI3.svg
+.. image:: ../CrI3.svg
 
 Now that we have calculated the anisotropy constant `A`, we are finally in a position to improve our estimate of the Curie temperature of :mol:`CrI_3`.
 But how do we get the critical temperature if we cannot apply mean-field theory?

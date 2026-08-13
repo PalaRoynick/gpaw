@@ -11,7 +11,7 @@ def workflow():
         run(script='part1_ferromagnetism/anisotropy_plot.py', deps=[fm])
         run(script='part1_ferromagnetism/Tc_MC.py')
 
-        with run(script='part2_noncollinear/VI2_gs_teacher.py'):
-            run(script='part2_noncollinear/VI2_anisotropy.py')
-            run(script='part2_noncollinear/VI2_afm_teacher.py')
-            run(script='part2_noncollinear/VI2_noncol.py', cores=4)
+        with run(script='part2_noncollinear/relax.py')
+            run(script='part2_noncollinear/anisotropy.py')
+            run(script='part2_noncollinear/gs_afm_fm.py')
+            run(script='part2_noncollinear/noncollinear_gs.py', cores=4)
