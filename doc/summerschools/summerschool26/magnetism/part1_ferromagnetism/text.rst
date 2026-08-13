@@ -198,23 +198,26 @@ This energy will depend on the direction of the spins which is specified by the 
 
 .. literalinclude:: anisotropy.py
    :start-after: snippet-magani-start
-   :start-after: snippet-magani-end
+   :end-before: snippet-magani-end
 
 Again, you can print the results in meV with the commands
 
 .. literalinclude:: anisotropy.py
    :start-after: snippet-print-start
-   :start-after: snippet-print-end
+   :end-before: snippet-print-end
 
 We can also plot the total energy of the ground state as a function of the polar angle `\theta`.
 
 3.   Run the following below and inspect the plot. Does it look like you would expect?
 
-.. literalinclude:: CrI3_plot.py
+.. literalinclude:: anisotropy_plot.py
 
 .. image:: CrI3.svg
 
-Now that we have calculated the anisotropy constant `A`, we are finally in a position to improve our estimate of the Curie temperature of :mol:`CrI_3`. But how do we get the critical temperature if we cannot apply mean-field theory? One way is to perform Monte-Carlo simulations of the classical Heisenberg model as a function of temperature and find the point where the total magnetization vanishes. The results of such simulations are well approximated by the expression [*2D Mater.* **6** 015028 (2019)] (https://iopscience.iop.org/article/10.1088/2053-1583/aaf06d)
+Now that we have calculated the anisotropy constant `A`, we are finally in a position to improve our estimate of the Curie temperature of :mol:`CrI_3`.
+But how do we get the critical temperature if we cannot apply mean-field theory?
+One way is to perform Monte-Carlo simulations of the classical Heisenberg model as a function of temperature and find the point where the total magnetization vanishes.
+The results of such simulations are well approximated by the expression [*2D Mater.* **6** 015028 (2019)] (https://iopscience.iop.org/article/10.1088/2053-1583/aaf06d)
 
 .. math::
 
@@ -222,18 +225,14 @@ Now that we have calculated the anisotropy constant `A`, we are finally in a pos
 
 where `T_c^{\mathrm{Ising}}=1.52\cdot S^2J/k_B` is the critical temperature of the ferromagnetic Ising model on a honeycomb lattice.
 
-4.   Fill in the Monte-Carlo formula for `T_c` in the code below and calculate the Curie temperature using the values of `A` and `J` found above.
+4.   Calculate the Monte-Carlo approximation of the Curie temperature using the values of `A` and `J` you've determined above.
 
+Standard implementations of the ``tanh`` and ``log`` functions can be imported from numpy:
 
 .. code::
 
    from numpy import tanh, log
 
-   A = 0
-   J = 0
-
-   T0 = 1.52 # Ising limit
-   T_c = ???
-   print(f'T_c = {T_c:.1f} K')
-
-The result for `T_c` should be in reasonable agreement with the experimental value of 45 K (expect to obtain a value around 30 K). Of course one should carefully check the convergence of all calculations in the present tutorial. In fact a converged calculation yields `J = 3.1` meV and `A=-0.38` meV, which results in `T_c = 37` K.
+Your result for `T_c` should be in reasonable agreement with the experimental value of 45 K (expect to obtain a value around 30 K).
+Of course, one should carefully check the convergence of all calculations in the present tutorial.
+In fact a converged calculation yields `J = 3.1` meV and `A=-0.38` meV which results in `T_c = 37` K.

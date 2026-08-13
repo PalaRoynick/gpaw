@@ -107,7 +107,7 @@ brief descriptions of what aspects of GPAW you learn from them.
 
    intro/intro
    catalysis/catalysis
-   magnetism/magnetism
+   magnetism/text
    machinelearning/machinelearning
    excitedstates/excitedstates
    batteries/batteries

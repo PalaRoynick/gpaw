@@ -17,7 +17,7 @@ de_zy = e_z - e_y
 S = 3 / 2
 A = (de_zx + de_zy) / 2 / S**2
 
-# snippet-print-end
+# snippet-print-start
 print(f'dE_zx = {de_zx * 1000:1.3f} meV')
 print(f'dE_zy = {de_zy * 1000:1.3f} meV')
 print(f'A = {A * 1000:1.3f} meV')
