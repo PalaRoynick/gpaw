@@ -71,9 +71,16 @@ class AdiabaticDensityKernel(DensityXCKernel):
 
     def __post_init__(self):
         super().__post_init__()
-        localft_calc = LocalFTCalculator.from_rshe_parameters(
-            self.gs, self.context, **self.rshe_kwargs)
-        self.fxc_calc = AdiabaticFXCCalculator(localft_calc)
+        if self.functional in ('ALDA', 'ALDA_x', 'ALDA_X'):
+            localft_calc = LocalFTCalculator.from_rshe_parameters(
+                self.gs, self.context, **self.rshe_kwargs)
+            self.fxc_calc = AdiabaticFXCCalculator(localft_calc)
+        else:
+            # adiabatic semilocal (GGA-level) kernels from
+            # machine-generated coefficient fields, e.g. 'APBE'
+            from gpaw.response.semilocal_kernels import (
+                semilocal_fxc_factory)
+            self.fxc_calc = semilocal_fxc_factory(self.gs, self.context)
 
     def __repr__(self):
         return f'{self.functional} kernel'
