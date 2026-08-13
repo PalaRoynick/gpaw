@@ -78,8 +78,7 @@ def empty(shape, dtype=float):
     a = np.empty(2 * N + 16 // real_dtype.itemsize - 1, real_dtype)
     offset = (a.ctypes.data % 16) // real_dtype.itemsize
     a = a[offset:2 * N + offset].view(complex_dtype)
-    a.shape = shape
-    return a
+    return a.reshape(shape)
 
 
 def create_plans(size_c: IntVector,

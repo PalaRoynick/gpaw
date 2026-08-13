@@ -15,6 +15,7 @@ def test_pw_davidson_pw():
                   Atom('Al', (0.5, 0.5, 0.5))], pbc=True)
     bulk.set_cell((d, d, a), scale_atoms=True)
     calc = GPAW(mode='pw',
+                mixer={'backend': 'pulay'},
                 nbands=2 * 8,
                 kpts=(2, 2, 2),
                 convergence={'eigenstates': 7.2e-9, 'energy': 1e-5})
@@ -22,6 +23,7 @@ def test_pw_davidson_pw():
     e0 = bulk.get_potential_energy()
     niter0 = calc.get_number_of_iterations()
     calc = GPAW(mode='pw',
+                mixer={'backend': 'pulay'},
                 nbands=2 * 8,
                 kpts=(2, 2, 2),
                 convergence={'eigenstates': 7.2e-9,

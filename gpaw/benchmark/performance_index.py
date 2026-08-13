@@ -76,6 +76,33 @@ RESCALE_FACTOR *= old / new
 REFERENCES = REFERENCES0 | {
     'Mn2O2-3M': (-18.577, -0.01743, 24, 9999999)}
 
+# Updated references for ALL systems, s.t. improvements are weighted equally.
+# Additionally, Initial magnetic moments have been changed to yield the correct
+# ground state for all systems.
+REFERENCES = {
+    'Bi2Se3-3': (-8.911, -0.00074, 24, 62.7),
+    'C60-0': (-530.92535, -0.4486, 24, 174.3),
+    'C72-2': (-663.739, 3.4112, 24, 343.1),
+    'C2-3': (-18.19611, -0.00000, 24, 8.2),
+    'Ga2F4N4H10-3': (-99.08900, 0.00013, 40, 79.7),
+    'H2-0': (-6.77477, 0.1170, 24, 3.0),
+    'LiC8-3': (-75.37653, 0.6415, 24, 36.0),
+    'Fe8-3M': (-72.37710, -0.00713, 24, 97.0),
+    'Al96-2': (-350.06299, -0.01145, 40, 910.6),
+    'Mo60S120-1': (-1291.31046, 7.2669, 56, 4289),
+    'OPt24-2': (-153.25143, -1.6164, 40, 850.0),
+    'CrSi2As4-2M': (-38.89434, -0.1714, 24, 125.1),
+    'VI2-2M': (-12.965, -0.00017, 24, 35.1),
+    'Ti2Br6-3': (-32.64699, -0.00286, 24, 169.0),
+    'MnVS2-2M': (-29.11777, -0.00014, 24, 53.3),
+    'PtLi2O6-2M': (-41.787, -1.6355, 24, 381.3),
+    'V3Cl6-2N': (-51.117, -0.10189, 24, 2328.8),
+    'ErGe-2M': (-6.369, -0.0601, 24, 59.9),
+    'Fe8O8-3M': (-126.756, 0.000025, 40, 311.9),
+    'Mn2O2-3M': (-19.123, -0.006, 24, 108.8)}
+
+RESCALE_FACTOR = 1.125  # Match previous PW score
+
 NAMES = sorted(REFERENCES, key=lambda name: name.split('-')[::-1])
 
 
@@ -98,24 +125,28 @@ def score(data: dict[str, float]) -> tuple[float, int]:
     """
     s = 0.0
     n = 0
-    for name, (_, _, _, tref) in REFERENCES0.items():
+    for name, (_, _, _, tref) in REFERENCES.items():
         if name in data:
             s += tref / data[name]
             n += 1
-    return 100 * RESCALE_FACTOR * s / len(REFERENCES0), n
+    return 100 * RESCALE_FACTOR * s / len(REFERENCES), n
 
 
 def workflow(skip: list[str] | None = None) -> list:
     """MyQueue workflow."""
     from myqueue.workflow import run
     handles = []
-    for name, (_, _, cores, _) in REFERENCES.items():
+    for name, (_, _, cores, est_time) in REFERENCES.items():
         if skip and name in skip:
             continue
         tmax = '2h'
         if cores == 24:
-            nodename = 'xeon24el8'
-        if cores == 40:
+            if est_time > 180:
+                nodename = 'xeon24el8'
+            else:
+                nodename = 'xeon24el8_test'
+                tmax = '10m'
+        elif cores == 40:
             nodename = 'xeon40el8_clx'
             tmax = '3h'
         elif cores == 56:
@@ -254,9 +285,9 @@ def summary(folders: list[Path], mode: int) -> None:
                 line = ' | -------(---) -------%'
             else:
                 percent = f'{(t / t0 - 1) * 100:+7.1f}%'
-                if t < t0:
+                if t < (0.98 * t0):
                     percent = GREEN + percent + RESET
-                elif t > t0:
+                elif t > (1.02 * t0):
                     percent = RED + percent + RESET
                 line = f' | {t:7.1f}({i:3}) {percent}'
             print(line, end='')

@@ -1,6 +1,5 @@
 from ase import Atoms
 from ase.build import bulk
-from ase.dft import monkhorst_pack
 from ase.parallel import paropen
 from gpaw import GPAW, FermiDirac
 from gpaw import PW
@@ -9,8 +8,7 @@ import numpy as np
 
 # Monkhorst-Pack grid shifted to be gamma centered
 k = 8
-kpts = monkhorst_pack([k, k, k])
-kpts += [1. / (2 * k), 1. / (2 * k), 1. / (2 * k)]
+kpts = {'size': (k, k, k), 'gamma': True}
 
 cell = bulk('C', 'fcc', a=3.553).get_cell()
 a = Atoms('C2', cell=cell, pbc=True,

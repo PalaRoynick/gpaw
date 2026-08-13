@@ -1,0 +1,1325 @@
+# Copyright (C) 2003  CAMP
+# Please see the accompanying LICENSE file for further information.
+
+"""
+See Kresse, Phys. Rev. B 54, 11169 (1996)
+"""
+
+import numpy as np
+from numpy.fft import fftn, ifftn
+
+import gpaw.mpi as mpi
+from gpaw.new import trace
+from gpaw.utilities.blas import axpy
+
+
+def _vecdot(a, b):
+    if hasattr(np, 'vecdot'):  # numpy 2.0+
+        return np.vecdot(a, b)
+    return np.einsum('...i,...i->...', np.conjugate(a), b)
+
+
+"""About mixing-related classes.
+
+(FFT/Broyden)BaseMixer: These classes know how to mix one density
+array and store history etc.  But they do not take care of complexity
+like spin.
+
+(SpinSum/etc.)MixerDriver: These combine one or more BaseMixers to
+implement a full algorithm.  Think of them as stateless (immutable).
+The user can give an object of these types as input, but they will generally
+be constructed by a utility function so the interface is nice.
+
+The density object always wraps the (X)MixerDriver with a
+MixerWrapper.  The wrapper contains the common code for all mixers so
+we don't have to implement it multiple times (estimate memory, etc.).
+
+In the end, what the user provides is probably a dictionary anyway, and the
+relevant objects are instantiated automatically."""
+
+
+class BaseMixer:
+    name = 'pulay'
+
+    """Pulay density mixer."""
+    def __init__(self,
+                 beta=0.08,
+                 nmaxold=16,
+                 weight=20,
+                 sigma=1.1):
+        """Construct density-mixer object.
+
+        Parameters:
+
+        beta: float
+            Mixing parameter between zero and one (one is most
+            aggressive).
+        nmaxold: int
+            Maximum number of old densities.
+        weight: float
+            Weight parameter for special metric (for long wave-length
+            changes).
+        sigma: float
+            Width paramter between zero and infinity for the special
+            metric.
+        """
+
+        self.beta = beta
+        self.nmaxold = nmaxold
+        self.weight = weight
+        self.sigma = sigma
+        self.world = None
+
+    def initialize_metric(self, gd):
+        self.gd = gd
+        self.metric = ReciprocalMetric(gd, self.weight, self.sigma)
+
+    def reset(self):
+        """Reset Density-history.
+
+        Called at initialization and after each move of the atoms.
+
+        my_nuclei:   All nuclei in local domain.
+        """
+
+        # History for Pulay mixing of densities:
+        self.nt_isG = []  # Pseudo-electron densities
+        self.R_isG = []  # Residuals
+        self.A_ii = np.zeros((0, 0))
+
+        self.D_iasp = []
+        self.dD_iasp = []
+
+    def calculate_charge_sloshing(self, R_sG) -> float:
+        return self.gd.integrate(np.fabs(R_sG)).sum()
+
+    def mix_density(self, nt_sG, D_asp, g_ss=None):
+        nt_isG = self.nt_isG
+        R_isG = self.R_isG
+        D_iasp = self.D_iasp
+        dD_iasp = self.dD_iasp
+        iold = len(self.nt_isG)
+        dNt = np.inf
+        if iold > 0:
+            if iold > self.nmaxold:
+                # Throw away too old stuff:
+                del nt_isG[0]
+                del R_isG[0]
+                del D_iasp[0]
+                del dD_iasp[0]
+                iold = self.nmaxold
+
+            # Calculate new residual (difference between input and
+            # output density):
+            R_sG = nt_sG - nt_isG[-1]
+            dNt = self.calculate_charge_sloshing(R_sG)
+            R_isG.append(R_sG)
+
+            dD_iasp.append([])
+            for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
+                dD_iasp[-1].append(D_sp - D_isp)
+
+            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
+
+            # Update matrix:
+            A_ii = np.zeros((iold, iold))
+            i2 = iold - 1
+
+            a_i = self.dotprod(
+                R_isG, [mR_sG,], dD_iasp,
+                [mD_asp,], self.gd, mode='gemm')[:, 0]
+            A_ii[:, i2] = a_i
+            A_ii[i2, :] = a_i
+            A_ii[:i2, :i2] = self.A_ii[-i2:, -i2:]
+            self.A_ii = A_ii
+
+            try:
+                B_ii = np.linalg.inv(A_ii)
+                alpha_i = B_ii.sum(1)
+                alpha_i /= alpha_i.sum()
+            except (ZeroDivisionError, np.linalg.LinAlgError):
+                alpha_i = np.zeros(iold)
+                alpha_i[-1] = 1.0
+
+            if self.world:
+                self.world.broadcast(alpha_i, 0)
+
+            # Calculate new input density:
+            nt_sG[:] = 0.0
+            # for D_p, D_ip, dD_ip in self.D_a:
+            for D in D_asp:
+                D[:] = 0.0
+            beta = self.beta
+            for i, alpha in enumerate(alpha_i):
+                axpy(alpha, nt_isG[i], nt_sG)
+                axpy(alpha * beta, R_isG[i], nt_sG)
+
+                for D_sp, D_isp, dD_isp in zip(D_asp, D_iasp[i],
+                                               dD_iasp[i]):
+                    axpy(alpha, D_isp, D_sp)
+                    axpy(alpha * beta, dD_isp, D_sp)
+
+        # Store new input density (and new atomic density matrices):
+        nt_isG.append(nt_sG.copy())
+        D_iasp.append([])
+        for D_sp in D_asp:
+            D_iasp[-1].append(D_sp.copy())
+        return dNt
+
+    def dotprod(self, R1_isG, R2_isG, dD1_iasp, dD2_iasp, gd, mode='scalar'):
+        comm = gd.comm
+
+        if mode == 'scalar':
+            R1_isG = [R1_isG, ]
+            dD1_iasp = [dD1_iasp, ]
+            R2_isG = [R2_isG, ]
+            dD2_iasp = [dD2_iasp, ]
+
+        if mode == 'gemm':
+            shape1 = np.array(R1_isG).shape
+            shape2 = np.array(R2_isG).shape
+            prod = np.reshape(R1_isG, (shape1[0], -1)).conj() \
+                @ np.reshape(R2_isG, (shape2[0], -1)).T
+        elif mode == 'vecdot' or mode == 'scalar':
+            assert len(R1_isG) == len(R2_isG)
+            prod = _vecdot(
+                np.reshape(R1_isG, (len(R1_isG), -1)),
+                np.reshape(R2_isG, (len(R2_isG), -1)))
+        prod *= gd.dv
+        comm.sum(prod)
+        assert (prod.imag < 1e-10).all()
+        prod = prod.real
+        return prod[0] if mode == 'scalar' else prod
+
+    def estimate_memory(self, mem, gd):
+        gridbytes = gd.bytecount()
+        mem.subnode('nt_iG, R_iG', 2 * self.nmaxold * gridbytes)
+
+    def __repr__(self):
+        classname = self.__class__.__name__
+        template = '%s(beta=%f, nmaxold=%d, weight=%f)'
+        string = template % (classname, self.beta, self.nmaxold, self.weight)
+        return string
+
+
+class MSR1Mixer(BaseMixer):
+    name = 'msr1'
+
+    def __init__(self,
+                 beta=0.05,
+                 nmaxold=10,
+                 weight=20,
+                 sigma=1.1,
+                 trust_scalar=2.0,
+                 soft_bad_lim=1.5,
+                 hard_bad_lim=2.0,
+                 gb_scale=1.0):
+        """
+        This is an implementation of the MSR1 mixer.
+        References:
+          -  DOI: https://doi.org/10.1021/acs.jctc.1c00630
+          -  http://www.wien2k.at/reg_user/textbooks/Mixing_For_Dummies.pdf
+          -  and other mixer related papers by Laurence Marks (wien2k dev)
+        """
+        super().__init__(beta, nmaxold, weight, sigma)
+        self.mR_isG = []
+        self.mD_iasp = []
+        self.gb_scale = gb_scale
+        self.soft_bad_lim = soft_bad_lim
+        self.hard_bad_lim = hard_bad_lim
+        self.trust_scalar = trust_scalar
+
+    def reset(self):
+        super().reset()
+        self.mR_isG = []
+        self.mD_iasp = []
+        self.last_dNt = np.inf
+
+    def mix_density(self, nt_sG, D_asp, g_ss=None):
+        nt_isG = self.nt_isG
+        R_isG = self.R_isG
+        mR_isG = self.mR_isG
+        D_iasp = self.D_iasp
+        dD_iasp = self.dD_iasp
+        mD_iasp = self.mD_iasp
+        iold = len(self.nt_isG)
+        dNt = np.inf
+        if iold > 0:
+            # Calculate new residual (difference between input and
+            # output density):
+            R_sG = nt_sG - nt_isG[-1]
+            dNt = self.calculate_charge_sloshing(R_sG)
+            dD_iasp.append([])
+            for D_sp, D_isp in zip(D_asp, D_iasp[-1]):
+                dD_iasp[-1].append(D_sp - D_isp)
+            mR_sG, mD_asp = self.metric.apply(R_sG, dD_iasp[-1], g_ss)
+
+            R_isG.append(R_sG)
+            mR_isG.append(mR_sG)
+            mD_iasp.append(mD_asp)
+
+            while (iold > self.nmaxold and dNt
+                   <= self.last_dNt * self.soft_bad_lim) \
+                    or (iold > self.nmaxold):
+                # Throw away too old stuff:
+                to_del = 0
+                del nt_isG[to_del]
+                del R_isG[to_del]
+                del mR_isG[to_del]
+                del D_iasp[to_del]
+                del dD_iasp[to_del]
+                del mD_iasp[to_del]
+                iold = len(nt_isG)
+
+        if iold > 1:
+            backtracked = False
+            last_step = -2
+            del_oldest = False
+            if dNt > self.last_dNt * self.soft_bad_lim:
+                reduction = dNt / self.last_dNt
+                del_oldest = True if reduction > self.hard_bad_lim else False
+                insert_pos = 0 if del_oldest else -2
+                last_step = -1
+                tmp = nt_isG.pop()
+                nt_isG.insert(insert_pos, tmp)
+                tmp = R_isG.pop()
+                R_isG.insert(insert_pos, tmp)
+                tmp = mR_isG.pop()
+                mR_isG.insert(insert_pos, tmp)
+                tmp = mD_iasp.pop()
+                mD_iasp.insert(insert_pos, tmp)
+                tmp = D_iasp.pop()
+                D_iasp.insert(insert_pos, tmp)
+                tmp = dD_iasp.pop()
+                dD_iasp.insert(insert_pos, tmp)
+                dNt = self.last_dNt * 1.2  # Avoid infinite loop
+
+                R_sG = R_isG[-1]
+                mR_sG = mR_isG[-1]
+                mD_asp = mD_iasp[-1]
+                backtracked = True
+
+            # 1st order norm
+            ntnorm = self.calculate_charge_sloshing(nt_isG[-1])
+            dNt_normed = dNt / max(ntnorm, 1)
+            if dNt_normed == 0:
+                dNt_normed = 1e-10
+
+            # Here are some hardcoded parameters for the mixer.
+            # I have collected them all here, for simplicity,
+            # however, the idea is not that these should be
+            # changeable by the user.
+            # Maybe at some point, someone, wants to try and
+            # optimize them - if so - good luck and have fun.
+            dampen = 1  # Dampen the greeds
+            # How much to reduce greed when backtracing
+            punishment_factor = 0.9 if del_oldest else 1.0
+            # Scaling factor for the trust radius.
+            trust_scalar = self.trust_scalar
+            abs_gb_lim = 2000  # Maximum value of good Broyden.
+            # Scaling factor for maximum good Broyden.
+            max_gb_fact = self.gb_scale * np.clip(
+                (3e-2 / dNt_normed), 0.05, 1)
+            # Scaling factor for the final amount of good Broyden
+            post_gb_fact = 0.95 if del_oldest else (
+                0.95 if backtracked else 0.95)
+            weight = 8e-4  # Weight for regularization.
+            B0_boost = 1e-1  # Favor the predicted greed towards 1
+            B0_lims = [0.4, 1.05]   # Limits for predicted greed
+            A0_lims = [0.02, 0.45]   # Limits for unpredicted greed
+            rate_ratio = [  # Rate ratio for clipping
+                0.7, 1.3 if not backtracked else punishment_factor]
+            initial_B0 = 1.0
+
+            # Calculate the multi-secants:
+            s_isG = (nt_isG[:-1] - nt_isG[-1])
+            y_isG = -(R_isG[:-1] - R_isG[-1])
+            ty_isG = -(mR_isG[:-1] - mR_isG[-1])
+
+            sD_iasp = []
+            yD_iasp = []
+            tyD_iasp = []
+            for i1 in range(len(D_iasp) - 1):
+                sD_asp = []
+                yD_asp = []
+                tyD_asp = []
+                for a1 in range(len(D_iasp[i1])):
+                    sD_asp.append((D_iasp[i1][a1] - D_iasp[-1][a1]))
+                    yD_asp.append(-(dD_iasp[i1][a1] - dD_iasp[-1][a1]))
+                    tyD_asp.append(-(mD_iasp[i1][a1] - mD_iasp[-1][a1]))
+                sD_iasp.append(sD_asp)
+                yD_iasp.append(yD_asp)
+                tyD_iasp.append(tyD_asp)
+
+            # 2023 paper eq 22 - Limit good_broydenness
+            Ay_ii = self.dotprod(y_isG, ty_isG, yD_iasp,
+                                 tyD_iasp, self.gd, mode='gemm')
+            As_ii = self.dotprod(s_isG, ty_isG, sD_iasp,
+                                 tyD_iasp, self.gd, mode='gemm')
+
+            YY_LIM = np.linalg.norm(Ay_ii, ord='fro')
+            YS_LIM = np.linalg.norm(As_ii, ord='fro')
+            max_gb = min(max(YY_LIM / YS_LIM * max_gb_fact, 1), abs_gb_lim)
+
+            # Choose max good_broydenness s.t. A_ii is positive definite
+            # for good_broydenness in good_broydenness_range:
+            # binary search 2**(-11) accuracy:
+            # Calculate norms for determining good-broydenness
+            y_norm = np.diag(Ay_ii)
+            s_norm = np.diag(As_ii)
+            fracs_i = y_norm / s_norm
+            if (fracs_i <= 0).any():
+                # Handle negative values in fracs_i
+                # Set max_gb to a safe value
+                max_gb = min(
+                    max_gb,
+                    np.min(-fracs_i[fracs_i <= 0])
+                )
+
+            good_broydenness = 0.5 * max_gb
+            for iter in range(2, 12):
+                norm_vec = 1 / np.sqrt(
+                    y_norm + s_norm * good_broydenness)
+                A_ii = Ay_ii + As_ii * good_broydenness
+                A_ii *= norm_vec[None, :]
+                A_ii *= norm_vec[:, None]
+                try:
+                    eigs = np.linalg.eigvals(A_ii)
+                    min_real = np.min(eigs.real)
+                    max_imag = np.max(np.abs(eigs.imag))
+                except np.linalg.LinAlgError:
+                    good_broydenness -= 2**(-iter) * max_gb
+                    continue
+                if min_real > max(1e-9, max_imag):
+                    good_broydenness += 2**(-iter) * max_gb
+                else:
+                    good_broydenness -= 2**(-iter) * max_gb
+            good_broydenness -= 2**(- iter) * max_gb
+            good_broydenness *= post_gb_fact
+
+            # Re-Scale the problem!
+            t_norm = y_norm + good_broydenness * s_norm
+            if (t_norm < 0).any():
+                good_broydenness = 0
+                t_norm = y_norm  # When things are real bad.
+            t_norm = 1 / np.sqrt(t_norm)
+            t_norm_expanded = np.expand_dims(
+                t_norm, axis=tuple(np.arange(1, y_isG.ndim)))
+            y_isG *= t_norm_expanded
+            ty_isG *= t_norm_expanded
+            s_isG *= t_norm_expanded
+            for i, (sD_asp, yD_asp, tyD_asp) in enumerate(
+                    zip(sD_iasp, yD_iasp, tyD_iasp)):
+                for sD_sp, yD_sp, tyD_sp in zip(sD_asp, yD_asp, tyD_asp):
+                    sD_sp *= t_norm[i]
+                    yD_sp *= t_norm[i]
+                    tyD_sp *= t_norm[i]
+
+            t_isG = y_isG + good_broydenness * s_isG
+            tD_iasp = []
+            for i in range(iold - 1):
+                tD_asp = []
+                for a in range(len(D_iasp[0])):
+                    tD_asp.append(
+                        yD_iasp[i][a] + good_broydenness * sD_iasp[i][a])
+                tD_iasp.append(tD_asp)
+
+            A_ii = self.dotprod(t_isG, ty_isG, tD_iasp,
+                                tyD_iasp, self.gd, mode='gemm')
+            B_ii = self.dotprod(t_isG, s_isG, tD_iasp,
+                                sD_iasp, self.gd, mode='gemm')
+
+            A_diag = np.mean(np.diag(A_ii))
+            B_diag = np.mean(np.diag(B_ii))
+
+            # SVD Regularization:
+            S, V, D = np.linalg.svd(B_ii)
+            V = V / (V**2 + B_diag**2 * weight**2)
+            B_ii = D.T @ np.diag(V) @ S.T
+
+            S, V, D = np.linalg.svd(A_ii)
+            A_i = V / (V**2 + A_diag**2 * weight**2)
+            A_ii = D.T @ np.diag(A_i) @ S.T
+
+            alpha_i = self.dotprod(t_isG, [mR_sG, ], tD_iasp, [mD_asp, ],
+                                   self.gd, mode='gemm')[:, 0]
+            alpha_i = A_ii @ alpha_i
+            if self.world:
+                self.world.broadcast(alpha_i, 0)
+
+            # Stuff for predicting mixing coefficients:
+            uRnoD_asp = []
+            for uD_sp, R_sp in zip(self.uD_asp, dD_iasp[last_step]):
+                uRnoD_asp.append(R_sp - uD_sp)
+
+            A1 = self.dotprod(self.uk_sG, self.uk_sG, self.uD_asp, self.uD_asp,
+                              self.gd, mode='scalar')
+
+            B1 = self.dotprod(self.R_isG[last_step] - self.uk_sG,
+                              self.R_isG[last_step] - self.uk_sG,
+                              uRnoD_asp, uRnoD_asp, self.gd, mode='scalar')
+
+            # From Eq 18 from dft mixing for dumies:
+            A2_i = self.dotprod(
+                t_isG, [self.uk_sG, ], tD_iasp, [self.uD_asp, ], self.gd,
+                mode='gemm')[:, 0]
+            A3_i = self.dotprod(
+                [self.uk_sG, ], y_isG, [self.uD_asp, ], yD_iasp, self.gd,
+                mode='gemm')[0, :]
+
+            B2_i = self.dotprod(
+                t_isG, [self.pk_sG, ], tD_iasp,
+                [self.pD_asp, ], self.gd, mode='gemm')[:, 0]
+            B3_i = self.dotprod(
+                [self.R_isG[last_step] - self.uk_sG, ], y_isG, [uRnoD_asp, ],
+                yD_iasp, self.gd, mode='gemm')[0, :]
+
+            A2 = A3_i @ B_ii @ A2_i * dampen
+            B2 = B3_i @ B_ii @ B2_i
+
+            trig_fact = A0_lims[-1] * 2 / np.pi
+            A0_target = np.clip(
+                np.arctan(np.abs(A1 / (A2 * trig_fact))) * trig_fact,
+                *A0_lims
+            )
+            if self.A0 is not None:
+                if B2 == 0 and B1 == 0:
+                    B2 = 1
+                    B1 = 1
+                B0_ratio = (
+                    B0_boost + self.B0 + np.clip(np.abs(B1 / B2), *B0_lims)
+                ) / (2 * self.B0)
+                self.B0 *= np.clip(B0_ratio, 3 / 5, 5 / 3)
+                self.B0 = np.clip(self.B0, *B0_lims)
+                A0_ratio_GEOM = np.sqrt(A0_target * self.A0) / self.A0
+                self.A0 *= np.clip(A0_ratio_GEOM, *rate_ratio)
+                self.A0 = np.clip(self.A0, *A0_lims)
+            else:
+                self.B0 = initial_B0
+                self.A0 = A0_target
+
+            A0 = self.A0
+            B0 = self.B0
+
+            trust_step = (A0 * self.uk_sG + B0 * self.pk_sG)
+            dstep_asp = []
+            for uD_sp, pD_sp in zip(self.uD_asp, self.pD_asp):
+                dstep_asp.append(A0 * uD_sp + B0 * pD_sp)
+            trust_radius = self.dotprod(trust_step, trust_step, dstep_asp,
+                                        dstep_asp, self.gd, mode='scalar')
+            trust_radius = trust_scalar * trust_radius**0.5
+
+            if self.trust_radius is not None:
+                trust_radius_factor = (
+                    self.trust_radius * trust_radius
+                ) ** 0.5 / self.trust_radius
+                self.trust_radius *= np.clip(trust_radius_factor, *rate_ratio)
+            else:
+                self.trust_radius = trust_radius
+
+            # Clear previous step, so we can make a new one
+            self.uk_sG = np.zeros_like(nt_sG)
+            self.pk_sG = np.zeros_like(nt_sG)
+
+            for pD_sp in self.pD_asp:
+                pD_sp[:] = 0
+
+            for i1, alpha in enumerate(alpha_i):
+                self.uk_sG -= alpha * y_isG[i1]
+                self.pk_sG += alpha * s_isG[i1]
+
+                for a1, sD_sp in enumerate(sD_iasp[i1]):
+                    self.pD_asp[a1] += alpha * sD_sp
+
+            self.uk_sG += R_sG
+
+            predicted_size = B0 * self.dotprod(
+                self.pk_sG, self.pk_sG, self.pD_asp, self.pD_asp,
+                self.gd, mode='scalar')**0.5
+
+            beta_i = alpha_i.copy()
+            gamma_i = beta_i.copy()
+
+            # Trust radius control:
+            if predicted_size > self.trust_radius * 1.02:
+                BR_i = self.dotprod(t_isG, [mR_sG, ], tD_iasp,
+                                    [mD_asp, ], self.gd, mode='gemm')[:, 0]
+                s_ii = self.dotprod(s_isG, s_isG, sD_iasp,
+                                    sD_iasp, self.gd, mode='gemm') * B0**2
+
+                A_ii = np.linalg.inv(A_ii)
+                # Optimize (ridge regression):
+
+                def err_fct(lamb):
+                    beta_i = np.linalg.solve(
+                        A_ii + lamb * np.eye(iold - 1), BR_i
+                    )
+                    return (beta_i @ s_ii @ beta_i) - self.trust_radius**2
+
+                from scipy.optimize import root_scalar
+                try:
+                    lamb = root_scalar(err_fct, bracket=[0, 500 * A_diag])
+                    root = lamb.root
+                except ValueError:
+                    root = 500 * A_diag
+                beta_i = np.linalg.solve(
+                    A_ii + root * np.eye(iold - 1), BR_i
+                )
+                if self.world:
+                    self.world.broadcast(beta_i, 0)
+
+                uk_sG = R_sG.copy()
+                pk_sG = np.zeros_like(self.pk_sG)
+
+                alpha_i[:] = beta_i
+
+                for i1, (alpha, beta) in enumerate(zip(alpha_i, beta_i)):
+                    uk_sG -= y_isG[i1] * alpha
+                    pk_sG += s_isG[i1] * beta
+
+                new_step_size = self.trust_radius
+                scale_factor = (new_step_size / predicted_size)
+                A0 *= np.clip(scale_factor, 0, 1)
+                A0 = max(A0, A0_lims[0])
+            else:
+                uk_sG = self.uk_sG
+                pk_sG = self.pk_sG
+
+            step_sG = A0 * uk_sG + B0 * pk_sG
+
+            nt_sG[:] = nt_isG[-1] + step_sG
+
+            self.uD_asp = []
+            self.pD_asp = []
+            for a1, D_sp in enumerate(D_asp):
+                D_sp[:] = D_iasp[-1][a1] + A0 * dD_iasp[-1][a1]
+                self.uD_asp.append(dD_iasp[-1][a1].copy())
+                self.pD_asp.append(np.zeros_like(D_sp))
+
+            for i1, (alpha, beta) in enumerate(zip(alpha_i, beta_i)):
+                for a1, D_sp in enumerate(D_asp):
+                    D_sp -= A0 * alpha * yD_iasp[i1][a1]
+                    D_sp += B0 * beta * sD_iasp[i1][a1]
+                    self.uD_asp[a1] -= gamma_i[i1] * yD_iasp[i1][a1]
+                    self.pD_asp[a1] += gamma_i[i1] * sD_iasp[i1][a1]
+
+            # Sync the density, because apparantly they cant agree...
+            if self.world:
+                nt_sR = self.gd.collect(nt_sG, broadcast=True)
+                self.world.broadcast(nt_sR, 0)
+                nt_sG[:] = self.gd.distribute(nt_sR)
+
+            # If last step was really bad, we should just get rid of it
+            if del_oldest:
+                del nt_isG[0]
+                del R_isG[0]
+                del dD_iasp[0]
+                del D_iasp[0]
+                del mR_isG[0]
+                del mD_iasp[0]
+
+        elif iold > 0:
+            self.trust_radius = None
+            self.A0 = None
+            A0 = self.beta
+            # Pratt step
+            self.uk_sG = R_sG
+
+            self.pk_sG = np.zeros_like(self.uk_sG)
+            nt_sG[:] = nt_isG[-1] + A0 * self.uk_sG
+
+            self.uD_asp = []
+            self.pD_asp = []
+            for a1, D_sp in enumerate(D_asp):
+                D_sp[:] = D_iasp[-1][a1] + A0 * dD_iasp[-1][a1]
+                self.uD_asp.append(dD_iasp[-1][a1].copy())
+                self.pD_asp.append(np.zeros_like(D_sp))
+
+        # Store new input density (and new atomic density matrices):
+        nt_isG.append(nt_sG.copy())
+        D_iasp.append([])
+        for D_sp in D_asp:
+            D_iasp[-1].append(D_sp.copy())
+        self.last_dNt = dNt
+        return dNt
+
+
+class ExperimentalDotProd:
+    def __init__(self, setups, atomdist):
+        self.setups = setups
+        self.atomdist = atomdist
+
+    def __call__(self, R1_isG, R2_isG, dD1_iasp, dD2_iasp, gd, mode='scalar'):
+        from gpaw.utilities import pack_density
+        setups = self.setups
+        comm = gd.comm
+
+        if mode == 'scalar':
+            R1_isG = [R1_isG, ]
+            dD1_iasp = [dD1_iasp, ]
+            R2_isG = [R2_isG, ]
+            dD2_iasp = [dD2_iasp, ]
+
+        Ni = len(R1_isG)
+        assert Ni == len(R2_isG)
+        R1_iX = np.reshape(R1_isG, (Ni, -1))
+        R2_iX = np.reshape(R2_isG, (Ni, -1))
+
+        if mode == 'gemm':
+            prod = R1_iX.conj() @ R2_iX.T
+        else:
+            assert mode == 'vecdot' or mode == 'scalar'
+            prod = _vecdot(R1_iX, R2_iX)
+
+        prod *= gd.dv
+        assert self.atomdist.comm.rank == comm.rank
+        my_atoms_inds = np.where(self.atomdist.rank_a == comm.rank)[0]
+
+        for a, a_s in enumerate(my_atoms_inds):
+            setup = setups[a_s]
+            I4_pp = setup.four_phi_integrals()
+
+            template = dD1_iasp[0][a]
+            buffer1 = np.empty_like(template, shape=(len(dD1_iasp),
+                                                     I4_pp.shape[0]))
+            buffer2 = np.empty_like(template, shape=(len(dD2_iasp),
+                                                     I4_pp.shape[1]))
+            P = int(np.sqrt(template.shape[1]))
+            for spin in range(template.shape[0]):
+                for i1, dD1_asp in enumerate(dD1_iasp):
+                    buffer1[i1] = pack_density(
+                        dD1_asp[a][spin].conj().reshape(P, P))
+                for i2, dD2_asp in enumerate(dD2_iasp):
+                    buffer2[i2] = pack_density(
+                        dD2_asp[a][spin].reshape(P, P))
+
+                if mode == 'gemm':
+                    prod += (buffer1 @ I4_pp @ buffer2.T).real
+                elif mode == 'vecdot' or mode == 'scalar':
+                    prod += _vecdot((buffer1 @ I4_pp).conj(), buffer2).real
+
+        comm.sum(prod)
+        assert (prod.imag < 1e-10).all()
+        prod = prod.real
+        if mode == 'scalar':
+            assert prod.size == 1
+        return prod[0] if mode == 'scalar' else prod
+
+
+class ReciprocalMetric:
+    """
+    The idea behind this metric is to have the Mixer prioritize
+    long-range contributions over short ones, while the short-range
+    contributions are handled by the residual step. This builds on
+    the idea that, the true gradient of the density is approximately
+    the residual weighed with short range interactions.
+
+    gd : GridDescriptor
+        The grid descriptor for the density.
+    weight : float
+        The weight parameter for the reciprocal metric, i.e. how large
+    sigma: float
+        The width parameter for the reciprocal metric,
+    """
+
+    def __init__(self, gd, weight, sigma):
+        self.weight = weight
+        if weight == 1:
+            return
+
+        self.gd = gd
+        gd1 = gd.new_descriptor(comm=mpi.serial_comm)
+        self.gd1 = gd1
+        k_Qc = np.empty((*gd1.N_c, 3), float)
+        icell_cv = 2 * np.pi * gd.icell_cv
+        for ind, N in enumerate(gd1.N_c):
+            nums = np.fft.fftfreq(N) * N
+            other_axes = [
+                i for i in range(3) if i != ind]
+            k_Qc[..., ind] = np.expand_dims(nums, other_axes)
+        k_Qv = k_Qc @ icell_cv
+        k2_Q = _vecdot(k_Qv, k_Qv)
+
+        self.w_Q = weight * (sigma + k2_Q) / (sigma + weight * k2_Q)
+
+    def apply(self, a_sQ, dD_asp, g_ss):
+        b_sQ = a_sQ.copy()
+        if self.weight != 1:
+            # TODO: Parallel fft?
+            a1_sQ = np.ascontiguousarray(
+                [self.gd.collect(a_Q) for a_Q in a_sQ])
+            if self.gd.comm.rank == 0:
+                a1_sQ = fftn(
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c
+                )
+                a1_sQ[:] = a1_sQ * self.w_Q
+                a1_sQ = ifftn(
+                    a1_sQ, norm='ortho', axes=[1, 2, 3],
+                    s=self.gd1.N_c).real
+                n_c = self.gd1.n_c
+                a1_sQ = np.ascontiguousarray(
+                    a1_sQ[:, :n_c[0], :n_c[1], :n_c[2]])
+            else:
+                a1_sQ = np.empty((len(a1_sQ), 0, 0, 0), dtype=float)
+            b_sQ[:] = np.array(
+                [self.gd.distribute(a1_Q) for a1_Q in a1_sQ])
+
+        mD_asp = []
+        if g_ss is not None:
+            b_sQ[:] = np.tensordot(g_ss, b_sQ, axes=(1, 0))
+        for dD_sp in dD_asp:
+            if g_ss is not None:
+                mD_asp.append(np.tensordot(g_ss, dD_sp, axes=(1, 0)))
+            else:
+                mD_asp.append(dD_sp.copy())
+        return b_sQ, mD_asp
+
+
+class FFTBaseMixer(BaseMixer):
+    name = 'fft'
+
+    """Mix the density in Fourier space"""
+    def __init__(self, beta, nmaxold, weight):
+        raise DeprecationWarning(
+            'The fft-backend is deprecated, use pulay or msr1 instead.')
+        super().__init__(beta, nmaxold, weight)
+
+
+class BroydenBaseMixer:
+    name = 'broyden'
+
+    def __init__(self,
+                 beta=0.05,
+                 nmaxold=12,
+                 weight=1.0,
+                 sigma=1.0):
+        self.verbose = False
+        self.beta = beta
+        self.nmaxold = nmaxold
+        self.weight = 1.0  # XXX discards argument
+        self.sigma = 1.0
+
+    def initialize_metric(self, gd):
+        self.gd = gd
+
+    def reset(self):
+        self.step = 0
+        # self.d_nt_G = []
+        # self.d_D_ap = []
+
+        self.R_iG = []
+        self.dD_iap = []
+
+        self.nt_iG = []
+        self.D_iap = []
+        self.c_G = []
+        self.v_G = []
+        self.u_G = []
+        self.u_D = []
+
+    def mix_density(self, nt_sG, D_asp, g_ss=None):
+        if g_ss is not None:
+            raise NotImplementedError()
+
+        nt_G = nt_sG[0]
+        D_ap = [D_sp[0] for D_sp in D_asp]
+        dNt = np.inf
+        if self.step > 2:
+            del self.R_iG[0]
+            for d_Dp in self.dD_iap:
+                del d_Dp[0]
+        if self.step > 0:
+            self.R_iG.append(nt_G - self.nt_iG[-1])
+            for d_Dp, D_p, D_ip in zip(self.dD_iap, D_ap, self.D_iap):
+                d_Dp.append(D_p - D_ip[-1])
+            fmin_G = self.gd.integrate(self.R_iG[-1] * self.R_iG[-1])
+            dNt = self.gd.integrate(np.fabs(self.R_iG[-1]))
+            if self.verbose:
+                print('Mixer: broyden: fmin_G = %f fmin_D = %f' % fmin_G)
+        if self.step == 0:
+            self.eta_G = np.empty(nt_G.shape)
+            self.eta_D = []
+            for D_p in D_ap:
+                self.eta_D.append(0)
+                self.u_D.append([])
+                self.D_iap.append([])
+                self.dD_iap.append([])
+        else:
+            if self.step >= 2:
+                del self.c_G[:]
+                if len(self.v_G) >= self.nmaxold:
+                    del self.u_G[0]
+                    del self.v_G[0]
+                    for u_D in self.u_D:
+                        del u_D[0]
+                temp_nt_G = self.R_iG[1] - self.R_iG[0]
+                self.v_G.append(temp_nt_G / self.gd.integrate(temp_nt_G *
+                                                              temp_nt_G))
+                if len(self.v_G) < self.nmaxold:
+                    nstep = self.step - 1
+                else:
+                    nstep = self.nmaxold
+                for i in range(nstep):
+                    self.c_G.append(self.gd.integrate(self.v_G[i] *
+                                                      self.R_iG[1]))
+                self.u_G.append(self.beta * temp_nt_G + self.nt_iG[1] -
+                                self.nt_iG[0])
+                for d_Dp, u_D, D_ip in zip(self.dD_iap, self.u_D, self.D_iap):
+                    temp_D_ap = d_Dp[1] - d_Dp[0]
+                    u_D.append(self.beta * temp_D_ap + D_ip[1] - D_ip[0])
+                usize = len(self.u_G)
+                for i in range(usize - 1):
+                    a_G = self.gd.integrate(self.v_G[i] * temp_nt_G)
+                    axpy(-a_G, self.u_G[i], self.u_G[usize - 1])
+                    for u_D in self.u_D:
+                        axpy(-a_G, u_D[i], u_D[usize - 1])
+            self.eta_G = self.beta * self.R_iG[-1]
+            for i, d_Dp in enumerate(self.dD_iap):
+                self.eta_D[i] = self.beta * d_Dp[-1]
+            usize = len(self.u_G)
+            for i in range(usize):
+                axpy(-self.c_G[i], self.u_G[i], self.eta_G)
+                for eta_D, u_D in zip(self.eta_D, self.u_D):
+                    axpy(-self.c_G[i], u_D[i], eta_D)
+            axpy(-1.0, self.R_iG[-1], nt_G)
+            axpy(1.0, self.eta_G, nt_G)
+            for D_p, d_Dp, eta_D in zip(D_ap, self.dD_iap, self.eta_D):
+                axpy(-1.0, d_Dp[-1], D_p)
+                axpy(1.0, eta_D, D_p)
+            if self.step >= 2:
+                del self.nt_iG[0]
+                for D_ip in self.D_iap:
+                    del D_ip[0]
+        self.nt_iG.append(np.copy(nt_G))
+        for D_ip, D_p in zip(self.D_iap, D_ap):
+            D_ip.append(np.copy(D_p))
+        self.step += 1
+        return dNt
+
+
+class DummyMixer:
+    """Dummy mixer for TDDFT, i.e., it does not mix."""
+    name = 'dummy'
+    beta = 1.0
+    nmaxold = 1
+    weight = 1
+
+    def __init__(self, *args, **kwargs):
+        return
+
+    def mix(self, basemixers, nt_sG, D_asp):
+        return 0.0
+
+    def get_basemixers(self, nspins):
+        return []
+
+    def todict(self):
+        return {'name': 'dummy'}
+
+
+class NotMixingMixer:
+    name = 'no-mixing'
+
+    def __init__(self,
+                 beta=0,
+                 nmaxold=0,
+                 weight=0,
+                 sigma=0):
+        """Construct density-mixer object.
+        Parameters: they are ignored for this mixer
+        """
+
+        # whatever parameters you give it doesn't do anything with them
+        self.beta = 0
+        self.nmaxold = 0
+        self.weight = 0
+        self.sigma = 0
+
+    def initialize_metric(self, gd):
+        self.gd = gd
+        self.metric = None
+
+    def reset(self):
+        """Reset Density-history.
+
+        Called at initialization and after each move of the atoms.
+
+        my_nuclei:   All nuclei in local domain.
+        """
+
+        # Previous density:
+        self.nt_isG = []  # Pseudo-electron densities
+
+    def calculate_charge_sloshing(self, R_sG):
+        return self.gd.integrate(np.fabs(R_sG)).sum()
+
+    def mix_density(self, nt_sG, D_asp, g_ss=None):
+        iold = len(self.nt_isG)
+
+        dNt = np.inf
+        if iold > 0:
+            # Calculate new residual (difference between input and
+            # output density):
+            dNt = self.calculate_charge_sloshing(nt_sG - self.nt_isG[-1])
+        # Store new input density:
+        self.nt_isG = [nt_sG.copy()]
+
+        return dNt
+
+    # may presently be overridden by passing argument in constructor
+    def dotprod(self, R1_G, R2_G, dD1_ap, dD2_ap):
+        pass
+
+    def estimate_memory(self, mem, gd):
+        gridbytes = gd.bytecount()
+        mem.subnode('nt_iG, R_iG', 2 * self.nmaxold * gridbytes)
+
+    def __repr__(self):
+        string = 'no mixing of density'
+        return string
+
+
+class SeparateSpinMixerDriver:
+    name = 'separate'
+
+    def __init__(self, basemixerclass, **kwargs):
+        self.basemixerclass = basemixerclass
+
+        self.kwargs = kwargs
+
+    def get_basemixers(self, nspins):
+        if 'name' in self.kwargs:
+            # Forwards compatibility
+            self.kwargs.pop('name')
+        return [self.basemixerclass(**self.kwargs)
+                for _ in range(nspins)]
+
+    def mix(self, basemixers, nt_sG, D_asp):
+        """Mix pseudo electron densities."""
+        D_asp = D_asp.values()
+        dNt = 0.0
+        for s, (nt_G, basemixer) in enumerate(zip(nt_sG, basemixers)):
+            D_a1p = [D_sp[s:s + 1] for D_sp in D_asp]
+            nt_1G = nt_G[np.newaxis]
+            dNt += basemixer.mix_density(nt_1G, D_a1p)
+        return dNt
+
+
+class SpinSumMixerDriver:
+    name = 'sum'
+    mix_atomic_density_matrices = False
+
+    def __init__(self, basemixerclass, **kwargs):
+        self.basemixerclass = basemixerclass
+
+        self.kwargs = kwargs
+
+    def get_basemixers(self, nspins):
+        if nspins == 1:
+            raise ValueError('Spin sum mixer expects 2 or 4 components')
+        return [self.basemixerclass(**self.kwargs)]
+
+    def mix(self, basemixers, nt_sG, D_asp):
+        assert len(basemixers) == 1
+        basemixer = basemixers[0]
+        D_asp = D_asp.values()
+
+        collinear = len(nt_sG) == 2
+
+        # Mix density
+        if collinear:
+            nt_1G = nt_sG.sum(0)[np.newaxis]
+        else:
+            nt_1G = nt_sG[:1]
+
+        if self.mix_atomic_density_matrices:
+            if collinear:
+                D_a1p = [D_sp[:1] + D_sp[1:] for D_sp in D_asp]
+            else:
+                D_a1p = [D_sp[:1] for D_sp in D_asp]
+            dNt = basemixer.mix_density(nt_1G, D_a1p)
+            if collinear:
+                dD_ap = [D_sp[0] - D_sp[1] for D_sp in D_asp]
+                for D_sp, D_1p, dD_p in zip(D_asp, D_a1p, dD_ap):
+                    D_sp[0] = 0.5 * (D_1p[0] + dD_p)
+                    D_sp[1] = 0.5 * (D_1p[0] - dD_p)
+        else:
+            dNt = basemixer.mix_density(nt_1G, D_asp)
+
+        if collinear:
+            dnt_G = nt_sG[0] - nt_sG[1]
+            # Only new magnetization for spin density
+            # dD_ap = [D_sp[0] - D_sp[1] for D_sp in D_asp]
+
+            # Construct new spin up/down densities
+            nt_sG[0] = 0.5 * (nt_1G[0] + dnt_G)
+            nt_sG[1] = 0.5 * (nt_1G[0] - dnt_G)
+
+        return dNt
+
+
+class SpinSumMixerDriver2(SpinSumMixerDriver):
+    name = 'sum2'
+    mix_atomic_density_matrices = True
+
+
+class SpinDifferenceMixerDriver:
+    name = 'difference'
+
+    def __init__(self, basemixerclass, *, beta_m=0.7,
+                 nmaxold_m=2, weight_m=10.0, **kwargs):
+        self.basemixerclass = basemixerclass
+        self.kwargs = kwargs
+        self.kwargs_m = kwargs.copy()
+        self.kwargs_m['beta'] = beta_m
+        self.kwargs_m['nmaxold'] = nmaxold_m
+        self.kwargs_m['weight'] = weight_m
+
+    def get_basemixers(self, nspins):
+        if nspins == 1:
+            raise ValueError('Spin difference mixer expects 2 or 4 components')
+        basemixer = self.basemixerclass(**self.kwargs)
+        if nspins == 2:
+            basemixer_m = self.basemixerclass(**self.kwargs_m)
+            return basemixer, basemixer_m
+        else:
+            basemixer_x = self.basemixerclass(**self.kwargs_m)
+            basemixer_y = self.basemixerclass(**self.kwargs_m)
+            basemixer_z = self.basemixerclass(**self.kwargs_m)
+            return basemixer, basemixer_x, basemixer_y, basemixer_z
+
+    def mix(self, basemixers, nt_sG, D_asp):
+        D_asp = D_asp.values()
+
+        if len(nt_sG) == 2:
+            basemixer, basemixer_m = basemixers
+        else:
+            assert len(nt_sG) == 4
+            basemixer, basemixer_x, basemixer_y, basemixer_z = basemixers
+
+        if len(nt_sG) == 2:
+            # Mix density
+            nt_1G = nt_sG.sum(0)[np.newaxis]
+            D_a1p = [D_sp[:1] + D_sp[1:] for D_sp in D_asp]
+            dNt = basemixer.mix_density(nt_1G, D_a1p)
+
+            # Mix magnetization
+            dnt_1G = nt_sG[:1] - nt_sG[1:]
+            dD_a1p = [D_sp[:1] - D_sp[1:] for D_sp in D_asp]
+            basemixer_m.mix_density(dnt_1G, dD_a1p)
+            # (The latter is not counted in dNt)
+
+            # Construct new spin up/down densities
+            nt_sG[:1] = 0.5 * (nt_1G + dnt_1G)
+            nt_sG[1:] = 0.5 * (nt_1G - dnt_1G)
+            for D_sp, D_1p, dD_1p in zip(D_asp, D_a1p, dD_a1p):
+                D_sp[:1] = 0.5 * (D_1p + dD_1p)
+                D_sp[1:] = 0.5 * (D_1p - dD_1p)
+        else:
+            # Mix density
+            nt_1G = nt_sG[:1]
+            D_a1p = [D_sp[:1] for D_sp in D_asp]
+            dNt = basemixer.mix_density(nt_1G, D_a1p)
+
+            # Mix magnetization
+            Dx_a1p = [D_sp[1:2] for D_sp in D_asp]
+            Dy_a1p = [D_sp[2:3] for D_sp in D_asp]
+            Dz_a1p = [D_sp[3:4] for D_sp in D_asp]
+
+            basemixer_x.mix_density(nt_sG[1:2], Dx_a1p)
+            basemixer_y.mix_density(nt_sG[2:3], Dy_a1p)
+            basemixer_z.mix_density(nt_sG[3:4], Dz_a1p)
+        return dNt
+
+
+class FullSpinMixerDriver:
+    name = 'fullspin'
+
+    def __init__(self, basemixerclass, g=None, **kwargs):
+        self.basemixerclass = basemixerclass
+        self.g_ss = g
+        self.kwargs = kwargs
+
+    def get_basemixers(self, nspins):
+        if nspins == 1:
+            raise ValueError('Full-spin mixer expects 2 or 4 spin channels')
+
+        basemixer = self.basemixerclass(**self.kwargs)
+        return [basemixer]
+
+    def mix(self, basemixers, nt_sG, D_asp):
+        D_asp = D_asp.values()
+        basemixer = basemixers[0]
+        if self.g_ss is None or len(self.g_ss) != len(nt_sG):
+            self.g_ss = np.identity(len(nt_sG))
+
+        dNt = basemixer.mix_density(nt_sG, D_asp, self.g_ss)
+
+        return dNt
+
+
+# Dictionaries to get mixers by name:
+_backends = {}
+_methods = {}
+for cls in [FFTBaseMixer, BroydenBaseMixer, BaseMixer,
+            NotMixingMixer, MSR1Mixer]:
+    _backends[cls.name] = cls  # type:ignore
+for dcls in [SeparateSpinMixerDriver, SpinSumMixerDriver,
+             FullSpinMixerDriver, SpinSumMixerDriver2,
+             SpinDifferenceMixerDriver, DummyMixer]:
+    _methods[dcls.name] = dcls  # type:ignore
+
+
+# This function is used by Density to decide mixer parameters
+# that the user did not explicitly provide, i.e., it fills out
+# everything that is missing and returns a mixer "driver".
+def get_mixer_from_keywords(pbc, nspins, **mixerkwargs):
+    mixerkwargs = mixerkwargs.copy()  # avoid modifying the original dict
+
+    if mixerkwargs.get('name') == 'dummy':
+        return DummyMixer()
+
+    if mixerkwargs.get('backend') == 'no-mixing':
+        mixerkwargs['beta'] = 0
+        mixerkwargs['nmaxold'] = 0
+        mixerkwargs['weight'] = 0
+
+    if nspins == 1:
+        mixerkwargs['method'] = SeparateSpinMixerDriver
+
+    # The plan is to first establish a kwargs dictionary with all the
+    # defaults, then we update it with values from the user.
+    kwargs = {'backend': MSR1Mixer}
+
+    if nspins == 1:
+        kwargs['method'] = SeparateSpinMixerDriver
+    else:
+        kwargs['method'] = FullSpinMixerDriver
+
+    if not pbc and 'weight' not in mixerkwargs:
+        mixerkwargs['weight'] = 1
+
+    # Clean up mixerkwargs (compatibility)
+    if 'history' in mixerkwargs:
+        assert 'nmaxold' not in mixerkwargs
+        mixerkwargs['nmaxold'] = mixerkwargs.pop('history')
+
+    # Now the user override:
+    for key in kwargs:
+        # Clean any 'None' values out as if they had never been passed:
+        val = mixerkwargs.pop(key, None)
+        if val is not None:
+            kwargs[key] = val
+
+    keys = list(mixerkwargs.keys())
+    for key in keys:
+        # Clean any 'None' values out as if they had never been passed:
+        val = mixerkwargs.pop(key, None)
+        if val is not None:
+            mixerkwargs[key] = val
+
+    # Resolve keyword strings (like 'fft') into classes (like FFTBaseMixer):
+    driver = _methods.get(kwargs['method'], kwargs['method'])
+    baseclass = _backends.get(kwargs['backend'], kwargs['backend'])
+
+    # We forward any remaining mixer kwargs to the actual mixer object.
+    # Any user defined variables that do not really exist will cause an error.
+    mixer = driver(baseclass, **mixerkwargs)
+    return mixer
+
+
+# This is the only object which will be used by Density, sod the others
+class MixerWrapper:
+    def __init__(self, driver, nspins, gd, world=None):
+        self.driver = driver
+
+        self.basemixers = self.driver.get_basemixers(nspins)
+        for basemixer in self.basemixers:
+            basemixer.initialize_metric(gd)
+            basemixer.world = world
+        if len(self.basemixers) > 0:
+            # Basemixer 0 have the standard kwargs
+            self.beta = self.basemixers[0].beta
+            self.nmaxold = self.basemixers[0].nmaxold
+            self.weight = self.basemixers[0].weight
+            self.sigma = self.basemixers[0].sigma
+        else:
+            # No mixing
+            self.beta = None
+            self.nmaxold = None
+            self.weight = None
+            self.sigma = None
+
+    @trace
+    def mix(self, nt_sR, D_asp=None):
+        if D_asp is not None:
+            return self.driver.mix(self.basemixers, nt_sR, D_asp)
+
+        # new interface:
+        density = nt_sR
+        nspins = density.nt_sR.dims[0]
+        nt_sR = density.nt_sR.to_xp(np)
+        D_asii = density.D_asii.to_xp(np)
+        D_asp = {a: D_sii.copy().reshape((nspins, -1))
+                 for a, D_sii in D_asii.items()}
+        error = self.driver.mix(self.basemixers,
+                                nt_sR.data,
+                                D_asp)
+        for a, D_sii in D_asii.items():
+            ni = D_sii.shape[1]
+            D_sii[:] = D_asp[a].reshape((nspins, ni, ni))
+        xp = density.nt_sR.xp
+        if xp is not np:
+            density.nt_sR.data[:] = xp.asarray(nt_sR.data)
+            density.D_asii.data[:] = xp.asarray(D_asii.data)
+        return error
+
+    def estimate_memory(self, mem, gd):
+        for i, basemixer in enumerate(self.basemixers):
+            basemixer.estimate_memory(mem.subnode('Mixer %d' % i), gd)
+
+    def reset(self):
+        for basemixer in self.basemixers:
+            basemixer.reset()
+
+    def __str__(self):
+        lines = ['Density mixing:',
+                 'Method: ' + self.driver.name,
+                 'Backend: ' + self.driver.basemixerclass.name,
+                 'Linear mixing parameter: %g' % self.beta,
+                 f'old densities: {self.nmaxold}',
+                 'Width of damping distribution: %g' % self.sigma,
+                 'Damping of long wavelength oscillations: %g' % self.weight]
+        if self.weight == 1:
+            lines[-1] += '  # (no daming)'
+        return '\n  '.join(lines)
+
+
+# Helper function to define old-style interfaces to mixers.
+# Defines and returns a function which looks like a mixer class
+def _definemixerfunc(method, backend):
+    def getmixer(beta=None, nmaxold=None, weight=None, **kwargs):
+        d = dict(method=method, backend=backend,
+                 beta=beta, nmaxold=nmaxold, weight=weight)
+        d.update(kwargs)
+        # Clear none values:
+        d = {k: v for k, v in d.items() if v is not None}
+        return d
+    return getmixer
+
+
+Mixer = _definemixerfunc('separate', 'pulay')
+MixerSum = _definemixerfunc('sum', 'pulay')
+MixerSum2 = _definemixerfunc('sum2', 'pulay')
+MixerDif = _definemixerfunc('difference', 'pulay')
+MixerFull = _definemixerfunc('fullspin', 'pulay')
+FFTMixer = _definemixerfunc('separate', 'fft')
+FFTMixerSum = _definemixerfunc('sum', 'fft')
+FFTMixerSum2 = _definemixerfunc('sum2', 'fft')
+FFTMixerDif = _definemixerfunc('difference', 'fft')
+FFTMixerFull = _definemixerfunc('fullspin', 'fft')
+BroydenMixer = _definemixerfunc('separate', 'broyden')
+BroydenMixerSum = _definemixerfunc('sum', 'broyden')
+BroydenMixerSum2 = _definemixerfunc('sum2', 'broyden')
+BroydenMixerDif = _definemixerfunc('difference', 'broyden')

@@ -91,7 +91,7 @@ if [ "$SLURM_JOB_PARTITION" == "a100" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8_768" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090_devel" ] \
  || [ "$SLURM_JOB_PARTITION" == "h200" ];\
-then export GPAW_USE_GPUS=1;export GPAW_NEW=1;fi
+then export GPAW_USE_GPUS=1;fi
 """
 
 
@@ -137,7 +137,7 @@ def compile_gpaw_c_code(gpaw: Path, activate: Path, intel_only: bool) -> None:
     for host in nifllogin:
         if host == 'fjorm' and intel_only:
             continue
-        run(f'time ssh {host} ". {activate} && GPAW_BUILD_JOBS=16 pip install -q --no-build-isolation -e {gpaw}"')
+        run(f'time ssh {host} ". {activate} && GPAW_BUILD_JOBS=16 pip install -q --no-build-isolation -e {gpaw}[docs]"')
         # Save compiled file
         remote_arch = run(f"ssh {host} 'echo $CPU_ARCH'", capture_output=True).stdout.decode().strip()  # Single quote needed in command
         paths = list(gpaw.glob('_gpaw.*.so'))

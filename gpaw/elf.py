@@ -8,7 +8,7 @@ import numpy as np
 from gpaw.core import UGArray
 from gpaw.fd_operators import Gradient
 from gpaw.new.ase_interface import GPAW, ASECalculator
-from gpaw.new.calculation import DFTCalculation
+from gpaw.dft import DFT
 
 
 def elf(nt_sR: np.ndarray,
@@ -70,7 +70,7 @@ def elf(nt_sR: np.ndarray,
     return elf_R
 
 
-def elf_from_dft_calculation(dft: DFTCalculation | ASECalculator,
+def elf_from_dft_calculation(dft: DFT | ASECalculator,
                              ncut: float = 1e-6) -> UGArray:
     """Calculate the electronic localization function.
 
