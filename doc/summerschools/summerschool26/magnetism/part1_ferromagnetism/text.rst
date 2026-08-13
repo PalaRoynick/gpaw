@@ -1,4 +1,4 @@
-.. _magnetism1:
+.. _magnetism_part1:
 
 ============================================
 Part 1: Critical temperature of :mol:`CrI_3`
@@ -30,7 +30,7 @@ The view function will open the ase GUI to show the initial atomic structure.
 You may use the GUI to get a better feel for the structure of the material,
 for example, by rotating the structure, repeating the structure, etc. (under the 'view' tab)
 
-.. literalinclude:: relax.py
+.. literalinclude:: relax_tutorial.py
    :start-after: snippet-define-atoms-start
    :end-before: snippet-define-atoms-end
 
@@ -41,7 +41,7 @@ A spin-polarized calculation is initiated by specifying the initial magnetic mom
    (Hint: Use Hund's rule. The electronic configuration of a Cr atom is `\mathrm{[Ar]3d}^5\mathrm{4s}^1` and each of the iodine atoms will steal one electron).
    Use your answer to fill in the spin state `S` in the code below.
 
-.. literalinclude:: relax.py
+.. literalinclude:: relax_tutorial.py
    :start-after: snippet-relax-start
    :end-before: snippet-relax-end
 

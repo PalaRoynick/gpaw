@@ -15,4 +15,6 @@ S = 3 / 2
 A = (de_zx + de_zy) / 2 / S**2
 print(f'A = {A * 1000:1.3f} meV')
 
-assert np.isclose(A * 1000, -1)
+assert np.isclose(de_zx * 1000, -0.118, atol=1e-3)
+assert np.isclose(de_zy * 1000, -0.118, atol=1e-3)
+assert np.isclose(A * 1000, -0.052, atol=1e-3)

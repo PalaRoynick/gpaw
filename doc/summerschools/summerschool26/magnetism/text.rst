@@ -17,7 +17,7 @@ crucial in order to sustain magnetic order in two dimensions.
 
 In the first part of the project, you will calculate the Curie temperature of
 a :mol:`CrI_3` monolayer. Afterwards, you will investigate the magnetic order in
-:mol:`VI_2`, which has antiferromagnetic coupling and noncollinear order. Finally,
+:mol:`VI_2` which has antiferromagnetic coupling and noncollinear order. Finally,
 you will finish the project by performing a search for new magnetic 2D materials
 with high critical temperatures based on a database of hypothetical monolayers.
 

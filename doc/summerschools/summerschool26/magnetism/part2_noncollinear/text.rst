@@ -1,4 +1,4 @@
-.. _magnetism2:
+.. _magnetism_part2:
 
 =============================================
 Part 2: Noncollinear magnetism in :mol:`VI_2`
@@ -35,7 +35,7 @@ perform the relaxation in the ferromagnetic state, which has a smaller unit cell
 1.   First you should get the relaxed PBE crystal structure.
      You can download it from the C2DB at https://cmrdb.fysik.dtu.dk/c2db by searching for :mol:`VI_2`.
 2.   Fill in the expected ionic value for the spins `S` at the V atoms below and run the code to relax the crystal structure. The calculation takes about
-     17 minutes. (Hint: V has the electronic configuration `\mathrm{[Ar]3d}^3\mathrm{4s}^2`).
+     8 minutes. (Hint: V has the electronic configuration `\mathrm{[Ar]3d}^3\mathrm{4s}^2`).
 
 .. literalinclude:: relax.py
    :start-after: snippet-relax-start
@@ -44,14 +44,12 @@ perform the relaxation in the ferromagnetic state, which has a smaller unit cell
 Magnetic anisotropy
 ===================
 
-In the code above, we not only performed a structural optimization, but we also took the relaxed structure, switched off the `k`\ -point
-symmetries and did a final DFT calculation with all the `k`\ -points in the Brillouin zone. We did this in order to be able to evaluate the
-the magnetic anisotropy arising from the spin-orbit coupling.
+From the code above, we've obtained an LDA-optimizated :mol:`VI_2` structure which shall be used for all our future calculation.
+First, it shall be used to estimate the magnetic anisotropy arising from the spin-orbit coupling.
 
 1.   Adapt the code you used for :mol:`CrI_3` to calculate the magnetic anisotropy of :mol:`VI_2`.
 2.   Is the easy-axis in-plane or out-of-plane?
 3.   Do you expect to the :mol:`VI_2` to exhibit magnetic order at finite temperatures?
-
 
 DFT calculations in a repeated cell
 ===================================
@@ -171,7 +169,8 @@ conditions using the command ``path = atoms.cell.bandpath('GK', npoints=7).kpts`
     m = 3
     magmoms[0] = [m, 0, 0]
 
-    q_c = [?, ?, ?]
+    # Define a list 'q_c' here for the q-vector
+    # q_c = [?, ?, ?]
 
     calc = GPAW(mode={'name': 'pw',
                       'ecut': 400,
@@ -186,16 +185,15 @@ conditions using the command ``path = atoms.cell.bandpath('GK', npoints=7).kpts`
     energy = atoms.get_potential_energy()
     print(energy)
 
-
 Anisotropy and exchange coupling from noncollinear DFT
 ======================================================
 
 In the supercell calculation above, we could have included spin-orbit coupling in a self-consistent way by setting ``'soc'=True``. However, it
 is more convenient for us to exclude it such that we can explicitly compute the single-ion anisotropy parameter `A` afterwards. If the
-localized spin Hamiltonian with nearest neighbor exchange interactions is a good model, we should be able to obtain both `J` and `A` from
+localized spin Hamiltonian with nearest-neighbor exchange interactions is a good model, we should be able to obtain both `J` and `A` from
 the noncollinear calculation as well.
 
-1.   Make a script that computes the nearest neighbor exchange coupling `J` based on the noncollinear calculations performed above.
+1.   Make a script that computes the nearest-neighbor exchange coupling `J` based on the noncollinear calculations performed above.
 2.   Then make a script (could be the same one) that computes the spin-orbit coupling corrected energies of the ferromagnetic state. Check that
      you get the same either using a collinear configuration in the minimal unit cell or the noncollinear ferromagnetic configuration.
      You should calculate the energies of spins directed along the `x`, `y` and `z` directions (Hint: the anisotropy is calculated by rotating
@@ -204,7 +202,6 @@ the noncollinear calculation as well.
      takes as a reference the first V atom.
 
 How does the computed exchange constant compare to the one obtained from the collinear FM and AFM calculations above?
-
 
 Critical temperature?
 =====================
