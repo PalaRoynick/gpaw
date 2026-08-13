@@ -66,3 +66,90 @@ def fxc_pair_coefficients_mgga_tau(ops):
     v_z = 4*grad_rho_p1_x*grad_rho_x*grad_rho_z*v2sigma2 + 4*grad_rho_p1_y*grad_rho_y*grad_rho_z*v2sigma2 + 4*grad_rho_p1_z*grad_rho_z**2*v2sigma2 + 2*grad_rho_p1_z*vsigma + 2*grad_rho_z*rho_p1*v2rhosigma + 2*grad_rho_z*tau_p1*v2sigmatau
     w_tau = 2*grad_rho_p1_x*grad_rho_x*v2sigmatau + 2*grad_rho_p1_y*grad_rho_y*v2sigmatau + 2*grad_rho_p1_z*grad_rho_z*v2sigmatau + rho_p1*v2rhotau + tau_p1*v2tau2
     return {'rho': u, 'grad': [v_x, v_y, v_z], 'tau': w_tau}
+
+def fxc_coefficient_fields_lda(ops):
+    """Symmetric per-point coefficient fields c[(a, b)] of the
+    semilocal fxc operator over the derivative slots
+    ('rho', 'x', 'y', 'z'[, 'tau']): the plane-wave kernel is
+    K_GG' = sum_ab fac_a(q+G)* FT[c_ab](G-G') fac_b(q+G')
+    with fac_rho = 1 and fac_i = 1j (q+G)_i."""
+    v2rho2 = ops['v2rho2']
+    c = {}
+    c[('rho', 'rho')] = v2rho2
+    return c
+
+def fxc_coefficient_fields_gga(ops):
+    """Symmetric per-point coefficient fields c[(a, b)] of the
+    semilocal fxc operator over the derivative slots
+    ('rho', 'x', 'y', 'z'[, 'tau']): the plane-wave kernel is
+    K_GG' = sum_ab fac_a(q+G)* FT[c_ab](G-G') fac_b(q+G')
+    with fac_rho = 1 and fac_i = 1j (q+G)_i."""
+    grad_rho_x = ops['grad_rho_x']
+    grad_rho_y = ops['grad_rho_y']
+    grad_rho_z = ops['grad_rho_z']
+    v2rho2 = ops['v2rho2']
+    v2rhosigma = ops['v2rhosigma']
+    v2sigma2 = ops['v2sigma2']
+    vsigma = ops['vsigma']
+    c = {}
+    c[('rho', 'rho')] = v2rho2
+    c[('rho', 'x')] = 2*grad_rho_x*v2rhosigma
+    c[('rho', 'y')] = 2*grad_rho_y*v2rhosigma
+    c[('rho', 'z')] = 2*grad_rho_z*v2rhosigma
+    c[('x', 'rho')] = 2*grad_rho_x*v2rhosigma
+    c[('x', 'x')] = 4*grad_rho_x**2*v2sigma2 + 2*vsigma
+    c[('x', 'y')] = 4*grad_rho_x*grad_rho_y*v2sigma2
+    c[('x', 'z')] = 4*grad_rho_x*grad_rho_z*v2sigma2
+    c[('y', 'rho')] = 2*grad_rho_y*v2rhosigma
+    c[('y', 'x')] = 4*grad_rho_x*grad_rho_y*v2sigma2
+    c[('y', 'y')] = 4*grad_rho_y**2*v2sigma2 + 2*vsigma
+    c[('y', 'z')] = 4*grad_rho_y*grad_rho_z*v2sigma2
+    c[('z', 'rho')] = 2*grad_rho_z*v2rhosigma
+    c[('z', 'x')] = 4*grad_rho_x*grad_rho_z*v2sigma2
+    c[('z', 'y')] = 4*grad_rho_y*grad_rho_z*v2sigma2
+    c[('z', 'z')] = 4*grad_rho_z**2*v2sigma2 + 2*vsigma
+    return c
+
+def fxc_coefficient_fields_mgga_tau(ops):
+    """Symmetric per-point coefficient fields c[(a, b)] of the
+    semilocal fxc operator over the derivative slots
+    ('rho', 'x', 'y', 'z'[, 'tau']): the plane-wave kernel is
+    K_GG' = sum_ab fac_a(q+G)* FT[c_ab](G-G') fac_b(q+G')
+    with fac_rho = 1 and fac_i = 1j (q+G)_i."""
+    grad_rho_x = ops['grad_rho_x']
+    grad_rho_y = ops['grad_rho_y']
+    grad_rho_z = ops['grad_rho_z']
+    v2rho2 = ops['v2rho2']
+    v2rhosigma = ops['v2rhosigma']
+    v2rhotau = ops['v2rhotau']
+    v2sigma2 = ops['v2sigma2']
+    v2sigmatau = ops['v2sigmatau']
+    v2tau2 = ops['v2tau2']
+    vsigma = ops['vsigma']
+    c = {}
+    c[('rho', 'rho')] = v2rho2
+    c[('rho', 'tau')] = v2rhotau
+    c[('rho', 'x')] = 2*grad_rho_x*v2rhosigma
+    c[('rho', 'y')] = 2*grad_rho_y*v2rhosigma
+    c[('rho', 'z')] = 2*grad_rho_z*v2rhosigma
+    c[('tau', 'rho')] = v2rhotau
+    c[('tau', 'tau')] = v2tau2
+    c[('tau', 'x')] = 2*grad_rho_x*v2sigmatau
+    c[('tau', 'y')] = 2*grad_rho_y*v2sigmatau
+    c[('tau', 'z')] = 2*grad_rho_z*v2sigmatau
+    c[('x', 'rho')] = 2*grad_rho_x*v2rhosigma
+    c[('x', 'tau')] = 2*grad_rho_x*v2sigmatau
+    c[('x', 'x')] = 4*grad_rho_x**2*v2sigma2 + 2*vsigma
+    c[('x', 'y')] = 4*grad_rho_x*grad_rho_y*v2sigma2
+    c[('x', 'z')] = 4*grad_rho_x*grad_rho_z*v2sigma2
+    c[('y', 'rho')] = 2*grad_rho_y*v2rhosigma
+    c[('y', 'tau')] = 2*grad_rho_y*v2sigmatau
+    c[('y', 'x')] = 4*grad_rho_x*grad_rho_y*v2sigma2
+    c[('y', 'y')] = 4*grad_rho_y**2*v2sigma2 + 2*vsigma
+    c[('y', 'z')] = 4*grad_rho_y*grad_rho_z*v2sigma2
+    c[('z', 'rho')] = 2*grad_rho_z*v2rhosigma
+    c[('z', 'tau')] = 2*grad_rho_z*v2sigmatau
+    c[('z', 'x')] = 4*grad_rho_x*grad_rho_z*v2sigma2
+    c[('z', 'y')] = 4*grad_rho_y*grad_rho_z*v2sigma2
+    c[('z', 'z')] = 4*grad_rho_z**2*v2sigma2 + 2*vsigma
+    return c

@@ -468,7 +468,7 @@ class Kmatrix:
         import pylibxc
         from gpaw.fd_operators import Gradient
 
-        from gpaw.lrtddft2.xckernel_fxc import (
+        from gpaw.xckernel_fxc import (
             fxc_pair_coefficients_lda, fxc_pair_coefficients_gga,
             fxc_pair_coefficients_mgga_tau)
 
