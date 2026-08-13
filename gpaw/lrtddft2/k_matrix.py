@@ -11,7 +11,7 @@ from gpaw.utilities import pack_density
 
 class Kmatrix:
     def __init__(self, ks_singles, xc, deriv_scale=1e-5,
-                 analytic_fxc=False):
+                 analytic_fxc=False, triplet=False):
         self.basefilename = ks_singles.basefilename
         self.ks_singles = ks_singles
         self.lr_comms = self.ks_singles.lr_comms
@@ -32,8 +32,16 @@ class Kmatrix:
         self._afxc = None       # lazy setup state
         self._wtau_gip = None   # tau-channel coefficient field of row ip
 
+        # triplet (spin-flip) coupling matrix for a closed-shell
+        # reference: no Hartree term, and the XC kernel is the
+        # spin-adapted triplet combination (analytic path only)
+        self.triplet = triplet
+        if triplet and not analytic_fxc:
+            raise NotImplementedError(
+                'triplet coupling requires analytic_fxc=True')
+
         # for pros!!!
-        self.fH_pre = 1.0
+        self.fH_pre = 0.0 if triplet else 1.0
         self.fxc_pre = 1.0
 
     def initialize(self):
@@ -490,9 +498,19 @@ class Kmatrix:
             ids = name
         else:
             raise ValueError(f'no libxc mapping for fxc name {name!r}')
-        fn = {'lda': fxc_pair_coefficients_lda,
-              'gga': fxc_pair_coefficients_gga,
-              'mgga_tau': fxc_pair_coefficients_mgga_tau}[family]
+        if self.triplet:
+            from gpaw.xckernel_fxc import (
+                fxc_pair_coefficients_lda_triplet,
+                fxc_pair_coefficients_gga_triplet,
+                fxc_pair_coefficients_mgga_tau_triplet)
+            fn = {'lda': fxc_pair_coefficients_lda_triplet,
+                  'gga': fxc_pair_coefficients_gga_triplet,
+                  'mgga_tau': fxc_pair_coefficients_mgga_tau_triplet
+                  }[family]
+        else:
+            fn = {'lda': fxc_pair_coefficients_lda,
+                  'gga': fxc_pair_coefficients_gga,
+                  'mgga_tau': fxc_pair_coefficients_mgga_tau}[family]
 
         grad_fine = [Gradient(finegd, v, n=2).apply for v in range(3)]
         wfs = self.calc.wfs
@@ -500,31 +518,65 @@ class Kmatrix:
                        for v in range(3)]
 
         nt = np.maximum(density.nt_sg[0], 1e-10)
-        ops = {'rho': nt}
+        gradn = None
         if family != 'lda':
             gradn = np.zeros((3,) + nt.shape)
             for v, g in enumerate(grad_fine):
                 g(density.nt_sg[0], gradn[v])
-            for v, ax in enumerate('xyz'):
-                ops[f'grad_rho_{ax}'] = gradn[v]
-            ops['sigma'] = (gradn ** 2).sum(axis=0)
+        taut_g = None
         if family == 'mgga_tau':
             taut_sG = wfs.calculate_kinetic_energy_density()
             taut_g = finegd.empty()
             density.interpolator.apply(taut_sG[0], taut_g)
-            ops['tau'] = taut_g
 
-        inp = {'rho': ops['rho'].ravel()}
-        if family != 'lda':
-            inp['sigma'] = ops['sigma'].ravel()
-        if family == 'mgga_tau':
-            inp['tau'] = ops['tau'].ravel()
-        for fid in ids.split('+'):
-            f = pylibxc.LibXCFunctional(fid, 'unpolarized')
-            r = f.compute(inp, do_exc=False, do_vxc=True, do_fxc=True)
-            for k, v in r.items():
-                v = v.reshape(v.shape[0], -1).T.squeeze().reshape(nt.shape)
-                ops[k] = ops.get(k, 0) + v
+        if self.triplet:
+            # spin-adapted triplet kernel: polarized Libxc arrays at
+            # the spin-compensated point; all fields alpha-channel
+            npts = nt.size
+            ops = {}
+            if gradn is not None:
+                for v, ax in enumerate('xyz'):
+                    ops[f'grad_rho_a_{ax}'] = gradn[v] / 2
+            if taut_g is not None:
+                ops['tau_a'] = taut_g / 2
+            half = (nt / 2).ravel()
+            inp = {'rho': np.stack([half, half], axis=-1)}
+            if gradn is not None:
+                q = ((gradn ** 2).sum(axis=0) / 4).ravel()
+                inp['sigma'] = np.stack([q, q, q], axis=-1)
+            if taut_g is not None:
+                th = (taut_g / 2).ravel()
+                inp['tau'] = np.stack([th, th], axis=-1)
+            for fid in ids.split('+'):
+                f = pylibxc.LibXCFunctional(fid, 'polarized')
+                r = f.compute(inp, do_exc=False, do_vxc=True,
+                              do_fxc=True)
+                for k, v in r.items():
+                    v = v.reshape(npts, -1)
+                    for c in range(v.shape[1]):
+                        key = f'{k}_{c}'
+                        ops[key] = ops.get(key, 0) \
+                            + v[:, c].reshape(nt.shape)
+        else:
+            ops = {'rho': nt}
+            if gradn is not None:
+                for v, ax in enumerate('xyz'):
+                    ops[f'grad_rho_{ax}'] = gradn[v]
+                ops['sigma'] = (gradn ** 2).sum(axis=0)
+            if taut_g is not None:
+                ops['tau'] = taut_g
+            inp = {'rho': ops['rho'].ravel()}
+            if family != 'lda':
+                inp['sigma'] = ops['sigma'].ravel()
+            if family == 'mgga_tau':
+                inp['tau'] = ops['tau'].ravel()
+            for fid in ids.split('+'):
+                f = pylibxc.LibXCFunctional(fid, 'unpolarized')
+                r = f.compute(inp, do_exc=False, do_vxc=True,
+                              do_fxc=True)
+                for k, v in r.items():
+                    v = v.reshape(v.shape[0], -1).T.squeeze()
+                    ops[k] = ops.get(k, 0) + v.reshape(nt.shape)
 
         self._afxc = {'family': family, 'fn': fn, 'ops': ops,
                       'grad_fine': grad_fine, 'grad_coarse': grad_coarse,
@@ -558,15 +610,17 @@ class Kmatrix:
             self._analytic_setup()
         a = self._afxc
         ops = dict(a['ops'])
-        ops['rho_p1'] = dnt_gip
+        p1 = '_a_p1' if self.triplet else '_p1'
+        scale = 0.5 if self.triplet else 1.0
+        ops[f'rho{p1}'] = dnt_gip * scale
         if a['family'] != 'lda':
             dgrad = np.zeros((3,) + a['shape'])
             for v, g in enumerate(a['grad_fine']):
                 g(dnt_gip, dgrad[v])
             for v, ax in enumerate('xyz'):
-                ops[f'grad_rho_p1_{ax}'] = dgrad[v]
+                ops[f'grad_rho{p1}_{ax}'] = dgrad[v] * scale
         if a['family'] == 'mgga_tau':
-            ops['tau_p1'] = self.pair_ked(kss_ip)
+            ops[f'tau{p1}'] = self.pair_ked(kss_ip) * scale
 
         ch = a['fn'](ops)
         pot = np.ascontiguousarray(
@@ -578,10 +632,14 @@ class Kmatrix:
                 continue
             g(np.ascontiguousarray(gv), tmp)
             pot -= tmp
+        # triplet: the channels are derivatives with respect to the
+        # ALPHA pair fields (half the full pair density), so the
+        # contraction with FULL pair densities carries another 1/2
+        pot *= scale
         dVxct_gip[:] = 0.0
         dVxct_gip[kss_ip.spin_ind][:] = pot
         wtau = ch.get('tau')
-        self._wtau_gip = (np.ascontiguousarray(wtau)
+        self._wtau_gip = (np.ascontiguousarray(wtau) * scale
                           if wtau is not None else None)
 
     def calculate_paw_xc_pair_potentials(self, kss_ip):
@@ -601,6 +659,28 @@ class Kmatrix:
             Pip_ni = self.calc.wfs.kpt_u[kss_ip.spin_ind].P_ani[a]
             Dip_ii = np.outer(Pip_ni[i], Pip_ni[p])
             Dip_p = pack_density(Dip_ii)
+
+            if self.triplet:
+                # spin-flip channel: antisymmetric two-spin perturbation
+                # of the spin-compensated atomic density matrix; the
+                # pair potential is the alpha-beta difference, and two
+                # factors 1/2 map the alpha-channel derivative onto the
+                # FULL pair density matrices contracted downstream
+                h = self.deriv_scale
+                D_p = self.calc.density.D_asp[a][kss_ip.spin_ind]
+                Dp2 = np.array([D_p / 2 + h * Dip_p / 2,
+                                D_p / 2 - h * Dip_p / 2])
+                Dm2 = np.array([D_p / 2 - h * Dip_p / 2,
+                                D_p / 2 + h * Dip_p / 2])
+                Ip2 = np.zeros_like(Dp2)
+                Im2 = np.zeros_like(Dm2)
+                self.xc.calculate_paw_correction(
+                    self.calc.wfs.setups[a], Dp2, Ip2)
+                self.xc.calculate_paw_correction(
+                    self.calc.wfs.setups[a], Dm2, Im2)
+                I_asp[a] = (((Ip2[0] - Ip2[1]) - (Im2[0] - Im2[1]))
+                            / (2 * h) / 4)[np.newaxis]
+                continue
 
             # finite difference plus
             D_sp = self.calc.density.D_asp[a].copy()

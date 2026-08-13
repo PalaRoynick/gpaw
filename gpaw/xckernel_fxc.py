@@ -287,3 +287,80 @@ def fxc_pair_coefficients_mgga_tau_spin(ops):
     v_b_z = 2*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_x*grad_rho_a_z*grad_rho_b_x*v2sigma2_3 + 2*grad_rho_a_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_y*grad_rho_a_z*grad_rho_b_y*v2sigma2_3 + 2*grad_rho_a_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_4 + 2*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_1 + 4*grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_2 + grad_rho_a_p1_z*grad_rho_a_z*grad_rho_b_z*v2sigma2_3 + 2*grad_rho_a_p1_z*grad_rho_b_z**2*v2sigma2_4 + grad_rho_a_p1_z*vsigma_1 + grad_rho_a_x*grad_rho_a_z*grad_rho_b_p1_x*v2sigma2_3 + 2*grad_rho_a_x*grad_rho_b_p1_x*grad_rho_b_z*v2sigma2_4 + grad_rho_a_y*grad_rho_a_z*grad_rho_b_p1_y*v2sigma2_3 + 2*grad_rho_a_y*grad_rho_b_p1_y*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z**2*grad_rho_b_p1_z*v2sigma2_3 + 2*grad_rho_a_z*grad_rho_b_p1_x*grad_rho_b_x*v2sigma2_4 + 2*grad_rho_a_z*grad_rho_b_p1_y*grad_rho_b_y*v2sigma2_4 + 4*grad_rho_a_z*grad_rho_b_p1_z*grad_rho_b_z*v2sigma2_4 + grad_rho_a_z*rho_a_p1*v2rhosigma_1 + grad_rho_a_z*rho_b_p1*v2rhosigma_4 + grad_rho_a_z*tau_a_p1*v2sigmatau_2 + grad_rho_a_z*tau_b_p1*v2sigmatau_3 + 4*grad_rho_b_p1_x*grad_rho_b_x*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_y*grad_rho_b_y*grad_rho_b_z*v2sigma2_5 + 4*grad_rho_b_p1_z*grad_rho_b_z**2*v2sigma2_5 + 2*grad_rho_b_p1_z*vsigma_2 + 2*grad_rho_b_z*rho_a_p1*v2rhosigma_2 + 2*grad_rho_b_z*rho_b_p1*v2rhosigma_5 + 2*grad_rho_b_z*tau_a_p1*v2sigmatau_4 + 2*grad_rho_b_z*tau_b_p1*v2sigmatau_5
     w_b = 2*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_1 + grad_rho_a_p1_x*grad_rho_b_x*v2sigmatau_3 + 2*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_1 + grad_rho_a_p1_y*grad_rho_b_y*v2sigmatau_3 + 2*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_1 + grad_rho_a_p1_z*grad_rho_b_z*v2sigmatau_3 + grad_rho_a_x*grad_rho_b_p1_x*v2sigmatau_3 + grad_rho_a_y*grad_rho_b_p1_y*v2sigmatau_3 + grad_rho_a_z*grad_rho_b_p1_z*v2sigmatau_3 + 2*grad_rho_b_p1_x*grad_rho_b_x*v2sigmatau_5 + 2*grad_rho_b_p1_y*grad_rho_b_y*v2sigmatau_5 + 2*grad_rho_b_p1_z*grad_rho_b_z*v2sigmatau_5 + rho_a_p1*v2rhotau_1 + rho_b_p1*v2rhotau_3 + tau_a_p1*v2tau2_1 + tau_b_p1*v2tau2_2
     return {'rho_a': u_a, 'grad_a': [v_a_x, v_a_y, v_a_z], 'tau_a': w_a, 'rho_b': u_b, 'grad_b': [v_b_x, v_b_y, v_b_z], 'tau_b': w_b}
+
+def fxc_pair_coefficients_lda_triplet(ops):
+    """Closed-shell TRIPLET (spin-flip) per-point coefficient
+    channels: the polarized Libxc arrays are evaluated at the
+    spin-compensated point (rho/2 per channel, flat packing
+    v2rho2_0..) and all fields/pair fields are ALPHA-channel
+    quantities (half the total pair density etc.)."""
+    rho_a_p1 = ops['rho_a_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    u = 2*rho_a_p1*v2rho2_0 - 2*rho_a_p1*v2rho2_1
+    v_x = 0
+    v_y = 0
+    v_z = 0
+    return {'rho': u, 'grad': [v_x, v_y, v_z]}
+
+def fxc_pair_coefficients_gga_triplet(ops):
+    """Closed-shell TRIPLET (spin-flip) per-point coefficient
+    channels: the polarized Libxc arrays are evaluated at the
+    spin-compensated point (rho/2 per channel, flat packing
+    v2rho2_0..) and all fields/pair fields are ALPHA-channel
+    quantities (half the total pair density etc.)."""
+    grad_rho_a_p1_x = ops['grad_rho_a_p1_x']
+    grad_rho_a_p1_y = ops['grad_rho_a_p1_y']
+    grad_rho_a_p1_z = ops['grad_rho_a_p1_z']
+    grad_rho_a_x = ops['grad_rho_a_x']
+    grad_rho_a_y = ops['grad_rho_a_y']
+    grad_rho_a_z = ops['grad_rho_a_z']
+    rho_a_p1 = ops['rho_a_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    v2rhosigma_0 = ops['v2rhosigma_0']
+    v2rhosigma_2 = ops['v2rhosigma_2']
+    v2sigma2_0 = ops['v2sigma2_0']
+    v2sigma2_2 = ops['v2sigma2_2']
+    vsigma_0 = ops['vsigma_0']
+    vsigma_1 = ops['vsigma_1']
+    u = 4*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_0 - 4*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_2 + 4*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_0 - 4*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_2 + 4*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_0 - 4*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_2 + 2*rho_a_p1*v2rho2_0 - 2*rho_a_p1*v2rho2_1
+    v_x = 8*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_2 + 4*grad_rho_a_p1_x*vsigma_0 - 2*grad_rho_a_p1_x*vsigma_1 + 8*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_2 + 8*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_2 + 4*grad_rho_a_x*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_x*rho_a_p1*v2rhosigma_2
+    v_y = 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_2 + 8*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_2 + 4*grad_rho_a_p1_y*vsigma_0 - 2*grad_rho_a_p1_y*vsigma_1 + 8*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_2 + 4*grad_rho_a_y*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_y*rho_a_p1*v2rhosigma_2
+    v_z = 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_2 + 4*grad_rho_a_p1_z*vsigma_0 - 2*grad_rho_a_p1_z*vsigma_1 + 4*grad_rho_a_z*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_z*rho_a_p1*v2rhosigma_2
+    return {'rho': u, 'grad': [v_x, v_y, v_z]}
+
+def fxc_pair_coefficients_mgga_tau_triplet(ops):
+    """Closed-shell TRIPLET (spin-flip) per-point coefficient
+    channels: the polarized Libxc arrays are evaluated at the
+    spin-compensated point (rho/2 per channel, flat packing
+    v2rho2_0..) and all fields/pair fields are ALPHA-channel
+    quantities (half the total pair density etc.)."""
+    grad_rho_a_p1_x = ops['grad_rho_a_p1_x']
+    grad_rho_a_p1_y = ops['grad_rho_a_p1_y']
+    grad_rho_a_p1_z = ops['grad_rho_a_p1_z']
+    grad_rho_a_x = ops['grad_rho_a_x']
+    grad_rho_a_y = ops['grad_rho_a_y']
+    grad_rho_a_z = ops['grad_rho_a_z']
+    rho_a_p1 = ops['rho_a_p1']
+    tau_a_p1 = ops['tau_a_p1']
+    v2rho2_0 = ops['v2rho2_0']
+    v2rho2_1 = ops['v2rho2_1']
+    v2rhosigma_0 = ops['v2rhosigma_0']
+    v2rhosigma_2 = ops['v2rhosigma_2']
+    v2rhotau_0 = ops['v2rhotau_0']
+    v2rhotau_1 = ops['v2rhotau_1']
+    v2sigma2_0 = ops['v2sigma2_0']
+    v2sigma2_2 = ops['v2sigma2_2']
+    v2sigmatau_0 = ops['v2sigmatau_0']
+    v2sigmatau_1 = ops['v2sigmatau_1']
+    v2tau2_0 = ops['v2tau2_0']
+    v2tau2_1 = ops['v2tau2_1']
+    vsigma_0 = ops['vsigma_0']
+    vsigma_1 = ops['vsigma_1']
+    u = 4*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_0 - 4*grad_rho_a_p1_x*grad_rho_a_x*v2rhosigma_2 + 4*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_0 - 4*grad_rho_a_p1_y*grad_rho_a_y*v2rhosigma_2 + 4*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_0 - 4*grad_rho_a_p1_z*grad_rho_a_z*v2rhosigma_2 + 2*rho_a_p1*v2rho2_0 - 2*rho_a_p1*v2rho2_1 + 2*tau_a_p1*v2rhotau_0 - 2*tau_a_p1*v2rhotau_1
+    v_x = 8*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x**2*v2sigma2_2 + 4*grad_rho_a_p1_x*vsigma_0 - 2*grad_rho_a_p1_x*vsigma_1 + 8*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_x*grad_rho_a_y*v2sigma2_2 + 8*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_x*grad_rho_a_z*v2sigma2_2 + 4*grad_rho_a_x*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_x*rho_a_p1*v2rhosigma_2 + 4*grad_rho_a_x*tau_a_p1*v2sigmatau_0 - 4*grad_rho_a_x*tau_a_p1*v2sigmatau_1
+    v_y = 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_y*v2sigma2_2 + 8*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_y**2*v2sigma2_2 + 4*grad_rho_a_p1_y*vsigma_0 - 2*grad_rho_a_p1_y*vsigma_1 + 8*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_y*grad_rho_a_z*v2sigma2_2 + 4*grad_rho_a_y*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_y*rho_a_p1*v2rhosigma_2 + 4*grad_rho_a_y*tau_a_p1*v2sigmatau_0 - 4*grad_rho_a_y*tau_a_p1*v2sigmatau_1
+    v_z = 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_2 + 4*grad_rho_a_p1_z*vsigma_0 - 2*grad_rho_a_p1_z*vsigma_1 + 4*grad_rho_a_z*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_z*rho_a_p1*v2rhosigma_2 + 4*grad_rho_a_z*tau_a_p1*v2sigmatau_0 - 4*grad_rho_a_z*tau_a_p1*v2sigmatau_1
+    w_tau = 4*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_0 - 4*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_0 - 4*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_1 + 4*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_0 - 4*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_1 + 2*rho_a_p1*v2rhotau_0 - 2*rho_a_p1*v2rhotau_1 + 2*tau_a_p1*v2tau2_0 - 2*tau_a_p1*v2tau2_1
+    return {'rho': u, 'grad': [v_x, v_y, v_z], 'tau': w_tau}
