@@ -24,4 +24,6 @@ print(f'A = {A * 1000:1.3f} meV')
 # snippet-print-end
 
 import numpy as np
-assert np.isclose(A * 1000, 5)
+assert np.isclose(de_zx * 1000, -0.818, atol=1e-3)
+assert np.isclose(de_zy * 1000, -0.818, atol=1e-3)
+assert np.isclose(A * 1000, -0.364, atol=1e-3)

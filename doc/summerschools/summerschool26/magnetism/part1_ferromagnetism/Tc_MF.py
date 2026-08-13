@@ -28,4 +28,5 @@ print(f'T_c(MF) = {T_c:1.1f} K')
 # snippet-print-end
 
 import numpy as np
-assert np.isclose(T_c, 100)
+assert np.isclose(J * 1000, 2.283, atol=1e-3)
+assert np.isclose(T_c, 99.4, atol=1e-1)

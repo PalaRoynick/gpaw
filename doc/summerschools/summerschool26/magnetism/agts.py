@@ -9,7 +9,7 @@ def workflow():
         run(script='part1_ferromagnetism/Tc_MF.py', deps=[fm, afm])
         run(script='part1_ferromagnetism/anisotropy.py', deps=[fm])
         run(script='part1_ferromagnetism/anisotropy_plot.py', deps=[fm])
-        run(script='get_Tc_fit.py')
+        run(script='part1_ferromagnetism/Tc_MC.py')
 
         with run(script='part2_noncollinear/VI2_gs_teacher.py'):
             run(script='part2_noncollinear/VI2_anisotropy.py')

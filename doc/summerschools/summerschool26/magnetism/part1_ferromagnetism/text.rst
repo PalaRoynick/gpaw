@@ -225,7 +225,8 @@ The results of such simulations are well approximated by the expression [*2D Mat
 
 where `T_c^{\mathrm{Ising}}=1.52\cdot S^2J/k_B` is the critical temperature of the ferromagnetic Ising model on a honeycomb lattice.
 
-4.   Calculate the Monte-Carlo approximation of the Curie temperature using the values of `A` and `J` you've determined above.
+4.   Calculate the Monte-Carlo approximation of the Curie temperature using the values of `A` and `J`
+     which you've determined throughout the exercise.
 
 Standard implementations of the ``tanh`` and ``log`` functions can be imported from numpy:
 

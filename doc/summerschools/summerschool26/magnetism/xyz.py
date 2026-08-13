@@ -1,6 +1,6 @@
 # creates: VI2.xyz, CrI3.xyz
 from pathlib import Path
-Path('part2_noncollinear/VI2.xyz').write_text("""\
+Path('VI2.xyz').write_text("""\
 3
 Lattice="4.126050702623482 0.0 0.0 -2.063025351311742 3.5732647257745676 0.0 0.0 0.0 20.0" Properties=species:S:1:pos:R:3:magmoms:R:1 magmom=2.9999999940352637 energy=-12.951733090596157 pbc="T T F"
 V        0.00000000       0.00000000       9.06563772       2.63358805
@@ -8,7 +8,7 @@ I        2.06302535       1.19108824      10.63303664      -0.03990743
 I       -0.00000000       2.38217648       7.49823879      -0.03990743
 """)  # noqa
 
-Path('part1_ferromagnetism/CrI3.xyz').write_text("""\
+Path('CrI3.xyz').write_text("""\
 8
 Lattice="7.007944101379477 0.0 0.0 -3.5039720506897396 6.069057620095938 0.0 0.0 0.0 20.0" Properties=species:S:1:pos:R:3:magmoms:R:1 magmom=6.000000007732151 energy=-31.398628752313062 pbc="T T F"
 Cr       3.50397205       2.02301921       9.03176873       2.98036758
