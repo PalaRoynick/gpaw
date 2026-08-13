@@ -42,7 +42,8 @@ class LrTDDFT2:
                  recalculate=None,
                  lr_communicators=None,
                  txt='-',
-                 world=None):
+                 world=None,
+                 analytic_fxc=False):
         """Initialize linear response TDDFT without calculating anything.
 
         Note
@@ -107,6 +108,7 @@ class LrTDDFT2:
         # Save input params
         self.basefilename = basefilename
         self.fxc_name = fxc
+        self.analytic_fxc = analytic_fxc
         self.xc = XC(self.fxc_name)
         self.min_occ = min_occ
         self.max_occ = max_occ
@@ -206,7 +208,8 @@ class LrTDDFT2:
 
         # Response kernel matrix K = <ip|f_Hxc|jq>
         # Note: this is not the Casida matrix
-        self.K_matrix = Kmatrix(self.ks_singles, self.xc, self.deriv_scale)
+        self.K_matrix = Kmatrix(self.ks_singles, self.xc, self.deriv_scale,
+                                analytic_fxc=self.analytic_fxc)
 
         self.sl_lrtddft = self.calc.parallel['sl_lrtddft']
 

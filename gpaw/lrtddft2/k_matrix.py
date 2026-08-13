@@ -10,7 +10,8 @@ from gpaw.utilities import pack_density
 
 
 class Kmatrix:
-    def __init__(self, ks_singles, xc, deriv_scale=1e-5):
+    def __init__(self, ks_singles, xc, deriv_scale=1e-5,
+                 analytic_fxc=False):
         self.basefilename = ks_singles.basefilename
         self.ks_singles = ks_singles
         self.lr_comms = self.ks_singles.lr_comms
@@ -23,6 +24,13 @@ class Kmatrix:
         self.file_format = 0  # 0 = 'Casida', 1 = 'K-matrix'
 
         self.dVxct_gip_2 = None  # temporary for finite difference
+
+        # analytic (machine-generated) fxc pair coefficients instead of
+        # the finite-difference pair potential; adds the meta-GGA tau
+        # channel, which the finite-difference route cannot see
+        self.analytic_fxc = analytic_fxc
+        self._afxc = None       # lazy setup state
+        self._wtau_gip = None   # tau-channel coefficient field of row ip
 
         # for pros!!!
         self.fH_pre = 1.0
@@ -331,7 +339,12 @@ class Kmatrix:
             # self.timer.stop('Poisson')
 
             # smooth XC "pair" potential
-            self.calculate_smooth_xc_pair_potential(kss_ip, dnt_gip, dVxct_gip)
+            if self.analytic_fxc:
+                self.calculate_analytic_xc_pair_potential(kss_ip, dnt_gip,
+                                                          dVxct_gip)
+            else:
+                self.calculate_smooth_xc_pair_potential(kss_ip, dnt_gip,
+                                                        dVxct_gip)
             # paw term of XC "pair" potential
             I_asp = self.calculate_paw_xc_pair_potentials(kss_ip)
 
@@ -368,6 +381,13 @@ class Kmatrix:
                 # XC smooth part
                 Ig += self.fxc_pre * self.calc.density.finegd.integrate(
                     dVxct_gip, dnt_gjq)
+                # meta-GGA tau channel: the tau-coefficient field of
+                # row ip contracted with the kinetic-energy pair
+                # density of column jq (absent for LDA/GGA and in the
+                # finite-difference route)
+                if self._wtau_gip is not None:
+                    Ig += self.fxc_pre * self.calc.density.finegd.integrate(
+                        self._wtau_gip, self.pair_ked(kss_jq))
                 # self.timer.stop('Integrate')
 
                 # Atomic corrections
@@ -441,6 +461,128 @@ class Kmatrix:
         # vxc = (vxc+ - vxc-) / 2h
         dVxct_gip *= 1. / (2. * self.deriv_scale)
         # self.timer.stop('Smooth XC')
+
+    def _analytic_setup(self):
+        """Ground-state fields and Libxc derivative arrays for the
+        machine-generated analytic fxc pair coefficients."""
+        import pylibxc
+        from gpaw.fd_operators import Gradient
+
+        from gpaw.lrtddft2.xckernel_fxc import (
+            fxc_pair_coefficients_lda, fxc_pair_coefficients_gga,
+            fxc_pair_coefficients_mgga_tau)
+
+        density = self.calc.density
+        if density.nt_sg.shape[0] != 1:
+            raise NotImplementedError('analytic fxc: spin-paired only')
+        finegd = density.finegd
+
+        LIBXC = {'LDA': ('lda', 'LDA_X+LDA_C_PW'),
+                 'PBE': ('gga', 'GGA_X_PBE+GGA_C_PBE'),
+                 'TPSS': ('mgga_tau', 'MGGA_X_TPSS+MGGA_C_TPSS'),
+                 'r2SCAN': ('mgga_tau', 'MGGA_X_R2SCAN+MGGA_C_R2SCAN')}
+        name = self.xc.name
+        if name in LIBXC:
+            family, ids = LIBXC[name]
+        elif name.startswith(('MGGA_', 'GGA_', 'LDA_')):
+            family = {'M': 'mgga_tau', 'G': 'gga',
+                      'L': 'lda'}[name[0]]
+            ids = name
+        else:
+            raise ValueError(f'no libxc mapping for fxc name {name!r}')
+        fn = {'lda': fxc_pair_coefficients_lda,
+              'gga': fxc_pair_coefficients_gga,
+              'mgga_tau': fxc_pair_coefficients_mgga_tau}[family]
+
+        grad_fine = [Gradient(finegd, v, n=2).apply for v in range(3)]
+        wfs = self.calc.wfs
+        grad_coarse = [Gradient(wfs.gd, v, n=3, dtype=wfs.dtype).apply
+                       for v in range(3)]
+
+        nt = np.maximum(density.nt_sg[0], 1e-10)
+        ops = {'rho': nt}
+        if family != 'lda':
+            gradn = np.zeros((3,) + nt.shape)
+            for v, g in enumerate(grad_fine):
+                g(density.nt_sg[0], gradn[v])
+            for v, ax in enumerate('xyz'):
+                ops[f'grad_rho_{ax}'] = gradn[v]
+            ops['sigma'] = (gradn ** 2).sum(axis=0)
+        if family == 'mgga_tau':
+            taut_sG = wfs.calculate_kinetic_energy_density()
+            taut_g = finegd.empty()
+            density.interpolator.apply(taut_sG[0], taut_g)
+            ops['tau'] = taut_g
+
+        inp = {'rho': ops['rho'].ravel()}
+        if family != 'lda':
+            inp['sigma'] = ops['sigma'].ravel()
+        if family == 'mgga_tau':
+            inp['tau'] = ops['tau'].ravel()
+        for fid in ids.split('+'):
+            f = pylibxc.LibXCFunctional(fid, 'unpolarized')
+            r = f.compute(inp, do_exc=False, do_vxc=True, do_fxc=True)
+            for k, v in r.items():
+                v = v.reshape(v.shape[0], -1).T.squeeze().reshape(nt.shape)
+                ops[k] = ops.get(k, 0) + v
+
+        self._afxc = {'family': family, 'fn': fn, 'ops': ops,
+                      'grad_fine': grad_fine, 'grad_coarse': grad_coarse,
+                      'shape': nt.shape}
+
+    def pair_ked(self, kss):
+        """Kinetic-energy pair density 1/2 grad psi_i . grad psi_p of a
+        KS single, interpolated to the fine grid."""
+        wfs = self.calc.wfs
+        kpt = wfs.kpt_u[kss.kpt_ind]
+        psi_i = kpt.psit_nG[kss.occ_ind]
+        psi_p = kpt.psit_nG[kss.unocc_ind]
+        gd = wfs.gd
+        tmp1, tmp2 = gd.empty(), gd.empty()
+        ked_G = gd.zeros()
+        for g in self._afxc['grad_coarse']:
+            g(psi_i, tmp1)
+            g(psi_p, tmp2)
+            ked_G += 0.5 * tmp1 * tmp2
+        ked_g = self.calc.density.finegd.empty()
+        self.calc.density.interpolator.apply(ked_G, ked_g)
+        return ked_g
+
+    def calculate_analytic_xc_pair_potential(self, kss_ip, dnt_gip,
+                                             dVxct_gip):
+        """Analytic fxc pair coefficients from the machine-generated
+        kernels (xckernel): the local channel u - div(v) goes into
+        dVxct_gip; the meta-GGA tau-channel coefficient field is kept
+        for contraction with the inner pair's kinetic-energy density."""
+        if self._afxc is None:
+            self._analytic_setup()
+        a = self._afxc
+        ops = dict(a['ops'])
+        ops['rho_p1'] = dnt_gip
+        if a['family'] != 'lda':
+            dgrad = np.zeros((3,) + a['shape'])
+            for v, g in enumerate(a['grad_fine']):
+                g(dnt_gip, dgrad[v])
+            for v, ax in enumerate('xyz'):
+                ops[f'grad_rho_p1_{ax}'] = dgrad[v]
+        if a['family'] == 'mgga_tau':
+            ops['tau_p1'] = self.pair_ked(kss_ip)
+
+        ch = a['fn'](ops)
+        pot = np.ascontiguousarray(
+            np.broadcast_to(ch['rho'], a['shape']).copy())
+        tmp = np.empty(a['shape'])
+        for v, g in enumerate(a['grad_fine']):
+            gv = ch['grad'][v]
+            if np.ndim(gv) == 0:      # LDA: no vector channel
+                continue
+            g(np.ascontiguousarray(gv), tmp)
+            pot -= tmp
+        dVxct_gip[:] = 0.0
+        dVxct_gip[kss_ip.spin_ind][:] = pot
+        wtau = ch.get('tau')
+        self._wtau_gip = (np.ascontiguousarray(wtau)
+                          if wtau is not None else None)
 
     def calculate_paw_xc_pair_potentials(self, kss_ip):
         # XC corrections
