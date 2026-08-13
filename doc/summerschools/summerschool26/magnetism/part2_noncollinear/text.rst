@@ -58,7 +58,7 @@ To realize that :mol:`VI_2` is in fact an antiferromagnetic material, we need to
 the spins. To do so, we need more than a single V atom in the unit cell. In the code below, the atomic structure is repeated once to obtain
 two V atoms in the unit cell and it is shown how do a DFT calculation for the antiferromagnetic state.
 
-1.   Fill in the `kpts` for the repeated unit cell.
+1.   Fill in the ``kpts`` for the repeated unit cell.
 2.   Replace the `...` with code to calculate the ferromagnetic state.
 3.   Run the script once you have finalized the missing part for the ferromagnetic state. The calculation takes about 7 minutes.
 
