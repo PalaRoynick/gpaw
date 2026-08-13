@@ -44,6 +44,8 @@ struct ConstructDensityArrays
 {
     T* GPAW_RESTRICT nt_G;
     const T* GPAW_RESTRICT rho_MM;
+    // Column count of rho_MM (= Mmax); used for striding
+    size_t ncols;
 };
 
 template<typename T>
@@ -230,10 +232,6 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     const size_t j_begin = blocks.start_j[block_idx];
     const size_t j_end = blocks.start_j[block_idx + 1];
 
-    // const size_t m_begin = blocks.start_m[block_idx];
-    // const size_t m_end = blocks.start_m[block_idx + 1];
-
-
     // Array indexing is in units of T but the input stride is in bytes
     const int64_t s_stride = arrays.f_sM_first_stride / sizeof(T);
 
@@ -277,18 +275,49 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
     {
         return;
     }
-    // const uint block_idx = blockIdx.x;
+    const uint block_idx = blockIdx.x;
 
-    // T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+    // Needs a double loop over phi_mu and phi_nu. Let's call them phi_r and phi_s in the following
+    const size_t j_begin = blocks.start_j[block_idx];
+    const size_t j_end = blocks.start_j[block_idx + 1];
 
-    // // Loop over phi instances overlapping this block
-    // const size_t j_begin = blocks.start_j[block_idx];
-    // const size_t j_end = blocks.start_j[block_idx + 1];
-    // for (size_t j = j_begin; j < j_end; ++j)
-    // {
-    //     // TODO needs a similar double loop as in calc_pot_mat. Before writing it, write some helpers that reduce code duplication
-    // }
+    // phi_r loop
+    for (size_t j_r = j_begin; j_r < j_end; ++j_r)
+    {
+        const size_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
+        const uint8_t l_r = phi.l_i[phi_idx_r];
+        const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
+        T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+        LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
 
+        // phi_s loop
+        for (size_t j_s = j_begin; j_s < j_end; ++j_s)
+        {
+            const size_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
+            const uint8_t l_s = phi.l_i[phi_idx_s];
+            const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+            T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+            LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
+
+            // TODO can we do just mu <= nu and symmetrize?
+
+            // Compute phi_r(x) * rho_rs * phi_s(x)
+            for (int m = 0; m < 2*l_r + 1; ++m)
+            {
+                const size_t mu = first_mu_r + m;
+                for (int n = 0; n < 2*l_s + 1; ++n)
+                {
+                    const size_t nu = first_mu_s + n;
+
+                    // TODO make work with row distribution, see calculate_potential_matrix_kernel
+                    const size_t rho_idx = arrays.ncols * mu + nu;
+                    // Each thread writes to a unique grid index so no atomics or reductions needed
+                    arrays.nt_G[thread_coords.grid_array_idx] += phi_r_m[m] * phi_s_n[n] * arrays.rho_MM[rho_idx];
+                }
+            }
+
+        } // phi_s
+    } // phi_r
 }
 
 template<typename T>
