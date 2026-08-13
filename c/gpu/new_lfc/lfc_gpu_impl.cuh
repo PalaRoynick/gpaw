@@ -46,6 +46,7 @@ public:
         ConstructDensityArrays<T> inputs;
         inputs.nt_G = static_cast<T*>(nt_G.data);
         inputs.rho_MM = static_cast<T*>(rho_MM.data);
+        inputs.ncols = static_cast<size_t>(rho_MM.shape[1]);
 
         const dim3 threads(lfc.block_data.block_shape.x,
                            lfc.block_data.block_shape.y,
