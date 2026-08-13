@@ -78,7 +78,7 @@ d) Calculate how the vibrational energy affects the overall reaction energy.
    change in reaction energy?
 
 
-e) To make sure that your NEB is converged you should also calculate the
+e) You should also calculate the
    vibrational energy of the transition state. Again, this requires tighter
    convergence than we have used in the NEB exercise. This takes a while to run
    so to save time, we provide the transition state geometry from a reasonably
