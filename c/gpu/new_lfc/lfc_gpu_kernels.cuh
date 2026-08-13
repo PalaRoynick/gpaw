@@ -281,6 +281,10 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
     const size_t j_begin = blocks.start_j[block_idx];
     const size_t j_end = blocks.start_j[block_idx + 1];
 
+    // Each thread writes to a unique grid index so no atomics or reductions needed.
+    // Accumulate it locally and write once at the end. This has a huge impact if the compiler fails to apply noalias semantics (clang!)
+    T accumulated_sum = static_cast<T>(0.0);
+
     // phi_r loop
     for (size_t j_r = j_begin; j_r < j_end; ++j_r)
     {
@@ -311,13 +315,14 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
 
                     // TODO make work with row distribution, see calculate_potential_matrix_kernel
                     const size_t rho_idx = arrays.ncols * mu + nu;
-                    // Each thread writes to a unique grid index so no atomics or reductions needed
-                    arrays.nt_G[thread_coords.grid_array_idx] += phi_r_m[m] * phi_s_n[n] * arrays.rho_MM[rho_idx];
+                    accumulated_sum += phi_r_m[m] * phi_s_n[n] * arrays.rho_MM[rho_idx];
                 }
             }
 
         } // phi_s
     } // phi_r
+
+    arrays.nt_G[thread_coords.grid_array_idx] += accumulated_sum;
 }
 
 template<typename T>
