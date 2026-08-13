@@ -3,7 +3,7 @@ from gpaw import GPAW, PW
 
 m = 3
 a = read('CrI3.xyz')
-a.set_initial_magnetic_moments([m, -m, 0, 0, 0, 0, 0, 0])
+a.set_initial_magnetic_moments([m, m, 0, 0, 0, 0, 0, 0])
 
 Nk = 4
 calc = GPAW(
@@ -11,5 +11,6 @@ calc = GPAW(
     xc='PBE',
     kpts=(Nk, Nk, 1))
 a.calc = calc
+
 a.get_potential_energy()
-calc.write('CrI3_afm.gpw')
+calc.write('CrI3_fm.gpw')

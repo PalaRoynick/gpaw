@@ -3,11 +3,11 @@ from myqueue.workflow import run
 
 def workflow():
     with run(script='xyz.py'):
-        run(script='CrI3_gs_teacher.py')
-        fm = run(script='CrI3_fm.py')
-        afm = run(script='CrI3_afm.py')
+        run(script='relax.py')
+        fm = run(script='gs_fm.py')
+        afm = run(script='gs_afm.py')
         run(script='CrI3_plot.py', deps=[fm])
-        run(script='get_Tc_mf_teacher.py', deps=[fm, afm])
+        run(script='Tc_MF.py', deps=[fm, afm])
         run(script='CrI3_anisotropy_teacher.py', deps=[fm])
         run(script='get_Tc_fit.py')
 

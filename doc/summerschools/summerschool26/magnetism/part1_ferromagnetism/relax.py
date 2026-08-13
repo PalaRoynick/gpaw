@@ -28,6 +28,7 @@ from ase.filters import UnitCellFilter
 from gpaw import GPAW, PW
 
 # Define a variable S for the Cr spin here
+# S = ???
 
 m = S * 2  # magnetic moment in Bohr magnetons
 a.set_initial_magnetic_moments([m, m, 0, 0, 0, 0, 0, 0])

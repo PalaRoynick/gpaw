@@ -77,7 +77,10 @@ where `\mathbf{S}_i` denotes the spin operator at site `i` in units of `\hbar` a
 3.   What are the possible values of `S_i^z` for a magnetic site in :mol:`CrI_3`?
 4.   What is the unit of `J_{ij}`?
 
-In the following, we will assume that the physics is dominated by nearest-neighbor interactions such that `J_{ij}\equiv J` if atoms `i` and `j` are nearest neighbors and zero otherwise. In 3D systems a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
+In the following, we will assume that the physics is dominated by nearest-neighbor interactions such that `J_{ij}\equiv J`
+if atoms `i` and `j` are nearest neighbors and zero otherwise.
+Once `J` has been determined, it can be used to calculate the Curie temperature `T_c`.
+In 3D systems, a reasonable estimate of the Curie temperature can be obtained from mean-field theory as
 
 .. math::
 
@@ -98,35 +101,54 @@ where `E_{\mathrm{FM}}` and `E_{\mathrm{AFM}}` are the energies *per magnetic at
 
 1.   Derive the expression for `J` from the classical Heisenberg model yourself. In particular, how does the factor of 3 arise?
 
-We have compiled a database of various 2D materials at https://cmrdb.fysik.dtu.dk/c2db/, which are relaxed with the PBE functional. We will therefore refrain from doing a full converged geometry optimization and simply download the optimized structure from the database. Search the database for :mol:`CrI_3` (it appears as :mol:`Cr_2I_6` on the webpage). If you like, you can take a look at various properties of the material like band structure and stability. Download the ``.xyz`` file and save it as ``CrI3.xyz``. You can also setup the atomic structure similar by simply defining an atoms object with positions and lattice parameters stated at the webpage. With this input structure, run the code below to obtain a ``.gpw`` file containing a converged ferromagnetic calculation. The calculation will take about 30 minutes. To speed up the process, you can copy the code to a python script and submit it as a batch job to the DTU computers with multiple CPU cores. Try for example to send it to 16 cores for 30 minutes. If the relaxation in the code above did not finish you may kill it. It is not crucial to complete in order to proceed with the rest of the exercise. Continue with the theory below while you wait for the calculations to finish.
+We have compiled a database of various 2D materials at https://cmrdb.fysik.dtu.dk/c2db/ which have been relaxed with the PBE functional.
+We will therefore refrain from doing a full converged-geometry optimization and simply download the optimized structure from the database.
+Search the database for :mol:`CrI_3` (it appears as :mol:`Cr_2I_6` on the webpage).
+If you like, you can take a look at various properties of the material like its band structure and stability. Download the ``.xyz`` file and save it as ``CrI3.xyz``.
+Alternatively, you can set up the crystal structure manually by defining an atoms object with the atom positions and lattice parameters taken directly from C2DB.
+With this input structure, run the code below to obtain a ``.gpw`` file containing a converged ferromagnetic calculation.
+The calculation will take about 30 minutes. To speed up the process, you can submit it as a batch job to the DTU computers with multiple CPU cores.
+Try for example to send it to 16 cores for 30 minutes. If the relaxation in the code above did not finish you may kill it.
+It is not crucial to complete in order to proceed with the rest of the exercise. Continue with the theory below while you wait for the calculations to finish.
 
-
-.. literalinclude:: CrI3_fm.py
-
+.. literalinclude:: gs_fm.py
 
 Now run the code again (copy it into a new script with a different name) but change the initial magnetic configuration such that it becomes antiferromagnetic
 (remember to change the name of the ``.gpw`` file so you do not overwrite the ``CrI3_fm.gpw`` file).
 In practice, we do not need to constrain the antiferromagnetic calculation because it comprises a local minimum,
 but you should still check that the magnetic moments in the output to verify that we do indeed end up with an antiferromagnetic state!
 
-Finally, we can calculate `J` and `T_c^{\mathrm{MF}}` by extracting the *ab initio* energy difference from the ``.gpw`` files. Fill in the formulas for `J` and `T_c` below and run the code.
+Finally, we can calculate `J` and `T_c^{\mathrm{MF}}` by extracting the *ab initio* energy difference from the ``.gpw`` files.
+Fill in the formulas for `J` and `T_c` below and run the code.
 
+.. literalinclude:: Tc_MF.py
+   :start-after: snippet-TcMF-start
+   :end-before: snippet-TcMF-end
 
-.. literalinclude:: get_Tc_mf_student.py
+At the end of your Python script,
+you can add the following print statements to get the Curie temperature in K and the isotropic exchange coupling constant in meV.
 
-
+.. literalinclude:: Tc_MF.py
+   :start-after: snippet-print-start
+   :end-before: snippet-print-end
 
 Theory: The Mermin-Wagner theorem and magnetic anisotropy
 =========================================================
 
-
-Completing the previous calculations, you should have obtained a value of `T_c`, which is on the order of 100 K. This is much larger than the experimental value.  However in 2D materials mean-field theory fails miserably and the results cannot be trusted. In fact, at finite temperatures the Heisenberg model stated above does not exhibit magnetic order in two dimensions. The reason is that entropy is dominant over enthalpy, such that the free energy is always minimized by disordered configurations at finite temperatures. This is summarized by the Mermin-Wagner theorem, which states that:
+Completing the previous calculations, you should have obtained a value of `T_c` which is on the order of 100 K. 
+This is much larger than the experimental value; however, mean-field theory is known to fail miserably in 2D materials, and the results cannot be trusted.
+In fact, at finite temperatures the Heisenberg model stated above cannot exhibit magnetic order in two dimensions.
+The reason is that entropy is dominant over enthalpy such that the free energy is always minimized by disordered configurations at finite temperatures.
+This is summarized by the Mermin-Wagner theorem which states that:
 
 *Continuous symmetries cannot be spontaneously broken at finite temperature for systems with short range interactions in dimensions* `d\le2`.
 
-The Heisenberg model above has a continuous rotational symmetry in the spin degrees of freedom and magnetic order is obtained by choosing a certain direction for all the spins. This means that the spin rotation symmetry is spontaneously broken in the magnetically ordered state. However, the direction of magnetization is arbitrary and can still be rotated without any energy cost, as long as the spins remain aligned with respect to each other.
+The Heisenberg model above has a continuous rotational symmetry in the spin degrees of freedom and magnetic order is obtained by choosing a certain direction for all the spins.
+This means that the spin rotation symmetry is spontaneously broken in the magnetically ordered state;
+however, the direction of magnetization is arbitrary and can still be rotated without any energy cost as long as the spins remain aligned with respect to each other.
 
-In the Heisenberg model it is straightforward to calculate the collective magnetic excitations of the system, yielding a quadratic spin wave dispersion for ferromagnetic systems
+In the Heisenberg model, it is straightforward to calculate the collective magnetic excitations of the system,
+yielding a quadratic spin wave dispersion for ferromagnetic systems
 
 .. math::
 
@@ -140,12 +162,20 @@ in the limit of `q\rightarrow 0`. The spin wave excitations are bosons lowering 
 
 where `M_0` is the ground state magnetization and `g(\varepsilon)` is the density of states for the spin waves.
 
-1.   Calculate the spin wave density of states `g(\varepsilon)` as a function of dimensionality `d`. (Answer: `g(\varepsilon)=a_d D^{-d/2} \varepsilon^{(d-2)/2}`, where `D` is the spin wave stiffness defined above and `a_d` is a geometric constant depending on the dimension `d`)
-2.   Compute the bosonic occupation and show that it diverges for `d\le2`. (Hint: You can convince yourself that it does by Taylor expanding the `\varepsilon\rightarrow 0` limit of the integral)
+1.   Calculate the spin wave density of states `g(\varepsilon)` as a function of dimensionality `d`.
+     (Answer: `g(\varepsilon)=a_d D^{-d/2} \varepsilon^{(d-2)/2}`,
+     where `D` is the spin wave stiffness defined above and `a_d` is a geometric constant depending on the dimension `d`)
+2.   Compute the bosonic occupation and show that it diverges for `d\le2`.
+     (Hint: You can convince yourself that it does by Taylor expanding the `\varepsilon\rightarrow 0` limit of the integral)
 
-The divergence of the integral for `d\le2` shows that the ferromagnetic ground state is thermodynamically unstable and comprises an example of the Mermin-Wagner theorem: In `d\le2`, the free energy is always dominated by entropy at finite temperatures and magnetic order cannot be maintained if a material preserves the rotational symmetry of the spin degrees of freedom. The instability in two dimensions is closely related to the vanishing energy of magnetic excitations in the limit of `q\rightarrow 0`, which in turn is a consequence of the rotational symmetry.
+The divergence of the integral for `d\le2` shows that the ferromagnetic ground state is thermodynamically unstable and comprises an example of the Mermin-Wagner theorem:
+In `d\le2`, the free energy is always dominated by entropy at finite temperatures and magnetic order cannot be maintained if a material preserves the rotational symmetry
+of the spin degrees of freedom. The instability in two dimensions is closely related to the vanishing energy of magnetic excitations in the limit of `q\rightarrow 0`
+which in turn is a consequence of the rotational symmetry.
 
-Thanks to the Mermin-Wagner theorem, magnetic order is only possible in two dimensions if the rotational symmetry of the spins is *explicitly broken*. That is, there must be an additional term in the Hamiltonian that breaks the symmetry. Such a term can be provided by spin-orbit coupling which couples the spin to the lattice through the electronic orbitals.
+Thanks to the Mermin-Wagner theorem, magnetic order is only possible in two dimensions if the rotational symmetry of the spins is *explicitly broken*.
+That is, there must be an additional term in the Hamiltonian that breaks the symmetry.
+Such a term can be provided by spin-orbit coupling which couples the spin to the lattice through the electronic orbitals.
 We assume that :mol:`CrI_3` is isotropic in the plane of the monolayer and introduce an anisotropy term in the Heisenberg Hamiltonian of the form
 
 .. math::
@@ -159,18 +189,26 @@ where we have chosen the `z`-direction to be orthogonal to the plane.
 Determining magnetic anisotropy parameters from DFT
 ===================================================
 
-In the code below, the magnetic anisotropy is calculated for the ferromagnetic ground state. The function ``calculate_band_energy()`` will return the sum of Kohn-Sham eigenvalues for the occupied states. This energy will depend on the direction of the spins, which is specified by the polar and azimuthal angles `\theta` and `\varphi` respectively.
+In the code below, the magnetic anisotropy is calculated for the ferromagnetic ground state.
+The function ``calculate_band_energy()`` will return the sum of Kohn-Sham eigenvalues for the occupied states.
+This energy will depend on the direction of the spins which is specified by the polar and azimuthal angles `\theta` and `\varphi` respectively.
 
 1.   What is the sign of `A` in the Hamiltonian above? (Fill in the formula for `A` and run the code)
 2.   Does spin-orbit coupling break the rotational symmetry of the ground state?
 
+.. literalinclude:: anisotropy.py
+   :start-after: snippet-magani-start
+   :start-after: snippet-magani-end
 
-.. literalinclude:: CrI3_anisotropy_student.py
+Again, you can print the results in meV with the commands
+
+.. literalinclude:: anisotropy.py
+   :start-after: snippet-print-start
+   :start-after: snippet-print-end
 
 We can also plot the total energy of the ground state as a function of the polar angle `\theta`.
 
 3.   Run the following below and inspect the plot. Does it look like you would expect?
-
 
 .. literalinclude:: CrI3_plot.py
 
