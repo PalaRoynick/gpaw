@@ -64,6 +64,39 @@ public:
     }
 
     template<typename T>
+    static void launch_calculate_potential_matrix_phi_pairs(
+        const LFCGpu& lfc,
+        const gpaw::PyDeviceArray& vt_G,
+        gpaw::PyDeviceArray& out_V_MN,
+        size_t mu_start,
+        size_t mu_end)
+    {
+        if (lfc.phi_pair_data.num_pairs == 0)
+        {
+            return;
+        }
+
+        CalculatePotentialMatrixArrays<T> inputs;
+        inputs.vt_G = static_cast<const T*>(vt_G.data);
+        inputs.V_MN = static_cast<T*>(out_V_MN.data);
+        inputs.mu_start = mu_start;
+        inputs.mu_end = mu_end;
+        inputs.ncols = static_cast<size_t>(out_V_MN.shape[1]);
+
+        const dim3 threads(lfc.block_data.block_shape.x,
+                           lfc.block_data.block_shape.y,
+                           lfc.block_data.block_shape.z);
+        // FIXME narrowing size_t -> uint conversion:
+        const dim3 blocks(static_cast<unsigned int>(lfc.phi_pair_data.num_pairs));
+
+        gpaw::launch_kernel(calculate_potential_matrix_phi_pairs_kernel<T>, blocks, threads,
+            0, nullptr,
+            inputs,
+            lfc.spline_pool->get_device_splines(),
+            lfc.grid, lfc.phi_data, lfc.block_data, lfc.phi_pair_data);
+    }
+
+    template<typename T>
     static void launch_calculate_potential_matrix(
         const LFCGpu& lfc,
         const gpaw::PyDeviceArray& vt_G,

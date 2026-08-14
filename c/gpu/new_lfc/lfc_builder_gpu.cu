@@ -69,29 +69,79 @@ std::unique_ptr<LFCGpu> LFCBuilderGpu::build(LFCBuilder&& cpu_builder, std::shar
     gpu::Tmemcpy(lfc->block_data.start_j, cpu_blocks.block_start_j.data(), cpu_blocks.block_start_j.size(), gpuMemcpyHostToDevice);
     gpu::Tmemcpy(lfc->block_data.all_blocks_phi_idx_j, cpu_blocks.all_blocks_phi_idx_j.data(), cpu_blocks.all_blocks_phi_idx_j.size(), gpuMemcpyHostToDevice);
 
-
     // ##### Phi ######
     const PhiData phi_data = std::move(cpu_builder.phi_data);
-    const size_t num_phi = phi_data.l_i.size();
-    assert(num_phi > 0);
+    {
+        const size_t num_phi = phi_data.l_i.size();
+        assert(num_phi > 0);
 
-    lfc->phi_data.num_phi = num_phi;
-    lfc->phi_data.l_i = gpu::Tmalloc<uint8_t>(num_phi);
-    lfc->phi_data.position_iv = gpu::Tmalloc<GpuVec3<double>>(num_phi);
-    lfc->phi_data.first_mu_i = gpu::Tmalloc<size_t>(num_phi);
-    lfc->phi_data.spline_idx_i = gpu::Tmalloc<size_t>(num_phi);
+        lfc->phi_data.num_phi = num_phi;
+        lfc->phi_data.l_i = gpu::Tmalloc<uint8_t>(num_phi);
+        lfc->phi_data.position_iv = gpu::Tmalloc<GpuVec3<double>>(num_phi);
+        lfc->phi_data.first_mu_i = gpu::Tmalloc<size_t>(num_phi);
+        lfc->phi_data.spline_idx_i = gpu::Tmalloc<size_t>(num_phi);
 
-    gpu::Tmemcpy(lfc->phi_data.l_i, phi_data.l_i.data(), num_phi, gpuMemcpyHostToDevice);
-    gpu::Tmemcpy(lfc->phi_data.first_mu_i, phi_data.first_mu_i.data(), num_phi, gpuMemcpyHostToDevice);
+        gpu::Tmemcpy(lfc->phi_data.l_i, phi_data.l_i.data(), num_phi, gpuMemcpyHostToDevice);
+        gpu::Tmemcpy(lfc->phi_data.first_mu_i, phi_data.first_mu_i.data(), num_phi, gpuMemcpyHostToDevice);
 
-    static_assert(sizeof(GpuVec3<double>) == sizeof(Position));
-    static_assert(alignof(GpuVec3<double>) == alignof(Position));
+        static_assert(sizeof(GpuVec3<double>) == sizeof(Position));
+        static_assert(alignof(GpuVec3<double>) == alignof(Position));
 
-    gpu::Tmemcpy(lfc->phi_data.position_iv,
-        reinterpret_cast<const GpuVec3<double>*>(phi_data.position_iv.data()),
-        num_phi, gpuMemcpyHostToDevice);
+        gpu::Tmemcpy(lfc->phi_data.position_iv,
+            reinterpret_cast<const GpuVec3<double>*>(phi_data.position_iv.data()),
+            num_phi, gpuMemcpyHostToDevice);
 
-    gpu::Tmemcpy(lfc->phi_data.spline_idx_i, phi_data.spline_index_i.data(), num_phi, gpuMemcpyHostToDevice);
+        gpu::Tmemcpy(lfc->phi_data.spline_idx_i, phi_data.spline_index_i.data(), num_phi, gpuMemcpyHostToDevice);
+    }
+
+    // ##### Phi pairs #####
+    // Construct dedicated data structs for kernels that work better when one thread block operates on a fixed pair of phi_i.
+    // Due to symmetry we can restrict to (block, phi_r, phi_s) triples where first_mu_r >= first_mu_s,
+    // ie. kernels will cover the upper triangle of V_MN, rho_MM and similar arrays.
+    {
+        std::vector<uint32_t> pair_block, pair_r, pair_s;
+        for (size_t b = 0; b < num_blocks; ++b)
+        {
+            const size_t j_begin = cpu_blocks.block_start_j[b];
+            const size_t j_end = cpu_blocks.block_start_j[b + 1];
+
+            for (size_t j_r = j_begin; j_r < j_end; ++j_r)
+            {
+                const size_t phi_r = cpu_blocks.all_blocks_phi_idx_j[j_r];
+                const size_t first_mu_r = phi_data.first_mu_i[phi_r];
+
+                for (size_t j_s = j_begin; j_s < j_end; ++j_s)
+                {
+                    const size_t phi_s = cpu_blocks.all_blocks_phi_idx_j[j_s];
+                    const size_t first_mu_s = phi_data.first_mu_i[phi_s];
+                    if (first_mu_r < first_mu_s)
+                    {
+                        // mu_ranges are non-overlapping so these phi can't overlap.
+                        // (periodic copies of a phi would have first_mu_r == first_mu_s here which gets included)
+                        continue;
+                    }
+
+                    pair_block.push_back(static_cast<uint32_t>(b));
+                    pair_r.push_back(static_cast<uint32_t>(phi_r));
+                    pair_s.push_back(static_cast<uint32_t>(phi_s));
+                }
+            }
+        }
+
+        const size_t num_pairs = pair_block.size();
+        lfc->phi_pair_data.num_pairs = num_pairs;
+        if (num_pairs > 0)
+        {
+            lfc->phi_pair_data.block_idx_p = gpu::Tmalloc<uint32_t>(num_pairs);
+            lfc->phi_pair_data.phi_idx_r_p = gpu::Tmalloc<uint32_t>(num_pairs);
+            lfc->phi_pair_data.phi_idx_s_p = gpu::Tmalloc<uint32_t>(num_pairs);
+
+            gpu::Tmemcpy(lfc->phi_pair_data.block_idx_p, pair_block.data(), num_pairs, gpuMemcpyHostToDevice);
+            gpu::Tmemcpy(lfc->phi_pair_data.phi_idx_r_p, pair_r.data(), num_pairs, gpuMemcpyHostToDevice);
+            gpu::Tmemcpy(lfc->phi_pair_data.phi_idx_s_p, pair_s.data(), num_pairs, gpuMemcpyHostToDevice);
+        }
+    }
+
 
     return out_lfc;
 }
