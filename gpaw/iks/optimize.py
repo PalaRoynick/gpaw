@@ -386,9 +386,11 @@ class PotState:
 
 
 class iKSLBFGS:
+    title = "L-BFGS optimizer for OECO-iKS procedure (with line search)"
+
     def __init__(self, iks: iKS, m: int = 10, max_ls=15,
-                 maxiter: int = 300, Ltol: float = 1e-6, LDtol: float = 1e-4,
-                 Jtol: float = 1e-7, step_scale: float = 1.0, gauge: bool = False, wolfe: bool = False):
+                 maxiter: int = 300, L1tol: float = 1e-4, required_consequative_steps: int = 3,
+                 step_scale: float = 1.0, gauge: bool = False, wolfe: bool = False):
         self.iks = iks
         if iks.use_coarse_grid:
             raise NotImplementedError(
@@ -396,9 +398,8 @@ class iKSLBFGS:
         self.m = m
         self.maxiter = maxiter
         self.max_ls = max_ls
-        self.Ltol = Ltol
-        self.LDtol = LDtol
-        self.Jtol = Jtol
+        self.L1tol = L1tol
+        self.required_consequative_steps = required_consequative_steps
         self.step_scale = step_scale
         self.gauge = gauge
         self.wolfe = wolfe
@@ -567,6 +568,8 @@ class iKSLBFGS:
 
     def log_cbar(self, x):
         iks = self.iks
+        if not iks.verbose:
+            return
         atomdist = iks.hamiltonian.atomdist
         cbar = atomdist.work_partition.arraydict(shapes=lambda a: (1,))
         cbar.update({a: x.cbar_a[a].copy() for a in x.cbar_a})
@@ -705,57 +708,6 @@ class iKSLBFGS:
 
         return (x.copy(), gk.copy(), L0, LD0, 0.0, False)
 
-    # def line_search_armijo(self, x: PotState, gk: PotState, pk: PotState,
-    #                        L0: float, LD0: float, phi0: float, dphi0: float,
-    #                        c1: float = 1e-4, tau: float = 0.5,
-    #                        max_ls: int = 15) -> tuple[PotState, PotState, float, float, float, bool]:
-    #     """Backtracking line search satisfying the Armijo condition."""
-    #     iks = self.iks
-    #
-    #     assert 0.0 < c1 < 1.0 and 0.0 < tau < 1.0
-    #
-    #     if not np.isfinite(dphi0) or dphi0 >= 0.0:
-    #         iks.fmt.log(
-    #             'Armijo line search received a non-descent direction: '
-    #             f'dphi0={dphi0:.5e}')
-    #
-    #         self.set_potentials_and_iterate(x)
-    #
-    #         return x.copy(), gk.copy(), L0, LD0, 0.0, False
-    #
-    #     alpha = 1.0
-    #
-    #     for il in range(max_ls):
-    #         x_new = x + alpha * pk
-    #         self.set_potentials_and_iterate(x_new)
-    #
-    #         self.L1, L_new, self.LD1, LD_new = iks.lagrangian()
-    #         phi_new = float(L_new + LD_new)
-    #
-    #         iks.fmt.log(
-    #             f'line search {il}: '
-    #             f'alpha={alpha:.5e}, '
-    #             f'phi={phi_new:.5e}')
-    #
-    #         if np.isfinite(phi_new) and phi_new <= phi0 + c1 * alpha * dphi0:
-    #             J_sg, J_xasz, Jc_a = self.get_gradients()
-    #             g_new = PotState(
-    #                 J_sg, J_xasz, Jc_a, *self.potstate_args)
-    #             iks.fmt.log(
-    #                 f'Armijo condition satisfied: alpha={alpha:.5e}')
-    #
-    #             return (x_new.copy(), g_new.copy(),
-    #                     L_new, LD_new, alpha, True)
-    #
-    #         alpha *= tau
-    #         self.log_cbar(x_new)
-    #         iks.logiter(il, self.L1, L_new, self.LD1,
-    #                     LD_new, iks.jacobian(), sep='')
-    #     iks.fmt.log(
-    #         'Armijo line search failed; restoring current state.')
-    #     self.set_potentials_and_iterate(x)
-    #
-    #     return x.copy(), gk.copy(), L0, LD0, 0.0, False
     def line_search_armijo(self, x: PotState, gk: PotState, pk: PotState,
                            L0: float, LD0: float, phi0: float, dphi0: float,
                            c1: float = 1e-4, tau: float = 0.5,
@@ -844,16 +796,11 @@ class iKSLBFGS:
             "max_ls": self.max_ls,
             "maxiter": self.maxiter,
             "step_scale": self.step_scale,
-            "smooth Lagrangian tolerance": self.Ltol,
-            "atomic Lagrangian tolerance": self.LDtol,
-            "gradients-tolerance": self.Jtol,
+            "Lagrangian L1 tolerance": self.L1tol,
+            "required convergence steps": self.required_consequative_steps,
         }
-        iks.preopt(
-            "L-BFGS optimizer for OECO-iKS procedure (with line search)", opt_kwargs
-        )
 
-        self.iks.L_iter = []
-        self.iks.LD_iter = []
+        iks.preopt(self.title, opt_kwargs)
 
         iks.niter = 0
         iks.iterate()
@@ -890,9 +837,8 @@ class iKSLBFGS:
                 J_sg, J_xasz, Jc_a = self.get_gradients()
                 gk = PotState(J_sg, J_xasz, Jc_a, *self.potstate_args).copy()
 
-            # convergence check with current (L, LD, gk) at x
-            if iks.converged(L, LD, gk.data_sg, self.Ltol, self.LDtol, self.Jtol):
-                iks.fmt.log("OECO-iKS L-BFGS converged!")
+            if iks.converged(self.L1tol, self.required_consequative_steps):
+                iks.fmt.log("iKSLBFGS converged!")
                 break
 
             #  update L-BFGS history using previous step
@@ -960,7 +906,7 @@ class iKSLBFGS:
             x_prev, g_prev = x, gk
             x, gk, L, LD = x_new, g_new, L_new, LD_new
 
-        iks.afteropt()
+        iks.afteropt(self.title)
         return self.iks.L_iter
 
 

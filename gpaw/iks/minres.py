@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 class iKSLinearSolver:
 
-    def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, p0_nG: np.ndarray = None, ortho: bool = False, **ls_kwargs):
+    def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, p0_nG: np.ndarray = None,
+                 ortho: bool = False, **ls_kwargs):
         assert method == 'minres' or method is None or method.lower() == "none"
         self.iks = iks
         self.dd = dd
@@ -137,8 +138,8 @@ class iKSLinearSolver:
                 iks.dD_asp[a][kpt.s],
                 iks.mix_paw_error,
             )
-            dp_ni[:] = np.einsum(
-                'n,ij,nj->ni', 2.0 * kpt.f_n[self.dd.occ], Phi_ii, kpt.P_ani[a][self.dd.occ])
+            dp_ni[:] = np.einsum('n,ij,nj->ni', 2.0 * kpt.f_n[self.dd.occ],
+                                 Phi_ii, kpt.P_ani[a][self.dd.occ])
             for bm in self.dd.blocks_occ:
                 for m in bm:
                     for n in bm:

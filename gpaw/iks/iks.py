@@ -3,12 +3,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ase.units import Ha
+from ase.utils.timing import Timer
 
 from gpaw.calculator import GPAW
 from gpaw.old.density import Density
+from gpaw.old.logger import GPAWLogger
 from gpaw.lfc import LFC
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.utilities import pack_hermitian
+from gpaw.mpi import broadcast_string
 from gpaw.new.backwards_compatibility import FakeDensity
 
 from gpaw.xc.numericalxc import Mix_LDA_FA, NumericalXC, PAWPotMode, lebedev2angular, angular2lebedev
@@ -197,7 +200,7 @@ class iKS:
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
         lambda_reg: float = 1e-6,
-        lambda_boundary: float = 1e-4,
+        lambda_paw_boundary: float = 1e-4,
         lambda_core: float = 1e-4,
         pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
@@ -213,6 +216,7 @@ class iKS:
         degeneracy_tol: float = 1e-3,
         occ_tol: float = 1e-10,
         nxc_kwargs: dict[str, Any] | None = None,
+        verbose: bool = False,
     ):
         self.target = target
         atoms = calc.atoms or atoms
@@ -225,7 +229,7 @@ class iKS:
         self.lambda_reg = lambda_reg
         self.lambda_core = lambda_core
         self.pseudo_core_scale = pseudo_core_scale
-        self.lambda_boundary = lambda_boundary
+        self.lambda_boundary = lambda_paw_boundary
         reg_scheduler_params = reg_scheduler_params or {}
         reg_scheduler_params.setdefault("decay_rate", 1.0)
         reg_scheduler_params.setdefault("min_val", lambda_reg)
@@ -240,19 +244,25 @@ class iKS:
             lambda_core, **corereg_scheduler_params)
         self.corereg_xc = corereg_xc
 
+        self.timer = Timer()
         self.niter: int = 0
         self.initialize_from_calc(target, calc, atoms, weights, atomic_weights)
         self.nfixed = nfixed
         self.apply_occupation_correction = apply_occupation_correction
         self.kin_en_using_band = kin_en_using_band
+
         if isinstance(linear_solver, dict):
-            self.linear_solver = linear_solver.pop("name")
+            self.linear_solver = linear_solver.pop("name", "minres")
+            self.ls_adaptive = linear_solver.pop("adaptive", False)
             self.ls_kwargs = linear_solver
-            self.ls_kwargs.setdefault("maxiter", 600)
-            self.ls_kwargs.setdefault("rtol", 1e-6)
+            self.ls_kwargs.setdefault("maxiter", 1000)
+            self.ls_kwargs.setdefault("rtol", 1e-5)
         else:
             self.linear_solver = linear_solver
-            self.ls_kwargs = {"maxiter": 600, "rtol": 1e-6}
+            self.ls_kwargs = {"maxiter": 1000, "rtol": 1e-5}
+            self.ls_adaptive = False
+        self.L2_uw = None
+
         self.use_coarse_grid: bool = use_coarse_grid
         self.mix_paw_error = mix_paw_error
         self.L_iter: list[float] = []
@@ -260,9 +270,15 @@ class iKS:
         self.opt: Optional[Any] = None
         self.initialized = False
         self.log_l1_ae = log_l1_ae
-        self.nxc_kwargs = nxc_kwargs or {}
         self.degeneracy_tol = degeneracy_tol
         self.occ_tol = occ_tol
+        self.nxc_kwargs = nxc_kwargs or {}
+        self.verbose = verbose
+        if verbose:
+            self.scf_logfile = self.calc.log
+        else:
+            self.scf_logfile = GPAWLogger(self.calc.world)
+            self.scf_logfile.fd = None
 
     def initialize_from_calc(self, target: GPAW | Density, calc: GPAW, atoms: Atoms,
                              weights: str | np.ndarray, atomic_weights: str | np.ndarray) -> None:
@@ -317,6 +333,7 @@ class iKS:
         tdens.calculate_normalized_charges_and_mix()
         # tdens.fixed = True
         self.tdens = tdens
+        self.N_electrons = sum([s.Nv for s in self.setups])
 
     def initialize(self) -> None:
         self.eigensolver_name: str = getattr(self.wfs.eigensolver, "name", "")
@@ -357,7 +374,7 @@ class iKS:
         self.xc: NumericalXC = xc
         self.nxc_kwargs = xc.todict()
 
-    def init_regularization(self):
+    def init_regularization(self) -> None:
         self.wboundary_ag = iks_tools.get_paw_boundary_weights(self.setups)
         nspins = self.nspins
         self.wcore_ag = iks_tools.get_core_regularization_weights(self.setups)
@@ -414,7 +431,7 @@ class iKS:
                 e_entropy, self.wfs, kin_en_using_band=self.kin_en_using_band, e_sic=0.0
             )
             ctx = scf.check_convergence(
-                self.density, self.hamiltonian, self.wfs, self.calc.log, lambda i: None
+                self.density, self.hamiltonian, self.wfs, self.scf_logfile, lambda i: None
             )
             yield ctx
 
@@ -430,9 +447,20 @@ class iKS:
             if self.nfixed == 0:
                 break
 
-    def run_scf(self):
+    def run_scf(self) -> None:
+        if self.ls_adaptive and self.L2_uw is not None:
+            c = self.calc.scf.criteria['eigenstates']
+            c.tol = max(1E-2 * Ha**2 * self.L2_uw, 1E-10)
+            self.fmt.log(f'eigenstates convergence criteria: {c.tol:.5e}')
+
         for _ in self.irun_scf():
             pass
+
+        if not self.verbose:
+            self.fmt.log("final scf step:")
+            self.calc.scf.check_convergence(
+                self.density, self.hamiltonian, self.wfs, self.calc.log, lambda i: None
+            )
 
     def iterate(self) -> None:
         if self.wfs.kptband_comm.size > 1:
@@ -447,46 +475,69 @@ class iKS:
         self.xc.set_grid_descriptor(self.hamiltonian.finegd)
         self.finegd = self.hamiltonian.finegd
         self.gd = self.hamiltonian.gd
-        self.run_scf()
-        wfs = self.wfs
-        wfs.orthonormalize()
-        self.density.update(wfs)
-        self.update_diff()
-        self.dd_u = []
-        for kpt in wfs.kpt_u:
-            dd = DegeneracyDescriptor(
-                kpt, tolerance=self.degeneracy_tol, occ_tolerance=self.occ_tol)
-            dd.update()
-            # print('dd.blocks_occ', dd.kpt.q, dd.blocks_occ)
-            self.dd_u.append(dd)
-            vdiff_nn = self.calculate_vdiff_matrix_elements(kpt)
-            dd.vdiff_nn = vdiff_nn
+        self.L2_uw = self.gd.integrate(self.dn_sG**2).sum()  # save for adaptive tolerance
+        with self.timer("SCF iteration"):
+            self.run_scf()
+            wfs = self.wfs
+            wfs.orthonormalize()
+            self.density.update(wfs)
+            self.update_diff()
+
+        with self.timer("Vdiff matrix"):
+            self.dd_u = []
+            for kpt in wfs.kpt_u:
+                dd = DegeneracyDescriptor(
+                    kpt, tolerance=self.degeneracy_tol, occ_tolerance=self.occ_tol)
+                dd.update()
+                # print('dd.blocks_occ', dd.kpt.q, dd.blocks_occ)
+                self.dd_u.append(dd)
+                vdiff_nn = self.calculate_vdiff_matrix_elements(kpt)
+                dd.vdiff_nn = vdiff_nn
 
         # TODO: implement for multiple fermi levels (fixedmagmom=True)
         if self.apply_occupation_correction:
-            eta = self.calculate_eta()
+            with self.timer("Occupation correction"):
+                eta = self.calculate_eta()
         else:
             eta = 0.0
             self.dfde_un = np.zeros(
                 (len(wfs.kpt_u), self.wfs.bd.nbands), dtype=float)
-        self.ls_u = []
-        for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
-            p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
-            ls = iKSLinearSolver(
-                self, dd=dd, method=self.linear_solver, p0_nG=p0_nG, **self.ls_kwargs)
-            ls.run(p0_nG)
-            self.ls_u.append(ls)
-            if wfs.occupations.name != 'zero-width' or self.apply_occupation_correction:
-                ls.apply_occupation_correction(dfde_n, eta)
-        self.logminres()
 
-    def logminres(self):
-        from gpaw.mpi import broadcast_string
+        self.ls_u = []
+        ls_kwargs = self.ls_kwargs.copy()
+        if self.ls_adaptive:
+            rtol = self.ls_kwargs['rtol']
+            ls_kwargs['rtol'] = max(self.L2_uw * rtol, 1E-11)
+            self.fmt.log(f"Minres tolerance: {ls_kwargs['rtol']:.5e}")
+
+        with self.timer("Adjoint equations"):
+            for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
+                with self.timer("OECO"):
+                    p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
+
+                with self.timer("Minres"):
+                    ls = iKSLinearSolver(
+                        self, dd=dd, method=self.linear_solver,
+                        p0_nG=p0_nG, **ls_kwargs)
+                    ls.run(p0_nG)
+                self.ls_u.append(ls)
+
+                if wfs.occupations.name != 'zero-width' or self.apply_occupation_correction:
+                    with self.timer("Occupation correction"):
+                        ls.apply_occupation_correction(dfde_n, eta)
+        self.logminres(self.verbose)
+
+    def logminres(self, verbose) -> None:
         kd = self.wfs.kd
         ls_u = self.ls_u
+        nkpts = kd.nibzkpts
+        if not verbose:
+            nkpts = min(2, nkpts)
+            if nkpts > 1:
+                self.fmt.log(f'showing the first {nkpts} kpts only')
         self.fmt.log(' k-index    spin    minres-iters    degenaracy')
         self.fmt.log('................................................')
-        for k in range(kd.nibzkpts):
+        for k in range(nkpts):
             for s in range(kd.nspins):
                 rank, u = kd.get_rank_and_index(k, s)
                 if kd.comm.rank == rank:
@@ -525,12 +576,12 @@ class iKS:
                             (eps_n - eps_m) * vdiff_nn[n, m] * kpt.psit_nG[n]
         return p_mG
 
-    def calculate_vdiff_matrix_elements(self, kpt):
+    def calculate_vdiff_matrix_elements(self, kpt) -> None:
         psit_nR = self.get_realspace_psit(kpt)
         vdiffpsit_nG = 2 * \
             (self.weights_sG[kpt.s] * self.dn_sG[kpt.s])[np.newaxis] * psit_nR
         if self.wfs.mode == "pw":
-            b_nR = vdiffpsit_nG.copy()
+            b_nR = vdiffpsit_nG
             vdiffpsit_nG = self.wfs.empty(len(psit_nR), q=kpt.q)
             for b_G, b_R in zip(vdiffpsit_nG, b_nR):
                 b_G[:] = self.wfs.pd.fft(b_R, q=kpt.q)
@@ -556,7 +607,7 @@ class iKS:
         vdiff_nn += vdiffpaw_nn
         return vdiff_nn
 
-    def calculate_eta(self):
+    def calculate_eta(self) -> float:
         self.dfde_un = []
         enum = 0.0
         denom = 0.0
@@ -581,7 +632,7 @@ class iKS:
         self.fmt.log(f'occupation correction eta: {eta:.4e}')
         return eta
 
-    def get_realspace_psit(self, kpt):
+    def get_realspace_psit(self, kpt) -> ArrayND:
         if self.wfs.mode == "lcao":
             self.wfs.initialize_wave_functions_from_lcao()
         # no band parallelization in iKS
@@ -593,6 +644,7 @@ class iKS:
         return psit_nG
 
     def lagrangian(self) -> tuple[float, float, float, float]:
+        self.timer.start("Lagrangian")
         L1 = self.gd.integrate(
             self.weights_sG * np.abs(self.dn_sG), global_integral=True
         ).sum()
@@ -617,6 +669,7 @@ class iKS:
             self.wfs.kptband_comm.broadcast(lags, 0)
             L1_val, L2_val, LD1_val, LD2_val = lags[0], lags[1], lags[2], lags[3]
 
+        self.timer.stop("Lagrangian")
         return L1_val, L2_val, LD1_val, LD2_val
 
     def atomic_lagrangian(self) -> tuple[float, float]:
@@ -717,6 +770,7 @@ class iKS:
         return Lreg
 
     def jacobian(self) -> ArrayND:
+        self.timer.start("Jacobian")
         J_sG = self.gd.zeros(self.density.nspins)
         for u, kpt in enumerate(self.wfs.kpt_u):
             J_sG[kpt.s] += self.ls_u[u].calculate_jacobian_one_k()
@@ -738,9 +792,11 @@ class iKS:
                 J_sg -= 2 * lambda_reg * lapl_sg
 
         self.J_sg = J_sg
+        self.timer.stop("Jacobian")
         return J_sg
 
     def atomic_jacobian(self) -> list[ArrayDict]:
+        self.timer.start("Atomic Jacobian")
         if self.xc.paw_potmode is PAWPotMode.none:
             return []
 
@@ -774,9 +830,10 @@ class iKS:
         for J_asz in self.J_xasz:
             J_asz.check_consistency()
 
+        self.timer.stop("Atomic Jacobian")
         return self.J_xasz
 
-    def symmetrize_atomic_adjoint_matrices(self, dp_asii, a_sa):
+    def symmetrize_atomic_adjoint_matrices(self, dp_asii: ArrayDict, a_sa: dict) -> None:
         if not dp_asii:
             return
         time_reversal = self.wfs.kd.symmetry.time_reversal
@@ -818,7 +875,7 @@ class iKS:
             for a, dp_ii in enumerate(symmetrized_aii):
                 dp_asii[a][s] = dp_ii
 
-    def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp):
+    def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp: ArrayDict) -> None:
         lambda_core = self.lambda_core
         lambda_boundary = self.lambda_boundary
         if lambda_core != 0.0 or lambda_boundary != 0.0:
@@ -864,9 +921,17 @@ class iKS:
             self.J_xasz[0][a][:] = J_sz
             self.J_xasz[1][a][:] = Jt_sz
 
-    def converged(self, L, LD, J_sg, Ltol, LDtol, Jtol) -> bool:
-        Jmax = self.finegd.comm.max_scalar(abs(J_sg).max())
-        return (L < Ltol) and (Jmax < Jtol) and (LD < LDtol)
+    def converged(self, L1tol: float, iterations_tolerance: int = 3) -> bool:
+        L1, L2, LD1, _ = self.uwnorm(ae=False)
+        error = (L1 + LD1) / self.N_electrons
+        self.L1_iter.append(error)
+        if error <= L1tol:
+            self.converged_iterations += 1
+            self.fmt.log(f"iKS converged iterations: {self.converged_iterations}")
+        else:
+            self.converged_iterations = 0
+
+        return self.converged_iterations >= iterations_tolerance
 
     def update_diff(self) -> None:
         self.dn_sG[:] = self.tdens.nt_sG - self.density.nt_sG
@@ -921,15 +986,12 @@ class iKS:
             f"ps={L2_uw:<.4e}, atomic={LD2_uw:<.4e}"
         )
 
-    def uwnorm(self, ae=False, per_electron=False) -> tuple[float, ...]:
+    def uwnorm(self, ae=False) -> tuple[float, ...]:
         gd = self.gd
-        Nt = 1
-        if per_electron:
-            Nt = gd.integrate(self.tdens.nt_sG.sum(0))
         l1_uw = gd.integrate(
-            abs(self.tdens.nt_sG - self.density.nt_sG).sum(0)) / Nt
+            abs(self.tdens.nt_sG - self.density.nt_sG).sum(0))
         l2_uw = gd.integrate(
-            ((self.tdens.nt_sG - self.density.nt_sG) ** 2).sum(0)) / Nt
+            ((self.tdens.nt_sG - self.density.nt_sG) ** 2).sum(0))
         l1_atomic = 0.0
         l2_atomic = 0.0
         for a, dD_sp in self.dD_asp.items():
@@ -943,21 +1005,18 @@ class iKS:
                 dn_sLg = np.dot(dD_sLq, xcc.n_qg)
                 dnt_sLg = np.dot(dD_sLq, xcc.nt_qg)
             Lmax = dn_sLg.shape[1]
-            Nc = 1
-            if per_electron:
-                Nc = self.setups[a].Nc or 1
             for s in range(self.nspins):
                 for n, Y_L in enumerate(Y_nL[:, :Lmax]):
                     dn_g = np.dot(Y_L, dn_sLg[s])
                     l1_atomic += weight_n[n] * \
-                        xcc.rgd.integrate(np.abs(dn_g)) / Nc
-                    l2_atomic += weight_n[n] * xcc.rgd.integrate(dn_g**2) / Nc
+                        xcc.rgd.integrate(np.abs(dn_g))
+                    l2_atomic += weight_n[n] * xcc.rgd.integrate(dn_g**2)
                     if not self.mix_paw_error:
                         dnt_g = np.dot(Y_L, dnt_sLg[s])
                         l1_atomic += weight_n[n] * \
-                            xcc.rgd.integrate(np.abs(dnt_g)) / Nc
+                            xcc.rgd.integrate(np.abs(dnt_g))
                         l2_atomic += weight_n[n] * \
-                            xcc.rgd.integrate(dnt_g**2) / Nc
+                            xcc.rgd.integrate(dnt_g**2)
 
         comm = self.dD_asp.partition.comm
         l1_atomic = comm.sum_scalar(l1_atomic)
@@ -966,23 +1025,20 @@ class iKS:
         l2_ae = np.nan
         if ae and self.log_l1_ae:
             spos_ac = self.hamiltonian.spos_ac
-            naet_sg, _ = self.tdens.get_all_electron_density(
+            naet_sg, gd = self.tdens.get_all_electron_density(
                 spos_ac=spos_ac, gridrefinement=2
             )
-            nae_sg, _ = self.density.get_all_electron_density(
+            nae_sg, gd = self.density.get_all_electron_density(
                 spos_ac=spos_ac, gridrefinement=2
             )
-            N = 1
-            if per_electron:
-                N = gd.integrate(naet_sg.sum(0))
-            l1_ae = gd.integrate(abs(naet_sg - nae_sg).sum(0)) / N
-            l2_ae = gd.integrate(((naet_sg - nae_sg) ** 2).sum(0)) / N
+            l1_ae = gd.integrate(abs(naet_sg - nae_sg).sum(0))
+            l2_ae = gd.integrate(((naet_sg - nae_sg) ** 2).sum(0))
         if ae:
             return l1_uw, l2_uw, l1_atomic, l2_atomic, l1_ae, l2_ae
         else:
             return l1_uw, l2_uw, l1_atomic, l2_atomic
 
-    def get_atomic_jac_maximum(self):
+    def get_atomic_jac_maximum(self) -> list[float]:
         Jmax_x = []
         for J_asz in self.J_xasz:
             Jmax = -np.inf
@@ -995,8 +1051,8 @@ class iKS:
             Jmax_x.append(Jmax)
         return Jmax_x
 
-    def todict(self):
-        linear_solver = {"name": self.linear_solver, **self.ls_kwargs}
+    def todict(self) -> dict[str, Any]:
+        linear_solver = {"name": self.linear_solver, **self.ls_kwargs, "adaptive": self.ls_adaptive}
         return dict(
             weights=self.weights,
             atomic_weights=self.atomic_weights,
@@ -1010,19 +1066,25 @@ class iKS:
             linear_solver=linear_solver,
             use_coarse_grid=self.use_coarse_grid,
             kin_en_using_band=self.kin_en_using_band,
+            degeneracy_tol=self.degeneracy_tol,
+            occ_tol=self.occ_tol,
             nxc_kwargs=self.nxc_kwargs,
             mix_paw_error=self.mix_paw_error,
         )
 
-    def get_xcpotential_space_size(self):
+    def get_xcpotential_space_size(self) -> int:
         gd = self.gd if self.use_coarse_grid else self.finegd
         size = np.prod(gd.get_size_of_global_array()) * self.nspins
         for v_asz in self.xc.vxc_xasz:
             size += sum([np.prod(shape) for shape in v_asz.shapes_a])
         return size
 
-    def preopt(self, title, opt_params):
+    def preopt(self, title: str, opt_params: dict) -> None:
         self.niter = 0
+        self.converged_iterations = 0
+        self.L1_iter = []
+        self.L_iter = []
+        self.LD_iter = []
         self.fmt.boxed_title(title)
         self.fmt.key_value("number of (xc) parameters",
                            f"{self.get_xcpotential_space_size():,}")
@@ -1043,8 +1105,9 @@ class iKS:
         self.fmt.log(line1 + "\n" + line2)
         self.fmt.separator("-")
         self.fmt.flush()
+        self.timer.start(title)
 
-    def afteropt(self, iterate=True) -> None:
+    def afteropt(self, title: str, iterate: bool = True) -> None:
         if iterate:
             self.iterate()
         self.calc.summary()
@@ -1054,11 +1117,14 @@ class iKS:
                      f"all-electron: {LAE1_uw:<.4e}, ps={L1_uw:.4e}, atomic={LD1_uw:.4e}")
         self.fmt.log("Final L2 raw (unweighted) errors -> "
                      f"all-electron: {LAE2_uw:<.4e}, ps={L2_uw:.4e}, atomic={LD2_uw:.4e}")
+        self.logminres(True)
         # save results
         e_free = self.hamiltonian.e_total_free
         e_extrapolated = self.hamiltonian.e_total_extrapolated
         self.calc.results["energy"] = e_extrapolated * Ha
         self.calc.results["free_energy"] = e_free * Ha
+        self.timer.stop(title)
+        self.timer.write(self.fmt.log.fd)
 
     def logiter(self, t: int, L1: float, L2: float, LD1: float,
                 LD2: float, J_sg: ArrayND, sep="-",) -> None:
@@ -1095,12 +1161,13 @@ class iKS:
             "atomic Lagrangian tolerance": LDtol,
             "gradients-tolerance": Jtol,
         }
-        self.preopt("Adam optimizer for OECO-iKS procedure", opt_params)
+        title = "Adam optimizer for OECO-iKS procedure"
+        self.preopt(title, opt_params)
         # optimization loop
         L_iter = iks_optimize.iks_adam_opt(
             self, maxiter, eta_pseudo, eta_paw, Ltol, LDtol, Jtol, beta1, beta2
         )
-        self.afteropt()
+        self.afteropt(title)
         return L_iter
 
     def run_fastest_descent(
@@ -1149,8 +1216,8 @@ class iKS:
             "atomic Lagrangian tolerance": LDtol,
             "gradients-tolerance": Jtol,
         }
-        self.preopt(
-            "fastest-descent optimizer for OECO-iKS procedure", opt_kwargs)
+        title = "fastest-descent optimizer for OECO-iKS procedure"
+        self.preopt(title, opt_kwargs)
 
         vxc_sg = self.xc.vxc_sg
         if self.use_coarse_grid:
@@ -1194,7 +1261,8 @@ class iKS:
             if self.converged(L, LD, J_sg, Ltol, LDtol, Jtol):
                 self.fmt.log("OECO-iKS converged!")
                 break
-        self.afteropt()
+
+        self.afteropt(title)
         return self.L_iter
 
     def run_scipy(self, method: str = "CG", options: dict[str, str | float | int] = {},
@@ -1249,7 +1317,7 @@ class iKS:
         return self.L_iter
 
     def run(self, method: str = "LBFGS", maxiter: int = 1000,
-            Ltol: float = 1e-6, Jtol: float = 1e-7, **kwargs) -> list[float]:
+            L1tol: float = 1e-4, required_consequative_steps: int = 3, **kwargs) -> list[float]:
         """
         Run the iKS optimization using the specified algorithm.
 
@@ -1260,7 +1328,7 @@ class iKS:
         method : str, default="LBFGS"
             Optimization algorithm to use. Available options include:
               - "LBFGS": Uses a custom implementation of LBFGS algorithm (recommended)
-              - "fastest-descent": Steepest descent optimization.
+              - "steepest-descent": Steepest descent optimization.
               - "adam": Adam optimizer.
               - "LBFGS_ASE"
               - Any other string is interpreted as a SciPy minimization method.
@@ -1288,23 +1356,26 @@ class iKS:
         """
         if method == "LBFGS":
             self.opt = iks_optimize.iKSLBFGS(
-                self, **kwargs, maxiter=maxiter, Ltol=Ltol, Jtol=Jtol)
+                self, **kwargs, maxiter=maxiter, L1tol=L1tol,
+                required_consequative_steps=required_consequative_steps)
             self.opt.run()
-        elif method == "fastest-descent":
-            return self.run_fastest_descent(
-                maxiter=maxiter, Ltol=Ltol, Jtol=Jtol, **kwargs
-            )
-        elif method == "adam":
-            return self.run_adam(maxiter=maxiter, Ltol=Ltol, Jtol=Jtol, **kwargs)
-        elif method == "LBFGS_ASE":
-            from ase.optimize import LBFGS
-            ikso = self.ikso = iks_optimize.iKSOptimizable(self)
-            kwargs.setdefault('memory', 40)
-            kwargs.setdefault('maxstep', 1.0)
-            kwargs.setdefault('use_line_search', True)
-            ikso.run(LBFGS, maxiter=maxiter, Jmax=Jtol, **kwargs)
         else:
-            options = {"gtol": Jtol, "maxiter": maxiter}
-            if "options" in kwargs:
-                options.update(kwargs.pop("options"))
-            return self.run_scipy(method=method, options=options, **kwargs)
+            raise NotImplementedError
+        # elif method == "steepest-descent":
+        #     return self.run_fastest_descent(
+        #         maxiter=maxiter, Ltol=Ltol, Jtol=Jtol, **kwargs
+        #     )
+        # elif method == "adam":
+        #     return self.run_adam(maxiter=maxiter, Ltol=Ltol, Jtol=Jtol, **kwargs)
+        # elif method == "LBFGS_ASE":
+        #     from ase.optimize import LBFGS
+        #     ikso = self.ikso = iks_optimize.iKSOptimizable(self)
+        #     kwargs.setdefault('memory', 40)
+        #     kwargs.setdefault('maxstep', 1.0)
+        #     kwargs.setdefault('use_line_search', True)
+        #     ikso.run(LBFGS, maxiter=maxiter, Jmax=Jtol, **kwargs)
+        # else:
+        #     options = {"gtol": Jtol, "maxiter": maxiter}
+        #     if "options" in kwargs:
+        #         options.update(kwargs.pop("options"))
+        #     return self.run_scipy(method=method, options=options, **kwargs)
