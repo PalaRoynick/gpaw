@@ -393,3 +393,81 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
     } // j_r (phi_mu)
 
 }
+
+/** Variant of calculate_potential_matrix_kernel that assumes one thread block per overlapping (grid_block, phi_i, phi_j) triplet.
+ * This should be better for compute coherence (less warp divergence) at the cost of larger memory fetch requirement:
+ *  - The other kernel has exactly one fetch of vt_G[G] for each grid point G, this kernel needs to re-fetch it for each phi pair in that block.
+ */
+template<typename T>
+__global__ void calculate_potential_matrix_phi_pairs_kernel(
+    CalculatePotentialMatrixArrays<T> arrays,
+    const LFCGpuSpline* GPAW_RESTRICT splines,
+    GridInfoGpu grid,
+    PhiDataGpu phi,
+    BlockDataGpu blocks,
+    PhiPairDataGpu pairs)
+{
+    const size_t pair_idx = blockIdx.x;
+    if (pair_idx >= pairs.num_pairs)
+    {
+        return;
+    }
+
+    const uint32_t block_idx = pairs.block_idx_p[pair_idx];
+    const uint32_t phi_idx_r = pairs.phi_idx_r_p[pair_idx];
+    const uint32_t phi_idx_s = pairs.phi_idx_s_p[pair_idx];
+
+    // Metadata for the phi pair, uniform across the thread block
+    const uint8_t l_r = phi.l_i[phi_idx_r];
+    const uint8_t l_s = phi.l_i[phi_idx_s];
+    const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
+    const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+
+    const size_t m_max =  (2*l_r + 1);
+    const size_t mu_end_r = first_mu_r + m_max;
+
+    // Some optimization possibilities below if we require matrix row dist to be fixed during LFC init time
+
+    if (first_mu_r >= arrays.mu_end || mu_end_r <= arrays.mu_start)
+    {
+        // Entire phi_r mu range is outside the assigned row distribution.
+        return;
+    }
+
+    LFCThreadGridData<T> thread_coords;
+    if (!LFCKernelUtils::compute_thread_coords<T>(block_idx, grid, blocks, thread_coords))
+    {
+        return;
+    }
+
+    const T vt_dV = arrays.vt_G[thread_coords.grid_array_idx] * grid.dV;
+
+    T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+    T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
+    LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
+    LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
+
+    for (int m = 0; m < m_max; ++m)
+    {
+        const size_t mu = first_mu_r + m;
+        if (mu < arrays.mu_start || mu >= arrays.mu_end)
+        {
+            continue;
+        }
+
+        const T phi_rm_vt = phi_r_m[m] * vt_dV;
+
+        for (int n = 0; n < 2*l_s + 1; ++n)
+        {
+            const size_t nu = first_mu_s + n;
+            if (mu < nu)
+            {
+                continue;
+            }
+
+            const T contrib = phi_rm_vt * phi_s_n[n];
+            atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], contrib);
+        }
+    }
+
+}

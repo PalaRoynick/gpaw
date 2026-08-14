@@ -52,6 +52,21 @@ template<typename T>
 GpuVec3<T> make_gpu_vec3(T x, T y, T z) { return {x, y, z}; }
 /*************************************************************/
 
+/**
+ * Flat list of (grid-block, phi_r, phi_s) triples for phi-pair-centric kernels.
+ * Only pairs where first_mu_r >= first_mu_s are stored, ie. kernels should handle the lower-triangle of arrays like V_MN.
+ */
+struct PhiPairDataGpu
+{
+    size_t num_pairs;
+    // Grid block index for pair p
+    uint32_t* GPAW_RESTRICT block_idx_p = nullptr;
+    // "row" phi index. These have first_mu_r >= first_mu_s
+    uint32_t* GPAW_RESTRICT phi_idx_r_p = nullptr;
+    // "column" phi index
+    uint32_t* GPAW_RESTRICT phi_idx_s_p = nullptr;
+};
+
 /* Analogous to CPU-side BlockData, see comments in lfc_common.hpp for explanations. */
 struct BlockDataGpu
 {
@@ -120,6 +135,7 @@ private:
 
     PhiDataGpu phi_data;
     BlockDataGpu block_data;
+    PhiPairDataGpu phi_pair_data;
     GridInfoGpu grid;
 
     std::shared_ptr<const SplinePoolGpu> spline_pool;

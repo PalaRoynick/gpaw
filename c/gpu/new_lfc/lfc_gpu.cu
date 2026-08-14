@@ -17,6 +17,11 @@ LFCGpu::~LFCGpu()
     gpu::Tfree(block_data.all_blocks_phi_idx_j);
     gpu::Tfree(block_data.start_j);
     gpu::Tfree(block_data.block_start_bc);
+
+    // Free PhiPairDataGpu
+    gpu::Tfree(phi_pair_data.block_idx_p);
+    gpu::Tfree(phi_pair_data.phi_idx_r_p);
+    gpu::Tfree(phi_pair_data.phi_idx_s_p);
 }
 
 void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM, size_t mu_start, size_t mu_end) const
@@ -98,9 +103,9 @@ void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::P
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_calculate_potential_matrix<float>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
+        LFCGpuImpl::launch_calculate_potential_matrix_phi_pairs<float>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_calculate_potential_matrix<double>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
+        LFCGpuImpl::launch_calculate_potential_matrix_phi_pairs<double>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }
