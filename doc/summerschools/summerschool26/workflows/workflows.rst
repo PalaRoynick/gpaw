@@ -242,6 +242,22 @@ Such a conflict can be solved by removing the old calculations
 or by telling Taskblaster to consider it “resolved”, which we
 have seen in a previous tutorial.
 
+.. note::
+
+   Glob patterns such as ``*`` are often useful for selecting many tasks.
+   Both the shell and taskblaster understand glob patterns.
+   The command ``tb ls tree/*`` is expanded by the shell to
+   include all directories under ``tree`` that currently exist and
+   pass that to Taskblaster,
+   but that may be incomplete because Taskblaster does not create
+   directories until after the tasks run.
+   Use apostrophes to prevent the shell from expanding the wildcard,
+   like ``tb ls 'tree/*'``.  That way Taskblaster sees the wildcard
+   and includes all tasks.  Note that unlike the shell, Taskblaster
+   wildcards also match the ``/`` character.
+   Thus, ``tree/*/C`` matches ``tree/A/B/C`` in Taskblaster, which
+   would need to be ``tree/*/*/C`` in the shell.
+
 
 Part 3: Parametrize workflow over multiple materials
 ====================================================
