@@ -40,13 +40,17 @@ public:
     static void launch_construct_density(
         const LFCGpu& lfc,
         gpaw::PyDeviceArray& nt_G,
-        const gpaw::PyDeviceArray& rho_MM
+        const gpaw::PyDeviceArray& rho_MM,
+        size_t mu_start,
+        size_t mu_end
     )
     {
         ConstructDensityArrays<T> inputs;
         inputs.nt_G = static_cast<T*>(nt_G.data);
         inputs.rho_MM = static_cast<T*>(rho_MM.data);
         inputs.ncols = static_cast<size_t>(rho_MM.shape[1]);
+        inputs.mu_start = mu_start;
+        inputs.mu_end = mu_end;
 
         const dim3 threads(lfc.block_data.block_shape.x,
                            lfc.block_data.block_shape.y,

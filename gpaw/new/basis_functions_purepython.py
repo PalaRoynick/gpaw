@@ -382,11 +382,6 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
         """"""
         assert np.all(nt_G.shape == self.grid.mysize_c)
 
-        if (self._matrix_distribution_rules.mu_start != 0 or
-            self._matrix_distribution_rules.mu_end != self.Mmax):
-            raise NotImplementedError(
-                "construct_density with matrix distribution")
-
         if self.has_precalculated_phi():
             self._construct_density_with_precalculation(
                 rho_MM,
@@ -413,6 +408,14 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
                         start_c[1]:end_c[1],
                         start_c[2]:end_c[2]]
 
-            rho_mm = rho_MM[block.M_m][:, block.M_m]
-            nt_g += np.einsum('mxyz, nxyz, mn -> xyz', phi_mg, phi_mg, rho_mm,
-                              optimize=True)
+            # Account for row distribution
+            local_m = [i for i, mu in enumerate(block.M_m)
+                       if mu_start <= mu < mu_end]
+            local_rows = [mu - mu_start for mu in block.M_m
+                          if mu_start <= mu < mu_end]
+
+            phi_rows = phi_mg[local_m]
+            rho_mm = rho_MM[local_rows][:, block.M_m]
+
+            nt_g += np.einsum('mxyz, nxyz, mn -> xyz', phi_rows, phi_mg,
+                              rho_mm, optimize=True)

@@ -37,8 +37,8 @@ class LFCGpu:
         """add_to_density(self: _gpaw.lfc.LFCGpu, nt_sG: cupy.ndarray, f_sM: cupy.ndarray) -> None"""
     def calculate_potential_matrix(self, vt_G: cupy.ndarray, out_V_MN: cupy.ndarray, mu_start: typing.SupportsInt, mu_end: typing.SupportsInt) -> None:
         """calculate_potential_matrix(self: _gpaw.lfc.LFCGpu, vt_G: cupy.ndarray, out_V_MN: cupy.ndarray, mu_start: typing.SupportsInt, mu_end: typing.SupportsInt) -> None"""
-    def construct_density(self, nt_G: cupy.ndarray, rho_MM: cupy.ndarray) -> None:
-        """construct_density(self: _gpaw.lfc.LFCGpu, nt_G: cupy.ndarray, rho_MM: cupy.ndarray) -> None"""
+    def construct_density(self, nt_G: cupy.ndarray, rho_MM: cupy.ndarray, mu_start: typing.SupportsInt, mu_end: typing.SupportsInt) -> None:
+        """construct_density(self: _gpaw.lfc.LFCGpu, nt_G: cupy.ndarray, rho_MM: cupy.ndarray, mu_start: typing.SupportsInt, mu_end: typing.SupportsInt) -> None"""
 
 class SplinePool:
     """C++ side object that holds CPU splines. Does not have a Python constructor."""

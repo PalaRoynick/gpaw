@@ -46,6 +46,9 @@ struct ConstructDensityArrays
     const T* GPAW_RESTRICT rho_MM;
     // Column count of rho_MM (= Mmax); used for striding
     size_t ncols;
+    // Row distribution: processes only rows [mu_start, mu_end) of rho_MM
+    size_t mu_start;
+    size_t mu_end;
 };
 
 template<typename T>
@@ -309,12 +312,16 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
             for (int m = 0; m < 2*l_r + 1; ++m)
             {
                 const size_t mu = first_mu_r + m;
+                if (mu < arrays.mu_start || mu >= arrays.mu_end)
+                {
+                    continue;
+                }
+
                 for (int n = 0; n < 2*l_s + 1; ++n)
                 {
                     const size_t nu = first_mu_s + n;
-
-                    // TODO make work with row distribution, see calculate_potential_matrix_kernel
-                    const size_t rho_idx = arrays.ncols * mu + nu;
+                    // rho_MM only has rows relevant for this rank so must offset the row index
+                    const size_t rho_idx = arrays.ncols * (mu - arrays.mu_start) + nu;
                     accumulated_sum += phi_r_m[m] * phi_s_n[n] * arrays.rho_MM[rho_idx];
                 }
             }
