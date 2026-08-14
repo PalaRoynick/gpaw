@@ -19,7 +19,7 @@ LFCGpu::~LFCGpu()
     gpu::Tfree(block_data.block_start_bc);
 }
 
-void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM) const
+void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM, size_t mu_start, size_t mu_end) const
 {
     if (!nt_G.c_contiguous || nt_G.ndim() != 3)
     {
@@ -38,9 +38,9 @@ void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceAr
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_construct_density<float>(*this, nt_G, rho_MM); break;
+        LFCGpuImpl::launch_construct_density<float>(*this, nt_G, rho_MM, mu_start, mu_end); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_construct_density<double>(*this, nt_G, rho_MM); break;
+        LFCGpuImpl::launch_construct_density<double>(*this, nt_G, rho_MM, mu_start, mu_end); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }

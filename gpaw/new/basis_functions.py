@@ -677,12 +677,28 @@ class BasisFunctionCollectionBase(ABC):
                   M1,M2
 
         rho_MM: ndarray
-            The density matrix as a 2D Numpy or Cupy array. Assumed to be
-            symmetric.
+            The density matrix as a 2D Numpy or Cupy array. The full matrix
+            should be symmetric. See notes below for row distribution.
+
         nt_G: ndarray
             Pseudo electron density. Modified in-place.
         q: ?????
             what even is this argument
+
+        Notes
+        -----
+        With row distribution (set_matrix_distribution called with
+        Mstart/Mstop): rho_MM should have shape (Mstop - Mstart, Mmax) and
+        contains only the rows [Mstart, Mstop) of the full matrix.
+        Each MPI rank then computes a partial contribution
+
+            n = sum_{M1 in [Mstart,Mstop), M2} Phi_M1(r) rho_M1M2 Phi_M2(r)
+
+        and the caller is responsible for summing n_rank across all ranks
+        to recover the full density.
+
+        NB: per-rank results may not be directly portable across
+        implementations, only the reduced result is guaranteed to match.
         """
         raise NotImplementedError
 

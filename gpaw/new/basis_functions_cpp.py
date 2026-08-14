@@ -205,7 +205,11 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         if self.has_precalculated_phi():
             raise NotImplementedError("construct_density with precalc")
         else:
-            self._impl.construct_density(nt_G, rho_MM)
+            self._impl.construct_density(
+                nt_G,
+                rho_MM,
+                self._matrix_distribution_rules.mu_start,
+                self._matrix_distribution_rules.mu_end)
 
     @override
     def has_precalculated_phi(self) -> bool:

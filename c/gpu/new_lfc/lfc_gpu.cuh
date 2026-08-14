@@ -105,7 +105,7 @@ public:
     /* nt_G: NDArray<device::gpu, c_contig, ndim<3>>
     *  rho_MM: NDArray<device::gpu, c_contig, ndim<2>>
     */
-    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM) const;
+    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM, size_t mu_start, size_t mu_end) const;
 
     /* vt_G: const NDArray<device::gpu, c_contig, ndim<3>>
     *  out_V_MN: NDArray<c_contig, ndim<2>, shape=(mu_end-mu_start, Mmax)>

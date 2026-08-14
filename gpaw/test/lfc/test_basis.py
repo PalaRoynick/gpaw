@@ -13,6 +13,7 @@ from gpaw.mpi import world, MPIComm
 import numpy as np
 import pytest
 import copy
+import dataclasses
 from collections import namedtuple
 from typing import cast
 
@@ -278,7 +279,8 @@ def test_no_blocking(fixt_lfc_system: LFCSystemDesc):
     # duplicates. But that is done in test_basis_creation()
 
 
-@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
+@pytest.mark.parametrize("row_range", [pytest.param(None, id="NoRowDist"),
+                                       range(1, 4), range(0, 100000)])
 def test_potential_matrix(
     fixt_lfc_system: LFCSystemDesc,
     fixt_impl: ImplDesc,
@@ -359,7 +361,12 @@ def test_construct_density(
     fixt_impl: ImplDesc,
     fixt_block_size,
 ):
-    """"""
+    """Checks that new fimplementation of construct_density gives the same
+    result as the old impl. Does not test with row-distributed matrix
+    because its not clear from the old implementation how the per-rank results
+    should be compared.
+
+    See test_construct_density_distributed for a row-distributed version."""
     xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
@@ -373,15 +380,87 @@ def test_construct_density(
     rng = xp.random.default_rng(444)
     rho_MM = rng.random((basis.Mmax, basis.Mmax))
     rho_MM = rho_MM + rho_MM.T
-    q = 0 # ?????
+
+    basis_old = make_legacy_basis_functions(basis, xp=np)
+
+    q = 0  # ?????
 
     basis.construct_density(rho_MM, nt_G, q)
 
     # Repeat with old code and compare
-    basis_old = make_legacy_basis_functions(basis, xp=np)
     basis_old.construct_density(rho_MM, nt_G_ref, q)
-
     xp.testing.assert_allclose(as_np(nt_G), nt_G_ref, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.skipif(world.size < 2, reason="Need multiple MPI tasks")
+def test_construct_density_distributed(
+    fixt_lfc_system: LFCSystemDesc,
+    fixt_impl: ImplDesc,
+    fixt_block_size
+):
+    """Tests row-distributed construct_density. This will assign half of the
+    available ranks for row distribution and the remaining ranks for domain
+    distribution.
+    After computing partial nt_G, row_comm
+    allreduces the contributions from all row slices. The totals from new and
+    old implementations must agree; per-rank partials may differ.
+    """
+    xp, purepython = fixt_impl
+    system = fixt_lfc_system
+
+    num_row_ranks = max(2, world.size // 2)
+    num_domain_ranks = world.size // num_row_ranks
+    # Distribute so that world.rank == domain_rank * num_row_ranks + row_rank
+
+    # row_comm: ranks that share the same grid domain
+    row_comm = None
+    for d in range(num_domain_ranks):
+        c = world.new_communicator(
+            [d * num_row_ranks + r for r in range(num_row_ranks)])
+        if c is not None:
+            row_comm = c
+
+    grid_comm = None
+    for r in range(num_row_ranks):
+        c = world.new_communicator(
+            [d * num_row_ranks + r for d in range(num_domain_ranks)])
+        if c is not None:
+            grid_comm = c
+
+    assert row_comm is not None and grid_comm is not None
+
+    grid_system = dataclasses.replace(system,
+                                      grid=system.grid.new(comm=grid_comm))
+
+    basis = make_basis(grid_system, xp, purepython, fixt_block_size)
+    basis_old = make_legacy_basis_functions(basis, xp=np)
+
+    Mmax = basis.Mmax
+    chunk = (Mmax + row_comm.size - 1) // row_comm.size
+    my_start = min(row_comm.rank * chunk, Mmax)
+    my_stop = min(my_start + chunk, Mmax)
+
+    basis.set_matrix_distribution(my_start, my_stop)
+    basis_old.set_matrix_distribution(my_start, my_stop)
+
+    # all ranks generate the same rho, then slice it according to the row dist
+    rng = np.random.default_rng(444)
+    rho_full = rng.random((Mmax, Mmax))
+    rho_full = rho_full + rho_full.T
+    rho_slice = np.ascontiguousarray(rho_full[my_start:my_stop])
+
+    nt_new = np.ones(grid_system.grid.mysize_c)
+    nt_old = np.ones(grid_system.grid.mysize_c)
+
+    q = 0  # ???
+
+    basis.construct_density(rho_slice, nt_new, q)
+    basis_old.construct_density(rho_slice, nt_old, q)
+
+    row_comm.sum(nt_new)
+    row_comm.sum(nt_old)
+
+    np.testing.assert_allclose(nt_new, nt_old, rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.parametrize("num_spins", [1, 2])
@@ -396,7 +475,6 @@ def test_add_to_density(
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
     # Matrix distribution does not matter here.
-    # TODO separate test that it indeed does not matter?
 
     # Test density
     rng = xp.random.default_rng(432)
