@@ -364,3 +364,85 @@ def fxc_pair_coefficients_mgga_tau_triplet(ops):
     v_z = 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_x*grad_rho_a_x*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_0 - 8*grad_rho_a_p1_y*grad_rho_a_y*grad_rho_a_z*v2sigma2_2 + 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_0 - 8*grad_rho_a_p1_z*grad_rho_a_z**2*v2sigma2_2 + 4*grad_rho_a_p1_z*vsigma_0 - 2*grad_rho_a_p1_z*vsigma_1 + 4*grad_rho_a_z*rho_a_p1*v2rhosigma_0 - 4*grad_rho_a_z*rho_a_p1*v2rhosigma_2 + 4*grad_rho_a_z*tau_a_p1*v2sigmatau_0 - 4*grad_rho_a_z*tau_a_p1*v2sigmatau_1
     w_tau = 4*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_0 - 4*grad_rho_a_p1_x*grad_rho_a_x*v2sigmatau_1 + 4*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_0 - 4*grad_rho_a_p1_y*grad_rho_a_y*v2sigmatau_1 + 4*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_0 - 4*grad_rho_a_p1_z*grad_rho_a_z*v2sigmatau_1 + 2*rho_a_p1*v2rhotau_0 - 2*rho_a_p1*v2rhotau_1 + 2*tau_a_p1*v2tau2_0 - 2*tau_a_p1*v2tau2_1
     return {'rho': u, 'grad': [v_x, v_y, v_z], 'tau': w_tau}
+
+def xc_stress_fields_lda(ops):
+    """Per-point integrand fields of the explicit XC strain
+    derivative dExc/deps_ab (the XC stress contribution
+    BEFORE symmetrization and 1/V): the host multiplies by
+    the quadrature weight and sums.  tau_tensor components
+    follow GPAW's convention (no 1/2; trace = 2 tau), and zk
+    is the per-particle Libxc energy density."""
+    rho = ops['rho']
+    vrho = ops['vrho']
+    zk = ops['zk']
+    s = {}
+    s[(0, 0)] = -rho*vrho + rho*zk
+    s[(0, 1)] = 0
+    s[(0, 2)] = 0
+    s[(1, 0)] = 0
+    s[(1, 1)] = -rho*vrho + rho*zk
+    s[(1, 2)] = 0
+    s[(2, 0)] = 0
+    s[(2, 1)] = 0
+    s[(2, 2)] = -rho*vrho + rho*zk
+    return s
+
+def xc_stress_fields_gga(ops):
+    """Per-point integrand fields of the explicit XC strain
+    derivative dExc/deps_ab (the XC stress contribution
+    BEFORE symmetrization and 1/V): the host multiplies by
+    the quadrature weight and sums.  tau_tensor components
+    follow GPAW's convention (no 1/2; trace = 2 tau), and zk
+    is the per-particle Libxc energy density."""
+    grad_rho_x = ops['grad_rho_x']
+    grad_rho_y = ops['grad_rho_y']
+    grad_rho_z = ops['grad_rho_z']
+    rho = ops['rho']
+    vrho = ops['vrho']
+    vsigma = ops['vsigma']
+    zk = ops['zk']
+    s = {}
+    s[(0, 0)] = -4*grad_rho_x**2*vsigma - 2*grad_rho_y**2*vsigma - 2*grad_rho_z**2*vsigma - rho*vrho + rho*zk
+    s[(0, 1)] = -2*grad_rho_x*grad_rho_y*vsigma
+    s[(0, 2)] = -2*grad_rho_x*grad_rho_z*vsigma
+    s[(1, 0)] = -2*grad_rho_x*grad_rho_y*vsigma
+    s[(1, 1)] = -2*grad_rho_x**2*vsigma - 4*grad_rho_y**2*vsigma - 2*grad_rho_z**2*vsigma - rho*vrho + rho*zk
+    s[(1, 2)] = -2*grad_rho_y*grad_rho_z*vsigma
+    s[(2, 0)] = -2*grad_rho_x*grad_rho_z*vsigma
+    s[(2, 1)] = -2*grad_rho_y*grad_rho_z*vsigma
+    s[(2, 2)] = -2*grad_rho_x**2*vsigma - 2*grad_rho_y**2*vsigma - 4*grad_rho_z**2*vsigma - rho*vrho + rho*zk
+    return s
+
+def xc_stress_fields_mgga_tau(ops):
+    """Per-point integrand fields of the explicit XC strain
+    derivative dExc/deps_ab (the XC stress contribution
+    BEFORE symmetrization and 1/V): the host multiplies by
+    the quadrature weight and sums.  tau_tensor components
+    follow GPAW's convention (no 1/2; trace = 2 tau), and zk
+    is the per-particle Libxc energy density."""
+    grad_rho_x = ops['grad_rho_x']
+    grad_rho_y = ops['grad_rho_y']
+    grad_rho_z = ops['grad_rho_z']
+    rho = ops['rho']
+    tau = ops['tau']
+    tau_tensor_xx = ops['tau_tensor_xx']
+    tau_tensor_xy = ops['tau_tensor_xy']
+    tau_tensor_xz = ops['tau_tensor_xz']
+    tau_tensor_yy = ops['tau_tensor_yy']
+    tau_tensor_yz = ops['tau_tensor_yz']
+    tau_tensor_zz = ops['tau_tensor_zz']
+    vrho = ops['vrho']
+    vsigma = ops['vsigma']
+    vtau = ops['vtau']
+    zk = ops['zk']
+    s = {}
+    s[(0, 0)] = -4*grad_rho_x**2*vsigma - 2*grad_rho_y**2*vsigma - 2*grad_rho_z**2*vsigma - rho*vrho + rho*zk - tau*vtau - 1.0*tau_tensor_xx*vtau
+    s[(0, 1)] = -2*grad_rho_x*grad_rho_y*vsigma - 1.0*tau_tensor_xy*vtau
+    s[(0, 2)] = -2*grad_rho_x*grad_rho_z*vsigma - 1.0*tau_tensor_xz*vtau
+    s[(1, 0)] = -2*grad_rho_x*grad_rho_y*vsigma - 1.0*tau_tensor_xy*vtau
+    s[(1, 1)] = -2*grad_rho_x**2*vsigma - 4*grad_rho_y**2*vsigma - 2*grad_rho_z**2*vsigma - rho*vrho + rho*zk - tau*vtau - 1.0*tau_tensor_yy*vtau
+    s[(1, 2)] = -2*grad_rho_y*grad_rho_z*vsigma - 1.0*tau_tensor_yz*vtau
+    s[(2, 0)] = -2*grad_rho_x*grad_rho_z*vsigma - 1.0*tau_tensor_xz*vtau
+    s[(2, 1)] = -2*grad_rho_y*grad_rho_z*vsigma - 1.0*tau_tensor_yz*vtau
+    s[(2, 2)] = -2*grad_rho_x**2*vsigma - 2*grad_rho_y**2*vsigma - 4*grad_rho_z**2*vsigma - rho*vrho + rho*zk - tau*vtau - 1.0*tau_tensor_zz*vtau
+    return s
