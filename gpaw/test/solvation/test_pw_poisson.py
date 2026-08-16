@@ -277,7 +277,7 @@ def test_cg_poisson_solver_constant_dielectric(density_generator):
 
     solver = ConjugateGradientPoissonSolver(
         pw, grid, MockDielectric(eps_gradeps),
-        eps=1e-6, maxiter=100)
+        rtol=1e-6, maxiter=100)
 
     phi = PWArray(pw=pw)
     start = time.time()
@@ -323,7 +323,7 @@ def test_cg_poisson_solver_variable_dielectric(density_generator):
     solver = ConjugateGradientPoissonSolver(
         pw=pw, grid=grid,
         dielectric=MockDielectric(eps_gradeps),
-        eps=1e-6, maxiter=100)
+        rtol=1e-6, maxiter=100)
 
     phi = PWArray(pw=pw)
     start = time.time()
@@ -331,7 +331,7 @@ def test_cg_poisson_solver_variable_dielectric(density_generator):
     end = time.time()
     parprint(f'CG Solver timing: {end - start}')
 
-    phi_operator = solver.operator(phi.data.copy())
+    phi_operator = solver._operator(phi.data.copy())
 
     expected = rho.data.copy()
     expected *= 4 * np.pi
