@@ -77,7 +77,7 @@ Make sure ``ase-taskblaster`` is installed by running, e.g.,
 ``pip install ase-taskblaster``.
 
 Go to a clean directory and create a repository using
-`asetaskblaster <https://pypi.org/project/ase-taskblaster/>`
+`asetaskblaster <https://pypi.org/project/ase-taskblaster/>`__
 as plugin::
 
   $ tb init asetaskblaster
