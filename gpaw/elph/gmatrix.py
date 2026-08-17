@@ -29,7 +29,6 @@ from ase import Atoms
 from ase.phonons import Phonons
 from ase.utils.filecache import MultiFileJSONCache
 from ase.utils.timing import Timer, timer
-
 from gpaw.elph.supercell import Supercell
 from gpaw.mpi import normalize_communicator
 from gpaw.old.calculator import GPAW
@@ -85,7 +84,7 @@ class ElectronPhononMatrix:
 
         if set(self.phonon.indices) != set(self.indices):
             self.phonon.set_atoms(self.indices)
-            self.phonon.D_N = None
+            self.phonon.C_avNav = None
 
         self._read_phonon_cache()
         self.timer.stop("Read phonons")
@@ -110,7 +109,7 @@ class ElectronPhononMatrix:
             info = MultiFileJSONCache(phonon, comm=self.comm)["info"]
             assert "dr_version" in info, "use valid cache created by elph"
             # our version of phonons
-            self.phonon = Phonons(atoms, supercell=info["supercell"],
+            self.phonon = Phonons(atoms, supercell=tuple(info["supercell"]),
                                   name=phonon, delta=info["delta"],
                                   center_refcell=True)
         elif isinstance(phonon, dict):
@@ -125,7 +124,7 @@ class ElectronPhononMatrix:
             raise TypeError
 
     def _read_phonon_cache(self):
-        if self.phonon.D_N is None:
+        if self.phonon.C_avNav is None:
             self.phonon.read(symmetrize=10)
 
     def _yield_g_NNMM_as_needed(self, x, s):
@@ -136,7 +135,7 @@ class ElectronPhononMatrix:
 
     def _get_lattice_vectors(self):
         """Recover lattice vectors of elph calculation"""
-        supercell = self.supercell_cache["info"]["supercell"]
+        supercell = tuple(self.supercell_cache["info"]["supercell"])
         ph = Phonons(self.atoms, supercell=supercell, center_refcell=True)
         return ph.compute_lattice_vectors()
 
@@ -170,7 +169,8 @@ class ElectronPhononMatrix:
             precalc = True
         else:
             raise ValueError("var1 must be C1_nM or g_xNMn")
-        omega_ql, u_ql = self.phonon.band_structure([q_c], modes=True)
+        omega_ql, u_ql = self.phonon.band_structure(q_c[np.newaxis, :],
+                                                    modes=True)
         u_l = u_ql[0]
         assert len(u_l.shape) == 3
 
