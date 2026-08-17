@@ -3,7 +3,6 @@ import numpy as np
 import numpy.fft as fft
 import numpy.linalg as la
 from ase import Atoms
-
 from gpaw.typing import ArrayND
 
 
