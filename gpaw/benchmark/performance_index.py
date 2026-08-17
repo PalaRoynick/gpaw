@@ -16,7 +16,8 @@ PARAMS = dict(
     xc='PBE',
     mode={'name': 'pw', 'ecut': 800},
     kpts={'density': 5.0},
-    setups={'Cr': '14'})
+    setups={'Cr': '14'},
+    convergence={'density': 1e-4})
 
 
 # Reference numbers:
