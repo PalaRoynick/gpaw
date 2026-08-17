@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from ase import Atoms
 from ase.build import bulk, molecule
 
@@ -141,3 +142,88 @@ def test_eigensolver(mode, element, eigensolver):
     eig_un = eig[:nocc + unocc]
     eig_t_un = eig_t[mode][:nocc + unocc]
     assert eig_un == pytest.approx(eig_t_un, abs=eig_tolerance)
+
+
+@pytest.mark.parametrize('eigensolver', ['ppcg', 'davidson', 'etdm-fdpw'])
+def test_li2(eigensolver, gpaw_new):
+
+    et = 2.0823375
+    f1 = 0.6843574
+    ft = np.array([[-f1, -f1, 0], [f1, f1, 0]])
+    eigt = [4.82160777, 11.61745515, 12.92459604, 13.99053004]
+
+    if not gpaw_new:
+        pytest.skip('Only implemented for new GPAW')
+
+    atoms = Atoms('Li2',
+                  [[0, 0, 0], [0.9, 0.9, 0]],
+                  cell=[2.6, 2.6, 1.4],
+                  pbc=True)
+    atoms.center()
+
+    if eigensolver == 'etdm-fdpw':
+        eigensolver = {'name': 'etdm-fdpw', 'converge_unocc': True}
+        mixer = {'backend': 'no-mixing'}
+    else:
+        mixer = {}
+
+    params = {'mode': 'pw',
+              'nbands': 4,
+              'kpts': {'size': [1, 1, 1], 'gamma': True},
+              'eigensolver': eigensolver,
+              'mixer': mixer,
+              'convergence': {'bands': 4}}
+
+    calc = GPAW(**params)
+    atoms.calc = calc
+    e0 = atoms.get_potential_energy()
+    f0 = atoms.get_forces()
+    eig0 = atoms.calc.get_eigenvalues()
+
+    assert e0 == pytest.approx(et, abs=1e-5)
+    assert f0 == pytest.approx(ft, abs=1e-3)
+    assert eig0 == pytest.approx(eigt, abs=1e-4)
+
+
+@pytest.mark.parametrize('eigensolver', ['ppcg', 'davidson', 'etdm-fdpw'])
+def test_h2(eigensolver, gpaw_new):
+
+    et = -7.075390
+    fz = 2.14124
+    ft = np.array([[0, 0, fz], [0, 0, -fz]])
+    eigt = [-10.5155343, 0.05254895, 3.32638484, 5.49102227]
+
+    if not gpaw_new:
+        pytest.skip('Only implemented for new GPAW')
+
+    atoms = molecule('H2', cell=[4, 4, 4])
+    atoms.center()
+    atoms.set_pbc(True)
+
+    if eigensolver == 'etdm-fdpw':
+        eigensolver = {'name': 'etdm-fdpw', 'converge_unocc': True}
+        mixer = {'backend': 'no-mixing'}
+    else:
+        mixer = {}
+
+    params = {'mode': 'pw',
+              'nbands': 4,
+              'kpts': {'size': [1, 1, 1], 'gamma': True},
+              'eigensolver': eigensolver,
+              'mixer': mixer,
+              'convergence': {'bands': 4}}
+
+    calc = GPAW(**params)
+    atoms.calc = calc
+    e0 = atoms.get_potential_energy()
+    f0 = atoms.get_forces()
+    eig0 = atoms.calc.get_eigenvalues()
+    print(eigensolver, e0, f0, eig0)
+
+    assert e0 == pytest.approx(et, abs=1e-5)
+    assert f0 == pytest.approx(ft, abs=1e-3)
+    assert eig0 == pytest.approx(eigt, abs=1e-4)
+
+
+if __name__ == '__main__':
+    test_li2('ppcg', 1)
