@@ -75,6 +75,13 @@ Using the DTU computers
    using_gbar
    submitting
 
+Using VScode (new)
+------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   using_vscode
 
 iPad users (strongly discouraged)
 ---------------------------------
