@@ -8,7 +8,6 @@ see https://doi.org/10.1038/s41467-020-16529-6
 import numpy as np
 from ase.units import Hartree, invcm
 from ase.utils.filecache import MultiFileJSONCache
-
 from gpaw.old.calculator import GPAW
 from gpaw.typing import ArrayND
 
