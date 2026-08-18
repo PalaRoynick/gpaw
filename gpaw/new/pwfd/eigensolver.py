@@ -149,7 +149,7 @@ class PWFDEigensolver(Eigensolver):
         dS_aii = wfs.setups.get_overlap_corrections(wfs.P_ani.layout.atomdist,
                                                     wfs.xp)
 
-        ibzwfs.orthonormalize()
+        ibzwfs.orthonormalize(self.data_buffers[0])
         # ibzwfs = kpad(ibzwfs)
         hamiltonian.update_wave_functions(ibzwfs)
 

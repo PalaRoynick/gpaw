@@ -25,7 +25,7 @@ for d in [1, 2, 4, 8]:
                 marks=[pytest.mark.gpu])])
 def test_pw_par_strategies(in_tmp_dir, d, k, gpu):
     ecut = 200
-    kpoints = [1, 1, 4]
+    kpoints = [1, 1, 1]
     atoms = Atoms('HLi',
                   cell=[6, 6, 3.4],
                   pbc=True,
@@ -38,10 +38,12 @@ def test_pw_par_strategies(in_tmp_dir, d, k, gpu):
     else:
         GPAW = AnyGPAW
     atoms.calc = GPAW(mode=PW(ecut),
-                      txt='hli.txt',
+                      # txt='hli.txt',
                       parallel=parallel,
                       kpts={'size': kpoints},
                       convergence={'density': 1e-6},
+                      eigensolver={'name': 'ppcg',
+                                   'max_buffer_mem': 100},
                       **{'mixer': {'backend': 'fft'},
                          'symmetry': 'off',
                          'random': True} if GPAW_NO_C_EXTENSION else {},

@@ -71,8 +71,8 @@ def mmm(alpha: T,
         b1, b2 = b.shape
     else:
         b2, b1 = b.shape
-    assert a2 == b1
-    assert c.shape == (a1, b2)
+    assert a2 == b1, f'{a2} != {b1}'
+    assert c.shape == (a1, b2), f'{c.shape} != {(a1, b2)}'
 
     assert a.dtype == b.dtype == c.dtype
     assert a.strides[1] == c.itemsize or a.size == 0

@@ -61,9 +61,9 @@ class XArray(Generic[DomainType], XP):
 
         if self.dims:
             mydims0 = (self.dims[0] + comm.size - 1) // comm.size
-            d1 = min(comm.rank * mydims0, self.dims[0])
-            d2 = min((comm.rank + 1) * mydims0, self.dims[0])
-            mydims0 = d2 - d1
+            self.d1 = min(comm.rank * mydims0, self.dims[0])
+            self.d2 = min((comm.rank + 1) * mydims0, self.dims[0])
+            mydims0 = self.d2 - self.d1
             self.mydims = (mydims0,) + self.dims[1:]
         else:
             self.mydims = ()
@@ -184,10 +184,11 @@ class XArray(Generic[DomainType], XP):
                         other: Self,
                         *,
                         out: Matrix | None = None,
+                        buffer_mX: Self | None = None,
+                        function: Callable[[Self, Self], Self] | None = None,
                         symmetric: bool | Literal['_default'] = '_default',
-                        function=None,
-                        domain_sum=True,
-                        cc: bool = False) -> Matrix:
+                        domain_sum: bool = True,
+                        cc: bool = False):
         if symmetric == '_default':
             symmetric = self is other
 
@@ -199,8 +200,84 @@ class XArray(Generic[DomainType], XP):
                          dtype=self.desc.dtype,
                          xp=self.xp)
 
-        if comm.size == 1:
-            assert other.comm.size == 1
+        if buffer_mX is None or comm.size == 1:
+            return self._matrix_elements(other, out=out,
+                                         function=function,
+                                         symmetric=symmetric,
+                                         domain_sum=domain_sum,
+                                         cc=cc)
+
+        # Time to slice and dice
+        psit1_nX = self
+        psit2_nX = other
+
+        b = psit1_nX.data.shape[0]
+        blocksize = buffer_mX.data.shape[0]
+        blocksize_world = comm.sum_scalar(blocksize)
+        blocksizes_r = np.empty(comm.size, dtype=int)
+        comm.all_gather(np.array(blocksize), blocksizes_r)
+        totalbands = comm.sum_scalar(b)
+        for i1, N1 in enumerate(
+                range(0, totalbands, blocksize_world)):
+            n1 = i1 * blocksize
+            n2 = n1 + blocksize
+            if n2 > b:
+                n2 = b
+
+            band_stride = (totalbands + comm.size - 1) // comm.size
+            tempb = totalbands
+            global_n = []
+            for i2, bsize in enumerate(blocksizes_r):
+                num_b = max(0, min(tempb, band_stride))
+                global_n.extend(range(i2 * band_stride + min(i1 * bsize, num_b),
+                                i2 * band_stride + min((i1 + 1) * bsize, num_b)))
+                tempb -= band_stride
+            global_n = np.array(global_n)
+            global_n = global_n[global_n < totalbands]
+
+            world_N = min(blocksize_world,
+                          totalbands - N1)
+
+            buffer_view_aX = buffer_mX.new(
+                data=buffer_mX.data[:n2 - n1],
+                dims=(world_N,) + buffer_mX.dims[1:])
+            if function is not None:
+                function(psit2_nX[n1:n2], out=buffer_view_aX)
+            else:
+                buffer_view_aX.data[:] = psit2_nX.data[n1:n2]
+            out_buff = Matrix(
+                M=out.shape[0],
+                N=world_N,
+                dist=(comm, -1, 1),
+                xp=out.xp,
+                dtype=out.dtype
+            )
+            psit1_nX._matrix_elements(buffer_view_aX,
+                                      out=out_buff,
+                                      symmetric=False,
+                                      domain_sum=domain_sum,
+                                      cc=cc)
+            out.data[:, global_n] = out_buff.data
+
+        if not symmetric:
+            out.transpose(cc=True)
+        return out
+
+    def _matrix_elements(self,
+                        other: Self,
+                        *,
+                        out: Matrix,
+                        symmetric: bool,
+                        function=None,
+                        domain_sum=True,
+                        cc: bool = False) -> Matrix:
+        if symmetric == '_default':
+            symmetric = self is other
+
+        comm = self.comm
+
+        if not symmetric or comm.size == 1:
+            # assert other.comm.size == comm.size
             if function:
                 assert symmetric
                 other = function(other)
@@ -240,7 +317,7 @@ class XArray(Generic[DomainType], XP):
                             min(blocksize, X - ind),
                             data=M2.data[:, ind:ind + blocksize],
                             xp=self.xp,
-                            dist=(comm, -1, 1))
+                            dist=(other.comm, -1, 1))
                 m1.multiply(m2, opb='C', alpha=self.dv,
                             symmetric=symmetric, out=out,
                             beta=0 if ind == 0 else 1)
@@ -248,10 +325,7 @@ class XArray(Generic[DomainType], XP):
             # functions needs a correction:
             self._matrix_elements_correction(M1, M2, out, symmetric)
         else:
-            if symmetric:
-                _parallel_me_sym(self, out, function)
-            else:
-                _parallel_me(self, other, out)
+            _parallel_me_sym(self, out, function)
 
         if not cc:
             out.complex_conjugate()
@@ -344,56 +418,6 @@ class XArray(Generic[DomainType], XP):
 
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
-
-
-def _parallel_me(psit1_nX: XArray,
-                 psit2_nX: XArray,
-                 M_nn: Matrix) -> None:
-
-    comm = psit2_nX.comm
-    nbands = psit2_nX.dims[0]
-
-    psit1_nX = psit1_nX[:]
-
-    B = (nbands + comm.size - 1) // comm.size
-
-    n_r = [min(r * B, nbands) for r in range(comm.size + 1)]
-
-    xp = psit1_nX.xp
-    buf1_nX = psit1_nX.desc.empty(B, xp=xp)
-    buf2_nX = psit1_nX.desc.empty(B, xp=xp)
-    psit_nX = psit2_nX
-
-    for shift in range(comm.size):
-        rrequest = None
-        srequest = None
-
-        if shift < comm.size - 1:
-            srank = (comm.rank + shift + 1) % comm.size
-            rrank = (comm.rank - shift - 1) % comm.size
-            n1 = n_r[rrank]
-            n2 = n_r[rrank + 1]
-            mynb = n2 - n1
-            if mynb > 0:
-                rrequest = comm.receive(buf1_nX.data[:mynb], rrank, 11, False)
-            if psit2_nX.data.size > 0:
-                srequest = comm.send(psit2_nX.data, srank, 11, False)
-
-        r2 = (comm.rank - shift) % comm.size
-        n1 = n_r[r2]
-        n2 = n_r[r2 + 1]
-        m_nn = psit1_nX.matrix_elements(psit_nX[:n2 - n1],
-                                        cc=True, domain_sum=False)
-
-        M_nn.data[:, n1:n2] = m_nn.data
-
-        if rrequest:
-            comm.wait(rrequest)
-        if srequest:
-            comm.wait(srequest)
-
-        psit_nX = buf1_nX
-        buf1_nX, buf2_nX = buf2_nX, buf1_nX
 
 
 def _parallel_me_sym(psit1_nX: XArray,

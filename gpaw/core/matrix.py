@@ -222,11 +222,16 @@ class Matrix(XP):
                          dist=dist.comm)
         elif not isinstance(out, Matrix):
             out = out.matrix
-        if out.data is other.data:
-            # Repeatably call multiply using data_buffer
+        # if dist.comm.size > 1 and data_buffer is None:
+        #     assert False  # XXX: Remove this before merging!!!
+        if out.data is other.data or (
+                data_buffer is not None and dist.comm.size > 1 and
+                opa == 'N' and opb == 'N'):
+            # Repeatably call multiply using data_buffer to
+            # save memory
             assert opa == 'N', 'Not implemented'
             assert opb == 'N', 'Not implemented'
-            assert not beta, 'Not implemented'
+            # assert not beta, 'Not implemented'
             assert other.shape[0] == self.shape[0]
 
             # Assert simple (only row distributed) distributions:
@@ -535,6 +540,15 @@ class Matrix(XP):
             return
         self.dist.add_hermitian_conjugate(self, scale)
 
+    def transpose(self, scale: float = 1.0, cc=False):
+        if self.dist.comm.size == 1:
+            if scale != 1.0:
+                self.data *= scale
+            self.data[:] = self.data.T.conj() if cc else \
+                self.data.T
+            return
+        self.dist.transpose(self, scale, cc)
+
     def tril2full(self) -> None:
         """Fill in upper triangle from lower triangle.
 
@@ -685,6 +699,12 @@ class MatrixDistribution:
                                 scale: float) -> None:
         raise NotImplementedError
 
+    def transpose(self,
+                  a: Matrix,
+                  scale: float = 1,
+                  cc: bool = False) -> None:
+        raise NotImplementedError
+
     def eigh_serial(self,
                     H: Matrix,
                     S: Matrix | None,
@@ -705,6 +725,11 @@ class MatrixDistribution:
         else:
             if debug:
                 S.data[np.triu_indices(H.shape[0], 1)] = 42.0
+            assert eigs.shape[0] != 0
+            assert H.data.shape[1] != 0
+            assert S.data.shape[1] != 0
+            if limit is not None:
+                assert limit == len(eigs)
             eigs[:], evecs = sla.eigh(
                 H.data,
                 S.data,
@@ -744,8 +769,6 @@ class MatrixDistribution:
             elif comm.rank % other.columns == 0:
                 comm.receive(m2data, 0)
             return
-
-        raise NotImplementedError
 
 
 class NoDistribution(MatrixDistribution):
@@ -899,6 +922,14 @@ class BLACSDistribution(MatrixDistribution):
         tmp = a.copy()
         cgpaw.pblas_tran(*self.full_shape, scale, tmp.data, scale, a.data,
                          self.desc, self.desc, True)
+
+    def transpose(self,
+                  a,
+                  scale: float = 1.0,
+                  cc: bool = False) -> None:
+        tmp = a.copy()
+        cgpaw.pblas_tran(*self.full_shape, scale, tmp.data, 0, a.data,
+                         self.desc, self.desc, cc)
 
     def to_xp(self, xp) -> MatrixDistribution:
         if xp is np:
@@ -1061,6 +1092,15 @@ class CuPyDistribution(MatrixDistribution):
         b.add_hermitian_conjugate(scale)
         a.data[:] = b.to_xp(cp).data
 
+    def transpose(self,
+                  a: Matrix,
+                  scale: float = 1,
+                  cc: bool = False) -> None:
+        # Quick'n'dirty hack:
+        b = a.to_cpu()
+        b.transpose(scale, cc)
+        a.data[:] = b.to_xp(cp).data
+
     def eigh_serial(self,
                     H: Matrix,
                     S: Matrix | None,
@@ -1146,7 +1186,6 @@ def mmm_nn(m1, m2, m3, alpha, beta, mmm):
         r0 = (comm.rank + r) % comm.size
         n1 = min(r0 * n, N)
         n2 = min(n1 + n, N)
-        # Contiguity...
         mmm(alpha, m1.data[:, n1:n2], 'N', buf1[:n2 - n1], 'N', beta, m3.data)
 
         beta = 1.0

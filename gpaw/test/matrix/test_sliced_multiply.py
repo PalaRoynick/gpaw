@@ -44,6 +44,6 @@ def _test_sliced_multiply(N=10, max_mem=5e3) -> float:
 
 
 if __name__ == '__main__':
-    max_mem_l = [2e5, 2e6, 2e7, 2e10]
+    max_mem_l = [2e4, 2e5, 2e6, 2e7]
     times = [_test_sliced_multiply(N=500, max_mem=mem) for mem in max_mem_l]
     print(max_mem_l, times)
