@@ -41,9 +41,9 @@ When logged in to the remote machine, make an archive file with the command::
 
 Now, in a terminal on your local machine you can transfer the archive with the command::
 
-    scp camdXXXXX@login.gbar.dtu.dk:transfer.tgz .
+    scp -i ~/.ssh/camdXXXXX camdXXXXX@login.gbar.dtu.dk:transfer.tgz .
 
-(note the dot at the end of the command line, that instructs ``scp`` to dump the file in the current folder).
+(note the dot at the end of the command line, that instructs ``scp`` to dump the file in the current folder.  Also, the file path after ``-i`` should point to the file containing your secret SSH key).
 
 You can then unpack with::
 
