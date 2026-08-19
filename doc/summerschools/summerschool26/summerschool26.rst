@@ -83,6 +83,14 @@ Using VScode (new)
 
    using_vscode
 
+Downloading files (new)
+-----------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   downloading
+
 iPad users (strongly discouraged)
 ---------------------------------
 
