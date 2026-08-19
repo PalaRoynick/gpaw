@@ -35,7 +35,7 @@ Manual copy (Mac and Linux)
 
 When logged in to the remote machine, make an archive file with the command::
 
-    tar cvf $HOME/transfer.tgz CAMD2026
+    tar cvfz $HOME/transfer.tgz CAMD2026
 
 (the warning above about including the venv does not apply here, only a useless link to it will be included in the archive).
 
