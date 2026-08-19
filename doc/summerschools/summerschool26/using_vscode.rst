@@ -16,6 +16,15 @@ Getting VSCode to talk to the DTU computers
         User camdXXXXX
         IdentityFile  C:\Users\XXXXX\Documents\camd26092
 
+On Mac/Linux, it should look like this::
+
+    Host login.gbar.dtu.dk
+        HostName login.gbar.dtu.dk
+        User camdXXXXX
+        IdentityFile  ~/.ssh/camd26092
+        ForwardX11 yes
+        ForwardX11Timeout 36000    
+
 Make sure that IdentityFile points to where you stored your SSH key, and that User is your user name, not the fake one shown here.
 
 Opening a remote connection
