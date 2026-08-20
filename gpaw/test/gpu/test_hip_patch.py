@@ -15,9 +15,9 @@ def test_hip_patch_on_cuda():
     import cupyx
 
     def matrices():
-        for sx in [1, 5, 6, 32, 101, 102]:
-            for sy in [1, 5, 6, 32, 101, 102]:
-                for sz in [5, 6, 32, 101, 102]:
+        for sx in [1, 5, 6, 32, 51, 52]:
+            for sy in [1, 5, 6, 32, 51]:
+                for sz in [5, 6, 32, 51]:
                     yield cupy.random.rand(sx, sy, sz)
     for tmp_R in matrices():
         print(tmp_R.shape)

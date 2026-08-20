@@ -33,6 +33,26 @@ def execute_in_tmp_path(request, tmp_path_factory):
         os.chdir(cwd)
 
 
+@pytest.fixture(autouse=True)
+def gpu_only_fixture(request):
+    marker = request.node.get_closest_marker("gpu")
+    if not marker:
+        yield
+        return
+
+    try:
+        import cupy
+    except ImportError:
+        yield
+        return
+
+    mempool = cupy.get_default_memory_pool()
+    with cupy.cuda.Device(0):
+        mempool.set_limit(size=256 * 1024**2)  # quarter GiB
+
+    yield
+
+
 @pytest.fixture(scope='module')
 def set_device():
     from gpaw.gpu import set_device
