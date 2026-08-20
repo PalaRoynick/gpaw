@@ -367,9 +367,14 @@ Part 5: Extract data from a workflow
 Sometimes we want to extract the data from a workflow into a single file. Maybe we 
 want to plot it or send it to a colleague. For this example we'll want to extract the 
 lattice constants of all the relaxed structures. To get the data out of a repository 
-we use the ``Collect`` object. To use it we will create a new file called ``collect.py``.
+we use the ``Collect`` object. To use it we will create a new file called ``collect.py`` 
+in the  ``src`` folder. This is a normal python script and as such, we run it with 
+``python src/collect.py``.
 
 .. literalinclude:: collect.py
+
+*Note:* When specifying the glob pattern to select tasks (in this case ``'*/relax'``) do 
+not start the path with tree.
 
 This code collects all the relax tasks in a list of ``record`` objects. This object has 
 several attributes that are of use to us
