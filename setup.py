@@ -955,7 +955,7 @@ class BuildGPAW(build_ext):
         self.add_base_include_dirs()
 
         import numpy as np
-        self.include_dirs.append(np.get_include())
+        self.include_dirs.insert(0, np.get_include())
 
         if use_cpp or gpu:
             import pybind11
