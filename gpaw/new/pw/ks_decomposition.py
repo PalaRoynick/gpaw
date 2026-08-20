@@ -37,6 +37,34 @@ The four terms are:
     the completeness of the partial-wave basis, so the total should be
     close to zero.  It is reported as a sanity check.
 
+The electrostatic term is additionally split into the potentials from
+the three kinds of charges (``hartree = hartree_valence + hartree_core +
+hartree_nuclear``):
+
+``hartree_valence``
+    Hartree potential of the valence electrons, ``v_H[n_v]``.
+``hartree_core``
+    Hartree potential of the (frozen) core electrons, ``v_H[n_c]``.
+``hartree_nuclear``
+    Potential from the nuclei, ``-sum_a Z_a / |r - R_a|``.
+
+and ``hartree_electrons = hartree_valence + hartree_core`` is the Hartree
+potential of all electrons.  Each of the three pieces is not neutral, so
+the G=0 component of its pseudo potential is set to zero (uniform
+neutralizing background); the pieces add up to the neutral total.
+
+By default, the pseudo part of each electrostatic term is the potential
+of the smooth density *plus* the corresponding compensation charges,
+so that it has the correct multipole moments and the PAW correction is
+a pure one-center term.  With ``compensation_charges=False``, the pseudo
+part is the potential of the smooth density alone (for the valence term
+this is the Hartree potential of the pseudo valence density, ``v_H[n~_v]``,
+as used in norm-conserving pseudopotential codes).  The total is the same
+in both cases; the ``paw`` part is then ``total - pseudo`` and also
+contains the (not strictly one-center) compensation-charge contribution.
+Note that the nuclei are represented by compensation charges only, so
+``hartree_nuclear.pseudo`` is zero in that case.
+
 This module is the per-state analogue of the splitting of the atomic
 Hamiltonian corrections done in :func:`gpaw.new.pot_calc.
 calculate_non_local_potential1`.
@@ -48,15 +76,16 @@ Example::
 
     calc = GPAW('si.gpw')  # must contain wave functions (mode='all')
     d = ks_decomposition(calc, n1=0, n2=8)
-    t_skn = d.kinetic.total        # all-electron <T> in eV
-    vH_skn = d.hartree.pseudo      # pseudo <v_H> in eV
-    print(abs(d.residual_skn).max())  # should be ~1e-10 eV
+    t_skn = d.kinetic.total              # all-electron <T> in eV
+    vH_skn = d.hartree_valence.pseudo    # pseudo <v_H[n_v]> in eV
+    print(abs(d.residual_skn).max())     # should be ~1e-10 eV
 
 Only plane-wave mode with LDA/GGA functionals (including +U) is supported.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import pi, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
@@ -68,13 +97,18 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.new.c import add_to_density
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
-from gpaw.typing import Array3D
+from gpaw.setup import Setup
+from gpaw.typing import Array1D, Array3D
 from gpaw.utilities import pack_density, unpack_hermitian
 
 if TYPE_CHECKING:
     from gpaw.dft import DFT
 
 TERM_NAMES = ['kinetic', 'hartree', 'xc', 'zero']
+"""Terms that add up to the eigenvalue."""
+HARTREE_PARTS = ['hartree_valence', 'hartree_core', 'hartree_nuclear']
+"""Terms that add up to ``hartree``."""
+ALL_TERM_NAMES = TERM_NAMES + HARTREE_PARTS
 
 
 @dataclass
@@ -86,12 +120,16 @@ class Term:
     pseudo: Array3D
     """Smooth part: ``<ψ~_n|O~|ψ~_n>``."""
     paw: Array3D
-    """One-center PAW correction: ``sum_a P^a+ ΔO^a P^a``."""
+    """PAW correction: ``sum_a P^a+ ΔO^a P^a`` (see module docstring for
+    the electrostatic terms with ``compensation_charges=False``)."""
 
     @property
     def total(self) -> Array3D:
         """All-electron expectation value (``pseudo + paw``)."""
         return self.pseudo + self.paw
+
+    def __add__(self, other: Term) -> Term:
+        return Term(self.pseudo + other.pseudo, self.paw + other.paw)
 
 
 @dataclass
@@ -108,14 +146,31 @@ class KSDecomposition:
     hartree: Term
     xc: Term
     zero: Term
+    hartree_valence: Term
+    hartree_core: Term
+    hartree_nuclear: Term
     n1: int
     n2: int
     kpt_indices: list[int]
     """IBZ k-point indices."""
+    compensation_charges: bool = True
+
+    @property
+    def hartree_electrons(self) -> Term:
+        """Hartree potential of all (valence + core) electrons."""
+        return self.hartree_valence + self.hartree_core
 
     @property
     def terms(self) -> dict[str, Term]:
+        """The terms that add up to the eigenvalues."""
         return {name: getattr(self, name) for name in TERM_NAMES}
+
+    @property
+    def all_terms(self) -> dict[str, Term]:
+        """All terms (including the electrostatic sub-terms)."""
+        dct = {name: getattr(self, name) for name in ALL_TERM_NAMES}
+        dct['hartree_electrons'] = self.hartree_electrons
+        return dct
 
     @property
     def residual_skn(self) -> Array3D:
@@ -125,14 +180,15 @@ class KSDecomposition:
     def todict(self) -> dict[str, np.ndarray]:
         """Flat dict of arrays (e.g. for ``np.savez``).
 
-        Keys: ``eps``, ``kpt_indices``, ``bands`` (``[n1, n2]``) and
-        ``<term>_pseudo``, ``<term>_paw``, ``<term>_total`` for each
-        term.
+        Keys: ``eps``, ``kpt_indices``, ``bands`` (``[n1, n2]``),
+        ``compensation_charges`` and ``<term>_pseudo``, ``<term>_paw``,
+        ``<term>_total`` for each term.
         """
         dct = {'eps': self.eps_skn,
                'kpt_indices': np.array(self.kpt_indices),
-               'bands': np.array([self.n1, self.n2])}
-        for name, term in self.terms.items():
+               'bands': np.array([self.n1, self.n2]),
+               'compensation_charges': np.array(self.compensation_charges)}
+        for name, term in self.all_terms.items():
             dct[f'{name}_pseudo'] = term.pseudo
             dct[f'{name}_paw'] = term.paw
             dct[f'{name}_total'] = term.total
@@ -141,14 +197,86 @@ class KSDecomposition:
     def __str__(self) -> str:
         lines = [f'Kohn-Sham eigenvalue decomposition '
                  f'(bands {self.n1}-{self.n2 - 1}, '
-                 f'{len(self.kpt_indices)} k-points) [eV]:']
-        for name, term in self.terms.items():
-            lines.append(f'  {name:8}: pseudo in [{term.pseudo.min():9.3f}, '
+                 f'{len(self.kpt_indices)} k-points, '
+                 f'compensation_charges={self.compensation_charges}) [eV]:']
+        for name, term in self.all_terms.items():
+            lines.append(f'  {name:17}: '
+                         f'pseudo in [{term.pseudo.min():9.3f}, '
                          f'{term.pseudo.max():9.3f}], '
                          f'paw in [{term.paw.min():9.3f}, '
                          f'{term.paw.max():9.3f}]')
         lines.append(f'  max |residual|: {abs(self.residual_skn).max():.2e}')
         return '\n'.join(lines)
+
+
+def is_paw_setup(setup) -> bool:
+    """True for real PAW setups (with partial waves and core density)."""
+    lc = getattr(setup, 'local_corr', None)
+    return lc is not None and getattr(lc, 'n_qg', None) is not None
+
+
+def coulomb_correction_parts(setup: Setup) -> tuple[Array1D, Array1D]:
+    """Split ``setup.M_p`` into core and nuclear parts.
+
+    ``setup.M_p`` is the linear (in the atomic density matrix) one-center
+    Coulomb correction.  It describes the interaction of the valence
+    partial-wave densities with the core electrons and the nucleus
+    (there is no valence-valence contribution, that is in ``M_pp``).
+    Returns ``(M_core_p, M_nuc_p)`` with ``M_core_p + M_nuc_p == M_p``.
+
+    Follows the conventions of :meth:`gpaw.setup.Setup.
+    calculate_coulomb_corrections`.
+    """
+    if not is_paw_setup(setup):
+        # All-electron H or norm-conserving pseudopotential:
+        # nothing to split, all of M_p is "ion".
+        M_p = np.asarray(setup.M_p, dtype=float)
+        return np.zeros_like(M_p), M_p.copy()
+
+    lc = setup.local_corr
+    rgd = lc.rgd2
+    r_g = rgd.r_g
+    dr_g = rgd.dr_g
+    rdr_g = r_g * dr_g
+
+    def H(n_g):
+        return rgd.poisson(n_g, 0) * rdr_g
+
+    n_qg = lc.n_qg
+    nt_qg = lc.nt_qg
+    nc_g = lc.nc_g
+    nct_g = lc.nct_g
+    g0_g = setup.g_lg[0]
+    wg0_g = H(g0_g)
+    wn_qg = np.array([H(n_g) for n_g in n_qg])
+    wnt_qg = np.array([H(nt_g) for nt_g in nt_qg])
+    wnc_g = H(nc_g)
+    wnct_g = H(nct_g)
+    Delta_q = lc.Delta_lq[0]
+    T_qp = lc.T_Lqp[0]
+
+    # Split of the l=0 compensation charge coefficient,
+    # Delta0 = int (n_c - n~_c) r^2 dr - Z / sqrt(4 pi):
+    Delta0_nuc = -setup.Z / sqrt(4 * pi)
+    Delta0_core = setup.Delta0 - Delta0_nuc
+
+    # Nucleus: point charge in the all-electron part, Gaussian
+    # compensation charge in the pseudo part:
+    A_q = -sqrt(4 * pi) * setup.Z * (n_qg @ rdr_g)
+    A_q -= 0.5 * Delta0_nuc * (wnt_qg @ g0_g + nt_qg @ wg0_g)
+    A_q -= Delta0_nuc * (g0_g @ wg0_g) * Delta_q
+    M_nuc_p = A_q @ T_qp
+
+    # Core electrons: n_c in the all-electron part, n~_c plus
+    # compensation charge in the pseudo part:
+    mc_g = nct_g + Delta0_core * g0_g
+    wmc_g = wnct_g + Delta0_core * wg0_g
+    A_q = 0.5 * (wn_qg @ nc_g + n_qg @ wnc_g)
+    A_q -= 0.5 * (wnt_qg @ mc_g + nt_qg @ wmc_g)
+    A_q -= 0.5 * (mc_g @ wg0_g + g0_g @ wmc_g) * Delta_q
+    M_core_p = A_q @ T_qp
+
+    return M_core_p, M_nuc_p
 
 
 class KSDecompositionCalculator:
@@ -157,15 +285,17 @@ class KSDecompositionCalculator:
     The potentials and one-center matrices are set up once in the
     constructor; :meth:`calculate` can then be called for different bands
     and k-points.  Works with k-point, band and domain parallelization.
+    See the module docstring for the meaning of ``compensation_charges``.
     """
 
-    def __init__(self, dft: DFT):
+    def __init__(self, dft: DFT, compensation_charges: bool = True):
         self.dft = dft
         self.ibzwfs = dft.ibzwfs
         self.density = dft.density
         self.potential = dft.potential
         self.pot_calc = dft.pot_calc
         self.setups = dft.setups
+        self.compensation_charges = compensation_charges
 
         self._check_supported()
 
@@ -180,23 +310,29 @@ class KSDecompositionCalculator:
         self.grid0 = grid.new(comm=None)  # serial coarse grid
 
         # Pseudo potentials on the (serial) coarse grid.  Only available
-        # on the master of the domain communicator (None elsewhere):
-        self.vbar_R: UGArray | None
-        self.vHt_R: UGArray | None
-        self.vxct_sR: UGArray | None
-        self.vbar_R, self.vHt_R, self.vxct_sR = self._pseudo_potentials()
+        # on the master of the domain communicator (empty dicts
+        # elsewhere).  Electrostatic potentials without compensation
+        # charges go into self.vbare_xR (only used if
+        # compensation_charges is False):
+        self.vt_xR: dict[str, UGArray] = {}
+        self.vbare_xR: dict[str, UGArray] = {}
+        # Integrals of compensation charges times electrostatic
+        # potentials (all atoms, all ranks):
+        self.V_xaL: dict[str, AtomArrays] = {}
+        self._pseudo_potentials()
 
         # One-center corrections for all atoms (on all ranks):
-        (self.dK_aii, self.dH_aii, self.dB_aii,
-         self.dxc_asii) = self._atomic_corrections()
+        self.dX_axii: dict[str, dict[int, np.ndarray]] = (
+            self._atomic_corrections())
 
     @classmethod
     def from_gpw_file(cls,
                       filename: str | Path,
-                      comm=None) -> KSDecompositionCalculator:
+                      comm=None,
+                      **kwargs) -> KSDecompositionCalculator:
         from gpaw import GPAW
         calc = GPAW(filename, legacy_gpaw=False, communicator=comm, txt=None)
-        return cls(calc.dft)
+        return cls(calc.dft, **kwargs)
 
     def _check_supported(self) -> None:
         if not isinstance(self.ibzwfs, PWFDIBZWaveFunctions):
@@ -216,83 +352,170 @@ class KSDecompositionCalculator:
                                       'are not supported')
         if self.pot_calc.soc:
             raise NotImplementedError('Spin-orbit coupling is not supported')
+        if type(self.pot_calc.poisson_solver).__name__.startswith('Bloechl'):
+            raise NotImplementedError(
+                "The fast (Bloechl) Poisson solver (poissonsolver={'fast': "
+                'True}) is not supported')
 
-    def _pseudo_potentials(self) -> tuple[UGArray | None,
-                                          UGArray | None,
-                                          UGArray | None]:
+    def _to_coarse_grid(self, v_h: PWArray) -> UGArray | None:
+        """Map electrostatic potential to the (serial) coarse grid.
+
+        The potential is first mapped onto the plane-wave sphere of the
+        density (the SCF potential only contains those components).
+        Returns None except on the domain master.
+        """
+        v_h0 = v_h.gather()
+        if self.domain_comm.rank != 0:
+            return None
+        assert v_h0 is not None
+        v_r = v_h0.ifft(grid=v_h0.desc.minimal_uniform_grid())
+        v_g = v_r.fft(pw=self.pot_calc.pw.new(comm=None))
+        return v_g.ifft(grid=self.grid0)
+
+    def _solve_poisson(self,
+                       nt_R: UGArray | None,
+                       Q_aL: AtomArrays) -> tuple[PWArray, AtomArrays]:
+        """Electrostatic potential from pseudo density + comp. charges.
+
+        Uses the same Poisson solver as the SCF calculation.  Returns the
+        potential (plane-wave coefficients) and the integrals of the
+        compensation charges times the potential (all atoms, all ranks).
+        """
+        ps = self.pot_calc.poisson_solver
+        nt0_R = nt_R.gather() if nt_R is not None else None
+        if self.domain_comm.rank == 0:
+            nt0_g = ps.pwg0.zeros()
+            if nt0_R is not None:
+                nt0_R.fft(out=nt0_g)
+            vt0_g = ps.pwg0.zeros()  # dummy
+        else:
+            nt0_g = None
+            vt0_g = None
+        _, v_h, V_aL = ps.solve(nt0_g, Q_aL, vt0_g, None)
+        return v_h, V_aL.gather(broadcast=True)
+
+    def _pseudo_potentials(self) -> None:
         """Split the pseudo potential into v_bar, v_H and v_xc.
 
         The three potentials are calculated in exactly the same way as
         in :meth:`gpaw.new.pw.pot_calc.PlaneWavePotentialCalculator.
         calculate_pseudo_potential` so that their sum equals the
         potential used in the SCF calculation (``potential.vt_sR``).
+        The electrostatic potential is further split into valence, core
+        and nuclear parts.
         """
         pot_calc = self.pot_calc
         density = self.density
+        setups = self.setups
+        master = self.domain_comm.rank == 0
 
         # XC-potential (calculated on the fine grid, restricted to
         # the coarse grid):
         nt_sr = pot_calc.interpolate(density.nt_sR)
         _, vxct_sr, _ = pot_calc.xc.calculate(nt_sr)
         vxct_sR = pot_calc.restrict(vxct_sr).gather()
+        if master:
+            self.vt_xR['xc'] = vxct_sR
+            self.vt_xR['zero'] = pot_calc.vbar0_g.ifft(grid=self.grid0)
 
-        # Electrostatic potential (PW coefficients):
-        vHt_h = self.potential.vHt_x.gather()
+        # Full electrostatic potential from the SCF calculation:
+        vHt_h = self.potential.vHt_x
+        ghat_aLh = setups.create_compensation_charges(
+            vHt_h.desc, self.dft.relpos_ac, density.D_asii.layout.atomdist)
+        self.V_xaL['hartree'] = ghat_aLh.integrate(vHt_h).gather(
+            broadcast=True)
+        vHt_R = self._to_coarse_grid(vHt_h)
+        if master:
+            assert vHt_R is not None
+            self.vt_xR['hartree'] = vHt_R
 
-        if self.domain_comm.rank != 0:
-            return None, None, None
+        # Split compensation charges into valence, core and nuclear
+        # parts (Q_L = Delta_pL D_p + Delta0 delta_L0 with
+        # Delta0 = int (n_c - n~_c) r^2 dr - Z / sqrt(4 pi)):
+        Q_aL = density.calculate_compensation_charge_coefficients()
+        Q_xaL = {name: Q_aL.new(data=np.zeros_like(Q_aL.data))
+                 for name in HARTREE_PARTS}
+        for a, Q_L in Q_aL.items():
+            setup = setups[a]
+            delta0 = density.delta0_a[a]
+            if is_paw_setup(setup):
+                Q_nuc = -setup.Z / sqrt(4 * pi)
+            else:
+                Q_nuc = delta0  # all of it is "ion"
+            Q_xaL['hartree_nuclear'][a][0] = Q_nuc
+            Q_xaL['hartree_core'][a][0] = delta0 - Q_nuc
+            Q_xaL['hartree_valence'][a][:] = Q_L
+            Q_xaL['hartree_valence'][a][0] -= delta0
 
-        assert vxct_sR is not None and vHt_h is not None
-        grid0 = self.grid0
-        vbar_R = pot_calc.vbar0_g.ifft(grid=grid0)
-        # Map v_H onto the plane-wave sphere of the density
-        # (the SCF potential only contains those components):
-        vHt_r = vHt_h.ifft(grid=vHt_h.desc.minimal_uniform_grid())
-        vHt_g = vHt_r.fft(pw=pot_calc.pw.new(comm=None))
-        vHt_R = vHt_g.ifft(grid=grid0)
-        return vbar_R, vHt_R, vxct_sR
+        # Smooth densities: valence, core, nothing:
+        nct_R = density.nct_R
+        nt_R = nct_R.new(data=density.nt_sR.data[:density.ndensities]
+                         .sum(axis=0))
+        nvt_R = nct_R.new(data=nt_R.data - nct_R.data)
+        nt_xR: dict[str, UGArray | None] = {'hartree_valence': nvt_R,
+                                            'hartree_core': nct_R,
+                                            'hartree_nuclear': None}
+        Q0_aL = Q_aL.new(data=np.zeros_like(Q_aL.data))
 
-    def _atomic_corrections(self) -> tuple[dict[int, np.ndarray],
-                                           dict[int, np.ndarray],
-                                           dict[int, np.ndarray],
-                                           dict[int, np.ndarray]]:
+        for name in HARTREE_PARTS:
+            v_h, V_aL = self._solve_poisson(nt_xR[name], Q_xaL[name])
+            self.V_xaL[name] = V_aL
+            v_R = self._to_coarse_grid(v_h)
+            if master:
+                assert v_R is not None
+                self.vt_xR[name] = v_R
+            if not self.compensation_charges:
+                v_h, _ = self._solve_poisson(nt_xR[name], Q0_aL)
+                v_R = self._to_coarse_grid(v_h)
+                if master:
+                    assert v_R is not None
+                    self.vbare_xR[name] = v_R
+        if not self.compensation_charges:
+            v_h, _ = self._solve_poisson(nt_R, Q0_aL)
+            v_R = self._to_coarse_grid(v_h)
+            if master:
+                assert v_R is not None
+                self.vbare_xR['hartree'] = v_R
+
+    def _atomic_corrections(self) -> dict[str, dict[int, np.ndarray]]:
         """One-center PAW corrections, split like in
         :func:`gpaw.new.pot_calc.calculate_non_local_potential1`."""
         density = self.density
         setups = self.setups
         xc = self.pot_calc.xc
+        V_xaL = self.V_xaL
 
         D_asii = density.D_asii.to_xp(np).gather(broadcast=True)
 
-        # Integrals of compensation charges times electrostatic potential:
-        vHt_h = self.potential.vHt_x
-        ghat_aLh = setups.create_compensation_charges(
-            vHt_h.desc, self.dft.relpos_ac, density.D_asii.layout.atomdist)
-        V_aL: AtomArrays = ghat_aLh.integrate(vHt_h).gather(broadcast=True)
-
-        dK_aii = {}
-        dH_aii = {}
-        dB_aii = {}
-        dxc_asii = {}
+        dX_axii: dict[str, dict[int, np.ndarray]] = {
+            name: {} for name in ALL_TERM_NAMES}
         ndensities = density.ndensities
         for a, D_sii in D_asii.items():
             setup = setups[a]
             D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
             D_p = D_sp[:ndensities].sum(0)
-            dK_aii[a] = unpack_hermitian(setup.K_p)
-            dH_aii[a] = unpack_hermitian(setup.M_p +
-                                         2.0 * setup.M_pp @ D_p +
-                                         setup.Delta_pL @ V_aL[a])
-            dB_aii[a] = unpack_hermitian(setup.MB_p)
+            M_core_p, M_nuc_p = coulomb_correction_parts(setup)
+            dX_axii['kinetic'][a] = unpack_hermitian(setup.K_p)
+            dX_axii['zero'][a] = unpack_hermitian(setup.MB_p)
+            dX_axii['hartree'][a] = unpack_hermitian(
+                setup.M_p + 2.0 * setup.M_pp @ D_p +
+                setup.Delta_pL @ V_xaL['hartree'][a])
+            dX_axii['hartree_valence'][a] = unpack_hermitian(
+                2.0 * setup.M_pp @ D_p +
+                setup.Delta_pL @ V_xaL['hartree_valence'][a])
+            dX_axii['hartree_core'][a] = unpack_hermitian(
+                M_core_p + setup.Delta_pL @ V_xaL['hartree_core'][a])
+            dX_axii['hartree_nuclear'][a] = unpack_hermitian(
+                M_nuc_p + setup.Delta_pL @ V_xaL['hartree_nuclear'][a])
             dxc_sp = np.zeros_like(D_sp)
             xc.calculate_paw_correction(setup, D_sp, dxc_sp, a=a)
             dxc_sii = unpack_hermitian(dxc_sp)
             if setup.hubbard_u is not None:
                 _, dHU_sii = setup.hubbard_u.calculate(setup, D_sii)
                 dxc_sii += dHU_sii
-            dxc_asii[a] = dxc_sii
+            dX_axii['xc'][a] = dxc_sii
 
-        return dK_aii, dH_aii, dB_aii, dxc_asii
+        return dX_axii
 
     def calculate(self,
                   n1: int = 0,
@@ -315,7 +538,7 @@ class KSDecompositionCalculator:
 
         shape = (ibzwfs.nspins, len(kpt_indices), n2 - n1)
         names = ['eps'] + [f'{name}_{part}'
-                           for name in TERM_NAMES
+                           for name in ALL_TERM_NAMES
                            for part in ['pseudo', 'paw']]
         x_skn = {name: np.zeros(shape) for name in names}
 
@@ -338,18 +561,17 @@ class KSDecompositionCalculator:
             n1=n1,
             n2=n2,
             kpt_indices=kpt_indices,
+            compensation_charges=self.compensation_charges,
             **{name: Term(pseudo=x_skn[f'{name}_pseudo'] * Ha,
                           paw=x_skn[f'{name}_paw'] * Ha)
-               for name in TERM_NAMES})
+               for name in ALL_TERM_NAMES})
 
     def _one_kpt(self, wfs: PWFDWaveFunctions) -> dict[str, np.ndarray]:
         """Expectation values for one k-point and spin (units: Ha).
 
         ``wfs`` must be serial (bands and domain collected).
         """
-        assert self.vHt_R is not None
-        assert self.vxct_sR is not None
-        assert self.vbar_R is not None
+        assert self.vt_xR, 'Potentials only available on domain master'
         spin = wfs.spin
         psit_nG = wfs.psit_nX
         assert isinstance(psit_nG, PWArray)
@@ -363,31 +585,35 @@ class KSDecompositionCalculator:
         ut_nR = self.grid0.new(dtype=psit_nG.desc.dtype).empty(nbands)
         psit_nG.ifft(out=ut_nR, periodic=False)
         nt_R = self.grid0.empty()
-        vH_n = np.zeros(nbands)
-        vxc_n = np.zeros(nbands)
-        vbar_n = np.zeros(nbands)
+        pseudo_xn = {name: np.zeros(nbands)
+                     for name in ALL_TERM_NAMES if name != 'kinetic'}
+        bare_xn = {name: np.zeros(nbands) for name in self.vbare_xR}
         for n, ut_R in enumerate(ut_nR.data):
             nt_R.data[:] = 0.0
             add_to_density(1.0, ut_R, nt_R.data)
-            vH_n[n] = self.vHt_R.integrate(nt_R)
-            vxc_n[n] = self.vxct_sR[spin].integrate(nt_R)
-            vbar_n[n] = self.vbar_R.integrate(nt_R)
-        result['hartree_pseudo'] = vH_n
-        result['xc_pseudo'] = vxc_n
-        result['zero_pseudo'] = vbar_n
+            for name, x_n in pseudo_xn.items():
+                v_xR = self.vt_xR[name]
+                v_R = v_xR[spin] if v_xR.dims else v_xR
+                x_n[n] = v_R.integrate(nt_R)
+            for name, x_n in bare_xn.items():
+                x_n[n] = self.vbare_xR[name].integrate(nt_R)
+        for name, x_n in pseudo_xn.items():
+            result[f'{name}_pseudo'] = x_n
 
         # One-center PAW corrections:
-        for name, dX_aii in [('kinetic', self.dK_aii),
-                             ('hartree', self.dH_aii),
-                             ('zero', self.dB_aii)]:
-            result[f'{name}_paw'] = sum(
-                (expectation_values(P_ani[a], dX_ii)
-                 for a, dX_ii in dX_aii.items()),
-                np.zeros(nbands))
-        result['xc_paw'] = sum(
-            (expectation_values(P_ani[a], dxc_sii[spin])
-             for a, dxc_sii in self.dxc_asii.items()),
-            np.zeros(nbands))
+        for name, dX_aii in self.dX_axii.items():
+            paw_n = np.zeros(nbands)
+            for a, dX_ii in dX_aii.items():
+                if dX_ii.ndim == 3:
+                    dX_ii = dX_ii[spin]
+                paw_n += expectation_values(P_ani[a], dX_ii)
+            result[f'{name}_paw'] = paw_n
+
+        # Without compensation charges in the pseudo part, their
+        # contribution is moved to the "paw" part:
+        for name, x_n in bare_xn.items():
+            result[f'{name}_paw'] += result[f'{name}_pseudo'] - x_n
+            result[f'{name}_pseudo'] = x_n
 
         return result
 
@@ -400,7 +626,8 @@ def expectation_values(P_ni: np.ndarray, M_ii: np.ndarray) -> np.ndarray:
 def ks_decomposition(calc,
                      n1: int = 0,
                      n2: int = 0,
-                     kpt_indices: Sequence[int] | None = None
+                     kpt_indices: Sequence[int] | None = None,
+                     compensation_charges: bool = True
                      ) -> KSDecomposition:
     """Decompose Kohn-Sham eigenvalues into kinetic, Hartree, xc and
     zero-potential expectation values.
@@ -415,16 +642,20 @@ def ks_decomposition(calc,
         Band range.  ``n2 <= 0`` counts from the total number of bands.
     kpt_indices:
         IBZ k-point indices.  Default is all.
+    compensation_charges:
+        Include compensation charges in the pseudo part of the
+        electrostatic terms (default).  See module docstring.
 
     See :class:`KSDecomposition` for a description of the result and
     the module docstring for details of the decomposition.
     """
     if isinstance(calc, (str, Path)):
-        kdc = KSDecompositionCalculator.from_gpw_file(calc)
+        kdc = KSDecompositionCalculator.from_gpw_file(
+            calc, compensation_charges=compensation_charges)
     elif hasattr(calc, 'ibzwfs'):  # DFT object
-        kdc = KSDecompositionCalculator(calc)
+        kdc = KSDecompositionCalculator(calc, compensation_charges)
     elif hasattr(calc, 'dft'):  # new-style ASE calculator
-        kdc = KSDecompositionCalculator(calc.dft)
+        kdc = KSDecompositionCalculator(calc.dft, compensation_charges)
     else:
         raise TypeError(
             'Expected a gpw-filename, a gpaw.dft.DFT object or a '

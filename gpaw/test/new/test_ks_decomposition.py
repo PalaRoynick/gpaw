@@ -5,6 +5,7 @@ from ase.build import bulk
 
 from gpaw import GPAW
 from gpaw.new.pw.ks_decomposition import (KSDecompositionCalculator,
+                                          coulomb_correction_parts,
                                           ks_decomposition)
 from gpaw.xc.tools import vxc
 
@@ -36,9 +37,29 @@ def check(calc, d):
     vxc_skn = vxc(calc.gs_adapter(), n1=d.n1, n2=d.n2)
     assert d.xc.total == pytest.approx(vxc_skn, abs=1e-5)
 
+    # Electrostatic terms: valence + core + nuclear = full
+    # (pseudo and PAW parts separately):
+    parts = d.hartree_valence + d.hartree_core + d.hartree_nuclear
+    assert parts.pseudo == pytest.approx(d.hartree.pseudo, abs=1e-9)
+    assert parts.paw == pytest.approx(d.hartree.paw, abs=1e-9)
+    assert d.hartree_electrons.total == pytest.approx(
+        d.hartree_valence.total + d.hartree_core.total, abs=1e-12)
+    if not d.compensation_charges:
+        # Nuclei are represented by compensation charges only:
+        assert abs(d.hartree_nuclear.pseudo).max() == 0.0
+
+    # One-center Coulomb corrections: core + nuclear = M_p
+    for setup in calc.dft.setups:
+        M_core_p, M_nuc_p = coulomb_correction_parts(setup)
+        assert M_core_p + M_nuc_p == pytest.approx(setup.M_p, abs=1e-12)
+        if setup.Nc == 0:  # no core electrons
+            assert abs(M_core_p).max() == 0.0
+
     # Flat dict:
     dct = d.todict()
     assert dct['kinetic_total'] == pytest.approx(d.kinetic.total)
+    assert dct['hartree_electrons_pseudo'] == pytest.approx(
+        d.hartree_electrons.pseudo)
     assert (dct['bands'] == [d.n1, d.n2]).all()
 
 
@@ -64,6 +85,19 @@ def test_ks_decomposition(gpw_files, name):
     d3 = ks_decomposition(gpw_files[name], n1=0, n2=-n1)
     assert d3.xc.paw == pytest.approx(d.xc.paw[:, :, :nbands - n1],
                                       abs=1e-10)
+
+    # Without compensation charges in the pseudo parts: same totals,
+    # different split:
+    d4 = ks_decomposition(calc, compensation_charges=False)
+    check(calc, d4)
+    for name, term in d.all_terms.items():
+        assert term.total == pytest.approx(
+            d4.all_terms[name].total, abs=1e-9), name
+    assert d.hartree.pseudo != pytest.approx(d4.hartree.pseudo, abs=0.1)
+    if name == 'h_pw':
+        # No core electrons:
+        assert abs(d.hartree_core.total).max() == 0.0
+        assert abs(d4.hartree_core.total).max() == 0.0
 
 
 def test_ks_decomposition_pbe(in_tmp_dir):
