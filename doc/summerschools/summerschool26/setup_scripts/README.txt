@@ -15,3 +15,11 @@ The script installs the Python packages necessary to run GPAW and the
 summer school exercises.  In addition, it installs the Spyder IDE as
 the version installed in the databar does not work with a virtual
 environment.
+
+
+NEXT TIME (2028):
+
+Don't use spyder, it is too slow across the network when everyone are
+on the same network.  Rewrite instructions to use VScode.  Test if X
+works under Windows (does not in 2026), otherwise supplement with
+MobaXterm.
