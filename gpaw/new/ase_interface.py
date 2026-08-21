@@ -764,7 +764,7 @@ class ASECalculator:
         pass
 
     def set(self, eigensolver):
-        assert eigensolver.pop('name') == 'etdm-fdpw'
+        assert eigensolver.pop('name') == 'etdm-fdpw' #'etdm-lcao' is missing
         self.dft.scf_loop.eigensolver = self.dft.scf_loop.eigensolver.new(
             **eigensolver)
 

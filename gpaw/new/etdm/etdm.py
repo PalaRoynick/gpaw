@@ -1,6 +1,6 @@
 import numpy as np
 from ase.parallel import parprint as print
-from gpaw.new.etdm.searchdir import LBFGS
+from gpaw.new.etdm.searchdir import LBFGS, LSR1
 
 
 class ETDM:
@@ -21,6 +21,9 @@ class ETDM:
         maxiter=100,
         tolerance=5.0e-4,
         update_ref=False,
+        searchdir_algo_name='l-bfgs',
+        linesearch_algo={'name': 'max-step',
+                                 'max_step': 0.25}
     ):
         """
         Initialize the ETDM optimizer.
@@ -40,14 +43,39 @@ class ETDM:
             Determines how the iterative update is applied:
                 - True:    C_{j+1} = C_j exp(A_j)
                 - False:   C_{j+1} = C_0 exp(sum_{0}^{j} A_j)
+        searchdir_algo_name: str
+                Search direction algorithm. Can be one of the algorithms 
+                available in searchdir.py:
+                'l-bfgs': Limited-memory BFGS
+                'l-bfgs-p': Limited-memory BFGS with preconditioner presented
+                    in :doi:`10.1016/j.cpc.2021.108047`
+                'LSR1': limited-memory SR1 algorithm presented in
+                    :doi:`10.1021/acs.jctc.0c00597`
+                Defaults to 'l-bfgs'.
+        linesearch_algo: dict
+                Line search algorithm, only max step is implemented.
+                'max-step': The quasi-Newton step is scaled if it exceeds a
+                    maximum step length.
+                    The default maximum step length is 0.25, and can be changed
+                    by supplying a dictionary:
+                    {'name': 'max-step', 'max_step': max_step}, where max_step
+                    should be a float
+                Defaults to {'name': 'max-step', 'max_step': 0.25}.
         """
 
         self.objfunc = objfunc
+        self.max_step_lenght = linesearch_algo['max_step']
 
         # Initialize LBFGS search direction algorithm
         # `searchdir_algo` keeps track of the search direction `p_u`
         # and performs the quasi-Newton update.
-        self.searchdir_algo = LBFGS()
+        if searchdir_algo_name == 'l-bfgs-p':
+            self.searchdir_algo = LBFGS(p_key=True)
+        elif searchdir_algo_name == 'l-bfgs':
+            self.searchdir_algo = LBFGS(p_key=False)
+        elif searchdir_algo_name == 'LSR1' or searchdir_algo_name == 'LSR1P':
+            self.searchdir_algo = LSR1()
+
         # array_shape=a_u_init.shape,
         # dtype=objfunc._dtype,
         # kpt_comm=objfunc.kpt_comm)
@@ -96,14 +124,17 @@ class ETDM:
         p_u = self.searchdir_algo.search_dir  # Current LBFGS search direction
 
         # Compute norm of search direction across all k-points
+        
         # strength = np.sum(p_u.conj() * p_u)
         # strength = self.objfunc.kpt_comm.sum(strength.real) ** 0.5
         strength = (p_u @ p_u)**0.5
 
         p_u = np.array(p_u.a_ux)
 
+        self.searchdir_algo.search_dir.a_ux = p_u
+
         # Scale step to prevent too large updates
-        alpha = np.minimum(0.25 / strength, 1.0)
+        alpha = np.minimum(self.max_step_lenght / strength, 1.0)
         p_u[:] = alpha * p_u  # Scale the search direction
 
         # Update the parameters
@@ -113,6 +144,27 @@ class ETDM:
         else:
             # Accumulated update: C_{j+1} = C_0 exp(sum_0^j A_j)
             self.a_u += p_u
+
+    def one_iteration(self, shuttle,
+                      gradient=None, precond=None):
+
+        """
+        Just one iteration of optimization using the search algorithm
+        """
+        if gradient is None:
+            self.gradient = shuttle
+            gradient = self.gradient
+            self.a_u = [shuttle['a_vec_u'][k].data for k, a in
+                        enumerate(shuttle['a_vec_u'])]
+
+        # Update the search direction using LBFGS
+        self.searchdir_algo.update(
+            KArray(self.a_u, comm=self.objfunc.kpt_comm),
+            KArray(gradient, comm=self.objfunc.kpt_comm),
+            precond)
+
+        # Move parameters along the search direction
+        self.move()
 
     @property
     def a_u(self):
@@ -150,9 +202,15 @@ class ETDM:
         -------
         float
         """
-        if self._energy is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._energy
+    
+    @energy.setter
+    def energy(self, shuttle):
+
+        if self._energy is None:
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
 
     @property
     def gradient(self):
@@ -163,9 +221,15 @@ class ETDM:
         -------
         ndarray
         """
-        if self._gradient is None:
-            self._energy, self._gradient = self._calc_energy_and_gradient()
+
         return self._gradient
+
+    @gradient.setter
+    def gradient(self, shuttle):
+
+        if self._gradient is None:
+            self._energy, self._gradient = \
+                self._calc_energy_and_gradient(shuttle)
 
     @property
     def error(self):
@@ -195,7 +259,7 @@ class ETDM:
             self._is_converged = False
         return self._is_converged
 
-    def _calc_energy_and_gradient(self):
+    def _calc_energy_and_gradient(self, shuttle):
         """
         Compute energy and gradient from the objective function.
 
@@ -209,6 +273,8 @@ class ETDM:
         gradient : ndarray
         """
         self.objfunc.a_vec_u = self.a_u
+        self.objfunc.energy = shuttle
+        self.objfunc.gradient = shuttle
         return self.objfunc.energy, self.objfunc.gradient
 
 
@@ -237,6 +303,12 @@ class KArray:
         for a_x, b_x in zip(self.a_ux, other.a_ux):
             a_x += b_x
         return self
+    
+    def __add__(self, other):
+        a_ux = self.copy()
+        for a_x, b_x in zip(a_ux.a_ux, other.a_ux):
+            a_x += b_x
+        return a_ux
 
     def __sub__(self, other):
         a_ux = self.copy()

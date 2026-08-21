@@ -87,7 +87,9 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         return es.build_lcao(self.basis,
                              self.relpos_ac,
                              self.grid.cell_cv,
-                             self.ibz.symmetries)
+                             self.ibz.symmetries,
+                             hamiltonian,
+                             self.create_occupation_number_calculator)
 
     def read_ibz_wave_functions(self, reader):
         c = 1

@@ -30,7 +30,6 @@ calculations LCAO mode:
     arXiv:2302.05912 [physics.chem-ph]
 """
 
-
 import warnings
 from copy import deepcopy
 
@@ -44,10 +43,14 @@ from gpaw.directmin.derivatives import get_approx_analytical_hessian
 from gpaw.directmin.lcao.etdm_helper_lcao import ETDMHelperLCAO
 from gpaw.directmin.locfunc.etdm_localization_lcao import LCAOETDMLocalize
 from gpaw.directmin.locfunc.localize_orbitals import localize_orbitals
-from gpaw.directmin.tools import (expm_ed, expm_ed_unit_inv, get_n_occ,
-                                  random_a,
-                                  sort_orbitals_according_to_energies,
-                                  sort_orbitals_according_to_occ)
+from gpaw.directmin.tools import (
+    expm_ed,
+    expm_ed_unit_inv,
+    get_n_occ,
+    random_a,
+    sort_orbitals_according_to_energies,
+    sort_orbitals_according_to_occ,
+)
 
 
 class LCAOETDM:
@@ -55,7 +58,9 @@ class LCAOETDM:
     def __init__(self,
                  excited_state=False,
                  searchdir_algo=None,
+                 searchdir_algo_pz=None,
                  linesearch_algo=None,
+                 linesearch_algo_pz=None,
                  partial_diagonalizer='Davidson',
                  update_ref_orbs_counter=20,
                  update_ref_orbs_canonical=False,
@@ -75,6 +80,8 @@ class LCAOETDM:
                  subspace_convergence=5e-4,
                  localize_every=None,
                  printinnerloop=False,
+                 maxiter_initloc_pz=200,
+                 maxiter_innerloop=200,
                  ):
         """Class for direct orbital optimization in LCAO mode.
 
@@ -106,6 +113,11 @@ class LCAOETDM:
             To use the generalized mode following (GMF) method for excited
             states, append '_gmf' to the search direction algorithm name. E.g.
             'l-bfgs-p_gmf'.
+        searchdir_algo_pz: str, dict or instance
+            Keyword to choose the search direction algorithm to be used inside
+            the PZ-SIC inner loop localization. Same as searchdir_algo.
+            Set by default to 'l-bfgs-p' in 'set defaults' when
+            need_localization=True.
         linesearch_algo: str, dict or instance
             Line search algorithm. Can be one of the algorithms available
             in ls_etdm.py:
@@ -117,6 +129,11 @@ class LCAOETDM:
                     should be a float
                 'swc-awc': Line search with Wolfe conditions (default when
                     excited_state is False)
+        linesearch_algo_pz: str, dict or instance
+            Keyword to choose the line search algorithm to be used inside
+            the PZ-SIC inner loop localization. Same as linesearch_algo.
+            Set by default to 'swc-awc' in 'set defaults' when
+            need_localization=True.
         partial_diagonalizer: 'str' or dict
             Algorithm for partial diagonalization of the electronic Hessian if
             GMF is used. Default is 'Davidson'.
@@ -205,20 +222,31 @@ class LCAOETDM:
         printinnerloop: bool
             If True, print the iterations of the inner loop optimization
             for PZ-SIC localization to standard output. Default is False.
+        maxiter_initloc_pz: int
+            Maximum number of iterations for the initial PZ localization.
+            Default : 200
+        maxiter_innerloop: int
+            Maximum number of iterations for the PZ-SIC inner loop
+            Default : 200
         """
 
-        assert representation in ['sparse', 'u-invar', 'full'], 'Value Error'
-        assert matrix_exp in ['egdecomp', 'egdecomp-u-invar', 'pade-approx'], \
-            'Value Error'
-        if matrix_exp == 'egdecomp-u-invar':
-            assert representation == 'u-invar', 'Use u-invar representation ' \
-                                                'with egdecomp-u-invar'
-        assert orthonormalization in ['gramschmidt', 'loewdin', 'diag'], \
-            'Value Error'
+        assert representation in ["sparse", "u-invar", "full"], "Value Error"
+        assert matrix_exp in [
+            "egdecomp",
+            "egdecomp-u-invar",
+            "pade-approx",
+        ], "Value Error"
+        if matrix_exp == "egdecomp-u-invar":
+            assert representation == "u-invar", (
+                "Use u-invar representation " "with egdecomp-u-invar"
+            )
+        assert orthonormalization in ["gramschmidt", "loewdin", "diag"], "Value Error"
 
         self.in_subspace_loop = False
         self.sda = searchdir_algo
         self.lsa = linesearch_algo
+        self.sda_pz = searchdir_algo_pz
+        self.lsa_pz = linesearch_algo_pz
         self.partial_diagonalizer = partial_diagonalizer
         self.localizationseed = localizationseed
         self.update_ref_orbs_counter = update_ref_orbs_counter
@@ -236,7 +264,7 @@ class LCAOETDM:
         self.subspace_convergence = subspace_convergence
         self.released_subspace = False
         self.excited_state = excited_state
-        self.name = 'etdm-lcao'
+        self.name = "etdm-lcao"
         self.iters = 0
         self.eg_count = 0
         self.subspace_iters = 0
@@ -245,7 +273,7 @@ class LCAOETDM:
         self.check_inputs_and_init_search_algo()
 
         self.checkgraderror = checkgraderror
-        self._norm_commutator, self._norm_grad = 0., 0.
+        self._norm_commutator, self._norm_grad = 0.0, 0.0
         self.error = 0
         self.e_sic = 0.0
         self.subspace_optimization = False
@@ -266,8 +294,8 @@ class LCAOETDM:
         self.g_vec_oo_u = {}
         self.g_vec_ov_u = {}
         self.g_vec_all_u = {}
-        self.evecs = {}   # eigenvectors for i*a_vec_u
-        self.evals = {}   # eigenvalues for i*a_vec_u
+        self.evecs = {}  # eigenvectors for i*a_vec_u
+        self.evals = {}  # eigenvalues for i*a_vec_u
         self.ind_up = {}
         self.ind_oo_up = {}
         self.ind_ov_up = {}
@@ -296,30 +324,51 @@ class LCAOETDM:
         self.localize_every = localize_every
         if self.localize_every is not None and self.localize_every < 1:
             raise ValueError(
-                'localize_every must be a positive integer, '
-                f'got {self.localize_every}')
+                "localize_every must be a positive integer, "
+                f"got {self.localize_every}"
+            )
         self.printinnerloop = printinnerloop
 
+        if self.func_settings == 'PZ-SIC' and self.representation == 'u-invar':
+            raise ValueError(
+                'Do not use representation u-invar with SIC functional')
+        if self.localizationtype is None and self.func_settings == 'PZ-SIC':
+            print(
+                'WARNING: Please choose a localization type with PZ-SIC ' +
+                'functional')
+                
+
         self.initialized = False
+        self.inner_loop = False
+
+        self.maxiter_innerloop = maxiter_innerloop
+        self.maxiter_initloc_pz = maxiter_initloc_pz
 
     def check_inputs_and_init_search_algo(self):
         defaults = self.set_defaults()
         if self.sda is None:
-            self.sda = defaults['searchdir_algo']
+            self.sda = defaults["searchdir_algo"]
         if self.lsa is None:
             self.lsa = defaults['linesearch_algo']
+        if self.sda_pz is None:
+            self.sda_pz = defaults['searchdir_algo_pz']
+        if self.lsa_pz is None:
+            self.lsa_pz = defaults['linesearch_algo_pz']
         if self.need_init_orbs is None:
-            self.need_init_orbs = defaults['need_init_orbs']
+            self.need_init_orbs = defaults["need_init_orbs"]
         if self.localizationtype is None:
             self.need_localization = False
 
         self.searchdir_algo = search_direction(
             self.sda, self, self.partial_diagonalizer)
+        if self.sda_pz is not None:
+            self.searchdir_algo_pz = search_direction(
+                self.sda_pz, self, self.partial_diagonalizer)
         sd_name = self.searchdir_algo.name.split('_')
         if sd_name[0] == 'l-bfgs-p' and not self.use_prec:
             raise ValueError('Use l-bfgs-p with use_prec=True')
         if len(sd_name) == 2:
-            if sd_name[1] == 'gmf':
+            if sd_name[1] == "gmf":
                 self.searchdir_algo.name = sd_name[0]
                 self.gmf = True
                 self.g_vec_u_original = None
@@ -328,16 +377,38 @@ class LCAOETDM:
         self.line_search = line_search_algorithm(self.lsa,
                                                  self.evaluate_phi_and_der_phi,
                                                  self.searchdir_algo)
+        if self.lsa_pz is not None:
+            self.line_search_pz = line_search_algorithm(
+                self.lsa_pz, self.evaluate_phi_and_der_phi, 
+                self.searchdir_algo)
 
     def set_defaults(self):
         if self.excited_state:
-            return {'searchdir_algo': 'l-sr1p',
-                    'linesearch_algo': 'max-step',
-                    'need_init_orbs': False}
+            if self.need_localization:
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:            
+                return {'searchdir_algo': 'l-sr1p',
+                        'linesearch_algo': 'max-step',
+                        'need_init_orbs': False,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
         else:
-            return {'searchdir_algo': 'l-bfgs-p',
-                    'linesearch_algo': 'swc-awc',
-                    'need_init_orbs': True}
+            if self.need_localization:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': 'l-bfgs-p',
+                        'linesearch_algo_pz': 'swc-awc'}
+            else:
+                return {'searchdir_algo': 'l-bfgs-p',
+                        'linesearch_algo': 'swc-awc',
+                        'need_init_orbs': True,
+                        'searchdir_algo_pz': None,
+                        'linesearch_algo_pz': None}
 
     def __repr__(self):
 
@@ -346,67 +417,66 @@ class LCAOETDM:
         if isinstance(self.func_settings, basestring):
             func_name = self.func_settings
         else:
-            func_name = self.func_settings['name']
+            func_name = self.func_settings["name"]
         if self.gmf:
             if isinstance(self.pd, basestring):
                 pd_name = self.pd
             else:
-                pd_name = self.pd['name']
+                pd_name = self.pd["name"]
 
-        add = ''
-        pd_add = ''
+        add = ""
+        pd_add = ""
         if self.gmf:
-            add = ' with minimum mode following'
-            pardi = {'Davidson': 'Finite difference generalized Davidson '
-                     'algorithm'}
-            pd_add = '       ' \
-                     'Partial diagonalizer: {}\n'.format(
-                         pardi[pd_name])
+            add = " with minimum mode following"
+            pardi = {"Davidson": "Finite difference generalized Davidson " "algorithm"}
+            pd_add = "       " "Partial diagonalizer: {}\n".format(pardi[pd_name])
 
-        sds = {'sd': 'Steepest Descent',
-               'fr-cg': 'Fletcher-Reeves conj. grad. method',
-               'l-bfgs': 'L-BFGS algorithm',
-               'l-bfgs-p': 'L-BFGS algorithm with preconditioning',
-               'l-sr1p': 'Limited-memory SR1P algorithm'}
+        sds = {
+            "sd": "Steepest Descent",
+            "fr-cg": "Fletcher-Reeves conj. grad. method",
+            "l-bfgs": "L-BFGS algorithm",
+            "l-bfgs-p": "L-BFGS algorithm with preconditioning",
+            "l-sr1p": "Limited-memory SR1P algorithm",
+        }
 
-        lss = {'max-step': 'step size equals one',
-               'swc-awc': 'Inexact line search based on cubic interpolation,\n'
-                          '                    strong and approximate Wolfe '
-                          'conditions'}
+        lss = {
+            "max-step": "step size equals one",
+            "swc-awc": "Inexact line search based on cubic interpolation,\n"
+            "                    strong and approximate Wolfe "
+            "conditions",
+        }
 
-        repr_string = 'Direct minimisation' + add + ' using exponential ' \
-                      'transformation.\n'
-        repr_string += '       ' \
-                       'Search ' \
-                       'direction: {}\n'.format(sds[sda_name] + add)
+        repr_string = (
+            "Direct minimisation" + add + " using exponential " "transformation.\n"
+        )
+        repr_string += "       " "Search " "direction: {}\n".format(sds[sda_name] + add)
         repr_string += pd_add
-        repr_string += '       ' \
-                       'Line ' \
-                       'search: {}\n'.format(lss[lsa_name])
-        repr_string += '       ' \
-                       'Preconditioning: {}\n'.format(self.use_prec)
-        repr_string += '       ' \
-                       'Orbital-density self-interaction ' \
-                       'corrections: {}\n'.format(func_name)
-        repr_string += '       ' \
-                       'WARNING: do not use it for metals as ' \
-                       'occupation numbers are\n' \
-                       '                ' \
-                       'not found variationally\n'
+        repr_string += "       " "Line " "search: {}\n".format(lss[lsa_name])
+        repr_string += "       " "Preconditioning: {}\n".format(self.use_prec)
+        repr_string += (
+            "       "
+            "Orbital-density self-interaction "
+            "corrections: {}\n".format(func_name)
+        )
+        repr_string += (
+            "       "
+            "WARNING: do not use it for metals as "
+            "occupation numbers are\n"
+            "                "
+            "not found variationally\n"
+        )
 
         return repr_string
 
-    def initialize(self, gd, dtype, nbands, nkpts, nao, using_blacs,
-                   bd_comm_size, kpt_u):
+    def initialize(
+        self, gd, dtype, nbands, nkpts, nao, using_blacs, bd_comm_size, kpt_u
+    ):
 
-        assert nbands == nao, \
-            'Please, use: nbands=\'nao\''
+        assert nbands == nao, "Please, use: nbands='nao'"
         if not bd_comm_size == 1:
-            raise BadParallelization(
-                'Band parallelization is not supported')
+            raise BadParallelization("Band parallelization is not supported")
         if using_blacs:
-            raise BadParallelization(
-                'ScaLapack parallelization is not supported')
+            raise BadParallelization("ScaLapack parallelization is not supported")
 
         self.gd = gd
         self.dtype = dtype
@@ -428,10 +498,15 @@ class LCAOETDM:
         self.log = log
 
         self.dm_helper = ETDMHelperLCAO(
-            wfs, dens, ham, self.nkpts, self.func_settings,
+            wfs,
+            dens,
+            ham,
+            self.nkpts,
+            self.func_settings,
             diagonalizer=None,
             orthonormalization=self.orthonormalization,
-            need_init_orbs=self.need_init_orbs)
+            need_init_orbs=self.need_init_orbs,
+        )
         self.need_init_orbs = self.dm_helper.need_init_orbs
 
         # randomize orbitals?
@@ -456,10 +531,12 @@ class LCAOETDM:
 
         for kpt in wfs.kpt_u:
             f_unique = np.unique(kpt.f_n)
-            if len(f_unique) > 2 and self.representation == 'u-invar':
-                warnings.warn("Use representation == 'sparse' when "
-                              "there are unequally occupied orbitals "
-                              "as the functional is not unitary invariant")
+            if len(f_unique) > 2 and self.representation == "u-invar":
+                warnings.warn(
+                    "Use representation == 'sparse' when "
+                    "there are unequally occupied orbitals "
+                    "as the functional is not unitary invariant"
+                )
 
         # set reference orbitals
         self.dm_helper.set_reference_orbitals(wfs, self.n_dim)
@@ -523,14 +600,13 @@ class LCAOETDM:
                 for j in range(i + 1, M):
                     i1_sparse.append(i)
                     i2_sparse.append(j)
-            self.ind_sparse_up[u] = (np.asarray(i1_sparse),
-                                     np.asarray(i2_sparse))
-            if self.representation == 'u-invar':
+            self.ind_sparse_up[u] = (np.asarray(i1_sparse), np.asarray(i2_sparse))
+            if self.representation == "u-invar":
                 self.ind_all_up[u] = self.ind_ov_up[u]
-            if self.representation == 'sparse':
+            if self.representation == "sparse":
                 self.ind_all_up[u] = self.ind_sparse_up[u]
             # elif self.representation == 'full' and self.dtype == complex:
-            elif self.representation == 'full':
+            elif self.representation == "full":
                 # Take indices of all upper triangular and diagonal
                 # elements of A_BigMatrix
                 if self.dtype == complex:
@@ -544,12 +620,10 @@ class LCAOETDM:
 
             self.a_vec_oo_u[u] = np.zeros(shape=shape_of_oo, dtype=self.dtype)
             self.a_vec_ov_u[u] = np.zeros(shape=shape_of_ov, dtype=self.dtype)
-            self.a_vec_all_u[u] = np.zeros(
-                shape=shape_of_all, dtype=self.dtype)
+            self.a_vec_all_u[u] = np.zeros(shape=shape_of_all, dtype=self.dtype)
             self.g_vec_oo_u[u] = np.zeros(shape=shape_of_oo, dtype=self.dtype)
             self.g_vec_ov_u[u] = np.zeros(shape=shape_of_ov, dtype=self.dtype)
-            self.g_vec_all_u[u] = np.zeros(
-                shape=shape_of_all, dtype=self.dtype)
+            self.g_vec_all_u[u] = np.zeros(shape=shape_of_all, dtype=self.dtype)
             self.evecs[u] = None
             self.evals[u] = None
 
@@ -558,19 +632,26 @@ class LCAOETDM:
             # index
             if self.constraints:
                 self.constraints[u] = convert_constraints(
-                    self.constraints[u], self.n_dim[u],
-                    len(kpt.f_n[kpt.f_n > 1e-10]), self.representation)
+                    self.constraints[u],
+                    self.n_dim[u],
+                    len(kpt.f_n[kpt.f_n > 1e-10]),
+                    self.representation,
+                )
 
             # If there are no degrees of freedom no need to optimize.
             # Indicated by setting n_dim to 0, as n_dim can never be 0
             # otherwise.
             for k in self.ind_all_up:
-                if not self.ind_all_up[k][0].size \
-                        or not self.ind_all_up[k][1].size:
+                if not self.ind_all_up[k][0].size or not self.ind_all_up[k][1].size:
                     self.n_dim_all[k] = 0  # Skip full space optimization
-                if not self.ind_oo_up[k][0].size \
-                        or not self.ind_oo_up[k][1].size:
+                if not self.ind_oo_up[k][0].size or not self.ind_oo_up[k][1].size:
                     self.n_dim_oo[k] = 0  # Skip PZ localization if requested
+
+            if self.ind_all_up[k][0].size == 0:
+                self.ind_all_up[k] = (
+                    np.array([], dtype=np.intp),
+                    np.array([], dtype=np.intp),
+                )
 
         self.ind_up = deepcopy(self.ind_all_up)
         self.a_vec_u = deepcopy(self.a_vec_all_u)
@@ -588,18 +669,19 @@ class LCAOETDM:
         if self.need_localization:
             localize_orbitals(
                 wfs, dens, ham, log, self.localizationtype,
-                seed=self.localizationseed)
+                seed=self.localizationseed,
+                maxiter_pz=self.maxiter_initloc_pz)
             self.need_localization = False
 
-    def lock_subspace(self, subspace='oo'):
+    def lock_subspace(self, subspace="oo"):
         self.subspace_optimization = True
         self.subspace_iters = 1
-        if subspace == 'oo':
+        if subspace == "oo":
             self.n_dim = deepcopy(self.n_dim_oo)
             self.ind_up = deepcopy(self.ind_oo_up)
             self.a_vec_u = deepcopy(self.a_vec_oo_u)
             self.g_vec_u = deepcopy(self.g_vec_oo_u)
-        elif subspace == 'ov':
+        elif subspace == "ov":
             self.n_dim = deepcopy(self.n_dim_all)
             self.ind_up = deepcopy(self.ind_ov_up)
             self.a_vec_u = deepcopy(self.a_vec_ov_u)
@@ -619,7 +701,7 @@ class LCAOETDM:
         self.phi_2i = [None, None]
         self.der_phi_2i = [None, None]
 
-    def iterate(self, ham, wfs, dens):
+    def iterate(self, ham, wfs, dens, inner_loop=False, occupied_only=False):
         """
         One iteration of direct optimization
         for occupied orbitals
@@ -629,15 +711,21 @@ class LCAOETDM:
         :param dens:
         :return:
         """
+
+        self.inner_loop = inner_loop
+
         # Periodic PZ-SIC localization (controlled by localize_every)
-        should_localize = (self.localize_every is not None
-                           and self.iters > 1
-                           and self.iters % self.localize_every == 0)
+        should_localize = (
+            self.localize_every is not None
+            and self.iters > 1
+            and self.iters % self.localize_every == 0
+        )
         if should_localize and not self.in_subspace_loop:
             with wfs.timer('Periodic PZ-SIC Localization'):
-                self._run_periodic_localization(wfs, ham, dens)
+                self._run_periodic_localization(wfs, ham, dens,
+                                                self.maxiter_innerloop)
 
-        with wfs.timer('Direct Minimisation step'):
+        with wfs.timer("Direct Minimisation step"):
             self.update_ref_orbitals(wfs, ham, dens)
 
             a_vec_u = self.a_vec_u
@@ -646,34 +734,50 @@ class LCAOETDM:
             der_phi_2i = self.der_phi_2i
             c_ref = self.dm_helper.reference_orbitals
 
+            
             if self.iters == 1 or self.released_subspace or \
                     (self.subspace_optimization and self.subspace_iters == 1):
                 phi_2i[0], g_vec_u = \
                     self.get_energy_and_gradients(
-                        a_vec_u, ham, wfs, dens, c_ref)
+                        a_vec_u, ham, wfs, dens, c_ref,
+                        occupied_only=occupied_only)
                 self.released_subspace = False
             else:
-                g_vec_u = self.g_vec_u_original if self.gmf \
-                    and not self.subspace_optimization else self.g_vec_u
+                g_vec_u = (
+                    self.g_vec_u_original
+                    if self.gmf and not self.subspace_optimization
+                    else self.g_vec_u
+                )
 
+            print('grad before')
+            print(np.array(g_vec_u[0])[:10])
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):
-                    self.searchdir_algo.update_eigenpairs(
-                        g_vec_u, wfs, ham, dens)
+                    if self.inner_loop:
+                        self.searchdir_algo_pz.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens) 
+                    else:
+                        self.searchdir_algo.update_eigenpairs(
+                            g_vec_u, wfs, ham, dens)
                 # The diagonal Hessian approximation must be positive-definite
                 make_pd = True
 
-            with wfs.timer('Preconditioning:'):
-                precond = self.get_preconditioning(
-                    wfs, self.use_prec, make_pd=make_pd)
-
-            with wfs.timer('Get Search Direction'):
+            with wfs.timer("Preconditioning:"):
+                precond = self.get_preconditioning(wfs, self.use_prec, make_pd=make_pd)
+            # print('precond')
+            # print(np.array(precond[0])[:10])
+            with wfs.timer("Get Search Direction"):
                 # calculate search direction according to chosen
                 # optimization algorithm (e.g. L-BFGS)
-                p_vec_u = self.searchdir_algo.update_data(
-                    wfs, a_vec_u, g_vec_u, precond=precond,
-                    subspace=self.subspace_optimization)
+                if self.inner_loop:
+                    p_vec_u = self.searchdir_algo_pz.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
+                else:
+                    p_vec_u = self.searchdir_algo.update_data(
+                        wfs, a_vec_u, g_vec_u, precond=precond,
+                        subspace=self.subspace_optimization)
 
             # recalculate derivative with new search direction
             der_phi_2i[0] = 0.0
@@ -682,17 +786,27 @@ class LCAOETDM:
             der_phi_2i[0] = der_phi_2i[0].real
             der_phi_2i[0] = wfs.kd.comm.sum_scalar(der_phi_2i[0])
 
-            alpha, phi_alpha, der_phi_alpha, g_vec_u = \
-                self.line_search.step_length_update(
-                    a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
-                    der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
-                    der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
-                    kpdescr=wfs.kd)
+            if self.inner_loop:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search_pz.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
+            else:
+                alpha, phi_alpha, der_phi_alpha, g_vec_u = \
+                    self.line_search.step_length_update(
+                        a_vec_u, p_vec_u, wfs, ham, dens, c_ref, phi_0=phi_2i[0],
+                        der_phi_0=der_phi_2i[0], phi_old=phi_2i[1],
+                        der_phi_old=der_phi_2i[1], alpha_max=5.0, alpha_old=alpha,
+                        kpdescr=wfs.kd)
+                
+            print('grad after')
+            print(np.array(g_vec_u[0])[:10])
 
             if wfs.gd.comm.size > 1:
-                with wfs.timer('Broadcast gradients'):
-                    alpha_phi_der_phi = np.array([alpha, phi_2i[0],
-                                                  der_phi_2i[0]])
+                with wfs.timer("Broadcast gradients"):
+                    alpha_phi_der_phi = np.array([alpha, phi_2i[0], der_phi_2i[0]])
                     wfs.gd.comm.broadcast(alpha_phi_der_phi, 0)
                     alpha = alpha_phi_der_phi[0]
                     phi_2i[0] = alpha_phi_der_phi[1]
@@ -713,7 +827,10 @@ class LCAOETDM:
 
             # and 'shift' phi, der_phi for the next iteration
             phi_2i[1], der_phi_2i[1] = phi_2i[0], der_phi_2i[0]
-            phi_2i[0], der_phi_2i[0] = phi_alpha, der_phi_alpha,
+            phi_2i[0], der_phi_2i[0] = (
+                phi_alpha,
+                der_phi_alpha,
+            )
 
             if self.subspace_optimization:
                 self.error = np.inf  # Do not consider this converged!
@@ -725,7 +842,7 @@ class LCAOETDM:
         return norm
 
     def get_energy_and_gradients(self, a_vec_u, ham, wfs, dens,
-                                 c_ref):
+                                 c_ref, occupied_only=False):
 
         """
         Energy E = E[C_ref exp(A)]. Gradients G_ij[C, A] = dE/dA_ij
@@ -741,7 +858,7 @@ class LCAOETDM:
 
         e_total = self.update_ks_energy(ham, wfs, dens)
 
-        with wfs.timer('Calculate gradients'):
+        with wfs.timer("Calculate gradients"):
             g_vec_u = {}
             self.error = 0.0
             self.e_sic = 0.0  # this is odd energy
@@ -753,11 +870,10 @@ class LCAOETDM:
                 g_vec_u[k], error = self.dm_helper.calc_grad(
                     wfs, ham, kpt, self.evecs[k], self.evals[k],
                     self.matrix_exp, self.representation, self.ind_up[k],
-                    self.constraints[k])
+                    self.constraints[k], occupied_only=occupied_only)
 
-                if hasattr(self.dm_helper.func, 'e_sic_by_orbitals'):
-                    self.e_sic \
-                        += self.dm_helper.func.e_sic_by_orbitals[k].sum()
+                if hasattr(self.dm_helper.func, "e_sic_by_orbitals"):
+                    self.e_sic += self.dm_helper.func.e_sic_by_orbitals[k].sum()
 
                 self.error += error
             self.error = wfs.kd.comm.sum_scalar(self.error)
@@ -765,14 +881,16 @@ class LCAOETDM:
 
         self.eg_count += 1
 
-        if self.representation == 'full' and self.checkgraderror:
+        if self.representation == "full" and self.checkgraderror:
             self._norm_commutator = 0.0
             for kpt in wfs.kpt_u:
                 u = self.kpointval(kpt)
-                a_mat = vec2skewmat(a_vec_u[u], self.n_dim[u],
-                                    self.ind_up[u], wfs.dtype)
-                g_mat = vec2skewmat(g_vec_u[u], self.n_dim[u],
-                                    self.ind_up[u], wfs.dtype)
+                a_mat = vec2skewmat(
+                    a_vec_u[u], self.n_dim[u], self.ind_up[u], wfs.dtype
+                )
+                g_mat = vec2skewmat(
+                    g_vec_u[u], self.n_dim[u], self.ind_up[u], wfs.dtype
+                )
 
                 tmp = np.linalg.norm(g_mat @ a_mat - a_mat @ g_mat)
                 if self._norm_commutator < tmp:
@@ -781,7 +899,7 @@ class LCAOETDM:
                 tmp = np.linalg.norm(g_mat)
                 if self._norm_grad < tmp:
                     self._norm_grad = tmp
-
+        # print(self.e_sic)
         return e_total + self.e_sic, g_vec_u
 
     def update_ks_energy(self, ham, wfs, dens):
@@ -795,9 +913,9 @@ class LCAOETDM:
 
         return ham.get_energy(0.0, wfs, False)
 
-    def evaluate_phi_and_der_phi(self, a_vec_u, p_mat_u, alpha,
-                                 wfs, ham, dens, c_ref,
-                                 phi=None, g_vec_u=None):
+    def evaluate_phi_and_der_phi(
+        self, a_vec_u, p_mat_u, alpha, wfs, ham, dens, c_ref, phi=None, g_vec_u=None
+    ):
         """
         phi = f(x_k + alpha_k*p_k)
         der_phi = \\grad f(x_k + alpha_k*p_k) \\cdot p_k
@@ -805,8 +923,16 @@ class LCAOETDM:
         """
         if phi is None or g_vec_u is None:
             x_mat_u = {k: a_vec_u[k] + alpha * p_mat_u[k] for k in a_vec_u}
+            if not self.inner_loop:
+                if self.need_localization:
+                    occupied_only = True
+                else:
+                    occupied_only = False
+            else:
+                occupied_only = True
             phi, g_vec_u = self.get_energy_and_gradients(
-                x_mat_u, ham, wfs, dens, c_ref)
+                x_mat_u, ham, wfs, dens, c_ref, 
+                occupied_only=occupied_only)
 
             # If GMF is used save the original gradient and invert the parallel
             # projection onto the eigenvectors with negative eigenvalues
@@ -832,14 +958,18 @@ class LCAOETDM:
         :return:
         """
 
-        if self.representation == 'full':
-            badgrad = self._norm_commutator > self._norm_grad / 3. and \
-                self.checkgraderror
+        if self.representation == "full":
+            badgrad = (
+                self._norm_commutator > self._norm_grad / 3.0 and self.checkgraderror
+            )
         else:
             badgrad = False
         counter = self.update_ref_orbs_counter
-        if (self.iters % counter == 0 and self.iters > 1) or \
-                (self.restart and self.iters > 1) or badgrad:
+        if (
+            (self.iters % counter == 0 and self.iters > 1)
+            or (self.restart and self.iters > 1)
+            or badgrad
+        ):
             self.iters = 1
             if self.update_ref_orbs_canonical or self.restart:
                 self.get_canonical_representation(ham, wfs, dens)
@@ -854,13 +984,18 @@ class LCAOETDM:
         if not use_prec:
             return None
 
-        if self.searchdir_algo.name == 'l-bfgs-p':
+        if self.searchdir_algo.name == "l-bfgs-p":
             beta0 = self.searchdir_algo.beta_0
             gamma = 0.25
         else:
             beta0 = 1.0
             gamma = 0.0
 
+        # print('self.beta')
+        # print(beta0)
+
+        # print('beta0')
+        # print(beta0)
         counter = self.update_precond_counter
         precond = {}
         for kpt in wfs.kpt_u:
@@ -868,28 +1003,29 @@ class LCAOETDM:
             w = kpt.weight / (3.0 - wfs.nspins)
             if self.iters % counter == 0 or self.iters == 1:
                 self.hess[k] = get_approx_analytical_hessian(
-                    kpt, self.dtype, ind_up=self.ind_up[k])
+                    kpt, self.dtype, ind_up=self.ind_up[k]
+                )
                 if make_pd:
                     if self.dtype == float:
                         self.hess[k] = np.abs(self.hess[k])
                     else:
-                        self.hess[k] = np.abs(self.hess[k].real) \
-                            + 1.0j * np.abs(self.hess[k].imag)
+                        self.hess[k] = np.abs(self.hess[k].real) + 1.0j * np.abs(
+                            self.hess[k].imag
+                        )
             hess = self.hess[k]
             precond[k] = np.zeros_like(hess)
             correction = w * gamma * beta0 ** (-1)
-            if self.searchdir_algo.name != 'l-bfgs-p':
+            if self.searchdir_algo.name != "l-bfgs-p":
                 correction = np.zeros_like(hess)
                 zeros = abs(hess) < 1.0e-4
                 correction[zeros] = 1.0
-            precond[k] += 1. / ((1 - gamma) * hess.real + correction)
+            precond[k] += 1.0 / ((1 - gamma) * hess.real + correction)
             if self.dtype == complex:
-                precond[k] += 1.j / ((1 - gamma) * hess.imag + correction)
+                precond[k] += 1.0j / ((1 - gamma) * hess.imag + correction)
 
         return precond
 
-    def get_canonical_representation(self, ham, wfs, dens,
-                                     sort_eigenvalues=False):
+    def get_canonical_representation(self, ham, wfs, dens, sort_eigenvalues=False):
         """
         Choose canonical orbitals as the orbitals that diagonalize the
         Lagrange matrix. It is probably necessary to do a subspace rotation
@@ -897,20 +1033,18 @@ class LCAOETDM:
         within equally occupied subspaces.
         """
 
-        with (wfs.timer('Get canonical representation')):
+        with wfs.timer("Get canonical representation"):
             for kpt in wfs.kpt_u:
                 self.dm_helper.update_to_canonical_orbitals(
-                    wfs, ham, kpt, self.update_ref_orbs_canonical,
-                    self.restart)
+                    wfs, ham, kpt, self.update_ref_orbs_canonical, self.restart
+                )
 
             if self.update_ref_orbs_canonical or self.restart:
                 wfs.calculate_occupation_numbers(dens.fixed)
-                sort_orbitals_according_to_occ(
-                    wfs, self.constraints, update_mom=True)
+                sort_orbitals_according_to_occ(wfs, self.constraints, update_mom=True)
 
             if sort_eigenvalues:
-                sort_orbitals_according_to_energies(
-                    ham, wfs, self.constraints)
+                sort_orbitals_according_to_energies(ham, wfs, self.constraints)
 
             self.set_ref_orbitals_and_a_vec(wfs)
 
@@ -927,34 +1061,35 @@ class LCAOETDM:
         self.searchdir_algo.reset()
 
     def todict(self):
-        ret = {'name': self.name,
-               'searchdir_algo': self.searchdir_algo.todict(),
-               'linesearch_algo': self.line_search.todict(),
-               'update_ref_orbs_counter': self.update_ref_orbs_counter,
-               'update_ref_orbs_canonical': self.update_ref_orbs_canonical,
-               'update_precond_counter': self.update_precond_counter,
-               'use_prec': self.use_prec,
-               'matrix_exp': self.matrix_exp,
-               'representation': self.representation,
-               'functional': self.func_settings,
-               'orthonormalization': self.orthonormalization,
-               'randomizeorbitals': self.randomizeorbitals,
-               'checkgraderror': self.checkgraderror,
-               'localizationtype': self.localizationtype,
-               'localizationseed': self.localizationseed,
-               'need_localization': self.need_localization,
-               'need_init_orbs': self.need_init_orbs,
-               'constraints': self.constraints,
-               'subspace_convergence': self.subspace_convergence,
-               'excited_state': self.excited_state
-               }
+        ret = {
+            "name": self.name,
+            "searchdir_algo": self.searchdir_algo.todict(),
+            "linesearch_algo": self.line_search.todict(),
+            "update_ref_orbs_counter": self.update_ref_orbs_counter,
+            "update_ref_orbs_canonical": self.update_ref_orbs_canonical,
+            "update_precond_counter": self.update_precond_counter,
+            "use_prec": self.use_prec,
+            "matrix_exp": self.matrix_exp,
+            "representation": self.representation,
+            "functional": self.func_settings,
+            "orthonormalization": self.orthonormalization,
+            "randomizeorbitals": self.randomizeorbitals,
+            "checkgraderror": self.checkgraderror,
+            "localizationtype": self.localizationtype,
+            "localizationseed": self.localizationseed,
+            "need_localization": self.need_localization,
+            "need_init_orbs": self.need_init_orbs,
+            "constraints": self.constraints,
+            "subspace_convergence": self.subspace_convergence,
+            "excited_state": self.excited_state,
+        }
         if self.gmf:
-            ret['partial_diagonalizer'] = \
+            ret["partial_diagonalizer"] = (
                 self.searchdir_algo.partial_diagonalizer.todict()
+            )
         return ret
 
     def rotate_wavefunctions(self, wfs, a_vec_u, c_ref):
-
         """
         Apply unitary transformation U = exp(A) to
         the orbitals c_ref
@@ -965,7 +1100,7 @@ class LCAOETDM:
         :return:
         """
 
-        with wfs.timer('Unitary rotation'):
+        with wfs.timer("Unitary rotation"):
             for kpt in wfs.kpt_u:
                 k = self.kpointval(kpt)
                 if self.n_dim[k] == 0:
@@ -974,9 +1109,10 @@ class LCAOETDM:
                 u_nn = self.get_exponential_matrix_kpt(wfs, kpt, a_vec_u)
 
                 self.dm_helper.appy_transformation_kpt(
-                    wfs, u_nn.T, kpt, c_ref[k], False, False)
+                    wfs, u_nn.T, kpt, c_ref[k], False, False
+                )
 
-                with wfs.timer('Calculate projections'):
+                with wfs.timer("Calculate projections"):
                     self.dm_helper.update_projections(wfs, kpt)
 
     def get_exponential_matrix_kpt(self, wfs, kpt, a_vec_u):
@@ -988,41 +1124,43 @@ class LCAOETDM:
         k = self.kpointval(kpt)
 
         if self.gd.comm.rank == 0:
-            if self.matrix_exp == 'egdecomp-u-invar' and \
-                    self.representation == 'u-invar':
+            if (
+                self.matrix_exp == "egdecomp-u-invar"
+                and self.representation == "u-invar"
+            ):
                 n_occ = get_n_occ(kpt)[0]
                 n_v = self.n_dim[k] - n_occ
                 a_mat = a_vec_u[k].reshape(n_occ, n_v)
             else:
-                a_mat = vec2skewmat(a_vec_u[k], self.n_dim[k],
-                                    self.ind_up[k], self.dtype)
+                a_mat = vec2skewmat(
+                    a_vec_u[k], self.n_dim[k], self.ind_up[k], self.dtype
+                )
 
-            if self.matrix_exp == 'pade-approx':
+            if self.matrix_exp == "pade-approx":
                 # this function takes a lot of memory
                 # for large matrices... what can we do?
-                with wfs.timer('Pade Approximants'):
+                with wfs.timer("Pade Approximants"):
                     u_nn = np.ascontiguousarray(expm(a_mat))
-            elif self.matrix_exp == 'egdecomp':
+            elif self.matrix_exp == "egdecomp":
                 # this method is based on diagonalization
-                with wfs.timer('Eigendecomposition'):
+                with wfs.timer("Eigendecomposition"):
                     u_nn, evecs, evals = expm_ed(a_mat, evalevec=True)
-            elif self.matrix_exp == 'egdecomp-u-invar':
-                with wfs.timer('Eigendecomposition'):
+            elif self.matrix_exp == "egdecomp-u-invar":
+                with wfs.timer("Eigendecomposition"):
                     u_nn = expm_ed_unit_inv(a_mat, oo_vo_blockonly=False)
 
-        with wfs.timer('Broadcast u_nn'):
+        with wfs.timer("Broadcast u_nn"):
             if self.gd.comm.rank != 0:
-                u_nn = np.zeros(shape=(self.n_dim[k], self.n_dim[k]),
-                                dtype=wfs.dtype)
+                u_nn = np.zeros(shape=(self.n_dim[k], self.n_dim[k]), dtype=wfs.dtype)
             self.gd.comm.broadcast(u_nn, 0)
 
-        if self.matrix_exp == 'egdecomp':
-            with wfs.timer('Broadcast evecs and evals'):
+        if self.matrix_exp == "egdecomp":
+            with wfs.timer("Broadcast evecs and evals"):
                 if self.gd.comm.rank != 0:
-                    evecs = np.zeros(shape=(self.n_dim[k], self.n_dim[k]),
-                                     dtype=complex)
-                    evals = np.zeros(shape=self.n_dim[k],
-                                     dtype=float)
+                    evecs = np.zeros(
+                        shape=(self.n_dim[k], self.n_dim[k]), dtype=complex
+                    )
+                    evals = np.zeros(shape=self.n_dim[k], dtype=float)
                 self.gd.comm.broadcast(evecs, 0)
                 self.gd.comm.broadcast(evals, 0)
                 self.evecs[k], self.evals[k] = evecs, evals
@@ -1031,38 +1169,37 @@ class LCAOETDM:
 
     def check_assertions(self, wfs, dens):
 
-        assert dens.mixer.driver.basemixerclass.name == 'no-mixing', \
-            'Please, use: mixer={\'backend\': \'no-mixing\'}'
-        if wfs.occupations.name != 'mom':
-            errormsg = \
-                'Please, use occupations={\'name\': \'fixed-uniform\'}'
-            assert wfs.occupations.name == 'fixed-uniform', errormsg
+        assert (
+            dens.mixer.driver.basemixerclass.name == "no-mixing"
+        ), "Please, use: mixer={'backend': 'no-mixing'}"
+        if wfs.occupations.name != "mom":
+            errormsg = "Please, use occupations={'name': 'fixed-uniform'}"
+            assert wfs.occupations.name == "fixed-uniform", errormsg
 
     def initialize_mom_reference_orbitals(self, wfs, dens):
         # Reinitialize the MOM reference orbitals
         # after orthogonalization/localization
-        occ_name = getattr(wfs.occupations, 'name', None)
-        if occ_name == 'mom':
+        occ_name = getattr(wfs.occupations, "name", None)
+        if occ_name == "mom":
             wfs.occupations.initialize_reference_orbitals()
             wfs.calculate_occupation_numbers(dens.fixed)
 
     def initial_sort_orbitals(self, wfs):
         occ_name = getattr(wfs.occupations, "name", None)
-        if occ_name == 'mom':
+        if occ_name == "mom":
             update_mom = True
             self.initial_occupation_numbers = wfs.occupations.numbers.copy()
         else:
             update_mom = False
-        sort_orbitals_according_to_occ(wfs,
-                                       self.constraints,
-                                       update_mom=update_mom)
+        sort_orbitals_according_to_occ(wfs, self.constraints, update_mom=update_mom)
 
     def check_mom(self, wfs, dens):
         occ_name = getattr(wfs.occupations, "name", None)
-        if occ_name == 'mom':
+        if occ_name == "mom":
             wfs.calculate_occupation_numbers(dens.fixed)
             self.restart = sort_orbitals_according_to_occ(
-                wfs, self.constraints, update_mom=True)
+                wfs, self.constraints, update_mom=True
+            )
             return self.restart
         else:
             return False
@@ -1073,16 +1210,13 @@ class LCAOETDM:
         """
         nst = self.nbands
         wt = kpt.weight * 0.01
-        arand = wt * random_a((nst, nst),
-                              wfs.dtype,
-                              rng=self.randomizeorbitals)
+        arand = wt * random_a((nst, nst), wfs.dtype, rng=self.randomizeorbitals)
         arand = arand - arand.T.conj()
         wfs.gd.comm.broadcast(arand, 0)
         self.dm_helper.appy_transformation_kpt(wfs, expm(arand), kpt)
 
     def calculate_hamiltonian_matrix(self, hamiltonian, wfs, kpt):
-        H_MM = self.dm_helper.calculate_hamiltonian_matrix(
-            hamiltonian, wfs, kpt)
+        H_MM = self.dm_helper.calculate_hamiltonian_matrix(hamiltonian, wfs, kpt)
         return H_MM
 
     def kpointval(self, kpt):
@@ -1096,12 +1230,13 @@ class LCAOETDM:
     def error(self, e):
         self._error = e
 
-    def _run_periodic_localization(self, wfs, ham, dens):
+    def _run_periodic_localization(self, wfs, ham, dens, maxiter):
         """Run PZ-SIC localization using LCAOETDMLocalize.
 
         Delegates to the same class used for initial localization,
         with preconditioning disabled during the inner loop.
         """
+        self.occupied_only = True
         original_use_prec = self.use_prec
         self.use_prec = False
         self.in_subspace_loop = True
@@ -1110,17 +1245,20 @@ class LCAOETDM:
         try:
             dm = LCAOETDMLocalize(
                 self, wfs, log,
-                tol=self.subspace_convergence)
+                tol=self.subspace_convergence,
+                maxiter=maxiter,
+                inner_loop=True)
             dm.run(ham, dens)
             self.eg_count_iloop = self.eg_count - original_eg
             self.total_eg_count_iloop += self.eg_count_iloop
+            self.occupied_only = False
         finally:
+            self.inner_loop = False
             self.use_prec = original_use_prec
             self.in_subspace_loop = False
 
 
 def vec2skewmat(a_vec, dim, ind_up, dtype):
-
     a_mat = np.zeros(shape=(dim, dim), dtype=dtype)
     a_mat[ind_up] = a_vec
     a_mat -= a_mat.T.conj()
@@ -1146,20 +1284,18 @@ def convert_constraints(constraints, n_dim, n_occ, representation):
 
     new = constraints.copy()
     for con in constraints:
-        assert isinstance(con, list) or isinstance(con, int), \
-            'Check constraints.'
+        assert isinstance(con, list) or isinstance(con, int), "Check constraints."
         if isinstance(con, list):
-            assert len(con) < 3, 'Check constraints.'
+            assert len(con) < 3, "Check constraints."
             if len(con) == 1:
                 con = con[0]  # List of single index
             else:
                 # Make first index always smaller than second index
-                if representation != 'full' and con[1] < con[0]:
+                if representation != "full" and con[1] < con[0]:
                     temp = deepcopy(con[0])
                     con[0] = deepcopy(con[1])
                     con[1] = temp
-                check_indices(
-                    con[0], con[1], n_dim, n_occ, representation)
+                check_indices(con[0], con[1], n_dim, n_occ, representation)
                 continue
         # Add all pairs containing the single index
         if isinstance(con, int):
@@ -1182,14 +1318,13 @@ def check_indices(ind1, ind2, n_dim, n_occ, representation):
     Makes sure the user input for the constraints makes sense.
     """
 
-    assert ind1 != ind2, 'Check constraints.'
-    if representation == 'full':
-        assert ind1 < n_dim and ind2 < n_dim, 'Check constraints.'
-    elif representation == 'sparse':
-        assert ind1 < n_occ and ind2 < n_dim, 'Check constraints.'
-    elif representation == 'u-invar':
-        assert ind1 < n_occ and ind2 >= n_occ and ind2 < n_dim, \
-            'Check constraints.'
+    assert ind1 != ind2, "Check constraints."
+    if representation == "full":
+        assert ind1 < n_dim and ind2 < n_dim, "Check constraints."
+    elif representation == "sparse":
+        assert ind1 < n_occ and ind2 < n_dim, "Check constraints."
+    elif representation == "u-invar":
+        assert ind1 < n_occ and ind2 >= n_occ and ind2 < n_dim, "Check constraints."
 
 
 def find_all_pairs(ind, n_dim, n_occ, representation):
@@ -1206,7 +1341,7 @@ def find_all_pairs(ind, n_dim, n_occ, representation):
     """
 
     pairs = []
-    if representation == 'u-invar':
+    if representation == "u-invar":
         # Only ov rotations are degrees of freedom
         if ind < n_occ:
             for i in range(n_occ, n_dim):
@@ -1215,14 +1350,13 @@ def find_all_pairs(ind, n_dim, n_occ, representation):
             for i in range(n_occ):
                 pairs.append([i, ind])
     else:
-        if (ind < n_occ and representation == 'sparse') \
-                or representation == 'full':
+        if (ind < n_occ and representation == "sparse") or representation == "full":
             # oo and ov rotations are degrees of freedom
             for i in range(n_dim):
                 if i == ind:
                     continue
                 pairs.append([i, ind] if i < ind else [ind, i])
-                if representation == 'full':
+                if representation == "full":
                     # The orbital rotation matrix is not assumed to be
                     # antihermitian, so the reverse order of indices must be
                     # added as a second constraint

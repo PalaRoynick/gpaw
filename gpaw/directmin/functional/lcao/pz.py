@@ -104,17 +104,29 @@ class PZSICLCAO:
         while n_occ < nbands and f_n[n_occ] > 1e-10:
             n_occ += 1
 
+        # print(occupied_only)
         if occupied_only is True:
             nbs = n_occ
         else:
             nbs = c_nm.shape[0]
+        
+        # PZ-localization with egdecomp        
+        # nbs = n_occ
+        # PZ-localization with egdecomp
+
         n_set = c_nm.shape[1]
 
         timer.start('Construct Gradient Matrix')
+
+        # get hamiltonian in molecular orbital representation
         hc_mn = np.dot(h_mm.conj(), c_nm[:nbs].T)
         h_mm = np.dot(c_nm[:nbs].conj(), hc_mn)
         # odd part
         b_mn = np.zeros(shape=(n_set, nbs), dtype=self.dtype)
+
+        # print('hc_mn',hc_mn.shape)
+        # print('h_mm',h_mm.shape)
+        # print('b_mn',b_mn.shape)
         e_total_sic = np.array([])
         for n in range(n_occ):
             F_MM, sic_energy_n =\
@@ -124,16 +136,25 @@ class PZSICLCAO:
 
             b_mn[:, n] = np.dot(c_nm[n], F_MM.conj()).T
             e_total_sic = np.append(e_total_sic, sic_energy_n, axis=0)
+            # print(e_total_sic)
         l_odd = np.dot(c_nm[:nbs].conj(), b_mn)
 
+        # print(nbs, n_occ,c_nm.shape[0])
         f = f_n[:nbs]
         grad = f * (h_mm[:nbs, :nbs] + l_odd) - \
             f[:, np.newaxis] * (h_mm[:nbs, :nbs] + l_odd.T.conj())
+        
+        # print('l_odd',l_odd.shape)
+        # print('grad',grad.shape)
 
         if matrix_exp in ['pade-approx', 'egdecomp2']:
             grad = np.ascontiguousarray(grad)
         elif matrix_exp == 'egdecomp':
             timer.start('Use Eigendecomposition')
+            # print('grad,evec')
+            # print(grad.shape)
+            # print(evec.shape)
+            
             grad = np.dot(evec.T.conj(), np.dot(grad, evec))
             grad = grad * d_matrix(evals)
             grad = np.dot(evec, np.dot(grad, evec.T.conj()))
@@ -148,8 +169,8 @@ class PZSICLCAO:
                                       '\'egdecomp\'')
         if self.dtype == float:
             grad = grad.real
-        if repr_name in ['sparse', 'u-invar']:
-            grad = grad[ind_up]
+        #if repr_name in ['sparse', 'u-invar']:
+        grad = grad[ind_up]
 
         timer.stop('Construct Gradient Matrix')
 
@@ -181,11 +202,12 @@ class PZSICLCAO:
         del rhs2, hc_mn, norm
         timer.stop('Residual')
 
-        if self.counter == 0:
-            h_mm = 0.5 * (h_mm + h_mm.T.conj())
-            kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]
-        self.counter += 1
-
+        # print(self.counter,kpt.s)
+        # if self.counter == 0:
+        #     h_mm = 0.5 * (h_mm + h_mm.T.conj())
+        #     kpt.eps_n[:nbs] = np.linalg.eigh(h_mm)[0]
+        # self.counter += 1
+        
         if constraints:
             constrain_grad(grad, constraints, ind_up)
 
@@ -219,6 +241,10 @@ class PZSICLCAO:
             self.get_density(f_n,
                              C_nM, kpt,
                              wfs, setup, m)
+        # print(f_n)
+        # print(m)
+        # print(nt_G.sum())
+        # print(Q_aL)
         timer.stop('Construct Density, Charge, and DM')
 
         # calculate sic energy,
@@ -328,6 +354,7 @@ class PZSICLCAO:
             e_xc = self.xc.calculate(self.cgd, nt_sg, vt_sg)
         timer.stop('ODD XC 3D grid')
         vt_sg[0] *= -self.beta_x
+        # print(e_xc)
 
         # Hartree
         if self.sic_coarse_grid is False:
@@ -367,6 +394,7 @@ class PZSICLCAO:
         else:
             vt_G = vt_sg[0]
 
+        # print(ec,e_xc)
         return np.array([-ec * self.beta_c,
                          -e_xc * self.beta_x]), vt_G, vHt_g
 

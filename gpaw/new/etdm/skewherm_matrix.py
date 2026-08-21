@@ -1,6 +1,7 @@
 import numpy as np
 from gpaw.directmin.tools import (d_matrix, expm_ed, expm_ed_unit_inv)
-from gpaw.new.etdm.tools import vec2skewmat
+from gpaw.new.etdm.tools import get_n_occ, vec2skewmat
+from scipy.linalg import expm
 
 
 class SkewHermitian:
@@ -35,6 +36,7 @@ class SkewHermitian:
                  nocc: int,
                  dtype: type,
                  representation='full',
+                 matrix_exp='egdecomp',
                  data: np.ndarray = None):
         """
         Initialize a SkewHermitian object.
@@ -61,6 +63,7 @@ class SkewHermitian:
         self._evals = None      # eigenvalues of i*A
         self._rotation_mat = None  # U = exp(A)
         self._representation = representation
+        self.matrix_exp = matrix_exp
 
         self._ndim = ndim
         self._nocc = nocc
@@ -76,6 +79,10 @@ class SkewHermitian:
         self._len = len(self.ind_up[0])
 
         # Assign initial data (if provided)
+        if data is not None:
+            self.data = data
+        else:
+            self.data = np.zeros(shape=self._len, dtype=self._dtype)
         if data is not None:
             self.data = data
         else:
@@ -164,7 +171,7 @@ class SkewHermitian:
         """
         if self._evecs is None:
             # Convert vector to full skew-Hermitian matrix
-            a_mat = vec2skewmat(self.data, self.ndim, self.ind_up, self.dtype)
+            a_mat = vec2skewmat(self.data, self._ndim, self.ind_up, self.dtype)
             # Compute matrix exponential, eigenvectors, and eigenvalues
             self._rotation_mat, self._evecs, self._evals = expm_ed(
                 a_mat, evalevec=True)
@@ -209,8 +216,13 @@ class SkewHermitian:
                 self._evals, self._evecs = np.linalg.eigh(1.0j * a_mat)
 
             else:
-                self._rotation_mat, self._evecs, self._evals = expm_ed(
-                    a_mat, evalevec=True)
+                if self.matrix_exp == 'egdecomp':
+                    self._rotation_mat, self._evecs, self._evals = expm_ed(
+                        a_mat, evalevec=True)
+                elif self.matrix_exp == 'pade-approx':
+                    self._rotation_mat = np.ascontiguousarray(expm(a_mat))
+                    # they do not get calculated by expm
+                    self._evals, self._evecs = np.linalg.eigh(1.0j * a_mat)
 
         return self._rotation_mat
 
