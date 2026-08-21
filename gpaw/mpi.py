@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import atexit
+import functools
+import os
 import pickle
 import sys
 import time
@@ -19,7 +21,6 @@ from ase.parallel import broadcast as asebroadcast
 
 import gpaw
 from gpaw.gpu import cupy, is_hip
-from gpaw.new.c import GPU_AWARE_MPI
 
 from ._broadcast_imports import world as _world
 
@@ -31,51 +32,64 @@ def is_contiguous(*args, **kwargs):
     return is_contiguous(*args, **kwargs)
 
 
-class RegisteredPointer:
-    """This is a workaround for the MPI race condition in LUMI with MI250X.
+def _mpich_cray_workaround_enabled() -> bool:
+    return bool(int(os.environ.get('GPAW_MPICH_CRAY_WORKAROUND', '0')))
 
-       MPI Transferred data will be corrupted including data which is never
-       even sent trough MPI. If one performs a direct hipMalloc (as done
-       by doing Memory, and doing GPU-GPU transfer, this works around this
-       behaviour (for a currently unknown reason, but perhaps open-mpi or hip
-       has problems identifying GPU pointers, but the reason could also be
-       somewhere in GPAW equally well).
-    """
-    def __init__(self, a, _input=True, _output=True, enabled=True):
-        enabled = enabled and is_hip  # Disable extra transfer on cuda
 
-        self.enabled = enabled
-        if not enabled:
-            self.array = a
-            return
+def _apply_reduction(target, source, op: str) -> None:
+    xp = cupy.get_array_module(target)
+    if op == 'sum':
+        target += source
+    elif op == 'product':
+        target *= source
+    elif op == 'max':
+        xp.maximum(target, source, out=target)
+    elif op == 'min':
+        xp.minimum(target, source, out=target)
+    else:
+        raise ValueError(f'Unknown reduction operation: {op}')
 
-        self.a = a
-        self._output = _output
-        if isinstance(a, cupy.ndarray):
-            if 1:
-                from cupy.cuda.memory import Memory, MemoryPointer
-                mem = Memory(a.nbytes)  # Direct malloc
-                memptr = MemoryPointer(mem, 0)
-                self.array = cupy.ndarray(a.shape,
-                                          memptr=memptr,
-                                          dtype=a.dtype,
-                                          strides=a.strides)
-                if _input:
-                    self.array[...] = a
-            else:
-                self.array = a.copy()  # This SEGFAULTS!
-        else:
-            self.array = a
 
-    def __enter__(self):
-        return self.array
+def _gpu_reduce(comm: MPIComm, a, root: int, op: str) -> None:
+    assert root == -1 or 0 <= root < comm.size
+    actual_root = 0 if root == -1 else root
+    vrank = (comm.rank - actual_root) % comm.size
+    recvbuf = cupy.empty_like(a)
+    stride = 1
+    while stride < comm.size:
+        group = 2 * stride
+        phase = vrank % group
+        if phase == stride:
+            comm.send(a, (vrank - stride + actual_root) % comm.size,
+                      tag=42137)
+            break
+        if phase == 0:
+            peer = vrank + stride
+            if peer < comm.size:
+                comm.receive(recvbuf,
+                             (peer + actual_root) % comm.size,
+                             tag=42137)
+                _apply_reduction(a, recvbuf, op)
+        stride = group
+    if root == -1:
+        comm.broadcast(a, actual_root)
 
-    def __exit__(self, *args):
-        if not self.enabled:
-            return
 
-        if self._output and isinstance(self.a, cupy.ndarray):
-            self.a[...] = self.array
+def gpu_array_reduction(op: str):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapped(self, a, root=-1):
+            if (_mpich_cray_workaround_enabled() and
+                    isinstance(a, cupy.ndarray)):
+                assert is_contiguous(a, a.dtype)
+                assert root == -1 or 0 <= root < self.size
+                _gpu_reduce(self, a, root, op)
+                return None
+            return func(self, a, root)
+
+        return wrapped
+
+    return decorator
 
 
 @contextmanager
@@ -185,6 +199,7 @@ class _Communicator:
         else:
             return _Communicator(comm, parent=self)
 
+    @gpu_array_reduction('sum')
     def sum(self, a, root=-1):
         """Perform summation by MPI reduce operations of numerical data.
 
@@ -211,19 +226,13 @@ class _Communicator:
             tc = a.dtype
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            # Right now comm.sum is the only place where one needs this
-            # extra malloc + intradevice memory copies for HIP and
-            # gpu-aware MPI
-            with RegisteredPointer(a, enabled=GPU_AWARE_MPI,
-                                   _input=True,
-                                   _output=((root == -1) or
-                                            (root == self.rank))) as a:
-                self.comm.sum(a, root)
+            self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
         return self.comm.sum_scalar(a, root)
 
+    @gpu_array_reduction('product')
     def product(self, a, root=-1):
         """Do multiplication by MPI reduce operations of numerical data.
 
@@ -253,6 +262,7 @@ class _Communicator:
             assert root == -1 or 0 <= root < self.size
             self.comm.product(a, root)
 
+    @gpu_array_reduction('max')
     def max(self, a, root=-1):
         """Find maximal value by an MPI reduce operation of numerical data.
 
@@ -286,6 +296,7 @@ class _Communicator:
         assert isinstance(a, (int, float, np.int64))
         return self.comm.max_scalar(a, root)
 
+    @gpu_array_reduction('min')
     def min(self, a, root=-1):
         """Find minimal value by an MPI reduce operation of numerical data.
 
@@ -313,8 +324,7 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            with RegisteredPointer(a, enabled=False) as a:
-                self.comm.min(a, root)
+            self.comm.min(a, root)
 
     def min_scalar(self, a, root=-1):
         assert isinstance(a, (int, float))
