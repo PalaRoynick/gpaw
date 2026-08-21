@@ -202,6 +202,7 @@ class iKS:
         lambda_reg: float = 1e-6,
         lambda_paw_boundary: float = 1e-4,
         lambda_core: float = 1e-4,
+        density_threshold: float = 0.0,
         pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,
@@ -228,6 +229,7 @@ class iKS:
         # regularization
         self.lambda_reg = lambda_reg
         self.lambda_core = lambda_core
+        self.density_threshold = density_threshold
         self.pseudo_core_scale = pseudo_core_scale
         self.lambda_boundary = lambda_paw_boundary
         reg_scheduler_params = reg_scheduler_params or {}
@@ -790,6 +792,10 @@ class iKS:
                 J_sg -= 2 * lambda_reg * self.fine2coarse(lapl_sg)
             else:
                 J_sg -= 2 * lambda_reg * lapl_sg
+
+        if self.density_threshold != 0.0:
+            # apply vacuum region/boundary fix
+            J_sg[self.density.nt_sg < self.density_threshold] = 0.0
 
         self.J_sg = J_sg
         self.timer.stop("Jacobian")
