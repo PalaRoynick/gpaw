@@ -13,6 +13,7 @@
 #include "extensions.h"
 #include "mympi.h"
 #ifdef GPAW_WITH_INTEL_MKL
+#define MKL_Complex16 std::complex<double>
 #include <mkl_scalapack.h>
 #endif
 
@@ -791,7 +792,7 @@ PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args)
            &lwork,
            &info);
 
-   lwork = (int) qwork;
+   lwork = get_lwork(qwork);
    double_complex* work = (double_complex*) malloc(sizeof(double_complex) * lwork);
 
    // Then we diagonalize

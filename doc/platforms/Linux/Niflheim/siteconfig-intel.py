@@ -4,7 +4,8 @@ scalapack = True
 intelmkl = True
 fftw = True
 
-mpicompiler = 'mpiicpx'
+mpi = True
+compiler = 'mpiicpx'
 
 # Use Intel MKL
 libraries = ['xc', 'mkl_sequential', 'mkl_core', 'fftw3xc_intel_pic', 'mkl_rt']
