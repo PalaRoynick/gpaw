@@ -15,7 +15,8 @@ viz.view = lambda atoms, repeat=None: None
 
 # snippet-setup-slab-start
 a_Ru = 2.704  # PBE value from OQMD.org; expt value is 2.706
-slab = hcp0001('Ru', a=a_Ru, size=(2, 2, 2), vacuum=5.0)
+c_Ru = 4.282
+slab = hcp0001('Ru', a=a_Ru, c=c_Ru, size=(2, 2, 2), vacuum=5.0)
 
 # Other metals are possible, for example Rhodium
 # Rhodium is FCC so you should use fcc111(...) to set up the system
@@ -31,8 +32,7 @@ view(slab)
 # snippet-calc-define-start
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slab.calc = calc
 # snippet-calc-define-end
 
@@ -40,7 +40,7 @@ slab.calc = calc
 z = slab.positions[:, 2]
 constraint = FixAtoms(mask=(z < z.min() + 1.0))
 slab.set_constraint(constraint)
-dyn = QuasiNewton(slab, trajectory='Ru.traj')
+dyn = QuasiNewton(slab, trajectory='Ru.traj', logfile='Ru.log')
 t = time.time()
 dyn.run(fmax=0.05)
 print(f'Wall time: {(time.time() - t) / 60} min.')
@@ -64,7 +64,7 @@ molecule.set_cell(slab.get_cell())
 molecule.center()
 calc_mol = GPAW(xc='PBE', mode=PW(350))
 molecule.calc = calc_mol
-dyn2 = QuasiNewton(molecule, trajectory='N2.traj')
+dyn2 = QuasiNewton(molecule, trajectory='N2.traj', logfile='N2.log')
 dyn2.run(fmax=0.05)
 e_N2 = molecule.get_potential_energy()
 # snippet-optimize-n2-end
@@ -90,7 +90,8 @@ view(slabN2)
 
 # snippet-optimize-adsorption-start
 slabN2.calc = calc
-dyn = QuasiNewton(slabN2, trajectory='N2Ru-top.traj', maxstep=0.02)
+dyn = QuasiNewton(slabN2, trajectory='N2Ru-top.traj',
+                  logfile='N2Ru-top.log', maxstep=0.02)
 t = time.time()
 dyn.run(fmax=0.05)
 print(f'Wall time: {(time.time() - t) / 60} min.')
@@ -130,10 +131,10 @@ write('N2Ru_hollow.png', a, show_unit_cell=1)
 # teacher:
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slabN2_new.calc = calc
-dyn = QuasiNewton(slabN2_new, trajectory='N2Ru.traj', maxstep=0.02)
+dyn = QuasiNewton(slabN2_new, trajectory='N2Ru.traj',
+                  logfile='N2Ru.log', maxstep=0.02)
 t = time.time()
 dyn.run(fmax=0.05)
 print('Wall time:', time.time() - t)
@@ -159,10 +160,10 @@ constraint = FixAtoms(mask=(z < z.min() + 1.0))
 slab2Nads.set_constraint(constraint)
 calc = GPAW(xc='PBE',
             mode=PW(350),
-            kpts={'size': (4, 4, 1), 'gamma': True},
-            convergence={'eigenstates': 1e-6})
+            kpts={'size': (4, 4, 1), 'gamma': True})
 slab2Nads.calc = calc
-dyn = QuasiNewton(slab2Nads, trajectory='2Nads.traj')
+dyn = QuasiNewton(slab2Nads,
+                  trajectory='2Nads.traj', logfile='2Nads.log')
 dyn.run(fmax=0.05)
 e_slab = slab.get_potential_energy()
 e_N2 = read('N2.traj').get_potential_energy()

@@ -33,6 +33,11 @@ def eigvalsh(a, UPLO='L'):
     return cp.ndarray(np.linalg.eigvalsh(a._data, UPLO))
 
 
+def eigvals(a):
+    from gpaw.gpu import cupy as cp
+    return cp.ndarray(np.linalg.eigvals(a._data))
+
+
 def norm(x, ord=None, axis=None, keepdims=False):
     from gpaw.gpu import cupy as cp
     return cp.ndarray(np.linalg.norm(x._data, ord, axis, keepdims))

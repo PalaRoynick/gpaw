@@ -180,7 +180,7 @@ class NonSelfConsistentHybridXCCalculator:
         dhyb_sin = np.array(dhyb_isn).transpose((1, 0, 2))
         deig_sin = dhyb_sin - dxc_sin
 
-        self.log('HSE06-eigenvalue shifts:')
+        self.log('Eigenvalue shifts:')
         self.log(f'  min: {deig_sin.min():.3f} eV')
         self.log(f'  ave: {deig_sin.mean():.3f} eV')
         self.log(f'  max: {deig_sin.max():.3f} eV')

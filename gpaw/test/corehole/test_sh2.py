@@ -145,6 +145,17 @@ def test_proj(in_tmp_dir, add_cwd_to_setup_paths, sh2_s1s1ch):
     assert y0_cn == pytest.approx(y0_1_cn)
     assert y1_cn == pytest.approx(y1_1_cn)
 
+    # The broadened spectrum must have one row per projection direction:
+    # 3 + len(proj) with proj_xyz=True and len(proj) without.  Regression
+    # test for the hardcoded row count in XAS.constant_broadening().
+    e1_i, f1_ci = xas0.get_spectra(fwhm=0.5, dks=dks,
+                                   proj=proj, proj_xyz=True)
+    assert f1_ci.shape == (3 + len(proj), len(e1_i))
+
+    e0_i, f0_ci = xas0.get_spectra(fwhm=0.5, dks=dks,
+                                   proj=proj, proj_xyz=False)
+    assert f0_ci.shape == (len(proj), len(e0_i))
+
 
 def test_parallel(in_tmp_dir, add_cwd_to_setup_paths, s2p1ch_name):
     atoms = molecule('SH2')

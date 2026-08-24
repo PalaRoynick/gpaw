@@ -4,7 +4,6 @@ Calculates Raman matrices from Raman tensor
 import numpy as np
 from ase.units import invcm
 from ase.utils.filecache import MultiFileJSONCache
-
 from gpaw.typing import ArrayND
 
 

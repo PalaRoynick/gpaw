@@ -17,7 +17,7 @@ A terminal app that is known to work is Termius.
 
 First you need to install your secret key (guest accounts only, DTU users
 need to generate a new key).  Open a browser, go to
-https://www.student.dtu.dk/~dccidmgr/CAMD24/ then add your user name to the
+https://www.student.dtu.dk/~dccidmgr/CAMD26/ then add your user name to the
 end of the URL and press enter.  You will now have to enter your user name
 and password.  Click on the provided link (saving it will not help, you
 need to use cut-and-paste).  Once the key is displayed (a lot of randomish

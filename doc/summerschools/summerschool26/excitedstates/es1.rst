@@ -30,7 +30,14 @@ Here is some information to help you build the :class:`ase:ase.Atoms` object:
 * GaAs crystallizes in the zincblende structure with lattice constant `a=5.65` Å
 * Monolayer BN centered in a hexagonal unit cell with `a=2.5` Å (and `7` Å of vacuum at each side to prevent it from interacting with its periodic copies) and a basis of `(0,0)` and `(0, a / \sqrt{3})`
 
-The first thing you should do is to create an :class:`ase:ase.Atoms` object (click the link to see ways to build atoms objects). In order to do so, you might find it useful to use one of the crystal structures included in :func:`ase.build.bulk` (hint: if you have an element of the IV group you might be interested to follow this link :func:`ase:ase.build.bulk`) or you might have to create a list/array for the atomic positions and another one for the unit cell and then create an atoms object (hint: see above).
+The first thing you should do is to create an :class:`ase:ase.Atoms`
+object (click the link to see ways to build atoms objects). In order to
+do so, you might find it useful to use one of the crystal structures
+included in :func:`ase.build.bulk` (hint: if you have an element of the
+IV group you might be interested to follow this link
+:func:`ase:ase.build.bulk`) or you might have to create a list/array for
+the atomic positions and another one for the unit cell and then create an
+atoms object (hint: see above).  See also :ref:`intro_ase_atoms`.
 
 
 .. literalinclude:: solution1.py
@@ -40,7 +47,7 @@ The first thing you should do is to create an :class:`ase:ase.Atoms` object (cli
 
 .. code-block:: python
 
-	Si = ...
+	Si = bulk('Si', 'diamond', a=5.4)
 	Ge = ...
 	C = ...
 	CdTe = ...
@@ -74,8 +81,7 @@ These links might be helpful for you:
    :end-before: # snippet-calculator-end
 
 
-We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer.
-
+We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer. The ``fmax`` parameter defines the convergence criterion for the optimization. The optimization stops when the magnitude of the force of all individual atoms is below ``fmax``.  A smaller value gives a more tightly relaxed structure, but requires more optimization steps. Try ``fmax = 0.1``, ``0.05`` and ``0.01`` eV/Å. What do you observe?
 
 .. literalinclude:: solution1.py
    :start-after: # snippet-opt-start-student
@@ -110,7 +116,7 @@ The starting point for this section (and you might also want to use it in your o
 
 We are now going to restart the calculator and recompute the ground state, saving it to a new gpw file. As we are dealing with small bulk system, plane wave mode is the most appropriate here.
 To speed up the computations for this toy example, we use a plane wave cut-off of `200` eV and a very coarse k-point mesh `(2,2,2)`. For production-level computations, it is generally a good idea to choose a finer kpoint mesh and higher cut-off for the band structure.
-Additionally, we are  going to use LDA, which is faster than PBE but not very good at predicting bandgaps (yes, we know, you are going to get a silly value here).
+Additionally, we are  going to use LDA, which is faster than PBE but not very good at predicting band gaps (yes, we know, you are going to get a silly value here).
 
 
 .. literalinclude:: solution1b.py
@@ -118,9 +124,7 @@ Additionally, we are  going to use LDA, which is faster than PBE but not very go
    :end-before: # snippet-lda-calculator-end
 
 
-Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM.
-
-For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
+Let's use this calculator to get the energy, the valence band maximum (VBM), the conduction band minimum (CBM), and the band gap, as the difference of the two of the VBM and the CBM. To obtain the potential energy, we first call :meth:`ase:ase.Atoms.get_potential_energy`. For the VBM and CBM, we are going to use the ```get_homo_lumo()``` method of the calculator, see :class:`gpaw.calculator.GPAW` for more information. This method returns the energy of the highest Kohn-Sham occupied orbital (called HOMO here) and the energy lowest Kohn-Sham unoccupied orbital (the LUMO). We are going to compute the band gap at this level of theory from the difference between both.
 
 
 .. literalinclude:: solution1b.py

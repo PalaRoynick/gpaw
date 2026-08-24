@@ -1,12 +1,11 @@
 from pathlib import Path
-from gpaw import GPAW
 import taskblaster as tb
+from gpaw import GPAW
 
 
 def optimize_cell(atoms, calculator):
     from ase.filters import FrechetCellFilter
     from ase.optimize import BFGS
-    from gpaw import GPAW
 
     atoms.calc = GPAW(**calculator)
     opt = BFGS(FrechetCellFilter(atoms), trajectory='opt.traj',
@@ -44,25 +43,25 @@ class MaterialsWorkflow:
     @tb.task
     def relax(self):
         return tb.node(
-            'optimize_cell',
+            optimize_cell,
             atoms=self.atoms,
             calculator=self.calculator)
 
     @tb.task
     def groundstate(self):
         return tb.node(
-            'groundstate',
+            groundstate,
             atoms=self.relax,
             calculator=self.calculator)
 
     @tb.task
     def bandpath(self):
-        return tb.node('bandpath', atoms=self.relax)
+        return tb.node(bandpath, atoms=self.relax)
 
     @tb.task
     def bandstructure(self):
         return tb.node(
-            'bandstructure',
+            bandstructure,
             gpw=self.groundstate,
             bandpath=self.bandpath)
 
@@ -73,13 +72,13 @@ def asebulk(symbol):
 
 
 @tb.workflow
-class ParametrizableMaterialsWorkflow:
+class ComputeMaterial:
     symbol = tb.var()
     calculator = tb.var()
 
     @tb.task
     def atoms(self):
-        return tb.node('asebulk', symbol=self.symbol)
+        return tb.node(asebulk, symbol=self.symbol)
 
     @tb.subworkflow
     def compute(self):
@@ -88,11 +87,21 @@ class ParametrizableMaterialsWorkflow:
 
 @tb.dynamical_workflow_generator_task
 def parametrize_materials_workflow(calculator):
-
     material_symbols = [
         'Al', 'Si', 'Ti', 'Cu', 'Ag', 'Au', 'Pd', 'Pt',
     ]
 
     for symbol in material_symbols:
-        yield f'mat-{symbol}', ParametrizableMaterialsWorkflow(
+        yield f'mat-{symbol}', ComputeMaterial(
             symbol=symbol, calculator=calculator)
+
+
+def workflow(runner):
+    from ase.build import bulk
+
+    wf = MaterialsWorkflow(
+        atoms=bulk('Si', a=4.0),
+        calculator={'mode': 'pw',
+                    'kpts': (4, 4, 4),
+                    'txt': 'gpaw.txt'})
+    runner.run_workflow(wf)

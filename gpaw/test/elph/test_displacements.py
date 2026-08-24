@@ -11,11 +11,10 @@ from ase.utils.filecache import MultiFileJSONCache
 
 from gpaw import GPAW
 from gpaw.elph import DisplacementRunner
-from gpaw.mpi import world
 
 
 @pytest.mark.elph
-def test_displacements(in_tmp_dir):
+def test_displacements(in_tmp_dir, comm):
     # 2 atoms with one 1 valence electron each
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     assert len(atoms) == 2
@@ -28,6 +27,7 @@ def test_displacements(in_tmp_dir):
                 # symmetry={'point_group': False},
                 # parallel={'sl_auto': True, 'augment_grids':True,
                 #          'band': 1, 'kpt': 1, 'domain': 4 },
+                communicator=comm,
                 txt='elph_displacements.txt')
     atoms.calc = calc
 
@@ -39,7 +39,7 @@ def test_displacements(in_tmp_dir):
     del elph
 
     # read stuff back
-    if world.rank == 0:
+    if comm.rank == 0:
         cache = MultiFileJSONCache('elph')
         info = cache['info']
         assert info['supercell'] == [1, 1, 1]
