@@ -9,11 +9,10 @@ from ase.build import bulk
 
 from gpaw import GPAW
 from gpaw.elph import DisplacementRunner, Supercell
-from gpaw.mpi import world
 
 
 @pytest.mark.elph
-def test_gradient(in_tmp_dir):
+def test_gradient(in_tmp_dir, comm):
     # 2 atoms with one 1 valence electron each
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     assert len(atoms) == 2
@@ -23,6 +22,7 @@ def test_gradient(in_tmp_dir):
                 basis='sz(dzp)',
                 kpts={'size': (2, 2, 2), 'gamma': False},
                 # symmetry={'point_group': False},
+                communicator=comm,
                 txt='elph_displacements.txt')
     atoms.calc = calc
 
@@ -34,7 +34,7 @@ def test_gradient(in_tmp_dir):
 
     # Barrier will be included in elph.run() in the future:
     # https://gitlab.com/ase/ase/-/merge_requests/2903
-    world.barrier()
+    comm.barrier()
 
     Vt_sG = elph.cache['eq']['Vt_sG']
     dH_all_asp = elph.cache['eq']['dH_all_asp']

@@ -292,10 +292,12 @@ ASE (atomic simulation environment)
 More details can be found here: https://ase-lib.org/
 
 
+.. _intro_ase_atoms:
+
 Everything starts with a structure!
 -----------------------------------
 
-In ASE the most important ingredient is :class:`~ase.Atoms`
+In ASE the most important ingredient is the :class:`~ase.Atoms`
 object used to setup an atomic structure.
 
 

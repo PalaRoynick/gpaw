@@ -1487,3 +1487,7 @@ trigonal
 antiferromagnetic
 isotropy
 anisotropies
+Taskblaster
+Pythonpath
+ema
+zenodo

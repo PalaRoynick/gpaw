@@ -183,7 +183,7 @@ the command::
 
 Note the tilde in the beginning of the second word.
 The script installs ASE, GPAW and related software.
-The script will also copy a selection of draft notebooks to a folder
+The script will also copy a selection of scripts to a folder
 called CAMD2026 in your DTU databar account.
 
 **You only need to do this once!**  Next time, you just log in and run
