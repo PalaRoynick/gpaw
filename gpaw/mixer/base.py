@@ -83,7 +83,7 @@ class BaseMixer:
                 ncomponents=self.ncomponents,
                 desc=self.desc,
                 xp=self.xp)
-            self.histories.append(self.taut_hsR, self.Rtaut_hsR)
+            self.histories += [self.taut_hsR, self.Rtaut_hsR]
 
         nt_sX = density.nt_sR
         D_asii = density.D_asii
@@ -102,6 +102,8 @@ class BaseMixer:
             D2_asii = D_asii
 
         dnt = self._mix(nt2_sX, D2_asii, density)
+        for h in self.histories:
+            print(h.nold, end=', ')
 
         if self.ncomponents == 2:
             nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])

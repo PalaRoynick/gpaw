@@ -7,7 +7,7 @@ from gpaw import GPAW
 from gpaw.utilities.adjust_cell import adjust_cell
 
 vacuum = 4.0
-h = 0.3
+h = 0.2
 
 
 @pytest.mark.mgga

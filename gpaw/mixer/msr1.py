@@ -381,12 +381,19 @@ class MSR1Mixer(BaseMixer):
 
     def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
                    density: Density) -> float:
+        taut_sR = density.taut_sR
+
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
         D_asii.data += self.beta * self.R_hsX[-1][1]
+        if taut_sR is not None:
+            taut_sR.data[:] = self.taut_hsR[-1].data
+            taut_sR.data += self.beta * self.Rtaut_hsR[-1].data
 
         self.nt_hsX.add(nt_sX, D_asii)
+        if taut_sR is not None:
+            self.taut_hsR.add(taut_sR)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)
