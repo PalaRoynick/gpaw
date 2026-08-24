@@ -62,7 +62,7 @@ if cupy:
         gpu_compile_args = ['-O3',
                             '-g',
                             '-gencode', 'arch=compute_90,code=sm_90']
-    elif cpuarch == 'skylake_el8':
+    elif cpuarch == 'skylake_el8' or cpuarch == 'skylake_el9':
         gpu_compile_args = ['-O3',
                             '-g',
                             '-gencode', 'arch=compute_86,code=sm_86']
