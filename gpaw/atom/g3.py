@@ -156,8 +156,26 @@ PARAMS = {
     # 87-88:
     'Fr.1': '7s,s,6p,5d,F 5.0',
     'Fr.9': '6s,7s,6p,7p,6d,d,F 2.7,2.5',
-    'Ra.2': '6s,s,6p,5d 5.0',
+    'Ra.2': '6s,s,6p,5d 4.5',
     'Ra.10': '6s,7s,6p,7p,6d,d,F 2.7,2.5'}
+
+# aeatom.py fails for the moment for these:
+ACTANIDES = {
+    # 89-102:
+    'Ac.11': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Th.12': '6s,7s,6p,7p,6d,d,5f,f,G 2.4',
+    'Pa.13': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'U.14': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Np.15': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Pu.16': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Am.17': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Cm.18': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Bk.19': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Cf.20': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Es.21': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Fm.22': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'Md.23': '6s,7s,6p,7p,6d,d,5f,f,G 2.5',
+    'No.24': '6s,7s,6p,7p,6d,d,5f,f,G 2.5'}
 
 PARAMS2 = {
     'H': '1s,s,p,D 1.3,1.2 1.1',
@@ -791,7 +809,6 @@ def opt(ecut=600):
         y = abs(de / 0.001) + abs(s) * 10000
         if world.rank == 0:
             print(f'OPT: {conf:15} {de:10.6f} {s:10.6f} {y}')
-        # return (de / 0.001)**2 + s**2 * 1000000
         return y
 
     rcs += [rcs[-1]] * (n - 1 - len(rcs))
