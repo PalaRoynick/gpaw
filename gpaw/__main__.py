@@ -5,7 +5,7 @@ from gpaw.cli.main import main
 # `gpaw` or `python -m gpaw`
 if gpaw.GPAW_MPI_BACKEND is None:
     try:
-        import mpi4py
+        import mpi4py  # noqa
         gpaw.GPAW_MPI_BACKEND = "mpi4py"
     except ImportError:
         import gpaw.cgpaw as cgpaw
