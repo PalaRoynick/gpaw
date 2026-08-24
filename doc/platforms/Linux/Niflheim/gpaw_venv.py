@@ -19,6 +19,7 @@ fversion = 'cpython-313'
 
 # Niflheim login hosts, with the oldest architecture as the first
 nifllogin = [
+    'slid2',  # broadwell_el8 (xeon24el8)
     'thul',  # skylake_el8 (xeon40el8, sm3090el8)
     'surt',  # icelake (xeon56, a100, h200)
     'fjorm',  # epyc9004 (epyc96)
