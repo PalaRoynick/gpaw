@@ -25,10 +25,34 @@ from ._broadcast_imports import world as _world
 
 MASTER = 0
 
+INT32_MAX = 2**31 - 1
+CHUNK_BYTES = INT32_MAX // 2   # keep margin; avoid exact boundary
+
+
+def _chunk_slices(a, max_bytes=CHUNK_BYTES):
+    itemsize = a.dtype.itemsize
+    max_items = max_bytes // itemsize
+    assert max_items > 0
+
+    flat = a.ravel()  # view if contiguous
+    n = flat.size
+
+    for i0 in range(0, n, max_items):
+        i1 = min(i0 + max_items, n)
+        yield flat[i0:i1]
+
 
 def is_contiguous(*args, **kwargs):
     from gpaw.utilities import is_contiguous
     return is_contiguous(*args, **kwargs)
+        
+def flatten(lst):
+    for x in lst:
+        if isinstance(x, list):
+            yield from flatten(x)
+        else:
+            yield x
+
 
 
 class RegisteredPointer:
@@ -214,11 +238,7 @@ class _Communicator:
             # Right now comm.sum is the only place where one needs this
             # extra malloc + intradevice memory copies for HIP and
             # gpu-aware MPI
-            with RegisteredPointer(a, enabled=GPU_AWARE_MPI,
-                                   _input=True,
-                                   _output=((root == -1) or
-                                            (root == self.rank))) as a:
-                self.comm.sum(a, root)
+            self.comm.sum(a, root)
 
     def sum_scalar(self, a, root=-1):
         assert isinstance(a, (int, float, complex))
@@ -313,8 +333,7 @@ class _Communicator:
             assert tc == int or tc == float
             assert is_contiguous(a, tc)
             assert root == -1 or 0 <= root < self.size
-            with RegisteredPointer(a, enabled=False) as a:
-                self.comm.min(a, root)
+            self.comm.min(a, root)
 
     def min_scalar(self, a, root=-1):
         assert isinstance(a, (int, float))
@@ -571,9 +590,21 @@ class _Communicator:
         assert 0 <= dest < self.size
         assert dest != self.rank
         assert is_contiguous(a)
-        if not block:
-            pass  # assert sys.getrefcount(a) > 3
-        return self.comm.send(a, dest, tag, block)
+
+        if a.nbytes < 2**31 - 1:
+            return self.comm.send(a, dest, tag, block)
+
+        reqs = []
+        for i, chunk in enumerate(_chunk_slices(a)):
+            req = self.comm.send(chunk, dest, tag + i, block=False)
+            reqs.append(req)
+
+        if block:
+            self.waitall(reqs)
+            return None
+
+        return reqs
+
 
     def ssend(self, a, dest, tag=123):
         assert 0 <= dest < self.size
@@ -585,7 +616,21 @@ class _Communicator:
         assert 0 <= src < self.size
         assert src != self.rank
         assert is_contiguous(a)
-        return self.comm.receive(a, src, tag, block)
+
+        if a.nbytes < 2**31 - 1:
+            return self.comm.receive(a, src, tag, block)
+
+        reqs = []
+        for i, chunk in enumerate(_chunk_slices(a)):
+            req = self.comm.receive(chunk, src, tag + i, block=False)
+            reqs.append(req)
+
+        if block:
+            self.waitall(reqs)
+            return None
+
+        return reqs
+
 
     def test(self, request):
         """Test whether a non-blocking MPI operation has completed. A boolean
@@ -621,6 +666,8 @@ class _Communicator:
             Request e.g. returned from send/receive when block=False is used.
 
         """
+        if isinstance(request, list):
+            return self.comm.waitall(request)
         self.comm.wait(request)
 
     def waitall(self, requests):
@@ -633,7 +680,7 @@ class _Communicator:
             multiple send/receive calls where block=False was used.
 
         """
-        self.comm.waitall(requests)
+        self.comm.waitall(list(flatten(requests)))
 
     def abort(self, errcode):
         """Terminate MPI execution environment of all tasks in the group.
