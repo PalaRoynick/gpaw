@@ -1,4 +1,4 @@
-kpts_grid = (12, 12, 4)
+kpts_grid = (8, 8, 8)
 # snippet-rpa-groundstate-start
 from gpaw import GPAW
 from gpaw.occupations import FermiDirac

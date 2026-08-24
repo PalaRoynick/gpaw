@@ -1,5 +1,5 @@
 # Intended values (hidden from student)
-structure_file = 'tight-N2Ru-top.traj'
+structure_file = 'tight-N2Ru.traj'
 kpts_size = (4, 4, 1)
 N2_indices = (8, 9)
 

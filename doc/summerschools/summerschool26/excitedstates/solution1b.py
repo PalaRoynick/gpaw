@@ -1,8 +1,9 @@
+# web-page: Si_bandstructure_LDA.json
 # snippet-re-from-relaxed-start-student
 label = ...  # Use the same label as in the previous exercise
 # snippet-re-from-relaxed-end-student
 
-label = "Si"
+label = 'Si'
 label = label  # Use the same label as in the previous exercise
 # snippet-restart-from-relaxed-start
 

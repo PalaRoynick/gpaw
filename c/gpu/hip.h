@@ -4,14 +4,22 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_complex.h>
 
-// Tell hipBlas to use hipComplex and hipDoubleComplex instead of hipBlasComplex etc.  Reasons:
-// 1) This is the default behavior in hipBlas > 2
-// 2) For whatever reason hipBlasComplex has its real/imag parts as private variables if using C++, which is different from what the cuBlas type does.
-#define ROCM_MATHLIBS_API_USE_HIP_COMPLEX
-#include <hipblas/hipblas.h>
-
-// FIXME: ROCM_MATHLIBS_API_USE_HIP_COMPLEX has recently been deprecated in favor of -DHIPBLAS_V2.
-// But we need to support older rocm at least for some time still.
+// hipBlas v3 (rocm-7) removed hipblas complex types in favor of hipComplex.
+// Older versions may still need the old types.
+#include <hipblas/hipblas-version.h>
+#if hipblasVersionMajor >= 3
+        #include <hipblas/hipblas.h>
+        #define gpublasDoubleComplex hipDoubleComplex
+        #define gpublasComplex hipComplex
+#else
+        // Tell hipblas to internally use the new types if they are available.
+        // Our own typedefs still use the old types. Slightly confusing but has worked so far.
+        // Remove when dropping support for rocm < 7
+        #define ROCM_MATHLIBS_API_USE_HIP_COMPLEX
+        #include <hipblas/hipblas.h>
+        #define gpublasDoubleComplex hipblasDoubleComplex
+        #define gpublasComplex hipblasComplex
+#endif
 
 #define gpuMemcpyKind             hipMemcpyKind
 #define gpuMemcpyDeviceToHost     hipMemcpyDeviceToHost
@@ -56,8 +64,7 @@
 #define gpuCmulf                  hipCmulf
 #define gpuConj                   hipConj
 #endif
-#define gpublasDoubleComplex      hipblasDoubleComplex
-#define gpublasComplex            hipblasComplex
+
 #define make_gpuDoubleComplex     make_hipDoubleComplex
 #define make_gpuFloatComplex      make_hipFloatComplex
 
