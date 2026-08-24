@@ -91,8 +91,12 @@ def convergence_check(dir: Path,
                                  list[float],
                                  list[float]]:
     """Write summary."""
-    ecuts, efcc, de = np.array(
-        json.loads((dir / 'ecuts.json').read_text())).T
+    try:
+        ecuts, efcc, de = np.array(
+            json.loads((dir / 'ecuts2.json').read_text())).T
+    except FileNotFoundError:
+        ecuts, efcc, de = np.array(
+            json.loads((dir / 'ecuts.json').read_text())).T
     if plot:
         import matplotlib.pyplot as plt
         plt.plot(ecuts[:-1], np.log10(abs(efcc[:-1] - efcc[-1])), label=dir)

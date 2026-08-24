@@ -659,7 +659,7 @@ def analyse(folders):
         symbol = f.name.split('.')[0]
         try:
             type, r0, rcs = read_paw_pot(f / f'{symbol}.PBE')
-        except FileNotFoundError:
+        except (FileNotFoundError, TypeError):
             type, r0, rcs = 'old', 0.0, []
         try:
             d = json.loads((f / 'result.json').read_text())
