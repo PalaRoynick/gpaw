@@ -12,7 +12,6 @@
 #include <structmember.h>
 #include "extensions.h"
 #include "mympi.h"
-
 #include <stdlib.h>
 
 // BLACS
@@ -112,8 +111,7 @@ CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 CLINKAGE_BEGIN
 
 // tools
-// #ifndef GPAW_WITH_INTEL_MKL
-// These should almost certainly not be defined here, even with a non-Intel scalapack.
+// These should almost certainly not be defined here.
 // Instead, the proper header file should be included
 int numroc_(int* n, int* nb, int* iproc, int* isrcproc, int* nprocs);
 
@@ -238,7 +236,6 @@ void pzhengst_(int* ibtype, const char* uplo, int* n,
                void* a, int* ia, int* ja, int* desca,
                void* b, int* ib, int* jb, int* descb,
                double* scale, void* work, int* lwork, int* info);
-// #endif // GPAW_WITH_INTEL_MKL
 
 #ifdef GPAW_WITH_INTEL_MKL
 void pzgeevx_ (const char *balanc, const char *jobvl,
