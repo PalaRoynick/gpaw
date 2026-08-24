@@ -1,5 +1,6 @@
 from functools import cached_property
 from math import pi
+from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha
@@ -296,18 +297,16 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         self.energytol = energytol
         self.maxiter = maxiter
 
-        self.eps0_R = None
-
         self.dipolelayer = dipolelayer
         self.zero_vacuum = zero_vacuum
         if zero_vacuum and not self.dipolelayer:
             raise NotImplementedError('zero_vacuum not available if '
                                       'dipolelayer is False.')
         # For caching the dipole-layer solve.
-        self._dipole_cache = {}
+        self._dipole_cache: dict[str, Any] = {}
 
         # For warm-starting the PCG solve with the previous solution.
-        self._warm_cache = {}
+        self._warm_cache: dict[str, Any] = {}
 
     def __str__(self) -> str:
         txt = ('conjugate gradient poisson solver:\n'
@@ -341,7 +340,8 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             b_G[0] = 0.
             Minv_g = 0.5 / self.ekin_g  # pre-conditioner
             x0 = None
-            if np.array_equal(self.eps0_R.data, self._warm_cache.get('eps')):
+            cached = self._warm_cache.get('eps')
+            if np.array_equal(self.eps0_R.data, cached):  # type: ignore
                 x0 = self._warm_cache['x0']
             if dipole_solve:
                 x0 = None
@@ -367,7 +367,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
 
         # Stash the results for next round's initial guess.
         if self.pw.comm.rank == 0 and not dipole_solve:
-            self._warm_cache['x0'] = vHt0_g.data.copy()
+            self._warm_cache['x0'] = vHt0_g.data.copy()  # type: ignore
             self._warm_cache['eps'] = self.eps0_R.data.copy()
 
         vHt_g.scatter_from(vHt0_g)
@@ -414,8 +414,9 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         # Check if a valid dipole layer solution is cached.
         matches_cache = False
         if self.grid.comm.rank == 0:
+            cached = self._dipole_cache.get('eps0')
             matches_cache = np.array_equal(self.eps0_R.data,
-                                           self._dipole_cache.get('eps0'))
+                                           cached)  # type: ignore
         matches_cache = broadcast_float(matches_cache, self.grid.comm)
 
         if matches_cache:
