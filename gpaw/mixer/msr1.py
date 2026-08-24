@@ -102,8 +102,11 @@ class MSR1Mixer(BaseMixer):
              density: Density) -> float:
         # Step 1: Initialize
         nold = self.nt_hsX.nold
+        taut_sR = density.taut_sR
         if nold == 0:
             self.nt_hsX.add(nt_sX, D_asii)
+            if taut_sR is not None:
+                self.taut_hsR.add(taut_sR)
             self.add_compensation_charge(nt_sX, D_asii, density,
                                          out=self.ntc_hsX.next(),
                                          add_delta0=True)
@@ -111,6 +114,9 @@ class MSR1Mixer(BaseMixer):
 
         _R_sX, _R_asii = self.R_hsX.next()
         self.calculate_residual(nt_sX, self.nt_hsX[-1][0], _R_sX)
+        if taut_sR is not None:
+            self.Rtaut_hsR.next().data[:] = (
+                taut_sR.data - self.taut_hsR[-1].data)
         self.calculate_paw_residual(D_asii.data, self.nt_hsX[-1][1], _R_asii)
 
         self.add_compensation_charge(_R_sX, _R_asii, density,
@@ -261,8 +267,7 @@ class MSR1Mixer(BaseMixer):
 
             def errfct(lamb):
                 beta_h = self.xp.linalg.solve(
-                    A_hh + lamb * self.xp.eye(nold - 1), BR_h
-                )
+                    A_hh + lamb * self.xp.eye(nold - 1), BR_h)
                 rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
                 return rtnval if self.xp is np else rtnval.get()
 
@@ -273,8 +278,7 @@ class MSR1Mixer(BaseMixer):
                 root = 5e1
 
             beta_h = self.xp.linalg.solve(
-                A_hh + root * self.xp.eye(nold - 1), BR_h
-            )
+                A_hh + root * self.xp.eye(nold - 1), BR_h)
             scale_factor = self.trust_radius / predicted_radius
             A *= scale_factor
         else:
@@ -294,22 +298,32 @@ class MSR1Mixer(BaseMixer):
         nt_sX.data[:] += self.R_hsX[-1][0].data * A
         D_asii.data[:] = self.nt_hsX[-1][1]
         D_asii.data[:] += self.R_hsX[-1][1] * A
+        if taut_sR is not None:
+            taut_sR.data[:] = self.taut_hsR[-1].data
+            taut_sR.data += self.Rtaut_hsR[-1].data * A
 
         beta_h *= t_norm
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
+        for h, beta in enumerate(beta_h):
             nt_sX.data += B * beta * (
                 self.nt_hsX[h][0].data - self.nt_hsX[-1][0].data)
             D_asii.data += B * beta * (self.nt_hsX[h][1] - self.nt_hsX[-1][1])
             nt_sX.data += A * beta * (
                 self.R_hsX[h][0].data - self.R_hsX[-1][0].data)
             D_asii.data += A * beta * (self.R_hsX[h][1] - self.R_hsX[-1][1])
+            if taut_sR is not None:
+                taut_sR.data += B * beta * (
+                    self.taut_hsR[h].data - self.taut_hsR[-1].data)
+                taut_sR.data += A * beta * (
+                    self.Rtaut_hsR[h].data - self.Rtaut_hsR[-1].data)
 
         # Step 10: Update density history
         if increased_error > self.hard_lim:
             for hist in self.histories:
                 hist.delete_oldest()
         self.nt_hsX.add(nt_sX, D_asii)
+        if taut_sR is not None:
+            self.taut_hsR.add(taut_sR)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
                                      add_delta0=True)

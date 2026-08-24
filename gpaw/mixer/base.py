@@ -59,6 +59,7 @@ class BaseMixer:
                                                            relpos_ac,
                                                            atomdist,
                                                            xp=np)
+        self.taut_hsR = None
         # XXX: np -> xp once the GPU LFC kernels work
         self._initialize_history_()
 
@@ -71,6 +72,19 @@ class BaseMixer:
         self.histories = [self.density_history, ]
 
     def mix(self, density: Density) -> float:
+        if self.taut_hsR is None and density.taut_sR is not None:
+            self.taut_hsR = DensityHistory(
+                nmaxold=self.nmaxold,
+                ncomponents=self.ncomponents,
+                desc=self.desc,
+                xp=self.xp)
+            self.Rtaut_hsR = DensityHistory(
+                nmaxold=self.nmaxold,
+                ncomponents=self.ncomponents,
+                desc=self.desc,
+                xp=self.xp)
+            self.histories.append(self.taut_hsR, self.Rtaut_hsR)
+
         nt_sX = density.nt_sR
         D_asii = density.D_asii
 
