@@ -693,7 +693,7 @@ for the SCF cycle.
 The default value is this dictionary::
 
   {'energy': 0.0005,  # eV / electron
-   'density': 1.0e-4,  # electrons / electron
+   'density': 1.0e-6,  # electrons / electron
    'eigenstates': 4.0e-8,  # eV^2 / electron
    'bands': 'occupied'}
 
@@ -703,7 +703,7 @@ In words:
   per valence electron. (See :class:`~gpaw.convergence_criteria.Energy`.)
 
 * The change in density (integrated absolute value of density change)
-  should be less than 0.0001 electrons per valence electron. (See
+  should be less than `10^-6` electrons per valence electron. (See
   :class:`~gpaw.convergence_criteria.Density`.)
 
 * The integrated value of the square of the residuals of the Kohn-Sham
