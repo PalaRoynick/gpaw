@@ -30,7 +30,14 @@ Here is some information to help you build the :class:`ase:ase.Atoms` object:
 * GaAs crystallizes in the zincblende structure with lattice constant `a=5.65` Å
 * Monolayer BN centered in a hexagonal unit cell with `a=2.5` Å (and `7` Å of vacuum at each side to prevent it from interacting with its periodic copies) and a basis of `(0,0)` and `(0, a / \sqrt{3})`
 
-The first thing you should do is to create an :class:`ase:ase.Atoms` object (click the link to see ways to build atoms objects). In order to do so, you might find it useful to use one of the crystal structures included in :func:`ase.build.bulk` (hint: if you have an element of the IV group you might be interested to follow this link :func:`ase:ase.build.bulk`) or you might have to create a list/array for the atomic positions and another one for the unit cell and then create an atoms object (hint: see above).
+The first thing you should do is to create an :class:`ase:ase.Atoms`
+object (click the link to see ways to build atoms objects). In order to
+do so, you might find it useful to use one of the crystal structures
+included in :func:`ase.build.bulk` (hint: if you have an element of the
+IV group you might be interested to follow this link
+:func:`ase:ase.build.bulk`) or you might have to create a list/array for
+the atomic positions and another one for the unit cell and then create an
+atoms object (hint: see above).  See also :ref:`intro_ase_atoms`.
 
 
 .. literalinclude:: solution1.py
@@ -40,7 +47,7 @@ The first thing you should do is to create an :class:`ase:ase.Atoms` object (cli
 
 .. code-block:: python
 
-	Si = ...
+	Si = bulk('Si', 'diamond', a=5.4)
 	Ge = ...
 	C = ...
 	CdTe = ...
@@ -74,7 +81,7 @@ These links might be helpful for you:
    :end-before: # snippet-calculator-end
 
 
-We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer. The ``fmax`` parameter defines the convergence criterion for the optimization. The optimization stops when the magnitude of the force of all individual atoms is below ``fmax``.  A smaller value gives a more tightly relaxed structure, but requires more optimization steps. Try ``fmax = 0.1``, ``0.05`` and ``0.01`` eV/Å. What do you observe? 
+We are going to relax the atomic positions and the unit cell at the same time. To do so, we are going to use the :class:`ase:ase.filters.UnitCellFilter` and the :class:`ase:ase.optimize.BFGS` (or QuasiNewton) optimizer. The ``fmax`` parameter defines the convergence criterion for the optimization. The optimization stops when the magnitude of the force of all individual atoms is below ``fmax``.  A smaller value gives a more tightly relaxed structure, but requires more optimization steps. Try ``fmax = 0.1``, ``0.05`` and ``0.01`` eV/Å. What do you observe?
 
 .. literalinclude:: solution1.py
    :start-after: # snippet-opt-start-student

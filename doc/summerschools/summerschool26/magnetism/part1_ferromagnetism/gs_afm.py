@@ -9,7 +9,9 @@ Nk = 4
 calc = GPAW(
     mode=PW(400),
     xc='PBE',
-    kpts=(Nk, Nk, 1))
+    kpts=(Nk, Nk, 1),
+    txt='CrI3_afm.txt')
 a.calc = calc
+
 a.get_potential_energy()
 calc.write('CrI3_afm.gpw')

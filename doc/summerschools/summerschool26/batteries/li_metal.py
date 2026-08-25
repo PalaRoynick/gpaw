@@ -9,7 +9,6 @@ calc = GPAW(mode=PW(500),
             kpts=(8, 8, 8),
             occupations=FermiDirac(0.15),
             nbands=-10,
-            txt=None,
             xc='BEEF-vdW')
 
 li_metal.calc = calc

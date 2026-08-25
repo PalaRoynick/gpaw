@@ -3,7 +3,7 @@
 Convergence checks
 ==================
 
-In this notebook we look at the adsorption energy and height of a nitrogen
+Here, we look at the adsorption energy and height of a nitrogen
 atom on a Ru(0001) surface in the hcp site.  We check for convergence with
 respect to:
 

@@ -97,13 +97,13 @@ Then you can package and compile the new potential::
 
 This should produce a new file ``NequIP-OAM-S_finetuned_cpu.nequip.pt2`` that can be used in your scripts.
 
-Testing if finetuning helped
-============================
+Testing if fine-tuning helped
+=============================
 
 To test you need to produce a *test set* of configurations that have not been used during training.  For example, run the same script you produced to generate the training data, but with a slightly different position and/or energy of the projectile atom.  Select a number of frames, calculate their energies with DFT.  Then load those frames one at a time and recalculate the energies with both the old and the new MLIP, and compare.
 
-Experimenting with finetuning
-=============================
+Experimenting with fine-tuning
+==============================
 
 *If you feel inclined, you can experiment with the fine tuning hyperparameters*
 
@@ -115,7 +115,7 @@ is still the main limiting factor, but there are a
 few parameters that can be adjusted to squeeze
 a little more performance out of the available data.
 
-**Data set size:**  You can run one or two MD trajectories with the finetuned model, calculated DFT energies for selected frames, and add to the training set.
+**Data set size:**  You can run one or two MD trajectories with the fine-tuned model, calculated DFT energies for selected frames, and add to the training set.
 
 **Train/Validation/Test split:**
 The dataset is divided into three parts. The training
