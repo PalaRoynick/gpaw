@@ -803,19 +803,19 @@ nightly-mpi-8-group-2-2:
     - .nightly
 
 
-nightly-mpi4py-4-group-1-2:
+nightly-gpawmpi-4-group-1-2:
   extends:
     - .nightly
   variables:
-    GPAW_MPI_BACKEND: "mpi4py"
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
-nightly-mpi4py-4-group-2-2:
+nightly-gpawmpi-4-group-2-2:
   extends:
     - .nightly
   variables:
-    GPAW_MPI_BACKEND: "mpi4py"
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
@@ -831,8 +831,8 @@ coverage-combine:
     - nightly-mpi-4-group-2-2
     - nightly-mpi-8-group-1-2
     - nightly-mpi-8-group-2-2
-    - nightly-mpi4py-4-group-1-2
-    - nightly-mpi4py-4-group-2-2
+    - nightly-gpawmpi-4-group-1-2
+    - nightly-gpawmpi-4-group-2-2
   tags:
     - xeon40
   script:
