@@ -171,6 +171,8 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
+        self.distribute_density = params.parallel.get('distribute_density',
+                                                      False)
         self.grid, self.fine_grid = self.create_uniform_grids()
 
         self.xc = create_functional(xcfunc, self.fine_grid, self.xp)

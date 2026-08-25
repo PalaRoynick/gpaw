@@ -775,7 +775,9 @@ class XC(Parameter):
 KptsType = Union[Sequence[int], dict, Sequence[Sequence[float]]]
 
 PARALLEL_KEYS = {
-    'kpt', 'domain', 'band', 'order', 'stridebands', 'augment_grids',
+    'kpt', 'domain', 'band',
+    'distribute_density',
+    'order', 'stridebands', 'augment_grids',
     'sl_auto', 'sl_default', 'sl_diagonalize', 'sl_inverse_cholesky',
     'sl_lcao', 'sl_lrtddft', 'use_elpa', 'elpasolver', 'buffer_size', 'gpu'}
 
