@@ -4,11 +4,16 @@ from gpaw.cli.main import main
 # Set MPI backend to 'cgpaw' by default if executing
 # `gpaw` or `python -m gpaw`
 if gpaw.GPAW_MPI_BACKEND is None:
-    import gpaw.cgpaw as cgpaw
-    if cgpaw.have_mpi:
-        gpaw.GPAW_MPI_BACKEND = "cgpaw"
-    else:
-        gpaw.GPAW_MPI_BACKEND = "serial"
+    try:
+        import mpi4py  # noqa
+        gpaw.GPAW_MPI_BACKEND = "mpi4py"
+    except ImportError:
+        import gpaw.cgpaw as cgpaw
+
+        if cgpaw.have_mpi:
+            gpaw.GPAW_MPI_BACKEND = "cgpaw"
+        else:
+            gpaw.GPAW_MPI_BACKEND = "serial"
 
     # Logic for keeping deprecated -P/--parallel working
     # TODO: remove this when the -P option is removed

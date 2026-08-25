@@ -33,7 +33,7 @@ def test_displacements(in_tmp_dir, comm):
 
     elph = DisplacementRunner(atoms=atoms, calc=atoms.calc,
                               supercell=(1, 1, 1), name='elph',
-                              calculate_forces=False)
+                              calculate_forces=False, comm=comm)
     elph.indices = []
     elph.run()
     del elph
