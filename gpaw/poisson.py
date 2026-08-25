@@ -482,11 +482,25 @@ class FDPoissonSolver(BasePoissonSolver):
 
         niter = 1
         maxiter = self.maxiter
-        while self.iterate2(self.step) > eps and niter < maxiter:
+        current_eps = 1
+        previous_eps = 1
+        while current_eps > eps and niter < maxiter:
+            current_eps = self.iterate2(self.step)
+            if abs(previous_eps / current_eps - 1) < 1e-7:
+                warnings.warn(f'Convergence has stalled at iteration {niter}'
+                              f' with eps={current_eps:e}. Stopping.')
+                break
+            previous_eps = current_eps
             niter += 1
+
         if niter == maxiter:
             msg = 'Poisson solver did not converge in %d iterations!' % maxiter
-            raise PoissonConvergenceError(msg)
+            if current_eps > 100 * eps:
+                raise PoissonConvergenceError(msg + ' (final accuracy %e)'
+                                              % current_eps)
+            else:
+                msg += ' (but reached acceptable accuracy %e)' % current_eps
+                warnings.warn(msg)
 
         # Set the average potential to zero in periodic systems
         if (self.gd.pbc_c).all():
@@ -533,7 +547,8 @@ class FDPoissonSolver(BasePoissonSolver):
 
             # How about this instead:
             # error = self.gd.comm.max(abs(residual).max())
-
+            # from ase.parallel import parprint
+            # parprint('Poisson iteration %d: error = %e' % (self.step, error))
             return error
 
     def estimate_memory(self, mem):

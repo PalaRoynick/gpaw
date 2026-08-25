@@ -249,6 +249,143 @@ class DipoleLayerPWPoissonSolver(PoissonSolver):
         return result_g
 
 
+class FDPWsolver(PWPoissonSolver):
+    """Poisson solver using the multigrid real space solver for planewave
+    mode. This solver is mainly intended for solvation calculations. It also
+    contains a dipole layer correction for slab calculations.
+
+    Parameters
+    ----------
+    real_space_solver : RealSpacePoissonSolver object
+        Real space Poisson solver to be used.
+        default is WeightedFDPoissonSolver.
+    dipolelayer : bool
+        Whether to apply dipole layer correction for slab calculations.
+    dipcorr_style : str
+        Style of dipole layer correction. 'old' or 'new'. 'new' is the
+        recommended one. 'old' is the one used in previous versions of GPAW.
+    zero_vacuum : bool
+        Whether to set the vacuum region potential to zero.
+    -----------
+    """
+
+    def __init__(self,
+                 pw: PWDesc,
+                 grid: UGDesc,
+                 dielectric: object,
+                 charge: float = 0.0,
+                 strength: float = 1.0,
+                 eps: float = 1e-10,
+                 maxiter: float = 1000,
+                 real_space_solver=None,
+                 dipolelayer: bool = True,
+                 backwards_compatible: bool = False,
+                 zero_vacuum: bool = True):
+
+        super().__init__(pw, charge, strength)
+        self.dielectric = dielectric
+        self.grid = grid
+        if real_space_solver is None:
+            from gpaw.solvation.poisson import WeightedFDPoissonSolver
+            # Convergence is thougher with the default parameters
+            # TODO: investigate why
+            real_space_solver = WeightedFDPoissonSolver(eps=eps,
+                                                        maxiter=maxiter,
+                                                        relax='J',
+                                                        nn=4)
+        real_space_solver.set_dielectric(self.dielectric)
+        real_space_solver.set_grid_descriptor(self.grid._gd)
+        self.real_space_solver = real_space_solver
+
+        if dipolelayer:
+            from gpaw.new.sjm import SJMPoissonSolver
+            self.real_space_solver = \
+                SJMPoissonSolver(real_space_solver,
+                                 self.dielectric,
+                                 dipolelayer,
+                                 True,
+                                 backwards_compatible)
+
+        self.pw0 = pw.new(comm=None)
+        self.pwg0 = self.pw0
+        self.grid0 = grid.new(comm=None)
+        self.dipolelayer = dipolelayer
+        self.backwards_compatible = backwards_compatible
+        self.correction = np.nan
+
+        if pw.comm.rank == 0:
+            self.ekin_g = self.pw0.ekin_G.copy()
+            self.ekin_g[0] = 1.0
+
+        self.eps = eps
+        self.maxiter = maxiter
+
+        self.eps0_R = None
+        self.drho_g = None
+
+        self.zero_vacuum = zero_vacuum
+        if zero_vacuum:
+            self.drho_g = dipole_layer(grid).fft(pw=pw)
+
+    def get_description(self):
+        return 'FD Poisson Solver for PW mode'
+
+    def __str__(self) -> str:
+        txt = ('fd poissonsolver for pw mode:\n'
+               f'  ecut: {self.pw.ecut * Ha}  # eV\n'
+               f'  eps: {self.eps}\n'
+               f'  real space solver: {self.real_space_solver}\n'
+               f'  maxiter: {self.maxiter}\n')
+
+        if self.strength != 1.0:
+            txt += f'  strength: {self.strength}\n'
+        if self.charge != 0.0:
+            txt += f'  uniform background charge: {self.charge}  # electrons\n'
+        return txt
+
+    def dipole_layer_correction(self) -> float:
+        if self.dipolelayer:
+            return self.correction
+        return np.nan
+
+    def _solve(self,
+               vHt_g,
+               rhot_g) -> float:
+        rhot_r = self.grid.new(comm=self.grid.comm).empty()
+        vHt_r = self.grid.new(comm=self.grid.comm).empty()
+        rhot0_r, vHt0_r = None, None
+
+        vHt0_g = vHt_g.gather()
+        rhot0_g = rhot_g.gather()
+
+        if rhot0_g is not None:
+            rhot0_r = rhot0_g.ifft(grid=self.grid.new(comm=None))
+            vHt0_r = vHt0_g.ifft(grid=self.grid.new(comm=None))
+
+        rhot_r.scatter_from(rhot0_r)
+        vHt_r.scatter_from(vHt0_r)
+
+        if self.dipolelayer:
+            self.correction = self.real_space_solver.solve(vHt_r, rhot_r)
+        else:
+            self.real_space_solver.solve(vHt_r.data, rhot_r.data)
+
+        vHt0_r = vHt_r.gather()
+        rhot0_r = rhot_r.gather()
+
+        if vHt0_r is not None:
+            if self.zero_vacuum:
+                vHt0_r.data -= vHt0_r.data.mean(axis=(0, 1))[-1]
+            vHt0_g = vHt0_r.fft(pw=self.pw.new(comm=None))
+            rhot0_g = rhot0_r.fft(pw=self.pw.new(comm=None))
+
+        rhot_g.scatter_from(rhot0_g)
+        vHt_g.scatter_from(vHt0_g)
+
+        epot = 0.5 * vHt_g.integrate(rhot_g)
+        return epot
+
+
 class ConjugateGradientPoissonSolver(PWPoissonSolver):
     """Poisson solver using conjugate gradient method in reciprocal space.
     """
@@ -326,6 +463,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         """
         pw = self.pw0
         grid = self.grid0
+
         G_vG = pw.G_plus_k_Gv.T
 
         ophi_G = np.zeros_like(phi_G)
@@ -341,6 +479,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
                vHt_g,
                rhot_g) -> float:
         vHt_g.data[:] = 4 * np.pi * self.strength * rhot_g.data
+
         eps_R = self.grid.from_data(self.dielectric.eps_gradeps[0])
         self.eps0_R = eps_R.gather()
 
@@ -353,9 +492,12 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             op = LinearOperator((N, N),
                                 matvec=self.operator,
                                 dtype=complex)
+
+            # M is the preconditioner to help convergence
             M = LinearOperator((N, N),
                                matvec=lambda x: 0.5 * x / self.ekin_g,
                                dtype=complex)
+
             vHt0_g.data[:], info = cg(
                 op, vHt0_g.data, maxiter=self.maxiter, M=M, **{RTOL: self.eps})
             if info != 0:
@@ -378,12 +520,12 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         return epot
 
     def correct_slope(self, vHt_g: PWArray):
-        from gpaw.new.sjm import modified_saw_tooth
+        from gpaw.new.sjm import pw_modified_saw_tooth
         eps_r = self.grid.from_data(self.dielectric.eps_gradeps[0])
         eps0_r = eps_r.gather()
         vHt0_g = vHt_g.gather()
         if eps0_r is not None:
-            saw_tooth_z = modified_saw_tooth(eps0_r)
+            saw_tooth_z = pw_modified_saw_tooth(eps0_r)
             vHt0_r = vHt0_g.ifft(grid=self.grid.new(comm=None))
             s1, s2 = saw_tooth_z[[2, 10]]
             v1, v2 = vHt0_r.data[:, :, [2, 10]].mean(axis=(0, 1))
