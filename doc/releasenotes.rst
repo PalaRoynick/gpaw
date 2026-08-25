@@ -10,6 +10,11 @@ Git master branch
 
 :git:`master <>`.
 
+* The default value for density convergence has been change from
+  ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
+  This will lead to a few more steps in the SCF loop, but also more
+  accurate forces, stress tensors and magnetic moments.
+
 
 Version 26.7.0
 ==============
