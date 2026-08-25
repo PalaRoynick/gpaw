@@ -16,8 +16,7 @@ PARAMS = dict(
     xc='PBE',
     mode={'name': 'pw', 'ecut': 800},
     kpts={'density': 5.0},
-    setups={'Cr': '14'},
-    convergence={'density': 1e-4})
+    setups={'Cr': '14'})
 
 
 # Reference numbers:
@@ -195,6 +194,7 @@ def work(name: str,
 
     atoms.calc = GPAW(
         txt=f'{name}.txt',
+        convergence={'density': 1e-4},  # keep old default for now ...
         communicator=world,
         **params)
 
