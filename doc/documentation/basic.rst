@@ -234,6 +234,13 @@ Plane-waves:
         from gpaw import GPAW, PW
         calc = GPAW(mode=PW(200))
 
+    Additionally, in GPU mode, the plane-wave mode support mixed precision
+    arithmetic. Specifically, one can on relevant hardware accelerate a calculation
+    by setting::
+
+        calc = GPAW(mode={'name': 'pw', 'dtype': 'single')
+
+
 LCAO:
     Expand the wave functions in a basis-set constructed
     from atomic-like orbitals, in short LCAO (linear combination of atomic
@@ -766,31 +773,18 @@ Density mixing
 
 The mixer can be specified as a dict, e.g.::
 
-    mixer={'backend': 'pulay'}
+    mixer={'name': 'pulay'}
 
-which happenns to be the default option. A powerful alternative is the
-msr1 mixer::
+The different mixers available are:
 
-    mixer={'backend': 'msr1', 'beta': 0.05, 'nmaxold': 10}
+* ``msr1``: MSR1 mixing (default and in most cases the best).
+* ``pulay``: Pulay mixing (simple and fast).
+* ``no-mixing``: No-mixing (sometimes useful).
+* ``multi``: Multi-mixing scheme (Allows for utilizing multiple
+  of the above for different parts of the density).
 
-The parameters which determine how GPAW does mixing of the densities are:
-
-* ``method``: the spin mixing method to use. Options are ``fullspin``,
-  ``difference``, ``sum``, and ``separate``. Default is ``fullspin``.
-* ``backend``: the mixing algorithm to use. Options are ``pulay``,
-  ``msr1``, and ``no-mixing`` (not for scf-calculations).
-  Default: ``pulay``.
-* ``beta``: linear mixing coefficient. Default: ``0.08`` for periodic
-  systems and ``0.25`` for non-periodic systems.
-* ``nmaxold``: number of old densities to mix, default is ``16``.
-* ``weight``: when measuring the change from input to output density,
-  long wavelength changes are weighted ``weight`` times higher than
-  short wavelength changes. Default is ``70`` for periodic systems and
-  ``1`` for non-periodic systems.
-
-The mixer can also be specified as an object, with the ``beta``,
-``nmaxold``, and ``weight`` keyword arguments. See also the documentation
-on :ref:`density mixing <densitymix>`.
+See the :ref:`density mixing <densitymix>` section for additional information, as well as
+parameters for advanced tuning.
 
 .. _manual_fixdensity:
 

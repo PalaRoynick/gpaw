@@ -120,10 +120,20 @@ GPAW also supports other mixer backends, prevalent among these is the
 new MSR1 mixer [#MSR1]_ which promises faster and more stable convergence
 in most cases. When using this mixer we recommend the settings::
 
-    mixer = {'backend': 'msr1',
-             'beta': 0.05,
-             'nmaxold': 10}
+The default parameters used in GPAW are::
 
+    mixer = {'name': 'msr1',  # The choice of mixer
+             'beta': 0.05,  # Size of the Pratt step
+             'nmaxold': 10,  # Number of previous steps used in mixing
+             'reg': 0.005,  # Regularization (i.e. damping of the SVD inversion)
+             'gb_scale': 1.0,  # Scaling of the amount of good-broyden used.
+             'max_A': 0.75,  # Largest relative step taken along the residual.
+             'trust_scale': 1.0,  # Scaling of the trust region radius.
+             'soft_lim': 4.0,  # Error threshold for backstepping.
+             'hard_lim': 6.0,  # Error threshold for history removal.
+             'weight': 20,  # Scaling of the residual metric.
+             'sigma': 0.015,  # Width of the residual metric
+             'g_ss': None}  # Experimental spin metric.
 
 Specifying a Mixing Scheme in GPAW
 ----------------------------------
