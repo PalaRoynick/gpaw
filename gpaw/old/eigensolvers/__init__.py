@@ -25,6 +25,10 @@ def get_eigensolver(eigensolver, mode, convergence=None):
         if name == 'etdm':
             # Compatibility with old versions
             name = 'etdm-lcao'
+        elif name == 'ppcg':
+            # NewGPAW read as old
+            name = "davidson"
+            eigensolver = {'niter': eigensolver['niter']}
         eigensolver = {'rmm-diis': RMMDIIS,
                        'cg': CG,
                        'dav': Davidson,

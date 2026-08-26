@@ -1021,6 +1021,7 @@ def Mix_LDA_FA(density: Density, xc_DFT: str = 'LDA_X+LDA_C_PW',
 
     # Atomic
     if nxc.paw_potmode in [PAWPotMode.none, PAWPotMode.direct]:
+        # for the direct mode the atomic corrections are going to be LDA only
         return nxc
 
     D_asp = density.atomdist.to_work(density.D_asp)

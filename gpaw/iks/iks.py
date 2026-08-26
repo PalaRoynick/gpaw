@@ -14,7 +14,11 @@ from gpaw.utilities import pack_hermitian
 from gpaw.mpi import broadcast_string
 from gpaw.new.backwards_compatibility import FakeDensity
 
-from gpaw.xc.numericalxc import Mix_LDA_FA, NumericalXC, PAWPotMode, lebedev2angular, angular2lebedev
+from gpaw.xc.numericalxc import (
+    Mix_LDA_FA, FermiAmaldi,
+    NumericalXC, PAWPotMode,
+    lebedev2angular, angular2lebedev
+)
 from gpaw.iks import tools as iks_tools
 from gpaw.iks import optimize as iks_optimize
 from gpaw.iks.minres import iKSLinearSolver
@@ -360,10 +364,16 @@ class iKS:
     def init_xc(self) -> None:
         xc = self.hamiltonian.xc
         if not isinstance(xc, NumericalXC):
+            name = self.nxc_kwargs.pop("name", "Mix_LDA_FA")
             self.nxc_kwargs.setdefault("paw_potmode", "lebedev")
             self.nxc_kwargs.setdefault("setup_name", xc.get_setup_name())
             self.nxc_kwargs.setdefault("stencil", 3)
-            xc = Mix_LDA_FA(self.tdens, **self.nxc_kwargs)
+            if name == "Mix_LDA_FA":
+                xc = Mix_LDA_FA(self.tdens, **self.nxc_kwargs)
+            elif name == "FermiAmaldi":
+                xc = FermiAmaldi(self.tdens, **self.nxc_kwargs)
+            else:
+                xc = NumericalXC.from_other_xc(name, self.tdens, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
