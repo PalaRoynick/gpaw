@@ -8,8 +8,6 @@ from ase.units import Bohr
 from gpaw.core import PWArray, PWDesc, UGDesc
 from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
 
-nn = 3
-accuracy = 2e-10
 BOX = 12.0
 
 
@@ -337,3 +335,55 @@ def test_cg_poisson_solver_variable_dielectric(density_generator):
     expected *= 4 * np.pi
 
     assert np.allclose(phi_operator, expected, atol=1e-3)
+
+
+def test_cg_poisson_solver_tail_subtraction():
+    """Regression test for the ``dipolelayer`` tail-subtraction fix. Asserts
+    that the slope actually is zero in the vacuum region. Note this test
+    requires an asymmetric charge distribution."""
+    width = 3.0  # bohr,  x & y cell width
+    length = 20.0  # bohr, cell height
+    grid = UGDesc.from_cell_and_grid_spacing(cell=[width, width, length],
+                                             grid_spacing=0.3)
+    zgrid = grid.xyz()[0, 0, :, 2]
+
+    # Test charge is a gaussian derivative.
+    charge_center = 5.0  # bohr
+    charge_alpha = 1.0  # bohr^-2  [1/width^2]
+    rhot = (0.05 * (zgrid - charge_center) *
+            np.exp(-charge_alpha * (zgrid - charge_center)**2))
+
+    # Dielectric is a peaked gaussian.
+    dielectric_center = 13.0  # bohr
+    dielectric_width = 1.0  # bohr
+    eps_z = (1.0 + 79.0 *
+             np.exp(-((zgrid - dielectric_center) / dielectric_width)**2))
+
+    rhot_r = grid.zeros()
+    rhot_r.data[:] = rhot
+    eps_r = grid.zeros()
+    eps_r.data[:] = eps_z
+
+    class MockDielectric:
+        """The CG solver just needs `self.eps_gradeps[0]` from the
+        `Dielectric` object."""
+        def __init__(self, eps_r):
+            self.eps_gradeps = [eps_r.data]
+
+    pw = PWDesc(ecut=grid.ekin_max(), cell=grid.cell)
+    rhot_g = rhot_r.fft(pw=pw)
+
+    solver = ConjugateGradientPoissonSolver(
+        pw, grid, MockDielectric(eps_r),
+        rtol=1e-8, maxiter=500, dipolelayer=True, zero_vacuum=True)
+    vHt_g = PWArray(pw=pw)
+    solver.solve(vHt_g, rhot_g)
+
+    profile_z = vHt_g.ifft(grid=grid).data.mean(axis=(0, 1))
+    # Calculate slope between ~16 and ~19 bohr, deep in the vacuum.
+    index1 = np.argmin(np.abs(zgrid - 16.0))
+    index2 = np.argmin(np.abs(zgrid - 19.0))
+    slope = ((profile_z[index2] - profile_z[index1]) /
+             (zgrid[index2] - zgrid[index1]))
+
+    assert slope == pytest.approx(0.0, abs=1e-6)
