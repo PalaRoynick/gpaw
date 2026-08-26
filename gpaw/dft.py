@@ -971,7 +971,11 @@ class Parameters:
                 value = value[None]
         return value
 
-    def dft_component_builder(self, atoms, *, comm=None, log=None):
+    def dft_component_builder(self,
+                              atoms,
+                              *,
+                              comm=None,
+                              log=None) -> Builder:
         return self.mode.dft_components_builder(
             atoms, self, comm=comm, log=log)
 
@@ -996,14 +1000,21 @@ class Parameters:
         scf_loop = builder.create_scf_loop()
 
         pot_calc = builder.create_potential_calculator()
-
         density = builder.density_from_superposition(basis_set)
         if len(atoms) == 0:
             density.nt_sR.data[:] = 1.0
         density.normalize(pot_calc.charge)
 
         potential, energies, _ = pot_calc.calculate_without_orbitals(
-            density, kpt_band_comm=builder.communicators['D'])
+            density)
+        if builder.distribute_density:
+            from gpaw.mpi import serial_comm
+            print(builder.atomdist)
+            potential = potential.redist(builder.wf_grid,
+                                         None,
+                                         builder.wf_atomdist,
+                                         serial_comm,
+                                         builder.communicators['D'])
         ibzwfs = builder.create_ibz_wave_functions(
             basis_set, potential)
 

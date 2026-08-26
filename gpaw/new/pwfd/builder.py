@@ -56,7 +56,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 psit_nX=psit_nG,  # type: ignore
                 setups=self.setups,
                 relpos_ac=self.relpos_ac,
-                atomdist=self.atomdist,
+                atomdist=self.wf_atomdist,
                 domain_band_comm=domain_band_comm,
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
@@ -132,7 +132,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 weight=weight,
                 setups=self.setups,
                 relpos_ac=self.relpos_ac,
-                atomdist=self.atomdist,
+                atomdist=self.wf_atomdist,
                 domain_band_comm=self.communicators['K'],
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)

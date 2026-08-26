@@ -227,8 +227,20 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return e_band, e_entropy, e_entropy * occ_calc.extrapolate_factor
 
-    def add_to_density(self, nt_sR, D_asii) -> None:
+    def add_to_density(self,
+                       nt_sR: UGArray, D_asii) -> None:
         """Compute density and add to ``nt_sR`` and ``D_asii``."""
+        if nt_sR.desc.comm.size != self.domain_comm.size:
+            my_nt_sR = nt_sR.desc.zeros(comm=self.domain_comm)
+            my_D_asii = D_asii.new(comm=self.domain_comm)
+            my_D_asii.data[:] = 0.0
+            self.add_to_density(my_nt_sR, my_D_asii)
+            nt_sR.data += my_nt_sR.redist(
+                nt_sR.desc, self.kpt_band_comm, serial_comm).data
+            D_asii.data += my_D_asii.redist(
+                D_asii.atomdist, self.kpt_band_comm, serial_comm).data
+            return
+
         for wfs in self:
             wfs.add_to_density(nt_sR, D_asii)
 

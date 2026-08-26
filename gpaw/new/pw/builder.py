@@ -22,6 +22,7 @@ from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
 from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D
+from gpaw.core.atom_arrays import AtomDistribution
 
 
 class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
@@ -58,15 +59,20 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
-            comm=self.communicators['d'])
+            comm=self.communicators['w' if self.distribute_density else 'd'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
+        self.wf_grid = grid.new(comm=self.communicators['d'])
+        self.wf_atomdist = AtomDistribution(
+            self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
+            self.wf_grid.comm)
+
         return grid, fine_grid
 
     def create_wf_description(self) -> Domain:
         return PWDesc(ecut=self.ecut,
                       cell=self.grid.cell,
-                      comm=self.grid.comm,
+                      comm=self.communicators['d'],
                       dtype=self.dtype)
 
     def create_xc_functional(self):
@@ -173,7 +179,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_hamiltonian_operator(self, blocksize=10):
         if self.ncomponents < 4:
             if self.xc.exx_fraction == 0.0:
-                return PWHamiltonian(self.grid, self.dtype, self.xp)
+                return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
             return PWHybridHamiltonian(
                 self.grid, self.wf_desc, self.xc, self.setups,
                 self.relpos_ac, self.atomdist, self.log,

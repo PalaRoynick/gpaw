@@ -88,7 +88,6 @@ class PotentialCalculator:
                                    density,
                                    ibzwfs=None,
                                    vHt_x: XArray | None = None,
-                                   kpt_band_comm: MPIComm | None = None
                                    ) -> tuple[Potential,
                                               DFTEnergies,
                                               AtomArrays]:
@@ -97,7 +96,7 @@ class PotentialCalculator:
             from gpaw.new.xc import create_functional
             self.xc = create_functional('PBE', xc.grid)
         potential, energies, V_al = self.calculate(
-            density, ibzwfs, vHt_x, kpt_band_comm)
+            density, ibzwfs, vHt_x)
         if xc.exx_fraction != 0.0:
             self.xc = xc
         return potential, energies, V_al
@@ -107,7 +106,6 @@ class PotentialCalculator:
                   density,
                   ibzwfs=None,
                   vHt_x: XArray | None = None,
-                  kpt_band_comm: MPIComm | None = None
                   ) -> tuple[Potential, DFTEnergies, AtomArrays]:
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, vHt_x))
@@ -132,19 +130,13 @@ class PotentialCalculator:
 
         energies['kinetic_correction'] = e_kinetic
 
-        if kpt_band_comm is None:
-            if ibzwfs is None:
-                kpt_band_comm = serial_comm
-            else:
-                kpt_band_comm = ibzwfs.kpt_band_comm
         dH_asii, corrections = calculate_non_local_potential(
             self.setups,
             density,
             self.xc,
             V_aL,
             self.soc,
-            self.extensions,
-            kpt_band_comm)
+            self.extensions)
 
         for ext in self.extensions:
             dct = ext.get_energy_contributions()
@@ -158,7 +150,8 @@ class PotentialCalculator:
                 print(f'{key:10} {energies[key] * Ha:15.9f} {e * Ha:15.9f}')
             energies[key] += e
 
-        return (Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress),
+        potential = Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress)
+        return (potential,
                 DFTEnergies(**energies),
                 V_aL)
 
@@ -169,8 +162,7 @@ def calculate_non_local_potential(setups,
                                   xc,
                                   V_aL,
                                   soc: bool,
-                                  extensions,
-                                  kpt_band_comm: MPIComm
+                                  extensions
                                   ) -> tuple[AtomArrays,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
@@ -180,7 +172,7 @@ def calculate_non_local_potential(setups,
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
     rank = 0
     for a, D_sii in D_asii.items():
-        if rank % kpt_band_comm.size == kpt_band_comm.rank:
+        if 1:  #rank % kpt_band_comm.size == kpt_band_comm.rank:
             V_L = V_aL[a]
             setup = setups[a]
             dH_sii, corrections = calculate_non_local_potential1(
@@ -192,14 +184,14 @@ def calculate_non_local_potential(setups,
             dH_asii[a][:] = 0.0
         rank += 1
 
-    kpt_band_comm.sum(dH_asii.data)
+    #kpt_band_comm.sum(dH_asii.data)
 
     # Sum over domain:
     names = ['kinetic_correction', 'coulomb', 'zero', 'xc', 'external',
              'spinorbit']
     energies = np.array([energy_corrections[name] for name in names])
     density.D_asii.layout.atomdist.comm.sum(energies)
-    kpt_band_comm.sum(energies)
+    #kpt_band_comm.sum(energies)
 
     return (dH_asii.to_xp(density.D_asii.layout.xp),
             dict(zips(names, energies)))
