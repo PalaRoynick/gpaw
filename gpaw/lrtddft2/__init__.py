@@ -10,13 +10,17 @@ from ase.utils import IOContext
 
 # Matrix Kip,jq <ia|f_Hxc|jq>
 from gpaw.lrtddft2.k_matrix import Kmatrix
+
 # a list of KS determinants with single occ-uncc excitations
 from gpaw.lrtddft2.ks_singles import KohnShamSingles
+
 # communicators
 from gpaw.lrtddft2.lr_communicators import LrCommunicators
+
 # a linear combination of KS single determinants
 # for a CW laser with Lorentzian width (in energy)
 from gpaw.lrtddft2.lr_response import LrResponse
+
 # a set of linear combinations of KS single determinants
 from gpaw.lrtddft2.lr_transitions import LrtddftTransitions
 from gpaw.mpi import normalize_communicator
@@ -30,21 +34,23 @@ from gpaw.xc import XC
 class LrTDDFT2:
     """Linear response TDDFT (Casida) class with indexed K-matrix storage."""
 
-    def __init__(self,
-                 basefilename,
-                 gs_calc,
-                 fxc=None,
-                 min_occ=None,
-                 max_occ=None,
-                 min_unocc=None,
-                 max_unocc=None,
-                 max_energy_diff=None,
-                 recalculate=None,
-                 lr_communicators=None,
-                 txt='-',
-                 world=None,
-                 analytic_fxc=False,
-                 triplet=False):
+    def __init__(
+        self,
+        basefilename,
+        gs_calc,
+        fxc=None,
+        min_occ=None,
+        max_occ=None,
+        min_unocc=None,
+        max_unocc=None,
+        max_energy_diff=None,
+        recalculate=None,
+        lr_communicators=None,
+        txt="-",
+        world=None,
+        analytic_fxc=False,
+        triplet=False,
+    ):
         """Initialize linear response TDDFT without calculating anything.
 
         Note
@@ -153,19 +159,24 @@ class LrTDDFT2:
         # check that calc has enough states for max_energy_diff
         # (i.e., KS eigenvalue difference between HOMO and highest
         # state is below max_energy_diff)
-        if ((self.min_occ is None or self.min_unocc is None
-             or self.max_occ is None or self.max_unocc is None)
-            and self.max_energy_diff is not None):
+        if (
+            self.min_occ is None
+            or self.min_unocc is None
+            or self.max_occ is None
+            or self.max_unocc is None
+        ) and self.max_energy_diff is not None:
             n_homo = np.sum(kpt.f_n > self.min_pop_diff) - 1
             n_highest = nbands - 1  # XXX use highest converged state instead
             eps_n = kpt.eps_n
             eps_diff = eps_n[n_highest] - eps_n[n_homo]
             if eps_diff <= self.max_energy_diff:
-                msg = ('Error in LrTDDFT2: not enough states in '
-                       'the calculator for the requested max_energy_diff='
-                       f'{self.max_energy_diff * Hartree:.4f} eV. '
-                       f'Max eigenvalue difference from HOMO (n={n_homo}) is '
-                       f'{eps_diff * Hartree:.4f} eV.')
+                msg = (
+                    "Error in LrTDDFT2: not enough states in "
+                    "the calculator for the requested max_energy_diff="
+                    f"{self.max_energy_diff * Hartree:.4f} eV. "
+                    f"Max eigenvalue difference from HOMO (n={n_homo}) is "
+                    f"{eps_diff * Hartree:.4f} eV."
+                )
                 raise RuntimeError(msg)
 
         # If min/max_occ/unocc were not given, initialized them to include
@@ -186,14 +197,15 @@ class LrTDDFT2:
         self.min_unocc = max(self.min_unocc, 0)
 
         if self.max_occ >= nbands:
-            raise RuntimeError('Error in LrTDDFT2: max_occ >= nbands')
+            raise RuntimeError("Error in LrTDDFT2: max_occ >= nbands")
         if self.max_unocc >= nbands:
-            raise RuntimeError('Error in LrTDDFT2: max_unocc >= nbands')
+            raise RuntimeError("Error in LrTDDFT2: max_unocc >= nbands")
 
         # Only spin unpolarized calculations are supported atm
         # > FIXME
-        assert len(self.calc.wfs.kpt_u) == 1, \
-            'LrTDDFT2 does not support more than one k-point/spin.'
+        assert len(self.calc.wfs.kpt_u) == 1, (
+            "LrTDDFT2 does not support more than one k-point/spin."
+        )
         self.kpt_ind = 0
         # <
 
@@ -201,28 +213,38 @@ class LrTDDFT2:
 
         # list of singly excited Kohn-Sham Slater determinants
         # (ascending KS energy difference)
-        self.ks_singles = KohnShamSingles(self.basefilename, self.calc,
-                                          self.kpt_ind, self.min_occ,
-                                          self.max_occ, self.min_unocc,
-                                          self.max_unocc, self.max_energy_diff,
-                                          self.min_pop_diff, self.lr_comms,
-                                          self.txt)
+        self.ks_singles = KohnShamSingles(
+            self.basefilename,
+            self.calc,
+            self.kpt_ind,
+            self.min_occ,
+            self.max_occ,
+            self.min_unocc,
+            self.max_unocc,
+            self.max_energy_diff,
+            self.min_pop_diff,
+            self.lr_comms,
+            self.txt,
+        )
 
         # Response kernel matrix K = <ip|f_Hxc|jq>
         # Note: this is not the Casida matrix
-        self.K_matrix = Kmatrix(self.ks_singles, self.xc, self.deriv_scale,
-                                analytic_fxc=self.analytic_fxc,
-                                triplet=self.triplet)
+        self.K_matrix = Kmatrix(
+            self.ks_singles,
+            self.xc,
+            self.deriv_scale,
+            analytic_fxc=self.analytic_fxc,
+            triplet=self.triplet,
+        )
 
-        self.sl_lrtddft = self.calc.parallel['sl_lrtddft']
+        self.sl_lrtddft = self.calc.parallel["sl_lrtddft"]
 
         # LR-TDDFT transitions
         # This uses a different 'world' than the other parts of this class.
         # That may not be on purpose.
-        self.lr_transitions = LrtddftTransitions(self.ks_singles,
-                                                 self.K_matrix,
-                                                 self.sl_lrtddft,
-                                                 world=world)
+        self.lr_transitions = LrtddftTransitions(
+            self.ks_singles, self.K_matrix, self.sl_lrtddft, world=world
+        )
 
         # Response wavefunction
         self.lr_response_wf = None
@@ -232,7 +254,7 @@ class LrTDDFT2:
 
         # Timer
         self.timer = self.calc.timer
-        self.timer.start('LrTDDFT')
+        self.timer.start("LrTDDFT")
 
         # If a previous calculation exist, read info file
         # self.read(self.basefilename)
@@ -246,11 +268,9 @@ class LrTDDFT2:
         # self.K_matrix_scaling_factor = 1.0
         self.K_matrix_values_ready = False
 
-    def get_transitions(self,
-                        filename=None,
-                        min_energy=0.0,
-                        max_energy=30.0,
-                        units='eVcgs'):
+    def get_transitions(
+        self, filename=None, min_energy=0.0, max_energy=30.0, units="eVcgs"
+    ):
         """Get transitions: energy, dipole strength and rotatory strength.
 
         Returns transitions as (w,S,R, Sx,Sy,Sz) where
@@ -269,22 +289,23 @@ class LrTDDFT2:
         """
 
         self.calculate()
-        self.txt.write('Calculating transitions (%s).\n' %
-                       str(datetime.datetime.now()))
-        trans = self.lr_transitions.get_transitions(filename, min_energy,
-                                                    max_energy, units)
-        self.txt.write('Transitions calculated  (%s).\n' %
-                       str(datetime.datetime.now()))
+        self.txt.write("Calculating transitions (%s).\n" % str(datetime.datetime.now()))
+        trans = self.lr_transitions.get_transitions(
+            filename, min_energy, max_energy, units
+        )
+        self.txt.write("Transitions calculated  (%s).\n" % str(datetime.datetime.now()))
         return trans
 
     #################################################################
-    def get_spectrum(self,
-                     filename=None,
-                     min_energy=0.0,
-                     max_energy=30.0,
-                     energy_step=0.01,
-                     width=0.1,
-                     units='eVcgs'):
+    def get_spectrum(
+        self,
+        filename=None,
+        min_energy=0.0,
+        max_energy=30.0,
+        energy_step=0.01,
+        width=0.1,
+        units="eVcgs",
+    ):
         """Get spectrum for dipole and rotatory strength.
 
         Returns folded spectrum as (w,S,R) where w is an array of frequencies,
@@ -305,13 +326,11 @@ class LrTDDFT2:
           Units for spectrum: 'au' or 'eVcgs'
         """
         self.calculate()
-        self.txt.write('Calculating spectrum    (%s).\n' %
-                       str(datetime.datetime.now()))
-        spec = self.lr_transitions.get_spectrum(filename, min_energy,
-                                                max_energy, energy_step, width,
-                                                units)
-        self.txt.write('Spectrum calculated     (%s).\n' %
-                       str(datetime.datetime.now()))
+        self.txt.write("Calculating spectrum    (%s).\n" % str(datetime.datetime.now()))
+        spec = self.lr_transitions.get_spectrum(
+            filename, min_energy, max_energy, energy_step, width, units
+        )
+        self.txt.write("Spectrum calculated     (%s).\n" % str(datetime.datetime.now()))
         return spec
 
     #################################################################
@@ -332,14 +351,11 @@ class LrTDDFT2:
           index of transition starting from zero
         """
         self.calculate()
-        return self.lr_transitions.get_transition_contributions(
-            index_of_transition)
+        return self.lr_transitions.get_transition_contributions(index_of_transition)
 
-    def calculate_response(self,
-                           excitation_energy,
-                           excitation_direction,
-                           lorentzian_width,
-                           units='eVang'):
+    def calculate_response(
+        self, excitation_energy, excitation_direction, lorentzian_width, units="eVang"
+    ):
         """Calculates and returns response using TD-DFPT.
 
         Parameters
@@ -361,20 +377,21 @@ class LrTDDFT2:
         width_au = lorentzian_width
         # always unit field in au !!!
         direction_au = np.array(excitation_direction)
-        direction_au = direction_au / np.sqrt(
-            np.vdot(direction_au, direction_au))
+        direction_au = direction_au / np.sqrt(np.vdot(direction_au, direction_au))
 
-        if units == 'au':
+        if units == "au":
             pass
-        elif units == 'eVang':
+        elif units == "eVang":
             omega_au /= Hartree
             width_au /= Hartree
         else:
             raise RuntimeError(
-                'Error in calculate_response_wavefunction: Invalid units.')
+                "Error in calculate_response_wavefunction: Invalid units."
+            )
 
-        lr_response = LrResponse(self, omega_au, direction_au, width_au,
-                                 self.sl_lrtddft)
+        lr_response = LrResponse(
+            self, omega_au, direction_au, width_au, self.sl_lrtddft
+        )
         lr_response.solve()
 
         return lr_response
@@ -393,36 +410,42 @@ class LrTDDFT2:
                 mode = self.calc.wfs.mode
                 C_nM = self.calc.wfs.kpt_u[self.kpt_ind].C_nM
                 psit_nG = self.calc.wfs.kpt_u[self.kpt_ind].psit_nG
-                if ((mode == 'lcao' and C_nM is None)
-                        or (mode == 'fd' and psit_nG is None)):
-                    raise RuntimeError('Use ground state calculator ' +
-                                       'containing the wave functions.')
+                if (mode == "lcao" and C_nM is None) or (
+                    mode == "fd" and psit_nG is None
+                ):
+                    raise RuntimeError(
+                        "Use ground state calculator "
+                        + "containing the wave functions."
+                    )
 
                 if not self.calc.scf.converged:
                     # Do not allow new scf cycles, it could change
                     # the wave function signs after every restart.
-                    raise RuntimeError('Converge wave functions first.')
+                    raise RuntimeError("Converge wave functions first.")
 
                 spos_ac = self.calc.initialize_positions()
                 self.calc.wfs.calculate_occupation_numbers()
-                self.calc.wfs.initialize(self.calc.density,
-                                         self.calc.hamiltonian, spos_ac)
-                self.xc.initialize(self.calc.density, self.calc.hamiltonian,
-                                   self.calc.wfs)
-                if mode == 'lcao':
+                self.calc.wfs.initialize(
+                    self.calc.density, self.calc.hamiltonian, spos_ac
+                )
+                self.xc.initialize(
+                    self.calc.density, self.calc.hamiltonian, self.calc.wfs
+                )
+                if mode == "lcao":
                     self.calc.wfs.initialize_wave_functions_from_lcao()
                 self.calc_ready = True
 
         # Singles logic
-        if self.recalculate == 'all' or self.recalculate == 'matrix':
+        if self.recalculate == "all" or self.recalculate == "matrix":
             self.ks_singles.update_list()
             self.ks_singles.calculate()
-        elif self.recalculate == 'eigen':
+        elif self.recalculate == "eigen":
             self.ks_singles.read()
             self.ks_singles.kss_list_ready = True
             self.ks_singles.kss_prop_ready = True
-        elif ((not self.ks_singles.kss_list_ready)
-              or (not self.ks_singles.kss_prop_ready)):
+        elif (not self.ks_singles.kss_list_ready) or (
+            not self.ks_singles.kss_prop_ready
+        ):
             self.ks_singles.read()
             self.ks_singles.update_list()
             self.ks_singles.calculate()
@@ -430,16 +453,15 @@ class LrTDDFT2:
             pass
 
         # K-matrix logic
-        if self.recalculate == 'all' or self.recalculate == 'matrix':
+        if self.recalculate == "all" or self.recalculate == "matrix":
             # delete files
             if self.lr_comms.parent_comm.rank == 0:
-                for ready_file in glob.glob(self.basefilename +
-                                            '.ready_rows.*'):
+                for ready_file in glob.glob(self.basefilename + ".ready_rows.*"):
                     os.remove(ready_file)
-                for K_file in glob.glob(self.basefilename + '.K_matrix.*'):
+                for K_file in glob.glob(self.basefilename + ".K_matrix.*"):
                     os.remove(K_file)
             self.K_matrix.calculate()
-        elif self.recalculate == 'eigen':
+        elif self.recalculate == "eigen":
             self.K_matrix.read_indices()
             self.K_matrix.K_matrix_ready = True
         elif not self.K_matrix.K_matrix_ready:
@@ -456,7 +478,7 @@ class LrTDDFT2:
 
         # lr_transitions logic
         if not self.lr_transitions.trans_prop_ready:
-            trans_file = self.basefilename + '.transitions'
+            trans_file = self.basefilename + ".transitions"
             if os.path.exists(trans_file) and os.path.isfile(trans_file):
                 os.remove(trans_file)
             self.lr_transitions.calculate()
@@ -466,9 +488,9 @@ class LrTDDFT2:
 
     def read(self, basename):
         """Does not do much at the moment."""
-        info_file = open(basename + '.lr_info')
+        info_file = open(basename + ".lr_info")
         for line in info_file:
-            if line[0] == '#':
+            if line[0] == "#":
                 continue
             if len(line.split()) <= 2:
                 continue
@@ -481,22 +503,21 @@ class LrTDDFT2:
 
     def write_info(self, basename):
         """Writes used parameters to a file."""
-        f = open(basename + '.lr_info', 'a+')
-        f.write('# LrTDDFTindexed\n')
-        f.write('%20s = %s\n' % ('xc_name', self.xc_name))
-        f.write('%20s = %d\n' % ('min_occ', self.min_occ))
-        f.write('%20s = %d\n' % ('min_unocc', self.min_unocc))
-        f.write('%20s = %d\n' % ('max_occ', self.max_occ))
-        f.write('%20s = %d\n' % ('max_unocc', self.max_unocc))
-        f.write('%20s = %18.12lf\n' %
-                ('max_energy_diff', self.max_energy_diff))
-        f.write('%20s = %18.12lf\n' % ('deriv_scale', self.deriv_scale))
-        f.write('%20s = %18.12lf\n' % ('min_pop_diff', self.min_pop_diff))
+        f = open(basename + ".lr_info", "a+")
+        f.write("# LrTDDFTindexed\n")
+        f.write("%20s = %s\n" % ("xc_name", self.xc_name))
+        f.write("%20s = %d\n" % ("min_occ", self.min_occ))
+        f.write("%20s = %d\n" % ("min_unocc", self.min_unocc))
+        f.write("%20s = %d\n" % ("max_occ", self.max_occ))
+        f.write("%20s = %d\n" % ("max_unocc", self.max_unocc))
+        f.write("%20s = %18.12lf\n" % ("max_energy_diff", self.max_energy_diff))
+        f.write("%20s = %18.12lf\n" % ("deriv_scale", self.deriv_scale))
+        f.write("%20s = %18.12lf\n" % ("min_pop_diff", self.min_pop_diff))
         f.close()
 
     def __del__(self):
         try:
             self.iocontext.close()
-            self.timer.stop('LrTDDFT')
+            self.timer.stop("LrTDDFT")
         except AttributeError:
             pass

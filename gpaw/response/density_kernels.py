@@ -1,4 +1,5 @@
 """XC density kernels for response function calculations."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -26,18 +27,18 @@ class DensityXCKernel(ABC):
         Choose between ALDA, Bootstrap and LRalpha (long-range kernel), where
         alpha is a user specified parameter (for example functional='LR0.25').
         """
-        if functional[0] == 'A':
+        if functional[0] == "A":
             return AdiabaticDensityKernel(gs, context, functional, kwargs)
-        elif functional[:2] == 'LR':
+        elif functional[:2] == "LR":
             return LRDensityKernel(gs, context, functional)
-        elif functional == 'Bootstrap':
+        elif functional == "Bootstrap":
             return BootstrapDensityKernel(gs, context, functional)
         raise ValueError(
-            'Invalid functional for the density-density xc kernel:'
-            f'{functional}')
+            f"Invalid functional for the density-density xc kernel:{functional}"
+        )
 
     def __call__(self, qpd: SingleQPWDescriptor, chi0_wGG=None):
-        self.context.print(f'Calculating {self}')
+        self.context.print(f"Calculating {self}")
         return self.calculate(qpd=qpd, chi0_wGG=chi0_wGG)
 
     @abstractmethod
@@ -71,22 +72,23 @@ class AdiabaticDensityKernel(DensityXCKernel):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.functional in ('ALDA', 'ALDA_x', 'ALDA_X'):
+        if self.functional in ("ALDA", "ALDA_x", "ALDA_X"):
             localft_calc = LocalFTCalculator.from_rshe_parameters(
-                self.gs, self.context, **self.rshe_kwargs)
+                self.gs, self.context, **self.rshe_kwargs
+            )
             self.fxc_calc = AdiabaticFXCCalculator(localft_calc)
         else:
             # adiabatic semilocal (GGA-level) kernels from
             # machine-generated coefficient fields, e.g. 'APBE'
-            from gpaw.response.semilocal_kernels import (
-                semilocal_fxc_factory)
+            from gpaw.response.semilocal_kernels import semilocal_fxc_factory
+
             self.fxc_calc = semilocal_fxc_factory(self.gs, self.context)
 
     def __repr__(self):
-        return f'{self.functional} kernel'
+        return f"{self.functional} kernel"
 
     def calculate(self, qpd: SingleQPWDescriptor, **ignored):
-        fxc_kernel = self.fxc_calc(self.functional, '00', qpd)
+        fxc_kernel = self.fxc_calc(self.functional, "00", qpd)
         Kxc_GG = fxc_kernel.get_Kxc_GG()
         if qpd.optical_limit:
             Kxc_GG[0, :] = 0.0
@@ -96,13 +98,12 @@ class AdiabaticDensityKernel(DensityXCKernel):
 
 @dataclass
 class LRDensityKernel(DensityXCKernel):
-
     def __post_init__(self):
         super().__post_init__()
         self.alpha = float(self.functional[2:])
 
     def __repr__(self):
-        return f'LR kernel with alpha = {self.alpha}'
+        return f"LR kernel with alpha = {self.alpha}"
 
     def calculate(self, qpd: SingleQPWDescriptor, **ignored):
         Kxc_sGG = calculate_lr_kernel(qpd, alpha=self.alpha)
@@ -111,9 +112,8 @@ class LRDensityKernel(DensityXCKernel):
 
 @dataclass
 class BootstrapDensityKernel(DensityXCKernel):
-
     def __repr__(self):
-        return 'Bootstrap kernel'
+        return "Bootstrap kernel"
 
     def calculate(self, qpd, *, chi0_wGG):
         Kxc_sGG = get_bootstrap_kernel(qpd, chi0_wGG, self.context)
@@ -133,7 +133,7 @@ def calculate_lr_kernel(qpd, alpha=0.2):
 
 
 def get_bootstrap_kernel(qpd, chi0_wGG, context):
-    """ Bootstrap kernel (see below) """
+    """Bootstrap kernel (see below)"""
 
     if context.comm.rank == 0:
         chi0_GG = chi0_wGG[0]
@@ -171,18 +171,19 @@ def calculate_bootstrap_kernel(qpd, chi0_GG, context):
         dminvold_GG = dminv_GG.copy()
         Kxc_GG = K_GG + Kxc_GG
 
-        chi_GG = np.dot(np.linalg.inv(np.eye(nG, nG)
-                                      - np.dot(chi0_GG, Kxc_GG)), chi0_GG)
+        chi_GG = np.dot(
+            np.linalg.inv(np.eye(nG, nG) - np.dot(chi0_GG, Kxc_GG)), chi0_GG
+        )
         dminv_GG = np.eye(nG, nG) + np.dot(K_GG, chi_GG)
 
         alpha = dminv_GG[0, 0] / (K_GG[0, 0] * chi0_GG[0, 0])
         Kxc_GG = alpha * K_GG
-        p(iscf, 'alpha =', alpha, flush=False)
+        p(iscf, "alpha =", alpha, flush=False)
         error = np.abs(dminvold_GG - dminv_GG).sum()
         if np.sum(error) < 0.1:
-            p('Self consistent fxc finished in %d iterations !' % iscf)
+            p("Self consistent fxc finished in %d iterations !" % iscf)
             break
         if iscf > 100:
-            p('Too many fxc scf steps !')
+            p("Too many fxc scf steps !")
 
     return np.array([Kxc_GG])
