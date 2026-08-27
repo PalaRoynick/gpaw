@@ -730,7 +730,8 @@ class ASECalculator:
         return DOSCalculator.from_calculator(
             self, soc=soc,
             theta=theta, phi=phi,
-            shift_fermi_level=shift_fermi_level)
+            shift_fermi_level=shift_fermi_level,
+            comm=self.comm)
 
     def band_structure(self):
         """Create band-structure object for plotting."""
