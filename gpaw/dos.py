@@ -196,7 +196,7 @@ class DOSCalculator:
             return linear_tetrahedron_dos(
                 eig_kn, weight_kn, energies,
                 self.cell, self.wfs.size, self.wfs.bz2ibz_map,
-                self.wfs.comm)
+                self.wfs.calc.comm)
 
     def raw_dos(self,
                 energies: Sequence[float],
