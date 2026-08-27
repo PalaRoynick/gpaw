@@ -5,6 +5,7 @@ from ase.units import Ha
 
 from gpaw.dft import DFT
 from gpaw.spinorbit import projected_soc, soc
+from gpaw.mpi import receive, send, MPIComm, serial_comm, Parallelization
 
 
 def calculate_soc(dft: DFT,
@@ -41,6 +42,23 @@ def calculate_soc(dft: DFT,
         dVL_avii = {a: projected_soc(dVL_vii, theta=theta, phi=phi)
                     for a, dVL_vii in dVL_avii.items()}
 
+    ibz = dft.ibzwfs.ibz
+    nbzkpts = len(ibz.bz)
+    p = Parallelization(dft.comm.size, nbzkpts)
+    p.set(domain=1)
+    comms = p.build_communicators()
+    kpt_comm = comms['k']
+    band_comm = comms['b']
+
+    mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
+    K1 = min(kpt_comm.rank * mynk, nbzkpts)
+    K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
+    mykpts = []
+    for K in range(K1, K2):
+        k = ibz.bz2ibz_K[K]
+        for s in range(nspins):
+            rank = dft.ibzwfs.rank_ks[k, s]
+            kpt = receive(dft.comm, rank
     kpt_qs = get_both_spins(calc.wfs)
     ibzwfs = extract_ibz_wave_functions(kpt_qs,
                                         bd, gd, n1, n2, eigenvalues)
@@ -68,63 +86,61 @@ def calculate_soc(dft: DFT,
     return BZWaveFunctions(kd, bzwfs, occcalc, calc.wfs.nvalence, n_aj, l_aj)
 
 
-if 1:
-    def add_soc(self,
-                dVL_avii: dict[int, Array3D],
-                s_vss: list[Array2D],
-                C_ss: Array2D) -> None:
-        """Evaluate H in a basis of S_z eigenstates."""
-        if self.projections.bcomm.rank > 0:
-            return
+def add_soc(dVL_avii: dict[int, Array3D],
+            s_vss: list[Array2D],
+            C_ss: Array2D) -> None:
+    """Evaluate H in a basis of S_z eigenstates."""
+    if self.projections.bcomm.rank > 0:
+        return
 
-        M = self.projections.nbands
-        H_mm = np.zeros((M, M), complex)
-        for a, dVL_vii in dVL_avii.items():
-            ni = dVL_vii.shape[1]
-            H_ssii = np.zeros((2, 2, ni, ni), complex)
-            H_ssii[0, 0] = dVL_vii[2]
-            H_ssii[0, 1] = dVL_vii[0] - 1.0j * dVL_vii[1]
-            H_ssii[1, 0] = dVL_vii[0] + 1.0j * dVL_vii[1]
-            H_ssii[1, 1] = -dVL_vii[2]
+    M = self.projections.nbands
+    H_mm = np.zeros((M, M), complex)
+    for a, dVL_vii in dVL_avii.items():
+        ni = dVL_vii.shape[1]
+        H_ssii = np.zeros((2, 2, ni, ni), complex)
+        H_ssii[0, 0] = dVL_vii[2]
+        H_ssii[0, 1] = dVL_vii[0] - 1.0j * dVL_vii[1]
+        H_ssii[1, 0] = dVL_vii[0] + 1.0j * dVL_vii[1]
+        H_ssii[1, 1] = -dVL_vii[2]
 
-            # Tranform to theta, phi basis
-            H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
-            H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
-            H_ssii *= Ha
+        # Tranform to theta, phi basis
+        H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
+        H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
+        H_ssii *= Ha
 
-            P_msi = self.projections[a]
-            for s1 in range(2):
-                for s2 in range(2):
-                    H_ii = H_ssii[s1, s2]
-                    P1_mi = P_msi[:, s1]
-                    P2_mi = P_msi[:, s2]
-                    H_mm += np.dot(np.dot(P1_mi.conj(), H_ii), P2_mi.T)
+        P_msi = self.projections[a]
+        for s1 in range(2):
+            for s2 in range(2):
+                H_ii = H_ssii[s1, s2]
+                P1_mi = P_msi[:, s1]
+                P2_mi = P_msi[:, s2]
+                H_mm += np.dot(np.dot(P1_mi.conj(), H_ii), P2_mi.T)
 
-        domain_comm = self.projections.atom_partition.comm
-        domain_comm.sum(H_mm, 0)
-        if domain_comm.rank == 0:
-            H_mm += np.diag(self.eig_m)
-            self.eig_m, v_nm = np.linalg.eigh(H_mm)
-        else:
-            v_nm = np.empty((M, M), complex)
+    domain_comm = self.projections.atom_partition.comm
+    domain_comm.sum(H_mm, 0)
+    if domain_comm.rank == 0:
+        H_mm += np.diag(self.eig_m)
+        self.eig_m, v_nm = np.linalg.eigh(H_mm)
+    else:
+        v_nm = np.empty((M, M), complex)
 
-        domain_comm.broadcast(v_nm, 0)
+    domain_comm.broadcast(v_nm, 0)
 
-        P_mI = self.projections.matrix.array
-        P_mI[:] = v_nm.T.copy().dot(P_mI)
+    P_mI = self.projections.matrix.array
+    P_mI[:] = v_nm.T.copy().dot(P_mI)
 
-        sx_m = []
-        sy_m = []
-        sz_m = []
+    sx_m = []
+    sy_m = []
+    sz_m = []
 
-        v_msn = v_nm.copy().reshape((M // 2, 2, M)).T.copy()
-        for v_sn in v_msn:
-            sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
-            sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
-            sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
+    v_msn = v_nm.copy().reshape((M // 2, 2, M)).T.copy()
+    for v_sn in v_msn:
+        sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
+        sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
+        sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
 
-        self.spin_projection_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
-        self.v_mn = v_nm.T
+    self.spin_projection_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
+    self.v_mn = v_nm.T
 
 
 def hmm(theta: float = 0.0,

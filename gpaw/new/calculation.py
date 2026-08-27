@@ -104,7 +104,9 @@ class DFT:
         txt: str | Path | IO[str] | Logger | None = '-',
         communicator: MPIComm | None = None,
         converge=True,
-        _components=None,
+        _components: tuple[IBZWaveFunctions, Density, Potential,
+                           Setups, SCFLoop, Any, Any,
+                           Parameters, Any] | None = None,
         _parameters=None):
         """Create a DFT object.
 
