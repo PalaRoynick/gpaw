@@ -10,10 +10,15 @@ Git master branch
 
 :git:`master <>`.
 
-* The default value for density convergence has been change from
+* The default value for density convergence has been changed from
   ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
+
+* Implicit solvation calculations are now supported in plane-wave mode, using
+  an updated conjugate-gradient Poisson solver. Add the solvation model
+  through the ``extensions`` keyword; e.g.,
+  ``GPAW(..., extensions=[Solvation(...)])``.
 
 
 Version 26.7.0
