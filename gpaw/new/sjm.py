@@ -25,7 +25,8 @@ class SJM(Solvation):
                  target_potential: float | None = None,  # eV
                  excess_electrons: float = 0.0,
                  tol: float = 0.001):  # eV
-        super().__init__(cavity, dielectric, interactions)
+        super().__init__(cavity, dielectric, interactions,
+                         dipolelayer=True, zero_vacuum=True)
         self.jelliumregion = jelliumregion or {}
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
@@ -58,6 +59,8 @@ class SJM(Solvation):
 
     def todict(self):
         dct = super().todict()
+        dct.pop('dipolelayer', None)
+        dct.pop('zero_vacuum', None)
         dct.update(
             jelliumregion=self.jelliumregion,
             target_potential=self.target_potential,
@@ -81,7 +84,7 @@ class SJMExtension(Extension):
         if isinstance(pw, PWDesc):
             from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
             return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric, zero_vacuum=True)
+                pw, grid, self.dielectric, dipolelayer=True, zero_vacuum=True)
             # from gpaw.new.sjm import SJMPWPoissonSolver
             # return SJMPWPoissonSolver(pw, environment.dielectric, grid)
 
