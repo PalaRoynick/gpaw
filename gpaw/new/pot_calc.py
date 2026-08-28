@@ -21,7 +21,6 @@ from ase.units import Ha
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray
-from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.logger import indent
@@ -59,7 +58,6 @@ class PotentialCalculator:
 
     def calculate_pseudo_potential(self,
                                    density,
-                                   ibzwfs,
                                    vHt_x: XArray | None
                                    ) -> tuple[dict[str, float],
                                               UGArray,
@@ -170,28 +168,20 @@ def calculate_non_local_potential(setups,
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
     V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
-    rank = 0
     for a, D_sii in D_asii.items():
-        if 1:  #rank % kpt_band_comm.size == kpt_band_comm.rank:
-            V_L = V_aL[a]
-            setup = setups[a]
-            dH_sii, corrections = calculate_non_local_potential1(
-                setup, xc, D_sii, V_L, soc, extensions, a)
-            dH_asii[a][:] = dH_sii
-            for key, e in corrections.items():
-                energy_corrections[key] += e
-        else:
-            dH_asii[a][:] = 0.0
-        rank += 1
-
-    #kpt_band_comm.sum(dH_asii.data)
+        V_L = V_aL[a]
+        setup = setups[a]
+        dH_sii, corrections = calculate_non_local_potential1(
+            setup, xc, D_sii, V_L, soc, extensions, a)
+        dH_asii[a][:] = dH_sii
+        for key, e in corrections.items():
+            energy_corrections[key] += e
 
     # Sum over domain:
     names = ['kinetic_correction', 'coulomb', 'zero', 'xc', 'external',
              'spinorbit']
     energies = np.array([energy_corrections[name] for name in names])
     density.D_asii.layout.atomdist.comm.sum(energies)
-    #kpt_band_comm.sum(energies)
 
     return (dH_asii.to_xp(density.D_asii.layout.xp),
             dict(zips(names, energies)))

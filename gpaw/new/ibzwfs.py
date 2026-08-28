@@ -8,6 +8,7 @@ import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
 
+from gpaw.core import UGArray
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
