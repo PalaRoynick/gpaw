@@ -127,10 +127,12 @@ class DOSCalculator:
                  wfs,
                  setups=None,
                  cell=None,
-                 shift_fermi_level=True):
+                 shift_fermi_level=True
+                 comm=None):
         self.wfs = wfs
         self.setups = setups
         self.cell = cell
+        self.comm = comm
 
         self.eig_skn = wfs.eigenvalues()
         self.fermi_level = wfs.fermi_level
@@ -180,7 +182,7 @@ class DOSCalculator:
 
         return DOSCalculator(wfs,
                              calc.setups, calc.atoms.cell,
-                             shift_fermi_level)
+                             shift_fermi_level, calc.comm)
 
     def calculate(self,
                   energies: ArrayLike1D,
@@ -196,7 +198,7 @@ class DOSCalculator:
             return linear_tetrahedron_dos(
                 eig_kn, weight_kn, energies,
                 self.cell, self.wfs.size, self.wfs.bz2ibz_map,
-                self.wfs.calc.comm)
+                self.comm)
 
     def raw_dos(self,
                 energies: Sequence[float],
