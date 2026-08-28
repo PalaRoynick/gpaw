@@ -468,6 +468,30 @@ def check_cpp_version() -> bool:
     """
 
 
+def get_gpu_version_check_code() -> str:
+    """"""
+    return """
+    static_assert(__cplusplus >= 201703L,
+        "GPAW GPU extension requires C++17 or newer");
+    #ifdef __NVCC__
+        __global__ void _gpaw_arch_check()
+        {
+            // __CUDA_ARCH__ is only defined during the device compilation pass
+        #ifdef __CUDA_ARCH__
+            static_assert(__CUDA_ARCH__ >= 700,
+                "GPAW GPU extension for CUDA requires -arch=sm_70 or newer");
+        #endif
+        }
+
+    #else
+        #include <hip/hip_version.h>
+        static_assert(
+            HIP_VERSION_MAJOR > 5 ||
+            (HIP_VERSION_MAJOR == 5 && HIP_VERSION_MINOR >= 0),
+            "GPAW GPU extension for AMD requires ROCm 5.0 or newer");
+    #endif
+    """
+
 class MissingLibraryWarning(UserWarning):
     pass
 
@@ -608,8 +632,7 @@ def parse_cflags(define_macros: list[tuple[str, str]] | None,
 class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
 
-    _version_checker_file = Path('c/gpu/kernels/_gpu_version_check.cpp')
-    # Keep these in sync with _version_checker_file
+    # Keep in sync with get_gpu_version_check_code()
     _REQUIRED_CUDA_ARCH = 'sm_70'
 
     def __init__(
@@ -639,8 +662,8 @@ class BuildGPU:
         else:
             self.compile_args = gpu_compile_args_
 
-        if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
-            self.add_default_cuda_arch(self.compile_args)
+        #if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
+            #self.add_default_cuda_arch(self.compile_args)
 
     def add_default_cuda_arch(self, compile_args: list[str]) -> None:
         """Adds our minimum required -arch flag for nvcc if the user didn't
@@ -652,16 +675,18 @@ class BuildGPU:
                    for arg in compile_args for flag in ARCH_FLAGS):
             compile_args.append(f'-arch={self._REQUIRED_CUDA_ARCH}')
 
-    def try_compiling_gpu(self, cflags: list[str]) -> None:
-        """Attempts to compile the version checker file. Should hit
-        static_asserts if C++/CUDA_ARCH/ROCm version is too old.
+    def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
+        """Attempts to compile the provided code in a temp dir.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = os.path.abspath(tmpdir)
-            obj = os.path.join(tmpdir, 'gpu_version_check.out')
+            codefile = os.path.join(tmpdir, 'gputest.cpp')
+            outfile = os.path.join(tmpdir, 'a.out')
+            with open(codefile, mode='w') as fobj:
+                print(code, file=fobj)
 
             run_args = [self.compiler] + cflags \
-                + ['-c', str(self._version_checker_file), '-o', str(obj)]
+                + ['-c', codefile, '-o', outfile]
 
             result = subprocess.run(run_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -700,8 +725,6 @@ class BuildGPU:
                      'reduce-kernel.cpp',
                      'restrict-stencil.cpp']:
             kernels.remove(kernels_dpath / name)
-        # Remove also the auxiliary version checker file
-        kernels.remove(self._version_checker_file)
 
         cpp_files = sorted(cpp_files + kernels)
         return cpp_files
@@ -714,7 +737,7 @@ class BuildGPU:
         print('Building gpu code')
 
         cflags = self._make_full_cflags()
-        self.try_compiling_gpu(cflags)
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
 
         # Create build dirs
         build_dir_root_absolute = Path(self.build_dir).resolve()
@@ -753,7 +776,7 @@ class BuildGPU:
 
         sources_str = ' '.join([str(src) for src in self.sources])
         cflags = self._make_full_cflags()
-        self.try_compiling_gpu(cflags)
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
         cflags_str = ' '.join(cflags)
 
         inout_makefile += [
