@@ -175,8 +175,6 @@ class DFTComponentsBuilder:
             params.parallel.get('distribute_density', False) and
             comm.size > 1)
 
-        self.wf_grid: UGDesc
-        self.wf_atomdist: AtomDistribution
         self.grid, self.fine_grid = self.create_uniform_grids()
         if self.distribute_density:
             self.wf_grid = self.grid.new(comm=self.communicators['d'])

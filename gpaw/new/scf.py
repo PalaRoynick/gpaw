@@ -133,9 +133,9 @@ class SCFLoop:
             if self.update_density_and_potential:
                 density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
+                wf_grid = potential.vt_sR.desc
                 potential, energies, _ = pot_calc.calculate(
                     density, ibzwfs, potential.vHt_x)
-                wf_grid = self.hamiltonian.grid
                 if wf_grid.comm.size != potential.vt_sR.desc.comm.size:
                     from gpaw.mpi import serial_comm
                     potential = potential.redist(

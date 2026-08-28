@@ -22,7 +22,6 @@ from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
 from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D
-from gpaw.core.atom_arrays import AtomDistribution
 
 
 class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
