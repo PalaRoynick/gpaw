@@ -18,7 +18,12 @@ def test_lcao_lcao_hamiltonian(in_tmp_dir, add_cwd_to_setup_paths):
     if 1:
         a = 2.7
         bulk = Atoms('Li', pbc=True, cell=[a, a, a])
-        calc = GPAW(gpts=(8, 8, 8), kpts=(4, 4, 4), mode='lcao', basis='szp')
+        calc = GPAW(
+            gpts=(8, 8, 8),
+            kpts=(4, 4, 4),
+            mode='lcao',
+            basis='szp',
+            convergence=dict(density=1e-4))
         bulk.calc = calc
         e = bulk.get_potential_energy()
         niter = calc.get_number_of_iterations()

@@ -802,8 +802,7 @@ class BuildGPAW(build_ext):
                     flag = self.compiler.runtime_library_dir_option(dir)
                     if isinstance(flag, list):
                         flag = ' '.join(flag)
-                    ldflags.append(
-                        self.compiler.runtime_library_dir_option(dir))
+                    ldflags.append(flag)
             else:
                 print('Failed to get runtime_library_dir options from '
                       'setuptools (non-Unix system?)')

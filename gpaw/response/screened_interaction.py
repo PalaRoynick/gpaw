@@ -219,16 +219,16 @@ class WBaseCalculator():
 class WCalculator(WBaseCalculator):
     def get_HW_model(self, chi0, fxc_mode, only_correlation=True):
         assert only_correlation
-        W_wGG = self.calculate_W_WgG(chi0,
+        W_WgG = self.calculate_W_WgG(chi0,
                                      fxc_mode=fxc_mode,
                                      only_correlation=True)
         # HT used to calculate convulution between time-ordered G and W
         hilbert_transform = GWHilbertTransforms(chi0.wd.omega_w, self.eta)
         with self.context.timer('Hilbert'):
-            W_xwGG = hilbert_transform(W_wGG)
+            HW_swgG = hilbert_transform(W_WgG)
 
         factor = 1.0 / (self.qd.nbzkpts * 2 * pi * self.gs.volume)
-        return FullFrequencyHWModel(chi0.wd, W_xwGG, factor)
+        return FullFrequencyHWModel(chi0.wd, HW_swgG, factor)
 
     def calculate_W_WgG(self, chi0,
                         fxc_mode='GW',
@@ -361,14 +361,37 @@ class HWModel:
         """
         raise NotImplementedError
 
+    def contract_HW(self, deps_m, occ_m, n_mG, myslice):
+        """Contract HW with pair densities for a batch of band pairs.
+
+        Returns sigma_m and dsigma_m with
+
+            sigma_m[m] = n_mG[m, myslice] @ S_gG @ n_mG[m].conj(),
+
+        (zero for indices where get_HW has no data)
+        """
+        sigma_m = np.zeros(len(deps_m), complex)
+        dsigma_m = np.zeros(len(deps_m), complex)
+        for m, (deps, f) in enumerate(zip(deps_m, occ_m)):
+            S_GG, dSdw_GG = self.get_HW(deps, f)
+            if S_GG is None:
+                continue
+            myn_G = n_mG[m, myslice]
+            nc_G = n_mG[m].conj()
+            sigma_m[m] = myn_G @ S_GG @ nc_G
+            dsigma_m[m] = myn_G @ dSdw_GG @ nc_G
+        return sigma_m, dsigma_m
+
 
 class FullFrequencyHWModel(HWModel):
-    def __init__(self, wd, HW_swGG, factor):
+    def __init__(self, wd, HW_swgG, factor):
         self.wd = wd
-        self.HW_swGG = HW_swGG
+        self.HW_swgG = HW_swgG
         self.factor = factor
 
-    def get_HW(self, omega, occ):
+    def _get_signs_and_indices(self,
+                               omega: float | np.ndarray,
+                               occ: float | np.ndarray):
         # For more information about how fsign and wsign works, see
         # https://backend.orbit.dtu.dk/ws/portalfiles/portal/93075765/hueser_PhDthesis.pdf
         # eq. 2.2 endind up to eq. 2.11
@@ -379,14 +402,17 @@ class FullFrequencyHWModel(HWModel):
         # In addition, whether the orbital in question at G is occupied or
         # unoccupied, which then again affects, which Hilbert transform of
         # W is chosen, is kept track with fsign.
-        fsign = np.sign(2 * occ - 1)
-        o = abs(omega)
+        fsign = np.sign(2 * np.asarray(occ) - 1)
         wsign = np.sign(omega + 1e-15)
-        wd = self.wd
+        o = np.abs(omega)
         # Pick +i*eta or -i*eta:
         s = (1 + wsign * np.sign(-fsign)).astype(int) // 2
-        w = wd.get_floor_index(o, safe=False)
+        w = self.wd.get_floor_index(o, safe=False)
+        return wsign, s, w, o
 
+    def get_HW(self, omega: float, occ: float):
+        wsign, s, w, o = self._get_signs_and_indices(omega, occ)
+        wd = self.wd
         # Interpolation indexes w + 1, therefore - 2 here
         if w > len(wd) - 2:
             return None, None
@@ -394,13 +420,53 @@ class FullFrequencyHWModel(HWModel):
         o1 = wd.omega_w[w]
         o2 = wd.omega_w[w + 1]
 
-        C1_GG = self.HW_swGG[s][w]
-        C2_GG = self.HW_swGG[s][w + 1]
+        C1_gG = self.HW_swgG[s][w]
+        C2_gG = self.HW_swgG[s][w + 1]
         p = self.factor * wsign
 
-        sigma_GG = ((o - o1) * C2_GG + (o2 - o) * C1_GG) / (o2 - o1)
-        dsigma_GG = wsign * (C2_GG - C1_GG) / (o2 - o1)
-        return -1j * p * sigma_GG, -1j * p * dsigma_GG
+        sigma_gG = ((o - o1) * C2_gG + (o2 - o) * C1_gG) / (o2 - o1)
+        dsigma_gG = wsign * (C2_gG - C1_gG) / (o2 - o1)
+        return -1j * p * sigma_gG, -1j * p * dsigma_gG
+
+    def contract_HW(self, deps_m, occ_m, n_mG, myslice):
+        # Efficient contraction of HW with pair densities
+        # which avoids explicit construction of sigma_gG and dsigma_gG
+        wd = self.wd
+        wsign_m, s_m, w_m, o_m = self._get_signs_and_indices(deps_m, occ_m)
+
+        sigma_m = np.zeros(len(deps_m), complex)
+        dsigma_m = np.zeros(len(deps_m), complex)
+
+        myn_mg = n_mG[:, myslice]
+        nc_mG = n_mG.conj()
+
+        # Interpolation indexes w + 1, therefore - 2 here
+        valid_m = (w_m <= len(wd) - 2)
+
+        # Bands sharing s and w are grouped together so we only get
+        # one matrix multiplication for each s and w
+        for s in range(len(self.HW_swgG)):
+            in_branch_m = valid_m * (s_m == s)
+            for w in np.unique(w_m[in_branch_m]):
+                idxs = np.flatnonzero(in_branch_m * (w_m == w))
+                o1 = wd.omega_w[w]
+                o2 = wd.omega_w[w + 1]
+                # The contraction is linear in HW, so contract with the
+                # two bracketing frequency points and interpolate the
+                # scalars.
+                x1_r = np.einsum('rG,rG->r',
+                                 myn_mg[idxs] @ self.HW_swgG[s][w],
+                                 nc_mG[idxs])
+                x2_r = np.einsum('rG,rG->r',
+                                 myn_mg[idxs] @ self.HW_swgG[s][w + 1],
+                                 nc_mG[idxs])
+                p_r = self.factor * wsign_m[idxs]
+                o_r = o_m[idxs]
+                sigma_m[idxs] = -1j * p_r * (
+                    (o_r - o1) * x2_r + (o2 - o_r) * x1_r) / (o2 - o1)
+                dsigma_m[idxs] = -1j * p_r * wsign_m[idxs] * (
+                    x2_r - x1_r) / (o2 - o1)
+        return sigma_m, dsigma_m
 
 
 class MPAHWModel(HWModel):
