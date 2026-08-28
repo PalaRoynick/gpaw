@@ -492,6 +492,7 @@ def get_gpu_version_check_code() -> str:
     #endif
     """
 
+
 class MissingLibraryWarning(UserWarning):
     pass
 
@@ -662,8 +663,8 @@ class BuildGPU:
         else:
             self.compile_args = gpu_compile_args_
 
-        #if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
-            #self.add_default_cuda_arch(self.compile_args)
+        if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
+            self.add_default_cuda_arch(self.compile_args)
 
     def add_default_cuda_arch(self, compile_args: list[str]) -> None:
         """Adds our minimum required -arch flag for nvcc if the user didn't
