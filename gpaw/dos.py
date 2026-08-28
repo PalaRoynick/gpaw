@@ -127,7 +127,7 @@ class DOSCalculator:
                  wfs,
                  setups=None,
                  cell=None,
-                 shift_fermi_level=True
+                 shift_fermi_level=True,
                  comm=None):
         self.wfs = wfs
         self.setups = setups
