@@ -181,7 +181,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         if self.pw.comm.size == 1:
             self._vt_g = vt_g
         else:
-            self._vt_g = self.pw.empty()
+            self._vt_g = self.pw.empty(xp=self.xp)
             self._vt_g.scatter_from(vt_g)
 
         dedtaut_sR = potential.dedtaut_sR
