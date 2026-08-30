@@ -15,12 +15,8 @@ from gpaw.utilities import devnull
 
 
 @contextmanager
-def execute_in_tmp_path(request, tmp_path_factory):
+def execute_in_tmp_path(basename, tmp_path_factory):
     if world.rank == 0:
-        # Obtain basename as
-        # * request.function.__name__  for function fixture
-        # * request.module.__name__    for module fixture
-        basename = getattr(request, request.scope).__name__
         path = tmp_path_factory.mktemp(basename)
     else:
         path = None
@@ -55,14 +51,23 @@ def dftd3():
 @pytest.fixture(scope='function')
 def in_tmp_dir(request, tmp_path_factory):
     """Run test function in a temporary directory."""
-    with execute_in_tmp_path(request, tmp_path_factory) as path:
+    with execute_in_tmp_path(request.function.__name__,
+                             tmp_path_factory) as path:
         yield path
 
 
 @pytest.fixture(scope='module')
 def module_tmp_path(request, tmp_path_factory):
     """Run test module in a temporary directory."""
-    with execute_in_tmp_path(request, tmp_path_factory) as path:
+    with execute_in_tmp_path(request.module.__name__,
+                             tmp_path_factory) as path:
+        yield path
+
+
+@pytest.fixture(scope='session')
+def session_tmp_path(tmp_path_factory):
+    """Run test module in a temporary directory."""
+    with execute_in_tmp_path('session', tmp_path_factory) as path:
         yield path
 
 
