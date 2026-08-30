@@ -41,6 +41,19 @@ Git master branch
   electrostatic potential, the cavity and the jellium counter charge to disk.
 >>>>>>> b94bfa4f6b (Port SJM IO and warnings to the new SJM implementation)
 
+* The SJM ``jelliumregion`` keyword now accepts ``'top'``, ``'bottom'``,
+  ``'thickness'`` and ``'fix_bottom'``, as in the legacy implementation.  A
+  lower limit given as a negative number is a distance above the highest
+  atom, and the region follows the atoms during a relaxation unless
+  ``fix_bottom=True``.
+
+* SJM parameters can be changed without throwing away the wave functions
+  with ``calc.dft.sjm.set(...)`` -- the replacement for the legacy
+  ``calc.set(sj={...})``.  It takes ``target_potential`` (including
+  switching between constant-charge and constant-potential mode),
+  ``excess_electrons``, ``tol``, ``max_iters``, ``grand_output`` and
+  ``jelliumregion``.
+
 
 Version 26.7.0
 ==============

@@ -19,13 +19,131 @@ from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.pw.poisson import PWPoissonSolver
 from gpaw.new.solvation import Solvation, SolvationExtension
 
-#: Jellium-region keywords understood by the old (legacy) SJM implementation
-#: but not (yet) by this one.
-UNSUPPORTED_JELLIUM_KEYS = ['bottom', 'thickness', 'fix_bottom']
+#: Default top of the jellium region: 1 Å below the top of the unit cell.
+DEFAULT_TOP = -1.0
+#: Default bottom of the jellium region: 3 Å above the highest atom.
+DEFAULT_BOTTOM = -3.0
 
 
 class PotentialConvergenceError(ConvergenceError):
     """Raised if the electrode potential did not equilibrate."""
+
+
+class JelliumRegion:
+    """Shape of the jellium counter-charge region.
+
+    The region is a slab perpendicular to the z axis, specified by at most
+    two of ``top``, ``bottom`` and ``thickness`` (the third one follows).
+
+    Parameters
+    ----------
+    top:
+        Upper boundary of the region.  A positive value is the z coordinate
+        in Å; a negative value is the distance below the upper cell
+        boundary.  Default: -1 Å.
+    bottom:
+        Lower boundary of the region.  A positive value is the z coordinate
+        in Å; a negative value is the distance above the highest atom, in
+        which case the region follows the atoms during a relaxation unless
+        ``fix_bottom`` is used.  Default: -3 Å.
+    thickness:
+        Thickness of the region in Å.  Can only be given together with one
+        of ``top`` and ``bottom``.
+    fix_bottom:
+        Freeze a relative (negative) lower limit at the value it has for
+        the first geometry, so that it does not adapt to a change in the
+        atomic positions during a relaxation.
+    """
+
+    def __init__(self,
+                 top: float | None = None,  # Å
+                 bottom: float | str | None = None,  # Å
+                 thickness: float | None = None,  # Å
+                 fix_bottom: bool = False):
+        if bottom == 'cavity_like':
+            raise NotImplementedError(
+                'A cavity-like jellium region is not implemented in this '
+                'version of SJM.  Use gpaw.solvation.sjm instead.')
+
+        specified = [top is not None,
+                     bottom is not None,
+                     thickness is not None]
+        if all(specified):
+            raise ValueError(
+                'The jellium region has been overspecified: give at most two '
+                "of 'top', 'bottom' and 'thickness'.")
+        if not any(specified):
+            top, bottom = DEFAULT_TOP, DEFAULT_BOTTOM
+        elif specified == [True, False, False]:
+            bottom = DEFAULT_BOTTOM
+        elif specified == [False, True, False]:
+            top = DEFAULT_TOP
+        elif specified == [False, False, True]:
+            bottom = DEFAULT_BOTTOM
+
+        self.top = top
+        self.bottom = bottom
+        self.thickness = thickness
+        self.fix_bottom = fix_bottom
+        self._frozen_bottom: float | None = None
+
+    def __repr__(self):
+        return (f'JelliumRegion(top={self.top}, bottom={self.bottom}, '
+                f'thickness={self.thickness}, fix_bottom={self.fix_bottom})')
+
+    @property
+    def follows_atoms(self) -> bool:
+        """Does the region move when the atoms move?"""
+        return (self.bottom is not None and self.bottom < 0.0 and
+                not self.fix_bottom)
+
+    def limits(self,
+               height: float,  # Å
+               zmax: float,  # Å
+               ) -> tuple[float, float]:
+        """Lower and upper boundary in Å.
+
+        ``height`` is the height of the unit cell and ``zmax`` the z
+        coordinate of the highest atom.
+        """
+        top, bottom, thickness = self.top, self.bottom, self.thickness
+
+        if top is not None and top < 0.0:
+            top = height + top
+        if bottom is not None and bottom < 0.0:
+            if self._frozen_bottom is not None:
+                bottom = self._frozen_bottom
+            else:
+                bottom = zmax - bottom
+                if self.fix_bottom:
+                    self._frozen_bottom = bottom
+
+        if top is None:
+            top = bottom + thickness
+        if bottom is None:
+            bottom = top - thickness
+
+        if top > height:
+            raise ValueError(
+                f'The upper limit of the jellium region ({top:.3f} Å) lies '
+                f'outside of the unit cell ({height:.3f} Å).  If you did not '
+                'set it manually, increase your unit cell size or translate '
+                'the atomic system down along the z axis.')
+        if bottom >= top:
+            raise ValueError(
+                f'Your jellium region has a bottom at {bottom:.3f} Å, which '
+                f'is not below the top at {top:.3f} Å.')
+        return bottom, top
+
+    def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
+        """Build the 0/1 mask of the region, plus its limits in Å."""
+        height = grid.cell_cv[2, 2] * Bohr
+        bottom, top = self.limits(height, relpos_ac[:, 2].max() * height)
+        z_r = grid.xyz()[:, :, :, 2]
+        mask_r = grid.empty()
+        mask_r.data[:] = np.logical_and(z_r > bottom / Bohr,
+                                        z_r < top / Bohr)
+        return mask_r, bottom, top
 
 
 class SJM(Solvation):
@@ -42,9 +160,9 @@ class SJM(Solvation):
     cavity, dielectric, interactions:
         Solvation model, see :class:`gpaw.new.solvation.Solvation`.
     jelliumregion:
-        Shape of the counter-charge region.  Only the key ``'top'`` (upper
-        boundary in Å) is currently used; the bottom of the region is placed
-        3 Å above the highest atom.
+        Shape of the counter-charge region: a dict with the keys ``'top'``,
+        ``'bottom'``, ``'thickness'`` and ``'fix_bottom'``, see
+        :class:`JelliumRegion`.
     target_potential:
         Electrode potential to equilibrate to, in V on the vacuum scale
         (expressed as a work function).  ``None`` (the default) gives a
@@ -90,18 +208,11 @@ class SJM(Solvation):
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
         log = builder.log
-        grid = builder.fine_grid
-        relpos_ac = builder.relpos_ac
-        h = grid.cell_cv[2, 2] * Bohr
-        z1 = relpos_ac[:, 2].max() * h + 3.0  # Å
-        z2 = self.jelliumregion.get('top', h - 1.0)  # Å
+        self._check_convergence_criteria(builder.params.convergence, log)
 
-        self._check_input(z1, z2, builder.params.convergence, log)
+        region = JelliumRegion(**self.jelliumregion)
+        mask_r, z1, z2 = region.mask(builder.fine_grid, builder.relpos_ac)
 
-        mask_r = grid.empty()
-        R_rv = grid.xyz()
-        mask_r.data[:] = np.logical_and(R_rv[:, :, :, 2] > z1 / Bohr,
-                                        R_rv[:, :, :, 2] < z2 / Bohr)
         if self.target_potential is None:
             jellium = JelliumExtension(
                 mask_r,
@@ -128,52 +239,24 @@ class SJM(Solvation):
             log('  initial guess of excess electrons: '
                 f'{self.excess_electrons:+.5f}')
 
-        return SJMExtension(solvation, jellium,
+        return SJMExtension(solvation, jellium, region,
                             target_potential=self.target_potential,
                             tol=self.tol,
                             max_iters=self.max_iters,
-                            grand_output=self.grand_output)
+                            grand_output=self.grand_output,
+                            log=log)
 
-    def _check_input(self, z1, z2, convergence, log) -> None:
-        """Warn (or bail out) on unsupported or suspicious input."""
-        if self.jelliumregion.get('bottom') == 'cavity_like':
-            raise NotImplementedError(
-                'A cavity-like jellium region is not implemented in this '
-                'version of SJM.  Use gpaw.solvation.sjm instead.')
-
-        if z2 <= z1:
-            raise ValueError(
-                f'Your jellium region has a bottom at {z1:.3f} Å, which is '
-                f'not below the top at {z2:.3f} Å.')
-
-        # A falsy value (None, 0.0, False) means "not asked for":
-        unsupported = [key for key in UNSUPPORTED_JELLIUM_KEYS
-                       if self.jelliumregion.get(key)]
-        if unsupported:
-            self._warn(
-                log,
-                f'The jellium-region keyword(s) {", ".join(unsupported)} are '
-                'not implemented in this version of SJM and will be ignored: '
-                f'the bottom of the jellium region is placed at {z1:.3f} Å '
-                '(3 Å above the highest atom).  Use the legacy '
-                'implementation in gpaw.solvation.sjm if you need them.')
-
+    def _check_convergence_criteria(self, convergence, log) -> None:
         if self.target_potential is None:
             return
-
         wf_tol = (convergence or {}).get('work function')
         if wf_tol is not None and wf_tol >= self.tol:
-            self._warn(
-                log,
-                f'It appears that your work function convergence criterion '
-                f'({wf_tol:g}) is higher than your desired potential '
-                f'tolerance ({self.tol:g}).  This may lead to issues with '
-                'potential convergence.')
-
-    @staticmethod
-    def _warn(log, msg: str) -> None:
-        warnings.warn(msg)
-        log(textwrap.fill('Warning: ' + msg) + '\n')
+            msg = ('It appears that your work function convergence criterion '
+                   f'({wf_tol:g}) is higher than your desired potential '
+                   f'tolerance ({self.tol:g}).  This may lead to issues with '
+                   'potential convergence.')
+            warnings.warn(msg)
+            log(textwrap.fill('Warning: ' + msg) + '\n')
 
     def todict(self):
         dct = super().todict()
@@ -195,19 +278,23 @@ class SJMExtension(Extension):
     def __init__(self,
                  solvation: SolvationExtension,
                  jellium: JelliumExtension,
+                 region: JelliumRegion | None = None,
                  *,
                  target_potential: float | None = None,  # eV
                  tol: float = 0.001,  # eV
                  max_iters: int = 10,
-                 grand_output: bool = True):
+                 grand_output: bool = True,
+                 log=None):
         self.solvation = solvation
         self.jellium = jellium
-        self.charge = jellium.charge
+        self.region = region or JelliumRegion()
         self.dielectric = solvation.dielectric
+        self.charge = jellium.charge
         self.target_potential = target_potential
         self.tol = tol
         self.max_iters = max_iters
         self.grand_output = grand_output
+        self.log = log or (lambda *args, **kwargs: None)
 
         self.niters = 0
         # Set by post_converged():
@@ -286,9 +373,15 @@ class SJMExtension(Extension):
         potential = self.get_electrode_potential()
 
         # Legendre transform: Omega = E - N mu, with mu = -workfunction.
+        # Take the canonical energies from dft.energies rather than from
+        # dft.results, so that this can be called again after the results
+        # have already been replaced by the grand-potential energies.
+        e_free = broadcast_float(dft.energies.total_free, dft.comm)
+        e_extrapolated = broadcast_float(dft.energies.total_extrapolated,
+                                         dft.comm)
         mu_N = self.fermi_level * self.charge
-        self.omega_free = dft.results['free_energy'] - mu_N
-        self.omega_extrapolated = dft.results['energy'] - mu_N
+        self.omega_free = e_free - mu_N
+        self.omega_extrapolated = e_extrapolated - mu_N
 
         log('Legendre-transformed energies '
             '(grand potential, Omega = E - N mu):')
@@ -305,6 +398,8 @@ class SJMExtension(Extension):
             dft.results['energy'] = self.omega_extrapolated
             log('Grand-potential energy was written into results.\n')
         else:
+            dft.results['free_energy'] = e_free
+            dft.results['energy'] = e_extrapolated
             log('Canonical energy was written into results.\n')
         log.fd.flush()
 
@@ -375,6 +470,144 @@ class SJMExtension(Extension):
         vHt_r.scatter_from(vHt_g.ifft(grid=grid.new(comm=None))
                            if vHt_g is not None else None)
         return vHt_r
+
+    def set(self, **kwargs) -> None:
+        """Change SJM parameters without throwing away the wave functions.
+
+        Recognized keywords are ``target_potential``, ``excess_electrons``,
+        ``tol``, ``max_iters``, ``grand_output`` and ``jelliumregion``, with
+        the same meaning as for :class:`SJM`.  This is the replacement for
+        the legacy ``calc.set(sj={...})``; reach it as ``calc.dft.sjm.set()``.
+
+        The density and the wave functions are kept, so the next
+        ``get_potential_energy()`` continues the SCF loop from the current
+        solution instead of starting over.  When the target potential is
+        changed and the slope of potential vs. charge is known, a first step
+        in the number of excess electrons is taken right away -- unless
+        ``excess_electrons`` is given explicitly, which then wins.
+        """
+        known = {'target_potential', 'excess_electrons', 'tol', 'max_iters',
+                 'grand_output', 'jelliumregion'}
+        unknown = set(kwargs) - known
+        if unknown:
+            raise ValueError(
+                f'Unexpected SJM keyword(s): {", ".join(sorted(unknown))}.  '
+                f'Allowed are: {", ".join(sorted(known))}.')
+
+        log = self.log
+        rerun = False  # does the SCF loop have to run again?
+
+        if 'grand_output' in kwargs:
+            self.grand_output = kwargs['grand_output']
+            if self._dft is not None and self._dft.results:
+                # Cheap: just re-do the Legendre transform.
+                self.post_converged(self._dft)
+        if 'max_iters' in kwargs:
+            self.max_iters = kwargs['max_iters']
+        if 'tol' in kwargs:
+            self.tol = kwargs['tol']
+            if isinstance(self.jellium, FixedPotentialJelliumExtension):
+                self.jellium.tolerance = self.tol / Ha
+                if abs(self.get_electrode_potential() -
+                       self.target_potential) > self.tol:
+                    rerun = True
+
+        if 'jelliumregion' in kwargs:
+            self.region = JelliumRegion(**(kwargs['jelliumregion'] or {}))
+            mask_r, z1, z2 = self.region.mask(self.jellium.mask_r.desc,
+                                              self._relpos_ac())
+            self.jellium.set_mask(mask_r)
+            log(f'Jellium region changed to {z1:.3f} to {z2:.3f}  # Å')
+            rerun = True
+
+        if 'target_potential' in kwargs:
+            target = kwargs['target_potential']
+            if (target is None) != (self.target_potential is None):
+                self._switch_mode(target)
+            elif target is not None:
+                self.jellium.workfunction_target = target / Ha
+            self.target_potential = target
+            if target is None:
+                log('Switched to constant-charge mode with '
+                    f'{self.charge:+.5f} excess electrons.')
+            else:
+                log(f'Target potential changed to {target:.5f} +/- '
+                    f'{self.tol:.5f} V.')
+                if 'excess_electrons' not in kwargs:
+                    self._step_towards(target)
+            rerun = True
+
+        if 'excess_electrons' in kwargs:
+            self._set_charge(kwargs['excess_electrons'])
+            log(f'Excess electrons changed to {self.charge:+.5f}.')
+            rerun = True
+
+        if rerun and self._dft is not None:
+            # Empty results make ASECalculator.iconverge() run the SCF loop
+            # again; the density and the wave functions are kept.
+            self._dft.results.clear()
+            self.niters = 0
+
+    def _relpos_ac(self):
+        if self._dft is None:
+            raise RuntimeError('No results yet - run a calculation before '
+                               'changing the jellium region.')
+        return self._dft.relpos_ac
+
+    def _set_charge(self, charge: float) -> None:
+        """Set the number of excess electrons."""
+        self.jellium.charge = charge
+        self.charge = charge
+
+    def _switch_mode(self, target_potential: float | None) -> None:
+        """Switch between constant-charge and constant-potential mode.
+
+        The (already normalized) mask is re-used, so this is cheap and does
+        not touch the density or the wave functions.
+        """
+        mask_r = self.jellium.mask_r
+        pw = self.jellium.pw
+        if target_potential is None:
+            self.jellium = JelliumExtension(
+                mask_r, charge=self.charge, pw=pw)
+        else:
+            self.jellium = FixedPotentialJelliumExtension(
+                mask_r,
+                workfunction_target=target_potential,
+                excess_electrons_guess=self.charge,
+                tolerance=self.tol,
+                pw=pw)
+
+    def _slope(self) -> float | None:
+        """Estimated d(potential)/d(charge) in V per electron."""
+        history = getattr(self.jellium, 'history', [])
+        if len(history) < 2:
+            return None
+        (c2, fl2), (c1, fl1) = history[-2:]
+        if c1 == c2:
+            return None
+        return -(fl1 - fl2) * Ha / (c1 - c2)
+
+    def _step_towards(self, target_potential: float) -> None:
+        """Guess the charge needed for the new target potential."""
+        slope = self._slope()
+        if slope is None or np.isnan(self.fermi_level):
+            return
+        charge = self.charge + ((target_potential -
+                                 self.get_electrode_potential()) / slope)
+        self._set_charge(charge)
+        self.log(f'Excess electrons changed to {self.charge:+.5f} based on a '
+                 f'slope of {slope:.4f} V/electron.')
+
+    def move_atoms(self, relpos_ac) -> None:
+        # Each new geometry gets a fresh budget of equilibration attempts:
+        self.niters = 0
+        if not self.region.follows_atoms:
+            return
+        grid = self.jellium.mask_r.desc
+        mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
+        self.jellium.set_mask(mask_r)
+        self.log(f'Jellium region moved to {z1:.3f} to {z2:.3f}  # Å')
 
     def update1(self, nt_r):
         self.solvation.update1(nt_r)

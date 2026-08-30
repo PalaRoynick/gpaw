@@ -38,13 +38,24 @@ class JelliumExtension(Extension):
                  charge: float,
                  pw: Domain):
         self.charge = charge
+        self.pw = pw
+        self.set_mask(mask_r)
+
+    def set_mask(self, mask_r: UGArray) -> None:
+        """Normalize and store the shape of the jellium region.
+
+        Can be called again later if the region has to follow the atoms.
+        """
+        norm = mask_r.integrate()
+        if norm == 0.0:
+            raise ValueError('The jellium region contains no grid points.')
         self.mask_r = mask_r
-        mask_r.data *= 1.0 / mask_r.integrate()
+        mask_r.data *= 1.0 / norm
         self.mask_g = None
-        if isinstance(pw, PWDesc):
-            mask_r = mask_r.gather()
-            if mask_r is not None:
-                self.mask_g = mask_r.fft(pw=pw.new(comm=None))
+        if isinstance(self.pw, PWDesc):
+            mask0_r = mask_r.gather()
+            if mask0_r is not None:
+                self.mask_g = mask0_r.fft(pw=self.pw.new(comm=None))
 
     def update1(self, nt_r: UGArray) -> None:
         nt_r.data -= self.mask_r.data * self.charge
