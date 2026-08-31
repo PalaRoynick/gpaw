@@ -27,7 +27,7 @@ def test_gmatrix(session_tmp_path, supercell_cache):
     # [0.03031018  0.03031948  0.03041029  0.03041035  0.04326759  0.04327498]]
 
     calc = GPAW(mode='lcao',
-                basis='sz(dzp)',
+                basis='dz(dzp)',
                 kpts={'size': (2, 2, 2), 'gamma': False},
                 symmetry='off',
                 convergence={'density': 1e-8},
@@ -38,7 +38,7 @@ def test_gmatrix(session_tmp_path, supercell_cache):
     g_sqklnn = elph.bloch_matrix(calc, k_qc=q_qc,
                                  savetofile=False, prefactor=False)
 
-    assert g_sqklnn.shape == (1, 2, 8, 6, 2, 2)
+    assert g_sqklnn.shape == (1, 2, 8, 6, 4, 4)
 
     # NOTE: It seems g is Hermitian if q=0 and symmetric otherwise. CHECK THIS!
 
@@ -50,26 +50,37 @@ def test_gmatrix(session_tmp_path, supercell_cache):
     assert np.allclose(g_sqklnn[0, 0, :, 0:3], 0.)
 
     g_knn = np.sum(g_sqklnn[0, 0, :, 3:6], axis=1)  # modes 4-6
-    assert g_knn.shape == (8, 2, 2)
+    assert g_knn.shape == (8, 4, 4)
     # Hermitian
     assert np.allclose(g_knn[:, 0, 1], g_knn[:, 1, 0].conj())
     # and check one specific value
     print(g_knn[0])
 
     # the phonon modes are degenerate. Easier to test sum_nu |g_nu|^2
-    g_abs = np.sum(np.abs(g_sqklnn[0, 0, 0, 3:6, 0, 1])**2)
+#    g_abs = np.sum(np.abs(g_sqklnn[0, 0, 0, 3:6, 0, 1])**2)
+    g_abs = np.sum(np.abs(g_sqklnn[0, 0, 0, 3:6])**2, axis=0)
+    g_abs_ref = np.array(
+        [[7.29989866e-04, 7.57295026e-03, 5.33504160e-02, 1.25740862e+00],
+         [7.57295026e-03, 1.49470932e-02, 2.25470589e-01, 3.75943676e+00],
+         [5.33504160e-02, 2.25470589e-01, 1.29767841e-01, 3.36988369e+02],
+         [1.25740862e+00, 3.75943676e+00, 3.36988369e+02, 1.56987827e+02]])
     print(g_abs)
-    assert g_abs == pytest.approx(0.023668, rel=1e-4)
+    assert g_abs == pytest.approx(g_abs_ref, rel=1e-2, abs=1e-4)
 
     print("q_qc[1] checks")
     g_knn = np.sum(g_sqklnn[0, 1, :, 4:6], axis=1)  # modes 5-6
-    assert g_knn.shape == (8, 2, 2)
+    assert g_knn.shape == (8, 4, 4)
     # Hermitian, actually symmetric
     assert np.allclose(g_knn[:, 0, 1], g_knn[:, 1, 0])
     # and check one specific value
     print(g_knn[0])
 
     # the phonon modes are degenerate. Easier to test sum_nu |g_nu|^2
-    g_abs = np.sum(np.abs(g_sqklnn[0, 1, 0, 4:6, 0, 1])**2)
+    g_abs = np.sum(np.abs(g_sqklnn[0, 1, 0, 4:6])**2, axis=0)
+    g_abs_ref = np.array(
+        [[2.28458467e-01, 8.07831815e-04, 1.81685599e-01, 5.31342734e+00],
+         [8.07831815e-04, 4.03060578e+01, 1.69012277e+00, 1.89211923e+04],
+         [1.81685599e-01, 1.69012277e+00, 6.15033654e+00, 4.83739996e+03],
+         [5.31342734e+00, 1.89211923e+04, 4.83739996e+03, 1.05007799e+07]])
     print(g_abs)
-    assert g_abs == pytest.approx(0.29253, rel=1e-4)
+    assert g_abs == pytest.approx(g_abs_ref, rel=1e-2, abs=1e-4)

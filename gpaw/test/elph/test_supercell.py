@@ -9,19 +9,30 @@ from gpaw.mpi import world
 
 SUPERCELL = (2, 1, 1)
 
-g00 = np.array([[[[-1.12259936e-06, 1.25832645e-02],
-                  [1.25832645e-02, 4.04316008e-02]],
-                 [[3.46964784e-02, 1.25839117e-02],
-                  [1.37267189e-02, 4.76311583e-07]]],
-                [[[3.46964784e-02, 1.37267189e-02],
-                  [1.25839117e-02, 4.76311583e-07]],
-                 [[3.80642006e-07, -1.37265345e-02],
-                  [-1.37265345e-02, -4.04323116e-02]]]])
+
+g00 = np.array(
+    [[[[2.54075420e-08, 1.36509302e-08, 1.55902055e-02, 6.68467085e-03],
+       [1.36509302e-08, 7.80434310e-09, 4.92696165e-03, 2.17286796e-03],
+       [1.55902055e-02, 4.92696165e-03, 4.13169693e-02, 1.94515015e-02],
+       [6.68467085e-03, 2.17286796e-03, 1.94515015e-02, 9.74567004e-03]],
+      [[3.66048080e-02, 1.46628274e-02, 1.55901883e-02, 6.68466538e-03],
+       [1.34728203e-02, 5.32696910e-03, 4.92695352e-03, 2.17286534e-03],
+       [1.65245564e-02, 5.90874979e-03, -1.78388956e-08, -3.36865383e-04],
+       [7.15892262e-03, 2.69239734e-03, 3.36852348e-04, -2.51035479e-09]]],
+     [[[3.66048080e-02, 1.34728203e-02, 1.65245564e-02, 7.15892262e-03],
+       [1.46628274e-02, 5.32696910e-03, 5.90874979e-03, 2.69239734e-03],
+       [1.55901883e-02, 4.92695352e-03, -1.78388956e-08, 3.36852348e-04],
+       [6.68466538e-03, 2.17286534e-03, -3.36865383e-04, -2.51035479e-09]],
+      [[-2.54036782e-08, -1.36495323e-08, -1.65245736e-02, -7.15892808e-03],
+       [-1.36495323e-08, -7.80413427e-09, -5.90875792e-03, -2.69239995e-03],
+       [-1.65245736e-02, -5.90875792e-03, -4.13169693e-02, -1.94515015e-02],
+       [-7.15892808e-03, -2.69239995e-03, -1.94515015e-02, -9.74567004e-03]]]])
 
 
+# 5 kpoints for parallelisation; 4 basis functions
 @pytest.mark.slow
-@pytest.mark.skipif(world.size > 2,
-                    reason='world.size > 2')
+@pytest.mark.skipif(world.size > 4,
+                    reason='world.size > 4')
 @pytest.mark.elph
 def test_supercell(session_tmp_path, supercell_cache, comm):
     # Generate supercell_cache
@@ -29,6 +40,16 @@ def test_supercell(session_tmp_path, supercell_cache, comm):
 
     # read supercell matrix
     g_xsNNMM, basis_info = Supercell.load_supercell_matrix()
-    assert g_xsNNMM.shape == (6, 1, 2, 2, 2, 2)
+    assert g_xsNNMM.shape == (6, 1, 2, 2, 4, 4)
     print(g_xsNNMM[0, 0])
     assert g_xsNNMM[0, 0] == pytest.approx(g00, rel=1e-2, abs=1e-4)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(world.size > 4, reason='world.size > 4')
+@pytest.mark.elph
+def test_supercell_gamma_symmetry(session_tmp_path, supercell_cache_gamma):
+    supercell_cache_gamma
+    g_xsNNMM, _ = Supercell.load_supercell_matrix(name='supercell_gamma')
+    assert np.allclose(g_xsNNMM, g_xsNNMM.swapaxes(2, 3).swapaxes(4, 5),
+                       atol=1e-10)
