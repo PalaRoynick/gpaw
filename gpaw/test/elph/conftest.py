@@ -66,3 +66,17 @@ def supercell_cache(session_tmp_path, elph_cache):
                     kpts={'size': (1, 3, 3), 'gamma': False})
     sc.calculate_supercell_matrix(calcdict)
     return sc
+
+
+@pytest.fixture(scope='session')
+def supercell_cache_gamma(session_tmp_path, elph_cache):
+    """Gamma-only supercell cache to test real-symmetry of g_xsNNMM."""
+    atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
+    elph_cache
+    sc = Supercell(atoms, supercell=SUPERCELL,
+                   supercell_name='supercell_gamma', txt=None)
+    calcdict = dict(basis='dz(dzp)',
+                    kpts={'size': (1, 1, 1), 'gamma': True},
+                    parallel={'domain': world.size, 'band': 1})
+    sc.calculate_supercell_matrix(calcdict)
+    return sc

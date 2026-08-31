@@ -363,6 +363,11 @@ class Supercell:
 
                 if comm.rank == 0:
                     assert handle is not None
+                    # gamma_only: local V_xMM[0] is lower-tri only (C code
+                    # uses M1>=M2); copy lower to upper to restore symmetry.
+                    lower_mask = np.tri(nao, k=-1, dtype=bool)
+                    for s in range(nspins):
+                        g_sMM[s].T[lower_mask] = g_sMM[s][lower_mask]
                     g_sNMNM = g_sMM.reshape(
                         (nspins, N, nao_cell, N, nao_cell))
                     g_sNNMM = g_sNMNM.swapaxes(2, 3).copy()

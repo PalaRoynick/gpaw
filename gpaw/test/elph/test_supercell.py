@@ -43,3 +43,13 @@ def test_supercell(session_tmp_path, supercell_cache):
     assert g_xsNNMM.shape == (6, 1, 2, 2, 4, 4)
     print(g_xsNNMM[0, 0])
     assert g_xsNNMM[0, 0] == pytest.approx(g00, rel=1e-2, abs=1e-4)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(world.size > 4, reason='world.size > 4')
+@pytest.mark.elph
+def test_supercell_gamma_symmetry(session_tmp_path, supercell_cache_gamma):
+    supercell_cache_gamma
+    g_xsNNMM, _ = Supercell.load_supercell_matrix(name='supercell_gamma')
+    assert np.allclose(g_xsNNMM, g_xsNNMM.swapaxes(2, 3).swapaxes(4, 5),
+                       atol=1e-10)
