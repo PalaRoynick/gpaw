@@ -24,7 +24,7 @@ Git master branch
   It should be as accurate as the old one but will converge faster with number of
   plane-waves.  The old potential is still the default, but it is recommended that the
   new one is used for production calculations.  You can use it by specifying
-  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`). It has been generated with
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).  It has been generated with
   the following command::
 
     $ gpaw dataset F -fPBE -w -t v2 -b
