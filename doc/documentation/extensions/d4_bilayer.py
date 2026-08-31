@@ -12,7 +12,6 @@ WSe2.positions[:, 2] -= 3.3
 
 bilayer = WSe2 + MoS2
 bilayer.center(vacuum=6.0, axis=2)
-bilayer.pbc = True  # suppress the D3 warning
 
 calc = GPAW(mode=PW(400),
             xc='PBE',
@@ -22,5 +21,5 @@ calc = GPAW(mode=PW(400),
 bilayer.calc = calc
 energy = bilayer.get_potential_energy()
 
-# Acces the D3 correction energy
+# Acces the D4 correction energy
 d4_correction = bilayer.calc.dft.d4.get_energy()
