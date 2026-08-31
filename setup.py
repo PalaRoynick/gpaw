@@ -351,7 +351,7 @@ def try_compiling(
             compiler = get_compiler()
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir = os.path.abspath(tmpdir)
-                c_file_path = os.path.join(tmpdir, 'test.c')
+                c_file_path = os.path.join(tmpdir, 'test.cpp')
                 c_out_path = os.path.join(tmpdir, 'a.out')
                 with open(c_file_path, mode='w') as fobj:
                     print(c_program, file=fobj)
@@ -418,9 +418,10 @@ def test_blas() -> bool:
 @try_compiling
 def check_cpp_version() -> bool:
     """
-    #ifdef __cplusplus
-    static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
+    #ifndef __cplusplus
+        #error GPAW requires a C++ compiler
     #endif
+    static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
     int main() { return 0; }
     """
 
