@@ -21,6 +21,7 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
 
     ecut = 40
     eta = 0.1
+    rate = 0.1
     nbands_max = 14
 
     omegamax2 = get_omegamax(gs, nbands=slice(0, nbands_max))
@@ -46,6 +47,7 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
                                wd=wd1, nbands=nbands_max,
                                hilbert=True,
                                eta=eta,
+                               rate=rate,
                                ecut=ecut,
                                eshift=None)
 
@@ -55,6 +57,7 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
                                wd=wd2, nbands=slice(3, nbands_max),
                                hilbert=True,
                                eta=eta,
+                               rate=rate,
                                ecut=ecut,
                                eshift=None)
 
