@@ -40,7 +40,7 @@ class Chi0Calculator:
                  nblocks=1,
                  eshift=None,
                  intraband=True,
-                 rate='eta',
+                 rate=None,#'eta',
                  **kwargs):
         """
         Parameters
@@ -329,7 +329,7 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
     def __init__(self, *args,
                  eshift=None,
                  intraband=True,
-                 rate='eta',
+                 rate=None,#'eta',
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
