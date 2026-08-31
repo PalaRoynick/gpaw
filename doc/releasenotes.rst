@@ -27,7 +27,7 @@ Git master branch
   ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`). It has been generated with
   the following command::
 
-    $ gpaw dataset F -fPBE -w -t improved --non-relativistic -a 7.6 -b
+    $ gpaw dataset F -fPBE -w -t v2 --non-relativistic -a 7.6 -b
 
   There is also an LDA version of the potential.
 
