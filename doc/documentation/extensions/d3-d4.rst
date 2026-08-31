@@ -1,8 +1,11 @@
 .. _d3correction:
 
-=============
-D3 Correction
-=============
+===================
+D3 & D4 Corrections
+===================
+
+D3
+==
 
 The ``D3`` extension is using Stefan Grimme's DFT-D3 code. More information 
 about the theory and supported functionals can be 
@@ -57,3 +60,13 @@ part of the ``out.txt`` file will look as following::
     Free energy:     -25.380467
     Extrapolated:    -25.379948
     ...
+
+
+D4
+==
+
+The D4 correction works in a very similar way. To install it run ``pip install dftd4``. To 
+use the D4 correction simply replace d3 with d4 as following:
+
+.. literalinclude:: d4_bilayer.py
+    :language: python 
