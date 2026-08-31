@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import functools
 import os
-import re
 import runpy
 import shlex
 import sys
@@ -134,22 +133,10 @@ generator after building the extension.
 
 
 def ensure_cpp_standard(compile_args: list):
-    """GPAW C++ code requires -std=c++17. This adds it to the input compile
-    args list if it's missing. Don't override existing flags, but warn if the
-    user-specified standard is too low.
+    """GPAW C++ code requires -std=c++17 or newer. This adds it to the input
+    compile args list if it's missing. Does not override user-specified flags.
     """
-    old_std = None
-    for arg in compile_args:
-        m = re.match(r'-std=(c\+\+(\d+))', arg)
-        if m:
-            old_std = m.group(1)
-            version = int(m.group(2))
-            if version < 17:
-                warnings.warn(f'C++ standard {old_std} is too low, '
-                              'GPAW requires -std=c++17 or newer')
-            break
-
-    if old_std is None:
+    if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
         compile_args.append('-std=c++17')
 
 
@@ -471,6 +458,41 @@ def test_blas() -> bool:
     """
 
 
+@try_compiling
+def check_cpp_version() -> bool:
+    """
+    #ifdef __cplusplus
+    static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
+    #endif
+    int main() { return 0; }
+    """
+
+
+def get_gpu_version_check_code() -> str:
+    """"""
+    return """
+    static_assert(__cplusplus >= 201703L,
+        "GPAW GPU extension requires C++17 or newer");
+    #ifdef __NVCC__
+        __global__ void _gpaw_arch_check()
+        {
+            // __CUDA_ARCH__ is only defined during the device compilation pass
+        #ifdef __CUDA_ARCH__
+            static_assert(__CUDA_ARCH__ >= 700,
+                "GPAW GPU extension for CUDA requires -arch=sm_70 or newer");
+        #endif
+        }
+
+    #else
+        #include <hip/hip_version.h>
+        static_assert(
+            HIP_VERSION_MAJOR > 5 ||
+            (HIP_VERSION_MAJOR == 5 && HIP_VERSION_MINOR >= 0),
+            "GPAW GPU extension for AMD requires ROCm 5.0 or newer");
+    #endif
+    """
+
+
 class MissingLibraryWarning(UserWarning):
     pass
 
@@ -514,6 +536,12 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
                    ]:
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
+
+
+if not check_cpp_version():
+    raise RuntimeError("Unsupported C++ standard (see error above)."
+                       "Ensure you are using -std=c++17 or newer")
+
 
 sources = [Path('c/bmgs/bmgs.c')]
 sources += Path('c').glob('*.c')
@@ -604,6 +632,10 @@ def parse_cflags(define_macros: list[tuple[str, str]] | None,
 
 class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
+
+    # Keep in sync with get_gpu_version_check_code()
+    _REQUIRED_CUDA_ARCH = 'sm_70'
+
     def __init__(
             self,
             gpu_compiler_: str,
@@ -622,7 +654,7 @@ class BuildGPU:
         self.build_dir = build_dir
         self.makefile_name = makefile_name
 
-        self.sources = BuildGPU.get_sources()
+        self.sources = self.get_sources()
 
         if '-x' not in gpu_compile_args_:
             lang = 'cu' if gpu_target == 'cuda' else 'hip'
@@ -631,8 +663,39 @@ class BuildGPU:
         else:
             self.compile_args = gpu_compile_args_
 
-    @staticmethod
-    def get_sources() -> list[Path]:
+        if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
+            self.add_default_cuda_arch(self.compile_args)
+
+    def add_default_cuda_arch(self, compile_args: list[str]) -> None:
+        """Adds our minimum required -arch flag for nvcc if the user didn't
+        specify one.
+        """
+        ARCH_FLAGS = ('-arch', '--gpu-architecture', '-gencode',
+                      '--generate-code')
+        if not any(arg.lstrip().startswith(flag)
+                   for arg in compile_args for flag in ARCH_FLAGS):
+            compile_args.append(f'-arch={self._REQUIRED_CUDA_ARCH}')
+
+    def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
+        """Attempts to compile the provided code in a temp dir.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = os.path.abspath(tmpdir)
+            codefile = os.path.join(tmpdir, 'gputest.cpp')
+            outfile = os.path.join(tmpdir, 'a.out')
+            with open(codefile, mode='w') as fobj:
+                print(code, file=fobj)
+
+            run_args = [self.compiler] + cflags \
+                + ['-c', codefile, '-o', outfile]
+
+            result = subprocess.run(run_args, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(shlex.join(run_args), file=sys.stderr)
+                print(result.stderr, file=sys.stderr)
+                raise RuntimeError('GPU compiler check failed (see above)\n')
+
+    def get_sources(self) -> list[Path]:
         """Collect source files that are compiled with the GPU compiler.
         TODO: reduce the number of source files that need this special
         compilation path. Currently there is GPU code in common headers
@@ -672,17 +735,18 @@ class BuildGPU:
         Return value is a list of objects that can be added as extra
         link_objects to setuptools when building the main GPAW extension.
         """
-        print('Building gpu code', flush=True)
+        print('Building gpu code')
+
+        cflags = self._make_full_cflags()
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
 
         # Create build dirs
         build_dir_root_absolute = Path(self.build_dir).resolve()
         for p in self.sources:
             build_path = (build_dir_root_absolute / p).parent
             if not build_path.exists():
-                print(f'creating {build_path}', flush=True)
+                print(f'creating {build_path}')
                 build_path.mkdir(parents=True)
-
-        cflags = self._make_full_cflags()
 
         # Compile with cuda/hip compiler
         objects = []
@@ -713,6 +777,7 @@ class BuildGPU:
 
         sources_str = ' '.join([str(src) for src in self.sources])
         cflags = self._make_full_cflags()
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
         cflags_str = ' '.join(cflags)
 
         inout_makefile += [
