@@ -3,8 +3,11 @@ import pytest
 from ase import Atoms
 
 from gpaw import restart
-from gpaw.extensions.d4 import D4
 from gpaw.new.ase_interface import GPAW
+
+pytest.importorskip("dftd4")
+
+from gpaw.extensions.d4 import D4
 
 
 def _get_h2():
