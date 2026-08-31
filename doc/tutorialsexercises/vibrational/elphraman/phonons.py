@@ -7,10 +7,12 @@ from ase.units import invcm
 atoms = read("MoS2_2H_relaxed_PBE.json")
 
 # Phonon calculation
-ph = Phonons(atoms, supercell=(3, 3, 2), name="elph", center_refcell=True)
+ph = Phonons(atoms, supercell=(3, 3, 2), name='elph',
+             center_refcell=True, use_mean_minimum_images=True)
 
-ph.read(method='frederiksen', acoustic=True, )
-frequencies = ph.band_structure([[0, 0, 0], ])[0]  # Get frequencies at Gamma
+ph.read(method='frederiksen')
+q_qc = np.array([[0, 0, 0]])
+frequencies = ph.band_structure(q_qc)[0]  # Get frequencies at Gamma
 
 # save phonon frequencies for later use
 np.save("vib_frequencies.npy", frequencies)
