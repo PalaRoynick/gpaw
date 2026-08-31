@@ -16,6 +16,7 @@ bilayer.pbc = True  # suppress the D3 warning
 
 calc = GPAW(mode=PW(400),
             xc='PBE',
+            kpts=(3, 3, 1),
             extensions=[D3(xc='PBE')],
             txt='out.txt')
 
