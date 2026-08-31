@@ -70,3 +70,6 @@ use the D4 correction simply replace d3 with d4 as following:
 
 .. literalinclude:: d4_bilayer.py
     :language: python 
+
+.. note::
+    D4 does not throw a warning when one or two direction are pbc.
