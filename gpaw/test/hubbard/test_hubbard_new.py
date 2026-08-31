@@ -1,0 +1,460 @@
+"""Tests for the DFT+U+J implementation in gpaw/new/hubbard.py.
+
+Test generated with Claude Opus 5.0
+
+The noncollinear branch is checked for orbital-basis invariance and for
+reduction to Eq. (47) with complex density matrices; both require the J term
+there to be a matrix trace rather than a sum of squared elements.
+
+The functional implemented is Eq. (47) of Himmetoglu, Floris, de Gironcoli
+and Cococcioni, Int. J. Quantum Chem. 114, 14 (2014),
+
+    E = sum_s (U-J)/2 Tr[n^s (1 - n^s)] + sum_s J/2 Tr[n^s n^{-s}]
+
+with the Kohn-Sham potential
+
+    V^s = (U-J)/2 (1 - 2 n^s) + J n^{-s}.
+
+Note that the J of Eq. (47) is *not* the Slater-integral J of the
+Liechtenstein scheme; Quantum ESPRESSO calls this parameter Hubbard_J0 and
+implements the same functional in PW/src/v_hubbard.f90:v_hubbard_plain.
+"""
+import numpy as np
+import pytest
+
+from gpaw.new.hubbard import HubbardUJ, aoom, hubbard
+from gpaw.hubbard import hubbard as hubbard_legacy
+
+
+# --------------------------------------------------------------------------
+# Synthetic setups.  A setup needs l_j, n_j and N0_q, where N0_q holds the
+# n(n+1)/2 radial inner products for n partial waves.
+# --------------------------------------------------------------------------
+SETUPS = {
+    # one bounded d wave
+    'single_d': dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([0.83])),
+    # s wave plus a bounded and an unbounded d wave
+    'd_unbounded': dict(l=2, l_j=[0, 2, 2], n_j=[1, 3, -1],
+                        N0_q=np.array([0.95, 0.21, 0.14, 0.87, 0.42, 0.55])),
+    # s wave plus two bounded d waves
+    'd_bounded': dict(l=2, l_j=[0, 2, 2], n_j=[1, 3, 4],
+                      N0_q=np.array([0.95, 0.21, 0.14, 0.87, 0.42, 0.61])),
+    # p manifold
+    'single_p': dict(l=1, l_j=[1], n_j=[2], N0_q=np.array([0.78])),
+}
+
+U0, J0 = 4.0, 0.9
+
+
+def j_for(nspins):
+    """J is rejected for nspins == 1 (see test_spin_restricted_rejects_J)."""
+    return 0.0 if nspins == 1 else J0
+
+
+def _rng():
+    return np.random.default_rng(20240117)
+
+
+def random_D_sii(setup, nspins, rng, complex_=False):
+    """Physically shaped atomic density matrix: Hermitian, positive diagonal."""
+    ni = int(np.sum(2 * np.array(setup['l_j']) + 1))
+    out = []
+    for _ in range(nspins):
+        A = rng.uniform(-0.25, 0.25, (ni, ni))
+        if complex_:
+            A = A + 1j * rng.uniform(-0.25, 0.25, (ni, ni))
+        A = (A + A.conj().T) / 2 + 0.45 * np.eye(ni)
+        out.append(A)
+    return np.array(out)
+
+
+def occupations(D_sii, setup, nspins):
+    """The per-spin occupation matrices n^s that hubbard() works with."""
+    return [aoom(D_ii, setup['l'], setup['l_j'], setup['n_j'],
+                 setup['N0_q'], True)[0] / 2 * nspins for D_ii in D_sii]
+
+
+# --------------------------------------------------------------------------
+# Independent references
+# --------------------------------------------------------------------------
+def eq47_energy(n_smm, U, J):
+    """Straight transcription of Eq. (47); shares no code with hubbard()."""
+    if len(n_smm) == 1:
+        n_smm = [n_smm[0], n_smm[0]]
+    E = 0.0
+    for s in (0, 1):
+        n, n_opp = n_smm[s], n_smm[1 - s]
+        E += ((U - J) / 2 * np.trace(n @ (np.eye(len(n)) - n))
+              + J / 2 * np.trace(n @ n_opp))
+    return E
+
+
+def qe_v_hubbard_plain(ns, U, J0_, nspin):
+    """Transcription of Quantum ESPRESSO PW/src/v_hubbard.f90:v_hubbard_plain
+    (lines 141-190), the Hubbard_J0 code path.  Used as an external reference
+    implementation of the same functional."""
+    nm = ns.shape[-1]
+    eth = 0.0
+    v_hub = np.zeros_like(ns)
+
+    effU = U - J0_ if J0_ != 0.0 else U            # QE line 148
+    for is_ in range(nspin):
+        for m1 in range(nm):
+            eth += 0.5 * effU * ns[is_, m1, m1]                     # line 155
+            v_hub[is_, m1, m1] += 0.5 * effU                        # line 156
+            for m2 in range(nm):
+                eth -= 0.5 * effU * ns[is_, m2, m1] * ns[is_, m1, m2]
+                v_hub[is_, m1, m2] -= effU * ns[is_, m2, m1]        # line 161
+
+    if J0_ != 0.0:
+        for is_ in range(nspin):
+            isop = 1 if (nspin == 2 and is_ == 0) else 0            # lines 173-4
+            for m1 in range(nm):
+                for m2 in range(nm):
+                    eth += 0.5 * J0_ * ns[is_, m2, m1] * ns[isop, m1, m2]
+                    v_hub[is_, m1, m2] += J0_ * ns[isop, m2, m1]    # line 180
+
+    if nspin == 1:
+        eth = 2.0 * eth                                             # line 190
+    return eth, v_hub
+
+
+def full_spin_density_matrix(D_sii):
+    """rho = (n I + m.sigma)/2 from the Pauli components (n, mx, my, mz)."""
+    n, mx, my, mz = D_sii
+    N = len(n)
+    rho = np.zeros((2 * N, 2 * N), dtype=complex)
+    rho[:N, :N] = (n + mz) / 2
+    rho[N:, N:] = (n - mz) / 2
+    rho[:N, N:] = (mx - 1j * my) / 2
+    rho[N:, :N] = (mx + 1j * my) / 2
+    return rho
+
+
+# ==========================================================================
+# 1. Regression against the legacy implementation
+# ==========================================================================
+@pytest.mark.parametrize('name', list(SETUPS))
+@pytest.mark.parametrize('nspins', [1, 2, 4])
+@pytest.mark.parametrize('scale', [True, False])
+def test_j_zero_reproduces_legacy(name, nspins, scale):
+    """With J=0 the functional must reduce to plain Dudarev, bit for bit.
+
+    This is the safety net for the whole rewrite: no existing +U result may
+    move.  It covers the collinear and the noncollinear branch alike.
+    """
+    setup = SETUPS[name]
+    D_sii = random_D_sii(setup, nspins, _rng())
+
+    e_new, dH_new = hubbard(D_sii.copy(), U=U0, J=0.0, scale=scale, **setup)
+    e_old, dH_old = hubbard_legacy(D_sii.copy(), U=U0, scale=scale, **setup)
+
+    assert e_new == pytest.approx(e_old, abs=1e-14)
+    assert dH_new == pytest.approx(dH_old, abs=1e-14)
+
+
+@pytest.mark.parametrize('nspins', [2, 4])
+def test_j_actually_changes_the_result(nspins):
+    """Guards against the class of bug where J is silently ignored.
+
+    An earlier revision reduced to plain Dudarev for nspins in (1, 2): the
+    J argument was accepted and had no effect on either the energy or the
+    Hamiltonian.  A test comparing only J=0 results cannot detect that.
+    """
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, nspins, _rng())
+
+    e0, dH0 = hubbard(D_sii.copy(), U=U0, J=0.0, scale=True, **setup)
+    e1, dH1 = hubbard(D_sii.copy(), U=U0, J=J0, scale=True, **setup)
+
+    assert not np.isclose(e0, e1), 'J has no effect on the energy'
+    assert not np.allclose(dH0, dH1), 'J has no effect on the Hamiltonian'
+
+
+# ==========================================================================
+# 2. Correctness of the collinear functional
+# ==========================================================================
+@pytest.mark.parametrize('name', list(SETUPS))
+@pytest.mark.parametrize('nspins', [1, 2])
+@pytest.mark.parametrize('scale', [True, False])
+def test_collinear_energy_matches_eq47(name, nspins, scale):
+    """Energy equals an independent transcription of Eq. (47)."""
+    setup = SETUPS[name]
+    D_sii = random_D_sii(setup, nspins, _rng())
+    n_smm = [aoom(D_ii, setup['l'], setup['l_j'], setup['n_j'],
+                  setup['N0_q'], scale)[0] / 2 * nspins for D_ii in D_sii]
+
+    J = j_for(nspins)
+    e, _ = hubbard(D_sii.copy(), U=U0, J=J, scale=scale, **setup)
+    assert e == pytest.approx(eq47_energy(n_smm, U0, J), abs=1e-12)
+
+
+@pytest.mark.parametrize('nspins', [1, 2])
+def test_collinear_matches_quantum_espresso(nspins):
+    """Energy and potential agree with QE's v_hubbard_plain (Hubbard_J0).
+
+    QE is an independent production implementation of the same functional,
+    so this checks the code against something other than our own reading of
+    the paper.
+    """
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, nspins, _rng())
+    n_smm = np.array(occupations(D_sii, setup, nspins))
+
+    J = j_for(nspins)
+    e, dH_sii = hubbard(D_sii.copy(), U=U0, J=J, scale=True, **setup)
+    e_qe, v_qe = qe_v_hubbard_plain(n_smm, U0, J, nspins)
+
+    assert e == pytest.approx(e_qe, abs=1e-12)
+
+    # dH lives in the full ni x ni block; for 'single_d' with scale=True the
+    # projection structure is the identity, so the potentials are comparable.
+    for s in range(nspins):
+        assert dH_sii[s] == pytest.approx(v_qe[s], abs=1e-12)
+
+
+def test_doubly_occupied_orbital_gives_J():
+    """One orbital, n_up = n_dn = 1: the Dudarev term vanishes and only the
+    cross-spin term survives, E = J.  Isolates the coefficient of that term."""
+    setup = dict(l=0, l_j=[0], n_j=[1], N0_q=np.array([1.0]))
+    D_sii = np.array([[[1.0]], [[1.0]]])
+    e, _ = hubbard(D_sii, U=U0, J=J0, scale=False, **setup)
+    assert e == pytest.approx(J0, abs=1e-14)
+
+
+def test_idempotent_polarised_shell_gives_zero():
+    """A fully polarised shell with integer occupations costs nothing, for
+    any orbital rotation of the occupied subspace (rotational invariance)."""
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+    Q = np.linalg.qr(rng.standard_normal((5, 5)))[0]
+    n_up = Q @ np.diag([1.0, 1.0, 1.0, 0.0, 0.0]) @ Q.T
+    D_sii = np.array([n_up, np.zeros((5, 5))])
+    e, _ = hubbard(D_sii, U=U0, J=J0, scale=False, **setup)
+    assert e == pytest.approx(0.0, abs=1e-12)
+
+
+def test_spin_restricted_rejects_nonzero_J():
+    """J is meaningless without spin polarisation, and must be refused.
+
+    Substituting n_up = n_dn = N into Eq. (47) gives
+        E = (U-J) Tr N - (U-2J) Tr N^2,
+    whose linear and quadratic coefficients differ.  That is neither Dudarev
+    for any single U_eff nor physically what a user asking for Hund coupling
+    wants, since a spin-restricted calculation cannot polarise.  Quantum
+    ESPRESSO likewise aborts rather than proceeding when J0 meets an
+    unsupported configuration.
+    """
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, 1, _rng())
+
+    with pytest.raises(ValueError, match='spin-polarised'):
+        hubbard(D_sii.copy(), U=U0, J=J0, scale=True, **setup)
+
+    # J = 0 remains valid and reduces to Dudarev
+    e, _ = hubbard(D_sii.copy(), U=U0, J=0.0, scale=True, **setup)
+    e_legacy, _ = hubbard_legacy(D_sii.copy(), U=U0, scale=True, **setup)
+    assert e == pytest.approx(e_legacy, abs=1e-14)
+
+
+# ==========================================================================
+# 3. Energy / potential consistency
+# ==========================================================================
+@pytest.mark.parametrize('name', list(SETUPS))
+@pytest.mark.parametrize('nspins', [1, 2, 4])
+def test_potential_is_derivative_of_energy(name, nspins):
+    """dH must equal dE/dD.
+
+    This is what pins the coefficient of the cross-spin term in the
+    potential to J rather than J/2 (the energy carries J/2, but the spin sum
+    contributes twice), and what checks the nspins=1 factor bookkeeping.
+    """
+    setup = SETUPS[name]
+    rng = _rng()
+    D_sii = random_D_sii(setup, nspins, rng)
+    eps = 1e-6
+
+    J = j_for(nspins)
+    _, dH_sii = hubbard(D_sii.copy(), U=U0, J=J, scale=True, **setup)
+
+    for _ in range(4):
+        S = rng.uniform(-1, 1, D_sii.shape)
+        S = (S + np.swapaxes(S, 1, 2)) / 2          # keep it symmetric
+        e_plus, _ = hubbard(D_sii + eps * S, U=U0, J=J, scale=True, **setup)
+        e_minus, _ = hubbard(D_sii - eps * S, U=U0, J=J, scale=True, **setup)
+        fd = (e_plus - e_minus) / (2 * eps)
+        analytic = np.sum(dH_sii * S)
+        assert fd == pytest.approx(analytic, rel=1e-6, abs=1e-8)
+
+
+# ==========================================================================
+# 4. Noncollinear branch
+# ==========================================================================
+def test_noncollinear_j_zero_is_dudarev_of_full_density_matrix():
+    """With J=0, E = U/2 Tr[rho (1 - rho)] over the full 2N x 2N spin-density
+    matrix, traced over spin *and* orbital indices."""
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+    D_sii = np.array([random_D_sii(setup, 1, rng)[0]]
+                     + [(lambda A: (A + A.T) / 2)(rng.uniform(-.15, .15, (5, 5)))
+                        for _ in range(3)])
+    e, _ = hubbard(D_sii.copy(), U=U0, J=0.0, scale=False, **setup)
+    rho = full_spin_density_matrix(D_sii)
+    expected = U0 / 2 * np.trace(rho @ (np.eye(10) - rho)).real
+    assert e == pytest.approx(expected, abs=1e-12)
+
+
+def test_noncollinear_is_spin_rotation_invariant():
+    """The energy may not depend on the direction of the magnetisation."""
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+
+    def sym(s=0.15):
+        A = rng.uniform(-s, s, (5, 5))
+        return (A + A.T) / 2
+
+    n = sym(0.25) + 1.0 * np.eye(5)
+    m = np.array([sym(), sym(), sym()])
+    e0, _ = hubbard(np.array([n, *m]), U=U0, J=J0, scale=False, **setup)
+
+    a, b, c = rng.uniform(0, 2 * np.pi, 3)
+    Rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0],
+                   [0, 0, 1]])
+    Ry = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0],
+                   [-np.sin(b), 0, np.cos(b)]])
+    m_rot = np.einsum('ij,jkl->ikl', Rz @ Ry, m)
+    e1, _ = hubbard(np.array([n, *m_rot]), U=U0, J=J0, scale=False, **setup)
+
+    assert e0 == pytest.approx(e1, abs=1e-12)
+
+
+def test_noncollinear_reduces_to_eq47_for_real_density_matrix():
+    """With mx = my = 0 the noncollinear branch must reproduce the collinear
+    functional applied to (n_up, n_dn)."""
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+
+    def sym():
+        A = rng.uniform(-0.2, 0.2, (5, 5))
+        return (A + A.T) / 2 + 0.5 * np.eye(5)
+
+    n_up, n_dn = sym(), sym()
+    zero = np.zeros((5, 5))
+    D_sii = np.array([n_up + n_dn, zero, zero, n_up - n_dn])
+
+    e, _ = hubbard(D_sii, U=U0, J=J0, scale=False, **setup)
+    assert e == pytest.approx(eq47_energy([n_up, n_dn], U0, J0), abs=1e-12)
+
+
+def test_noncollinear_is_orbital_basis_invariant():
+    """The total energy may not depend on the choice of orbital basis.
+
+    D_sii is complex on the noncollinear path, and there the implemented
+    functional changes under a complex unitary rotation of the orbitals.
+    """
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+
+    def herm():
+        A = rng.uniform(-0.2, 0.2, (5, 5)) + 1j * rng.uniform(-0.2, 0.2, (5, 5))
+        return (A + A.conj().T) / 2
+
+    D_sii = np.array([herm() for _ in range(4)])
+    X = rng.standard_normal((5, 5)) + 1j * rng.standard_normal((5, 5))
+    V = np.linalg.qr(X)[0]
+    D_rot = np.array([V @ A @ V.conj().T for A in D_sii])
+
+    e0, _ = hubbard(D_sii.copy(), U=U0, J=J0, scale=False, **setup)
+    e1, _ = hubbard(D_rot.copy(), U=U0, J=J0, scale=False, **setup)
+    assert e0.real == pytest.approx(e1.real, abs=1e-10)
+
+
+def test_noncollinear_reduces_to_eq47_for_complex_density_matrix():
+    setup = dict(l=2, l_j=[2], n_j=[3], N0_q=np.array([1.0]))
+    rng = _rng()
+
+    def herm():
+        A = rng.uniform(-0.25, 0.25, (5, 5)) + 1j * rng.uniform(-.25, .25, (5, 5))
+        return (A + A.conj().T) / 2
+
+    n_up, n_dn = herm(), herm()
+    zero = np.zeros((5, 5), dtype=complex)
+    D_sii = np.array([n_up + n_dn, zero, zero, n_up - n_dn])
+
+    e, _ = hubbard(D_sii, U=U0, J=J0, scale=False, **setup)
+    assert e.real == pytest.approx(eq47_energy([n_up, n_dn], U0, J0).real,
+                                   abs=1e-10)
+
+
+# ==========================================================================
+# 5. The HubbardUJ extension object
+# ==========================================================================
+class FakeSetup:
+    def __init__(self, setup):
+        self.l_j = setup['l_j']
+        self.n_j = setup['n_j']
+        self.N0_q = setup['N0_q']
+
+
+def test_extension_only_acts_on_selected_atoms():
+    from ase.units import Ha
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, 2, _rng())
+
+    ext = HubbardUJ([0, 2], l=2, U=U0 * Ha, J=J0 * Ha)
+    dH_sii = np.zeros_like(D_sii)
+
+    e_skip = ext.update_non_local_hamiltonian(D_sii, FakeSetup(setup), 1,
+                                              dH_sii)
+    assert e_skip == 0.0
+    assert np.all(dH_sii == 0.0), 'dH modified for an unselected atom'
+
+    e_act = ext.update_non_local_hamiltonian(D_sii, FakeSetup(setup), 2,
+                                             dH_sii)
+    assert e_act != 0.0
+    assert not np.all(dH_sii == 0.0)
+
+
+def test_extension_accumulates_into_dH():
+    """dH_sii is added to, not overwritten."""
+    from ase.units import Ha
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, 2, _rng())
+    ext = HubbardUJ([0], l=2, U=U0 * Ha, J=J0 * Ha)
+
+    dH_a = np.zeros_like(D_sii)
+    ext.update_non_local_hamiltonian(D_sii, FakeSetup(setup), 0, dH_a)
+
+    preset = np.ones_like(D_sii)
+    dH_b = preset.copy()
+    ext.update_non_local_hamiltonian(D_sii, FakeSetup(setup), 0, dH_b)
+
+    assert dH_b == pytest.approx(preset + dH_a, abs=1e-14)
+
+
+def test_extension_converts_units():
+    """U and J are given in eV and stored in Hartree."""
+    ext = HubbardUJ([0], l=2, U=5.0, J=1.0)
+    from ase.units import Ha
+    assert ext.U == pytest.approx(5.0 / Ha)
+    assert ext.J == pytest.approx(1.0 / Ha)
+
+
+# ==========================================================================
+# 6. Input validation
+# ==========================================================================
+def test_rejects_setup_without_matching_partial_waves():
+    setup = SETUPS['single_d']
+    D_sii = random_D_sii(setup, 2, _rng())
+    ext = HubbardUJ([0], l=3, U=5.0, J=1.0)          # no f waves in the setup
+    with pytest.raises(RuntimeError, match='radial partial waves'):
+        ext.calculate(D_sii, setup['l_j'], setup['n_j'], setup['N0_q'])
+
+
+def test_rejects_scaling_without_bounded_partial_wave():
+    setup = dict(l=2, l_j=[0, 2], n_j=[1, -1],
+                 N0_q=np.array([0.9, 0.3, 0.5]))
+    D_sii = random_D_sii(setup, 2, _rng())
+    ext = HubbardUJ([0], l=2, U=5.0, J=1.0, scale=True)
+    with pytest.raises(RuntimeError, match='cannot be scaled'):
+        ext.calculate(D_sii, setup['l_j'], setup['n_j'], setup['N0_q'])

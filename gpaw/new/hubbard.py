@@ -52,6 +52,23 @@ class HubbardUJ(Extension):
                        l=l, l_j=l_j, n_j=n_j, N0_q=N0_q, scale=scale)
 
 
+def _scatter(dHU_ii, dHU_mm, nl, nm_j):
+    """Multiply the aoom projection structure in-place by the on-site
+    potential matrix dHU_mm, for 1 or 2 radial partial waves."""
+    nm = nm_j[nl[0]]
+    i1 = slice(nm_j[:nl[0]].sum(), nm_j[:nl[0]].sum() + nm)
+    if len(nl) == 1:
+        dHU_ii[i1, i1] *= dHU_mm
+    elif len(nl) == 2:
+        i2 = slice(nm_j[:nl[1]].sum(), nm_j[:nl[1]].sum() + nm)
+        dHU_ii[i1, i1] *= dHU_mm
+        dHU_ii[i1, i2] *= dHU_mm
+        dHU_ii[i2, i1] *= dHU_mm
+        dHU_ii[i2, i2] *= dHU_mm
+    else:
+        raise NotImplementedError
+
+
 def hubbard(D_sii: Array3D,
             U: float,
             J: float,
@@ -68,52 +85,61 @@ def hubbard(D_sii: Array3D,
     nm_j = 2 * np.array(l_j) + 1
     nm = nm_j[nl[0]]
 
-    # Get relevant entries of the density matrix
-    i1 = slice(nm_j[:nl[0]].sum(), nm_j[:nl[0]].sum() + nm)
-
     eU = 0.
     dHU_sii = np.zeros_like(D_sii)
 
-    for s, D_ii in enumerate(D_sii):
-        N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
-        N_mm = N_mm / 2 * nspins
-
-        if nspins == 4:
+    if nspins == 4:
+        for s, D_ii in enumerate(D_sii):
+            N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
+            N_mm = N_mm / 2 * nspins
             N_mm = N_mm / 2.0
             if s == 0:
                 eU1 = ((U - J) / 2. * (N_mm - 0.5 * N_mm @ N_mm).trace()
-                       + J / 4. * np.sum(np.square(N_mm)))
-
-                dHU_mm = (U - J) / 2. * (np.eye(nm) - N_mm.T) + J / 2. * N_mm
-
+                       + J / 4. * (N_mm @ N_mm).trace())
+                dHU_mm = (U - J) / 2. * (np.eye(nm) - N_mm.T) + J / 2. * N_mm.T
             else:
                 eU1 = (-(U - J) / 2. * (0.5 * N_mm @ N_mm).trace()
-                       - J / 4. * np.sum(np.square(N_mm)))
+                       - J / 4. * (N_mm @ N_mm).trace())
+                dHU_mm = -(U - J) / 2. * N_mm.T - J / 2. * N_mm.T
+            eU += eU1
+            _scatter(dHU_ii, dHU_mm, nl, nm_j)
+            dHU_sii[s] = dHU_ii
+        return eU, dHU_sii
 
-                dHU_mm = -(U - J) / 2. * N_mm.T - J / 2. * N_mm
-        else:
-            eU1 = U / 2. * (N_mm - N_mm @ N_mm).trace()
+    # Collinear (nspins == 1 or 2): Eq. (47) of Himmetoglu et al. (2014)
+    N_smm = []
+    struct_sii = []
+    for D_ii in D_sii:
+        N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
+        N_mm = N_mm / 2 * nspins
+        N_smm.append(N_mm)
+        struct_sii.append(dHU_ii)
 
-            dHU_mm = U / 2. * (np.eye(nm) - 2 * N_mm)
+    if nspins == 1 and J != 0.0:
+        raise ValueError(
+            'DFT+U+J requires a spin-polarised calculation: the J term '
+            'stabilises spin polarisation, which a spin-restricted '
+            'calculation cannot represent.  Use spinpol=True, or set J=0.')
+    for s in range(nspins):
+        N_mm = N_smm[s]
+        N_opp_mm = N_smm[1 - s] if nspins == 2 else N_mm
+
+        # D_sii is guaranteed real on the collinear code path, so
+        # n^s is real symmetric and no transposes/conjugates are needed
+        # here.  (If that guarantee is ever relaxed, dE/dn_{mm'} picks up
+        # n_{m'm}: use N_mm.T and N_opp_mm.T below, and .real on eU1.)
+        eU1 = ((U - J) / 2. * (N_mm - N_mm @ N_mm).trace()
+               + J / 2. * (N_mm @ N_opp_mm).trace())
+
+        # Note the coefficient of the cross term is J, not J/2.
+        dHU_mm = (U - J) / 2. * (np.eye(nm) - 2 * N_mm) + J * N_opp_mm
 
         eU += eU1
         if nspins == 1:
-            # Add contribution from other spin manifold
             eU += eU1
 
-        if len(nl) == 1:
-            dHU_ii[i1, i1] *= dHU_mm
-        elif len(nl) == 2:
-            i2 = slice(nm_j[:nl[1]].sum(), nm_j[:nl[1]].sum() + nm)
-
-            dHU_ii[i1, i1] *= dHU_mm
-            dHU_ii[i1, i2] *= dHU_mm
-            dHU_ii[i2, i1] *= dHU_mm
-            dHU_ii[i2, i2] *= dHU_mm
-        else:
-            raise NotImplementedError
-
-        dHU_sii[s] = dHU_ii
+        _scatter(struct_sii[s], dHU_mm, nl, nm_j)
+        dHU_sii[s] = struct_sii[s]
 
     return eU, dHU_sii
 
