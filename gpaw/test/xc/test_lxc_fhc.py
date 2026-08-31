@@ -9,7 +9,6 @@ from gpaw.utilities.adjust_cell import adjust_cell
 vacuum = 4.0
 h = 0.2
 
-
 @pytest.mark.mgga
 @pytest.mark.libxc
 def test_mgga_lxc_fhc():
@@ -19,7 +18,7 @@ def test_mgga_lxc_fhc():
     cluster = molecule('CO')
     adjust_cell(cluster, border=vacuum, h=h)
     calc = GPAW(xc='MGGA_X_TPSS+MGGA_C_TPSS',
-                mode='fd',
+                mode={'name': 'fd'},
                 h=h,
                 maxiter=14,
                 convergence={
