@@ -1,7 +1,5 @@
 #pragma once
 
-// Build system must define GPAW_CPP if compiling all of GPAW as C++
-
 // This check should work for Cray/Intel/NVCC/HIPCC compilers too
 #if defined(__GNUC__) || defined(__clang__)
     #define GPAW_HIDDEN_SYMBOL __attribute__((visibility("hidden")))
