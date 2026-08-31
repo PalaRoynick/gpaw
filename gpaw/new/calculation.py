@@ -619,6 +619,7 @@ class DFT:
         if 'xc' in kwargs:
             # check that 'base' functional is the same
             xcfunc_o = self.pot_calc.xc
+            # self.scf_loop.mixer.reset()
             assert xcfunc_n.get_setup_name() == xcfunc_o.get_setup_name()
 
         self.scf_loop = scf_loop
