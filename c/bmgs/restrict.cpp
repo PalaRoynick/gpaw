@@ -101,7 +101,7 @@ void RST1D(const TGPAW* a, int n, int m, TGPAW* b)
 #  define RST1D Z(bmgs_restrict1D2)
 #  define RST1DA Z(bmgs_restrict1D2_args)
 #  define RST1DW Z(bmgs_restrict1D2_worker)
-#  include "restrict.c"
+#  include "restrict.cpp"
 #  undef RST1D
 #  undef RST1DA
 #  undef RST1DW
@@ -110,7 +110,7 @@ void RST1D(const TGPAW* a, int n, int m, TGPAW* b)
 #  define RST1D Z(bmgs_restrict1D4)
 #  define RST1DA Z(bmgs_restrict1D4_args)
 #  define RST1DW Z(bmgs_restrict1D4_worker)
-#  include "restrict.c"
+#  include "restrict.cpp"
 #  undef RST1D
 #  undef RST1DA
 #  undef RST1DW
@@ -119,7 +119,7 @@ void RST1D(const TGPAW* a, int n, int m, TGPAW* b)
 #  define RST1D Z(bmgs_restrict1D6)
 #  define RST1DA Z(bmgs_restrict1D6_args)
 #  define RST1DW Z(bmgs_restrict1D6_worker)
-#  include "restrict.c"
+#  include "restrict.cpp"
 #  undef RST1D
 #  undef RST1DA
 #  undef RST1DW
@@ -128,7 +128,7 @@ void RST1D(const TGPAW* a, int n, int m, TGPAW* b)
 #  define RST1D Z(bmgs_restrict1D8)
 #  define RST1DA Z(bmgs_restrict1D8_args)
 #  define RST1DW Z(bmgs_restrict1D8_worker)
-#  include "restrict.c"
+#  include "restrict.cpp"
 #  undef RST1D
 #  undef RST1DA
 #  undef RST1DW
