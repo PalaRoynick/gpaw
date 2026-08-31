@@ -7,7 +7,9 @@ from gpaw.utilities.acwf import work
 def workflow():
     from myqueue.workflow import run
     for mode in ['pw', 'lcao']:
-        with run(function=work, args=['FCC', 'Al'], kwargs={'mode': mode},
+        with run(function=work,
+                 args=['FCC', 'Al'],
+                 kwargs={'mode': mode, 'tag': mode},
                  cores=8, tmax='1h', name=f'Al-{mode}'):
             run(function=check_lattice_constant, args=[mode],
                 name=f'check-{mode}')

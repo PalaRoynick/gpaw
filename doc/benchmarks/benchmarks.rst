@@ -43,7 +43,7 @@ PW-mode performance index
 The total time for one material is the sum of two steps
 (`t=\Delta t_1 + \Delta t_2`):
 
-1) time for for a complete SCF calculation
+1) time for a complete SCF calculation
 2) time for second SCF calculation after a small displacement
    of positions (or cell)
 
@@ -114,3 +114,9 @@ History
 * Modified all the initial magnetic moments, s.t. the correct ground
   states are found.
 * Modified expected timings, s.t. the PW score remains unchanged.
+
+
+2026, August
+------------
+
+* Using old default for density convergence.

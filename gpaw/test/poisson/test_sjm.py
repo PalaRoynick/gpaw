@@ -42,7 +42,7 @@ def test_sjm():
     vt_r = vt_g.ifft(grid=grid)
     dielectric = SimpleNamespace(eps_gradeps=[eps_r.data])
     ps2 = ConjugateGradientPoissonSolver(pw, grid, dielectric,
-                                         zero_vacuum=True)
+                                         dipolelayer=True, zero_vacuum=True)
     vt2_g = pw.zeros()
     ps2.solve(vt2_g, rhot_g)
     vt2_r = vt2_g.ifft(grid=grid)

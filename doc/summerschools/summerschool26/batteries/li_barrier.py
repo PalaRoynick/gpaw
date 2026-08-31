@@ -37,12 +37,12 @@ neb.interpolate()
 # Constrain C-atoms:
 mask = [atom.symbol == 'C' for atom in initial]
 constraint = FixAtoms(mask=mask)
-for image in images[0:7]:
+for i, image in enumerate(images):
     calc = GPAW(
         mode=PW(500),
         kpts=(5, 5, 6),
         xc='LDA',
-        txt=None,
+        txt=f'C6Li-{i}.txt',
         symmetry={'point_group': False})
     image.calc = calc
     image.set_constraint(constraint)

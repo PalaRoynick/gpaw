@@ -22,7 +22,7 @@ classifiers = [
 requires-python = '>=3.10'
 
 dependencies = [
-    'ase >= 3.27.0',  # what about __ase_version_required__?
+    'ase >= 3.29.0',  # what about __ase_version_required__?
     'numpy >= 1.20.0',  # Must match build requirement, otherwise older version may be left in place due to "build isolation"
     'scipy >= 1.6.0',
     'gpaw-data',
@@ -54,7 +54,7 @@ docs = [
 devel = [
     'flake8',
     'mypy',
-    'pytest>=7.0.0,<9.1',
+    'pytest>=7.0.0',
     'pytest-xdist',
 ]
 

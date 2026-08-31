@@ -56,7 +56,7 @@ in this tutorial!
 In the :ref:`aluminium_exercise` exercise the lattice constant of bulk Al was
 found by calculating the total energy at various lattice distances. A nice
 feature e of the plane wave mode is that it allows a simple implementation of
-the stress tensor, which can be used to optimize unit unit cells of periodic
+the stress tensor, which can be used to optimize unit cells of periodic
 systems directly. The following script performs such an optimization for bulk
 Si.
 

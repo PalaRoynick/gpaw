@@ -3,7 +3,7 @@
 Inclusion of excitonic effects and Discussion
 =============================================
 
-Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for BN with 24x24x1 k-points. First we load the x, y, and z components and plot all three curves in different colors.
+Now, we will finally visualize the absorption spectra we have calculated. The script below is set up for plotting and saving the absorption spectra for Si with 8x8x8 k-points along the x direction. 
 
 
 .. literalinclude:: solution4.py
@@ -11,11 +11,15 @@ Now, we will finally visualize the absorption spectra we have calculated. The sc
    :end-before: # snippet-plot-rpa-end
 
 
-Now open the saved figure and inspect the absorption spectra. Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated on day 2 does it match?
+Now open the saved figure and inspect the absorption spectra. The following image shows the reference absorption spectrum for comparison.
+
+.. image:: rpa_Si.png
+
+Now, load the x, y, and z components and plot all three curves in different colors. Does it look as you expected? Can you guess the band gap from the absorption spectra and which of the band gaps calculated in exercise 2 does it match?
 
 Now plot the absorption spectra for the other k-point meshes you calculated and compare. You could for instance modify the script above to plot, in different colors, all spectra in the same plot for comparison. Would you say that the calculation is converged?
 
-Finally, talk with the other groups and compare your absorption spectra with their absorption spectra. Is the same number of k-points needed to obtain same degree of convergence for the different materials? Is there any difference for the 2D material (Boron-Nitride)?
+Finally, compare your absorption spectrum with those obtained by others and discuss similarities and differences. Is the same number of k-points needed to obtain same degree of convergence for the different materials? Is there any difference for the 2D material (Boron-Nitride)?
 
 For a more realistic description one would have to include excitonic effects (i.e. the electron-hole interaction).
 In the next example, we will calculate the absorption spectrum using the Bethe-Salpeter equation (BSE). For theoretical understanding you can read the brief description provided as in the link below: https://gpaw.readthedocs.io/documentation/bse/bse.html
@@ -56,7 +60,7 @@ conduction band range.
    :end-before: # snippet-bse-spectrum-end
 
 
-Note the .csv output files that contains the spectre. The script also generates a .dat file that contains the
+Note the .csv output files that contains the spectrum. The script also generates a .dat file that contains the
 BSE eigenvalues. The spectrum essentially consists of a number of peaks centered on the eigenvalues. Below we will
 plot it along with the RPA spectrum for comparison.
 
@@ -65,5 +69,6 @@ plot it along with the RPA spectrum for comparison.
    :start-after: # snippet-plot-bse-start
    :end-before: # snippet-plot-bse-end
 
+.. image:: bse_atoms.png
 
 Note: The parameters that need to be converged in the calculation are the k-points in the initial ground state calculation. In addition the following keywords in the BSE object should be converged: the plane wave cutoff, the numbers of bands used to calculate the screened interaction, the list of valence bands and the list of conduction bands included in the Hamiltonian. You can find an example calculation for Silicon in the link below: https://gpaw.readthedocs.io/tutorialsexercises/opticalresponse/bse_tutorial/bse_tutorial.html

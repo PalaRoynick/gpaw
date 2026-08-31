@@ -1,7 +1,7 @@
 .. _summerschool18:
 
 =======================
-CAMd Summer School 2018
+CAMD Summer School 2018
 =======================
 
 The CAMD Summer School 2018 was held in Helsingør in August 2018.  You

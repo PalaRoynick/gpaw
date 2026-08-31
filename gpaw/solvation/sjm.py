@@ -3,7 +3,7 @@ The solvated jellium method is contained in this module.
 This enables electronically grand-canonical calculations to be calculated,
 typically for simulating electrochemical interfaces.
 
-This version the the solvated jellium method has been modified
+This version of the solvated jellium method has been modified
 and includes the Fluctuation Dissipation Theorem.
 """
 
@@ -196,9 +196,10 @@ class OldSJM(OldSolvationGPAW):
 
         'dt': float
             Time step for the FDT calculation in fs. Default: 0.5.
-        'po_time': float
-            Relaxation-time constant of potentiostat. Default: 100.
-        'th_temp': float
+        'capacitance': float, capacitance in the equation. Default 1 muF
+        'resistance': float, resistance, Default 100 so that
+            the relaxation-time constant of potentiostat. Default: 100.
+        'temp_K': float
             Thermal temperature for the FDT calculation in K. Default: 300.
 
     slope_regression_depth : int
@@ -445,15 +446,17 @@ class OldSJM(OldSolvationGPAW):
             # Default parameters if fdt is True
             self.parameters['sj']['fdt'] = {
                 'dt': 0.5,
-                'po_time': 100.0,
-                'th_temp': 300.0}
+                'capacitance': 1.0,
+                'resistance': 100.,
+                'temp_K': 300.0}
         elif isinstance(self.parameters['sj']['fdt'], dict):
             # If fdt is a dict, ensure the dictionary is complete
             fdt_dict = self.parameters['sj']['fdt']
             self.parameters['sj']['fdt'] = {
                 'dt': fdt_dict.get('dt', 0.5),
-                'po_time': fdt_dict.get('po_time', 100.0),
-                'th_temp': fdt_dict.get('th_temp', 300.0)}
+                'capacitance': fdt_dict.get('capacitance', 1.0),
+                'resistance': fdt_dict.get('resistance', 100.0),
+                'temp_K': fdt_dict.get('temp_K', 300.0)}
 
     def _quick_reinitialization(self):
         """Minimal reinitialization of electronic-structure stuff when only
@@ -624,7 +627,7 @@ class OldSJM(OldSolvationGPAW):
                 slope = linregress(previous_electrons,
                                    previous_potentials)[0]
                 self.log(f'Slope regressed from last {len(previous_electrons)}'
-                         f'attempts is {slope:.4f} V/electron,')
+                         f' attempts is {slope:.4f} V/electron,')
 
                 # get capacitance in muF/cm^2
                 area = np.linalg.det(atoms.cell[:2, :2])
@@ -665,8 +668,9 @@ class OldSJM(OldSolvationGPAW):
             if p.fdt:
                 fdt_dict = p['fdt']
                 dt = fdt_dict['dt']
-                po_time = fdt_dict['po_time']
-                th_temp = fdt_dict['th_temp']
+                capacitance = fdt_dict['capacitance']
+                resistance = fdt_dict['resistance']
+                temp_K = fdt_dict['temp_K']
 
                 rn = np.random.standard_normal(1)
 
@@ -677,20 +681,16 @@ class OldSJM(OldSolvationGPAW):
                     raise ValueError(
                         "Slope cannot be zero when calculating capacitance.")
 
-                capacitance = - _e * 1e22 / (area * p.slope)
-
                 p.excess_electrons += (
                     capacitance * (true_potential - p.target_potential)
-                    * (1 - np.exp(-dt / po_time))
+                    * (1 - np.exp(-dt / (capacitance * resistance)))
                     + rn[0] * np.sqrt(
-                        kB * th_temp * capacitance
-                            * (1 - np.exp(-2 * dt / po_time))
-                    )
-                )
+                        kB * temp_K * capacitance
+                        * (1 - np.exp(-2 * dt / (capacitance * resistance)))))
                 self.log(
                     f'Number of electrons is {p.excess_electrons:.4f} '
                     f'using the FDT, with slope of {p.slope:.4f} V/electron '
-                    f'and capacitance of ({capacitance:.4f} muF/cm2).'
+                    f'and vacuum capacitance of ({capacitance:.4f} muF/cm2).'
                 )
 
             else:

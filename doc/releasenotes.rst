@@ -10,9 +10,25 @@ Git master branch
 
 :git:`master <>`.
 
+* The default value for density convergence has been changed from
+  ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
+  This will lead to a few more steps in the SCF loop, but also more
+  accurate forces, stress tensors and magnetic moments.
+
+* Implicit solvation calculations are now supported in plane-wave mode, using
+  an updated conjugate-gradient Poisson solver. Add the solvation model
+  through the ``extensions`` keyword; e.g.,
+  ``GPAW(..., extensions=[Solvation(...)])``.
+
+
+Version 26.7.0
+==============
+
+July 6, 2026: :git:`26.7.0 <../26.7.0>`
+
 .. _new gpaw notes:
 
-* Minimum version requirements: Python 3.10, ASE 3.27.0.
+* Minimum version requirements: Python 3.10, ASE 3.29.0.
 
 * **Important changes in launching GPAW with MPI parallelization**
   (see also :ref:`parallel_running_jobs`)
@@ -163,6 +179,9 @@ Git master branch
     * weight: 1 -> 1
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
+
+* Experimental support for :ref:`gpu` calculations in PW-mode.
+  Both single and double precision calculations are possible.
 
 * :ref:`newgpaw`: Ported the dipole moment writer to the new RT-TDDFT interface.
 
@@ -1084,7 +1103,8 @@ Aug 1, 2019: :git:`19.8.0 <../19.8.0>`
   other convergence criteria (energy, eigenstates and density) are fulfilled.
   This can save a bit of time.
 
-* Experimental support for JTH_ PAW-datasets.
+* Experimental support for JTH_ PAW-datasets
+  (see also :git:`gpaw/utilities/jth.py`).
 
 * Fast C implementation of bond-length constraints and associated hidden
   constraints for water models. This allows efficient explicit solvent QMMM
@@ -1099,7 +1119,7 @@ Aug 1, 2019: :git:`19.8.0 <../19.8.0>`
 * Removed unnecessary application of H-operator in Davidson algorithm making
   it a bit faster.
 
-.. _JTH: https://www.abinit.org/psp-tables
+.. _JTH: https://www.abinit.org/atomic_data/paw/
 
 
 Version 1.5.2
