@@ -6,7 +6,7 @@ from gpaw.dft import ExtensionInput
 from gpaw.fd_operators import Gradient
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.c import add_to_density
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 from gpaw.new.poisson import PoissonSolver, PoissonSolverWrapper
 from gpaw.solvation.cavity import Cavity
 from gpaw.solvation.dielectric import Dielectric
@@ -17,24 +17,31 @@ from gpaw.solvation.poisson import WeightedFDPoissonSolver
 class Solvation(ExtensionInput):
     name = 'solvation'
 
-    def __init__(self, cavity, dielectric, interactions=None):
+    def __init__(self, cavity, dielectric, interactions=None,
+                 dipolelayer=False, zero_vacuum=False):
         self.cavity = Cavity.from_dict(cavity)
         self.dielectric = Dielectric.from_dict(dielectric)
         self.interactions = [Interaction.from_dict(i)
                              for i in interactions or []]
+        self.dipolelayer = dipolelayer
+        self.zero_vacuum = zero_vacuum
 
     def todict(self):
         return {'cavity': self.cavity.todict(),
                 'dielectric': self.dielectric.todict(),
                 'interactions': [
                     {'name': i.__class__.__name__, **i.todict()}
-                    for i in self.interactions]}
+                    for i in self.interactions],
+                'dipolelayer': self.dipolelayer,
+                'zero_vacuum': self.zero_vacuum}
 
     def build(self, builder: DFTComponentsBuilder):
         return SolvationExtension(
             cavity=self.cavity,
             dielectric=self.dielectric,
             interactions=self.interactions,
+            dipolelayer=self.dipolelayer,
+            zero_vacuum=self.zero_vacuum,
             setups=builder.setups,
             grid=builder.fine_grid,
             relpos_ac=builder.relpos_ac,
@@ -50,10 +57,14 @@ class SolvationExtension(Extension):
                  cavity,
                  dielectric,
                  interactions=None,
+                 dipolelayer=False,
+                 zero_vacuum=False,
                  setups, grid, relpos_ac, log, comm):
         self.cavity = cavity
         self.dielectric = dielectric
         self.interactions = interactions or []
+        self.dipolelayer = dipolelayer
+        self.zero_vacuum = zero_vacuum
         finegd = grid._gd
         self.grid = grid
         self.comm = comm
@@ -91,12 +102,20 @@ class SolvationExtension(Extension):
         if isinstance(pw, PWDesc):
             from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
             return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric, zero_vacuum=True)
+                pw, grid, self.dielectric,
+                dipolelayer=self.dipolelayer,
+                zero_vacuum=self.zero_vacuum)
 
         psolver = WeightedFDPoissonSolver()
         psolver.set_dielectric(self.dielectric)
         psolver.set_grid_descriptor(grid._gd)
         return PoissonSolverWrapper(psolver)
+
+    def update1pw(self, nt_g, kin_en_using_band=True):
+        nt_r = self.grid.empty()
+        nt_r.scatter_from(nt_g.ifft(grid=self.grid.new(comm=None))
+                          if nt_g is not None else None)
+        self.update1(nt_r, kin_en_using_band)
 
     def update1(self, nt_r, kin_en_using_band=True):
         density = DensityWrapper(nt_r)

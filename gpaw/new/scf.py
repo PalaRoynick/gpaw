@@ -193,7 +193,7 @@ def create_convergence_criteria(criteria: dict[str, Any]
                                 ) -> dict[str, Criterion]:
     criteria = criteria.copy()
     for k, v in [('energy', 0.0005),        # eV / electron
-                 ('density', 1.0e-4),       # electrons / electron
+                 ('density', 1.0e-6),       # electrons / electron
                  ('eigenstates', 4.0e-8)]:  # eV^2 / electron
         if k not in criteria:
             criteria[k] = v
@@ -285,7 +285,7 @@ def write_iteration(criteria, converged_items, entries, ctx, log):
     if ctx.wfs.nspins == 2 or not ctx.wfs.collinear:
         totmom_v, _ = ctx.dens.calculate_magnetic_moments()
         if ctx.wfs.collinear:
-            line += f'  {totmom_v[2]:+.4f}|'
+            line += f'{totmom_v[2]:+9.4f}|'
         else:
             line += ' {:+.1f},{:+.1f},{:+.1f}|'.format(*totmom_v)
 

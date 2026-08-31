@@ -24,11 +24,8 @@ Tools used in this exercise:
 Part 1: |N2| adsorption on a flat Ru surface
 ============================================
 
-:download:`n2_on_metal.ipynb`, :download:`N2Ru_hollow.png`,
-:download:`2NadsRu.png`
-
-The notebook ``n2_on_metal.ipynb`` shows how to set up a molecule on a flat
-metal surface.
+Following the link below you will see instructions to do the following.
+Based on them do the following:
 
 * Set up a clean metal surface.
 
@@ -43,6 +40,11 @@ metal surface.
 
 * Relax the combined system.
 
+.. toctree::
+   :maxdepth: 1
+
+   part1/n2_on_metal
+
 
 Part 2: Splitting |N2|: initial and final geometry
 ==================================================
@@ -55,7 +57,7 @@ barrier between the two states and just use the lying-down molecule as the
 initial configuration.
 
 Create scripts setting up and energy-minimizing the initial and final
-structures, as described in the final part of the notebook from Part 1.
+structures, as described in the final part of Part 1 (:ref:`catalysis1`).
 Submit these scripts as parallel batch jobs.  When submitting make sure that
 the number of CPU cores matches the number of irreducible k-point in the
 calculation, as k-point parallelization is much more efficient than other
@@ -67,42 +69,47 @@ See :ref:`gbar submitting`.
 Part 3: Learning about Nudged Elastic Band
 ==========================================
 
-:download:`neb.ipynb`
-
 While the calculations from the previous step runs, you can learn about the
-Nudged Elastic Band method for finding transition states and barriers from the
-notebook ``neb.ipynb``.
+Nudged Elastic Band method for finding transition states and barriers from
+:ref:`catalysis3`.
+
+.. toctree::
+   :maxdepth: 1
+
+   part3/neb
 
 
 Part 4: Run a parallel NEB calculation
 ======================================
 
 Prepare a script running NEB using the GPAW calculator and the initial and
-final states from part 2 to find the barrier for |N2| dissociation.
+final states from part 2 to find the barrier for :mol:`N_2` dissociation.
 
 When doing this you should parallelize over the images in the NEB
 calculation. A more detailed description of how to do this can be found in
-the *Exercise* part of the ``neb.ipynb`` along with some suitable input
+the :ref:`catalysis_exercise` section of part 3 along with some suitable input
 parameters for the NEB.
 
 
 Extra exercise: Vibrational energy
 ======================================
 
-:download:`vibrations.ipynb`, :download:`TS.xyz`
+:download:`TS.xyz`
 
-The notebook ``vibrations.ipynb`` will guide you through how to calculate the
+The :ref:`catalysis_extra` exercise will guide you through how to calculate the
 vibrations of the adsorbate in the initial and final state and use the
 Thermochemistry module to calculate the reaction free energy. The final part
 of the exercise shows what happens when you calculate the vibrations of a
 well-converged NEB transition state.
 
+.. toctree::
+   :maxdepth: 1
+
+   part_extra/vibrations
+
 
 Extra material: Convergence test
 ================================
-
-:download:`convergence.ipynb`, :download:`convergence.db`,
-:download:`check_convergence.py`
 
 We look at the adsorption energy and height of a nitrogen atom on a Ru(0001)
 surface in the hcp site.  We check for convergence with respect to:
@@ -110,6 +117,11 @@ surface in the hcp site.  We check for convergence with respect to:
 * number of layers
 * number of k-points in the BZ
 * plane-wave cutoff energy
+
+.. toctree::
+   :maxdepth: 1
+
+   convergence/convergence
 
 
 .. |N2| replace:: N\ :sub:`2`

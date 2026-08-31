@@ -1,5 +1,5 @@
 from ase.build import mx2
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def mos2wds(shifts: list[tuple[float, float, int]], tag: str) -> None:

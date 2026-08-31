@@ -30,7 +30,8 @@ def get_calc(txt, parallel={}):
                 basis='sz(dzp)',
                 kpts={'size': (1, 2, 2), 'gamma': False},
                 symmetry={'point_group': False},
-                convergence={'forces': 1.e-4},
+                convergence={'forces': 1.e-4,
+                             'density': 1e-8},
                 parallel=parallel,
                 txt=txt)
 

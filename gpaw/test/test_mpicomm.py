@@ -24,7 +24,7 @@ def test_mpicomm(mpi):
     hasmpi = False
     try:
         import gpaw.cgpaw as cgpaw
-        hasmpi = hasattr(cgpaw, 'Communicator') and world.size > 1
+        hasmpi = cgpaw.have_mpi and world.size > 1
     except (ImportError, AttributeError):
         pass
 

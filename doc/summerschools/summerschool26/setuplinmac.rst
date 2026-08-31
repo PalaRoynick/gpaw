@@ -1,8 +1,8 @@
 .. _setuplinmac:
 
-=========================================
-Setting up the first time (Linux / macOS)
-=========================================
+=================================================
+Setting up SSH for the first time (Linux / macOS)
+=================================================
 
 You will be using the command line in a Terminal to access the DTU
 central computers, and to set up the connections you need to display
@@ -16,9 +16,7 @@ Linux users should skip this step as an X11 server is part of all
 normal Linux distributions.
 
 As a Mac user, you should install an X11 server, it is needed to
-display the ASE Graphical User Interface on your laptop.  If you do
-not install it, you can still run Jupyter Notebooks, but the command
-to view structures with the GUI will not work.
+display the ASE Graphical User Interface on your laptop.
 
 Go to https://www.xquartz.org/ and download the newest version of
 XQuartz.  It is an open-source port of the X11 windows system for
@@ -58,7 +56,7 @@ For security reasons, all access to DTU computers require two-factor
 authentication.  In the case of the HPC installation, the two
 factors are your password and an encryption key (*SSH key*).  You get
 your secret SSH key by connecting to
-https://www.student.dtu.dk/~dccidmgr/CAMD24 then add your user name to
+https://www.student.dtu.dk/~dccidmgr/CAMD26 then add your user name to
 the end of the URL and press enter  (Guest accounts only, DTU users
 please :ref:`do this instead <keypair>`).  You will now be asked to
 authenticate with username and password, when you have done that
@@ -128,7 +126,7 @@ The output should look something like::
   -rw-r--r--  1 myname  staff    401 Sep  8  2010 id_rsa.pub
   -rw-------  1 myname  staff  80395 Jul  1 15:55 known_hosts
 
-Check that the line for the secret key file file starts with ``-rw-------``
+Check that the line for the secret key file starts with ``-rw-------``
 (there may be a @ or another character at the end, that is OK).
 
 Your key file should now automatically be used when logging into the
@@ -181,17 +179,21 @@ Get access to the software
 To give access to the software you need for this course, please run
 the command::
 
-  source ~jasc/setup2024
+  source ~jasc/setup2026
 
 Note the tilde in the beginning of the second word.
 The script installs ASE, GPAW and related software.
-The script will also copy a selection of draft notebooks to a folder
-called CAMD2024 in your DTU databar account.
+The script will also copy a selection of scripts to a folder
+called CAMD2026 in your DTU databar account.
+
+**You only need to do this once!**  Next time, you just log in and run
+``linuxsh -X`` to connect to an interactive compute node, and the software
+will be available.
 
 
 Carrying on
 ===========
 
-Now read the guide for :ref:`Starting and accessing a Jupyter Notebook
-<accesslinmac>`
+Now read the guide for :ref:`gbar using`.
+
 

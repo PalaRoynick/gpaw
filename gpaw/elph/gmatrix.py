@@ -29,12 +29,10 @@ from ase import Atoms
 from ase.phonons import Phonons
 from ase.utils.filecache import MultiFileJSONCache
 from ase.utils.timing import Timer, timer
-
+from gpaw.elph.supercell import Supercell
 from gpaw.mpi import normalize_communicator
 from gpaw.old.calculator import GPAW
 from gpaw.typing import ArrayND
-
-from .supercell import Supercell
 
 OPTIMIZE = "optimal"
 
@@ -44,7 +42,7 @@ class ElectronPhononMatrix:
 
     def __init__(self, atoms: Atoms, supercell_cache: str, phonon,
                  load_sc_as_needed: bool = True, indices=None,
-                 world=None) -> None:
+                 comm=None) -> None:
         """Initialize with base class args and kwargs.
 
         Parameters
@@ -64,9 +62,10 @@ class ElectronPhononMatrix:
         indices: list
             List of atoms (indices) to use. Default: Use all.
         """
-        world = normalize_communicator(world)
+        # XXX Since no parallelization has been implemented for this class,
+        #     should the communicator input be removed?
+        self.comm = normalize_communicator(comm)
 
-        self.world = world
         if not load_sc_as_needed:
             assert indices is None, "Use 'load_sc_as_needed' with 'indices'"
 
@@ -85,14 +84,15 @@ class ElectronPhononMatrix:
 
         if set(self.phonon.indices) != set(self.indices):
             self.phonon.set_atoms(self.indices)
-            self.phonon.D_N = None
+            self.phonon.C_avNav = None
 
         self._read_phonon_cache()
         self.timer.stop("Read phonons")
 
     def _set_supercell_cache(self, supercell_cache: str,
                              load_sc_as_needed: bool):
-        self.supercell_cache = MultiFileJSONCache(supercell_cache)
+        self.supercell_cache = MultiFileJSONCache(
+            supercell_cache, comm=self.comm)
         self.R_cN = self._get_lattice_vectors()
 
         if load_sc_as_needed:
@@ -106,10 +106,10 @@ class ElectronPhononMatrix:
         if isinstance(phonon, Phonons):
             self.phonon = phonon
         elif isinstance(phonon, str):
-            info = MultiFileJSONCache(phonon)["info"]
+            info = MultiFileJSONCache(phonon, comm=self.comm)["info"]
             assert "dr_version" in info, "use valid cache created by elph"
             # our version of phonons
-            self.phonon = Phonons(atoms, supercell=info["supercell"],
+            self.phonon = Phonons(atoms, supercell=tuple(info["supercell"]),
                                   name=phonon, delta=info["delta"],
                                   center_refcell=True)
         elif isinstance(phonon, dict):
@@ -124,7 +124,7 @@ class ElectronPhononMatrix:
             raise TypeError
 
     def _read_phonon_cache(self):
-        if self.phonon.D_N is None:
+        if self.phonon.C_avNav is None:
             self.phonon.read(symmetrize=10)
 
     def _yield_g_NNMM_as_needed(self, x, s):
@@ -135,7 +135,7 @@ class ElectronPhononMatrix:
 
     def _get_lattice_vectors(self):
         """Recover lattice vectors of elph calculation"""
-        supercell = self.supercell_cache["info"]["supercell"]
+        supercell = tuple(self.supercell_cache["info"]["supercell"])
         ph = Phonons(self.atoms, supercell=supercell, center_refcell=True)
         return ph.compute_lattice_vectors()
 
@@ -169,7 +169,8 @@ class ElectronPhononMatrix:
             precalc = True
         else:
             raise ValueError("var1 must be C1_nM or g_xNMn")
-        omega_ql, u_ql = self.phonon.band_structure([q_c], modes=True)
+        omega_ql, u_ql = self.phonon.band_structure(q_c[np.newaxis, :],
+                                                    modes=True)
         u_l = u_ql[0]
         assert len(u_l.shape) == 3
 
@@ -233,20 +234,18 @@ class ElectronPhononMatrix:
             return g_lnn * units.Hartree / units.Bohr  # eV / Ang
 
     @timer("g ket part")
-    def _precalculate_ket(self, c_knM, kd, s: int):
-        g_xNkMn = []
-        phase_kn = np.exp(-2.0j * np.pi * np.einsum("ki,in->kn", kd.bzk_kc,
+    def _precalculate_ket(self, g_xNkMn, c_knM, bzk_kc, s: int):
+        phase_kn = np.exp(-2.0j * np.pi * np.einsum("ki,in->kn", bzk_kc,
                                                     self.R_cN))
-        for a in self.indices:
+        for i, a in enumerate(self.indices):
             for v in range(3):
-                x = 3 * a + v
-                g_NNMM = self._yield_g_NNMM_as_needed(x, s)
+                x_cache = 3 * a + v
+                x_index = 3 * i + v
+                g_NNMM = self._yield_g_NNMM_as_needed(x_cache, s)
                 g_NkMM = np.einsum("mnop,kn->mkop", g_NNMM, phase_kn,
                                    optimize=OPTIMIZE)
-                g_NkMn = np.einsum("mkop,knp->mkon", g_NkMM, c_knM,
-                                   optimize=OPTIMIZE)
-                g_xNkMn.append(g_NkMn)
-        return np.array(g_xNkMn)
+                g_xNkMn[x_index] = np.einsum("mkop,knp->mkon", g_NkMM, c_knM,
+                                             optimize=OPTIMIZE)
 
     def bloch_matrix(self, calc: GPAW, k_qc: ArrayND = None,
                      savetofile: bool = True, prefactor: bool = True,
@@ -299,8 +298,15 @@ class ElectronPhononMatrix:
             with self.timer("Gather wavefunctions to root"):
                 c_knM = self._gather_all_wfc(wfs, s)
 
-            # precalculate k (ket) of g
-            g_xNkMn = self._precalculate_ket(c_knM, kd, s)
+            # Precalculate ket of g
+            g_xNkMn = np.zeros(
+                (3 * len(self.indices),
+                 np.prod(self.supercell_cache["info"]["supercell"]),
+                 wfs.kd.nbzkpts,
+                 wfs.setups.nao,
+                 wfs.bd.nbands),
+                dtype=complex)
+            self._precalculate_ket(g_xNkMn, c_knM, kd.bzk_kc, s)
 
             for q, q_c in enumerate(k_qc):
                 # Find indices of k+q for the k-points
@@ -312,7 +318,7 @@ class ElectronPhononMatrix:
 
                 for k in range(kd.nbzkpts):
                     k_c = kd.bzk_kc[k]
-                    kplusq_c = k_c + q_c
+                    kplusq_c = (k_c + q_c) % 1.
                     kplusq_c -= kplusq_c.round()
                     # print(kplusq_c, kd.bzk_kc[kplusq_k[k]])
                     assert np.allclose(kplusq_c, kd.bzk_kc[kplusq_k[k]])
@@ -323,13 +329,13 @@ class ElectronPhononMatrix:
                         g_lnn[0:3] = 0.0
                     g_sqklnn[s, q, k] += g_lnn
 
-        if self.world.rank == 0 and savetofile:
+        if self.comm.rank == 0 and savetofile:
             np.save("gsqklnn.npy", g_sqklnn)
 
         return g_sqklnn
 
     def __del__(self):
-        if self.world.rank == 0:
+        if self.comm.rank == 0:
             try:
                 self.timer.write()
             except ValueError:

@@ -22,9 +22,11 @@ pytestmark = pytest.mark.skipif(world.size == 1, reason='world.size == 1')
 
 @pytest.mark.response
 @pytest.mark.kspair
-@pytest.mark.parametrize('system,qrel,nblocks', product(generate_system_s(),
-                                                        generate_qrel_q(),
-                                                        generate_nblocks_n()))
+@pytest.mark.parametrize(
+    'system,qrel,nblocks',
+    list(product(generate_system_s(),
+                 generate_qrel_q(),
+                 generate_nblocks_n())))
 def test_parallel_extract_kptdata(in_tmp_dir, gpw_files, mpi,
                                   system, qrel, nblocks):
     """Test that the KohnShamKPointPair data extracted from a serial and a

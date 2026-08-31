@@ -36,7 +36,7 @@ def test_pw_proton():
     """Check that the energy of a proton is 0.0."""
     proton = Atoms('H')
     proton.center(vacuum=2.0)
-    proton.calc = GPAW(mode='pw', charge=1)
+    proton.calc = GPAW(mode='pw', charge=1, mixer={'backend': 'no-mixing'})
     e = proton.get_potential_energy()
     e += proton.calc.get_reference_energy()
     assert e == pytest.approx(0.0, abs=0.004)

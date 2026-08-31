@@ -65,6 +65,7 @@ charges tell us how the atoms are affected by an external electric field.
   :header: Ba, , , ,Ti, , , ,O, , , ,O, , , ,O, , ,
   :file: born_charges_BaTiO3.csv
 
+
 Topological properties of stanene from parallel transport
 =========================================================
 
@@ -112,8 +113,9 @@ moments of hybrid Wannier functions localized along the `x`-direction and
 these functions have a spinor structure with a well-defined value of
 `\langle S_z\rangle`. [#Olsen]_
 
-Polarization from from parallel transport
-=========================================
+
+Polarization from parallel transport
+====================================
 
 The parallel transport module can also be used to calculate the polarization.
 Strictly speaking the parallel transport algorithm is not required for the

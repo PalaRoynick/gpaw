@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from itertools import product
+from typing import Union
 
 import numpy as np
-
 from ase import Atoms
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
@@ -19,7 +19,9 @@ from ase.utils.filecache import MultiFileJSONCache
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.dft import GPAW
+from gpaw.lcao.tightbinding import TightBinding
 from gpaw.mpi import SerialCommunicator, broadcast
+from gpaw.new.ase_interface import ASECalculator
 from gpaw.new.brillouin import MonkhorstPackKPoints
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.response import ResponseContext, timer

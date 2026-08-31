@@ -7,6 +7,7 @@ from scipy.interpolate import CubicSpline
 
 from gpaw.typing import Array1D, ArrayND
 
+have_mpi = False
 have_openmp = False
 
 

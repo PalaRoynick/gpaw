@@ -76,6 +76,7 @@ Here, we want to use finite difference (``fd``) mode,
 one electronic band and the Perdew, Burke, Ernzerhof
 (PBE)\ [#PBE]_ exchange-correlation functional.
 
+
 .. _parameters:
 
 ----------
@@ -692,7 +693,7 @@ for the SCF cycle.
 The default value is this dictionary::
 
   {'energy': 0.0005,  # eV / electron
-   'density': 1.0e-4,  # electrons / electron
+   'density': 1.0e-6,  # electrons / electron
    'eigenstates': 4.0e-8,  # eV^2 / electron
    'bands': 'occupied'}
 
@@ -702,7 +703,7 @@ In words:
   per valence electron. (See :class:`~gpaw.convergence_criteria.Energy`.)
 
 * The change in density (integrated absolute value of density change)
-  should be less than 0.0001 electrons per valence electron. (See
+  should be less than `10^-6` electrons per valence electron. (See
   :class:`~gpaw.convergence_criteria.Density`.)
 
 * The integrated value of the square of the residuals of the Kohn-Sham
@@ -770,15 +771,15 @@ The mixer can be specified as a dict, e.g.::
 which happenns to be the default option. A powerful alternative is the
 msr1 mixer::
 
-    mixer={'backend': 'msr1', 'beta': 0.04, 'nmaxold': 8}
+    mixer={'backend': 'msr1', 'beta': 0.05, 'nmaxold': 10}
 
 The parameters which determine how GPAW does mixing of the densities are:
 
 * ``method``: the spin mixing method to use. Options are ``fullspin``,
   ``difference``, ``sum``, and ``separate``. Default is ``fullspin``.
 * ``backend``: the mixing algorithm to use. Options are ``pulay``,
-  ``msr1``,  ``broyden`` (not recommended), ``fft`` (not recommended),
-  and ``no-mixing`` (not for scf-calculations). Default: ``pulay``.
+  ``msr1``, and ``no-mixing`` (not for scf-calculations).
+  Default: ``pulay``.
 * ``beta``: linear mixing coefficient. Default: ``0.08`` for periodic
   systems and ``0.25`` for non-periodic systems.
 * ``nmaxold``: number of old densities to mix, default is ``16``.

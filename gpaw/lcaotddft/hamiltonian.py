@@ -1,6 +1,6 @@
 from gpaw.lcaotddft.laser import create_laser
 from gpaw.lcaotddft.utilities import read_uMM, read_wuMM, write_uMM, write_wuMM
-from gpaw.mixer import DummyMixer
+from gpaw.old.mixer import DummyMixer
 from gpaw.xc import XC
 
 

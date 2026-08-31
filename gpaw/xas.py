@@ -474,7 +474,7 @@ class XAS:
         f_cn = f_cmn.sum(axis=1)
 
         # Fold
-        f_ci = np.zeros((3, len(energy_i)))
+        f_ci = np.zeros((f_cn.shape[0], len(energy_i)))
         for n, eps in enumerate(eps_n):
             x = -alpha * (energy_i - eps) ** 2
             x = np.clip(x, -100.0, 100.0)
@@ -579,9 +579,9 @@ class RecursionMethod:
                 kpt_comm.sum(self.spin_k, 0)
                 kpt_comm.sum(self.weight_k, 0)
 
-                a_kci.shape = (self.nkpts, dim, ni)
-                b_kci.shape = (self.nkpts, dim, ni)
-                data = {'ab': (a_kci, b_kci),
+                shape = (self.nkpts, dim, ni)
+                data = {'ab': (a_kci.reshape(shape),
+                               b_kci.reshape(shape)),
                         'nkpts': self.nkpts,
                         'symmetry operations': self.op_scc,
                         'weight_k': self.weight_k,

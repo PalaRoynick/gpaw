@@ -53,8 +53,8 @@ Here is a zoom in on the VBM to see the effect of including
 
 .. _hse06 on lda:
 
-Non self-consistent HSE06
-=========================
+Non self-consistent and self-consistent HSE06
+=============================================
 
 .. literalinclude:: hse06.py
 .. figure:: hse06.png
@@ -62,3 +62,4 @@ Non self-consistent HSE06
 .. autoclass:: gpaw.hybrids.NonSelfConsistentHybridXCCalculator
    :members:
 .. autofunction:: gpaw.new.pw.hybrids.truncated_coulomb
+.. autofunction:: gpaw.band_structure.band_structure

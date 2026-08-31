@@ -34,7 +34,7 @@ g00 = np.array(
 @pytest.mark.skipif(world.size > 4,
                     reason='world.size > 4')
 @pytest.mark.elph
-def test_supercell(session_tmp_path, supercell_cache):
+def test_supercell(session_tmp_path, supercell_cache, comm):
     # Generate supercell_cache
     supercell_cache
 

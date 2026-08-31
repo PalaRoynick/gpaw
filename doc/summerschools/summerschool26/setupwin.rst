@@ -1,8 +1,8 @@
 .. _setupwin:
 
-===================================
-Setting up the first time (Windows)
-===================================
+===========================================
+Setting up SSH for the first time (Windows)
+===========================================
 
 You will need the program MobaXterm which will help you with the
 following tasks
@@ -10,8 +10,6 @@ following tasks
   * Logging in to the databar.
 
   * Displaying the ASE graphical user interface on your laptop.
-
-  * Forward a connection to the Jupyter server (SSH tunnel).
 
   * Accessing files on the remote server from your laptop.
 
@@ -32,7 +30,7 @@ work.
 You must unpack the downloaded ZIP file before you run the installer,
 running it from inside the ZIP does not work!
 
-
+When you start MobaXterm the first time, the Windows firewall may ask if you want to give access to the "Embedded X server".  You need to allow this!
 
 Configuring your secret key
 ===========================
@@ -41,7 +39,7 @@ For security reasons, all access to DTU computers require two-factor
 authentication.  In the case of the HPC installation, the two
 factors are your password and an encryption key (*SSH key*).  You get
 your secret SSH key by connecting to
-https://www.student.dtu.dk/~dccidmgr/CAMD24/ then add your user name to
+https://www.student.dtu.dk/~dccidmgr/CAMD26/ then add your user name to
 the end of the URL and press enter (Guest accounts only, DTU users
 please :ref:`do this instead <keypair>`). You will now be asked to
 authenticate with username and password, when you have done that
@@ -73,9 +71,9 @@ shown below.
    :width: 66%
 
 In the tab *Basic SSH settings* you should choose *Remote host* to be
-``login.gbar.dtu.dk``.  Click the "specify user name" checkbox.  The
+``login.gbar.dtu.dk``.   The
 user name is your DTU user name (external participants got it in the
-registration material).  The port number must remain 22.  Click *OK*
+registration material).  If there is a "specify user name" checkbox you need to click it (older versions of MobaXterm only).  The port number must remain 22.  Click *OK*
 and give your DTU password in the text window when prompted.  **NOTE**
 Nothing is written when you type the password, not even stars.
 
@@ -109,18 +107,20 @@ Get access to the software
 To get access to the software you need for this course, please run
 the command::
 
-  source ~jasc/setup2024
+  source ~jasc/setup2026
 
 Note the tilde in the beginning of the second word.
 
 The script will install ASE, GPAW and related software.
-The script will also copy a selection of draft notebooks to a folder
-called CAMD2024 in your DTU databar account.
+The script will also copy a selection of scripts to a folder
+called CAMD2026 in your DTU databar account.
 
+**You only need to do this once!**  Next time, you just log in and run
+``linuxsh -X`` to connect to an interactive compute node, and the software
+will be available.
 
 Carrying on
 ===========
 
-Now read the guide for :ref:`Starting and accessing a Jupyter Notebook
-<accesswin>`
+Now read the guide for :ref:`gbar using`.
 

@@ -1,5 +1,5 @@
 # web-page: mag1d.png, mag2d.png
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 import matplotlib.pyplot as plt
 import numpy as np
 

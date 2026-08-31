@@ -142,7 +142,7 @@ Topological index of Bi2Se3
 Time-reversal invariant band insulators fall in two distinct
 topological classes, which can be distinguished by the so-called `\text{Z}_2`
 index `\nu`. In general, the calculation of the `\text{Z}_2` index is a complicated
-task, but for materials with an inversion center is is easily expressed in
+task, but for materials with an inversion center is easily expressed in
 terms of the parity eigenvalues of occupied states at the parity invariant
 points in the Brillouin zone. It is given by [#Kane]_
 

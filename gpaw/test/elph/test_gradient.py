@@ -16,9 +16,9 @@ from ase.utils.filecache import MultiFileJSONCache
 
 from gpaw import GPAW
 from gpaw.elph import DisplacementRunner, Supercell
-from gpaw.mpi import world
 
 
+# 2 atoms with one 1 valence electron each
 def _build_atoms(pbc: bool):
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     if pbc:
@@ -42,23 +42,25 @@ def _to_legacy_format(Vt_sG, pbc_c):
 @pytest.mark.elph
 @pytest.mark.parametrize('pbc', [True, False])
 @pytest.mark.parametrize('legacy_format', [False, True])
-def test_gradient(in_tmp_dir, pbc, legacy_format):
+def test_gradient(in_tmp_dir, pbc, legacy_format, comm):
     atoms, kpts = _build_atoms(pbc)
     assert len(atoms) == 2
     calc = GPAW(mode='lcao',
                 basis='sz(dzp)',
                 kpts=kpts,
+                # symmetry={'point_group': False},
+                communicator=comm,
                 txt='elph_displacements.txt')
     atoms.calc = calc
 
     elph = DisplacementRunner(atoms=atoms, calc=atoms.calc,
                               supercell=(1, 1, 1), name='elph',
-                              calculate_forces=False)
+                              calculate_forces=False, comm=comm)
     elph.indices = []
     elph.run()
     # Barrier will be included in elph.run() in the future:
     # https://gitlab.com/ase/ase/-/merge_requests/2903
-    world.barrier()
+    comm.barrier()
 
     Vt_sG = elph.cache['eq']['Vt_sG']
     dH_all_asp = elph.cache['eq']['dH_all_asp']

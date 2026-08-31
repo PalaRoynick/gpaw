@@ -13,7 +13,7 @@ Bulk
 ====
 
 Let's do a calculation for `r_s=5` Bohr.  We use a cubic cell with a
-lattice constant of `a=1.6` Å, 8*8*8 grid points and and a k-point
+lattice constant of `a=1.6` Å, 8*8*8 grid points and a k-point
 sampling of 12*12*12 points.
 
 .. literalinclude:: bulk.py
