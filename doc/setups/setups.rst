@@ -26,10 +26,12 @@ Setup releases
      -
    * - Aug 31 2026
      - 26.8.0
-     - Improved PAW potential for flourine added.
+     - New PAW potential for flourine added (softer and more accurate).
+       You can use it by
+       specifying ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
        It has been generated with the following command::
 
-         $ gpaw dataset F -fPBE -w -t improved --non-relativistic -a 7.6 -b
+         $ gpaw dataset F -fPBE -w -t v2 -b
 
        There is also an LDA version.
 
