@@ -494,16 +494,17 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-sources = [Path('c/bmgs/bmgs.c')]
-sources += Path('c').glob('*.c')
+
+sources = [Path('c/bmgs/bmgs.cpp')]
+sources += Path('c').glob('*.cpp')
 if gpu:
-    sources += Path('c/gpu').glob('*.c')
-sources += Path('c/xc').glob('*.c')
+    sources += Path('c/gpu').glob('*.cpp')
+sources += Path('c/xc').glob('*.cpp')
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
-    for name in ['libxc.c', 'm06l.c',
-                 'tpss.c', 'revtpss.c', 'revtpss_c_pbe.c',
-                 'xc_mgga.c']:
+    for name in ['libxc.cpp', 'm06l.cpp',
+                 'tpss.cpp', 'revtpss.cpp', 'revtpss_c_pbe.cpp',
+                 'xc_mgga.cpp']:
         sources.remove(Path(f'c/xc/{name}'))
     # Dynamic link
     try:
