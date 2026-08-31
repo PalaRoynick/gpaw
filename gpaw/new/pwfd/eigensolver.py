@@ -4,13 +4,16 @@ import warnings
 from collections.abc import Callable
 from functools import partial
 from math import ceil, floor
+from ase.units import Ha
 
 import numpy as np
+from gpaw import debug
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.core.matrix import suggest_blocking
+from gpaw.gpu import as_np
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import trace, zips
+from gpaw.new import trace, tracectx, zips
 from gpaw.new.c import calculate_residuals_gpu
 from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
@@ -19,6 +22,7 @@ from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.utilities import as_real_dtype
 from gpaw.utilities.blas import axpy
 from gpaw.new.pw.hybrids import PWHybridHamiltonian
+from gpaw.core import PWDesc  # , PWArray
 
 
 def slparams(nbands: int,
@@ -40,18 +44,24 @@ def slparams(nbands: int,
 
 
 class PWFDEigensolver(Eigensolver):
+    min_work_array: int = 1
+    min_buffer_array: int = 1
+    niter: int = 1
+
     def __init__(self,
                  *,
+                 wf_grid,
                  hamiltonian,
                  convergence: dict,
                  nbands: int,
                  domain_band_comm,
-                 blocksize: int = 10,
+                 blocksize: int | None = None,
                  max_buffer_mem: int | None = 200 * 1024 ** 2,
                  scalapack_parameters: tuple[int, int, int] | None = None):
+        self.wf_grid = wf_grid
         self.converge_bands = convergence.get('bands', 'occupied')
-        self.residual_target = convergence.get('eigenstates', 4e-8)
-        self.blocksize = blocksize
+        self.residual_target = convergence.get('eigenstates', 4e-8) / Ha**2
+        self.max_blocksize = blocksize
         self.preconditioner: Callable
         self.preconditioner_factory = hamiltonian.create_preconditioner
         self.work_arrays: np.ndarray
@@ -88,9 +98,38 @@ class PWFDEigensolver(Eigensolver):
         return txt
 
     def _initialize(self, ibzwfs):
-        # First time: allocate work-arrays
+        xp = ibzwfs.xp
+        B = ibzwfs.nbands
+        wfs = ibzwfs._wfs_u[0]
+        b = wfs.psit_nX.mydims[0]
+
+        # Decide on blocksize (used for band slicing)
+        if self.max_blocksize is None:
+            if xp == np:
+                self.max_blocksize = 64
+            else:
+                # GPU's prefer larger blocksizes
+                self.max_blocksize = 512
+
+        X_max = max(1, np.prod(ibzwfs.get_max_shape()))
+        self.max_blocksize = np.clip(self.max_blocksize, 1,
+                                     self.max_buffer_mem // X_max)
+
+        if isinstance(self.wf_grid, PWDesc):
+            S = self.wf_grid.comm.size
+            # Use a multiple of S for maximum efficiency
+            self.max_blocksize = max((self.max_blocksize // S) * S, 1)
+
+        self.blocksize = max(min(self.max_blocksize, b),
+                             1)
+
+        # Build preconditioner
         self.preconditioner = self.preconditioner_factory(self.blocksize,
                                                           xp=ibzwfs.xp)
+
+        # Allocate work-arrays
+        self._allocate_work_arrays(ibzwfs, shape=(self.min_work_array,))
+        self._allocate_buffer_arrays(ibzwfs, shape=(self.min_buffer_array,))
 
     def _allocate_buffer_arrays(self, ibzwfs, shape):
         G_max = max(1, np.prod(ibzwfs.get_max_shape()))
@@ -188,8 +227,101 @@ class PWFDEigensolver(Eigensolver):
 
         return eig_error, wfs_error, energies
 
-    def iterate1(self, wfs, Ht, dH, dS_aii, weight_n):
-        raise NotImplementedError
+    def iterate1(self, wfs, Ht, potential, dS_aii, weight_n):
+        with tracectx('Initialize'):
+            dH = partial(potential.deltaH, spin=wfs.spin)
+            xp = wfs.psit_nX.xp
+            psit_nX = wfs.psit_nX
+            band_comm = psit_nX.comm
+            domain_comm = psit_nX.desc.comm
+
+            b = psit_nX.mydims[0]
+            residual_nX = psit_nX.new(data=self.work_arrays[0, :b])
+
+            wfs.subspace_diagonalize(
+                Ht, dH,
+                psit2_nX=residual_nX,
+                data_buffer=self.data_buffers[0],
+                scalapack_parameters=self.scalapack_parameters)
+
+            if weight_n is None:
+                weight_n = np.zeros(b)
+                weight_n[:((1 + len(weight_n)) * 4) // 5] = 1.0
+
+            P_ani = wfs.P_ani
+            P2_ani = P_ani.new()
+            P3_ani = P_ani.new()
+            Ptemp_ani = P_ani.new()
+            P_ani.block_diag_multiply(dS_aii, out_ani=Ptemp_ani)
+            calculate_residuals(psit_nX, residual_nX, wfs.pt_aiX, wfs.P_ani,
+                                wfs.myeig_n, dH, dS_aii, P2_ani, P3_ani)
+            error_n = as_np(residual_nX.norm2())
+            if len(error_n.shape) > 1:
+                error_n = error_n.sum(axis=1)
+            error = weight_n @ error_n
+            b_error = band_comm.sum_scalar(error) / \
+                max(band_comm.sum_scalar(weight_n.sum()), 0.5)
+
+        i = 0
+        while i < self.niter:
+            linalg_error = False
+            eps = 0
+            active_indicies = np.where(error_n > eps)[0]
+            loop_limit = (psit_nX.dims[0] + band_comm.size - 1) // band_comm.size \
+                or len(active_indicies)
+
+            if len(active_indicies) == 0:
+                break
+
+            self.prestep(wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani,
+                         b_error=b_error, i=i)
+
+            for j in range(0, loop_limit, self.blocksize):
+                block_slice_base = \
+                    slice(min(j, len(active_indicies)),  # XXX
+                          min(j + self.blocksize, len(active_indicies)))
+                block = \
+                    block_slice_base.stop - block_slice_base.start
+                block_slice = block_slice_base # active_indicies[block_slice_base]
+                linalg_error = self.bandstep(wfs, Ht, dH, block, block_slice,
+                                             i, P2_ani, P3_ani, Ptemp_ani, dS_aii) \
+                    or linalg_error
+                # TODO: Sync band eigenvalues
+
+            if b_error < self.residual_target or linalg_error \
+                    or i + 1 >= self.niter:
+                break
+
+            self.poststep(wfs, residual_nX, Ht, P2_ani, P3_ani,
+                          Ptemp_ani, dH, i, dS_aii)
+
+            error_n = as_np(residual_nX.norm2())
+            if len(error_n.shape) > 1:
+                error_n = error_n.sum(axis=1)
+            error = weight_n @ error_n
+            b_error = band_comm.sum_scalar(error) / \
+                max(band_comm.sum_scalar(weight_n.sum()), 0.5)
+            i += 1
+
+        if not wfs.orthonormalized:
+            # wfs._P_ani = None
+            wfs.orthonormalize(residual_nX)
+
+        if debug:
+            psit_nX.sanity_check()
+
+        return error
+
+    def prestep(self, wfs, residual_nX, P2_ani, P3_ani, Ptemp_ani,
+                b_error, i) -> None:
+        pass
+
+    def bandstep(self, wfs, Ht, dH, block, block_slice,
+                 i, P2_ani, P3_ani, Ptemp_ani, dS_aii) -> None:
+        return False
+
+    def poststep(self, wfs, residual_nX, Ht, P2_ani, P3_ani, Ptemp_ani, dH, i, dS_aii) -> None:
+        pass
 
 
 @trace
