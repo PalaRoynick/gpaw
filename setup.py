@@ -132,14 +132,6 @@ generator after building the extension.
 """
 
 
-def ensure_cpp_standard(compile_args: list):
-    """GPAW C++ code requires -std=c++17 or newer. This adds it to the input
-    compile args list if it's missing. Does not override user-specified flags.
-    """
-    if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
-        compile_args.append('-std=c++17')
-
-
 # Search and store current git hash if possible
 try:
     from ase.utils import search_current_git_hash
@@ -170,29 +162,6 @@ else:  # no break
         libraries.append('blas')
 # ########### USER SITECONFIG DONE ###########
 
-if 'use_cpp' in locals():
-    print(
-        "\n"
-        "***********************************************************\n"
-        "WARNING: Your siteconfig.py had `use_cpp` flag defined.\n"
-        "This flag is now fully deprecated and has no effect.\n"
-        "C++ is now the default build type.\n"
-        "If you specifically want a C-build, set `compiler` to\n"
-        f"one of {['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']}.\n"
-        "Note that a C++ compiler will be required in the next\n"
-        "GPAW version.\n"
-        "***********************************************************\n"
-        "\n")
-
-# Fallback to legacy C build if the user siteconfig
-# explicitly chose a C compiler.
-# Will be removed after deprecation period.
-if compiler in ['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']:
-    use_cpp = False
-else:
-    use_cpp = True
-# use_cpp is a temp flag for controlling build during C -> C++ transition
-# period, will be fully removed in a later update.
 
 GPAW_BUILD_JOBS = os.environ.get('GPAW_BUILD_JOBS')
 """
@@ -226,11 +195,6 @@ if _num_build_jobs > 1:
           'This feature requires Makefile build, it will be enabled now.')
     makefile_build = True
 
-if use_cpp:
-    print('Compiling entire GPAW as C++. '
-          'NOTE: This will become required in the next GPAW version!')
-    ensure_cpp_standard(extra_compile_args)
-
 # Deprecation check
 if 'mpicompiler' in locals():
     mpicompiler = locals()['mpicompiler']
@@ -248,8 +212,8 @@ if 'mpicompiler' in locals():
 
 
 # If `mpi` was not set in siteconfig,
-# it is enabled by default if `mpicc` is found
-default_mpi_compiler = 'mpic++' if use_cpp else 'mpicc'
+# it is enabled by default if `mpic++` is found
+default_mpi_compiler = 'mpic++'
 if mpi is None:
     if compiler is None:
         if (os.name != 'nt'
@@ -324,13 +288,6 @@ if gpu:
         if gpu_target in ['cuda', 'hip-cuda']:
             gpu_compile_args += ['-Xcompiler']
         gpu_compile_args += ['-fPIC']
-
-    ensure_cpp_standard(gpu_compile_args)
-
-    # GPU code needs to link to c++ stdlib. This is automatic if the linking
-    # is done using a C++ compiler, if not we have to add it manually
-    if not use_cpp:
-        libraries += ['stdc++']
 
 
 def set_compiler_executables(cc: CCompiler) -> None:
@@ -532,7 +489,6 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
                        '__HIP_PLATFORM_AMD__'),
                    (gpu and gpu_target == 'hip-cuda',
                        '__HIP_PLATFORM_NVIDIA__'),
-                   (use_cpp, 'GPAW_CPP'),
                    ]:
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
@@ -592,7 +548,7 @@ extensions = [Extension('_gpaw',
                         extra_compile_args=extra_compile_args,
                         runtime_library_dirs=runtime_library_dirs,
                         extra_objects=extra_objects,
-                        language='c++' if use_cpp else 'c')]
+                        language='c++')]
 
 
 write_configuration(define_macros, include_dirs, libraries, library_dirs,
@@ -1019,9 +975,8 @@ class BuildGPAW(build_ext):
         import numpy as np
         self.include_dirs.append(np.get_include())
 
-        if use_cpp or gpu:
-            import pybind11
-            self.include_dirs.append(pybind11.get_include())
+        import pybind11
+        self.include_dirs.append(pybind11.get_include())
 
         if makefile_build:
             # Set a persistent build directory. We get a more readable
