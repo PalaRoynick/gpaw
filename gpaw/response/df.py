@@ -666,7 +666,8 @@ class DielectricFunction(DielectricFunctionCalculator):
                  intraband=True, nblocks=1, world=None, txt=sys.stdout,
                  truncation=None,
                  qsymmetry=True,
-                 integrationmode='point integration', rate=0.0,
+                 integrationmode='point integration',
+                 rate=None,
                  eshift: float | None = None):
         """Creates a DielectricFunction object.
 
