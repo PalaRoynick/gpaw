@@ -15,8 +15,9 @@ bilayer.center(vacuum=6.0, axis=2)
 
 calc = GPAW(mode=PW(400),
             xc='PBE',
+            kpts=(3, 3, 1),
             extensions=[D4(xc='PBE')],
-            txt='out.txt')
+            txt='out-d4.txt')
 
 bilayer.calc = calc
 energy = bilayer.get_potential_energy()
