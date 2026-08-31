@@ -125,6 +125,8 @@ class Chi0DrudeData:
         """Construct the Chi0DrudeData object from a frequency descriptor and
         the imaginary part (in eV) of the resulting horizontal frequency
         contour"""
+        if rate is None:
+            raise ValueError('Please specify a value for *rate*!')
         rate = rate / Ha  # eV -> Hartree
         zd = ComplexFrequencyDescriptor(wd.omega_w + 1.j * rate)
 
