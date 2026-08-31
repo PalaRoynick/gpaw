@@ -18,14 +18,11 @@ def test_mgga_lxc_fhc():
         pytest.skip('libxc too old')
     cluster = molecule('CO')
     adjust_cell(cluster, border=vacuum, h=h)
-    cluster.pbc = True
     calc = GPAW(xc='PBE',
                 mode='fd',
                 h=h,
-                mixer={'soft_lim': 1000000,
-                       'hard_lim': 1000000},
                 eigensolver={'niter': 5, 'rr_modulo': 2},
-                maxiter=18,
+                maxiter=24,
                 )
     cluster.calc = calc
     cluster.get_potential_energy()

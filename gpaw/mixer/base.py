@@ -140,9 +140,6 @@ class BaseMixer:
         for hist in self.histories:
             hist.maybe_delete_oldest()
 
-        for h in self.histories:
-            print(h.nold, end=', ')
-
         if self.ncomponents == 2:
             nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])
             nt_sX.data[1] = 0.5 * (nt2_sX.data[0] - nt2_sX.data[1])

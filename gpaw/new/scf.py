@@ -78,6 +78,10 @@ class SCFLoop:
             if pot_calc.xc.type == 'MGGA':
                 density.update(ibzwfs, ked=True)
             dens_error = self.mixer.mix(density)
+            if pot_calc.xc.type == 'MGGA':
+                potential, energies, _ = pot_calc.calculate(
+                    density, ibzwfs, potential.vHt_x)
+                energies.sanity_check()
         else:
             dens_error = 0.0
 
