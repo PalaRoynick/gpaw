@@ -61,7 +61,7 @@ class BaseMixer:
                                                            relpos_ac,
                                                            atomdist,
                                                            xp=np)
-        self.taut_hsR = None
+        self.taut_hsR: DensityHistory | None = None
         # XXX: np -> xp once the GPU LFC kernels work
         self._initialize_history_()
 
@@ -119,13 +119,18 @@ class BaseMixer:
 
         alpha_h, beta_h, dnt = self._mix(nt2_sX, D2_asii, density)
         if taut_sR is not None:
+            assert self.taut_hsR is not None
+
             if self.taut_hsR.nold == 0:
                 self.taut_hsR.add(taut2_sR)
                 taut2_sR.data[:] = 0
                 self.taut_hsR.add_linear_combination(alpha_h, out=taut2_sR)
             else:
                 Rtaut_sR = self.Rtaut_hsR.next()
-                self.calculate_residual(taut2_sR, self.taut_hsR[-1], Rtaut_sR)
+                last_taut_sR = self.taut_hsR[-1]
+                assert isinstance(Rtaut_sR, XArray)
+                assert isinstance(last_taut_sR, XArray)
+                self.calculate_residual(taut2_sR, last_taut_sR, Rtaut_sR)
                 taut2_sR.data[:] = 0
                 self.taut_hsR.add_linear_combination(alpha_h, out=taut2_sR)
                 self.Rtaut_hsR.add_linear_combination(beta_h, out=taut2_sR)
@@ -143,7 +148,7 @@ class BaseMixer:
             nt_sX.data[1] = 0.5 * (nt2_sX.data[0] - nt2_sX.data[1])
             D_asii.data[0] = 0.5 * (D2_asii.data[0] + D2_asii.data[1])
             D_asii.data[1] = 0.5 * (D2_asii.data[0] - D2_asii.data[1])
-            if density.taut_sR is not None:
+            if taut_sR is not None:
                 taut_sR.data[0] = 0.5 * (taut2_sR.data[0] + taut2_sR.data[1])
                 taut_sR.data[1] = 0.5 * (taut2_sR.data[0] - taut2_sR.data[1])
 
@@ -362,11 +367,12 @@ class DensityHistory:
 
     def add_linear_combination(self, alpha_h: list[float],
                                out: XArray,
-                               out_asii: XArray | None = None) -> XArray:
+                               out_asii: XArray | None = None) -> None:
         for ind, alpha in enumerate(alpha_h):
             mod_ind = self.current_indicies[ind]
             out.data += alpha * self._n_hsX.data[mod_ind]
             if out_asii is not None:
+                assert self._D_hasii is not None
                 out_asii.data += alpha * self._D_hasii.data[mod_ind]
 
     def __getitem__(self, index: int) -> tuple[XArray, AtomArrays] | XArray:

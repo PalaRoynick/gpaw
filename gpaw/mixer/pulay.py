@@ -52,7 +52,7 @@ class PulayMixer(BaseMixer):
             (self.nmaxold, self.nmaxold), dtype=float)
 
     def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+             density: Density) -> tuple:
         # Step 1: Initialize
         nh = self.Rc_hsX.nold
         nold = self.nt_hsX.nold

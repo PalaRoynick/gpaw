@@ -99,7 +99,7 @@ class MSR1Mixer(BaseMixer):
         self.last_dNt = np.inf
 
     def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+             density: Density) -> tuple:
         # Step 1: Initialize
         nold = self.nt_hsX.nold
         if nold == 0:
@@ -363,7 +363,7 @@ class MSR1Mixer(BaseMixer):
         return good_broydenness
 
     def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
-                   density: Density) -> float:
+                   density: Density) -> tuple:
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
