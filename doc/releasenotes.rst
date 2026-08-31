@@ -20,6 +20,17 @@ Git master branch
   through the ``extensions`` keyword; e.g.,
   ``GPAW(..., extensions=[Solvation(...)])``.
 
+* New flourine PAW potential added to our :ref:`setup releases`.
+  It should be as accurate as the old one but will converge faster with number of
+  plane-waves  The old potential is still the default, but it is recommended that the
+  new one is used for production calculations.  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`). It has been generated with
+  the following command::
+
+    $ gpaw dataset F -fPBE -w -t improved --non-relativistic -a 7.6 -b
+
+  There is also an LDA version of the potential.
+
 
 Version 26.7.0
 ==============

@@ -24,6 +24,15 @@ Setup releases
    * - Date
      - Tarfile
      -
+   * - Aug 31 2026
+     - 26.8.0
+     - Improved PAW potential for flourine added.
+       It has been generated with the following command::
+
+         $ gpaw dataset F -fPBE -w -t improved --non-relativistic -a 7.6 -b
+
+       There is also an LDA version.
+
    * - Nov 27 2024
      - 24.11.0_
      - PAW potentials for lanthanides added.
