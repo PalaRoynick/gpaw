@@ -1,6 +1,7 @@
 import numpy as np
 from ase.units import Ha
 
+from gpaw.dft import ExtensionInput
 from gpaw.new.extensions import Extension
 from gpaw.typing import Array1D, Array2D, Array3D
 
@@ -19,13 +20,15 @@ from gpaw.typing import Array1D, Array2D, Array3D
 SCHEMES = ('dudarev', 'himmetoglu')
 
 
-class HubbardUJ(Extension):
-    """Hubbard correction applied to the l-manifold of selected atoms.
+class HubbardUJ(ExtensionInput):
+    """Hubbard correction on the l-manifold of selected atoms.
 
     Parameters
     ----------
     indices:
-        Atom indices the correction acts on.
+        Atom indices the correction acts on.  Note these are *indices*, not
+        chemical symbols: build them from the Atoms object, e.g.
+        ``[i for i, a in enumerate(atoms) if a.symbol == 'Ni']``.
     l:
         Angular momentum of the corrected manifold (2 for d, 3 for f).
     U:
@@ -50,6 +53,9 @@ class HubbardUJ(Extension):
         norm.
     """
 
+    #: Must match the key used in ``ExtensionInput.from_input``.
+    name = 'hubbarduj'
+
     def __init__(self,
                  indices: list,
                  *,
@@ -70,7 +76,6 @@ class HubbardUJ(Extension):
                     'already the effective U_eff = U - J.  Either pass '
                     'U=U_eff and no J0, or use scheme=\'himmetoglu\' to '
                     'treat U and J0 independently.')
-            J0 = 0.0
         else:
             if J0 is None:
                 raise ValueError(
@@ -78,24 +83,84 @@ class HubbardUJ(Extension):
                     'explicitly if you want no exchange term, or use '
                     "scheme='dudarev'.")
 
-        self.indices = indices
+        self.indices = list(indices)
         self.l = l
         self.scheme = scheme
-        self.U = U / Ha
-        self.J0 = J0 / Ha
+        self.U = U            # eV
+        self.J0 = J0          # eV, or None for scheme='dudarev'
         self.scale = scale
 
-    def descriptions(self):
-        """Lines recorded in the output file, so that a completed
-        calculation states unambiguously which functional was used."""
-        yield f'Hubbard: {{scheme: {self.scheme},\n'
-        yield f'          l: {self.l},\n'
+    def todict(self) -> dict:
+        """Round-trippable parameters, in the units the user supplied.
+
+        Needed for writing restart files and for fixed_density(), which
+        rebuild the calculator from its parameters via
+        ``ExtensionInput.from_input``.  That classmethod pops ``'name'``
+        from the dict and passes the remainder as keyword arguments, so
+        every key here must be an ``__init__`` keyword, and ``name`` must
+        match the registry key.
+
+        ``name`` itself is not included, following D3 and Jellium; the
+        serialisation layer is assumed to add it.  If that assumption is
+        wrong, add ``'name': self.name`` here -- and D3 and Jellium need
+        the same fix.
+        """
+        dct = {'indices': self.indices,
+               'l': self.l,
+               'U': self.U,
+               'scheme': self.scheme,
+               'scale': self.scale}
+        if self.scheme == 'himmetoglu':
+            dct['J0'] = self.J0
+        return dct
+
+    def build(self, builder) -> 'HubbardUJExtension':
+        return HubbardUJExtension(self.indices,
+                                  l=self.l,
+                                  U=self.U / Ha,
+                                  J0=(self.J0 or 0.0) / Ha,
+                                  scheme=self.scheme,
+                                  scale=self.scale)
+
+
+class HubbardUJExtension(Extension):
+    """The working object; see HubbardUJ for the user-facing parameters.
+
+    U and J0 are in Hartree here.
+    """
+
+    name = 'hubbarduj'
+
+    def __init__(self,
+                 indices: list,
+                 *,
+                 l: int,
+                 U: float,
+                 J0: float,
+                 scheme: str,
+                 scale: bool = True):
+        self.indices = indices
+        self.l = l
+        self.U = U
+        self.J0 = J0
+        self.scheme = scheme
+        self.scale = scale
+        # Per-atom energies, keyed by atom index so that repeated calls
+        # within an SCF iteration overwrite rather than accumulate.
+        self.e_a: dict[int, float] = {}
+
+    def get_energy_contributions(self) -> dict[str, float]:
+        """Energy in Hartree, labelled for the output file.
+
+        The label records the scheme, so a finished calculation states
+        unambiguously which functional was used.
+        """
         if self.scheme == 'dudarev':
-            yield f'          U_eff: {self.U * Ha},  # eV\n'
+            label = f'Hubbard dudarev (l={self.l}, Ueff={self.U * Ha:g} eV)'
         else:
-            yield f'          U: {self.U * Ha},  # eV\n'
-            yield f'          J0: {self.J0 * Ha},  # eV\n'
-        yield f'          scale: {bool(self.scale)}}}'
+            label = (f'Hubbard himmetoglu (l={self.l}, '
+                     f'U={self.U * Ha:g} eV, J0={self.J0 * Ha:g} eV)')
+        return {label: sum(self.e_a.values())}
 
     def update_non_local_hamiltonian(self,
                                      D_sii,
@@ -107,6 +172,7 @@ class HubbardUJ(Extension):
 
         eU, dHU_sii = self.calculate(D_sii, setup.l_j, setup.n_j, setup.N0_q)
         dH_sii += dHU_sii
+        self.e_a[atom_index] = eU.real
         return eU.real
 
     def calculate(self,
