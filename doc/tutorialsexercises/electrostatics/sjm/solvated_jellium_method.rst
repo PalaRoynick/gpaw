@@ -45,7 +45,7 @@ If you'd rather have it output the traditional canonical energies to the :litera
 The number of excess electrons and the electrode potential are also available as ASE properties, in :literal:`calc.results['excess_electrons']` and :literal:`calc.results['electrode_potential']`.
 
 In the last line of the script above, we wrote out some additional information in the form of 'sjm traces'.
-The SJM extension object itself---which holds all the SJM-specific methods---is reached as :literal:`calc.dft.sjm` once a calculation has been run.
+The SJM object itself---which holds all the SJM-specific methods---is reached as :literal:`calc.sjm`, which is the same object as :literal:`calc.dft.sjm` once a calculation has been run.
 These are traces of the electrostatic potential, the background charge, and the solvent cavity across the `z` axis (that is, `xy`-averaged).
 It's a good idea to take a look at these, and perhaps make a plot for each, when running a simulation with a new system so you can be sure it is behaving as you expect.
 The three files that are created are:
@@ -61,7 +61,7 @@ cavity.txt:
 background_charge.txt:
  The shape of the jellium background charge averaged over `xy` and normalized.
 
-.. Note:: Alternatively, :literal:`calc.dft.sjm.write_sjm_traces(style='cube')`
+.. Note:: Alternatively, :literal:`calc.sjm.write_sjm_traces(style='cube')`
           can be used to write cube files on the 3-D grid, instead of traces.
 
 Our traces showing the solvent region and the jellium region are plotted below.
@@ -171,4 +171,4 @@ To accomplish this, set :literal:`grand_output=False`, like::
     calc = GPAW(..., extensions=[SJM(excess_electrons=...,
                                      grand_output=False, ...)])
 
-The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.dft.sjm.set(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`.
+The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.sjm.set(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`, and it can be called before the first calculation as well.

@@ -108,7 +108,7 @@ atoms.get_potential_energy()
 
 # Write output for all the figures.
 atoms.write('atoms.traj')
-sjm = atoms.calc.dft.sjm  # the extension, once a calculation has been run
+sjm = atoms.calc.sjm  # the SJM object of this calculator
 sjm.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
 sjm.write_sjm_traces(path='sjm_traces4.4V-cube.out',
                      style='cube')  # *.out for .gitignore

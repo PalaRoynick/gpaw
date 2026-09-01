@@ -98,8 +98,6 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-charges = [-0.2, -0.1, 0., .1, .2]
-
 atoms.calc = GPAW(
     mode='fd',
     txt='gpaw-charge.txt',
@@ -108,19 +106,16 @@ atoms.calc = GPAW(
     xc='PBE',
     occupations=FermiDirac(0.1),
     convergence={'work function': 0.001},
+    # No target potential, so these are constant-charge calculations; the
+    # charge itself is set in the loop below.
     extensions=[SJM(
-        # Solvated jellium parameters.  No target potential, so this is a
-        # constant-charge calculation; the first charge goes in here, as the
-        # extension object only exists once a calculation has been run.
-        excess_electrons=charges[0],
-        # Implicit solvent parameters.
         cavity=cavity,
         dielectric=dielectric,
         interactions=interactions)])
 
-for index, excess_electrons in enumerate(charges):
-    if index > 0:
-        atoms.calc.dft.sjm.set(excess_electrons=excess_electrons)
+# sjm.set() changes the charge without throwing away the wave functions.
+for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
+    atoms.calc.sjm.set(excess_electrons=excess_electrons)
     atoms.get_potential_energy()
     log_potential(atoms.calc)
     write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

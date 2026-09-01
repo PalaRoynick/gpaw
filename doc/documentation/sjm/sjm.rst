@@ -215,16 +215,23 @@ atoms during a relaxation unless :literal:`fix_bottom=True`.  With
 :literal:`grand_output=False`, the canonical rather than the grand-potential
 energy is handed to ASE.
 
-Once a calculation has been run, the extension object is reached as
+The SJM object is reached as :literal:`calc.sjm`, before as well as after a
+calculation --- once one has been run, it is the same object as
 :literal:`calc.dft.sjm`.  It offers
 
 * :literal:`set(...)`, which changes :literal:`target_potential`,
   :literal:`excess_electrons`, :literal:`tol`, :literal:`max_iters`,
   :literal:`grand_output` or :literal:`jelliumregion` without throwing away the
-  wave functions (this replaces the legacy :literal:`calc.set(sj={...})`), and
+  wave functions (this replaces the legacy :literal:`calc.set(sj={...})`).
+  It can also be called before the first calculation, in which case it simply
+  changes the parameters the calculation will be started with.  Note that
+  assigning to the attributes instead---:literal:`calc.sjm.charge = ...`---does
+  *not* work: only :literal:`set()` gets the charge to the jellium as well and
+  empties the results, which is what makes the next
+  :literal:`get_potential_energy()` run the SCF loop again.
 * :literal:`write_sjm_traces(...)`, which writes the electrostatic potential,
   the cavity and the jellium counter charge to disk, either as `xy`-averaged
-  traces or as cube files.
+  traces or as cube files.  This one needs a calculation to have been run.
 
 References
 ==========

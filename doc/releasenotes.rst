@@ -35,9 +35,10 @@ Git master branch
   legacy implementation: it reports the grand-potential energy
   (:math:`\Omega = E - N \mu`) to ASE unless ``grand_output=False``, exposes
   ``excess_electrons`` and ``electrode_potential`` as properties, writes
-  traces with ``calc.dft.sjm.write_sjm_traces()``, supports the full
+  traces with ``calc.sjm.write_sjm_traces()``, supports the full
   ``jelliumregion`` keyword, replaces ``calc.set(sj={...})`` with
-  ``calc.dft.sjm.set(...)``, and summarises the potential equilibration in
+  ``calc.sjm.set(...)`` -- which also works before the first calculation --
+  and summarises the potential equilibration in
   one block after convergence.  Note that the electrostatic potential is now
   zeroed at the top of the cell in plane-wave mode too, as in
   finite-difference mode; results for asymmetric slabs change accordingly.
