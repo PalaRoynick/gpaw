@@ -20,7 +20,6 @@ Git master branch
   through the ``extensions`` keyword; e.g.,
   ``GPAW(..., extensions=[Solvation(...)])``.
 
-<<<<<<< HEAD
 * New flourine PAW potential added to our :ref:`setup releases`.
   It should be as accurate as the old one but will converge faster with number of
   plane-waves.  The old potential is still the default, but it is recommended that the
@@ -31,7 +30,7 @@ Git master branch
     $ gpaw dataset F -fPBE -w -t v2 -b
 
   There is also an LDA version of the potential.
-=======
+
 * The solvated jellium method (``gpaw.new.sjm.SJM``) now writes the
   grand-potential energy (:math:`\Omega = E - N \mu`) into the results
   dictionary handed to ASE -- and thereby into trajectory files -- instead of
@@ -39,7 +38,6 @@ Git master branch
   ``excess_electrons`` and ``electrode_potential`` are also available as
   properties, and ``calc.dft.sjm.write_sjm_traces()`` writes traces of the
   electrostatic potential, the cavity and the jellium counter charge to disk.
->>>>>>> b94bfa4f6b (Port SJM IO and warnings to the new SJM implementation)
 
 * The SJM ``jelliumregion`` keyword now accepts ``'top'``, ``'bottom'``,
   ``'thickness'`` and ``'fix_bottom'``, as in the legacy implementation.  A
@@ -53,6 +51,25 @@ Git master branch
   switching between constant-charge and constant-potential mode),
   ``excess_electrons``, ``tol``, ``max_iters``, ``grand_output`` and
   ``jelliumregion``.
+
+* The electrostatic potential of a solvation or SJM calculation is now zeroed
+  at the same place in plane-wave and finite-difference mode: the last grid
+  point along the z axis, at the top of the cell.  Plane-wave mode used to
+  zero it at ``z = 0`` instead, which put the electrode potential off by the
+  full dipole step for an asymmetric slab.  Plane-wave numbers for such a
+  slab therefore change, and now agree with finite-difference mode.
+
+* The SJM potential equilibration is reported in one block, once the
+  calculation has converged, instead of a line per attempt interleaved with
+  the SCF table.  The block gives the electrode potential and the excess
+  electrons it equilibrated to, the slope regressed over all of the attempts
+  it took and the apparent capacitance that slope corresponds to.
+
+* The finite-difference SJM Poisson solver measures the slope it cancels at
+  the lower cell boundary over a window defined by the dielectric and the
+  charge density, by least squares, rather than between two hard-coded grid
+  indices.  The window is now the same physical region whatever the grid
+  spacing is.
 
 
 Version 26.7.0

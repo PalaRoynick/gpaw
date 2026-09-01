@@ -5,12 +5,11 @@ import textwrap
 import warnings
 
 import numpy as np
-from ase.units import Bohr, Ha
+from ase.units import Bohr, Ha, _e
 
 from gpaw import ConvergenceError
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.mpi import broadcast_float
-from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions import Extension
 from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension)
@@ -60,10 +59,14 @@ class JelliumRegion:
                  bottom: float | str | None = None,  # Å
                  thickness: float | None = None,  # Å
                  fix_bottom: bool = False):
-        if bottom == 'cavity_like':
-            raise NotImplementedError(
-                'A cavity-like jellium region is not implemented in this '
-                'version of SJM.  Use gpaw.solvation.sjm instead.')
+        if isinstance(bottom, str):
+            if bottom == 'cavity_like':
+                raise NotImplementedError(
+                    'A cavity-like jellium region is not implemented in this '
+                    'version of SJM.  Use gpaw.solvation.sjm instead.')
+            raise ValueError(
+                f'Unknown lower limit for the jellium region: {bottom!r}.  '
+                'Give a number of Angstrom instead.')
 
         specified = [top is not None,
                      bottom is not None,
@@ -81,9 +84,9 @@ class JelliumRegion:
         elif specified == [False, False, True]:
             bottom = DEFAULT_BOTTOM
 
-        self.top = top
-        self.bottom = bottom
-        self.thickness = thickness
+        self.top: float | None = top
+        self.bottom: float | None = bottom
+        self.thickness: float | None = thickness
         self.fix_bottom = fix_bottom
         self._frozen_bottom: float | None = None
 
@@ -118,9 +121,12 @@ class JelliumRegion:
                 if self.fix_bottom:
                     self._frozen_bottom = bottom
 
+        # __init__ leaves at most one of the three unspecified:
         if top is None:
+            assert bottom is not None and thickness is not None
             top = bottom + thickness
         if bottom is None:
+            assert thickness is not None
             bottom = top - thickness
 
         if top > height:
@@ -297,6 +303,9 @@ class SJMExtension(Extension):
         self.log = log or (lambda *args, **kwargs: None)
 
         self.niters = 0
+        # (Charge, Fermi-level) of every attempt of the current
+        # equilibration, reported in one block by post_converged():
+        self.attempts: list[tuple[float, float]] = []
         # Set by post_converged():
         self.fermi_level = np.nan  # Ha
         self.omega_free = np.nan  # Ha
@@ -329,17 +338,59 @@ class SJMExtension(Extension):
                              occ_calc,
                              mixer,
                              log) -> bool:
+        # Grab the values belonging to this attempt before the jellium
+        # extension steps the charge on to the next one:
+        charge = self.jellium.charge
+        fermi_level = ibzwfs.fermi_level
+
         converged = self.jellium.post_scf_convergence(
             ibzwfs, nelectrons, occ_calc, mixer, log)
         self.charge = self.jellium.charge
+
+        if self.target_potential is not None:
+            # Only record here -- the equilibration is reported in one block
+            # by post_converged(), so that it does not interleave with the
+            # SCF table once per attempt.
+            self.niters += 1
+            self.attempts.append((charge, fermi_level))
+
         if converged:
             return True
 
-        self.niters += 1
         if self.target_potential is not None and self.niters >= self.max_iters:
             raise PotentialConvergenceError(
                 self._convergence_error_message(log))
         return False
+
+    def _log_equilibration(self, log) -> None:
+        """Report the equilibration: where it ended up, and how it got there.
+
+        Only the attempt that ended the equilibration is reported -- the
+        intermediate ones are summarized by the regressed slope.
+        """
+        if self.target_potential is None or not self.attempts:
+            return
+
+        charge, fermi_level = self.attempts[-1]
+        log(f'Potential found to be {-fermi_level * Ha:.5f} V '
+            f'(with {charge:+.5f} excess electrons, '
+            f'attempt {len(self.attempts):d}/{self.max_iters:d}).')
+
+        slope = _regress_slope(self.attempts)
+        if slope is not None:
+            log(f'Slope regressed from last {len(self.attempts):d} attempts '
+                f'is {slope:.4f} V/electron,')
+            # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
+            capacitance = -_e * 1e22 / (self._area() * slope)
+            log(f'or apparent capacitance of {capacitance:.4f} muF/cm^2')
+
+        log('Potential is within tolerance. Equilibrated.')
+        log(flush=True)
+
+    def _area(self) -> float:
+        """Area of the unit cell in the xy plane, in Å^2."""
+        cell_cv = self.jellium.mask_r.desc.cell_cv * Bohr
+        return abs(np.linalg.det(cell_cv[:2, :2]))
 
     def _convergence_error_message(self, log) -> str:
         msg = (f'The electrode potential could not be equilibrated to '
@@ -350,7 +401,7 @@ class SJMExtension(Extension):
                'electrons and the resulting potentials are listed below; '
                'plotting them could give you insight into the problem.')
         msg = textwrap.fill(msg) + '\n'
-        for charge, fermi_level in getattr(self.jellium, 'history', []):
+        for charge, fermi_level in self.attempts:
             msg += f'{charge:+.6f} {-fermi_level * Ha:.6f}\n'
         log(msg, flush=True)
         return msg
@@ -371,6 +422,8 @@ class SJMExtension(Extension):
         (fermi_level,) = dft.ibzwfs.fermi_levels
         self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
         potential = self.get_electrode_potential()
+
+        self._log_equilibration(log)
 
         # Legendre transform: Omega = E - N mu, with mu = -workfunction.
         # Take the canonical energies from dft.energies rather than from
@@ -402,6 +455,11 @@ class SJMExtension(Extension):
             dft.results['energy'] = e_extrapolated
             log('Canonical energy was written into results.\n')
         log.fd.flush()
+
+        # The next calculation (the next step of a relaxation, say) gets a
+        # fresh equilibration budget and a fresh record to report:
+        self.attempts = []
+        self.niters = 0
 
     def write_sjm_traces(self, path='sjm_traces', style='z',
                          props=('potential', 'cavity', 'background_charge')):
@@ -506,7 +564,8 @@ class SJMExtension(Extension):
             self.max_iters = kwargs['max_iters']
         if 'tol' in kwargs:
             self.tol = kwargs['tol']
-            if isinstance(self.jellium, FixedPotentialJelliumExtension):
+            if (isinstance(self.jellium, FixedPotentialJelliumExtension)
+                    and self.target_potential is not None):
                 self.jellium.tolerance = self.tol / Ha
                 if abs(self.get_electrode_potential() -
                        self.target_potential) > self.tol:
@@ -525,6 +584,9 @@ class SJMExtension(Extension):
             if (target is None) != (self.target_potential is None):
                 self._switch_mode(target)
             elif target is not None:
+                # Same mode as before, so the jellium is already the
+                # constant-potential one:
+                assert isinstance(self.jellium, FixedPotentialJelliumExtension)
                 self.jellium.workfunction_target = target / Ha
             self.target_potential = target
             if target is None:
@@ -547,6 +609,7 @@ class SJMExtension(Extension):
             # again; the density and the wave functions are kept.
             self._dft.results.clear()
             self.niters = 0
+            self.attempts = []
 
     def _relpos_ac(self):
         if self._dft is None:
@@ -602,6 +665,7 @@ class SJMExtension(Extension):
     def move_atoms(self, relpos_ac) -> None:
         # Each new geometry gets a fresh budget of equilibration attempts:
         self.niters = 0
+        self.attempts = []
         if not self.region.follows_atoms:
             return
         grid = self.jellium.mask_r.desc
@@ -637,6 +701,25 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
             fd.write(f'{z:f} {val:1.8f}\n')
 
 
+#: Grid points closer than this to the lower cell boundary are left out of
+#: the slope-fitting window: the finite-difference solution is least accurate
+#: there because of the zero boundary condition.
+SKIP_NEAR_BOUNDARY = 0.5  # Å
+
+#: Smallest usable slope-fitting window.
+MIN_WINDOW_POINTS = 4
+
+#: A grid point counts as solvated once the dielectric exceeds this.
+EPS_VACUUM_TOL = 1e-3
+
+#: A grid point counts as occupied once ``|rho|`` exceeds this fraction of its
+#: largest xy-averaged value.  It has to be a small fraction: the fit must sit
+#: in genuine vacuum, where the field does not depend on the density.  Let it
+#: reach into the tail of the slab and the measured slope starts to track the
+#: density, which feeds back into the next iteration and stalls the SCF.
+RHO_VACUUM_TOL = 1e-5
+
+
 class SJMPoissonSolver(PoissonSolverWrapper):
     def __init__(self, solver, dielectric):
         super().__init__(solver)
@@ -647,23 +730,94 @@ class SJMPoissonSolver(PoissonSolverWrapper):
         self.solver.solve(vHt_r.data, rhot_r.data)
         eps_r = vHt_r.desc.from_data(self.solver.dielectric.eps_gradeps[0])
         eps0_r = eps_r.gather()
+        rhot0_r = rhot_r.gather()
         vHt0_r = vHt_r.gather()
         if eps0_r is not None:
             saw_tooth_z = modified_saw_tooth(eps0_r)
-            s1, s2 = saw_tooth_z[[2, 10]]
-            v1, v2 = vHt0_r.data[:, :, [2, 10]].mean(axis=(0, 1))
-            vHt0_r.data -= (v2 - v1) / (s2 - s1) * saw_tooth_z[np.newaxis,
-                                                               np.newaxis]
+            v_z = vHt0_r.data.mean(axis=(0, 1))
+            window = vacuum_window(eps0_r, rhot0_r)
+            # Cancel the slope of the potential at the lower boundary by
+            # subtracting a scaled saw-tooth.  Both slopes are measured over
+            # the same window, so any constant offset in the saw-tooth (see
+            # modified_saw_tooth) drops out of the ratio.
+            slope_v = np.polyfit(window, v_z[window], 1)[0]
+            slope_s = np.polyfit(window, saw_tooth_z[window], 1)[0]
+            vHt0_r.data -= (slope_v / slope_s) * saw_tooth_z[np.newaxis,
+                                                             np.newaxis]
             vHt0_r.data -= vHt0_r.data[:, :, -1].mean()
         vHt_r.scatter_from(vHt0_r)
         return np.nan
 
 
+def vacuum_window(eps_r: UGArray, rhot_r: UGArray) -> np.ndarray:
+    """Grid indices to measure the boundary slope over.
+
+    The window is the run of points above the lower cell boundary that is
+    genuinely empty: the dielectric is still that of vacuum, so the saw-tooth
+    of :func:`modified_saw_tooth` is linear there, *and* the charge density
+    has not yet picked up, so the potential is too.  The density is what ends
+    the window in practice -- the slab sits below the solvent and has
+    ``eps == 1`` itself, so the dielectric alone would let the window run
+    right through it.
+
+    Defining the window physically rather than through fixed indices keeps
+    the fit over the same distance whatever the grid spacing is.
+
+    ``eps_r`` and ``rhot_r`` must be serial (gathered) arrays.
+    """
+    eps_z = eps_r.data.mean(axis=(0, 1))
+    rho_z = abs(rhot_r.data.mean(axis=(0, 1)))
+    # Take the heights from the descriptor rather than from an index times a
+    # spacing: with a zero boundary condition in z -- which is what FD mode
+    # uses for a slab -- the first row of the array sits at z = h, not z = 0.
+    z_z = eps_r.desc.xyz()[0, 0, :, 2] * Bohr
+    start = int(np.searchsorted(z_z, SKIP_NEAR_BOUNDARY))
+    # Stop below the first point that feels either the solvent or the slab:
+    rho_max = rho_z.max()
+    occupied_z = eps_z > 1.0 + EPS_VACUUM_TOL
+    if rho_max > 0.0:
+        occupied_z |= rho_z > RHO_VACUUM_TOL * rho_max
+    above_z = np.nonzero(occupied_z[1:])[0]
+    stop = 1 + above_z[0] if len(above_z) else len(eps_z)
+
+    if stop - start < MIN_WINDOW_POINTS:
+        # Too little vacuum to also skip the boundary layer.  Move the window
+        # down towards the boundary rather than up into the slab: a fit close
+        # to the boundary is only less accurate, whereas a fit that reaches
+        # into the density couples the correction to it (see RHO_VACUUM_TOL).
+        start = max(1, stop - MIN_WINDOW_POINTS)
+    if stop - start < 2:
+        # Degenerate cell with no vacuum at all -- np.polyfit needs two
+        # points, and there is nothing better to offer it.
+        stop = min(len(eps_z), start + 2)
+    return np.arange(start, stop)
+
+
 def modified_saw_tooth(eps_r: UGArray) -> np.ndarray:
     a_z = 1.0 / eps_r.data.mean(axis=(0, 1))
     saw_tooth_z = np.add.accumulate(a_z)
-    saw_tooth_z -= 0.5 * a_z  # +0.5 from z=0.0 ???
+    # The half-step below and the missing factor of h are both constant
+    # offsets/scalings.  They cancel in the slope ratio taken by
+    # SJMPoissonSolver.solve(), and the constant they leave in the potential
+    # is removed when it is re-zeroed at the top of the cell, so neither
+    # affects the result.
+    saw_tooth_z -= 0.5 * a_z
     return saw_tooth_z
+
+
+def _regress_slope(attempts: list[tuple[float, float]]) -> float | None:
+    """Slope of potential vs. excess electrons, in V/electron.
+
+    ``attempts`` is a list of (charge, Fermi-level) pairs in atomic units.
+    Returns ``None`` if there are too few distinct charges to fit a line.
+    """
+    if len(attempts) < 2:
+        return None
+    charge_i = np.array([charge for charge, _ in attempts])
+    potential_i = np.array([-fermi_level * Ha for _, fermi_level in attempts])
+    if np.ptp(charge_i) < 1e-10:
+        return None
+    return float(np.polyfit(charge_i, potential_i, 1)[0])
 
 
 class SJMPWPoissonSolver(PWPoissonSolver):

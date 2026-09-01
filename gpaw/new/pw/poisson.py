@@ -409,7 +409,14 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         Caches the dipole solution and re-uses it if the epsilon shape hasn't
         changed.
         """
-        v_avg, v_deriv = xy_average_at_boundary(vHt_g)
+        _, v_deriv = xy_average_at_boundary(vHt_g)
+        # The vacuum is zeroed at the top of the cell, where SJM references
+        # its electrode potential -- the same convention as the FD solver
+        # (see gpaw.new.sjm.SJMPoissonSolver).  In the plane-wave
+        # representation z=0 and z=L are the same point, so "the top" is the
+        # last point of the real-space grid, z = L - h.
+        z_top = self.grid.cell_cv[2, 2] * (1.0 - 1.0 / self.grid.size_c[2])
+        v_top, _ = xy_average_at(vHt_g, z_top)
 
         # Check if a valid dipole layer solution is cached.
         matches_cache = False
@@ -422,13 +429,14 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         if matches_cache:
             dphi_g = self._dipole_cache['dphi_g']
             v_deriv_dip = self._dipole_cache['v_deriv_dip']
-            v_avg_dip = self._dipole_cache['v_avg_dip']
+            v_top_dip = self._dipole_cache['v_top_dip']
         else:
             # Create a gaussian-derivative dipole layer and solve.
             drho_g, alpha, z0 = create_dipole_layer(self.pw)
             dphi_g = self.pw.zeros()
             self._solve(dphi_g, drho_g, dipole_solve=True)
-            v_avg_dip, v_deriv_dip = xy_average_at_boundary(dphi_g)
+            _, v_deriv_dip = xy_average_at_boundary(dphi_g)
+            v_top_dip, _ = xy_average_at(dphi_g, z_top)
             # The slope (v_deriv_dip) is slightly contaminated by the dipole
             # layer itself; we analytically correct for this below.
             tail = np.nan
@@ -440,7 +448,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             # Cache to avoid duplicate solutions.
             self._dipole_cache['dphi_g'] = dphi_g
             self._dipole_cache['v_deriv_dip'] = v_deriv_dip
-            self._dipole_cache['v_avg_dip'] = v_avg_dip
+            self._dipole_cache['v_top_dip'] = v_top_dip
             if self.grid.comm.rank == 0:
                 self._dipole_cache['eps0'] = self.eps0_R.data.copy()
 
@@ -449,7 +457,7 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         if self.zero_vacuum:
             # The G=0 coefficient lives only on rank 0.
             if self.pw.comm.rank == 0:
-                vHt_g.data[0] -= v_avg - (v_deriv / v_deriv_dip) * v_avg_dip
+                vHt_g.data[0] -= v_top - (v_deriv / v_deriv_dip) * v_top_dip
 
     def _pcg(self, b_G, Minv_g, x0=None):
         """Preconditioned conjugate gradient in reciprocal space.
@@ -575,18 +583,30 @@ def create_dipole_layer(pw: PWDesc, z0: float = 2.0):
     return drho_g, alpha, z0
 
 
-def xy_average_at_boundary(f_G: PWArray) -> np.ndarray:
-    """Calculate average value and derivative at boundary of box."""
+def xy_average_at(f_G: PWArray, z: float = 0.0) -> np.ndarray:
+    """Calculate the xy-averaged value and z-derivative at height ``z``.
+
+    ``z`` is measured in Bohr from the lower boundary of the box.
+    """
     pw = f_G.desc
     m0_G, m1_G = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
     mask_G = m0_G & m1_G
+    Gz_q = pw.G_plus_k_Gv[mask_G, 2]
     f_q = f_G.data[mask_G]
+    if z:
+        f_q = f_q * np.exp(1j * Gz_q * z)
     value = f_q.real.sum() * 2
     # f(z) = sum_G f_G exp(iGz); using f_{-G} = conj(f_G) (f(z) real),
-    # f'(0) = sum_G iG f_G = -2 sum_{Gz>0} Gz Im(f_Gz).
-    derivative = -2 * pw.G_plus_k_Gv[mask_G, 2] @ f_q.imag
+    # f'(z) = sum_G iG f_G exp(iGz) = -2 sum_{Gz>0} Gz Im(f_Gz exp(iGz z)).
+    derivative = -2 * Gz_q @ f_q.imag
     if pw.comm.rank == 0:
+        # The G=0 term is counted once, not twice (its phase factor is 1):
         value -= f_q[0].real
     result = np.array([value, derivative])
     pw.comm.sum(result)
     return result
+
+
+def xy_average_at_boundary(f_G: PWArray) -> np.ndarray:
+    """Calculate average value and derivative at boundary of box."""
+    return xy_average_at(f_G, 0.0)

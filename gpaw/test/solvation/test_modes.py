@@ -84,9 +84,11 @@ def check_grand_canonical_results(atoms, energy):
     z, v = np.loadtxt('sjm_traces/potential.txt').T
     assert len(z) == len(v) and 0.0 <= z[0] < z[-1] < atoms.cell[2, 2]
     # The potential trace is referenced to the Fermi level, so it equals the
-    # work function in the vacuum where the Poisson solver zeroes it:
+    # work function in the vacuum where the Poisson solver zeroes it.  Both
+    # modes zero it at the last z index -- the top of the cell, above the
+    # jellium -- so this is one-sided:
     pot = -calc.get_fermi_level()
-    assert min(abs(v[0] - pot), abs(v[-1] - pot)) < 0.05
+    assert abs(v[-1] - pot) < 0.05
     z, rho = np.loadtxt('sjm_traces/background_charge.txt').T
     # The counter charge (in e/Bohr^3) integrates to minus the excess
     # electrons; z and the cell are in Angstrom:
