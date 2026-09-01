@@ -94,13 +94,6 @@ That is, instead of waiting until the potential is perfectly equilibrated before
 To do this, set a loose potential tolerance and turn the :literal:`always_adjust` keyword to :literal:`True`.
 An example follows.
 
-.. Note:: :literal:`always_adjust` exists only in the legacy
-          :class:`gpaw.solvation.sjm.SJM` calculator, so the script below---and
-          the comparison figure that follows it---use that calculator, with all
-          SJM parameters collected in an :literal:`sj` dictionary.  A loose
-          :literal:`tol` followed by a tighter one, as in the barrier example
-          below, is the equivalent recipe with the extension API.
-
 .. literalinclude:: run-Au111-H-sim.py
 
 Some things to note:

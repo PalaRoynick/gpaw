@@ -39,9 +39,14 @@ Git master branch
   ``jelliumregion`` keyword, replaces ``calc.set(sj={...})`` with
   ``calc.sjm.set(...)`` -- which also works before the first calculation --
   and summarises the potential equilibration in
-  one block after convergence.  Note that the electrostatic potential is now
-  zeroed at the top of the cell in plane-wave mode too, as in
-  finite-difference mode; results for asymmetric slabs change accordingly.
+  one block after convergence.  The equilibration keywords ``always_adjust``,
+  ``slope``, ``mixer`` and ``slope_regression_depth`` are back: the slope of
+  the potential with respect to the number of excess electrons is regressed
+  over the last few attempts and damped, and ``always_adjust`` steps the
+  charge on to the next geometry so that a relaxation can optimize the
+  structure and the potential at the same time.  Note that the electrostatic
+  potential is now zeroed at the top of the cell in plane-wave mode too, as
+  in finite-difference mode; results for asymmetric slabs change accordingly.
 
 
 Version 26.7.0

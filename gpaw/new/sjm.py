@@ -11,8 +11,9 @@ from gpaw import ConvergenceError
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
-from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
-                                     JelliumExtension)
+from gpaw.extensions.jellium import (DEFAULT_REGRESSION_DEPTH,
+                                     FixedPotentialJelliumExtension,
+                                     JelliumExtension, regress_slope)
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.pw.poisson import PWPoissonSolver
@@ -153,7 +154,9 @@ class JelliumRegion:
 
 
 _KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
-                       'max_iters', 'grand_output', 'jelliumregion'})
+                       'max_iters', 'grand_output', 'jelliumregion',
+                       'always_adjust', 'slope', 'mixer',
+                       'slope_regression_depth'})
 
 
 def _check_keywords(kwargs: dict) -> None:
@@ -200,6 +203,25 @@ class SJM(Solvation):
         Write the grand-potential energy (instead of the canonical energy)
         into the results dictionary handed to ASE, and thereby into
         trajectory files.  Default: True.
+    always_adjust:
+        Take one more step in the number of excess electrons even when the
+        potential is already within ``tol``.  The step is not re-converged --
+        it is applied to the *next* geometry -- so it costs no extra SCF
+        cycles.  Together with a loose ``tol`` this lets a relaxation optimize
+        the structure and the potential simultaneously.  Default: False.
+    slope:
+        Initial guess of the slope of the potential with respect to the number
+        of excess electrons, in V/electron.  It is only used until there have
+        been enough attempts to regress a slope from; ``None`` guesses one
+        from the apparent capacitance of a plate capacitor of the cell's
+        area.
+    mixer:
+        Damping of the slope estimate, because regressing a slope can be
+        noisy: ``new = mixer * old + (1 - mixer) * regressed``.  Set to 0 for
+        no damping.  Default: 0.5.
+    slope_regression_depth:
+        Number of previous attempts that the slope is regressed over.
+        Default: 4.
     """
 
     name = 'sjm'
@@ -215,7 +237,11 @@ class SJM(Solvation):
                  excess_electrons: float = 0.0,
                  tol: float = 0.001,  # eV
                  max_iters: int = 10,
-                 grand_output: bool = True):
+                 grand_output: bool = True,
+                 always_adjust: bool = False,
+                 slope: float | None = None,  # V/electron
+                 mixer: float = 0.5,
+                 slope_regression_depth: int = DEFAULT_REGRESSION_DEPTH):
         super().__init__(cavity, dielectric, interactions,
                          dipolelayer=True, zero_vacuum=True)
         self.jelliumregion = jelliumregion or {}
@@ -224,6 +250,10 @@ class SJM(Solvation):
         self.tol = tol
         self.max_iters = max_iters
         self.grand_output = grand_output
+        self.always_adjust = always_adjust
+        self.slope = slope
+        self.mixer = mixer
+        self.slope_regression_depth = slope_regression_depth
         # Set by build(), so that set() can forward to the live extension:
         self._extension: SJMExtension | None = None
 
@@ -231,6 +261,7 @@ class SJM(Solvation):
         solvation = super().build(builder)
         log = builder.log
         self._check_convergence_criteria(builder.params.convergence, log)
+        self._check_always_adjust(log)
 
         region = JelliumRegion(**self.jelliumregion)
         mask_r, z1, z2 = region.mask(builder.fine_grid, builder.relpos_ac)
@@ -246,6 +277,9 @@ class SJM(Solvation):
                 workfunction_target=self.target_potential,
                 excess_electrons_guess=self.excess_electrons,
                 tolerance=self.tol,
+                slope=self.slope,
+                mixer=self.mixer,
+                slope_regression_depth=self.slope_regression_depth,
                 pw=builder.interpolation_desc)
 
         log('Solvated jellium method (SJM):')
@@ -260,12 +294,26 @@ class SJM(Solvation):
             log(f'  max iterations: {self.max_iters}')
             log('  initial guess of excess electrons: '
                 f'{self.excess_electrons:+.5f}')
+            if self.slope is not None:
+                log(f'  initial guess of slope: {self.slope:.4f}  '
+                    '# V/electron')
+            log(f'  slope damping (mixer): {self.mixer:.2f}')
+            log('  slope regressed over the last '
+                f'{self.slope_regression_depth:d} attempts')
+            if self.always_adjust:
+                log('  always adjust: the charge is stepped on to the next '
+                    'geometry')
 
         self._extension = SJMExtension(solvation, jellium, region,
                                        target_potential=self.target_potential,
                                        tol=self.tol,
                                        max_iters=self.max_iters,
                                        grand_output=self.grand_output,
+                                       always_adjust=self.always_adjust,
+                                       slope=self.slope,
+                                       mixer=self.mixer,
+                                       slope_regression_depth=(
+                                           self.slope_regression_depth),
                                        log=log)
         return self._extension
 
@@ -291,6 +339,14 @@ class SJM(Solvation):
         if self._extension is not None:
             self._extension.set(**kwargs)
 
+    def _check_always_adjust(self, log) -> None:
+        if self.always_adjust and self.target_potential is None:
+            msg = ('always_adjust has no effect in constant-charge mode: '
+                   'there is no target potential to step the number of '
+                   'excess electrons towards.')
+            warnings.warn(msg)
+            log(textwrap.fill('Warning: ' + msg) + '\n')
+
     def _check_convergence_criteria(self, convergence, log) -> None:
         if self.target_potential is None:
             return
@@ -313,7 +369,11 @@ class SJM(Solvation):
             excess_electrons=self.excess_electrons,
             tol=self.tol,
             max_iters=self.max_iters,
-            grand_output=self.grand_output)
+            grand_output=self.grand_output,
+            always_adjust=self.always_adjust,
+            slope=self.slope,
+            mixer=self.mixer,
+            slope_regression_depth=self.slope_regression_depth)
         return dct
 
 
@@ -329,6 +389,10 @@ class SJMExtension(Extension):
                  tol: float = 0.001,  # eV
                  max_iters: int = 10,
                  grand_output: bool = True,
+                 always_adjust: bool = False,
+                 slope: float | None = None,  # V/electron
+                 mixer: float = 0.5,
+                 slope_regression_depth: int = DEFAULT_REGRESSION_DEPTH,
                  log=None):
         self.solvation = solvation
         self.jellium = jellium
@@ -339,12 +403,20 @@ class SJMExtension(Extension):
         self.tol = tol
         self.max_iters = max_iters
         self.grand_output = grand_output
+        self.always_adjust = always_adjust
+        # Only used while the jellium is not the constant-potential one --
+        # otherwise the jellium keeps the estimate, see _slope():
+        self.slope = slope
+        self.mixer = mixer
+        self.slope_regression_depth = slope_regression_depth
         self.log = log or (lambda *args, **kwargs: None)
 
         self.niters = 0
         # (Charge, Fermi-level) of every attempt of the current
         # equilibration, reported in one block by post_converged():
         self.attempts: list[tuple[float, float]] = []
+        # Charge staged by always_adjust for the next geometry:
+        self._pending_charge: float | None = None
         # Set by post_converged():
         self.fermi_level = np.nan  # Ha
         self.omega_free = np.nan  # Ha
@@ -394,6 +466,14 @@ class SJMExtension(Extension):
             self.attempts.append((charge, fermi_level))
 
         if converged:
+            if self.always_adjust and isinstance(
+                    self.jellium, FixedPotentialJelliumExtension):
+                # Step the charge on anyway, but do not re-converge: the new
+                # value is picked up by the next geometry (move_atoms()), so
+                # that the potential can equilibrate alongside the structure.
+                # Reported by _log_equilibration(), not here, to keep it out
+                # of the SCF table.
+                self._pending_charge = self.jellium.next_charge(fermi_level)
             return True
 
         if self.target_potential is not None and self.niters >= self.max_iters:
@@ -415,15 +495,19 @@ class SJMExtension(Extension):
             f'(with {charge:+.5f} excess electrons, '
             f'attempt {len(self.attempts):d}/{self.max_iters:d}).')
 
-        slope = _regress_slope(self.attempts)
+        slope = self._slope()
         if slope is not None:
-            log(f'Slope regressed from last {len(self.attempts):d} attempts '
-                f'is {slope:.4f} V/electron,')
+            log(f'Slope estimated from the last '
+                f'{len(self.jellium.history):d} attempts is '
+                f'{slope:.4f} V/electron,')
             # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
             capacitance = -_e * 1e22 / (self._area() * slope)
             log(f'or apparent capacitance of {capacitance:.4f} muF/cm^2')
 
         log('Potential is within tolerance. Equilibrated.')
+        if self._pending_charge is not None:
+            log('always_adjust: the next geometry starts from '
+                f'{self._pending_charge:+.5f} excess electrons.')
         log(flush=True)
 
     def _area(self) -> float:
@@ -572,8 +656,10 @@ class SJMExtension(Extension):
         """Change SJM parameters without throwing away the wave functions.
 
         Recognized keywords are ``target_potential``, ``excess_electrons``,
-        ``tol``, ``max_iters``, ``grand_output`` and ``jelliumregion``, with
-        the same meaning as for :class:`SJM`.  This is the replacement for
+        ``tol``, ``max_iters``, ``grand_output``, ``jelliumregion``,
+        ``always_adjust``, ``slope``, ``mixer`` and
+        ``slope_regression_depth``, with the same meaning as for
+        :class:`SJM`.  This is the replacement for
         the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.set()``.
 
         The density and the wave functions are kept, so the next
@@ -608,6 +694,35 @@ class SJMExtension(Extension):
                 if abs(self.get_electrode_potential() -
                        self.target_potential) > self.tol:
                     rerun = True
+
+        if 'always_adjust' in kwargs:
+            self.always_adjust = kwargs['always_adjust']
+            if not self.always_adjust:
+                self._pending_charge = None
+            elif kwargs.get('target_potential',
+                            self.target_potential) is None:
+                warnings.warn('always_adjust has no effect in '
+                              'constant-charge mode.')
+        if 'mixer' in kwargs:
+            self.mixer = kwargs['mixer']
+            if isinstance(self.jellium, FixedPotentialJelliumExtension):
+                self.jellium.mixer = self.mixer
+        if 'slope_regression_depth' in kwargs:
+            self.slope_regression_depth = kwargs['slope_regression_depth']
+            if isinstance(self.jellium, FixedPotentialJelliumExtension):
+                self.jellium.slope_regression_depth = \
+                    self.slope_regression_depth
+        if 'slope' in kwargs:
+            # Whatever the user says replaces the estimate, so the attempts
+            # behind the old one go too:
+            self.slope = kwargs['slope']
+            if isinstance(self.jellium, FixedPotentialJelliumExtension):
+                self.jellium.reset_slope()
+                self.jellium.slope = self.slope
+            if self.slope is None:
+                log('Slope estimate reset; it will be guessed again.')
+            else:
+                log(f'Slope set to {self.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
             self.region = JelliumRegion(**(kwargs['jelliumregion'] or {}))
@@ -659,6 +774,8 @@ class SJMExtension(Extension):
         """Set the number of excess electrons."""
         self.jellium.charge = charge
         self.charge = charge
+        # An explicit charge wins over one staged by always_adjust:
+        self._pending_charge = None
 
     def _switch_mode(self, target_potential: float | None) -> None:
         """Switch between constant-charge and constant-potential mode.
@@ -668,6 +785,8 @@ class SJMExtension(Extension):
         """
         mask_r = self.jellium.mask_r
         pw = self.jellium.pw
+        # Carry the slope estimate across the switch:
+        self.slope = self._slope()
         if target_potential is None:
             self.jellium = JelliumExtension(
                 mask_r, charge=self.charge, pw=pw)
@@ -677,17 +796,22 @@ class SJMExtension(Extension):
                 workfunction_target=target_potential,
                 excess_electrons_guess=self.charge,
                 tolerance=self.tol,
+                slope=self.slope,
+                mixer=self.mixer,
+                slope_regression_depth=self.slope_regression_depth,
                 pw=pw)
 
     def _slope(self) -> float | None:
-        """Estimated d(potential)/d(charge) in V per electron."""
-        history = getattr(self.jellium, 'history', [])
-        if len(history) < 2:
-            return None
-        (c2, fl2), (c1, fl1) = history[-2:]
-        if c1 == c2:
-            return None
-        return -(fl1 - fl2) * Ha / (c1 - c2)
+        """Estimated d(potential)/d(charge) in V per electron.
+
+        This is the damped estimate that the jellium steps along, so that
+        set() and the log report what is actually used.
+        """
+        if isinstance(self.jellium, FixedPotentialJelliumExtension):
+            if self.jellium.slope is not None:
+                return self.jellium.slope
+            return regress_slope(self.jellium.history)
+        return self.slope
 
     def _step_towards(self, target_potential: float) -> None:
         """Guess the charge needed for the new target potential."""
@@ -701,9 +825,20 @@ class SJMExtension(Extension):
                  f'slope of {slope:.4f} V/electron.')
 
     def move_atoms(self, relpos_ac) -> None:
-        # Each new geometry gets a fresh budget of equilibration attempts:
+        charge = self._pending_charge
+        if charge is not None:
+            # always_adjust: the step taken after the last geometry had
+            # already equilibrated (see post_scf_convergence).
+            self._set_charge(charge)
+            self.log(f'Excess electrons adjusted to {self.charge:+.5f} for '
+                     'the new geometry (always_adjust).')
+        # Each new geometry gets a fresh budget of equilibration attempts,
+        # and a fresh record to regress the slope from -- the slope estimate
+        # itself is carried over:
         self.niters = 0
         self.attempts = []
+        if isinstance(self.jellium, FixedPotentialJelliumExtension):
+            self.jellium.forget_attempts()
         if not self.region.follows_atoms:
             return
         grid = self.jellium.mask_r.desc
@@ -841,21 +976,6 @@ def modified_saw_tooth(eps_r: UGArray) -> np.ndarray:
     # affects the result.
     saw_tooth_z -= 0.5 * a_z
     return saw_tooth_z
-
-
-def _regress_slope(attempts: list[tuple[float, float]]) -> float | None:
-    """Slope of potential vs. excess electrons, in V/electron.
-
-    ``attempts`` is a list of (charge, Fermi-level) pairs in atomic units.
-    Returns ``None`` if there are too few distinct charges to fit a line.
-    """
-    if len(attempts) < 2:
-        return None
-    charge_i = np.array([charge for charge, _ in attempts])
-    potential_i = np.array([-fermi_level * Ha for _, fermi_level in attempts])
-    if np.ptp(charge_i) < 1e-10:
-        return None
-    return float(np.polyfit(charge_i, potential_i, 1)[0])
 
 
 class SJMPWPoissonSolver(PWPoissonSolver):

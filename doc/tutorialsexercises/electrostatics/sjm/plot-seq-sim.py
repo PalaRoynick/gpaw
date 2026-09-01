@@ -1,5 +1,6 @@
 # web-page: simultaneous.png
 
+import ase.io
 from matplotlib import pyplot, gridspec
 
 
@@ -47,16 +48,20 @@ def plot_data(potentials, equilibrateds, fmaxs, axes):
     axes[1].plot(fmax_indices, fmaxs, 'ko-')
 
 
-def prune_duplicate(potentials, equilibrateds):
-    """Due to logging, there's a duplicate potential reading when
-    we switched from simultaneous to sequential. Remove it, and also
-    return the image number of the switch."""
+def find_switch(potentials, equilibrateds):
+    """Return the image number where we switched to a tighter tolerance.
+
+    The two optimizations write separate trajectories, so the number of
+    images in the first one is the number of DFT calculations before the
+    switch.  Older logs also carry a duplicate potential reading at the
+    switch; drop it if it is there.
+    """
     for index, potential in enumerate(potentials):
         if index > 0 and potential == potentials[index - 1]:
-            duplicate = index
-    del potentials[duplicate]
-    del equilibrateds[duplicate]
-    return duplicate
+            del potentials[index]
+            del equilibrateds[index]
+            break
+    return len(ase.io.read('qn-Au111-H-sim.traj', ':'))
 
 
 def shade_plot(ax, xstart):
@@ -72,15 +77,15 @@ fig, ax0, ax1, ax2, ax3 = makefig()
 potentials, equilibrateds, fmaxs = get_data('seq')
 plot_data(potentials, equilibrateds, fmaxs, [ax0, ax1])
 potentials, equilibrateds, fmaxs = get_data('sim')
-duplicate = prune_duplicate(potentials, equilibrateds)
+switch = find_switch(potentials, equilibrateds)
 plot_data(potentials, equilibrateds, fmaxs, [ax2, ax3])
 
 ax3.set_xlabel('DFT calculation')
 ax0.text(0.20, 0.75, 'sequential', transform=ax0.transAxes)
 ax2.text(0.20, 0.75, 'simultaneous', transform=ax2.transAxes)
 ax2.text(0.75, 0.75, '(sequential)', transform=ax2.transAxes)
-shade_plot(ax2, duplicate - 0.5)
-shade_plot(ax3, duplicate - 0.5)
+shade_plot(ax2, switch - 0.5)
+shade_plot(ax3, switch - 0.5)
 for ax in [ax0, ax2]:
     ax.set_ylabel(r'$\phi$, V')
 for ax in [ax1, ax3]:

@@ -149,7 +149,8 @@ Due to the simple relationship between the excess electrons and the potential, r
 If you are running a trajectory---for example, a relaxation, a molecular dynamics simulation, or a saddle-point search---the first image will often take a few repetitions (that is, sequential constant-electron calculations) until the desired potential is reached.
 Atoms typically move relatively little from image-to-image in a trajectory; therefore, subsequent images are often already at the target potential and no equilibration steps are necessary; when equilibration steps are required, the slope (of potential vs. number of electrons) is recalled from the last adjustment, and it often only takes a single equilibration step.
 Typically, over the course of a full trajectory, the added computational cost of working in the constant-potential ensemble is minimal, generally <50% greater computational time compared to a constant-charge calculation.
-As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions.
+As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose :literal:`tol` together with :literal:`always_adjust=True`, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
+The slope itself is regressed over the last :literal:`slope_regression_depth` attempts and damped with the previous estimate by :literal:`mixer`; :literal:`slope` sets the initial guess, which is otherwise taken from an apparent capacitance of a few muF/cm^2.
 
 **Constant inner potential (CIP) DFT:**
 
@@ -221,7 +222,9 @@ calculation --- once one has been run, it is the same object as
 
 * :literal:`set(...)`, which changes :literal:`target_potential`,
   :literal:`excess_electrons`, :literal:`tol`, :literal:`max_iters`,
-  :literal:`grand_output` or :literal:`jelliumregion` without throwing away the
+  :literal:`grand_output`, :literal:`jelliumregion`,
+  :literal:`always_adjust`, :literal:`slope`, :literal:`mixer` or
+  :literal:`slope_regression_depth` without throwing away the
   wave functions (this replaces the legacy :literal:`calc.set(sj={...})`).
   It can also be called before the first calculation, in which case it simply
   changes the parameters the calculation will be started with.  Note that
@@ -258,7 +261,7 @@ Class documentation
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 
 The legacy calculator---:literal:`SJM(sj={...})` from
-:literal:`gpaw.solvation.sjm`---is still available, and is what the CIP-DFT and
-:literal:`always_adjust` sections above use:
+:literal:`gpaw.solvation.sjm`---is still available, and is what the CIP-DFT
+section above uses:
 
 .. autoclass:: gpaw.solvation.sjm.SJM
