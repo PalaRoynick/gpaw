@@ -5,8 +5,8 @@ import numpy as np
 from gpaw.core import PWDesc, UGDesc
 from gpaw.core.atom_arrays import AtomArraysLayout, AtomDistribution
 from gpaw.mpi import world
-from gpaw.new.pw.hybrids import Psit, PWHybridHamiltonian
 from gpaw.new.brillouin import MonkhorstPackKPoints
+from gpaw.new.pw.hybrids import Psit, PWHybridHamiltonian
 from gpaw.setup import Setups
 
 
@@ -84,8 +84,9 @@ def test_apply3(a=5.0, N=10, dtype=float, calculate_energy=True):
 
 
 def mmmi_test(A=16):
-    from gpaw.utilities.blas import mmm
     from time import time
+
+    from gpaw.utilities.blas import mmm
     r_nG = np.ones((A * 3, 2300), dtype=complex) + 0.7j
     g_GI = np.ones((2300, A * 9), dtype=complex) + 0.3j
     Q_nI = np.ones((A * 3, A * 9), dtype=complex) - 0.1j

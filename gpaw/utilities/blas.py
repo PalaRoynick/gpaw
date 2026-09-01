@@ -16,13 +16,12 @@ import numpy as np
 import scipy.linalg.blas as blas
 
 import gpaw.cgpaw as cgpaw
-from gpaw import debug, GPAW_NO_C_EXTENSION
+from gpaw import GPAW_NO_C_EXTENSION, debug
 from gpaw.gpu import cupy_is_fake
 from gpaw.new import prod
 from gpaw.new.timer import trace
 from gpaw.typing import Array2D, ArrayND
 from gpaw.utilities import is_contiguous
-
 
 no_c_blas = GPAW_NO_C_EXTENSION or not hasattr(cgpaw, "mmm")
 """True if using GPAW_NO_C_EXTENSION, or a noblas = True build"""
@@ -523,9 +522,8 @@ def _gemmdot(a, b, alpha=1.0, beta=1.0, out=None, trans='n'):
 
 
 if no_c_blas:
-    from gpaw.utilities.blas_purepython import (  # noqa: F401, F811
-        op, rk, r2k, mmm
-    )
+    from gpaw.utilities.blas_purepython import (mmm, op,  # noqa: F401, F811
+                                                r2k, rk)
     gemmdot = _gemmdot
 
 elif not debug:

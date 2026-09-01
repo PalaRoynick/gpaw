@@ -537,12 +537,6 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-
-if not check_cpp_version():
-    raise RuntimeError("Unsupported C++ standard (see error above)."
-                       "Ensure you are using -std=c++17 or newer")
-
-
 sources = [Path('c/bmgs/bmgs.c')]
 sources += Path('c').glob('*.c')
 if gpu:
@@ -570,6 +564,10 @@ if noblas:  # Cleanup: remove stale refrerences to BLAS
         libraries.remove('blas')
     except ValueError:
         pass
+
+if not check_cpp_version():
+    raise RuntimeError('Unsupported C++ standard (see error above). '
+                       'Ensure you are using -std=c++17 or newer')
 
 # Make build process deterministic (for "reproducible build")
 sources = [str(source) for source in sources]

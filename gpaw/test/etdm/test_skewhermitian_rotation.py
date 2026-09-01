@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
-from gpaw.new.etdm.skewherm_matrix import SkewHermitian
 from scipy.linalg import expm
+
+from gpaw.new.etdm.skewherm_matrix import SkewHermitian
 
 # Carry out various tests with different values of input parameters
 

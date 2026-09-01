@@ -4,9 +4,8 @@ from ase import Atoms
 
 from gpaw.core import UGDesc
 from gpaw.core.domain import Domain
-from gpaw.dft import Parameters
+from gpaw.dft import DFT, Parameters
 from gpaw.mpi import MPIComm, normalize_communicator
-from gpaw.dft import DFT
 from gpaw.new.ibzwfs import IBZ
 from gpaw.new.logger import Logger
 from gpaw.setup import Setups

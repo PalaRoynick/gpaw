@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from gpaw.core import UGArray
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.poisson import PoissonSolver
-from gpaw.core import UGArray
 
 
 class Extension:

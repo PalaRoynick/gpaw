@@ -1,4 +1,5 @@
 import pytest
+
 from .base_calc import calculator
 
 

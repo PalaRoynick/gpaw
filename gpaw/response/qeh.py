@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from ase.units import pi
-from typing import Any, Dict, Union
+
 from gpaw.response.df import DielectricFunction
 
 try:
@@ -139,6 +141,7 @@ class QEHChiCalc(ChiCalc):
             qmax: float [1 / Bohr]
         """
         from ase.units import Hartree
+
         # distance between neighboring q-points
         dqc = 1 / self.Nk
         dq_v = dqc * self.gd.icell_cv[self.qdir] * 2 * pi
@@ -164,8 +167,8 @@ class QEHChiCalc(ChiCalc):
     def get_atoms(self):
         return self.df.gs.atoms
 
-    def get_calc_info(self, extra_info: Union[dict, None] = None) -> dict:
-        info: Dict[str, Any] = {}
+    def get_calc_info(self, extra_info: dict | None = None) -> dict:
+        info: dict[str, Any] = {}
         df = self.df
         gs = df.gs
         chi0_body = df.chi0calc.chi0_body_calc

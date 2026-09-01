@@ -3,8 +3,9 @@ from time import time
 import numpy as np
 import pytest
 import scipy.linalg as linalg
+
 from gpaw.core.matrix import Matrix, suggest_blocking
-from gpaw.mpi import broadcast_exception, world, serial_comm
+from gpaw.mpi import broadcast_exception, serial_comm, world
 
 
 @pytest.mark.parametrize('dtype', [float, complex])

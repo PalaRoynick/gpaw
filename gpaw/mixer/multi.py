@@ -1,9 +1,9 @@
 import numpy as np
 
 from gpaw.core.atom_arrays import AtomDistribution
-from gpaw.typing import ArrayND
-from gpaw.new.density import Density
 from gpaw.mixer.base import BaseMixer
+from gpaw.new.density import Density
+from gpaw.typing import ArrayND
 
 
 class MultiMixer(BaseMixer):
