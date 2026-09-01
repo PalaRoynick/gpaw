@@ -51,8 +51,9 @@ from gpaw.new.ase_interface import ASECalculator
 from gpaw.old.calculator import GPAW as OldGPAW
 from gpaw.utilities import pack_hermitian
 
-dr_version = 1
+dr_version = 2
 # v1: saves natom, supercell, delta
+# v2: also saves indices
 
 
 class DisplacementRunner(Displacement):
@@ -155,7 +156,8 @@ class DisplacementRunner(Displacement):
         with self.cache.lock('info') as handle:
             if handle is not None:
                 info = {'natom': len(self.atoms), 'supercell': self.supercell,
-                        'delta': self.delta, 'dr_version': dr_version}
+                        'indices': self.indices, 'delta': self.delta,
+                        'dr_version': dr_version}
                 handle.save(info)
 
     def run(self) -> None:
