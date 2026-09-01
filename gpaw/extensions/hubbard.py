@@ -26,34 +26,23 @@ class HubbardUJ(ExtensionInput):
     Parameters
     ----------
     indices:
-        Atom indices the correction acts on.  Note these are *indices*, not
-        chemical symbols: build them from the Atoms object, e.g.
-        ``[i for i, a in enumerate(atoms) if a.symbol == 'Ni']``.
+        Atom indices the correction acts on. build them from the Atoms object,
+        e.g.  ``[i for i, a in enumerate(atoms) if a.symbol == 'Ni']``.
     l:
-        Angular momentum of the corrected manifold (2 for d, 3 for f).
+        Angular momentum of the corrected manifold.
     U:
         Hubbard parameter in eV.  For scheme='dudarev' this is the
         *effective* U_eff = U - J; for scheme='himmetoglu' it is the bare U.
     scheme:
-        Which corrective functional to use; see SCHEMES.  Required, because
-        the meaning of U differs between them and a silent default would
-        make published U values ambiguous.
+        Which corrective functional to use; see SCHEMES.
     J0:
         On-site exchange in eV.  Required for scheme='himmetoglu', and must
         not be given for scheme='dudarev'.
-
-        Named J0, following Quantum ESPRESSO, because it is *not* the
-        Slater-integral J of the Liechtenstein scheme: it is defined by its
-        own atomic average (Eq. 47 of the review) rather than by Eq. (12),
-        which uses a different prefactor and excludes the m = m' diagonal.
-        A literature J computed for a Liechtenstein calculation must not be
-        passed here without checking the convention.
     scale:
         Scale the inner products so that the bounded partial wave has unit
         norm.
     """
 
-    #: Must match the key used in ``ExtensionInput.from_input``.
     name = 'hubbarduj'
 
     def __init__(self,
@@ -91,20 +80,6 @@ class HubbardUJ(ExtensionInput):
         self.scale = scale
 
     def todict(self) -> dict:
-        """Round-trippable parameters, in the units the user supplied.
-
-        Needed for writing restart files and for fixed_density(), which
-        rebuild the calculator from its parameters via
-        ``ExtensionInput.from_input``.  That classmethod pops ``'name'``
-        from the dict and passes the remainder as keyword arguments, so
-        every key here must be an ``__init__`` keyword, and ``name`` must
-        match the registry key.
-
-        ``name`` itself is not included, following D3 and Jellium; the
-        serialisation layer is assumed to add it.  If that assumption is
-        wrong, add ``'name': self.name`` here -- and D3 and Jellium need
-        the same fix.
-        """
         dct = {'indices': self.indices,
                'l': self.l,
                'U': self.U,
@@ -124,8 +99,7 @@ class HubbardUJ(ExtensionInput):
 
 
 class HubbardUJExtension(Extension):
-    """The working object; see HubbardUJ for the user-facing parameters.
-
+    """
     U and J0 are in Hartree here.
     """
 
@@ -149,18 +123,22 @@ class HubbardUJExtension(Extension):
         # within an SCF iteration overwrite rather than accumulate.
         self.e_a: dict[int, float] = {}
 
-    def get_energy_contributions(self) -> dict[str, float]:
+
+    # NOTE: issue here is, that we don't have world.sum(self.e_a) to
+    #       collect from ranks
+   # def get_energy_contributions(self) -> dict[str, float]:
         """Energy in Hartree, labelled for the output file.
 
         The label records the scheme, so a finished calculation states
         unambiguously which functional was used.
         """
-        if self.scheme == 'dudarev':
-            label = f'Hubbard dudarev (l={self.l}, Ueff={self.U * Ha:g} eV)'
-        else:
-            label = (f'Hubbard himmetoglu (l={self.l}, '
-                     f'U={self.U * Ha:g} eV, J0={self.J0 * Ha:g} eV)')
-        return {label: sum(self.e_a.values())}
+        # if self.scheme == 'dudarev':
+        #     label = f'Hubbard dudarev (l={self.l}, Ueff={self.U * Ha:g} eV)'
+        # else:
+        #     label = (f'Hubbard himmetoglu (l={self.l}, '
+        #              f'U={self.U * Ha:g} eV, J0={self.J0 * Ha:g} eV)')
+        # return {label: sum(self.e_a.values())}
+
 
     def update_non_local_hamiltonian(self,
                                      D_sii,
