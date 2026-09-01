@@ -327,7 +327,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
     def __init__(self, *args,
-                 eshift: float | None =None,
+                 eshift: float | None = None,
                  intraband: bool = True,
                  rate: float | None = None,
                  **kwargs):
@@ -360,12 +360,13 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         # response from the free-space plasma frequency of the intraband
         # transitions to the head of chi0. This is handled by a separate
         # calculator, provided that intraband is set to True.
+        self.drude_calc: Chi0DrudeCalculator | None
         if self.gs.metallic and intraband:
             from gpaw.response.chi0_drude import Chi0DrudeCalculator
             if rate is None:
                 raise ValueError(
                     'System is metallic and intraband contributions were '
-                    'requested, yet no scattering rate'
+                    'requested, yet no scattering rate was'
                     'Please specify a value for *rate*!')
             self.rate = rate / Ha
             self.drude_calc = Chi0DrudeCalculator(

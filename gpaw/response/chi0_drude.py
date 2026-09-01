@@ -38,7 +38,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         wd : FrequencyDescriptor from gpaw.response.frequencies
             Frequencies to evaluate the reponse function at.
         rate : float
-            Plasma frequency decay rate (in eV), corresponding to the
+            Plasma frequency decay rate in Hartree, corresponding to the
             imaginary part of the complex frequency.
         """
         self.print_info(wd, rate)
@@ -118,7 +118,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
                f'{ctime()}',
                'Calculating drude chi0 with:',
                f'    Number of frequency points:{len(wd)}',
-               f'    Plasma frequency decay rate: {rate} eV',
+               f'    Plasma frequency decay rate: {rate * Ha} eV',
                '',
                self.get_gs_info_string(tab='    ')]
 
