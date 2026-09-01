@@ -41,6 +41,7 @@ stages:
   stage: build
   before_script:
     - !reference [default, before_script]
+    - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
       cat << EOF > siteconfig.py
