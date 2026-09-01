@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase import Atoms
+
 from gpaw import GPAW, restart
 from gpaw.atom.basis import BasisMaker
 from gpaw.lcao.tools import get_lcao_hamiltonian

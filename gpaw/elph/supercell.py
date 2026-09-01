@@ -7,6 +7,7 @@ from ase import Atoms
 from ase.parallel import parprint
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
+
 from gpaw.dft import GPAW
 from gpaw.lcao.tightbinding import TightBinding
 from gpaw.new.ase_interface import ASECalculator

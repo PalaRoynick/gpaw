@@ -6,9 +6,9 @@ import sys
 import numpy as np
 
 from gpaw.core import UGArray
+from gpaw.dft import DFT
 from gpaw.fd_operators import Gradient
 from gpaw.new.ase_interface import GPAW, ASECalculator
-from gpaw.dft import DFT
 
 
 def elf(nt_sR: np.ndarray,

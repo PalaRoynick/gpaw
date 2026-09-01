@@ -45,6 +45,7 @@ from __future__ import annotations
 import numpy as np
 from ase import Atoms
 from ase.phonons import Displacement
+
 from gpaw.mpi import MPIComm
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.old.calculator import GPAW as OldGPAW

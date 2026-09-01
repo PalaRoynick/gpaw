@@ -29,6 +29,7 @@ from ase import Atoms
 from ase.phonons import Phonons
 from ase.utils.filecache import MultiFileJSONCache
 from ase.utils.timing import Timer, timer
+
 from gpaw.elph.supercell import Supercell
 from gpaw.mpi import normalize_communicator
 from gpaw.old.calculator import GPAW

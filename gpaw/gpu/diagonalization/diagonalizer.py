@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
@@ -39,7 +40,7 @@ class GPUDiagonalizer(ABC):
     def eigh(self,
              inout_matrix: Matrix,
              options: DiagonalizerOptions
-             ) -> tuple[cp.ndarray, "Matrix"]:
+             ) -> tuple[cp.ndarray, Matrix]:
         """Eigensolver that is aware of matrix internal distribution.
         """
 

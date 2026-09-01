@@ -6,6 +6,7 @@ from ase import Atoms
 from ase.db import connect
 from ase.io import iread, read, write
 from ase.units import Bohr
+
 from gpaw import GPAW, FermiDirac
 from gpaw.io.log_file_reader import parse_file
 

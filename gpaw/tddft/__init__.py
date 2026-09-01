@@ -11,8 +11,8 @@ import numpy as np
 from gpaw.lcaotddft.dipolemomentwriter import DipoleMomentWriter
 from gpaw.lcaotddft.magneticmomentwriter import MagneticMomentWriter
 from gpaw.lcaotddft.restartfilewriter import RestartFileWriter
-from gpaw.old.mixer import DummyMixer
 from gpaw.old.calculator import GPAW
+from gpaw.old.mixer import DummyMixer
 from gpaw.old.wavefunctions.fd import FD
 from gpaw.preconditioner import Preconditioner
 from gpaw.tddft.propagators import AbsorptionKick, create_propagator

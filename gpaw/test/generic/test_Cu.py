@@ -2,8 +2,8 @@ import pytest
 from ase import Atoms
 from ase.units import Hartree
 
-from gpaw.mpi import world
 from gpaw import GPAW
+from gpaw.mpi import world
 from gpaw.test import gen
 
 # Generate non-scalar-relativistic setup for Cu:

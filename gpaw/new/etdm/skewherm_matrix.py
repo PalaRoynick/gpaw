@@ -1,5 +1,6 @@
 import numpy as np
-from gpaw.directmin.tools import (d_matrix, expm_ed, expm_ed_unit_inv)
+
+from gpaw.directmin.tools import d_matrix, expm_ed, expm_ed_unit_inv
 from gpaw.new.etdm.tools import vec2skewmat
 
 

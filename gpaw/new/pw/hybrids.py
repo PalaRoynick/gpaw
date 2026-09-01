@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from math import pi
 from pathlib import Path
 from time import time
-from typing import IO, Callable, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Callable
 
 import numpy as np
 from ase.units import Ha
+from scipy.linalg.blas import get_blas_funcs
+
 from gpaw.core import PWArray, PWDesc, UGArray, UGDesc
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
@@ -21,9 +23,9 @@ from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.xc import create_functional
 from gpaw.setup import Setups
-from gpaw.utilities import unpack_hermitian, pack_density
+from gpaw.utilities import pack_density, unpack_hermitian
 from gpaw.utilities.blas import mmm
-from scipy.linalg.blas import get_blas_funcs
+
 if TYPE_CHECKING:
     from gpaw.dft import DFT
 

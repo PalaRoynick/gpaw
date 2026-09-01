@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import cached_property
 from math import pi
 from typing import TYPE_CHECKING, Literal
-from functools import cached_property
 
 import numpy as np
 from ase.units import Ha

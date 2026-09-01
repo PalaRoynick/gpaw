@@ -13,7 +13,7 @@ import gpaw.fftw as fftw
 from gpaw.gpu import __file__ as gpaw_gpu_filename
 from gpaw.gpu import cupy, cupy_is_fake
 from gpaw.mpi import normalize_communicator
-from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED, GPAW_IS_CPP
+from gpaw.new.c import GPAW_IS_CPP, GPU_AWARE_MPI, GPU_ENABLED
 from gpaw.utilities import compiled_with_libvdwxc, compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
 
