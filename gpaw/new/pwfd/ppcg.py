@@ -6,14 +6,12 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw import debug
-
 # from gpaw.typing import Array2D
 from gpaw.core import PWDesc  # , PWArray
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
 from gpaw.new import tracectx  # , trace
 from gpaw.new.pwfd.davidson import sliced_preconditioner
-
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions

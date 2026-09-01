@@ -225,6 +225,7 @@ class ParallelTimer(DebugTimer):
 class Profiler(Timer):
     def __init__(self, prefix, comm=None):
         import atexit
+
         import gpaw.mpi as mpi
 
         self.prefix = prefix

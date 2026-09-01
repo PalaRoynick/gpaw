@@ -4,8 +4,8 @@ import numpy as np
 from ase import Atom, Atoms
 
 from gpaw import GPAW, MixerDif
-from gpaw.mpi import world
 from gpaw.lrtddft import LrTDDFT
+from gpaw.mpi import world
 from gpaw.pes.dos import DOSPES
 from gpaw.pes.tddft import TDDFTPES
 

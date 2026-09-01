@@ -11,11 +11,12 @@ from ase.units import Ha
 
 from gpaw import __version__
 from gpaw.core import UGArray
-from gpaw.dft import GPAW as AnyGPAW, Parameters
+from gpaw.dft import GPAW as AnyGPAW
+from gpaw.dft import Parameters
 from gpaw.dos import DOSCalculator
 from gpaw.mpi import broadcast, synchronize_atoms
 from gpaw.new import Timer, trace
-from gpaw.new.calculation import (CalculationModeError, DFT,
+from gpaw.new.calculation import (DFT, CalculationModeError,
                                   ReuseWaveFunctionsError, units)
 from gpaw.new.gpw import GPWFlags, write_gpw
 from gpaw.new.logger import Logger
@@ -26,7 +27,6 @@ from gpaw.typing import Array1D, Array2D, Array3D
 from gpaw.utilities import pack_density
 from gpaw.utilities.memory import maxrss
 from gpaw.utilities.timing import simpletimer
-
 
 LOGO = '  __  _  _\n | _ |_)|_||  |\n |__||  | ||/\\| - {version}\n'
 

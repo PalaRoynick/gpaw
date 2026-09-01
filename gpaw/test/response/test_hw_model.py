@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 
 from gpaw.response.frequencies import NonLinearFrequencyDescriptor
-from gpaw.response.screened_interaction import (FullFrequencyHWModel,
-                                                HWModel)
+from gpaw.response.screened_interaction import FullFrequencyHWModel, HWModel
 
 
 @pytest.mark.response

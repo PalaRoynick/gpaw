@@ -1,7 +1,8 @@
+import numpy as np
 import pytest
+
 from gpaw.core.matrix import Matrix
 from gpaw.mpi import world
-import numpy as np
 
 
 @pytest.mark.skipif(world.size == 1, reason='Only run in parallel')

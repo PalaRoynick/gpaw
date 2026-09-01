@@ -6,8 +6,8 @@ import pytest
 # Script modules
 from ase.units import Hartree
 
-from gpaw.mpi import serial_comm
 from gpaw import GPAW
+from gpaw.mpi import serial_comm
 from gpaw.response import ResponseGroundStateAdapter
 from gpaw.response.context import ResponseContext
 from gpaw.response.frequencies import ComplexFrequencyDescriptor

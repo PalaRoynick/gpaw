@@ -2,11 +2,11 @@ import numpy as np
 
 from gpaw.core.matrix import MatrixWithNoData
 from gpaw.gpu import as_np
+from gpaw.new.calculation import DFT
 from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.lcao.hamiltonian import HamiltonianMatrixCalculator
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.new.calculation import DFT
 
 
 class LCAOEigensolver(Eigensolver):

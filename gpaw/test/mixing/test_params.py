@@ -1,10 +1,9 @@
 import pytest
-
 from ase.build import molecule
 
-from gpaw.dft import NoMixing, Pulay, MSR1
-from gpaw.mixer import Mixer as OldMixer
 from gpaw import GPAW
+from gpaw.dft import MSR1, NoMixing, Pulay
+from gpaw.mixer import Mixer as OldMixer
 
 
 @pytest.mark.parametrize('mixer',

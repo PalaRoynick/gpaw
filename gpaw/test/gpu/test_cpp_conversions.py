@@ -2,6 +2,7 @@
 Tests that our Cupy -> C++ array type conversions work as intended.
 """
 import pytest
+
 import gpaw.cgpaw as cgpaw
 
 try:
@@ -10,7 +11,10 @@ except ImportError:
     pytest.skip("No _gpaw.gpu module", allow_module_level=True)
 
 import numpy as np
-from gpaw.gpu import cupy as cp, cupy_is_fake
+
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy_is_fake
+
 if cupy_is_fake:
     pytest.skip("Fake cupy", allow_module_level=True)
 
@@ -48,7 +52,7 @@ def test_bad_input():
 def test_array_metadata():
     """Test that the type conversion correctly interprets array metadata.
     """
-    a = cp.empty((1))
+    a = cp.empty(1)
     cgpaw.gpu.test_array_metadata(a, a)
 
     a = cp.empty((1, 2, 3, 4))

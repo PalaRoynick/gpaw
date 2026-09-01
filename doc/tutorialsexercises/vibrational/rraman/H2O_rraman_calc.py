@@ -17,7 +17,7 @@ atoms.calc = GPAW(mode='fd', xc=xc, h=h, nbands=50,
 atoms.get_potential_energy()
 
 erange = 17
-ext = '_erange{0}'.format(erange)
+ext = f'_erange{erange}'
 gsname = exname = 'rraman' + ext
 rr = ResonantRamanCalculator(
     atoms, LrTDDFT, name=gsname, exname=exname,

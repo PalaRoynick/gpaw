@@ -28,12 +28,12 @@ and update.sh is::
   git push
 """
 
+import json
 import os
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
-import json
-import sys
 
 REPO = 'https://gitlab.com/gpaw/gpaw/'
 

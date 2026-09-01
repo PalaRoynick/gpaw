@@ -15,9 +15,9 @@ def do_plot(d_g, ng, box, atoms):
     # Take slice of data array
     d_yx = d_g[:, ng[1] // 2, :]
     y = np.linspace(0, box[0], ng[0])
-    ylabel = u'x / Å'
+    ylabel = 'x / Å'
     x = np.linspace(0, box[2], ng[2])
-    xlabel = u'z / Å'
+    xlabel = 'z / Å'
 
     # Plot
     plt.figure()

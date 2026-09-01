@@ -1,9 +1,9 @@
 import numpy as np
 
-from gpaw.new.density import Density
-from gpaw.mixer.base import DensityHistory, BaseMixer
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.mixer.base import BaseMixer, DensityHistory
+from gpaw.new.density import Density
 
 
 class PulayMixer(BaseMixer):
