@@ -1,6 +1,7 @@
 from ase.build import molecule
 from ase.data.g2_1 import atom_names, molecule_names
 from ase.optimize.bfgs import BFGS
+
 from gpaw.dft import DFT, PW
 
 

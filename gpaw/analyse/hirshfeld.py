@@ -4,13 +4,13 @@ from ase.utils.timing import Timer
 
 from gpaw.lfc import BasisFunctions
 from gpaw.mpi import normalize_communicator
+from gpaw.old import assert_legacy_gpaw
 from gpaw.old.density import RealSpaceDensity
 from gpaw.old.logger import GPAWLogger
 from gpaw.setup import Setups
 from gpaw.utilities.partition import AtomPartition
 from gpaw.utilities.tools import coordinates
 from gpaw.xc import XC
-from gpaw.old import assert_legacy_gpaw
 
 
 class HirshfeldDensity(RealSpaceDensity):

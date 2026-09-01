@@ -9,6 +9,7 @@ from typing import IO, TYPE_CHECKING, Sequence
 
 import numpy as np
 from ase.units import Ha
+
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.mpi import broadcast

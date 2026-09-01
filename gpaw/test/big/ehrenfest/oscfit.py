@@ -1,4 +1,3 @@
-
 import numpy as np
 
 try:
@@ -35,13 +34,13 @@ def Df(p, t):
 
 
 for name in ['h2_osc', 'n2_osc', 'na2_md', 'na2_osc']:
-    print('\nAnalysing %s\n%s' % (name, '-' * 32))
+    print('\nAnalysing {}\n{}'.format(name, '-' * 32))
 
     # Import relevant test and make sure it has the prerequisite parameters
     m = __import__(name, {}, {})
     for attr in ['d_bond', 'd_disp', 'timestep', 'period', 'ndiv', 'niter']:
         if not hasattr(m, attr):
-            raise ImportError('Module %s has no %s value' % (name, attr))
+            raise ImportError('Module {} has no {} value'.format(name, attr))
 
     # Read dimer bond length time series from trajectory file
     traj = Trajectory(name + '_td.traj', 'r')

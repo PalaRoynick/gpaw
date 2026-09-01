@@ -2,10 +2,10 @@ import json
 
 from ase.utils import IOContext
 
-from gpaw.mpi import world, MPIComm
 from gpaw.external import ExternalPotential
+from gpaw.mpi import MPIComm, world
 from gpaw.new.pot_calc import PotentialCalculator
-from gpaw.new.rttddft.dataclasses import RTTDDFTState, RTTDDFTKick
+from gpaw.new.rttddft.dataclasses import RTTDDFTKick, RTTDDFTState
 
 
 class DipoleMomentWriter:

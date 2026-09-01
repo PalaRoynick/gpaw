@@ -4,9 +4,9 @@ import pytest
 from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
-from gpaw.utilities.blas import (no_c_blas, gpu_axpy, gpu_dotc, gpu_dotu,
-                                 gpu_gemm, gpu_gemv, gpu_mmm, gpu_r2k, gpu_rk,
-                                 gpu_scal, mmm, r2k, rk)
+from gpaw.utilities.blas import (gpu_axpy, gpu_dotc, gpu_dotu, gpu_gemm,
+                                 gpu_gemv, gpu_mmm, gpu_r2k, gpu_rk, gpu_scal,
+                                 mmm, no_c_blas, r2k, rk)
 
 
 @pytest.mark.gpu

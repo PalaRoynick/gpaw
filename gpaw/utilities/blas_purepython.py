@@ -1,7 +1,8 @@
 # BLAS utils for "noblas = True" builds
 
-import numpy as np
 from typing import TypeVar
+
+import numpy as np
 
 T = TypeVar('T', float, complex)
 

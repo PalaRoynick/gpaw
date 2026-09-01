@@ -24,7 +24,6 @@ from gpaw.utilities.tools import tri2full
 from .test_pblas import (calculate_error, initialize_matrix, initialize_random,
                          mnprocs_i)
 
-
 tol = 1.0e-8
 
 

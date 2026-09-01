@@ -1,6 +1,6 @@
+import sys
 from collections.abc import Sequence
 from typing import Any, Union
-import sys
 
 import numpy as np
 

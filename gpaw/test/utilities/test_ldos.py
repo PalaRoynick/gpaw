@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from ase import Atom, Atoms
 
-from gpaw.mpi import world
 from gpaw import GPAW, FermiDirac, PoissonSolver
+from gpaw.mpi import world
 from gpaw.utilities.dos import RawLDOS, raw_orbital_LDOS, raw_wignerseitz_LDOS
 
 

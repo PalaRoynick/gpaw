@@ -1,11 +1,10 @@
 import pytest
-from gpaw.gpu.mpi import CuPyMPI
-from gpaw.new.c import GPU_AWARE_MPI
-from gpaw.core import UGDesc
 
+from gpaw.core import UGDesc
+from gpaw.gpu.mpi import CuPyMPI
 # We allow the world import due to special parametrization of parallel tests
 from gpaw.mpi import world
-
+from gpaw.new.c import GPU_AWARE_MPI
 
 parametrization = {1: [1], 2: [1, 2], 4: [1, 2, 4], 8: [1, 2, 4, 8]}
 

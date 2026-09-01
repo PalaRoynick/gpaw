@@ -11,7 +11,7 @@ from ase.dft.kpoints import get_monkhorst_pack_size_and_offset
 from gpaw import GPAW
 from gpaw.ibz2bz import (get_overlap, get_overlap_coefficients,
                          get_phase_shifted_overlap_coefficients)
-from gpaw.mpi import normalize_communicator, serial_comm, rank0_call
+from gpaw.mpi import normalize_communicator, rank0_call, serial_comm
 from gpaw.spinorbit import soc_eigenstates
 from gpaw.utilities.blas import gemmdot
 

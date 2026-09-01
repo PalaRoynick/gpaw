@@ -1,9 +1,9 @@
 import numpy as np
 
 from gpaw.core.arrays import XArray
-from gpaw.typing import ArrayND
 from gpaw.core.plane_waves import PWDesc
-from gpaw.core.uniform_grid import UGDesc, UGArray
+from gpaw.core.uniform_grid import UGArray, UGDesc
+from gpaw.typing import ArrayND
 
 
 class BaseMetric:

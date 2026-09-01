@@ -1,4 +1,5 @@
 from ase.io import read
+
 from gpaw.io.log_file_reader import parse_str
 from gpaw.new.logger import RED, RESET
 

@@ -77,4 +77,4 @@ for d in c.select(calculator='gpaw'):
     r = list(e1.ravel()[1:] - lda[d.name][1:6])
     e2 = d.data.qp[0] - d.data.qp[0, 0, 0]
     r.extend(e2.ravel()[1:] - gw[d.name][2:7])
-    print('{0:7}'.format(d.name), ' '.join('{0:5.2f}'.format(x) for x in r))
+    print('{:7}'.format(d.name), ' '.join('{:5.2f}'.format(x) for x in r))

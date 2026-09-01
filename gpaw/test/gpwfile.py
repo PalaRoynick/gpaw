@@ -9,6 +9,7 @@ from ase.build.supercells import make_supercell
 from ase.lattice.compounds import L1_2
 from ase.lattice.hexagonal import Graphene
 from ase.units import Bohr
+
 from gpaw import FD, GPAW, LCAO, PW, Davidson, FermiDirac, Mixer
 from gpaw.directmin.derivatives import Davidson as SICDavidson
 from gpaw.directmin.etdm_fdpw import FDPWETDM

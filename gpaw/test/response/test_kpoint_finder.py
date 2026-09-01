@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase.dft.kpoints import monkhorst_pack
+
 from gpaw.response.kpoints import KPointFinder
 
 

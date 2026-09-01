@@ -16,20 +16,20 @@ phi_mu and provides methods for calculating stuff with them.
 
 import itertools
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import cached_property
-from collections import defaultdict
 from typing import TypeAlias, cast
 
 import numpy as np
+
 from gpaw.core import UGDesc
 from gpaw.gpu import cupy as cp
 from gpaw.new.timer import trace
 from gpaw.setup import Setup, Setups
 from gpaw.spline import Spline
 from gpaw.typing import Array4D
-
 
 BlockCoords: TypeAlias = tuple[int, int, int]
 

@@ -1,8 +1,8 @@
 import os.path
 
 import numpy as np
-import gpaw.mpi as mpi
 
+import gpaw.mpi as mpi
 from gpaw.lrtddft.excitation import ExcitationLogger
 
 
