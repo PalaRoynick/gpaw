@@ -55,7 +55,7 @@ responseGS.write('gsresponse.gpw', 'all')
 
 df = DielectricFunction('gsresponse.gpw',
                         eta=25e-3,
-                        rate='eta',
+                        rate=25e-3,
                         frequencies={'type': 'nonlinear',
                                      'domega0': 0.01},
                         integrationmode='tetrahedron integration')
@@ -66,7 +66,7 @@ df = DielectricFunction('gsresponse.gpw',
                         frequencies={'type': 'nonlinear',
                                      'domega0': 0.01},
                         eta=25e-3,
-                        rate='eta')
+                        rate=25e-3)
 df1, df2 = df.get_dielectric_function(q_c=[0, 0, 0],
                                       filename='df_point.csv')
 omega_w = df.get_frequencies()
