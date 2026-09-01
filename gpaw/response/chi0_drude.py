@@ -30,7 +30,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         # wd: FrequencyDescriptor from gpaw.response.frequencies
         self.task, self.wd = self.construct_integral_task_and_wd()
 
-    def calculate(self, wd, rate) -> Chi0DrudeData:
+    def calculate(self, wd, rate: float) -> Chi0DrudeData:
         """Calculate the Drude dielectric response.
 
         Parameters
@@ -113,7 +113,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
             wd = NotAFrequencyDescriptor()
         return task, wd
 
-    def print_info(self, wd, rate):
+    def print_info(self, wd, rate: float):
         isl = ['',
                f'{ctime()}',
                'Calculating drude chi0 with:',
