@@ -16,7 +16,7 @@ for symbol in ['Ar', 'Kr']:
     for r in d:
         dimer.set_distance(0, 1, r)
         e = dimer.get_potential_energy()
-        calc.write('{}-dimer-{:.2f}.gpw'.format(symbol, r))
+        calc.write(f'{symbol}-dimer-{r:.2f}.gpw')
     del dimer[1]
     dimer.calc = calc.new(txt=symbol + '-atom.txt')
     e = dimer.get_potential_energy()
