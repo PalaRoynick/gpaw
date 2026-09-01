@@ -2,9 +2,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from gpaw.new.etdm.skewherm_matrix import SkewHermitian
 from gpaw.new.etdm.tools import get_n_occ
-
-from .skewherm_matrix import SkewHermitian
 
 
 class ObjectiveFunctionETDM(ABC):

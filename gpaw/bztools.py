@@ -111,9 +111,9 @@ def optimal_monkhorst_pack_grid(
 
     def mp_gridsize_generator(minsize, maxsize, step):
         yield from product(
-                range(minsize[0], maxsize[0] + 1, step),
-                range(minsize[1], maxsize[1] + 1, step),
-                range(minsize[2], maxsize[2] + 1, step))
+            range(minsize[0], maxsize[0] + 1, step),
+            range(minsize[1], maxsize[1] + 1, step),
+            range(minsize[2], maxsize[2] + 1, step))
     mp_grids = np.array(list(mp_gridsize_generator(minsize, maxsize, step)))
 
     for predicate_function in predicate_functions:

@@ -127,19 +127,20 @@ def gauss_to_string(l, m, numeric=False):
     return string
 
 def gauss_potential_to_string(l, m, numeric=False):
-    """Return string representation of the potential of  a generalized
-       gaussian.
+    r"""Return string representation of the potential of  a generalized
+    gaussian.
 
-       The potential is determined by::
+    The potential is determined by::
 
           m        m ^    _           m ^
          v [g (r) Y (r) ](r) = v (r) Y (r)
           l  l     l         l     l  l
 
-       where::
+    where::
                4 pi /  -l-1 /r    l+2         l /oo   1-l      \
        v (r) = ---- | r     | dx x   g (r) + r  | dx x   g (r) |
-        l      2l+1 \\       /0        l         /r        l    /
+        l      2l+1 \       /0        l         /r        l    /
+
     """
     v_l = [[Q(4,1), 1],
            [Q(4,3), 1, 2],

@@ -260,7 +260,7 @@ class BloechlPAWPoissonSolver(PAWPoissonSolver):
             I2 = self.I_a[a2]
             v_LL = xp.asarray(
                 ex1.tsoe_II[I1, I2].evaluate(d, rlY_lm) +
-                 ex2.tsoe_II[I1, I2].evaluate(d, rlY_lm))
+                ex2.tsoe_II[I1, I2].evaluate(d, rlY_lm))
             vQ2_L = v_LL @ Q_aL[a2]
             e_coulomb3 -= float(Q_aL[a1] @ vQ2_L)
             if d == 0.0:

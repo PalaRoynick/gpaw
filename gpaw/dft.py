@@ -4,7 +4,7 @@ import importlib
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Dict, Literal, Union
+from typing import IO, TYPE_CHECKING, Any, Literal, Union
 
 import numpy as np
 from ase import Atoms

@@ -3,9 +3,7 @@ Test with unrealisticly loose parameters to catch if the numerics change.
 """
 
 import numpy as np
-# General modules
 import pytest
-# Script modules
 from ase.build import bulk
 
 from gpaw import GPAW, PW, FermiDirac

@@ -84,7 +84,7 @@ for d in ds:
     # Lumo projector overlaps
     mol = [12, 13]
     p_uai = [{mol[a]: P_ni[band_k[kpt.k]]
-                   for a, P_ni in kpt.P_ani.items()}
+              for a, P_ni in kpt.P_ani.items()}
              for kpt in c_mol.wfs.kpt_u]
 
     # Slab with adsorbed molecule
