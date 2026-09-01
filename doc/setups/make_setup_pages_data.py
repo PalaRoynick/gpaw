@@ -113,7 +113,9 @@ def scan_parameter(name: str,
         except KohnShamConvergenceError:
             break
         results.append(e)
-    return (symbol, kind, xtal, mode, x, results)
+    data = (symbol, kind, xtal, mode, x, results)
+    Path(f'{xtal}-{mode}.result').write_text(json.dumps(data))
+    return data
 
 
 def grid_spacings(cell_cv: np.ndarray) -> list[float]:
@@ -156,7 +158,9 @@ def eggbox_error(name: str) -> tuple[str, str, list]:
             results.append((h, energies))
         except KohnShamConvergenceError:
             break
-    return (symbol, kind, results)
+    data = (symbol, kind, results)
+    Path('eggbox.result').write_text(json.dumps(data))
+    return data
 
 
 def collect_results(name: str) -> dict:
@@ -200,4 +204,4 @@ def collect_all(*names: str) -> None:
 
 if __name__ == '__main__':
     # make_folders()
-    collect_all()
+    collect_all('F.v2')
