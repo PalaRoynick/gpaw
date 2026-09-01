@@ -204,4 +204,4 @@ def collect_all(*names: str) -> None:
 
 if __name__ == '__main__':
     # make_folders()
-    collect_all('F.v2')
+    collect_all()
