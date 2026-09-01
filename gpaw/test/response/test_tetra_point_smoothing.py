@@ -56,7 +56,7 @@ def test_point_tetra_match(in_tmp_dir, mpi):
     # DF with tetra integration
     df = DielectricFunction(response_file,
                             eta=25e-3,
-                            rate='eta',
+                            rate=25e-3,
                             frequencies={'type': 'nonlinear',
                                          'domega0': 0.1},
                             integrationmode='tetrahedron integration',
@@ -68,7 +68,7 @@ def test_point_tetra_match(in_tmp_dir, mpi):
                             frequencies={'type': 'nonlinear',
                                          'domega0': 0.1},
                             eta=25e-3,
-                            rate='eta', world=mpi.comm)
+                            rate=25e-3, world=mpi.comm)
     df1_point, df2_point = df.get_dielectric_function(q_c=[0, 0, 0])
 
     omega = df.get_frequencies()
