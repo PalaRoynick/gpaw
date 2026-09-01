@@ -1,7 +1,5 @@
 """Module for electron-phonon supercell properties."""
 
-from typing import Union
-
 import numpy as np
 from ase import Atoms
 from ase.parallel import parprint
