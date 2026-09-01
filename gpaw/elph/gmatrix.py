@@ -234,20 +234,18 @@ class ElectronPhononMatrix:
             return g_lnn * units.Hartree / units.Bohr  # eV / Ang
 
     @timer("g ket part")
-    def _precalculate_ket(self, c_knM, kd, s: int):
-        g_xNkMn = []
-        phase_kn = np.exp(-2.0j * np.pi * np.einsum("ki,in->kn", kd.bzk_kc,
+    def _precalculate_ket(self, g_xNkMn, c_knM, bzk_kc, s: int):
+        phase_kn = np.exp(-2.0j * np.pi * np.einsum("ki,in->kn", bzk_kc,
                                                     self.R_cN))
-        for a in self.indices:
+        for i, a in enumerate(self.indices):
             for v in range(3):
-                x = 3 * a + v
-                g_NNMM = self._yield_g_NNMM_as_needed(x, s)
+                x_cache = 3 * a + v
+                x_index = 3 * i + v
+                g_NNMM = self._yield_g_NNMM_as_needed(x_cache, s)
                 g_NkMM = np.einsum("mnop,kn->mkop", g_NNMM, phase_kn,
                                    optimize=OPTIMIZE)
-                g_NkMn = np.einsum("mkop,knp->mkon", g_NkMM, c_knM,
-                                   optimize=OPTIMIZE)
-                g_xNkMn.append(g_NkMn)
-        return np.array(g_xNkMn)
+                g_xNkMn[x_index] = np.einsum("mkop,knp->mkon", g_NkMM, c_knM,
+                                             optimize=OPTIMIZE)
 
     def bloch_matrix(self, calc: GPAW, k_qc: ArrayND = None,
                      savetofile: bool = True, prefactor: bool = True,
@@ -300,8 +298,15 @@ class ElectronPhononMatrix:
             with self.timer("Gather wavefunctions to root"):
                 c_knM = self._gather_all_wfc(wfs, s)
 
-            # precalculate k (ket) of g
-            g_xNkMn = self._precalculate_ket(c_knM, kd, s)
+            # Precalculate ket of g
+            g_xNkMn = np.zeros(
+                (3 * len(self.indices),
+                 np.prod(self.supercell_cache["info"]["supercell"]),
+                 wfs.kd.nbzkpts,
+                 wfs.setups.nao,
+                 wfs.bd.nbands),
+                dtype=complex)
+            self._precalculate_ket(g_xNkMn, c_knM, kd.bzk_kc, s)
 
             for q, q_c in enumerate(k_qc):
                 # Find indices of k+q for the k-points
@@ -313,7 +318,7 @@ class ElectronPhononMatrix:
 
                 for k in range(kd.nbzkpts):
                     k_c = kd.bzk_kc[k]
-                    kplusq_c = k_c + q_c
+                    kplusq_c = (k_c + q_c) % 1.
                     kplusq_c -= kplusq_c.round()
                     # print(kplusq_c, kd.bzk_kc[kplusq_k[k]])
                     assert np.allclose(kplusq_c, kd.bzk_kc[kplusq_k[k]])
