@@ -4,9 +4,9 @@ import numpy as np
 from ase.units import Bohr, Ha
 
 from gpaw.core import UGArray
+from gpaw.extensions import Extension
 from gpaw.new.density import Density
 from gpaw.typing import ArrayLike1D
-from gpaw.extensions import Extension
 
 
 def create_external_potential(params: dict) -> Extension:

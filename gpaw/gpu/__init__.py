@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from gpaw import ENVVAR_GPAW_NO_GPU_MPI
-from gpaw.new.timer import trace
 from gpaw.cgpaw.gpu import magma
+from gpaw.new.timer import trace
 
 device_id = None
 """Device id"""

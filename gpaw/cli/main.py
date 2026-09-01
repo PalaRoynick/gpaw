@@ -124,6 +124,7 @@ def gpaw_python_init_magic():
 
         import ase.cli.main  # noqa
         from ase.parallel import world as ase_world
+
         from gpaw.mpi import world
 
     assert ase_world.size == world.size
@@ -134,6 +135,7 @@ def main(args=None):
         gpaw_python_init_magic()
 
     from ase.cli.main import main as ase_main
+
     from gpaw import __version__
     ase_main('gpaw', 'GPAW command-line tool', __version__,
              commands, hook, args)

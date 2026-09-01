@@ -1,6 +1,6 @@
-
 import pytest
 from ase import Atoms
+
 from gpaw.new.symmetry import (Symmetries, SymmetryAnalysisBug,
                                create_symmetries_object)
 

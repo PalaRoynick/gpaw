@@ -6,9 +6,9 @@ import pytest
 # Script modules
 from ase.units import Ha
 
-from gpaw.mpi import serial_comm
 from gpaw.atom.radialgd import AERadialGridDescriptor
 from gpaw.lfc import LFC
+from gpaw.mpi import serial_comm
 from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.old.pw.descriptor import PWDescriptor

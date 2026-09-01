@@ -9,6 +9,7 @@ from random import Random
 
 from ase import Atoms
 from ase.build import bulk
+
 from gpaw.dft import DFT
 from gpaw.mpi import world
 

@@ -8,7 +8,7 @@ fig, ax = pyplot.subplots()
 fig.subplots_adjust(top=0.99, right=0.99)
 
 potentials, charges = [], []
-with open('potential.txt', 'r') as f:
+with open('potential.txt') as f:
     lines = f.read().splitlines()
 for line in lines:
     potential, charge = line.split(',')

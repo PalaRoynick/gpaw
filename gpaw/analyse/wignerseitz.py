@@ -4,9 +4,9 @@ import numpy as np
 from ase.units import Bohr
 
 from gpaw.analyse.hirshfeld import HirshfeldDensity
+from gpaw.old import assert_legacy_gpaw
 from gpaw.utilities import pack_density
 from gpaw.utilities.tools import coordinates
-from gpaw.old import assert_legacy_gpaw
 
 
 def wignerseitz(gd, atoms, scale=None):

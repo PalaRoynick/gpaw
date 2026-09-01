@@ -9,7 +9,7 @@ def test_gaps():
     import ase.db
     c = ase.db.connect('gaps.db')
     for d in sorted(c.select(), key=lambda d: d.name):
-        print((d.name))
+        print(d.name)
         for k, e in d.data.items():
             epbe = max(abs(e[0] - e[2]), abs(e[0] - e[4]))
             epbe0 = max(abs(e[1] - e[3]), abs(e[1] - e[5]))

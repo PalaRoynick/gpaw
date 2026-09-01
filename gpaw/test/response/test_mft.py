@@ -3,10 +3,8 @@ Test with unrealisticly loose parameters to catch if the numerics change.
 """
 
 import numpy as np
-
 # General modules
 import pytest
-
 # Script modules
 from ase.build import bulk
 
@@ -23,8 +21,7 @@ from gpaw.response.mft import (HeisenbergExchangeCalculator,
                                calculate_pair_site_zeeman_energy,
                                calculate_single_particle_site_magnetization,
                                calculate_single_particle_site_zeeman_energy)
-from gpaw.response.site_data import (AtomicSites,
-                                     calculate_site_magnetization,
+from gpaw.response.site_data import (AtomicSites, calculate_site_magnetization,
                                      calculate_site_zeeman_energy,
                                      get_site_radii_range)
 from gpaw.response.site_kernels import (CylindricalSiteKernels,

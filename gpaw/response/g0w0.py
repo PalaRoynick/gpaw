@@ -14,6 +14,7 @@ from ase.utils.filecache import MultiFileJSONCache as FileCache
 
 import gpaw.mpi as mpi
 from gpaw import GPAW, debug
+from gpaw.core import PWDesc
 from gpaw.mpi import broadcast_exception
 from gpaw.old.pw.descriptor import PWMapping, count_reciprocal_vectors
 from gpaw.response import ResponseContext, ResponseGroundStateAdapter, timer
@@ -26,7 +27,6 @@ from gpaw.response.qpd import SingleQPWDescriptor
 from gpaw.response.screened_interaction import (GammaIntegrationMode,
                                                 initialize_w_calculator)
 from gpaw.utilities.progressbar import ProgressBar
-from gpaw.core import PWDesc
 
 
 def compare_inputs(inp1, inp2, rel_tol=1e-14, abs_tol=1e-14):

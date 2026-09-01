@@ -50,7 +50,7 @@ ylim = ax.get_ylim()
 # Add the jellium region.
 ###########################
 
-with open('sjm_traces4.4V.out/background_charge.txt', 'r') as f:
+with open('sjm_traces4.4V.out/background_charge.txt') as f:
     lines = f.read().splitlines()
 
 zs = []

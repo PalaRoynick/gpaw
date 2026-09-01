@@ -1,11 +1,11 @@
 """ Defects module """
 
 import numpy as np
-from gpaw.mpi import serial_comm, rank0_call
-from gpaw.core import PWDesc, UGDesc, UGArray
-from ase.units import Bohr, Hartree
 from ase.geometry import find_mic
+from ase.units import Bohr, Hartree
 
+from gpaw.core import PWDesc, UGArray, UGDesc
+from gpaw.mpi import rank0_call, serial_comm
 
 _avg_methods_ = ['atoms', 'sparse-planar', 'full-planar']
 

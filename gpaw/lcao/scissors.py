@@ -7,8 +7,8 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw.core.matrix import Matrix
-from gpaw.lcao.eigensolver import DirectLCAO
 from gpaw.dft import DFT
+from gpaw.lcao.eigensolver import DirectLCAO
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.symmetry import Symmetries
 

@@ -20,7 +20,6 @@ from gpaw.new.c import pw_insert_gpu
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
 
-
 ESTIMATE = 64
 MEASURE = 0
 PATIENT = 32

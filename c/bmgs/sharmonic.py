@@ -3,7 +3,7 @@ from Numeric import pi, sqrt
 from tools import factorial
 from tools import Rational as Q
 
-"""
+r"""
 This is a script designed for construction of the real solid spherical
 harmonics (RSSH) in cartesian form. These can be written as::
 
@@ -100,7 +100,7 @@ def Y_to_string(l, m, deriv=None, multiply=None, numeric=False):
     else: return norm.tostring(numeric) + (' * ' + string) * (string != '1')
 
 def gauss_to_string(l, m, numeric=False):
-    """Return string representation of the generalized gaussian::
+    r"""Return string representation of the generalized gaussian::
 
                        _____                           2
          m            /  1       l!         l+3/2  -a r   l  m
@@ -139,7 +139,7 @@ def gauss_potential_to_string(l, m, numeric=False):
        where::
                4 pi /  -l-1 /r    l+2         l /oo   1-l      \
        v (r) = ---- | r     | dx x   g (r) + r  | dx x   g (r) |
-        l      2l+1 \       /0        l         /r        l    /
+        l      2l+1 \\       /0        l         /r        l    /
     """
     v_l = [[Q(4,1), 1],
            [Q(4,3), 1, 2],
@@ -210,7 +210,7 @@ def txt_sqrt(norm, numeric=False):
                    ('./' + str(norm.denom)) * (norm.denom != 1) + ')'
 
 class Normalization:
-    """Determine normalization factor of spherical harmonic
+    r"""Determine normalization factor of spherical harmonic
                    ______________
              /    / 2l+1   (l-m)!
              |   /  ---- * ------  , m != 0
@@ -300,7 +300,7 @@ def legendre(l, m):
     return result
 
 def Phi(m):
-    """Determine the x and y dependence of the spherical harmonics from
+    r"""Determine the x and y dependence of the spherical harmonics from
                       |m|   |m|
                    / r   sin  (theta) cos(|m| phi), m >= 0
        Phi (phi) = |
