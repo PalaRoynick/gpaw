@@ -96,6 +96,20 @@ def check_grand_canonical_results(atoms, energy):
     assert (rho.sum() * dV) == pytest.approx(-sjm.charge, abs=1e-6)
 
 
+def test_implemented_properties():
+    """The extra SJM properties are declared by the extension itself."""
+    extra = ['excess_electrons', 'electrode_potential']
+    solvation = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
+
+    # ASE may ask before anything has been calculated:
+    calc = GPAW(mode='fd', txt=None,
+                extensions=[SJM(target_potential=7.5, **solvation)])
+    assert all(name in calc.implemented_properties for name in extra)
+
+    calc = GPAW(mode='fd', txt=None)
+    assert not any(name in calc.implemented_properties for name in extra)
+
+
 class NoCavity:
     depends_on_el_density = False
 

@@ -190,6 +190,7 @@ class SJM(Solvation):
     """
 
     name = 'sjm'
+    properties = ['excess_electrons', 'electrode_potential']
 
     def __init__(self,
                  *,

@@ -72,7 +72,10 @@ class Extension:
         once the canonical energies have been put into ``dft.results``.
         Can be used to write to ``dft.log`` and to add or replace entries
         in ``dft.results`` (which are handed on to ASE).  Any new key must
-        have a unit-conversion factor in ``gpaw.new.calculation.units``.
+        have a unit-conversion factor in ``gpaw.new.calculation.units`` and
+        be listed in the ``properties`` attribute of the input extension
+        (:class:`gpaw.dft.ExtensionInput`), which is what puts it into
+        ``ASECalculator.implemented_properties``.
         """
 
     def update_potential(self,

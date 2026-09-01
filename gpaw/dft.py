@@ -60,6 +60,11 @@ class Parameter:
 
 
 class ExtensionInput(Parameter):
+    # Extra keys that this extension adds to dft.results (see
+    # Extension.post_converged()).  They are appended to
+    # ASECalculator.implemented_properties when the extension is used.
+    properties: list[str] = []
+
     @classmethod
     def from_input(self, extension: ExtensionInput | dict):
         if isinstance(extension, dict):
