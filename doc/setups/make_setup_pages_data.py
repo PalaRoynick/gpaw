@@ -50,7 +50,7 @@ old_names = [
 
 # Made with new PAW-potential generator:
 new_names = [
-    'Cr.14',
+    'F.v2', 'Cr.14',
     'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd',
     'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu']
 
