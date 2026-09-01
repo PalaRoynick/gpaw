@@ -133,6 +133,7 @@ def create_lcao_ibzwfs(basis,
     kpt_comm = communicators['k']
     band_comm = communicators['b']
     domain_comm = communicators['d']
+    domain_band_comm = communicators['K']
 
     S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives = tci_helper(
         basis, ibz, domain_comm, band_comm, kpt_comm,
@@ -166,7 +167,7 @@ def create_lcao_ibzwfs(basis,
             kpt_c=kpt_c,
             relpos_ac=relpos_ac,
             atomdist=atomdist,
-            domain_comm=domain_comm,
+            domain_band_comm=domain_band_comm,
             spin=spin,
             q=q,
             k=k,
@@ -259,7 +260,7 @@ def add_atomic_overlap_corrections(
             continue
 
         dO_II = sparse.block_diag(
-            [setups[a].dO_ii for a in P_aMi],
+            [sparse.coo_array(setups[a].dO_ii) for a in P_aMi],
             format='csr')
         P_MI = sparse.hstack(
             [sparse.coo_matrix(P_Mi) for P_Mi in P_aMi.values()],

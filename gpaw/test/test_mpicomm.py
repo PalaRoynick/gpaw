@@ -24,7 +24,7 @@ def test_mpicomm(mpi):
     hasmpi = False
     try:
         import gpaw.cgpaw as cgpaw
-        hasmpi = hasattr(cgpaw, 'Communicator') and world.size > 1
+        hasmpi = cgpaw.have_mpi and world.size > 1
     except (ImportError, AttributeError):
         pass
 
@@ -71,9 +71,9 @@ def test_rank0_call(mpi):
     # and exceptions as RuntimeError to all other ranks
 
     def inverse(x):
-        return 1 // x
+        return 1 / x
 
     assert 1 == rank0_call(inverse, comm)(comm.rank + 1)
 
-    with pytest.raises(RuntimeError, match='integer division'):
+    with pytest.raises(RuntimeError, match='division by zero'):
         rank0_call(inverse, comm)(comm.rank)

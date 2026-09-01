@@ -37,14 +37,13 @@ H   1.8684   0.8649   0.5908
         occupations=FermiDirac(width=0.1),
         nbands=15,
         convergence={
-            'eigenstates': 1e-4,
+            'eigenstates': 1e-5,
             'bands': jend},
         txt=None)
     atoms.get_potential_energy()
     return atoms
 
 
-@pytest.mark.old_gpaw_only
 def test_lrtddft2(C3H6O, in_tmp_dir):
     """Test equivalence"""
     atoms = C3H6O

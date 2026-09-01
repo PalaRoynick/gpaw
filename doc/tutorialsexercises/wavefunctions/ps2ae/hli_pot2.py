@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from ase.units import Bohr
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 calc = GPAW('hli.gpw', txt=None)
 elpot = calc.dft.electrostatic_potential()

@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from ase import Atoms
 from ase.units import Bohr
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 plt.rcParams['font.size'] = 12
 

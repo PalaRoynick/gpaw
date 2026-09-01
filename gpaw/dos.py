@@ -105,7 +105,8 @@ def linear_tetrahedron_dos(eig_kn,
                            energies,
                            cell,
                            size,
-                           bz2ibz_map=None) -> Array1D:
+                           bz2ibz_map=None,
+                           comm=None) -> Array1D:
     """Linear-tetrahedron method."""
     if len(eig_kn) != np.prod(size):
         eig_kn = eig_kn[bz2ibz_map]
@@ -117,7 +118,7 @@ def linear_tetrahedron_dos(eig_kn,
     if weight_kn is not None:
         weight_kn = weight_kn.reshape(shape)
 
-    dos = lti(cell, eig_kn, energies, weight_kn)
+    dos = lti(cell, eig_kn, energies, weight_kn, comm=comm)
     return dos
 
 
@@ -126,10 +127,12 @@ class DOSCalculator:
                  wfs,
                  setups=None,
                  cell=None,
-                 shift_fermi_level=True):
+                 shift_fermi_level=True,
+                 comm=None):
         self.wfs = wfs
         self.setups = setups
         self.cell = cell
+        self.comm = comm
 
         self.eig_skn = wfs.eigenvalues()
         self.fermi_level = wfs.fermi_level
@@ -141,8 +144,8 @@ class DOSCalculator:
         if self.collinear:
             self.degeneracy = 2 / len(self.eig_skn)
         else:
-            self.eig_skn = np.array([self.eig_skn, self.eig_skn])
-            self.degeneracy = 0.5
+            self.eig_skn = np.array([self.eig_skn])
+            self.degeneracy = 1
 
         self.nspins = len(self.eig_skn)
         self.weight_k = wfs.weights()
@@ -165,7 +168,7 @@ class DOSCalculator:
         filename: str
             Name of restart-file or GPAW calculator object.
         """
-        from gpaw.old.calculator import GPAW
+        from gpaw import GPAW
         if not isinstance(filename, (str, Path)):
             calc = filename
         else:
@@ -179,7 +182,7 @@ class DOSCalculator:
 
         return DOSCalculator(wfs,
                              calc.setups, calc.atoms.cell,
-                             shift_fermi_level)
+                             shift_fermi_level, calc.comm)
 
     def calculate(self,
                   energies: ArrayLike1D,
@@ -191,9 +194,11 @@ class DOSCalculator:
             return gaussian_dos(eig_kn, weight_kn,
                                 self.weight_k, energies, width)
         else:
+            assert self.cell is not None
             return linear_tetrahedron_dos(
                 eig_kn, weight_kn, energies,
-                self.cell, self.wfs.size, self.wfs.bz2ibz_map)
+                self.cell, self.wfs.size, self.wfs.bz2ibz_map,
+                self.comm)
 
     def raw_dos(self,
                 energies: Sequence[float],
@@ -240,21 +245,32 @@ class DOSCalculator:
         """
         indices = get_projector_numbers(self.setups[a], l)
         if m is not None:
-            indices = indices[m::(2 * l) + 1]
+            indices = indices[m::2 * l + 1]
         weight_kns = self.wfs.pdos_weights(a, indices)
 
-        if spin is None:
-            dos = sum(self.calculate(energies,
-                                     eig_kn,
-                                     weight_nk.T,
+        if self.collinear:
+            if spin is None:
+                dos = sum(self.calculate(energies,
+                                         eig_kn,
+                                         weight_nk.T,
+                                         width=width)
+                          for eig_kn, weight_nk
+                          in zip(self.eig_skn, weight_kns.T))
+                dos *= self.degeneracy
+            else:
+                dos = self.calculate(energies,
+                                     self.eig_skn[spin],
+                                     weight_kns[:, :, spin],
                                      width=width)
-                      for eig_kn, weight_nk
-                      in zip(self.eig_skn, weight_kns.T))
-            dos *= self.degeneracy
         else:
-            dos = self.calculate(energies,
-                                 self.eig_skn[spin],
-                                 weight_kns[:, :, spin],
-                                 width=width)
-
+            if spin is None:
+                dos = self.calculate(energies,
+                                     self.eig_skn[0],
+                                     weight_kns.sum(axis=2),
+                                     width=width)
+            else:
+                dos = self.calculate(energies,
+                                     self.eig_skn[0],
+                                     weight_kns[:, :, spin],
+                                     width=width)
         return dos

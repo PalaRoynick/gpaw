@@ -671,7 +671,7 @@ class Setup(BaseSetup):
     ``type``   Type-name of setup (eg. 'paw')
     ``symbol`` Chemical element label (eg. 'Mg')
     ``xcname`` Name of xc
-    ``data``   Container class for information on the the atom, eg.
+    ``data``   Container class for information on the atom, eg.
                Nc, Nv, n_j, l_j, f_j, eps_j, rcut_j.
                It defines the radial grid by ng and beta, from which
                r_g = beta * arange(ng) / (ng - arange(ng)).
@@ -1359,8 +1359,7 @@ class Setups(list):
             output = StringIO()
             setup.print_info(functools.partial(print, file=output))
             txt = output.getvalue()
-            txt += '  # ' + setup.get_basis_description().replace('\n',
-                                                                  '\n  # ')
+            txt += '  ' + setup.get_basis_description().replace('\n', '\n  ')
             txt = txt.replace('\n', '\n  ')
             s += '  ' + txt + '\n\n'
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-def plot(bp, lda_kn, hse_kn, fermi_level):
+def plot(bp, lda_kn, hse_kn, sc_hse_kn, fermi_level):
     ax = plt.subplot()
     x, xlabels, labels = bp.get_linear_kpoint_axis()
     labels = [label.replace('G', r'$\Gamma$') for label in labels]
@@ -15,6 +15,10 @@ def plot(bp, lda_kn, hse_kn, fermi_level):
     label = 'HSE06@LDA'
     for y in hse_kn.T:
         ax.plot(x, y, color='C1', label=label)
+        label = None
+    label = 'HSE06'
+    for y in sc_hse_kn.T:
+        ax.plot(x, y, color='C2', label=label)
         label = None
     ax.hlines(fermi_level, 0.0, x[-1], colors='black', label='Fermi-level')
     ax.legend()
@@ -28,5 +32,8 @@ def plot(bp, lda_kn, hse_kn, fermi_level):
 
 
 if __name__ == '__main__':
-    path = Path('bs.pckl')
-    plot(*pickle.loads(path.read_bytes()))
+    bp, lda_kn, hse_kn, fermi_level = pickle.loads(
+        Path('bs.pckl').read_bytes())
+    bp, sc_hse_kn = pickle.loads(
+        Path('bs_sc.pckl').read_bytes())
+    plot(bp, lda_kn, hse_kn, sc_hse_kn, fermi_level)

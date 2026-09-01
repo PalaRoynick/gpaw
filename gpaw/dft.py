@@ -12,14 +12,22 @@ from numpy.typing import DTypeLike
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
 
-from gpaw import GPAW_NEW
+import gpaw
 from gpaw.mpi import MPIComm
-from gpaw.new.calculation import DFTCalculation
+from gpaw.new.calculation import write_atoms, DFT
 from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
+from gpaw.mixer.base import BaseMixer
+from gpaw.mixer.pulay import PulayMixer
+from gpaw.mixer.msr1 import MSR1Mixer
+from gpaw.mixer.multi import MultiMixer
+from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
+from gpaw.typing import ArrayND
+from gpaw.utilities import (check_atoms_too_close,
+                            check_atoms_too_close_to_boundary)
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -50,6 +58,31 @@ class Parameter:
             if value is not None:
                 dct[key] = value
         return dct
+
+
+class ExtensionInput(Parameter):
+    @classmethod
+    def from_input(self, extension: ExtensionInput | dict):
+        if isinstance(extension, dict):
+            dct = extension.copy()
+            name = dct.pop('name')
+            if name == 'd3':
+                from gpaw.extensions.d3 import D3
+                return D3(**dct)
+            if name == 'spin_direction_constraint':
+                from gpaw.new.constraints import SpinDirectionConstraint
+                return SpinDirectionConstraint(**dct)
+            if name == 'sjm':
+                from gpaw.new.sjm import SJM
+                return SJM(**dct)
+            if name == 'solvation':
+                from gpaw.new.solvation import Solvation
+                return Solvation(**dct)
+            if name == 'hubbarduj':
+                from gpaw.new.hubbard import HubbardUJ
+                return HubbardUJ(**dct)
+            raise ValueError(f'Unknown extension: {name}')
+        return extension
 
 
 class Mode(Parameter):
@@ -99,8 +132,7 @@ class Mode(Parameter):
         mode = mode.copy()
         return {'pw': PW,
                 'lcao': LCAO,
-                'fd': FD,
-                'tb': TB}[mode.pop('name')](**mode)
+                'fd': FD}[mode.pop('name')](**mode)
 
     def dft_components_builder(self, atoms, params, *, log=None, comm=None):
         module = importlib.import_module(f'gpaw.new.{self.name}.builder')
@@ -161,10 +193,6 @@ class FD(Mode):
         return dct
 
 
-class TB(Mode):
-    distribution = '?'
-
-
 class Eigensolver(Parameter):
     @classmethod
     def from_param(cls, eigensolver):
@@ -190,9 +218,8 @@ class Eigensolver(Parameter):
                     return eigensolvers['davidson'](**kwargs)
                 if name in eigensolvers:
                     return eigensolvers[name](**kwargs)
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown name of eigensolver: {name}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown name of eigensolver: {name}')
             case {**kwargs}:
                 return DefaultEigensolver(kwargs)
             case NewEigensolver():
@@ -200,9 +227,8 @@ class Eigensolver(Parameter):
             case OES():
                 return cls.from_param(eigensolver.todict())
             case _:
-                if GPAW_NEW == 147:
-                    raise LegacyGPAWError
-                raise ValueError(f'Unknown eigensolver input: {eigensolver}')
+                raise LegacyGPAWError
+                # raise ValueError(f'Unknown eigensolver input: {eigensolver}')
 
 
 class DefaultEigensolver(Eigensolver):
@@ -227,6 +253,8 @@ class PWFDEigensolverParameter(Eigensolver):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -235,9 +263,11 @@ class PWFDEigensolverParameter(Eigensolver):
             nbands,
             wf_desc,
             band_comm,
+            domain_band_comm,
             hamiltonian,
             convergence,
             niter=self.niter,
+            scalapack_parameters=scalapack_parameters,
             max_buffer_mem=self.max_buffer_mem)
 
 
@@ -282,6 +312,8 @@ class PPCG(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               hamiltonian,
               convergence,
               setups,
@@ -292,6 +324,8 @@ class PPCG(PWFDEigensolverParameter):
             band_comm,
             hamiltonian,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             min_niter=self.min_niter,
             max_buffer_mem=self.max_buffer_mem,
@@ -326,6 +360,8 @@ class RMMDIIS(PWFDEigensolverParameter):
               nbands,
               wf_desc,
               band_comm,
+              domain_band_comm,
+              scalapack_parameters,
               create_preconditioner,
               convergence,
               setups,
@@ -336,6 +372,8 @@ class RMMDIIS(PWFDEigensolverParameter):
             band_comm,
             create_preconditioner,
             convergence,
+            domain_band_comm=domain_band_comm,
+            scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             diis_steps=self.diis_steps,
             max_buffer_mem=self.max_buffer_mem,
@@ -375,43 +413,160 @@ class Scissors(LCAOEigensolver):
                                        symmetries)
 
 
-class ExtensionInput(Parameter):
-    @classmethod
-    def from_input(self, extension: ExtensionInput | dict):
-        if isinstance(extension, dict):
-            dct = extension.copy()
-            name = dct.pop('name')
-            if name == 'd3':
-                from gpaw.new.extensions import D3
-                return D3(**dct)
-            if name == 'spin_direction_constraint':
-                from gpaw.new.constraints import SpinDirectionConstraint
-                return SpinDirectionConstraint(**dct)
-            if name == 'sjm':
-                from gpaw.new.sjm import SJM
-                return SJM(**dct)
-            if name == 'solvation':
-                from gpaw.new.solvation import Solvation
-                return Solvation(**dct)
-            if name == 'hubbarduj':
-                from gpaw.new.hubbard import HubbardUJ
-                return HubbardUJ(**dct)
-            raise ValueError(f'Unknown extension: {name}')
-        return extension
-
-
 class Mixer(Parameter):
-    def __init__(self, params: dict):
-        self.params = params
-
-    def todict(self):
-        return self.params
+    def _build_metric(self, weight, sigma, g_ss, **kwargs):
+        metric_kwargs = {'ncomponents': kwargs['ncomponents'],
+                         'grid': kwargs['desc'],
+                         'xp': kwargs['xp']}
+        if weight == 1:
+            return BaseMetric(g_ss=g_ss,
+                              **metric_kwargs)
+        else:
+            return FFTMetric(g_ss=g_ss,
+                             weight=weight,
+                             sigma=sigma,
+                             **metric_kwargs)
 
     @classmethod
     def from_param(cls, mixer):
-        if isinstance(mixer, Mixer):
-            return mixer
-        return Mixer(mixer)
+        mixer_names = {
+            'no-mixing': NoMixing,
+            'pulay': Pulay,
+            'msr1': MSR1,
+            'multi': Multi_Mixer
+        }
+
+        # Clean for dict for backwards compatibility
+        if isinstance(mixer, dict):
+            mixer = mixer.copy()
+            mixer.pop('method', None)
+            backend = mixer.pop('backend', None)
+            if 'name' not in mixer and backend is not None:
+                mixer['name'] = backend
+
+        match mixer:
+            case str(name):
+                return cls.from_param({'backend': name})
+            case {'name': name, **kwargs}:
+                if name in mixer_names:
+                    return mixer_names[name](**kwargs)
+                raise ValueError(f'Unknown mixer: {name}')
+            case {**kwargs}:
+                return MSR1(**kwargs)
+            case cls():
+                return mixer
+            case _:
+                raise ValueError(f'Unknown mixer: {mixer}')
+
+    def build(self, **kwargs):
+        raise NotImplementedError
+
+
+class NoMixing(Mixer):
+    name = 'no-mixing'
+    cls = BaseMixer
+
+    def __init__(self):
+        self.weight = 1.0
+        self.sigma = 1.0
+        self.g_ss = None
+
+    def todict(self):
+        return {'name': self.name}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(self.weight, self.sigma, self.g_ss,
+                                    **kwargs)
+        return self.cls(metric=metric, **kwargs)
+
+
+class Pulay(Mixer):
+    name = 'pulay'
+    cls = PulayMixer
+
+    def __init__(self,
+                 nmaxold: int = 16,
+                 beta: float = 0.08,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
+                 g_ss: ArrayND | None = None):
+        self.mixer_params = {'nmaxold': nmaxold,
+                             'beta': beta}
+        self.metric_params = {'weight': weight,
+                              'sigma': sigma,
+                              'g_ss': g_ss}
+
+    def todict(self):
+        return {'name': self.name,
+                **self.mixer_params,
+                **self.metric_params}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(**self.metric_params, **kwargs)
+        return self.cls(metric=metric, **self.mixer_params, **kwargs)
+
+
+class MSR1(Mixer):
+    name = 'msr1'
+    cls = MSR1Mixer
+
+    def __init__(self,
+                 nmaxold: int = 10,
+                 beta: float = 0.05,
+                 reg: float = 5e-3,
+                 gb_scale: float = 1.0,
+                 max_A: float = 0.75,
+                 trust_scale: float = 1.0,
+                 soft_lim: float = 4.0,
+                 hard_lim: float = 6.0,
+                 weight: float = 20.0,
+                 sigma: float = 0.015,
+                 g_ss: ArrayND | None = None):
+        self.mixer_params = {'nmaxold': nmaxold,
+                             'beta': beta,
+                             'reg': reg,
+                             'gb_scale': gb_scale,
+                             'max_A': max_A,
+                             'trust_scale': trust_scale,
+                             'soft_lim': soft_lim,
+                             'hard_lim': hard_lim}
+        self.metric_params = {'weight': weight,
+                              'sigma': sigma,
+                              'g_ss': g_ss}
+
+    def todict(self):
+        return {'name': self.name,
+                **self.mixer_params,
+                **self.metric_params}
+
+    def build(self, **kwargs):
+        metric = self._build_metric(**self.metric_params, **kwargs)
+        return self.cls(metric=metric, **self.mixer_params, **kwargs)
+
+
+class Multi_Mixer(Mixer):
+    name = 'multi'
+    cls = MultiMixer
+
+    def __init__(self,
+                 method: str = 'dif',
+                 mixer_a: Mixer | dict | str = 'msr1',
+                 mixer_b: Mixer | dict | str = 'msr1'):
+        self.mixer_a = Mixer.from_param(mixer_a)
+        self.mixer_b = Mixer.from_param(mixer_b)
+        self.method = method
+
+    def todict(self):
+        return {'name': self.name,
+                'method': self.method,
+                'mixer_a': self.mixer_a.todict(),
+                'mixer_b': self.mixer_b.todict()}
+
+    def build(self, **kwargs):
+        return self.cls(method=self.method,
+                        mixer_a=self.mixer_a,
+                        mixer_b=self.mixer_b,
+                        **kwargs)
 
 
 class Occupations(Parameter):
@@ -607,7 +762,7 @@ class XC(Parameter):
     def functional(self, *, collinear: bool, atoms: Atoms | None = None):
         from gpaw.xc import XC as xc
         return xc({'name': self.name, **self.kwargs},
-                  collinear=collinear, atoms=atoms)
+                  collinear=collinear, atoms=atoms, legacy_gpaw=False)
 
     @classmethod
     def from_param(cls, xc):
@@ -821,13 +976,64 @@ class Parameters:
         return self.mode.dft_components_builder(
             atoms, self, comm=comm, log=log)
 
+    def create_dft_calculation_components(self,
+                                          atoms: Atoms,
+                                          comm: MPIComm | None = None,
+                                          log=None) -> tuple:
+        """Create DFT object from parameters and atoms."""
+        check_atoms_too_close(atoms)
+        check_atoms_too_close_to_boundary(atoms)
+
+        if not isinstance(log, Logger):
+            log = Logger(log, comm)
+
+        builder = self.dft_component_builder(atoms, log=log, comm=log.comm)
+
+        basis_set = builder.create_basis_set()
+
+        # The SCF-loop has a Hamiltonian that has an fft-plan that is
+        # cached for later use, so best to create the SCF-loop first
+        # FIX this!
+        scf_loop = builder.create_scf_loop()
+
+        pot_calc = builder.create_potential_calculator()
+
+        density = builder.density_from_superposition(basis_set)
+        if len(atoms) == 0:
+            density.nt_sR.data[:] = 1.0
+        density.normalize(pot_calc.charge)
+
+        potential, energies, _ = pot_calc.calculate_without_orbitals(
+            density, kpt_band_comm=builder.communicators['D'])
+        ibzwfs = builder.create_ibz_wave_functions(
+            basis_set, potential)
+
+        if ibzwfs._wfs_u[0].has_eigs:
+            nelectrons = density.nvalence - density.charge + pot_calc.charge
+            ibzwfs.calculate_occs(scf_loop.occ_calc, nelectrons)
+
+        write_atoms(atoms, builder.initial_magmom_av, builder.grid, log)
+        ibzwfs.summary(log)
+        log(density)
+        log(potential)
+        log(builder.setups)
+        log(scf_loop)
+        log(pot_calc)
+
+        if gpaw.dry_run:
+            raise SystemExit()
+
+        return (ibzwfs, density, potential,
+                builder.setups, scf_loop, pot_calc,
+                log, self, energies)
+
     def dft_calculation(self,
                         atoms,
                         txt: str | Path | IO[str] | None = '-',
                         communicator: MPIComm | None = None
-                        ) -> DFTCalculation:
+                        ) -> DFT:
         log = Logger(txt, communicator)
-        return DFTCalculation.from_parameters(atoms, self, log.comm, log)
+        return DFT.from_parameters(atoms, self, log.comm, log)
 
     def dft_info(self, atoms):
         ...
@@ -856,6 +1062,7 @@ def _parse_experimental(experimental: dict | None,
     unknown = experimental.keys() - {'backwards_compatible',
                                      'ccirs',
                                      'pw_pot_calc',
+                                     'paw_corr_mixer',
                                      'new_basis'}
     if unknown:
         warnings.warn(f'Unknown experimental keyword(s): {unknown}',
@@ -874,56 +1081,6 @@ def _fix_legacy_stuff(params: Parameters) -> None:
             params.eigensolver.todict())
     if not isinstance(params.mixer, Mixer):
         params.mixer = Mixer.from_param(params.mixer.todict())
-
-
-def DFT(
-    atoms: Atoms,
-    *,
-    mode: str | dict | Mode,
-    basis: str | dict[str | int | None, str] | None = None,
-    charge: float | None = None,
-    convergence: dict | None = None,
-    eigensolver: str | dict | Eigensolver | None = None,
-    experimental: dict | None = None,
-    extensions: Sequence[ExtensionInput] | None = None,
-    gpts: Sequence[int] | None = None,
-    h: float | None = None,
-    hund: bool | None = None,
-    interpolation: int | None = None,
-    kpts: KptsType | MonkhorstPack | None = None,
-    magmoms: Sequence[float] | Sequence[Sequence[float]] | None = None,
-    maxiter: int | None = None,
-    mixer: dict | Mixer | None = None,
-    nbands: int | str | None = None,
-    occupations: dict | Occupations | None = None,
-    parallel: dict | None = None,
-    poissonsolver: dict | PoissonSolver | None = None,
-    random: bool | None = None,
-    setups: str | dict | None = None,
-    soc: bool | None = None,
-    spinpol: bool | None = None,
-    symmetry: str | dict | Symmetry | None = None,
-    xc: str | dict | XC | None = None,
-    txt: str | Path | IO[str] | None = '-',
-    communicator: MPIComm | None = None) -> DFTCalculation:
-    """Create a DFTCalculation object.
-
-    See :class:`gpaw.dft.Parameters` for the complete list of parameters.
-
-    Parameters
-    ==========
-    atoms:
-        ASE-Atoms object.
-    txt:
-        Text log-file.  Use ``None`` for no logging and ``'-'`` for using
-        standard out.
-    communicator:
-        MPI-communicator.  Default is to use ``gpaw.mpi.world``.
-
-    """
-    params = Parameters(**{k: v for k, v in locals().items()
-                           if k in PARAMETER_NAMES})
-    return params.dft_calculation(atoms, txt, communicator)
 
 
 class LegacyGPAWError(Exception):
@@ -1000,12 +1157,9 @@ def GPAW(
     params = None
     _use_old_if_reading_new_fails = False
     if legacy_gpaw is None:
-        if GPAW_NEW == 147:
-            can, params = _can_use_new(filename, kwargs)
-            legacy_gpaw = not can
-            _use_old_if_reading_new_fails = True
-        else:
-            legacy_gpaw = False
+        can, params = _can_use_new(filename, kwargs)
+        legacy_gpaw = not can
+        _use_old_if_reading_new_fails = True
 
     if legacy_gpaw:
         from gpaw.old.calculator import GPAW as OldGPAW

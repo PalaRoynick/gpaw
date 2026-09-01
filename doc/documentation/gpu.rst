@@ -7,11 +7,11 @@ Ground-state calculations on a GPU is a new feature with
 some limitations:
 
 * only PW-mode
-* it has only been implemented in the new GPAW code
+* it has only been implemented in the :ref:`newgpaw` code
 
-You use the new code like this:
+You use it like this:
 
->>> from gpaw.new.ase_interface import GPAW
+>>> from gpaw import GPAW
 >>> atoms = ...
 >>> atoms.calc = GPAW(..., parallel={'gpu': True})
 
@@ -20,25 +20,16 @@ whether to use gpu or not (defaults to not).
 In addition, the user can specify ``parallel={‘gpu’: False}`` (or True) to
 override this behavior.
 
-Instead of importing ``GPAW`` from ``gpaw.new.ase_interface``, you can use ``from gpaw import GPAW`` and the select new GPAW
-by setting the environment variable :envvar:`GPAW_NEW` to ``1``:
-``GPAW_NEW=1 python ...``.
-See :git:`gpaw/test/gpu/test_pw.py` for an example.
-
-The GPAW CI has a GitLab Runner with a GPU, so the GPU parts of GPAW are tested by the GPAW's test suite as well.
-
-.. envvar:: GPAW_NEW
-
-   If this environment variable is set to ``1`` then new GPAW will be used, when it is imported as
-   ``from gpaw import GPAW``. The other method to use the new GPAW, which does not require the environment variable
-   is to import it from ``gpaw.new.ase_interface``.
+The GPAW CI has a GitLab Runner with a GPU, so the GPU parts of GPAW are
+tested by the GPAW's test suite as well.
 
 .. envvar:: GPAW_USE_GPUS
 
-   If this environment variable is set to ``1`` then the default value for ``gpu`` in the parallel
-   dictionary will be set to ``True``. Since it only is a default value,
-   the effect of ``$GPAW_USE_GPUS`` may be overridden by specifying
-   the ``gpu`` key to the ``parallel`` dictionary.
+   If this environment variable is set to ``1`` then the default value
+   for ``gpu`` in the parallel dictionary will be set to ``True``. Since
+   it only is a default value, the effect of ``$GPAW_USE_GPUS`` may be
+   overridden by specifying the ``gpu`` key to the ``parallel``
+   dictionary.
 
 .. envvar:: GPAW_CPUPY
 
@@ -67,8 +58,11 @@ To build GPAW with GPU support, siteconfig.py needs to be updated. To see how to
     5. ``gpu_compile_args`` is essential, and proper target architecture needs to be supplied in most cases.
 
 
-If you intend to go to really large systems, you need to enable 64-bit array indexing in kernels. This is done by adding `define_macros += [('GPAW_64_BIT_INDEXING', None)]` to the `siteconfig.py`.
-Note: In GPAW master, GPAW's MPI wrappers are only equiped to send int32 messages (the int64 MPI is coming, but not yet merged to master.
+If you intend to go to really large systems, you need to enable 64-bit
+array indexing in kernels.  This is done by adding ``define_macros +=
+[('GPAW_64_BIT_INDEXING', None)]`` to the ``siteconfig.py``. Note: In GPAW
+master, GPAW's MPI wrappers are only equiped to send int32 messages (the
+int64 MPI is coming, but not yet merged to master.
 
 
 In addition, libraries list should be appended by GPU blas and GPU runtime libraries. See the examples below for examples of how to utilize these commands.
@@ -127,7 +121,8 @@ The gpaw.gpu module
 
 .. data:: cupy
 
-   :mod:`cupy` module (or :mod:`gpaw.gpu.cpupy` if :mod:`cupy` is not available)
+   :mod:`cupy` module
+   (or :mod:`gpaw.gpu.cpupy` if :mod:`cupy` is not available)
 
 .. data:: cupyx
 
@@ -183,26 +178,28 @@ Building GPAW with MAGMA support
 .. _MAGMA: https://icl.utk.edu/magma/
 
 GPAW provides wrappers to a subset of eigensystem solvers from the MAGMA_
-library, which implements efficient, hybrid CPU-GPU algorithms for common linear
-algebra tasks. Compiling GPAW with MAGMA support is recommended for performance
-if running on AMD GPUs. On Nvidia there is currently no performance increase.
+library, which implements efficient, hybrid CPU-GPU algorithms for common
+linear algebra tasks.  Compiling GPAW with MAGMA support is recommended
+for performance if running on AMD GPUs.  On Nvidia there is currently no
+performance increase.
 
 MAGMA features can be enabled in siteconfig.py::
 
    magma = True
    libraries += ['magma']
 
-You may also need to modify ``library_dirs``, ``runtime_library_dirs`` and
-``include_dirs`` with paths to your MAGMA installation (see :ref:`siteconfig`).
+You may also need to modify ``library_dirs``, ``runtime_library_dirs``
+and ``include_dirs`` with paths to your MAGMA installation (see
+:ref:`siteconfig`).
 
 You will also need to ensure the CUDA/HIP compiler standard is set to C++17 or newer (``-std=c++17``).
 Modern CUDA/HIP installations do this automatically, and GPAW installation also adds this flag.
 In case you still face issues:
 1. If your ``siteconfig.py`` adds ``'-std=...''`` to ``gpu_compile_args``, update the standard there.
 GPAW will not override a user-defined standard.
-1. If using HIP to compile CUDA code (`hipcc` as a wrapper to `nvcc`), you may need to set the standard through an environment variable:
+1. If using HIP to compile CUDA code (``hipcc`` as a wrapper to ``nvcc``), you may need to set the standard through an environment variable:
 ``export HIPCC_COMPILE_FLAGS_APPEND="-std=c++17"``.
-However, we generally recommend using `nvcc` and the CUDA toolkit directly if building for Nvidia GPUs.
+However, we generally recommend using ``nvcc`` and the CUDA toolkit directly if building for Nvidia GPUs.
 
 You can use the ``gpaw.cgpaw.gpu.magma.is_available()`` function to check if MAGMA is available
 within your GPAW installation. GPAW eigensystem routines will default to the MAGMA implementation

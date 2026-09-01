@@ -1,6 +1,6 @@
 r"""Finite difference calculation of changes in potential.
 
-The implementation is based on finite-difference calculations of the the atomic
+The implementation is based on finite-difference calculations of the atomic
 gradients of the effective potential expressed on a real-space grid. The el-ph
 couplings are obtained from LCAO representations of the atomic gradients of the
 effective potential and the electronic states.
@@ -36,7 +36,8 @@ DFT Hamiltonian.
 
 Note: It is a bit difficult to find good references for how spin-polarisation
 is supposed to be handled. Here we just handle the spin channels separately.
-Use with care.
+Use with care. Non-collinear calculations are not supported at this point in
+time.
 
 """
 from __future__ import annotations
@@ -44,7 +45,7 @@ from __future__ import annotations
 import numpy as np
 from ase import Atoms
 from ase.phonons import Displacement
-
+from gpaw.mpi import MPIComm
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.old.calculator import GPAW as OldGPAW
 from gpaw.utilities import pack_hermitian
@@ -66,10 +67,12 @@ class DisplacementRunner(Displacement):
     def __init__(self,
                  atoms: Atoms,
                  calc: OldGPAW | ASECalculator,
+                 select_atoms: list[str] | list[int] | None = None,
                  supercell: tuple = (1, 1, 1),
                  name: str = 'elph',
                  delta: float = 0.01,
-                 calculate_forces: bool = True) -> None:
+                 calculate_forces: bool = True,
+                 comm: MPIComm | None = None) -> None:
         """Initialize with base class args and kwargs.
 
         Parameters
@@ -86,13 +89,14 @@ class DisplacementRunner(Displacement):
         delta: float
             Magnitude of displacements. (default: 0.01 A)
         calculate_forces: bool
-            If true, also calculate and store the dynamical matrix.
+            If true, also calculate and store the forces.
         """
 
         # Init base class and make the center cell in the supercell the
         # reference cell
         super().__init__(atoms, calc=calc, supercell=supercell,
-                         name=name, delta=delta, center_refcell=True)
+                         select_atoms=select_atoms, name=name, delta=delta,
+                         center_refcell=True, comm=comm)
         self.calculate_forces = calculate_forces
 
     def calculate(self, atoms_N: Atoms, disp):

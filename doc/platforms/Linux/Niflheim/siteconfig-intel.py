@@ -4,10 +4,8 @@ scalapack = True
 intelmkl = True
 fftw = True
 
-if os.getenv('EBVERSIONINTEL') >= '2025':
-    mpicompiler = 'mpiicx'
-else:
-    mpicompiler = 'mpiicc'
+mpi = True
+compiler = 'mpiicpx'
 
 # Use Intel MKL
 libraries = ['xc', 'mkl_sequential', 'mkl_core', 'fftw3xc_intel_pic', 'mkl_rt']

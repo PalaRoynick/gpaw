@@ -23,8 +23,8 @@ nifllogin = [
     'thul',  # skylake_el8 (xeon40el8, sm3090el8)
     'surt',  # icelake (xeon56, a100, h200)
     'fjorm',  # epyc9004 (epyc96)
-    'sara']  # saphirerapids (xeon32)
-
+    'sara',  # saphirerapids (xeon32)
+    'vid']  # skylake_el9 (xeon40el9, sm3090el9)
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
 #  fullchain: Full chain.
@@ -40,12 +40,14 @@ toolchains = {
         fullchain='foss-2025b',
         mathchain='gfbf-2025b',
         compchain='GCC-14.3.0',
+        mpiname='gompi',
         corechain=_gcccore,
     ),
     'intel': dict(
         fullchain='intel-2025b',
         mathchain='iimkl-2025b',
         compchain='intel-compilers-2025.2.0',
+        mpiname='iimpi',
         corechain=_gcccore,
     )
 }
@@ -55,10 +57,11 @@ module_cmds_all = """\
 module purge
 unset PYTHONPATH
 module load gpaw-data/1.0.1-{corechain}
-module load ELPA/2025.06.001-{fullchain}
+module load ELPA/2025.06.002-{fullchain}
 module load Wannier90/3.1.0-{fullchain}
 module load Tkinter/3.13.5-{corechain}
 module load libxc/7.0.0-{compchain}
+module load mpi4py/4.1.0-{mpiname}
 """
 
 # These modules are not loaded if --piponly is specified
@@ -85,18 +88,22 @@ if [ "$CPU_ARCH" == "sapphirerapids" ] && [ {fullchain} == "foss-2025b" ];\
 then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$CPU_ARCH" == "skylake_el8" ] && [ {fullchain} == "foss-2025b" ];\
 then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
+if [ "$CPU_ARCH" == "skylake_el9" ] && [ {fullchain} == "foss-2025b" ];\
+then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$SLURM_JOB_PARTITION" == "a100" ] \
  || [ "$SLURM_JOB_PARTITION" == "a100_week" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8_768" ] \
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9" ] \
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9_768" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090_devel" ] \
  || [ "$SLURM_JOB_PARTITION" == "h200" ];\
-then export GPAW_USE_GPUS=1;export GPAW_NEW=1;fi
+then export GPAW_USE_GPUS=1;fi
 """
 
 
 activate_extra = """
-export GPAW_SETUP_PATH=$GPAW_SETUP_PATH:{venv}/gpaw-basis-pvalence-0.9.20000
+export GPAW_SETUP_PATH=${{GPAW_SETUP_PATH:+$GPAW_SETUP_PATH:}}{venv}/gpaw-basis-pvalence-0.9.20000
 
 # Set matplotlib backend:
 if [[ $SLURM_SUBMIT_DIR ]]; then
@@ -137,7 +144,7 @@ def compile_gpaw_c_code(gpaw: Path, activate: Path, intel_only: bool) -> None:
     for host in nifllogin:
         if host == 'fjorm' and intel_only:
             continue
-        run(f'time ssh {host} ". {activate} && GPAW_BUILD_JOBS=16 pip install -q --no-build-isolation -e {gpaw}"')
+        run(f'time ssh {host} ". {activate} && GPAW_BUILD_JOBS=16 pip install -q --no-build-isolation -e {gpaw}[docs]"')
         # Save compiled file
         remote_arch = run(f"ssh {host} 'echo $CPU_ARCH'", capture_output=True).stdout.decode().strip()  # Single quote needed in command
         paths = list(gpaw.glob('_gpaw.*.so'))

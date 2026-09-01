@@ -4,7 +4,6 @@ Calculates Raman matrices from Raman tensor
 import numpy as np
 from ase.units import invcm
 from ase.utils.filecache import MultiFileJSONCache
-
 from gpaw.typing import ArrayND
 
 
@@ -40,7 +39,7 @@ class RamanData:
         """
         Calculates Raman intensities from Raman tensor.
 
-        Returns bare `|R|^2` and and Bose occupation weighted values
+        Returns bare `|R|^2` and Bose occupation weighted values
 
         Parameters
         ----------

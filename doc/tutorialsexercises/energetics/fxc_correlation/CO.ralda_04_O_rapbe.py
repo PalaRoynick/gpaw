@@ -4,7 +4,7 @@ from gpaw.xc.rpa import RPACorrelation
 from gpaw.xc.fxc import FXCCorrelation
 
 fxc0 = FXCCorrelation('CO.ralda.pbe_wfcs_O.gpw',
-                      xc='rAPBE',
+                      xc='rALDA',
                       ecut=400,
                       nblocks=8,
                       txt='CO.ralda_04_O_rapbe.txt')

@@ -150,7 +150,7 @@ def generate_nblocks_n(comm=None):
 @pytest.mark.kspair
 @pytest.mark.parametrize(
     'system,qrel,gammacentered',
-    product(generate_system_s(), generate_qrel_q(), generate_gc_g()))
+    list(product(generate_system_s(), generate_qrel_q(), generate_gc_g())))
 def test_chiks(in_tmp_dir, gpw_files, mpi, system, qrel, gammacentered):
     r"""Test the internals of the ChiKSCalculator.
 
@@ -257,7 +257,7 @@ def test_chiks(in_tmp_dir, gpw_files, mpi, system, qrel, gammacentered):
 @pytest.mark.kspair
 @pytest.mark.parametrize(
     'system,qrel',
-    product(generate_system_s(spincomponents=['00']), generate_qrel_q()))
+    list(product(generate_system_s(spincomponents=['00']), generate_qrel_q())))
 def test_chiks_vs_chi0(in_tmp_dir, gpw_files, mpi, system, qrel):
     """Test that the ChiKSCalculator is able to reproduce the Chi0Body.
 
@@ -318,8 +318,8 @@ def test_chiks_vs_chi0(in_tmp_dir, gpw_files, mpi, system, qrel):
 @pytest.mark.kspair
 @pytest.mark.parametrize(
     'system,qrel,gammacentered',
-    product(generate_system_s(spincomponents=['+-']),
-            generate_qrel_q(), generate_gc_g()))
+    list(product(generate_system_s(spincomponents=['+-']),
+                 generate_qrel_q(), generate_gc_g())))
 def test_xi(gpw_files, mpi, system, qrel, gammacentered):
     """Test that calculated self-enhancement function does not change
     when varrying internal calculator parameters."""
