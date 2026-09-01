@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase import Atoms
+from ase.units import Bohr, Ha
 
 from gpaw import GPAW, FermiDirac
 from gpaw.new.sjm import SJM
@@ -30,25 +31,67 @@ def test_h(gpaw_new, mode, in_tmp_dir):
 
     if gpaw_new:
         atoms.calc = GPAW(extensions=[SJM(**sjm, **solvation)], **params)
-        atoms.get_potential_energy()
+        energy = atoms.get_potential_energy()
         pot = -atoms.calc.get_fermi_level()
     else:
         atoms.calc = OldSJM(**solvation, sj=sjm, **params)
-        atoms.get_potential_energy()
+        energy = atoms.get_potential_energy()
         pot = atoms.calc.get_electrode_potential()
 
     assert pot == pytest.approx(7.5, abs=0.01)
 
+    if gpaw_new:
+        check_grand_canonical_results(atoms, energy)
+
     atoms.write('h.traj')
     if gpaw_new:
         atoms.calc.write('h.gpw')
-        GPAW('h.gpw', object_hooks={'extensions': lambda exts: []})
+        calc = GPAW('h.gpw', object_hooks={'extensions': lambda exts: []})
+        # The grand-potential energies must survive a gpw round-trip:
+        for name in ['energy', 'free_energy', 'excess_electrons',
+                     'electrode_potential']:
+            assert calc.results[name] == pytest.approx(
+                atoms.calc.results[name], abs=1e-10)
 
     if 0:
         v = atoms.calc.get_electrostatic_potential()
         import matplotlib.pyplot as plt
         plt.plot(np.linspace(0, 11, v.shape[2], 0), v[0, 0])
         plt.show()
+
+
+def check_grand_canonical_results(atoms, energy):
+    """The grand potential - not the canonical energy - goes to ASE."""
+    calc = atoms.calc
+    sjm = calc.dft.sjm
+    results = calc.results
+
+    assert results['excess_electrons'] == pytest.approx(sjm.charge)
+    assert results['electrode_potential'] == pytest.approx(
+        sjm.get_electrode_potential())
+
+    # Omega = E - N mu, with mu = -workfunction = fermi level:
+    mu_N = sjm.charge * calc.get_fermi_level()
+    canonical = calc.dft.energies.total_extrapolated * Ha
+    canonical_free = calc.dft.energies.total_free * Ha
+    assert energy == pytest.approx(canonical - mu_N)
+    assert results['energy'] == pytest.approx(canonical - mu_N)
+    assert results['free_energy'] == pytest.approx(canonical_free - mu_N)
+    # The excess charge is small but non-zero, so the two must differ:
+    assert abs(energy - canonical) > 1e-6
+
+    sjm.write_sjm_traces(props=('potential', 'background_charge'))
+    z, v = np.loadtxt('sjm_traces/potential.txt').T
+    assert len(z) == len(v) and 0.0 <= z[0] < z[-1] < atoms.cell[2, 2]
+    # The potential trace is referenced to the Fermi level, so it equals the
+    # work function in the vacuum where the Poisson solver zeroes it:
+    pot = -calc.get_fermi_level()
+    assert min(abs(v[0] - pot), abs(v[-1] - pot)) < 0.05
+    z, rho = np.loadtxt('sjm_traces/background_charge.txt').T
+    # The counter charge (in e/Bohr^3) integrates to minus the excess
+    # electrons; z and the cell are in Angstrom:
+    dV = (z[1] - z[0]) * abs(np.linalg.det(atoms.cell[:2, :2])) / Bohr**3
+    assert (rho.sum() * dV) == pytest.approx(-sjm.charge, abs=1e-6)
 
 
 class NoCavity:

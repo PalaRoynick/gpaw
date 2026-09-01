@@ -364,7 +364,9 @@ class ASECalculator:
 
     implemented_properties = ['energy', 'free_energy',
                               'forces', 'stress',
-                              'dipole', 'magmom', 'magmoms']
+                              'dipole', 'magmom', 'magmoms',
+                              # Only available with an SJM extension:
+                              'excess_electrons', 'electrode_potential']
 
     def icalculate(self, atoms, system_changes=None):
         yield from self.iconverge(atoms)

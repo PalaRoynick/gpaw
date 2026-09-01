@@ -65,6 +65,16 @@ class Extension:
         """Calculate environment energy."""
         return 0.0
 
+    def post_converged(self, dft) -> None:
+        """Hook called after the SCF-loop has converged.
+
+        Called from :meth:`gpaw.new.calculation.DFT.calculate_energy`
+        once the canonical energies have been put into ``dft.results``.
+        Can be used to write to ``dft.log`` and to add or replace entries
+        in ``dft.results`` (which are handed on to ASE).  Any new key must
+        have a unit-conversion factor in ``gpaw.new.calculation.units``.
+        """
+
     def update_potential(self,
                          vt_sR: UGArray,
                          density) -> float:

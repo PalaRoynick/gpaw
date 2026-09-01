@@ -20,6 +20,7 @@ Git master branch
   through the ``extensions`` keyword; e.g.,
   ``GPAW(..., extensions=[Solvation(...)])``.
 
+<<<<<<< HEAD
 * New flourine PAW potential added to our :ref:`setup releases`.
   It should be as accurate as the old one but will converge faster with number of
   plane-waves.  The old potential is still the default, but it is recommended that the
@@ -30,6 +31,15 @@ Git master branch
     $ gpaw dataset F -fPBE -w -t v2 -b
 
   There is also an LDA version of the potential.
+=======
+* The solvated jellium method (``gpaw.new.sjm.SJM``) now writes the
+  grand-potential energy (:math:`\Omega = E - N \mu`) into the results
+  dictionary handed to ASE -- and thereby into trajectory files -- instead of
+  the canonical energy; set ``grand_output=False`` for the old behaviour.
+  ``excess_electrons`` and ``electrode_potential`` are also available as
+  properties, and ``calc.dft.sjm.write_sjm_traces()`` writes traces of the
+  electrostatic potential, the cavity and the jellium counter charge to disk.
+>>>>>>> b94bfa4f6b (Port SJM IO and warnings to the new SJM implementation)
 
 
 Version 26.7.0
