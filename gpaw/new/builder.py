@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from functools import cached_property
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 from ase import Atoms
@@ -93,7 +93,10 @@ class DFTComponentsBuilder:
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
 
+        ffilter: Callable | None
         if self.mode != 'pw':
+            # Runtime Fourier-filtering of potentials
+            # (zero-potential and projectors).
             gamma = 1.6
             N_c = params.gpts
             if N_c is None:
@@ -102,12 +105,12 @@ class DFTComponentsBuilder:
                 icell_vc = np.linalg.inv(self.atoms.cell)
                 h = ((icell_vc**2).sum(0)**-0.5 / N_c).max() / Bohr
 
-            def filter(rgd, rcut, f_r, l=0):
+            def ffilter(rgd, rcut, f_r, l=0):
                 gcut = np.pi / h - 2 / rcut / gamma
                 ftmp = rgd.filter(f_r, rcut * gamma, gcut, l)
                 f_r[:] = ftmp[:len(f_r)]
         else:
-            filter = None
+            ffilter = None
 
         self.setups = Setups(
             atoms.numbers,
@@ -115,7 +118,7 @@ class DFTComponentsBuilder:
             params.basis,
             xcfunc,
             world=comm,
-            filter=filter,
+            filter=ffilter,
             backwards_compatible=self._backwards_comatible)
         if params.hund:
             c = params.charge / len(atoms)
