@@ -15,7 +15,7 @@ import gpaw
 from gpaw.mixer.base import BaseMixer
 from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.mixer.msr1 import MSR1Mixer
-from gpaw.mixer.multi import MultiMixer
+from gpaw.mixer.multi import MultiMixer as MltMixer
 from gpaw.mixer.pulay import PulayMixer
 from gpaw.mpi import MPIComm
 from gpaw.new.calculation import DFT, write_atoms
@@ -23,11 +23,6 @@ from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
-from gpaw.mixer.base import BaseMixer
-from gpaw.mixer.pulay import PulayMixer
-from gpaw.mixer.msr1 import MSR1Mixer
-from gpaw.mixer.multi import MultiMixer as MltMixer
-from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
 from gpaw.utilities import (check_atoms_too_close,
