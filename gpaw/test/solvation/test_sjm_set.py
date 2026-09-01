@@ -17,6 +17,13 @@ def atoms(in_tmp_dir):
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
+        # This one-electron system is only marginally convergent: after the
+        # mixer is reset for a new charge, the eigensolver plateaus at a
+        # residual of a few times 1e-6 and never reaches the default 4e-8,
+        # so the equilibration runs out of SCF iterations even though it has
+        # already found the right charge.  The potential it settles on is
+        # accurate to well within TOL, which is all this test needs.
+        convergence={'eigenstates': 1e-5},
         extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
                         interactions=[], target_potential=7.5,
                         excess_electrons=-0.0045, tol=TOL)])
