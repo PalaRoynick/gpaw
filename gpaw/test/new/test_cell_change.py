@@ -4,7 +4,7 @@ import pytest
 from ase import Atoms
 
 from gpaw.mpi import broadcast_string, world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 @pytest.mark.parametrize('gpu', [False, True])

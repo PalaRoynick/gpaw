@@ -7,7 +7,7 @@ import numpy as np
 
 from gpaw.core.atom_arrays import AtomArraysLayout
 from gpaw.dft import Parameters
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.new.brillouin import BZPoints
 
 
