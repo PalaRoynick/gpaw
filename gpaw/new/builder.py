@@ -4,7 +4,7 @@ import warnings
 from collections.abc import Callable
 from functools import cached_property
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from ase import Atoms
