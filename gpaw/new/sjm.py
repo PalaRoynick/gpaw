@@ -152,6 +152,19 @@ class JelliumRegion:
         return mask_r, bottom, top
 
 
+_KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
+                       'max_iters', 'grand_output', 'jelliumregion'})
+
+
+def _check_keywords(kwargs: dict) -> None:
+    """Raise on anything that is not an SJM parameter."""
+    unknown = set(kwargs) - _KEYWORDS
+    if unknown:
+        raise ValueError(
+            f'Unexpected SJM keyword(s): {", ".join(sorted(unknown))}.  '
+            f'Allowed are: {", ".join(sorted(_KEYWORDS))}.')
+
+
 class SJM(Solvation):
     """Solvated jellium method.
 
@@ -211,6 +224,8 @@ class SJM(Solvation):
         self.tol = tol
         self.max_iters = max_iters
         self.grand_output = grand_output
+        # Set by build(), so that set() can forward to the live extension:
+        self._extension: SJMExtension | None = None
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
@@ -246,12 +261,35 @@ class SJM(Solvation):
             log('  initial guess of excess electrons: '
                 f'{self.excess_electrons:+.5f}')
 
-        return SJMExtension(solvation, jellium, region,
-                            target_potential=self.target_potential,
-                            tol=self.tol,
-                            max_iters=self.max_iters,
-                            grand_output=self.grand_output,
-                            log=log)
+        self._extension = SJMExtension(solvation, jellium, region,
+                                       target_potential=self.target_potential,
+                                       tol=self.tol,
+                                       max_iters=self.max_iters,
+                                       grand_output=self.grand_output,
+                                       log=log)
+        return self._extension
+
+    def set(self, **kwargs) -> None:
+        """Change SJM parameters, before or after the first calculation.
+
+        Takes the same keywords as :meth:`SJMExtension.set`.  Before the
+        calculation has been built there is nothing to keep alive, so the
+        parameters are simply stored for :meth:`build` to pick up;
+        afterwards the call is forwarded to the extension, which keeps the
+        density and the wave functions.  Reach this as ``calc.sjm.set(...)``.
+
+        Note that assigning to the extension instead --
+        ``calc.sjm.charge = ...`` -- does *not* work: the charge has to reach
+        the jellium as well, and only ``set()`` empties the results, which is
+        what makes the next ``get_potential_energy()`` run the SCF loop again.
+        """
+        _check_keywords(kwargs)
+        for key, value in kwargs.items():
+            if key == 'jelliumregion':
+                value = value or {}  # as in __init__
+            setattr(self, key, value)
+        if self._extension is not None:
+            self._extension.set(**kwargs)
 
     def _check_convergence_criteria(self, convergence, log) -> None:
         if self.target_potential is None:
@@ -536,7 +574,7 @@ class SJMExtension(Extension):
         Recognized keywords are ``target_potential``, ``excess_electrons``,
         ``tol``, ``max_iters``, ``grand_output`` and ``jelliumregion``, with
         the same meaning as for :class:`SJM`.  This is the replacement for
-        the legacy ``calc.set(sj={...})``; reach it as ``calc.dft.sjm.set()``.
+        the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.set()``.
 
         The density and the wave functions are kept, so the next
         ``get_potential_energy()`` continues the SCF loop from the current
@@ -544,14 +582,13 @@ class SJMExtension(Extension):
         changed and the slope of potential vs. charge is known, a first step
         in the number of excess electrons is taken right away -- unless
         ``excess_electrons`` is given explicitly, which then wins.
+
+        Assigning to the attributes instead -- ``sjm.charge = ...`` -- does
+        *not* work: the charge has to reach the jellium as well, and only
+        ``set()`` empties the results, which is what makes the next
+        ``get_potential_energy()`` run the SCF loop again.
         """
-        known = {'target_potential', 'excess_electrons', 'tol', 'max_iters',
-                 'grand_output', 'jelliumregion'}
-        unknown = set(kwargs) - known
-        if unknown:
-            raise ValueError(
-                f'Unexpected SJM keyword(s): {", ".join(sorted(unknown))}.  '
-                f'Allowed are: {", ".join(sorted(known))}.')
+        _check_keywords(kwargs)
 
         log = self.log
         rerun = False  # does the SCF loop have to run again?
