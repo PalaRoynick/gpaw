@@ -2,9 +2,9 @@ from functools import wraps
 
 import numpy as np
 
-from gpaw.mpi import broadcast, normalize_communicator
 from gpaw.atom.configurations import parameters, tf_parameters
 from gpaw.atom.generator import Generator
+from gpaw.mpi import broadcast, normalize_communicator
 from gpaw.typing import Array1D
 
 

@@ -416,8 +416,9 @@ def pytest_report_header(config, start_path):
 @pytest.fixture
 def no_touch_world(monkeypatch, _not_world):
     # We might also need module-scoped/session-scoped
-    import gpaw.mpi as mpi
     import ase.parallel
+
+    import gpaw.mpi as mpi
 
     # ase communicator is lazy-initialized.  Make sure it is initialized
     # by accessing rank.

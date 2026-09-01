@@ -2,6 +2,7 @@ import sys
 
 import numpy as np
 from ase.parallel import paropen
+
 from gpaw.mpi import normalize_communicator
 
 

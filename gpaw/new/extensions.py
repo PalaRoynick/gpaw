@@ -1,5 +1,6 @@
-from gpaw.extensions.d3 import D3 as _D3
 import warnings
+
+from gpaw.extensions.d3 import D3 as _D3
 
 
 def D3(*args, **kwargs):

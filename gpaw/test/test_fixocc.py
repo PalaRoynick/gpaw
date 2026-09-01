@@ -1,5 +1,6 @@
 import pytest
 from ase.build import molecule
+
 from gpaw.utilities.adjust_cell import adjust_cell
 
 

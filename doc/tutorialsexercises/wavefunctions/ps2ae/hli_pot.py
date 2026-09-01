@@ -8,7 +8,7 @@ calc = GPAW('hli.gpw', txt=None)
 # Avarage PS potentials:
 vh, vli = calc.get_atomic_electrostatic_potentials()
 zh, zli = calc.atoms.positions[:, 2]
-rh, rli = [max(setup.rcut_j) * Bohr for setup in calc.setups]
+rh, rli = (max(setup.rcut_j) * Bohr for setup in calc.setups)
 plt.plot([zh - rh, zh + rh], [vh, vh], label=r'$\tilde v$(H)')
 plt.plot([zli - rli, zli + rli], [vli, vli], label=r'$\tilde v$(Li)')
 

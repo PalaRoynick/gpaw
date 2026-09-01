@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # Tight coupling with matrix.py... so need to be careful with circular imports
 from typing import TYPE_CHECKING
 

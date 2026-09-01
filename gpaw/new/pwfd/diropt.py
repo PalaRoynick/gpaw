@@ -7,11 +7,11 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.new import trace, zips
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
+from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.potential import Potential
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver
-from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.pwfd.multixarray import MultiXArray
 
 
@@ -207,8 +207,9 @@ class DirOptPWFD(PWFDEigensolver):
         if not self.converge_unocc:
             return
 
-        import numpy as np
         import time
+
+        import numpy as np
 
         # build first gradient
         # build wfs with bands to converge

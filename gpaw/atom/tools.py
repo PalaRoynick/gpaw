@@ -3,10 +3,11 @@ import json
 from pathlib import Path
 
 import numpy as np
+
 from gpaw import setup_paths
 from gpaw.dft import DFT, PW, MonkhorstPack, Parameters
-from gpaw.utilities.acwf import reference_structure, work, acwf_structures
 from gpaw.mpi import world
+from gpaw.utilities.acwf import acwf_structures, reference_structure, work
 
 
 def eos(structure, symbol=None):

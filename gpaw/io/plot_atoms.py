@@ -1,7 +1,7 @@
 import numpy as np
 from ase import Atoms
-from ase.units import Bohr
 from ase.data import chemical_symbols
+from ase.units import Bohr
 
 
 def plot_atoms(atoms: Atoms) -> str:

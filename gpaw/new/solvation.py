@@ -3,10 +3,10 @@ from ase.units import Bohr, Ha
 
 from gpaw.core import PWDesc
 from gpaw.dft import ExtensionInput
+from gpaw.extensions import Extension
 from gpaw.fd_operators import Gradient
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.c import add_to_density
-from gpaw.extensions import Extension
 from gpaw.new.poisson import PoissonSolver, PoissonSolverWrapper
 from gpaw.solvation.cavity import Cavity
 from gpaw.solvation.dielectric import Dielectric

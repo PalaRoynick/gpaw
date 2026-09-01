@@ -18,10 +18,10 @@ from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.hamiltonian import PWHamiltonian
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
-from gpaw.new.rttddft.gpw import read_rttddft, write_rttddft
-from gpaw.new.rttddft.td_algorithm import create_td_algorithm, TDAlgorithmLike
 from gpaw.new.rttddft.dataclasses import RTTDDFTState
+from gpaw.new.rttddft.gpw import read_rttddft, write_rttddft
 from gpaw.new.rttddft.history import RTTDDFTHistory
+from gpaw.new.rttddft.td_algorithm import TDAlgorithmLike, create_td_algorithm
 from gpaw.tddft.units import asetime_to_autime, autime_to_asetime
 from gpaw.utilities import reconstruct_atoms
 from gpaw.utilities.timing import nulltimer
@@ -296,7 +296,7 @@ class RTTDDFT:
     def ipropagate(self,
                    time_step: float = 1e-3,
                    maxiter: int = 2000,
-                   ) -> Generator[float, None, None]:
+                   ) -> Generator[float]:
         """Propagate the electronic system.
 
         Parameters

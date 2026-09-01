@@ -7,8 +7,8 @@ from ase.units import Hartree
 from gpaw.directmin.tools import (get_indices, get_n_occ, random_a,
                                   sort_orbitals_according_to_energies,
                                   sort_orbitals_according_to_occ)
-from gpaw.old.logger import GPAWLogger
 from gpaw.mpi import normalize_communicator
+from gpaw.old.logger import GPAWLogger
 from gpaw.typing import RNG
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
-from gpaw.mpi import MPIComm
-from gpaw.core.arrays import XArray
+
 from typing import Sequence
+
+from gpaw.core.arrays import XArray
+from gpaw.mpi import MPIComm
 
 
 class MultiXArray:
