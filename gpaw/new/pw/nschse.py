@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from time import time
-from typing import IO, TYPE_CHECKING, Sequence
+from typing import IO, TYPE_CHECKING
 
 import numpy as np
 from ase.units import Ha

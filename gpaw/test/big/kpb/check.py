@@ -81,7 +81,7 @@ for d in c.select('natoms>1'):
           (d.name, epbe, epbe - epberef, eexx, eexx - eexxref))
 
 print('-' * 48)
-print('MAE  {:10.3f} {:10.3f} {:10.3f} {:10.3f}'.format(0, maepbe, 0, maeexx))
+print(f'MAE  {0:10.3f} {maepbe:10.3f} {0:10.3f} {maeexx:10.3f}')
 
 assert maepbe < 0.025
 assert maeexx < 0.05

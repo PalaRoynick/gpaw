@@ -170,7 +170,7 @@ class Supercell:
         return g_sqMM
 
     def calculate_supercell_matrix(
-        self, calc: Union[ASECalculator, dict], fd_name: str = "elph",
+        self, calc: ASECalculator | dict, fd_name: str = "elph",
         filter: str = None
     ) -> None:
         """Calculate matrix elements of the el-ph coupling in the LCAO basis.
