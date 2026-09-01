@@ -5,19 +5,97 @@ from gpaw.new.extensions import Extension
 from gpaw.typing import Array1D, Array2D, Array3D
 
 
+#: Supported corrective functionals.
+#:
+#: 'dudarev'
+#:     Simplified rotationally invariant DFT+U, Dudarev et al., Phys. Rev. B
+#:     57, 1505 (1998).  A single parameter enters, and it is the *effective*
+#:     one: U here means U_eff = U - J.
+#: 'himmetoglu'
+#:     DFT+U+J, Eq. (47) of Himmetoglu et al., Int. J. Quantum Chem. 114, 14
+#:     (2014), introduced in Phys. Rev. B 84, 115108 (2011).  U and J0 enter
+#:     independently; J0 is the on-site exchange that stabilises spin
+#:     polarisation.  Equivalent to Hubbard_J0 in Quantum ESPRESSO.
+SCHEMES = ('dudarev', 'himmetoglu')
+
+
 class HubbardUJ(Extension):
+    """Hubbard correction applied to the l-manifold of selected atoms.
+
+    Parameters
+    ----------
+    indices:
+        Atom indices the correction acts on.
+    l:
+        Angular momentum of the corrected manifold (2 for d, 3 for f).
+    U:
+        Hubbard parameter in eV.  For scheme='dudarev' this is the
+        *effective* U_eff = U - J; for scheme='himmetoglu' it is the bare U.
+    scheme:
+        Which corrective functional to use; see SCHEMES.  Required, because
+        the meaning of U differs between them and a silent default would
+        make published U values ambiguous.
+    J0:
+        On-site exchange in eV.  Required for scheme='himmetoglu', and must
+        not be given for scheme='dudarev'.
+
+        Named J0, following Quantum ESPRESSO, because it is *not* the
+        Slater-integral J of the Liechtenstein scheme: it is defined by its
+        own atomic average (Eq. 47 of the review) rather than by Eq. (12),
+        which uses a different prefactor and excludes the m = m' diagonal.
+        A literature J computed for a Liechtenstein calculation must not be
+        passed here without checking the convention.
+    scale:
+        Scale the inner products so that the bounded partial wave has unit
+        norm.
+    """
+
     def __init__(self,
                  indices: list,
                  *,
                  l: int,
                  U: float,
-                 J: float,
+                 scheme: str,
+                 J0: float | None = None,
                  scale: bool = True):
+        if scheme not in SCHEMES:
+            raise ValueError(
+                f'Unknown Hubbard scheme {scheme!r}. '
+                f'Choose one of {SCHEMES}.')
+
+        if scheme == 'dudarev':
+            if J0 is not None:
+                raise ValueError(
+                    "scheme='dudarev' takes no J0: its single parameter is "
+                    'already the effective U_eff = U - J.  Either pass '
+                    'U=U_eff and no J0, or use scheme=\'himmetoglu\' to '
+                    'treat U and J0 independently.')
+            J0 = 0.0
+        else:
+            if J0 is None:
+                raise ValueError(
+                    "scheme='himmetoglu' requires J0.  Pass J0=0.0 "
+                    'explicitly if you want no exchange term, or use '
+                    "scheme='dudarev'.")
+
         self.indices = indices
         self.l = l
+        self.scheme = scheme
         self.U = U / Ha
-        self.J = J / Ha
+        self.J0 = J0 / Ha
         self.scale = scale
+
+    def descriptions(self):
+        """Lines recorded in the output file, so that a completed
+        calculation states unambiguously which functional was used."""
+        yield f'Hubbard: {{scheme: {self.scheme},\n'
+        yield f'          l: {self.l},\n'
+        if self.scheme == 'dudarev':
+            yield f'          U_eff: {self.U * Ha},  # eV\n'
+        else:
+            yield f'          U: {self.U * Ha},  # eV\n'
+            yield f'          J0: {self.J0 * Ha},  # eV\n'
+        yield f'          scale: {bool(self.scale)}}}'
 
     def update_non_local_hamiltonian(self,
                                      D_sii,
@@ -48,7 +126,7 @@ class HubbardUJ(Extension):
             raise RuntimeError('Hubbard correction cannot be scaled if '
                                'there is no bounded partial waves.')
 
-        return hubbard(D_sii, U=self.U, J=self.J,
+        return hubbard(D_sii, U=self.U, J0=self.J0,
                        l=l, l_j=l_j, n_j=n_j, N0_q=N0_q, scale=scale)
 
 
@@ -71,13 +149,20 @@ def _scatter(dHU_ii, dHU_mm, nl, nm_j):
 
 def hubbard(D_sii: Array3D,
             U: float,
-            J: float,
+            J0: float,
             l: int,
             l_j: list[int],
             n_j: list[int],
             N0_q: Array1D,
             scale: bool) -> tuple[float, Array3D]:
     nspins = len(D_sii)
+
+    if nspins == 1 and J0 != 0.0:
+        raise ValueError(
+            'A non-zero J0 requires a spin-polarised calculation: the J0 '
+            'term stabilises spin polarisation, which a spin-restricted '
+            'calculation cannot represent.  Use spinpol=True, or '
+            "scheme='dudarev' with U=U_eff.")
 
     # j-indices which have the correct angular momentum quantum number
     nl = np.where(np.equal(l_j, l))[0]
@@ -93,20 +178,27 @@ def hubbard(D_sii: Array3D,
             N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
             N_mm = N_mm / 2 * nspins
             N_mm = N_mm / 2.0
+            # The J0 term must be a genuine matrix trace, not a sum of
+            # squared elements.  D_sii is complex on this path, and
+            # sum_ij D_ij**2 = Tr[D D*] is basis dependent for complex D,
+            # whereas Tr[D D] = sum_ij |D_ij|**2 is not.  The two agree
+            # only when D is real.
             if s == 0:
-                eU1 = ((U - J) / 2. * (N_mm - 0.5 * N_mm @ N_mm).trace()
-                       + J / 4. * (N_mm @ N_mm).trace())
-                dHU_mm = (U - J) / 2. * (np.eye(nm) - N_mm.T) + J / 2. * N_mm.T
+                eU1 = ((U - J0) / 2. * (N_mm - 0.5 * N_mm @ N_mm).trace()
+                       + J0 / 4. * (N_mm @ N_mm).trace())
+                dHU_mm = ((U - J0) / 2. * (np.eye(nm) - N_mm.T)
+                          + J0 / 2. * N_mm.T)
             else:
-                eU1 = (-(U - J) / 2. * (0.5 * N_mm @ N_mm).trace()
-                       - J / 4. * (N_mm @ N_mm).trace())
-                dHU_mm = -(U - J) / 2. * N_mm.T - J / 2. * N_mm.T
+                eU1 = (-(U - J0) / 2. * (0.5 * N_mm @ N_mm).trace()
+                       - J0 / 4. * (N_mm @ N_mm).trace())
+                dHU_mm = -(U - J0) / 2. * N_mm.T - J0 / 2. * N_mm.T
             eU += eU1
             _scatter(dHU_ii, dHU_mm, nl, nm_j)
             dHU_sii[s] = dHU_ii
         return eU, dHU_sii
 
-    # Collinear (nspins == 1 or 2): Eq. (47) of Himmetoglu et al. (2014)
+    # Collinear (nspins == 1 or 2): Eq. (47) of Himmetoglu et al. (2014),
+    # E = sum_s (U-J0)/2 Tr[n^s(1-n^s)] + sum_s J0/2 Tr[n^s n^-s]
     N_smm = []
     struct_sii = []
     for D_ii in D_sii:
@@ -115,11 +207,6 @@ def hubbard(D_sii: Array3D,
         N_smm.append(N_mm)
         struct_sii.append(dHU_ii)
 
-    if nspins == 1 and J != 0.0:
-        raise ValueError(
-            'DFT+U+J requires a spin-polarised calculation: the J term '
-            'stabilises spin polarisation, which a spin-restricted '
-            'calculation cannot represent.  Use spinpol=True, or set J=0.')
     for s in range(nspins):
         N_mm = N_smm[s]
         N_opp_mm = N_smm[1 - s] if nspins == 2 else N_mm
@@ -128,11 +215,11 @@ def hubbard(D_sii: Array3D,
         # n^s is real symmetric and no transposes/conjugates are needed
         # here.  (If that guarantee is ever relaxed, dE/dn_{mm'} picks up
         # n_{m'm}: use N_mm.T and N_opp_mm.T below, and .real on eU1.)
-        eU1 = ((U - J) / 2. * (N_mm - N_mm @ N_mm).trace()
-               + J / 2. * (N_mm @ N_opp_mm).trace())
+        eU1 = ((U - J0) / 2. * (N_mm - N_mm @ N_mm).trace()
+               + J0 / 2. * (N_mm @ N_opp_mm).trace())
 
-        # Note the coefficient of the cross term is J, not J/2.
-        dHU_mm = (U - J) / 2. * (np.eye(nm) - 2 * N_mm) + J * N_opp_mm
+        # Note the coefficient of the cross term is J0, not J0/2.
+        dHU_mm = (U - J0) / 2. * (np.eye(nm) - 2 * N_mm) + J0 * N_opp_mm
 
         eU += eU1
         if nspins == 1:
