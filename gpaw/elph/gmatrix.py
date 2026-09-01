@@ -77,7 +77,7 @@ class ElectronPhononMatrix:
         self.use_mean_minimum_images = use_mean_minimum_images
 
         if not load_sc_as_needed:
-            assert indices is None, "Use 'load_sc_as_needed' with 'indices'"
+            assert indices is None, 'Use "load_sc_as_needed" with "indices"'
 
         self.timer = Timer()
 
@@ -91,7 +91,8 @@ class ElectronPhononMatrix:
         self._set_phonon_cache(phonon, atoms)
         self.lattice_vectors_array = self.phonon.lattice_vectors_array
         if set(self.phonon.indices) != set(self.indices):
-            raise ValueError
+            raise ValueError('Atom indices for ElectronPhononMatrix do not '
+                             'match atom indices for the Phonons class.\n')
         self._read_phonon_cache()
 
         self._set_supercell_cache(supercell_cache, load_sc_as_needed)
@@ -122,7 +123,7 @@ class ElectronPhononMatrix:
                 atoms, **phonon,
                 use_mean_minimum_images=self.use_mean_minimum_images)
         else:
-            raise TypeError
+            raise TypeError('Bad input type for keyword "phonon".')
 
     def _set_supercell_cache(self, supercell_cache: str,
                              load_sc_as_needed: bool):
