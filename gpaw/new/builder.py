@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from functools import cached_property
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable
