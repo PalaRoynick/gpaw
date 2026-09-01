@@ -19,7 +19,7 @@ def make_list_for_csv(names, D_vvs, unit):
     output = []
     for i in range(len(D_vvs)):
         D, E, axis, scaled_tensor = convert_tensor(D_vvs[i], unit=unit)
-        output.append(names[i] + [f"{D:.0f}", f"{E:.2e}"])
+        output.append(names[i] + [f'{D:.0f}', f'{E:.2e}'])
 
     return output
 

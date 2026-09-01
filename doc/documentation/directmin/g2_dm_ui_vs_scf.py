@@ -43,9 +43,9 @@ with paropen('dm-g2-results.txt', 'w') as fdm, \
                     e_diff_saved_calc, iters_diff_saved_calc,
                     eig_string, name, dm)
 
-                print(name + f"\t{iters}",
+                print(name + f'\t{iters}',
                       file=fd[dm], flush=True)
 
             except ConvergenceError:
-                print(name + f"\t{None}",
+                print(name + f'\t{None}',
                       file=fd[dm], flush=True)

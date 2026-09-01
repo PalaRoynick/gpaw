@@ -77,8 +77,9 @@ def hook(parser, args):
 
         # Start again in parallel:
         pyargs = []
-        # Don't prepend a potentially unsafe path to sys.path
-        pyargs.append('-P')
+        if sys.version_info >= (3, 11):
+            # Don't prepend a potentially unsafe path to sys.path
+            pyargs.append('-P')
 
         mpiargs = []
         if GPAW_MPI_OPTIONS is not None:
