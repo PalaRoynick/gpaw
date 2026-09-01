@@ -1,7 +1,7 @@
 import pytest
 
-from gpaw.mpi import world
 from gpaw import GPAW
+from gpaw.mpi import world
 from gpaw.xas import XAS
 
 dks = 20

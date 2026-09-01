@@ -9,7 +9,6 @@ from gpaw.new.energies import DFTEnergies
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.potential import Potential
 
-
 RTTDDFTKickLike = Union['RTTDDFTKick', dict[str, Any]]
 
 

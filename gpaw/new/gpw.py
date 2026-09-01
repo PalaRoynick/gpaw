@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Any
 
 import ase.io.ulm as ulm
 import numpy as np
@@ -46,7 +46,7 @@ from gpaw.new.potential import Potential
 from gpaw.utilities import as_dtype_precision, unpack_density, unpack_hermitian
 
 if TYPE_CHECKING:
-    from gpaw.dft import Parameters, DFT
+    from gpaw.dft import DFT, Parameters
 
 
 def as_single_precision(array):
@@ -199,7 +199,7 @@ def read_gpw(filename: str | Path | IO[str],
              force_complex_dtype: bool = False,
              object_hooks: dict[str, Callable[[dict], Any]] | None = None
              ) -> tuple[Atoms, DFT, DFTComponentsBuilder]:
-    from gpaw.dft import Parameters, DFT
+    from gpaw.dft import DFT, Parameters
     from gpaw.new.calculation import units
     """
     Read gpw file

@@ -1,5 +1,6 @@
-import numpy as np
 from typing import cast
+
+import numpy as np
 
 from gpaw.cgpaw.gpu import magma
 from gpaw.gpu import cupy as cp

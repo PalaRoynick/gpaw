@@ -5,10 +5,11 @@ from pathlib import Path
 import numpy as np
 from ase.calculators.calculator import PropertyNotImplementedError
 from ase.units import Bohr, Ha
+
+from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.mpi import broadcast_exception, broadcast_float, serial_comm
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.dft import ExtensionInput
 
 
 class D3(ExtensionInput):

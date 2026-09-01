@@ -6,10 +6,10 @@ from ase.units import Ha
 
 from gpaw.cgpaw import evaluate_mpa_poly
 from gpaw.old.kpt_descriptor import KPointDescriptor
+from gpaw.response.dielectric_calculator import DielectricFunctionCalculator
 from gpaw.response.hilbert import GWHilbertTransforms
 from gpaw.response.mpa_interpolation import RESolver
 from gpaw.response.q0_correction import Q0Correction
-from gpaw.response.dielectric_calculator import DielectricFunctionCalculator
 
 
 class GammaIntegrationMode:

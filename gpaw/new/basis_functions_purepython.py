@@ -1,13 +1,15 @@
-from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
-                                      BasisFunctionInstance, GeometryHelpers,
-                                      BasisFunctionDesc, BlockCoords)
-from gpaw.gpu import cupy as cp, cupyx
-from gpaw.sphere.spherical_harmonics import Y
-from gpaw.typing import override
+from functools import cached_property
 
 import numpy as np
 from scipy.interpolate import CubicSpline
-from functools import cached_property
+
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupyx
+from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
+                                      BasisFunctionDesc, BasisFunctionInstance,
+                                      BlockCoords, GeometryHelpers)
+from gpaw.sphere.spherical_harmonics import Y
+from gpaw.typing import override
 
 
 class PrecalcBlock:
@@ -313,7 +315,7 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
             if out:
                 return out
             else:
-                return xp.empty((0))
+                return xp.empty(0)
 
         M = self.Mmax
         if out is not None:

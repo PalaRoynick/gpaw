@@ -1,7 +1,7 @@
 from ase.units import Bohr
 
-from gpaw.mpi import normalize_communicator
 from gpaw.lrtddft.spectrum import Writer
+from gpaw.mpi import normalize_communicator
 
 ds_prefactor = {
     'Ang': Bohr ** 2,
