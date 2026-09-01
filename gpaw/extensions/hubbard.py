@@ -2,7 +2,7 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw.dft import ExtensionInput
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 from gpaw.typing import Array1D, Array2D, Array3D
 
 

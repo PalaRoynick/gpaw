@@ -79,7 +79,7 @@ class ExtensionInput(Parameter):
                 from gpaw.new.solvation import Solvation
                 return Solvation(**dct)
             if name == 'hubbarduj':
-                from gpaw.new.hubbard import HubbardUJ
+                from gpaw.extensions.hubbard import HubbardUJ
                 return HubbardUJ(**dct)
             raise ValueError(f'Unknown extension: {name}')
         return extension
