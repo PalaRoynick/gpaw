@@ -14,6 +14,11 @@ class Extension:
     name = 'unnamed extension'
     charge = 0.0
 
+    # Extra keys this extension adds to dft.results.  Mirrors
+    # ExtensionInput.properties: either kind of object can be handed to the
+    # extensions keyword (SpinDirectionConstraint is an Extension).
+    properties: list[str] = []
+
     def get_energy_contributions(self) -> dict[str, float]:
         return {}
 

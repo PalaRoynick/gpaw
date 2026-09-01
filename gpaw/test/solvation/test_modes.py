@@ -4,6 +4,7 @@ from ase import Atoms
 from ase.units import Bohr, Ha
 
 from gpaw import GPAW, FermiDirac
+from gpaw.new.constraints import SpinDirectionConstraint
 from gpaw.new.sjm import SJM
 from gpaw.solvation.sjm import SJM as OldSJM
 
@@ -107,6 +108,12 @@ def test_implemented_properties():
     assert all(name in calc.implemented_properties for name in extra)
 
     calc = GPAW(mode='fd', txt=None)
+    assert not any(name in calc.implemented_properties for name in extra)
+
+    # An extension that adds no properties of its own - and that is an
+    # Extension rather than an ExtensionInput:
+    calc = GPAW(mode='fd', txt=None,
+                extensions=[SpinDirectionConstraint({0: [1., 0., 0.]}, 2.0)])
     assert not any(name in calc.implemented_properties for name in extra)
 
 
