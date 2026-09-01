@@ -52,11 +52,10 @@ from math import pi
 import numpy as np
 from ase.dft.kpoints import get_monkhorst_pack_size_and_offset
 from ase.dft.wannier import calculate_weights
-from ase.transport.tools import dagger
 from scipy.linalg import inv, sqrtm
 
 from gpaw.wannier.pipekmezey.wannier_basic import (get_atoms_object_from_wfs,
-                                                   md_min)
+                                                   md_min, dagger)
 from gpaw.wannier.pipekmezey.weightfunction import WeightFunc, WignerSeitz
 
 

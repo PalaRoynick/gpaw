@@ -10,13 +10,30 @@ Git master branch
 
 :git:`master <>`.
 
-* The default value for density convergence has been change from
+* The default value for density convergence has been changed from
   ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
 
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
+
+* Implicit solvation calculations are now supported in plane-wave mode, using
+  an updated conjugate-gradient Poisson solver. Add the solvation model
+  through the ``extensions`` keyword; e.g.,
+  ``GPAW(..., extensions=[Solvation(...)])``.
+
+* New flourine PAW potential added to our :ref:`setup releases`.
+  It should be as accurate as the old one but will converge faster with number of
+  plane-waves.  The old potential is still the default, but it is recommended that the
+  new one is used for production calculations.  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).  It has been generated with
+  the following command::
+
+    $ gpaw dataset F -fPBE -w -t v2 -b
+
+  There is also an LDA version of the potential.
+
 
 Version 26.7.0
 ==============

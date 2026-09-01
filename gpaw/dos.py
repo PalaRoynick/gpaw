@@ -105,7 +105,8 @@ def linear_tetrahedron_dos(eig_kn,
                            energies,
                            cell,
                            size,
-                           bz2ibz_map=None) -> Array1D:
+                           bz2ibz_map=None,
+                           comm=None) -> Array1D:
     """Linear-tetrahedron method."""
     if len(eig_kn) != np.prod(size):
         eig_kn = eig_kn[bz2ibz_map]
@@ -117,7 +118,7 @@ def linear_tetrahedron_dos(eig_kn,
     if weight_kn is not None:
         weight_kn = weight_kn.reshape(shape)
 
-    dos = lti(cell, eig_kn, energies, weight_kn)
+    dos = lti(cell, eig_kn, energies, weight_kn, comm=comm)
     return dos
 
 
@@ -126,10 +127,12 @@ class DOSCalculator:
                  wfs,
                  setups=None,
                  cell=None,
-                 shift_fermi_level=True):
+                 shift_fermi_level=True,
+                 comm=None):
         self.wfs = wfs
         self.setups = setups
         self.cell = cell
+        self.comm = comm
 
         self.eig_skn = wfs.eigenvalues()
         self.fermi_level = wfs.fermi_level
@@ -179,7 +182,7 @@ class DOSCalculator:
 
         return DOSCalculator(wfs,
                              calc.setups, calc.atoms.cell,
-                             shift_fermi_level)
+                             shift_fermi_level, calc.comm)
 
     def calculate(self,
                   energies: ArrayLike1D,
@@ -194,7 +197,8 @@ class DOSCalculator:
             assert self.cell is not None
             return linear_tetrahedron_dos(
                 eig_kn, weight_kn, energies,
-                self.cell, self.wfs.size, self.wfs.bz2ibz_map)
+                self.cell, self.wfs.size, self.wfs.bz2ibz_map,
+                self.comm)
 
     def raw_dos(self,
                 energies: Sequence[float],
