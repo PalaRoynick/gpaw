@@ -25,9 +25,9 @@ for n in range(2):
 
     # Interpolated PS and AE wfs:
     plt.plot(x, ps[i, i], '--', color=f"C{n}",
-             label=r'$\tilde\psi_{}$'.format(n))
+             label=fr'$\tilde\psi_{n}$')
     plt.plot(x, ae[i, i], '-', color=f"C{n}",
-             label=r'$\psi_{}$'.format(n))
+             label=fr'$\psi_{n}$')
 
     # Raw PS wfs:
     ps0 = hli.calc.get_pseudo_wave_function(n, pad=True)
