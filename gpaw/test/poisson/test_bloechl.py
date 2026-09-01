@@ -11,7 +11,7 @@ from gpaw.core import PWDesc
 from gpaw.gpu import cupy as cp
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
 from gpaw.new.pw.paw_poisson import (SimplePAWPoissonSolver,
                                      SlowPAWPoissonSolver)

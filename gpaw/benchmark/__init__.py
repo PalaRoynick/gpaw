@@ -299,7 +299,7 @@ def benchmark_atoms_and_calc(long_name, calc_info, world=None):
     """
     world = normalize_communicator(world)
     if calc_info == 'new':
-        from gpaw.new.ase_interface import GPAW
+        from gpaw import GPAW
     elif calc_info == 'old':
         from gpaw import GPAW
     else:

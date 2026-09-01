@@ -3,7 +3,7 @@ from ase import Atoms
 
 from gpaw.lcao.scissors import non_self_consistent_scissors_shift as nsc_shift
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.spinorbit import soc_eigenstates
 
 
