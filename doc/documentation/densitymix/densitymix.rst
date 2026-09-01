@@ -52,20 +52,20 @@ weight, given as the input parameter `\beta`.
 
   n_{i+1}^{in}=\sum \alpha_i (n_i^{in}+\beta R_i)
 
-In GPAW the Pulay mixer can be specified by setting::
+In GPAW the Pulay mixer can be specified and configured by setting::
 
-  mixer = {'name': 'pulay',  # Pulay mixer
-           'nmaxold': 16,  # Number of old densities to store
-           'beta': 0.08,  # The linear mixing parameter
+  mixer = {'name': 'pulay',  # The choice of mixer.
+           'nmaxold': 16,  # Number of old densities to store.
+           'beta': 0.08,  # The linear mixing parameter.
            'weight': 20,  # Scaling of the residual metric.
-           'sigma': 0.015,  # Width of the residual metric
+           'sigma': 0.015,  # Width of the residual metric.
            'g_ss': None}  # Experimental spin metric.
 
-Special Metric
---------------
+Residual Metric
+---------------
 
-Convergence is improved by an optimized metric `\hat{M}` for
-calculation of scalar products in the mixing scheme, `\langle A | B
+Convergence can be improved by an optimized metric `\hat{M}` for
+calculation of scalar products involving residuals, `\langle A | B
 \rangle _s = \langle A | \hat{M} | B \rangle`, where `\langle \rangle
 _s` is the scalar product with the special metric and `\langle
 \rangle` is the usual scalar product.  The metric is based on the
@@ -81,17 +81,27 @@ It has been found [#Kresse1996]_ that the metric
   \hat{M} = \sum_q | q \rangle f_q \langle q |, \quad f_q =
   1 + \frac{w}{q^2}
 
-is particularly useful (`w` is a suitably chosen weight).
+is particularly useful (`w` is a suitably chosen weight). However, as it
+diverges for `q \to 0`, it is not applicable to quantities that sum to a finite
+value, such as the magnetization. To mitigate this, we apply a modified version
+of the metric
 
-This is easy to apply in plane wave codes, as it is local in reciprocal space.
+.. math::
 
+  f_q = \frac{w + q^2}{\sigma + q^2}
 
+With `\sigma` being a small regaularization/broadening term. We note that, in
+general, the metric is only applied to the charge density unless otherwise
+specified.
 
 Advanced mixing: The MSR1 algorithm
 -----------------------------------
 
-GPAW also supports other mixer backends, prevalent among these is the MSR1 mixer
-[#MSR1]_ which promises faster and more stable convergence in most cases.
+The default mixer in GPAW is the MSR1 mixer [#MSR1]_ which promises faster and
+more stable convergence compared to the Pulay mixer. It achieves this by
+utilzing a dynamic balance of good Broyden (greedy) and bad Broyden (Pulay-like)
+weighting for its step direction. Additionally, it also predicts its own step
+sizes to ensure optimal convergence.
 
 The default parameters used in GPAW are::
 
