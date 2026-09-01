@@ -238,7 +238,7 @@ Plane-waves:
     arithmetic. Specifically, one can on relevant hardware accelerate a calculation
     by setting::
 
-        calc = GPAW(mode={'name': 'pw', 'dtype': 'single')
+        calc = GPAW(mode={'name': 'pw', 'dtype': 'single'})
 
 
 LCAO:
