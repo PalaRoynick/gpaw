@@ -40,7 +40,7 @@ for name in ['h2_osc', 'n2_osc', 'na2_md', 'na2_osc']:
     m = __import__(name, {}, {})
     for attr in ['d_bond', 'd_disp', 'timestep', 'period', 'ndiv', 'niter']:
         if not hasattr(m, attr):
-            raise ImportError('Module {} has no {} value'.format(name, attr))
+            raise ImportError(f'Module {name} has no {attr} value')
 
     # Read dimer bond length time series from trajectory file
     traj = Trajectory(name + '_td.traj', 'r')

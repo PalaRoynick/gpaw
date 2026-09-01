@@ -264,7 +264,7 @@ class DirOptPWFD(PWFDEigensolver):
             line = ('iter:{:4d} {:02d}:{:02d}:{:02d} '
                     .format(niter, *now[3:6]))
             # eigenstates
-            line += 14 * ' ' + '{:+6.2f}'.format(np.log10(error))
+            line += 14 * ' ' + f'{np.log10(error):+6.2f}'
             log(line)
 
             if abs(error) < cc['eigenstates'].tol:

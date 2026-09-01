@@ -19,4 +19,4 @@ np.save("vib_frequencies.npy", frequencies)
 print('  i    cm^-1')
 print('------------')
 for i, fr in enumerate(frequencies):
-    print('{:3d}  {:4.2f}'.format(i, fr / invcm))
+    print(f'{i:3d}  {fr / invcm:4.2f}')

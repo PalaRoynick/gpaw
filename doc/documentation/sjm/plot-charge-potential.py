@@ -23,7 +23,7 @@ ax.plot(x_line, y_line, '-', color='C1')
 ax.plot(charges, potentials, 'o', color='C0')
 ax.text(np.mean(x_line) + 0.0 * np.ptp(x_line),
         np.mean(y_line) + 0.1 * np.ptp(y_line),
-        '$R^2 = {:.4f}$'.format(line.rvalue**2))
+        f'$R^2 = {line.rvalue**2:.4f}$')
 
 ax.set_xlabel('excess electrons')
 ax.set_ylabel('potential, V')
