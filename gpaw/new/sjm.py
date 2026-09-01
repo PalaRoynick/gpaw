@@ -490,6 +490,9 @@ class SJMExtension(Extension):
         if self.target_potential is None or not self.attempts:
             return
 
+        # A target potential means the constant-potential jellium:
+        assert isinstance(self.jellium, FixedPotentialJelliumExtension)
+
         charge, fermi_level = self.attempts[-1]
         log(f'Potential found to be {-fermi_level * Ha:.5f} V '
             f'(with {charge:+.5f} excess electrons, '
