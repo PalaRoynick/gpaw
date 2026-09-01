@@ -3,7 +3,9 @@ from ase.units import Pascal, m
 from ase.optimize import BFGS
 from ase.mep import interpolate, DyNEB
 
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
+from gpaw import GPAW
+from gpaw.new.sjm import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -12,12 +14,7 @@ from gpaw.solvation import (
 
 
 def make_calculator(index):
-    # Solvated jellium parameters.
-    sj = {'target_potential': 4.2,
-          'tol': 0.01,
-          'excess_electrons': -0.01232,  # guess from previous
-          'slope': -50.}  # guess from previous
-    # Implicit solvent parameters (to SolvationGPAW).
+    # Implicit solvent parameters.
     epsinf = 78.36  # dielectric constant of water at 298 K
     gamma = 18.4 * 1e-3 * Pascal * m
     cavity = EffectivePotentialCavity(
@@ -27,7 +24,7 @@ def make_calculator(index):
         surface_calculator=GradientSurface())
     dielectric = LinearDielectric(epsinf=epsinf)
     interactions = [SurfaceInteraction(surface_tension=gamma)]
-    calc = SJM(
+    calc = GPAW(
         # General GPAW parameters.
         mode='fd',
         txt=f'gpaw-{index:d}.txt',
@@ -35,17 +32,20 @@ def make_calculator(index):
         kpts=(9, 9, 1),
         xc='PBE',
         maxiter=1000,
-        # Solvated jellium parameters.
-        sj=sj,
-        # Implicit solvent parameters.
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)
+        extensions=[SJM(
+            # Solvated jellium parameters.
+            target_potential=4.2,
+            tol=0.01,
+            excess_electrons=-0.01232,  # guess from previous
+            # Implicit solvent parameters.
+            cavity=cavity,
+            dielectric=dielectric,
+            interactions=interactions)])
     return calc
 
 
 # Create the band of images, attaching a calc to each.
-initial = ase.io.read('qn-Au111-H-sim-1.traj')
+initial = ase.io.read('qn-Au111-H-seq.traj')
 final = ase.io.read('qn-Au111-H-hollow-1.traj')
 images = [initial]
 for index in range(5):

@@ -3,8 +3,9 @@ import numpy as np
 from ase import Atoms
 from ase.units import Pascal, m
 from ase.parallel import paropen
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
-from gpaw import FermiDirac
+from gpaw.new.sjm import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
+from gpaw import GPAW, FermiDirac
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -86,10 +87,7 @@ atoms = Atoms(symbols='Pt27OH2OH2OH2OH2OH2OH2',
                    [3.71162532, 4.72529333, 15.60227465],
                    [2.36035150, 5.52417539, 15.56370623]]))
 
-# Solvated jellium parameters.
-sj = {'excess_electrons': 0.}
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
@@ -100,7 +98,9 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-atoms.calc = SJM(
+charges = [-0.2, -0.1, 0., .1, .2]
+
+atoms.calc = GPAW(
     mode='fd',
     txt='gpaw-charge.txt',
     kpts=(4, 4, 1),
@@ -108,16 +108,19 @@ atoms.calc = SJM(
     xc='PBE',
     occupations=FermiDirac(0.1),
     convergence={'work function': 0.001},
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[SJM(
+        # Solvated jellium parameters.  No target potential, so this is a
+        # constant-charge calculation; the first charge goes in here, as the
+        # extension object only exists once a calculation has been run.
+        excess_electrons=charges[0],
+        # Implicit solvent parameters.
+        cavity=cavity,
+        dielectric=dielectric,
+        interactions=interactions)])
 
-for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
-    sj['excess_electrons'] = excess_electrons
-    atoms.calc.set(sj=sj)
+for index, excess_electrons in enumerate(charges):
+    if index > 0:
+        atoms.calc.dft.sjm.set(excess_electrons=excess_electrons)
     atoms.get_potential_energy()
     log_potential(atoms.calc)
     write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

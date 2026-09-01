@@ -5,10 +5,11 @@ from ase import Atoms
 from ase.parallel import paropen
 from ase.units import Pascal, m
 
-from gpaw import FermiDirac
+from gpaw import GPAW, FermiDirac
+from gpaw.new.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
+from gpaw.solvation.sjm import SJMPower12Potential
 
 
 def write_potential_and_charge(calc, label):
@@ -75,11 +76,7 @@ atoms = Atoms(symbols='Pt27OH2OH2OH2OH2OH2OH2',
                    [3.71162532, 4.72529333, 15.60227465],
                    [2.36035150, 5.52417539, 15.56370623]]))
 
-# Solvated jellium parameters.
-sj = {'excess_electrons': 0.45235,
-      'target_potential': 4.4}
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
@@ -90,7 +87,7 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-atoms.calc = SJM(
+atoms.calc = GPAW(
     mode='fd',
     txt='gpaw-potential.txt',
     kpts=(4, 4, 1),
@@ -98,25 +95,27 @@ atoms.calc = SJM(
     xc='PBE',
     occupations=FermiDirac(0.1),
     convergence={'work function': 0.001},
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[SJM(
+        # Solvated jellium parameters.
+        excess_electrons=0.45235,
+        target_potential=4.4,
+        # Implicit solvent parameters.
+        cavity=cavity,
+        dielectric=dielectric,
+        interactions=interactions)])
 
 atoms.get_potential_energy()
 
 # Write output for all the figures.
 atoms.write('atoms.traj')
-atoms.calc.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
-atoms.calc.write_sjm_traces(path='sjm_traces4.4V-cube.out',
-                            style='cube')  # *.out for .gitignore
+sjm = atoms.calc.dft.sjm  # the extension, once a calculation has been run
+sjm.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
+sjm.write_sjm_traces(path='sjm_traces4.4V-cube.out',
+                     style='cube')  # *.out for .gitignore
 write_potential_and_charge(atoms.calc, '4.4V')
 
-# Vary the potential for the traces figure.
-sj = {'target_potential': 4.3,
-      'excess_electrons': 0.47848}
-atoms.calc.set(sj=sj)
+# Vary the potential for the traces figure.  set() changes the SJM
+# parameters without throwing away the wave functions.
+sjm.set(target_potential=4.3, excess_electrons=0.47848)
 atoms.get_potential_energy()
 write_potential_and_charge(atoms.calc, '4.3V')

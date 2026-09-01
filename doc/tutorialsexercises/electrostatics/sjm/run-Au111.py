@@ -1,7 +1,9 @@
 from ase.build import fcc111, molecule
 from ase.units import Pascal, m
 
-from gpaw.solvation.sjm import SJM, SJMPower12Potential
+from gpaw import GPAW
+from gpaw.new.sjm import SJM
+from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,
     LinearDielectric,
@@ -17,10 +19,7 @@ water.rotate('y', 90.)
 water.positions += atoms[2].position + (0., 0., 4.4) - water[0].position
 atoms.extend(water)
 
-# Solvated jellium parameters.
-sj = {'target_potential': 4.2}  # Desired potential
-
-# Implicit solvent parameters (to SolvationGPAW).
+# Implicit solvent parameters.
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
@@ -31,8 +30,9 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-# The calculator
-calc = SJM(
+# The calculator.  The solvated jellium method is added to a regular GPAW
+# calculator as an extension.
+calc = GPAW(
     # General GPAW parameters.
     mode='fd',
     txt='Au111.txt',
@@ -40,15 +40,17 @@ calc = SJM(
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    # Solvated jellium parameters.
-    sj=sj,
-    # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    extensions=[SJM(
+        # Solvated jellium parameters.
+        target_potential=4.2,  # Desired potential
+        # Implicit solvent parameters.
+        cavity=cavity,
+        dielectric=dielectric,
+        interactions=interactions)])
 atoms.calc = calc
 
 # Run the calculation.
 atoms.get_potential_energy()
 atoms.write('Au111.traj')
-calc.write_sjm_traces(path='sjm_traces.out')  # .out for .gitignore
+# The SJM extension itself is reached as calc.dft.sjm:
+calc.dft.sjm.write_sjm_traces(path='sjm_traces.out')  # .out: .gitignore

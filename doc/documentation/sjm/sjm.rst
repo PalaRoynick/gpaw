@@ -1,4 +1,4 @@
-.. module:: gpaw.solvation.sjm
+.. module:: gpaw.new.sjm
 .. _sjm:
 
 ======================================================
@@ -8,10 +8,11 @@ Solvated Jellium (constant-potential electrochemistry)
 Overview
 ========
 
-The Solvated Jellium method (:class:`~gpaw.solvation.sjm.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
+The Solvated Jellium method (:class:`~gpaw.new.sjm.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
 A full description of the approach can be found in [Kastlunger2018]_.
 The method allows you to control the simulated electrode potential (manifested as the topside work function) by varying the number of electrons in the simulation; calculations can be run in either constant-charge or constant-potential mode.
-The :class:`~gpaw.solvation.sjm.SJM` calculator can be used just like the standard GPAW calculator; it returns energy and forces, but can do so at a fixed potential.
+SJM is attached to a regular GPAW calculator as an extension---:literal:`GPAW(..., extensions=[SJM(...)])`---and the calculator is then used just like any other; it returns energy and forces, but can do so at a fixed potential.
+The number of excess electrons and the electrode potential are returned alongside them, as the :literal:`excess_electrons` and :literal:`electrode_potential` properties.
 (Please see the note below on the Legendre-transform of the energy.)
 The potential is controlled by a simple iterative technique; in practice if you are running a trajectory (such as a relaxation or nudged elastic band) the first image will take longer than a conventional calculation as the potential equilibrates, but the computational cost is much less on subsequent images; practically, we estimate the extra cost to be <50% compared to a traditional DFT calculation of a full trajectory.
 For a practical guide on the use of the method, please see the :ref:`solvated_jellium_method` tutorial.
@@ -54,7 +55,7 @@ However, the signs can readily be reversed, making the jellium region a smeared-
 In this way, the same tool can be used to perturb the electrons in either a positive or negative direction, and thus vary the potential in either direction in order to find its target.
 Note also that the jellium region does not overlap any atoms, separating this from approaches that employ a homogeneous background charge throughout the unit cell (in which spurious interactions can occur).
 This is important to not distort the electronic structure of the atoms and molecules being simulated.
-Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case; it can, for example, follow the cavity of the implicit solvent if this is preferred (by using the :code:`jelliumregion` keyword as described in the :class:`~gpaw.solvation.sjm.SJM` documentation).
+Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case; it can, for example, follow the cavity of the implicit solvent if this is preferred (by using the :code:`jelliumregion` keyword as described in the :class:`~gpaw.new.sjm.SJM` documentation).
 
 
 The solvation: screening
@@ -152,6 +153,10 @@ As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes
 
 **Constant inner potential (CIP) DFT:**
 
+.. Note:: CIP-DFT is implemented only in the legacy
+          :class:`gpaw.solvation.sjm.SJM` calculator, so this section uses that
+          calculator and its :literal:`sj` dictionary throughout.
+
 The SJM can also be ran in the constant inner potential mode where the
 average electrostatic potential within the electrode, i.e.  the inner
 potential, is controlled (see :ref:`the_electrode_potential` section). The
@@ -181,6 +186,46 @@ The :literal:`autoinner` part automatically finds the inner region, in this case
     phi_pzc = calc.get_inner_potential(atoms)
     mu_pzc = calc.get_fermi_level()
 
+Usage
+=====
+
+The SJM parameters are keyword arguments of the :class:`~gpaw.new.sjm.SJM`
+extension, given together with the implicit-solvent parameters
+(:literal:`cavity`, :literal:`dielectric` and :literal:`interactions`)::
+
+    from gpaw import GPAW
+    from gpaw.new.sjm import SJM
+
+    calc = GPAW(mode='fd', ...,
+                extensions=[SJM(target_potential=4.4,  # absolute scale, V
+                                excess_electrons=0.0,  # initial guess
+                                tol=0.001,  # V
+                                max_iters=10,
+                                jelliumregion={'top': -1., 'bottom': -3.},
+                                cavity=cavity,
+                                dielectric=dielectric,
+                                interactions=interactions)])
+
+Leaving out :literal:`target_potential` gives a constant-charge calculation at
+the given number of :literal:`excess_electrons`.  The
+:literal:`jelliumregion` keyword takes :literal:`'top'`, :literal:`'bottom'`,
+:literal:`'thickness'` and :literal:`'fix_bottom'`; a limit given as a negative
+number is a distance above the highest atom, and the region then follows the
+atoms during a relaxation unless :literal:`fix_bottom=True`.  With
+:literal:`grand_output=False`, the canonical rather than the grand-potential
+energy is handed to ASE.
+
+Once a calculation has been run, the extension object is reached as
+:literal:`calc.dft.sjm`.  It offers
+
+* :literal:`set(...)`, which changes :literal:`target_potential`,
+  :literal:`excess_electrons`, :literal:`tol`, :literal:`max_iters`,
+  :literal:`grand_output` or :literal:`jelliumregion` without throwing away the
+  wave functions (this replaces the legacy :literal:`calc.set(sj={...})`), and
+* :literal:`write_sjm_traces(...)`, which writes the electrostatic potential,
+  the cavity and the jellium counter charge to disk, either as `xy`-averaged
+  traces or as cube files.
+
 References
 ==========
 
@@ -198,6 +243,15 @@ References
 Class documentation
 ===================
 
-.. autoclass:: gpaw.solvation.sjm.SJM
+.. autoclass:: gpaw.new.sjm.SJM
+
+.. autoclass:: gpaw.new.sjm.SJMExtension
+   :members: set, write_sjm_traces, get_electrode_potential
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
+
+The legacy calculator---:literal:`SJM(sj={...})` from
+:literal:`gpaw.solvation.sjm`---is still available, and is what the CIP-DFT and
+:literal:`always_adjust` sections above use:
+
+.. autoclass:: gpaw.solvation.sjm.SJM
