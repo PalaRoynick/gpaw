@@ -497,8 +497,6 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
 
 sources = [Path('c/bmgs/bmgs.cpp')]
 sources += Path('c').glob('*.cpp')
-if gpu:
-    sources += Path('c/gpu').glob('*.cpp')
 sources += Path('c/xc').glob('*.cpp')
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
@@ -658,7 +656,7 @@ class BuildGPU:
         so many otherwise normal .cpp files end up becoming CUDA/HIP code.
         """
         # Messy: Some .cpp files under kernels/ get #included by other files.
-        # So we glob everything except kernels/, then global kernels/
+        # So we glob everything except kernels/, then glob kernels/
         # separately and remove those that are #included by others.
         gpu_dpath = Path('c/gpu')
         kernels_dpath = Path('c/gpu/kernels')
