@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import numpy as np
 from ase.units import Ha
 
@@ -126,6 +127,8 @@ class Chi0DrudeData:
         the imaginary part (in eV) of the resulting horizontal frequency
         contour"""
         rate = rate / Ha  # eV -> Hartree
+        if abs(rate) < sys.float_info.epsilon:
+            rate = sys.float_info.epsilon
         zd = ComplexFrequencyDescriptor(wd.omega_w + 1.j * rate)
 
         return Chi0DrudeData(zd)
