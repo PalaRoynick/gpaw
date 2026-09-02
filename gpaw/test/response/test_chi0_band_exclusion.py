@@ -19,11 +19,7 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
     gs, context = get_gs_and_context(
         gpw_files['ni_pw'], txt=None, world=mpi.comm, timer=None)
 
-    ecut = 40
-    eta = 0.1
-    rate = 0.1
     nbands_max = 14
-
     omegamax2 = get_omegamax(gs, nbands=slice(0, nbands_max))
 
     wd2 = get_frequency_descriptor(
@@ -43,25 +39,16 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
 
     assert np.allclose(wd1.omega_w, wd2.omega_w[:len(wd1)])
 
-    chi0calc1 = Chi0Calculator(gs, context,
-                               wd=wd1, nbands=nbands_max,
-                               hilbert=True,
-                               eta=eta,
-                               rate=rate,
-                               ecut=ecut,
-                               eshift=None)
+    kwargs = {'ecut': 40, 'hilbert': True, 'eta': 0.1, 'rate': 0.1}
+    q_c = np.array([0., 0., 0.])
 
-    chi0_data1 = chi0calc1.calculate(q_c=[0, 0, 0])
+    chi0_data1 = Chi0Calculator(gs, context,
+                                wd=wd1, nbands=nbands_max,
+                                **kwargs).calculate(q_c=q_c)
 
-    chi0calc2 = Chi0Calculator(gs, context,
-                               wd=wd2, nbands=slice(3, nbands_max),
-                               hilbert=True,
-                               eta=eta,
-                               rate=rate,
-                               ecut=ecut,
-                               eshift=None)
-
-    chi0_data2 = chi0calc2.calculate(q_c=[0, 0, 0])
+    chi0_data2 = Chi0Calculator(gs, context,
+                                wd=wd2, nbands=slice(3, nbands_max),
+                                **kwargs).calculate(q_c=q_c)
 
     chi0_data1_body = \
         chi0_data1.body.data_WgG
@@ -83,59 +70,35 @@ def test_chi0_band_exclusion(in_tmp_dir, gpw_files, mpi):
     n2 = gs.nocc2
     m1 = gs.nocc1
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(n2, nbands_max),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(n2, nbands_max),
+                       **kwargs).calculate(q_c=q_c)
 
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(n2 + 1, nbands_max),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(n2 + 1, nbands_max),
+                       **kwargs).calculate(q_c=q_c)
 
     # test assertion error when n1 > m1
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(m1 + 1, nbands_max),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(m1 + 1, nbands_max),
+                       **kwargs).calculate(q_c=q_c)
 
     # test assertion error if step size is not none or 1
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(3, nbands_max, 3),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(3, nbands_max, 3),
+                       **kwargs).calculate(q_c=q_c)
 
     # test assertion error if n1 is negative
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(-1, nbands_max),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(-1, nbands_max),
+                       **kwargs).calculate(q_c=q_c)
 
     # test assertion error if m2 is negative
     with pytest.raises(AssertionError):
-        chi0calc = Chi0Calculator(gs, context,
-                                  wd=wd2, nbands=slice(3, -2),
-                                  hilbert=True,
-                                  eta=eta,
-                                  ecut=ecut,
-                                  eshift=None)
-        chi0calc.calculate(q_c=[0, 0, 0])
+        Chi0Calculator(gs, context, wd=wd2,
+                       nbands=slice(3, -2),
+                       **kwargs).calculate(q_c=q_c)
