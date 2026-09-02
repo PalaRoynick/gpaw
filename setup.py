@@ -132,6 +132,14 @@ generator after building the extension.
 """
 
 
+def ensure_cpp_standard(compile_args: list):
+    """This adds -std=c++17 to the compile args list if it's missing.
+    Does not override user-specified flags.
+    """
+    if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
+        compile_args.append('-std=c++17')
+
+
 # Search and store current git hash if possible
 try:
     from ase.utils import search_current_git_hash
@@ -194,6 +202,8 @@ if _num_build_jobs > 1:
     print(f'Detected envvar GPAW_BUILD_JOBS={_num_build_jobs}. '
           'This feature requires Makefile build, it will be enabled now.')
     makefile_build = True
+
+ensure_cpp_standard(extra_compile_args)
 
 # Deprecation check
 if 'mpicompiler' in locals():
@@ -288,6 +298,8 @@ if gpu:
         if gpu_target in ['cuda', 'hip-cuda']:
             gpu_compile_args += ['-Xcompiler']
         gpu_compile_args += ['-fPIC']
+
+    ensure_cpp_standard(gpu_compile_args)
 
 
 def set_compiler_executables(cc: CCompiler) -> None:
