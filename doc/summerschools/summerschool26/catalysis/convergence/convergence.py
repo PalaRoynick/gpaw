@@ -5,7 +5,7 @@ from pathlib import Path
 from ase import Atoms
 from ase.build import hcp0001
 from ase.constraints import FixAtoms
-from ase.optimize import BFGSLineSearch
+from ase.optimize import BFGS
 from gpaw import GPAW, PW
 from gpaw.mpi import world
 
@@ -57,7 +57,7 @@ def adsorb(height: float = 1.2,
 
     slab.calc = GPAW(txt=f'N{name}.txt',
                      **parameters)
-    optimizer = BFGSLineSearch(slab, logfile=f'N{name}.opt')
+    optimizer = BFGS(slab, logfile=f'N{name}.opt')
     optimizer.run(fmax=0.01)
     height = slab.positions[-1, 2] - slab.positions[:-1, 2].max()
     enru = slab.get_potential_energy()
@@ -106,15 +106,15 @@ def main():
     for n in range(1, 10):
         if n == 2:
             continue  # already done
-        h, enru, eru = adsorb(h, n, 7, 400)
-        results.append((n, 7, 400, h, enru - eru - eatom[ecut]))
+        h, enru, eru = adsorb(h, n, 7, 600)
+        results.append((n, 7, 600, h, enru - eru - eatom[ecut]))
 
     # Number of k-points convergence:
     for k in range(4, 18):
         if k == 7:
             continue  # already done
-        h, enru, eru = adsorb(h, 2, k, 400)
-        results.append((2, k, 400, h, enru - eru - eatom[ecut]))
+        h, enru, eru = adsorb(h, 2, k, 600)
+        results.append((2, k, 600, h, enru - eru - eatom[ecut]))
 
     if world.rank == 0:
         Path('results.json').write_text(
