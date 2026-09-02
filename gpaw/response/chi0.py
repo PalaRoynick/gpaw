@@ -366,8 +366,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
             if rate is None:
                 raise ValueError(
                     'System is metallic and intraband contributions were '
-                    'requested, yet no scattering rate was'
-                    'Please specify a value for *rate*!')
+                    'requested, yet no scattering rate has been set. '
+                    'Please specify a value for the keyword "rate"!')
             self.rate = rate / Ha
             self.drude_calc = Chi0DrudeCalculator(
                 self.gs, self.context,
