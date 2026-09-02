@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from ase.build import molecule
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.new.etdm.edmiston_ruedenberg.obj_function import \
     EdmistonRuedenbergUpdateRef as ER
 from gpaw.new.etdm.etdm import ETDM
