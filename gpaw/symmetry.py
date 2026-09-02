@@ -594,8 +594,8 @@ class CLICommand:
         from ase.io import read
 
         from gpaw.dft import MonkhorstPack
-        from gpaw.new.symmetry import create_symmetries_object
         from gpaw.new.logger import Logger
+        from gpaw.new.symmetry import create_symmetries_object
 
         if args.filename == '-':
             atoms = next(connect(sys.stdin).select()).toatoms()

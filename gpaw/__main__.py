@@ -17,8 +17,8 @@ if gpaw.GPAW_MPI_BACKEND is None:
 
     # Logic for keeping deprecated -P/--parallel working
     # TODO: remove this when the -P option is removed
-    import sys
     import argparse
+    import sys
     parser = argparse.ArgumentParser()
     parser.add_argument('-P', '--parallel', nargs='?', const=1, type=int)
     args, _ = parser.parse_known_args([sys.argv[1]])

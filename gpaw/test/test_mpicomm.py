@@ -1,8 +1,8 @@
-import pytest
 import numpy as np
+import pytest
 
 from gpaw import GPAW_MPI_BACKEND, debug
-from gpaw.mpi import SerialCommunicator, _Communicator, serial_comm, rank0_call
+from gpaw.mpi import SerialCommunicator, _Communicator, rank0_call, serial_comm
 from gpaw.mpi4pywrapper import MPI4PYWrapper
 
 

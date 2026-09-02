@@ -1,11 +1,12 @@
-import numpy as np
-from ase.spectrum.band_structure import BandStructure
-
 # Future TODO: def bandstructure_interpolate(calc, bandpath, shift_kn):
 from dataclasses import dataclass
-import scipy.linalg
-import scipy
+
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy
+import scipy.linalg
+from ase.spectrum.band_structure import BandStructure
+
 from gpaw.calculator import GPAW
 
 

@@ -1,5 +1,6 @@
 import pytest
 from ase.build import molecule
+
 from gpaw.dft import DFT, PW
 from gpaw.new.pw.nschse import NonSelfConsistentHybridXCCalculator
 

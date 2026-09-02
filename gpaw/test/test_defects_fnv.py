@@ -3,8 +3,7 @@ import pytest
 from ase import Atoms
 from ase.units import Bohr, Hartree
 
-from gpaw.defects import (ElectrostaticCorrections,
-                          charged_defect_corrections)
+from gpaw.defects import ElectrostaticCorrections, charged_defect_corrections
 from gpaw.defects.electrostatics import build_ugarray, plot_potentials
 
 

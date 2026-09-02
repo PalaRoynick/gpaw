@@ -1,11 +1,12 @@
 from math import pi
 
 import numpy as np
+
+from gpaw.core.matrix import MatrixWithNoData
 from gpaw.new.density import Density
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
-from gpaw.core.matrix import MatrixWithNoData
 
 
 class LCAOIBZWaveFunctions(IBZWaveFunctions):

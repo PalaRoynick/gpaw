@@ -37,6 +37,6 @@ e2 = molecule.get_potential_energy()
 # %%
 # Print the results
 
-print('Hydrogen atom energy:     {:6.2f} eV'.format(e1))
-print('Hydrogen molecule energy: {:6.2f} eV'.format(e2))
-print('Atomization energy:       {:6.2f} eV'.format(2 * e1 - e2))
+print(f'Hydrogen atom energy:     {e1:6.2f} eV')
+print(f'Hydrogen molecule energy: {e2:6.2f} eV')
+print(f'Atomization energy:       {2 * e1 - e2:6.2f} eV')

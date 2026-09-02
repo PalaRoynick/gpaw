@@ -120,4 +120,4 @@ for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
     atoms.calc.set(sj=sj)
     atoms.get_potential_energy()
     log_potential(atoms.calc)
-    write_everything(atoms.calc, label='{:.4f}'.format(excess_electrons))
+    write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

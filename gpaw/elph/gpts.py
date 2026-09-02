@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from ase import Atoms
+
 from gpaw.old.wavefunctions.lcao import LCAO
 from gpaw.old.wavefunctions.pw import PW
 from gpaw.utilities.gpts import get_number_of_grid_points

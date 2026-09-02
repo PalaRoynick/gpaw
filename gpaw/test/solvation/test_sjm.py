@@ -1,9 +1,8 @@
 import pytest
 from ase.build import fcc111
 
-from gpaw import FermiDirac
+from gpaw import GPAW, FermiDirac
 from gpaw.mpi import world
-from gpaw import GPAW
 from gpaw.new.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)

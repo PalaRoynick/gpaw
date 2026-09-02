@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from gpaw import FermiDirac
-from gpaw import GPAW
+from gpaw import GPAW, FermiDirac
 from gpaw.new.sjm import SJM
 from gpaw.solvation.sjm import SJM as OldSJM
 

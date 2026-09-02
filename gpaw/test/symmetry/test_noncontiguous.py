@@ -1,6 +1,6 @@
 import pytest
-
 from ase.build import bulk
+
 from gpaw.dft import Symmetry
 
 

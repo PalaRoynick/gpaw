@@ -4,6 +4,7 @@ Gamma point orbital densities in real and reciprocal spaces
 from math import pi
 
 import numpy as np
+
 from gpaw.core.atom_centered_functions import AtomArraysLayout
 from gpaw.core.plane_waves import PWArray
 from gpaw.new.wave_functions import WaveFunctions
