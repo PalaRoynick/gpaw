@@ -53,23 +53,24 @@ def test_point_tetra_match(in_tmp_dir, mpi):
         convergence={'bands': 10})
     responseGS.write(response_file, 'all')
 
+    kwargs = {'frequencies': {'type': 'nonlinear',
+                              'domega0': 0.1},
+              'eta': 0.025,
+              'rate': 0.025,
+              'world': mpi.comm}
+    q_c = np.array([0., 0., 0.])
+
     # DF with tetra integration
     df = DielectricFunction(response_file,
-                            eta=25e-3,
-                            rate=25e-3,
-                            frequencies={'type': 'nonlinear',
-                                         'domega0': 0.1},
                             integrationmode='tetrahedron integration',
-                            world=mpi.comm)
-    df1_tetra, df2_tetra = df.get_dielectric_function(q_c=[0, 0, 0])
+                            **kwargs)
+    df1_tetra, df2_tetra = df.get_dielectric_function(q_c=q_c)
 
     # DF with point integration
     df = DielectricFunction(response_file,
-                            frequencies={'type': 'nonlinear',
-                                         'domega0': 0.1},
-                            eta=25e-3,
-                            rate=25e-3, world=mpi.comm)
-    df1_point, df2_point = df.get_dielectric_function(q_c=[0, 0, 0])
+                            integrationmode='point integration',
+                            **kwargs)
+    df1_point, df2_point = df.get_dielectric_function(q_c=q_c)
 
     omega = df.get_frequencies()
     df2_tetra = np.imag(df2_tetra)
