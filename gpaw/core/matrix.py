@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from types import ModuleType
-from typing import overload, Literal
+from typing import Literal, overload
 
 import numpy as np
 import scipy.linalg as sla

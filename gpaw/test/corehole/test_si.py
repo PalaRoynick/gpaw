@@ -1,7 +1,7 @@
 import numpy as np
 
-from gpaw.mpi import world
 from gpaw import GPAW
+from gpaw.mpi import world
 from gpaw.test import gen
 from gpaw.xas import XAS, RecursionMethod
 

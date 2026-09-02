@@ -24,8 +24,9 @@ indented_block {'a': [1, 2]}
 table [['a', 1, 2], ['b', 3, 4]]
 """
 import re
+from collections.abc import Generator, Iterable, Iterator
 from pathlib import Path
-from typing import Any, Generator, Iterable, Iterator
+from typing import Any
 
 
 def parse(lines: Iterable[str] | str,

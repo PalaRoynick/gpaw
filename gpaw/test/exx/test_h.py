@@ -1,8 +1,8 @@
 # import pytest
 
 from gpaw import GPAW
-from gpaw.hybrids.energy import non_self_consistent_energy as nsc_energy
 from gpaw.dft import DFT
+from gpaw.hybrids.energy import non_self_consistent_energy as nsc_energy
 from gpaw.new.pw.hybrids import non_self_consistent_hybrid_xc_energy
 
 

@@ -81,7 +81,7 @@ if not os.path.exists('%s_raw.csv' % tag):
     f1.close()
 
 # read raw results
-csvreader1 = csv.reader(open('%s_raw.csv' % tag, 'r'))
+csvreader1 = csv.reader(open('%s_raw.csv' % tag))
 data = {}
 for row in csvreader1:
     if '#' not in row[0]:

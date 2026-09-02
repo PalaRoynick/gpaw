@@ -6,7 +6,7 @@ from gpaw.zero_field_splitting import convert_tensor
 
 
 def get_zfs_from_json(name):
-    with open(name + '.json', 'r') as fd:
+    with open(name + '.json') as fd:
         data = json.load(fd)
 
     unrelaxed_zfs = np.array(data['D1'])
@@ -19,7 +19,7 @@ def make_list_for_csv(names, D_vvs, unit):
     output = []
     for i in range(len(D_vvs)):
         D, E, axis, scaled_tensor = convert_tensor(D_vvs[i], unit=unit)
-        output.append(names[i] + ["{:.0f}".format(D), "{:.2e}".format(E)])
+        output.append(names[i] + [f'{D:.0f}', f'{E:.2e}'])
 
     return output
 

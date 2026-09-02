@@ -2,6 +2,7 @@ import pickle
 
 import numpy as np
 import pytest
+
 from gpaw.core import PWDesc, UGDesc
 from gpaw.core.atom_arrays import AtomDistribution
 from gpaw.mpi import serial_comm

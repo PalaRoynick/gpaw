@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase.units import Ha
+
 from gpaw.band_structure import band_structure
 from gpaw.dft import GPAW
 from gpaw.mpi import world

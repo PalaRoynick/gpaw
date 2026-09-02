@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase.dft.dos import linear_tetrahedron_integration as lti
 
+from gpaw.mpi import normalize_communicator
 from gpaw.setup import Setup
 from gpaw.spinorbit import BZWaveFunctions, soc_eigenstates
 from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike1D
@@ -132,7 +133,7 @@ class DOSCalculator:
         self.wfs = wfs
         self.setups = setups
         self.cell = cell
-        self.comm = comm
+        self.comm = normalize_communicator(comm)
 
         self.eig_skn = wfs.eigenvalues()
         self.fermi_level = wfs.fermi_level

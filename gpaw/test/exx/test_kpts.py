@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 from ase.units import Ha
+
 from gpaw import GPAW, PW
 from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 from gpaw.hybrids.eigenvalues import non_self_consistent_eigenvalues

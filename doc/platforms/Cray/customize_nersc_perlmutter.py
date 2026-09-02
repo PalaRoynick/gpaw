@@ -54,9 +54,9 @@ if 0:
     elpa = True
     elpadir = '/home/user/elpa'
     libraries += ['elpa']
-    library_dirs += ['{}/lib'.format(elpadir)]
-    runtime_library_dirs += ['{}/lib'.format(elpadir)]
-    include_dirs += ['{}/include/elpa-xxxx.xx.xxx'.format(elpadir)]
+    library_dirs += [f'{elpadir}/lib']
+    runtime_library_dirs += [f'{elpadir}/lib']
+    include_dirs += [f'{elpadir}/include/elpa-xxxx.xx.xxx']
 
 # LibXC:
 # In order to link libxc installed in a non-standard location

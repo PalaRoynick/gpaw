@@ -1,5 +1,6 @@
-import gpaw.gpu.cpupy as cp
 from scipy.interpolate import PPoly as ScipyPPoly
+
+import gpaw.gpu.cpupy as cp
 
 
 class PPoly:

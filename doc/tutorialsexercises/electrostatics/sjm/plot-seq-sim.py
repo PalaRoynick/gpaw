@@ -16,7 +16,7 @@ def makefig():
 
 
 def get_data(mode):
-    with open(f'Au111-H-{mode}.txt', 'r') as f:
+    with open(f'Au111-H-{mode}.txt') as f:
         lines = f.read().splitlines()
     potentials = []
     equilibrateds = []
@@ -28,7 +28,7 @@ def get_data(mode):
             diff = [False] * (len(potentials) - len(equilibrateds))
             diff[-1] = True
             equilibrateds.extend(diff)
-    with open(f'qn-Au111-H-{mode}.log', 'r') as f:
+    with open(f'qn-Au111-H-{mode}.log') as f:
         lines = f.read().splitlines()
     for line in lines:
         if 'BFGS:' in line:
