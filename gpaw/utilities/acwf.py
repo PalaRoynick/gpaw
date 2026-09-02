@@ -17,7 +17,7 @@ from ase.data import atomic_numbers
 from gpaw.atom.check import all_names
 from gpaw.dft import Parameters
 from gpaw.mpi import normalize_communicator
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def eos(atoms: Atoms,

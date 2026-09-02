@@ -32,6 +32,8 @@ LOGO = '  __  _  _\n | _ |_)|_||  |\n |__||  | ||/\\| - {version}\n'
 
 
 def GPAW(*args, **kwargs):
+    warnings.warn('Please use "from gpaw import GPAW"',
+                  DeprecationWarning)
     return AnyGPAW(*args, legacy_gpaw=False, **kwargs)
 
 

@@ -40,7 +40,7 @@ def SJM(*args, legacy_gpaw=True, **kwargs):
     """Backwards compatibility ..."""
     if legacy_gpaw:
         return OldSJM(*args, **kwargs)
-    from gpaw.new.ase_interface import GPAW
+    from gpaw import GPAW
     from gpaw.new.sjm import SJM
     environment = SJM(cavity=kwargs.pop('cavity'),
                       dielectric=kwargs.pop('dielectric'),
