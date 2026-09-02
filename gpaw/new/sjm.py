@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from ase.units import Bohr
 
-from gpaw.core import PWArray, PWDesc, UGArray
+from gpaw.core import PWArray, PWDesc, UGArray, pw_to_grid
 from gpaw.extensions import Extension
 from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension)
@@ -103,20 +103,27 @@ class SJMExtension(Extension):
         self.charge = self.jellium.charge
         return converged
 
+    def move_atoms(self, relpos_ac):
+        raise NotImplementedError(
+            'SJM in gpaw.new does not yet support moving atoms.')
+
     def update1(self, nt_r):
         self.solvation.update1(nt_r)
         self.jellium.update1(nt_r)
 
     def update1pw(self, nt_g):
-        grid = self.jellium.mask_r.desc
-        nt_r = grid.empty()
-        nt_r.scatter_from(nt_g.ifft(grid=grid.new(comm=None))
-                          if nt_g is not None else None)
+        nt_r = pw_to_grid(nt_g, self.jellium.mask_r.desc)
         self.solvation.update1(nt_r)
         self.jellium.update1pw(nt_g)
 
-    def update2(self, nt_r, vHt_r, vt_sr) -> float:
-        return self.solvation.update2(nt_r, vHt_r, vt_sr)
+    def update2(self, nt_r, vHt_r, vt_sr) -> None:
+        self.solvation.update2(nt_r, vHt_r, vt_sr)
+
+    def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
+        self.solvation.update2pw(nt_g, vHt_h, vt_sr)
+
+    def get_energy_contributions(self) -> dict[str, float]:
+        return self.solvation.get_energy_contributions()
 
 
 class SJMPoissonSolver(PoissonSolverWrapper):
