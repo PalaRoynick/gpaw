@@ -49,7 +49,7 @@ def test_response_silicon_chi_RPA(in_tmp_dir, mpi):
     # Using DF
     df = DielectricFunction(calc='Si',
                             frequencies=w, eta=eta, ecut=50,
-                            hilbert=False, world=mpi.comm)
+                            hilbert=False, intraband=False, world=mpi.comm)
     df.get_dynamic_susceptibility(xc='RPA', q_c=q, filename='Si_chi1.csv')
 
     t3 = time.time()
