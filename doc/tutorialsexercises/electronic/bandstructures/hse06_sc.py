@@ -5,7 +5,7 @@ from ase.build import mx2
 from ase.units import Ha
 from gpaw.band_structure import band_structure
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def mos2():
