@@ -24,7 +24,6 @@ class DN(ExtensionInput):
         return {"xc": self.xc, **self.kwargs}
 
     def build(self, builder: DFTComponentsBuilder):
-        print(type(self).__name__, repr(self.name))
         if self.name == "d3":
             from ase.calculators.dftd3 import PureDFTD3
         elif self.name == "d4":
@@ -153,4 +152,3 @@ class DN(ExtensionInput):
                 self._calculate(atoms)
 
         return DNExtension()
-
