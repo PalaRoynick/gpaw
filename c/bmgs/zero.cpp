@@ -22,7 +22,9 @@ void Z(bmgs_zero)(TGPAW* a, const int n[3], const int c[3],
     // For std::complex memset should still be fine (same data layout as C-style complex number),
     // but we do this with std::fill instead to avoid a compiler warning.
     std::fill(a, a + s[2], TGPAW{0., 0.});
-#endif
+  #else
+    memset(a, 0, s[2] * sizeof(TGPAW));
+  #endif
 
 	  a += n[2];
 	}
