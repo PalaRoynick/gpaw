@@ -76,8 +76,9 @@ class SCFLoop:
         self.occ_calc.initialize_reference_orbitals()
 
         if self.update_density_and_potential:
-            if pot_calc.xc.type == 'MGGA' and ibzwfs.has_occs:
-                density.update_ked(ibzwfs)
+            if pot_calc.xc.type == 'MGGA':
+                density.taut_sR.data[:] = np.clip(
+                        density.taut_sR.data, np.finfo(np.float32).eps, np.inf)
                 dens_error = self.mixer.mix(density)
                 potential, energies, _ = pot_calc.calculate(
                     density, ibzwfs, potential.vHt_x)
