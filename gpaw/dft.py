@@ -1181,11 +1181,15 @@ def GPAW(
                 'Illegal argument(s) when reading from a file: '
                 f'{", ".join(args)}')
 
+        save_memory = filename.endswith('.')
+        filename = filename.rstrip('.')
+
         try:
             atoms, dft, _ = read_gpw(filename,
                                      log=log,
                                      parallel=parallel,
-                                     object_hooks=object_hooks)
+                                     object_hooks=object_hooks,
+                                     save_memory=save_memory)
         except LegacyGPAWError:
             if not _use_old_if_reading_new_fails:
                 raise
