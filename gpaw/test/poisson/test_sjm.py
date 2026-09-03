@@ -4,7 +4,7 @@ import numpy as np
 
 from gpaw.core import PWDesc, UGDesc
 from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
-from gpaw.new.sjm import SJMPWPoissonSolver
+from gpaw.new.electrocatalysis.sjm import SJMPWPoissonSolver
 
 
 def f(a, z, z0, w):

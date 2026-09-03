@@ -412,9 +412,9 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         _, v_deriv = xy_average_at_boundary(vHt_g)
         # The vacuum is zeroed at the top of the cell, where SJM references
         # its electrode potential -- the same convention as the FD solver
-        # (see gpaw.new.sjm.SJMPoissonSolver).  In the plane-wave
-        # representation z=0 and z=L are the same point, so "the top" is the
-        # last point of the real-space grid, z = L - h.
+        # (see gpaw.new.electrocatalysis.sjm.SJMPoissonSolver).  In the
+        # plane-wave representation z=0 and z=L are the same point, so "the
+        # top" is the last point of the real-space grid, z = L - h.
         z_top = self.grid.cell_cv[2, 2] * (1.0 - 1.0 / self.grid.size_c[2])
         v_top, _ = xy_average_at(vHt_g, z_top)
 

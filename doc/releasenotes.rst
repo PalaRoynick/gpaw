@@ -34,7 +34,7 @@ Git master branch
 
   There is also an LDA version of the potential.
 
-* The solvated jellium method (``gpaw.new.sjm.SJM``) has caught up with the
+* The solvated jellium method (``gpaw.new.electrocatalysis.sjm.SJM``) has caught up with the
   legacy implementation: it reports the grand-potential energy
   (:math:`\Omega = E - N \mu`) to ASE unless ``grand_output=False``, exposes
   ``excess_electrons`` and ``electrode_potential`` as properties, writes

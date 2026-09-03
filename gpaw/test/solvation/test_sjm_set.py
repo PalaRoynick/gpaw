@@ -4,7 +4,7 @@ from ase import Atoms
 from ase.units import Ha
 
 from gpaw import GPAW, FermiDirac
-from gpaw.new.sjm import SJM
+from gpaw.new.electrocatalysis.sjm import SJM
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
 TOL = 0.005  # V

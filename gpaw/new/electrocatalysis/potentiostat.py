@@ -1,0 +1,498 @@
+from __future__ import annotations
+
+from collections import deque
+
+import numpy as np
+from ase.units import Bohr, Ha, _e
+
+from gpaw.core import PWArray, PWDesc, UGArray
+
+#: Default top of the jellium region: 1 Å below the top of the unit cell.
+DEFAULT_TOP = -1.0
+#: Default bottom of the jellium region: 3 Å above the highest atom.
+DEFAULT_BOTTOM = -3.0
+
+
+class JelliumRegion:
+    """Shape of the jellium counter-charge region.
+
+    The region is a slab perpendicular to the z axis, specified by at most
+    two of ``top``, ``bottom`` and ``thickness`` (the third one follows).
+
+    Parameters
+    ----------
+    top:
+        Upper boundary of the region.  A positive value is the z coordinate
+        in Å; a negative value is the distance below the upper cell
+        boundary.  Default: -1 Å.
+    bottom:
+        Lower boundary of the region.  A positive value is the z coordinate
+        in Å; a negative value is the distance above the highest atom, in
+        which case the region follows the atoms during a relaxation unless
+        ``fix_bottom`` is used.  Default: -3 Å.
+    thickness:
+        Thickness of the region in Å.  Can only be given together with one
+        of ``top`` and ``bottom``.
+    fix_bottom:
+        Freeze a relative (negative) lower limit at the value it has for
+        the first geometry, so that it does not adapt to a change in the
+        atomic positions during a relaxation.
+    """
+
+    def __init__(self,
+                 top: float | None = None,  # Å
+                 bottom: float | str | None = None,  # Å
+                 thickness: float | None = None,  # Å
+                 fix_bottom: bool = False):
+        if isinstance(bottom, str):
+            if bottom == 'cavity_like':
+                raise NotImplementedError(
+                    'A cavity-like jellium region is not implemented in this '
+                    'version of SJM.  Use gpaw.solvation.sjm instead.')
+            raise ValueError(
+                f'Unknown lower limit for the jellium region: {bottom!r}.  '
+                'Give a number of Angstrom instead.')
+
+        specified = [top is not None,
+                     bottom is not None,
+                     thickness is not None]
+        if all(specified):
+            raise ValueError(
+                'The jellium region has been overspecified: give at most two '
+                "of 'top', 'bottom' and 'thickness'.")
+        if not any(specified):
+            top, bottom = DEFAULT_TOP, DEFAULT_BOTTOM
+        elif specified == [True, False, False]:
+            bottom = DEFAULT_BOTTOM
+        elif specified == [False, True, False]:
+            top = DEFAULT_TOP
+        elif specified == [False, False, True]:
+            bottom = DEFAULT_BOTTOM
+
+        self.top: float | None = top
+        self.bottom: float | None = bottom
+        self.thickness: float | None = thickness
+        self.fix_bottom = fix_bottom
+        self._frozen_bottom: float | None = None
+
+    def __repr__(self):
+        return (f'JelliumRegion(top={self.top}, bottom={self.bottom}, '
+                f'thickness={self.thickness}, fix_bottom={self.fix_bottom})')
+
+    @property
+    def follows_atoms(self) -> bool:
+        """Does the region move when the atoms move?"""
+        return (self.bottom is not None and self.bottom < 0.0 and
+                not self.fix_bottom)
+
+    def limits(self,
+               height: float,  # Å
+               zmax: float,  # Å
+               ) -> tuple[float, float]:
+        """Lower and upper boundary in Å.
+
+        ``height`` is the height of the unit cell and ``zmax`` the z
+        coordinate of the highest atom.
+        """
+        top, bottom, thickness = self.top, self.bottom, self.thickness
+
+        if top is not None and top < 0.0:
+            top = height + top
+        if bottom is not None and bottom < 0.0:
+            if self._frozen_bottom is not None:
+                bottom = self._frozen_bottom
+            else:
+                bottom = zmax - bottom
+                if self.fix_bottom:
+                    self._frozen_bottom = bottom
+
+        # __init__ leaves at most one of the three unspecified:
+        if top is None:
+            assert bottom is not None and thickness is not None
+            top = bottom + thickness
+        if bottom is None:
+            assert thickness is not None
+            bottom = top - thickness
+
+        if top > height:
+            raise ValueError(
+                f'The upper limit of the jellium region ({top:.3f} Å) lies '
+                f'outside of the unit cell ({height:.3f} Å).  If you did not '
+                'set it manually, increase your unit cell size or translate '
+                'the atomic system down along the z axis.')
+        if bottom >= top:
+            raise ValueError(
+                f'Your jellium region has a bottom at {bottom:.3f} Å, which '
+                f'is not below the top at {top:.3f} Å.')
+        return bottom, top
+
+    def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
+        """Build the 0/1 mask of the region, plus its limits in Å."""
+        height = grid.cell_cv[2, 2] * Bohr
+        bottom, top = self.limits(height, relpos_ac[:, 2].max() * height)
+        z_r = grid.xyz()[:, :, :, 2]
+        mask_r = grid.empty()
+        mask_r.data[:] = np.logical_and(z_r > bottom / Bohr,
+                                        z_r < top / Bohr)
+        return mask_r, bottom, top
+
+
+class ChargingScheme:
+    """Puts an excess charge into the cell.
+
+    It also reports the geometry of the electrode "plate" that the charge
+    faces, which the potential optimizer needs for its first-guess slope.
+    """
+
+    charge: float
+
+    def add_charge(self, nt_r: UGArray) -> None:
+        """Add the counter-charge to a real-space pseudo-density."""
+        raise NotImplementedError
+
+    def add_charge_pw(self, nt_g: PWArray | None) -> None:
+        """Add the counter-charge to a plane-wave pseudo-density."""
+        raise NotImplementedError
+
+    def set_region(self, mask_r: UGArray) -> None:
+        """Store (and normalize) the shape of the charged region."""
+        raise NotImplementedError
+
+    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
+        """Rebuild the region for a new geometry if it follows the atoms.
+
+        Returns the new lower and upper limit in Å, or ``None`` if the
+        region does not move with the atoms.
+        """
+        return None
+
+    @property
+    def region_area(self) -> float:
+        """Area of the electrode plate in the xy plane, in Å²."""
+        raise NotImplementedError
+
+
+class JelliumCharging(ChargingScheme):
+    """A uniform jellium counter-charge filling a slab region.
+
+    This is the charging scheme SJM has always used: the excess electrons
+    of the atomic system are balanced by a jellium of the opposite sign
+    smeared uniformly over a slab in the implicit solvent above the slab.
+
+    Parameters
+    ----------
+    mask_r:
+        0/1 mask of the region on the fine grid.  It is normalized in
+        place to integrate to one.
+    pw:
+        Plane-wave (or real-space) descriptor of the interpolated density,
+        used to cache a reciprocal-space copy of the mask for PW mode.
+    charge:
+        Number of excess electrons (with the opposite sign in the jellium).
+    region:
+        The :class:`JelliumRegion` the mask was built from, kept so that
+        the region can follow the atoms during a relaxation.
+    """
+
+    def __init__(self,
+                 mask_r: UGArray,
+                 *,
+                 pw,
+                 charge: float = 0.0,
+                 region: JelliumRegion | None = None):
+        self.region = region or JelliumRegion()
+        self.pw = pw
+        self.charge = charge
+        self.set_region(mask_r)
+
+    def set_region(self, mask_r: UGArray) -> None:
+        """Normalize and store the shape of the jellium region.
+
+        Can be called again later if the region has to follow the atoms.
+        """
+        norm = mask_r.integrate()
+        if norm == 0.0:
+            raise ValueError('The jellium region contains no grid points.')
+        self.mask_r = mask_r
+        mask_r.data *= 1.0 / norm
+        self.mask_g = None
+        if isinstance(self.pw, PWDesc):
+            mask0_r = mask_r.gather()
+            if mask0_r is not None:
+                self.mask_g = mask0_r.fft(pw=self.pw.new(comm=None))
+
+    def add_charge(self, nt_r: UGArray) -> None:
+        nt_r.data -= self.mask_r.data * self.charge
+
+    def add_charge_pw(self, nt_g: PWArray | None) -> None:
+        if nt_g is None:
+            return  # only rank-0 needs to do anything
+        assert self.mask_g is not None
+        nt_g.data -= self.mask_g.data * self.charge
+
+    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
+        if not self.region.follows_atoms:
+            return None
+        mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
+        self.set_region(mask_r)
+        return z1, z2
+
+    @property
+    def region_area(self) -> float:
+        cell_cv = self.mask_r.desc.cell_cv * Bohr
+        return abs(np.linalg.det(cell_cv[:2, :2]))
+
+
+class PotentialProbe:
+    """Reads the electrode potential off the converged SCF state."""
+
+    def potential(self, ibzwfs) -> float:
+        """Electrode potential in V, on the vacuum scale."""
+        raise NotImplementedError
+
+
+class WorkFunctionProbe(PotentialProbe):
+    """Electrode potential as the work function: minus the Fermi level.
+
+    Assumes the Poisson solver has zeroed the vacuum electrostatic
+    potential, as the SJM solver does.
+    """
+
+    def potential(self, ibzwfs) -> float:
+        return -ibzwfs.fermi_level * Ha
+
+
+class PotentialOptimizer:
+    """Proposes the next excess-electron count for the target potential."""
+
+    def next_charge(self,
+                    charge: float,  # |e|
+                    potential: float,  # V
+                    target: float,  # V
+                    *,
+                    area: float) -> float:  # Å²
+        """Number of excess electrons the method points at next."""
+        raise NotImplementedError
+
+    def forget_attempts(self) -> None:
+        """Drop the recorded attempts, but keep the slope estimate."""
+
+    def reset(self) -> None:
+        """Forget the slope estimate and the attempts behind it."""
+
+
+class DirectOptimizer(PotentialOptimizer):
+    """Step the charge along a damped estimate of d(potential)/d(charge).
+
+    The method SJM has always used.  ``slope`` (V/electron) is the initial
+    guess; ``None`` guesses one from the apparent capacitance of a plate
+    capacitor of the electrode ``area``.  Once there are two or more
+    attempts to regress a slope from, the estimate is updated, damped by
+    ``mixer``: ``new = mixer * old + (1 - mixer) * regressed``.  The
+    regression uses the last ``slope_regression_depth`` attempts.
+    """
+
+    def __init__(self,
+                 *,
+                 slope: float | None = None,  # V/electron
+                 mixer: float = 0.2,
+                 slope_regression_depth: int = 4):
+        self.slope = slope
+        self.mixer = mixer
+        # (Charge, potential) history of the last few attempts, in V:
+        self.history: deque[tuple[float, float]] = deque(
+            maxlen=_check_depth(slope_regression_depth))
+
+    @property
+    def slope_regression_depth(self) -> int:
+        return self.history.maxlen  # type: ignore[return-value]
+
+    @slope_regression_depth.setter
+    def slope_regression_depth(self, depth: int) -> None:
+        # A deque cannot change its maxlen, so make a new one - keeping the
+        # most recent attempts, which is what the deque itself would do.
+        self.history = deque(self.history, maxlen=_check_depth(depth))
+
+    def forget_attempts(self) -> None:
+        """Drop the recorded attempts, but keep the slope estimate.
+
+        The attempts belong to one geometry: once the atoms have moved, the
+        potential at a given charge shifts, and a regression across the move
+        would fit a line through two different systems.
+        """
+        self.history.clear()
+
+    def reset(self) -> None:
+        """Forget the slope estimate and the attempts behind it."""
+        self.slope = None
+        self.history.clear()
+
+    def _capacitance_slope(self, area: float) -> float:
+        """Slope, in V/electron, of a plate capacitor of the cell's area."""
+        # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
+        return -_e * 1e22 / (area * 10)
+
+    def update_slope(self, area: float) -> float:
+        """Update and return d(potential)/d(charge) in V/electron."""
+        slope = regress_slope(self.history)
+        if slope is None:
+            pass  # too few distinct attempts to regress a slope from
+        elif self.slope is None:
+            self.slope = slope
+        else:
+            # Damp the new estimate: regressing a slope from a couple of
+            # attempts can be noisy, particularly when the positions have
+            # changed as well.
+            self.slope = self.mixer * self.slope + (1.0 - self.mixer) * slope
+        if self.slope is None or abs(self.slope) < 1e-10:
+            # No estimate yet, or one that would send the charge to infinity:
+            self.slope = self._capacitance_slope(area)
+        return self.slope
+
+    def next_charge(self,
+                    charge: float,
+                    potential: float,
+                    target: float,
+                    *,
+                    area: float) -> float:
+        """Charge that the slope points at, given this potential.
+
+        The attempt is recorded in the history and the slope estimate is
+        updated, so this must be called at most once per attempt.
+        """
+        self.history.append((charge, potential))
+        slope = self.update_slope(area)
+        dc = (target - potential) / slope
+        if len(self.history) > 1:
+            # Trust region: never step further than the previous step did.
+            (c2, _), (c1, _) = list(self.history)[-2:]
+            if abs(dc) > abs(c2 - c1) > 0.0:
+                dc *= abs((c2 - c1) / dc)
+        return charge + dc
+
+
+class Potentiostat:
+    """Holds a target electrode potential by adjusting an excess charge.
+
+    Composes three pluggable parts, all present at all times:
+
+    * ``charging``  -- a :class:`ChargingScheme`: how the excess charge is
+      put into the cell (default: a jellium slab).
+    * ``probe``     -- a :class:`PotentialProbe`: how the potential is read
+      off the converged SCF state (default: the work function).
+    * ``optimizer`` -- a :class:`PotentialOptimizer` or ``None``: how the
+      charge is stepped toward ``target_potential``.  ``None`` together
+      with ``target_potential=None`` is a constant-charge calculation: the
+      charge is simply held where it is.
+
+    Parameters
+    ----------
+    charging:
+        The charging scheme.
+    target_potential:
+        Electrode potential to equilibrate to, in V on the vacuum scale.
+        ``None`` gives a constant-charge calculation.
+    optimizer:
+        The potential optimizer, or ``None`` in constant-charge mode.
+    probe:
+        The potential probe.  Defaults to :class:`WorkFunctionProbe`.
+    tol:
+        Tolerance for the deviation of the target potential, in V.
+    """
+
+    def __init__(self,
+                 *,
+                 charging: ChargingScheme,
+                 target_potential: float | None = None,  # V
+                 optimizer: PotentialOptimizer | None = None,
+                 probe: PotentialProbe | None = None,
+                 tol: float = 0.001):  # V
+        self.charging = charging
+        self.target_potential = target_potential
+        self.optimizer = optimizer
+        self.probe = probe or WorkFunctionProbe()
+        self.tol = tol
+
+    @property
+    def constant_potential(self) -> bool:
+        """Is there a target potential to equilibrate to?"""
+        return self.target_potential is not None
+
+    @property
+    def charge(self) -> float:
+        """Number of excess electrons."""
+        return self.charging.charge
+
+    @charge.setter
+    def charge(self, q: float) -> None:
+        self.charging.charge = q
+
+    def equilibrate(self,
+                    ibzwfs,
+                    nelectrons: float,
+                    occ_calc,
+                    mixer,
+                    log) -> bool:
+        """One equilibration attempt, after the SCF criteria have passed.
+
+        Returns ``True`` when the potential is within tolerance (or in
+        constant-charge mode, where there is nothing to do), and ``False``
+        after stepping the charge and re-running the occupations for
+        another SCF pass.
+        """
+        if not self.constant_potential:
+            return True
+        potential = self.probe.potential(ibzwfs)
+        log(f'charge: {self.charge:.6f} |e|, potential: {potential:.3f} V')
+        if abs(potential - self.target_potential) <= self.tol:
+            return True
+        new_charge = self.optimizer.next_charge(
+            self.charge, potential, self.target_potential,
+            area=self.charging.region_area)
+        ibzwfs.calculate_occs(occ_calc,
+                              nelectrons + (new_charge - self.charge))
+        self.charge = new_charge
+        mixer.reset()
+        return False
+
+    def propose_next(self, ibzwfs) -> float:
+        """Charge the optimizer points at, without re-converging it.
+
+        Used by ``always_adjust`` to stage a step for the next geometry.
+        """
+        return self.optimizer.next_charge(
+            self.charge, self.probe.potential(ibzwfs), self.target_potential,
+            area=self.charging.region_area)
+
+    # Density hooks, straight through to the charging scheme:
+    def add_charge(self, nt_r) -> None:
+        self.charging.add_charge(nt_r)
+
+    def add_charge_pw(self, nt_g) -> None:
+        self.charging.add_charge_pw(nt_g)
+
+
+def _check_depth(depth: int) -> int:
+    """Validate the number of attempts to regress the slope over."""
+    if depth < 2:
+        raise ValueError(
+            f'slope_regression_depth must be at least 2, got {depth}.  Two '
+            'attempts are the fewest that a slope can be fitted to.')
+    return depth
+
+
+def regress_slope(attempts) -> float | None:
+    """Slope of potential vs. excess electrons, in V/electron.
+
+    ``attempts`` is a sequence of (charge, potential) pairs, the charge in
+    electrons and the potential in volts.  Returns ``None`` if there are
+    too few distinct charges to fit a line.
+    """
+    attempts = list(attempts)
+    if len(attempts) < 2:
+        return None
+    charge_i = np.array([charge for charge, _ in attempts])
+    potential_i = np.array([potential for _, potential in attempts])
+    if np.ptp(charge_i) < 1e-10:
+        return None
+    return float(np.polyfit(charge_i, potential_i, 1)[0])

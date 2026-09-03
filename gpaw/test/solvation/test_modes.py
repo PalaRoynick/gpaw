@@ -5,7 +5,7 @@ from ase.units import Bohr, Ha
 
 from gpaw import GPAW, FermiDirac
 from gpaw.new.constraints import SpinDirectionConstraint
-from gpaw.new.sjm import SJM
+from gpaw.new.electrocatalysis.sjm import SJM
 from gpaw.solvation.sjm import SJM as OldSJM
 
 

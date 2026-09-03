@@ -3,7 +3,7 @@ from ase.build import fcc111
 
 from gpaw import GPAW, FermiDirac
 from gpaw.mpi import world
-from gpaw.new.sjm import SJM
+from gpaw.new.electrocatalysis.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
 from gpaw.solvation.sjm import SJM as OldSJM
@@ -84,7 +84,8 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     if 0:  # gpaw_new:
         import matplotlib.pyplot as plt
         import numpy as np
-        x, y = np.array(atoms.calc.environment.jellium.history).T
+        x, y = np.array(
+            atoms.calc.dft.sjm.potentiostat.optimizer.history).T
         plt.plot(x, y)
         plt.show()
     if 0:

@@ -4,7 +4,8 @@ import pytest
 from ase.units import Bohr
 
 from gpaw.core import UGDesc
-from gpaw.new.sjm import DEFAULT_BOTTOM, DEFAULT_TOP, JelliumRegion
+from gpaw.new.electrocatalysis.potentiostat import (
+    DEFAULT_BOTTOM, DEFAULT_TOP, JelliumRegion)
 
 HEIGHT = 20.0  # Å
 ZMAX = 6.0  # Å, highest atom
@@ -93,7 +94,7 @@ def test_mask():
 
 def _extent(sjm):
     """Actual z-extent of the jellium mask, in Angstrom."""
-    mask_r = sjm.jellium.mask_r.gather(broadcast=True)
+    mask_r = sjm.potentiostat.charging.mask_r.gather(broadcast=True)
     z_z = mask_r.desc.xyz()[0, 0, :, 2] * Bohr
     inside = mask_r.data.mean(axis=(0, 1)) > 0
     return z_z[inside].min(), z_z[inside].max()
@@ -105,7 +106,7 @@ def test_region_follows_atoms(fix_bottom, in_tmp_dir):
     from ase import Atoms
 
     from gpaw import GPAW, FermiDirac
-    from gpaw.new.sjm import SJM
+    from gpaw.new.electrocatalysis.sjm import SJM
     from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
     a = 1.4

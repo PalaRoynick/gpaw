@@ -6,7 +6,7 @@ from ase.parallel import paropen
 from ase.units import Pascal, m
 
 from gpaw import GPAW, FermiDirac
-from gpaw.new.sjm import SJM
+from gpaw.new.electrocatalysis.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
 from gpaw.solvation.sjm import SJMPower12Potential

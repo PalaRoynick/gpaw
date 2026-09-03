@@ -3,7 +3,7 @@ import pytest
 from ase import Atoms
 
 from gpaw import GPAW, FermiDirac
-from gpaw.new.sjm import SJM
+from gpaw.new.electrocatalysis.sjm import SJM
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
 TARGET = 7.5  # V
@@ -50,7 +50,7 @@ def test_step_reaches_the_next_geometry(always_adjust, in_tmp_dir):
     assert sjm._pending_charge is None
     if always_adjust:
         assert sjm.charge == pytest.approx(staged)
-        assert sjm.jellium.charge == pytest.approx(staged)
+        assert sjm.potentiostat.charging.charge == pytest.approx(staged)
     else:
         assert sjm.charge == pytest.approx(charge)
 
