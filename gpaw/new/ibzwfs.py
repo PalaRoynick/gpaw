@@ -227,6 +227,16 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return e_band, e_entropy, e_entropy * occ_calc.extrapolate_factor
 
+    @property
+    def has_occs(self) -> bool:
+        flag = True
+        try:
+            for wfs in self:
+                flag = flag and (wfs._occ_n is not None)
+        except ValueError:
+            return False
+        return flag
+
     def add_to_density(self, nt_sR, D_asii) -> None:
         """Compute density and add to ``nt_sR`` and ``D_asii``."""
         for wfs in self:
