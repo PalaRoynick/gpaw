@@ -62,16 +62,14 @@ class DN(ExtensionInput):
                 cwd = Path.cwd()
                 assert atoms.calc is None
                 # Call DFTD3 only with single core due to #1671
-                if self.name == "d3":
-                    with broadcast_exception(world):
-                        if world.rank == 0:
+                with broadcast_exception(world):
+                    if world.rank == 0:
+                        if self.name == "d3":
                             try:
                                 _self.calculate_single_core_d3()
                             finally:
                                 os.chdir(cwd)
-                elif self.name == "d4":
-                    with broadcast_exception(world):
-                        if world.rank == 0:
+                        elif self.name == "d4":
                             _self.calculate_single_core_d4()
 
                 _self.E = broadcast_float(_self.E, world)
