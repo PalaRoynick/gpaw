@@ -9,9 +9,9 @@ from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
 from gpaw.new import tracectx
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
+from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.typing import Array2D
-from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 
 
 class Davidson(PWFDEigensolver):

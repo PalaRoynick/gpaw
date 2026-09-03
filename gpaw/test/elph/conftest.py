@@ -1,6 +1,6 @@
 import os
-import pytest
 
+import pytest
 from ase.build import bulk
 
 from gpaw import GPAW

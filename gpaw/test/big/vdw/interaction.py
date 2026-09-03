@@ -13,7 +13,7 @@ for symbol in ['Ar', 'Kr']:
     e = np.empty(11)
     de = np.empty(11)
     for i, r in enumerate(d):
-        calc = GPAW('%s-dimer-%.2f.gpw' % (symbol, r), txt=None)
+        calc = GPAW(f'{symbol}-dimer-{r:.2f}.gpw', txt=None)
         e[i] = calc.get_atoms().get_potential_energy()
         de[i] = calc.get_xc_difference(vdw)
         print(i, e, de)

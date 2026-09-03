@@ -14,7 +14,8 @@ from gpaw.elph import ElectronPhononMatrix
 def test_gmatrix(session_tmp_path, supercell_cache):
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     supercell_cache
-    elph = ElectronPhononMatrix(atoms, 'supercell', 'elph')
+    elph = ElectronPhononMatrix(atoms, 'supercell', 'elph',
+                                use_mean_minimum_images=True)
     q_qc = np.array([[0, 0, 0], [0.5, 0.5, 0.5]])
 
     # phonon = Phonons(atoms, name='elph', supercell=(2, 1, 1),

@@ -8,7 +8,7 @@ import numpy as np
 from ase.io import write
 from ase.units import Bohr
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def read_bader_charges(filename: str | Path = 'ACF.dat') -> np.ndarray:

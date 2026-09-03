@@ -17,7 +17,6 @@ import gpaw
 import gpaw.mpi as mpi
 from gpaw.convergence_criteria import dict2criterion
 from gpaw.dos import DOSCalculator
-from gpaw.old.eigensolvers import get_eigensolver
 from gpaw.external import PointChargePotential
 from gpaw.hybrids import HybridXC
 from gpaw.io import Reader, Writer
@@ -25,6 +24,7 @@ from gpaw.jellium import create_background_charge
 from gpaw.occupations import ParallelLayout, create_occ_calc
 from gpaw.old.band_descriptor import BandDescriptor
 from gpaw.old.density import RealSpaceDensity
+from gpaw.old.eigensolvers import get_eigensolver
 from gpaw.old.forces import calculate_forces
 from gpaw.old.grid_descriptor import GridDescriptor
 from gpaw.old.hamiltonian import RealSpaceHamiltonian

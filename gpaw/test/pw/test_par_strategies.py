@@ -2,10 +2,9 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from gpaw import GPAW as AnyGPAW
+from gpaw import GPAW
 from gpaw import GPAW_NO_C_EXTENSION, PW, FermiDirac
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW as NewGPAW
 
 # Domain and k-point parallelization:
 dk = []
@@ -34,9 +33,7 @@ def test_pw_par_strategies(in_tmp_dir, d, k, gpu):
     parallel = {'domain': d, 'kpt': k}
     if gpu:
         parallel['gpu'] = True
-        GPAW = NewGPAW
-    else:
-        GPAW = AnyGPAW
+
     atoms.calc = GPAW(mode=PW(ecut),
                       txt='hli.txt',
                       parallel=parallel,

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+
 from gpaw import KohnShamConvergenceError
 from gpaw.convergence_criteria import (Criterion, check_convergence,
                                        dict2criterion)

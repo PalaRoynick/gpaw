@@ -17,7 +17,7 @@ def write_configuration(define_macros, include_dirs, libraries, library_dirs,
     # Write the compilation configuration into a file
     try:
         out = open('configuration.log', 'w')
-    except IOError as x:
+    except OSError as x:
         print(x)
         return
     print("Current configuration", file=out)

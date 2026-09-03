@@ -1,6 +1,7 @@
 import numpy as np
 from ase import Atoms
 from ase.optimize import BFGS
+
 from gpaw import FermiDirac, restart
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)

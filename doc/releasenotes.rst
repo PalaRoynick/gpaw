@@ -10,10 +10,29 @@ Git master branch
 
 :git:`master <>`.
 
-* The default value for density convergence has been change from
+* The default value for density convergence has been changed from
   ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
+
+* GPAW will now default to using mpi4py for MPI handling, when
+  available. The cgpaw wrappers are used as a fallback.
+
+* Implicit solvation calculations are now supported in plane-wave mode, using
+  an updated conjugate-gradient Poisson solver. Add the solvation model
+  through the ``extensions`` keyword; e.g.,
+  ``GPAW(..., extensions=[Solvation(...)])``.
+
+* New flourine PAW potential added to our :ref:`setup releases`.
+  It should be as accurate as the old one but will converge faster with number of
+  plane-waves.  The old potential is still the default, but it is recommended that the
+  new one is used for production calculations.  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).  It has been generated with
+  the following command::
+
+    $ gpaw dataset F -fPBE -w -t v2 -b
+
+  There is also an LDA version of the potential.
 
 
 Version 26.7.0
@@ -157,7 +176,7 @@ July 6, 2026: :git:`26.7.0 <../26.7.0>`
 * Ongoing work with optimizng the defaults of GPAW, so far the following
   changes have been made:
 
-  * mixer (with pbc):
+  * mixer (with pbc, old gpaw only):
 
     * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
@@ -165,13 +184,18 @@ July 6, 2026: :git:`26.7.0 <../26.7.0>`
     * nmaxold: 5 -> 10
     * weight: 50 -> 20
 
-  * mixer (without pbc):
+  * mixer (without pbc, old gpaw only):
 
     * backend: 'pulay' -> 'msr1'
     * spin-driver: 'difference' -> 'fullspin'
     * beta: 0.25 -> 0.2
     * nmaxold: 3 -> 10
     * weight: 1 -> 1
+
+  * mixer (:ref:`newgpaw` only):
+
+    * Complete refactor with newly optimized defaults,
+      compensation charges, and improved reciprocal metric.
 
   * eigensolver (:ref:`newgpaw` only): 'davidson' -> 'ppcg'
 
@@ -215,6 +239,9 @@ July 6, 2026: :git:`26.7.0 <../26.7.0>`
   more stable convergence in most cases, see
   :ref:`density mixing <densitymix>`
   and https://pubs.acs.org/doi/full/10.1021/acs.jctc.1c00630 for more details.
+
+* Introducing a complete mixer refactor for :ref:`newgpaw`. Utilizing the new
+  MSR1 mixer.
 
 * ASE will now :func:`~ase.io.read` GPAW's log-files using a plugin
   in GPAW (:mod:`gpaw.ase_plugin`).

@@ -1,8 +1,8 @@
 import pytest
 
 from gpaw import restart
-from gpaw.solvation.sjm import SJM
 from gpaw.mpi import world
+from gpaw.solvation.sjm import SJM
 
 
 # Test wrting and reading of the SJM object into the gpw file
