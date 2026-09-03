@@ -15,7 +15,7 @@ import gpaw
 from gpaw.mixer.base import BaseMixer
 from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.mixer.msr1 import MSR1Mixer
-from gpaw.mixer.multi import MultiMixer
+from gpaw.mixer.multi import MultiMixer as MltMixer
 from gpaw.mixer.pulay import PulayMixer
 from gpaw.mpi import MPIComm
 from gpaw.new.calculation import DFT, write_atoms
@@ -434,7 +434,7 @@ class Mixer(Parameter):
             'no-mixing': NoMixing,
             'pulay': Pulay,
             'msr1': MSR1,
-            'multi': Multi_Mixer
+            'multi': MultiMixer
         }
 
         # Clean for dict for backwards compatibility
@@ -545,9 +545,9 @@ class MSR1(Mixer):
         return self.cls(metric=metric, **self.mixer_params, **kwargs)
 
 
-class Multi_Mixer(Mixer):
+class MultiMixer(Mixer):
     name = 'multi'
-    cls = MultiMixer
+    cls = MltMixer
 
     def __init__(self,
                  method: str = 'dif',

@@ -5,7 +5,6 @@ Note: If the users gives an index twice that's passed through, because that's
       how ase.phonons does it.
 
 """
-import numpy as np
 import pytest
 from ase.build import bulk
 
@@ -50,8 +49,9 @@ def _supercell_indices(atoms, indices):
 def _gmatrix_indices(atoms, indices, comm):
     natoms = len(atoms)
     nindices = len(indices)
-    fepm = FakeElectronPhononMatrix(atoms, None, {"name": "phonon"},
-                                    indices=indices, comm=comm)
+    fepm = FakeElectronPhononMatrix(
+        atoms, None, phonon={'name': 'phonon', 'select_atoms': indices},
+        indices=indices, comm=comm)
     assert len(fepm.indices) != natoms
     assert len(fepm.indices) == nindices
     assert fepm.indices[0] == indices[0]
@@ -75,7 +75,7 @@ def test_indices(comm):
     #       stuff.
 
     # case 2: gives some random indices
-    indices = np.array([34, 44, 20, 2])
+    indices = [34, 44, 20, 2]
     _supercell_indices(atoms, indices)
     _gmatrix_indices(atoms, indices, comm)
     # TODO: Supercell.calculate_gradient()? Would need fake cache.

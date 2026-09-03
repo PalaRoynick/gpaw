@@ -3,7 +3,7 @@ import pytest
 from ase import Atoms
 
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.new.constraints import SpinDirectionConstraint
 
 

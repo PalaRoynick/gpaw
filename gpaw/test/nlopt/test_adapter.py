@@ -1,6 +1,6 @@
 import pytest
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.nlopt.adapters import CollinearGSInfo
 
 

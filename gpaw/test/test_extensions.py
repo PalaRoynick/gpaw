@@ -55,7 +55,7 @@ class Spring:
 @pytest.mark.parametrize('parallel', [(1, 1), (1, 2), (2, 1)])
 @pytest.mark.parametrize('mode', [{'name': 'pw', 'ecut': 300}, 'lcao'])
 def test_extensions(mode, parallel, in_tmp_dir, mpi):
-    from gpaw.new.ase_interface import GPAW
+    from gpaw import GPAW
     ktot = 20
 
     # from gpaw import restart
