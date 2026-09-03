@@ -183,7 +183,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                 self.communicators['w'])
         return SpinorPWHamiltonian(self.qspiral_v)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, save_memory=False):
         from gpaw.utilities import as_dtype_precision, get_dtype_precision
 
         def convert_precision(array):
@@ -215,10 +215,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
-            pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
+            pw = self.wf_desc.new(kpt=wfs.kpt_c,
+                                  dtype=self.dtype,
+                                  save_memory=save_memory)
             if wfs.spin == 0:
                 check_g_vector_ordering(self.grid, pw, index_kG[wfs.k])
-                #rm cache, ekin_G, G_plus_k_Gv
             index = (wfs.spin, wfs.k) if self.ncomponents != 4 else (wfs.k,)
             data = reader.wave_functions.proxy('coefficients', *index)
             data.scale = c
@@ -258,6 +259,8 @@ def check_g_vector_ordering(grid: UGDesc,
     if np.issubdtype(pw.dtype, np.floating):
         size = (size[0], size[1], size[2] // 2 + 1)
     index0_G = pw.indices(size)
+    if pw._ekin_G is None:
+        pw._indices_cache.clear()
     nG = len(index0_G)
     assert (index0_G == index_G[:nG]).all()
     assert (index_G[nG:] == -1).all()

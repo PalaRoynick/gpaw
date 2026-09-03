@@ -39,7 +39,8 @@ class PWDesc(Domain['PWArray']):
                  cell: ArrayLike1D | ArrayLike2D,  # bohr
                  kpt: Vector | None = None,  # in units of reciprocal cell
                  comm: MPIComm = serial_comm,
-                 dtype=None):
+                 dtype=None,
+                 save_memory=False):
         """Description of plane-wave basis.
 
         parameters
@@ -75,19 +76,23 @@ class PWDesc(Domain['PWArray']):
         S = comm.size
         ng = len(ekin_G)
         self.maxmysize = (ng + S - 1) // S
-        ng1 = comm.rank * self.maxmysize
+        ng1 = min(comm.rank * self.maxmysize, ng)
         ng2 = min(ng1 + self.maxmysize, ng)
         self.ng1 = ng1
         self.ng2 = ng2
 
-        # Distribute things:
-        self.ekin_G = ekin_G[ng1:ng2].copy()
-        self.ekin_G.flags.writeable = False
-        # self.myindices_cG = self.indices_cG[:, ng1:ng2]
-        self.G_plus_k_Gv = G_plus_k_Gv[ng1:ng2].copy()
+        if save_memory:
+            self._ekin_G = None
+            self._G_plus_k_Gv = None
+        else:
+            # Distribute things:
+            self._ekin_G = ekin_G[ng1:ng2].copy()
+            self._ekin_G.flags.writeable = False
+            # self.myindices_cG = self.indices_cG[:, ng1:ng2]
+            self._G_plus_k_Gv = G_plus_k_Gv[ng1:ng2].copy()
 
         self.shape = (ng,)
-        self.myshape = (len(self.ekin_G),)
+        self.myshape = (ng2 - ng1,)
 
         # Convert from np.float64 to float to avoid fake cupy problem ...
         # XXX Fix cpupy!!!
@@ -115,6 +120,19 @@ class PWDesc(Domain['PWArray']):
         if xp is np:
             return self.G_plus_k_Gv
         return self._cupy_G_plus_k_Gv
+
+    @property
+    def ekin_G(self):
+        if self._ekin_G is None:
+            self._ekin_G = 0.5 * (self.G_plus_k_Gv**2).sum(axis=1)
+        return self._ekin_G
+
+    @property
+    def G_plus_k_Gv(self):
+        if self._G_plus_k_Gv is None:
+            B_cv = 2.0 * pi * np.linalg.inv(self.cell_cv).T
+            self._G_plus_k_Gv = (self.indices_cG.T + self.kpt_c) @ B_cv
+        return self._G_plus_k_Gv
 
     @cached_property
     def _cupy_G_plus_k_Gv(self):
@@ -155,7 +173,8 @@ class PWDesc(Domain['PWArray']):
             gcut: float | None = None,
             kpt=None,
             dtype=None,
-            comm: MPIComm | Literal['inherit'] | None = 'inherit'
+            comm: MPIComm | Literal['inherit'] | None = 'inherit',
+            save_memory=False
             ) -> PWDesc:
         """Create new plane-wave expansion description."""
         comm = self.comm if comm == 'inherit' else comm or serial_comm
@@ -166,7 +185,8 @@ class PWDesc(Domain['PWArray']):
                       cell=self.cell_cv,
                       kpt=self.kpt_c if kpt is None else kpt,
                       dtype=dtype or self.dtype,
-                      comm=comm or serial_comm)
+                      comm=comm or serial_comm,
+                      save_memory=save_memory)
 
     def indices(self, shape: tuple[int, ...]) -> Array1D:
         """Return indices into FFT-grid."""
@@ -246,7 +266,7 @@ class PWDesc(Domain['PWArray']):
 
            [1], [[0, 1, 2, 3], [4]]
         """
-        size_c = tuple(np.ptp(self.indices_cG, axis=1) + 1)  # type: ignore
+        size_c = tuple(np.ptp(self.indices_cG, axis=1).astype(int) + 1)  # type: ignore
         Q_G = self.indices(size_c)
         G_Q = np.empty(prod(size_c), int)
         G_Q[Q_G] = np.arange(len(Q_G))
@@ -272,7 +292,7 @@ class PWDesc(Domain['PWArray']):
                                 save_memory=True,
                                 cut=False,
                                 xp=None):
-        """Create PlaneWaveAtomCenteredFunctions object."""
+        """Create PWAtomCenteredFunctions object."""
         if qspiral_v is None:
             return PWAtomCenteredFunctions(functions, positions, self,
                                            atomdist=atomdist,
