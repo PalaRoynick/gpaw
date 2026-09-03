@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from contextlib import ExitStack
 from math import isclose, pi
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 from ase.io.jsonio import read_json, write_json
@@ -872,6 +873,11 @@ class G0W0Calculator:
             self.check(ie, i_cG, shift0_c, N_c, Q_c, mypawcorr)
 
         for n in range(kpt1.n2 - kpt1.n1):
+            start = perf_counter()
+            self.context.print(
+                f'GW timer: sigma evaluation k={kpt1.K} '
+                f'band={kpt1.n1 + n} started'
+            )
             eps1 = kpt1.eps_n[n]
             self.context.timer.start('get_nmG')
             n_mG = get_nmG(kpt1, kpt2, mypawcorr,
@@ -919,6 +925,12 @@ class G0W0Calculator:
                 slot = ie, kpt1.s, k, nn
                 sigma.sigma_eskn[slot] += sigma_m.real.sum()
                 sigma.dsigma_eskn[slot] += dsigma_m.real.sum()
+
+            self.context.print(
+                f'GW timer: sigma evaluation k={kpt1.K} '
+                f'band={kpt1.n1 + n} finished: '
+                f'{perf_counter() - start:.3f} s'
+            )
 
     def check(self, ie, i_cG, shift0_c, N_c, Q_c, pawcorr):
         # Can we delete this check? XXX

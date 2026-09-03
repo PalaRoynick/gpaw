@@ -6,8 +6,10 @@ import numpy as np
 import scipy
 import scipy.linalg
 from ase.spectrum.band_structure import BandStructure
-
+from ase.units import Ha
 from gpaw.calculator import GPAW
+from gpaw.mpi import world as default_world
+from gpaw.utilities import pack_density
 
 
 def mpower(O_MM, power):
@@ -136,16 +138,36 @@ class ReciprocalSpace:
         return np.array([delta_ibz_kn[k] for k in self.bz2ibz_K])
 
 
-def operators_from_calc(calc_bz):
+def _run_on_rank0(calc, world):
+    """Check that calculator-backed interpolation is serial on rank zero."""
+    if world.rank != 0:
+        return False
+    if calc is None:
+        raise ValueError('A calculator is required on rank zero')
+    calc_world = calc.wfs.world
+    if calc_world.size != 1:
+        raise ValueError(
+            'LCAO band-structure interpolation runs on rank zero. Load '
+            'the calculator with communicator=mpi.serial_comm.'
+        )
+    return True
+
+
+def operators_from_calc(calc_bz, spin=0, world=default_world):
+    if not _run_on_rank0(calc_bz, world):
+        return None
     # Get the full BZ Hamiltonian
     from gpaw.lcao.tools import get_lcao_hamiltonian
 
     H_skMM, S_kMM = get_lcao_hamiltonian(calc_bz)
-    assert len(H_skMM) == 1
+    if not 0 <= spin < len(H_skMM):
+        raise ValueError(
+            f'Spin index {spin} outside available range 0:{len(H_skMM)}'
+        )
     k_bz = calc_bz.get_ibz_k_points()
     #  Reciprocoal LCAO Operator and fourier trafo to real space H_R
     cell_cv = calc_bz.atoms.cell
-    hamiltonian_kMM = H_skMM[0]
+    hamiltonian_kMM = H_skMM[spin]
     H_kMM = ReciprocalLCAOOperator(
         kpt_kc=k_bz, cell_cv=cell_cv, operator_kMM=hamiltonian_kMM)
 
@@ -231,7 +253,11 @@ class ReciprocalLCAOOperator(LCAOOperator):
         return self
 
 
-def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
+def create_realspace_lcao_operators(
+    calc_ibz, cutoff, shift_kn, s_power, spin=0, world=default_world
+):
+    if not _run_on_rank0(calc_ibz, world):
+        return None
     # Setup BZ operators needed to interpolate the scissor correction.
     calc_bz = calc_ibz.fixed_density(
         symmetry='off',
@@ -247,7 +273,9 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
     if shift_kn is None:
         return calc_bz, scissor_RMM
 
-    H_kMM, S_kMM = operators_from_calc(calc_bz)
+    H_kMM, S_kMM = operators_from_calc(
+        calc_bz, spin=spin, world=world
+    )
     N_c = calc_bz.wfs.kd.N_c
 
     reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
@@ -262,7 +290,11 @@ def create_realspace_lcao_operators(calc_ibz, cutoff, shift_kn, s_power):
     return calc_bz, scissor_RMM
 
 
-def exact_lcao_operators(calc, kpts, shift_kn=None):
+def exact_lcao_operators(
+    calc, kpts, shift_kn=None, spin=0, world=default_world
+):
+    if not _run_on_rank0(calc, world):
+        return None
     kwargs = {}
     if shift_kn is not None:
         nbands = shift_kn.shape[1]
@@ -272,7 +304,9 @@ def exact_lcao_operators(calc, kpts, shift_kn=None):
         symmetry='off',
         kpts=kpts,
         **kwargs)
-    H_kMM, S_kMM = operators_from_calc(calc_bandpath)
+    H_kMM, S_kMM = operators_from_calc(
+        calc_bandpath, spin=spin, world=world
+    )
     assert np.allclose(H_kMM.kpt_kc, kpts)
     assert np.allclose(S_kMM.kpt_kc, kpts)
     return H_kMM, S_kMM
@@ -282,7 +316,12 @@ def create_bandstructure(calc,
                          bandpath,
                          cutoff=13,
                          shift_kn=None,
-                         s_power=1 / 2):
+                         s_power=1 / 2,
+                         spin=0,
+                         world=default_world):
+
+    if not _run_on_rank0(calc, world):
+        return None
 
     scissor_power_RMM = None
     if shift_kn is not None:
@@ -290,12 +329,16 @@ def create_bandstructure(calc,
             calc,
             cutoff=cutoff,
             shift_kn=shift_kn,
-            s_power=s_power)
+            s_power=s_power,
+            spin=spin,
+            world=world)
 
     H_bandpath_kMM, S_bandpath_kMM = exact_lcao_operators(
         calc,
         bandpath.kpts,
-        shift_kn=shift_kn)
+        shift_kn=shift_kn,
+        spin=spin,
+        world=world)
 
     scissor_power_bandpath_kMM = None
     if shift_kn is not None:
@@ -309,7 +352,123 @@ def create_bandstructure(calc,
         s_power=s_power)
 
 
-def create_non_ft_bandstructure(calc, bandpath):
+def diagonalize_soc_lcao(H_skMM, S_kMM, V_kvMM):
+    """Diagonalize a full spin-polarized LCAO+SOC Hamiltonian."""
+    nspins, nkpts, nao, _ = H_skMM.shape
+    if nspins not in {1, 2}:
+        raise ValueError(f'Expected one or two spins, got {nspins}')
+
+    energies_kn = []
+    sz_kn = []
+    for k in range(nkpts):
+        S_MM = S_kMM[k]
+        H_up_MM = H_skMM[0, k]
+        H_down_MM = H_skMM[-1, k]
+        H_NN = np.zeros((2 * nao, 2 * nao), complex)
+        H_NN[:nao, :nao] = H_up_MM
+        H_NN[nao:, nao:] = H_down_MM
+
+        x_MM, y_MM, z_MM = V_kvMM[k]
+        H_NN[:nao, :nao] += z_MM
+        H_NN[:nao, nao:] += x_MM + 1j * y_MM
+        H_NN[nao:, :nao] += x_MM - 1j * y_MM
+        H_NN[nao:, nao:] -= z_MM
+
+        S_NN = np.kron(np.eye(2), S_MM)
+        H_NN = (H_NN + H_NN.T.conj()) / 2
+        S_NN = (S_NN + S_NN.T.conj()) / 2
+        energies_n, C_Nn = scipy.linalg.eigh(H_NN, S_NN)
+        Sz_NN = np.zeros_like(S_NN)
+        Sz_NN[:nao, :nao] = S_MM
+        Sz_NN[nao:, nao:] = -S_MM
+        sz_n = np.einsum(
+            'Ni,NM,Mi->i', C_Nn.conj(), Sz_NN, C_Nn
+        ).real
+        energies_kn.append(energies_n)
+        sz_kn.append(sz_n)
+
+    return np.asarray(energies_kn), np.asarray(sz_kn)
+
+
+def create_soc_bandstructure(
+    calc,
+    bandpath,
+    cutoff=13,
+    shift_skn=None,
+    s_power=1 / 2,
+    world=default_world,
+):
+    """Interpolate and diagonalize the LCAO+SOC spinor Hamiltonian."""
+    if not _run_on_rank0(calc, world):
+        return None
+    kwargs = {}
+    if shift_skn is not None:
+        nbands = shift_skn.shape[2]
+        kwargs.update(nbands=nbands, convergence={'bands': nbands})
+    calc_bandpath = calc.fixed_density(
+        symmetry='off', kpts=bandpath.kpts, **kwargs
+    )
+
+    from gpaw.lcao.tools import get_lcao_hamiltonian
+    from gpaw.spinorbit import soc as soc_terms
+
+    H_skMM, S_kMM = get_lcao_hamiltonian(calc_bandpath)
+    H_skMM = np.asarray(H_skMM).copy()
+    S_operator = ReciprocalLCAOOperator(
+        bandpath.kpts, calc.atoms.cell, np.asarray(S_kMM)
+    )
+
+    if shift_skn is not None:
+        if len(shift_skn) != len(H_skMM):
+            raise ValueError(
+                'GW corrections and LCAO Hamiltonian have different '
+                'numbers of spin channels'
+            )
+        for spin, shift_kn in enumerate(shift_skn):
+            _, correction_RMM = create_realspace_lcao_operators(
+                calc, cutoff, shift_kn, s_power, spin=spin, world=world
+            )
+            correction_power_kMM = correction_RMM.inverse_fourier_transform(
+                bandpath.kpts
+            )
+            H_skMM[spin] += correction_to_covariant(
+                correction_power_kMM, S_operator, s_power
+            )
+
+    density = calc.dft.density
+    V_avii = []
+    for a, D_sii in density.D_asii.items():
+        D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
+        setup = calc.dft.pot_calc.setups[a]
+        xc = calc.dft.pot_calc.xc.xc
+        V_avii.append(soc_terms(setup, xc, D_sp) * Ha)
+
+    V_kvMM = []
+    for wfs in calc_bandpath.dft.ibzwfs:
+        V_vMM = np.zeros((3, len(S_kMM[0]), len(S_kMM[0])), complex)
+        for a, V_vii in enumerate(V_avii):
+            P_Mi = wfs.P_aMi[a]
+            V_vMM += np.einsum(
+                'Mi,vij,Tj->vMT', P_Mi.conj(), V_vii.conj(), P_Mi
+            )
+        V_kvMM.append(V_vMM)
+
+    energies_kn, sz_kn = diagonalize_soc_lcao(
+        H_skMM, np.asarray(S_kMM), np.asarray(V_kvMM)
+    )
+    return (
+        BandStructure(
+            path=bandpath,
+            energies=energies_kn[np.newaxis],
+            reference=0,
+        ),
+        sz_kn,
+    )
+
+
+def create_non_ft_bandstructure(calc, bandpath, world=default_world):
+    if not _run_on_rank0(calc, world):
+        return None
     calc_bz = calc.fixed_density(symmetry='off', kpts=bandpath.kpts)
     eps_kn = []
     for kpt in range(len(bandpath.kpts)):
@@ -334,7 +493,79 @@ def match_kpoints_tol(kpts1_kc, kpts2_kc, tol=1e-12):
     return np.array(i1), np.array(i2)
 
 
-def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
+def plot_soc_bandstructures(
+    bandstructures,
+    filename,
+    reference=0.0,
+    emin=None,
+    emax=None,
+    world=default_world,
+):
+    """Plot SOC bands colored by their spin-z projections.
+
+    ``bandstructures`` is a sequence of ``(label, bandstructure, sz_kn)``
+    tuples. Plotting and file output are performed only on rank zero.
+    """
+    if world.rank != 0:
+        return None
+    if not bandstructures:
+        raise ValueError('At least one band structure is required')
+
+    fig, axes = plt.subplots(
+        1,
+        len(bandstructures),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+        figsize=(5 * len(bandstructures), 5),
+        constrained_layout=True,
+    )
+    points = None
+    for ax, (label, bs, sz_kn) in zip(axes[0], bandstructures):
+        energies_kn = bs.energies[0] - reference
+        sz_kn = np.asarray(sz_kn)
+        if energies_kn.shape != sz_kn.shape:
+            raise ValueError(
+                f'Energy and Sz shapes differ for {label}: '
+                f'{energies_kn.shape} != {sz_kn.shape}'
+            )
+        x_k, x_special, labels = bs.path.get_linear_kpoint_axis()
+        ax.plot(x_k, energies_kn, color='0.75', linewidth=0.8)
+        for energy_k, sz_k in zip(energies_kn.T, sz_kn.T):
+            points = ax.scatter(
+                x_k,
+                energy_k,
+                c=sz_k,
+                cmap='viridis',
+                vmin=-1,
+                vmax=1,
+                s=5,
+            )
+        for x in x_special:
+            ax.axvline(x, color='0.85', linewidth=0.8)
+        ax.axhline(0.0, color='black', linewidth=0.8)
+        ax.set(
+            title=label,
+            xticks=x_special,
+            xticklabels=labels,
+            xlim=(x_k[0], x_k[-1]),
+            ylim=(emin, emax),
+        )
+
+    axes[0, 0].set_ylabel('Energy (eV)')
+    fig.colorbar(points, ax=axes[0], label=r'$\langle S_z\rangle$')
+    fig.savefig(filename, dpi=200)
+    return fig, axes[0]
+
+
+def plot_g0w0_bandstructure(
+    calc_gs,
+    bandpath,
+    filename_g0w0_pw_from_lcao,
+    world=default_world,
+):
+    if not _run_on_rank0(calc_gs, world):
+        return None
     import pickle
     results = pickle.load(open(f'{filename_g0w0_pw_from_lcao}', 'rb'))
     delta_ibz_kn = (
@@ -349,7 +580,8 @@ def plot_g0w0_bandstructure(calc_gs, bandpath, filename_g0w0_pw_from_lcao):
         emin=-10,
         emax=20,
         filename='bs.png',
-        plot_also_unshifted=True)
+        plot_also_unshifted=True,
+        world=world)
     plt.clf()
 
 
@@ -362,10 +594,15 @@ def bandstructure_plot(calc_ibz,
                        filename='bs.png',
                        plot_also_unshifted=True,
                        plot_also_non_FT=False,
-                       s_power=1 / 2):
+                       s_power=1 / 2,
+                       world=default_world):
+
+    if not _run_on_rank0(calc_ibz, world):
+        return None
 
     bs_interpolate_fromRspace = bandstructure(
-        calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=s_power)
+        calc_ibz, cutoff, bandpath, delta_ibz_kn,
+        s_power=s_power, world=world)
     return bs_interpolate_fromRspace.plot(
         emin=emin,
         emax=emax,
@@ -374,13 +611,23 @@ def bandstructure_plot(calc_ibz,
         plot_also_non_FT=plot_also_non_FT)
 
 
-def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
+def bandstructure(
+    calc_ibz,
+    cutoff,
+    bandpath,
+    delta_ibz_kn,
+    s_power=1 / 2,
+    world=default_world,
+):
+    if not _run_on_rank0(calc_ibz, world):
+        return None
     bs_shifted_fromRSpace = create_bandstructure(
         calc=calc_ibz,
         bandpath=bandpath,
         cutoff=cutoff,
         shift_kn=delta_ibz_kn,
-        s_power=s_power)
+        s_power=s_power,
+        world=world)
     bs_shifted_fromRSpace.write(f'bs_fromRSpace_{cutoff}.json')
     reciprocal = ReciprocalSpace.from_gpaw_calculator(calc_ibz)
 
@@ -414,9 +661,12 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         calc_ibz,
         bandpath,
         cutoff=cutoff,
-        shift_kn=None)
+        shift_kn=None,
+        world=world)
 
-    bs_no_FT = create_non_ft_bandstructure(calc_ibz, bandpath)
+    bs_no_FT = create_non_ft_bandstructure(
+        calc_ibz, bandpath, world=world
+    )
 
     bp_ind, mesh_ind = match_kpoints_tol(bandpath.kpts, k_bz_kc)
     point_e_kn = exact_bz_eps_kn[mesh_ind]
@@ -429,7 +679,8 @@ def bandstructure(calc_ibz, cutoff, bandpath, delta_ibz_kn, s_power=1 / 2):
         k_bz_kc,
         bp_ind,
         point_e_kn,
-        calc_ibz)
+        calc_ibz,
+        world=world)
 
 
 def correction_to_covariant(correction_power_kMM, S_kMM, s_power):
@@ -521,6 +772,7 @@ class BandStructureInterpolationPlot:
     bp_ind: np.ndarray
     point_e_kn: np.ndarray
     calc_ibz: object
+    world: object = default_world
 
     def plot(self,
              emin=-10,
@@ -528,6 +780,8 @@ class BandStructureInterpolationPlot:
              filename='bs.png',
              plot_also_unshifted=True,
              plot_also_non_FT=False):
+        if self.world.rank != 0:
+            return None
         from ase.spectrum.band_structure import BandStructurePlot
 
         bsp_shifted_fromRSpace = BandStructurePlot(self.bs_shifted_fromRSpace)

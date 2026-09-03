@@ -4,6 +4,8 @@ from myqueue.workflow import run
 
 
 def workflow():
+    run(script='MoS2_lcao_gw_soc.py', cores=40, tmax='24h', nodename='xeon40el9')
+    return
     with run(script='C_ecut_k_conv_GW.py', cores=24, tmax='10h') as r:
         run(script='C_ecut_k_conv_plot_GW.py')
         run(script='C_ecut_extrap.py')
@@ -22,6 +24,7 @@ def workflow():
         with run(script='MoS2_GWG.py', cores=8, tmax='20m'):
             run(script='MoS2_bs_plot.py')
             run(script='check_gw.py')
+
 
     with run(script='C_lcao_groundstate.py', cores=24, tmax='1h'):
         lcao_gw = run(script='C_lcao_gw.py', cores=4, tmax='1h')
