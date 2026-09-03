@@ -1014,12 +1014,12 @@ def find_reciprocal_vectors(ecut: float,
     real = np.issubdtype(dtype, np.floating)
     if real:
         size[2] = size[2] // 2 + 1
-        i_Qc = np.indices(size).transpose((1, 2, 3, 0))
+        i_Qc = np.indices(size, np.int16).transpose((1, 2, 3, 0))
         i_Qc[..., :2] += size[:2] // 2
         i_Qc[..., :2] %= size[:2]
         i_Qc[..., :2] -= size[:2] // 2
     else:
-        i_Qc = np.indices(size).transpose((1, 2, 3, 0))  # type: ignore
+        i_Qc = np.indices(size, np.int16).transpose((1, 2, 3, 0))
         half = [s // 2 for s in size]
         i_Qc += half
         i_Qc %= size

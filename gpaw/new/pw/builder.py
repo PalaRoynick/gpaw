@@ -218,7 +218,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
             if wfs.spin == 0:
                 check_g_vector_ordering(self.grid, pw, index_kG[wfs.k])
-
+                #rm cache, ekin_G, G_plus_k_Gv
             index = (wfs.spin, wfs.k) if self.ncomponents != 4 else (wfs.k,)
             data = reader.wave_functions.proxy('coefficients', *index)
             data.scale = c
