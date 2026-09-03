@@ -4,9 +4,8 @@ import pytest
 from ase.units import Bohr, Ha, _e
 
 from gpaw.core import UGDesc
-from gpaw.extensions.jellium import (DEFAULT_REGRESSION_DEPTH,
-                                     FixedPotentialJelliumExtension,
-                                     GUESSED_CAPACITANCE, regress_slope)
+from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
+                                     regress_slope)
 
 WIDTH = 4.0  # Å
 AREA = WIDTH**2  # Å^2
@@ -39,8 +38,10 @@ def test_capacitance_guess():
     jellium = make_jellium()
     assert jellium.slope is None
     slope = jellium.update_slope()
-    # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
-    assert slope == pytest.approx(-_e * 1e22 / (AREA * GUESSED_CAPACITANCE))
+    # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6; 10 muF/cm^2 is the guessed
+    # apparent capacitance in
+    # FixedPotentialJelliumExtension._capacitance_slope:
+    assert slope == pytest.approx(-_e * 1e22 / (AREA * 10))
     assert slope < 0.0  # more electrons is a lower potential
 
 
@@ -80,10 +81,11 @@ def test_regression_depth():
     assert len(jellium.history) == 2
     assert jellium.update_slope() == pytest.approx(-30.0)
 
-    # Widening the window keeps the attempts that are still in it:
-    jellium.slope_regression_depth = DEFAULT_REGRESSION_DEPTH
+    # Widening the window keeps the attempts that are still in it; 4 is
+    # FixedPotentialJelliumExtension's own default slope_regression_depth:
+    jellium.slope_regression_depth = 4
     assert len(jellium.history) == 2
-    assert jellium.slope_regression_depth == DEFAULT_REGRESSION_DEPTH
+    assert jellium.slope_regression_depth == 4
 
 
 def test_bad_regression_depth():

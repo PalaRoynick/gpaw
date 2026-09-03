@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import textwrap
 import warnings
+from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha, _e
@@ -11,18 +12,39 @@ from gpaw import ConvergenceError
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
-from gpaw.extensions.jellium import (DEFAULT_REGRESSION_DEPTH,
-                                     FixedPotentialJelliumExtension,
+from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension, regress_slope)
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.pw.poisson import PWPoissonSolver
 from gpaw.new.solvation import Solvation, SolvationExtension
 
+_KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
+                       'max_iters', 'grand_output', 'jelliumregion',
+                       'always_adjust', 'slope', 'mixer',
+                       'slope_regression_depth'})
 #: Default top of the jellium region: 1 Å below the top of the unit cell.
 DEFAULT_TOP = -1.0
 #: Default bottom of the jellium region: 3 Å above the highest atom.
 DEFAULT_BOTTOM = -3.0
+
+#: Grid points closer than this to the lower cell boundary are left out of
+#: the slope-fitting window: the finite-difference solution is least accurate
+#: there because of the zero boundary condition.
+SKIP_NEAR_BOUNDARY = 0.5  # Å
+
+#: Smallest usable slope-fitting window.
+MIN_WINDOW_POINTS = 4
+
+#: A grid point counts as solvated once the dielectric exceeds this.
+EPS_VACUUM_TOL = 1e-3
+
+#: A grid point counts as occupied once ``|rho|`` exceeds this fraction of its
+#: largest xy-averaged value.  It has to be a small fraction: the fit must sit
+#: in genuine vacuum, where the field does not depend on the density.  Let it
+#: reach into the tail of the slab and the measured slope starts to track the
+#: density, which feeds back into the next iteration and stalls the SCF.
+RHO_VACUUM_TOL = 1e-5
 
 
 class PotentialConvergenceError(ConvergenceError):
@@ -153,12 +175,6 @@ class JelliumRegion:
         return mask_r, bottom, top
 
 
-_KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
-                       'max_iters', 'grand_output', 'jelliumregion',
-                       'always_adjust', 'slope', 'mixer',
-                       'slope_regression_depth'})
-
-
 def _check_keywords(kwargs: dict) -> None:
     """Raise on anything that is not an SJM parameter."""
     unknown = set(kwargs) - _KEYWORDS
@@ -240,8 +256,8 @@ class SJM(Solvation):
                  grand_output: bool = True,
                  always_adjust: bool = False,
                  slope: float | None = None,  # V/electron
-                 mixer: float = 0.5,
-                 slope_regression_depth: int = DEFAULT_REGRESSION_DEPTH):
+                 mixer: float = 0.2,
+                 slope_regression_depth: int = 4):
         super().__init__(cavity, dielectric, interactions,
                          dipolelayer=True, zero_vacuum=True)
         self.jelliumregion = jelliumregion or {}
@@ -391,8 +407,12 @@ class SJMExtension(Extension):
                  grand_output: bool = True,
                  always_adjust: bool = False,
                  slope: float | None = None,  # V/electron
-                 mixer: float = 0.5,
-                 slope_regression_depth: int = DEFAULT_REGRESSION_DEPTH,
+                 # Neither of these is used here -- they are only handed on
+                 # to the jellium, so ``None`` means "not specified" and lets
+                 # FixedPotentialJelliumExtension supply its own default
+                 # rather than repeating it:
+                 mixer: float | None = None,
+                 slope_regression_depth: int | None = None,
                  log=None):
         self.solvation = solvation
         self.jellium = jellium
@@ -794,15 +814,31 @@ class SJMExtension(Extension):
             self.jellium = JelliumExtension(
                 mask_r, charge=self.charge, pw=pw)
         else:
+            # Leave out what was never specified, so that the jellium's own
+            # defaults apply instead of being shadowed by a repeat of them:
             self.jellium = FixedPotentialJelliumExtension(
                 mask_r,
                 workfunction_target=target_potential,
                 excess_electrons_guess=self.charge,
                 tolerance=self.tol,
                 slope=self.slope,
-                mixer=self.mixer,
-                slope_regression_depth=self.slope_regression_depth,
-                pw=pw)
+                pw=pw,
+                **self._jellium_defaults())
+
+    def _jellium_defaults(self) -> dict[str, Any]:
+        """The jellium keywords that were actually specified.
+
+        Neither of these is used by this class -- it only hands them on.
+        Leaving out the ones that were never specified is what keeps their
+        defaults in FixedPotentialJelliumExtension alone, instead of
+        repeating them here where they would silently drift apart.
+        """
+        specified: dict[str, Any] = {}
+        if self.mixer is not None:
+            specified['mixer'] = self.mixer
+        if self.slope_regression_depth is not None:
+            specified['slope_regression_depth'] = self.slope_regression_depth
+        return specified
 
     def _slope(self) -> float | None:
         """Estimated d(potential)/d(charge) in V per electron.
@@ -872,28 +908,9 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
     """
     a_z = a_r.data.mean(axis=(0, 1))
     z_z = a_r.desc.xyz()[0, 0, :, 2] * Bohr
-    with open(filename, 'w') as fd:
+    with open(filename, 'w') as out:
         for z, val in zip(z_z, a_z):
-            fd.write(f'{z:f} {val:1.8f}\n')
-
-
-#: Grid points closer than this to the lower cell boundary are left out of
-#: the slope-fitting window: the finite-difference solution is least accurate
-#: there because of the zero boundary condition.
-SKIP_NEAR_BOUNDARY = 0.5  # Å
-
-#: Smallest usable slope-fitting window.
-MIN_WINDOW_POINTS = 4
-
-#: A grid point counts as solvated once the dielectric exceeds this.
-EPS_VACUUM_TOL = 1e-3
-
-#: A grid point counts as occupied once ``|rho|`` exceeds this fraction of its
-#: largest xy-averaged value.  It has to be a small fraction: the fit must sit
-#: in genuine vacuum, where the field does not depend on the density.  Let it
-#: reach into the tail of the slab and the measured slope starts to track the
-#: density, which feeds back into the next iteration and stalls the SCF.
-RHO_VACUUM_TOL = 1e-5
+            out.write(f'{z:f} {val:1.8f}\n')
 
 
 class SJMPoissonSolver(PoissonSolverWrapper):

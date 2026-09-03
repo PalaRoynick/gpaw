@@ -12,16 +12,6 @@ from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.ibzwfs import IBZWaveFunctions
 
-#: Default number of previous attempts that the slope is regressed over.
-DEFAULT_REGRESSION_DEPTH = 4
-
-#: Apparent capacitance, in muF/cm^2, behind the guessed slope.  A jellium a
-#: few Angstrom above the slab is a plate capacitor of roughly this
-#: capacitance.  (The legacy implementation guessed 10 muF/cm^2 -- typical of a
-#: solvated double layer -- which is a 2.4 times larger, and for a small cell
-#: distinctly less stable, first step.)
-GUESSED_CAPACITANCE = 4.2
-
 
 class Jellium(ExtensionInput):
     name = 'jellium'
@@ -90,15 +80,15 @@ class FixedPotentialJelliumExtension(JelliumExtension):
                  excess_electrons_guess=0.0,
                  tolerance: float = 0.001,  # eV
                  slope: float | None = None,  # V/electron
-                 mixer: float = 0.5,
-                 slope_regression_depth: int = DEFAULT_REGRESSION_DEPTH):
+                 mixer: float = 0.2,
+                 slope_regression_depth: int = 4):
         """Adjust jellium charge to get the desired Fermi-level.
 
         The charge is stepped along an estimate of the slope of the
         potential vs. the number of excess electrons.  ``slope`` is the
         initial guess, in volts per electron; ``None`` guesses one from the
-        apparent capacitance of a plate capacitor, see
-        :data:`GUESSED_CAPACITANCE`.  Once there are two or more
+        apparent capacitance of a plate capacitor.
+        Once there are two or more
         attempts to regress a slope from, the estimate is updated, damped by
         ``mixer``: ``new = mixer * old + (1 - mixer) * regressed``.  The
         regression uses the last ``slope_regression_depth`` attempts.
@@ -140,7 +130,7 @@ class FixedPotentialJelliumExtension(JelliumExtension):
         """Slope, in V/electron, of a plate capacitor of the cell's area."""
         area = abs(np.linalg.det(self.mask_r.desc.cell_cv[:2, :2])) * Bohr**2
         # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
-        return -_e * 1e22 / (area * GUESSED_CAPACITANCE)
+        return -_e * 1e22 / (area * 10)
 
     def update_slope(self) -> float:
         """Update and return d(potential)/d(charge) in V/electron."""
