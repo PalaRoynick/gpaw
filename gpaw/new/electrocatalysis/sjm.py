@@ -691,6 +691,9 @@ class SJMExtension(Extension):
         # Carry the slope estimate across the switch:
         self.slope = self._slope()
         self.potentiostat.target_potential = target_potential
+        # A tol set while in constant-charge mode was kept on this class
+        # only (the 'tol' handler skips the potentiostat then); adopt it now.
+        self.potentiostat.tol = self.tol
         if target_potential is None:
             self.potentiostat.optimizer = None
         else:

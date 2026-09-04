@@ -120,3 +120,36 @@ def test_set_before_first_calculation(in_tmp_dir):
 def test_unknown_extension_name(atoms):
     with pytest.raises(AttributeError, match='no attribute'):
         atoms.calc.nosuchextension
+
+
+def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
+    """A tol changed while at constant charge takes effect on the switch.
+
+    The 'tol' handler skips the potentiostat in constant-charge mode (there
+    is nothing to equilibrate), so _switch_mode has to carry the new value
+    across -- it used to be baked in when the whole potential-control object
+    was rebuilt.
+    """
+    a = 1.4
+    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
+    atoms.positions[0, 2] = 4.0
+    atoms.calc = GPAW(
+        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
+        convergence={'eigenstates': 1e-5},
+        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
+                        interactions=[], excess_electrons=0.0, tol=0.001)])
+    atoms.get_potential_energy()
+    sjm = atoms.calc.dft.sjm
+
+    sjm.set(tol=0.05)  # constant-charge mode: kept on the extension only
+    assert sjm.potentiostat.tol == pytest.approx(0.001)
+
+    sjm.set(target_potential=3.0)
+    assert sjm.potentiostat.optimizer is not None
+    assert sjm.potentiostat.tol == pytest.approx(0.05)
+
+    # A single combined call is the same: the 'tol' branch runs first, while
+    # the mode has not flipped yet, so _switch_mode is what has to adopt it.
+    sjm.set(target_potential=None)
+    sjm.set(tol=0.02, target_potential=4.0)
+    assert sjm.potentiostat.tol == pytest.approx(0.02)
