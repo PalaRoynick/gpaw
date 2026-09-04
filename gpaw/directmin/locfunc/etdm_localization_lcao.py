@@ -8,12 +8,14 @@ from gpaw.directmin.derivatives import get_approx_analytical_hessian
 class LCAOETDMLocalize:
     """Class for performing PZ-SIC localization for LCAO-ETDM."""
 
-    def __init__(self, etdm_solver, wfs, log, tol=5.0e-4, maxiter=200):
+    def __init__(self, etdm_solver, wfs, log, inner_loop=False,
+                 tol=5.0e-4, maxiter=200):
         self.solver = etdm_solver
         self.wfs = wfs
         self.log = log
         self.tol = tol
         self.maxiter = maxiter
+        self.inner_loop = inner_loop
         self.ham = None
         self.dens = None
 
@@ -34,6 +36,7 @@ class LCAOETDMLocalize:
         self.log_header()
         self.solver.lock_subspace('oo')
         self.solver.searchdir_algo.reset()
+        self.solver.searchdir_algo_pz.reset()
         self.solver.dm_helper.set_reference_orbitals(
             self.wfs, self.solver.n_dim)
 
@@ -42,7 +45,9 @@ class LCAOETDMLocalize:
         counter = 0
         converged = False
         while not converged:
-            self.solver.iterate(self.ham, self.wfs, self.dens)
+            self.solver.iterate(self.ham, self.wfs, self.dens,
+                                self.inner_loop,
+                                occupied_only=True)
             counter += 1
 
             e_total = self.solver.phi_2i[0]
@@ -60,7 +65,6 @@ class LCAOETDMLocalize:
         self.solver.dm_helper.set_reference_orbitals(
             self.wfs, self.solver.n_dim
         )
-        self.solver.searchdir_algo.reset()
         for k, kpt in enumerate(self.wfs.kpt_u):
             self.solver.hess[k] = get_approx_analytical_hessian(
                 kpt, self.solver.dtype, ind_up=self.solver.ind_up[k])
@@ -69,6 +73,8 @@ class LCAOETDMLocalize:
         self._log('Perdew-Zunger localization finished', flush=True)
         self._log('Total number of e/g calls: %d' % eg_calls_in_loop)
         self.solver.subspace_iters = 0
+        self.solver.searchdir_algo.reset()
+        self.solver.searchdir_algo_pz.reset()
 
     def log_header(self):
         self._log('\nINNER LOOP:')
