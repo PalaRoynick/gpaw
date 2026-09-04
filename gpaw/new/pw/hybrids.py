@@ -631,7 +631,9 @@ def _semilocal_xc_energy(dft: DFT,
                          xc: str) -> float:
     from gpaw.hybrids import parse_name
     semilocal_xc_name, exx_fraction, exx_omega, yukawa = parse_name(xc)
-    fine_grid = dft.pot_calc.fine_grid
+    fine_grid = dft.pot_calc.fine_grid.new(
+        comm=dft.pot_calc.grid.comm,
+        complementary_comm=dft.pot_calc.grid.complementary_comm)
     slxc = create_functional(semilocal_xc_name, fine_grid)
     nt_sr = dft.density.nt_sR.interpolate(grid=fine_grid)
     energy = 0.0

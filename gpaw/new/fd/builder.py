@@ -39,7 +39,8 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.ibz.symmetries,
             h=self.params.h,
             interpolation=self.interpolation_stencil_range,
-            comm=self.communicators['d'])
+            comm=self.communicators['d'],
+            complementary_comm=self.communicators['D'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid

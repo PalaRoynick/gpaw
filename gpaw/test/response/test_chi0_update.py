@@ -38,7 +38,7 @@ def test_si_update_consistency(in_tmp_dir, mpi):
     calc = mpi.GPAW(mode=PW(pw),
                     nbands=nbands,
                     kpts=(kpts, kpts, kpts),
-                    parallel={'domain': 1},
+                    parallel={'domain': 1, 'distribute_density': False},
                     occupations=FermiDirac(width=occw),
                     xc=xc)
 

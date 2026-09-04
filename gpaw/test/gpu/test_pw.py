@@ -115,7 +115,8 @@ def test_gpu_k(gpu, par, mode, xc):
 
 
 @pytest.mark.gpu
-def test_2d():
+@pytest.mark.parametrize('distribute_density', [True, False])
+def test_2d(distribute_density):
     atoms = Atoms('H', pbc=[True, True, False], cell=[1, 1, 5])
     atoms.center(axis=2)
     dft = DFT(
@@ -127,7 +128,8 @@ def test_2d():
         **{'symmetry': 'off'} if GPAW_NO_C_EXTENSION else {},
         convergence={'density': 1e-8},
         kpts=(2, 2, 1),
-        parallel={'gpu': True})
+        parallel={'gpu': True,
+                  'distribute_density': distribute_density})
     dft.converge()
     assert dft.potential.get_vacuum_level() == pytest.approx(2.9436, 1e-2)
     E = dft.calculate_energy()

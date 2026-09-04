@@ -287,10 +287,10 @@ class Density:
                comm1: MPIComm,
                comm2: MPIComm) -> Density:
         return Density(
-            self.nt_sR.redist(grid, comm1, comm2),
+            self.nt_sR.redist(grid),
             None
             if self.taut_sR is None else
-            self.taut_sR.redist(grid, comm1, comm2),
+            self.taut_sR.redist(grid),
             self.D_asii.redist(atomdist, comm1, comm2),
             self.charge,
             self.nvalence,

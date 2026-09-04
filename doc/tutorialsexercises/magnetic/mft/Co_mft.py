@@ -52,7 +52,7 @@ rc_r = np.linspace(0.5, 1.75, 51)
 # ---------- Script ---------- #
 
 # Recalculate the Kohn-Sham orbitals
-atoms, calc = restart(gpw, parallel={'domain': 1})
+atoms, calc = restart(gpw, parallel={'domain': 1, 'distribute_density': False})
 calc = calc.fixed_density(convergence=conv, txt='Co_es.txt')
 
 # Initialize the context and gs adapter

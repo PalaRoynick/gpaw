@@ -775,6 +775,7 @@ KptsType = Union[Sequence[int], dict, Sequence[Sequence[float]]]
 
 PARALLEL_KEYS = {
     'kpt', 'domain', 'band', 'order', 'stridebands', 'augment_grids',
+    'distribute_density',
     'sl_auto', 'sl_default', 'sl_diagonalize', 'sl_inverse_cholesky',
     'sl_lcao', 'sl_lrtddft', 'use_elpa', 'elpasolver', 'buffer_size', 'gpu'}
 

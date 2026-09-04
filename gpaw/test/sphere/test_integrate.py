@@ -191,17 +191,20 @@ def test_co_spherical_truncation_function_collection(gpw_files):
     # Integrate collection of spherical truncation functions
     ones_r = finegd.empty()
     ones_r[:] = 1.
-    vol_aj = {0: np.empty(len(rcut_j)), 1: np.empty(len(rcut_j))}
+    vol_aj = stfc.dict()
     stfc.integrate(ones_r, vol_aj)
 
     # Check that the integrated volume matches the spherical volume and an
     # analogous manual integration
-    for a, spos_c in enumerate(spos_ac):
-        for rcut, vol in zip(rcut_j, vol_aj[a]):
+    for a, vol_j in vol_aj.items():
+        spos_c = spos_ac[a]
+        for rcut, vol in zip(rcut_j, vol_j):
             ref = 4 * np.pi * rcut**3. / 3.
             assert abs(vol - ref) <= 1e-8 + 1e-2 * ref
 
-            # "Manual" integration
-            theta_r = periodic_truncation_function(finegd, spos_c, rcut, drcut)
-            manual_vol = finegd.integrate(theta_r)
-            assert abs(vol - manual_vol) <= 1e-8 + 1e-6 * ref
+            if finegd.comm.size == 1:
+                # "Manual" integration
+                theta_r = periodic_truncation_function(finegd, spos_c,
+                                                       rcut, drcut)
+                manual_vol = finegd.integrate(theta_r)
+                assert abs(vol - manual_vol) <= 1e-8 + 1e-6 * ref

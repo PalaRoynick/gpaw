@@ -79,10 +79,10 @@ class Potential:
                comm1: MPIComm,
                comm2: MPIComm) -> Potential:
         return Potential(
-            self.vt_sR.redist(grid, comm1, comm2),
+            self.vt_sR.redist(grid),
             self.dH_asii.redist(atomdist, comm1, comm2),
             None if self.dedtaut_sR is None else self.dedtaut_sR.redist(
-                grid, comm1, comm2),
+                grid),
             None if self.vHt_x is None else self.vHt_x.redist(
                 desc, comm1, comm2))
 

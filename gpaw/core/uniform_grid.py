@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import cached_property
+from functools import cached_property, wraps
 from math import pi
 from typing import TYPE_CHECKING, Literal
 
@@ -33,6 +33,7 @@ class UGDesc(Domain['UGArray']):
                  zerobc=(False, False, False),
                  kpt: Vector | None = None,  # in units of reciprocal cell
                  comm: MPIComm = serial_comm,
+                 complementary_comm: MPIComm | None = None,
                  decomp: Sequence[Sequence[int]] | None = None,
                  dtype=None):
         """Description of 3D uniform grid.
@@ -52,6 +53,8 @@ class UGDesc(Domain['UGArray']):
             (assumed to be zero).
         comm:
             Communicator for domain-decomposition.
+        complementary_comm:
+            Communicator over ranks with equivalent local-domain data.
         kpt:
             K-point for Block-boundary conditions specified in units of the
             reciprocal cell.
@@ -81,7 +84,7 @@ class UGDesc(Domain['UGArray']):
                                in zips(self.decomp_cp, self.mypos_c)])
         self.mysize_c = self.end_c - self.start_c
 
-        super().__init__(cell, pbc, kpt, comm, dtype)
+        super().__init__(cell, pbc, kpt, comm, complementary_comm, dtype)
         self.myshape = tuple(self.mysize_c)
 
         self.dv = self.volume / self.size_c.prod()
@@ -110,6 +113,11 @@ class UGDesc(Domain['UGArray']):
             f'UGDesc(size={self.size_c.tolist()}, ' +
             zbc)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['complementary_comm'] = None
+        return state
+
     def _short_string(self, global_shape):
         return f'Uniform wave function grid shape: {global_shape}'
 
@@ -130,6 +138,9 @@ class UGDesc(Domain['UGArray']):
             kpt=None,
             dtype=None,
             comm: MPIComm | Literal['inherit'] | None = 'inherit',
+            complementary_comm: (MPIComm |
+                                 Literal['inherit'] |
+                                 None) = 'inherit',
             size=None,
             pbc=None,
             zerobc=None,
@@ -140,6 +151,8 @@ class UGDesc(Domain['UGArray']):
         if reuse_decomp:
             decomp = self.decomp_cp
         comm = self.comm if comm == 'inherit' else comm
+        if complementary_comm == 'inherit':
+            complementary_comm = self.complementary_comm
         return UGDesc(cell=self.cell_cv,
                       size=self.size_c if size is None else size,
                       pbc=self.pbc_c if pbc is None else pbc,
@@ -147,6 +160,7 @@ class UGDesc(Domain['UGArray']):
                       kpt=(self.kpt_c if self.kpt_c.any() else None)
                       if kpt is None else kpt,
                       comm=comm or serial_comm,
+                      complementary_comm=complementary_comm,
                       decomp=decomp,
                       dtype=self.dtype if dtype is None else dtype)
 
@@ -304,6 +318,89 @@ class UGDesc(Domain['UGArray']):
                           xp=np):
         return Gradient(self._gd, v,
                         scale=scale, n=n, dtype=self.dtype, xp=xp)
+
+
+def _same_communicator(comm1: MPIComm, comm2: MPIComm) -> bool:
+    if comm1 is comm2:
+        return True
+    if comm1.size == comm2.size == 1:
+        return True
+    return False
+
+
+def _with_complementary_comm_redistribution(method):
+    @wraps(method)
+    def wrapper(self,
+                *,
+                plan1: fftw.FFTPlans | None = None,
+                plan2: fftw.FFTPlans | None = None,
+                grid: UGDesc | None = None,
+                out=None,
+                in_complementary_comm: MPIComm | None = None,
+                out_complementary_comm: MPIComm | None = None):
+        if out is None:
+            if grid is None:
+                raise ValueError('Please specify "grid" or "out".')
+            out = grid.empty(self.dims, xp=self.xp)
+
+        if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
+            raise ValueError('Grids must have zerobc=False!')
+
+        if in_complementary_comm is None:
+            in_complementary_comm = self.desc.complementary_comm
+        if out_complementary_comm is None:
+            out_complementary_comm = out.desc.complementary_comm
+
+        needs_complementary_redist = not _same_communicator(
+            self.desc.comm, out.desc.comm)
+
+        if needs_complementary_redist:
+            if (in_complementary_comm is None or
+                    out_complementary_comm is None):
+                raise ValueError(
+                    'Complementary communicators are required for '
+                    'redistributed interpolation/restriction.')
+
+            output_data = None
+            if in_complementary_comm.rank == 0:
+                input_data = self.gather()
+                if input_data is not None:
+                    output_desc = out.desc.new(comm=None)
+                    output = method(
+                        input_data,
+                        plan1=plan1,
+                        plan2=plan2,
+                        grid=output_desc,
+                        out=output_desc.empty(input_data.dims,
+                                              xp=input_data.xp))
+                    output_data = output.data
+            if out_complementary_comm.rank == 0:
+                out.scatter_from(output_data)
+            out_complementary_comm.broadcast(out.data, 0)
+            return out
+
+        if self.desc.comm.size > 1:
+            input_data = self.gather()
+            if input_data is not None:
+                output_desc = out.desc.new(comm=None)
+                output = method(input_data,
+                                plan1=plan1,
+                                plan2=plan2,
+                                grid=output_desc,
+                                out=output_desc.empty(input_data.dims,
+                                                      xp=input_data.xp))
+                out.scatter_from(output.data)
+            else:
+                out.scatter_from()
+            return out
+
+        return method(self,
+                      plan1=plan1,
+                      plan2=plan2,
+                      grid=grid,
+                      out=out)
+
+    return wrapper
 
 
 class UGArray(XArray[UGDesc]):
@@ -595,12 +692,15 @@ class UGArray(XArray[UGDesc]):
         if kpt_c.any():
             self.data *= self.desc.eikr(kpt_c, xp=self.xp)
 
+    @_with_complementary_comm_redistribution
     def interpolate(self,
                     *,
                     plan1: fftw.FFTPlans | None = None,
                     plan2: fftw.FFTPlans | None = None,
                     grid: UGDesc | None = None,
-                    out: UGArray | None = None) -> UGArray:
+                    out: UGArray | None = None,
+                    in_complementary_comm: MPIComm | None = None,
+                    out_complementary_comm: MPIComm | None = None) -> UGArray:
         """Interpolate to finer grid.
 
         Parameters
@@ -613,25 +713,12 @@ class UGArray(XArray[UGDesc]):
             Target grid.
         out:
             Target UGArray object.
+        in_complementary_comm:
+            Communicator over ranks that hold equivalent input data.
+        out_complementary_comm:
+            Communicator over ranks that should hold equivalent output data.
         """
-        if out is None:
-            if grid is None:
-                raise ValueError('Please specify "grid" or "out".')
-            out = grid.empty(self.dims, xp=self.xp)
-
-        if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
-            raise ValueError('Grids must have zerobc=False!')
-
-        if self.desc.comm.size > 1:
-            input = self.gather()
-            if input is not None:
-                output = input.interpolate(plan1=plan1, plan2=plan2,
-                                           grid=out.desc.new(comm=None))
-                out.scatter_from(output.data)
-            else:
-                out.scatter_from()
-            return out
-
+        assert out is not None
         size1_c = self.desc.size_c
         size2_c = out.desc.size_c
         if (size2_c <= size1_c).any():
@@ -691,11 +778,15 @@ class UGArray(XArray[UGDesc]):
         out.multiply_by_eikr()
         return out
 
+    @_with_complementary_comm_redistribution
     def fft_restrict(self,
+                     *,
                      plan1: fftw.FFTPlans | None = None,
                      plan2: fftw.FFTPlans | None = None,
                      grid: UGDesc | None = None,
-                     out: UGArray | None = None) -> UGArray:
+                     out: UGArray | None = None,
+                     in_complementary_comm: MPIComm | None = None,
+                     out_complementary_comm: MPIComm | None = None) -> UGArray:
         """Restrict to coarser grid.
 
         Parameters
@@ -708,25 +799,12 @@ class UGArray(XArray[UGDesc]):
             Target grid.
         out:
             Target UGArray object.
+        in_complementary_comm:
+            Communicator over ranks that hold equivalent input data.
+        out_complementary_comm:
+            Communicator over ranks that should hold equivalent output data.
         """
-        if out is None:
-            if grid is None:
-                raise ValueError('Please specify "grid" or "out".')
-            out = grid.empty(self.dims, xp=self.xp)
-
-        if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
-            raise ValueError('Grids must have zerobc=False!')
-
-        if self.desc.comm.size > 1:
-            input = self.gather()
-            if input is not None:
-                output = input.fft_restrict(plan1, plan2,
-                                            out.desc.new(comm=None))
-                out.scatter_from(output.data)
-            else:
-                out.scatter_from()
-            return out
-
+        assert out is not None
         size1_c = self.desc.size_c
         size2_c = out.desc.size_c
 
@@ -735,7 +813,8 @@ class UGArray(XArray[UGDesc]):
 
         if self.dims:
             for input, output in zips(self.flat(), out.flat()):
-                input.fft_restrict(plan1, plan2, grid, output)
+                input.fft_restrict(plan1=plan1, plan2=plan2,
+                                   grid=grid, out=output)
             return out
 
         plan1.tmp_R[:] = self.data
@@ -877,7 +956,8 @@ class UGArray(XArray[UGDesc]):
 
     def redist(self,
                domain: UGDesc,
-               comm1: MPIComm, comm2: MPIComm) -> UGArray:
+               comm1: MPIComm | None = None,
+               comm2: MPIComm | None = None) -> UGArray:
         a = super().redist(domain, comm1, comm2)
         assert isinstance(a, UGArray)
         return a

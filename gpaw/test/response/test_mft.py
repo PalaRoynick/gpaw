@@ -50,7 +50,8 @@ def test_Fe_bcc(in_tmp_dir, gpw_files, mpi):
     # ---------- Script ---------- #
 
     # Extract the ground state fixture
-    calc = mpi.GPAW(gpw_files['fe_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['fe_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff['fe_pw']
     atoms = calc.atoms
 
@@ -146,7 +147,8 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
     # ---------- Script ---------- #
 
     # Extract the ground state fixture
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     nbands = response_band_cutoff['co_pw']
     atoms = calc.get_atoms()
 
@@ -253,7 +255,7 @@ def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
                 kpts={'size': (2, 2, 2), 'gamma': True},
                 eigensolver={'niter': 4},
                 occupations=FermiDirac(0.001),
-                parallel=dict(domain=1),
+                parallel=dict(domain=1, distribute_density=False),
                 communicator=comm)
     a.calc = calc
     a.get_potential_energy()
@@ -279,7 +281,8 @@ def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_site_magnetization_sum_rule(in_tmp_dir, gpw_files, qrel, mpi):
     # Set up ground state adapter and basic parameters
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
     sites = get_co_sites(gs)
     context = ResponseContext(txt='Co_sum_rule.txt', comm=mpi.comm)
@@ -344,7 +347,8 @@ def test_Co_site_magnetization_sum_rule(in_tmp_dir, gpw_files, qrel, mpi):
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_site_zeeman_energy_sum_rule(in_tmp_dir, gpw_files, qrel, mpi):
     # Set up ground state adapter and atomic site data
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
     sites = get_co_sites(gs)
     context = ResponseContext('Co_sum_rule.txt', comm=mpi.comm)
@@ -419,7 +423,8 @@ def get_Co_exchange_reference(qrel):
 @pytest.mark.parametrize('qrel', generate_qrel_q())
 def test_Co_exchange(in_tmp_dir, gpw_files, qrel, mpi):
     # Set up ground state adapter and atomic site data
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
     context = ResponseContext('Co_exchange.txt', comm=mpi.comm)
     sites = get_co_sites(gs)
@@ -476,7 +481,8 @@ def test_Co_exchange(in_tmp_dir, gpw_files, qrel, mpi):
 @pytest.mark.parallel
 def test_heisenberg_distribution_over_transitions(in_tmp_dir, gpw_files, mpi):
     # Set up ground state adapter and atomic site data
-    calc = mpi.GPAW(gpw_files['co_pw'], parallel=dict(domain=1))
+    calc = mpi.GPAW(gpw_files['co_pw'],
+                    parallel=dict(domain=1, distribute_density=False))
     gs = ResponseGroundStateAdapter(calc)
     sites = get_co_sites(gs)
 

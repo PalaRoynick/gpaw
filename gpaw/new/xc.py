@@ -102,30 +102,35 @@ class Functional:
                             interpolate: Callable[[UGArray], UGArray]
                             ) -> Array2D:
         args, kwargs = self._args(ibzwfs, density, interpolate)
-        if ibzwfs.kpt_band_comm.rank == 0:
-            if self.xp is np:
-                if isinstance(self.xc, VDWXC):
-                    xck = self.xc.semilocal_xc.kernel
-                    xck.calculate(*[array.data for array in args])
-                    wrapper = self.xc.redist_wrapper
-                    stress_vv = wrapper.calculate(args[1].data, args[3].data,
-                                                  args[2].data, args[4].data,
-                                                  get_stress=True)[1]
-                    return stress_vv + self._stress(*args, **kwargs)
-                else:
-                    self.xc.kernel.calculate(*[array.data for array in args])
-            # Special GPU cases:
-            elif self.name == 'LDA':
-                e_r, nt_sr, vt_sr = args
-                evaluate_lda_gpu(nt_sr.data, vt_sr.data, e_r.data)
-            elif self.name == 'PBE':
-                e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr = args
-                evaluate_pbe_gpu(nt_sr.data, vt_sr.data, e_r.data,
-                                 sigma_xr.data, dedsigma_xr.data)
+        if self.xp is np:
+            if isinstance(self.xc, VDWXC):
+                xck = self.xc.semilocal_xc.kernel
+                xck.calculate(*[array.data for array in args])
+                wrapper = self.xc.redist_wrapper
+                stress_vv = wrapper.calculate(args[1].data, args[3].data,
+                                              args[2].data, args[4].data,
+                                              get_stress=True)[1]
+                stress_vv += self._stress(*args, **kwargs)
             else:
-                1 / 0
-            return self._stress(*args, **kwargs)
-        return self.xp.zeros((3, 3))
+                self.xc.kernel.calculate(*[array.data for array in args])
+                stress_vv = self._stress(*args, **kwargs)
+        # Special GPU cases:
+        elif self.name == 'LDA':
+            e_r, nt_sr, vt_sr = args
+            evaluate_lda_gpu(nt_sr.data, vt_sr.data, e_r.data)
+            stress_vv = self._stress(*args, **kwargs)
+        elif self.name == 'PBE':
+            e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr = args
+            evaluate_pbe_gpu(nt_sr.data, vt_sr.data, e_r.data,
+                             sigma_xr.data, dedsigma_xr.data)
+            stress_vv = self._stress(*args, **kwargs)
+        else:
+            1 / 0
+
+        comm = self.grid.complementary_comm
+        if comm is not None and comm.size > 1 and comm.rank != 0:
+            return self.xp.zeros((3, 3))
+        return stress_vv
 
     def _args(self,
               ibzwfs,
@@ -157,8 +162,6 @@ class LDAFunctional(Functional):
         return exc, vxct_sr, None
 
     def _args(self, ibzwfs, density, interpolate):
-        if ibzwfs.kpt_band_comm.rank != 0:
-            return (), {}
         nt_sR = density.nt_sR
         e_r = self.grid.empty(xp=self.xp)
         nt_sr = interpolate(nt_sR)
@@ -331,6 +334,7 @@ class MGGAFunctional(GGAFunctional):
             taut_sr = nt_sr.new(zeroed=True)
         else:
             taut_sr = taut_sr.to_xp(np)
+        assert taut_sr is not None
         dedtaut_sr = taut_sr.new()
         vxct_sr = taut_sr.new()
         vxct_sr.data[:] = 0.0
@@ -377,6 +381,9 @@ class MGGAFunctional(GGAFunctional):
                 taut_swR,
                 interpolate
                 ) -> Array2D:  # type: ignore
+        if taut_swR is None:
+            return np.zeros((3, 3))
+
         stress_vv = GGAFunctional._stress(
             self, e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr,
             gradn_svr=gradn_svr)

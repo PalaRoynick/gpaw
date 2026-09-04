@@ -77,7 +77,7 @@ def test_response_afm_hchain_gssALDA(in_tmp_dir, from_file, mpi):
                     nbands=nbands + ebands,
                     convergence=conv,
                     symmetry={'point_group': True},
-                    parallel={'domain': 1})
+                    parallel={'domain': 1, 'distribute_density': False})
 
     Hchain.calc = calc
     Hchain.get_potential_energy()

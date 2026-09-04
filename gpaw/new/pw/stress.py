@@ -31,7 +31,6 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
     s_vv = get_wfs_stress(ibzwfs, potential.dH_asii)
     s_vv += pot_calc.xc.stress_contribution(
         ibzwfs, density, pot_calc.interpolate)
-
     if ibzwfs.kpt_comm.rank == 0 and ibzwfs.band_comm.rank == 0:
         vHt_h = potential.vHt_x
         assert vHt_h is not None
@@ -40,6 +39,7 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
         vHt2_hz = vHt_h.data.view(float).reshape((len(G_Gv), 2))**2
         s_vv += (xp.einsum('Gz, Gv, Gw -> vw', vHt2_hz, G_Gv, G_Gv) *
                  pw.dv / (2 * np.pi))
+
         Q_aL = density.calculate_compensation_charge_coefficients()
         s_vv += pot_calc.poisson_solver.stress_contribution(vHt_h, nt_g, Q_aL)
         s_vv += pot_calc.vbar_ag.stress_contribution(nt_g)

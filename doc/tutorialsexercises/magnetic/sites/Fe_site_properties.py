@@ -29,6 +29,7 @@ calc = GPAW(xc='LDA',
             mixer={'method': 'difference'},
             convergence={'density': 1.e-8},
             occupations=FermiDirac(0.001),
+            parallel={'domain': 1, 'distribute_density': False},
             txt='Fe_gs.txt')
 atoms.calc = calc
 atoms.get_potential_energy()

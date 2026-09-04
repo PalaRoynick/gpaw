@@ -26,6 +26,7 @@ def test_Wsymm(in_tmp_dir, scalapack, mpi):
                         occupations=FermiDirac(width=0.01),
                         convergence={'bands': -4},
                         symmetry=symm,
+                        parallel={'distribute_density': False},
                         kpts={'size': (k, k, k), 'gamma': True},
                         txt='gs_GaAs.txt')
 

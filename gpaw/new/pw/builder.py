@@ -11,6 +11,7 @@ from gpaw.core import PWDesc, UGDesc
 from gpaw.core.domain import Domain
 from gpaw.core.plane_waves import PWArray
 from gpaw.gpu import as_xp
+from gpaw.mpi import serial_comm
 from gpaw.new import zips
 from gpaw.new.builder import create_uniform_grid
 from gpaw.new.pw.bloechl_poisson import BloechlPAWPoissonSolver
@@ -20,7 +21,6 @@ from gpaw.new.pw.paw_poisson import SlowPAWPoissonSolver
 from gpaw.new.pw.poisson import make_poisson_solver
 from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
-from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D
 
 
@@ -58,8 +58,15 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
-            comm=self.communicators['d'])
-        fine_grid = grid.new(size=grid.size_c * 2)
+            comm=self.communicators['d'],
+            complementary_comm=self.communicators['D'])
+        comm = (self.communicators['w'] if self.is_distributed
+                else self.communicators['d'])
+        complementary_comm = (serial_comm if self.is_distributed
+                              else self.communicators['D'])
+        fine_grid = grid.new(size=grid.size_c * 2,
+                             comm=comm,
+                             complementary_comm=complementary_comm)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid
 
@@ -68,10 +75,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                       cell=self.grid.cell,
                       comm=self.grid.comm,
                       dtype=self.dtype)
-
-    def create_xc_functional(self):
-        return create_functional(self._xc,
-                                 self.fine_grid, self.xp)
 
     @cached_property
     def interpolation_desc(self):
@@ -164,6 +167,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.setups,
             self.xc,
             self.create_poisson_solver(extensions),
+            kpt_band_comm=self.communicators['D'],
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
             soc=self.soc,

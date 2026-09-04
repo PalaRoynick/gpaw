@@ -112,6 +112,7 @@ class GPAW(Calculator):
         'sl_lcao': None,
         'sl_lrtddft': None,
         'use_elpa': False,
+        'distribute_density': None,
         'elpasolver': '2stage',
         'buffer_size': None}
 

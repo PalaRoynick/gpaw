@@ -56,6 +56,16 @@ class ResponseGroundStateAdapter:
     def __init__(self, calc: GPAWCalculator, lazy=False):
         self.gs_info = ''
 
+        if isinstance(calc, OldGPAW):
+            parallel = calc.parallel
+        else:
+            parallel = calc.params.parallel
+        if (calc.world.size > 1 and
+                parallel.get('distribute_density') is not False):
+            raise ValueError(
+                'Response calculations with more than one MPI rank require '
+                'parallel={"distribute_density": False}.')
+
         if calc.old and calc.wfs.mode == 'lcao':
             calc.initialize_positions()
             for kpt in calc.wfs.kpt_u:
@@ -73,10 +83,11 @@ class ResponseGroundStateAdapter:
         self.world = calc.world  # _Communicator object from gpaw.mpi
 
         # GridDescriptor from gpaw.old.grid_descriptor.
-        # Describes a grid in real space
+        # Describes a grid in real space.  Response code assumes serial
+        # real-space grids, so expose serial descriptors here.
         self.gd = wfs.gd
 
-        # Also a GridDescriptor, with a finer grid...
+        # Also a GridDescriptor, with a finer grid.
         self.finegd = calc.density.finegd
         self.bd = wfs.bd  # BandDescriptor from gpaw.old.band_descriptor
         self.nspins = wfs.nspins  # number of spins: int

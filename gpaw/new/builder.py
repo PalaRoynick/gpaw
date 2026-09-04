@@ -91,6 +91,18 @@ class DFTComponentsBuilder:
             raise ValueError('Only LDA supported for '
                              'SC Non-collinear calculations')
 
+        self.is_distributed = parallel.get('distribute_density', None)
+
+        distribution_supported = (xcfunc.type not in {'HYB', 'MGGA'} and
+                                  xcfunc.name != 'QNA')
+
+        if self.is_distributed is None:
+            self.is_distributed = distribution_supported
+
+        if not distribution_supported and self.is_distributed:
+            raise ValueError('HYB, MGGA, and QNA functionals do not support '
+                             'parallel={"distribute_density": True}.')
+
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
 
@@ -193,8 +205,7 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.grid, self.fine_grid = self.create_uniform_grids()
-
-        self.xc = create_functional(xcfunc, self.fine_grid, self.xp)
+        self.xc = self.create_xc_functional(xcfunc)
 
         self.interpolation_desc: Domain
         self.electrostatic_potential_desc: Domain
@@ -221,6 +232,9 @@ class DFTComponentsBuilder:
 
     def create_uniform_grids(self):
         raise NotImplementedError
+
+    def create_xc_functional(self, xcfunc):
+        return create_functional(xcfunc, self.fine_grid, self.xp)
 
     def check_cell(self, cell):
         number_of_lattice_vectors = cell.rank
@@ -596,7 +610,8 @@ def create_uniform_grid(mode: str,
                         h: float | None = None,
                         interpolation: int | str | None = None,
                         ecut: float = None,
-                        comm: MPIComm = serial_comm) -> UGDesc:
+                        comm: MPIComm = serial_comm,
+                        complementary_comm: MPIComm | None = None) -> UGDesc:
     """Create grid in a backwards compatible way."""
     cell = cell / Bohr
     if h is not None:
@@ -614,4 +629,9 @@ def create_uniform_grid(mode: str,
         modeobj = SimpleNamespace(name=mode, ecut=ecut)
         size = get_number_of_grid_points(cell, h, modeobj, realspace,
                                          symmetries)
-    return UGDesc(cell=cell, pbc=pbc, zerobc=zerobc, size=size, comm=comm)
+    return UGDesc(cell=cell,
+                  pbc=pbc,
+                  zerobc=zerobc,
+                  size=size,
+                  comm=comm,
+                  complementary_comm=complementary_comm)
