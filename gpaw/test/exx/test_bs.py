@@ -32,7 +32,11 @@ def test_all(xc, kb, gpw_files):
     band_wfs = band_structure(calc.dft, kpts, convergence={'bands': 2})
     for wfs in band_wfs:
         i = int(round(abs(wfs.kpt_c[2]) * 4))
-        assert wfs.eig_n[:2] * Ha == pytest.approx(eig_in[i, :2])
+        # The hybrid eigenvalues of this system are pathologically sensitive
+        # to the input: changing a single Gaunt coefficient by one ulp moves
+        # them by several times 1e-6 eV, which is far more than the default
+        # relative tolerance of pytest.approx allows for.
+        assert wfs.eig_n[:2] * Ha == pytest.approx(eig_in[i, :2], abs=1e-4)
 
 
 if __name__ == '__main__':

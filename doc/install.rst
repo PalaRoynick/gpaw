@@ -58,6 +58,7 @@ Requirements
 * ASE_
 * NumPy_
 * SciPy_
+* libwignernj_
 * LibXC_
 * A C compiler
 * A BLAS_ library
@@ -73,6 +74,7 @@ See :ref:`releasenotes` for version requirements.
 .. _Python: https://www.python.org/
 .. _NumPy: https://docs.scipy.org/doc/numpy/reference/
 .. _SciPy: https://docs.scipy.org/doc/scipy/reference/
+.. _libwignernj: https://github.com/susilehtola/libwignernj
 .. _LibXC: https:/libxc.gitlab.io/
 .. _MPI: https://www.mpi-forum.org/
 .. _BLAS: https://www.netlib.org/blas/
