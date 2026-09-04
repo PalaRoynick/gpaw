@@ -3,31 +3,6 @@
 #include "gpaw_utils.h"
 #include "lfc_gpu.cuh"
 
-// FIXME tons of code duplication in the kernels. Eg. when computing grid array strides and computing distances for splines and spherical harmonics
-
-/* atomicAdd not supported for doubles on devices with compute capability < 6.0.
-* These are ancient, but currently the CI build still includes these devices since the siteconfigs there don't specify the arch.
-* This implementation is from https://docs.nvidia.com/cuda/archive/11.6.0/cuda-c-programming-guide/index.html#atomic-functions.
-* Note that it violates strict aliasing!
-*/
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
-__device__ double atomicAdd(double* address, double val)
-{
-    unsigned long long int* address_as_ull = (unsigned long long int*)address;
-    unsigned long long int old = *address_as_ull, assumed;
-
-    do
-    {
-        assumed = old;
-        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val + __longlong_as_double(assumed)));
-
-    // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
-    }
-    while (assumed != old);
-
-    return __longlong_as_double(old);
-}
-#endif
 
 template<typename T>
 struct AddToDensityArrays
