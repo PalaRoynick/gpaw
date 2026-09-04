@@ -324,9 +324,23 @@ class SJMExtension(Extension):
         self.potentiostat.charge = q
 
     @property
+    def _charging(self) -> JelliumCharging:
+        """The charging scheme, narrowed: SJM always builds a jellium one."""
+        charging = self.potentiostat.charging
+        assert isinstance(charging, JelliumCharging)
+        return charging
+
+    @property
+    def _optimizer(self) -> DirectOptimizer | None:
+        """The optimizer, narrowed to the one concrete kind SJM builds."""
+        optimizer = self.potentiostat.optimizer
+        assert optimizer is None or isinstance(optimizer, DirectOptimizer)
+        return optimizer
+
+    @property
     def region(self) -> JelliumRegion:
         """Shape of the jellium counter-charge region."""
-        return self.potentiostat.charging.region
+        return self._charging.region
 
     def __str__(self):
         txt = ('solvated jellium method:\n'
@@ -400,9 +414,9 @@ class SJMExtension(Extension):
             f'attempt {len(self.attempts):d}/{self.max_iters:d}).')
 
         slope = self._slope()
-        if slope is not None:
+        if slope is not None and self._optimizer is not None:
             log(f'Slope estimated from the last '
-                f'{len(self.potentiostat.optimizer.history):d} attempts is '
+                f'{len(self._optimizer.history):d} attempts is '
                 f'{slope:.4f} V/electron,')
             # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
             capacitance = -_e * 1e22 / (self._area() * slope)
@@ -531,7 +545,7 @@ class SJMExtension(Extension):
             vHt_r.data[:] = (vHt_r.data - self.fermi_level) * Ha
             return vHt_r
         if prop == 'background_charge':
-            mask_r = self.potentiostat.charging.mask_r
+            mask_r = self._charging.mask_r
             charge_r = mask_r.new()
             charge_r.data[:] = -self.charge * mask_r.data
             return charge_r
@@ -592,7 +606,7 @@ class SJMExtension(Extension):
             self.max_iters = kwargs['max_iters']
         if 'tol' in kwargs:
             self.tol = kwargs['tol']
-            if self.potentiostat.constant_potential:
+            if self.target_potential is not None:
                 self.potentiostat.tol = self.tol
                 if abs(self.get_electrode_potential() -
                        self.target_potential) > self.tol:
@@ -608,19 +622,19 @@ class SJMExtension(Extension):
                               'constant-charge mode.')
         if 'mixer' in kwargs:
             self.mixer = kwargs['mixer']
-            opt = self.potentiostat.optimizer
+            opt = self._optimizer
             if opt is not None:
                 opt.mixer = self.mixer
         if 'slope_regression_depth' in kwargs:
             self.slope_regression_depth = kwargs['slope_regression_depth']
-            opt = self.potentiostat.optimizer
+            opt = self._optimizer
             if opt is not None:
                 opt.slope_regression_depth = self.slope_regression_depth
         if 'slope' in kwargs:
             # Whatever the user says replaces the estimate, so the attempts
             # behind the old one go too:
             self.slope = kwargs['slope']
-            opt = self.potentiostat.optimizer
+            opt = self._optimizer
             if opt is not None:
                 opt.reset()
                 opt.slope = self.slope
@@ -630,7 +644,7 @@ class SJMExtension(Extension):
                 log(f'Slope set to {self.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
-            charging = self.potentiostat.charging
+            charging = self._charging
             charging.region = JelliumRegion(
                 **(kwargs['jelliumregion'] or {}))
             mask_r, z1, z2 = charging.region.mask(charging.mask_r.desc,
@@ -724,7 +738,7 @@ class SJMExtension(Extension):
         This is the damped estimate that the optimizer steps along, so that
         set() and the log report what is actually used.
         """
-        opt = self.potentiostat.optimizer
+        opt = self._optimizer
         if opt is not None:
             if opt.slope is not None:
                 return opt.slope
@@ -755,11 +769,11 @@ class SJMExtension(Extension):
         # itself is carried over:
         self.niters = 0
         self.attempts = []
-        opt = self.potentiostat.optimizer
+        opt = self._optimizer
         if opt is not None:
             opt.forget_attempts()
-        grid = self.potentiostat.charging.mask_r.desc
-        zs = self.potentiostat.charging.move(relpos_ac, grid)
+        grid = self._charging.mask_r.desc
+        zs = self._charging.move(relpos_ac, grid)
         if zs is not None:
             self.log(f'Jellium region moved to {zs[0]:.3f} to '
                      f'{zs[1]:.3f}  # Å')
@@ -769,7 +783,7 @@ class SJMExtension(Extension):
         self.potentiostat.add_charge(nt_r)
 
     def update1pw(self, nt_g):
-        grid = self.potentiostat.charging.mask_r.desc
+        grid = self._charging.mask_r.desc
         nt_r = grid.empty()
         nt_r.scatter_from(nt_g.ifft(grid=grid.new(comm=None))
                           if nt_g is not None else None)

@@ -442,12 +442,16 @@ class Potentiostat:
         """
         if not self.constant_potential:
             return True
+        # constant_potential means both of these are set (see __init__):
+        target = self.target_potential
+        optimizer = self.optimizer
+        assert target is not None and optimizer is not None
         potential = self.probe.potential(ibzwfs)
         log(f'charge: {self.charge:.6f} |e|, potential: {potential:.3f} V')
-        if abs(potential - self.target_potential) <= self.tol:
+        if abs(potential - target) <= self.tol:
             return True
-        new_charge = self.optimizer.next_charge(
-            self.charge, potential, self.target_potential,
+        new_charge = optimizer.next_charge(
+            self.charge, potential, target,
             area=self.charging.region_area)
         ibzwfs.calculate_occs(occ_calc,
                               nelectrons + (new_charge - self.charge))
@@ -460,8 +464,11 @@ class Potentiostat:
 
         Used by ``always_adjust`` to stage a step for the next geometry.
         """
-        return self.optimizer.next_charge(
-            self.charge, self.probe.potential(ibzwfs), self.target_potential,
+        target = self.target_potential
+        optimizer = self.optimizer
+        assert target is not None and optimizer is not None
+        return optimizer.next_charge(
+            self.charge, self.probe.potential(ibzwfs), target,
             area=self.charging.region_area)
 
     # Density hooks, straight through to the charging scheme:
