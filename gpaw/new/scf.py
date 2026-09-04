@@ -77,8 +77,10 @@ class SCFLoop:
 
         if self.update_density_and_potential:
             if pot_calc.xc.type == 'MGGA':
+                if ibzwfs.has_occs:
+                    density.update_ked(ibzwfs)
                 density.taut_sR.data[:] = np.clip(
-                        density.taut_sR.data, np.finfo(np.float32).eps, np.inf)
+                        density.taut_sR.data, 1e-7, np.inf)
                 dens_error = self.mixer.mix(density)
                 potential, energies, _ = pot_calc.calculate(
                     density, ibzwfs, potential.vHt_x)
