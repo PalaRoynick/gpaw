@@ -73,7 +73,7 @@ def calculate_site_matrix_element_correction(
                     for L, f_g in zip(rshe.L_M, rshe.f_gM.T):
                         # Angular integral
                         gaunt_coeff = G_LLL[l1**2 + m1, l2**2 + m2, L]
-                        if gaunt_coeff == 0:
+                        if abs(gaunt_coeff) < 1e-10:
                             continue
                         # Radial integral
                         for p, theta_g in enumerate(theta_pg):

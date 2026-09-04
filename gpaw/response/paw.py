@@ -248,7 +248,7 @@ def calculate_pair_density_correction(qG_Gv: np.ndarray, *,
                             i2 = i2_counter + m2
                             # Extract Gaunt coefficients
                             gaunt_coeff = G_LLL[l1**2 + m1, l2**2 + m2, m]
-                            if (gaunt_coeff == 0):
+                            if abs(gaunt_coeff) < 1e-10:
                                 continue
 
                             # Add contribution to the PAW correction

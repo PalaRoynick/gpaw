@@ -10,6 +10,16 @@ Git master branch
 
 :git:`master <>`.
 
+* Gaunt coefficients are now evaluated with libwignernj_ instead of by
+  integrating products of the cartesian polynomial expansions of the real
+  spherical harmonics.  This makes ``gpaw.sphere.gaunt`` roughly two orders of
+  magnitude faster, removes the ``lmax <= 4`` limit imposed by the tabulated
+  spherical harmonics, and returns the coefficients that vanish by the
+  selection rules as exact zeros rather than as rounding noise.  libwignernj
+  is a new required dependency.
+
+  .. _libwignernj: https://github.com/susilehtola/libwignernj
+
 * The default value for density convergence has been changed from
   ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
   This will lead to a few more steps in the SCF loop, but also more
