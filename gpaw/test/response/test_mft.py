@@ -136,12 +136,12 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
     # of random noise, that one cannot trust individual values of J very well.
     # This is improved when increasing the number of k-points, but the problem
     # never completely vanishes
-    J_atol = 1.e-2
-    J_rtol = 5.e-2
+    J_atol = 0.01
+    J_rtol = 0.05
     # However, derived physical values have an increased error cancellation due
     # to their collective nature.
-    mw_rtol = 25e-3  # relative tolerance of absolute results
-    mw_ctol = 5.e-2  # relative tolerance on kernel and eta self-consistency
+    mw_rtol = 0.025  # relative tolerance of absolute results
+    mw_ctol = 0.05  # relative tolerance on kernel and eta self-consistency
 
     # ---------- Script ---------- #
 
