@@ -14,10 +14,36 @@ DEFAULT_BOTTOM = -3.0
 
 
 class JelliumRegion:
-    """Shape of the jellium counter-charge region.
+    """A region for the jellium counter-charge to fill.
 
-    The region is a slab perpendicular to the z axis, specified by at most
-    two of ``top``, ``bottom`` and ``thickness`` (the third one follows).
+    Turns the current geometry into a mask on the fine grid.  Subclass this
+    to define the region a different way: :class:`SlabRegion` (a slab
+    perpendicular to z) is the default, and a cavity-shaped one -- where
+    the counter-charge follows the implicit solvent -- is planned.
+    :func:`build_jellium_region` maps the user's ``jelliumregion`` input
+    onto one of these.
+    """
+
+    @property
+    def follows_atoms(self) -> bool:
+        """Does :meth:`mask` have to be rebuilt when the atoms move?"""
+        return False
+
+    def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
+        """Mask of the region on the fine grid, plus its z limits.
+
+        Returns the un-normalized (0/1 or weighted) mask and the lower and
+        upper boundary of the region in Å, the latter only for logging.
+        """
+        raise NotImplementedError
+
+
+class SlabRegion(JelliumRegion):
+    """A jellium region shaped as a slab perpendicular to z.
+
+    This is the region SJM has always used and the default.  It is
+    specified by at most two of ``top``, ``bottom`` and ``thickness`` (the
+    third one follows).
 
     Parameters
     ----------
@@ -45,10 +71,8 @@ class JelliumRegion:
                  thickness: float | None = None,  # Å
                  fix_bottom: bool = False):
         if isinstance(bottom, str):
-            if bottom == 'cavity_like':
-                raise NotImplementedError(
-                    'A cavity-like jellium region is not implemented in this '
-                    'version of SJM.  Use gpaw.solvation.sjm instead.')
+            # 'cavity_like' is intercepted by build_jellium_region before it
+            # gets here; anything else is a mistake.
             raise ValueError(
                 f'Unknown lower limit for the jellium region: {bottom!r}.  '
                 'Give a number of Angstrom instead.')
@@ -76,7 +100,7 @@ class JelliumRegion:
         self._frozen_bottom: float | None = None
 
     def __repr__(self):
-        return (f'JelliumRegion(top={self.top}, bottom={self.bottom}, '
+        return (f'SlabRegion(top={self.top}, bottom={self.bottom}, '
                 f'thickness={self.thickness}, fix_bottom={self.fix_bottom})')
 
     @property
@@ -137,6 +161,68 @@ class JelliumRegion:
         return mask_r, bottom, top
 
 
+class CavityShapedRegion(JelliumRegion):
+    """A jellium region that follows the implicit-solvent cavity.
+
+    Everything inside the solvent cavity and below ``top`` is filled,
+    weighted by the cavity function ``g_g`` -- the counter-charge then
+    hugs the solvated slab instead of sitting in a flat slab above it.
+    This mirrors the legacy ``gpaw.solvation.sjm.CavityShapedJellium``;
+    it is not wired up in this version of SJM yet.
+
+    Parameters
+    ----------
+    top:
+        Upper cut-off of the region.  A positive value is the z coordinate
+        in Å; a negative value is the distance below the upper cell
+        boundary.  Default: -1 Å.
+    cavity:
+        The solvation cavity to read ``g_g`` from.
+    """
+
+    def __init__(self, top: float | None = None, *, cavity=None):
+        self.top = DEFAULT_TOP if top is None else top
+        self.cavity = cavity
+
+    def __repr__(self):
+        return f'CavityShapedRegion(top={self.top})'
+
+    @property
+    def follows_atoms(self) -> bool:
+        return True  # the cavity moves with the atoms
+
+    def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
+        raise NotImplementedError(
+            'A cavity-like jellium region is not implemented in this '
+            'version of SJM.  Use gpaw.solvation.sjm instead.')
+
+
+def build_jellium_region(spec: dict | JelliumRegion | None,
+                         *, cavity=None) -> JelliumRegion:
+    """Map the user's ``jelliumregion`` input onto a region object.
+
+    ``spec`` is the ``jelliumregion`` keyword: a dict of parameters, an
+    already-built :class:`JelliumRegion`, or ``None`` for the default slab.
+    A ``'shape'`` key (``'slab'`` -- the default -- or ``'cavity'``)
+    selects the kind; the rest of the dict is passed to it.  The legacy
+    ``bottom='cavity_like'`` spelling is still understood.
+    """
+    if isinstance(spec, JelliumRegion):
+        return spec
+    spec = dict(spec or {})
+    kind = spec.pop('shape', 'slab')
+    if spec.get('bottom') == 'cavity_like':  # legacy alias
+        kind = 'cavity'
+        del spec['bottom']
+    if kind == 'slab':
+        return SlabRegion(**spec)
+    if kind == 'cavity':
+        return CavityShapedRegion(**spec, cavity=cavity)
+    raise ValueError(
+        f'Unknown jellium region shape: {kind!r}.  '
+        "Use 'slab' (the default) or 'cavity'.")
+
+
 class ChargingScheme:
     """Puts an excess charge into the cell.
 
@@ -173,17 +259,18 @@ class ChargingScheme:
 
 
 class JelliumCharging(ChargingScheme):
-    """A uniform jellium counter-charge filling a slab region.
+    """A uniform jellium counter-charge filling a masked region.
 
     This is the charging scheme SJM has always used: the excess electrons
     of the atomic system are balanced by a jellium of the opposite sign
-    smeared uniformly over a slab in the implicit solvent above the slab.
+    smeared uniformly over the region, which is a :class:`SlabRegion` by
+    default but can be any :class:`JelliumRegion`.
 
     Parameters
     ----------
     mask_r:
-        0/1 mask of the region on the fine grid.  It is normalized in
-        place to integrate to one.
+        Mask of the region on the fine grid.  It is normalized in place to
+        integrate to one.
     pw:
         Plane-wave (or real-space) descriptor of the interpolated density,
         used to cache a reciprocal-space copy of the mask for PW mode.
@@ -191,7 +278,8 @@ class JelliumCharging(ChargingScheme):
         Number of excess electrons (with the opposite sign in the jellium).
     region:
         The :class:`JelliumRegion` the mask was built from, kept so that
-        the region can follow the atoms during a relaxation.
+        the region can follow the atoms during a relaxation.  Defaults to a
+        :class:`SlabRegion`.
     """
 
     def __init__(self,
@@ -200,7 +288,7 @@ class JelliumCharging(ChargingScheme):
                  pw,
                  charge: float = 0.0,
                  region: JelliumRegion | None = None):
-        self.region = region or JelliumRegion()
+        self.region = region or SlabRegion()
         self.pw = pw
         self.charge = charge
         self.set_region(mask_r)

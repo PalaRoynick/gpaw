@@ -1,4 +1,5 @@
-from gpaw.extensions.electrocatalysis.potentiostat import Potentiostat
+from gpaw.extensions.electrocatalysis.potentiostat import (
+    JelliumRegion, Potentiostat, build_jellium_region)
 from gpaw.extensions.electrocatalysis.sjm import SJM
 
-__all__ = ['SJM', 'Potentiostat']
+__all__ = ['SJM', 'Potentiostat', 'JelliumRegion', 'build_jellium_region']

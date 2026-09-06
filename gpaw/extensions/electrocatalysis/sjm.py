@@ -15,7 +15,7 @@ from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrocatalysis.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
-    WorkFunctionProbe, regress_slope)
+    WorkFunctionProbe, build_jellium_region, regress_slope)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.pw.poisson import PWPoissonSolver
 from gpaw.new.solvation import Solvation, SolvationExtension
@@ -71,9 +71,10 @@ class SJM(Solvation):
     cavity, dielectric, interactions:
         Solvation model, see :class:`gpaw.new.solvation.Solvation`.
     jelliumregion:
-        Shape of the counter-charge region: a dict with the keys ``'top'``,
-        ``'bottom'``, ``'thickness'`` and ``'fix_bottom'``, see
-        :class:`JelliumRegion`.
+        Shape of the counter-charge region, as a dict.  The default is a
+        slab (:class:`SlabRegion`), taking the keys ``'top'``, ``'bottom'``,
+        ``'thickness'`` and ``'fix_bottom'``.  A ``'shape'`` key selects a
+        different kind of region; see :func:`build_jellium_region`.
     target_potential:
         Electrode potential to equilibrate to, in V on the vacuum scale
         (expressed as a work function).  ``None`` (the default) gives a
@@ -152,7 +153,8 @@ class SJM(Solvation):
         self._check_convergence_criteria(builder.params.convergence, log)
         self._check_always_adjust(log)
 
-        region = JelliumRegion(**self.jelliumregion)
+        region = build_jellium_region(self.jelliumregion,
+                                      cavity=solvation.cavity)
         mask_r, z1, z2 = region.mask(builder.fine_grid, builder.relpos_ac)
 
         charging = JelliumCharging(mask_r,
@@ -645,8 +647,8 @@ class SJMExtension(Extension):
 
         if 'jelliumregion' in kwargs:
             charging = self._charging
-            charging.region = JelliumRegion(
-                **(kwargs['jelliumregion'] or {}))
+            charging.region = build_jellium_region(
+                kwargs['jelliumregion'], cavity=self.solvation.cavity)
             mask_r, z1, z2 = charging.region.mask(charging.mask_r.desc,
                                                   self._relpos_ac())
             charging.set_region(mask_r)

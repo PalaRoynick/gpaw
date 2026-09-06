@@ -37,9 +37,9 @@ The jellium slab: charging
 --------------------------
 
 In a periodic system we cannot have a net charge; therefore, any additional, fractional electrons that are added to the system must be compensated by an equal amount of counter charge.
-In GPAW, this is conveniently accomplished with a :class:`~gpaw.jellium.JelliumSlab`.
-This adds a smeared-out background charge in a fixed region of the simulation cell; in the figure above it is shown as the dashed region to the right of the atoms.
-The :class:`~gpaw.jellium.JelliumSlab` also increases the number of electrons in the simulation by an amount equal to the total charge of the slab.
+SJM accomplishes this by adding a smeared-out background charge in a fixed region of the simulation cell; in the figure above it is shown as the dashed region to the right of the atoms.
+By default that region is a slab perpendicular to `z`, controlled by the :literal:`jelliumregion` keyword described under `Usage`_ below.
+The number of electrons in the simulation is increased by an amount equal to the total charge of that region.
 When you run a simulation, you should see that these excess electrons localize on the `+z` side (the right side in these figures) of the metal atoms that simulate the electrode surface, and not on the `-z` (left) side, which simulates the bulk.
 This is accomplished by only putting the jellium region on one side of the simulation, and employing a dipole correction (included by default when you run SJM) to electrostatically decouple the two sides of the cell.
 
@@ -55,7 +55,7 @@ However, the signs can readily be reversed, making the jellium region a smeared-
 In this way, the same tool can be used to perturb the electrons in either a positive or negative direction, and thus vary the potential in either direction in order to find its target.
 Note also that the jellium region does not overlap any atoms, separating this from approaches that employ a homogeneous background charge throughout the unit cell (in which spurious interactions can occur).
 This is important to not distort the electronic structure of the atoms and molecules being simulated.
-Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case; it can, for example, follow the cavity of the implicit solvent if this is preferred (by using the :code:`jelliumregion` keyword as described in the :class:`~gpaw.extensions.electrocatalysis.sjm.SJM` documentation).
+Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case in general; other shapes---for example one following the cavity of the implicit solvent---are a planned extension of the :code:`jelliumregion` keyword, though only the slab is available in this version (the legacy :class:`gpaw.solvation.sjm.SJM` calculator does offer a cavity-shaped counter charge).
 
 
 The solvation: screening
@@ -212,7 +212,11 @@ the given number of :literal:`excess_electrons`.  The
 :literal:`jelliumregion` keyword takes :literal:`'top'`, :literal:`'bottom'`,
 :literal:`'thickness'` and :literal:`'fix_bottom'`; a limit given as a negative
 number is a distance above the highest atom, and the region then follows the
-atoms during a relaxation unless :literal:`fix_bottom=True`.  With
+atoms during a relaxation unless :literal:`fix_bottom=True`.  This is the
+default slab-shaped region; a :literal:`'shape'` key selects a different kind
+(currently only :literal:`'cavity'`, a counter charge following the solvent
+cavity, which is not yet implemented in this version --- the legacy
+:literal:`bottom='cavity_like'` spelling is also accepted for it).  With
 :literal:`grand_output=False`, the canonical rather than the grand-potential
 energy is handed to ASE.
 

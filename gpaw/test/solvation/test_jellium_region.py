@@ -5,14 +5,15 @@ from ase.units import Bohr
 
 from gpaw.core import UGDesc
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DEFAULT_BOTTOM, DEFAULT_TOP, JelliumRegion)
+    DEFAULT_BOTTOM, DEFAULT_TOP, CavityShapedRegion, SlabRegion,
+    build_jellium_region)
 
 HEIGHT = 20.0  # Å
 ZMAX = 6.0  # Å, highest atom
 
 
 def limits(**kwargs):
-    return JelliumRegion(**kwargs).limits(HEIGHT, ZMAX)
+    return SlabRegion(**kwargs).limits(HEIGHT, ZMAX)
 
 
 def test_defaults():
@@ -47,34 +48,64 @@ def test_thickness():
 
 def test_follows_atoms():
     # Only a relative lower limit makes the region track the atoms:
-    assert JelliumRegion().follows_atoms
-    assert JelliumRegion(bottom=-3.0).follows_atoms
-    assert not JelliumRegion(bottom=8.0).follows_atoms
-    assert not JelliumRegion(bottom=-3.0, fix_bottom=True).follows_atoms
-    assert not JelliumRegion(top=15.0, thickness=4.0).follows_atoms
+    assert SlabRegion().follows_atoms
+    assert SlabRegion(bottom=-3.0).follows_atoms
+    assert not SlabRegion(bottom=8.0).follows_atoms
+    assert not SlabRegion(bottom=-3.0, fix_bottom=True).follows_atoms
+    assert not SlabRegion(top=15.0, thickness=4.0).follows_atoms
 
 
 def test_fix_bottom():
-    region = JelliumRegion(bottom=-3.0, fix_bottom=True)
+    region = SlabRegion(bottom=-3.0, fix_bottom=True)
     assert region.limits(HEIGHT, ZMAX) == (9.0, HEIGHT + DEFAULT_TOP)
     # The atoms move up, but the frozen lower limit stays put:
     assert region.limits(HEIGHT, ZMAX + 1.0) == (9.0, HEIGHT + DEFAULT_TOP)
     # ... whereas without fix_bottom it follows:
-    region = JelliumRegion(bottom=-3.0)
+    region = SlabRegion(bottom=-3.0)
     assert region.limits(HEIGHT, ZMAX)[0] == 9.0
     assert region.limits(HEIGHT, ZMAX + 1.0)[0] == 10.0
 
 
 @pytest.mark.parametrize('kwargs, match', [
     ({'top': 1.0, 'bottom': 2.0, 'thickness': 3.0}, 'overspecified'),
-    ({'bottom': 'cavity_like'}, 'cavity-like'),
+    ({'bottom': 'sideways'}, 'Unknown lower limit'),
     ({'top': HEIGHT + 1.0}, 'outside of the unit cell'),
     ({'top': 8.0, 'bottom': 12.0}, 'not below the top'),
     ({'top': 8.0, 'bottom': 8.0}, 'not below the top'),
 ])
 def test_bad_input(kwargs, match):
-    with pytest.raises((ValueError, NotImplementedError), match=match):
+    with pytest.raises(ValueError, match=match):
         limits(**kwargs)
+
+
+def test_build_jellium_region():
+    """The jelliumregion input is mapped onto a region object."""
+    # The default and a plain dict give a slab:
+    assert isinstance(build_jellium_region(None), SlabRegion)
+    region = build_jellium_region({'top': 15.0, 'thickness': 4.0})
+    assert isinstance(region, SlabRegion)
+    assert region.limits(HEIGHT, ZMAX) == (11.0, 15.0)
+
+    # 'shape' selects the kind; 'cavity_like' is the legacy spelling:
+    assert isinstance(build_jellium_region({'shape': 'cavity', 'top': -1.0}),
+                      CavityShapedRegion)
+    assert isinstance(build_jellium_region({'bottom': 'cavity_like'}),
+                      CavityShapedRegion)
+
+    # An already-built region passes straight through:
+    slab = SlabRegion(bottom=8.0)
+    assert build_jellium_region(slab) is slab
+
+    with pytest.raises(ValueError, match='Unknown jellium region shape'):
+        build_jellium_region({'shape': 'blob'})
+
+    # The cavity-shaped region is only a stub in this version:
+    grid = UGDesc.from_cell_and_grid_spacing(
+        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
+        grid_spacing=0.2, pbc=(1, 1, 0))
+    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
+    with pytest.raises(NotImplementedError, match='cavity-like'):
+        build_jellium_region({'shape': 'cavity'}).mask(grid, relpos_ac)
 
 
 def test_mask():
@@ -83,7 +114,7 @@ def test_mask():
         cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
         grid_spacing=0.2, pbc=(1, 1, 0))
     relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
-    mask_r, bottom, top = JelliumRegion(bottom=8.0, top=12.0).mask(
+    mask_r, bottom, top = SlabRegion(bottom=8.0, top=12.0).mask(
         grid, relpos_ac)
     assert (bottom, top) == (8.0, 12.0)
     # The mask is 1 strictly inside the region and 0 outside:

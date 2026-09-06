@@ -38,8 +38,9 @@ Git master branch
   legacy implementation: it reports the grand-potential energy
   (:math:`\Omega = E - N \mu`) to ASE unless ``grand_output=False``, exposes
   ``excess_electrons`` and ``electrode_potential`` as properties, writes
-  traces with ``calc.sjm.write_sjm_traces()``, supports the full
-  ``jelliumregion`` keyword, replaces ``calc.set(sj={...})`` with
+  traces with ``calc.sjm.write_sjm_traces()``, supports the slab
+  ``jelliumregion`` keyword (a cavity-shaped region is still legacy-only),
+  replaces ``calc.set(sj={...})`` with
   ``calc.sjm.set(...)`` -- which also works before the first calculation --
   and summarises the potential equilibration in
   one block after convergence.  The equilibration keywords ``always_adjust``,
