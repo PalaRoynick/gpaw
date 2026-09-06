@@ -2,7 +2,7 @@
 import pytest
 from ase.units import Ha, _e
 
-from gpaw.new.electrocatalysis.potentiostat import (
+from gpaw.extensions.electrocatalysis.potentiostat import (
     DirectOptimizer, Potentiostat, regress_slope)
 
 WIDTH = 4.0  # Å

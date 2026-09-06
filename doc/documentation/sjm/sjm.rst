@@ -1,4 +1,4 @@
-.. module:: gpaw.new.electrocatalysis.sjm
+.. module:: gpaw.extensions.electrocatalysis.sjm
 .. _sjm:
 
 ======================================================
@@ -8,7 +8,7 @@ Solvated Jellium (constant-potential electrochemistry)
 Overview
 ========
 
-The Solvated Jellium method (:class:`~gpaw.new.electrocatalysis.sjm.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
+The Solvated Jellium method (:class:`~gpaw.extensions.electrocatalysis.sjm.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
 A full description of the approach can be found in [Kastlunger2018]_.
 The method allows you to control the simulated electrode potential (manifested as the topside work function) by varying the number of electrons in the simulation; calculations can be run in either constant-charge or constant-potential mode.
 SJM is attached to a regular GPAW calculator as an extension---:literal:`GPAW(..., extensions=[SJM(...)])`---and the calculator is then used just like any other; it returns energy and forces, but can do so at a fixed potential.
@@ -55,7 +55,7 @@ However, the signs can readily be reversed, making the jellium region a smeared-
 In this way, the same tool can be used to perturb the electrons in either a positive or negative direction, and thus vary the potential in either direction in order to find its target.
 Note also that the jellium region does not overlap any atoms, separating this from approaches that employ a homogeneous background charge throughout the unit cell (in which spurious interactions can occur).
 This is important to not distort the electronic structure of the atoms and molecules being simulated.
-Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case; it can, for example, follow the cavity of the implicit solvent if this is preferred (by using the :code:`jelliumregion` keyword as described in the :class:`~gpaw.new.electrocatalysis.sjm.SJM` documentation).
+Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case; it can, for example, follow the cavity of the implicit solvent if this is preferred (by using the :code:`jelliumregion` keyword as described in the :class:`~gpaw.extensions.electrocatalysis.sjm.SJM` documentation).
 
 
 The solvation: screening
@@ -190,12 +190,12 @@ The :literal:`autoinner` part automatically finds the inner region, in this case
 Usage
 =====
 
-The SJM parameters are keyword arguments of the :class:`~gpaw.new.electrocatalysis.sjm.SJM`
+The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrocatalysis.sjm.SJM`
 extension, given together with the implicit-solvent parameters
 (:literal:`cavity`, :literal:`dielectric` and :literal:`interactions`)::
 
     from gpaw import GPAW
-    from gpaw.new.electrocatalysis.sjm import SJM
+    from gpaw.extensions.electrocatalysis.sjm import SJM
 
     calc = GPAW(mode='fd', ...,
                 extensions=[SJM(target_potential=4.4,  # absolute scale, V
@@ -253,9 +253,9 @@ References
 Class documentation
 ===================
 
-.. autoclass:: gpaw.new.electrocatalysis.sjm.SJM
+.. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJM
 
-.. autoclass:: gpaw.new.electrocatalysis.sjm.SJMExtension
+.. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJMExtension
    :members: set, write_sjm_traces, get_electrode_potential
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential

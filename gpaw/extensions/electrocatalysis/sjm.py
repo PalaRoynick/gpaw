@@ -13,7 +13,7 @@ from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.electrocatalysis.potentiostat import (
+from gpaw.extensions.electrocatalysis.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
     WorkFunctionProbe, regress_slope)
 from gpaw.new.poisson import PoissonSolverWrapper

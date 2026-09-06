@@ -70,8 +70,8 @@ units = {'energy': Ha,
          'non_collinear_magmom': 1.0,
          'non_collinear_magmoms': 1.0,
          # Extension properties.  The names are declared by the extension
-         # itself (see gpaw.new.electrocatalysis.sjm.SJM.properties), but the
-         # factors have to live here: gpw.py converts every results key
+         # itself (see gpaw.extensions.electrocatalysis.sjm.SJM.properties),
+         # but the factors have to live here: gpw.py converts every results key
          # through this table,
          # also when reading a file whose extensions are not built.
          'excess_electrons': 1.0,

@@ -3,7 +3,7 @@ import pytest
 from ase import Atoms
 
 from gpaw import GPAW, FermiDirac
-from gpaw.new.electrocatalysis.sjm import SJM
+from gpaw.extensions.electrocatalysis.sjm import SJM
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
 TARGET = 7.5  # V
