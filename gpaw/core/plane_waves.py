@@ -131,7 +131,8 @@ class PWDesc(Domain['PWArray']):
     def G_plus_k_Gv(self):
         if self._G_plus_k_Gv is None:
             B_cv = 2.0 * pi * np.linalg.inv(self.cell_cv).T
-            self._G_plus_k_Gv = (self.indices_cG.T + self.kpt_c) @ B_cv
+            self._G_plus_k_Gv = (self.indices_cG[:, self.ng1:self.ng2].T +
+                                 self.kpt_c) @ B_cv
         return self._G_plus_k_Gv
 
     @cached_property
