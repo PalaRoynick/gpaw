@@ -89,7 +89,7 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
                              self.grid.cell_cv,
                              self.ibz.symmetries)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, save_memory=False):
         c = 1
         if reader.version >= 0 and reader.version < 4:
             c = reader.bohr**1.5
