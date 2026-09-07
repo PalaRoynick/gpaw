@@ -92,13 +92,67 @@ def test_next_charge_hits_a_linear_target():
 
 
 def test_trust_region():
-    """A step never overshoots the previous one, however bad the slope."""
+    """A fully damped slope never steps beyond the previous step."""
     opt = make_optimizer(slope=-1e-6, mixer=1.0)  # a hopeless slope
     opt.history.append((0.0, 5.0))
     # The potential is above the target, so electrons are wanted; the slope
     # asks for thousands of them and gets the last step size instead:
     charge = opt.next_charge(-0.1, 5.0, TARGET, area=AREA)
     assert charge == pytest.approx(0.0)
+
+
+def _step_from(mixer: float) -> float:
+    """Size of one step on a line of slope -30, after a step of 0.01.
+
+    The seeded attempt and the one made here both sit on that line, so the
+    regression returns -30 whatever the mixer does with it: only the trust
+    region distinguishes the cases below.
+    """
+    opt = make_optimizer(slope=-30.0, mixer=mixer)
+    opt.history.append((0.0, line(-30.0, 0.0)))
+    return opt.next_charge(-0.01, line(-30.0, -0.01), TARGET, area=AREA) + 0.01
+
+
+def test_trust_region_lets_a_step_grow():
+    """A step may exceed the previous one by 1 - mixer of the excess."""
+    # The slope asks for (TARGET - 5.3) / -30 = 0.026667 after a 0.01 step,
+    # and with mixer=0.2 keeps 0.01 + 0.8 * (0.026667 - 0.01):
+    wanted = (TARGET - line(-30.0, -0.01)) / -30.0
+    assert _step_from(0.2) == pytest.approx(0.01 + 0.8 * (wanted - 0.01))
+    # Which is bigger than the previous step -- the point of the change --
+    # but still short of the whole step the slope points at:
+    assert 0.01 < _step_from(0.2) < wanted
+
+
+def test_trust_region_endpoints():
+    """mixer=1 never grows; mixer=0 takes the whole step."""
+    wanted = (TARGET - line(-30.0, -0.01)) / -30.0
+    assert _step_from(1.0) == pytest.approx(0.01)
+    assert _step_from(0.0) == pytest.approx(wanted)
+
+
+def test_a_tiny_first_step_does_not_cap_the_rest():
+    """Steps recover from a small one instead of being capped by it.
+
+    The old trust region clamped every step to the previous one, so the
+    first step became a ceiling for all of them and equilibration crawled
+    whenever it happened to be small.
+    """
+    tiny = 1e-4  # the step that got us to the current charge
+    opt = make_optimizer(slope=-30.0, mixer=0.2)
+    opt.history.append((0.0, line(-30.0, 0.0)))
+    charge = tiny
+    steps = []
+    for _ in range(6):
+        previous = charge
+        charge = opt.next_charge(charge, line(-30.0, charge), TARGET,
+                                 area=AREA)
+        steps.append(abs(charge - previous))
+    # The old clamp would have pinned every step to `tiny`, needing ~170 of
+    # them to cross the 0.0167 electrons to the target.  Now the very first
+    # step is already most of the way there:
+    assert steps[0] > 100 * tiny
+    assert line(-30.0, charge) == pytest.approx(TARGET, abs=1e-6)
 
 
 def test_reset():

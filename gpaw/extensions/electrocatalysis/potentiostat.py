@@ -409,6 +409,11 @@ class DirectOptimizer(PotentialOptimizer):
     attempts to regress a slope from, the estimate is updated, damped by
     ``mixer``: ``new = mixer * old + (1 - mixer) * regressed``.  The
     regression uses the last ``slope_regression_depth`` attempts.
+
+    ``mixer`` also sets how fast the step size may grow: a step is allowed
+    to exceed the previous one by the fraction ``1 - mixer`` of the excess
+    the slope asks for, so steps can recover after a small one instead of
+    being capped by it forever.
     """
 
     def __init__(self,
@@ -483,10 +488,21 @@ class DirectOptimizer(PotentialOptimizer):
         slope = self.update_slope(area)
         dc = (target - potential) / slope
         if len(self.history) > 1:
-            # Trust region: never step further than the previous step did.
             (c2, _), (c1, _) = list(self.history)[-2:]
-            if abs(dc) > abs(c2 - c1) > 0.0:
-                dc *= abs((c2 - c1) / dc)
+            previous = abs(c2 - c1)
+            if previous > 0.0 and abs(dc) > previous:
+                # Trust region.  A step may grow beyond the previous one,
+                # but the increase the slope asks for is only granted in
+                # part: both the slope and (target - potential) are local
+                # estimates, so a step much larger than the one that
+                # produced them is extrapolating.  The fraction granted is
+                # the weight the fresh regression carries in update_slope,
+                # 1 - mixer -- confidence in the new information from the
+                # same source.  A fully damped slope (mixer = 1) keeps the
+                # old behaviour of never growing; an undamped one
+                # (mixer = 0) takes the whole step the slope points at.
+                growth = min(max(1.0 - self.mixer, 0.0), 1.0)
+                dc *= (previous + growth * (abs(dc) - previous)) / abs(dc)
         return charge + dc
 
 

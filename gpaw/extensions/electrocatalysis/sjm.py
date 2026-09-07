@@ -108,7 +108,9 @@ class SJM(Solvation):
     mixer:
         Damping of the slope estimate, because regressing a slope can be
         noisy: ``new = mixer * old + (1 - mixer) * regressed``.  Set to 0 for
-        no damping.  Default: 0.5.
+        no damping.  It also sets how fast the step in excess electrons may
+        grow: a step may exceed the previous one by the fraction
+        ``1 - mixer`` of the excess the slope asks for.  Default: 0.2.
     slope_regression_depth:
         Number of previous attempts that the slope is regressed over.
         Default: 4.
