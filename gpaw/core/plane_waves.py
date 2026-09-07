@@ -266,7 +266,7 @@ class PWDesc(Domain['PWArray']):
 
            [1], [[0, 1, 2, 3], [4]]
         """
-        size_c = tuple(np.ptp(self.indices_cG, axis=1).astype(int) + 1)  # type: ignore
+        size_c = tuple(np.ptp(self.indices_cG, axis=1).astype(int) + 1)
         Q_G = self.indices(size_c)
         G_Q = np.empty(prod(size_c), int)
         G_Q[Q_G] = np.arange(len(Q_G))

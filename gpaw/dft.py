@@ -1116,7 +1116,8 @@ def GPAW(
     object_hooks=None,
     legacy_gpaw: bool | None = None,
     external=None,
-    background_charge=None) -> ASECalculator:
+    background_charge=None,
+    save_memory=None) -> ASECalculator:
     """Create ASE-compatible GPAW calculator.
 
     See :class:`gpaw.dft.Parameters` for the complete list of parameters.
@@ -1177,9 +1178,6 @@ def GPAW(
             raise ValueError(
                 'Illegal argument(s) when reading from a file: '
                 f'{", ".join(args)}')
-
-        save_memory = filename.endswith('.')
-        filename = filename.rstrip('.')
 
         try:
             atoms, dft, _ = read_gpw(filename,
