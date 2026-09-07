@@ -505,6 +505,8 @@ class UGArray(XArray[UGDesc]):
             Target PWArray object.
         """
         assert not self.desc.zerobc_c.any()
+        if plan:
+            assert plan.xp is self.xp
         if out is None:
             assert pw is not None
             out = pw.empty(dims=self.dims, xp=self.xp)

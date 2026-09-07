@@ -104,6 +104,8 @@ def create_plans(size_c: IntVector,
 
 
 class FFTPlans:
+    xp = np
+    
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
@@ -244,6 +246,7 @@ class CuPyFFTPlans(FFTPlans):
         self.dtype = dtype
         super().__init__(size_c, dtype, empty=cp.empty)
         self.Q_G_cache: dict[PWDesc, Array1D] = {}
+        self.xp = cp
 
     @trace(gpu=True)
     def fft(self):

@@ -87,6 +87,11 @@ def calculate_weights(converge_bands: int | str,
 
     efermi = np.mean(ibzwfs.fermi_levels)
 
+    # In-case we do not have eigenvalues, we leave now.
+    for wfs in ibzwfs:
+        if not wfs.has_occs:
+            return [None] * nu
+
     # Find CBM:
     cbm = np.inf
     nocc_u = np.empty(nu, int)
