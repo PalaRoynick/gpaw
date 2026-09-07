@@ -8,17 +8,31 @@ from gpaw.spinorbit import projected_soc, soc
 from gpaw.mpi import receive, send, MPIComm, serial_comm, Parallelization
 
 
+def calculate_soc(mykpts,
+                  kpt_comm,
+                  band_comm,
+                  theta: float = 0.0,  # degrees
+                  phi: float = 0.0,  # degrees
+                  ):
+    # <phi_i|dV_adr / r * L_v|phi_j>
+    setups = dft.setups
+    dVL_avii = {a: soc(setups[a],
+                       dft.pot_calc.xc,
+                       D_sii,
+                       ignore_xc_potential) * scale
+                for a, D_sii in dft.density.D_asii.items()}
+
+    if projected:
+        dVL_avii = {a: projected_soc(dVL_vii, theta=theta, phi=phi)
+                    for a, dVL_vii in dVL_avii.items()}
+
+
 def calculate_soc(dft: DFT,
                   *,
                   n1: int | None = None,
                   n2: int | None = None,
-                  scale: float = 1.0,
-                  theta: float = 0.0,  # degrees
-                  phi: float = 0.0,  # degrees
                   eigenvalues: np.ndarray | None = None,  # eV
-                  occcalc = None,
-                  projected: bool = False,
-                  ignore_xc_potential: bool = False) -> BZWaveFunctions:
+                  ):
     """..."""
     if eigenvalues is None:
         eig_skn, occ_skn = dft.ibzwfs.get_all_eigs_and_occs()
@@ -44,7 +58,9 @@ def calculate_soc(dft: DFT,
 
     ibz = dft.ibzwfs.ibz
     nbzkpts = len(ibz.bz)
-    p = Parallelization(dft.comm.size, nbzkpts)
+    nspins = dft.ibzwfs.nspins
+    comm = dft.comm
+    p = Parallelization(comm.size, nbzkpts)
     p.set(domain=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
@@ -58,11 +74,16 @@ def calculate_soc(dft: DFT,
         k = ibz.bz2ibz_K[K]
         for s in range(nspins):
             rank = dft.ibzwfs.rank_ks[k, s]
-            kpt = receive(dft.comm, rank
-    kpt_qs = get_both_spins(calc.wfs)
-    ibzwfs = extract_ibz_wave_functions(kpt_qs,
-                                        bd, gd, n1, n2, eigenvalues)
-    ibz2bzmaps = IBZ2BZMaps.from_calculator(calc)
+            kpt = KPointData.receive(dft.ibzwfs)
+            mykpts.append(kpt)
+    for K in range(nbzkpts):
+        k = ibz.bz2ibz_K[K]
+        for s in range(nspins):
+            rank = dft.ibzwfs.rank_ks[k, s]
+            if rank != comm.rank:
+                KPointData.send(dft.ibzwfs, k, s, rank)
+    for kpt in mykpts:
+        kpt.wait()
 
     bzwfs = soc_eigenstates_raw(ibzwfs,
                                 dVL_avii,
