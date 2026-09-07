@@ -1,4 +1,3 @@
-
 from ase.build import molecule
 from gpaw import GPAW
 from gpaw import dscf
@@ -25,7 +24,7 @@ E_gs = CO.get_potential_energy()
 n = 5
 molecule = [0, 1]
 wf_u = [kpt.psit_nG[n] for kpt in calc.wfs.kpt_u]
-p_uai = [dict([(molecule[a], P_ni[n]) for a, P_ni in kpt.P_ani.items()])
+p_uai = [{molecule[a]: P_ni[n] for a, P_ni in kpt.P_ani.items()}
          for kpt in calc.wfs.kpt_u]
 
 # Excited state calculation

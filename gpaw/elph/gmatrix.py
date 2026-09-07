@@ -10,18 +10,20 @@ Electron-phonon interaction::
 
 where the electron phonon coupling is given by::
 
-                      ______
-             l       / hbar         ___
-            g   =   /-------  < i | \ /  V   * e  | j > .
-             ij   \/ 2 M w           'u   eff   l
-                          l
+                      ________
+             l       /  hbar          ___
+            g   =   /---------  < i | \ /  V   * e  | j > .
+             ij   \/ 2 M   w           'u   eff   l
+                        ref l
 
 Here, l denotes the vibrational mode, w_l and e_l is the frequency and
-mass-scaled polarization vector, respectively, M is an effective mass, i, j are
-electronic state indices and nabla_u denotes the gradient wrt atomic
-displacements. The implementation supports calculations of the el-ph coupling
-in both finite and periodic systems, i.e. expressed in a basis of molecular
-orbitals or Bloch states.
+mass-scaled polarization vector, respectively, M_ref is a reference mass
+(in this code, the reference mass is 1 amu to be consistent with the
+mass-scaled phonon eigenvectors from ASE),
+i and j are electronic state indices and nabla_u denotes the gradient wrt
+atomic displacements. The implementation supports calculations of the el-ph
+coupling in both finite and periodic systems, i.e. expressed in a basis of
+molecular orbitals or Bloch states.
 """
 import ase.units as units
 import numpy as np
@@ -29,20 +31,27 @@ from ase import Atoms
 from ase.phonons import Phonons
 from ase.utils.filecache import MultiFileJSONCache
 from ase.utils.timing import Timer, timer
+
 from gpaw.elph.supercell import Supercell
 from gpaw.mpi import normalize_communicator
 from gpaw.old.calculator import GPAW
 from gpaw.typing import ArrayND
 
-OPTIMIZE = "optimal"
+OPTIMIZE = 'optimal'
 
 
 class ElectronPhononMatrix:
     """Class for containing the electron-phonon matrix"""
 
-    def __init__(self, atoms: Atoms, supercell_cache: str, phonon,
-                 load_sc_as_needed: bool = True, indices=None,
-                 comm=None) -> None:
+    def __init__(self,
+                 atoms: Atoms,
+                 supercell_cache: str,
+                 phonon: Phonons | str | dict,
+                 *,
+                 indices: list[int] | None = None,
+                 load_sc_as_needed: bool = True,
+                 use_mean_minimum_images: bool = False,
+                 comm=None):
         """Initialize with base class args and kwargs.
 
         Parameters
@@ -65,35 +74,61 @@ class ElectronPhononMatrix:
         # XXX Since no parallelization has been implemented for this class,
         #     should the communicator input be removed?
         self.comm = normalize_communicator(comm)
+        self.use_mean_minimum_images = use_mean_minimum_images
 
         if not load_sc_as_needed:
-            assert indices is None, "Use 'load_sc_as_needed' with 'indices'"
+            assert indices is None, 'Use "load_sc_as_needed" with "indices"'
 
         self.timer = Timer()
 
         self.atoms = atoms
         if indices is None:
-            indices = np.arange(len(atoms))
-        if isinstance(indices, np.ndarray):
-            self.indices = indices.tolist()
+            indices = list(range(len(atoms)))
+        self.indices = indices
+
+        self.timer.start('Reading caches')
+
+        self._set_phonon_cache(phonon, atoms)
+        self.lattice_vectors_array = self.phonon.lattice_vectors_array
+        if set(self.phonon.indices) != set(self.indices):
+            raise ValueError('Atom indices for ElectronPhononMatrix do not '
+                             'match atom indices for the Phonons class.\n')
+        self._read_phonon_cache()
 
         self._set_supercell_cache(supercell_cache, load_sc_as_needed)
 
-        self.timer.start("Read phonons")
-        self._set_phonon_cache(phonon, atoms)
+        self.timer.stop('Reading caches')
 
-        if set(self.phonon.indices) != set(self.indices):
-            self.phonon.set_atoms(self.indices)
-            self.phonon.C_avNav = None
-
-        self._read_phonon_cache()
-        self.timer.stop("Read phonons")
+    def _set_phonon_cache(self, phonon, atoms):
+        if isinstance(phonon, Phonons):
+            self.phonon = phonon
+        elif isinstance(phonon, str):
+            info = MultiFileJSONCache(phonon, comm=self.comm)['info']
+            assert 'dr_version' in info, 'use valid cache created by elph'
+            assert info['dr_version'] == 2, ('Displacements cache is outdated,'
+                                             ' please recalculate!')
+            self.phonon = Phonons(
+                atoms,
+                supercell=tuple(info['supercell']),
+                name=phonon,
+                select_atoms=info['indices'].tolist(),
+                delta=info['delta'],
+                center_refcell=True,
+                use_mean_minimum_images=self.use_mean_minimum_images,
+            )
+        elif isinstance(phonon, dict):
+            # this would need to be updated if Phonon defaults change
+            assert phonon.get('center_refcell', True)
+            self.phonon = Phonons(
+                atoms, **phonon,
+                use_mean_minimum_images=self.use_mean_minimum_images)
+        else:
+            raise TypeError('Bad input type for keyword "phonon".')
 
     def _set_supercell_cache(self, supercell_cache: str,
                              load_sc_as_needed: bool):
         self.supercell_cache = MultiFileJSONCache(
             supercell_cache, comm=self.comm)
-        self.R_cN = self._get_lattice_vectors()
 
         if load_sc_as_needed:
             self._yield_g_NNMM = self._yield_g_NNMM_as_needed
@@ -101,27 +136,6 @@ class ElectronPhononMatrix:
         else:
             self.g_xsNNMM, _ = Supercell.load_supercell_matrix(supercell_cache)
             self._yield_g_NNMM = self._yield_g_NNMM_from_var
-
-    def _set_phonon_cache(self, phonon, atoms):
-        if isinstance(phonon, Phonons):
-            self.phonon = phonon
-        elif isinstance(phonon, str):
-            info = MultiFileJSONCache(phonon, comm=self.comm)["info"]
-            assert "dr_version" in info, "use valid cache created by elph"
-            # our version of phonons
-            self.phonon = Phonons(atoms, supercell=tuple(info["supercell"]),
-                                  name=phonon, delta=info["delta"],
-                                  center_refcell=True)
-        elif isinstance(phonon, dict):
-            # this would need to be updated if Phonon defaults change
-            supercell = phonon.get("supercell", (1, 1, 1))
-            name = phonon.get("name", "phonon")
-            delta = phonon.get("delta", 0.01)
-            center_refcell = phonon.get("center_refcell", False)
-            self.phonon = Phonons(atoms, supercell=supercell, name=name,
-                                  delta=delta, center_refcell=center_refcell)
-        else:
-            raise TypeError
 
     def _read_phonon_cache(self):
         if self.phonon.C_avNav is None:
@@ -160,6 +174,9 @@ class ElectronPhononMatrix:
         OR
         or a preprocessed g_xNMn, where the ket side was taken care of.
         """
+
+        R_Nc = self.lattice_vectors_array
+
         if var1.ndim == 2:
             C1_nM = var1
             precalc = False
@@ -187,11 +204,10 @@ class ElectronPhononMatrix:
         u_lx = u_l.reshape(nmodes, ndisp)
 
         # Multiply phase factors
-        phase_m = np.exp(2.0j * np.pi * np.einsum("i,im->m", k_c + q_c,
-                                                  self.R_cN))
+        phase_m = np.exp(2.0j * np.pi * R_Nc @ (k_c + q_c))
+
         if not precalc:
-            phase_n = np.exp(-2.0j * np.pi * np.einsum("i,in->n", k_c,
-                                                       self.R_cN))
+            phase_n = np.exp(-2.0j * np.pi * R_Nc @ k_c)
 
         # Do each cartesian component separately
         for i, a in enumerate(self.indices):
@@ -233,21 +249,20 @@ class ElectronPhononMatrix:
         else:
             return g_lnn * units.Hartree / units.Bohr  # eV / Ang
 
-    @timer("g ket part")
-    def _precalculate_ket(self, c_knM, kd, s: int):
-        g_xNkMn = []
-        phase_kn = np.exp(-2.0j * np.pi * np.einsum("ki,in->kn", kd.bzk_kc,
-                                                    self.R_cN))
-        for a in self.indices:
+    @timer('g ket part')
+    def _precalculate_ket(self, g_xNkMn, c_knM, bzk_kc, s: int):
+        phase_kN = np.exp(-2.0j * np.pi * np.einsum(
+            'ki,ni->kn', bzk_kc, self.lattice_vectors_array))
+
+        for i, a in enumerate(self.indices):
             for v in range(3):
-                x = 3 * a + v
-                g_NNMM = self._yield_g_NNMM_as_needed(x, s)
-                g_NkMM = np.einsum("mnop,kn->mkop", g_NNMM, phase_kn,
+                x_cache = 3 * a + v
+                x_index = 3 * i + v
+                g_NNMM = self._yield_g_NNMM_as_needed(x_cache, s)
+                g_NkMM = np.einsum('mnop,kn->mkop', g_NNMM, phase_kN,
                                    optimize=OPTIMIZE)
-                g_NkMn = np.einsum("mkop,knp->mkon", g_NkMM, c_knM,
-                                   optimize=OPTIMIZE)
-                g_xNkMn.append(g_NkMn)
-        return np.array(g_xNkMn)
+                g_xNkMn[x_index] = np.einsum('mkop,knp->mkon', g_NkMM, c_knM,
+                                             optimize=OPTIMIZE)
 
     def bloch_matrix(self, calc: GPAW, k_qc: ArrayND = None,
                      savetofile: bool = True, prefactor: bool = True,
@@ -300,8 +315,15 @@ class ElectronPhononMatrix:
             with self.timer("Gather wavefunctions to root"):
                 c_knM = self._gather_all_wfc(wfs, s)
 
-            # precalculate k (ket) of g
-            g_xNkMn = self._precalculate_ket(c_knM, kd, s)
+            # Precalculate ket of g
+            g_xNkMn = np.zeros(
+                (3 * len(self.indices),
+                 np.prod(self.supercell_cache["info"]["supercell"]),
+                 wfs.kd.nbzkpts,
+                 wfs.setups.nao,
+                 wfs.bd.nbands),
+                dtype=complex)
+            self._precalculate_ket(g_xNkMn, c_knM, kd.bzk_kc, s)
 
             for q, q_c in enumerate(k_qc):
                 # Find indices of k+q for the k-points
@@ -313,7 +335,7 @@ class ElectronPhononMatrix:
 
                 for k in range(kd.nbzkpts):
                     k_c = kd.bzk_kc[k]
-                    kplusq_c = k_c + q_c
+                    kplusq_c = (k_c + q_c) % 1.
                     kplusq_c -= kplusq_c.round()
                     # print(kplusq_c, kd.bzk_kc[kplusq_k[k]])
                     assert np.allclose(kplusq_c, kd.bzk_kc[kplusq_k[k]])

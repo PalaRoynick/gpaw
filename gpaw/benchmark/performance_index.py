@@ -194,6 +194,7 @@ def work(name: str,
 
     atoms.calc = GPAW(
         txt=f'{name}.txt',
+        convergence={'density': 1e-4},  # keep old default for now ...
         communicator=world,
         **params)
 

@@ -35,6 +35,7 @@ def test_response_bse_aluminum(in_tmp_dir, gpw_files, mpi):
         df = DielectricFunction(calc=gpw_files['bse_al'],
                                 frequencies=w_w,
                                 eta=eta,
+                                rate=0.1,
                                 ecut=ecut,
                                 hilbert=False,
                                 world=mpi.comm)

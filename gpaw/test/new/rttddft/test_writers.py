@@ -7,7 +7,6 @@ from gpaw.new.rttddft import RTTDDFT
 from gpaw.new.rttddft.writers import DipoleMomentWriter
 from gpaw.tddft.spectrum import read_dipole_moment_file
 from gpaw.tddft.units import asetime_to_autime
-
 from gpaw.test import only_on_master
 
 

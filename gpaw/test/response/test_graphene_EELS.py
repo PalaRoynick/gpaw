@@ -21,7 +21,7 @@ def test_graphene_EELS(in_tmp_dir, gpw_files, mpi):
     # Calculation
     dfcalc = DielectricFunction(gpw_files['graphene_pw'], truncation='2D',
                                 frequencies=np.linspace(0., 9., 141),
-                                eta=0.3, ecut=150, rate='eta', hilbert=False,
+                                ecut=150, eta=0.3, rate=0.3, hilbert=False,
                                 world=mpi.comm)
     for q_c, refs in zip(q_qc, refs_q):
         epsinv = dfcalc.get_inverse_dielectric_function(q_c=q_c)

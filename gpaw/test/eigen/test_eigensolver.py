@@ -1,5 +1,6 @@
 import pytest
 from ase import Atoms
+
 from gpaw.core.matrix import suggest_blocking
 from gpaw.dft import DFT
 from gpaw.mpi import world

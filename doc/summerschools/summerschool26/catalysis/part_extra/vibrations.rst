@@ -16,6 +16,7 @@ finite displacement method. For further reading, see for example the following s
 
 [2]: :doi:`Togo and Tanaka, Scripta Materialia 108, 1-5 (2015) <10.1016/j.scriptamat.2015.07.021>`
 
+
 Vibrational energy of the initial and final states
 --------------------------------------------------
 
