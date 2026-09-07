@@ -58,8 +58,10 @@ class DirectOptimizationLcao(Eigensolver):
 
     def build_lcao(self, basis, relpos_ac,
                    cell_cv, symmetries, hamiltonian,
-                   create_occupation_number_calculator):
+                   create_occupation_number_calculator,
+                   create_mixer):
         occ_calc = create_occupation_number_calculator()
+        mixer = create_mixer()
 
         return DirOptLCAO(
             basis,
@@ -67,4 +69,5 @@ class DirectOptimizationLcao(Eigensolver):
             matrix_exp=self.matrix_exp,
             searchdir_algo_name=self.searchdir_algo,
             occ_calc=occ_calc,
+            mixer=mixer,
             linesearch_algo=self.linesearch_algo)

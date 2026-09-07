@@ -305,7 +305,8 @@ class TBDFTComponentsBuilder(DFTComponentsBuilder):
                              self.grid.cell_cv,
                              self.ibz.symmetries,
                              hamiltonian,
-                             self.create_occupation_number_calculator)
+                             self.create_occupation_number_calculator,
+                             self.create_mixer)
 
     def create_ibz_wave_functions(self,
                                   basis: BasisFunctions,

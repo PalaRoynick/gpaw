@@ -89,7 +89,8 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
                              self.grid.cell_cv,
                              self.ibz.symmetries,
                              hamiltonian,
-                             self.create_occupation_number_calculator)
+                             self.create_occupation_number_calculator,
+                             self.create_mixer)
 
     def read_ibz_wave_functions(self, reader):
         c = 1

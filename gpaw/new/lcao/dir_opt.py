@@ -16,6 +16,7 @@ class DirOptLCAO(LCAOEigensolver):
     def __init__(self,
                  basis,
                  occ_calc,
+                 mixer,
                  representation='sparse',
                  matrix_exp='egdecomp',
                  searchdir_algo_name='l-bfgs',
@@ -66,6 +67,7 @@ class DirOptLCAO(LCAOEigensolver):
         self.matrix_exp = matrix_exp
         self.searchdir_algo_name = searchdir_algo_name
         self.occ_calc = occ_calc
+        self.mixer = mixer
         self.linesearch_algo = linesearch_algo
         self.iter = 0
         self.update_ref_orbitals_counter = 20
@@ -93,7 +95,7 @@ class DirOptLCAO(LCAOEigensolver):
 
         # Initialize objective function
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
-                                             self.matrix_exp)
+                                             self.matrix_exp, self.mixer)
 
         for wfs in ibzwfs:
             f_unique = np.unique(wfs.myocc_n)
@@ -203,6 +205,9 @@ class DirOptLCAO(LCAOEigensolver):
         # print(self.etdm._gradient[0,:10])
 
         self.iter += 1
+
+        # error on the density
+        self.dens_error = self.objfunc.dens_error
 
         return 0.0, error, self.objfunc.tot_energy
 

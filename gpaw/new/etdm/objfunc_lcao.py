@@ -9,7 +9,8 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
     def __init__(self,
                  ibzwfs: IBZWaveFunctions,
                  representation: str,
-                 matrix_exp: str):
+                 matrix_exp: str,
+                 mixer):
 
         self.ibzwfs = ibzwfs
         self._representation = representation
@@ -18,6 +19,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.f_n = ibzwfs.get_all_eigs_and_occs(broadcast=False)[1]
         self.matrix_exp = matrix_exp
         self.use_egdecomp = self.matrix_exp == 'egdecomp'
+        self.mixer = mixer
 
         super().__init__(ndim, self.f_n, dtype, self._representation,
                          self.matrix_exp)
@@ -56,7 +58,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         self.rotate_wfs(a_vec_u, ibzwfs, ref_orbitals)
 
-        energy = self.update_density_and_potential(ibzwfs, density, pot_calc,
+        energy, self.dens_error = self.update_density_and_potential(ibzwfs, density, pot_calc,
                                                    potential, hamiltonian)
         
         self.error = 0.0
@@ -136,6 +138,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         """
 
         density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
+        dens_error = self.mixer.mix(density)
         potential, energies, _ = pot_calc.calculate(density,
                                                     ibzwfs,
                                                     potential.vHt_x)
@@ -145,7 +148,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
-        return energies
+        return energies, dens_error
 
     def rotate_wfs(self, a_vec_u, ibzwfs, ref_orbitals):
         """

@@ -198,7 +198,8 @@ class LSR1:
     def __init__(self,
                  memory=20,
                  method='LSR1',
-                 phi=None):
+                 phi=None,
+                 mode=None):
         """
         Initialization of LSR1 algorithm
 
