@@ -66,9 +66,13 @@ class Extension:
         """PW-mode hook called right before solving the Poisson equation."""
         pass
 
-    def update2(self, nt_r, vHt_r, vt_sr) -> float:
-        """Calculate environment energy."""
-        return 0.0
+    def update2(self, nt_r, vHt_r, vt_sr) -> None:
+        """Hook called right after solving the Poisson equation."""
+        pass
+
+    def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
+        """PW-mode hook called right after solving the Poisson equation."""
+        pass
 
     def post_converged(self, dft) -> None:
         """Hook called after the SCF-loop has converged.

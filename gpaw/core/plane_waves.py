@@ -957,6 +957,23 @@ class PWArray(XArray[PWDesc]):
         return result * self.dv
 
 
+def pw_to_grid(x_h: PWArray | None, grid: UGDesc) -> UGArray:
+    """Reconstruct a real-space field on `grid` from PW coefficients.
+
+    `x_h` may be `None` on some ranks (e.g. all but an elected owning
+    rank), or present everywhere as a shard of a domain-distributed
+    array. Either way, gathering it leaves (at most) a single rank
+    holding the full coefficient set (``x0_h``), which is then
+    inverse-FFT'd there and `scatter_from` distributes the result
+    across `grid`.
+    """
+    x0_h = x_h.gather() if x_h is not None else None
+    x_r = grid.empty()
+    x_r.scatter_from(x0_h.ifft(grid=grid.new(comm=None))
+                     if x0_h is not None else None)
+    return x_r
+
+
 def a2a_stuff(comm, N, ng, myng, maxmyng):
     """Create arrays for MPI alltoallv call."""
     ssize_r = np.zeros(comm.size, int)

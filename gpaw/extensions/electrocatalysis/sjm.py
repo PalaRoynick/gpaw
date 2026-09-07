@@ -9,7 +9,7 @@ import numpy as np
 from ase.units import Bohr, Ha, _e
 
 from gpaw import ConvergenceError
-from gpaw.core import PWArray, PWDesc, UGArray
+from gpaw.core import PWArray, PWDesc, UGArray, pw_to_grid
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
@@ -759,6 +759,9 @@ class SJMExtension(Extension):
                  f'slope of {slope:.4f} V/electron.')
 
     def move_atoms(self, relpos_ac) -> None:
+        # The wrapped solvation extension is not itself in the extension
+        # list, so its cavity only follows the atoms if we forward the move:
+        self.solvation.move_atoms(relpos_ac)
         charge = self._pending_charge
         if charge is not None:
             # always_adjust: the step taken after the last geometry had
@@ -785,15 +788,18 @@ class SJMExtension(Extension):
         self.potentiostat.add_charge(nt_r)
 
     def update1pw(self, nt_g):
-        grid = self._charging.mask_r.desc
-        nt_r = grid.empty()
-        nt_r.scatter_from(nt_g.ifft(grid=grid.new(comm=None))
-                          if nt_g is not None else None)
+        nt_r = pw_to_grid(nt_g, self._charging.mask_r.desc)
         self.solvation.update1(nt_r)
         self.potentiostat.add_charge_pw(nt_g)
 
-    def update2(self, nt_r, vHt_r, vt_sr) -> float:
-        return self.solvation.update2(nt_r, vHt_r, vt_sr)
+    def update2(self, nt_r, vHt_r, vt_sr) -> None:
+        self.solvation.update2(nt_r, vHt_r, vt_sr)
+
+    def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
+        self.solvation.update2pw(nt_g, vHt_h, vt_sr)
+
+    def get_energy_contributions(self) -> dict[str, float]:
+        return self.solvation.get_energy_contributions()
 
 
 def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
