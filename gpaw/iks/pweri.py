@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import json
 from dataclasses import dataclass
@@ -18,7 +20,11 @@ from gpaw.utilities.tools import tri2full
 from gpaw.old.matrix import matrix_matrix_multiply as mmm
 
 if TYPE_CHECKING:
+    from typing import Any
     from gpaw.old.calculator import GPAW as GPAWCalc
+    from gpaw.old.kpoint import KPoint
+    from gpaw.old.grid_descriptor import GridDescriptor
+    pyscf_t = Any
 
 
 @dataclass(frozen=True)
@@ -33,10 +39,9 @@ class PairDensity:
 class CoulombPotential:
     name = 'isolated FPS'
 
-    def __init__(self, finegd, physical_pbc):
+    def __init__(self, finegd: GridDescriptor, physical_pbc: list[bool]):
         if np.any(physical_pbc):
-            raise ValueError(
-                'Periodic ERIs need an explicit reciprocal-space G=0 convention.')
+            raise ValueError('Periodic ERIs need an explicit reciprocal-space G=0 convention.')
         self.finegd = finegd
         self.poisson = PoissonSolver('fast', use_charge_center=True,
                                      use_charged_periodic_corrections=True)
@@ -177,9 +182,7 @@ class PWERI:
         return self.expand_pair_matrix(pair_eri, pairs)
 
     def expand_pair_matrix(
-            self,
-            pair_eri: np.ndarray,
-            pairs: list[tuple[int, int, int]]
+            self, pair_eri: np.ndarray, pairs: list[tuple[int, int, int]]
     ) -> np.ndarray:
         """Expand the packed pair matrix using the eight real ERI symmetries."""
         eri = np.empty((self.nspins, self.nspins) + (self.nbands,) * 4)
@@ -192,7 +195,7 @@ class PWERI:
                         eri[spin2, spin1, r, s, p, q] = value
         return eri
 
-    def calculate_fock_matrix(self, kpt) -> np.ndarray:
+    def calculate_fock_matrix(self, kpt: KPoint) -> np.ndarray:
         """Build <phi_i|F_HF|phi_j>."""
         ham = self.hamiltonian
         wfs = self.wfs
@@ -234,8 +237,7 @@ class PWERI:
         return 0.5 * (fock + fock.T)
 
     def run(
-            self,
-            progress: Callable[[str], None] | None = None
+            self, progress: Callable[[str], None] | None = None
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         eri = self.calculate_eri(progress=progress)
         fock = np.asarray([self.calculate_fock_matrix(kpt)
@@ -248,10 +250,8 @@ class PWERI:
 
 
 def reference_fock(
-        h1: np.ndarray,
-        eri: np.ndarray,
-        occupations: np.ndarray,
-        degeneracy: int) -> np.ndarray:
+    h1: np.ndarray, eri: np.ndarray, occupations: np.ndarray, degeneracy: int
+) -> np.ndarray:
     """Return the reference Fock matrices for spin-resolved occupations."""
     fock = np.empty_like(h1)
     for spin1 in range(len(occupations)):
@@ -267,10 +267,8 @@ def reference_fock(
 
 
 def remove_reference_mean_field(
-        fock: np.ndarray,
-        eri: np.ndarray,
-        occupations: np.ndarray,
-        degeneracy: int) -> np.ndarray:
+    fock: np.ndarray, eri: np.ndarray, occupations: np.ndarray, degeneracy: int
+) -> np.ndarray:
     """Return h = F - J[D] + K[D] for each spin channel."""
     h1 = np.empty_like(fock)
     for spin1 in range(len(occupations)):
@@ -292,7 +290,7 @@ def validate_results(
         occupations: np.ndarray,
         eigenvalues: np.ndarray,
         degeneracy: int) -> dict[str, float]:
-    """Validate tensor symmetries, HF reconstruction, and canonicality."""
+    """Validate tensor symmetries, and HF reconstruction."""
     eri_errors = {
         'i<->j': np.max(np.abs(eri - eri.transpose(0, 1, 3, 2, 4, 5))),
         'k<->l': np.max(np.abs(eri - eri.transpose(0, 1, 2, 3, 5, 4))),
@@ -323,10 +321,9 @@ def validate_results(
     }
 
 
-def hf_energy(h1: np.ndarray,
-              eri: np.ndarray,
-              occupations: np.ndarray,
-              degeneracy: int) -> float:
+def hf_energy(
+        h1: np.ndarray, eri: np.ndarray, occupations: np.ndarray, degeneracy: int
+) -> float:
     """Return the HF energy of the exported determinant."""
     one_body = np.einsum('si,sii->', occupations, h1, optimize=True)
     coulomb = 0.0
@@ -345,19 +342,15 @@ def hf_energy(h1: np.ndarray,
 
 
 def calculate_integrals(
-        pweri: PWERI,
-        nbands: int | None = None,
-        progress: Callable[[str], None] | None = None
-) -> tuple[np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray]:
+        pweri: PWERI, nbands: int | None = None, progress: Callable[[str], None] | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run PWERI and return a lowest-band orbital space without writing."""
     if nbands is None:
         nbands = pweri.nbands
 
     assert 1 <= nbands <= pweri.nbands
 
-    all_occupations = np.asarray([kpt.f_n for kpt in pweri.kpt_s],
-                                 dtype=float)
+    all_occupations = np.asarray([kpt.f_n for kpt in pweri.kpt_s], dtype=float)
     assert np.all(
         np.abs(all_occupations[:, nbands:]) < 1e-10), "excludes occupied!"
 
@@ -442,46 +435,37 @@ def exx_diagnostics(
             'i,j,ijji->', occupations[spin], occupations[spin],
             eri[spin, spin], optimize=True)
     xc = calc.hamiltonian.xc
-    gpaw_exx_core_core = float(xc.ecc)
-    gpaw_exx_core_valence = float(xc.evc)
-    gpaw_exx_valence_valence = float(xc.evv)
-    gpaw_exx = (gpaw_exx_core_core + gpaw_exx_core_valence +
-                gpaw_exx_valence_valence)
+    gpaw_ecc = float(xc.ecc)
+    gpaw_ecv = float(xc.evc)
+    gpaw_evv = float(xc.evv)
+    gpaw_exx = gpaw_ecc + gpaw_ecv + gpaw_evv
     return {
         'gpaw_exx_energy_ha': gpaw_exx,
-        'gpaw_exx_core_core_ha': gpaw_exx_core_core,
-        'gpaw_exx_core_valence_ha': gpaw_exx_core_valence,
-        'gpaw_exx_valence_valence_ha': gpaw_exx_valence_valence,
+        'gpaw_exx_core_core_ha': gpaw_ecc,
+        'gpaw_exx_core_valence_ha': gpaw_ecv,
+        'gpaw_exx_valence_valence_ha': gpaw_evv,
         'eri_exchange_energy_ha': float(eri_exchange),
         'exx_eri_mismatch_ha': float(
-            gpaw_exx_valence_valence - eri_exchange),
+            gpaw_evv - eri_exchange),
     }
 
 
 def write_fcidump(
-        outdir: Path,
-        h1: np.ndarray,
-        eri: np.ndarray,
-        norb: int,
-        nelec: int,
-        spin: int = 0) -> Path:
+        outdir: Path, h1: np.ndarray, eri: np.ndarray, norb: int, nelec: int, spin: int = 0
+) -> Path:
     """Write a restricted-orbital FCIDUMP file."""
     from pyscf.tools import fcidump
 
     assert h1.ndim == 2 and eri.ndim == 4
     dump = outdir / 'FCIDUMP'
-    fcidump.from_integrals(
-        str(dump), h1, eri, norb, nelec, nuc=0.0, ms=spin)
+    fcidump.from_integrals(str(dump), h1, eri, norb, nelec, nuc=0.0, ms=spin)
     return dump
 
 
 def make_pyscf_hf(
-        dump: Path,
-        fock_gpaw: np.ndarray,
-        occupations: np.ndarray,
-        nelec: int,
-        model_hf: float):
-    """Run PySCF from an existing restricted-orbital FCIDUMP file."""
+        dump: Path, fock_gpaw: np.ndarray, occupations: np.ndarray, nelec: int, model_hf: float
+) -> tuple[pyscf_t, float, float, float]:
+    """Run PySCF from an existing (restricted) FCIDUMP file."""
     from pyscf.tools import fcidump
 
     mf = fcidump.to_scf(str(dump))
@@ -505,54 +489,98 @@ def make_pyscf_hf(
     return mf, fock_error, hf_error, gap
 
 
-def prepare_p_nm(
-        p_nm: np.ndarray,
-        method: str,
-        norb: int,
-        nelec: int) -> tuple[np.ndarray, dict]:
-    """Validate a spin-summed 1-RDM without writing it."""
-    p_nm = np.asarray(np.real_if_close(p_nm))
-    assert not np.iscomplexobj(p_nm)
-    p_nm = np.asarray(p_nm, dtype=float)
-    assert p_nm.shape == (norb, norb)
+def make_ccsd(
+        h1: np.ndarray, eri: np.ndarray, fock: np.ndarray, occupations: np.ndarray
+) -> tuple[pyscf_t, pyscf_t]:
+    """Prepare CCSD in the GPAW MO basis."""
+    from pyscf import gto, scf
+    from pyscf.cc import ccsd
 
-    trace_error = float(np.trace(p_nm) - nelec)
-    hermiticity_error = float(np.max(np.abs(p_nm - p_nm.T)))
-    assert abs(trace_error) < 1.0e-8
-    assert hermiticity_error < 1.0e-8
+    norb = h1.shape[-1]
+    reference = scf.RHF(gto.M())
+    reference.mo_coeff = np.eye(norb)
+    reference.mo_occ = occupations
+    reference.mo_energy = np.diag(fock)
+    reference._eri = eri
+    reference.e_tot = hf_energy(
+        h1[None], eri[None, None], occupations[None], 2)
+    reference.converged = True
+    reference.make_rdm1 = lambda *args: np.diag(occupations)
+    reference.get_veff = lambda *args, **kwargs: None
+    reference.get_fock = lambda *args, **kwargs: fock
 
-    p_nm = 0.5 * (p_nm + p_nm.T)
-    metadata = {
-        'method': method,
-        'file': 'P_nm.npy',
-        'orbital_basis': 'exported GPAW spatial orbitals',
-        'spin_convention': 'spin-summed',
-        'density_convention':
-            'n(r) = sum_nm P_nm psi_n*(r) psi_m(r)',
-        'norb': norb,
-        'nelec': nelec,
-        'trace': float(np.trace(p_nm)),
-        'trace_error': trace_error,
-        'hermiticity_error': hermiticity_error,
-    }
-    return p_nm, metadata
+    mycc = ccsd.CCSD(reference)
+    eris = mycc.ao2mo()
+    return mycc, eris
 
 
-def write_p_nm(
-        outdir: Path,
-        p_nm: np.ndarray,
-        metadata: dict) -> dict:
-    """Write a prepared spin-summed 1-RDM and its metadata."""
-    np.save(outdir / 'P_nm.npy', p_nm)
-    (outdir / 'P_nm_metadata.json').write_text(
-        json.dumps(metadata, indent=2) + '\n')
-    return {
-        'density_matrix_method': metadata['method'],
-        'density_matrix_file': 'P_nm.npy',
-        'density_matrix_trace': metadata['trace'],
-        'density_matrix_trace_error': metadata['trace_error'],
-        'density_matrix_hermiticity_error': metadata['hermiticity_error'],
-    }
+def make_uccsd(
+        h1: np.ndarray, eri: np.ndarray, fock: np.ndarray, occupations: np.ndarray
+) -> tuple[pyscf_t, pyscf_t]:
+    """Prepare UCCSD in the GPAW MO bases."""
+    from pyscf import gto, scf
+    from pyscf.cc import uccsd
+
+    norb = h1.shape[-1]
+    reference = scf.UHF(gto.M())
+    reference.mo_coeff = (np.eye(norb), np.eye(norb))
+    reference.mo_occ = tuple(occupations)
+    reference.mo_energy = tuple(np.diag(f_s) for f_s in fock)
+    reference.e_tot = hf_energy(h1, eri, occupations, 1)
+    reference.converged = True
+    reference.make_rdm1 = lambda *args: np.asarray(
+        [np.diag(f_s) for f_s in occupations])
+    reference.get_veff = lambda *args, **kwargs: None
+    reference.get_fock = lambda *args, **kwargs: fock
+
+    mycc = uccsd.UCCSD(reference)
+    same_spin = iter((eri[0, 0], eri[1, 1]))
+
+    def ao2mofn(mo_coeff):
+        if isinstance(mo_coeff, tuple):
+            return eri[0, 1]
+        return next(same_spin)
+
+    eris = uccsd._make_eris_incore(mycc, ao2mofn=ao2mofn)
+    return mycc, eris
+
+
+def run_ccsd(
+        h1: np.ndarray, eri: np.ndarray, fock: np.ndarray, occupations: np.ndarray,
+        nspins: int, metadata: bool = False
+) -> tuple[np.ndarray, dict | None]:
+    """Run CCSD or UCCSD and return P_snn in the GPAW MO bases."""
+    if nspins == 1:
+        mycc, eris = make_ccsd(
+            h1[0], eri[0, 0], fock[0], occupations[0])
+    else:
+        mycc, eris = make_uccsd(h1, eri, fock, occupations)
+
+    mycc.kernel(eris=eris)
+    if not mycc.converged:
+        raise RuntimeError('CCSD did not converge.')
+
+    mycc.solve_lambda(eris=eris)
+    if not mycc.converged_lambda:
+        raise RuntimeError('CCSD Lambda equations did not converge.')
+
+    P_snn = np.asarray(mycc.make_rdm1())
+    if nspins == 1:
+        P_snn = P_snn[None]
+    data = None
+    if metadata:
+        data = {
+            'method': 'CCSD' if nspins == 1 else 'UCCSD',
+            'file': 'P_snn.npy',
+            'energy_ha': float(mycc.e_tot),
+            'correlation_energy_ha': float(mycc.e_corr),
+            'spin_convention': (
+                'spin-summed' if nspins == 1 else 'spin-resolved'),
+            'orbital_basis': 'original GPAW HF molecular orbitals',
+            'electron_count': float(np.trace(
+                P_snn, axis1=-2, axis2=-1).real.sum()),
+        }
+    return P_snn, data
 
 
 def parse_args() -> argparse.Namespace:
@@ -568,15 +596,16 @@ def parse_args() -> argparse.Namespace:
                         help='Validate and print integral diagnostics.')
     parser.add_argument('--verbose', action='store_true',
                         help='Print ERI calculation progress.')
+    parser.add_argument('--fcidump', action='store_true',
+                        help='Write a restricted-orbital FCIDUMP file.')
+    parser.add_argument('--ccsd', action='store_true',
+                        help='Run CCSD/UCCSD and write P_snn.npy.')
+    parser.add_argument('--ccsd-metadata', action='store_true',
+                        help='Write P_snn_metadata.json with --ccsd.')
     return parser.parse_args()
 
 
-def main() -> None:
-    from gpaw import setup_paths
-    if '.' not in setup_paths:
-        setup_paths.append('.')
-
-    args = parse_args()
+def main(args: argparse.NameSpace) -> None:
     calc = GPAW(args.restart)
     pweri = PWERI(calc)
     progress = print if args.verbose and world.rank == 0 else None
@@ -585,20 +614,42 @@ def main() -> None:
 
     diagnostics = None
     if args.diagnostics:
-        diagnostics = validate_results(
-            h1, eri, fock, occupations, eigenvalues, pweri.degeneracy)
+        diagnostics = validate_results(h1, eri, fock, occupations,
+                                       eigenvalues, pweri.degeneracy)
         if world.rank == 0:
             for name, value in diagnostics.items():
                 print(f'{name}: {value:.3e}')
 
     if world.rank == 0:
         metadata = integral_metadata(
-            pweri, h1, eri, occupations, eigenvalues,
-            diagnostics=diagnostics)
-        write_integrals(
-            args.outdir, h1, eri, fock, metadata)
+            pweri, h1, eri, occupations, eigenvalues, diagnostics=diagnostics
+        )
+        write_integrals(args.outdir, h1, eri, fock, metadata)
+
+        if args.fcidump:
+            if pweri.nspins != 1:
+                raise ValueError(
+                    'FCIDUMP requires a common spatial-orbital basis.')
+            write_fcidump(
+                args.outdir, h1[0], eri[0, 0], h1.shape[-1],
+                int(round(occupations.sum())))
+
+        if args.ccsd:
+            P_snn, P_snn_metadata = run_ccsd(
+                h1, eri, fock, occupations,
+                nspins=calc.density.nspins,
+                metadata=args.ccsd_metadata)
+            np.save(args.outdir / 'P_snn.npy', P_snn)
+            if P_snn_metadata is not None:
+                (args.outdir / 'P_snn_metadata.json').write_text(
+                    json.dumps(P_snn_metadata, indent=2) + '\n')
+
         print(f'Wrote integrals to {args.outdir.resolve()}')
 
 
 if __name__ == '__main__':
-    main()
+    from gpaw import setup_paths
+    if '.' not in setup_paths:
+        setup_paths.append('.')
+
+    raise SystemExit(main(parse_args()))

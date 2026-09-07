@@ -262,10 +262,10 @@ class iKS:
             self.ls_adaptive = linear_solver.pop("adaptive", False)
             self.ls_kwargs = linear_solver
             self.ls_kwargs.setdefault("maxiter", 1000)
-            self.ls_kwargs.setdefault("rtol", 1e-5)
+            self.ls_kwargs.setdefault("rtol", 1e-10)
         else:
             self.linear_solver = linear_solver
-            self.ls_kwargs = {"maxiter": 1000, "rtol": 1e-5}
+            self.ls_kwargs = {"maxiter": 1000, "rtol": 1e-10}
             self.ls_adaptive = False
         self.L2_uw = None
 
