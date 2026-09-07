@@ -236,9 +236,27 @@ calculation --- once one has been run, it is the same object as
   *not* work: only :literal:`set()` gets the charge to the jellium as well and
   empties the results, which is what makes the next
   :literal:`get_potential_energy()` run the SCF loop again.
-* :literal:`write_sjm_traces(...)`, which writes the electrostatic potential,
-  the cavity and the jellium counter charge to disk, either as `xy`-averaged
-  traces or as cube files.  This one needs a calculation to have been run.
+* :literal:`write_sjm_traces(path='sjm_traces', style='z', props=...)`, which
+  writes the electrostatic potential (in eV, referenced to the Fermi level),
+  the solvent cavity and the jellium counter charge (in e/Bohr^3, integrating
+  to minus the excess electrons) into the directory :literal:`path`.
+  :literal:`style='z'` --- the default --- writes one :literal:`<prop>.txt`
+  per quantity, averaged over `x` and `y` as a function of `z`, while
+  :literal:`style='cube'` writes :literal:`<prop>.cube` on the full 3-D grid.
+  :literal:`props` picks which of the three quantities to write.  This one
+  needs a calculation to have been run; calling it earlier raises
+  :literal:`RuntimeError`.
+
+So a run that writes both kinds of trace looks like::
+
+    atoms.get_potential_energy()  # traces need a converged calculation
+
+    sjm = atoms.calc.sjm
+    sjm.write_sjm_traces()  # sjm_traces/{potential,cavity,background_charge}.txt
+    sjm.write_sjm_traces(path='traces-3d', style='cube')  # traces-3d/*.cube
+
+Both calls are collective: run them on all ranks, as you would any other
+calculator method.
 
 References
 ==========
