@@ -93,8 +93,8 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
         lcao_ibzwfs, _ = create_lcao_ibzwfs(
             basis,
             self.ibz, self.communicators, self.setups,
-            self.relpos_ac, self.grid, lcao_dtype,
-            lcaonbands, self.ncomponents, self.atomdist, self.nelectrons,
+            self.relpos_ac, self.wf_grid, lcao_dtype,
+            lcaonbands, self.ncomponents, self.wf_atomdist, self.nelectrons,
             xp=self.xp)
 
         self.log('\nDiagonalizing LCAO Hamiltonian', flush=True)

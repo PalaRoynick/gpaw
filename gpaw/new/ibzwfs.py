@@ -8,6 +8,7 @@ import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
 
+from gpaw.core import UGArray
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
@@ -233,10 +234,10 @@ class IBZWaveFunctions(Generic[WFT]):
         """Compute density and add to ``nt_sR`` and ``D_asii``."""
         if nt_sR.desc.comm.size != self.domain_comm.size:
             my_nt_sR = nt_sR.desc.new(
-                comm=self.domain_comm).zeros(self.ncomponents)
+                comm=self.domain_comm).zeros(self.ncomponents, xp=self.xp)
             atomdist = self._wfs_u[0].P_ani.layout.atomdist
             my_D_asii = D_asii.layout.new(
-                atomdist=atomdist).zeros(self.ncomponents)
+                atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
             self.add_to_density(my_nt_sR, my_D_asii)
             nt_sR.data += my_nt_sR.redist(
                 nt_sR.desc, self.kpt_band_comm, serial_comm).data

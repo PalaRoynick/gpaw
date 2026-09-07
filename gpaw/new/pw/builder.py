@@ -22,7 +22,6 @@ from gpaw.new.pw.pot_calc import PlaneWavePotentialCalculator
 from gpaw.new.pwfd.builder import PWFDDFTComponentsBuilder
 from gpaw.new.xc import create_functional
 from gpaw.typing import Array1D
-from gpaw.core.atom_arrays import AtomDistribution
 
 
 class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
@@ -62,10 +61,6 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             comm=self.communicators['w' if self.distribute_density else 'd'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
-        self.wf_grid = grid.new(comm=self.communicators['d'])
-        self.wf_atomdist = AtomDistribution(
-            self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
-            self.wf_grid.comm)
 
         return grid, fine_grid
 

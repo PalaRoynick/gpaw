@@ -27,6 +27,8 @@ from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
 from gpaw.utilities import (check_atoms_too_close,
                             check_atoms_too_close_to_boundary)
+from gpaw.new.builder import DFTComponentsBuilder
+
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -974,7 +976,7 @@ class Parameters:
                               atoms,
                               *,
                               comm=None,
-                              log=None) -> Builder:
+                              log=None) -> DFTComponentsBuilder:
         return self.mode.dft_components_builder(
             atoms, self, comm=comm, log=log)
 
@@ -1008,7 +1010,6 @@ class Parameters:
             density)
         if builder.distribute_density:
             from gpaw.mpi import serial_comm
-            print(builder.atomdist)
             potential = potential.redist(builder.wf_grid,
                                          None,
                                          builder.wf_atomdist,

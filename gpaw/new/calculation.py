@@ -212,18 +212,31 @@ class DFT:
         grid = self.density.nt_sR.desc
         rank_a = grid.ranks_from_fractional_positions(self.relpos_ac)
         atomdist = AtomDistribution(rank_a, atomdist.comm)
+        wf_grid = self.potential.vt_sR.desc
+        if wf_grid.comm.size != grid.comm.size:
+            rank_a = wf_grid.ranks_from_fractional_positions(self.relpos_ac)
+            wf_atomdist = AtomDistribution(rank_a, wf_grid.comm)
+        else:
+            wf_atomdist = atomdist
 
         self.pot_calc.move(self.relpos_ac, atomdist)
-        self.ibzwfs.move(self.relpos_ac, atomdist)
+        self.ibzwfs.move(self.relpos_ac, wf_atomdist)
         self.density.move(self.relpos_ac, atomdist)
         if self.ibzwfs.has_wave_functions():
             self.density.update(self.ibzwfs)
-        self.potential.move(atomdist)
+        self.potential.move(wf_atomdist)
         self.scf_loop.hamiltonian.move(self.relpos_ac)
         self.scf_loop.mixer.move(self.relpos_ac, atomdist)
 
         self.potential, self.energies, _ = self.pot_calc.calculate(
             self.density, self.ibzwfs, self.potential.vHt_x)
+        from gpaw.mpi import serial_comm
+        self.potential = self.potential.redist(
+            wf_grid,
+            None,
+            wf_atomdist,
+            serial_comm,
+            self.ibzwfs.kpt_band_comm)
 
         mm_av = self.results.get('non_collinear_magmoms')
         if mm_av is None:

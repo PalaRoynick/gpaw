@@ -80,7 +80,7 @@ class Potential:
                comm2: MPIComm) -> Potential:
         vHt_x = self.vHt_x
         if desc is not None and vHt_x is not None:
-            vHt_x = self.vHt_x.redist(desc, comm1, comm2)
+            vHt_x = vHt_x.redist(desc, comm1, comm2)
 
         return Potential(
             self.vt_sR.redist(grid, comm1, comm2),
