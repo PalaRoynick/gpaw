@@ -5,8 +5,8 @@ from ase.units import Bohr
 
 from gpaw.core import UGDesc
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DEFAULT_BOTTOM, DEFAULT_TOP, CavityShapedRegion, SlabRegion,
-    build_jellium_region)
+    DEFAULT_BOTTOM, DEFAULT_TOP, CavityShapedRegion, JelliumCharging,
+    SlabRegion, build_jellium_region)
 
 HEIGHT = 20.0  # Å
 ZMAX = 6.0  # Å, highest atom
@@ -106,6 +106,56 @@ def test_build_jellium_region():
     relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
     with pytest.raises(NotImplementedError, match='cavity-like'):
         build_jellium_region({'shape': 'cavity'}).mask(grid, relpos_ac)
+
+
+def test_move_skips_an_unchanged_region():
+    """A move that leaves the region alone does not rebuild the mask."""
+    grid = UGDesc.from_cell_and_grid_spacing(
+        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
+        grid_spacing=0.2, pbc=(1, 1, 0))
+    # Two atoms; only the upper one sets the lower limit of the region:
+    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT], [0.5, 0.5, 0.1]])
+    region = SlabRegion(bottom=-3.0)  # relative, so it follows the atoms
+    mask_r, z1, z2 = region.mask(grid, relpos_ac)
+    charging = JelliumCharging(mask_r, pw=None, region=region)
+
+    # No key stored yet, so the first move rebuilds:
+    assert charging.move(relpos_ac, grid) == (z1, z2)
+    mask_r = charging.mask_r
+
+    # The lower atom moves and the highest one does not, so the region is
+    # unchanged and the mask is left alone -- the same object, not a copy:
+    moved_ac = relpos_ac.copy()
+    moved_ac[1, 2] = 0.2
+    assert charging.move(moved_ac, grid) is None
+    assert charging.mask_r is mask_r
+
+    # Moving the highest atom does move the region:
+    moved_ac[0, 2] += 1.0 / HEIGHT
+    zs = charging.move(moved_ac, grid)
+    assert zs is not None
+    assert zs[0] == pytest.approx(z1 + 1.0)
+    assert charging.mask_r is not mask_r
+
+
+def test_move_always_rebuilds_without_a_key():
+    """A region that reports no key is rebuilt on every move."""
+    grid = UGDesc.from_cell_and_grid_spacing(
+        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
+        grid_spacing=0.2, pbc=(1, 1, 0))
+    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
+
+    class KeylessRegion(SlabRegion):
+        def key(self, grid, relpos_ac):
+            return None  # as the JelliumRegion base does
+
+    region = KeylessRegion(bottom=-3.0)
+    charging = JelliumCharging(region.mask(grid, relpos_ac)[0],
+                               pw=None, region=region)
+    assert charging.move(relpos_ac, grid) is not None
+    mask_r = charging.mask_r
+    assert charging.move(relpos_ac, grid) is not None  # same geometry
+    assert charging.mask_r is not mask_r
 
 
 def test_mask():

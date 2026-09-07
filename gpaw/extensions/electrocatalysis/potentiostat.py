@@ -37,6 +37,16 @@ class JelliumRegion:
         """
         raise NotImplementedError
 
+    def key(self, grid, relpos_ac) -> object | None:
+        """Cheap value identifying the region for this geometry.
+
+        :meth:`JelliumCharging.move` skips rebuilding the mask when the
+        key has not changed since the last one, so an implementation must
+        be much cheaper than :meth:`mask` and must change whenever the
+        mask would.  ``None`` -- the default -- means "always rebuild".
+        """
+        return None
+
 
 class SlabRegion(JelliumRegion):
     """A jellium region shaped as a slab perpendicular to z.
@@ -150,6 +160,15 @@ class SlabRegion(JelliumRegion):
                 f'is not below the top at {top:.3f} Å.')
         return bottom, top
 
+    def key(self, grid, relpos_ac) -> tuple[float, float]:
+        """The z limits -- all that this region's shape depends on.
+
+        Only reached when :attr:`follows_atoms` is true, which rules out
+        ``fix_bottom``, so :meth:`limits` cannot freeze anything here.
+        """
+        height = grid.cell_cv[2, 2] * Bohr
+        return self.limits(height, relpos_ac[:, 2].max() * height)
+
     def mask(self, grid, relpos_ac) -> tuple[UGArray, float, float]:
         """Build the 0/1 mask of the region, plus its limits in Å."""
         height = grid.cell_cv[2, 2] * Bohr
@@ -247,8 +266,9 @@ class ChargingScheme:
     def move(self, relpos_ac, grid) -> tuple[float, float] | None:
         """Rebuild the region for a new geometry if it follows the atoms.
 
-        Returns the new lower and upper limit in Å, or ``None`` if the
-        region does not move with the atoms.
+        Returns the new lower and upper limit in Å, or ``None`` if there
+        was nothing to rebuild -- either the region does not move with the
+        atoms at all, or this geometry leaves it exactly where it was.
         """
         return None
 
@@ -293,16 +313,21 @@ class JelliumCharging(ChargingScheme):
         self.charge = charge
         self.set_region(mask_r)
 
-    def set_region(self, mask_r: UGArray) -> None:
+    def set_region(self, mask_r: UGArray, key: object | None = None) -> None:
         """Normalize and store the shape of the jellium region.
 
         Can be called again later if the region has to follow the atoms.
+        ``key`` is :meth:`JelliumRegion.key` for the geometry the mask was
+        built from; :meth:`move` compares against it to spot a later
+        geometry that needs no new mask.  Leaving it ``None`` just means
+        the next :meth:`move` rebuilds unconditionally.
         """
         norm = mask_r.integrate()
         if norm == 0.0:
             raise ValueError('The jellium region contains no grid points.')
         self.mask_r = mask_r
         mask_r.data *= 1.0 / norm
+        self._key = key
         self.mask_g = None
         if isinstance(self.pw, PWDesc):
             mask0_r = mask_r.gather()
@@ -321,8 +346,14 @@ class JelliumCharging(ChargingScheme):
     def move(self, relpos_ac, grid) -> tuple[float, float] | None:
         if not self.region.follows_atoms:
             return None
+        key = self.region.key(grid, relpos_ac)
+        if key is not None and key == self._key:
+            # Same region as last time -- rebuilding the mask would cost a
+            # grid pass, a norm and (in PW mode) a gather plus an FFT, and
+            # hand back exactly the mask we already have.
+            return None
         mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
-        self.set_region(mask_r)
+        self.set_region(mask_r, key)
         return z1, z2
 
     @property
