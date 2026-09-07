@@ -94,7 +94,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
                              kin_stencil=self.params.mode.nn,
                              xp=self.xp)
 
-    def read_ibz_wave_functions(self, reader):
+    def read_ibz_wave_functions(self, reader, save_memory=False):
         ibzwfs = super().read_ibz_wave_functions(reader)
 
         if 'coefficients' in reader.wave_functions:

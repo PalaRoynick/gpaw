@@ -105,7 +105,7 @@ def read_rttddft(filename: str | Path | IO[str],
     # Read state arrays and create the builder
     builder, dft_params, dft_state = read_dft_state(
         reader.state, atoms=atoms, params=dft_params,
-        comm=comm, singlep=False, log=log)
+        comm=comm, singlep=False, log=log, save_memory=False)
     ibzwfs, density, potential, energies = dft_state
     state = RTTDDFTState(*dft_state)
 
