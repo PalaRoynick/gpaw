@@ -1025,7 +1025,7 @@ def find_reciprocal_vectors(ecut: float,
     >>> i
     array([[ 0,  0,  0,  0,  0,  1, -1],
            [ 0,  0,  0,  1, -1,  0,  0],
-           [ 0,  1, -1,  0,  0,  0,  0]])
+           [ 0,  1, -1,  0,  0,  0,  0]], dtype=int16)
     """
     Gcut = (2 * ecut)**0.5
     n = Gcut * (cell**2).sum(axis=1)**0.5 / (2 * pi) + abs(kpt)
