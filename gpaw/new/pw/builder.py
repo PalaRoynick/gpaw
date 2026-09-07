@@ -67,7 +67,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return PWDesc(ecut=self.ecut,
                       cell=self.grid.cell,
                       comm=self.grid.comm,
-                      dtype=self.dtype)
+                      dtype=self.dtype, save_memory=True)
 
     def create_xc_functional(self):
         return create_functional(self._xc,
