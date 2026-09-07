@@ -11,24 +11,28 @@ from ase.calculators.fd import calculate_numerical_forces
 from gpaw import PW, FermiDirac
 from gpaw.new.ase_interface import GPAW
 from gpaw.new.solvation import Solvation
+from gpaw.extensions.electrocatalysis.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LinearDielectric, Power12Potential)
 from gpaw.solvation.interactions import SurfaceInteraction, VolumeInteraction
 
 
-def make_calc(mode, txt, solvated=True, interactions=None):
+def make_calc(mode, txt, solvated=True, interactions=None, sjm=False,
+              **solvation_kwargs):
     mode_kwargs = (dict(mode=PW(400.)) if mode == 'pw'
                    else dict(mode='fd', h=0.18))
     extensions = []
     if solvated:
-        extensions = [Solvation(
+        solvation = dict(
             cavity=EffectivePotentialCavity(
                 effective_potential=Power12Potential(u0=0.180),
                 temperature=298.15,
                 surface_calculator=GradientSurface(),
                 volume_calculator=KB51Volume()),
             dielectric=LinearDielectric(epsinf=80.0),
-            interactions=interactions or [])]
+            interactions=interactions or [])
+        extensions = [SJM(**solvation, excess_electrons=0.0) if sjm else
+                      Solvation(**solvation, **solvation_kwargs)]
     return GPAW(
         **mode_kwargs,
         kpts=(1, 1, 1),
@@ -112,3 +116,33 @@ def test_pw_solvation_interaction_forces(in_tmp_dir):
     # PW matches FD mode for the interaction-inclusive force too.
     atoms.calc = make_calc('fd', 'nacl_fd_ia.txt', interactions=ia)
     assert F_ia[0, 2] == pytest.approx(atoms.get_forces()[0, 2], abs=0.01)
+
+
+def test_sjm_zero_charge_forces_match_solvation(in_tmp_dir):
+    """SJM with no excess electrons must reproduce plain Solvation.
+
+    An empty jellium region adds nothing to the density, so the two
+    calculations differ only in that SJM reaches the solvation model
+    through a wrapped extension that is not itself in the extension
+    list -- every hook, the force correction included, has to be
+    forwarded by hand.  Dropping the forwarding silently loses the whole
+    solvation force correction, leaving forces that disagree with the
+    energy and a relaxation that walks uphill.
+
+    In plane-wave mode the two build the very same Poisson solver, once
+    Solvation is told to make the dipole correction that SJM always
+    makes, so the agreement here is to round-off.  (In fd mode Solvation
+    ignores ``dipolelayer`` and SJM applies its own saw-tooth reference
+    instead, so the two legitimately differ by a few meV/Ang.)
+    """
+    atoms = Atoms('NaCl', positions=[(0., 0., 0.), (0., 0., 2.4)])
+    atoms.set_cell([10., 10., 12.])
+    atoms.center()
+    atoms.pbc = True
+
+    atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
+                           dipolelayer=True, zero_vacuum=True)
+    F_solvation = atoms.get_forces()
+
+    atoms.calc = make_calc('pw', 'nacl_pw_sjm.txt', sjm=True)
+    assert atoms.get_forces() == pytest.approx(F_solvation, abs=1e-6)

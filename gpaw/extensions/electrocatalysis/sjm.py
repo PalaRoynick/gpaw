@@ -801,6 +801,14 @@ class SJMExtension(Extension):
     def get_energy_contributions(self) -> dict[str, float]:
         return self.solvation.get_energy_contributions()
 
+    def force_contribution(self, nt_r, vHt_r):
+        # The wrapped solvation extension is not in the extension list, so
+        # its force correction only reaches the total if we forward it.
+        # Without this the forces are inconsistent with the energy and a
+        # relaxation walks uphill.  The jellium itself is a fixed external
+        # background and exerts no force on the atoms.
+        return self.solvation.force_contribution(nt_r, vHt_r)
+
 
 def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
     """Write a quantity as a function of the z coordinate only.
