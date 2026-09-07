@@ -37,7 +37,6 @@ from ase.units import Bohr, Ha
 import gpaw
 import gpaw.mpi as mpi
 from gpaw.core.atom_arrays import AtomArraysLayout
-from gpaw.gpu import as_xp
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
@@ -415,6 +414,12 @@ def read_dft_state(reader: ulm.Reader,
     nt_sR = nt_sR.to_xp(ibzwfs.xp)
     D_asp = D_asp.to_full().to_xp(ibzwfs.xp)
     dH_asp = dH_asp.to_full().to_xp(ibzwfs.xp)
+    if vHt_x is not None:
+        vHt_x = vHt_x.to_xp(ibzwfs.xp)
+    if taut_sR is not None:
+        taut_sR = taut_sR.to_xp(ibzwfs.xp)
+    if dedtaut_sR is not None:
+        dedtaut_sR = dedtaut_sR.to_xp(ibzwfs.xp)
 
     density = Density.from_data_and_setups(
         nt_sR, taut_sR, D_asp,

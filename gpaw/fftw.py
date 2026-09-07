@@ -105,7 +105,7 @@ def create_plans(size_c: IntVector,
 
 class FFTPlans:
     xp = np
-    
+
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
