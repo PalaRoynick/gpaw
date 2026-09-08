@@ -361,6 +361,9 @@ class FakeDensity:
         self.D_asii = density.D_asii
         self.atom_partition = self._atom_partition
         self.ccc_aL = density.calculate_compensation_charge_coefficients()
+        # Net charge of the pseudo density + compensation charges
+        # (see Density.normalize):
+        self.charge = density.charge - pot_calc.charge
         try:
             # mypy complains about these missing from PotentialCalculator
             self.interpolate = pot_calc._interpolate_density  # type: ignore
@@ -406,8 +409,9 @@ class FakeDensity:
                                              for ccc_L in self.ccc_aL.values())
         comp_charge = self.ccc_aL.layout.atomdist.comm.sum_scalar(comp_charge)
 
-        # Normalize
-        nt_sr.data *= -comp_charge / pseudo_charge
+        # Normalize (like Density.normalize; the system need not be
+        # neutral):
+        nt_sr.data *= -(comp_charge + self.charge) / pseudo_charge
         return nt_sr.data
 
     @cached_property

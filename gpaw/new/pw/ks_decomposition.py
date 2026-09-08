@@ -76,25 +76,95 @@ Example::
 
     calc = GPAW('si.gpw')  # must contain wave functions (mode='all')
     d = ks_decomposition(calc, n1=0, n2=8)
+    print(d)                             # summary of all terms
     t_skn = d.kinetic.total              # all-electron <T> in eV
-    vH_skn = d.hartree_valence.pseudo    # pseudo <v_H[n_v]> in eV
+    vH_skn = d.hartree_valence.total     # all-electron <v_H[n_v]> in eV
     print(abs(d.residual_skn).max())     # should be ~1e-10 eV
+    x = d.ks4()                          # symGW features (Hartree)
+    x.x_sknf                             # [t, vh, vxc, eps - eps_VBM]
 
 Only plane-wave mode with LDA/GGA functionals (including +U) is supported.
+
+symGW features
+--------------
+
+symGW (N. Pant, V.-A. Ha, D. Kim and F. Giustino, Phys. Rev. B 114,
+105112 (2026)) fits the GW self-energy ``Sigma_nk = E^GW_nk - eps_nk +
+<v_xc>_nk`` to a polynomial in the "KS4" vector of the state::
+
+    x_nk = [<T>_nk, <v_H>_nk, <v_xc>_nk, eps_nk - eps_VBM]
+
+in Hartree units, where ``v_H`` is the Hartree potential of the valence
+electrons with zero average over the unit cell, and ``eps_VBM`` is the
+valence band maximum.  :meth:`KSDecomposition.ks4` returns these vectors.
+The reference implementation (a patch for Quantum ESPRESSO) evaluates all
+three expectation values with norm-conserving pseudo wave functions.  With
+PAW there are two self-consistent choices, selected with the
+``convention`` argument (see :data:`KS4_CONVENTIONS`):
+
+``'ae'`` (default)
+    All-electron (frozen-core) expectation values: ``kinetic.total``,
+    ``hartree_valence.total`` and ``xc.total``.  These are well-defined
+    physical quantities that do not depend on the pseudization, and
+    ``xc.total`` is the ``<v_xc>`` used by GPAW's G0W0 code, so the
+    self-energy defined above is consistent with the feature vector.
+    Recommended when training on, or predicting, GPAW GW data.
+
+``'pseudo'``
+    Everything evaluated with the pseudo wave functions and the smooth
+    potentials, like a norm-conserving pseudopotential code:
+    ``kinetic.pseudo``, ``hartree_valence.pseudo`` (the Hartree potential
+    of the pseudo valence density alone, which requires
+    ``compensation_charges=False``) and ``xc.pseudo``.  This is formally the
+    closest analogue of the features used in the symGW paper, but PAW
+    pseudo quantities are *not* norm-conserving ones (different
+    pseudization, and the PAW pseudo wave functions are not normalized),
+    so equations fitted to norm-conserving data must be benchmarked before
+    they are applied to these features.
+
+Other combinations can be given as a dict, e.g. ``{'t': 'kinetic.total',
+'vh': 'hartree_valence.pseudo', 'vxc': 'xc.total'}``.  Whatever the choice,
+the same ``<v_xc>`` must be used in the feature vector and in the
+quasiparticle energy ``E_nk = eps_nk - <v_xc>_nk + f(x_nk)``.
+
+Charged and non-periodic systems
+--------------------------------
+
+For periodic systems each non-neutral piece of the electrostatic
+potential is solved with a uniform neutralizing background (zero G=0
+component), exactly as the SCF solver does for charged periodic cells.
+For charged non-periodic systems (molecules with ``charge != 0``) GPAW
+neutralizes the density with a Gaussian charge and subtracts its analytic
+potential; here each piece gets its own Gaussian carrying the net charge
+of that piece (the valence piece absorbs the tiny non-neutrality of the
+SCF pseudo density), so that the pieces still add up to the SCF
+potential.
+
+Memory and parallelization
+--------------------------
+
+The bands are processed in blocks (``blocksize``) so that the real-space
+wave functions of at most about ``DEFAULT_BLOCK_BYTES`` are held at a
+time.  k-points are distributed as in the SCF calculation, every band
+rank processes the bands it owns, and with domain parallelization each
+block is gathered to the domain master.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
-from math import pi, sqrt
+from math import pi, prod, sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Iterator, Sequence
 
 import numpy as np
 from ase.units import Ha
 
 from gpaw.core import PWArray, UGArray
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.mpi import broadcast_float, serial_comm
 from gpaw.new.c import add_to_density
+from gpaw.new.pw.poisson import ChargedPWPoissonSolver
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.setup import Setup
@@ -109,6 +179,11 @@ TERM_NAMES = ['kinetic', 'hartree', 'xc', 'zero']
 HARTREE_PARTS = ['hartree_valence', 'hartree_core', 'hartree_nuclear']
 """Terms that add up to ``hartree``."""
 ALL_TERM_NAMES = TERM_NAMES + HARTREE_PARTS
+
+DEFAULT_BLOCK_BYTES = 256 * 1024**2
+"""Default upper bound (per rank) on the memory for the real-space wave
+functions of one block of bands, see
+:meth:`KSDecompositionCalculator.calculate`."""
 
 
 @dataclass
@@ -154,6 +229,9 @@ class KSDecomposition:
     kpt_indices: list[int]
     """IBZ k-point indices."""
     compensation_charges: bool = True
+    e_vbm: float | None = None
+    """Valence band maximum (highest occupied eigenvalue) in eV, or None
+    if the calculation has no occupation numbers."""
 
     @property
     def hartree_electrons(self) -> Term:
@@ -187,12 +265,80 @@ class KSDecomposition:
         dct = {'eps': self.eps_skn,
                'kpt_indices': np.array(self.kpt_indices),
                'bands': np.array([self.n1, self.n2]),
-               'compensation_charges': np.array(self.compensation_charges)}
+               'compensation_charges': np.array(self.compensation_charges),
+               'e_vbm': np.array(np.nan if self.e_vbm is None
+                                 else self.e_vbm)}
         for name, term in self.all_terms.items():
             dct[f'{name}_pseudo'] = term.pseudo
             dct[f'{name}_paw'] = term.paw
             dct[f'{name}_total'] = term.total
         return dct
+
+    def ks4(self,
+            convention: str | dict[str, str] = 'ae',
+            e_vbm: float | None = None) -> KS4:
+        """symGW feature vectors ``[t, vh, vxc, eps - eps_VBM]``.
+
+        See the section "symGW features" of the module docstring.
+
+        Parameters
+        ----------
+        convention:
+            ``'ae'`` (all-electron expectation values, default),
+            ``'pseudo'`` (pseudo wave functions and smooth potentials,
+            like a norm-conserving pseudopotential code; requires
+            ``compensation_charges=False``) or a dict mapping ``'t'``,
+            ``'vh'`` and ``'vxc'`` to ``'<term>.<part>'`` strings, e.g.
+            ``{'t': 'kinetic.total', 'vh': 'hartree_valence.pseudo',
+            'vxc': 'xc.total'}``.  See :data:`KS4_CONVENTIONS`.
+        e_vbm:
+            Energy reference in eV.  Default: the valence band maximum
+            (highest occupied eigenvalue) of the calculation.
+
+        Returns a :class:`KS4` object with all quantities in Hartree.
+        """
+        if isinstance(convention, str):
+            if convention not in KS4_CONVENTIONS:
+                raise ValueError(f'Unknown convention: {convention!r}.  '
+                                 f'Use one of {list(KS4_CONVENTIONS)} '
+                                 'or a dict.')
+            if convention == 'pseudo' and self.compensation_charges:
+                raise ValueError(
+                    "The 'pseudo' convention needs the Hartree potential "
+                    'of the pseudo valence density without compensation '
+                    'charges: use compensation_charges=False.')
+            fields = KS4_CONVENTIONS[convention]
+        else:
+            fields = dict(convention)
+        if set(fields) != {'t', 'vh', 'vxc'}:
+            raise ValueError("Convention must specify 't', 'vh' and 'vxc', "
+                             f'got {sorted(fields)}')
+        all_terms = self.all_terms
+        x_skn = {}
+        for key, spec in fields.items():
+            name, _, part = spec.partition('.')
+            if name not in all_terms or part not in ['pseudo', 'paw',
+                                                     'total']:
+                raise ValueError(f'Bad specification for {key!r}: {spec!r} '
+                                 f'(expected <term>.<part> with term in '
+                                 f'{list(all_terms)} and part in '
+                                 '[pseudo, paw, total])')
+            x_skn[key] = getattr(all_terms[name], part) / Ha
+        if e_vbm is None:
+            e_vbm = self.e_vbm
+            if e_vbm is None:
+                raise ValueError('The calculation has no occupation numbers '
+                                 'so the valence band maximum is unknown: '
+                                 'give e_vbm explicitly.')
+        return KS4(t_skn=x_skn['t'],
+                   vh_skn=x_skn['vh'],
+                   vxc_skn=x_skn['vxc'],
+                   eps_skn=(self.eps_skn - e_vbm) / Ha,
+                   e_vbm=e_vbm / Ha,
+                   convention=fields,
+                   kpt_indices=self.kpt_indices,
+                   n1=self.n1,
+                   n2=self.n2)
 
     def __str__(self) -> str:
         lines = [f'Kohn-Sham eigenvalue decomposition '
@@ -207,6 +353,61 @@ class KSDecomposition:
                          f'{term.paw.max():9.3f}]')
         lines.append(f'  max |residual|: {abs(self.residual_skn).max():.2e}')
         return '\n'.join(lines)
+
+
+KS4_CONVENTIONS: dict[str, dict[str, str]] = {
+    'ae': {'t': 'kinetic.total',
+           'vh': 'hartree_valence.total',
+           'vxc': 'xc.total'},
+    'pseudo': {'t': 'kinetic.pseudo',
+               'vh': 'hartree_valence.pseudo',
+               'vxc': 'xc.pseudo'}}
+"""Named choices of expectation values for the symGW KS4 vector.
+See the module docstring (section "symGW features")."""
+
+
+@dataclass
+class KS4:
+    """symGW feature vectors ``x_nk = [t, vh, vxc, eps - eps_VBM]``.
+
+    Result of :meth:`KSDecomposition.ks4`.  All arrays have shape
+    ``(nspins, nkpts, nbands)`` and all energies are in **Hartree**
+    (the unit used by the symGW equations).
+    """
+    t_skn: Array3D
+    """Kinetic energy ``<T>``."""
+    vh_skn: Array3D
+    """Hartree potential of the valence electrons ``<v_H[n_v]>`` (zero
+    cell average for periodic systems)."""
+    vxc_skn: Array3D
+    """xc-potential ``<v_xc>``."""
+    eps_skn: Array3D
+    """Kohn-Sham eigenvalue relative to the valence band maximum."""
+    e_vbm: float
+    """Energy reference that was subtracted from the eigenvalues."""
+    convention: dict[str, str]
+    """Which expectation values were used (``'<term>.<part>'``)."""
+    kpt_indices: list[int]
+    n1: int
+    n2: int
+
+    @property
+    def x_sknf(self) -> np.ndarray:
+        """Feature vectors; last axis is ``[t, vh, vxc, eps]``."""
+        return np.stack([self.t_skn, self.vh_skn, self.vxc_skn,
+                         self.eps_skn], axis=-1)
+
+    def todict(self) -> dict[str, np.ndarray]:
+        """Flat dict of arrays (e.g. for ``np.savez``)."""
+        return {'t': self.t_skn,
+                'vh': self.vh_skn,
+                'vxc': self.vxc_skn,
+                'eps': self.eps_skn,
+                'e_vbm': np.array(self.e_vbm),
+                'kpt_indices': np.array(self.kpt_indices),
+                'bands': np.array([self.n1, self.n2]),
+                'convention': np.array([self.convention[key]
+                                        for key in ['t', 'vh', 'vxc']])}
 
 
 def is_paw_setup(setup) -> bool:
@@ -325,6 +526,16 @@ class KSDecompositionCalculator:
         self.dX_axii: dict[str, dict[int, np.ndarray]] = (
             self._atomic_corrections())
 
+        # Valence band maximum (highest occupied eigenvalue, eV) used as
+        # the energy reference of the symGW features:
+        self.e_vbm: float | None
+        try:
+            homo = self.ibzwfs.get_homo_lumo()[0]
+        except ValueError:  # no occupation numbers
+            self.e_vbm = None
+        else:
+            self.e_vbm = float(homo * Ha)
+
     @classmethod
     def from_gpw_file(cls,
                       filename: str | Path,
@@ -374,12 +585,18 @@ class KSDecompositionCalculator:
 
     def _solve_poisson(self,
                        nt_R: UGArray | None,
-                       Q_aL: AtomArrays) -> tuple[PWArray, AtomArrays]:
+                       Q_aL: AtomArrays,
+                       charge: float | None = None
+                       ) -> tuple[PWArray, AtomArrays, float]:
         """Electrostatic potential from pseudo density + comp. charges.
 
-        Uses the same Poisson solver as the SCF calculation.  Returns the
-        potential (plane-wave coefficients) and the integrals of the
-        compensation charges times the potential (all atoms, all ranks).
+        Uses the same Poisson solver as the SCF calculation (see
+        :meth:`_component_poisson_solver` for charged, non-periodic
+        systems, where ``charge`` can be given to override the net charge
+        that is neutralized).  Returns the potential (plane-wave
+        coefficients), the integrals of the compensation charges times
+        the potential (all atoms, all ranks) and the net charge that was
+        neutralized (0.0 for periodic systems).
         """
         ps = self.pot_calc.poisson_solver
         nt0_R = nt_R.gather() if nt_R is not None else None
@@ -391,8 +608,57 @@ class KSDecompositionCalculator:
         else:
             nt0_g = None
             vt0_g = None
+        ps, charge = self._component_poisson_solver(nt0_g, Q_aL, charge)
         _, v_h, V_aL = ps.solve(nt0_g, Q_aL, vt0_g, None)
-        return v_h, V_aL.gather(broadcast=True)
+        return v_h, V_aL.gather(broadcast=True), charge
+
+    def _component_poisson_solver(self,
+                                  nt0_g: PWArray | None,
+                                  Q_aL: AtomArrays,
+                                  charge: float | None = None):
+        """PAW Poisson solver for one (in general non-neutral) component.
+
+        The valence, core and nuclear pieces of the charge density are
+        not neutral.  For periodic systems the Poisson solver simply
+        drops the G=0 component (uniform neutralizing background), which
+        is linear in the density, so the SCF solver can be used for the
+        pieces as well.  For charged, non-periodic systems, GPAW's
+        :class:`~gpaw.new.pw.poisson.ChargedPWPoissonSolver` neutralizes
+        the density with a Gaussian charge, solves, and subtracts the
+        analytic potential of the Gaussian again.  This is linear too,
+        but only if the Gaussian carries the net charge of the density
+        that is actually being solved for, so each piece gets its own
+        solver with its own net charge (same width ``alpha``; by default
+        the net charge of the density, or ``charge`` if given).  The
+        pieces then add up to the SCF potential exactly.
+
+        Returns the solver and the net charge (0.0 if the SCF solver is
+        used as is).
+        """
+        ps = self.pot_calc.poisson_solver
+        inner = ps.poisson_solver
+        if not isinstance(inner, ChargedPWPoissonSolver):
+            return ps, 0.0
+
+        if charge is None:
+            # Net charge in GPAW's convention (number of missing
+            # electrons, i.e. minus the integral of the electronic +
+            # compensation charge density):
+            rhot_h = ps.pwh.zeros()
+            ps.ghat_aLh.add_to(rhot_h, Q_aL)
+            charge = -rhot_h.integrate()
+            if nt0_g is not None:
+                charge -= nt0_g.integrate()
+            charge = broadcast_float(float(charge), self.domain_comm)
+
+        inner_x = ChargedPWPoissonSolver(inner.pw,
+                                         self.pot_calc.fine_grid,
+                                         charge,
+                                         inner.strength,
+                                         alpha=inner.alpha)
+        ps_x = copy.copy(ps)
+        ps_x.poisson_solver = inner_x
+        return ps_x, charge
 
     def _pseudo_potentials(self) -> None:
         """Split the pseudo potential into v_bar, v_H and v_xc.
@@ -447,31 +713,52 @@ class KSDecompositionCalculator:
             Q_xaL['hartree_valence'][a][:] = Q_L
             Q_xaL['hartree_valence'][a][0] -= delta0
 
-        # Smooth densities: valence, core, nothing:
-        nct_R = density.nct_R
-        nt_R = nct_R.new(data=density.nt_sR.data[:density.ndensities]
-                         .sum(axis=0))
+        # Smooth densities: valence, core, nothing.  Note that
+        # density.nct_R is the smooth core density *per spin channel*
+        # (n~_c / ndensities, see gpaw.new.density.Density.nct_R), so the
+        # total smooth core density is ndensities * nct_R:
+        ndensities = density.ndensities
+        nct_R = density.nct_R.new(data=ndensities * density.nct_R.data)
+        nt_R = nct_R.new(data=density.nt_sR.data[:ndensities].sum(axis=0))
         nvt_R = nct_R.new(data=nt_R.data - nct_R.data)
         nt_xR: dict[str, UGArray | None] = {'hartree_valence': nvt_R,
                                             'hartree_core': nct_R,
                                             'hartree_nuclear': None}
         Q0_aL = Q_aL.new(data=np.zeros_like(Q_aL.data))
 
-        for name in HARTREE_PARTS:
-            v_h, V_aL = self._solve_poisson(nt_xR[name], Q_xaL[name])
+        # For charged non-periodic systems, the Gaussian neutralizing
+        # charges of the three pieces must add up to the one of the SCF
+        # solver in order to reproduce the SCF potential: the SCF pseudo
+        # density is neutral only to within the SCF tolerance and the
+        # G=0 residual is silently dropped by the solver.  The valence
+        # piece is therefore done last and gets whatever is left of the
+        # SCF charge (see _component_poisson_solver):
+        inner = pot_calc.poisson_solver.poisson_solver
+        remaining = (inner.charge
+                     if isinstance(inner, ChargedPWPoissonSolver) else None)
+
+        for name in ['hartree_core', 'hartree_nuclear', 'hartree_valence']:
+            charge = None
+            if remaining is not None and name == 'hartree_valence':
+                charge = remaining
+            v_h, V_aL, charge = self._solve_poisson(nt_xR[name],
+                                                    Q_xaL[name],
+                                                    charge)
+            if remaining is not None:
+                remaining -= charge
             self.V_xaL[name] = V_aL
             v_R = self._to_coarse_grid(v_h)
             if master:
                 assert v_R is not None
                 self.vt_xR[name] = v_R
             if not self.compensation_charges:
-                v_h, _ = self._solve_poisson(nt_xR[name], Q0_aL)
+                v_h, _, _ = self._solve_poisson(nt_xR[name], Q0_aL)
                 v_R = self._to_coarse_grid(v_h)
                 if master:
                     assert v_R is not None
                     self.vbare_xR[name] = v_R
         if not self.compensation_charges:
-            v_h, _ = self._solve_poisson(nt_R, Q0_aL)
+            v_h, _, _ = self._solve_poisson(nt_R, Q0_aL)
             v_R = self._to_coarse_grid(v_h)
             if master:
                 assert v_R is not None
@@ -520,12 +807,22 @@ class KSDecompositionCalculator:
     def calculate(self,
                   n1: int = 0,
                   n2: int = 0,
-                  kpt_indices: Sequence[int] | None = None
+                  kpt_indices: Sequence[int] | None = None,
+                  blocksize: int | None = None
                   ) -> KSDecomposition:
         """Calculate decomposition for bands ``n1:n2`` and IBZ k-points.
 
         ``n2 <= 0`` counts from the total number of bands.  All IBZ
         k-points are used if ``kpt_indices`` is ``None``.
+
+        The bands are processed in blocks of ``blocksize`` bands so that
+        the memory needed for the real-space wave functions stays
+        bounded.  The default block size is chosen so that one block
+        uses at most about ``DEFAULT_BLOCK_BYTES`` per rank.  With band
+        parallelization every band rank processes the bands it owns
+        (blocks never cross band ranks), and with domain parallelization
+        each block is gathered to the domain master.  The result does
+        not depend on ``blocksize``.
         """
         ibzwfs = self.ibzwfs
         n2 = n2 if n2 > 0 else ibzwfs.nbands + n2
@@ -535,6 +832,11 @@ class KSDecompositionCalculator:
         if kpt_indices is None:
             kpt_indices = range(len(ibzwfs.ibz))
         kpt_indices = list(kpt_indices)
+        if blocksize is None:
+            bytes_per_band = 16 * prod(self.grid0.size_c)
+            blocksize = max(1, DEFAULT_BLOCK_BYTES // bytes_per_band)
+        if blocksize < 1:
+            raise ValueError(f'Bad blocksize: {blocksize}')
 
         shape = (ibzwfs.nspins, len(kpt_indices), n2 - n1)
         names = ['eps'] + [f'{name}_{part}'
@@ -547,11 +849,9 @@ class KSDecompositionCalculator:
                 if ibzwfs.rank_ks[k, spin] != ibzwfs.kpt_comm.rank:
                     continue
                 wfs = ibzwfs._get_wfs(k, spin)
-                wfs = wfs.collect_bands_and_domain(n1, n2)
-                if wfs is None:
-                    continue  # not band and domain master
-                for name, x_n in self._one_kpt(wfs).items():
-                    x_skn[name][spin, i] = x_n
+                for b1, b2, wfs_b in self._blocks(wfs, n1, n2, blocksize):
+                    for name, x_n in self._one_kpt(wfs_b).items():
+                        x_skn[name][spin, i, b1 - n1:b2 - n1] = x_n
 
         for x in x_skn.values():
             ibzwfs.comm.sum(x)
@@ -562,9 +862,51 @@ class KSDecompositionCalculator:
             n2=n2,
             kpt_indices=kpt_indices,
             compensation_charges=self.compensation_charges,
+            e_vbm=self.e_vbm,
             **{name: Term(pseudo=x_skn[f'{name}_pseudo'] * Ha,
                           paw=x_skn[f'{name}_paw'] * Ha)
                for name in ALL_TERM_NAMES})
+
+    def _blocks(self,
+                wfs: PWFDWaveFunctions,
+                n1: int,
+                n2: int,
+                blocksize: int
+                ) -> Iterator[tuple[int, int, PWFDWaveFunctions]]:
+        """Serial wave-function objects for blocks of bands.
+
+        Yields ``(b1, b2, wfs_b)`` for the blocks of at most
+        ``blocksize`` bands in ``n1:n2`` that are owned by this band
+        rank, with ``wfs_b`` collected to the domain master (nothing is
+        yielded on the other domain ranks).  This is
+        :meth:`gpaw.new.pwfd.wave_functions.PWFDWaveFunctions.
+        collect_bands_and_domain` for one block, except that the bands
+        stay on the band rank that owns them instead of being sent to
+        the band master.
+        """
+        domain_comm = wfs.psit_nX.desc.comm
+        a = max(n1, wfs.n1)
+        b = min(n2, wfs.n2)
+        pt_aiX = None  # reuse projectors for all blocks of this k-point
+        for b1 in range(a, b, blocksize):
+            b2 = min(b1 + blocksize, b)
+            psit_nX = wfs.psit_nX.desc.empty(
+                (b2 - b1, *wfs.psit_nX.dims[1:]), xp=wfs.psit_nX.xp)
+            psit_nX.data[:] = wfs.psit_nX.data[b1 - wfs.n1:b2 - wfs.n1]
+            atomdist = wfs.atomdist
+            if domain_comm.size > 1:
+                psit_nX = psit_nX.gather()
+                atomdist = atomdist.gather()
+                if domain_comm.rank != 0:
+                    continue
+            wfs_b = PWFDWaveFunctions.from_wfs(wfs,
+                                               psit_nX,
+                                               atomdist=atomdist,
+                                               domain_band_comm=serial_comm)
+            wfs_b.eig_n = wfs.eig_n[b1:b2]
+            wfs_b._pt_aiX = pt_aiX
+            yield b1, b2, wfs_b
+            pt_aiX = wfs_b.pt_aiX
 
     def _one_kpt(self, wfs: PWFDWaveFunctions) -> dict[str, np.ndarray]:
         """Expectation values for one k-point and spin (units: Ha).
@@ -627,7 +969,8 @@ def ks_decomposition(calc,
                      n1: int = 0,
                      n2: int = 0,
                      kpt_indices: Sequence[int] | None = None,
-                     compensation_charges: bool = True
+                     compensation_charges: bool = True,
+                     blocksize: int | None = None
                      ) -> KSDecomposition:
     """Decompose Kohn-Sham eigenvalues into kinetic, Hartree, xc and
     zero-potential expectation values.
@@ -645,6 +988,9 @@ def ks_decomposition(calc,
     compensation_charges:
         Include compensation charges in the pseudo part of the
         electrostatic terms (default).  See module docstring.
+    blocksize:
+        Number of bands processed at a time (default: as many as fit
+        in ``DEFAULT_BLOCK_BYTES``).  Does not affect the result.
 
     See :class:`KSDecomposition` for a description of the result and
     the module docstring for details of the decomposition.
@@ -661,4 +1007,4 @@ def ks_decomposition(calc,
             'Expected a gpw-filename, a gpaw.dft.DFT object or a '
             'new-style GPAW calculator (legacy_gpaw=False), '
             f'got {type(calc)}')
-    return kdc.calculate(n1, n2, kpt_indices)
+    return kdc.calculate(n1, n2, kpt_indices, blocksize)
