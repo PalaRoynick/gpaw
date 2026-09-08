@@ -130,7 +130,8 @@ class SCFLoop:
                     raise KohnShamConvergenceError
                 raise TooFewBandsError
 
-            if self.update_density_and_potential and not getattr(self.eigensolver, 'name', False) == 'etdm-lcao':
+            if (self.update_density_and_potential and
+                    getattr(self.eigensolver, 'name', False) != 'etdm-lcao'):
                 density.update(ibzwfs, ked=pot_calc.xc.type == 'MGGA')
                 dens_error = self.mixer.mix(density)
                 potential, energies, _ = pot_calc.calculate(
