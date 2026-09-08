@@ -331,6 +331,7 @@ class GPWFiles(CachedFilesHandler):
         atoms = self.h3_maker(pbc=False)
         atoms.set_initial_magnetic_moments([1, 0, 0])
         calc = self.GPAW(
+            legacy_gpaw=True,
             mode='lcao',
             h=0.3,
             spinpol=True,
@@ -381,6 +382,7 @@ class GPWFiles(CachedFilesHandler):
     def h2o_do_gmf_lcao(self):
         atm = self.h2o_maker(vacuum=4.0)
         atm.calc = self.GPAW(
+            legacy_gpaw=True,
             mode=LCAO(),
             basis='dzp',
             h=0.22,
@@ -399,6 +401,7 @@ class GPWFiles(CachedFilesHandler):
     def h2o_do_lcao(self):
         atm = self.h2o_maker(vacuum=5.0)
         atm.calc = self.GPAW(
+            legacy_gpaw=True,
             mode=LCAO(),
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
@@ -414,6 +417,7 @@ class GPWFiles(CachedFilesHandler):
     def h2o_cdo_lcao(self):
         atm = self.h2o_maker(vacuum=4.0)
         atm.calc = self.GPAW(
+            legacy_gpaw=True,
             mode=LCAO(),
             basis='dzp',
             h=0.22,
@@ -432,6 +436,7 @@ class GPWFiles(CachedFilesHandler):
     def h2o_cdo_lcao_sic(self):
         atm = self.h2o_maker(vacuum=4.0)
         atm.calc = self.GPAW(
+            legacy_gpaw=True,
             mode=LCAO(force_complex_dtype=True),
             h=0.22,
             occupations={'name': 'fixed-uniform'},
@@ -688,6 +693,7 @@ class GPWFiles(CachedFilesHandler):
         atoms.set_cell([L, L, L])
         atoms.set_pbc(True)
         calc = self.GPAW(
+            legacy_gpaw=True,
             mode='lcao',
             basis='dzp',
             h=0.22,
@@ -708,6 +714,7 @@ class GPWFiles(CachedFilesHandler):
     def h2o_mom_do_lcao(self):
         atm = self.h2o_maker(vacuum=4.0)
         atm.calc = self.GPAW(
+            legacy_gpaw=True,
             mode=LCAO(),
             basis='dzp',
             h=0.22,
@@ -773,6 +780,7 @@ class GPWFiles(CachedFilesHandler):
             linesearch_algo={'name': 'max-step'}
         )
         calc = self.GPAW(
+            legacy_gpaw=True,
             mode='lcao',
             basis='dzp',
             h=0.24,
@@ -796,6 +804,7 @@ class GPWFiles(CachedFilesHandler):
         atoms.center(vacuum=2.0)
         atoms.set_pbc(False)
         calc = self.GPAW(
+            legacy_gpaw=True,
             mode='lcao',
             basis='sz(dzp)',
             h=0.3,
@@ -879,6 +888,7 @@ class GPWFiles(CachedFilesHandler):
         atoms.center(vacuum=2.0)
         atoms.set_pbc(False)
         calc = self.GPAW(
+            legacy_gpaw=True,
             xc='PBE',
             mode='lcao',
             h=0.24,
@@ -898,6 +908,7 @@ class GPWFiles(CachedFilesHandler):
     @gpwfile
     def h_do_gdavid_lcao(self):
         calc = self.GPAW(
+            legacy_gpaw=True,
             xc='PBE',
             mode=LCAO(force_complex_dtype=True),
             h=0.25,

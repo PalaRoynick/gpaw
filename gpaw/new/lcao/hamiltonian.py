@@ -13,6 +13,8 @@ from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
 
+from gpaw.new.etdm.tools import get_n_occ
+
 
 class HamiltonianMatrixCalculator:
     def calculate_matrix(self,
@@ -148,6 +150,23 @@ class LCAOHamiltonian(Hamiltonian):
 
         return NonCollinearHamiltonianMatrixCalculator(matcalc)
 
+    def calculate_kinetic_energy(self, wfs, skip_sum=False):
+        """ 
+        Calculate kinetic energy directly with the operator
+        """
+
+        e_kin = 0.0
+        f = wfs.myocc_n > 1e-10
+        x_nn = np.dot(wfs.C_nM.data[f],
+                      np.dot(wfs.T_MM.data, wfs.C_nM.data[f].T.conj())).real
+        k = 2 * (1 / wfs.nspins)
+        e_kin += np.einsum('i,ii->', k * wfs.myocc_n[f], x_nn)
+
+        if not skip_sum:
+            raise NotImplementedError
+
+        return e_kin
+
 
 class LCAOKickHamiltonian(LCAOHamiltonian):
 
@@ -188,3 +207,5 @@ class LCAOKickHamiltonian(LCAOHamiltonian):
         return CollinearHamiltonianMatrixCalculator(self.V_sxMM, self.dH_saii,
                                                     self.basis,
                                                     include_kinetic=False)
+
+

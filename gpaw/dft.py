@@ -192,7 +192,7 @@ class FD(Mode):
 class Eigensolver(Parameter):
     @classmethod
     def from_param(cls, eigensolver):
-        from gpaw.new.do import DirectOptimization
+        from gpaw.new.do import DirectOptimization, DirectOptimizationLcao
         from gpaw.new.eigensolver import Eigensolver as NewEigensolver
         from gpaw.old.eigensolvers.eigensolver import Eigensolver as OES
 
@@ -200,6 +200,8 @@ class Eigensolver(Parameter):
             'davidson': Davidson,
             'rmm-diis': RMMDIIS,
             'etdm-fdpw': DirectOptimization,
+            'etdm-lcao': DirectOptimizationLcao,
+            'etdm': DirectOptimizationLcao,  # temporary!
             'ppcg': PPCG,
             'lcao': LCAOEigensolver,
             'hybrid-lcao': HybridLCAOEigensolver,
@@ -379,7 +381,8 @@ class RMMDIIS(PWFDEigensolverParameter):
 class LCAOEigensolver(Eigensolver):
     name = 'lcao'
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator, create_mixer):
         from gpaw.new.lcao.eigensolver import LCAOEigensolver as LCAOES
         return LCAOES(basis)
 
@@ -388,7 +391,8 @@ class LCAOEigensolver(Eigensolver):
 
 
 class HybridLCAOEigensolver(LCAOEigensolver):
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator, create_mixer):
         from gpaw.new.lcao.hybrids import HybridLCAOEigensolver as HLCAOES
         return HLCAOES(basis, relpos_ac, cell_cv)
 
@@ -402,7 +406,8 @@ class Scissors(LCAOEigensolver):
     def todict(self):
         return {'shifts': self.shifts}
 
-    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries):
+    def build_lcao(self, basis, relpos_ac, cell_cv, symmetries, hamiltonian,
+                   create_occupation_number_calculator, create_mixer):
         from gpaw.lcao.scissors import ScissorsLCAOEigensolver
         return ScissorsLCAOEigensolver(basis,
                                        self.shifts,

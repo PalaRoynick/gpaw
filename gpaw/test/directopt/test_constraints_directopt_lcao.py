@@ -6,7 +6,7 @@ from gpaw import GPAW
 
 @pytest.mark.do
 def test_constraints_directopt_lcao(in_tmp_dir, gpw_files):
-    calc = GPAW(gpw_files['h2o_cdo_lcao'])
+    calc = GPAW(gpw_files['h2o_cdo_lcao'], legacy_gpaw=True)
     H2O = calc.atoms
     H2O.calc = calc
     homo = 3

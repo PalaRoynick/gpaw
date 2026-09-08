@@ -15,7 +15,7 @@ def test_constraints_directopt_lcao_sic(in_tmp_dir, gpw_files):
     """
     if world.size == 8:
         pytest.skip('See #1406')
-    calc = GPAW(gpw_files['h2o_cdo_lcao_sic'])
+    calc = GPAW(gpw_files['h2o_cdo_lcao_sic'], legacy_gpaw=True)
     H2O = calc.atoms
     H2O.calc = calc
 
@@ -23,7 +23,7 @@ def test_constraints_directopt_lcao_sic(in_tmp_dir, gpw_files):
     if test_restart:
         from gpaw import restart
         calc.write('h2o.gpw', mode='all')
-        H2O, calc = restart('h2o.gpw', txt='-')
+        H2O, calc = restart('h2o.gpw', txt='-', legacy_gpaw=True)
         H2O.calc.results.pop('energy')
         H2O.calc.scf.converged = False
         calc.set(eigensolver={'name': 'etdm-lcao',

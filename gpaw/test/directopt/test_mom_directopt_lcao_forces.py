@@ -11,7 +11,7 @@ from gpaw.mom import prepare_mom_calculation
 @pytest.mark.do
 def test_mom_directopt_lcao_forces(in_tmp_dir, gpw_files):
     delta = 0.01
-    calc = GPAW(gpw_files['co_mom_do_lcao_forces'])
+    calc = GPAW(gpw_files['co_mom_do_lcao_forces'], legacy_gpaw=True)
     # XXX(rg): Remove hack after tchem-gl-13
     # calc.set_positions()
     # calc.wfs.eigensolver.initialize_dm_helper(calc.wfs,
@@ -37,7 +37,7 @@ def test_mom_directopt_lcao_forces(in_tmp_dir, gpw_files):
     calc.write('co.gpw', mode='all')
 
     # Exercise fixed occupations and no update of numbers in OccupationsMOM
-    atoms, calc = restart('co.gpw', txt='-')
+    atoms, calc = restart('co.gpw', txt='-', legacy_gpaw=True)
     e0 = atoms.get_potential_energy()
     for kpt in calc.wfs.kpt_u:
         f_sn[kpt.s] = kpt.f_n
@@ -56,7 +56,7 @@ def test_mom_directopt_lcao_forces(in_tmp_dir, gpw_files):
 
     E = []
     for i in [-1, 1]:
-        atoms, calc = restart('co.gpw', txt='-')
+        atoms, calc = restart('co.gpw', txt='-', legacy_gpaw=True)
         p = atoms.positions.copy()
         p[0, 2] -= delta / 2. * i
         p[1, 2] += delta / 2. * i

@@ -55,7 +55,7 @@ def er_localize(ibzwfs,
     a_init = np.asarray(a_init)
     ibzwfs.comm.broadcast(a_init, 0)
 
-    etdm = ETDM(objfunc, a_init, niter, gtol, True)
+    etdm = ETDM(objfunc, a_init, niter, gtol, True, mode='pwfd')
     etdm.optimize()
 
     return etdm

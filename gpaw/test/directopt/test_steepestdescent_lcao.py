@@ -12,7 +12,7 @@ def test_steepestdescent_lcao(in_tmp_dir, gpw_files):
     :return:
     """
 
-    calc = GPAW(gpw_files['h3_do_sd_lcao'])
+    calc = GPAW(gpw_files['h3_do_sd_lcao'], legacy_gpaw=True)
     atoms = calc.atoms
     atoms.calc = calc
 

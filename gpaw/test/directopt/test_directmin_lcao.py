@@ -29,7 +29,7 @@ def test_directmin_lcao(in_tmp_dir, gpw_files):
     def check_niter(niter: int, check: NiterCheck) -> None:
         assert check.func(niter), f'failed {check.assertion} (niter = {niter})'
 
-    calc = GPAW(gpw_files['h2o_do_lcao'])
+    calc = GPAW(gpw_files['h2o_do_lcao'], legacy_gpaw=True)
     H2O = calc.atoms
     H2O.calc = calc
     e = H2O.get_potential_energy()
@@ -64,7 +64,7 @@ def test_directmin_lcao(in_tmp_dir, gpw_files):
 
     calc.write('h2o.gpw', mode='all')
     from gpaw import restart
-    H2O, calc = restart('h2o.gpw', txt='-')
+    H2O, calc = restart('h2o.gpw', txt='-', legacy_gpaw=True)
     H2O.positions += 1.0e-6
     f3 = H2O.get_forces()
     niter = calc.get_number_of_iterations()

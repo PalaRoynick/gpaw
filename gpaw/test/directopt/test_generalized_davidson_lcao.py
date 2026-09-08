@@ -15,7 +15,7 @@ def test_generalized_davidson_lcao(in_tmp_dir, gpw_files):
     :return:
     """
 
-    calc = GPAW(gpw_files['h_do_gdavid_lcao'])
+    calc = GPAW(gpw_files['h_do_gdavid_lcao'], legacy_gpaw=True)
     # XXX(rg): Remove hack after tchem-gl-13
     calc.set_positions()
     calc.wfs.eigensolver.initialize_dm_helper(calc.wfs, calc.hamiltonian,

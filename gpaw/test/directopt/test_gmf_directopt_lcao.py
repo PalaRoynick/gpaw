@@ -8,7 +8,7 @@ from gpaw.directmin.tools import excite
 @pytest.mark.do
 def test_gmf_directopt_lcao(in_tmp_dir, gpw_files):
     # Water molecule:
-    calc = GPAW(gpw_files['h2o_do_gmf_lcao'])
+    calc = GPAW(gpw_files['h2o_do_gmf_lcao'], legacy_gpaw=True)
     H2O = calc.atoms
     H2O.calc = calc
 
