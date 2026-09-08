@@ -468,8 +468,10 @@ class DirectOptimizer(PotentialOptimizer):
             # attempts can be noisy, particularly when the positions have
             # changed as well.
             self.slope = self.mixer * self.slope + (1.0 - self.mixer) * slope
-        if self.slope is None or abs(self.slope) < 1e-10:
-            # No estimate yet, or one that would send the charge to infinity:
+        if self.slope is None or self.slope > -1e-10:
+            # No estimate yet, or one that is not usefully negative (adding
+            # electrons must lower the potential) -- fall back to the
+            # capacitance guess rather than trust a bad regression:
             self.slope = self._capacitance_slope(area)
         return self.slope
 

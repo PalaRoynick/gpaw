@@ -74,6 +74,64 @@ def test_regression_depth():
     assert opt.slope_regression_depth == 4
 
 
+def test_wrong_signed_regression_falls_back_to_capacitance():
+    """A regression with the wrong sign is rejected for the capacitance guess."""
+    opt = make_optimizer(mixer=0.0)
+    for charge in [0.0, -0.1, -0.2]:
+        opt.history.append((charge, line(30.0, charge)))  # wrong sign
+    slope = opt.update_slope(AREA)
+    assert slope == pytest.approx(-_e * 1e22 / (AREA * 10))
+    assert slope < 0.0
+
+
+def test_next_charge_falls_back_when_the_regression_is_wrong_signed():
+    """The charge steps the right way even when the fit points the wrong way."""
+    opt = make_optimizer(mixer=0.0)
+    # Two points that regress to a positive (wrong-signed) slope of +50:
+    opt.history.append((0.0, line(50.0, 0.0)))
+    opt.history.append((-0.1, line(50.0, -0.1)))
+    potential = line(50.0, -0.05)  # on the same (wrong-signed) line
+    charge = opt.next_charge(-0.05, potential, TARGET, area=AREA)
+    # potential (2.5 V) is below target (4.5 V), so fewer electrons are
+    # wanted: charge should decrease, not increase the way the (rejected)
+    # positive slope would incorrectly ask for:
+    assert charge < -0.05
+
+
+def test_correctly_signed_regression_is_not_rejected():
+    """The guard does not disturb an ordinary, correctly-signed regression."""
+    opt = make_optimizer(mixer=0.0)
+    for charge in [0.0, -0.1, -0.2]:
+        opt.history.append((charge, line(-30.0, charge)))
+    assert opt.update_slope(AREA) == pytest.approx(-30.0)
+
+
+def test_zero_slope_regression_falls_back_to_capacitance():
+    """A flat potential-vs-charge history is as unusable as a wrong sign."""
+    opt = make_optimizer(mixer=0.0)
+    for charge in [0.0, -0.1, -0.2]:
+        opt.history.append((charge, 5.0))  # potential does not move
+    assert opt.update_slope(AREA) == pytest.approx(-_e * 1e22 / (AREA * 10))
+
+
+def test_a_badly_wrong_signed_regression_flips_the_damped_average():
+    """A large wrong-signed regression can flip even a damped average."""
+    opt = make_optimizer(slope=-1.0, mixer=0.2)  # mostly trusts the new value
+    for charge in [0.0, -0.1]:
+        opt.history.append((charge, line(50.0, charge)))
+    assert opt.update_slope(AREA) == pytest.approx(-_e * 1e22 / (AREA * 10))
+
+
+def test_a_mildly_wrong_signed_regression_can_be_damped_away():
+    """Heavy damping can rescue a mildly wrong-signed regression -- no overreaction."""
+    opt = make_optimizer(slope=-30.0, mixer=0.8)  # heavy trust in the old value
+    for charge in [0.0, -0.1]:
+        opt.history.append((charge, line(2.0, charge)))  # mildly wrong-signed
+    slope = opt.update_slope(AREA)
+    assert slope == pytest.approx(0.8 * -30.0 + 0.2 * 2.0)
+    assert slope < 0.0
+
+
 def test_bad_regression_depth():
     with pytest.raises(ValueError, match='at least 2'):
         make_optimizer(slope_regression_depth=1)
