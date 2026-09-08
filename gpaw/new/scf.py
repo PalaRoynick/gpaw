@@ -139,6 +139,8 @@ class SCFLoop:
             else:
                 dens_error = self.eigensolver.dens_error
                 energies.sanity_check()
+                density = self.eigensolver.density
+                potential = self.eigensolver.potential
 
         self.eigensolver.postprocess(
             ibzwfs, density, potential, self.hamiltonian,

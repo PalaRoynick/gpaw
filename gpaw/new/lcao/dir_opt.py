@@ -208,6 +208,8 @@ class DirOptLCAO(LCAOEigensolver):
 
         # error on the density
         self.dens_error = self.objfunc.dens_error
+        self.density = self.objfunc.density
+        self.potential = self.objfunc.potential
 
         return 0.0, error, self.objfunc.tot_energy
 

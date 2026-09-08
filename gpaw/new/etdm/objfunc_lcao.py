@@ -148,6 +148,9 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
         self.matrix_calculator = \
             hamiltonian.create_hamiltonian_matrix_calculator(potential)
 
+        self.density = density
+        self.potential = potential
+
         return energies, dens_error
 
     def rotate_wfs(self, a_vec_u, ibzwfs, ref_orbitals):
