@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +20,7 @@ from gpaw.utilities.tools import tri2full
 from gpaw.old.matrix import matrix_matrix_multiply as mmm
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, Callable
     from gpaw.old.calculator import GPAW as GPAWCalc
     from gpaw.old.kpoint import KPoint
     from gpaw.old.grid_descriptor import GridDescriptor
@@ -39,7 +39,7 @@ class PairDensity:
 class CoulombPotential:
     name = 'isolated FPS'
 
-    def __init__(self, finegd: GridDescriptor, physical_pbc: list[bool]):
+    def __init__(self, finegd: GridDescriptor, physical_pbc: np.ndarray):
         if np.any(physical_pbc):
             raise ValueError('Periodic ERIs need an explicit reciprocal-space G=0 convention.')
         self.finegd = finegd
@@ -89,7 +89,7 @@ class PWERI:
             self.finegd, [setup.ghat_l for setup in self.setups])
         self.ghat.set_positions(self.calc.spos_ac, self.wfs.atom_partition)
         self.coulomb = CoulombPotential(
-            self.finegd, self.calc.atoms.pbc)
+            self.finegd, [False, False, False])
         self.psit_snG = [self.get_realspace_psit(kpt)
                          for kpt in self.kpt_s]
 
@@ -98,7 +98,7 @@ class PWERI:
         assert self.wfs.nspins in {1, 2}
         assert len(self.wfs.kpt_u) == self.wfs.nspins
         assert self.wfs.kd.gamma
-        assert not np.any(self.calc.atoms.pbc)
+        # assert not np.any(self.calc.atoms.pbc)
         assert np.dtype(self.wfs.dtype).kind == 'f'
         assert self.wfs.bd.comm.size == 1
 
@@ -145,10 +145,10 @@ class PWERI:
             for j in range(i, self.nbands)
         ]
 
-        local_bytes = len(pairs) * self.finegd.zeros().nbytes
+        cached = len(pairs) * self.finegd.zeros().nbytes
         if progress is not None:
             progress(f'Caching {len(pairs)} unique pair densities '
-                     f'({local_bytes / 2**30:.2f} GiB per domain rank).')
+                     f'({cached / 2**30:.2f} GiB per domain rank).')
 
         pair_data = [
             self.make_pair_density(spin, i, j)
@@ -260,8 +260,8 @@ def reference_fock(
                       eri[spin1, spin2], optimize=True)
             for spin2 in range(len(occupations)))
         exchange = np.einsum(
-            'i,piiq->pq', occupations[spin1], eri[spin1, spin1],
-            optimize=True) / degeneracy
+            'i,piiq->pq', occupations[spin1], eri[spin1, spin1], optimize=True
+        ) / degeneracy
         fock[spin1] = h1[spin1] + coulomb - exchange
     return 0.5 * (fock + fock.transpose(0, 2, 1))
 
@@ -300,10 +300,8 @@ def validate_results(
     worst_eri = float(max(eri_errors.values()))
     assert worst_eri < 1e-09, f'ERI symmetry check failed: {eri_errors}'
 
-    reconstructed_fock = reference_fock(
-        h1, eri, occupations, degeneracy)
-    fock_reconstruction = float(
-        np.max(np.abs(reconstructed_fock - fock)))
+    reconstructed_fock = reference_fock(h1, eri, occupations, degeneracy)
+    fock_reconstruction = float(np.max(np.abs(reconstructed_fock - fock)))
     assert fock_reconstruction < 1e-9, f'Fock reconstruction failed: {fock_reconstruction}'
 
     diagonal = np.zeros_like(fock)
@@ -344,7 +342,7 @@ def hf_energy(
 def calculate_integrals(
         pweri: PWERI, nbands: int | None = None, progress: Callable[[str], None] | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Run PWERI and return a lowest-band orbital space without writing."""
+    """Run PWERI and return a lowest-band orbital space."""
     if nbands is None:
         nbands = pweri.nbands
 
@@ -375,21 +373,18 @@ def integral_metadata(
         occupations: np.ndarray,
         eigenvalues: np.ndarray,
         diagnostics: dict[str, float] | None = None) -> dict:
-    """Return metadata for calculated integrals without writing."""
+    """Return metadata for calculated integrals."""
 
     if diagnostics is None:
         diagnostics = {}
 
     return {
-        'occupations': (
-            occupations[0] if pweri.nspins == 1 else occupations),
-        'hf_energy': hf_energy(
-            h1, eri, occupations, pweri.degeneracy),
+        'occupations': (occupations[0] if pweri.nspins == 1 else occupations),
+        'hf_energy': hf_energy(h1, eri, occupations, pweri.degeneracy),
         'gpaw_energy': pweri.calc.results['energy'] / Ha,
-        'eigenvalues': (
-            eigenvalues[0] if pweri.nspins == 1 else eigenvalues),
+        'eigenvalues': (eigenvalues[0] if pweri.nspins == 1 else eigenvalues),
         'electron_count': occupations.sum(),
-        'spin_count': pweri.nspins,
+        'nspins': pweri.nspins,
         'spin_electron_count_difference': (
             0.0 if pweri.nspins == 1
             else occupations[0].sum() - occupations[1].sum()),
@@ -458,7 +453,7 @@ def write_fcidump(
 
     assert h1.ndim == 2 and eri.ndim == 4
     dump = outdir / 'FCIDUMP'
-    fcidump.from_integrals(str(dump), h1, eri, norb, nelec, nuc=0.0, ms=spin)
+    fcidump.from_integrals(dump, h1, eri, norb, nelec, nuc=0.0, ms=spin)
     return dump
 
 
@@ -468,7 +463,7 @@ def make_pyscf_hf(
     """Run PySCF from an existing (restricted) FCIDUMP file."""
     from pyscf.tools import fcidump
 
-    mf = fcidump.to_scf(str(dump))
+    mf = fcidump.to_scf(dump)
     mf.conv_tol = 1.0e-11
     mf.max_cycle = 100
 
@@ -556,6 +551,9 @@ def run_ccsd(
     else:
         mycc, eris = make_uccsd(h1, eri, fock, occupations)
 
+    mycc.conv_tol = 1.0e-12
+    mycc.conv_tol_normt = 1.0e-10
+    mycc.max_cycle = 200
     mycc.kernel(eris=eris)
     if not mycc.converged:
         raise RuntimeError('CCSD did not converge.')
@@ -583,7 +581,73 @@ def run_ccsd(
     return P_snn, data
 
 
-def parse_args() -> argparse.Namespace:
+def run_fci(
+        h1: np.ndarray, eri: np.ndarray, occupations: np.ndarray,
+        nspins: int, metadata: bool = False
+) -> tuple[np.ndarray, dict | None]:
+    """Run FCI and return P_snn in the GPAW MO bases."""
+    from pyscf import fci
+
+    norb = h1.shape[-1]
+    if nspins == 1:
+        nelec = int(round(occupations.sum()))
+        solver = fci.direct_spin1.FCI()
+        solver.conv_tol = 1.0e-12
+        solver.max_cycle = 200
+        energy, ci_vector = solver.kernel(
+            h1[0], eri[0, 0], norb, nelec)
+        P_snn = np.asarray(
+            [solver.make_rdm1(ci_vector, norb, nelec)])
+    else:
+        nelec = tuple(int(round(f_n.sum())) for f_n in occupations)
+        solver = fci.direct_uhf.FCI()
+        solver.conv_tol = 1.0e-12
+        solver.max_cycle = 200
+        energy, ci_vector = solver.kernel(
+            (h1[0], h1[1]),
+            (eri[0, 0], eri[0, 1], eri[1, 1]),
+            norb, nelec)
+        P_snn = np.asarray(
+            solver.make_rdm1s(ci_vector, norb, nelec))
+
+    if not solver.converged:
+        raise RuntimeError('FCI did not converge.')
+
+    data = None
+    if metadata:
+        reference_energy = hf_energy(
+            h1, eri, occupations, 2 // nspins)
+        data = {
+            'method': 'FCI',
+            'file': 'P_snn.npy',
+            'energy_ha': float(energy),
+            'correlation_energy_ha': float(energy - reference_energy),
+            'spin_convention': (
+                'spin-summed' if nspins == 1 else 'spin-resolved'),
+            'orbital_basis': 'original GPAW HF molecular orbitals',
+            'electron_count': float(np.trace(
+                P_snn, axis1=-2, axis2=-1).real.sum()),
+        }
+    return P_snn, data
+
+
+def validate_density_matrix(
+        P_snn: np.ndarray, occupations: np.ndarray
+) -> dict[str, float]:
+    """Validate P_snn without writing it."""
+    trace_error = float(
+        np.trace(P_snn, axis1=-2, axis2=-1).real.sum() - occupations.sum())
+    hermiticity_error = float(np.max(np.abs(
+        P_snn - P_snn.conj().transpose(0, 2, 1))))
+    assert abs(trace_error) < 1.0e-8
+    assert hermiticity_error < 1.0e-8
+    return {
+        'density_matrix_trace_error': trace_error,
+        'density_matrix_hermiticity_error': hermiticity_error,
+    }
+
+
+def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument('restart', type=Path,
                         help='Converged old-interface PW EXX/HF .gpw file.')
@@ -598,14 +662,20 @@ def parse_args() -> argparse.Namespace:
                         help='Print ERI calculation progress.')
     parser.add_argument('--fcidump', action='store_true',
                         help='Write a restricted-orbital FCIDUMP file.')
-    parser.add_argument('--ccsd', action='store_true',
+    solver = parser.add_mutually_exclusive_group()
+    solver.add_argument('--ccsd', action='store_true',
                         help='Run CCSD/UCCSD and write P_snn.npy.')
+    solver.add_argument('--fci', action='store_true',
+                        help='Run FCI and write P_snn.npy.')
     parser.add_argument('--ccsd-metadata', action='store_true',
                         help='Write P_snn_metadata.json with --ccsd.')
-    return parser.parse_args()
+    parser.add_argument('--fci-metadata', action='store_true',
+                        help='Write P_snn_metadata.json with --fci.')
+    return parser.parse_args(argv)
 
 
-def main(args: argparse.NameSpace) -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     calc = GPAW(args.restart)
     pweri = PWERI(calc)
     progress = print if args.verbose and world.rank == 0 else None
@@ -629,16 +699,32 @@ def main(args: argparse.NameSpace) -> None:
         if args.fcidump:
             if pweri.nspins != 1:
                 raise ValueError(
-                    'FCIDUMP requires a common spatial-orbital basis.')
+                    'FCIDUMP is only implemented for spin-paired.')
             write_fcidump(
                 args.outdir, h1[0], eri[0, 0], h1.shape[-1],
                 int(round(occupations.sum())))
 
+        P_snn = None
+        P_snn_metadata = None
         if args.ccsd:
             P_snn, P_snn_metadata = run_ccsd(
                 h1, eri, fock, occupations,
                 nspins=calc.density.nspins,
                 metadata=args.ccsd_metadata)
+        elif args.fci:
+            P_snn, P_snn_metadata = run_fci(
+                h1, eri, occupations,
+                nspins=calc.density.nspins,
+                metadata=args.fci_metadata)
+
+        if P_snn is not None:
+            if args.diagnostics:
+                P_snn_diagnostics = validate_density_matrix(
+                    P_snn, occupations)
+                for name, value in P_snn_diagnostics.items():
+                    print(f'{name}: {value:.3e}')
+                if P_snn_metadata is not None:
+                    P_snn_metadata.update(P_snn_diagnostics)
             np.save(args.outdir / 'P_snn.npy', P_snn)
             if P_snn_metadata is not None:
                 (args.outdir / 'P_snn_metadata.json').write_text(
@@ -652,4 +738,4 @@ if __name__ == '__main__':
     if '.' not in setup_paths:
         setup_paths.append('.')
 
-    raise SystemExit(main(parse_args()))
+    raise SystemExit(main())
