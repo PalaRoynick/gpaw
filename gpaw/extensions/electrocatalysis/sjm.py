@@ -841,6 +841,34 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
 
 
 class SJMPoissonSolver(PoissonSolverWrapper):
+    """Finite-difference Poisson solver with a fitted dipole correction.
+
+    Unlike :class:`SJMPWPoissonSolver` this one does not drive the boundary
+    slope to zero.  It reaches about 1e-6 a.u., and refining the grid does not
+    improve that, because the residual is set by a fit rather than by the grid.
+
+    A zero boundary condition in z pins both vacua to ``v == 0``, so a slab
+    with a dipole is forced to ramp: the ramp is the exact solution of the
+    wrong boundary-value problem, not a numerical artifact.  :meth:`solve`
+    removes it afterwards by fitting the slope over :func:`vacuum_window` and
+    subtracting a scaled :func:`modified_saw_tooth` -- a one-dimensional shape
+    built from the xy-averaged ``1 / eps``, not a solution of the actual
+    operator.  Plane waves have no such ramp to remove, being fully periodic,
+    which is why ``_correct_dipole`` there can cancel analytically instead.
+
+    Three ways of closing the gap have been measured and none worked.  An
+    analytic coefficient from the density fails because the 19-point stencil
+    does not obey the continuum identity it relies on (5.8e-5 against the
+    fit's 5e-8).  Subtracting a solved reference layer
+    flattens to 1e-7 but injects a real field where the layer meets the
+    density -- the Cu(100) force gap went 0.071 to 6.678 eV/Ang, invisible to
+    the vacuum-flatness tests -- and moving the layer to the cell edge leaves
+    no vacuum to fit in.  Cancelling the dipole at the source, as
+    :meth:`gpaw.dipole_correction.DipoleCorrection.fdsolve` does, is the
+    structurally right answer, but its analytic potential holds only where
+    ``eps == 1`` and one of its lobes lands in the solvent.
+    """
+
     def __init__(self, solver, dielectric):
         super().__init__(solver)
 

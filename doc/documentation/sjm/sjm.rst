@@ -42,6 +42,7 @@ By default that region is a slab perpendicular to `z`, controlled by the :litera
 The number of electrons in the simulation is increased by an amount equal to the total charge of that region.
 When you run a simulation, you should see that these excess electrons localize on the `+z` side (the right side in these figures) of the metal atoms that simulate the electrode surface, and not on the `-z` (left) side, which simulates the bulk.
 This is accomplished by only putting the jellium region on one side of the simulation, and employing a dipole correction (included by default when you run SJM) to electrostatically decouple the two sides of the cell.
+In plane-wave mode this leaves the potential slope at the cell boundary at zero; in finite-difference mode a residual slope of order 1e-6 a.u. remains.
 
 The figure below shows the difference in two simulations, one run at 4.4 V and one run at 4.3 V.
 The orange curve shows where the potential drops off, and the blue curve shows where the electrons localize.
