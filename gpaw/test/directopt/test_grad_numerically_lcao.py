@@ -9,7 +9,8 @@ from gpaw.new.lcao.derivatives import DerivativesNew
 
 @pytest.mark.do
 
-def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
+@pytest.mark.parametrize('legacy_gpaw', [False])
+def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
     """
     test exponential transformation
     direct minimization method for KS-DFT in LCAO
@@ -55,7 +56,7 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, gpaw_new):
         wfs = calc.wfs
         dens = calc.density
 
-        if gpaw_new == 0:
+        if legacy_gpaw:
 
             # Do we get consistent results regardless of randomization?
             rngs = [False,

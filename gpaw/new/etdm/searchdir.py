@@ -198,8 +198,7 @@ class LSR1:
     def __init__(self,
                  memory=20,
                  method='LSR1',
-                 phi=None,
-                 mode=None):
+                 phi=None,):
         """
         Initialization of LSR1 algorithm
 
@@ -247,7 +246,7 @@ class LSR1:
         self.phi_k = np.zeros(shape=self.memory)
         self.phi_k.fill(1.0)  # FOR NOW DO NOT USE IT
 
-    def update(self, a_cur, g_cur, precond=None):
+    def update(self, a_cur, g_cur, precond=None, mode='lcao'):
         """
         Compute the next search direction
         """
