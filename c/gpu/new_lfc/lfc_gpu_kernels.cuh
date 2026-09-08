@@ -4,6 +4,81 @@
 #include "lfc_gpu.cuh"
 
 
+namespace kernel_utils
+{
+
+    // Largest number of warps we need to support for block reductions, which are implemented via warp reductions under the hood.
+    // Value of 32 is OK for both warp size of 32/64
+    inline constexpr int MAX_WARPS_PER_BLOCK = 32;
+
+    /**
+     * Performs a sum-reduction across threads of the calling warp. Every thread in the warp must call this.
+     * Only the result in the warp's first lane is meaningful.
+     */
+    template<typename T>
+    __device__ __forceinline__ T warp_reduce_sum(T val)
+    {
+        // See any modern reference on warp primitives for the implementation.
+        // Ideally we'd replace this with cooperative-group based reduction once ROCm supports it (>= 7.0)
+    #ifdef GPAW_CUDA
+        const unsigned mask = __activemask();
+        #pragma unroll
+        for (int32_t offset = warpSize / 2; offset > 0; offset >>= 1)
+        {
+            val += __shfl_down_sync(mask, val, offset);
+        }
+
+    #else // HIP
+        #pragma unroll
+        for (int32_t offset = warpSize / 2; offset > 0; offset >>= 1)
+        {
+            val += __shfl_down(val, offset);
+        }
+    #endif
+
+        return val;
+    }
+
+    /**
+     * Performs sum-reduction of val across every thread of the calling thread block.
+     * Every thread in the block must call this with the same shared_buf.
+     * shared_buf must be a __shared__ array of at least kernel_utils::MAX_WARPS_PER_BLOCK elements.
+     * Only the result on the thread with linear index 0 is meaningful.
+     * This is a blocking routine: shared_buf is safe to modify once this function returns.
+     */
+    template<typename T>
+    __device__ T block_reduce_sum(T val, T* shared_buf)
+    {
+        const int linear_tid = (threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x + threadIdx.x;
+        const int num_threads = blockDim.x * blockDim.y * blockDim.z;
+        const int lane = linear_tid % warpSize;
+        const int warp_id = linear_tid / warpSize;
+        const int num_warps = (num_threads + warpSize - 1) / warpSize;
+
+        // Reduce at warp level, storing the result for warp n warp at shared_buf[n]
+        val = warp_reduce_sum(val);
+
+        if (lane == 0)
+        {
+            shared_buf[warp_id] = val;
+        }
+        __syncthreads();
+
+        // Warp 0 sums the per-warp results: tid `i` in warp 0 loads result of warp `i`
+        val = (linear_tid < num_warps) ? shared_buf[linear_tid] : static_cast<T>(0);
+        if (warp_id == 0)
+        {
+            val = warp_reduce_sum(val);
+        }
+        // Barrier to ensure shared_buf is safe to modify once this function exits.
+        __syncthreads();
+
+        return val;
+    }
+
+} // namespace kernel_utils
+
+
 template<typename T>
 struct AddToDensityArrays
 {
@@ -189,7 +264,6 @@ namespace LFCKernelUtils
 
         SphericalHarmonicStatics::fr_times_Ylm(l, spline_val, dx, dy, dz, distance_sq, out_phi_m);
     }
-
 };
 
 template<typename T>
@@ -307,22 +381,29 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
     arrays.nt_G[thread_coords.grid_array_idx] += accumulated_sum;
 }
 
+/* Each thread processes one real grid point, computing overlaps of phi_mu and phi_nu for all (mu, nu) that overlap at that point.
+* The output array V_MN can receive writes to the same (mu, nu) indices from many threads across many blocks so some atomics are needed.
+* We perform a block-wide reduction for each (mu, nu), then write the reduced result with one atomic per block.
+*/
 template<typename T>
 __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays<T> arrays, const LFCGpuSpline* GPAW_RESTRICT splines, GridInfoGpu grid, PhiDataGpu phi, BlockDataGpu blocks)
 {
     LFCThreadGridData<T> thread_coords;
-    if (!LFCKernelUtils::compute_thread_coords<T>(blockIdx.x, grid, blocks, thread_coords))
-    {
-        return;
-    }
+
+    // Can happen that some threads lie outside the valid grid region (boundary blocks "too large").
+    // Can't early-exit because we still need them to participate in the block reductions below.
+    const bool valid = LFCKernelUtils::compute_thread_coords<T>(blockIdx.x, grid, blocks, thread_coords);
     const uint block_idx = blockIdx.x;
 
-    const T vt_dV = arrays.vt_G[thread_coords.grid_array_idx] * grid.dV;
+    const T vt_dV = valid ? arrays.vt_G[thread_coords.grid_array_idx] * grid.dV : static_cast<T>(0);
 
     // Needs to integrate phi_mu * vt * phi_nu, so we need a double loop over the phi index.
     // Call them phi_r and phi_s in the following to avoid confusion with m, n and mu, nu that we already use.
     const size_t j_begin = blocks.start_j[block_idx];
     const size_t j_end = blocks.start_j[block_idx + 1];
+
+    // Scratch space for the block-wide reductions in the loop below
+    __shared__ T reduce_buf[kernel_utils::MAX_WARPS_PER_BLOCK];
 
     // phi_r loop
     for (size_t j_r = j_begin; j_r < j_end; ++j_r)
@@ -330,8 +411,11 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
         const size_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
         const uint8_t l_r = phi.l_i[phi_idx_r];
         const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
-        T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-        LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
+        T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
+        if (valid)
+        {
+            LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
+        }
 
         // phi_s loop
         for (size_t j_s = j_begin; j_s < j_end; ++j_s)
@@ -339,10 +423,14 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
             const size_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
             const uint8_t l_s = phi.l_i[phi_idx_s];
             const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
-            T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-            LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
+            T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
+            if (valid)
+            {
+                LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
+            }
 
-            // Accumulate phi_rm * vt * phi_sn for each phi component m,n
+            // Accumulate phi_rm * vt * phi_sn for each phi component m,n.
+            // All threads loop m,n (and consequently mu, nu) in the same order so the reduction below works as intended.
             for (int m = 0; m < 2*l_r + 1; ++m)
             {
                 const size_t mu = first_mu_r + m;
@@ -360,7 +448,12 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
                     if (mu >= nu)
                     {
                         const T phi_vt_phi = phi_rm_times_vt * phi_s_n[n];
-                        atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], phi_vt_phi);
+                        // block-wide reduction for this (mu, nu) result
+                        const T block_sum = kernel_utils::block_reduce_sum<T>(phi_vt_phi, reduce_buf);
+                        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
+                        {
+                            atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], block_sum);
+                        }
                     }
                 }
             }
@@ -370,8 +463,9 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
 }
 
 /** Variant of calculate_potential_matrix_kernel that assumes one thread block per overlapping (grid_block, phi_i, phi_j) triplet.
- * This should be better for compute coherence (less warp divergence) at the cost of larger memory fetch requirement:
- *  - The other kernel has exactly one fetch of vt_G[G] for each grid point G, this kernel needs to re-fetch it for each phi pair in that block.
+ * This should be better for compute coherence (less warp divergence) at the cost of larger memory fetch requirement.
+ * The other kernel has exactly one fetch of vt_G[G] for each grid point G, this kernel needs to re-fetch it for each phi pair in that block.
+ * Similar block-reduction-to-atomic is needed here because neighboring blocks may want to write to same (mu, nu) index.
  */
 template<typename T>
 __global__ void calculate_potential_matrix_phi_pairs_kernel(
@@ -401,26 +495,30 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
     const size_t m_max =  (2*l_r + 1);
     const size_t mu_end_r = first_mu_r + m_max;
 
-    // Some optimization possibilities below if we require matrix row dist to be fixed during LFC init time
+    // TODO Some optimization possibilities below if we require matrix row dist to be fixed during LFC init time
 
     if (first_mu_r >= arrays.mu_end || mu_end_r <= arrays.mu_start)
     {
         // Entire phi_r mu range is outside the assigned row distribution.
+        // This is an uniform early exit across the block
         return;
     }
 
     LFCThreadGridData<T> thread_coords;
-    if (!LFCKernelUtils::compute_thread_coords<T>(block_idx, grid, blocks, thread_coords))
+    const bool valid = LFCKernelUtils::compute_thread_coords<T>(block_idx, grid, blocks, thread_coords);
+
+    const T vt_dV = valid ? arrays.vt_G[thread_coords.grid_array_idx] * grid.dV : static_cast<T>(0);
+
+    T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
+    T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
+    if (valid)
     {
-        return;
+        LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
+        LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
     }
 
-    const T vt_dV = arrays.vt_G[thread_coords.grid_array_idx] * grid.dV;
-
-    T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-    T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
-    LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
-    LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
+    // Scratch space for the block-wide reductions in the loop below
+    __shared__ T reduce_buf[kernel_utils::MAX_WARPS_PER_BLOCK];
 
     for (int m = 0; m < m_max; ++m)
     {
@@ -441,7 +539,11 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
             }
 
             const T contrib = phi_rm_vt * phi_s_n[n];
-            atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], contrib);
+            const T block_sum = kernel_utils::block_reduce_sum<T>(contrib, reduce_buf);
+            if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
+            {
+                atomicAdd(&arrays.V_MN[arrays.ncols * (mu - arrays.mu_start) + nu], block_sum);
+            }
         }
     }
 
