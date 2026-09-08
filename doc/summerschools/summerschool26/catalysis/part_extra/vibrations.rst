@@ -1,8 +1,10 @@
+.. _catalysis_extra:
+
 Extra exercise - Vibrational energy
 ===================================
 
 The energy calculated with DFT is the electronic energy at 0 K; however, to
-model catalytic reactions we are usually intereseted in the energy landscape
+model catalytic reactions we are usually interested in the energy landscape
 at finite temperature. In this exercise we will calculate the energy
 contributions from vibrations and see how they affect the splitting of
 :mol:`Ni_2` on Ru.
@@ -14,17 +16,18 @@ finite displacement method. For further reading, see for example the following s
 
 [2]: :doi:`Togo and Tanaka, Scripta Materialia 108, 1-5 (2015) <10.1016/j.scriptamat.2015.07.021>`
 
+
 Vibrational energy of the initial and final states
 --------------------------------------------------
 
 a) Calculating vibrations requires tighter convergence than normal energy
-   calculations. Therefore you should first take your already optimised initial
+   calculations. Therefore you should first take your already optimized initial
    and final state geometries from the NEB calculations and relax them further
-   to `f_\mathrm{max}=0.01` eV/Å with the QuasiNewton optimiser and an energy cutoff of
+   to `f_\mathrm{max}=0.01` eV/Å with the QuasiNewton optimizer and an energy cutoff of
    500 eV. Converge the eigenstates to 1e-8. (Note that for other systems you
    might need even tighter convergence!)
 
-Submit the structures to the queue. The optimisation should take 10-15 mins
+Submit the structures to the queue. The optimization should take 10-15 mins
 for each structure on 8 cores.
 
 b) Once you have done this you can calculate the vibrations using the
@@ -76,7 +79,7 @@ d) Calculate how the vibrational energy affects the overall reaction energy.
    change in reaction energy?
 
 
-e) To make sure that your NEB is converged you should also calculate the
+e) You should also calculate the
    vibrational energy of the transition state. Again, this requires tighter
    convergence than we have used in the NEB exercise. This takes a while to run
    so to save time, we provide the transition state geometry from a reasonably

@@ -46,12 +46,14 @@ import numpy as np
 from ase import Atoms
 from ase.phonons import Displacement
 
+from gpaw.mpi import MPIComm
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.old.calculator import GPAW as OldGPAW
 from gpaw.utilities import pack_hermitian
 
-dr_version = 1
+dr_version = 2
 # v1: saves natom, supercell, delta
+# v2: also saves indices
 
 
 class DisplacementRunner(Displacement):
@@ -67,10 +69,12 @@ class DisplacementRunner(Displacement):
     def __init__(self,
                  atoms: Atoms,
                  calc: OldGPAW | ASECalculator,
+                 select_atoms: list[str] | list[int] | None = None,
                  supercell: tuple = (1, 1, 1),
                  name: str = 'elph',
                  delta: float = 0.01,
-                 calculate_forces: bool = True) -> None:
+                 calculate_forces: bool = True,
+                 comm: MPIComm | None = None) -> None:
         """Initialize with base class args and kwargs.
 
         Parameters
@@ -93,7 +97,8 @@ class DisplacementRunner(Displacement):
         # Init base class and make the center cell in the supercell the
         # reference cell
         super().__init__(atoms, calc=calc, supercell=supercell,
-                         name=name, delta=delta, center_refcell=True)
+                         select_atoms=select_atoms, name=name, delta=delta,
+                         center_refcell=True, comm=comm)
         self.calculate_forces = calculate_forces
 
     def calculate(self, atoms_N: Atoms, disp):
@@ -151,7 +156,8 @@ class DisplacementRunner(Displacement):
         with self.cache.lock('info') as handle:
             if handle is not None:
                 info = {'natom': len(self.atoms), 'supercell': self.supercell,
-                        'delta': self.delta, 'dr_version': dr_version}
+                        'indices': self.indices, 'delta': self.delta,
+                        'dr_version': dr_version}
                 handle.save(info)
 
     def run(self) -> None:

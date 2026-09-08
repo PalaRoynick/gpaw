@@ -6,8 +6,8 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.core.matrix import Matrix, create_distribution, suggest_blocking
 from gpaw.core.plane_waves import PWArray, PWAtomCenteredFunctions, PWDesc
 from gpaw.core.uniform_grid import UGArray
-from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.potential import Potential
+from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.smearing import OccupationNumberCalculator
 from gpaw.new.wave_functions import WaveFunctions

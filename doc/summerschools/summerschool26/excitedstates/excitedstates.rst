@@ -8,7 +8,7 @@ This exercise goes through how to calculate some of the most important
 properties for photovoltaics. The first exercise is about how to
 calculate the bandstructure and how different functionals affect it.
 In the second exercise the GW approximation is used to get more accurate
-bandgaps at a higher computational cost. The third part involves
+band gaps at a higher computational cost. The third part involves
 calculating the absorption spectrum with the random phase approximation (RPA).
 In the final exercise the excitonic effects are included in the absorption
 spectrum calculations.

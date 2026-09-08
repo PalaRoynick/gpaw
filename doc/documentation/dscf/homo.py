@@ -53,7 +53,7 @@ wf_u = [kpt.psit_nG[4] for kpt in c_mol.wfs.kpt_u]
 
 # Homo projector overlaps
 mol = range(len(slab))[-2:]
-p_uai = [dict([(mol[a], P_ni[4]) for a, P_ni in kpt.P_ani.items()])
+p_uai = [{mol[a]: P_ni[4] for a, P_ni in kpt.P_ani.items()}
          for kpt in c_mol.wfs.kpt_u]
 
 # Slab with adsorbed molecule

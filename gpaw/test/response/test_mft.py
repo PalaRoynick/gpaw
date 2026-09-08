@@ -3,11 +3,7 @@ Test with unrealisticly loose parameters to catch if the numerics change.
 """
 
 import numpy as np
-
-# General modules
 import pytest
-
-# Script modules
 from ase.build import bulk
 
 from gpaw import GPAW, PW, FermiDirac
@@ -23,8 +19,7 @@ from gpaw.response.mft import (HeisenbergExchangeCalculator,
                                calculate_pair_site_zeeman_energy,
                                calculate_single_particle_site_magnetization,
                                calculate_single_particle_site_zeeman_energy)
-from gpaw.response.site_data import (AtomicSites,
-                                     calculate_site_magnetization,
+from gpaw.response.site_data import (AtomicSites, calculate_site_magnetization,
                                      calculate_site_zeeman_energy,
                                      get_site_radii_range)
 from gpaw.response.site_kernels import (CylindricalSiteKernels,
@@ -141,12 +136,12 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
     # of random noise, that one cannot trust individual values of J very well.
     # This is improved when increasing the number of k-points, but the problem
     # never completely vanishes
-    J_atol = 1.e-2
-    J_rtol = 5.e-2
+    J_atol = 0.01
+    J_rtol = 0.05
     # However, derived physical values have an increased error cancellation due
     # to their collective nature.
-    mw_rtol = 25e-3  # relative tolerance of absolute results
-    mw_ctol = 5.e-2  # relative tolerance on kernel and eta self-consistency
+    mw_rtol = 0.025  # relative tolerance of absolute results
+    mw_ctol = 0.05  # relative tolerance on kernel and eta self-consistency
 
     # ---------- Script ---------- #
 

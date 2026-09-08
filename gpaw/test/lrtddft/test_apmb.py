@@ -1,15 +1,18 @@
 import pytest
 from ase import Atom, Atoms
-from ase.parallel import parprint
+from ase.parallel import parprint as pp
 
 from gpaw.lrtddft import LrTDDFT
 
 
 @pytest.mark.lrtddft
 @pytest.mark.libxc
-def test_lrtddft_apmb(mpi):
+def test_lrtddft_apmb(mpi, comm):
     txt = '-'
     txt = '/dev/null'
+
+    def parprint(*args):
+        pp(*args, comm=comm)
 
     load = False
 

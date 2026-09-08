@@ -1,6 +1,7 @@
 import pytest
-from gpaw.response.g0w0 import G0W0
+
 from gpaw.dft import DFT
+from gpaw.response.g0w0 import G0W0
 
 
 @pytest.mark.ci

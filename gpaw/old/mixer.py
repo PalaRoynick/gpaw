@@ -344,7 +344,7 @@ class MSR1Mixer(BaseMixer):
                 yD_asp = []
                 tyD_asp = []
                 for a1 in range(len(D_iasp[i1])):
-                    sD_asp.append((D_iasp[i1][a1] - D_iasp[-1][a1]))
+                    sD_asp.append(D_iasp[i1][a1] - D_iasp[-1][a1])
                     yD_asp.append(-(dD_iasp[i1][a1] - dD_iasp[-1][a1]))
                     tyD_asp.append(-(mD_iasp[i1][a1] - mD_iasp[-1][a1]))
                 sD_iasp.append(sD_asp)

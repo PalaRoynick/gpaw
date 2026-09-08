@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-from ase.units import Ha
 
 from gpaw.old.pw.descriptor import PWMapping
 from gpaw.response.frequencies import (ComplexFrequencyDescriptor,
@@ -121,11 +120,11 @@ class Chi0DrudeData:
                 np.zeros(self.Zvv_shape, complex))  # chi0_drude
 
     @staticmethod
-    def from_frequency_descriptor(wd, rate):
+    def from_frequency_descriptor(wd, rate: float):
         """Construct the Chi0DrudeData object from a frequency descriptor and
-        the imaginary part (in eV) of the resulting horizontal frequency
+        the imaginary part of the resulting horizontal frequency
         contour"""
-        rate = rate / Ha  # eV -> Hartree
+
         zd = ComplexFrequencyDescriptor(wd.omega_w + 1.j * rate)
 
         return Chi0DrudeData(zd)

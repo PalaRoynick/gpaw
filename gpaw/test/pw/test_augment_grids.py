@@ -2,9 +2,8 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from gpaw import PW, FermiDirac
+from gpaw import GPAW, PW, FermiDirac
 from gpaw.mpi import world
-from gpaw import GPAW
 
 
 @pytest.mark.stress

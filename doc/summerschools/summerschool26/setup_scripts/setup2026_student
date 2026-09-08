@@ -25,8 +25,17 @@ if [[ `hostname` != n-* ]]; then
     exit 1
 fi
 
+if [[ -z $BLACKHOLE ]]; then
+    echo XXXX $BLACKHOLE
+    echo 'WARNING: $BLACKHOLE not defined, using $HOME/CAMD2026 instead.'
+    export BLACKHOLE=$HOME/CAMD2026
+fi
+
+VENVROOT=$BLACKHOLE
+
 # Make sure we are in home folder
 cd
+chmod og+rx . $BLACKHOLE
 
 # Make sure there is no setup from the last summer school
 OLDJUNK=`grep --max-count=1 'bin/activate' .bashrc | grep -v CAMD2026 | grep -v '^#' || true`
@@ -51,20 +60,25 @@ if [[ -d CAMD2026 ]]; then
 else
     echo "Creating folder name 'CAMD2026' for your Python files."
     mkdir CAMD2026
+    ln -s $BLACKHOLE CAMD2026/fastdisk
 fi
 
 # Set up venv
 
-if [[ -d CAMD2026/venv ]]; then
+if [[ -d $VENVROOT/venv ]]; then
     echo "Virtual folder structure found.  If you want to start over, please"
-    echo "delete the folder CAMD2026/venv and run the installation script again."
+    echo "delete the folder $VENVROOT/venv and run the installation script again."
     sleep 3
 else
     echo "Populating pip cache"
     tar xf ~jasc/CAMD2026/pipcache.tgz
     echo "Installinge ASE and GPAW into virtual environment"
     pushd CAMD2026
+    rm -rf venv
+    pushd $VENVROOT
     bash ~jasc/CAMD2026/gpaw/doc/platforms/gbar/gpaw-venv.sh venv
+    popd
+    ln -sf $VENVROOT/venv
     source venv/bin/activate
     pip install asap3
     pip install --upgrade spyder pyopenssl  # Installing spyder breaks the old pyopenssl

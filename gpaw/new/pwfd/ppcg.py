@@ -6,14 +6,12 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw import debug
-
 # from gpaw.typing import Array2D
 from gpaw.core import PWDesc  # , PWArray
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
 from gpaw.new import tracectx  # , trace
 from gpaw.new.pwfd.davidson import sliced_preconditioner
-
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
@@ -96,6 +94,7 @@ class PPCG(PWFDEigensolver):
             convergence=convergence,
             scalapack_parameters=scalapack_parameters,
             nbands=nbands,
+            max_buffer_mem=max_buffer_mem,
             domain_band_comm=domain_band_comm)
 
         self.nbands = nbands

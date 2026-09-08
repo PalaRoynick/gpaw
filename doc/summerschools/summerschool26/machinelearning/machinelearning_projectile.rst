@@ -63,6 +63,8 @@ You can plot the resulting simulation with ``ase gui md_impact.traj``
 
 Now you can experiment with various projectiles and collision energies.  Also, it will matter which atom in the 2D material you hit, and whether you hit it off-center.
 
+You may then proceed to :ref:`machinelearning_verify`, or you may want to experiment with multilayer structures first.
+
 
 Multilayer simulations and van der Waals forces
 ===============================================
@@ -79,7 +81,7 @@ First, we set up the system from scratch, i.e. without the thermal vibrations:
 
 Then we set up the MLIP with DFT-D3 corrections.  Note that
 
-* The DFT-D3 correction is informed about the kind of exchange-correlation energy that was used to fit the MLIP, this is necessary to correctly add only the part of the vdW ineraction that this not already included in the exchange-correlation potential.
+* The DFT-D3 correction is informed about the kind of exchange-correlation energy that was used to fit the MLIP, this is necessary to correctly add only the part of the vdW interaction that this not already included in the exchange-correlation potential.
 * A temporary folder is used to communicate with DFT-D3, this prevents incorrect results if multiple scripts run in the same folder (which is bound to happen when you submit batch jobs to the queue).
 * ``atoms.center`` adds vacuum to both sides of the system, so the desired distance should be halved.
 

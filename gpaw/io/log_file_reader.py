@@ -24,8 +24,9 @@ indented_block {'a': [1, 2]}
 table [['a', 1, 2], ['b', 3, 4]]
 """
 import re
+from collections.abc import Generator, Iterable, Iterator
 from pathlib import Path
-from typing import Any, Generator, Iterable, Iterator
+from typing import Any
 
 
 def parse(lines: Iterable[str] | str,
@@ -102,6 +103,8 @@ def parse_str(s: str) -> Any:
         if s.startswith('('):
             return [parse_str(x) for x in s[1:-1].split(',')]
         return [parse_str(x) for x in s.split(',')]
+    if s.startswith('\x1b'):
+        s = re.sub(r'\x1b\[\d+m', '', s)  # remove color escape-sequences
     if s.endswith('c'):
         try:
             x = float(s[:-1])

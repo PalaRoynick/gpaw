@@ -1,14 +1,14 @@
 import numpy as np
 
-from gpaw.new.density import Density
+from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core.arrays import DomainType, XArray
-from gpaw.core.atom_arrays import AtomArraysLayout, AtomArrays
-from gpaw.core.atom_arrays import AtomDistribution
-from gpaw.setup import Setups
-from gpaw.typing import ArrayND, Self
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   AtomDistribution)
 from gpaw.mixer.metric import BaseMetric
 from gpaw.mpi import MPIComm
-from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.new.density import Density
+from gpaw.setup import Setups
+from gpaw.typing import ArrayND, Self
 
 
 class BaseMixer:
@@ -58,7 +58,8 @@ class BaseMixer:
         self.ghat_aLr = setups.create_compensation_charges(desc,
                                                            relpos_ac,
                                                            atomdist,
-                                                           xp=xp)
+                                                           xp=np)
+        # XXX: np -> xp once the GPU LFC kernels work
         self._initialize_history_()
 
     def _initialize_history_(self):
@@ -145,7 +146,7 @@ class BaseMixer:
         else:
             out.data[:] = n_sX.data
 
-        if self.xp is not np or GPAW_NO_C_EXTENSION:
+        if GPAW_NO_C_EXTENSION:
             # We can't compensate...
             # Hopefully one day, we will be able to handle this.
             return out
@@ -154,7 +155,8 @@ class BaseMixer:
         ccc_asL = AtomArraysLayout(
             [delta_iiL.shape[2] for delta_iiL in density.delta_aiiL],
             atomdist=self.atom_layout.atomdist,
-            xp=self.xp).empty(self.ncomponents)
+            xp=np).empty(self.ncomponents)
+        # XXX: np -> self.xp once the GPU LFC kernels work
 
         if not isinstance(D_asii_data, AtomArrays):
             D_asii = AtomArrays(layout=self.atom_layout,
@@ -171,10 +173,17 @@ class BaseMixer:
                 # Not important for mixing, and should never be done
                 # for residuals.
                 Q_sL[0][0] += density.delta0_a[a]
-            ccc_asL[a] = Q_sL
+            # XXX: Needed since we do compensation on cpu
+            ccc_asL[a] = Q_sL if self.xp is np else Q_sL.get()
 
         # Add compensation charge to output
-        self.ghat_aLr.add_to(out, ccc_asL)
+        if self.xp is not np:
+            # XXX: Needed since we do compensation on cpu
+            out_cpu = out.to_xp(np)
+            self.ghat_aLr.add_to(out_cpu, ccc_asL)
+            out.data[:] = self.xp.asarray(out_cpu.data)
+        else:
+            self.ghat_aLr.add_to(out, ccc_asL)
         return out
 
     def move(self, relpos_ac: ArrayND, atomdist: AtomDistribution):
@@ -190,7 +199,8 @@ class BaseMixer:
             self.desc,
             relpos_ac,
             atomdist,
-            xp=self.xp)
+            xp=np)
+        # XXX: np -> self.xp when GPU LFC works
         self._initialize_history_()
 
     def reset(self):

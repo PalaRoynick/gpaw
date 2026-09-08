@@ -14,8 +14,8 @@ from typing import Any
 
 import numpy as np
 from ase.parallel import MPI as ASE_MPI
-from ase.parallel import world as aseworld
 from ase.parallel import broadcast as asebroadcast
+from ase.parallel import world as aseworld
 
 import gpaw
 from gpaw.gpu import cupy, is_hip

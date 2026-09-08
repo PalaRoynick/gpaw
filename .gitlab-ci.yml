@@ -1,8 +1,9 @@
 variables:
   PYTHONUSERBASE: ".local"
+  DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
-  IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest"
-  IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest"
+  IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
+  IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
@@ -40,6 +41,7 @@ stages:
   stage: build
   before_script:
     - !reference [default, before_script]
+    - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - |
       cat << EOF > siteconfig.py
@@ -803,19 +805,19 @@ nightly-mpi-8-group-2-2:
     - .nightly
 
 
-nightly-mpi4py-4-group-1-2:
+nightly-gpawmpi-4-group-1-2:
   extends:
     - .nightly
   variables:
-    GPAW_MPI_BACKEND: "mpi4py"
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
-nightly-mpi4py-4-group-2-2:
+nightly-gpawmpi-4-group-2-2:
   extends:
     - .nightly
   variables:
-    GPAW_MPI_BACKEND: "mpi4py"
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
@@ -831,8 +833,8 @@ coverage-combine:
     - nightly-mpi-4-group-2-2
     - nightly-mpi-8-group-1-2
     - nightly-mpi-8-group-2-2
-    - nightly-mpi4py-4-group-1-2
-    - nightly-mpi4py-4-group-2-2
+    - nightly-gpawmpi-4-group-1-2
+    - nightly-gpawmpi-4-group-2-2
   tags:
     - xeon40
   script:
@@ -852,6 +854,11 @@ coverage-combine:
     paths:
       - htmlcov
     expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
 
 
 pages:

@@ -23,10 +23,9 @@ atoms.set_pbc(True)  # Now also periodic in z-direction
 
 # snippet-dftd3-start
 # Find layer distance when using DFT-D3
-elements_dict = {e:e for e in atoms.get_chemical_symbols()}
 nequip_calc = NequIPCalculator.from_compiled_model(
     compile_path=mlip,
-    chemical_species_to_atom_type_map = elements_dict,
+    chemical_species_to_atom_type_map = True,
     device='cpu')
 
 with TemporaryDirectory() as tempdir:

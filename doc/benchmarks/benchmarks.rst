@@ -114,3 +114,9 @@ History
 * Modified all the initial magnetic moments, s.t. the correct ground
   states are found.
 * Modified expected timings, s.t. the PW score remains unchanged.
+
+
+2026, August
+------------
+
+* Using old default for density convergence.

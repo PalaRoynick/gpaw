@@ -1,16 +1,13 @@
 """Module for electron-phonon supercell properties."""
 
 import numpy as np
-
-from typing import Union
-
 from ase import Atoms
 from ase.parallel import parprint
 from ase.units import Bohr
 from ase.utils.filecache import MultiFileJSONCache
 
-from gpaw.lcao.tightbinding import TightBinding
 from gpaw.dft import GPAW
+from gpaw.lcao.tightbinding import TightBinding
 from gpaw.new.ase_interface import ASECalculator
 from gpaw.typing import ArrayND
 from gpaw.utilities import unpack_hermitian
@@ -171,7 +168,7 @@ class Supercell:
         return g_sqMM
 
     def calculate_supercell_matrix(
-        self, calc: Union[ASECalculator, dict], fd_name: str = "elph",
+        self, calc: ASECalculator | dict, fd_name: str = "elph",
         filter: str = None
     ) -> None:
         """Calculate matrix elements of the el-ph coupling in the LCAO basis.

@@ -5,14 +5,10 @@ Note: If the users gives an index twice that's passed through, because that's
       how ase.phonons does it.
 
 """
-import numpy as np
 import pytest
 from ase.build import bulk
 
-# from ase.phonons import Phonons
 from gpaw.elph import ElectronPhononMatrix, Supercell
-
-# from gpaw.mpi import world
 
 
 class FakeElectronPhononMatrix(ElectronPhononMatrix):
@@ -32,9 +28,9 @@ def _supercell_all(atoms):
     assert sc.indices[-1] == natoms - 1
 
 
-def _gmatrix_all(atoms):
+def _gmatrix_all(atoms, comm):
     natoms = len(atoms)
-    fepm = FakeElectronPhononMatrix(atoms, None, {"name": "phonon"})
+    fepm = FakeElectronPhononMatrix(atoms, None, {"name": "phonon"}, comm=comm)
     assert len(fepm.indices) == natoms
     assert fepm.indices[0] == 0
     assert fepm.indices[-1] == natoms - 1
@@ -50,11 +46,12 @@ def _supercell_indices(atoms, indices):
     assert sci.indices[-1] == indices[-1]
 
 
-def _gmatrix_indices(atoms, indices):
+def _gmatrix_indices(atoms, indices, comm):
     natoms = len(atoms)
     nindices = len(indices)
-    fepm = FakeElectronPhononMatrix(atoms, None, {"name": "phonon"},
-                                    indices=indices)
+    fepm = FakeElectronPhononMatrix(
+        atoms, None, phonon={'name': 'phonon', 'select_atoms': indices},
+        indices=indices, comm=comm)
     assert len(fepm.indices) != natoms
     assert len(fepm.indices) == nindices
     assert fepm.indices[0] == indices[0]
@@ -62,7 +59,7 @@ def _gmatrix_indices(atoms, indices):
 
 
 @pytest.mark.elph
-def test_indices():
+def test_indices(comm):
 
     # arbitrary atoms object
     n = 3
@@ -71,19 +68,16 @@ def test_indices():
 
     # case 1: self.indices not given
     _supercell_all(atoms)
-    _gmatrix_all(atoms)
+    _gmatrix_all(atoms, comm)
 
     # TODO: Supercell.calculate_gradient()? Would need fake cache.
     # TODO: Supercell.calculate_supercell_matrix()? Would need fake cache and
     #       stuff.
 
     # case 2: gives some random indices
-    seed = 123456
-    rng = np.random.default_rng(seed)
-    indices = rng.integers(0, len(atoms),
-                           rng.integers(0, len(atoms) - 1))
+    indices = [34, 44, 20, 2]
     _supercell_indices(atoms, indices)
-    _gmatrix_indices(atoms, indices)
+    _gmatrix_indices(atoms, indices, comm)
     # TODO: Supercell.calculate_gradient()? Would need fake cache.
     # TODO: Supercell.calculate_supercell_matrix()? Would need fake cache
     #       and stuff.

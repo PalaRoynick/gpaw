@@ -2,19 +2,16 @@ import pytest
 from ase import Atoms
 from ase.optimize import BFGS
 
-from gpaw import GPAW_NO_C_EXTENSION, PW
+from gpaw import GPAW, GPAW_NO_C_EXTENSION, PW
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW as NewGPAW
-from gpaw.old.calculator import GPAW as OldGPAW
 
 
 @pytest.mark.parametrize(
-    'gpu, GPAW',
-    [(False, OldGPAW),
-     (False, NewGPAW),
-     pytest.param(True, NewGPAW, marks=pytest.mark.gpu)],
-    ids=['old', 'new', 'gpu'])
-def test_pw_slab(gpu, GPAW):
+    'gpu',
+    [False,
+     pytest.param(True, marks=pytest.mark.gpu)],
+    ids=['cpu', 'gpu'])
+def test_pw_slab(gpu):
     a = 2.65
     slab = Atoms('Li2',
                  [(0, 0, 0), (0, 0, a)],

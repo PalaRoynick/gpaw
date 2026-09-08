@@ -4,26 +4,25 @@ import importlib
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Union, Literal, Dict
+from typing import IO, TYPE_CHECKING, Any, Literal, Union
 
 import numpy as np
-from numpy.typing import DTypeLike
-
 from ase import Atoms
 from ase.calculators.calculator import kpts2sizeandoffsets
+from numpy.typing import DTypeLike
 
 import gpaw
+from gpaw.mixer.base import BaseMixer
+from gpaw.mixer.metric import BaseMetric, FFTMetric
+from gpaw.mixer.msr1 import MSR1Mixer
+from gpaw.mixer.multi import MultiMixer as MltMixer
+from gpaw.mixer.pulay import PulayMixer
 from gpaw.mpi import MPIComm
-from gpaw.new.calculation import write_atoms, DFT
+from gpaw.new.calculation import DFT, write_atoms
 from gpaw.new.logger import Logger
 from gpaw.new.pwfd.davidson import Davidson as DavidsonEigensolver
 from gpaw.new.pwfd.ppcg import PPCG as PPCGEigensolver
 from gpaw.new.pwfd.rmmdiis import RMMDIIS as RMMDIISEigensolver
-from gpaw.mixer.base import BaseMixer
-from gpaw.mixer.pulay import PulayMixer
-from gpaw.mixer.msr1 import MSR1Mixer
-from gpaw.mixer.multi import MultiMixer
-from gpaw.mixer.metric import BaseMetric, FFTMetric
 from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
 from gpaw.utilities import (check_atoms_too_close,
@@ -111,7 +110,7 @@ class Mode(Parameter):
             raise LegacyGPAWError
 
     def todict(self) -> dict:
-        dct: Dict[str, Any] = {}
+        dct: dict[str, Any] = {}
         if self.force_complex_dtype:
             dct['force_complex_dtype'] = True
         if self.dtype == 'single':
@@ -435,7 +434,7 @@ class Mixer(Parameter):
             'no-mixing': NoMixing,
             'pulay': Pulay,
             'msr1': MSR1,
-            'multi': Multi_Mixer
+            'multi': MultiMixer
         }
 
         # Clean for dict for backwards compatibility
@@ -546,9 +545,9 @@ class MSR1(Mixer):
         return self.cls(metric=metric, **self.mixer_params, **kwargs)
 
 
-class Multi_Mixer(Mixer):
+class MultiMixer(Mixer):
     name = 'multi'
-    cls = MultiMixer
+    cls = MltMixer
 
     def __init__(self,
                  method: str = 'dif',

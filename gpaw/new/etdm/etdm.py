@@ -1,5 +1,6 @@
 import numpy as np
 from ase.parallel import parprint as print
+
 from gpaw.new.etdm.searchdir import LBFGS, LSR1
 
 
@@ -45,7 +46,7 @@ class ETDM:
                 - True:    C_{j+1} = C_j exp(A_j)
                 - False:   C_{j+1} = C_0 exp(sum_{0}^{j} A_j)
         searchdir_algo_name: str
-                Search direction algorithm. Can be one of the algorithms 
+                Search direction algorithm. Can be one of the algorithms
                 available in searchdir.py:
                 'l-bfgs': Limited-memory BFGS
                 'l-bfgs-p': Limited-memory BFGS with preconditioner presented
@@ -206,7 +207,7 @@ class ETDM:
         """
 
         return self._energy
-    
+
     @energy.setter
     def energy(self, shuttle):
 
@@ -305,7 +306,7 @@ class KArray:
         for a_x, b_x in zip(self.a_ux, other.a_ux):
             a_x += b_x
         return self
-    
+
     def __add__(self, other):
         a_ux = self.copy()
         for a_x, b_x in zip(a_ux.a_ux, other.a_ux):

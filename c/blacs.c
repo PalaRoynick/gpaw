@@ -12,10 +12,6 @@
 #include <structmember.h>
 #include "extensions.h"
 #include "mympi.h"
-#ifdef GPAW_WITH_INTEL_MKL
-#include <mkl_scalapack.h>
-#endif
-
 #include <stdlib.h>
 
 // BLACS
@@ -108,11 +104,14 @@ CLINKAGE int Csys2blacs_handle_(MPI_Comm SysCtxt);
 #define   Cpztrmr2d_  Cpztrmr2d
 #endif
 
+#ifdef GPAW_WITH_INTEL_MKL
+#define   pzgeevx_  pzgeevx
+#endif
+
 CLINKAGE_BEGIN
 
 // tools
-#ifndef GPAW_WITH_INTEL_MKL
-// These should almost certainly not be defined here, even with a non-Intel scalapack.
+// These should almost certainly not be defined here.
 // Instead, the proper header file should be included
 int numroc_(int* n, int* nb, int* iproc, int* isrcproc, int* nprocs);
 
@@ -237,7 +236,16 @@ void pzhengst_(int* ibtype, const char* uplo, int* n,
                void* a, int* ia, int* ja, int* desca,
                void* b, int* ib, int* jb, int* descb,
                double* scale, void* work, int* lwork, int* info);
-#endif // GPAW_WITH_INTEL_MKL
+
+#ifdef GPAW_WITH_INTEL_MKL
+void pzgeevx_ (const char *balanc, const char *jobvl,
+               const char *jobvr, const char *sense,
+               const int *n, void *a, const int *desca, void *w,
+               void *vl, const int *descvl, void *vr,
+               const int *descvr, int *ilo, int *ihi, void *scale,
+               void *abnrm, void *rconde, void *rcondv, void *work,
+               const int *lwork, int *info);
+#endif
 
 #ifdef GPAW_MR3
 void pdsyevr_(const char* jobz, const char* range,
@@ -791,7 +799,7 @@ PyObject* mklscalapack_diagonalize_geev(PyObject *self, PyObject *args)
            &lwork,
            &info);
 
-   lwork = (int) qwork;
+   lwork = get_lwork(qwork);
    double_complex* work = (double_complex*) malloc(sizeof(double_complex) * lwork);
 
    // Then we diagonalize

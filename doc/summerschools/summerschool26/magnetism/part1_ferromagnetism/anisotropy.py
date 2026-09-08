@@ -1,3 +1,4 @@
+# snippet-magani-start
 from gpaw.spinorbit import soc_eigenstates
 from gpaw import GPAW
 
@@ -7,8 +8,22 @@ e_y = soc_eigenstates(calc_fm, theta=90, phi=90).calculate_band_energy() / 2
 e_z = soc_eigenstates(calc_fm, theta=0, phi=0).calculate_band_energy() / 2
 de_zx = e_z - e_x
 de_zy = e_z - e_y
+
+# Define variables S and A here
+# S = ???
+# A = ???
+# snippet-magani-end
+
+S = 3 / 2
+A = (de_zx + de_zy) / 2 / S**2
+
+# snippet-print-start
 print(f'dE_zx = {de_zx * 1000:1.3f} meV')
 print(f'dE_zy = {de_zy * 1000:1.3f} meV')
-S = 1.5  # student: S = ???
-A = (de_zx + de_zy) / 2 / S**2  # student: A = ???
 print(f'A = {A * 1000:1.3f} meV')
+# snippet-print-end
+
+import numpy as np
+assert np.isclose(de_zx * 1000, -0.818, atol=1e-3)
+assert np.isclose(de_zy * 1000, -0.818, atol=1e-3)
+assert np.isclose(A * 1000, -0.364, atol=1e-3)

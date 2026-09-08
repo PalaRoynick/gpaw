@@ -18,12 +18,13 @@ magmoms[0] = [m, 0, 0]
 magmoms[3] = [m * np.cos(2 * np.pi / 3), m * np.sin(2 * np.pi / 3), 0]
 magmoms[6] = [m * np.cos(2 * np.pi / 3), -m * np.sin(2 * np.pi / 3), 0]
 
-calc = GPAW(mode=PW(400),
-            xc='LDA',
-            symmetry='off',
-            magmoms=magmoms,
-            soc=False,
-            kpts=(2, 2, 1))
+calc = GPAW(
+    mode=PW(400),
+    xc='LDA',
+    symmetry='off',
+    magmoms=magmoms,
+    soc=False,
+    kpts=(2, 2, 1))
 layer_nc.calc = calc
 layer_nc.get_potential_energy()
 calc.write('nc_nosoc.gpw')

@@ -82,14 +82,14 @@ information:
     #   2. axis:    yes    0.00000    5.87524    0.00000
     #   3. axis:    yes    0.00000    0.00000    4.83157
 
-You *can* use the cell below as a starting point.
+You *can* use the code below as a starting point.
 
 .. code::
 
     fepo4 = Atoms('Fe4O...',
-                  positions=[[x0, y0, z0], [x1, y1, z1], ...],
-                  cell=[x, y, z],
-                  pbc=[True, True, True])
+		  positions=[[x0, y0, z0], [x1, y1, z1], ...],
+		  cell=[x, y, z],
+		  pbc=[True, True, True])
 
 Visualize the structure you have made.  Explore the different functions in
 the visualizer and determine the volume of the cell (``View -> Quick Info``).
@@ -107,8 +107,8 @@ the magnetic moment of iron?  For simplicity you should assume that
 .. code::
 
     for atom in fepo4:
-        if atom.symbol == 'Fe':
-            atom.magmom = ?
+	if atom.symbol == 'Fe':
+	    atom.magmom = ?
 
 Now examine the initial magnetic moments of the system using
 :meth:`ase:ase.Atoms.get_initial_magnetic_moments`.
@@ -189,13 +189,13 @@ around 10 minutes.
 
    $ mq submit fepo4.py -R 8:1h  # submits the calculation to 8 cores, 1 hour
 
-Run the below cell to examine the status of your calculation.
+Run the command below to examine the status of your calculation.
 
 .. code:: bash
 
    $ mq ls
 
-Once the calculation begins, you can run the cells below to open the error
+Once the calculation begins, you can run the commands below to open the error
 log and output of the calculation in a new window.  This can be done while
 the calculation is running.
 
@@ -255,9 +255,9 @@ trajectory file.
 
     write('lifepo4.traj', lifepo4)
 
-You should now calculate the potential energy of this sytem using the
-method and same calculational parameters as for :mol:`FePO_4` above.
-Make a full script in the cell below similar to what you did above for
+You should now calculate the potential energy of this system using the
+same method and parameters as for :mol:`FePO_4` above.
+Make a full script similar to what you did above for
 :mol:`FePO_4` and make sure that it runs.  If the code runs, submit to
 the HPC cluster as you did above.  The calculation takes approximately
 10 minutes.
@@ -288,7 +288,7 @@ We use a Li metal reference to calculate the equilibrium potential.
 In part 1 you used a Li metal reference to calculate the
 intercalation energy in the graphite anode.  The approach is similar
 here.  Just read in the result of the calculation with DFTD3 and attach
-a new calulator to it.
+a new calculator to it.
 
 .. literalinclude:: li_metal.py
    :end-before: snippet-beef
@@ -304,7 +304,7 @@ Calculate equilibrium potential and uncertainty
 ===============================================
 
 You can now calculate the equilibrium potential for the case of a
-:mol:`FePO_4/Li` metal battery from the intercallation energy of Li in
+:mol:`FePO_4/Li` metal battery from the intercalation energy of Li in
 :mol:`FePO_4`. For simplicity, use that assumption that all vibrational
 energies and entropic terms cancel each other.  You should now have
 completed all submitted calculations before you proceed.
@@ -326,16 +326,15 @@ energy per formula unit.  The
 
 No calculate the equilibrium potential under the assumption that it is
 given by `V_{eq} = \Delta U / n_e`, where `U` is the electronic potential
-energy of the system and `n_e` is the number of electrons transfered.
+energy of the system and `n_e` is the number of electrons transferred.
 
 .. code::
 
     # V_eq = ...
 
-You will now calculate the error estimate for the Li intercallation
+You will now calculate the error estimate for the Li intercalation
 energy in :mol:`FePO_4` using the BEEF ensemble results.  Start by
-loading in the files.  Wait a few minutes and rerun the cell if the
-number is not 2000 for all of them.
+loading in the files.
 
 .. literalinclude:: eq_pot.py
    :start-after: snippet-beef

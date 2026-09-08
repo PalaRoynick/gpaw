@@ -1,7 +1,6 @@
 """Plugin for ASE so that ASE can read log-files from GPAW calculations."""
 from ase.utils.plugins import ExternalIOFormat
 
-
 io = ExternalIOFormat(
     desc='GPAW log-file',
     code='+F',  # +=multiple atoms objects, F=accepts a file-descriptor
@@ -11,8 +10,9 @@ io = ExternalIOFormat(
 
 def read_gpaw_log(filedesc, index):
     from ase import Atoms
-    from gpaw.io.log_file_reader import parse
     from ase.calculators.singlepoint import SinglePointCalculator
+
+    from gpaw.io.log_file_reader import parse
     dicts = parse(filedesc,
                   keys={'atoms',
                         'unit_cell',
