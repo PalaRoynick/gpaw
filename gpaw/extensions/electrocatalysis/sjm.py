@@ -517,6 +517,12 @@ class SJMExtension(Extension):
         to the Fermi level, in eV, and that ``'background_charge'`` is the
         jellium counter-charge density in e/Bohr^3 -- it integrates to minus
         the number of excess electrons.
+
+        A ``'z'`` trace has one row per grid point of the full mesh, so traces
+        from an fd and a plane-wave run of the same cell line up row by row.
+        A real-space grid with a zero boundary in z does not store the z = 0
+        point; the row written for it repeats the first stored value and is
+        padding rather than a computed value.
         """
         dft = self._dft
         if dft is None:
@@ -816,9 +822,19 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
     """Write a quantity as a function of the z coordinate only.
 
     ``a_r`` must be a serial (gathered) array.
+
+    A real-space grid with a zero boundary in z does not store the z = 0
+    point, so its trace would be one row shorter than the same trace from a
+    plane-wave run, where the fine grid is an FFT grid and always carries the
+    full mesh.  Pad the missing point with a copy of the first stored value,
+    so that traces of the same cell have the same number of rows and the same
+    z column in every mode.
     """
     a_z = a_r.data.mean(axis=(0, 1))
     z_z = a_r.desc.xyz()[0, 0, :, 2] * Bohr
+    if a_r.desc.zerobc_c[2]:
+        a_z = np.concatenate([a_z[:1], a_z])
+        z_z = np.concatenate([[0.0], z_z])
     with open(filename, 'w') as out:
         for z, val in zip(z_z, a_z):
             out.write(f'{z:f} {val:1.8f}\n')

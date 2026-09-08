@@ -247,6 +247,17 @@ calculation --- once one has been run, it is the same object as
   needs a calculation to have been run; calling it earlier raises
   :literal:`RuntimeError`.
 
+  Note that a :literal:`'z'` trace from the legacy
+  :literal:`gpaw.solvation.sjm.SJM` calculator is shifted by one row relative
+  to these: it writes no point at `z` = 0, so its first row is the point at
+  one grid spacing and its row `i` is row `i` + 1 here.  Line the two up on
+  the `z` column rather than on the row index.
+
+  Note also that :literal:`background_charge` is a charge *density* in e/Bohr^3
+  integrating to minus the excess electrons --- not the 0/1 jellium mask that
+  the legacy :literal:`gpaw.solvation.sjm.SJM` calculator writes under the same
+  name.  Scripts carried over from the legacy calculator have to be adjusted.
+
 So a run that writes both kinds of trace looks like::
 
     atoms.get_potential_energy()  # traces need a converged calculation

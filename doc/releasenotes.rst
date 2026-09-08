@@ -51,6 +51,9 @@ Git master branch
   structure and the potential at the same time.  Note that the electrostatic
   potential is now zeroed at the top of the cell in plane-wave mode too, as
   in finite-difference mode; results for asymmetric slabs change accordingly.
+  The ``'z'`` traces from ``write_sjm_traces()`` now always cover the full
+  grid, so fd and plane-wave runs of the same cell produce files with the same
+  number of rows.
 
 
 Version 26.7.0
