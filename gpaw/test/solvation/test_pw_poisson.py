@@ -432,7 +432,7 @@ def _solve_fd_sjm(nz, length=20.0, width=3.0):
     psolver.set_grid_descriptor(grid._gd)
 
     vHt_r = grid.zeros()
-    SJMPoissonSolver(psolver, dielectric).solve(vHt_r, rhot_r)
+    SJMPoissonSolver(psolver).solve(vHt_r, rhot_r)
     return zgrid, vHt_r.data.mean(axis=(0, 1))
 
 

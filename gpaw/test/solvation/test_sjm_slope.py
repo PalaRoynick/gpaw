@@ -75,7 +75,7 @@ def test_regression_depth():
 
 
 def test_wrong_signed_regression_falls_back_to_capacitance():
-    """A regression with the wrong sign is rejected for the capacitance guess."""
+    """A wrong-signed regression is rejected for the capacitance guess."""
     opt = make_optimizer(mixer=0.0)
     for charge in [0.0, -0.1, -0.2]:
         opt.history.append((charge, line(30.0, charge)))  # wrong sign
@@ -85,7 +85,8 @@ def test_wrong_signed_regression_falls_back_to_capacitance():
 
 
 def test_next_charge_falls_back_when_the_regression_is_wrong_signed():
-    """The charge steps the right way even when the fit points the wrong way."""
+    """The charge steps the right way even when the fit points the
+    wrong way."""
     opt = make_optimizer(mixer=0.0)
     # Two points that regress to a positive (wrong-signed) slope of +50:
     opt.history.append((0.0, line(50.0, 0.0)))
@@ -123,8 +124,10 @@ def test_a_badly_wrong_signed_regression_flips_the_damped_average():
 
 
 def test_a_mildly_wrong_signed_regression_can_be_damped_away():
-    """Heavy damping can rescue a mildly wrong-signed regression -- no overreaction."""
-    opt = make_optimizer(slope=-30.0, mixer=0.8)  # heavy trust in the old value
+    """Heavy damping rescues a mildly wrong-signed regression, without
+    overreacting."""
+    # Heavy trust in the old value:
+    opt = make_optimizer(slope=-30.0, mixer=0.8)
     for charge in [0.0, -0.1]:
         opt.history.append((charge, line(2.0, charge)))  # mildly wrong-signed
     slope = opt.update_slope(AREA)
