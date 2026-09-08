@@ -6,7 +6,7 @@ from gpaw.directmin.derivatives import Davidson
 
 @pytest.mark.do
 def test_break_instability_lcao(in_tmp_dir, gpw_files):
-    calc = GPAW(gpw_files['h2_break_ilcao'])
+    calc = GPAW(gpw_files['h2_break_ilcao'], legacy_gpaw=True)
     # XXX(rg): Remove hack after tchem-gl-13
     calc.set_positions()
     calc.wfs.eigensolver.initialize_dm_helper(calc.wfs,

@@ -9,7 +9,7 @@ from gpaw.mom import prepare_mom_calculation
 @pytest.mark.mom
 @pytest.mark.do
 def test_mom_directopt_lcao_spinpaired(in_tmp_dir, gpw_files):
-    calc = GPAW(gpw_files['c2h4_do_lcao'])
+    calc = GPAW(gpw_files['c2h4_do_lcao'], legacy_gpaw=True)
     atoms = calc.atoms
     atoms.calc = calc
 
