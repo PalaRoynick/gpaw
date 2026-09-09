@@ -8,7 +8,6 @@ from gpaw.xc.functional import XCFunctional
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.c import evaluate_lda_gpu
-from line_profiler import profile
 
 
 def stress_integral(gd, a1_g, a2_g=None):
@@ -30,7 +29,6 @@ class LDARadialExpansion:
         self.rcalc = rcalc
         self.collinear = collinear
 
-    @profile
     def __call__(self, rgd, D_sLq, n_qg, nc0_sg):
         xp = np if cupy_is_fake else cp
         D_sLq = xp.array(D_sLq)
