@@ -3,7 +3,9 @@ import pytest
 from ase.units import Ha, _e
 
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DirectOptimizer, Potentiostat, regress_slope)
+    DirectOptimizer, EquilibrationResult, Potentiostat, regress_slope)
+from gpaw.extensions.electrocatalysis.sjm import (
+    PotentialConvergenceError, SJMExtension)
 
 WIDTH = 4.0  # Å
 AREA = WIDTH**2  # Å^2
@@ -266,7 +268,8 @@ def test_potentiostat_within_tolerance_is_converged():
                        optimizer=DirectOptimizer(slope=-30.0), tol=0.01)
     ibzwfs = _FakeIBZWFS(TARGET + 0.005)  # inside the tolerance
     mixer = _RecordingMixer()
-    assert pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+    assert (pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+            is EquilibrationResult.CONVERGED)
     assert ibzwfs.occs_calls == []
     assert mixer.resets == 0
     assert charging.charge == -0.2
@@ -279,8 +282,8 @@ def test_potentiostat_steps_the_charge_along_the_slope():
     potential = TARGET + 0.5  # 0.5 V above the target
     ibzwfs = _FakeIBZWFS(potential)
     mixer = _RecordingMixer()
-    converged = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
-    assert not converged
+    result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+    assert result is EquilibrationResult.STEPPED
     dc = (TARGET - potential) / -30.0
     assert charging.charge == pytest.approx(-0.2 + dc)
     assert ibzwfs.occs_calls == [pytest.approx(10.0 + dc)]
@@ -290,6 +293,128 @@ def test_potentiostat_steps_the_charge_along_the_slope():
 def test_potentiostat_constant_charge_is_a_noop():
     charging = _StubCharging(charge=-0.2)
     pot = Potentiostat(charging=charging)  # no target, no optimizer
-    assert pot.equilibrate(_ExplodingIBZWFS(), 10.0, object(),
-                           _RecordingMixer(), _silent)
+    assert (pot.equilibrate(_ExplodingIBZWFS(), 10.0, object(),
+                            _RecordingMixer(), _silent)
+            is EquilibrationResult.CONVERGED)
     assert charging.charge == -0.2
+
+
+def test_potentiostat_default_max_potential_stepsize():
+    """The V-space step clamp is on by default, at the legacy 2 V."""
+    pot = Potentiostat(charging=_StubCharging())
+    assert pot.max_potential_stepsize == 2
+
+
+def _stepping_potentiostat(charge, *, history, max_potential_stepsize=2):
+    """A potentiostat mid-equilibration: one accepted attempt on record."""
+    optimizer = DirectOptimizer(slope=-30.0)
+    for attempt in history:
+        optimizer.history.append(attempt)
+    return Potentiostat(charging=_StubCharging(charge=charge),
+                        target_potential=TARGET, optimizer=optimizer,
+                        tol=0.001,
+                        max_potential_stepsize=max_potential_stepsize)
+
+
+def test_equilibrate_rejects_a_step_that_left_the_linear_region():
+    """A step over max_potential_stepsize, further from target, is halved."""
+    # Last accepted attempt: 0.0 electrons at 5.0 V.  The step that followed
+    # landed at 2.0 electrons and 40 V -- 35 V away, and further from the
+    # 4.5 V target than 5.0 V was.
+    pot = _stepping_potentiostat(2.0, history=[(0.0, 5.0)])
+    ibzwfs = _FakeIBZWFS(40.0)
+    mixer = _RecordingMixer()
+    result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+    assert result is EquilibrationResult.REJECTED
+    # Charge halved back toward the last accepted one:
+    assert pot.charge == pytest.approx(1.0)
+    assert ibzwfs.occs_calls == [pytest.approx(10.0 + (1.0 - 2.0))]
+    assert mixer.resets == 1
+    # The rejected point is not fed to the slope regression:
+    assert list(pot.optimizer.history) == [(0.0, 5.0)]
+
+
+def test_equilibrate_does_not_reject_a_big_step_toward_the_target():
+    """Overshooting the *size* limit is fine as long as it closes the gap."""
+    pot = _stepping_potentiostat(2.0, history=[(0.0, 40.0)])
+    ibzwfs = _FakeIBZWFS(6.0)  # moved 34 V, but toward the 4.5 V target
+    result = pot.equilibrate(ibzwfs, 10.0, object(), _RecordingMixer(),
+                             _silent)
+    assert result is EquilibrationResult.STEPPED
+    assert list(pot.optimizer.history)[-1] == (2.0, 6.0)  # recorded normally
+
+
+def test_equilibrate_max_potential_stepsize_none_disables_the_clamp():
+    pot = _stepping_potentiostat(2.0, history=[(0.0, 5.0)],
+                                 max_potential_stepsize=None)
+    result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
+                             _RecordingMixer(), _silent)
+    assert result is EquilibrationResult.STEPPED
+
+
+def test_equilibrate_never_rejects_the_first_attempt():
+    """With no accepted attempt to measure against, the first step is taken
+    however far off the potential is."""
+    pot = _stepping_potentiostat(0.0, history=[])
+    result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
+                             _RecordingMixer(), _silent)
+    assert result is EquilibrationResult.STEPPED
+
+
+class _ScriptedPotentiostat:
+    """Replays a fixed list of :class:`EquilibrationResult`s."""
+
+    constant_potential = True
+    max_potential_stepsize = 2
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.charge = 0.0
+        self.calls = 0
+
+    def equilibrate(self, *args, **kwargs) -> EquilibrationResult:
+        result = self._results[self.calls]
+        self.calls += 1
+        return result
+
+    def propose_next(self, ibzwfs) -> float:
+        return self.charge
+
+
+class _StubSolvation:
+    dielectric = None
+
+
+def _extension(results, **kwargs) -> SJMExtension:
+    return SJMExtension(_StubSolvation(), _ScriptedPotentiostat(results),
+                        target_potential=TARGET, tol=0.001, **kwargs)
+
+
+def _post_scf(ext: SJMExtension) -> bool:
+    return ext.post_scf_convergence(_FakeIBZWFS(5.0), 10.0, object(),
+                                    _RecordingMixer(), _silent)
+
+
+def test_post_scf_a_rejected_step_does_not_count_as_an_attempt():
+    R = EquilibrationResult
+    ext = _extension([R.REJECTED, R.REJECTED, R.STEPPED, R.CONVERGED],
+                     max_iters=5)
+    assert _post_scf(ext) is False
+    assert (ext.niters, ext.reruns) == (0, 1)
+    assert _post_scf(ext) is False
+    assert (ext.niters, ext.reruns) == (0, 2)
+    # An accepted step: the attempt counter advances and the streak clears.
+    assert _post_scf(ext) is False
+    assert (ext.niters, ext.reruns) == (1, 0)
+    assert _post_scf(ext) is True
+    assert (ext.niters, ext.reruns) == (2, 0)
+
+
+def test_post_scf_raises_once_the_halving_runs_out():
+    ext = _extension([EquilibrationResult.REJECTED] * 5,
+                     max_iters=10, max_reruns=3)
+    for _ in range(3):
+        assert _post_scf(ext) is False
+    assert ext.reruns == 3
+    with pytest.raises(PotentialConvergenceError, match='halvings'):
+        _post_scf(ext)

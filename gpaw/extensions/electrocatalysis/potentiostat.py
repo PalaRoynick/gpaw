@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 from collections import deque
 
 import numpy as np
@@ -508,6 +509,21 @@ class DirectOptimizer(PotentialOptimizer):
         return charge + dc
 
 
+class EquilibrationResult(enum.Enum):
+    """Outcome of one :meth:`Potentiostat.equilibrate` call."""
+
+    #: The potential is within tolerance -- the equilibration is done.
+    CONVERGED = enum.auto()
+    #: The charge was stepped; another SCF pass is needed.  Counts as an
+    #: attempt against ``max_iters``.
+    STEPPED = enum.auto()
+    #: The last step left the linear region (moved the potential by more
+    #: than ``max_potential_stepsize`` and further from the target); it
+    #: has been undone halfway and another SCF pass is needed.  Does *not*
+    #: count as an attempt.
+    REJECTED = enum.auto()
+
+
 class Potentiostat:
     """Holds a target electrode potential by adjusting an excess charge.
 
@@ -535,6 +551,14 @@ class Potentiostat:
         The potential probe.  Defaults to :class:`WorkFunctionProbe`.
     tol:
         Tolerance for the deviation of the target potential, in V.
+    max_potential_stepsize:
+        If an accepted step moves the potential by more than this many volts
+        *and* ends up further from the target than it started, the step is
+        rejected: the change in excess electrons is halved and another SCF
+        pass is run, without counting the rejected point as an attempt (see
+        :attr:`EquilibrationResult.REJECTED`).  This keeps the optimizer
+        from leaving the linear region on a bad slope estimate.  Set to
+        ``None`` to turn the rejection/halving off entirely.  Default: 2 V.
     """
 
     def __init__(self,
@@ -543,12 +567,14 @@ class Potentiostat:
                  target_potential: float | None = None,  # V
                  optimizer: PotentialOptimizer | None = None,
                  probe: PotentialProbe | None = None,
-                 tol: float = 0.001):  # V
+                 tol: float = 0.001,  # V
+                 max_potential_stepsize: int | None = 2):  # V
         self.charging = charging
         self.target_potential = target_potential
         self.optimizer = optimizer
         self.probe = probe or WorkFunctionProbe()
         self.tol = tol
+        self.max_potential_stepsize = max_potential_stepsize
 
     @property
     def constant_potential(self) -> bool:
@@ -569,24 +595,52 @@ class Potentiostat:
                     nelectrons: float,
                     occ_calc,
                     mixer,
-                    log) -> bool:
+                    log) -> EquilibrationResult:
         """One equilibration attempt, after the SCF criteria have passed.
 
-        Returns ``True`` when the potential is within tolerance (or in
-        constant-charge mode, where there is nothing to do), and ``False``
-        after stepping the charge and re-running the occupations for
-        another SCF pass.
+        Returns :attr:`EquilibrationResult.CONVERGED` when the potential is
+        within tolerance (or in constant-charge mode, where there is
+        nothing to do); :attr:`~EquilibrationResult.STEPPED` after stepping
+        the charge and re-running the occupations for another SCF pass; and
+        :attr:`~EquilibrationResult.REJECTED` when the last step left the
+        linear region -- the change in charge is halved and another SCF
+        pass is run, without the rejected point counting as an attempt or
+        feeding the slope regression.
         """
         if not self.constant_potential:
-            return True
+            return EquilibrationResult.CONVERGED
         # constant_potential means both of these are set (see __init__):
         target = self.target_potential
         optimizer = self.optimizer
         assert target is not None and optimizer is not None
         potential = self.probe.potential(ibzwfs)
         log(f'charge: {self.charge:.6f} |e|, potential: {potential:.3f} V')
+
+        # Reject a step that left the linear region: if the potential moved
+        # by more than max_potential_stepsize *and* ended up further from
+        # the target than it started, halve the change in excess electrons
+        # and try again.  The rejected point is not recorded, so it does
+        # not pull the slope regression around.  (This is the legacy SJM
+        # ``max_step`` knob.)
+        if self.max_potential_stepsize is not None and optimizer.history:
+            prev_charge, prev_potential = optimizer.history[-1]
+            moved = abs(potential - prev_potential)
+            overshot = abs(prev_potential - target) < abs(potential - target)
+            if moved > self.max_potential_stepsize and overshot:
+                halved = 0.5 * (prev_charge + self.charge)
+                log(f'  step changed the potential by {moved:.3f} V, over '
+                    'max_potential_stepsize '
+                    f'({self.max_potential_stepsize} V), and away from the '
+                    'target -- rejected; halving the charge step to '
+                    f'{halved:+.6f} |e|.')
+                ibzwfs.calculate_occs(
+                    occ_calc, nelectrons + (halved - self.charge))
+                self.charge = halved
+                mixer.reset()
+                return EquilibrationResult.REJECTED
+
         if abs(potential - target) <= self.tol:
-            return True
+            return EquilibrationResult.CONVERGED
         new_charge = optimizer.next_charge(
             self.charge, potential, target,
             area=self.charging.region_area)
@@ -594,7 +648,7 @@ class Potentiostat:
                               nelectrons + (new_charge - self.charge))
         self.charge = new_charge
         mixer.reset()
-        return False
+        return EquilibrationResult.STEPPED
 
     def propose_next(self, ibzwfs) -> float:
         """Charge the optimizer points at, without re-converging it.

@@ -14,15 +14,15 @@ from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
-    WorkFunctionProbe, build_jellium_region, regress_slope)
+    DirectOptimizer, EquilibrationResult, JelliumCharging, JelliumRegion,
+    Potentiostat, WorkFunctionProbe, build_jellium_region, regress_slope)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
 
 _KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
-                       'max_iters', 'grand_output', 'jelliumregion',
-                       'always_adjust', 'slope', 'mixer',
-                       'slope_regression_depth'})
+                       'max_iters', 'max_potential_stepsize', 'max_reruns',
+                       'grand_output', 'jelliumregion', 'always_adjust',
+                       'slope', 'mixer', 'slope_regression_depth'})
 
 #: Grid points closer than this to the lower cell boundary are left out of
 #: the slope-fitting window: the finite-difference solution is least accurate
@@ -88,6 +88,17 @@ class SJM(Solvation):
         Maximum number of attempts to equilibrate the potential, in
         constant-potential mode.  A :class:`PotentialConvergenceError` is
         raised if the potential is not reached.
+    max_potential_stepsize:
+        If a step moves the potential by more than this many volts *and*
+        away from the target, it is rejected: the change in excess electrons
+        is halved and the SCF re-run, without the rejected point counting
+        against ``max_iters`` or feeding the slope regression.  This keeps a
+        bad slope estimate from throwing the charge out of the linear
+        region.  Set to ``None`` to turn the rejection/halving off
+        entirely.  Default: 2 V.
+    max_reruns:
+        How many times in a row one step may be halved this way before a
+        :class:`PotentialConvergenceError` is raised.  Default: 10.
     grand_output:
         Write the grand-potential energy (instead of the canonical energy)
         into the results dictionary handed to ASE, and thereby into
@@ -128,6 +139,8 @@ class SJM(Solvation):
                  excess_electrons: float = 0.0,
                  tol: float = 0.001,  # eV
                  max_iters: int = 10,
+                 max_potential_stepsize: int | None = 2,  # V
+                 max_reruns: int = 10,
                  grand_output: bool = True,
                  always_adjust: bool = False,
                  slope: float | None = None,  # V/electron
@@ -140,6 +153,8 @@ class SJM(Solvation):
         self.excess_electrons = excess_electrons
         self.tol = tol
         self.max_iters = max_iters
+        self.max_potential_stepsize = max_potential_stepsize
+        self.max_reruns = max_reruns
         self.grand_output = grand_output
         self.always_adjust = always_adjust
         self.slope = slope
@@ -173,7 +188,9 @@ class SJM(Solvation):
                                     probe=WorkFunctionProbe(),
                                     target_potential=self.target_potential,
                                     optimizer=optimizer,
-                                    tol=self.tol)
+                                    tol=self.tol,
+                                    max_potential_stepsize=(
+                                        self.max_potential_stepsize))
 
         log('Solvated jellium method (SJM):')
         log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
@@ -185,6 +202,9 @@ class SJM(Solvation):
             log(f'  target potential: {self.target_potential:.5f}  # V')
             log(f'  tolerance: {self.tol:.5f}  # V')
             log(f'  max iterations: {self.max_iters}')
+            if self.max_potential_stepsize is not None:
+                log(f'  max potential stepsize: {self.max_potential_stepsize}'
+                    f' V (halved up to {self.max_reruns} times if exceeded)')
             log('  initial guess of excess electrons: '
                 f'{self.excess_electrons:+.5f}')
             if self.slope is not None:
@@ -201,6 +221,7 @@ class SJM(Solvation):
                                        target_potential=self.target_potential,
                                        tol=self.tol,
                                        max_iters=self.max_iters,
+                                       max_reruns=self.max_reruns,
                                        grand_output=self.grand_output,
                                        always_adjust=self.always_adjust,
                                        slope=self.slope,
@@ -262,6 +283,8 @@ class SJM(Solvation):
             excess_electrons=self.excess_electrons,
             tol=self.tol,
             max_iters=self.max_iters,
+            max_potential_stepsize=self.max_potential_stepsize,
+            max_reruns=self.max_reruns,
             grand_output=self.grand_output,
             always_adjust=self.always_adjust,
             slope=self.slope,
@@ -280,6 +303,7 @@ class SJMExtension(Extension):
                  target_potential: float | None = None,  # eV
                  tol: float = 0.001,  # eV
                  max_iters: int = 10,
+                 max_reruns: int = 10,
                  grand_output: bool = True,
                  always_adjust: bool = False,
                  slope: float | None = None,  # V/electron
@@ -296,6 +320,7 @@ class SJMExtension(Extension):
         self.target_potential = target_potential
         self.tol = tol
         self.max_iters = max_iters
+        self.max_reruns = max_reruns
         self.grand_output = grand_output
         self.always_adjust = always_adjust
         # Only used while there is no optimizer (constant-charge mode) --
@@ -306,6 +331,9 @@ class SJMExtension(Extension):
         self.log = log or (lambda *args, **kwargs: None)
 
         self.niters = 0
+        # Consecutive rejected (halved) steps since the last accepted one;
+        # reset in post_scf_convergence() whenever a step is accepted:
+        self.reruns = 0
         # (Charge, Fermi-level) of every attempt of the current
         # equilibration, reported in one block by post_converged():
         self.attempts: list[tuple[float, float]] = []
@@ -377,8 +405,25 @@ class SJMExtension(Extension):
         charge = self.charge
         fermi_level = ibzwfs.fermi_level
 
-        converged = self.potentiostat.equilibrate(
+        result = self.potentiostat.equilibrate(
             ibzwfs, nelectrons, occ_calc, mixer, log)
+
+        if result is EquilibrationResult.REJECTED:
+            # The step left the linear region and has been halved; re-run
+            # the SCF but do not count it as an attempt.  Give up once the
+            # halving has been repeated max_reruns times in a row.
+            self.reruns += 1
+            if self.reruns > self.max_reruns:
+                raise PotentialConvergenceError(
+                    self._convergence_error_message(
+                        log, reason=f'{self.max_reruns:d} halvings of a step '
+                        f'that kept overshooting max_potential_stepsize '
+                        f'({self.potentiostat.max_potential_stepsize} V)'))
+            return False
+
+        # A step was accepted (or we are already converged): the rerun
+        # streak, if any, is over.
+        self.reruns = 0
 
         # Only record here -- the equilibration is reported in one block by
         # post_converged(), so that it does not interleave with the SCF
@@ -386,7 +431,7 @@ class SJMExtension(Extension):
         self.niters += 1
         self.attempts.append((charge, fermi_level))
 
-        if converged:
+        if result is EquilibrationResult.CONVERGED:
             if self.always_adjust:
                 # Step the charge on anyway, but do not re-converge: the new
                 # value is picked up by the next geometry (move_atoms()), so
@@ -434,10 +479,12 @@ class SJMExtension(Extension):
         """Area of the unit cell in the xy plane, in Å^2."""
         return self.potentiostat.charging.region_area
 
-    def _convergence_error_message(self, log) -> str:
+    def _convergence_error_message(self, log,
+                                   reason: str | None = None) -> str:
+        reason = reason or f'{self.max_iters:d} attempts'
         msg = (f'The electrode potential could not be equilibrated to '
                f'{self.target_potential:.3f} +/- {self.tol:.3f} V in '
-               f'{self.max_iters:d} attempts.  This may indicate that your '
+               f'{reason}.  This may indicate that your '
                'work function is noisier than your potential tolerance; you '
                'may try tightening the SCF convergence criteria.  The excess '
                'electrons and the resulting potentials are listed below; '
@@ -582,10 +629,10 @@ class SJMExtension(Extension):
         """Change SJM parameters without throwing away the wave functions.
 
         Recognized keywords are ``target_potential``, ``excess_electrons``,
-        ``tol``, ``max_iters``, ``grand_output``, ``jelliumregion``,
-        ``always_adjust``, ``slope``, ``mixer`` and
-        ``slope_regression_depth``, with the same meaning as for
-        :class:`SJM`.  This is the replacement for
+        ``tol``, ``max_iters``, ``max_potential_stepsize``, ``max_reruns``,
+        ``grand_output``, ``jelliumregion``, ``always_adjust``, ``slope``,
+        ``mixer`` and ``slope_regression_depth``, with the same meaning as
+        for :class:`SJM`.  This is the replacement for
         the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.set()``.
 
         The density and the wave functions are kept, so the next
@@ -612,6 +659,11 @@ class SJMExtension(Extension):
                 self.post_converged(self._dft)
         if 'max_iters' in kwargs:
             self.max_iters = kwargs['max_iters']
+        if 'max_reruns' in kwargs:
+            self.max_reruns = kwargs['max_reruns']
+        if 'max_potential_stepsize' in kwargs:
+            self.potentiostat.max_potential_stepsize = (
+                kwargs['max_potential_stepsize'])
         if 'tol' in kwargs:
             self.tol = kwargs['tol']
             if self.target_potential is not None:
