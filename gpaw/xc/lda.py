@@ -5,6 +5,10 @@ import numpy as np
 from gpaw.new import trace
 from gpaw.sphere.lebedev import Y_nL, weight_n
 from gpaw.xc.functional import XCFunctional
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy_is_fake
+from gpaw.new.c import evaluate_lda_gpu
+from line_profiler import profile
 
 
 def stress_integral(gd, a1_g, a2_g=None):
@@ -26,26 +30,35 @@ class LDARadialExpansion:
         self.rcalc = rcalc
         self.collinear = collinear
 
+    @profile
     def __call__(self, rgd, D_sLq, n_qg, nc0_sg):
+        xp = np if cupy_is_fake else cp
+        D_sLq = xp.array(D_sLq)
+        n_qg = xp.array(n_qg)
         n_sLg = D_sLq @ n_qg
+        w_n = xp.array(weight_n)
+        dv_g = xp.array(rgd.dv_g)
         if self.collinear:
-            n_sLg[:, 0] += nc0_sg
+            n_sLg[:, 0] += xp.array(nc0_sg)
         else:
-            n_sLg[0, 0] += 4 * nc0_sg[0]
+            n_sLg[0, 0] += 4 * xp.array(nc0_sg[0])
 
         Lmax = n_sLg.shape[1]
 
-        Y2_nL = Y_nL[:, :Lmax]
+        Y2_nL = xp.array(Y_nL[:, :Lmax])
         n_sng = Y2_nL[None] @ n_sLg
-        e_ng = rgd.empty(len(Y_nL))
-        dedn_sng = rgd.zeros((n_sng.shape[0:2]))
-        e_ng, dedn_sng = self.rcalc(e_ng, n_sng, dedn_sng)
-        dEdD_snq = (rgd.dv_g * dedn_sng @ n_qg.T[None])
-        dEdD_sqL = np.einsum('snq, nL -> sqL', dEdD_snq,
-                             Y2_nL * weight_n[:, None])
-        E = rgd.integrate(weight_n @ e_ng)
+        e_ng = xp.zeros_like(n_sng, shape=n_sng.shape[1:])
+        dedn_sng = xp.zeros_like(n_sng)
+        if xp is np:
+            self.rcalc(e_ng, n_sng, dedn_sng)
+        else:
+            evaluate_lda_gpu(n_sng, dedn_sng, e_ng)
+        dEdD_snq = (dv_g * dedn_sng @ n_qg.T[None])
+        dEdD_sqL = xp.einsum('snq, nL -> sqL', dEdD_snq,
+                             Y2_nL[:, :Lmax] * w_n[:, None])
+        E = rgd.integrate(weight_n @ e_ng.get())
 
-        return E, dEdD_sqL
+        return E, dEdD_sqL.get()
 
 
 @trace
