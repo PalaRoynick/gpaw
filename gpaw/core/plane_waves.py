@@ -98,7 +98,6 @@ class PWDesc(Domain['PWArray']):
         # Convert from np.float64 to float to avoid fake cupy problem ...
         # XXX Fix cpupy!!!
         self.dv = float(abs(np.linalg.det(self.cell_cv)))
-
         self._indices_cache: dict[tuple[int, ...], Array1D] = {}
 
     def __repr__(self) -> str:
@@ -291,15 +290,15 @@ class PWDesc(Domain['PWArray']):
                                 qspiral_v=None,
                                 atomdist=None,
                                 integrals=None,
+                                save_memory=True,
                                 cut=False,
-                                xp=None,
-                                _lazy=False):
+                                xp=None):
         """Create PWAtomCenteredFunctions object."""
         if qspiral_v is None:
             return PWAtomCenteredFunctions(functions, positions, self,
                                            atomdist=atomdist,
                                            xp=xp, integrals=integrals,
-                                           _lazy=_lazy)
+                                           save_memory=save_memory)
 
         from gpaw.new.spinspiral import SpiralPWACF
         return SpiralPWACF(functions, positions, self,
