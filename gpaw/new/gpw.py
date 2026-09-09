@@ -197,8 +197,7 @@ def read_gpw(filename: str | Path | IO[str],
              parallel: dict[str, Any] = None,
              dtype=None,
              force_complex_dtype: bool = False,
-             object_hooks: dict[str, Callable[[dict], Any]] | None = None,
-             save_memory=False
+             object_hooks: dict[str, Callable[[dict], Any]] | None = None
              ) -> tuple[Atoms, DFT, DFTComponentsBuilder]:
     from gpaw.dft import DFT, Parameters
     from gpaw.new.calculation import units
@@ -250,7 +249,7 @@ def read_gpw(filename: str | Path | IO[str],
         params.mode.force_complex_dtype = True
     builder, params, state = read_dft_state(
         reader, atoms=atoms, params=params, comm=comm,
-        singlep=singlep, log=log, save_memory=save_memory, **kwargs)
+        singlep=singlep, log=log, **kwargs)
     ibzwfs, density, potential, energies = state
 
     dft = DFT.from_components(
@@ -293,7 +292,6 @@ def read_dft_state(reader: ulm.Reader,
                    comm,
                    singlep: bool,
                    log,
-                   save_memory,
                    **kwargs,
                    ) -> tuple[DFTComponentsBuilder,
                               Parameters,
@@ -439,7 +437,7 @@ def read_dft_state(reader: ulm.Reader,
     energies = DFTEnergies(**ec)
 
     potential = Potential(vt_sR, dH_asp.to_full(), dedtaut_sR, vHt_x, e_stress)
-    ibzwfs = builder.read_ibz_wave_functions(reader, save_memory)
+    ibzwfs = builder.read_ibz_wave_functions(reader)
 
     return builder, params, (ibzwfs, density, potential, energies)
 

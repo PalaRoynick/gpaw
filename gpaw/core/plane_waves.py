@@ -40,7 +40,7 @@ class PWDesc(Domain['PWArray']):
                  kpt: Vector | None = None,  # in units of reciprocal cell
                  comm: MPIComm = serial_comm,
                  dtype=None,
-                 save_memory=False):
+                 _lazy=False):
         """Description of plane-wave basis.
 
         parameters
@@ -81,7 +81,8 @@ class PWDesc(Domain['PWArray']):
         self.ng1 = ng1
         self.ng2 = ng2
 
-        if save_memory:
+        if _lazy:
+            # We compute these on demand:
             self._ekin_G = None
             self._G_plus_k_Gv = None
         else:
@@ -175,7 +176,7 @@ class PWDesc(Domain['PWArray']):
             kpt=None,
             dtype=None,
             comm: MPIComm | Literal['inherit'] | None = 'inherit',
-            save_memory=False
+            _lazy=False
             ) -> PWDesc:
         """Create new plane-wave expansion description."""
         comm = self.comm if comm == 'inherit' else comm or serial_comm
@@ -187,7 +188,7 @@ class PWDesc(Domain['PWArray']):
                       kpt=self.kpt_c if kpt is None else kpt,
                       dtype=dtype or self.dtype,
                       comm=comm or serial_comm,
-                      save_memory=save_memory)
+                      _lazy=_lazy)
 
     def indices(self, shape: tuple[int, ...]) -> Array1D:
         """Return indices into FFT-grid."""
@@ -290,15 +291,15 @@ class PWDesc(Domain['PWArray']):
                                 qspiral_v=None,
                                 atomdist=None,
                                 integrals=None,
-                                save_memory=True,
                                 cut=False,
-                                xp=None):
+                                xp=None,
+                                _lazy=False):
         """Create PWAtomCenteredFunctions object."""
         if qspiral_v is None:
             return PWAtomCenteredFunctions(functions, positions, self,
                                            atomdist=atomdist,
                                            xp=xp, integrals=integrals,
-                                           save_memory=save_memory)
+                                           _lazy=_lazy)
 
         from gpaw.new.spinspiral import SpiralPWACF
         return SpiralPWACF(functions, positions, self,
