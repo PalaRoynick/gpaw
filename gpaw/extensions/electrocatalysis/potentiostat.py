@@ -394,6 +394,15 @@ class PotentialOptimizer:
         """Number of excess electrons the method points at next."""
         raise NotImplementedError
 
+    def last_attempt(self) -> tuple[float, float] | None:
+        """The most recent (charge, potential) attempt, if one is kept.
+
+        ``None`` from a method that records no attempts, which leaves the
+        step clamp in :meth:`Potentiostat.equilibrate` nothing to compare
+        against, so it never rejects.
+        """
+        return None
+
     def forget_attempts(self) -> None:
         """Drop the recorded attempts, but keep the slope estimate."""
 
@@ -437,6 +446,10 @@ class DirectOptimizer(PotentialOptimizer):
         # A deque cannot change its maxlen, so make a new one - keeping the
         # most recent attempts, which is what the deque itself would do.
         self.history = deque(self.history, maxlen=_check_depth(depth))
+
+    def last_attempt(self) -> tuple[float, float] | None:
+        """The most recent (charge, potential) attempt, if there is one."""
+        return self.history[-1] if self.history else None
 
     def forget_attempts(self) -> None:
         """Drop the recorded attempts, but keep the slope estimate.
@@ -622,8 +635,9 @@ class Potentiostat:
         # and try again.  The rejected point is not recorded, so it does
         # not pull the slope regression around.  (This is the legacy SJM
         # ``max_step`` knob.)
-        if self.max_potential_stepsize is not None and optimizer.history:
-            prev_charge, prev_potential = optimizer.history[-1]
+        previous = optimizer.last_attempt()
+        if self.max_potential_stepsize is not None and previous is not None:
+            prev_charge, prev_potential = previous
             moved = abs(potential - prev_potential)
             overshot = abs(prev_potential - target) < abs(potential - target)
             if moved > self.max_potential_stepsize and overshot:
