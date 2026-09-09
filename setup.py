@@ -432,8 +432,9 @@ def check_cpp_version() -> bool:
     """
     #ifndef __cplusplus
         #error GPAW requires a C++ compiler
+    #else
+        static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
     #endif
-    static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
     int main() { return 0; }
     """
 
