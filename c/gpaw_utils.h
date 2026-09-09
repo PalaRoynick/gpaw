@@ -1,7 +1,5 @@
 #pragma once
 
-// Build system must define GPAW_CPP if compiling all of GPAW as C++
-
 // This check should work for Cray/Intel/NVCC/HIPCC compilers too
 #if defined(__GNUC__) || defined(__clang__)
     #define GPAW_HIDDEN_SYMBOL __attribute__((visibility("hidden")))
@@ -44,10 +42,8 @@ Note that #if defined(__restrict__) does not work as __restrict__ is not a macro
     #define GPAW_RESTRICT restrict
 #endif
 
-// FIXME: remove CLINKAGE from these when removing the C-compilation path
-
 /* Sets a runtime error to the Python interpreter. Caller should check with PyErr_Occured()
 and proceed accordingly. */
-CLINKAGE void gpaw_set_runtime_error(const char* err_msg);
+void gpaw_set_runtime_error(const char* err_msg);
 // Aborts the program as gracefully as possible. Also raises a Python error
-CLINKAGE void gpaw_abort(const char* err_msg);
+void gpaw_abort(const char* err_msg);
