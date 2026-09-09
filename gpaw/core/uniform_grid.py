@@ -134,7 +134,7 @@ class UGDesc(Domain['UGArray']):
             pbc=None,
             zerobc=None,
             decomp=None,
-            save_memory=False) -> UGDesc:
+            _lazy=False) -> UGDesc:
         """Create new uniform grid description."""
         reuse_decomp = (decomp is None and comm == 'inherit' and
                         size is None and pbc is None and zerobc is None)
@@ -194,9 +194,9 @@ class UGDesc(Domain['UGArray']):
                                 qspiral_v=None,
                                 atomdist=None,
                                 integrals=None,
-                                save_memory=True,
                                 cut=False,
-                                xp=None):
+                                xp=None,
+                                _lazy=False):
         """Create UGAtomCenteredFunctions object."""
         assert qspiral_v is None
         return UGAtomCenteredFunctions(functions,

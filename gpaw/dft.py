@@ -1119,8 +1119,7 @@ def GPAW(
     object_hooks=None,
     legacy_gpaw: bool | None = None,
     external=None,
-    background_charge=None,
-    save_memory=None) -> ASECalculator:
+    background_charge=None) -> ASECalculator:
     """Create ASE-compatible GPAW calculator.
 
     See :class:`gpaw.dft.Parameters` for the complete list of parameters.
@@ -1186,8 +1185,7 @@ def GPAW(
             atoms, dft, _ = read_gpw(filename,
                                      log=log,
                                      parallel=parallel,
-                                     object_hooks=object_hooks,
-                                     save_memory=save_memory)
+                                     object_hooks=object_hooks)
         except LegacyGPAWError:
             if not _use_old_if_reading_new_fails:
                 raise

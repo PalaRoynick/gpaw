@@ -85,7 +85,7 @@ class Domain(Generic[X]):
             kpt=None,
             dtype=None,
             comm: MPIComm | Literal['inherit'] | None = 'inherit',
-            save_memory=False
+            _lazy=False
             ) -> Self:
         raise NotImplementedError
 
