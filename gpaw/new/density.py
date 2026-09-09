@@ -72,7 +72,8 @@ class Density:
                  in enumerate(zips(setups, magmom_av))}
         nt_sR = basis_set.grid.zeros(ncomponents, xp=xp)
         basis_set.add_to_density(nt_sR.data, f_asi)
-        nt_sR = nt_sR.redist(grid, basis_set.kpt_band_comm, serial_comm)
+        if nt_sR.desc.comm.size != grid.comm.size:
+            nt_sR = nt_sR.redist(grid, basis_set.kpt_band_comm, serial_comm)
         for a, D_sii in D_asii.items():
             D_sii[:] = unpack_density(
                 setups[a].initialize_density_matrix(f_asi[a]))
