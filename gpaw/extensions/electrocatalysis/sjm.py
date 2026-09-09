@@ -160,7 +160,7 @@ class SJM(Solvation):
         self.slope = slope
         self.mixer = mixer
         self.slope_regression_depth = slope_regression_depth
-        # Set by build(), so that set() can forward to the live extension:
+        # Set by build(), so that change() can forward to the live extension:
         self._extension: SJMExtension | None = None
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
@@ -231,19 +231,21 @@ class SJM(Solvation):
                                        log=log)
         return self._extension
 
-    def set(self, **kwargs) -> None:
+    def change(self, **kwargs) -> None:
         """Change SJM parameters, before or after the first calculation.
 
-        Takes the same keywords as :meth:`SJMExtension.set`.  Before the
+        Takes the same keywords as :meth:`SJMExtension.change`.  Before the
         calculation has been built there is nothing to keep alive, so the
         parameters are simply stored for :meth:`build` to pick up;
-        afterwards the call is forwarded to the extension, which keeps the
-        density and the wave functions.  Reach this as ``calc.sjm.set(...)``.
+        afterwards the call is forwarded to the extension, which keeps
+        the density and the wave functions.  Reach this as
+        ``calc.sjm.change(...)``.
 
         Note that assigning to the extension instead --
         ``calc.sjm.charge = ...`` -- does *not* work: the charge has to reach
-        the jellium as well, and only ``set()`` empties the results, which is
-        what makes the next ``get_potential_energy()`` run the SCF loop again.
+        the jellium as well, and only ``change()`` empties the results, which
+        is what makes the next ``get_potential_energy()`` run the SCF loop
+        again.
         """
         _check_keywords(kwargs)
         for key, value in kwargs.items():
@@ -251,7 +253,7 @@ class SJM(Solvation):
                 value = value or {}  # as in __init__
             setattr(self, key, value)
         if self._extension is not None:
-            self._extension.set(**kwargs)
+            self._extension.change(**kwargs)
 
     def _check_always_adjust(self, log) -> None:
         if self.always_adjust and self.target_potential is None:
@@ -625,7 +627,7 @@ class SJMExtension(Extension):
                            if vHt_g is not None else None)
         return vHt_r
 
-    def set(self, **kwargs) -> None:
+    def change(self, **kwargs) -> None:
         """Change SJM parameters without throwing away the wave functions.
 
         Recognized keywords are ``target_potential``, ``excess_electrons``,
@@ -633,7 +635,7 @@ class SJMExtension(Extension):
         ``grand_output``, ``jelliumregion``, ``always_adjust``, ``slope``,
         ``mixer`` and ``slope_regression_depth``, with the same meaning as
         for :class:`SJM`.  This is the replacement for
-        the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.set()``.
+        the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.change()``.
 
         The density and the wave functions are kept, so the next
         ``get_potential_energy()`` continues the SCF loop from the current
@@ -644,7 +646,7 @@ class SJMExtension(Extension):
 
         Assigning to the attributes instead -- ``sjm.charge = ...`` -- does
         *not* work: the charge has to reach the jellium as well, and only
-        ``set()`` empties the results, which is what makes the next
+        ``change()`` empties the results, which is what makes the next
         ``get_potential_energy()`` run the SCF loop again.
         """
         _check_keywords(kwargs)
@@ -796,7 +798,7 @@ class SJMExtension(Extension):
         """Estimated d(potential)/d(charge) in V per electron.
 
         This is the damped estimate that the optimizer steps along, so that
-        set() and the log report what is actually used.
+        change() and the log report what is actually used.
         """
         opt = self._optimizer
         if opt is not None:

@@ -57,7 +57,7 @@ opt = BFGS(atoms, trajectory='qn-Au111-H-sim.traj',
 opt.run()
 
 # Tighten the tolerances again.
-calc.sjm.set(tol=0.01, always_adjust=False, slope=None)
+calc.sjm.change(tol=0.01, always_adjust=False, slope=None)
 opt = BFGS(atoms, trajectory='qn-Au111-H-sim-1.traj',
            logfile='qn-Au111-H-sim.log')
 opt.run()

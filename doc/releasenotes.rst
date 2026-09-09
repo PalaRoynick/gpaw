@@ -41,7 +41,7 @@ Git master branch
   traces with ``calc.sjm.write_sjm_traces()``, supports the slab
   ``jelliumregion`` keyword (a cavity-shaped region is still legacy-only),
   replaces ``calc.set(sj={...})`` with
-  ``calc.sjm.set(...)`` -- which also works before the first calculation --
+  ``calc.sjm.change(...)`` -- which also works before the first calculation --
   and summarises the potential equilibration in
   one block after convergence.  The equilibration keywords ``always_adjust``,
   ``slope``, ``mixer`` and ``slope_regression_depth`` are back: the slope of

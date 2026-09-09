@@ -225,7 +225,7 @@ The SJM object is reached as :literal:`calc.sjm`, before as well as after a
 calculation --- once one has been run, it is the same object as
 :literal:`calc.dft.sjm`.  It offers
 
-* :literal:`set(...)`, which changes :literal:`target_potential`,
+* :literal:`change(...)`, which changes :literal:`target_potential`,
   :literal:`excess_electrons`, :literal:`tol`, :literal:`max_iters`,
   :literal:`grand_output`, :literal:`jelliumregion`,
   :literal:`always_adjust`, :literal:`slope`, :literal:`mixer` or
@@ -234,8 +234,8 @@ calculation --- once one has been run, it is the same object as
   It can also be called before the first calculation, in which case it simply
   changes the parameters the calculation will be started with.  Note that
   assigning to the attributes instead---:literal:`calc.sjm.charge = ...`---does
-  *not* work: only :literal:`set()` gets the charge to the jellium as well and
-  empties the results, which is what makes the next
+  *not* work: only :literal:`change()` gets the charge to the jellium as well
+  and empties the results, which is what makes the next
   :literal:`get_potential_energy()` run the SCF loop again.
 * :literal:`write_sjm_traces(path='sjm_traces', style='z', props=...)`, which
   writes the electrostatic potential (in eV, referenced to the Fermi level),
@@ -290,7 +290,7 @@ Class documentation
 .. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJM
 
 .. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJMExtension
-   :members: set, write_sjm_traces, get_electrode_potential
+   :members: change, write_sjm_traces, get_electrode_potential
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 

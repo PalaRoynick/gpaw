@@ -114,8 +114,8 @@ sjm.write_sjm_traces(path='sjm_traces4.4V-cube.out',
                      style='cube')  # *.out for .gitignore
 write_potential_and_charge(atoms.calc, '4.4V')
 
-# Vary the potential for the traces figure.  set() changes the SJM
+# Vary the potential for the traces figure.  change() changes the SJM
 # parameters without throwing away the wave functions.
-sjm.set(target_potential=4.3, excess_electrons=0.47848)
+sjm.change(target_potential=4.3, excess_electrons=0.47848)
 atoms.get_potential_energy()
 write_potential_and_charge(atoms.calc, '4.3V')

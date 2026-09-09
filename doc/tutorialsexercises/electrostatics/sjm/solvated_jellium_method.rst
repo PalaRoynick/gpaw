@@ -164,4 +164,4 @@ To accomplish this, set :literal:`grand_output=False`, like::
     calc = GPAW(..., extensions=[SJM(excess_electrons=...,
                                      grand_output=False, ...)])
 
-The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.sjm.set(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`, and it can be called before the first calculation as well.
+The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.sjm.change(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`, and it can be called before the first calculation as well.

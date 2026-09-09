@@ -37,7 +37,7 @@ def test_change_target_potential(atoms):
     ibzwfs = calc.dft.ibzwfs
     assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
 
-    sjm.set(target_potential=7.2)
+    sjm.change(target_potential=7.2)
     atoms.get_potential_energy()
     assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
     # Same wave functions - nothing was rebuilt from scratch:
@@ -49,14 +49,14 @@ def test_switch_to_constant_charge(atoms):
     sjm = calc.dft.sjm
     ibzwfs = calc.dft.ibzwfs
 
-    sjm.set(target_potential=None, excess_electrons=-0.01)
+    sjm.change(target_potential=None, excess_electrons=-0.01)
     atoms.get_potential_energy()
     assert sjm.charge == -0.01
     assert calc.results['excess_electrons'] == pytest.approx(-0.01)
     assert calc.dft.ibzwfs is ibzwfs
 
     # ... and back again, reaching the same potential as before:
-    sjm.set(target_potential=7.5)
+    sjm.change(target_potential=7.5)
     atoms.get_potential_energy()
     assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
     assert calc.dft.ibzwfs is ibzwfs
@@ -69,7 +69,7 @@ def test_grand_output_toggle(atoms):
 
     # Toggling only changes which energy is reported - no new SCF loop:
     niter = calc.dft.scf_loop.niter
-    sjm.set(grand_output=False)
+    sjm.change(grand_output=False)
     canonical = calc.results['energy']
     assert calc.dft.scf_loop.niter == niter
     assert canonical == pytest.approx(
@@ -78,16 +78,16 @@ def test_grand_output_toggle(atoms):
         canonical - sjm.charge * calc.get_fermi_level())
 
     # ... and it is reversible:
-    sjm.set(grand_output=True)
+    sjm.change(grand_output=True)
     assert calc.results['energy'] == pytest.approx(grand)
 
 
 def test_unknown_keyword(atoms):
     with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-        atoms.calc.sjm.set(excess_electron=-0.01)
+        atoms.calc.sjm.change(excess_electron=-0.01)
 
 
-def test_set_before_first_calculation(in_tmp_dir):
+def test_change_before_first_calculation(in_tmp_dir):
     """calc.sjm reaches the parameters before there is a calculation."""
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
@@ -98,7 +98,7 @@ def test_set_before_first_calculation(in_tmp_dir):
                         interactions=[], excess_electrons=0.0)])
 
     # No calculation yet, so this only stores the parameter:
-    atoms.calc.sjm.set(excess_electrons=-0.01)
+    atoms.calc.sjm.change(excess_electrons=-0.01)
     with pytest.raises(AttributeError, match='No calculation'):
         atoms.calc.dft
 
@@ -111,7 +111,7 @@ def test_set_before_first_calculation(in_tmp_dir):
 
     # ... and setting through it still keeps the wave functions:
     ibzwfs = atoms.calc.dft.ibzwfs
-    atoms.calc.sjm.set(excess_electrons=-0.02)
+    atoms.calc.sjm.change(excess_electrons=-0.02)
     atoms.get_potential_energy()
     assert atoms.calc.dft.sjm.charge == -0.02
     assert atoms.calc.dft.ibzwfs is ibzwfs
@@ -141,15 +141,15 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     atoms.get_potential_energy()
     sjm = atoms.calc.dft.sjm
 
-    sjm.set(tol=0.05)  # constant-charge mode: kept on the extension only
+    sjm.change(tol=0.05)  # constant-charge mode: kept on the extension only
     assert sjm.potentiostat.tol == pytest.approx(0.001)
 
-    sjm.set(target_potential=3.0)
+    sjm.change(target_potential=3.0)
     assert sjm.potentiostat.optimizer is not None
     assert sjm.potentiostat.tol == pytest.approx(0.05)
 
     # A single combined call is the same: the 'tol' branch runs first, while
     # the mode has not flipped yet, so _switch_mode is what has to adopt it.
-    sjm.set(target_potential=None)
-    sjm.set(tol=0.02, target_potential=4.0)
+    sjm.change(target_potential=None)
+    sjm.change(tol=0.02, target_potential=4.0)
     assert sjm.potentiostat.tol == pytest.approx(0.02)

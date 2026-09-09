@@ -113,9 +113,9 @@ atoms.calc = GPAW(
         dielectric=dielectric,
         interactions=interactions)])
 
-# sjm.set() changes the charge without throwing away the wave functions.
+# sjm.change() changes the charge without throwing away the wave functions.
 for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
-    atoms.calc.sjm.set(excess_electrons=excess_electrons)
+    atoms.calc.sjm.change(excess_electrons=excess_electrons)
     atoms.get_potential_energy()
     log_potential(atoms.calc)
     write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

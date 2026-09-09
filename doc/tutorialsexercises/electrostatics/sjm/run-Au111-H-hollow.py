@@ -53,8 +53,8 @@ opt = BFGS(atoms, trajectory='qn-Au111-H-hollow.traj',
            logfile='qn-Au111-H-hollow.log')
 opt.run()
 
-# Tighten the tolerance again.  set() keeps the wave functions.
-calc.sjm.set(tol=0.01)
+# Tighten the tolerance again.  change() keeps the wave functions.
+calc.sjm.change(tol=0.01)
 opt = BFGS(atoms, trajectory='qn-Au111-H-hollow-1.traj',
            logfile='qn-Au111-H-hollow-1.log')
 opt.run()

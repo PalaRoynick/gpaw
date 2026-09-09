@@ -17,7 +17,7 @@ def make_atoms(always_adjust: bool) -> Atoms:
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
         # This one-electron system is only marginally convergent; see the
-        # fixture in test_sjm_set.py.
+        # fixture in test_sjm_change.py.
         convergence={'eigenstates': 1e-5},
         extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
                         interactions=[], target_potential=TARGET,
@@ -55,23 +55,23 @@ def test_step_reaches_the_next_geometry(always_adjust, in_tmp_dir):
         assert sjm.charge == pytest.approx(charge)
 
 
-def test_set_drops_a_staged_step(in_tmp_dir):
+def test_change_drops_a_staged_step(in_tmp_dir):
     """An explicit charge - or turning always_adjust off - wins."""
     atoms = make_atoms(always_adjust=True)
     atoms.get_potential_energy()
     sjm = atoms.calc.dft.sjm
     assert sjm._pending_charge is not None
 
-    sjm.set(excess_electrons=-0.01)
+    sjm.change(excess_electrons=-0.01)
     assert sjm.charge == -0.01
     assert sjm._pending_charge is None
 
     # Nothing is staged while always_adjust is off:
-    sjm.set(always_adjust=False)
+    sjm.change(always_adjust=False)
     atoms.get_potential_energy()
     assert sjm._pending_charge is None
 
-    sjm.set(always_adjust=True)
+    sjm.change(always_adjust=True)
     atoms.positions[0, 2] += 0.02
     atoms.get_potential_energy()
     assert sjm._pending_charge is not None
