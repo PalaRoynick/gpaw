@@ -33,8 +33,6 @@ class LDARadialExpansion:
         else:
             n_sLg[0, 0] += 4 * nc0_sg[0]
 
-        dEdD_sqL = np.zeros_like(np.transpose(D_sLq, (0, 2, 1)))
-
         Lmax = n_sLg.shape[1]
 
         Y2_nL = Y_nL[:, :Lmax]
@@ -43,8 +41,8 @@ class LDARadialExpansion:
         dedn_sng = rgd.zeros((n_sng.shape[0:2]))
         e_ng, dedn_sng = self.rcalc(e_ng, n_sng, dedn_sng)
         dEdD_snq = (rgd.dv_g * dedn_sng @ n_qg.T[None])
-        np.einsum('snq, nL -> sqL', dEdD_snq, Y2_nL * weight_n[:, None],
-                  out=dEdD_sqL)
+        dEdD_sqL = np.einsum('snq, nL -> sqL', dEdD_snq,
+                             Y2_nL * weight_n[:, None])
         E = rgd.integrate(weight_n @ e_ng)
 
         return E, dEdD_sqL
