@@ -12,7 +12,27 @@ namespace kernel_utils
     inline constexpr int MAX_WARPS_PER_BLOCK = 32;
 
     /**
-     * Performs a sum-reduction across threads of the calling warp. Every thread in the warp must call this.
+     * Debug assertions for device code. This is no-op if GPAW_KERNEL_DEBUG is undefined.
+     */
+    __device__ __forceinline__ void kernel_assert(
+        [[maybe_unused]] bool condition,
+        [[maybe_unused]] const char* msg,
+        [[maybe_unused]] const char* file = __FILE__,
+        [[maybe_unused]] int line = __LINE__)
+    {
+    #ifdef GPAW_KERNEL_DEBUG
+        if (!condition)
+        {
+            printf("%s:%d: GPAW GPU kernel assertion failed: %s\n", file, line, msg);
+        }
+        assert(condition);
+    #endif
+    }
+
+    /**
+     * Performs a sum-reduction across threads of the calling warp. Every thread in the warp must
+     * call this, and the warp must be fully populated. Note that in practice this requires the
+     * calling thread block size to be a multiple of warpSize.
      * Only the result in the warp's first lane is meaningful.
      */
     template<typename T>
@@ -21,6 +41,7 @@ namespace kernel_utils
         // See any modern reference on warp primitives for the implementation.
         // Ideally we'd replace this with cooperative-group based reduction once ROCm supports it (>= 7.0)
     #ifdef GPAW_CUDA
+        kernel_assert(__popc(__activemask()) == warpSize, "warp_reduce_sum called by a partial warp");
         const unsigned mask = __activemask();
         #pragma unroll
         for (int32_t offset = warpSize / 2; offset > 0; offset >>= 1)
@@ -29,6 +50,7 @@ namespace kernel_utils
         }
 
     #else // HIP
+        kernel_assert(__popcll(__ballot(1)) == warpSize, "warp_reduce_sum called by a partial warp");
         #pragma unroll
         for (int32_t offset = warpSize / 2; offset > 0; offset >>= 1)
         {
