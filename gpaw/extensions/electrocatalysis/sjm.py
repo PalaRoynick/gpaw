@@ -983,6 +983,12 @@ def vacuum_window(eps_r: UGArray, rhot_r: UGArray) -> np.ndarray:
         # to the boundary is only less accurate, whereas a fit that reaches
         # into the density couples the correction to it (see RHO_VACUUM_TOL).
         start = max(1, stop - MIN_WINDOW_POINTS)
+        warnings.warn(
+            'Not enough vacuum below the slab to fit the dipole correction '
+            f'clear of the first {SKIP_NEAR_BOUNDARY} Ang of the cell, so '
+            'it is being fitted next to the zero boundary instead.  The '
+            'fit is noisy there and the SCF may fail to converge.  Add '
+            'vacuum below the slab.')
     if stop - start < 2:
         # Degenerate cell with no vacuum at all -- np.polyfit needs two
         # points, and there is nothing better to offer it.

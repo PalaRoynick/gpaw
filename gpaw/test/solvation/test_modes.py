@@ -16,8 +16,8 @@ def test_h(gpaw_new, mode, in_tmp_dir):
         pytest.skip('PW-mode not implemented for old GPAW')
 
     a = 1.4
-    atoms = Atoms('H', cell=[a, a, 11.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 4.0
+    atoms = Atoms('H', cell=[a, a, 13.0], pbc=(1, 1, 0))
+    atoms.positions[0, 2] = 6.0
 
     k = 2
     params = dict(
@@ -26,7 +26,7 @@ def test_h(gpaw_new, mode, in_tmp_dir):
         occupations=FermiDirac(0.2))
     sjm = {'target_potential': 7.5,
            'excess_electrons': -0.0045,
-           'jelliumregion': {'top': 9.0, 'bottom': 7.0},
+           'jelliumregion': {'top': 11.0, 'bottom': 9.0},
            'tol': 0.01}
     solvation = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
 
