@@ -104,9 +104,9 @@ class LBFGS:
             # FIX: these two statements should be
             # identical for both lcao and pw
             if mode == 'lcao':
-                self.ds[m] = a_cur - self.a_old  # use for LCAO
+                self.ds[m] = a_cur - self.a_old    # use for LCAO
             elif mode == 'pwfd':
-                self.ds[m] = self.search_dir.copy() # use for PW/FD
+                self.ds[m] = self.search_dir.copy()  # use for PW/FD
 
             self.dy[m] = g_cur - self.g_old
 
@@ -123,7 +123,7 @@ class LBFGS:
             # Step 3: Stability check
             if self.rho[m] < 0:
                 # BUG ALSO CHECK WITH NO SIC
-                self.__init__(memory=self.memory, p_key=self.p_key) 
+                self.__init__(memory=self.memory, p_key=self.p_key)
                 return self.update(a_cur, g_cur, precond)
 
             # Step 4: Two-loop recursion to compute search direction
@@ -132,7 +132,7 @@ class LBFGS:
             # First loop: backward over stored vectors
             k = self.memory - 1
             alpha = np.zeros_like(self.rho)
-            #print("k at the start:", k)
+            # print("k at the start:", k)
             while k > -1:
                 # Circular indexing over memory
                 c_ind = (k + m + 1) % self.memory
@@ -166,7 +166,6 @@ class LBFGS:
                 devis = np.maximum(self.rho[m] * yy, 1.0e-20)
                 self.search_dir = q * (1 / devis)
 
-
             # Second loop: forward over stored vectors
             for k in range(self.memory):
                 if self.local_iter < self.memory:
@@ -177,7 +176,7 @@ class LBFGS:
                 # Compute beta = rho * y^T * r
                 yr = self.dy[c_ind] @ self.search_dir
                 beta = self.rho[c_ind] * yr
-                
+
                 # Update search direction with alpha and beta corrections
                 self.search_dir += self.ds[c_ind] * (alpha[c_ind] - beta)
 
@@ -299,7 +298,7 @@ class LSR1:
             if self.method == 'LSR1':
                 if abs(self.yj_k[m]) < 1e-12:
                     self.yj_k[m] = 1e-12
-            
+
             self.yy = self.dy @ self.dy
             if abs(self.yy) > 1.0e-15:
                 self.du[m] = self.dy * (1.0 / self.yy)
@@ -314,7 +313,7 @@ class LSR1:
                                                  1, self.local_iter -
                                                  self.memory + 1),
                                              self.local_iter + 1)
-                 
+
             # Step 6: Update stored previous gradient and variable
             self.g_old = g_cur.copy()
             self.a_old = a_cur.copy()
@@ -323,9 +322,9 @@ class LSR1:
 
         # Return updated search direction
         self.search_dir.a_ux *= -1
-        
+
         return self.search_dir
-            
+
     def update_bv(self, bv, dy, du, dj, yj_k, i_0, i_m):
 
         """
@@ -338,7 +337,7 @@ class LSR1:
         alpha = np.zeros(self.memory)
 
         for c_ind in range(i_0, i_m):
-           # yr = self.dy[c_ind] @ self.search_dir
+            # yr = self.dy[c_ind] @ self.search_dir
             uv = du[c_ind] @ dy
             jv = dj[c_ind] @ dy
             alpha = jv - yj_k[c_ind] * uv

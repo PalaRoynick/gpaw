@@ -31,12 +31,12 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
     @property
     def kpt_comm(self):
         return self.ibzwfs.kpt_comm
-    
+
     def _calc_obf_value_and_matrix_elements(self, shuttle):
         """
         Calculate value of the objective function (energy)
         and hamiltonian matrix elements at self._a_vec_u
-        
+
         Returns
         -------
         energy : float
@@ -58,9 +58,10 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
 
         self.rotate_wfs(a_vec_u, ibzwfs, ref_orbitals)
 
-        energy, self.dens_error = self.update_density_and_potential(ibzwfs, density, pot_calc,
-                                                   potential, hamiltonian)
-        
+        energy, self.dens_error = \
+            self.update_density_and_potential(ibzwfs, density, pot_calc,
+                                              potential, hamiltonian)
+
         self.error = 0.0
         h_unn = []
 
@@ -73,7 +74,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 self.get_ham_in_mol_orb_repr(h_nn.data, wfs,
                                              self._representation,
                                              self.use_egdecomp)
-            
+
             self.error += self.get_residual_error(wfs, hc_mn, h_ij)
 
             k = 2 / wfs.nspins
@@ -104,7 +105,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                 h_unn.append(anti_occ * h_ij)
 
         self.tot_energy = energy
-        
+
         return energy, h_unn
 
     @property
@@ -129,7 +130,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
                                      pot_calc,
                                      potential,
                                      hamiltonian):
-        
+
         """
         Updates density and potential
 
@@ -206,7 +207,7 @@ class LCAOObjectiveFunction(ObjectiveFunctionETDM):
             h_ia = h_ij[:occ][:, occ:]
 
         return hc_mn, h_ij, h_ia
-    
+
     def get_residual_error(self, wfs,
                            hc_mn, h_ij):
         """

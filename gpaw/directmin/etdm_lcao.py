@@ -574,8 +574,8 @@ class LCAOETDM:
 
             if self.ind_all_up[k][0].size == 0:
                 self.ind_all_up[k] = (np.array([], dtype=np.intp),
-                          np.array([], dtype=np.intp))
-    
+                                      np.array([], dtype=np.intp))
+
         self.ind_up = deepcopy(self.ind_all_up)
         self.a_vec_u = deepcopy(self.a_vec_all_u)
         self.g_vec_u = deepcopy(self.g_vec_all_u)
@@ -659,7 +659,7 @@ class LCAOETDM:
             else:
                 g_vec_u = self.g_vec_u_original if self.gmf \
                     and not self.subspace_optimization else self.g_vec_u
-            
+
             make_pd = False
             if self.gmf and not self.subspace_optimization:
                 with wfs.timer('Partial Hessian diagonalization'):

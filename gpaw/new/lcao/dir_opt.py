@@ -6,7 +6,6 @@ from gpaw.new.density import Density
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
-from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.etdm.etdm import ETDM
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
 
@@ -23,7 +22,7 @@ class DirOptLCAO(LCAOEigensolver):
                  linesearch_algo={'name': 'max-step',
                                   'max_step': 0.25},
                  ):
-        
+
         """Class for direct orbital optimization in LCAO mode
 
         Args:
@@ -44,8 +43,8 @@ class DirOptLCAO(LCAOEigensolver):
                 Can be one of 'pade-approx' or 'egdecomp'
                 Defaults to 'egdecomp'.
             searchdir_algo_name: str
-                Search direction algorithm. Can be one of the algorithms available
-                in searchdir.py:
+                Search direction algorithm. Can be one of the algorithms
+                available in searchdir.py:
                 'l-bfgs': Limited-memory BFGS
                 'l-bfgs-p': Limited-memory BFGS with preconditioner presented
                     in :doi:`10.1016/j.cpc.2021.108047`
@@ -128,7 +127,7 @@ class DirOptLCAO(LCAOEigensolver):
 
         self.precond = False
         self.iter += 1
-        
+
     def iterate(self,
                 ibzwfs: IBZWaveFunctions,
                 density: Density,
@@ -180,8 +179,6 @@ class DirOptLCAO(LCAOEigensolver):
             self.old_gradient = None
         else:
             self.etdm._gradient = self.old_gradient
-
-        
 
         # Preconditioning
         if not self.precond or self.searchdir_algo_name == 'l-bfgs-p':
@@ -235,8 +232,9 @@ class DirOptLCAO(LCAOEigensolver):
             f_unique = np.unique(occ_n)
             for f in f_unique:
                 wfs.C_nM.data[occ_n == f, :], wfs.eig_n[occ_n == f] = \
-                    self.rotate_subspace(h_mm.data, wfs.C_nM.data[occ_n == f, :])
-                
+                    self.rotate_subspace(h_mm.data,
+                                         wfs.C_nM.data[occ_n == f, :])
+
         # missing sic option
 
         # update projections
@@ -314,8 +312,8 @@ class DirOptLCAO(LCAOEigensolver):
             beta0 = 1.0
             gamma = 0.0
 
-        #print('self.beta')
-        #print(beta0)
+        # print('self.beta')
+        # print(beta0)
         prec = []
 
         for wfs in ibzwfs:
@@ -324,7 +322,7 @@ class DirOptLCAO(LCAOEigensolver):
                 self.hess = self.get_approx_analytical_hessian(
                     wfs, ibzwfs.dtype, ind_up)
             hess = self.hess
-            
+
             precond = np.zeros_like(hess)
             correction = w * gamma * beta0 ** (-1)
             # print('beta0')
@@ -353,7 +351,7 @@ class DirOptLCAO(LCAOEigensolver):
         if ind_up:
             il1 = list(ind_up[0])
         else:
-            il1 = list(np.tril_indices(eps_n.shape[0], -1))  # from dirmin tools
+            il1 = list(np.tril_indices(eps_n.shape[0], -1))  # from dirmintools
 
         hess = np.zeros(len(il1[0]), dtype=dtype)
         x = 0

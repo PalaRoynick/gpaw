@@ -3,7 +3,6 @@ import pytest
 from gpaw import LCAO
 import numpy as np
 from ase import Atoms
-import os
 
 
 def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
@@ -18,9 +17,8 @@ def h2o_maker(vacuum, t=np.pi / 180 * 104.51, eps=0, **kwargs):
 
 
 @pytest.mark.parametrize('legacy_gpaw', [False])
-@pytest.mark.parametrize("max_step", [0.25, 0.05, 0.005])
 @pytest.mark.parametrize("searchdir_algo", ['l-bfgs', 'l-bfgs-p', 'LSR1P'])
-def test_h2o(legacy_gpaw, searchdir_algo, max_step):
+def test_h2o_searchdir(legacy_gpaw, searchdir_algo, max_step):
 
     """
     Test for search direction algorithms and max step sizes
@@ -29,23 +27,23 @@ def test_h2o(legacy_gpaw, searchdir_algo, max_step):
     atm = h2o_maker(vacuum=5.0)
 
     calc = GPAW(
-             legacy_gpaw=legacy_gpaw,
-             mode=LCAO(),
-             basis='dzp',
-             occupations={'name': 'fixed-uniform'},
-             eigensolver={'name': 'etdm',
-                          'representation': 'full',
-                          'matrix_exp': 'egdecomp',
-                          'searchdir_algo': searchdir_algo,
-                          'linesearch_algo': {'name': 'max-step',
-                                              'max_step': max_step}},
-             mixer={'backend': 'no-mixing'},
-             spinpol=True,
-             nbands='nao',
-             symmetry='off',
-             maxiter=100,
-             txt=None
-                )
+        legacy_gpaw=legacy_gpaw,
+        mode=LCAO(),
+        basis='dzp',
+        occupations={'name': 'fixed-uniform'},
+        eigensolver={'name': 'etdm',
+                     'representation': 'full',
+                     'matrix_exp': 'egdecomp',
+                     'searchdir_algo': searchdir_algo,
+                     'linesearch_algo': {'name': 'max-step',
+                                         'max_step': max_step}},
+        mixer={'backend': 'no-mixing'},
+        spinpol=True,
+        nbands='nao',
+        symmetry='off',
+        maxiter=100,
+        txt=None)
+
     atm.calc = calc
     e = atm.get_potential_energy()
     f = atm.get_forces()

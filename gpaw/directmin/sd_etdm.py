@@ -320,7 +320,7 @@ class LBFGS(SearchDirectionBase):
             m = self.memory
 
             s_k[kp[k]] = calc_diff(x_k1, x_k)
-            y_k[kp[k]] = calc_diff(g_k1, g_k) # cur old
+            y_k[kp[k]] = calc_diff(g_k1, g_k)  # cur old
             dot_ys = dot_all_k_and_b(
                 y_k[kp[k]], s_k[kp[k]], wfs, dimensions, mode)
 
@@ -337,12 +337,12 @@ class LBFGS(SearchDirectionBase):
             alpha = np.zeros(np.minimum(k + 1, m))
             j = np.maximum(-1, k - m)
 
-            #print("k at the start:", k)
+            # print("k at the start:", k)
             for i in range(k, j, -1):
                 dot_sq = dot_all_k_and_b(s_k[kp[i]], q, wfs, dimensions, mode)
 
                 alpha[kp[i]] = rho_k[kp[i]] * dot_sq
-                #print(dot_sq, kp[i])
+                # print(dot_sq, kp[i])
                 q = calc_diff(q, y_k[kp[i]], const=alpha[kp[i]])
 
             t = k
@@ -357,8 +357,8 @@ class LBFGS(SearchDirectionBase):
             for i in range(np.maximum(0, k - m + 1), k + 1):
                 dot_yr = dot_all_k_and_b(
                     y_k[kp[i]], r, wfs, dimensions, mode)
-                
-                #print(y_k[kp[i]][0][:10], i)
+
+                # print(y_k[kp[i]][0][:10], i)
 
                 beta = rho_k[kp[i]] * dot_yr
 
@@ -467,7 +467,7 @@ class LBFGS_P(SearchDirectionBase):
             for i in range(k, j, -1):
                 dot_sq = dot_all_k_and_b(s_k[kp[i]], q, wfs, dimensions, mode)
                 alpha[kp[i]] = rho_k[kp[i]] * dot_sq
-                #print(alpha, i)
+                # print(alpha, i)
                 q = calc_diff(q, y_k[kp[i]], const=alpha[kp[i]])
 
             t = k
@@ -487,7 +487,7 @@ class LBFGS_P(SearchDirectionBase):
             for i in range(np.maximum(0, k - m + 1), k + 1):
                 dot_yr = dot_all_k_and_b(y_k[kp[i]], r, wfs, dimensions, mode)
                 beta = rho_k[kp[i]] * dot_yr
-                #print(dot_yr[i][0][:10], i)
+                # print(dot_yr[i][0][:10], i)
                 r = calc_diff(r, s_k[kp[i]], const=(beta - alpha[kp[i]]))
 
             # save this step:

@@ -414,6 +414,22 @@ class GPWFiles(CachedFilesHandler):
         return atm.calc
 
     @gpwfile
+    def h2o_do_lcao_new(self):
+        atm = self.h2o_maker(vacuum=5.0)
+        atm.calc = self.GPAW(
+            legacy_gpaw=False,
+            mode=LCAO(),
+            basis='dzp',
+            occupations={'name': 'fixed-uniform'},
+            eigensolver='etdm',
+            mixer={'backend': 'no-mixing'},
+            nbands='nao',
+            symmetry='off',
+        )
+        atm.get_potential_energy()
+        return atm.calc
+
+    @gpwfile
     def h2o_cdo_lcao(self):
         atm = self.h2o_maker(vacuum=4.0)
         atm.calc = self.GPAW(

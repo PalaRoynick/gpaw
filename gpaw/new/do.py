@@ -46,7 +46,7 @@ class DirectOptimizationLcao(Eigensolver):
                                   'max_step': 0.25},
                  converge_unocc: bool = False,
                  ):
-        
+
         self.converge_unocc = converge_unocc
         self.representation = representation
         self.matrix_exp = matrix_exp

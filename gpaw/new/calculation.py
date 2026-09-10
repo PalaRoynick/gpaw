@@ -870,4 +870,3 @@ class DFTState:
         self.density = density
         self.potential = potential
         self.energies = energies
-        
