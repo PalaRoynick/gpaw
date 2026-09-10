@@ -6,9 +6,7 @@ from gpaw.directmin.derivatives import Derivatives
 from gpaw.new.lcao.derivatives import DerivativesNew
 
 
-
 @pytest.mark.do
-
 @pytest.mark.parametrize('legacy_gpaw', [False])
 def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
     """
@@ -86,32 +84,32 @@ def test_gradient_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
             potential = calc._dft.potential
 
             shuttle = {'ibzwfs': wfs.ibzwfs,
-                   'density': calc._dft.density,
-                   'ref_orbitals': None,
-                   'pot_calc': pot_calc,
-                   'potential': potential,
-                   'hamiltonian': wfs.hamiltonian,
-                   'a_vec_u': None
-                   }
+                       'density': calc._dft.density,
+                       'ref_orbitals': None,
+                       'pot_calc': pot_calc,
+                       'potential': potential,
+                       'hamiltonian': wfs.hamiltonian,
+                       'a_vec_u': None
+                       }
 
             # Do we get consistent results regardless of randomization?
             seeds = [42, 56, 77]
-             
+
             num_ders = [DerivativesNew(eigensolver, shuttle,
                                        random_amat=True,
                                        seed=seed,
                                        update_c_ref=True) for seed in seeds]
-           
+
             analytical_results = [
                 der.get_analytical_derivatives(
                     eigensolver, shuttle, what2calc='gradient')[0]
                 for der in num_ders]
-            
+
             numerical_results = [
                 der.get_numerical_derivatives(
                     eigensolver, shuttle, what2calc='gradient')[0]
                 for der in num_ders]
-            
+
             for x, *ys in zip(*analytical_results, *numerical_results):
                 assert np.array(ys).real == pytest.approx(x.real, abs=1.0e-2)
                 assert np.array(ys).imag == pytest.approx(x.imag, abs=1.0e-2)

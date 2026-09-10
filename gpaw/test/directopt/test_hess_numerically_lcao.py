@@ -5,6 +5,7 @@ from gpaw import GPAW
 from gpaw.directmin.derivatives import Derivatives
 from gpaw.new.lcao.derivatives import DerivativesNew
 
+
 @pytest.mark.parametrize('legacy_gpaw', [False])
 @pytest.mark.do
 def test_hess_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
@@ -82,25 +83,25 @@ def test_hess_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
     else:
 
         calc = GPAW(gpw_files['h_hess_num_lcao'])
-        #calc.set_positions()
+        # calc.set_positions()
         eigensolver = calc._dft.scf_loop.eigensolver
         pot_calc = calc._dft.pot_calc
         potential = calc._dft.potential
 
         shuttle = {'ibzwfs': calc.wfs.ibzwfs,
-               'density': calc._dft.density,
-               'ref_orbitals': None,
-               'pot_calc': pot_calc,
-               'potential': potential,
-               'hamiltonian': calc.wfs.hamiltonian,
-               'a_vec_u': None
-               }
-        
+                   'density': calc._dft.density,
+                   'ref_orbitals': None,
+                   'pot_calc': pot_calc,
+                   'potential': potential,
+                   'hamiltonian': calc.wfs.hamiltonian,
+                   'a_vec_u': None
+                   }
+
         eigensolver.initialize(shuttle['ibzwfs'], shuttle['density'],
                                shuttle['potential'],
                                shuttle['hamiltonian'],
                                shuttle['pot_calc'])
-        
+
         numder = DerivativesNew(eigensolver, shuttle)
 
         hess_n = numder.get_numerical_derivatives(
@@ -117,5 +118,3 @@ def test_hess_numerically_lcao(in_tmp_dir, gpw_files, legacy_gpaw):
                              [3.95786680e-09, 1.14599176e+00]])
         assert hess_n == pytest.approx(hess_nt, abs=1e-4)
         assert hess_a == pytest.approx(hess_nt, abs=0.2)
-
-

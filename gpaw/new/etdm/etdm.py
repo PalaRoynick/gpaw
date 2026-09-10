@@ -72,12 +72,23 @@ class ETDM:
         # Initialize LBFGS search direction algorithm
         # `searchdir_algo` keeps track of the search direction `p_u`
         # and performs the quasi-Newton update.
-        if searchdir_algo_name == 'l-bfgs-p':
-            self.searchdir_algo = LBFGS(p_key=True)
-        elif searchdir_algo_name == 'l-bfgs':
-            self.searchdir_algo = LBFGS(p_key=False)
-        elif searchdir_algo_name == 'LSR1' or searchdir_algo_name == 'LSR1P':
-            self.searchdir_algo = LSR1()
+
+        def searchdir_algo_type(name):
+            if name == 'l-bfgs-p':
+                return LBFGS(p_key=True)
+            elif name == 'l-bfgs':
+                return LBFGS(p_key=False)
+            elif name == 'LSR1' or name == 'LSR1P':
+                return LSR1()
+
+        self.searchdir_algo = searchdir_algo_type(searchdir_algo_name)
+
+        # if searchdir_algo_name == 'l-bfgs-p':
+        #    self.searchdir_algo = LBFGS(p_key=True)
+        # elif searchdir_algo_name == 'l-bfgs':
+        #    self.searchdir_algo = LBFGS(p_key=False)
+        # elif searchdir_algo_name == 'LSR1' or searchdir_algo_name == 'LSR1P':
+        #    self.searchdir_algo = LSR1()
 
         # array_shape=a_u_init.shape,
         # dtype=objfunc._dtype,

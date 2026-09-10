@@ -129,7 +129,7 @@ class ObjectiveFunctionETDM(ABC):
         """
 
         return self._energy
-    
+
     @energy.setter
     def energy(self, shuttle):
 
