@@ -9,10 +9,12 @@ from gpaw import GPAW
 
 
 @pytest.mark.do
-def test_directmin_lcao(in_tmp_dir, gpw_files):
+@pytest.mark.parametrize("searchdir_algo", ['l-bfgs', 'l-bfgs-p', 'LSR1P'])
+def test_directmin_lcao(in_tmp_dir, gpw_files, searchdir_algo):
     """
     test exponential transformation
-    direct minimization method for KS-DFT in LCAO
+    direct minimization method for KS-DFT in LCAO,
+    also tests three search direction algorithms
     :param in_tmp_dir:
     :return:
     """
@@ -32,7 +34,8 @@ def test_directmin_lcao(in_tmp_dir, gpw_files):
     def check_niter(niter: int, check: NiterCheck) -> None:
         assert check.func(niter), f'failed {check.assertion} (niter = {niter})'
 
-    calc = GPAW(gpw_files[gpw_file], legacy_gpaw=legacy_gpaw)
+    calc = GPAW(gpw_files[gpw_file], legacy_gpaw=legacy_gpaw,
+                eigensolver={'searchdir_algo': searchdir_algo})
     H2O = calc.atoms
     H2O.calc = calc
     e = H2O.get_potential_energy()
