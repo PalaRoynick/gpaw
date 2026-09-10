@@ -1,4 +1,4 @@
-#include "gpu/cpp/pyarray_utils.hpp"
+#include "pyarray_utils.hpp"
 #include "lfc_python.hpp"
 #include "lfc_builder.hpp"
 #include <pybind11/stl.h>

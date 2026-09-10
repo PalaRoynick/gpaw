@@ -1,3 +1,4 @@
+#include "gpu/cupy_interface/device_array.hpp"
 #include "lfc_gpu_impl.cuh"
 #include "lfc_gpu.cuh"
 

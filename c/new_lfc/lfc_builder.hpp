@@ -2,7 +2,7 @@
 
 #include "lfc_common.hpp"
 #include "splines/radial_spline.hpp"
-#include "gpu/cpp/utils.hpp"
+#include "utils.hpp"
 #include <memory>
 #include <array>
 #include <vector>

@@ -1,6 +1,6 @@
 #pragma once
-#include "gpu/cpp/pyarray_utils.hpp"
-#include "gpu/cpp/utils.hpp"
+#include "gpu/cupy_interface/device_array.hpp"
+#include "utils.hpp"
 #include "new_lfc/lfc_common.hpp"
 #include "gpu/gpu-runtime.h"  // double3 etc
 #include "gpu/splines/radial_spline_gpu.cuh"

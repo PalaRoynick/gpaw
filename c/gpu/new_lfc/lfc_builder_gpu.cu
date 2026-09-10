@@ -3,7 +3,7 @@
 #include "new_lfc/lfc_common.hpp"
 #include "new_lfc/lfc_builder.hpp"
 #include "spline_pool_gpu.cuh"
-#include "gpu/cpp/utils.hpp"
+#include "utils.hpp"
 #include <cassert>
 #include <memory>
 
