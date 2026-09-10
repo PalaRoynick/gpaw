@@ -17,20 +17,6 @@ import dataclasses
 from collections import namedtuple
 from typing import cast
 
-import numpy as np
-import pytest
-
-from gpaw.core import UGArray, UGDesc
-from gpaw.gpu import as_np
-from gpaw.lfc import BasisFunctions
-# from gpaw import GPAW_NO_C_EXTENSION
-from gpaw.mpi import MPIComm, world
-from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
-                                      BasisFunctionDesc, LFCSystemDesc)
-from gpaw.new.basis_functions_purepython import \
-    BasisFunctionCollectionPurePython
-from gpaw.spline import Spline
-
 
 def make_random_phi(
         l: int,
