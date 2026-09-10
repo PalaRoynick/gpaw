@@ -2,7 +2,7 @@
 #include "spline_gpu_tests_python.hpp"
 #include "radial_spline_gpu.cuh"
 #include "splines/splines_python.hpp"
-#include "gpu/cpp/pybind_cupy_type_caster.hpp"
+#include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
 #include <vector>
 #include <string>
 
