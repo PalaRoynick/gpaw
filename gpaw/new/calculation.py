@@ -707,6 +707,14 @@ class DFT:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
+        if builder.distribute_density:
+            from gpaw.mpi import serial_comm
+            potential = potential.redist(
+                builder.wf_grid,
+                None,
+                builder.wf_atomdist,
+                serial_comm,
+                ibzwfs.kpt_band_comm)
 
         ibzwfs.make_sure_wfs_are_read_from_gpw_file()
         old_ibzwfs = ibzwfs
