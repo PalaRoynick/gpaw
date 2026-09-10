@@ -20,4 +20,4 @@ static TRadialSpline<T> spline_from_numpy(T r_max, pybind11::array_t<T, pybind11
 
 bool bind_new_splines(PyObject* module);
 
-}
+} // namespace gpaw
