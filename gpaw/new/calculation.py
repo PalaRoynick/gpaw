@@ -361,9 +361,13 @@ class DFT:
         xc = self.pot_calc.xc
         assert not hasattr(xc.xc, 'setup_force_corrections')
 
+        domain_comm = self.density.nt_sR.desc.comm
+        wf_domain_comm = self.potential.vt_sR.desc.comm
+
         # Force from projector functions (and basis set, hybrids):
         F_av = self.ibzwfs.forces(self.potential, self.scf_loop.hamiltonian,
                                   self.density.D_asii)
+        F_av *= wf_domain_comm.size / domain_comm.size
 
         if xc.name == 'QNA':
             getattr(xc.xc, 'add_forces', lambda F_av: None)(F_av)  # QNA
@@ -393,7 +397,6 @@ class DFT:
 
         F_av = as_np(F_av)
 
-        domain_comm = Q_aL.layout.atomdist.comm
         domain_comm.sum(F_av)
 
         # Force from extensions (only from rank 0)

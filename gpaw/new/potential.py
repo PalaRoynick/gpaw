@@ -87,7 +87,8 @@ class Potential:
             self.dH_asii.redist(atomdist, comm1, comm2),
             None if self.dedtaut_sR is None else self.dedtaut_sR.redist(
                 grid, comm1, comm2),
-            vHt_x)
+            vHt_x,
+            self.e_stress)
 
     def gather(self):
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()

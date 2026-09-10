@@ -102,7 +102,7 @@ class Functional:
                             interpolate: Callable[[UGArray], UGArray]
                             ) -> Array2D:
         args, kwargs = self._args(ibzwfs, density, interpolate)
-        if ibzwfs.kpt_band_comm.rank == 0:
+        if ibzwfs.kpt_band_comm.rank == 0 or density.nt_sR.desc.comm.size == ibzwfs.comm.size:
             if self.xp is np:
                 if isinstance(self.xc, VDWXC):
                     xck = self.xc.semilocal_xc.kernel
@@ -157,13 +157,13 @@ class LDAFunctional(Functional):
         return exc, vxct_sr, None
 
     def _args(self, ibzwfs, density, interpolate):
-        if ibzwfs.kpt_band_comm.rank != 0:
-            return (), {}
-        nt_sR = density.nt_sR
-        e_r = self.grid.empty(xp=self.xp)
-        nt_sr = interpolate(nt_sR)
-        vt_sr = nt_sr.new(zeroed=True)
-        return (e_r, nt_sr, vt_sr), {}
+        if ibzwfs.kpt_band_comm.rank == 0 or density.nt_sR.desc.comm.size == ibzwfs.comm.size:
+            nt_sR = density.nt_sR
+            e_r = self.grid.empty(xp=self.xp)
+            nt_sr = interpolate(nt_sR)
+            vt_sr = nt_sr.new(zeroed=True)
+            return (e_r, nt_sr, vt_sr), {}
+        return (), {}
 
     def _stress(self,  # type: ignore
                 e_r: UGArray,
