@@ -133,8 +133,8 @@ generator after building the extension.
 
 
 def ensure_cpp_standard(compile_args: list):
-    """GPAW C++ code requires -std=c++17 or newer. This adds it to the input
-    compile args list if it's missing. Does not override user-specified flags.
+    """This adds -std=c++17 to the compile args list if it's missing.
+    Does not override user-specified flags.
     """
     if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
         compile_args.append('-std=c++17')
@@ -170,29 +170,6 @@ else:  # no break
         libraries.append('blas')
 # ########### USER SITECONFIG DONE ###########
 
-if 'use_cpp' in locals():
-    print(
-        "\n"
-        "***********************************************************\n"
-        "WARNING: Your siteconfig.py had `use_cpp` flag defined.\n"
-        "This flag is now fully deprecated and has no effect.\n"
-        "C++ is now the default build type.\n"
-        "If you specifically want a C-build, set `compiler` to\n"
-        f"one of {['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']}.\n"
-        "Note that a C++ compiler will be required in the next\n"
-        "GPAW version.\n"
-        "***********************************************************\n"
-        "\n")
-
-# Fallback to legacy C build if the user siteconfig
-# explicitly chose a C compiler.
-# Will be removed after deprecation period.
-if compiler in ['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']:
-    use_cpp = False
-else:
-    use_cpp = True
-# use_cpp is a temp flag for controlling build during C -> C++ transition
-# period, will be fully removed in a later update.
 
 GPAW_BUILD_JOBS = os.environ.get('GPAW_BUILD_JOBS')
 """
@@ -226,10 +203,7 @@ if _num_build_jobs > 1:
           'This feature requires Makefile build, it will be enabled now.')
     makefile_build = True
 
-if use_cpp:
-    print('Compiling entire GPAW as C++. '
-          'NOTE: This will become required in the next GPAW version!')
-    ensure_cpp_standard(extra_compile_args)
+ensure_cpp_standard(extra_compile_args)
 
 # Deprecation check
 if 'mpicompiler' in locals():
@@ -248,8 +222,8 @@ if 'mpicompiler' in locals():
 
 
 # If `mpi` was not set in siteconfig,
-# it is enabled by default if `mpicc` is found
-default_mpi_compiler = 'mpic++' if use_cpp else 'mpicc'
+# it is enabled by default if `mpic++` is found
+default_mpi_compiler = 'mpic++'
 if mpi is None:
     if compiler is None:
         if (os.name != 'nt'
@@ -327,11 +301,6 @@ if gpu:
 
     ensure_cpp_standard(gpu_compile_args)
 
-    # GPU code needs to link to c++ stdlib. This is automatic if the linking
-    # is done using a C++ compiler, if not we have to add it manually
-    if not use_cpp:
-        libraries += ['stdc++']
-
 
 def set_compiler_executables(cc: CCompiler) -> None:
     # Override the compiler executables
@@ -394,7 +363,7 @@ def try_compiling(
             compiler = get_compiler()
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir = os.path.abspath(tmpdir)
-                c_file_path = os.path.join(tmpdir, 'test.c')
+                c_file_path = os.path.join(tmpdir, 'test.cpp')
                 c_out_path = os.path.join(tmpdir, 'a.out')
                 with open(c_file_path, mode='w') as fobj:
                     print(c_program, file=fobj)
@@ -461,8 +430,10 @@ def test_blas() -> bool:
 @try_compiling
 def check_cpp_version() -> bool:
     """
-    #ifdef __cplusplus
-    static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
+    #ifndef __cplusplus
+        #error GPAW requires a C++ compiler
+    #else
+        static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
     #endif
     int main() { return 0; }
     """
@@ -532,21 +503,19 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
                        '__HIP_PLATFORM_AMD__'),
                    (gpu and gpu_target == 'hip-cuda',
                        '__HIP_PLATFORM_NVIDIA__'),
-                   (use_cpp, 'GPAW_CPP'),
                    ]:
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-sources = [Path('c/bmgs/bmgs.c')]
-sources += Path('c').glob('*.c')
-if gpu:
-    sources += Path('c/gpu').glob('*.c')
-sources += Path('c/xc').glob('*.c')
+
+sources = [Path('c/bmgs/bmgs.cpp')]
+sources += Path('c').glob('*.cpp')
+sources += Path('c/xc').glob('*.cpp')
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
-    for name in ['libxc.c', 'm06l.c',
-                 'tpss.c', 'revtpss.c', 'revtpss_c_pbe.c',
-                 'xc_mgga.c']:
+    for name in ['libxc.cpp', 'm06l.cpp',
+                 'tpss.cpp', 'revtpss.cpp', 'revtpss_c_pbe.cpp',
+                 'xc_mgga.cpp']:
         sources.remove(Path(f'c/xc/{name}'))
     # Dynamic link
     try:
@@ -592,7 +561,7 @@ extensions = [Extension('_gpaw',
                         extra_compile_args=extra_compile_args,
                         runtime_library_dirs=runtime_library_dirs,
                         extra_objects=extra_objects,
-                        language='c++' if use_cpp else 'c')]
+                        language='c++')]
 
 
 write_configuration(define_macros, include_dirs, libraries, library_dirs,
@@ -700,7 +669,7 @@ class BuildGPU:
         so many otherwise normal .cpp files end up becoming CUDA/HIP code.
         """
         # Messy: Some .cpp files under kernels/ get #included by other files.
-        # So we glob everything except kernels/, then global kernels/
+        # So we glob everything except kernels/, then glob kernels/
         # separately and remove those that are #included by others.
         gpu_dpath = Path('c/gpu')
         kernels_dpath = Path('c/gpu/kernels')
@@ -1019,9 +988,8 @@ class BuildGPAW(build_ext):
         import numpy as np
         self.include_dirs.append(np.get_include())
 
-        if use_cpp or gpu:
-            import pybind11
-            self.include_dirs.append(pybind11.get_include())
+        import pybind11
+        self.include_dirs.append(pybind11.get_include())
 
         if makefile_build:
             # Set a persistent build directory. We get a more readable

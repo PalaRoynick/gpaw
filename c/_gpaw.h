@@ -413,12 +413,6 @@ static PyObject* moduleinit(void)
 # endif
 #endif
 
-#ifdef GPAW_CPP
-    PyObject_SetAttrString(m, "gpaw_cpp", Py_True);
-#else
-    PyObject_SetAttrString(m, "gpaw_cpp", Py_False);
-#endif
-
 #ifdef GPAW_GPU
     PyObject_SetAttrString(m, "GPU_ENABLED", Py_True);
 #else
