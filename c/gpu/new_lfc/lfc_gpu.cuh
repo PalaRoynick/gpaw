@@ -98,7 +98,8 @@ struct GridInfoGpu
     double dV;
 };
 
-// Keep templated implementations in a separate helper class
+// Keep templated implementations in a separate helper class.
+// FIXME: Currently LFCGpuImpl only has static functions so we could just go with a namespace...
 class LFCGpuImpl;
 
 class LFCGpu
