@@ -703,7 +703,7 @@ class DFT:
         # Not quite sure it is needed???
         # At the moment we skip it on GPU's because it doesn't
         # work!
-        if density.nt_sR.xp is np:
+        if density.nt_sR.xp is np and not builder.distribute_density:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
@@ -716,7 +716,7 @@ class DFT:
             return wfs.morph(
                 builder.wf_desc,
                 builder.relpos_ac,
-                builder.atomdist)
+                builder.wf_atomdist)
 
         ibzwfs = ibzwfs.create(
             ibz=builder.ibz,

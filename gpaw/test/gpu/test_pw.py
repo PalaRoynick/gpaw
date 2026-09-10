@@ -41,7 +41,6 @@ def test_gpu(dtype, gpu, mode, random):
             parallel={'gpu': gpu},
             setups='paw',
             **kwargs)
-        dft.converge()
 
         energy = dft.calculate_energy()
         if mode == 'pw':
@@ -134,7 +133,6 @@ def test_2d():
         convergence={'density': 1e-8},
         kpts=(2, 2, 1),
         parallel={'gpu': True})
-    dft.converge()
     assert dft.potential.get_vacuum_level() == pytest.approx(2.9436, 1e-2)
     E = dft.calculate_energy()
     F = dft.calculate_forces()
