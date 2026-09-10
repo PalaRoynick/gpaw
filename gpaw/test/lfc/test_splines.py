@@ -57,6 +57,7 @@ def test_legacy_conversion(dtype: np.dtype):
     np.testing.assert_allclose(y, y_old, rtol=rtol, atol=atol)
 
 
+@pytest.mark.ci
 def test_radial_spline(fixt_random_data: np.ndarray):
     """"""
 
