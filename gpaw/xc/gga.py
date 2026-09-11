@@ -10,7 +10,9 @@ from gpaw.xc.lda import (calculate_paw_correction, stress_integral,
                          stress_lda_term)
 from gpaw.xc.pawcorrection import rnablaY_nLv
 from line_profiler import profile
-
+from gpaw.gpu import cupy as cp
+from gpaw.gpu import cupy_is_fake
+from gpaw.new.c import evaluate_pbe_gpu
 
 def stress_gga_term(gd, sigma_xg, gradn_svg, dedsigma_xg):
     P = 0
@@ -40,6 +42,7 @@ class GGARadialExpansion:
 
     @profile
     def __call__(self, rgd, D_sLq, n_qg, nc0_sg):
+        xp = np if cupy_is_fake else cp
         n_sLg = D_sLq @ n_qg
         n_sLg[:, 0] += nc0_sg
 
@@ -58,13 +61,26 @@ class GGARadialExpansion:
         # Calculate radial GGA quantities
         nspins = len(n_sLg)
         e_ng, n_sng, dedn_sng, sigma_xng, dedsigma_xng, a_sng, b_vsng = \
-            radial_gga_vars(rgd, n_sLg, Y2_nL, dndr_sLg, rnablaY2_nLv)
+            radial_gga_vars(rgd, n_sLg, Y2_nL, dndr_sLg, rnablaY2_nLv, xp)
         ngn = e_ng.shape[0] * e_ng.shape[1]
-        self.rcalc.kernel.calculate(e_ng.ravel(),
-                                    n_sng.reshape(-1, ngn),
-                                    dedn_sng.reshape(-1, ngn),
-                                    sigma_xng.reshape(-1, ngn),
-                                    dedsigma_xng.reshape(-1, ngn))
+        if xp is np:
+            func = self.rcalc.kernel
+        else:
+            def func(e_r, n_sr, dedn_sr, sigma_xr, dedsigma_xr):
+                evaluate_pbe_gpu(n_sr, dedn_sr, e_ng, sigma_xr, dedsigma_xr)
+        func(e_ng.ravel(),
+             n_sng.reshape(-1, ngn),
+             dedn_sng.reshape(-1, ngn),
+             sigma_xng.reshape(-1, ngn),
+             dedsigma_xng.reshape(-1, ngn))
+        e_ng = e_ng.get()
+        n_sng = n_sng.get()
+        dedn_sng = dedn_sng.get()
+        sigma_xng = sigma_xng.get()
+        dedsigma_xng = dedsigma_xng.get()
+        a_sng = a_sng.get()
+        b_vsng = b_vsng.get()
+
         dedn_sng += add_radial_gradient_correction(rgd, sigma_xng,
                                                    dedsigma_xng, a_sng)
 
@@ -84,29 +100,34 @@ class GGARadialExpansion:
         return E, dEdD_sqL
 
 # First part of gga_calculate_radial - initializes some quantities.
-def radial_gga_vars(rgd, n_sLg, Y_nL, dndr_sLg, rnablaY_nLv):
+def radial_gga_vars(rgd, n_sLg, Y_nL, dndr_sLg, rnablaY_nLv, xp):
     nspins = len(n_sLg)
-    nN = len(Y_nL)
+    nn = len(Y_nL)
+    ng = n_sLg.shape[2]
+    Y_nL = xp.array(Y_nL)
+    n_sLg = xp.array(n_sLg)
+    dndr_sLg = xp.array(dndr_sLg)
+    rnablaY_nLv = xp.array(rnablaY_nLv)
 
     n_sng = Y_nL[None] @ n_sLg
 
     a_sng = Y_nL[None] @ dndr_sLg
-    b_vsng = np.einsum('nLv, sLg -> vsng',
+    b_vsng = xp.einsum('nLv, sLg -> vsng',
                        rnablaY_nLv, n_sLg)
 
-    sigma_xng = rgd.empty((2 * nspins - 1, nN))
+    sigma_xng = xp.empty((2 * nspins - 1, nn, ng))
     sigma_xng[::2] = (b_vsng ** 2).sum(0)
     if nspins == 2:
         sigma_xng[1] = (b_vsng[:, 0] * b_vsng[:, 1]).sum(0)
-    sigma_xng[:, :, 1:] /= rgd.r_g[1:] ** 2
+    sigma_xng[:, :, 1:] /= xp.array(rgd.r_g[1:] ** 2)
     sigma_xng[:, :, 0] = sigma_xng[:, :, 1]
     sigma_xng[::2] += a_sng ** 2
     if nspins == 2:
         sigma_xng[1] += a_sng[0] * a_sng[1]
 
-    e_ng = rgd.zeros(nN)
-    dedn_sng = rgd.zeros((nspins, nN))
-    dedsigma_xng = rgd.zeros((2 * nspins - 1, nN))
+    e_ng = xp.zeros((nn, ng))
+    dedn_sng = xp.zeros((nspins, nn, ng))
+    dedsigma_xng = xp.zeros((2 * nspins - 1, nn, ng))
     return e_ng, n_sng, dedn_sng, sigma_xng, dedsigma_xng, a_sng, b_vsng
 
 def add_radial_gradient_correction(rgd, sigma_xng, dedsigma_xng, a_sng):
@@ -119,11 +140,12 @@ def add_radial_gradient_correction(rgd, sigma_xng, dedsigma_xng, a_sng):
             rgd.derivative2(-2 * rgd.dv_g * dedsigma_xng[2 * s, n] * a_sng[s, n],
                             vv_sng[s, n])
     if nspins == 2:
-        v_ng = sigma_xng[2]
-        rgd.derivative2(rgd.dv_g * dedsigma_xng[1] * a_sng[1], v_ng)
-        vv_sng[0] -= v_ng
-        rgd.derivative2(rgd.dv_g * dedsigma_xng[1] * a_sng[0], v_ng)
-        vv_sng[1] -= v_ng
+        for n in range(nN):
+            v_ng = sigma_xng[2]
+            rgd.derivative2(rgd.dv_g * dedsigma_xng[1, n] * a_sng[1, n], v_ng[n])
+            vv_sng[0, n] -= v_ng[n]
+            rgd.derivative2(rgd.dv_g * dedsigma_xng[1, n] * a_sng[0, n], v_ng[n])
+            vv_sng[1, n] -= v_ng[n]
 
     vv_sng[:, :, 1:] /= rgd.dv_g[1:]
     vv_sng[:, :, 0] = vv_sng[:, :, 1]
