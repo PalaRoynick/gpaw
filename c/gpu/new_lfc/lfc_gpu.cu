@@ -44,9 +44,9 @@ void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceAr
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_construct_density<float>(*this, nt_G, rho_MM, mu_start, mu_end); break;
+        lfc_gpu_impl::launch_construct_density<float>(*this, nt_G, rho_MM, mu_start, mu_end); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_construct_density<double>(*this, nt_G, rho_MM, mu_start, mu_end); break;
+        lfc_gpu_impl::launch_construct_density<double>(*this, nt_G, rho_MM, mu_start, mu_end); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }
@@ -76,9 +76,9 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray &nt_sG, const gpaw::PyDeviceArra
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_add_to_density<float>(*this, nt_sG, f_sM); break;
+        lfc_gpu_impl::launch_add_to_density<float>(*this, nt_sG, f_sM); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_add_to_density<double>(*this, nt_sG, f_sM); break;
+        lfc_gpu_impl::launch_add_to_density<double>(*this, nt_sG, f_sM); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }
@@ -104,9 +104,9 @@ void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::P
     switch (dtype.normalized_num())
     {
     case py::dtype::num_of<float>():
-        LFCGpuImpl::launch_calculate_potential_matrix_phi_pairs<float>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
+        lfc_gpu_impl::launch_calculate_potential_matrix_phi_pairs<float>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     case py::dtype::num_of<double>():
-        LFCGpuImpl::launch_calculate_potential_matrix_phi_pairs<double>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
+        lfc_gpu_impl::launch_calculate_potential_matrix_phi_pairs<double>(*this, vt_G, out_V_MN, mu_start, mu_end); break;
     default:
         throw std::runtime_error("Unsupported dtype");
     }

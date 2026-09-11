@@ -98,9 +98,6 @@ struct GridInfoGpu
     double dV;
 };
 
-// Keep templated implementations in a separate helper class.
-// FIXME: Currently LFCGpuImpl only has static functions so we could just go with a namespace...
-class LFCGpuImpl;
 
 class LFCGpu
 {
@@ -130,10 +127,8 @@ public:
     void calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
                                     size_t mu_start, size_t mu_end) const;
 
-private:
-    // Construction only via LFCBuilderGpu
-    LFCGpu() = default;
 
+    // FIXME the _impl function need access to these but ideally these would be kept private.
     PhiDataGpu phi_data;
     BlockDataGpu block_data;
     PhiPairDataGpu phi_pair_data;
@@ -141,6 +136,10 @@ private:
 
     std::shared_ptr<const SplinePoolGpu> spline_pool;
 
+private:
+
     friend class LFCBuilderGpu;
-    friend class LFCGpuImpl;
+
+    // Construction only via LFCBuilderGpu
+    LFCGpu() = default;
 };
