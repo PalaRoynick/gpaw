@@ -30,7 +30,7 @@ Parameters
 
 * 14 electron potential for Cr
 
-* Density convergence criterium: `10^{-4}´
+* Density convergence criterium: `10^{-4}`
 
 * PW: 800 eV plane-wave cutoff
 
