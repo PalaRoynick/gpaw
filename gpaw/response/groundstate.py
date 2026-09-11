@@ -129,9 +129,7 @@ class ResponseGroundStateAdapter:
         from gpaw import GPAW, disable_dry_run
         assert Path(gpw).is_file()
         with disable_dry_run():
-            calc = GPAW(gpw,
-                        txt=None,
-                        communicator=mpi.serial_comm)
+            calc = GPAW(gpw, communicator=mpi.serial_comm)
         return cls(calc, lazy=lazy)
 
     @cached_property
