@@ -230,13 +230,6 @@ class DFT:
 
         self.potential, self.energies, _ = self.pot_calc.calculate(
             self.density, self.ibzwfs, self.potential.vHt_x)
-        from gpaw.mpi import serial_comm
-        self.potential = self.potential.redist(
-            wf_grid,
-            None,
-            wf_atomdist,
-            serial_comm,
-            self.ibzwfs.kpt_band_comm)
 
         mm_av = self.results.get('non_collinear_magmoms')
         if mm_av is None:
@@ -707,14 +700,6 @@ class DFT:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
-        if builder.distribute_density:
-            from gpaw.mpi import serial_comm
-            potential = potential.redist(
-                builder.wf_grid,
-                None,
-                builder.wf_atomdist,
-                serial_comm,
-                ibzwfs.kpt_band_comm)
 
         ibzwfs.make_sure_wfs_are_read_from_gpw_file()
         old_ibzwfs = ibzwfs

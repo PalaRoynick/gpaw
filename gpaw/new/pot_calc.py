@@ -149,9 +149,15 @@ class PotentialCalculator:
             energies[key] += e
 
         potential = Potential(vt_sR, dH_asii, dedtaut_sR, vHt_x, e_stress)
+
+        potential = self.redist(potential)
+
         return (potential,
                 DFTEnergies(**energies),
                 V_aL)
+
+    def redist(self, potential: Potential):
+        return potential
 
 
 @trace

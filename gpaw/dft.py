@@ -1008,13 +1008,6 @@ class Parameters:
 
         potential, energies, _ = pot_calc.calculate_without_orbitals(
             density)
-        if builder.distribute_density:
-            from gpaw.mpi import serial_comm
-            potential = potential.redist(builder.wf_grid,
-                                         None,
-                                         builder.wf_atomdist,
-                                         serial_comm,
-                                         builder.communicators['D'])
         ibzwfs = builder.create_ibz_wave_functions(
             basis_set, potential)
 

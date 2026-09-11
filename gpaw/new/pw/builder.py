@@ -168,6 +168,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.create_poisson_solver(extensions),
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
+            wf_grid=self.wf_grid,
+            wf_atomdist=self.wf_atomdist,
+            kpt_band_comm=self.communicators['D']
             soc=self.soc,
             xp=self.xp,
             extensions=extensions)
