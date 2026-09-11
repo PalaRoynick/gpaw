@@ -131,7 +131,7 @@ class PWDesc(Domain['PWArray']):
     @property
     def G_plus_k_Gv(self):
         if self._G_plus_k_Gv is None:
-            B_cv = 2.0 * pi * self.icell()
+            B_cv = 2.0 * pi * self.icell
             self._G_plus_k_Gv = (self.indices_cG[:, self.ng1:self.ng2].T +
                                  self.kpt_c) @ B_cv
         return self._G_plus_k_Gv
