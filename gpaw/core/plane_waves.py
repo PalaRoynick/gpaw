@@ -284,6 +284,15 @@ class PWDesc(Domain['PWArray']):
                            atomdist=atomdist,
                            qspiral_v=qspiral_v)
 
+    def onaxis_mask(self) -> np.ndarray:
+        """Local-rank boolean mask for on-axis G-vectors.
+
+        Picks out the plane waves with (n1, n2) == (0, 0), i.e. those
+        parallel to the third cell vector's reciprocal partner.
+        """
+        m0_G, m1_G = self.indices_cG[:2, self.ng1:self.ng2] == 0
+        return m0_G & m1_G
+
 
 class PWArray(XArray[PWDesc]):
     def __init__(self,
@@ -819,9 +828,8 @@ class PWArray(XArray[PWDesc]):
         """Calculate average value at boundary of box."""
         assert axis == 2
         pw = self.desc
-        m0_G, m1_G = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
         assert self.desc.dtype == self.real_dtype
-        value = self.data.real[m0_G & m1_G].sum() * 2
+        value = self.data.real[pw.onaxis_mask()].sum() * 2
         if self.desc.comm.rank == 0:
             value -= self.data[0].real
         return self.desc.comm.sum_scalar(value)

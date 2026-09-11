@@ -44,6 +44,10 @@ class Solvation(ExtensionInput):
                 raise NotImplementedError(
                     'Plane-wave solvation does not currently support '
                     f'density-dependent {", ".join(bad)}; use fd mode.')
+        elif self.dipolelayer or self.zero_vacuum:
+            raise NotImplementedError(
+                'dipolelayer and zero_vacuum are only implemented for '
+                "plane-wave solvation (mode='pw'), not fd mode.")
         return SolvationExtension(
             cavity=self.cavity,
             dielectric=self.dielectric,

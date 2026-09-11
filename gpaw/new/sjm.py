@@ -188,8 +188,7 @@ def saw_tooth(pw: PWDesc, width: float = 0.5) -> PWArray:
     assert np.allclose(pw.cell_cv[:2, 2], 0.0)
     assert np.allclose(pw.cell_cv[2, :2], 0.0)
 
-    m0_g, m1_g = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
-    mask_g = m0_g & m1_g
+    mask_g = pw.onaxis_mask()
     Gz_i = pw.G_plus_k_Gv[mask_g, 2]
     if pw.comm.rank == 0.0:
         assert Gz_i[0] == 0.0
