@@ -103,7 +103,7 @@ class Functional:
                             interpolate: Callable[[UGArray], UGArray]
                             ) -> Array2D:
         args, kwargs = self._args(ibzwfs, density, interpolate)
-        dist_dens = density.nt_sR.desc.comm.size != ibzwfs.grid.comm.size
+        dist_dens = self.grid.comm.size != ibzwfs.domain_comm.size
         if ibzwfs.kpt_band_comm.rank == 0 or dist_dens:
             if self.xp is np:
                 if isinstance(self.xc, VDWXC):
@@ -159,7 +159,7 @@ class LDAFunctional(Functional):
         return exc, vxct_sr, None
 
     def _args(self, ibzwfs, density, interpolate):
-        dist_dens = density.nt_sR.desc.comm.size != ibzwfs.grid.comm.size
+        dist_dens = self.grid.comm.size != ibzwfs.domain_comm.size
         if ibzwfs.kpt_band_comm.rank == 0 or dist_dens:
             nt_sR = density.nt_sR
             e_r = self.grid.empty(xp=self.xp)
