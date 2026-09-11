@@ -444,13 +444,13 @@ def test_construct_density_distributed(
     basis_old.set_matrix_distribution(my_start, my_stop)
 
     # all ranks generate the same rho, then slice it according to the row dist
-    rng = np.random.default_rng(444)
+    rng = xp.random.default_rng(444)
     rho_full = rng.random((Mmax, Mmax))
     rho_full = rho_full + rho_full.T
-    rho_slice = np.ascontiguousarray(rho_full[my_start:my_stop])
+    rho_slice = xp.ascontiguousarray(rho_full[my_start:my_stop])
 
-    nt_new = np.ones(grid_system.grid.mysize_c)
-    nt_old = np.ones(grid_system.grid.mysize_c)
+    nt_new = xp.ones(grid_system.grid.mysize_c)
+    nt_old = xp.ones(grid_system.grid.mysize_c)
 
     q = 0  # ???
 
@@ -460,7 +460,7 @@ def test_construct_density_distributed(
     row_comm.sum(nt_new)
     row_comm.sum(nt_old)
 
-    np.testing.assert_allclose(nt_new, nt_old, rtol=1e-10, atol=1e-12)
+    xp.testing.assert_allclose(nt_new, nt_old, rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.parametrize("num_spins", [1, 2])
