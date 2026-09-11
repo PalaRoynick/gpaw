@@ -79,12 +79,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
                 phi_idx_map[id(phi)] = num_phi
                 num_phi += 1
 
-        # TODO figure out a fast way of getting required block data
-        # From set_positions() we already have:
-        # - self.phi_instances_ai: all relevant phi_i for given atom
-        # - self._block_overlaps_a: list of dicts, one for each atom.
-        #   The dict maps BlockCoords to overlapping phi_i for that atom
-
+        # The following could use a more optimal approach.
         # We need:
         # - start_c for each block (easy)
         # - map block-local phi_j to global phi_i (hard)
