@@ -222,9 +222,7 @@ class Density:
 
     @trace
     def update(self, ibzwfs: IBZWaveFunctions, ked=False):
-        self.nt_sR.data[:] = 0.0
-        self.D_asii.data[:] = 0.0
-        ibzwfs.add_to_density(self.nt_sR, self.D_asii)
+        ibzwfs.calculate_density(self.nt_sR, self.D_asii)
         self.nt_sR.data[:self.ndensities] += self.nct_R.data
 
         # LCAO ...:
