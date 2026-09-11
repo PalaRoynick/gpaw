@@ -30,9 +30,13 @@ Parameters
 
 * 14 electron potential for Cr
 
-  * PW: 800 eV plane-wave cutoff
-  * LCAO: 0.15 Å grid-spacing and ``dzp`` basis sets
-  * FD: 0.15 Å grid-spacing
+* Density convergence criterium: `10^{-4}´
+
+* PW: 800 eV plane-wave cutoff
+
+* LCAO: 0.15 Å grid-spacing and ``dzp`` basis sets
+
+* FD: 0.15 Å grid-spacing
 
 * default parameters for everything else
 
