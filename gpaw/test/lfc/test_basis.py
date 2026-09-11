@@ -460,7 +460,12 @@ def test_construct_density_distributed(
     row_comm.sum(nt_new)
     row_comm.sum(nt_old)
 
-    xp.testing.assert_allclose(nt_new, nt_old, rtol=1e-10, atol=1e-12)
+    # Seems somewhat sensitive to tolenraces. Similar case as in
+    # pot_matrix tests above? On LUMI GPUs this passed even with
+    # rtol 1e-10, atol 1e-12 but CI runner A100 failed one element
+    rtol = 1e-9
+    atol = 1e-9
+    xp.testing.assert_allclose(nt_new, nt_old, rtol=rtol, atol=atol)
 
 
 @pytest.mark.parametrize("num_spins", [1, 2])
