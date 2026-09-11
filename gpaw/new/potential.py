@@ -75,7 +75,7 @@ class Potential:
 
     def redist(self,
                grid: UGDesc,
-               desc: XDesc,
+               desc: XDesc | None,
                atomdist: AtomDistribution,
                comm1: MPIComm,
                comm2: MPIComm) -> Potential:

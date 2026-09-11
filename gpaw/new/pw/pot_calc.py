@@ -158,7 +158,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 V_aL,
                 e_stress)
 
-    def redist(self, potential: Potential):
+    def redist(self, potential: Potential) -> Potential:
         if not self.distributed_density:
             return potential
         return potential.redist(
