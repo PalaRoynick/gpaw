@@ -138,7 +138,8 @@ class Functional:
         energy_a = {}
         gradient_asp = {}
         for a, D_sp in D_asp.items():
-            gradient_sp = np.zeros_like(D_sp)
+            dtype = float if len(D_sp) < 4 else complex
+            gradient_sp = np.zeros_like(D_sp, dtype=dtype)
             energy_a[a] = self.calculate_paw_correction(
                 setups[a], D_sp, gradient_sp, a=a)
             gradient_asp[a] = gradient_sp

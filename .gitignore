@@ -1,5 +1,6 @@
 *.pyc
 build/
+/baseline/
 _build/
 niflheim_build/
 /dist

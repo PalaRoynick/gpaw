@@ -179,14 +179,13 @@ def calculate_non_local_potential(setups,
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
     V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
-    D_asp = {}
     rank = 0
+    D_asp = {}
     for a, D_sii in D_asii.items():
         if rank % kpt_band_comm.size == kpt_band_comm.rank:
             D_asp[a] = np.array(
                 [pack_density(D_ii.real) for D_ii in D_sii])
         rank += 1
-
     e_xc_a, dH_xc_asp = xc.calculate_paw_corrections(setups, D_asp)
 
     rank = 0
