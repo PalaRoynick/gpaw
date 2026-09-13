@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from contextlib import ExitStack
 from math import isclose, pi
 from pathlib import Path
+from functools import cached_property
 
 import numpy as np
 from ase.parallel import broadcast, paropen
@@ -605,10 +606,6 @@ class G0W0Calculator:
                                        f'systems. Invalid fxc_mode {fxc_mode}.'
                                        )
 
-        self.pair_distribution = distribute_k_points_and_bands(
-            self.chi0calc.chi0_body_calc, b1, b2,
-            self.chi0calc.gs.kd.ibz2bz_k[self.kpts])
-
         self.print_parameters(kpts, b1, b2)
 
         self.exx_vxc_calculator = exx_vxc_calculator
@@ -631,6 +628,13 @@ class G0W0Calculator:
               f'= {self.wd.omega_w[0].imag:.3f} Hartree')
         else:
             self.context.print('Using full-frequency real axis integration')
+
+    @cached_property
+    def pair_distribution(self):
+        b1, b2 = self.bands
+        return distribute_k_points_and_bands(
+            self.chi0calc.chi0_body_calc, b1, b2,
+            self.chi0calc.gs.kd.ibz2bz_k[self.kpts])
 
     def print_parameters(self, kpts, b1, b2):
         isl = ['',
