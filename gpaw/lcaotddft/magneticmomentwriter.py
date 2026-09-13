@@ -132,6 +132,7 @@ def calculate_magnetic_moment_atomic_corrections(R_av, setups, partition):
 
 
 def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
+                                     column_range, row_range,
                                      only_pseudo=False):
     """Calculate magnetic moment matrix in LCAO basis.
 
@@ -184,6 +185,16 @@ def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
     # The matrices should be real
     assert np.max(np.absolute(M_vmM.imag)) == 0.0
     M_vmM = M_vmM.real.copy()
+
+    if column_range:
+        M_vmM[:, :, :column_range[0]] = 0.0
+        M_vmM[:, :, column_range[1]:] = 0.0
+
+    if row_range:
+        # Zero from row index 0 to row_range[0]
+        M_vmM[:, :max(0, row_range[0] - Mstart), :] = 0.0
+        M_vmM[:, min(mynao, max(0, row_range[1] - Mstart)):, :] = 0.0
+
     return -0.5 * M_vmM
 
 
@@ -325,6 +336,8 @@ class MagneticMomentWriter(TDDFTObserver):
                  dmat: DensityMatrix = None,
                  calculate_on_grid: bool = None,
                  only_pseudo: bool = None,
+                 row_range=None,
+                 column_range=None,
                  interval: int = 1):
         super().__init__(paw, interval)
         self.ioctx = IOContext()
@@ -392,6 +405,7 @@ class MagneticMomentWriter(TDDFTObserver):
             M_vmM = calculate_magnetic_moment_matrix(
                 paw.wfs.kpt_u, paw.wfs.basis_functions,
                 paw.wfs.atomic_correction, r_vG, dM_vaii,
+                row_range=row_range, column_range=column_range,
                 only_pseudo=only_pseudo)
 
             # TODO: All observers recalculate density matrix
