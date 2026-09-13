@@ -40,3 +40,28 @@ def test_collective_float32_gpu_matches_gpaw(xc_name, polarized):
             e_xc_a[a], energy, rtol=8e-4, atol=8e-4)
         np.testing.assert_allclose(
             dH_asp[a], expected, rtol=5e-3, atol=8e-4)
+
+
+@pytest.mark.gpu
+def test_mixed_mo_s_layout_groups_match_gpaw():
+    """Different setup dimensions execute as concurrent shape batches."""
+    cp = pytest.importorskip('cupy')
+    xc = XC('PBE')
+    setups = [create_setup(symbol, xc) for symbol in ['Mo', 'S', 'Mo', 'S']]
+    D_asp = {}
+    for a, setup in enumerate(setups):
+        D_sp = np.zeros((1, setup.xc_correction.nii))
+        D_sp[0, 0] = 0.85 + 0.1 * a
+        D_asp[a] = D_sp
+
+    e_xc_a, dH_asp = calculate_paw_corrections(
+        setups, D_asp, cp, 'PBE')
+
+    for a, (setup, D_sp) in enumerate(zip(
+            setups, D_asp.values(), strict=True)):
+        expected = np.zeros_like(D_sp)
+        energy = xc.calculate_paw_correction(setup, D_sp, expected)
+        np.testing.assert_allclose(
+            e_xc_a[a], energy, rtol=8e-4, atol=8e-4)
+        np.testing.assert_allclose(
+            dH_asp[a], expected, rtol=5e-3, atol=8e-4)
