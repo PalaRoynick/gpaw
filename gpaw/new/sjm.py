@@ -31,6 +31,9 @@ class SJM(Solvation):
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
         self.tol = tol
+        raise NotImplementedError(
+            'SJM is not yet validated in gpaw.new. '
+            'Use gpaw.solvation.sjm.SJM instead.')
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
