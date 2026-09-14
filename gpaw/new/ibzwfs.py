@@ -327,6 +327,20 @@ class IBZWaveFunctions(Generic[WFT]):
                 return eig_n, occ_n
         return np.zeros(0), np.zeros(0)
 
+    def get_occs(self, kpt=0, spin=0):
+        if self.domain_comm.rank == 0 and self.band_comm.rank == 0:
+            rank = self.rank_ks[kpt, spin]
+            if rank == self.kpt_comm.rank:
+                wfs = self._get_wfs(kpt, spin)
+                if rank == 0:
+                    return wfs._occ_n
+                self.kpt_comm.send(wfs._occ_n, 0)
+            elif self.kpt_comm.rank == 0:
+                occ_n = np.empty(self.nbands)
+                self.kpt_comm.receive(occ_n, rank)
+                return occ_n
+        return np.zeros(0)
+
     def get_all_eigs_and_occs(self, broadcast=False):
         nkpts = len(self.ibz)
         mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
@@ -342,6 +356,19 @@ class IBZWaveFunctions(Generic[WFT]):
             self.comm.broadcast(eig_skn, 0)
             self.comm.broadcast(occ_skn, 0)
         return eig_skn, occ_skn
+
+    def get_all_occs(self, broadcast=False):
+        nkpts = len(self.ibz)
+        mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
+        occ_skn = np.empty((self.nspins, nkpts, mynbands))
+        for k in range(nkpts):
+            for s in range(self.nspins):
+                occ_n = self.get_occs(k, s)
+                if self.comm.rank == 0:
+                    occ_skn[s, k, :] = occ_n
+        if broadcast:
+            self.comm.broadcast(occ_skn, 0)
+        return occ_skn
 
     def forces(self,
                potential: Potential,
