@@ -20,6 +20,7 @@ class BaseMixer:
                  relpos_ac: ArrayND,
                  ncomponents: int,
                  world: MPIComm,
+                 noncol: bool | None = None,
                  xp=np):
         """Base class for density mixers. Also operates as the
         not-mixing mixer.
@@ -47,12 +48,15 @@ class BaseMixer:
         self.metric = metric
         self.desc = desc
         self.ncomponents = ncomponents
+        if noncol is None:
+            noncol = ncomponents == 4
+        self.noncol = noncol
         self.xp = xp
         self.setups = setups
         self.world = world  # For syncing across kpts
         self.atom_layout = AtomArraysLayout(
             [(setup.ni, setup.ni) for setup in setups],
-            atomdist=atomdist, dtype=float if ncomponents < 4 else complex,
+            atomdist=atomdist, dtype=complex if self.noncol else float,
             xp=xp)
         self.histories: list[DensityHistory] = []
         self.ghat_aLr = setups.create_compensation_charges(desc,
@@ -192,7 +196,7 @@ class BaseMixer:
         self.atom_layout = AtomArraysLayout(
             [(setup.ni, setup.ni) for setup in self.setups],
             atomdist=atomdist,
-            dtype=float if self.ncomponents < 4 else complex,
+            dtype=complex if self.noncol else float,
             xp=self.xp)
         self.histories = []
         self.ghat_aLr = self.setups.create_compensation_charges(
