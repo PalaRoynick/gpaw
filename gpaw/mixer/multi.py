@@ -65,7 +65,10 @@ class MultiMixer(BaseMixer):
 
         # Mix the densities:
         dnt_a = self.mixer_a._mix(nta_sX, Da_asii, density)
-        dnt_b = self.mixer_b._mix(ntb_sX, Db_asii, density)
+        if self.ncomponents > 1:
+            dnt_b = self.mixer_b._mix(ntb_sX, Db_asii, density)
+        else:
+            dnt_b = 0
 
         # Put the densities in their place:
         match method:
