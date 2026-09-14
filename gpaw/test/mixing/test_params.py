@@ -23,6 +23,8 @@ def test_params(mixer, magmoms):
     atoms.center(vacuum=2)
     calc = GPAW(mixer=mixer,
                 xc='LDA',
+                symmetry='off',
+                magmoms=magmoms,
                 mode='pw')
     atoms.calc = calc
     atoms.get_potential_energy()
