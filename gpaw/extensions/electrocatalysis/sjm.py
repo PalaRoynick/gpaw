@@ -164,6 +164,10 @@ class SJM(Solvation):
         self._extension: SJMExtension | None = None
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
+        # Solvation only implements the dipole layer in plane-wave mode.  In
+        # fd mode SJMPoissonSolver corrects the dipole itself, so it must not
+        # be requested from Solvation, which would refuse it.
+        self.dipolelayer = self.zero_vacuum = builder.mode == 'pw'
         solvation = super().build(builder)
         log = builder.log
         self._check_convergence_criteria(builder.params.convergence, log)

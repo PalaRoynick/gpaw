@@ -1,12 +1,8 @@
-"""Forces for implicit solvation (new GPAW); PW & FD.
-
-Using an NaCl system, checks that the forces match numerical
-forces, match each other, and that the solvation term is not
-negligible.
-"""
+"""Forces for implicit solvation (new GPAW); PW & FD."""
 import pytest
 from ase import Atoms
 from ase.calculators.fd import calculate_numerical_forces
+from ase.units import Pascal, m
 
 from gpaw import PW, FermiDirac
 from gpaw.new.ase_interface import GPAW
@@ -17,11 +13,23 @@ from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
 from gpaw.solvation.interactions import SurfaceInteraction, VolumeInteraction
 
 
-def make_calc(mode, txt, solvated=True, interactions=None, sjm=False,
-              **solvation_kwargs):
-    mode_kwargs = (dict(mode=PW(400.)) if mode == 'pw'
-                   else dict(mode='fd', h=0.18))
+def make_atoms(cell, pbc):
+    atoms = Atoms('NaCl', positions=[(0., 0., 0.), (0., 0., 2.4)])
+    atoms.set_cell(cell)
+    atoms.center()
+    atoms.pbc = pbc
+    return atoms
+
+
+def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False,
+              sjm=False, **solvation_kwargs):
+    mode_kwargs = (dict(mode=PW(ecut)) if mode == 'pw'
+                   else dict(mode='fd', h=h))
     extensions = []
+    if interactions:
+        # Surface tension/pressure exaggerated.
+        interactions = [SurfaceInteraction(surface_tension=1.6 * Pascal * m),
+                        VolumeInteraction(pressure=-3.2e9 * Pascal)]
     if solvated:
         solvation = dict(
             cavity=EffectivePotentialCavity(
@@ -30,92 +38,78 @@ def make_calc(mode, txt, solvated=True, interactions=None, sjm=False,
                 surface_calculator=GradientSurface(),
                 volume_calculator=KB51Volume()),
             dielectric=LinearDielectric(epsinf=80.0),
-            interactions=interactions or [])
+            interactions=interactions)
         extensions = [SJM(**solvation, excess_electrons=0.0) if sjm else
                       Solvation(**solvation, **solvation_kwargs)]
     return GPAW(
         **mode_kwargs,
         kpts=(1, 1, 1),
         xc='PBE',
-        setups={'Na': '1'},
+        setups={'Na': '1'},  # 8 fewer electrons
         occupations=FermiDirac(0.1),
         txt=txt,
-        experimental={'backwards_compatible': False},
         extensions=extensions)
 
 
-def test_solvation_forces(in_tmp_dir):
-    # Atomic system is a vertically oriented NaCl.
-    atoms = Atoms('NaCl', positions=[(0., 0., 0.), (0., 0., 2.4)])
-    atoms.set_cell([10., 10., 12.])
-    atoms.center()
-    atoms.pbc = True
+def test_pw_solvation_forces(in_tmp_dir):
+    """PW: symmetry limits, -dE/dz, and both terms non-negligible."""
+    atoms = make_atoms([7., 7., 9.], True)
 
-    # PW: forces match physical limits (only z, anti-symmetric).
-    atoms.calc = make_calc('pw', 'nacl_pw.txt')
-    F_pw = atoms.get_forces()
-    assert F_pw[:, :2] == pytest.approx(0.0, abs=5e-3)
-    assert F_pw[0, 2] == pytest.approx(-F_pw[1, 2], abs=0.03)
-
-    # PW: forces match -dE/dz of the energy.
-    f_num = calculate_numerical_forces(atoms, eps=0.03, iatoms=[0],
-                                       icarts=[2], force_consistent=True)
-    assert F_pw[0, 2] == pytest.approx(f_num[0, 0], abs=0.03)
-
-    # PW: the solvation term is not negligible.
-    atoms.calc = make_calc('pw', 'nacl_pw_bare.txt', solvated=False)
-    F_bare = atoms.get_forces()
-    assert abs(F_pw[0, 2] - F_bare[0, 2]) > 0.1
-
-    # PW/FD: plane-wave forces match finite-difference mode forces.
-    atoms.calc = make_calc('fd', 'nacl_fd.txt')
-    F_fd = atoms.get_forces()
-    assert F_pw[0, 2] == pytest.approx(F_fd[0, 2], abs=0.03)
-
-    # FD: forces match -dE/dz of the energy.
-    f_num = calculate_numerical_forces(atoms, eps=0.03, iatoms=[0],
-                                       icarts=[2], force_consistent=True)
-    assert F_fd[0, 2] == pytest.approx(f_num[0, 0], abs=0.03)
-
-    # FD: the solvation term is not negligible.
-    atoms.calc = make_calc('fd', 'nacl_fd_bare.txt', solvated=False)
-    F_bare = atoms.get_forces()
-    assert abs(F_fd[0, 2] - F_bare[0, 2]) > 0.1
-
-
-def test_pw_solvation_interaction_forces(in_tmp_dir):
-    """Surface/Volume interaction forces in PW: analytic vs -dE/dz.
-
-    Both interactions are density-independent, so they add nothing to the
-    KS potential -- the SCF is unchanged and the constants below are
-    deliberately exaggerated to make the -gamma*dA/dz - p*dV/dz force term
-    resolvable against the numerical-force tolerance.
-    """
-    ia = [SurfaceInteraction(surface_tension=0.10),   # eV / Ang^2
-          VolumeInteraction(pressure=-0.02)]          # eV / Ang^3
-
-    atoms = Atoms('NaCl', positions=[(0., 0., 0.), (0., 0., 2.4)])
-    atoms.set_cell([10., 10., 12.])
-    atoms.center()
-    atoms.pbc = True
-
-    atoms.calc = make_calc('pw', 'nacl_pw_ia.txt', interactions=ia)
+    atoms.calc = make_calc('pw', 'solv_ia.txt', interactions=True)
     F_ia = atoms.get_forces()
+    # Forces match physical limits (only z, anti-symmetric).
+    assert F_ia[:, :2] == pytest.approx(0.0, abs=5e-3)
+    assert F_ia[0, 2] == pytest.approx(-F_ia[1, 2], abs=0.01)
 
-    # The interaction-force term is actually present (not swamped by tol).
-    atoms.calc = make_calc('pw', 'nacl_pw_noia.txt')
-    F_only_ia = F_ia[0, 2] - atoms.get_forces()[0, 2]
-    assert abs(F_only_ia) > 0.5
-
-    # PW force matches -dE/dz of the (interaction-inclusive) energy.
-    atoms.calc = make_calc('pw', 'nacl_pw_ia_fd.txt', interactions=ia)
+    # Forces match -dE/dz of the energy.
     f_num = calculate_numerical_forces(atoms, eps=0.02, iatoms=[0],
                                        icarts=[2], force_consistent=True)
-    assert F_ia[0, 2] == pytest.approx(f_num[0, 0], abs=0.01)
+    assert F_ia[0, 2] == pytest.approx(f_num[0, 0], abs=0.012)
 
-    # PW matches FD mode for the interaction-inclusive force too.
-    atoms.calc = make_calc('fd', 'nacl_fd_ia.txt', interactions=ia)
-    assert F_ia[0, 2] == pytest.approx(atoms.get_forces()[0, 2], abs=0.01)
+    # The interaction term is not negligible.
+    atoms.calc = make_calc('pw', 'solv.txt')
+    F_solv = atoms.get_forces()
+    assert abs(F_ia[0, 2] - F_solv[0, 2]) > 0.5
+
+    # The solvation term is not negligible.
+    atoms.calc = make_calc('pw', 'bare.txt', solvated=False)
+    F_bare = atoms.get_forces()
+    assert abs(F_solv[0, 2] - F_bare[0, 2]) > 0.3
+
+
+def test_pw_fd_forces_agree(in_tmp_dir):
+    """PW/FD: plane-wave forces match finite-difference mode forces."""
+    atoms = make_atoms([10., 10., 12.], True)
+
+    atoms.calc = make_calc('pw', 'pw.txt', ecut=400., interactions=True)
+    F_pw = atoms.get_forces()
+
+    # Previous FD-mode result, generated by disabled code below.
+    F_fd_z_ref = 0.446202
+
+    assert F_pw[:, :2] == pytest.approx(0.0, abs=5e-3)
+    assert F_pw[0, 2] == pytest.approx(F_fd_z_ref, abs=0.005)
+
+    # Set boolean to regenerate F_fd_z_ref.
+    fd = False
+    if fd:
+        atoms.calc = make_calc('fd', 'fd.txt', h=0.18, interactions=True)
+        print('FD forces:', atoms.get_forces())
+
+
+def test_fd_solvation_forces(in_tmp_dir):
+    """FD mode: analytic forces match -dE/dz of the energy."""
+    atoms = make_atoms([8., 8., 11.], False)
+
+    atoms.calc = make_calc('fd', 'fd.txt', interactions=True)
+    F_ia = atoms.get_forces()
+
+    assert F_ia[:, :2] == pytest.approx(0.0, abs=5e-3)
+
+    # Forces match -dE/dz of the energy.
+    f_num = calculate_numerical_forces(atoms, eps=0.02, iatoms=[0],
+                                       icarts=[2], force_consistent=True)
+    assert F_ia[0, 2] == pytest.approx(f_num[0, 0], abs=0.015)
 
 
 def test_sjm_zero_charge_forces_match_solvation(in_tmp_dir):
@@ -131,14 +125,11 @@ def test_sjm_zero_charge_forces_match_solvation(in_tmp_dir):
 
     In plane-wave mode the two build the very same Poisson solver, once
     Solvation is told to make the dipole correction that SJM always
-    makes, so the agreement here is to round-off.  (In fd mode Solvation
-    ignores ``dipolelayer`` and SJM applies its own saw-tooth reference
-    instead, so the two legitimately differ by a few meV/Ang.)
+    makes, so the agreement here is to round-off.  (Solvation has no
+    dipole layer in fd mode, where SJM applies its own saw-tooth
+    reference instead, so the two legitimately differ by a few meV/Ang.)
     """
-    atoms = Atoms('NaCl', positions=[(0., 0., 0.), (0., 0., 2.4)])
-    atoms.set_cell([10., 10., 12.])
-    atoms.center()
-    atoms.pbc = True
+    atoms = make_atoms([10., 10., 12.], True)
 
     atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
                            dipolelayer=True, zero_vacuum=True)

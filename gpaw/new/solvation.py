@@ -44,6 +44,10 @@ class Solvation(ExtensionInput):
                 raise NotImplementedError(
                     'Plane-wave solvation does not currently support '
                     f'density-dependent {", ".join(bad)}; use fd mode.')
+        elif self.dipolelayer or self.zero_vacuum:
+            raise NotImplementedError(
+                'dipolelayer and zero_vacuum are only implemented for '
+                "plane-wave solvation (mode='pw'), not fd mode.")
         return SolvationExtension(
             cavity=self.cavity,
             dielectric=self.dielectric,
@@ -94,7 +98,7 @@ class SolvationExtension(Extension):
             ia.update_atoms(self.atoms, log)
         self.grad_v = [Gradient(grid, v, 1.0, n=3) for v in range(3)]
         self.vt_ia_r = grid.empty()  # self.finegd.zeros()
-        self.interaction_energies: dict[str, float] = {}
+        self.interaction_energies = {}
 
     def move_atoms(self, relpos_ac):
         """Point the cavity at the new geometry after the atoms move."""
