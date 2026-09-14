@@ -81,20 +81,6 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         print(atoms.calc.dft.sjm)
         print(calc.dft.sjm)
 
-    if 0:  # gpaw_new:
-        import matplotlib.pyplot as plt
-        import numpy as np
-        x, y = np.array(
-            atoms.calc.dft.sjm.potentiostat.optimizer.history).T
-        plt.plot(x, y)
-        plt.show()
-    if 0:
-        v = atoms.calc.get_electrostatic_potential()
-        import matplotlib.pyplot as plt
-        import numpy as np
-        plt.plot(np.linspace(0, atoms.cell[2, 2], v.shape[2], 0), v[0, 0])
-        plt.show()
-
 
 if __name__ == '__main__':
     import sys

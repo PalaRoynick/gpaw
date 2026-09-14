@@ -115,9 +115,10 @@ class ASECalculator:
         """Extensions by name: calc.sjm, calc.solvation, ...
 
         Before a calculation has been done, this is the input object given to
-        the ``extensions`` keyword, whose ``set()`` stores parameters for the
-        calculation to be built with; afterwards it is the built extension --
-        the same object as ``calc.dft.<name>`` -- with all of its methods.
+        the ``extensions`` keyword, whose ``change()`` stores parameters for
+        the calculation to be built with; afterwards it is the built
+        extension -- the same object as ``calc.dft.<name>`` -- with all of its
+        methods.
         """
         if name.startswith('_') or 'params' not in self.__dict__:
             raise AttributeError(name)  # not initialized yet

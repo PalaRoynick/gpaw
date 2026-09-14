@@ -54,12 +54,6 @@ def test_h(gpaw_new, mode, in_tmp_dir):
             assert calc.results[name] == pytest.approx(
                 atoms.calc.results[name], abs=1e-10)
 
-    if 0:
-        v = atoms.calc.get_electrostatic_potential()
-        import matplotlib.pyplot as plt
-        plt.plot(np.linspace(0, 11, v.shape[2], 0), v[0, 0])
-        plt.show()
-
 
 def check_grand_canonical_results(atoms, energy):
     """The grand potential - not the canonical energy - goes to ASE."""
