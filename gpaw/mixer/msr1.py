@@ -98,7 +98,7 @@ class MSR1Mixer(BaseMixer):
         self.last_dNt = np.inf
 
     def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+             density: Density) -> tuple:
         # Step 1: Initialize
         nold = self.nt_hsX.nold
         if nold == 0:
@@ -106,7 +106,7 @@ class MSR1Mixer(BaseMixer):
             self.add_compensation_charge(nt_sX, D_asii, density,
                                          out=self.ntc_hsX.next(),
                                          add_delta0=True)
-            return np.inf
+            return [1,], [0,], np.inf
 
         _R_sX, _R_asii = self.R_hsX.next()
         self.calculate_residual(nt_sX, self.nt_hsX[-1][0], _R_sX)
@@ -260,8 +260,7 @@ class MSR1Mixer(BaseMixer):
 
             def errfct(lamb):
                 beta_h = self.xp.linalg.solve(
-                    A_hh + lamb * self.xp.eye(nold - 1), BR_h
-                )
+                    A_hh + lamb * self.xp.eye(nold - 1), BR_h)
                 rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
                 return rtnval if self.xp is np else rtnval.get()
 
@@ -272,8 +271,7 @@ class MSR1Mixer(BaseMixer):
                 root = 5e1
 
             beta_h = self.xp.linalg.solve(
-                A_hh + root * self.xp.eye(nold - 1), BR_h
-            )
+                A_hh + root * self.xp.eye(nold - 1), BR_h)
             scale_factor = self.trust_radius / predicted_radius
             A *= scale_factor
         else:
@@ -289,25 +287,24 @@ class MSR1Mixer(BaseMixer):
             self.uk_1sX.data[:] -= beta * y_hsX[h].data
 
         # Step 9: Finally mix the densities
-        nt_sX.data[:] = self.nt_hsX[-1][0].data
-        nt_sX.data[:] += self.R_hsX[-1][0].data * A
-        D_asii.data[:] = self.nt_hsX[-1][1]
-        D_asii.data[:] += self.R_hsX[-1][1] * A
-
         beta_h *= t_norm
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
-            nt_sX.data += B * beta * (
-                self.nt_hsX[h][0].data - self.nt_hsX[-1][0].data)
-            D_asii.data += B * beta * (self.nt_hsX[h][1] - self.nt_hsX[-1][1])
-            nt_sX.data += A * beta * (
-                self.R_hsX[h][0].data - self.R_hsX[-1][0].data)
-            D_asii.data += A * beta * (self.R_hsX[h][1] - self.R_hsX[-1][1])
+        alpha_h = B * beta_h
+        beta_h = A * beta_h
+        alpha_h = np.append(alpha_h, (1 - sum(alpha_h)))
+        beta_h = np.append(beta_h, (A - sum(beta_h)))
+
+        nt_sX.data[:] = 0
+        D_asii.data[:] = 0
+        self.nt_hsX.add_linear_combination(alpha_h, out=nt_sX, out_asii=D_asii)
+        self.R_hsX.add_linear_combination(beta_h, out=nt_sX, out_asii=D_asii)
 
         # Step 10: Update density history
         if increased_error > self.hard_lim:
             for hist in self.histories:
-                hist.delete_oldest()
+                hist.marked_for_delete_oldest = True
+        self.nt_hsX.maybe_delete_oldest()
+        self.ntc_hsX.maybe_delete_oldest()
         self.nt_hsX.add(nt_sX, D_asii)
         self.add_compensation_charge(nt_sX, D_asii, density,
                                      out=self.ntc_hsX.next(),
@@ -315,7 +312,7 @@ class MSR1Mixer(BaseMixer):
 
         # Step 11: Return the mixing error
         self.last_dNt = dNt
-        return ret_dNt
+        return alpha_h, beta_h, ret_dNt
 
     def decide_good_broydenness(self, Ay_hh: ArrayND,
                                 As_hh: ArrayND) -> float:
@@ -365,7 +362,7 @@ class MSR1Mixer(BaseMixer):
         return good_broydenness
 
     def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
-                   density: Density) -> float:
+                   density: Density) -> tuple:
         nt_sX.data[:] = self.nt_hsX[-1][0].data
         D_asii.data[:] = self.nt_hsX[-1][1]
         nt_sX.data += self.beta * self.R_hsX[-1][0].data
@@ -378,7 +375,7 @@ class MSR1Mixer(BaseMixer):
         self.uk_1sX.data[:] = self.Rc_hsX[-1].data
         self.pk_1sX.data[:] = 0
         self.last_dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
-        return self.last_dNt
+        return [1,], [self.beta,], self.last_dNt
 
     def __str__(self):
         lines = ['density mixing:',

@@ -7,7 +7,7 @@ from gpaw import GPAW
 from gpaw.utilities.adjust_cell import adjust_cell
 
 vacuum = 4.0
-h = 0.3
+h = 0.2
 
 
 @pytest.mark.mgga
@@ -18,13 +18,13 @@ def test_mgga_lxc_fhc():
         pytest.skip('libxc too old')
     cluster = molecule('CO')
     adjust_cell(cluster, border=vacuum, h=h)
-    calc = GPAW(xc='MGGA_X_TPSS+MGGA_C_TPSS',
+    calc = GPAW(xc='PBE',
                 mode='fd',
                 h=h,
-                maxiter=14,
-                convergence={
-                    'energy': 0.5,
-                    'density': 1.0e-1,
-                    'eigenstates': 4.0e-1})
+                eigensolver={'niter': 5, 'rr_modulo': 2},
+                maxiter=24,
+                )
     cluster.calc = calc
     cluster.get_potential_energy()
+    calc.dft.change(xc='MGGA_X_TPSS+MGGA_C_TPSS')
+    calc.dft.converge()

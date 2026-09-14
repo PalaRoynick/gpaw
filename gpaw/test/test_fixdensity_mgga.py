@@ -10,11 +10,12 @@ def test_fixdensity(in_tmp_dir, eigensolver, mpi):
     slab = Atoms('Li', cell=(a, a, 2 * a), pbc=1)
     slab.calc = mpi.GPAW(
         mode='fd',
-        random=True,  # Better for MGGAs
-        eigensolver=eigensolver,
+        basis='dzp',
+        eigensolver={'name': eigensolver,
+                     'niter': 3},
         xc='revTPSS',
         h=0.12,
-        nbands=5,
+        nbands='nao',
         kpts=(3, 3, 1), txt='li-1.txt',
         parallel=dict(kpt=1))
 

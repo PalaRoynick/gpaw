@@ -12,6 +12,8 @@ from gpaw.typing import ArrayND, Self
 
 
 class BaseMixer:
+    nmaxold = 1
+
     def __init__(self,
                  metric: BaseMetric,
                  desc: DomainType,
@@ -59,20 +61,42 @@ class BaseMixer:
                                                            relpos_ac,
                                                            atomdist,
                                                            xp=np)
+        self.taut_hsR: DensityHistory | None = None
         # XXX: np -> xp once the GPU LFC kernels work
         self._initialize_history_()
 
     def _initialize_history_(self):
-        self.density_history = DensityHistory(
+        self.nt_hsX = DensityHistory(
             nmaxold=1,
             ncomponents=self.ncomponents,
             desc=self.desc,
+            atom_layout=self.atom_layout,
             xp=self.xp)
-        self.histories = [self.density_history, ]
+        self.R_hsX = DensityHistory(
+            nmaxold=1,
+            ncomponents=self.ncomponents,
+            desc=self.desc,
+            atom_layout=self.atom_layout,
+            xp=self.xp)
+        self.histories = [self.nt_hsX, self.R_hsX]
 
     def mix(self, density: Density) -> float:
+        if self.taut_hsR is None and density.taut_sR is not None:
+            self.taut_hsR = DensityHistory(
+                nmaxold=self.nmaxold,
+                ncomponents=self.ncomponents,
+                desc=self.desc,
+                xp=self.xp)
+            self.Rtaut_hsR = DensityHistory(
+                nmaxold=self.nmaxold,
+                ncomponents=self.ncomponents,
+                desc=self.desc,
+                xp=self.xp)
+            self.histories += [self.taut_hsR, self.Rtaut_hsR]
+
         nt_sX = density.nt_sR
         D_asii = density.D_asii
+        taut_sR = density.taut_sR
 
         if self.ncomponents == 2:
             # Don't mix each channel,
@@ -83,33 +107,66 @@ class BaseMixer:
             D2_asii.data[0] = D_asii.data[0] + D_asii.data[1]
             nt2_sX.data[1] = nt_sX.data[0] - nt_sX.data[1]
             D2_asii.data[1] = D_asii.data[0] - D_asii.data[1]
+            if taut_sR is not None:
+                taut2_sR = taut_sR.copy()
+                taut2_sR.data[0] = taut_sR.data[0] + taut_sR.data[1]
+                taut2_sR.data[1] = taut_sR.data[0] - taut_sR.data[1]
         else:
             nt2_sX = nt_sX
             D2_asii = D_asii
+            if taut_sR is not None:
+                taut2_sR = taut_sR
 
-        dnt = self._mix(nt2_sX, D2_asii, density)
+        alpha_h, beta_h, dnt = self._mix(nt2_sX, D2_asii, density)
+        if taut_sR is not None:
+            assert self.taut_hsR is not None
+
+            if self.taut_hsR.nold == 0:
+                self.taut_hsR.add(taut2_sR)
+                taut2_sR.data[:] = 0
+                self.taut_hsR.add_linear_combination(alpha_h, out=taut2_sR)
+            else:
+                Rtaut_sR = self.Rtaut_hsR.next()
+                last_taut_sR = self.taut_hsR[-1]
+                assert isinstance(Rtaut_sR, XArray)
+                assert isinstance(last_taut_sR, XArray)
+                self.calculate_residual(taut2_sR, last_taut_sR, Rtaut_sR)
+                taut2_sR.data[:] = 0
+                self.taut_hsR.add_linear_combination(alpha_h, out=taut2_sR)
+                self.Rtaut_hsR.add_linear_combination(beta_h, out=taut2_sR)
+                self.taut_hsR.maybe_delete_oldest()
+                self.taut_hsR.add(taut2_sR)
+
+        for hist in self.histories:
+            hist.maybe_delete_oldest()
 
         if self.ncomponents == 2:
             nt_sX.data[0] = 0.5 * (nt2_sX.data[0] + nt2_sX.data[1])
             nt_sX.data[1] = 0.5 * (nt2_sX.data[0] - nt2_sX.data[1])
             D_asii.data[0] = 0.5 * (D2_asii.data[0] + D2_asii.data[1])
             D_asii.data[1] = 0.5 * (D2_asii.data[0] - D2_asii.data[1])
+            if taut_sR is not None:
+                taut_sR.data[0] = 0.5 * (taut2_sR.data[0] + taut2_sR.data[1])
+                taut_sR.data[1] = 0.5 * (taut2_sR.data[0] - taut2_sR.data[1])
 
         return dnt
 
-    def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
-        ntc_sX = self.add_compensation_charge(nt_sX, D_asii, density,
-                                              add_delta0=True)
-        if self.density_history.nold == 0:
-            self.density_history.add(ntc_sX)
-            return np.inf
+    def _mix(self, nt_sX: XArray,
+             D_asii: AtomArrays,
+             density: Density) -> tuple:
+        if self.nt_hsX.nold == 0:
+            self.nt_hsX.add(nt_sX, D_asii)
+            return [1,], [0,], np.inf
 
-        Rc_sX = self.calculate_residual(ntc_sX, self.density_history[-1],
-                                        self.density_history[-1])
+        R_sX, R_asii = self.R_hsX.next()
+        self.calculate_residual(nt_sX, self.nt_hsX[-1][0], R_sX)
+        self.calculate_paw_residual(D_asii.data, self.nt_hsX[-1][1], R_asii)
+
+        Rc_sX = self.add_compensation_charge(R_sX, R_asii, density,
+                                             add_delta0=False)
         dNt = self.calculate_charge_sloshing(Rc_sX)
-        self.density_history.add(ntc_sX)
-        return dNt
+        self.nt_hsX.add(nt_sX, D_asii)
+        return [1,], [1,], dNt
 
     def calculate_charge_sloshing(self, res_sX: XArray) -> float:
         slosh_sX = self.desc.empty(self.ncomponents, xp=self.xp)
@@ -215,6 +272,8 @@ class BaseMixer:
 
 
 class DensityHistory:
+    marked_for_delete_oldest = False
+
     def __init__(self,
                  nmaxold: int,
                  ncomponents: int,
@@ -248,6 +307,11 @@ class DensityHistory:
 
     def delete_oldest(self) -> None:
         self.current_indicies.pop(0)
+
+    def maybe_delete_oldest(self) -> None:
+        if self.marked_for_delete_oldest:
+            self.delete_oldest()
+            self.marked_for_delete_oldest = False
 
     def next(self) -> XArray | tuple[XArray, AtomArrays]:
         if self.nold == self.nmaxold:
@@ -297,6 +361,16 @@ class DensityHistory:
         out.data[:] = self._n_hsX[self.current_indicies[:-1]].data
         out.data -= self._n_hsX[self.current_indicies[-1]].data
         return out
+
+    def add_linear_combination(self, alpha_h: list[float],
+                               out: XArray,
+                               out_asii: XArray | None = None) -> None:
+        for ind, alpha in enumerate(alpha_h):
+            mod_ind = self.current_indicies[ind]
+            out.data += alpha * self._n_hsX.data[mod_ind]
+            if out_asii is not None:
+                assert self._D_hasii is not None
+                out_asii.data += alpha * self._D_hasii.data[mod_ind]
 
     def __getitem__(self, index: int) -> tuple[XArray, AtomArrays] | XArray:
         index = self.current_indicies[index]

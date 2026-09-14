@@ -52,13 +52,13 @@ class PulayMixer(BaseMixer):
             (self.nmaxold, self.nmaxold), dtype=float)
 
     def _mix(self, nt_sX: XArray, D_asii: AtomArrays,
-             density: Density) -> float:
+             density: Density) -> tuple:
         # Step 1: Initialize
         nh = self.Rc_hsX.nold
         nold = self.nt_hsX.nold
         if nold == 0:
             self.nt_hsX.add(nt_sX, D_asii)
-            return np.inf
+            return [1,], [0,], np.inf
 
         R_sX, R_asii = self.R_hsX.next()
         self.calculate_residual(nt_sX, self.nt_hsX[-1][0], R_sX)
@@ -88,17 +88,15 @@ class PulayMixer(BaseMixer):
         # Step 3: Mix the densities
         nt_sX.data[:] = 0
         D_asii.data[:] = 0
-        for h, alpha in enumerate(alpha_h):
-            nt_sX.data[:] += alpha * self.nt_hsX[h][0].data
-            D_asii.data[:] += alpha * self.nt_hsX[h][1]
-            nt_sX.data[:] += self.beta * alpha * self.R_hsX[h][0].data
-            D_asii.data[:] += self.beta * alpha * self.R_hsX[h][1]
+        beta_h = alpha_h * self.beta
+        self.nt_hsX.add_linear_combination(alpha_h, out=nt_sX, out_asii=D_asii)
+        self.R_hsX.add_linear_combination(beta_h, out=nt_sX, out_asii=D_asii)
 
         # Step 4: Update the density history
         self.nt_hsX.add(nt_sX, D_asii)
 
         # Step 5: Return the mixing error
-        return self.calculate_charge_sloshing(Rc_sX)
+        return alpha_h, beta_h, self.calculate_charge_sloshing(Rc_sX)
 
     def __str__(self):
         lines = ['density mixing:',
