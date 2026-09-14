@@ -47,6 +47,8 @@ def test_all(kb):
     assert f1[0, 0] == pytest.approx(f1[0, 1])
     assert f1[0, 0] == pytest.approx(-f1[1, 0])
     assert f1[0, 0] == pytest.approx(-f1[1, 1])
+    a.positions += 0.01 * f1
+    a.get_potential_energy()
 
 
 if __name__ == '__main__':
