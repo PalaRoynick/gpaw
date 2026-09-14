@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import textwrap
 import warnings
@@ -9,7 +10,7 @@ import numpy as np
 from ase.units import Bohr, Ha, _e
 
 from gpaw import ConvergenceError
-from gpaw.core import PWDesc, UGArray, pw_to_grid
+from gpaw.core import PWDesc, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
@@ -18,11 +19,6 @@ from gpaw.extensions.electrocatalysis.potentiostat import (
     Potentiostat, WorkFunctionProbe, build_jellium_region, regress_slope)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
-
-_KEYWORDS = frozenset({'target_potential', 'excess_electrons', 'tol',
-                       'max_iters', 'max_potential_stepsize', 'max_reruns',
-                       'grand_output', 'jelliumregion', 'always_adjust',
-                       'slope', 'mixer', 'slope_regression_depth'})
 
 #: Grid points closer than this to the lower cell boundary are left out of
 #: the slope-fitting window: the finite-difference solution is least accurate
@@ -49,7 +45,7 @@ class PotentialConvergenceError(ConvergenceError):
 
 def _check_keywords(kwargs: dict) -> None:
     """Raise on anything that is not an SJM parameter."""
-    unknown = set(kwargs) - _KEYWORDS
+    unknown = set(kwargs) - set(_KEYWORDS)
     if unknown:
         raise ValueError(
             f'Unexpected SJM keyword(s): {", ".join(sorted(unknown))}.  '
@@ -146,8 +142,8 @@ class SJM(Solvation):
                  slope: float | None = None,  # V/electron
                  mixer: float = 0.2,
                  slope_regression_depth: int = 4):
-        super().__init__(cavity, dielectric, interactions,
-                         dipolelayer=True, zero_vacuum=True)
+        # dipolelayer and zero_vacuum are chosen by build(), per mode:
+        super().__init__(cavity, dielectric, interactions)
         self.jelliumregion = jelliumregion or {}
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
@@ -283,20 +279,16 @@ class SJM(Solvation):
         dct = super().todict()
         dct.pop('dipolelayer', None)
         dct.pop('zero_vacuum', None)
-        dct.update(
-            jelliumregion=self.jelliumregion,
-            target_potential=self.target_potential,
-            excess_electrons=self.excess_electrons,
-            tol=self.tol,
-            max_iters=self.max_iters,
-            max_potential_stepsize=self.max_potential_stepsize,
-            max_reruns=self.max_reruns,
-            grand_output=self.grand_output,
-            always_adjust=self.always_adjust,
-            slope=self.slope,
-            mixer=self.mixer,
-            slope_regression_depth=self.slope_regression_depth)
+        dct.update({key: getattr(self, key) for key in _KEYWORDS})
         return dct
+
+
+#: The SJM parameters: the keywords of SJM.__init__ other than those of the
+#: solvation model.  This is the one place they are listed -- change(),
+#: todict() and the keyword check all read them from here.
+_KEYWORDS = tuple(name for name in inspect.signature(SJM.__init__).parameters
+                  if name not in {'self', 'cavity', 'dielectric',
+                                  'interactions'})
 
 
 class SJMExtension(Extension):
@@ -322,7 +314,6 @@ class SJMExtension(Extension):
                  log=None):
         self.solvation = solvation
         self.potentiostat = potentiostat
-        self.dielectric = solvation.dielectric
         self.target_potential = target_potential
         self.tol = tol
         self.max_iters = max_iters
@@ -388,14 +379,13 @@ class SJMExtension(Extension):
         return txt
 
     def create_poisson_solver(self, grid, pw, charge, xp):
-        if isinstance(pw, PWDesc):
-            from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
-            return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric, dipolelayer=True, zero_vacuum=True)
-
         ps = self.solvation.create_poisson_solver(
-            grid, pw, charge=charge, xp=xp).solver
-        return SJMPoissonSolver(ps)
+            grid, pw, charge=charge, xp=xp)
+        if isinstance(pw, PWDesc):
+            # SJM.build() has asked the solvation for the dipole layer and
+            # the zeroed vacuum, so its plane-wave solver is already SJM's.
+            return ps
+        return SJMPoissonSolver(ps.solver)
 
     def post_scf_convergence(self,
                              ibzwfs,
@@ -634,11 +624,8 @@ class SJMExtension(Extension):
     def change(self, **kwargs) -> None:
         """Change SJM parameters without throwing away the wave functions.
 
-        Recognized keywords are ``target_potential``, ``excess_electrons``,
-        ``tol``, ``max_iters``, ``max_potential_stepsize``, ``max_reruns``,
-        ``grand_output``, ``jelliumregion``, ``always_adjust``, ``slope``,
-        ``mixer`` and ``slope_regression_depth``, with the same meaning as
-        for :class:`SJM`.  This is the replacement for
+        Takes the parameters of :class:`SJM` (all but the solvation model),
+        with the same meaning.  This is the replacement for
         the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.change()``.
 
         The density and the wave functions are kept, so the next
@@ -852,8 +839,7 @@ class SJMExtension(Extension):
         self.potentiostat.add_charge(nt_r)
 
     def update1pw(self, nt_g):
-        nt_r = pw_to_grid(nt_g, self._charging.mask_r.desc)
-        self.solvation.update1(nt_r)
+        self.solvation.update1pw(nt_g)
         self.potentiostat.add_charge_pw(nt_g)
 
     def update2(self, nt_r, vHt_r, vt_sr) -> None:

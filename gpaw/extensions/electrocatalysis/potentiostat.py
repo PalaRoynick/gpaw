@@ -6,7 +6,8 @@ from collections import deque
 import numpy as np
 from ase.units import Bohr, Ha, _e
 
-from gpaw.core import PWArray, PWDesc, UGArray
+from gpaw.core import PWArray, UGArray
+from gpaw.extensions.jellium import JelliumExtension
 
 #: Default top of the jellium region: 1 Å below the top of the unit cell.
 DEFAULT_TOP = -1.0
@@ -279,7 +280,7 @@ class ChargingScheme:
         raise NotImplementedError
 
 
-class JelliumCharging(ChargingScheme):
+class JelliumCharging(JelliumExtension, ChargingScheme):
     """A uniform jellium counter-charge filling a masked region.
 
     This is the charging scheme SJM has always used: the excess electrons
@@ -301,6 +302,9 @@ class JelliumCharging(ChargingScheme):
         The :class:`JelliumRegion` the mask was built from, kept so that
         the region can follow the atoms during a relaxation.  Defaults to a
         :class:`SlabRegion`.
+
+    The mask itself -- normalizing it and putting the charge into the
+    density -- is handled by :class:`gpaw.extensions.jellium.JelliumExtension`.
     """
 
     def __init__(self,
@@ -310,39 +314,25 @@ class JelliumCharging(ChargingScheme):
                  charge: float = 0.0,
                  region: JelliumRegion | None = None):
         self.region = region or SlabRegion()
-        self.pw = pw
-        self.charge = charge
-        self.set_region(mask_r)
+        self._key: object | None = None
+        super().__init__(mask_r, charge=charge, pw=pw)
 
     def set_region(self, mask_r: UGArray, key: object | None = None) -> None:
         """Normalize and store the shape of the jellium region.
 
-        Can be called again later if the region has to follow the atoms.
         ``key`` is :meth:`JelliumRegion.key` for the geometry the mask was
         built from; :meth:`move` compares against it to spot a later
         geometry that needs no new mask.  Leaving it ``None`` just means
         the next :meth:`move` rebuilds unconditionally.
         """
-        norm = mask_r.integrate()
-        if norm == 0.0:
-            raise ValueError('The jellium region contains no grid points.')
-        self.mask_r = mask_r
-        mask_r.data *= 1.0 / norm
+        self.set_mask(mask_r)
         self._key = key
-        self.mask_g = None
-        if isinstance(self.pw, PWDesc):
-            mask0_r = mask_r.gather()
-            if mask0_r is not None:
-                self.mask_g = mask0_r.fft(pw=self.pw.new(comm=None))
 
     def add_charge(self, nt_r: UGArray) -> None:
-        nt_r.data -= self.mask_r.data * self.charge
+        self.update1(nt_r)
 
     def add_charge_pw(self, nt_g: PWArray | None) -> None:
-        if nt_g is None:
-            return  # only rank-0 needs to do anything
-        assert self.mask_g is not None
-        nt_g.data -= self.mask_g.data * self.charge
+        self.update1pw(nt_g)
 
     def move(self, relpos_ac, grid) -> tuple[float, float] | None:
         if not self.region.follows_atoms:
