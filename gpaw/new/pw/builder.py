@@ -67,7 +67,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return PWDesc(ecut=self.ecut,
                       cell=self.grid.cell,
                       comm=self.grid.comm,
-                      dtype=self.dtype)
+                      dtype=self.dtype,
+                      _lazy=True)
 
     def create_xc_functional(self):
         return create_functional(self._xc,
@@ -215,10 +216,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
-            pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
+            pw = self.wf_desc.new(kpt=wfs.kpt_c,
+                                  dtype=self.dtype,
+                                  _lazy=True)
             if wfs.spin == 0:
                 check_g_vector_ordering(self.grid, pw, index_kG[wfs.k])
-
             index = (wfs.spin, wfs.k) if self.ncomponents != 4 else (wfs.k,)
             data = reader.wave_functions.proxy('coefficients', *index)
             data.scale = c
@@ -258,6 +260,9 @@ def check_g_vector_ordering(grid: UGDesc,
     if np.issubdtype(pw.dtype, np.floating):
         size = (size[0], size[1], size[2] // 2 + 1)
     index0_G = pw.indices(size)
+    if pw._ekin_G is None:
+        # Save some memory (pw is in _lazy=True mode):
+        pw._indices_cache.clear()
     nG = len(index0_G)
     assert (index0_G == index_G[:nG]).all()
     assert (index_G[nG:] == -1).all()

@@ -13,7 +13,7 @@ import gpaw.fftw as fftw
 from gpaw.gpu import __file__ as gpaw_gpu_filename
 from gpaw.gpu import cupy, cupy_is_fake
 from gpaw.mpi import normalize_communicator
-from gpaw.new.c import GPAW_IS_CPP, GPU_AWARE_MPI, GPU_ENABLED
+from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED
 from gpaw.utilities import compiled_with_libvdwxc, compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
 
@@ -100,13 +100,6 @@ def info(comm=None) -> None:
 
     results.append(('MPI enabled', cgpaw.have_mpi))
     results.append(('OpenMP enabled', cgpaw.have_openmp))
-    results.append(('Compiled as C++', GPAW_IS_CPP))
-    if not GPAW_IS_CPP:
-        warnings['C++ required'] = (
-            'Next version of GPAW will start requiring a C++ compiler. '
-            'Please modify your siteconfig.py and set `compiler` to a valid '
-            'C++ compiler. For example, change `gcc` to `g++`, or `mpicc` to '
-            '`mpicxx`, or `cc` to `CC`')
     results.append(('GPU enabled', GPU_ENABLED))
     results.append(('GPU-aware MPI', GPU_AWARE_MPI))
     cupy_version = 'cupy-' + cupy.__version__

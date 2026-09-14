@@ -1,7 +1,6 @@
 from . import gpu as gpu
 
 GPU_ENABLED: bool
-gpaw_cpp: bool
 gpu_aware_mpi: bool
 have_openmp: bool
 libxc_version: str
