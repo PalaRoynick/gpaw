@@ -122,13 +122,26 @@ def test_unknown_extension_name(atoms):
         atoms.calc.nosuchextension
 
 
-def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
-    """A tol changed while at constant charge takes effect on the switch.
+def test_settings_live_on_the_potentiostat(atoms):
+    """change() hands every setting straight to the potentiostat."""
+    sjm = atoms.calc.dft.sjm
+    sjm.change(max_iters=3, max_reruns=4, max_potential_stepsize=1.5,
+               grand_output=False, always_adjust=True, mixer=0.5,
+               slope_regression_depth=3, slope=-20.0)
+    pot = sjm.potentiostat
+    assert (pot.max_iters, pot.max_reruns, pot.max_potential_stepsize,
+            pot.grand_output, pot.always_adjust) == (3, 4, 1.5, False, True)
+    opt = pot.optimizer
+    assert (opt.mixer, opt.slope_regression_depth, opt.slope) == (
+        0.5, 3, -20.0)
 
-    The 'tol' handler skips the potentiostat in constant-charge mode (there
-    is nothing to equilibrate), so _switch_mode has to carry the new value
-    across -- it used to be baked in when the whole potential-control object
-    was rebuilt.
+
+def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
+    """A tol changed while at constant charge is kept across the switch.
+
+    It used to be kept on the extension alone while at constant charge and
+    had to be carried over by hand when the mode switched; now the
+    potentiostat holds it in either mode.
     """
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
@@ -141,15 +154,14 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     atoms.get_potential_energy()
     sjm = atoms.calc.dft.sjm
 
-    sjm.change(tol=0.05)  # constant-charge mode: kept on the extension only
-    assert sjm.potentiostat.tol == pytest.approx(0.001)
+    sjm.change(tol=0.05)  # constant-charge mode
+    assert sjm.potentiostat.tol == pytest.approx(0.05)
 
     sjm.change(target_potential=3.0)
     assert sjm.potentiostat.optimizer is not None
     assert sjm.potentiostat.tol == pytest.approx(0.05)
 
-    # A single combined call is the same: the 'tol' branch runs first, while
-    # the mode has not flipped yet, so _switch_mode is what has to adopt it.
+    # A single combined call is the same, whichever branch runs first:
     sjm.change(target_potential=None)
     sjm.change(tol=0.02, target_potential=4.0)
     assert sjm.potentiostat.tol == pytest.approx(0.02)

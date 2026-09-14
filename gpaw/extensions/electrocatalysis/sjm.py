@@ -4,19 +4,20 @@ import inspect
 import os
 import textwrap
 import warnings
-from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha, _e
 
-from gpaw import ConvergenceError
 from gpaw.core import PWDesc, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DirectOptimizer, EquilibrationResult, JelliumCharging, JelliumRegion,
-    Potentiostat, WorkFunctionProbe, build_jellium_region, regress_slope)
+    DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
+    WorkFunctionProbe, build_jellium_region)
+# Raised by SJM calculations, so importable from here as well:
+from gpaw.extensions.electrocatalysis.potentiostat import (  # noqa: F401
+    PotentialConvergenceError)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
 
@@ -37,10 +38,6 @@ EPS_VACUUM_TOL = 1e-3
 #: reach into the tail of the slab and the measured slope starts to track the
 #: density, which feeds back into the next iteration and stalls the SCF.
 RHO_VACUUM_TOL = 1e-5
-
-
-class PotentialConvergenceError(ConvergenceError):
-    """Raised if the electrode potential did not equilibrate."""
 
 
 def _check_keywords(kwargs: dict) -> None:
@@ -177,20 +174,25 @@ class SJM(Solvation):
                                    pw=builder.interpolation_desc,
                                    charge=self.excess_electrons,
                                    region=region)
-        if self.target_potential is None:
-            optimizer = None
-        else:
-            optimizer = DirectOptimizer(
-                slope=self.slope,
-                mixer=self.mixer,
-                slope_regression_depth=self.slope_regression_depth)
-        potentiostat = Potentiostat(charging=charging,
-                                    probe=WorkFunctionProbe(),
-                                    target_potential=self.target_potential,
-                                    optimizer=optimizer,
-                                    tol=self.tol,
-                                    max_potential_stepsize=(
-                                        self.max_potential_stepsize))
+        # The optimizer is built in constant-charge mode too: it keeps the
+        # slope settings, and the estimate, for a later switch of mode.
+        optimizer = DirectOptimizer(
+            slope=self.slope,
+            mixer=self.mixer,
+            slope_regression_depth=self.slope_regression_depth)
+        # From here on the potentiostat holds the settings; SJMExtension
+        # reads them back from it.
+        potentiostat = Potentiostat(
+            charging=charging,
+            probe=WorkFunctionProbe(),
+            target_potential=self.target_potential,
+            optimizer=optimizer,
+            tol=self.tol,
+            max_potential_stepsize=self.max_potential_stepsize,
+            max_iters=self.max_iters,
+            max_reruns=self.max_reruns,
+            always_adjust=self.always_adjust,
+            grand_output=self.grand_output)
 
         log('Solvated jellium method (SJM):')
         log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
@@ -217,18 +219,7 @@ class SJM(Solvation):
                 log('  always adjust: the charge is stepped on to the next '
                     'geometry')
 
-        self._extension = SJMExtension(solvation, potentiostat,
-                                       target_potential=self.target_potential,
-                                       tol=self.tol,
-                                       max_iters=self.max_iters,
-                                       max_reruns=self.max_reruns,
-                                       grand_output=self.grand_output,
-                                       always_adjust=self.always_adjust,
-                                       slope=self.slope,
-                                       mixer=self.mixer,
-                                       slope_regression_depth=(
-                                           self.slope_regression_depth),
-                                       log=log)
+        self._extension = SJMExtension(solvation, potentiostat, log=log)
         return self._extension
 
     def change(self, **kwargs) -> None:
@@ -292,50 +283,23 @@ _KEYWORDS = tuple(name for name in inspect.signature(SJM.__init__).parameters
 
 
 class SJMExtension(Extension):
+    """SJM inside a running calculation.
+
+    The settings of the potential control, and the state of the
+    equilibration, are kept by :attr:`potentiostat`; this class forwards the
+    GPAW hooks to it and to the solvation, and does the reporting.
+    """
+
     name = 'sjm'
 
     def __init__(self,
                  solvation: SolvationExtension,
                  potentiostat: Potentiostat,
                  *,
-                 target_potential: float | None = None,  # eV
-                 tol: float = 0.001,  # eV
-                 max_iters: int = 10,
-                 max_reruns: int = 10,
-                 grand_output: bool = True,
-                 always_adjust: bool = False,
-                 slope: float | None = None,  # V/electron
-                 # Neither of these is used here -- they are only handed on
-                 # to the optimizer, so ``None`` means "not specified" and
-                 # lets DirectOptimizer supply its own default rather than
-                 # repeating it:
-                 mixer: float | None = None,
-                 slope_regression_depth: int | None = None,
                  log=None):
         self.solvation = solvation
         self.potentiostat = potentiostat
-        self.target_potential = target_potential
-        self.tol = tol
-        self.max_iters = max_iters
-        self.max_reruns = max_reruns
-        self.grand_output = grand_output
-        self.always_adjust = always_adjust
-        # Only used while there is no optimizer (constant-charge mode) --
-        # otherwise the optimizer keeps the estimate, see _slope():
-        self.slope = slope
-        self.mixer = mixer
-        self.slope_regression_depth = slope_regression_depth
         self.log = log or (lambda *args, **kwargs: None)
-
-        self.niters = 0
-        # Consecutive rejected (halved) steps since the last accepted one;
-        # reset in post_scf_convergence() whenever a step is accepted:
-        self.reruns = 0
-        # (Charge, Fermi-level) of every attempt of the current
-        # equilibration, reported in one block by post_converged():
-        self.attempts: list[tuple[float, float]] = []
-        # Charge staged by always_adjust for the next geometry:
-        self._pending_charge: float | None = None
         # Set by post_converged():
         self.fermi_level = np.nan  # Ha
         self.omega_free = np.nan  # Ha
@@ -352,6 +316,16 @@ class SJMExtension(Extension):
         self.potentiostat.charge = q
 
     @property
+    def target_potential(self) -> float | None:
+        """Target electrode potential in V (kept by the potentiostat)."""
+        return self.potentiostat.target_potential
+
+    @property
+    def tol(self) -> float:
+        """Potential tolerance in V (kept by the potentiostat)."""
+        return self.potentiostat.tol
+
+    @property
     def _charging(self) -> JelliumCharging:
         """The charging scheme, narrowed: SJM always builds a jellium one."""
         charging = self.potentiostat.charging
@@ -359,10 +333,10 @@ class SJMExtension(Extension):
         return charging
 
     @property
-    def _optimizer(self) -> DirectOptimizer | None:
+    def _optimizer(self) -> DirectOptimizer:
         """The optimizer, narrowed to the one concrete kind SJM builds."""
         optimizer = self.potentiostat.optimizer
-        assert optimizer is None or isinstance(optimizer, DirectOptimizer)
+        assert isinstance(optimizer, DirectOptimizer)
         return optimizer
 
     @property
@@ -393,54 +367,11 @@ class SJMExtension(Extension):
                              occ_calc,
                              mixer,
                              log) -> bool:
-        if not self.potentiostat.constant_potential:
-            return True
-
-        # Grab the values belonging to this attempt before the potentiostat
-        # steps the charge on to the next one:
-        charge = self.charge
-        fermi_level = ibzwfs.fermi_level
-
-        result = self.potentiostat.equilibrate(
+        # The attempts are only recorded there -- the equilibration is
+        # reported in one block by post_converged(), so that it does not
+        # interleave with the SCF table once per attempt.
+        return self.potentiostat.post_scf_convergence(
             ibzwfs, nelectrons, occ_calc, mixer, log)
-
-        if result is EquilibrationResult.REJECTED:
-            # The step left the linear region and has been halved; re-run
-            # the SCF but do not count it as an attempt.  Give up once the
-            # halving has been repeated max_reruns times in a row.
-            self.reruns += 1
-            if self.reruns > self.max_reruns:
-                raise PotentialConvergenceError(
-                    self._convergence_error_message(
-                        log, reason=f'{self.max_reruns:d} halvings of a step '
-                        f'that kept overshooting max_potential_stepsize '
-                        f'({self.potentiostat.max_potential_stepsize} V)'))
-            return False
-
-        # A step was accepted (or we are already converged): the rerun
-        # streak, if any, is over.
-        self.reruns = 0
-
-        # Only record here -- the equilibration is reported in one block by
-        # post_converged(), so that it does not interleave with the SCF
-        # table once per attempt.
-        self.niters += 1
-        self.attempts.append((charge, fermi_level))
-
-        if result is EquilibrationResult.CONVERGED:
-            if self.always_adjust:
-                # Step the charge on anyway, but do not re-converge: the new
-                # value is picked up by the next geometry (move_atoms()), so
-                # that the potential can equilibrate alongside the structure.
-                # Reported by _log_equilibration(), not here, to keep it out
-                # of the SCF table.
-                self._pending_charge = self.potentiostat.propose_next(ibzwfs)
-            return True
-
-        if self.niters >= self.max_iters:
-            raise PotentialConvergenceError(
-                self._convergence_error_message(log))
-        return False
 
     def _log_equilibration(self, log) -> None:
         """Report the equilibration: where it ended up, and how it got there.
@@ -448,16 +379,17 @@ class SJMExtension(Extension):
         Only the attempt that ended the equilibration is reported -- the
         intermediate ones are summarized by the regressed slope.
         """
-        if not self.potentiostat.constant_potential or not self.attempts:
+        pot = self.potentiostat
+        if not pot.constant_potential or not pot.attempts:
             return
 
-        charge, fermi_level = self.attempts[-1]
-        log(f'Potential found to be {-fermi_level * Ha:.5f} V '
+        charge, potential = pot.attempts[-1]
+        log(f'Potential found to be {potential:.5f} V '
             f'(with {charge:+.5f} excess electrons, '
-            f'attempt {len(self.attempts):d}/{self.max_iters:d}).')
+            f'attempt {pot.niters:d}/{pot.max_iters:d}).')
 
-        slope = self._slope()
-        if slope is not None and self._optimizer is not None:
+        slope = pot.slope_estimate()
+        if slope is not None:
             log(f'Slope estimated from the last '
                 f'{len(self._optimizer.history):d} attempts is '
                 f'{slope:.4f} V/electron,')
@@ -466,30 +398,14 @@ class SJMExtension(Extension):
             log(f'or apparent capacitance of {capacitance:.4f} muF/cm^2')
 
         log('Potential is within tolerance. Equilibrated.')
-        if self._pending_charge is not None:
+        if pot.pending_charge is not None:
             log('always_adjust: the next geometry starts from '
-                f'{self._pending_charge:+.5f} excess electrons.')
+                f'{pot.pending_charge:+.5f} excess electrons.')
         log(flush=True)
 
     def _area(self) -> float:
         """Area of the unit cell in the xy plane, in Å^2."""
         return self.potentiostat.charging.region_area
-
-    def _convergence_error_message(self, log,
-                                   reason: str | None = None) -> str:
-        reason = reason or f'{self.max_iters:d} attempts'
-        msg = (f'The electrode potential could not be equilibrated to '
-               f'{self.target_potential:.3f} +/- {self.tol:.3f} V in '
-               f'{reason}.  This may indicate that your '
-               'work function is noisier than your potential tolerance; you '
-               'may try tightening the SCF convergence criteria.  The excess '
-               'electrons and the resulting potentials are listed below; '
-               'plotting them could give you insight into the problem.')
-        msg = textwrap.fill(msg) + '\n'
-        for charge, fermi_level in self.attempts:
-            msg += f'{charge:+.6f} {-fermi_level * Ha:.6f}\n'
-        log(msg, flush=True)
-        return msg
 
     def get_electrode_potential(self) -> float:
         """Electrode potential in V, relative to the vacuum.
@@ -531,7 +447,7 @@ class SJMExtension(Extension):
 
         dft.results['excess_electrons'] = self.charge
         dft.results['electrode_potential'] = potential / Ha
-        if self.grand_output:
+        if self.potentiostat.grand_output:
             dft.results['free_energy'] = self.omega_free
             dft.results['energy'] = self.omega_extrapolated
             log('Grand-potential energy was written into results.\n')
@@ -543,8 +459,7 @@ class SJMExtension(Extension):
 
         # The next calculation (the next step of a relaxation, say) gets a
         # fresh equilibration budget and a fresh record to report:
-        self.attempts = []
-        self.niters = 0
+        self.potentiostat.reset_attempts()
 
     def write_sjm_traces(self, path='sjm_traces', style='z',
                          props=('potential', 'cavity', 'background_charge')):
@@ -643,58 +558,46 @@ class SJMExtension(Extension):
         _check_keywords(kwargs)
 
         log = self.log
+        pot = self.potentiostat
+        opt = self._optimizer
         rerun = False  # does the SCF loop have to run again?
 
         if 'grand_output' in kwargs:
-            self.grand_output = kwargs['grand_output']
+            pot.grand_output = kwargs['grand_output']
             if self._dft is not None and self._dft.results:
                 # Cheap: just re-do the Legendre transform.
                 self.post_converged(self._dft)
-        if 'max_iters' in kwargs:
-            self.max_iters = kwargs['max_iters']
-        if 'max_reruns' in kwargs:
-            self.max_reruns = kwargs['max_reruns']
-        if 'max_potential_stepsize' in kwargs:
-            self.potentiostat.max_potential_stepsize = (
-                kwargs['max_potential_stepsize'])
+        for key in ['max_iters', 'max_reruns', 'max_potential_stepsize']:
+            if key in kwargs:
+                setattr(pot, key, kwargs[key])
         if 'tol' in kwargs:
-            self.tol = kwargs['tol']
-            if self.target_potential is not None:
-                self.potentiostat.tol = self.tol
-                if abs(self.get_electrode_potential() -
-                       self.target_potential) > self.tol:
-                    rerun = True
+            pot.tol = kwargs['tol']
+            if (pot.target_potential is not None and
+                    abs(self.get_electrode_potential() -
+                        pot.target_potential) > pot.tol):
+                rerun = True
 
         if 'always_adjust' in kwargs:
-            self.always_adjust = kwargs['always_adjust']
-            if not self.always_adjust:
-                self._pending_charge = None
+            pot.always_adjust = kwargs['always_adjust']
+            if not pot.always_adjust:
+                pot.pending_charge = None
             elif kwargs.get('target_potential',
-                            self.target_potential) is None:
+                            pot.target_potential) is None:
                 warnings.warn('always_adjust has no effect in '
                               'constant-charge mode.')
         if 'mixer' in kwargs:
-            self.mixer = kwargs['mixer']
-            opt = self._optimizer
-            if opt is not None:
-                opt.mixer = self.mixer
+            opt.mixer = kwargs['mixer']
         if 'slope_regression_depth' in kwargs:
-            self.slope_regression_depth = kwargs['slope_regression_depth']
-            opt = self._optimizer
-            if opt is not None:
-                opt.slope_regression_depth = self.slope_regression_depth
+            opt.slope_regression_depth = kwargs['slope_regression_depth']
         if 'slope' in kwargs:
             # Whatever the user says replaces the estimate, so the attempts
             # behind the old one go too:
-            self.slope = kwargs['slope']
-            opt = self._optimizer
-            if opt is not None:
-                opt.reset()
-                opt.slope = self.slope
-            if self.slope is None:
+            opt.reset()
+            opt.slope = kwargs['slope']
+            if opt.slope is None:
                 log('Slope estimate reset; it will be guessed again.')
             else:
-                log(f'Slope set to {self.slope:.4f} V/electron.')
+                log(f'Slope set to {opt.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
             charging = self._charging
@@ -708,12 +611,7 @@ class SJMExtension(Extension):
 
         if 'target_potential' in kwargs:
             target = kwargs['target_potential']
-            if (target is None) != (self.target_potential is None):
-                self._switch_mode(target)
-            elif target is not None:
-                # Same mode as before, so the optimizer already exists:
-                self.potentiostat.target_potential = target
-            self.target_potential = target
+            pot.set_target_potential(target)
             if target is None:
                 log('Switched to constant-charge mode with '
                     f'{self.charge:+.5f} excess electrons.')
@@ -725,7 +623,7 @@ class SJMExtension(Extension):
             rerun = True
 
         if 'excess_electrons' in kwargs:
-            self._set_charge(kwargs['excess_electrons'])
+            pot.set_charge(kwargs['excess_electrons'])
             log(f'Excess electrons changed to {self.charge:+.5f}.')
             rerun = True
 
@@ -733,8 +631,7 @@ class SJMExtension(Extension):
             # Empty results make ASECalculator.iconverge() run the SCF loop
             # again; the density and the wave functions are kept.
             self._dft.results.clear()
-            self.niters = 0
-            self.attempts = []
+            pot.reset_attempts()
 
     def _relpos_ac(self):
         if self._dft is None:
@@ -742,70 +639,14 @@ class SJMExtension(Extension):
                                'changing the jellium region.')
         return self._dft.relpos_ac
 
-    def _set_charge(self, charge: float) -> None:
-        """Set the number of excess electrons."""
-        self.charge = charge
-        # An explicit charge wins over one staged by always_adjust:
-        self._pending_charge = None
-
-    def _switch_mode(self, target_potential: float | None) -> None:
-        """Switch between constant-charge and constant-potential mode.
-
-        The charging scheme (and its normalized mask) is left in place, so
-        this is cheap and does not touch the density or the wave functions;
-        only the optimizer and the target are swapped.
-        """
-        # Carry the slope estimate across the switch:
-        self.slope = self._slope()
-        self.potentiostat.target_potential = target_potential
-        # A tol set while in constant-charge mode was kept on this class
-        # only (the 'tol' handler skips the potentiostat then); adopt it now.
-        self.potentiostat.tol = self.tol
-        if target_potential is None:
-            self.potentiostat.optimizer = None
-        else:
-            # Leave out what was never specified, so that DirectOptimizer's
-            # own defaults apply instead of being shadowed by a repeat:
-            self.potentiostat.optimizer = DirectOptimizer(
-                slope=self.slope,
-                **self._optimizer_defaults())
-
-    def _optimizer_defaults(self) -> dict[str, Any]:
-        """The optimizer keywords that were actually specified.
-
-        Neither of these is used by this class -- it only hands them on.
-        Leaving out the ones that were never specified is what keeps their
-        defaults in DirectOptimizer alone, instead of repeating them here
-        where they would silently drift apart.
-        """
-        specified: dict[str, Any] = {}
-        if self.mixer is not None:
-            specified['mixer'] = self.mixer
-        if self.slope_regression_depth is not None:
-            specified['slope_regression_depth'] = self.slope_regression_depth
-        return specified
-
-    def _slope(self) -> float | None:
-        """Estimated d(potential)/d(charge) in V per electron.
-
-        This is the damped estimate that the optimizer steps along, so that
-        change() and the log report what is actually used.
-        """
-        opt = self._optimizer
-        if opt is not None:
-            if opt.slope is not None:
-                return opt.slope
-            return regress_slope(opt.history)
-        return self.slope
-
     def _step_towards(self, target_potential: float) -> None:
         """Guess the charge needed for the new target potential."""
-        slope = self._slope()
+        slope = self.potentiostat.slope_estimate()
         if slope is None or np.isnan(self.fermi_level):
             return
         charge = self.charge + ((target_potential -
                                  self.get_electrode_potential()) / slope)
-        self._set_charge(charge)
+        self.potentiostat.set_charge(charge)
         self.log(f'Excess electrons changed to {self.charge:+.5f} based on a '
                  f'slope of {slope:.4f} V/electron.')
 
@@ -813,21 +654,11 @@ class SJMExtension(Extension):
         # The wrapped solvation extension is not itself in the extension
         # list, so its cavity only follows the atoms if we forward the move:
         self.solvation.move_atoms(relpos_ac)
-        charge = self._pending_charge
-        if charge is not None:
-            # always_adjust: the step taken after the last geometry had
-            # already equilibrated (see post_scf_convergence).
-            self._set_charge(charge)
+        # A fresh budget of equilibration attempts for the new geometry,
+        # starting from the charge staged by always_adjust, if any:
+        if self.potentiostat.new_geometry() is not None:
             self.log(f'Excess electrons adjusted to {self.charge:+.5f} for '
                      'the new geometry (always_adjust).')
-        # Each new geometry gets a fresh budget of equilibration attempts,
-        # and a fresh record to regress the slope from -- the slope estimate
-        # itself is carried over:
-        self.niters = 0
-        self.attempts = []
-        opt = self._optimizer
-        if opt is not None:
-            opt.forget_attempts()
         grid = self._charging.mask_r.desc
         zs = self._charging.move(relpos_ac, grid)
         if zs is not None:

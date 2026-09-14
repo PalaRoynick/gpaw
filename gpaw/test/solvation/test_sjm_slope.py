@@ -3,9 +3,8 @@ import pytest
 from ase.units import Ha, _e
 
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DirectOptimizer, EquilibrationResult, Potentiostat, regress_slope)
-from gpaw.extensions.electrocatalysis.sjm import (
-    PotentialConvergenceError, SJMExtension)
+    DirectOptimizer, EquilibrationResult, PotentialConvergenceError,
+    Potentiostat, regress_slope)
 
 WIDTH = 4.0  # Å
 AREA = WIDTH**2  # Å^2
@@ -361,60 +360,62 @@ def test_equilibrate_never_rejects_the_first_attempt():
     assert result is EquilibrationResult.STEPPED
 
 
-class _ScriptedPotentiostat:
-    """Replays a fixed list of :class:`EquilibrationResult`s."""
+class _ScriptedPotentiostat(Potentiostat):
+    """A potentiostat whose attempts replay a fixed list of results."""
 
-    constant_potential = True
-    max_potential_stepsize = 2
-
-    def __init__(self, results):
+    def __init__(self, results, **kwargs):
+        super().__init__(charging=_StubCharging(), target_potential=TARGET,
+                         optimizer=DirectOptimizer(), tol=0.001, **kwargs)
         self._results = list(results)
-        self.charge = 0.0
-        self.calls = 0
 
     def equilibrate(self, *args, **kwargs) -> EquilibrationResult:
-        result = self._results[self.calls]
-        self.calls += 1
-        return result
-
-    def propose_next(self, ibzwfs) -> float:
-        return self.charge
+        return self._results.pop(0)
 
 
-class _StubSolvation:
-    dielectric = None
-
-
-def _extension(results, **kwargs) -> SJMExtension:
-    return SJMExtension(_StubSolvation(), _ScriptedPotentiostat(results),
-                        target_potential=TARGET, tol=0.001, **kwargs)
-
-
-def _post_scf(ext: SJMExtension) -> bool:
-    return ext.post_scf_convergence(_FakeIBZWFS(5.0), 10.0, object(),
+def _post_scf(pot: Potentiostat) -> bool:
+    return pot.post_scf_convergence(_FakeIBZWFS(5.0), 10.0, object(),
                                     _RecordingMixer(), _silent)
 
 
 def test_post_scf_a_rejected_step_does_not_count_as_an_attempt():
     R = EquilibrationResult
-    ext = _extension([R.REJECTED, R.REJECTED, R.STEPPED, R.CONVERGED],
-                     max_iters=5)
-    assert _post_scf(ext) is False
-    assert (ext.niters, ext.reruns) == (0, 1)
-    assert _post_scf(ext) is False
-    assert (ext.niters, ext.reruns) == (0, 2)
+    pot = _ScriptedPotentiostat(
+        [R.REJECTED, R.REJECTED, R.STEPPED, R.CONVERGED], max_iters=5)
+    assert _post_scf(pot) is False
+    assert (pot.niters, pot.reruns) == (0, 1)
+    assert _post_scf(pot) is False
+    assert (pot.niters, pot.reruns) == (0, 2)
     # An accepted step: the attempt counter advances and the streak clears.
-    assert _post_scf(ext) is False
-    assert (ext.niters, ext.reruns) == (1, 0)
-    assert _post_scf(ext) is True
-    assert (ext.niters, ext.reruns) == (2, 0)
+    assert _post_scf(pot) is False
+    assert (pot.niters, pot.reruns) == (1, 0)
+    assert _post_scf(pot) is True
+    assert (pot.niters, pot.reruns) == (2, 0)
 
 
 def test_post_scf_raises_once_the_halving_runs_out():
-    ext = _extension([EquilibrationResult.REJECTED] * 5,
-                     max_iters=10, max_reruns=3)
+    pot = _ScriptedPotentiostat([EquilibrationResult.REJECTED] * 5,
+                                max_iters=10, max_reruns=3)
     for _ in range(3):
-        assert _post_scf(ext) is False
-    assert ext.reruns == 3
+        assert _post_scf(pot) is False
+    assert pot.reruns == 3
     with pytest.raises(PotentialConvergenceError, match='halvings'):
-        _post_scf(ext)
+        _post_scf(pot)
+
+
+def test_post_scf_raises_once_the_attempts_run_out():
+    pot = _ScriptedPotentiostat([EquilibrationResult.STEPPED] * 3,
+                                max_iters=2)
+    assert _post_scf(pot) is False
+    with pytest.raises(PotentialConvergenceError, match='2 attempts'):
+        _post_scf(pot)
+
+
+def test_always_adjust_stages_a_charge_for_the_next_geometry():
+    pot = _ScriptedPotentiostat([EquilibrationResult.CONVERGED],
+                                always_adjust=True)
+    assert _post_scf(pot) is True
+    assert pot.pending_charge is not None
+    staged = pot.pending_charge
+    assert pot.new_geometry() == staged
+    assert pot.charge == staged
+    assert (pot.pending_charge, pot.niters) == (None, 0)

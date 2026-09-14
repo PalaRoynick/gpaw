@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import enum
+import textwrap
 from collections import deque
 
 import numpy as np
 from ase.units import Bohr, Ha, _e
 
+from gpaw import ConvergenceError
 from gpaw.core import PWArray, UGArray
 from gpaw.extensions.jellium import JelliumExtension
 
@@ -396,8 +398,16 @@ class PotentialOptimizer:
     def forget_attempts(self) -> None:
         """Drop the recorded attempts, but keep the slope estimate."""
 
+    def restart(self) -> None:
+        """Drop the attempts, but keep the estimate learned from them."""
+        self.forget_attempts()
+
     def reset(self) -> None:
         """Forget the slope estimate and the attempts behind it."""
+
+    def slope_estimate(self) -> float | None:
+        """Estimated d(potential)/d(charge) in V per electron, if any."""
+        return None
 
 
 class DirectOptimizer(PotentialOptimizer):
@@ -454,6 +464,25 @@ class DirectOptimizer(PotentialOptimizer):
         """Forget the slope estimate and the attempts behind it."""
         self.slope = None
         self.history.clear()
+
+    def restart(self) -> None:
+        """Drop the attempts, but keep the estimate learned from them.
+
+        A slope not yet damped into :attr:`slope` is still carried over,
+        by fixing it at what the attempts regress to.
+        """
+        self.slope = self.slope_estimate()
+        self.history.clear()
+
+    def slope_estimate(self) -> float | None:
+        """The damped slope that the steps follow, in V per electron.
+
+        Before there is one, the slope that the recorded attempts regress
+        to, or ``None`` if they are too few.
+        """
+        if self.slope is not None:
+            return self.slope
+        return regress_slope(self.history)
 
     def _capacitance_slope(self, area: float) -> float:
         """Slope, in V/electron, of a plate capacitor of the cell's area."""
@@ -527,19 +556,29 @@ class EquilibrationResult(enum.Enum):
     REJECTED = enum.auto()
 
 
+class PotentialConvergenceError(ConvergenceError):
+    """Raised if the electrode potential did not equilibrate."""
+
+
 class Potentiostat:
     """Holds a target electrode potential by adjusting an excess charge.
 
-    Composes three pluggable parts, all present at all times:
+    Composes three pluggable parts:
 
     * ``charging``  -- a :class:`ChargingScheme`: how the excess charge is
       put into the cell (default: a jellium slab).
     * ``probe``     -- a :class:`PotentialProbe`: how the potential is read
       off the converged SCF state (default: the work function).
-    * ``optimizer`` -- a :class:`PotentialOptimizer` or ``None``: how the
-      charge is stepped toward ``target_potential``.  ``None`` together
-      with ``target_potential=None`` is a constant-charge calculation: the
-      charge is simply held where it is.
+    * ``optimizer`` -- a :class:`PotentialOptimizer`: how the charge is
+      stepped toward ``target_potential``.  Keep one in constant-charge
+      mode too, so that its settings and its slope estimate survive a
+      switch between the modes; ``None`` only suits a front end that never
+      targets a potential.
+
+    The potentiostat holds every setting of the potential control and the
+    state of the equilibration.  A front end such as
+    :class:`gpaw.extensions.electrocatalysis.sjm.SJM` hands the settings
+    over, with defaults of its own, and reads them back from here.
 
     Parameters
     ----------
@@ -547,9 +586,10 @@ class Potentiostat:
         The charging scheme.
     target_potential:
         Electrode potential to equilibrate to, in V on the vacuum scale.
-        ``None`` gives a constant-charge calculation.
+        ``None`` gives a constant-charge calculation: the charge is simply
+        held where it is.
     optimizer:
-        The potential optimizer, or ``None`` in constant-charge mode.
+        The potential optimizer.
     probe:
         The potential probe.  Defaults to :class:`WorkFunctionProbe`.
     tol:
@@ -562,6 +602,20 @@ class Potentiostat:
         :attr:`EquilibrationResult.REJECTED`).  This keeps the optimizer
         from leaving the linear region on a bad slope estimate.  Set to
         ``None`` to turn the rejection/halving off entirely.  Default: 2 V.
+    max_iters:
+        Maximum number of attempts to equilibrate the potential for one
+        geometry before a :class:`PotentialConvergenceError` is raised.
+        Default: 10.
+    max_reruns:
+        How many times in a row a step may be rejected and halved before a
+        :class:`PotentialConvergenceError` is raised.  Default: 10.
+    always_adjust:
+        Once the potential is within ``tol``, stage one more step in the
+        charge anyway, to be applied to the next geometry by
+        :meth:`new_geometry` instead of being re-converged.  Default: False.
+    grand_output:
+        Report the grand-potential energy rather than the canonical energy.
+        Read by the front end, which writes the results.  Default: True.
     """
 
     def __init__(self,
@@ -571,13 +625,29 @@ class Potentiostat:
                  optimizer: PotentialOptimizer | None = None,
                  probe: PotentialProbe | None = None,
                  tol: float = 0.001,  # V
-                 max_potential_stepsize: int | None = 2):  # V
+                 max_potential_stepsize: float | None = 2,  # V
+                 max_iters: int = 10,
+                 max_reruns: int = 10,
+                 always_adjust: bool = False,
+                 grand_output: bool = True):
         self.charging = charging
         self.target_potential = target_potential
         self.optimizer = optimizer
         self.probe = probe or WorkFunctionProbe()
         self.tol = tol
         self.max_potential_stepsize = max_potential_stepsize
+        self.max_iters = max_iters
+        self.max_reruns = max_reruns
+        self.always_adjust = always_adjust
+        self.grand_output = grand_output
+
+        # Consecutive rejected (halved) steps since the last accepted one:
+        self.reruns = 0
+        # (Charge, potential in V) of every accepted attempt of the current
+        # equilibration:
+        self.attempts: list[tuple[float, float]] = []
+        # Charge staged by always_adjust for the next geometry:
+        self.pending_charge: float | None = None
 
     @property
     def constant_potential(self) -> bool:
@@ -592,6 +662,133 @@ class Potentiostat:
     @charge.setter
     def charge(self, q: float) -> None:
         self.charging.charge = q
+
+    @property
+    def niters(self) -> int:
+        """Number of attempts made in the current equilibration."""
+        return len(self.attempts)
+
+    def set_charge(self, charge: float) -> None:
+        """Set the number of excess electrons explicitly.
+
+        An explicit charge wins over one staged by ``always_adjust``.
+        """
+        self.charge = charge
+        self.pending_charge = None
+
+    def set_target_potential(self, target: float | None) -> None:
+        """Change the target potential; ``None`` switches to constant charge.
+
+        A switch between the two modes starts a fresh equilibration: the
+        optimizer keeps its slope estimate but not the attempts behind it.
+        """
+        if ((target is None) != (self.target_potential is None) and
+                self.optimizer is not None):
+            self.optimizer.restart()
+        self.target_potential = target
+
+    def slope_estimate(self) -> float | None:
+        """Estimated d(potential)/d(charge) in V per electron, if any."""
+        if self.optimizer is None:
+            return None
+        return self.optimizer.slope_estimate()
+
+    def reset_attempts(self) -> None:
+        """Give the next equilibration a fresh record and budget.
+
+        The optimizer's slope estimate and its attempts are kept.
+        """
+        self.attempts = []
+
+    def new_geometry(self) -> float | None:
+        """Start equilibrating a new geometry.
+
+        Applies a charge staged by ``always_adjust`` and returns it, or
+        ``None`` if there was none.  The attempts are forgotten -- the
+        optimizer's too, since a regression across the move would fit a
+        line through two different systems -- but the slope estimate is
+        carried over.
+        """
+        charge = self.pending_charge
+        if charge is not None:
+            self.set_charge(charge)
+        self.reset_attempts()
+        if self.optimizer is not None:
+            self.optimizer.forget_attempts()
+        return charge
+
+    def post_scf_convergence(self,
+                             ibzwfs,
+                             nelectrons: float,
+                             occ_calc,
+                             mixer,
+                             log) -> bool:
+        """Equilibrate once the SCF criteria have passed.
+
+        Wraps :meth:`equilibrate` in the bookkeeping of a whole
+        equilibration: accepted attempts count against ``max_iters`` and
+        rejected steps in a row against ``max_reruns``, and a
+        :class:`PotentialConvergenceError` is raised when either runs out.
+        Returns ``True`` once the potential is equilibrated (always, in
+        constant-charge mode) and ``False`` when another SCF pass is needed.
+        """
+        if not self.constant_potential:
+            return True
+
+        # Grab the values belonging to this attempt before the charge is
+        # stepped on to the next one:
+        charge = self.charge
+        potential = self.probe.potential(ibzwfs)
+
+        result = self.equilibrate(ibzwfs, nelectrons, occ_calc, mixer, log)
+
+        if result is EquilibrationResult.REJECTED:
+            # The step left the linear region and has been halved; re-run
+            # the SCF but do not count it as an attempt.  Give up once the
+            # halving has been repeated max_reruns times in a row.
+            self.reruns += 1
+            if self.reruns > self.max_reruns:
+                raise PotentialConvergenceError(
+                    self._convergence_error_message(
+                        log, reason=f'{self.max_reruns:d} halvings of a step '
+                        f'that kept overshooting max_potential_stepsize '
+                        f'({self.max_potential_stepsize} V)'))
+            return False
+
+        # A step was accepted (or we are already converged): the rerun
+        # streak, if any, is over.
+        self.reruns = 0
+        self.attempts.append((charge, potential))
+
+        if result is EquilibrationResult.CONVERGED:
+            if self.always_adjust:
+                # Step the charge on anyway, but do not re-converge: the new
+                # value is picked up by the next geometry (new_geometry()),
+                # so that the potential can equilibrate alongside the
+                # structure.
+                self.pending_charge = self.propose_next(ibzwfs)
+            return True
+
+        if self.niters >= self.max_iters:
+            raise PotentialConvergenceError(
+                self._convergence_error_message(log))
+        return False
+
+    def _convergence_error_message(self, log,
+                                   reason: str | None = None) -> str:
+        reason = reason or f'{self.max_iters:d} attempts'
+        msg = (f'The electrode potential could not be equilibrated to '
+               f'{self.target_potential:.3f} +/- {self.tol:.3f} V in '
+               f'{reason}.  This may indicate that your '
+               'work function is noisier than your potential tolerance; you '
+               'may try tightening the SCF convergence criteria.  The excess '
+               'electrons and the resulting potentials are listed below; '
+               'plotting them could give you insight into the problem.')
+        msg = textwrap.fill(msg) + '\n'
+        for charge, potential in self.attempts:
+            msg += f'{charge:+.6f} {potential:.6f}\n'
+        log(msg, flush=True)
+        return msg
 
     def equilibrate(self,
                     ibzwfs,
