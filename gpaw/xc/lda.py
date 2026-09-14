@@ -82,7 +82,7 @@ def calculate_paw_correction(expansion,
         nc0_sg = 0
         nct0_sg = 0
 
-    D_sLq = np.inner(D_sp, xcc.B_pqL.T)
+    D_sLq = D_sp @ xcc.B_pqL.transpose([2, 0, 1])
 
     e, dEdD_sqL = expansion(rgd, D_sLq, xcc.n_qg, nc0_sg)
     et, dEtdD_sqL = expansion(rgd, D_sLq, xcc.nt_qg, nct0_sg)
