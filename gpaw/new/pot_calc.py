@@ -112,6 +112,7 @@ class PotentialCalculator:
         energies, vt_sR, dedtaut_sr, vHt_x, V_aL, e_stress = (
             self.calculate_pseudo_potential(density, ibzwfs, vHt_x))
 
+        energies['external'] = 0.0
         for ext in self.extensions:
             energies['external'] += ext.update_potential(vt_sR, density)
 
