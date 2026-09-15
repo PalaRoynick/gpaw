@@ -22,7 +22,7 @@ class EdmistonRuedenberg(ObjectiveFunctionETDM):
 
         # get array of occupation numbers for all spins and kpoints
         # f_n is a np array (nspins, nkpts, nbands)
-        f_n = ibzwfs.get_all_eigs_and_occs(broadcast=True)[1]
+        f_n = ibzwfs.get_all_occs(broadcast=True)
 
         if indices == 'all':
             ndim = ibzwfs.nbands
@@ -34,7 +34,7 @@ class EdmistonRuedenberg(ObjectiveFunctionETDM):
             self._indices = f_n > 1.0e-5
             ndim = sum(self._indices)
         elif indices == 'virtual':
-            f_n = ibzwfs.get_eigs_and_occs(0, 0)[1]
+            f_n = ibzwfs._get_eigs_or_occs('occs', 0, 0)
             if ibzwfs.domain_comm.rank != 0:
                 f_n = np.zeros(ibzwfs.nbands)
             ibzwfs.domain_comm.broadcast(f_n, 0)
