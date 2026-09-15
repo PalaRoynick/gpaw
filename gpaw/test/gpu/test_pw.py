@@ -61,7 +61,8 @@ def test_gpu_k(gpu, par, mode, xc, dist_dens):
         pytest.skip('No FD mode with GPAW_NO_C_EXTENSION')
     if GPAW_NO_C_EXTENSION and xc == 'PBE':
         pytest.skip('No GGA with GPAW_NO_C_EXTENSION')
-
+    if dist_dens and mode != 'pw':
+        pytest.skip('dist-dens only for PW-mode')
     if gpu and world.size > 1 and not GPU_AWARE_MPI:
         if mode == 'fd' and par == 'domain':
             pytest.skip('Domain decomposition needs GPU-aware MPI')
