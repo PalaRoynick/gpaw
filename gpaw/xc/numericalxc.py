@@ -292,10 +292,15 @@ class NumericalXC(XCFunctional):
             xc = XC(xc)
         gd = density.finegd
         xc.set_grid_descriptor(gd)
+
         if (ham is not None) and (wfs is not None):
             # XXX add converge wfs for MGGA
             xc.initialize(density, ham, wfs)
             xc.set_positions(ham.spos_ac)
+
+        if density.nt_sg is None:
+            density.calculate_normalized_charges_and_mix()
+
         nspins = density.nspins
         vxc_sg = gd.zeros(nspins)
         xc.calculate(gd, density.nt_sg, vxc_sg)
@@ -956,6 +961,9 @@ def FermiAmaldi(
 
     poisson = create_poisson_solver(**poisson_kwargs)
     poisson.set_grid_descriptor(density.finegd)
+
+    if density.nt_sg is None:
+        density.calculate_normalized_charges_and_mix()
 
     Q_aL = calculate_compensation_charges(density)
     rhot_g = calculate_rho(density, Q_aL)
