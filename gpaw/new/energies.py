@@ -63,6 +63,7 @@ class DFTEnergies:
 
     def summary(self, log) -> None:
         log('Energy contributions:')
+        rows = []
         for name in NAMES:
             if name in OTHERS:
                 continue
@@ -71,16 +72,24 @@ class DFTEnergies:
                 if name != 'kinetic':
                     continue
                 e = self.kinetic
-            log(f'  {name.title() + ":":10}   {e * Ha:14.6f}')
+            rows.append((name, e))
         extensions = self.extensions_energies
+        names = [name for name, _ in rows + extensions]
+        names += ['Free energy', 'Extrapolated']
+        width = max(len(name) for name in names) + 1
+        sep_len = width + 1 + 14 + 1  # one wider than the number field
+        for name, e in rows:
+            log(f'  {name.capitalize() + ":":{width}} {e * Ha:14.6f}')
         if extensions:
-            log('  --------extensions----------')
+            label = 'Extensions'
+            left = (sep_len - len(label)) // 2
+            right = sep_len - len(label) - left
+            log(f'  {"-" * left}{label}{"-" * right}')
             for name, e in extensions:
-                log(f'  {name.title() + ":":12} {e * Ha:14.6f}')
-        log('  ----------------------------')
-        log('  Free energy: '
-            f'{self.total_free * Ha:14.6f}')
-        log('  Extrapolated:'
+                log(f'  {name.capitalize() + ":":{width}} {e * Ha:14.6f}')
+        log(f'  {"-" * sep_len}')
+        log(f'  {"Free energy:":{width}} {self.total_free * Ha:14.6f}')
+        log(f'  {"Extrapolated:":{width}} '
             f'{log.green}{self.total_extrapolated * Ha:14.6f}{log.reset}\n')
 
     def write_to_gpw(self, writer):
