@@ -93,6 +93,7 @@ class SolvationExtension(Extension):
                            cell=grid.cell * Bohr,
                            pbc=grid.pbc)
         self._atoms_moved = True  # force initial cavity build
+        self.cavity_changed = True
         self.cavity.update_atoms(self.atoms, log)
         for ia in self.interactions:
             ia.update_atoms(self.atoms, log)

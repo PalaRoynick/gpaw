@@ -518,9 +518,9 @@ class SJMExtension(Extension):
         if prop == 'cavity':
             try:
                 g_g = self.solvation.cavity.g_g
-            except AttributeError:
+            except AttributeError as exc:
                 raise ValueError('This cavity has no g_g attribute - '
-                                 'cannot write a cavity trace.')
+                                 'cannot write a cavity trace.') from exc
             return grid.from_data(g_g)
         raise ValueError(f'Unknown property: {prop!r}')
 
@@ -708,7 +708,7 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
     if a_r.desc.zerobc_c[2]:
         a_z = np.concatenate([a_z[:1], a_z])
         z_z = np.concatenate([[0.0], z_z])
-    with open(filename, 'w') as out:
+    with open(filename, 'w', encoding='utf-8') as out:
         for z, val in zip(z_z, a_z):
             out.write(f'{z:f} {val:1.8f}\n')
 
