@@ -336,15 +336,15 @@ class Chi0ComponentCalculator:
         nocc = self.gs.nocc1
         npocc = self.gs.nocc2
         ngridpoints = gd.N_c[0] * gd.N_c[1] * gd.N_c[2]
-        nstat = ns * npocc
-        occsize = nstat * ngridpoints * 16. / 1024**2
+        # Occupied states are transformed to real space one band at a time
+        occsize = ngridpoints * 16. / 1024**2
 
         gs_list = [f'{tab}Ground state adapter containing:',
                    f'Number of spins: {ns}', f'Number of kpoints: {nk}',
                    f'Number of irreducible kpoints: {nik}',
                    f'Number of completely occupied states: {nocc}',
                    f'Number of partially occupied states: {npocc}',
-                   f'Occupied states memory: {occsize} M / cpu']
+                   f'Occupied states memory (one band): {occsize} M / cpu']
 
         return f'\n{tab}'.join(gs_list)
 

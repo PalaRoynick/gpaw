@@ -41,8 +41,23 @@ class Chi0BodyData(Chi0RelatedData):
         self.blockdist = blockdist
         self.blocks1d = Blocks1D(blockdist.blockcomm, self.nG)
 
-        # Data array
-        self.data_WgG = self.zeros()
+        # Data array, allocated on first access
+        self._data_WgG = None
+
+    @property
+    def data_WgG(self):
+        if self._data_WgG is None:
+            self._data_WgG = self.zeros()
+        return self._data_WgG
+
+    def add_array(self, data_WgG):
+        """Add to the data array, adopting the input if nothing was allocated
+        yet, so that the two arrays never coexist unnecessarily."""
+        assert data_WgG.shape == self.WgG_shape
+        if self._data_WgG is None:
+            self._data_WgG = data_WgG
+        else:
+            self._data_WgG += data_WgG
 
     def zeros(self):
         return np.zeros(self.WgG_shape, complex)
