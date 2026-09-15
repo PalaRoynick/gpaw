@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Sequence
+from typing import IO, TYPE_CHECKING, Any
 
 import numpy as np
 from ase import Atoms

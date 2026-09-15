@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import functools
 import os
-import re
 import runpy
 import shlex
 import sys
@@ -134,22 +133,10 @@ generator after building the extension.
 
 
 def ensure_cpp_standard(compile_args: list):
-    """GPAW C++ code requires -std=c++17. This adds it to the input compile
-    args list if it's missing. Don't override existing flags, but warn if the
-    user-specified standard is too low.
+    """This adds -std=c++17 to the compile args list if it's missing.
+    Does not override user-specified flags.
     """
-    old_std = None
-    for arg in compile_args:
-        m = re.match(r'-std=(c\+\+(\d+))', arg)
-        if m:
-            old_std = m.group(1)
-            version = int(m.group(2))
-            if version < 17:
-                warnings.warn(f'C++ standard {old_std} is too low, '
-                              'GPAW requires -std=c++17 or newer')
-            break
-
-    if old_std is None:
+    if not any(arg.lstrip().startswith('-std=') for arg in compile_args):
         compile_args.append('-std=c++17')
 
 
@@ -183,29 +170,6 @@ else:  # no break
         libraries.append('blas')
 # ########### USER SITECONFIG DONE ###########
 
-if 'use_cpp' in locals():
-    print(
-        "\n"
-        "***********************************************************\n"
-        "WARNING: Your siteconfig.py had `use_cpp` flag defined.\n"
-        "This flag is now fully deprecated and has no effect.\n"
-        "C++ is now the default build type.\n"
-        "If you specifically want a C-build, set `compiler` to\n"
-        f"one of {['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']}.\n"
-        "Note that a C++ compiler will be required in the next\n"
-        "GPAW version.\n"
-        "***********************************************************\n"
-        "\n")
-
-# Fallback to legacy C build if the user siteconfig
-# explicitly chose a C compiler.
-# Will be removed after deprecation period.
-if compiler in ['gcc', 'clang', 'mpicc', 'cc', 'icc', 'icx']:
-    use_cpp = False
-else:
-    use_cpp = True
-# use_cpp is a temp flag for controlling build during C -> C++ transition
-# period, will be fully removed in a later update.
 
 GPAW_BUILD_JOBS = os.environ.get('GPAW_BUILD_JOBS')
 """
@@ -239,10 +203,7 @@ if _num_build_jobs > 1:
           'This feature requires Makefile build, it will be enabled now.')
     makefile_build = True
 
-if use_cpp:
-    print('Compiling entire GPAW as C++. '
-          'NOTE: This will become required in the next GPAW version!')
-    ensure_cpp_standard(extra_compile_args)
+ensure_cpp_standard(extra_compile_args)
 
 # Deprecation check
 if 'mpicompiler' in locals():
@@ -261,8 +222,8 @@ if 'mpicompiler' in locals():
 
 
 # If `mpi` was not set in siteconfig,
-# it is enabled by default if `mpicc` is found
-default_mpi_compiler = 'mpic++' if use_cpp else 'mpicc'
+# it is enabled by default if `mpic++` is found
+default_mpi_compiler = 'mpic++'
 if mpi is None:
     if compiler is None:
         if (os.name != 'nt'
@@ -340,11 +301,6 @@ if gpu:
 
     ensure_cpp_standard(gpu_compile_args)
 
-    # GPU code needs to link to c++ stdlib. This is automatic if the linking
-    # is done using a C++ compiler, if not we have to add it manually
-    if not use_cpp:
-        libraries += ['stdc++']
-
 
 def set_compiler_executables(cc: CCompiler) -> None:
     # Override the compiler executables
@@ -407,7 +363,7 @@ def try_compiling(
             compiler = get_compiler()
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir = os.path.abspath(tmpdir)
-                c_file_path = os.path.join(tmpdir, 'test.c')
+                c_file_path = os.path.join(tmpdir, 'test.cpp')
                 c_out_path = os.path.join(tmpdir, 'a.out')
                 with open(c_file_path, mode='w') as fobj:
                     print(c_program, file=fobj)
@@ -471,6 +427,43 @@ def test_blas() -> bool:
     """
 
 
+@try_compiling
+def check_cpp_version() -> bool:
+    """
+    #ifndef __cplusplus
+        #error GPAW requires a C++ compiler
+    #else
+        static_assert(__cplusplus >= 201703L, "GPAW needs C++17 or newer");
+    #endif
+    int main() { return 0; }
+    """
+
+
+def get_gpu_version_check_code() -> str:
+    """"""
+    return """
+    static_assert(__cplusplus >= 201703L,
+        "GPAW GPU extension requires C++17 or newer");
+    #ifdef __NVCC__
+        __global__ void _gpaw_arch_check()
+        {
+            // __CUDA_ARCH__ is only defined during the device compilation pass
+        #ifdef __CUDA_ARCH__
+            static_assert(__CUDA_ARCH__ >= 700,
+                "GPAW GPU extension for CUDA requires -arch=sm_70 or newer");
+        #endif
+        }
+
+    #else
+        #include <hip/hip_version.h>
+        static_assert(
+            HIP_VERSION_MAJOR > 5 ||
+            (HIP_VERSION_MAJOR == 5 && HIP_VERSION_MINOR >= 0),
+            "GPAW GPU extension for AMD requires ROCm 5.0 or newer");
+    #endif
+    """
+
+
 class MissingLibraryWarning(UserWarning):
     pass
 
@@ -510,21 +503,19 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
                        '__HIP_PLATFORM_AMD__'),
                    (gpu and gpu_target == 'hip-cuda',
                        '__HIP_PLATFORM_NVIDIA__'),
-                   (use_cpp, 'GPAW_CPP'),
                    ]:
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-sources = [Path('c/bmgs/bmgs.c')]
-sources += Path('c').glob('*.c')
-if gpu:
-    sources += Path('c/gpu').glob('*.c')
-sources += Path('c/xc').glob('*.c')
+
+sources = [Path('c/bmgs/bmgs.cpp')]
+sources += Path('c').glob('*.cpp')
+sources += Path('c/xc').glob('*.cpp')
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
-    for name in ['libxc.c', 'm06l.c',
-                 'tpss.c', 'revtpss.c', 'revtpss_c_pbe.c',
-                 'xc_mgga.c']:
+    for name in ['libxc.cpp', 'm06l.cpp',
+                 'tpss.cpp', 'revtpss.cpp', 'revtpss_c_pbe.cpp',
+                 'xc_mgga.cpp']:
         sources.remove(Path(f'c/xc/{name}'))
     # Dynamic link
     try:
@@ -542,6 +533,10 @@ if noblas:  # Cleanup: remove stale refrerences to BLAS
         libraries.remove('blas')
     except ValueError:
         pass
+
+if not check_cpp_version():
+    raise RuntimeError('Unsupported C++ standard (see error above). '
+                       'Ensure you are using -std=c++17 or newer')
 
 # Make build process deterministic (for "reproducible build")
 sources = [str(source) for source in sources]
@@ -566,7 +561,7 @@ extensions = [Extension('_gpaw',
                         extra_compile_args=extra_compile_args,
                         runtime_library_dirs=runtime_library_dirs,
                         extra_objects=extra_objects,
-                        language='c++' if use_cpp else 'c')]
+                        language='c++')]
 
 
 write_configuration(define_macros, include_dirs, libraries, library_dirs,
@@ -604,6 +599,10 @@ def parse_cflags(define_macros: list[tuple[str, str]] | None,
 
 class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
+
+    # Keep in sync with get_gpu_version_check_code()
+    _REQUIRED_CUDA_ARCH = 'sm_70'
+
     def __init__(
             self,
             gpu_compiler_: str,
@@ -622,7 +621,7 @@ class BuildGPU:
         self.build_dir = build_dir
         self.makefile_name = makefile_name
 
-        self.sources = BuildGPU.get_sources()
+        self.sources = self.get_sources()
 
         if '-x' not in gpu_compile_args_:
             lang = 'cu' if gpu_target == 'cuda' else 'hip'
@@ -631,15 +630,46 @@ class BuildGPU:
         else:
             self.compile_args = gpu_compile_args_
 
-    @staticmethod
-    def get_sources() -> list[Path]:
+        if gpu_target == 'cuda' or gpu_target == 'hip-cuda':
+            self.add_default_cuda_arch(self.compile_args)
+
+    def add_default_cuda_arch(self, compile_args: list[str]) -> None:
+        """Adds our minimum required -arch flag for nvcc if the user didn't
+        specify one.
+        """
+        ARCH_FLAGS = ('-arch', '--gpu-architecture', '-gencode',
+                      '--generate-code')
+        if not any(arg.lstrip().startswith(flag)
+                   for arg in compile_args for flag in ARCH_FLAGS):
+            compile_args.append(f'-arch={self._REQUIRED_CUDA_ARCH}')
+
+    def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
+        """Attempts to compile the provided code in a temp dir.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = os.path.abspath(tmpdir)
+            codefile = os.path.join(tmpdir, 'gputest.cpp')
+            outfile = os.path.join(tmpdir, 'a.out')
+            with open(codefile, mode='w') as fobj:
+                print(code, file=fobj)
+
+            run_args = [self.compiler] + cflags \
+                + ['-c', codefile, '-o', outfile]
+
+            result = subprocess.run(run_args, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(shlex.join(run_args), file=sys.stderr)
+                print(result.stderr, file=sys.stderr)
+                raise RuntimeError('GPU compiler check failed (see above)\n')
+
+    def get_sources(self) -> list[Path]:
         """Collect source files that are compiled with the GPU compiler.
         TODO: reduce the number of source files that need this special
         compilation path. Currently there is GPU code in common headers
         so many otherwise normal .cpp files end up becoming CUDA/HIP code.
         """
         # Messy: Some .cpp files under kernels/ get #included by other files.
-        # So we glob everything except kernels/, then global kernels/
+        # So we glob everything except kernels/, then glob kernels/
         # separately and remove those that are #included by others.
         gpu_dpath = Path('c/gpu')
         kernels_dpath = Path('c/gpu/kernels')
@@ -672,17 +702,18 @@ class BuildGPU:
         Return value is a list of objects that can be added as extra
         link_objects to setuptools when building the main GPAW extension.
         """
-        print('Building gpu code', flush=True)
+        print('Building gpu code')
+
+        cflags = self._make_full_cflags()
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
 
         # Create build dirs
         build_dir_root_absolute = Path(self.build_dir).resolve()
         for p in self.sources:
             build_path = (build_dir_root_absolute / p).parent
             if not build_path.exists():
-                print(f'creating {build_path}', flush=True)
+                print(f'creating {build_path}')
                 build_path.mkdir(parents=True)
-
-        cflags = self._make_full_cflags()
 
         # Compile with cuda/hip compiler
         objects = []
@@ -713,6 +744,7 @@ class BuildGPU:
 
         sources_str = ' '.join([str(src) for src in self.sources])
         cflags = self._make_full_cflags()
+        self.try_compiling_gpu(cflags, get_gpu_version_check_code())
         cflags_str = ' '.join(cflags)
 
         inout_makefile += [
@@ -802,8 +834,7 @@ class BuildGPAW(build_ext):
                     flag = self.compiler.runtime_library_dir_option(dir)
                     if isinstance(flag, list):
                         flag = ' '.join(flag)
-                    ldflags.append(
-                        self.compiler.runtime_library_dir_option(dir))
+                    ldflags.append(flag)
             else:
                 print('Failed to get runtime_library_dir options from '
                       'setuptools (non-Unix system?)')
@@ -957,9 +988,8 @@ class BuildGPAW(build_ext):
         import numpy as np
         self.include_dirs.append(np.get_include())
 
-        if use_cpp or gpu:
-            import pybind11
-            self.include_dirs.append(pybind11.get_include())
+        import pybind11
+        self.include_dirs.append(pybind11.get_include())
 
         if makefile_build:
             # Set a persistent build directory. We get a more readable

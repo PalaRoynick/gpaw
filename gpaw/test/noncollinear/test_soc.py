@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 from ase.build import mx2
 
-from gpaw.mpi import world
 from gpaw import GPAW
 from gpaw.berryphase import polarization_phase
+from gpaw.mpi import world
 from gpaw.spinorbit import soc_eigenstates
 
 

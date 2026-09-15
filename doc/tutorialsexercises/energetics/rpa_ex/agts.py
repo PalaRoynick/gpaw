@@ -24,7 +24,7 @@ def check_si():
         -10.764252623234455,
         13.86329]
 
-    with open('si_pbe_exx_results.txt', 'r') as file:
+    with open('si_pbe_exx_results.txt') as file:
         lines = file.readlines()
         for line in lines:
             x = [float(x) for x in line.strip().split()]
@@ -46,7 +46,7 @@ def check_atom():
             [10.0, -0.8498113915010016, 9.75310722624879],
             [11.0, -0.8521763270365798, 9.753051109289967],
             [12.0, -0.8530785423481283, 9.752855601258254]]
-    with open('si_atom_pbe_and_exx_energies.txt', 'r') as file:
+    with open('si_atom_pbe_and_exx_energies.txt') as file:
         results = [
             [float(x) for x in line.split()]
             for line in file.readlines()]

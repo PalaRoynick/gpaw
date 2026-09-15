@@ -4,7 +4,8 @@ from gpaw.elph import ElectronPhononMatrix
 calc = GPAW("scf.gpw")
 atoms = calc.atoms
 
-elph = ElectronPhononMatrix(atoms, 'supercell', 'elph')
+elph = ElectronPhononMatrix(atoms, 'supercell', 'elph',
+                            use_mean_minimum_images=True)
 q = [[0., 0., 0.], ]
 g_sqklnn = elph.bloch_matrix(calc, k_qc=q,
                              savetofile=True, prefactor=False)

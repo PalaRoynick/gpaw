@@ -3,6 +3,7 @@ from math import pi, sqrt
 import numpy as np
 from ase.parallel import paropen
 from ase.units import Ha
+
 from gpaw.analyse.wignerseitz import wignerseitz
 from gpaw.gauss import Gauss
 from gpaw.io.fmf import FMF

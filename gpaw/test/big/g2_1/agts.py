@@ -1,5 +1,6 @@
-from myqueue.workflow import run
 from ase.data.g2_1 import atom_names, molecule_names
+from myqueue.workflow import run
+
 from gpaw.test.big.g2_1.g21 import relax
 
 

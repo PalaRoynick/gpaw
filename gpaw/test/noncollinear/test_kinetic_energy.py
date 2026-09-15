@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.utilities import pack_density
 
 

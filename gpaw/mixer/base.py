@@ -1,14 +1,14 @@
 import numpy as np
 
-from gpaw.new.density import Density
+from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.core.arrays import DomainType, XArray
-from gpaw.core.atom_arrays import AtomArraysLayout, AtomArrays
-from gpaw.core.atom_arrays import AtomDistribution
-from gpaw.setup import Setups
-from gpaw.typing import ArrayND, Self
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   AtomDistribution)
 from gpaw.mixer.metric import BaseMetric
 from gpaw.mpi import MPIComm
-from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.new.density import Density
+from gpaw.setup import Setups
+from gpaw.typing import ArrayND, Self
 
 
 class BaseMixer:

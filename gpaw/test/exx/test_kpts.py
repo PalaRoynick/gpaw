@@ -3,11 +3,11 @@ import numpy as np
 import pytest
 from ase import Atoms
 from ase.units import Ha
+
 from gpaw import GPAW, PW
 from gpaw.hybrids import NonSelfConsistentHybridXCCalculator
 from gpaw.hybrids.eigenvalues import non_self_consistent_eigenvalues
 from gpaw.mpi import world
-from gpaw.new.ase_interface import GPAW as NewGPAW
 
 
 @pytest.fixture(scope='module')
@@ -74,7 +74,7 @@ def test_2d_non_self_consistent():
               pbc=(1, 1, 0))
 
     n = 2
-    a.calc = NewGPAW(
+    a.calc = GPAW(
         mode=PW(200),
         convergence={'density': 1e-5},
         kpts=(n, n, 1),

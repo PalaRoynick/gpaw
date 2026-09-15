@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Generator
 from functools import cached_property
 from typing import TYPE_CHECKING, Generic, TypeVar
@@ -7,7 +8,6 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
-
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
@@ -165,9 +165,9 @@ class IBZWaveFunctions(Generic[WFT]):
             f'({nbytes // ncores:_} per core)\n' +
             projectors_text +
             '\nParallelization:\n'
-            f'  kpt:    {self.kpt_comm.size}\n'
-            f'  domain: {self.domain_comm.size}\n'
-            f'  band:   {self.band_comm.size}\n')
+            f'  kpt/spin: {self.kpt_comm.size}\n'
+            f'  domain:   {self.domain_comm.size}\n'
+            f'  band:     {self.band_comm.size}\n')
 
     def __iter__(self) -> Generator[WFT]:
         yield from self._wfs_u
@@ -310,38 +310,45 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return ibz, ncomponents, wfs_u, fermi_levels
 
-    def get_eigs_and_occs(self, kpt=0, spin=0):
+    def _get_eigs_or_occs(self, what: str, kpt: int, spin: int):
+        attr = '_occ_n' if what == 'occs' else 'eig_n'
         if self.domain_comm.rank == 0 and self.band_comm.rank == 0:
             rank = self.rank_ks[kpt, spin]
             if rank == self.kpt_comm.rank:
                 wfs = self._get_wfs(kpt, spin)
                 if rank == 0:
-                    return wfs.eig_n, wfs._occ_n
-                self.kpt_comm.send(wfs.eig_n, 0)
-                self.kpt_comm.send(wfs._occ_n, 0)
+                    return getattr(wfs, attr)
+                self.kpt_comm.send(getattr(wfs, attr), 0)
             elif self.kpt_comm.rank == 0:
-                eig_n = np.empty(self.nbands)
-                occ_n = np.empty(self.nbands)
-                self.kpt_comm.receive(eig_n, rank)
-                self.kpt_comm.receive(occ_n, rank)
-                return eig_n, occ_n
-        return np.zeros(0), np.zeros(0)
+                x_n = np.empty(self.nbands)
+                self.kpt_comm.receive(x_n, rank)
+                return x_n
+        return np.zeros(0)
 
     def get_all_eigs_and_occs(self, broadcast=False):
+        warnings.warn('Please use get_all_eigs() and get_all_eigs()',
+                      DeprecationWarning)
+        return (self.get_all_eigs(broadcast=broadcast),
+                self.get_all_occs(broadcast=broadcast))
+
+    def get_all_eigs(self, broadcast=False):
+        return self._get_all_eigs_or_occs('eigs', broadcast)
+
+    def get_all_occs(self, broadcast=False):
+        return self._get_all_eigs_or_occs('occs', broadcast)
+
+    def _get_all_eigs_or_occs(self, what: str, broadcast: bool):
         nkpts = len(self.ibz)
         mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
-        eig_skn = np.empty((self.nspins, nkpts, mynbands))
-        occ_skn = np.empty((self.nspins, nkpts, mynbands))
+        x_skn = np.empty((self.nspins, nkpts, mynbands))
         for k in range(nkpts):
             for s in range(self.nspins):
-                eig_n, occ_n = self.get_eigs_and_occs(k, s)
+                x_n = self._get_eigs_or_occs(what, k, s)
                 if self.comm.rank == 0:
-                    eig_skn[s, k, :] = eig_n
-                    occ_skn[s, k, :] = occ_n
+                    x_skn[s, k, :] = x_n
         if broadcast:
-            self.comm.broadcast(eig_skn, 0)
-            self.comm.broadcast(occ_skn, 0)
-        return eig_skn, occ_skn
+            self.comm.broadcast(x_skn, 0)
+        return x_skn
 
     def forces(self,
                potential: Potential,
@@ -366,7 +373,8 @@ class IBZWaveFunctions(Generic[WFT]):
         ... k-points, symmetry information, projections and possibly
         also the wave functions.
         """
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
         if not self.collinear:
             eig_skn = eig_skn[0]
             occ_skn = occ_skn[0]
@@ -468,7 +476,8 @@ class IBZWaveFunctions(Generic[WFT]):
 
         ibz = self.ibz
 
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
 
         if self.comm.rank != 0:
             return

@@ -11,11 +11,12 @@ from ase.units import Ha
 
 from gpaw import __version__
 from gpaw.core import UGArray
-from gpaw.dft import GPAW as AnyGPAW, Parameters
+from gpaw.dft import GPAW as AnyGPAW
+from gpaw.dft import Parameters
 from gpaw.dos import DOSCalculator
 from gpaw.mpi import broadcast, synchronize_atoms
 from gpaw.new import Timer, trace
-from gpaw.new.calculation import (CalculationModeError, DFT,
+from gpaw.new.calculation import (DFT, CalculationModeError,
                                   ReuseWaveFunctionsError, units)
 from gpaw.new.gpw import GPWFlags, write_gpw
 from gpaw.new.logger import Logger
@@ -27,11 +28,12 @@ from gpaw.utilities import pack_density
 from gpaw.utilities.memory import maxrss
 from gpaw.utilities.timing import simpletimer
 
-
 LOGO = '  __  _  _\n | _ |_)|_||  |\n |__||  | ||/\\| - {version}\n'
 
 
 def GPAW(*args, **kwargs):
+    warnings.warn('Please use "from gpaw import GPAW"',
+                  DeprecationWarning)
     return AnyGPAW(*args, legacy_gpaw=False, **kwargs)
 
 
@@ -325,12 +327,12 @@ class ASECalculator:
         return list(compare_atoms(self.atoms, atoms))
 
     def eigenvalues(self):
-        eig_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[0]
+        eig_skn = self.dft.ibzwfs.get_all_eigs()
         return broadcast(eig_skn * Ha if self.comm.rank == 0 else None,
                          comm=self.comm)
 
     def occupations(self):
-        occ_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[1]
+        occ_skn = self.dft.ibzwfs.get_all_occs()
         return broadcast(occ_skn if self.comm.rank == 0 else None,
                          comm=self.comm)
 
@@ -467,7 +469,7 @@ class ASECalculator:
         return None if n_sr is None else n_r.data
 
     def get_eigenvalues(self, kpt=0, spin=0, broadcast=True):
-        eig_n = self.dft.ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[0] * Ha
+        eig_n = self.dft.ibzwfs._get_eigs_or_occs('eigs', kpt, spin) * Ha
         assert eig_n.dtype == np.float64
         if broadcast:
             if self.comm.rank != 0:
@@ -478,7 +480,7 @@ class ASECalculator:
     def get_occupation_numbers(self, kpt=0, spin=0, broadcast=True,
                                raw=False):
         ibzwfs = self.dft.ibzwfs
-        occ_n = ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[1]
+        occ_n = ibzwfs._get_eigs_or_occs('occs', kpt, spin)
         if not raw:
             weight = ibzwfs.ibz.weight_k[kpt] * ibzwfs.spin_degeneracy
             occ_n *= weight

@@ -19,9 +19,9 @@ def do(freq):
     # Take slice of data array
     d_yx = d_g[:, :, ng[2] // 2]
     x = np.linspace(0, box[0], ng[0])
-    xlabel = u'x (Å)'
+    xlabel = 'x (Å)'
     y = np.linspace(0, box[1], ng[1])
-    ylabel = u'y (Å)'
+    ylabel = 'y (Å)'
 
     # Plot
     plt.figure(figsize=(8, 3.5))

@@ -89,7 +89,7 @@ for bib in ['gpaw1', 'gpaw2']:
                                                doi, title))
             # assert '"' not in title, title
             total[doi] = (date, title)
-    x = dict([(p[1], 0) for p in papers])
+    x = {p[1]: 0 for p in papers}
     print((bib, len(papers), len(x), len(total)))
 
 

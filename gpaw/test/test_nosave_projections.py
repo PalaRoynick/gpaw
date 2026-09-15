@@ -1,7 +1,7 @@
 import pytest
 from ase.build import bulk
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 # Prevent grid-dependent crash:

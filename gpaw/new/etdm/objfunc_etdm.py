@@ -1,6 +1,8 @@
-import numpy as np
-from .skewherm_matrix import SkewHermitian
 from abc import ABC, abstractmethod
+
+import numpy as np
+
+from gpaw.new.etdm.skewherm_matrix import SkewHermitian
 from gpaw.new.etdm.tools import get_n_occ
 
 
@@ -42,7 +44,7 @@ class ObjectiveFunctionETDM(ABC):
         f_n: np.ndarray
             array containing the occupation numbers for each spin and kpt,
                             f_n = [spin, kpt, occ]
-            From: ibzwfs.get_all_eigs_and_occs
+            From: ibzwfs.get_all_occs
         dtype : type
             Data type, either float or complex
         nkps : int

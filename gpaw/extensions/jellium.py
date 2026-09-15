@@ -1,11 +1,12 @@
 import numpy as np
 from ase.units import Ha
+
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.core.domain import Domain
+from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.ibzwfs import IBZWaveFunctions
-from gpaw.dft import ExtensionInput
 
 
 class Jellium(ExtensionInput):
