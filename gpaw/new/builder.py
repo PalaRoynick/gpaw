@@ -194,7 +194,7 @@ class DFTComponentsBuilder:
 
         self.distribute_density = (
             params.parallel.get('distribute_density', False) and
-            comm.size > self.communicators['d'])
+            comm.size > self.communicators['d'].size)
 
         if self.distribute_density:
             assert self.mode == 'pw'
