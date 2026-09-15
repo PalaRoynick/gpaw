@@ -604,13 +604,13 @@ def transform_rdm1(gd: GridDescriptor, wfs: WaveFunctions, mo_iG: Array4D, rdm1_
 
 
 def update_density_from_density_matrix(
-        density: Density | FakeDensity, wfs: WaveFunctions, P_ksnn: Array3D | None
+        density: Density | FakeDensity, wfs: WaveFunctions, P_ksnn: Array4D | None, symmetrize: bool = True
 ) -> None:
     if P_ksnn is None:
         return
     if P_ksnn.ndim == 3:
         assert wfs.kd.gamma
-        P_ksnn = P_ksnn[None]
+        P_ksnn = P_ksnn[np.newaxis]
     nt_sG = density.gd.zeros(density.nspins)
     D_asp = density.setups.empty_atomic_matrix(
         density.ncomponents, density.atom_partition
@@ -625,7 +625,8 @@ def update_density_from_density_matrix(
         nt_sG[kpt.s] += (
             kpt.weightk
             * np.einsum(
-                "n..., nm, m...->...", psit_nG.conj(), P_ksnn[kpt.k, kpt.s], psit_nG
+                "n..., nm, m...->...", psit_nG.conj(
+                ), P_ksnn[kpt.k, kpt.s], psit_nG
             ).real
         )
         P_ani = kpt.P_ani
@@ -633,11 +634,123 @@ def update_density_from_density_matrix(
             P_ni = wfs.bd.collect(P_ani[a], broadcast=True)
             D_ii = np.einsum("ni, nm, mj -> ij",
                              P_ni.conj(), P_ksnn[kpt.k, kpt.s], P_ni)
-            D_asp[a][kpt.s] += kpt.weightk * pack_density(D_ii)
+            D_asp[a][kpt.s] += kpt.weightk * np.real_if_close(pack_density(D_ii))
+
     wfs.kd.comm.sum(nt_sG)
     for a in D_asp:
         wfs.kd.comm.sum(D_asp[a])
-    # add pseudo core density
+
+    if symmetrize:
+        for nt_G in nt_sG:
+            wfs.kd.symmetry.symmetrize(nt_G, density.gd)
+        wfs.symmetrize_atomic_density_matrices(D_asp)
+
     if density.nct_G is not None:
         nt_sG[:] += density.nct_G
     density.initialize_directly_from_arrays(nt_sG, density.nt_vG, D_asp)
+
+
+def check_bz_density_matrix_symmetry(
+        Pbz_ksnn: Array4D,
+        wfs: WaveFunctions,
+        tol: float = 1e-4,
+) -> None:
+    kd = wfs.kd
+    assert len(Pbz_ksnn) == len(kd.bz2ibz_k)
+
+    hermiticity_error = np.max(np.abs(
+        Pbz_ksnn - Pbz_ksnn.swapaxes(-1, -2).conj()
+    ))
+    assert hermiticity_error < tol, f'{hermiticity_error}'
+
+    symmetry_error = 0.0
+
+    for K, k in enumerate(kd.bz2ibz_k):
+        K0 = kd.ibz2bz_k[k]
+        P0_snn = Pbz_ksnn[K0]
+
+        time_reversal = (
+            bool(kd.time_reversal_k[K])
+            != bool(kd.time_reversal_k[K0])
+        )
+        if time_reversal:
+            P0_snn = P0_snn.conj()
+
+        error = np.max(np.abs(Pbz_ksnn[K] - P0_snn))
+        symmetry_error = max(symmetry_error, error)
+
+    assert symmetry_error < tol, f'{symmetry_error:.3e}'
+
+
+def bz_density_matrix_to_ibz(Pbz_ksnn: Array4D, wfs: WaveFunctions) -> Array4D:
+    kd = wfs.kd
+    assert len(Pbz_ksnn) == len(kd.bz2ibz_k)
+
+    Pibz_ksnn = np.zeros(
+        (kd.nibzkpts, *Pbz_ksnn.shape[1:]), dtype=Pbz_ksnn.dtype)
+
+    for k in range(kd.nibzkpts):
+        Pibz_ksnn[k] = Pbz_ksnn[kd.ibz2bz_k[k]]
+    return Pibz_ksnn
+
+
+def update_density_from_density_matrix_diff(
+        density: Density, wfs: WaveFunctions, dP_ksnn: Array4D, bands: np.ndarray | None = None, check_symmetry: bool = False,
+):
+    assert dP_ksnn.ndim == 4
+    assert wfs.bd.comm.size == 1
+
+    if bands is None:
+        bands = np.arange(0, wfs.bd.nbands)
+
+    dnt_sG = density.gd.zeros(density.nspins)
+    dD_asp = density.setups.empty_atomic_matrix(
+        density.ncomponents, density.atom_partition
+    )
+    for a in dD_asp:
+        dD_asp[a][:] = 0.0
+
+    if len(dP_ksnn) == len(wfs.kd.bz2ibz_k):
+        if check_symmetry:
+            check_bz_density_matrix_symmetry(dP_ksnn, wfs)
+        dP_ksnn = bz_density_matrix_to_ibz(dP_ksnn, wfs)
+
+    for kpt in wfs.kpt_u:
+        # psit_nG = wfs.bd.collect(kpt.psit_nG, broadcast=True)[bands]
+        psit_nG = np.array(kpt.psit_nG)[bands]
+        if wfs.mode == "pw":
+            psit_nG = np.asarray([wfs.pd.ifft(psit_G, q=kpt.q)
+                                  for psit_G in psit_nG])
+        dnt_sG[kpt.s] += (
+            kpt.weightk
+            * np.einsum(
+                "n..., nm, m...->...", psit_nG.conj(
+                ), dP_ksnn[kpt.k, kpt.s], psit_nG
+            ).real
+        )
+        P_ani = kpt.P_ani
+        for a in dD_asp:
+            P_ni = wfs.bd.collect(P_ani[a], broadcast=True)
+            D_ii = np.einsum("ni, nm, mj -> ij",
+                             P_ni[bands].conj(), dP_ksnn[kpt.k, kpt.s], P_ni[bands])
+            dD_asp[a][kpt.s] += kpt.weightk * \
+                np.real_if_close(pack_density(D_ii))
+    # mpi
+    wfs.kd.comm.sum(dnt_sG)
+    for a in dD_asp:
+        wfs.kd.comm.sum(dD_asp[a])
+
+    # symmetrize
+    for dnt_G in dnt_sG:
+        wfs.kd.symmetry.symmetrize(dnt_G, density.gd)
+    wfs.symmetrize_atomic_density_matrices(dD_asp)
+
+    # update
+    D_asp = density.setups.empty_atomic_matrix(
+        density.ncomponents, density.atom_partition
+    )
+    for a in D_asp:
+        D_asp[a][:] = density.D_asp[a] + dD_asp[a]
+
+    density.initialize_directly_from_arrays(
+        density.nt_sG + dnt_sG, density.nt_vG, D_asp)

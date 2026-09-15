@@ -242,6 +242,8 @@ class iKS:
                 stacklevel=2,
             )
             self.P_ksnn = P_snn
+        else:
+            self.P_ksnn = None
 
         # regularization
         self.lambda_reg = lambda_reg
@@ -311,7 +313,7 @@ class iKS:
         self.hamiltonian = calc.hamiltonian
         self.atompart = calc.hamiltonian.atom_partition
         self.setups = calc.hamiltonian.setups
-        self.init_target_density(self.P_ksnn)
+        self.init_target_density()
         self.nspins: int = self.tdens.nspins
         self.weights_sG, self.weights = iks_tools.get_weights(
             weights, self.tdens.nt_sG, self.density.gd)
@@ -319,7 +321,7 @@ class iKS:
             atomic_weights, calc.setups, self.tdens.D_asp
         )
 
-    def init_target_density(self, P_ksnn: Optional[ArrayND] = None) -> None:
+    def init_target_density(self) -> None:
         target = self.target
         wfs = None
         if isinstance(target, Density):
@@ -331,7 +333,7 @@ class iKS:
             tdens = target  # FakeDensity
 
         if wfs is None:
-            assert P_ksnn is None, "Provide the target calculator (for wfs) to use P_ksnn"
+            assert self.P_ksnn is None, "Provide the target calculator (for wfs) to use P_ksnn"
 
         if not isinstance(target, Density):
             if isinstance(tdens, FakeDensity):
@@ -341,7 +343,7 @@ class iKS:
 
             tdens.set_positions(self.hamiltonian.spos_ac,
                                 self.density.atom_partition)
-            iks_tools.update_density_from_density_matrix(tdens, wfs, P_ksnn)
+            iks_tools.update_density_from_density_matrix(tdens, wfs, self.P_ksnn)
 
         density = self.density
         tdens.gd = density.gd

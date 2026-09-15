@@ -299,7 +299,7 @@ class NumericalXC(XCFunctional):
             xc.set_positions(ham.spos_ac)
 
         if density.nt_sg is None:
-            density.calculate_normalized_charges_and_mix()
+            density.interpolate_pseudo_density()
 
         nspins = density.nspins
         vxc_sg = gd.zeros(nspins)
@@ -963,7 +963,7 @@ def FermiAmaldi(
     poisson.set_grid_descriptor(density.finegd)
 
     if density.nt_sg is None:
-        density.calculate_normalized_charges_and_mix()
+        density.interpolate_pseudo_density()
 
     Q_aL = calculate_compensation_charges(density)
     rhot_g = calculate_rho(density, Q_aL)

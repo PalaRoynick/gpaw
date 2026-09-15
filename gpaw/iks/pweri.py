@@ -646,7 +646,7 @@ def run_fci(
 def validate_density_matrix(
         P_snn: np.ndarray, occupations: np.ndarray
 ) -> dict[str, float]:
-    """Validate P_snn without writing it."""
+    """Validate P_snn"""
     trace_error = float(
         np.trace(P_snn, axis1=-2, axis2=-1).real.sum() - occupations.sum())
     hermiticity_error = float(np.max(np.abs(
