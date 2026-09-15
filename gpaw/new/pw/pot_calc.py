@@ -20,12 +20,19 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  *,
                  relpos_ac,
                  atomdist,
-                 wf_grid,
-                 wf_atomdist,
-                 kpt_band_comm,
+                 wf_grid,  # grid for wave functions
+                 wf_atomdist,  # atom-distribution for wave functions
+                 kpt_band_comm,  # complementary comm for wave functions
                  extensions,
                  soc=False,
                  xp=np):
+        """PW-mode potential calculator.
+
+        The distribution of the density is described by grid, fine_grid,
+        pw and atomsdist.
+
+        The wave functions are distributes via wf_grid and wf_atomdist.
+        """
         self.xp = xp
         self.pw = pw
         super().__init__(xc, poisson_solver, setups,
@@ -41,10 +48,11 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         self.grid = grid
         self.fine_grid = fine_grid
+
+        self.distributed_density = grid.comm.size != wf_grid.comm.size
         self.wf_grid = wf_grid
         self.wf_atomdist = wf_atomdist
         self.kpt_band_comm = kpt_band_comm
-        self.distributed_density = grid.comm.size != wf_grid.comm.size
 
         self.vbar_g = pw.zeros(xp=xp)
         self.vbar_ag.add_to(self.vbar_g)
@@ -159,6 +167,12 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 e_stress)
 
     def redist(self, potential: Potential) -> Potential:
+        """Redistribute potential.
+
+        If the density is distributed over the entire "world" then
+        we redistribute it to self.wf_grid and self.wf_atomdist and the
+        complementary communicator self.kpt_band_comm.
+        """
         if not self.distributed_density:
             return potential
         return potential.redist(

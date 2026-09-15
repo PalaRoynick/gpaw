@@ -194,7 +194,10 @@ class DFTComponentsBuilder:
 
         self.distribute_density = (
             params.parallel.get('distribute_density', False) and
-            comm.size > 1)
+            comm.size > self.communicators['d'])
+
+        if self.distribute_density:
+            assert self.mode == 'pw'
 
         self.grid, self.fine_grid = self.create_uniform_grids()
         if self.distribute_density:
