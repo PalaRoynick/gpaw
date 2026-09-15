@@ -315,9 +315,7 @@ PyObject* localize(PyObject *self, PyObject *args)
   // The original C99 implementation of this function made heavy use of VLA
   // semantics that did not compile on Clang++ in C++ mode (but g++ was OK).
   // Here we attempt to minimize code changes by using custom accessors to index multidimensional arrays.
-  // If compiling as C code, the accessors fall back to usual VLA syntax.
 
-#ifdef GPAW_CPP
   double_complex* Z = (double_complex*)PyArray_DATA(Z_nnc);
   double* U = (double*)PyArray_DATA(U_nn);
 
@@ -330,14 +328,6 @@ PyObject* localize(PyObject *self, PyObject *args)
   {
       return U[i * n + j];
   };
-
-#else
-  // Old C99 version but using similar accessor helper as the C++ version
-  double_complex (*Z)[n][3] = (double_complex (*)[n][3])COMPLEXP(Z_nnc);
-  double (*U)[n] = (double (*)[n])DOUBLEP(U_nn);
-  #define Z_at(i, j, c) Z[i][j][c]
-  #define U_at(i, j)    U[i][j]
-#endif
 
   double value = 0.0;
   for (int a = 0; a < n; a++)

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.nlopt.matrixel import make_nlodata
 from gpaw.test.cachedfilehandler import CachedFilesHandler
 from gpaw.test.gpwfile import GPWFiles, response_band_cutoff

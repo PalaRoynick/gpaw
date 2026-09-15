@@ -23,7 +23,8 @@ def test_response_aluminum_EELS_ALDA(gpw_files, in_tmp_dir, mpi):
     q = np.array([1 / 4, 0, 0])
     w = np.linspace(0, 24, 241)
 
-    df = DielectricFunction(calc=calc, frequencies=w, eta=0.2, ecut=50,
+    df = DielectricFunction(calc=calc, frequencies=w,
+                            ecut=50., eta=0.2, rate=0.1,
                             hilbert=False, world=mpi.comm)
     df.get_eels_spectrum(xc='ALDA', filename='EELS_Al_ALDA.csv', q_c=q)
 

@@ -4,10 +4,7 @@
 #include "bmgs.h"
 #include "gpaw_utils.h"
 
-#ifdef GPAW_CPP
 #include <algorithm>
-#endif
-
 #include <string.h>
 
 void Z(bmgs_zero)(TGPAW* a, const int n[3], const int c[3],
@@ -19,7 +16,7 @@ void Z(bmgs_zero)(TGPAW* a, const int n[3], const int c[3],
       for (int i1 = 0; i1 < s[1]; i1++)
 	{
 
-  #if defined(GPAW_CPP) && defined(BMGSCOMPLEX)
+  #if defined(BMGSCOMPLEX)
     // Patch for complex TGPAW in C++ mode. Now TGPAW = std::complex<double>, and
     // the compiler warns about using memset on non-POD objects.
     // For std::complex memset should still be fine (same data layout as C-style complex number),
