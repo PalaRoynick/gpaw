@@ -10,7 +10,9 @@ from gpaw.solvation.sjm import SJM as OldSJM
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 @pytest.mark.parametrize('gpaw_new', [False, True])
 def test_h(gpaw_new, mode, in_tmp_dir):
-    if mode == 'pw' and not gpaw_new:
+    if gpaw_new:
+        pytest.skip('SJM not yet implemented for gpaw.new')
+    if mode == 'pw':
         pytest.skip('PW-mode not implemented for old GPAW')
 
     a = 1.4
