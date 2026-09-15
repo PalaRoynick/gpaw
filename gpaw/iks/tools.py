@@ -604,10 +604,13 @@ def transform_rdm1(gd: GridDescriptor, wfs: WaveFunctions, mo_iG: Array4D, rdm1_
 
 
 def update_density_from_density_matrix(
-        density: Density | FakeDensity, wfs: WaveFunctions, P_snn: Array3D | None
+        density: Density | FakeDensity, wfs: WaveFunctions, P_ksnn: Array3D | None
 ) -> None:
-    if P_snn is None:
+    if P_ksnn is None:
         return
+    if P_ksnn.ndim == 3:
+        assert wfs.kd.gamma
+        P_ksnn = P_ksnn[None]
     nt_sG = density.gd.zeros(density.nspins)
     D_asp = density.setups.empty_atomic_matrix(
         density.ncomponents, density.atom_partition
@@ -622,14 +625,14 @@ def update_density_from_density_matrix(
         nt_sG[kpt.s] += (
             kpt.weightk
             * np.einsum(
-                "n..., nm, m...->...", psit_nG.conj(), P_snn[kpt.s], psit_nG
+                "n..., nm, m...->...", psit_nG.conj(), P_ksnn[kpt.k, kpt.s], psit_nG
             ).real
         )
         P_ani = kpt.P_ani
         for a in D_asp:
             P_ni = wfs.bd.collect(P_ani[a], broadcast=True)
             D_ii = np.einsum("ni, nm, mj -> ij",
-                             P_ni.conj(), P_snn[kpt.s], P_ni)
+                             P_ni.conj(), P_ksnn[kpt.k, kpt.s], P_ni)
             D_asp[a][kpt.s] += kpt.weightk * pack_density(D_ii)
     wfs.kd.comm.sum(nt_sG)
     for a in D_asp:

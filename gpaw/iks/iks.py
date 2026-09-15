@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from warnings import warn
 
 import numpy as np
 from ase.units import Ha
@@ -83,7 +84,7 @@ class iKS:
     ----------
     target : GPAW or Density
         The target density or reference GPAW calculation whose density is used in the
-        inversion procedure. If a separate density matrix (``P_snn``) is provided, the
+        inversion procedure. If a separate density matrix (``P_ksnn``) is provided, the
         wave function object (``wfs``) from ``target`` is also used to construct the
         corresponding density. A typical use case is a Hartree–Fock calculation to
         obtain a local exact-exchange potential.
@@ -101,9 +102,10 @@ class iKS:
         reading the file. Observers attached to ``calc`` are triggered per optimization
         iteration, not per SCF iteration.
 
-    P_snn : array or None, optional
+    P_ksnn : array or None, optional
         A spin-dependent density matrix from a higher-level calculation. If omitted,
         both the smooth density and atomic density matrix are taken directly from ``target``.
+        This array should not be distributed on the kpoints (each core needs to hold a local copy).
 
     weights : str or array, default="inverse_density"
         Specifies how density differences are weighted in real space. Supported predefined
@@ -199,7 +201,8 @@ class iKS:
         self,
         target: GPAW | Density,
         calc: GPAW,
-        P_snn: Optional[ArrayND] = None,
+        P_snn: Optional[ArrayND] = None,  # deprecated
+        P_ksnn: Optional[ArrayND] = None,
         weights: str | ArrayND = "uniform",
         atomic_weights: str | MutableMapping = "radial_uniform",
         atoms: Atoms | None = None,
@@ -228,7 +231,17 @@ class iKS:
         if atoms is None:
             assert isinstance(target, GPAW)
             atoms = target.atoms
-        self.P_snn = P_snn
+
+        if P_ksnn is not None:
+            assert P_snn is None
+            self.P_ksnn = P_ksnn
+        elif P_snn is not None:
+            warn(
+                "P_snn argument is deprecated, use P_ksnn instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.P_ksnn = P_snn
 
         # regularization
         self.lambda_reg = lambda_reg
@@ -236,9 +249,8 @@ class iKS:
         self.density_threshold = density_threshold
         self.pseudo_core_scale = pseudo_core_scale
         self.lambda_boundary = lambda_paw_boundary
+
         reg_scheduler_params = reg_scheduler_params or {}
-        reg_scheduler_params.setdefault("decay_rate", 1.0)
-        reg_scheduler_params.setdefault("min_val", lambda_reg)
 
         corereg_scheduler_params = corereg_scheduler_params or {}
         corereg_scheduler_params.setdefault("decay_rate", 1.0)
@@ -299,7 +311,7 @@ class iKS:
         self.hamiltonian = calc.hamiltonian
         self.atompart = calc.hamiltonian.atom_partition
         self.setups = calc.hamiltonian.setups
-        self.init_target_density(self.P_snn)
+        self.init_target_density(self.P_ksnn)
         self.nspins: int = self.tdens.nspins
         self.weights_sG, self.weights = iks_tools.get_weights(
             weights, self.tdens.nt_sG, self.density.gd)
@@ -307,7 +319,7 @@ class iKS:
             atomic_weights, calc.setups, self.tdens.D_asp
         )
 
-    def init_target_density(self, P_snn: Optional[ArrayND] = None) -> None:
+    def init_target_density(self, P_ksnn: Optional[ArrayND] = None) -> None:
         target = self.target
         wfs = None
         if isinstance(target, Density):
@@ -319,7 +331,7 @@ class iKS:
             tdens = target  # FakeDensity
 
         if wfs is None:
-            assert P_snn is None, "Provide the target calculator (for wfs) to use P_snn"
+            assert P_ksnn is None, "Provide the target calculator (for wfs) to use P_ksnn"
 
         if not isinstance(target, Density):
             if isinstance(tdens, FakeDensity):
@@ -329,7 +341,7 @@ class iKS:
 
             tdens.set_positions(self.hamiltonian.spos_ac,
                                 self.density.atom_partition)
-            iks_tools.update_density_from_density_matrix(tdens, wfs, P_snn)
+            iks_tools.update_density_from_density_matrix(tdens, wfs, P_ksnn)
 
         density = self.density
         tdens.gd = density.gd
@@ -373,7 +385,8 @@ class iKS:
             elif name == "FermiAmaldi":
                 xc = FermiAmaldi(self.tdens, **self.nxc_kwargs)
             else:
-                xc = NumericalXC.from_other_xc(name, self.tdens, **self.nxc_kwargs)
+                xc = NumericalXC.from_other_xc(
+                    name, self.tdens, **self.nxc_kwargs)
             self.calc.parameters["xc"] = xc
         self.J_xasz: list[ArrayDict] = [
             self.atompart.arraydict(v_asz.shapes_a, dtype=float)
@@ -487,7 +500,8 @@ class iKS:
         self.xc.set_grid_descriptor(self.hamiltonian.finegd)
         self.finegd = self.hamiltonian.finegd
         self.gd = self.hamiltonian.gd
-        self.L2_uw = self.gd.integrate(self.dn_sG**2).sum()  # save for adaptive tolerance
+        # save for adaptive tolerance
+        self.L2_uw = self.gd.integrate(self.dn_sG**2).sum()
         with self.timer("SCF iteration"):
             self.run_scf()
             wfs = self.wfs
@@ -525,7 +539,8 @@ class iKS:
         with self.timer("Adjoint equations"):
             for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
                 with self.timer("OECO"):
-                    p0_nG = self.calculate_p_expansion(dd, dd.vdiff_nn, eta, dfde_n)
+                    p0_nG = self.calculate_p_expansion(
+                        dd, dd.vdiff_nn, eta, dfde_n)
 
                 with self.timer("Minres"):
                     ls = iKSLinearSolver(
@@ -943,7 +958,8 @@ class iKS:
         self.L1_iter.append(error)
         if error <= L1tol:
             self.converged_iterations += 1
-            self.fmt.log(f"iKS converged iterations: {self.converged_iterations}")
+            self.fmt.log(
+                f"iKS converged iterations: {self.converged_iterations}")
         else:
             self.converged_iterations = 0
 
@@ -1068,7 +1084,8 @@ class iKS:
         return Jmax_x
 
     def todict(self) -> dict[str, Any]:
-        linear_solver = {"name": self.linear_solver, **self.ls_kwargs, "adaptive": self.ls_adaptive}
+        linear_solver = {"name": self.linear_solver, **
+                         self.ls_kwargs, "adaptive": self.ls_adaptive}
         return dict(
             weights=self.weights,
             atomic_weights=self.atomic_weights,
