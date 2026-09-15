@@ -310,7 +310,7 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return ibz, ncomponents, wfs_u, fermi_levels
 
-    def _get_occs_or_eigs(self, what: str, kpt: int, spin: int):
+    def _get_eigs_or_occs(self, what: str, kpt: int, spin: int):
         attr = '_occ_n' if what == 'occs' else 'eig_n'
         if self.domain_comm.rank == 0 and self.band_comm.rank == 0:
             rank = self.rank_ks[kpt, spin]
@@ -343,7 +343,7 @@ class IBZWaveFunctions(Generic[WFT]):
         x_skn = np.empty((self.nspins, nkpts, mynbands))
         for k in range(nkpts):
             for s in range(self.nspins):
-                x_n = self._get_occs_or_eigs(what, k, s)
+                x_n = self._get_eigs_or_occs(what, k, s)
                 if self.comm.rank == 0:
                     x_skn[s, k, :] = x_n
         if broadcast:
@@ -373,7 +373,8 @@ class IBZWaveFunctions(Generic[WFT]):
         ... k-points, symmetry information, projections and possibly
         also the wave functions.
         """
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
         if not self.collinear:
             eig_skn = eig_skn[0]
             occ_skn = occ_skn[0]
@@ -475,7 +476,8 @@ class IBZWaveFunctions(Generic[WFT]):
 
         ibz = self.ibz
 
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
 
         if self.comm.rank != 0:
             return
