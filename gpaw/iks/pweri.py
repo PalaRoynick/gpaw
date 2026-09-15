@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 from pathlib import Path
+from warnings import warn
 
 import numpy as np
 from ase.units import Ha
@@ -41,7 +42,8 @@ class CoulombPotential:
 
     def __init__(self, finegd: GridDescriptor, physical_pbc: np.ndarray):
         if np.any(physical_pbc):
-            raise ValueError('Periodic ERIs need an explicit reciprocal-space G=0 convention.')
+            raise ValueError(
+                'Periodic ERIs need an explicit reciprocal-space G=0 convention.')
         self.finegd = finegd
         self.poisson = PoissonSolver('fast', use_charge_center=True,
                                      use_charged_periodic_corrections=True)
@@ -105,7 +107,14 @@ class PWERI:
         xc = self.hamiltonian.xc
         fraction = getattr(xc, 'exx_fraction', None)
         if fraction is None or fraction != 1.0:
-            raise ValueError('Use xc="EXX:backend=pw".')
+            # raise ValueError('Use xc="EXX:backend=pw".')
+            warn(
+                "The double counting correction is only implemented for EXX."
+                "The hopping (h1) matrix is going to include xc terms."
+            )
+            self.sub_exx = False
+        else:
+            self.sub_exx = True
 
     def get_realspace_psit(self, kpt) -> np.ndarray:
         psit_nG = kpt.psit_nG
@@ -245,7 +254,7 @@ class PWERI:
         occupations = np.asarray([kpt.f_n for kpt in self.kpt_s],
                                  dtype=float)
         h1 = remove_reference_mean_field(
-            fock, eri, occupations, self.degeneracy)
+            fock, eri, occupations, self.degeneracy, self.sub_exx)
         return h1, eri, fock
 
 
@@ -267,7 +276,7 @@ def reference_fock(
 
 
 def remove_reference_mean_field(
-    fock: np.ndarray, eri: np.ndarray, occupations: np.ndarray, degeneracy: int
+    fock: np.ndarray, eri: np.ndarray, occupations: np.ndarray, degeneracy: int, sub_exx=True,
 ) -> np.ndarray:
     """Return h = F - J[D] + K[D] for each spin channel."""
     h1 = np.empty_like(fock)
@@ -276,9 +285,12 @@ def remove_reference_mean_field(
             np.einsum('i,pqii->pq', occupations[spin2],
                       eri[spin1, spin2], optimize=True)
             for spin2 in range(len(occupations)))
-        exchange = np.einsum(
-            'i,piiq->pq', occupations[spin1], eri[spin1, spin1],
-            optimize=True) / degeneracy
+        if sub_exx:
+            exchange = np.einsum(
+                'i,piiq->pq', occupations[spin1], eri[spin1, spin1],
+                optimize=True) / degeneracy
+        else:
+            exchange = 0.0
         h1[spin1] = fock[spin1] - coulomb + exchange
     return 0.5 * (h1 + h1.transpose(0, 2, 1))
 
