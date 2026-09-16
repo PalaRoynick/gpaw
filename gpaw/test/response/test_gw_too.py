@@ -11,7 +11,6 @@ def test_do_GW_too(in_tmp_dir, gpw_files, scalapack, mpi):
     gw0 = G0W0(gpw_files['c_pw'], 'gw0',
                bands=(3, 5),
                nblocks=1,
-               ecut_extrapolation=True,
                ecut=40,
                world=mpi.comm)
     results0 = gw0.calculate()
@@ -19,7 +18,6 @@ def test_do_GW_too(in_tmp_dir, gpw_files, scalapack, mpi):
               bands=(3, 5),
               nblocks=1,
               xc='rALDA',
-              ecut_extrapolation=True,
               ecut=40,
               fxc_mode='GWP',
               do_GW_too=True,

@@ -22,7 +22,8 @@ def test_symm_mgga(gpu):
     for symmetry in [True, False]:
         si.calc = GPAW(mode={'name': 'pw', 'ecut': 200},
                        kpts={'size': (k, k, k), 'gamma': True},
-                       h=0.2,
+                       convergence={'density': 1e-2,
+                                    'eigenstates': 1e-3},
                        symmetry={} if symmetry else 'off',
                        parallel={'gpu': True} if gpu else None,
                        xc=xc)
