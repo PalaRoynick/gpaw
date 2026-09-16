@@ -134,7 +134,7 @@ class DN(ExtensionInput):
                 return {f"{self.name.upper()} (xc={self.xc})": _self.E}
 
             def get_energy(self) -> float:
-                """Returns the energy contribution from D3 in eV"""
+                """Returns the energy contribution from D3/D4 in eV"""
                 return self.E * Ha
 
             def force_contribution(self, nt_r, vHt_r):
