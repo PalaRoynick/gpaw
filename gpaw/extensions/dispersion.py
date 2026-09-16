@@ -54,6 +54,12 @@ class DNExtension(Extension):
         self.world.broadcast(self.stress_vv, 0)
 
     def calculate_single_core_d3(self):
+        # Since DFTD3 is filesystem based, and GPAW has no such requirements
+        # we need to be absolutely sure that there are no race-conditions
+        # in files. label cannot be used, because dftd3 executable still
+        # writes gradients to fixed files, thus a unique folder needs to be
+        # created.
+
         """Single core method to calculate D3 forces and stresses"""
         from ase.calculators.dftd3 import PureDFTD3
 
@@ -66,7 +72,7 @@ class DNExtension(Extension):
         # The only way out, is to chdir to a temporary folder here.
         os.chdir(directory)
         self.log(f"Evaluating D3 corrections at"
-            f"temporary folder {directory}")
+                 f"temporary folder {directory}")
         self.atoms.calc = PureDFTD3(
             xc=self.xc, directory=".", comm=serial_comm, **self.kwargs
         )
@@ -129,6 +135,7 @@ class DNExtension(Extension):
         self.atoms.set_scaled_positions(relpos_ac)
         self._calculate(self.atoms)
 
+
 class DN(ExtensionInput):
     def __init__(self, *, xc, **kwargs):
         if 'name' in kwargs and self.name == "d4":
@@ -140,23 +147,12 @@ class DN(ExtensionInput):
         return {"xc": self.xc, **self.kwargs}
 
     def build(self, builder: DFTComponentsBuilder):
-        """
-        if self.name == "d3":
-            from ase.calculators.dftd3 import PureDFTD3
-        elif self.name == "d4":
-            from dftd4.ase import DFTD4
-        else:
+        if self.name not in ("d3", "d4"):
             raise TypeError("Dispersion must be d3 or d4")
-        """
 
         atoms = builder.atoms.copy()
         world = builder.communicators["w"]
         log = builder.log
 
-        # Since DFTD3 is filesystem based, and GPAW has no such requirements
-        # we need to be absolutely sure that there are no race-conditions
-        # in files. label cannot be used, because dftd3 executable still
-        # writes gradients to fixed files, thus a unique folder needs to be
-        # created.
-
-        return DNExtension(self.name, atoms, self.xc, world, log, **self.kwargs)
+        return DNExtension(self.name, atoms, self.xc,
+                           world, log, **self.kwargs)
