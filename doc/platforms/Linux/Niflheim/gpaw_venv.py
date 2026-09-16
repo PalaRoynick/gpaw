@@ -22,7 +22,6 @@ nifllogin = [
     'slid2',  # broadwell (xeon24el8)
     'slid',  # broadwell (xeon24el9)
     'vid',  # skylake (xeon40el9, sm3090el9)
-    'svol',  # skylake (xeon40el8)
     'hrid',  # icelake (xeon56el9, a100el9)
     'surt',  # icelake (xeon56, a100)
     'sara',  # saphirerapids (xeon32el9, h200el9)
