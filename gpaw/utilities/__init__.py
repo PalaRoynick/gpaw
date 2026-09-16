@@ -215,14 +215,15 @@ def pack_hermitian(M2, tolerance=1e-10, xp=np, offdiag_scale=None):
     n = M2.shape[-1]
     a, b = xp.where(xp.tri(n, dtype=bool).T)
     out = M2[..., a, b]
-    out += M2[..., b, a].conj()
-    out *= 0.5
-    if offdiag_scale is not None:
-        out[..., a != b] *= offdiag_scale
 
     if debug:
+        out += M2[..., b, a].conj()
+        out *= 0.5
         assert xp.allclose(out, M2[..., a, b],
                            atol=tolerance), 'Pack not symmetric'
+
+    if offdiag_scale is not None:
+        out[..., a != b] *= offdiag_scale
     return out
 
 

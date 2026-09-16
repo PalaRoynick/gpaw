@@ -217,6 +217,7 @@ def calculate_non_local_potential1(setup: Setup,
                                                         dict[str, float]]:
     ncomponents = len(D_sii)
     ndensities = 2 if ncomponents == 2 else 1
+    breakpoint()
     D_sp = pack_density(D_sii.real, xp=xp)
     D_p = D_sp[:ndensities].sum(0)
 

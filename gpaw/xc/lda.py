@@ -28,22 +28,21 @@ class LDARadialExpansion:
     def __init__(self, rcalc, collinear=True):
         self.rcalc = rcalc
         self.collinear = collinear
+        self.rgd = None
 
-    def __call__(self, rgd, D_sLq, n_qg, nc0_sg):
-        xp = np if cupy_is_fake else cp
-        D_sLq = xp.array(D_sLq)
-        n_qg = xp.array(n_qg)
+    def __call__(self, rgd, D_sLq, n_qg, nc0_sg, xp=np):
         n_sLg = D_sLq @ n_qg
-        w_n = xp.array(weight_n)
-        dv_g = xp.array(rgd.dv_g)
+        dv_g = rgd.dv_g
         if self.collinear:
-            n_sLg[:, 0] += xp.array(nc0_sg)
+            n_sLg[:, 0] += nc0_sg
         else:
-            n_sLg[0, 0] += 4 * xp.array(nc0_sg[0])
+            n_sLg[0, 0] += 4 * nc0_sg[0]
 
         Lmax = n_sLg.shape[1]
 
         Y2_nL = xp.array(Y_nL[:, :Lmax])
+        w_n = xp.array(weight_n)
+
         n_sng = Y2_nL[None] @ n_sLg
         e_ng = xp.zeros_like(n_sng, shape=n_sng.shape[1:])
         dedn_sng = xp.zeros_like(n_sng)
@@ -54,27 +53,51 @@ class LDARadialExpansion:
         dEdD_snq = (dv_g * dedn_sng @ n_qg.T[None])
         dEdD_sqL = xp.einsum('snq, nL -> sqL', dEdD_snq,
                              Y2_nL[:, :Lmax] * w_n[:, None])
-        E = rgd.integrate(weight_n @ e_ng.get())
+        E = rgd.integrate(w_n @ e_ng)
 
-        return E, dEdD_sqL.get()
+        return E, dEdD_sqL
+
+
+class fake_rgd:
+    def __init__(self, rgd, xp):
+        self._rgd = rgd
+        self.xp = xp
+        dv_g = xp.array(rgd.dv_g)
+
+    def integrate(self, x_g):
+        return self.xp.sum(x_g * self._rgd.dv_g)
 
 
 @trace
 def calculate_paw_correction(expansion,
                              setup, D_sp, dEdD_sp=None,
-                             addcoredensity=True, a=None):
+                             addcoredensity=True, a=None,
+                             xp=np):
     xcc = setup.xc_correction
     if xcc is None:
         return 0.0
 
-    rgd = xcc.rgd
+    if xp is not np:
+        if hasattr(xcc, 'gpu_rgd'):
+            rgd = xcc.gpu_rgd
+        else:
+            xcc.gpu_rgd = fake_rgd(xcc.rgd, xp)
+            rgd = xcc.gpu_rgd
+    else:
+        rgd = xcc.rgd
+
     nspins = len(D_sp)
+    nc_g = xp.array(xcc.nc_g)
+    nct_g = xp.array(xcc.nct_g)
+    n_qg = xp.array(xcc.n_qg)
+    nt_qg = xp.array(xcc.nt_qg)
+    B_pqL = xp.array(xcc.B_pqL)
 
     if addcoredensity:
         nc0_sg = rgd.empty(nspins)
         nct0_sg = rgd.empty(nspins)
-        nc0_sg[:] = sqrt(4 * pi) / nspins * xcc.nc_g
-        nct0_sg[:] = sqrt(4 * pi) / nspins * xcc.nct_g
+        nc0_sg[:] = sqrt(4 * pi) / nspins * nc_g
+        nct0_sg[:] = sqrt(4 * pi) / nspins * nct_g
         if xcc.nc_corehole_g is not None and nspins == 2:
             nc0_sg[0] -= 0.5 * sqrt(4 * pi) * xcc.nc_corehole_g
             nc0_sg[1] += 0.5 * sqrt(4 * pi) * xcc.nc_corehole_g
@@ -82,10 +105,10 @@ def calculate_paw_correction(expansion,
         nc0_sg = 0
         nct0_sg = 0
 
-    D_sLq = D_sp @ xcc.B_pqL.transpose([2, 0, 1])
+    D_sLq = xp.einsum('sp, pqL -> sLq', D_sp, B_pqL)
 
-    e, dEdD_sqL = expansion(rgd, D_sLq, xcc.n_qg, nc0_sg)
-    et, dEtdD_sqL = expansion(rgd, D_sLq, xcc.nt_qg, nct0_sg)
+    e, dEdD_sqL = expansion(rgd, D_sLq, n_qg, nc0_sg)
+    et, dEtdD_sqL = expansion(rgd, D_sLq, nt_qg, nct0_sg)
 
     if dEdD_sp is not None:
         dEdD_sp += np.inner((dEdD_sqL - dEtdD_sqL).reshape((nspins, -1)),
