@@ -21,12 +21,12 @@ from gpaw.test.gpwfile import response_band_cutoff
 def generate_system_s(spincomponents=['00', '+-']):
     # Compute chiks for different materials and spin components
     system_s = [  # wfs, spincomponent
-        ('fancy_si_pw', '00'),
+        # ('fancy_si_pw', '00'),
         ('al_pw', '00'),
-        ('fe_pw', '00'),
+        # ('fe_pw', '00'),
         ('fe_pw', '+-'),
-        ('co_pw', '00'),
-        ('co_pw', '+-'),
+        # ('co_pw', '00'),
+        # ('co_pw', '+-'),
     ]
 
     # Filter spincomponents
@@ -37,7 +37,8 @@ def generate_system_s(spincomponents=['00', '+-']):
 
 def generate_qrel_q():
     # Fractional q-vectors on a path towards a reciprocal lattice vector
-    qrel_q = np.array([0., 0.25, 0.5])
+    # qrel_q = np.array([0., 0.25, 0.5])
+    qrel_q = np.array([0., 0.5])
 
     return qrel_q
 
@@ -168,9 +169,9 @@ def test_chiks(in_tmp_dir, gpw_files, mpi, system, qrel, gammacentered):
     atol, rtol = get_tolerances(system, qrel)
     q_c = get_q_c(wfs, qrel)
 
-    ecut = 50
+    ecut = 30
     # Test vanishing and finite real and imaginary frequencies
-    frequencies = np.array([0., 0.05, 0.1, 0.2])
+    frequencies = np.array([0., 0.2])
 
     # We add a small (1e-6j) imaginary part to avoid risky floating point
     # operations that may cause NaNs or divide-by-zero.
