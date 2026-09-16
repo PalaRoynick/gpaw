@@ -131,7 +131,7 @@ class DN(ExtensionInput):
 
             def get_energy_contributions(_self) -> dict[str, float]:
                 """Returns the energy contributions from D3 in Hartree"""
-                return {f"D3 (xc={self.xc})": _self.E}
+                return {f"{self.name.upper()} (xc={self.xc})": _self.E}
 
             def get_energy(self) -> float:
                 """Returns the energy contribution from D3 in eV"""
