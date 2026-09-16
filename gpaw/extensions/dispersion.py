@@ -87,7 +87,8 @@ class DN(ExtensionInput):
                 # neither are absolute folders due to 80 character limit.
                 # The only way out, is to chdir to a temporary folder here.
                 os.chdir(directory)
-                log(f"Evaluating D3 corrections at temporary folder {directory}")
+                log(f"Evaluating D3 corrections at"
+                    f"temporary folder {directory}")
                 atoms.calc = PureDFTD3(
                     xc=self.xc, directory=".", comm=serial_comm, **self.kwargs
                 )
