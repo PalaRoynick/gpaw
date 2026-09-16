@@ -190,7 +190,8 @@ def make_nlodata(calc: ASECalculator | str | Path,
 
     # Get the energy and Fermi-Dirac occupations (data is only in master)
     with timer('Get energies and fermi levels'):
-        E_skn, f_skn = ibzwfs.get_all_eigs_and_occs()
+        E_skn = ibzwfs.get_all_eigs()
+        f_skn = ibzwfs.get_all_occs()
         w_sk = np.array([ibzwfs.ibz.weight_k for _ in range(gs.ndensities)])
         w_sk *= gs.bzvol * ibzwfs.spin_degeneracy
 

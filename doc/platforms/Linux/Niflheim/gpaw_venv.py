@@ -20,11 +20,14 @@ fversion = 'cpython-313'
 # Niflheim login hosts, with the oldest architecture as the first
 nifllogin = [
     'slid2',  # broadwell_el8 (xeon24el8)
-    'thul',  # skylake_el8 (xeon40el8, sm3090el8)
-    'surt',  # icelake (xeon56, a100, h200)
-    'fjorm',  # epyc9004 (epyc96)
-    'sara',  # saphirerapids (xeon32)
-    'vid']  # skylake_el9 (xeon40el9, sm3090el9)
+    'slid',  # broadwell_el9 (xeon24el9)
+    'vid',  # skylake_el9 (xeon40el9, sm3090el9)
+    'hrid',  # icelake_el9 (xeon56el9, a100el9)
+    'surt',  # icelake (xeon56, a100)
+    'sara',  # saphirerapids_el9 (xeon32el9, h200el9)
+    'fjorm',  # epyc9004_el9 (epyc96el9)
+    'svol']  # skylake_el8 (sm3090el8)
+
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
 #  fullchain: Full chain.
@@ -92,12 +95,12 @@ if [ "$CPU_ARCH" == "skylake_el9" ] && [ {fullchain} == "foss-2025b" ];\
 then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$SLURM_JOB_PARTITION" == "a100" ] \
  || [ "$SLURM_JOB_PARTITION" == "a100_week" ] \
+ || [ "$SLURM_JOB_PARTITION" == "a100el9" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090el8_768" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el9" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el9_768" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090_devel" ] \
- || [ "$SLURM_JOB_PARTITION" == "h200" ];\
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9_devel" ] \
+ || [ "$SLURM_JOB_PARTITION" == "h200el9" ];\
 then export GPAW_USE_GPUS=1;fi
 """
 

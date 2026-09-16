@@ -48,22 +48,22 @@ void IP1D(const TGPAW* a, const int n, const int m, TGPAW* GPAW_RESTRICT b, int 
 #else
 #  define K 2
 #  define IP1D Z(bmgs_interpolate1D2)
-#  include "interpolate.c"
+#  include "interpolate.cpp"
 #  undef IP1D
 #  undef K
 #  define K 4
 #  define IP1D Z(bmgs_interpolate1D4)
-#  include "interpolate.c"
+#  include "interpolate.cpp"
 #  undef IP1D
 #  undef K
 #  define K 6
 #  define IP1D Z(bmgs_interpolate1D6)
-#  include "interpolate.c"
+#  include "interpolate.cpp"
 #  undef IP1D
 #  undef K
 #  define K 8
 #  define IP1D Z(bmgs_interpolate1D8)
-#  include "interpolate.c"
+#  include "interpolate.cpp"
 #  undef IP1D
 #  undef K
 

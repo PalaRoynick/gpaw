@@ -1,6 +1,6 @@
 import pytest
 
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def test_afm_h_chain(in_tmp_dir, gpw_files):

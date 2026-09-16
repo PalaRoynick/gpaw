@@ -17,6 +17,7 @@ df = DielectricFunction(
     calc='si.gpw',
     frequencies={'type': 'nonlinear',
                  'domega0': 0.05},  # using nonlinear frequency grid
-    rate='eta')
+    eta=0.1,
+    rate=0.1)
 # By default, a file called 'df.csv' is generated
 df.get_dielectric_function()

@@ -374,15 +374,10 @@ void pztrsm_(const char* side, const char* uplo, const char* trans, const char* 
 
 CLINKAGE_END
 
-/* Helper for making complex -> int casts work in C++ mode,
-when extracting optimal lwork */
+/* Helper for making complex -> int casts work when extracting optimal lwork */
 static inline int get_lwork(double_complex c_work)
 {
-#ifdef GPAW_CPP
   return static_cast<int>(c_work.real());
-#else
-  return (int)(c_work);
-#endif
 }
 
 PyObject* pblas_tran(PyObject *self, PyObject *args)
