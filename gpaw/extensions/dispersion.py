@@ -48,6 +48,8 @@ class DNExtension(Extension):
                         os.chdir(cwd)
                 elif self.name == "d4":
                     self.calculate_single_core_d4()
+                else:
+                    raise ValueError(self.name)
 
         self.E = broadcast_float(self.E, self.world)
         self.world.broadcast(self.F_av, 0)
