@@ -13,7 +13,8 @@ from gpaw.mixer import Mixer as OldMixer
                           OldMixer(),
                           {'backend': 'pulay', 'beta': 0.5},
                           {'beta': 0.5},
-                          {'name': 'multi'}])
+                          {'name': 'multi',
+                           'mixer_a': {'beta': 0.5}}])
 @pytest.mark.parametrize('magmoms',
                          [None,
                           [1, 1],
