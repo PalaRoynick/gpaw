@@ -577,7 +577,7 @@ class Potentiostat:
 
     The potentiostat holds every setting of the potential control and the
     state of the equilibration.  A front end such as
-    :class:`gpaw.extensions.electrocatalysis.sjm.SJM` hands the settings
+    :class:`gpaw.extensions.electrocatalysis.SJM` hands the settings
     over, with defaults of its own, and reads them back from here.
 
     Parameters

@@ -187,7 +187,7 @@ def test_region_follows_atoms(fix_bottom, in_tmp_dir):
     from ase import Atoms
 
     from gpaw import GPAW, FermiDirac
-    from gpaw.extensions.electrocatalysis.sjm import SJM
+    from gpaw.extensions.electrocatalysis import SJM
     from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
     a = 1.4

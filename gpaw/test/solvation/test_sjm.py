@@ -3,7 +3,7 @@ from ase.build import fcc111
 
 from gpaw import GPAW, FermiDirac
 from gpaw.mpi import world
-from gpaw.extensions.electrocatalysis.sjm import SJM
+from gpaw.extensions.electrocatalysis import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
 from gpaw.solvation.sjm import SJM as OldSJM

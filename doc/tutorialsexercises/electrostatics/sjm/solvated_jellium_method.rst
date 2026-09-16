@@ -12,13 +12,13 @@ A simple Au(111) slab
 As a simple example, we'll examine the calculation of a Au slab with a water overlayer calculated at a potential of -0.2 V versus SHE.
 To speed the computation, we'll use a tiny slab with a single water molecule over the top.
 
-To use the solvated jellium approach, we use the regular GPAW calculator and attach a :class:`~gpaw.extensions.electrocatalysis.sjm.SJM` object to it through the :literal:`extensions` keyword.
+To use the solvated jellium approach, we use the regular GPAW calculator and attach a :class:`~gpaw.extensions.electrocatalysis.SJM` object to it through the :literal:`extensions` keyword.
 All of the SJM-specific parameters are keyword arguments of that object.
 In our example script, we set only one of them---the target potential---and keep the rest at their default values.
 Keep in mind that the *absolute* potential has to be provided, where the value of the SHE potential on an absolute scale is approximately 4.4 V.
 
 Since SJM utilizes an implicit solvent to screen the field, we will need to specify some solvent parameters as well.
-SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and the :literal:`cavity`, :literal:`dielectric` and :literal:`interactions` parameters are given to the :class:`~gpaw.extensions.electrocatalysis.sjm.SJM` object alongside the SJM parameters.
+SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and the :literal:`cavity`, :literal:`dielectric` and :literal:`interactions` parameters are given to the :class:`~gpaw.extensions.electrocatalysis.SJM` object alongside the SJM parameters.
 Reasonable values to simulate room-temperature water are used in the script below.
 In practice, since the purpose of the implicit solvent is just to screen the field, the net results---such as binding energies and barrier heights---will be relatively insensitive to the choice of implicit solvent parameters, so long as they are kept consistent.
 Try running the script below to find the number of electrons necessary to equilibrate the work function to 4.2 eV:

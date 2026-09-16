@@ -1,4 +1,4 @@
-.. module:: gpaw.extensions.electrocatalysis.sjm
+.. module:: gpaw.extensions.electrocatalysis
 .. _sjm:
 
 ======================================================
@@ -8,7 +8,7 @@ Solvated Jellium (constant-potential electrochemistry)
 Overview
 ========
 
-The Solvated Jellium method (:class:`~gpaw.extensions.electrocatalysis.sjm.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
+The Solvated Jellium method (:class:`~gpaw.extensions.electrocatalysis.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
 A full description of the approach can be found in [Kastlunger2018]_.
 The method allows you to control the simulated electrode potential (manifested as the topside work function) by varying the number of electrons in the simulation; calculations can be run in either constant-charge or constant-potential mode.
 SJM is attached to a regular GPAW calculator as an extension---:literal:`GPAW(..., extensions=[SJM(...)])`---and the calculator is then used just like any other; it returns energy and forces, but can do so at a fixed potential.
@@ -191,12 +191,12 @@ The :literal:`autoinner` part automatically finds the inner region, in this case
 Usage
 =====
 
-The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrocatalysis.sjm.SJM`
+The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrocatalysis.SJM`
 extension, given together with the implicit-solvent parameters
 (:literal:`cavity`, :literal:`dielectric` and :literal:`interactions`)::
 
     from gpaw import GPAW
-    from gpaw.extensions.electrocatalysis.sjm import SJM
+    from gpaw.extensions.electrocatalysis import SJM
 
     calc = GPAW(mode='fd', ...,
                 extensions=[SJM(target_potential=4.4,  # absolute scale, V
@@ -287,7 +287,7 @@ References
 Class documentation
 ===================
 
-.. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJM
+.. autoclass:: gpaw.extensions.electrocatalysis.SJM
 
 .. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJMExtension
    :members: change, write_sjm_traces, get_electrode_potential

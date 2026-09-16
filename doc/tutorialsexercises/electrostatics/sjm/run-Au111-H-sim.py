@@ -5,7 +5,7 @@ from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
 from gpaw import GPAW
-from gpaw.extensions.electrocatalysis.sjm import SJM
+from gpaw.extensions.electrocatalysis import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,

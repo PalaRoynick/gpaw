@@ -41,7 +41,7 @@ def SJM(*args, legacy_gpaw=True, **kwargs):
     if legacy_gpaw:
         return OldSJM(*args, **kwargs)
     from gpaw import GPAW
-    from gpaw.extensions.electrocatalysis.sjm import SJM
+    from gpaw.extensions.electrocatalysis import SJM
     environment = SJM(cavity=kwargs.pop('cavity'),
                       dielectric=kwargs.pop('dielectric'),
                       interactions=kwargs.pop('interactions', None),
