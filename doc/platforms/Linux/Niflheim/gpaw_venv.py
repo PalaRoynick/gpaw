@@ -23,13 +23,11 @@ nifllogin = [
     'slid',  # broadwell (xeon24el9)
     'vid',  # skylake (xeon40el9, sm3090el9)
     'svol',  # skylake (xeon40el8)
-    'hrid',  # icelake (xeon56el9)
+    'hrid',  # icelake (xeon56el9, a100el9)
     'surt',  # icelake (xeon56, a100)
     'sara',  # saphirerapids (xeon32el9, h200el9)
     'fjorm',  # epyc9004 (epyc96el9)
-    'svol', # skylake (xeon40el8)
-    'thul',  # (sm3090el8)
-    'hrid']  # (a100el9)
+    'thul']  # (sm3090el8)
 
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
@@ -99,15 +97,11 @@ then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$SLURM_JOB_PARTITION" == "a100" ] \
  || [ "$SLURM_JOB_PARTITION" == "a100_week" ] \
  || [ "$SLURM_JOB_PARTITION" == "a100el9" ] \
- || [ "$SLURM_JOB_PARTITION" == "a100el9_week" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090el8_768" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el9" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el9_768" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090_devel" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el9_devel" ] \
- || [ "$SLURM_JOB_PARTITION" == "h200el9" ] \
- || [ "$SLURM_JOB_PARTITION" == "h200" ];\
+ || [ "$SLURM_JOB_PARTITION" == "h200el9" ];\
 then export GPAW_USE_GPUS=1;fi
 """
 
