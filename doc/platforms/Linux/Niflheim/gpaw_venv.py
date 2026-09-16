@@ -22,7 +22,7 @@ nifllogin = [
     'slid2',  # broadwell_el8 (xeon24el8)
     'thul',  # skylake_el8 (xeon40el8, sm3090el8)
     'surt',  # icelake (xeon56, a100, h200)
-    'fjorm',  # epyc9004 (epyc96)
+    'fjorm',  # epyc9004 (epyc96el9)
     'sara',  # saphirerapids (xeon32)
     'vid']  # skylake_el9 (xeon40el9, sm3090el9)
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
