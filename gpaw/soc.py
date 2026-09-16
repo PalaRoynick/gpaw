@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import defaultdict
+
 import numpy as np
 from ase.units import Ha
 
 from gpaw.dft import DFT
+from gpaw.mpi import MPIComm, Parallelization, receive, send, serial_comm
 from gpaw.spinorbit import projected_soc, soc
-from gpaw.mpi import receive, send, MPIComm, serial_comm, Parallelization
 
 
 def calculate_soc(mykpts,
@@ -49,15 +51,44 @@ def calculate_soc(dft: DFT,
     nspins = dft.ibzwfs.nspins
     comm = dft.comm
     p = Parallelization(comm.size, nbzkpts)
-    p.set(domain=1)
+    p.set(band=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
-    band_comm = comms['b']
+    domain_comm = comms['b']
 
     mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
     K1 = min(kpt_comm.rank * mynk, nbzkpts)
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
-    mykpts = []
+
+    who = defaultdict(set)
+    for K in range(nbzkpts):
+        k = ibz.bz2ibz_K[K]
+        for spin in range(nspins):
+            from_rank = dft.ibzwfs.rank_ks[k, spin]
+            to_rank = K // mynk * domain_comm.size
+            who[from_rank].add((to_rank, k, spin))
+
+    P_ksani = {}
+    requests = []
+    for wfs in dft.ibzwfs:
+        P_ani = wfs.P_ani.gathergather()
+        if P_ani is not None:
+            for r, k, spin in who[comm.rank]:
+                if wfs.k == k and wfs.spin == spin:
+                    if r == comm.rank:
+                        P_ksani[(k, spin)] = P_ani
+                    else:
+                        req = comm.send(P_ani.data, r, block=False)
+                        requests.append(req)
+
+    for rank, what in who.items():
+        for r, k, spin in what:
+            if r == comm.rank:
+                P_ani = ...
+                comm.receive(P_ani.data, r)
+                P_ksani[(k, spin)] = P_ani
+    comm.waitall(requests)
+
     for K in range(K1, K2):
         k = ibz.bz2ibz_K[K]
         for s in range(nspins):
