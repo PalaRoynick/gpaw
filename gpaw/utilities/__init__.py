@@ -234,7 +234,7 @@ def unpack_hermitian(M, xp=np):
     out = xp.empty(M.shape[:-1] + (n, n), M.dtype)
     a, b = xp.where(xp.tri(n, dtype=bool).T)
     out[..., a, b] = M
-    out[..., a, b] = M.conj()
+    out[..., b, a] = M.conj()
     return out
 
 

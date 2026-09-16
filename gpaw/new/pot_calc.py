@@ -175,6 +175,7 @@ def calculate_non_local_potential(setups,
                                   ) -> tuple[AtomArrays,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
+    xp = density.D_asii.layout.xp
     D_asii = density.D_asii # .to_xp(np)
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
     V_aL = V_aL # .to_xp(np)
@@ -185,7 +186,7 @@ def calculate_non_local_potential(setups,
             V_L = V_aL[a]
             setup = setups[a]
             dH_sii, corrections = calculate_non_local_potential1(
-                setup, xc, D_sii, V_L, soc, extensions, a, D_asii.layout.xp)
+                setup, xc, D_sii, V_L, soc, extensions, a, xp)
             dH_asii[a][:] = dH_sii
             for key, e in corrections.items():
                 energy_corrections[key] += e
@@ -198,12 +199,11 @@ def calculate_non_local_potential(setups,
     # Sum over domain:
     names = ['kinetic_correction', 'coulomb', 'zero', 'xc', 'external',
              'spinorbit']
-    energies = np.array([energy_corrections[name] for name in names])
+    energies = np.array([float(energy_corrections[name]) for name in names])
     density.D_asii.layout.atomdist.comm.sum(energies)
     kpt_band_comm.sum(energies)
 
-    return (dH_asii.to_xp(density.D_asii.layout.xp),
-            dict(zips(names, energies)))
+    return (dH_asii, dict(zips(names, energies)))
 
 
 def calculate_non_local_potential1(setup: Setup,
@@ -217,7 +217,6 @@ def calculate_non_local_potential1(setup: Setup,
                                                         dict[str, float]]:
     ncomponents = len(D_sii)
     ndensities = 2 if ncomponents == 2 else 1
-    breakpoint()
     D_sp = pack_density(D_sii.real, xp=xp)
     D_p = D_sp[:ndensities].sum(0)
 
@@ -225,13 +224,13 @@ def calculate_non_local_potential1(setup: Setup,
     M_p = xp.array(setup.M_p)
     MB_p = xp.array(setup.MB_p)
     M_pp = xp.array(setup.M_pp)
-    Delta_p = xp.array(setup.Delta_pL @ V_L)
+    Delta_pL = xp.array(setup.Delta_pL)
 
     dH_p = xp.array(K_p + M_p +
                     MB_p + 2.0 * M_pp @ D_p +
-                    Delta_p)
+                    Delta_pL @ V_L)
     e_kinetic = K_p @ D_p + setup.Kc
-    e_zero = setup.MB + setup.MB_p @ D_p
+    e_zero = setup.MB + MB_p @ D_p
     e_coulomb = setup.M + D_p @ (M_p + M_pp @ D_p)
 
     dH_sp = xp.zeros_like(D_sp, dtype=float if ncomponents < 4 else complex)
@@ -243,7 +242,7 @@ def calculate_non_local_potential1(setup: Setup,
         dH_sp[1:4] = pack_hermitian(dHsoc_sii, xp=xp)
 
     dH_sp[:ndensities] = dH_p
-    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index)
+    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index, xp=xp)
 
     dH_sii = unpack_hermitian(dH_sp, xp=xp)
 

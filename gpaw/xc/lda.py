@@ -62,11 +62,18 @@ class fake_rgd:
     def __init__(self, rgd, xp):
         self._rgd = rgd
         self.xp = xp
-        dv_g = xp.array(rgd.dv_g)
+        self.dv_g = xp.array(rgd.dv_g)
 
     def integrate(self, x_g):
-        return self.xp.sum(x_g * self._rgd.dv_g)
+        return self.xp.sum(x_g * self.dv_g)
 
+    def empty(self, *args, shape=None, **kwargs):
+        if shape is None:
+            shape = ()
+        elif isinstance(shape, int):
+            shape = (shape,)
+
+        return self.xp.zeros(shape=shape + (len(self.dv_g), ), **kwargs)
 
 @trace
 def calculate_paw_correction(expansion,
@@ -107,12 +114,12 @@ def calculate_paw_correction(expansion,
 
     D_sLq = xp.einsum('sp, pqL -> sLq', D_sp, B_pqL)
 
-    e, dEdD_sqL = expansion(rgd, D_sLq, n_qg, nc0_sg)
-    et, dEtdD_sqL = expansion(rgd, D_sLq, nt_qg, nct0_sg)
+    e, dEdD_sqL = expansion(rgd, D_sLq, n_qg, nc0_sg, xp=xp)
+    et, dEtdD_sqL = expansion(rgd, D_sLq, nt_qg, nct0_sg, xp=xp)
 
     if dEdD_sp is not None:
-        dEdD_sp += np.inner((dEdD_sqL - dEtdD_sqL).reshape((nspins, -1)),
-                            xcc.B_pqL.reshape((len(xcc.B_pqL), -1)))
+        dEdD_sp += xp.inner((dEdD_sqL - dEtdD_sqL).reshape((nspins, -1)),
+                            B_pqL.reshape((len(B_pqL), -1)))
 
     if addcoredensity:
         return e - et - xcc.e_xc0
@@ -139,14 +146,14 @@ class LDA(XCFunctional):
         self.kernel.calculate(e_g, n_sg, v_sg)
 
     def calculate_paw_correction(self, setup, D_sp, dEdD_sp=None,
-                                 addcoredensity=True, a=None):
+                                 addcoredensity=True, a=None, xp=np):
         from gpaw.xc.noncollinear import NonCollinearLDAKernel
         collinear = not isinstance(self.kernel, NonCollinearLDAKernel)
         rcalc = LDARadialCalculator(self.kernel)
         expansion = LDARadialExpansion(rcalc, collinear)
         return calculate_paw_correction(expansion,
                                         setup, D_sp, dEdD_sp,
-                                        addcoredensity, a)
+                                        addcoredensity, a, xp=xp)
 
     def calculate_radial(self, rgd, n_sLg, Y_L):
         rcalc = LDARadialCalculator(self.kernel)
