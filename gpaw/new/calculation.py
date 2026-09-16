@@ -615,7 +615,7 @@ class DFT:
         pot_calc = builder.create_potential_calculator()
         xcfunc_n = pot_calc.xc
         scf_loop.update_density_and_potential = \
-                self.scf_loop.update_density_and_potential
+            self.scf_loop.update_density_and_potential
 
         # checks compatibility
         if 'xc' in kwargs:
