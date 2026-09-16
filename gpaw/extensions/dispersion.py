@@ -139,6 +139,8 @@ class DNExtension(Extension):
 
 
 class DN(ExtensionInput):
+    name: str  # To pass the static type checker
+
     def __init__(self, *, xc, **kwargs):
         if 'name' in kwargs and self.name == "d4":
             raise TypeError('D4 does not accept reserved keyword name=...')
