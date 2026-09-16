@@ -31,7 +31,7 @@ def bandstructure(gs_calc, bp):
     """Calculate HSE06 bandstructure."""
     vacuum_level = gs_calc.dft.vacuum_level()
     kpts = band_structure(gs_calc.dft, bp)
-    hse_skn, _ = kpts.get_all_eigs_and_occs()
+    hse_skn = kpts.get_all_eigs()
     return hse_skn[0] * Ha - vacuum_level
 
 

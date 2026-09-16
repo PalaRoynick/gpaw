@@ -10,10 +10,23 @@ Git master branch
 
 :git:`master <>`.
 
+* GPAW compiled extension now requires a C++17 compliant compiler. Support for
+  C99 compilation was dropped in the previous release.
+
+    * If you encounter issues during compilation or linking or while loading
+      the ``_gpaw`` extension, please ensure your ``siteconfig.py`` is
+      configured to use a C++ compiler instead of a C compiler. Eg. ``mpic++``
+      instead of ``mpicc``.
+
+* GPAW GPU-extension now requires a CUDA device with compute capability 7.0 or
+  newer for Nvidia GPUs, and ROCm version 5.0 or newer for AMD GPUs.
+
 * The default value for density convergence has been changed from
   ``1.0e-4`` to ``1.0e-6`` (see :ref:`manual_convergence`).
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
+
+* Improved MGGA initialization (see :mr:`3451`).
 
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.

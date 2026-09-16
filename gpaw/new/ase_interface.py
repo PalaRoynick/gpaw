@@ -353,12 +353,12 @@ class ASECalculator:
         return list(compare_atoms(self.atoms, atoms))
 
     def eigenvalues(self):
-        eig_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[0]
+        eig_skn = self.dft.ibzwfs.get_all_eigs()
         return broadcast(eig_skn * Ha if self.comm.rank == 0 else None,
                          comm=self.comm)
 
     def occupations(self):
-        occ_skn = self.dft.ibzwfs.get_all_eigs_and_occs()[1]
+        occ_skn = self.dft.ibzwfs.get_all_occs()
         return broadcast(occ_skn if self.comm.rank == 0 else None,
                          comm=self.comm)
 
@@ -510,7 +510,7 @@ class ASECalculator:
         return None if n_sr is None else n_r.data
 
     def get_eigenvalues(self, kpt=0, spin=0, broadcast=True):
-        eig_n = self.dft.ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[0] * Ha
+        eig_n = self.dft.ibzwfs._get_eigs_or_occs('eigs', kpt, spin) * Ha
         assert eig_n.dtype == np.float64
         if broadcast:
             if self.comm.rank != 0:
@@ -521,7 +521,7 @@ class ASECalculator:
     def get_occupation_numbers(self, kpt=0, spin=0, broadcast=True,
                                raw=False):
         ibzwfs = self.dft.ibzwfs
-        occ_n = ibzwfs.get_eigs_and_occs(kpt=kpt, spin=spin)[1]
+        occ_n = ibzwfs._get_eigs_or_occs('occs', kpt, spin)
         if not raw:
             weight = ibzwfs.ibz.weight_k[kpt] * ibzwfs.spin_degeneracy
             occ_n *= weight
