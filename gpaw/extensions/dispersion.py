@@ -130,7 +130,7 @@ class DN(ExtensionInput):
                 atoms.calc = None
 
             def get_energy_contributions(_self) -> dict[str, float]:
-                """Returns the energy contributions from D3 in Hartree"""
+                """Returns the energy contributions from D3/D4 in Hartree"""
                 return {f"{self.name.upper()} (xc={self.xc})": _self.E}
 
             def get_energy(self) -> float:
