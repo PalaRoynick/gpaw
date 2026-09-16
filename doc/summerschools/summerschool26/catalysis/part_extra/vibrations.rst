@@ -1,3 +1,5 @@
+.. _catalysis_extra:
+
 Extra exercise - Vibrational energy
 ===================================
 
@@ -13,6 +15,7 @@ finite displacement method. For further reading, see for example the following s
 [1]: :doi:`Stoffel et al, Angewandte Chemie Int. Ed., 49, 5242-5266 (2010) <10.1002/anie.200906780>`
 
 [2]: :doi:`Togo and Tanaka, Scripta Materialia 108, 1-5 (2015) <10.1016/j.scriptamat.2015.07.021>`
+
 
 Vibrational energy of the initial and final states
 --------------------------------------------------
@@ -76,7 +79,7 @@ d) Calculate how the vibrational energy affects the overall reaction energy.
    change in reaction energy?
 
 
-e) To make sure that your NEB is converged you should also calculate the
+e) You should also calculate the
    vibrational energy of the transition state. Again, this requires tighter
    convergence than we have used in the NEB exercise. This takes a while to run
    so to save time, we provide the transition state geometry from a reasonably

@@ -14,6 +14,7 @@ from ase.utils.filecache import MultiFileJSONCache as FileCache
 
 import gpaw.mpi as mpi
 from gpaw import GPAW, debug
+from gpaw.core import PWDesc
 from gpaw.mpi import broadcast_exception
 from gpaw.old.pw.descriptor import PWMapping, count_reciprocal_vectors
 from gpaw.response import ResponseContext, ResponseGroundStateAdapter, timer
@@ -26,7 +27,6 @@ from gpaw.response.qpd import SingleQPWDescriptor
 from gpaw.response.screened_interaction import (GammaIntegrationMode,
                                                 initialize_w_calculator)
 from gpaw.utilities.progressbar import ProgressBar
-from gpaw.core import PWDesc
 
 
 def compare_inputs(inp1, inp2, rel_tol=1e-14, abs_tol=1e-14):
@@ -825,42 +825,33 @@ class G0W0Calculator:
                 sigma = sigmas[fxc_mode]
                 Wmodel = Wdict[fxc_mode]
 
-                # m is band index of all (both unoccupied and occupied) wave
-                # functions in G
-                for m, (deps, f, n_G) in enumerate(zip(deps_m, f_m, n_mG)):
-                    # 2 * f - 1 will be used to select the branch of Hilbert
-                    # transform, see get_HW of screened_interaction.py
-                    # at FullFrequencyHWModel class.
-
-                    nc_G = n_G.conj()
-                    myn_G = n_G[blocks1d.myslice]
-
-                    if self.evaluate_sigma is not None:
+                if len(self.evaluate_sigma) > 0:
+                    # m is band index of all (both unoccupied and occupied)
+                    # wave functions in G
+                    for deps, f, n_G in zip(deps_m, f_m, n_mG):
+                        nc_G = n_G.conj()
+                        myn_G = n_G[blocks1d.myslice]
                         for w, omega in enumerate(self.evaluate_sigma):
-                            S_GG, _ = Wmodel.get_HW(deps - eps1 + omega, f)
-                            if S_GG is None:
+                            S_gG, _ = Wmodel.get_HW(deps - eps1 + omega, f)
+                            if S_gG is None:
                                 continue
-                            # print(myn_G.shape, S_GG.shape, nc_G.shape)
                             sigma.sigma_eskwn[ie, kpt1.s, k, w, nn] += \
-                                myn_G @ S_GG @ nc_G
+                                myn_G @ S_gG @ nc_G
 
-                    self.context.timer.start('Wmodel.get_HW')
-                    S_GG, dSdw_GG = Wmodel.get_HW(deps, f)
-                    self.context.timer.stop('Wmodel.get_HW')
-                    if S_GG is None:
-                        continue
+                self.context.timer.start('Wmodel.contract_HW')
+                sigma_m, dsigma_m = Wmodel.contract_HW(
+                    deps_m, f_m, n_mG, blocks1d.myslice)
+                self.context.timer.stop('Wmodel.contract_HW')
 
-                    # ie: ecut index for extrapolation
-                    # kpt1.s: spin index of *
-                    # k: k-point index of *
-                    # nn: band index of *
-                    # * wave function, where the sigma expectation value is
-                    # evaluated
-                    slot = ie, kpt1.s, k, nn
-                    self.context.timer.start('n_G @ S_GG @ n_G')
-                    sigma.sigma_eskn[slot] += (myn_G @ S_GG @ nc_G).real
-                    sigma.dsigma_eskn[slot] += (myn_G @ dSdw_GG @ nc_G).real
-                    self.context.timer.stop('n_G @ S_GG @ n_G')
+                # ie: ecut index for extrapolation
+                # kpt1.s: spin index of *
+                # k: k-point index of *
+                # nn: band index of *
+                # * wave function, where the sigma expectation value is
+                # evaluated
+                slot = ie, kpt1.s, k, nn
+                sigma.sigma_eskn[slot] += sigma_m.real.sum()
+                sigma.dsigma_eskn[slot] += dsigma_m.real.sum()
 
     def check(self, ie, i_cG, shift0_c, N_c, Q_c, pawcorr):
         # Can we delete this check? XXX

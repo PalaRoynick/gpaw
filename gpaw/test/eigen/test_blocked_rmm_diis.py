@@ -26,7 +26,8 @@ def test_eigen_blocked_rmm_diis(in_tmp_dir,
               'force_complex_dtype': force_complex_dtype},
         gpts=(n, n, n),
         nbands=4,
-        mixer={'backend': 'msr1', 'beta': 0.25})
+        mixer={'backend': 'msr1', 'beta': 0.25},
+        convergence={'density': 1e-4})
     es = {'name': 'rmm-diis',
           'niter': 1,
           'diis_steps': 2,

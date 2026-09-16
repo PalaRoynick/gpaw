@@ -28,7 +28,6 @@ import gpaw
 import gpaw.cgpaw as cgpaw
 from gpaw import GPAW_NO_C_EXTENSION
 
-
 # Set default MPI backend to 'serial' if no-one has set it yet.
 # This should happen if the environment variable was not set
 # and user is executing plain `python` (not `gpaw python`)

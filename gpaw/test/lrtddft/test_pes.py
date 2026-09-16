@@ -1,6 +1,6 @@
 import pytest
 from ase import Atom, Atoms
-from ase.parallel import parprint
+from ase.parallel import parprint as pp
 
 from gpaw.lrtddft import LrTDDFT
 from gpaw.pes.dos import DOSPES
@@ -9,7 +9,10 @@ from gpaw.poisson import FDPoissonSolver
 
 
 @pytest.mark.lrtddft
-def test_lrtddft_pes(in_tmp_dir, mpi):
+def test_lrtddft_pes(in_tmp_dir, mpi, comm):
+    def parprint(*args):
+        pp(*args, comm=comm)
+
     txt = None
     R = 0.7  # approx. experimental bond length
     a = 3.0

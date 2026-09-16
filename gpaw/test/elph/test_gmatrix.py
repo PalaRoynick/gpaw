@@ -14,8 +14,9 @@ from gpaw.elph import ElectronPhononMatrix
 def test_gmatrix(session_tmp_path, supercell_cache):
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     supercell_cache
-    elph = ElectronPhononMatrix(atoms, 'supercell', 'elph')
-    q = [[0, 0, 0], [0.5, 0.5, 0.5]]
+    elph = ElectronPhononMatrix(atoms, 'supercell', 'elph',
+                                use_mean_minimum_images=True)
+    q_qc = np.array([[0, 0, 0], [0.5, 0.5, 0.5]])
 
     # phonon = Phonons(atoms, name='elph', supercell=(2, 1, 1),
     #                  center_refcell=True)
@@ -35,7 +36,7 @@ def test_gmatrix(session_tmp_path, supercell_cache):
     atoms.calc = calc
     atoms.get_potential_energy()
 
-    g_sqklnn = elph.bloch_matrix(calc, k_qc=q,
+    g_sqklnn = elph.bloch_matrix(calc, k_qc=q_qc,
                                  savetofile=False, prefactor=False)
 
     assert g_sqklnn.shape == (1, 2, 8, 6, 2, 2)
@@ -44,8 +45,7 @@ def test_gmatrix(session_tmp_path, supercell_cache):
 
     # Li has lots of degenerate phonon modes, average/sum those
 
-    # q = 0
-    print("q0 checks")
+    print("q_qc[0] checks")
 
     # accoustic sum rule
     assert np.allclose(g_sqklnn[0, 0, :, 0:3], 0.)
@@ -62,8 +62,7 @@ def test_gmatrix(session_tmp_path, supercell_cache):
     print(g_abs)
     assert g_abs == pytest.approx(0.023668, rel=1e-4)
 
-    # q = 1
-    print("q1 checks")
+    print("q_qc[1] checks")
     g_knn = np.sum(g_sqklnn[0, 1, :, 4:6], axis=1)  # modes 5-6
     assert g_knn.shape == (8, 2, 2)
     # Hermitian, actually symmetric

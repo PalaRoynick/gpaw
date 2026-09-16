@@ -142,15 +142,15 @@ def workflow(skip: list[str] | None = None) -> list:
         tmax = '2h'
         if cores == 24:
             if est_time > 180:
-                nodename = 'xeon24el8'
+                nodename = 'xeon24el9'
             else:
-                nodename = 'xeon24el8_test'
+                nodename = 'xeon24el9_test'
                 tmax = '10m'
         elif cores == 40:
-            nodename = 'xeon40el8_clx'
+            nodename = 'xeon40el9'
             tmax = '3h'
         elif cores == 56:
-            nodename = 'xeon56'
+            nodename = 'xeon56el9'
             tmax = '7h'
 
         handle = run(function=work,
@@ -194,6 +194,7 @@ def work(name: str,
 
     atoms.calc = GPAW(
         txt=f'{name}.txt',
+        convergence={'density': 1e-4},  # keep old default for now ...
         communicator=world,
         **params)
 

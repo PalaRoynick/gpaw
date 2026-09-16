@@ -1,11 +1,10 @@
 import pytest
 from ase.build import molecule
-from ase.units import kcal, mol
+from ase.units import Ha, kcal, mol
 
 from gpaw import GPAW
 from gpaw.solvation import SolvationGPAW, get_HW14_water_kwargs
 from gpaw.utilities.adjust_cell import adjust_cell
-
 
 parameters = {
     'mode': 'fd',
@@ -57,7 +56,8 @@ def test_solvation_water_water(legacy):
         Esurfwater = H2O.calc.get_solvation_interaction_energy('surf')
         assert Ewater == pytest.approx(Eelwater + Esurfwater, abs=1e-14)
     else:
-        Esurfwater = H2O.calc.dft.solvation.interaction_energy()
+        e_ia = H2O.calc.dft.solvation.get_energy_contributions()
+        Esurfwater = Ha * sum(e_ia.values())
     assert Esurfwater == pytest.approx(0.058, abs=0.002)
 
 

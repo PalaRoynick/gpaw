@@ -13,7 +13,7 @@ from gpaw.mpi import world
 from gpaw.utilities.adjust_cell import adjust_cell
 from gpaw.utilities.folder import Folder
 
-butadiene = u"""10
+butadiene = """10
 
 C       3.649801161546418      5.442281389577507      3.863313703750026
 C       5.051651240044169      5.368220758269772      4.162165876906096

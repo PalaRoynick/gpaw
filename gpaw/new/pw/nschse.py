@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from time import time
-from typing import IO, TYPE_CHECKING, Sequence
+from typing import IO, TYPE_CHECKING
 
 import numpy as np
 from ase.units import Ha
+
 from gpaw.core import PWArray, PWDesc, UGArray
 from gpaw.core.atom_arrays import AtomArrays
 from gpaw.mpi import broadcast
@@ -180,7 +182,7 @@ class NonSelfConsistentHybridXCCalculator:
         dhyb_sin = np.array(dhyb_isn).transpose((1, 0, 2))
         deig_sin = dhyb_sin - dxc_sin
 
-        self.log('HSE06-eigenvalue shifts:')
+        self.log('Eigenvalue shifts:')
         self.log(f'  min: {deig_sin.min():.3f} eV')
         self.log(f'  ave: {deig_sin.mean():.3f} eV')
         self.log(f'  max: {deig_sin.max():.3f} eV')

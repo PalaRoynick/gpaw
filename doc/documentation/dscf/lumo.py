@@ -76,7 +76,7 @@ wf_u = [kpt.psit_nG[band_k[kpt.k]] for kpt in c_mol.wfs.kpt_u]
 
 # Lumo projector overlaps
 mol = range(len(slab))[-2:]
-p_uai = [dict([(mol[a], P_ni[band_k[kpt.k]]) for a, P_ni in kpt.P_ani.items()])
+p_uai = [{mol[a]: P_ni[band_k[kpt.k]] for a, P_ni in kpt.P_ani.items()}
          for kpt in c_mol.wfs.kpt_u]
 
 #   Slab with adsorbed molecule

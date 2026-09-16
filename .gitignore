@@ -81,3 +81,4 @@ doc/setups/[A-Z]*.rst
 !mypy.ini
 !pytest.ini
 !doc/words.txt
+!doc/summerschools/summerschool28/README.txt

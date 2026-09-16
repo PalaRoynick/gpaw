@@ -1,9 +1,8 @@
 import pytest
 from ase.build import fcc111
 
-from gpaw import FermiDirac
+from gpaw import GPAW, FermiDirac
 from gpaw.mpi import world
-from gpaw import GPAW
 from gpaw.new.sjm import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
@@ -14,12 +13,12 @@ from gpaw.solvation.sjm import SJMPower12Potential
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 @pytest.mark.parametrize('gpaw_new', [False, True])
 def test_sjm(gpaw_new, in_tmp_dir, mode):
-    if mode == 'pw':
-        pytest.skip('Not working at the moment!')
-    if not gpaw_new and world.size > 1:
+    if gpaw_new:
+        pytest.skip('SJM not yet implemented for gpaw.new')
+    if world.size > 1:
         pytest.skip('https://gitlab.com/gpaw/gpaw/-/issues/1381')
-    if not gpaw_new and mode == 'pw':
-        pytest.skip('Not implemented')
+    if mode == 'pw':
+        pytest.skip('PW-mode not implemented for old GPAW')
     # Solvent parameters
     u0 = 0.180  # eV
     epsinf = 78.36  # dielectric constant of water at 298 K

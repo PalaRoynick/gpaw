@@ -13,16 +13,17 @@ from time import time
 import numpy as np
 from ase.dft.kpoints import get_monkhorst_pack_size_and_offset
 from ase.dft.wannier import calculate_weights, gram_schmidt
-from ase.transport.tools import dagger
 
-dag = dagger
+
+def dagger(matrix):
+    return np.conj(matrix.T)
 
 
 def random_orthogonal_matrix(dim, rng, real=False):
     """Generate a random orthogonal matrix"""
 
     H = rng.random((dim, dim))
-    np.add(dag(H), H, H)
+    np.add(dagger(H), H, H)
     np.multiply(.5, H, H)
 
     if real:
@@ -30,7 +31,7 @@ def random_orthogonal_matrix(dim, rng, real=False):
         return H
     else:
         val, vec = np.linalg.eig(H)
-        return np.dot(vec * np.exp(1.j * val), dag(vec))
+        return np.dot(vec * np.exp(1.j * val), dagger(vec))
 
 
 def md_min(func, step=.25, tolerance=1e-6, verbose=False, **kwargs):
@@ -222,7 +223,7 @@ class WannierLocalization:
         for d in range(self.Ndir):
             for k in range(self.Nk):
                 k1 = self.kklst_dk[d, k]
-                self.Z_dkww[d, k] = np.dot(dag(self.U_kww[k]), np.dot(
+                self.Z_dkww[d, k] = np.dot(dagger(self.U_kww[k]), np.dot(
                     self.Z_dknn[d, k], self.U_kww[k1]))
 
         # Update the new Z matrix
@@ -278,7 +279,7 @@ class WannierLocalization:
 
                 temp = Zii_ww.T * Z_kww[k].conj() - \
                     Zii_ww * Z_kww[k2].conj()
-                Utemp_ww += weight * (temp - dag(temp))
+                Utemp_ww += weight * (temp - dagger(temp))
             dU.append(Utemp_ww.ravel())
 
         return np.concatenate(dU)
@@ -293,7 +294,7 @@ class WannierLocalization:
                 epsilon, Z = np.linalg.eigh(H)
                 # Z contains the eigenvectors as COLUMNS.
                 # Since H = iA, dU = exp(-A) = exp(iH) = ZDZ^d
-                dU = np.dot(Z * np.exp(1.j * epsilon), dag(Z))
+                dU = np.dot(Z * np.exp(1.j * epsilon), dagger(Z))
                 if U.dtype == float:
                     U[:] = np.dot(U, dU).real
                 else:

@@ -21,6 +21,7 @@ from gpaw.utilities.symmetry import (find_set_of_lattice_symmetries,
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
     from gpaw.new.ase_interface import ASECalculator as NewGPAW
     from gpaw.old.calculator import GPAW as OldGPAW
 
@@ -109,11 +110,10 @@ def optimal_monkhorst_pack_grid(
     maxsize[~pbc] = 1
 
     def mp_gridsize_generator(minsize, maxsize, step):
-        for size in product(
-                range(minsize[0], maxsize[0] + 1, step),
-                range(minsize[1], maxsize[1] + 1, step),
-                range(minsize[2], maxsize[2] + 1, step)):
-            yield size
+        yield from product(
+            range(minsize[0], maxsize[0] + 1, step),
+            range(minsize[1], maxsize[1] + 1, step),
+            range(minsize[2], maxsize[2] + 1, step))
     mp_grids = np.array(list(mp_gridsize_generator(minsize, maxsize, step)))
 
     for predicate_function in predicate_functions:

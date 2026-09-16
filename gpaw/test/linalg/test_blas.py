@@ -1,12 +1,11 @@
 import numpy as np
 import pytest
-from gpaw.utilities.blas import no_c_blas, axpy, gemmdot, mmm, mmmx, r2k, rk
+
+from gpaw.utilities.blas import axpy, gemmdot, mmm, mmmx, no_c_blas, r2k, rk
+from gpaw.utilities.blas_purepython import mmm as mmm_purepython
+from gpaw.utilities.blas_purepython import r2k as r2k_purepython
+from gpaw.utilities.blas_purepython import rk as rk_purepython
 from gpaw.utilities.tools import tri2full
-from gpaw.utilities.blas_purepython import (
-    rk as rk_purepython,
-    r2k as r2k_purepython,
-    mmm as mmm_purepython
-)
 
 
 def test_gemm_size_zero():

@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from sys import version_info
 
-if version_info < (3, 10):
-    raise ValueError('Please use Python-3.10 or later')
+if version_info < (3, 11):
+    raise ValueError('Please use Python-3.11 or later')
 
 # Python version in the venv that we are creating
 version = '3.13'
@@ -20,10 +20,13 @@ fversion = 'cpython-313'
 # Niflheim login hosts, with the oldest architecture as the first
 nifllogin = [
     'slid2',  # broadwell_el8 (xeon24el8)
-    'thul',  # skylake_el8 (xeon40el8, sm3090el8)
-    'surt',  # icelake (xeon56, a100, h200)
-    'fjorm',  # epyc9004 (epyc96)
-    'sara']  # saphirerapids (xeon32)
+    'slid',  # broadwell_el9 (xeon24el9)
+    'vid',  # skylake_el9 (xeon40el9, sm3090el9)
+    'hrid',  # icelake_el9 (xeon56el9, a100el9)
+    'surt',  # icelake (xeon56, a100)
+    'sara',  # saphirerapids_el9 (xeon32el9, h200el9)
+    'fjorm',  # epyc9004_el9 (epyc96el9)
+    'svol']  # skylake_el8 (sm3090el8)
 
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
@@ -40,12 +43,14 @@ toolchains = {
         fullchain='foss-2025b',
         mathchain='gfbf-2025b',
         compchain='GCC-14.3.0',
+        mpiname='gompi',
         corechain=_gcccore,
     ),
     'intel': dict(
         fullchain='intel-2025b',
         mathchain='iimkl-2025b',
         compchain='intel-compilers-2025.2.0',
+        mpiname='iimpi',
         corechain=_gcccore,
     )
 }
@@ -55,10 +60,11 @@ module_cmds_all = """\
 module purge
 unset PYTHONPATH
 module load gpaw-data/1.0.1-{corechain}
-module load ELPA/2025.06.001-{fullchain}
+module load ELPA/2025.06.002-{fullchain}
 module load Wannier90/3.1.0-{fullchain}
 module load Tkinter/3.13.5-{corechain}
 module load libxc/7.0.0-{compchain}
+module load mpi4py/4.1.0-{mpiname}
 """
 
 # These modules are not loaded if --piponly is specified
@@ -85,12 +91,16 @@ if [ "$CPU_ARCH" == "sapphirerapids" ] && [ {fullchain} == "foss-2025b" ];\
 then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$CPU_ARCH" == "skylake_el8" ] && [ {fullchain} == "foss-2025b" ];\
 then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
+if [ "$CPU_ARCH" == "skylake_el9" ] && [ {fullchain} == "foss-2025b" ];\
+then module load CuPy/13.6.0-{fullchain}-CUDA-12.9.1;fi
 if [ "$SLURM_JOB_PARTITION" == "a100" ] \
  || [ "$SLURM_JOB_PARTITION" == "a100_week" ] \
+ || [ "$SLURM_JOB_PARTITION" == "a100el9" ] \
  || [ "$SLURM_JOB_PARTITION" == "sm3090el8" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090el8_768" ] \
- || [ "$SLURM_JOB_PARTITION" == "sm3090_devel" ] \
- || [ "$SLURM_JOB_PARTITION" == "h200" ];\
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9" ] \
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9_768" ] \
+ || [ "$SLURM_JOB_PARTITION" == "sm3090el9_devel" ] \
+ || [ "$SLURM_JOB_PARTITION" == "h200el9" ];\
 then export GPAW_USE_GPUS=1;fi
 """
 

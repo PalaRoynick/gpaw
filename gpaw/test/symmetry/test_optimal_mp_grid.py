@@ -1,6 +1,7 @@
+from ase import Atoms
+
 from gpaw import GPAW
 from gpaw.bztools import optimal_monkhorst_pack_grid
-from ase import Atoms
 
 
 def test_optimal_monkhorst_pack_grid(gpw_files):

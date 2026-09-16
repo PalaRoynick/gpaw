@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+
 from gpaw import KohnShamConvergenceError
 from gpaw.convergence_criteria import (Criterion, check_convergence,
                                        dict2criterion)
@@ -75,7 +76,15 @@ class SCFLoop:
         self.occ_calc.initialize_reference_orbitals()
 
         if self.update_density_and_potential:
-            dens_error = self.mixer.mix(density)
+            if pot_calc.xc.type == 'MGGA':
+                if ibzwfs.has_occs:
+                    density.update_ked(ibzwfs)
+                density.taut_sR.data[density.taut_sR.data < 1e-7] = 1e-7
+                dens_error = self.mixer.mix(density)
+                potential, energies, _ = pot_calc.calculate(
+                    density, ibzwfs, potential.vHt_x)
+            else:
+                dens_error = self.mixer.mix(density)
         else:
             dens_error = 0.0
 
@@ -193,7 +202,7 @@ def create_convergence_criteria(criteria: dict[str, Any]
                                 ) -> dict[str, Criterion]:
     criteria = criteria.copy()
     for k, v in [('energy', 0.0005),        # eV / electron
-                 ('density', 1.0e-4),       # electrons / electron
+                 ('density', 1.0e-6),       # electrons / electron
                  ('eigenstates', 4.0e-8)]:  # eV^2 / electron
         if k not in criteria:
             criteria[k] = v

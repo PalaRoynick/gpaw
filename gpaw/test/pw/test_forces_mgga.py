@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-from ase.parallel import parprint
 from ase import Atom, Atoms
+from ase.parallel import parprint
 
 from gpaw import GPAW
 

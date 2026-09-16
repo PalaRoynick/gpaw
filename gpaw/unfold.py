@@ -4,7 +4,7 @@ import numpy as np
 from ase.units import Bohr, Hartree
 
 import gpaw.mpi as mpi
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 from gpaw.old.kpt_descriptor import to1bz
 from gpaw.old.pw.descriptor import PWDescriptor
 from gpaw.spinorbit import soc_eigenstates

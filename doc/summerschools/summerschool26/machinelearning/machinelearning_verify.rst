@@ -52,7 +52,7 @@ When you save the DFT results, you need to prevent GPAW from saving the dipole m
    :start-after: snippet-traj-start
    :end-before: snippet-traj-end
 
-You can run the DFT code on the interactive node where you are logged in, but it will be significantly faster to submit it to the batch system on e.g. 8 CPUs.  You can see instructions for submitting Python jobs with MyQueue `here <gbar submitting>`_.
+You can run the DFT code on the interactive node where you are logged in, but it will be significantly faster to submit it to the batch system on e.g. 8 CPUs.  You can see instructions for submitting Python jobs with MyQueue :ref:`here <gbar submitting>`.
 
 You may want to "dry-run" GPAW and see how many k-points it actually uses in the reduced Brilloin zone.  Choosing the number of CPUs to be an integer multiple (or divisor) of this number gives the best performance.  You dry-run a GPAW script with this command::
 

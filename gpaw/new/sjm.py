@@ -3,11 +3,11 @@ from __future__ import annotations
 import numpy as np
 from ase.units import Bohr
 
-from gpaw.core import PWArray, PWDesc, UGArray
-from gpaw.new.builder import DFTComponentsBuilder
+from gpaw.core import PWArray, PWDesc, UGArray, pw_to_grid
 from gpaw.extensions import Extension
 from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension)
+from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.pw.poisson import PWPoissonSolver
 from gpaw.new.solvation import Solvation, SolvationExtension
@@ -25,11 +25,15 @@ class SJM(Solvation):
                  target_potential: float | None = None,  # eV
                  excess_electrons: float = 0.0,
                  tol: float = 0.001):  # eV
-        super().__init__(cavity, dielectric, interactions)
+        super().__init__(cavity, dielectric, interactions,
+                         dipolelayer=True, zero_vacuum=True)
         self.jelliumregion = jelliumregion or {}
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
         self.tol = tol
+        raise NotImplementedError(
+            'SJM is not yet validated in gpaw.new. '
+            'Use gpaw.solvation.sjm.SJM instead.')
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         solvation = super().build(builder)
@@ -58,6 +62,8 @@ class SJM(Solvation):
 
     def todict(self):
         dct = super().todict()
+        dct.pop('dipolelayer', None)
+        dct.pop('zero_vacuum', None)
         dct.update(
             jelliumregion=self.jelliumregion,
             target_potential=self.target_potential,
@@ -81,7 +87,7 @@ class SJMExtension(Extension):
         if isinstance(pw, PWDesc):
             from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
             return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric, zero_vacuum=True)
+                pw, grid, self.dielectric, dipolelayer=True, zero_vacuum=True)
             # from gpaw.new.sjm import SJMPWPoissonSolver
             # return SJMPWPoissonSolver(pw, environment.dielectric, grid)
 
@@ -100,20 +106,27 @@ class SJMExtension(Extension):
         self.charge = self.jellium.charge
         return converged
 
+    def move_atoms(self, relpos_ac):
+        raise NotImplementedError(
+            'SJM in gpaw.new does not yet support moving atoms.')
+
     def update1(self, nt_r):
         self.solvation.update1(nt_r)
         self.jellium.update1(nt_r)
 
     def update1pw(self, nt_g):
-        grid = self.jellium.mask_r.desc
-        nt_r = grid.empty()
-        nt_r.scatter_from(nt_g.ifft(grid=grid.new(comm=None))
-                          if nt_g is not None else None)
+        nt_r = pw_to_grid(nt_g, self.jellium.mask_r.desc)
         self.solvation.update1(nt_r)
         self.jellium.update1pw(nt_g)
 
-    def update2(self, nt_r, vHt_r, vt_sr) -> float:
-        return self.solvation.update2(nt_r, vHt_r, vt_sr)
+    def update2(self, nt_r, vHt_r, vt_sr) -> None:
+        self.solvation.update2(nt_r, vHt_r, vt_sr)
+
+    def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
+        self.solvation.update2pw(nt_g, vHt_h, vt_sr)
+
+    def get_energy_contributions(self) -> dict[str, float]:
+        return self.solvation.get_energy_contributions()
 
 
 class SJMPoissonSolver(PoissonSolverWrapper):
@@ -178,8 +191,7 @@ def saw_tooth(pw: PWDesc, width: float = 0.5) -> PWArray:
     assert np.allclose(pw.cell_cv[:2, 2], 0.0)
     assert np.allclose(pw.cell_cv[2, :2], 0.0)
 
-    m0_g, m1_g = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
-    mask_g = m0_g & m1_g
+    mask_g = pw.onaxis_mask()
     Gz_i = pw.G_plus_k_Gv[mask_g, 2]
     if pw.comm.rank == 0.0:
         assert Gz_i[0] == 0.0

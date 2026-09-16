@@ -47,6 +47,9 @@ Force: -0.64 eV/Å
 News
 ====
 
+* Updated :ref:`summerschool26` :ref:`projects`
+  (new :ref:`machinelearning` project added) (Aug 14, 2026)
+
 * :ref:`GPAW version 26.7.0 <releasenotes>` released (Jul 6, 2026).
 
 * :ref:`GPAW version 25.7.0 <releasenotes>` released (Jul 29, 2025).

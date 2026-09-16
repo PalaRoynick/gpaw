@@ -23,7 +23,7 @@ def test_lcao_h2o():
     niter = calc.get_number_of_iterations()
 
     assert e == pytest.approx(-10.271, abs=2e-3)
-    assert niter == pytest.approx(8, abs=1)
+    assert niter == pytest.approx(10, abs=1)
 
     # Check that complex wave functions are allowed with
     # gamma point calculations

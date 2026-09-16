@@ -1,3 +1,4 @@
+# web-page: rpa_Si.png, bse_atoms.png
 # snippet-plot-rpa-start
 # Plot the absorption spectrum:
 import numpy as np
@@ -9,7 +10,7 @@ plt.figure()
 # Here is only showed how to plot the x-component.
 
 absox = np.loadtxt('Si_rpa_x.csv', delimiter=',')
-plt.plot(absox[:, 0], absox[:, 4], label='RPA_x Si 12x12x4', lw=2, color='b')
+plt.plot(absox[:, 0], absox[:, 4], label='RPA_x Si 8x8x8', lw=2, color='b')
 
 plt.xlabel(r'$\hbar\omega\;[eV]$', size=20)
 plt.ylabel(r'$Im(\epsilon)$', size=20)

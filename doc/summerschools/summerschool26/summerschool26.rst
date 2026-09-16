@@ -39,7 +39,7 @@ There are two main ways to log in to the DTU system, *SSH* and *ThinLinc*.
 
 **ThinLinc** opens one big window with a Unix desktop running on the DTU computer.  Putting this window in full-screen mode makes your computer act as a graphical terminal.  Programs on the remote computer open their windows within this desktop window.
 
-Which one you choose is a matter of taste.  We find ssh slightly more convenient once it is set up, but thinlinc may be a bit easier to set up initially.
+Which one you choose is a matter of taste.  We find ssh slightly more convenient once it is set up, but ThinLinc may be a bit easier to set up initially.
 
 
 Setting up ssh for the first time
@@ -55,7 +55,7 @@ The instructions depend on the operating system you use
    setuplinmac
 
 
-Setting up thinlinc for the first time
+Setting up ThinLinc for the first time
 --------------------------------------
 
 IMPORTANT: You should either set up SSH or ThinLinc, **no need to do both!**
@@ -75,6 +75,21 @@ Using the DTU computers
    using_gbar
    submitting
 
+Using VScode (new)
+------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   using_vscode
+
+Downloading files (new)
+-----------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   downloading
 
 iPad users (strongly discouraged)
 ---------------------------------
@@ -107,7 +122,7 @@ brief descriptions of what aspects of GPAW you learn from them.
 
    intro/intro
    catalysis/catalysis
-   magnetism/magnetism
+   magnetism/text
    machinelearning/machinelearning
    excitedstates/excitedstates
    batteries/batteries

@@ -6,6 +6,7 @@ from functools import partial
 from math import ceil, floor
 
 import numpy as np
+
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_centered_functions import AtomArrays
 from gpaw.core.matrix import suggest_blocking
@@ -16,9 +17,9 @@ from gpaw.new.eigensolver import Eigensolver, calculate_weights
 from gpaw.new.energies import DFTEnergies
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.new.pw.hybrids import PWHybridHamiltonian
 from gpaw.utilities import as_real_dtype
 from gpaw.utilities.blas import axpy
-from gpaw.new.pw.hybrids import PWHybridHamiltonian
 
 
 def slparams(nbands: int,
