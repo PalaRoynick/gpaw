@@ -6,8 +6,6 @@
 #include "gpaw_utils.h"
 #include "gpu_utils.h"
 
-GPAW_GPU_LINKAGE_BEGIN
-
 PyObject* gpaw_gpu_init(PyObject *self, PyObject *args);
 PyObject* gpaw_gpu_delete(PyObject *self, PyObject *args);
 PyObject* csign_gpu(PyObject *self, PyObject *args);
@@ -45,7 +43,3 @@ PyObject* evaluate_pbe_gpu(PyObject* self, PyObject* args);
 PyObject* calculate_residual_gpu(PyObject* self, PyObject* args);
 
 PyObject* flush_pending_decrefs(PyObject* self, PyObject* args);
-
-GPAW_GPU_LINKAGE_END
-
-

@@ -14,7 +14,7 @@ void gpaw_set_runtime_error(const char* err_msg)
     PyErr_SetString(PyExc_RuntimeError, err_msg);
 }
 
-CLINKAGE void gpaw_abort(const char* err_msg)
+void gpaw_abort(const char* err_msg)
 {
     printf("\nFatal GPAW error: %s\n", err_msg);
     fflush(stdout);
