@@ -493,15 +493,15 @@ There are few points about the implementation that we emphasize:
 Drude phenomenological scattering rate
 ======================================
 A phenomenological scattering rate can be introduced using the ``rate``
-parameter in the optical limit. By default this is zero but can be set by
-using::
+parameter in the optical limit. By default this parameter is not set, but it
+is required when calculating intraband contributions using the Drude model.
+For example, by writing::
 
     df = DielectricFunction(...
                             rate=0.1,
                             ...)
 
-to set a scattering rate of 0.1 eV. If rate='eta' then the code with use the
-specified ``eta`` parameter. Note that the implementation of the rate parameter
+a scattering rate of 0.1 eV is used. Note that the implementation of the rate parameter
 differs from some literature by a factor of 2 for consistency with the linear
 response formalism. In practice the Drude rate is implemented as
 

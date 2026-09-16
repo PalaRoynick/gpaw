@@ -133,7 +133,8 @@ class UGDesc(Domain['UGArray']):
             size=None,
             pbc=None,
             zerobc=None,
-            decomp=None) -> UGDesc:
+            decomp=None,
+            _lazy=False) -> UGDesc:
         """Create new uniform grid description."""
         reuse_decomp = (decomp is None and comm == 'inherit' and
                         size is None and pbc is None and zerobc is None)
