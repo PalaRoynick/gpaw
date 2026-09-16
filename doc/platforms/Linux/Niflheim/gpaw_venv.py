@@ -19,14 +19,14 @@ fversion = 'cpython-313'
 
 # Niflheim login hosts, with the oldest architecture as the first
 nifllogin = [
-    'slid2',  # broadwell (xeon24el8)
-    'slid',  # broadwell (xeon24el9)
-    'vid',  # skylake (xeon40el9, sm3090el9)
-    'hrid',  # icelake (xeon56el9, a100el9)
+    'slid2',  # broadwell_el8 (xeon24el8)
+    'slid',  # broadwell_el9 (xeon24el9)
+    'vid',  # skylake_el9 (xeon40el9, sm3090el9)
+    'hrid',  # icelake_el9 (xeon56el9, a100el9)
     'surt',  # icelake (xeon56, a100)
-    'sara',  # saphirerapids (xeon32el9, h200el9)
-    'fjorm',  # epyc9004 (epyc96el9)
-    'thul']  # (sm3090el8)
+    'sara',  # saphirerapids_el9 (xeon32el9, h200el9)
+    'fjorm',  # epyc9004_el9 (epyc96el9)
+    'svol']  # skylake_el8 (sm3090el8)
 
 # Easybuild uses a hierarchy of toolchains for the main foss and intel
 # chains.  The order in the tuples before are
