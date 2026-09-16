@@ -44,18 +44,6 @@ def calculate_soc(dft: DFT,
     if n2 <= 0:
         n2 += eig_skn.shape[2]
 
-    # <phi_i|dV_adr / r * L_v|phi_j>
-    setups = dft.setups
-    dVL_avii = {a: soc(setups[a],
-                       dft.pot_calc.xc,
-                       D_sii,
-                       ignore_xc_potential) * scale
-                for a, D_sii in dft.density.D_asii.items()}
-
-    if projected:
-        dVL_avii = {a: projected_soc(dVL_vii, theta=theta, phi=phi)
-                    for a, dVL_vii in dVL_avii.items()}
-
     ibz = dft.ibzwfs.ibz
     nbzkpts = len(ibz.bz)
     nspins = dft.ibzwfs.nspins
@@ -74,7 +62,8 @@ def calculate_soc(dft: DFT,
         k = ibz.bz2ibz_K[K]
         for s in range(nspins):
             rank = dft.ibzwfs.rank_ks[k, s]
-            kpt = KPointData.receive(dft.ibzwfs)
+            if rank != comm.rank:
+                kpt = KPointData.receive(rank)
             mykpts.append(kpt)
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]

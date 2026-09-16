@@ -14,7 +14,7 @@ def band_structure(dft: DFT,
                    nbands: int | str | None = None,
                    parallel: dict | None = None,
                    random: bool | None = None,
-                   txt='-'):
+                   txt='-') -> DFT:
     old_params = dft.params.todict()
     old_params.pop('h', None)
     kwargs = {**old_params,
@@ -70,4 +70,4 @@ def band_structure(dft: DFT,
         params=params,
         energies=dft.energies)
 
-    return dft.ibzwfs
+    return dft
