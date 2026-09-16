@@ -217,15 +217,21 @@ def calculate_non_local_potential1(setup: Setup,
                                                         dict[str, float]]:
     ncomponents = len(D_sii)
     ndensities = 2 if ncomponents == 2 else 1
-    D_sp = xp.array([pack_density(D_ii.real) for D_ii in D_sii.get()])
+    D_sp = pack_density(D_sii.real, xp=xp)
     D_p = D_sp[:ndensities].sum(0)
 
-    dH_p = xp.array(setup.K_p + setup.M_p +
-                    setup.MB_p + 2.0 * setup.M_pp @ D_p.get() +
-                    setup.Delta_pL @ V_L.get())
-    e_kinetic = setup.K_p @ D_p.get() + setup.Kc
-    e_zero = setup.MB + setup.MB_p @ D_p.get()
-    e_coulomb = setup.M + D_p.get() @ (setup.M_p + setup.M_pp @ D_p.get())
+    K_p = xp.array(setup.K_p)
+    M_p = xp.array(setup.M_p)
+    MB_p = xp.array(setup.MB_p)
+    M_pp = xp.array(setup.M_pp)
+    Delta_p = xp.array(setup.Delta_pL @ V_L)
+
+    dH_p = xp.array(K_p + M_p +
+                    MB_p + 2.0 * M_pp @ D_p +
+                    Delta_p)
+    e_kinetic = K_p @ D_p + setup.Kc
+    e_zero = setup.MB + setup.MB_p @ D_p
+    e_coulomb = setup.M + D_p @ (M_p + M_pp @ D_p)
 
     dH_sp = xp.zeros_like(D_sp, dtype=float if ncomponents < 4 else complex)
 
@@ -233,12 +239,12 @@ def calculate_non_local_potential1(setup: Setup,
     if soc:
         dHsoc_sii = soc_terms(setup, xc.xc, D_sp)
         e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
-        dH_sp[1:4] = pack_hermitian(dHsoc_sii)
+        dH_sp[1:4] = pack_hermitian(dHsoc_sii, xp=xp)
 
     dH_sp[:ndensities] = dH_p
     e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index)
 
-    dH_sii = unpack_hermitian(dH_sp.get())
+    dH_sii = unpack_hermitian(dH_sp, xp=xp)
 
     if setup.hubbard_u is not None:
         eU, dHU_sii = setup.hubbard_u.calculate(setup, D_sii)

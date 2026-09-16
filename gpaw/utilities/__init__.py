@@ -195,7 +195,7 @@ Hamiltonian, are constructed according to (un)pack_hermitian.
 """
 
 
-def pack_hermitian(M2, tolerance=1e-10):
+def pack_hermitian(M2, tolerance=1e-10, xp=np, offdiag_scale=None):
     r"""Pack Hermitian
 
     This functions packs a Hermitian 2D array to a
@@ -211,41 +211,33 @@ def pack_hermitian(M2, tolerance=1e-10):
 
        (a00, [a01 + a10*]/2, [a02 + a20*]/2, a11, [a12 + a21*]/2, a22)
     """
-    if M2.ndim == 3:
-        return np.array([pack_hermitian(m2) for m2 in M2])
-    n = len(M2)
-    M = np.zeros(n * (n + 1) // 2, M2.dtype)
-    p = 0
-    for r in range(n):
-        M[p] = M2[r, r]
-        p += 1
-        for c in range(r + 1, n):
-            M[p] = (M2[r, c] + np.conjugate(M2[c, r])) / 2.  # note / 2.
-            error = abs(M2[r, c] - np.conjugate(M2[c, r]))
-            assert error < tolerance, 'Pack not symmetric by %s' % error + ' %'
-            p += 1
-    assert p == len(M)
-    return M
+
+    n = M2.shape[-1]
+    a, b = xp.where(xp.tri(n, dtype=bool).T)
+    out = M2[..., a, b]
+    out += M2[..., b, a].conj()
+    out *= 0.5
+    if offdiag_scale is not None:
+        out[..., a != b] *= offdiag_scale
+
+    if debug:
+        assert xp.allclose(out, M2[..., a, b],
+                           atol=tolerance), 'Pack not symmetric'
+    return out
 
 
-def unpack_hermitian(M):
+def unpack_hermitian(M, xp=np):
     """Unpack 1D array to Hermitian 2D array,
     assuming a packing as in ``pack_hermitian``."""
-
-    if M.ndim == 2:
-        return np.array([unpack_hermitian(m) for m in M])
-    assert is_contiguous(M)
-    assert M.ndim == 1
-    n = int(sqrt(0.25 + 2.0 * len(M)))
-    M2 = np.zeros((n, n), M.dtype.char)
-    if M.dtype == complex:
-        cgpaw.unpack_complex(M, M2)
-    else:
-        cgpaw.unpack(M, M2)
-    return M2
+    n = int(sqrt(0.25 + 2.0 * M.shape[-1]))  # XXX: Dangerous...
+    out = xp.empty(M.shape[:-1] + (n, n), M.dtype)
+    a, b = xp.where(xp.tri(n, dtype=bool).T)
+    out[..., a, b] = M
+    out[..., a, b] = M.conj()
+    return out
 
 
-def pack_density(A: np.ndarray) -> np.ndarray:
+def pack_density(A: np.ndarray, xp=np) -> np.ndarray:
     r"""Pack off-diagonal sum
 
     This function packs a 2D Hermitian array to 1D, adding off-diagonal terms.
@@ -259,11 +251,10 @@ def pack_density(A: np.ndarray) -> np.ndarray:
     is transformed to the vector::
 
        (a00, a01 + a10, a02 + a20, a11, a12 + a21, a22)"""
-
-    assert A.ndim == 2
-    assert A.shape[0] == A.shape[1]
-    assert A.dtype in [float, complex]
-    return cgpaw.pack(A)
+    if xp is np and A.ndim == 2:
+        return cgpaw.pack(A)
+    n = A.shape[-1]
+    return pack_hermitian(A, xp=xp, offdiag_scale=2.0)
 
 
 # We cannot recover the complex part of the off-diag elements from a
@@ -271,14 +262,13 @@ def pack_density(A: np.ndarray) -> np.ndarray:
 # arrays). We should consider if "unpack_density" even makes sense to have.
 
 
-def unpack_density(M):
+def unpack_density(M, xp=np):
     """Unpack 1D array to 2D Hermitian array,
     assuming a packing as in ``pack_density``."""
-    if M.ndim == 2:
-        return np.array([unpack_density(m) for m in M])
-    M2 = unpack_hermitian(M)
+    M2 = unpack_hermitian(M, xp=xp)
     M2 *= 0.5  # divide all by 2
-    M2.flat[0::len(M2) + 1] *= 2  # rescale diagonal to original size
+    n = xp.arange(M2.shape[-1])
+    M2[..., n, n] *= 2  # rescale diagonal to original size
     return M2
 
 
@@ -290,7 +280,7 @@ def element_from_packed(M, i, j):
     """Return a specific element from a packed array (by ``pack``)."""
     n = int(sqrt(2 * len(M) + .25))
     assert i < n and j < n
-    p = packed_index(i, j, n)
+    p = packed_index(i, j, npack)
     if i == j:
         return M[p]
     elif i > j:
@@ -320,7 +310,7 @@ def compiled_with_libvdwxc():
 
 if not debug and not GPAW_NO_C_EXTENSION:
     hartree = cgpaw.hartree  # noqa
-    pack_density = cgpaw.pack
+    # pack_density = cgpaw.pack
 
 
 def unlink(path: str | Path, world=None):
