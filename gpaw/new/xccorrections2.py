@@ -433,6 +433,7 @@ def evaluate_paw_xc(functional, batch: PAWXCBatch) -> tuple[object, object]:
         reference_energy_a=batch.reference_energy_a,
         gradient=xp.zeros_like(density))
 
+    evaluate: Any
     if functional.name == 'LDA':
         cls: type[PAWXCCorrection] = (
             SpinPolarizedLDAXCCorrection if polarized else
