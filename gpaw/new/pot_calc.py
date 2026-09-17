@@ -207,8 +207,6 @@ def calculate_non_local_potential(setups,
     return (dH_asii, dict(zips(names, energies)))
 
 
-from line_profiler import profile
-@profile
 @trace
 def calculate_non_local_potential1(setup: Setup,
                                    xc: Functional,
