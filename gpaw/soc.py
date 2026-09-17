@@ -8,6 +8,7 @@ from ase.units import Ha
 from gpaw.dft import DFT
 from gpaw.mpi import MPIComm, Parallelization, receive, send, serial_comm
 from gpaw.spinorbit import projected_soc, soc
+from gpaw.new.ibzwfs import IBZWaveFunctions
 
 
 def calculate_soc(mykpts,
@@ -29,50 +30,43 @@ def calculate_soc(mykpts,
                     for a, dVL_vii in dVL_avii.items()}
 
 
-def calculate_soc(dft: DFT,
-                  *,
-                  n1: int | None = None,
-                  n2: int | None = None,
-                  eigenvalues: np.ndarray | None = None,  # eV
-                  ):
-    """..."""
-    if eigenvalues is None:
-        eig_skn, occ_skn = dft.ibzwfs.get_all_eigs_and_occs()
-    else:
-        eig_skn = eigenvalues
+def distribute_projections(ibzwfs: IBZWaveFunctions,
+                           *,
+                           n1: int | None = None,
+                           n2: int | None = None):
+    ibz = ibzwfs.ibz
+    nbzkpts = len(ibz.bz)
+    nspins = ibzwfs.nspins
+    nbands = ibzfwfs.nbands
+    comm = dft.comm
 
     n1 = n1 or 0
     n2 = n2 or 0
     if n2 <= 0:
-        n2 += eig_skn.shape[2]
+        n2 += nbands
 
-    ibz = dft.ibzwfs.ibz
-    nbzkpts = len(ibz.bz)
-    nspins = dft.ibzwfs.nspins
-    comm = dft.comm
     p = Parallelization(comm.size, nbzkpts)
     p.set(band=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
     domain_comm = comms['b']
-
     mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
-    K1 = min(kpt_comm.rank * mynk, nbzkpts)
-    K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
+    P_layout = ibzwfs._wfs_u[0].P_ani.layout
 
     who = defaultdict(set)
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]
         for spin in range(nspins):
-            from_rank = dft.ibzwfs.rank_ks[k, spin]
+            from_rank = ibzwfs.rank_ks[k, spin]
             to_rank = K // mynk * domain_comm.size
             who[from_rank].add((to_rank, k, spin))
 
     P_ksani = {}
     requests = []
-    for wfs in dft.ibzwfs:
+    for wfs in ibzwfs:
         P_ani = wfs.P_ani.gathergather()
         if P_ani is not None:
+            P_ani = P_ani[:, n1:n2]
             for r, k, spin in who[comm.rank]:
                 if wfs.k == k and wfs.spin == spin:
                     if r == comm.rank:
@@ -84,47 +78,26 @@ def calculate_soc(dft: DFT,
     for rank, what in who.items():
         for r, k, spin in what:
             if r == comm.rank:
-                P_ani = ...
+                P_ani = P_layout.empty(n2 - n1)
                 comm.receive(P_ani.data, r)
                 P_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
 
-    for K in range(K1, K2):
-        k = ibz.bz2ibz_K[K]
-        for s in range(nspins):
-            rank = dft.ibzwfs.rank_ks[k, s]
-            if rank != comm.rank:
-                kpt = KPointData.receive(rank)
-            mykpts.append(kpt)
-    for K in range(nbzkpts):
-        k = ibz.bz2ibz_K[K]
-        for s in range(nspins):
-            rank = dft.ibzwfs.rank_ks[k, s]
-            if rank != comm.rank:
-                KPointData.send(dft.ibzwfs, k, s, rank)
-    for kpt in mykpts:
-        kpt.wait()
-
-    bzwfs = soc_eigenstates_raw(ibzwfs,
-                                dVL_avii,
-                                ibz2bzmaps,
-                                atom_partition,
-                                theta, phi)
-
-    if bd.comm.rank == 0 and gd.comm.rank == 0:
-        parallel_layout = ParallelLayout(BandDescriptor(1),
-                                         kd.comm,
-                                         serial_comm)
-        occcalc = occcalc or calc.wfs.occupations
-        occcalc = occcalc.copy(bz2ibzmap=list(range(kd.nbzkpts)),
-                               parallel_layout=parallel_layout)
-    else:
-        occcalc = None
-
-    n_aj = [setup.n_j for setup in calc.wfs.setups]
-    l_aj = [setup.l_j for setup in calc.wfs.setups]
-
-    return BZWaveFunctions(kd, bzwfs, occcalc, calc.wfs.nvalence, n_aj, l_aj)
+    from gpaw.new.symmetry import SymmetrizationPlan
+    symplan = SymmetrizationPlan(ibz.symmetries,
+                                 [setup.l_j for setup in ibzwfs.setups])
+    K1 = min(kpt_comm.rank * mynk, nbzkpts)
+    K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
+    myP_Kani = []
+    if domain_comm.rank == 0:
+        for K in range(K1, K2):
+            k = ibz.bz2ibz_K[K]
+            for spin in range(nspins):
+                P_ani = symplan.rotate_projections(P_ksani[(k, spin)],
+                                                   ibz.s_K[K],
+                                                   ibz.time_reversal_K[K])
+                myP_Kani.apend(P_ani)
+    return myP_Kani
 
 
 def add_soc(dVL_avii: dict[int, Array3D],

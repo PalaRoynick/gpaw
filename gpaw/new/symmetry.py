@@ -542,6 +542,9 @@ class SymmetrizationPlan:
                                    rotation_ii, D_asii[a2], rotation_ii)
         dist_D_asii.data *= 1.0 / len(self.symmetries)
 
+    def rotate_projections(self, P_ani, symnum, time_reversal):
+        return P_ani
+
 
 class GPUSymmetrizationPlan(SymmetrizationPlan):
     def __init__(self,
