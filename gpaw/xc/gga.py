@@ -9,7 +9,6 @@ from gpaw.xc.functional import XCFunctional
 from gpaw.xc.lda import (calculate_paw_correction, stress_integral,
                          stress_lda_term)
 from gpaw.xc.pawcorrection import rnablaY_nLv
-from line_profiler import profile
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.c import evaluate_pbe_gpu
@@ -40,7 +39,6 @@ class GGARadialExpansion:
         self.rcalc = rcalc
         self.args = args
 
-    @profile
     def __call__(self, rgd, D_sLq, n_qg, nc0_sg):
         xp = np if cupy_is_fake else cp
         n_sLg = D_sLq @ n_qg
