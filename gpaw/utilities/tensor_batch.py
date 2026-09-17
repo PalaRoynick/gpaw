@@ -77,8 +77,9 @@ def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
             [correction.e_xc0 for correction in corrections], dtype=dtype))
     if gga:
         radial_ag = _stack(xp, [grid.r_g for grid in radial_grids], dtype)
-        inverse_radius2_ag = xp.zeros_like(radial_ag)
-        inverse_radius2_ag[:, 1:] = 1.0 / radial_ag[:, 1:]**2
+        nonzero_ag = radial_ag != 0.0
+        safe_radial_ag = xp.where(nonzero_ag, radial_ag, 1.0)
+        inverse_radius2_ag = nonzero_ag / safe_radial_ag**2
         arguments.update(
             angular_gradient_anLv=arrays('rnablaY_nLv'),
             radial_spacing_ag=_stack(

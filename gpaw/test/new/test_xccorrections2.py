@@ -48,8 +48,9 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
     for a in D_asp:
         assert energy_a[a] == pytest.approx(
             expected_energy_a[a], abs=2.0e-11)
-        # The result graph omits the singular radial origin.  GPAW's legacy
-        # PBE transpose includes a tiny origin-only derivative contribution.
+        # The result graph differentiates the zero-weight origin consistently.
+        # GPAW's legacy PBE transpose extrapolates an origin potential and
+        # therefore includes a tiny additional derivative contribution.
         gradient_tolerance = 5.0e-7 if name == 'PBE' else 2.0e-10
         assert gradient_asp[a] == pytest.approx(
             expected_gradient_asp[a], abs=gradient_tolerance)

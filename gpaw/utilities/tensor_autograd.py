@@ -308,7 +308,7 @@ class StackResult(TensorResult):
 
 
 class RadialDerivativeResult(TensorResult):
-    """Origin-free radial finite difference and its exact transpose."""
+    """Radial finite difference on the full grid and its exact transpose."""
 
     def __init__(self, values: TensorResult, spacing):
         xp = values.engine.xp
@@ -316,22 +316,27 @@ class RadialDerivativeResult(TensorResult):
                  (1,) * (values.value.ndim - spacing.ndim) +
                  spacing.shape[-1:])
         spacing = spacing.reshape(shape)
-        derivative = xp.empty_like(values.value[..., 1:])
-        derivative[..., :-1] = 0.5 * (
+        derivative = xp.empty_like(values.value)
+        derivative[..., 0] = (
+            values.value[..., 1] - values.value[..., 0]
+        ) / spacing[..., 0]
+        derivative[..., 1:-1] = 0.5 * (
             values.value[..., 2:] - values.value[..., :-2]
         ) / spacing[..., 1:-1]
         derivative[..., -1] = (
             values.value[..., -1] - values.value[..., -2]
         ) / spacing[..., -1]
-        super().__init__(
-            values.engine, derivative, values.indices[:-1] + 'h')
+        super().__init__(values.engine, derivative, values.indices)
         self.values = values
         self.spacing = spacing
         self.parents = (values,)
 
     def _backward(self, gradient):
         contribution = self.engine.xp.zeros_like(self.values.value)
-        centered = 0.5 * gradient[..., :-1] / self.spacing[..., 1:-1]
+        forward = gradient[..., 0] / self.spacing[..., 0]
+        contribution[..., 0] -= forward
+        contribution[..., 1] += forward
+        centered = 0.5 * gradient[..., 1:-1] / self.spacing[..., 1:-1]
         contribution[..., 2:] += centered
         contribution[..., :-2] -= centered
         backward = gradient[..., -1] / self.spacing[..., -1]
@@ -379,5 +384,5 @@ class Engine:
     def radial_derivative(self,
                           values: TensorResult,
                           spacing) -> RadialDerivativeResult:
-        """Apply the origin-free radial stencil as a differentiable result."""
+        """Apply the full-grid radial stencil as a differentiable result."""
         return RadialDerivativeResult(values, spacing)
