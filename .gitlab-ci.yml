@@ -418,7 +418,8 @@ prepare-libxc-cuda:
     # Pinned devel revision tested with CUDA on an RTX A4000.
     LIBXC_REVISION: 64abc69e68121392d35d084c8d0e84c3a41ad72c
   before_script:
-    - export PREFIX=`realpath $PREFIX`
+    - !reference [default, before_script]
+    - export PREFIX=`realpath $PYTHONUSERBASE`
     - export PATH=$PREFIX/bin:$PATH
     - pip install --user "cmake>=3.21"
   script:
