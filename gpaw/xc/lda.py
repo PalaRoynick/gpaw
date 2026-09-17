@@ -9,6 +9,7 @@ from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.c import evaluate_lda_gpu
 
+from line_profiler import profile
 
 def stress_integral(gd, a1_g, a2_g=None):
     return gd.integrate(a1_g, a2_g, global_integral=False)
@@ -25,35 +26,39 @@ def stress_lda_term(gd, e_g, n_sg, v_sg):
 
 
 class LDARadialExpansion:
-    def __init__(self, rcalc, collinear=True):
+    def __init__(self, rcalc, collinear=True, xp=np):
         self.rcalc = rcalc
         self.collinear = collinear
         self.rgd = None
+        self.xp = xp
+        self.Y_nL = xp.array(Y_nL)
+        self.w_n = xp.array(weight_n)
+        self.wY_nL = self.w_n[:, None] * self.Y_nL
 
-    def __call__(self, rgd, D_sLq, n_qg, nc0_sg, xp=np):
-        n_sLg = D_sLq @ n_qg
+
+    @profile
+    def __call__(self, rgd, D_sqL, n_qg, nc0_sg, xp=np):
+        n_sgL = n_qg.T @ D_sqL
         dv_g = rgd.dv_g
         if self.collinear:
-            n_sLg[:, 0] += nc0_sg
+            n_sgL[:, :, 0] += nc0_sg
         else:
-            n_sLg[0, 0] += 4 * nc0_sg[0]
+            n_sgL[0, 0, 0] += 4 * nc0_sg[0]
 
-        Lmax = n_sLg.shape[1]
+        Lmax = n_sgL.shape[2]
 
-        Y2_nL = xp.array(Y_nL[:, :Lmax])
-        w_n = xp.array(weight_n)
+        Y2_nL = self.Y_nL[:, :Lmax]
 
-        n_sng = Y2_nL[None] @ n_sLg
-        e_ng = xp.zeros_like(n_sng, shape=n_sng.shape[1:])
-        dedn_sng = xp.zeros_like(n_sng)
+        n_sgn = n_sgL @ Y2_nL.T
+        e_gn = xp.zeros_like(n_sgn, shape=n_sgn.shape[1:])
+        dedn_sgn = xp.zeros_like(n_sgn)
         if xp is np:
-            self.rcalc(e_ng, n_sng, dedn_sng)
+            self.rcalc(e_gn, n_sgn, dedn_sgn)
         else:
-            evaluate_lda_gpu(n_sng, dedn_sng, e_ng)
-        dEdD_snq = (dv_g * dedn_sng @ n_qg.T[None])
-        dEdD_sqL = xp.einsum('snq, nL -> sqL', dEdD_snq,
-                             Y2_nL[:, :Lmax] * w_n[:, None])
-        E = rgd.integrate(w_n @ e_ng)
+            evaluate_lda_gpu(n_sgn, dedn_sgn, e_gn)
+        dEdD_sqn = dv_g * n_qg @ dedn_sgn
+        dEdD_sqL = dEdD_sqn @ self.wY_nL[:, :Lmax]
+        E = rgd.integrate(e_gn @ self.w_n)
 
         return E, dEdD_sqL
 
@@ -85,20 +90,23 @@ def calculate_paw_correction(expansion,
         return 0.0
 
     if xp is not np:
-        if hasattr(xcc, 'gpu_rgd'):
-            rgd = xcc.gpu_rgd
-        else:
+        if not hasattr(xcc, 'gpu_rgd'):
             xcc.gpu_rgd = fake_rgd(xcc.rgd, xp)
-            rgd = xcc.gpu_rgd
+            xcc.gpu_nc_g = xp.array(xcc.nc_g)
+            xcc.gpu_nct_g = xp.array(xcc.nct_g)
+            xcc.gpu_n_qg = xp.array(xcc.n_qg)
+            xcc.gpu_nt_qg = xp.array(xcc.nt_qg)
+            xcc.gpu_B_pqL = xp.array(xcc.B_pqL)
+        rgd = xcc.gpu_rgd
+        nc_g = xcc.gpu_nc_g
+        nct_g = xcc.gpu_nct_g
+        n_qg = xcc.gpu_n_qg
+        nt_qg = xcc.gpu_nt_qg
+        B_pqL = xcc.gpu_B_pqL
     else:
         rgd = xcc.rgd
 
     nspins = len(D_sp)
-    nc_g = xp.array(xcc.nc_g)
-    nct_g = xp.array(xcc.nct_g)
-    n_qg = xp.array(xcc.n_qg)
-    nt_qg = xp.array(xcc.nt_qg)
-    B_pqL = xp.array(xcc.B_pqL)
 
     if addcoredensity:
         nc0_sg = rgd.empty(nspins)
@@ -112,10 +120,13 @@ def calculate_paw_correction(expansion,
         nc0_sg = 0
         nct0_sg = 0
 
-    D_sLq = xp.einsum('sp, pqL -> sLq', D_sp, B_pqL)
+    # D_sLq = (D_sp @ B_pqL.reshape((len(B_pqL), -1))
+    #     ).reshape((nspins,) + B_pqL.shape[1:]).transpose((0, 2, 1))
+    D_sqL = (D_sp @ B_pqL.reshape((len(B_pqL), -1))
+        ).reshape((nspins,) + B_pqL.shape[1:])
 
-    e, dEdD_sqL = expansion(rgd, D_sLq, n_qg, nc0_sg, xp=xp)
-    et, dEtdD_sqL = expansion(rgd, D_sLq, nt_qg, nct0_sg, xp=xp)
+    e, dEdD_sqL = expansion(rgd, D_sqL, n_qg, nc0_sg, xp=xp)
+    et, dEtdD_sqL = expansion(rgd, D_sqL, nt_qg, nct0_sg, xp=xp)
 
     if dEdD_sp is not None:
         dEdD_sp += xp.inner((dEdD_sqL - dEtdD_sqL).reshape((nspins, -1)),
@@ -138,20 +149,30 @@ class LDARadialCalculator:
 
 
 class LDA(XCFunctional):
-    def __init__(self, kernel):
+    def __init__(self, kernel, xp=np):
         self.kernel = kernel
+        self.rcalc = LDARadialCalculator(kernel)
+        from gpaw.xc.noncollinear import NonCollinearLDAKernel
+        self.collinear = not isinstance(kernel, NonCollinearLDAKernel)
+        self.expansion = LDARadialExpansion(self.rcalc, self.collinear, xp=xp)
+
         super().__init__(kernel.name, kernel.type)
+
+    @property
+    def xp(self):
+        return self.expansion.xp
+
+    @xp.setter
+    def xp(self, xp):
+        self.expansion = LDARadialExpansion(
+            self.rcalc, self.collinear, xp=xp)
 
     def calculate_impl(self, gd, n_sg, v_sg, e_g):
         self.kernel.calculate(e_g, n_sg, v_sg)
 
     def calculate_paw_correction(self, setup, D_sp, dEdD_sp=None,
                                  addcoredensity=True, a=None, xp=np):
-        from gpaw.xc.noncollinear import NonCollinearLDAKernel
-        collinear = not isinstance(self.kernel, NonCollinearLDAKernel)
-        rcalc = LDARadialCalculator(self.kernel)
-        expansion = LDARadialExpansion(rcalc, collinear)
-        return calculate_paw_correction(expansion,
+        return calculate_paw_correction(self.expansion,
                                         setup, D_sp, dEdD_sp,
                                         addcoredensity, a, xp=xp)
 
