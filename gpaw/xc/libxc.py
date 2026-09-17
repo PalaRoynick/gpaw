@@ -1,5 +1,7 @@
 import warnings
 
+import numpy as np
+
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.xc.kernel import XCKernel
@@ -31,6 +33,7 @@ short_names = {
 
 class LibXC(XCKernel):
     """Functionals from libxc."""
+
     def __init__(self, name, provides_laplacian=False, disable_fhc=True):
         if not hasattr(cgpaw, 'lxcXCFuncNum'):
             raise NameError(
@@ -38,6 +41,10 @@ class LibXC(XCKernel):
         self.name = name
         self.omega = None
         self.disable_fhc = disable_fhc
+        self.device_xc = None
+        self.gpu_available = (
+            hasattr(cgpaw, 'lxcXCFunctionalDeviceAvailable') and
+            cgpaw.lxcXCFunctionalDeviceAvailable())
         self.initialize(nspins=1, provides_laplacian=provides_laplacian)
 
     def initialize(self,
@@ -68,7 +75,9 @@ class LibXC(XCKernel):
             if x is None or c is None:
                 raise NameError(f'Unknown functional: {name}.')
 
-        self.xc = cgpaw.lxcXCFunctional(xc, x, c, nspins)
+        self.arguments = xc, x, c, nspins
+        self.xc = cgpaw.lxcXCFunctional(*self.arguments, False)
+        self.device_xc = None
         self.set_omega()
 
         if self.xc.vv10():
@@ -105,6 +114,102 @@ class LibXC(XCKernel):
                           sigma_xg, dedsigma_xg,
                           tau_sg, dedtau_sg)
 
+    def calculate_gpu(self, e_g, n_sg, dedn_sg,
+                      sigma_xg=None, dedsigma_xg=None,
+                      tau_sg=None, dedtau_sg=None):
+        """Evaluate Libxc directly on contiguous GPU work arrays."""
+        from gpaw.gpu import cupy as cp
+
+        nspins = len(n_sg)
+        if self.nspins != nspins:
+            self.initialize(nspins)
+
+        shape = n_sg.shape[1:]
+        npoints = int(np.prod(shape))
+        density_gs = cp.ascontiguousarray(
+            cp.maximum(n_sg.reshape(nspins, npoints).T, 1.0e-10),
+            dtype=float)
+        sigma_gx = self._point_major(sigma_xg, npoints)
+        tau_gs = self._point_major(tau_sg, npoints)
+        lapl_gs = (cp.zeros_like(density_gs)
+                   if self.type == 'MGGA' else None)
+
+        energy_g = cp.zeros(npoints, dtype=float)
+        density_derivative_gs = cp.zeros_like(density_gs)
+        sigma_derivative_gx = (cp.zeros_like(sigma_gx)
+                               if sigma_gx is not None else None)
+        tau_derivative_gs = (cp.zeros_like(tau_gs)
+                             if tau_gs is not None else None)
+        lapl_derivative_gs = (cp.zeros_like(lapl_gs)
+                              if lapl_gs is not None else None)
+
+        device_xc = self._device_backend()
+        for index in range(device_xc.number_of_functionals()):
+            local_energy_g = cp.empty_like(energy_g)
+            local_density_derivative_gs = cp.empty_like(
+                density_derivative_gs)
+            local_sigma_derivative_gx = self._zeros_like(
+                sigma_derivative_gx)
+            local_tau_derivative_gs = self._zeros_like(
+                tau_derivative_gs)
+            local_lapl_derivative_gs = self._zeros_like(
+                lapl_derivative_gs)
+            device_xc.calculate_device(
+                index,
+                npoints,
+                self._address(density_gs),
+                self._address(sigma_gx),
+                self._address(lapl_gs),
+                self._address(tau_gs),
+                self._address(local_energy_g),
+                self._address(local_density_derivative_gs),
+                self._address(local_sigma_derivative_gx),
+                self._address(local_lapl_derivative_gs),
+                self._address(local_tau_derivative_gs))
+            energy_g += local_energy_g
+            density_derivative_gs += local_density_derivative_gs
+            if sigma_derivative_gx is not None:
+                sigma_derivative_gx += local_sigma_derivative_gx
+            if tau_derivative_gs is not None:
+                tau_derivative_gs += local_tau_derivative_gs
+
+        e_g.reshape(-1)[:] = density_gs.sum(axis=1) * energy_g
+        dedn_sg.reshape(nspins, npoints)[:] += density_derivative_gs.T
+        if dedsigma_xg is not None:
+            dedsigma_xg.reshape(-1, npoints)[:] = sigma_derivative_gx.T
+        if dedtau_sg is not None:
+            dedtau_sg.reshape(nspins, npoints)[:] = tau_derivative_gs.T
+
+    @staticmethod
+    def _point_major(array_xg, npoints):
+        if array_xg is None:
+            return None
+        from gpaw.gpu import cupy as cp
+        return cp.ascontiguousarray(
+            array_xg.reshape(-1, npoints).T, dtype=float)
+
+    @staticmethod
+    def _zeros_like(array):
+        if array is None:
+            return None
+        from gpaw.gpu import cupy as cp
+        return cp.zeros_like(array)
+
+    @staticmethod
+    def _address(array) -> int:
+        return 0 if array is None else array.data.ptr
+
+    def _device_backend(self):
+        if not self.gpu_available:
+            raise RuntimeError('Libxc was built without CUDA or HIP support')
+        if self.device_xc is None:
+            self.device_xc = cgpaw.lxcXCFunctional(*self.arguments, True)
+            if self.omega is not None:
+                self.device_xc.set_omega(self.omega)
+            if self.type == 'MGGA' and self.disable_fhc:
+                self.device_xc.disable_fhc()
+        return self.device_xc
+
     def set_omega(self, omega=None):
         """Set the value of gamma/omega in RSF."""
         if omega is not None:
@@ -112,3 +217,5 @@ class LibXC(XCKernel):
         if self.omega is not None:
             if not self.xc.set_omega(self.omega):
                 raise ValueError('Tried setting omega on a non RSF hybrid.')
+            if self.device_xc is not None:
+                self.device_xc.set_omega(self.omega)

@@ -410,6 +410,76 @@ build-libxc:
     - gpaw info
 
 
+prepare-libxc-cuda:
+  image: $IMAGE_CUDA
+  stage: build
+  variables:
+    PREFIX: $PYTHONUSERBASE
+    # Pinned devel revision tested with CUDA on an RTX A4000.
+    LIBXC_REVISION: 64abc69e68121392d35d084c8d0e84c3a41ad72c
+  before_script:
+    - export PREFIX=`realpath $PREFIX`
+    - export PATH=$PREFIX/bin:$PATH
+    - pip install --user "cmake>=3.21"
+  script:
+    - git clone https://gitlab.com/libxc/libxc.git
+    - cd libxc
+    - git checkout $LIBXC_REVISION
+    - >
+      cmake -S . -B build
+      -DENABLE_CUDA=ON
+      -DCMAKE_CUDA_ARCHITECTURES=86
+      -DBUILD_SHARED_LIBS=ON
+      -DENABLE_FORTRAN=OFF
+      -DENABLE_PYTHON=OFF
+      -DBUILD_TESTING=OFF
+      -DMAXORDER=2
+      -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_INSTALL_LIBDIR=lib
+      -DCMAKE_INSTALL_PREFIX=$PREFIX
+      2>&1 | tee ../libxc-cuda-configure.log
+    - cmake --build build --parallel 2 2>&1 | tee ../libxc-cuda-build.log
+    - cmake --install build
+    - cuobjdump --list-elf $PREFIX/lib/libxc.so | tee ../libxc-cuda-objects.log
+    - grep -q sm_86 ../libxc-cuda-objects.log
+  when: manual
+  artifacts:
+    paths:
+      - $PREFIX
+      - "*.log"
+    expire_in: 30 mins
+
+
+build-libxc-cuda:
+  image: $IMAGE_CUDA
+  extends:
+    - .build
+  needs:
+    - prepare-libxc-cuda
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      local = Path('.local').resolve()
+      include_dirs += [local / 'include']
+      library_dirs += [local / 'lib']
+      runtime_library_dirs += [local / 'lib']
+
+      gpu = True
+      gpu_target = 'cuda'
+      gpu_compiler = 'nvcc'
+      gpu_compile_args = ['-O3',
+                          '-g']
+      libraries += ['cudart', 'cublas']
+
+      # MAGMA
+      magma = True
+      libraries += ['magma']
+      EOF
+    - cat siteconfig.py
+    - pip install -v --user --log build.log --editable .
+    - gpaw info
+
+
 gpwfiles:
   image: $IMAGE_MAIN_LATEST
   needs:
@@ -598,6 +668,20 @@ test-libxc:
   script:
     - gpaw info
     - pytest -v -m libxc
+
+
+test-libxc-cuda:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - build-libxc-cuda
+  tags:
+    - cuda
+  script:
+    - nvidia-smi
+    - gpaw info
+    - pytest -v gpaw/test/gpu/test_libxc_gpu.py
 
 check-agts:
   image: $IMAGE_MAIN_OLDEST

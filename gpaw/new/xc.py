@@ -48,7 +48,7 @@ def create_functional(xc: OldXCFunctional | str | dict,
     elif xc.type == 'GGA':
         functional = GGAFunctional(xc, grid, xp)
     elif xc.type == 'MGGA':
-        functional = MGGAFunctional(xc, grid)
+        functional = MGGAFunctional(xc, grid, xp)
     elif xc.type == 'GLLB':
         from gpaw.dft import LegacyGPAWError
         raise LegacyGPAWError
@@ -94,6 +94,20 @@ class Functional:
 
     def calculate_paw_correction(self, setup, d, h=None, a=None):
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
+
+    def _evaluate_xc_gpu(self, arrays: tuple[UGArray, ...]) -> None:
+        data = [array.data for array in arrays]
+        kernel = self.xc.kernel
+        calculate_gpu = getattr(kernel, 'calculate_gpu', None)
+        if (calculate_gpu is not None and
+                getattr(kernel, 'gpu_available', False)):
+            calculate_gpu(*data)
+        elif self.name == 'LDA':
+            evaluate_lda_gpu(*data)
+        elif self.name == 'PBE':
+            evaluate_pbe_gpu(*data)
+        else:
+            raise ValueError(f'{self.name} not supported on GPU')
 
     def calculate_paw_corrections(self, setups, D_asp):
         """Calculate a local collection of PAW corrections.
@@ -147,16 +161,8 @@ class Functional:
                     return stress_vv + self._stress(*args, **kwargs)
                 else:
                     self.xc.kernel.calculate(*[array.data for array in args])
-            # Special GPU cases:
-            elif self.name == 'LDA':
-                e_r, nt_sr, vt_sr = args
-                evaluate_lda_gpu(nt_sr.data, vt_sr.data, e_r.data)
-            elif self.name == 'PBE':
-                e_r, nt_sr, vt_sr, sigma_xr, dedsigma_xr = args
-                evaluate_pbe_gpu(nt_sr.data, vt_sr.data, e_r.data,
-                                 sigma_xr.data, dedsigma_xr.data)
             else:
-                1 / 0
+                self._evaluate_xc_gpu(args)
             return self._stress(*args, **kwargs)
         return self.xp.zeros((3, 3))
 
@@ -183,9 +189,7 @@ class LDAFunctional(Functional):
         if self.xp is np:
             self.xc.kernel.calculate(e_r.data, nt_sr.data, vxct_sr.data)
         else:
-            if self.name != 'LDA':
-                raise ValueError(f'{self.name} not supported on GPU')
-            evaluate_lda_gpu(nt_sr.data, vxct_sr.data, e_r.data)
+            self._evaluate_xc_gpu((e_r, nt_sr, vxct_sr))
         exc = e_r.integrate()
         return exc, vxct_sr, None
 
@@ -248,10 +252,8 @@ class GGAFunctional(LDAFunctional):
                     for a in [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr]]
             self._evaluate_xc_cpu(args)
         else:
-            if self.name != 'PBE':
-                raise ValueError(f'{self.name} not supported on GPU')
-            evaluate_pbe_gpu(nt_sr.data, vxct_sr.data, e_r.data,
-                             sigma_xr.data, dedsigma_xr.data)
+            self._evaluate_xc_gpu(
+                (e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr))
 
         add_gradient_correction([grad.apply for grad in self.grad_v],
                                 gradn_svr.data, sigma_xr.data,
@@ -343,6 +345,18 @@ def dot_product(a_vr, b_vr, out_r):
 
 
 class MGGAFunctional(GGAFunctional):
+    def __init__(self,
+                 xc: OldXCFunctional,
+                 grid: UGDesc,
+                 xp=np):
+        super().__init__(xc, grid, xp)
+        if xp is not np and getattr(self.xc.kernel, 'gpu_available', False):
+            from gpaw.xc.gga import get_gradient_ops
+            assert isinstance(self.xc, MGGA)
+            gradients = get_gradient_ops(
+                grid._gd, self.xc.stencil_range, xp)
+            self.grad_v = [gradient.__self__ for gradient in gradients]
+
     def get_setup_name(self):
         return 'PBE'
 
@@ -352,31 +366,39 @@ class MGGAFunctional(GGAFunctional):
                                                            UGArray,
                                                            UGArray | None]:
         xp = nt_sr.xp
-        nt_sr = nt_sr.to_xp(np)
+        kernel = self.xc.kernel
+        calculation_xp = (
+            xp if getattr(kernel, 'gpu_available', False) else np)
+        if nt_sr.xp is not calculation_xp:
+            nt_sr = nt_sr.to_xp(calculation_xp)
 
         gradn_svr, sigma_xr = gradient_and_sigma(self.grad_v, nt_sr)
         if isinstance(self.xc, VDWXC):
             assert isinstance(self.xc.semilocal_xc, MGGA), self.xc.semilocal_xc
         else:
             assert isinstance(self.xc, MGGA), self.xc
-        e_r = self.grid.empty()
+        e_r = self.grid.empty(xp=calculation_xp)
         if taut_sr is None:
             taut_sr = nt_sr.new(zeroed=True)
-        else:
-            taut_sr = taut_sr.to_xp(np)
+        elif taut_sr.xp is not calculation_xp:
+            taut_sr = taut_sr.to_xp(calculation_xp)
+        assert taut_sr is not None
         dedtaut_sr = taut_sr.new()
         vxct_sr = taut_sr.new()
         vxct_sr.data[:] = 0.0
         dedsigma_xr = sigma_xr.new()
         args = [e_r, nt_sr, vxct_sr, sigma_xr, dedsigma_xr,
                 taut_sr, dedtaut_sr]
-        args = [array.data for array in args]
-        self._evaluate_xc_cpu(args)
+        if calculation_xp is np:
+            self._evaluate_xc_cpu([array.data for array in args])
+        else:
+            self._evaluate_xc_gpu(tuple(args))
         add_gradient_correction([grad.apply for grad in self.grad_v],
                                 gradn_svr.data, sigma_xr.data,
                                 dedsigma_xr.data, vxct_sr.data)
-        vxct_sr = vxct_sr.to_xp(xp)
-        dedtaut_sr = dedtaut_sr.to_xp(xp)
+        if vxct_sr.xp is not xp:
+            vxct_sr = vxct_sr.to_xp(xp)
+            dedtaut_sr = dedtaut_sr.to_xp(xp)
 
         return e_r.integrate(), vxct_sr, dedtaut_sr
 

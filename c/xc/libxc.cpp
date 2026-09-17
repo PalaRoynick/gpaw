@@ -11,6 +11,7 @@
 #include "xc_gpaw.h"
 #include "extensions.h"
 #include <assert.h>
+#include <stdint.h>
 
 typedef struct
 {
@@ -22,7 +23,41 @@ typedef struct
   XC(func_type) c_functional;
   XC(func_type) *functional[2]; /* store either x&c, or just xc */
   int nspin; /* must be common to x and c, so declared redundantly here */
+  bool on_device;
 } lxcXCFunctionalObject;
+
+
+static int initialize_functional(XC(func_type) *functional,
+                                 int number,
+                                 int nspin,
+                                 bool on_device)
+{
+#ifdef XC_FLAGS_ON_DEVICE
+  int flags = on_device ? XC_FLAGS_ON_DEVICE : XC_FLAGS_ON_HOST;
+  return XC(func_init_flags)(functional, number, nspin, flags);
+#else
+  assert(!on_device);
+  return XC(func_init)(functional, number, nspin);
+#endif
+}
+
+
+static bool device_backend_available()
+{
+#ifdef XC_FLAGS_ON_DEVICE
+  return (xc_func_info_get_default_flags() & XC_FLAGS_ON_DEVICE) != 0;
+#else
+  return false;
+#endif
+}
+
+
+PyObject * lxcXCFunctionalDeviceAvailable(PyObject *obj, PyObject *args)
+{
+  if (device_backend_available())
+    Py_RETURN_TRUE;
+  Py_RETURN_FALSE;
+}
 
 
 static void lxcXCFunctional_dealloc(lxcXCFunctionalObject *self)
@@ -136,6 +171,95 @@ lxcXCFunctional_set_omega(lxcXCFunctionalObject *self, PyObject *args)
     return NULL;
   }
   return Py_BuildValue("i", success);
+}
+
+
+static PyObject*
+lxcXCFunctional_number_of_functionals(lxcXCFunctionalObject *self,
+                                      PyObject *args)
+{
+  return PyLong_FromLong(self->functional[1] == NULL ? 1 : 2);
+}
+
+
+static PyObject*
+lxcXCFunctional_calculate_device(lxcXCFunctionalObject *self, PyObject *args)
+{
+  int index;
+  unsigned long long npoints;
+  unsigned long long rho_address;
+  unsigned long long sigma_address;
+  unsigned long long lapl_address;
+  unsigned long long tau_address;
+  unsigned long long energy_address;
+  unsigned long long density_derivative_address;
+  unsigned long long sigma_derivative_address;
+  unsigned long long lapl_derivative_address;
+  unsigned long long tau_derivative_address;
+
+  if (!PyArg_ParseTuple(args, "iKKKKKKKKKK",
+                        &index,
+                        &npoints,
+                        &rho_address,
+                        &sigma_address,
+                        &lapl_address,
+                        &tau_address,
+                        &energy_address,
+                        &density_derivative_address,
+                        &sigma_derivative_address,
+                        &lapl_derivative_address,
+                        &tau_derivative_address))
+    return NULL;
+
+  if (!self->on_device) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Libxc functional was initialized for host arrays");
+    return NULL;
+  }
+  if (index < 0 || index >= 2 || self->functional[index] == NULL) {
+    PyErr_SetString(PyExc_IndexError, "Libxc functional index out of range");
+    return NULL;
+  }
+
+  const double *rho = (const double *)(uintptr_t)rho_address;
+  const double *sigma = (const double *)(uintptr_t)sigma_address;
+  const double *lapl = (const double *)(uintptr_t)lapl_address;
+  const double *tau = (const double *)(uintptr_t)tau_address;
+  double *energy = (double *)(uintptr_t)energy_address;
+  double *density_derivative =
+    (double *)(uintptr_t)density_derivative_address;
+  double *sigma_derivative =
+    (double *)(uintptr_t)sigma_derivative_address;
+  double *lapl_derivative =
+    (double *)(uintptr_t)lapl_derivative_address;
+  double *tau_derivative =
+    (double *)(uintptr_t)tau_derivative_address;
+  XC(func_type) *functional = self->functional[index];
+
+  switch (functional->info->family) {
+  case XC_FAMILY_LDA:
+  case XC_FAMILY_HYB_LDA:
+    xc_lda_exc_vxc(functional, npoints, rho,
+                   energy, density_derivative);
+    break;
+  case XC_FAMILY_GGA:
+  case XC_FAMILY_HYB_GGA:
+    xc_gga_exc_vxc(functional, npoints, rho, sigma,
+                   energy, density_derivative, sigma_derivative);
+    break;
+  case XC_FAMILY_MGGA:
+  case XC_FAMILY_HYB_MGGA:
+    xc_mgga_exc_vxc(functional, npoints, rho, sigma, lapl, tau,
+                    energy, density_derivative, sigma_derivative,
+                    lapl_derivative, tau_derivative);
+    break;
+  default:
+    PyErr_SetString(PyExc_NotImplementedError,
+                    "Unsupported Libxc functional family");
+    return NULL;
+  }
+
+  Py_RETURN_NONE;
 }
 
 // Below are changes made by cpo@slac.stanford.edu for libxc 1.2.0
@@ -636,6 +760,10 @@ static PyMethodDef lxcXCFunctional_Methods[] = {
    (PyCFunction)lxcXCFunctional_disable_fhc, METH_VARARGS, 0},
   {"set_omega",
    (PyCFunction)lxcXCFunctional_set_omega, METH_VARARGS, 0},
+  {"number_of_functionals",
+   (PyCFunction)lxcXCFunctional_number_of_functionals, METH_NOARGS, 0},
+  {"calculate_device",
+   (PyCFunction)lxcXCFunctional_calculate_device, METH_VARARGS, 0},
   {"calculate",
    (PyCFunction)lxcXCFunctional_Calculate, METH_VARARGS, 0},
   {"calculate_fxc_spinpaired",
@@ -664,6 +792,7 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
 {
   int xc, x, c; /* functionals identifier number */
   int nspin; /* XC_UNPOLARIZED or XC_POLARIZED  */
+  int on_device = 0;
 
   if (!scratch) {
     scratch = (double*)malloc(LIBXCSCRATCHSIZE*sizeof(double));
@@ -673,7 +802,20 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     scratch_vlapl = (double*)malloc(laplsize);
   }
 
-  if (!PyArg_ParseTuple(args, "iiii", &xc, &x, &c, &nspin)) {
+  if (!PyArg_ParseTuple(args, "iiii|p", &xc, &x, &c, &nspin, &on_device)) {
+    return NULL;
+  }
+
+#ifndef XC_FLAGS_ON_DEVICE
+  if (on_device) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Libxc was built without device selection support");
+    return NULL;
+  }
+#endif
+  if (on_device && !device_backend_available()) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Libxc was built without CUDA or HIP support");
     return NULL;
   }
 
@@ -688,13 +830,14 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
 
   assert(nspin==XC_UNPOLARIZED || nspin==XC_POLARIZED);
   self->nspin = nspin; /* must be common to x and c, so declared redundantly */
+  self->on_device = on_device;
 
   int number,family,familyx,familyc;
 
   if (xc != -1) {
     xc_family_from_id(xc,&family,&number);
     assert (family != XC_FAMILY_UNKNOWN);
-    XC(func_init)(&self->xc_functional, xc, nspin);
+    initialize_functional(&self->xc_functional, xc, nspin, on_device);
     self->functional[0]=&self->xc_functional;
     self->functional[1]=NULL;
   } else {
@@ -703,12 +846,12 @@ PyObject * NewlxcXCFunctionalObject(PyObject *obj, PyObject *args)
     if (x!=-1) {
       xc_family_from_id(x,&familyx,&number);
       assert (familyx != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->x_functional, x, nspin);
+      initialize_functional(&self->x_functional, x, nspin, on_device);
     }
     if (c!=-1) {
       xc_family_from_id(c,&familyc,&number);
       assert (familyc != XC_FAMILY_UNKNOWN);
-      XC(func_init)(&self->c_functional, c, nspin);
+      initialize_functional(&self->c_functional, c, nspin, on_device);
     }
 
     if (x!=-1 && c!=-1) {
