@@ -54,3 +54,32 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
         gradient_tolerance = 5.0e-7 if name == 'PBE' else 2.0e-10
         assert gradient_asp[a] == pytest.approx(
             expected_gradient_asp[a], abs=gradient_tolerance)
+
+
+@pytest.mark.parametrize('nspins', [1, 2])
+def test_pbe_gradient_matches_finite_difference(nspins):
+    """The result graph differentiates the discrete PBE correction energy."""
+    rng = np.random.default_rng(23)
+    xc = XC('PBE')
+    setup = create_setup('N', xc)
+    npacked = setup.ni * (setup.ni + 1) // 2
+    density_sp = 0.2 + 0.1 * rng.random((nspins, npacked))
+    direction_sp = rng.normal(size=density_sp.shape)
+    functional = SimpleNamespace(xp=np, name='PBE', xc=xc)
+
+    batch = gather_xc_paw(
+        np, [setup], {0: density_sp}, gga=True)[0]
+    _, gradient_asp = evaluate_paw_xc(functional, batch)
+    analytic = np.vdot(gradient_asp[0], direction_sp)
+
+    def energy(displacement):
+        return xc.calculate_paw_correction(
+            setup, density_sp + displacement * direction_sp)
+
+    epsilon = 1.0e-4
+    finite_difference = (
+        -energy(2.0 * epsilon) + 8.0 * energy(epsilon)
+        - 8.0 * energy(-epsilon) + energy(-2.0 * epsilon)
+    ) / (12.0 * epsilon)
+
+    assert analytic == pytest.approx(finite_difference, abs=2.0e-9)
