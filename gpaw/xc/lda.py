@@ -102,6 +102,11 @@ def calculate_paw_correction(expansion,
         B_pqL = xcc.gpu_B_pqL
     else:
         rgd = xcc.rgd
+        nc_g = xcc.nc_g
+        nct_g = xcc.nct_g
+        n_qg = xcc.n_qg
+        nt_qg = xcc.nt_qg
+        B_pqL = xcc.B_pqL
 
     nspins = len(D_sp)
 
