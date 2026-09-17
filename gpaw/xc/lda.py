@@ -9,8 +9,6 @@ from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.c import evaluate_lda_gpu
 
-from line_profiler import profile
-
 def stress_integral(gd, a1_g, a2_g=None):
     return gd.integrate(a1_g, a2_g, global_integral=False)
 
@@ -36,7 +34,6 @@ class LDARadialExpansion:
         self.wY_nL = self.w_n[:, None] * self.Y_nL
 
 
-    @profile
     def __call__(self, rgd, D_sqL, n_qg, nc0_sg, xp=np):
         n_sgL = n_qg.T @ D_sqL
         dv_g = rgd.dv_g
