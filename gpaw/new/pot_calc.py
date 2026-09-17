@@ -179,13 +179,25 @@ def calculate_non_local_potential(setups,
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
     V_aL = V_aL.to_xp(np)
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
+    D_asp = {}
+    rank = 0
+    for a, D_sii in D_asii.items():
+        if rank % kpt_band_comm.size == kpt_band_comm.rank:
+            D_asp[a] = np.array(
+                [pack_density(D_ii.real) for D_ii in D_sii])
+        rank += 1
+
+    e_xc_a, dH_xc_asp = xc.calculate_paw_corrections(setups, D_asp)
+
     rank = 0
     for a, D_sii in D_asii.items():
         if rank % kpt_band_comm.size == kpt_band_comm.rank:
             V_L = V_aL[a]
             setup = setups[a]
             dH_sii, corrections = calculate_non_local_potential1(
-                setup, xc, D_sii, V_L, soc, extensions, a)
+                setup, xc, D_sii, V_L, soc, extensions, a,
+                D_sp=D_asp[a],
+                xc_correction=(e_xc_a[a], dH_xc_asp[a]))
             dH_asii[a][:] = dH_sii
             for key, e in corrections.items():
                 energy_corrections[key] += e
@@ -212,11 +224,14 @@ def calculate_non_local_potential1(setup: Setup,
                                    V_L: Array1D,
                                    soc: bool,
                                    extensions,
-                                   atom_index) -> tuple[Array3D,
-                                                        dict[str, float]]:
+                                   atom_index,
+                                   D_sp=None,
+                                   xc_correction=None
+                                   ) -> tuple[Array3D, dict[str, float]]:
     ncomponents = len(D_sii)
     ndensities = 2 if ncomponents == 2 else 1
-    D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
+    if D_sp is None:
+        D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
 
     D_p = D_sp[:ndensities].sum(0)
 
@@ -236,7 +251,12 @@ def calculate_non_local_potential1(setup: Setup,
         dH_sp[1:4] = pack_hermitian(dHsoc_sii)
 
     dH_sp[:ndensities] = dH_p
-    e_xc = xc.calculate_paw_correction(setup, D_sp, dH_sp, a=atom_index)
+    if xc_correction is None:
+        e_xc = xc.calculate_paw_correction(
+            setup, D_sp, dH_sp, a=atom_index)
+    else:
+        e_xc, dH_xc_sp = xc_correction
+        dH_sp += dH_xc_sp
 
     dH_sii = unpack_hermitian(dH_sp)
 

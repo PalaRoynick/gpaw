@@ -80,6 +80,7 @@ class Functional:
         self.exx_omega = 0.0
         self.exx_yukawa = False
         self.energies: dict[str, float] = {}
+        self.use_xc_corrections2 = False
 
     def __str__(self):
         return f'name: {self.xc.get_description()}'
@@ -93,6 +94,38 @@ class Functional:
 
     def calculate_paw_correction(self, setup, d, h=None, a=None):
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
+
+    def calculate_paw_corrections(self, setups, D_asp):
+        """Calculate a local collection of PAW corrections.
+
+        The experimental result graph supports exactly LDA and PBE.  Density
+        layouts outside its current scope retain the established atom loop.
+        """
+        if self.use_xc_corrections2:
+            assert self.name in {'LDA', 'PBE'}
+            supported = all(setups[a].xc_correction is not None and
+                            len(D_sp) in {1, 2}
+                            for a, D_sp in D_asp.items())
+            if supported:
+                from gpaw.new.xccorrections2 import evaluate_paw_xc
+                from gpaw.utilities.tensor_batch import (
+                    gather_xc_paw,
+                    scatter_xc_paw,
+                )
+                batches = gather_xc_paw(
+                    self.xp, setups, D_asp, gga=self.name == 'PBE')
+                results = tuple(evaluate_paw_xc(self, batch)
+                                for batch in batches)
+                return scatter_xc_paw(batches, results)
+
+        energy_a = {}
+        gradient_asp = {}
+        for a, D_sp in D_asp.items():
+            gradient_sp = np.zeros_like(D_sp)
+            energy_a[a] = self.calculate_paw_correction(
+                setups[a], D_sp, gradient_sp, a=a)
+            gradient_asp[a] = gradient_sp
+        return energy_a, gradient_asp
 
     def get_setup_name(self) -> str:
         return self.setup_name

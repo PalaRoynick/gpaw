@@ -1059,6 +1059,7 @@ def _parse_experimental(experimental: dict | None,
                                      'ccirs',
                                      'pw_pot_calc',
                                      'paw_corr_mixer',
+                                     'xc_corrections2',
                                      'new_basis'}
     if unknown:
         warnings.warn(f'Unknown experimental keyword(s): {unknown}',
