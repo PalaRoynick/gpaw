@@ -103,9 +103,12 @@ class Functional:
                 getattr(kernel, 'gpu_available', False)):
             calculate_gpu(*data)
         elif self.name == 'LDA':
-            evaluate_lda_gpu(*data)
+            energy, density, potential = data
+            evaluate_lda_gpu(density, potential, energy)
         elif self.name == 'PBE':
-            evaluate_pbe_gpu(*data)
+            energy, density, potential, sigma, sigma_derivative = data
+            evaluate_pbe_gpu(density, potential, energy, sigma,
+                             sigma_derivative)
         else:
             raise ValueError(f'{self.name} not supported on GPU')
 
