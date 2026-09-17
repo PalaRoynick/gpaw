@@ -164,6 +164,7 @@ class PotentialCalculator:
                 V_aL)
 
 
+
 @trace
 def calculate_non_local_potential(setups,
                                   density,
@@ -206,6 +207,9 @@ def calculate_non_local_potential(setups,
     return (dH_asii, dict(zips(names, energies)))
 
 
+from line_profiler import profile
+@profile
+@trace
 def calculate_non_local_potential1(setup: Setup,
                                    xc: Functional,
                                    D_sii: Array3D,
@@ -220,15 +224,28 @@ def calculate_non_local_potential1(setup: Setup,
     D_sp = pack_density(D_sii.real, xp=xp)
     D_p = D_sp[:ndensities].sum(0)
 
-    K_p = xp.array(setup.K_p)
-    M_p = xp.array(setup.M_p)
-    MB_p = xp.array(setup.MB_p)
-    M_pp = xp.array(setup.M_pp)
-    Delta_pL = xp.array(setup.Delta_pL)
+    if xp is np:
+        K_p = setup.K_p
+        M_p = setup.M_p
+        MB_p = setup.MB_p
+        M_pp = setup.M_pp
+        Delta_pL = setup.Delta_pL
+    else:
+        if not hasattr(setup, 'gpu_K_p'):
+            setup.gpu_K_p = xp.array(setup.K_p)
+            setup.gpu_M_p = xp.array(setup.M_p)
+            setup.gpu_MB_p = xp.array(setup.MB_p)
+            setup.gpu_M_pp = xp.array(setup.M_pp)
+            setup.gpu_Delta_pL = xp.array(setup.Delta_pL)
+        K_p = setup.gpu_K_p
+        M_p = setup.gpu_M_p
+        MB_p = setup.gpu_MB_p
+        M_pp = setup.gpu_M_pp
+        Delta_pL = setup.gpu_Delta_pL
 
-    dH_p = xp.array(K_p + M_p +
-                    MB_p + 2.0 * M_pp @ D_p +
-                    Delta_pL @ V_L)
+    dH_p = (K_p + M_p +
+            MB_p + 2.0 * M_pp @ D_p +
+            Delta_pL @ V_L)
     e_kinetic = K_p @ D_p + setup.Kc
     e_zero = setup.MB + MB_p @ D_p
     e_coulomb = setup.M + D_p @ (M_p + M_pp @ D_p)

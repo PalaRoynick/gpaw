@@ -194,8 +194,12 @@ and anything that should be multiplied onto such, e.g. corrections to the
 Hamiltonian, are constructed according to (un)pack_hermitian.
 """
 
+_indices_cache = {}
 
-def pack_hermitian(M2, tolerance=1e-10, xp=np, offdiag_scale=None):
+def pack_hermitian(M2,
+                   tolerance=1e-10,
+                   xp=np,
+                   offdiag_scale=None):
     r"""Pack Hermitian
 
     This functions packs a Hermitian 2D array to a
@@ -211,30 +215,47 @@ def pack_hermitian(M2, tolerance=1e-10, xp=np, offdiag_scale=None):
 
        (a00, [a01 + a10*]/2, [a02 + a20*]/2, a11, [a12 + a21*]/2, a22)
     """
+    global _indices_cache
 
     n = M2.shape[-1]
-    a, b = xp.where(xp.tri(n, dtype=bool).T)
+    if n in _indices_cache:
+        a, b, c = _indices_cache[n]
+    else:
+        a, b = indices or xp.triu_indices(n)
+        c = xp.where(a != b)[0]
+        _indices_cache[n] = (a, b, c)
     out = M2[..., a, b]
 
     if debug:
+        if indices is not None:
+           assert (a, b) == xp.triu_indices(n)
         out += M2[..., b, a].conj()
         out *= 0.5
         assert xp.allclose(out, M2[..., a, b],
                            atol=tolerance), 'Pack not symmetric'
 
     if offdiag_scale is not None:
-        out[..., a != b] *= offdiag_scale
+        out[..., c] *= offdiag_scale
     return out
 
 
-def unpack_hermitian(M, xp=np):
+def unpack_hermitian(M, xp=np, offdiag_scale=None):
     """Unpack 1D array to Hermitian 2D array,
     assuming a packing as in ``pack_hermitian``."""
+    global _indices_cache
+
     n = int(sqrt(0.25 + 2.0 * M.shape[-1]))  # XXX: Dangerous...
     out = xp.empty(M.shape[:-1] + (n, n), M.dtype)
-    a, b = xp.where(xp.tri(n, dtype=bool).T)
+    if n in _indices_cache:
+        a, b, c = _indices_cache[n]
+    else:
+        a, b = xp.triu_indices(n)
+        c = xp.where(a != b)[0]
+        _indices_cache[n] = (a, b, c)
     out[..., a, b] = M
-    out[..., b, a] = M.conj()
+    if offdiag_scale is not None:
+        out[..., a[c], b[c]] *= offdiag_scale
+    out[..., b, a] = out[..., a, b].conj()
     return out
 
 
@@ -266,11 +287,7 @@ def pack_density(A: np.ndarray, xp=np) -> np.ndarray:
 def unpack_density(M, xp=np):
     """Unpack 1D array to 2D Hermitian array,
     assuming a packing as in ``pack_density``."""
-    M2 = unpack_hermitian(M, xp=xp)
-    M2 *= 0.5  # divide all by 2
-    n = xp.arange(M2.shape[-1])
-    M2[..., n, n] *= 2  # rescale diagonal to original size
-    return M2
+    return unpack_hermitian(M, xp=xp, offdiag_scale=0.5)
 
 
 for method in (pack_hermitian, unpack_hermitian, pack_density, pack_density):

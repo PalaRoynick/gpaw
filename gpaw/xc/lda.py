@@ -166,8 +166,9 @@ class LDA(XCFunctional):
 
     @xp.setter
     def xp(self, xp):
-        self.expansion = LDARadialExpansion(
-            self.rcalc, self.collinear, xp=xp)
+        if xp is not self.expansion.xp:
+            self.expansion = LDARadialExpansion(
+                self.rcalc, self.collinear, xp=xp)
 
     def calculate_impl(self, gd, n_sg, v_sg, e_g):
         self.kernel.calculate(e_g, n_sg, v_sg)
