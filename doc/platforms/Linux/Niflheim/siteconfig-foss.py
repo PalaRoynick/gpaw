@@ -54,15 +54,15 @@ if cupy:
     library_dirs += [os.path.join(cupy, 'lib'), os.path.join(cuda, 'lib')]
 
     cpuarch = os.getenv('CPU_ARCH')
-    if cpuarch == 'icelake':  # Also covers sapphirelake
+    if cpuarch in ['icelake', 'icelake_el9']:  # Also covers sapphirelake
         gpu_compile_args = ['-O3',
                             '-g',
                             '-gencode', 'arch=compute_80,code=sm_80']
-    elif cpuarch == 'sapphirerapids':
+    elif cpuarch == 'sapphirerapids_el9':
         gpu_compile_args = ['-O3',
                             '-g',
                             '-gencode', 'arch=compute_90,code=sm_90']
-    elif cpuarch == 'skylake_el8' or cpuarch == 'skylake_el9':
+    elif cpuarch in ['skylake_el8', 'skylake_el9']:
         gpu_compile_args = ['-O3',
                             '-g',
                             '-gencode', 'arch=compute_86,code=sm_86']

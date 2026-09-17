@@ -144,8 +144,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
             vt_sR.data[1] = vt_sR.data[0]
         vt_sR.data[density.ndensities:] = 0.0
 
-        # e_external = self.external_potential.update_potential(vt_sR, density)
-        e_external = 0.0
+        for ext in self.extensions:
+            ext.update2pw(nt0_g, vHt_h, vxct_sr)
 
         vtmp_R = vt_sR.desc.empty(xp=self.xp)
         for spin, (vt_R, vxct_r) in enumerate(zips(vt_sR, vxct_sr)):
@@ -158,8 +158,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         return ({'coulomb': e_coulomb,
                  'zero': e_zero,
-                 'xc': e_xc,
-                 'external': e_external},
+                 'xc': e_xc},
                 vt_sR,
                 dedtaut_sr,
                 vHt_h,

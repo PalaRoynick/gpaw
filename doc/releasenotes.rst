@@ -26,6 +26,8 @@ Git master branch
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
 
+* Improved MGGA initialization (see :mr:`3451`).
+
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 

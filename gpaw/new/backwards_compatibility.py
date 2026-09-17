@@ -250,7 +250,7 @@ class FakeWFS:
         self.ibzwfs._write_wave_functions(writer, spin_k_shape, flags)
 
     def write_occupations(self, writer):
-        _, occ_skn = self.ibzwfs.get_all_eigs_and_occs()
+        occ_skn = self.ibzwfs.get_all_occs()
         if not self.ibzwfs.collinear:
             occ_skn = occ_skn[0]
         writer.write(occupations=occ_skn)

@@ -302,6 +302,13 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         if zero_vacuum and not self.dipolelayer:
             raise NotImplementedError('zero_vacuum not available if '
                                       'dipolelayer is False.')
+        if dipolelayer:
+            tilt_c = (np.abs(pw.cell_cv[:2, 2]) /
+                      np.linalg.norm(pw.cell_cv[:2], axis=1))
+            if tilt_c.max() > 1e-10:
+                raise ValueError(
+                    'dipolelayer requires the first two cell vectors to be '
+                    f'perpendicular to z; got cell (bohr):\n{pw.cell_cv}')
         # For caching the dipole-layer solve.
         self._dipole_cache: dict[str, Any] = {}
 
@@ -566,7 +573,11 @@ def create_dipole_layer(pw: PWDesc, z0: float = 2.0):
     alpha = 6. / z0**2
     Lz = pw.cell_cv[2, 2]
     Gz_G = pw.G_plus_k_Gv[:, 2]  # z-component of PW wave vector
-    onaxis_G = (pw.G_plus_k_Gv[:, 0] == 0) & (pw.G_plus_k_Gv[:, 1] == 0)
+    onaxis_G = pw.onaxis_mask()
+    n_onaxis = pw.comm.sum_scalar(int(onaxis_G.sum()))
+    if n_onaxis < 2:
+        raise RuntimeError('Dipole layer has no on-axis plane-wave '
+                           'components to correct.')
     drho_g = pw.zeros()
     drho_g.data[onaxis_G] = (
         -2j * Gz_G[onaxis_G]
@@ -578,8 +589,7 @@ def create_dipole_layer(pw: PWDesc, z0: float = 2.0):
 def xy_average_at_boundary(f_G: PWArray) -> np.ndarray:
     """Calculate average value and derivative at boundary of box."""
     pw = f_G.desc
-    m0_G, m1_G = pw.indices_cG[:2, pw.ng1:pw.ng2] == 0
-    mask_G = m0_G & m1_G
+    mask_G = pw.onaxis_mask()
     f_q = f_G.data[mask_G]
     value = f_q.real.sum() * 2
     # f(z) = sum_G f_G exp(iGz); using f_{-G} = conj(f_G) (f(z) real),
