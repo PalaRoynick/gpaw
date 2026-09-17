@@ -8,11 +8,8 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
-<<<<<<< HEAD
 
 from gpaw.core import UGArray
-=======
->>>>>>> master
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
