@@ -477,6 +477,7 @@ build-libxc-cuda:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
+    - export LD_LIBRARY_PATH="$CI_PROJECT_DIR/.local/lib:${LD_LIBRARY_PATH:-}"
     - pip install -v --user --log build.log --editable .
     - gpaw info
 
@@ -680,6 +681,7 @@ test-libxc-cuda:
   tags:
     - cuda
   script:
+    - export LD_LIBRARY_PATH="$CI_PROJECT_DIR/.local/lib:${LD_LIBRARY_PATH:-}"
     - nvidia-smi
     - gpaw info
     - pytest -v gpaw/test/gpu/test_libxc_gpu.py
