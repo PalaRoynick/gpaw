@@ -238,7 +238,9 @@ lxcXCFunctional_calculate_device(lxcXCFunctionalObject *self, PyObject *args)
 
   switch (functional->info->family) {
   case XC_FAMILY_LDA:
+#ifdef XC_FAMILY_HYB_LDA
   case XC_FAMILY_HYB_LDA:
+#endif
     xc_lda_exc_vxc(functional, npoints, rho,
                    energy, density_derivative);
     break;
