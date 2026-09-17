@@ -47,18 +47,31 @@ class MPI4PYWrapper:
         else:
             return self.comm.reduce(a, root=root, op=_op)
 
+    # Avoid MPI_ERR_ARG when trying to do a large reduction
+    max_reduce_bytes = 2**30
+
+    def _reduce_chunks(self, a):
+        n = max(1, self.max_reduce_bytes // a.itemsize)
+        if a.size <= n:
+            yield a
+            return
+        assert a.flags.c_contiguous
+        flat = a.reshape(-1)
+        for i in range(0, a.size, n):
+            yield flat[i:i + n]
+
     def sum(self, a, root=-1, _op=None):
         if _op is None:
             _op = self._MPI.SUM
 
         maybe_sync(a)
-        if root == -1:
-            self.comm.Allreduce(self._MPI.IN_PLACE, a, op=_op)
-        else:
-            if root == self.rank:
-                self.comm.Reduce(self._MPI.IN_PLACE, a, root=root, op=_op)
+        for chunk in self._reduce_chunks(a):
+            if root == -1:
+                self.comm.Allreduce(self._MPI.IN_PLACE, chunk, op=_op)
+            elif root == self.rank:
+                self.comm.Reduce(self._MPI.IN_PLACE, chunk, root=root, op=_op)
             else:
-                self.comm.Reduce(a, None, root=root, op=_op)
+                self.comm.Reduce(chunk, None, root=root, op=_op)
 
     def max(self, a, root=-1):
         self.sum(a, root=-1, _op=self._MPI.MAX)
