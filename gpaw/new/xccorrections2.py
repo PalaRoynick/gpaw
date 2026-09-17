@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
 
 import numpy as np
 
@@ -113,7 +114,6 @@ class PBEResult(TensorResult):
         return (
             (self.density, self.potential * density_gradient),
             (self.sigma, self.sigma_derivative * sigma_gradient))
-
 
 
 def density_L_expansion(engine: Engine,
@@ -227,24 +227,28 @@ class PAWXCCorrection:
     """Setup and atom arrays shared by all four PAW XC corrections."""
 
     # D_ap or D_asp: packed on-site density matrices.
-    density: object
+    density: Any
     # B_apqL maps packed matrices to radial/angular coefficients.
-    basis_apqL: object
+    basis_apqL: Any
     # All-electron and pseudo radial basis products n_aqg and nt_aqg.
-    ae_radial_aqg: object
-    pseudo_radial_aqg: object
+    ae_radial_aqg: Any
+    pseudo_radial_aqg: Any
     # Frozen all-electron and pseudo core densities nc_ag and nct_ag.
-    nc_ag: object
-    nct_ag: object
+    nc_ag: Any
+    nct_ag: Any
     # Spherical harmonics Y_anL on the angular quadrature.
-    angular_anL: object
+    angular_anL: Any
     # Angular and radial quadrature weights weight_an and dv_ag.
-    angular_weight_an: object
-    radial_weight_ag: object
+    angular_weight_an: Any
+    radial_weight_ag: Any
     # Atomic reference correction e_xc0_a.
-    reference_energy_a: object
+    reference_energy_a: Any
     # Destination dE/dD_ap or dE/dD_asp.
-    gradient: object
+    gradient: Any
+
+    def evaluate(self, engine: Engine, function) -> tuple[Any, Any]:
+        """Return per-atom energies and fill the density-matrix gradient."""
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -430,8 +434,9 @@ def evaluate_paw_xc(functional, batch: PAWXCBatch) -> tuple[object, object]:
         gradient=xp.zeros_like(density))
 
     if functional.name == 'LDA':
-        cls = (SpinPolarizedLDAXCCorrection if polarized else
-               SpinPairedLDAXCCorrection)
+        cls: type[PAWXCCorrection] = (
+            SpinPolarizedLDAXCCorrection if polarized else
+            SpinPairedLDAXCCorrection)
         evaluate = (partial(_evaluate_lda_cpu, functional)
                     if xp is np else evaluate_lda_gpu)
     else:

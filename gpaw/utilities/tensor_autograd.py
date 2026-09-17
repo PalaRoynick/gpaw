@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, overload
+
 import numpy as np
+
 
 def _split_einsum(subscripts: str) -> tuple[str, str, str]:
     """Split one explicit binary einsum into left, right, and output labels."""
@@ -101,8 +104,10 @@ class TensorResult:
         """Assign constants without changing the result's reverse rule."""
         self.value[self._logical_key(key)] = value
 
-    def __sub__(self, other: 'TensorResult') -> 'SubtractResult':
-        return SubtractResult(self, other)
+    def __sub__(self, other: Any) -> 'TensorResult':
+        if isinstance(other, TensorResult):
+            return SubtractResult(self, other)
+        return ShiftResult(self, -other)
 
     def __add__(self, other: 'TensorResult') -> 'AddResult':
         return AddResult(self, other)
@@ -115,10 +120,6 @@ class TensorResult:
 
     def __rmul__(self, other) -> 'TensorResult':
         return self * other
-
-    def __isub__(self, constant):
-        self.value[...] -= constant
-        return self
 
     def slice(self, key, indices: str) -> 'SliceResult':
         return SliceResult(self, key, indices)
@@ -245,6 +246,20 @@ class ScaleResult(TensorResult):
         return ((self.operand, contribution),)
 
 
+class ShiftResult(TensorResult):
+    """Tensor shifted by an ordinary broadcastable array."""
+
+    def __init__(self, operand: TensorResult, shift):
+        super().__init__(
+            operand.engine, operand.value + shift, operand.indices)
+        self.operand = operand
+        self.parents = (operand,)
+
+    def _backward(self, gradient):
+        return ((self.operand, _sum_to_shape(
+            gradient, self.operand.value.shape)),)
+
+
 class SliceResult(TensorResult):
     """View of a tensor whose reverse rule scatters into the source shape."""
 
@@ -360,8 +375,34 @@ class Engine:
         return self.xp.einsum(
             subscripts, left, right, optimize=optimize)
 
-    def einsum(self, subscripts: str, left, right,
-               *, optimize=True) -> EinsumResult | object:
+    @overload
+    def einsum(self,
+               subscripts: str,
+               left: TensorResult,
+               right: Any,
+               *,
+               optimize=True) -> EinsumResult:
+        ...
+
+    @overload
+    def einsum(self,
+               subscripts: str,
+               left: Any,
+               right: TensorResult,
+               *,
+               optimize=True) -> EinsumResult:
+        ...
+
+    @overload
+    def einsum(self,
+               subscripts: str,
+               left: Any,
+               right: Any,
+               *,
+               optimize=True) -> Any:
+        ...
+
+    def einsum(self, subscripts: str, left, right, *, optimize=True):
         """Contract two operands and retain history when either is active."""
         if not isinstance(left, TensorResult) and not isinstance(
                 right, TensorResult):

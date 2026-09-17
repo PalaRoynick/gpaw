@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -15,19 +16,19 @@ class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
 
     atom_indices: tuple[int, ...]
-    density_asp: object
-    basis_apqL: object
-    ae_radial_aqg: object
-    pseudo_radial_aqg: object
-    nc_ag: object
-    nct_ag: object
-    angular_anL: object
-    angular_weight_an: object
-    radial_weight_ag: object
-    reference_energy_a: object
-    angular_gradient_anLv: object | None = None
-    radial_spacing_ag: object | None = None
-    inverse_radius2_ag: object | None = None
+    density_asp: Any
+    basis_apqL: Any
+    ae_radial_aqg: Any
+    pseudo_radial_aqg: Any
+    nc_ag: Any
+    nct_ag: Any
+    angular_anL: Any
+    angular_weight_an: Any
+    radial_weight_ag: Any
+    reference_energy_a: Any
+    angular_gradient_anLv: Any = None
+    radial_spacing_ag: Any = None
+    inverse_radius2_ag: Any = None
 
 
 def _shape_key(density_sp, correction, gga: bool) -> tuple:
@@ -91,7 +92,7 @@ def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
 def gather_xc_paw(xp, setups, D_asp, *, gga: bool) \
         -> tuple[PAWXCBatch, ...]:
     """Group local atoms by tensor shape and gather their input arrays."""
-    groups = {}
+    groups: dict[tuple, list] = {}
     for atom, D_sp in D_asp.items():
         setup = setups[atom]
         key = _shape_key(D_sp, setup.xc_correction, gga)
