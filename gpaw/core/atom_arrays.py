@@ -270,7 +270,8 @@ class AtomArrays:
 
         return self._matrix
 
-    def new(self, *, comm='inherit', layout=None, data=None, xp=None):
+    def new(self, *, comm='inherit', layout=None, data=None, xp=None,
+            dtype=None):
         """Create new AtomArrays object of same kind.
 
         Parameters
@@ -285,6 +286,10 @@ class AtomArrays:
             assert data is None
             if self.layout.xp is not xp:
                 layout = self.layout.new(xp=xp)
+        if dtype is not None:
+            assert layout is None
+            if dtype != self.layout.dtype:
+                layout = self.layout.new(dtype=dtype)
         comm = self.comm if comm == 'inherit' else (comm or serial_comm)
         return AtomArrays(layout or self.layout,
                           self.dims,

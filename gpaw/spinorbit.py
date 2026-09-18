@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase.units import Bohr, Ha, alpha
 
-from gpaw.core.atom_arrays import AtomArrays, AtomArraysLayout
+from gpaw.core.atom_arrays import AtomArrays
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
 from gpaw.new.brillouin import IBZ
@@ -24,6 +24,7 @@ from gpaw.old.projections import Projections
 from gpaw.setup import Setup
 from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
 from gpaw.utilities.partition import AtomPartition
+from gpaw.utilities import pack_density
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -32,13 +33,71 @@ if TYPE_CHECKING:
 _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
 
 
+def calculate_soc(calc: ASECalculator | OldGPAW | str | Path,
+                  n1: int = None,
+                  n2: int = None,
+                  scale: float = 1.0,
+                  theta: float = 0.0,  # degrees
+                  phi: float = 0.0,  # degrees
+                  ignore_xc_potential: bool = False
+                  ) -> BZWaveFunctions:
+    dft = calc.dft
+    ibzwfs = dft.ibzwfs
+
+    n1 = n1 or 0
+    n2 = n2 or 0
+    if n2 <= 0:
+        n2 += ibzwfs.nbands
+
+    P_ksani = {(wfs.k, wfs.spin): wfs.P_ani for wfs in ibzwfs}
+    l_aj = [setup.l_j for setup in dft.setups]
+
+    P_Ksani = distribute_projections(
+        P_ksani,
+        l_aj,
+        ibzwfs.rank_ks,
+        ibzwfs.ibz,
+        ibzwfs.comm,
+        n1, n2)
+
+    C_ss, s_vss = basis_change(phi, theta)
+
+    eig_skn = calc.eigenvalues()
+
+    # <phi_i|dV_adr / r * L_v|phi_j>
+    dVL_avii = {a: soc(dft.setups[a],
+                       dft.pot_calc.xc.xc,
+                       [pack_density(D_ii) for D_ii in D_sii],
+                       ignore_xc_potential) * scale
+                for a, D_sii in dft.density.D_asii.items()}
+
+    eig_Km = []
+    for K, P_sani in P_Ksani.items():
+        k = ibzwfs.ibz.bz2ibz_K[K]
+        eig_sn = eig_skn[:, k, n1:n2]
+        P_amsi, eig_m = to_spinors(P_sani, eig_sn)
+        P_amsi, eig_m, v_mn, spin_projection_mv = diagonalize(
+            P_amsi, eig_m, dVL_avii, s_vss, C_ss)
+        eig_Km.append(eig_m)
+
+    return SOCCalculation(eig_Km)
+
+
+class SOCCalculation:
+    def __init__(self, eig_Km):
+        self.eig_Km = eig_Km
+
+    def eigenvalues(self):
+        return self.eig_Km
+
+
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                            l_aj: list[list[int]],
                            rank_ks: np.ndarray,
                            ibz: IBZ,
                            comm: MPIComm,
                            n1: int,
-                           n2: int) -> dict[int, list[AtomArrays]]:
+                           n2: int) -> list[list[AtomArrays]]:
     """Distribute projections from IBZ to BZ.
     """
     nbzkpts = len(ibz.bz)
@@ -86,7 +145,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     K1 = min(kpt_comm.rank * mynk, nbzkpts)
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
-    P_Ksani = []
+    P_Ksani = {}
     if domain_comm.rank == 0:
         for K in range(K1, K2):
             k = ibz.bz2ibz_K[K]
@@ -96,7 +155,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                                    ibz.s_K[K],
                                                    ibz.time_reversal_K[K])
                 P_sani.append(P_ani)
-            P_Ksani.append(P_sani)
+            P_Ksani[k] = P_sani
     return P_Ksani
 
 
@@ -150,7 +209,7 @@ def diagonalize(P_amsi: AtomArrays,
         v_nm = np.empty((M, M), complex)
     domain_comm.broadcast(v_nm, 0)
 
-    Pout_amsi = P_amsi.new()
+    Pout_amsi = P_amsi.new(dtype=complex)
     Pout_amsi.data[:] = (v_nm.T @
                          P_amsi.data.reshape((M, -1))).reshape((M, 2, -1))
 
@@ -674,9 +733,23 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
     Returns a BZWaveFunctions object covering the whole BZ.
     """
     from gpaw import GPAW
+    from gpaw.new.ase_interface import ASECalculator
 
     if isinstance(calc, (str, Path)):
         calc = GPAW(calc)
+
+    if isinstance(calc, ASECalculator):
+        assert not projected
+        assert occcalc is None
+        assert eigenvalues is None
+        return calculate_soc(
+            calc,
+            n1=n1,
+            n2=n2,
+            scale=scale,
+            theta=theta,
+            phi=phi,
+            ignore_xc_potential=ignore_xc_potential)
 
     n1 = n1 or 0
     n2 = n2 or 0
