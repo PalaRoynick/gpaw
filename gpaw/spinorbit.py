@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
 from math import nan
 from operator import attrgetter
@@ -9,8 +10,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase.units import Bohr, Ha, alpha
 
+from gpaw.core.atom_arrays import AtomArrays, AtomArraysLayout
 from gpaw.ibz2bz import IBZ2BZMaps
-from gpaw.mpi import broadcast_array, serial_comm
+from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
+from gpaw.new.brillouin import IBZ
+from gpaw.new.symmetry import SymmetrizationPlan
 from gpaw.occupations import OccupationNumberCalculator, ParallelLayout
 from gpaw.old.band_descriptor import BandDescriptor
 from gpaw.old.grid_descriptor import GridDescriptor
@@ -26,6 +30,167 @@ if TYPE_CHECKING:
     from gpaw.old.calculator import GPAW as OldGPAW
 
 _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
+
+
+def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
+                           l_aj: list[list[int]],
+                           rank_ks: np.ndarray,
+                           ibz: IBZ,
+                           comm: MPIComm,
+                           n1: int,
+                           n2: int) -> dict[int, list[AtomArrays]]:
+    """Distribute projections from IBZ to BZ.
+    """
+    nbzkpts = len(ibz.bz)
+    p = Parallelization(comm, nbzkpts)
+    p.set(band=1)
+    comms = p.build_communicators()
+    kpt_comm = comms['k']
+    domain_comm = comms['b']
+    mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
+
+    P_layout = next(iter(P_ksani.values())).layout
+
+    to_r = defaultdict(set)
+    for K in range(nbzkpts):
+        k = ibz.bz2ibz_K[K]
+        for spin, from_rank in enumerate(rank_ks[k]):
+            to_rank = K // mynk * domain_comm.size
+            to_r[from_rank].add((to_rank, k, spin))
+
+    P2_ksani = {}
+    requests = []
+    for (k1, spin1), P_ani in P_ksani.items():
+        P_ani = P_ani.gathergather()
+        if P_ani is not None:
+            print(P_ani.data.shape)
+            P_ani = P_ani[:, n1:n2]
+            print(P_ani.data.shape)
+            for r, k, spin in to_r[comm.rank]:
+                if k == k1 and spin == spin1:
+                    if r == comm.rank:
+                        P2_ksani[(k, spin)] = P_ani
+                    else:
+                        req = comm.send(P_ani.data, r, block=False)
+                        requests.append(req)
+
+    for from_rank, to in to_r.items():
+        for to_rank, k, spin in to:
+            if to_rank == comm.rank and from_rank != to_rank:
+                P_ani = P_layout.empty(n2 - n1)
+                comm.receive(P_ani.data, from_rank)
+                P2_ksani[(k, spin)] = P_ani
+    comm.waitall(requests)
+
+    symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
+    K1 = min(kpt_comm.rank * mynk, nbzkpts)
+    K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
+    nspins = rank_ks.shape[1]
+    P_Ksani = []
+    if domain_comm.rank == 0:
+        for K in range(K1, K2):
+            k = ibz.bz2ibz_K[K]
+            P_sani = []
+            for spin in range(nspins):
+                P_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
+                                                   ibz.s_K[K],
+                                                   ibz.time_reversal_K[K])
+                P_sani.append(P_ani)
+            P_Ksani.append(P_sani)
+    return P_Ksani
+
+
+def to_spinors(P_sani: list[AtomArrays],
+               eig_sn: np.ndarray) -> tuple[AtomArrays, np.ndarray]:
+    nspins, nbands = eig_sn.shape
+    eig_m = np.empty(2 * nbands)
+    for s in range(2):
+        eig_m[s::2] = eig_sn[-s]
+    P_amsi = P_sani[0].layout.zeros((2 * nbands, 2))
+    P_amsi.data[::2, 0] = P_sani[0].data
+    P_amsi.data[1::2, 1] = P_sani[-1].data
+    return P_amsi, eig_m
+
+
+def diagonalize(P_amsi: AtomArrays,
+                eig_m: np.ndarray,
+                dVL_avii: dict[int, Array3D],
+                s_vss: list[Array2D],
+                C_ss: Array2D) -> None:
+    """Evaluate H in a basis of S_z eigenstates and diagonalize."""
+    M = len(eig_m)
+    H_mm = np.zeros((M, M), complex)
+    for a, P_msi in P_amsi.items():
+        dVL_vii = dVL_avii[a]
+        ni = dVL_vii.shape[1]
+        H_ssii = np.zeros((2, 2, ni, ni), complex)
+        H_ssii[0, 0] = dVL_vii[2]
+        H_ssii[0, 1] = dVL_vii[0] - 1.0j * dVL_vii[1]
+        H_ssii[1, 0] = dVL_vii[0] + 1.0j * dVL_vii[1]
+        H_ssii[1, 1] = -dVL_vii[2]
+
+        # Tranform to theta, phi basis
+        H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
+        H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
+        H_ssii *= Ha
+
+        for s1 in range(2):
+            for s2 in range(2):
+                H_ii = H_ssii[s1, s2]
+                P1_mi = P_msi[:, s1]
+                P2_mi = P_msi[:, s2]
+                H_mm += P1_mi.conj() @ H_ii @ P2_mi.T
+
+    domain_comm = P_amsi.layout.atomdist.comm
+    domain_comm.sum(H_mm, 0)
+    if domain_comm.rank == 0:
+        H_mm += np.diag(eig_m)
+        eig_m, v_nm = np.linalg.eigh(H_mm)
+    else:
+        v_nm = np.empty((M, M), complex)
+    domain_comm.broadcast(v_nm, 0)
+
+    Pout_amsi = P_amsi.new()
+    Pout_amsi.data[:] = (v_nm.T @
+                         P_amsi.data.reshape((M, -1))).reshape((M, 2, -1))
+
+    sx_m = []
+    sy_m = []
+    sz_m = []
+
+    v_msn = v_nm.copy().reshape((M // 2, 2, M)).T.copy()
+    for v_sn in v_msn:
+        sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
+        sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
+        sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
+
+    spin_projection_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
+
+    return Pout_amsi, eig_m, v_nm.T, spin_projection_mv
+
+
+def basis_change(theta: float,
+                 phi: float) -> tuple[np.ndarray, list[np.ndarray]]:
+    theta *= np.pi / 180
+    phi *= np.pi / 180
+
+    # Hamiltonian with SO in KS basis
+    # The even indices in H_mm are spin up along hat n defined by theta, phi
+    # Basis change matrix for constructing Pauli matrices in theta,phi basis:
+    #     sigma_i^n = C^dag sigma_i C
+    C_ss = np.array([[np.cos(theta / 2) * np.exp(-1.0j * phi / 2),
+                      -np.sin(theta / 2) * np.exp(-1.0j * phi / 2)],
+                     [np.sin(theta / 2) * np.exp(1.0j * phi / 2),
+                      np.cos(theta / 2) * np.exp(1.0j * phi / 2)]])
+
+    sx_ss = np.array([[0, 1], [1, 0]], complex)
+    sy_ss = np.array([[0, -1.0j], [1.0j, 0]], complex)
+    sz_ss = np.array([[1, 0], [0, -1]], complex)
+    s_vss = [C_ss.T.conj() @ sx_ss @ C_ss,
+             C_ss.T.conj() @ sy_ss @ C_ss,
+             C_ss.T.conj() @ sz_ss @ C_ss]
+
+    return C_ss, s_vss
 
 
 class WaveFunction:
