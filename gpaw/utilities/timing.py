@@ -296,6 +296,7 @@ class GPUProfiler(Profiler, GPUTimerBase):
         Profiler.__init__(self, prefix, comm=comm)
 
     def synchronize(self):
+        import cupy
         from cupy.cuda import Event
 
         # Make sure GPU gets here
