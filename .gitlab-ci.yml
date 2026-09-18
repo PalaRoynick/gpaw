@@ -44,6 +44,7 @@ stages:
     - !reference [default, before_script]
     - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
+    - pip install coverage
     - |
       cat << EOF > siteconfig.py
       mpi = True
