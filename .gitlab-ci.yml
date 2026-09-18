@@ -13,6 +13,7 @@ variables:
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
+  MPIEXEC: "mpiexec --bind-to=none"
   # We override the Dockers PIP_NO_CACHE_DIR="1" here so that we
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
@@ -525,8 +526,8 @@ test-cuda-mpi:
   script:
     - nvidia-smi
     - gpaw info
-    - GPAW_DEBUG=1 mpiexec -n 2 gpaw python -m pytest -v -x -m gpu
-    - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
+    - GPAW_DEBUG=1 $MPIEXEC -n 2 gpaw python -m pytest -v -x -m gpu
+    - $MPIEXEC -n 4 gpaw python -m pytest -v -x -m gpu
 
 
 test-cuda-mpi-makefile-build:
@@ -541,7 +542,7 @@ test-cuda-mpi-makefile-build:
     - nvidia-smi
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
-    - GPAW_USE_GPUS=1 mpiexec -n 2 gpaw test
+    - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
 
 
 test-hip-cuda:
@@ -737,7 +738,7 @@ nightly-all:
     - export GPAW_PREEXEC_SCRIPT=$(realpath preexec.py)
   script:
     - >
-      mpiexec -n $RUNNER_MPI_NPROCS gpaw python -m pytest
+      $MPIEXEC -n $RUNNER_MPI_NPROCS gpaw python -m pytest
       --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
       --test-group-random-seed=42
       $COV --instafail -r s --durations 30
