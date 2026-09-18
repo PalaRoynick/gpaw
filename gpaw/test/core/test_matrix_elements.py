@@ -15,7 +15,7 @@ def func(f):
 @pytest.mark.parametrize('dtype', [float, complex])
 @pytest.mark.parametrize('nbands', [1, 7, 21])
 @pytest.mark.parametrize('function', [None, func])
-def test_me(domain_band_comms, dtype, nbands, function):
+def test_me(domain_band_comms, dtype, nbands, function):#, scalapack):
     domain_comm, band_comm = domain_band_comms
     a = 2.5
     n = 20
