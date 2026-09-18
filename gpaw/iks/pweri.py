@@ -161,52 +161,71 @@ class PWERI:
             cached_bands = min(cached_bands, self.cache_bands)
         cache_count = self.nspins * cached_bands * (cached_bands + 1) // 2
 
-        cached = cache_count * self.finegd.zeros().nbytes
-        if progress is not None:
-            progress(
-                f'Caching {cache_count} of {len(pairs)} unique pair densities '
-                f'for {cached_bands} bands '
-                f'({cached / 2**30:.2f} GiB per domain rank).')
-
-        first_cached = len(pairs) - cache_count
-        pair_data = {
-            index: self.make_pair_density(*pairs[index])
-            for index in range(first_cached, len(pairs))
-        }
-
-        def get_pair(index: int) -> PairDensity:
-            pair = pair_data.get(index)
-            if pair is None:
-                pair = self.make_pair_density(*pairs[index])
-            return pair
-
         pair_eri = np.empty((len(pairs), len(pairs)))
 
-        for a in range(len(pairs)):
-            pair_a = get_pair(a)
-            potential_g = self.coulomb.potential(pair_a.rhot_g)
-            for b in range(a, len(pairs)):
-                pair_b = pair_a if b == a else get_pair(b)
-                smooth = self.coulomb.integrate(
-                    pair_b.rhot_g, potential_g)
-
-                paw_local = 0.0
-                for atom, D1_p in pair_a.D_ap.items():
-                    D2_p = pair_b.D_ap[atom]
-                    paw_local += (
-                        D1_p @ self.setups[atom].M_pp @ D2_p)
-
-                paw = self.wfs.atom_partition.comm.sum_scalar(
-                    paw_local)
-
-                value = float(np.real(smooth + 2.0 * paw))
-                pair_eri[a, b] = value
-                pair_eri[b, a] = value
-
+        if cache_count == len(pairs):
+            cached = cache_count * self.finegd.zeros().nbytes
             if progress is not None:
-                progress(f'Poisson solves: {a + 1}/{len(pairs)}')
+                progress(f'Caching all {cache_count} unique pair densities '
+                         f'({cached / 2**30:.2f} GiB per domain rank).')
+
+            pair_data = [self.make_pair_density(*pair) for pair in pairs]
+            for a, pair_a in enumerate(pair_data):
+                potential_g = self.coulomb.potential(pair_a.rhot_g)
+                for b in range(a, len(pairs)):
+                    self.integrate_pair(
+                        pair_eri, a, b, pair_a.D_ap, pair_data[b], potential_g)
+
+                if progress is not None:
+                    progress(f'Poisson solves: {a + 1}/{len(pairs)}')
+        else:
+            block_size = max(1, cache_count)
+            cached = block_size * self.finegd.zeros().nbytes
+            if progress is not None:
+                progress(
+                    f'Using blocks of {block_size} Coulomb potentials for '
+                    f'{cached_bands} cache bands '
+                    f'({cached / 2**30:.2f} GiB per domain rank).')
+
+            for start in range(0, len(pairs), block_size):
+                stop = min(start + block_size, len(pairs))
+                potentials = []
+                for a in range(start, stop):
+                    pair_a = self.make_pair_density(*pairs[a])
+                    potential_g = self.coulomb.potential(pair_a.rhot_g).copy()
+                    potentials.append((a, pair_a.D_ap, potential_g))
+                    if progress is not None:
+                        progress(f'Poisson solves: {a + 1}/{len(pairs)}')
+
+                for b in range(start, len(pairs)):
+                    pair_b = self.make_pair_density(*pairs[b])
+                    for a, D_ap, potential_g in potentials:
+                        if a > b:
+                            break
+                        self.integrate_pair(
+                            pair_eri, a, b, D_ap, pair_b, potential_g)
 
         return self.expand_pair_matrix(pair_eri, pairs)
+
+    def integrate_pair(
+            self,
+            pair_eri: np.ndarray,
+            a: int,
+            b: int,
+            D_ap: dict[int, np.ndarray],
+            pair_b: PairDensity,
+            potential_g: np.ndarray) -> None:
+        smooth = self.coulomb.integrate(pair_b.rhot_g, potential_g)
+
+        paw_local = 0.0
+        for atom, D1_p in D_ap.items():
+            D2_p = pair_b.D_ap[atom]
+            paw_local += D1_p @ self.setups[atom].M_pp @ D2_p
+
+        paw = self.wfs.atom_partition.comm.sum_scalar(paw_local)
+        value = float(np.real(smooth + 2.0 * paw))
+        pair_eri[a, b] = value
+        pair_eri[b, a] = value
 
     def expand_pair_matrix(
             self, pair_eri: np.ndarray, pairs: list[tuple[int, int, int]]
@@ -687,9 +706,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                         help='Number of lowest orbitals to write.'
                              '  PWERI still evaluates every SCF band.')
     parser.add_argument('--cache-bands', type=int,
-                        help='Cache as many pair densities as this number of'
-                             ' bands requires. Defaults to all bands; use 0'
-                             ' to disable caching.')
+                        help='Limit Coulomb workspace to the size needed for'
+                             ' this many bands. Defaults to all bands; use 0'
+                             ' for minimum memory.')
     parser.add_argument('--diagnostics', action='store_true',
                         help='Validate and print integral diagnostics.')
     parser.add_argument('--verbose', action='store_true',
