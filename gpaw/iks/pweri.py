@@ -68,8 +68,7 @@ class CoulombPotential:
 class PWERI:
     """Construct F, bare Coulomb ERIs, and h = F - G[D]."""
 
-    def __init__(
-            self, calc: GPAWCalc, max_cached_pairs: int | None = None):
+    def __init__(self, calc: GPAWCalc, cache_bands: int | None = None):
 
         if calc.wfs.spos_ac is None:
             calc.set_positions()
@@ -85,7 +84,7 @@ class PWERI:
         self.gd = self.wfs.gd
         self.finegd = self.density.finegd
         self.setups = self.wfs.setups
-        self.max_cached_pairs = max_cached_pairs
+        self.cache_bands = cache_bands
 
         self.validate_reference()
 
@@ -157,14 +156,16 @@ class PWERI:
             for j in range(i, self.nbands)
         ]
 
-        cache_count = len(pairs)
-        if self.max_cached_pairs is not None:
-            cache_count = min(cache_count, self.max_cached_pairs)
+        cached_bands = self.nbands
+        if self.cache_bands is not None:
+            cached_bands = min(cached_bands, self.cache_bands)
+        cache_count = self.nspins * cached_bands * (cached_bands + 1) // 2
 
         cached = cache_count * self.finegd.zeros().nbytes
         if progress is not None:
             progress(
                 f'Caching {cache_count} of {len(pairs)} unique pair densities '
+                f'for {cached_bands} bands '
                 f'({cached / 2**30:.2f} GiB per domain rank).')
 
         first_cached = len(pairs) - cache_count
@@ -685,9 +686,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument('--nbands', type=int,
                         help='Number of lowest orbitals to write.'
                              '  PWERI still evaluates every SCF band.')
-    parser.add_argument('--max-cached-pairs', type=int,
-                        help='Maximum number of pair densities to cache.'
-                             ' Defaults to all; use 0 to disable caching.')
+    parser.add_argument('--cache-bands', type=int,
+                        help='Cache as many pair densities as this number of'
+                             ' bands requires. Defaults to all bands; use 0'
+                             ' to disable caching.')
     parser.add_argument('--diagnostics', action='store_true',
                         help='Validate and print integral diagnostics.')
     parser.add_argument('--verbose', action='store_true',
@@ -709,7 +711,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     calc = GPAW(args.restart)
-    pweri = PWERI(calc, max_cached_pairs=args.max_cached_pairs)
+    pweri = PWERI(calc, cache_bands=args.cache_bands)
     progress = print if args.verbose and world.rank == 0 else None
     h1, eri, fock, occupations, eigenvalues = calculate_integrals(
         pweri, nbands=args.nbands, progress=progress)
