@@ -290,8 +290,10 @@ class Profiler(Timer):
 
 class GPUProfiler(Profiler, GPUTimerBase):
     def __init__(self, prefix, comm=None):
-        Profiler.__init__(self, prefix, comm=comm)
         GPUTimerBase.__init__(self, comm=comm)
+        # Select the MPI rank's GPU before Profiler.synchronize() creates the
+        # reference CUDA event.
+        Profiler.__init__(self, prefix, comm=comm)
 
     def synchronize(self):
         from cupy.cuda import Event
