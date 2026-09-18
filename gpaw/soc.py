@@ -3,247 +3,77 @@ from __future__ import annotations
 from collections import defaultdict
 
 import numpy as np
-from ase.units import Ha
-
-from gpaw.dft import DFT
-from gpaw.mpi import MPIComm, Parallelization, receive, send, serial_comm
-from gpaw.spinorbit import projected_soc, soc
-from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.mpi import MPIComm, Parallelization
+from gpaw.core.atom_arrays import AtomArrays
+from gpaw.new.brillouin import IBZ
 
 
-def calculate_soc(mykpts,
-                  kpt_comm,
-                  band_comm,
-                  theta: float = 0.0,  # degrees
-                  phi: float = 0.0,  # degrees
-                  ):
-    # <phi_i|dV_adr / r * L_v|phi_j>
-    setups = dft.setups
-    dVL_avii = {a: soc(setups[a],
-                       dft.pot_calc.xc,
-                       D_sii,
-                       ignore_xc_potential) * scale
-                for a, D_sii in dft.density.D_asii.items()}
-
-    if projected:
-        dVL_avii = {a: projected_soc(dVL_vii, theta=theta, phi=phi)
-                    for a, dVL_vii in dVL_avii.items()}
-
-
-def distribute_projections(ibzwfs: IBZWaveFunctions,
-                           *,
-                           n1: int | None = None,
-                           n2: int | None = None):
-    ibz = ibzwfs.ibz
+def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
+                           l_aj: list[list[int]],
+                           rank_ks: np.ndarray,
+                           ibz: IBZ,
+                           comm: MPIComm,
+                           n1: int,
+                           n2: int) -> dict[int, list[AtomArrays]]:
+    """dfgklæj
+    """
     nbzkpts = len(ibz.bz)
-    nspins = ibzwfs.nspins
-    nbands = ibzfwfs.nbands
-    comm = dft.comm
-
-    n1 = n1 or 0
-    n2 = n2 or 0
-    if n2 <= 0:
-        n2 += nbands
-
-    p = Parallelization(comm.size, nbzkpts)
+    p = Parallelization(comm, nbzkpts)
     p.set(band=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
     domain_comm = comms['b']
     mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
-    P_layout = ibzwfs._wfs_u[0].P_ani.layout
 
-    who = defaultdict(set)
+    P_layout = next(iter(P_ksani.values())).layout
+
+    to_r = defaultdict(set)
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]
-        for spin in range(nspins):
-            from_rank = ibzwfs.rank_ks[k, spin]
+        for spin, from_rank in enumerate(rank_ks[k]):
             to_rank = K // mynk * domain_comm.size
-            who[from_rank].add((to_rank, k, spin))
+            to_r[from_rank].add((to_rank, k, spin))
 
-    P_ksani = {}
+    P2_ksani = {}
     requests = []
-    for wfs in ibzwfs:
-        P_ani = wfs.P_ani.gathergather()
+    for (k1, spin1), P_ani in P_ksani.items():
+        P_ani = P_ani.gathergather()
         if P_ani is not None:
+            print(P_ani.data.shape)
             P_ani = P_ani[:, n1:n2]
-            for r, k, spin in who[comm.rank]:
-                if wfs.k == k and wfs.spin == spin:
+            print(P_ani.data.shape)
+            for r, k, spin in to_r[comm.rank]:
+                if k == k1 and spin == spin1:
                     if r == comm.rank:
-                        P_ksani[(k, spin)] = P_ani
+                        P2_ksani[(k, spin)] = P_ani
                     else:
                         req = comm.send(P_ani.data, r, block=False)
                         requests.append(req)
 
-    for rank, what in who.items():
-        for r, k, spin in what:
-            if r == comm.rank:
+    print(P2_ksani)
+    print(to_r)
+    for from_rank, to in to_r.items():
+        for to_rank, k, spin in to:
+            if to_rank == comm.rank and from_rank != to_rank:
                 P_ani = P_layout.empty(n2 - n1)
-                comm.receive(P_ani.data, r)
-                P_ksani[(k, spin)] = P_ani
+                comm.receive(P_ani.data, from_rank)
+                P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
 
     from gpaw.new.symmetry import SymmetrizationPlan
-    symplan = SymmetrizationPlan(ibz.symmetries,
-                                 [setup.l_j for setup in ibzwfs.setups])
+    symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
     K1 = min(kpt_comm.rank * mynk, nbzkpts)
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
-    myP_Kani = []
+    nspins = rank_ks.shape[1]
+    P_Ksani = []
     if domain_comm.rank == 0:
         for K in range(K1, K2):
             k = ibz.bz2ibz_K[K]
+            P_sani = []
             for spin in range(nspins):
-                P_ani = symplan.rotate_projections(P_ksani[(k, spin)],
+                P_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
                                                    ibz.s_K[K],
                                                    ibz.time_reversal_K[K])
-                myP_Kani.apend(P_ani)
-    return myP_Kani
-
-
-def add_soc(dVL_avii: dict[int, Array3D],
-            s_vss: list[Array2D],
-            C_ss: Array2D) -> None:
-    """Evaluate H in a basis of S_z eigenstates."""
-    if self.projections.bcomm.rank > 0:
-        return
-
-    M = self.projections.nbands
-    H_mm = np.zeros((M, M), complex)
-    for a, dVL_vii in dVL_avii.items():
-        ni = dVL_vii.shape[1]
-        H_ssii = np.zeros((2, 2, ni, ni), complex)
-        H_ssii[0, 0] = dVL_vii[2]
-        H_ssii[0, 1] = dVL_vii[0] - 1.0j * dVL_vii[1]
-        H_ssii[1, 0] = dVL_vii[0] + 1.0j * dVL_vii[1]
-        H_ssii[1, 1] = -dVL_vii[2]
-
-        # Tranform to theta, phi basis
-        H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
-        H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
-        H_ssii *= Ha
-
-        P_msi = self.projections[a]
-        for s1 in range(2):
-            for s2 in range(2):
-                H_ii = H_ssii[s1, s2]
-                P1_mi = P_msi[:, s1]
-                P2_mi = P_msi[:, s2]
-                H_mm += np.dot(np.dot(P1_mi.conj(), H_ii), P2_mi.T)
-
-    domain_comm = self.projections.atom_partition.comm
-    domain_comm.sum(H_mm, 0)
-    if domain_comm.rank == 0:
-        H_mm += np.diag(self.eig_m)
-        self.eig_m, v_nm = np.linalg.eigh(H_mm)
-    else:
-        v_nm = np.empty((M, M), complex)
-
-    domain_comm.broadcast(v_nm, 0)
-
-    P_mI = self.projections.matrix.array
-    P_mI[:] = v_nm.T.copy().dot(P_mI)
-
-    sx_m = []
-    sy_m = []
-    sz_m = []
-
-    v_msn = v_nm.copy().reshape((M // 2, 2, M)).T.copy()
-    for v_sn in v_msn:
-        sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
-        sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
-        sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
-
-    self.spin_projection_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
-    self.v_mn = v_nm.T
-
-
-def hmm(theta: float = 0.0,
-        phi: float = 0.0):
-
-    theta *= np.pi / 180
-    phi *= np.pi / 180
-
-    # Hamiltonian with SO in KS basis
-    # The even indices in H_mm are spin up along \hat n defined by \theta, phi
-    # Basis change matrix for constructing Pauli matrices in \theta,\phi basis:
-    #     \sigma_i^n = C^\dag\sigma_i C
-    C_ss = np.array([[np.cos(theta / 2) * np.exp(-1.0j * phi / 2),
-                      -np.sin(theta / 2) * np.exp(-1.0j * phi / 2)],
-                     [np.sin(theta / 2) * np.exp(1.0j * phi / 2),
-                      np.cos(theta / 2) * np.exp(1.0j * phi / 2)]])
-
-    sx_ss = np.array([[0, 1], [1, 0]], complex)
-    sy_ss = np.array([[0, -1.0j], [1.0j, 0]], complex)
-    sz_ss = np.array([[1, 0], [0, -1]], complex)
-    s_vss = [C_ss.T.conj() @ sx_ss @ C_ss,
-             C_ss.T.conj() @ sy_ss @ C_ss,
-             C_ss.T.conj() @ sz_ss @ C_ss]
-    return s_vss
-
-
-def extract_ibz_wave_functions(kpt_qs: list[list[KPoint]],
-                               bd: BandDescriptor,
-                               gd: GridDescriptor,
-                               n1: int,
-                               n2: int,
-                               eigenvalues: Array3D = None
-                               ) -> Iterator[tuple[int, WaveFunction]]:
-    """Yield tuples of IBZ-index and wave functions.
-
-    All atoms and bands will be on rank == 0 of gd.comm and bd.comm
-    respectively.  This makes slicing the bands (from n1 to n2-1)
-    and symmetry operations on the projections easier.
-    """
-
-    nproj_a = kpt_qs[0][0].projections.nproj_a
-
-    collinear = kpt_qs[0][0].s is not None
-
-    nbands = n2 - n1
-    if collinear:
-        nbands *= 2
-
-    # All atoms on rank-0:
-    atom_partition = AtomPartition(gd.comm, np.zeros_like(nproj_a))
-
-    # All bands on rank-0 (nrow * ncol = 1 * 1):
-    bdist = (bd.comm, 1, 1)
-
-    for kpt_s in kpt_qs:
-        # Collect bands and atoms to bd.comm.rank == 0 and gd.comm.rank == 0:
-        if eigenvalues is None:
-            eig_sn = [bd.collect(kpt.eps_n) for kpt in kpt_s]
-        P_snI = [kpt.projections.collect() for kpt in kpt_s]
-
-        projections = Projections(
-            nbands=nbands,
-            nproj_a=nproj_a,
-            atom_partition=atom_partition,
-            bdist=bdist,
-            collinear=False)
-
-        if bd.comm.rank == 0 and gd.comm.rank == 0:
-            P1_nI = P_snI[0]
-            P2_nI = P_snI[-1]
-            assert P1_nI is not None
-            assert P2_nI is not None
-            if collinear:
-                eig_m = np.empty((n2 - n1) * 2)
-                if eigenvalues is None:
-                    eig_m[::2] = eig_sn[0][n1:n2] * Ha
-                    eig_m[1::2] = eig_sn[-1][n1:n2] * Ha
-                else:
-                    for s in range(2):
-                        eig_m[s::2] = eigenvalues[-s, kpt_s[-s].k]
-                projections.array[:] = 0.0
-                projections.array[::2, 0] = P1_nI[n1:n2]
-                projections.array[1::2, 1] = P2_nI[n1:n2]
-            else:
-                eig_m = eig_sn[0][n1:n2] * Ha
-                projections.matrix.array[:] = P1_nI[n1:n2]
-        else:
-            eig_m = np.empty(0)
-
-        ibz_index = kpt_s[0].k
-
-        yield ibz_index, WaveFunction(eig_m, projections)
+                P_sani.append(P_ani)
+            P_Ksani.append(P_sani)
+    return P_Ksani
