@@ -88,6 +88,7 @@ class GPUEvent:
     def __init__(self, name):
         self.name = name
         import cupy
+        self.device_id = cupy.cuda.runtime.getDevice()
         default = dict(block=False,
                        disable_timing=False,
                        interprocess=False)
@@ -135,12 +136,16 @@ class GPUTimerBase:
             self.handle_events()
 
     def handle_events(self):
+        import cupy
         while len(self.event_queue):
             event = self.event_queue[0]
-            if not event.stop_event.done:
+            with cupy.cuda.Device(event.device_id):
+                done = event.stop_event.done
+            if not done:
                 break
             del self.event_queue[0]
-            time = event.get_time()
+            with cupy.cuda.Device(event.device_id):
+                time = event.get_time()
             self.gpu_timers[event.name] += time
             self.handle_event_hook(event)
 
@@ -302,6 +307,7 @@ class GPUProfiler(Profiler, GPUTimerBase):
         # Now all GPUs and CPUs are somewhat simultaneous
         # So, record the reference event and time
         event = Event(block=True)
+        self.ref_device_id = cupy.cuda.runtime.getDevice()
         event.record()
         self.ref = time.time()
         self.ref_event = event
@@ -325,12 +331,18 @@ class GPUProfiler(Profiler, GPUTimerBase):
     def handle_event_hook(self, event):
         import cupy
 
+        if event.device_id != self.ref_device_id:
+            # CUDA events cannot be compared across devices.  Keep the CPU
+            # trace if a caller changed device during the profiled region.
+            return
+
         def get_time(e):
             t = cupy.cuda.get_elapsed_time
             return t(self.ref_event, e)
 
-        ms_start = get_time(event.start_event)
-        ms_stop = get_time(event.stop_event)
+        with cupy.cuda.Device(event.device_id):
+            ms_start = get_time(event.start_event)
+            ms_stop = get_time(event.stop_event)
         self.txt.write(
             f"""{{"name": "{event.name}", "cat": "PERF", "ph": "B","""
             f""" "pid": {self.pid}, "tid": "GPU {self.ranktxt}", """
