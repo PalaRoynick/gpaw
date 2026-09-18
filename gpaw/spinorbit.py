@@ -118,7 +118,9 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                            ibz: IBZ,
                            comm: MPIComm,
                            n1: int,
-                           n2: int) -> dict[int, list[AtomArrays]]:
+                           n2: int) -> tuple[dict[int, list[AtomArrays]],
+                                             MPIComm,
+                                             AtomDistribution]:
     """Distribute projections from IBZ to BZ.
     """
     nbzkpts = len(ibz.bz)

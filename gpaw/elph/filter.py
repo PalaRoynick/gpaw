@@ -58,7 +58,7 @@ def fourier_filter(atoms: Atoms, supercell: tuple, V1t_xG: ArrayND,
                              axis=0))
         # XXX Why does a "*=" operation on q_cG not work here ??
         q1_cG = q_cG * h_c[:, np.newaxis] / (norm_c[:, np.newaxis] / 2)
-        mask_G = np.ones(np.prod(shape), dtype=bool)
+        mask_G = np.ones(np.prod(shape), dtype=bool)  # type: ignore
         for i, pbc in enumerate(pbc_c):
             if not pbc:
                 continue
