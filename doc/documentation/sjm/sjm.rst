@@ -42,7 +42,6 @@ By default that region is a slab perpendicular to `z`, controlled by the :litera
 The number of electrons in the simulation is increased by an amount equal to the total charge of that region.
 When you run a simulation, you should see that these excess electrons localize on the `+z` side (the right side in these figures) of the metal atoms that simulate the electrode surface, and not on the `-z` (left) side, which simulates the bulk.
 This is accomplished by only putting the jellium region on one side of the simulation, and employing a dipole correction (included by default when you run SJM) to electrostatically decouple the two sides of the cell.
-In plane-wave mode this leaves the potential slope at the cell boundary at zero; in finite-difference mode a residual slope of order 1e-6 a.u. remains.
 
 The figure below shows the difference in two simulations, one run at 4.4 V and one run at 4.3 V.
 The orange curve shows where the potential drops off, and the blue curve shows where the electrons localize.
@@ -56,7 +55,7 @@ However, the signs can readily be reversed, making the jellium region a smeared-
 In this way, the same tool can be used to perturb the electrons in either a positive or negative direction, and thus vary the potential in either direction in order to find its target.
 Note also that the jellium region does not overlap any atoms, separating this from approaches that employ a homogeneous background charge throughout the unit cell (in which spurious interactions can occur).
 This is important to not distort the electronic structure of the atoms and molecules being simulated.
-Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case in general; other shapes---for example one following the cavity of the implicit solvent---are a planned extension of the :code:`jelliumregion` keyword, though only the slab is available in this version (the legacy :class:`gpaw.solvation.sjm.SJM` calculator does offer a cavity-shaped counter charge).
+Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case in general; other shapes---for example one following the cavity of the implicit solvent---are a planned extension of the :code:`jelliumregion` keyword, though only the slab is available in this version (the old :class:`gpaw.solvation.sjm.SJM` calculator (only working for `fd`-mode) does offer a cavity-shaped counter charge).
 
 
 The solvation: screening
@@ -153,6 +152,10 @@ Typically, over the course of a full trajectory, the added computational cost of
 As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose :literal:`tol` together with :literal:`always_adjust=True`, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
 The slope itself is regressed over the last :literal:`slope_regression_depth` attempts and damped with the previous estimate by :literal:`mixer`; :literal:`slope` sets the initial guess, which is otherwise taken from an apparent capacitance of a few muF/cm^2.
 
+All of this is done by a :class:`~gpaw.extensions.electrocatalysis.Potentiostat`, which SJM builds from the keywords above and which then owns them---:literal:`calc.sjm.tol` and the rest read them back off it.
+The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
+SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme or probe.
+
 **Constant inner potential (CIP) DFT:**
 
 .. Note:: CIP-DFT is implemented only in the legacy
@@ -201,7 +204,7 @@ extension, given together with the implicit-solvent parameters
     calc = GPAW(mode='fd', ...,
                 extensions=[SJM(target_potential=4.4,  # absolute scale, V
                                 excess_electrons=0.0,  # initial guess
-                                tol=0.001,  # V
+                                tol=0.005,  # V
                                 max_iters=10,
                                 jelliumregion={'top': -1., 'bottom': -3.},
                                 cavity=cavity,
@@ -225,17 +228,27 @@ The SJM object is reached as :literal:`calc.sjm`, before as well as after a
 calculation --- once one has been run, it is the same object as
 :literal:`calc.dft.sjm`.  It offers
 
-* :literal:`change(...)`, which changes :literal:`target_potential`,
-  :literal:`excess_electrons`, :literal:`tol`, :literal:`max_iters`,
-  :literal:`grand_output`, :literal:`jelliumregion`,
-  :literal:`always_adjust`, :literal:`slope`, :literal:`mixer` or
-  :literal:`slope_regression_depth` without throwing away the
-  wave functions (this replaces the legacy :literal:`calc.set(sj={...})`).
+* :literal:`change(...)`, which changes any of the SJM keywords ---
+  :literal:`target_potential`, :literal:`excess_electrons`, :literal:`tol`,
+  :literal:`max_iters`, :literal:`max_reruns`,
+  :literal:`max_potential_stepsize`, :literal:`grand_output`,
+  :literal:`jelliumregion`, :literal:`always_adjust`, :literal:`slope`,
+  :literal:`mixer` and :literal:`slope_regression_depth` --- without throwing
+  away the wave functions (this replaces the legacy
+  :literal:`calc.set(sj={...})`).
   It can also be called before the first calculation, in which case it simply
-  changes the parameters the calculation will be started with.  Note that
-  assigning to the attributes instead---:literal:`calc.sjm.charge = ...`---does
-  *not* work: only :literal:`change()` gets the charge to the jellium as well
-  and empties the results, which is what makes the next
+  changes the parameters the calculation will be started with.
+* every one of those parameters, readable under its keyword name:
+  :literal:`calc.sjm.target_potential`, :literal:`calc.sjm.tol`,
+  :literal:`calc.sjm.slope` and so on, with
+  :literal:`calc.sjm.excess_electrons` giving the current number of excess
+  electrons and :literal:`calc.sjm.jelliumregion` the region object built
+  from the keyword.  (:literal:`calc.sjm.charge` is the same number under
+  the name GPAW's extension interface uses for it.)  They are read-only once
+  a calculation has been run, and assigning to
+  one---:literal:`calc.sjm.excess_electrons = ...`---raises: only
+  :literal:`change()` gets the excess electrons to the jellium as well and
+  empties the results, which is what makes the next
   :literal:`get_potential_energy()` run the SCF loop again.
 * :literal:`write_sjm_traces(path='sjm_traces', style='z', props=...)`, which
   writes the electrostatic potential (in eV, referenced to the Fermi level),
@@ -291,6 +304,10 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJMExtension
    :members: change, write_sjm_traces, get_electrode_potential
+
+.. autoclass:: gpaw.extensions.electrocatalysis.Potentiostat
+   :members: equilibrate, new_geometry, set_target_potential,
+             set_excess_electrons, slope_estimate
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 

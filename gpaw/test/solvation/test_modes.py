@@ -61,12 +61,12 @@ def check_grand_canonical_results(atoms, energy):
     sjm = calc.dft.sjm
     results = calc.results
 
-    assert results['excess_electrons'] == pytest.approx(sjm.charge)
+    assert results['excess_electrons'] == pytest.approx(sjm.excess_electrons)
     assert results['electrode_potential'] == pytest.approx(
         sjm.get_electrode_potential())
 
     # Omega = E - N mu, with mu = -workfunction = fermi level:
-    mu_N = sjm.charge * calc.get_fermi_level()
+    mu_N = sjm.excess_electrons * calc.get_fermi_level()
     canonical = calc.dft.energies.total_extrapolated * Ha
     canonical_free = calc.dft.energies.total_free * Ha
     assert energy == pytest.approx(canonical - mu_N)
@@ -88,7 +88,7 @@ def check_grand_canonical_results(atoms, energy):
     # The counter charge (in e/Bohr^3) integrates to minus the excess
     # electrons; z and the cell are in Angstrom:
     dV = (z[1] - z[0]) * abs(np.linalg.det(atoms.cell[:2, :2])) / Bohr**3
-    assert (rho.sum() * dV) == pytest.approx(-sjm.charge, abs=1e-6)
+    assert (rho.sum() * dV) == pytest.approx(-sjm.excess_electrons, abs=1e-6)
 
 
 def test_implemented_properties():

@@ -31,11 +31,6 @@ Git master branch
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
-* Implicit solvation calculations are now supported in plane-wave mode, using
-  an updated conjugate-gradient Poisson solver. Add the solvation model
-  through the ``extensions`` keyword; e.g.,
-  ``GPAW(..., extensions=[Solvation(...)])``.
-
 * New flourine PAW potential added to our :ref:`setup releases`.
   It should be as accurate as the old one but will converge faster with number of
   plane-waves.  The old potential is still the default, but it is recommended that the
@@ -47,26 +42,39 @@ Git master branch
 
   There is also an LDA version of the potential.
 
-* The solvated jellium method (``gpaw.extensions.electrocatalysis.SJM``) has caught up with the
-  legacy implementation: it reports the grand-potential energy
-  (:math:`\Omega = E - N \mu`) to ASE unless ``grand_output=False``, exposes
-  ``excess_electrons`` and ``electrode_potential`` as properties, writes
-  traces with ``calc.sjm.write_sjm_traces()``, supports the slab
-  ``jelliumregion`` keyword (a cavity-shaped region is still legacy-only),
-  replaces ``calc.set(sj={...})`` with
-  ``calc.sjm.change(...)`` -- which also works before the first calculation --
-  and summarises the potential equilibration in
-  one block after convergence.  The equilibration keywords ``always_adjust``,
-  ``slope``, ``mixer`` and ``slope_regression_depth`` are back: the slope of
-  the potential with respect to the number of excess electrons is regressed
-  over the last few attempts and damped, and ``always_adjust`` steps the
-  charge on to the next geometry so that a relaxation can optimize the
-  structure and the potential at the same time.  Note that the electrostatic
-  potential is now zeroed at the top of the cell in plane-wave mode too, as
-  in finite-difference mode; results for asymmetric slabs change accordingly.
-  The ``'z'`` traces from ``write_sjm_traces()`` now always cover the full
-  grid, so fd and plane-wave runs of the same cell produce files with the same
-  number of rows.
+* Implicit solvation calculations are now supported in plane-wave mode, using
+  an updated conjugate-gradient Poisson solver. Add the solvation model
+  through the ``extensions`` keyword; e.g.,
+  ``GPAW(..., extensions=[Solvation(...)])``.
+
+* The solvated jellium method (``gpaw.extensions.electrocatalysis.SJM``) has been ported
+  to the :ref:`newgpaw` architecture. Other than before it is now used as an
+  extension to the GPAW calculator, and not as a separate calculator, as
+  described in :ref:`sjm`.  It now also allows the use of PW-mode,
+  otherwise all previous keys work as before. One exception though is that
+  `calc.sjm.change(...)` substitutes the previous `calc.set(sj={...})`.
+  The potential tolerance ``tol`` now defaults to 0.005 V, where the legacy
+  calculator used 0.01 V.
+
+* The potential control itself has been split out of SJM into a new
+  ``gpaw.extensions.electrocatalysis.Potentiostat`` class, which holds a
+  target electrode potential by adjusting an excess charge.  It owns all of
+  the potential-control settings---``target_potential``, ``tol``,
+  ``max_iters``, ``max_reruns``, ``max_potential_stepsize``,
+  ``always_adjust`` and ``grand_output``---and the state of the
+  equilibration, and it composes three pluggable parts: a *charging scheme*
+  (how the counter charge is put into the cell; a jellium slab for SJM), a
+  *potential probe* (how the potential is read off the converged SCF state;
+  the topside work function for SJM) and an *optimizer* (how the charge is
+  stepped toward the target; by default a regression of the
+  potential-versus-charge slope over the last ``slope_regression_depth``
+  attempts, damped with the previous estimate by ``mixer``).  SJM is now
+  only a front end for it: it contributes the jellium and the implicit
+  solvent, hands its keywords over and reads them back, so that
+  ``calc.sjm.tol`` and the rest are the potentiostat's settings.  A
+  different constant-potential method can reuse the potentiostat with
+  another charging scheme or probe.
+
 
 
 Version 26.7.0

@@ -11,11 +11,6 @@ from gpaw import ConvergenceError
 from gpaw.core import PWArray, UGArray
 from gpaw.extensions.jellium import JelliumExtension
 
-#: Default top of the jellium region: 1 Å below the top of the unit cell.
-DEFAULT_TOP = -1.0
-#: Default bottom of the jellium region: 3 Å above the highest atom.
-DEFAULT_BOTTOM = -3.0
-
 
 class JelliumRegion:
     """A region for the jellium counter-charge to fill.
@@ -80,10 +75,16 @@ class SlabRegion(JelliumRegion):
     """
 
     def __init__(self,
-                 top: float | None = None,  # Å
-                 bottom: float | str | None = None,  # Å
+                 top: float | None = None,  # Å; default: -1.0
+                 bottom: float | str | None = None,  # Å; default: -3.0
                  thickness: float | None = None,  # Å
                  fix_bottom: bool = False):
+        # The defaults cannot sit in the signature: which of the three
+        # limits were given is what decides whether the region is over- or
+        # underspecified, so they are filled in below instead.
+        default_top = -1.0  # Å below the upper cell boundary
+        default_bottom = -3.0  # Å above the highest atom
+
         if isinstance(bottom, str):
             # 'cavity_like' is intercepted by build_jellium_region before it
             # gets here; anything else is a mistake.
@@ -91,21 +92,19 @@ class SlabRegion(JelliumRegion):
                 f'Unknown lower limit for the jellium region: {bottom!r}.  '
                 'Give a number of Angstrom instead.')
 
-        specified = [top is not None,
-                     bottom is not None,
-                     thickness is not None]
-        if all(specified):
+        if top is not None and bottom is not None and thickness is not None:
             raise ValueError(
                 'The jellium region has been overspecified: give at most two '
                 "of 'top', 'bottom' and 'thickness'.")
-        if not any(specified):
-            top, bottom = DEFAULT_TOP, DEFAULT_BOTTOM
-        elif specified == [True, False, False]:
-            bottom = DEFAULT_BOTTOM
-        elif specified == [False, True, False]:
-            top = DEFAULT_TOP
-        elif specified == [False, False, True]:
-            bottom = DEFAULT_BOTTOM
+        if thickness is None:
+            # Up to one limit given: the other one keeps its default.
+            if top is None:
+                top = default_top
+            if bottom is None:
+                bottom = default_bottom
+        elif top is None and bottom is None:
+            # A thickness on its own grows upward from the default bottom.
+            bottom = default_bottom
 
         self.top: float | None = top
         self.bottom: float | None = bottom
@@ -203,8 +202,8 @@ class CavityShapedRegion(JelliumRegion):
         The solvation cavity to read ``g_g`` from.
     """
 
-    def __init__(self, top: float | None = None, *, cavity=None):
-        self.top = DEFAULT_TOP if top is None else top
+    def __init__(self, top: float = -1.0, *, cavity=None):  # Å
+        self.top = top
         self.cavity = cavity
 
     def __repr__(self):
@@ -253,7 +252,12 @@ class ChargingScheme:
     faces, which the potential optimizer needs for its first-guess slope.
     """
 
-    charge: float
+    #: Excess electrons put into the cell; the counter charge is minus this.
+    excess_electrons: float
+    #: Shape of the charged region.
+    region: JelliumRegion
+    #: Its normalized mask on the fine grid, as stored by set_region().
+    mask_r: UGArray
 
     def add_charge(self, nt_r: UGArray) -> None:
         """Add the counter-charge to a real-space pseudo-density."""
@@ -298,8 +302,8 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
     pw:
         Plane-wave (or real-space) descriptor of the interpolated density,
         used to cache a reciprocal-space copy of the mask for PW mode.
-    charge:
-        Number of excess electrons (with the opposite sign in the jellium).
+    excess_electrons:
+        Number of excess electrons (the jellium holds minus this).
     region:
         The :class:`JelliumRegion` the mask was built from, kept so that
         the region can follow the atoms during a relaxation.  Defaults to a
@@ -313,11 +317,27 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
                  mask_r: UGArray,
                  *,
                  pw,
-                 charge: float = 0.0,
+                 excess_electrons: float = 0.0,
                  region: JelliumRegion | None = None):
         self.region = region or SlabRegion()
         self._key: object | None = None
-        super().__init__(mask_r, charge=charge, pw=pw)
+        # The base class stores it as ``charge``; the property below makes
+        # that assignment land on excess_electrons.
+        super().__init__(mask_r, charge=excess_electrons, pw=pw)
+
+    @property
+    def charge(self) -> float:
+        """The same number under the name the jellium base class uses.
+
+        :class:`gpaw.extensions.jellium.JelliumExtension` stores and
+        subtracts ``charge``, which puts minus the excess electrons into
+        the density -- the counter charge.
+        """
+        return self.excess_electrons
+
+    @charge.setter
+    def charge(self, value: float) -> None:
+        self.excess_electrons = value
 
     def set_region(self, mask_r: UGArray, key: object | None = None) -> None:
         """Normalize and store the shape of the jellium region.
@@ -377,17 +397,17 @@ class WorkFunctionProbe(PotentialProbe):
 class PotentialOptimizer:
     """Proposes the next excess-electron count for the target potential."""
 
-    def next_charge(self,
-                    charge: float,  # |e|
-                    potential: float,  # V
-                    target: float,  # V
-                    *,
-                    area: float) -> float:  # Å²
+    def next_excess_electrons(self,
+                              excess_electrons: float,  # |e|
+                              potential: float,  # V
+                              target: float,  # V
+                              *,
+                              area: float) -> float:  # Å²
         """Number of excess electrons the method points at next."""
         raise NotImplementedError
 
     def last_attempt(self) -> tuple[float, float] | None:
-        """The most recent (charge, potential) attempt, if one is kept.
+        """The most recent (excess electrons, potential) attempt, if kept.
 
         ``None`` from a method that records no attempts, which leaves the
         step clamp in :meth:`Potentiostat.equilibrate` nothing to compare
@@ -408,6 +428,11 @@ class PotentialOptimizer:
     def slope_estimate(self) -> float | None:
         """Estimated d(potential)/d(charge) in V per electron, if any."""
         return None
+
+    @property
+    def n_attempts(self) -> int:
+        """Number of attempts the slope estimate is based on."""
+        return 0
 
 
 class DirectOptimizer(PotentialOptimizer):
@@ -448,7 +473,7 @@ class DirectOptimizer(PotentialOptimizer):
         self.history = deque(self.history, maxlen=_check_depth(depth))
 
     def last_attempt(self) -> tuple[float, float] | None:
-        """The most recent (charge, potential) attempt, if there is one."""
+        """The most recent (excess electrons, potential) attempt, if any."""
         return self.history[-1] if self.history else None
 
     def forget_attempts(self) -> None:
@@ -484,10 +509,14 @@ class DirectOptimizer(PotentialOptimizer):
             return self.slope
         return regress_slope(self.history)
 
+    @property
+    def n_attempts(self) -> int:
+        """Number of attempts the slope estimate is based on."""
+        return len(self.history)
+
     def _capacitance_slope(self, area: float) -> float:
         """Slope, in V/electron, of a plate capacitor of the cell's area."""
-        # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
-        return -_e * 1e22 / (area * 10)
+        return capacitance(10, area)  # muF/cm^2; the relation is reciprocal
 
     def update_slope(self, area: float) -> float:
         """Update and return d(potential)/d(charge) in V/electron."""
@@ -508,18 +537,18 @@ class DirectOptimizer(PotentialOptimizer):
             self.slope = self._capacitance_slope(area)
         return self.slope
 
-    def next_charge(self,
-                    charge: float,
-                    potential: float,
-                    target: float,
-                    *,
-                    area: float) -> float:
-        """Charge that the slope points at, given this potential.
+    def next_excess_electrons(self,
+                              excess_electrons: float,
+                              potential: float,
+                              target: float,
+                              *,
+                              area: float) -> float:
+        """Excess electrons that the slope points at, given this potential.
 
         The attempt is recorded in the history and the slope estimate is
         updated, so this must be called at most once per attempt.
         """
-        self.history.append((charge, potential))
+        self.history.append((excess_electrons, potential))
         slope = self.update_slope(area)
         dc = (target - potential) / slope
         if len(self.history) > 1:
@@ -538,7 +567,7 @@ class DirectOptimizer(PotentialOptimizer):
                 # (mixer = 0) takes the whole step the slope points at.
                 growth = min(max(1.0 - self.mixer, 0.0), 1.0)
                 dc *= (previous + growth * (abs(dc) - previous)) / abs(dc)
-        return charge + dc
+        return excess_electrons + dc
 
 
 class EquilibrationResult(enum.Enum):
@@ -546,7 +575,8 @@ class EquilibrationResult(enum.Enum):
 
     #: The potential is within tolerance -- the equilibration is done.
     CONVERGED = enum.auto()
-    #: The charge was stepped; another SCF pass is needed.  Counts as an
+    #: The excess electrons were stepped; another SCF pass is needed.  It
+    #: counts as an
     #: attempt against ``max_iters``.
     STEPPED = enum.auto()
     #: The last step left the linear region (moved the potential by more
@@ -594,6 +624,7 @@ class Potentiostat:
         The potential probe.  Defaults to :class:`WorkFunctionProbe`.
     tol:
         Tolerance for the deviation of the target potential, in V.
+        Default: 0.005 V.
     max_potential_stepsize:
         If an accepted step moves the potential by more than this many volts
         *and* ends up further from the target than it started, the step is
@@ -624,7 +655,7 @@ class Potentiostat:
                  target_potential: float | None = None,  # V
                  optimizer: PotentialOptimizer | None = None,
                  probe: PotentialProbe | None = None,
-                 tol: float = 0.001,  # V
+                 tol: float = 0.005,  # V
                  max_potential_stepsize: float | None = 2,  # V
                  max_iters: int = 10,
                  max_reruns: int = 10,
@@ -647,7 +678,7 @@ class Potentiostat:
         # equilibration:
         self.attempts: list[tuple[float, float]] = []
         # Charge staged by always_adjust for the next geometry:
-        self.pending_charge: float | None = None
+        self.pending_excess_electrons: float | None = None
 
     @property
     def constant_potential(self) -> bool:
@@ -655,26 +686,26 @@ class Potentiostat:
         return self.target_potential is not None
 
     @property
-    def charge(self) -> float:
+    def excess_electrons(self) -> float:
         """Number of excess electrons."""
-        return self.charging.charge
+        return self.charging.excess_electrons
 
-    @charge.setter
-    def charge(self, q: float) -> None:
-        self.charging.charge = q
+    @excess_electrons.setter
+    def excess_electrons(self, q: float) -> None:
+        self.charging.excess_electrons = q
 
     @property
     def niters(self) -> int:
         """Number of attempts made in the current equilibration."""
         return len(self.attempts)
 
-    def set_charge(self, charge: float) -> None:
+    def set_excess_electrons(self, excess_electrons: float) -> None:
         """Set the number of excess electrons explicitly.
 
-        An explicit charge wins over one staged by ``always_adjust``.
+        An explicit value wins over one staged by ``always_adjust``.
         """
-        self.charge = charge
-        self.pending_charge = None
+        self.excess_electrons = excess_electrons
+        self.pending_excess_electrons = None
 
     def set_target_potential(self, target: float | None) -> None:
         """Change the target potential; ``None`` switches to constant charge.
@@ -703,19 +734,19 @@ class Potentiostat:
     def new_geometry(self) -> float | None:
         """Start equilibrating a new geometry.
 
-        Applies a charge staged by ``always_adjust`` and returns it, or
-        ``None`` if there was none.  The attempts are forgotten -- the
-        optimizer's too, since a regression across the move would fit a
+        Applies excess electrons staged by ``always_adjust`` and returns
+        them, or ``None`` if there were none.  The attempts are forgotten
+        -- the optimizer's too, since a regression across the move would fit a
         line through two different systems -- but the slope estimate is
         carried over.
         """
-        charge = self.pending_charge
-        if charge is not None:
-            self.set_charge(charge)
+        staged = self.pending_excess_electrons
+        if staged is not None:
+            self.set_excess_electrons(staged)
         self.reset_attempts()
         if self.optimizer is not None:
             self.optimizer.forget_attempts()
-        return charge
+        return staged
 
     def post_scf_convergence(self,
                              ibzwfs,
@@ -737,7 +768,7 @@ class Potentiostat:
 
         # Grab the values belonging to this attempt before the charge is
         # stepped on to the next one:
-        charge = self.charge
+        excess_electrons = self.excess_electrons
         potential = self.probe.potential(ibzwfs)
 
         result = self.equilibrate(ibzwfs, nelectrons, occ_calc, mixer, log)
@@ -758,7 +789,7 @@ class Potentiostat:
         # A step was accepted (or we are already converged): the rerun
         # streak, if any, is over.
         self.reruns = 0
-        self.attempts.append((charge, potential))
+        self.attempts.append((excess_electrons, potential))
 
         if result is EquilibrationResult.CONVERGED:
             if self.always_adjust:
@@ -766,13 +797,42 @@ class Potentiostat:
                 # value is picked up by the next geometry (new_geometry()),
                 # so that the potential can equilibrate alongside the
                 # structure.
-                self.pending_charge = self.propose_next(ibzwfs)
+                self.pending_excess_electrons = self.propose_next(ibzwfs)
             return True
 
         if self.niters >= self.max_iters:
             raise PotentialConvergenceError(
                 self._convergence_error_message(log))
         return False
+
+    def log_equilibration(self, log) -> None:
+        """Report the equilibration: where it ended up, and how it got there.
+
+        Only the attempt that ended the equilibration is reported -- the
+        intermediate ones are summarized by the regressed slope.
+        """
+        if not self.constant_potential or not self.attempts:
+            return
+
+        excess_electrons, potential = self.attempts[-1]
+        log(f'Potential found to be {potential:.5f} V '
+            f'(with {excess_electrons:+.5f} excess electrons, '
+            f'attempt {self.niters:d}/{self.max_iters:d}).')
+
+        slope = self.slope_estimate()
+        if slope is not None:
+            assert self.optimizer is not None  # or there were no attempts
+            log(f'Slope estimated from the last '
+                f'{self.optimizer.n_attempts:d} attempts is '
+                f'{slope:.4f} V/electron,')
+            c = capacitance(slope, self.charging.region_area)
+            log(f'or apparent capacitance of {c:.4f} muF/cm^2')
+
+        log('Potential is within tolerance. Equilibrated.')
+        if self.pending_excess_electrons is not None:
+            log('always_adjust: the next geometry starts from '
+                f'{self.pending_excess_electrons:+.5f} excess electrons.')
+        log(flush=True)
 
     def _convergence_error_message(self, log,
                                    reason: str | None = None) -> str:
@@ -785,8 +845,8 @@ class Potentiostat:
                'electrons and the resulting potentials are listed below; '
                'plotting them could give you insight into the problem.')
         msg = textwrap.fill(msg) + '\n'
-        for charge, potential in self.attempts:
-            msg += f'{charge:+.6f} {potential:.6f}\n'
+        for excess_electrons, potential in self.attempts:
+            msg += f'{excess_electrons:+.6f} {potential:.6f}\n'
         log(msg, flush=True)
         return msg
 
@@ -814,7 +874,8 @@ class Potentiostat:
         optimizer = self.optimizer
         assert target is not None and optimizer is not None
         potential = self.probe.potential(ibzwfs)
-        log(f'charge: {self.charge:.6f} |e|, potential: {potential:.3f} V')
+        log(f'excess electrons: {self.excess_electrons:+.6f} |e|, '
+            f'potential: {potential:.3f} V')
 
         # Reject a step that left the linear region: if the potential moved
         # by more than max_potential_stepsize *and* ended up further from
@@ -824,30 +885,32 @@ class Potentiostat:
         # ``max_step`` knob.)
         previous = optimizer.last_attempt()
         if self.max_potential_stepsize is not None and previous is not None:
-            prev_charge, prev_potential = previous
+            prev_excess_electrons, prev_potential = previous
             moved = abs(potential - prev_potential)
             overshot = abs(prev_potential - target) < abs(potential - target)
             if moved > self.max_potential_stepsize and overshot:
-                halved = 0.5 * (prev_charge + self.charge)
+                halved = 0.5 * (prev_excess_electrons + self.excess_electrons)
                 log(f'  step changed the potential by {moved:.3f} V, over '
                     'max_potential_stepsize '
                     f'({self.max_potential_stepsize} V), and away from the '
-                    'target -- rejected; halving the charge step to '
+                    'target -- rejected; halving the step in excess '
+                    'electrons to '
                     f'{halved:+.6f} |e|.')
                 ibzwfs.calculate_occs(
-                    occ_calc, nelectrons + (halved - self.charge))
-                self.charge = halved
+                    occ_calc, nelectrons + (halved - self.excess_electrons))
+                self.excess_electrons = halved
                 mixer.reset()
                 return EquilibrationResult.REJECTED
 
         if abs(potential - target) <= self.tol:
             return EquilibrationResult.CONVERGED
-        new_charge = optimizer.next_charge(
-            self.charge, potential, target,
+        new_excess_electrons = optimizer.next_excess_electrons(
+            self.excess_electrons, potential, target,
             area=self.charging.region_area)
-        ibzwfs.calculate_occs(occ_calc,
-                              nelectrons + (new_charge - self.charge))
-        self.charge = new_charge
+        ibzwfs.calculate_occs(
+            occ_calc,
+            nelectrons + (new_excess_electrons - self.excess_electrons))
+        self.excess_electrons = new_excess_electrons
         mixer.reset()
         return EquilibrationResult.STEPPED
 
@@ -859,8 +922,8 @@ class Potentiostat:
         target = self.target_potential
         optimizer = self.optimizer
         assert target is not None and optimizer is not None
-        return optimizer.next_charge(
-            self.charge, self.probe.potential(ibzwfs), target,
+        return optimizer.next_excess_electrons(
+            self.excess_electrons, self.probe.potential(ibzwfs), target,
             area=self.charging.region_area)
 
     # Density hooks, straight through to the charging scheme:
@@ -880,18 +943,28 @@ def _check_depth(depth: int) -> int:
     return depth
 
 
+def capacitance(slope: float, area: float) -> float:
+    """Apparent capacitance in muF/cm^2 of a slope in V per electron.
+
+    The relation is reciprocal, so this also turns a capacitance in
+    muF/cm^2 into the slope it corresponds to over an ``area`` in Å^2.
+    """
+    # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
+    return -_e * 1e22 / (area * slope)
+
+
 def regress_slope(attempts) -> float | None:
     """Slope of potential vs. excess electrons, in V/electron.
 
-    ``attempts`` is a sequence of (charge, potential) pairs, the charge in
-    electrons and the potential in volts.  Returns ``None`` if there are
-    too few distinct charges to fit a line.
+    ``attempts`` is a sequence of (excess electrons, potential) pairs, in
+    electrons and volts.  Returns ``None`` if there are too few distinct
+    values to fit a line.
     """
     attempts = list(attempts)
     if len(attempts) < 2:
         return None
-    charge_i = np.array([charge for charge, _ in attempts])
+    n_i = np.array([excess_electrons for excess_electrons, _ in attempts])
     potential_i = np.array([potential for _, potential in attempts])
-    if np.ptp(charge_i) < 1e-10:
+    if np.ptp(n_i) < 1e-10:
         return None
-    return float(np.polyfit(charge_i, potential_i, 1)[0])
+    return float(np.polyfit(n_i, potential_i, 1)[0])

@@ -5,7 +5,7 @@ from ase.units import Bohr
 
 from gpaw.core import UGDesc
 from gpaw.extensions.electrocatalysis.potentiostat import (
-    DEFAULT_BOTTOM, DEFAULT_TOP, CavityShapedRegion, JelliumCharging,
+    CavityShapedRegion, JelliumCharging,
     SlabRegion, build_jellium_region)
 
 HEIGHT = 20.0  # Å
@@ -18,7 +18,7 @@ def limits(**kwargs):
 
 def test_defaults():
     # 3 Å above the highest atom, 1 Å below the top of the cell:
-    assert limits() == (ZMAX - DEFAULT_BOTTOM, HEIGHT + DEFAULT_TOP)
+    assert limits() == (ZMAX + 3.0, HEIGHT - 1.0)
 
 
 def test_absolute():
@@ -32,16 +32,15 @@ def test_relative():
 
 
 def test_only_top():
-    assert limits(top=15.0) == (ZMAX - DEFAULT_BOTTOM, 15.0)
+    assert limits(top=15.0) == (ZMAX + 3.0, 15.0)
 
 
 def test_only_bottom():
-    assert limits(bottom=8.0) == (8.0, HEIGHT + DEFAULT_TOP)
+    assert limits(bottom=8.0) == (8.0, HEIGHT - 1.0)
 
 
 def test_thickness():
-    assert limits(thickness=4.0) == (ZMAX - DEFAULT_BOTTOM,
-                                     ZMAX - DEFAULT_BOTTOM + 4.0)
+    assert limits(thickness=4.0) == (ZMAX + 3.0, ZMAX + 7.0)
     assert limits(bottom=8.0, thickness=4.0) == (8.0, 12.0)
     assert limits(top=15.0, thickness=4.0) == (11.0, 15.0)
 
@@ -57,9 +56,9 @@ def test_follows_atoms():
 
 def test_fix_bottom():
     region = SlabRegion(bottom=-3.0, fix_bottom=True)
-    assert region.limits(HEIGHT, ZMAX) == (9.0, HEIGHT + DEFAULT_TOP)
+    assert region.limits(HEIGHT, ZMAX) == (9.0, HEIGHT - 1.0)
     # The atoms move up, but the frozen lower limit stays put:
-    assert region.limits(HEIGHT, ZMAX + 1.0) == (9.0, HEIGHT + DEFAULT_TOP)
+    assert region.limits(HEIGHT, ZMAX + 1.0) == (9.0, HEIGHT - 1.0)
     # ... whereas without fix_bottom it follows:
     region = SlabRegion(bottom=-3.0)
     assert region.limits(HEIGHT, ZMAX)[0] == 9.0

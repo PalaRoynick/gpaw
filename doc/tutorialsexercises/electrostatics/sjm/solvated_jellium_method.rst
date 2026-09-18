@@ -25,7 +25,7 @@ Try running the script below to find the number of electrons necessary to equili
 
 .. literalinclude:: run-Au111.py
 
-If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the target potential is within a tolerance of 4.2 V; the default tolerance is 0.001 V, and can be changed with the :literal:`tol` keyword.
+If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the potential is within tolerance of the 4.2 V target; the tolerance defaults to 0.005 V, and can be changed with the :literal:`tol` keyword.
 This process usually takes a few steps on the first image, but is faster on subsequent images of a trajectory, since the changes are less dramatic and the potential--vs--charge slope is retained from previous steps.
 You should see that in net the routine added only about 0.007 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
@@ -33,11 +33,16 @@ You'll notice that the output in 'Au111.txt' contains additional information, as
 Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over all the attempts it took, and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
+    Potential found to be 4.20006 V (with +0.00656 excess electrons, attempt 5/10).
+    Slope estimated from the last 4 attempts is -68.8842 V/electron,
+    or apparent capacitance of 3.2268 muF/cm^2
+    Potential is within tolerance. Equilibrated.
+
     Legendre-transformed energies (grand potential, Omega = E - N mu):
-      N (excess electrons):       +0.006526
-      mu (-work function):        -4.208990  # eV
-      (Grand) free energy:       -23.628448
-      (Grand) extrapolated:      -23.605878
+      N (excess electrons):      +0.006560
+      mu (-work function):       -4.200060  # eV
+      (Grand) free energy:      -23.628966
+      (Grand) extrapolated:     -23.606397
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by :literal:`calc.get_potential_energy()` (and therefore :literal:`atoms.get_potential_energy()`).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
@@ -56,10 +61,11 @@ potential.txt:
 
 cavity.txt:
  The shape of the implicit solvent cavity averaged over `xy`.
- Multiplying the cavity function with epsinf corresponds to the `xy`-averaged dielectric constant distribution in the unit cell.
+ The `xy`-averaged dielectric constant in the unit cell is 1 + (epsinf - 1) times this cavity function.
 
 background_charge.txt:
- The shape of the jellium background charge averaged over `xy` and normalized.
+ The jellium counter charge averaged over `xy`, as a charge density in e/Bohr^3; it integrates to minus the number of excess electrons.
+ It is therefore five orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
 
 .. Note:: Alternatively, :literal:`calc.sjm.write_sjm_traces(style='cube')`
           can be used to write cube files on the 3-D grid, instead of traces.
@@ -165,3 +171,4 @@ To accomplish this, set :literal:`grand_output=False`, like::
                                      grand_output=False, ...)])
 
 The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.sjm.change(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`, and it can be called before the first calculation as well.
+Every SJM keyword can be read back off :literal:`calc.sjm` under its own name---:literal:`calc.sjm.excess_electrons`, :literal:`calc.sjm.target_potential`, :literal:`calc.sjm.tol` and so on---but once a calculation has been run they are read-only, and :literal:`change()` is the only way to set them.

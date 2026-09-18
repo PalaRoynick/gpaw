@@ -31,13 +31,13 @@ def test_step_reaches_the_next_geometry(always_adjust, in_tmp_dir):
     atoms = make_atoms(always_adjust)
     atoms.get_potential_energy()
     sjm = atoms.calc.dft.sjm
-    charge = sjm.charge
+    charge = sjm.excess_electrons
 
     assert sjm.get_electrode_potential() == pytest.approx(TARGET, abs=TOL)
     # Whatever is staged, the results belong to the charge that was converged:
     assert atoms.calc.results['excess_electrons'] == pytest.approx(charge)
 
-    staged = sjm.potentiostat.pending_charge
+    staged = sjm.potentiostat.pending_excess_electrons
     if not always_adjust:
         assert staged is None
     else:
@@ -47,12 +47,13 @@ def test_step_reaches_the_next_geometry(always_adjust, in_tmp_dir):
     # An ionic step: the staged charge is picked up before the next SCF loop.
     atoms.positions[0, 2] += 0.02
     atoms.calc.move_atoms(atoms)
-    assert sjm.potentiostat.pending_charge is None
+    assert sjm.potentiostat.pending_excess_electrons is None
     if always_adjust:
-        assert sjm.charge == pytest.approx(staged)
-        assert sjm.potentiostat.charging.charge == pytest.approx(staged)
+        assert sjm.excess_electrons == pytest.approx(staged)
+        assert (sjm.potentiostat.charging.excess_electrons ==
+                pytest.approx(staged))
     else:
-        assert sjm.charge == pytest.approx(charge)
+        assert sjm.excess_electrons == pytest.approx(charge)
 
 
 def test_change_drops_a_staged_step(in_tmp_dir):
@@ -60,21 +61,21 @@ def test_change_drops_a_staged_step(in_tmp_dir):
     atoms = make_atoms(always_adjust=True)
     atoms.get_potential_energy()
     sjm = atoms.calc.dft.sjm
-    assert sjm.potentiostat.pending_charge is not None
+    assert sjm.potentiostat.pending_excess_electrons is not None
 
     sjm.change(excess_electrons=-0.01)
-    assert sjm.charge == -0.01
-    assert sjm.potentiostat.pending_charge is None
+    assert sjm.excess_electrons == -0.01
+    assert sjm.potentiostat.pending_excess_electrons is None
 
     # Nothing is staged while always_adjust is off:
     sjm.change(always_adjust=False)
     atoms.get_potential_energy()
-    assert sjm.potentiostat.pending_charge is None
+    assert sjm.potentiostat.pending_excess_electrons is None
 
     sjm.change(always_adjust=True)
     atoms.positions[0, 2] += 0.02
     atoms.get_potential_energy()
-    assert sjm.potentiostat.pending_charge is not None
+    assert sjm.potentiostat.pending_excess_electrons is not None
 
 
 def test_always_adjust_without_target_potential(in_tmp_dir):
@@ -89,5 +90,5 @@ def test_always_adjust_without_target_potential(in_tmp_dir):
                         always_adjust=True)])
     with pytest.warns(UserWarning, match='always_adjust'):
         atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.charge == -0.01
-    assert atoms.calc.dft.sjm.potentiostat.pending_charge is None
+    assert atoms.calc.dft.sjm.excess_electrons == -0.01
+    assert atoms.calc.dft.sjm.potentiostat.pending_excess_electrons is None

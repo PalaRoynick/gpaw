@@ -6,7 +6,7 @@ import textwrap
 import warnings
 
 import numpy as np
-from ase.units import Bohr, Ha, _e
+from ase.units import Bohr, Ha
 
 from gpaw.core import PWDesc, UGArray
 from gpaw.mpi import broadcast_float
@@ -15,29 +15,8 @@ from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrocatalysis.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
     WorkFunctionProbe, build_jellium_region)
-# Raised by SJM calculations, so importable from here as well:
-from gpaw.extensions.electrocatalysis.potentiostat import (  # noqa: F401
-    PotentialConvergenceError)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
-
-#: Grid points closer than this to the lower cell boundary are left out of
-#: the slope-fitting window: the finite-difference solution is least accurate
-#: there because of the zero boundary condition.
-SKIP_NEAR_BOUNDARY = 0.5  # Å
-
-#: Smallest usable slope-fitting window.
-MIN_WINDOW_POINTS = 4
-
-#: A grid point counts as solvated once the dielectric exceeds this.
-EPS_VACUUM_TOL = 1e-3
-
-#: A grid point counts as occupied once ``|rho|`` exceeds this fraction of its
-#: largest xy-averaged value.  It has to be a small fraction: the fit must sit
-#: in genuine vacuum, where the field does not depend on the density.  Let it
-#: reach into the tail of the slab and the measured slope starts to track the
-#: density, which feeds back into the next iteration and stalls the SCF.
-RHO_VACUUM_TOL = 1e-5
 
 
 def _check_keywords(kwargs: dict) -> None:
@@ -77,10 +56,11 @@ class SJM(Solvation):
         constant-potential mode.
     tol:
         Tolerance for the deviation of the target potential, in V.
+        Default: 0.005 V.
     max_iters:
         Maximum number of attempts to equilibrate the potential, in
         constant-potential mode.  A :class:`PotentialConvergenceError` is
-        raised if the potential is not reached.
+        raised if the potential is not reached.  Default: 10.
     max_potential_stepsize:
         If a step moves the potential by more than this many volts *and*
         away from the target, it is rejected: the change in excess electrons
@@ -90,7 +70,8 @@ class SJM(Solvation):
         region.  Set to ``None`` to turn the rejection/halving off
         entirely.  Default: 2 V.
     max_reruns:
-        How many times in a row one step may be halved this way before a
+        How many times in a row one step may be halved because
+        ``max_potential_stepsize`` was exceeded before a
         :class:`PotentialConvergenceError` is raised.  Default: 10.
     grand_output:
         Write the grand-potential energy (instead of the canonical energy)
@@ -128,9 +109,9 @@ class SJM(Solvation):
                  dielectric,
                  interactions,
                  jelliumregion: dict | None = None,
-                 target_potential: float | None = None,  # eV
+                 target_potential: float | None = None,  # V
                  excess_electrons: float = 0.0,
-                 tol: float = 0.001,  # eV
+                 tol: float = 0.005,  # V
                  max_iters: int = 10,
                  max_potential_stepsize: int | None = 2,  # V
                  max_reruns: int = 10,
@@ -172,7 +153,7 @@ class SJM(Solvation):
 
         charging = JelliumCharging(mask_r,
                                    pw=builder.interpolation_desc,
-                                   charge=self.excess_electrons,
+                                   excess_electrons=self.excess_electrons,
                                    region=region)
         # The optimizer is built in constant-charge mode too: it keeps the
         # slope settings, and the estimate, for a later switch of mode.
@@ -232,11 +213,12 @@ class SJM(Solvation):
         the density and the wave functions.  Reach this as
         ``calc.sjm.change(...)``.
 
-        Note that assigning to the extension instead --
-        ``calc.sjm.charge = ...`` -- does *not* work: the charge has to reach
-        the jellium as well, and only ``change()`` empties the results, which
-        is what makes the next ``get_potential_energy()`` run the SCF loop
-        again.
+        Every parameter can be read back by its keyword name --
+        ``calc.sjm.target_potential``, ``calc.sjm.tol``, ... -- but once the
+        calculation has been built they are read-only and assigning to one
+        raises: the excess electrons have to reach the jellium as well, and
+        only ``change()`` empties the results, which is what makes the next
+        ``get_potential_energy()`` run the SCF loop again.
         """
         _check_keywords(kwargs)
         for key, value in kwargs.items():
@@ -306,58 +288,67 @@ class SJMExtension(Extension):
         self.omega_extrapolated = np.nan  # Ha
         self._dft = None
 
+    # Most settings are read straight off their owner by __getattr__ below;
+    # the few here need a definition of their own -- a second name, or a
+    # narrowed type.  All of them are read-only: change() is the only way to
+    # set a parameter, see __setattr__.
+    # excess_electrons needs to be a property because charge exists in the
+    # the Extension class already and setting charge
     @property
-    def charge(self) -> float:
+    def excess_electrons(self) -> float:
         """Number of excess electrons (kept by the potentiostat)."""
-        return self.potentiostat.charge
+        return self.potentiostat.excess_electrons
 
-    @charge.setter
-    def charge(self, q: float) -> None:
-        self.potentiostat.charge = q
-
-    @property
-    def target_potential(self) -> float | None:
-        """Target electrode potential in V (kept by the potentiostat)."""
-        return self.potentiostat.target_potential
-
-    @property
-    def tol(self) -> float:
-        """Potential tolerance in V (kept by the potentiostat)."""
-        return self.potentiostat.tol
-
-    @property
-    def _charging(self) -> JelliumCharging:
-        """The charging scheme, narrowed: SJM always builds a jellium one."""
-        charging = self.potentiostat.charging
-        assert isinstance(charging, JelliumCharging)
-        return charging
-
-    @property
-    def _optimizer(self) -> DirectOptimizer:
-        """The optimizer, narrowed to the one concrete kind SJM builds."""
-        optimizer = self.potentiostat.optimizer
-        assert isinstance(optimizer, DirectOptimizer)
-        return optimizer
+    # In the Extension parent class we use charge instead of excess_electrons
+    # otherwise NotImplementedError: Charged systems with mixed periodic/zero
+    # boundary conditions pops up, should be unified at some point.
+    charge = excess_electrons
 
     @property
     def region(self) -> JelliumRegion:
-        """Shape of the jellium counter-charge region."""
-        return self._charging.region
+        """Shape of the jellium counter-charge region.
 
-    def __str__(self):
-        txt = ('solvated jellium method:\n'
-               f'  excess electrons: {self.charge:+.5f}\n')
-        if self.target_potential is not None:
-            txt += (f'  target potential: {self.target_potential:.5f}  # V\n'
-                    f'  tolerance: {self.tol:.5f}  # V\n')
-        return txt
+        This is what the ``jelliumregion`` keyword was turned into.
+        """
+        return self.potentiostat.charging.region
+
+    # The keyword spelling of the same region -- note that it is the
+    # JelliumRegion that was built from the keyword, not the dict given.
+    jelliumregion = region
+
+    def __setattr__(self, name, value):
+        """Refuse to set a parameter, instead of setting it uselessly."""
+        if name in _KEYWORDS or name in {'charge', 'region'}:
+            raise AttributeError(
+                f'{name!r} is read-only on a running calculation: use '
+                f'calc.sjm.change({name}=...) instead.  Assigning here '
+                'would reach neither the jellium nor the results, so the '
+                'next get_potential_energy() would hand back the old ones.')
+        super().__setattr__(name, value)
+
+    # The SJM keywords live on the potentiostat and, for the slope settings,
+    # on its optimizer.  Rather than repeating each name as a property, read
+    # it off whichever of the two owns it.  __getattr__ only runs when normal
+    # lookup fails, so it never shadows a real attribute, and driving it from
+    # _KEYWORDS means a new SJM keyword is readable here for free.
+    def __getattr__(self, name):
+        if name in _KEYWORDS:
+            potentiostat = self.__dict__.get('potentiostat')  # no recursion
+            for owner in (potentiostat,
+                          getattr(potentiostat, 'optimizer', None)):
+                if hasattr(owner, name):
+                    return getattr(owner, name)
+        raise AttributeError(
+            f'{type(self).__name__!r} object has no attribute {name!r}')
+
+    def __dir__(self):
+        """List the forwarded settings too, for help() and completion."""
+        return [*super().__dir__(), *_KEYWORDS]
 
     def create_poisson_solver(self, grid, pw, charge, xp):
         ps = self.solvation.create_poisson_solver(
             grid, pw, charge=charge, xp=xp)
         if isinstance(pw, PWDesc):
-            # SJM.build() has asked the solvation for the dipole layer and
-            # the zeroed vacuum, so its plane-wave solver is already SJM's.
             return ps
         return SJMPoissonSolver(ps.solver)
 
@@ -367,45 +358,8 @@ class SJMExtension(Extension):
                              occ_calc,
                              mixer,
                              log) -> bool:
-        # The attempts are only recorded there -- the equilibration is
-        # reported in one block by post_converged(), so that it does not
-        # interleave with the SCF table once per attempt.
         return self.potentiostat.post_scf_convergence(
             ibzwfs, nelectrons, occ_calc, mixer, log)
-
-    def _log_equilibration(self, log) -> None:
-        """Report the equilibration: where it ended up, and how it got there.
-
-        Only the attempt that ended the equilibration is reported -- the
-        intermediate ones are summarized by the regressed slope.
-        """
-        pot = self.potentiostat
-        if not pot.constant_potential or not pot.attempts:
-            return
-
-        charge, potential = pot.attempts[-1]
-        log(f'Potential found to be {potential:.5f} V '
-            f'(with {charge:+.5f} excess electrons, '
-            f'attempt {pot.niters:d}/{pot.max_iters:d}).')
-
-        slope = pot.slope_estimate()
-        if slope is not None:
-            log(f'Slope estimated from the last '
-                f'{len(self._optimizer.history):d} attempts is '
-                f'{slope:.4f} V/electron,')
-            # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
-            capacitance = -_e * 1e22 / (self._area() * slope)
-            log(f'or apparent capacitance of {capacitance:.4f} muF/cm^2')
-
-        log('Potential is within tolerance. Equilibrated.')
-        if pot.pending_charge is not None:
-            log('always_adjust: the next geometry starts from '
-                f'{pot.pending_charge:+.5f} excess electrons.')
-        log(flush=True)
-
-    def _area(self) -> float:
-        """Area of the unit cell in the xy plane, in Å^2."""
-        return self.potentiostat.charging.region_area
 
     def get_electrode_potential(self) -> float:
         """Electrode potential in V, relative to the vacuum.
@@ -424,7 +378,7 @@ class SJMExtension(Extension):
         self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
         potential = self.get_electrode_potential()
 
-        self._log_equilibration(log)
+        self.potentiostat.log_equilibration(log)
 
         # Legendre transform: Omega = E - N mu, with mu = -workfunction.
         # Take the canonical energies from dft.energies rather than from
@@ -433,19 +387,19 @@ class SJMExtension(Extension):
         e_free = broadcast_float(dft.energies.total_free, dft.comm)
         e_extrapolated = broadcast_float(dft.energies.total_extrapolated,
                                          dft.comm)
-        mu_N = self.fermi_level * self.charge
+        mu_N = self.fermi_level * self.excess_electrons
         self.omega_free = e_free - mu_N
         self.omega_extrapolated = e_extrapolated - mu_N
 
         log('Legendre-transformed energies '
             '(grand potential, Omega = E - N mu):')
-        log(f'  N (excess electrons): {self.charge:+14.6f}')
+        log(f'  N (excess electrons): {self.excess_electrons:+14.6f}')
         log(f'  mu (-work function):  {-potential:+14.6f}  # eV')
         log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
         log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
         log()
 
-        dft.results['excess_electrons'] = self.charge
+        dft.results['excess_electrons'] = self.excess_electrons
         dft.results['electrode_potential'] = potential / Ha
         if self.potentiostat.grand_output:
             dft.results['free_energy'] = self.omega_free
@@ -511,9 +465,9 @@ class SJMExtension(Extension):
             vHt_r.data[:] = (vHt_r.data - self.fermi_level) * Ha
             return vHt_r
         if prop == 'background_charge':
-            mask_r = self._charging.mask_r
+            mask_r = self.potentiostat.charging.mask_r
             charge_r = mask_r.new()
-            charge_r.data[:] = -self.charge * mask_r.data
+            charge_r.data[:] = -self.excess_electrons * mask_r.data
             return charge_r
         if prop == 'cavity':
             try:
@@ -550,8 +504,10 @@ class SJMExtension(Extension):
         in the number of excess electrons is taken right away -- unless
         ``excess_electrons`` is given explicitly, which then wins.
 
-        Assigning to the attributes instead -- ``sjm.charge = ...`` -- does
-        *not* work: the charge has to reach the jellium as well, and only
+        The parameters can all be read back by their keyword names --
+        ``sjm.target_potential``, ``sjm.tol``, ``sjm.slope``, ... -- but not
+        assigned to: ``sjm.excess_electrons = ...`` raises, because the
+        excess electrons have to reach the jellium as well, and only
         ``change()`` empties the results, which is what makes the next
         ``get_potential_energy()`` run the SCF loop again.
         """
@@ -559,7 +515,8 @@ class SJMExtension(Extension):
 
         log = self.log
         pot = self.potentiostat
-        opt = self._optimizer
+        opt = self.potentiostat.optimizer
+        assert isinstance(opt, DirectOptimizer)  # the only kind SJM builds
         rerun = False  # does the SCF loop have to run again?
 
         if 'grand_output' in kwargs:
@@ -580,7 +537,7 @@ class SJMExtension(Extension):
         if 'always_adjust' in kwargs:
             pot.always_adjust = kwargs['always_adjust']
             if not pot.always_adjust:
-                pot.pending_charge = None
+                pot.pending_excess_electrons = None
             elif kwargs.get('target_potential',
                             pot.target_potential) is None:
                 warnings.warn('always_adjust has no effect in '
@@ -600,7 +557,7 @@ class SJMExtension(Extension):
                 log(f'Slope set to {opt.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
-            charging = self._charging
+            charging = self.potentiostat.charging
             charging.region = build_jellium_region(
                 kwargs['jelliumregion'], cavity=self.solvation.cavity)
             mask_r, z1, z2 = charging.region.mask(charging.mask_r.desc,
@@ -614,7 +571,7 @@ class SJMExtension(Extension):
             pot.set_target_potential(target)
             if target is None:
                 log('Switched to constant-charge mode with '
-                    f'{self.charge:+.5f} excess electrons.')
+                    f'{self.excess_electrons:+.5f} excess electrons.')
             else:
                 log(f'Target potential changed to {target:.5f} +/- '
                     f'{self.tol:.5f} V.')
@@ -623,8 +580,8 @@ class SJMExtension(Extension):
             rerun = True
 
         if 'excess_electrons' in kwargs:
-            pot.set_charge(kwargs['excess_electrons'])
-            log(f'Excess electrons changed to {self.charge:+.5f}.')
+            pot.set_excess_electrons(kwargs['excess_electrons'])
+            log(f'Excess electrons changed to {self.excess_electrons:+.5f}.')
             rerun = True
 
         if rerun and self._dft is not None:
@@ -644,23 +601,25 @@ class SJMExtension(Extension):
         slope = self.potentiostat.slope_estimate()
         if slope is None or np.isnan(self.fermi_level):
             return
-        charge = self.charge + ((target_potential -
-                                 self.get_electrode_potential()) / slope)
-        self.potentiostat.set_charge(charge)
-        self.log(f'Excess electrons changed to {self.charge:+.5f} based on a '
-                 f'slope of {slope:.4f} V/electron.')
+        n = self.excess_electrons + ((target_potential -
+                                      self.get_electrode_potential()) / slope)
+        self.potentiostat.set_excess_electrons(n)
+        self.log(f'Excess electrons changed to '
+                 f'{self.excess_electrons:+.5f} based on a slope of '
+                 f'{slope:.4f} V/electron.')
 
     def move_atoms(self, relpos_ac) -> None:
         # The wrapped solvation extension is not itself in the extension
         # list, so its cavity only follows the atoms if we forward the move:
         self.solvation.move_atoms(relpos_ac)
         # A fresh budget of equilibration attempts for the new geometry,
-        # starting from the charge staged by always_adjust, if any:
+        # starting from the value staged by always_adjust, if any:
         if self.potentiostat.new_geometry() is not None:
-            self.log(f'Excess electrons adjusted to {self.charge:+.5f} for '
-                     'the new geometry (always_adjust).')
-        grid = self._charging.mask_r.desc
-        zs = self._charging.move(relpos_ac, grid)
+            self.log(f'Excess electrons adjusted to '
+                     f'{self.excess_electrons:+.5f} for the new geometry '
+                     '(always_adjust).')
+        charging = self.potentiostat.charging
+        zs = charging.move(relpos_ac, charging.mask_r.desc)
         if zs is not None:
             self.log(f'Jellium region moved to {zs[0]:.3f} to '
                      f'{zs[1]:.3f}  # Å')
@@ -769,7 +728,13 @@ class SJMPoissonSolver(PoissonSolverWrapper):
         return np.nan
 
 
-def vacuum_window(eps_r: UGArray, rhot_r: UGArray) -> np.ndarray:
+def vacuum_window(eps_r: UGArray,
+                  rhot_r: UGArray,
+                  *,
+                  skip_near_boundary: float = 0.5,  # Å
+                  min_points: int = 4,
+                  eps_tol: float = 1e-3,
+                  rho_tol: float = 1e-5) -> np.ndarray:
     """Grid indices to measure the boundary slope over.
 
     The window is the run of points above the lower cell boundary that is
@@ -783,7 +748,27 @@ def vacuum_window(eps_r: UGArray, rhot_r: UGArray) -> np.ndarray:
     Defining the window physically rather than through fixed indices keeps
     the fit over the same distance whatever the grid spacing is.
 
-    ``eps_r`` and ``rhot_r`` must be serial (gathered) arrays.
+    Parameters
+    ----------
+    eps_r, rhot_r:
+        Dielectric function and pseudo charge density.  Both must be serial
+        (gathered) arrays.
+    skip_near_boundary:
+        Grid points closer than this to the lower cell boundary are left out
+        of the window, in Å: the finite-difference solution is least accurate
+        there because of the zero boundary condition.
+    min_points:
+        Smallest usable window.
+    eps_tol:
+        A grid point counts as solvated once the dielectric exceeds
+        ``1 + eps_tol``.
+    rho_tol:
+        A grid point counts as occupied once ``|rho|`` exceeds this fraction
+        of the largest xy-averaged value.  It has to be a small fraction: the
+        fit must sit in genuine vacuum, where the field does not depend on the
+        density.  Let it reach into the tail of the slab and the measured
+        slope starts to track the density, which feeds back into the next
+        iteration and stalls the SCF.
     """
     eps_z = eps_r.data.mean(axis=(0, 1))
     rho_z = abs(rhot_r.data.mean(axis=(0, 1)))
@@ -791,24 +776,24 @@ def vacuum_window(eps_r: UGArray, rhot_r: UGArray) -> np.ndarray:
     # spacing: with a zero boundary condition in z -- which is what FD mode
     # uses for a slab -- the first row of the array sits at z = h, not z = 0.
     z_z = eps_r.desc.xyz()[0, 0, :, 2] * Bohr
-    start = int(np.searchsorted(z_z, SKIP_NEAR_BOUNDARY))
+    start = int(np.searchsorted(z_z, skip_near_boundary))
     # Stop below the first point that feels either the solvent or the slab:
     rho_max = rho_z.max()
-    occupied_z = eps_z > 1.0 + EPS_VACUUM_TOL
+    occupied_z = eps_z > 1.0 + eps_tol
     if rho_max > 0.0:
-        occupied_z |= rho_z > RHO_VACUUM_TOL * rho_max
+        occupied_z |= rho_z > rho_tol * rho_max
     above_z = np.nonzero(occupied_z[1:])[0]
     stop = 1 + above_z[0] if len(above_z) else len(eps_z)
 
-    if stop - start < MIN_WINDOW_POINTS:
+    if stop - start < min_points:
         # Too little vacuum to also skip the boundary layer.  Move the window
         # down towards the boundary rather than up into the slab: a fit close
         # to the boundary is only less accurate, whereas a fit that reaches
-        # into the density couples the correction to it (see RHO_VACUUM_TOL).
-        start = max(1, stop - MIN_WINDOW_POINTS)
+        # into the density couples the correction to it (see ``rho_tol``).
+        start = max(1, stop - min_points)
         warnings.warn(
             'Not enough vacuum below the slab to fit the dipole correction '
-            f'clear of the first {SKIP_NEAR_BOUNDARY} Ang of the cell, so '
+            f'clear of the first {skip_near_boundary} Ang of the cell, so '
             'it is being fitted next to the zero boundary instead.  The '
             'fit is noisy there and the SCF may fail to converge.  Add '
             'vacuum below the slab.')

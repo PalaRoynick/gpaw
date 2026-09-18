@@ -12,6 +12,19 @@ class Extension:
     """
 
     name = 'unnamed extension'
+
+    #: Charge the extension puts into the cell, in electrons -- but note the
+    #: sign: it is *added* to the electron count (PotentialCalculator.charge,
+    #: gpaw/new/scf.py), so positive means electrons added, the opposite of
+    #: GPAW's own ``charge=`` keyword, where +1 removes one.  An extension
+    #: that balances it with a counter charge subtracts it from the density
+    #: (gpaw/extensions/jellium.py).
+    #:
+    #: TODO: rename to ``excess_electrons`` -- here, in the two sums over
+    #: extensions (gpaw/new/pot_calc.py, gpaw/new/fd/pot_calc.py) and in
+    #: JelliumExtension.  That would end the ambiguity and let SJM drop the
+    #: charge/excess_electrons alias it needs today, but it changes the
+    #: released Jellium(charge=...) keyword, so it needs a deprecation.
     charge = 0.0
 
     # Extra keys this extension adds to dft.results.  Mirrors

@@ -51,7 +51,7 @@ def test_switch_to_constant_charge(atoms):
 
     sjm.change(target_potential=None, excess_electrons=-0.01)
     atoms.get_potential_energy()
-    assert sjm.charge == -0.01
+    assert sjm.excess_electrons == -0.01
     assert calc.results['excess_electrons'] == pytest.approx(-0.01)
     assert calc.dft.ibzwfs is ibzwfs
 
@@ -75,7 +75,7 @@ def test_grand_output_toggle(atoms):
     assert canonical == pytest.approx(
         calc.dft.energies.total_extrapolated * Ha)
     assert grand == pytest.approx(
-        canonical - sjm.charge * calc.get_fermi_level())
+        canonical - sjm.excess_electrons * calc.get_fermi_level())
 
     # ... and it is reversible:
     sjm.change(grand_output=True)
@@ -103,7 +103,7 @@ def test_change_before_first_calculation(in_tmp_dir):
         atoms.calc.dft
 
     atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.charge == -0.01
+    assert atoms.calc.dft.sjm.excess_electrons == -0.01
     assert atoms.calc.results['excess_electrons'] == pytest.approx(-0.01)
 
     # Once built, calc.sjm is the extension itself:
@@ -113,7 +113,7 @@ def test_change_before_first_calculation(in_tmp_dir):
     ibzwfs = atoms.calc.dft.ibzwfs
     atoms.calc.sjm.change(excess_electrons=-0.02)
     atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.charge == -0.02
+    assert atoms.calc.dft.sjm.excess_electrons == -0.02
     assert atoms.calc.dft.ibzwfs is ibzwfs
 
 
@@ -165,3 +165,32 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     sjm.change(target_potential=None)
     sjm.change(tol=0.02, target_potential=4.0)
     assert sjm.potentiostat.tol == pytest.approx(0.02)
+
+
+def test_parameters_are_readable_but_read_only(atoms):
+    """Every keyword reads back under its own name; none can be assigned."""
+    sjm = atoms.calc.sjm  # the built extension, after a calculation
+    assert sjm.target_potential == 7.5
+    assert sjm.tol == TOL
+    assert sjm.excess_electrons == sjm.charge  # Extension API
+    assert sjm.max_iters == 10
+    assert sjm.max_reruns == 10
+    assert sjm.max_potential_stepsize == 2
+    assert sjm.grand_output is True
+    assert sjm.always_adjust is False
+    assert sjm.mixer == 0.2
+    assert sjm.slope_regression_depth == 4
+    assert sjm.jelliumregion is sjm.region
+
+    for key, value in [('charge', -0.01),
+                       ('excess_electrons', -0.01),
+                       ('target_potential', 7.2),
+                       ('tol', 0.01),
+                       ('slope', -1.0),
+                       ('jelliumregion', {})]:
+        with pytest.raises(AttributeError, match='change'):
+            setattr(sjm, key, value)
+
+    # ... while change() does get through:
+    sjm.change(tol=0.01)
+    assert sjm.tol == 0.01
