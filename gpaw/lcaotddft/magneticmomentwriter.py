@@ -162,8 +162,9 @@ def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
     assert bfs.Mstart == Mstart
     assert bfs.Mstop == Mstop
 
-    M_vmM = np.zeros((3, mynao, nao), dtype=complex)
-    rnabla_vmM = np.empty((3, mynao, nao), dtype=complex)
+    dtype = kpt_u[0].C_nM.dtype
+    M_vmM = np.zeros((3, mynao, nao), dtype=dtype)
+    rnabla_vmM = np.empty((3, mynao, nao), dtype=dtype)
 
     for v in range(3):
         v1 = (v + 1) % 3
@@ -182,8 +183,11 @@ def calculate_magnetic_moment_matrix(kpt_u, bfs, correction, r_vG, dM_vaii, *,
                                  Mstart, Mstop)
 
     # The matrices should be real
-    assert np.max(np.absolute(M_vmM.imag)) == 0.0
+    assert np.max(np.absolute(M_vmM.imag)) == 0.0, np.max(np.absolute(M_vmM.imag))
     M_vmM = M_vmM.real.copy()
+    print(f"M_vmM[0] in MMW:")
+    for i in range(len(M_vmM[0])):
+       print(M_vmM[0][i])
     return -0.5 * M_vmM
 
 

@@ -14,6 +14,13 @@ from gpaw.utilities.scalapack import (pblas_simple_gemm, pblas_simple_hemm,
                                       scalapack_tri2full)
 from gpaw.utilities.tools import tri2full
 
+from gpaw.lcaotddft.magneticmomentwriter import \
+    calculate_magnetic_moment_matrix
+from gpaw.lcaotddft.magneticmomentwriter import \
+    calculate_magnetic_moment_atomic_corrections
+from gpaw.lcaotddft.magneticmomentwriter import get_origin_coordinates
+from gpaw.utilities.tools import coordinates
+
 
 def gauss_ij(energy_i, energy_j, sigma):
     denergy_ij = energy_i[:, np.newaxis] - energy_j[np.newaxis, :]
@@ -38,6 +45,88 @@ def get_bfs_maps(calc):
     a_M = np.array(a_M)
     l_M = np.array(l_M)
     return a_M, l_M
+
+
+def calculate_dm_vp(paw, ksl, C0_nM, u, Np, P_p, comm):
+    # returns dm_vp which originates from
+    # matrix multiplication of C0_nM.conj(), dm_MM, and  C0_nM.T
+    dm_vp = np.empty((3, Np), dtype=float)
+    for v in range(3):
+        direction = np.zeros(3, dtype=float)
+        direction[v] = 1.0
+        cef = ConstantElectricField(Hartree / Bohr, direction)
+        kick_hamiltonian = KickHamiltonian(paw.hamiltonian, paw.density,
+                                           cef)
+        dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
+            kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
+            add_kinetic=False, root=-1)
+
+        if ksl.using_blacs:
+            tmp_nM = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_hemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              dm_MM, C0_nM.conj(), tmp_nM,
+                              side='R', uplo='L')
+            dm_nn = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_gemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              tmp_nM, C0_nM, dm_nn, transb='T')
+        else:
+            tri2full(dm_MM)
+            dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
+
+        dm_nn = collect_MM(ksl, dm_nn)
+        if comm.rank == 0:
+            dm_P = dm_nn.ravel()
+            dm_p = dm_P[P_p]
+            dm_vp[v] = dm_p
+    return dm_vp
+
+
+def calculate_magnetic_moment(paw, ksl, C0_nM, Np, P_p, comm, origin=None,
+                              origin_shift=[0., 0., 0.]):
+    dm_vp = np.empty((3, Np), dtype=float)  # TODO
+
+    gd = paw.wfs.gd
+    atoms = paw.atoms
+    origin_v = get_origin_coordinates(atoms, origin, origin_shift)
+    r_vG, _ = coordinates(gd, origin=origin_v)
+    R_av = atoms.positions / Bohr - origin_v[np.newaxis, :]
+    dM_vaii = calculate_magnetic_moment_atomic_corrections(R_av,
+                                                           paw.setups,
+                                                           paw.hamiltonian.dH_asp.partition)  # noqa: E501
+
+    for v in range(3):
+        dm_MM = calculate_magnetic_moment_matrix(
+            paw.wfs.kpt_u, paw.wfs.basis_functions,
+            paw.wfs.atomic_correction, r_vG, dM_vaii,
+            only_pseudo=False)[v]
+
+        if ksl.using_blacs:
+            tmp_nM = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_hemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              dm_MM, C0_nM.conj(), tmp_nM,
+                              side='R', uplo='L')
+            dm_nn = ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
+            pblas_simple_gemm(ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              ksl.mmdescriptor,
+                              tmp_nM, C0_nM, dm_nn, transb='T')
+        else:
+            tri2full(dm_MM)
+            dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
+
+        dm_nn = collect_MM(ksl, dm_nn)
+        if comm.rank == 0:
+            dm_P = dm_nn.ravel()
+            dm_p = dm_P[P_p]
+            dm_vp[v] = dm_p  # TODO
+
+    return dm_vp
 
 
 class DummyKsl(NamedTuple):
@@ -80,11 +169,20 @@ class KohnShamDecomposition:
             self.kpt_u = [KPoint(weightk=1, weight=1, s=0, k=0, q=0)]
             self.ksl = DummyKsl()
 
-    def initialize(self, paw, min_occdiff=1e-3, only_ia=True):
+    # initialize data for photoabsorption KS-decomposition ('dipole') or
+    # or CD KS-decomposition (atm all other strings stand for 'magnetic')
+    def initialize(self, paw, min_occdiff=1e-3, only_ia=True,
+                   comp_kind='dipole', origin=None,
+                   origin_shift=[0., 0., 0.]):
         if self.has_initialized:
             return
         paw.initialize_positions()
         # paw.set_positions()
+
+        if origin is None:
+            origin = 'COM'
+        if origin_shift is None:
+            origin_shift = [0., 0., 0.]
 
         assert self.bd.nbands == self.ksl.nao
         self.only_ia = only_ia
@@ -180,40 +278,15 @@ class KohnShamDecomposition:
                 P_p.append(P)
             P_p = np.array(P_p)
 
-            dm_vp = np.empty((3, Np), dtype=float)
+            # dm_vp = np.empty((3, Np), dtype=float)
 
-        for v in range(3):
-            direction = np.zeros(3, dtype=float)
-            direction[v] = 1.0
-            cef = ConstantElectricField(Hartree / Bohr, direction)
-            kick_hamiltonian = KickHamiltonian(paw.hamiltonian, paw.density,
-                                               cef)
-            dm_MM = paw.wfs.eigensolver.calculate_hamiltonian_matrix(
-                kick_hamiltonian, paw.wfs, paw.wfs.kpt_u[u],
-                add_kinetic=False, root=-1)
+        # Calculate dipole or magnetic moment
+        if comp_kind == 'dipole':
+            dm_vp = calculate_dm_vp(paw, self.ksl, C0_nM, u,
+                                    Np, P_p, self.comm)
 
-            if self.ksl.using_blacs:
-                tmp_nM = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
-                pblas_simple_hemm(self.ksl.mmdescriptor,
-                                  self.ksl.mmdescriptor,
-                                  self.ksl.mmdescriptor,
-                                  dm_MM, C0_nM.conj(), tmp_nM,
-                                  side='R', uplo='L')
-                dm_nn = self.ksl.mmdescriptor.zeros(dtype=C0_nM.dtype)
-                pblas_simple_gemm(self.ksl.mmdescriptor,
-                                  self.ksl.mmdescriptor,
-                                  self.ksl.mmdescriptor,
-                                  tmp_nM, C0_nM, dm_nn, transb='T')
-            else:
-                tri2full(dm_MM)
-                dm_nn = np.dot(C0_nM.conj(), np.dot(dm_MM, C0_nM.T))
-
-            dm_nn = collect_MM(self.ksl, dm_nn)
-            if self.comm.rank == 0:
-                dm_P = dm_nn.ravel()
-                dm_p = dm_P[P_p]
-                dm_vp[v] = dm_p
-
+        elif comp_kind == 'magnetic':
+            print("Under construction.")
         if self.comm.rank == 0:
             self.w_p = w_p
             self.f_p = f_p
