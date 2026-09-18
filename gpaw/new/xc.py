@@ -118,8 +118,7 @@ class Functional:
         The experimental result graph supports exactly LDA and PBE.  Density
         layouts outside its current scope retain the established atom loop.
         """
-        if self.use_xc_corrections2:
-            assert self.name in {'LDA', 'PBE'}
+        if self.use_xc_corrections2 and self.name in {'LDA', 'PBE'}:
             supported = all(setups[a].xc_correction is not None and
                             len(D_sp) in {1, 2}
                             for a, D_sp in D_asp.items())
