@@ -25,6 +25,7 @@ from gpaw.setup import Setup
 from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
 from gpaw.utilities.partition import AtomPartition
 from gpaw.utilities import pack_density
+from gpaw.new.ibzwfs import IBZWaveFunctions
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -52,7 +53,7 @@ def calculate_soc(calc: ASECalculator,
     P_ksani = {(wfs.k, wfs.spin): wfs.P_ani for wfs in ibzwfs}
     l_aj = [setup.l_j for setup in dft.setups]
 
-    P_Ksani = distribute_projections(
+    P_Ksani, kpt_comm, atomdist = distribute_projections(
         P_ksani,
         l_aj,
         ibzwfs.rank_ks,
@@ -71,24 +72,41 @@ def calculate_soc(calc: ASECalculator,
                        ignore_xc_potential) * scale
                 for a, D_sii in dft.density.D_asii.items()}
 
-    eig_Km = []
+    eig_qm = []
+    P_qamsi = []
     for K, P_sani in P_Ksani.items():
         k = ibzwfs.ibz.bz2ibz_K[K]
         eig_sn = eig_skn[:, k, n1:n2]
         P_amsi, eig_m = to_spinors(P_sani, eig_sn)
         P_amsi, eig_m, v_mn, spin_projection_mv = diagonalize(
             P_amsi, eig_m, dVL_avii, s_vss, C_ss)
-        eig_Km.append(eig_m)
+        eig_qm.append(eig_m)
+        P_qamsi.append(P_amsi)
 
-    return SOCCalculation(eig_Km)
+    def create_wfs_func(spin, q, k, kpt_c, kweight):
+        wfs = WaveFunction(
+            setups=dft.setups,
+            nbands=2 * (n2 - n1),
+            relpos_ac=dft.relpos_ac,
+            atomdist=atomdist,
+            q=q,
+            k=k,
+            kpt_c=kpt_c,
+            weight=weight,
+            ncomponents=4,
+            dtype=complex,
+            domain_band_comm=domain_comm):
+        wfs._P_ani = P_qamsi[q]
+        wfs._eig_n = eig_qm[q]
+        return wfs
 
-
-class SOCCalculation:
-    def __init__(self, eig_Km):
-        self.eig_Km = eig_Km
-
-    def eigenvalues(self):
-        return self.eig_Km
+    return IBZWaveFunctions.create(
+        ibz=...,
+        ncomponents=4,
+        create_wfs_func,
+        kpt_comm=kpt_comm,
+        kpt_band_comm=kpt_comm,
+        comm=comm)
 
 
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
