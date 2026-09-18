@@ -7,6 +7,7 @@ contract.  TPSS is used by the tests as the representative CPU functional.
 """
 
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 
@@ -204,3 +205,61 @@ class SpinPolarizedMGGAXCCorrection(MGGAXCCorrection):
         energy_a.backward()
         return energy_a.value, self.gradient
 
+
+def _evaluate_mgga_cpu(functional,
+                       density_sx,
+                       potential_sx,
+                       energy_x,
+                       sigma_xr,
+                       sigma_derivative_xr,
+                       tau_sx,
+                       tau_derivative_sx):
+    """Evaluate GPAW's scalar MGGA kernel on one batch of radial points."""
+    functional.xc.kernel.calculate(
+        energy_x, density_sx, potential_sx, sigma_xr,
+        sigma_derivative_xr, tau_sx, tau_derivative_sx)
+
+
+def _evaluate_mgga_gpu(functional, *arrays):
+    """Evaluate the CUDA Libxc MGGA kernel on CuPy arrays."""
+    calculate_gpu = getattr(functional.xc.kernel, 'calculate_gpu', None)
+    if calculate_gpu is None:
+        raise RuntimeError('GPU MGGA kernel is not available')
+    calculate_gpu(*arrays)
+
+
+def evaluate_paw_mgga(functional, batch):
+    """Evaluate one batched spin-paired or spin-polarized MGGA correction."""
+    xp = functional.xp
+    polarized = batch.density_asp.shape[1] == 2
+    density = (batch.density_asp if polarized else
+               batch.density_asp[:, 0])
+    gradient = xp.zeros_like(density)
+    arguments = dict(
+        density=density,
+        basis_apqL=batch.basis_apqL,
+        ae_radial_aqg=batch.ae_radial_aqg,
+        pseudo_radial_aqg=batch.pseudo_radial_aqg,
+        nc_ag=batch.nc_ag,
+        nct_ag=batch.nct_ag,
+        angular_anL=batch.angular_anL,
+        angular_weight_an=batch.angular_weight_an,
+        radial_weight_ag=batch.radial_weight_ag,
+        reference_energy_a=batch.reference_energy_a,
+        gradient=gradient,
+        angular_gradient_anLv=batch.angular_gradient_anLv,
+        radial_spacing_ag=batch.radial_spacing_ag,
+        inverse_radius2_ag=batch.inverse_radius2_ag,
+        ae_kinetic_anpg=batch.ae_kinetic_anpg,
+        pseudo_kinetic_anpg=batch.pseudo_kinetic_anpg,
+        ae_core_kinetic_ag=batch.ae_core_kinetic_ag,
+        pseudo_core_kinetic_ag=batch.pseudo_core_kinetic_ag)
+    correction = (SpinPolarizedMGGAXCCorrection if polarized else
+                  SpinPairedMGGAXCCorrection)(**arguments)
+    evaluate = (partial(_evaluate_mgga_cpu, functional)
+                if xp is np else
+                partial(_evaluate_mgga_gpu, functional))
+    energies, gradients = correction.evaluate(Engine(xp), evaluate)
+    if gradients.ndim == 2:
+        gradients = gradients[:, None, :]
+    return energies, gradients

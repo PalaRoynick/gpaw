@@ -29,9 +29,13 @@ class PAWXCBatch:
     angular_gradient_anLv: Any = None
     radial_spacing_ag: Any = None
     inverse_radius2_ag: Any = None
+    ae_kinetic_anpg: Any = None
+    pseudo_kinetic_anpg: Any = None
+    ae_core_kinetic_ag: Any = None
+    pseudo_core_kinetic_ag: Any = None
 
 
-def _shape_key(density_sp, correction, gga: bool) -> tuple:
+def _shape_key(density_sp, correction, gga: bool, mgga: bool) -> tuple:
     """Return the array-shape key for one homogeneous atom batch."""
     arrays = [correction.B_pqL,
               correction.n_qg,
@@ -42,6 +46,9 @@ def _shape_key(density_sp, correction, gga: bool) -> tuple:
               correction.rgd.dv_g]
     if gga:
         arrays.extend([correction.rnablaY_nLv, correction.rgd.dr_g])
+    if mgga:
+        arrays.extend([correction.tau_npg, correction.taut_npg,
+                       correction.tauc_g, correction.tauct_g])
     return (density_sp.shape, *(array.shape for array in arrays))
 
 
@@ -51,7 +58,7 @@ def _stack(xp, values, dtype):
         xp.stack([xp.asarray(value, dtype=dtype) for value in values]))
 
 
-def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
+def _prepare_batch(xp, records, gga: bool, mgga: bool) -> PAWXCBatch:
     """Transfer one shape group into batch-major tensor storage."""
     dtype = np.dtype(records[0][1].dtype)
     atom_indices = tuple(atom for atom, _, _ in records)
@@ -86,18 +93,24 @@ def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
             radial_spacing_ag=_stack(
                 xp, [grid.dr_g for grid in radial_grids], dtype),
             inverse_radius2_ag=inverse_radius2_ag)
+    if mgga:
+        arguments.update(
+            ae_kinetic_anpg=arrays('tau_npg'),
+            pseudo_kinetic_anpg=arrays('taut_npg'),
+            ae_core_kinetic_ag=arrays('tauc_g'),
+            pseudo_core_kinetic_ag=arrays('tauct_g'))
     return PAWXCBatch(**arguments)
 
 
-def gather_xc_paw(xp, setups, D_asp, *, gga: bool) \
+def gather_xc_paw(xp, setups, D_asp, *, gga: bool, mgga: bool = False) \
         -> tuple[PAWXCBatch, ...]:
     """Group local atoms by tensor shape and gather their input arrays."""
     groups: dict[tuple, list] = {}
     for atom, D_sp in D_asp.items():
         setup = setups[atom]
-        key = _shape_key(D_sp, setup.xc_correction, gga)
+        key = _shape_key(D_sp, setup.xc_correction, gga, mgga)
         groups.setdefault(key, []).append((atom, D_sp, setup))
-    return tuple(_prepare_batch(xp, records, gga)
+    return tuple(_prepare_batch(xp, records, gga, mgga)
                  for records in groups.values())
 
 

@@ -118,19 +118,34 @@ class Functional:
         The experimental result graph supports exactly LDA and PBE.  Density
         layouts outside its current scope retain the established atom loop.
         """
-        if self.use_xc_corrections2 and self.name in {'LDA', 'PBE'}:
+        use_graph = (self.use_xc_corrections2 and
+                     (self.name in {'LDA', 'PBE'} or self.type == 'MGGA'))
+        if use_graph:
+            is_mgga = self.type == 'MGGA'
+            if is_mgga:
+                for setup in setups:
+                    xcc = setup.xc_correction
+                    if xcc is not None and xcc.tau_npg is None:
+                        xcc.tau_npg, xcc.taut_npg = \
+                            self.xc.initialize_kinetic(xcc)
             supported = all(setups[a].xc_correction is not None and
                             len(D_sp) in {1, 2}
                             for a, D_sp in D_asp.items())
             if supported:
-                from gpaw.new.xccorrections2 import evaluate_paw_xc
+                if is_mgga:
+                    from gpaw.new.xccorrections2_mgga import evaluate_paw_mgga
+                else:
+                    from gpaw.new.xccorrections2 import evaluate_paw_xc
                 from gpaw.utilities.tensor_batch import (
                     gather_xc_paw,
                     scatter_xc_paw,
                 )
                 batches = gather_xc_paw(
-                    self.xp, setups, D_asp, gga=self.name == 'PBE')
-                results = tuple(evaluate_paw_xc(self, batch)
+                    self.xp, setups, D_asp,
+                    gga=self.name == 'PBE' or is_mgga,
+                    mgga=is_mgga)
+                evaluate = evaluate_paw_mgga if is_mgga else evaluate_paw_xc
+                results = tuple(evaluate(self, batch)
                                 for batch in batches)
                 return scatter_xc_paw(batches, results)
 
