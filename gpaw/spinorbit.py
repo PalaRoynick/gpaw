@@ -53,6 +53,7 @@ def calculate_soc(calc: ASECalculator,
 
     P_ksani = {(wfs.k, wfs.spin): wfs.P_ani for wfs in ibzwfs}
     l_aj = [setup.l_j for setup in dft.setups]
+    print(list(P_ksani), l_aj)
 
     P_Ksani, kpt_comm, atomdist = distribute_projections(
         P_ksani,
@@ -83,6 +84,7 @@ def calculate_soc(calc: ASECalculator,
             P_amsi, eig_m, dVL_avii, s_vss, C_ss)
         eig_qm.append(eig_m)
         P_qamsi.append(P_amsi)
+    print(ibzwfs.ibz.bz2ibz_K)
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
         wfs = WaveFunctions(
@@ -103,13 +105,18 @@ def calculate_soc(calc: ASECalculator,
         return wfs
 
     nosym = Symmetries(cell=ibzwfs.ibz.symmetries.cell_cv)
-    return IBZWaveFunctions.create(
+    bzwfs = IBZWaveFunctions.create(
         ibz=ibzwfs.ibz.bz.reduce(nosym, use_time_reversal=False),
         ncomponents=4,
         create_wfs_func=create_wfs_func,
         kpt_comm=kpt_comm,
         kpt_band_comm=kpt_comm,
         comm=dft.comm)
+
+    if mp-grid:
+        bzwfs.occ = ...
+
+    return bzwfs
 
 
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
@@ -124,6 +131,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     """Distribute projections from IBZ to BZ.
     """
     nbzkpts = len(ibz.bz)
+    print(ibz.bz, nbzkpts)
     p = Parallelization(comm, nbzkpts)
     p.set(band=1)
     comms = p.build_communicators()
@@ -162,11 +170,13 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                 comm.receive(P_ani.data, from_rank)
                 P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
+    print(len(P_ksani))
 
     symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
     K1 = min(kpt_comm.rank * mynk, nbzkpts)
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
+    print(K1, K2, nspins)
     P_Ksani = {}
     for K in range(K1, K2):
         k = ibz.bz2ibz_K[K]
@@ -181,7 +191,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
             P_ani = P_layout.new(atomdist=atomdist).empty(n2 - n1)
             P_ani.scatter_from(P0_ani)
             P_sani.append(P_ani)
-        P_Ksani[k] = P_sani
+        P_Ksani[K] = P_sani
 
     return P_Ksani, kpt_comm, atomdist
 
