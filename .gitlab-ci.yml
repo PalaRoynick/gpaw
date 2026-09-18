@@ -1,6 +1,6 @@
 variables:
   PYTHONUSERBASE: ".local"
-  DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
+  DOCKERSUFFIX: "-staging"  # Set to "-staging" to get the staging dockers
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
@@ -150,14 +150,9 @@ build-latest:
       include_dirs += [libvdwxc_dir / 'include']
 
       elpa = True
-      elpa_dir = Path('/install/elpa')
-      elpa_libdir = elpa_dir / 'lib'
       # Maybe we should do a glob to avoid version dependence:
-      elpa_includedir = elpa_dir / 'include/elpa-2022.11.001'
       libraries += ['elpa']
-      library_dirs += [f'{elpa_libdir}']
-      extra_link_args += [f'-Wl,-rpath={elpa_libdir}']
-      include_dirs += [f'{elpa_includedir}']
+      include_dirs += ['usr/include/elpa']
 
       EOF
     - cat siteconfig.py
