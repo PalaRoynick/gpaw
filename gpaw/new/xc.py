@@ -12,6 +12,7 @@ from gpaw.new.c import (add_to_density, add_to_density_gpu, evaluate_lda_gpu,
                         evaluate_pbe_gpu)
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
+from gpaw.new.timer import tracectx
 from gpaw.typing import Array2D
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional as OldXCFunctional
@@ -140,14 +141,21 @@ class Functional:
                     gather_xc_paw,
                     scatter_xc_paw,
                 )
-                batches = gather_xc_paw(
-                    self.xp, setups, D_asp,
-                    gga=self.name == 'PBE' or is_mgga,
-                    mgga=is_mgga)
+                with tracectx('XC corrections2 gather', gpu=self.xp is not np):
+                    batches = gather_xc_paw(
+                        self.xp, setups, D_asp,
+                        gga=self.name == 'PBE' or is_mgga,
+                        mgga=is_mgga)
                 evaluate = evaluate_paw_mgga if is_mgga else evaluate_paw_xc
-                results = tuple(evaluate(self, batch)
-                                for batch in batches)
-                return scatter_xc_paw(batches, results)
+                with tracectx('XC corrections2 batched run',
+                              gpu=self.xp is not np):
+                    results = tuple(
+                        self._evaluate_xc_correction_batch(
+                            evaluate, batch, index)
+                        for index, batch in enumerate(batches))
+                with tracectx('XC corrections2 scatter',
+                              gpu=self.xp is not np):
+                    return scatter_xc_paw(batches, results)
 
         energy_a = {}
         gradient_asp = {}
@@ -158,6 +166,11 @@ class Functional:
                 setups[a], D_sp, gradient_sp, a=a)
             gradient_asp[a] = gradient_sp
         return energy_a, gradient_asp
+
+    def _evaluate_xc_correction_batch(self, evaluate, batch, index):
+        """Evaluate one homogeneous PAW correction batch with a trace region."""
+        with tracectx(f'XC corrections2 batch {index}', gpu=self.xp is not np):
+            return evaluate(self, batch)
 
     def get_setup_name(self) -> str:
         return self.setup_name
