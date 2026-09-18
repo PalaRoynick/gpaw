@@ -68,7 +68,9 @@ class CoulombPotential:
 class PWERI:
     """Construct F, bare Coulomb ERIs, and h = F - G[D]."""
 
-    def __init__(self, calc: GPAWCalc):
+    def __init__(
+            self, calc: GPAWCalc, max_cached_pairs: int | None = None):
+
         if calc.wfs.spos_ac is None:
             calc.set_positions()
 
@@ -83,6 +85,7 @@ class PWERI:
         self.gd = self.wfs.gd
         self.finegd = self.density.finegd
         self.setups = self.wfs.setups
+        self.max_cached_pairs = max_cached_pairs
 
         self.validate_reference()
 
@@ -154,21 +157,35 @@ class PWERI:
             for j in range(i, self.nbands)
         ]
 
-        cached = len(pairs) * self.finegd.zeros().nbytes
-        if progress is not None:
-            progress(f'Caching {len(pairs)} unique pair densities '
-                     f'({cached / 2**30:.2f} GiB per domain rank).')
+        cache_count = len(pairs)
+        if self.max_cached_pairs is not None:
+            cache_count = min(cache_count, self.max_cached_pairs)
 
-        pair_data = [
-            self.make_pair_density(spin, i, j)
-            for spin, i, j in pairs
-        ]
+        cached = cache_count * self.finegd.zeros().nbytes
+        if progress is not None:
+            progress(
+                f'Caching {cache_count} of {len(pairs)} unique pair densities '
+                f'({cached / 2**30:.2f} GiB per domain rank).')
+
+        first_cached = len(pairs) - cache_count
+        pair_data = {
+            index: self.make_pair_density(*pairs[index])
+            for index in range(first_cached, len(pairs))
+        }
+
+        def get_pair(index: int) -> PairDensity:
+            pair = pair_data.get(index)
+            if pair is None:
+                pair = self.make_pair_density(*pairs[index])
+            return pair
+
         pair_eri = np.empty((len(pairs), len(pairs)))
 
-        for a, pair_a in enumerate(pair_data):
+        for a in range(len(pairs)):
+            pair_a = get_pair(a)
             potential_g = self.coulomb.potential(pair_a.rhot_g)
-            for b in range(a, len(pair_data)):
-                pair_b = pair_data[b]
+            for b in range(a, len(pairs)):
+                pair_b = pair_a if b == a else get_pair(b)
                 smooth = self.coulomb.integrate(
                     pair_b.rhot_g, potential_g)
 
@@ -186,7 +203,7 @@ class PWERI:
                 pair_eri[b, a] = value
 
             if progress is not None:
-                progress(f'Poisson solves: {a + 1}/{len(pair_data)}')
+                progress(f'Poisson solves: {a + 1}/{len(pairs)}')
 
         return self.expand_pair_matrix(pair_eri, pairs)
 
@@ -668,6 +685,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument('--nbands', type=int,
                         help='Number of lowest orbitals to write.'
                              '  PWERI still evaluates every SCF band.')
+    parser.add_argument('--max-cached-pairs', type=int,
+                        help='Maximum number of pair densities to cache.'
+                             ' Defaults to all; use 0 to disable caching.')
     parser.add_argument('--diagnostics', action='store_true',
                         help='Validate and print integral diagnostics.')
     parser.add_argument('--verbose', action='store_true',
@@ -689,7 +709,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     calc = GPAW(args.restart)
-    pweri = PWERI(calc)
+    pweri = PWERI(calc, max_cached_pairs=args.max_cached_pairs)
     progress = print if args.verbose and world.rank == 0 else None
     h1, eri, fock, occupations, eigenvalues = calculate_integrals(
         pweri, nbands=args.nbands, progress=progress)
