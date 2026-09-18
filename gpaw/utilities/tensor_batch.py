@@ -58,6 +58,23 @@ def _stack(xp, values, dtype):
         xp.stack([xp.asarray(value, dtype=dtype) for value in values]))
 
 
+def _stack_kinetic(xp, corrections, name, dtype):
+    """Resample kinetic projector tables onto the PAW density radial grid."""
+    values = []
+    for correction in corrections:
+        value = np.asarray(getattr(correction, name))
+        target = correction.n_qg.shape[-1]
+        if value.shape[-1] != target:
+            old_grid = np.linspace(0.0, 1.0, value.shape[-1])
+            new_grid = np.linspace(0.0, 1.0, target)
+            flat = value.reshape(-1, value.shape[-1])
+            value = np.asarray([
+                np.interp(new_grid, old_grid, row) for row in flat
+            ]).reshape(value.shape[:-1] + (target,))
+        values.append(value)
+    return _stack(xp, values, dtype)
+
+
 def _prepare_batch(xp, records, gga: bool, mgga: bool) -> PAWXCBatch:
     """Transfer one shape group into batch-major tensor storage."""
     dtype = np.dtype(records[0][1].dtype)
@@ -95,8 +112,10 @@ def _prepare_batch(xp, records, gga: bool, mgga: bool) -> PAWXCBatch:
             inverse_radius2_ag=inverse_radius2_ag)
     if mgga:
         arguments.update(
-            ae_kinetic_anpg=arrays('tau_npg'),
-            pseudo_kinetic_anpg=arrays('taut_npg'),
+            ae_kinetic_anpg=_stack_kinetic(
+                xp, corrections, 'tau_npg', dtype),
+            pseudo_kinetic_anpg=_stack_kinetic(
+                xp, corrections, 'taut_npg', dtype),
             ae_core_kinetic_ag=arrays('tauc_g'),
             pseudo_core_kinetic_ag=arrays('tauct_g'))
     return PAWXCBatch(**arguments)
