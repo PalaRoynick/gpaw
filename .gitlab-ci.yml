@@ -152,7 +152,7 @@ build-latest:
       elpa = True
       # Maybe we should do a glob to avoid version dependence:
       libraries += ['elpa']
-      include_dirs += ['usr/include/elpa']
+      include_dirs += ['/usr/include/elpa']
 
       EOF
     - cat siteconfig.py
