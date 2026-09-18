@@ -146,6 +146,14 @@ class SpinPairedMGGAXCCorrection(MGGAXCCorrection):
             engine, pseudo_aLg, self.angular_anL,
             self.angular_gradient_anLv, self.radial_spacing_ag,
             self.inverse_radius2_ag)
+        ae_density_anh = ae_density_anh.slice(
+            (..., slice(1, None)), 'anh')
+        ae_sigma_anh = ae_sigma_anh.slice(
+            (..., slice(1, None)), 'anh')
+        pseudo_density_anh = pseudo_density_anh.slice(
+            (..., slice(1, None)), 'anh')
+        pseudo_sigma_anh = pseudo_sigma_anh.slice(
+            (..., slice(1, None)), 'anh')
         ae_tau = _paired_tau(
             engine, density_ap, self.ae_kinetic_anpg,
             self.ae_core_kinetic_ag)
@@ -187,6 +195,14 @@ class SpinPolarizedMGGAXCCorrection(MGGAXCCorrection):
             engine, pseudo_asLg, self.angular_anL,
             self.angular_gradient_anLv, self.radial_spacing_ag,
             self.inverse_radius2_ag)
+        ae_density_asnh = ae_density_asnh.slice(
+            (..., slice(1, None)), 'asnh')
+        ae_sigma_axnh = ae_sigma_axnh.slice(
+            (..., slice(1, None)), 'axnh')
+        pseudo_density_asnh = pseudo_density_asnh.slice(
+            (..., slice(1, None)), 'asnh')
+        pseudo_sigma_axnh = pseudo_sigma_axnh.slice(
+            (..., slice(1, None)), 'axnh')
         ae_tau = _polarized_tau(
             engine, density_asp, self.ae_kinetic_anpg,
             self.ae_core_kinetic_ag)
