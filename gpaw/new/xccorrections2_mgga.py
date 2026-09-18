@@ -227,8 +227,14 @@ def _evaluate_mgga_gpu(functional, density_sx, potential_sx, energy_x,
     calculate_gpu = getattr(functional.xc.kernel, 'calculate_gpu', None)
     if calculate_gpu is None:
         raise RuntimeError('GPU MGGA kernel is not available')
-    calculate_gpu(energy_x, density_sx, potential_sx, sigma_xr,
-                  sigma_derivative_xr, tau_sx, tau_derivative_sx)
+    try:
+        calculate_gpu(energy_x, density_sx, potential_sx, sigma_xr,
+                      sigma_derivative_xr, tau_sx, tau_derivative_sx)
+    except ValueError as err:
+        raise ValueError(
+            'MGGA tensor shape mismatch: '
+            f'density={density_sx.shape}, sigma={sigma_xr.shape}, '
+            f'tau={tau_sx.shape}, energy={energy_x.shape}') from err
 
 
 def evaluate_paw_mgga(functional, batch):
