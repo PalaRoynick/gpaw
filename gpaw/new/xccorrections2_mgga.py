@@ -220,12 +220,15 @@ def _evaluate_mgga_cpu(functional,
         sigma_derivative_xr, tau_sx, tau_derivative_sx)
 
 
-def _evaluate_mgga_gpu(functional, *arrays):
+def _evaluate_mgga_gpu(functional, density_sx, potential_sx, energy_x,
+                       sigma_xr, sigma_derivative_xr, tau_sx,
+                       tau_derivative_sx):
     """Evaluate the CUDA Libxc MGGA kernel on CuPy arrays."""
     calculate_gpu = getattr(functional.xc.kernel, 'calculate_gpu', None)
     if calculate_gpu is None:
         raise RuntimeError('GPU MGGA kernel is not available')
-    calculate_gpu(*arrays)
+    calculate_gpu(energy_x, density_sx, potential_sx, sigma_xr,
+                  sigma_derivative_xr, tau_sx, tau_derivative_sx)
 
 
 def evaluate_paw_mgga(functional, batch):
