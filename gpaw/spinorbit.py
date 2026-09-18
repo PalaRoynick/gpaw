@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase.units import Bohr, Ha, alpha
 
-from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
 from gpaw.new.brillouin import IBZ
-from gpaw.new.symmetry import SymmetrizationPlan
+from gpaw.new.symmetry import SymmetrizationPlan, Symmetries
+from gpaw.new.wave_functions import WaveFunctions
 from gpaw.occupations import OccupationNumberCalculator, ParallelLayout
 from gpaw.old.band_descriptor import BandDescriptor
 from gpaw.old.grid_descriptor import GridDescriptor
@@ -41,7 +42,7 @@ def calculate_soc(calc: ASECalculator,
                   theta: float = 0.0,  # degrees
                   phi: float = 0.0,  # degrees
                   ignore_xc_potential: bool = False
-                  ) -> SOCCalculation:
+                  ) -> IBZWaveFunctions:
     dft = calc.dft
     ibzwfs = dft.ibzwfs
 
@@ -84,7 +85,7 @@ def calculate_soc(calc: ASECalculator,
         P_qamsi.append(P_amsi)
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
-        wfs = WaveFunction(
+        wfs = WaveFunctions(
             setups=dft.setups,
             nbands=2 * (n2 - n1),
             relpos_ac=dft.relpos_ac,
@@ -92,21 +93,23 @@ def calculate_soc(calc: ASECalculator,
             q=q,
             k=k,
             kpt_c=kpt_c,
-            weight=weight,
+            weight=kweight,
             ncomponents=4,
             dtype=complex,
-            domain_band_comm=domain_comm):
+            domain_band_comm=atomdist.comm)
         wfs._P_ani = P_qamsi[q]
         wfs._eig_n = eig_qm[q]
+        wfs.xp = np
         return wfs
 
+    nosym = Symmetries(cell=ibzwfs.ibz.symmetries.cell_cv)
     return IBZWaveFunctions.create(
-        ibz=...,
+        ibz=ibzwfs.ibz.bz.reduce(nosym, use_time_reversal=False),
         ncomponents=4,
-        create_wfs_func,
+        create_wfs_func=create_wfs_func,
         kpt_comm=kpt_comm,
         kpt_band_comm=kpt_comm,
-        comm=comm)
+        comm=dft.comm)
 
 
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
@@ -127,6 +130,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
 
     P_layout = next(iter(P_ksani.values())).layout
+    atomdist = AtomDistribution.from_number_of_atoms(len(l_aj), domain_comm)
 
     to_r = defaultdict(set)
     for K in range(nbzkpts):
@@ -162,17 +166,22 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
     P_Ksani = {}
-    if domain_comm.rank == 0:
-        for K in range(K1, K2):
-            k = ibz.bz2ibz_K[K]
-            P_sani = []
-            for spin in range(nspins):
-                P_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
-                                                   ibz.s_K[K],
-                                                   ibz.time_reversal_K[K])
-                P_sani.append(P_ani)
-            P_Ksani[k] = P_sani
-    return P_Ksani
+    for K in range(K1, K2):
+        k = ibz.bz2ibz_K[K]
+        P_sani = []
+        for spin in range(nspins):
+            if domain_comm.rank == 0:
+                P0_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
+                                                    ibz.s_K[K],
+                                                    ibz.time_reversal_K[K])
+            else:
+                P0_ani = None
+            P_ani = P_layout.new(atomdist=atomdist).empty(n2 - n1)
+            P_ani.scatter_from(P0_ani)
+            P_sani.append(P_ani)
+        P_Ksani[k] = P_sani
+
+    return P_Ksani, kpt_comm, atomdist
 
 
 def to_spinors(P_sani: list[AtomArrays],
@@ -725,7 +734,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
                     ignore_xc_potential: bool = False
-                    ) -> BZWaveFunctions | SOCCalculation:
+                    ) -> BZWaveFunctions | IBZWaveFunctions:
     """Calculate SOC eigenstates.
 
     Parameters:

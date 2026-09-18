@@ -9,7 +9,7 @@ from ase.dft.dos import linear_tetrahedron_integration as lti
 
 from gpaw.mpi import normalize_communicator
 from gpaw.setup import Setup
-from gpaw.spinorbit import BZWaveFunctions, soc_eigenstates, SOCCalculation
+from gpaw.spinorbit import BZWaveFunctions, soc_eigenstates
 from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike1D
 
 if TYPE_CHECKING:
@@ -175,7 +175,7 @@ class DOSCalculator:
         else:
             calc = GPAW(filename, txt=None)
 
-        wfs: BZWaveFunctions | IBZWaveFunctions | SOCCalculation
+        wfs: BZWaveFunctions | IBZWaveFunctions
         if soc:
             wfs = soc_eigenstates(calc, theta=theta, phi=phi)
         else:
