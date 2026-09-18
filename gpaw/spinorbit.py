@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
 
 
-def calculate_soc(calc: ASECalculator | OldGPAW | str | Path,
+def calculate_soc(calc: ASECalculator,
                   n1: int = None,
                   n2: int = None,
                   scale: float = 1.0,
                   theta: float = 0.0,  # degrees
                   phi: float = 0.0,  # degrees
                   ignore_xc_potential: bool = False
-                  ) -> BZWaveFunctions:
+                  ) -> SOCCalculation:
     dft = calc.dft
     ibzwfs = dft.ibzwfs
 
@@ -67,7 +67,7 @@ def calculate_soc(calc: ASECalculator | OldGPAW | str | Path,
     # <phi_i|dV_adr / r * L_v|phi_j>
     dVL_avii = {a: soc(dft.setups[a],
                        dft.pot_calc.xc.xc,
-                       [pack_density(D_ii) for D_ii in D_sii],
+                       np.array([pack_density(D_ii) for D_ii in D_sii]),
                        ignore_xc_potential) * scale
                 for a, D_sii in dft.density.D_asii.items()}
 
@@ -97,7 +97,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                            ibz: IBZ,
                            comm: MPIComm,
                            n1: int,
-                           n2: int) -> list[list[AtomArrays]]:
+                           n2: int) -> dict[int, list[AtomArrays]]:
     """Distribute projections from IBZ to BZ.
     """
     nbzkpts = len(ibz.bz)
@@ -120,17 +120,15 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     P2_ksani = {}
     requests = []
     for (k1, spin1), P_ani in P_ksani.items():
-        P_ani = P_ani.gathergather()
-        if P_ani is not None:
-            print(P_ani.data.shape)
-            P_ani = P_ani[:, n1:n2]
-            print(P_ani.data.shape)
+        P0_ani = P_ani.gathergather()
+        if P0_ani is not None:
+            P0_ani = P0_ani[:, n1:n2]
             for r, k, spin in to_r[comm.rank]:
                 if k == k1 and spin == spin1:
                     if r == comm.rank:
-                        P2_ksani[(k, spin)] = P_ani
+                        P2_ksani[(k, spin)] = P0_ani
                     else:
-                        req = comm.send(P_ani.data, r, block=False)
+                        req = comm.send(P0_ani.data, r, block=False)
                         requests.append(req)
 
     for from_rank, to in to_r.items():
@@ -175,7 +173,10 @@ def diagonalize(P_amsi: AtomArrays,
                 eig_m: np.ndarray,
                 dVL_avii: dict[int, Array3D],
                 s_vss: list[Array2D],
-                C_ss: Array2D) -> None:
+                C_ss: Array2D) -> tuple[AtomArrays,
+                                        np.ndarray,
+                                        np.ndarray,
+                                        np.ndarray]:
     """Evaluate H in a basis of S_z eigenstates and diagonalize."""
     M = len(eig_m)
     H_mm = np.zeros((M, M), complex)
@@ -705,7 +706,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     eigenvalues: Array3D = None,  # eV
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
-                    ignore_xc_potential: bool = False) -> BZWaveFunctions:
+                    ignore_xc_potential: bool = False
+                    ) -> BZWaveFunctions | SOCCalculation:
     """Calculate SOC eigenstates.
 
     Parameters:
