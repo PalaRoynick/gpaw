@@ -96,7 +96,7 @@ class AtomDistributions:
                                             name='work').as_even_partition()
 
         if gd is aux_gd:
-            aux_broadcast_comm = serial_comm  # gd.comm.new_communicator([gd.comm.rank])
+            aux_broadcast_comm = serial_comm
         else:
             aux_broadcast_comm = broadcast_comm
 
