@@ -205,6 +205,8 @@ class PWERI:
                         self.integrate_pair(
                             pair_eri, a, b, D_ap, pair_b, potential_g)
 
+            del potentials, pair_a, pair_b, D_ap, potential_g
+
         return self.expand_pair_matrix(pair_eri, pairs)
 
     def integrate_pair(
@@ -407,9 +409,10 @@ def calculate_integrals(
     assert np.all(integer_occupations)
 
     h1, eri, fock = pweri.run(progress=progress)
-    h1 = np.array(h1[:, :nbands, :nbands])
-    fock = np.array(fock[:, :nbands, :nbands])
-    eri = np.array(eri[:, :, :nbands, :nbands, :nbands, :nbands])
+    if nbands < pweri.nbands:
+        h1 = np.array(h1[:, :nbands, :nbands])
+        fock = np.array(fock[:, :nbands, :nbands])
+        eri = np.array(eri[:, :, :nbands, :nbands, :nbands, :nbands])
     eigenvalues = np.asarray(
         [kpt.eps_n[:nbands] for kpt in pweri.kpt_s], dtype=float)
     return h1, eri, fock, occupations, eigenvalues
