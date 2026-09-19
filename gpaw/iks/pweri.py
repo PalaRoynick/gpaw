@@ -161,9 +161,14 @@ class PWERI:
         else:
             block_size = max(1, cache_count // 2)
 
+        max_contraction_bytes = 2**30
+        max_block_size = int(
+            (max_contraction_bytes // np.dtype(float).itemsize)**0.5)
+        block_size = min(block_size, max_block_size)
+
         nblocks = (len(pairs) + block_size - 1) // block_size
         contractions = nblocks * (nblocks + 1) // 2
-        resident = block_size if nblocks == 1 else 2 * block_size
+        resident = min(len(pairs), 2 * block_size)
         cached = resident * self.pd.empty().nbytes
         if progress is not None:
             progress(
