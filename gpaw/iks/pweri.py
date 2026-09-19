@@ -12,10 +12,9 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw import GPAW
-from gpaw.lfc import LFC
+from gpaw.hybrids.wstc import WignerSeitzTruncatedCoulomb
 from gpaw.mpi import world
-from gpaw.poisson import PoissonSolver
-from gpaw.transformers import Transformer
+from gpaw.old.pw.lfc import PWLFC
 from gpaw.utilities import pack_density
 from gpaw.utilities.tools import tri2full
 from gpaw.old.matrix import matrix_matrix_multiply as mmm
@@ -24,51 +23,42 @@ if TYPE_CHECKING:
     from typing import Any, Callable
     from gpaw.old.calculator import GPAW as GPAWCalc
     from gpaw.old.kpoint import KPoint
-    from gpaw.old.grid_descriptor import GridDescriptor
+    from gpaw.iks.fdpweri import FDPWERI
     pyscf_t = Any
 
 
 @dataclass(frozen=True)
-class PairDensity:
-    spin: int
-    i: int
-    j: int
-    rhot_g: np.ndarray
+class PairBlock:
+    rhot_pG: np.ndarray
     D_ap: dict[int, np.ndarray]
 
 
-class CoulombPotential:
-    name = 'isolated FPS'
+class ReciprocalCoulomb:
+    name = 'isolated Wigner-Seitz truncated reciprocal-space'
 
-    def __init__(self, finegd: GridDescriptor, physical_pbc: np.ndarray):
-        if np.any(physical_pbc):
-            raise ValueError(
-                'Periodic ERIs need an explicit reciprocal-space G=0 convention.')
-        self.finegd = finegd
-        self.poisson = PoissonSolver('fast', use_charge_center=True,
-                                     use_charged_periodic_corrections=True)
-        self.poisson.set_grid_descriptor(finegd)
-        self.potential_g = finegd.empty(dtype=float)
-
-    def potential(self, density_g: np.ndarray) -> np.ndarray:
-        self.potential_g.fill(0.0)
-        self.poisson.solve(
-            self.potential_g,
-            density_g,
-            charge=None,
-            zero_initial_phi=True
-        )
-        return self.potential_g
-
-    def integrate(self, density_g: np.ndarray, potential_g: np.ndarray) -> float:
-        value = self.finegd.integrate(density_g, potential_g)
-        return float(np.real(value))
+    def __init__(self, pd):
+        wstc = WignerSeitzTruncatedCoulomb(
+            pd.gd.cell_cv, np.ones(3, dtype=int))
+        kernel_G = pd.zeros()
+        wstc._get_potential(
+            pd.myQ_qG[0],
+            pd.kd.bzk_kc[0],
+            pd.gd.N_c,
+            pd.dtype,
+            pd.get_reciprocal_vectors(add_q=True),
+            kernel_G)
+        kernel_G = kernel_G.real
+        if kernel_G.min() < -1.0e-12:
+            raise ValueError('Wigner-Seitz Coulomb kernel is not positive.')
+        self.sqrt_kernel_G = np.sqrt(np.maximum(kernel_G, 0.0))
 
 
 class PWERI:
-    """Construct F, bare Coulomb ERIs, and h = F - G[D]."""
+    """Construct F and ERIs with a reciprocal-space Coulomb kernel."""
 
     def __init__(self, calc: GPAWCalc, cache_bands: int | None = None):
+        if cache_bands is not None and cache_bands < 0:
+            raise ValueError('cache_bands must be non-negative.')
 
         if calc.wfs.spos_ac is None:
             calc.set_positions()
@@ -82,18 +72,16 @@ class PWERI:
         self.kpt_s = self.wfs.kpt_u
         self.nbands = self.wfs.bd.nbands
         self.gd = self.wfs.gd
-        self.finegd = self.density.finegd
+        self.pd = self.wfs.pd
         self.setups = self.wfs.setups
         self.cache_bands = cache_bands
 
         self.validate_reference()
 
-        self.interpolator = Transformer(self.gd, self.finegd, 3)
-        self.ghat = LFC(
-            self.finegd, [setup.ghat_l for setup in self.setups])
+        self.ghat = PWLFC(
+            [setup.ghat_l for setup in self.setups], self.pd)
         self.ghat.set_positions(self.calc.spos_ac, self.wfs.atom_partition)
-        self.coulomb = CoulombPotential(
-            self.finegd, [False, False, False])
+        self.coulomb = ReciprocalCoulomb(self.pd)
         self.psit_snG = [self.get_realspace_psit(kpt)
                          for kpt in self.kpt_s]
 
@@ -102,7 +90,8 @@ class PWERI:
         assert self.wfs.nspins in {1, 2}
         assert len(self.wfs.kpt_u) == self.wfs.nspins
         assert self.wfs.kd.gamma
-        # assert not np.any(self.calc.atoms.pbc)
+        # if np.any(self.calc.atoms.pbc):
+        #     raise ValueError('Reciprocal-space ERIs require a non-periodic system.')
         assert np.dtype(self.wfs.dtype).kind == 'f'
         assert self.wfs.bd.comm.size == 1
 
@@ -126,26 +115,32 @@ class PWERI:
             )
         return psit_nG
 
-    def make_pair_density(self, spin: int, i: int, j: int) -> PairDensity:
-        """Build psi_i*psi_j."""
-        kpt = self.kpt_s[spin]
-        psit_nG = self.psit_snG[spin]
-        nt_G = self.gd.empty(dtype=float)
-        np.multiply(psit_nG[i], psit_nG[j], out=nt_G)
-
-        rhot_g = self.finegd.empty(dtype=float)
-        self.interpolator.apply(nt_G, rhot_g)
-
+    def make_pair_block(
+            self, pairs: list[tuple[int, int, int]]) -> PairBlock:
+        """Build reciprocal-space pair densities."""
+        rhot_pG = self.pd.empty(len(pairs))
         D_ap: dict[int, np.ndarray] = {}
         Q_aL: dict[int, np.ndarray] = {}
-        for atom, P_ni in kpt.P_ani.items():
-            D_ii = np.outer(P_ni[i], P_ni[j])
-            D_p = pack_density(D_ii)
-            D_ap[atom] = D_p
-            Q_aL[atom] = D_p @ self.setups[atom].Delta_pL
+        nt_R = self.gd.empty(dtype=float)
 
-        self.ghat.add(rhot_g, Q_aL)
-        return PairDensity(spin, i, j, rhot_g, D_ap)
+        for p, (spin, i, j) in enumerate(pairs):
+            kpt = self.kpt_s[spin]
+            psit_nR = self.psit_snG[spin]
+            np.multiply(psit_nR[i], psit_nR[j], out=nt_R)
+            rhot_pG[p] = self.pd.fft(nt_R)
+
+            for atom, P_ni in kpt.P_ani.items():
+                D_p = pack_density(np.outer(P_ni[i], P_ni[j]))
+                Q_L = D_p @ self.setups[atom].Delta_pL
+                if atom not in D_ap:
+                    D_ap[atom] = np.empty((len(pairs), len(D_p)))
+                    Q_aL[atom] = np.empty((len(pairs), len(Q_L)))
+                D_ap[atom][p] = D_p
+                Q_aL[atom][p] = Q_L
+
+        self.ghat.add(rhot_pG, Q_aL)
+        rhot_pG *= self.coulomb.sqrt_kernel_G
+        return PairBlock(rhot_pG, D_ap)
 
     def calculate_eri(self, progress: Callable[[str], None] | None = None) -> np.ndarray:
         """Calculate all real chemists'-notation ``(ij|kl)`` integrals."""
@@ -161,73 +156,60 @@ class PWERI:
             cached_bands = min(cached_bands, self.cache_bands)
         cache_count = self.nspins * cached_bands * (cached_bands + 1) // 2
 
-        pair_eri = np.empty((len(pairs), len(pairs)))
-
-        if cache_count == len(pairs):
-            cached = cache_count * self.finegd.zeros().nbytes
-            if progress is not None:
-                progress(f'Caching all {cache_count} unique pair densities '
-                         f'({cached / 2**30:.2f} GiB per domain rank).')
-
-            pair_data = [self.make_pair_density(*pair) for pair in pairs]
-            for a, pair_a in enumerate(pair_data):
-                potential_g = self.coulomb.potential(pair_a.rhot_g)
-                for b in range(a, len(pairs)):
-                    self.integrate_pair(
-                        pair_eri, a, b, pair_a.D_ap, pair_data[b], potential_g)
-
-                if progress is not None:
-                    progress(f'Poisson solves: {a + 1}/{len(pairs)}')
+        if cache_count >= len(pairs):
+            block_size = len(pairs)
         else:
-            block_size = max(1, cache_count)
-            cached = block_size * self.finegd.zeros().nbytes
-            if progress is not None:
-                progress(
-                    f'Using blocks of {block_size} Coulomb potentials for '
-                    f'{cached_bands} cache bands '
-                    f'({cached / 2**30:.2f} GiB per domain rank).')
+            block_size = max(1, cache_count // 2)
 
-            for start in range(0, len(pairs), block_size):
-                stop = min(start + block_size, len(pairs))
-                potentials = []
-                for a in range(start, stop):
-                    pair_a = self.make_pair_density(*pairs[a])
-                    potential_g = self.coulomb.potential(pair_a.rhot_g).copy()
-                    potentials.append((a, pair_a.D_ap, potential_g))
-                    if progress is not None:
-                        progress(f'Poisson solves: {a + 1}/{len(pairs)}')
+        nblocks = (len(pairs) + block_size - 1) // block_size
+        contractions = nblocks * (nblocks + 1) // 2
+        resident = block_size if nblocks == 1 else 2 * block_size
+        cached = resident * self.pd.empty().nbytes
+        if progress is not None:
+            progress(
+                f'Using {nblocks} reciprocal-space blocks of up to '
+                f'{block_size} pair densities for {cached_bands} cache bands '
+                f'({cached / 2**30:.2f} GiB per domain rank).')
 
-                for b in range(start, len(pairs)):
-                    pair_b = self.make_pair_density(*pairs[b])
-                    for a, D_ap, potential_g in potentials:
-                        if a > b:
-                            break
-                        self.integrate_pair(
-                            pair_eri, a, b, D_ap, pair_b, potential_g)
+        pair_eri = np.empty((len(pairs), len(pairs)))
+        contraction = 0
+        for astart in range(0, len(pairs), block_size):
+            astop = min(astart + block_size, len(pairs))
+            block_a = self.make_pair_block(pairs[astart:astop])
 
-            del potentials, pair_a, pair_b, D_ap, potential_g
+            for bstart in range(astart, len(pairs), block_size):
+                bstop = min(bstart + block_size, len(pairs))
+                if bstart == astart:
+                    block_b = block_a
+                else:
+                    block_b = self.make_pair_block(pairs[bstart:bstop])
+
+                smooth = self.pd.integrate(block_a.rhot_pG, block_b.rhot_pG)
+                if bstart == astart:
+                    tri2full(smooth, 'U')
+                paw = np.zeros(smooth.shape, dtype=smooth.dtype)
+                for atom, D1_pp in block_a.D_ap.items():
+                    D2_pp = block_b.D_ap[atom]
+                    paw += D1_pp @ self.setups[atom].M_pp @ D2_pp.T
+                self.wfs.atom_partition.comm.sum(paw)
+
+                values = np.asarray(smooth.real + 2.0 * paw, dtype=float)
+                if bstart == astart:
+                    values = 0.5 * (values + values.T)
+                pair_eri[astart:astop, bstart:bstop] = values
+                pair_eri[bstart:bstop, astart:astop] = values.T
+
+                contraction += 1
+                if progress is not None:
+                    progress(
+                        f'Reciprocal contractions: {contraction}/{contractions}')
+
+                if block_b is not block_a:
+                    del block_b
+
+            del block_a
 
         return self.expand_pair_matrix(pair_eri, pairs)
-
-    def integrate_pair(
-            self,
-            pair_eri: np.ndarray,
-            a: int,
-            b: int,
-            D_ap: dict[int, np.ndarray],
-            pair_b: PairDensity,
-            potential_g: np.ndarray) -> None:
-        smooth = self.coulomb.integrate(pair_b.rhot_g, potential_g)
-
-        paw_local = 0.0
-        for atom, D1_p in D_ap.items():
-            D2_p = pair_b.D_ap[atom]
-            paw_local += D1_p @ self.setups[atom].M_pp @ D2_p
-
-        paw = self.wfs.atom_partition.comm.sum_scalar(paw_local)
-        value = float(np.real(smooth + 2.0 * paw))
-        pair_eri[a, b] = value
-        pair_eri[b, a] = value
 
     def expand_pair_matrix(
             self, pair_eri: np.ndarray, pairs: list[tuple[int, int, int]]
@@ -391,7 +373,7 @@ def hf_energy(
 
 
 def calculate_integrals(
-        pweri: PWERI, nbands: int | None = None, progress: Callable[[str], None] | None = None
+        pweri: PWERI | FDPWERI, nbands: int | None = None, progress: Callable[[str], None] | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run PWERI and return a lowest-band orbital space."""
     if nbands is None:
@@ -450,6 +432,8 @@ def integral_metadata(
             'GPAW spatial orbitals' if pweri.nspins == 1
             else 'spin-resolved GPAW spatial orbitals'),
         'coulomb_boundary': pweri.coulomb.name,
+        'eri_backend': 'reciprocal-space block contraction',
+        'pair_density_cutoff_ha': pweri.pd.ecut,
         'gpaw_mode': 'pw',
         'eigensolver': type(pweri.wfs.eigensolver).__name__,
         **diagnostics,
@@ -707,7 +691,7 @@ def parse_args(argv=None) -> argparse.Namespace:
                         help='Directory for integral arrays and metadata.')
     parser.add_argument('--nbands', type=int,
                         help='Number of lowest orbitals to write.'
-                             '  PWERI still evaluates every SCF band.')
+                             '  (FD)PWERI still evaluates every SCF band.')
     parser.add_argument('--cache-bands', type=int,
                         help='Limit Coulomb workspace to the size needed for'
                              ' this many bands. Defaults to all bands; use 0'
