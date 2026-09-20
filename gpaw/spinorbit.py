@@ -13,7 +13,7 @@ from ase.units import Bohr, Ha, alpha
 from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
-from gpaw.new.brillouin import IBZ
+from gpaw.new.brillouin import IBZ, MonkhorstPackKPoints
 from gpaw.new.symmetry import SymmetrizationPlan, Symmetries
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.occupations import OccupationNumberCalculator, ParallelLayout
@@ -113,8 +113,22 @@ def calculate_soc(calc: ASECalculator,
         kpt_band_comm=kpt_comm,
         comm=dft.comm)
 
-    if mp-grid:
-        bzwfs.occ = ...
+    if isinstance(ibzwfs.ibz.bz, MonkhorstPackKPoints):
+        nelectrons = (dft.density.nvalence - dft.density.charge +
+                      dft.pot_calc.charge)
+        occcalc = OccupationNumberCalculator(
+            dft.params.occupations.params,
+            dft.atoms.pbc,
+            bzwfs.ibz,
+            bzwfs.nbands,
+            {'k': kpt_comm},
+            None,
+            4,
+            nelectrons,
+            None)
+        e_band, e_entropy, e_extrapolation = ibzwfs.calculate_occs(
+            occcalc,
+            nelectrons)
 
     return bzwfs
 
