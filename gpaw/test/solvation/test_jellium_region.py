@@ -4,7 +4,7 @@ import pytest
 from ase.units import Bohr
 
 from gpaw.core import UGDesc
-from gpaw.extensions.electrocatalysis.potentiostat import (
+from gpaw.extensions.electrochemistry.potentiostat import (
     CavityShapedRegion, JelliumCharging,
     SlabRegion, build_jellium_region)
 
@@ -186,7 +186,7 @@ def test_region_follows_atoms(fix_bottom, in_tmp_dir):
     from ase import Atoms
 
     from gpaw import GPAW, FermiDirac
-    from gpaw.extensions.electrocatalysis import SJM
+    from gpaw.extensions.electrochemistry import SJM
     from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
     a = 1.4

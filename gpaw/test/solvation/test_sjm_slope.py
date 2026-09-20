@@ -2,7 +2,7 @@
 import pytest
 from ase.units import Ha, _e
 
-from gpaw.extensions.electrocatalysis.potentiostat import (
+from gpaw.extensions.electrochemistry.potentiostat import (
     DirectOptimizer, EquilibrationResult, PotentialConvergenceError,
     Potentiostat, regress_slope)
 

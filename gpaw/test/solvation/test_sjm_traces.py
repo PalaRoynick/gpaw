@@ -3,7 +3,7 @@ import pytest
 from ase.units import Bohr
 
 from gpaw.core import UGDesc
-from gpaw.extensions.electrocatalysis.sjm import _write_trace_in_z
+from gpaw.extensions.electrochemistry.sjm import _write_trace_in_z
 
 SIZE = (2, 2, 8)          # tiny: the z axis is all that matters
 CELL = [2.0, 2.0, 8.0]    # bohr, orthorhombic -> h = 1 bohr in z

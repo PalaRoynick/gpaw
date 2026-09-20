@@ -2,7 +2,7 @@ from ase.build import fcc111, molecule
 from ase.units import Pascal, m
 
 from gpaw import GPAW
-from gpaw.extensions.electrocatalysis import SJM
+from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,

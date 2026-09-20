@@ -47,7 +47,7 @@ Git master branch
   through the ``extensions`` keyword; e.g.,
   ``GPAW(..., extensions=[Solvation(...)])``.
 
-* The solvated jellium method (``gpaw.extensions.electrocatalysis.SJM``) has been ported
+* The solvated jellium method (``gpaw.extensions.electrochemistry.SJM``) has been ported
   to the :ref:`newgpaw` architecture. Other than before it is now used as an
   extension to the GPAW calculator, and not as a separate calculator, as
   described in :ref:`sjm`.  It now also allows the use of PW-mode,
@@ -57,7 +57,7 @@ Git master branch
   calculator used 0.01 V.
 
 * The potential control itself has been split out of SJM into a new
-  ``gpaw.extensions.electrocatalysis.Potentiostat`` class, which holds a
+  ``gpaw.extensions.electrochemistry.Potentiostat`` class, which holds a
   target electrode potential by adjusting an excess charge.  It owns all of
   the potential-control settings---``target_potential``, ``tol``,
   ``max_iters``, ``max_reruns``, ``max_potential_stepsize``,

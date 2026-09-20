@@ -1,4 +1,4 @@
-.. module:: gpaw.extensions.electrocatalysis
+.. module:: gpaw.extensions.electrochemistry
 .. _sjm:
 
 ======================================================
@@ -8,7 +8,7 @@ Solvated Jellium (constant-potential electrochemistry)
 Overview
 ========
 
-The Solvated Jellium method (:class:`~gpaw.extensions.electrocatalysis.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
+The Solvated Jellium method (:class:`~gpaw.extensions.electrochemistry.SJM`) is a simple method for the simulation of electrochemical interfaces in DFT.
 A full description of the approach can be found in [Kastlunger2018]_.
 The method allows you to control the simulated electrode potential (manifested as the topside work function) by varying the number of electrons in the simulation; calculations can be run in either constant-charge or constant-potential mode.
 SJM is attached to a regular GPAW calculator as an extension---:literal:`GPAW(..., extensions=[SJM(...)])`---and the calculator is then used just like any other; it returns energy and forces, but can do so at a fixed potential.
@@ -152,7 +152,7 @@ Typically, over the course of a full trajectory, the added computational cost of
 As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose :literal:`tol` together with :literal:`always_adjust=True`, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
 The slope itself is regressed over the last :literal:`slope_regression_depth` attempts and damped with the previous estimate by :literal:`mixer`; :literal:`slope` sets the initial guess, which is otherwise taken from an apparent capacitance of a few muF/cm^2.
 
-All of this is done by a :class:`~gpaw.extensions.electrocatalysis.Potentiostat`, which SJM builds from the keywords above and which then owns them---:literal:`calc.sjm.tol` and the rest read them back off it.
+All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from the keywords above and which then owns them---:literal:`calc.sjm.tol` and the rest read them back off it.
 The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
 SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme or probe.
 
@@ -194,12 +194,12 @@ The :literal:`autoinner` part automatically finds the inner region, in this case
 Usage
 =====
 
-The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrocatalysis.SJM`
+The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrochemistry.SJM`
 extension, given together with the implicit-solvent parameters
 (:literal:`cavity`, :literal:`dielectric` and :literal:`interactions`)::
 
     from gpaw import GPAW
-    from gpaw.extensions.electrocatalysis import SJM
+    from gpaw.extensions.electrochemistry import SJM
 
     calc = GPAW(mode='fd', ...,
                 extensions=[SJM(target_potential=4.4,  # absolute scale, V
@@ -300,12 +300,12 @@ References
 Class documentation
 ===================
 
-.. autoclass:: gpaw.extensions.electrocatalysis.SJM
+.. autoclass:: gpaw.extensions.electrochemistry.SJM
 
-.. autoclass:: gpaw.extensions.electrocatalysis.sjm.SJMExtension
+.. autoclass:: gpaw.extensions.electrochemistry.sjm.SJMExtension
    :members: change, write_sjm_traces, get_electrode_potential
 
-.. autoclass:: gpaw.extensions.electrocatalysis.Potentiostat
+.. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: equilibrate, new_geometry, set_target_potential,
              set_excess_electrons, slope_estimate
 

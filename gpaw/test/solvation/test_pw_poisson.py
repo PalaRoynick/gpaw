@@ -7,7 +7,7 @@ from ase.units import Bohr
 
 from gpaw.core import PWArray, PWDesc, UGDesc
 from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
-from gpaw.extensions.electrocatalysis.sjm import SJMPoissonSolver
+from gpaw.extensions.electrochemistry.sjm import SJMPoissonSolver
 from gpaw.solvation.poisson import WeightedFDPoissonSolver
 
 BOX = 12.0
