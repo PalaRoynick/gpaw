@@ -29,8 +29,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PairBlock:
-    rhot_pG: np.ndarray
-    D_ap: dict[int, np.ndarray]
+    rhot_xG: np.ndarray
+    D_axp: dict[int, np.ndarray]
 
 
 class ReciprocalCoulomb:
@@ -94,6 +94,7 @@ class PWERI:
         #     raise ValueError('Reciprocal-space ERIs require a non-periodic system.')
         assert np.dtype(self.wfs.dtype).kind == 'f'
         assert self.wfs.bd.comm.size == 1
+        assert self.wfs.kpt_u[0].psit_nG is not None
 
         xc = self.hamiltonian.xc
         fraction = getattr(xc, 'exx_fraction', None)
@@ -108,41 +109,40 @@ class PWERI:
             self.sub_exx = True
 
     def get_realspace_psit(self, kpt) -> np.ndarray:
-        psit_nG = kpt.psit_nG
-        if self.wfs.mode == "pw":
-            psit_nG = np.asarray(
-                [self.wfs.pd.ifft(psit_G, q=kpt.q) for psit_G in psit_nG]
-            )
+        psit_nG = np.asarray(
+            [self.wfs.pd.ifft(psit_G, q=kpt.q) for psit_G in kpt.psit_nG]
+        )
         return psit_nG
 
     def make_pair_block(
             self, pairs: list[tuple[int, int, int]]) -> PairBlock:
         """Build reciprocal-space pair densities."""
-        rhot_pG = self.pd.empty(len(pairs))
-        D_ap: dict[int, np.ndarray] = {}
-        Q_aL: dict[int, np.ndarray] = {}
+        rhot_xG = self.pd.empty(len(pairs))
+        D_axp: dict[int, np.ndarray] = {}
+        Q_axL: dict[int, np.ndarray] = {}
         nt_R = self.gd.empty(dtype=float)
 
-        for p, (spin, i, j) in enumerate(pairs):
+        for x, (spin, i, j) in enumerate(pairs):
             kpt = self.kpt_s[spin]
             psit_nR = self.psit_snG[spin]
             np.multiply(psit_nR[i], psit_nR[j], out=nt_R)
-            rhot_pG[p] = self.pd.fft(nt_R)
+            rhot_xG[x] = self.pd.fft(nt_R)
 
             for atom, P_ni in kpt.P_ani.items():
                 D_p = pack_density(np.outer(P_ni[i], P_ni[j]))
                 Q_L = D_p @ self.setups[atom].Delta_pL
-                if atom not in D_ap:
-                    D_ap[atom] = np.empty((len(pairs), len(D_p)))
-                    Q_aL[atom] = np.empty((len(pairs), len(Q_L)))
-                D_ap[atom][p] = D_p
-                Q_aL[atom][p] = Q_L
+                if atom not in D_axp:
+                    D_axp[atom] = np.empty((len(pairs), len(D_p)))
+                    Q_axL[atom] = np.empty((len(pairs), len(Q_L)))
+                D_axp[atom][x] = D_p
+                Q_axL[atom][x] = Q_L
 
-        self.ghat.add(rhot_pG, Q_aL)
-        rhot_pG *= self.coulomb.sqrt_kernel_G
-        return PairBlock(rhot_pG, D_ap)
+        self.ghat.add(rhot_xG, Q_axL)
+        rhot_xG *= self.coulomb.sqrt_kernel_G
+        return PairBlock(rhot_xG, D_axp)
 
-    def calculate_eri(self, progress: Callable[[str], None] | None = None) -> np.ndarray:
+    def calculate_eri(
+            self, progress: Callable[[str], None] | None = None) -> np.ndarray | None:
         """Calculate all real chemists'-notation ``(ij|kl)`` integrals."""
         pairs = [
             (spin, i, j)
@@ -168,66 +168,96 @@ class PWERI:
 
         nblocks = (len(pairs) + block_size - 1) // block_size
         contractions = nblocks * (nblocks + 1) // 2
-        resident = min(len(pairs), 2 * block_size)
+        cache_all = cache_count >= len(pairs)
+        resident = (len(pairs) if cache_all else
+                    min(len(pairs), 2 * block_size))
         cached = resident * self.pd.empty().nbytes
         if progress is not None:
             progress(
                 f'Using {nblocks} reciprocal-space blocks of up to '
                 f'{block_size} pair densities for {cached_bands} cache bands '
                 f'({cached / 2**30:.2f} GiB per domain rank).')
+            packed = len(pairs)**2 * np.dtype(float).itemsize
+            dense = (self.nspins**2 * self.nbands**4 *
+                     np.dtype(float).itemsize)
+            progress(
+                f'Rank 0 global ERI storage: {packed / 2**30:.2f} GiB '
+                f'packed + {dense / 2**30:.2f} GiB expanded.')
 
-        pair_eri = np.empty((len(pairs), len(pairs)))
+        pair_eri = (np.empty((len(pairs), len(pairs)))
+                    if world.rank == 0 else None)
+        ranges = [(start, min(start + block_size, len(pairs)))
+                  for start in range(0, len(pairs), block_size)]
+        blocks = None
+        if cache_all:
+            blocks = [self.make_pair_block(pairs[start:stop])
+                      for start, stop in ranges]
+
         contraction = 0
-        for astart in range(0, len(pairs), block_size):
-            astop = min(astart + block_size, len(pairs))
-            block_a = self.make_pair_block(pairs[astart:astop])
+        for ai, (astart, astop) in enumerate(ranges):
+            block_a = (blocks[ai] if blocks is not None else
+                       self.make_pair_block(pairs[astart:astop]))
 
-            for bstart in range(astart, len(pairs), block_size):
-                bstop = min(bstart + block_size, len(pairs))
-                if bstart == astart:
+            for bi in range(ai, len(ranges)):
+                bstart, bstop = ranges[bi]
+                if blocks is not None:
+                    block_b = blocks[bi]
+                elif bstart == astart:
                     block_b = block_a
                 else:
                     block_b = self.make_pair_block(pairs[bstart:bstop])
 
-                smooth = self.pd.integrate(block_a.rhot_pG, block_b.rhot_pG)
+                smooth = self.pd.integrate(block_a.rhot_xG, block_b.rhot_xG)
                 if bstart == astart:
                     tri2full(smooth, 'U')
                 paw = np.zeros(smooth.shape, dtype=smooth.dtype)
-                for atom, D1_pp in block_a.D_ap.items():
-                    D2_pp = block_b.D_ap[atom]
+                for atom, D1_pp in block_a.D_axp.items():
+                    D2_pp = block_b.D_axp[atom]
                     paw += D1_pp @ self.setups[atom].M_pp @ D2_pp.T
                 self.wfs.atom_partition.comm.sum(paw)
 
-                values = np.asarray(smooth.real + 2.0 * paw, dtype=float)
-                if bstart == astart:
-                    values = 0.5 * (values + values.T)
-                pair_eri[astart:astop, bstart:bstop] = values
-                pair_eri[bstart:bstop, astart:astop] = values.T
+                if world.rank == 0:
+                    values = np.asarray(
+                        smooth.real + 2.0 * paw, dtype=float)
+                    if bstart == astart:
+                        values = 0.5 * (values + values.T)
+                    pair_eri[astart:astop, bstart:bstop] = values
+                    pair_eri[bstart:bstop, astart:astop] = values.T
 
                 contraction += 1
                 if progress is not None:
                     progress(
                         f'Reciprocal contractions: {contraction}/{contractions}')
 
-                if block_b is not block_a:
+                if blocks is None and block_b is not block_a:
                     del block_b
 
-            del block_a
+            if blocks is None:
+                del block_a
 
-        return self.expand_pair_matrix(pair_eri, pairs)
+        if blocks is not None:
+            del blocks
+
+        if world.rank == 0:
+            return self.expand_pair_matrix(pair_eri, pairs)
+        return None
 
     def expand_pair_matrix(
             self, pair_eri: np.ndarray, pairs: list[tuple[int, int, int]]
     ) -> np.ndarray:
         """Expand the packed pair matrix using the eight real ERI symmetries."""
         eri = np.empty((self.nspins, self.nspins) + (self.nbands,) * 4)
+        pair_index_snn = np.empty(
+            (self.nspins, self.nbands, self.nbands), dtype=int)
         for a, (spin1, i, j) in enumerate(pairs):
-            for b, (spin2, k, l) in enumerate(pairs):
-                value = pair_eri[a, b]
-                for p, q in {(i, j), (j, i)}:
-                    for r, s in {(k, l), (l, k)}:
-                        eri[spin1, spin2, p, q, r, s] = value
-                        eri[spin2, spin1, r, s, p, q] = value
+            pair_index_snn[spin1, i, j] = a
+            pair_index_snn[spin1, j, i] = a
+
+        for a, (spin1, i, j) in enumerate(pairs):
+            for spin2, pair_index_nn in enumerate(pair_index_snn):
+                values_nn = pair_eri[a, pair_index_nn]
+                eri[spin1, spin2, i, j] = values_nn
+                eri[spin1, spin2, j, i] = values_nn
         return eri
 
     def calculate_fock_matrix(self, kpt: KPoint) -> np.ndarray:
@@ -273,12 +303,16 @@ class PWERI:
 
     def run(
             self, progress: Callable[[str], None] | None = None
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray]:
         eri = self.calculate_eri(progress=progress)
         fock = np.asarray([self.calculate_fock_matrix(kpt)
-                           for kpt in self.kpt_s])
-        occupations = np.asarray([kpt.f_n for kpt in self.kpt_s],
-                                 dtype=float)
+                           for kpt in self.kpt_s])[
+                               :, :self.nbands, :self.nbands]
+        if world.rank != 0:
+            return None, None, fock
+
+        occupations = np.asarray(
+            [kpt.f_n[:self.nbands] for kpt in self.kpt_s], dtype=float)
         h1 = remove_reference_mean_field(
             fock, eri, occupations, self.degeneracy, self.sub_exx)
         return h1, eri, fock
@@ -322,19 +356,28 @@ def remove_reference_mean_field(
 
 
 def validate_results(
-        h1: np.ndarray,
-        eri: np.ndarray,
-        fock: np.ndarray,
-        occupations: np.ndarray,
-        eigenvalues: np.ndarray,
+    h1: np.ndarray,
+    eri: np.ndarray,
+    fock: np.ndarray,
+    occupations: np.ndarray,
+    eigenvalues: np.ndarray,
         degeneracy: int) -> dict[str, float]:
     """Validate tensor symmetries, and HF reconstruction."""
-    eri_errors = {
-        'i<->j': np.max(np.abs(eri - eri.transpose(0, 1, 3, 2, 4, 5))),
-        'k<->l': np.max(np.abs(eri - eri.transpose(0, 1, 2, 3, 5, 4))),
-        '(ij)<->(kl)': np.max(
-            np.abs(eri - eri.transpose(1, 0, 4, 5, 2, 3))),
-    }
+    eri_errors = {'i<->j': 0.0, 'k<->l': 0.0, '(ij)<->(kl)': 0.0}
+    eri_ji = eri.transpose(0, 1, 3, 2, 4, 5)
+    eri_lk = eri.transpose(0, 1, 2, 3, 5, 4)
+    eri_pair = eri.transpose(1, 0, 4, 5, 2, 3)
+    for i in range(eri.shape[2]):
+        eri_errors['i<->j'] = max(
+            eri_errors['i<->j'],
+            float(np.max(np.abs(eri[:, :, i] - eri_ji[:, :, i]))))
+        eri_errors['k<->l'] = max(
+            eri_errors['k<->l'],
+            float(np.max(np.abs(eri[:, :, :, :, i] -
+                                eri_lk[:, :, :, :, i]))))
+        eri_errors['(ij)<->(kl)'] = max(
+            eri_errors['(ij)<->(kl)'],
+            float(np.max(np.abs(eri[:, :, i] - eri_pair[:, :, i]))))
     worst_eri = float(max(eri_errors.values()))
     assert worst_eri < 1e-09, f'ERI symmetry check failed: {eri_errors}'
 
@@ -379,7 +422,8 @@ def hf_energy(
 
 def calculate_integrals(
         pweri: PWERI | FDPWERI, nbands: int | None = None, progress: Callable[[str], None] | None = None
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray,
+           np.ndarray, np.ndarray]:
     """Run PWERI and return a lowest-band orbital space."""
     if nbands is None:
         nbands = pweri.nbands
@@ -395,11 +439,8 @@ def calculate_integrals(
                            | np.isclose(occupations, pweri.degeneracy, atol=1.0e-10))
     assert np.all(integer_occupations)
 
+    pweri.nbands = nbands
     h1, eri, fock = pweri.run(progress=progress)
-    if nbands < pweri.nbands:
-        h1 = np.array(h1[:, :nbands, :nbands])
-        fock = np.array(fock[:, :nbands, :nbands])
-        eri = np.array(eri[:, :, :nbands, :nbands, :nbands, :nbands])
     eigenvalues = np.asarray(
         [kpt.eps_n[:nbands] for kpt in pweri.kpt_s], dtype=float)
     return h1, eri, fock, occupations, eigenvalues
@@ -428,7 +469,7 @@ def integral_metadata(
             0.0 if pweri.nspins == 1
             else occupations[0].sum() - occupations[1].sum()),
         'orbital_count': h1.shape[-1],
-        'scf_orbital_count': pweri.nbands,
+        'scf_orbital_count': pweri.wfs.bd.nbands,
         'frozen_core_electron_count': sum(
             setup.Nc for setup in pweri.setups),
         'units': 'Hartree',
@@ -529,7 +570,7 @@ def make_ccsd(
         h1: np.ndarray, eri: np.ndarray, fock: np.ndarray, occupations: np.ndarray
 ) -> tuple[pyscf_t, pyscf_t]:
     """Prepare CCSD in the GPAW MO basis."""
-    from pyscf import gto, scf
+    from pyscf import ao2mo, gto, lib, scf
     from pyscf.cc import ccsd
 
     norb = h1.shape[-1]
@@ -537,7 +578,6 @@ def make_ccsd(
     reference.mo_coeff = np.eye(norb)
     reference.mo_occ = occupations
     reference.mo_energy = np.diag(fock)
-    reference._eri = eri
     reference.e_tot = hf_energy(
         h1[None], eri[None, None], occupations[None], 2)
     reference.converged = True
@@ -546,7 +586,22 @@ def make_ccsd(
     reference.get_fock = lambda *args, **kwargs: fock
 
     mycc = ccsd.CCSD(reference)
-    eris = mycc.ao2mo()
+    eris = ccsd._ChemistsERIs()
+    eris._common_init_(mycc)
+    nocc = eris.nocc
+    nvir = norb - nocc
+    occupied = slice(None, nocc)
+    virtual = slice(nocc, None)
+    eris.oooo = np.array(eri[occupied, occupied, occupied, occupied])
+    eris.ovoo = np.array(eri[occupied, virtual, occupied, occupied])
+    eris.ovvo = np.array(eri[occupied, virtual, virtual, occupied])
+    eris.ovov = np.array(eri[occupied, virtual, occupied, virtual])
+    eris.oovv = np.array(eri[occupied, occupied, virtual, virtual])
+    ovvv = eri[occupied, virtual, virtual, virtual]
+    eris.ovvv = lib.pack_tril(
+        ovvv.reshape(-1, nvir, nvir)).reshape(nocc, nvir, -1)
+    eris.vvvv = ao2mo.restore(
+        4, eri[virtual, virtual, virtual, virtual], nvir)
     return mycc, eris
 
 
@@ -695,8 +750,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument('--outdir', type=Path, default=Path.cwd(),
                         help='Directory for integral arrays and metadata.')
     parser.add_argument('--nbands', type=int,
-                        help='Number of lowest orbitals to write.'
-                             '  (FD)PWERI still evaluates every SCF band.')
+                        help='Number of lowest orbitals to calculate and write.')
     parser.add_argument('--cache-bands', type=int,
                         help='Limit Coulomb workspace to the size needed for'
                              ' this many bands. Defaults to all bands; use 0'
@@ -727,55 +781,62 @@ def main(argv: list[str] | None = None) -> None:
     h1, eri, fock, occupations, eigenvalues = calculate_integrals(
         pweri, nbands=args.nbands, progress=progress)
 
+    if world.rank != 0:
+        return
+
     diagnostics = None
     if args.diagnostics:
         diagnostics = validate_results(h1, eri, fock, occupations,
                                        eigenvalues, pweri.degeneracy)
-        if world.rank == 0:
-            for name, value in diagnostics.items():
+        for name, value in diagnostics.items():
+            print(f'{name}: {value:.3e}')
+
+    metadata = integral_metadata(
+        pweri, h1, eri, occupations, eigenvalues, diagnostics=diagnostics
+    )
+    write_integrals(args.outdir, h1, eri, fock, metadata)
+
+    if args.fcidump:
+        if pweri.nspins != 1:
+            raise ValueError(
+                'FCIDUMP is only implemented for spin-paired.')
+        write_fcidump(
+            args.outdir, h1[0], eri[0, 0], h1.shape[-1],
+            int(round(occupations.sum())))
+
+    P_snn = None
+    P_snn_metadata = None
+    nspins = pweri.nspins
+    if args.ccsd or args.fci:
+        import gc
+        del calc, pweri
+        gc.collect()
+
+    if args.ccsd:
+        P_snn, P_snn_metadata = run_ccsd(
+            h1, eri, fock, occupations,
+            nspins=nspins,
+            metadata=args.ccsd_metadata)
+    elif args.fci:
+        P_snn, P_snn_metadata = run_fci(
+            h1, eri, occupations,
+            nspins=nspins,
+            metadata=args.fci_metadata)
+
+    if P_snn is not None:
+        if args.diagnostics:
+            P_snn_diagnostics = validate_density_matrix(
+                P_snn, occupations)
+            for name, value in P_snn_diagnostics.items():
                 print(f'{name}: {value:.3e}')
-
-    if world.rank == 0:
-        metadata = integral_metadata(
-            pweri, h1, eri, occupations, eigenvalues, diagnostics=diagnostics
-        )
-        write_integrals(args.outdir, h1, eri, fock, metadata)
-
-        if args.fcidump:
-            if pweri.nspins != 1:
-                raise ValueError(
-                    'FCIDUMP is only implemented for spin-paired.')
-            write_fcidump(
-                args.outdir, h1[0], eri[0, 0], h1.shape[-1],
-                int(round(occupations.sum())))
-
-        P_snn = None
-        P_snn_metadata = None
-        if args.ccsd:
-            P_snn, P_snn_metadata = run_ccsd(
-                h1, eri, fock, occupations,
-                nspins=calc.density.nspins,
-                metadata=args.ccsd_metadata)
-        elif args.fci:
-            P_snn, P_snn_metadata = run_fci(
-                h1, eri, occupations,
-                nspins=calc.density.nspins,
-                metadata=args.fci_metadata)
-
-        if P_snn is not None:
-            if args.diagnostics:
-                P_snn_diagnostics = validate_density_matrix(
-                    P_snn, occupations)
-                for name, value in P_snn_diagnostics.items():
-                    print(f'{name}: {value:.3e}')
-                if P_snn_metadata is not None:
-                    P_snn_metadata.update(P_snn_diagnostics)
-            np.save(args.outdir / 'P_snn.npy', P_snn)
             if P_snn_metadata is not None:
-                (args.outdir / 'P_snn_metadata.json').write_text(
-                    json.dumps(P_snn_metadata, indent=2) + '\n')
+                P_snn_metadata.update(P_snn_diagnostics)
+        np.save(args.outdir / 'P_snn.npy', P_snn)
+        if P_snn_metadata is not None:
+            (args.outdir / 'P_snn_metadata.json').write_text(
+                json.dumps(P_snn_metadata, indent=2) + '\n')
 
-        print(f'Wrote integrals to {args.outdir.resolve()}')
+    print(f'Wrote integrals to {args.outdir.resolve()}')
 
 
 if __name__ == '__main__':
