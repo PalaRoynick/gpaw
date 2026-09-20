@@ -95,7 +95,7 @@ The electrode potential
 The electrode potential can be defined in two ways: as the work function (wf) or as the electrode inner potential (CIP).
 
 **Work function:**
-This is SJM's way of computing the electrode potential. It is computed from the (\phi_\mathrm{e}) defined as the Fermi-level energy (\mu) referenced to a point deep in the solvent (\Phi_\mathrm{w}), where the whole charge on the electrode has been screened and no electric field is present.
+This is SJM's way of computing the electrode potential. It is the Fermi-level energy `\mu` referenced to a point deep in the solvent, `\Phi_\mathrm{w}`, where the whole charge on the electrode has been screened and no electric field is present.
 (This is equivalently the topside work function of the slab.)
 This is divided by the unit electronic charge `e` to convert from energy (typically in eV) to potential (typically in V) dimensions.
 
@@ -214,10 +214,12 @@ extension, given together with the implicit-solvent parameters
 Leaving out :literal:`target_potential` gives a constant-charge calculation at
 the given number of :literal:`excess_electrons`.  The
 :literal:`jelliumregion` keyword takes :literal:`'top'`, :literal:`'bottom'`,
-:literal:`'thickness'` and :literal:`'fix_bottom'`; a limit given as a negative
-number is a distance above the highest atom, and the region then follows the
-atoms during a relaxation unless :literal:`fix_bottom=True`.  This is the
-default slab-shaped region; a :literal:`'shape'` key selects a different kind
+:literal:`'thickness'` and :literal:`'fix_bottom'`.  A negative :literal:`'top'`
+is a distance below the upper cell boundary, whereas a negative
+:literal:`'bottom'` is a distance above the highest atom, in which case the
+region follows the atoms during a relaxation unless
+:literal:`fix_bottom=True`.  This is the default slab-shaped region; a
+:literal:`'shape'` key selects a different kind
 (currently only :literal:`'cavity'`, a counter charge following the solvent
 cavity, which is not yet implemented in this version --- the legacy
 :literal:`bottom='cavity_like'` spelling is also accepted for it).  With

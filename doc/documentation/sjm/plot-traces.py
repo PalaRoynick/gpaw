@@ -93,10 +93,10 @@ ax_potential.set_zorder(2)
 ax_electrons.set_zorder(1)
 ax_potential.patch.set_visible(False)
 
-ax_potential.set_ylabel(r'$\phi_{xy}$(4.4 V) - $\phi_{xy}$(4.3 V), V')
+ax_potential.set_ylabel(r'$\phi_{xy}$(4.3 V) - $\phi_{xy}$(4.4 V), V')
 ax_potential.yaxis.set_major_locator(MultipleLocator(0.1))
 ax_potential.yaxis.set_minor_locator(AutoMinorLocator(5))
-ax_electrons.set_ylabel(r'$n_{xy}$(4.4 V) - $n_{xy}$(4.3 V)')
+ax_electrons.set_ylabel(r'$n_{xy}$(4.3 V) - $n_{xy}$(4.4 V)')
 ax_electrons.yaxis.set_major_locator(MultipleLocator(0.01))
 ax_electrons.yaxis.set_minor_locator(AutoMinorLocator(2))
 

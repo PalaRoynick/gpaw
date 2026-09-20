@@ -12,8 +12,8 @@ from gpaw.solvation import (
 
 # Build a tiny gold slab with a single water molecule above.
 atoms = fcc111('Au', size=(1, 1, 3))
-atoms.center(axis=2, vacuum=12.)
-atoms.translate([0., 0., -4.])
+atoms.center(axis=2, vacuum=10.)
+atoms.translate([0., 0., -2.])
 water = molecule('H2O')
 water.rotate('y', 90.)
 water.positions += atoms[2].position + (0., 0., 4.4) - water[0].position
@@ -36,10 +36,14 @@ calc = GPAW(
     # General GPAW parameters.
     mode='fd',
     txt='Au111.txt',
-    gpts=(16, 16, 136),
+    gpts=(16, 16, 120),
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
+    # The dipole-correction slope is fitted close to the lower cell
+    # boundary here, which leaves a little noise in the density; 1e-5
+    # is a criterion it can reach.
+    convergence={'density': 1e-5},
     extensions=[SJM(
         # Solvated jellium parameters.
         target_potential=4.2,  # Desired potential

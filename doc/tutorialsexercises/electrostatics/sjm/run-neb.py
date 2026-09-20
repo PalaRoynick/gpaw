@@ -28,7 +28,7 @@ def make_calculator(index):
         # General GPAW parameters.
         mode='fd',
         txt=f'gpaw-{index:d}.txt',
-        gpts=(16, 16, 136),
+        gpts=(16, 16, 120),
         kpts=(9, 9, 1),
         xc='PBE',
         maxiter=1000,

@@ -30,19 +30,19 @@ This process usually takes a few steps on the first image, but is faster on subs
 You should see that in net the routine added only about 0.007 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
 You'll notice that the output in 'Au111.txt' contains additional information, as compared to a charge-neutral simulation.
-Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over all the attempts it took, and the apparent capacitance that slope corresponds to.
+Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last :literal:`slope_regression_depth` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
-    Potential found to be 4.20006 V (with +0.00656 excess electrons, attempt 5/10).
-    Slope estimated from the last 4 attempts is -68.8842 V/electron,
-    or apparent capacitance of 3.2268 muF/cm^2
+    Potential found to be 4.19530 V (with +0.00663 excess electrons, attempt 4/10).
+    Slope estimated from the last 3 attempts is -66.7909 V/electron,
+    or apparent capacitance of 3.3279 muF/cm^2
     Potential is within tolerance. Equilibrated.
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):
-      N (excess electrons):      +0.006560
-      mu (-work function):       -4.200060  # eV
-      (Grand) free energy:      -23.628966
-      (Grand) extrapolated:     -23.606397
+      N (excess electrons):      +0.006628
+      mu (-work function):       -4.195295  # eV
+      (Grand) free energy:      -23.608732
+      (Grand) extrapolated:     -23.586161
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by :literal:`calc.get_potential_energy()` (and therefore :literal:`atoms.get_potential_energy()`).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).

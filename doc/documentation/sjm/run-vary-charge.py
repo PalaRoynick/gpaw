@@ -21,7 +21,7 @@ def write_everything(calc, label):
     with paropen(f'esp{label}.pckl', 'wb') as f:
         pickle.dump(esp, f)
     n = calc.get_all_electron_density()
-    with open(f'allelectrondensity{label}.pckl', 'wb') as f:
+    with paropen(f'allelectrondensity{label}.pckl', 'wb') as f:
         pickle.dump(n, f)
 
 

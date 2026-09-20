@@ -36,7 +36,7 @@ calc = GPAW(
     # General GPAW parameters.
     mode='fd',
     txt='Au111-H-seq.txt',
-    gpts=(16, 16, 136),
+    gpts=(16, 16, 120),
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,

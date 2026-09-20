@@ -50,11 +50,19 @@ Git master branch
 * The solvated jellium method (``gpaw.extensions.electrochemistry.SJM``) has been ported
   to the :ref:`newgpaw` architecture. Other than before it is now used as an
   extension to the GPAW calculator, and not as a separate calculator, as
-  described in :ref:`sjm`.  It now also allows the use of PW-mode,
-  otherwise all previous keys work as before. One exception though is that
-  `calc.sjm.change(...)` substitutes the previous `calc.set(sj={...})`.
-  The potential tolerance ``tol`` now defaults to 0.005 V, where the legacy
-  calculator used 0.01 V.
+  described in :ref:`sjm`.  It now also allows the use of PW-mode.
+  The keys are given directly to ``SJM(...)`` instead of in an ``sj``
+  dictionary, and `calc.sjm.change(...)` substitutes the previous
+  `calc.set(sj={...})`.  Most of them keep their names and meanings, with
+  these exceptions:
+
+  * ``max_step`` is now called ``max_potential_stepsize``; the old name is
+    not accepted.
+  * ``tol`` defaults to 0.005 V and ``mixer`` to 0.2, where the legacy
+    calculator used 0.01 V and 0.5.
+  * ``pot_ref``, ``cip``, ``dirichlet`` and ``fdt`` have no equivalent yet,
+    so constant inner potential (CIP) calculations still need the legacy
+    ``gpaw.solvation.sjm.SJM`` calculator.
 
 * The potential control itself has been split out of SJM into a new
   ``gpaw.extensions.electrochemistry.Potentiostat`` class, which holds a
