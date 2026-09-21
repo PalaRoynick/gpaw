@@ -15,7 +15,7 @@ class MultiMixer(BaseMixer):
                  noncol: bool | None = None,
                  xp=np,
                  **kwargs):
-        if method not in ['dif', 'sep']:
+        if method not in ['mag-dens', 'seperate']:
             raise ValueError(f'Invalid method: {method}')
         if noncol is None:
             noncol = ncomponents == 4
@@ -44,20 +44,20 @@ class MultiMixer(BaseMixer):
         Db_asii = self.Db_asii
 
         method = self.method
-        if self.method == 'dif' and not self.ncomponents == 2:
+        if self.method == 'mag-dens' and not self.ncomponents == 2:
             # Mixer "dif" only makes sense for 2 components,
             # as non-colinear already contains the magnetizations
             # in separate components.
-            method = 'sep'
+            method = 'seperate'
 
         # Prepare the densities:
         match method:
-            case 'dif':
+            case 'mag-dens':
                 nta_sX.data[:] = nt_sX.data.sum(0)
                 Da_asii.data[:] = D_asii.data.sum(0)
                 ntb_sX.data[:] = nt_sX.data[0] - nt_sX.data[1]
                 Db_asii.data[:] = D_asii.data[0] - D_asii.data[1]
-            case 'sep':
+            case 'seperate':
                 nta_sX.data[:] = nt_sX.data[0]
                 Da_asii.data[:] = D_asii.data[0]
                 ntb_sX.data[:] = nt_sX.data[1:]
@@ -72,13 +72,13 @@ class MultiMixer(BaseMixer):
 
         # Put the densities in their place:
         match method:
-            case 'sep':
+            case 'seperate':
                 nt_sX.data[0] = nta_sX.data
                 D_asii.data[0] = Da_asii.data
                 nt_sX.data[1:] = ntb_sX.data
                 D_asii.data[1:] = Db_asii.data
                 dnt = dnt_a + dnt_b
-            case 'dif':
+            case 'mag-dens':
                 nt_sX.data[0] = 0.5 * (nta_sX.data + ntb_sX.data)
                 D_asii.data[0] = 0.5 * (Da_asii.data + Db_asii.data)
                 nt_sX.data[1] = 0.5 * (nta_sX.data - ntb_sX.data)
