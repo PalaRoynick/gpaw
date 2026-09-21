@@ -14,7 +14,9 @@ from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
 from gpaw.new.brillouin import IBZ, MonkhorstPackKPoints
-from gpaw.new.symmetry import SymmetrizationPlan, Symmetries
+from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.new.smearing import OccupationNumberCalculator as OccNumCalc
+from gpaw.new.symmetry import Symmetries, SymmetrizationPlan
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.occupations import OccupationNumberCalculator, ParallelLayout
 from gpaw.old.band_descriptor import BandDescriptor
@@ -24,9 +26,9 @@ from gpaw.old.kpt_descriptor import KPointDescriptor
 from gpaw.old.projections import Projections
 from gpaw.setup import Setup
 from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
-from gpaw.utilities.partition import AtomPartition
 from gpaw.utilities import pack_density
-from gpaw.new.ibzwfs import IBZWaveFunctions
+from gpaw.utilities.partition import AtomPartition
+from gpaw.dft import DFT
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -35,61 +37,58 @@ if TYPE_CHECKING:
 _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
 
 
-def calculate_soc(calc: ASECalculator,
-                  n1: int = None,
-                  n2: int = None,
+def calculate_soc(dft: DFT,
+                  n1: int = 0,
+                  n2: int | None = None,
                   scale: float = 1.0,
                   theta: float = 0.0,  # degrees
                   phi: float = 0.0,  # degrees
                   ignore_xc_potential: bool = False
-                  ) -> IBZWaveFunctions:
-    dft = calc.dft
+                  ) -> tuple[IBZWaveFunctions, dict[int, np.ndarray]]:
     ibzwfs = dft.ibzwfs
+    ibz = ibzwfs.ibz
 
-    n1 = n1 or 0
-    n2 = n2 or 0
-    if n2 <= 0:
-        n2 += ibzwfs.nbands
+    n2 = n2 or ibzwfs.nbands
 
     P_ksani = {(wfs.k, wfs.spin): wfs.P_ani for wfs in ibzwfs}
     l_aj = [setup.l_j for setup in dft.setups]
-    print(list(P_ksani), l_aj)
 
     P_Ksani, kpt_comm, atomdist = distribute_projections(
         P_ksani,
         l_aj,
         ibzwfs.rank_ks,
-        ibzwfs.ibz,
+        ibz,
         ibzwfs.comm,
         n1, n2)
 
     C_ss, s_vss = basis_change(phi, theta)
 
-    eig_skn = calc.eigenvalues()
+    eig_skn = ibzwfs.get_all_eigs()
 
     # <phi_i|dV_adr / r * L_v|phi_j>
     dVL_avii = {a: soc(dft.setups[a],
                        dft.pot_calc.xc.xc,
-                       np.array([pack_density(D_ii) for D_ii in D_sii]),
+                       np.array([pack_density(D_ii) for D_ii in D_sii.real]),
                        ignore_xc_potential) * scale
                 for a, D_sii in dft.density.D_asii.items()}
 
-    eig_qm = []
-    P_qamsi = []
+    eig_Km = {}
+    P_Kamsi = {}
+    v_Kmn = {}
     for K, P_sani in P_Ksani.items():
-        k = ibzwfs.ibz.bz2ibz_K[K]
+        k = ibz.bz2ibz_K[K]
         eig_sn = eig_skn[:, k, n1:n2]
         P_amsi, eig_m = to_spinors(P_sani, eig_sn)
         P_amsi, eig_m, v_mn, spin_projection_mv = diagonalize(
             P_amsi, eig_m, dVL_avii, s_vss, C_ss)
-        eig_qm.append(eig_m)
-        P_qamsi.append(P_amsi)
-    print(ibzwfs.ibz.bz2ibz_K)
+        eig_Km[K] = eig_m
+        P_Kamsi[K] = P_amsi
+        v_Kmn[K] = v_mn
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
         wfs = WaveFunctions(
             setups=dft.setups,
-            nbands=2 * (n2 - n1),
+            nbands=2 * (n2 - n1) if ibzwfs.collinear else n2 - n1,
             relpos_ac=dft.relpos_ac,
             atomdist=atomdist,
             q=q,
@@ -99,30 +98,30 @@ def calculate_soc(calc: ASECalculator,
             ncomponents=4,
             dtype=complex,
             domain_band_comm=atomdist.comm)
-        wfs._P_ani = P_qamsi[q]
-        wfs._eig_n = eig_qm[q]
+        wfs._P_ani = P_Kamsi[K]
+        wfs._eig_n = eig_Km[K]
         wfs.xp = np
         return wfs
 
-    nosym = Symmetries(cell=ibzwfs.ibz.symmetries.cell_cv)
+    nosym = Symmetries(cell=ibz.symmetries.cell_cv)
     bzwfs = IBZWaveFunctions.create(
-        ibz=ibzwfs.ibz.bz.reduce(nosym, use_time_reversal=False),
+        ibz=ibz.bz.reduce(nosym, use_time_reversal=False),
         ncomponents=4,
         create_wfs_func=create_wfs_func,
         kpt_comm=kpt_comm,
         kpt_band_comm=kpt_comm,
         comm=dft.comm)
 
-    if isinstance(ibzwfs.ibz.bz, MonkhorstPackKPoints):
+    if isinstance(ibz.bz, MonkhorstPackKPoints):
         nelectrons = (dft.density.nvalence - dft.density.charge +
                       dft.pot_calc.charge)
-        occcalc = OccupationNumberCalculator(
+        occcalc = OccNumCalc(
             dft.params.occupations.params,
             dft.atoms.pbc,
             bzwfs.ibz,
             bzwfs.nbands,
-            {'k': kpt_comm},
-            None,
+            {'k': kpt_comm, 'K': atomdist.comm},
+            np.zeros(3) + np.nan,
             4,
             nelectrons,
             None)
@@ -130,7 +129,7 @@ def calculate_soc(calc: ASECalculator,
             occcalc,
             nelectrons)
 
-    return bzwfs
+    return bzwfs, v_Kmn
 
 
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
@@ -145,7 +144,6 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     """Distribute projections from IBZ to BZ.
     """
     nbzkpts = len(ibz.bz)
-    print(ibz.bz, nbzkpts)
     p = Parallelization(comm, nbzkpts)
     p.set(band=1)
     comms = p.build_communicators()
@@ -184,13 +182,11 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                 comm.receive(P_ani.data, from_rank)
                 P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
-    print(len(P_ksani))
 
     symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
     K1 = min(kpt_comm.rank * mynk, nbzkpts)
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
-    print(K1, K2, nspins)
     P_Ksani = {}
     for K in range(K1, K2):
         k = ibz.bz2ibz_K[K]
@@ -202,7 +198,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                                     ibz.time_reversal_K[K])
             else:
                 P0_ani = None
-            P_ani = P_layout.new(atomdist=atomdist).empty(n2 - n1)
+            P_ani = P_layout.new(atomdist=atomdist).empty(P0_ani.dims)
             P_ani.scatter_from(P0_ani)
             P_sani.append(P_ani)
         P_Ksani[K] = P_sani
@@ -213,12 +209,17 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
 def to_spinors(P_sani: list[AtomArrays],
                eig_sn: np.ndarray) -> tuple[AtomArrays, np.ndarray]:
     nspins, nbands = eig_sn.shape
-    eig_m = np.empty(2 * nbands)
-    for s in range(2):
-        eig_m[s::2] = eig_sn[-s]
-    P_amsi = P_sani[0].layout.zeros((2 * nbands, 2))
-    P_amsi.data[::2, 0] = P_sani[0].data
-    P_amsi.data[1::2, 1] = P_sani[-1].data
+    if len(P_sani[0].dims) == 2:
+        # Non-collinear:
+        eig_m = eig_sn[0]
+        P_amsi = P_sani[0].layout.zeros((nbands, 2))
+        P_amsi.data[:] = P_sani[0].data
+    else:
+        for s in range(2):
+            eig_m[s::2] = eig_sn[-s]
+        P_amsi = P_sani[0].layout.zeros((2 * nbands, 2))
+        P_amsi.data[::2, 0] = P_sani[0].data
+        P_amsi.data[1::2, 1] = P_sani[-1].data
     return P_amsi, eig_m
 
 
@@ -304,6 +305,25 @@ def basis_change(theta: float,
              C_ss.T.conj() @ sz_ss @ C_ss]
 
     return C_ss, s_vss
+
+
+class SOCResult:
+    def __init__(self,
+                 bzwfs: IBZWaveFunctions,
+                 v_Kmn):
+        self.bzwfs = bzwfs
+        self.v_Kmn = v_Kmn
+
+    def eigenvalues(self):
+        return self.bzwfs.get_all_eigs()[0]
+
+    def eigenvectors(self):
+        nbands = self.bzwfs.nbands
+        v_Kmn = np.zeros((len(self.bzwfs.ibz), nbands, nbands), complex)
+        for K, v_mn in self.v_Kmn.items():
+            v_Kmn[K] = v_mn
+        assert self.bzwfs.comm.size == 1
+        return v_Kmn
 
 
 class WaveFunction:
@@ -751,7 +771,7 @@ def extract_ibz_wave_functions(kpt_qs: list[list[KPoint]],
 
 
 def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
-                    n1: int = None,
+                    n1: int = 0,
                     n2: int = None,
                     scale: float = 1.0,
                     theta: float = 0.0,  # degrees
@@ -797,14 +817,15 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         assert not projected
         assert occcalc is None
         assert eigenvalues is None
-        return calculate_soc(
-            calc,
+        bzwfs, v_Kmn = calculate_soc(
+            calc.dft,
             n1=n1,
             n2=n2,
             scale=scale,
             theta=theta,
             phi=phi,
             ignore_xc_potential=ignore_xc_potential)
+        return SOCResult(bzwfs, v_Kmn)
 
     n1 = n1 or 0
     n2 = n2 or 0

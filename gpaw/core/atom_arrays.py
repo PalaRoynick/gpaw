@@ -406,7 +406,9 @@ class AtomArrays:
         if a_axi is not None:
             m_xI = a_axi.matrix.gather()  # gather x
             if m_xI is not None:
-                return AtomArrays(a_axi.layout, self.dims, data=m_xI.data)
+                data = m_xI.data.reshape(self.dims + (-1,))
+                return AtomArrays(a_axi.layout, self.dims,
+                                  data=data)
         return None
 
     def scatter_from(self,
