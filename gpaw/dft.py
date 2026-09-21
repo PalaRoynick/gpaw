@@ -545,7 +545,7 @@ class MultiMixer(Mixer):
     cls = MltMixer
 
     def __init__(self,
-                 method: str = 'dif',
+                 method: str = 'mag-dens',
                  mixer_a: Mixer | dict | str = 'msr1',
                  mixer_b: Mixer | dict | str = {'name': 'msr1',
                                                 'weight': 2,
