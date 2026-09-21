@@ -10,14 +10,16 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase.units import Bohr, Ha, alpha
 
-from gpaw.core.atom_arrays import AtomArrays, AtomDistribution
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   AtomDistribution)
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
 from gpaw.new.brillouin import IBZ, MonkhorstPackKPoints
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.smearing import OccupationNumberCalculator as OccNumCalc
 from gpaw.new.symmetry import Symmetries, SymmetrizationPlan
-from gpaw.new.wave_functions import WaveFunctions
+from gpaw.new.wave_functions import (WaveFunctions,
+                                     add_to_4component_density_matrix)
 from gpaw.occupations import OccupationNumberCalculator, ParallelLayout
 from gpaw.old.band_descriptor import BandDescriptor
 from gpaw.old.grid_descriptor import GridDescriptor
@@ -28,11 +30,11 @@ from gpaw.setup import Setup
 from gpaw.typing import Array1D, Array2D, Array3D, Array4D, ArrayND
 from gpaw.utilities import pack_density
 from gpaw.utilities.partition import AtomPartition
-from gpaw.dft import DFT
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
     from gpaw.old.calculator import GPAW as OldGPAW
+    from gpaw.dft import DFT
 
 _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
 
@@ -215,6 +217,7 @@ def to_spinors(P_sani: list[AtomArrays],
         P_amsi = P_sani[0].layout.zeros((nbands, 2))
         P_amsi.data[:] = P_sani[0].data
     else:
+        eig_m = np.empty(2 * nbands)
         for s in range(2):
             eig_m[s::2] = eig_sn[-s]
         P_amsi = P_sani[0].layout.zeros((2 * nbands, 2))
@@ -246,7 +249,6 @@ def diagonalize(P_amsi: AtomArrays,
         # Tranform to theta, phi basis
         H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
         H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
-        H_ssii *= Ha
 
         for s1 in range(2):
             for s2 in range(2):
@@ -315,7 +317,7 @@ class SOCResult:
         self.v_Kmn = v_Kmn
 
     def eigenvalues(self):
-        return self.bzwfs.get_all_eigs()[0]
+        return self.bzwfs.get_all_eigs()[0] * Ha
 
     def eigenvectors(self):
         nbands = self.bzwfs.nbands
@@ -324,6 +326,22 @@ class SOCResult:
             v_Kmn[K] = v_mn
         assert self.bzwfs.comm.size == 1
         return v_Kmn
+
+    def get_orbital_magnetic_moments(self):
+        """Returns the orbital magnetic moment vector for each atom a."""
+        from gpaw.new.orbmag import calculate_orbmag_from_density
+        P_ani = self.bzwfs._wfs_u[0]._P_ani
+        atomdist = P_ani.layout.atomdist
+        D_asii = AtomArraysLayout(
+            [(ni, ni) for (ni,) in P_ani.layout.shape_a],
+            atomdist=atomdist).zeros(4)
+        for wfs in self.bzwfs:
+            for D_sii, P_msi in zip(D_asii.values(), wfs.P_ani.values()):
+                add_to_4component_density_matrix(D_sii, P_msi, wfs.occ_n, np)
+        self.bzwfs.kpt_comm.sum(D_asii.data)
+        n_aj = [setup.l_j for setup in self.bzwfs.setups]
+        l_aj = [setup.l_j for setup in self.bzwfs.setups]
+        return calculate_orbmag_from_density(D_asii, n_aj, l_aj)
 
 
 class WaveFunction:
@@ -825,7 +843,6 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
             theta=theta,
             phi=phi,
             ignore_xc_potential=ignore_xc_potential)
-        dft.v_Kmn =
         return SOCResult(ibzwfs, v_Kmn)
 
     n1 = n1 or 0

@@ -3,24 +3,36 @@ from ase import Atoms
 
 from gpaw.mpi import world
 from gpaw.spinorbit import soc_eigenstates
+from gpaw import GPAW
 
 pytestmark = pytest.mark.skipif(world.size > 1,
                                 reason='world.size > 1')
 
 
 @pytest.mark.soc
-def test_spinorbit_Kr(mpi):
+def test_spinorbit_Kr():
     a = Atoms('Kr')
     a.center(vacuum=3.0)
 
-    calc = mpi.GPAW(mode='pw', xc='LDA')
+    calc = GPAW(mode='pw', xc='LDA')
 
     a.calc = calc
     a.get_potential_energy()
 
     e_n = calc.get_eigenvalues()
-    e_m = soc_eigenstates(calc).eigenvalues()[0, 0]
+    e_m = soc_eigenstates(calc).eigenvalues()[0]
+    print(e_n)
+    print(e_m)
 
-    assert e_n[0] - e_m[0] == pytest.approx(0.0, abs=1.0e-3)
-    assert e_n[1] - e_m[2] == pytest.approx(0.452, abs=1.0e-3)
-    assert e_n[2] - e_m[4] == pytest.approx(-0.226, abs=1.0e-3)
+    e1 = -22.08477236
+    e2 = -8.27112345
+    e2a = -8.72318224
+    e2b = -8.04509405
+
+    assert e_n == pytest.approx([e1, e2, e2, e2], abs=1.0e-3)
+    assert e_m == pytest.approx(
+        [e1, e1, e2a, e2a, e2b, e2b, e2b, e2b], abs=1.0e-3)
+
+
+if __name__ == '__main__':
+    test_spinorbit_Kr()
