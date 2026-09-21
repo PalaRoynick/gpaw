@@ -543,7 +543,14 @@ class SymmetrizationPlan:
         dist_D_asii.data *= 1.0 / len(self.symmetries)
 
     def rotate_projections(self, P_ani, symnum, time_reversal):
-        return P_ani
+        P2_ani = P_ani.new()
+        for a, P_ni in P_ani.items():
+            R_ii = self.rotations(self.l_aj[a])[symnum]
+            b = self.symmetries.atommap_sa[symnum, a]
+            P2_ani[b][:] = P_ni @ R_ii
+        if time_reversal:
+            np.negative(P2_ani.data.imag, P2_ani.data.imag)
+        return P2_ani
 
 
 class GPUSymmetrizationPlan(SymmetrizationPlan):

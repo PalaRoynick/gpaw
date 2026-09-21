@@ -12,7 +12,7 @@ def test_soc_eigenvectors_parallel_collect(gpw_files, mpi):
     # This call crashed on master in parallel:
     v_kmn = soc.eigenvectors()
 
-    nbzkpts, nbands = soc.eigenstates().shape
+    nbzkpts, nbands = soc.eigenvalues().shape
     assert v_kmn.shape == (nbzkpts, nbands, nbands)
     assert v_kmn.dtype == complex
     assert v_kmn.flags['C_CONTIGUOUS']

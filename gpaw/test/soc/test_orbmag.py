@@ -27,9 +27,9 @@ def test_orbmag_Ni(gpw_files, mpi):
     orbmag_col_v = soc_eigenstates(calc_col,
                                    theta=theta,
                                    phi=phi).get_orbital_magnetic_moments()[0]
+    print(orbmag_col_v)
 
     # Non-collinear calculation without self-consistent spin–orbit
-
     calc_ncol = mpi.NewGPAW(
         gpw_files['fcc_Ni_ncol'],
         parallel={'domain': 1, 'band': 1})
@@ -41,6 +41,7 @@ def test_orbmag_Ni(gpw_files, mpi):
         calc_ncol.get_orbital_magnetic_moments()
     orbmag_ncol_v = soc_eigenstates(
         calc_ncol).get_orbital_magnetic_moments()[0]
+    print(orbmag_ncol_v)
 
     # Test that col and ncol give the same groundstate (with rotated magmoms)
     # and the same orbital magnetic moments from the soc_eigenstates module
