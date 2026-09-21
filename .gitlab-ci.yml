@@ -645,10 +645,12 @@ lint:
 .typecheck:
   image: $IMAGE_MAIN_LATEST
   stage: build
-  script:
+  before_script:
+    - pip freeze
     - pip install mypy
     - python --version
     - mypy --version
+  script:
     - mypy --pretty
   cache:
     key: cache-typecheck
@@ -837,6 +839,9 @@ coverage-combine:
     - nightly-gpawmpi-4-group-2-2
   tags:
     - xeon40
+  before_script:
+    - pip install coverage
+    - pip freeze
   script:
     - coverage combine coverage-gpwfiles coverage-nightly-*
     - coverage report
