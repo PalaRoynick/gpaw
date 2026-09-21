@@ -212,10 +212,12 @@ def _integrate_correction(engine: Engine,
                           pseudo_energy: TensorResult,
                           angular_weight_an,
                           radial_weight_ag,
-                          reference_energy_a) -> TensorResult:
+                          reference_energy_a,
+                          omit_origin: bool = False) -> TensorResult:
     """Integrate all-electron minus pseudo energy and subtract ``e_xc0``."""
-    quadrature = (angular_weight_an[:, :, None] *
-                  radial_weight_ag[:, None, :])
+    radial_weight = (radial_weight_ag[:, 1:]
+                     if omit_origin else radial_weight_ag)
+    quadrature = angular_weight_an[:, :, None] * radial_weight[:, None, :]
     energy_a = engine.sum(
         (ae_energy - pseudo_energy) * quadrature, axis=(-2, -1))
     energy_a -= reference_energy_a

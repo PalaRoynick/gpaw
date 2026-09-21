@@ -26,7 +26,8 @@ pytestmark = [
     'name',
     ['LDA_X+LDA_C_PW',
      'GGA_X_PBE+GGA_C_PBE',
-     'MGGA_X_SCAN+MGGA_C_SCAN'])
+     'MGGA_X_SCAN+MGGA_C_SCAN',
+     'R2SCAN'])
 def test_libxc_device_matches_host(name: str, nspins: int) -> None:
     """Device Libxc preserves GPAW's energy and derivative conventions."""
     rng = np.random.default_rng(81 + nspins)
@@ -78,7 +79,8 @@ def test_libxc_device_matches_host(name: str, nspins: int) -> None:
     'name',
     ['LDA_X+LDA_C_PW',
      'GGA_X_PBE+GGA_C_PBE',
-     'MGGA_X_SCAN+MGGA_C_SCAN'])
+     'MGGA_X_SCAN+MGGA_C_SCAN',
+     'R2SCAN'])
 def test_new_xc_uses_device_libxc(name: str) -> None:
     """The new XC frontend keeps Libxc fields and gradients on the GPU."""
     grid = UGDesc(cell=[4.0, 4.0, 4.0], size=(8, 8, 8))
