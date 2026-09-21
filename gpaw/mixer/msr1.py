@@ -53,7 +53,7 @@ class MSR1Mixer(BaseMixer):
         self.trust_scale = trust_scale
         self.soft_lim = soft_lim
         self.hard_lim = hard_lim
-        self.A_lims: list[float] = [0.02, max_A]
+        self.A_lims: list[float] = [0.001, max_A]
         self.B_lims: list[float] = [0.2, 1.0]
         self.A_rate_ratio: list[float] = [0.5, 1.5]
         self.B_rate_ratio: list[float] = [3 / 4, 4 / 3]
@@ -230,6 +230,8 @@ class MSR1Mixer(BaseMixer):
 
         A = self.A
         B = self.B
+        if self.world.rank == 0:
+            print(A)
 
         # Step 8: Trust region control
         tmp_1sX.data[:] = self.uk_1sX.data * A
