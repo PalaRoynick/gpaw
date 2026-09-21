@@ -780,7 +780,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
                     ignore_xc_potential: bool = False
-                    ) -> BZWaveFunctions | IBZWaveFunctions:
+                    ) -> BZWaveFunctions | SOCResult:
     """Calculate SOC eigenstates.
 
     Parameters:
@@ -817,7 +817,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         assert not projected
         assert occcalc is None
         assert eigenvalues is None
-        bzwfs, v_Kmn = calculate_soc(
+        ibzwfs, v_Kmn = calculate_soc(
             calc.dft,
             n1=n1,
             n2=n2,
@@ -825,7 +825,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
             theta=theta,
             phi=phi,
             ignore_xc_potential=ignore_xc_potential)
-        return SOCResult(bzwfs, v_Kmn)
+        dft.v_Kmn =
+        return SOCResult(ibzwfs, v_Kmn)
 
     n1 = n1 or 0
     n2 = n2 or 0
