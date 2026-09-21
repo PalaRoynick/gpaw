@@ -56,7 +56,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 psit_nX=psit_nG,  # type: ignore
                 setups=self.setups,
                 relpos_ac=self.relpos_ac,
-                atomdist=self.atomdist,
+                atomdist=self.wf_atomdist,
                 domain_band_comm=domain_band_comm,
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)
@@ -93,8 +93,8 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
         lcao_ibzwfs, _ = create_lcao_ibzwfs(
             basis,
             self.ibz, self.communicators, self.setups,
-            self.relpos_ac, self.grid, lcao_dtype,
-            lcaonbands, self.ncomponents, self.atomdist, self.nelectrons,
+            self.relpos_ac, self.wf_grid, lcao_dtype,
+            lcaonbands, self.ncomponents, self.wf_atomdist, self.nelectrons,
             xp=self.xp)
 
         self.log('\nDiagonalizing LCAO Hamiltonian', flush=True)
@@ -132,7 +132,7 @@ class PWFDDFTComponentsBuilder(DFTComponentsBuilder):
                 weight=weight,
                 setups=self.setups,
                 relpos_ac=self.relpos_ac,
-                atomdist=self.atomdist,
+                atomdist=self.wf_atomdist,
                 domain_band_comm=self.communicators['K'],
                 ncomponents=self.ncomponents,
                 qspiral_v=self.qspiral_v)

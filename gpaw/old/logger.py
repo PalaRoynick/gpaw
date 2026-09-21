@@ -147,6 +147,8 @@ def write_header(log, world):
     log(f'  ase:   {os.path.dirname(ase.__file__)}')
     log(f'  numpy: {os.path.dirname(np.__file__)}')
     log(f'  scipy: {os.path.dirname(sp.__file__)}')
+    if venv := os.getenv('VIRTUAL_ENV', ''):
+        log(f'  venv:  {venv}')
     # Explicitly deleting SciPy seems to remove garbage collection
     # problem of unknown cause
     del sp
