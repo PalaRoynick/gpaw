@@ -168,7 +168,18 @@ class BZWaveFunctions:
                  occ: OccupationNumberCalculator | None,
                  nelectrons: float,
                  n_aj: list[list[int]],
-                 l_aj: list[list[int]]):
+                 l_aj: list[list[int]],
+                 nbands: int,
+                 domain_comm,
+                 bcomm):
+        """
+        nbands, domain_comm and bcomm describe the (band, domain)
+        parallel layout shared by every WaveFunction in *wfs* and must be
+        supplied by the caller rather than read off an arbitrary local
+        entry of *wfs*: with more kpt_comm ranks than IBZ k-points, a rank
+        can legitimately own no local (k, spin) pair at all (see
+        extract_ibz_wave_functions), leaving *wfs* empty on that rank.
+        """
         self.wfs = wfs
         self.occ = occ
         self.nelectrons = nelectrons
@@ -183,11 +194,9 @@ class BZWaveFunctions:
             self.ranks[k] = kd.comm.rank
         kd.comm.sum(self.ranks)
 
-        wf = next(iter(wfs.values()))  # get the first WaveFunction object
-
-        self.shape = (kd.nbzkpts, wf.projections.nbands)
-        self.domain_comm = wf.projections.atom_partition.comm
-        self.bcomm = wf.projections.bcomm
+        self.shape = (kd.nbzkpts, nbands)
+        self.domain_comm = domain_comm
+        self.bcomm = bcomm
         self.kpt_comm = kd.comm
 
         self.fermi_level = self._calculate_occ_numbers_and_fermi_level()
@@ -416,7 +425,18 @@ def extract_ibz_wave_functions(kpt_qs: list[list[KPoint]],
     All atoms and bands will be on rank == 0 of gd.comm and bd.comm
     respectively.  This makes slicing the bands (from n1 to n2-1)
     and symmetry operations on the projections easier.
+
+    A kpt_comm rank can legitimately hold no (k, spin) pairs at all:
+    get_both_spins() pairs up spin-up/spin-down k-points across kpt_comm by
+    forwarding one spin's data onto its k-point's other-spin rank and
+    dropping its own copy, so once kpt_comm has more ranks than IBZ
+    k-points, some ranks end up owning zero completed pairs.  That is fine
+    for the rest of this pipeline (BZWaveFunctions' bookkeeping addresses
+    ranks per-BZ-k-point, not by assuming every rank contributed), so just
+    yield nothing here rather than indexing into an empty kpt_qs.
     """
+    if not kpt_qs:
+        return
 
     nproj_a = kpt_qs[0][0].projections.nproj_a
 
@@ -565,7 +585,12 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
     n_aj = [setup.n_j for setup in calc.wfs.setups]
     l_aj = [setup.l_j for setup in calc.wfs.setups]
 
-    return BZWaveFunctions(kd, bzwfs, occcalc, calc.wfs.nvalence, n_aj, l_aj)
+    nbands = n2 - n1
+    if calc.wfs.collinear:
+        nbands *= 2
+
+    return BZWaveFunctions(kd, bzwfs, occcalc, calc.wfs.nvalence, n_aj, l_aj,
+                           nbands, gd.comm, bd.comm)
 
 
 def soc(a: Setup,

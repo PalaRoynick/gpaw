@@ -174,7 +174,14 @@ class OccupationNumberCalculator:
         if fermi_levels_guess is None:
             fermi_levels_guess = [nan]
 
-        f_un = np.empty((len(weight_u), len(eig_un[0])))
+        # A kpt_comm rank can hold zero local (k-point, spin) systems
+        # (e.g. more kpt_comm ranks than IBZ k-points once spins are
+        # paired for spin-orbit coupling); eig_un[0] would then be an
+        # IndexError, but with zero rows the column count of f_un is
+        # never actually used (collect_eigelvalues/distribute_occupation_
+        # numbers below skip every rank whose row count is zero).
+        nbands = eig_un.shape[1] if eig_un.size else 0
+        f_un = np.empty((len(weight_u), nbands))
 
         result = np.empty(2)
 
