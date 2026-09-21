@@ -18,6 +18,13 @@ class MPI4PYWrapper:
         self.rank = comm.rank
         self.parent = parent  # XXX check C-object against comm.parent?
 
+    def __del__(self):
+        # Communicators passed to the root wrapper are borrowed (and may be
+        # predefined communicators such as MPI.COMM_WORLD).  A communicator
+        # with a parent was created by new_communicator() and is ours to free.
+        if self.parent is not None and not self._MPI.Is_finalized():
+            self.comm.Free()
+
     @cached_property
     def _MPI(self):
         import mpi4py.MPI
