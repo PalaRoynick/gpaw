@@ -31,7 +31,6 @@ def fourier_filter(atoms: Atoms, supercell: tuple, V1t_xG: ArrayND,
     assert components in ['normal', 'umklapp']
     # Grid shape
     shape = V1t_xG.shape[-3:]
-
     # Primitive unit cells in Bohr/Bohr^-1
     cell_cv = atoms.get_cell() / units.Bohr
     reci_vc = 2 * np.pi * la.inv(cell_cv)

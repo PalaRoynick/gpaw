@@ -192,7 +192,22 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
+        self.distribute_density = (
+            params.parallel.get('distribute_density', False) and
+            comm.size > self.communicators['d'].size)
+
+        if self.distribute_density:
+            assert self.mode == 'pw'
+
         self.grid, self.fine_grid = self.create_uniform_grids()
+        if self.distribute_density:
+            self.wf_grid = self.grid.new(comm=self.communicators['d'])
+            self.wf_atomdist = AtomDistribution(
+                self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
+                self.wf_grid.comm)
+        else:
+            self.wf_grid = self.grid
+            self.wf_atomdist = self.atomdist
 
         self.xc = create_functional(xcfunc, self.fine_grid, self.xp)
 
@@ -291,13 +306,14 @@ class DFTComponentsBuilder:
             self.ibz,
             self.ncomponents % 3,
             self.atoms.pbc,
-            self.grid,
+            self.wf_grid,
             self.setups,
             self.dtype,
             self.relpos_ac,
             self.communicators['w'],
             self.communicators['k'],
             self.communicators['b'],
+            self.communicators['D'],
             self.xp,
             gpu_add_and_integrate=False,
             new_basis=self.params.experimental.get('new_basis', False))
