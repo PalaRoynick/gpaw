@@ -15,7 +15,7 @@ class MultiMixer(BaseMixer):
                  noncol: bool | None = None,
                  xp=np,
                  **kwargs):
-        if method not in ['mag-dens', 'seperate']:
+        if method not in ['mag-dens', 'separate']:
             raise ValueError(f'Invalid method: {method}')
         if noncol is None:
             noncol = ncomponents == 4
@@ -48,7 +48,7 @@ class MultiMixer(BaseMixer):
             # Mixer "dif" only makes sense for 2 components,
             # as non-colinear already contains the magnetizations
             # in separate components.
-            method = 'seperate'
+            method = 'separate'
 
         # Prepare the densities:
         match method:
@@ -57,7 +57,7 @@ class MultiMixer(BaseMixer):
                 Da_asii.data[:] = D_asii.data.sum(0)
                 ntb_sX.data[:] = nt_sX.data[0] - nt_sX.data[1]
                 Db_asii.data[:] = D_asii.data[0] - D_asii.data[1]
-            case 'seperate':
+            case 'separate':
                 nta_sX.data[:] = nt_sX.data[0]
                 Da_asii.data[:] = D_asii.data[0]
                 ntb_sX.data[:] = nt_sX.data[1:]
@@ -72,7 +72,7 @@ class MultiMixer(BaseMixer):
 
         # Put the densities in their place:
         match method:
-            case 'seperate':
+            case 'separate':
                 nt_sX.data[0] = nta_sX.data
                 D_asii.data[0] = Da_asii.data
                 nt_sX.data[1:] = ntb_sX.data
