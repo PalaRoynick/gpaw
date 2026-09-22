@@ -23,10 +23,12 @@ variables:
 default:
   before_script:
     - export PATH=$LOCALPATH/bin:$PATH
+    - echo $CI_PROJECT_DIR
+    - echo $HOME
+    - echo $LOCALPATH
     - whoami
     - pwd
     - pip freeze
-    - echo $CI_PROJECT_DIR
   interruptible: true
   tags:
     - $DEFAULT_RUNNER_TAG
