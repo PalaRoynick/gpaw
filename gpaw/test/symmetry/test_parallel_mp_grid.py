@@ -1,0 +1,80 @@
+import numpy as np
+import pytest
+from ase import Atoms
+from ase.build import bulk
+
+from gpaw.bztools import (_parallel_grid_function,
+                          optimal_monkhorst_pack_grid)
+from gpaw.mpi import world
+
+
+@pytest.mark.parametrize('count', [0, 1, 2, 7])
+@pytest.mark.parametrize('boolean', [False, True])
+def test_distributed_grid_values(count, boolean):
+    grids = np.arange(count * 3).reshape(count, 3)
+
+    def evaluate(local_grids):
+        np.testing.assert_array_equal(local_grids,
+                                      grids[world.rank::world.size])
+        values = local_grids[:, 0]
+        return values % 2 == 0 if boolean else values + 1
+
+    result = _parallel_grid_function(evaluate, grids, world)
+    expected = grids[:, 0] % 2 == 0 if boolean else grids[:, 0] + 1
+    np.testing.assert_array_equal(result, expected)
+    assert result.dtype == expected.dtype
+
+
+def test_distributed_grid_exception():
+    def evaluate(grids):
+        if world.rank == world.size - 1:
+            raise ValueError('candidate failed')
+        return np.zeros(len(grids), dtype=int)
+
+    with pytest.raises(ValueError, match='candidate failed'):
+        _parallel_grid_function(evaluate, np.ones((2, 3), int), world)
+    world.barrier()
+
+
+@pytest.mark.parametrize('system', ['orthogonal', 'silicon'])
+@pytest.mark.parametrize('options', [
+    {},
+    {'minimize_ibz_points': True},
+    {'is_symmetric_mp_grid': True, 'minimize_ibz_points': True},
+    {'force_gamma': True, 'force_even': True,
+     'contains_ibz_vertices': True, 'is_symmetric_mp_grid': True,
+     'nmaxperdim': 6,
+     'minimize_ibz_points': True},
+    {'nmaxperdim': 0},
+])
+def test_parallel_optimal_mp_grid(system, options, capsys):
+    atoms = (Atoms('H', cell=[6, 3, 8], pbc=True)
+             if system == 'orthogonal' else bulk('Si', 'diamond', a=5.43))
+    kwargs = dict(kptdensity=0.5, nmaxperdim=2, tolerance=2e-5)
+    kwargs.update(options)
+    serial = optimal_monkhorst_pack_grid(atoms, **kwargs)
+    capsys.readouterr()
+    parallel = optimal_monkhorst_pack_grid(atoms, comm=world, **kwargs)
+    output = capsys.readouterr().out
+    assert bool(output) == (world.rank == 0)
+    np.testing.assert_array_equal(parallel['size'], serial['size'])
+    assert parallel['gamma'] == serial['gamma']
+
+
+def test_parallel_invalid_vertices():
+    # Odd grids fail validation on only some ranks after distribution.
+    atoms = Atoms('H', cell=[6, 3, 8], pbc=True)
+    with pytest.raises(ValueError, match='even k-point sampling'):
+        optimal_monkhorst_pack_grid(
+            atoms, kptdensity=0.5, nmaxperdim=1,
+            force_gamma=True, contains_ibz_vertices=True, comm=world)
+    world.barrier()
+
+
+def test_parallel_no_compliant_grid():
+    atoms = bulk('Si', 'diamond', a=5.43)
+    with pytest.raises(RuntimeError, match='contains_ibz_vertices_predicate'):
+        optimal_monkhorst_pack_grid(
+            atoms, kptdensity=0.5, nmaxperdim=0, force_even=True,
+            force_gamma=True, contains_ibz_vertices=True, comm=world)
+    world.barrier()

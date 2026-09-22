@@ -10,7 +10,7 @@ from ase.dft.kpoints import monkhorst_pack
 from ase.neighborlist import NeighborList
 from scipy.spatial import ConvexHull, Delaunay, QhullError, Voronoi
 
-from gpaw.mpi import SerialCommunicator
+from gpaw.mpi import SerialCommunicator, broadcast_exception
 from gpaw.new import zips
 from gpaw.new.brillouin import BZPoints
 from gpaw.new.symmetry import create_symmetries_object
@@ -36,7 +36,8 @@ def optimal_monkhorst_pack_grid(
         contains_ibz_vertices: bool = False,
         is_symmetric_mp_grid: bool = False,
         tolerance: float = 1e-5,
-        nmaxperdim: int = 8) -> dict[str, Any]:
+        nmaxperdim: int = 8,
+        comm=None) -> dict[str, Any]:
     """
     This function returns a dictionary yielding a Monkhorst-Pack k-point
     sampling which is compliant with all desired conditions.
@@ -70,6 +71,9 @@ def optimal_monkhorst_pack_grid(
         When searching for compliant k-point samplings, how large should the
         maximum sampling size be (along each crystal axes) compared to the
         minimum size.
+    comm:
+        GPAW communicator used to distribute the candidate grids. All ranks
+        must call with identical inputs. The default is serial execution.
 
     Returns
     -------
@@ -77,6 +81,9 @@ def optimal_monkhorst_pack_grid(
         all desired predicates.
 
     """
+
+    if comm is None:
+        comm = SerialCommunicator()
 
     msg = ('Searching for a Monkhorst-Pack grid which is '
            'compliant with the following predicates:')
@@ -93,7 +100,8 @@ def optimal_monkhorst_pack_grid(
         predicate_functions.append(is_symmetric_mp_grid_predicate)
         msg += '\n\nThe k-point sampling must be as symmetric as the crystal.'
 
-    print(msg)
+    if comm.rank == 0:
+        print(msg)
 
     minsize = get_mp_grid_from_min_distance_criteria(
         atoms, 2. * np.pi * kptdensity, even=force_even)
@@ -117,9 +125,10 @@ def optimal_monkhorst_pack_grid(
     mp_grids = np.array(list(mp_gridsize_generator(minsize, maxsize, step)))
 
     for predicate_function in predicate_functions:
-        mp_grids = mp_grids[predicate_function(mp_grids, atoms,
-                                               gamma=force_gamma,
-                                               tolerance=tolerance)]
+        mask = _parallel_grid_function(
+            predicate_function, mp_grids, comm, atoms,
+            gamma=force_gamma, tolerance=tolerance)
+        mp_grids = mp_grids[mask]
         if len(mp_grids) == 0:
             raise RuntimeError('Could not find grid which satisfies the'
                                f' {predicate_function.__name__}')
@@ -128,13 +137,31 @@ def optimal_monkhorst_pack_grid(
         return {'size': mp_grids[0], 'gamma': force_gamma}
     else:
         if minimize_ibz_points:
-            nk_ibz = get_nk_ibz(mp_grids, atoms, force_gamma, tolerance)
+            nk_ibz = _parallel_grid_function(
+                get_nk_ibz, mp_grids, comm, atoms, force_gamma, tolerance)
             return {'size': mp_grids[np.argmin(nk_ibz)],
                     'gamma': force_gamma}
         else:
             nk_bz = np.prod(mp_grids, axis=1)
             return {'size': mp_grids[np.argmin(nk_bz)],
                     'gamma': force_gamma}
+
+
+def _parallel_grid_function(function, mp_grids, comm, *args, **kwargs):
+    """Evaluate a grid function collectively while retaining input order."""
+    indices = np.arange(comm.rank, len(mp_grids), comm.size)
+    with broadcast_exception(comm):
+        local_values = np.asarray(
+            function(mp_grids[indices], *args, **kwargs))
+
+    # A full-sized buffer makes this work for uneven (and empty) rank slices.
+    # Candidate lists are small, while the individual symmetry reductions are
+    # comparatively expensive.
+    local = np.zeros(len(mp_grids), dtype=local_values.dtype)
+    local[indices] = local_values
+    gathered = np.empty((comm.size, len(mp_grids)), dtype=local.dtype)
+    comm.all_gather(local, gathered)
+    return gathered.sum(axis=0, dtype=local.dtype)
 
 
 def get_mp_grid_from_min_distance_criteria(atoms: Atoms,
