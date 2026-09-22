@@ -1,12 +1,11 @@
 variables:
+  PYTHONUSERBASE: ".local"
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
-  LOCALPATH: "/home/user/.local"  # Note: $HOME is not set in this context
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
   OMP_NUM_THREADS: "1"
-  PYTEST_ADDOPTS: "--color=yes"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
   # DEFAULT_RUNNER_TAG: "linux".
@@ -22,12 +21,10 @@ variables:
 
 default:
   before_script:
-    - export PATH=$LOCALPATH/bin:$PATH
-    - echo $CI_PROJECT_DIR
-    - echo $HOME
-    - echo $LOCALPATH
-    - whoami
-    - pwd
+    - export PYTHONUSERBASE=`realpath $PYTHONUSERBASE`
+    - mkdir -p `python -m site --user-site`
+    - export PATH=$PYTHONUSERBASE/bin:$PATH
+    - export PYTEST_ADDOPTS="--color=yes"
     - pip freeze
   interruptible: true
   tags:
@@ -78,7 +75,7 @@ stages:
   artifacts:
     when: always
     paths:
-      - $LOCALPATH
+      - $PYTHONUSERBASE
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
@@ -368,12 +365,16 @@ build-lumi-g:
 prepare-libxc:
   image: $IMAGE_MAIN_OLDEST
   stage: build
+  variables:
+    PREFIX: $PYTHONUSERBASE
+  before_script:
+    - export PREFIX=`realpath $PREFIX`
   script:
     - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - autoreconf -i
     - >
-      ./configure --enable-shared --disable-static --disable-fortran --prefix=$LOCALPATH
+      ./configure --enable-shared --disable-static --disable-fortran --prefix=$PREFIX
       --disable-kxc
       --disable-lxc
       # Enable kxc, lxc, ... derivatives only if needed (affects compilation time)
@@ -382,7 +383,7 @@ prepare-libxc:
   when: manual
   artifacts:
     paths:
-      - $LOCALPATH
+      - $PREFIX
       - "*.log"
     expire_in: 30 mins
 
