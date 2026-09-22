@@ -75,7 +75,6 @@ stages:
   artifacts:
     when: always
     paths:
-      - $PYTHONUSERBASE
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
