@@ -26,6 +26,7 @@ default:
     - whoami
     - pwd
     - pip freeze
+    - echo $CI_PROJECT_DIR
   interruptible: true
   tags:
     - $DEFAULT_RUNNER_TAG
