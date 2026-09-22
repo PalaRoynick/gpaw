@@ -24,9 +24,15 @@ def atoms(in_tmp_dir):
         # already found the right charge.  The potential it settles on is
         # accurate to well within TOL, which is all this test needs.
         convergence={'eigenstates': 1e-5},
+        # Every test here starts from a converged constant-potential
+        # calculation and then changes something, so the equilibration
+        # itself is setup cost, not what is under test (that is
+        # test_sjm_slope.py's job).  Starting from the charge it converges
+        # to, and telling it the slope instead of leaving it to guess a
+        # capacitance, takes this fixture from six SCF loops to two.
         extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
                         interactions=[], target_potential=7.5,
-                        excess_electrons=-0.0045, tol=TOL)])
+                        excess_electrons=-0.00316, slope=-384.0, tol=TOL)])
     atoms.get_potential_energy()
     return atoms
 
