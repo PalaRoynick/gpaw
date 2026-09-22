@@ -1,5 +1,6 @@
 variables:
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
+  LOCALPATH: "$HOME/.local"
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
@@ -20,11 +21,8 @@ variables:
 
 default:
   before_script:
-    - which python
-    - which pip
-    - pip freeze
     - mkdir -p `python -m site --user-site`
-    - export PATH=$HOME/.local/bin:$PATH
+    - export PATH=$LOCALPATH/bin:$PATH
     - export PYTEST_ADDOPTS="--color=yes"
     - pip freeze
   interruptible: true
@@ -34,6 +32,9 @@ default:
 
 stages:
   - build
+  - precalculate
+  - test
+  - deploy
 
 
 .build:
@@ -73,11 +74,57 @@ stages:
   artifacts:
     when: always
     paths:
+      - $HOME/.local
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
     expire_in: 30 mins
 
+
+.lumi-job:
+  tags:
+    - lumi
+  rules:
+    - if: ($GITLAB_USER_LOGIN == "jensj" || $GITLAB_USER_LOGIN == "mikaelkuisma" || $GITLAB_USER_LOGIN == "trossi") && ($CI_PIPELINE_SOURCE == "push")
+      allow_failure: true
+  id_tokens:
+    CI_JOB_JWT:
+      aud: https://gitlab.com
+
+
+.lumi-g-job:
+  extends: .lumi-job
+  variables:
+    LUMI_PROJECT: "project_465000939"
+    SCHEDULER_PARAMETERS: "-A $LUMI_PROJECT -N 1 --ntasks-per-node=1 --gpus-per-node=1 -t 00:10:00 -p small-g"
+  before_script:
+    - export EBU_USER_PREFIX=/projappl/$LUMI_PROJECT/EasyBuild
+    - module load cray-python/3.11.7
+    - module load LUMI/24.03
+    - module load partition/G
+    - module load cpeGNU/24.03
+    - module load rocm/6.0.3
+    - module load cray-fftw/3.3.10.7
+    - module load CuPy/13.2.0-cpeGNU-24.03-rocm             # from EBU_USER_PREFIX
+    - module load ELPA/2024.05.001-cpeGNU-24.03-rocm        # from EBU_USER_PREFIX
+    - module load libxc/6.2.2-cpeGNU-24.03                  # from EBU_USER_PREFIX
+    - export GPAW_SETUP_PATH=/projappl/$LUMI_PROJECT/gpaw-setups-24.1.0
+    - export MPICH_GPU_SUPPORT_ENABLED=1
+    - !reference [default, before_script]
+
+
+build:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .build
+  script:
+    - cat siteconfig.py
+    - pip install --user --log build.log --editable . -v
+    - gpaw info
+  cache:
+    key: cache-build-oldest
+    paths:
+     - $PIP_CACHE_DIR
 
 
 build-latest:
@@ -118,3 +165,714 @@ build-latest:
     key: cache-build-latest
     paths:
      - $PIP_CACHE_DIR
+
+
+build-cuda:
+  image: $IMAGE_CUDA
+  extends:
+    - .build
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      gpu = True
+      gpu_target = 'cuda'
+      gpu_compiler = 'nvcc'
+      gpu_compile_args = ['-O3',
+                          '-g']
+      libraries += ['cudart', 'cublas']
+
+      # MAGMA
+      magma = True
+      libraries += ['magma']
+      EOF
+    - cat siteconfig.py
+    - pip install -v --user --log build.log --editable .
+  cache:
+    key: cache-build-cuda
+    paths:
+     - $PIP_CACHE_DIR
+
+
+build-hip-cuda:
+  image: $IMAGE_CUDA
+  when: manual
+  extends:
+    - .build
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      gpu = True
+      gpu_target = 'hip-cuda'
+      gpu_compiler = 'hipcc'
+      gpu_compile_args = ['-O3',
+                          '-g',
+                          '-v']
+      libraries += ['cudart', 'hipblas']
+
+      # Suppress warnings from hip-cuda headers
+      extra_compile_args += ['-Wno-deprecated-declarations',
+                             '-Wno-implicit-int',
+                             ]
+      undef_macros += ['GPAW_GPU_AWARE_MPI']
+
+      # MAGMA
+      magma = True
+      libraries += ['magma']
+      EOF
+    - cat siteconfig.py
+     # Set env variable for HIPCC because otherwise it fails to pass the -std
+    # flag to underlying nvcc/cicc... and may default to c++14.
+    - export HIPCC_COMPILE_FLAGS_APPEND="-std=c++17"
+    - pip install -v --user --log build.log --editable .
+  cache:
+    key: cache-build-cuda
+    paths:
+     - $PIP_CACHE_DIR
+
+
+# Like build-cuda but uses the makefile compilation path.
+build-cuda-makefile:
+  image: $IMAGE_CUDA
+  extends:
+    - build-cuda
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      makefile_build = True
+      gpu = True
+      gpu_target = 'cuda'
+      gpu_compiler = 'nvcc'
+      gpu_compile_args = ['-O3',
+                          '-g']
+      libraries += ['cudart', 'cublas']
+
+      # MAGMA
+      magma = True
+      libraries += ['magma']
+
+      makefile_generate_stubs = True
+      EOF
+    - cat siteconfig.py
+    # Get mypy for stubgen, and other deps that we're missing (pip doesn't get them for us with --no-build-isolation)
+    - pip install --user mypy pybind11
+    - pip install --user --upgrade setuptools packaging
+    - pip install -v --user --log build.log --editable . --no-build-isolation
+  cache:
+    key: cache-build-cuda
+    paths:
+     - $PIP_CACHE_DIR
+
+
+build-minimal:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .build
+  script:
+    - |
+      cat << EOF > siteconfig.py
+      compiler = 'g++'
+      mpi = False
+      noblas = True
+      nolibxc = True
+      EOF
+    - cat siteconfig.py
+    - pip install --user --log build.log --editable . -v
+    - gpaw info
+
+
+build-cuda-minimal:
+  # Like build-minimal but with GPU. Only includes cudart, cublas libraries.
+  # FIXME: For now we also include MPI, because the GPU part does not compile
+  # without it! Too many direct MPI calls hardcoded in eg. gpu/bc.c.
+  image: $IMAGE_CUDA
+  extends:
+    - .build
+  script:
+    - |
+      cat << EOF > siteconfig.py
+      compiler = 'mpic++'
+      mpi = True
+      noblas = True
+      nolibxc = True
+
+      gpu = True
+      gpu_target = 'cuda'
+      gpu_compiler = 'nvcc'
+      gpu_compile_args = ['-O3']
+      libraries += ['cudart', 'cublas']
+      EOF
+    - cat siteconfig.py
+    - pip install --user --log build.log --editable . -v
+  cache:
+    key: cache-build-cuda
+    paths:
+     - $PIP_CACHE_DIR
+
+
+build-lumi-g:
+  extends:
+    - .build
+    - .lumi-g-job
+  when: manual
+  script:
+    - module load buildtools-python/24.03-cray-python3.11
+    - |
+      cat << EOF > siteconfig.py
+      mpi = True
+      compiler = 'CC'
+      compiler_args = []
+      libraries = []
+      library_dirs = []
+      include_dirs = []
+      extra_compile_args = [
+          '-g',
+          '-O3',
+          '-fopenmp',
+          '-fPIC',
+          '-Wall',
+          '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
+          # '-Werror',
+          ]
+      extra_link_args = ['-fopenmp']
+
+      fftw = True
+      libraries += ['fftw3']
+
+      scalapack = True
+
+      libraries += ['xc']
+
+      define_macros += [('GPAW_ASYNC', None)]
+
+      gpu = True
+      gpu_target = 'hip-amd'
+      gpu_compiler = 'hipcc'
+      gpu_include_dirs = []
+      gpu_compile_args = [
+          '-g',
+          '-O3',
+          '--offload-arch=gfx90a',
+          ]
+      libraries += ['amdhip64', 'hipblas']
+      EOF
+    - cat siteconfig.py
+    - pip install --user --no-deps ase==3.23.0
+    - pip install --user --no-deps -v --log build.log --editable .
+    - gpaw info
+
+
+prepare-libxc:
+  image: $IMAGE_MAIN_OLDEST
+  stage: build
+  script:
+    - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
+    - cd libxc
+    - autoreconf -i
+    - >
+      ./configure --enable-shared --disable-static --disable-fortran --prefix=$LOCALPATH
+      --disable-kxc
+      --disable-lxc
+      # Enable kxc, lxc, ... derivatives only if needed (affects compilation time)
+    - make | tee ../libxc-build.log
+    - make install
+  when: manual
+  artifacts:
+    paths:
+      - $LOCALPATH
+      - "*.log"
+    expire_in: 30 mins
+
+
+build-libxc:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .build
+  needs:
+    - prepare-libxc
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      local = Path('.local').resolve()
+      include_dirs += [local / 'include']
+      library_dirs += [local / 'lib']
+      runtime_library_dirs += [local / 'lib']
+      EOF
+    - cat siteconfig.py
+    - pip install --user --log build.log --editable .
+    - gpaw info
+
+
+gpwfiles:
+  image: $IMAGE_MAIN_LATEST
+  needs:
+    - job: build-latest
+    - job: nightly-all
+  stage: precalculate
+  tags:
+    - xeon40
+  before_script:
+    - !reference [default, before_script]
+  script:
+    - >
+      pytest -n 16 -m generate_gpw_files --durations 30 -v $COV
+    - mv .coverage coverage-$CI_JOB_NAME
+  artifacts:
+    paths:
+      - .pytest_cache/
+      - coverage-$CI_JOB_NAME
+    expire_in: 30 mins
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+.test:
+  stage: test
+  needs:
+    - job: precalculate
+  before_script:
+    - !reference [default, before_script]
+
+
+test-oldest:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .test
+  needs:
+    - job: build
+  script:
+    - gpaw info
+    - >
+      OMP_NUM_THREADS=2 pytest -v -We "gpaw/test/test_changes.py::test_lcao_to_x[fd]"
+
+    # This is the only test which uses OpenMP.
+    # We may want to identify a limited set of tests that must work
+    # with OpenMP, but so far we just have it in this job.
+
+
+test-latest:
+  image: $IMAGE_MAIN_LATEST
+  extends:
+    - .test
+  needs:
+    - job: build-latest
+  script:
+    - gpaw info
+    - GPAW_DEBUG=1 pytest -v -m "ci or gpu" --cov=gpaw
+    - coverage html
+  artifacts:
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  coverage: '/TOTAL.+ ([0-9]+\.[0-9]+%)/'
+
+
+test-minimal:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .test
+  needs:
+    - job: build-minimal
+  script:
+    - gpaw info
+    - >
+      pytest -v -m ci -We
+
+
+test-cuda-minimal:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - job: build-cuda-minimal
+  tags:
+    - cuda
+  script:
+    - nvidia-smi
+    - gpaw info
+    - python -c 'import cupy; import cupyx; from cupy.cuda import runtime'
+    - pytest -v -m gpu
+
+
+test-cuda:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - job: build-cuda
+  tags:
+    - cuda
+  script:
+    - nvidia-smi
+    - gpaw info
+    - python -c 'import cupy; import cupyx; from cupy.cuda import runtime'
+    - pytest -v -m gpu
+
+
+test-cuda-mpi:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - job: build-cuda
+  tags:
+    - cuda-mpi
+  script:
+    - nvidia-smi
+    - gpaw info
+    - GPAW_DEBUG=1 $MPIEXEC -n 2 gpaw python -m pytest -v -x -m gpu
+    - $MPIEXEC -n 4 gpaw python -m pytest -v -x -m gpu
+
+
+test-cuda-mpi-makefile-build:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - job: build-cuda-makefile
+  tags:
+    - cuda-mpi
+  script:
+    - nvidia-smi
+    # just a very lightweight test as we mainly want to ensure that
+    # runtime linking is OK
+    - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
+
+
+test-hip-cuda:
+  image: $IMAGE_CUDA
+  extends:
+    - .test
+  needs:
+    - job: build-hip-cuda
+  tags:
+    - cuda
+  script:
+    - nvidia-smi
+    - gpaw info
+    - pytest -v -m gpu
+
+
+test-lumi-g:
+  extends:
+    - .test
+    - .lumi-g-job
+  needs:
+    - build-lumi-g
+  script:
+    - rocm-smi || true  # rocm-smi yields non-zero return code
+    - gpaw info
+    - pytest -v -m gpu
+
+
+test-lumi-g-mpi:
+  extends:
+    - .test
+    - .lumi-g-job
+  needs:
+    - build-lumi-g
+  variables:
+    SCHEDULER_PARAMETERS: "-A $LUMI_PROJECT -N 1 --ntasks-per-node=2 --gpus-per-node=2 -t 00:10:00 -p small-g"
+  script:
+    - rocm-smi || true  # rocm-smi yields non-zero return code
+    - gpaw info
+    - srun gpaw python -m pytest -v -m gpu
+
+
+test-libxc:
+  image: $IMAGE_MAIN_OLDEST
+  extends:
+    - .test
+  needs:
+    - build-libxc
+  script:
+    - gpaw info
+    - pytest -v -m libxc
+
+check-agts:
+  image: $IMAGE_MAIN_OLDEST
+  stage: test
+  needs:
+    - build
+  script:
+    # - pip install --user git+https://gitlab.com/myqueue/myqueue.git@master
+    - pip install --user myqueue
+    - mq config --in-place
+    - mq init
+    - mq workflow -p agts.py -zT | tail -1 | tee task_count
+    - >
+      [[ `cut -d ' ' -f1 < task_count` -ge 649 ]] || (echo "Too few agts tasks"; exit 1)
+
+
+lint:
+  image: $IMAGE_MAIN_LATEST
+  stage: build
+  script:
+    - echo "png check"
+    - >
+      [[ `find . -name '*.png' | wc -l` -le 5 ]] || (echo "Too many png files in git"; exit 1)
+    - echo "compileall"
+    - python --version
+    - python -We:invalid -m compileall -f -q gpaw/
+    - echo "flake8"
+    - pip install flake8
+    - flake8 --version
+    - flake8 --doctests gpaw
+    - flake8 setup.py
+    - >
+      flake8
+      --doctests
+      --exclude "doc/platforms/*,doc/summerschools/summerschool26/machinelearning/*"
+      --extend-ignore E402
+      doc
+    - >
+      flake8
+      --doctests
+      --extend-ignore E402,E501
+      doc/platforms/Linux/Niflheim
+
+
+# We get many failures running typecheck in python3.14,
+# because the typing system is smart enough to call out our humbuggery.
+# Disable for now.
+.typecheck:
+  image: $IMAGE_MAIN_LATEST
+  stage: build
+  before_script:
+    - pip freeze
+    - pip install mypy
+    - python --version
+    - mypy --version
+  script:
+    - mypy --pretty
+  cache:
+    key: cache-typecheck
+    paths:
+      - $PIP_CACHE_DIR
+
+
+docs:
+  image: $IMAGE_MAIN_LATEST
+  stage: test
+  needs:
+    - build-latest
+  script:
+    - pip install scikit-image
+    - pip install -e git+https://gitlab.com/gpaw/gpaw-web-page-data.git#egg=gpaw-web-page-data
+    - cd doc
+    - make
+    - make doctest
+    - cd ..
+# We would like to verify that the URLs are valid, but this has been failing.
+# We could reenable this check and make sure it runs well (and is not
+# too spammy on the URLs)
+#     - python -c "from gpaw.utilities.urlcheck import test; test()"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  artifacts:
+    paths:
+      - doc/build/html
+    expire_in: 1 week
+
+
+nightly-all:
+  image: $IMAGE_MAIN_LATEST
+  stage: build
+  script:
+    - echo This is only a dummy job used to trigger other jobs
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+.nightly:
+  image: $IMAGE_MAIN_LATEST
+  variables:
+    RUNNER_MPI_NPROCS: "1"
+    GPAW_TESTGROUPS: "1"
+    GPAW_MYTESTGROUP: "1"
+  extends:
+    - .test
+  stage: test
+  needs:
+    - job: build-latest
+    - gpwfiles
+  tags:
+    - xeon40
+  before_script:
+    - !reference [default, before_script]
+    - pip install pytest-instafail pytest-xdist
+
+    # Make script to parse jobname into specific job settings:
+    - |
+      cat << EOF > parse_jobname.py
+      import os, sys
+      print(os.environ['CI_JOB_NAME'].split('-')[int(sys.argv[1])])
+      EOF
+
+    # Now split "nightly-mpi-8-group-2-3" into into variables we need:
+    - export RUNNER_MPI_NPROCS=$(python parse_jobname.py 2)
+    - export GPAW_MYTESTGROUP=$(python parse_jobname.py 4)
+    - export GPAW_TESTGROUPS=$(python parse_jobname.py 5)
+
+    # We need to use GPAW_PREEXEC_SCRIPT to hack the environment
+    # so coverage writes to different files:
+    - |
+      cat << EOF > preexec.py
+      import os
+      from gpaw.mpi import world
+      from pathlib import Path
+      cwd = Path.cwd()
+      os.environ['COVERAGE_FILE'] = str(cwd / f'gpaw-coverage-{world.rank}')
+      EOF
+
+    - export GPAW_PREEXEC_SCRIPT=$(realpath preexec.py)
+  script:
+    - >
+      $MPIEXEC -n $RUNNER_MPI_NPROCS gpaw python -m pytest
+      --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
+      --test-group-random-seed=42
+      $COV --instafail -r s --durations 30
+  after_script:
+    - coverage combine gpaw-coverage-*
+    - mv .coverage coverage-$CI_JOB_NAME
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  #  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  artifacts:
+    paths:
+      - coverage-$CI_JOB_NAME
+    expire_in: 1 day
+
+
+nightly-mpi-1-group-1-1:
+  extends:
+    - .nightly
+  script:
+    - gpaw info
+    - pytest --cache-show
+    - pytest -n 8 --instafail -r s --durations 30 $COV
+    - coverage
+  after_script:
+    - mv .coverage coverage-$CI_JOB_NAME
+
+
+nightly-mpi-2-group-1-3:
+  extends:
+    - .nightly
+
+
+nightly-mpi-2-group-2-3:
+  extends:
+    - .nightly
+
+
+nightly-mpi-2-group-3-3:
+  extends:
+    - .nightly
+
+
+nightly-mpi-4-group-1-2:
+  extends:
+    - .nightly
+
+
+nightly-mpi-4-group-2-2:
+  extends:
+    - .nightly
+
+
+nightly-mpi-8-group-1-2:
+  extends:
+    - .nightly
+
+
+nightly-mpi-8-group-2-2:
+  extends:
+    - .nightly
+
+
+nightly-gpawmpi-4-group-1-2:
+  extends:
+    - .nightly
+  variables:
+    GPAW_MPI_BACKEND: "cgpaw"
+    GPAW_DEBUG: "1"
+
+
+nightly-gpawmpi-4-group-2-2:
+  extends:
+    - .nightly
+  variables:
+    GPAW_MPI_BACKEND: "cgpaw"
+    GPAW_DEBUG: "1"
+
+
+coverage-combine:
+  image: $IMAGE_MAIN_LATEST  # (Any image present on the runner will do)
+  needs:
+    - gpwfiles
+    - nightly-mpi-1-group-1-1
+    - nightly-mpi-2-group-1-3
+    - nightly-mpi-2-group-2-3
+    - nightly-mpi-2-group-3-3
+    - nightly-mpi-4-group-1-2
+    - nightly-mpi-4-group-2-2
+    - nightly-mpi-8-group-1-2
+    - nightly-mpi-8-group-2-2
+    - nightly-gpawmpi-4-group-1-2
+    - nightly-gpawmpi-4-group-2-2
+  tags:
+    - xeon40
+  before_script:
+    - pip install coverage
+    - pip freeze
+  script:
+    - coverage combine coverage-gpwfiles coverage-nightly-*
+    - coverage report
+    - coverage html
+
+    # We'd like to "just" use gitlab's coverage badge, but that won't work
+    # unless this job runs in every pipeline.
+    # We manually generate one then:
+    - >
+      python -m gpaw.doctools.makebadge
+      $(coverage report --format=total --precision 0)
+      > htmlcov/coverage.svg
+
+  artifacts:
+    paths:
+      - htmlcov
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+
+pages:
+  image: $IMAGE_MAIN_LATEST  # (Any image present on the runner will do)
+  stage: deploy
+  dependencies:
+    - coverage-combine
+  tags:
+    - xeon40
+  script:
+    - mv htmlcov public
+  artifacts:
+    paths:
+      - public
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
