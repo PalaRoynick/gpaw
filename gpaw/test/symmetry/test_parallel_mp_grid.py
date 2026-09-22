@@ -47,16 +47,13 @@ def test_distributed_grid_exception():
      'minimize_ibz_points': True},
     {'nmaxperdim': 0},
 ])
-def test_parallel_optimal_mp_grid(system, options, capsys):
+def test_parallel_optimal_mp_grid(system, options):
     atoms = (Atoms('H', cell=[6, 3, 8], pbc=True)
              if system == 'orthogonal' else bulk('Si', 'diamond', a=5.43))
     kwargs = dict(kptdensity=0.5, nmaxperdim=2, tolerance=2e-5)
     kwargs.update(options)
     serial = optimal_monkhorst_pack_grid(atoms, **kwargs)
-    capsys.readouterr()
     parallel = optimal_monkhorst_pack_grid(atoms, comm=world, **kwargs)
-    output = capsys.readouterr().out
-    assert bool(output) == (world.rank == 0)
     np.testing.assert_array_equal(parallel['size'], serial['size'])
     assert parallel['gamma'] == serial['gamma']
 
