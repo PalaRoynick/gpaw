@@ -409,8 +409,20 @@ def read_dft_state(reader: ulm.Reader,
     else:
         vHt_x = None
 
+    ibzwfs = builder.read_ibz_wave_functions(reader)
+    vt_sR = vt_sR.to_xp(ibzwfs.xp)
+    nt_sR = nt_sR.to_xp(ibzwfs.xp)
+    D_asp = D_asp.to_full().to_xp(ibzwfs.xp)
+    dH_asp = dH_asp.to_full().to_xp(ibzwfs.xp)
+    if vHt_x is not None:
+        vHt_x = vHt_x.to_xp(ibzwfs.xp)
+    if taut_sR is not None:
+        taut_sR = taut_sR.to_xp(ibzwfs.xp)
+    if dedtaut_sR is not None:
+        dedtaut_sR = dedtaut_sR.to_xp(ibzwfs.xp)
+
     density = Density.from_data_and_setups(
-        nt_sR, taut_sR, D_asp.to_full(),
+        nt_sR, taut_sR, D_asp,
         builder.params.charge,
         builder.setups,
         builder.get_pseudo_core_densities(),
@@ -436,8 +448,7 @@ def read_dft_state(reader: ulm.Reader,
 
     energies = DFTEnergies(**ec)
 
-    potential = Potential(vt_sR, dH_asp.to_full(), dedtaut_sR, vHt_x, e_stress)
-    ibzwfs = builder.read_ibz_wave_functions(reader)
+    potential = Potential(vt_sR, dH_asp, dedtaut_sR, vHt_x, e_stress)
 
     return builder, params, (ibzwfs, density, potential, energies)
 

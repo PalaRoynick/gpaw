@@ -9,10 +9,10 @@ calc.write('Ag_LDA_full.gpw', 'all')
 
 # Set up dielectric function:
 df = DielectricFunction(
-    calc='Ag_LDA_full.gpw',  # Ground state input
+    calc='Ag_LDA_full.gpw',  # ground state input
     frequencies={'type': 'nonlinear',
-                 'domega0': 0.05})  # energy grid spacing at omega=0
-
+                 'domega0': 0.05},  # energy grid spacing at omega=0
+    rate=0.1)
 # Momentum transfer, must be the difference between two kpoints!
 q_c = [1.0 / 10, 0, 0]
 df.get_eels_spectrum(q_c=q_c)  # a file called 'eels.csv' is generated
