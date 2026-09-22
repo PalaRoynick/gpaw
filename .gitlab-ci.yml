@@ -1,6 +1,6 @@
 variables:
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
-  LOCALPATH: "$HOME/.local"
+  LOCALPATH: "/home/user/.local"  # Note: $HOME is not set in this context
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
@@ -78,7 +78,7 @@ stages:
   artifacts:
     when: always
     paths:
-      - $HOME/.local
+      - $LOCALPATH
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
