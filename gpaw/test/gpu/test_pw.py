@@ -41,7 +41,6 @@ def test_gpu(dtype, gpu, mode, random):
             parallel={'gpu': gpu},
             setups='paw',
             **kwargs)
-        dft.converge()
 
         energy = dft.calculate_energy()
         if mode == 'pw':
@@ -56,12 +55,14 @@ def test_gpu(dtype, gpu, mode, random):
 @pytest.mark.parametrize('par', ['domain', 'kpt', 'band'])
 @pytest.mark.parametrize('mode', ['pw', 'fd'])
 @pytest.mark.parametrize('xc', ['LDA', 'PBE'])
-def test_gpu_k(gpu, par, mode, xc):
+@pytest.mark.parametrize('dist_dens', [False, True])
+def test_gpu_k(gpu, par, mode, xc, dist_dens):
     if GPAW_NO_C_EXTENSION and mode == 'fd':
         pytest.skip('No FD mode with GPAW_NO_C_EXTENSION')
     if GPAW_NO_C_EXTENSION and xc == 'PBE':
         pytest.skip('No GGA with GPAW_NO_C_EXTENSION')
-
+    if dist_dens and mode != 'pw':
+        pytest.skip('dist-dens only for PW-mode')
     if gpu and world.size > 1 and not GPU_AWARE_MPI:
         if mode == 'fd' and par == 'domain':
             pytest.skip('Domain decomposition needs GPU-aware MPI')
@@ -99,14 +100,19 @@ def test_gpu_k(gpu, par, mode, xc):
            'symmetry': 'off'} if GPAW_NO_C_EXTENSION else {},
         poissonsolver=poisson,
         parallel={'gpu': gpu,
+                  'distribute_density': dist_dens,
                   par: world.size},
         setups='paw')
-    dft.converge()
+    # dft.converge()
     energy = dft.calculate_energy()
     if mode == 'pw':
-        dft.calculate_forces()
+        forces = dft.calculate_forces()
+        assert forces == pytest.approx(0.0)
         if not GPAW_NO_C_EXTENSION:
-            dft.calculate_stress()
+            stress = dft.calculate_stress()
+            s1, s2 = {'LDA': (3.712649, 8.364544),
+                      'PBE': (3.710382, 8.357513)}[xc]
+            assert stress == pytest.approx([s1, s2, s2, 0, 0, 0])
     ref = {'LDAfd': -17.685022604078714,
            'PBEfd': -17.336991943070384,
            'PBEpw': -17.304186,
@@ -128,7 +134,6 @@ def test_2d():
         convergence={'density': 1e-8},
         kpts=(2, 2, 1),
         parallel={'gpu': True})
-    dft.converge()
     assert dft.potential.get_vacuum_level() == pytest.approx(2.9436, 1e-2)
     E = dft.calculate_energy()
     F = dft.calculate_forces()
