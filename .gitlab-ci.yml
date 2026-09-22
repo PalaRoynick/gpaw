@@ -21,6 +21,9 @@ variables:
 
 default:
   before_script:
+    - which python
+    - which pip
+    - pip freeze
     - export PYTHONUSERBASE=`realpath $PYTHONUSERBASE`
     - mkdir -p `python -m site --user-site`
     - export PATH=$PYTHONUSERBASE/bin:$PATH
@@ -41,7 +44,6 @@ stages:
 .build:
   stage: build
   before_script:
-    - pip freeze
     - !reference [default, before_script]
     - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
