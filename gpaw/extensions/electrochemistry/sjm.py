@@ -399,6 +399,15 @@ class SJMExtension(Extension):
         log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
         log()
 
+        # Unlike energy and forces, these two do not survive being written
+        # to an ASE trajectory: ASE's trajectory writer stores only the
+        # properties in ase.calculators.calculator.all_properties, and skips
+        # everything else silently.  Neither Trajectory(properties=...) nor
+        # a keyword to traj.write() gets around it -- both are filtered by
+        # that same list.  They do reach calc.results and a .gpw file (see
+        # gpaw/new/gpw.py, which writes every dft.results key), they are in
+        # the text log, and calc.sjm.excess_electrons and
+        # calc.sjm.get_electrode_potential() give them directly.
         dft.results['excess_electrons'] = self.excess_electrons
         dft.results['electrode_potential'] = potential / Ha
         if self.potentiostat.grand_output:

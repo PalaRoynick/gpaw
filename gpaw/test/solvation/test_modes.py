@@ -1,5 +1,7 @@
+import pickle
 from pathlib import Path
 
+import ase.parallel
 import numpy as np
 import pytest
 from ase import Atoms
@@ -18,20 +20,8 @@ def test_h(gpaw_new, mode, in_tmp_dir):
     if mode == 'pw' and not gpaw_new:
         pytest.skip('PW-mode not implemented for old GPAW')
 
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 13.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 6.0
-
-    k = 2
-    params = dict(
-        mode=mode,
-        kpts=(k, k, 1),
-        occupations=FermiDirac(0.2))
-    sjm = {'target_potential': 7.5,
-           'excess_electrons': -0.0045,
-           'jelliumregion': {'top': 11.0, 'bottom': 9.0},
-           'tol': 0.01}
-    solvation = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
+    atoms, params, sjm, solvation = h_atom_inputs()
+    params['mode'] = mode
 
     if gpaw_new:
         atoms.calc = GPAW(extensions=[SJM(**sjm, **solvation)], **params)
@@ -56,6 +46,22 @@ def test_h(gpaw_new, mode, in_tmp_dir):
                      'electrode_potential']:
             assert calc.results[name] == pytest.approx(
                 atoms.calc.results[name], abs=1e-10)
+
+
+def h_atom_inputs():
+    """The one-atom SJM system that the tests in this file share."""
+    a = 1.4
+    atoms = Atoms('H', cell=[a, a, 13.0], pbc=(1, 1, 0))
+    atoms.positions[0, 2] = 6.0
+
+    k = 2
+    params = dict(kpts=(k, k, 1), occupations=FermiDirac(0.2))
+    sjm = {'target_potential': 7.5,
+           'excess_electrons': -0.0045,
+           'jelliumregion': {'top': 11.0, 'bottom': 9.0},
+           'tol': 0.01}
+    solvation = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
+    return atoms, params, sjm, solvation
 
 
 def check_grand_canonical_results(atoms, energy):
@@ -107,6 +113,78 @@ def check_grand_canonical_results(atoms, energy):
     if world.rank == 0:
         for prop in ['potential', 'background_charge']:
             assert Path(f'sjm_traces_cube/{prop}.cube').is_file()
+
+
+class OneRankOfTwo:
+    """Stands in for a two-rank world, seen from the rank that is not master.
+
+    ASE's @parallel_function short-circuits at ``world.size == 1``, so in a
+    serial run nothing is broadcast and writing a cube file from rank 0 alone
+    looks harmless.  Claiming size 2 and rank 1 puts the wrapper on its
+    parallel path, where a call some rank never reaches is a broadcast that
+    never happens -- the desync itself -- and that is what gets recorded here.
+    """
+
+    size = 2
+    rank = 1
+
+    def __init__(self):
+        self.broadcasts = []
+        # What rank 0 would send after a successful write: ase.io.write()
+        # returns None, so parallel_function broadcasts (None, None), as a
+        # length header first and then the pickle itself.
+        self.payload = np.frombuffer(
+            pickle.dumps((None, None), pickle.HIGHEST_PROTOCOL), np.int8)
+
+    def broadcast(self, a, root):
+        assert root == 0
+        self.broadcasts.append(a.dtype)
+        if a.dtype == np.int8:
+            a[:] = self.payload
+        else:
+            a[0] = len(self.payload)
+
+    def barrier(self):
+        pass
+
+
+@pytest.mark.ci
+@pytest.mark.serial
+def test_cube_traces_are_written_collectively(monkeypatch, in_tmp_dir):
+    """Every rank has to reach the ase.io.write() behind a cube trace.
+
+    It is a collective: ASE runs the write on the master rank and broadcasts
+    the outcome to the rest.  Guarding the call ourselves left that broadcast
+    unmatched, and the stale message was picked up by the next collective --
+    synchronize_atoms() at the start of the following calculation -- so a
+    relaxation that wrote cube traces hung instead of failing.
+
+    A real MPI run catches it for free -- check_grand_canonical_results() does,
+    with a sentinel broadcast -- but only the nightly jobs run one, so the
+    world is faked here to keep the regression inside the serial suite too.
+    """
+    atoms, params, sjm, solvation = h_atom_inputs()
+    atoms.calc = GPAW(mode='fd', extensions=[SJM(**sjm, **solvation)],
+                      **params)
+    atoms.get_potential_energy()
+    extension = atoms.calc.dft.sjm
+
+    fake = OneRankOfTwo()
+    monkeypatch.setattr(ase.parallel.world, 'comm', fake)
+    monkeypatch.setattr(extension.solvation, 'comm', fake)
+
+    extension.write_sjm_traces(path='cubes', style='cube',
+                               props=('potential', 'background_charge'))
+    # Two broadcasts per property -- the length header and the pickle -- from
+    # a rank that writes no file of its own.  None at all would mean the call
+    # was skipped on this rank, which is the bug.
+    assert fake.broadcasts == [np.dtype(int), np.dtype(np.int8)] * 2
+
+    # The z-style traces go through our own writer, which is not collective,
+    # so there the rank-0 guard is the right thing and must stay:
+    fake.broadcasts.clear()
+    extension.write_sjm_traces(path='zs', style='z', props=('potential',))
+    assert fake.broadcasts == []
 
 
 def test_implemented_properties():

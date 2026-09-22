@@ -13,23 +13,10 @@ class Extension:
 
     name = 'unnamed extension'
 
-    #: Charge the extension puts into the cell, in electrons -- but note the
-    #: sign: it is *added* to the electron count (PotentialCalculator.charge,
-    #: gpaw/new/scf.py), so positive means electrons added, the opposite of
-    #: GPAW's own ``charge=`` keyword, where +1 removes one.  An extension
-    #: that balances it with a counter charge subtracts it from the density
-    #: (gpaw/extensions/jellium.py).
-    #:
-    #: TODO: rename to ``excess_electrons`` -- here, in the two sums over
-    #: extensions (gpaw/new/pot_calc.py, gpaw/new/fd/pot_calc.py) and in
-    #: JelliumExtension.  That would end the ambiguity and let SJM drop the
-    #: charge/excess_electrons alias it needs today, but it changes the
-    #: released Jellium(charge=...) keyword, so it needs a deprecation.
+    # XXX: Careful charge has opposite sign here then in base GPAW
     charge = 0.0
 
-    # Extra keys this extension adds to dft.results.  Mirrors
-    # ExtensionInput.properties: either kind of object can be handed to the
-    # extensions keyword (SpinDirectionConstraint is an Extension).
+    # Extra keys this extension adds to dft.results
     properties: list[str] = []
 
     def get_energy_contributions(self) -> dict[str, float]:
@@ -87,7 +74,7 @@ class Extension:
         """Hook called after the SCF-loop has converged.
 
         Called from :meth:`gpaw.new.calculation.DFT.calculate_energy`
-        once the canonical energies have been put into ``dft.results``.
+        once the energies have been logged and put into ``dft.results``.
         Can be used to write to ``dft.log`` and to add or replace entries
         in ``dft.results`` (which are handed on to ASE).  Any new key must
         have a unit-conversion factor in ``gpaw.new.calculation.units`` and
