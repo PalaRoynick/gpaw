@@ -154,14 +154,13 @@ def _parallel_grid_function(function, mp_grids, comm, *args, **kwargs):
         local_values = np.asarray(
             function(mp_grids[indices], *args, **kwargs))
 
-    # A full-sized buffer makes this work for uneven (and empty) rank slices.
-    # Candidate lists are small, while the individual symmetry reductions are
-    # comparatively expensive.
-    local = np.zeros(len(mp_grids), dtype=local_values.dtype)
-    local[indices] = local_values
-    gathered = np.empty((comm.size, len(mp_grids)), dtype=local.dtype)
-    comm.all_gather(local, gathered)
-    return gathered.sum(axis=0, dtype=local.dtype)
+    # Each candidate has exactly one owner. Use integers for boolean masks
+    # because MPI_SUM does not support boolean arrays.
+    dtype = int if local_values.dtype == bool else local_values.dtype
+    values = np.zeros(len(mp_grids), dtype=dtype)
+    values[indices] = local_values
+    comm.sum(values)
+    return values.astype(local_values.dtype, copy=False)
 
 
 def get_mp_grid_from_min_distance_criteria(atoms: Atoms,
