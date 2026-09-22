@@ -416,14 +416,11 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
         Caches the dipole solution and re-uses it if the epsilon shape hasn't
         changed.
         """
-        _, v_deriv = xy_average_at_boundary(vHt_g)
-        # The vacuum is zeroed at the top of the cell, where SJM references
-        # its electrode potential -- the same convention as the FD solver
-        # (see gpaw.extensions.electrochemistry.sjm.SJMPoissonSolver).  In the
-        # plane-wave representation z=0 and z=L are the same point, so "the
-        # top" is the last point of the real-space grid, z = L - h.
-        z_top = self.grid.cell_cv[2, 2] * (1.0 - 1.0 / self.grid.size_c[2])
-        v_top, _ = xy_average_at(vHt_g, z_top)
+        # The vacuum is zeroed at the top of the cell, consistent with FD mode
+        # The top is the last point of the real-space grid, z = L - h.
+        h = self.grid.cell_cv[2, 2] / self.grid.size_c[2]
+        z_top = self.grid.cell_cv[2, 2] - h
+        v_top, v_deriv = xy_average_at(vHt_g, z_top)
 
         # Check if a valid dipole layer solution is cached.
         matches_cache = False
@@ -442,14 +439,14 @@ class ConjugateGradientPoissonSolver(PWPoissonSolver):
             drho_g, alpha, z0 = create_dipole_layer(self.pw)
             dphi_g = self.pw.zeros()
             self._solve(dphi_g, drho_g, dipole_solve=True)
-            _, v_deriv_dip = xy_average_at_boundary(dphi_g)
-            v_top_dip, _ = xy_average_at(dphi_g, z_top)
+            v_top_dip, v_deriv_dip = xy_average_at(dphi_g, z_top)
             # The slope (v_deriv_dip) is slightly contaminated by the dipole
             # layer itself; we analytically correct for this below.
             tail = np.nan
             if self.grid.comm.rank == 0:
-                tail = (8 * np.sqrt(np.pi * alpha) * np.exp(-alpha * z0**2) /
-                        self.eps0_R.data[:, :, 0].mean())
+                tail = (8 * np.sqrt(np.pi * alpha)
+                        * np.exp(-alpha * (z0 + h)**2) /
+                        self.eps0_R.data[:, :, -1].mean())
             tail = broadcast_float(tail, self.grid.comm)
             v_deriv_dip -= tail
             # Cache to avoid duplicate solutions.
@@ -615,8 +612,3 @@ def xy_average_at(f_G: PWArray, z: float = 0.0) -> np.ndarray:
     result = np.array([value, derivative])
     pw.comm.sum(result)
     return result
-
-
-def xy_average_at_boundary(f_G: PWArray) -> np.ndarray:
-    """Calculate average value and derivative at boundary of box."""
-    return xy_average_at(f_G, 0.0)
