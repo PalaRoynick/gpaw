@@ -857,7 +857,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     eigenvalues: Array3D = None,  # eV
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
-                    ignore_xc_potential: bool = False
+                    ignore_xc_potential: bool = False,
+                    new=1,
                     ) -> BZWaveFunctions | SOCResult:
     """Calculate SOC eigenstates.
 
@@ -891,7 +892,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
     if isinstance(calc, (str, Path)):
         calc = GPAW(calc)
 
-    if isinstance(calc, ASECalculator):
+    if new:#isinstance(calc, ASECalculator):
         assert not projected
         assert occcalc is None
         assert eigenvalues is None

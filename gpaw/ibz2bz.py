@@ -220,7 +220,8 @@ def get_overlap(bands,
         Can be extracted via get_overlap_coefficients().
     """
     if not hasattr(proj1, 'layout'):
-        return _get_overlap(bands, gd.dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii)
+        return _old_get_overlap(
+            bands, gd.dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii)
 
     nbands = len(bands)
     ut1_nR = np.reshape(ut1_nR[bands], (nbands, -1))
@@ -244,7 +245,7 @@ def get_overlap(bands,
     return M_nn
 
 
-def _get_overlap(bands, dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii):
+def _old_get_overlap(bands, dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii):
     nbands = len(bands)
     ut1_nR = np.reshape(ut1_nR[bands], (nbands, -1))
     ut2_nR = np.reshape(ut2_nR[bands], (nbands, -1))
