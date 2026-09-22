@@ -364,6 +364,8 @@ def parallel_transport(calc, direction=0, name=None, scale=1.0, bands=None,
 
     def projections(bz_index):
         proj = soc_kpts[bz_index].projections
+        if hasattr(proj, 'copy'):
+            return proj.copy()
         new_proj = proj.new()
         new_proj.matrix.array = proj.matrix.array.copy()
         return new_proj
@@ -399,8 +401,8 @@ def parallel_transport(calc, direction=0, name=None, scale=1.0, bands=None,
             u_msxyz = np.swapaxes(u_mxsyz, 1, 2)
             u2_nsG[bands] = u_msxyz
             for a in range(len(calc.atoms)):
-                assert not proj2.collinear
                 P2_msi = proj2[a][bands]
+                assert P2_msi.ndim == 3
                 for s in range(2):
                     P2_mi = P2_msi[:, s]
                     P2_mi = np.dot(U_mm, P2_mi)
@@ -430,8 +432,8 @@ def parallel_transport(calc, direction=0, name=None, scale=1.0, bands=None,
         u_msxyz = np.swapaxes(u_mxsyz, 1, 2)
         u2_nsG[bands] = u_msxyz
         for a in range(len(calc.atoms)):
-            assert not proj2.collinear
             P2_msi = proj2[a][bands]
+            assert P2_msi.ndim == 3
             for s in range(2):
                 P2_mi = P2_msi[:, s]
                 P2_mi = np.dot(U_mm, P2_mi)

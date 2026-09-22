@@ -314,6 +314,10 @@ class SOCResult:
                  v_Kmn):
         self.bzwfs = bzwfs
         self.v_Kmn = v_Kmn
+        self.fermi_level = bzwfs.fermi_level * Ha
+
+    def weights(self):
+        return self.bzwfs.ibz.weight_k
 
     def eigenvalues(self):
         return self.bzwfs.get_all_eigs()[0] * Ha
@@ -344,6 +348,61 @@ class SOCResult:
         n_aj = [setup.n_j for setup in setups]
         l_aj = [setup.l_j for setup in setups]
         return calculate_orbmag_from_density(D_asii, n_aj, l_aj)
+
+    def __getitem__(self, K):
+        return KPointData(K, self.bzwfs._wfs_u[K], self.v_Kmn[K])
+
+    def pdos_weights(self,
+                     a: int,
+                     indices: list[int]
+                     ) -> Array3D:
+        """PDOS weights."""
+        nbands = self.bzwfs.nbands
+        nbzkpts = len(self.bzwfs.ibz)
+        dos_kms = np.zeros((nbzkpts, nbands, 2))
+
+        for wfs in self.bzwfs:
+            dos_kms[wfs.k] = (abs(wfs.P_ani[a][:, :, indices])**2).sum(2)
+
+        return dos_kms / nbzkpts
+
+
+class KPointData:
+    def __init__(self, K, wfs, v_mn):
+        self.bz_index = K
+        self.wfs = wfs
+        self.v_mn = v_mn
+        self.f_m = wfs.occ_n
+        self.projections = wfs.P_ani
+
+    def wavefunctions(self, calc, periodic=True):
+        kd = calc.wfs.kd
+        assert kd.nibzkpts == kd.nbzkpts
+
+        # For spinors the number of bands is doubled and a
+        # spin dimension is added
+        Ns = calc.wfs.nspins
+        Nm, Nn = self.v_mn.shape
+
+        if calc.wfs.collinear:
+            u_snR = [[calc.wfs.get_wave_function_array(n, self.bz_index, s,
+                                                       periodic=periodic)
+                      for n in range(Nn // 2)]
+                     for s in range(Ns)]
+            u_msR = np.empty((Nm, 2) + u_snR[0][0].shape, complex)
+            np.einsum('mn, nabc -> mabc', self.v_mn[:, ::2], u_snR[0],
+                      out=u_msR[:, 0])
+            np.einsum('mn, nabc -> mabc', self.v_mn[:, 1::2], u_snR[-1],
+                      out=u_msR[:, 1])
+        else:
+            u_nsR = np.array(
+                [calc.wfs.get_wave_function_array(n, self.bz_index, 0,
+                                                  periodic=periodic)
+                 for n in range(Nn)])
+            u_msR = np.einsum('mn, nsxyz -> msxyz',
+                              self.v_mn, u_nsR)
+
+        return u_msR
 
 
 class WaveFunction:
