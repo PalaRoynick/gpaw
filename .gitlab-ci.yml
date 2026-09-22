@@ -6,6 +6,7 @@ variables:
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
   OMP_NUM_THREADS: "1"
+  PYTEST_ADDOPTS: "--color=yes"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
   # DEFAULT_RUNNER_TAG: "linux".
@@ -21,9 +22,9 @@ variables:
 
 default:
   before_script:
-    - mkdir -p `python -m site --user-site`
     - export PATH=$LOCALPATH/bin:$PATH
-    - export PYTEST_ADDOPTS="--color=yes"
+    - whoami
+    - pwd
     - pip freeze
   interruptible: true
   tags:
