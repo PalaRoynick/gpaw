@@ -20,6 +20,7 @@ def create_basis(ibz: IBZ,
                  comm=serial_comm,
                  kpt_comm=serial_comm,
                  band_comm=serial_comm,
+                 kpt_band_comm=42,
                  xp=np,
                  gpu_add_and_integrate=True,
                  new_basis=False):
@@ -53,6 +54,7 @@ def create_basis(ibz: IBZ,
         min(band_comm.rank * myM, basis.Mmax),
         min((band_comm.rank + 1) * myM, basis.Mmax))
     basis.grid = grid
+    basis.kpt_band_comm = kpt_band_comm
     return basis
 
 

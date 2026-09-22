@@ -120,14 +120,14 @@ The default parameters used in GPAW are::
 
 These parameters should work well for most systems.
 
-Mixing the magnetization seperately: Multimixer
+Mixing the magnetization separately: Multimixer
 -----------------------------------------------
 
-The most common example of the using the multi-mixer is to seperately mix the
+The most common example of the using the multi-mixer is to separately mix the
 density and magnetization, this can be done by specifying the following::
 
     mixer = {'name': 'multi',  # The choice of mixer
-             'method': 'dif',  # Mix the density and magnetization separately
+             'method': 'mag-dens',  # Mix the density and magnetization separately
              'mixer_a': {...},  # The density mixer settings, e.g. MSR1
              'mixer_b': {...}}  # The magnetization mixer settings.
 
@@ -136,7 +136,7 @@ the convergence. When using the multi-mixer like this, it is recommended to
 reduce the metric ``weight`` (or turn it off) and increase the ``beta`` value for
 ``mixer_b`` (the magnetization mixer).
 
-Alternative uses of the multimixer is to set ``method`` to ``sep``, which
+Alternative uses of the multimixer is to set ``method`` to ``separate``, which
 separately mixes the two spin channels. Generally speaking, this does not yield
 improvements to convergence, though.
 

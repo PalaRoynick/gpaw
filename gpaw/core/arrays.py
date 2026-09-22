@@ -299,6 +299,28 @@ class XArray(Generic[DomainType], XP):
     def scatter_from(self, data: ArrayND | None = None) -> None:
         raise NotImplementedError
 
+    def redist_to(self,
+                  array,
+                  comm1: MPIComm,
+                  comm2: MPIComm) -> None:
+        """Redistribute to new array.
+
+        The "world" is spanned by::
+
+            (self.desc.comm, comm1)
+
+        and::
+
+            (array.desc.comm, comm2).
+        """
+        if comm1.rank == 0:
+            a = self.gather()
+        else:
+            a = None
+        if comm2.rank == 0:
+            array.scatter_from(a)
+        comm2.broadcast(array.data, 0)
+
     def redist(self,
                domain,
                comm1: MPIComm, comm2: MPIComm) -> XArray:
@@ -313,13 +335,7 @@ class XArray(Generic[DomainType], XP):
             (domain.comm, comm2).
         """
         result = domain.empty(self.dims, xp=self.xp)
-        if comm1.rank == 0:
-            a = self.gather()
-        else:
-            a = None
-        if comm2.rank == 0:
-            result.scatter_from(a)
-        comm2.broadcast(result.data, 0)
+        self.redist_to(result, comm1, comm2)
         return result
 
     def interpolate(self,

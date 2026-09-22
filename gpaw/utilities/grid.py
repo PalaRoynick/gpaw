@@ -2,7 +2,7 @@ from functools import partial
 
 import numpy as np
 
-from gpaw.mpi import normalize_communicator
+from gpaw.mpi import normalize_communicator, serial_comm
 from gpaw.utilities.grid_redistribute import general_redistribute
 from gpaw.utilities.partition import AtomicMatrixDistributor, AtomPartition
 
@@ -96,7 +96,7 @@ class AtomDistributions:
                                             name='work').as_even_partition()
 
         if gd is aux_gd:
-            aux_broadcast_comm = gd.comm.new_communicator([gd.comm.rank])
+            aux_broadcast_comm = serial_comm
         else:
             aux_broadcast_comm = broadcast_comm
 

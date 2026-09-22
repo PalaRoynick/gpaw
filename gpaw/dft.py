@@ -27,6 +27,8 @@ from gpaw.new.symmetry import Symmetries, create_symmetries_object
 from gpaw.typing import ArrayND
 from gpaw.utilities import (check_atoms_too_close,
                             check_atoms_too_close_to_boundary)
+from gpaw.new.builder import DFTComponentsBuilder
+
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
@@ -550,9 +552,13 @@ class MultiMixer(Mixer):
     cls = MltMixer
 
     def __init__(self,
-                 method: str = 'dif',
+                 method: str = 'mag-dens',
                  mixer_a: Mixer | dict | str = 'msr1',
-                 mixer_b: Mixer | dict | str = 'msr1'):
+                 mixer_b: Mixer | dict | str = {'name': 'msr1',
+                                                'weight': 2,
+                                                'nmaxold': 8,
+                                                'beta': 0.5,
+                                                'max_A': 1.0}):
         self.mixer_a = Mixer.from_param(mixer_a)
         self.mixer_b = Mixer.from_param(mixer_b)
         self.method = method
@@ -779,7 +785,9 @@ class XC(Parameter):
 KptsType = Union[Sequence[int], dict, Sequence[Sequence[float]]]
 
 PARALLEL_KEYS = {
-    'kpt', 'domain', 'band', 'order', 'stridebands', 'augment_grids',
+    'kpt', 'domain', 'band',
+    'distribute_density',
+    'order', 'stridebands', 'augment_grids',
     'sl_auto', 'sl_default', 'sl_diagonalize', 'sl_inverse_cholesky',
     'sl_lcao', 'sl_lrtddft', 'use_elpa', 'elpasolver', 'buffer_size', 'gpu'}
 
@@ -973,7 +981,11 @@ class Parameters:
                 value = value[None]
         return value
 
-    def dft_component_builder(self, atoms, *, comm=None, log=None):
+    def dft_component_builder(self,
+                              atoms,
+                              *,
+                              comm=None,
+                              log=None) -> DFTComponentsBuilder:
         return self.mode.dft_components_builder(
             atoms, self, comm=comm, log=log)
 
@@ -998,14 +1010,13 @@ class Parameters:
         scf_loop = builder.create_scf_loop()
 
         pot_calc = builder.create_potential_calculator()
-
         density = builder.density_from_superposition(basis_set)
         if len(atoms) == 0:
             density.nt_sR.data[:] = 1.0
         density.normalize(pot_calc.charge)
 
         potential, energies, _ = pot_calc.calculate_without_orbitals(
-            density, kpt_band_comm=builder.communicators['D'])
+            density)
         ibzwfs = builder.create_ibz_wave_functions(
             basis_set, potential)
 
