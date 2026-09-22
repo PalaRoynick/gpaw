@@ -448,13 +448,20 @@ class SJMExtension(Extension):
 
         for prop in props:
             a_r = self._trace_data(prop, dft).gather(broadcast=True)
-            if comm.rank == 0:
-                if style == 'z':
+            if style == 'z':
+                if comm.rank == 0:
                     _write_trace_in_z(a_r, os.path.join(path, prop + '.txt'))
-                else:
-                    import ase.io
-                    ase.io.write(os.path.join(path, prop + '.cube'),
-                                 dft.atoms, data=a_r.data)
+            else:
+                import ase.io
+                # ase.io.write() carries ASE's @parallel_function wrapper: it
+                # runs on the master rank and then broadcasts the outcome to
+                # the whole world.  Every rank therefore has to call it -- ASE
+                # does the rank-0 guarding itself.  Calling it inside a guard
+                # of our own leaves that broadcast unmatched, and the stale
+                # message is then picked up by the next collective, which is
+                # synchronize_atoms() at the start of the next calculation.
+                ase.io.write(os.path.join(path, prop + '.cube'),
+                             dft.atoms, data=a_r.data)
         comm.barrier()
 
     def _trace_data(self, prop: str, dft) -> UGArray:

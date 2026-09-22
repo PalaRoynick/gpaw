@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -6,6 +8,7 @@ from ase.units import Bohr, Ha
 from gpaw import GPAW, FermiDirac
 from gpaw.new.constraints import SpinDirectionConstraint
 from gpaw.extensions.electrochemistry import SJM
+from gpaw.mpi import broadcast, synchronize_atoms, world
 from gpaw.solvation.sjm import SJM as OldSJM
 
 
@@ -89,6 +92,21 @@ def check_grand_canonical_results(atoms, energy):
     # electrons; z and the cell are in Angstrom:
     dV = (z[1] - z[0]) * abs(np.linalg.det(atoms.cell[:2, :2])) / Bohr**3
     assert (rho.sum() * dV) == pytest.approx(-sjm.excess_electrons, abs=1e-6)
+
+    # Cube traces are written through ase.io.write(), which runs on the master
+    # rank and then broadcasts the outcome over the whole world, so every rank
+    # has to reach it.  Writing them must leave the communicators in step: a
+    # rank-0-only call left its broadcast unmatched, and the stale message was
+    # then picked up by the next collective -- synchronize_atoms() at the start
+    # of the following calculation, which is where it showed up as a hang.
+    sjm.write_sjm_traces(path='sjm_traces_cube', style='cube',
+                         props=('potential', 'background_charge'))
+    sentinel = ('sync', 42) if world.rank == 0 else None
+    assert broadcast(sentinel, root=0, comm=world) == ('sync', 42)
+    synchronize_atoms(atoms, world)
+    if world.rank == 0:
+        for prop in ['potential', 'background_charge']:
+            assert Path(f'sjm_traces_cube/{prop}.cube').is_file()
 
 
 def test_implemented_properties():
