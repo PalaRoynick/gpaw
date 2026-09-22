@@ -101,8 +101,8 @@ def calculate_soc(dft: DFT,
             ncomponents=4,
             dtype=complex,
             domain_band_comm=atomdist.comm)
-        wfs._P_ani = P_Kamsi[K]
-        wfs._eig_n = eig_Km[K]
+        wfs._P_ani = P_Kamsi[k]
+        wfs._eig_n = eig_Km[k]
         wfs.xp = np
         return wfs
 
@@ -338,15 +338,11 @@ class SOCResult:
             atomdist=atomdist).zeros(4)
         for wfs in self.bzwfs:
             for D_sii, P_msi in zip(D_asii.values(), wfs.P_ani.values()):
-                print(wfs)
-                print(P_msi[:4, :, 0], wfs.weight * wfs.occ_n[:4]);sadgf
                 add_to_4component_density_matrix(
                     D_sii, P_msi, wfs.weight * wfs.occ_n, np)
-        print(D_asii[0][:, :2, :2])
         self.bzwfs.kpt_comm.sum(D_asii.data)
         n_aj = [setup.n_j for setup in setups]
         l_aj = [setup.l_j for setup in setups]
-        print(n_aj, l_aj)
         return calculate_orbmag_from_density(D_asii, n_aj, l_aj)
 
 
@@ -605,21 +601,16 @@ class BZWaveFunctions:
             ni = (2 * np.array(l_j) + 1).sum()
             D_sii = np.zeros([4, ni, ni], dtype=complex)
             for wfs, weight in zip(self.wfs.values(), self.weights()):
-                print(wfs.bz_index)
-                print(wfs.projections[a][:4, :, 0], weight * wfs.f_m[:4]);sadgf
                 add_to_4component_density_matrix(D_sii, wfs.projections[a],
                                                  wfs.f_m * weight, np)
             self.kpt_comm.sum(D_sii)
             D_asii[a] = D_sii
-        print(D_asii[0][:, :2, :2])
-        print(self.n_aj, self.l_aj)
 
         return D_asii
 
     def get_orbital_magnetic_moments(self):
         """Returns the orbital magnetic moment vector for each atom a."""
         D_asii = self.get_atomic_density_matrices()
-        print(D_asii[0][:, :2, :2])
         from gpaw.new.orbmag import calculate_orbmag_from_density
         return calculate_orbmag_from_density(D_asii, self.n_aj, self.l_aj)
 
@@ -884,7 +875,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         assert eigenvalues.shape == (kd.nspins, kd.nibzkpts, n2 - n1)
 
     kpt_qs = get_both_spins(calc.wfs)
-    ibzwfs = extract_ibz_wave_functions(kpt_qs,
+    ibzwfs = extract_ibz_wave_functions(kpt_qs,  # type: ignore
                                         bd, gd, n1, n2, eigenvalues)
     ibz2bzmaps = IBZ2BZMaps.from_calculator(calc)
 

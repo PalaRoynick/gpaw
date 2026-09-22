@@ -9,13 +9,12 @@ from ase.dft.dos import linear_tetrahedron_integration as lti
 
 from gpaw.mpi import normalize_communicator
 from gpaw.setup import Setup
-from gpaw.spinorbit import BZWaveFunctions, soc_eigenstates
+from gpaw.spinorbit import BZWaveFunctions, soc_eigenstates, SOCResult
 from gpaw.typing import Array1D, Array2D, Array3D, ArrayLike1D
 
 if TYPE_CHECKING:
     from gpaw.new.ase_interface import ASECalculator
     from gpaw.old.calculator import GPAW
-    from gpaw.new.ibzwfs import IBZWaveFunctions as NewIBZWaveFunctions
 
 
 class IBZWaveFunctions:
@@ -176,7 +175,7 @@ class DOSCalculator:
         else:
             calc = GPAW(filename, txt=None)
 
-        wfs: BZWaveFunctions | IBZWaveFunctions | NewIBZWaveFunctions
+        wfs: BZWaveFunctions | IBZWaveFunctions | SOCResult
         if soc:
             wfs = soc_eigenstates(calc, theta=theta, phi=phi)
         else:
