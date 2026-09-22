@@ -12,25 +12,25 @@ A simple Au(111) slab
 As a simple example, we'll examine the calculation of a Au slab with a water overlayer calculated at a potential of -0.2 V versus SHE.
 To speed the computation, we'll use a tiny slab with a single water molecule over the top.
 
-To use the solvated jellium approach, we use the regular GPAW calculator and attach a :class:`~gpaw.extensions.electrochemistry.SJM` object to it through the :literal:`extensions` keyword.
+To use the solvated jellium approach, we use the regular GPAW calculator and attach a :class:`~gpaw.extensions.electrochemistry.SJM` object to it through the ``extensions`` keyword.
 All of the SJM-specific parameters are keyword arguments of that object.
 In our example script, we set only one of them---the target potential---and keep the rest at their default values.
 Keep in mind that the *absolute* potential has to be provided, where the value of the SHE potential on an absolute scale is approximately 4.4 V.
 
 Since SJM utilizes an implicit solvent to screen the field, we will need to specify some solvent parameters as well.
-SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and the :literal:`cavity`, :literal:`dielectric` and :literal:`interactions` parameters are given to the :class:`~gpaw.extensions.electrochemistry.SJM` object alongside the SJM parameters.
+SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and the ``cavity``, ``dielectric`` and ``interactions`` parameters are given to the :class:`~gpaw.extensions.electrochemistry.SJM` object alongside the SJM parameters.
 Reasonable values to simulate room-temperature water are used in the script below.
 In practice, since the purpose of the implicit solvent is just to screen the field, the net results---such as binding energies and barrier heights---will be relatively insensitive to the choice of implicit solvent parameters, so long as they are kept consistent.
 Try running the script below to find the number of electrons necessary to equilibrate the work function to 4.2 eV:
 
 .. literalinclude:: run-Au111.py
 
-If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the potential is within tolerance of the 4.2 V target; the tolerance defaults to 0.005 V, and can be changed with the :literal:`tol` keyword.
+If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the potential is within tolerance of the 4.2 V target; the tolerance defaults to 0.005 V, and can be changed with the ``tol`` keyword.
 This process usually takes a few steps on the first image, but is faster on subsequent images of a trajectory, since the changes are less dramatic and the potential--vs--charge slope is retained from previous steps.
 You should see that in net the routine added only about 0.006 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
 You'll notice that the output in 'Au111.txt' contains additional information, as compared to a charge-neutral simulation.
-Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last :literal:`slope_regression_depth` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
+Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last ``slope_regression_depth`` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
     Potential found to be 4.19521 V (with +0.00646 excess electrons, attempt 4/10).
@@ -44,13 +44,13 @@ It is followed by the Legendre-transformed energies::
       (Grand) free energy:      -21.289832
       (Grand) extrapolated:     -21.267238
 
-These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by :literal:`calc.get_potential_energy()` (and therefore :literal:`atoms.get_potential_energy()`).
+These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by ``calc.get_potential_energy()`` (and therefore ``atoms.get_potential_energy()``).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
-If you'd rather have it output the traditional canonical energies to the :literal:`get_potential_energy` methods, use the :literal:`grand_output=False` keyword.
-The number of excess electrons and the electrode potential are also available as ASE properties, in :literal:`calc.results['excess_electrons']` and :literal:`calc.results['electrode_potential']`.
+If you'd rather have it output the traditional canonical energies to the ``get_potential_energy`` methods, use the ``grand_output=False`` keyword.
+The number of excess electrons and the electrode potential are also available as ASE properties, in ``calc.results['excess_electrons']`` and ``calc.results['electrode_potential']``.
 
 In the last line of the script above, we wrote out some additional information in the form of 'sjm traces'.
-The SJM object itself---which holds all the SJM-specific methods---is reached as :literal:`calc.sjm`, which is the same object as :literal:`calc.dft.sjm` once a calculation has been run.
+The SJM object itself---which holds all the SJM-specific methods---is reached as ``calc.sjm``, which is the same object as ``calc.dft.sjm`` once a calculation has been run.
 These are traces of the electrostatic potential, the background charge, and the solvent cavity across the `z` axis (that is, `xy`-averaged).
 It's a good idea to take a look at these, and perhaps make a plot for each, when running a simulation with a new system so you can be sure it is behaving as you expect.
 The three files that are created are:
@@ -67,7 +67,7 @@ background_charge.txt:
  The jellium counter charge averaged over `xy`, as a charge density in e/Bohr^3; it integrates to minus the number of excess electrons.
  It is therefore five orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
 
-.. Note:: Alternatively, :literal:`calc.sjm.write_sjm_traces(style='cube')`
+.. Note:: Alternatively, ``calc.sjm.write_sjm_traces(style='cube')``
           can be used to write cube files on the 3-D grid, instead of traces.
 
 Our traces showing the solvent region and the jellium region are plotted below.
@@ -97,7 +97,7 @@ A faster route: simultaneous potential and structure optimization
 
 It is often faster to optimize the structure and the potential simultaneously.
 That is, instead of waiting until the potential is perfectly equilibrated before taking an ionic step, you can take an ionic step and adjust the number of electrons simultaneously.
-To do this, set a loose potential tolerance and turn the :literal:`always_adjust` keyword to :literal:`True`.
+To do this, set a loose potential tolerance and turn the ``always_adjust`` keyword to ``True``.
 An example follows.
 
 .. literalinclude:: run-Au111-H-sim.py
@@ -140,7 +140,7 @@ Note also that we reduce the degrees of freedom in this example, holding the wat
 
 .. literalinclude:: run-neb.py
 
-After a few dozen iterations, the band completes and we can make a plot of the barrier, using :literal:`NEBTools`.
+After a few dozen iterations, the band completes and we can make a plot of the barrier, using ``NEBTools``.
 (Plot script: :download:`plot-neb.py`.)
 
 .. image:: band.png
@@ -149,27 +149,27 @@ After a few dozen iterations, the band completes and we can make a plot of the b
 
 Although the reaction modeled here is very simple and doesn't involve much need for a constant-potential method, it nonetheless allows us to demonstrate that SJM plays well with standard barrier-search methods, like the NEB.
 
-You'll note that we used :literal:`DyNEB` instead of the regular :literal:`NEB`.
-Although :literal:`NEB` will also work fine, :literal:`DyNEB` is more efficient as it skips re-calculating individual images whose maximum force is already below the cutoff (of :literal:`fmax=0.05`).
+You'll note that we used ``DyNEB`` instead of the regular ``NEB``.
+Although ``NEB`` will also work fine, ``DyNEB`` is more efficient as it skips re-calculating individual images whose maximum force is already below the cutoff (of ``fmax=0.05``).
 Note also that parallelizing a NEB over images is in general not a great strategy when using a grand-canonical method, because typically only one of the images might need potential equilibration on any individual force call of the NEB---and in parallel-image mode all of the images would need to wait for that individual image.
-However, running in serial allows us to take advantage of the computational efficiency of the :literal:`DyNEB` method, which is not possible when parallelizing over images.
+However, running in serial allows us to take advantage of the computational efficiency of the ``DyNEB`` method, which is not possible when parallelizing over images.
 
 Constant-charge mode
 ====================
 
 The SJM code can also run in constant-charge mode, where the user specifies the total number of electrons in the simulation.
 This can be a fast way to calculate a system at several potentials---that is, if one does not care about the specific potentials, but just wants to span a range of potentials.
-To use constant-charge mode, just specify the number of :literal:`excess_electrons`---and no target potential---and calculate as normal::
+To use constant-charge mode, just specify the number of ``excess_electrons``---and no target potential---and calculate as normal::
 
     calc = GPAW(..., extensions=[SJM(excess_electrons=0.5, ...)])
 
 
 If your intent is to run in the constant-charge ensemble---like in the use of the charge-extrapolation scheme---you may want to output the canonical, rather than the grand-potential energies.
 The canonical energies are consistent with the forces in constant-charge mode.
-To accomplish this, set :literal:`grand_output=False`, like::
+To accomplish this, set ``grand_output=False``, like::
 
     calc = GPAW(..., extensions=[SJM(excess_electrons=...,
                                      grand_output=False, ...)])
 
-The number of excess electrons can be changed later on, without throwing away the wave functions, with :literal:`calc.sjm.change(excess_electrons=...)`; the same method switches between constant-charge and constant-potential mode by setting or clearing :literal:`target_potential`, and it can be called before the first calculation as well.
-Every SJM keyword can be read back off :literal:`calc.sjm` under its own name---:literal:`calc.sjm.excess_electrons`, :literal:`calc.sjm.target_potential`, :literal:`calc.sjm.tol` and so on---but once a calculation has been run they are read-only, and :literal:`change()` is the only way to set them.
+The number of excess electrons can be changed later on, without throwing away the wave functions, with ``calc.sjm.change(excess_electrons=...)``; the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``, and it can be called before the first calculation as well.
+Every SJM keyword can be read back off ``calc.sjm`` under its own name---``calc.sjm.excess_electrons``, ``calc.sjm.target_potential``, ``calc.sjm.tol`` and so on---but once a calculation has been run they are read-only, and ``change()`` is the only way to set them.
