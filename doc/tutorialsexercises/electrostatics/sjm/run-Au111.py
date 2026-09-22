@@ -1,7 +1,7 @@
 from ase.build import fcc111, molecule
 from ase.units import Pascal, m
 
-from gpaw import GPAW
+from gpaw import GPAW, PW
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
@@ -34,16 +34,12 @@ interactions = [SurfaceInteraction(surface_tension=gamma)]
 # calculator as an extension.
 calc = GPAW(
     # General GPAW parameters.
-    mode='fd',
+    mode=PW(400.),
     txt='Au111.txt',
     gpts=(16, 16, 120),
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    # The dipole-correction slope is fitted close to the lower cell
-    # boundary here, which leaves a little noise in the density; 1e-5
-    # is a criterion it can reach.
-    convergence={'density': 1e-5},
     extensions=[SJM(
         # Solvated jellium parameters.
         target_potential=4.2,  # Desired potential

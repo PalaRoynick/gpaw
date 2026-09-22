@@ -139,6 +139,12 @@ The below figure shows both the localization of excess electrons and the local c
 
 As mentioned above, the excess electrons localize only on the top side of the slab, which is meant to represent the electrode surface, and not on the bottom side, which is mean to represent the bulk.
 The potential drop is seen to localize in the Stern layer where the reaction takes place.
+
+The electrostatic potential is only defined up to a constant, so the traces in the upper panel have to be aligned somewhere before they can be compared, and where they are aligned decides where the fanning appears.
+SJM itself references the potential deep in the solvent, at the top of the cell, which is where it reads off the electrode potential; the traces here are instead aligned at the vacuum *behind* the slab, on the bulk side, so that the difference between two charge states accumulates across the slab and the Stern layer.
+The fanning on the solvent side is therefore a consequence of that alignment, not a separate physical effect: it is the same information as a rigid shift of each curve, displayed so that the region where the potential drop develops is the region where the curves separate.
+Note that the backside vacuum is not the point `z = 0` in plane-wave mode, where the cell is periodic and `z = 0` is the same point as the top of the cell; the alignment is taken midway between the lower cell boundary and the lowest atom, and the sharp feature below `z \approx 2\,\mathrm{\AA}` is where each trace returns to the value SJM pins in the solvent.
+
 Over reasonable deviations, the relationship between the number of excess electrons and the potential :math:`\phi` is approximately linear:
 
 .. image:: charge-potential.png
@@ -198,10 +204,10 @@ The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electro
 extension, given together with the implicit-solvent parameters
 (:literal:`cavity`, :literal:`dielectric` and :literal:`interactions`)::
 
-    from gpaw import GPAW
+    from gpaw import GPAW, PW
     from gpaw.extensions.electrochemistry import SJM
 
-    calc = GPAW(mode='fd', ...,
+    calc = GPAW(mode=PW(400.), ...,
                 extensions=[SJM(target_potential=4.4,  # absolute scale, V
                                 excess_electrons=0.0,  # initial guess
                                 tol=0.005,  # V

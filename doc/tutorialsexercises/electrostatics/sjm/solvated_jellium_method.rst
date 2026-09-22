@@ -27,22 +27,22 @@ Try running the script below to find the number of electrons necessary to equili
 
 If you examine the output in 'Au111.txt', you'll see that the code varies the number of excess electrons until the potential is within tolerance of the 4.2 V target; the tolerance defaults to 0.005 V, and can be changed with the :literal:`tol` keyword.
 This process usually takes a few steps on the first image, but is faster on subsequent images of a trajectory, since the changes are less dramatic and the potential--vs--charge slope is retained from previous steps.
-You should see that in net the routine added only about 0.007 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
+You should see that in net the routine added only about 0.006 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
 You'll notice that the output in 'Au111.txt' contains additional information, as compared to a charge-neutral simulation.
 Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last :literal:`slope_regression_depth` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
-    Potential found to be 4.19530 V (with +0.00663 excess electrons, attempt 4/10).
-    Slope estimated from the last 3 attempts is -66.7909 V/electron,
-    or apparent capacitance of 3.3279 muF/cm^2
+    Potential found to be 4.19521 V (with +0.00646 excess electrons, attempt 4/10).
+    Slope estimated from the last 3 attempts is -66.4261 V/electron,
+    or apparent capacitance of 3.3462 muF/cm^2
     Potential is within tolerance. Equilibrated.
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):
-      N (excess electrons):      +0.006628
-      mu (-work function):       -4.195295  # eV
-      (Grand) free energy:      -23.608732
-      (Grand) extrapolated:     -23.586161
+      N (excess electrons):      +0.006459
+      mu (-work function):       -4.195210  # eV
+      (Grand) free energy:      -21.289832
+      (Grand) extrapolated:     -21.267238
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by :literal:`calc.get_potential_energy()` (and therefore :literal:`atoms.get_potential_energy()`).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
@@ -113,7 +113,7 @@ The open circles are potential-equilibration steps, while the filled circles rep
 In sequential mode, it always makes sure the potential is within tolerance before taking an ionic step, and you can see that it typically takes an extra DFT calculation (or two) before moving the atoms.
 In simultaneous mode, it moves the atoms with much higher frequency, and only when the potential gets very far from the target does it pause to equilibrate.
 Generally, this results in faster total convergence.
-At the end of the sequential mode, we switched back to simultaneous mode to ensure that the final result was at the expected potential; this adds a few extra steps, but overall the computational savings are typically worth it.
+At the end of the simultaneous optimization, we switched back to sequential mode to ensure that the final result was at the expected potential; this can add a few extra steps---here the structure was already converged within both of the tightened tolerances, so it added none---but overall the computational savings are typically worth it.
 
 .. image:: simultaneous.png
            :width: 600 px
@@ -136,10 +136,11 @@ Note that we should expect very little difference in the number of excess electr
 
 You will need to create the final state before you run the NEB; you can go through the exercise of creating this yourself, or you can use our script (:download:`run-Au111-H-hollow.py`).
 After you have created the final state, you can run the NEB as below; note here we use the DyNEB method which tends to save a large amount of computational time for these sorts of barriers.
+Note also that we reduce the degrees of freedom in this example, holding the water molecule fixed along with the bottom two layers of gold, so that the band follows the diffusing hydrogen rather than the soft rotations of the solvent molecule.
 
 .. literalinclude:: run-neb.py
 
-After a few iterations, the band completes and we can make a plot of the barrier, using :literal:`NEBTools`.
+After a few dozen iterations, the band completes and we can make a plot of the barrier, using :literal:`NEBTools`.
 (Plot script: :download:`plot-neb.py`.)
 
 .. image:: band.png

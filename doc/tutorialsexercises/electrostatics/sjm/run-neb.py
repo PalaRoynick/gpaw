@@ -1,9 +1,10 @@
 import ase.io
 from ase.units import Pascal, m
-from ase.optimize import BFGS
+from ase.constraints import FixAtoms
+from ase.optimize import FIRE
 from ase.mep import interpolate, DyNEB
 
-from gpaw import GPAW
+from gpaw import GPAW, PW
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
@@ -26,7 +27,7 @@ def make_calculator(index):
     interactions = [SurfaceInteraction(surface_tension=gamma)]
     calc = GPAW(
         # General GPAW parameters.
-        mode='fd',
+        mode=PW(400.),
         txt=f'gpaw-{index:d}.txt',
         gpts=(16, 16, 120),
         kpts=(9, 9, 1),
@@ -47,14 +48,25 @@ def make_calculator(index):
 # Create the band of images, attaching a calc to each.
 initial = ase.io.read('qn-Au111-H-seq.traj')
 final = ase.io.read('qn-Au111-H-hollow-1.traj')
+
+# Hold the water still, along with the two bottom gold layers.  Its
+# rotational degrees of freedom are soft, and if the band is free to use them
+# an image slides into a reoriented-water configuration that sits below the
+# final state, putting a spurious well in the profile after the saddle.  The
+# reaction coordinate we are after is the hydrogen moving from the top site
+# to the hollow site, so freeze the solvent molecule and keep the band on it.
+for image in [initial, final]:
+    image.set_constraint(FixAtoms(indices=[0, 1, 3, 4, 5]))
 images = [initial]
 for index in range(5):
     images += [initial.copy()]
     images[-1].calc = make_calculator(index + 1)
 images += [final]
-interpolate(images)
+# apply_constraint=True puts the frozen atoms at the same place in every
+# image, so the band varies only in the coordinate we care about.
+interpolate(images, apply_constraint=True)
 
 # Create and relax the DyNEB.
 neb = DyNEB(images, method='improvedtangent')
-opt = BFGS(neb, logfile='neb.log', trajectory='neb.traj')
+opt = FIRE(neb, logfile='neb.log', trajectory='neb.traj')
 opt.run(fmax=0.05)

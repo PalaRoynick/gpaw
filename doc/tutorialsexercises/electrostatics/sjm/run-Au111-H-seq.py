@@ -4,7 +4,7 @@ from ase.units import Pascal, m
 from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
-from gpaw import GPAW
+from gpaw import GPAW, PW
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
@@ -34,7 +34,7 @@ interactions = [SurfaceInteraction(surface_tension=gamma)]
 # The calculator
 calc = GPAW(
     # General GPAW parameters.
-    mode='fd',
+    mode=PW(400.),
     txt='Au111-H-seq.txt',
     gpts=(16, 16, 120),
     kpts=(9, 9, 1),

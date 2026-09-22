@@ -5,7 +5,7 @@ from ase import Atoms
 from ase.parallel import paropen
 from ase.units import Pascal, m
 
-from gpaw import GPAW, FermiDirac
+from gpaw import GPAW, PW, FermiDirac
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             LinearDielectric, SurfaceInteraction)
@@ -88,13 +88,15 @@ dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
 atoms.calc = GPAW(
-    mode='fd',
+    mode=PW(400.),
     txt='gpaw-potential.txt',
     kpts=(4, 4, 1),
     gpts=(48, 48, 192),
     xc='PBE',
     occupations=FermiDirac(0.1),
-    convergence={'work function': 0.001},
+    # The 'work function' convergence criterion is not available in PW
+    # mode: it needs dipole_layer_correction(), which the Poisson solver
+    # SJM builds there (ConjugateGradientPoissonSolver) does not provide.
     extensions=[SJM(
         # Solvated jellium parameters.
         excess_electrons=0.45235,
