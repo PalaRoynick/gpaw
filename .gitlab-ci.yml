@@ -1,6 +1,6 @@
 variables:
   PYTHONUSERBASE: ".local"
-  DOCKERSUFFIX: "-staging"  # Set to "-staging" to get the staging dockers
+  DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
