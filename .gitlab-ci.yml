@@ -1,5 +1,4 @@
 variables:
-  PYTHONUSERBASE: ".local"
   DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
@@ -24,9 +23,8 @@ default:
     - which python
     - which pip
     - pip freeze
-    - export PYTHONUSERBASE=`realpath $PYTHONUSERBASE`
     - mkdir -p `python -m site --user-site`
-    - export PATH=$PYTHONUSERBASE/bin:$PATH
+    - export PATH=$HOME/.local/bin:$PATH
     - export PYTEST_ADDOPTS="--color=yes"
     - pip freeze
   interruptible: true
