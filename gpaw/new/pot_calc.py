@@ -34,6 +34,7 @@ from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 class PotentialCalculator:
     def __init__(self,
+                 wf_grid,
                  xc: Functional,
                  poisson_solver,
                  setups: list[Setup],
@@ -41,6 +42,7 @@ class PotentialCalculator:
                  relpos_ac: Array2D,
                  extensions: list | None = None,
                  soc: bool = False):
+        self.wf_grid
         self.poisson_solver = poisson_solver
         self.xc = xc
         self.setups = setups
