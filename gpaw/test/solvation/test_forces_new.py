@@ -110,30 +110,3 @@ def test_fd_solvation_forces(in_tmp_dir):
     f_num = calculate_numerical_forces(atoms, eps=0.02, iatoms=[0],
                                        icarts=[2], force_consistent=True)
     assert F_ia[0, 2] == pytest.approx(f_num[0, 0], abs=0.015)
-
-
-def test_sjm_zero_charge_forces_match_solvation(in_tmp_dir):
-    """SJM with no excess electrons must reproduce plain Solvation.
-
-    An empty jellium region adds nothing to the density, so the two
-    calculations differ only in that SJM reaches the solvation model
-    through a wrapped extension that is not itself in the extension
-    list -- every hook, the force correction included, has to be
-    forwarded by hand.  Dropping the forwarding silently loses the whole
-    solvation force correction, leaving forces that disagree with the
-    energy and a relaxation that walks uphill.
-
-    In plane-wave mode the two build the very same Poisson solver, once
-    Solvation is told to make the dipole correction that SJM always
-    makes, so the agreement here is to round-off.  (Solvation has no
-    dipole layer in fd mode, where SJM applies its own saw-tooth
-    reference instead, so the two legitimately differ by a few meV/Ang.)
-    """
-    atoms = make_atoms([10., 10., 12.], True)
-
-    atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
-                           dipolelayer=True, zero_vacuum=True)
-    F_solvation = atoms.get_forces()
-
-    atoms.calc = make_calc('pw', 'nacl_pw_sjm.txt', sjm=True)
-    assert atoms.get_forces() == pytest.approx(F_solvation, abs=1e-6)

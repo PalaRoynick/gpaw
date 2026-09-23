@@ -1,0 +1,216 @@
+"""SJM extension tests that need converged SCF loops.
+
+They were too slow for the test suite in gpaw/test/solvation/, which keeps
+the quick ones.  agts.py runs each function here as a separate task.
+"""
+import pytest
+from ase import Atoms
+from ase.units import Bohr
+
+from gpaw import GPAW, FermiDirac
+from gpaw.extensions.electrochemistry import SJM
+from gpaw.test.solvation.test_forces_new import make_atoms as nacl_atoms
+from gpaw.test.solvation.test_forces_new import make_calc
+from gpaw.test.solvation.test_modes import NoCavity, Vacuum
+from gpaw.test.solvation.test_sjm_change import TOL, converged_atoms
+
+ADJUST_TARGET = 7.5  # V
+ADJUST_TOL = 0.05  # V - loose on purpose; that is what always_adjust is for
+
+
+def h_atoms(**sjm_kwargs) -> Atoms:
+    """One H atom in a 12 Å cell, with a vacuum SJM extension."""
+    a = 1.4
+    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
+    atoms.positions[0, 2] = 4.0
+    atoms.calc = GPAW(
+        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
+        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
+                        interactions=[], **sjm_kwargs)])
+    return atoms
+
+
+def adjusting_atoms(always_adjust: bool) -> Atoms:
+    a = 1.4
+    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
+    atoms.positions[0, 2] = 4.0
+    atoms.calc = GPAW(
+        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
+        # This one-electron system is only marginally convergent; see
+        # converged_atoms() in gpaw/test/solvation/test_sjm_change.py.
+        convergence={'eigenstates': 1e-5},
+        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
+                        interactions=[], target_potential=ADJUST_TARGET,
+                        excess_electrons=-0.0045, tol=ADJUST_TOL,
+                        always_adjust=always_adjust)])
+    return atoms
+
+
+# Changing parameters without discarding the wave functions:
+
+def test_change_target_potential():
+    atoms = converged_atoms()
+    calc = atoms.calc
+    sjm = calc.dft.sjm
+    ibzwfs = calc.dft.ibzwfs
+    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
+
+    sjm.change(target_potential=7.2)
+    atoms.get_potential_energy()
+    assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
+    # Same wave functions - nothing was rebuilt from scratch:
+    assert calc.dft.ibzwfs is ibzwfs
+
+
+def test_switch_to_constant_charge():
+    atoms = converged_atoms()
+    calc = atoms.calc
+    sjm = calc.dft.sjm
+    ibzwfs = calc.dft.ibzwfs
+
+    sjm.change(target_potential=None, excess_electrons=-0.01)
+    atoms.get_potential_energy()
+    assert sjm.excess_electrons == -0.01
+    assert calc.results['excess_electrons'] == pytest.approx(-0.01)
+    assert calc.dft.ibzwfs is ibzwfs
+
+    # ... and back again, reaching the same potential as before:
+    sjm.change(target_potential=7.5)
+    atoms.get_potential_energy()
+    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
+    assert calc.dft.ibzwfs is ibzwfs
+
+
+def test_change_before_first_calculation():
+    """calc.sjm reaches the parameters before there is a calculation."""
+    atoms = h_atoms(excess_electrons=0.0)
+
+    # No calculation yet, so this only stores the parameter:
+    atoms.calc.sjm.change(excess_electrons=-0.01)
+    with pytest.raises(AttributeError, match='No calculation'):
+        atoms.calc.dft
+
+    atoms.get_potential_energy()
+    assert atoms.calc.dft.sjm.excess_electrons == -0.01
+    assert atoms.calc.results['excess_electrons'] == pytest.approx(-0.01)
+
+    # Once built, calc.sjm is the extension itself:
+    assert atoms.calc.sjm is atoms.calc.dft.sjm
+
+    # ... and setting through it still keeps the wave functions:
+    ibzwfs = atoms.calc.dft.ibzwfs
+    atoms.calc.sjm.change(excess_electrons=-0.02)
+    atoms.get_potential_energy()
+    assert atoms.calc.dft.sjm.excess_electrons == -0.02
+    assert atoms.calc.dft.ibzwfs is ibzwfs
+
+
+# Stepping the charge on to the next geometry with always_adjust:
+
+def test_step_reaches_the_next_geometry(always_adjust: bool):
+    atoms = adjusting_atoms(always_adjust)
+    atoms.get_potential_energy()
+    sjm = atoms.calc.dft.sjm
+    charge = sjm.excess_electrons
+
+    assert sjm.get_electrode_potential() == pytest.approx(ADJUST_TARGET,
+                                                          abs=ADJUST_TOL)
+    # Whatever is staged, the results belong to the charge that was converged:
+    assert atoms.calc.results['excess_electrons'] == pytest.approx(charge)
+
+    staged = sjm.potentiostat.pending_excess_electrons
+    if not always_adjust:
+        assert staged is None
+    else:
+        assert staged is not None
+        assert staged != pytest.approx(charge)
+
+    # An ionic step: the staged charge is picked up before the next SCF loop.
+    atoms.positions[0, 2] += 0.02
+    atoms.calc.move_atoms(atoms)
+    assert sjm.potentiostat.pending_excess_electrons is None
+    if always_adjust:
+        assert sjm.excess_electrons == pytest.approx(staged)
+        assert (sjm.potentiostat.charging.excess_electrons ==
+                pytest.approx(staged))
+    else:
+        assert sjm.excess_electrons == pytest.approx(charge)
+
+
+def test_change_drops_a_staged_step():
+    """An explicit charge - or turning always_adjust off - wins."""
+    atoms = adjusting_atoms(always_adjust=True)
+    atoms.get_potential_energy()
+    sjm = atoms.calc.dft.sjm
+    assert sjm.potentiostat.pending_excess_electrons is not None
+
+    sjm.change(excess_electrons=-0.01)
+    assert sjm.excess_electrons == -0.01
+    assert sjm.potentiostat.pending_excess_electrons is None
+
+    # Nothing is staged while always_adjust is off:
+    sjm.change(always_adjust=False)
+    atoms.get_potential_energy()
+    assert sjm.potentiostat.pending_excess_electrons is None
+
+    sjm.change(always_adjust=True)
+    atoms.positions[0, 2] += 0.02
+    atoms.get_potential_energy()
+    assert sjm.potentiostat.pending_excess_electrons is not None
+
+
+# Geometry of the jellium region:
+
+def _extent(sjm):
+    """Actual z-extent of the jellium mask, in Angstrom."""
+    mask_r = sjm.potentiostat.charging.mask_r.gather(broadcast=True)
+    z_z = mask_r.desc.xyz()[0, 0, :, 2] * Bohr
+    inside = mask_r.data.mean(axis=(0, 1)) > 0
+    return z_z[inside].min(), z_z[inside].max()
+
+
+def test_region_follows_atoms(fix_bottom: bool):
+    """A relative lower limit tracks the atoms unless it is fixed."""
+    atoms = h_atoms(excess_electrons=-0.01,
+                    jelliumregion={'bottom': -3.0, 'fix_bottom': fix_bottom})
+    atoms.get_potential_energy()
+    bottom, top = _extent(atoms.calc.dft.sjm)
+    assert bottom == pytest.approx(7.0, abs=0.2)  # 3 Å above the atom
+
+    atoms.positions[0, 2] += 1.0
+    atoms.get_potential_energy()
+    new_bottom, new_top = _extent(atoms.calc.dft.sjm)
+    assert new_top == pytest.approx(top)  # the top is tied to the cell
+    if fix_bottom:
+        assert new_bottom == pytest.approx(bottom)
+    else:
+        assert new_bottom == pytest.approx(bottom + 1.0, abs=0.2)
+
+
+# Forces:
+
+def test_sjm_zero_charge_forces_match_solvation():
+    """SJM with no excess electrons must reproduce plain Solvation.
+
+    An empty jellium region adds nothing to the density, so the two
+    calculations differ only in that SJM reaches the solvation model
+    through a wrapped extension that is not itself in the extension
+    list -- every hook, the force correction included, has to be
+    forwarded by hand.  Dropping the forwarding silently loses the whole
+    solvation force correction, leaving forces that disagree with the
+    energy and a relaxation that walks uphill.
+
+    In plane-wave mode the two build the very same Poisson solver, once
+    Solvation is told to make the dipole correction that SJM always
+    makes, so the agreement here is to round-off.  (Solvation has no
+    dipole layer in fd mode, where SJM applies its own saw-tooth
+    reference instead, so the two legitimately differ by a few meV/Ang.)
+    """
+    atoms = nacl_atoms([10., 10., 12.], True)
+
+    atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
+                           dipolelayer=True, zero_vacuum=True)
+    F_solvation = atoms.get_forces()
+
+    atoms.calc = make_calc('pw', 'nacl_pw_sjm.txt', sjm=True)
+    assert atoms.get_forces() == pytest.approx(F_solvation, abs=1e-6)

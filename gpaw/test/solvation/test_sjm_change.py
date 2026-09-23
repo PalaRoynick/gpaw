@@ -10,8 +10,8 @@ from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 TOL = 0.005  # V
 
 
-@pytest.fixture
-def atoms(in_tmp_dir):
+def converged_atoms() -> Atoms:
+    """H at a converged 7.5 V, the starting point of every change() test."""
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
@@ -37,35 +37,9 @@ def atoms(in_tmp_dir):
     return atoms
 
 
-def test_change_target_potential(atoms):
-    calc = atoms.calc
-    sjm = calc.dft.sjm
-    ibzwfs = calc.dft.ibzwfs
-    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
-
-    sjm.change(target_potential=7.2)
-    atoms.get_potential_energy()
-    assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
-    # Same wave functions - nothing was rebuilt from scratch:
-    assert calc.dft.ibzwfs is ibzwfs
-
-
-def test_switch_to_constant_charge(atoms):
-    calc = atoms.calc
-    sjm = calc.dft.sjm
-    ibzwfs = calc.dft.ibzwfs
-
-    sjm.change(target_potential=None, excess_electrons=-0.01)
-    atoms.get_potential_energy()
-    assert sjm.excess_electrons == -0.01
-    assert calc.results['excess_electrons'] == pytest.approx(-0.01)
-    assert calc.dft.ibzwfs is ibzwfs
-
-    # ... and back again, reaching the same potential as before:
-    sjm.change(target_potential=7.5)
-    atoms.get_potential_energy()
-    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
-    assert calc.dft.ibzwfs is ibzwfs
+@pytest.fixture
+def atoms(in_tmp_dir):
+    return converged_atoms()
 
 
 def test_grand_output_toggle(atoms):
@@ -91,36 +65,6 @@ def test_grand_output_toggle(atoms):
 def test_unknown_keyword(atoms):
     with pytest.raises(ValueError, match='Unexpected SJM keyword'):
         atoms.calc.sjm.change(excess_electron=-0.01)
-
-
-def test_change_before_first_calculation(in_tmp_dir):
-    """calc.sjm reaches the parameters before there is a calculation."""
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 4.0
-    atoms.calc = GPAW(
-        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
-                        interactions=[], excess_electrons=0.0)])
-
-    # No calculation yet, so this only stores the parameter:
-    atoms.calc.sjm.change(excess_electrons=-0.01)
-    with pytest.raises(AttributeError, match='No calculation'):
-        atoms.calc.dft
-
-    atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.excess_electrons == -0.01
-    assert atoms.calc.results['excess_electrons'] == pytest.approx(-0.01)
-
-    # Once built, calc.sjm is the extension itself:
-    assert atoms.calc.sjm is atoms.calc.dft.sjm
-
-    # ... and setting through it still keeps the wave functions:
-    ibzwfs = atoms.calc.dft.ibzwfs
-    atoms.calc.sjm.change(excess_electrons=-0.02)
-    atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.excess_electrons == -0.02
-    assert atoms.calc.dft.ibzwfs is ibzwfs
 
 
 def test_unknown_extension_name(atoms):
