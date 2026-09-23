@@ -743,7 +743,7 @@ class DFT:
                     mode: str | dict | Mode,
                     *,
                     nbands: int | None = None) -> None:
-        """In-place convertion from one mode to another.
+        """In-place conversion from one mode to another.
 
         **Only LCAO to PW or FD mode implemented!**
         """

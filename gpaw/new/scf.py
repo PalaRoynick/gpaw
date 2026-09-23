@@ -88,9 +88,13 @@ class SCFLoop:
             dens_error = 0.0
 
         if potential is None or potential.needs_recalculation:
-            potential, energies, _ = pot_calc.calculate(
-                density, ibzwfs,
-                potential.vHt_x if potential is not None else None)
+            if self.update_density_and_potential:
+                potential, energies, _ = pot_calc.calculate(
+                    density, ibzwfs,
+                    potential.vHt_x if potential is not None else None)
+            elif potential is None:
+                raise ValueError(
+                    'Fixed potential requested, but potential is None')
         else:
             potential.needs_recalculation = True
 
