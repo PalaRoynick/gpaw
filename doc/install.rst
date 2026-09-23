@@ -54,7 +54,7 @@ There are several ways to install GPAW:
 Requirements
 ============
 
-* Python_ 3.9 or later
+* Python_ 3.11 or later
 * ASE_
 * NumPy_
 * SciPy_
@@ -92,21 +92,22 @@ Installation using ``pip``
 
 .. highlight:: bash
 
-The simplest way to install GPAW is using pip_ and the GPAW package from
+The simplest way to make a :mod:`virtual environment <py:venv>` and
+install GPAW into it using pip_ and the GPAW package from
 the Python package index (PyPI_)::
 
+    $ python3 -m venv my-gpaw-venv
     $ python3 -m pip install gpaw
 
 This will compile and install GPAW (both ``_gpaw.so`` and all the Python
-files) in your ``~/.local/lib/pythonX.Y/site-packages`` folder where
+files) in your ``my-gpaw-venv/lib/pythonX.Y/site-packages`` folder where
 Python can automatically find it.  Pip will also place
-the command line tool :command:`gpaw` in the ``~/.local/bin`` folder, so
+the command line tool :command:`gpaw` in the ``my-gpaw-venv/bin`` folder, so
 make sure you have that in your ``$PATH`` environment variable.
 
 Check that you have installed everything in the correct places::
 
     $ gpaw info
-
 
 Now you should be ready to use GPAW, but before you start, please run the
 tests as described below.
@@ -275,6 +276,7 @@ A few extra tips:
     export LD_LIBRARY_PATH=/my/path/to/libxc/5.2.0/install/lib
 
 Example::
+
     wget https://gitlab.com/libxc/libxc/-/archive/6.2.2/libxc-6.2.2.tar.bz2
     tar -xf libxc-6.2.2.tar.bz2
     cd libxc-6.2.2
