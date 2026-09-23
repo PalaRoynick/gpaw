@@ -223,15 +223,14 @@ class MSR1Mixer(BaseMixer):
             if self.A == 0:
                 # First step: use A_target as-is
                 self.A = A_target
-                self.B = 1  # Ensure B is initialized to 1
             else:
-                # If bad step, reduce A_target and clip to A_lims
+                # If bad step, clip ratio to A_rate_ratio
                 A_target /= self.A
                 A_target = np.clip(A_target, self.A_rate_ratio[0],
                                    self.A_rate_ratio[1])
                 self.A *= A_target
-                self.B = 1  # Ensure B is initialized to 1
             self.A = np.clip(self.A, self.A_lims[0], self.A_lims[1])
+            self.B = 1  # Ensure B is initialized to 1
 
         A = self.A
         B = self.B
