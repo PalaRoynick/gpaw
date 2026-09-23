@@ -92,7 +92,7 @@ Installation using ``pip``
 
 .. highlight:: bash
 
-The simplest way to make a :mod:`virtual environment <py:venv>` and
+The simplest way to make a :mod:`virtual environment <venv>` and
 install GPAW into it using pip_ and the GPAW package from
 the Python package index (PyPI_)::
 
