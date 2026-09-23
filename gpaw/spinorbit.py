@@ -41,6 +41,7 @@ _L_vlmm: list[list[np.ndarray]] = []  # see get_L_vlmm() below
 
 
 def calculate_soc(dft: DFT,
+                  *,
                   n1: int = 0,
                   n2: int | None = None,
                   scale: float = 1.0,
@@ -64,7 +65,7 @@ def calculate_soc(dft: DFT,
         ibzwfs.comm,
         n1, n2)
 
-    C_ss, s_vss = basis_change(phi, theta)
+    C_ss, s_vss = basis_change(theta=theta, phi=phi)
 
     eig_skn = ibzwfs.get_all_eigs()
 
@@ -284,7 +285,8 @@ def diagonalize(P_amsi: AtomArrays,
     return Pout_amsi, eig_m, v_nm.T, spin_projection_mv
 
 
-def basis_change(theta: float,
+def basis_change(*,
+                 theta: float,
                  phi: float) -> tuple[np.ndarray, list[np.ndarray]]:
     theta *= np.pi / 180
     phi *= np.pi / 180
@@ -892,7 +894,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
     if isinstance(calc, (str, Path)):
         calc = GPAW(calc)
 
-    if new:#isinstance(calc, ASECalculator):
+    if isinstance(calc, ASECalculator):
         assert not projected
         assert occcalc is None
         assert eigenvalues is None

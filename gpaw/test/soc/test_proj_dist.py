@@ -18,7 +18,7 @@ def test_dist():
     P_Ksani, _, _ = distribute_projections(
         P_ksani, l_aj, rank_ks, ibz, world, 1, 3)
     P_amsi, eig_m = to_spinors(P_Ksani[0], np.ones((1, 2)))
-    C_ss, s_vss = basis_change(0.0, 0.0)
+    C_ss, s_vss = basis_change(theta=0.0, phi=0.0)
     dVL_avii = {a: np.ones((3,) + shape)
                 for a, shape in enumerate(layout.shape_a)}
     diagonalize(P_amsi, eig_m, dVL_avii, s_vss, C_ss)
