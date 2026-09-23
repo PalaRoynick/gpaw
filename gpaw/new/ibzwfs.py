@@ -130,7 +130,8 @@ class IBZWaveFunctions(Generic[WFT]):
     @property
     def fermi_level(self) -> float:
         fl = self.fermi_levels
-        assert fl is not None and len(fl) == 1
+        if fl is None or len(fl) != 1:
+            raise ValueError('No Fermi-level!')
         return fl[0]
 
     def summary(self, log):
@@ -369,8 +370,10 @@ class IBZWaveFunctions(Generic[WFT]):
 
     def _get_all_eigs_or_occs(self, what: str, broadcast: bool):
         nkpts = len(self.ibz)
-        mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
-        x_skn = np.empty((self.nspins, nkpts, mynbands))
+        if broadcast or self.comm.rank == 0:
+            x_skn = np.empty((self.nspins, nkpts, self.nbands))
+        else:
+            x_skn = np.empty((0, 0, 0))
         for k in range(nkpts):
             for s in range(self.nspins):
                 x_n = self._get_eigs_or_occs(what, k, s)

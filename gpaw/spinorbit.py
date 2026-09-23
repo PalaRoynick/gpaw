@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
-from math import nan
 from operator import attrgetter
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -67,7 +66,7 @@ def calculate_soc(dft: DFT,
 
     C_ss, s_vss = basis_change(theta=theta, phi=phi)
 
-    eig_skn = ibzwfs.get_all_eigs()
+    eig_skn = ibzwfs.get_all_eigs(broadcast=True)
 
     # <phi_i|dV_adr / r * L_v|phi_j>
     dVL_avii = {a: soc(dft.setups[a],
@@ -174,14 +173,16 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                     if r == comm.rank:
                         P2_ksani[(k, spin)] = P0_ani
                     else:
-                        req = comm.send(P0_ani.data, r, block=False)
+                        req = comm.send(P0_ani.data, r,
+                                        tag=k * 2 + spin,
+                                        block=False)
                         requests.append(req)
 
     for from_rank, to in to_r.items():
         for to_rank, k, spin in to:
             if to_rank == comm.rank and from_rank != to_rank:
                 P_ani = P_layout.empty(n2 - n1)
-                comm.receive(P_ani.data, from_rank)
+                comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
                 P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
 
@@ -316,7 +317,10 @@ class SOCResult:
                  v_Kmn):
         self.bzwfs = bzwfs
         self.v_Kmn = v_Kmn
-        self.fermi_level = bzwfs.fermi_level * Ha
+        try:
+            self.fermi_level = bzwfs.fermi_level * Ha
+        except ValueError:
+            self.fermi_level = np.nan
 
     def weights(self):
         return self.bzwfs.ibz.weight_k
@@ -417,7 +421,7 @@ class WaveFunction:
         self.spin_projection_mv: Array2D | None = None
         self.v_mn: Array2D | None = None
         self.f_m = np.empty_like(self.eig_m)
-        self.f_m[:] = nan
+        self.f_m[:] = np.nan
         self.bz_index = bz_index
 
     def transform(self, IBZ2BZMap, K) -> WaveFunction:
