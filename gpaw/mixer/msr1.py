@@ -230,7 +230,6 @@ class MSR1Mixer(BaseMixer):
                                    self.A_rate_ratio[1])
                 self.A *= A_target
             self.A = np.clip(self.A, self.A_lims[0], self.A_lims[1])
-            self.B = 1.0  # Ensure B is initialized to 1
 
         A = self.A
         B = self.B
