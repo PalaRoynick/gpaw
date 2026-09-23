@@ -42,7 +42,7 @@ class PotentialCalculator:
                  relpos_ac: Array2D,
                  extensions: list | None = None,
                  soc: bool = False):
-        self.wf_grid
+        self.wf_grid = wf_grid
         self.poisson_solver = poisson_solver
         self.xc = xc
         self.setups = setups
