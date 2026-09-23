@@ -135,7 +135,7 @@ class DFT:
             _components = params.create_dft_calculation_components(
                 self.atoms, communicator, txt)
 
-        (self.ibzwfs, self.density, self.potential,
+        (self.ibzwfs, self.density, self._potential,
          self.setups, self.scf_loop, self.pot_calc,
          self.log, self.params, energies) = _components
 
@@ -184,6 +184,13 @@ class DFT:
                          log, params, energies),
             converge=converge)
 
+    @property
+    def potential(self) -> Potential:
+        if self._potential is None:
+            potential, energies, _ = self.pot_calc.calculate(self.density)
+            self._potential = potential
+        return self._potential
+
     def __getattr__(self, name):
         matches = [ext
                    for ext in self.pot_calc.extensions
@@ -212,7 +219,7 @@ class DFT:
         grid = self.density.nt_sR.desc
         rank_a = grid.ranks_from_fractional_positions(self.relpos_ac)
         atomdist = AtomDistribution(rank_a, atomdist.comm)
-        wf_grid = self.potential.vt_sR.desc
+        wf_grid = self.pot_calc.wf_grid
         if wf_grid.comm.size != grid.comm.size:
             rank_a = wf_grid.ranks_from_fractional_positions(self.relpos_ac)
             wf_atomdist = AtomDistribution(rank_a, wf_grid.comm)
@@ -224,12 +231,8 @@ class DFT:
         self.density.move(self.relpos_ac, atomdist)
         if self.ibzwfs.has_wave_functions():
             self.density.update(self.ibzwfs)
-        self.potential.move(wf_atomdist)
         self.scf_loop.hamiltonian.move(self.relpos_ac)
         self.scf_loop.mixer.move(self.relpos_ac, atomdist)
-
-        self.potential, self.energies, _ = self.pot_calc.calculate(
-            self.density, self.ibzwfs, self.potential.vHt_x)
 
         mm_av = self.results.get('non_collinear_magmoms')
         if mm_av is None:
@@ -257,14 +260,14 @@ class DFT:
 
         for ctx in self.scf_loop.iterate(self.ibzwfs,
                                          self.density,
-                                         self.potential,
+                                         self._potential,
                                          self.energies,
                                          self.pot_calc,
                                          maxiter=maxiter,
                                          calculate_forces=calculate_forces,
                                          log=self.log):
             self.energies = ctx.energies
-            self.potential = ctx.potential
+            self._potential = ctx.potential
             yield ctx
 
     @trace
@@ -760,7 +763,7 @@ class DFT:
             self.density.normalize(self.pot_calc.charge)
             if self.density.nt_sR.xp is np:
                 self.ibzwfs.kpt_band_comm.broadcast(self.density.nt_sR.data, 0)
-            self.potential, self.energies, _ = self.pot_calc.calculate(
+            self._potential, self.energies, _ = self.pot_calc.calculate(
                 self.density)
 
         self.ibzwfs = self.ibzwfs.convert_to(

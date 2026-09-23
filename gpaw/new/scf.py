@@ -81,12 +81,18 @@ class SCFLoop:
                     density.update_ked(ibzwfs)
                 density.taut_sR.data[density.taut_sR.data < 1e-7] = 1e-7
                 dens_error = self.mixer.mix(density)
-                potential, energies, _ = pot_calc.calculate(
-                    density, ibzwfs, potential.vHt_x)
+                potential.needs_recalculation = True
             else:
                 dens_error = self.mixer.mix(density)
         else:
             dens_error = 0.0
+
+        if potential is None or potential.needs_recalculation:
+            potential, energies, _ = pot_calc.calculate(
+                density, ibzwfs,
+                potential.vHt_x if potential is not None else None)
+        else:
+            potential.needs_recalculation = True
 
         for self.niter in itertools.count(start=1):
             eig_error, wfs_error, energies = self.eigensolver.iterate(

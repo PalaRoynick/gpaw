@@ -1010,8 +1010,13 @@ class Parameters:
             density.nt_sR.data[:] = 1.0
         density.normalize(pot_calc.charge)
 
-        potential, energies, _ = pot_calc.calculate_without_orbitals(
-            density)
+        # Special case for LCAO initialization:
+        if self.mode.name in ['pw', 'fd'] and not self.random:
+            potential, energies, _ = pot_calc.calculate(density)
+        else:
+            potential = None
+            energies = None
+
         ibzwfs = builder.create_ibz_wave_functions(
             basis_set, potential)
 
