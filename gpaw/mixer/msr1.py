@@ -53,7 +53,7 @@ class MSR1Mixer(BaseMixer):
         self.trust_scale = trust_scale
         self.soft_lim = soft_lim
         self.hard_lim = hard_lim
-        self.A_lims: list[float] = [0.02, max_A]
+        self.A_lims: list[float] = [0.001, max_A]
         self.B_lims: list[float] = [0.2, 1.0]
         self.A_rate_ratio: list[float] = [0.5, 1.5]
         self.B_rate_ratio: list[float] = [3 / 4, 4 / 3]
@@ -220,13 +220,7 @@ class MSR1Mixer(BaseMixer):
                               else 1.0)
             self.B = np.clip(self.B, self.B_lims[0], self.B_lims[1])
         else:
-            if self.A == 0:
-                self.A = A_target
-            else:
-                A_target /= self.A
-                A_target = np.clip(A_target, self.A_lims[0], self.A_lims[1])
-                self.A *= A_target
-            self.A = np.clip(self.A, self.A_lims[0], self.A_lims[1])
+            self.A = np.clip(A_target, self.A_lims[0], self.A_lims[1])
 
         A = self.A
         B = self.B
