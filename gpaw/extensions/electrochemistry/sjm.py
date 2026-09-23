@@ -601,9 +601,15 @@ class SJMExtension(Extension):
             rerun = True
 
         if rerun and self._dft is not None:
-            # Empty results make ASECalculator.iconverge() run the SCF loop
-            # again; the density and the wave functions are kept.
-            self._dft.results.clear()
+            dft = self._dft
+            dft.results.clear()
+            density = dft.density
+            dft.ibzwfs.calculate_occs(
+                dft.scf_loop.occ_calc,
+                density.nvalence - density.charge + dft.pot_calc.charge)
+            density.update(dft.ibzwfs)
+            dft.potential, dft.energies, _ = dft.pot_calc.calculate(
+                density, dft.ibzwfs, dft.potential.vHt_x)
             pot.reset_attempts()
 
     def _relpos_ac(self):
