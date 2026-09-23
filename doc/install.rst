@@ -92,11 +92,12 @@ Installation using ``pip``
 
 .. highlight:: bash
 
-The simplest way to make a :mod:`virtual environment <venv>` and
+The simplest way to make a :mod:`virtual environment <venv>`, activate it and
 install GPAW into it using pip_ and the GPAW package from
 the Python package index (PyPI_)::
 
     $ python3 -m venv my-gpaw-venv
+    $ source my-gpaw-venv/bin/activate
     $ python3 -m pip install gpaw
 
 This will compile and install GPAW (both ``_gpaw.so`` and all the Python
