@@ -10,8 +10,8 @@ from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 TOL = 0.005  # V
 
 
-def converged_atoms() -> Atoms:
-    """H at a converged 7.5 V, the starting point of every change() test."""
+def h_atoms() -> Atoms:
+    """H at 7.5 V, the starting point of every change() test."""
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
@@ -24,25 +24,38 @@ def converged_atoms() -> Atoms:
         # already found the right charge.  The potential it settles on is
         # accurate to well within TOL, which is all this test needs.
         convergence={'eigenstates': 1e-5},
-        # Every test here starts from a converged constant-potential
-        # calculation and then changes something, so the equilibration
-        # itself is setup cost, not what is under test (that is
-        # test_sjm_slope.py's job).  Starting from the charge it converges
-        # to, and telling it the slope instead of leaving it to guess a
-        # capacitance, takes this fixture from six SCF loops to two.
+        # The change() tests in gpaw/test/big/solvation/sjm/ start from a
+        # converged constant-potential calculation and then change
+        # something, so the equilibration itself is setup cost, not what is
+        # under test (that is test_sjm_slope.py's job).  Starting from the
+        # charge it converges to, and telling it the slope instead of
+        # leaving it to guess a capacitance, takes it from six SCF loops to
+        # two.
         extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
                         interactions=[], target_potential=7.5,
                         excess_electrons=-0.00316, slope=-384.0, tol=TOL)])
+    return atoms
+
+
+def converged_atoms() -> Atoms:
+    atoms = h_atoms()
     atoms.get_potential_energy()
     return atoms
 
 
 @pytest.fixture
 def atoms(in_tmp_dir):
-    return converged_atoms()
+    """The built calculation, with no SCF loop: change() needs no more."""
+    atoms = h_atoms()
+    atoms.calc.initialize(atoms)
+    return atoms
 
 
-def test_grand_output_toggle(atoms):
+def test_grand_output_toggle(in_tmp_dir):
+    atoms = h_atoms()
+    # This one needs results, but one SCF loop at constant charge will do:
+    atoms.calc.sjm.change(target_potential=None)
+    atoms.get_potential_energy()
     calc = atoms.calc
     sjm = calc.dft.sjm
     grand = calc.results['energy']
@@ -98,10 +111,9 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        convergence={'eigenstates': 1e-5},
         extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
                         interactions=[], excess_electrons=0.0, tol=0.001)])
-    atoms.get_potential_energy()
+    atoms.calc.initialize(atoms)
     sjm = atoms.calc.dft.sjm
 
     sjm.change(tol=0.05)  # constant-charge mode
@@ -119,7 +131,7 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
 
 def test_parameters_are_readable_but_read_only(atoms):
     """Every keyword reads back under its own name; none can be assigned."""
-    sjm = atoms.calc.sjm  # the built extension, after a calculation
+    sjm = atoms.calc.sjm  # the built extension
     assert sjm.target_potential == 7.5
     assert sjm.tol == TOL
     assert sjm.excess_electrons == sjm.charge  # Extension API
