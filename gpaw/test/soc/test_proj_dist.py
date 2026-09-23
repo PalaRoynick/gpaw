@@ -8,7 +8,7 @@ from gpaw.spinorbit import (basis_change, diagonalize, distribute_projections,
 
 
 def test_dist():
-    layout = AtomArraysLayout([5, 13])
+    layout = AtomArraysLayout([5, 13], world)
     l_aj = [[0, 0, 1], [0, 0, 1, 1, 2]]
     P_ani = layout.zeros(3)
     P_ksani = {(0, 0): P_ani}
@@ -22,3 +22,7 @@ def test_dist():
     dVL_avii = {a: np.ones((3,) + shape)
                 for a, shape in enumerate(layout.shape_a)}
     diagonalize(P_amsi, eig_m, dVL_avii, s_vss, C_ss)
+
+
+if __name__ == '__main__':
+    test_dist()

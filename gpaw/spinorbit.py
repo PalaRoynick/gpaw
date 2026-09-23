@@ -149,10 +149,10 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     p.set(band=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
-    domain_comm = comms['b']
+    domain_comm = comms['d']
     mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
-
-    P_layout = next(iter(P_ksani.values())).layout
+    print(kpt_comm.size, domain_comm.size, mynk)
+    P_layout = next(iter(P_ksani.values())).layout.new(atomdist=None)
     atomdist = AtomDistribution.from_number_of_atoms(len(l_aj), domain_comm)
 
     to_r = defaultdict(set)
@@ -178,12 +178,13 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                         block=False)
                         requests.append(req)
 
-    for from_rank, to in to_r.items():
-        for to_rank, k, spin in to:
-            if to_rank == comm.rank and from_rank != to_rank:
-                P_ani = P_layout.empty(n2 - n1)
-                comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
-                P2_ksani[(k, spin)] = P_ani
+    if domain_comm.rank == 0:
+        for from_rank, to in to_r.items():
+            for to_rank, k, spin in to:
+                if to_rank == comm.rank and from_rank != to_rank:
+                    P_ani = P_layout.empty(n2 - n1)
+                    comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
+                    P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
 
     symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
@@ -191,6 +192,8 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
     P_Ksani = {}
+    print(list(P2_ksani))
+    print(atomdist, K1, K2)
     for K in range(K1, K2):
         k = ibz.bz2ibz_K[K]
         P_sani = []
