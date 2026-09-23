@@ -220,7 +220,18 @@ class MSR1Mixer(BaseMixer):
                               else 1.0)
             self.B = np.clip(self.B, self.B_lims[0], self.B_lims[1])
         else:
-            self.A = np.clip(A_target, self.A_lims[0], self.A_lims[1])
+            if self.A == 0:
+                # First step: use A_target as-is
+                self.A = A_target
+                self.B = 1  # Ensure B is initialized to 1
+            else:
+                # If bad step, reduce A_target and clip to A_lims
+                A_target /= self.A
+                A_target = np.clip(A_target, self.A_rate_ratio[0],
+                                   self.A_rate_ratio[1])
+                self.A *= A_target
+                self.B = 1  # Ensure B is initialized to 1
+            self.A = np.clip(self.A, self.A_lims[0], self.A_lims[1])
 
         A = self.A
         B = self.B
@@ -373,6 +384,13 @@ class MSR1Mixer(BaseMixer):
         self.pk_1sX.data[:] = 0
         self.last_dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
         return self.last_dNt
+
+    def reset(self):
+        super().reset()
+        self.A = 0
+        self.B = 1
+        self.last_dNt = np.inf
+
 
     def __str__(self):
         lines = ['density mixing:',
