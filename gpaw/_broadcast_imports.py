@@ -32,7 +32,7 @@ from gpaw import GPAW_NO_C_EXTENSION
 # This should happen if the environment variable was not set
 # and user is executing plain `python` (not `gpaw python`)
 if gpaw.GPAW_MPI_BACKEND is None:
-    gpaw.GPAW_MPI_BACKEND = "serial"
+    gpaw.GPAW_MPI_BACKEND = 'serial'
 GPAW_MPI_BACKEND = gpaw.GPAW_MPI_BACKEND
 
 cgpaw_version = getattr(cgpaw, 'version', 0)
@@ -82,29 +82,29 @@ elif GPAW_MPI_BACKEND == 'cgpaw':
         world = init_cgpaw()
     else:
         raise ValueError(
-            "GPAW_MPI_BACKEND='cgpaw' requested "
-            "but GPAW is not compiled with MPI"
+            'GPAW_MPI_BACKEND=cgpaw requested '
+            'but GPAW is not compiled with MPI'
         )
 elif GPAW_MPI_BACKEND == 'serial':
     if probably_executed_by_mpi_launcher():
         msg = (
-'''\n
+"""\n
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! WARNING!                                                    !
+! ERROR!                                                    !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! GPAW appears to be running inside MPI launcher,             !
 ! but MPI parallelism is disabled.                            !
 ! Steps required to enable MPI parallelization:               !
-'''  # noqa: E122
+"""  # noqa: E122
         )
         if not cgpaw.have_mpi:
             msg += (
-'''
+"""
 ! - Build GPAW with MPI support                               !
-'''.lstrip()  # noqa: E122
+""".lstrip()  # noqa: E122
             )
         msg += (
-'''
+"""
 ! - Run GPAW using `gpaw python` and MPI launcher:            !
 !   - `mpiexec -n N gpaw python script.py` or                 !
 !   - `srun gpaw python script.py` or                         !
@@ -115,7 +115,7 @@ elif GPAW_MPI_BACKEND == 'serial':
 ! More information here:                                      !
 !   https://gpaw.readthedocs.io/releasenotes.html#mpichanges  !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-'''.lstrip()  # noqa: E122
+""".lstrip()  # noqa: E122
         )
         raise RuntimeError(msg)
 
