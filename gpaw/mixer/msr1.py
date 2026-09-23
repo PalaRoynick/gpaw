@@ -391,7 +391,6 @@ class MSR1Mixer(BaseMixer):
         self.B = 1
         self.last_dNt = np.inf
 
-
     def __str__(self):
         lines = ['density mixing:',
                  'MSR1-Mixer',
