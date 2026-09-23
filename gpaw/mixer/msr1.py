@@ -386,8 +386,8 @@ class MSR1Mixer(BaseMixer):
 
     def reset(self):
         super().reset()
-        self.A = 0
-        self.B = 1
+        self.A = 0.0
+        self.B = 1.0
         self.last_dNt = np.inf
 
     def __str__(self):
