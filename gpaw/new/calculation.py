@@ -187,7 +187,8 @@ class DFT:
     @property
     def potential(self) -> Potential:
         if self._potential is None:
-            potential, energies, _ = self.pot_calc.calculate(self.density)
+            potential, energies, _ = self.pot_calc.calculate(self.density,
+                                                             self.ibzwfs)
             self._potential = potential
         return self._potential
 
