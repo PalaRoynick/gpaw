@@ -89,7 +89,6 @@ def calculate_soc(dft: DFT,
         v_Kmn[K] = v_mn
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
-        print(kpt_comm, kpt_comm.rank, spin, q, k, kpt_c, kweight)
         wfs = WaveFunctions(
             setups=dft.setups,
             nbands=2 * (n2 - n1) if ibzwfs.collinear else n2 - n1,
@@ -339,7 +338,7 @@ class SOCResult:
         v_Kmn = np.zeros((len(self.bzwfs.ibz), nbands, nbands), complex)
         for K, v_mn in self.v_Kmn.items():
             v_Kmn[K] = v_mn
-        assert self.bzwfs.comm.size == 1
+        self.bzwfs.comm.sum(v_Kmn)
         return v_Kmn
 
     def get_orbital_magnetic_moments(self):
