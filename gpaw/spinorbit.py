@@ -14,7 +14,7 @@ from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
 from gpaw.ibz2bz import IBZ2BZMaps
 from gpaw.mpi import MPIComm, Parallelization, broadcast_array, serial_comm
 from gpaw.new import zips as zip
-from gpaw.new.brillouin import IBZ, MonkhorstPackKPoints
+from gpaw.new.brillouin import IBZ, MonkhorstPackKPoints, ranks
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.smearing import OccupationNumberCalculator as OccNumCalc
 from gpaw.new.symmetry import Symmetries, SymmetrizationPlan
@@ -89,6 +89,7 @@ def calculate_soc(dft: DFT,
         v_Kmn[K] = v_mn
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
+        print(kpt_comm, kpt_comm.rank, spin, q, k, kpt_c, kweight)
         wfs = WaveFunctions(
             setups=dft.setups,
             nbands=2 * (n2 - n1) if ibzwfs.collinear else n2 - n1,
@@ -144,23 +145,26 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                              AtomDistribution]:
     """Distribute projections from IBZ to BZ.
     """
+    # Parallelize full BZ projections over kpt_comm and domain_comm:
     nbzkpts = len(ibz.bz)
     p = Parallelization(comm, nbzkpts)
     p.set(band=1)
     comms = p.build_communicators()
     kpt_comm = comms['k']
     domain_comm = comms['d']
-    mynk = (nbzkpts + kpt_comm.size - 1) // kpt_comm.size
-    print(kpt_comm.size, domain_comm.size, mynk)
-    P_layout = next(iter(P_ksani.values())).layout.new(atomdist=None)
+
+    krank_K = ranks(kpt_comm.size, nbzkpts)
+    _P_ani = next(iter(P_ksani.values()))
+    collinear = len(_P_ani.dims) == 1
+    P_layout = _P_ani.layout.new(atomdist=None)
     atomdist = AtomDistribution.from_number_of_atoms(len(l_aj), domain_comm)
 
     to_r = defaultdict(set)
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]
         for spin, from_rank in enumerate(rank_ks[k]):
-            to_rank = K // mynk * domain_comm.size
-            to_r[from_rank].add((to_rank, k, spin))
+            to_rank = krank_K[K]
+            to_r[from_rank].add((to_rank, int(k), spin))
 
     P2_ksani = {}
     requests = []
@@ -178,23 +182,22 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                         block=False)
                         requests.append(req)
 
+    dims = (n2 - n1,) if collinear else (n2 - n1, 2)
     if domain_comm.rank == 0:
         for from_rank, to in to_r.items():
             for to_rank, k, spin in to:
                 if to_rank == comm.rank and from_rank != to_rank:
-                    P_ani = P_layout.empty(n2 - n1)
+                    P_ani = P_layout.empty(dims)
                     comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
                     P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
 
     symplan = SymmetrizationPlan(ibz.symmetries, l_aj)
-    K1 = min(kpt_comm.rank * mynk, nbzkpts)
-    K2 = min((kpt_comm.rank + 1) * mynk, nbzkpts)
     nspins = rank_ks.shape[1]
     P_Ksani = {}
-    print(list(P2_ksani))
-    print(atomdist, K1, K2)
-    for K in range(K1, K2):
+    for K, krank in enumerate(krank_K):
+        if krank != kpt_comm.rank:
+            continue
         k = ibz.bz2ibz_K[K]
         P_sani = []
         for spin in range(nspins):
@@ -204,7 +207,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                                                     ibz.time_reversal_K[K])
             else:
                 P0_ani = None
-            P_ani = P_layout.new(atomdist=atomdist).empty(P0_ani.dims)
+            P_ani = P_layout.new(atomdist=atomdist).empty(dims)
             P_ani.scatter_from(P0_ani)
             P_sani.append(P_ani)
         P_Ksani[K] = P_sani
@@ -329,7 +332,7 @@ class SOCResult:
         return self.bzwfs.ibz.weight_k
 
     def eigenvalues(self):
-        return self.bzwfs.get_all_eigs()[0] * Ha
+        return self.bzwfs.get_all_eigs(broadcast=True)[0] * Ha
 
     def eigenvectors(self):
         nbands = self.bzwfs.nbands

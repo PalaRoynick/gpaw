@@ -408,13 +408,14 @@ class IBZWaveFunctions(Generic[WFT]):
         """
         eig_skn = self.get_all_eigs()
         occ_skn = self.get_all_occs()
-        if not self.collinear:
-            eig_skn = eig_skn[0]
-            occ_skn = occ_skn[0]
         assert self.fermi_levels is not None
-        writer.write(fermi_levels=self.fermi_levels * Ha,
-                     eigenvalues=eig_skn * Ha,
-                     occupations=occ_skn)
+        if self.comm.rank == 0:
+            if not self.collinear:
+                eig_skn = eig_skn[0]
+                occ_skn = occ_skn[0]
+            writer.write(fermi_levels=self.fermi_levels * Ha,
+                         eigenvalues=eig_skn * Ha,
+                         occupations=occ_skn)
         ibz = self.ibz
         writer.child('kpts').write(
             atommap=ibz.symmetries.atommap_sa,
