@@ -23,7 +23,7 @@ Requirements
 * NumPy_
 * SciPy_
 * LibXC_
-* A C compiler
+* A C++ compiler
 * A BLAS_ library
 
 Optional (highly recommended for increased performance):
