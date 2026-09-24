@@ -18,7 +18,7 @@ Webpage: https://gpaw.readthedocs.io/
 Requirements
 ------------
 
-* Python_ 3.10 or later
+* Python_ 3.11 or later
 * ASE_
 * NumPy_
 * SciPy_

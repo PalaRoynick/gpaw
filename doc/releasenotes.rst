@@ -10,6 +10,8 @@ Git master branch
 
 :git:`master <>`.
 
+* Minimum version requirements: Python 3.11, ASE 3.29.0.
+
 * GPAW compiled extension now requires a C++17 compliant compiler. Support for
   C99 compilation was dropped in the previous release.
 
