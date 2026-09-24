@@ -559,13 +559,18 @@ class Matrix(XP):
                 self.data.T[lower] = self.data[lower].conj()
             return
 
-        desc = dist.desc
-        cgpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
-        buf = self.data.copy()
-        # Set diagonal to zero in the copy:
-        cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
-        # Now transpose tmp_mm adding the result to the original matrix:
-        cgpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
+        if self.xp is cp:
+            assert isinstance(dist, CuPyDistribution)
+            cupy_tril2full_distributed(self)
+        else:
+            # CPU scalapack path
+            desc = dist.desc
+            cgpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
+            buf = self.data.copy()
+            # Set diagonal to zero in the copy:
+            cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
+            # Now transpose tmp_mm adding the result to the original matrix:
+            cgpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
 
     def add_to_diagonal(self, d: ArrayLike1D | float) -> None:
         """Add list of numbers or single number to diagonal of matrix."""
@@ -1113,6 +1118,21 @@ class CuPyDistribution(MatrixDistribution):
         self.multiply(1.0, L, 'C', Ct, 'T', 0.0, H)
         # H.complex_conjugate()
         return eig_M
+
+
+def cupy_tril2full_distributed(matrix: Matrix) -> None:
+    """Construct a Hermitian matrix based on elements below the main
+    diagonal. In-place.
+    This is currently a serialized implementation that gathers the full matrix
+    on one GPU and does the operation there. In other words, has the same
+    limitation as eg. GPU-eigh."""
+
+    mat_full = matrix.gather(broadcast=False)
+    # Non-None on root processs
+    if mat_full:
+        arr2d = mat_full.data
+        arr2d[:] = cp.tril(arr2d) + cp.tril(arr2d, -1).conj().T
+    matrix.scatter_from(mat_full)
 
 
 def mmm_nn(m1, m2, m3, alpha, beta, mmm):
