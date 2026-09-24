@@ -1,9 +1,10 @@
 """Changing SJM parameters without discarding the wave functions.
 
 Parameters are changed through the SJM object handed to GPAW, which
-forwards to the built extension, calc.dft.sjm; the live values are read
-back off the latter.
+forwards to the built extension, calc.dft.sjm, and reads the live values
+back off it.
 """
+import numpy as np
 import pytest
 from ase import Atoms
 from ase.units import Ha
@@ -73,7 +74,7 @@ def test_grand_output_toggle(in_tmp_dir):
     assert canonical == pytest.approx(
         calc.dft.energies.total_extrapolated * Ha)
     assert grand == pytest.approx(
-        canonical - calc.dft.sjm.excess_electrons * calc.get_fermi_level())
+        canonical - sjm.excess_electrons * calc.get_fermi_level())
 
     # ... and it is reversible:
     sjm.change(grand_output=True)
@@ -86,6 +87,14 @@ def test_unknown_keyword(built):
     for obj in [sjm, atoms.calc.dft.sjm]:
         with pytest.raises(ValueError, match='Unexpected SJM keyword'):
             obj.change(excess_electron=-0.01)
+
+
+def test_nothing_to_report_before_an_scf_loop(built):
+    """Built, but not run: no potential yet, and no traces."""
+    atoms, sjm = built
+    assert np.isnan(sjm.get_electrode_potential())
+    with pytest.raises(RuntimeError, match='No results'):
+        sjm.write_sjm_traces()
 
 
 def test_settings_live_on_the_potentiostat(built):
@@ -134,31 +143,39 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
 
 
 def test_parameters_are_readable_but_read_only(built):
-    """Every keyword reads back under its own name; none can be assigned."""
+    """Every keyword reads back under its own name; none can be assigned.
+
+    Once the calculation is built, the SJM object reads them off the
+    extension, so the two agree.
+    """
     atoms, sjm = built
     ext = atoms.calc.dft.sjm
-    assert ext.target_potential == 7.5
-    assert ext.tol == TOL
-    assert ext.excess_electrons == ext.charge  # Extension API
-    assert ext.max_iters == 10
-    assert ext.max_reruns == 10
-    assert ext.max_potential_stepsize == 2
-    assert ext.grand_output is True
-    assert ext.always_adjust is False
-    assert ext.mixer == 0.2
-    assert ext.slope_regression_depth == 4
-    assert ext.jelliumregion is ext.region
+    assert sjm.target_potential == 7.5
+    assert sjm.tol == TOL
+    assert sjm.excess_electrons == ext.charge  # Extension API
+    assert sjm.max_iters == 10
+    assert sjm.max_reruns == 10
+    assert sjm.max_potential_stepsize == 2
+    assert sjm.grand_output is True
+    assert sjm.always_adjust is False
+    assert sjm.mixer == 0.2
+    assert sjm.slope_regression_depth == 4
+    # The region that was built, while the dict given is what is recorded:
+    assert sjm.jelliumregion is ext.jelliumregion is ext.region
+    assert sjm.todict()['jelliumregion'] == {}
 
-    for key, value in [('charge', -0.01),
-                       ('excess_electrons', -0.01),
+    for key, value in [('excess_electrons', -0.01),
                        ('target_potential', 7.2),
                        ('tol', 0.01),
                        ('slope', -1.0),
                        ('jelliumregion', {})]:
-        with pytest.raises(AttributeError, match='change'):
-            setattr(ext, key, value)
+        for obj in [sjm, ext]:
+            with pytest.raises(AttributeError, match='change'):
+                setattr(obj, key, value)
+    with pytest.raises(AttributeError, match='change'):
+        ext.charge = -0.01
 
     # ... while change() does get through, to both:
     sjm.change(tol=0.01)
-    assert ext.tol == 0.01
-    assert sjm.tol == 0.01
+    assert sjm.tol == ext.tol == 0.01
+    assert sjm.todict()['tol'] == 0.01

@@ -87,8 +87,8 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-# Keep the SJM object: its change() below changes the parameters of the
-# running calculation.
+# Keep the SJM object: it writes the traces and changes the parameters of
+# the running calculation below.
 sjm = SJM(
     # Solvated jellium parameters.
     excess_electrons=0.45235,
@@ -114,10 +114,8 @@ atoms.get_potential_energy()
 
 # Write output for all the figures.
 atoms.write('atoms.traj')
-# The traces come off the SJM extension of the calculation, calc.dft.sjm:
-ext = atoms.calc.dft.sjm
-ext.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
-ext.write_sjm_traces(path='sjm_traces4.4V-cube.out',
+sjm.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
+sjm.write_sjm_traces(path='sjm_traces4.4V-cube.out',
                      style='cube')  # *.out for .gitignore
 write_potential_and_charge(atoms.calc, '4.4V')
 

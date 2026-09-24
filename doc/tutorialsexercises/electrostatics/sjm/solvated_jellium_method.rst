@@ -48,9 +48,9 @@ These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any 
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
 If you'd rather have it output the traditional canonical energies to the ``get_potential_energy`` methods, use the ``grand_output=False`` keyword.
 The number of excess electrons and the electrode potential are also available as ASE properties, in ``calc.results['excess_electrons']`` and ``calc.results['electrode_potential']``.
+The script keeps the ``SJM`` object in the variable ``sjm``, which gives access to the running calculation: ``sjm.excess_electrons`` and ``sjm.get_electrode_potential()`` give the same two numbers directly---the latter in V, on the vacuum scale, for the last converged SCF loop.
 
-In the last line of the script above, we wrote out some additional information in the form of 'sjm traces'.
-The SJM extension itself---which holds all the SJM-specific methods---is reached as ``calc.dft.sjm`` once a calculation has been run.
+In the last line of the script above, ``sjm.write_sjm_traces(path='sjm_traces.out')`` wrote out some additional information in the form of 'sjm traces', into the directory ``sjm_traces.out``.
 These are traces of the electrostatic potential, the background charge, and the solvent cavity across the `z` axis (that is, `xy`-averaged).
 It's a good idea to take a look at these, and perhaps make a plot for each, when running a simulation with a new system so you can be sure it is behaving as you expect.
 The three files that are created are:
@@ -67,8 +67,11 @@ background_charge.txt:
  The jellium counter charge averaged over `xy`, as a charge density in e/Bohr^3; it integrates to minus the number of excess electrons.
  It is therefore five orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
 
-.. Note:: Alternatively, ``calc.dft.sjm.write_sjm_traces(style='cube')``
+.. Note:: Alternatively, ``sjm.write_sjm_traces(style='cube')``
           can be used to write cube files on the 3-D grid, instead of traces.
+
+Both ``write_sjm_traces()`` and ``get_electrode_potential()`` need a calculation to have been run, and ``write_sjm_traces()`` must be called on all MPI ranks, as any other calculator method.
+Without the ``SJM`` object at hand---after reading a ``.gpw`` file, say---the SJM extension of the calculation offers the same, as ``calc.dft.sjm.write_sjm_traces()`` and ``calc.dft.sjm.get_electrode_potential()``.
 
 Our traces showing the solvent region and the jellium region are plotted below.
 The black dots indicate the atom's `z` positions.
@@ -172,4 +175,4 @@ To accomplish this, set ``grand_output=False``, like::
                                      grand_output=False, ...)])
 
 To change the SJM parameters, keep the ``SJM(...)`` object in a variable, ``sjm = SJM(...)``, and call its ``change()``: ``sjm.change(excess_electrons=...)`` changes the number of excess electrons, before the first calculation or later on without throwing away the wave functions, and the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``.
-Every SJM keyword can be read back off ``calc.dft.sjm`` under its own name---``calc.dft.sjm.excess_electrons``, ``calc.dft.sjm.target_potential``, ``calc.dft.sjm.tol`` and so on---but they are read-only, and ``change()`` is the only way to set them.
+Every SJM keyword can be read back off ``sjm`` under its own name---``sjm.excess_electrons``, ``sjm.target_potential``, ``sjm.tol`` and so on, which once the calculation has been built are its live values (the current number of excess electrons, say)---but they are read-only, and ``change()`` is the only way to set them.

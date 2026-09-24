@@ -4,6 +4,8 @@ import inspect
 import os
 import textwrap
 import warnings
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha
@@ -98,6 +100,16 @@ class SJM(Solvation):
     slope_regression_depth:
         Number of previous attempts that the slope is regressed over.
         Default: 4.
+
+    Keep this object in a variable: its :meth:`change` changes the
+    parameters, before the first calculation or afterwards without
+    throwing away the wave functions, and they read back as attributes
+    (``sjm.excess_electrons``, ``sjm.tol``, ...).  Once the calculation has
+    been built these are its live values, so three of them may differ from
+    what was given: ``excess_electrons`` is adjusted by the potentiostat,
+    ``slope`` becomes the regressed estimate, and ``jelliumregion`` is the
+    :class:`JelliumRegion` built from the dict.  :meth:`todict`, and so the
+    ``.gpw`` file, records the parameters as given (and changed to).
     """
 
     name = 'sjm'
@@ -122,20 +134,51 @@ class SJM(Solvation):
                  slope_regression_depth: int = 4):
         # dipolelayer and zero_vacuum are chosen by build(), per mode:
         super().__init__(cavity, dielectric, interactions)
-        self.jelliumregion = jelliumregion or {}
-        self.target_potential = target_potential
-        self.excess_electrons = excess_electrons
-        self.tol = tol
-        self.max_iters = max_iters
-        self.max_potential_stepsize = max_potential_stepsize
-        self.max_reruns = max_reruns
-        self.grand_output = grand_output
-        self.always_adjust = always_adjust
-        self.slope = slope
-        self.mixer = mixer
-        self.slope_regression_depth = slope_regression_depth
-        # Set by build(), so that change() can forward to the live extension:
+        # The parameters as given (and changed to).  They are what build()
+        # starts a calculation from and what todict() records; reading them
+        # as attributes gives the live values instead, see __getattr__.
+        self._params: dict[str, Any] = dict(
+            jelliumregion=jelliumregion or {},
+            target_potential=target_potential,
+            excess_electrons=excess_electrons,
+            tol=tol,
+            max_iters=max_iters,
+            max_potential_stepsize=max_potential_stepsize,
+            max_reruns=max_reruns,
+            grand_output=grand_output,
+            always_adjust=always_adjust,
+            slope=slope,
+            mixer=mixer,
+            slope_regression_depth=slope_regression_depth)
+        # Set by build(), so that this object can forward to the live
+        # extension:
         self._extension: SJMExtension | None = None
+
+    # Once the calculation has been built, the parameters are read off it,
+    # so that, e.g., excess_electrons follows the equilibration; before
+    # that, they are the ones given.  __getattr__ only runs when normal
+    # lookup fails, and the parameters are never set as attributes.
+    def __getattr__(self, name):
+        params = self.__dict__.get('_params')  # no recursion when copying
+        if params is not None and name in _KEYWORDS:
+            extension = self.__dict__.get('_extension')
+            if extension is not None:
+                return getattr(extension, name)
+            return params[name]
+        raise AttributeError(
+            f'{type(self).__name__!r} object has no attribute {name!r}')
+
+    def __setattr__(self, name, value):
+        """Refuse to set a parameter: change() is the way to set one."""
+        if name in _KEYWORDS:
+            raise AttributeError(
+                f'{name!r} cannot be assigned: use change({name}=...) '
+                'instead, which reaches the calculation as well.')
+        super().__setattr__(name, value)
+
+    def __dir__(self):
+        """List the parameters too, for help() and completion."""
+        return [*super().__dir__(), *_KEYWORDS]
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
         # Solvation only implements the dipole layer in plane-wave mode.  In
@@ -144,59 +187,60 @@ class SJM(Solvation):
         self.dipolelayer = self.zero_vacuum = builder.mode == 'pw'
         solvation = super().build(builder)
         log = builder.log
+        p = SimpleNamespace(**self._params)  # as given
         self._check_convergence_criteria(builder.params.convergence, log)
         self._check_always_adjust(log)
 
-        region = build_jellium_region(self.jelliumregion,
+        region = build_jellium_region(p.jelliumregion,
                                       cavity=solvation.cavity)
         mask_r, z1, z2 = region.mask(builder.fine_grid, builder.relpos_ac)
 
         charging = JelliumCharging(mask_r,
                                    pw=builder.interpolation_desc,
-                                   excess_electrons=self.excess_electrons,
+                                   excess_electrons=p.excess_electrons,
                                    region=region)
         # The optimizer is built in constant-charge mode too: it keeps the
         # slope settings, and the estimate, for a later switch of mode.
         optimizer = DirectOptimizer(
-            slope=self.slope,
-            mixer=self.mixer,
-            slope_regression_depth=self.slope_regression_depth)
+            slope=p.slope,
+            mixer=p.mixer,
+            slope_regression_depth=p.slope_regression_depth)
         # From here on the potentiostat holds the settings; SJMExtension
         # reads them back from it.
         potentiostat = Potentiostat(
             charging=charging,
             probe=WorkFunctionProbe(),
-            target_potential=self.target_potential,
+            target_potential=p.target_potential,
             optimizer=optimizer,
-            tol=self.tol,
-            max_potential_stepsize=self.max_potential_stepsize,
-            max_iters=self.max_iters,
-            max_reruns=self.max_reruns,
-            always_adjust=self.always_adjust,
-            grand_output=self.grand_output)
+            tol=p.tol,
+            max_potential_stepsize=p.max_potential_stepsize,
+            max_iters=p.max_iters,
+            max_reruns=p.max_reruns,
+            always_adjust=p.always_adjust,
+            grand_output=p.grand_output)
 
         log('Solvated jellium method (SJM):')
         log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
-        if self.target_potential is None:
+        if p.target_potential is None:
             log('  mode: constant charge')
-            log(f'  excess electrons: {self.excess_electrons:+.5f}')
+            log(f'  excess electrons: {p.excess_electrons:+.5f}')
         else:
             log('  mode: constant potential')
-            log(f'  target potential: {self.target_potential:.5f}  # V')
-            log(f'  tolerance: {self.tol:.5f}  # V')
-            log(f'  max iterations: {self.max_iters}')
-            if self.max_potential_stepsize is not None:
-                log(f'  max potential stepsize: {self.max_potential_stepsize}'
-                    f' V (halved up to {self.max_reruns} times if exceeded)')
+            log(f'  target potential: {p.target_potential:.5f}  # V')
+            log(f'  tolerance: {p.tol:.5f}  # V')
+            log(f'  max iterations: {p.max_iters}')
+            if p.max_potential_stepsize is not None:
+                log(f'  max potential stepsize: {p.max_potential_stepsize}'
+                    f' V (halved up to {p.max_reruns} times if exceeded)')
             log('  initial guess of excess electrons: '
-                f'{self.excess_electrons:+.5f}')
-            if self.slope is not None:
-                log(f'  initial guess of slope: {self.slope:.4f}  '
+                f'{p.excess_electrons:+.5f}')
+            if p.slope is not None:
+                log(f'  initial guess of slope: {p.slope:.4f}  '
                     '# V/electron')
-            log(f'  slope damping (mixer): {self.mixer:.2f}')
+            log(f'  slope damping (mixer): {p.mixer:.2f}')
             log('  slope regressed over the last '
-                f'{self.slope_regression_depth:d} attempts')
-            if self.always_adjust:
+                f'{p.slope_regression_depth:d} attempts')
+            if p.always_adjust:
                 log('  always adjust: the charge is stepped on to the next '
                     'geometry')
 
@@ -221,23 +265,70 @@ class SJM(Solvation):
             atoms.get_potential_energy()
 
         (Once built, ``calc.dft.sjm.change(...)`` does the same.)
-
-        The attributes of this object are the parameters it was given (and
-        changed to), not the live state of the calculation: once that has
-        been built, read the current values -- the excess electrons in
-        particular, which the potentiostat adjusts -- off the extension,
-        ``calc.dft.sjm``.
         """
         _check_keywords(kwargs)
         for key, value in kwargs.items():
             if key == 'jelliumregion':
                 value = value or {}  # as in __init__
-            setattr(self, key, value)
+            self._params[key] = value
         if self._extension is not None:
             self._extension.change(**kwargs)
 
+    def _running(self, what: str) -> SJMExtension:
+        if self._extension is None:
+            raise RuntimeError(f'No calculation yet - run one before {what}.')
+        return self._extension
+
+    def get_electrode_potential(self) -> float:
+        """Electrode potential of the calculation, in V.
+
+        It is the potential of the last converged SCF loop, on the vacuum
+        scale: the Poisson solver zeroes the electrostatic potential in the
+        vacuum region, so the work function -- and with it the electrode
+        potential -- is simply minus the Fermi level.  It is the same number
+        as ``calc.results['electrode_potential']``, and NaN until an SCF
+        loop has converged.
+
+        Raises ``RuntimeError`` before the calculation has been built.
+        """
+        return self._running(
+            'asking for the electrode potential').get_electrode_potential()
+
+    def write_sjm_traces(self, path='sjm_traces', style='z',
+                         props=('potential', 'cavity', 'background_charge')):
+        """Write traces of the quantities in `props` to disk.
+
+        The electrostatic potential (``'potential'``), the solvent cavity
+        (``'cavity'``) and the jellium counter charge
+        (``'background_charge'``) of the calculation are written into the
+        directory `path`, one file per quantity: ``<prop>.txt`` for
+        ``style='z'`` (the default), averaged over x and y as a function of
+        z, and ``<prop>.cube`` on the full 3-D grid for ``style='cube'``::
+
+            atoms.get_potential_energy()
+            sjm.write_sjm_traces()  # sjm_traces/*.txt
+            sjm.write_sjm_traces(path='traces-3d', style='cube')
+
+        Note that ``'potential'`` is the electrostatic potential referenced
+        to the Fermi level, in eV, and that ``'background_charge'`` is the
+        jellium counter-charge density in e/Bohr^3 -- it integrates to minus
+        the number of excess electrons.
+
+        A ``'z'`` trace has one row per grid point of the full mesh, so traces
+        from an fd and a plane-wave run of the same cell line up row by row.
+        A real-space grid with a zero boundary in z does not store the z = 0
+        point; the row written for it repeats the first stored value and is
+        padding rather than a computed value.
+
+        This needs a calculation to have been run, and raises
+        ``RuntimeError`` before.  It is collective: call it on all ranks.
+        """
+        self._running('writing SJM traces').write_sjm_traces(
+            path=path, style=style, props=props)
+
     def _check_always_adjust(self, log) -> None:
-        if self.always_adjust and self.target_potential is None:
+        p = SimpleNamespace(**self._params)  # as given
+        if p.always_adjust and p.target_potential is None:
             msg = ('always_adjust has no effect in constant-charge mode: '
                    'there is no target potential to step the number of '
                    'excess electrons towards.')
@@ -245,13 +336,14 @@ class SJM(Solvation):
             log(textwrap.fill('Warning: ' + msg) + '\n')
 
     def _check_convergence_criteria(self, convergence, log) -> None:
-        if self.target_potential is None:
+        p = SimpleNamespace(**self._params)  # as given
+        if p.target_potential is None:
             return
         wf_tol = (convergence or {}).get('work function')
-        if wf_tol is not None and wf_tol >= self.tol:
+        if wf_tol is not None and wf_tol >= p.tol:
             msg = ('It appears that your work function convergence criterion '
                    f'({wf_tol:g}) is higher than your desired potential '
-                   f'tolerance ({self.tol:g}).  This may lead to issues with '
+                   f'tolerance ({p.tol:g}).  This may lead to issues with '
                    'potential convergence.')
             warnings.warn(msg)
             log(textwrap.fill('Warning: ' + msg) + '\n')
@@ -260,7 +352,7 @@ class SJM(Solvation):
         dct = super().todict()
         dct.pop('dipolelayer', None)
         dct.pop('zero_vacuum', None)
-        dct.update({key: getattr(self, key) for key in _KEYWORDS})
+        dct.update({key: self._params[key] for key in _KEYWORDS})
         return dct
 
 
@@ -371,12 +463,7 @@ class SJMExtension(Extension):
             ibzwfs, nelectrons, occ_calc, mixer, log)
 
     def get_electrode_potential(self) -> float:
-        """Electrode potential in V, relative to the vacuum.
-
-        The Poisson solver zeroes the electrostatic potential in the vacuum
-        region, so the work function -- and with it the electrode potential
-        -- is simply minus the Fermi level.
-        """
+        """See :meth:`SJM.get_electrode_potential`."""
         return -self.fermi_level * Ha
 
     def post_converged(self, dft) -> None:
@@ -415,8 +502,8 @@ class SJMExtension(Extension):
         # a keyword to traj.write() gets around it -- both are filtered by
         # that same list.  They do reach calc.results and a .gpw file (see
         # gpaw/new/gpw.py, which writes every dft.results key), they are in
-        # the text log, and calc.dft.sjm.excess_electrons and
-        # calc.dft.sjm.get_electrode_potential() give them directly.
+        # the text log, and sjm.excess_electrons and
+        # sjm.get_electrode_potential() give them directly.
         dft.results['excess_electrons'] = self.excess_electrons
         dft.results['electrode_potential'] = potential / Ha
         if self.potentiostat.grand_output:
@@ -435,23 +522,7 @@ class SJMExtension(Extension):
 
     def write_sjm_traces(self, path='sjm_traces', style='z',
                          props=('potential', 'cavity', 'background_charge')):
-        """Write traces of the quantities in `props` to disk.
-
-        The traces are stored within the specified `path`.  The default is to
-        save them as vertical traces (style ``'z'``), but they can also be
-        saved as cube files (``style='cube'``).
-
-        Note that ``'potential'`` is the electrostatic potential referenced
-        to the Fermi level, in eV, and that ``'background_charge'`` is the
-        jellium counter-charge density in e/Bohr^3 -- it integrates to minus
-        the number of excess electrons.
-
-        A ``'z'`` trace has one row per grid point of the full mesh, so traces
-        from an fd and a plane-wave run of the same cell line up row by row.
-        A real-space grid with a zero boundary in z does not store the z = 0
-        point; the row written for it repeats the first stored value and is
-        padding rather than a computed value.
-        """
+        """See :meth:`SJM.write_sjm_traces`."""
         dft = self._dft
         if dft is None:
             raise RuntimeError('No results yet - run a calculation before '

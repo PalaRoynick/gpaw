@@ -30,8 +30,17 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
-# The calculator.  The solvated jellium method is added to a regular GPAW
-# calculator as an extension.
+# The solvated jellium method is added to a regular GPAW calculator as an
+# extension.  Keep it in a variable, to reach the calculation through it.
+sjm = SJM(
+    # Solvated jellium parameters.
+    target_potential=4.2,  # Desired potential
+    # Implicit solvent parameters.
+    cavity=cavity,
+    dielectric=dielectric,
+    interactions=interactions)
+
+# The calculator.
 calc = GPAW(
     # General GPAW parameters.
     mode=PW(400.),
@@ -40,17 +49,10 @@ calc = GPAW(
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    extensions=[SJM(
-        # Solvated jellium parameters.
-        target_potential=4.2,  # Desired potential
-        # Implicit solvent parameters.
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)])
+    extensions=[sjm])
 atoms.calc = calc
 
 # Run the calculation.
 atoms.get_potential_energy()
 atoms.write('Au111.traj')
-# The SJM extension itself is reached as calc.dft.sjm:
-calc.dft.sjm.write_sjm_traces(path='sjm_traces.out')  # .out for .gitignore
+sjm.write_sjm_traces(path='sjm_traces.out')  # .out for .gitignore

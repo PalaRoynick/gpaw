@@ -80,7 +80,7 @@ Git master branch
   attempts, damped with the previous estimate by ``mixer``).  SJM is now
   only a front end for it: it contributes the jellium and the implicit
   solvent, hands its keywords over and reads them back, so that
-  ``calc.dft.sjm.tol`` and the rest are the potentiostat's settings.  A
+  ``sjm.tol`` and the rest are the potentiostat's settings.  A
   different constant-potential method can reuse the potentiostat with
   another charging scheme or probe.
 

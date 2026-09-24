@@ -66,6 +66,21 @@ def test_every_keyword_is_accepted_and_read_back():
         assert getattr(obj, key) == value, key
 
 
+def test_keywords_cannot_be_assigned():
+    obj = sjm(tol=0.01)
+    with pytest.raises(AttributeError, match='change'):
+        obj.tol = 0.02
+    assert obj.tol == 0.01
+
+
+def test_no_calculation_to_read_yet():
+    obj = sjm()
+    with pytest.raises(RuntimeError, match='No calculation'):
+        obj.get_electrode_potential()
+    with pytest.raises(RuntimeError, match='No calculation'):
+        obj.write_sjm_traces()
+
+
 def test_unknown_keyword_is_rejected():
     with pytest.raises(TypeError):
         sjm(excess_electron=-0.01)  # note the missing 's'

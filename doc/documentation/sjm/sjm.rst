@@ -158,7 +158,7 @@ Typically, over the course of a full trajectory, the added computational cost of
 As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose ``tol`` together with ``always_adjust=True``, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
 The slope itself is regressed over the last ``slope_regression_depth`` attempts and damped with the previous estimate by ``mixer``; ``slope`` sets the initial guess, which is otherwise taken from an apparent capacitance of a few muF/cm^2.
 
-All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from the keywords above and which then owns them---``calc.dft.sjm.tol`` and the rest read them back off it.
+All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from the keywords above and which then owns them---``sjm.tol`` and the rest read them back off it.
 The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
 SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme or probe.
 
@@ -251,24 +251,29 @@ calculation will be started with; afterwards it changes them without
 throwing away the wave functions.  This replaces the legacy
 ``calc.set(sj={...})``.
 
-The ``SJM(...)`` object only holds the parameters it was given, though, so,
-for instance, its ``excess_electrons`` does not follow the equilibration.
-The live state is on the SJM extension of the calculation, reached as
-``calc.dft.sjm`` once a calculation has been run (its ``change()`` is the
-same as the ``SJM`` object's).  It offers
+The same object also offers
 
 * every one of those parameters, readable under its keyword name:
-  ``calc.dft.sjm.target_potential``, ``calc.dft.sjm.tol``,
-  ``calc.dft.sjm.slope`` and so on, with
-  ``calc.dft.sjm.excess_electrons`` giving the current number of excess
-  electrons and ``calc.dft.sjm.jelliumregion`` the region object built
-  from the keyword.  (``calc.dft.sjm.charge`` is the same number under
-  the name GPAW's extension interface uses for it.)  They are read-only,
-  and assigning to
-  one---``calc.dft.sjm.excess_electrons = ...``---raises: only
-  ``change()`` gets the excess electrons to the jellium as well and
-  empties the results, which is what makes the next
-  ``get_potential_energy()`` run the SCF loop again.
+  ``sjm.target_potential``, ``sjm.tol``, ``sjm.slope`` and so on.  Before
+  the first calculation these are the parameters as given; once the
+  calculation has been built they are its live values, so three of them
+  can differ from what was given: ``sjm.excess_electrons`` is the current
+  number of excess electrons, as the potentiostat adjusts it,
+  ``sjm.slope`` the current estimate of the slope, and
+  ``sjm.jelliumregion`` the region object built from the dict.  (What
+  ``todict()``---and so the ``.gpw`` file---records are the parameters as
+  given, and changed to.)  They are read-only, and assigning to
+  one---``sjm.excess_electrons = ...``---raises: only ``change()`` gets
+  the excess electrons to the jellium as well and empties the results,
+  which is what makes the next ``get_potential_energy()`` run the SCF
+  loop again.
+* ``get_electrode_potential()``, the electrode potential of the last
+  converged SCF loop, in V on the vacuum scale---minus the Fermi level,
+  since the Poisson solver zeroes the electrostatic potential in the
+  vacuum.  It is the same number as
+  ``calc.results['electrode_potential']``, so it too needs a calculation
+  to have been run: it raises ``RuntimeError`` before the calculation has
+  been built, and gives NaN until an SCF loop has converged.
 * ``write_sjm_traces(path='sjm_traces', style='z', props=...)``, which
   writes the electrostatic potential (in eV, referenced to the Fermi level),
   the solvent cavity and the jellium counter charge (in e/Bohr^3, integrating
@@ -278,7 +283,7 @@ same as the ``SJM`` object's).  It offers
   ``style='cube'`` writes ``<prop>.cube`` on the full 3-D grid.
   ``props`` picks which of the three quantities to write.  This one
   needs a calculation to have been run; calling it earlier raises
-  ``RuntimeError``.
+  ``RuntimeError``.  It is collective: call it on all ranks.
 
   Note that a ``'z'`` trace from the legacy
   ``gpaw.solvation.sjm.SJM`` calculator is shifted by one row relative
@@ -291,16 +296,26 @@ same as the ``SJM`` object's).  It offers
   the legacy ``gpaw.solvation.sjm.SJM`` calculator writes under the same
   name.  Scripts carried over from the legacy calculator have to be adjusted.
 
-So a run that writes both kinds of trace looks like::
+So a run that reports the potential and writes both kinds of trace looks
+like::
 
-    atoms.get_potential_energy()  # traces need a converged calculation
+    sjm = SJM(target_potential=4.4, ...)
+    atoms.calc = GPAW(..., extensions=[sjm])
+    atoms.get_potential_energy()  # both need a converged calculation
 
-    ext = atoms.calc.dft.sjm
-    ext.write_sjm_traces()  # sjm_traces/{potential,cavity,background_charge}.txt
-    ext.write_sjm_traces(path='traces-3d', style='cube')  # traces-3d/*.cube
+    print(sjm.get_electrode_potential(), sjm.excess_electrons)
+    sjm.write_sjm_traces()  # sjm_traces/{potential,cavity,background_charge}.txt
+    sjm.write_sjm_traces(path='traces-3d', style='cube')  # traces-3d/*.cube
 
-Both calls are collective: run them on all ranks, as you would any other
-calculator method.
+The ``write_sjm_traces()`` calls are collective: run them on all ranks, as
+you would any other calculator method.
+
+Once a calculation has been run, the SJM extension of the calculation,
+``calc.dft.sjm``, offers all of this as well, for when the ``SJM`` object
+is not at hand---after reading a ``.gpw`` file, say:
+``calc.dft.sjm.write_sjm_traces()``, ``calc.dft.sjm.get_electrode_potential()``
+and so on.  (Its ``charge`` is the number of excess electrons again, under
+the name GPAW's extension interface uses for it.)
 
 References
 ==========
@@ -320,9 +335,10 @@ Class documentation
 ===================
 
 .. autoclass:: gpaw.extensions.electrochemistry.SJM
+   :members: change, write_sjm_traces, get_electrode_potential
 
 .. autoclass:: gpaw.extensions.electrochemistry.sjm.SJMExtension
-   :members: change, write_sjm_traces, get_electrode_potential
+   :members: change
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: equilibrate, new_geometry, set_target_potential,
