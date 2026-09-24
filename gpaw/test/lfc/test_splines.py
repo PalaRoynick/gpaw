@@ -1,11 +1,5 @@
 import pytest
-
-try:
-    from gpaw.cgpaw.new import Spline32, Spline64
-except (ImportError, ModuleNotFoundError):
-    pytest.skip("No C++ splines (compile with GPAW_CPP)",
-                allow_module_level=True)
-
+from gpaw.cgpaw.new import Spline32, Spline64
 from gpaw.gpu import cupy_is_fake, as_xp, cupy as cp
 from gpaw.spline import Spline  # legacy spline class
 import numpy as np
