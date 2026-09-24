@@ -9,11 +9,7 @@
 #include <magma_auxiliary.h>
 #include <magma_types.h>
 
-#ifndef __cplusplus
-    #error "C++ needed for GPAW Magma wrappers"
-#endif
-
-#include "gpu/cpp/utils.hpp"
+#include "utils.hpp"
 
 #include <cassert>
 #include <cstdlib>
