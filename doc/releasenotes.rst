@@ -80,9 +80,11 @@ Git master branch
   attempts, damped with the previous estimate by ``mixer``).  SJM is now
   only a front end for it: it contributes the jellium and the implicit
   solvent, hands its keywords over and reads them back, so that
-  ``sjm.tol`` and the rest are the potentiostat's settings.  A
-  different constant-potential method can reuse the potentiostat with
-  another charging scheme or probe.
+  ``sjm.tol`` and the rest are the potentiostat's settings.  The
+  potentiostat also finishes a converged calculation: the Legendre
+  transform to the grand potential and the results.  A different
+  constant-potential method can reuse the potentiostat with another
+  charging scheme or probe.
 
 * PW-mode calculations parallelized over spin, k-points and/or bands can
   now distribute the density to all cores for netter parallelization of

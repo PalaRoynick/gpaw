@@ -160,6 +160,7 @@ The slope itself is regressed over the last ``slope_regression_depth`` attempts 
 
 All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from the keywords above and which then owns them---``sjm.tol`` and the rest read them back off it.
 The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
+It also finishes a converged calculation: it reports the equilibration, Legendre-transforms the energies to the grand potential and writes the results, the grand-potential or the canonical energy as ``grand_output`` says.
 SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme or probe.
 
 **Constant inner potential (CIP) DFT:**
@@ -342,7 +343,8 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: equilibrate, new_geometry, set_target_potential,
-             set_excess_electrons, slope_estimate
+             set_excess_electrons, slope_estimate, post_converged,
+             write_results
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 

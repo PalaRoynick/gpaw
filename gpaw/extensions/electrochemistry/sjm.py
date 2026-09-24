@@ -11,7 +11,6 @@ import numpy as np
 from ase.units import Bohr, Ha
 
 from gpaw.core import PWDesc, UGArray
-from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
@@ -386,10 +385,7 @@ class SJMExtension(Extension):
         self.solvation = solvation
         self.potentiostat = potentiostat
         self.log = log or (lambda *args, **kwargs: None)
-        # Set by post_converged():
-        self.fermi_level = np.nan  # Ha
-        self.omega_free = np.nan  # Ha
-        self.omega_extrapolated = np.nan  # Ha
+        # The converged calculation, set by post_converged():
         self._dft = None
 
     # Most settings are read straight off their owner by __getattr__ below;
@@ -468,61 +464,12 @@ class SJMExtension(Extension):
 
     def get_electrode_potential(self) -> float:
         """See :meth:`SJM.get_electrode_potential`."""
-        return -self.fermi_level * Ha
+        return self.potentiostat.electrode_potential
 
     def post_converged(self, dft) -> None:
-        """Assemble grand-potential energies and write them to log/results."""
+        """Keep the converged calculation; the potentiostat finishes it."""
         self._dft = dft
-        log = dft.log
-        (fermi_level,) = dft.ibzwfs.fermi_levels
-        self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
-        potential = self.get_electrode_potential()
-
-        self.potentiostat.log_equilibration(log)
-
-        # Legendre transform: Omega = E - N mu, with mu = -workfunction.
-        # Take the canonical energies from dft.energies rather than from
-        # dft.results, so that this can be called again after the results
-        # have already been replaced by the grand-potential energies.
-        e_free = broadcast_float(dft.energies.total_free, dft.comm)
-        e_extrapolated = broadcast_float(dft.energies.total_extrapolated,
-                                         dft.comm)
-        mu_N = self.fermi_level * self.excess_electrons
-        self.omega_free = e_free - mu_N
-        self.omega_extrapolated = e_extrapolated - mu_N
-
-        log('Legendre-transformed energies '
-            '(grand potential, Omega = E - N mu):')
-        log(f'  N (excess electrons): {self.excess_electrons:+14.6f}')
-        log(f'  mu (-work function):  {-potential:+14.6f}  # eV')
-        log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
-        log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
-        log()
-
-        # Unlike energy and forces, these two do not survive being written
-        # to an ASE trajectory: ASE's trajectory writer stores only the
-        # properties in ase.calculators.calculator.all_properties, and skips
-        # everything else silently.  Neither Trajectory(properties=...) nor
-        # a keyword to traj.write() gets around it -- both are filtered by
-        # that same list.  They do reach calc.results and a .gpw file (see
-        # gpaw/new/gpw.py, which writes every dft.results key), they are in
-        # the text log, and sjm.excess_electrons and
-        # sjm.get_electrode_potential() give them directly.
-        dft.results['excess_electrons'] = self.excess_electrons
-        dft.results['electrode_potential'] = potential / Ha
-        if self.potentiostat.grand_output:
-            dft.results['free_energy'] = self.omega_free
-            dft.results['energy'] = self.omega_extrapolated
-            log('Grand-potential energy was written into results.\n')
-        else:
-            dft.results['free_energy'] = e_free
-            dft.results['energy'] = e_extrapolated
-            log('Canonical energy was written into results.\n')
-        log.fd.flush()
-
-        # The next calculation (the next step of a relaxation, say) gets a
-        # fresh equilibration budget and a fresh record to report:
-        self.potentiostat.reset_attempts()
+        self.potentiostat.post_converged(dft)
 
     def write_sjm_traces(self, path='sjm_traces', style='z',
                          props=('potential', 'cavity', 'background_charge')):
@@ -562,7 +509,7 @@ class SJMExtension(Extension):
         grid = self.solvation.grid
         if prop == 'potential':
             vHt_r = self._electrostatic_potential(dft)
-            vHt_r.data[:] = (vHt_r.data - self.fermi_level) * Ha
+            vHt_r.data[:] = (vHt_r.data - self.potentiostat.fermi_level) * Ha
             return vHt_r
         if prop == 'background_charge':
             mask_r = self.potentiostat.charging.mask_r
@@ -623,8 +570,8 @@ class SJMExtension(Extension):
         if 'grand_output' in kwargs:
             pot.grand_output = kwargs['grand_output']
             if self._dft is not None and self._dft.results:
-                # Cheap: just re-do the Legendre transform.
-                self.post_converged(self._dft)
+                # Only which energy is reported changes:
+                pot.write_results(self._dft.results, log)
         for key in ['max_iters', 'max_reruns', 'max_potential_stepsize']:
             if key in kwargs:
                 setattr(pot, key, kwargs[key])
@@ -706,7 +653,7 @@ class SJMExtension(Extension):
     def _step_towards(self, target_potential: float) -> None:
         """Guess the charge needed for the new target potential."""
         slope = self.potentiostat.slope_estimate()
-        if slope is None or np.isnan(self.fermi_level):
+        if slope is None or np.isnan(self.potentiostat.fermi_level):
             return
         n = self.excess_electrons + ((target_potential -
                                       self.get_electrode_potential()) / slope)

@@ -9,6 +9,7 @@ from ase.units import Bohr, Ha, _e
 
 from gpaw import ConvergenceError
 from gpaw.core import PWArray, UGArray
+from gpaw.mpi import broadcast_float
 from gpaw.extensions.jellium import JelliumExtension
 
 
@@ -645,8 +646,8 @@ class Potentiostat:
         charge anyway, to be applied to the next geometry by
         :meth:`new_geometry` instead of being re-converged.  Default: False.
     grand_output:
-        Report the grand-potential energy rather than the canonical energy.
-        Read by the front end, which writes the results.  Default: True.
+        Report the grand-potential energy rather than the canonical energy
+        in the results (see :meth:`write_results`).  Default: True.
     """
 
     def __init__(self,
@@ -679,6 +680,15 @@ class Potentiostat:
         self.attempts: list[tuple[float, float]] = []
         # Charge staged by always_adjust for the next geometry:
         self.pending_excess_electrons: float | None = None
+
+        # Set by post_converged(), for the last converged calculation:
+        self.fermi_level = np.nan  # Ha
+        self.electrode_potential = np.nan  # V
+        self.converged_excess_electrons = np.nan
+        self.canonical_free = np.nan  # Ha
+        self.canonical_extrapolated = np.nan  # Ha
+        self.omega_free = np.nan  # Ha
+        self.omega_extrapolated = np.nan  # Ha
 
     @property
     def constant_potential(self) -> bool:
@@ -833,6 +843,77 @@ class Potentiostat:
             log('always_adjust: the next geometry starts from '
                 f'{self.pending_excess_electrons:+.5f} excess electrons.')
         log(flush=True)
+
+    def post_converged(self, dft) -> None:
+        """Finish a converged calculation.
+
+        Reads the electrode potential and the Fermi level off the converged
+        state, reports the equilibration, Legendre-transforms the energies
+        to the grand potential and writes the results (see
+        :meth:`write_results`).  The next calculation -- the next step of a
+        relaxation, say -- then gets a fresh equilibration budget and a
+        fresh record to report.
+        """
+        log = dft.log
+        (fermi_level,) = dft.ibzwfs.fermi_levels
+        self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
+        self.electrode_potential = broadcast_float(
+            self.probe.potential(dft.ibzwfs), dft.comm)
+
+        self.log_equilibration(log)
+
+        # Legendre transform: Omega = E - N mu, with mu the Fermi level.
+        # Take the canonical energies from dft.energies rather than from
+        # dft.results, which may already hold the grand-potential ones.
+        N = self.converged_excess_electrons = self.excess_electrons
+        self.canonical_free = broadcast_float(dft.energies.total_free,
+                                              dft.comm)
+        self.canonical_extrapolated = broadcast_float(
+            dft.energies.total_extrapolated, dft.comm)
+        mu_N = self.fermi_level * N
+        self.omega_free = self.canonical_free - mu_N
+        self.omega_extrapolated = self.canonical_extrapolated - mu_N
+
+        log('Legendre-transformed energies '
+            '(grand potential, Omega = E - N mu):')
+        log(f'  N (excess electrons): {N:+14.6f}')
+        log(f'  mu (-work function):  {self.fermi_level * Ha:+14.6f}  # eV')
+        log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
+        log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
+        log()
+
+        self.write_results(dft.results, log)
+        self.reset_attempts()
+
+    def write_results(self, results: dict, log) -> None:
+        """Write the last converged calculation into `results`.
+
+        That is the excess electrons, the electrode potential and --
+        depending on ``grand_output`` -- the grand-potential or the
+        canonical energies.  It is cheap, so a change of ``grand_output``
+        only needs to call this again.
+        """
+        # Unlike energy and forces, the first two do not survive being
+        # written to an ASE trajectory: ASE's trajectory writer stores only
+        # the properties in ase.calculators.calculator.all_properties, and
+        # skips everything else silently.  Neither
+        # Trajectory(properties=...) nor a keyword to traj.write() gets
+        # around it -- both are filtered by that same list.  They do reach
+        # calc.results and a .gpw file (see gpaw/new/gpw.py, which writes
+        # every dft.results key), they are in the text log, and the front
+        # end gives them directly (sjm.excess_electrons and
+        # sjm.get_electrode_potential(), for SJM).
+        results['excess_electrons'] = self.converged_excess_electrons
+        results['electrode_potential'] = self.electrode_potential / Ha
+        if self.grand_output:
+            results['free_energy'] = self.omega_free
+            results['energy'] = self.omega_extrapolated
+            log('Grand-potential energy was written into results.\n',
+                flush=True)
+        else:
+            results['free_energy'] = self.canonical_free
+            results['energy'] = self.canonical_extrapolated
+            log('Canonical energy was written into results.\n', flush=True)
 
     def _convergence_error_message(self, log,
                                    reason: str | None = None) -> str:

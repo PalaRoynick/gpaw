@@ -58,7 +58,7 @@ def built(in_tmp_dir):
     return atoms, sjm
 
 
-def test_grand_output_toggle(in_tmp_dir):
+def test_grand_output_toggle(in_tmp_dir, monkeypatch):
     atoms, sjm = h_atoms()
     # This one needs results, but one SCF loop at constant charge will do:
     sjm.change(target_potential=None)
@@ -66,8 +66,15 @@ def test_grand_output_toggle(in_tmp_dir):
     calc = atoms.calc
     grand = calc.results['energy']
 
-    # Toggling only changes which energy is reported - no new SCF loop:
+    # Toggling only changes which energy is reported - no new SCF loop,
+    # and the calculation is not finished (and logged) all over again:
     niter = calc.dft.scf_loop.niter
+
+    def finished_again(dft):
+        raise AssertionError('post_converged() called again')
+
+    monkeypatch.setattr(calc.dft.sjm.potentiostat, 'post_converged',
+                        finished_again)
     sjm.change(grand_output=False)
     canonical = calc.results['energy']
     assert calc.dft.scf_loop.niter == niter
