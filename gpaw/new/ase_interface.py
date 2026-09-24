@@ -111,32 +111,6 @@ class ASECalculator:
     def __repr__(self):
         return f'ASECalculator({self.params!r})'
 
-    def __getattr__(self, name):
-        """Extensions by name: calc.sjm, calc.solvation, ...
-
-        Before a calculation has been done, this is the input object given to
-        the ``extensions`` keyword, whose ``change()`` stores parameters for
-        the calculation to be built with; afterwards it is the built
-        extension -- the same object as ``calc.dft.<name>`` -- with all of its
-        methods.
-        """
-        if name.startswith('_') or 'params' not in self.__dict__:
-            raise AttributeError(name)  # not initialized yet
-        if name == 'dft':
-            # The dft property raises when there is no calculation, and we
-            # end up here.  Say why:
-            raise AttributeError(
-                'No calculation has been done yet - run one (for instance '
-                'with atoms.get_potential_energy()) before asking for '
-                'calc.dft.')
-        matches = [ext for ext in self.params.extensions if ext.name == name]
-        if len(matches) != 1:
-            raise AttributeError(
-                f'{type(self).__name__!r} object has no attribute {name!r}')
-        if self._dft is not None:
-            return getattr(self.dft, name)  # the built extension
-        return matches[0]
-
     def iconverge(self, atoms: Atoms | None,
                   *,
                   need_wfs: bool = False) -> Generator[SCFContext]:

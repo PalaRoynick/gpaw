@@ -210,15 +210,23 @@ class SJM(Solvation):
         calculation has been built there is nothing to keep alive, so the
         parameters are simply stored for :meth:`build` to pick up;
         afterwards the call is forwarded to the extension, which keeps
-        the density and the wave functions.  Reach this as
-        ``calc.sjm.change(...)``.
+        the density and the wave functions.  So keep the SJM object in a
+        variable and change the parameters through it, before and after
+        the first calculation alike::
 
-        Every parameter can be read back by its keyword name --
-        ``calc.sjm.target_potential``, ``calc.sjm.tol``, ... -- but once the
-        calculation has been built they are read-only and assigning to one
-        raises: the excess electrons have to reach the jellium as well, and
-        only ``change()`` empties the results, which is what makes the next
-        ``get_potential_energy()`` run the SCF loop again.
+            sjm = SJM(...)
+            atoms.calc = GPAW(..., extensions=[sjm])
+            atoms.get_potential_energy()
+            sjm.change(target_potential=4.3)
+            atoms.get_potential_energy()
+
+        (Once built, ``calc.dft.sjm.change(...)`` does the same.)
+
+        The attributes of this object are the parameters it was given (and
+        changed to), not the live state of the calculation: once that has
+        been built, read the current values -- the excess electrons in
+        particular, which the potentiostat adjusts -- off the extension,
+        ``calc.dft.sjm``.
         """
         _check_keywords(kwargs)
         for key, value in kwargs.items():
@@ -321,9 +329,10 @@ class SJMExtension(Extension):
         if name in _KEYWORDS or name in {'charge', 'region'}:
             raise AttributeError(
                 f'{name!r} is read-only on a running calculation: use '
-                f'calc.sjm.change({name}=...) instead.  Assigning here '
-                'would reach neither the jellium nor the results, so the '
-                'next get_potential_energy() would hand back the old ones.')
+                f'change({name}=...) on the SJM object instead.  Assigning '
+                'here would reach neither the jellium nor the results, so '
+                'the next get_potential_energy() would hand back the old '
+                'ones.')
         super().__setattr__(name, value)
 
     # The SJM keywords live on the potentiostat and, for the slope settings,
@@ -406,8 +415,8 @@ class SJMExtension(Extension):
         # a keyword to traj.write() gets around it -- both are filtered by
         # that same list.  They do reach calc.results and a .gpw file (see
         # gpaw/new/gpw.py, which writes every dft.results key), they are in
-        # the text log, and calc.sjm.excess_electrons and
-        # calc.sjm.get_electrode_potential() give them directly.
+        # the text log, and calc.dft.sjm.excess_electrons and
+        # calc.dft.sjm.get_electrode_potential() give them directly.
         dft.results['excess_electrons'] = self.excess_electrons
         dft.results['electrode_potential'] = potential / Ha
         if self.potentiostat.grand_output:
@@ -511,7 +520,8 @@ class SJMExtension(Extension):
 
         Takes the parameters of :class:`SJM` (all but the solvation model),
         with the same meaning.  This is the replacement for
-        the legacy ``calc.set(sj={...})``; reach it as ``calc.sjm.change()``.
+        the legacy ``calc.set(sj={...})``; it is normally reached through
+        :meth:`SJM.change` on the object handed to GPAW.
 
         The density and the wave functions are kept, so the next
         ``get_potential_energy()`` continues the SCF loop from the current

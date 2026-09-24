@@ -53,8 +53,8 @@ Git master branch
   extension to the GPAW calculator, and not as a separate calculator, as
   described in :ref:`sjm`.  It now also allows the use of PW-mode.
   The keys are given directly to ``SJM(...)`` instead of in an ``sj``
-  dictionary, and `calc.sjm.change(...)` substitutes the previous
-  `calc.set(sj={...})`.  Most of them keep their names and meanings, with
+  dictionary, and ``sjm.change(...)``, called on that ``SJM`` object,
+  substitutes the previous ``calc.set(sj={...})``.  Most of them keep their names and meanings, with
   these exceptions:
 
   * ``max_step`` is now called ``max_potential_stepsize``; the old name is
@@ -80,7 +80,7 @@ Git master branch
   attempts, damped with the previous estimate by ``mixer``).  SJM is now
   only a front end for it: it contributes the jellium and the implicit
   solvent, hands its keywords over and reads them back, so that
-  ``calc.sjm.tol`` and the rest are the potentiostat's settings.  A
+  ``calc.dft.sjm.tol`` and the rest are the potentiostat's settings.  A
   different constant-potential method can reuse the potentiostat with
   another charging scheme or probe.
 

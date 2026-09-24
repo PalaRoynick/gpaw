@@ -87,6 +87,17 @@ cavity = EffectivePotentialCavity(
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
+# Keep the SJM object: its change() below changes the parameters of the
+# running calculation.
+sjm = SJM(
+    # Solvated jellium parameters.
+    excess_electrons=0.45235,
+    target_potential=4.4,
+    # Implicit solvent parameters.
+    cavity=cavity,
+    dielectric=dielectric,
+    interactions=interactions)
+
 atoms.calc = GPAW(
     mode=PW(400.),
     txt='gpaw-potential.txt',
@@ -97,22 +108,16 @@ atoms.calc = GPAW(
     # The 'work function' convergence criterion is not available in PW
     # mode: it needs dipole_layer_correction(), which the Poisson solver
     # SJM builds there (ConjugateGradientPoissonSolver) does not provide.
-    extensions=[SJM(
-        # Solvated jellium parameters.
-        excess_electrons=0.45235,
-        target_potential=4.4,
-        # Implicit solvent parameters.
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)])
+    extensions=[sjm])
 
 atoms.get_potential_energy()
 
 # Write output for all the figures.
 atoms.write('atoms.traj')
-sjm = atoms.calc.sjm  # the SJM object of this calculator
-sjm.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
-sjm.write_sjm_traces(path='sjm_traces4.4V-cube.out',
+# The traces come off the SJM extension of the calculation, calc.dft.sjm:
+ext = atoms.calc.dft.sjm
+ext.write_sjm_traces(path='sjm_traces4.4V.out')  # *.out for .gitignore
+ext.write_sjm_traces(path='sjm_traces4.4V-cube.out',
                      style='cube')  # *.out for .gitignore
 write_potential_and_charge(atoms.calc, '4.4V')
 

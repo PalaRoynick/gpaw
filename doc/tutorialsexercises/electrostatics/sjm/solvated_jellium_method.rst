@@ -50,7 +50,7 @@ If you'd rather have it output the traditional canonical energies to the ``get_p
 The number of excess electrons and the electrode potential are also available as ASE properties, in ``calc.results['excess_electrons']`` and ``calc.results['electrode_potential']``.
 
 In the last line of the script above, we wrote out some additional information in the form of 'sjm traces'.
-The SJM object itself---which holds all the SJM-specific methods---is reached as ``calc.sjm``, which is the same object as ``calc.dft.sjm`` once a calculation has been run.
+The SJM extension itself---which holds all the SJM-specific methods---is reached as ``calc.dft.sjm`` once a calculation has been run.
 These are traces of the electrostatic potential, the background charge, and the solvent cavity across the `z` axis (that is, `xy`-averaged).
 It's a good idea to take a look at these, and perhaps make a plot for each, when running a simulation with a new system so you can be sure it is behaving as you expect.
 The three files that are created are:
@@ -67,7 +67,7 @@ background_charge.txt:
  The jellium counter charge averaged over `xy`, as a charge density in e/Bohr^3; it integrates to minus the number of excess electrons.
  It is therefore five orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
 
-.. Note:: Alternatively, ``calc.sjm.write_sjm_traces(style='cube')``
+.. Note:: Alternatively, ``calc.dft.sjm.write_sjm_traces(style='cube')``
           can be used to write cube files on the 3-D grid, instead of traces.
 
 Our traces showing the solvent region and the jellium region are plotted below.
@@ -171,5 +171,5 @@ To accomplish this, set ``grand_output=False``, like::
     calc = GPAW(..., extensions=[SJM(excess_electrons=...,
                                      grand_output=False, ...)])
 
-The number of excess electrons can be changed later on, without throwing away the wave functions, with ``calc.sjm.change(excess_electrons=...)``; the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``, and it can be called before the first calculation as well.
-Every SJM keyword can be read back off ``calc.sjm`` under its own name---``calc.sjm.excess_electrons``, ``calc.sjm.target_potential``, ``calc.sjm.tol`` and so on---but once a calculation has been run they are read-only, and ``change()`` is the only way to set them.
+To change the SJM parameters, keep the ``SJM(...)`` object in a variable, ``sjm = SJM(...)``, and call its ``change()``: ``sjm.change(excess_electrons=...)`` changes the number of excess electrons, before the first calculation or later on without throwing away the wave functions, and the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``.
+Every SJM keyword can be read back off ``calc.dft.sjm`` under its own name---``calc.dft.sjm.excess_electrons``, ``calc.dft.sjm.target_potential``, ``calc.dft.sjm.tol`` and so on---but they are read-only, and ``change()`` is the only way to set them.

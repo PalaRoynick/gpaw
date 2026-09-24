@@ -52,5 +52,5 @@ atoms.calc = calc
 # Run the calculation.
 atoms.get_potential_energy()
 atoms.write('Au111.traj')
-# The SJM object itself is reached as calc.sjm:
-calc.sjm.write_sjm_traces(path='sjm_traces.out')  # .out for .gitignore
+# The SJM extension itself is reached as calc.dft.sjm:
+calc.dft.sjm.write_sjm_traces(path='sjm_traces.out')  # .out for .gitignore

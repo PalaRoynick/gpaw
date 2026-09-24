@@ -97,6 +97,9 @@ cavity = EffectivePotentialCavity(
     surface_calculator=GradientSurface())
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
+# No target potential, so these are constant-charge calculations; the
+# charge itself is set in the loop below.
+sjm = SJM(cavity=cavity, dielectric=dielectric, interactions=interactions)
 
 atoms.calc = GPAW(
     mode=PW(400.),
@@ -108,16 +111,11 @@ atoms.calc = GPAW(
     # The 'work function' convergence criterion is not available in PW
     # mode: it needs dipole_layer_correction(), which the Poisson solver
     # SJM builds there (ConjugateGradientPoissonSolver) does not provide.
-    # No target potential, so these are constant-charge calculations; the
-    # charge itself is set in the loop below.
-    extensions=[SJM(
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)])
+    extensions=[sjm])
 
 # sjm.change() changes the charge without throwing away the wave functions.
 for excess_electrons in [-0.2, -0.1, 0., .1, .2]:
-    atoms.calc.sjm.change(excess_electrons=excess_electrons)
+    sjm.change(excess_electrons=excess_electrons)
     atoms.get_potential_energy()
     log_potential(atoms.calc)
     write_everything(atoms.calc, label=f'{excess_electrons:.4f}')

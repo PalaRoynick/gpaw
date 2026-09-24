@@ -30,6 +30,15 @@ cavity = EffectivePotentialCavity(
     surface_calculator=GradientSurface())
 dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
+sjm = SJM(
+    # Solvated jellium parameters.
+    target_potential=4.2,
+    tol=0.2,
+    always_adjust=True,
+    # Implicit solvent parameters.
+    cavity=cavity,
+    dielectric=dielectric,
+    interactions=interactions)
 
 # The calculator
 calc = GPAW(
@@ -40,15 +49,7 @@ calc = GPAW(
     kpts=(9, 9, 1),
     xc='PBE',
     maxiter=1000,
-    extensions=[SJM(
-        # Solvated jellium parameters.
-        target_potential=4.2,
-        tol=0.2,
-        always_adjust=True,
-        # Implicit solvent parameters.
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)])
+    extensions=[sjm])
 atoms.calc = calc
 
 # Run the calculation.
@@ -56,8 +57,9 @@ opt = BFGS(atoms, trajectory='qn-Au111-H-sim.traj',
            logfile='qn-Au111-H-sim.log')
 opt.run()
 
-# Tighten the tolerances again.
-calc.sjm.change(tol=0.01, always_adjust=False, slope=None)
+# Tighten the tolerances again.  sjm.change() reaches the running
+# calculation, and keeps the wave functions.
+sjm.change(tol=0.01, always_adjust=False, slope=None)
 opt = BFGS(atoms, trajectory='qn-Au111-H-sim-1.traj',
            logfile='qn-Au111-H-sim.log')
 opt.run()

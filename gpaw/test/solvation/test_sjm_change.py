@@ -1,4 +1,9 @@
-"""Changing SJM parameters without discarding the wave functions."""
+"""Changing SJM parameters without discarding the wave functions.
+
+Parameters are changed through the SJM object handed to GPAW, which
+forwards to the built extension, calc.dft.sjm; the live values are read
+back off the latter.
+"""
 import pytest
 from ase import Atoms
 from ase.units import Ha
@@ -10,8 +15,11 @@ from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 TOL = 0.005  # V
 
 
-def h_atoms() -> Atoms:
+def h_atoms() -> tuple[Atoms, SJM]:
     """H at 7.5 V, the starting point of every change() test."""
+    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
+              target_potential=7.5, excess_electrons=-0.00316, slope=-384.0,
+              tol=TOL)
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
@@ -31,33 +39,30 @@ def h_atoms() -> Atoms:
         # charge it converges to, and telling it the slope instead of
         # leaving it to guess a capacitance, takes it from six SCF loops to
         # two.
-        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
-                        interactions=[], target_potential=7.5,
-                        excess_electrons=-0.00316, slope=-384.0, tol=TOL)])
-    return atoms
+        extensions=[sjm])
+    return atoms, sjm
 
 
-def converged_atoms() -> Atoms:
-    atoms = h_atoms()
+def converged_atoms() -> tuple[Atoms, SJM]:
+    atoms, sjm = h_atoms()
     atoms.get_potential_energy()
-    return atoms
+    return atoms, sjm
 
 
 @pytest.fixture
-def atoms(in_tmp_dir):
+def built(in_tmp_dir):
     """The built calculation, with no SCF loop: change() needs no more."""
-    atoms = h_atoms()
+    atoms, sjm = h_atoms()
     atoms.calc.initialize(atoms)
-    return atoms
+    return atoms, sjm
 
 
 def test_grand_output_toggle(in_tmp_dir):
-    atoms = h_atoms()
+    atoms, sjm = h_atoms()
     # This one needs results, but one SCF loop at constant charge will do:
-    atoms.calc.sjm.change(target_potential=None)
+    sjm.change(target_potential=None)
     atoms.get_potential_energy()
     calc = atoms.calc
-    sjm = calc.dft.sjm
     grand = calc.results['energy']
 
     # Toggling only changes which energy is reported - no new SCF loop:
@@ -68,30 +73,28 @@ def test_grand_output_toggle(in_tmp_dir):
     assert canonical == pytest.approx(
         calc.dft.energies.total_extrapolated * Ha)
     assert grand == pytest.approx(
-        canonical - sjm.excess_electrons * calc.get_fermi_level())
+        canonical - calc.dft.sjm.excess_electrons * calc.get_fermi_level())
 
     # ... and it is reversible:
     sjm.change(grand_output=True)
     assert calc.results['energy'] == pytest.approx(grand)
 
 
-def test_unknown_keyword(atoms):
-    with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-        atoms.calc.sjm.change(excess_electron=-0.01)
+def test_unknown_keyword(built):
+    atoms, sjm = built
+    # Both routes check the keywords, before anything is changed:
+    for obj in [sjm, atoms.calc.dft.sjm]:
+        with pytest.raises(ValueError, match='Unexpected SJM keyword'):
+            obj.change(excess_electron=-0.01)
 
 
-def test_unknown_extension_name(atoms):
-    with pytest.raises(AttributeError, match='no attribute'):
-        atoms.calc.nosuchextension
-
-
-def test_settings_live_on_the_potentiostat(atoms):
+def test_settings_live_on_the_potentiostat(built):
     """change() hands every setting straight to the potentiostat."""
-    sjm = atoms.calc.dft.sjm
+    atoms, sjm = built
     sjm.change(max_iters=3, max_reruns=4, max_potential_stepsize=1.5,
                grand_output=False, always_adjust=True, mixer=0.5,
                slope_regression_depth=3, slope=-20.0)
-    pot = sjm.potentiostat
+    pot = atoms.calc.dft.sjm.potentiostat
     assert (pot.max_iters, pot.max_reruns, pot.max_potential_stepsize,
             pot.grand_output, pot.always_adjust) == (3, 4, 1.5, False, True)
     opt = pot.optimizer
@@ -106,43 +109,45 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     had to be carried over by hand when the mode switched; now the
     potentiostat holds it in either mode.
     """
+    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
+              excess_electrons=0.0, tol=0.001)
     a = 1.4
     atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        extensions=[SJM(cavity=NoCavity(), dielectric=Vacuum(),
-                        interactions=[], excess_electrons=0.0, tol=0.001)])
+        extensions=[sjm])
     atoms.calc.initialize(atoms)
-    sjm = atoms.calc.dft.sjm
+    pot = atoms.calc.dft.sjm.potentiostat
 
     sjm.change(tol=0.05)  # constant-charge mode
-    assert sjm.potentiostat.tol == pytest.approx(0.05)
+    assert pot.tol == pytest.approx(0.05)
 
     sjm.change(target_potential=3.0)
-    assert sjm.potentiostat.optimizer is not None
-    assert sjm.potentiostat.tol == pytest.approx(0.05)
+    assert pot.optimizer is not None
+    assert pot.tol == pytest.approx(0.05)
 
     # A single combined call is the same, whichever branch runs first:
     sjm.change(target_potential=None)
     sjm.change(tol=0.02, target_potential=4.0)
-    assert sjm.potentiostat.tol == pytest.approx(0.02)
+    assert pot.tol == pytest.approx(0.02)
 
 
-def test_parameters_are_readable_but_read_only(atoms):
+def test_parameters_are_readable_but_read_only(built):
     """Every keyword reads back under its own name; none can be assigned."""
-    sjm = atoms.calc.sjm  # the built extension
-    assert sjm.target_potential == 7.5
-    assert sjm.tol == TOL
-    assert sjm.excess_electrons == sjm.charge  # Extension API
-    assert sjm.max_iters == 10
-    assert sjm.max_reruns == 10
-    assert sjm.max_potential_stepsize == 2
-    assert sjm.grand_output is True
-    assert sjm.always_adjust is False
-    assert sjm.mixer == 0.2
-    assert sjm.slope_regression_depth == 4
-    assert sjm.jelliumregion is sjm.region
+    atoms, sjm = built
+    ext = atoms.calc.dft.sjm
+    assert ext.target_potential == 7.5
+    assert ext.tol == TOL
+    assert ext.excess_electrons == ext.charge  # Extension API
+    assert ext.max_iters == 10
+    assert ext.max_reruns == 10
+    assert ext.max_potential_stepsize == 2
+    assert ext.grand_output is True
+    assert ext.always_adjust is False
+    assert ext.mixer == 0.2
+    assert ext.slope_regression_depth == 4
+    assert ext.jelliumregion is ext.region
 
     for key, value in [('charge', -0.01),
                        ('excess_electrons', -0.01),
@@ -151,8 +156,9 @@ def test_parameters_are_readable_but_read_only(atoms):
                        ('slope', -1.0),
                        ('jelliumregion', {})]:
         with pytest.raises(AttributeError, match='change'):
-            setattr(sjm, key, value)
+            setattr(ext, key, value)
 
-    # ... while change() does get through:
+    # ... while change() does get through, to both:
     sjm.change(tol=0.01)
+    assert ext.tol == 0.01
     assert sjm.tol == 0.01
