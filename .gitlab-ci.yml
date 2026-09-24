@@ -5,6 +5,7 @@ variables:
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
+  IMAGE_ROCM: "$IMAGE_PATH/rocm:7.2-staging"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
@@ -223,6 +224,36 @@ build-cuda-makefile:
     - pip install -v --user --log build.log --editable . --no-build-isolation
   cache:
     key: cache-build-cuda
+    paths:
+     - $PIP_CACHE_DIR
+
+
+build-rocm:
+  image: $IMAGE_ROCM
+  extends:
+    - .build
+  script:
+    - |
+      cat << EOF >> siteconfig.py
+      gpu = True
+      gpu_target = 'hip-amd'
+      gpu_compiler = 'hipcc'
+      gpu_include_dirs = []
+      gpu_compile_args = [
+          '-g',
+          '-O3',
+          '--offload-arch=gfx90a',
+          ]
+      libraries += ['amdhip64', 'hipblas']
+
+      # MAGMA
+      magma = True
+      libraries += ['magma']
+      EOF
+    - cat siteconfig.py
+    - pip install -v --user --log build.log --no-build-isolation --editable .
+  cache:
+    key: cache-build-rocm
     paths:
      - $PIP_CACHE_DIR
 
@@ -507,6 +538,21 @@ test-cuda-mpi-makefile-build:
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
     - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
+
+
+test-rocm:
+  image: $IMAGE_ROCM
+  extends:
+    - .test
+  needs:
+    - job: build-rocm
+  tags:
+    - mi210
+  script:
+    - rocm-smi
+    - gpaw info
+    - python -c 'import cupy; import cupyx; from cupy.cuda import runtime'
+    - pytest -v -m gpu
 
 
 test-lumi-g:
