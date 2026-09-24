@@ -94,7 +94,8 @@ def test_qeh_parallel(in_tmp_dir, gpw_files, mpi):
 
     if comm.rank == 0:
         assert chi_wGG.shape[0] == 23
-        assert chi_wGG[0, 0, 0] == pytest.approx(-0.004795395871467905, abs=1e-7)
+        assert chi_wGG[0, 0, 0] == pytest.approx(
+            -0.004795395871467905, abs=1e-7)
         assert chi_wGG[3, 2, 1] == pytest.approx(
             0.004216141281855623 + 6.949418840278167e-05j,
             abs=1e-7)
