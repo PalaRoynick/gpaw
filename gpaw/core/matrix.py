@@ -1024,34 +1024,27 @@ class CuPyDistribution(MatrixDistribution):
             CuPyDistribution.gpu_matmul_general(alpha, a, opa, b, opb, beta, c)
             return c
 
-        if symmetric:
-            if opa == 'N':
-                assert opb == 'C' or opb == 'T' \
-                    and np.issubdtype(a.dtype, np.floating)
-                if a is b:
-                    blas.gpu_r2k(0.5 * alpha,
-                                 a.data,
-                                 a.data,
-                                 beta,
-                                 c.data)
-                else:
-                    if beta == 1.0 and a.shape[1] == 0:
-                        return
-                    if c.data.size > 0:
-                        assert beta in [0.0, 1.0]
-                        # CuPy doesn't have dsyrk, so we roll our own:
-                        blas.gpu_r2k(0.5 * alpha,
-                                     a.data,
-                                     b.data,
-                                     beta,
-                                     c.data)
+        if symmetric and opa == 'N':
+            # Non-distributed symmetric matrices: use dedicated algorithm
+            assert opb == 'C' or opb == 'T' \
+                and np.issubdtype(a.dtype, np.floating)
+            if a is b:
+                blas.gpu_r2k(0.5 * alpha,
+                                a.data,
+                                a.data,
+                                beta,
+                                c.data)
             else:
-                1 / 0
-                assert opa == 'C' and opb == 'N'
-                assert a is not b
-                raise NotImplementedError
-                blas.gpu_r2k(0.5 * alpha, a.data, b.data, beta, c.data, 'n')
-
+                if beta == 1.0 and a.shape[1] == 0:
+                    return
+                if c.data.size > 0:
+                    assert beta in [0.0, 1.0]
+                    # CuPy doesn't have dsyrk, so we roll our own:
+                    blas.gpu_r2k(0.5 * alpha,
+                                    a.data,
+                                    b.data,
+                                    beta,
+                                    c.data)
         else:
             # Non-distributed case without a dedicated kernel, just use generic
             # matmul
