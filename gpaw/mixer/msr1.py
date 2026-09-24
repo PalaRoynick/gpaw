@@ -250,7 +250,7 @@ class MSR1Mixer(BaseMixer):
             self.pk_1sX.data[:] += alpha * s_hsX[h].data
             self.uk_1sX.data[:] -= alpha * y_hsX[h].data
 
-        self.trust_radius = self.xp.array(self.trust_radius)
+        self.trust_radius = self.xp.asarray(self.trust_radius)
         self.world.broadcast(self.trust_radius, 0)
         predicted_radius = B * self.pk_1sX.norm2().sum()**0.5
         if predicted_radius > self.trust_radius:
@@ -261,7 +261,7 @@ class MSR1Mixer(BaseMixer):
             scale_factor = 1
             beta_h = alpha_h
         self.world.broadcast(beta_h, 0)
-        A = self.xp.array(A)
+        A = self.xp.asarray(A)
         self.world.broadcast(A, 0)
 
         self.pk_1sX.data[:] = 0
