@@ -143,6 +143,15 @@ Note also that we reduce the degrees of freedom in this example, holding the wat
 
 .. literalinclude:: run-neb.py
 
+.. Note:: Each image needs its own ``SJM`` object, with its own ``cavity``,
+          ``dielectric`` and ``interactions``, which is why ``make_calculator()``
+          creates them all afresh for every image.
+          Do not hand one ``SJM(...)`` object---or one set of solvent objects---to
+          several calculators: each calculation keeps its state in them (the
+          cavity on its grid, for instance), so the images would silently
+          overwrite each other's, and ``sjm.change()``, ``sjm.excess_electrons``
+          and the like would only reach the calculator built last.
+
 After a few dozen iterations, the band completes and we can make a plot of the barrier, using ``NEBTools``.
 (Plot script: :download:`plot-neb.py`.)
 

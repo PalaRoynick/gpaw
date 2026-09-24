@@ -110,6 +110,10 @@ class SJM(Solvation):
     ``slope`` becomes the regressed estimate, and ``jelliumregion`` is the
     :class:`JelliumRegion` built from the dict.  :meth:`todict`, and so the
     ``.gpw`` file, records the parameters as given (and changed to).
+
+    An SJM object, and the solvent objects given to it, belong to one
+    calculator: each calculation keeps its state in them.  So give every
+    calculator its own -- every image of a NEB, for instance.
     """
 
     name = 'sjm'

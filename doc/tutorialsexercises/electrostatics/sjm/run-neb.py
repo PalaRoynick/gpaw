@@ -15,6 +15,12 @@ from gpaw.solvation import (
 
 
 def make_calculator(index):
+    # Every image needs a calculator of its own, and with it an SJM object
+    # and solvent objects (cavity, dielectric, interactions) of its own:
+    # each calculation keeps its state in them, so images sharing them
+    # would overwrite each other's.  Hence they are all made here, afresh
+    # for each image.
+
     # Implicit solvent parameters.
     epsinf = 78.36  # dielectric constant of water at 298 K
     gamma = 18.4 * 1e-3 * Pascal * m
