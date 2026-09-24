@@ -53,7 +53,7 @@ class MSR1Mixer(BaseMixer):
         self.trust_scale = trust_scale
         self.soft_lim = soft_lim
         self.hard_lim = hard_lim
-        self.A_lims: list[float] = [0.001, max_A]
+        self.A_lims: list[float] = [0.02, max_A]
         self.B_lims: list[float] = [0.2, 1.0]
         self.A_rate_ratio: list[float] = [0.5, 1.5]
         self.B_rate_ratio: list[float] = [3 / 4, 4 / 3]
@@ -250,44 +250,22 @@ class MSR1Mixer(BaseMixer):
             self.pk_1sX.data[:] += alpha * s_hsX[h].data
             self.uk_1sX.data[:] -= alpha * y_hsX[h].data
 
+        self.trust_radius = self.world.min_scalar(self.trust_radius)
         predicted_radius = B * self.pk_1sX.norm2().sum()**0.5
-        if predicted_radius > self.trust_radius * 1.02:
-            s_hh = s_hsX.matrix_elements(s_hsX)
-            s_hh.tril2full()
-            s_hh = s_hh.data
-            s_hh *= B**2
-            A_hh = self.xp.linalg.inv(A_hh)
-
-            self.trust_radius = max(self.trust_radius,
-                                    predicted_radius * 0.5)
-
-            def errfct(lamb):
-                beta_h = self.xp.linalg.solve(
-                    A_hh + lamb * self.xp.eye(nold - 1), BR_h
-                )
-                rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
-                return rtnval if self.xp is np else rtnval.get()
-
-            try:
-                lamb = root_scalar(errfct, bracket=[0, 5e1])
-                root = lamb.root
-            except ValueError:
-                root = 5e1
-
-            beta_h = self.xp.linalg.solve(
-                A_hh + root * self.xp.eye(nold - 1), BR_h
-            )
-            scale_factor = self.trust_radius / predicted_radius
+        if predicted_radius > self.trust_radius:
+            beta_h, scale_factor = self.apply_trust_radius(
+                B, nold, predicted_radius, alpha_h, s_hsX, A_hh, BR_h)
             A *= scale_factor
         else:
             scale_factor = 1
             beta_h = alpha_h
         self.world.broadcast(beta_h, 0)
+        A = self.world.min_scalar(A)
 
         self.pk_1sX.data[:] = 0
         self.uk_1sX.data[:] = self.Rc_hsX[-1].data
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
+        for h, beta in enumerate(beta_h):
             self.pk_1sX.data[:] += beta * s_hsX[h].data
             self.uk_1sX.data[:] -= beta * y_hsX[h].data
 
@@ -299,7 +277,7 @@ class MSR1Mixer(BaseMixer):
 
         beta_h *= t_norm
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
+        for h, beta in enumerate(beta_h):
             nt_sX.data += B * beta * (
                 self.nt_hsX[h][0].data - self.nt_hsX[-1][0].data)
             D_asii.data += B * beta * (self.nt_hsX[h][1] - self.nt_hsX[-1][1])
@@ -320,7 +298,53 @@ class MSR1Mixer(BaseMixer):
         self.last_dNt = dNt
         return ret_dNt
 
-    def decide_good_broydenness(self, Ay_hh: ArrayND,
+    def apply_trust_radius(self,
+                           B: float,
+                           nold: int,
+                           predicted_radius: float,
+                           alpha_h: ArrayND,
+                           s_hsX: XArray,
+                           A_hh: ArrayND,
+                           BR_h: ArrayND):
+        s_hh = s_hsX.matrix_elements(s_hsX)
+        s_hh.tril2full()
+        s_hh = s_hh.data
+        s_hh *= B**2
+        A_hh = self.xp.linalg.inv(A_hh)
+
+        self.trust_radius = max(self.trust_radius,
+                                predicted_radius * 0.5)
+
+        def errfct(lamb):
+            beta_h = self.xp.linalg.solve(
+                A_hh + lamb * self.xp.eye(nold - 1), BR_h
+            )
+            rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
+            return rtnval if self.xp is np else rtnval.get()
+
+        if errfct(0) < 0:
+            # We are within the trust radius
+            return alpha_h, 1
+
+        root = 1e20
+        low_lim = 0
+        # Most of the time, this loop will exit on the first iteration.
+        for upp_lim in [1e1, 1e2, 1e4, 1e8, 1e16]:
+            try:
+                lamb = root_scalar(errfct, bracket=[low_lim, upp_lim])
+                root = lamb.root
+                break
+            except ValueError:
+                low_lim = upp_lim
+
+        beta_h = self.xp.linalg.solve(
+            A_hh + root * self.xp.eye(nold - 1), BR_h
+        )
+        scale_factor = self.trust_radius / predicted_radius
+        return beta_h, scale_factor
+
+    def decide_good_broydenness(self,
+                                Ay_hh: ArrayND,
                                 As_hh: ArrayND) -> float:
         if not self.gb_scale:
             # Multi-secant bad Broyden
