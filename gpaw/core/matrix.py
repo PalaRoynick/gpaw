@@ -1019,18 +1019,10 @@ class CuPyDistribution(MatrixDistribution):
                         return mmm_nc_sym(a, b, c, alpha, cublas_mmm)
                 else:
                     return mmm_nc(a, b, c, alpha, beta, cublas_mmm)
-            if opa == 'C' and opb == 'T' and beta == 0.0:
-                # Quick'n'dirty hack:
-                a = a.gather()
-                b = b.gather()
-                if self.comm.rank == 0:
-                    c0 = b.new()
-                    cublas_mmm(alpha, a.data, opa, b.data, opb, beta, c0.data)
-                else:
-                    c0 = None
-                c.scatter_from(c0)
-                return c
-            1 / 0
+
+            # General distributed case, not performant but works
+            CuPyDistribution.gpu_matmul_general(alpha, a, opa, b, opb, beta, c)
+            return c
 
         if symmetric:
             if opa == 'N':
@@ -1061,6 +1053,8 @@ class CuPyDistribution(MatrixDistribution):
                 blas.gpu_r2k(0.5 * alpha, a.data, b.data, beta, c.data, 'n')
 
         else:
+            # Non-distributed case without a dedicated kernel, just use generic
+            # matmul
             cublas_mmm(alpha, a.data, opa, b.data, opb, beta, c.data)
 
     def add_hermitian_conjugate(self,
@@ -1094,6 +1088,40 @@ class CuPyDistribution(MatrixDistribution):
         options.uplo = 'L'
         options.inplace = True
         eigs[:], _ = diagonalizer.eigh(H, options)
+
+    @staticmethod
+    def gpu_matmul_general(alpha, a: Matrix, opa: str,
+        b: Matrix, opb: str, beta: float, c: Matrix) -> None:
+        """Generic matrix-matrix multiplication for distributed CuPy matrices.
+        Computes
+            \alpha * op(a) @ op(b) + \beta * c
+        and stores the result in c. Valid op codes are:
+            - 'N': identity transform
+            - 'T': transpose
+            - 'C': Hermitian conjugate
+
+        This is currently a dummy serial implementation that gathers the matrix
+        on one GPU and performs the operation there. Output c is again a
+        distributed matrix.
+
+        Used as a fallback for distributed matmul types that GPAW does not (yet)
+        handle with specialized algorithms. See eg. mmm_nn, mmm_nc, mmm_nc_sym.
+        """
+        # Note that some other funcs, eg. gpu_gemm, use 'H' instead of 'C'
+        VALID_OP_CODES = ['N', 'T', 'C']
+        assert opa in VALID_OP_CODES
+        assert opb in VALID_OP_CODES
+
+        comm = a.dist.comm
+        a0 = a.gather(broadcast=False)
+        b0 = b.gather(broadcast=False)
+        c0 = c.gather(broadcast=False) if beta != 0.0 else None
+
+        if comm.rank == 0:
+            if c0 is None:
+                c0 = c.new(dist=None)
+            cublas_mmm(alpha, a0.data, opa, b0.data, opb, beta, c0.data)
+        c.scatter_from(c0)
 
     def eighl(self, H, L):
         """
