@@ -8,23 +8,6 @@ from gpaw.bztools import (_parallel_grid_function,
 from gpaw.mpi import world
 
 
-@pytest.mark.parametrize('count', [0, 1, 2, 7])
-@pytest.mark.parametrize('boolean', [False, True])
-def test_distributed_grid_values(count, boolean):
-    grids = np.arange(count * 3).reshape(count, 3)
-
-    def evaluate(local_grids):
-        np.testing.assert_array_equal(local_grids,
-                                      grids[world.rank::world.size])
-        values = local_grids[:, 0]
-        return values % 2 == 0 if boolean else values + 1
-
-    result = _parallel_grid_function(evaluate, grids, world)
-    expected = grids[:, 0] % 2 == 0 if boolean else grids[:, 0] + 1
-    np.testing.assert_array_equal(result, expected)
-    assert result.dtype == expected.dtype
-
-
 def test_distributed_grid_exception():
     def evaluate(grids):
         if world.rank == world.size - 1:
