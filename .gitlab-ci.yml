@@ -642,7 +642,7 @@ lint:
 # We get many failures running typecheck in python3.14,
 # because the typing system is smart enough to call out our humbuggery.
 # Disable for now.
-.typecheck:
+typecheck:
   image: $IMAGE_MAIN_LATEST
   stage: build
   before_script:
