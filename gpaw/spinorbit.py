@@ -69,9 +69,13 @@ def calculate_soc(dft: DFT,
     eig_skn = ibzwfs.get_all_eigs(broadcast=True)
 
     # <phi_i|dV_adr / r * L_v|phi_j>
-    D_asii = dft.density.D_asii.redist(atomdist=atomdist,
-                                       comm1=serial_comm????,
-                                       comm2=kpt_comm)
+    D_asii = dft.density.D_asii
+    # Complemetary comm to D_asii:
+    comm1 = (serial_comm if D_asii.layout.comm.size == ibzwfs.comm else
+             ibzwfs.kpt_band_comm)
+    D_asii = D_asii.redist(atomdist=atomdist,
+                           comm1=comm1,
+                           comm2=kpt_comm)
     dVL_avii = {a: soc(dft.setups[a],
                        dft.pot_calc.xc.xc,
                        np.array([pack_density(D_ii) for D_ii in D_sii.real]),
