@@ -1,7 +1,10 @@
+import pytest
 from ase import Atoms
 
 from gpaw import GPAW
-from gpaw.bztools import optimal_monkhorst_pack_grid
+from gpaw.bztools import optimal_monkhorst_pack_grid, _map_parallel_array
+from ase.build import bulk
+import numpy as np
 
 
 def test_optimal_monkhorst_pack_grid(gpw_files):
@@ -47,23 +50,19 @@ def test_optimal_monkhorst_pack_grid(gpw_files):
         assert (kpts_dict['size'] == kpts).all()
 
 
-def test_parallel_no_compliant_grid():
+def test_parallel_no_compliant_grid(mpi):
     atoms = bulk('Si', 'diamond', a=5.43)
     with pytest.raises(RuntimeError, match='contains_ibz_vertices_predicate'):
         optimal_monkhorst_pack_grid(
             atoms, kptdensity=0.5, nmaxperdim=0, force_even=True,
-            force_gamma=True, contains_ibz_vertices=True, comm=world)
-    world.barrier()
+            force_gamma=True, contains_ibz_vertices=True, comm=mpi.comm)
 
 
-def test_distributed_grid_exception():
+def test_distributed_grid_exception(mpi):
     def evaluate(grids):
-        if world.rank == world.size - 1:
+        if mpi.comm.rank == mpi.comm.size - 1:
             raise ValueError('candidate failed')
         return np.zeros(len(grids), dtype=int)
 
     with pytest.raises(ValueError, match='candidate failed'):
-        _parallel_grid_function(evaluate, np.ones((2, 3), int), world)
-    world.barrier()
-
-
+        _map_parallel_array(evaluate, np.ones((2, 3), int), mpi.comm)
