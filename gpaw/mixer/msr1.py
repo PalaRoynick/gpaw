@@ -379,7 +379,7 @@ class MSR1Mixer(BaseMixer):
             'eigvals',
             lambda A: self.xp.asarray(np.linalg.eigvals(A.get())))
 
-        good_broydenness = self.xp.array(0.5 * max_gb)
+        good_broydenness = self.xp.asarray(0.5 * max_gb)
         for iter in range(2, 12):
             norm_vec = 1 / (y_norm + s_norm *
                             good_broydenness)**0.5
