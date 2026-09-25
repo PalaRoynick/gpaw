@@ -649,9 +649,9 @@ typecheck:
     - pip freeze
     - python -m pip install mypy
     - python --version
-    - mypy --version
+    - python -m mypy --version
   script:
-    - mypy --pretty
+    - python -m mypy --pretty
   cache:
     key: cache-typecheck
     paths:
