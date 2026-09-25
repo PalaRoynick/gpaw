@@ -125,7 +125,7 @@ def optimal_monkhorst_pack_grid(
     mp_grids = np.array(list(mp_gridsize_generator(minsize, maxsize, step)))
 
     for predicate_function in predicate_functions:
-        mask = _parallel_grid_function(
+        mask = _map_parallel_array(
             predicate_function, mp_grids, comm, atoms,
             gamma=force_gamma, tolerance=tolerance)
         mp_grids = mp_grids[mask]
@@ -137,7 +137,7 @@ def optimal_monkhorst_pack_grid(
         return {'size': mp_grids[0], 'gamma': force_gamma}
     else:
         if minimize_ibz_points:
-            nk_ibz = _parallel_grid_function(
+            nk_ibz = _map_parallel_array(
                 get_nk_ibz, mp_grids, comm, atoms, force_gamma, tolerance)
             return {'size': mp_grids[np.argmin(nk_ibz)],
                     'gamma': force_gamma}
@@ -147,8 +147,19 @@ def optimal_monkhorst_pack_grid(
                     'gamma': force_gamma}
 
 
-def _parallel_grid_function(function, mp_grids, comm, *args, **kwargs):
-    """Evaluate a grid function collectively while retaining input order."""
+def _map_parallel_array(function, mp_grids, comm, *args, **kwargs):
+    """Evaluate a grid function collectively while retaining input order.
+
+       The mpgrids needs to be the same on all cores. It's first dimension
+       will be parallelized via comm.
+
+       One a single core, function will be called strided on all items of
+       mp_grids which are associated to that core.
+
+       The functions are expected to return either an int or a bool.
+       All cores return the same bool or int array, which will be gathered
+       on all cores.
+    """
     indices = np.arange(comm.rank, len(mp_grids), comm.size)
     with broadcast_exception(comm):
         local_values = np.asarray(
