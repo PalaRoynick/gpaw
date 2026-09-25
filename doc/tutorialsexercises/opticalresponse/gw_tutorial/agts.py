@@ -4,7 +4,17 @@ from myqueue.workflow import run
 
 
 def workflow():
-    run(script='MoS2_lcao_gw_soc.py', cores=40, tmax='24h', nodename='xeon40el9')
+    gs = run(script='MoS2_lcao_gs.py',
+             cores=40, tmax='24h', nodename='xeon40el9')
+    gw_runs = [
+        run(script='MoS2_gw_12.py', deps=[gs],
+            cores=40, tmax='24h', nodename='xeon40el9'),
+        run(script='MoS2_gw_18.py', deps=[gs],
+            cores=40, tmax='24h', nodename='xeon40el9'),
+        run(script='MoS2_gw_24.py', deps=[gs],
+            cores=40, tmax='24h', nodename='xeon40el9'),
+    ]
+    run(script='MoS2_lcao_gw_soc_plot.py', cores=1, deps=gw_runs)
     return
     with run(script='C_ecut_k_conv_GW.py', cores=24, tmax='10h') as r:
         run(script='C_ecut_k_conv_plot_GW.py')

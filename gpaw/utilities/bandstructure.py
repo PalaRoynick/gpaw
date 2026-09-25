@@ -558,6 +558,130 @@ def plot_soc_bandstructures(
     return fig, axes[0]
 
 
+def direct_gap_at_kpoint(bandstructure, noccupied, name='K', tol=1e-12):
+    """Return the direct band gap at a named point on a band path.
+
+    ``noccupied`` is the number of occupied bands in each spin channel of
+    ``bandstructure``.  For a spin-paired scalar calculation this is half the
+    electron count; for its SOC spinor representation it is the full electron
+    count.
+    """
+    kpoint_c = bandstructure.path.special_points[name]
+    indices = np.flatnonzero(
+        np.all(np.isclose(bandstructure.path.kpts,
+                          kpoint_c,
+                          atol=tol,
+                          rtol=0), axis=1)
+    )
+    if len(indices) != 1:
+        raise ValueError(
+            f'Expected one {name} point in the band path, got {len(indices)}'
+        )
+    energies_sn = bandstructure.energies[:, indices[0]]
+    if not 0 < noccupied < energies_sn.shape[1]:
+        raise ValueError(
+            f'Invalid occupied-band count {noccupied} for '
+            f'{energies_sn.shape[1]} bands'
+        )
+    vbm = energies_sn[:, :noccupied].max()
+    cbm = energies_sn[:, noccupied:].min()
+    return cbm - vbm
+
+
+def plot_lcao_gw_soc_bandstructures(
+    calc,
+    bandpath,
+    shift_skn,
+    filename,
+    cutoff=100,
+    emin=None,
+    emax=None,
+    kpoint='K',
+    world=default_world,
+):
+    """Interpolate and plot scalar and SOC PBE/G0W0 band structures.
+
+    The plot is referenced to the G0W0 SOC valence-band maximum.  A dictionary
+    containing the scalar and SOC direct gaps is returned on rank zero.
+    """
+    if world.rank != 0:
+        return None
+    if calc.get_number_of_spins() != 1 or len(shift_skn) != 1:
+        raise ValueError('This convenience function requires spin pairing')
+
+    pbe = create_bandstructure(calc, bandpath, cutoff=cutoff, world=world)
+    gw = create_bandstructure(calc,
+                              bandpath,
+                              cutoff=cutoff,
+                              shift_kn=shift_skn[0],
+                              world=world)
+    pbe_soc, pbe_sz_kn = create_soc_bandstructure(
+        calc, bandpath, cutoff=cutoff, world=world
+    )
+    gw_soc, gw_sz_kn = create_soc_bandstructure(
+        calc,
+        bandpath,
+        cutoff=cutoff,
+        shift_skn=shift_skn,
+        world=world,
+    )
+    nelectrons = int(round(calc.get_number_of_electrons()))
+    noccupied = nelectrons // 2
+    gaps = {
+        'pbe': direct_gap_at_kpoint(pbe, noccupied, kpoint),
+        'gw': direct_gap_at_kpoint(gw, noccupied, kpoint),
+        'pbe_soc': direct_gap_at_kpoint(pbe_soc, nelectrons, kpoint),
+        'gw_soc': direct_gap_at_kpoint(gw_soc, nelectrons, kpoint),
+    }
+    vbm = gw_soc.energies[0, :, :nelectrons].max()
+    plot_soc_bandstructures(
+        [(f'PBE: {kpoint}-{kpoint} gap {gaps["pbe"]:.3f} eV\n'
+          f'PBE+SOC: {kpoint}-{kpoint} gap '
+          f'{gaps["pbe_soc"]:.3f} eV',
+          pbe_soc, pbe_sz_kn),
+         (f'G0W0: {kpoint}-{kpoint} gap {gaps["gw"]:.3f} eV\n'
+          f'G0W0+SOC: {kpoint}-{kpoint} gap '
+          f'{gaps["gw_soc"]:.3f} eV',
+          gw_soc, gw_sz_kn)],
+        filename,
+        reference=vbm,
+        emin=emin,
+        emax=emax,
+        world=world,
+    )
+    return gaps
+
+
+def plot_band_gap_convergence(results, filename, world=default_world):
+    """Plot scalar and SOC PBE/G0W0 gaps for labelled calculations.
+
+    ``results`` is a sequence of ``(label, gaps)`` pairs, where each ``gaps``
+    mapping is returned by :func:`plot_lcao_gw_soc_bandstructures`.
+    """
+    if world.rank != 0:
+        return None
+    labels = [label for label, _ in results]
+    x = np.arange(len(labels))
+    fig, ax = plt.subplots(figsize=(7, 4), constrained_layout=True)
+    for key, label, marker in [
+        ('pbe', 'PBE', 'o'),
+        ('pbe_soc', 'PBE+SOC', 's'),
+        ('gw', 'G0W0', 'o'),
+        ('gw_soc', 'G0W0+SOC', 's'),
+    ]:
+        ax.plot(x,
+                [gaps[key] for _, gaps in results],
+                marker=marker,
+                label=label)
+    ax.set(xticks=x,
+           xticklabels=labels,
+           ylabel='Direct gap (eV)')
+    ax.legend()
+    ax.grid(axis='y', alpha=0.25)
+    fig.savefig(filename, dpi=200)
+    return fig, ax
+
+
 def plot_g0w0_bandstructure(
     calc_gs,
     bandpath,

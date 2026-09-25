@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
+from ase.cell import Cell
 from ase.spectrum.band_structure import BandStructure
 
 from gpaw import GPAW, mpi
 from gpaw.utilities.bandstructure import (create_bandstructure,
                                           diagonalize_soc_lcao,
+                                          direct_gap_at_kpoint,
+                                          plot_band_gap_convergence,
                                           plot_soc_bandstructures)
 
 
@@ -39,6 +42,21 @@ def test_soc_mixes_spin_channels():
 
     assert energies_kn[0] == pytest.approx([-0.25, 0.25])
     assert sz_kn[0] == pytest.approx([0.0, 0.0], abs=1e-14)
+
+
+def test_direct_gap_and_convergence_plot(tmp_path):
+    path = Cell(np.eye(3)).bandpath('GX', npoints=3)
+    energies = np.array([[[-1.0, 0.0, 2.0, 3.0],
+                          [-0.8, 0.2, 2.1, 3.1],
+                          [-0.5, 0.5, 2.5, 3.5]]])
+    bs = BandStructure(path, energies, reference=0.0)
+    assert direct_gap_at_kpoint(bs, 2, name='X') == pytest.approx(2.0)
+
+    gaps = {'pbe': 1.0, 'pbe_soc': 0.9, 'gw': 2.0, 'gw_soc': 1.9}
+    filename = tmp_path / 'convergence.png'
+    result = plot_band_gap_convergence([('test', gaps)], filename)
+    assert result is not None
+    assert filename.is_file()
 
 
 def test_rank0_lcao_interpolation_and_plot(gpw_files, tmp_path):
