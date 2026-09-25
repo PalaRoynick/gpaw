@@ -211,7 +211,7 @@ class AtomArrays:
         self.domain_comm = domain_comm
 
         # convert int to tuple:
-        self.dims = tuple(dims) if not isinstance(dims, int) else (dims,)
+        self.dims = tuple(dims) if not isinstance(dims, (int, np.int64)) else (dims,)
 
         if self.dims:
             d1, d2 = self.my_slice()
