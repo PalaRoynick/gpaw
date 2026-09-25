@@ -6,7 +6,8 @@ from gpaw import GPAW
 
 @pytest.mark.parametrize('name, tol',
                          [('bcc_li_pw', 3e-5),
-                          ('bcc_li_fd', 4e-4)])
+                          ('bcc_li_fd', 4e-4),
+                          ('bcc_li_lcao', 1e-2)])
 def test_ae_k(gpw_files, name, tol):
     """Test normalization of non gamma-point wave functions."""
     if world.size > 1:

@@ -270,12 +270,12 @@ class IBZWaveFunctions(Generic[WFT]):
 
         if isinstance(wfs, PWFDWaveFunctions):
             psit_X = wfs.psit_nX[0].to_pbc_grid()
-            grid = psit_X.desc.uniform_grid_with_grid_spacing(grid_spacing)
-            psi_r = psit_X.interpolate(grid=grid)
         else:
             # LCAO mode
-            grid = wfs.basis.grid.uniform_grid_with_grid_spacing(grid_spacing)
-            psi_r = wfs.to_uniform_grid(band + 1, grid, n1=band)
+            psit_X = wfs.to_uniform_grid(band + 1, wfs.basis.grid, n1=band)
+
+        grid = psit_X.desc.uniform_grid_with_grid_spacing(grid_spacing)
+        psi_r = psit_X.interpolate(grid=grid)
 
         if not skip_paw_correction:
             dphi_aj = wfs.setups.partial_wave_corrections()
