@@ -232,6 +232,7 @@ def check(dir: Path, silent=True) -> tuple[float, float, list[float]]:
     rms = (sum([s**2 for s in d]) / n)**0.5
     maxabs = max([abs(s) for s in d])
 
+    ee = np.nan
     if n == 10:
         ex = v['FCC']
         eo = v['XO'] - ex
@@ -246,8 +247,6 @@ def check(dir: Path, silent=True) -> tuple[float, float, list[float]]:
         symbol = dir.stem.split('.')[0]
         dE = np.array(E) - ENERGIES[symbol]
         ee = abs(dE).max()
-    else:
-        ee = np.nan
 
     if not silent:
         print(f'{dir.name:25} {n:2}',
