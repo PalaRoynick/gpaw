@@ -32,7 +32,7 @@ and run it like this::
 
 .. tip::
 
-    You will need Python 3.10 or later.  You can install that with::
+    You will need Python 3.11 or later.  You can install that with::
 
         $ module load Python
 

@@ -105,4 +105,31 @@ void gpu_host_callback(gpuStream_t stream, F&& func)
     gpuLaunchHostFunc(stream, trampoline, heapFunc);
 }
 
+namespace gpu
+{
+
+template<typename T>
+T* Tmalloc(size_t num_elements)
+{
+    static_assert(!std::is_pointer_v<T>);
+    T* ptr;
+    gpuMalloc(reinterpret_cast<void**>(&ptr), num_elements * sizeof(T));
+    return ptr;
+}
+
+template<typename T>
+void Tfree(T* ptr)
+{
+    gpuFree(reinterpret_cast<void*>(ptr));
+}
+
+template<typename T>
+void Tmemcpy(T* dst, const T* src, size_t num_elements, gpuMemcpyKind kind)
+{
+    static_assert(!std::is_pointer_v<T>);
+    gpuMemcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), num_elements * sizeof(T), kind);
+}
+
+} // namespace gpu
+
 } // namespace gpaw

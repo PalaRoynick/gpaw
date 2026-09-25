@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef __cplusplus
-#error "Need C++"
-#endif
-
 #include "gpaw_utils.h"
 
 #include <functional>
