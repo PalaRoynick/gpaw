@@ -62,7 +62,8 @@ def calculate_soc(dft: DFT,
         ibzwfs.rank_ks,
         ibz,
         ibzwfs.comm,
-        n1, n2)
+        n1, n2,
+        dft.relpos_ac)
 
     C_ss, s_vss = basis_change(theta=theta, phi=phi)
 
@@ -146,9 +147,11 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                            ibz: IBZ,
                            comm: MPIComm,
                            n1: int,
-                           n2: int) -> tuple[dict[int, list[AtomArrays]],
-                                             MPIComm,
-                                             AtomDistribution]:
+                           n2: int,
+                           relpos_ac: np.ndarray
+                           ) -> tuple[dict[int, list[AtomArrays]],
+                                      MPIComm,
+                                      AtomDistribution]:
     """Distribute projections from IBZ to BZ.
     """
     # Parallelize full BZ projections over kpt_comm and domain_comm:
@@ -212,7 +215,9 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
             if domain_comm.rank == 0:
                 P0_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
                                                     ibz.s_K[K],
-                                                    ibz.time_reversal_K[K])
+                                                    ibz.time_reversal_K[K],
+                                                    relpos_ac,
+                                                    ibz.bz.kpt_Kc[K])
             else:
                 P0_ani = None
             P_ani = P_layout.new(atomdist=atomdist).empty(dims)

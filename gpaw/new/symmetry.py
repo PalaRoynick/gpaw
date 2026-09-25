@@ -11,6 +11,7 @@ from ase.units import Bohr
 
 from gpaw import debug
 from gpaw.core.domain import normalize_cell
+from gpaw.core.atom_arrays import AtomArrays
 from gpaw.new import zips
 from gpaw.rotation import rotation
 from gpaw.symmetry import Symmetry as OldSymmetry
@@ -542,12 +543,22 @@ class SymmetrizationPlan:
                                    rotation_ii, D_asii[a2], rotation_ii)
         dist_D_asii.data *= 1.0 / len(self.symmetries)
 
-    def rotate_projections(self, P_ani, symnum, time_reversal):
+    def rotate_projections(self,
+                           P_ani: AtomArrays,
+                           symnum: int,
+                           time_reversal: bool,
+                           rpos_ac,
+                           kpt_c):
+        dpos_ac = (rpos_ac @ self.symmetries.rotation_scc[symnum] -
+                   self.symmetries.translation_sc[symnum] -
+                   rpos_ac[self.symmetries.atommap_sa[symnum]])
+        x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
+        assert (x_a == 1.0).all()
         P2_ani = P_ani.new()
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]
             b = self.symmetries.atommap_sa[symnum, a]
-            P2_ani[b][:] = P_ni @ R_ii
+            P2_ani[b][:] = P_ni @ R_ii * x_a[a]  # or b?
         if time_reversal:
             np.negative(P2_ani.data.imag, P2_ani.data.imag)
         return P2_ani
