@@ -571,7 +571,8 @@ class Matrix(XP):
         else:
             # CPU scalapack path
             desc = dist.desc
-            cgpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
+            cgpaw.scalapack_set(
+                self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
             buf = self.data.copy()
             # Set diagonal to zero in the copy:
             cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
@@ -1040,10 +1041,10 @@ class CuPyDistribution(MatrixDistribution):
                 and np.issubdtype(a.dtype, np.floating)
             if a is b:
                 blas.gpu_r2k(0.5 * alpha,
-                                a.data,
-                                a.data,
-                                beta,
-                                c.data)
+                             a.data,
+                             a.data,
+                             beta,
+                             c.data)
             else:
                 if beta == 1.0 and a.shape[1] == 0:
                     return
@@ -1051,10 +1052,10 @@ class CuPyDistribution(MatrixDistribution):
                     assert beta in [0.0, 1.0]
                     # CuPy doesn't have dsyrk, so we roll our own:
                     blas.gpu_r2k(0.5 * alpha,
-                                    a.data,
-                                    b.data,
-                                    beta,
-                                    c.data)
+                                 a.data,
+                                 b.data,
+                                 beta,
+                                 c.data)
         else:
             # Non-distributed case without a dedicated kernel, just use generic
             # matmul
@@ -1093,8 +1094,8 @@ class CuPyDistribution(MatrixDistribution):
         eigs[:], _ = diagonalizer.eigh(H, options)
 
     @staticmethod
-    def gpu_matmul_general(alpha, a: Matrix, opa: str,
-        b: Matrix, opb: str, beta: float, c: Matrix) -> None:
+    def gpu_matmul_general(alpha, a: Matrix, opa: str, b: Matrix, opb: str,
+                           beta: float, c: Matrix) -> None:
         """Generic matrix-matrix multiplication for distributed CuPy matrices.
         Computes
             \alpha * op(a) @ op(b) + \beta * c
@@ -1107,7 +1108,7 @@ class CuPyDistribution(MatrixDistribution):
         on one GPU and performs the operation there. Output c is again a
         distributed matrix.
 
-        Used as a fallback for distributed matmul types that GPAW does not (yet)
+        Used as a fallback for distributed matmul types that GPAW does not yet
         handle with specialized algorithms. See eg. mmm_nn, mmm_nc, mmm_nc_sym.
         """
         # Note that some other funcs, eg. gpu_gemm, use 'H' instead of 'C'
