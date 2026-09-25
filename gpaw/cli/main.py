@@ -76,11 +76,6 @@ def hook(parser, args):
             return args
 
         # Start again in parallel:
-        pyargs = []
-        if sys.version_info >= (3, 11):
-            # Don't prepend a potentially unsafe path to sys.path
-            pyargs.append('-P')
-
         mpiargs = []
         if GPAW_MPI_OPTIONS is not None:
             mpiargs += GPAW_MPI_OPTIONS.split()
@@ -90,7 +85,7 @@ def hook(parser, args):
         arguments = ['mpiexec',
                      *mpiargs,
                      sys.executable,
-                     *pyargs,
+                     '-P',
                      '-m',
                      'gpaw',
                      *sys.argv[1:]]
