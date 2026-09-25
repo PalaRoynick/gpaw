@@ -389,6 +389,7 @@ class KPointData:
         self.wfs = wfs
         self.v_mn = v_mn
         self.f_m = wfs.occ_n
+        self.P_amsi = wfs.P_ani
         self.projections = wfs.P_ani
 
     def wavefunctions(self, calc, periodic=True):
@@ -419,6 +420,13 @@ class KPointData:
                               self.v_mn, u_nsR)
 
         return u_msR
+
+    @property
+    def P_amj(self):
+        M = self.P_amsi.dimd[0]
+        return {
+            a: P_msi.transpose((0, 2, 1)).copy().reshape((M, -1))
+            for a, P_msi in self.P_amsi.items()}
 
 
 class WaveFunction:
