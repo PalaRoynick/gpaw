@@ -370,7 +370,7 @@ prepare-libxc:
   before_script:
     - export PREFIX=`realpath $PREFIX`
   script:
-    - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
+    - git clone --depth 1 -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - autoreconf -i
     - >
