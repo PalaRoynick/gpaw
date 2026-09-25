@@ -5,6 +5,8 @@ import contextlib
 from collections.abc import Generator, Iterable
 from time import time
 from types import ModuleType
+from gpaw.new.timer import trace
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -221,6 +223,7 @@ if not TYPE_CHECKING:
 
 def set_device(log, world=None):
     global device_id
+    from gpaw.mpi import world
 
     if device_id is not None:
         return
@@ -233,40 +236,45 @@ def set_device(log, world=None):
         log(f'mpi rank {world.rank} has no GPU device!', parallel=True)
         return
 
-    if device_id is None:
-        # Check the number of devices
-        # Do not fail when calling `gpaw info` on a login node without GPUs
-        try:
-            device_count = runtime.getDeviceCount()
-        except runtime.CUDARuntimeError as e:
-            # Likely no device present
-            if 'ErrorNoDevice' not in str(e):
-                # Raise error in case of some other error
-                raise e
-            device_count = 0
+    # Check the number of devices
+    # Do not fail when calling `gpaw info` on a login node without GPUs
+    try:
+        device_count = runtime.getDeviceCount()
+    except runtime.CUDARuntimeError as e:
+        # Likely no device present
+        if 'ErrorNoDevice' not in str(e):
+            # Raise error in case of some other error
+            raise e
+        device_count = 0
 
-        if device_count > 0:
-            # select GPU device (round-robin based on MPI rank)
-            # if not set, all MPI ranks will use the same default device
-            runtime.setDevice(world.rank % device_count)
+    warning = ''
+    if device_count > 0:
+        # select GPU device based on a node local rank
+        nodecomm = world.node_communicator()
+        runtime.setDevice(nodecomm.rank % device_count)
+        if nodecomm.size > device_count:
+            warning = ('WARNING: oversubscribing GPUs'
+                       f'{nodecomm.size=} {device_count=}')
 
-            # initialise C parameters and memory buffers
-            import gpaw.cgpaw as cgpaw
-            cgpaw.gpaw_gpu_init()
-            atexit.register(cgpaw.gpaw_gpu_delete)
+        # initialise C parameters and memory buffers
+        import gpaw.cgpaw as cgpaw
+        cgpaw.gpaw_gpu_init()
+        atexit.register(cgpaw.gpaw_gpu_delete)
 
-            # Initialize MAGMA library if available
-            if magma.is_available():
-                magma.magma_init()
-                atexit.register(magma.magma_finalize)
+        # Initialize MAGMA library if available
+        if magma.is_available():
+            magma.magma_init()
+            atexit.register(magma.magma_finalize)
 
-            # Generate a device id
-            import os
-            nodename = os.uname()[1]
-            bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
-            device_id = f'{nodename}:{bus_id}'
+        # Generate a device id
+        nodename = os.uname()[1]
+        bus_id = runtime.deviceGetPCIBusId(runtime.getDevice())
+        # Generate a device id
+        device_id = f'{nodename}:{bus_id}'
 
         log(f'mpi rank {world.rank} has GPU device {device_id}', parallel=True)
+
+    log(warning, parallel=True)
 
     if ENVVAR_GPAW_NO_GPU_MPI:
         log('Running without GPU aware MPI because \'GPAW_NO_GPU_MPI\' is'

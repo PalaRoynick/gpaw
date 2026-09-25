@@ -1149,6 +1149,7 @@ static PyObject * get_c_object(MPIObject *self, PyObject *args)
 // that needs MPI_getattr that needs MPI_Methods that need
 // MPI_Communicator that need ...
 static PyObject * MPICommunicator(MPIObject *self, PyObject *args);
+static PyObject * NodeCommunicator(MPIObject *self, PyObject *args);
 
 static PyMethodDef mpi_methods[] = {
     {"sendreceive",          (PyCFunction)mpi_sendreceive,
@@ -1216,6 +1217,8 @@ static PyMethodDef mpi_methods[] = {
     {"get_c_object",     (PyCFunction)get_c_object,     METH_VARARGS, 0},
     {"new_communicator", (PyCFunction)MPICommunicator,  METH_VARARGS,
      "new_communicator(ranks) creates a new communicator."},
+    {"node_communicator", (PyCFunction)NodeCommunicator,  METH_VARARGS,
+     "splits an existing communicator into tasks sharing memory"},
     {0, 0, 0, 0}
 };
 
@@ -1402,6 +1405,54 @@ static PyObject * MPICommunicator(MPIObject *self, PyObject *args)
     }
 }
 
+static PyObject * NodeCommunicator(MPIObject *self, PyObject *noargs)
+{
+  MPI_Comm comm;
+  MPI_Comm_split_type(self->comm, MPI_COMM_TYPE_SHARED, 0,  MPI_INFO_NULL, &comm); 
+  if (comm == MPI_COMM_NULL)
+    return NULL;
+
+#ifdef GPAW_MPI_DEBUG
+  if (comm != MPI_COMM_NULL)
+    // Default Errhandler is MPI_ERRORS_ARE_FATAL
+    MPI_Errhandler_set(comm, MPI_ERRORS_RETURN);
+#endif // GPAW_MPI_DEBUG
+
+  MPIObject *obj = PyObject_NEW(MPIObject, &MPIType);
+  if (obj == NULL)
+    return NULL;
+  MPI_Comm_size(comm, &(obj->size));
+  MPI_Comm_rank(comm, &(obj->rank));
+  obj->comm = comm;
+  if (obj->parent == Py_None)
+    Py_DECREF(obj->parent);
+
+  obj->members = (int*) malloc(obj->size*sizeof(int));
+  if (obj->members == NULL)
+    return NULL;
+
+  int* myranks = (int*) malloc(obj->size*sizeof(int));
+  if (myranks == NULL)
+    return NULL;
+  for (int i=0; i<obj->size; i++)
+    myranks[i] = i;
+
+  MPI_Group mygroup, worldgroup;
+  MPI_Comm_group(MPI_COMM_WORLD, &worldgroup);
+  MPI_Comm_group(obj->comm, &mygroup);
+
+  MPI_Group_translate_ranks(mygroup, obj->size, myranks, worldgroup,
+			    obj->members);
+  MPI_Group_free(&worldgroup);
+  MPI_Group_free(&mygroup);
+  free(myranks);
+
+  // Make sure that MPI_COMM_WORLD is kept alive till the end (we
+  // don't want MPI_Finalize to be called before MPI_Comm_free):
+  Py_INCREF(self);
+  obj->parent = (PyObject*)self;
+  return (PyObject*)obj;
+}
 
 PyObject* globally_broadcast_bytes(PyObject *self, PyObject *args)
 {

@@ -185,6 +185,14 @@ class _Communicator:
         else:
             return _Communicator(comm, parent=self)
 
+    def node_communicator(self):
+        """Create a new communicator for processes sharing memory,
+        i.e. within a node, based on MPI_Comm_split_type with
+        MPI_COMM_TYPE_SHARED
+        """
+        comm = self.comm.node_communicator()
+        return _Communicator(comm, parent=self)
+
     def sum(self, a, root=-1):
         """Perform summation by MPI reduce operations of numerical data.
 
@@ -797,6 +805,10 @@ class SerialCommunicator:
             return None
         comm = SerialCommunicator(parent=self)
         comm.size = len(ranks)
+        return comm
+
+    def node_communicator(self):
+        comm = SerialCommunicator(parent=self)
         return comm
 
     def test(self, request):
