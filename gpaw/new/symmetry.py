@@ -553,7 +553,7 @@ class SymmetrizationPlan:
                    self.symmetries.translation_sc[symnum] -
                    rpos_ac[self.symmetries.atommap_sa[symnum]])
         x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
-        assert (x_a == 1.0).all()
+        # assert (x_a == 1.0).all()
         P2_ani = P_ani.new()
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]

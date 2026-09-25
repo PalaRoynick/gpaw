@@ -432,7 +432,7 @@ class KPointData:
 
     @property
     def P_amj(self):
-        M = self.P_amsi.dimd[0]
+        M = self.P_amsi.dims[0]
         return {
             a: P_msi.transpose((0, 2, 1)).copy().reshape((M, -1))
             for a, P_msi in self.P_amsi.items()}
