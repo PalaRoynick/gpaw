@@ -595,6 +595,7 @@ test-libxc:
   script:
     - gpaw info
     - pytest -v -m libxc
+    - pytest -v -m mgga
 
 check-agts:
   image: $IMAGE_MAIN_OLDEST
