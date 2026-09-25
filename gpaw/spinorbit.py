@@ -69,11 +69,14 @@ def calculate_soc(dft: DFT,
     eig_skn = ibzwfs.get_all_eigs(broadcast=True)
 
     # <phi_i|dV_adr / r * L_v|phi_j>
+    D_asii = dft.density.D_asii.redist(atomdist=atomdist,
+                                       comm1=serial_comm????,
+                                       comm2=kpt_comm)
     dVL_avii = {a: soc(dft.setups[a],
                        dft.pot_calc.xc.xc,
                        np.array([pack_density(D_ii) for D_ii in D_sii.real]),
                        ignore_xc_potential) * scale
-                for a, D_sii in dft.density.D_asii.items()}
+                for a, D_sii in D_asii.items()}
 
     eig_Km = {}
     P_Kamsi = {}
@@ -155,14 +158,14 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     krank_K = ranks(kpt_comm.size, nbzkpts)
     _P_ani = next(iter(P_ksani.values()))
     collinear = len(_P_ani.dims) == 1
-    P_layout = _P_ani.layout.new(atomdist=None)
+    P_layout = _P_ani.layout.new(atomdist=serial_comm)
     atomdist = AtomDistribution.from_number_of_atoms(len(l_aj), domain_comm)
 
     to_r = defaultdict(set)
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]
         for spin, from_rank in enumerate(rank_ks[k]):
-            to_rank = krank_K[K]
+            to_rank = krank_K[K] * domain_comm.size
             to_r[from_rank].add((to_rank, int(k), spin))
 
     P2_ksani = {}
@@ -176,6 +179,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                     if r == comm.rank:
                         P2_ksani[(k, spin)] = P0_ani
                     else:
+                        # print('s', comm.rank, r, P0_ani.data.shape)
                         req = comm.send(P0_ani.data, r,
                                         tag=k * 2 + spin,
                                         block=False)
@@ -187,6 +191,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
             for to_rank, k, spin in to:
                 if to_rank == comm.rank and from_rank != to_rank:
                     P_ani = P_layout.empty(dims)
+                    # print('r', comm.rank, from_rank, P_ani.data.shape)
                     comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
                     P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
