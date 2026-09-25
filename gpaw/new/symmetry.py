@@ -547,13 +547,16 @@ class SymmetrizationPlan:
                            P_ani: AtomArrays,
                            symnum: int,
                            time_reversal: bool,
-                           rpos_ac,
+                           relpos_ac,
                            kpt_c):
-        dpos_ac = (rpos_ac @ self.symmetries.rotation_scc[symnum] -
-                   self.symmetries.translation_sc[symnum] -
-                   rpos_ac[self.symmetries.atommap_sa[symnum]])
-        x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
-        # assert (x_a == 1.0).all()
+        if kpt_c.any():
+            dpos_ac = (relpos_ac @ self.symmetries.rotation_scc[symnum] +
+                       self.symmetries.translation_sc[symnum] -
+                       relpos_ac[self.symmetries.atommap_sa[symnum]])
+            assert np.abs(dpos_ac - np.round(dpos_ac)).max() < 1e-9
+            x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
+        else:
+            x_a = np.ones(len(relpos_ac))
         P2_ani = P_ani.new()
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]

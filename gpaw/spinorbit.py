@@ -387,9 +387,12 @@ class SOCResult:
         dos_kms = np.zeros((nbzkpts, nbands, 2))
 
         for wfs in self.bzwfs:
-            dos_kms[wfs.k] = (abs(wfs.P_ani[a][:, :, indices])**2).sum(2)
+            if a in wfs.P_ani:
+                dos_kms[wfs.k] = (abs(wfs.P_ani[a][:, :, indices])**2).sum(2)
 
-        return dos_kms / nbzkpts
+        self.bzwfs.comm.sum(dos_kms)
+
+        return dos_kms  # / nbzkpts
 
 
 class KPointData:
@@ -398,6 +401,7 @@ class KPointData:
         self.wfs = wfs
         self.v_mn = v_mn
         self.f_m = wfs.occ_n
+        self.eig_m = wfs.eig_n
         self.P_amsi = wfs.P_ani
         self.projections = wfs.P_ani
 
