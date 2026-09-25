@@ -232,6 +232,9 @@ build-rocm:
   image: $IMAGE_ROCM
   extends:
     - .build
+  # Run the build on mi210 runner to avoid pulling the image to other runners
+  tags:
+    - mi210
   script:
     - |
       cat << EOF >> siteconfig.py
