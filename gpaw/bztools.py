@@ -37,6 +37,7 @@ def optimal_monkhorst_pack_grid(
         is_symmetric_mp_grid: bool = False,
         tolerance: float = 1e-5,
         nmaxperdim: int = 8,
+        log = lambda x: None,
         comm=None) -> dict[str, Any]:
     """
     This function returns a dictionary yielding a Monkhorst-Pack k-point
@@ -101,7 +102,7 @@ def optimal_monkhorst_pack_grid(
         msg += '\n\nThe k-point sampling must be as symmetric as the crystal.'
 
     if comm.rank == 0:
-        print(msg)
+        log(msg)
 
     minsize = get_mp_grid_from_min_distance_criteria(
         atoms, 2. * np.pi * kptdensity, even=force_even)
