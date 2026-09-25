@@ -45,3 +45,25 @@ def test_optimal_monkhorst_pack_grid(gpw_files):
                                                 force_even=True,
                                                 contains_ibz_vertices=True)
         assert (kpts_dict['size'] == kpts).all()
+
+
+def test_parallel_no_compliant_grid():
+    atoms = bulk('Si', 'diamond', a=5.43)
+    with pytest.raises(RuntimeError, match='contains_ibz_vertices_predicate'):
+        optimal_monkhorst_pack_grid(
+            atoms, kptdensity=0.5, nmaxperdim=0, force_even=True,
+            force_gamma=True, contains_ibz_vertices=True, comm=world)
+    world.barrier()
+
+
+def test_distributed_grid_exception():
+    def evaluate(grids):
+        if world.rank == world.size - 1:
+            raise ValueError('candidate failed')
+        return np.zeros(len(grids), dtype=int)
+
+    with pytest.raises(ValueError, match='candidate failed'):
+        _parallel_grid_function(evaluate, np.ones((2, 3), int), world)
+    world.barrier()
+
+
