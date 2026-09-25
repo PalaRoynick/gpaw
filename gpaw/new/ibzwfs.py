@@ -272,7 +272,8 @@ class IBZWaveFunctions(Generic[WFT]):
             psit_X = wfs.psit_nX[0].to_pbc_grid()
         else:
             # LCAO mode
-            psit_X = wfs.to_uniform_grid(band, band + 1)[0].to_pbc_grid()
+            # we only have one band in wfs by construction
+            psit_X = wfs.to_uniform_grid(0, 1)[0].to_pbc_grid()
 
         grid = psit_X.desc.uniform_grid_with_grid_spacing(grid_spacing)
         psi_r = psit_X.interpolate(grid=grid)
