@@ -364,9 +364,9 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             psit_sR.fft(out=psit_sG)
         return psit_nsG
 
-    def to_uniform_grid(self, n2, grid, n1=0):
+    def to_uniform_grid(self, n1, n2):
         nbands = n2 - n1
-        grid = grid.new(kpt=self.kpt_c, dtype=self.dtype)
+        grid = self.basis.grid.new(kpt=self.kpt_c, dtype=self.dtype)
         psit_nR = grid.zeros(nbands, self.band_comm)
         self.basis.lcao_to_grid(self.C_nM.to_xp(np).data[n1:n2],
                                 psit_nR.data[n1:n2], self.q)
