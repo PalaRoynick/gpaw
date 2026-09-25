@@ -550,9 +550,26 @@ test-rocm:
     - mi210
   script:
     - rocm-smi
+    - rocm-smi --showbus
     - gpaw info
     - python -c 'import cupy; import cupyx; from cupy.cuda import runtime'
     - pytest -v -m gpu
+
+
+test-rocm-mpi:
+  image: $IMAGE_ROCM
+  extends:
+    - .test
+  needs:
+    - job: build-rocm
+  tags:
+    - mi210
+  script:
+    - rocm-smi
+    - rocm-smi --showbus
+    - gpaw info
+    - GPAW_DEBUG=1 mpiexec -n 2 gpaw python -m pytest -v -x -m gpu
+    - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
 
 
 test-lumi-g:
