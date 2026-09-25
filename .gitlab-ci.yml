@@ -647,7 +647,7 @@ typecheck:
   stage: build
   before_script:
     - pip freeze
-    - pip install mypy
+    - python -m pip install mypy
     - python --version
     - mypy --version
   script:
