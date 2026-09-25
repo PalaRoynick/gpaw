@@ -164,6 +164,8 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
 
     krank_K = ranks(kpt_comm.size, nbzkpts)
     _P_ani = next(iter(P_ksani.values()))
+    input_domain_band_comm_size = (
+        _P_ani.comm.size * _P_ani.layout.atomdist.comm.size)
     collinear = len(_P_ani.dims) == 1
     P_layout = _P_ani.layout.new(atomdist=serial_comm)
     atomdist = AtomDistribution.from_number_of_atoms(len(l_aj), domain_comm)
@@ -172,8 +174,9 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
     for K in range(nbzkpts):
         k = ibz.bz2ibz_K[K]
         for spin, from_rank in enumerate(rank_ks[k]):
+            from_rank *= input_domain_band_comm_size
             to_rank = krank_K[K] * domain_comm.size
-            to_r[from_rank].add((to_rank, int(k), spin))
+            to_r[int(from_rank)].add((int(to_rank), int(k), spin))
 
     P2_ksani = {}
     requests = []
@@ -186,7 +189,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
                     if r == comm.rank:
                         P2_ksani[(k, spin)] = P0_ani
                     else:
-                        # print('s', comm.rank, r, P0_ani.data.shape)
+                        # print('s', comm.rank, r, P0_ani.data.shape, k)
                         req = comm.send(P0_ani.data, r,
                                         tag=k * 2 + spin,
                                         block=False)
@@ -198,7 +201,7 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
             for to_rank, k, spin in to:
                 if to_rank == comm.rank and from_rank != to_rank:
                     P_ani = P_layout.empty(dims)
-                    # print('r', comm.rank, from_rank, P_ani.data.shape)
+                    # print('r', comm.rank, from_rank, P_ani.data.shape, k)
                     comm.receive(P_ani.data, from_rank, tag=k * 2 + spin)
                     P2_ksani[(k, spin)] = P_ani
     comm.waitall(requests)
@@ -352,7 +355,7 @@ class SOCResult:
         v_Kmn = np.zeros((len(self.bzwfs.ibz), nbands, nbands), complex)
         for K, v_mn in self.v_Kmn.items():
             v_Kmn[K] = v_mn
-        self.bzwfs.comm.sum(v_Kmn)
+        self.bzwfs.kpt_comm.sum(v_Kmn)
         return v_Kmn
 
     def get_orbital_magnetic_moments(self):
