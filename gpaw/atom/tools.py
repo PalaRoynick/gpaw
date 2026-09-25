@@ -22,7 +22,7 @@ def ecuts(symbol: str = None,
     """Plane-wave cutoff-energy convergence test."""
     setup_paths[:1] = ['.']
     symbol = symbol or Path.cwd().name.split('.')[0]
-    energies = list(range(300, 1300, 100))
+    energies = list(range(250, 1300, 50))
     results = []
     for name in ['FCC', 'Diamond']:
         atoms = reference_structure(symbol, name)
@@ -84,27 +84,27 @@ def get_ecut(ecuts: np.ndarray,
          ecuts[i + 1] * (y[i] - de)) / (y[i] - y[i + 1]))
 
 
-def convergence_check(dir: Path, plot=False) -> tuple[float, float]:
+def convergence_check(dir: Path,
+                      plot=False,
+                      ) -> tuple[np.ndarray,
+                                 np.ndarray,
+                                 np.ndarray,
+                                 list[float],
+                                 list[float]]:
     """Write summary."""
     try:
         ecuts, efcc, de = np.array(
-            json.loads((dir / 'ecuts.json').read_text())).T
+            json.loads((dir / 'ecuts2.json').read_text())).T
     except FileNotFoundError:
-        return np.inf, np.inf
+        ecuts, efcc, de = np.array(
+            json.loads((dir / 'ecuts.json').read_text())).T
     if plot:
         import matplotlib.pyplot as plt
         plt.plot(ecuts[:-1], np.log10(abs(efcc[:-1] - efcc[-1])), label=dir)
-    ecut1 = get_ecut(ecuts, efcc, 0.1)
-    ecut2 = get_ecut(ecuts, efcc, 0.01)
-    ecut3 = get_ecut(ecuts, efcc, 0.001)
-    ecut1d = get_ecut(ecuts, de, 0.1)
-    ecut2d = get_ecut(ecuts, de, 0.01)
-    ecut3d = get_ecut(ecuts, de, 0.001)
+    ecuts_tot = [get_ecut(ecuts, efcc, x) for x in [0.1, 0.01, 0.001]]
+    ecuts_diff = [get_ecut(ecuts, de, x) for x in [0.1, 0.01, 0.001]]
 
-    print(f'{dir.name:25}',
-          f'({ecut1d:4.0f} {ecut2d:4.0f} {ecut3d:4.0f}) ',
-          f'({ecut1:4.0f} {ecut2:4.0f} {ecut3:4.0f}) ')
-    return ecut2d, ecut2
+    return ecuts, efcc, de, ecuts_tot, ecuts_diff
 
 
 if __name__ == '__main__':
@@ -115,10 +115,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
     results = []
     for path in args.path:
-        de, e = convergence_check(Path(path), args.plot)
-        results.append((de, e, path))
-    for de, e, p in sorted(results):
-        print(f'{de:7.1f} {e:7.1f} {p}')
+        path = Path(path)
+        try:
+            _, _, _, ecuts_tot, ecuts_diff = convergence_check(
+                Path(path), args.plot)
+        except FileNotFoundError:
+            print(path.name)
+        ecut1, ecut2, ecut3 = ecuts_tot
+        ecut1d, ecut2d, ecut3d = ecuts_diff
+        print(f'{path.name:25}',
+              f'({ecut1d:4.0f} {ecut2d:4.0f} {ecut3d:4.0f}) ',
+              f'({ecut1:4.0f} {ecut2:4.0f} {ecut3:4.0f}) ')
+        results.append((ecut3, ecut3d, path))
+    for e, de, p in sorted(results):
+        print(f'{e:7.1f} {de:7.1f} {p}')
     if args.plot:
         import matplotlib.pyplot as plt
         plt.legend()

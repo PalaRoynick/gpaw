@@ -18,12 +18,12 @@ Webpage: https://gpaw.readthedocs.io/
 Requirements
 ------------
 
-* Python_ 3.10 or later
+* Python_ 3.11 or later
 * ASE_
 * NumPy_
 * SciPy_
 * LibXC_
-* A C compiler
+* A C++ compiler
 * A BLAS_ library
 
 Optional (highly recommended for increased performance):

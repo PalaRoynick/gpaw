@@ -507,10 +507,14 @@ for flag, name in [(noblas, 'GPAW_WITHOUT_BLAS'),
     if flag and name not in [n for (n, _) in define_macros]:
         define_macros.append((name, None))
 
-
-sources = [Path('c/bmgs/bmgs.cpp')]
-sources += Path('c').glob('*.cpp')
-sources += Path('c/xc').glob('*.cpp')
+# Glob .cpp sources. Messy!
+# 1) Exclude everything under c/gpu (handled by the GPU builder)
+# 2) Exclude some files under c/bmgs which #include each other
+# Get all .cpp files, excluding those in c/gpu (handled by the GPU builder)
+sources = [p for p in Path('c').rglob('*.cpp')
+           if (Path('c/gpu') not in p.parents
+           and Path('c/bmgs') not in p.parents)]
+sources += [Path('c/bmgs/bmgs.cpp')]
 
 if nolibxc:  # Cleanup: remove stale refrerences to LibXC
     for name in ['libxc.cpp', 'm06l.cpp',
@@ -683,6 +687,12 @@ class BuildGPU:
             p for p in gpu_dpath.rglob('*.cpp')
             if not any(skip in p.parents for skip in skip_paths)
         ]
+        cuda_files = [
+            p for p in gpu_dpath.rglob("*.cu")
+            if not any(skip in p.parents for skip in skip_paths)
+        ]
+
+        cpp_files += cuda_files
 
         # Glob all kernel files, but remove those #included by other kernels
         kernels = sorted(kernels_dpath.glob('*.cpp'))
