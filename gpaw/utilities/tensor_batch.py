@@ -9,11 +9,32 @@ import numpy as np
 
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
+from gpaw.utilities import pack_density, unpack_density
 
-
-@dataclass(frozen=True)
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
+    def __init__(self, c_a, D_asii, setups, gga: bool):
+        xp = D_asii.layout.xp
+        order_b = D_asii.layout.order_b
+        atom_indices = [D_asii.layout.myindices[c] for c in c_a]
+        i_start = min(atom_index[1] for atom_index in atom_indices)
+        i_end = max(atom_index[2] for atom_index in atom_indices)
+
+        # Assert contiguous
+        i_starts = {atom_index[1] for atom_index in atom_indices}
+        i_starts.add(i_end)
+        i_ends = {atom_index[2] for atom_index in atom_indices}
+        i_ends.add(i_start)
+        assert i_starts == i_ends
+
+        setup = setups[c_a[0]]
+        D_scii = D_asii.data[:, i_start:i_end].reshape(
+            -1, len(c_a), setup.ni, setup.ni)
+        self.density_asp = pack_density(D_scii)
+
+        breakpoint()
+
+
 
     atom_indices: tuple[int, ...]
     density_asp: Any
@@ -89,17 +110,21 @@ def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
     return PAWXCBatch(**arguments)
 
 
-def gather_xc_paw(xp, setups, D_asp, *, gga: bool) \
+def pack_xc_batches(D_asii, setups, *, gga: bool) \
         -> tuple[PAWXCBatch, ...]:
     """Group local atoms by tensor shape and gather their input arrays."""
-    groups: dict[tuple, list] = {}
-    for atom, D_sp in D_asp.items():
-        setup = setups[atom]
-        key = _shape_key(D_sp, setup.xc_correction, gga)
-        groups.setdefault(key, []).append((atom, D_sp, setup))
-    return tuple(_prepare_batch(xp, records, gga)
-                 for records in groups.values())
+    myid_a = {ind: setups.id_a[ind] for ind in D_asii.layout.atomdist.indices}
 
+    atoms_batch = {}
+    for a, id in myid_a.items():
+        atoms_batch[id] = atoms_batch.get(id, []) + [a]
+
+    return (PAWXCBatch(a_a, D_asii, setups, gga=gga)
+            for a_a in atoms_batch.values())
+
+
+def unpack_xc_batches(batches) -> dict[int, np.ndarray]:
+    ...
 
 def scatter_xc_paw(batches, results):
     """Scatter batch energies and gradients into atom-indexed mappings."""

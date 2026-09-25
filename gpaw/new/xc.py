@@ -20,7 +20,8 @@ from gpaw.xc.hybrid import HybridXC as OldHybridXC
 from gpaw.xc.libvdwxc import VDWXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
-
+from gpaw.new.xccorrections2 import evaluate_paw_xc
+from gpaw.utilities.tensor_batch import pack_xc_batches, unpack_xc_batches
 
 def create_functional(xc: OldXCFunctional | str | dict,
                       grid: UGDesc,
@@ -95,7 +96,7 @@ class Functional:
     def calculate_paw_correction(self, setup, d, h=None, a=None):
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
 
-    def calculate_paw_corrections(self, setups, D_asp):
+    def calculate_paw_corrections(self, setups, D_asii):
         """Calculate a local collection of PAW corrections.
 
         The experimental result graph supports exactly LDA and PBE.  Density
@@ -103,27 +104,20 @@ class Functional:
         """
         if self.use_xc_corrections2:
             assert self.name in {'LDA', 'PBE'}
-            supported = all(setups[a].xc_correction is not None and
-                            len(D_sp) in {1, 2}
-                            for a, D_sp in D_asp.items())
+            supported = D_asii.mydims[0] in {1, 2} # Collinear spin
             if supported:
-                from gpaw.new.xccorrections2 import evaluate_paw_xc
-                from gpaw.utilities.tensor_batch import (
-                    gather_xc_paw,
-                    scatter_xc_paw,
-                )
-                batches = gather_xc_paw(
-                    self.xp, setups, D_asp, gga=self.name == 'PBE')
+                batches = pack_xc_batches(D_asii, setups, gga=self.name == 'PBE')
+
                 results = tuple(evaluate_paw_xc(self, batch)
                                 for batch in batches)
                 return scatter_xc_paw(batches, results)
 
         energy_a = {}
         gradient_asp = {}
-        for a, D_sp in D_asp.items():
+        for a, D_sii in D_asii.items():
             gradient_sp = np.zeros_like(D_sp)
             energy_a[a] = self.calculate_paw_correction(
-                setups[a], D_sp, gradient_sp, a=a)
+                setups[a], D_sii, gradient_sp, a=a)
             gradient_asp[a] = gradient_sp
         return energy_a, gradient_asp
 

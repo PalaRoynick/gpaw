@@ -54,7 +54,7 @@ def test_gather(comm):
 @pytest.mark.parametrize('xp', [np, cp])
 def test_P_ani_dH_aii(domain_band_comms, xp):
     domain_comm, band_comm = domain_band_comms
-    ni_a = [2, 3, 4, 17]
+    ni_a = [2, 4, 3, 17]
     dH_asii = AtomArraysLayout([(n, n) for n in ni_a],
                                atomdist=domain_comm,
                                xp=xp).empty(1)
