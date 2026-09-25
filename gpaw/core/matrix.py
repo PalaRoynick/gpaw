@@ -1,6 +1,7 @@
 """BLACS distributed matrix object."""
 from __future__ import annotations
 
+import warnings
 from types import ModuleType
 from typing import Literal, overload
 
@@ -18,6 +19,11 @@ from gpaw.mpi import MPIComm, _Communicator, serial_comm
 from gpaw.typing import Array1D, Array2D, ArrayLike1D, ArrayLike2D
 
 _global_blacs_context_store: dict[tuple[_Communicator, int, int], int] = {}
+
+
+class GpuMatmulFallbackWarning(UserWarning):
+    """For warning that distributed gpu_matmul_general() falls back to a dummy,
+    non-parallel implementation."""
 
 
 def suggest_blocking(N: int, ncpus: int) -> tuple[int, int, int]:
@@ -1021,6 +1027,10 @@ class CuPyDistribution(MatrixDistribution):
                     return mmm_nc(a, b, c, alpha, beta, cublas_mmm)
 
             # General distributed case, not performant but works
+            warnings.warn(
+                f'GPU matrix multiplication with (opa={opa!r}, opb={opb!r}) '
+                'is using a non-parallel algorithm',
+                GpuMatmulFallbackWarning)
             CuPyDistribution.gpu_matmul_general(alpha, a, opa, b, opb, beta, c)
             return c
 
