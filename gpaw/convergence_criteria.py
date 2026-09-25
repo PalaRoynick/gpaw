@@ -182,8 +182,8 @@ class Density(Criterion):
     Parameters:
 
     tol : float
-        Tolerance for conversion; that is the maximum change in the electron
-        density, calculated as the integrated absolute value of the density
+        Tolerance for convergence; that is the maximum electron density
+        residual, calculated as the integrated absolute value of the density
         change, normalized per valence electron. [electrons/(valence electron)]
     """
     name = 'density'
@@ -191,7 +191,7 @@ class Density(Criterion):
 
     def __init__(self, tol):
         self.tol = tol
-        self.description = ('Maximum integral of absolute [dens]ity change: '
+        self.description = ('Maximum integral of absolute [dens]ity residual: '
                             '{:g} electrons / valence electron'
                             .format(self.tol))
 
@@ -221,8 +221,8 @@ class Eigenstates(Criterion):
     Parameters:
 
     tol : float
-        Tolerance for conversion; that is the maximum change in the
-        eigenstates, calculated as the integration of the square of the
+        Tolerance for convergence; that is the maximum residual of the
+        eigenstates, calculated as the integral of the square of the
         residuals of the Kohn--Sham equations, normalized per valence
         electron. [eV^2/(valence electron)]
     """
@@ -232,7 +232,7 @@ class Eigenstates(Criterion):
     def __init__(self, tol):
         self.tol = tol
         self.description = ('Maximum integral of absolute [eigenst]ate '
-                            'change: {:g} eV^2 / valence electron'
+                            'residual squared: {:g} eV^2 / valence electron'
                             .format(self.tol))
 
     def __call__(self, context):

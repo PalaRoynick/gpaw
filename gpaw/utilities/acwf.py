@@ -211,7 +211,7 @@ def _energies(p: Path) -> dict[str, list[float]]:
     return d
 
 
-def check(dir: Path) -> float:
+def check(dir: Path, silent=True) -> tuple[float, float, list[float]]:
     d = []
     v = {}
     for p in dir.glob('*.json'):
@@ -225,6 +225,8 @@ def check(dir: Path) -> float:
         v[name] = e
 
     n = len(d)
+    if n == 0:
+        return np.nan, np.nan, []
     mean = sum(d) / n
     meanabs = sum([abs(s) for s in d]) / n
     rms = (sum([s**2 for s in d]) / n)**0.5
@@ -247,11 +249,22 @@ def check(dir: Path) -> float:
     else:
         ee = np.nan
 
-    print(f'{dir.name:25} {n:2}',
-          f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
-          f'{ee:8.3f} eV')
+    if not silent:
+        print(f'{dir.name:25} {n:2}',
+              f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
+              f'{ee:8.3f} eV')
 
-    return maxabs
+    return maxabs, ee, d
+
+
+def main():
+    import sys
+    results = []
+    for x in sys.argv[1:]:
+        e, _, _ = check(Path(x), silent=False)
+        results.append((e, x))
+    for e, x in sorted(results):
+        print(f'{e:7.2f} {x}')
 
 
 def reference_structure(symbol: str,
@@ -1593,10 +1606,4 @@ ENERGIES = {
     'Zr': [2.359, 0.838, 0.043, 1.610, -0.231, -0.325, 1.593, 0.732]}
 
 if __name__ == '__main__':
-    import sys
-    results = []
-    for x in sys.argv[1:]:
-        e = check(Path(x))
-        results.append((e, x))
-    for e, x in sorted(results):
-        print(f'{e:7.2f} {x}')
+    main()
