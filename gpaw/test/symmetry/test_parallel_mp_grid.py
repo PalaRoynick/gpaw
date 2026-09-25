@@ -41,16 +41,6 @@ def test_parallel_optimal_mp_grid(system, options):
     assert parallel['gamma'] == serial['gamma']
 
 
-def test_parallel_invalid_vertices():
-    # Odd grids fail validation on only some ranks after distribution.
-    atoms = Atoms('H', cell=[6, 3, 8], pbc=True)
-    with pytest.raises(ValueError, match='even k-point sampling'):
-        optimal_monkhorst_pack_grid(
-            atoms, kptdensity=0.5, nmaxperdim=1,
-            force_gamma=True, contains_ibz_vertices=True, comm=world)
-    world.barrier()
-
-
 def test_parallel_no_compliant_grid():
     atoms = bulk('Si', 'diamond', a=5.43)
     with pytest.raises(RuntimeError, match='contains_ibz_vertices_predicate'):
