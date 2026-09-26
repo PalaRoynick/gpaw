@@ -52,8 +52,7 @@ class SlabRegion(JelliumRegion):
     """A jellium region shaped as a slab perpendicular to z.
 
     This is the region SJM has always used and the default.  It is
-    specified by at most two of ``top``, ``bottom`` and ``thickness`` (the
-    third one follows).
+    specified by at most two of ``top``, ``bottom`` and ``thickness``.
 
     Parameters
     ----------
@@ -80,20 +79,16 @@ class SlabRegion(JelliumRegion):
                  bottom: float | str | None = None,  # Å; default: -3.0
                  thickness: float | None = None,  # Å
                  fix_bottom: bool = False):
-        # The defaults cannot sit in the signature: which of the three
-        # limits were given is what decides whether the region is over- or
-        # underspecified, so they are filled in below instead.
+
         default_top = -1.0  # Å below the upper cell boundary
         default_bottom = -3.0  # Å above the highest atom
 
         if isinstance(bottom, str):
-            # 'cavity_like' is intercepted by build_jellium_region before it
-            # gets here; anything else is a mistake.
             raise ValueError(
                 f'Unknown lower limit for the jellium region: {bottom!r}.  '
                 'Give a number of Angstrom instead.')
 
-        if top is not None and bottom is not None and thickness is not None:
+        if all(x is not None for x in (top, bottom, thickness)):
             raise ValueError(
                 'The jellium region has been overspecified: give at most two '
                 "of 'top', 'bottom' and 'thickness'.")
@@ -191,7 +186,7 @@ class CavityShapedRegion(JelliumRegion):
     weighted by the cavity function ``g_g`` -- the counter-charge then
     hugs the solvated slab instead of sitting in a flat slab above it.
     This mirrors the legacy ``gpaw.solvation.sjm.CavityShapedJellium``;
-    it is not wired up in this version of SJM yet.
+    it is not implemented this version of SJM yet.
 
     Parameters
     ----------
@@ -226,7 +221,7 @@ def build_jellium_region(spec: dict | JelliumRegion | None,
 
     ``spec`` is the ``jelliumregion`` keyword: a dict of parameters, an
     already-built :class:`JelliumRegion`, or ``None`` for the default slab.
-    A ``'shape'`` key (``'slab'`` -- the default -- or ``'cavity'``)
+    A ``'shape'`` key in ``spec`` (``'slab'`` (default) or ``'cavity'``)
     selects the kind; the rest of the dict is passed to it.  The legacy
     ``bottom='cavity_like'`` spelling is still understood.
     """
@@ -253,11 +248,11 @@ class ChargingScheme:
     faces, which the potential optimizer needs for its first-guess slope.
     """
 
-    #: Excess electrons put into the cell; the counter charge is minus this.
+    # Excess electrons put into the cell; the counter charge is minus this.
     excess_electrons: float
-    #: Shape of the charged region.
+    # Shape of the charged region.
     region: JelliumRegion
-    #: Its normalized mask on the fine grid, as stored by set_region().
+    # Its normalized mask on the fine grid, as stored by set_region().
     mask_r: UGArray
 
     def add_charge(self, nt_r: UGArray) -> None:
@@ -445,11 +440,6 @@ class DirectOptimizer(PotentialOptimizer):
     attempts to regress a slope from, the estimate is updated, damped by
     ``mixer``: ``new = mixer * old + (1 - mixer) * regressed``.  The
     regression uses the last ``slope_regression_depth`` attempts.
-
-    ``mixer`` also sets how fast the step size may grow: a step is allowed
-    to exceed the previous one by the fraction ``1 - mixer`` of the excess
-    the slope asks for, so steps can recover after a small one instead of
-    being capped by it forever.
     """
 
     def __init__(self,
@@ -469,8 +459,6 @@ class DirectOptimizer(PotentialOptimizer):
 
     @slope_regression_depth.setter
     def slope_regression_depth(self, depth: int) -> None:
-        # A deque cannot change its maxlen, so make a new one - keeping the
-        # most recent attempts, which is what the deque itself would do.
         self.history = deque(self.history, maxlen=_check_depth(depth))
 
     def last_attempt(self) -> tuple[float, float] | None:
@@ -527,9 +515,6 @@ class DirectOptimizer(PotentialOptimizer):
         elif self.slope is None:
             self.slope = slope
         else:
-            # Damp the new estimate: regressing a slope from a couple of
-            # attempts can be noisy, particularly when the positions have
-            # changed as well.
             self.slope = self.mixer * self.slope + (1.0 - self.mixer) * slope
         if self.slope is None or self.slope > -1e-10:
             # No estimate yet, or one that is not usefully negative (adding
@@ -574,17 +559,14 @@ class DirectOptimizer(PotentialOptimizer):
 class EquilibrationResult(enum.Enum):
     """Outcome of one :meth:`Potentiostat.equilibrate` call."""
 
-    #: The potential is within tolerance -- the equilibration is done.
-    CONVERGED = enum.auto()
-    #: The excess electrons were stepped; another SCF pass is needed.  It
-    #: counts as an
-    #: attempt against ``max_iters``.
-    STEPPED = enum.auto()
-    #: The last step left the linear region (moved the potential by more
-    #: than ``max_potential_stepsize`` and further from the target); it
-    #: has been undone halfway and another SCF pass is needed.  Does *not*
-    #: count as an attempt.
-    REJECTED = enum.auto()
+    # The potential is within tolerance -- the equilibration is done.
+    converged = enum.auto()
+    # The excess electrons were stepped; another SCF pass is needed.
+    stepped = enum.auto()
+    # The last step moved the potential by more than ``max_potential_stepsize``
+    # and further from the target. It will be rerun with half the previous
+    # step.  Does *not* count as an attempt.
+    rejected = enum.auto()
 
 
 class PotentialConvergenceError(ConvergenceError):
@@ -607,7 +589,7 @@ class Potentiostat:
       targets a potential.
 
     The potentiostat holds every setting of the potential control and the
-    state of the equilibration.  A front end such as
+    state of the equilibration. A front end such as
     :class:`gpaw.extensions.electrochemistry.SJM` hands the settings
     over, with defaults of its own, and reads them back from here.
 
@@ -631,7 +613,7 @@ class Potentiostat:
         *and* ends up further from the target than it started, the step is
         rejected: the change in excess electrons is halved and another SCF
         pass is run, without counting the rejected point as an attempt (see
-        :attr:`EquilibrationResult.REJECTED`).  This keeps the optimizer
+        :attr:`EquilibrationResult.rejected`).  This keeps the optimizer
         from leaving the linear region on a bad slope estimate.  Set to
         ``None`` to turn the rejection/halving off entirely.  Default: 2 V.
     max_iters:
@@ -783,10 +765,7 @@ class Potentiostat:
 
         result = self.equilibrate(ibzwfs, nelectrons, occ_calc, mixer, log)
 
-        if result is EquilibrationResult.REJECTED:
-            # The step left the linear region and has been halved; re-run
-            # the SCF but do not count it as an attempt.  Give up once the
-            # halving has been repeated max_reruns times in a row.
+        if result is EquilibrationResult.rejected:
             self.reruns += 1
             if self.reruns > self.max_reruns:
                 raise PotentialConvergenceError(
@@ -801,12 +780,8 @@ class Potentiostat:
         self.reruns = 0
         self.attempts.append((excess_electrons, potential))
 
-        if result is EquilibrationResult.CONVERGED:
+        if result is EquilibrationResult.converged:
             if self.always_adjust:
-                # Step the charge on anyway, but do not re-converge: the new
-                # value is picked up by the next geometry (new_geometry()),
-                # so that the potential can equilibrate alongside the
-                # structure.
                 self.pending_excess_electrons = self.propose_next(ibzwfs)
             return True
 
@@ -863,8 +838,6 @@ class Potentiostat:
         self.log_equilibration(log)
 
         # Legendre transform: Omega = E - N mu, with mu the Fermi level.
-        # Take the canonical energies from dft.energies rather than from
-        # dft.results, which may already hold the grand-potential ones.
         N = self.converged_excess_electrons = self.excess_electrons
         self.canonical_free = broadcast_float(dft.energies.total_free,
                                               dft.comm)
@@ -896,13 +869,9 @@ class Potentiostat:
         # Unlike energy and forces, the first two do not survive being
         # written to an ASE trajectory: ASE's trajectory writer stores only
         # the properties in ase.calculators.calculator.all_properties, and
-        # skips everything else silently.  Neither
-        # Trajectory(properties=...) nor a keyword to traj.write() gets
-        # around it -- both are filtered by that same list.  They do reach
+        # skips everything else silently. They do reach
         # calc.results and a .gpw file (see gpaw/new/gpw.py, which writes
-        # every dft.results key), they are in the text log, and the front
-        # end gives them directly (sjm.excess_electrons and
-        # sjm.get_electrode_potential(), for SJM).
+        # every dft.results key), they are in the text log.
         results['excess_electrons'] = self.converged_excess_electrons
         results['electrode_potential'] = self.electrode_potential / Ha
         if self.grand_output:
@@ -939,18 +908,13 @@ class Potentiostat:
                     log) -> EquilibrationResult:
         """One equilibration attempt, after the SCF criteria have passed.
 
-        Returns :attr:`EquilibrationResult.CONVERGED` when the potential is
-        within tolerance (or in constant-charge mode, where there is
-        nothing to do); :attr:`~EquilibrationResult.STEPPED` after stepping
-        the charge and re-running the occupations for another SCF pass; and
-        :attr:`~EquilibrationResult.REJECTED` when the last step left the
-        linear region -- the change in charge is halved and another SCF
-        pass is run, without the rejected point counting as an attempt or
-        feeding the slope regression.
+        Returns :attr:`EquilibrationResult.converged`,
+        :attr:`~EquilibrationResult.stepped` after stepping the charge and
+        re-running the occupations for another SCF pass; and
+        :attr:`~EquilibrationResult.rejected` when a rerun is needed.
         """
         if not self.constant_potential:
-            return EquilibrationResult.CONVERGED
-        # constant_potential means both of these are set (see __init__):
+            return EquilibrationResult.converged
         target = self.target_potential
         optimizer = self.optimizer
         assert target is not None and optimizer is not None
@@ -958,12 +922,6 @@ class Potentiostat:
         log(f'excess electrons: {self.excess_electrons:+.6f} |e|, '
             f'potential: {potential:.3f} V')
 
-        # Reject a step that left the linear region: if the potential moved
-        # by more than max_potential_stepsize *and* ended up further from
-        # the target than it started, halve the change in excess electrons
-        # and try again.  The rejected point is not recorded, so it does
-        # not pull the slope regression around.  (This is the legacy SJM
-        # ``max_step`` knob.)
         previous = optimizer.last_attempt()
         if self.max_potential_stepsize is not None and previous is not None:
             prev_excess_electrons, prev_potential = previous
@@ -981,10 +939,10 @@ class Potentiostat:
                     occ_calc, nelectrons + (halved - self.excess_electrons))
                 self.excess_electrons = halved
                 mixer.reset()
-                return EquilibrationResult.REJECTED
+                return EquilibrationResult.rejected
 
         if abs(potential - target) <= self.tol:
-            return EquilibrationResult.CONVERGED
+            return EquilibrationResult.converged
         new_excess_electrons = optimizer.next_excess_electrons(
             self.excess_electrons, potential, target,
             area=self.charging.region_area)
@@ -993,7 +951,7 @@ class Potentiostat:
             nelectrons + (new_excess_electrons - self.excess_electrons))
         self.excess_electrons = new_excess_electrons
         mixer.reset()
-        return EquilibrationResult.STEPPED
+        return EquilibrationResult.stepped
 
     def propose_next(self, ibzwfs) -> float:
         """Charge the optimizer points at, without re-converging it.
@@ -1007,7 +965,6 @@ class Potentiostat:
             self.excess_electrons, self.probe.potential(ibzwfs), target,
             area=self.charging.region_area)
 
-    # Density hooks, straight through to the charging scheme:
     def add_charge(self, nt_r) -> None:
         self.charging.add_charge(nt_r)
 
@@ -1025,11 +982,7 @@ def _check_depth(depth: int) -> int:
 
 
 def capacitance(slope: float, area: float) -> float:
-    """Apparent capacitance in muF/cm^2 of a slope in V per electron.
-
-    The relation is reciprocal, so this also turns a capacitance in
-    muF/cm^2 into the slope it corresponds to over an ``area`` in Å^2.
-    """
+    """Apparent capacitance in muF/cm^2 of a slope in V per electron."""
     # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
     return -_e * 1e22 / (area * slope)
 
