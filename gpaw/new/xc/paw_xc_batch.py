@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import numpy as np
-
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
 from gpaw.utilities import pack_density, unpack_hermitian
 
 from typing import Any
+
 
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
