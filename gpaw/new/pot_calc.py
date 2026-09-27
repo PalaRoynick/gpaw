@@ -30,6 +30,7 @@ from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
+from gpaw.gpu import as_np
 from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
@@ -176,9 +177,8 @@ def calculate_non_local_potential(setups,
                                              dict[str, float]]:
     dtype = float if density.ncomponents < 4 else complex
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
-    V_aL = V_aL.to_xp(np)
+    D_asii = density.D_asii
     xc_corr = xc.calculate_paw_corrections(setups, density.D_asii, V_aL)
-    D_asii = density.D_asii.to_xp(np)
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
 
     rank = 0
@@ -205,8 +205,8 @@ def calculate_non_local_potential(setups,
     density.D_asii.layout.atomdist.comm.sum(energies)
     kpt_band_comm.sum(energies)
 
-    return (dH_asii.to_xp(density.D_asii.layout.xp),
-            dict(zips(names, energies)))
+    return (dH_asii.to_xp(density.D_asii.layout.xp) if xc_corr is None \
+            else dH_asii, dict(zips(names, energies)))
 
 
 def calculate_non_local_potential1(setup: Setup,
@@ -216,7 +216,6 @@ def calculate_non_local_potential1(setup: Setup,
                                    soc: bool,
                                    extensions,
                                    atom_index,
-                                   D_sp=None,
                                    xc_correction=None
                                    ) -> tuple[Array3D, dict[str, float]]:
 
@@ -225,8 +224,7 @@ def calculate_non_local_potential1(setup: Setup,
         ncomponents = len(D_sii)
         ndensities = 2 if ncomponents == 2 else 1
 
-        if D_sp is None:
-            D_sp = np.array([pack_density(D_ii.real) for D_ii in D_sii])
+        D_sp = np.array([pack_density(D_ii.real) for D_ii in as_np(D_sii)])
 
         D_p = D_sp[:ndensities].sum(0)
 
@@ -266,7 +264,7 @@ def calculate_non_local_potential1(setup: Setup,
         e_xc += extension.update_non_local_hamiltonian(
             D_sii, setup, atom_index, dH_sii)
 
-    e_kinetic -= (D_sii * dH_sii).sum().real
+    e_kinetic -= as_np(D_sii * dH_sii).sum().real
 
     return dH_sii, {'kinetic_correction': e_kinetic,
                     'coulomb': e_coulomb,

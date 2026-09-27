@@ -76,9 +76,8 @@ class PBEResult(TensorResult):
         self.parents = (density, sigma)
 
     def _backward(self, gradient):
-        return (
-            (self.density, self.potential * gradient[None]),
-            (self.sigma, self.sigma_derivative * gradient[None]))
+        return ((self.density, self.potential * gradient[None]),
+                (self.sigma, self.sigma_derivative * gradient[None]))
 
 
 def density_L_expansion(engine: Engine,

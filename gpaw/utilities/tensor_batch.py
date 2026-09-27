@@ -22,7 +22,7 @@ class PAWXCBatch:
         i_start = min(atom_index[1] for atom_index in atom_indices)
         i_end = max(atom_index[2] for atom_index in atom_indices)
         self.atom_indices = c_a
-        self.V_aL = np.asarray([V_aL[c] for c in c_a])
+        self.V_aL = xp.asarray([V_aL[c] for c in c_a])
 
         # Assert contiguous
         i_starts = {atom_index[1] for atom_index in atom_indices}
@@ -49,18 +49,25 @@ class PAWXCBatch:
         self.radial_weight_g = xp.asarray(rgd.dv_g)
         self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
 
+        self.K_p = xp.asarray(setup.K_p)
+        self.M_p = xp.asarray(setup.M_p)
+        self.MB_p = xp.asarray(setup.MB_p)
+        self.M_pp = xp.asarray(setup.M_pp)
+        self.Delta_pL = xp.asarray(setup.Delta_pL)
+
 
     def unpack(self):
         setup = self.setup
-        D_ap = as_np(self.density_sap.sum(axis=0))
-        dH_ap = self.xp.array(setup.K_p + setup.M_p +
-                              setup.MB_p + 2.0 * D_ap @ setup.M_pp.T +
-                              self.V_aL @ setup.Delta_pL.T)
-        ekin_a = D_ap @ setup.K_p + setup.Kc
-        e0_a = setup.MB + D_ap @ setup.MB_p
-        ecou_a = setup.M + D_ap[:, None] @ (setup.M_p + D_ap @ setup.M_pp.T)[:, :, None]
+        D_ap = self.density_sap.sum(axis=0)
+        dH_ap = (self.K_p + self.M_p +
+                 self.MB_p + 2.0 * D_ap @ self.M_pp.T +
+                 self.V_aL @ self.Delta_pL.T)
+        ekin_a = D_ap @ self.K_p + setup.Kc
+        e0_a = setup.MB + D_ap @ self.MB_p
+        ecou_a = setup.M + D_ap[:, None] @ (
+            self.M_p + D_ap @ self.M_pp.T)[:, :, None]
         ecou_a = ecou_a.squeeze()
-        return ekin_a, e0_a, ecou_a, dH_ap
+        return as_np(ekin_a), as_np(e0_a), as_np(ecou_a), dH_ap
 
 def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
         -> tuple[PAWXCBatch, ...]:
@@ -98,8 +105,6 @@ def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
         exc_a = as_np(energies)
         gradients += dH_ap
         gradients_saii = unpack_hermitian(gradients, xp=batch.xp)
-        gradients = as_np(gradients)
-        gradients_saii = as_np(gradients_saii)
         for position, atom in enumerate(batch.atom_indices):
             corr_a[atom] = {
                 'e_xc': float(exc_a[position]),
