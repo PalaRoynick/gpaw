@@ -12,32 +12,17 @@ from gpaw.sphere.lebedev import weight_n
 from gpaw.utilities import pack_density, unpack_density
 
 class PAWXCBatch:
-    atom_indices: tuple[int, ...]
-    density_sap: Any
-    gradient_sap: Any
-    basis_pqL: Any
-    ae_radial_qg: Any
-    pseudo_radial_qg: Any
-    nc_g: Any
-    nct_g: Any
-    angular_nL: Any
-    angular_weight_n: Any
-    radial_weight_g: Any
-    reference_energy: Any
-    angular_gradient_nLv: Any = None
-    radial_spacing_g: Any = None
-    inverse_radius2_g: Any = None
-    xp = np
-
     """One shape-compatible collection of PAW XC tensor inputs."""
-    def __init__(self, c_a, D_asii, setups, gga: bool):
+    def __init__(self, c_a, D_asii, V_aL, setups, gga: bool):
         xp = D_asii.layout.xp
         self.xp = xp
+        self.spinpol = D_asii.mydims == (2,)
         order_b = D_asii.layout.order_b
         atom_indices = [D_asii.layout.myindices[c] for c in c_a]
         i_start = min(atom_index[1] for atom_index in atom_indices)
         i_end = max(atom_index[2] for atom_index in atom_indices)
         self.atom_indices = c_a
+        self.V_aL = np.asarray([V_aL[c] for c in c_a])
 
         # Assert contiguous
         i_starts = {atom_index[1] for atom_index in atom_indices}
@@ -47,9 +32,10 @@ class PAWXCBatch:
         assert i_starts == i_ends
 
         setup = setups[c_a[0]]
+        self.setup = setup
         D_scii = D_asii.data[:, i_start:i_end].reshape(
             -1, len(c_a), setup.ni, setup.ni)
-        self.density_sap = pack_density(D_scii)
+        self.density_sap = pack_density(D_scii.real, xp=self.xp)
         self.gradient_sap = xp.zeros_like(self.density_sap)
         self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
         self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
@@ -70,8 +56,19 @@ class PAWXCBatch:
             self.inverse_radius2_g[rgd.radial_g != 0] = 1. / self.radial_g**2
             self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
 
+    def unpack(self):
+        setup = self.setup
+        D_ap = as_np(self.density_sap.sum(axis=0))
+        dH_ap = self.xp.array(setup.K_p + setup.M_p +
+                              setup.MB_p + 2.0 * D_ap @ setup.M_pp +
+                              self.V_aL @ setup.Delta_pL.T)
+        ekin_a = D_ap @ setup.K_p + setup.Kc
+        e0_a = setup.MB + D_ap @ setup.MB_p
+        ecou_a = setup.M + D_ap[:, None] @ (setup.M_p + D_ap @ setup.M_pp)[:, :, None]
+        ecou_a = ecou_a.squeeze()
+        return ekin_a, e0_a, ecou_a, dH_ap
 
-def pack_xc_batches(D_asii, setups, *, functional) \
+def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
         -> tuple[PAWXCBatch, ...]:
     """Group local atoms by tensor shape and gather their input arrays."""
     myid_a = {ind: setups.id_a[ind] for ind in D_asii.layout.atomdist.indices}
@@ -102,7 +99,7 @@ def pack_xc_batches(D_asii, setups, *, functional) \
         else:
             cls = SpinPairedPBEXCCorrection
 
-    return [cls(a_a, D_asii, setups, gga=gga)
+    return [cls(a_a, D_asii, V_aL, setups, gga=gga)
             for a_a in atoms_batch.values()]
 
 
@@ -110,16 +107,22 @@ def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
     """Upnack xc batch energies and gradients into atom-indexed mappings."""
     corr_a = {}
 
-
     for batch, (energies, gradients) in zip(batches, results, strict=True):
-        energies = as_np(energies)
-        gradients_asii = unpack_density(gradients)
+        ekin_a, e0_a, ecou_a, dH_ap = batch.unpack()
+
+        exc_a = as_np(energies)
+        gradients += dH_ap
+        gradients_saii = unpack_density(gradients, xp=batch.xp)
         gradients = as_np(gradients)
-        gradients_asii = as_np(gradients_asii)
+        gradients_saii = as_np(gradients_saii)
         for position, atom in enumerate(batch.atom_indices):
             corr_a[atom] = {
-                'energy': float(energies[position]),
+                'e_xc': float(exc_a[position]),
+                'e_kin': float(ekin_a[position]),
+                'e_0': float(e0_a[position]),
+                'e_cou': float(ecou_a[position]),
+                'e_soc': float(0),
                 'gradient_sp': gradients[:, position],
-                'gradient_sii': gradients_asii[:, position],
+                'gradient_sii': gradients_saii[:, position],
             }
     return corr_a

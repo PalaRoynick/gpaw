@@ -96,7 +96,7 @@ class Functional:
     def calculate_paw_correction(self, setup, d, h=None, a=None):
         return self.xc.calculate_paw_correction(setup, d, h, a=a)
 
-    def calculate_paw_corrections(self, setups, D_asii):
+    def calculate_paw_corrections(self, setups, D_asii, V_aL):
         """Calculate a local collection of PAW corrections.
 
         The experimental result graph supports exactly LDA and PBE.  Density
@@ -106,20 +106,11 @@ class Functional:
             assert self.name in {'LDA', 'PBE'}
             supported = D_asii.mydims[0] in {1, 2} # Collinear spin
             if supported:
-                batches = pack_xc_batches(D_asii, setups, functional=self)
+                batches = pack_xc_batches(D_asii, V_aL, setups, functional=self)
 
                 results = tuple(evaluate_paw_xc(self, batch)
                                 for batch in batches)
                 return unpack_xc_batches(batches, results)
-
-        energy_a = {}
-        gradient_asp = {}
-        for a, D_sii in D_asii.items():
-            gradient_sp = np.zeros_like(D_sp)
-            energy_a[a] = self.calculate_paw_correction(
-                setups[a], D_sii, gradient_sp, a=a)
-            gradient_asp[a] = gradient_sp
-        return energy_a, gradient_asp
 
     def get_setup_name(self) -> str:
         return self.setup_name

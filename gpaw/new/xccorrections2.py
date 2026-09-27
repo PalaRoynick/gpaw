@@ -39,27 +39,18 @@ class LDAResult(TensorResult):
 
     def __init__(self, density: TensorResult, function):
         xp = density.engine.xp
-        spin_axis = (density.indices.index('s')
-                     if 's' in density.indices else None)
-        density_sx = (xp.ascontiguousarray(density.value[None])
-                      if spin_axis is None else
-                      xp.ascontiguousarray(xp.moveaxis(
-                          density.value, spin_axis, 0)))
+        density_sx = density.value.reshape(density.value.shape[0], -1)
         potential_sx = xp.zeros_like(density_sx)
         energy_x = xp.empty(density_sx.shape[1:], density.value.dtype)
         function(density_sx, potential_sx, energy_x)
         super().__init__(
-            density.engine, energy_x,
+            density.engine, energy_x.reshape(density.value.shape[1:]),
             density.indices.replace('s', '', 1))
         self.density = density
-        self.spin_axis = spin_axis
-        self.potential = (potential_sx[0] if spin_axis is None else
-                          xp.moveaxis(potential_sx, 0, spin_axis))
+        self.potential = potential_sx.reshape(density.value.shape)
         self.parents = (density,)
 
     def _backward(self, gradient):
-        if self.spin_axis is not None:
-            gradient = self.engine.xp.expand_dims(gradient, self.spin_axis)
         return ((self.density, self.potential * gradient),)
 
 
@@ -120,17 +111,18 @@ def density_L_expansion(engine: Engine,
                         D: TensorResult,
                         radial_qg,
                         core_g,
+                        spinpol,
                         xp) -> EinsumResult:
     """Expand paired or spin-resolved coefficients into density multipoles."""
-    if 's' in D.indices:
-        density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
-        density_saLg[:, :, 0] += (
-            0.5 * xp.sqrt(4.0 * xp.pi) * core_g[None, None, :])
-        return density_saLg
+    const = xp.sqrt(xp.pi) / len(D) if spinpol else xp.sqrt(4.0 * xp.pi)
 
-    density_aLg = engine.einsum('aLq,aqg->aLg', D, radial_aqg)
-    density_aLg[:, 0] += xp.sqrt(4.0 * xp.pi) * core_ag
-    return density_aLg
+    density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
+    density_saLg[:, :, 0] += const * core_g[None, None, :]
+    return density_saLg
+
+    # density_aLg = engine.einsum('aLq,aqg->aLg', D, radial_aqg)
+    # density_aLg[:, 0] += xp.sqrt(4.0 * xp.pi) * core_ag
+    # return density_aLg
 
 
 def paired_density_and_grad(engine: Engine,
@@ -214,10 +206,10 @@ def _integrate_correction(engine: Engine,
                           radial_weight_g,
                           reference_energy) -> TensorResult:
     """Integrate all-electron minus pseudo energy and subtract ``e_xc0``."""
-    quadrature = (angular_weight_n[:, None] *
-                  radial_weight_g[None, :])
+    quadrature_ng = (angular_weight_n[:, None] *
+                     radial_weight_g[None, :])
     energy_a = engine.sum(
-        (ae_energy - pseudo_energy) * quadrature, axis=(-2, -1))
+        (ae_energy - pseudo_energy) * quadrature_ng, axis=(-2, -1))
     energy_a -= reference_energy
     return energy_a
 
@@ -264,10 +256,10 @@ class SpinPolarizedLDAXCCorrection(PAWXCBatch):
         # D_saLq holds spin-resolved density-expansion coefficients.
         D_saLq = engine.einsum(
             'sap,pqL->saLq', density_sap, self.basis_pqL)
-        ae_saLg = density_L_expansion(
-            engine, D_saLq, self.ae_radial_qg, self.nc_g, xp=self.xp)
-        pseudo_saLg = density_L_expansion(
-            engine, D_saLq, self.pseudo_radial_qg, self.nct_g, xp=self.xp)
+        ae_saLg = density_L_expansion(engine, D_saLq, self.ae_radial_qg,
+                                      self.nc_g, self.spinpol, xp=self.xp)
+        pseudo_saLg = density_L_expansion(engine, D_saLq, self.pseudo_radial_qg,
+                                          self.nct_g, self.spinpol, xp=self.xp)
         # ae_sang and pseudo_sang are the two spin densities on the grid.
         ae_sang = engine.einsum(
             'nL,saLg->sang', self.angular_nL, ae_saLg)

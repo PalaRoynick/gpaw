@@ -194,8 +194,6 @@ and anything that should be multiplied onto such, e.g. corrections to the
 Hamiltonian, are constructed according to (un)pack_hermitian.
 """
 
-_indices_cache = {}
-
 def pack_hermitian(M2,
                    tolerance=1e-10,
                    xp=np,
@@ -215,15 +213,8 @@ def pack_hermitian(M2,
 
        (a00, [a01 + a10*]/2, [a02 + a20*]/2, a11, [a12 + a21*]/2, a22)
     """
-    global _indices_cache
-
     n = M2.shape[-1]
-    if n in _indices_cache:
-        a, b, c = _indices_cache[n]
-    else:
-        a, b = indices or xp.triu_indices(n)
-        c = xp.where(a != b)[0]
-        _indices_cache[n] = (a, b, c)
+    a, b = xp.triu_indices(n)
     out = M2[..., a, b]
 
     if debug:
@@ -235,6 +226,7 @@ def pack_hermitian(M2,
                            atol=tolerance), 'Pack not symmetric'
 
     if offdiag_scale is not None:
+        c = xp.where(a != b)[0]
         out[..., c] *= offdiag_scale
     return out
 
@@ -246,14 +238,11 @@ def unpack_hermitian(M, xp=np, offdiag_scale=None):
 
     n = int(sqrt(0.25 + 2.0 * M.shape[-1]))  # XXX: Dangerous...
     out = xp.empty(M.shape[:-1] + (n, n), M.dtype)
-    if n in _indices_cache:
-        a, b, c = _indices_cache[n]
-    else:
-        a, b = xp.triu_indices(n)
-        c = xp.where(a != b)[0]
-        _indices_cache[n] = (a, b, c)
+    a, b = xp.triu_indices(n)
     out[..., a, b] = M
+
     if offdiag_scale is not None:
+        c = xp.where(a != b)[0]
         out[..., a[c], b[c]] *= offdiag_scale
     out[..., b, a] = out[..., a, b].conj()
     return out
