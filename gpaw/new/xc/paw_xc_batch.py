@@ -8,6 +8,7 @@ from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
 from gpaw.utilities import pack_density, unpack_hermitian
 
+from typing import Any
 
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
@@ -75,17 +76,17 @@ class PAWXCBatch:
         return as_np(ekin_a), as_np(e0_a), as_np(ecou_a), dH_ap
 
 
-def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
-        -> tuple[PAWXCBatch, ...]:
+def pack_xc_batches(D_asii, V_aL, setups, *, functional) -> list[PAWXCBatch]:
     """Group local atoms by tensor shape and gather their input arrays."""
     myid_a = {ind: setups.id_a[ind] for ind in D_asii.layout.atomdist.indices}
 
-    atoms_batch = {}
+    atoms_batch: dict[int, list[Any]] = {}
     for a, id in myid_a.items():
         atoms_batch[id] = atoms_batch.get(id, []) + [a]
 
     assert functional.name in {'LDA', 'PBE'}
 
+    cls: type[PAWXCBatch]
     if functional.name == 'LDA':
         from gpaw.new.xc.lda_xc_batch import LDAXCCorrection as cls
     else:
@@ -95,7 +96,7 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
             for a_a in atoms_batch.values()]
 
 
-def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
+def unpack_xc_batches(batches, results) -> dict[int, dict[str, Any]]:
     """Upnack xc batch energies and gradients into atom-indexed mappings."""
     corr_a = {}
 
@@ -106,13 +107,11 @@ def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
         gradients += dH_ap
         gradients_saii = unpack_hermitian(gradients, xp=batch.xp)
         for position, atom in enumerate(batch.atom_indices):
-            corr_a[atom] = {
-                'e_xc': float(exc_a[position]),
-                'e_kin': float(ekin_a[position]),
-                'e_0': float(e0_a[position]),
-                'e_cou': float(ecou_a[position]),
-                'e_soc': float(0),
-                'gradient_sp': gradients[:, position],
-                'gradient_sii': gradients_saii[:, position],
-            }
+            corr_a[atom] = {'e_xc': float(exc_a[position]),
+                            'e_kin': float(ekin_a[position]),
+                            'e_0': float(e0_a[position]),
+                            'e_cou': float(ecou_a[position]),
+                            'e_soc': float(0),
+                            'gradient_sp': gradients[:, position],
+                            'gradient_sii': gradients_saii[:, position]}
     return corr_a
