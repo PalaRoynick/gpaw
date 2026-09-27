@@ -262,7 +262,7 @@ def pack_density(A: np.ndarray, xp=np) -> np.ndarray:
     is transformed to the vector::
 
        (a00, a01 + a10, a02 + a20, a11, a12 + a21, a22)"""
-    if xp is np and A.ndim == 2:
+    if xp is np and A.ndim == 2 and not GPAW_NO_C_EXTENSION:
         return cgpaw.pack(A)
     n = A.shape[-1]
     return pack_hermitian(A, xp=xp, offdiag_scale=2.0)
@@ -317,7 +317,6 @@ def compiled_with_libvdwxc():
 
 if not debug and not GPAW_NO_C_EXTENSION:
     hartree = cgpaw.hartree  # noqa
-    # pack_density = cgpaw.pack
 
 
 def unlink(path: str | Path, world=None):
