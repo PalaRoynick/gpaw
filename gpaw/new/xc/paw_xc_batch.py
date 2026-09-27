@@ -71,7 +71,7 @@ class PAWXCBatch:
         e0_a = setup.MB + D_ap @ self.MB_p
         ecou_a = setup.M + D_ap[:, None] @ (
             self.M_p + D_ap @ self.M_pp.T)[:, :, None]
-        ecou_a = ecou_a.squeeze()
+        ecou_a = ecou_a.reshape(-1)
         return as_np(ekin_a), as_np(e0_a), as_np(ecou_a), dH_ap
 
 

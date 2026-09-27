@@ -179,6 +179,10 @@ def calculate_non_local_potential(setups,
     energy_corrections: DefaultDict[str, float] = defaultdict(float)
     D_asii = density.D_asii
     xc_corr = xc.calculate_paw_corrections(setups, density.D_asii, V_aL)
+
+    if xc_corr is None:
+        D_asii = D_asii.to_xp(np)
+        V_aL = V_aL.to_xp(np)
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
 
     rank = 0
