@@ -12,13 +12,32 @@ from gpaw.sphere.lebedev import weight_n
 from gpaw.utilities import pack_density, unpack_density
 
 class PAWXCBatch:
+    atom_indices: tuple[int, ...]
+    density_sap: Any
+    gradient_sap: Any
+    basis_pqL: Any
+    ae_radial_qg: Any
+    pseudo_radial_qg: Any
+    nc_g: Any
+    nct_g: Any
+    angular_nL: Any
+    angular_weight_n: Any
+    radial_weight_g: Any
+    reference_energy: Any
+    angular_gradient_nLv: Any = None
+    radial_spacing_g: Any = None
+    inverse_radius2_g: Any = None
+    xp = np
+
     """One shape-compatible collection of PAW XC tensor inputs."""
     def __init__(self, c_a, D_asii, setups, gga: bool):
         xp = D_asii.layout.xp
+        self.xp = xp
         order_b = D_asii.layout.order_b
         atom_indices = [D_asii.layout.myindices[c] for c in c_a]
         i_start = min(atom_index[1] for atom_index in atom_indices)
         i_end = max(atom_index[2] for atom_index in atom_indices)
+        self.atom_indices = c_a
 
         # Assert contiguous
         i_starts = {atom_index[1] for atom_index in atom_indices}
@@ -30,87 +49,29 @@ class PAWXCBatch:
         setup = setups[c_a[0]]
         D_scii = D_asii.data[:, i_start:i_end].reshape(
             -1, len(c_a), setup.ni, setup.ni)
-        self.density_asp = pack_density(D_scii)
+        self.density_sap = pack_density(D_scii)
+        self.gradient_sap = xp.zeros_like(self.density_sap)
+        self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
+        self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
+        self.pseudo_radial_qg = xp.asarray(setup.xc_correction.nt_qg)
+        self.nc_g = xp.asarray(setup.xc_correction.nc_g)
+        self.nct_g = xp.asarray(setup.xc_correction.nct_g)
+        self.angular_nL = xp.asarray(setup.xc_correction.Y_nL)
+        self.angular_weight_n = xp.asarray(weight_n)
 
-        breakpoint()
+        rgd = setup.xc_correction.rgd
+        self.radial_weight_g = xp.asarray(rgd.dv_g)
+        self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
 
-
-
-    atom_indices: tuple[int, ...]
-    density_asp: Any
-    basis_apqL: Any
-    ae_radial_aqg: Any
-    pseudo_radial_aqg: Any
-    nc_ag: Any
-    nct_ag: Any
-    angular_anL: Any
-    angular_weight_an: Any
-    radial_weight_ag: Any
-    reference_energy_a: Any
-    angular_gradient_anLv: Any = None
-    radial_spacing_ag: Any = None
-    inverse_radius2_ag: Any = None
-
-
-def _shape_key(density_sp, correction, gga: bool) -> tuple:
-    """Return the array-shape key for one homogeneous atom batch."""
-    arrays = [correction.B_pqL,
-              correction.n_qg,
-              correction.nt_qg,
-              correction.nc_g,
-              correction.nct_g,
-              correction.Y_nL,
-              correction.rgd.dv_g]
-    if gga:
-        arrays.extend([correction.rnablaY_nLv, correction.rgd.dr_g])
-    return (density_sp.shape, *(array.shape for array in arrays))
+        if gga:
+            self.radial_g = xp.asarray(rgd.r_g)
+            self.radial_spacing_g = xp.asarray(rgd.dr_g)
+            self.inverse_radius2_g = xp.zeros_like(rgd.r_g)
+            self.inverse_radius2_g[rgd.radial_g != 0] = 1. / self.radial_g**2
+            self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
 
 
-def _stack(xp, values, dtype):
-    """Copy equal-shaped per-atom arrays into one contiguous leading batch."""
-    return xp.ascontiguousarray(
-        xp.stack([xp.asarray(value, dtype=dtype) for value in values]))
-
-
-def _prepare_batch(xp, records, gga: bool) -> PAWXCBatch:
-    """Transfer one shape group into batch-major tensor storage."""
-    dtype = np.dtype(records[0][1].dtype)
-    atom_indices = tuple(atom for atom, _, _ in records)
-    corrections = [setup.xc_correction for _, _, setup in records]
-
-    def arrays(name):
-        return _stack(xp, [getattr(correction, name)
-                           for correction in corrections], dtype)
-
-    radial_grids = [correction.rgd for correction in corrections]
-    arguments = dict(
-        atom_indices=atom_indices,
-        density_asp=_stack(xp, [D_sp for _, D_sp, _ in records], dtype),
-        basis_apqL=arrays('B_pqL'),
-        ae_radial_aqg=arrays('n_qg'),
-        pseudo_radial_aqg=arrays('nt_qg'),
-        nc_ag=arrays('nc_g'),
-        nct_ag=arrays('nct_g'),
-        angular_anL=arrays('Y_nL'),
-        angular_weight_an=_stack(xp, [weight_n] * len(records), dtype),
-        radial_weight_ag=_stack(
-            xp, [grid.dv_g for grid in radial_grids], dtype),
-        reference_energy_a=xp.asarray(
-            [correction.e_xc0 for correction in corrections], dtype=dtype))
-    if gga:
-        radial_ag = _stack(xp, [grid.r_g for grid in radial_grids], dtype)
-        nonzero_ag = radial_ag != 0.0
-        safe_radial_ag = xp.where(nonzero_ag, radial_ag, 1.0)
-        inverse_radius2_ag = nonzero_ag / safe_radial_ag**2
-        arguments.update(
-            angular_gradient_anLv=arrays('rnablaY_nLv'),
-            radial_spacing_ag=_stack(
-                xp, [grid.dr_g for grid in radial_grids], dtype),
-            inverse_radius2_ag=inverse_radius2_ag)
-    return PAWXCBatch(**arguments)
-
-
-def pack_xc_batches(D_asii, setups, *, gga: bool) \
+def pack_xc_batches(D_asii, setups, *, functional) \
         -> tuple[PAWXCBatch, ...]:
     """Group local atoms by tensor shape and gather their input arrays."""
     myid_a = {ind: setups.id_a[ind] for ind in D_asii.layout.atomdist.indices}
@@ -119,21 +80,46 @@ def pack_xc_batches(D_asii, setups, *, gga: bool) \
     for a, id in myid_a.items():
         atoms_batch[id] = atoms_batch.get(id, []) + [a]
 
-    return (PAWXCBatch(a_a, D_asii, setups, gga=gga)
-            for a_a in atoms_batch.values())
+    assert functional.name in {'LDA', 'PBE'}
+    gga = functional.name == 'PBE'
+    polarized = True  # D_asii.mydims == (2, )
+
+    from gpaw.new.xccorrections2 import (
+        SpinPairedLDAXCCorrection,
+        SpinPolarizedLDAXCCorrection,
+        SpinPairedPBEXCCorrection,
+        SpinPolarizedPBEXCCorrection)
 
 
-def unpack_xc_batches(batches) -> dict[int, np.ndarray]:
-    ...
+    if functional.name == 'LDA':
+        if polarized:
+            cls = SpinPolarizedLDAXCCorrection
+        else:
+            cls = SpinPairedLDAXCCorrection
+    else:
+        if polarized:
+            cls = SpinPolarizedPBEXCCorrection
+        else:
+            cls = SpinPairedPBEXCCorrection
 
-def scatter_xc_paw(batches, results):
-    """Scatter batch energies and gradients into atom-indexed mappings."""
-    energy_a = {}
-    gradient_asp = {}
+    return [cls(a_a, D_asii, setups, gga=gga)
+            for a_a in atoms_batch.values()]
+
+
+def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
+    """Upnack xc batch energies and gradients into atom-indexed mappings."""
+    corr_a = {}
+
+
     for batch, (energies, gradients) in zip(batches, results, strict=True):
         energies = as_np(energies)
+        gradients_asii = unpack_density(gradients)
         gradients = as_np(gradients)
+        gradients_asii = as_np(gradients_asii)
         for position, atom in enumerate(batch.atom_indices):
-            energy_a[atom] = float(energies[position])
-            gradient_asp[atom] = gradients[position]
-    return energy_a, gradient_asp
+            corr_a[atom] = {
+                'energy': float(energies[position]),
+                'gradient_sp': gradients[:, position],
+                'gradient_sii': gradients_asii[:, position],
+            }
+    return corr_a

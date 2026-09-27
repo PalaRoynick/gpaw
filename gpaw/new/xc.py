@@ -106,11 +106,11 @@ class Functional:
             assert self.name in {'LDA', 'PBE'}
             supported = D_asii.mydims[0] in {1, 2} # Collinear spin
             if supported:
-                batches = pack_xc_batches(D_asii, setups, gga=self.name == 'PBE')
+                batches = pack_xc_batches(D_asii, setups, functional=self)
 
                 results = tuple(evaluate_paw_xc(self, batch)
                                 for batch in batches)
-                return scatter_xc_paw(batches, results)
+                return unpack_xc_batches(batches, results)
 
         energy_a = {}
         gradient_asp = {}

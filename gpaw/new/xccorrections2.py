@@ -118,18 +118,18 @@ class PBEResult(TensorResult):
 
 def density_L_expansion(engine: Engine,
                         D: TensorResult,
-                        radial_aqg,
-                        core_ag) -> EinsumResult:
+                        radial_qg,
+                        core_g,
+                        xp) -> EinsumResult:
     """Expand paired or spin-resolved coefficients into density multipoles."""
     if 's' in D.indices:
-        # density_asLg[a, s, L, g] = D_asLq * radial_aqg.
-        density_asLg = engine.einsum('asLq,aqg->asLg', D, radial_aqg)
-        density_asLg[:, :, 0] += (
-            0.5 * np.sqrt(4.0 * np.pi) * core_ag[:, None, :])
-        return density_asLg
-    # density_aLg[a, L, g] = D_aLq * radial_aqg.
+        density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
+        density_saLg[:, :, 0] += (
+            0.5 * xp.sqrt(4.0 * xp.pi) * core_g[None, None, :])
+        return density_saLg
+
     density_aLg = engine.einsum('aLq,aqg->aLg', D, radial_aqg)
-    density_aLg[:, 0] += np.sqrt(4.0 * np.pi) * core_ag
+    density_aLg[:, 0] += xp.sqrt(4.0 * xp.pi) * core_ag
     return density_aLg
 
 
@@ -210,65 +210,35 @@ def polarized_density_and_grad(engine: Engine,
 def _integrate_correction(engine: Engine,
                           ae_energy: TensorResult,
                           pseudo_energy: TensorResult,
-                          angular_weight_an,
-                          radial_weight_ag,
-                          reference_energy_a) -> TensorResult:
+                          angular_weight_n,
+                          radial_weight_g,
+                          reference_energy) -> TensorResult:
     """Integrate all-electron minus pseudo energy and subtract ``e_xc0``."""
-    quadrature = (angular_weight_an[:, :, None] *
-                  radial_weight_ag[:, None, :])
+    quadrature = (angular_weight_n[:, None] *
+                  radial_weight_g[None, :])
     energy_a = engine.sum(
         (ae_energy - pseudo_energy) * quadrature, axis=(-2, -1))
-    energy_a -= reference_energy_a
+    energy_a -= reference_energy
     return energy_a
 
 
-@dataclass(frozen=True)
-class PAWXCCorrection:
-    """Setup and atom arrays shared by all four PAW XC corrections."""
-
-    # D_ap or D_asp: packed on-site density matrices.
-    density: Any
-    # B_apqL maps packed matrices to radial/angular coefficients.
-    basis_apqL: Any
-    # All-electron and pseudo radial basis products n_aqg and nt_aqg.
-    ae_radial_aqg: Any
-    pseudo_radial_aqg: Any
-    # Frozen all-electron and pseudo core densities nc_ag and nct_ag.
-    nc_ag: Any
-    nct_ag: Any
-    # Spherical harmonics Y_anL on the angular quadrature.
-    angular_anL: Any
-    # Angular and radial quadrature weights weight_an and dv_ag.
-    angular_weight_an: Any
-    radial_weight_ag: Any
-    # Atomic reference correction e_xc0_a.
-    reference_energy_a: Any
-    # Destination dE/dD_ap or dE/dD_asp.
-    gradient: Any
-
-    def evaluate(self, engine: Engine, function) -> tuple[Any, Any]:
-        """Return per-atom energies and fill the density-matrix gradient."""
-        raise NotImplementedError
-
-
-@dataclass(frozen=True)
-class SpinPairedLDAXCCorrection(PAWXCCorrection):
+class SpinPairedLDAXCCorrection(PAWXCBatch):
     """Prepared atom batch for the spin-paired LDA PAW correction."""
 
     def evaluate(self, engine: Engine, evaluate_lda):
         """Return per-atom LDA energies and fill ``gradient`` with dE/dD."""
         # density_ap is the packed density matrix D_p for every atom.
         density_ap = engine.requires_gradient(
-            self.density, self.gradient, 'ap')
+            self.density_sap, self.gradient, 'sap')
         # basis_apqL maps packed p to radial q and angular L channels.
         # D_aLq contains the resulting density-expansion coefficients.
         D_aLq = engine.einsum(
-            'ap,apqL->aLq', density_ap, self.basis_apqL)
+            'sap,apqL->saLq', density_sap, self.basis_apqL)
         # ae_aLg and pseudo_aLg are all-electron/pseudo radial multipoles.
         ae_aLg = density_L_expansion(
-            engine, D_aLq, self.ae_radial_aqg, self.nc_ag)
+            engine, D_aLq, self.ae_radial_aqg, self.nc_ag, self.xp)
         pseudo_aLg = density_L_expansion(
-            engine, D_aLq, self.pseudo_radial_aqg, self.nct_ag)
+            engine, D_aLq, self.pseudo_radial_aqg, self.nct_ag, self.xp)
         # ae_ang and pseudo_ang are physical densities n(r) on the quadrature.
         ae_ang = engine.einsum('anL,aLg->ang', self.angular_anL, ae_aLg)
         pseudo_ang = engine.einsum(
@@ -283,39 +253,37 @@ class SpinPairedLDAXCCorrection(PAWXCCorrection):
         return energy_a.value, self.gradient
 
 
-@dataclass(frozen=True)
-class SpinPolarizedLDAXCCorrection(PAWXCCorrection):
+class SpinPolarizedLDAXCCorrection(PAWXCBatch):
     """Prepared atom batch for the spin-polarized LDA PAW correction."""
 
     def evaluate(self, engine: Engine, evaluate_lda):
         """Return per-atom polarized LDA energies and fill dE/dD_sp."""
-        # density_asp is the packed density matrix D_sp for each atom/spin.
-        density_asp = engine.requires_gradient(
-            self.density, self.gradient, 'asp')
-        # D_asLq holds spin-resolved density-expansion coefficients.
-        D_asLq = engine.einsum(
-            'asp,apqL->asLq', density_asp, self.basis_apqL)
-        ae_asLg = density_L_expansion(
-            engine, D_asLq, self.ae_radial_aqg, self.nc_ag)
-        pseudo_asLg = density_L_expansion(
-            engine, D_asLq, self.pseudo_radial_aqg, self.nct_ag)
-        # ae_asng and pseudo_asng are the two spin densities on the grid.
-        ae_asng = engine.einsum(
-            'anL,asLg->asng', self.angular_anL, ae_asLg)
-        pseudo_asng = engine.einsum(
-            'anL,asLg->asng', self.angular_anL, pseudo_asLg)
+        # density_sap is the packed density matrix D_p for each atom/spin.
+        density_sap = engine.requires_gradient(
+            self.density_sap, self.gradient_sap, 'sap')
+        # D_saLq holds spin-resolved density-expansion coefficients.
+        D_saLq = engine.einsum(
+            'sap,pqL->saLq', density_sap, self.basis_pqL)
+        ae_saLg = density_L_expansion(
+            engine, D_saLq, self.ae_radial_qg, self.nc_g, xp=self.xp)
+        pseudo_saLg = density_L_expansion(
+            engine, D_saLq, self.pseudo_radial_qg, self.nct_g, xp=self.xp)
+        # ae_sang and pseudo_sang are the two spin densities on the grid.
+        ae_sang = engine.einsum(
+            'nL,saLg->sang', self.angular_nL, ae_saLg)
+        pseudo_sang = engine.einsum(
+            'nL,saLg->sang', self.angular_nL, pseudo_saLg)
         energy_a = _integrate_correction(
             engine,
-            LDAResult(ae_asng, evaluate_lda),
-            LDAResult(pseudo_asng, evaluate_lda),
-            self.angular_weight_an, self.radial_weight_ag,
-            self.reference_energy_a)
+            LDAResult(ae_sang, evaluate_lda),
+            LDAResult(pseudo_sang, evaluate_lda),
+            self.angular_weight_n, self.radial_weight_g,
+            self.reference_energy)
         energy_a.backward()
-        return energy_a.value, self.gradient
+        return energy_a.value, self.gradient_sap
 
 
-@dataclass(frozen=True)
-class PBEXCCorrection(PAWXCCorrection):
+class PBEXCCorrection(PAWXCBatch):
     """Additional radial and angular arrays needed by PBE."""
 
     # r * grad(Y_anL), with Cartesian component v.
@@ -326,7 +294,6 @@ class PBEXCCorrection(PAWXCCorrection):
     inverse_radius2_ag: object
 
 
-@dataclass(frozen=True)
 class SpinPairedPBEXCCorrection(PBEXCCorrection):
     """Prepared atom batch for the spin-paired PBE PAW correction."""
 
@@ -339,9 +306,9 @@ class SpinPairedPBEXCCorrection(PBEXCCorrection):
         D_aLq = engine.einsum(
             'ap,apqL->aLq', density_ap, self.basis_apqL)
         ae_aLg = density_L_expansion(
-            engine, D_aLq, self.ae_radial_aqg, self.nc_ag)
+            engine, D_aLq, self.ae_radial_aqg, self.nc_ag, self.xp)
         pseudo_aLg = density_L_expansion(
-            engine, D_aLq, self.pseudo_radial_aqg, self.nct_ag)
+            engine, D_aLq, self.pseudo_radial_aqg, self.nct_ag, self.xp)
         # Each field pair is (density_ang, sigma_ang) on the full grid.
         ae_density_ang, ae_sigma_ang = paired_density_and_grad(
             engine, ae_aLg, self.angular_anL, self.angular_gradient_anLv,
@@ -361,7 +328,6 @@ class SpinPairedPBEXCCorrection(PBEXCCorrection):
         return energy_a.value, self.gradient
 
 
-@dataclass(frozen=True)
 class SpinPolarizedPBEXCCorrection(PBEXCCorrection):
     """Prepared atom batch for the spin-polarized PBE PAW correction."""
 
@@ -374,9 +340,9 @@ class SpinPolarizedPBEXCCorrection(PBEXCCorrection):
         D_asLq = engine.einsum(
             'asp,apqL->asLq', density_asp, self.basis_apqL)
         ae_asLg = density_L_expansion(
-            engine, D_asLq, self.ae_radial_aqg, self.nc_ag)
+            engine, D_asLq, self.ae_radial_aqg, self.nc_ag, self.xp)
         pseudo_asLg = density_L_expansion(
-            engine, D_asLq, self.pseudo_radial_aqg, self.nct_ag)
+            engine, D_asLq, self.pseudo_radial_aqg, self.nct_ag, self.xp)
         # Densities are asng; sigma fields are axng with x=(aa, ab, bb).
         ae_density_asng, ae_sigma_axng = polarized_density_and_grad(
             engine, ae_asLg, self.angular_anL, self.angular_gradient_anLv,
@@ -416,42 +382,16 @@ def _evaluate_pbe_cpu(functional,
 def evaluate_paw_xc(functional, batch: PAWXCBatch) -> tuple[object, object]:
     """Evaluate one prepared LDA or PBE PAW correction batch."""
     assert functional.name in {'LDA', 'PBE'}
-    xp = functional.xp
-    polarized = batch.density_asp.shape[1] == 2
-    density = (batch.density_asp if polarized else
-               batch.density_asp[:, 0])
-    arguments = dict(
-        density=density,
-        basis_apqL=batch.basis_apqL,
-        ae_radial_aqg=batch.ae_radial_aqg,
-        pseudo_radial_aqg=batch.pseudo_radial_aqg,
-        nc_ag=batch.nc_ag,
-        nct_ag=batch.nct_ag,
-        angular_anL=batch.angular_anL,
-        angular_weight_an=batch.angular_weight_an,
-        radial_weight_ag=batch.radial_weight_ag,
-        reference_energy_a=batch.reference_energy_a,
-        gradient=xp.zeros_like(density))
+    xp = batch.xp
 
-    evaluate: Any
     if functional.name == 'LDA':
-        cls: type[PAWXCCorrection] = (
-            SpinPolarizedLDAXCCorrection if polarized else
-            SpinPairedLDAXCCorrection)
         evaluate = (partial(_evaluate_lda_cpu, functional)
                     if xp is np else evaluate_lda_gpu)
     else:
-        cls = (SpinPolarizedPBEXCCorrection if polarized else
-               SpinPairedPBEXCCorrection)
-        arguments.update(
-            angular_gradient_anLv=batch.angular_gradient_anLv,
-            radial_spacing_ag=batch.radial_spacing_ag,
-            inverse_radius2_ag=batch.inverse_radius2_ag)
         evaluate = (partial(_evaluate_pbe_cpu, functional)
                     if xp is np else evaluate_pbe_gpu)
 
-    correction = cls(**arguments)
-    energies, gradients = correction.evaluate(Engine(xp), evaluate)
+    energies, gradients = batch.evaluate(Engine(xp), evaluate)
     if gradients.ndim == 2:
         gradients = gradients[:, None, :]
     return energies, gradients
