@@ -9,7 +9,7 @@ def test_aa_to_full():
     d = np.array([[1, 2, 4],
                   [2, 3, 5],
                   [4, 5, 6]], dtype=float)
-    a = AtomArraysLayout([(3, 3)]).empty()
+    a = AtomArraysLayout([(3, 3), (4, 4)]).empty()
     a[0][:] = d
     p = a.to_lower_triangle()
     assert (p[0] == [1, 2, 3, 4, 5, 6]).all()
@@ -40,12 +40,12 @@ def test_gather(comm):
     r = min(1, comm.size - 1)
     ranks = [r, r]
     atomdist = AtomDistribution(ranks, comm)
-    D_asii = AtomArraysLayout([(1, 1)] * 2, atomdist=atomdist).empty(1)
+    D_asii = AtomArraysLayout([(2, 2), (1, 1)], atomdist=atomdist).empty(1)
     if comm.rank == r:
         D_asii[0][:] = 1
         D_asii[1][:] = 2
     D2_asii = D_asii.gather(broadcast=True)
-    assert D2_asii.data.shape == (1, 2)
+    assert D2_asii.data.shape == (1, 5)
     for a, D_sii in D2_asii.items():
         assert D_sii[0, 0, 0] == a + 1
 
