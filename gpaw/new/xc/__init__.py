@@ -109,7 +109,7 @@ class Functional:
                 if hasattr(self, 'paw_xc_batches'):
                     batches = self.paw_xc_batches
                     for batch in batches:
-                        batch.update_density(D_asii, V_aL)
+                        batch.set_density(D_asii, V_aL)
                 else:
                     batches = pack_xc_batches(D_asii, V_aL, setups,
                                               functional=self)

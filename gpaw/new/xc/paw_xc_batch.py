@@ -54,7 +54,7 @@ class PAWXCBatch:
         self.M_pp = xp.asarray(setup.M_pp)
         self.Delta_pL = xp.asarray(setup.Delta_pL)
 
-    def update_density(self, D_asii, V_aL):
+    def set_density(self, D_asii, V_aL):
         D_scii = D_asii.data[:, self.i_start:self.i_end].reshape(
             -1, len(self.atom_indices), self.setup.ni, self.setup.ni)
         self.density_sap = pack_density(D_scii.real, xp=self.xp)
