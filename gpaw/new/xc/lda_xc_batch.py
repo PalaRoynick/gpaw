@@ -93,14 +93,14 @@ def _evaluate_lda_cpu(functional, density_sx, potential_sx, energy_x):
 
 
 def integrate_correction(engine: Engine,
-                          ae_energy: TensorResult,
-                          pseudo_energy: TensorResult,
-                          angular_weight_n,
-                          radial_weight_g,
-                          reference_energy) -> TensorResult:
+                         ae_energy: TensorResult,
+                         pseudo_energy: TensorResult,
+                         angular_weight_n,
+                         radial_weight_g,
+                         reference_energy) -> TensorResult:
     """Integrate all-electron minus pseudo energy and subtract ``e_xc0``."""
     quadrature_ng = (angular_weight_n[:, None] *
-                        radial_weight_g[None, :])
+                     radial_weight_g[None, :])
     energy_a = engine.sum(
         (ae_energy - pseudo_energy) * quadrature_ng, axis=(-2, -1))
     energy_a -= reference_energy

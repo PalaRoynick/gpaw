@@ -18,21 +18,21 @@ class PAWXCBatch:
         self.xp = xp
         self.spinpol = D_asii.mydims == (2,)
         atom_indices = [D_asii.layout.myindices[c] for c in c_a]
-        i_start = min(atom_index[1] for atom_index in atom_indices)
-        i_end = max(atom_index[2] for atom_index in atom_indices)
+        self.i_start = min(atom_index[1] for atom_index in atom_indices)
+        self.i_end = max(atom_index[2] for atom_index in atom_indices)
         self.atom_indices = c_a
         self.V_aL = xp.asarray([V_aL[c] for c in c_a])
 
         # Assert contiguous
         i_starts = {atom_index[1] for atom_index in atom_indices}
-        i_starts.add(i_end)
+        i_starts.add(self.i_end)
         i_ends = {atom_index[2] for atom_index in atom_indices}
-        i_ends.add(i_start)
+        i_ends.add(self.i_start)
         assert i_starts == i_ends
 
         setup = setups[c_a[0]]
         self.setup = setup
-        D_scii = D_asii.data[:, i_start:i_end].reshape(
+        D_scii = D_asii.data[:, self.i_start:self.i_end].reshape(
             -1, len(c_a), setup.ni, setup.ni)
         self.density_sap = pack_density(D_scii.real, xp=self.xp)
         self.gradient_sap = xp.zeros_like(self.density_sap)
@@ -53,6 +53,13 @@ class PAWXCBatch:
         self.MB_p = xp.asarray(setup.MB_p)
         self.M_pp = xp.asarray(setup.M_pp)
         self.Delta_pL = xp.asarray(setup.Delta_pL)
+
+    def update_density(self, D_asii, V_aL):
+        D_scii = D_asii.data[:, self.i_start:self.i_end].reshape(
+            -1, len(self.atom_indices), self.setup.ni, self.setup.ni)
+        self.density_sap = pack_density(D_scii.real, xp=self.xp)
+        self.gradient_sap[:] = 0
+        self.V_aL = self.xp.asarray([V_aL[c] for c in self.atom_indices])
 
     def unpack(self):
         setup = self.setup
@@ -78,8 +85,6 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
         atoms_batch[id] = atoms_batch.get(id, []) + [a]
 
     assert functional.name in {'LDA', 'PBE'}
-    gga = functional.name == 'PBE'
-
 
     if functional.name == 'LDA':
         from gpaw.new.xc.lda_xc_batch import LDAXCCorrection as cls

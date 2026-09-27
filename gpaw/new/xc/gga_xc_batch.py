@@ -12,7 +12,7 @@ import numpy as np
 from gpaw.new.c import evaluate_pbe_gpu
 from gpaw.new.xc.paw_xc_batch import PAWXCBatch
 from gpaw.new.xc.lda_xc_batch import density_L_expansion, integrate_correction
-from gpaw.utilities.tensor_autograd import EinsumResult, Engine, TensorResult
+from gpaw.utilities.tensor_autograd import Engine, TensorResult
 
 
 class PBEResult(TensorResult):
@@ -44,6 +44,7 @@ class PBEResult(TensorResult):
         return ((self.density, self.potential * gradient[None]),
                 (self.sigma, self.sigma_derivative * gradient[None]))
 
+
 class GGAXCCorrection(PAWXCBatch):
     """Additional radial and angular arrays needed by PBE."""
 
@@ -60,6 +61,7 @@ class GGAXCCorrection(PAWXCBatch):
         self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
         self.evaluate_xc = (partial(_evaluate_pbe_cpu, self.functional)
                             if xp is np else evaluate_pbe_gpu)
+
 
 class PBEXCCorrection(GGAXCCorrection):
     """Prepared atom batch for the spin-polarized PBE PAW correction."""
@@ -90,11 +92,13 @@ class PBEXCCorrection(GGAXCCorrection):
         energy_a = integrate_correction(
             engine,
             PBEResult(ae_density_sang, ae_sigma_xang, self.evaluate_xc),
-            PBEResult(pseudo_density_sang, pseudo_sigma_xang, self.evaluate_xc),
+            PBEResult(pseudo_density_sang, pseudo_sigma_xang,
+                      self.evaluate_xc),
             self.angular_weight_n, self.radial_weight_g,
             self.reference_energy)
         energy_a.backward()
         return energy_a.value, self.gradient_sap
+
 
 def _evaluate_pbe_cpu(functional,
                       density_sx,

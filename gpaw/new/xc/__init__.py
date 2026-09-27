@@ -106,8 +106,14 @@ class Functional:
             assert self.name in {'LDA', 'PBE'}
             supported = D_asii.mydims[0] in {1, 2}  # Collinear spin
             if supported:
-                batches = pack_xc_batches(D_asii, V_aL, setups,
-                                          functional=self)
+                if hasattr(self, 'paw_xc_batches'):
+                    batches = self.paw_xc_batches
+                    for batch in batches:
+                        batch.update_density(D_asii, V_aL)
+                else:
+                    batches = pack_xc_batches(D_asii, V_aL, setups,
+                                              functional=self)
+                    self.paw_xc_batches = batches
 
                 results = [batch.evaluate() for batch in batches]
                 return unpack_xc_batches(batches, results)
