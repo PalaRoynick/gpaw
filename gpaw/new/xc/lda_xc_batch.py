@@ -51,6 +51,7 @@ class LDAXCCorrection(PAWXCBatch):
     """Prepared atom batch for the spin-polarized LDA PAW correction."""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         xp = self.xp
         self.evaluate_xc = (partial(_evaluate_lda_cpu, self.functional)
                             if xp is np else evaluate_lda_gpu)
