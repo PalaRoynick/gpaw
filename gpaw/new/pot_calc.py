@@ -30,7 +30,7 @@ from gpaw.new.xc import Functional
 from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
-from gpaw.gpu import as_np
+from gpaw.gpu import as_np, cupy as cp
 from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
 
 
@@ -223,7 +223,7 @@ def calculate_non_local_potential1(setup: Setup,
                                    xc_correction=None
                                    ) -> tuple[Array3D, dict[str, float]]:
     if xc_correction is None:
-        # Legacy xc calculatoin
+        # Legacy xc calculation
         ncomponents = len(D_sii)
         ndensities = 2 if ncomponents == 2 else 1
 
@@ -260,13 +260,16 @@ def calculate_non_local_potential1(setup: Setup,
         dH_sii = xc_correction['gradient_sii']
 
     if setup.hubbard_u is not None:
-        eU, dHU_sii = setup.hubbard_u.calculate(setup, D_sii)
+        eU, dHU_sii = setup.hubbard_u.calculate(setup, as_np(D_sii))
         e_xc += eU
-        dH_sii += dHU_sii
+        if isinstance(dH_sii, np.ndarray):
+            dH_sii += dHU_sii
+        else:
+            dH_sii += cp.asarray(dHU_sii)
 
     for extension in extensions:
         e_xc += extension.update_non_local_hamiltonian(
-            D_sii, setup, atom_index, dH_sii)
+            as_np(D_sii), setup, atom_index, as_np(dH_sii))
 
     e_kinetic -= as_np(D_sii * dH_sii).sum().real
 
