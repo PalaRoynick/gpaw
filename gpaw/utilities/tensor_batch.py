@@ -9,7 +9,7 @@ import numpy as np
 
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
-from gpaw.utilities import pack_density, unpack_density
+from gpaw.utilities import pack_density, unpack_hermitian
 
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
@@ -60,11 +60,11 @@ class PAWXCBatch:
         setup = self.setup
         D_ap = as_np(self.density_sap.sum(axis=0))
         dH_ap = self.xp.array(setup.K_p + setup.M_p +
-                              setup.MB_p + 2.0 * D_ap @ setup.M_pp +
+                              setup.MB_p + 2.0 * D_ap @ setup.M_pp.T +
                               self.V_aL @ setup.Delta_pL.T)
         ekin_a = D_ap @ setup.K_p + setup.Kc
         e0_a = setup.MB + D_ap @ setup.MB_p
-        ecou_a = setup.M + D_ap[:, None] @ (setup.M_p + D_ap @ setup.M_pp)[:, :, None]
+        ecou_a = setup.M + D_ap[:, None] @ (setup.M_p + D_ap @ setup.M_pp.T)[:, :, None]
         ecou_a = ecou_a.squeeze()
         return ekin_a, e0_a, ecou_a, dH_ap
 
@@ -79,7 +79,6 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
 
     assert functional.name in {'LDA', 'PBE'}
     gga = functional.name == 'PBE'
-    polarized = True  # D_asii.mydims == (2, )
 
     from gpaw.new.xccorrections2 import (
         LDAXCCorrection,
@@ -90,7 +89,7 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
     if functional.name == 'LDA':
         cls = LDAXCCorrection
     else:
-        if polarized:
+        if True:
             cls = SpinPolarizedPBEXCCorrection
         else:
             cls = SpinPairedPBEXCCorrection
@@ -108,7 +107,7 @@ def unpack_xc_batches(batches, results) -> dict[int, np.ndarray]:
 
         exc_a = as_np(energies)
         gradients += dH_ap
-        gradients_saii = unpack_density(gradients, xp=batch.xp)
+        gradients_saii = unpack_hermitian(gradients, xp=batch.xp)
         gradients = as_np(gradients)
         gradients_saii = as_np(gradients_saii)
         for position, atom in enumerate(batch.atom_indices):

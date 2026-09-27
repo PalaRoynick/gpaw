@@ -244,9 +244,9 @@ def calculate_non_local_potential1(setup: Setup,
             e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
             dH_sp[1:4] = pack_hermitian(dHsoc_sii)
 
-        dH_sp[:ndensities] = dH_p
         e_xc = xc.calculate_paw_correction(
             setup, D_sp, dH_sp, a=atom_index)
+        dH_sp[:ndensities] += dH_p
         dH_sii = unpack_hermitian(dH_sp)
     else:
         e_xc = xc_correction['e_xc']
