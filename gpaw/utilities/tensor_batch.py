@@ -49,12 +49,6 @@ class PAWXCBatch:
         self.radial_weight_g = xp.asarray(rgd.dv_g)
         self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
 
-        if gga:
-            self.radial_g = xp.asarray(rgd.r_g)
-            self.radial_spacing_g = xp.asarray(rgd.dr_g)
-            self.inverse_radius2_g = xp.zeros_like(rgd.r_g)
-            self.inverse_radius2_g[rgd.radial_g != 0] = 1. / self.radial_g**2
-            self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
 
     def unpack(self):
         setup = self.setup
@@ -82,17 +76,13 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
 
     from gpaw.new.xccorrections2 import (
         LDAXCCorrection,
-        SpinPairedPBEXCCorrection,
-        SpinPolarizedPBEXCCorrection)
+        PBEXCCorrection)
 
 
     if functional.name == 'LDA':
         cls = LDAXCCorrection
     else:
-        if True:
-            cls = SpinPolarizedPBEXCCorrection
-        else:
-            cls = SpinPairedPBEXCCorrection
+        cls = PBEXCCorrection
 
     return [cls(a_a, D_asii, V_aL, setups, gga=gga)
             for a_a in atoms_batch.values()]
