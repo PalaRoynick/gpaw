@@ -205,7 +205,7 @@ def calculate_non_local_potential(setups,
     density.D_asii.layout.atomdist.comm.sum(energies)
     kpt_band_comm.sum(energies)
 
-    return (dH_asii.to_xp(density.D_asii.layout.xp) if xc_corr is None \
+    return (dH_asii.to_xp(density.D_asii.layout.xp) if xc_corr is None
             else dH_asii, dict(zips(names, energies)))
 
 
@@ -218,9 +218,8 @@ def calculate_non_local_potential1(setup: Setup,
                                    atom_index,
                                    xc_correction=None
                                    ) -> tuple[Array3D, dict[str, float]]:
-
-
     if xc_correction is None:
+        # Legacy xc calculatoin
         ncomponents = len(D_sii)
         ndensities = 2 if ncomponents == 2 else 1
 
@@ -235,7 +234,8 @@ def calculate_non_local_potential1(setup: Setup,
         e_zero = setup.MB + setup.MB_p @ D_p
         e_coulomb = setup.M + D_p @ (setup.M_p + setup.M_pp @ D_p)
         e_soc = 0.0
-        dH_sp = np.zeros_like(D_sp, dtype=float if ncomponents < 4 else complex)
+        dH_sp = np.zeros_like(
+            D_sp, dtype=float if ncomponents < 4 else complex)
 
         if soc:
             dHsoc_sii = soc_terms(setup, xc.xc, D_sp)

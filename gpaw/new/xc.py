@@ -23,6 +23,7 @@ from gpaw.xc.vdw import VDWFunctionalBase
 from gpaw.new.xccorrections2 import evaluate_paw_xc
 from gpaw.utilities.tensor_batch import pack_xc_batches, unpack_xc_batches
 
+
 def create_functional(xc: OldXCFunctional | str | dict,
                       grid: UGDesc,
                       xp=np) -> Functional:
@@ -104,9 +105,10 @@ class Functional:
         """
         if self.use_xc_corrections2:
             assert self.name in {'LDA', 'PBE'}
-            supported = D_asii.mydims[0] in {1, 2} # Collinear spin
+            supported = D_asii.mydims[0] in {1, 2}  # Collinear spin
             if supported:
-                batches = pack_xc_batches(D_asii, V_aL, setups, functional=self)
+                batches = pack_xc_batches(D_asii, V_aL, setups,
+                                          functional=self)
 
                 results = tuple(evaluate_paw_xc(self, batch)
                                 for batch in batches)

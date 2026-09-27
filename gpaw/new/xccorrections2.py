@@ -19,10 +19,7 @@ correction implementation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import partial
-from typing import Any
-
 import numpy as np
 
 from gpaw.new.c import evaluate_lda_gpu, evaluate_pbe_gpu
@@ -113,7 +110,7 @@ def get_density_and_grad(engine: Engine,
 
     inverse_radius2_11g = inverse_radius2_g[None, None, :]
     if not spinpol:
-        # tangent2_ang is the squared angular component before division by r**2.
+        # tangent2_ang is the squared angular component before division by r**2
         tangent2_sang = engine.sum(tangent_sanvg * tangent_sanvg, axis=-2)
         sigma_sang = (radial_sang * radial_sang +
                       tangent2_sang * inverse_radius2_11g)
@@ -127,7 +124,6 @@ def get_density_and_grad(engine: Engine,
         (0, slice(None), slice(None), slice(None), slice(None)), 'anvg')
     tangent_b_anvg = tangent_sanvg.slice(
         (1, slice(None), slice(None), slice(None), slice(None)), 'anvg')
-
 
     def sigma(radial_left, radial_right, tangent_left, tangent_right):
         """Form one grad(n_left) dot grad(n_right) field."""
@@ -161,6 +157,7 @@ def _integrate_correction(engine: Engine,
     energy_a -= reference_energy
     return energy_a
 
+
 class LDAXCCorrection(PAWXCBatch):
     """Prepared atom batch for the spin-polarized LDA PAW correction."""
 
@@ -172,10 +169,12 @@ class LDAXCCorrection(PAWXCBatch):
         # D_saLq holds spin-resolved density-expansion coefficients.
         D_saLq = engine.einsum(
             'sap,pqL->saLq', density_sap, self.basis_pqL)
-        ae_saLg = density_L_expansion(engine, D_saLq, self.ae_radial_qg,
-                                      self.nc_g, self.spinpol, xp=self.xp)
-        pseudo_saLg = density_L_expansion(engine, D_saLq, self.pseudo_radial_qg,
-                                          self.nct_g, self.spinpol, xp=self.xp)
+        ae_saLg = density_L_expansion(engine, D_saLq,
+                                      self.ae_radial_qg, self.nc_g,
+                                      self.spinpol, xp=self.xp)
+        pseudo_saLg = density_L_expansion(engine, D_saLq,
+                                          self.pseudo_radial_qg, self.nct_g,
+                                          self.spinpol, xp=self.xp)
         # ae_sang and pseudo_sang are the two spin densities on the grid.
         ae_sang = engine.einsum(
             'nL,saLg->sang', self.angular_nL, ae_saLg)
@@ -219,7 +218,8 @@ class PBEXCCorrection(GGAXCCorrection):
         D_saLq = engine.einsum(
             'sap,pqL->saLq', density_sap, self.basis_pqL)
         ae_saLg = density_L_expansion(
-            engine, D_saLq, self.ae_radial_qg, self.nc_g, self.spinpol, self.xp)
+            engine, D_saLq, self.ae_radial_qg, self.nc_g, self.spinpol,
+            self.xp)
         pseudo_saLg = density_L_expansion(
             engine, D_saLq, self.pseudo_radial_qg, self.nct_g, self.spinpol,
             self.xp)

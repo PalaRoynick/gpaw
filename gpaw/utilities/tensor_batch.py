@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
-
 import numpy as np
 
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
 from gpaw.utilities import pack_density, unpack_hermitian
+
 
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
@@ -17,7 +15,6 @@ class PAWXCBatch:
         xp = D_asii.layout.xp
         self.xp = xp
         self.spinpol = D_asii.mydims == (2,)
-        order_b = D_asii.layout.order_b
         atom_indices = [D_asii.layout.myindices[c] for c in c_a]
         i_start = min(atom_index[1] for atom_index in atom_indices)
         i_end = max(atom_index[2] for atom_index in atom_indices)
@@ -55,7 +52,6 @@ class PAWXCBatch:
         self.M_pp = xp.asarray(setup.M_pp)
         self.Delta_pL = xp.asarray(setup.Delta_pL)
 
-
     def unpack(self):
         setup = self.setup
         D_ap = self.density_sap.sum(axis=0)
@@ -68,6 +64,7 @@ class PAWXCBatch:
             self.M_p + D_ap @ self.M_pp.T)[:, :, None]
         ecou_a = ecou_a.squeeze()
         return as_np(ekin_a), as_np(e0_a), as_np(ecou_a), dH_ap
+
 
 def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
         -> tuple[PAWXCBatch, ...]:
@@ -84,7 +81,6 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
     from gpaw.new.xccorrections2 import (
         LDAXCCorrection,
         PBEXCCorrection)
-
 
     if functional.name == 'LDA':
         cls = LDAXCCorrection

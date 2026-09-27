@@ -194,6 +194,7 @@ and anything that should be multiplied onto such, e.g. corrections to the
 Hamiltonian, are constructed according to (un)pack_hermitian.
 """
 
+
 def pack_hermitian(M2,
                    tolerance=1e-10,
                    xp=np,
@@ -218,8 +219,7 @@ def pack_hermitian(M2,
     out = M2[..., a, b]
 
     if debug:
-        if indices is not None:
-           assert (a, b) == xp.triu_indices(n)
+        assert (a, b) == xp.triu_indices(n)
         out += M2[..., b, a].conj()
         out *= 0.5
         assert xp.allclose(out, M2[..., a, b],
@@ -234,8 +234,6 @@ def pack_hermitian(M2,
 def unpack_hermitian(M, xp=np, offdiag_scale=None):
     """Unpack 1D array to Hermitian 2D array,
     assuming a packing as in ``pack_hermitian``."""
-    global _indices_cache
-
     n = int(sqrt(0.25 + 2.0 * M.shape[-1]))  # XXX: Dangerous...
     out = xp.empty(M.shape[:-1] + (n, n), M.dtype)
     a, b = xp.triu_indices(n)
@@ -264,7 +262,6 @@ def pack_density(A: np.ndarray, xp=np) -> np.ndarray:
        (a00, a01 + a10, a02 + a20, a11, a12 + a21, a22)"""
     if xp is np and A.ndim == 2 and not GPAW_NO_C_EXTENSION:
         return cgpaw.pack(A)
-    n = A.shape[-1]
     return pack_hermitian(A, xp=xp, offdiag_scale=2.0)
 
 
@@ -287,7 +284,7 @@ def element_from_packed(M, i, j):
     """Return a specific element from a packed array (by ``pack``)."""
     n = int(sqrt(2 * len(M) + .25))
     assert i < n and j < n
-    p = packed_index(i, j, npack)
+    p = packed_index(i, j, n)
     if i == j:
         return M[p]
     elif i > j:
