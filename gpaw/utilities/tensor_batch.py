@@ -82,17 +82,13 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
     polarized = True  # D_asii.mydims == (2, )
 
     from gpaw.new.xccorrections2 import (
-        SpinPairedLDAXCCorrection,
-        SpinPolarizedLDAXCCorrection,
+        LDAXCCorrection,
         SpinPairedPBEXCCorrection,
         SpinPolarizedPBEXCCorrection)
 
 
     if functional.name == 'LDA':
-        if polarized:
-            cls = SpinPolarizedLDAXCCorrection
-        else:
-            cls = SpinPairedLDAXCCorrection
+        cls = LDAXCCorrection
     else:
         if polarized:
             cls = SpinPolarizedPBEXCCorrection

@@ -114,15 +114,11 @@ def density_L_expansion(engine: Engine,
                         spinpol,
                         xp) -> EinsumResult:
     """Expand paired or spin-resolved coefficients into density multipoles."""
-    const = xp.sqrt(xp.pi) / len(D) if spinpol else xp.sqrt(4.0 * xp.pi)
+    const = xp.sqrt(xp.pi) if spinpol else xp.sqrt(4.0 * xp.pi)
 
     density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
     density_saLg[:, :, 0] += const * core_g[None, None, :]
     return density_saLg
-
-    # density_aLg = engine.einsum('aLq,aqg->aLg', D, radial_aqg)
-    # density_aLg[:, 0] += xp.sqrt(4.0 * xp.pi) * core_ag
-    # return density_aLg
 
 
 def paired_density_and_grad(engine: Engine,
@@ -213,39 +209,7 @@ def _integrate_correction(engine: Engine,
     energy_a -= reference_energy
     return energy_a
 
-
-class SpinPairedLDAXCCorrection(PAWXCBatch):
-    """Prepared atom batch for the spin-paired LDA PAW correction."""
-
-    def evaluate(self, engine: Engine, evaluate_lda):
-        """Return per-atom LDA energies and fill ``gradient`` with dE/dD."""
-        # density_ap is the packed density matrix D_p for every atom.
-        density_ap = engine.requires_gradient(
-            self.density_sap, self.gradient, 'sap')
-        # basis_apqL maps packed p to radial q and angular L channels.
-        # D_aLq contains the resulting density-expansion coefficients.
-        D_aLq = engine.einsum(
-            'sap,apqL->saLq', density_sap, self.basis_apqL)
-        # ae_aLg and pseudo_aLg are all-electron/pseudo radial multipoles.
-        ae_aLg = density_L_expansion(
-            engine, D_aLq, self.ae_radial_aqg, self.nc_ag, self.xp)
-        pseudo_aLg = density_L_expansion(
-            engine, D_aLq, self.pseudo_radial_aqg, self.nct_ag, self.xp)
-        # ae_ang and pseudo_ang are physical densities n(r) on the quadrature.
-        ae_ang = engine.einsum('anL,aLg->ang', self.angular_anL, ae_aLg)
-        pseudo_ang = engine.einsum(
-            'anL,aLg->ang', self.angular_anL, pseudo_aLg)
-        energy_a = _integrate_correction(
-            engine,
-            LDAResult(ae_ang, evaluate_lda),
-            LDAResult(pseudo_ang, evaluate_lda),
-            self.angular_weight_an, self.radial_weight_ag,
-            self.reference_energy_a)
-        energy_a.backward()
-        return energy_a.value, self.gradient
-
-
-class SpinPolarizedLDAXCCorrection(PAWXCBatch):
+class LDAXCCorrection(PAWXCBatch):
     """Prepared atom batch for the spin-polarized LDA PAW correction."""
 
     def evaluate(self, engine: Engine, evaluate_lda):
@@ -384,6 +348,4 @@ def evaluate_paw_xc(functional, batch: PAWXCBatch) -> tuple[object, object]:
                     if xp is np else evaluate_pbe_gpu)
 
     energies, gradients = batch.evaluate(Engine(xp), evaluate)
-    if gradients.ndim == 2:
-        gradients = gradients[:, None, :]
     return energies, gradients
