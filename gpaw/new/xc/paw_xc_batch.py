@@ -11,7 +11,9 @@ from gpaw.utilities import pack_density, unpack_hermitian
 
 class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
-    def __init__(self, c_a, D_asii, V_aL, setups, gga: bool):
+    def __init__(self, c_a, D_asii, V_aL, setups, functional):
+        self.functional = functional
+
         xp = D_asii.layout.xp
         self.xp = xp
         self.spinpol = D_asii.mydims == (2,)
@@ -78,16 +80,13 @@ def pack_xc_batches(D_asii, V_aL, setups, *, functional) \
     assert functional.name in {'LDA', 'PBE'}
     gga = functional.name == 'PBE'
 
-    from gpaw.new.xccorrections2 import (
-        LDAXCCorrection,
-        PBEXCCorrection)
 
     if functional.name == 'LDA':
-        cls = LDAXCCorrection
+        from gpaw.new.xc.lda_xc_batch import LDAXCCorrection as cls
     else:
-        cls = PBEXCCorrection
+        from gpaw.new.xc.gga_xc_batch import PBEXCCorrection as cls
 
-    return [cls(a_a, D_asii, V_aL, setups, gga=gga)
+    return [cls(a_a, D_asii, V_aL, setups, functional=functional)
             for a_a in atoms_batch.values()]
 
 

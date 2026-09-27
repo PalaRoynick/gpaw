@@ -9,8 +9,9 @@ from __future__ import annotations
 from functools import partial
 import numpy as np
 
-from gpaw.new.c import evaluate_lda_gpu
-from gpaw.utilities.tensor_batch import PAWXCBatch
+from gpaw.new.c import evaluate_pbe_gpu
+from gpaw.new.xc.paw_xc_batch import PAWXCBatch
+from gpaw.new.xc.lda_xc_batch import density_L_expansion, integrate_correction
 from gpaw.utilities.tensor_autograd import EinsumResult, Engine, TensorResult
 
 
@@ -57,13 +58,15 @@ class GGAXCCorrection(PAWXCBatch):
         self.inverse_radius2_g[self.radial_g != 0] = \
             1. / self.radial_g[self.radial_g != 0]**2
         self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
-        self.evaluate_xc = (partial(_evaluate_pbe_cpu, functional)
-                         if xp is np else evaluate_pbe_gpu)
+        self.evaluate_xc = (partial(_evaluate_pbe_cpu, self.functional)
+                            if xp is np else evaluate_pbe_gpu)
 
 class PBEXCCorrection(GGAXCCorrection):
     """Prepared atom batch for the spin-polarized PBE PAW correction."""
 
-    def evaluate(self, engine: Engine,):
+    def evaluate(self):
+        engine = Engine(self.xp)
+
         """Return polarized PBE energies and fill dE/dD_asp."""
         # density_asp is the packed density matrix D_sp for each atom/spin.
         density_sap = engine.requires_gradient(
@@ -84,7 +87,7 @@ class PBEXCCorrection(GGAXCCorrection):
         pseudo_density_sang, pseudo_sigma_xang = get_density_and_grad(
             engine, pseudo_saLg, self.angular_nL, self.angular_gradient_nLv,
             self.radial_spacing_g, self.inverse_radius2_g, self.spinpol)
-        energy_a = _integrate_correction(
+        energy_a = integrate_correction(
             engine,
             PBEResult(ae_density_sang, ae_sigma_xang, self.evaluate_xc),
             PBEResult(pseudo_density_sang, pseudo_sigma_xang, self.evaluate_xc),
