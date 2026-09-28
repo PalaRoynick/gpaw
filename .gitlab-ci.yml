@@ -639,19 +639,16 @@ lint:
       doc/platforms/Linux/Niflheim
 
 
-# We get many failures running typecheck in python3.14,
-# because the typing system is smart enough to call out our humbuggery.
-# Disable for now.
-.typecheck:
+typecheck:
   image: $IMAGE_MAIN_LATEST
   stage: build
   before_script:
     - pip freeze
-    - pip install mypy
+    - python -m pip install mypy
     - python --version
-    - mypy --version
+    - python -m mypy --version
   script:
-    - mypy --pretty
+    - python -m mypy --pretty
   cache:
     key: cache-typecheck
     paths:
