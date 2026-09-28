@@ -432,7 +432,7 @@ class SOCResult:
 
         self.bzwfs.comm.sum(dos_kms)
 
-        return dos_kms  # / nbzkpts
+        return dos_kms
 
 
 class KPointData:
@@ -976,7 +976,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
             scale=scale,
             theta=theta,
             phi=phi,
-            occ_calc_params=occcalc.params if occcalc is not None else None,
+            occ_calc_params=(occcalc.params  # type: ignore
+                             if occcalc is not None else None),
             ignore_xc_potential=ignore_xc_potential,
             projected=projected)
         return SOCResult(ibzwfs, e_band, v_Kmn, spin_projections_Kmv)
