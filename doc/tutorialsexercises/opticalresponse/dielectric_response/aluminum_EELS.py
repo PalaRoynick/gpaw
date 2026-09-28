@@ -13,7 +13,8 @@ atoms.get_potential_energy()  # ground state calculation is performed
 calc.write('Al.gpw', 'all')  # use 'all' option to write wavefunctions
 
 # Part 2: Spectrum calculation
-df = DielectricFunction(calc='Al.gpw')  # ground state gpw file as input
+df = DielectricFunction(calc='Al.gpw',  # ground state gpw file as input
+                        rate=0.1)
 
 # Momentum transfer, must be the difference between two kpoints:
 q_c = [1.0 / k, 0, 0]
