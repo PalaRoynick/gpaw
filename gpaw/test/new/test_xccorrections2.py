@@ -3,11 +3,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from gpaw.new.xccorrections2 import evaluate_paw_xc
 from gpaw.new.xc import Functional
 from gpaw.setup import create_setup
-from gpaw.utilities.tensor_batch import gather_xc_paw, scatter_xc_paw
+from gpaw.new.xc.paw_xc_batch import pack_xc_batches, unpack_xc_batches
 from gpaw.xc import XC
+from gpaw.utilities import pack_density
+from gpaw.core.atom_arrays import AtomArraysLayout
 
 
 def test_xc_corrections2_rejects_other_functionals():
@@ -15,7 +16,13 @@ def test_xc_corrections2_rejects_other_functionals():
         use_xc_corrections2=True,
         name='RPBE')
     with pytest.raises(AssertionError):
-        Functional.calculate_paw_corrections(functional, [], {})
+        Functional.calculate_paw_corrections(functional, [], {}, None)
+
+
+class MockSetups(list):
+    @property
+    def id_a(self):
+        return [setup.fingerprint for setup in self]
 
 
 @pytest.mark.parametrize('name', ['LDA', 'PBE'])
@@ -25,32 +32,42 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
     rng = np.random.default_rng(17)
     xc = XC(name)
     setup = create_setup('N', xc)
-    npacked = setup.ni * (setup.ni + 1) // 2
-    D_asp = {
-        a: 0.2 + 0.1 * rng.random((nspins, npacked))
-        for a in range(2)}
+    setups = MockSetups([setup, setup])
+    D_asii = AtomArraysLayout([(setup.ni, setup.ni) for _ in range(2)],
+                              xp=np).empty(1)
+    D_asii.data[:] = rng.uniform(-1.0, 1.0, D_asii.data.shape)
+    V_aL = AtomArraysLayout([(setup.Delta_pL.shape[1]) for _ in range(2)],
+                            xp=np).empty()
+    V_aL.data[:] = rng.uniform(-1.0, 1.0, V_aL.data.shape)
 
     expected_energy_a = {}
     expected_gradient_asp = {}
-    for a, D_sp in D_asp.items():
+    for a, D_sii in D_asii.items():
+        D_sp = pack_density(D_sii)
         gradient_sp = np.zeros_like(D_sp)
         expected_energy_a[a] = xc.calculate_paw_correction(
             setup, D_sp, gradient_sp, a=a)
         expected_gradient_asp[a] = gradient_sp
+        D_p = D_sp.sum(0)
+        dH_p = (setup.K_p + setup.M_p +
+                setup.MB_p + 2.0 * D_p @ setup.M_pp.T +
+                V_aL[a] @ setup.Delta_pL.T)
+        expected_gradient_asp[a] += dH_p
 
     functional = SimpleNamespace(xp=np, name=name, xc=xc)
-    batches = gather_xc_paw(
-        np, [setup, setup], D_asp, gga=name == 'PBE')
-    results = tuple(evaluate_paw_xc(functional, batch)
-                    for batch in batches)
-    energy_a, gradient_asp = scatter_xc_paw(batches, results)
+    batches = pack_xc_batches(
+        D_asii, V_aL, setups, functional=functional)
+    results = [batch.evaluate() for batch in batches]
+    xc_corr = unpack_xc_batches(batches, results)
 
-    for a in D_asp:
-        assert energy_a[a] == pytest.approx(
+    for a, xc in xc_corr.items():
+        energy = xc['e_xc']
+        assert energy == pytest.approx(
             expected_energy_a[a], abs=2.0e-11)
         # The result graph differentiates the zero-weight origin consistently.
         # GPAW's legacy PBE transpose extrapolates an origin potential and
         # therefore includes a tiny additional derivative contribution.
+        gradient_sp = xc['gradient_sp']
         gradient_tolerance = 5.0e-7 if name == 'PBE' else 2.0e-10
-        assert gradient_asp[a] == pytest.approx(
+        assert gradient_sp == pytest.approx(
             expected_gradient_asp[a], abs=gradient_tolerance)
