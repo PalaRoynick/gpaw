@@ -28,7 +28,7 @@ class AtomArraysLayout(XP):
         Parameters
         ----------
         shapes:
-            Shapes of arrays - one for each atom.
+            Shapse of arrays - one for each atom.
         atomdist:
             Distribution of atoms.
         dtype:
@@ -47,17 +47,11 @@ class AtomArraysLayout(XP):
         self.myindices = []
         self.mysize = 0
         I1 = 0
-
-        myshapes_a = np.array(self.shape_a)[atomdist.indices]
-        self.order_b = np.argsort(myshapes_a[:, 0])
-
-        for b in np.array(atomdist.indices)[self.order_b]:
-            I2 = I1 + prod(self.shape_a[b])
-            self.myindices.append((b, I1, I2))
+        for a in atomdist.indices:
+            I2 = I1 + prod(self.shape_a[a])
+            self.myindices.append((a, I1, I2))
             self.mysize += I2 - I1
             I1 = I2
-
-        self.myindices = [self.myindices[i] for i in np.argsort(self.order_b)]
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, AtomArraysLayout):
@@ -587,8 +581,7 @@ class AtomArrays:
             return
 
         ni_a = xp.array(
-            [self.layout.myindices[b][2] - self.layout.myindices[b][1]
-             for b in self.layout.order_b],
+            [I2 - I1 for a, I1, I2 in self.layout.myindices],
             dtype=np.int32)
         data = block_diag_matrix_axii.data
         if index is not None:
