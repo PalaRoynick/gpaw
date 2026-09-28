@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
-from gpaw.utilities import pack_density, unpack_hermitian
+from gpaw.utilities import pack_hermitian, unpack_hermitian
 
 from typing import Any
 
@@ -17,24 +17,25 @@ class PAWXCBatch:
         xp = D_asii.layout.xp
         self.xp = xp
         self.spinpol = D_asii.mydims == (2,)
-        atom_indices = [D_asii.layout.myindices[c] for c in c_a]
-        self.i_start = min(atom_index[1] for atom_index in atom_indices)
-        self.i_end = max(atom_index[2] for atom_index in atom_indices)
         self.atom_indices = c_a
         self.V_aL = xp.asarray([V_aL[c] for c in c_a])
 
-        # Assert contiguous
-        i_starts = {atom_index[1] for atom_index in atom_indices}
-        i_starts.add(self.i_end)
-        i_ends = {atom_index[2] for atom_index in atom_indices}
-        i_ends.add(self.i_start)
-        assert i_starts == i_ends
-
+        # Construct indices
+        D_saii = D_asii.data
         setup = setups[c_a[0]]
         self.setup = setup
-        D_scii = D_asii.data[:, self.i_start:self.i_end].reshape(
-            -1, len(c_a), setup.ni, setup.ni)
-        self.density_sap = pack_density(D_scii.real, xp=self.xp)
+        D_indices_aii = xp.empty((len(c_a), setup.ni, setup.ni), dtype=int)
+        for D_index_ii, c in zip(D_indices_aii, c_a):
+            D_index_ii[:] = xp.arange(D_asii.layout.myindices[c][1],
+                                      D_asii.layout.myindices[c][2]).reshape(
+                                          setup.ni, setup.ni)
+        self.D_indices_ap = pack_hermitian(D_indices_aii, xp=self.xp)
+        diag_p = self.xp.eye(setup.ni, dtype=bool)[self.xp.triu_indices(setup.ni)]
+        self.nondiag_p = self.xp.where(~diag_p)[0]
+
+        # Construct arrays
+        self.density_sap = D_saii.real[:, self.D_indices_ap]
+        self.density_sap[..., self.nondiag_p] *= 2
         self.gradient_sap = xp.zeros_like(self.density_sap)
         self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
         self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
@@ -55,9 +56,9 @@ class PAWXCBatch:
         self.Delta_pL = xp.asarray(setup.Delta_pL)
 
     def set_density(self, D_asii, V_aL):
-        D_scii = D_asii.data[:, self.i_start:self.i_end].reshape(
-            -1, len(self.atom_indices), self.setup.ni, self.setup.ni)
-        self.density_sap = pack_density(D_scii.real, xp=self.xp)
+        D_saii = D_asii.data.real
+        self.density_sap = D_saii[:, self.D_indices_ap]
+        self.density_sap[..., self.nondiag_p] *= 2
         self.gradient_sap[:] = 0
         self.V_aL = self.xp.asarray([V_aL[c] for c in self.atom_indices])
 
