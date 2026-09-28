@@ -199,8 +199,7 @@ def pack_hermitian(M2,
                    tolerance=1e-10,
                    xp=np,
                    *,
-                   offdiag_scale=None,
-                   k=0):
+                   offdiag_scale=None):
     r"""Pack Hermitian
 
     This functions packs a Hermitian 2D array to a
@@ -217,7 +216,7 @@ def pack_hermitian(M2,
        (a00, [a01 + a10*]/2, [a02 + a20*]/2, a11, [a12 + a21*]/2, a22)
     """
     n = M2.shape[-1]
-    a, b = xp.triu_indices(n, k)
+    a, b = xp.triu_indices(n)
     out = M2[..., a, b]
 
     if debug:
