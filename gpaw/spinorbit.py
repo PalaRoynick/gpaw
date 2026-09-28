@@ -48,6 +48,7 @@ def calculate_soc(dft: DFT,
                   phi: float = 0.0,  # degrees
                   ignore_xc_potential: bool = False,
                   occ_calc_params: dict | None = None,
+                  projected=False,
                   ) -> tuple[IBZWaveFunctions,
                              float,
                              dict[int, np.ndarray],
@@ -86,6 +87,10 @@ def calculate_soc(dft: DFT,
                        np.array([pack_density(D_ii) for D_ii in D_sii.real]),
                        ignore_xc_potential) * scale
                 for a, D_sii in D_asii.items()}
+
+    if projected:
+        for dVL_vii in dVL_avii.values():
+            dVL_vii[:] = projected_soc(dVL_vii, theta=theta, phi=phi)
 
     eig_Km = {}
     P_Kamsi = {}
@@ -143,6 +148,8 @@ def calculate_soc(dft: DFT,
             nelectrons,
             None)
         e_band = bzwfs.calculate_occs(occcalc, nelectrons)[0]
+    else:
+        e_band = np.nan
 
     return bzwfs, e_band, v_Kmn, spin_projections_Kmv
 
@@ -371,7 +378,7 @@ class SOCResult:
         self.bzwfs.kpt_comm.sum(v_Kmn)
         return v_Kmn
 
-    def calculate_ban_energy(self):
+    def calculate_band_energy(self):
         return self.e_band * Ha
 
     @property
@@ -961,7 +968,6 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         calc = GPAW(calc)
 
     if isinstance(calc, ASECalculator):
-        assert not projected
         assert eigenvalues is None
         ibzwfs, e_band, v_Kmn, spin_projections_Kmv = calculate_soc(
             calc.dft,
@@ -971,7 +977,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
             theta=theta,
             phi=phi,
             occ_calc_params=occcalc.params if occcalc is not None else None,
-            ignore_xc_potential=ignore_xc_potential)
+            ignore_xc_potential=ignore_xc_potential,
+            projected=projected)
         return SOCResult(ibzwfs, e_band, v_Kmn, spin_projections_Kmv)
 
     n1 = n1 or 0

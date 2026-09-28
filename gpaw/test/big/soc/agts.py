@@ -38,8 +38,8 @@ def soc(params: dict) -> list:
     assert abs(p12).max() < 1e-7
     for wf1, wf2 in zip(s1, s2):
         assert wf1.bz_index == wf2.bz_index
-        P1_msI = wf1.projections.array
-        P2_msI = wf2.projections.array
+        P1_msI = wf1.P_amsi.data
+        P2_msI = wf2.P_amsi.data
         if wf1.bz_index != 3:
             check(P1_msI, P2_msI, wf1.bz_index)
     return s1, atoms.calc
