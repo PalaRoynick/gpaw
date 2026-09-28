@@ -182,7 +182,6 @@ def calculate_non_local_potential(setups,
         V_aL = V_aL.to_xp(np)
     dH_asii = D_asii.layout.new(dtype=dtype).empty(density.ncomponents)
 
-
     for a, D_sii in D_asii.items():
         V_L = V_aL[a]
         setup = setups[a]
