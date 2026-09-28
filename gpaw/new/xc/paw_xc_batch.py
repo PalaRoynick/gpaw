@@ -30,7 +30,8 @@ class PAWXCBatch:
                                       D_asii.layout.myindices[c][2]).reshape(
                                           setup.ni, setup.ni)
         self.D_indices_ap = pack_hermitian(D_indices_aii, xp=self.xp)
-        diag_p = self.xp.eye(setup.ni, dtype=bool)[self.xp.triu_indices(setup.ni)]
+        diag_p = self.xp.eye(setup.ni, dtype=bool)[
+            self.xp.triu_indices(setup.ni)]
         self.nondiag_p = self.xp.where(~diag_p)[0]
 
         # Construct arrays
