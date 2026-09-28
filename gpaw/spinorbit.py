@@ -976,7 +976,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
             scale=scale,
             theta=theta,
             phi=phi,
-            occ_calc_params=(occcalc.params  # type: ignore
+            occ_calc_params=(occcalc.todict()
                              if occcalc is not None else None),
             ignore_xc_potential=ignore_xc_potential,
             projected=projected)
