@@ -46,8 +46,12 @@ def calculate_soc(dft: DFT,
                   scale: float = 1.0,
                   theta: float = 0.0,  # degrees
                   phi: float = 0.0,  # degrees
-                  ignore_xc_potential: bool = False
-                  ) -> tuple[IBZWaveFunctions, dict[int, np.ndarray]]:
+                  ignore_xc_potential: bool = False,
+                  occ_calc_params: dict | None = None,
+                  ) -> tuple[IBZWaveFunctions,
+                             float,
+                             dict[int, np.ndarray],
+                             dict[int, np.ndarray]]:
     ibzwfs = dft.ibzwfs
     ibz = ibzwfs.ibz
 
@@ -86,6 +90,7 @@ def calculate_soc(dft: DFT,
     eig_Km = {}
     P_Kamsi = {}
     v_Kmn = {}
+    spin_projections_Kmv: dict[int, np.ndarray] = {}
     for K, P_sani in P_Ksani.items():
         k = ibz.bz2ibz_K[K]
         eig_sn = eig_skn[:, k, n1:n2]
@@ -95,6 +100,7 @@ def calculate_soc(dft: DFT,
         eig_Km[K] = eig_m
         P_Kamsi[K] = P_amsi
         v_Kmn[K] = v_mn
+        spin_projections_Kmv[K] = spin_projection_mv
 
     def create_wfs_func(spin, q, k, kpt_c, kweight):
         wfs = WaveFunctions(
@@ -127,7 +133,7 @@ def calculate_soc(dft: DFT,
         nelectrons = (dft.density.nvalence - dft.density.charge +
                       dft.pot_calc.charge)
         occcalc = OccNumCalc(
-            dft.params.occupations.params,
+            occ_calc_params or dft.params.occupations.params,
             dft.atoms.pbc,
             bzwfs.ibz,
             bzwfs.nbands,
@@ -136,9 +142,9 @@ def calculate_soc(dft: DFT,
             4,
             nelectrons,
             None)
-        bzwfs.calculate_occs(occcalc, nelectrons)
+        e_band = bzwfs.calculate_occs(occcalc, nelectrons)[0]
 
-    return bzwfs, v_Kmn
+    return bzwfs, e_band, v_Kmn, spin_projections_Kmv
 
 
 def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
@@ -216,11 +222,13 @@ def distribute_projections(P_ksani: dict[tuple[int, int], AtomArrays],
         P_sani = []
         for spin in range(nspins):
             if domain_comm.rank == 0:
-                P0_ani = symplan.rotate_projections(P2_ksani[(k, spin)],
-                                                    ibz.s_K[K],
-                                                    ibz.time_reversal_K[K],
-                                                    relpos_ac,
-                                                    ibz.bz.kpt_Kc[K])
+                P0_ani = symplan.rotate_projections(
+                    P2_ksani[(k, spin)],
+                    symnum=ibz.s_K[K],
+                    time_reversal=ibz.time_reversal_K[K],
+                    # relpos_ac,
+                    # ibz.bz.kpt_Kc[K],
+                    ignore_phase=True)
             else:
                 P0_ani = None
             P_ani = P_layout.new(atomdist=atomdist).empty(dims)
@@ -336,13 +344,18 @@ def basis_change(*,
 class SOCResult:
     def __init__(self,
                  bzwfs: IBZWaveFunctions,
-                 v_Kmn):
+                 e_band: float,
+                 v_Kmn: dict[int, np.ndarray],
+                 spin_projections_Kmv: dict[int, np.ndarray]):
         self.bzwfs = bzwfs
+        self.e_band = e_band
         self.v_Kmn = v_Kmn
+        self.spin_prijections_Kmv = spin_projections_Kmv
         try:
             self.fermi_level = bzwfs.fermi_level * Ha
         except ValueError:
             self.fermi_level = np.nan
+        self.bz2ibz_map = bzwfs.ibz.bz2ibz_K
 
     def weights(self):
         return self.bzwfs.ibz.weight_k
@@ -357,6 +370,23 @@ class SOCResult:
             v_Kmn[K] = v_mn
         self.bzwfs.kpt_comm.sum(v_Kmn)
         return v_Kmn
+
+    def calculate_ban_energy(self):
+        return self.e_band * Ha
+
+    @property
+    def size(self):
+        bz = self.bzwfs.ibz.bz
+        assert isinstance(bz, MonkhorstPackKPoints)
+        return bz.size_c
+
+    def spin_projections(self):
+        nbands = self.bzwfs.nbands
+        sp_Kmn = np.zeros((len(self.bzwfs.ibz), nbands, 3))
+        for K, sp_mn in self.spin_prijections_Kmv.items():
+            sp_Kmn[K] = sp_mn
+        self.bzwfs.kpt_comm.sum(sp_Kmn)
+        return sp_Kmn
 
     def get_orbital_magnetic_moments(self):
         """Returns the orbital magnetic moment vector for each atom a."""
@@ -934,17 +964,17 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
 
     if isinstance(calc, ASECalculator):
         assert not projected
-        assert occcalc is None
         assert eigenvalues is None
-        ibzwfs, v_Kmn = calculate_soc(
+        ibzwfs, e_band, v_Kmn, spin_projections_Kmv = calculate_soc(
             calc.dft,
             n1=n1,
             n2=n2,
             scale=scale,
             theta=theta,
             phi=phi,
+            occ_calc_params=occcalc.params if occcalc is not None else None,
             ignore_xc_potential=ignore_xc_potential)
-        return SOCResult(ibzwfs, v_Kmn)
+        return SOCResult(ibzwfs, e_band, v_Kmn, spin_projections_Kmv)
 
     n1 = n1 or 0
     n2 = n2 or 0

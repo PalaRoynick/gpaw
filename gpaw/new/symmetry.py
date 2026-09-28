@@ -545,23 +545,29 @@ class SymmetrizationPlan:
 
     def rotate_projections(self,
                            P_ani: AtomArrays,
+                           *,
                            symnum: int,
                            time_reversal: bool,
-                           relpos_ac,
-                           kpt_c):
-        if kpt_c.any():
+                           ignore_phase=False,
+                           relpos_ac=None,
+                           kpt_c=None):
+        if kpt_c is None or not kpt_c.any():
+            ignore_phase = True
+        if not ignore_phase:
+            1 / 0  # not verified yet!
             dpos_ac = (relpos_ac @ self.symmetries.rotation_scc[symnum] +
                        self.symmetries.translation_sc[symnum] -
                        relpos_ac[self.symmetries.atommap_sa[symnum]])
             assert np.abs(dpos_ac - np.round(dpos_ac)).max() < 1e-9
             x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
-        else:
-            x_a = np.ones(len(relpos_ac))
+
         P2_ani = P_ani.new()
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]
             b = self.symmetries.atommap_sa[symnum, a]
-            P2_ani[b][:] = P_ni @ R_ii * x_a[a]  # or b?
+            P2_ani[b][:] = P_ni @ R_ii
+            if not ignore_phase:
+                P2_ani[b] *= x_a[a]  # or b?
         if time_reversal:
             np.negative(P2_ani.data.imag, P2_ani.data.imag)
         return P2_ani
