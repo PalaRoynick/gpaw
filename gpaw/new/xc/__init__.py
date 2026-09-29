@@ -102,7 +102,7 @@ class Functional:
         The experimental result graph supports exactly LDA and PBE.  Density
         layouts outside its current scope retain the established atom loop.
         """
-        if self.use_xc_corrections2:
+        if True or self.use_xc_corrections2:
             assert self.name in {'LDA', 'PBE'}
             supported = D_asii.mydims[0] in {1, 2}  # Collinear spin
             if supported:
