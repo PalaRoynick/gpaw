@@ -28,7 +28,7 @@ class PAWXCBatch:
         for D_index_ii, c in zip(D_indices_aii, c_a):
             D_index_ii[:] = xp.arange(D_asii.layout.myindices[c][1],
                                       D_asii.layout.myindices[c][2]).reshape(
-                                          setup.ni, setup.ni)
+                                          (setup.ni, setup.ni))
         self.D_indices_ap = pack_hermitian(D_indices_aii, xp=self.xp)
         diag_p = self.xp.eye(setup.ni, dtype=bool)[
             self.xp.triu_indices(setup.ni)]
