@@ -50,6 +50,8 @@ class GGAXCCorrection(PAWXCBatch):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.setup.xc_correction is None:
+            return
         xp = self.xp
         setup = self.setup
         rgd = self.setup.xc_correction.rgd
@@ -67,6 +69,9 @@ class PBEXCCorrection(GGAXCCorrection):
     """Prepared atom batch for the spin-polarized PBE PAW correction."""
 
     def evaluate(self):
+        if self.setup.xc_correction is None:
+            return super().evaluate()
+
         engine = Engine(self.xp)
 
         """Return polarized PBE energies and fill dE/dD_asp."""

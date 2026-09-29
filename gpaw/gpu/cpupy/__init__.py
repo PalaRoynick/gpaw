@@ -66,6 +66,11 @@ def copy(a: ndarray, order: str = 'K') -> ndarray:
 
 
 def asnumpy(a, out=None):
+    if not isinstance(a, ndarray):
+        if out is None:
+            return np.asarray(a).copy()
+        out[:] = a
+        return out
     if out is None:
         return a._data.copy()
     out[:] = a._data

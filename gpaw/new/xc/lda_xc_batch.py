@@ -57,6 +57,9 @@ class LDAXCCorrection(PAWXCBatch):
                             if xp is np else evaluate_lda_gpu)
 
     def evaluate(self):
+        if self.setup.xc_correction is None:
+            super().evaluate()
+
         engine = Engine(self.xp)
 
         """Return per-atom polarized LDA energies and fill dE/dD_sp."""

@@ -38,17 +38,19 @@ class PAWXCBatch:
         self.density_sap = D_saii.real[:, self.D_indices_ap]
         self.density_sap[..., self.nondiag_p] *= 2
         self.gradient_sap = xp.zeros_like(self.density_sap)
-        self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
-        self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
-        self.pseudo_radial_qg = xp.asarray(setup.xc_correction.nt_qg)
-        self.nc_g = xp.asarray(setup.xc_correction.nc_g)
-        self.nct_g = xp.asarray(setup.xc_correction.nct_g)
-        self.angular_nL = xp.asarray(setup.xc_correction.Y_nL)
-        self.angular_weight_n = xp.asarray(weight_n)
 
-        rgd = setup.xc_correction.rgd
-        self.radial_weight_g = xp.asarray(rgd.dv_g)
-        self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
+        if setup.xc_correction is not None:
+            self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
+            self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
+            self.pseudo_radial_qg = xp.asarray(setup.xc_correction.nt_qg)
+            self.nc_g = xp.asarray(setup.xc_correction.nc_g)
+            self.nct_g = xp.asarray(setup.xc_correction.nct_g)
+            self.angular_nL = xp.asarray(setup.xc_correction.Y_nL)
+            self.angular_weight_n = xp.asarray(weight_n)
+
+            rgd = setup.xc_correction.rgd
+            self.radial_weight_g = xp.asarray(rgd.dv_g)
+            self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
 
         self.K_p = xp.asarray(setup.K_p)
         self.M_p = xp.asarray(setup.M_p)
@@ -62,6 +64,10 @@ class PAWXCBatch:
         self.density_sap[..., self.nondiag_p] *= 2
         self.gradient_sap[:] = 0
         self.V_aL = self.xp.asarray([V_aL[c] for c in self.atom_indices])
+
+    def evaluate(self):
+        if self.setup.xc_correction is None:
+            return self.xp.zeros(len(self.atom_indices)), self.gradient_sap
 
     def unpack(self):
         setup = self.setup
