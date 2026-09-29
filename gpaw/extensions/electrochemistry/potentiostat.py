@@ -527,23 +527,12 @@ class DirectOptimizer(PotentialOptimizer):
         attempts to regress, the estimate is left alone.
         """
         self.history.append((excess_electrons, potential))
-        if regress_slope(self.history) is not None:
-            self.update_slope(area)
-
-    def _capacitance_slope(self, area: float) -> float:
-        """Slope, in V/electron, of a plate capacitor of the cell's area."""
-        return capacitance(10, area)  # muF/cm^2; the relation is reciprocal
-
-    def update_slope(self, area: float) -> float:
-        """Update and return d(potential)/d(charge) in V/electron."""
         slope = regress_slope(self.history)
         if slope is None:
-            pass  # too few distinct attempts to regress a slope from
-        elif self.slope is None:
-            self.slope = slope
-        else:
-            self.slope = self.mixer * self.slope + (1.0 - self.mixer) * slope
-        return self._usable_slope(area)
+            return
+        self.slope = (self.mixer * self.slope + (1.0 - self.mixer) * slope
+                      if self.slope else slope)
+        self._usable_slope(area)
 
     def _usable_slope(self, area: float) -> float:
         """The slope estimate, or the capacitance guess for a bad one."""
@@ -551,7 +540,7 @@ class DirectOptimizer(PotentialOptimizer):
             # No estimate yet, or one that is not usefully negative (adding
             # electrons must lower the potential) -- fall back to the
             # capacitance guess rather than trust a bad regression:
-            self.slope = self._capacitance_slope(area)
+            self.slope = capacitance(10, area)  # 10 muF/cm^2; reciprocal
         return self.slope
 
     def next_excess_electrons(self,
@@ -577,7 +566,7 @@ class DirectOptimizer(PotentialOptimizer):
                 # part: both the slope and (target - potential) are local
                 # estimates, so a step much larger than the one that
                 # produced them is extrapolating.  The fraction granted is
-                # the weight the fresh regression carries in update_slope,
+                # the weight the fresh regression carries in record_attempt,
                 # 1 - mixer -- confidence in the new information from the
                 # same source.  A fully damped slope (mixer = 1) keeps the
                 # old behaviour of never growing; an undamped one
@@ -747,13 +736,6 @@ class Potentiostat:
             return None
         return self.optimizer.slope_estimate()
 
-    def reset_attempts(self) -> None:
-        """Give the next equilibration a fresh record and budget.
-
-        The optimizer's slope estimate and its attempts are kept.
-        """
-        self.attempts = []
-
     def new_geometry(self) -> float | None:
         """Start equilibrating a new geometry.
 
@@ -766,7 +748,7 @@ class Potentiostat:
         staged = self.pending_excess_electrons
         if staged is not None:
             self.set_excess_electrons(staged)
-        self.reset_attempts()
+        self.attempts = []
         if self.optimizer is not None:
             self.optimizer.forget_attempts()
         return staged
@@ -812,43 +794,18 @@ class Potentiostat:
         self.attempts.append((excess_electrons, potential))
 
         if result is EquilibrationResult.converged:
-            if self.always_adjust:
-                self.pending_excess_electrons = self.propose_next(ibzwfs)
+            if self.always_adjust:  # stage a step for the next geometry
+                assert self.optimizer and self.target_potential is not None
+                self.pending_excess_electrons = (
+                    self.optimizer.next_excess_electrons(
+                        excess_electrons, potential, self.target_potential,
+                        area=self.charging.region_area))
             return True
 
         if self.niters >= self.max_iters:
             raise PotentialConvergenceError(
                 self._convergence_error_message(log))
         return False
-
-    def log_equilibration(self, log) -> None:
-        """Report the equilibration: where it ended up, and how it got there.
-
-        Only the attempt that ended the equilibration is reported -- the
-        intermediate ones are summarized by the regressed slope.
-        """
-        if not self.constant_potential or not self.attempts:
-            return
-
-        excess_electrons, potential = self.attempts[-1]
-        log(f'Potential found to be {potential:.5f} V '
-            f'(with {excess_electrons:+.5f} excess electrons, '
-            f'attempt {self.niters:d}/{self.max_iters:d}).')
-
-        slope = self.slope_estimate()
-        if slope is not None:
-            assert self.optimizer is not None  # or there were no attempts
-            log(f'Slope estimated from the last '
-                f'{self.optimizer.n_attempts:d} attempts is '
-                f'{slope:.4f} V/electron,')
-            c = capacitance(slope, self.charging.region_area)
-            log(f'or apparent capacitance of {c:.4f} muF/cm^2')
-
-        log('Potential is within tolerance. Equilibrated.')
-        if self.pending_excess_electrons is not None:
-            log('always_adjust: the next geometry starts from '
-                f'{self.pending_excess_electrons:+.5f} excess electrons.')
-        log(flush=True)
 
     def post_converged(self, dft) -> None:
         """Finish a converged calculation.
@@ -866,7 +823,26 @@ class Potentiostat:
         self.electrode_potential = broadcast_float(
             self.probe.potential(dft.ibzwfs), dft.comm)
 
-        self.log_equilibration(log)
+        # Report where the equilibration ended up; the intermediate attempts
+        # are summarized by the regressed slope:
+        if self.constant_potential and self.attempts:
+            excess_electrons, potential = self.attempts[-1]
+            log(f'Potential found to be {potential:.5f} V '
+                f'(with {excess_electrons:+.5f} excess electrons, '
+                f'attempt {self.niters:d}/{self.max_iters:d}).')
+            slope = self.slope_estimate()
+            if slope is not None:
+                assert self.optimizer is not None  # or there were no attempts
+                log(f'Slope estimated from the last '
+                    f'{self.optimizer.n_attempts:d} attempts is '
+                    f'{slope:.4f} V/electron,')
+                c = capacitance(slope, self.charging.region_area)
+                log(f'or apparent capacitance of {c:.4f} muF/cm^2')
+            log('Potential is within tolerance. Equilibrated.')
+            if self.pending_excess_electrons is not None:
+                log('always_adjust: the next geometry starts from '
+                    f'{self.pending_excess_electrons:+.5f} excess electrons.')
+            log(flush=True)
 
         # Legendre transform: Omega = E - N mu, with mu the Fermi level.
         N = self.converged_excess_electrons = self.excess_electrons
@@ -887,7 +863,7 @@ class Potentiostat:
         log()
 
         self.write_results(dft.results, log)
-        self.reset_attempts()
+        self.attempts = []  # a fresh record and budget for the next one
 
     def write_results(self, results: dict, log) -> None:
         """Write the last converged calculation into `results`.
@@ -984,25 +960,6 @@ class Potentiostat:
         self.excess_electrons = new_excess_electrons
         mixer.reset()
         return EquilibrationResult.stepped
-
-    def propose_next(self, ibzwfs) -> float:
-        """Charge the optimizer points at, without re-converging it.
-
-        Used by ``always_adjust`` to stage a step for the next geometry.
-        The attempt has been recorded by :meth:`equilibrate` already.
-        """
-        target = self.target_potential
-        optimizer = self.optimizer
-        assert target is not None and optimizer is not None
-        return optimizer.next_excess_electrons(
-            self.excess_electrons, self.probe.potential(ibzwfs), target,
-            area=self.charging.region_area)
-
-    def add_charge(self, nt_r) -> None:
-        self.charging.add_charge(nt_r)
-
-    def add_charge_pw(self, nt_g) -> None:
-        self.charging.add_charge_pw(nt_g)
 
 
 def _check_depth(depth: int) -> int:

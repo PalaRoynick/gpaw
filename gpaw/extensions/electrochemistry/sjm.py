@@ -15,7 +15,7 @@ from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
-    WorkFunctionProbe, build_jellium_region)
+    build_jellium_region)
 from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
 
@@ -181,8 +181,22 @@ class SJM(Solvation):
         solvation = super().build(builder)
         log = builder.log
         p = SimpleNamespace(**self._params)  # as given
-        self._check_convergence_criteria(builder.params.convergence, log)
-        self._check_always_adjust(log)
+        warns = []
+        wf_tol = (builder.params.convergence or {}).get('work function')
+        if (p.target_potential is not None and wf_tol is not None and
+                wf_tol >= p.tol):
+            warns.append(
+                'It appears that your work function convergence criterion '
+                f'({wf_tol:g}) is higher than your desired potential '
+                f'tolerance ({p.tol:g}).  This may lead to issues with '
+                'potential convergence.')
+        if p.always_adjust and p.target_potential is None:
+            warns.append('always_adjust has no effect in constant-charge '
+                         'mode: there is no target potential to step the '
+                         'number of excess electrons towards.')
+        for msg in warns:
+            warnings.warn(msg)
+            log(textwrap.fill('Warning: ' + msg) + '\n')
 
         region = build_jellium_region(p.jelliumregion,
                                       cavity=solvation.cavity)
@@ -202,7 +216,6 @@ class SJM(Solvation):
         # reads them back from it.
         potentiostat = Potentiostat(
             charging=charging,
-            probe=WorkFunctionProbe(),
             target_potential=p.target_potential,
             optimizer=optimizer,
             tol=p.tol,
@@ -318,28 +331,6 @@ class SJM(Solvation):
         """
         self._running('writing SJM traces').write_sjm_traces(
             path=path, style=style, props=props)
-
-    def _check_always_adjust(self, log) -> None:
-        p = SimpleNamespace(**self._params)  # as given
-        if p.always_adjust and p.target_potential is None:
-            msg = ('always_adjust has no effect in constant-charge mode: '
-                   'there is no target potential to step the number of '
-                   'excess electrons towards.')
-            warnings.warn(msg)
-            log(textwrap.fill('Warning: ' + msg) + '\n')
-
-    def _check_convergence_criteria(self, convergence, log) -> None:
-        p = SimpleNamespace(**self._params)  # as given
-        if p.target_potential is None:
-            return
-        wf_tol = (convergence or {}).get('work function')
-        if wf_tol is not None and wf_tol >= p.tol:
-            msg = ('It appears that your work function convergence criterion '
-                   f'({wf_tol:g}) is higher than your desired potential '
-                   f'tolerance ({p.tol:g}).  This may lead to issues with '
-                   'potential convergence.')
-            warnings.warn(msg)
-            log(textwrap.fill('Warning: ' + msg) + '\n')
 
     def todict(self):
         dct = super().todict()
@@ -498,7 +489,14 @@ class SJMExtension(Extension):
         """One of the quantities that write_sjm_traces() can write out."""
         grid = self.solvation.grid
         if prop == 'potential':
-            vHt_r = self._electrostatic_potential(dft)
+            vHt_x = dft.potential.vHt_x  # Hartree
+            if isinstance(vHt_x, UGArray):
+                vHt_r = vHt_x.copy()
+            else:
+                vHt_g = vHt_x.gather()
+                vHt_r = grid.empty()
+                vHt_r.scatter_from(vHt_g.ifft(grid=grid.new(comm=None))
+                                   if vHt_g is not None else None)
             vHt_r.data[:] = (vHt_r.data - self.potentiostat.fermi_level) * Ha
             return vHt_r
         if prop == 'background_charge':
@@ -514,18 +512,6 @@ class SJMExtension(Extension):
                                  'cannot write a cavity trace.') from exc
             return grid.from_data(g_g)
         raise ValueError(f'Unknown property: {prop!r}')
-
-    def _electrostatic_potential(self, dft) -> UGArray:
-        """Electrostatic potential on the fine (solvation) grid, in Hartree."""
-        grid = self.solvation.grid
-        vHt_x = dft.potential.vHt_x
-        if isinstance(vHt_x, UGArray):
-            return vHt_x.copy()
-        vHt_g = vHt_x.gather()
-        vHt_r = grid.empty()
-        vHt_r.scatter_from(vHt_g.ifft(grid=grid.new(comm=None))
-                           if vHt_g is not None else None)
-        return vHt_r
 
     def change(self, **kwargs) -> None:
         """Change SJM parameters without throwing away the wave functions.
@@ -613,8 +599,16 @@ class SJMExtension(Extension):
             else:
                 log(f'Target potential changed to {target:.5f} +/- '
                     f'{self.tol:.5f} V.')
-                if 'excess_electrons' not in kwargs:
-                    self._step_towards(target)
+                slope = pot.slope_estimate()
+                if ('excess_electrons' not in kwargs and slope is not None
+                        and not np.isnan(pot.fermi_level)):
+                    # Guess the charge needed for the new target potential:
+                    pot.set_excess_electrons(
+                        self.excess_electrons +
+                        (target - self.get_electrode_potential()) / slope)
+                    log(f'Excess electrons changed to '
+                        f'{self.excess_electrons:+.5f} based on a slope of '
+                        f'{slope:.4f} V/electron.')
             rerun = True
 
         if 'excess_electrons' in kwargs:
@@ -632,25 +626,13 @@ class SJMExtension(Extension):
             density.update(dft.ibzwfs)
             dft.potential, dft.energies, _ = dft.pot_calc.calculate(
                 density, dft.ibzwfs, dft.potential.vHt_x)
-            pot.reset_attempts()
+            pot.attempts = []
 
     def _relpos_ac(self):
         if self._dft is None:
             raise RuntimeError('No results yet - run a calculation before '
                                'changing the jellium region.')
         return self._dft.relpos_ac
-
-    def _step_towards(self, target_potential: float) -> None:
-        """Guess the charge needed for the new target potential."""
-        slope = self.potentiostat.slope_estimate()
-        if slope is None or np.isnan(self.potentiostat.fermi_level):
-            return
-        n = self.excess_electrons + ((target_potential -
-                                      self.get_electrode_potential()) / slope)
-        self.potentiostat.set_excess_electrons(n)
-        self.log(f'Excess electrons changed to '
-                 f'{self.excess_electrons:+.5f} based on a slope of '
-                 f'{slope:.4f} V/electron.')
 
     def move_atoms(self, relpos_ac) -> None:
         # The wrapped solvation extension is not itself in the extension
@@ -670,11 +652,11 @@ class SJMExtension(Extension):
 
     def update1(self, nt_r):
         self.solvation.update1(nt_r)
-        self.potentiostat.add_charge(nt_r)
+        self.potentiostat.charging.add_charge(nt_r)
 
     def update1pw(self, nt_g):
         self.solvation.update1pw(nt_g)
-        self.potentiostat.add_charge_pw(nt_g)
+        self.potentiostat.charging.add_charge_pw(nt_g)
 
     def update2(self, nt_r, vHt_r, vt_sr) -> None:
         self.solvation.update2(nt_r, vHt_r, vt_sr)

@@ -25,9 +25,10 @@ def test_capacitance_guess():
     """With nothing to regress from, the slope is a plate capacitor's."""
     opt = make_optimizer()
     assert opt.slope is None
-    slope = opt.update_slope(AREA)
+    opt.next_excess_electrons(0.0, 5.0, TARGET, area=AREA)
+    slope = opt.slope  # the guess is kept
     # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6; 10 muF/cm^2 is the guessed
-    # apparent capacitance in DirectOptimizer._capacitance_slope:
+    # apparent capacitance in DirectOptimizer._usable_slope:
     assert slope == pytest.approx(-_e * 1e22 / (AREA * 10))
     assert slope < 0.0  # more electrons is a lower potential
 
@@ -35,15 +36,16 @@ def test_capacitance_guess():
 def test_given_slope_is_kept():
     """A slope from the user survives until there is something to fit."""
     opt = make_optimizer(slope=-42.0)
-    assert opt.update_slope(AREA) == pytest.approx(-42.0)
+    opt.record_attempt(0.0, 5.0, area=AREA)
+    assert opt.slope == pytest.approx(-42.0)
 
 
 def test_regression_is_exact():
     """Without damping, a linear system gives its slope back exactly."""
     opt = make_optimizer(mixer=0.0)
     for charge in [0.0, -0.1, -0.2]:
-        opt.history.append((charge, line(-30.0, charge)))
-    assert opt.update_slope(AREA) == pytest.approx(-30.0)
+        opt.record_attempt(charge, line(-30.0, charge), area=AREA)
+    assert opt.slope == pytest.approx(-30.0)
     assert regress_slope(opt.history) == pytest.approx(-30.0)
 
 
@@ -51,9 +53,8 @@ def test_mixing():
     """The new estimate is damped with the old one."""
     opt = make_optimizer(slope=-10.0, mixer=0.25)
     for charge in [0.0, -0.1]:
-        opt.history.append((charge, line(-30.0, charge)))
-    assert opt.update_slope(AREA) == pytest.approx(
-        0.25 * -10.0 + 0.75 * -30.0)
+        opt.record_attempt(charge, line(-30.0, charge), area=AREA)
+    assert opt.slope == pytest.approx(0.25 * -10.0 + 0.75 * -30.0)
 
 
 def test_regression_depth():
@@ -61,12 +62,12 @@ def test_regression_depth():
     opt = make_optimizer(mixer=0.0, slope_regression_depth=2)
     assert opt.slope_regression_depth == 2
     # An old segment with a different slope than the last two attempts:
-    opt.history.append((0.2, line(-90.0, 0.2)))
-    opt.history.append((0.1, line(-90.0, 0.1)))
+    opt.record_attempt(0.2, line(-90.0, 0.2), area=AREA)
+    opt.record_attempt(0.1, line(-90.0, 0.1), area=AREA)
     for charge in [0.0, -0.1]:
-        opt.history.append((charge, line(-30.0, charge)))
+        opt.record_attempt(charge, line(-30.0, charge), area=AREA)
     assert len(opt.history) == 2
-    assert opt.update_slope(AREA) == pytest.approx(-30.0)
+    assert opt.slope == pytest.approx(-30.0)
 
     # Widening the window keeps the attempts that are still in it; 4 is
     # DirectOptimizer's own default slope_regression_depth:
@@ -78,9 +79,9 @@ def test_regression_depth():
 def test_wrong_signed_regression_falls_back_to_capacitance():
     """A wrong-signed regression is rejected for the capacitance guess."""
     opt = make_optimizer(mixer=0.0)
-    for charge in [0.0, -0.1, -0.2]:
-        opt.history.append((charge, line(30.0, charge)))  # wrong sign
-    slope = opt.update_slope(AREA)
+    for charge in [0.0, -0.1, -0.2]:  # wrong sign:
+        opt.record_attempt(charge, line(30.0, charge), area=AREA)
+    slope = opt.slope
     assert slope == pytest.approx(-_e * 1e22 / (AREA * 10))
     assert slope < 0.0
 
@@ -105,24 +106,24 @@ def test_correctly_signed_regression_is_not_rejected():
     """The guard does not disturb an ordinary, correctly-signed regression."""
     opt = make_optimizer(mixer=0.0)
     for charge in [0.0, -0.1, -0.2]:
-        opt.history.append((charge, line(-30.0, charge)))
-    assert opt.update_slope(AREA) == pytest.approx(-30.0)
+        opt.record_attempt(charge, line(-30.0, charge), area=AREA)
+    assert opt.slope == pytest.approx(-30.0)
 
 
 def test_zero_slope_regression_falls_back_to_capacitance():
     """A flat potential-vs-charge history is as unusable as a wrong sign."""
     opt = make_optimizer(mixer=0.0)
     for charge in [0.0, -0.1, -0.2]:
-        opt.history.append((charge, 5.0))  # potential does not move
-    assert opt.update_slope(AREA) == pytest.approx(-_e * 1e22 / (AREA * 10))
+        opt.record_attempt(charge, 5.0, area=AREA)  # potential does not move
+    assert opt.slope == pytest.approx(-_e * 1e22 / (AREA * 10))
 
 
 def test_a_badly_wrong_signed_regression_flips_the_damped_average():
     """A large wrong-signed regression can flip even a damped average."""
     opt = make_optimizer(slope=-1.0, mixer=0.2)  # mostly trusts the new value
     for charge in [0.0, -0.1]:
-        opt.history.append((charge, line(50.0, charge)))
-    assert opt.update_slope(AREA) == pytest.approx(-_e * 1e22 / (AREA * 10))
+        opt.record_attempt(charge, line(50.0, charge), area=AREA)
+    assert opt.slope == pytest.approx(-_e * 1e22 / (AREA * 10))
 
 
 def test_a_mildly_wrong_signed_regression_can_be_damped_away():
@@ -130,9 +131,9 @@ def test_a_mildly_wrong_signed_regression_can_be_damped_away():
     overreacting."""
     # Heavy trust in the old value:
     opt = make_optimizer(slope=-30.0, mixer=0.8)
-    for charge in [0.0, -0.1]:
-        opt.history.append((charge, line(2.0, charge)))  # mildly wrong-signed
-    slope = opt.update_slope(AREA)
+    for charge in [0.0, -0.1]:  # mildly wrong-signed:
+        opt.record_attempt(charge, line(2.0, charge), area=AREA)
+    slope = opt.slope
     assert slope == pytest.approx(0.8 * -30.0 + 0.2 * 2.0)
     assert slope < 0.0
 
