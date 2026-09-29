@@ -84,6 +84,8 @@ def asarray(a, dtype=None):
         else:
             return ndarray(a._data.astype(dtype))
     if isinstance(a, tuple) or isinstance(a, list):
+        if len(a) == 0:
+            return ndarray(np.array([]))
         if isinstance(a[0], ndarray):
             return ndarray(np.array([b._data for b in a], dtype=dtype))
     return ndarray(np.array(a, dtype=dtype))

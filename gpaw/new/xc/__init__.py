@@ -106,7 +106,8 @@ class Functional:
             supported = self.name in {'LDA', 'PBE'}
             supported = supported and D_asii.mydims[0] in {1, 2}
             if supported:
-                if hasattr(self, 'paw_xc_batches'):
+                if hasattr(self, 'paw_xc_batches') and \
+                        self.paw_xc_batches is not None:
                     batches = self.paw_xc_batches
                     for batch in batches:
                         batch.set_density(D_asii, V_aL)
