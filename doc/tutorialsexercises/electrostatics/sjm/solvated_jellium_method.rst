@@ -33,16 +33,16 @@ You'll notice that the output in 'Au111.txt' contains additional information, as
 Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last ``slope_regression_depth`` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
-    Potential found to be 4.19521 V (with +0.00646 excess electrons, attempt 4/10).
-    Slope estimated from the last 3 attempts is -66.4261 V/electron,
-    or apparent capacitance of 3.3462 muF/cm^2
+    Potential found to be 4.19999 V (with +0.00664 excess electrons, attempt 5/10).
+    Slope estimated from the last 4 attempts is -68.0515 V/electron,
+    or apparent capacitance of 3.2663 muF/cm^2
     Potential is within tolerance. Equilibrated.
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):
-      N (excess electrons):      +0.006459
-      mu (-work function):       -4.195210  # eV
-      (Grand) free energy:      -21.289832
-      (Grand) extrapolated:     -21.267238
+      N (excess electrons):      +0.006640
+      mu (-work function):       -4.199994  # eV
+      (Grand) free energy:      -21.289927
+      (Grand) extrapolated:     -21.267335
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by ``calc.get_potential_energy()`` (and therefore ``atoms.get_potential_energy()``).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).

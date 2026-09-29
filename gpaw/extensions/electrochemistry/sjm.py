@@ -41,6 +41,10 @@ class SJM(Solvation):
     either be fixed (constant-charge mode) or adjusted until the electrode
     potential matches ``target_potential`` (constant-potential mode).
 
+    An SJM object, and the solvent objects given to it, belong to one
+    calculator: each calculation keeps its state in them.  So give every
+    calculator its own -- every image of a NEB, for instance.
+
     Parameters
     ----------
     cavity, dielectric, interactions:
@@ -102,10 +106,6 @@ class SJM(Solvation):
     slope_regression_depth:
         Number of previous attempts that the slope is regressed over.
         Default: 4.
-
-    An SJM object, and the solvent objects given to it, belong to one
-    calculator: each calculation keeps its state in them.  So give every
-    calculator its own -- every image of a NEB, for instance.
     """
 
     name = 'sjm'
@@ -257,9 +257,9 @@ class SJM(Solvation):
     def change(self, **kwargs) -> None:
         """Change SJM parameters, before or after the first calculation.
 
-        Takes the same keywords as :meth:`SJMExtension.change`.  Before the
-        calculation has been built there is nothing to keep alive, so the
-        parameters are simply stored for :meth:`build` to pick up;
+        Takes the same keywords as :meth:`~.SJMExtension.change`.  Before
+        the calculation has been built there is nothing to keep alive, so
+        the parameters are simply stored for ``build()`` to pick up;
         afterwards the call is forwarded to the extension, which keeps
         the density and the wave functions.  So keep the SJM object in a
         variable and change the parameters through it, before and after
@@ -518,7 +518,7 @@ class SJMExtension(Extension):
         Takes the parameters of :class:`SJM` (all but the solvation model),
         with the same meaning.  This is the replacement for
         the legacy ``calc.set(sj={...})``; it is normally reached through
-        :meth:`SJM.change` on the object handed to GPAW.
+        :meth:`~.SJM.change` on the object handed to GPAW.
 
         The density and the wave functions are kept, so the next
         ``get_potential_energy()`` continues the SCF loop from the current
