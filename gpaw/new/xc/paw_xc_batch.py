@@ -16,7 +16,8 @@ class PAWXCBatch:
 
         xp = D_asii.layout.xp
         self.xp = xp
-        self.spinpol = D_asii.mydims == (2,)
+        nspins = D_asii.mydims[0]
+        self.spinpol = nspins == 2
         self.atom_indices = c_a
         self.V_aL = xp.asarray([V_aL[c] for c in c_a])
 
@@ -39,18 +40,32 @@ class PAWXCBatch:
         self.density_sap[..., self.nondiag_p] *= 2
         self.gradient_sap = xp.zeros_like(self.density_sap)
 
-        if setup.xc_correction is not None:
-            self.basis_pqL = xp.asarray(setup.xc_correction.B_pqL)
-            self.ae_radial_qg = xp.asarray(setup.xc_correction.n_qg)
-            self.pseudo_radial_qg = xp.asarray(setup.xc_correction.nt_qg)
-            self.nc_g = xp.asarray(setup.xc_correction.nc_g)
-            self.nct_g = xp.asarray(setup.xc_correction.nct_g)
-            self.angular_nL = xp.asarray(setup.xc_correction.Y_nL)
+        xcc = setup.xc_correction
+
+        if xcc is not None:
+            rgd = xcc.rgd
+            ng = xcc.ng
+            self.basis_pqL = xp.asarray(xcc.B_pqL)
+            self.ae_radial_qg = xp.asarray(xcc.n_qg)
+            self.pseudo_radial_qg = xp.asarray(xcc.nt_qg)
+            self.nc_g = xp.asarray(xcc.nc_g)
+            self.nct_g = xp.asarray(xcc.nct_g)
+            self.nc0_sg = xp.empty_like(self.nc_g, shape=(nspins, ng))
+            self.nct0_sg = xp.empty_like(self.nct_g, shape=(nspins, ng))
+
+            self.nc0_sg[:] = xp.sqrt(4 * xp.pi) / nspins * self.nc_g
+            self.nct0_sg[:] = xp.sqrt(4 * xp.pi) / nspins * self.nct_g
+
+            if xcc.nc_corehole_g is not None and self.spinpol:
+                self.nc0_sg += 0.5 * xp.sqrt(4 * xp.pi) \
+                    * xp.asarray(xcc.nc_corehole_g[None, :]) \
+                    * xp.array([-1, 1])[:, None]
+
+            self.angular_nL = xp.asarray(xcc.Y_nL)
             self.angular_weight_n = xp.asarray(weight_n)
 
-            rgd = setup.xc_correction.rgd
             self.radial_weight_g = xp.asarray(rgd.dv_g)
-            self.reference_energy = xp.asarray(setup.xc_correction.e_xc0)
+            self.reference_energy = xp.asarray(xcc.e_xc0)
 
         self.K_p = xp.asarray(setup.K_p)
         self.M_p = xp.asarray(setup.M_p)

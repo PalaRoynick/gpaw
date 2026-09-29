@@ -82,10 +82,10 @@ class PBEXCCorrection(GGAXCCorrection):
         D_saLq = engine.einsum(
             'sap,pqL->saLq', density_sap, self.basis_pqL)
         ae_saLg = density_L_expansion(
-            engine, D_saLq, self.ae_radial_qg, self.nc_g, self.spinpol,
+            engine, D_saLq, self.ae_radial_qg, self.nc0_sg,
             self.xp)
         pseudo_saLg = density_L_expansion(
-            engine, D_saLq, self.pseudo_radial_qg, self.nct_g, self.spinpol,
+            engine, D_saLq, self.pseudo_radial_qg, self.nct0_sg,
             self.xp)
         # Densities are asng; sigma fields are axng with x=(aa, ab, bb).
         ae_density_sang, ae_sigma_xang = get_density_and_grad(

@@ -70,11 +70,11 @@ class LDAXCCorrection(PAWXCBatch):
         D_saLq = engine.einsum(
             'sap,pqL->saLq', density_sap, self.basis_pqL)
         ae_saLg = density_L_expansion(engine, D_saLq,
-                                      self.ae_radial_qg, self.nc_g,
-                                      self.spinpol, xp=self.xp)
+                                      self.ae_radial_qg, self.nc0_sg,
+                                      xp=self.xp)
         pseudo_saLg = density_L_expansion(engine, D_saLq,
-                                          self.pseudo_radial_qg, self.nct_g,
-                                          self.spinpol, xp=self.xp)
+                                          self.pseudo_radial_qg, self.nct0_sg,
+                                          xp=self.xp)
         # ae_sang and pseudo_sang are the two spin densities on the grid.
         ae_sang = engine.einsum(
             'nL,saLg->sang', self.angular_nL, ae_saLg)
@@ -113,12 +113,10 @@ def integrate_correction(engine: Engine,
 def density_L_expansion(engine: Engine,
                         D: TensorResult,
                         radial_qg,
-                        core_g,
-                        spinpol,
+                        core_sg,
                         xp) -> EinsumResult:
     """Expand paired or spin-resolved coefficients into density multipoles."""
-    const = xp.sqrt(xp.pi) if spinpol else xp.sqrt(4.0 * xp.pi)
 
     density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
-    density_saLg[:, :, 0] += const * core_g[None, None, :]
+    density_saLg[:, :, 0] += core_sg[:, None, :]
     return density_saLg

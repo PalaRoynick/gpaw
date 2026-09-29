@@ -15,8 +15,8 @@ def test_xc_corrections2_rejects_other_functionals():
     functional = SimpleNamespace(
         use_xc_corrections2=True,
         name='RPBE')
-    with pytest.raises(AssertionError):
-        Functional.calculate_paw_corrections(functional, [], {}, None)
+    assert Functional.calculate_paw_corrections(
+        functional, [], {}, None) is None
 
 
 class MockSetups(list):
@@ -35,7 +35,11 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
     setups = MockSetups([setup, setup])
     D_asii = AtomArraysLayout([(setup.ni, setup.ni) for _ in range(2)],
                               xp=np).empty(1)
-    D_asii.data[:] = rng.uniform(-1.0, 1.0, D_asii.data.shape)
+    ni = setup.ni
+    ii_data = rng.uniform(-1.0, 1.0, (ni, ni))
+    ii_data += ii_data.T.conj()
+    ii_data = np.array([ii_data, ii_data])
+    D_asii.data[:] = ii_data.flatten()
     V_aL = AtomArraysLayout([(setup.Delta_pL.shape[1]) for _ in range(2)],
                             xp=np).empty()
     V_aL.data[:] = rng.uniform(-1.0, 1.0, V_aL.data.shape)

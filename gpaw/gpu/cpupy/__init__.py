@@ -41,8 +41,8 @@ def empty(*args, **kwargs) -> ndarray:
     return ndarray(np.empty(*args, **kwargs))
 
 
-def empty_like(a):
-    return ndarray(np.empty_like(a._data))
+def empty_like(a, *args, **kwargs):
+    return ndarray(np.empty_like(a._data, *args, **kwargs))
 
 
 def zeros(*args, **kwargs):

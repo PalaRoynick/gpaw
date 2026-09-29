@@ -104,7 +104,7 @@ class Functional:
         """
         if True or self.use_xc_corrections2:
             supported = self.name in {'LDA', 'PBE'}
-            supported &= D_asii.mydims[0] in {1, 2}  # Collinear spin
+            supported = supported and D_asii.mydims[0] in {1, 2}
             if supported:
                 if hasattr(self, 'paw_xc_batches'):
                     batches = self.paw_xc_batches
