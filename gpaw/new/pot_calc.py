@@ -186,7 +186,8 @@ def calculate_non_local_potential(setups,
         V_L = V_aL[a]
         setup = setups[a]
         dH_sii, corrections = calculate_non_local_potential1(
-            setup, xc, D_sii, V_L, soc, extensions, a)
+            setup, xc, D_sii, V_L, soc, extensions, a,
+            xc_correction=xc_corr[a] if xc_corr is not None else None)
         dH_asii[a][:] = dH_sii
         for key, e in corrections.items():
             energy_corrections[key] += e

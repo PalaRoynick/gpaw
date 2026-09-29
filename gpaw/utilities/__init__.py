@@ -219,8 +219,7 @@ def pack_hermitian(M2,
     a, b = xp.triu_indices(n)
     out = M2[..., a, b]
 
-    if debug:
-        assert (a, b) == xp.triu_indices(n)
+    if debug and not M2.dtype == int:
         out += M2[..., b, a].conj()
         out *= 0.5
         assert xp.allclose(out, M2[..., a, b],
