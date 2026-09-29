@@ -58,7 +58,7 @@ class LDAXCCorrection(PAWXCBatch):
 
     def evaluate(self):
         if self.setup.xc_correction is None:
-            super().evaluate()
+            return super().evaluate()
 
         engine = Engine(self.xp)
 
