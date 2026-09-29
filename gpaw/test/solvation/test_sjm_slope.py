@@ -270,7 +270,7 @@ def test_potentiostat_within_tolerance_is_converged():
     ibzwfs = _FakeIBZWFS(TARGET + 0.005)  # inside the tolerance
     mixer = _RecordingMixer()
     assert (pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
-            is EquilibrationResult.CONVERGED)
+            is EquilibrationResult.converged)
     assert ibzwfs.occs_calls == []
     assert mixer.resets == 0
     assert charging.excess_electrons == -0.2
@@ -284,7 +284,7 @@ def test_potentiostat_steps_the_charge_along_the_slope():
     ibzwfs = _FakeIBZWFS(potential)
     mixer = _RecordingMixer()
     result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
-    assert result is EquilibrationResult.STEPPED
+    assert result is EquilibrationResult.stepped
     dc = (TARGET - potential) / -30.0
     assert charging.excess_electrons == pytest.approx(-0.2 + dc)
     assert ibzwfs.occs_calls == [pytest.approx(10.0 + dc)]
@@ -296,7 +296,7 @@ def test_potentiostat_constant_charge_is_a_noop():
     pot = Potentiostat(charging=charging)  # no target, no optimizer
     assert (pot.equilibrate(_ExplodingIBZWFS(), 10.0, object(),
                             _RecordingMixer(), _silent)
-            is EquilibrationResult.CONVERGED)
+            is EquilibrationResult.converged)
     assert charging.excess_electrons == -0.2
 
 
@@ -326,7 +326,7 @@ def test_equilibrate_rejects_a_step_that_left_the_linear_region():
     ibzwfs = _FakeIBZWFS(40.0)
     mixer = _RecordingMixer()
     result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
-    assert result is EquilibrationResult.REJECTED
+    assert result is EquilibrationResult.rejected
     # Charge halved back toward the last accepted one:
     assert pot.excess_electrons == pytest.approx(1.0)
     assert ibzwfs.occs_calls == [pytest.approx(10.0 + (1.0 - 2.0))]
@@ -341,7 +341,7 @@ def test_equilibrate_does_not_reject_a_big_step_toward_the_target():
     ibzwfs = _FakeIBZWFS(6.0)  # moved 34 V, but toward the 4.5 V target
     result = pot.equilibrate(ibzwfs, 10.0, object(), _RecordingMixer(),
                              _silent)
-    assert result is EquilibrationResult.STEPPED
+    assert result is EquilibrationResult.stepped
     assert list(pot.optimizer.history)[-1] == (2.0, 6.0)  # recorded normally
 
 
@@ -350,7 +350,7 @@ def test_equilibrate_max_potential_stepsize_none_disables_the_clamp():
                                  max_potential_stepsize=None)
     result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
                              _RecordingMixer(), _silent)
-    assert result is EquilibrationResult.STEPPED
+    assert result is EquilibrationResult.stepped
 
 
 def test_equilibrate_never_rejects_the_first_attempt():
@@ -359,7 +359,7 @@ def test_equilibrate_never_rejects_the_first_attempt():
     pot = _stepping_potentiostat(0.0, history=[])
     result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
                              _RecordingMixer(), _silent)
-    assert result is EquilibrationResult.STEPPED
+    assert result is EquilibrationResult.stepped
 
 
 class _ScriptedPotentiostat(Potentiostat):
@@ -382,7 +382,7 @@ def _post_scf(pot: Potentiostat) -> bool:
 def test_post_scf_a_rejected_step_does_not_count_as_an_attempt():
     R = EquilibrationResult
     pot = _ScriptedPotentiostat(
-        [R.REJECTED, R.REJECTED, R.STEPPED, R.CONVERGED], max_iters=5)
+        [R.rejected, R.rejected, R.stepped, R.converged], max_iters=5)
     assert _post_scf(pot) is False
     assert (pot.niters, pot.reruns) == (0, 1)
     assert _post_scf(pot) is False
@@ -395,7 +395,7 @@ def test_post_scf_a_rejected_step_does_not_count_as_an_attempt():
 
 
 def test_post_scf_raises_once_the_halving_runs_out():
-    pot = _ScriptedPotentiostat([EquilibrationResult.REJECTED] * 5,
+    pot = _ScriptedPotentiostat([EquilibrationResult.rejected] * 5,
                                 max_iters=10, max_reruns=3)
     for _ in range(3):
         assert _post_scf(pot) is False
@@ -405,7 +405,7 @@ def test_post_scf_raises_once_the_halving_runs_out():
 
 
 def test_post_scf_raises_once_the_attempts_run_out():
-    pot = _ScriptedPotentiostat([EquilibrationResult.STEPPED] * 3,
+    pot = _ScriptedPotentiostat([EquilibrationResult.stepped] * 3,
                                 max_iters=2)
     assert _post_scf(pot) is False
     with pytest.raises(PotentialConvergenceError, match='2 attempts'):
@@ -413,7 +413,7 @@ def test_post_scf_raises_once_the_attempts_run_out():
 
 
 def test_always_adjust_stages_a_charge_for_the_next_geometry():
-    pot = _ScriptedPotentiostat([EquilibrationResult.CONVERGED],
+    pot = _ScriptedPotentiostat([EquilibrationResult.converged],
                                 always_adjust=True)
     assert _post_scf(pot) is True
     assert pot.pending_excess_electrons is not None

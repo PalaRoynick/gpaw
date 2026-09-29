@@ -100,16 +100,6 @@ class SJM(Solvation):
         Number of previous attempts that the slope is regressed over.
         Default: 4.
 
-    Keep this object in a variable: its :meth:`change` changes the
-    parameters, before the first calculation or afterwards without
-    throwing away the wave functions, and they read back as attributes
-    (``sjm.excess_electrons``, ``sjm.tol``, ...).  Once the calculation has
-    been built these are its live values, so three of them may differ from
-    what was given: ``excess_electrons`` is adjusted by the potentiostat,
-    ``slope`` becomes the regressed estimate, and ``jelliumregion`` is the
-    :class:`JelliumRegion` built from the dict.  :meth:`todict`, and so the
-    ``.gpw`` file, records the parameters as given (and changed to).
-
     An SJM object, and the solvent objects given to it, belong to one
     calculator: each calculation keeps its state in them.  So give every
     calculator its own -- every image of a NEB, for instance.
