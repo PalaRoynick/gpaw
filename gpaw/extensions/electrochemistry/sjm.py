@@ -20,6 +20,9 @@ from gpaw.new.poisson import PoissonSolverWrapper
 from gpaw.new.solvation import Solvation, SolvationExtension
 
 
+always_adjust_warning = 'always_adjust has no effect in constant-charge mode'
+
+
 def _check_keywords(kwargs: dict) -> None:
     """Raise on anything that is not an SJM parameter."""
     unknown = set(kwargs) - set(_KEYWORDS)
@@ -191,9 +194,7 @@ class SJM(Solvation):
                 f'tolerance ({p.tol:g}).  This may lead to issues with '
                 'potential convergence.')
         if p.always_adjust and p.target_potential is None:
-            warns.append('always_adjust has no effect in constant-charge '
-                         'mode: there is no target potential to step the '
-                         'number of excess electrons towards.')
+            warns.append(always_adjust_warning)
         for msg in warns:
             warnings.warn(msg)
             log(textwrap.fill('Warning: ' + msg) + '\n')
@@ -362,10 +363,10 @@ class SJMExtension(Extension):
                  solvation: SolvationExtension,
                  potentiostat: Potentiostat,
                  *,
-                 log=None):
+                 log):
         self.solvation = solvation
         self.potentiostat = potentiostat
-        self.log = log or (lambda *args, **kwargs: None)
+        self.log = log
         # The converged calculation, set by post_converged():
         self._dft = None
 
@@ -373,16 +374,14 @@ class SJMExtension(Extension):
     # the few here need a definition of their own -- a second name, or a
     # narrowed type.  All of them are read-only: change() is the only way to
     # set a parameter, see __setattr__.
-    # excess_electrons needs to be a property because charge exists in the
-    # the Extension class already and setting charge
     @property
     def excess_electrons(self) -> float:
         """Number of excess electrons (kept by the potentiostat)."""
         return self.potentiostat.excess_electrons
 
-    # In the Extension parent class we use charge instead of excess_electrons
-    # otherwise NotImplementedError: Charged systems with mixed periodic/zero
-    # boundary conditions pops up, should be unified at some point.
+    # GPAW sums Extension.charge to find the charge of the cell; without it
+    # the Poisson solver refuses a charged cell with mixed boundary
+    # conditions.  One name for both would be better.
     charge = excess_electrons
 
     @property
@@ -539,7 +538,7 @@ class SJMExtension(Extension):
 
         log = self.log
         pot = self.potentiostat
-        opt = self.potentiostat.optimizer
+        opt = pot.optimizer
         assert isinstance(opt, DirectOptimizer)  # the only kind SJM builds
         rerun = False  # does the SCF loop have to run again?
 
@@ -564,12 +563,10 @@ class SJMExtension(Extension):
                 pot.pending_excess_electrons = None
             elif kwargs.get('target_potential',
                             pot.target_potential) is None:
-                warnings.warn('always_adjust has no effect in '
-                              'constant-charge mode.')
-        if 'mixer' in kwargs:
-            opt.mixer = kwargs['mixer']
-        if 'slope_regression_depth' in kwargs:
-            opt.slope_regression_depth = kwargs['slope_regression_depth']
+                warnings.warn(always_adjust_warning)
+        for key in ['mixer', 'slope_regression_depth']:
+            if key in kwargs:
+                setattr(opt, key, kwargs[key])
         if 'slope' in kwargs:
             # Whatever the user says replaces the estimate, so the attempts
             # behind the old one go too:
@@ -581,11 +578,14 @@ class SJMExtension(Extension):
                 log(f'Slope set to {opt.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
-            charging = self.potentiostat.charging
+            if self._dft is None:
+                raise RuntimeError('No results yet - run a calculation '
+                                   'before changing the jellium region.')
+            charging = pot.charging
             charging.region = build_jellium_region(
                 kwargs['jelliumregion'], cavity=self.solvation.cavity)
             mask_r, z1, z2 = charging.region.mask(charging.mask_r.desc,
-                                                  self._relpos_ac())
+                                                  self._dft.relpos_ac)
             charging.set_region(mask_r)
             log(f'Jellium region changed to {z1:.3f} to {z2:.3f}  # Å')
             rerun = True
@@ -627,12 +627,6 @@ class SJMExtension(Extension):
             dft.potential, dft.energies, _ = dft.pot_calc.calculate(
                 density, dft.ibzwfs, dft.potential.vHt_x)
             pot.attempts = []
-
-    def _relpos_ac(self):
-        if self._dft is None:
-            raise RuntimeError('No results yet - run a calculation before '
-                               'changing the jellium region.')
-        return self._dft.relpos_ac
 
     def move_atoms(self, relpos_ac) -> None:
         # The wrapped solvation extension is not itself in the extension
@@ -747,8 +741,7 @@ class SJMPoissonSolver(PoissonSolverWrapper):
             # modified_saw_tooth) drops out of the ratio.
             slope_v = np.polyfit(window, v_z[window], 1)[0]
             slope_s = np.polyfit(window, saw_tooth_z[window], 1)[0]
-            vHt0_r.data -= (slope_v / slope_s) * saw_tooth_z[np.newaxis,
-                                                             np.newaxis]
+            vHt0_r.data -= (slope_v / slope_s) * saw_tooth_z
             vHt0_r.data -= vHt0_r.data[:, :, -1].mean()
         vHt_r.scatter_from(vHt0_r)
         return np.nan
