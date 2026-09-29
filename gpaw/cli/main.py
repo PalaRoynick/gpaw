@@ -106,6 +106,10 @@ def hook(parser, args):
 def gpaw_python_init_magic():
     # We run this very early so as to set required environment variables
     # before anybody else gets to see them.
+
+    assert 'ase' not in sys.modules
+    os.environ['ASE_PARALLEL_WORLD_HOOK'] = 'gpaw.mpi'
+
     pre_exec = os.environ.get('GPAW_PREEXEC_SCRIPT')
     if pre_exec is not None:
         import runpy
