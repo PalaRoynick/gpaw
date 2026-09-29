@@ -210,6 +210,7 @@ def real(a: ndarray) -> ndarray:
 def arange(*args, **kwargs):
     return ndarray(np.arange(*args, **kwargs))
 
+
 class ndarray:
 
     def __init__(self, data):
