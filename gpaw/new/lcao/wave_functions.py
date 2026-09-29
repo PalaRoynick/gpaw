@@ -368,6 +368,7 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         nbands = n2 - n1
         grid = self.basis.grid.new(kpt=self.kpt_c, dtype=self.dtype)
         psit_nR = grid.zeros(nbands, self.band_comm)
+        mynbands = len(self.C_nM.data)
         self.basis.lcao_to_grid(self.C_nM.to_xp(np).data[n1:n2],
-                                psit_nR.data, self.q)
+                                psit_nR.data[:mynbands], self.q)
         return psit_nR.to_xp(self.xp)
