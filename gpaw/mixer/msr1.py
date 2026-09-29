@@ -319,6 +319,7 @@ class MSR1Mixer(BaseMixer):
 
         A_hh = self.xp.linalg.inv(A_hh)
 
+        assert self.trust_radius is not None
         self.trust_radius = max(self.trust_radius,
                                 predicted_radius * 0.5)
 
