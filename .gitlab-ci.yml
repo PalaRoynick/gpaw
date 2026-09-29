@@ -187,7 +187,7 @@ build-cuda:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - pip install -v --user --log build.log --editable .
+    - pip install -v --user --log build.log --no-build-isolation --editable .
   cache:
     key: cache-build-cuda
     paths:
