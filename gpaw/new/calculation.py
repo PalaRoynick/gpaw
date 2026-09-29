@@ -212,13 +212,19 @@ class DFT:
         grid = self.density.nt_sR.desc
         rank_a = grid.ranks_from_fractional_positions(self.relpos_ac)
         atomdist = AtomDistribution(rank_a, atomdist.comm)
+        wf_grid = self.potential.vt_sR.desc
+        if wf_grid.comm.size != grid.comm.size:
+            rank_a = wf_grid.ranks_from_fractional_positions(self.relpos_ac)
+            wf_atomdist = AtomDistribution(rank_a, wf_grid.comm)
+        else:
+            wf_atomdist = atomdist
 
         self.pot_calc.move(self.relpos_ac, atomdist)
-        self.ibzwfs.move(self.relpos_ac, atomdist)
+        self.ibzwfs.move(self.relpos_ac, wf_atomdist)
         self.density.move(self.relpos_ac, atomdist)
         if self.ibzwfs.has_wave_functions():
             self.density.update(self.ibzwfs)
-        self.potential.move(atomdist)
+        self.potential.move(wf_atomdist)
         self.scf_loop.hamiltonian.move(self.relpos_ac)
         self.scf_loop.mixer.move(self.relpos_ac, atomdist)
 
@@ -348,9 +354,13 @@ class DFT:
         xc = self.pot_calc.xc
         assert not hasattr(xc.xc, 'setup_force_corrections')
 
+        domain_comm = self.density.nt_sR.desc.comm
+        wf_domain_comm = self.potential.vt_sR.desc.comm
+
         # Force from projector functions (and basis set, hybrids):
         F_av = self.ibzwfs.forces(self.potential, self.scf_loop.hamiltonian,
                                   self.density.D_asii)
+        F_av *= wf_domain_comm.size / domain_comm.size
 
         if xc.name == 'QNA':
             getattr(xc.xc, 'add_forces', lambda F_av: None)(F_av)  # QNA
@@ -380,7 +390,6 @@ class DFT:
 
         F_av = as_np(F_av)
 
-        domain_comm = Q_aL.layout.atomdist.comm
         domain_comm.sum(F_av)
 
         # Force from extensions (only from rank 0)
@@ -614,6 +623,8 @@ class DFT:
         scf_loop = builder.create_scf_loop()
         pot_calc = builder.create_potential_calculator()
         xcfunc_n = pot_calc.xc
+        scf_loop.update_density_and_potential = \
+            self.scf_loop.update_density_and_potential
 
         # checks compatibility
         if 'xc' in kwargs:
@@ -687,7 +698,7 @@ class DFT:
         # Not quite sure it is needed???
         # At the moment we skip it on GPU's because it doesn't
         # work!
-        if density.nt_sR.xp is np:
+        if density.nt_sR.xp is np and not builder.distribute_density:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)
@@ -700,7 +711,7 @@ class DFT:
             return wfs.morph(
                 builder.wf_desc,
                 builder.relpos_ac,
-                builder.atomdist)
+                builder.wf_atomdist)
 
         ibzwfs = ibzwfs.create(
             ibz=builder.ibz,

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
+
+from gpaw.core import UGArray
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
@@ -237,8 +239,26 @@ class IBZWaveFunctions(Generic[WFT]):
             return False
         return flag
 
-    def add_to_density(self, nt_sR, D_asii) -> None:
-        """Compute density and add to ``nt_sR`` and ``D_asii``."""
+    def calculate_density(self,
+                          nt_sR: UGArray,
+                          D_asii) -> None:
+        """Compute density and place in ``nt_sR`` and ``D_asii``."""
+        if nt_sR.desc.comm.size != self.domain_comm.size:
+            my_nt_sR = nt_sR.desc.new(
+                comm=self.domain_comm).zeros(self.ncomponents, xp=self.xp)
+            atomdist = self._wfs_u[0].P_ani.layout.atomdist
+            my_D_asii = D_asii.layout.new(
+                atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
+            self.calculate_density(my_nt_sR, my_D_asii)
+            my_nt_sR.redist_to(
+                nt_sR, self.kpt_band_comm, serial_comm)
+            D_asii.data[:] = my_D_asii.redist(
+                D_asii.layout.atomdist, self.kpt_band_comm, serial_comm).data
+            return
+
+        nt_sR.data[:] = 0.0
+        D_asii.data[:] = 0.0
+
         for wfs in self:
             wfs.add_to_density(nt_sR, D_asii)
 

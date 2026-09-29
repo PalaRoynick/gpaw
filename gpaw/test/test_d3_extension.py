@@ -101,7 +101,7 @@ def test_d3_extensions(mode, parallel, in_tmp_dir, dftd3, mpi):
     from ase.optimize import BFGS
     atoms = get_atoms()
     calc = get_calc(atoms)
-    relax = BFGS(atoms)
+    relax = BFGS(atoms, comm=mpi.comm)
     relax.run()
     nsteps = relax.nsteps
     assert atoms.get_distance(0, 1) == pytest.approx(0.76915, abs=1e-2)
@@ -111,7 +111,7 @@ def test_d3_extensions(mode, parallel, in_tmp_dir, dftd3, mpi):
     # 6. Test restarting from a relaxation.
     atoms = get_atoms()
     calc = get_calc(atoms)
-    relax = BFGS(atoms, restart='relax_restart')
+    relax = BFGS(atoms, comm=mpi.comm, restart='relax_restart')
     for _, _ in zip(relax.irun(), range(3)):
         pass
     calc.write('restart_relax.gpw')

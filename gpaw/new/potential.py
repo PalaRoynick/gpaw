@@ -18,6 +18,7 @@ class Potential:
                  dedtaut_sR: UGArray | None,
                  vHt_x: XArray | None = None,
                  e_stress: float = np.nan):
+        assert vt_sR.desc.comm.size == dH_asii.layout.atomdist.comm.size
         self.vt_sR = vt_sR
         self.dH_asii = dH_asii
         self.dedtaut_sR = dedtaut_sR
@@ -74,17 +75,21 @@ class Potential:
 
     def redist(self,
                grid: UGDesc,
-               desc: XDesc,
+               desc: XDesc | None,
                atomdist: AtomDistribution,
                comm1: MPIComm,
                comm2: MPIComm) -> Potential:
+        vHt_x = self.vHt_x
+        if desc is not None and vHt_x is not None:
+            vHt_x = vHt_x.redist(desc, comm1, comm2)
+
         return Potential(
             self.vt_sR.redist(grid, comm1, comm2),
             self.dH_asii.redist(atomdist, comm1, comm2),
             None if self.dedtaut_sR is None else self.dedtaut_sR.redist(
                 grid, comm1, comm2),
-            None if self.vHt_x is None else self.vHt_x.redist(
-                desc, comm1, comm2))
+            vHt_x,
+            self.e_stress)
 
     def gather(self):
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()

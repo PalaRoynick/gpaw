@@ -10,6 +10,7 @@ from gpaw.gpu import as_np, as_numpy, as_xp, cupy_is_fake
 from gpaw.new import trace
 from gpaw.old.grid_descriptor import GridBoundsError, GridDescriptor
 from gpaw.utilities import smallest_safe_grid_spacing
+from gpaw.mpi import MPIComm
 
 if TYPE_CHECKING:
     from gpaw.core import UGDesc
@@ -983,6 +984,7 @@ class BasisFunctions(LocalizedFunctionsCollection):
         self.Mstart = None
         self.Mstop = None
         self.grid: UGDesc
+        self.kpt_band_comm: MPIComm
 
     @trace
     def set_positions(self, spos_ac):

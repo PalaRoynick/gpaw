@@ -277,9 +277,9 @@ class UGDesc(Domain['UGArray']):
         if dtype is None:
             dtype = self.dtype
         if self.comm.rank == 0:
-            return fftw.create_plans(self.size_c, dtype, flags, xp)
+            return fftw.create_plans(self.size_c, dtype, flags, xp=xp)
         else:
-            return fftw.create_plans([0, 0, 0], dtype)
+            return fftw.create_plans([0, 0, 0], dtype, xp=xp)
 
     def ranks_from_fractional_positions(self,
                                         relpos_ac: Array2D) -> Array1D:
@@ -506,6 +506,8 @@ class UGArray(XArray[UGDesc]):
             Target PWArray object.
         """
         assert not self.desc.zerobc_c.any()
+        if plan:
+            assert plan.xp is self.xp
         if out is None:
             assert pw is not None
             out = pw.empty(dims=self.dims, xp=self.xp)

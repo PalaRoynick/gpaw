@@ -58,15 +58,16 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
-            comm=self.communicators['d'])
+            comm=self.communicators['w' if self.distribute_density else 'd'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
+
         return grid, fine_grid
 
     def create_wf_description(self) -> Domain:
         return PWDesc(ecut=self.ecut,
                       cell=self.grid.cell,
-                      comm=self.grid.comm,
+                      comm=self.communicators['d'],
                       dtype=self.dtype,
                       _lazy=True)
 
@@ -167,6 +168,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.create_poisson_solver(extensions),
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
+            wf_grid=self.wf_grid,
+            wf_atomdist=self.wf_atomdist,
+            kpt_band_comm=self.communicators['D'],
             soc=self.soc,
             xp=self.xp,
             extensions=extensions)
@@ -174,7 +178,7 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_hamiltonian_operator(self, blocksize=10):
         if self.ncomponents < 4:
             if self.xc.exx_fraction == 0.0:
-                return PWHamiltonian(self.grid, self.dtype, self.xp)
+                return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
             return PWHybridHamiltonian(
                 self.grid, self.wf_desc, self.xc, self.setups,
                 self.relpos_ac, self.atomdist, self.log,
