@@ -20,6 +20,7 @@ class PAWXCBatch:
         self.spinpol = nspins == 2
         self.atom_indices = c_a
         self.V_aL = xp.asarray([V_aL[c] for c in c_a])
+        D_asii_range = {a[0]: (a[1], a[2]) for a in D_asii.layout.myindices}
 
         # Construct indices
         D_saii = D_asii.data
@@ -27,8 +28,8 @@ class PAWXCBatch:
         self.setup = setup
         D_indices_aii = xp.empty((len(c_a), setup.ni, setup.ni), dtype=int)
         for D_index_ii, c in zip(D_indices_aii, c_a):
-            D_index_ii[:] = xp.arange(D_asii.layout.myindices[c][1],
-                                      D_asii.layout.myindices[c][2]).reshape(
+            D_index_ii[:] = xp.arange(D_asii_range[c][0],
+                                      D_asii_range[c][1]).reshape(
                                           (setup.ni, setup.ni))
         self.D_indices_ap = pack_hermitian(D_indices_aii, xp=self.xp)
         diag_p = self.xp.eye(setup.ni, dtype=bool)[
@@ -101,7 +102,6 @@ class PAWXCBatch:
 def pack_xc_batches(D_asii, V_aL, setups, *, functional) -> list[PAWXCBatch]:
     """Group local atoms by tensor shape and gather their input arrays."""
     myid_a = {ind: setups.id_a[ind] for ind in D_asii.layout.atomdist.indices}
-
     atoms_batch: dict[int, list[Any]] = {}
     for a, id in myid_a.items():
         atoms_batch[id] = atoms_batch.get(id, []) + [a]
