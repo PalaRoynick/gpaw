@@ -207,6 +207,9 @@ def real(a: ndarray) -> ndarray:
     return ndarray(np.real(a._data))
 
 
+def arange(*args, **kwargs):
+    return ndarray(np.arange(*args, **kwargs))
+
 class ndarray:
 
     def __init__(self, data):
