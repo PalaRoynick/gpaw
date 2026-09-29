@@ -327,9 +327,8 @@ class ASECalculator:
         return list(compare_atoms(self.atoms, atoms))
 
     def eigenvalues(self):
-        eig_skn = self.dft.ibzwfs.get_all_eigs()
-        return broadcast(eig_skn * Ha if self.comm.rank == 0 else None,
-                         comm=self.comm)
+        eig_skn = self.dft.ibzwfs.get_all_eigs(broadcast=True)
+        return eig_skn * Ha
 
     def occupations(self):
         occ_skn = self.dft.ibzwfs.get_all_occs()

@@ -565,7 +565,7 @@ class SymmetrizationPlan:
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]
             b = self.symmetries.atommap_sa[symnum, a]
-            P2_ani[b][:] = P_ni @ R_ii
+            P2_ani[b][:] = P_ni @ R_ii.T
             if not ignore_phase:
                 P2_ani[b] *= x_a[a]  # or b?
         if time_reversal:
