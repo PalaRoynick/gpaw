@@ -93,6 +93,7 @@ def test_next_step_falls_back_when_the_regression_is_wrong_signed():
     opt.history.append((0.0, line(50.0, 0.0)))
     opt.history.append((-0.1, line(50.0, -0.1)))
     potential = line(50.0, -0.05)  # on the same (wrong-signed) line
+    opt.record_attempt(-0.05, potential, area=AREA)
     charge = opt.next_excess_electrons(-0.05, potential, TARGET, area=AREA)
     # potential (2.5 V) is below target (4.5 V), so fewer electrons are
     # wanted: charge should decrease, not increase the way the (rejected)
@@ -146,12 +147,13 @@ def test_bad_regression_depth():
 def test_next_step_hits_a_linear_target():
     """One step is enough when the slope is right."""
     opt = make_optimizer(slope=-30.0)
+    opt.record_attempt(-0.05, line(-30.0, -0.05), area=AREA)
     charge = opt.next_excess_electrons(-0.05, line(-30.0, -0.05), TARGET,
                                        area=AREA)
     # 5.0 - 30 * charge == TARGET:
     assert charge == pytest.approx((5.0 - TARGET) / 30.0)
-    # The attempt was recorded for the next regression:
-    assert opt.history[-1] == (-0.05, line(-30.0, -0.05))
+    # Proposing a step records nothing: the attempt is there once.
+    assert list(opt.history) == [(-0.05, line(-30.0, -0.05))]
 
 
 def test_trust_region():
@@ -160,6 +162,7 @@ def test_trust_region():
     opt.history.append((0.0, 5.0))
     # The potential is above the target, so electrons are wanted; the slope
     # asks for thousands of them and gets the last step size instead:
+    opt.record_attempt(-0.1, 5.0, area=AREA)
     charge = opt.next_excess_electrons(-0.1, 5.0, TARGET, area=AREA)
     assert charge == pytest.approx(0.0)
 
@@ -173,6 +176,7 @@ def _step_from(mixer: float) -> float:
     """
     opt = make_optimizer(slope=-30.0, mixer=mixer)
     opt.history.append((0.0, line(-30.0, 0.0)))
+    opt.record_attempt(-0.01, line(-30.0, -0.01), area=AREA)
     return 0.01 + opt.next_excess_electrons(-0.01, line(-30.0, -0.01),
                                             TARGET, area=AREA)
 
@@ -209,6 +213,7 @@ def test_a_tiny_first_step_does_not_cap_the_rest():
     steps = []
     for _ in range(6):
         previous = charge
+        opt.record_attempt(charge, line(-30.0, charge), area=AREA)
         charge = opt.next_excess_electrons(charge, line(-30.0, charge),
                                            TARGET, area=AREA)
         steps.append(abs(charge - previous))
@@ -360,6 +365,47 @@ def test_equilibrate_never_rejects_the_first_attempt():
     result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
                              _RecordingMixer(), _silent)
     assert result is EquilibrationResult.stepped
+
+
+def _two_attempts(**kwargs) -> Potentiostat:
+    """One step along a slope of -30 and a landing within tolerance.
+
+    The system's actual slope is -40, so the step undershoots but lands
+    within tol=0.2 V of the target.
+    """
+    pot = Potentiostat(charging=_StubCharging(excess_electrons=0.0),
+                       target_potential=TARGET,
+                       optimizer=DirectOptimizer(slope=-30.0, mixer=0.5),
+                       tol=0.2, **kwargs)
+    for _ in range(2):
+        potential = line(-40.0, pot.excess_electrons)
+        pot.post_scf_convergence(_FakeIBZWFS(potential), 10.0, object(),
+                                 _RecordingMixer(), _silent)
+    return pot
+
+
+def test_the_converged_attempt_updates_the_slope():
+    """An equilibration of two attempts is a slope measurement too.
+
+    The attempt that lands within tolerance used to be left out of the
+    history, so the most common equilibration deep in a trajectory - one
+    step, then converged - never improved the slope.
+    """
+    pot = _two_attempts()
+    assert pot.niters == 2
+    assert len(pot.optimizer.history) == 2
+    # Mixed half and half with the -40 the two attempts regress to:
+    assert pot.optimizer.slope == pytest.approx(-35.0)
+
+
+def test_always_adjust_records_the_converged_attempt_once():
+    pot = _two_attempts(always_adjust=True)
+    assert len(pot.optimizer.history) == 2
+    assert pot.optimizer.slope == pytest.approx(-35.0)
+    # The staged step follows the updated slope from the converged point:
+    charge, potential = pot.optimizer.history[-1]
+    assert pot.pending_excess_electrons == pytest.approx(
+        charge + (TARGET - potential) / -35.0)
 
 
 class _ScriptedPotentiostat(Potentiostat):

@@ -399,8 +399,19 @@ class PotentialOptimizer:
                               target: float,  # V
                               *,
                               area: float) -> float:  # Å²
-        """Number of excess electrons the method points at next."""
+        """Number of excess electrons the method points at next.
+
+        The attempt must have been handed to :meth:`record_attempt` first;
+        this only proposes the step and records nothing.
+        """
         raise NotImplementedError
+
+    def record_attempt(self,
+                       excess_electrons: float,  # |e|
+                       potential: float,  # V
+                       *,
+                       area: float) -> None:  # Å²
+        """Learn from an attempt, whether or not a step follows it."""
 
     def last_attempt(self) -> tuple[float, float] | None:
         """The most recent (excess electrons, potential) attempt, if kept.
@@ -503,6 +514,22 @@ class DirectOptimizer(PotentialOptimizer):
         """Number of attempts the slope estimate is based on."""
         return len(self.history)
 
+    def record_attempt(self,
+                       excess_electrons: float,
+                       potential: float,
+                       *,
+                       area: float) -> None:
+        """Record an attempt and update the slope estimate from it.
+
+        Every accepted attempt counts, including the one that lands within
+        tolerance: the last two attempts of an equilibration are a
+        measurement of the slope like any other.  With too few distinct
+        attempts to regress, the estimate is left alone.
+        """
+        self.history.append((excess_electrons, potential))
+        if regress_slope(self.history) is not None:
+            self.update_slope(area)
+
     def _capacitance_slope(self, area: float) -> float:
         """Slope, in V/electron, of a plate capacitor of the cell's area."""
         return capacitance(10, area)  # muF/cm^2; the relation is reciprocal
@@ -516,6 +543,10 @@ class DirectOptimizer(PotentialOptimizer):
             self.slope = slope
         else:
             self.slope = self.mixer * self.slope + (1.0 - self.mixer) * slope
+        return self._usable_slope(area)
+
+    def _usable_slope(self, area: float) -> float:
+        """The slope estimate, or the capacitance guess for a bad one."""
         if self.slope is None or self.slope > -1e-10:
             # No estimate yet, or one that is not usefully negative (adding
             # electrons must lower the potential) -- fall back to the
@@ -531,11 +562,11 @@ class DirectOptimizer(PotentialOptimizer):
                               area: float) -> float:
         """Excess electrons that the slope points at, given this potential.
 
-        The attempt is recorded in the history and the slope estimate is
-        updated, so this must be called at most once per attempt.
+        The attempt must have been recorded with :meth:`record_attempt`
+        first: the slope estimate and the trust region both come from the
+        history, which this leaves untouched.
         """
-        self.history.append((excess_electrons, potential))
-        slope = self.update_slope(area)
+        slope = self._usable_slope(area)
         dc = (target - potential) / slope
         if len(self.history) > 1:
             (c2, _), (c1, _) = list(self.history)[-2:]
@@ -941,11 +972,12 @@ class Potentiostat:
                 mixer.reset()
                 return EquilibrationResult.rejected
 
+        area = self.charging.region_area
+        optimizer.record_attempt(self.excess_electrons, potential, area=area)
         if abs(potential - target) <= self.tol:
             return EquilibrationResult.converged
         new_excess_electrons = optimizer.next_excess_electrons(
-            self.excess_electrons, potential, target,
-            area=self.charging.region_area)
+            self.excess_electrons, potential, target, area=area)
         ibzwfs.calculate_occs(
             occ_calc,
             nelectrons + (new_excess_electrons - self.excess_electrons))
@@ -957,6 +989,7 @@ class Potentiostat:
         """Charge the optimizer points at, without re-converging it.
 
         Used by ``always_adjust`` to stage a step for the next geometry.
+        The attempt has been recorded by :meth:`equilibrate` already.
         """
         target = self.target_potential
         optimizer = self.optimizer
