@@ -32,7 +32,7 @@ class LDAResult(TensorResult):
 
     def __init__(self, density: TensorResult, function):
         xp = density.engine.xp
-        density_sx = density.value.reshape(density.value.shape[0], -1)
+        density_sx = density.value.reshape((density.value.shape[0], -1))
         potential_sx = xp.zeros_like(density_sx)
         energy_x = xp.empty(density_sx.shape[1:], density.value.dtype)
         function(density_sx, potential_sx, energy_x)

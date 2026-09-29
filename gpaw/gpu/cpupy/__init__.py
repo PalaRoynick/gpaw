@@ -49,8 +49,16 @@ def zeros(*args, **kwargs):
     return ndarray(np.zeros(*args, **kwargs))
 
 
+def zeros_like(a, *args, **kwargs):
+    return ndarray(np.zeros_like(a._data, *args, **kwargs))
+
+
 def ones(*args, **kwargs):
     return ndarray(np.ones(*args, **kwargs))
+
+
+def ones_like(a, *args, **kwargs):
+    return ndarray(np.ones_like(a._data, *args, **kwargs))
 
 
 def copy(a: ndarray, order: str = 'K') -> ndarray:
@@ -70,6 +78,9 @@ def asarray(a, dtype=None):
             return a
         else:
             return ndarray(a._data.astype(dtype))
+    if isinstance(a, tuple) or isinstance(a, list):
+        if isinstance(a[0], ndarray):
+            return ndarray(np.array([b._data for b in a], dtype=dtype))
     return ndarray(np.array(a, dtype=dtype))
 
 
@@ -148,8 +159,13 @@ def log(a):
     return ndarray(np.log(a._data))
 
 
-def eye(n):
-    return ndarray(np.eye(n))
+def eye(*args, **kwargs):
+    return ndarray(np.eye(*args, **kwargs))
+
+
+def where(a, *args, **kwargs):
+    vals = np.where(a._data, *args, **kwargs)
+    return [ndarray(val) for val in vals]
 
 
 def triu_indices(n, k=0, m=None):
@@ -209,6 +225,26 @@ def real(a: ndarray) -> ndarray:
 
 def arange(*args, **kwargs):
     return ndarray(np.arange(*args, **kwargs))
+
+
+def sqrt(a, *args, **kwargs):
+    return ndarray(np.sqrt(a, *args, **kwargs))
+
+
+def expand_dims(a, *args, **kwargs):
+    return ndarray(np.expand_dims(a._data, *args, **kwargs))
+
+
+def broadcast_to(a, *args, **kwargs):
+    return ndarray(np.broadcast_to(a._data, *args, **kwargs))
+
+
+def stack(a, *args, **kwargs):
+    return ndarray(np.stack(asarray(a)._data, *args, **kwargs))
+
+
+def take(a, *args, **kwargs):
+    return ndarray(np.take(a._data, *args, **kwargs))
 
 
 class ndarray:
@@ -409,6 +445,9 @@ class ndarray:
 
     def __matmul__(self, other):
         return ndarray(self._data @ other._data)
+
+    def __invert__(self):
+        return ndarray(self._data.__invert__())
 
     def ravel(self):
         return ndarray(self._data.ravel())

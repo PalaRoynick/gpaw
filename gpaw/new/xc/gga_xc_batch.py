@@ -23,8 +23,8 @@ class PBEResult(TensorResult):
                  sigma: TensorResult,
                  function):
         xp = density.engine.xp
-        density_sx = density.value.reshape(len(density.value), -1)
-        sigma_xr = sigma.value.reshape(len(sigma.value), -1)
+        density_sx = density.value.reshape((density.value.shape[0], -1))
+        sigma_xr = sigma.value.reshape((sigma.value.shape[0], -1))
         potential_sx = xp.zeros_like(density_sx)
         sigma_derivative_xr = xp.empty_like(sigma_xr)
         energy_r = xp.empty(density_sx.shape[1:], density.value.dtype)
@@ -55,7 +55,7 @@ class GGAXCCorrection(PAWXCBatch):
         rgd = self.setup.xc_correction.rgd
         self.radial_g = xp.asarray(rgd.r_g)
         self.radial_spacing_g = xp.asarray(rgd.dr_g)
-        self.inverse_radius2_g = xp.zeros_like(rgd.r_g)
+        self.inverse_radius2_g = xp.zeros_like(self.radial_g)
         self.inverse_radius2_g[self.radial_g != 0] = \
             1. / self.radial_g[self.radial_g != 0]**2
         self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
