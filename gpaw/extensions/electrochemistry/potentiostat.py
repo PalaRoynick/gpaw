@@ -79,10 +79,6 @@ class SlabRegion(JelliumRegion):
                  bottom: float | str | None = None,  # Å; default: -3.0
                  thickness: float | None = None,  # Å
                  fix_bottom: bool = False):
-
-        default_top = -1.0  # Å below the upper cell boundary
-        default_bottom = -3.0  # Å above the highest atom
-
         if isinstance(bottom, str):
             raise ValueError(
                 f'Unknown lower limit for the jellium region: {bottom!r}.  '
@@ -92,15 +88,12 @@ class SlabRegion(JelliumRegion):
             raise ValueError(
                 'The jellium region has been overspecified: give at most two '
                 "of 'top', 'bottom' and 'thickness'.")
-        if thickness is None:
-            # Up to one limit given: the other one keeps its default.
-            if top is None:
-                top = default_top
-            if bottom is None:
-                bottom = default_bottom
-        elif top is None and bottom is None:
-            # A thickness on its own grows upward from the default bottom.
-            bottom = default_bottom
+        # A missing limit keeps its default, unless a thickness fixes it; a
+        # thickness on its own grows upward from the default bottom.
+        if thickness is None and top is None:
+            top = -1.0  # Å below the upper cell boundary
+        if bottom is None and (thickness is None or top is None):
+            bottom = -3.0  # Å above the highest atom
 
         self.top: float | None = top
         self.bottom: float | None = bottom
@@ -317,8 +310,6 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
                  region: JelliumRegion | None = None):
         self.region = region or SlabRegion()
         self._key: object | None = None
-        # The base class stores it as ``charge``; the property below makes
-        # that assignment land on excess_electrons.
         super().__init__(mask_r, charge=excess_electrons, pw=pw)
 
     @property
@@ -346,11 +337,8 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
         self.set_mask(mask_r)
         self._key = key
 
-    def add_charge(self, nt_r: UGArray) -> None:
-        self.update1(nt_r)
-
-    def add_charge_pw(self, nt_g: PWArray | None) -> None:
-        self.update1pw(nt_g)
+    add_charge = JelliumExtension.update1
+    add_charge_pw = JelliumExtension.update1pw
 
     def move(self, relpos_ac, grid) -> tuple[float, float] | None:
         if not self.region.follows_atoms:
@@ -393,6 +381,8 @@ class WorkFunctionProbe(PotentialProbe):
 class PotentialOptimizer:
     """Proposes the next excess-electron count for the target potential."""
 
+    slope: float | None = None  # estimated d(potential)/d(charge), V/electron
+
     def next_excess_electrons(self,
                               excess_electrons: float,  # |e|
                               potential: float,  # V
@@ -425,16 +415,8 @@ class PotentialOptimizer:
     def forget_attempts(self) -> None:
         """Drop the recorded attempts, but keep the slope estimate."""
 
-    def restart(self) -> None:
-        """Drop the attempts, but keep the estimate learned from them."""
-        self.forget_attempts()
-
     def reset(self) -> None:
         """Forget the slope estimate and the attempts behind it."""
-
-    def slope_estimate(self) -> float | None:
-        """Estimated d(potential)/d(charge) in V per electron, if any."""
-        return None
 
     @property
     def n_attempts(self) -> int:
@@ -461,8 +443,8 @@ class DirectOptimizer(PotentialOptimizer):
         self.slope = slope
         self.mixer = mixer
         # (Charge, potential) history of the last few attempts, in V:
-        self.history: deque[tuple[float, float]] = deque(
-            maxlen=_check_depth(slope_regression_depth))
+        self.history: deque[tuple[float, float]] = deque()
+        self.slope_regression_depth = slope_regression_depth
 
     @property
     def slope_regression_depth(self) -> int:
@@ -470,48 +452,24 @@ class DirectOptimizer(PotentialOptimizer):
 
     @slope_regression_depth.setter
     def slope_regression_depth(self, depth: int) -> None:
-        self.history = deque(self.history, maxlen=_check_depth(depth))
+        if depth < 2:
+            raise ValueError(
+                f'slope_regression_depth must be at least 2, got {depth}.  '
+                'Two attempts are the fewest that a slope can be fitted to.')
+        self.history = deque(self.history, maxlen=depth)
 
     def last_attempt(self) -> tuple[float, float] | None:
-        """The most recent (excess electrons, potential) attempt, if any."""
         return self.history[-1] if self.history else None
 
     def forget_attempts(self) -> None:
-        """Drop the recorded attempts, but keep the slope estimate.
-
-        The attempts belong to one geometry: once the atoms have moved, the
-        potential at a given charge shifts, and a regression across the move
-        would fit a line through two different systems.
-        """
         self.history.clear()
 
     def reset(self) -> None:
-        """Forget the slope estimate and the attempts behind it."""
         self.slope = None
         self.history.clear()
 
-    def restart(self) -> None:
-        """Drop the attempts, but keep the estimate learned from them.
-
-        A slope not yet damped into :attr:`slope` is still carried over,
-        by fixing it at what the attempts regress to.
-        """
-        self.slope = self.slope_estimate()
-        self.history.clear()
-
-    def slope_estimate(self) -> float | None:
-        """The damped slope that the steps follow, in V per electron.
-
-        Before there is one, the slope that the recorded attempts regress
-        to, or ``None`` if they are too few.
-        """
-        if self.slope is not None:
-            return self.slope
-        return regress_slope(self.history)
-
     @property
     def n_attempts(self) -> int:
-        """Number of attempts the slope estimate is based on."""
         return len(self.history)
 
     def record_attempt(self,
@@ -727,14 +685,8 @@ class Potentiostat:
         """
         if ((target is None) != (self.target_potential is None) and
                 self.optimizer is not None):
-            self.optimizer.restart()
+            self.optimizer.forget_attempts()
         self.target_potential = target
-
-    def slope_estimate(self) -> float | None:
-        """Estimated d(potential)/d(charge) in V per electron, if any."""
-        if self.optimizer is None:
-            return None
-        return self.optimizer.slope_estimate()
 
     def new_geometry(self) -> float | None:
         """Start equilibrating a new geometry.
@@ -830,9 +782,9 @@ class Potentiostat:
             log(f'Potential found to be {potential:.5f} V '
                 f'(with {excess_electrons:+.5f} excess electrons, '
                 f'attempt {self.niters:d}/{self.max_iters:d}).')
-            slope = self.slope_estimate()
+            assert self.optimizer is not None  # or there were no attempts
+            slope = self.optimizer.slope
             if slope is not None:
-                assert self.optimizer is not None  # or there were no attempts
                 log(f'Slope estimated from the last '
                     f'{self.optimizer.n_attempts:d} attempts is '
                     f'{slope:.4f} V/electron,')
@@ -873,12 +825,9 @@ class Potentiostat:
         canonical energies.  It is cheap, so a change of ``grand_output``
         only needs to call this again.
         """
-        # Unlike energy and forces, the first two do not survive being
-        # written to an ASE trajectory: ASE's trajectory writer stores only
-        # the properties in ase.calculators.calculator.all_properties, and
-        # skips everything else silently. They do reach
-        # calc.results and a .gpw file (see gpaw/new/gpw.py, which writes
-        # every dft.results key), they are in the text log.
+        # Unlike energy and forces, the first two are not in ASE's
+        # all_properties, so an ASE trajectory silently drops them; they do
+        # reach calc.results, a .gpw file and the text log.
         results['excess_electrons'] = self.converged_excess_electrons
         results['electrode_potential'] = self.electrode_potential / Ha
         if self.grand_output:
@@ -937,11 +886,9 @@ class Potentiostat:
             if moved > self.max_potential_stepsize and overshot:
                 halved = 0.5 * (prev_excess_electrons + self.excess_electrons)
                 log(f'  step changed the potential by {moved:.3f} V, over '
-                    'max_potential_stepsize '
-                    f'({self.max_potential_stepsize} V), and away from the '
-                    'target -- rejected; halving the step in excess '
-                    'electrons to '
-                    f'{halved:+.6f} |e|.')
+                    f'max_potential_stepsize ({self.max_potential_stepsize} '
+                    'V), and away from the target -- rejected; halving the '
+                    f'step in excess electrons to {halved:+.6f} |e|.')
                 ibzwfs.calculate_occs(
                     occ_calc, nelectrons + (halved - self.excess_electrons))
                 self.excess_electrons = halved
@@ -962,15 +909,6 @@ class Potentiostat:
         return EquilibrationResult.stepped
 
 
-def _check_depth(depth: int) -> int:
-    """Validate the number of attempts to regress the slope over."""
-    if depth < 2:
-        raise ValueError(
-            f'slope_regression_depth must be at least 2, got {depth}.  Two '
-            'attempts are the fewest that a slope can be fitted to.')
-    return depth
-
-
 def capacitance(slope: float, area: float) -> float:
     """Apparent capacitance in muF/cm^2 of a slope in V per electron."""
     # Å^2 -> cm^2 is 1e16 and F -> muF is 1e6:
@@ -984,11 +922,7 @@ def regress_slope(attempts) -> float | None:
     electrons and volts.  Returns ``None`` if there are too few distinct
     values to fit a line.
     """
-    attempts = list(attempts)
-    if len(attempts) < 2:
-        return None
-    n_i = np.array([excess_electrons for excess_electrons, _ in attempts])
-    potential_i = np.array([potential for _, potential in attempts])
-    if np.ptp(n_i) < 1e-10:
+    n_i, potential_i = np.array(list(attempts)).reshape(-1, 2).T
+    if len(n_i) < 2 or np.ptp(n_i) < 1e-10:
         return None
     return float(np.polyfit(n_i, potential_i, 1)[0])

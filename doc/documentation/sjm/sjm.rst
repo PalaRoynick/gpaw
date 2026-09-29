@@ -343,8 +343,7 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: equilibrate, new_geometry, set_target_potential,
-             set_excess_electrons, slope_estimate, post_converged,
-             write_results
+             set_excess_electrons, post_converged, write_results
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 

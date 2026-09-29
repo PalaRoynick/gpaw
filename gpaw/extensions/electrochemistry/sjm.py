@@ -599,7 +599,7 @@ class SJMExtension(Extension):
             else:
                 log(f'Target potential changed to {target:.5f} +/- '
                     f'{self.tol:.5f} V.')
-                slope = pot.slope_estimate()
+                slope = opt.slope
                 if ('excess_electrons' not in kwargs and slope is not None
                         and not np.isnan(pot.fermi_level)):
                     # Guess the charge needed for the new target potential:
