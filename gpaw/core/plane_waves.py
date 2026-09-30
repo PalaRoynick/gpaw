@@ -572,7 +572,7 @@ class PWArray(XArray[PWDesc]):
             return
 
         if comm.rank == 0:
-            assert data is not None
+            assert isinstance(data, np.ndarray)
             shape = data.shape
             for fro, to in zips(data.reshape((prod(shape[:-1]), shape[-1])),
                                 self._arrays()):

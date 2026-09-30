@@ -1,6 +1,6 @@
 import sys
 from collections.abc import Sequence
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 
@@ -29,14 +29,14 @@ ArrayLike1D = ArrayLike
 ArrayLike2D = ArrayLike
 ArrayLike3D = ArrayLike
 
-ArrayND = np.ndarray
+ArrayND = np.typing.NDArray
 Array1D = ArrayND
 Array2D = ArrayND
 Array3D = ArrayND
 Array4D = ArrayND
 
 # Used for sequences of three numbers:
-Vector = Union[Sequence[float], Array1D]
-IntVector = Union[Sequence[int], Array1D]
+Vector = Sequence[float] | Array1D
+IntVector = Sequence[int] | Array1D
 
 RNG = np.random.Generator
