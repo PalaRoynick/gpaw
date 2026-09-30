@@ -92,6 +92,11 @@ def hook(parser, args):
 
         # Use a clean set of environment variables without any MPI stuff:
         env = dict(os.environ)
+
+        # We initialized our ASE world hook even though we use serial,
+        # pop it and let the subprocess set it instead:
+        env.pop('ASE_PARALLEL_WORLD_HOOK', None)
+
         if 'GPAW_MPI_BACKEND' not in env:
             env['GPAW_MPI_BACKEND'] = 'cgpaw'
         if 'OMP_NUM_THREADS' not in env:
@@ -107,8 +112,19 @@ def gpaw_python_init_magic():
     # We run this very early so as to set required environment variables
     # before anybody else gets to see them.
 
-    assert 'ase' not in sys.modules
-    os.environ['ASE_PARALLEL_WORLD_HOOK'] = 'gpaw.mpi'
+    if 'ase' in sys.modules:
+        raise RuntimeError(
+            'Someone imported ASE before we could initialize the '
+            'ASE MPI world communicator')
+
+    envvar = 'ASE_PARALLEL_WORLD_HOOK'
+    if envvar in os.environ:
+        raise RuntimeError(
+            'Someone already set the ASE parallel world hook '
+            f'${envvar}={os.environ[envvar]}.  '
+            'Please make sure it is unset so we do not initialize MPI twice.')
+
+    os.environ[envvar] = 'gpaw.mpi'
 
     pre_exec = os.environ.get('GPAW_PREEXEC_SCRIPT')
     if pre_exec is not None:
