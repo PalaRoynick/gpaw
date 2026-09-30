@@ -67,7 +67,7 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
             if mode == 'pw':
                 psit_nX = lcaowfs.to_pw_expansion(nbands, pw)
             elif mode == 'fd':
-                psit_nX = lcaowfs.to_uniform_grid(nbands, grid)
+                psit_nX = lcaowfs.to_uniform_grid(0, nbands)
             else:
                 raise ValueError(f'Illegal mode: {mode}')
 

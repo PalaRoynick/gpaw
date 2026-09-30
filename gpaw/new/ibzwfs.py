@@ -287,8 +287,14 @@ class IBZWaveFunctions(Generic[WFT]):
         wfs = self.get_wfs_on_master(kpt=kpt, spin=spin, n1=band, n2=band + 1)
         if wfs is None:
             return None
-        assert isinstance(wfs, PWFDWaveFunctions)
-        psit_X = wfs.psit_nX[0].to_pbc_grid()
+
+        if isinstance(wfs, PWFDWaveFunctions):
+            psit_X = wfs.psit_nX[0].to_pbc_grid()
+        else:
+            # LCAO mode
+            # we only have one band in wfs by construction
+            psit_X = wfs.to_uniform_grid(0, 1)[0].to_pbc_grid()
+
         grid = psit_X.desc.uniform_grid_with_grid_spacing(grid_spacing)
         psi_r = psit_X.interpolate(grid=grid)
 
