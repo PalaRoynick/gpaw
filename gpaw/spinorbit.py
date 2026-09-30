@@ -441,7 +441,7 @@ class KPointData:
         self.wfs = wfs
         self.v_mn = v_mn
         self.f_m = wfs.occ_n
-        self.eig_m = wfs.eig_n
+        self.eig_m = wfs.eig_n * Ha
         self.P_amsi = wfs.P_ani
         self.projections = wfs.P_ani
 
