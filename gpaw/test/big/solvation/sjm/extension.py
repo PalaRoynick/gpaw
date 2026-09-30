@@ -9,8 +9,8 @@ from ase.units import Bohr
 
 from gpaw import GPAW, FermiDirac
 from gpaw.extensions.electrochemistry import SJM
-from gpaw.test.solvation.test_forces_new import make_atoms as nacl_atoms
-from gpaw.test.solvation.test_forces_new import make_calc
+from gpaw.test.big.solvation.forces_new import make_atoms as nacl_atoms
+from gpaw.test.big.solvation.forces_new import make_calc
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 from gpaw.test.solvation.test_sjm_change import TOL, converged_atoms
 

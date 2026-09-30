@@ -51,7 +51,7 @@ def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False,
         extensions=extensions)
 
 
-def test_pw_solvation_forces(in_tmp_dir):
+def test_pw_solvation_forces():
     """PW: symmetry limits, -dE/dz, and both terms non-negligible."""
     atoms = make_atoms([7., 7., 9.], True)
 
@@ -77,7 +77,7 @@ def test_pw_solvation_forces(in_tmp_dir):
     assert abs(F_solv[0, 2] - F_bare[0, 2]) > 0.3
 
 
-def test_pw_fd_forces_agree(in_tmp_dir):
+def test_pw_fd_forces_agree():
     """PW/FD: plane-wave forces match finite-difference mode forces."""
     atoms = make_atoms([10., 10., 12.], True)
 
@@ -97,7 +97,7 @@ def test_pw_fd_forces_agree(in_tmp_dir):
         print('FD forces:', atoms.get_forces())
 
 
-def test_fd_solvation_forces(in_tmp_dir):
+def test_fd_solvation_forces():
     """FD mode: analytic forces match -dE/dz of the energy."""
     atoms = make_atoms([8., 8., 11.], False)
 
