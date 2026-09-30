@@ -16,37 +16,27 @@ from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 TOL = 0.005  # V
 
 
-def h_atoms() -> tuple[Atoms, SJM]:
-    """H at 7.5 V, the starting point of every change() test."""
+def h_atoms(convergence=None, **sjm_kwargs) -> tuple[Atoms, SJM]:
+    """One H atom in a 12 Å cell, with a vacuum SJM extension.
+
+    Without keywords it is H at 7.5 V, the starting point of the change()
+    tests: the charge it converges to and its slope are given, which takes
+    the equilibration from six SCF loops to two.
+    """
+    if not sjm_kwargs:
+        sjm_kwargs = dict(target_potential=7.5, excess_electrons=-0.00316,
+                          slope=-384.0, tol=TOL)
+        # After the mixer is reset for a new charge, the eigensolver of this
+        # one-electron system plateaus at a few times 1e-6, short of the
+        # default 4e-8; the potential is accurate to well within TOL.
+        convergence = {'eigenstates': 1e-5}
     sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-              target_potential=7.5, excess_electrons=-0.00316, slope=-384.0,
-              tol=TOL)
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
+              **sjm_kwargs)
+    atoms = Atoms('H', cell=[1.4, 1.4, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        # This one-electron system is only marginally convergent: after the
-        # mixer is reset for a new charge, the eigensolver plateaus at a
-        # residual of a few times 1e-6 and never reaches the default 4e-8,
-        # so the equilibration runs out of SCF iterations even though it has
-        # already found the right charge.  The potential it settles on is
-        # accurate to well within TOL, which is all this test needs.
-        convergence={'eigenstates': 1e-5},
-        # The change() tests in gpaw/test/big/solvation/sjm/ start from a
-        # converged constant-potential calculation and then change
-        # something, so the equilibration itself is setup cost, not what is
-        # under test (that is test_sjm_slope.py's job).  Starting from the
-        # charge it converges to, and telling it the slope instead of
-        # leaving it to guess a capacitance, takes it from six SCF loops to
-        # two.
-        extensions=[sjm])
-    return atoms, sjm
-
-
-def converged_atoms() -> tuple[Atoms, SJM]:
-    atoms, sjm = h_atoms()
-    atoms.get_potential_energy()
+        convergence=convergence, extensions=[sjm])
     return atoms, sjm
 
 
@@ -125,14 +115,7 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     had to be carried over by hand when the mode switched; now the
     potentiostat holds it in either mode.
     """
-    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-              excess_electrons=0.0, tol=0.001)
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 4.0
-    atoms.calc = GPAW(
-        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        extensions=[sjm])
+    atoms, sjm = h_atoms(excess_electrons=0.0, tol=0.001)
     atoms.calc.initialize(atoms)
     pot = atoms.calc.dft.sjm.potentiostat
 

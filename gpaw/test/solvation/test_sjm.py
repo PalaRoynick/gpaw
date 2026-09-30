@@ -17,8 +17,6 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
         pytest.skip('Not working at the moment!')
     if not gpaw_new and world.size > 1:
         pytest.skip('https://gitlab.com/gpaw/gpaw/-/issues/1381')
-    if not gpaw_new and mode == 'pw':
-        pytest.skip('Not implemented')
     # Solvent parameters
     u0 = 0.180  # eV
     epsinf = 78.36  # dielectric constant of water at 298 K

@@ -456,9 +456,5 @@ def test_fd_sjm_poisson_solver_vacuum_slope(nz):
              (zgrid[index2] - zgrid[index1]))
 
     assert slope == pytest.approx(0.0, abs=5e-8)
-
-
-def test_fd_sjm_poisson_solver_zeroed_at_top():
-    """SJM references its electrode potential to the top of the cell."""
-    _, profile_z = _solve_fd_sjm(64)
+    # SJM references its electrode potential to the top of the cell:
     assert profile_z[-1] == pytest.approx(0.0, abs=1e-12)

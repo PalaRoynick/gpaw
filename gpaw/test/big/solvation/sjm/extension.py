@@ -7,44 +7,26 @@ import pytest
 from ase import Atoms
 from ase.units import Bohr
 
-from gpaw import GPAW, FermiDirac
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.test.big.solvation.forces_new import make_atoms as nacl_atoms
 from gpaw.test.big.solvation.forces_new import make_calc
-from gpaw.test.solvation.test_modes import NoCavity, Vacuum
-from gpaw.test.solvation.test_sjm_change import TOL, converged_atoms
+from gpaw.test.solvation.test_sjm_change import TOL, h_atoms
 
 ADJUST_TARGET = 7.5  # V
 ADJUST_TOL = 0.05  # V - loose on purpose; that is what always_adjust is for
 
 
-def h_atoms(**sjm_kwargs) -> tuple[Atoms, SJM]:
-    """One H atom in a 12 Å cell, with a vacuum SJM extension."""
-    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-              **sjm_kwargs)
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 4.0
-    atoms.calc = GPAW(
-        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        extensions=[sjm])
+def converged_atoms() -> tuple[Atoms, SJM]:
+    atoms, sjm = h_atoms()
+    atoms.get_potential_energy()
     return atoms, sjm
 
 
 def adjusting_atoms(always_adjust: bool) -> tuple[Atoms, SJM]:
-    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-              target_potential=ADJUST_TARGET, excess_electrons=-0.0045,
-              tol=ADJUST_TOL, always_adjust=always_adjust)
-    a = 1.4
-    atoms = Atoms('H', cell=[a, a, 12.0], pbc=(1, 1, 0))
-    atoms.positions[0, 2] = 4.0
-    atoms.calc = GPAW(
-        mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        # This one-electron system is only marginally convergent; see
-        # converged_atoms() in gpaw/test/solvation/test_sjm_change.py.
-        convergence={'eigenstates': 1e-5},
-        extensions=[sjm])
-    return atoms, sjm
+    # Marginally convergent, as h_atoms() explains:
+    return h_atoms({'eigenstates': 1e-5}, target_potential=ADJUST_TARGET,
+                   excess_electrons=-0.0045, tol=ADJUST_TOL,
+                   always_adjust=always_adjust)
 
 
 # Changing parameters without discarding the wave functions, through the

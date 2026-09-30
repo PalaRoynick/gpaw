@@ -10,6 +10,10 @@ from gpaw.extensions.electrochemistry.potentiostat import (
 
 HEIGHT = 20.0  # Å
 ZMAX = 6.0  # Å, highest atom
+# UGDesc works in atomic units:
+grid = UGDesc.from_cell_and_grid_spacing(
+    cell=np.array([4.0, 4.0, HEIGHT]) / Bohr, grid_spacing=0.2, pbc=(1, 1, 0))
+relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
 
 
 def limits(**kwargs):
@@ -99,19 +103,12 @@ def test_build_jellium_region():
         build_jellium_region({'shape': 'blob'})
 
     # The cavity-shaped region is only a stub in this version:
-    grid = UGDesc.from_cell_and_grid_spacing(
-        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
-        grid_spacing=0.2, pbc=(1, 1, 0))
-    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
     with pytest.raises(NotImplementedError, match='cavity-like'):
         build_jellium_region({'shape': 'cavity'}).mask(grid, relpos_ac)
 
 
 def test_move_skips_an_unchanged_region():
     """A move that leaves the region alone does not rebuild the mask."""
-    grid = UGDesc.from_cell_and_grid_spacing(
-        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
-        grid_spacing=0.2, pbc=(1, 1, 0))
     # Two atoms; only the upper one sets the lower limit of the region:
     relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT], [0.5, 0.5, 0.1]])
     region = SlabRegion(bottom=-3.0)  # relative, so it follows the atoms
@@ -139,10 +136,6 @@ def test_move_skips_an_unchanged_region():
 
 def test_move_always_rebuilds_without_a_key():
     """A region that reports no key is rebuilt on every move."""
-    grid = UGDesc.from_cell_and_grid_spacing(
-        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
-        grid_spacing=0.2, pbc=(1, 1, 0))
-    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
 
     class KeylessRegion(SlabRegion):
         def key(self, grid, relpos_ac):
@@ -158,11 +151,6 @@ def test_move_always_rebuilds_without_a_key():
 
 
 def test_mask():
-    # UGDesc works in atomic units:
-    grid = UGDesc.from_cell_and_grid_spacing(
-        cell=np.array([4.0, 4.0, HEIGHT]) / Bohr,
-        grid_spacing=0.2, pbc=(1, 1, 0))
-    relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT]])
     mask_r, bottom, top = SlabRegion(bottom=8.0, top=12.0).mask(
         grid, relpos_ac)
     assert (bottom, top) == (8.0, 12.0)
