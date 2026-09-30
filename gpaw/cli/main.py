@@ -145,8 +145,8 @@ def gpaw_python_init_magic():
     assert ase_world.size == world.size
 
 
-def main(args=None):
-    if os.environ.get('GPAW_MPI_BACKEND') != 'serial':
+def main(args=None, *, initialize_globals: bool = True):
+    if initialize_globals and os.environ.get('GPAW_MPI_BACKEND') != 'serial':
         gpaw_python_init_magic()
 
     from ase.cli.main import main as ase_main
