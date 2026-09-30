@@ -21,6 +21,7 @@ from gpaw.occupations import OccupationNumberCalculator
 from gpaw.setup import Setup
 from gpaw.utilities import pack_density
 from gpaw.core.matrix import suggest_blocking, Matrix
+from gpaw.new.logger import Logger
 
 if TYPE_CHECKING:
     from gpaw.dft import DFT
@@ -40,14 +41,38 @@ def calculate_soc(dft: DFT,
                   ignore_xc_potential: bool = False,
                   occ_calc_params: dict | None = None,
                   projected=False,
+                  log: str | Path | None = '-'
                   ) -> tuple[IBZWaveFunctions,
                              float,
                              dict[int, np.ndarray],
                              dict[int, np.ndarray]]:
+    """Calculate SOC.
+
+    Parameters:
+        dft: DFT-calculation
+            DFT-calculation.
+        n1, n2: int
+            Range of bands to include (n1 <= n < n2).  Default is all
+            bands available.
+        scale: float
+            Scale the spinorbit coupling by this amount.
+        theta: float
+            Angle in degrees.
+        phi: float
+            Angle in degrees.
+        occ_calc_params: dict
+            By default, the one from *calc* will be used.
+        ignore_xc_potential:
+            Ignore XC-contribution to dU/dr for the effective potential
+            (dU/dr is dominated by the Hartree part).
+    """
+    log = Logger(log, comm=dft.comm)
+
     ibzwfs = dft.ibzwfs
     ibz = ibzwfs.ibz
 
     n2 = n2 or ibzwfs.nbands  # default is all bands
+    log(f'Calculating SOC for bands [{n1}, {n2}[')
 
     P_ksani = {(wfs.k, wfs.spin): wfs.P_ani for wfs in ibzwfs}
     l_aj = [setup.l_j for setup in dft.setups]
@@ -62,6 +87,8 @@ def calculate_soc(dft: DFT,
         ibzwfs.comm,
         n1, n2,
         dft.relpos_ac)
+    log(f'Distributing {len(ibz.bz)} k-point x {len(dft.atoms)} atoms '
+        f'over {kpt_comm.size} x {atomdist.comm.size} cores')
 
     C_ss, s_vss = basis_change(theta=theta, phi=phi)
 
@@ -134,6 +161,8 @@ def calculate_soc(dft: DFT,
         # (not a band-path): Calculate occupation numbers:
         nelectrons = (dft.density.nvalence - dft.density.charge +
                       dft.pot_calc.charge)
+        log('Calculationg occupations numbers for '
+            f'{nelectrons:.3f} electrons')
         occcalc = OccNumCalc(
             occ_calc_params or dft.params.occupations.params,
             dft.atoms.pbc,
@@ -298,7 +327,7 @@ def diagonalize(P_amsi: AtomArrays,
     if domain_comm.rank == 0:
         H_mm += np.diag(eig_m)
 
-    if domain_comm.size == 1 or M < 500:
+    if domain_comm.size == 1 or M < 5:
         if domain_comm.rank == 0:
             eig_m, v_nm = np.linalg.eigh(H_mm)
         else:
@@ -306,9 +335,17 @@ def diagonalize(P_amsi: AtomArrays,
         domain_comm.broadcast(v_nm, 0)
     else:
         rows, columns, blocksize = suggest_blocking(M, domain_comm.size)
-        M_mm = Matrix(M, M, dist=(domain_comm, 1, 1),
-                      data=H_mm if domain_comm.rank == 0 else None)
+        M_mm = Matrix(M, M,
+                      dtype=complex,
+                      dist=(domain_comm, 1, 1),
+                      data=H_mm.copy() if domain_comm.rank == 0 else None)
         eig_m = M_mm.eigh(scalapack=(domain_comm, rows, columns, blocksize))
+        if domain_comm.rank == 0:
+            v_mn = M_mm.data
+        else:
+            v_mn = H_mm
+        domain_comm.broadcast(v_mn, 0)
+        v_nm = v_mn.T
 
     Pout_amsi = P_amsi.new(dtype=complex)
     Pout_amsi.data[:] = (v_nm.T @
