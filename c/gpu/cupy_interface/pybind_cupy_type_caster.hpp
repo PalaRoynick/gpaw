@@ -1,7 +1,7 @@
 #pragma once
 
 #include "python_utils.h"
-#include "pyarray_utils.hpp"
+#include "device_array.hpp"
 
 /* Type caster to convert Cupy.ndarray -> gpaw::PyDeviceArray (no copy).
 * Custom type casters must be added directly to pybind11::detail namespace,
