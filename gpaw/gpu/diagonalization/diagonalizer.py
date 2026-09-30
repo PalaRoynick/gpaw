@@ -3,16 +3,19 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from warnings import warn
 
 import numpy as np
 
 from gpaw import debug
-from gpaw.core.matrix import Matrix
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.timer import trace
 from gpaw.utilities import as_real_dtype
+
+if TYPE_CHECKING:
+    from gpaw.core.matrix import Matrix
 
 
 @dataclass
@@ -73,6 +76,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
              options: DiagonalizerOptions
              ) -> tuple[cp.ndarray, Matrix]:
         """"""
+        from gpaw.core.matrix import Matrix
 
         assert isinstance(inout_matrix.data, cp.ndarray)
         assert inout_matrix.shape[0] == inout_matrix.shape[1]
