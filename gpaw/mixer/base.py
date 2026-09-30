@@ -128,6 +128,7 @@ class BaseMixer:
         # self.density_history[-1].
         res_sX.data[:] = -prev_sX.data
         res_sX.data += ntc_sX.data
+        # res_sX.data[:] = self.metric.inv(res_sX).data
         return res_sX
 
     def calculate_paw_residual(self,
