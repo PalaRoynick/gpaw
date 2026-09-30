@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numbers
-from collections.abc import Sequence
+from collections.abc import Sequence, Iterable
 from typing import Literal, overload
 
 import numpy as np
@@ -210,11 +210,10 @@ class AtomArrays:
         self.comm = comm
         self.domain_comm = domain_comm
 
-        # convert int to tuple:
-        if isinstance(dims, (int, np.int64)):
-            self.dims = (dims,)
-        else:
+        if isinstance(dims, Iterable):
             self.dims = tuple(dims)
+        else:
+            self.dims = (dims,)  # convert int to tuple
 
         if self.dims:
             d1, d2 = self.my_slice()
