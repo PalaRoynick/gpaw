@@ -1,7 +1,7 @@
 import inspect
 from collections.abc import Callable
 from contextlib import contextmanager
-from functools import wraps
+from functools import cached_property, wraps
 from io import StringIO
 from typing import TypeVar, overload
 
@@ -9,9 +9,13 @@ from gpaw import GPAW_TRACE
 
 
 class GlobalTimer:
-    def __init__(self):
+    @cached_property
+    def _timers(self):
         from gpaw.utilities.timing import Timer
-        self._timers = [Timer()]
+        # This imports a lot of stuff and easily creates cyclic import errors.
+        # Cached property delays the import.
+
+        return [Timer()]
 
     @contextmanager
     def context(self, timer):
