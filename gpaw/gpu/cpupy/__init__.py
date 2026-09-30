@@ -235,7 +235,7 @@ def arange(*args, **kwargs):
 
 
 def sqrt(a, *args, **kwargs):
-    return ndarray(np.sqrt(a, *args, **kwargs))
+    return ndarray(np.sqrt(asarray(a)._data, *args, **kwargs))
 
 
 def expand_dims(a, *args, **kwargs):
