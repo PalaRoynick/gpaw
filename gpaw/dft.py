@@ -709,11 +709,13 @@ class MonkhorstPack(BZSampling):
                  size: Sequence[int] | None = None,
                  density: float | None = None,
                  gamma: bool | None = None,
-                 even: bool | None = None):
+                 even: bool | None = None,
+                 offset=None):
         self.size = size
         self.density = density
         self.gamma = gamma
         self.even = even
+        self.offset = offset
 
     def todict(self):
         dct = {}
@@ -725,11 +727,18 @@ class MonkhorstPack(BZSampling):
             dct['gamma'] = self.gamma
         if self.even is not None:
             dct['even'] = self.even
+        if self.offset is not None:
+            dct['offset'] = self.offset
         return dct
 
     def build(self, atoms):
         from gpaw.new.brillouin import MonkhorstPackKPoints
-        size, offset = kpts2sizeandoffsets(**self.todict(), atoms=atoms)
+        if self.offset is not None:
+            size = self.size
+            offset = self.offset
+        else:
+            kwargs = self.todict()
+            size, offset = kpts2sizeandoffsets(**kwargs, atoms=atoms)
         for n, periodic in zip(size, atoms.pbc):
             if not periodic and n != 1:
                 raise ValueError('K-points can only be used with PBCs!')

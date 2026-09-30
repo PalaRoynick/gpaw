@@ -1,16 +1,15 @@
 import numpy as np
 from ase.units import _e
-from ase.dft.kpoints import monkhorst_pack
 from gpaw import GPAW
 from gpaw.berryphase import parallel_transport
 from gpaw.mpi import world
+from gpaw.dft import MonkhorstPack
 
 phi_i = []
 
 for i in range(8):
-    kpts = monkhorst_pack((8, 1, 8))
-    kpts += (1 / 16, -3 / 8, 1 / 16)
-    kpts += (0, i / 8, 0)
+    kpts = MonkhorstPack(
+        (8, 1, 8), offset=(1 / 16, -3 / 8 + i / 8, 1 / 16))
 
     calc = GPAW('BaTiO3.gpw').fixed_density(symmetry='off', kpts=kpts)
     calc.write('BaTiO3_%s.gpw' % i, mode='all')
