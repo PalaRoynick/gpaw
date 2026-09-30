@@ -9,13 +9,11 @@ from warnings import warn
 import numpy as np
 
 from gpaw import debug
+from gpaw.core.matrix import Matrix
 from gpaw.gpu import cupy as cp
 from gpaw.gpu import cupy_is_fake
 from gpaw.new.timer import trace
 from gpaw.utilities import as_real_dtype
-
-if TYPE_CHECKING:
-    from gpaw.core.matrix import Matrix
 
 
 @dataclass
