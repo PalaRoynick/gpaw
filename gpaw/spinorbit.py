@@ -20,6 +20,7 @@ from gpaw.new.wave_functions import (WaveFunctions,
 from gpaw.occupations import OccupationNumberCalculator
 from gpaw.setup import Setup
 from gpaw.utilities import pack_density
+from gpaw.core.matrix import suggest_blocking, Matrix
 
 if TYPE_CHECKING:
     from gpaw.dft import DFT
@@ -296,10 +297,18 @@ def diagonalize(P_amsi: AtomArrays,
     domain_comm.sum(H_mm, 0)
     if domain_comm.rank == 0:
         H_mm += np.diag(eig_m)
-        eig_m, v_nm = np.linalg.eigh(H_mm)
+
+    if domain_comm.size == 1 or M < 500:
+        if domain_comm.rank == 0:
+            eig_m, v_nm = np.linalg.eigh(H_mm)
+        else:
+            v_nm = np.empty((M, M), complex)
+        domain_comm.broadcast(v_nm, 0)
     else:
-        v_nm = np.empty((M, M), complex)
-    domain_comm.broadcast(v_nm, 0)
+        rows, columns, blocksize = suggest_blocking(M, domain_comm.size)
+        M_mm = Matrix(M, M, dist=(domain_comm, 1, 1),
+                      data=H_mm if domain_comm.rank == 0 else None)
+        eig_m = M_mm.eigh(scalapack=(domain_comm, rows, columns, blocksize))
 
     Pout_amsi = P_amsi.new(dtype=complex)
     Pout_amsi.data[:] = (v_nm.T @
