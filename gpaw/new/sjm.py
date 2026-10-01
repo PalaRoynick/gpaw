@@ -3,13 +3,11 @@ from __future__ import annotations
 import numpy as np
 from ase.units import Bohr
 
-from gpaw.core import PWArray, PWDesc, UGArray, pw_to_grid
+from gpaw.core import pw_to_grid
 from gpaw.extensions import Extension
 from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension)
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.poisson import PoissonSolverWrapper
-from gpaw.new.pw.poisson import PWPoissonSolver
 from gpaw.new.solvation import Solvation, SolvationExtension
 
 
@@ -26,7 +24,7 @@ class SJM(Solvation):
                  excess_electrons: float = 0.0,
                  tol: float = 0.001):  # eV
         super().__init__(cavity, dielectric, interactions,
-                         dipolelayer=True, zero_vacuum=True)
+                         dipolelayer={'zero_vacuum': True})
         self.jelliumregion = jelliumregion or {}
         self.target_potential = target_potential
         self.excess_electrons = excess_electrons
@@ -63,7 +61,6 @@ class SJM(Solvation):
     def todict(self):
         dct = super().todict()
         dct.pop('dipolelayer', None)
-        dct.pop('zero_vacuum', None)
         dct.update(
             jelliumregion=self.jelliumregion,
             target_potential=self.target_potential,
@@ -84,16 +81,8 @@ class SJMExtension(Extension):
         self.dielectric = solvation.dielectric
 
     def create_poisson_solver(self, grid, pw, charge, xp):
-        if isinstance(pw, PWDesc):
-            from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
-            return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric, dipolelayer=True, zero_vacuum=True)
-            # from gpaw.new.sjm import SJMPWPoissonSolver
-            # return SJMPWPoissonSolver(pw, environment.dielectric, grid)
-
-        ps = self.solvation.create_poisson_solver(
-            grid, pw, charge=charge, xp=xp).solver
-        return SJMPoissonSolver(ps, self.solvation.dielectric)
+        return self.solvation.create_poisson_solver(
+            grid, pw, charge=charge, xp=xp)
 
     def post_scf_convergence(self,
                              ibzwfs,
@@ -101,6 +90,8 @@ class SJMExtension(Extension):
                              occ_calc,
                              mixer,
                              log) -> bool:
+        self.solvation.post_scf_convergence(
+            ibzwfs, nelectrons, occ_calc, mixer, log)
         converged = self.jellium.post_scf_convergence(
             ibzwfs, nelectrons, occ_calc, mixer, log)
         self.charge = self.jellium.charge
@@ -127,89 +118,3 @@ class SJMExtension(Extension):
 
     def get_energy_contributions(self) -> dict[str, float]:
         return self.solvation.get_energy_contributions()
-
-
-class SJMPoissonSolver(PoissonSolverWrapper):
-    def __init__(self, solver, dielectric):
-        super().__init__(solver)
-
-    def solve(self,
-              vHt_r,
-              rhot_r) -> float:
-        self.solver.solve(vHt_r.data, rhot_r.data)
-        eps_r = vHt_r.desc.from_data(self.solver.dielectric.eps_gradeps[0])
-        eps0_r = eps_r.gather()
-        vHt0_r = vHt_r.gather()
-        if eps0_r is not None:
-            saw_tooth_z = modified_saw_tooth(eps0_r)
-            s1, s2 = saw_tooth_z[[2, 10]]
-            v1, v2 = vHt0_r.data[:, :, [2, 10]].mean(axis=(0, 1))
-            vHt0_r.data -= (v2 - v1) / (s2 - s1) * saw_tooth_z[np.newaxis,
-                                                               np.newaxis]
-            vHt0_r.data -= vHt0_r.data[:, :, -1].mean()
-        vHt_r.scatter_from(vHt0_r)
-        return np.nan
-
-
-def modified_saw_tooth(eps_r: UGArray) -> np.ndarray:
-    a_z = 1.0 / eps_r.data.mean(axis=(0, 1))
-    saw_tooth_z = np.add.accumulate(a_z)
-    saw_tooth_z -= 0.5 * a_z  # +0.5 from z=0.0 ???
-    return saw_tooth_z
-
-
-class SJMPWPoissonSolver(PWPoissonSolver):
-    def __init__(self, pw, dielectric):
-        super().__init__(pw)
-        self.dielectric = dielectric
-        self.saw_tooth_g = saw_tooth(pw, 0.25)
-
-    def solve(self, vHt_g, rhot_g):
-        energy = super().solve(vHt_g, rhot_g)
-        dipole = rhot_g.moment()[2]
-        slope = 4 * np.pi * dipole / rhot_g.desc.volume
-        vHt_g.data += slope * self.saw_tooth_g.data
-        # Shift potential so that it is zero above the slab:
-        shift = 0.5 * slope * rhot_g.desc.cell_cv[2, 2]
-        v0 = vHt_g.boundary_value(2)
-        vHt_g.data[0] -= shift + v0
-        return energy
-
-
-def saw_tooth_sympy():
-    """Fourier-transform."""
-    from sympy import Symbol, integrate, sin, var
-    z = var('z')
-    G = Symbol('G', positive=True)
-    b = Symbol('b', positive=True)
-    m = integrate(sin(G * z) * z, (z, 0, b))
-    print(m)  # -b*cos(G*b)/G + sin(G*b)/G**2
-
-
-def saw_tooth(pw: PWDesc, width: float = 0.5) -> PWArray:
-    """Saw-tooth in reciprocal space with a slope of 1."""
-    assert np.allclose(pw.cell_cv[:2, 2], 0.0)
-    assert np.allclose(pw.cell_cv[2, :2], 0.0)
-
-    mask_g = pw.onaxis_mask()
-    Gz_i = pw.G_plus_k_Gv[mask_g, 2]
-    if pw.comm.rank == 0.0:
-        assert Gz_i[0] == 0.0
-        Gz_i[0] = 1.0
-    L = pw.cell_cv[2, 2]
-    b = L / 2
-    st_i = -(np.sin(b * Gz_i) / Gz_i -
-             b * np.cos(b * Gz_i)) / Gz_i * (2j / L)
-    if pw.comm.rank == 0.0:
-        st_i[0] = 0.0
-
-    # Make the saw-tooth more smooth (fold with Gaussian):
-    alpha = width**-2
-    st_i *= np.exp(-Gz_i**2 / (4 * alpha))
-
-    # Shift by half the cell height:
-    st_i *= np.exp(1j * Gz_i * b)
-
-    st_g = pw.zeros()
-    st_g.data[mask_g] = st_i
-    return st_g

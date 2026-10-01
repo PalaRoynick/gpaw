@@ -38,6 +38,15 @@ Git master branch
   through the ``extensions`` keyword; e.g.,
   ``GPAW(..., extensions=[Solvation(...)])``.
 
+* The solvation extension now has a dipole correction, in both plane-wave
+  and finite-difference modes. A Gaussian-derivative dipole layer is added
+  to the vacuum region, and its potential is solved in the same dielectric
+  as the system, so that the potential is flat at both ends of the cell and
+  both work functions are well-defined. Enable it with
+  ``Solvation(..., dipolelayer=True)``; see the
+  :ref:`solvation dipole documentation<solvation_dipole>`
+  for examples and options.
+
 * New flourine PAW potential added to our :ref:`setup releases`.
   It should be as accurate as the old one but will converge faster with
   number of plane-waves.  The old potential is still the default, but

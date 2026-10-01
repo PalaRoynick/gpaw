@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from ase import Atoms
 from ase.units import Bohr
@@ -8,24 +10,60 @@ from gpaw.extensions import Extension
 from gpaw.fd_operators import Gradient
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.c import add_to_density
-from gpaw.new.poisson import PoissonSolver, PoissonSolverWrapper
+from gpaw.new.poisson import PoissonSolver
+from gpaw.new.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.new.solvation.poisson import SolvationPoissonSolver
 from gpaw.solvation.cavity import Cavity
 from gpaw.solvation.dielectric import Dielectric
 from gpaw.solvation.interactions import Interaction
-from gpaw.solvation.poisson import WeightedFDPoissonSolver
+
+__all__ = ['Solvation', 'GaussianDerivativeDipole']
 
 
 class Solvation(ExtensionInput):
     name = 'solvation'
 
     def __init__(self, cavity, dielectric, interactions=None,
-                 dipolelayer=False, zero_vacuum=False):
+                 dipolelayer=False):
+        """Implicit solvation.
+
+        Parameters
+        ----------
+        cavity: Cavity or dict
+            Where the solvent is, e.g. an ``EffectivePotentialCavity``
+            (see ``gpaw.solvation.cavity``). A dict is passed as keyword
+            arguments to ``EffectivePotentialCavity``.
+        dielectric: Dielectric or dict
+            The solvent's permittivity inside the cavity, e.g.
+            ``LinearDielectric(epsinf=78.36)``. A dict is passed as keyword
+            arguments to ``LinearDielectric``.
+        interactions: list of Interaction or dict
+            Non-electrostatic energy terms, e.g.
+            ``[SurfaceInteraction(surface_tension=...)]``. A dict entry
+            needs a ``'name'`` key giving the class, plus its keyword
+            arguments. Default: none.
+        dipolelayer: bool, dict or GaussianDerivativeDipole
+            Cancel a z-oriented dipole moment so that the potential is flat on
+            both top and bottom. ``True`` gives the default
+            ``GaussianDerivativeDipole``, and a dict is passed to it as
+            keyword arguments. Your own correction can be supplied as an
+            object with ``build()`` and ``todict()`` methods; see
+            ``GaussianDerivativeDipole.from_param``. Default: no layer.
+
+        Notes
+        -----
+        The cavity, dielectric and interactions for water are given by
+        ``gpaw.solvation.get_HW14_water_kwargs()``, e.g.
+        ``Solvation(**get_HW14_water_kwargs())``.
+
+        Cavities and interactions that depend upon the electron density are
+        only supported in fd mode.
+        """
         self.cavity = Cavity.from_dict(cavity)
         self.dielectric = Dielectric.from_dict(dielectric)
         self.interactions = [Interaction.from_dict(i)
                              for i in interactions or []]
-        self.dipolelayer = dipolelayer
-        self.zero_vacuum = zero_vacuum
+        self.dipolelayer = GaussianDerivativeDipole.from_param(dipolelayer)
 
     def todict(self):
         return {'cavity': self.cavity.todict(),
@@ -33,8 +71,8 @@ class Solvation(ExtensionInput):
                 'interactions': [
                     {'name': i.__class__.__name__, **i.todict()}
                     for i in self.interactions],
-                'dipolelayer': self.dipolelayer,
-                'zero_vacuum': self.zero_vacuum}
+                'dipolelayer': (self.dipolelayer.todict()
+                                if self.dipolelayer else None)}
 
     def build(self, builder: DFTComponentsBuilder):
         if builder.mode == 'pw':
@@ -44,16 +82,11 @@ class Solvation(ExtensionInput):
                 raise NotImplementedError(
                     'Plane-wave solvation does not currently support '
                     f'density-dependent {", ".join(bad)}; use fd mode.')
-        elif self.dipolelayer or self.zero_vacuum:
-            raise NotImplementedError(
-                'dipolelayer and zero_vacuum are only implemented for '
-                "plane-wave solvation (mode='pw'), not fd mode.")
         return SolvationExtension(
             cavity=self.cavity,
             dielectric=self.dielectric,
             interactions=self.interactions,
             dipolelayer=self.dipolelayer,
-            zero_vacuum=self.zero_vacuum,
             setups=builder.setups,
             grid=builder.fine_grid,
             relpos_ac=builder.relpos_ac,
@@ -69,14 +102,13 @@ class SolvationExtension(Extension):
                  cavity,
                  dielectric,
                  interactions=None,
-                 dipolelayer=False,
-                 zero_vacuum=False,
+                 dipolelayer=None,
                  setups, grid, relpos_ac, log, comm):
         self.cavity = cavity
         self.dielectric = dielectric
         self.interactions = interactions or []
         self.dipolelayer = dipolelayer
-        self.zero_vacuum = zero_vacuum
+        self.poisson_solver = None  # made by `create_poisson_solver`
         finegd = grid._gd
         self.grid = grid
         self.comm = comm
@@ -100,6 +132,18 @@ class SolvationExtension(Extension):
         self.vt_ia_r = grid.empty()  # self.finegd.zeros()
         self.interaction_energies = {}
 
+    def post_scf_convergence(self, ibzwfs, nelectrons, occ_calc, mixer,
+                             log) -> bool:
+        """Warn if the converged charge or dielectric intrudes on
+        the region occupied by the dipole layer."""
+        problem = getattr(self.poisson_solver, 'dipole_region_problem',
+                          None)
+        if problem:
+            warnings.warn(problem)
+            if log:
+                log(f'WARNING: {problem}')
+        return True
+
     def move_atoms(self, relpos_ac):
         """Point the cavity at the new geometry after the atoms move."""
         self.atoms.set_scaled_positions(relpos_ac)
@@ -116,17 +160,10 @@ class SolvationExtension(Extension):
                               *,
                               charge,
                               xp) -> PoissonSolver:
-        if isinstance(pw, PWDesc):
-            from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
-            return ConjugateGradientPoissonSolver(
-                pw, grid, self.dielectric,
-                dipolelayer=self.dipolelayer,
-                zero_vacuum=self.zero_vacuum)
-
-        psolver = WeightedFDPoissonSolver()
-        psolver.set_dielectric(self.dielectric)
-        psolver.set_grid_descriptor(grid._gd)
-        return PoissonSolverWrapper(psolver)
+        self.poisson_solver = SolvationPoissonSolver(pw, grid, self.dielectric)
+        if self.dipolelayer is not None:
+            self.poisson_solver = self.dipolelayer.build(self.poisson_solver)
+        return self.poisson_solver
 
     def update1pw(self, nt_g, kin_en_using_band=True):
         if self.cavity.depends_on_el_density:

@@ -11,6 +11,5 @@ Electrostatics and -dynamics
    jellium/jellium
    hydrogen/h
    muonsites/mnsi
-   continuum_solvent_model/continuum_solvent_model
    sjm/solvated_jellium_method
    polarizability/polarizability

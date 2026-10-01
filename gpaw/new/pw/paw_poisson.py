@@ -20,8 +20,8 @@ class PAWPoissonSolver:
                  poisson_solver):
         self.poisson_solver = poisson_solver
 
-    def dipole_layer_correction(self) -> None:
-        return self.poisson_solver.dipole_layer_correction()
+    def vacuum_levels(self, potential) -> tuple[float, float]:
+        return self.poisson_solver.vacuum_levels(potential)
 
     def move(self,
              relpos_ac: np.ndarray,
