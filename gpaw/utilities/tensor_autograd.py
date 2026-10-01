@@ -387,7 +387,8 @@ class Engine:
                left: TensorResult,
                right: Any,
                *,
-               optimize=True) -> EinsumResult:
+               optimize=True,
+               compatibility_bug=False) -> EinsumResult:
         ...
 
     @overload
@@ -396,7 +397,8 @@ class Engine:
                left: Any,
                right: TensorResult,
                *,
-               optimize=True) -> EinsumResult:
+               optimize=True,
+               compatibility_bug=False) -> EinsumResult:
         ...
 
     @overload
@@ -405,7 +407,8 @@ class Engine:
                left: Any,
                right: Any,
                *,
-               optimize=True) -> Any:
+               optimize=True,
+               compatibility_bug=False) -> Any:
         ...
 
     def einsum(self, subscripts: str, left, right, *, optimize=True,
