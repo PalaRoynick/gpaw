@@ -82,7 +82,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
         assert inout_matrix.shape[0] == inout_matrix.shape[1]
 
         needs_redist = inout_matrix.is_distributed()
-        print(needs_redist)
+
         if needs_redist:
             # We will do eigh on a non-distributed copy
 
@@ -117,8 +117,9 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
 
         comm = inout_matrix.dist.comm
         if comm.rank == 0:
-            assert isinstance(matrix_non_distributed, Matrix)
-            assert isinstance(eigvecs, Matrix)
+            assert isinstance(matrix_non_distributed,
+                              Matrix), f'{matrix_non_distributed}'
+            assert isinstance(eigvecs, Matrix), f'{eigvecs}'
 
             if debug:
                 self.check_matrix(matrix_non_distributed.data)
