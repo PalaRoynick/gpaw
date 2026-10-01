@@ -81,7 +81,7 @@ class Functional:
         self.exx_omega = 0.0
         self.exx_yukawa = False
         self.energies: dict[str, float] = {}
-        self.use_xc_corrections2 = False
+        self.backwards_compatible = False
 
     def __str__(self):
         return f'name: {self.xc.get_description()}'
@@ -102,22 +102,21 @@ class Functional:
         The experimental result graph supports exactly LDA and PBE.  Density
         layouts outside its current scope retain the established atom loop.
         """
-        if True or self.use_xc_corrections2:
-            supported = self.name in {'LDA', 'PBE'}
-            supported = supported and D_asii.mydims[0] in {1, 2}
-            if supported:
-                if hasattr(self, 'paw_xc_batches') and \
-                        self.paw_xc_batches is not None:
-                    batches = self.paw_xc_batches
-                    for batch in batches:
-                        batch.set_density(D_asii, V_aL)
-                else:
-                    batches = pack_xc_batches(D_asii, V_aL, setups,
-                                              functional=self)
-                    self.paw_xc_batches = batches
+        supported = self.name in {'LDA', 'PBE'}
+        supported = supported and D_asii.mydims[0] in {1, 2}
+        if supported:
+            if hasattr(self, 'paw_xc_batches') and \
+                    self.paw_xc_batches is not None:
+                batches = self.paw_xc_batches
+                for batch in batches:
+                    batch.set_density(D_asii, V_aL)
+            else:
+                batches = pack_xc_batches(D_asii, V_aL, setups,
+                                          functional=self)
+                self.paw_xc_batches = batches
 
-                results = [batch.evaluate() for batch in batches]
-                return unpack_xc_batches(batches, results)
+            results = [batch.evaluate() for batch in batches]
+            return unpack_xc_batches(batches, results)
 
     def get_setup_name(self) -> str:
         return self.setup_name

@@ -193,10 +193,11 @@ class RadialGridDescriptor(ABC):
 
         c_g = a_g / self.dr_g
         b_g[0] = 0.5 * c_g[1] + c_g[0]
-        b_g[1] = 0.5 * c_g[2] - c_g[0]
+        b_g[1] = 0.5 * c_g[2] - c_g[0]  # XXX: This line does nothing?
         b_g[1:-1] = 0.5 * (c_g[2:] - c_g[:-2])
         b_g[-2] = c_g[-1] - 0.5 * c_g[-3]
         b_g[-1] = -c_g[-1] - 0.5 * c_g[-2]
+        # XXX: Does all of this even make sense?
 
     def laplace(self, n_g, d2ndr2_g=None):
         """Laplace of radial function."""

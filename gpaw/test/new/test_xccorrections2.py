@@ -58,7 +58,8 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
                 V_aL[a] @ setup.Delta_pL.T)
         expected_gradient_asp[a] += dH_p
 
-    functional = SimpleNamespace(xp=np, name=name, xc=xc)
+    functional = SimpleNamespace(xp=np, name=name, xc=xc,
+                                 backwards_compatible=True)
     batches = pack_xc_batches(
         D_asii, V_aL, setups, functional=functional)
     results = [batch.evaluate() for batch in batches]
@@ -67,11 +68,11 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
     for a, xc in xc_corr.items():
         energy = xc['e_xc']
         assert energy == pytest.approx(
-            expected_energy_a[a], abs=2.0e-11)
+            expected_energy_a[a], abs=2.0e-14)
         # The result graph differentiates the zero-weight origin consistently.
         # GPAW's legacy PBE transpose extrapolates an origin potential and
         # therefore includes a tiny additional derivative contribution.
         gradient_sp = xc['gradient_sp']
-        gradient_tolerance = 5.0e-7 if name == 'PBE' else 2.0e-10
+        gradient_tolerance = 5.0e-12 if name == 'PBE' else 2.0e-12
         assert gradient_sp == pytest.approx(
             expected_gradient_asp[a], abs=gradient_tolerance)

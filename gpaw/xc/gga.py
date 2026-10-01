@@ -56,7 +56,7 @@ class GGARadialExpansion:
             e_g, dedn_sg, b_vsg, dedsigma_xg = \
                 self.rcalc(rgd, n_sLg, Y_L, dndr_sLg, rnablaY_Lv, n,
                            *self.args)
-            dEdD_sqL += np.dot(rgd.dv_g * dedn_sg,
+            dEdD_sqL += np.dot(dedn_sg,
                                n_qg.T)[:, :, np.newaxis] * (w * Y_L)
             dedsigma_xg *= rgd.dr_g
             B_vsg = dedsigma_xg[::2] * b_vsg
@@ -107,8 +107,8 @@ def add_radial_gradient_correction(rgd, sigma_xg, dedsigma_xg, a_sg):
         rgd.derivative2(rgd.dv_g * dedsigma_xg[1] * a_sg[0], v_g)
         vv_sg[1] -= v_g
 
-    vv_sg[:, 1:] /= rgd.dv_g[1:]
-    vv_sg[:, 0] = vv_sg[:, 1]
+    vv_sg[:, 0] = 0  # Here we introduce a bug for backwards compatibility
+    # The more exact version would be deleting this line.
     return vv_sg
 
 
@@ -122,7 +122,7 @@ class GGARadialCalculator:
         self.kernel.calculate(e_g, n_sg, dedn_sg, sigma_xg, dedsigma_xg)
         vv_sg = add_radial_gradient_correction(rgd, sigma_xg,
                                                dedsigma_xg, a_sg)
-        return e_g, dedn_sg + vv_sg, b_vsg, dedsigma_xg
+        return e_g, rgd.dv_g * dedn_sg + vv_sg, b_vsg, dedsigma_xg
 
 
 def calculate_sigma(gd, grad_v, n_sg):

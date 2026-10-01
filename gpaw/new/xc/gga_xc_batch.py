@@ -21,6 +21,7 @@ class PBEResult(TensorResult):
     def __init__(self,
                  density: TensorResult,
                  sigma: TensorResult,
+                 backwards_compatible: bool,
                  function):
         xp = density.engine.xp
         density_sx = density.value.reshape((density.value.shape[0], -1))
@@ -60,6 +61,11 @@ class GGAXCCorrection(PAWXCBatch):
         self.inverse_radius2_g = xp.zeros_like(self.radial_g)
         self.inverse_radius2_g[self.radial_g != 0] = \
             1. / self.radial_g[self.radial_g != 0]**2
+
+        # In order to match previous XC implementations, we have to
+        # reintroduce a bug.
+        self.backwards_compatible = self.functional.backwards_compatible
+
         self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
         self.evaluate_xc = (partial(_evaluate_pbe_cpu, self.functional)
                             if xp is np else evaluate_pbe_gpu)
@@ -83,10 +89,10 @@ class PBEXCCorrection(GGAXCCorrection):
             'sap,pqL->saLq', density_sap, self.basis_pqL)
         ae_saLg = density_L_expansion(
             engine, D_saLq, self.ae_radial_qg, self.nc0_sg,
-            self.xp)
+            self.xp, backwards_compatibility=self.backwards_compatible)
         pseudo_saLg = density_L_expansion(
             engine, D_saLq, self.pseudo_radial_qg, self.nct0_sg,
-            self.xp)
+            self.xp, backwards_compatibility=self.backwards_compatible)
         # Densities are asng; sigma fields are axng with x=(aa, ab, bb).
         ae_density_sang, ae_sigma_xang = get_density_and_grad(
             engine, ae_saLg, self.angular_nL, self.angular_gradient_nLv,
@@ -96,9 +102,10 @@ class PBEXCCorrection(GGAXCCorrection):
             self.radial_spacing_g, self.inverse_radius2_g, self.spinpol)
         energy_a = integrate_correction(
             engine,
-            PBEResult(ae_density_sang, ae_sigma_xang, self.evaluate_xc),
+            PBEResult(ae_density_sang, ae_sigma_xang,
+                      self.backwards_compatible, self.evaluate_xc),
             PBEResult(pseudo_density_sang, pseudo_sigma_xang,
-                      self.evaluate_xc),
+                      self.backwards_compatible, self.evaluate_xc),
             self.angular_weight_n, self.radial_weight_g,
             self.reference_energy)
         energy_a.backward()
@@ -123,7 +130,7 @@ def get_density_and_grad(engine: Engine,
                          angular_gradient_nLv,
                          radial_spacing_g,
                          inverse_radius2_g,
-                         spinpol: bool
+                         spinpol: bool,
                          ) -> tuple[TensorResult, TensorResult]:
     """Construct two densities and aa/ab/bb sigma on the full radial grid."""
     # density_asng contains n_s(r) for both spins.

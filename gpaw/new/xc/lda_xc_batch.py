@@ -114,9 +114,11 @@ def density_L_expansion(engine: Engine,
                         D: TensorResult,
                         radial_qg,
                         core_sg,
-                        xp) -> EinsumResult:
+                        xp,
+                        backwards_compatibility=False) -> EinsumResult:
     """Expand paired or spin-resolved coefficients into density multipoles."""
 
-    density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg)
+    density_saLg = engine.einsum('saLq,qg->saLg', D, radial_qg,
+                                 compatibility_bug=backwards_compatibility)
     density_saLg[:, :, 0] += core_sg[:, None, :]
     return density_saLg
