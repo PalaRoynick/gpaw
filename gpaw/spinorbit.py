@@ -315,7 +315,7 @@ def diagonalize(P_amsi: AtomArrays,
         # Tranform to theta, phi basis
         H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
         H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
-        H_mm += np.eigsum('msi, szij, wzj -> mw',
+        H_mm += np.einsum('msi, szij, wzj -> mw',
                           P_msi.conj(), H_ssii, P_msi)
 
     domain_comm = P_amsi.layout.atomdist.comm
