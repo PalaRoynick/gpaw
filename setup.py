@@ -604,8 +604,8 @@ def parse_cflags(define_macros: list[tuple[str, str]] | None,
 class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
 
-    # Keep in sync with get_gpu_version_check_code()
-    _REQUIRED_CUDA_ARCH = 'sm_70'
+    # This is the oldest arch supported by CUDA 13
+    _DEFAULT_CUDA_ARCH = 'sm_75'
 
     def __init__(
             self,
@@ -645,7 +645,7 @@ class BuildGPU:
                       '--generate-code')
         if not any(arg.lstrip().startswith(flag)
                    for arg in compile_args for flag in ARCH_FLAGS):
-            compile_args.append(f'-arch={self._REQUIRED_CUDA_ARCH}')
+            compile_args.append(f'-arch={self._DEFAULT_CUDA_ARCH}')
 
     def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
         """Attempts to compile the provided code in a temp dir.
