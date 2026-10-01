@@ -9,32 +9,32 @@ from gpaw.xc import XC
 
 
 @pytest.mark.ci
-def test_xc_XC2():
+@pytest.mark.parametrize('xc_name', ['LDA', 'PBE'])
+def test_xc_XC2(xc_name):
     rgd = EquidistantRadialGridDescriptor(0.01, 100)
 
-    for name in ['LDA', 'PBE']:
-        xc = XC(name)
-        for nspins in [1, 2]:
-            n = rgd.zeros(nspins)
-            v = rgd.zeros(nspins)
-            n[:] = np.exp(-rgd.r_g**2)
-            n[-1] *= 2
-            E = xc.calculate_spherical(rgd, n, v)
-            i = 23
-            x = v[-1, i] * rgd.dv_g[i]
-            n[-1, i] += 0.000001
-            Ep = xc.calculate_spherical(rgd, n, v)
-            n[-1, i] -= 0.000002
-            Em = xc.calculate_spherical(rgd, n, v)
-            x2 = (Ep - Em) / 0.000002
-            print(name, nspins, E, x, x2, x - x2)
-            assert x == pytest.approx(x2, abs=1e-9)
-            n[-1, i] += 0.000001
-            if nspins == 1:
-                ns = rgd.empty(2)
-                ns[:] = n / 2
-                Es = xc.calculate_spherical(rgd, ns, 0 * ns)
-                assert E == pytest.approx(Es, abs=1e-13)
+    xc = XC(xc_name)
+    for nspins in [1, 2]:
+        n = rgd.zeros(nspins)
+        v = rgd.zeros(nspins)
+        n[:] = np.exp(-rgd.r_g**2)
+        n[-1] *= 2
+        E = xc.calculate_spherical(rgd, n, v)
+        i = 21
+        x = v[-1, i] * rgd.dv_g[i]
+        n[-1, i] += 0.000001
+        Ep = xc.calculate_spherical(rgd, n, v)
+        n[-1, i] -= 0.000002
+        Em = xc.calculate_spherical(rgd, n, v)
+        x2 = (Ep - Em) / 0.000002
+        print(xc_name, nspins, E, x, x2, x - x2)
+        assert x == pytest.approx(x2, abs=1e-9)
+        n[-1, i] += 0.000001
+        if nspins == 1:
+            ns = rgd.empty(2)
+            ns[:] = n / 2
+            Es = xc.calculate_spherical(rgd, ns, 0 * ns)
+            assert E == pytest.approx(Es, abs=1e-13)
 
     N = 20
     a = 1.0

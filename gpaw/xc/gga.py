@@ -258,6 +258,7 @@ class GGA(XCFunctional):
                                 dndr_sg[:, np.newaxis],
                                 np.zeros((1, 3)), n=None)[:2]
         v_sg[:] = dedn_sg
+        v_sg[..., 1:] /= rgd.dv_g[1:]
         return rgd.integrate(e_g)
 
 
