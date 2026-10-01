@@ -3,8 +3,10 @@
 # Please see the accompanying LICENSE file for further information.
 from __future__ import annotations
 
+import atexit
 import functools
 import os
+import re
 import runpy
 import shlex
 import sys
@@ -447,13 +449,16 @@ def get_gpu_version_check_code() -> str:
     #ifdef __NVCC__
         __global__ void _gpaw_arch_check()
         {
-            // __CUDA_ARCH__ is only defined during the device compilation pass
+        // __CUDA_ARCH__ is only defined during the device compilation pass,
+        // and this #pragma fires once per device pass (i.e. once per
+        // -gencode/-arch).
+        // The value is parsed and checked on the Python side.
+        #define STR_(x) #x
+        #define STR(x) STR_(x)
         #ifdef __CUDA_ARCH__
-            static_assert(__CUDA_ARCH__ >= 700,
-                "GPAW GPU extension for CUDA requires -arch=sm_70 or newer");
+            #pragma message("CUDA_ARCH=" STR(__CUDA_ARCH__))
         #endif
         }
-
     #else
         #include <hip/hip_version.h>
         static_assert(
@@ -466,6 +471,27 @@ def get_gpu_version_check_code() -> str:
 
 class MissingLibraryWarning(UserWarning):
     pass
+
+
+# Warnings collected during the build and flushed at the very end, so they are
+# not buried in the build output.
+_deferred_warnings: list[str] = []
+
+
+def warn(msg: str) -> None:
+    """Print a warning now and queue it to be repeated at the end of the
+    build, where it is not buried in the compilation output."""
+    print(msg, file=sys.stderr)
+    _deferred_warnings.append(msg)
+
+
+def _flush_deferred_warnings() -> None:
+    for msg in _deferred_warnings:
+        print(msg, file=sys.stderr)
+    _deferred_warnings.clear()
+
+
+atexit.register(_flush_deferred_warnings)
 
 
 # Automated checks: resolve defaults for `noblas` and `nolibxc` where
@@ -605,7 +631,7 @@ class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
 
     # This is the oldest arch supported by CUDA 13
-    _DEFAULT_CUDA_ARCH = 'sm_75'
+    _DEFAULT_CUDA_ARCH = 75
 
     def __init__(
             self,
@@ -645,7 +671,7 @@ class BuildGPU:
                       '--generate-code')
         if not any(arg.lstrip().startswith(flag)
                    for arg in compile_args for flag in ARCH_FLAGS):
-            compile_args.append(f'-arch={self._DEFAULT_CUDA_ARCH}')
+            compile_args.append(f'-arch=sm_{self._DEFAULT_CUDA_ARCH}')
 
     def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
         """Attempts to compile the provided code in a temp dir.
@@ -661,10 +687,21 @@ class BuildGPU:
                 + ['-c', codefile, '-o', outfile]
 
             result = subprocess.run(run_args, capture_output=True, text=True)
+            output = result.stdout + result.stderr
             if result.returncode != 0:
                 print(shlex.join(run_args), file=sys.stderr)
-                print(result.stderr, file=sys.stderr)
+                print(output, file=sys.stderr)
                 raise RuntimeError('GPU compiler check failed (see above)\n')
+
+            # Check CUDA arch
+            archs = sorted({int(a) // 10 for a in
+                            re.findall(r'CUDA_ARCH=(\d+)', output)})
+            for arch in archs:
+                if arch < self._DEFAULT_CUDA_ARCH:
+                    warn(f'GPAW GPU CUDA code is compiled for sm_{arch}, but '
+                         f'the code is untested on architectures older '
+                         f'than sm_{self._DEFAULT_CUDA_ARCH}; some features '
+                         f'may not be supported.')
 
     def get_sources(self) -> list[Path]:
         """Collect source files that are compiled with the GPU compiler.
