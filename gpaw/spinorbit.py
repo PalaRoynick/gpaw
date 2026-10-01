@@ -324,7 +324,18 @@ def diagonalize(P_amsi: AtomArrays,
         sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
         sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
 
-    spin_projection_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
+    spin_projection0_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
+
+    v_nsm = v_nm.reshape((M // 2, 2, M))
+    for v_sn in v_msn:
+        sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
+        sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
+        sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
+
+    spin_projection_mv = np.einsum(
+        'nsm, vsz, nzm -> mv', v_nsm.conj(), s_vss, v_nsm)
+
+    assert abs(spin_projection_mv - spin_projection0_mv).max() < 1e-11
 
     return Pout_amsi, eig_m, v_nm.T, spin_projection_mv
 
