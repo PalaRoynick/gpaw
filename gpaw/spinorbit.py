@@ -315,20 +315,15 @@ def diagonalize(P_amsi: AtomArrays,
         # Tranform to theta, phi basis
         H_ssii = np.tensordot(C_ss, H_ssii, (0, 1))
         H_ssii = np.tensordot(C_ss.T.conj(), H_ssii, (1, 1))
-
-        for s1 in range(2):
-            for s2 in range(2):
-                H_ii = H_ssii[s1, s2]
-                P1_mi = P_msi[:, s1]
-                P2_mi = P_msi[:, s2]
-                H_mm += P1_mi.conj() @ H_ii @ P2_mi.T
+        H_mm += np.eigsum('msi, szij, wzj -> mw',
+                          P_msi.conj(), H_ssii, P_msi)
 
     domain_comm = P_amsi.layout.atomdist.comm
     domain_comm.sum(H_mm, 0)
     if domain_comm.rank == 0:
         H_mm += np.diag(eig_m)
 
-    if domain_comm.size == 1 or M < 5:
+    if domain_comm.size == 1 or M < 1000:
         if domain_comm.rank == 0:
             eig_m, v_nm = np.linalg.eigh(H_mm)
         else:
@@ -352,23 +347,9 @@ def diagonalize(P_amsi: AtomArrays,
     Pout_amsi.data[:] = (v_nm.T @
                          P_amsi.data.reshape((M, -1))).reshape((M, 2, -1))
 
-    sx_m = []
-    sy_m = []
-    sz_m = []
-
-    v_msn = v_nm.copy().reshape((M // 2, 2, M)).T.copy()
-    for v_sn in v_msn:
-        sx_m.append(np.trace(v_sn.T.conj().dot(s_vss[0]).dot(v_sn)))
-        sy_m.append(np.trace(v_sn.T.conj().dot(s_vss[1]).dot(v_sn)))
-        sz_m.append(np.trace(v_sn.T.conj().dot(s_vss[2]).dot(v_sn)))
-
-    spin_projection0_mv = np.array([sx_m, sy_m, sz_m]).real.T.copy()
-
     v_nsm = v_nm.reshape((M // 2, 2, M))
     spin_projection_mv = np.einsum(
         'nsm, vsz, nzm -> mv', v_nsm.conj(), s_vss, v_nsm)
-
-    assert abs(spin_projection_mv - spin_projection0_mv).max() < 1e-11
 
     return Pout_amsi, eig_m, v_nm.T, spin_projection_mv
 
