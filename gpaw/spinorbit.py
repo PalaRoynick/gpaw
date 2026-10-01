@@ -41,7 +41,7 @@ def calculate_soc(dft: DFT,
                   ignore_xc_potential: bool = False,
                   occ_calc_params: dict | None = None,
                   projected=False,
-                  log: str | Path | None = '-'
+                  log: str | Path | Logger | None = '-'
                   ) -> tuple[IBZWaveFunctions,
                              float,
                              dict[int, np.ndarray],
@@ -66,7 +66,8 @@ def calculate_soc(dft: DFT,
             Ignore XC-contribution to dU/dr for the effective potential
             (dU/dr is dominated by the Hartree part).
     """
-    log = Logger(log, comm=dft.comm)
+    if not isinstance(log, Logger):
+        log = Logger(log, comm=dft.comm)
 
     ibzwfs = dft.ibzwfs
     ibz = ibzwfs.ibz
