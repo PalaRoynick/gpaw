@@ -29,7 +29,7 @@ ArrayLike1D = ArrayLike
 ArrayLike2D = ArrayLike
 ArrayLike3D = ArrayLike
 
-ArrayND = np.typing.NDArray
+ArrayND = np.ndarray
 Array1D = ArrayND
 Array2D = ArrayND
 Array3D = ArrayND
