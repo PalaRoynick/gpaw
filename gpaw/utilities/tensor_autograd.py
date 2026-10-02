@@ -381,36 +381,6 @@ class Engine:
         return self.xp.einsum(
             subscripts, left, right, optimize=optimize)
 
-    @overload
-    def einsum(self,
-               subscripts: str,
-               left: TensorResult,
-               right: Any,
-               *,
-               optimize=True,
-               compatibility_bug=False) -> EinsumResult:
-        ...
-
-    @overload
-    def einsum(self,
-               subscripts: str,
-               left: Any,
-               right: TensorResult,
-               *,
-               optimize=True,
-               compatibility_bug=False) -> EinsumResult:
-        ...
-
-    @overload
-    def einsum(self,
-               subscripts: str,
-               left: Any,
-               right: Any,
-               *,
-               optimize=True,
-               compatibility_bug=False) -> Any:
-        ...
-
     def einsum(self, subscripts: str, left, right, *, optimize=True,
                compatibility_bug=False):
         """Contract two operands and retain history when either is active.
