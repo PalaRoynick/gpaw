@@ -522,11 +522,11 @@ def normalize_initial_magmoms(
     elif isinstance(magmoms, float):
         magmom_av[:, 2] = magmoms
     else:
-        magmoms = np.asarray(magmoms)
-        if magmoms.ndim == 1:
-            magmom_av[:, 2] = magmoms
+        magmoms_array = np.asarray(magmoms)
+        if magmoms_array.ndim == 1:
+            magmom_av[:, 2] = magmoms_array
         else:
-            magmom_av[:] = magmoms
+            magmom_av[:] = magmoms_array
             ncomponents = 4
 
     if (ncomponents == 2 and
