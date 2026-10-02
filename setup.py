@@ -628,7 +628,7 @@ class BuildGPU:
     """Build helper for the GPU part. Does not use setuptools!"""
 
     # This is the oldest arch supported by CUDA 13
-    _DEFAULT_CUDA_ARCH = 75
+    _DEFAULT_CUDA_ARCH = 90
 
     def __init__(
             self,
@@ -668,7 +668,7 @@ class BuildGPU:
                       '--generate-code')
         if not any(arg.lstrip().startswith(flag)
                    for arg in compile_args for flag in ARCH_FLAGS):
-            compile_args.append(f'-arch=sm_{self._DEFAULT_CUDA_ARCH}')
+            compile_args.append(f'-arch=all')
 
     def try_compiling_gpu(self, cflags: list[str], code: str) -> None:
         """Attempts to compile the provided code in a temp dir.
