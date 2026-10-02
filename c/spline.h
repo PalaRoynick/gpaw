@@ -5,8 +5,10 @@
 #include "extensions.h"
 #include "bmgs/bmgs.h"
 
-typedef struct 
+typedef struct
 {
   PyObject_HEAD
   bmgsspline spline;
 } SplineObject;
+
+extern PyTypeObject SplineType;

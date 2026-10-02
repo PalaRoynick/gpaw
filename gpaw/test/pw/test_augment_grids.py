@@ -2,12 +2,10 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from gpaw import PW, FermiDirac
+from gpaw import GPAW, PW, FermiDirac
 from gpaw.mpi import world
-from gpaw import GPAW
 
 
-@pytest.mark.old_gpaw_only
 @pytest.mark.stress
 def test_pw_augment_grids(in_tmp_dir):
     ecut = 200

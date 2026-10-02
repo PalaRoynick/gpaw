@@ -76,7 +76,7 @@ def rst(names, data):
         rst += txt
 
     with open(symbol + '.rst', 'w') as fd:
-        fd.write(rst.format(table=table, name=name))
+        fd.write(rst.format(table=table, name=symbol))
 
 
 def rst1(dct, name, symbol):

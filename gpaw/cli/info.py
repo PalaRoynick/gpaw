@@ -12,8 +12,8 @@ import gpaw.cgpaw as cgpaw
 import gpaw.fftw as fftw
 from gpaw.gpu import __file__ as gpaw_gpu_filename
 from gpaw.gpu import cupy, cupy_is_fake
-from gpaw.mpi import have_mpi, normalize_communicator
-from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED, GPAW_IS_CPP
+from gpaw.mpi import normalize_communicator
+from gpaw.new.c import GPU_AWARE_MPI, GPU_ENABLED
 from gpaw.utilities import compiled_with_libvdwxc, compiled_with_sl
 from gpaw.utilities.elpa import LibElpa
 
@@ -98,9 +98,8 @@ def info(comm=None) -> None:
     results.append(('_gpaw' + githash,
                     os.path.normpath(cgpaw.get_extension_module_path())))
 
-    results.append(('MPI enabled', have_mpi))
+    results.append(('MPI enabled', cgpaw.have_mpi))
     results.append(('OpenMP enabled', cgpaw.have_openmp))
-    results.append(('Compiled as C++ (experimental)', GPAW_IS_CPP))
     results.append(('GPU enabled', GPU_ENABLED))
     results.append(('GPU-aware MPI', GPU_AWARE_MPI))
     cupy_version = 'cupy-' + cupy.__version__
@@ -117,7 +116,7 @@ def info(comm=None) -> None:
                                   '(gpaw.gpu.cpupy) for testing purposes')
     from gpaw.cgpaw.gpu import magma
     results.append(('MAGMA', magma.is_available()))
-    if have_mpi:
+    if cgpaw.have_mpi:
         have_sl = compiled_with_sl()
         have_elpa = LibElpa.have_elpa()
         if have_elpa:
@@ -154,15 +153,15 @@ def info(comm=None) -> None:
              for a, b in results]
     n1 = max(len(a) for a, _ in lines)
     n2 = max(len(b) for _, b in lines)
-    output_width = n1 + 6 + n2
-    box_edge = ' ' + '-' * (output_width - 2)
+    output_width = n1 + 1 + n2
+    box_edge = '-' * output_width
     print(box_edge)
     for a, b in lines:
         if a in warnings:
             a, b = warn(a, width=n1), warn(b, width=n2)
         else:
             a, b = f'{a:{n1}}', f'{b:{n2}}'
-        print(f'| {a}  {b} |')
+        print(f'{a} {b}')
     print(box_edge)
 
     if not warnings:

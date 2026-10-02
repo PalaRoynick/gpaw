@@ -3,22 +3,23 @@ import numpy as np
 import pytest
 from ase.build import molecule
 from ase.calculators.vdwcorrection import vdWTkatchenko09prl
-from ase.parallel import barrier, parprint
+from ase.parallel import barrier
 
 from gpaw.analyse.hirshfeld import HirshfeldPartitioning
 from gpaw.analyse.vdwradii import vdWradii
 from gpaw.utilities.adjust_cell import adjust_cell
+from gpaw import GPAW
+from gpaw.mpi import world
 
 
-@pytest.mark.old_gpaw_only
-def test_vdw_ts09(in_tmp_dir, mpi):
+def test_vdw_ts09(in_tmp_dir):
     h = 0.4
     s = molecule('LiH')
     adjust_cell(s, 3., h=h)
 
     def print_charge_and_check(hp, q=0, label='unpolarized'):
         q_a = np.array(hp.get_charges())
-        parprint(f'Charges ({label})=', q_a, ', sum=', q_a.sum())
+        print(f'Charges ({label})=', q_a, ', sum=', q_a.sum())
         assert q_a.sum() == pytest.approx(q, abs=0.03)
         return q_a
 
@@ -28,7 +29,7 @@ def test_vdw_ts09(in_tmp_dir, mpi):
         out_traj = 'LiH.traj'
         out_txt = 'LiH.txt'
 
-        cc = mpi.GPAW(legacy_gpaw=True, mode='fd', h=h, xc='PBE', txt=out_txt)
+        cc = GPAW(legacy_gpaw=True, mode='fd', h=h, xc='PBE', txt=out_txt)
 
         # this is needed to initialize txt output
         if cc.old:
@@ -37,11 +38,12 @@ def test_vdw_ts09(in_tmp_dir, mpi):
         hp = HirshfeldPartitioning(cc)
         c = vdWTkatchenko09prl(
             hp,
-            vdWradii(s.get_chemical_symbols(), 'PBE', world=mpi.comm))
+            vdWradii(s.get_chemical_symbols(), 'PBE', world=world))
         s.calc = c
         E = s.get_potential_energy()
         F_ac = s.get_forces()
-        s.write(out_traj)
+        ase.io.write(out_traj, s)
+        # s.write(out_traj)
         q_a = print_charge_and_check(hp)
 
         barrier()
@@ -58,8 +60,8 @@ def test_vdw_ts09(in_tmp_dir, mpi):
     # spin polarized
 
     if 0:
-        ccs = mpi.GPAW(mode='fd', h=h, xc='PBE', spinpol=True,
-                       txt=None)
+        ccs = GPAW(mode='fd', h=h, xc='PBE', spinpol=True,
+                   txt=None)
         hps = HirshfeldPartitioning(ccs)
         cs = vdWTkatchenko09prl(hps, vdWradii(s.get_chemical_symbols(), 'PBE'))
         s.calc = cs

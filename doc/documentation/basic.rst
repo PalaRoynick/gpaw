@@ -45,16 +45,21 @@ In Python code, it looks like this:
 .. literalinclude:: h2.py
     :start-after: creates
 
-If the above code was executed, a calculation for a single `\rm{H}_2`
-molecule would be started.  The calculation would be done using a
-supercell of size `6.0 \times 6.0 \times 6.0` Å with cluster
-boundary conditions.  The parameters for the PAW calculation are:
+If the above code was executed, a plane-wave (``pw``) calculation
+for a single :mol:`H_2` molecule would be started.
+The calculation would be done using a cell of size
+`6.0 \times 6.0 \times 6.0` Å with open boundary conditions.
 
-* 2 electronic bands.
+.. note::
+   For plane-waves mode GPAW will always use periodic boundary conditions.
+
+The other (default) parameters for the PAW calculation are:
+
+* Plane-wave cutoff ``ecut`` 340 eV.
+* ``nbands`` 2 electronic bands.
 * Local density approximation (LDA)\ [#LDA]_ for the
-  exchange-correlation functional.
+  exchange-correlation functional ``xc``.
 * Spin-paired calculation.
-* `32 \times 32 \times 32` grid points.
 
 The values of these parameters can be found in the text output file:
 :download:`h2.txt`.
@@ -65,12 +70,12 @@ like this:
 
 >>> calc = GPAW(mode='fd',
 ...             nbands=1,
-...             xc='PBE',
-...             gpts=(24, 24, 24))
+...             xc='PBE')
 
-Here, we want to use one electronic band, the Perdew, Burke, Ernzerhof
-(PBE)\ [#PBE]_ exchange-correlation functional and 24 grid points in
-each direction.
+Here, we want to use finite difference (``fd``) mode,
+one electronic band and the Perdew, Burke, Ernzerhof
+(PBE)\ [#PBE]_ exchange-correlation functional.
+
 
 .. _parameters:
 
@@ -135,9 +140,9 @@ given in the following sections.
       - ``333``
       - :ref:`manual_maxiter`
     * - ``mixer``
-      - Object
+      - Object or ``dict``
       -
-      - Pulay :ref:`manual_mixer` scheme
+      - :ref:`manual_mixer` scheme
     * - ``mode``
       - ``str`` or ``dict``
       -
@@ -228,6 +233,13 @@ Plane-waves:
 
         from gpaw import GPAW, PW
         calc = GPAW(mode=PW(200))
+
+    Additionally, in GPU mode, the plane-wave mode support mixed precision
+    arithmetic. Specifically, one can on relevant hardware accelerate a calculation
+    by setting::
+
+        calc = GPAW(mode={'name': 'pw', 'dtype': 'single'})
+
 
 LCAO:
     Expand the wave functions in a basis-set constructed
@@ -688,7 +700,7 @@ for the SCF cycle.
 The default value is this dictionary::
 
   {'energy': 0.0005,  # eV / electron
-   'density': 1.0e-4,  # electrons / electron
+   'density': 1.0e-6,  # electrons / electron
    'eigenstates': 4.0e-8,  # eV^2 / electron
    'bands': 'occupied'}
 
@@ -698,7 +710,7 @@ In words:
   per valence electron. (See :class:`~gpaw.convergence_criteria.Energy`.)
 
 * The change in density (integrated absolute value of density change)
-  should be less than 0.0001 electrons per valence electron. (See
+  should be less than `10^-6` electrons per valence electron. (See
   :class:`~gpaw.convergence_criteria.Density`.)
 
 * The integrated value of the square of the residuals of the Kohn-Sham
@@ -759,29 +771,20 @@ and used for output.  Use ``txt=None`` to disable all text output.
 Density mixing
 --------------
 
-Three parameters determine how GPAW does Pulay mixing of the
-densities:
+The mixer can be specified as a dict, e.g.::
 
-* ``beta``: linear mixing coefficient
-* ``nmaxold``: number of old densities to mix
-* ``weight``: when measuring the change from input to output density,
-  long wavelength changes are weighted ``weight`` times higher than
-  short wavelength changes
+    mixer={'name': 'pulay'}
 
-For small molecules, the best choice is to use
-``mixer=Mixer(beta=0.25, nmaxold=3, weight=1.0)``, which is what GPAW
-will choose if the system has zero-boundary conditions.
+The different mixers available are:
 
-If your system is a big molecule or a cluster, it is an advantage to
-use something like ``mixer=Mixer(beta=0.05, nmaxold=5, weight=50.0)``,
-which is also what GPAW will choose if the system has periodic
-boundary conditions in one or more directions.
+* ``msr1``: MSR1 mixing (default and in most cases the best).
+* ``pulay``: Pulay mixing (simple and fast).
+* ``no-mixing``: No-mixing (sometimes useful).
+* ``multi``: Multi-mixing scheme (Allows for utilizing multiple
+  of the above for different parts of the density).
 
-In spin-polarized calculations ``MixerDif`` will be used instead of
-``Mixer``.
-
-See also the documentation on :ref:`density mixing <densitymix>`.
-
+See the :ref:`density mixing <densitymix>` section for additional information, as well as
+parameters for advanced tuning.
 
 .. _manual_fixdensity:
 

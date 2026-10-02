@@ -16,10 +16,10 @@ from gpaw.typing import Array2D
 from gpaw.xc import XC
 from gpaw.xc.functional import XCFunctional as OldXCFunctional
 from gpaw.xc.gga import add_gradient_correction
+from gpaw.xc.hybrid import HybridXC as OldHybridXC
 from gpaw.xc.libvdwxc import VDWXC
 from gpaw.xc.mgga import MGGA
 from gpaw.xc.vdw import VDWFunctionalBase
-from gpaw.xc.hybrid import HybridXC as OldHybridXC
 
 
 def create_functional(xc: OldXCFunctional | str | dict,
@@ -75,8 +75,7 @@ class Functional:
         self.name = self.xc.name
         self.type = self.xc.type
         self.xc.xp = xp
-        if grid.size.any():  # not TB-mode
-            self.xc.set_grid_descriptor(grid._gd)
+        self.xc.set_grid_descriptor(grid._gd)
         self.exx_fraction = 0.0
         self.exx_omega = 0.0
         self.exx_yukawa = False
@@ -99,11 +98,13 @@ class Functional:
         return self.setup_name
 
     def stress_contribution(self,
-                            ibzwfs, density,
+                            ibzwfs,
+                            density,
                             interpolate: Callable[[UGArray], UGArray]
                             ) -> Array2D:
         args, kwargs = self._args(ibzwfs, density, interpolate)
-        if ibzwfs.kpt_band_comm.rank == 0:
+        dist_dens = self.grid.comm.size != ibzwfs.domain_comm.size
+        if ibzwfs.kpt_band_comm.rank == 0 or dist_dens:
             if self.xp is np:
                 if isinstance(self.xc, VDWXC):
                     xck = self.xc.semilocal_xc.kernel
@@ -158,13 +159,14 @@ class LDAFunctional(Functional):
         return exc, vxct_sr, None
 
     def _args(self, ibzwfs, density, interpolate):
-        if ibzwfs.kpt_band_comm.rank != 0:
-            return (), {}
-        nt_sR = density.nt_sR
-        e_r = self.grid.empty(xp=self.xp)
-        nt_sr = interpolate(nt_sR)
-        vt_sr = nt_sr.new(zeroed=True)
-        return (e_r, nt_sr, vt_sr), {}
+        dist_dens = self.grid.comm.size != ibzwfs.domain_comm.size
+        if ibzwfs.kpt_band_comm.rank == 0 or dist_dens:
+            nt_sR = density.nt_sR
+            e_r = self.grid.empty(xp=self.xp)
+            nt_sr = interpolate(nt_sR)
+            vt_sr = nt_sr.new(zeroed=True)
+            return (e_r, nt_sr, vt_sr), {}
+        return (), {}
 
     def _stress(self,  # type: ignore
                 e_r: UGArray,
@@ -183,8 +185,7 @@ class GGAFunctional(LDAFunctional):
                  xp=np):
         super().__init__(xc, grid, xp)
         # xc already has Gradient.apply bound methods!!!
-        if grid.size.any():  # not TB-mode
-            self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
+        self.grad_v = [grad.__self__ for grad in xc.grad_v]  # type: ignore
 
     def _evaluate_xc_cpu(self, args):
         if 'vdW' not in self.name:

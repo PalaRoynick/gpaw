@@ -31,7 +31,6 @@ def fourier_filter(atoms: Atoms, supercell: tuple, V1t_xG: ArrayND,
     assert components in ['normal', 'umklapp']
     # Grid shape
     shape = V1t_xG.shape[-3:]
-
     # Primitive unit cells in Bohr/Bohr^-1
     cell_cv = atoms.get_cell() / units.Bohr
     reci_vc = 2 * np.pi * la.inv(cell_cv)
@@ -58,7 +57,7 @@ def fourier_filter(atoms: Atoms, supercell: tuple, V1t_xG: ArrayND,
                              axis=0))
         # XXX Why does a "*=" operation on q_cG not work here ??
         q1_cG = q_cG * h_c[:, np.newaxis] / (norm_c[:, np.newaxis] / 2)
-        mask_G = np.ones(np.prod(shape), dtype=bool)
+        mask_G = np.ones(np.prod(shape), dtype=bool)  # type: ignore
         for i, pbc in enumerate(pbc_c):
             if not pbc:
                 continue

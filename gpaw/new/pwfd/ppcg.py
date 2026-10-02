@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 from functools import partial
-from pprint import pformat
 
 import numpy as np
 from ase.units import Ha
 
 from gpaw import debug
-
 # from gpaw.typing import Array2D
 from gpaw.core import PWDesc  # , PWArray
 from gpaw.core.matrix import Matrix
 from gpaw.gpu import as_np
 from gpaw.new import tracectx  # , trace
 from gpaw.new.pwfd.davidson import sliced_preconditioner
-
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
@@ -29,6 +26,7 @@ class PPCG(PWFDEigensolver):
                  band_comm,
                  hamiltonian,
                  convergence,
+                 domain_band_comm,
                  niter=2,
                  min_niter=1,
                  blocksize=None,
@@ -92,8 +90,12 @@ class PPCG(PWFDEigensolver):
         """
 
         super().__init__(
-            hamiltonian,
-            convergence)
+            hamiltonian=hamiltonian,
+            convergence=convergence,
+            scalapack_parameters=scalapack_parameters,
+            nbands=nbands,
+            max_buffer_mem=max_buffer_mem,
+            domain_band_comm=domain_band_comm)
 
         self.nbands = nbands
         self.wf_grid = wf_grid
@@ -112,9 +114,7 @@ class PPCG(PWFDEigensolver):
         self.allow_dynamic_breakout = hamiltonian.band_local
 
     def __str__(self):
-        return pformat(dict(name='PPCG',
-                            niter=self.niter,
-                            converge_bands=self.converge_bands))
+        return super().__str__() + f'niter={self.niter}\n'
 
     def _initialize(self, ibzwfs):
         xp = ibzwfs.xp
@@ -213,9 +213,11 @@ class PPCG(PWFDEigensolver):
             if self.include_cg:
                 P_nX = psit_nX.new(data=self.work_arrays[1, :b])
 
-            wfs.subspace_diagonalize(Ht, dH,
-                                     psit2_nX=residual_nX,
-                                     data_buffer=self.data_buffers[0])
+            wfs.subspace_diagonalize(
+                Ht, dH,
+                psit2_nX=residual_nX,
+                data_buffer=self.data_buffers[0],
+                scalapack_parameters=self.scalapack_parameters)
 
             P_ani = wfs.P_ani
             P2_ani = P_ani.new()
@@ -480,10 +482,12 @@ class PPCG(PWFDEigensolver):
             with tracectx('Residual'):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
-                    wfs.subspace_diagonalize(Ht, dH,
-                                             psit2_nX=residual_nX,
-                                             data_buffer=self.data_buffers[0],
-                                             calculate_energy=False)
+                    wfs.subspace_diagonalize(
+                        Ht, dH,
+                        psit2_nX=residual_nX,
+                        data_buffer=self.data_buffers[0],
+                        calculate_energy=False,
+                        scalapack_parameters=self.scalapack_parameters)
                 else:
                     wfs.orthonormalize(residual_nX)
                     Ht(psit_nX, out=residual_nX)

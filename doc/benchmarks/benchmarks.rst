@@ -1,6 +1,8 @@
-==========
-Benchmarks
-==========
+.. _benchmarks:
+
+===========================
+Perfomance index benchmarks
+===========================
 
 .. image:: pw-perf-index.svg
 .. image:: lcao-perf-index.svg
@@ -19,7 +21,7 @@ Test systems
     :header-rows: 1
 
 
-Paramaters
+Parameters
 ==========
 
 * PBE
@@ -28,9 +30,13 @@ Paramaters
 
 * 14 electron potential for Cr
 
-  * PW: 800 eV plane-wave cutoff
-  * LCAO: 0.15 Å grid-spacing and ``dzp`` basis sets
-  * FD: 0.15 Å grid-spacing
+* Density convergence criterium: `10^{-4}`
+
+* PW: 800 eV plane-wave cutoff
+
+* LCAO: 0.15 Å grid-spacing and ``dzp`` basis sets
+
+* FD: 0.15 Å grid-spacing
 
 * default parameters for everything else
 
@@ -41,7 +47,7 @@ PW-mode performance index
 The total time for one material is the sum of two steps
 (`t=\Delta t_1 + \Delta t_2`):
 
-1) time for for a complete SCF calculation
+1) time for a complete SCF calculation
 2) time for second SCF calculation after a small displacement
    of positions (or cell)
 
@@ -105,7 +111,16 @@ History
 * Added two more systems (``ErGe-2M``, ``Fe8O8-3M``).
 
 
-The future
-----------
+2026, April
+-----------
 
 * Added one more system: ``Mn2O2-3M``.
+* Modified all the initial magnetic moments, s.t. the correct ground
+  states are found.
+* Modified expected timings, s.t. the PW score remains unchanged.
+
+
+2026, August
+------------
+
+* Using old default for density convergence.

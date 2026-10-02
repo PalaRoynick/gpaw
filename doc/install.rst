@@ -54,7 +54,7 @@ There are several ways to install GPAW:
 Requirements
 ============
 
-* Python_ 3.9 or later
+* Python_ 3.11 or later
 * ASE_
 * NumPy_
 * SciPy_
@@ -92,21 +92,23 @@ Installation using ``pip``
 
 .. highlight:: bash
 
-The simplest way to install GPAW is using pip_ and the GPAW package from
+Create a :mod:`virtual environment <venv>`, activate it, and
+install GPAW into it using pip_ and the GPAW package from
 the Python package index (PyPI_)::
 
+    $ python3 -m venv my-gpaw-venv
+    $ source my-gpaw-venv/bin/activate
     $ python3 -m pip install gpaw
 
 This will compile and install GPAW (both ``_gpaw.so`` and all the Python
-files) in your ``~/.local/lib/pythonX.Y/site-packages`` folder where
+files) in your ``my-gpaw-venv/lib/pythonX.Y/site-packages`` folder where
 Python can automatically find it.  Pip will also place
-the command line tool :command:`gpaw` in the ``~/.local/bin`` folder, so
+the command line tool :command:`gpaw` in the ``my-gpaw-venv/bin`` folder, so
 make sure you have that in your ``$PATH`` environment variable.
 
 Check that you have installed everything in the correct places::
 
     $ gpaw info
-
 
 Now you should be ready to use GPAW, but before you start, please run the
 tests as described below.
@@ -124,7 +126,7 @@ Make sure that everything works by running a simple test::
 
 If this worked then try also a parallel calculation::
 
-    $ gpaw -P 4 test
+    $ mpiexec -n 3 gpaw test
 
 Please report errors to the ``gpaw-users`` mailing list so that we
 can fix them (see :ref:`mail list`).
@@ -144,12 +146,12 @@ You can get the source from a tar-file or from Git:
 :Tar-file:
 
     Get the source for the latest stable release as a tar-file:
-    gpaw-25.7.0.tar.gz_.
+    gpaw-26.7.0.tar.gz_.
 
     Unpack and make a soft link::
 
-        $ tar -xf gpaw-25.7.0.tar.gz
-        $ ln -s gpaw-25.7.0 gpaw
+        $ tar -xf gpaw-26.7.0.tar.gz
+        $ ln -s gpaw-26.7.0 gpaw
 
     Here is a `list of tarballs <https://pypi.org/simple/gpaw/>`__.
 
@@ -158,7 +160,7 @@ You can get the source from a tar-file or from Git:
     Alternatively, you can get the source for the latest stable release from
     https://gitlab.com/gpaw/gpaw like this::
 
-        $ git clone -b 25.7.0 https://gitlab.com/gpaw/gpaw.git
+        $ git clone -b 26.7.0 https://gitlab.com/gpaw/gpaw.git
 
     or if you want the development version::
 
@@ -170,8 +172,8 @@ You can get the source from a tar-file or from Git:
     See the :ref:`releasenotes` for which tags are available.  Also the
     dates of older releases can be found there.
 
-.. _gpaw-25.7.0.tar.gz:
-    https://pypi.org/packages/source/g/gpaw/gpaw-25.7.0.tar.gz
+.. _gpaw-26.7.0.tar.gz:
+    https://pypi.org/packages/source/g/gpaw/gpaw-26.7.0.tar.gz
 
 
 .. _siteconfig:
@@ -275,6 +277,7 @@ A few extra tips:
     export LD_LIBRARY_PATH=/my/path/to/libxc/5.2.0/install/lib
 
 Example::
+
     wget https://gitlab.com/libxc/libxc/-/archive/6.2.2/libxc-6.2.2.tar.bz2
     tar -xf libxc-6.2.2.tar.bz2
     cd libxc-6.2.2

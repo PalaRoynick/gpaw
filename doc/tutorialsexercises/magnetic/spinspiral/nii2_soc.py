@@ -1,7 +1,7 @@
 import numpy as np
 from gpaw.occupations import create_occ_calc
 from gpaw.spinorbit import soc_eigenstates
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def sphere_points(distance=None):

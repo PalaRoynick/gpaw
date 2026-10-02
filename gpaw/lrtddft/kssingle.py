@@ -11,12 +11,12 @@ from ase.units import Bohr, Hartree, alpha
 import gpaw.mpi as mpi
 from gpaw.fd_operators import Gradient
 from gpaw.lrtddft.excitation import Excitation, ExcitationList, get_filehandle
+from gpaw.old import assert_legacy_gpaw
 from gpaw.pair_density import PairDensity
 from gpaw.utilities import packed_index
 from gpaw.utilities.tools import coordinates
 
 from .kssrestrictor import KSSRestrictor
-from gpaw.old import assert_legacy_gpaw
 
 
 class KSSingles(ExcitationList):

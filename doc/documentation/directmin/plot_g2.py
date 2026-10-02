@@ -6,7 +6,7 @@ from doc.documentation.directmin import tools_and_data
 
 def read_molecules(filename, molnames):
 
-    with open(filename, 'r') as fd:
+    with open(filename) as fd:
         calculated_data_string = fd.read()
         calculated_data = \
             tools_and_data.read_data(calculated_data_string)

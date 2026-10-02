@@ -20,6 +20,8 @@
 #include "gpu/cpp/gpu_python.h"
 #endif
 
+#include "splines/splines_python.hpp"
+
 PyObject* evaluate_mpa_poly(PyObject *self, PyObject *args);
 PyObject* pawexxvv(PyObject* self, PyObject* args);
 PyObject* symmetrize(PyObject *self, PyObject *args);
@@ -396,6 +398,12 @@ static PyObject* moduleinit(void)
 #ifdef PARALLEL
     Py_INCREF(&MPIType);
     Py_INCREF(&GPAW_MPI_Request_type);
+
+    // Set class attribute: Communicator.backend = "cgpaw"
+    PyObject *val = PyUnicode_FromString("cgpaw");
+    PyDict_SetItemString(MPIType.tp_dict, "backend", val);
+    Py_DECREF(val);
+
     PyModule_AddObject(m, "Communicator", (PyObject *)&MPIType);
 #endif
 
@@ -405,12 +413,6 @@ static PyObject* moduleinit(void)
                            "libxc_version",
                            PyUnicode_FromString(xc_version_string()));
 # endif
-#endif
-
-#ifdef GPAW_CPP
-    PyObject_SetAttrString(m, "gpaw_cpp", Py_True);
-#else
-    PyObject_SetAttrString(m, "gpaw_cpp", Py_False);
 #endif
 
 #ifdef GPAW_GPU
@@ -429,6 +431,11 @@ static PyObject* moduleinit(void)
     PyObject_SetAttrString(m, "have_openmp", Py_False);
 #endif
 
+    if (!gpaw::bind_new_splines(m))
+    {
+        return NULL;
+    }
+
 #ifdef GPAW_GPU
     if (!bind_gpu_submodule(m))
     {
@@ -437,7 +444,7 @@ static PyObject* moduleinit(void)
 #endif
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
-    PyObject_SetAttrString(m, "version", PyLong_FromLong(12));
+    PyObject_SetAttrString(m, "version", PyLong_FromLong(13));
 
     Py_INCREF(&LFCType);
     Py_INCREF(&OperatorType);

@@ -5,6 +5,17 @@ from gpaw.mpi import broadcast_array, receive, send
 from gpaw.mpi4pywrapper import MPI4PYWrapper
 
 
+def test_mpi4py_communicator_freed():
+    MPI = pytest.importorskip('mpi4py.MPI')
+    parent = MPI4PYWrapper(MPI.COMM_SELF)
+    child = parent.new_communicator([0])
+    mpi4pycomm = child.comm
+
+    del child
+
+    assert mpi4pycomm == MPI.COMM_NULL
+
+
 @pytest.fixture(params=['gpaw.mpi', 'mpi4py'])
 def world(require_real_mpi, mpi, request):
 

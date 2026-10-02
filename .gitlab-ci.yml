@@ -1,8 +1,9 @@
 variables:
   PYTHONUSERBASE: ".local"
+  DOCKERSUFFIX: ""  # Set to "-staging" to get the staging dockers
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
-  IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest"
-  IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest"
+  IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
+  IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
@@ -12,17 +13,11 @@ variables:
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
+  MPIEXEC: "mpiexec --bind-to=none"
   # We override the Dockers PIP_NO_CACHE_DIR="1" here so that we
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
   COV: "--cov=gpaw --cov-report= "
-  # OpenMPI binds processes to specific physical cores (cf. mpiexec
-  # manpage) when there are <= 2 cores.  This will cause it to
-  # oversubscribe the /same/ physical cores when running simultaneous
-  # size==2 jobs.  We therefore tell GPAW to tell mpiexec not to do
-  # this.  This problem was not observed on camd-runner2 because it
-  # uses hyperthreading and so was equipped to redistribute the load.
-  GPAW_MPI_OPTIONS: "--bind-to none"
 
 default:
   before_script:
@@ -43,47 +38,22 @@ stages:
   - deploy
 
 
-# Build configurations that are built and tested separately in parallel.
-# Implemented as a YAML anchor for reusability.
-.build_matrix: &build_matrix
-  parallel:
-    matrix:
-      - LANG: ["c", "c++"]
-
-
-.needs_corresponding_build: &needs_corresponding_build
-  parallel:
-    matrix:
-      - LANG: ['$[[ matrix.LANG ]]']
-
-
 .build:
   stage: build
-  <<: *build_matrix
   before_script:
     - !reference [default, before_script]
+    - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
-    - | # Set different siteconfig vars for C and C++
-      if [[ "$LANG" == "c++" ]]; then
-        compiler="mpic++"
-        std="-std=c++17"
-        cpp_specific="use_cpp = True"
-      else
-        compiler="mpicc"
-        std="-std=c99"
-        cpp_specific=""
-      fi
+    - pip install coverage
     - |
       cat << EOF > siteconfig.py
-      ${cpp_specific}
       mpi = True
-      compiler = '${compiler}'
+      compiler = 'mpic++'
       libraries = []
       library_dirs = []
       include_dirs = []
 
-      extra_compile_args = ['${std}',
-                            '-fPIC',
+      extra_compile_args = ['-fPIC',
                             '-O3',
                             '-g',
                             '-fopenmp',
@@ -151,7 +121,7 @@ build:
   script:
     - cat siteconfig.py
     - pip install --user --log build.log --editable . -v
-    - gpaw -P 1 info
+    - gpaw info
   cache:
     key: cache-build-oldest
     paths:
@@ -165,7 +135,7 @@ build-latest:
   script:
     - >
       pip install --upgrade
-      pytest pytest-cov coverage pytest-xdist pytest-test-groups
+      "pytest<9.1" pytest-cov coverage pytest-xdist pytest-test-groups
     - |
       cat << EOF >> siteconfig.py
       define_macros += [('NDEBUG', None)]
@@ -182,21 +152,16 @@ build-latest:
       include_dirs += [libvdwxc_dir / 'include']
 
       elpa = True
-      elpa_dir = Path('/install/elpa')
-      elpa_libdir = elpa_dir / 'lib'
       # Maybe we should do a glob to avoid version dependence:
-      elpa_includedir = elpa_dir / 'include/elpa-2022.11.001'
       libraries += ['elpa']
-      library_dirs += [f'{elpa_libdir}']
-      extra_link_args += [f'-Wl,-rpath={elpa_libdir}']
-      include_dirs += [f'{elpa_includedir}']
+      include_dirs += ['/usr/include/elpa']
 
       EOF
     - cat siteconfig.py
     - pip install --user --upgrade numpy scipy
     - pip install --user --upgrade mpi4py
     - pip install --user --editable . -v
-    - gpaw -P 1 info
+    - gpaw info
   cache:
     key: cache-build-latest
     paths:
@@ -305,16 +270,8 @@ build-minimal:
     - .build
   script:
     - |
-      if [ "$LANG" == "c++" ]; then
-        compiler="g++"
-        cpp_specific="use_cpp = True"
-      else
-        compiler="gcc"
-        cpp_specific=""
-      fi
       cat << EOF > siteconfig.py
-      ${cpp_specific}
-      compiler = '${compiler}'
+      compiler = 'g++'
       mpi = False
       noblas = True
       nolibxc = True
@@ -333,16 +290,8 @@ build-cuda-minimal:
     - .build
   script:
     - |
-      if [ "$LANG" == "c++" ]; then
-        compiler="mpic++"
-        cpp_specific="use_cpp = True"
-      else
-        compiler="mpicc"
-        cpp_specific=""
-      fi
       cat << EOF > siteconfig.py
-      ${cpp_specific}
-      compiler = '${compiler}'
+      compiler = 'mpic++'
       mpi = True
       noblas = True
       nolibxc = True
@@ -383,7 +332,7 @@ build-lumi-g:
           '-fPIC',
           '-Wall',
           '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
-          #'-Werror',
+          # '-Werror',
           ]
       extra_link_args = ['-fopenmp']
 
@@ -421,7 +370,7 @@ prepare-libxc:
   before_script:
     - export PREFIX=`realpath $PREFIX`
   script:
-    - git clone -b 7.0.0 https://gitlab.com/libxc/libxc.git
+    - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - autoreconf -i
     - >
@@ -455,17 +404,13 @@ build-libxc:
       EOF
     - cat siteconfig.py
     - pip install --user --log build.log --editable .
-    - gpaw -P 1 info
+    - gpaw info
 
 
 gpwfiles:
   image: $IMAGE_MAIN_LATEST
   needs:
-    # Do this only for the C build
     - job: build-latest
-      parallel:
-        matrix:
-          - LANG: "c"
     - job: nightly-all
   stage: precalculate
   tags:
@@ -516,10 +461,8 @@ test-latest:
   image: $IMAGE_MAIN_LATEST
   extends:
     - .test
-  <<: *build_matrix
   needs:
     - job: build-latest
-      <<: *needs_corresponding_build
   script:
     - gpaw info
     - GPAW_DEBUG=1 pytest -v -m "ci or gpu" --cov=gpaw
@@ -529,19 +472,6 @@ test-latest:
       - htmlcov/
     expire_in: 1 week
   coverage: '/TOTAL.+ ([0-9]+\.[0-9]+%)/'
-
-
-test-latest-new:
-  image: $IMAGE_MAIN_LATEST
-  extends:
-    - .test
-  <<: *build_matrix
-  needs:
-    - job: build-latest
-      <<: *needs_corresponding_build
-  script:
-    - gpaw info
-    - GPAW_DEBUG=1 GPAW_NEW=1 pytest -v -m "ci and not old_gpaw_only"
 
 
 test-minimal:
@@ -590,34 +520,30 @@ test-cuda-mpi:
   image: $IMAGE_CUDA
   extends:
     - .test
-  <<: *build_matrix
   needs:
     - job: build-cuda
-      <<: *needs_corresponding_build
   tags:
     - cuda-mpi
   script:
     - nvidia-smi
     - gpaw info
-    - GPAW_DEBUG=1 gpaw -P 2 python -m pytest -v -x -m gpu
-    - gpaw -P 4 python -m pytest -v -x -m gpu
+    - GPAW_DEBUG=1 $MPIEXEC -n 2 gpaw python -m pytest -v -x -m gpu
+    - $MPIEXEC -n 4 gpaw python -m pytest -v -x -m gpu
 
 
 test-cuda-mpi-makefile-build:
   image: $IMAGE_CUDA
   extends:
     - .test
-  <<: *build_matrix
   needs:
     - job: build-cuda-makefile
-      <<: *needs_corresponding_build
   tags:
     - cuda-mpi
   script:
     - nvidia-smi
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
-    - GPAW_NEW=1 GPAW_USE_GPUS=1 gpaw -P 2 test
+    - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
 
 
 test-hip-cuda:
@@ -657,7 +583,7 @@ test-lumi-g-mpi:
   script:
     - rocm-smi || true  # rocm-smi yields non-zero return code
     - gpaw info
-    - srun pytest -v -m gpu
+    - srun gpaw python -m pytest -v -m gpu
 
 
 test-libxc:
@@ -682,7 +608,7 @@ check-agts:
     - mq init
     - mq workflow -p agts.py -zT | tail -1 | tee task_count
     - >
-      [[ `cut -d ' ' -f1 < task_count` -ge 501 ]] || (echo "Too few agts tasks"; exit 1)
+      [[ `cut -d ' ' -f1 < task_count` -ge 649 ]] || (echo "Too few agts tasks"; exit 1)
 
 
 lint:
@@ -699,28 +625,34 @@ lint:
     - pip install flake8
     - flake8 --version
     - flake8 --doctests gpaw
+    - flake8 setup.py
     - >
       flake8
       --doctests
-      --exclude "doc/platforms/*,doc/*/summerschool24/*/"
+      --exclude "doc/platforms/*,doc/summerschools/summerschool26/machinelearning/*"
       --extend-ignore E402
       doc
     - >
       flake8
       --doctests
       --extend-ignore E402,E501
-      doc/summerschools/summerschool24/catalysis
       doc/platforms/Linux/Niflheim
 
 
 typecheck:
   image: $IMAGE_MAIN_LATEST
   stage: build
-  script:
-    - pip install mypy
+  before_script:
+    - pip freeze
+    - python -m pip install mypy
     - python --version
-    - mypy --version
-    - mypy --pretty
+    - python -m mypy --version
+  script:
+    - python -m mypy --pretty
+  cache:
+    key: cache-typecheck
+    paths:
+      - $PIP_CACHE_DIR
 
 
 docs:
@@ -765,7 +697,7 @@ nightly-all:
 .nightly:
   image: $IMAGE_MAIN_LATEST
   variables:
-    GPAW_MPI_NPROCS: "1"
+    RUNNER_MPI_NPROCS: "1"
     GPAW_TESTGROUPS: "1"
     GPAW_MYTESTGROUP: "1"
   extends:
@@ -788,7 +720,7 @@ nightly-all:
       EOF
 
     # Now split "nightly-mpi-8-group-2-3" into into variables we need:
-    - export GPAW_MPI_NPROCS=$(python parse_jobname.py 2)
+    - export RUNNER_MPI_NPROCS=$(python parse_jobname.py 2)
     - export GPAW_MYTESTGROUP=$(python parse_jobname.py 4)
     - export GPAW_TESTGROUPS=$(python parse_jobname.py 5)
 
@@ -806,7 +738,7 @@ nightly-all:
     - export GPAW_PREEXEC_SCRIPT=$(realpath preexec.py)
   script:
     - >
-      gpaw -P $GPAW_MPI_NPROCS python -m pytest
+      $MPIEXEC -n $RUNNER_MPI_NPROCS gpaw python -m pytest
       --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
       --test-group-random-seed=42
       $COV --instafail -r s --durations 30
@@ -872,86 +804,19 @@ nightly-mpi-8-group-2-2:
     - .nightly
 
 
-.nightly-mpi-new:
-  variables:
-    GPAW_NEW: "1"
-  script:
-    - >
-      gpaw -P $GPAW_MPI_NPROCS python -m pytest
-      --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
-      --test-group-random-seed=42
-      $COV --instafail -r s --durations 30
-      -m "not (old_gpaw_only_mpi or old_gpaw_only or dscf or gllb or do or legacy or lrtddft or hybrids or pipekmezey) or new_gpaw_ready"
+nightly-gpawmpi-4-group-1-2:
   extends:
     - .nightly
-
-
-nightly-mpi-1-group-1-1-new:
-  extends:
-    - .nightly-mpi-new
-  script:
-    - gpaw info
-    - pytest --cache-show
-    - >
-      pytest -n 8 --instafail -r s --durations 30 -m
-      "not (old_gpaw_only or dscf or gllb or do or legacy or lrtddft or hybrids or pipekmezey) or new_gpaw_ready"
-      $COV
-  after_script:
-    - mv .coverage coverage-$CI_JOB_NAME
-
-
-nightly-mpi-2-group-1-3-new:
-  extends:
-    - .nightly-mpi-new
-
-
-nightly-mpi-2-group-2-3-new:
-  extends:
-    - .nightly-mpi-new
-
-
-nightly-mpi-2-group-3-3-new:
-  extends:
-    - .nightly-mpi-new
-
-
-nightly-mpi-4-group-1-2-new:
-  extends:
-    - .nightly-mpi-new
   variables:
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
-nightly-mpi-4-group-2-2-new:
+nightly-gpawmpi-4-group-2-2:
   extends:
-    - .nightly-mpi-new
+    - .nightly
   variables:
-    GPAW_DEBUG: "1"
-
-
-nightly-mpi-8-group-1-2-new:
-  extends:
-    - .nightly-mpi-new
-
-
-nightly-mpi-8-group-2-2-new:
-  extends:
-    - .nightly-mpi-new
-
-
-nightly-mpi4py-4-group-1-2:
-  extends:
-    - .nightly-mpi-new
-  variables:
-    GPAW_MPI_BACKEND: "mpi4py"
-    GPAW_DEBUG: "1"
-
-
-nightly-mpi4py-4-group-2-2:
-  extends:
-    - .nightly-mpi-new
-  variables:
-    GPAW_MPI_BACKEND: "mpi4py"
+    GPAW_MPI_BACKEND: "cgpaw"
     GPAW_DEBUG: "1"
 
 
@@ -967,18 +832,13 @@ coverage-combine:
     - nightly-mpi-4-group-2-2
     - nightly-mpi-8-group-1-2
     - nightly-mpi-8-group-2-2
-    - nightly-mpi-1-group-1-1-new
-    - nightly-mpi-2-group-1-3-new
-    - nightly-mpi-2-group-2-3-new
-    - nightly-mpi-2-group-3-3-new
-    - nightly-mpi-4-group-1-2-new
-    - nightly-mpi-4-group-2-2-new
-    - nightly-mpi-8-group-1-2-new
-    - nightly-mpi-8-group-2-2-new
-    - nightly-mpi4py-4-group-1-2
-    - nightly-mpi4py-4-group-2-2
+    - nightly-gpawmpi-4-group-1-2
+    - nightly-gpawmpi-4-group-2-2
   tags:
     - xeon40
+  before_script:
+    - pip install coverage
+    - pip freeze
   script:
     - coverage combine coverage-gpwfiles coverage-nightly-*
     - coverage report
@@ -996,6 +856,11 @@ coverage-combine:
     paths:
       - htmlcov
     expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
 
 
 pages:

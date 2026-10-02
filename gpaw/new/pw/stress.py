@@ -18,21 +18,24 @@ if TYPE_CHECKING:
 
 
 def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
-                     ibzwfs, density, potential,
+                     ibzwfs: IBZWaveFunctions,
+                     density, potential,
                      vt_g: PWArray,
                      nt_g: PWArray,
                      dedtaut_g: PWArray | None) -> Array2D:
     """Calculate symmetrized stress tensor."""
     comm = ibzwfs.comm
     xp = density.nt_sR.xp
-    dom = density.nt_sR.desc
+    grid = density.nt_sR.desc
 
     ibzwfs.make_sure_wfs_are_read_from_gpw_file()
     s_vv = get_wfs_stress(ibzwfs, potential.dH_asii)
     s_vv += pot_calc.xc.stress_contribution(
         ibzwfs, density, pot_calc.interpolate)
 
-    if ibzwfs.kpt_comm.rank == 0 and ibzwfs.band_comm.rank == 0:
+    dist_dens = grid.comm.size != ibzwfs.domain_comm.size
+
+    if ibzwfs.kpt_band_comm.rank == 0 or dist_dens:
         vHt_h = potential.vHt_x
         assert vHt_h is not None
         pw = vHt_h.desc
@@ -41,26 +44,24 @@ def calculate_stress(pot_calc: PlaneWavePotentialCalculator,
         s_vv += (xp.einsum('Gz, Gv, Gw -> vw', vHt2_hz, G_Gv, G_Gv) *
                  pw.dv / (2 * np.pi))
         Q_aL = density.calculate_compensation_charge_coefficients()
-        s_vv += pot_calc.poisson_solver.stress_contribution(vHt_h, Q_aL)
-        if ibzwfs.domain_comm.rank == 0:
-            s_vv -= xp.eye(3) * potential.e_stress
+        s_vv += pot_calc.poisson_solver.stress_contribution(vHt_h, nt_g, Q_aL)
         s_vv += pot_calc.vbar_ag.stress_contribution(nt_g)
         s_vv += density.nct_aX.stress_contribution(vt_g)
-
+        if grid.comm.rank == 0:
+            s_vv -= xp.eye(3) * potential.e_stress
         if dedtaut_g is not None:
             s_vv += density.tauct_aX.stress_contribution(dedtaut_g)
 
     s_vv = as_np(s_vv)
-
     comm.sum(s_vv, 0)
 
-    vol = dom.volume
+    vol = grid.volume
     s_vv = 0.5 / vol * (s_vv + s_vv.T)
 
     # Symmetrize:
     sigma_vv = np.zeros((3, 3))
-    cell_cv = dom.cell_cv
-    icell_cv = dom.icell
+    cell_cv = grid.cell_cv
+    icell_cv = grid.icell
     rotation_scc = ibzwfs.ibz.symmetries.rotation_scc
     for U_cc in rotation_scc:
         M_vv = (icell_cv.T @ (U_cc @ cell_cv)).T

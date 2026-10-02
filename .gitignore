@@ -52,6 +52,7 @@ doc/setups/[A-Z]*.rst
 !doc/devel/gpaw-logo.svg
 !doc/templates/breadcrumbs.html
 !doc/tutorialsexercises/opticalresponse/bseplus_tutorial/*.csv
+*_student.py
 
 # If you run the tests, these may write out files
 *.gpw
@@ -80,3 +81,4 @@ doc/setups/[A-Z]*.rst
 !mypy.ini
 !pytest.ini
 !doc/words.txt
+!doc/summerschools/summerschool28/README.txt

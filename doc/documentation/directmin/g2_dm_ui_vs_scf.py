@@ -19,7 +19,8 @@ calc_args = {'xc': 'PBE',
              'basis': {'default': 'dzp',
                        'Be': 'pvalence.dz'},
              'mode': LCAO(),
-             'symmetry': 'off'}
+             'symmetry': 'off',
+             'legacy_gpaw': True}
 
 eig_string = ['scf', 'dm']
 with paropen('dm-g2-results.txt', 'w') as fdm, \
@@ -36,15 +37,15 @@ with paropen('dm-g2-results.txt', 'w') as fdm, \
                 e, iters, t = tools_and_data.get_energy_and_iters(atoms, dm)
 
                 # Compare with saved results from previous calculation
-                e_diff_saved_calc = abs(saved_results[dm][name][1] - e)
-                iters_diff_saved_calc = abs(saved_results[dm][name][0] - iters)
+                e_diff_saved_calc = e - saved_results[dm][name][1]
+                iters_diff_saved_calc = iters - saved_results[dm][name][0]
                 tools_and_data.compare_calculated_and_saved_results(
                     e_diff_saved_calc, iters_diff_saved_calc,
                     eig_string, name, dm)
 
-                print(name + "\t{}".format(iters),
+                print(name + f'\t{iters}',
                       file=fd[dm], flush=True)
 
             except ConvergenceError:
-                print(name + "\t{}".format(None),
+                print(name + f'\t{None}',
                       file=fd[dm], flush=True)

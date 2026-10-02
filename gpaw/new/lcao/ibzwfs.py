@@ -1,6 +1,8 @@
 from math import pi
 
 import numpy as np
+
+from gpaw.core.matrix import MatrixWithNoData
 from gpaw.new.density import Density
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.pwfd.ibzwfs import PWFDIBZWaveFunctions
@@ -9,7 +11,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 
 class LCAOIBZWaveFunctions(IBZWaveFunctions):
     def has_wave_functions(self):
-        return True
+        return not isinstance(self._wfs_u[0].C_nM, MatrixWithNoData)
 
     def move(self, relpos_ac, atomdist):
         from gpaw.new.lcao.builder import tci_helper
@@ -65,7 +67,7 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
             if mode == 'pw':
                 psit_nX = lcaowfs.to_pw_expansion(nbands, pw)
             elif mode == 'fd':
-                psit_nX = lcaowfs.to_uniform_grid(nbands, grid)
+                psit_nX = lcaowfs.to_uniform_grid(0, nbands)
             else:
                 raise ValueError(f'Illegal mode: {mode}')
 
@@ -86,6 +88,7 @@ class LCAOIBZWaveFunctions(IBZWaveFunctions):
                 setups=lcaowfs.setups,
                 relpos_ac=lcaowfs.relpos_ac,
                 atomdist=lcaowfs.atomdist,
+                domain_band_comm=lcaowfs.domain_band_comm,
                 ncomponents=self.ncomponents,
                 qspiral_v=qspiral_v)
             wfs.eig_n = eig_n

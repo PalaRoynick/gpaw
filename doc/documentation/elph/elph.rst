@@ -42,17 +42,17 @@ In GPAW `\nabla_u V^{KS}(\mathbf{r})` is determined using the finite difference 
     \sum_{a, ij} \langle  \tilde \psi_{i} \vert \tilde p^a_i \rangle \Delta H^a_{i_1 i_2} \langle \sum_{a, ij} \langle  \tilde \psi_{i} \vert \nabla_u  \tilde p^a_i \rangle \Delta H^a_{i_1 i_2} \langle \tilde p^a_j \vert \tilde \psi_{j} \rangle \tilde p^a_j \vert \tilde \psi_{j} \rangle
 
 
-Here we do not project the derivatives onto electronics states actually, not rather onto LCAO orbitals `\Psi_{NM}`, where `N` denotes the cell index and `M` the orbital index. We use a The Fourier transform from the `\mathbf{k}`-space Bloch  to the real space representation so that we can can later to compute `M_{mn}^\nu` for arbitrary `\mathbf{q}`:
+Here we do not project the derivatives onto electronics states actually, not rather onto LCAO orbitals `\Psi_{NM}`, where `N` denotes the cell index and `M` the orbital index. We use a The Fourier transform from the `\mathbf{k}`-space Bloch  to the real space representation so that we can later to compute `M_{mn}^\nu` for arbitrary `\mathbf{q}`:
 
 .. math::
 
-    \mathbf{g}_{\substack{N M\\	N^\prime M^\prime}}^{sc} =  FFT\left[ \langle \Psi_{NM}(\mathbf{k}) \vert \nabla_u V^{KS} \vert \Psi_{N^\prime M^\prime}(\mathbf{k}) \rangle \right].
+    \mathbf{g}_{\substack{N M\\ N^\prime M^\prime}}^{sc} =  FFT\left[ \langle \Psi_{NM}(\mathbf{k}) \vert \nabla_u V^{KS} \vert \Psi_{N^\prime M^\prime}(\mathbf{k}) \rangle \right].
 
 Finally, the electron-phonon coupling matrix is obtained by projecting the supercell matrix into the primitive unit cell bands `m, n` and phonon modes `\nu` in :meth:`~gpaw.elph.ElectronPhononMatrix`:
 
 .. math::
 
-    M_{mn}^\nu(\mathbf{k}, \mathbf{q}) = \sum_{\substack{N M\\	N^\prime M^\prime}} C_{mM}^{\star} C_{nM^\prime} \mathbf{g}_{\mu}^{sc} \cdot \mathbf{u}_{q \nu} e^{2\pi i [(\mathbf{k}+\mathbf{q})\cdot \mathbf{R_N} - \mathbf{k}\cdot \mathbf{R_N^\prime}]},
+    M_{mn}^\nu(\mathbf{k}, \mathbf{q}) = \sum_{\substack{N M\\ N^\prime M^\prime}} C_{mM}^{\star} C_{nM^\prime} \mathbf{g}_{\mu}^{sc} \cdot \mathbf{u}_{q \nu} e^{2\pi i [(\mathbf{k}+\mathbf{q})\cdot \mathbf{R_N} - \mathbf{k}\cdot \mathbf{R_N^\prime}]},
 
 where `C_{nM}` are the LCAO coefficients and `\mathbf{u}_{q \nu}` are the mass-scaled phonon displacement vectors.
 
@@ -76,4 +76,4 @@ Code
     :members:
 
 .. autoclass:: gpaw.elph.ElectronPhononMatrix
-    :members: 
+    :members:

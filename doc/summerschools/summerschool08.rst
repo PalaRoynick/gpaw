@@ -1,7 +1,7 @@
 .. _summerschool08:
 
 =======================
-CAMd Summer school 2008
+CAMD Summer school 2008
 =======================
 
 Databar

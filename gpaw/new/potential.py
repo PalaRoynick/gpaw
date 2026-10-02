@@ -18,19 +18,20 @@ class Potential:
                  dedtaut_sR: UGArray | None,
                  vHt_x: XArray | None = None,
                  e_stress: float = np.nan):
+        assert vt_sR.desc.comm.size == dH_asii.layout.atomdist.comm.size
         self.vt_sR = vt_sR
         self.dH_asii = dH_asii
         self.dedtaut_sR = dedtaut_sR
         self.vHt_x = vHt_x  # initial guess for Hartree potential
-        self.e_stress = e_stress  # idotropic contribution to stress tensor
+        self.e_stress = e_stress  # isotropic stress contribution
 
     def __repr__(self):
         return (f'Potential({self.vt_sR}, {self.dH_asii}, '
                 f'{self.dedtaut_sR})')
 
     def __str__(self) -> str:
-        return (f'potential:\n'
-                f'  grid points: {self.vt_sR.desc.size}\n')
+        return (f'Potential:\n'
+                f'  Grid points: {self.vt_sR.desc.size}\n')
 
     def deltaH(self, P_ani, out_ani, spin):
         if len(P_ani.dims) == 1:  # collinear wave functions
@@ -74,17 +75,21 @@ class Potential:
 
     def redist(self,
                grid: UGDesc,
-               desc: XDesc,
+               desc: XDesc | None,
                atomdist: AtomDistribution,
                comm1: MPIComm,
                comm2: MPIComm) -> Potential:
+        vHt_x = self.vHt_x
+        if desc is not None and vHt_x is not None:
+            vHt_x = vHt_x.redist(desc, comm1, comm2)
+
         return Potential(
             self.vt_sR.redist(grid, comm1, comm2),
             self.dH_asii.redist(atomdist, comm1, comm2),
             None if self.dedtaut_sR is None else self.dedtaut_sR.redist(
                 grid, comm1, comm2),
-            None if self.vHt_x is None else self.vHt_x.redist(
-                desc, comm1, comm2))
+            vHt_x,
+            self.e_stress)
 
     def gather(self):
         dH_asp = self.dH_asii.to_cpu().to_lower_triangle().gather()
@@ -124,14 +129,14 @@ class Potential:
             raise ValueError('No electrostatic potential')
         if isinstance(self.vHt_x, UGArray):
             vHt_r = self.vHt_x.gather()
-        elif isinstance(self.vHt_x, PWArray):
+        else:
+            assert isinstance(self.vHt_x, PWArray)
             vHt_g = self.vHt_x.gather()
             if vHt_g is not None:
                 vHt_r = vHt_g.ifft(grid=vHt_g.desc.minimal_uniform_grid())
             else:
                 vHt_r = None
-        else:
-            return np.nan  # TB-mode
+
         vacuum_level = 0.0
         if vHt_r is not None:
             for c, periodic in enumerate(grid.pbc_c):

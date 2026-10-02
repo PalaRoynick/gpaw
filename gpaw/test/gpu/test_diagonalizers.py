@@ -11,7 +11,7 @@ from gpaw.gpu.diagonalization import (CPUPYDiagonalizer, CuPyDiagonalizer,
                                       DiagonalizerOptions)
 from gpaw.gpu.diagonalization.magma_diagonalizer import MagmaDiagonalizer
 from gpaw.gpu.mpi import CuPyMPI
-from gpaw.mpi import world, MPIComm
+from gpaw.mpi import MPIComm, world
 from gpaw.new.c import GPU_AWARE_MPI
 from gpaw.test.gpu import assert_eigenpairs, fill_uplo
 
@@ -84,7 +84,7 @@ def diagonalizer_tester_common(
         cp.testing.assert_allclose(matrix_orig.data, matrix.data)
 
     # Gather eigenvectors back to root rank for checking
-    eigvecs = eigvecs.gather(0, broadcast=False)
+    eigvecs = eigvecs.gather(broadcast=False)
 
     dtype = matrix.dtype
     atol = 1e-12 if (dtype == np.float64 or dtype == np.complex128) else 1e-5

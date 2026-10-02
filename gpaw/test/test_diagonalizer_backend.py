@@ -56,7 +56,7 @@ def backend_problemsize_kwargs(request, require_real_mpi, mpi):
             return ElpaDiagonalizer, eigenproblem_size, scalapack_kwargs
 
 
-@pytest.mark.parametrize('dtype,', [float, complex])
+@pytest.mark.parametrize('dtype', [float, complex])
 def test_diagonalizer_eigenproblem_correctness(backend_problemsize_kwargs,
                                                dtype, mpi):
     world = mpi.comm

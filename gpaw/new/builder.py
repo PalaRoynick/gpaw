@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from functools import cached_property
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,6 @@ from gpaw.core.domain import Domain
 from gpaw.gpu import cpupy as fake_cupy
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.lfc import BasisFunctions
-from gpaw.mixer import MixerWrapper, get_mixer_from_keywords
 from gpaw.mpi import (MPIComm, Parallelization, broadcast,
                       normalize_communicator, serial_comm, synchronize_atoms)
 from gpaw.new import prod
@@ -94,12 +94,32 @@ class DFTComponentsBuilder:
         self._backwards_comatible = params.experimental.get(
             'backwards_compatible', True)
 
+        ffilter: Callable | None
+        if self.mode != 'pw':
+            # Runtime Fourier-filtering of potentials
+            # (zero-potential and projectors).
+            gamma = 1.6
+            N_c = params.gpts
+            if N_c is None:
+                h = (params.h or 0.2) / Bohr
+            else:
+                icell_vc = np.linalg.inv(self.atoms.cell)
+                h = ((icell_vc**2).sum(0)**-0.5 / N_c).max() / Bohr
+
+            def ffilter(rgd, rcut, f_r, l=0):
+                gcut = np.pi / h - 2 / rcut / gamma
+                ftmp = rgd.filter(f_r, rcut * gamma, gcut, l)
+                f_r[:] = ftmp[:len(f_r)]
+        else:
+            ffilter = None
+
         self.setups = Setups(
             atoms.numbers,
             params.setups,
             params.basis,
             xcfunc,
             world=comm,
+            filter=ffilter,
             backwards_compatible=self._backwards_comatible)
         if params.hund:
             c = params.charge / len(atoms)
@@ -172,7 +192,22 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
+        self.distribute_density = (
+            params.parallel.get('distribute_density', False) and
+            comm.size > self.communicators['d'].size)
+
+        if self.distribute_density:
+            assert self.mode == 'pw'
+
         self.grid, self.fine_grid = self.create_uniform_grids()
+        if self.distribute_density:
+            self.wf_grid = self.grid.new(comm=self.communicators['d'])
+            self.wf_atomdist = AtomDistribution(
+                self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
+                self.wf_grid.comm)
+        else:
+            self.wf_grid = self.grid
+            self.wf_atomdist = self.atomdist
 
         self.xc = create_functional(xcfunc, self.fine_grid, self.xp)
 
@@ -271,13 +306,14 @@ class DFTComponentsBuilder:
             self.ibz,
             self.ncomponents % 3,
             self.atoms.pbc,
-            self.grid,
+            self.wf_grid,
             self.setups,
             self.dtype,
             self.relpos_ac,
             self.communicators['w'],
             self.communicators['k'],
             self.communicators['b'],
+            self.communicators['D'],
             self.xp,
             gpu_add_and_integrate=False,
             new_basis=self.params.experimental.get('new_basis', False))
@@ -326,6 +362,15 @@ class DFTComponentsBuilder:
         assert not psparams
         return poisson_solvers[0]
 
+    def create_mixer(self):
+        return self.params.mixer.build(desc=self.grid,
+                                       atomdist=self.atomdist,
+                                       setups=self.setups,
+                                       relpos_ac=self.relpos_ac,
+                                       world=self.communicators['w'],
+                                       ncomponents=self.ncomponents,
+                                       xp=self.xp)
+
     def create_ibz_wave_functions(self,
                                   basis: BasisFunctions,
                                   potential: Potential) -> IBZWaveFunctions:
@@ -340,16 +385,8 @@ class DFTComponentsBuilder:
     def create_scf_loop(self):
         hamiltonian = self.create_hamiltonian_operator()
         occ_calc = self.create_occupation_number_calculator()
+        mixer = self.create_mixer()
         eigensolver = self.create_eigensolver(hamiltonian)
-
-        mixer = MixerWrapper(
-            get_mixer_from_keywords(self.atoms.pbc.any(),
-                                    self.ncomponents,
-                                    **self.params.mixer.params),
-            self.ncomponents,
-            self.grid._gd,
-            world=self.communicators['w'])
-
         return SCFLoop(hamiltonian, occ_calc,
                        eigensolver, mixer, self.communicators['w'],
                        {key: value
@@ -485,11 +522,11 @@ def normalize_initial_magmoms(
     elif isinstance(magmoms, float):
         magmom_av[:, 2] = magmoms
     else:
-        magmoms = np.asarray(magmoms)
-        if magmoms.ndim == 1:
-            magmom_av[:, 2] = magmoms
+        magmoms_array = np.asarray(magmoms)
+        if magmoms_array.ndim == 1:
+            magmom_av[:, 2] = magmoms_array
         else:
-            magmom_av[:] = magmoms
+            magmom_av[:] = magmoms_array
             ncomponents = 4
 
     if (ncomponents == 2 and

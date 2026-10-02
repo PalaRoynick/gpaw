@@ -334,3 +334,13 @@ One can also do this from the :ref:`command line <cli>`::
 .. autoclass:: gpaw.dos.DOSCalculator
     :members:
 .. autofunction:: gpaw.dos.get_projector_numbers
+
+
+PDOS with and without SOC
+-------------------------
+
+Here is how to include spin-orbit coupling (SOC) in a (P)DOS calculation:
+
+.. literalinclude:: au_pdos_soc.py
+
+.. image:: pdos_w_and_wo_soc.svg

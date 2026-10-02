@@ -58,16 +58,18 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             h=self.params.h,
             interpolation=self.params.interpolation or 'fft',
             ecut=self.ecut,
-            comm=self.communicators['d'])
+            comm=self.communicators['w' if self.distribute_density else 'd'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
+
         return grid, fine_grid
 
     def create_wf_description(self) -> Domain:
         return PWDesc(ecut=self.ecut,
                       cell=self.grid.cell,
-                      comm=self.grid.comm,
-                      dtype=self.dtype)
+                      comm=self.communicators['d'],
+                      dtype=self.dtype,
+                      _lazy=True)
 
     def create_xc_functional(self):
         return create_functional(self._xc,
@@ -166,6 +168,9 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.create_poisson_solver(extensions),
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
+            wf_grid=self.wf_grid,
+            wf_atomdist=self.wf_atomdist,
+            kpt_band_comm=self.communicators['D'],
             soc=self.soc,
             xp=self.xp,
             extensions=extensions)
@@ -173,11 +178,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
     def create_hamiltonian_operator(self, blocksize=10):
         if self.ncomponents < 4:
             if self.xc.exx_fraction == 0.0:
-                return PWHamiltonian(self.grid, self.dtype, self.xp)
+                return PWHamiltonian(self.wf_grid, self.dtype, self.xp)
             return PWHybridHamiltonian(
                 self.grid, self.wf_desc, self.xc, self.setups,
                 self.relpos_ac, self.atomdist, self.log,
-                self.ibz.bz.size_c,
+                self.ibz.bz,
                 self.communicators['k'],
                 self.communicators['b'],
                 self.communicators['w'])
@@ -215,10 +220,11 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         shape = (self.nbands, 2) if self.ncomponents == 4 else (self.nbands,)
 
         for wfs in ibzwfs:
-            pw = self.wf_desc.new(kpt=wfs.kpt_c, dtype=self.dtype)
+            pw = self.wf_desc.new(kpt=wfs.kpt_c,
+                                  dtype=self.dtype,
+                                  _lazy=True)
             if wfs.spin == 0:
                 check_g_vector_ordering(self.grid, pw, index_kG[wfs.k])
-
             index = (wfs.spin, wfs.k) if self.ncomponents != 4 else (wfs.k,)
             data = reader.wave_functions.proxy('coefficients', *index)
             data.scale = c
@@ -258,6 +264,9 @@ def check_g_vector_ordering(grid: UGDesc,
     if np.issubdtype(pw.dtype, np.floating):
         size = (size[0], size[1], size[2] // 2 + 1)
     index0_G = pw.indices(size)
+    if pw._ekin_G is None:
+        # Save some memory (pw is in _lazy=True mode):
+        pw._indices_cache.clear()
     nG = len(index0_G)
     assert (index0_G == index_G[:nG]).all()
     assert (index_G[nG:] == -1).all()

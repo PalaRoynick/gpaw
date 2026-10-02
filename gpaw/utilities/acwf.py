@@ -2,7 +2,7 @@
 
 Do equation-of-state calculation for the 10 reference systems from
 the AiiDA common workflows (ACWF) benchmark:
-DIAMOND, FCC, SC, BCC, XO3, XO, X4O6, XO2, X4O10, X2O.
+Diamond, FCC, SC, BCC, XO3, XO, X4O6, XO2, X4O10, X2O.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from ase.data import atomic_numbers
 from gpaw.atom.check import all_names
 from gpaw.dft import Parameters
 from gpaw.mpi import normalize_communicator
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 
 def eos(atoms: Atoms,
@@ -80,14 +80,19 @@ def fit(strains: np.ndarray,
     return strain, e0, d2eds2
 
 
-def run_eos_calculation(structure: str, symbol: str, **params) -> dict:
+def run_eos_calculation(structure: str,
+                        symbol: str,
+                        tag: str = '',
+                        **params) -> dict:
     """Create GPAW calculator and do EOS calculation."""
     atoms = reference_structure(symbol, structure)
     builder = Parameters(**params).dft_component_builder(atoms, log=None)
     params['kpts'] = builder.ibz.bz.size_c  # type: ignore
     params['gpts'] = builder.grid.size
     params.pop('h', None)
-    atoms.calc = GPAW(txt=f'{builder.mode}-{structure}.txt', **params)
+    if tag:
+        tag += '-'
+    atoms.calc = GPAW(txt=f'{tag}{structure}.txt', **params)
     data = eos(atoms)
     return data
 
@@ -100,9 +105,9 @@ def workflow() -> None:
     from myqueue.workflow import run
     symbol, _, setup_name = Path().absolute().name.partition('.')
     for x in acwf_structures:
-        run(function=work, args=[x, symbol, setup_name, 'pw'],
+        run(function=work, args=[x, symbol, setup_name, 'pw', 'pw'],
             cores=24, tmax='1h', name=f'pw-{x}')
-        run(function=work, args=[x, symbol, setup_name, 'lcao'],
+        run(function=work, args=[x, symbol, setup_name, 'lcao', 'lcao'],
             cores=24, tmax='5h', name=f'lcao-{x}', restart=2)
 
 
@@ -110,7 +115,9 @@ def work(structure: str,
          symbol: str,
          setup_name: str = '',
          mode: str = 'pw',
+         tag: str = '',
          *,
+         backwards_compatible=True,
          world=None):
     """Do single EOS calculations with PBE."""
     world = normalize_communicator(world)
@@ -130,9 +137,12 @@ def work(structure: str,
     data = run_eos_calculation(
         structure,
         symbol,
+        tag,
         **params)
     if world.rank == 0:
-        Path(f'{mode}-{structure}.json').write_text(
+        if tag:
+            tag += '-'
+        Path(f'{tag}{structure}.json').write_text(
             json.dumps(data, indent=1))
 
 
@@ -143,7 +153,7 @@ def create_folders() -> None:
 
 
 def collect_data() -> None:
-    """Collect everything need for a table on the web-page."""
+    """Collect everything we need for a table on the web-page."""
     results = {}
     for name in all_names:
         result: dict[str, list[tuple[str, float]]] = {'pw': [], 'lcao': []}
@@ -154,6 +164,106 @@ def collect_data() -> None:
                 result[mode].append((structure, strain))
         results[name] = result
     Path('acwf-results.json').write_text(json.dumps(results))
+
+
+def _energies(p: Path) -> dict[str, list[float]]:
+    """Read Wien2k "formation" energies.
+
+    Files:
+
+      results-unaries-verification-PBE-v1-wien2k-dk_0.06.json
+      results-oxides-verification-PBE-v1-wien2k-dk_0.06.json
+
+    from the folder:
+
+      ACWF-verification-data-and-scripts/
+        acwf-verification-scripts/acwf_paper_plots/
+          code-data/
+    """
+    d = json.loads(p.read_text())['BM_fit_data']
+    D: dict[str, dict] = {}
+    for k, v in d.items():
+        s, name = k.split('-')
+        if s not in D:
+            D[s] = {}
+        D[s][name] = v['E0']
+    p = p.with_name(p.name.replace('oxides', 'unaries'))
+    d = json.loads(p.read_text())['BM_fit_data']
+    for k, v in d.items():
+        s, name = k.split('/')
+        s = s.split('-')[0]
+        D[s][name] = v['E0']
+    d = {}
+    for s, v in D.items():
+        if s == 'O':
+            v['XO'] *= 2
+            v['X2O5'] *= 2
+        ex = v['FCC']
+        eo = v['XO'] - ex
+        d[s] = [v['Diamond'] / 2 - ex,
+                v['SC'] - ex,
+                v['BCC'] - ex,
+                (v['XO3'] - ex - 3 * eo) / 4,
+                (v['X2O3'] / 2 - 2 * ex - 3 * eo) / 5,
+                (v['XO2'] - ex - 2 * eo) / 3,
+                (v['X2O5'] / 2 - 2 * ex - 5 * eo) / 7,
+                (v['X2O'] - 2 * ex - eo) / 3]
+    return d
+
+
+def check(dir: Path, silent=True) -> tuple[float, float, list[float]]:
+    d = []
+    v = {}
+    for p in dir.glob('*.json'):
+        name = p.stem.split('-')[-1]
+        if name[0].islower():
+            continue
+        data = json.loads(p.read_text())
+        x = data['strain']
+        d.append(x * 100)
+        e = data['energy']
+        v[name] = e
+
+    n = len(d)
+    if n == 0:
+        return np.nan, np.nan, []
+    mean = sum(d) / n
+    meanabs = sum([abs(s) for s in d]) / n
+    rms = (sum([s**2 for s in d]) / n)**0.5
+    maxabs = max([abs(s) for s in d])
+
+    ee = np.nan
+    if n == 10:
+        ex = v['FCC']
+        eo = v['XO'] - ex
+        E = [v['Diamond'] / 2 - ex,
+             v['SC'] - ex,
+             v['BCC'] - ex,
+             (v['XO3'] - ex - 3 * eo) / 4,
+             (v['X4O6'] - 4 * ex - 6 * eo) / 10,
+             (v['XO2'] - ex - 2 * eo) / 3,
+             (v['X4O10'] - 4 * ex - 10 * eo) / 14,
+             (v['X2O'] - 2 * ex - eo) / 3]
+        symbol = dir.stem.split('.')[0]
+        dE = np.array(E) - ENERGIES[symbol]
+        ee = abs(dE).max()
+
+    if not silent:
+        print(f'{dir.name:25} {n:2}',
+              f'{mean:+7.2f} % {meanabs:7.2f} % {rms:7.2f} % {maxabs:7.2f} %',
+              f'{ee:8.3f} eV')
+
+    return maxabs, ee, d
+
+
+def main():
+    import sys
+    results = []
+    for x in sys.argv[1:]:
+        e, _, _ = check(Path(x), silent=False)
+        results.append((e, x))
+    for e, x in sorted(results):
+        print(f'{e:7.2f} {x}')
 
 
 def reference_structure(symbol: str,
@@ -1391,6 +1501,108 @@ volumes: dict[str, dict[str, float]] = {
     }
 }
 
+# Wien2k formation energies (eV/atom):
+#
+#  Diamond, SC, BCC, XO3, X4O6, XO2, X4O10, X2O
+#
+# relative to X and oxygen energies E(FCC) and E(XO)-E(FCC):
+ENERGIES = {
+    'Ac': [1.617, 0.674, 0.123, 2.785, 0.074, 0.818, 1.952, 0.927],
+    'Ag': [0.784, 0.332, 0.031, 1.152, 0.157, 0.473, 1.001, 0.162],
+    'Al': [0.744, 0.370, 0.096, 0.882, -0.697, -0.213, 1.454, 0.891],
+    'Am': [1.360, -0.236, -0.380, 1.544, 0.193, 0.132, 1.432, 0.799],
+    'Ar': [0.010, 0.005, 0.001, -0.342, -0.070, -0.099, -0.593, 0.078],
+    'As': [-0.231, -0.431, -0.105, 0.003, -0.229, -0.212, 0.855, 0.420],
+    'At': [0.083, -0.152, -0.011, 2.934, -0.674, -0.766, -0.243, 0.230],
+    'Au': [0.714, 0.198, 0.020, 0.420, -0.284, -0.111, 0.550, 0.411],
+    'B': [-0.412, -0.263, 0.358, -0.429, -0.599, -0.259, 1.273, 1.330],
+    'Ba': [0.940, 0.293, -0.015, 4.027, 1.377, 2.281, 2.985, 0.538],
+    'Be': [1.553, 0.922, 0.019, 3.543, 1.591, 2.503, 3.895, 1.481],
+    'Bi': [0.012, -0.139, -0.053, 3.848, -0.098, -0.018, 0.942, 0.478],
+    'Br': [-0.029, -0.225, -0.033, -0.242, -0.232, -0.101, 0.365, 0.383],
+    'C': [-4.435, -1.810, -0.211, 0.132, 0.404, 0.658, 1.357, 0.803],
+    'Ca': [1.044, 0.395, 0.015, 4.666, 1.661, 2.659, 3.500, 0.749],
+    'Cd': [0.321, 0.117, 0.050, 2.546, 0.834, 1.388, 1.996, 0.420],
+    'Ce': [0.732, 0.344, 0.222, 2.592, 0.253, 0.375, 2.020, 0.702],
+    'Cl': [-0.074, -0.250, -0.041, -0.034, -0.013, 0.218, 0.495, 0.389],
+    'Cm': [-0.804, -0.114, -0.227, 1.915, 0.274, 0.298, 1.632, 0.692],
+    'Co': [1.177, 0.857, 0.240, 0.722, -0.260, -0.042, 1.331, 0.668],
+    'Cr': [1.771, 0.637, -0.389, -0.044, -0.219, -0.287, 1.246, 0.650],
+    'Cs': [0.255, 0.094, 0.001, 1.869, 0.868, 1.433, 1.670, -0.549],
+    'Cu': [1.043, 0.472, 0.036, 1.445, 0.332, 0.776, 1.512, 0.402],
+    'Dy': [0.732, 0.445, -0.026, 3.051, 0.710, 1.234, 2.645, 0.662],
+    'Er': [1.251, 0.484, -0.018, 3.214, 0.767, 1.352, 2.714, 0.751],
+    'Eu': [-0.342, 0.055, 0.018, 2.721, 0.613, 1.024, 2.493, 0.572],
+    'F': [-0.187, -0.268, -0.045, 0.649, 0.290, 0.546, 0.121, -0.089],
+    'Fe': [1.135, 0.958, 0.308, 0.180, -0.412, -0.413, 1.123, 0.717],
+    'Fr': [0.200, 0.081, 0.002, 1.433, 0.777, 1.230, 1.561, -0.430],
+    'Ga': [0.258, 0.060, 0.015, 1.372, -0.181, 0.234, 1.503, 0.439],
+    'Gd': [-0.052, 0.295, -0.008, 2.855, 0.652, 1.108, 2.563, 0.590],
+    'Ge': [-0.328, -0.085, 0.008, 0.769, 0.205, 0.022, 1.510, 0.624],
+    'H': [-0.463, -0.146, 0.010, 0.715, 0.044, 0.473, 0.901, -0.911],
+    'He': [0.005, 0.002, 0.000, -0.511, -0.576, -0.864, -1.487, 0.031],
+    'Hf': [2.612, 1.008, 0.105, 1.096, -0.571, -0.758, 1.192, 0.820],
+    'Hg': [0.071, 0.003, -0.009, 1.437, 0.359, 0.719, 1.205, 0.241],
+    'Ho': [1.104, 0.466, -0.023, 3.133, 0.738, 1.293, 2.679, 0.706],
+    'I': [0.063, -0.158, -0.018, -0.341, -0.559, -0.589, -0.073, 0.287],
+    'In': [0.337, 0.096, 0.010, 1.586, -0.149, 0.251, 1.288, 0.396],
+    'Ir': [1.019, 0.998, 0.633, -1.932, -1.575, -1.752, -0.614, 0.548],
+    'K': [0.297, 0.105, 0.000, 2.576, 0.805, 1.375, 1.458, -0.702],
+    'Kr': [0.011, 0.005, 0.001, -0.533, -0.100, -0.126, -0.351, 0.195],
+    'La': [1.015, 0.499, 0.118, 3.275, 0.302, 1.143, 2.338, 0.668],
+    'Li': [0.516, 0.121, 0.002, 2.544, 0.633, 1.275, 1.747, -1.222],
+    'Lu': [1.954, 0.810, 0.095, 2.842, 0.109, 0.791, 2.236, 1.003],
+    'Mg': [0.757, 0.367, 0.016, 4.271, 1.618, 2.541, 3.613, 1.034],
+    'Mn': [1.334, 0.872, 0.075, -0.154, -0.396, -0.463, 1.062, 0.734],
+    'Mo': [1.808, 0.730, -0.421, -1.273, -0.729, -1.031, 0.142, 0.655],
+    'N': [-1.365, -1.245, -0.223, 0.516, 0.247, 0.564, 1.042, 0.516],
+    'Na': [0.337, 0.119, 0.001, 2.513, 0.672, 1.192, 1.335, -0.848],
+    'Nb': [2.208, 0.663, -0.324, -0.054, -0.355, -0.541, 0.780, 0.654],
+    'Nd': [-0.154, -0.354, 0.080, 2.238, 0.421, 0.655, 2.138, 0.581],
+    'Ne': [0.008, 0.003, 0.001, -0.147, -0.251, -0.442, -1.177, 0.013],
+    'Ni': [1.247, 0.678, 0.066, 1.169, 0.028, 0.391, 1.484, 0.641],
+    'Np': [1.456, -0.433, -0.341, 0.987, 0.042, -0.101, 1.101, 0.901],
+    'O': [-0.805, -0.831, -0.185, 0.801, 0.372, 0.837, 0.913, 0.283],
+    'Os': [1.166, 1.397, 0.747, -2.919, -1.841, -2.397, -1.144, 0.613],
+    'P': [-0.304, -0.751, -0.164, -1.239, -0.399, -0.507, 0.707, 0.415],
+    'Pa': [1.701, 0.643, 0.170, 1.176, 0.413, -0.333, 0.793, 1.101],
+    'Pb': [0.265, 0.192, 0.043, 1.740, 0.507, 0.528, 1.586, 0.566],
+    'Pd': [1.142, 0.514, 0.051, 0.612, -0.294, -0.073, 0.859, 0.515],
+    'Pm': [-0.472, -0.334, 0.042, 2.385, 0.494, 0.791, 2.270, 0.569],
+    'Po': [-0.033, -0.335, -0.086, 3.189, -0.647, -0.905, 0.135, 0.138],
+    'Pr': [0.278, -0.092, 0.157, 2.274, 0.343, 0.514, 2.012, 0.621],
+    'Pt': [1.073, 0.458, 0.102, -0.556, -0.863, -0.816, 0.171, 0.575],
+    'Pu': [1.284, -0.348, -0.406, 1.224, 0.114, -0.008, 1.245, 0.871],
+    'Ra': [0.893, 0.372, -0.002, 3.444, 1.239, 2.058, 2.748, 0.666],
+    'Rb': [0.262, 0.096, 0.001, 2.496, 0.829, 1.412, 1.535, -0.613],
+    'Re': [1.549, 1.325, 0.245, -3.076, -1.661, -2.212, -1.162, 0.691],
+    'Rh': [1.123, 0.797, 0.348, -0.348, -0.792, -0.766, 0.442, 0.532],
+    'Rn': [0.015, 0.007, 0.001, -1.317, -0.465, -0.607, -0.506, 0.417],
+    'Ru': [1.073, 1.020, 0.508, -1.291, -1.092, -1.355, -0.003, 0.587],
+    'S': [-0.295, -0.678, -0.172, -0.633, -0.426, -0.359, 0.547, 0.301],
+    'Sb': [-0.013, -0.271, -0.087, 0.398, -0.244, -0.358, 0.734, 0.385],
+    'Sc': [1.939, 0.713, 0.052, 3.322, 0.495, 1.317, 2.856, 0.799],
+    'Se': [-0.220, -0.550, -0.140, -0.373, -0.521, -0.572, 0.405, 0.200],
+    'Si': [-0.530, -0.185, -0.014, -0.641, -0.460, -0.917, 1.073, 0.688],
+    'Sm': [-0.497, -0.173, 0.037, 2.558, 0.559, 0.916, 2.391, 0.568],
+    'Sn': [-0.058, 0.012, 0.011, 1.251, 0.581, 0.198, 1.195, 0.548],
+    'Sr': [0.954, 0.387, 0.007, 4.425, 1.521, 2.463, 3.205, 0.731],
+    'Ta': [2.643, 0.878, -0.241, -0.828, -0.763, -1.039, 0.144, 0.675],
+    'Tb': [0.328, 0.407, -0.022, 2.961, 0.683, 1.174, 2.609, 0.622],
+    'Tc': [1.369, 0.975, 0.181, -1.659, -1.032, -1.365, -0.126, 0.659],
+    'Te': [0.004, -0.370, -0.105, -0.285, -0.663, -0.867, 0.107, 0.105],
+    'Th': [1.953, 0.878, 0.146, 1.828, -0.234, -0.401, 1.291, 1.143],
+    'Ti': [2.287, 0.778, 0.050, 1.818, 0.192, 0.314, 2.256, 0.575],
+    'Tl': [0.355, 0.117, -0.014, 1.591, 0.149, 0.507, 1.248, 0.040],
+    'Tm': [1.199, 0.498, -0.012, 3.301, 0.799, 1.414, 2.752, 0.799],
+    'U': [0.644, -0.179, -0.114, 0.741, -0.072, -0.218, 0.918, 0.968],
+    'V': [2.149, 0.607, -0.244, 0.604, 0.033, 0.038, 1.674, 0.573],
+    'W': [2.165, 0.960, -0.479, -2.405, -1.222, -1.660, -0.697, 0.698],
+    'Xe': [0.013, 0.006, 0.001, -0.537, -0.334, -0.439, -0.382, 0.340],
+    'Y': [1.952, 0.765, 0.091, 3.215, 0.245, 1.033, 2.391, 0.890],
+    'Yb': [1.156, 0.508, -0.010, 3.411, 0.833, 1.487, 2.801, 0.864],
+    'Zn': [0.448, 0.204, 0.062, 2.713, 1.019, 1.551, 2.404, 0.645],
+    'Zr': [2.359, 0.838, 0.043, 1.610, -0.231, -0.325, 1.593, 0.732]}
 
 if __name__ == '__main__':
-    print(work('FCC', 'H'))
+    main()

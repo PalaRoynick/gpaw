@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from ase.units import Bohr
-from gpaw.new.ase_interface import GPAW
+from gpaw import GPAW
 
 calc = GPAW('hli.gpw', txt=None)
 elpot = calc.dft.electrostatic_potential()
@@ -8,7 +8,7 @@ elpot = calc.dft.electrostatic_potential()
 # Avarage PS potentials:
 vh, vli = elpot.atomic_potentials()
 zh, zli = calc.atoms.positions[:, 2]
-rh, rli = [max(setup.rcut_j) * Bohr for setup in elpot.setups]
+rh, rli = (max(setup.rcut_j) * Bohr for setup in elpot.setups)
 plt.plot([zh - rh, zh + rh], [vh, vh], label=r'$\tilde v$(H)')
 plt.plot([zli - rli, zli + rli], [vli, vli], label=r'$\tilde v$(Li)')
 

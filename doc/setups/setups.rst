@@ -24,6 +24,17 @@ Setup releases
    * - Date
      - Tarfile
      -
+   * - Aug 31 2026
+     - 26.8.0
+     - New PAW potential for flourine added (softer and more accurate).
+       You can use it by
+       specifying ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
+       It has been generated with the following command::
+
+         $ gpaw dataset F -fPBE -w -t v2 -b
+
+       There is also an LDA version.
+
    * - Nov 27 2024
      - 24.11.0_
      - PAW potentials for lanthanides added.
@@ -141,6 +152,45 @@ See also `NIST Atomic Reference Data`_.
 
 .. _NIST Atomic Reference Data: https://physics.nist.gov/PhysRefData/DFTdata/Tables/ptable.html
 
+Where GPAW looks for PAW datasets
+---------------------------------
+
+When running a calculation, GPAW searches for PAW setup datasets in the
+directories listed in the Python list ``gpaw.setup_paths``.
+
+GPAW constructs this search list at startup with the following priority order:
+
+1. **The environment variable :envvar:`GPAW_SETUP_PATH`:**
+   Directories specified in this colon-separated shell environment variable are
+   prepended to the front of ``gpaw.setup_paths``, giving them the highest
+   precedence.
+
+2. **User configuration (:file:`~/.gpaw/rc.py`):**
+   Directories configured or appended to ``gpaw.setup_paths`` via the user
+   rc file (typically created or updated when running :command:`gpaw install-data`).
+
+3. **The ``gpaw-data`` Python package:**
+   If installed, setups provided by the ``gpaw-data`` package serve as the
+   default fallback at the end of the list.
+
+Runtime modification in Python
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can inspect or modify the search paths dynamically inside a Python script:
+
+.. code-block:: python
+
+    import gpaw
+
+    # Inspect current paths
+    print(gpaw.setup_paths)
+
+    # Prepend a custom directory to give it top priority
+    gpaw.setup_paths.insert(0, '/path/to/custom/setups')
+
+When GPAW needs a setup for an element, it iterates through ``gpaw.setup_paths``
+in order and uses the first matching setup file it finds.
+
 
 Advanced topics
 ===============
@@ -158,7 +208,8 @@ ACWF-benchmark
 ==============
 
 Equation-of-state calculations for the 10 reference systems from
-the `AiiDA common workflows (ACWF) benchmark <ACWF>`_:
+the `AiiDA common workflows (ACWF) benchmark
+<https://acwf-verification.materialscloud.org/>`_:
 DIAMOND, FCC, SC, BCC, XO3, XO, X4O6, XO2, X4O10, X2O.
 
 See :git:`gpaw/utilities/acwf.py` for how to run these calculation.
@@ -183,9 +234,6 @@ The columns are:
 .. csv-table::
    :file: acwf.csv
    :header: number, name, errors, max, mean, errors, max, mean
-
-.. _ACWF: https://acwf-verification.materialscloud.org/
-
 
 .. _24.11.0:
     https://wiki.fysik.dtu.dk/gpaw-files/gpaw-setups-24.11.0.tar.gz

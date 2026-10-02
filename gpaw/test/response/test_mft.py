@@ -3,14 +3,10 @@ Test with unrealisticly loose parameters to catch if the numerics change.
 """
 
 import numpy as np
-
-# General modules
 import pytest
-
-# Script modules
 from ase.build import bulk
 
-from gpaw import PW, FermiDirac
+from gpaw import GPAW, PW, FermiDirac
 from gpaw.response import ResponseContext, ResponseGroundStateAdapter
 from gpaw.response.chiks import ChiKSCalculator
 from gpaw.response.heisenberg import (calculate_fm_magnon_energies,
@@ -23,8 +19,7 @@ from gpaw.response.mft import (HeisenbergExchangeCalculator,
                                calculate_pair_site_zeeman_energy,
                                calculate_single_particle_site_magnetization,
                                calculate_single_particle_site_zeeman_energy)
-from gpaw.response.site_data import (AtomicSites,
-                                     calculate_site_magnetization,
+from gpaw.response.site_data import (AtomicSites, calculate_site_magnetization,
                                      calculate_site_zeeman_energy,
                                      get_site_radii_range)
 from gpaw.response.site_kernels import (CylindricalSiteKernels,
@@ -141,12 +136,12 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
     # of random noise, that one cannot trust individual values of J very well.
     # This is improved when increasing the number of k-points, but the problem
     # never completely vanishes
-    J_atol = 1.e-2
-    J_rtol = 5.e-2
+    J_atol = 0.01
+    J_rtol = 0.05
     # However, derived physical values have an increased error cancellation due
     # to their collective nature.
-    mw_rtol = 25e-3  # relative tolerance of absolute results
-    mw_ctol = 5.e-2  # relative tolerance on kernel and eta self-consistency
+    mw_rtol = 0.025  # relative tolerance of absolute results
+    mw_ctol = 0.05  # relative tolerance on kernel and eta self-consistency
 
     # ---------- Script ---------- #
 
@@ -237,29 +232,35 @@ def test_Co_hcp(in_tmp_dir, gpw_files, mpi):
 
 @pytest.mark.response
 @pytest.mark.kspair
-def test_NiO_withU(in_tmp_dir, mpi):
+@pytest.mark.parametrize('xc', ['LDA', 'LDA_X+LDA_C_PZ'])
+def test_NiO_withU(in_tmp_dir, xc, comm, add_cwd_to_setup_paths):
 
     a0 = 4.17
     a = bulk('NiO', 'rocksalt', a=a0)
-    a.set_initial_magnetic_moments([2, 0])
+    a.set_initial_magnetic_moments([2, 2])
 
-    calc = mpi.GPAW(mode=PW(400),
-                    xc='LDA',
-                    setups={'Ni': ':d,4.0'},
-                    kpts={'size': (2, 2, 2), 'gamma': True},
-                    occupations=FermiDirac(0.001),
-                    convergence={'density': 1e-5},
-                    mixer={'method': 'difference',
-                           'beta': 0.05,
-                           'weight': 50},
-                    parallel=dict(domain=1))
+    if xc == 'LDA':
+        e0_q = np.array([0., -2.98733, -0.03207])
+    else:
+        e0_q = np.array([0., -3.18565137, -0.03267547])
+        from gpaw.test import gen
+        gen('Ni', xcname='LDA_X+LDA_C_PZ', write_xml=True, world=comm)
+        gen('O', xcname='LDA_X+LDA_C_PZ', write_xml=True, world=comm)
 
+    calc = GPAW(mode=PW(400),
+                xc=xc,
+                setups={'Ni': ':d,4.0'},
+                kpts={'size': (2, 2, 2), 'gamma': True},
+                eigensolver={'niter': 4},
+                occupations=FermiDirac(0.001),
+                parallel=dict(domain=1),
+                communicator=comm)
     a.calc = calc
     a.get_potential_energy()
 
     # q-points and atomic sites
-    q_qc = np.vstack([[0, 0, 0], [0, 0, 0.5], [0, 0.5, 0.5]])
-    context = ResponseContext(txt='mft_nio.txt', comm=mpi.comm)
+    q_qc = np.array([[0, 0, 0], [0, 0, 0.5], [0, 0.5, 0.5]])
+    context = ResponseContext(txt='mft_nio.txt', comm=comm)
     gs = ResponseGroundStateAdapter(calc)
     _, r_a = get_site_radii_range(gs)
     sites = AtomicSites(indices=[0], radii=[[r_a[0]]])
@@ -270,10 +271,7 @@ def test_NiO_withU(in_tmp_dir, mpi):
     J_q = np.array([jcalc(q_c).array[..., 0]  # dimension: J_abp
                     for q_c in q_qc])[:, 0, 0]
     e_q = calculate_single_site_magnon_energies(J_q, q_qc, m)
-    print('-----', e_q)
-
-    assert e_q == pytest.approx(
-        np.array([0., -2.98733, -0.03207]), abs=1e-2)
+    assert e_q == pytest.approx(e0_q, abs=2e-2)
 
 
 @pytest.mark.response

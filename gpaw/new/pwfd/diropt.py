@@ -7,11 +7,11 @@ from gpaw.core.atom_arrays import AtomArrays
 from gpaw.new import trace, zips
 from gpaw.new.density import Density
 from gpaw.new.energies import DFTEnergies
+from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.potential import Potential
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver
-from gpaw.new.etdm.searchdir import LBFGS
 from gpaw.new.pwfd.multixarray import MultiXArray
 
 
@@ -19,6 +19,8 @@ class DirOptPWFD(PWFDEigensolver):
     def __init__(self,
                  *,
                  hamiltonian,
+                 nbands,
+                 domain_band_comm,
                  excited_state: bool = False,
                  converge_unocc: bool = False,
                  convergence: dict,
@@ -33,7 +35,12 @@ class DirOptPWFD(PWFDEigensolver):
         self.scalapack = scalapack_params
         self.alpha = alpha
         self.converge_unocc = converge_unocc
-        super().__init__(hamiltonian, convergence)
+        super().__init__(
+            hamiltonian=hamiltonian,
+            convergence=convergence,
+            domain_band_comm=domain_band_comm,
+            nbands=nbands,
+            scalapack_parameters=scalapack_params)
 
     def new(self, **params) -> DirOptPWFD:
         return DirOptPWFD(**params)
@@ -200,8 +207,9 @@ class DirOptPWFD(PWFDEigensolver):
         if not self.converge_unocc:
             return
 
-        import numpy as np
         import time
+
+        import numpy as np
 
         # build first gradient
         # build wfs with bands to converge
@@ -256,7 +264,7 @@ class DirOptPWFD(PWFDEigensolver):
             line = ('iter:{:4d} {:02d}:{:02d}:{:02d} '
                     .format(niter, *now[3:6]))
             # eigenstates
-            line += 14 * ' ' + '{:+6.2f}'.format(np.log10(error))
+            line += 14 * ' ' + f'{np.log10(error):+6.2f}'
             log(line)
 
             if abs(error) < cc['eigenstates'].tol:
@@ -305,7 +313,7 @@ def apply_hamiltonian(ibzwfs, psit_unX, Ht, potential):
     grad_unX = []
     for psit_nX, wfs in zips(psit_unX, ibzwfs):
         grad_nX = psit_nX.new()
-        Ht(psit_nX, out=grad_nX, spin=wfs.spin)
+        Ht(psit_nX, out=grad_nX, spin=wfs.spin, calculate_energy=True)
         apply_non_local_hamiltonian(grad_nX, wfs, potential)
         grad_unX.append(grad_nX)
 

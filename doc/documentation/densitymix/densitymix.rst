@@ -8,7 +8,8 @@ Density Mixing
 Pulay Mixing
 ------------
 
-The density is updated using Pulay-mixing [#Pulay1980]_, [#Kresse1996]_.
+A simple and efficient method for mixing is the Pulay mixer [#Pulay1980]_,
+[#Kresse1996]_.
 
 Pulay mixing (or direct inversion of the iterative subspace (DIIS))
 attempts to find a good approximation of the final solution as a
@@ -51,12 +52,20 @@ weight, given as the input parameter `\beta`.
 
   n_{i+1}^{in}=\sum \alpha_i (n_i^{in}+\beta R_i)
 
+In GPAW the Pulay mixer can be specified and configured by setting::
 
-Special Metric
---------------
+  mixer = {'name': 'pulay',  # The choice of mixer.
+           'nmaxold': 16,  # Number of old densities to store.
+           'beta': 0.08,  # The linear mixing parameter.
+           'weight': 20,  # Scaling of the residual metric.
+           'sigma': 0.015,  # Width of the residual metric.
+           'g_ss': None}  # Experimental spin metric.
 
-Convergence is improved by an optimized metric `\hat{M}` for
-calculation of scalar products in the mixing scheme, `\langle A | B
+Residual Metric
+---------------
+
+Convergence can be improved by an optimized metric `\hat{M}` for
+calculation of scalar products involving residuals, `\langle A | B
 \rangle _s = \langle A | \hat{M} | B \rangle`, where `\langle \rangle
 _s` is the scalar product with the special metric and `\langle
 \rangle` is the usual scalar product.  The metric is based on the
@@ -72,87 +81,79 @@ It has been found [#Kresse1996]_ that the metric
   \hat{M} = \sum_q | q \rangle f_q \langle q |, \quad f_q =
   1 + \frac{w}{q^2}
 
-is particularly useful (`w` is a suitably chosen weight).
-
-This is easy to apply in plane wave codes, as it is local in reciprocal space.
-Expressed in real space, this metric is
-
-.. math::
-
-  \hat{M} = \sum_{R R'} | R \rangle f(R' - R) \langle R' |, \quad f(R) =
-  \sum_q f_q e^{i q R}
-
-As this is fully nonlocal in real space, it would be very costly to apply.
-Instead we use a semilocal stencil with only three nearest neighbors:
+is particularly useful (`w` is a suitably chosen weight). However, as it
+diverges for `q \to 0`, it is not applicable to quantities that sum to a finite
+value, such as the magnetization. To mitigate this, we apply a modified version
+of the metric
 
 .. math::
 
-  f(R) = \begin{cases}
-  1 + w/8 & R = 0 \\
-  w / 16 & R = \text{nearest neighbor dist.} \\
-  w / 32 & R = \text{2nd nearest neighbor dist.} \\
-  w / 64 & R = \text{3rd nearest neighbor dist.} \\
-  0 & \text{otherwise}
-  \end{cases}
+  f_q = \frac{w + q^2}{\sigma + q^2}
 
-which corresponds to the reciprocal space metric
+With `\sigma` being a small regaularization/broadening term. We note that, in
+general, the metric is only applied to the charge density unless otherwise
+specified.
 
-.. math::
+Advanced mixing: The MSR1 algorithm
+-----------------------------------
 
-  f_q = 1 + \frac{w}{8} (1 + \cos q_x + \cos q_y + \cos q_z +
-  \cos q_x \cos q_y + \cos q_y \cos q_z + \cos q_x \cos q_z +
-  \cos q_x \cos q_y \cos q_z)
+The default mixer in GPAW is the MSR1 mixer [#MSR1]_ which promises faster and
+more stable convergence compared to the Pulay mixer. It achieves this by
+utilzing a dynamic balance of good Broyden (greedy) and bad Broyden (Pulay-like)
+weighting for its step direction. Additionally, it also predicts its own step
+sizes to ensure optimal convergence.
 
-With the nice property that it is a monotonously decaying function
-from `f_q = w + 1` at `q = 0` to `f_q = 1` anywhere at the zone
-boundary in reciprocal space.
+The default parameters used in GPAW are::
 
-A comparison of the two metrics is displayed in the figure below
+    mixer = {'name': 'msr1',  # The choice of mixer
+             'beta': 0.05,  # Size of the Pratt step
+             'nmaxold': 10,  # Number of previous steps used in mixing
+             'reg': 0.005,  # Regularization (i.e. damping of the SVD inversion)
+             'gb_scale': 1.0,  # Scaling of the amount of good-broyden used.
+             'max_A': 0.75,  # Largest relative step taken along the residual.
+             'trust_scale': 1.0,  # Scaling of the trust region radius.
+             'soft_lim': 4.0,  # Error threshold for backstepping.
+             'hard_lim': 6.0,  # Error threshold for history removal.
+             'weight': 20,  # Scaling of the residual metric.
+             'sigma': 0.015,  # Width of the residual metric
+             'g_ss': None}  # Experimental spin metric.
 
-.. image:: metric.png
-  :align: center
+These parameters should work well for most systems.
 
+Mixing the magnetization separately: Multimixer
+-----------------------------------------------
 
-Specifying a Mixing Scheme in GPAW
-----------------------------------
+The most common example of the using the multi-mixer is to separately mix the
+density and magnetization, this can be done by specifying the following::
 
-Specifying the mixing scheme and metric is done using the ``mixer``
-keyword of the GPAW calculator::
+    mixer = {'name': 'multi',  # The choice of mixer
+             'method': 'mag-dens',  # Mix the density and magnetization separately
+             'mixer_a': {...},  # The density mixer settings, e.g. MSR1
+             'mixer_b': {...}}  # The magnetization mixer settings.
 
-  from gpaw import GPAW, Mixer
-  calc = GPAW(..., mixer=Mixer(beta=0.05, nmaxold=5, weight=50.0), ...)
+For some systems, this will improve convergence, while for others it will hinder
+the convergence. When using the multi-mixer like this, it is recommended to
+reduce the metric ``weight`` (or turn it off) and increase the ``beta`` value for
+``mixer_b`` (the magnetization mixer).
 
-which is the recommended value if the default fails to converge.
+Alternative uses of the multimixer is to set ``method`` to ``separate``, which
+separately mixes the two spin channels. Generally speaking, this does not yield
+improvements to convergence, though.
 
-The class ``Mixer`` indicates one of the possible mixing schemes.  The
-Pulay mixing can be based on:
+Specifying mixer through the corresponding parameter classes
+------------------------------------------------------------
 
-1. The spin densities separately, ``Mixer`` (This will *not* work for
-   a spinpolarized system, unless the magnetic moment is fixed)
-2. The total density, ``MixerSum2``
-3. Spin channels separately for the density matrices, and the summed
-   channels for the pseudo electron density, ``MixerSum``
-4. The total density and magnetization densities separately, ``MixerDif``
+You can also use the mixer classes directly instead of the ``mixer``
+dictionary, similar to other GPAW inputs::
 
-Where the magnetization density is the difference between the two spin
-densities.
+    from gpaw.dft import BaseMixer, Pulay, MSR1, MultiMixer
 
-All mixer classes takes the arguments ``(beta=0.25, nmaxold=3,
-weight=50.0)``. In addition, the ``MixerDif`` also takes
-the arguments ``(beta_m=0.7, nmaxold_m=2,
-weight_m=10.0)`` which is the corresponding mixing parameters for the
-magnetization density.
-
-Here ``beta`` is the linear mixing coefficient, ``nmaxold`` is the
-number of old densities used, and ``weight`` is the
-weight used by the metric, if any.
-
-MixerDif seems to be a good choice for spin polarized
-molecules. MixerSum is sometimes better for bulk systems.
-
+These classes have the same parameters as corresponding ``mixer`` dictionary,
+and can be helpful when using an IDE with autocompletion.
 
 References
 ----------
 
 .. [#Pulay1980] Pulay, Chem. Phys. Let. **73**, 393 (1980)
 .. [#Kresse1996] Kresse, Phys. Rev. B **54**, 11169 (1996)
+.. [#MSR1] Marks, J. Chem. Theory Comput. **17**, 5715 (2021)

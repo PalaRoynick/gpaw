@@ -37,10 +37,10 @@ class Chi0Calculator:
     def __init__(self,
                  gs: ResponseGroundStateAdaptable,
                  context: ResponseContextInput = '-',
-                 nblocks=1,
-                 eshift=None,
-                 intraband=True,
-                 rate='eta',
+                 nblocks: int = 1,
+                 eshift: float | None = None,
+                 intraband: bool = True,
+                 rate: float | None = None,
                  **kwargs):
         """
         Parameters
@@ -233,7 +233,7 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 
         # symmetries: QSymmetries from gpaw.response.symmetry
         # generator: KPointDomainGenerator from gpaw.response.kpoints
-        # domain: Domain from from gpaw.response.integrators
+        # domain: Domain from gpaw.response.integrators
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             qpd.q_c, spins)
         integrand = Chi0Integrand(self, qpd=qpd, generator=generator,
@@ -327,9 +327,9 @@ class Chi0BodyCalculator(Chi0ComponentPWCalculator):
 class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
 
     def __init__(self, *args,
-                 eshift=None,
-                 intraband=True,
-                 rate='eta',
+                 eshift: float | None = None,
+                 intraband: bool = True,
+                 rate: float | None = None,
                  **kwargs):
         """Contruct the Chi0OpticalExtensionCalculator.
 
@@ -339,9 +339,8 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
             Flag for including the intraband contribution to the chi0 head.
         rate : float, str
             Phenomenological scattering rate to use in optical limit Drude term
-            (in eV). If rate='eta', it uses input artificial broadening eta as
-            rate. Please note that for consistency the rate is implemented as
-            omegap^2 / (omega + 1j * rate)^2, which differs from some
+            (in eV). Please note that for consistency the rate is implemented
+            as omegap^2 / (omega + 1j * rate)^2, which differs from some
             literature by a factor of 2.
         eshift : float or None
             Energy shift of the conduction bands in Hartree.
@@ -361,11 +360,15 @@ class Chi0OpticalExtensionCalculator(Chi0ComponentPWCalculator):
         # response from the free-space plasma frequency of the intraband
         # transitions to the head of chi0. This is handled by a separate
         # calculator, provided that intraband is set to True.
+        self.drude_calc: Chi0DrudeCalculator | None
         if self.gs.metallic and intraband:
             from gpaw.response.chi0_drude import Chi0DrudeCalculator
-            if rate == 'eta':
-                rate = self.eta * Ha  # external units
-            self.rate = rate
+            if rate is None:
+                raise ValueError(
+                    'System is metallic and intraband contributions were '
+                    'requested, yet no scattering rate has been set. '
+                    'Please specify a value for the keyword "rate"!')
+            self.rate = rate / Ha
             self.drude_calc = Chi0DrudeCalculator(
                 self.gs, self.context,
                 qsymmetry=self.qsymmetry,

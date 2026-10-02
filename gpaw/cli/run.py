@@ -2,8 +2,8 @@ from ase.cli.run import CLICommand as ASECLICommand
 from ase.cli.run import Runner, str2dict
 
 from gpaw import GPAW, PW
-from gpaw.mixer import Mixer, MixerSum
 from gpaw.occupations import FermiDirac, MarzariVanderbilt, MethfesselPaxton
+from gpaw.old.mixer import Mixer, MixerSum
 
 
 class GPAWRunner(Runner):

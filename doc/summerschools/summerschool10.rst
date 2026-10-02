@@ -1,7 +1,7 @@
 .. _summerschool10:
 
 =======================
-CAMd Summer school 2010
+CAMD Summer school 2010
 =======================
 
 When you log into the databars, you can select various desktop

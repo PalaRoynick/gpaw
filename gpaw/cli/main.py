@@ -2,6 +2,7 @@
 import os
 import subprocess
 import sys
+import warnings
 
 commands = [
     ('run', 'gpaw.cli.run'),
@@ -32,12 +33,6 @@ def hook(parser, args):
     if args.command == 'python':
         args.traceback = True
 
-        if args.parallel is None:
-            # Let MPI decide nprocs when not given.  We use 0 to distinguish
-            # that value.  We cannot use None because that may be used
-            # by other commands that can run in parallel.
-            args.parallel = 0
-
     if hasattr(args, 'dry_run'):
         N = int(args.dry_run)
         if N:
@@ -48,12 +43,30 @@ def hook(parser, args):
             mpi.world.size = N
 
     if args.parallel is not None:
-        from gpaw.mpi import compiled_with_mpi, have_mpi
+        import gpaw.cgpaw as cgpaw
+        from gpaw import GPAW_MPI_OPTIONS
+        from gpaw.mpi import world
 
-        if not compiled_with_mpi:
+        warnings.warn(
+'''\n
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! WARNING!                                                                !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The -P / --parallel option `gpaw -P N <sub-command>` is deprecated and  !
+! will be removed in the next GPAW release.                               !
+! To enable MPI parallelization, run GPAW using MPI launcher instead:     !
+! `mpiexec -n N gpaw <sub-command>` or `srun gpaw <sub-command>` or       !
+! a variation thereof.                                                    !
+! More information here:                                                  !
+!   https://gpaw.readthedocs.io/releasenotes.html#mpichanges              !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+'''  # noqa: E122
+        )
+
+        if not cgpaw.have_mpi:
             raise SystemExit('MPI not available')
 
-        if have_mpi:
+        if world.backend != 'serial':
             # When the user runs "gpaw -Pn python" then that's in serial
             # but it ends up calling itself recursively (!) after adding
             # some MPI options.  When it runs the second time (actually in
@@ -63,19 +76,16 @@ def hook(parser, args):
             return args
 
         # Start again in parallel:
-        pyargs = []
-        if sys.version_info >= (3, 11):
-            # Don't prepend a potentially unsafe path to sys.path
-            pyargs.append('-P')
-
-        mpiargs = os.environ.get('GPAW_MPI_OPTIONS', '').split()
+        mpiargs = []
+        if GPAW_MPI_OPTIONS is not None:
+            mpiargs += GPAW_MPI_OPTIONS.split()
         if args.parallel != 0:
             mpiargs += ['-n', str(args.parallel)]
 
         arguments = ['mpiexec',
                      *mpiargs,
                      sys.executable,
-                     *pyargs,
+                     '-P',
                      '-m',
                      'gpaw',
                      *sys.argv[1:]]
@@ -84,7 +94,6 @@ def hook(parser, args):
         env = dict(os.environ)
         if 'GPAW_MPI_BACKEND' not in env:
             env['GPAW_MPI_BACKEND'] = 'cgpaw'
-        env['GPAW_INITIALIZE_MPI'] = '1'
         if 'OMP_NUM_THREADS' not in env:
             env['OMP_NUM_THREADS'] = '1'
 
@@ -110,6 +119,7 @@ def gpaw_python_init_magic():
 
         import ase.cli.main  # noqa
         from ase.parallel import world as ase_world
+
         from gpaw.mpi import world
 
     assert ase_world.size == world.size
@@ -120,6 +130,7 @@ def main(args=None):
         gpaw_python_init_magic()
 
     from ase.cli.main import main as ase_main
+
     from gpaw import __version__
     ase_main('gpaw', 'GPAW command-line tool', __version__,
              commands, hook, args)

@@ -30,7 +30,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         # wd: FrequencyDescriptor from gpaw.response.frequencies
         self.task, self.wd = self.construct_integral_task_and_wd()
 
-    def calculate(self, wd, rate) -> Chi0DrudeData:
+    def calculate(self, wd, rate: float) -> Chi0DrudeData:
         """Calculate the Drude dielectric response.
 
         Parameters
@@ -38,7 +38,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         wd : FrequencyDescriptor from gpaw.response.frequencies
             Frequencies to evaluate the reponse function at.
         rate : float
-            Plasma frequency decay rate (in eV), corresponding to the
+            Plasma frequency decay rate in Hartree, corresponding to the
             imaginary part of the complex frequency.
         """
         self.print_info(wd, rate)
@@ -55,7 +55,7 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
         q_c = [0., 0., 0.]
         # symmetries: QSymmetries from gpaw.response.symmetry
         # generator: KPointDomainGenerator from gpaw.response.kpoints
-        # domain: Domain from from gpaw.response.integrators
+        # domain: Domain from gpaw.response.integrators
         symmetries, generator, domain, prefactor = self.get_integration_domain(
             q_c=q_c, spins=range(self.gs.nspins))
 
@@ -113,12 +113,12 @@ class Chi0DrudeCalculator(Chi0ComponentCalculator):
             wd = NotAFrequencyDescriptor()
         return task, wd
 
-    def print_info(self, wd, rate):
+    def print_info(self, wd, rate: float):
         isl = ['',
                f'{ctime()}',
                'Calculating drude chi0 with:',
                f'    Number of frequency points:{len(wd)}',
-               f'    Plasma frequency decay rate: {rate} eV',
+               f'    Plasma frequency decay rate: {rate * Ha} eV',
                '',
                self.get_gs_info_string(tab='    ')]
 

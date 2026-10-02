@@ -1,4 +1,3 @@
-
 from math import sqrt
 import numpy as np
 from ase import Atoms
@@ -44,7 +43,8 @@ for i in range(1, 6):  # loop over different q
     df = DielectricFunction(calc='graphite.gpw',
                             frequencies={'type': 'nonlinear',
                                          'domega0': 0.01},
-                            eta=0.2,  # Broadening parameter.
+                            eta=0.2,  # broadening parameter
+                            rate=0.1,
                             ecut=100,
                             # write different output for different q:
                             txt='out_df_%d.txt' % i)

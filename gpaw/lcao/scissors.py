@@ -7,15 +7,15 @@ import numpy as np
 from ase.units import Ha
 
 from gpaw.core.matrix import Matrix
+from gpaw.dft import DFT
 from gpaw.lcao.eigensolver import DirectLCAO
-from gpaw.new.calculation import DFTCalculation
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.symmetry import Symmetries
 
 
 def non_self_consistent_scissors_shift(
         shifts: Sequence[tuple[float, float, int]],
-        dft: DFTCalculation) -> np.ndarray:
+        dft: DFT) -> np.ndarray:
     """Apply non self-consistent scissors shift.
 
     Return eigenvalues as a::

@@ -4,8 +4,8 @@ import numpy as np
 from ase import Atom, Atoms
 
 from gpaw import GPAW, MixerDif
-from gpaw.mpi import world
 from gpaw.lrtddft import LrTDDFT
+from gpaw.mpi import world
 from gpaw.pes.dos import DOSPES
 from gpaw.pes.tddft import TDDFTPES
 
@@ -23,9 +23,10 @@ calc_params = dict(
     mixer=MixerDif(0.1, 5, weight=100.0),
     parallel={'domain': world.size},
     xc='PBE',
-    spinpol=True)
+    spinpol=True,
+    legacy_gpaw=True)
 
-m_calc = GPAW(**calc_params, nbands=6, txt='CO-m.txt', legacy_gpaw=True)
+m_calc = GPAW(**calc_params, nbands=6, txt='CO-m.txt')
 
 m = atoms.copy()
 m.set_initial_magnetic_moments([-1, 1])

@@ -9,8 +9,8 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-__version__ = '25.7.1b1'
-__ase_version_required__ = '3.27.0'
+__version__ = '26.7.1b1'
+__ase_version_required__ = '3.29.0'
 
 __all__ = ['GPAW',
            'Mixer', 'MixerSum', 'MixerDif', 'MixerSum2',
@@ -22,13 +22,11 @@ __all__ = ['GPAW',
            'restart']
 
 boolean_envvars = {
-    'GPAW_NEW',
     'GPAW_CPUPY',
     'GPAW_USE_GPUS',
     'GPAW_TRACE',
     'GPAW_NO_C_EXTENSION',
     'GPAW_DEBUG',
-    'GPAW_INITIALIZE_MPI',
     'GPAW_NO_GPU_MPI'}
 allowed_envvars = {
     *boolean_envvars,
@@ -48,29 +46,30 @@ def _get_gpaw_env_vars(attr: str) -> bool | str:
     raise _module_attr_error(attr)
 
 
-def probably_get_mpiexec_implementation() -> str | None:
-    if 'OMPI_COMM_WORLD_SIZE' in os.environ:
-        return 'openmpi'
-    if 'PMI_SIZE' in os.environ:
-        return 'mpich'
-    if 'I_MPI_MPIRUN' in os.environ:
-        # I have not been able to test this case.  --askhl
-        return 'intelmpi'
-    return None
-
-
 # When type-checking, we want the debug-wrappers enabled:
 debug = TYPE_CHECKING or _get_gpaw_env_vars('GPAW_DEBUG')
 
 # Debug envvar for disabling GPU aware MPI
 ENVVAR_GPAW_NO_GPU_MPI = _get_gpaw_env_vars('GPAW_NO_GPU_MPI')
 
-GPAW_MPI_BACKEND = os.environ.get('GPAW_MPI_BACKEND', 'serial')
+# Set MPI backend based on the env variable. If env variable is not set,
+# MPI backend remains None here, and it will be set either to
+# - 'cgpaw' in __main__.py if executing gpaw as an application or
+# - 'serial' in _broadcast_imports.py if using gpaw as a library
+GPAW_MPI_BACKEND = os.environ.get('GPAW_MPI_BACKEND')
 
-if probably_get_mpiexec_implementation():
-    GPAW_INITIALIZE_MPI = True
-    if GPAW_MPI_BACKEND == 'serial':
-        GPAW_MPI_BACKEND = 'cgpaw'
+# Deprecated
+GPAW_MPI_OPTIONS = os.environ.get('GPAW_MPI_OPTIONS')
+if GPAW_MPI_OPTIONS is not None:
+    msg = (
+        '\n\n'
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+        'WARNING! The environment variable GPAW_MPI_OPTIONS is deprecated.\n'
+        'Setting it will raise an error in the future.\n'
+        'More information here:\n'
+        '  https://gpaw.readthedocs.io/releasenotes.html#mpichanges\n'
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n')
+    warnings.warn(msg)
 
 
 @contextlib.contextmanager
@@ -170,11 +169,11 @@ def _lazy_import(attr: str) -> Any:
 
 
 all_lazy_imports = dict(
-    Mixer='gpaw.mixer.Mixer',
-    MixerSum='gpaw.mixer.MixerSum',
-    MixerDif='gpaw.mixer.MixerDif',
-    MixerSum2='gpaw.mixer.MixerSum2',
-    MixerFull='gpaw.mixer.MixerFull',
+    Mixer='gpaw.old.mixer.Mixer',
+    MixerSum='gpaw.old.mixer.MixerSum',
+    MixerDif='gpaw.old.mixer.MixerDif',
+    MixerSum2='gpaw.old.mixer.MixerSum2',
+    MixerFull='gpaw.old.mixer.MixerFull',
 
     Davidson='gpaw.old.eigensolvers.Davidson',
     RMMDIIS='gpaw.old.eigensolvers.RMMDIIS',
@@ -189,15 +188,6 @@ all_lazy_imports = dict(
     LCAO='gpaw.old.wavefunctions.lcao.LCAO',
     PW='gpaw.old.wavefunctions.pw.PW')
 
-
-# Make sure e.g. GPAW_NEW=0 will set GPAW_NEW=False
-# (`__getattr__()` magic handles the other boolean environment
-# variables, but GPAW_NEW is used within the same script, so it needs to
-# concretely exist in the namespace)
-GPAW_NEW = int(os.environ.get('GPAW_NEW') or 0)
-# 0: use old GPAW
-# 1: use new GPAW
-# 147: use whatever works ...
 
 if os.uname().machine == 'wasm32':
     GPAW_NO_C_EXTENSION = True
@@ -245,14 +235,9 @@ if debug:
 if TYPE_CHECKING:
     from gpaw.dft import GPAW
 else:
-    def GPAW(*args, legacy_gpaw=None, **kwargs):
+    def GPAW(*args, **kwargs):
         from gpaw.dft import GPAW as AnyGPAW
-        # Sorry!  Will fix this confusing code soon:
-        if legacy_gpaw is None:
-            legacy_gpaw = True if GPAW_NEW == 0 else None
-        return AnyGPAW(*args,
-                       legacy_gpaw=legacy_gpaw,
-                       **kwargs)
+        return AnyGPAW(*args, **kwargs)
 
 
 all_lazy_imports['get_calculation_info'] = 'gpaw.calcinfo.get_calculation_info'

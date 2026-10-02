@@ -20,7 +20,6 @@ from gpaw.new.c import pw_insert_gpu
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
 
-
 ESTIMATE = 64
 MEASURE = 0
 PATIENT = 32
@@ -78,8 +77,7 @@ def empty(shape, dtype=float):
     a = np.empty(2 * N + 16 // real_dtype.itemsize - 1, real_dtype)
     offset = (a.ctypes.data % 16) // real_dtype.itemsize
     a = a[offset:2 * N + offset].view(complex_dtype)
-    a.shape = shape
-    return a
+    return a.reshape(shape)
 
 
 def create_plans(size_c: IntVector,
@@ -106,6 +104,8 @@ def create_plans(size_c: IntVector,
 
 
 class FFTPlans:
+    xp = np
+
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
@@ -246,6 +246,7 @@ class CuPyFFTPlans(FFTPlans):
         self.dtype = dtype
         super().__init__(size_c, dtype, empty=cp.empty)
         self.Q_G_cache: dict[PWDesc, Array1D] = {}
+        self.xp = cp
 
     @trace(gpu=True)
     def fft(self):

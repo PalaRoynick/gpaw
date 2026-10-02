@@ -11,7 +11,7 @@ from gpaw.core.atom_centered_functions import (AtomArraysLayout,
 from gpaw.core.plane_waves import PWDesc
 from gpaw.core.uniform_grid import UGArray, UGDesc
 from gpaw.gpu import as_np
-from gpaw.mpi import MPIComm
+from gpaw.mpi import MPIComm, serial_comm
 from gpaw.new import trace, zips
 from gpaw.new.ibzwfs import IBZWaveFunctions
 from gpaw.new.symmetry import GPUSymmetrizationPlan, SymmetrizationPlan
@@ -59,7 +59,6 @@ class Density:
                            hund=False,
                            mgga=False):
         xp = nct_aX.xp
-        nt_sR = grid.zeros(ncomponents, xp=xp)
         atom_array_layout = AtomArraysLayout(
             [(setup.ni, setup.ni) for setup in setups],
             atomdist=atomdist, dtype=float if ncomponents < 4 else complex)
@@ -71,7 +70,10 @@ class Density:
                                               charge / len(setups))
                  for a, (setup, magmom_v)
                  in enumerate(zips(setups, magmom_av))}
+        nt_sR = basis_set.grid.zeros(ncomponents, xp=xp)
         basis_set.add_to_density(nt_sR.data, f_asi)
+        if nt_sR.desc.comm.size != grid.comm.size:
+            nt_sR = nt_sR.redist(grid, basis_set.kpt_band_comm, serial_comm)
         for a, D_sii in D_asii.items():
             D_sii[:] = unpack_density(
                 setups[a].initialize_density_matrix(f_asi[a]))
@@ -131,11 +133,11 @@ class Density:
         return f'Density({self.nt_sR}, {self.D_asii}, charge={self.charge})'
 
     def __str__(self) -> str:
-        return (f'density:\n'
-                f'  valence electrons: {self.nvalence}\n'
-                f'  components: {self.ncomponents}\n'
-                f'  grid points: {self.nt_sR.desc.size}\n'
-                f'  charge: {self.charge}  # |e|\n')
+        return (f'Density:\n'
+                f'  Valence electrons: {self.nvalence}\n'
+                f'  Components: {self.ncomponents}\n'
+                f'  Grid points: {self.nt_sR.desc.size}\n'
+                f'  Charge: {self.charge}  # |e|\n')
 
     @property
     def nct_R(self):
@@ -220,9 +222,7 @@ class Density:
 
     @trace
     def update(self, ibzwfs: IBZWaveFunctions, ked=False):
-        self.nt_sR.data[:] = 0.0
-        self.D_asii.data[:] = 0.0
-        ibzwfs.add_to_density(self.nt_sR, self.D_asii)
+        ibzwfs.calculate_density(self.nt_sR, self.D_asii)
         self.nt_sR.data[:self.ndensities] += self.nct_R.data
 
         # LCAO ...:

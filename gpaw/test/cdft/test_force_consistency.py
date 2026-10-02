@@ -1,10 +1,10 @@
 import pytest
 from ase import Atoms
+
 from gpaw import GPAW
 from gpaw.cdft.cdft import CDFT
 
 
-@pytest.mark.old_gpaw_only
 def test_cdft_forces_consistency(in_tmp_dir):
     delta = 0.01
     e, f = cdft(0.0)

@@ -18,13 +18,15 @@ Versions:
 
 6) Write energy contributions to "energy_contributions".
 
+7) Changed sign of wave_functions.kpts.translations.
+
 """
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, Any
 
 import ase.io.ulm as ulm
 import numpy as np
@@ -44,8 +46,7 @@ from gpaw.new.potential import Potential
 from gpaw.utilities import as_dtype_precision, unpack_density, unpack_hermitian
 
 if TYPE_CHECKING:
-    from gpaw.dft import Parameters
-    from gpaw.new.calculation import DFTCalculation
+    from gpaw.dft import DFT, Parameters
 
 
 def as_single_precision(array):
@@ -90,7 +91,7 @@ class GPWFlags:
 
 
 def write_gpw(filename: str | Path,
-              dft: DFTCalculation,
+              dft: DFT,
               flags: GPWFlags) -> None:
     from gpaw.new.calculation import units
     comm = dft.comm
@@ -102,7 +103,7 @@ def write_gpw(filename: str | Path,
         writer = ulm.DummyWriter()
 
     with writer:
-        writer.write(version=6,
+        writer.write(version=7,
                      gpaw_version=gpaw.__version__,
                      ha=Ha,
                      bohr=Bohr,
@@ -143,7 +144,7 @@ def write_dft_state(writer: ulm.Writer | ulm.DummyWriter,
                     potential: Potential,
                     energies: DFTEnergies,
                     flags: GPWFlags) -> None:
-    """ Common function shared between DFTCalculation and RTTDDFT. """
+    """Common function shared between DFT and RTTDDFT. """
     density.write_to_gpw(writer.child('density'), flags)
     potential.write_to_gpw(writer.child('hamiltonian'), flags)
     writer.write(e_stress=potential.e_stress * Ha)
@@ -197,11 +198,9 @@ def read_gpw(filename: str | Path | IO[str],
              dtype=None,
              force_complex_dtype: bool = False,
              object_hooks: dict[str, Callable[[dict], Any]] | None = None
-             ) -> tuple[Atoms,
-                        DFTCalculation,
-                        DFTComponentsBuilder]:
-    from gpaw.dft import Parameters
-    from gpaw.new.calculation import DFTCalculation, units
+             ) -> tuple[Atoms, DFT, DFTComponentsBuilder]:
+    from gpaw.dft import DFT, Parameters
+    from gpaw.new.calculation import units
     """
     Read gpw file
 
@@ -253,14 +252,15 @@ def read_gpw(filename: str | Path | IO[str],
         singlep=singlep, log=log, **kwargs)
     ibzwfs, density, potential, energies = state
 
-    dft = DFTCalculation(
+    dft = DFT.from_components(
         atoms, ibzwfs, density, potential,
         builder.setups,
         builder.create_scf_loop(),
         pot_calc=builder.create_potential_calculator(),
         params=params,
         energies=energies,
-        log=log)
+        log=log,
+        converge=False)
 
     results = {key: value / units[key]
                for key, value in reader.results.asdict().items()}
@@ -349,6 +349,8 @@ def read_dft_state(reader: ulm.Reader,
         kwargs['symmetry'] = {'rotations': rotation_scc,
                               'translations': kpts.translations,
                               'atommaps': kpts.atommap}
+        if reader.version < 7:
+            kwargs['symmetry']['translations'] *= -1
         params = Parameters(**kwargs)
         builder = params.dft_component_builder(atoms, log=log)
 
@@ -407,8 +409,20 @@ def read_dft_state(reader: ulm.Reader,
     else:
         vHt_x = None
 
+    ibzwfs = builder.read_ibz_wave_functions(reader)
+    vt_sR = vt_sR.to_xp(ibzwfs.xp)
+    nt_sR = nt_sR.to_xp(ibzwfs.xp)
+    D_asp = D_asp.to_full().to_xp(ibzwfs.xp)
+    dH_asp = dH_asp.to_full().to_xp(ibzwfs.xp)
+    if vHt_x is not None:
+        vHt_x = vHt_x.to_xp(ibzwfs.xp)
+    if taut_sR is not None:
+        taut_sR = taut_sR.to_xp(ibzwfs.xp)
+    if dedtaut_sR is not None:
+        dedtaut_sR = dedtaut_sR.to_xp(ibzwfs.xp)
+
     density = Density.from_data_and_setups(
-        nt_sR, taut_sR, D_asp.to_full(),
+        nt_sR, taut_sR, D_asp,
         builder.params.charge,
         builder.setups,
         builder.get_pseudo_core_densities(),
@@ -425,6 +439,8 @@ def read_dft_state(reader: ulm.Reader,
                  'band', 'stress', 'spinorbit']
         ec = {name: reader.hamiltonian.get(f'e_{name}', np.nan) / ha
               for name in NAMES}
+        if np.isnan(ec['spinorbit']):
+            ec['spinorbit'] = 0.0
         ec['kinetic_correction'] = ec['kinetic'] - ec['band']
         ec['extrapolation'] = (ec.pop('total_extrapolated') -
                                ec.pop('total_free'))
@@ -432,8 +448,7 @@ def read_dft_state(reader: ulm.Reader,
 
     energies = DFTEnergies(**ec)
 
-    potential = Potential(vt_sR, dH_asp.to_full(), dedtaut_sR, vHt_x, e_stress)
-    ibzwfs = builder.read_ibz_wave_functions(reader)
+    potential = Potential(vt_sR, dH_asp, dedtaut_sR, vHt_x, e_stress)
 
     return builder, params, (ibzwfs, density, potential, energies)
 

@@ -12,8 +12,9 @@ calc_params = dict(
     spinpol=True,
     convergence={'energy': 100,
                  'density': 100,
-                 'bands': -1})
-calc_mol = GPAW(**calc_params, legacy_gpaw=True)
+                 'bands': -1},
+    legacy_gpaw=True)
+calc_mol = GPAW(**calc_params)
 
 CO = molecule('CO')
 CO.center(vacuum=3)
@@ -25,7 +26,7 @@ E_gs = CO.get_potential_energy()
 n = 5
 molecule = [0, 1]
 wf_u = [kpt.psit_nG[n] for kpt in calc_mol.wfs.kpt_u]
-p_uai = [dict([(molecule[a], P_ni[n]) for a, P_ni in kpt.P_ani.items()])
+p_uai = [{molecule[a]: P_ni[n] for a, P_ni in kpt.P_ani.items()}
          for kpt in calc_mol.wfs.kpt_u]
 
 # Excited state calculations

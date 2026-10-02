@@ -1,8 +1,11 @@
-mpicompiler = 'mpiicc'
+mpi = True
+compiler = 'mpiicpx'
 
 # FFTW should be configured from environment variables, but they do
 # not report the correct names for a dynamically loaded library.
 fftw = True
+intelmkl = True
+
 # Use Intel MKL
 libraries += ['mkl_sequential','mkl_core', 'fftw3xc_intel_pic', 'mkl_rt', ]
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numbers
-from collections.abc import Sequence
+from collections.abc import Sequence, Iterable
 from typing import Literal, overload
 
 import numpy as np
@@ -210,8 +210,10 @@ class AtomArrays:
         self.comm = comm
         self.domain_comm = domain_comm
 
-        # convert int to tuple:
-        self.dims = tuple(dims) if not isinstance(dims, int) else (dims,)
+        if isinstance(dims, Iterable):
+            self.dims = tuple(dims)
+        else:
+            self.dims = (dims,)  # convert int to tuple
 
         if self.dims:
             d1, d2 = self.my_slice()
@@ -400,7 +402,7 @@ class AtomArrays:
         a_axi = self.gather()  # gather a (atoms)
         if a_axi is not None:
             m_xI = a_axi.matrix.gather()  # gather x
-            if m_xI.dist.comm.rank == 0:
+            if m_xI is not None:
                 return AtomArrays(a_axi.layout, self.dims, data=m_xI.data)
         return None
 

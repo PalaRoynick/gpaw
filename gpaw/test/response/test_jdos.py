@@ -6,8 +6,8 @@ import pytest
 # Script modules
 from ase.units import Hartree
 
-from gpaw.mpi import serial_comm
 from gpaw import GPAW
+from gpaw.mpi import serial_comm
 from gpaw.response import ResponseGroundStateAdapter
 from gpaw.response.context import ResponseContext
 from gpaw.response.frequencies import ComplexFrequencyDescriptor
@@ -21,7 +21,8 @@ from gpaw.test.response.test_chiks import (generate_nblocks_n, generate_qrel_q,
 @pytest.mark.response
 @pytest.mark.kspair
 @pytest.mark.parametrize('system,qrel',
-                         product(generate_system_s(), generate_qrel_q()))
+                         list(product(generate_system_s(),
+                                      generate_qrel_q())))
 def test_jdos(in_tmp_dir, gpw_files, mpi, system, qrel):
     # ---------- Inputs ---------- #
 

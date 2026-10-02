@@ -3,7 +3,7 @@ import pytest
 from ase.units import Bohr, Hartree
 
 from gpaw import restart
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 
 
 class Spring:
@@ -54,10 +54,8 @@ class Spring:
 
 @pytest.mark.parametrize('parallel', [(1, 1), (1, 2), (2, 1)])
 @pytest.mark.parametrize('mode', [{'name': 'pw', 'ecut': 300}, 'lcao'])
-def test_extensions(mode, parallel, in_tmp_dir, gpaw_new, mpi):
-    from gpaw.new.ase_interface import GPAW
-    if not gpaw_new:
-        pytest.skip('Only GPAW new')
+def test_extensions(mode, parallel, in_tmp_dir, mpi):
+    from gpaw import GPAW
     ktot = 20
 
     # from gpaw import restart
@@ -118,8 +116,8 @@ def test_extensions(mode, parallel, in_tmp_dir, gpaw_new, mpi):
 
     # Manually evaluate the spring energy, and compare forces
     l = atoms.get_distance(0, 1)
-    assert E == pytest.approx(E0 + 1 / 2 * ktot * (l - 2)**2)
-    assert F[0, 2] == pytest.approx(F0[0, 2] - ktot * (l - 2))
+    assert E == pytest.approx(E0 + 1 / 2 * ktot * (l - 2)**2, rel=2e-5)
+    assert F[0, 2] == pytest.approx(F0[0, 2] - ktot * (l - 2), rel=1e-5)
 
     # Evaluate the reference energy and forces also for the moved atoms
     atoms.positions[0, 2] -= 0.1

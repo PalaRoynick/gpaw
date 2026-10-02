@@ -292,7 +292,7 @@ class ETDMInnerLoop:
                 break
 
             if alpha > 1.0e-10:
-                # calculate new matrices at optimal step lenght
+                # calculate new matrices at optimal step length
                 a_k = {k: a_k[k] + alpha * p_k[k] for k in a_k.keys()}
                 g_max = g_max_norm(g_k, wfs)
 

@@ -244,7 +244,8 @@ class PAWWaves:
         self.e_n.append(e)
         self.f_n.append(f)
 
-    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut):
+    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut, positive=False,
+                 filter=None):
         rgd = self.rgd
         r_g = rgd.r_g
         phi_ng = self.phi_ng = np.array(self.phi_ng)
@@ -261,9 +262,17 @@ class PAWWaves:
 
         self.nt_g = rgd.zeros()
         for n, phi_g in enumerate(phi_ng):
-            phit_ng[n], c0 = pseudizer(phi_g, gc, self.l,
-                                       divergent=self.n_n[n] <= 0,
-                                       ecut=ecut)
+            if l == 0 and n == 0 and positive:
+                lphit_g, c0 = pseudizer(np.log(abs(phi_g)), gc, self.l,
+                                        divergent=self.n_n[n] <= 0,
+                                        ecut=ecut)
+                sign = np.sign(phi_g[gc])
+                phit_ng[n] = sign * np.exp(lphit_g)
+                c0 = sign * np.exp(c0)
+            else:
+                phit_ng[n], c0 = pseudizer(phi_g, gc, self.l,
+                                           divergent=self.n_n[n] <= 0,
+                                           ecut=ecut)
             a_g, dadg_g, d2adg2_g = rgd.zeros(3)
             a_g[1:] = self.phit_ng[n, 1:] / r_g[1:]**l
             a_g[0] = c0
@@ -274,10 +283,13 @@ class PAWWaves:
                 (2 * (l + 1) * dgdr_g + r_g * d2gdr2_g) * dadg_g +
                 r_g * d2adg2_g * dgdr_g**2)
             q_g[gcmax:] = 0
-            rgd.cut(q_g, self.rcut)
-            q_g[1:] /= r_g[1:]
-            if l == 0:
-                q_g[0] = q_g[1]
+            if filter is None:
+                rgd.cut(q_g, self.rcut)
+                q_g[1:] /= r_g[1:]
+                if l == 0:
+                    q_g[0] = q_g[1]
+            else:
+                q_g = filter(q_g, l) * r_g**l
             pt_ng[n] = q_g
 
             self.nt_g += self.f_n[n] / 4 / pi * phit_ng[n]**2
@@ -326,6 +338,7 @@ class PAWSetupGenerator:
         self.exxcv_wii: dict[float, Array2D] = {}
         self.omega = omega
         self.ecut = ecut
+        self.filter = None
 
         self.core_hole: tuple[int, int, float] | None
         if core_hole:
@@ -409,8 +422,6 @@ class PAWSetupGenerator:
                 return log(spillage(alpha[0])) - log(eps)
 
             self.alpha = fsolve(f, 7.0)[0]
-
-            self.alpha = round(self.alpha, 1)
         elif alpha < 0:
             rc = min(rc)
             self.log('Shape function: (sin(pi*r/rc)/r)^2, rc={rc:.2f} Bohr'
@@ -553,17 +564,30 @@ class PAWSetupGenerator:
             self.waves_l.append(waves)
 
     def pseudize(self, type='poly', nderiv=6, rcore=None):
-        self.Q = -self.aea.Z + self.ncore
-
-        self.nt_g = self.rgd.zeros()
+        if self.ecut is not None and self.ecut < 0.0:
+            from gpaw.atom.filter import Filter
+            h = -self.ecut
+            gcut = self.rgd.round(self.rcmax * 1.75)
+            self.filter = Filter(self.rgd.r_g, self.rgd.dr_g, gcut, h).filter
+            self.ecut = None
         if type == 'poly':
-            pseudizer = partial(self.pseudizer, points=nderiv)
+            pseudizer = partial(self.pseudizer,
+                                points=abs(nderiv))
         elif type == 'nc':
             def pseudizer(a_g, gc, l=0, ecut=None, divergent=False):
-                return self.rgd.pseudize_normalized(a_g, gc, l, points=nderiv)
+                return self.rgd.pseudize_normalized(
+                    a_g, gc, l, points=nderiv)
+        else:
+            1 / 0
         for waves in self.waves_l:
             waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
-                           2.0 * self.rcmax, ecut=self.ecut)
+                           2.0 * self.rcmax, ecut=self.ecut,
+                           positive=nderiv < 0,
+                           filter=self.filter)
+
+        self.Q = -self.aea.Z + self.ncore
+        self.nt_g = self.rgd.zeros()
+        for waves in self.waves_l:
             self.nt_g += waves.nt_g
             self.Q += waves.Q
 
@@ -628,6 +652,8 @@ class PAWSetupGenerator:
 
         self.v0r_g = self.vtr_g - self.vHtr_g - self.vxct_g * self.rgd.r_g
         self.v0r_g[self.rgd.round(self.rcmax):] = 0.0
+        if self.filter is not None:
+            self.v0r_g = self.filter(self.v0r_g) * self.rgd.r_g
 
     def summarize(self):
         self.log('\nProjectors:')
@@ -1107,7 +1133,7 @@ class PAWSetupGenerator:
         self.calculate_exx_integrals()
         setup.ExxC = self.exxcc
         setup.ExxC_w = self.exxcc_w  # erfc screened core contributions
-        setup.X_p = pack_hermitian(self.exxcv_ii[I][:, I])
+        setup.X_p = pack_hermitian(self.exxcv_ii[I][:, I], tolerance=1e-9)
         setup.X_wp = {omega: pack_hermitian(self.exxcv_wii[omega][I][:, I])
                       for omega in self.exxcv_wii}
 
@@ -1348,7 +1374,8 @@ def generate(symbol,
              omega=None):
     aea = AllElectronAtom(symbol, xc, Z=Z,
                           configuration=configuration,
-                          scalar_relativistic=scalar_relativistic)
+                          scalar_relativistic=scalar_relativistic,
+                          log=output)
     gen = PAWSetupGenerator(aea, projectors,
                             core_hole=core_hole,
                             fd=output,

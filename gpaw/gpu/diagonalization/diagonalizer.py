@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
@@ -36,9 +38,9 @@ class GPUDiagonalizer(ABC):
 
     @abstractmethod
     def eigh(self,
-             inout_matrix: "Matrix",
+             inout_matrix: Matrix,
              options: DiagonalizerOptions
-             ) -> tuple[cp.ndarray, "Matrix"]:
+             ) -> tuple[cp.ndarray, Matrix]:
         """Eigensolver that is aware of matrix internal distribution.
         """
 
@@ -70,10 +72,11 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
 
     @trace(gpu=True)
     def eigh(self,
-             inout_matrix: "Matrix",
+             inout_matrix: Matrix,
              options: DiagonalizerOptions
-             ) -> tuple[cp.ndarray, "Matrix"]:
+             ) -> tuple[cp.ndarray, Matrix]:
         """"""
+        from gpaw.core.matrix import Matrix
 
         assert isinstance(inout_matrix.data, cp.ndarray)
         assert inout_matrix.shape[0] == inout_matrix.shape[1]
@@ -98,22 +101,25 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
                 warn("Matrix may be too large to gather over MPI! "
                      "If you crash here, try running with more MPI processes")
 
-            matrix_non_distributed = inout_matrix.gather(0, broadcast=False)
+            matrix_non_distributed = inout_matrix.gather(broadcast=False)
+            eigvecs = matrix_non_distributed
             # Can always do in-place for the internal eigh
             options_non_distributed = copy(options)
             options_non_distributed.inplace = True
         else:
+            # Avoid unnecessary copies for eigenvector output
             matrix_non_distributed = inout_matrix
+            if options.inplace:
+                eigvecs = matrix_non_distributed
+            else:
+                eigvecs = matrix_non_distributed.new()
             options_non_distributed = options
 
-        # avoid unnecessary copies for eigenvector output
-        if needs_redist or options.inplace:
-            eigvecs = matrix_non_distributed
-        else:
-            eigvecs = matrix_non_distributed.new()
-
-        comm = matrix_non_distributed.dist.comm
+        comm = inout_matrix.dist.comm
         if comm.rank == 0:
+            assert isinstance(matrix_non_distributed,
+                              Matrix), f'{matrix_non_distributed}'
+            assert isinstance(eigvecs, Matrix), f'{eigvecs}'
 
             if debug:
                 self.check_matrix(matrix_non_distributed.data)
@@ -124,8 +130,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
 
             eigvals, eigvecs.data.T[:] = (
                 self.eigh_non_distributed(matrix_non_distributed.data,
-                                          options_non_distributed)
-            )
+                                          options_non_distributed))
 
         else:
             # Other ranks need to alloc recv buffers for eigenvalues (real!)
@@ -135,6 +140,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
         comm.broadcast(eigvals, 0)
 
         if not needs_redist:
+            assert isinstance(eigvecs, Matrix), f'{type(eigvecs)}'
             return eigvals, eigvecs
 
         # distribute back to the original layout
@@ -143,7 +149,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
         else:
             out_eigvecs = inout_matrix.new()
 
-        eigvecs.redist(out_eigvecs)
+        out_eigvecs.scatter_from(eigvecs)
         return eigvals, out_eigvecs
 
 

@@ -5,7 +5,6 @@ from ase.utils.filecache import MultiFileJSONCache
 from gpaw import GPAW
 from gpaw.elph import ResonantRamanCalculator
 from gpaw.lcao.dipoletransition import get_momentum_transitions
-from gpaw.mpi import world
 
 
 def get_random_g(nk, nb):
@@ -20,7 +19,6 @@ def get_random_g(nk, nb):
     return g_sqklnn
 
 
-@pytest.mark.old_gpaw_only  # calc.initialize_positions(atoms) not implemented!
 @pytest.mark.serial
 def test_ramancalculator(gpw_files, in_tmp_dir):
     """Test of ResonantRamanCalculator object"""
@@ -37,9 +35,9 @@ def test_ramancalculator(gpw_files, in_tmp_dir):
     # prepare some required data
     wph_w = np.array([0., 0., 0.1])
     get_momentum_transitions(calc.wfs)
-    if world.rank == 0:
-        g_sqklnn = get_random_g(4, 4)
-        np.save("gsqklnn.npy", g_sqklnn)
+
+    g_sqklnn = get_random_g(4, 4)
+    np.save("gsqklnn.npy", g_sqklnn)
 
     rrc = ResonantRamanCalculator(calc, wph_w)
     assert rrc.mom_skvnm == pytest.approx(np.transpose(rrc.mom_skvnm,

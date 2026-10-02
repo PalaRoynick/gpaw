@@ -15,7 +15,7 @@ convergence = {'density': 1e-12}
 
 # Use occupation smearing, weak mixer and GLLB weight smearing
 # to facilitate convergence
-occupations = FermiDirac(25e-3)
+occupations = FermiDirac(0.025)
 mixer = Mixer(0.02, 5, 1.0)
 xc = 'GLLBSC:width=0.002'
 
