@@ -685,8 +685,9 @@ class BasisFunctionCollectionBase(ABC):
 
         nt_G: ndarray
             Pseudo electron density. Modified in-place.
-        q: ?????
-            what even is this argument
+        q: int
+            The k-point index.
+            Use k = -1 for Gamma-point calculations (no phase factors).
 
         Notes
         -----
