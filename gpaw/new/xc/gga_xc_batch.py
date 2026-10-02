@@ -13,6 +13,7 @@ from gpaw.new.c import evaluate_pbe_gpu
 from gpaw.new.xc.paw_xc_batch import PAWXCBatch
 from gpaw.new.xc.lda_xc_batch import density_L_expansion, integrate_correction
 from gpaw.utilities.tensor_autograd import Engine, TensorResult
+from gpaw.gpu import cupy_is_fake
 
 
 class PBEResult(TensorResult):
@@ -67,12 +68,6 @@ class GGAXCCorrection(PAWXCBatch):
         self.backwards_compatible = self.functional.backwards_compatible
 
         self.angular_gradient_nLv = xp.asarray(setup.xc_correction.rnablaY_nLv)
-        self.evaluate_xc = (partial(_evaluate_pbe_cpu, self.functional)
-                            if xp is np else evaluate_pbe_gpu)
-
-
-class PBEXCCorrection(GGAXCCorrection):
-    """Prepared atom batch for the spin-polarized PBE PAW correction."""
 
     def evaluate(self):
         if self.setup.xc_correction is None:
@@ -112,6 +107,15 @@ class PBEXCCorrection(GGAXCCorrection):
         return energy_a.value, self.gradient_sap
 
 
+class PBEXCCorrection(GGAXCCorrection):
+    """Prepared atom batch for the spin-polarized PBE PAW correction."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.evaluate_xc = (partial(_evaluate_pbe_cpu, self.functional)
+                            if self.xp is np or cupy_is_fake else
+                            evaluate_pbe_gpu)
+
+
 def _evaluate_pbe_cpu(functional,
                       density_sx,
                       potential_sx,
@@ -119,6 +123,14 @@ def _evaluate_pbe_cpu(functional,
                       sigma_xr,
                       sigma_derivative_xr):
     """Adapt GPAW's CPU PBE evaluator to the result-node convention."""
+    # In case of cpupy we want to get the _data object (the numpy array)
+    density_sx = getattr(density_sx, '_data', density_sx)
+    potential_sx = getattr(potential_sx, '_data', potential_sx)
+    energy_x = getattr(energy_x, '_data', energy_x)
+    sigma_xr = getattr(sigma_xr, '_data', sigma_xr)
+    sigma_derivative_xr = getattr(sigma_derivative_xr, '_data',
+                                  sigma_derivative_xr)
+
     functional.xc.kernel.calculate(
         energy_x, density_sx, potential_sx,
         sigma_xr, sigma_derivative_xr)

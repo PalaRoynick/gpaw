@@ -1,7 +1,6 @@
 """Gather and scatter homogeneous PAW XC tensor batches."""
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
 
 from gpaw.gpu import as_np
 from gpaw.sphere.lebedev import weight_n
@@ -9,7 +8,8 @@ from gpaw.utilities import pack_hermitian, unpack_hermitian
 
 from typing import Any
 
-class PAWXCBatch(ABC):
+
+class PAWXCBatch:
     """One shape-compatible collection of PAW XC tensor inputs."""
     def __init__(self, c_a, D_asii, V_aL, setups, functional):
         self.functional = functional
@@ -97,10 +97,6 @@ class PAWXCBatch(ABC):
             self.M_p + D_ap @ self.M_pp.T)[:, :, None]
         ecou_a = ecou_a.reshape(-1)
         return as_np(ekin_a), as_np(e0_a), as_np(ecou_a), dH_ap
-
-    @abstractmethod
-    def evaluate(self):
-        pass
 
 
 def pack_xc_batches(D_asii, V_aL, setups, *, functional) -> list[PAWXCBatch]:
