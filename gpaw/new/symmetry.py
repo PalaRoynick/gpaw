@@ -554,13 +554,14 @@ class SymmetrizationPlan:
         if kpt_c is None or not kpt_c.any():
             ignore_phase = True
         if not ignore_phase:
-            1 / 0  # not verified yet!
+            # 1 / 0  # not verified yet!
             dpos_ac = (relpos_ac @ self.symmetries.rotation_scc[symnum] +
                        self.symmetries.translation_sc[symnum] -
                        relpos_ac[self.symmetries.atommap_sa[symnum]])
             assert np.abs(dpos_ac - np.round(dpos_ac)).max() < 1e-9
-            x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
-
+            x_a = np.exp(-2j * np.pi * kpt_c @ dpos_ac.T)# sign?
+            print(symnum, dpos_ac, kpt_c, x_a, relpos_ac,
+                  self.symmetries.translation_sc[symnum])
         P2_ani = P_ani.new()
         for a, P_ni in P_ani.items():
             R_ii = self.rotations(self.l_aj[a])[symnum]
