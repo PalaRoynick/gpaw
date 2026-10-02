@@ -10,6 +10,8 @@ Git master branch
 
 :git:`master <>`.
 
+* Minimum version requirements: Python 3.11, ASE 3.29.0.
+
 * GPAW compiled extension now requires a C++17 compliant compiler. Support for
   C99 compilation was dropped in the previous release.
 
@@ -26,6 +28,8 @@ Git master branch
   This will lead to a few more steps in the SCF loop, but also more
   accurate forces, stress tensors and magnetic moments.
 
+* Improved MGGA initialization (see :mr:`3451`).
+
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
@@ -35,15 +39,21 @@ Git master branch
   ``GPAW(..., extensions=[Solvation(...)])``.
 
 * New flourine PAW potential added to our :ref:`setup releases`.
-  It should be as accurate as the old one but will converge faster with number of
-  plane-waves.  The old potential is still the default, but it is recommended that the
-  new one is used for production calculations.  You can use it by specifying
-  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).  It has been generated with
-  the following command::
+  It should be as accurate as the old one but will converge faster with
+  number of plane-waves.  The old potential is still the default, but
+  it is recommended that the new one is used for production calculations.
+  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
+  It has been generated with the following command::
 
     $ gpaw dataset F -fPBE -w -t v2 -b
 
   There is also an LDA version of the potential.
+
+* PW-mode calculations parallelized over spin, k-points and/or bands can
+  now distribute the density to all cores for netter parallelization of
+  the calculation of the Kohn-Sham potential.  Use
+  ``parallel={'distribute_density': True}`` to enable this optimization.
 
 
 Version 26.7.0

@@ -244,7 +244,8 @@ class PAWWaves:
         self.e_n.append(e)
         self.f_n.append(f)
 
-    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut, positive=False):
+    def pseudize(self, pseudizer, vtr_g, vr_g, rcmax, ecut, positive=False,
+                 filter=None):
         rgd = self.rgd
         r_g = rgd.r_g
         phi_ng = self.phi_ng = np.array(self.phi_ng)
@@ -282,10 +283,13 @@ class PAWWaves:
                 (2 * (l + 1) * dgdr_g + r_g * d2gdr2_g) * dadg_g +
                 r_g * d2adg2_g * dgdr_g**2)
             q_g[gcmax:] = 0
-            rgd.cut(q_g, self.rcut)
-            q_g[1:] /= r_g[1:]
-            if l == 0:
-                q_g[0] = q_g[1]
+            if filter is None:
+                rgd.cut(q_g, self.rcut)
+                q_g[1:] /= r_g[1:]
+                if l == 0:
+                    q_g[0] = q_g[1]
+            else:
+                q_g = filter(q_g, l) * r_g**l
             pt_ng[n] = q_g
 
             self.nt_g += self.f_n[n] / 4 / pi * phit_ng[n]**2
@@ -334,6 +338,7 @@ class PAWSetupGenerator:
         self.exxcv_wii: dict[float, Array2D] = {}
         self.omega = omega
         self.ecut = ecut
+        self.filter = None
 
         self.core_hole: tuple[int, int, float] | None
         if core_hole:
@@ -559,6 +564,12 @@ class PAWSetupGenerator:
             self.waves_l.append(waves)
 
     def pseudize(self, type='poly', nderiv=6, rcore=None):
+        if self.ecut is not None and self.ecut < 0.0:
+            from gpaw.atom.filter import Filter
+            h = -self.ecut
+            gcut = self.rgd.round(self.rcmax * 1.75)
+            self.filter = Filter(self.rgd.r_g, self.rgd.dr_g, gcut, h).filter
+            self.ecut = None
         if type == 'poly':
             pseudizer = partial(self.pseudizer,
                                 points=abs(nderiv))
@@ -571,7 +582,8 @@ class PAWSetupGenerator:
         for waves in self.waves_l:
             waves.pseudize(pseudizer, self.vtr_g, self.aea.vr_sg[0],
                            2.0 * self.rcmax, ecut=self.ecut,
-                           positive=nderiv < 0)
+                           positive=nderiv < 0,
+                           filter=self.filter)
 
         self.Q = -self.aea.Z + self.ncore
         self.nt_g = self.rgd.zeros()
@@ -640,6 +652,8 @@ class PAWSetupGenerator:
 
         self.v0r_g = self.vtr_g - self.vHtr_g - self.vxct_g * self.rgd.r_g
         self.v0r_g[self.rgd.round(self.rcmax):] = 0.0
+        if self.filter is not None:
+            self.v0r_g = self.filter(self.v0r_g) * self.rgd.r_g
 
     def summarize(self):
         self.log('\nProjectors:')

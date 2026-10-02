@@ -14,4 +14,5 @@ def workflow():
         with run(script='part2_noncollinear/relax.py'):
             run(script='part2_noncollinear/anisotropy_ferro.py')
             run(script='part2_noncollinear/gs_afm_fm.py')
-            run(script='part2_noncollinear/noncollinear_gs.py', cores=4)
+            run(script='part2_noncollinear/noncollinear_gs.py',
+                tmax='1h', cores=4)

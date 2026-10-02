@@ -1,11 +1,12 @@
 import numpy as np
 
 from gpaw.core import PWDesc
-from gpaw.mpi import broadcast_float
+from gpaw.mpi import broadcast_float, serial_comm
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
+from gpaw.new.potential import Potential
 
 
 class PlaneWavePotentialCalculator(PotentialCalculator):
@@ -19,9 +20,19 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                  *,
                  relpos_ac,
                  atomdist,
+                 wf_grid,  # grid for wave functions
+                 wf_atomdist,  # atom-distribution for wave functions
+                 kpt_band_comm,  # complementary comm for wave functions
                  extensions,
                  soc=False,
                  xp=np):
+        """PW-mode potential calculator.
+
+        The distribution of the density is described by grid, fine_grid,
+        pw and atomsdist.
+
+        The wave functions are distributes via wf_grid and wf_atomdist.
+        """
         self.xp = xp
         self.pw = pw
         super().__init__(xc, poisson_solver, setups,
@@ -37,6 +48,11 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         self.grid = grid
         self.fine_grid = fine_grid
+
+        self.distributed_density = grid.comm.size != wf_grid.comm.size
+        self.wf_grid = wf_grid
+        self.wf_atomdist = wf_atomdist
+        self.kpt_band_comm = kpt_band_comm
 
         self.vbar_g = pw.zeros(xp=xp)
         self.vbar_ag.add_to(self.vbar_g)
@@ -92,7 +108,7 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         return e_xc
 
     @trace
-    def calculate_pseudo_potential(self, density, ibzwfs, vHt_h=None):
+    def calculate_pseudo_potential(self, density, vHt_h=None):
         nt_sr, nt0_g, taut_sr, e_xc, vxct_sr, dedtaut_sr = (
             self._interpolate_and_calculate_xc(self.xc, density))
 
@@ -128,8 +144,8 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
             vt_sR.data[1] = vt_sR.data[0]
         vt_sR.data[density.ndensities:] = 0.0
 
-        # e_external = self.external_potential.update_potential(vt_sR, density)
-        e_external = 0.0
+        for ext in self.extensions:
+            ext.update2pw(nt0_g, vHt_h, vxct_sr)
 
         vtmp_R = vt_sR.desc.empty(xp=self.xp)
         for spin, (vt_R, vxct_r) in enumerate(zips(vt_sR, vxct_sr)):
@@ -142,13 +158,28 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         return ({'coulomb': e_coulomb,
                  'zero': e_zero,
-                 'xc': e_xc,
-                 'external': e_external},
+                 'xc': e_xc},
                 vt_sR,
                 dedtaut_sr,
                 vHt_h,
                 V_aL,
                 e_stress)
+
+    def redist(self, potential: Potential) -> Potential:
+        """Redistribute potential.
+
+        If the density is distributed over the entire "world" then
+        we redistribute it to self.wf_grid and self.wf_atomdist and the
+        complementary communicator self.kpt_band_comm.
+        """
+        if not self.distributed_density:
+            return potential
+        return potential.redist(
+            self.wf_grid,
+            None,
+            self.wf_atomdist,
+            serial_comm,
+            self.kpt_band_comm)
 
     def move(self, relpos_ac, atomdist):
         super().move(relpos_ac, atomdist)
@@ -170,9 +201,19 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
             return self._vt_g, self._nt_g, self._dedtaut_g
 
         nt_R = spinsum(density.nt_sR)
-        vt_R = spinsum(potential.vt_sR, mean=True)
-        self._vt_g = vt_R.fft(self.fftplan, pw=self.pw)
         self._nt_g = nt_R.fft(self.fftplan, pw=self.pw)
+
+        vt_R = spinsum(potential.vt_sR, mean=True)
+        vt_g = None
+        if self.pw.comm.rank < vt_R.desc.comm.size:
+            vt_R = vt_R.gather()
+            if vt_R is not None:
+                vt_g = vt_R.fft(self.fftplan, pw=self.vbar0_g.desc)
+        if self.pw.comm.size == 1:
+            self._vt_g = vt_g
+        else:
+            self._vt_g = self.pw.empty(xp=self.xp)
+            self._vt_g.scatter_from(vt_g)
 
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
