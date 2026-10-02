@@ -11,6 +11,7 @@ import numpy as np
 from ase.units import Bohr, Ha
 
 from gpaw.core import PWDesc, UGArray
+from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
@@ -32,7 +33,7 @@ def _check_keywords(kwargs: dict) -> None:
             f'Allowed are: {", ".join(sorted(_KEYWORDS))}.')
 
 
-class SJM(Solvation):
+class SJM(ExtensionInput):
     """Solvated jellium method.
 
     Electronically grand-canonical calculations, typically for simulating
@@ -48,7 +49,8 @@ class SJM(Solvation):
     Parameters
     ----------
     cavity, dielectric, interactions:
-        Solvation model, see :class:`gpaw.new.solvation.Solvation`.
+        Solvation model, held as ``sjm.solvation``; see
+        :class:`gpaw.new.solvation.Solvation`.
     jelliumregion:
         Shape of the counter-charge region, as a dict.  The default is a
         slab (:class:`SlabRegion`), taking the keys ``'top'``, ``'bottom'``,
@@ -128,8 +130,8 @@ class SJM(Solvation):
                  slope: float | None = None,  # V/electron
                  mixer: float = 0.2,
                  slope_regression_depth: int = 4):
-        # dipolelayer and zero_vacuum are chosen by build(), per mode:
-        super().__init__(cavity, dielectric, interactions)
+        # The solvation model; build() picks its dipole options per mode:
+        self.solvation = Solvation(cavity, dielectric, interactions)
         # The parameters as given (and changed to).  They are what build()
         # starts a calculation from and what todict() records; reading them
         # as attributes gives the live values instead, see __getattr__.
@@ -180,8 +182,9 @@ class SJM(Solvation):
         # Solvation only implements the dipole layer in plane-wave mode.  In
         # fd mode SJMPoissonSolver corrects the dipole itself, so it must not
         # be requested from Solvation, which would refuse it.
-        self.dipolelayer = self.zero_vacuum = builder.mode == 'pw'
-        solvation = super().build(builder)
+        pw = builder.mode == 'pw'
+        self.solvation.dipolelayer = self.solvation.zero_vacuum = pw
+        solvation = self.solvation.build(builder)
         log = builder.log
         p = SimpleNamespace(**self._params)  # as given
         warns = []
@@ -334,7 +337,7 @@ class SJM(Solvation):
             path=path, style=style, props=props)
 
     def todict(self):
-        dct = super().todict()
+        dct = self.solvation.todict()
         dct.pop('dipolelayer', None)
         dct.pop('zero_vacuum', None)
         dct.update({key: self._params[key] for key in _KEYWORDS})
