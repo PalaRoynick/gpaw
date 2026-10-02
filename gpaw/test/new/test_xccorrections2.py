@@ -73,6 +73,6 @@ def test_xc_corrections2_matches_atom_loop(name, nspins):
         # GPAW's legacy PBE transpose extrapolates an origin potential and
         # therefore includes a tiny additional derivative contribution.
         gradient_sp = xc['gradient_sp']
-        gradient_tolerance = 5.0e-12 if name == 'PBE' else 2.0e-12
+        gradient_tolerance = 2.0e-12
         assert gradient_sp == pytest.approx(
             expected_gradient_asp[a], abs=gradient_tolerance)
