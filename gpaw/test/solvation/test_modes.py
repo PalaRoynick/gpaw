@@ -8,7 +8,6 @@ from ase import Atoms
 from ase.units import Bohr, Ha
 
 from gpaw import GPAW, FermiDirac
-from gpaw.new.constraints import SpinDirectionConstraint
 from gpaw.extensions.electrochemistry import SJM
 from gpaw.mpi import broadcast, synchronize_atoms, world
 from gpaw.solvation.sjm import SJM as OldSJM
@@ -196,26 +195,6 @@ def test_cube_traces_are_written_collectively(monkeypatch, in_tmp_dir):
     fake.broadcasts.clear()
     extension.write_sjm_traces(path='zs', style='z', props=('potential',))
     assert fake.broadcasts == []
-
-
-def test_implemented_properties():
-    """The extra SJM properties are declared by the extension itself."""
-    extra = ['excess_electrons', 'electrode_potential']
-    solvation = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
-
-    # ASE may ask before anything has been calculated:
-    calc = GPAW(mode='fd', txt=None,
-                extensions=[SJM(target_potential=7.5, **solvation)])
-    assert all(name in calc.implemented_properties for name in extra)
-
-    calc = GPAW(mode='fd', txt=None)
-    assert not any(name in calc.implemented_properties for name in extra)
-
-    # An extension that adds no properties of its own - and that is an
-    # Extension rather than an ExtensionInput:
-    calc = GPAW(mode='fd', txt=None,
-                extensions=[SpinDirectionConstraint({0: [1., 0., 0.]}, 2.0)])
-    assert not any(name in calc.implemented_properties for name in extra)
 
 
 class NoCavity:

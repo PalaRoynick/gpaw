@@ -364,24 +364,9 @@ class ASECalculator:
 
     # Old API:
 
-    _implemented_properties = ['energy', 'free_energy',
-                               'forces', 'stress',
-                               'dipole', 'magmom', 'magmoms']
-
-    @property
-    def implemented_properties(self) -> list[str]:
-        """Properties we can calculate, extension properties included.
-
-        An extension declares the extra keys it puts into ``dft.results``
-        in its ``properties`` attribute; see
-        :meth:`gpaw.extensions.Extension.post_converged`.
-        """
-        properties = list(self._implemented_properties)
-        for extension in self.params.extensions:
-            for name in extension.properties:
-                if name not in properties:
-                    properties.append(name)
-        return properties
+    implemented_properties = ['energy', 'free_energy',
+                              'forces', 'stress',
+                              'dipole', 'magmom', 'magmoms']
 
     def icalculate(self, atoms, system_changes=None):
         yield from self.iconverge(atoms)
