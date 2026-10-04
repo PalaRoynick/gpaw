@@ -33,4 +33,3 @@ if __name__ == '__main__':
         for f in (Path.home() / 'sg15_oncv_upf_2020-02-06/').glob('*_*.upf'):
             symbols.add(f.name.split('_')[0])
         print(sorted(symbols, key=lambda s: atomic_numbers[s]))
-
