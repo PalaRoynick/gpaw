@@ -30,6 +30,7 @@ from gpaw.new.timer import trace
 from gpaw.setup import Setup, Setups
 from gpaw.spline import Spline
 from gpaw.typing import Array4D
+from gpaw.mpi import MPIComm
 
 BlockCoords: TypeAlias = tuple[int, int, int]
 
@@ -583,6 +584,8 @@ class BasisFunctionCollectionBase(ABC):
 
         # this triggers phi instance rebuild and updates block lookups:
         self.set_positions(self._relpos_ac, force_update=True)
+
+        self.kpt_band_comm: MPIComm
 
     # Begin abstracts
     @trace

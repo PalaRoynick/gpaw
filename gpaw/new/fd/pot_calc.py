@@ -80,7 +80,7 @@ class FDPotentialCalculator(PotentialCalculator):
         return nt_sr, None, None
 
     @trace
-    def calculate_pseudo_potential(self, density, ibzwfs, vHt_r):
+    def calculate_pseudo_potential(self, density, vHt_r):
         nt_sr, _, _ = self._interpolate_density(density.nt_sR)
         grid2 = nt_sr.desc
 
@@ -122,20 +122,16 @@ class FDPotentialCalculator(PotentialCalculator):
         vt_sr = vxct_sr
         vt_sr.data += vHt_r.data + self.vbar_r.data
 
-        e_env = 0.0
         for ext in self.extensions:
-            e_env += ext.update2(nt_r, vHt_r, vt_sr)
+            ext.update2(nt_r, vHt_r, vt_sr)
 
         vt_sR = self.restrict(vt_sr)
-
-        e_external = e_env
 
         V_aL = self.ghat_aLr.integrate(vHt_r)
 
         return ({'coulomb': e_coulomb,
                  'zero': e_zero,
-                 'xc': e_xc,
-                 'external': e_external},
+                 'xc': e_xc},
                 vt_sR,
                 dedtaut_sr,
                 vHt_r,

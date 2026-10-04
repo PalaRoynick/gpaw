@@ -21,14 +21,3 @@
 
 #define PY_ARRAY_UNIQUE_SYMBOL GPAW_ARRAY_API
 #include <numpy/arrayobject.h>
-
-/* NOTE: Numpy 2.0 dev version had a bug for a short period where its public headers
-* literally did "#undef I" after including complex.h. This is obviously horrible since `I` is defined in the C99 standard.
-* See https://github.com/numpy/numpy/pull/26789.
-* We attempt to re-define it here in case someone happens to be using this buggy version of Numpy.
-*/
-#ifndef __cplusplus
-    #ifndef I
-        #define I _Complex_I
-    #endif
-#endif

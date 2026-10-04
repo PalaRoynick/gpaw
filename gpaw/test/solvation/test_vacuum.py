@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from ase.build import molecule
+from ase.units import Ha
 
 from gpaw import GPAW
 from gpaw.solvation import (EffectivePotentialCavity, LinearDielectric,
@@ -57,7 +58,8 @@ def test_solvation_vacuum(gpaw_new):
         dielectric=LinearDielectric(epsinf=1.0))
     Etest = atoms.get_potential_energy()
     if gpaw_new:
-        Eeltest = Etest - atoms.calc.dft.solvation.interaction_energy()
+        e_ia = atoms.calc.dft.solvation.get_energy_contributions()
+        Eeltest = Etest - Ha * sum(e_ia.values())
     else:
         Eeltest = atoms.calc.get_electrostatic_energy()
     Ftest = atoms.get_forces()

@@ -44,7 +44,7 @@ class ObjectiveFunctionETDM(ABC):
         f_n: np.ndarray
             array containing the occupation numbers for each spin and kpt,
                             f_n = [spin, kpt, occ]
-            From: ibzwfs.get_all_eigs_and_occs
+            From: ibzwfs.get_all_occs
         dtype : type
             Data type, either float or complex
         nkps : int

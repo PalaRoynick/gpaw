@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Generator
 from functools import cached_property
 from typing import TYPE_CHECKING, Generic, TypeVar
@@ -8,6 +9,7 @@ import numpy as np
 from ase.io.ulm import Writer
 from ase.units import Bohr, Ha
 
+from gpaw.core import UGArray
 from gpaw.gpu import as_np
 from gpaw.gpu.mpi import CuPyMPI
 from gpaw.mpi import MPIComm, serial_comm
@@ -227,8 +229,36 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return e_band, e_entropy, e_entropy * occ_calc.extrapolate_factor
 
-    def add_to_density(self, nt_sR, D_asii) -> None:
-        """Compute density and add to ``nt_sR`` and ``D_asii``."""
+    @property
+    def has_occs(self) -> bool:
+        flag = True
+        try:
+            for wfs in self:
+                flag = flag and (wfs._occ_n is not None)
+        except ValueError:
+            return False
+        return flag
+
+    def calculate_density(self,
+                          nt_sR: UGArray,
+                          D_asii) -> None:
+        """Compute density and place in ``nt_sR`` and ``D_asii``."""
+        if nt_sR.desc.comm.size != self.domain_comm.size:
+            my_nt_sR = nt_sR.desc.new(
+                comm=self.domain_comm).zeros(self.ncomponents, xp=self.xp)
+            atomdist = self._wfs_u[0].P_ani.layout.atomdist
+            my_D_asii = D_asii.layout.new(
+                atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
+            self.calculate_density(my_nt_sR, my_D_asii)
+            my_nt_sR.redist_to(
+                nt_sR, self.kpt_band_comm, serial_comm)
+            D_asii.data[:] = my_D_asii.redist(
+                D_asii.layout.atomdist, self.kpt_band_comm, serial_comm).data
+            return
+
+        nt_sR.data[:] = 0.0
+        D_asii.data[:] = 0.0
+
         for wfs in self:
             wfs.add_to_density(nt_sR, D_asii)
 
@@ -257,8 +287,14 @@ class IBZWaveFunctions(Generic[WFT]):
         wfs = self.get_wfs_on_master(kpt=kpt, spin=spin, n1=band, n2=band + 1)
         if wfs is None:
             return None
-        assert isinstance(wfs, PWFDWaveFunctions)
-        psit_X = wfs.psit_nX[0].to_pbc_grid()
+
+        if isinstance(wfs, PWFDWaveFunctions):
+            psit_X = wfs.psit_nX[0].to_pbc_grid()
+        else:
+            # LCAO mode
+            # we only have one band in wfs by construction
+            psit_X = wfs.to_uniform_grid(0, 1)[0].to_pbc_grid()
+
         grid = psit_X.desc.uniform_grid_with_grid_spacing(grid_spacing)
         psi_r = psit_X.interpolate(grid=grid)
 
@@ -310,38 +346,45 @@ class IBZWaveFunctions(Generic[WFT]):
 
         return ibz, ncomponents, wfs_u, fermi_levels
 
-    def get_eigs_and_occs(self, kpt=0, spin=0):
+    def _get_eigs_or_occs(self, what: str, kpt: int, spin: int):
+        attr = '_occ_n' if what == 'occs' else 'eig_n'
         if self.domain_comm.rank == 0 and self.band_comm.rank == 0:
             rank = self.rank_ks[kpt, spin]
             if rank == self.kpt_comm.rank:
                 wfs = self._get_wfs(kpt, spin)
                 if rank == 0:
-                    return wfs.eig_n, wfs._occ_n
-                self.kpt_comm.send(wfs.eig_n, 0)
-                self.kpt_comm.send(wfs._occ_n, 0)
+                    return getattr(wfs, attr)
+                self.kpt_comm.send(getattr(wfs, attr), 0)
             elif self.kpt_comm.rank == 0:
-                eig_n = np.empty(self.nbands)
-                occ_n = np.empty(self.nbands)
-                self.kpt_comm.receive(eig_n, rank)
-                self.kpt_comm.receive(occ_n, rank)
-                return eig_n, occ_n
-        return np.zeros(0), np.zeros(0)
+                x_n = np.empty(self.nbands)
+                self.kpt_comm.receive(x_n, rank)
+                return x_n
+        return np.zeros(0)
 
     def get_all_eigs_and_occs(self, broadcast=False):
+        warnings.warn('Please use get_all_eigs() and get_all_eigs()',
+                      DeprecationWarning)
+        return (self.get_all_eigs(broadcast=broadcast),
+                self.get_all_occs(broadcast=broadcast))
+
+    def get_all_eigs(self, broadcast=False):
+        return self._get_all_eigs_or_occs('eigs', broadcast)
+
+    def get_all_occs(self, broadcast=False):
+        return self._get_all_eigs_or_occs('occs', broadcast)
+
+    def _get_all_eigs_or_occs(self, what: str, broadcast: bool):
         nkpts = len(self.ibz)
         mynbands = self.nbands if self.comm.rank == 0 or broadcast else 0
-        eig_skn = np.empty((self.nspins, nkpts, mynbands))
-        occ_skn = np.empty((self.nspins, nkpts, mynbands))
+        x_skn = np.empty((self.nspins, nkpts, mynbands))
         for k in range(nkpts):
             for s in range(self.nspins):
-                eig_n, occ_n = self.get_eigs_and_occs(k, s)
+                x_n = self._get_eigs_or_occs(what, k, s)
                 if self.comm.rank == 0:
-                    eig_skn[s, k, :] = eig_n
-                    occ_skn[s, k, :] = occ_n
+                    x_skn[s, k, :] = x_n
         if broadcast:
-            self.comm.broadcast(eig_skn, 0)
-            self.comm.broadcast(occ_skn, 0)
-        return eig_skn, occ_skn
+            self.comm.broadcast(x_skn, 0)
+        return x_skn
 
     def forces(self,
                potential: Potential,
@@ -366,7 +409,8 @@ class IBZWaveFunctions(Generic[WFT]):
         ... k-points, symmetry information, projections and possibly
         also the wave functions.
         """
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
         if not self.collinear:
             eig_skn = eig_skn[0]
             occ_skn = occ_skn[0]
@@ -468,7 +512,8 @@ class IBZWaveFunctions(Generic[WFT]):
 
         ibz = self.ibz
 
-        eig_skn, occ_skn = self.get_all_eigs_and_occs()
+        eig_skn = self.get_all_eigs()
+        occ_skn = self.get_all_occs()
 
         if self.comm.rank != 0:
             return

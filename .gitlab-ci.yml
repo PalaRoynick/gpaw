@@ -13,6 +13,7 @@ variables:
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
+  MPIEXEC: "mpiexec --bind-to=none"
   # We override the Dockers PIP_NO_CACHE_DIR="1" here so that we
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
@@ -43,6 +44,7 @@ stages:
     - !reference [default, before_script]
     - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
+    - pip install coverage
     - |
       cat << EOF > siteconfig.py
       mpi = True
@@ -150,14 +152,9 @@ build-latest:
       include_dirs += [libvdwxc_dir / 'include']
 
       elpa = True
-      elpa_dir = Path('/install/elpa')
-      elpa_libdir = elpa_dir / 'lib'
       # Maybe we should do a glob to avoid version dependence:
-      elpa_includedir = elpa_dir / 'include/elpa-2022.11.001'
       libraries += ['elpa']
-      library_dirs += [f'{elpa_libdir}']
-      extra_link_args += [f'-Wl,-rpath={elpa_libdir}']
-      include_dirs += [f'{elpa_includedir}']
+      include_dirs += ['/usr/include/elpa']
 
       EOF
     - cat siteconfig.py
@@ -190,43 +187,6 @@ build-cuda:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - pip install -v --user --log build.log --editable .
-  cache:
-    key: cache-build-cuda
-    paths:
-     - $PIP_CACHE_DIR
-
-
-build-hip-cuda:
-  image: $IMAGE_CUDA
-  when: manual
-  extends:
-    - .build
-  script:
-    - |
-      cat << EOF >> siteconfig.py
-      gpu = True
-      gpu_target = 'hip-cuda'
-      gpu_compiler = 'hipcc'
-      gpu_compile_args = ['-O3',
-                          '-g',
-                          '-v']
-      libraries += ['cudart', 'hipblas']
-
-      # Suppress warnings from hip-cuda headers
-      extra_compile_args += ['-Wno-deprecated-declarations',
-                             '-Wno-implicit-int',
-                             ]
-      undef_macros += ['GPAW_GPU_AWARE_MPI']
-
-      # MAGMA
-      magma = True
-      libraries += ['magma']
-      EOF
-    - cat siteconfig.py
-     # Set env variable for HIPCC because otherwise it fails to pass the -std
-    # flag to underlying nvcc/cicc... and may default to c++14.
-    - export HIPCC_COMPILE_FLAGS_APPEND="-std=c++17"
     - pip install -v --user --log build.log --editable .
   cache:
     key: cache-build-cuda
@@ -335,7 +295,7 @@ build-lumi-g:
           '-fPIC',
           '-Wall',
           '-Wno-stringop-overflow',  # suppress warnings from MPI_STATUSES_IGNORE
-          #'-Werror',
+          # '-Werror',
           ]
       extra_link_args = ['-fopenmp']
 
@@ -373,7 +333,7 @@ prepare-libxc:
   before_script:
     - export PREFIX=`realpath $PREFIX`
   script:
-    - git clone -b 7.0.0 https://gitlab.com/libxc/libxc.git
+    - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - autoreconf -i
     - >
@@ -530,8 +490,8 @@ test-cuda-mpi:
   script:
     - nvidia-smi
     - gpaw info
-    - GPAW_DEBUG=1 mpiexec -n 2 gpaw python -m pytest -v -x -m gpu
-    - mpiexec -n 4 gpaw python -m pytest -v -x -m gpu
+    - GPAW_DEBUG=1 $MPIEXEC -n 2 gpaw python -m pytest -v -x -m gpu
+    - $MPIEXEC -n 4 gpaw python -m pytest -v -x -m gpu
 
 
 test-cuda-mpi-makefile-build:
@@ -546,21 +506,7 @@ test-cuda-mpi-makefile-build:
     - nvidia-smi
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
-    - GPAW_USE_GPUS=1 mpiexec -n 2 gpaw test
-
-
-test-hip-cuda:
-  image: $IMAGE_CUDA
-  extends:
-    - .test
-  needs:
-    - job: build-hip-cuda
-  tags:
-    - cuda
-  script:
-    - nvidia-smi
-    - gpaw info
-    - pytest -v -m gpu
+    - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
 
 
 test-lumi-g:
@@ -645,11 +591,13 @@ lint:
 typecheck:
   image: $IMAGE_MAIN_LATEST
   stage: build
-  script:
-    - pip install mypy
+  before_script:
+    - pip freeze
+    - python -m pip install mypy
     - python --version
-    - mypy --version
-    - mypy --pretty
+    - python -m mypy --version
+  script:
+    - python -m mypy --pretty
   cache:
     key: cache-typecheck
     paths:
@@ -739,7 +687,7 @@ nightly-all:
     - export GPAW_PREEXEC_SCRIPT=$(realpath preexec.py)
   script:
     - >
-      mpiexec -n $RUNNER_MPI_NPROCS gpaw python -m pytest
+      $MPIEXEC -n $RUNNER_MPI_NPROCS gpaw python -m pytest
       --test-group-count $GPAW_TESTGROUPS --test-group=$GPAW_MYTESTGROUP
       --test-group-random-seed=42
       $COV --instafail -r s --durations 30
@@ -837,6 +785,9 @@ coverage-combine:
     - nightly-gpawmpi-4-group-2-2
   tags:
     - xeon40
+  before_script:
+    - pip install coverage
+    - pip freeze
   script:
     - coverage combine coverage-gpwfiles coverage-nightly-*
     - coverage report

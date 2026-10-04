@@ -274,7 +274,7 @@ def count(fermi_level: float,
     dnedef = 0.0
 
     if n1 == n2:
-        return ne, dnedef
+        return float(ne), dnedef
 
     ntetra = 6 * i_ktq.shape[0]
     eig_Tq = eig_in[i_ktq, n1:n2].transpose((0, 1, 3, 2)).reshape(
