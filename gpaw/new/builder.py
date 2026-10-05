@@ -193,11 +193,11 @@ class DFTComponentsBuilder:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
         self.distribute_density = (
-            params.parallel.get('distribute_density', False) and
+            params.parallel.get('distribute_density', not False) and
             comm.size > self.communicators['d'].size)
 
         if self.distribute_density:
-            pass#assert self.mode == 'pw'
+            pass  # assert self.mode == 'pw'
 
         self.grid, self.fine_grid = self.create_uniform_grids()
         if self.distribute_density:
