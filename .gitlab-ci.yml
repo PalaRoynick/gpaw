@@ -758,6 +758,8 @@ nightly-all:
 
 
 nightly-mpi-1-group-1-1:
+  variables:
+    GPAW_TEST_MPIEXEC_COMMAND: "mpiexec"
   extends:
     - .nightly
   script:
