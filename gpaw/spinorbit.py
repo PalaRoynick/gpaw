@@ -41,6 +41,7 @@ def calculate_soc(dft: DFT,
                   ignore_xc_potential: bool = False,
                   occ_calc_params: dict | None = None,
                   projected=False,
+                  zora=False,
                   log: str | Path | Logger | None = '-'
                   ) -> tuple[IBZWaveFunctions,
                              float,
@@ -106,7 +107,8 @@ def calculate_soc(dft: DFT,
     dVL_avii = {a: soc(dft.setups[a],
                        dft.pot_calc.xc.xc,
                        np.array([pack_density(D_ii) for D_ii in D_sii.real]),
-                       ignore_xc_potential) * scale
+                       ignore_xc_potential,
+                       zora=zora) * scale
                 for a, D_sii in D_asii.items()}
 
     if projected:
@@ -582,7 +584,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
 def soc(a: Setup,
         xc,
         D_sp: np.ndarray,
-        ignore_xc_potential=False) -> np.ndarray:
+        ignore_xc_potential=False,
+        zora=False) -> np.ndarray:
     """<phi_i|dU^a/dr / r * L_v|phi_j>"""
     v_g = get_radial_potential_derivative(a, xc, D_sp, ignore_xc_potential)
     Ng = len(v_g)
@@ -629,7 +632,8 @@ def projected_soc(dVL_vii: np.ndarray,
 def get_radial_potential_derivative(a: Setup,
                                     xc,
                                     D_sp: np.ndarray,
-                                    ignore_xc_potential=False) -> np.ndarray:
+                                    ignore_xc_potential=False,
+                                    zora: bool = False) -> np.ndarray:
     """Calculates (dU/dr) for the effective potential.
     Below, f_g denotes dU/dr which is also the negative of the radial force"""
 
@@ -642,27 +646,34 @@ def get_radial_potential_derivative(a: Setup,
     n_qg = a.xc_correction.n_qg
     D_sq = np.dot(D_sp, B_pq)
     n_sg = np.dot(D_sq, n_qg) / (4 * np.pi)**0.5
-    Ns = len(D_sp)
-    if Ns == 4:
-        Ns = 1
+    Ns = len(D_sp) % 3
+
     n_sg[:Ns] += a.xc_correction.nc_g / Ns
+    n_g = n_sg[:Ns].sum(axis=1)
 
     # Coulomb force from nucleus
-    fc_g = a.Z / r_g**2
+    f_g = a.Z
 
     # Hartree force
-    rho_g = 4 * np.pi * r_g**2 * dr_g * np.sum(n_sg[:Ns], axis=0)
-    fh_g = -np.array([np.sum(rho_g[:ig]) for ig in range(len(r_g))]) / r_g**2
+    x_g = 4 * np.pi * r_g**2 * dr_g * n_g
+    f_g[1:] -= np.add.accumulate(x_g[:-1])
+    f_g *= r_g**-2
 
-    f_g = fc_g + fh_g
+    if zora:
+        v_g = (rgd.poisson(n_g) - a.Z) / r_g
 
     # xc force
     if not ignore_xc_potential:
         v_sg = np.zeros_like(n_sg)
         xc.calculate_spherical(rgd, n_sg, v_sg)
+        if zora:
+            v_g += v_sg[:Ns].mean(axis=1)
         fxc_g = np.mean([rgd.derivative(v_g) for v_g in v_sg[:Ns]],
                         axis=0)
         f_g += fxc_g
+
+    if zora:
+        f_g *= (1.0 - v_g * alpha**2 / 2)**-2
 
     return f_g
 
