@@ -7,13 +7,14 @@ from gpaw.typing import Array1D, Array2D, Array3D
 
 class HubbardUJ(Extension):
     def __init__(self,
-                 indices: list,
+                 atom_indices: list,
                  *,
                  l: int,
                  U: float,
                  J: float,
                  scale: bool = True):
-        self.indices = indices
+        self.atom_indices = atom_indices
+        assert l == 2
         self.l = l
         self.U = U / Ha
         self.J = J / Ha
@@ -24,7 +25,7 @@ class HubbardUJ(Extension):
                                      setup,
                                      atom_index,
                                      dH_sii) -> float:
-        if atom_index not in self.indices:
+        if atom_index not in self.atom_indices:
             return 0.0
 
         eU, dHU_sii = self.calculate(D_sii, setup.l_j, setup.n_j, setup.N0_q)
@@ -52,14 +53,16 @@ class HubbardUJ(Extension):
                        l=l, l_j=l_j, n_j=n_j, N0_q=N0_q, scale=scale)
 
 
-def hubbard(D_sii: Array3D,
-            U: float,
-            J: float,
-            l: int,
-            l_j: list[int],
-            n_j: list[int],
-            N0_q: Array1D,
-            scale: bool) -> tuple[float, Array3D]:
+def liechtenstein_hubbard(
+        D_sii: Array3D,
+        U: float,
+        J: float,
+        l: int,
+        l_j: list[int],
+        n_j: list[int],
+        N0_q: Array1D,
+        scale: bool) -> tuple[float, Array3D]:
+
     nspins = len(D_sii)
 
     # j-indices which have the correct angular momentum quantum number
