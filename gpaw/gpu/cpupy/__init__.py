@@ -31,6 +31,7 @@ FAKE_CUPY_WARNING = """
 """
 
 pi = np.pi
+newaxis = np.newaxis
 
 
 def require(a, requirements=None):
@@ -43,6 +44,14 @@ def empty(*args, **kwargs) -> ndarray:
 
 def empty_like(a):
     return ndarray(np.empty_like(a._data))
+
+
+def ones_like(a):
+    return ndarray(np.ones_like(a._data))
+
+
+def zeros_like(a, dtype=None):
+    return ndarray(np.zeros_like(a._data, dtype=dtype))
 
 
 def zeros(*args, **kwargs):
@@ -124,8 +133,9 @@ def abs(a):
     return ndarray(np.abs(a._data))
 
 
-def exp(a):
-    return ndarray(np.exp(a._data))
+def exp(a, out=None):
+    return ndarray(np.exp(a._data,
+                          out=None if out is None else out._data))
 
 
 def mean(a, axis=None):
@@ -205,6 +215,14 @@ def nan_to_num(a: ndarray, copy=True, nan=0.0, posinf=None, neginf=None):
 
 def real(a: ndarray) -> ndarray:
     return ndarray(np.real(a._data))
+
+
+def indices(size):
+    return ndarray(np.indices(size))
+
+
+def where(a, v1, v2):
+    return ndarray(np.where(a, v1._data, v2))
 
 
 class ndarray:

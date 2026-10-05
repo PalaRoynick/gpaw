@@ -952,7 +952,7 @@ class FastPoissonSolver(BasePoissonSolver):
                 temp = xp.ones_like(fft_lambdas)
                 for c, axis in enumerate(fftfst_axes):
                     temp *= r_cx[axis] ** offset_c[axis]
-                fft_lambdas += coeff * (temp - 1.0)
+                fft_lambdas += (temp - 1.0) * coeff
 
         assert xp.linalg.norm(fft_lambdas.imag) < 1e-10
         fft_lambdas = fft_lambdas.real.copy()  # arr.real is not contiguous
