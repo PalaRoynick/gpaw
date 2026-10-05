@@ -12,7 +12,7 @@ from gpaw.dft import Parameter
 from gpaw.fd_operators import laplace
 from gpaw.mpi import broadcast, broadcast_float
 from gpaw.new.poisson import PoissonSolver
-from gpaw.new.solvation.poisson import PWSolvationPoissonSolver
+from gpaw.solvation.poisson import PWSolvationPoissonSolver
 
 
 class GaussianDerivativeDipole(Parameter):
@@ -273,8 +273,8 @@ class _Layer(PoissonSolver, ABC):
 class _FDLayer(_Layer):
     """Dipole layer for the weighted finite-difference Poisson solver.
 
-    Wraps an FDSolvationPoissonSolver. The cell must be non-periodic
-    along z, with the potential zero on the faces.
+    Wraps a WeightedFDPoissonSolver (in a PoissonSolverWrapper). The cell
+    must be non-periodic along z, with the potential zero on the faces.
     """
 
     def __init__(self, ps, center: float, width: float,
@@ -331,7 +331,8 @@ class _FDLayer(_Layer):
             # Restore the uncorrected potential as the initial guess.
             vHt_g += self.vcorr_g
         self.ps.solve(vHt_r, rhot_r)
-        self._correct(vHt_g, rhot_r.data, self.ps.dielectric.eps_gradeps[0])
+        self._correct(vHt_g, rhot_r.data,
+                      self.ps.solver.dielectric.eps_gradeps[0])
         return nan
 
     def _plane_averages(self, a_g, g_z):

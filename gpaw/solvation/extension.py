@@ -11,8 +11,8 @@ from gpaw.fd_operators import Gradient
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.new.c import add_to_density
 from gpaw.new.poisson import PoissonSolver
-from gpaw.new.solvation.dipole_layer import GaussianDerivativeDipole
-from gpaw.new.solvation.poisson import SolvationPoissonSolver
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.poisson import SolvationPoissonSolver
 from gpaw.solvation.cavity import Cavity
 from gpaw.solvation.dielectric import Dielectric
 from gpaw.solvation.interactions import Interaction

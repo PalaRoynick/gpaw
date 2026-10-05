@@ -8,7 +8,7 @@ from gpaw.extensions import Extension
 from gpaw.extensions.jellium import (FixedPotentialJelliumExtension,
                                      JelliumExtension)
 from gpaw.new.builder import DFTComponentsBuilder
-from gpaw.new.solvation import Solvation, SolvationExtension
+from gpaw.solvation.extension import Solvation, SolvationExtension
 
 
 class SJM(Solvation):

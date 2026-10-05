@@ -33,10 +33,14 @@ Git master branch
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
+* Implicit solvation calculations should now be used through the new interface,
+  as extensions: ``GPAW(..., extensions=[Solvation(...)])``. The legacy
+  interface is still available via ``gpaw.old.solvation``; in particular, the
+  special Poisson solvers ``ADM12PoissonSolver`` and
+  ``PolarizationPoissonSolver`` have not been ported from the legacy code.
+
 * Implicit solvation calculations are now supported in plane-wave mode, using
-  an updated conjugate-gradient Poisson solver. Add the solvation model
-  through the ``extensions`` keyword; e.g.,
-  ``GPAW(..., extensions=[Solvation(...)])``.
+  an updated conjugate-gradient Poisson solver.
 
 * The solvation extension now has a dipole correction, in both plane-wave
   and finite-difference modes. A Gaussian-derivative dipole layer is added

@@ -4,8 +4,7 @@ import ase.io
 from ase.parallel import world
 
 from gpaw import GPAW, PW
-from gpaw.new.solvation import Solvation
-from gpaw.solvation import LinearDielectric, get_HW14_water_kwargs
+from gpaw.solvation import Solvation, LinearDielectric, get_HW14_water_kwargs
 
 slab = ase.io.read('slab.traj')
 slab.pbc = (True, True, False)  # As in run-corrected.py.

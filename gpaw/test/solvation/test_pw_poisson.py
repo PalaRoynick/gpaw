@@ -6,8 +6,8 @@ from ase.parallel import parprint
 from ase.units import Bohr
 
 from gpaw.core import PWArray, PWDesc, UGDesc
-from gpaw.new.solvation.dipole_layer import GaussianDerivativeDipole
-from gpaw.new.solvation.poisson import SolvationPoissonSolver
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.poisson import SolvationPoissonSolver
 
 BOX = 12.0
 

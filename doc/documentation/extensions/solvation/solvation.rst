@@ -133,15 +133,20 @@ To turn on the dipole correction, use the ``dipolelayer`` keyword::
 The cell must be non-periodic along *z* (``atoms.pbc = (True, True, False)``), even in plane-wave mode.
 (This is the same requirement as in the standard dipole correction.)
 
-You can adjust the geometry of the Gaussian derivative by instead supplying a :class:`~gpaw.new.solvation.GaussianDerivativeDipole`, like ``dipolelayer=GaussianDerivativeDipole(center=1.1, width=0.4)``, or a dictionary of the same keywords, like ``dipolelayer={'center': 1.1, 'width': 0.4}``.
-To use a different dipole correction, which can be written in your own script, supply an object with ``build()`` and ``todict()`` methods; see :meth:`~gpaw.new.solvation.GaussianDerivativeDipole.from_param`.
+You can adjust the geometry of the Gaussian derivative by instead supplying a :class:`~gpaw.solvation.GaussianDerivativeDipole`, like ``dipolelayer=GaussianDerivativeDipole(center=1.1, width=0.4)``, or a dictionary of the same keywords, like ``dipolelayer={'center': 1.1, 'width': 0.4}``.
+To use a different dipole correction, which can be written in your own script, supply an object with ``build()`` and ``todict()`` methods; see :meth:`~gpaw.solvation.GaussianDerivativeDipole.from_param`.
+
+Legacy GPAW
+===========
+
+The legacy-GPAW calculator, ``SolvationGPAW``, is still available from ``gpaw.old.solvation``, but new calculations should use the ``Solvation`` extension described above.
 
 Docstrings
 ==========
 
-.. autoclass:: gpaw.new.solvation.Solvation
+.. autoclass:: gpaw.solvation.Solvation
 
-.. autoclass:: gpaw.new.solvation.GaussianDerivativeDipole
+.. autoclass:: gpaw.solvation.GaussianDerivativeDipole
    :members: from_param
 
 References

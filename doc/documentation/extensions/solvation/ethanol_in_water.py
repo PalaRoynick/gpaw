@@ -2,8 +2,8 @@ from gpaw import GPAW
 from ase.build import molecule
 from ase.units import mol, kJ, kcal, Pascal, m
 from ase.parallel import parprint
-from gpaw.new.solvation import Solvation
 from gpaw.solvation import (
+    Solvation,  # the solvation extension
     EffectivePotentialCavity,  # cavity using an effective potential
     Power12Potential,          # a specific effective potential
     LinearDielectric,  # rule to construct permittivity func from the cavity

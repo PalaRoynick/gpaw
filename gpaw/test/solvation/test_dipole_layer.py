@@ -5,8 +5,8 @@ import pytest
 
 from gpaw.core import PWDesc, UGDesc
 from gpaw.fd_operators import Gradient
-from gpaw.new.solvation.dipole_layer import GaussianDerivativeDipole
-from gpaw.new.solvation.poisson import SolvationPoissonSolver
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.poisson import SolvationPoissonSolver
 from gpaw.solvation.dielectric import Dielectric
 
 
