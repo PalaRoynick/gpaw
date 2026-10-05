@@ -162,7 +162,6 @@ def generate_basis_functions(ppdata):
                 bf_j.append(bf)
     # l_orb_J = [state.l for state in self.data['states']]
     b1 = SimpleBasis(ppdata.symbol, ppdata.l_orb_J, ppdata.n_j)
-    # b1 = SimpleBasis(ppdata.symbol, ppdata.l_j, ppdata.n_j)
     apaw = AtomPAW(ppdata.symbol, [ppdata.f_ln], h=0.05, rcut=9.0,
                    basis={ppdata.symbol: b1},
                    setups={ppdata.symbol: ppdata},
