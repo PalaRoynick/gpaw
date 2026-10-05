@@ -85,6 +85,9 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             poisson_solver,
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
+            wf_grid=self.wf_grid,
+            wf_atomdist=self.wf_atomdist,
+            kpt_band_comm=self.communicators['D'],
             interpolation_stencil_range=self.interpolation_stencil_range,
             extensions=extensions,
             xp=self.xp)

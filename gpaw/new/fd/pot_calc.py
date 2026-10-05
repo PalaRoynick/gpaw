@@ -11,7 +11,7 @@ from gpaw.new.pot_calc import PotentialCalculator
 
 class FDPotentialCalculator(PotentialCalculator):
     def __init__(self,
-                 wf_grid: UGDesc,
+                 grid: UGDesc,
                  fine_grid: UGDesc,
                  setups,
                  xc,
@@ -19,11 +19,13 @@ class FDPotentialCalculator(PotentialCalculator):
                  *,
                  relpos_ac,
                  atomdist,
+                 wf_grid,  # grid for wave functions
+                 wf_atomdist,  # atom-distribution for wave functions
+                 kpt_band_comm,  # complementary comm for wave functions
                  interpolation_stencil_range=3,
                  extensions=None,
                  xp=np):
         self.fine_grid = fine_grid
-        self.grid = wf_grid
 
         self.vbar_ar = setups.create_local_potentials(fine_grid, relpos_ac,
                                                       atomdist, xp=xp)
@@ -37,12 +39,16 @@ class FDPotentialCalculator(PotentialCalculator):
 
         n = interpolation_stencil_range
         self.interpolation_stencil_range = n
-        self._interpolate = wf_grid.transformer(fine_grid, n, xp=xp)
-        self._restrict = fine_grid.transformer(wf_grid, n, xp=xp)
+        self._interpolate = grid.transformer(fine_grid, n, xp=xp)
+        self._restrict = fine_grid.transformer(grid, n, xp=xp)
 
         self.xp = xp
 
         super().__init__(xc, poisson_solver, setups,
+                         grid=grid,
+                         wf_grid=wf_grid,
+                         wf_atomdist=wf_atomdist,
+                         kpt_band_comm=kpt_band_comm,
                          relpos_ac=relpos_ac,
                          extensions=extensions)
 
