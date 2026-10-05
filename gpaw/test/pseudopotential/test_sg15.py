@@ -18,13 +18,16 @@ SG15_SYMBOLS = [
 @pytest.mark.parametrize('symbol', SG15_SYMBOLS)
 def test_sg15(symbol):
     a = Atoms(symbol, cell=[3, 4, 5], pbc=1)
-    DFT(
-        a,
-        xc='PBE',
-        setups='sg15',
-        # random=True
-        mode='pw',
-        converge=False).converge(steps=1)
+    try:
+        DFT(
+            a,
+            xc='PBE',
+            setups='sg15',
+            # random=True
+            mode='pw',
+            converge=False).converge(steps=1)
+    except FileNotFoundError:
+        pytest.skip('Could not fine SG15-PP')
 
 
 if __name__ == '__main__':
