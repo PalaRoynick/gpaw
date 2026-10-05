@@ -587,7 +587,7 @@ def soc(a: Setup,
         ignore_xc_potential=False,
         zora=False) -> np.ndarray:
     """<phi_i|dU^a/dr / r * L_v|phi_j>"""
-    v_g = get_radial_potential_derivative(a, xc, D_sp, ignore_xc_potential)
+    v_g = get_radial_potential_derivative(a, xc, D_sp, ignore_xc_potential, zora)
     Ng = len(v_g)
     phi_jg = a.data.phi_jg
 
@@ -649,10 +649,11 @@ def get_radial_potential_derivative(a: Setup,
     Ns = len(D_sp) % 3
 
     n_sg[:Ns] += a.xc_correction.nc_g / Ns
-    n_g = n_sg[:Ns].sum(axis=1)
+    n_g = n_sg[:Ns].sum(axis=0)
 
     # Coulomb force from nucleus
-    f_g = a.Z
+    f_g = rgd.empty()
+    f_g[:] = a.Z
 
     # Hartree force
     x_g = 4 * np.pi * r_g**2 * dr_g * n_g
@@ -664,11 +665,11 @@ def get_radial_potential_derivative(a: Setup,
 
     # xc force
     if not ignore_xc_potential:
-        v_sg = np.zeros_like(n_sg)
-        xc.calculate_spherical(rgd, n_sg, v_sg)
+        vxc_sg = np.zeros_like(n_sg)
+        xc.calculate_spherical(rgd, n_sg, vxc_sg)
         if zora:
-            v_g += v_sg[:Ns].mean(axis=1)
-        fxc_g = np.mean([rgd.derivative(v_g) for v_g in v_sg[:Ns]],
+            v_g += vxc_sg[:Ns].mean(axis=0)
+        fxc_g = np.mean([rgd.derivative(vxc_g) for vxc_g in vxc_sg[:Ns]],
                         axis=0)
         f_g += fxc_g
 

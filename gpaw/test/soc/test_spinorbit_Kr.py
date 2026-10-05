@@ -1,7 +1,7 @@
 import pytest
 from ase import Atoms
 
-from gpaw.spinorbit import soc_eigenstates
+from gpaw.spinorbit import soc_eigenstates, calculate_soc
 from gpaw import GPAW
 
 
@@ -28,6 +28,10 @@ def test_spinorbit_Kr():
     assert e_n == pytest.approx([e1, e2, e2, e2], abs=1.0e-3)
     assert e_m == pytest.approx(
         [e1, e1, e2a, e2a, e2b, e2b, e2b, e2b], abs=1.0e-3)
+
+    from ase.units import Ha
+    e_m = calculate_soc(calc.dft, zora=True)[0].get_all_eigs()[0] * Ha
+    print(e_m)
 
 
 if __name__ == '__main__':
