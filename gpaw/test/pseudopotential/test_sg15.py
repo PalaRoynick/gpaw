@@ -27,7 +27,7 @@ def test_sg15(symbol):
             mode='pw',
             converge=False).converge(steps=1)
     except FileNotFoundError:
-        pytest.skip('Could not fine SG15-PP')
+        pytest.skip('Could not find SG15-PP')
 
 
 if __name__ == '__main__':
