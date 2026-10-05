@@ -8,6 +8,7 @@ from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.etdm.etdm import ETDM
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
+from gpaw.new.etdm.tools import sort_orbitals_according_to_occ
 
 
 class DirOptLCAO(LCAOEigensolver):
@@ -21,6 +22,7 @@ class DirOptLCAO(LCAOEigensolver):
                  searchdir_algo_name='l-bfgs',
                  linesearch_algo={'name': 'max-step',
                                   'max_step': 0.25},
+                 excited_state=False
                  ):
 
         """Class for direct orbital optimization in LCAO mode
@@ -61,7 +63,7 @@ class DirOptLCAO(LCAOEigensolver):
                     should be a float
                 Defaults to {'name': 'max-step', 'max_step': 0.25}.
         """
-        self.name = "etdm-lcao"
+        self.name = 'etdm-lcao'
         self.representation = representation
         self.matrix_exp = matrix_exp
         self.searchdir_algo_name = searchdir_algo_name
@@ -70,6 +72,10 @@ class DirOptLCAO(LCAOEigensolver):
         self.linesearch_algo = linesearch_algo
         self.iter = 0
         self.update_ref_orbitals_counter = 20
+        self.excited_state = excited_state
+
+        if self.excited_state:
+            print('Excited state is true!!')
 
         super().__init__(basis)
 
@@ -86,11 +92,19 @@ class DirOptLCAO(LCAOEigensolver):
         """
 
         # First diagonalization
+        # this could be skipped in certain circumstances, such as during
+        # an excited state calculation (we do not need initial orbitals in 
+        # that case)
         super().iterate(ibzwfs, density, potential, hamiltonian)
 
+        # this also does not need to be done if they are read
         nelectrons = density.nvalence - density.charge + pot_calc.charge
         ibzwfs.calculate_occs(self.occ_calc, nelectrons)
-        self.sort_orbitals_according_to_occ(ibzwfs)
+        sort_orbitals_according_to_occ(ibzwfs)
+
+        # initial sorting of the orbitals to be put here,
+        # there can't be gaps in the occupations
+        self.initial_sort_orbitals(ibzwfs, self.occ_calc)
 
         # Initialize objective function
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
@@ -109,6 +123,9 @@ class DirOptLCAO(LCAOEigensolver):
         for u in range(len(self.objfunc.a_vec_u)):
             a.append(self.objfunc.a_vec_u[u].data)
             self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
+
+        # initialize mom reference orbitals
+        #self.initialize_mom_reference_orbitals(ibzwfs, density)
 
         # Set reference orbitals
         self.ref_orbitals = []
@@ -269,36 +286,20 @@ class DirOptLCAO(LCAOEigensolver):
             self.iter = 1
             self.etdm.searchdir_algo.reset()
 
-    def sort_orbitals_according_to_occ(self, ibzwfs):
-
-        """
-        Sort orbitals according to the occupation
-        numbers so that there are no holes in the
-        distribution of occupation numbers
-        :return:
-        """
-
-        for wfs in ibzwfs:
-
-            occupied = wfs.myocc_n > 1.0e-10
-            n_occ = sum(occupied)
-            if n_occ != 0.0 and np.min(wfs.myocc_n[:n_occ]) == 0:
-                ind_occ = np.argwhere(occupied)
-                ind_unocc = np.argwhere(~occupied)
-                ind = np.vstack((ind_occ, ind_unocc))
-                ind = np.squeeze(ind)
-
-                wfs.C_nM[np.arange(len(ind)), :] = wfs.C_nM[ind, :]
-                wfs._P_ani = None
-
-                wfs.myocc_n = wfs.myocc_n[ind]
-
     def postprocess(self, ibzwfs, density, potential, hamiltonian,
                     maxiter, cc, log):
-        for wfs in ibzwfs:
-            self.update_to_canonical_orbitals(wfs,
-                                              hamiltonian,
-                                              potential)
+
+        if self.roks:
+            # do not do the update to canonical orbitals
+            # with roks
+            return
+        else:
+            for wfs in ibzwfs:
+                self.update_to_canonical_orbitals(wfs,
+                                                  hamiltonian,
+                                                  potential)
+        # put this back to zero
+        self.iter = 0
 
     def get_preconditioner(self, ibzwfs, ind_up):
         """
@@ -365,3 +366,27 @@ class DirOptLCAO(LCAOEigensolver):
             x += 1
 
         return hess
+
+    def initial_sort_orbitals(self, ibzwfs, occ_calc):
+        """ Sort the orbitals to avoid gaps in the occupations
+        """
+        # put a check if mom is enabled
+        occ_name = getattr(occ_calc.occ, 'name', None)
+
+        if occ_name == 'mom':
+            update_mom = True
+            # these are never used??????
+            self.initial_occupation_numbers = ibzwfs.get_all_eigs_and_occs()[1]
+        else:
+            update_mom = False
+        sort_orbitals_according_to_occ(ibzwfs,
+                                       update_mom=update_mom)
+
+    def initialize_mom_reference_orbitals(self, ibzwfs, density, occ_calc):
+        # Reinitialize the MOM reference orbitals
+        # after orthogonalization/localization
+        occ_name = getattr(occ_calc.occ, 'name', None)
+
+        if occ_name == 'mom':
+            wfs.occupations.initialize_reference_orbitals()
+            wfs.calculate_occupation_numbers(dens.fixed)

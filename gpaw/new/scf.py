@@ -89,6 +89,7 @@ class SCFLoop:
                 self.occ_calc,
                 nelectrons,
                 fix_fermi_level=self.fix_fermi_level)
+            # print(ibzwfs.get_all_eigs_and_occs()[1])
 
             if hasattr(self.hamiltonian, 'hybrid_energy_contributions'):
                 ecc, evc, evv, dekin = (

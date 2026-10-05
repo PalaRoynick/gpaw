@@ -27,7 +27,6 @@ class DirectOptimization(Eigensolver):
               setups,
               atoms):
         return DirOptPWFD(
-            converge_unocc=self.converge_unocc,
             convergence=convergence,
             hamiltonian=hamiltonian,
             domain_band_comm=domain_band_comm,
@@ -45,6 +44,7 @@ class DirectOptimizationLcao(Eigensolver):
                  linesearch_algo={'name': 'max-step',
                                   'max_step': 0.25},
                  converge_unocc: bool = False,
+                 excited_state=False
                  ):
 
         self.converge_unocc = converge_unocc
@@ -52,6 +52,7 @@ class DirectOptimizationLcao(Eigensolver):
         self.matrix_exp = matrix_exp
         self.searchdir_algo = searchdir_algo
         self.linesearch_algo = linesearch_algo
+        self.excited_state = excited_state
 
     def todict(self):
         return {'converge_unocc': self.converge_unocc}
@@ -70,4 +71,5 @@ class DirectOptimizationLcao(Eigensolver):
             searchdir_algo_name=self.searchdir_algo,
             occ_calc=occ_calc,
             mixer=mixer,
-            linesearch_algo=self.linesearch_algo)
+            linesearch_algo=self.linesearch_algo,
+            excited_state=self.excited_state)
