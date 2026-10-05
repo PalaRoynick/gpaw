@@ -21,9 +21,8 @@ def test_all():
             a,
             xc='PBE',
             setups='sg15',
-            # basis='no-basis',
-            mode='pw',
-            random=True)
+            # random=True
+            mode='pw')
 
 
 if __name__ == '__main__':
