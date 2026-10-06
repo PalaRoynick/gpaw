@@ -23,17 +23,8 @@ def test_h(gpaw_new, mode, in_tmp_dir):
     params['mode'] = mode
 
     if gpaw_new:
-        sjm_input = SJM(**sjm, **solvation)
-        # dipolelayer and zero_vacuum are not constructor arguments: SJM.build
-        # sets them from the mode, so before a calculation they sit at
-        # the held Solvation's default.
-        assert sjm_input.solvation.dipolelayer is None
-        atoms.calc = GPAW(extensions=[sjm_input], **params)
+        atoms.calc = GPAW(extensions=[SJM(**sjm, **solvation)], **params)
         energy = atoms.get_potential_energy()
-        # Solvation implements the dipole layer in pw mode only; in fd mode
-        # SJMPoissonSolver corrects the dipole itself and Solvation must not
-        # be asked for it again.
-        assert (sjm_input.solvation.dipolelayer is not None) is (mode == 'pw')
         pot = -atoms.calc.get_fermi_level()
     else:
         atoms.calc = OldSJM(**solvation, sj=sjm, **params)

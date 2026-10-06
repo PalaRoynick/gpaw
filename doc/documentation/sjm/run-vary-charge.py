@@ -108,9 +108,6 @@ atoms.calc = GPAW(
     gpts=(48, 48, 192),
     xc='PBE',
     occupations=FermiDirac(0.1),
-    # The 'work function' convergence criterion is not available in PW
-    # mode: it needs dipole_layer_correction(), which the Poisson solver
-    # SJM builds there (ConjugateGradientPoissonSolver) does not provide.
     extensions=[sjm])
 
 # sjm.change() changes the charge without throwing away the wave functions.

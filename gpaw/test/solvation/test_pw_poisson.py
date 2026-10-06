@@ -6,10 +6,8 @@ from ase.parallel import parprint
 from ase.units import Bohr
 
 from gpaw.core import PWArray, PWDesc, UGDesc
-from gpaw.extensions.electrochemistry.sjm import SJMPoissonSolver
 from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
-from gpaw.solvation.poisson import (SolvationPoissonSolver,
-                                    WeightedFDPoissonSolver)
+from gpaw.solvation.poisson import SolvationPoissonSolver
 
 BOX = 12.0
 
@@ -391,72 +389,3 @@ def test_cg_poisson_solver_tail_subtraction():
              (zgrid[index2] - zgrid[index1]))
 
     assert slope == pytest.approx(0.0, abs=1e-6)
-
-
-def _solve_fd_sjm(nz, length=20.0, width=3.0):
-    """Solve an asymmetric slab-like system through ``SJMPoissonSolver``.
-
-    Returns the z coordinates in bohr and the xy-averaged potential.
-    """
-    charge_center = 14.0  # bohr
-    charge_alpha = 1.0  # bohr^-2  [1/width^2]
-    dielectric_center = 17.0  # bohr
-    dielectric_width = 2.0  # bohr
-
-    # FD mode uses a zero boundary condition along the non-periodic axis:
-    grid = UGDesc(cell=np.array([width, width, length]), size=(8, 8, nz),
-                  pbc=(True, True, False), zerobc=(False, False, True))
-    zgrid = grid.xyz()[0, 0, :, 2]
-
-    # Test charge is a gaussian derivative, well above the vacuum region.
-    rhot_r = grid.zeros()
-    rhot_r.data[:] = (0.05 * (zgrid - charge_center) *
-                      np.exp(-charge_alpha * (zgrid - charge_center)**2))
-
-    # Dielectric is a peaked gaussian, higher still.
-    eps_z = (1.0 + 79.0 *
-             np.exp(-((zgrid - dielectric_center) / dielectric_width)**2))
-    eps_r = grid.zeros()
-    eps_r.data[:] = eps_z
-    dx_r, dy_r, dz_r = (grid.zeros() for _ in range(3))
-    dz_r.data[:] = np.gradient(eps_z, zgrid)
-
-    class MockDielectric:
-        """The FD solver needs eps and its three derivatives."""
-        def __init__(self, eps_gradeps):
-            self.eps_gradeps = eps_gradeps
-
-    dielectric = MockDielectric(
-        [eps_r.data, dx_r.data, dy_r.data, dz_r.data])
-
-    psolver = WeightedFDPoissonSolver(eps=1e-12, maxiter=2000)
-    psolver.set_dielectric(dielectric)
-    psolver.set_grid_descriptor(grid._gd)
-
-    vHt_r = grid.zeros()
-    SJMPoissonSolver(psolver).solve(vHt_r, rhot_r)
-    return zgrid, vHt_r.data.mean(axis=(0, 1))
-
-
-@pytest.mark.parametrize('nz', [64, 192])
-def test_fd_sjm_poisson_solver_vacuum_slope(nz):
-    """The FD counterpart of ``test_cg_poisson_solver_tail_subtraction``.
-
-    ``SJMPoissonSolver`` cancels the slope of the potential in the vacuum
-    below the slab by subtracting a scaled saw-tooth.  Running at two grid
-    spacings pins down that the slope it measures is defined by a physical
-    distance and not by a fixed number of grid points: probing fixed indices
-    instead leaves a residual that grows as the grid is refined.
-    """
-    zgrid, profile_z = _solve_fd_sjm(nz)
-
-    # Calculate the slope between ~2 and ~9 bohr, in the vacuum below the
-    # charge and well clear of the zero boundary condition at z = 0.
-    index1 = np.argmin(np.abs(zgrid - 2.0))
-    index2 = np.argmin(np.abs(zgrid - 9.0))
-    slope = ((profile_z[index2] - profile_z[index1]) /
-             (zgrid[index2] - zgrid[index1]))
-
-    assert slope == pytest.approx(0.0, abs=5e-8)
-    # SJM references its electrode potential to the top of the cell:
-    assert profile_z[-1] == pytest.approx(0.0, abs=1e-12)

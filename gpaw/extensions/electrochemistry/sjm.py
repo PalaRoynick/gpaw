@@ -10,16 +10,14 @@ from typing import Any
 import numpy as np
 from ase.units import Bohr, Ha
 
-from gpaw.core import PWDesc, UGArray
+from gpaw.core import UGArray
 from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
     build_jellium_region)
-from gpaw.new.poisson import PoissonSolverWrapper
-from gpaw.solvation.extension import (GaussianDerivativeDipole, Solvation,
-                                      SolvationExtension)
+from gpaw.solvation.extension import Solvation, SolvationExtension
 
 
 always_adjust_warning = 'always_adjust has no effect in constant-charge mode'
@@ -130,8 +128,10 @@ class SJM(ExtensionInput):
                  slope: float | None = None,  # V/electron
                  mixer: float = 0.2,
                  slope_regression_depth: int = 4):
-        # The solvation model; build() picks its dipole options per mode:
-        self.solvation = Solvation(cavity, dielectric, interactions)
+        # The solvation model, with the electrode potential referenced to
+        # the vacuum at the top of the cell:
+        self.solvation = Solvation(cavity, dielectric, interactions,
+                                   dipolelayer={'zero_vacuum': True})
         # The parameters as given (and changed to).  They are what build()
         # starts a calculation from and what todict() records; reading them
         # as attributes gives the live values instead, see __getattr__.
@@ -179,12 +179,6 @@ class SJM(ExtensionInput):
         return [*super().__dir__(), *_KEYWORDS]
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
-        # In plane-wave mode Solvation's dipole layer is used.  In fd mode
-        # SJMPoissonSolver corrects the dipole itself, so Solvation must not
-        # add its own layer on top.
-        self.solvation.dipolelayer = (
-            GaussianDerivativeDipole(zero_vacuum=True)
-            if builder.mode == 'pw' else None)
         solvation = self.solvation.build(builder)
         log = builder.log
         p = SimpleNamespace(**self._params)  # as given
@@ -339,7 +333,7 @@ class SJM(ExtensionInput):
 
     def todict(self):
         dct = self.solvation.todict()
-        dct.pop('dipolelayer', None)
+        del dct['dipolelayer']  # always the same for SJM
         dct.update({key: self._params[key] for key in _KEYWORDS})
         return dct
 
@@ -430,11 +424,8 @@ class SJMExtension(Extension):
         return [*super().__dir__(), *_KEYWORDS]
 
     def create_poisson_solver(self, grid, pw, charge, xp):
-        ps = self.solvation.create_poisson_solver(
+        return self.solvation.create_poisson_solver(
             grid, pw, charge=charge, xp=xp)
-        if isinstance(pw, PWDesc):
-            return ps
-        return SJMPoissonSolver(ps.solver)
 
     def post_scf_convergence(self,
                              ibzwfs,
@@ -693,146 +684,3 @@ def _write_trace_in_z(a_r: UGArray, filename: str) -> None:
     with open(filename, 'w', encoding='utf-8') as out:
         for z, val in zip(z_z, a_z):
             out.write(f'{z:f} {val:1.8f}\n')
-
-
-class SJMPoissonSolver(PoissonSolverWrapper):
-    """Finite-difference Poisson solver with a fitted dipole correction.
-
-    Unlike the plane-wave solver -- ``ConjugateGradientPoissonSolver``,
-    built by :meth:`SJMExtension.create_poisson_solver` -- this one does
-    not drive the boundary slope to zero.  It reaches about 1e-6 a.u., and
-    refining the grid does not improve that, because the residual is set by
-    a fit rather than by the grid.
-
-    A zero boundary condition in z pins both vacua to ``v == 0``, so a slab
-    with a dipole is forced to ramp: the ramp is the exact solution of the
-    wrong boundary-value problem, not a numerical artifact.  :meth:`solve`
-    removes it afterwards by fitting the slope over :func:`vacuum_window` and
-    subtracting a scaled :func:`modified_saw_tooth` -- a one-dimensional shape
-    built from the xy-averaged ``1 / eps``, not a solution of the actual
-    operator.  Plane waves have no such ramp to remove, being fully periodic,
-    which is why ``_correct_dipole`` there can cancel analytically instead.
-
-    Three ways of closing the gap have been measured and none worked.  An
-    analytic coefficient from the density fails because the 19-point stencil
-    does not obey the continuum identity it relies on (5.8e-5 against the
-    fit's 5e-8).  Subtracting a solved reference layer
-    flattens to 1e-7 but injects a real field where the layer meets the
-    density -- the Cu(100) force gap went 0.071 to 6.678 eV/Ang, invisible to
-    the vacuum-flatness tests -- and moving the layer to the cell edge leaves
-    no vacuum to fit in.  Cancelling the dipole at the source, as
-    :meth:`gpaw.dipole_correction.DipoleCorrection.fdsolve` does, is the
-    structurally right answer, but its analytic potential holds only where
-    ``eps == 1`` and one of its lobes lands in the solvent.
-    """
-
-    def solve(self,
-              vHt_r,
-              rhot_r) -> float:
-        self.solver.solve(vHt_r.data, rhot_r.data)
-        eps_r = vHt_r.desc.from_data(self.solver.dielectric.eps_gradeps[0])
-        eps0_r = eps_r.gather()
-        rhot0_r = rhot_r.gather()
-        vHt0_r = vHt_r.gather()
-        if eps0_r is not None:
-            saw_tooth_z = modified_saw_tooth(eps0_r)
-            v_z = vHt0_r.data.mean(axis=(0, 1))
-            window = vacuum_window(eps0_r, rhot0_r)
-            # Cancel the slope of the potential at the lower boundary by
-            # subtracting a scaled saw-tooth.  Both slopes are measured over
-            # the same window, so any constant offset in the saw-tooth (see
-            # modified_saw_tooth) drops out of the ratio.
-            slope_v = np.polyfit(window, v_z[window], 1)[0]
-            slope_s = np.polyfit(window, saw_tooth_z[window], 1)[0]
-            vHt0_r.data -= (slope_v / slope_s) * saw_tooth_z
-            vHt0_r.data -= vHt0_r.data[:, :, -1].mean()
-        vHt_r.scatter_from(vHt0_r)
-        return np.nan
-
-
-def vacuum_window(eps_r: UGArray,
-                  rhot_r: UGArray,
-                  *,
-                  skip_near_boundary: float = 0.5,  # Å
-                  min_points: int = 4,
-                  eps_tol: float = 1e-3,
-                  rho_tol: float = 1e-5) -> np.ndarray:
-    """Grid indices to measure the boundary slope over.
-
-    The window is the run of points above the lower cell boundary that is
-    genuinely empty: the dielectric is still that of vacuum, so the saw-tooth
-    of :func:`modified_saw_tooth` is linear there, *and* the charge density
-    has not yet picked up, so the potential is too.  The density is what ends
-    the window in practice -- the slab sits below the solvent and has
-    ``eps == 1`` itself, so the dielectric alone would let the window run
-    right through it.
-
-    Defining the window physically rather than through fixed indices keeps
-    the fit over the same distance whatever the grid spacing is.
-
-    Parameters
-    ----------
-    eps_r, rhot_r:
-        Dielectric function and pseudo charge density.  Both must be serial
-        (gathered) arrays.
-    skip_near_boundary:
-        Grid points closer than this to the lower cell boundary are left out
-        of the window, in Å: the finite-difference solution is least accurate
-        there because of the zero boundary condition.
-    min_points:
-        Smallest usable window.
-    eps_tol:
-        A grid point counts as solvated once the dielectric exceeds
-        ``1 + eps_tol``.
-    rho_tol:
-        A grid point counts as occupied once ``|rho|`` exceeds this fraction
-        of the largest xy-averaged value.  It has to be a small fraction: the
-        fit must sit in genuine vacuum, where the field does not depend on the
-        density.  Let it reach into the tail of the slab and the measured
-        slope starts to track the density, which feeds back into the next
-        iteration and stalls the SCF.
-    """
-    eps_z = eps_r.data.mean(axis=(0, 1))
-    rho_z = abs(rhot_r.data.mean(axis=(0, 1)))
-    # Take the heights from the descriptor rather than from an index times a
-    # spacing: with a zero boundary condition in z -- which is what FD mode
-    # uses for a slab -- the first row of the array sits at z = h, not z = 0.
-    z_z = eps_r.desc.xyz()[0, 0, :, 2] * Bohr
-    start = int(np.searchsorted(z_z, skip_near_boundary))
-    # Stop below the first point that feels either the solvent or the slab:
-    rho_max = rho_z.max()
-    occupied_z = eps_z > 1.0 + eps_tol
-    if rho_max > 0.0:
-        occupied_z |= rho_z > rho_tol * rho_max
-    above_z = np.nonzero(occupied_z[1:])[0]
-    stop = 1 + above_z[0] if len(above_z) else len(eps_z)
-
-    if stop - start < min_points:
-        # Too little vacuum to also skip the boundary layer.  Move the window
-        # down towards the boundary rather than up into the slab: a fit close
-        # to the boundary is only less accurate, whereas a fit that reaches
-        # into the density couples the correction to it (see ``rho_tol``).
-        start = max(1, stop - min_points)
-        warnings.warn(
-            'Not enough vacuum below the slab to fit the dipole correction '
-            f'clear of the first {skip_near_boundary} Ang of the cell, so '
-            'it is being fitted next to the zero boundary instead.  The '
-            'fit is noisy there and the SCF may fail to converge.  Add '
-            'vacuum below the slab.')
-    if stop - start < 2:
-        # Degenerate cell with no vacuum at all -- np.polyfit needs two
-        # points, and there is nothing better to offer it.
-        stop = min(len(eps_z), start + 2)
-    return np.arange(start, stop)
-
-
-def modified_saw_tooth(eps_r: UGArray) -> np.ndarray:
-    a_z = 1.0 / eps_r.data.mean(axis=(0, 1))
-    saw_tooth_z = np.add.accumulate(a_z)
-    # The half-step below and the missing factor of h are both constant
-    # offsets/scalings.  They cancel in the slope ratio taken by
-    # SJMPoissonSolver.solve(), and the constant they leave in the potential
-    # is removed when it is re-zeroed at the top of the cell, so neither
-    # affects the result.
-    saw_tooth_z -= 0.5 * a_z
-    return saw_tooth_z

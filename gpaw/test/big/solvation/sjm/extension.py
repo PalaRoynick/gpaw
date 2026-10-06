@@ -186,13 +186,11 @@ def test_sjm_zero_charge_forces_match_solvation():
     solvation force correction, leaving forces that disagree with the
     energy and a relaxation that walks uphill.
 
-    In plane-wave mode the two build the very same Poisson solver, once
-    Solvation is told to make the dipole correction that SJM always
-    makes, so the agreement here is to round-off.  (Solvation has no
-    dipole layer in fd mode, where SJM applies its own saw-tooth
-    reference instead, so the two legitimately differ by a few meV/Ang.)
+    The two build the very same Poisson solver, once Solvation is told
+    to make the dipole correction that SJM always makes, so the agreement
+    here is to round-off.
     """
-    atoms = nacl_atoms([10., 10., 12.], True)
+    atoms = nacl_atoms([10., 10., 12.], [True, True, False])
 
     atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
                            dipolelayer={'zero_vacuum': True})
