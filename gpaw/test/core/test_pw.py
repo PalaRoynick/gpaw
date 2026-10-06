@@ -142,18 +142,42 @@ def test_morph(comm):
     assert (a.data == c.data).all()
 
 
-@pytest.mark.serial
-@pytest.mark.parametrize('dtype', [float, complex])
-@pytest.mark.parametrize('kpt', [None, [1 / 3, 1 / 3, 0]])
-def test_transform(comm, dtype, kpt):
-    if dtype is float and kpt is not None:
-        pytest.skip()
-    pw1 = PWDesc(ecut=40,
-                 cell=[1, 1, 1, 90, 90, 120],
-                 comm=comm,
-                 dtype=dtype)
-    a = pw1.empty()
-    a.randomize()
-    U = [[0, 1, 0], [-1, -1, 0], [0, 0, 1]]  # rotate 120
-    b = a.transform(U).transform(U).transform(U)
+def test_a2a(comm):
+    pw = PWDesc(ecut=10, cell=[1, 1, 1], comm=comm, dtype=complex)
+    a = pw.empty((6, 2), dom_transable=True)
+    b = pw.empty((6, 2), dom_transable=False)
+
+    a.randomize(seed=42)
+    b.data[:] = a.data
     assert (a.data == b.data).all()
+
+    # Ensure they agree on matrix elements
+    c = a.matrix_elements(a, symmetric=False, domain_sum=True)
+    d = b.matrix_elements(b, symmetric=False, domain_sum=True)
+
+    assert c.data == pytest.approx(d.data)
+    assert a.data.shape == b.data.shape
+
+    a.domain_a2a_bands()
+
+    # Ensure we can create new arrays from-data
+    pw0 = pw.new(comm=None)
+    e = pw0.from_data(
+            a.data)
+
+    # Ensure no copying!
+    tmp = e.data[0].copy()
+    e.data[0] = 42
+    assert np.all(a.data[0] == 42)
+    a.data[0] = tmp
+
+    # Deep copy variant:
+    e = pw0.empty(a.data.shape[:-1])
+    e.data[:] = a.data
+
+    f = e.matrix_elements(e, symmetric=False, domain_sum=True)
+    assert f.data == pytest.approx(c.data[comm.rank::comm.size, comm.rank::comm.size])
+
+    a.domain_a2a_bands()
+    assert c.data == pytest.approx(
+        a.matrix_elements(a, symmetric=False, domain_sum=True).data)

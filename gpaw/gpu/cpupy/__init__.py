@@ -412,8 +412,8 @@ class ndarray:
     def conj(self):
         return ndarray(self._data.conj())
 
-    def reshape(self, shape):
-        return ndarray(self._data.reshape(shape))
+    def reshape(self, shape, copy=None):
+        return ndarray(self._data.reshape(shape, copy=copy))
 
     def view(self, dtype):
         return ndarray(self._data.view(dtype))

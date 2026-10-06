@@ -17,6 +17,9 @@ from gpaw.typing import Array1D, ArrayND, Self
 if TYPE_CHECKING:
     from gpaw.core.uniform_grid import UGArray, UGDesc
 
+
+from gpaw import GPAW_MPI_BACKEND
+from gpaw.gpu.mpi import CuPyMPI
 from gpaw.new import prod
 
 DomainType = TypeVar('DomainType', bound=Domain)
@@ -50,11 +53,13 @@ class XArray(Generic[DomainType], XP):
                  data: np.ndarray | None,
                  dv: float,
                  dtype,
-                 xp=None):
+                 xp=None,
+                 dom_transable=False):
         self.myshape = myshape
         self.comm = comm
         self.domain_comm = domain_comm
         self.dv = dv
+        self.dom_trans = False
 
         # convert int to tuple:
         self.dims = dims if isinstance(dims, tuple) else (dims,)
@@ -69,21 +74,62 @@ class XArray(Generic[DomainType], XP):
             self.mydims = ()
 
         fullshape = self.mydims + self.myshape
+        extra_dims_size = prod(self.mydims[1:])
+
+        if self.dims:
+            # Determine required size for domain_transposability:
+            self.maxnX = domain_comm.max_scalar(int(prod(self.myshape)))
+            nnX = domain_comm.sum_scalar(int(prod(self.myshape)))
+            self.maxbands = (mydims0 + domain_comm.size - 1) // domain_comm.size
+            mybands = (mydims0 + domain_comm.size - 1 - self.domain_comm.rank) // domain_comm.size
+            if dom_transable:
+                buffersize = self.maxbands * self.maxnX * domain_comm.size * extra_dims_size
+            else:
+                buffersize = prod(fullshape)
+            self.dom_transable = \
+                buffersize == self.maxbands * self.maxnX * domain_comm.size * extra_dims_size
+        else:
+            assert not dom_transable
+            self.dom_transable = False
+            buffersize = prod(fullshape)
 
         if data is not None:
-            if data.shape != fullshape:
+            if data.size < buffersize:
                 raise ValueError(
-                    f'Bad shape for data: {data.shape} != {fullshape}')
+                    f'Bad shape for data buffer: {data.size} < {buffersize}')
             if data.dtype != dtype:
                 raise ValueError(
-                    f'Bad dtype for data: {data.dtype} != {dtype}')
+                    f'Bad dtype for data buffer: {data.dtype} != {dtype}')
             if xp is not None:
                 assert (xp is np) == isinstance(
                     data, (np.ndarray, NDArrayReader)), xp
         else:
-            data = (xp or np).empty(fullshape, dtype)
+            data = (xp or np).zeros(buffersize, dtype)
 
-        self.data = data
+        if data.flags['C_CONTIGUOUS']:
+            self.data_buffer = data.reshape(-1, copy=False)[:buffersize]
+        else:
+            assert data.shape == fullshape
+            self.dom_transable = False
+            self.data_buffer = data
+
+        if self.dom_transable:
+            self._domain_dist_view = self.data_buffer.reshape(
+                (self.maxbands * domain_comm.size, *self.dims[1:], self.maxnX), copy=False
+            )[:mydims0, ..., :prod(myshape)].reshape(
+                fullshape, copy=False
+            )
+            self._band_dist_view = self.data_buffer.reshape(
+                (self.maxbands, *self.dims[1:], self.maxnX * domain_comm.size), copy=False
+            )[:mybands, ..., :nnX].reshape(
+                (mybands, *self.dims[1:], nnX), copy=False
+            )
+            self.data = self._domain_dist_view
+        else:
+            self.data = self.data_buffer.reshape(
+                fullshape, copy=False
+            )
+
         if isinstance(data, (np.ndarray, NDArrayReader)):
             xp = np
         else:
@@ -169,15 +215,94 @@ class XArray(Generic[DomainType], XP):
         if self._matrix is not None:
             return self._matrix
 
-        nx = prod(self.myshape)
+        if self.dom_transable:
+            assert not self.dom_trans
+            nx = self.maxnX
+        else:
+            nx = prod(self.myshape)
         shape = (self.dims[0], prod(self.dims[1:]) * nx)
         myshape = (self.mydims[0], prod(self.mydims[1:]) * nx)
         dist = (self.comm, -1, 1)
 
-        data = self.data.reshape(myshape)
-        self._matrix = Matrix(*shape, data=data, dist=dist)
+        data = self.data_buffer.reshape(
+            -1, copy=False)[:prod(myshape)].reshape(
+                myshape, copy=False)
 
+        if np.issubdtype(self.desc.dtype, np.floating) \
+                and self.desc.dtype != self.data.dtype:
+            data = data.view(self.real_dtype)
+            shape = (shape[0], shape[1] * 2)
+
+        self._matrix = Matrix(*shape, data=data, dist=dist)
         return self._matrix
+
+    @trace
+    def domain_a2a_bands(self, transfer_data=True, blocking=True, index=None):
+        """Convert domain decomposition to band decomposition, and
+        vice versa."""
+        if self.domain_comm.size == 1:
+            self.dom_trans = not self.dom_trans
+            if index is not None:
+                return None
+            else:
+                return (None, ) * np.prod(self.myshape)
+
+        comm = self.domain_comm
+        size = comm.size
+        assert self.dom_transable
+        mpi_requests = []
+
+        if index is None:
+            self.dom_trans = not self.dom_trans
+            if self.dom_trans:
+                self.data = self._band_dist_view
+            else:
+                self.data = self._domain_dist_view
+
+        if transfer_data:
+            """Create arrays for MPI alltoallv call."""
+
+            # TODO: Define these things in __init__:
+            d2b_size = np.repeat(self.maxnX, size)
+            d2b_offset = np.cumsum(d2b_size) - self.maxnX
+
+            dtype = self.data_buffer.dtype.char
+
+            if isinstance(index, int):
+                if self.dims[1:]:
+                    raise NotImplementedError()
+                inds = np.array([index, ])
+            else:
+                inds = np.arange(self.maxbands * prod(self.dims[1:]))
+            send_size = self.maxnX * size
+            inds *= send_size
+
+            if (not GPAW_MPI_BACKEND == 'MPI4PY') or isinstance(comm, CuPyMPI):
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
+                    comm.alltoallv(data_view.copy(), d2b_size, d2b_offset,
+                                    data_view, d2b_size, d2b_offset)
+                    mpi_requests.append(None)
+            else:
+                from mpi4py.MPI import IN_PLACE
+
+                from gpaw.mpi import MPIComm
+                if isinstance(comm, MPIComm):
+                    comm = comm.comm
+                if self.xp is not np:
+                    self.xp.cuda.get_current_stream().synchronize()
+                for ind in inds:
+                    data_view = self.data_buffer[ind:ind + send_size]
+                    req = comm.comm.Ialltoallv(IN_PLACE,
+                                               (data_view, (d2b_size, d2b_offset), dtype))
+                    mpi_requests.append(req)
+            if blocking:
+                for req in mpi_requests:
+                    if req is not None:
+                        comm.wait(req)
+            if isinstance(index, int):
+                return mpi_requests[0]
+            return mpi_requests
 
     @trace
     def matrix_elements(self,
