@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import scipy.sparse as sparse
 
 from gpaw.core.matrix import Matrix
 from gpaw.external import ExternalPotential
@@ -12,6 +13,7 @@ from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
+from gpaw.utilities.blas import mmm
 
 
 class HamiltonianMatrixCalculator:
@@ -68,9 +70,20 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
         V_MM = self._calculate_potential_matrix(wfs, V_xMM)
 
         M1, M2 = V_MM.dist.my_row_range()
-        for a, dH_ii in dH_aii.items():
-            P_Mi = wfs.P_aMi[a]
-            V_MM.data += (P_Mi[M1:M2] @ dH_ii).conj() @ P_Mi.T  # XXX use gemm
+        if 1:
+            dH_II = sparse.block_diag(
+                [sparse.coo_array(dH_ii) for dH_ii in dH_aii.values()],
+                format='csr')
+            assert dH_II.dtype == float
+            P_MI = sparse.hstack(
+                [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
+                format='csr')
+            V_MM.data += P_MI[M1:M2].conj().dot(dH_II.dot(P_MI.T)).todense()
+        else:
+            for a, dH_ii in dH_aii.items():
+                P_Mi = wfs.P_aMi[a]
+                # XXX use gemm?
+                V_MM.data += (P_Mi[M1:M2] @ dH_ii).conj() @ P_Mi.T
 
         return V_MM
 
