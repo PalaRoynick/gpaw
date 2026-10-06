@@ -35,7 +35,8 @@ def test_pw_par_strategies(in_tmp_dir, d, k, gpu):
         parallel['gpu'] = True
 
     atoms.calc = GPAW(mode=PW(ecut),
-                      txt='hli.txt',
+                      # txt='hli.txt',
+                      eigensolver={'niter': 2},
                       parallel=parallel,
                       kpts={'size': kpoints},
                       convergence={'density': 1e-6},
