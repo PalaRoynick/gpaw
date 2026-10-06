@@ -13,7 +13,6 @@ from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
-from gpaw.utilities.blas import mmm
 
 
 class HamiltonianMatrixCalculator:
