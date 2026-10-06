@@ -4,8 +4,9 @@ from ase.build import molecule
 from ase.units import Ha
 
 from gpaw import GPAW
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, LinearDielectric,
-                            Power12Potential, SolvationGPAW)
+                            Power12Potential, Solvation)
 from gpaw.utilities.adjust_cell import adjust_cell
 
 
@@ -44,18 +45,19 @@ def test_solvation_vacuum(gpaw_new):
                          [0.0, 1.60924, 0.05999],
                          [0.0, -1.60924, 0.05999]])
 
-    atoms.calc = SolvationGPAW(
-        legacy_gpaw=not gpaw_new,
-        mode='fd',
-        xc='LDA',
-        h=h,
-        eigensolver={'name': 'davidson', 'niter': 3},
-        convergence=convergence,
+    solvation = dict(
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii=atomic_radii,
                                                  u0=u0),
             temperature=T),
         dielectric=LinearDielectric(epsinf=1.0))
+    kwargs = dict(mode='fd', xc='LDA', h=h,
+                  eigensolver={'name': 'davidson', 'niter': 3},
+                  convergence=convergence)
+    if gpaw_new:
+        atoms.calc = GPAW(**kwargs, extensions=[Solvation(**solvation)])
+    else:
+        atoms.calc = SolvationGPAW(**kwargs, **solvation)
     Etest = atoms.get_potential_energy()
     if gpaw_new:
         e_ia = atoms.calc.dft.solvation.get_energy_contributions()

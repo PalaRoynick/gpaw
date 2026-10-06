@@ -7,14 +7,13 @@ from ase.build import molecule
 from ase.parallel import parprint
 from ase.units import Bohr, Pascal, m
 
+from gpaw.old.solvation import ADM12PoissonSolver, SolvationGPAW
 from gpaw.solvation import (ADM12SmoothStepCavity, EffectivePotentialCavity,
                             ElDensity, FG02SmoothStepCavity, GradientSurface,
                             KB51Volume, LeakedDensityInteraction,
-                            LinearDielectric, Power12Potential, SolvationGPAW,
-                            SSS09Density, SurfaceInteraction,
-                            VolumeInteraction)
+                            LinearDielectric, Power12Potential, SSS09Density,
+                            SurfaceInteraction, VolumeInteraction)
 # poisson solver
-from gpaw.solvation.poisson import ADM12PoissonSolver
 
 # references for custom classes:
 # KB51 = J. G. Kirkwood and F. P. Buff,

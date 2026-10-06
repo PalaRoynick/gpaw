@@ -18,7 +18,8 @@ from gpaw.extensions.electrochemistry.potentiostat import (
     DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
     build_jellium_region)
 from gpaw.new.poisson import PoissonSolverWrapper
-from gpaw.new.solvation import Solvation, SolvationExtension
+from gpaw.solvation.extension import (GaussianDerivativeDipole, Solvation,
+                                      SolvationExtension)
 
 
 always_adjust_warning = 'always_adjust has no effect in constant-charge mode'
@@ -50,7 +51,7 @@ class SJM(ExtensionInput):
     ----------
     cavity, dielectric, interactions:
         Solvation model, held as ``sjm.solvation``; see
-        :class:`gpaw.new.solvation.Solvation`.
+        :class:`gpaw.solvation.Solvation`.
     jelliumregion:
         Shape of the counter-charge region, as a dict.  The default is a
         slab (:class:`SlabRegion`), taking the keys ``'top'``, ``'bottom'``,
@@ -178,11 +179,12 @@ class SJM(ExtensionInput):
         return [*super().__dir__(), *_KEYWORDS]
 
     def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
-        # Solvation only implements the dipole layer in plane-wave mode.  In
-        # fd mode SJMPoissonSolver corrects the dipole itself, so it must not
-        # be requested from Solvation, which would refuse it.
-        pw = builder.mode == 'pw'
-        self.solvation.dipolelayer = self.solvation.zero_vacuum = pw
+        # In plane-wave mode Solvation's dipole layer is used.  In fd mode
+        # SJMPoissonSolver corrects the dipole itself, so Solvation must not
+        # add its own layer on top.
+        self.solvation.dipolelayer = (
+            GaussianDerivativeDipole(zero_vacuum=True)
+            if builder.mode == 'pw' else None)
         solvation = self.solvation.build(builder)
         log = builder.log
         p = SimpleNamespace(**self._params)  # as given
@@ -338,7 +340,6 @@ class SJM(ExtensionInput):
     def todict(self):
         dct = self.solvation.todict()
         dct.pop('dipolelayer', None)
-        dct.pop('zero_vacuum', None)
         dct.update({key: self._params[key] for key in _KEYWORDS})
         return dct
 

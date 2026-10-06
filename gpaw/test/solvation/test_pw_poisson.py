@@ -6,9 +6,10 @@ from ase.parallel import parprint
 from ase.units import Bohr
 
 from gpaw.core import PWArray, PWDesc, UGDesc
-from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
 from gpaw.extensions.electrochemistry.sjm import SJMPoissonSolver
-from gpaw.solvation.poisson import WeightedFDPoissonSolver
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.poisson import (SolvationPoissonSolver,
+                                    WeightedFDPoissonSolver)
 
 BOX = 12.0
 
@@ -275,7 +276,7 @@ def test_cg_poisson_solver_constant_dielectric(density_generator):
         def __init__(self, eps_gradeps):
             self.eps_gradeps = [e.data for e in eps_gradeps]
 
-    solver = ConjugateGradientPoissonSolver(
+    solver = SolvationPoissonSolver(
         pw, grid, MockDielectric(eps_gradeps),
         rtol=1e-6, maxiter=100)
 
@@ -320,7 +321,7 @@ def test_cg_poisson_solver_variable_dielectric(density_generator):
         def __init__(self, eps_gradeps):
             self.eps_gradeps = [e.data for e in eps_gradeps]
 
-    solver = ConjugateGradientPoissonSolver(
+    solver = SolvationPoissonSolver(
         pw=pw, grid=grid,
         dielectric=MockDielectric(eps_gradeps),
         rtol=1e-6, maxiter=100)
@@ -346,7 +347,8 @@ def test_cg_poisson_solver_tail_subtraction():
     width = 3.0  # bohr,  x & y cell width
     length = 20.0  # bohr, cell height
     grid = UGDesc.from_cell_and_grid_spacing(cell=[width, width, length],
-                                             grid_spacing=0.3)
+                                             grid_spacing=0.3,
+                                             pbc=(True, True, False))
     zgrid = grid.xyz()[0, 0, :, 2]
 
     # Test charge is a gaussian derivative.
@@ -375,9 +377,9 @@ def test_cg_poisson_solver_tail_subtraction():
     pw = PWDesc(ecut=grid.ekin_max(), cell=grid.cell)
     rhot_g = rhot_r.fft(pw=pw)
 
-    solver = ConjugateGradientPoissonSolver(
-        pw, grid, MockDielectric(eps_r),
-        rtol=1e-8, maxiter=500, dipolelayer=True, zero_vacuum=True)
+    solver = GaussianDerivativeDipole(zero_vacuum=True).build(
+        SolvationPoissonSolver(pw, grid, MockDielectric(eps_r),
+                               rtol=1e-8, maxiter=500))
     vHt_g = PWArray(pw=pw)
     solver.solve(vHt_g, rhot_g)
 

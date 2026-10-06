@@ -77,7 +77,7 @@ class ExtensionInput(Parameter):
                 from gpaw.extensions.electrochemistry import SJM
                 return SJM(**dct)
             if name == 'solvation':
-                from gpaw.new.solvation import Solvation
+                from gpaw.solvation import Solvation
                 return Solvation(**dct)
             raise ValueError(f'Unknown extension: {name}')
         return extension

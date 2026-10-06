@@ -195,7 +195,7 @@ def test_sjm_zero_charge_forces_match_solvation():
     atoms = nacl_atoms([10., 10., 12.], True)
 
     atoms.calc = make_calc('pw', 'nacl_pw_solv.txt',
-                           dipolelayer=True, zero_vacuum=True)
+                           dipolelayer={'zero_vacuum': True})
     F_solvation = atoms.get_forces()
 
     atoms.calc = make_calc('pw', 'nacl_pw_sjm.txt', sjm=True)

@@ -6,8 +6,8 @@ from ase.units import Pascal, m
 
 from gpaw import PW, FermiDirac
 from gpaw.new.ase_interface import GPAW
-from gpaw.new.solvation import Solvation
 from gpaw.extensions.electrochemistry import SJM
+from gpaw.solvation import Solvation
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LinearDielectric, Power12Potential)
 from gpaw.solvation.interactions import SurfaceInteraction, VolumeInteraction

@@ -30,10 +30,10 @@ from gpaw.fd_operators import Gradient
 from gpaw.jellium import Jellium, JelliumSlab
 from gpaw.old.hamiltonian import RealSpaceHamiltonian
 from gpaw.old.logger import indent
-from gpaw.solvation.calculator import OldSolvationGPAW
+from gpaw.old.solvation.calculator import SolvationGPAW
+from gpaw.old.solvation.hamiltonian import SolvationRealSpaceHamiltonian
+from gpaw.old.solvation.poisson import WeightedFDPoissonSolver
 from gpaw.solvation.cavity import Power12Potential
-from gpaw.solvation.hamiltonian import SolvationRealSpaceHamiltonian
-from gpaw.solvation.poisson import WeightedFDPoissonSolver
 
 
 def SJM(*args, legacy_gpaw=True, **kwargs):
@@ -51,7 +51,7 @@ def SJM(*args, legacy_gpaw=True, **kwargs):
         environment=environment)
 
 
-class OldSJM(OldSolvationGPAW):
+class OldSJM(SolvationGPAW):
     r"""Solvated Jellium method.
     (Implemented as a subclass of the SolvationGPAW class.)
 
@@ -268,7 +268,7 @@ class OldSJM(OldSolvationGPAW):
                  'phi_pzc': None,
                  'filter': 10}})
 
-    default_parameters = copy.deepcopy(OldSolvationGPAW.default_parameters)
+    default_parameters = copy.deepcopy(SolvationGPAW.default_parameters)
     default_parameters.update({'poissonsolver': {'dipolelayer': 'xy'}})
     default_parameters['convergence'].update({'work function': 0.001})
     default_parameters.update({'sj': _sj_default_parameters})
@@ -987,7 +987,7 @@ class OldSJM(OldSolvationGPAW):
             if 'z1' in background_charge:
                 if background_charge['z1'] == 'cavity_like':
                     self.parameters['background_charge'] = None
-        OldSolvationGPAW.initialize(self=self, atoms=atoms, reading=reading)
+        SolvationGPAW.initialize(self=self, atoms=atoms, reading=reading)
 
     def create_hamiltonian(self, realspace, mode, xc):
         """This differs from SolvationGPAW's create_hamiltonian method by the

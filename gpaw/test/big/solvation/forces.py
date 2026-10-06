@@ -7,9 +7,10 @@ from ase.units import Pascal, m
 
 from gpaw import Mixer
 from gpaw.mpi import world
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LeakedDensityInteraction,
-                            LinearDielectric, Power12Potential, SolvationGPAW,
+                            LinearDielectric, Power12Potential,
                             SurfaceInteraction, VolumeInteraction)
 
 SKIP_ENERGY_CALCULATION = True

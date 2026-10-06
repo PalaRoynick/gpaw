@@ -61,9 +61,8 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
 
     def create_poisson_solver(self, extensions):
         from gpaw.poisson import PoissonSolver as make_poisson_solver
-        try:
-            solver = super().create_poisson_solver(extensions)
-        except NotImplementedError:
+        solver = super().create_poisson_solver(extensions)
+        if solver is None:
             ps = self.params.poissonsolver
             if hasattr(ps, 'params'):
                 psparams = ps.params

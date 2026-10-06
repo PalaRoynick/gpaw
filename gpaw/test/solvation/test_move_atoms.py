@@ -5,7 +5,7 @@ import pytest
 from ase.build import molecule
 
 from gpaw.new.ase_interface import GPAW
-from gpaw.new.solvation import Solvation
+from gpaw.solvation import Solvation
 from gpaw.solvation import get_HW14_water_kwargs
 from gpaw.utilities.adjust_cell import adjust_cell
 

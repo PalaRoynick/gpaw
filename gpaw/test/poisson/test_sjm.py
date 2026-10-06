@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from gpaw.core import PWDesc, UGDesc
-from gpaw.new.pw.poisson import ConjugateGradientPoissonSolver
+from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
+from gpaw.solvation.poisson import SolvationPoissonSolver
 
 
 def f(a, z, z0, w):
@@ -38,8 +39,8 @@ def test_cg_poisson_solver_zeroes_the_vacuum():
     dielectric = SimpleNamespace(eps_gradeps=[eps_r.data])
 
     pw = PWDesc(ecut=grid.ekin_max(), cell=grid.cell)
-    ps = ConjugateGradientPoissonSolver(pw, grid, dielectric,
-                                        dipolelayer=True, zero_vacuum=True)
+    ps = GaussianDerivativeDipole(zero_vacuum=True).build(
+        SolvationPoissonSolver(pw, grid, dielectric))
     vt_g = pw.zeros()
     ps.solve(vt_g, rhot_r.fft(pw=pw))
     vt_z = vt_g.ifft(grid=grid).data.mean(axis=(0, 1))
