@@ -69,6 +69,9 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
 
         V_MM = self._calculate_potential_matrix(wfs, V_xMM)
 
+        if len(dH_aii) == 0:
+            return V_MM
+
         M1, M2 = V_MM.dist.my_row_range()
         if V_MM.xp is np:
             dH_II = sparse.block_diag(
