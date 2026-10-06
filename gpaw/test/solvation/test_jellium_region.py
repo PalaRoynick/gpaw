@@ -99,6 +99,13 @@ def test_build_jellium_region():
     slab = SlabRegion(bottom=8.0)
     assert build_jellium_region(slab) is slab
 
+    # todict() gives the input that builds the region again:
+    for spec in [{'top': 15.0, 'thickness': 4.0}, {'shape': 'cavity'}]:
+        region = build_jellium_region(spec)
+        again = build_jellium_region(region.todict())
+        assert type(again) is type(region)
+        assert again.todict() == region.todict()
+
     with pytest.raises(ValueError, match='Unknown jellium region shape'):
         build_jellium_region({'shape': 'blob'})
 
@@ -111,9 +118,9 @@ def test_move_skips_an_unchanged_region():
     """A move that leaves the region alone does not rebuild the mask."""
     # Two atoms; only the upper one sets the lower limit of the region:
     relpos_ac = np.array([[0.5, 0.5, ZMAX / HEIGHT], [0.5, 0.5, 0.1]])
-    region = SlabRegion(bottom=-3.0)  # relative, so it follows the atoms
-    mask_r, z1, z2 = region.mask(grid, relpos_ac)
-    charging = JelliumCharging(mask_r, pw=None, region=region)
+    # A relative bottom, so the region follows the atoms:
+    charging = JelliumCharging(jelliumregion={'bottom': -3.0})
+    z1, z2 = charging.initialize(grid, None, relpos_ac, cavity=None)
 
     # No key stored yet, so the first move rebuilds:
     assert charging.move(relpos_ac, grid) == (z1, z2)
@@ -141,9 +148,8 @@ def test_move_always_rebuilds_without_a_key():
         def key(self, grid, relpos_ac):
             return None  # as the JelliumRegion base does
 
-    region = KeylessRegion(bottom=-3.0)
-    charging = JelliumCharging(region.mask(grid, relpos_ac)[0],
-                               pw=None, region=region)
+    charging = JelliumCharging(jelliumregion=KeylessRegion(bottom=-3.0))
+    charging.initialize(grid, None, relpos_ac, cavity=None)
     assert charging.move(relpos_ac, grid) is not None
     mask_r = charging.mask_r
     assert charging.move(relpos_ac, grid) is not None  # same geometry

@@ -1,8 +1,7 @@
-"""Changing SJM parameters without discarding the wave functions.
+"""Changing SJM settings without discarding the wave functions.
 
-Parameters are changed through the SJM object handed to GPAW, which
-reaches the running potentiostat, calc.dft.potentiostat, and reads the
-live values back off it.
+Settings are changed through the SJM object handed to GPAW, whose
+potentiostat is the one running in the calculation, calc.dft.potentiostat.
 """
 import numpy as np
 import pytest
@@ -10,28 +9,30 @@ from ase import Atoms
 from ase.units import Ha
 
 from gpaw import GPAW, FermiDirac
-from gpaw.extensions.electrochemistry import SJM
+from gpaw.extensions.electrochemistry import (SJM, PotentialOptimizer,
+                                              Potentiostat, WorkFunctionProbe)
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
 TOL = 0.005  # V
 
 
-def h_atoms(convergence=None, **sjm_kwargs) -> tuple[Atoms, SJM]:
+def h_atoms(convergence=None, **potentiostat) -> tuple[Atoms, SJM]:
     """One H atom in a 12 Å cell, with a vacuum SJM extension.
 
     Without keywords it is H at 7.5 V, the starting point of the change()
     tests: the charge it converges to and its slope are given, which takes
     the equilibration from six SCF loops to two.
     """
-    if not sjm_kwargs:
-        sjm_kwargs = dict(target_potential=7.5, excess_electrons=-0.00316,
-                          slope=-384.0, tol=TOL)
+    if not potentiostat:
+        potentiostat = dict(target_potential=7.5, excess_electrons=-0.00316,
+                            slope=-384.0, tol=TOL)
         # After the mixer is reset for a new charge, the eigensolver of this
         # one-electron system plateaus at a few times 1e-6, short of the
         # default 4e-8; the potential is accurate to well within TOL.
         convergence = {'eigenstates': 1e-5}
-    sjm = SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-              **sjm_kwargs)
+    sjm = SJM(solvation=dict(cavity=NoCavity(), dielectric=Vacuum(),
+                             interactions=[]),
+              potentiostat=potentiostat)
     atoms = Atoms('H', cell=[1.4, 1.4, 12.0], pbc=(1, 1, 0))
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
@@ -51,7 +52,7 @@ def built(in_tmp_dir):
 def test_grand_output_toggle(in_tmp_dir, monkeypatch):
     atoms, sjm = h_atoms()
     # This one needs results, but one SCF loop at constant charge will do:
-    sjm.change(target_potential=None)
+    sjm.change(potentiostat={'target_potential': None})
     atoms.get_potential_energy()
     calc = atoms.calc
     grand = calc.results['energy']
@@ -65,23 +66,24 @@ def test_grand_output_toggle(in_tmp_dir, monkeypatch):
 
     monkeypatch.setattr(calc.dft.potentiostat, 'post_converged',
                         finished_again)
-    sjm.change(grand_output=False)
+    sjm.change(potentiostat={'grand_output': False})
     canonical = calc.results['energy']
     assert calc.dft.scf_loop.niter == niter
     assert canonical == pytest.approx(
         calc.dft.energies.total_extrapolated * Ha)
     assert grand == pytest.approx(
-        canonical - sjm.excess_electrons * calc.get_fermi_level())
+        canonical - sjm.potentiostat.excess_electrons *
+        calc.get_fermi_level())
 
     # ... and it is reversible:
-    sjm.change(grand_output=True)
+    sjm.change(potentiostat={'grand_output': True})
     assert calc.results['energy'] == pytest.approx(grand)
 
 
 def test_unknown_keyword(built):
     atoms, sjm = built
-    with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-        sjm.change(excess_electron=-0.01)
+    with pytest.raises(ValueError, match='Unexpected potentiostat key'):
+        sjm.change(potentiostat={'excess_electron': -0.01})
 
 
 def test_nothing_to_report_before_an_scf_loop(built):
@@ -95,10 +97,12 @@ def test_nothing_to_report_before_an_scf_loop(built):
 def test_settings_live_on_the_potentiostat(built):
     """change() hands every setting straight to the potentiostat."""
     atoms, sjm = built
-    sjm.change(max_iters=3, max_reruns=4, max_potential_stepsize=1.5,
-               grand_output=False, always_adjust=True, mixer=0.5,
-               slope_regression_depth=3, slope=-20.0)
+    sjm.change(potentiostat=dict(
+        max_iters=3, max_reruns=4, max_potential_stepsize=1.5,
+        grand_output=False, always_adjust=True, mixer=0.5,
+        slope_regression_depth=3, slope=-20.0))
     pot = atoms.calc.dft.potentiostat
+    assert pot is sjm.potentiostat
     assert (pot.max_iters, pot.max_reruns, pot.max_potential_stepsize,
             pot.grand_output, pot.always_adjust) == (3, 4, 1.5, False, True)
     opt = pot.optimizer
@@ -111,56 +115,43 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
 
     It used to be kept on the extension alone while at constant charge and
     had to be carried over by hand when the mode switched; now the
-    potentiostat holds it in either mode.
+    optimizer holds it, which the potentiostat keeps in either mode.
     """
     atoms, sjm = h_atoms(excess_electrons=0.0, tol=0.001)
     atoms.calc.initialize(atoms)
     pot = atoms.calc.dft.potentiostat
 
-    sjm.change(tol=0.05)  # constant-charge mode
-    assert pot.tol == pytest.approx(0.05)
+    sjm.change(potentiostat={'tol': 0.05})  # constant-charge mode
+    assert pot.optimizer.tol == pytest.approx(0.05)
 
-    sjm.change(target_potential=3.0)
-    assert pot.optimizer is not None
-    assert pot.tol == pytest.approx(0.05)
+    sjm.change(potentiostat={'target_potential': 3.0})
+    assert pot.optimizer.tol == pytest.approx(0.05)
 
     # A single combined call is the same, whichever branch runs first:
-    sjm.change(target_potential=None)
-    sjm.change(tol=0.02, target_potential=4.0)
-    assert pot.tol == pytest.approx(0.02)
+    sjm.change(potentiostat={'target_potential': None})
+    sjm.change(potentiostat={'tol': 0.02, 'target_potential': 4.0})
+    assert pot.optimizer.tol == pytest.approx(0.02)
 
 
-def test_parameters_are_readable_but_read_only(built):
-    """Every keyword reads back under its own name; none can be assigned.
+def test_parts_of_your_own_are_the_ones_that_run(in_tmp_dir):
+    """A potentiostat subclass and its parts reach the calculation as is."""
+    class MyPotentiostat(Potentiostat):
+        pass
 
-    Once the calculation is built, the SJM object reads them off the
-    potentiostat, so the two agree.
-    """
-    atoms, sjm = built
-    pot = atoms.calc.dft.potentiostat
-    assert sjm.target_potential == 7.5
-    assert sjm.tol == TOL
-    assert sjm.excess_electrons == pot.charge  # Extension API
-    assert sjm.max_iters == 10
-    assert sjm.max_reruns == 10
-    assert sjm.max_potential_stepsize == 2
-    assert sjm.grand_output is True
-    assert sjm.always_adjust is False
-    assert sjm.mixer == 0.2
-    assert sjm.slope_regression_depth == 4
-    # The region that was built, while the dict given is what is recorded:
-    assert sjm.jelliumregion is pot.charging.region
-    assert sjm.todict()['jelliumregion'] == {}
+    opt, probe = PotentialOptimizer(), WorkFunctionProbe()
+    pot = MyPotentiostat(target_potential=7.5, optimizer=opt,
+                         potentialprobe=probe)
+    atoms, sjm = h_atoms(target_potential=7.5)
+    sjm = SJM(solvation=sjm.solvation, potentiostat=pot)
+    atoms.calc = GPAW(mode='fd', kpts=(2, 2, 1), txt=None, extensions=[sjm])
+    atoms.calc.initialize(atoms)
+    assert atoms.calc.dft.potentiostat is pot
+    assert (pot.optimizer, pot.potentialprobe) == (opt, probe)
 
-    for key, value in [('excess_electrons', -0.01),
-                       ('target_potential', 7.2),
-                       ('tol', 0.01),
-                       ('slope', -1.0),
-                       ('jelliumregion', {})]:
-        with pytest.raises(AttributeError, match='change'):
-            setattr(sjm, key, value)
-
-    # ... while change() does get through, to both:
-    sjm.change(tol=0.01)
-    assert sjm.tol == pot.tol == 0.01
-    assert sjm.todict()['tol'] == 0.01
+    # Settings the optimizer does not have are refused, and the
+    # calculation is left as it was:
+    with pytest.raises(ValueError, match='PotentialOptimizer has no mixer'):
+        sjm.change(potentiostat={'mixer': 0.5, 'tol': 0.1})
+    assert opt.tol == 0.005
+    sjm.change(potentiostat={'tol': 0.01})  # every optimizer has one
+    assert opt.tol == 0.01

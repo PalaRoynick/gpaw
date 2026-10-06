@@ -38,7 +38,7 @@ The jellium slab: charging
 
 In a periodic system we cannot have a net charge; therefore, any additional, fractional electrons that are added to the system must be compensated by an equal amount of counter charge.
 SJM accomplishes this by adding a smeared-out background charge in a fixed region of the simulation cell; in the figure above it is shown as the dashed region to the right of the atoms.
-By default that region is a slab perpendicular to `z`, controlled by the ``jelliumregion`` keyword described under `Usage`_ below.
+By default that region is a slab perpendicular to `z`, controlled by the ``jelliumregion`` key described under `Usage`_ below.
 The number of electrons in the simulation is increased by an amount equal to the total charge of that region.
 When you run a simulation, you should see that these excess electrons localize on the `+z` side (the right side in these figures) of the metal atoms that simulate the electrode surface, and not on the `-z` (left) side, which simulates the bulk.
 This is accomplished by only putting the jellium region on one side of the simulation, and employing a dipole correction (included by default when you run SJM) to electrostatically decouple the two sides of the cell.
@@ -55,7 +55,7 @@ However, the signs can readily be reversed, making the jellium region a smeared-
 In this way, the same tool can be used to perturb the electrons in either a positive or negative direction, and thus vary the potential in either direction in order to find its target.
 Note also that the jellium region does not overlap any atoms, separating this from approaches that employ a homogeneous background charge throughout the unit cell (in which spurious interactions can occur).
 This is important to not distort the electronic structure of the atoms and molecules being simulated.
-Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case in general; other shapes---for example one following the cavity of the implicit solvent---are a planned extension of the :code:`jelliumregion` keyword, though only the slab is available in this version (the old :class:`gpaw.solvation.sjm.SJM` calculator (only working for `fd`-mode) does offer a cavity-shaped counter charge).
+Additionally, note that the jellium is enclosed in a regular slab geometry in the figure above, but this need not be the case in general; other shapes---for example one following the cavity of the implicit solvent---are a planned extension of the :code:`jelliumregion` key, though only the slab is available in this version (the old :class:`gpaw.solvation.sjm.SJM` calculator (only working for `fd`-mode) does offer a cavity-shaped counter charge).
 
 
 The solvation: screening
@@ -158,10 +158,10 @@ Typically, over the course of a full trajectory, the added computational cost of
 As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose ``tol`` together with ``always_adjust=True``, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
 The slope itself is regressed over the last ``slope_regression_depth`` attempts and damped with the previous estimate by ``mixer``; ``slope`` sets the initial guess, which is otherwise taken from an apparent capacitance of 10 muF/cm^2.
 
-All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from the keywords above and which then owns them---``sjm.tol`` and the rest read them back off it.
+All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from its ``potentiostat`` dict and which then owns the settings---``sjm.potentiostat.target_potential`` and the rest.
 The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
 It also finishes a converged calculation: it reports the equilibration, Legendre-transforms the energies to the grand potential and writes the results, the grand-potential or the canonical energy as ``grand_output`` says.
-SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme or probe.
+SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme, optimizer or probe, and SJM itself takes parts of your own (see `Usage`_).
 
 **Constant inner potential (CIP) DFT:**
 
@@ -201,26 +201,36 @@ The ``autoinner`` part automatically finds the inner region, in this case a 4-la
 Usage
 =====
 
-The SJM parameters are keyword arguments of the :class:`~gpaw.extensions.electrochemistry.SJM`
-extension, given together with the implicit-solvent parameters
-(``cavity``, ``dielectric`` and ``interactions``)::
+The :class:`~gpaw.extensions.electrochemistry.SJM` extension takes two
+keywords: ``solvation``, the implicit-solvent model (``cavity``,
+``dielectric`` and ``interactions``), and ``potentiostat``, the SJM
+settings::
 
     from gpaw import GPAW, PW
     from gpaw.extensions.electrochemistry import SJM
 
     calc = GPAW(mode=PW(400.), ...,
-                extensions=[SJM(target_potential=4.4,  # absolute scale, V
-                                excess_electrons=0.0,  # initial guess
-                                tol=0.005,  # V
-                                max_iters=10,
-                                jelliumregion={'top': -1., 'bottom': -3.},
-                                cavity=cavity,
-                                dielectric=dielectric,
-                                interactions=interactions)])
+                extensions=[SJM(
+                    solvation=dict(cavity=cavity,
+                                   dielectric=dielectric,
+                                   interactions=interactions),
+                    potentiostat=dict(
+                        target_potential=4.4,  # absolute scale, V
+                        excess_electrons=0.0,  # initial guess
+                        tol=0.005,  # V
+                        max_iters=10,
+                        jelliumregion={'top': -1., 'bottom': -3.}))])
+
+Each of the two can also be given as an object instead of a dict: a
+:class:`gpaw.solvation.Solvation` and a
+:class:`~gpaw.extensions.electrochemistry.Potentiostat`, or subclasses of
+them.  A solvation model without a dipole layer of its own gets
+``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
+electrode potential to the vacuum at the top of the cell.
 
 Leaving out ``target_potential`` gives a constant-charge calculation at
 the given number of ``excess_electrons``.  The
-``jelliumregion`` keyword takes ``'top'``, ``'bottom'``,
+``jelliumregion`` key takes ``'top'``, ``'bottom'``,
 ``'thickness'`` and ``'fix_bottom'``.  A negative ``'top'``
 is a distance below the upper cell boundary, whereas a negative
 ``'bottom'`` is a distance above the highest atom, in which case the
@@ -233,48 +243,64 @@ cavity, which is not yet implemented in this version --- the legacy
 ``grand_output=False``, the canonical rather than the grand-potential
 energy is handed to ASE.
 
-To change the SJM parameters, keep the ``SJM(...)`` object in a variable
-and call its ``change(...)``, which changes any of the SJM keywords ---
-``target_potential``, ``excess_electrons``, ``tol``,
-``max_iters``, ``max_reruns``,
-``max_potential_stepsize``, ``grand_output``,
-``jelliumregion``, ``always_adjust``, ``slope``,
-``mixer`` and ``slope_regression_depth``::
+**Parts of your own:** the potentiostat is built from three parts, each
+with a default: the charging scheme
+(:class:`~gpaw.extensions.electrochemistry.JelliumCharging`), the optimizer
+(:class:`~gpaw.extensions.electrochemistry.DirectOptimizer`) and the
+potential probe
+(:class:`~gpaw.extensions.electrochemistry.WorkFunctionProbe`).  The keys
+``excess_electrons`` and ``jelliumregion`` configure the default charging
+scheme, and ``slope``, ``mixer``, ``slope_regression_depth`` and ``tol``
+the default optimizer, which also decides when the potential is converged
+(``PotentialOptimizer.converged()``).  To use a part of your own, subclass
+:class:`~gpaw.extensions.electrochemistry.ChargingScheme`,
+:class:`~gpaw.extensions.electrochemistry.PotentialOptimizer` or
+:class:`~gpaw.extensions.electrochemistry.PotentialProbe` and give an
+instance under the ``charging``, ``optimizer`` or ``potentialprobe`` key::
 
-    sjm = SJM(target_potential=4.4, ...)
+    sjm = SJM(solvation=..., potentiostat={'target_potential': 4.4,
+                                           'optimizer': MyOptimizer()})
+
+Its settings then go to the part itself: the keys of the default part it
+replaces raise a ``ValueError``.  A ``.gpw`` file records a part of your
+own by its class name only, so reading the file back raises
+``ValueError: Unknown SJM part``.
+
+To change the settings, keep the ``SJM(...)`` object in a variable
+and call its ``change(potentiostat={...})``, which takes any key of the
+``potentiostat`` dict but the parts::
+
+    sjm = SJM(solvation=..., potentiostat={'target_potential': 4.4})
     atoms.calc = GPAW(..., extensions=[sjm])
     atoms.get_potential_energy()
-    sjm.change(target_potential=4.3)
+    sjm.change(potentiostat={'target_potential': 4.3})
     atoms.get_potential_energy()
 
-Before the first calculation this simply changes the parameters the
+Before the first calculation this simply changes the settings the
 calculation will be started with; afterwards it changes them without
 throwing away the wave functions.  This replaces the legacy
 ``calc.set(sj={...})``.
 
 The same object also offers
 
-* every one of those parameters, readable under its keyword name:
-  ``sjm.target_potential``, ``sjm.tol``, ``sjm.slope`` and so on.  Before
-  the first calculation these are the parameters as given; once the
-  calculation has been built they are its live values, so three of them
-  can differ from what was given: ``sjm.excess_electrons`` is the current
-  number of excess electrons, as the potentiostat adjusts it,
-  ``sjm.slope`` the current estimate of the slope, and
-  ``sjm.jelliumregion`` the region object built from the dict.  (What
-  ``todict()``---and so the ``.gpw`` file---records are the parameters as
-  given, and changed to.)  They are read-only, and assigning to
-  one---``sjm.excess_electrons = ...``---raises: only ``change()`` gets
-  the excess electrons to the jellium as well and empties the results,
-  which is what makes the next ``get_potential_energy()`` run the SCF
-  loop again.
+* ``sjm.potentiostat``, the potentiostat that runs in the calculation
+  (``calc.dft.potentiostat`` is the same object), and ``sjm.solvation``.
+  The settings are read off the potentiostat and its parts, as live
+  values: ``sjm.potentiostat.target_potential``,
+  ``sjm.potentiostat.excess_electrons`` (as the potentiostat adjusts it),
+  ``sjm.potentiostat.optimizer.slope`` (the current estimate),
+  ``sjm.potentiostat.optimizer.tol`` and
+  ``sjm.potentiostat.charging.region``.  ``todict()``, and so the ``.gpw``
+  file, records these live values.  Change them through ``change()``
+  rather than by assignment: only ``change()`` empties the results, which
+  is what makes the next ``get_potential_energy()`` run the SCF loop
+  again.
 * ``get_electrode_potential()``, the electrode potential of the last
   converged SCF loop, in V on the vacuum scale---minus the Fermi level,
   since the Poisson solver zeroes the electrostatic potential in the
   vacuum.  It is the same number as
-  ``calc.results['electrode_potential']``, so it too needs a calculation
-  to have been run: it raises ``RuntimeError`` before the calculation has
-  been built, and gives NaN until an SCF loop has converged.
+  ``calc.results['electrode_potential']``, and NaN until an SCF loop has
+  converged.
 * ``write_sjm_traces(path='sjm_traces', style='z', props=...)``, which
   writes the electrostatic potential (in eV, referenced to the Fermi level),
   the solvent cavity and the jellium counter charge (in e/Bohr^3, integrating
@@ -300,11 +326,11 @@ The same object also offers
 So a run that reports the potential and writes both kinds of trace looks
 like::
 
-    sjm = SJM(target_potential=4.4, ...)
+    sjm = SJM(solvation=..., potentiostat={'target_potential': 4.4})
     atoms.calc = GPAW(..., extensions=[sjm])
     atoms.get_potential_energy()  # both need a converged calculation
 
-    print(sjm.get_electrode_potential(), sjm.excess_electrons)
+    print(sjm.get_electrode_potential(), sjm.potentiostat.excess_electrons)
     sjm.write_sjm_traces()  # sjm_traces/{potential,cavity,background_charge}.txt
     sjm.write_sjm_traces(path='traces-3d', style='cube')  # traces-3d/*.cube
 
@@ -336,8 +362,25 @@ Class documentation
    :members: change, write_sjm_traces, get_electrode_potential
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
-   :members: equilibrate, new_geometry, set_target_potential,
-             set_excess_electrons, post_converged, write_results
+   :members: from_dict, todict, equilibrate, new_geometry,
+             set_target_potential, set_excess_electrons, post_converged,
+             write_results
+
+.. autoclass:: gpaw.extensions.electrochemistry.ChargingScheme
+   :members: initialize, todict, add_charge, add_charge_pw, move
+
+.. autoclass:: gpaw.extensions.electrochemistry.JelliumCharging
+
+.. autoclass:: gpaw.extensions.electrochemistry.PotentialOptimizer
+   :members: converged, next_excess_electrons, record_attempt,
+             last_attempt, forget_attempts, reset, todict
+
+.. autoclass:: gpaw.extensions.electrochemistry.DirectOptimizer
+
+.. autoclass:: gpaw.extensions.electrochemistry.PotentialProbe
+   :members: potential, todict
+
+.. autoclass:: gpaw.extensions.electrochemistry.WorkFunctionProbe
 
 .. autoclass:: gpaw.solvation.sjm.SJMPower12Potential
 

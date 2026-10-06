@@ -29,9 +29,9 @@ def adjusting_atoms(always_adjust: bool) -> tuple[Atoms, SJM]:
                    always_adjust=always_adjust)
 
 
-# Changing parameters without discarding the wave functions, through the
-# SJM object handed to GPAW; it reads the live values back off the running
-# potentiostat, calc.dft.potentiostat.
+# Changing settings without discarding the wave functions, through the SJM
+# object handed to GPAW; its potentiostat is the running one,
+# calc.dft.potentiostat.
 
 def test_change_target_potential():
     atoms, sjm = converged_atoms()
@@ -41,15 +41,17 @@ def test_change_target_potential():
     assert sjm.get_electrode_potential() == pytest.approx(
         calc.results['electrode_potential'])
 
-    sjm.change(target_potential=7.2)
+    sjm.change(potentiostat={'target_potential': 7.2})
     atoms.get_potential_energy()
     assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
-    # The SJM object reads the charge the potentiostat arrived at, while it
-    # records the one it was given:
-    assert sjm.excess_electrons == calc.dft.potentiostat.excess_electrons
-    assert sjm.excess_electrons == calc.results['excess_electrons']
-    assert sjm.excess_electrons != pytest.approx(-0.00316)
-    assert sjm.todict()['excess_electrons'] == -0.00316
+    # The SJM object holds the potentiostat that ran, so the charge it
+    # arrived at is the one read back -- and recorded:
+    pot = sjm.potentiostat
+    assert pot is calc.dft.potentiostat
+    assert pot.excess_electrons == calc.results['excess_electrons']
+    assert pot.excess_electrons != pytest.approx(-0.00316)
+    assert (sjm.todict()['potentiostat']['charging']['excess_electrons'] ==
+            pot.excess_electrons)
     # Same wave functions - nothing was rebuilt from scratch:
     assert calc.dft.ibzwfs is ibzwfs
 
@@ -59,35 +61,36 @@ def test_switch_to_constant_charge():
     calc = atoms.calc
     ibzwfs = calc.dft.ibzwfs
 
-    sjm.change(target_potential=None, excess_electrons=-0.01)
+    sjm.change(potentiostat={'target_potential': None,
+                             'excess_electrons': -0.01})
     atoms.get_potential_energy()
-    assert sjm.excess_electrons == -0.01
+    assert sjm.potentiostat.excess_electrons == -0.01
     assert calc.results['excess_electrons'] == pytest.approx(-0.01)
     assert calc.dft.ibzwfs is ibzwfs
 
     # ... and back again, reaching the same potential as before:
-    sjm.change(target_potential=7.5)
+    sjm.change(potentiostat={'target_potential': 7.5})
     atoms.get_potential_energy()
     assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
     assert calc.dft.ibzwfs is ibzwfs
 
 
 def test_change_before_first_calculation():
-    """The SJM object takes new parameters before there is a calculation."""
+    """The SJM object takes new settings before there is a calculation."""
     atoms, sjm = h_atoms(excess_electrons=0.0)
 
-    # No calculation yet, so this only stores the parameter:
-    sjm.change(excess_electrons=-0.01)
+    # No calculation yet, so this only stores the setting:
+    sjm.change(potentiostat={'excess_electrons': -0.01})
     atoms.get_potential_energy()
-    assert sjm.excess_electrons == -0.01
+    assert sjm.potentiostat.excess_electrons == -0.01
     assert atoms.calc.results['excess_electrons'] == pytest.approx(-0.01)
 
     # Afterwards, the same object forwards to the built extension, which
     # keeps the wave functions:
     ibzwfs = atoms.calc.dft.ibzwfs
-    sjm.change(excess_electrons=-0.02)
+    sjm.change(potentiostat={'excess_electrons': -0.02})
     atoms.get_potential_energy()
-    assert sjm.excess_electrons == -0.02
+    assert sjm.potentiostat.excess_electrons == -0.02
     assert atoms.calc.dft.ibzwfs is ibzwfs
 
 
@@ -97,7 +100,7 @@ def test_step_reaches_the_next_geometry(always_adjust: bool):
     atoms, sjm = adjusting_atoms(always_adjust)
     atoms.get_potential_energy()
     pot = atoms.calc.dft.potentiostat
-    charge = sjm.excess_electrons
+    charge = pot.excess_electrons
 
     assert sjm.get_electrode_potential() == pytest.approx(ADJUST_TARGET,
                                                           abs=ADJUST_TOL)
@@ -116,10 +119,9 @@ def test_step_reaches_the_next_geometry(always_adjust: bool):
     atoms.calc.move_atoms(atoms)
     assert pot.pending_excess_electrons is None
     if always_adjust:
-        assert sjm.excess_electrons == pytest.approx(staged)
         assert pot.charging.excess_electrons == pytest.approx(staged)
     else:
-        assert sjm.excess_electrons == pytest.approx(charge)
+        assert pot.excess_electrons == pytest.approx(charge)
 
 
 def test_change_drops_a_staged_step():
@@ -129,16 +131,16 @@ def test_change_drops_a_staged_step():
     pot = atoms.calc.dft.potentiostat
     assert pot.pending_excess_electrons is not None
 
-    sjm.change(excess_electrons=-0.01)
-    assert sjm.excess_electrons == -0.01
+    sjm.change(potentiostat={'excess_electrons': -0.01})
+    assert pot.excess_electrons == -0.01
     assert pot.pending_excess_electrons is None
 
     # Nothing is staged while always_adjust is off:
-    sjm.change(always_adjust=False)
+    sjm.change(potentiostat={'always_adjust': False})
     atoms.get_potential_energy()
     assert pot.pending_excess_electrons is None
 
-    sjm.change(always_adjust=True)
+    sjm.change(potentiostat={'always_adjust': True})
     atoms.positions[0, 2] += 0.02
     atoms.get_potential_energy()
     assert pot.pending_excess_electrons is not None

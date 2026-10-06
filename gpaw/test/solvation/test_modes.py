@@ -23,7 +23,7 @@ def test_h(gpaw_new, mode, in_tmp_dir):
     params['mode'] = mode
 
     if gpaw_new:
-        extensions = [SJM(**sjm, **solvation)]
+        extensions = [SJM(solvation=solvation, potentiostat=sjm)]
         atoms.calc = GPAW(extensions=extensions, **params)
         energy = atoms.get_potential_energy()
         pot = -atoms.calc.get_fermi_level()
@@ -68,13 +68,14 @@ def check_grand_canonical_results(atoms, energy, sjm):
     """The grand potential - not the canonical energy - goes to ASE."""
     calc = atoms.calc
     results = calc.results
+    N = sjm.potentiostat.excess_electrons
 
-    assert results['excess_electrons'] == pytest.approx(sjm.excess_electrons)
+    assert results['excess_electrons'] == pytest.approx(N)
     assert results['electrode_potential'] == pytest.approx(
         sjm.get_electrode_potential())
 
     # Omega = E - N mu, with mu = -workfunction = fermi level:
-    mu_N = sjm.excess_electrons * calc.get_fermi_level()
+    mu_N = N * calc.get_fermi_level()
     canonical = calc.dft.energies.total_extrapolated * Ha
     canonical_free = calc.dft.energies.total_free * Ha
     assert energy == pytest.approx(canonical - mu_N)
@@ -96,7 +97,7 @@ def check_grand_canonical_results(atoms, energy, sjm):
     # The counter charge (in e/Bohr^3) integrates to minus the excess
     # electrons; z and the cell are in Angstrom:
     dV = (z[1] - z[0]) * abs(np.linalg.det(atoms.cell[:2, :2])) / Bohr**3
-    assert (rho.sum() * dV) == pytest.approx(-sjm.excess_electrons, abs=1e-6)
+    assert (rho.sum() * dV) == pytest.approx(-N, abs=1e-6)
 
     # Cube traces are written through ase.io.write(), which runs on the master
     # rank and then broadcasts the outcome over the whole world, so every rank
@@ -163,7 +164,7 @@ def test_cube_traces_are_written_collectively(monkeypatch, in_tmp_dir):
     world is faked here to keep the regression inside the serial suite too.
     """
     atoms, params, sjm, solvation = h_atom_inputs()
-    sjm = SJM(**sjm, **solvation)
+    sjm = SJM(solvation=solvation, potentiostat=sjm)
     atoms.calc = GPAW(mode='fd', extensions=[sjm], **params)
     atoms.get_potential_energy()
 

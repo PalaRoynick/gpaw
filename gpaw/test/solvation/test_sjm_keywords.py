@@ -1,19 +1,23 @@
-"""The SJM keyword set: what it is, and what it deliberately is not.
+"""The keys of SJM's potentiostat dict: what they are, and what they are not.
 
-``_KEYWORDS`` is derived from ``inspect.signature(SJM.__init__)``, so it
-tracks the constructor by itself.  These tests pin down what that set is
-allowed to contain, so that growing or losing a keyword is a decision rather
-than an accident, and so that a keyword the legacy calculator has but this
-one does not is an error instead of a silently ignored setting.
+The keys are shared out between the potentiostat and its default parts.
+These tests pin down that set, so that growing or losing a key is a decision
+rather than an accident, and so that a key the legacy calculator has but
+this one does not is an error instead of a silently ignored setting.  None
+of them needs a calculator.
 """
+import numpy as np
 import pytest
 
-from gpaw.extensions.electrochemistry import SJM
-from gpaw.extensions.electrochemistry.sjm import _KEYWORDS
+from gpaw.extensions.electrochemistry import (
+    SJM, DirectOptimizer, JelliumCharging, PotentialOptimizer, PotentialProbe,
+    Potentiostat)
+from gpaw.extensions.electrochemistry.sjm import changeable
+from gpaw.solvation import GaussianDerivativeDipole, Solvation
 from gpaw.test.solvation.test_modes import NoCavity, Vacuum
 
-#: Every keyword, at a non-default value where that is meaningful.
-KEYWORDS = {
+#: Every key, at a non-default value where that is meaningful.
+keys = {
     'target_potential': 3.0,
     'excess_electrons': 1.0,
     'tol': 0.01,
@@ -21,18 +25,19 @@ KEYWORDS = {
     'max_potential_stepsize': 1.0,
     'max_reruns': 5,
     'grand_output': False,
-    'jelliumregion': {'top': -2., 'bottom': -4.},
+    'jelliumregion': {'top': -2., 'bottom': -4., 'thickness': None,
+                      'fix_bottom': True},
     'always_adjust': True,
     'slope': 5.0,
     'mixer': 1.0,
-    'slope_regression_depth': 4,
+    'slope_regression_depth': 3,
 }
 
-#: Keywords the legacy ``sj`` dict accepts and this implementation does not.
+#: Keys the legacy ``sj`` dict accepts and this implementation does not.
 #: Passing one of these and having it quietly ignored would be the worst
 #: outcome: the calculation would run, and mean something other than what
 #: was asked for.
-LEGACY_ONLY = {
+legacy_only = {
     'dirichlet': True,
     'pot_ref': 'CIP',
     'cip': {'filter': 10},
@@ -42,72 +47,127 @@ LEGACY_ONLY = {
     'previous_potentials': [],
 }
 
+solvent = dict(cavity=NoCavity(), dielectric=Vacuum(), interactions=[])
 
-def sjm(**kwargs) -> SJM:
+
+class MyOptimizer(PotentialOptimizer):
+    pass
+
+
+class MyProbe(PotentialProbe):
+    pass
+
+
+def sjm(**potentiostat) -> SJM:
     """An SJM object with no solvent, built without a calculator."""
-    return SJM(cavity=NoCavity(), dielectric=Vacuum(), interactions=[],
-               **kwargs)
+    return SJM(solvation=solvent, potentiostat=potentiostat)
 
 
-def test_keyword_set_has_not_drifted():
-    assert set(_KEYWORDS) == set(KEYWORDS), (
-        'SJM grew or lost a keyword; update KEYWORDS here and check whether '
-        'the new one needs a test of its own.')
+def test_key_set_has_not_drifted():
+    assert set(changeable) == set(keys), (
+        'SJM grew or lost a key; update keys here and check whether the new '
+        'one needs a test of its own.')
 
 
-def test_every_keyword_is_accepted_and_read_back():
-    obj = sjm(**KEYWORDS)
-    for key, value in KEYWORDS.items():
-        assert getattr(obj, key) == value, key
-
-    # ... and the same keywords go through change() before a calculation:
-    obj.change(**KEYWORDS)
-    for key, value in KEYWORDS.items():
-        assert getattr(obj, key) == value, key
-
-
-def test_keywords_cannot_be_assigned():
-    obj = sjm(tol=0.01)
-    with pytest.raises(AttributeError, match='change'):
-        obj.tol = 0.02
-    assert obj.tol == 0.01
+def test_every_key_reaches_its_part():
+    # ... given to SJM, and through change() before a calculation:
+    changed = sjm()
+    changed.change(potentiostat=keys)
+    for obj in [sjm(**keys), changed]:
+        pot = obj.potentiostat
+        live = {**pot.todict(), **pot.charging.todict(),
+                **pot.optimizer.todict()}
+        assert {key: live[key] for key in keys} == keys
 
 
-def test_no_calculation_to_read_yet():
+def test_todict_builds_the_same_potentiostat_again():
+    pot = sjm(**keys).potentiostat
+    assert Potentiostat.from_dict(pot.todict()).todict() == pot.todict()
+    # The written dict holds parts, which take their keys as well:
+    pot = Potentiostat.from_dict({'optimizer': {'slope': -20.0}, 'mixer': 0.5})
+    assert (pot.optimizer.slope, pot.optimizer.mixer) == (-20.0, 0.5)
+
+
+def test_nothing_to_read_yet():
     obj = sjm()
-    with pytest.raises(RuntimeError, match='No calculation'):
-        obj.get_electrode_potential()
-    with pytest.raises(RuntimeError, match='No calculation'):
+    assert np.isnan(obj.get_electrode_potential())
+    with pytest.raises(RuntimeError, match='No results'):
         obj.write_sjm_traces()
 
 
-def test_unknown_keyword_is_rejected():
+def test_unknown_key_is_rejected():
     with pytest.raises(TypeError):
         sjm(excess_electron=-0.01)  # note the missing 's'
+    with pytest.raises(ValueError, match='Unexpected potentiostat key'):
+        sjm().change(potentiostat={'excess_electron': -0.01})
+    # The parts are set when the SJM object is created:
+    with pytest.raises(ValueError, match='Unexpected potentiostat key'):
+        sjm().change(potentiostat={'optimizer': DirectOptimizer()})
 
-    obj = sjm(target_potential=3.0)
-    with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-        obj.change(excess_electron=-0.01)
 
-
-@pytest.mark.parametrize('keyword', sorted(LEGACY_ONLY))
-def test_legacy_only_keyword_is_rejected(keyword):
-    value = LEGACY_ONLY[keyword]
+@pytest.mark.parametrize('key', sorted(legacy_only))
+def test_legacy_only_key_is_rejected(key):
+    value = legacy_only[key]
     with pytest.raises(TypeError, match='unexpected keyword'):
-        sjm(**{keyword: value})
-
-    obj = sjm(target_potential=3.0)
-    with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-        obj.change(**{keyword: value})
+        sjm(**{key: value})
+    with pytest.raises(ValueError, match='Unexpected potentiostat key'):
+        sjm().change(potentiostat={key: value})
 
 
 def test_the_legacy_only_list_is_complete():
-    """Every keyword the legacy calculator has that this one lacks is above.
+    """Every key the legacy calculator has that this one lacks is above.
 
     CIP-DFT in particular is legacy-only, as ``sjm.rst`` says.
     """
     from gpaw.solvation.sjm import OldSJM
 
     legacy = set(OldSJM._sj_default_parameters)
-    assert legacy - set(_KEYWORDS) == set(LEGACY_ONLY)
-    assert {'cip', 'pot_ref'} <= set(LEGACY_ONLY)
+    assert legacy - set(changeable) == set(legacy_only)
+    assert {'cip', 'pot_ref'} <= set(legacy_only)
+
+
+def test_parts_of_your_own():
+    opt, probe = MyOptimizer(), MyProbe()
+    pot = sjm(target_potential=3.0, optimizer=opt,
+              potentialprobe=probe).potentiostat
+    assert pot.optimizer is opt and pot.potentialprobe is probe
+    assert isinstance(pot.charging, JelliumCharging)
+    # They are written by name, but cannot be read back:
+    assert pot.todict()['optimizer'] == {'name': 'MyOptimizer'}
+    with pytest.raises(ValueError, match='Unknown SJM part MyOptimizer'):
+        Potentiostat.from_dict(pot.todict())
+
+    # A potentiostat of your own is taken as it is:
+    class MyPotentiostat(Potentiostat):
+        pass
+
+    pot = MyPotentiostat(target_potential=3.0)
+    assert SJM(solvation=solvent, potentiostat=pot).potentiostat is pot
+
+
+@pytest.mark.parametrize('part, key', [
+    ('charging', 'excess_electrons'), ('charging', 'jelliumregion'),
+    ('optimizer', 'slope'), ('optimizer', 'mixer'),
+    ('optimizer', 'slope_regression_depth'), ('optimizer', 'tol')])
+def test_a_part_and_the_keys_of_its_default_conflict(part, key):
+    with pytest.raises(ValueError, match=f'{key} configure the default'):
+        sjm(**{part: object(), key: keys[key]})
+
+
+def test_change_refuses_a_setting_the_optimizer_lacks():
+    obj = sjm(optimizer=MyOptimizer())
+    with pytest.raises(ValueError, match='MyOptimizer has no mixer'):
+        obj.change(potentiostat={'mixer': 0.5})
+    obj.change(potentiostat={'slope': -20.0})  # every optimizer has one
+    assert obj.potentiostat.optimizer.slope == -20.0
+
+
+def test_solvation_and_its_dipole_layer():
+    # A dict builds a Solvation, which gets the SJM dipole layer:
+    solvation = sjm().solvation
+    assert isinstance(solvation, Solvation)
+    assert solvation.dipolelayer.zero_vacuum
+    # ... while a layer of your own is kept:
+    layer = GaussianDerivativeDipole()
+    obj = SJM(solvation=Solvation(**solvent, dipolelayer=layer))
+    assert obj.solvation.dipolelayer is layer

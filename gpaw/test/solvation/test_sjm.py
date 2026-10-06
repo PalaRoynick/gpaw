@@ -65,7 +65,7 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     else:
         atoms.calc = GPAW(
             **params,
-            extensions=[SJM(**sj, **solvation)])
+            extensions=[SJM(solvation=solvation, potentiostat=sj)])
         atoms.get_potential_energy()
         pot = -atoms.calc.get_fermi_level()
 
@@ -77,6 +77,11 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     if gpaw_new:
         calc = GPAW(f'Au-{gpaw_new}-{mode}.gpw')
         assert isinstance(calc.params.extensions[0], SJM)
+        # The live settings are written, the equilibrated charge among them:
+        written = atoms.calc.params.extensions[0].potentiostat
+        read = calc.params.extensions[0].potentiostat
+        assert read.todict() == written.todict()
+        assert read.charging.region.top == 14.5
 
 
 if __name__ == '__main__':

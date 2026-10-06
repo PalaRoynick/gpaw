@@ -40,14 +40,14 @@ def make_calculator(index):
         xc='PBE',
         maxiter=1000,
         extensions=[SJM(
-            # Solvated jellium parameters.
-            target_potential=4.2,
-            tol=0.01,
-            excess_electrons=-0.01232,  # guess from previous
             # Implicit solvent parameters.
-            cavity=cavity,
-            dielectric=dielectric,
-            interactions=interactions)])
+            solvation=dict(cavity=cavity, dielectric=dielectric,
+                           interactions=interactions),
+            # Solvated jellium parameters.
+            potentiostat=dict(
+                target_potential=4.2,
+                tol=0.01,
+                excess_electrons=-0.01232))])  # guess from previous
     return calc
 
 

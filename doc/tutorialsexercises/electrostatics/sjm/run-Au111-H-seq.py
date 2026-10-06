@@ -41,12 +41,11 @@ calc = GPAW(
     xc='PBE',
     maxiter=1000,
     extensions=[SJM(
-        # Solvated jellium parameters.
-        target_potential=4.2,
         # Implicit solvent parameters.
-        cavity=cavity,
-        dielectric=dielectric,
-        interactions=interactions)])
+        solvation=dict(cavity=cavity, dielectric=dielectric,
+                       interactions=interactions),
+        # Solvated jellium parameters.
+        potentiostat=dict(target_potential=4.2))])
 atoms.calc = calc
 
 # Run the calculation.

@@ -72,10 +72,11 @@ Git master branch
   to the :ref:`newgpaw` architecture. Other than before it is now used as an
   extension to the GPAW calculator, and not as a separate calculator, as
   described in :ref:`sjm`.  It now also allows the use of PW-mode.
-  The keys are given directly to ``SJM(...)`` instead of in an ``sj``
-  dictionary, and ``sjm.change(...)``, called on that ``SJM`` object,
-  substitutes the previous ``calc.set(sj={...})``.  Most of them keep their names and meanings, with
-  these exceptions:
+  ``SJM(solvation=..., potentiostat={...})`` takes the implicit-solvent
+  model and, in place of the ``sj`` dictionary, a ``potentiostat``
+  dictionary; ``sjm.change(potentiostat={...})``, called on that ``SJM``
+  object, substitutes the previous ``calc.set(sj={...})``.  Most of the
+  keys keep their names and meanings, with these exceptions:
 
   * ``max_step`` is now called ``max_potential_stepsize``; the old name is
     not accepted.
@@ -87,8 +88,8 @@ Git master branch
 
 * The potential control itself has been split out of SJM into a new
   ``gpaw.extensions.electrochemistry.Potentiostat`` class, which holds a
-  target electrode potential by adjusting an excess charge.  It owns all of
-  the potential-control settings---``target_potential``, ``tol``,
+  target electrode potential by adjusting an excess charge.  It owns the
+  settings of the control loop---``target_potential``,
   ``max_iters``, ``max_reruns``, ``max_potential_stepsize``,
   ``always_adjust`` and ``grand_output``---and the state of the
   equilibration, and it composes three pluggable parts: a *charging scheme*
@@ -97,14 +98,19 @@ Git master branch
   the topside work function for SJM) and an *optimizer* (how the charge is
   stepped toward the target; by default a regression of the
   potential-versus-charge slope over the last ``slope_regression_depth``
-  attempts, damped with the previous estimate by ``mixer``).  SJM is now
-  only a front end for it: it contributes the jellium and the implicit
-  solvent, hands its keywords over and reads them back, so that
-  ``sjm.tol`` and the rest are the potentiostat's settings.  The
-  potentiostat also finishes a converged calculation: the Legendre
+  attempts, damped with the previous estimate by ``mixer``).  The
+  optimizer also decides when the potential is converged: within ``tol``,
+  by default.  SJM is now
+  only a front end for it, which pairs it with the implicit solvent:
+  ``sjm.potentiostat.target_potential`` and the rest are the
+  potentiostat's settings.
+  The potentiostat also finishes a converged calculation: the Legendre
   transform to the grand potential and the results.  A different
-  constant-potential method can reuse the potentiostat with another
-  charging scheme or probe.
+  constant-potential method can reuse the potentiostat with other parts,
+  and SJM takes a ``Solvation``, a ``Potentiostat`` or any of the three
+  parts of your own---subclasses of ``ChargingScheme``,
+  ``PotentialOptimizer`` and ``PotentialProbe``, given under the
+  ``charging``, ``optimizer`` and ``potentialprobe`` keys.
 
 * PW-mode calculations parallelized over spin, k-points and/or bands can
   now distribute the density to all cores for netter parallelization of

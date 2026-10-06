@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import textwrap
 from collections import deque
+from typing import Any
 
 import numpy as np
 from ase.units import Bohr, Ha, _e
@@ -12,6 +13,606 @@ from gpaw.core import PWArray, UGArray
 from gpaw.mpi import broadcast_float
 from gpaw.extensions import Extension
 from gpaw.extensions.jellium import JelliumExtension
+
+
+class Potentiostat(Extension):
+    """Holds a target electrode potential by adjusting an excess charge.
+
+    It is the GPAW extension of the potential control: it puts the charge
+    into the density, moves it with the atoms and equilibrates after each
+    SCF loop.
+
+    Composes three pluggable parts:
+
+    * ``charging``  -- a :class:`ChargingScheme`: how the excess charge is
+      put into the cell (default: :class:`JelliumCharging`, a jellium slab).
+    * ``optimizer`` -- a :class:`PotentialOptimizer`: how the charge is
+      stepped toward ``target_potential`` (default:
+      :class:`DirectOptimizer`).  It is kept in constant-charge mode too,
+      so that its settings and its slope estimate survive a switch between
+      the modes.
+    * ``potentialprobe`` -- a :class:`PotentialProbe`: how the potential is
+      read off the converged SCF state (default: :class:`WorkFunctionProbe`).
+
+    The potentiostat holds every setting of the potential control and the
+    state of the equilibration.  :meth:`from_dict` builds one from the
+    ``potentiostat`` dict of :class:`gpaw.extensions.electrochemistry.SJM`.
+
+    Parameters
+    ----------
+    charging:
+        The charging scheme.
+    target_potential:
+        Electrode potential to equilibrate to, in V on the vacuum scale.
+        ``None`` gives a constant-charge calculation: the charge is simply
+        held where it is.
+    optimizer:
+        The potential optimizer.
+    potentialprobe:
+        The potential probe.
+    max_potential_stepsize:
+        If an accepted step moves the potential by more than this many volts
+        *and* ends up further from the target than it started, the step is
+        rejected: the change in excess electrons is halved and another SCF
+        pass is run, without counting the rejected point as an attempt (see
+        :attr:`EquilibrationResult.rejected`).  This keeps the optimizer
+        from leaving the linear region on a bad slope estimate.  Set to
+        ``None`` to turn the rejection/halving off entirely.  Default: 2 V.
+    max_iters:
+        Maximum number of attempts to equilibrate the potential for one
+        geometry before a :class:`PotentialConvergenceError` is raised.
+        Default: 10.
+    max_reruns:
+        How many times in a row a step may be rejected and halved before a
+        :class:`PotentialConvergenceError` is raised.  Default: 10.
+    always_adjust:
+        Once the potential is converged, stage one more step in the
+        charge anyway, to be applied to the next geometry by
+        :meth:`new_geometry` instead of being re-converged.  Default: False.
+    grand_output:
+        Report the grand-potential energy rather than the canonical energy
+        in the results (see :meth:`write_results`).  Default: True.
+    """
+
+    name = 'potentiostat'
+
+    def __init__(self,
+                 *,
+                 charging: ChargingScheme | None = None,
+                 target_potential: float | None = None,  # V
+                 optimizer: PotentialOptimizer | None = None,
+                 potentialprobe: PotentialProbe | None = None,
+                 max_potential_stepsize: float | None = 2,  # V
+                 max_iters: int = 10,
+                 max_reruns: int = 10,
+                 always_adjust: bool = False,
+                 grand_output: bool = True):
+        self.charging = charging or JelliumCharging()
+        self.target_potential = target_potential
+        self.optimizer = optimizer or DirectOptimizer()
+        self.potentialprobe = potentialprobe or WorkFunctionProbe()
+        self.max_potential_stepsize = max_potential_stepsize
+        self.max_iters = max_iters
+        self.max_reruns = max_reruns
+        self.always_adjust = always_adjust
+        self.grand_output = grand_output
+        # Where move_atoms() reports; set by the front end:
+        self.log: Any = lambda *args, **kwargs: None
+        self.dft = None  # the last converged calculation
+
+        # Consecutive rejected (halved) steps since the last accepted one:
+        self.reruns = 0
+        # (Charge, potential in V) of every accepted attempt of the current
+        # equilibration:
+        self.attempts: list[tuple[float, float]] = []
+        # Charge staged by always_adjust for the next geometry:
+        self.pending_excess_electrons: float | None = None
+
+        # Set by post_converged(), for the last converged calculation:
+        self.fermi_level = np.nan  # Ha
+        self.electrode_potential = np.nan  # V
+        self.converged_excess_electrons = np.nan
+        self.canonical_free = np.nan  # Ha
+        self.canonical_extrapolated = np.nan  # Ha
+        self.omega_free = np.nan  # Ha
+        self.omega_extrapolated = np.nan  # Ha
+
+    @classmethod
+    def from_dict(cls, dct: dict | None) -> Potentiostat:
+        """Build a potentiostat from SJM's ``potentiostat`` dict.
+
+        Besides the settings, the dict takes the parts, as instances or as
+        dicts written by :meth:`todict`, and the keys of the default parts
+        (see ``default_parts``).  Those keys configure the default class, so
+        they cannot go together with an instance of a part.
+        """
+        dct = dict(dct or {})
+        for key, (default, keys) in default_parts.items():
+            given = {k: dct.pop(k) for k in keys if k in dct}
+            part = dct.get(key) or {}
+            if isinstance(part, dict):
+                dct[key] = _from_dict({**part, **given}, default)
+            elif given:
+                raise ValueError(
+                    f'{", ".join(given)} configure the default '
+                    f'{default.__name__}; give them to '
+                    f'{type(part).__name__} instead.')
+        return _from_dict(dct, cls)
+
+    def todict(self) -> dict:
+        """The settings, and each part as ``{'name': class name, ...}``.
+
+        The values are the live ones -- the equilibrated excess electrons
+        and the learned slope -- so a restart picks up from them.
+        """
+        return {**{key: getattr(self, key) for key in settings},
+                **{key: {'name': type(part).__name__, **part.todict()}
+                   for key in default_parts
+                   for part in [getattr(self, key)]}}
+
+    @property
+    def constant_potential(self) -> bool:
+        """Is there a target potential to equilibrate to?"""
+        return self.target_potential is not None
+
+    @property
+    def excess_electrons(self) -> float:
+        """Number of excess electrons."""
+        return self.charging.excess_electrons
+
+    @excess_electrons.setter
+    def excess_electrons(self, q: float) -> None:
+        self.charging.excess_electrons = q
+
+    # The name GPAW sums the charge of the cell from:
+    charge = excess_electrons
+
+    @property
+    def niters(self) -> int:
+        """Number of attempts made in the current equilibration."""
+        return len(self.attempts)
+
+    def set_excess_electrons(self, excess_electrons: float) -> None:
+        """Set the number of excess electrons explicitly.
+
+        An explicit value wins over one staged by ``always_adjust``.
+        """
+        self.excess_electrons = excess_electrons
+        self.pending_excess_electrons = None
+
+    def set_target_potential(self, target: float | None) -> None:
+        """Change the target potential; ``None`` switches to constant charge.
+
+        A switch between the two modes starts a fresh equilibration: the
+        optimizer keeps its slope estimate but not the attempts behind it.
+        """
+        if (target is None) != (self.target_potential is None):
+            self.optimizer.forget_attempts()
+        self.target_potential = target
+
+    def new_geometry(self) -> float | None:
+        """Start equilibrating a new geometry.
+
+        Applies excess electrons staged by ``always_adjust`` and returns
+        them, or ``None`` if there were none.  The attempts are forgotten
+        -- the optimizer's too, since a regression across the move would fit a
+        line through two different systems -- but the slope estimate is
+        carried over.
+        """
+        staged = self.pending_excess_electrons
+        if staged is not None:
+            self.set_excess_electrons(staged)
+        self.attempts = []
+        self.optimizer.forget_attempts()
+        return staged
+
+    def update1(self, nt_r) -> None:
+        self.charging.add_charge(nt_r)
+
+    def update1pw(self, nt_g) -> None:
+        self.charging.add_charge_pw(nt_g)
+
+    def move_atoms(self, relpos_ac) -> None:
+        # A fresh budget of equilibration attempts for the new geometry,
+        # starting from the value staged by always_adjust, if any:
+        if self.new_geometry() is not None:
+            self.log(f'Excess electrons adjusted to '
+                     f'{self.excess_electrons:+.5f} for the new geometry '
+                     '(always_adjust).')
+        zs = self.charging.move(relpos_ac, self.charging.mask_r.desc)
+        if zs is not None:
+            self.log(f'Jellium region moved to {zs[0]:.3f} to '
+                     f'{zs[1]:.3f}  # Å')
+
+    def post_scf_convergence(self,
+                             ibzwfs,
+                             nelectrons: float,
+                             occ_calc,
+                             mixer,
+                             log) -> bool:
+        """Equilibrate once the SCF criteria have passed.
+
+        Wraps :meth:`equilibrate` in the bookkeeping of a whole
+        equilibration: accepted attempts count against ``max_iters`` and
+        rejected steps in a row against ``max_reruns``, and a
+        :class:`PotentialConvergenceError` is raised when either runs out.
+        Returns ``True`` once the potential is equilibrated (always, in
+        constant-charge mode) and ``False`` when another SCF pass is needed.
+        """
+        if not self.constant_potential:
+            return True
+
+        # Grab the values belonging to this attempt before the charge is
+        # stepped on to the next one:
+        excess_electrons = self.excess_electrons
+        potential = self.potentialprobe.potential(ibzwfs)
+
+        result = self.equilibrate(ibzwfs, nelectrons, occ_calc, mixer, log)
+
+        if result is EquilibrationResult.rejected:
+            self.reruns += 1
+            if self.reruns > self.max_reruns:
+                raise PotentialConvergenceError(
+                    self._convergence_error_message(
+                        log, reason=f'{self.max_reruns:d} halvings of a step '
+                        f'that kept overshooting max_potential_stepsize '
+                        f'({self.max_potential_stepsize} V)'))
+            return False
+
+        # A step was accepted (or we are already converged): the rerun
+        # streak, if any, is over.
+        self.reruns = 0
+        self.attempts.append((excess_electrons, potential))
+
+        if result is EquilibrationResult.converged:
+            if self.always_adjust:  # stage a step for the next geometry
+                assert self.target_potential is not None
+                self.pending_excess_electrons = (
+                    self.optimizer.next_excess_electrons(
+                        excess_electrons, potential, self.target_potential,
+                        area=self.charging.region_area))
+            return True
+
+        if self.niters >= self.max_iters:
+            raise PotentialConvergenceError(
+                self._convergence_error_message(log))
+        return False
+
+    def post_converged(self, dft) -> None:
+        """Finish a converged calculation.
+
+        Reads the electrode potential and the Fermi level off the converged
+        state, reports the equilibration, Legendre-transforms the energies
+        to the grand potential and writes the results (see
+        :meth:`write_results`).  The next calculation -- the next step of a
+        relaxation, say -- then gets a fresh equilibration budget and a
+        fresh record to report.
+        """
+        self.dft = dft
+        log = dft.log
+        (fermi_level,) = dft.ibzwfs.fermi_levels
+        self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
+        self.electrode_potential = broadcast_float(
+            self.potentialprobe.potential(dft.ibzwfs), dft.comm)
+
+        # Report where the equilibration ended up; the intermediate attempts
+        # are summarized by the regressed slope:
+        if self.constant_potential and self.attempts:
+            excess_electrons, potential = self.attempts[-1]
+            log(f'Potential found to be {potential:.5f} V '
+                f'(with {excess_electrons:+.5f} excess electrons, '
+                f'attempt {self.niters:d}/{self.max_iters:d}).')
+            slope = self.optimizer.slope
+            if slope is not None:
+                log(f'Slope estimated from the last '
+                    f'{self.optimizer.n_attempts:d} attempts is '
+                    f'{slope:.4f} V/electron,')
+                c = capacitance(slope, self.charging.region_area)
+                log(f'or apparent capacitance of {c:.4f} muF/cm^2')
+            log('Potential is within tolerance. Equilibrated.')
+            if self.pending_excess_electrons is not None:
+                log('always_adjust: the next geometry starts from '
+                    f'{self.pending_excess_electrons:+.5f} excess electrons.')
+            log(flush=True)
+
+        # Legendre transform: Omega = E - N mu, with mu the Fermi level.
+        N = self.converged_excess_electrons = self.excess_electrons
+        self.canonical_free = broadcast_float(dft.energies.total_free,
+                                              dft.comm)
+        self.canonical_extrapolated = broadcast_float(
+            dft.energies.total_extrapolated, dft.comm)
+        mu_N = self.fermi_level * N
+        self.omega_free = self.canonical_free - mu_N
+        self.omega_extrapolated = self.canonical_extrapolated - mu_N
+
+        log('Legendre-transformed energies '
+            '(grand potential, Omega = E - N mu):')
+        log(f'  N (excess electrons): {N:+14.6f}')
+        log(f'  mu (-work function):  {self.fermi_level * Ha:+14.6f}  # eV')
+        log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
+        log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
+        log()
+
+        self.write_results(dft.results, log)
+        self.attempts = []  # a fresh record and budget for the next one
+
+    def write_results(self, results: dict, log) -> None:
+        """Write the last converged calculation into `results`.
+
+        That is the excess electrons, the electrode potential and --
+        depending on ``grand_output`` -- the grand-potential or the
+        canonical energies.  It is cheap, so a change of ``grand_output``
+        only needs to call this again.
+        """
+        # Unlike energy and forces, the first two are not in ASE's
+        # all_properties, so an ASE trajectory silently drops them; they do
+        # reach calc.results, a .gpw file and the text log.
+        results['excess_electrons'] = self.converged_excess_electrons
+        results['electrode_potential'] = self.electrode_potential / Ha
+        if self.grand_output:
+            results['free_energy'] = self.omega_free
+            results['energy'] = self.omega_extrapolated
+            log('Grand-potential energy was written into results.\n',
+                flush=True)
+        else:
+            results['free_energy'] = self.canonical_free
+            results['energy'] = self.canonical_extrapolated
+            log('Canonical energy was written into results.\n', flush=True)
+
+    def _convergence_error_message(self, log,
+                                   reason: str | None = None) -> str:
+        reason = reason or f'{self.max_iters:d} attempts'
+        msg = (f'The electrode potential could not be equilibrated to '
+               f'{self.target_potential:.3f} +/- {self.optimizer.tol:.3f} V '
+               f'in {reason}.  This may indicate that your '
+               'work function is noisier than your potential tolerance; you '
+               'may try tightening the SCF convergence criteria.  The excess '
+               'electrons and the resulting potentials are listed below; '
+               'plotting them could give you insight into the problem.')
+        msg = textwrap.fill(msg) + '\n'
+        for excess_electrons, potential in self.attempts:
+            msg += f'{excess_electrons:+.6f} {potential:.6f}\n'
+        log(msg, flush=True)
+        return msg
+
+    def equilibrate(self,
+                    ibzwfs,
+                    nelectrons: float,
+                    occ_calc,
+                    mixer,
+                    log) -> EquilibrationResult:
+        """One equilibration attempt, after the SCF criteria have passed.
+
+        Returns :attr:`EquilibrationResult.converged`,
+        :attr:`~EquilibrationResult.stepped` after stepping the charge and
+        re-running the occupations for another SCF pass; and
+        :attr:`~EquilibrationResult.rejected` when a rerun is needed.
+        """
+        if not self.constant_potential:
+            return EquilibrationResult.converged
+        target = self.target_potential
+        optimizer = self.optimizer
+        assert target is not None
+        potential = self.potentialprobe.potential(ibzwfs)
+        log(f'excess electrons: {self.excess_electrons:+.6f} |e|, '
+            f'potential: {potential:.3f} V')
+
+        previous = optimizer.last_attempt()
+        if self.max_potential_stepsize is not None and previous is not None:
+            prev_excess_electrons, prev_potential = previous
+            moved = abs(potential - prev_potential)
+            overshot = abs(prev_potential - target) < abs(potential - target)
+            if moved > self.max_potential_stepsize and overshot:
+                halved = 0.5 * (prev_excess_electrons + self.excess_electrons)
+                log(f'  step changed the potential by {moved:.3f} V, over '
+                    f'max_potential_stepsize ({self.max_potential_stepsize} '
+                    'V), and away from the target -- rejected; halving the '
+                    f'step in excess electrons to {halved:+.6f} |e|.')
+                ibzwfs.calculate_occs(
+                    occ_calc, nelectrons + (halved - self.excess_electrons))
+                self.excess_electrons = halved
+                mixer.reset()
+                return EquilibrationResult.rejected
+
+        area = self.charging.region_area
+        optimizer.record_attempt(self.excess_electrons, potential, area=area)
+        if optimizer.converged(potential, target):
+            return EquilibrationResult.converged
+        new_excess_electrons = optimizer.next_excess_electrons(
+            self.excess_electrons, potential, target, area=area)
+        ibzwfs.calculate_occs(
+            occ_calc,
+            nelectrons + (new_excess_electrons - self.excess_electrons))
+        self.excess_electrons = new_excess_electrons
+        mixer.reset()
+        return EquilibrationResult.stepped
+
+
+class EquilibrationResult(enum.Enum):
+    """Outcome of one :meth:`Potentiostat.equilibrate` call."""
+
+    # The potential is within tolerance -- the equilibration is done.
+    converged = enum.auto()
+    # The excess electrons were stepped; another SCF pass is needed.
+    stepped = enum.auto()
+    # The last step moved the potential by more than ``max_potential_stepsize``
+    # and further from the target. It will be rerun with half the previous
+    # step.  Does *not* count as an attempt.
+    rejected = enum.auto()
+
+
+class PotentialConvergenceError(ConvergenceError):
+    """Raised if the electrode potential did not equilibrate."""
+
+
+class ChargingScheme:
+    """Puts an excess charge into the cell.
+
+    It also reports the geometry of the electrode "plate" that the charge
+    faces, which the potential optimizer needs for its first-guess slope.
+    """
+
+    # Excess electrons put into the cell; the counter charge is minus this.
+    excess_electrons: float
+    # Shape of the charged region.
+    region: JelliumRegion
+    # Its normalized mask on the fine grid, as stored by set_region().
+    mask_r: UGArray
+
+    def initialize(self, grid, pw, relpos_ac, *,
+                   cavity) -> tuple[float, float]:
+        """Set the charge up for a new calculation.
+
+        ``grid`` is the fine grid, ``pw`` the descriptor of the interpolated
+        density and ``cavity`` the solvation cavity.  Returns the lower and
+        upper limit of the charged region in Å, for the log.
+        """
+        raise NotImplementedError
+
+    def todict(self) -> dict:
+        """The keyword arguments that build this scheme again."""
+        return {}
+
+    def add_charge(self, nt_r: UGArray) -> None:
+        """Add the counter-charge to a real-space pseudo-density."""
+        raise NotImplementedError
+
+    def add_charge_pw(self, nt_g: PWArray | None) -> None:
+        """Add the counter-charge to a plane-wave pseudo-density."""
+        raise NotImplementedError
+
+    def set_region(self, mask_r: UGArray) -> None:
+        """Store (and normalize) the shape of the charged region."""
+        raise NotImplementedError
+
+    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
+        """Rebuild the region for a new geometry if it follows the atoms.
+
+        Returns the new lower and upper limit in Å, or ``None`` if there
+        was nothing to rebuild -- either the region does not move with the
+        atoms at all, or this geometry leaves it exactly where it was.
+        """
+        return None
+
+    @property
+    def region_area(self) -> float:
+        """Area of the electrode plate in the xy plane, in Å²."""
+        raise NotImplementedError
+
+
+class JelliumCharging(JelliumExtension, ChargingScheme):
+    """A uniform jellium counter-charge filling a masked region.
+
+    This is the charging scheme SJM has always used: the excess electrons
+    of the atomic system are balanced by a jellium of the opposite sign
+    smeared uniformly over the region, which is a :class:`SlabRegion` by
+    default but can be any :class:`JelliumRegion`.
+
+    Parameters
+    ----------
+    excess_electrons:
+        Number of excess electrons (the jellium holds minus this).
+    jelliumregion:
+        Shape of the region: a dict for :func:`build_jellium_region` or a
+        :class:`JelliumRegion`.  Defaults to a :class:`SlabRegion`.
+
+    :meth:`initialize` puts the region on the grid of a calculation.  The mask
+    itself -- normalizing it and putting the charge into the density -- is
+    handled by :class:`gpaw.extensions.jellium.JelliumExtension`.
+    """
+
+    def __init__(self,
+                 *,
+                 excess_electrons: float = 0.0,
+                 jelliumregion: dict | JelliumRegion | None = None):
+        self.excess_electrons = excess_electrons
+        self.region = build_jellium_region(jelliumregion)
+        self._key: object | None = None
+
+    def initialize(self, grid, pw, relpos_ac, *,
+                   cavity) -> tuple[float, float]:
+        if isinstance(self.region, CavityShapedRegion):
+            self.region.cavity = cavity
+        self.pw = pw
+        mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
+        self.set_region(mask_r)
+        return z1, z2
+
+    def todict(self) -> dict:
+        return {'excess_electrons': self.excess_electrons,
+                'jelliumregion': self.region.todict()}
+
+    @property
+    def charge(self) -> float:
+        """The same number under the name the jellium base class uses.
+
+        :class:`gpaw.extensions.jellium.JelliumExtension` stores and
+        subtracts ``charge``, which puts minus the excess electrons into
+        the density -- the counter charge.
+        """
+        return self.excess_electrons
+
+    @charge.setter
+    def charge(self, value: float) -> None:
+        self.excess_electrons = value
+
+    def set_region(self, mask_r: UGArray, key: object | None = None) -> None:
+        """Normalize and store the shape of the jellium region.
+
+        ``key`` is :meth:`JelliumRegion.key` for the geometry the mask was
+        built from; :meth:`move` compares against it to spot a later
+        geometry that needs no new mask.  Leaving it ``None`` just means
+        the next :meth:`move` rebuilds unconditionally.
+        """
+        self.set_mask(mask_r)
+        self._key = key
+
+    add_charge = JelliumExtension.update1
+    add_charge_pw = JelliumExtension.update1pw
+
+    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
+        if not self.region.follows_atoms:
+            return None
+        key = self.region.key(grid, relpos_ac)
+        if key is not None and key == self._key:
+            # Same region as last time -- rebuilding the mask would cost a
+            # grid pass, a norm and (in PW mode) a gather plus an FFT, and
+            # hand back exactly the mask we already have.
+            return None
+        mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
+        self.set_region(mask_r, key)
+        return z1, z2
+
+    @property
+    def region_area(self) -> float:
+        cell_cv = self.mask_r.desc.cell_cv * Bohr
+        return abs(np.linalg.det(cell_cv[:2, :2]))
+
+
+def build_jellium_region(spec: dict | JelliumRegion | None,
+                         *, cavity=None) -> JelliumRegion:
+    """Map the user's ``jelliumregion`` input onto a region object.
+
+    ``spec`` is the ``jelliumregion`` keyword: a dict of parameters, an
+    already-built :class:`JelliumRegion`, or ``None`` for the default slab.
+    A ``'shape'`` key in ``spec`` (``'slab'`` (default) or ``'cavity'``)
+    selects the kind; the rest of the dict is passed to it.  The legacy
+    ``bottom='cavity_like'`` spelling is still understood.
+    """
+    if isinstance(spec, JelliumRegion):
+        return spec
+    spec = dict(spec or {})
+    kind = spec.pop('shape', 'slab')
+    if spec.get('bottom') == 'cavity_like':  # legacy alias
+        kind = 'cavity'
+        del spec['bottom']
+    if kind == 'slab':
+        return SlabRegion(**spec)
+    if kind == 'cavity':
+        return CavityShapedRegion(**spec, cavity=cavity)
+    raise ValueError(
+        f'Unknown jellium region shape: {kind!r}.  '
+        "Use 'slab' (the default) or 'cavity'.")
 
 
 class JelliumRegion:
@@ -47,6 +648,19 @@ class JelliumRegion:
         mask would.  ``None`` -- the default -- means "always rebuild".
         """
         return None
+
+    def todict(self) -> dict:
+        """The ``jelliumregion`` dict that builds this region again.
+
+        A region of your own is written by its class name, which
+        :func:`build_jellium_region` refuses when the file is read back.
+        """
+        return {'shape': type(self).__name__}
+
+    def __repr__(self):
+        args = ', '.join(f'{key}={value!r}' for key, value
+                         in self.todict().items() if key != 'shape')
+        return f'{type(self).__name__}({args})'
 
 
 class SlabRegion(JelliumRegion):
@@ -102,9 +716,9 @@ class SlabRegion(JelliumRegion):
         self.fix_bottom = fix_bottom
         self._frozen_bottom: float | None = None
 
-    def __repr__(self):
-        return (f'SlabRegion(top={self.top}, bottom={self.bottom}, '
-                f'thickness={self.thickness}, fix_bottom={self.fix_bottom})')
+    def todict(self) -> dict:
+        return {'top': self.top, 'bottom': self.bottom,
+                'thickness': self.thickness, 'fix_bottom': self.fix_bottom}
 
     @property
     def follows_atoms(self) -> bool:
@@ -196,8 +810,8 @@ class CavityShapedRegion(JelliumRegion):
         self.top = top
         self.cavity = cavity
 
-    def __repr__(self):
-        return f'CavityShapedRegion(top={self.top})'
+    def todict(self) -> dict:
+        return {'shape': 'cavity', 'top': self.top}
 
     @property
     def follows_atoms(self) -> bool:
@@ -209,180 +823,20 @@ class CavityShapedRegion(JelliumRegion):
             'version of SJM.  Use gpaw.solvation.sjm instead.')
 
 
-def build_jellium_region(spec: dict | JelliumRegion | None,
-                         *, cavity=None) -> JelliumRegion:
-    """Map the user's ``jelliumregion`` input onto a region object.
-
-    ``spec`` is the ``jelliumregion`` keyword: a dict of parameters, an
-    already-built :class:`JelliumRegion`, or ``None`` for the default slab.
-    A ``'shape'`` key in ``spec`` (``'slab'`` (default) or ``'cavity'``)
-    selects the kind; the rest of the dict is passed to it.  The legacy
-    ``bottom='cavity_like'`` spelling is still understood.
-    """
-    if isinstance(spec, JelliumRegion):
-        return spec
-    spec = dict(spec or {})
-    kind = spec.pop('shape', 'slab')
-    if spec.get('bottom') == 'cavity_like':  # legacy alias
-        kind = 'cavity'
-        del spec['bottom']
-    if kind == 'slab':
-        return SlabRegion(**spec)
-    if kind == 'cavity':
-        return CavityShapedRegion(**spec, cavity=cavity)
-    raise ValueError(
-        f'Unknown jellium region shape: {kind!r}.  '
-        "Use 'slab' (the default) or 'cavity'.")
-
-
-class ChargingScheme:
-    """Puts an excess charge into the cell.
-
-    It also reports the geometry of the electrode "plate" that the charge
-    faces, which the potential optimizer needs for its first-guess slope.
-    """
-
-    # Excess electrons put into the cell; the counter charge is minus this.
-    excess_electrons: float
-    # Shape of the charged region.
-    region: JelliumRegion
-    # Its normalized mask on the fine grid, as stored by set_region().
-    mask_r: UGArray
-
-    def add_charge(self, nt_r: UGArray) -> None:
-        """Add the counter-charge to a real-space pseudo-density."""
-        raise NotImplementedError
-
-    def add_charge_pw(self, nt_g: PWArray | None) -> None:
-        """Add the counter-charge to a plane-wave pseudo-density."""
-        raise NotImplementedError
-
-    def set_region(self, mask_r: UGArray) -> None:
-        """Store (and normalize) the shape of the charged region."""
-        raise NotImplementedError
-
-    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
-        """Rebuild the region for a new geometry if it follows the atoms.
-
-        Returns the new lower and upper limit in Å, or ``None`` if there
-        was nothing to rebuild -- either the region does not move with the
-        atoms at all, or this geometry leaves it exactly where it was.
-        """
-        return None
-
-    @property
-    def region_area(self) -> float:
-        """Area of the electrode plate in the xy plane, in Å²."""
-        raise NotImplementedError
-
-
-class JelliumCharging(JelliumExtension, ChargingScheme):
-    """A uniform jellium counter-charge filling a masked region.
-
-    This is the charging scheme SJM has always used: the excess electrons
-    of the atomic system are balanced by a jellium of the opposite sign
-    smeared uniformly over the region, which is a :class:`SlabRegion` by
-    default but can be any :class:`JelliumRegion`.
-
-    Parameters
-    ----------
-    mask_r:
-        Mask of the region on the fine grid.  It is normalized in place to
-        integrate to one.
-    pw:
-        Plane-wave (or real-space) descriptor of the interpolated density,
-        used to cache a reciprocal-space copy of the mask for PW mode.
-    excess_electrons:
-        Number of excess electrons (the jellium holds minus this).
-    region:
-        The :class:`JelliumRegion` the mask was built from, kept so that
-        the region can follow the atoms during a relaxation.  Defaults to a
-        :class:`SlabRegion`.
-
-    The mask itself -- normalizing it and putting the charge into the
-    density -- is handled by :class:`gpaw.extensions.jellium.JelliumExtension`.
-    """
-
-    def __init__(self,
-                 mask_r: UGArray,
-                 *,
-                 pw,
-                 excess_electrons: float = 0.0,
-                 region: JelliumRegion | None = None):
-        self.region = region or SlabRegion()
-        self._key: object | None = None
-        super().__init__(mask_r, charge=excess_electrons, pw=pw)
-
-    @property
-    def charge(self) -> float:
-        """The same number under the name the jellium base class uses.
-
-        :class:`gpaw.extensions.jellium.JelliumExtension` stores and
-        subtracts ``charge``, which puts minus the excess electrons into
-        the density -- the counter charge.
-        """
-        return self.excess_electrons
-
-    @charge.setter
-    def charge(self, value: float) -> None:
-        self.excess_electrons = value
-
-    def set_region(self, mask_r: UGArray, key: object | None = None) -> None:
-        """Normalize and store the shape of the jellium region.
-
-        ``key`` is :meth:`JelliumRegion.key` for the geometry the mask was
-        built from; :meth:`move` compares against it to spot a later
-        geometry that needs no new mask.  Leaving it ``None`` just means
-        the next :meth:`move` rebuilds unconditionally.
-        """
-        self.set_mask(mask_r)
-        self._key = key
-
-    add_charge = JelliumExtension.update1
-    add_charge_pw = JelliumExtension.update1pw
-
-    def move(self, relpos_ac, grid) -> tuple[float, float] | None:
-        if not self.region.follows_atoms:
-            return None
-        key = self.region.key(grid, relpos_ac)
-        if key is not None and key == self._key:
-            # Same region as last time -- rebuilding the mask would cost a
-            # grid pass, a norm and (in PW mode) a gather plus an FFT, and
-            # hand back exactly the mask we already have.
-            return None
-        mask_r, z1, z2 = self.region.mask(grid, relpos_ac)
-        self.set_region(mask_r, key)
-        return z1, z2
-
-    @property
-    def region_area(self) -> float:
-        cell_cv = self.mask_r.desc.cell_cv * Bohr
-        return abs(np.linalg.det(cell_cv[:2, :2]))
-
-
-class PotentialProbe:
-    """Reads the electrode potential off the converged SCF state."""
-
-    def potential(self, ibzwfs) -> float:
-        """Electrode potential in V, on the vacuum scale."""
-        raise NotImplementedError
-
-
-class WorkFunctionProbe(PotentialProbe):
-    """Electrode potential as the work function: minus the Fermi level.
-
-    Assumes the Poisson solver has zeroed the vacuum electrostatic
-    potential, as the SJM solver does.
-    """
-
-    def potential(self, ibzwfs) -> float:
-        return -ibzwfs.fermi_level * Ha
-
-
 class PotentialOptimizer:
     """Proposes the next excess-electron count for the target potential."""
 
     slope: float | None = None  # estimated d(potential)/d(charge), V/electron
+    tol: float = 0.005  # V
+
+    def converged(self, potential: float, target: float) -> bool:  # V
+        """Is the potential close enough to the target to stop?
+
+        By default, within ``tol`` of it.  ``tol`` is also what the log and
+        the error messages quote, so keep it meaningful if you override
+        this with a different criterion.
+        """
+        return abs(potential - target) <= self.tol
 
     def next_excess_electrons(self,
                               excess_electrons: float,  # |e|
@@ -424,6 +878,10 @@ class PotentialOptimizer:
         """Number of attempts the slope estimate is based on."""
         return 0
 
+    def todict(self) -> dict:
+        """The keyword arguments that build this optimizer again."""
+        return {}
+
 
 class DirectOptimizer(PotentialOptimizer):
     """Step the charge along a damped estimate of d(potential)/d(charge).
@@ -433,15 +891,18 @@ class DirectOptimizer(PotentialOptimizer):
     capacitor of the electrode ``area``.  Once there are two or more
     attempts to regress a slope from, the estimate is updated, damped by
     ``mixer``: ``new = mixer * old + (1 - mixer) * regressed``.  The
-    regression uses the last ``slope_regression_depth`` attempts.
+    regression uses the last ``slope_regression_depth`` attempts.  The
+    potential is converged within ``tol`` (V) of the target.
     """
 
     def __init__(self,
                  *,
                  slope: float | None = None,  # V/electron
                  mixer: float = 0.2,
-                 slope_regression_depth: int = 4):
+                 slope_regression_depth: int = 4,
+                 tol: float = 0.005):  # V
         self.slope = slope
+        self.tol = tol
         self.mixer = mixer
         # (Charge, potential) history of the last few attempts, in V:
         self.history: deque[tuple[float, float]] = deque()
@@ -458,6 +919,11 @@ class DirectOptimizer(PotentialOptimizer):
                 f'slope_regression_depth must be at least 2, got {depth}.  '
                 'Two attempts are the fewest that a slope can be fitted to.')
         self.history = deque(self.history, maxlen=depth)
+
+    def todict(self) -> dict:
+        return {'slope': self.slope, 'mixer': self.mixer,
+                'slope_regression_depth': self.slope_regression_depth,
+                'tol': self.tol}
 
     def last_attempt(self) -> tuple[float, float] | None:
         return self.history[-1] if self.history else None
@@ -535,412 +1001,54 @@ class DirectOptimizer(PotentialOptimizer):
         return excess_electrons + dc
 
 
-class EquilibrationResult(enum.Enum):
-    """Outcome of one :meth:`Potentiostat.equilibrate` call."""
+class PotentialProbe:
+    """Reads the electrode potential off the converged SCF state."""
 
-    # The potential is within tolerance -- the equilibration is done.
-    converged = enum.auto()
-    # The excess electrons were stepped; another SCF pass is needed.
-    stepped = enum.auto()
-    # The last step moved the potential by more than ``max_potential_stepsize``
-    # and further from the target. It will be rerun with half the previous
-    # step.  Does *not* count as an attempt.
-    rejected = enum.auto()
+    def potential(self, ibzwfs) -> float:
+        """Electrode potential in V, on the vacuum scale."""
+        raise NotImplementedError
 
-
-class PotentialConvergenceError(ConvergenceError):
-    """Raised if the electrode potential did not equilibrate."""
+    def todict(self) -> dict:
+        """The keyword arguments that build this probe again."""
+        return {}
 
 
-class Potentiostat(Extension):
-    """Holds a target electrode potential by adjusting an excess charge.
+class WorkFunctionProbe(PotentialProbe):
+    """Electrode potential as the work function: minus the Fermi level.
 
-    It is the GPAW extension of the potential control: it puts the charge
-    into the density, moves it with the atoms and equilibrates after each
-    SCF loop.
-
-    Composes three pluggable parts:
-
-    * ``charging``  -- a :class:`ChargingScheme`: how the excess charge is
-      put into the cell (default: a jellium slab).
-    * ``probe``     -- a :class:`PotentialProbe`: how the potential is read
-      off the converged SCF state (default: the work function).
-    * ``optimizer`` -- a :class:`PotentialOptimizer`: how the charge is
-      stepped toward ``target_potential``.  Keep one in constant-charge
-      mode too, so that its settings and its slope estimate survive a
-      switch between the modes; ``None`` only suits a front end that never
-      targets a potential.
-
-    The potentiostat holds every setting of the potential control and the
-    state of the equilibration. A front end such as
-    :class:`gpaw.extensions.electrochemistry.SJM` hands the settings
-    over, with defaults of its own, and reads them back from here.
-
-    Parameters
-    ----------
-    charging:
-        The charging scheme.
-    target_potential:
-        Electrode potential to equilibrate to, in V on the vacuum scale.
-        ``None`` gives a constant-charge calculation: the charge is simply
-        held where it is.
-    optimizer:
-        The potential optimizer.
-    probe:
-        The potential probe.  Defaults to :class:`WorkFunctionProbe`.
-    tol:
-        Tolerance for the deviation of the target potential, in V.
-        Default: 0.005 V.
-    max_potential_stepsize:
-        If an accepted step moves the potential by more than this many volts
-        *and* ends up further from the target than it started, the step is
-        rejected: the change in excess electrons is halved and another SCF
-        pass is run, without counting the rejected point as an attempt (see
-        :attr:`EquilibrationResult.rejected`).  This keeps the optimizer
-        from leaving the linear region on a bad slope estimate.  Set to
-        ``None`` to turn the rejection/halving off entirely.  Default: 2 V.
-    max_iters:
-        Maximum number of attempts to equilibrate the potential for one
-        geometry before a :class:`PotentialConvergenceError` is raised.
-        Default: 10.
-    max_reruns:
-        How many times in a row a step may be rejected and halved before a
-        :class:`PotentialConvergenceError` is raised.  Default: 10.
-    always_adjust:
-        Once the potential is within ``tol``, stage one more step in the
-        charge anyway, to be applied to the next geometry by
-        :meth:`new_geometry` instead of being re-converged.  Default: False.
-    grand_output:
-        Report the grand-potential energy rather than the canonical energy
-        in the results (see :meth:`write_results`).  Default: True.
-    log:
-        Where the equilibration and the moves of the region are reported.
+    Assumes the Poisson solver has zeroed the vacuum electrostatic
+    potential, as the SJM solver does.
     """
 
-    name = 'potentiostat'
+    def potential(self, ibzwfs) -> float:
+        return -ibzwfs.fermi_level * Ha
 
-    def __init__(self,
-                 *,
-                 charging: ChargingScheme,
-                 target_potential: float | None = None,  # V
-                 optimizer: PotentialOptimizer | None = None,
-                 probe: PotentialProbe | None = None,
-                 tol: float = 0.005,  # V
-                 max_potential_stepsize: float | None = 2,  # V
-                 max_iters: int = 10,
-                 max_reruns: int = 10,
-                 always_adjust: bool = False,
-                 grand_output: bool = True,
-                 log=None):
-        self.charging = charging
-        self.target_potential = target_potential
-        self.optimizer = optimizer
-        self.probe = probe or WorkFunctionProbe()
-        self.tol = tol
-        self.max_potential_stepsize = max_potential_stepsize
-        self.max_iters = max_iters
-        self.max_reruns = max_reruns
-        self.always_adjust = always_adjust
-        self.grand_output = grand_output
-        self.log = log
-        self.dft = None  # the last converged calculation
 
-        # Consecutive rejected (halved) steps since the last accepted one:
-        self.reruns = 0
-        # (Charge, potential in V) of every accepted attempt of the current
-        # equilibration:
-        self.attempts: list[tuple[float, float]] = []
-        # Charge staged by always_adjust for the next geometry:
-        self.pending_excess_electrons: float | None = None
+#: The settings of a potentiostat, besides its parts:
+settings = ('target_potential', 'max_iters', 'max_potential_stepsize',
+            'max_reruns', 'always_adjust', 'grand_output')
+#: Each part's default class, and the keys that configure that default:
+default_parts: dict[str, tuple[type, tuple[str, ...]]] = {
+    'charging': (JelliumCharging, ('excess_electrons', 'jelliumregion')),
+    'optimizer': (DirectOptimizer,
+                  ('slope', 'mixer', 'slope_regression_depth', 'tol')),
+    'potentialprobe': (WorkFunctionProbe, ())}
 
-        # Set by post_converged(), for the last converged calculation:
-        self.fermi_level = np.nan  # Ha
-        self.electrode_potential = np.nan  # V
-        self.converged_excess_electrons = np.nan
-        self.canonical_free = np.nan  # Ha
-        self.canonical_extrapolated = np.nan  # Ha
-        self.omega_free = np.nan  # Ha
-        self.omega_extrapolated = np.nan  # Ha
 
-    @property
-    def constant_potential(self) -> bool:
-        """Is there a target potential to equilibrate to?"""
-        return self.target_potential is not None
+def _from_dict(spec, cls):
+    """Turn a part given as a dict into an instance of ``cls``.
 
-    @property
-    def excess_electrons(self) -> float:
-        """Number of excess electrons."""
-        return self.charging.excess_electrons
-
-    @excess_electrons.setter
-    def excess_electrons(self, q: float) -> None:
-        self.charging.excess_electrons = q
-
-    # The name GPAW sums the charge of the cell from:
-    charge = excess_electrons
-
-    @property
-    def niters(self) -> int:
-        """Number of attempts made in the current equilibration."""
-        return len(self.attempts)
-
-    def set_excess_electrons(self, excess_electrons: float) -> None:
-        """Set the number of excess electrons explicitly.
-
-        An explicit value wins over one staged by ``always_adjust``.
-        """
-        self.excess_electrons = excess_electrons
-        self.pending_excess_electrons = None
-
-    def set_target_potential(self, target: float | None) -> None:
-        """Change the target potential; ``None`` switches to constant charge.
-
-        A switch between the two modes starts a fresh equilibration: the
-        optimizer keeps its slope estimate but not the attempts behind it.
-        """
-        if ((target is None) != (self.target_potential is None) and
-                self.optimizer is not None):
-            self.optimizer.forget_attempts()
-        self.target_potential = target
-
-    def new_geometry(self) -> float | None:
-        """Start equilibrating a new geometry.
-
-        Applies excess electrons staged by ``always_adjust`` and returns
-        them, or ``None`` if there were none.  The attempts are forgotten
-        -- the optimizer's too, since a regression across the move would fit a
-        line through two different systems -- but the slope estimate is
-        carried over.
-        """
-        staged = self.pending_excess_electrons
-        if staged is not None:
-            self.set_excess_electrons(staged)
-        self.attempts = []
-        if self.optimizer is not None:
-            self.optimizer.forget_attempts()
-        return staged
-
-    def update1(self, nt_r) -> None:
-        self.charging.add_charge(nt_r)
-
-    def update1pw(self, nt_g) -> None:
-        self.charging.add_charge_pw(nt_g)
-
-    def move_atoms(self, relpos_ac) -> None:
-        # A fresh budget of equilibration attempts for the new geometry,
-        # starting from the value staged by always_adjust, if any:
-        if self.new_geometry() is not None:
-            self.log(f'Excess electrons adjusted to '
-                     f'{self.excess_electrons:+.5f} for the new geometry '
-                     '(always_adjust).')
-        zs = self.charging.move(relpos_ac, self.charging.mask_r.desc)
-        if zs is not None:
-            self.log(f'Jellium region moved to {zs[0]:.3f} to '
-                     f'{zs[1]:.3f}  # Å')
-
-    def post_scf_convergence(self,
-                             ibzwfs,
-                             nelectrons: float,
-                             occ_calc,
-                             mixer,
-                             log) -> bool:
-        """Equilibrate once the SCF criteria have passed.
-
-        Wraps :meth:`equilibrate` in the bookkeeping of a whole
-        equilibration: accepted attempts count against ``max_iters`` and
-        rejected steps in a row against ``max_reruns``, and a
-        :class:`PotentialConvergenceError` is raised when either runs out.
-        Returns ``True`` once the potential is equilibrated (always, in
-        constant-charge mode) and ``False`` when another SCF pass is needed.
-        """
-        if not self.constant_potential:
-            return True
-
-        # Grab the values belonging to this attempt before the charge is
-        # stepped on to the next one:
-        excess_electrons = self.excess_electrons
-        potential = self.probe.potential(ibzwfs)
-
-        result = self.equilibrate(ibzwfs, nelectrons, occ_calc, mixer, log)
-
-        if result is EquilibrationResult.rejected:
-            self.reruns += 1
-            if self.reruns > self.max_reruns:
-                raise PotentialConvergenceError(
-                    self._convergence_error_message(
-                        log, reason=f'{self.max_reruns:d} halvings of a step '
-                        f'that kept overshooting max_potential_stepsize '
-                        f'({self.max_potential_stepsize} V)'))
-            return False
-
-        # A step was accepted (or we are already converged): the rerun
-        # streak, if any, is over.
-        self.reruns = 0
-        self.attempts.append((excess_electrons, potential))
-
-        if result is EquilibrationResult.converged:
-            if self.always_adjust:  # stage a step for the next geometry
-                assert self.optimizer and self.target_potential is not None
-                self.pending_excess_electrons = (
-                    self.optimizer.next_excess_electrons(
-                        excess_electrons, potential, self.target_potential,
-                        area=self.charging.region_area))
-            return True
-
-        if self.niters >= self.max_iters:
-            raise PotentialConvergenceError(
-                self._convergence_error_message(log))
-        return False
-
-    def post_converged(self, dft) -> None:
-        """Finish a converged calculation.
-
-        Reads the electrode potential and the Fermi level off the converged
-        state, reports the equilibration, Legendre-transforms the energies
-        to the grand potential and writes the results (see
-        :meth:`write_results`).  The next calculation -- the next step of a
-        relaxation, say -- then gets a fresh equilibration budget and a
-        fresh record to report.
-        """
-        self.dft = dft
-        log = dft.log
-        (fermi_level,) = dft.ibzwfs.fermi_levels
-        self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
-        self.electrode_potential = broadcast_float(
-            self.probe.potential(dft.ibzwfs), dft.comm)
-
-        # Report where the equilibration ended up; the intermediate attempts
-        # are summarized by the regressed slope:
-        if self.constant_potential and self.attempts:
-            excess_electrons, potential = self.attempts[-1]
-            log(f'Potential found to be {potential:.5f} V '
-                f'(with {excess_electrons:+.5f} excess electrons, '
-                f'attempt {self.niters:d}/{self.max_iters:d}).')
-            assert self.optimizer is not None  # or there were no attempts
-            slope = self.optimizer.slope
-            if slope is not None:
-                log(f'Slope estimated from the last '
-                    f'{self.optimizer.n_attempts:d} attempts is '
-                    f'{slope:.4f} V/electron,')
-                c = capacitance(slope, self.charging.region_area)
-                log(f'or apparent capacitance of {c:.4f} muF/cm^2')
-            log('Potential is within tolerance. Equilibrated.')
-            if self.pending_excess_electrons is not None:
-                log('always_adjust: the next geometry starts from '
-                    f'{self.pending_excess_electrons:+.5f} excess electrons.')
-            log(flush=True)
-
-        # Legendre transform: Omega = E - N mu, with mu the Fermi level.
-        N = self.converged_excess_electrons = self.excess_electrons
-        self.canonical_free = broadcast_float(dft.energies.total_free,
-                                              dft.comm)
-        self.canonical_extrapolated = broadcast_float(
-            dft.energies.total_extrapolated, dft.comm)
-        mu_N = self.fermi_level * N
-        self.omega_free = self.canonical_free - mu_N
-        self.omega_extrapolated = self.canonical_extrapolated - mu_N
-
-        log('Legendre-transformed energies '
-            '(grand potential, Omega = E - N mu):')
-        log(f'  N (excess electrons): {N:+14.6f}')
-        log(f'  mu (-work function):  {self.fermi_level * Ha:+14.6f}  # eV')
-        log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
-        log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
-        log()
-
-        self.write_results(dft.results, log)
-        self.attempts = []  # a fresh record and budget for the next one
-
-    def write_results(self, results: dict, log) -> None:
-        """Write the last converged calculation into `results`.
-
-        That is the excess electrons, the electrode potential and --
-        depending on ``grand_output`` -- the grand-potential or the
-        canonical energies.  It is cheap, so a change of ``grand_output``
-        only needs to call this again.
-        """
-        # Unlike energy and forces, the first two are not in ASE's
-        # all_properties, so an ASE trajectory silently drops them; they do
-        # reach calc.results, a .gpw file and the text log.
-        results['excess_electrons'] = self.converged_excess_electrons
-        results['electrode_potential'] = self.electrode_potential / Ha
-        if self.grand_output:
-            results['free_energy'] = self.omega_free
-            results['energy'] = self.omega_extrapolated
-            log('Grand-potential energy was written into results.\n',
-                flush=True)
-        else:
-            results['free_energy'] = self.canonical_free
-            results['energy'] = self.canonical_extrapolated
-            log('Canonical energy was written into results.\n', flush=True)
-
-    def _convergence_error_message(self, log,
-                                   reason: str | None = None) -> str:
-        reason = reason or f'{self.max_iters:d} attempts'
-        msg = (f'The electrode potential could not be equilibrated to '
-               f'{self.target_potential:.3f} +/- {self.tol:.3f} V in '
-               f'{reason}.  This may indicate that your '
-               'work function is noisier than your potential tolerance; you '
-               'may try tightening the SCF convergence criteria.  The excess '
-               'electrons and the resulting potentials are listed below; '
-               'plotting them could give you insight into the problem.')
-        msg = textwrap.fill(msg) + '\n'
-        for excess_electrons, potential in self.attempts:
-            msg += f'{excess_electrons:+.6f} {potential:.6f}\n'
-        log(msg, flush=True)
-        return msg
-
-    def equilibrate(self,
-                    ibzwfs,
-                    nelectrons: float,
-                    occ_calc,
-                    mixer,
-                    log) -> EquilibrationResult:
-        """One equilibration attempt, after the SCF criteria have passed.
-
-        Returns :attr:`EquilibrationResult.converged`,
-        :attr:`~EquilibrationResult.stepped` after stepping the charge and
-        re-running the occupations for another SCF pass; and
-        :attr:`~EquilibrationResult.rejected` when a rerun is needed.
-        """
-        if not self.constant_potential:
-            return EquilibrationResult.converged
-        target = self.target_potential
-        optimizer = self.optimizer
-        assert target is not None and optimizer is not None
-        potential = self.probe.potential(ibzwfs)
-        log(f'excess electrons: {self.excess_electrons:+.6f} |e|, '
-            f'potential: {potential:.3f} V')
-
-        previous = optimizer.last_attempt()
-        if self.max_potential_stepsize is not None and previous is not None:
-            prev_excess_electrons, prev_potential = previous
-            moved = abs(potential - prev_potential)
-            overshot = abs(prev_potential - target) < abs(potential - target)
-            if moved > self.max_potential_stepsize and overshot:
-                halved = 0.5 * (prev_excess_electrons + self.excess_electrons)
-                log(f'  step changed the potential by {moved:.3f} V, over '
-                    f'max_potential_stepsize ({self.max_potential_stepsize} '
-                    'V), and away from the target -- rejected; halving the '
-                    f'step in excess electrons to {halved:+.6f} |e|.')
-                ibzwfs.calculate_occs(
-                    occ_calc, nelectrons + (halved - self.excess_electrons))
-                self.excess_electrons = halved
-                mixer.reset()
-                return EquilibrationResult.rejected
-
-        area = self.charging.region_area
-        optimizer.record_attempt(self.excess_electrons, potential, area=area)
-        if abs(potential - target) <= self.tol:
-            return EquilibrationResult.converged
-        new_excess_electrons = optimizer.next_excess_electrons(
-            self.excess_electrons, potential, target, area=area)
-        ibzwfs.calculate_occs(
-            occ_calc,
-            nelectrons + (new_excess_electrons - self.excess_electrons))
-        self.excess_electrons = new_excess_electrons
-        mixer.reset()
-        return EquilibrationResult.stepped
+    Anything but a dict is taken to be the part itself.  A ``'name'`` key,
+    as :meth:`Potentiostat.todict` writes it, must name ``cls``: a class of
+    your own cannot be rebuilt from a file.
+    """
+    if not isinstance(spec, dict):
+        return spec
+    spec = dict(spec)
+    name = spec.pop('name', cls.__name__)
+    if name != cls.__name__:
+        raise ValueError(f'Unknown SJM part {name}')
+    return cls(**spec)
 
 
 def capacitance(slope: float, area: float) -> float:

@@ -245,7 +245,7 @@ def _silent(*args, **kwargs) -> None:
 def test_potentiostat_within_tolerance_is_converged():
     charging = _StubCharging(excess_electrons=-0.2)
     pot = Potentiostat(charging=charging, target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0), tol=0.01)
+                       optimizer=DirectOptimizer(slope=-30.0, tol=0.01))
     ibzwfs = _FakeIBZWFS(TARGET + 0.005)  # inside the tolerance
     mixer = _RecordingMixer()
     assert (pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
@@ -258,7 +258,7 @@ def test_potentiostat_within_tolerance_is_converged():
 def test_potentiostat_steps_the_charge_along_the_slope():
     charging = _StubCharging(excess_electrons=-0.2)
     pot = Potentiostat(charging=charging, target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0), tol=0.001)
+                       optimizer=DirectOptimizer(slope=-30.0, tol=0.001))
     potential = TARGET + 0.5  # 0.5 V above the target
     ibzwfs = _FakeIBZWFS(potential)
     mixer = _RecordingMixer()
@@ -272,7 +272,7 @@ def test_potentiostat_steps_the_charge_along_the_slope():
 
 def test_potentiostat_constant_charge_is_a_noop():
     charging = _StubCharging(excess_electrons=-0.2)
-    pot = Potentiostat(charging=charging)  # no target, no optimizer
+    pot = Potentiostat(charging=charging)  # no target
     # object() has no fermi_level: the potential must not be probed here.
     assert (pot.equilibrate(object(), 10.0, object(),
                             _RecordingMixer(), _silent)
@@ -282,12 +282,11 @@ def test_potentiostat_constant_charge_is_a_noop():
 
 def _stepping_potentiostat(charge, *, history, max_potential_stepsize=2):
     """A potentiostat mid-equilibration: one accepted attempt on record."""
-    optimizer = DirectOptimizer(slope=-30.0)
+    optimizer = DirectOptimizer(slope=-30.0, tol=0.001)
     for attempt in history:
         optimizer.history.append(attempt)
     return Potentiostat(charging=_StubCharging(excess_electrons=charge),
                         target_potential=TARGET, optimizer=optimizer,
-                        tol=0.001,
                         max_potential_stepsize=max_potential_stepsize)
 
 
@@ -344,8 +343,8 @@ def _two_attempts(**kwargs) -> Potentiostat:
     """
     pot = Potentiostat(charging=_StubCharging(excess_electrons=0.0),
                        target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0, mixer=0.5),
-                       tol=0.2, **kwargs)
+                       optimizer=DirectOptimizer(slope=-30.0, mixer=0.5,
+                                                 tol=0.2), **kwargs)
     for _ in range(2):
         potential = line(-40.0, pot.excess_electrons)
         pot.post_scf_convergence(_FakeIBZWFS(potential), 10.0, object(),
@@ -382,7 +381,7 @@ class _ScriptedPotentiostat(Potentiostat):
 
     def __init__(self, results, **kwargs):
         super().__init__(charging=_StubCharging(), target_potential=TARGET,
-                         optimizer=DirectOptimizer(), tol=0.001, **kwargs)
+                         optimizer=DirectOptimizer(tol=0.001), **kwargs)
         self._results = list(results)
 
     def equilibrate(self, *args, **kwargs) -> EquilibrationResult:

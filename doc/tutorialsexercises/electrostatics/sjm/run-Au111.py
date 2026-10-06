@@ -33,12 +33,11 @@ interactions = [SurfaceInteraction(surface_tension=gamma)]
 # The solvated jellium method is added to a regular GPAW calculator as an
 # extension.  Keep it in a variable, to reach the calculation through it.
 sjm = SJM(
-    # Solvated jellium parameters.
-    target_potential=4.2,  # Desired potential
     # Implicit solvent parameters.
-    cavity=cavity,
-    dielectric=dielectric,
-    interactions=interactions)
+    solvation=dict(cavity=cavity, dielectric=dielectric,
+                   interactions=interactions),
+    # Solvated jellium parameters.
+    potentiostat=dict(target_potential=4.2))  # Desired potential
 
 # The calculator.
 calc = GPAW(

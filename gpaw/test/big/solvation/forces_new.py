@@ -39,7 +39,7 @@ def make_calc(mode, txt, ecut=300., h=0.20, solvated=True, interactions=False,
                 volume_calculator=KB51Volume()),
             dielectric=LinearDielectric(epsinf=80.0),
             interactions=interactions)
-        extensions = [SJM(**solvation, excess_electrons=0.0) if sjm else
+        extensions = [SJM(solvation=solvation) if sjm else
                       Solvation(**solvation, **solvation_kwargs)]
     return GPAW(
         **mode_kwargs,
