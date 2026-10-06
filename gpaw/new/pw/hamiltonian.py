@@ -58,9 +58,14 @@ class PWHamiltonian(Hamiltonian):
         # apply_local_potential_gpu doesn't work with domain parallisation
         # So we force vt_R to be the right type here.
         vt_R_data = xp.asarray(vt_R.data)
-        vtpsit_G = xp.empty_like(psit_G)
+        vtpsit_G = xp.empty_like(psit_G.data)
 
-        for psit_G in psit_nG.iter_by_band(psit_G, out_nG):
+        for n, psit_G in psit_nG.iter_by_band(psit_G, out_nG):
+            # TODO: Vectorize this by including more than one band.
+            # See the gpu call above for an example.
+            if len(n) == 0:
+                # This rank got no data
+                continue
             plan.ifft_sphere(psit_G.data[0], pw_local)
             tmp_R *= vt_R_data
             plan.fft()

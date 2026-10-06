@@ -132,7 +132,7 @@ class XArray(Generic[DomainType], XP):
         return self.new(data=self.data.copy())
 
     def iter_by_band(self, buffer_mX, out_nX=None):
-        nm = buffer_mX.dims[0]
+        nm = buffer_mX.mydims[0]
         b = self.mydims[0]
         comm = self.desc.comm
         size = comm.size
@@ -144,34 +144,46 @@ class XArray(Generic[DomainType], XP):
         if out_nX is not None:
             assert out_nX.myshape == self.myshape
             assert out_nX.desc is self.desc
-        else:
-            out_nX = self
 
         buffer = buffer_mX.data
-        extra = prod(self.dims[1:])
-        assert extra == prod(buffer_mX.dims[1:])
-        for m, start in enumerate(range(0, b, comm.size)):
-            in_data = self.data[start:start + comm.size * nm]
-            out_data = out_nX.data[start:start + comm.size * nm]
+        extra = prod(self.mydims[1:])
+        assert extra == prod(buffer_mX.mydims[1:])
+        assert extra == 1, 'Stop it with the non-collinear'
+        for m, start in enumerate(range(0, b, comm.size * nm)):
+            end = min(start + comm.size * nm, b)
+            in_data = self.data[start:end]
             buffer_data = buffer_mX.data
 
-            ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
-                comm, in_data.shape[0], ng, myng, maxmyng)
-
             for offset_index in range(0, nm):
-                if offset_index * nm >= in_data.shape[0]:
-                    offset_index -= 1
-                    break
-                comm.alltoallv(in_data[offset_index * nm], ssize_r, soffset_r,
-                               buffer_data[offset_index], rsize_r, roffset_r)
+                tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
+                    comm, tmp.shape[0], ng, myng, maxmyng)
+                if tmp.size > 0:
+                    comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                                   buffer_data[offset_index], rsize_r, roffset_r)
+                else:
+                    # No data on this rank
+                    comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                                   tmp.ravel(), rsize_r, roffset_r)
 
-            yield buffer_mX[:offset_index+1]
+            mybands = np.arange(start + comm.rank, end, comm.size * nm)
+            yield mybands, buffer_mX[:len(mybands)]
 
+            if out_nX is None:
+                continue
+
+            out_data = out_nX.data[start:end]
             for offset_index in range(0, nm):
-                if offset_index * nm >= out_data.shape[0]:
-                    break
-                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
-                               out_data[offset_index * nm], ssize_r, soffset_r)
+                tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
+                    comm, tmp.shape[0], ng, myng, maxmyng)
+                if tmp.size > 0:
+                    comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                                   tmp.ravel(), ssize_r, soffset_r)
+                else:
+                    # No data on this rank
+                    comm.alltoallv(tmp.ravel(), rsize_r, roffset_r,
+                                   tmp.ravel(), ssize_r, soffset_r)
 
     def sanity_check(self) -> None:
         """Sanity check."""

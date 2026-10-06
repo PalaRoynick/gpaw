@@ -720,17 +720,17 @@ class PWArray(XArray[PWDesc]):
 
         # Undistributed work arrays:
         a1_R = out.desc.new(comm=None, dtype=pw.dtype).empty(xp=xp)
-        a1_G = pw.new(comm=None).empty(xp=xp)
+        a1_G = pw.new(comm=None).empty(1, xp=xp)
         b1_R = out.desc.new(comm=None).zeros(xp=xp)
 
         (N,) = self.mydims
-        for n1 in range(0, N, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, N)
-            a_nG[n1:n2].gather_all(a1_G)
-            n = n1 + domain_comm.rank
-            if n >= N:
+        for n, a1_G in a_nG.iter_by_band(a1_G):
+            # TODO: Vectorize
+            if len(n) == 0:
+                # This rank has no data.
                 continue
-            weight = weights[n]
+            a1_G = a1_G[0]
+            weight = weights[n[0]]
             if weight == 0.0:
                 continue
             a1_G.ifft(out=a1_R)
