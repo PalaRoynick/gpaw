@@ -1,7 +1,7 @@
 #pragma once
 
 #include "magma_gpaw.hpp"
-#include "gpu/cpp/utils.hpp"
+#include "utils.hpp"
 #include "gpu/cpp/gpu_core.hpp"
 
 // Thin template wrappers around MAGMA's C-API

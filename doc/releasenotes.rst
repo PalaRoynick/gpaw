@@ -10,6 +10,8 @@ Git master branch
 
 :git:`master <>`.
 
+* Minimum version requirements: Python 3.11, ASE 3.29.0.
+
 * GPAW compiled extension now requires a C++17 compliant compiler. Support for
   C99 compilation was dropped in the previous release.
 
@@ -52,6 +54,8 @@ Git master branch
   now distribute the density to all cores for netter parallelization of
   the calculation of the Kohn-Sham potential.  Use
   ``parallel={'distribute_density': True}`` to enable this optimization.
+
+* Fixed bug preventing use of SG15-potentials with semi-core states.
 
 
 Version 26.7.0

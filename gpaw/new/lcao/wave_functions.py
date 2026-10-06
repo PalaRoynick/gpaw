@@ -243,6 +243,16 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         wfs._occ_n = self.occ_n[n1:n2]
         return wfs
 
+    def collect_bands_and_domain(self,
+                                 n1: int = 0,
+                                 n2: int = 0) -> LCAOWaveFunctions | None:
+        """Collect range of bands to master of band and domain comms."""
+        wfs = self.collect_bands(n1, n2)
+        if wfs is None or self.domain_comm.size == 1:
+            return wfs
+        else:
+            raise NotImplementedError
+
     def force_contribution(self, potential: Potential, F_av: Array2D):
         from gpaw.new.lcao.forces import add_force_contributions
         add_force_contributions(self, potential, F_av)
@@ -354,10 +364,11 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             psit_sR.fft(out=psit_sG)
         return psit_nsG
 
-    def to_uniform_grid(self, nbands, grid):
-        grid = grid.new(kpt=self.kpt_c, dtype=self.dtype)
+    def to_uniform_grid(self, n1, n2):
+        nbands = n2 - n1
+        grid = self.basis.grid.new(kpt=self.kpt_c, dtype=self.dtype)
         psit_nR = grid.zeros(nbands, self.band_comm)
         mynbands = len(self.C_nM.data)
-        self.basis.lcao_to_grid(self.C_nM.to_xp(np).data,
+        self.basis.lcao_to_grid(self.C_nM.to_xp(np).data[n1:n2],
                                 psit_nR.data[:mynbands], self.q)
         return psit_nR.to_xp(self.xp)

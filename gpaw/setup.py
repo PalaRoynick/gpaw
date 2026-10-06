@@ -241,7 +241,7 @@ class BaseSetup:
             correct_occ_numbers(f_sj[0], deg_j, jsorted, nup - f_sj[0].sum())
             correct_occ_numbers(f_sj[1], deg_j, jsorted, ndn - f_sj[1].sum())
 
-        for j, (n1, l1, f, f_s) in enumerate(zip(self.n_j, self.l_j,
+        for j, (n1, l1, f, f_s) in enumerate(zip(self.n_j, self.l_orb_J,
                                                  f_j, f_sj.T)):
             if not f_s.any() or n1 < 0:
                 continue
@@ -300,7 +300,7 @@ class BaseSetup:
             f_sm = f_sI[:, I:I + 2 * bf.l + 1]
             if f_sm.any():
                 i = 0
-                for n, l in zip(self.n_j, self.l_j):
+                for n, l in zip(self.n_j, self.l_orb_J):
                     if (n, l) == (bf.n, bf.l):
                         break
                     i += 2 * l + 1
