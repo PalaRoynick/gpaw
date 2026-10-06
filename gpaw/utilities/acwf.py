@@ -125,10 +125,10 @@ def work(structure: str,
         xc='PBE',
         occupations=dict(name='fermi-dirac', width=0.0612),
         kpts=dict(density=6.0),
-        nbands=-10,
         convergence=dict(density=1e-6))
     if mode == 'pw':
         params['mode'] = dict(name='pw', ecut=1000)
+        params['nbands'] = -20,
     else:
         params['mode'] = 'lcao'
         params['basis'] = 'dzp'
