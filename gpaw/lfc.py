@@ -1074,8 +1074,10 @@ class BasisFunctions(LocalizedFunctionsCollection):
         rho_MM = as_np(rho_MM)
         with as_numpy(nt_G) as nt_G:
             tiles = self._tiles()
-            if tiles is not None and rho_MM.dtype == float:
+            if tiles is not None and not tiles.per_volume:
                 tiles.construct_density(rho_MM, nt_G)
+            elif tiles is not None and rho_MM.dtype == complex:
+                tiles.construct_density(rho_MM, nt_G, self.phase_qW[q])
             else:
                 self.lfc.construct_density(
                     rho_MM, nt_G, q, self.Mstart, self.Mstop)
@@ -1083,19 +1085,25 @@ class BasisFunctions(LocalizedFunctionsCollection):
     def _tiles(self):
         """Tiled basis functions for BLAS-3 kernels (or None).
 
-        Only used for real gamma-point calculations where this rank
-        holds all rows of the matrices.
+        Real gamma-point calculations use one column per basis function;
+        otherwise (k-points or complex wave functions) periodic images are
+        kept in separate columns so that Bloch phases can be applied.
+        Only used when this rank holds all rows of the matrices.
         """
-        if not (self.gamma and self.dtype == float and
-                self.Mstart == 0 and self.Mstop == self.Mmax and
+        if not (self.Mstart == 0 and self.Mstop == self.Mmax and
                 tiles_available()):
             return None
+        per_volume = not (self.gamma and self.dtype == float)
         if getattr(self, '_tiles_lfc', None) is not self.lfc:
-            self._tiles_data = TiledFunctions(
-                self.A_Wgm, self.M_W, self.G_B, self.W_B,
-                self.gd.n_c, self.Mmax)
+            self._tiles_data = {}
             self._tiles_lfc = self.lfc
-        return self._tiles_data
+        tiles = self._tiles_data.get(per_volume)
+        if tiles is None:
+            tiles = TiledFunctions(
+                self.A_Wgm, self.M_W, self.G_B, self.W_B,
+                self.gd.n_c, self.Mmax, per_volume=per_volume)
+            self._tiles_data[per_volume] = tiles
+        return tiles
 
     def integrate2(self, a_xG, c_xM, q=-1):
         """Calculate integrals of arrays times localized functions.
@@ -1140,8 +1148,12 @@ class BasisFunctions(LocalizedFunctionsCollection):
             Vt_xMM = np.zeros((len(self.sdisp_xc),
                                self.Mstop - self.Mstart,
                                self.Mmax))
-            self.lfc.calculate_potential_matrices(vt_G, Vt_xMM, self.x_W,
-                                                  self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None:
+                tiles.potential_matrices(vt_G, self.gd.dv, self.x_W, Vt_xMM)
+            else:
+                self.lfc.calculate_potential_matrices(vt_G, Vt_xMM, self.x_W,
+                                                      self.Mstart, self.Mstop)
 
         return as_xp(Vt_xMM, self.xp)
 
@@ -1269,10 +1281,17 @@ class BasisFunctions(LocalizedFunctionsCollection):
         lmax = max((spline.get_angular_momentum_number()
                     for sphere in self.sphere_a
                     for spline in sphere.spline_j), default=0)
-        if tiles is not None and rhoT_MM.dtype == float and lmax <= 4:
+        if tiles is not None and tiles.per_volume:
+            if rhoT_MM.dtype != complex:
+                tiles = None
+            else:
+                phase_W = self.phase_qW[q]
+        else:
+            phase_W = None
+        if tiles is not None and lmax <= 4:
             F_vM = tiles.force_contribution(
                 vt_G, gd.dv, rhoT_MM, np.array(cspline_M),
-                self.M_W, self.pos_Wv, gd.h_cv, gd.n_c, gd.beg_c)
+                self.M_W, self.pos_Wv, gd.h_cv, gd.n_c, gd.beg_c, phase_W)
         else:
             F_vM = np.zeros((3, Mstop - Mstart))
             for v in range(3):

@@ -1,7 +1,7 @@
 /*  Copyright (C) 2026  CAMd
  *  Please see the accompanying LICENSE file for further information. */
 
-// Tiled LCAO kernels (gamma point, real arithmetic).
+// Tiled LCAO kernels.
 //
 // The basis functions are stored per tile of grid points as dense
 // npts x nf matrices (point-major), where nf is the number of basis
@@ -25,6 +25,7 @@
 #ifdef GPAW_NO_UNDERSCORE_BLAS
 #  define dsyr2k_ dsyr2k
 #  define dgemm_  dgemm
+#  define zgemm_  zgemm
 #endif
 
 CLINKAGE void dsyr2k_(const char* uplo, const char* trans, int* n, int* k,
@@ -35,6 +36,10 @@ CLINKAGE void dgemm_(const char* transa, const char* transb,
                      int* m, int* n, int* k, double* alpha,
                      const double* a, int* lda, const double* b, int* ldb,
                      double* beta, double* c, int* ldc);
+CLINKAGE void zgemm_(const char* transa, const char* transb,
+                     int* m, int* n, int* k, void* alpha,
+                     const void* a, int* lda, const void* b, int* ldb,
+                     void* beta, void* c, int* ldc);
 
 static int max_work(const int* nf_t, int ntiles, int npts, int* nfmax)
 {
@@ -44,6 +49,115 @@ static int max_work(const int* nf_t, int ntiles, int npts, int* nfmax)
             m = nf_t[t];
     *nfmax = m;
     return m * (m > npts ? m : npts);
+}
+
+// Gather the coefficient matrix of a tile (column-major nf x nf):
+//
+//   real rho:     r(a, b) = rho[M_a, M_b]
+//   complex rho:  r(a, b) = Re(w_ab rho[M_a, M_b]) with
+//                 w_ab = conj(ph_a) ph_b  (conj_first) or ph_a conj(ph_b),
+//                 ph_a being the Bloch phase of the volume of column a.
+static void gather_coefficients(double* r, int nf, const int* col_f,
+                                PyArrayObject* rho_obj,
+                                const int* colW_f,
+                                const double_complex* ph_W,
+                                bool conj_first)
+{
+    npy_intp ld = PyArray_DIMS(rho_obj)[1];
+    if (ph_W == NULL) {
+        const double* rho = (const double*)PyArray_DATA(rho_obj);
+        for (int b = 0; b < nf; b++)
+            for (int a = 0; a < nf; a++)
+                r[a + b * nf] = rho[col_f[a] * ld + col_f[b]];
+        return;
+    }
+    const double_complex* rho = (const double_complex*)PyArray_DATA(rho_obj);
+    for (int b = 0; b < nf; b++) {
+        double_complex phb = ph_W[colW_f[b]];
+        for (int a = 0; a < nf; a++) {
+            double_complex pha = ph_W[colW_f[a]];
+            double_complex w = conj_first ? conj(pha) * phb : pha * conj(phb);
+            r[a + b * nf] = creal(w * rho[col_f[a] * ld + col_f[b]]);
+        }
+    }
+}
+
+// Optional k-point data (a Python tuple, or None for real arithmetic):
+//
+//   colW:      volume of each (per-volume) column
+//   ph_W:      Bloch phase of each volume
+//   mcol:      index of each column in its tile's list of distinct M's
+//   mM:        distinct M's of each tile
+//   nfM_t:     number of distinct M's per tile
+//   mcoloff_t: offset of each tile's list in mM
+typedef struct {
+    const int* colW;
+    const double_complex* ph_W;
+    const int* mcol;
+    const int* mM;
+    const int* nfM_t;
+    const npy_int64* mcoloff_t;
+    int nfMmax;
+} KData;
+
+static bool get_kdata(PyObject* obj, KData* kd, int ntiles)
+{
+    memset(kd, 0, sizeof(KData));
+    if (obj == NULL || obj == Py_None)
+        return true;
+    if (!PyTuple_Check(obj) || PyTuple_Size(obj) != 6) {
+        PyErr_SetString(PyExc_ValueError, "Bad k-point data.");
+        return false;
+    }
+#define ITEM(i) PyArray_DATA((PyArrayObject*)PyTuple_GET_ITEM(obj, i))
+    kd->colW = (const int*)ITEM(0);
+    kd->ph_W = (const double_complex*)ITEM(1);
+    kd->mcol = (const int*)ITEM(2);
+    kd->mM = (const int*)ITEM(3);
+    kd->nfM_t = (const int*)ITEM(4);
+    kd->mcoloff_t = (const npy_int64*)ITEM(5);
+#undef ITEM
+    for (int t = 0; t < ntiles; t++)
+        if (kd->nfM_t[t] > kd->nfMmax)
+            kd->nfMmax = kd->nfM_t[t];
+    return true;
+}
+
+// Bloch sums are worth it when a tile has many periodic images of the
+// same functions (small cells): the GEMMs then run over the distinct M's
+// instead of over all images.
+static inline bool use_bloch_sum(const KData* kd, int t, int nf)
+{
+    return kd->ph_W != NULL && nf > 2 * kd->nfM_t[t];
+}
+
+// Psi (column-major nfM x npts) = sum over images of (conj) ph_W Phi
+static void bloch_sum(double_complex* Psi, int nfM, int nf, int npts,
+                      const double* Phi_pf, const int* mcol_f,
+                      const int* colW_f, const double_complex* ph_W,
+                      bool conj_phase)
+{
+    for (int i = 0; i < nfM * npts; i++)
+        Psi[i] = 0.0;
+    for (int f = 0; f < nf; f++) {
+        double_complex ph = ph_W[colW_f[f]];
+        if (conj_phase)
+            ph = conj(ph);
+        double_complex* Psi_p = Psi + mcol_f[f];
+        for (int p = 0; p < npts; p++)
+            Psi_p[p * nfM] += ph * Phi_pf[p * nf + f];
+    }
+}
+
+// rs (column-major nfM x nfM) = rho[mM_j1, mM_j2]
+static void gather_complex(double_complex* rs, int nfM, const int* mM_j,
+                           PyArrayObject* rho_obj)
+{
+    npy_intp ld = PyArray_DIMS(rho_obj)[1];
+    const double_complex* rho = (const double_complex*)PyArray_DATA(rho_obj);
+    for (int j2 = 0; j2 < nfM; j2++)
+        for (int j1 = 0; j1 < nfM; j1++)
+            rs[j1 + j2 * nfM] = rho[mM_j[j1] * ld + mM_j[j2]];
 }
 
 // Add lower triangle of
@@ -130,12 +244,15 @@ PyObject* tiled_construct_density(PyObject* self, PyObject* args)
 {
     PyArrayObject *rho_obj, *nt_obj, *Phi_obj, *phioff_obj, *nf_obj;
     PyArrayObject *cols_obj, *coloff_obj, *Gtp_obj;
-    if (!PyArg_ParseTuple(args, "OOOOOOOO", &rho_obj, &nt_obj, &Phi_obj,
+    PyObject *kd_obj = NULL;
+    if (!PyArg_ParseTuple(args, "OOOOOOOO|O", &rho_obj, &nt_obj, &Phi_obj,
                           &phioff_obj, &nf_obj, &cols_obj, &coloff_obj,
-                          &Gtp_obj))
+                          &Gtp_obj, &kd_obj))
+        return NULL;
+    KData kd;
+    if (!get_kdata(kd_obj, &kd, PyArray_DIMS(Gtp_obj)[0]))
         return NULL;
 
-    const double* rho_MM = (const double*)PyArray_DATA(rho_obj);
     double* nt_G = (double*)PyArray_DATA(nt_obj);
     const double* Phi = (const double*)PyArray_DATA(Phi_obj);
     const npy_int64* phioff_t = (const npy_int64*)PyArray_DATA(phioff_obj);
@@ -145,17 +262,16 @@ PyObject* tiled_construct_density(PyObject* self, PyObject* args)
     const int* G_tp = (const int*)PyArray_DATA(Gtp_obj);
     int ntiles = PyArray_DIMS(Gtp_obj)[0];
     int npts = PyArray_DIMS(Gtp_obj)[1];
-    npy_intp ldrho = PyArray_DIMS(rho_obj)[1];
 
     int nfmax;
     max_work(nf_t, ntiles, npts, &nfmax);
     double* r = (double*)malloc(sizeof(double) * nfmax * nfmax);
     double* Y = (double*)malloc(sizeof(double) * nfmax * npts);
-    if (r == NULL || Y == NULL) {
-        free(r);
-        free(Y);
-        return PyErr_NoMemory();
-    }
+    int nfM = kd.nfMmax;
+    double_complex* Psi = GPAW_MALLOC(double_complex, nfM * npts + 1);
+    double_complex* PsiC = GPAW_MALLOC(double_complex, nfM * npts + 1);
+    double_complex* Z = GPAW_MALLOC(double_complex, nfM * npts + 1);
+    double_complex* rs = GPAW_MALLOC(double_complex, nfM * nfM + 1);
 
     Py_BEGIN_ALLOW_THREADS
     for (int t = 0; t < ntiles; t++) {
@@ -166,11 +282,33 @@ PyObject* tiled_construct_density(PyObject* self, PyObject* args)
         const int* G_p = G_tp + (npy_intp)t * npts;
         const int* col_f = cols + coloff_t[t];
 
-        for (int c = 0; c < nf; c++) {
-            const double* rho_c = rho_MM + col_f[c] * ldrho;
-            for (int rr = 0; rr < nf; rr++)
-                r[rr + c * nf] = rho_c[col_f[rr]];
+        if (use_bloch_sum(&kd, t, nf)) {
+            // n = Re sum_j Psi_j (rho conj(Psi))_j with Psi = sum ph Phi
+            int nfM = kd.nfM_t[t];
+            bloch_sum(Psi, nfM, nf, npts, Phi_pf, kd.mcol + coloff_t[t],
+                      kd.colW + coloff_t[t], kd.ph_W, false);
+            for (int i = 0; i < nfM * npts; i++)
+                PsiC[i] = conj(Psi[i]);
+            gather_complex(rs, nfM, kd.mM + kd.mcoloff_t[t], rho_obj);
+            double_complex one = 1.0;
+            double_complex zero = 0.0;
+            zgemm_("N", "N", &nfM, &npts, &nfM, &one, rs, &nfM, PsiC, &nfM,
+                   &zero, Z, &nfM);
+            for (int p = 0; p < npts; p++) {
+                int G = G_p[p];
+                if (G < 0)
+                    continue;
+                double n = 0.0;
+                for (int j = 0; j < nfM; j++)
+                    n += creal(Psi[j + p * nfM] * Z[j + p * nfM]);
+                nt_G[G] += n;
+            }
+            continue;
         }
+
+        gather_coefficients(r, nf, col_f, rho_obj,
+                            kd.colW ? kd.colW + coloff_t[t] : NULL,
+                            kd.ph_W, false);
 
         // Column-major: Y (nf x npts) = r (nf x nf) . Phi (nf x npts)
         double one = 1.0;
@@ -192,6 +330,97 @@ PyObject* tiled_construct_density(PyObject* self, PyObject* args)
 
     free(r);
     free(Y);
+    free(Psi);
+    free(PsiC);
+    free(Z);
+    free(rs);
+    Py_RETURN_NONE;
+}
+
+// Displacement-resolved potential matrices (k-points), per-volume columns:
+//
+//   Vt_xMM[x, M1, M2] += sum_G Phi_W1(G) vt(G) dv Phi_W2(G)
+//
+// for all pairs of volumes with x = x_W[W2] - x_W[W1] >= 0 (like the LFC
+// kernel calculate_potential_matrices).
+PyObject* tiled_potential_matrices(PyObject* self, PyObject* args)
+{
+    PyArrayObject *vt_obj, *Phi_obj, *phioff_obj, *nf_obj, *cols_obj;
+    PyArrayObject *colW_obj, *coloff_obj, *Gtp_obj, *x_W_obj, *V_obj;
+    double dv;
+    if (!PyArg_ParseTuple(args, "OdOOOOOOOOO", &vt_obj, &dv, &Phi_obj,
+                          &phioff_obj, &nf_obj, &cols_obj, &colW_obj,
+                          &coloff_obj, &Gtp_obj, &x_W_obj, &V_obj))
+        return NULL;
+
+    const double* vt_G = (const double*)PyArray_DATA(vt_obj);
+    const double* Phi = (const double*)PyArray_DATA(Phi_obj);
+    const npy_int64* phioff_t = (const npy_int64*)PyArray_DATA(phioff_obj);
+    const int* nf_t = (const int*)PyArray_DATA(nf_obj);
+    const int* cols = (const int*)PyArray_DATA(cols_obj);
+    const int* colW = (const int*)PyArray_DATA(colW_obj);
+    const npy_int64* coloff_t = (const npy_int64*)PyArray_DATA(coloff_obj);
+    const int* G_tp = (const int*)PyArray_DATA(Gtp_obj);
+    const int* x_W = (const int*)PyArray_DATA(x_W_obj);
+    double* V_xMM = (double*)PyArray_DATA(V_obj);
+    int ntiles = PyArray_DIMS(Gtp_obj)[0];
+    int npts = PyArray_DIMS(Gtp_obj)[1];
+    npy_intp nx = PyArray_DIMS(V_obj)[0];
+    npy_intp nM1 = PyArray_DIMS(V_obj)[1];
+    npy_intp nM2 = PyArray_DIMS(V_obj)[2];
+
+    int nfmax;
+    max_work(nf_t, ntiles, npts, &nfmax);
+    double* X = (double*)malloc(sizeof(double) * nfmax * npts);
+    double* B = (double*)malloc(sizeof(double) * nfmax * nfmax);
+    if (X == NULL || B == NULL) {
+        free(X);
+        free(B);
+        return PyErr_NoMemory();
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    for (int t = 0; t < ntiles; t++) {
+        int nf = nf_t[t];
+        if (nf == 0)
+            continue;
+        const double* Phi_pf = Phi + phioff_t[t];
+        const int* G_p = G_tp + (npy_intp)t * npts;
+        const int* col_f = cols + coloff_t[t];
+        const int* W_f = colW + coloff_t[t];
+
+        for (int p = 0; p < npts; p++) {
+            double v = G_p[p] >= 0 ? 0.5 * dv * vt_G[G_p[p]] : 0.0;
+            for (int f = 0; f < nf; f++)
+                X[p * nf + f] = v * Phi_pf[p * nf + f];
+        }
+        double one = 1.0;
+        double zero = 0.0;
+        dsyr2k_("L", "N", &nf, &npts, &one, Phi_pf, &nf, X, &nf,
+                &zero, B, &nf);
+
+        for (int c = 0; c < nf; c++) {
+            int Mc = col_f[c];
+            int xc = x_W[W_f[c]];
+            for (int r = c; r < nf; r++) {
+                double value = B[r + c * nf];
+                int Mr = col_f[r];
+                int xr = x_W[W_f[r]];
+                // (W1, W2) = (r, c):
+                int x = xc - xr;
+                if (x >= 0 && x < nx)
+                    V_xMM[(x * nM1 + Mr) * nM2 + Mc] += value;
+                // (W1, W2) = (c, r):
+                x = xr - xc;
+                if (r != c && x >= 0 && x < nx)
+                    V_xMM[(x * nM1 + Mc) * nM2 + Mr] += value;
+            }
+        }
+    }
+    Py_END_ALLOW_THREADS
+
+    free(X);
+    free(B);
     Py_RETURN_NONE;
 }
 
@@ -211,17 +440,21 @@ PyObject* tiled_force_contribution(PyObject* self, PyObject* args)
     PyArrayObject *M_W_obj, *pos_Wv_obj, *spline_M_obj;
     PyArrayObject *h_cv_obj, *n_c_obj, *beg_c_obj;
     double dv;
-    if (!PyArg_ParseTuple(args, "OdOOOOOOOOOOOOOOOOOO",
+    PyObject *kd_obj = NULL;
+    if (!PyArg_ParseTuple(args, "OdOOOOOOOOOOOOOOOOOO|O",
                           &vt_obj, &dv, &rho_obj, &F_obj,
                           &Phi_obj, &phioff_obj, &nf_obj, &cols_obj,
                           &coloff_obj, &Gtp_obj,
                           &pairoff_obj, &pairW_obj, &paircol_obj,
                           &pairmask_obj, &M_W_obj, &pos_Wv_obj,
-                          &spline_M_obj, &h_cv_obj, &n_c_obj, &beg_c_obj))
+                          &spline_M_obj, &h_cv_obj, &n_c_obj, &beg_c_obj,
+                          &kd_obj))
+        return NULL;
+    KData kd;
+    if (!get_kdata(kd_obj, &kd, PyArray_DIMS(Gtp_obj)[0]))
         return NULL;
 
     const double* vt_G = (const double*)PyArray_DATA(vt_obj);
-    const double* rho_MM = (const double*)PyArray_DATA(rho_obj);
     double* F_vM = (double*)PyArray_DATA(F_obj);
     const double* Phi = (const double*)PyArray_DATA(Phi_obj);
     const npy_int64* phioff_t = (const npy_int64*)PyArray_DATA(phioff_obj);
@@ -257,6 +490,10 @@ PyObject* tiled_force_contribution(PyObject* self, PyObject* args)
         free(Y);
         return PyErr_NoMemory();
     }
+    int nfMmax = kd.nfMmax;
+    double_complex* Psi = GPAW_MALLOC(double_complex, nfMmax * npts + 1);
+    double_complex* Z = GPAW_MALLOC(double_complex, nfMmax * npts + 1);
+    double_complex* rs = GPAW_MALLOC(double_complex, nfMmax * nfMmax + 1);
 
     Py_BEGIN_ALLOW_THREADS
     for (int t = 0; t < ntiles; t++) {
@@ -267,16 +504,36 @@ PyObject* tiled_force_contribution(PyObject* self, PyObject* args)
         const int* G_p = G_tp + (npy_intp)t * npts;
         const int* col_f = cols + coloff_t[t];
 
-        // r(f1, f2) = rhoT[col f1, col f2] (column-major)
-        for (int f2 = 0; f2 < nf; f2++)
-            for (int f1 = 0; f1 < nf; f1++)
-                r[f1 + f2 * nf] = rho_MM[col_f[f1] * nM + col_f[f2]];
+        if (use_bloch_sum(&kd, t, nf)) {
+            // Y(a, p) = Re(conj(ph_a) (rhoT Psi)(M_a, p)), Psi = sum ph Phi
+            int nfM = kd.nfM_t[t];
+            const int* mcol_f = kd.mcol + coloff_t[t];
+            const int* colW_f = kd.colW + coloff_t[t];
+            bloch_sum(Psi, nfM, nf, npts, Phi_pf, mcol_f, colW_f,
+                      kd.ph_W, false);
+            gather_complex(rs, nfM, kd.mM + kd.mcoloff_t[t], rho_obj);
+            double_complex one = 1.0;
+            double_complex zero = 0.0;
+            zgemm_("N", "N", &nfM, &npts, &nfM, &one, rs, &nfM, Psi, &nfM,
+                   &zero, Z, &nfM);
+            for (int a = 0; a < nf; a++) {
+                double_complex phc = conj(kd.ph_W[colW_f[a]]);
+                for (int p = 0; p < npts; p++)
+                    Y[a + p * nf] = creal(phc * Z[mcol_f[a] + p * nfM]);
+            }
+        }
+        else {
+            // r(f1, f2) = rhoT[col f1, col f2] (column-major)
+            gather_coefficients(r, nf, col_f, rho_obj,
+                                kd.colW ? kd.colW + coloff_t[t] : NULL,
+                                kd.ph_W, true);
 
-        // Y (nf x npts) = r . Phi
-        double one = 1.0;
-        double zero = 0.0;
-        dgemm_("N", "N", &nf, &npts, &nf, &one, r, &nf, Phi_pf, &nf,
-               &zero, Y, &nf);
+            // Y (nf x npts) = r . Phi
+            double one = 1.0;
+            double zero = 0.0;
+            dgemm_("N", "N", &nf, &npts, &nf, &one, r, &nf, Phi_pf, &nf,
+                   &zero, Y, &nf);
+        }
 
         for (npy_int64 j = pairoff_t[t]; j < pairoff_t[t + 1]; j++) {
             int W = pair_W[j];
@@ -339,6 +596,9 @@ PyObject* tiled_force_contribution(PyObject* self, PyObject* args)
 
     free(r);
     free(Y);
+    free(Psi);
+    free(Z);
+    free(rs);
     Py_RETURN_NONE;
 }
 

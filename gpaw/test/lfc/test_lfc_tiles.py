@@ -48,3 +48,64 @@ def test_lfc_tiles(monkeypatch, create_atoms):
 
     for x0, x1 in zip(*results):
         assert x1 == pytest.approx(x0, abs=1e-12 * abs(x0).max())
+
+
+def si2():
+    # Small non-orthogonal cell: many images per tile (Bloch-summed tiles)
+    atoms = bulk('Si', 'diamond', a=5.43)
+    atoms.positions[0] += [0.05, -0.02, 0.03]
+    return atoms
+
+
+def h2o_periodic():
+    # Large cell: few images per tile (per-volume tiles with phases)
+    atoms = h2o()
+    atoms.pbc = True
+    return atoms
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize('create_atoms, kpts', [(si2, (2, 1, 1)),
+                                                (si2, (1, 2, 2)),
+                                                (h2o_periodic, (2, 1, 1))])
+def test_lfc_tiles_kpts(monkeypatch, create_atoms, kpts):
+    """Tiled kernels with Bloch phases (complex density matrices)."""
+    if not tiles_available():
+        pytest.skip('GPAW compiled without BLAS')
+    atoms = create_atoms()
+    basis = Parameters(mode='lcao', basis='dzp', kpts=kpts
+                       ).dft_component_builder(
+        atoms, comm=serial_comm).create_basis_set()
+    assert not basis.gamma
+    nq = len(basis.phase_qW)
+    rng = np.random.default_rng(8)
+    vt_G = basis.gd.zeros()
+    vt_G[:] = rng.random(vt_G.shape) - 0.5
+    M = basis.Mmax
+    C_MM = rng.random((M, M)) - 0.5 + 1j * (rng.random((M, M)) - 0.5)
+    rho_MM = C_MM @ C_MM.conj().T  # Hermitian
+
+    results = []
+    for flag in ['0', '1']:
+        monkeypatch.setenv('GPAW_LFC_TILES', flag)
+        V_xMM = basis.calculate_potential_matrices(vt_G)
+        nt_qG = []
+        F_qav = []
+        for q in range(nq):
+            nt_G = basis.gd.zeros()
+            basis.construct_density(rho_MM, nt_G, q)
+            nt_qG.append(nt_G)
+            F_qav.append(basis.calculate_force_contribution(
+                vt_G, rho_MM.T.copy(), q))
+        results.append((V_xMM, np.array(nt_qG), np.array(F_qav)))
+    tiles = basis._tiles()
+    assert tiles.per_volume
+    used = tiles.nf_t > 0
+    bloch = tiles.nf_t > 2 * tiles.nfM_t  # see use_bloch_sum() in C
+    if create_atoms is si2:
+        assert bloch[used].all()
+    else:
+        assert not bloch[used].all()
+
+    for x0, x1 in zip(*results):
+        assert x1 == pytest.approx(x0, abs=1e-12 * abs(x0).max())

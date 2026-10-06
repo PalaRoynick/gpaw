@@ -23,7 +23,18 @@ def tiles_available() -> bool:
 
 
 class TiledFunctions:
-    def __init__(self, A_Wgm, M_W, G_B, W_B, n_c, nM, tile=TILE):
+    def __init__(self, A_Wgm, M_W, G_B, W_B, n_c, nM, tile=TILE,
+                 per_volume=False):
+        """Tile layout of the basis functions.
+
+        per_volume=False: one column per basis function M.  Periodic images
+        of a function are summed into the same column (gamma point).
+
+        per_volume=True: one column per function of each volume (periodic
+        images kept apart), as needed for Bloch phases at k-points and for
+        the displacement-resolved potential matrices.
+        """
+        self.per_volume = per_volume
         n_c = np.asarray(n_c)
         tile_c = np.asarray(tile)
         ntile_c = -(-n_c // tile_c)
@@ -57,16 +68,23 @@ class TiledFunctions:
             (x_g % tile_c[0], y_g % tile_c[1], z_g % tile_c[2]), tile)
         del x_g, y_g, z_g
 
-        # Column groups: unique (tile, M) pairs, sorted by tile and then
-        # by M:
+        # Column groups: unique (tile, M) or (tile, volume) pairs, sorted
+        # by tile and then by M or volume:
         M_W = np.asarray(M_W, dtype=np.int64)
         nW = len(A_Wgm)
-        key_j, j_g = np.unique(t_g * nM + M_W[W_g], return_inverse=True)
-        t_j = key_j // nM
-        M_j = key_j % nM
-        nm_M = np.zeros(nM, np.int64)
-        nm_M[M_W] = nm_W
-        nm_j = nm_M[M_j]
+        if per_volume:
+            key_j, j_g = np.unique(t_g * nW + W_g, return_inverse=True)
+            t_j = key_j // nW
+            W_j = key_j % nW
+            M_j = M_W[W_j]
+            nm_j = nm_W[W_j]
+        else:
+            key_j, j_g = np.unique(t_g * nM + M_W[W_g], return_inverse=True)
+            t_j = key_j // nM
+            M_j = key_j % nM
+            nm_M = np.zeros(nM, np.int64)
+            nm_M[M_W] = nm_W
+            nm_j = nm_M[M_j]
 
         ntiles = int(np.prod(ntile_c))
         nf_t = np.bincount(t_j, weights=nm_j,
@@ -76,6 +94,18 @@ class TiledFunctions:
         colstart_j = np.cumsum(nm_j) - nm_j  # global column position
         cols = (np.repeat(M_j - colstart_j, nm_j) +
                 np.arange(int(nm_j.sum()))).astype(np.int32)
+        self.colW = (np.repeat(W_j, nm_j).astype(np.int32)
+                     if per_volume else None)
+        if per_volume:
+            # Distinct M's of each tile, for Bloch sums over images:
+            col_t = np.repeat(np.arange(ntiles), nf_t)
+            mkey, mcol = np.unique(col_t * nM + cols, return_inverse=True)
+            mt = mkey // nM
+            self.mM = (mkey % nM).astype(np.int32)
+            self.nfM_t = np.bincount(mt, minlength=ntiles).astype(np.int32)
+            self.mcoloff_t = np.zeros(ntiles, np.int64)
+            np.cumsum(self.nfM_t[:-1], out=self.mcoloff_t[1:])
+            self.mcol = (mcol - self.mcoloff_t[col_t]).astype(np.int32)
 
         phioff_t = np.zeros(ntiles + 1, np.int64)
         np.cumsum(npts * nf_t.astype(np.int64), out=phioff_t[1:])
@@ -99,11 +129,17 @@ class TiledFunctions:
         # (tile, volume) pairs for the force kernel: first column of the
         # volume in the tile and a bit mask of the volume's points:
         assert npts <= 128
-        pkey_q, q_g = np.unique(t_g * nW + W_g, return_inverse=True)
-        pair_t = pkey_q // nW
-        pair_W = pkey_q % nW
-        colstart_q = colstart_j[
-            np.searchsorted(key_j, pair_t * nM + M_W[pair_W])]
+        if per_volume:
+            q_g = j_g
+            pair_t = t_j
+            pair_W = W_j
+            colstart_q = colstart_j
+        else:
+            pkey_q, q_g = np.unique(t_g * nW + W_g, return_inverse=True)
+            pair_t = pkey_q // nW
+            pair_W = pkey_q % nW
+            colstart_q = colstart_j[
+                np.searchsorted(key_j, pair_t * nM + M_W[pair_W])]
         self.pair_col = (colstart_q - coloff_t[pair_t]).astype(np.int32)
         self.pair_W = pair_W.astype(np.int32)
         nq = len(pair_t)
@@ -151,7 +187,8 @@ class TiledFunctions:
         return sum(a.nbytes for a in [self.Phi, self.phioff_t, self.nf_t,
                                       self.cols, self.coloff_t, self.G_tp,
                                       self.pair_col, self.pair_W,
-                                      self.pair_mask, self.pairoff_t])
+                                      self.pair_mask, self.pairoff_t] +
+                   ([self.colW] if self.per_volume else []))
 
     def potential_matrix(self, vt_G, dv, Vt_MM):
         """Add lower triangle of the potential matrix to Vt_MM."""
@@ -161,15 +198,42 @@ class TiledFunctions:
             self.cols, self.coloff_t, self.G_tp, Vt_MM)
         Vt_MM[self.upper_i, self.upper_j] = Vt_MM[self.upper_j, self.upper_i]
 
-    def construct_density(self, rho_MM, nt_G):
-        assert nt_G.flags.c_contiguous
-        cgpaw.tiled_construct_density(
-            np.ascontiguousarray(rho_MM, dtype=float), nt_G,
+    def potential_matrices(self, vt_G, dv, x_W, Vt_xMM):
+        """Add displacement-resolved potential matrices to Vt_xMM.
+
+        Vt_xMM[x, M1, M2] += <Phi_W1 | vt | Phi_W2>, x = x_W2 - x_W1 >= 0.
+        """
+        assert self.per_volume
+        cgpaw.tiled_potential_matrices(
+            np.ascontiguousarray(vt_G, dtype=float).ravel(), dv,
             self.Phi, self.phioff_t, self.nf_t,
-            self.cols, self.coloff_t, self.G_tp)
+            self.cols, self.colW, self.coloff_t, self.G_tp,
+            np.ascontiguousarray(x_W, dtype=np.intc), Vt_xMM)
+
+    def _kdata(self, phase_W):
+        if phase_W is None:
+            return None
+        assert self.per_volume
+        return (self.colW, np.ascontiguousarray(phase_W, dtype=complex),
+                self.mcol, self.mM, self.nfM_t, self.mcoloff_t)
+
+    def _phases(self, rho_MM, phase_W):
+        """Density matrix and k-point data (None for real rho)."""
+        if np.iscomplexobj(rho_MM):
+            return (np.ascontiguousarray(rho_MM, dtype=complex),
+                    self._kdata(phase_W))
+        return np.ascontiguousarray(rho_MM, dtype=float), None
+
+    def construct_density(self, rho_MM, nt_G, phase_W=None):
+        assert nt_G.flags.c_contiguous
+        rho_MM, kdata = self._phases(rho_MM, phase_W)
+        cgpaw.tiled_construct_density(
+            rho_MM, nt_G,
+            self.Phi, self.phioff_t, self.nf_t,
+            self.cols, self.coloff_t, self.G_tp, kdata)
 
     def force_contribution(self, vt_G, dv, rhoT_MM, spline_M,
-                           M_W, pos_Wv, h_cv, n_c, beg_c):
+                           M_W, pos_Wv, h_cv, n_c, beg_c, phase_W=None):
         """Potential term of the forces for each basis function.
 
         Returns F_vM with
@@ -177,9 +241,10 @@ class TiledFunctions:
         """
         nM = rhoT_MM.shape[1]
         F_vM = np.zeros((3, nM))
+        rhoT_MM, kdata = self._phases(rhoT_MM, phase_W)
         cgpaw.tiled_force_contribution(
             np.ascontiguousarray(vt_G, dtype=float).ravel(), dv,
-            np.ascontiguousarray(rhoT_MM, dtype=float), F_vM,
+            rhoT_MM, F_vM,
             self.Phi, self.phioff_t, self.nf_t,
             self.cols, self.coloff_t, self.G_tp,
             self.pairoff_t, self.pair_W, self.pair_col, self.pair_mask,
@@ -188,5 +253,6 @@ class TiledFunctions:
             spline_M,
             np.ascontiguousarray(h_cv, dtype=float),
             np.ascontiguousarray(n_c, dtype=np.int_),
-            np.ascontiguousarray(beg_c, dtype=np.int_))
+            np.ascontiguousarray(beg_c, dtype=np.int_),
+            kdata)
         return F_vM
