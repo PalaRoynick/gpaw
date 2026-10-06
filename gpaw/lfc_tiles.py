@@ -60,6 +60,7 @@ class TiledFunctions:
         # Column groups: unique (tile, M) pairs, sorted by tile and then
         # by M:
         M_W = np.asarray(M_W, dtype=np.int64)
+        nW = len(A_Wgm)
         key_j, j_g = np.unique(t_g * nM + M_W[W_g], return_inverse=True)
         t_j = key_j // nM
         M_j = key_j % nM
@@ -95,6 +96,28 @@ class TiledFunctions:
                 Phi[base + m] += A_gm[:, m]
             start += ng
 
+        # (tile, volume) pairs for the force kernel: first column of the
+        # volume in the tile and a bit mask of the volume's points:
+        assert npts <= 128
+        pkey_q, q_g = np.unique(t_g * nW + W_g, return_inverse=True)
+        pair_t = pkey_q // nW
+        pair_W = pkey_q % nW
+        colstart_q = colstart_j[
+            np.searchsorted(key_j, pair_t * nM + M_W[pair_W])]
+        self.pair_col = (colstart_q - coloff_t[pair_t]).astype(np.int32)
+        self.pair_W = pair_W.astype(np.int32)
+        nq = len(pair_t)
+        chunks_q = np.bincount(q_g * 4 + p_g // 32,
+                               weights=2.0**(p_g % 32),
+                               minlength=4 * nq).reshape((nq, 4))
+        chunks_q = chunks_q.astype(np.uint64)
+        self.pair_mask = np.empty((nq, 2), np.uint64)
+        self.pair_mask[:, 0] = chunks_q[:, 0] | (chunks_q[:, 1] << 32)
+        self.pair_mask[:, 1] = chunks_q[:, 2] | (chunks_q[:, 3] << 32)
+        self.pairoff_t = np.zeros(ntiles + 1, np.int64)
+        np.cumsum(np.bincount(pair_t, minlength=ntiles),
+                  out=self.pairoff_t[1:])
+
         # Grid point of each (tile, point-in-tile), -1 outside the grid:
         tx, ty, tz = np.unravel_index(np.arange(ntiles), ntile_c)
         lx, ly, lz = np.unravel_index(np.arange(npts), tile)
@@ -126,7 +149,9 @@ class TiledFunctions:
     @property
     def nbytes(self) -> int:
         return sum(a.nbytes for a in [self.Phi, self.phioff_t, self.nf_t,
-                                      self.cols, self.coloff_t, self.G_tp])
+                                      self.cols, self.coloff_t, self.G_tp,
+                                      self.pair_col, self.pair_W,
+                                      self.pair_mask, self.pairoff_t])
 
     def potential_matrix(self, vt_G, dv, Vt_MM):
         """Add lower triangle of the potential matrix to Vt_MM."""
@@ -142,3 +167,26 @@ class TiledFunctions:
             np.ascontiguousarray(rho_MM, dtype=float), nt_G,
             self.Phi, self.phioff_t, self.nf_t,
             self.cols, self.coloff_t, self.G_tp)
+
+    def force_contribution(self, vt_G, dv, rhoT_MM, spline_M,
+                           M_W, pos_Wv, h_cv, n_c, beg_c):
+        """Potential term of the forces for each basis function.
+
+        Returns F_vM with
+        F_vM[c, M] = sum_G dPhi_M/dr_c vt dv sum_M' rhoT[M, M'] Phi_M'.
+        """
+        nM = rhoT_MM.shape[1]
+        F_vM = np.zeros((3, nM))
+        cgpaw.tiled_force_contribution(
+            np.ascontiguousarray(vt_G, dtype=float).ravel(), dv,
+            np.ascontiguousarray(rhoT_MM, dtype=float), F_vM,
+            self.Phi, self.phioff_t, self.nf_t,
+            self.cols, self.coloff_t, self.G_tp,
+            self.pairoff_t, self.pair_W, self.pair_col, self.pair_mask,
+            np.ascontiguousarray(M_W, dtype=np.intc),
+            np.ascontiguousarray(pos_Wv, dtype=float),
+            spline_M,
+            np.ascontiguousarray(h_cv, dtype=float),
+            np.ascontiguousarray(n_c, dtype=np.int_),
+            np.ascontiguousarray(beg_c, dtype=np.int_))
+        return F_vM

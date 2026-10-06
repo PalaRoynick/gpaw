@@ -11,9 +11,14 @@
 
 #include "python_utils.h"
 #include "gpaw_utils.h"
+#include "spline.h"
+#include "bmgs/spherical_harmonics.h"
+#include "bmgs/bmgs.h"
 
 #ifndef GPAW_WITHOUT_BLAS
 
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -181,6 +186,153 @@ PyObject* tiled_construct_density(PyObject* self, PyObject* args)
             for (int f = 0; f < nf; f++)
                 n += Y[p * nf + f] * Phi_pf[p * nf + f];
             nt_G[G] += n;
+        }
+    }
+    Py_END_ALLOW_THREADS
+
+    free(r);
+    free(Y);
+    Py_RETURN_NONE;
+}
+
+// Potential term of the LCAO forces (all three directions):
+//
+//   F_vM[c, M1] += sum_G dPhi_M1(G)/dr_c vt(G) dv sum_M2 rhoT[M1, M2] Phi_M2(G)
+//
+// The derivatives are evaluated per (tile, volume) pair on the grid
+// points given by the pair's bit mask (the points of that volume in the
+// tile), so periodic images of a function are handled like in the LFC
+// kernel.
+PyObject* tiled_force_contribution(PyObject* self, PyObject* args)
+{
+    PyArrayObject *vt_obj, *rho_obj, *F_obj, *Phi_obj, *phioff_obj;
+    PyArrayObject *nf_obj, *cols_obj, *coloff_obj, *Gtp_obj;
+    PyArrayObject *pairoff_obj, *pairW_obj, *paircol_obj, *pairmask_obj;
+    PyArrayObject *M_W_obj, *pos_Wv_obj, *spline_M_obj;
+    PyArrayObject *h_cv_obj, *n_c_obj, *beg_c_obj;
+    double dv;
+    if (!PyArg_ParseTuple(args, "OdOOOOOOOOOOOOOOOOOO",
+                          &vt_obj, &dv, &rho_obj, &F_obj,
+                          &Phi_obj, &phioff_obj, &nf_obj, &cols_obj,
+                          &coloff_obj, &Gtp_obj,
+                          &pairoff_obj, &pairW_obj, &paircol_obj,
+                          &pairmask_obj, &M_W_obj, &pos_Wv_obj,
+                          &spline_M_obj, &h_cv_obj, &n_c_obj, &beg_c_obj))
+        return NULL;
+
+    const double* vt_G = (const double*)PyArray_DATA(vt_obj);
+    const double* rho_MM = (const double*)PyArray_DATA(rho_obj);
+    double* F_vM = (double*)PyArray_DATA(F_obj);
+    const double* Phi = (const double*)PyArray_DATA(Phi_obj);
+    const npy_int64* phioff_t = (const npy_int64*)PyArray_DATA(phioff_obj);
+    const int* nf_t = (const int*)PyArray_DATA(nf_obj);
+    const int* cols = (const int*)PyArray_DATA(cols_obj);
+    const npy_int64* coloff_t = (const npy_int64*)PyArray_DATA(coloff_obj);
+    const int* G_tp = (const int*)PyArray_DATA(Gtp_obj);
+    const npy_int64* pairoff_t = (const npy_int64*)PyArray_DATA(pairoff_obj);
+    const int* pair_W = (const int*)PyArray_DATA(pairW_obj);
+    const int* pair_col = (const int*)PyArray_DATA(paircol_obj);
+    const uint64_t* pair_mask = (const uint64_t*)PyArray_DATA(pairmask_obj);
+    const int* M_W = (const int*)PyArray_DATA(M_W_obj);
+    const double (*pos_Wv)[3] = (const double (*)[3])PyArray_DATA(pos_Wv_obj);
+    const SplineObject** spline_M =
+        (const SplineObject**)PyArray_DATA(spline_M_obj);
+    const double* h_cv = (const double*)PyArray_DATA(h_cv_obj);
+    const long* n_c = (const long*)PyArray_DATA(n_c_obj);
+    const long* beg_c = (const long*)PyArray_DATA(beg_c_obj);
+    int ntiles = PyArray_DIMS(Gtp_obj)[0];
+    int npts = PyArray_DIMS(Gtp_obj)[1];
+    npy_intp nM = PyArray_DIMS(rho_obj)[1];
+    if (npts > 128) {
+        PyErr_SetString(PyExc_ValueError, "At most 128 points per tile.");
+        return NULL;
+    }
+
+    int nfmax;
+    max_work(nf_t, ntiles, npts, &nfmax);
+    double* r = (double*)malloc(sizeof(double) * nfmax * nfmax);
+    double* Y = (double*)malloc(sizeof(double) * nfmax * npts);
+    if (r == NULL || Y == NULL) {
+        free(r);
+        free(Y);
+        return PyErr_NoMemory();
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    for (int t = 0; t < ntiles; t++) {
+        int nf = nf_t[t];
+        if (nf == 0)
+            continue;
+        const double* Phi_pf = Phi + phioff_t[t];
+        const int* G_p = G_tp + (npy_intp)t * npts;
+        const int* col_f = cols + coloff_t[t];
+
+        // r(f1, f2) = rhoT[col f1, col f2] (column-major)
+        for (int f2 = 0; f2 < nf; f2++)
+            for (int f1 = 0; f1 < nf; f1++)
+                r[f1 + f2 * nf] = rho_MM[col_f[f1] * nM + col_f[f2]];
+
+        // Y (nf x npts) = r . Phi
+        double one = 1.0;
+        double zero = 0.0;
+        dgemm_("N", "N", &nf, &npts, &nf, &one, r, &nf, Phi_pf, &nf,
+               &zero, Y, &nf);
+
+        for (npy_int64 j = pairoff_t[t]; j < pairoff_t[t + 1]; j++) {
+            int W = pair_W[j];
+            int M0 = M_W[W];
+            int f0 = pair_col[j];
+            const bmgsspline* spline = &spline_M[M0]->spline;
+            int l = spline->l;
+            int nm = 2 * l + 1;
+            const double* pos_v = pos_Wv[W];
+            const uint64_t* mask = pair_mask + 2 * j;
+            double fdYdc_m[2 * 4 + 1];  // l <= 4
+            double rlYdfdr_m[2 * 4 + 1];
+            for (int p = 0; p < npts; p++) {
+                if (!((mask[p >> 6] >> (p & 63)) & 1))
+                    continue;
+                int G = G_p[p];
+                long iz = G % n_c[2] + beg_c[2];
+                long iy = (G / n_c[2]) % n_c[1] + beg_c[1];
+                long ix = G / (n_c[2] * n_c[1]) + beg_c[0];
+                double R_c[3];
+                for (int v = 0; v < 3; v++)
+                    R_c[v] = (h_cv[v] * ix + h_cv[3 + v] * iy +
+                              h_cv[6 + v] * iz - pos_v[v]);
+                double x = R_c[0];
+                double y = R_c[1];
+                double z = R_c[2];
+                double r2 = x * x + y * y + z * z;
+                double rr = sqrt(r2);
+                double f, dfdr;
+                bmgs_get_value_and_derivative(spline, rr, &f, &dfdr);
+                double vtdv = vt_G[G] * dv;
+                const double* Y_f = Y + p * nf + f0;
+                for (int c = 0; c < 3; c++) {
+                    double Rcinvr = rr > 1e-15 ? R_c[c] / rr : 0.0;
+                    switch (c) {
+                    case 0:
+                        spherical_harmonics_derivative_x(l, f, x, y, z, r2,
+                                                         fdYdc_m);
+                        break;
+                    case 1:
+                        spherical_harmonics_derivative_y(l, f, x, y, z, r2,
+                                                         fdYdc_m);
+                        break;
+                    case 2:
+                        spherical_harmonics_derivative_z(l, f, x, y, z, r2,
+                                                         fdYdc_m);
+                        break;
+                    }
+                    spherical_harmonics(l, dfdr * Rcinvr, x, y, z, r2,
+                                        rlYdfdr_m);
+                    double* F_M = F_vM + c * nM + M0;
+                    for (int m = 0; m < nm; m++)
+                        F_M[m] += (vtdv * (fdYdc_m[m] + rlYdfdr_m[m]) *
+                                   Y_f[m]);
+                }
+            }
         }
     }
     Py_END_ALLOW_THREADS

@@ -42,7 +42,8 @@ def test_lfc_tiles(monkeypatch, create_atoms):
         V_MM = basis.calculate_potential_matrices(vt_G)[0]
         nt_G = basis.gd.zeros()
         basis.construct_density(rho_MM, nt_G, q=-1)
-        results.append((V_MM, nt_G))
+        F_av = basis.calculate_force_contribution(vt_G, rho_MM, q=-1)
+        results.append((V_MM, nt_G, F_av))
     assert basis._tiles() is not None
 
     for x0, x1 in zip(*results):
