@@ -7,6 +7,7 @@ from ase.units import Bohr
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.gpu import as_np, as_numpy, as_xp, cupy_is_fake
+from gpaw.lfc_tiles import TiledFunctions, tiles_available
 from gpaw.new import trace
 from gpaw.old.grid_descriptor import GridBoundsError, GridDescriptor
 from gpaw.utilities import smallest_safe_grid_spacing
@@ -1072,8 +1073,29 @@ class BasisFunctions(LocalizedFunctionsCollection):
         """
         rho_MM = as_np(rho_MM)
         with as_numpy(nt_G) as nt_G:
-            self.lfc.construct_density(
-                rho_MM, nt_G, q, self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None and rho_MM.dtype == float:
+                tiles.construct_density(rho_MM, nt_G)
+            else:
+                self.lfc.construct_density(
+                    rho_MM, nt_G, q, self.Mstart, self.Mstop)
+
+    def _tiles(self):
+        """Tiled basis functions for BLAS-3 kernels (or None).
+
+        Only used for real gamma-point calculations where this rank
+        holds all rows of the matrices.
+        """
+        if not (self.gamma and self.dtype == float and
+                self.Mstart == 0 and self.Mstop == self.Mmax and
+                tiles_available()):
+            return None
+        if getattr(self, '_tiles_lfc', None) is not self.lfc:
+            self._tiles_data = TiledFunctions(
+                self.A_Wgm, self.M_W, self.G_B, self.W_B,
+                self.gd.n_c, self.Mmax)
+            self._tiles_lfc = self.lfc
+        return self._tiles_data
 
     def integrate2(self, a_xG, c_xM, q=-1):
         """Calculate integrals of arrays times localized functions.
@@ -1108,8 +1130,12 @@ class BasisFunctions(LocalizedFunctionsCollection):
         assert np.all(vt_G.shape == self.gd.n_c), (vt_G.shape, self.gd.n_c)
         if self.gamma and self.dtype == float:
             Vt_xMM = np.zeros((1, self.Mstop - self.Mstart, self.Mmax))
-            self.lfc.calculate_potential_matrix(vt_G, Vt_xMM[0], -1,
-                                                self.Mstart, self.Mstop)
+            tiles = self._tiles()
+            if tiles is not None:
+                tiles.potential_matrix(vt_G, self.gd.dv, Vt_xMM[0])
+            else:
+                self.lfc.calculate_potential_matrix(vt_G, Vt_xMM[0], -1,
+                                                    self.Mstart, self.Mstop)
         else:
             Vt_xMM = np.zeros((len(self.sdisp_xc),
                                self.Mstop - self.Mstart,
