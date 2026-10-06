@@ -77,11 +77,10 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
             dH_II = sparse.block_diag(
                 [sparse.coo_array(dH_ii) for dH_ii in dH_aii.values()],
                 format='csr')
-            assert dH_II.dtype == float
             P_MI = sparse.hstack(
                 [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
                 format='csr')
-            V_MM.data += P_MI[M1:M2].conj().dot(dH_II.dot(P_MI.T)).todense()
+            V_MM.data += (P_MI[M1:M2].dot(dH_II)).conj().dot(P_MI.T).todense()
         else:
             for a, dH_ii in dH_aii.items():
                 P_Mi = wfs.P_aMi[a]
