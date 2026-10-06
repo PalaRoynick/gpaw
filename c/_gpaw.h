@@ -40,6 +40,7 @@ PyObject* tiled_potential_matrix(PyObject *self, PyObject *args);
 PyObject* tiled_construct_density(PyObject *self, PyObject *args);
 PyObject* tiled_force_contribution(PyObject *self, PyObject *args);
 PyObject* tiled_potential_matrices(PyObject *self, PyObject *args);
+PyObject* tiled_lcao_to_grid(PyObject *self, PyObject *args);
 #endif
 PyObject* NewOperatorObject(PyObject *self, PyObject *args);
 PyObject* NewWOperatorObject(PyObject *self, PyObject *args);
@@ -185,6 +186,7 @@ static PyMethodDef functions[] = {
     {"tiled_construct_density", tiled_construct_density, METH_VARARGS, 0},
     {"tiled_force_contribution", tiled_force_contribution, METH_VARARGS, 0},
     {"tiled_potential_matrices", tiled_potential_matrices, METH_VARARGS, 0},
+    {"tiled_lcao_to_grid", tiled_lcao_to_grid, METH_VARARGS, 0},
 #endif
     {"Operator", NewOperatorObject, METH_VARARGS, 0},
     {"WOperator", NewWOperatorObject, METH_VARARGS, 0},

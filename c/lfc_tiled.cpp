@@ -424,6 +424,147 @@ PyObject* tiled_potential_matrices(PyObject* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+// psit_xG[x, G] += sum_M Phi_M(G) C_xM[x, M]           (gamma point)
+// psit_xG[x, G] += sum_W conj(ph_W) Phi_W(G) C_xM[x, M_W]  (k-points)
+//
+// C_xM and psit_xG are both float64 or both complex128.  Complex numbers
+// are treated as pairs of reals, so that a real GEMM with the real basis
+// functions does the job.
+PyObject* tiled_lcao_to_grid(PyObject* self, PyObject* args)
+{
+    PyArrayObject *C_obj, *psit_obj, *Phi_obj, *phioff_obj, *nf_obj;
+    PyArrayObject *cols_obj, *coloff_obj, *Gtp_obj;
+    PyObject *kd_obj = NULL;
+    if (!PyArg_ParseTuple(args, "OOOOOOOO|O", &C_obj, &psit_obj, &Phi_obj,
+                          &phioff_obj, &nf_obj, &cols_obj, &coloff_obj,
+                          &Gtp_obj, &kd_obj))
+        return NULL;
+    KData kd;
+    if (!get_kdata(kd_obj, &kd, PyArray_DIMS(Gtp_obj)[0]))
+        return NULL;
+    const int* colW = kd.colW;
+    const double_complex* ph_W = kd.ph_W;
+
+    bool cplx = PyArray_ISCOMPLEX(C_obj);
+    int nr = cplx ? 2 : 1;  // reals per number
+    if (ph_W != NULL && !cplx) {
+        PyErr_SetString(PyExc_ValueError, "Phases need complex arrays.");
+        return NULL;
+    }
+    const double* C_xM = (const double*)PyArray_DATA(C_obj);
+    double* psit_xG = (double*)PyArray_DATA(psit_obj);
+    const double* Phi = (const double*)PyArray_DATA(Phi_obj);
+    const npy_int64* phioff_t = (const npy_int64*)PyArray_DATA(phioff_obj);
+    const int* nf_t = (const int*)PyArray_DATA(nf_obj);
+    const int* cols = (const int*)PyArray_DATA(cols_obj);
+    const npy_int64* coloff_t = (const npy_int64*)PyArray_DATA(coloff_obj);
+    const int* G_tp = (const int*)PyArray_DATA(Gtp_obj);
+    int ntiles = PyArray_DIMS(Gtp_obj)[0];
+    int npts = PyArray_DIMS(Gtp_obj)[1];
+    int nx = PyArray_DIMS(C_obj)[0];
+    npy_intp nM = PyArray_DIMS(C_obj)[1];
+    npy_intp nG = PyArray_SIZE(psit_obj) / nx;
+    int nxr = nx * nr;
+
+    int nfmax;
+    max_work(nf_t, ntiles, npts, &nfmax);
+    double* Cg = (double*)malloc(sizeof(double) * nxr * (nfmax + 1));
+    double* out = (double*)malloc(sizeof(double) * nxr * npts);
+    if (Cg == NULL || out == NULL) {
+        free(Cg);
+        free(out);
+        return PyErr_NoMemory();
+    }
+    double_complex* Psi = GPAW_MALLOC(double_complex,
+                                      kd.nfMmax * npts + 1);
+
+    Py_BEGIN_ALLOW_THREADS
+    for (int t = 0; t < ntiles; t++) {
+        int nf = nf_t[t];
+        if (nf == 0)
+            continue;
+        const double* Phi_pf = Phi + phioff_t[t];
+        const int* G_p = G_tp + (npy_intp)t * npts;
+        const int* col_f = cols + coloff_t[t];
+
+        if (use_bloch_sum(&kd, t, nf)) {
+            // psit = C[:, mM] . Psi with Psi = sum conj(ph) Phi
+            int nfM = kd.nfM_t[t];
+            const int* mM_j = kd.mM + kd.mcoloff_t[t];
+            bloch_sum(Psi, nfM, nf, npts, Phi_pf, kd.mcol + coloff_t[t],
+                      kd.colW + coloff_t[t], ph_W, true);
+            const double_complex* C = (const double_complex*)C_xM;
+            double_complex* Cz = (double_complex*)Cg;
+            for (int j = 0; j < nfM; j++)
+                for (int x = 0; x < nx; x++)
+                    Cz[x + j * nx] = C[x * nM + mM_j[j]];
+            double_complex one = 1.0;
+            double_complex zero = 0.0;
+            zgemm_("N", "N", &nx, &npts, &nfM, &one, Cz, &nx, Psi, &nfM,
+                   &zero, out, &nx);
+            const double_complex* outz = (const double_complex*)out;
+            double_complex* psit = (double_complex*)psit_xG;
+            for (int p = 0; p < npts; p++) {
+                int G = G_p[p];
+                if (G < 0)
+                    continue;
+                for (int x = 0; x < nx; x++)
+                    psit[x * nG + G] += outz[x + p * nx];
+            }
+            continue;
+        }
+
+        // Cg (column-major nxr x nf): coefficients of the tile's columns.
+        for (int f = 0; f < nf; f++) {
+            double* Cg_x = Cg + f * nxr;
+            npy_intp M = col_f[f];
+            if (!cplx) {
+                for (int x = 0; x < nx; x++)
+                    Cg_x[x] = C_xM[x * nM + M];
+            }
+            else {
+                double_complex ph = 1.0;
+                if (ph_W != NULL)
+                    ph = conj(ph_W[colW[coloff_t[t] + f]]);
+                const double_complex* C =
+                    (const double_complex*)C_xM;
+                for (int x = 0; x < nx; x++) {
+                    double_complex c = C[x * nM + M] * ph;
+                    Cg_x[2 * x] = creal(c);
+                    Cg_x[2 * x + 1] = cimag(c);
+                }
+            }
+        }
+
+        // out (nxr x npts) = Cg (nxr x nf) . Phi (nf x npts)
+        double one = 1.0;
+        double zero = 0.0;
+        dgemm_("N", "N", &nxr, &npts, &nf, &one, Cg, &nxr, Phi_pf, &nf,
+               &zero, out, &nxr);
+
+        for (int p = 0; p < npts; p++) {
+            int G = G_p[p];
+            if (G < 0)
+                continue;
+            const double* out_x = out + p * nxr;
+            if (!cplx)
+                for (int x = 0; x < nx; x++)
+                    psit_xG[x * nG + G] += out_x[x];
+            else
+                for (int x = 0; x < nx; x++) {
+                    psit_xG[2 * (x * nG + G)] += out_x[2 * x];
+                    psit_xG[2 * (x * nG + G) + 1] += out_x[2 * x + 1];
+                }
+        }
+    }
+    Py_END_ALLOW_THREADS
+
+    free(Cg);
+    free(out);
+    free(Psi);
+    Py_RETURN_NONE;
+}
+
 // Potential term of the LCAO forces (all three directions):
 //
 //   F_vM[c, M1] += sum_G dPhi_M1(G)/dr_c vt(G) dv sum_M2 rhoT[M1, M2] Phi_M2(G)

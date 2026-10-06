@@ -43,7 +43,9 @@ def test_lfc_tiles(monkeypatch, create_atoms):
         nt_G = basis.gd.zeros()
         basis.construct_density(rho_MM, nt_G, q=-1)
         F_av = basis.calculate_force_contribution(vt_G, rho_MM, q=-1)
-        results.append((V_MM, nt_G, F_av))
+        psit_nG = basis.gd.zeros(5)
+        basis.lcao_to_grid(C_MM[:5].copy(), psit_nG, q=-1)
+        results.append((V_MM, nt_G, F_av, psit_nG))
     assert basis._tiles() is not None
 
     for x0, x1 in zip(*results):
@@ -91,13 +93,18 @@ def test_lfc_tiles_kpts(monkeypatch, create_atoms, kpts):
         V_xMM = basis.calculate_potential_matrices(vt_G)
         nt_qG = []
         F_qav = []
+        psit_qnG = []
         for q in range(nq):
             nt_G = basis.gd.zeros()
             basis.construct_density(rho_MM, nt_G, q)
             nt_qG.append(nt_G)
             F_qav.append(basis.calculate_force_contribution(
                 vt_G, rho_MM.T.copy(), q))
-        results.append((V_xMM, np.array(nt_qG), np.array(F_qav)))
+            psit_nG = basis.gd.zeros(5, dtype=complex)
+            basis.lcao_to_grid(C_MM[:5].copy(), psit_nG, q)
+            psit_qnG.append(psit_nG)
+        results.append((V_xMM, np.array(nt_qG), np.array(F_qav),
+                        np.array(psit_qnG)))
     tiles = basis._tiles()
     assert tiles.per_volume
     used = tiles.nf_t > 0

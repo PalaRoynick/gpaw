@@ -217,6 +217,17 @@ class TiledFunctions:
         return (self.colW, np.ascontiguousarray(phase_W, dtype=complex),
                 self.mcol, self.mM, self.nfM_t, self.mcoloff_t)
 
+    def lcao_to_grid(self, C_xM, psit_xG, phase_W=None, block=256):
+        """psit_xG += sum_M C_xM Phi_M (with conj(Bloch phases) at k)."""
+        assert psit_xG.flags.c_contiguous and C_xM.dtype == psit_xG.dtype
+        extra = () if phase_W is None else (self._kdata(phase_W),)
+        for x1 in range(0, len(C_xM), block):
+            cgpaw.tiled_lcao_to_grid(
+                np.ascontiguousarray(C_xM[x1:x1 + block]),
+                psit_xG[x1:x1 + block],
+                self.Phi, self.phioff_t, self.nf_t,
+                self.cols, self.coloff_t, self.G_tp, *extra)
+
     def _phases(self, rho_MM, phase_W):
         """Density matrix and k-point data (None for real rho)."""
         if np.iscomplexobj(rho_MM):
