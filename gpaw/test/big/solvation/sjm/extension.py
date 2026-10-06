@@ -30,8 +30,8 @@ def adjusting_atoms(always_adjust: bool) -> tuple[Atoms, SJM]:
 
 
 # Changing parameters without discarding the wave functions, through the
-# SJM object handed to GPAW; it reads the live values back off the built
-# extension, calc.dft.sjm.
+# SJM object handed to GPAW; it reads the live values back off the running
+# potentiostat, calc.dft.potentiostat.
 
 def test_change_target_potential():
     atoms, sjm = converged_atoms()
@@ -46,7 +46,7 @@ def test_change_target_potential():
     assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
     # The SJM object reads the charge the potentiostat arrived at, while it
     # records the one it was given:
-    assert sjm.excess_electrons == calc.dft.sjm.excess_electrons
+    assert sjm.excess_electrons == calc.dft.potentiostat.excess_electrons
     assert sjm.excess_electrons == calc.results['excess_electrons']
     assert sjm.excess_electrons != pytest.approx(-0.00316)
     assert sjm.todict()['excess_electrons'] == -0.00316
@@ -96,7 +96,7 @@ def test_change_before_first_calculation():
 def test_step_reaches_the_next_geometry(always_adjust: bool):
     atoms, sjm = adjusting_atoms(always_adjust)
     atoms.get_potential_energy()
-    pot = atoms.calc.dft.sjm.potentiostat
+    pot = atoms.calc.dft.potentiostat
     charge = sjm.excess_electrons
 
     assert sjm.get_electrode_potential() == pytest.approx(ADJUST_TARGET,
@@ -126,7 +126,7 @@ def test_change_drops_a_staged_step():
     """An explicit charge - or turning always_adjust off - wins."""
     atoms, sjm = adjusting_atoms(always_adjust=True)
     atoms.get_potential_energy()
-    pot = atoms.calc.dft.sjm.potentiostat
+    pot = atoms.calc.dft.potentiostat
     assert pot.pending_excess_electrons is not None
 
     sjm.change(excess_electrons=-0.01)
@@ -146,9 +146,9 @@ def test_change_drops_a_staged_step():
 
 # Geometry of the jellium region:
 
-def _extent(sjm):
+def _extent(pot):
     """Actual z-extent of the jellium mask, in Angstrom."""
-    mask_r = sjm.potentiostat.charging.mask_r.gather(broadcast=True)
+    mask_r = pot.charging.mask_r.gather(broadcast=True)
     z_z = mask_r.desc.xyz()[0, 0, :, 2] * Bohr
     inside = mask_r.data.mean(axis=(0, 1)) > 0
     return z_z[inside].min(), z_z[inside].max()
@@ -160,12 +160,12 @@ def test_region_follows_atoms(fix_bottom: bool):
         excess_electrons=-0.01,
         jelliumregion={'bottom': -3.0, 'fix_bottom': fix_bottom})
     atoms.get_potential_energy()
-    bottom, top = _extent(atoms.calc.dft.sjm)
+    bottom, top = _extent(atoms.calc.dft.potentiostat)
     assert bottom == pytest.approx(7.0, abs=0.2)  # 3 Å above the atom
 
     atoms.positions[0, 2] += 1.0
     atoms.get_potential_energy()
-    new_bottom, new_top = _extent(atoms.calc.dft.sjm)
+    new_bottom, new_top = _extent(atoms.calc.dft.potentiostat)
     assert new_top == pytest.approx(top)  # the top is tied to the cell
     if fix_bottom:
         assert new_bottom == pytest.approx(bottom)

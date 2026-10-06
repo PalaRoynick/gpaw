@@ -15,9 +15,8 @@ from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
-    DirectOptimizer, JelliumCharging, JelliumRegion, Potentiostat,
-    build_jellium_region)
-from gpaw.solvation.extension import Solvation, SolvationExtension
+    DirectOptimizer, JelliumCharging, Potentiostat, build_jellium_region)
+from gpaw.solvation.extension import Solvation
 
 
 always_adjust_warning = 'always_adjust has no effect in constant-charge mode'
@@ -148,9 +147,8 @@ class SJM(ExtensionInput):
             slope=slope,
             mixer=mixer,
             slope_regression_depth=slope_regression_depth)
-        # Set by build(), so that this object can forward to the live
-        # extension:
-        self._extension: SJMExtension | None = None
+        # Set by build(): the running potential control.
+        self._potentiostat: Potentiostat | None = None
 
     # Once the calculation has been built, the parameters are read off it,
     # so that, e.g., excess_electrons follows the equilibration; before
@@ -159,10 +157,14 @@ class SJM(ExtensionInput):
     def __getattr__(self, name):
         params = self.__dict__.get('_params')  # no recursion when copying
         if params is not None and name in _KEYWORDS:
-            extension = self.__dict__.get('_extension')
-            if extension is not None:
-                return getattr(extension, name)
-            return params[name]
+            pot = self.__dict__.get('_potentiostat')
+            if pot is None:
+                return params[name]
+            if name == 'jelliumregion':
+                return pot.charging.region
+            for owner in (pot, pot.optimizer):
+                if hasattr(owner, name):
+                    return getattr(owner, name)
         raise AttributeError(
             f'{type(self).__name__!r} object has no attribute {name!r}')
 
@@ -178,7 +180,7 @@ class SJM(ExtensionInput):
         """List the parameters too, for help() and completion."""
         return [*super().__dir__(), *_KEYWORDS]
 
-    def build(self, builder: DFTComponentsBuilder) -> SJMExtension:
+    def build(self, builder: DFTComponentsBuilder) -> list[Extension]:
         solvation = self.solvation.build(builder)
         log = builder.log
         p = SimpleNamespace(**self._params)  # as given
@@ -211,7 +213,7 @@ class SJM(ExtensionInput):
             slope=p.slope,
             mixer=p.mixer,
             slope_regression_depth=p.slope_regression_depth)
-        # From here on the potentiostat holds the settings; SJMExtension
+        # From here on the potentiostat holds the settings; __getattr__
         # reads them back from it.
         potentiostat = Potentiostat(
             charging=charging,
@@ -222,7 +224,8 @@ class SJM(ExtensionInput):
             max_iters=p.max_iters,
             max_reruns=p.max_reruns,
             always_adjust=p.always_adjust,
-            grand_output=p.grand_output)
+            grand_output=p.grand_output,
+            log=log)
 
         log('Solvated jellium method (SJM):')
         log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
@@ -249,19 +252,21 @@ class SJM(ExtensionInput):
                 log('  always adjust: the charge is stepped on to the next '
                     'geometry')
 
-        self._extension = SJMExtension(solvation, potentiostat, log=log)
-        return self._extension
+        self._potentiostat = potentiostat
+        return [solvation, potentiostat]
 
     def change(self, **kwargs) -> None:
         """Change SJM parameters, before or after the first calculation.
 
-        Takes the same keywords as :meth:`~.SJMExtension.change`.  Before
-        the calculation has been built there is nothing to keep alive, so
-        the parameters are simply stored for ``build()`` to pick up;
-        afterwards the call is forwarded to the extension, which keeps
-        the density and the wave functions.  So keep the SJM object in a
-        variable and change the parameters through it, before and after
-        the first calculation alike::
+        Takes the parameters of :class:`SJM` (all but the solvation model),
+        with the same meaning.  This is the replacement for the legacy
+        ``calc.set(sj={...})``.  Before the calculation has been built the
+        parameters are simply stored for ``build()`` to pick up; afterwards
+        they reach the running calculation too, and the density and the
+        wave functions are kept, so the next ``get_potential_energy()``
+        continues the SCF loop from the current solution instead of starting
+        over.  So keep the SJM object in a variable and change the parameters
+        through it, before and after the first calculation alike::
 
             sjm = SJM(...)
             atoms.calc = GPAW(..., extensions=[sjm])
@@ -269,257 +274,10 @@ class SJM(ExtensionInput):
             sjm.change(target_potential=4.3)
             atoms.get_potential_energy()
 
-        (Once built, ``calc.dft.sjm.change(...)`` does the same.)
-        """
-        _check_keywords(kwargs)
-        for key, value in kwargs.items():
-            if key == 'jelliumregion':
-                value = value or {}  # as in __init__
-            self._params[key] = value
-        if self._extension is not None:
-            self._extension.change(**kwargs)
-
-    def _running(self, what: str) -> SJMExtension:
-        if self._extension is None:
-            raise RuntimeError(f'No calculation yet - run one before {what}.')
-        return self._extension
-
-    def get_electrode_potential(self) -> float:
-        """Electrode potential of the calculation, in V.
-
-        It is the potential of the last converged SCF loop, on the vacuum
-        scale: the Poisson solver zeroes the electrostatic potential in the
-        vacuum region, so the work function -- and with it the electrode
-        potential -- is simply minus the Fermi level.  It is the same number
-        as ``calc.results['electrode_potential']``, and NaN until an SCF
-        loop has converged.
-
-        Raises ``RuntimeError`` before the calculation has been built.
-        """
-        return self._running(
-            'asking for the electrode potential').get_electrode_potential()
-
-    def write_sjm_traces(self, path='sjm_traces', style='z',
-                         props=('potential', 'cavity', 'background_charge')):
-        """Write traces of the quantities in `props` to disk.
-
-        The electrostatic potential (``'potential'``), the solvent cavity
-        (``'cavity'``) and the jellium counter charge
-        (``'background_charge'``) of the calculation are written into the
-        directory `path`, one file per quantity: ``<prop>.txt`` for
-        ``style='z'`` (the default), averaged over x and y as a function of
-        z, and ``<prop>.cube`` on the full 3-D grid for ``style='cube'``::
-
-            atoms.get_potential_energy()
-            sjm.write_sjm_traces()  # sjm_traces/*.txt
-            sjm.write_sjm_traces(path='traces-3d', style='cube')
-
-        Note that ``'potential'`` is the electrostatic potential referenced
-        to the Fermi level, in eV, and that ``'background_charge'`` is the
-        jellium counter-charge density in e/Bohr^3 -- it integrates to minus
-        the number of excess electrons.
-
-        A ``'z'`` trace has one row per grid point of the full mesh, so traces
-        from an fd and a plane-wave run of the same cell line up row by row.
-        A real-space grid with a zero boundary in z does not store the z = 0
-        point; the row written for it repeats the first stored value and is
-        padding rather than a computed value.
-
-        This needs a calculation to have been run, and raises
-        ``RuntimeError`` before.  It is collective: call it on all ranks.
-        """
-        self._running('writing SJM traces').write_sjm_traces(
-            path=path, style=style, props=props)
-
-    def todict(self):
-        dct = self.solvation.todict()
-        del dct['dipolelayer']  # always the same for SJM
-        dct.update({key: self._params[key] for key in _KEYWORDS})
-        return dct
-
-
-#: The SJM parameters: the keywords of SJM.__init__ other than those of the
-#: solvation model.  This is the one place they are listed -- change(),
-#: todict() and the keyword check all read them from here.
-_KEYWORDS = tuple(name for name in inspect.signature(SJM.__init__).parameters
-                  if name not in {'self', 'cavity', 'dielectric',
-                                  'interactions'})
-
-
-class SJMExtension(Extension):
-    """SJM inside a running calculation.
-
-    The settings of the potential control, and the state of the
-    equilibration, are kept by :attr:`potentiostat`; this class forwards the
-    GPAW hooks to it and to the solvation, and does the reporting.
-    """
-
-    name = 'sjm'
-
-    def __init__(self,
-                 solvation: SolvationExtension,
-                 potentiostat: Potentiostat,
-                 *,
-                 log):
-        self.solvation = solvation
-        self.potentiostat = potentiostat
-        self.log = log
-        # The converged calculation, set by post_converged():
-        self._dft = None
-
-    # Most settings are read straight off their owner by __getattr__ below;
-    # the few here need a definition of their own -- a second name, or a
-    # narrowed type.  All of them are read-only: change() is the only way to
-    # set a parameter, see __setattr__.
-    @property
-    def excess_electrons(self) -> float:
-        """Number of excess electrons (kept by the potentiostat)."""
-        return self.potentiostat.excess_electrons
-
-    # GPAW sums Extension.charge to find the charge of the cell; without it
-    # the Poisson solver refuses a charged cell with mixed boundary
-    # conditions.  One name for both would be better.
-    charge = excess_electrons
-
-    @property
-    def region(self) -> JelliumRegion:
-        """Shape of the jellium counter-charge region.
-
-        This is what the ``jelliumregion`` keyword was turned into.
-        """
-        return self.potentiostat.charging.region
-
-    # The keyword spelling of the same region -- note that it is the
-    # JelliumRegion that was built from the keyword, not the dict given.
-    jelliumregion = region
-
-    def __setattr__(self, name, value):
-        """Refuse to set a parameter, instead of setting it uselessly."""
-        if name in _KEYWORDS or name in {'charge', 'region'}:
-            raise AttributeError(
-                f'{name!r} is read-only on a running calculation: use '
-                f'change({name}=...) on the SJM object instead.  Assigning '
-                'here would reach neither the jellium nor the results, so '
-                'the next get_potential_energy() would hand back the old '
-                'ones.')
-        super().__setattr__(name, value)
-
-    # The SJM keywords live on the potentiostat and, for the slope settings,
-    # on its optimizer.  Rather than repeating each name as a property, read
-    # it off whichever of the two owns it.  __getattr__ only runs when normal
-    # lookup fails, so it never shadows a real attribute, and driving it from
-    # _KEYWORDS means a new SJM keyword is readable here for free.
-    def __getattr__(self, name):
-        if name in _KEYWORDS:
-            potentiostat = self.__dict__.get('potentiostat')  # no recursion
-            for owner in (potentiostat,
-                          getattr(potentiostat, 'optimizer', None)):
-                if hasattr(owner, name):
-                    return getattr(owner, name)
-        raise AttributeError(
-            f'{type(self).__name__!r} object has no attribute {name!r}')
-
-    def __dir__(self):
-        """List the forwarded settings too, for help() and completion."""
-        return [*super().__dir__(), *_KEYWORDS]
-
-    def create_poisson_solver(self, grid, pw, charge, xp):
-        return self.solvation.create_poisson_solver(
-            grid, pw, charge=charge, xp=xp)
-
-    def post_scf_convergence(self,
-                             ibzwfs,
-                             nelectrons,
-                             occ_calc,
-                             mixer,
-                             log) -> bool:
-        return self.potentiostat.post_scf_convergence(
-            ibzwfs, nelectrons, occ_calc, mixer, log)
-
-    def get_electrode_potential(self) -> float:
-        """See :meth:`SJM.get_electrode_potential`."""
-        return self.potentiostat.electrode_potential
-
-    def post_converged(self, dft) -> None:
-        """Keep the converged calculation; the potentiostat finishes it."""
-        self._dft = dft
-        self.potentiostat.post_converged(dft)
-
-    def write_sjm_traces(self, path='sjm_traces', style='z',
-                         props=('potential', 'cavity', 'background_charge')):
-        """See :meth:`SJM.write_sjm_traces`."""
-        dft = self._dft
-        if dft is None:
-            raise RuntimeError('No results yet - run a calculation before '
-                               'writing SJM traces.')
-        if style not in {'z', 'cube'}:
-            raise ValueError(f'Unknown style: {style!r}')
-
-        comm = self.solvation.comm  # world
-        if comm.rank == 0:
-            os.makedirs(path, exist_ok=True)
-        comm.barrier()
-
-        for prop in props:
-            a_r = self._trace_data(prop, dft).gather(broadcast=True)
-            if style == 'z':
-                if comm.rank == 0:
-                    _write_trace_in_z(a_r, os.path.join(path, prop + '.txt'))
-            else:
-                import ase.io
-                # ase.io.write() carries ASE's @parallel_function wrapper: it
-                # runs on the master rank and then broadcasts the outcome to
-                # the whole world.  Every rank therefore has to call it -- ASE
-                # does the rank-0 guarding itself.  Calling it inside a guard
-                # of our own leaves that broadcast unmatched, and the stale
-                # message is then picked up by the next collective, which is
-                # synchronize_atoms() at the start of the next calculation.
-                ase.io.write(os.path.join(path, prop + '.cube'),
-                             dft.atoms, data=a_r.data)
-        comm.barrier()
-
-    def _trace_data(self, prop: str, dft) -> UGArray:
-        """One of the quantities that write_sjm_traces() can write out."""
-        grid = self.solvation.grid
-        if prop == 'potential':
-            vHt_x = dft.potential.vHt_x  # Hartree
-            if isinstance(vHt_x, UGArray):
-                vHt_r = vHt_x.copy()
-            else:
-                vHt_g = vHt_x.gather()
-                vHt_r = grid.empty()
-                vHt_r.scatter_from(vHt_g.ifft(grid=grid.new(comm=None))
-                                   if vHt_g is not None else None)
-            vHt_r.data[:] = (vHt_r.data - self.potentiostat.fermi_level) * Ha
-            return vHt_r
-        if prop == 'background_charge':
-            mask_r = self.potentiostat.charging.mask_r
-            charge_r = mask_r.new()
-            charge_r.data[:] = -self.excess_electrons * mask_r.data
-            return charge_r
-        if prop == 'cavity':
-            try:
-                g_g = self.solvation.cavity.g_g
-            except AttributeError as exc:
-                raise ValueError('This cavity has no g_g attribute - '
-                                 'cannot write a cavity trace.') from exc
-            return grid.from_data(g_g)
-        raise ValueError(f'Unknown property: {prop!r}')
-
-    def change(self, **kwargs) -> None:
-        """Change SJM parameters without throwing away the wave functions.
-
-        Takes the parameters of :class:`SJM` (all but the solvation model),
-        with the same meaning.  This is the replacement for
-        the legacy ``calc.set(sj={...})``; it is normally reached through
-        :meth:`~.SJM.change` on the object handed to GPAW.
-
-        The density and the wave functions are kept, so the next
-        ``get_potential_energy()`` continues the SCF loop from the current
-        solution instead of starting over.  When the target potential is
-        changed and the slope of potential vs. charge is known, a first step
-        in the number of excess electrons is taken right away -- unless
-        ``excess_electrons`` is given explicitly, which then wins.
+        When the target potential is changed and the slope of potential vs.
+        charge is known, a first step in the number of excess electrons is
+        taken right away -- unless ``excess_electrons`` is given explicitly,
+        which then wins.
 
         The parameters can all be read back by their keyword names --
         ``sjm.target_potential``, ``sjm.tol``, ``sjm.slope``, ... -- but not
@@ -529,18 +287,22 @@ class SJMExtension(Extension):
         ``get_potential_energy()`` run the SCF loop again.
         """
         _check_keywords(kwargs)
-
-        log = self.log
-        pot = self.potentiostat
-        opt = pot.optimizer
+        for key, value in kwargs.items():
+            if key == 'jelliumregion':
+                value = value or {}  # as in __init__
+            self._params[key] = value
+        pot = self._potentiostat
+        if pot is None:
+            return
+        dft, log, opt = pot.dft, pot.log, pot.optimizer
         assert isinstance(opt, DirectOptimizer)  # the only kind SJM builds
         rerun = False  # does the SCF loop have to run again?
 
         if 'grand_output' in kwargs:
             pot.grand_output = kwargs['grand_output']
-            if self._dft is not None and self._dft.results:
+            if dft is not None and dft.results:
                 # Only which energy is reported changes:
-                pot.write_results(self._dft.results, log)
+                pot.write_results(dft.results, log)
         for key in ['max_iters', 'max_reruns', 'max_potential_stepsize']:
             if key in kwargs:
                 setattr(pot, key, kwargs[key])
@@ -572,14 +334,14 @@ class SJMExtension(Extension):
                 log(f'Slope set to {opt.slope:.4f} V/electron.')
 
         if 'jelliumregion' in kwargs:
-            if self._dft is None:
+            if dft is None:
                 raise RuntimeError('No results yet - run a calculation '
                                    'before changing the jellium region.')
             charging = pot.charging
             charging.region = build_jellium_region(
-                kwargs['jelliumregion'], cavity=self.solvation.cavity)
+                kwargs['jelliumregion'], cavity=dft.solvation.cavity)
             mask_r, z1, z2 = charging.region.mask(charging.mask_r.desc,
-                                                  self._dft.relpos_ac)
+                                                  dft.relpos_ac)
             charging.set_region(mask_r)
             log(f'Jellium region changed to {z1:.3f} to {z2:.3f}  # Å')
             rerun = True
@@ -610,8 +372,7 @@ class SJMExtension(Extension):
             log(f'Excess electrons changed to {self.excess_electrons:+.5f}.')
             rerun = True
 
-        if rerun and self._dft is not None:
-            dft = self._dft
+        if rerun and dft is not None:
             dft.results.clear()
             density = dft.density
             dft.ibzwfs.calculate_occs(
@@ -622,46 +383,127 @@ class SJMExtension(Extension):
                 density, dft.ibzwfs, dft.potential.vHt_x)
             pot.attempts = []
 
-    def move_atoms(self, relpos_ac) -> None:
-        # The wrapped solvation extension is not itself in the extension
-        # list, so its cavity only follows the atoms if we forward the move:
-        self.solvation.move_atoms(relpos_ac)
-        # A fresh budget of equilibration attempts for the new geometry,
-        # starting from the value staged by always_adjust, if any:
-        if self.potentiostat.new_geometry() is not None:
-            self.log(f'Excess electrons adjusted to '
-                     f'{self.excess_electrons:+.5f} for the new geometry '
-                     '(always_adjust).')
-        charging = self.potentiostat.charging
-        zs = charging.move(relpos_ac, charging.mask_r.desc)
-        if zs is not None:
-            self.log(f'Jellium region moved to {zs[0]:.3f} to '
-                     f'{zs[1]:.3f}  # Å')
+    def _running(self, what: str) -> Potentiostat:
+        if self._potentiostat is None:
+            raise RuntimeError(f'No calculation yet - run one before {what}.')
+        return self._potentiostat
 
-    def update1(self, nt_r):
-        self.solvation.update1(nt_r)
-        self.potentiostat.charging.add_charge(nt_r)
+    def get_electrode_potential(self) -> float:
+        """Electrode potential of the calculation, in V.
 
-    def update1pw(self, nt_g):
-        self.solvation.update1pw(nt_g)
-        self.potentiostat.charging.add_charge_pw(nt_g)
+        It is the potential of the last converged SCF loop, on the vacuum
+        scale: the Poisson solver zeroes the electrostatic potential in the
+        vacuum region, so the work function -- and with it the electrode
+        potential -- is simply minus the Fermi level.  It is the same number
+        as ``calc.results['electrode_potential']``, and NaN until an SCF
+        loop has converged.
 
-    def update2(self, nt_r, vHt_r, vt_sr) -> None:
-        self.solvation.update2(nt_r, vHt_r, vt_sr)
+        Raises ``RuntimeError`` before the calculation has been built.
+        """
+        return self._running(
+            'asking for the electrode potential').electrode_potential
 
-    def update2pw(self, nt_g, vHt_h, vt_sr) -> None:
-        self.solvation.update2pw(nt_g, vHt_h, vt_sr)
+    def write_sjm_traces(self, path='sjm_traces', style='z',
+                         props=('potential', 'cavity', 'background_charge')):
+        """Write traces of the quantities in `props` to disk.
 
-    def get_energy_contributions(self) -> dict[str, float]:
-        return self.solvation.get_energy_contributions()
+        The electrostatic potential (``'potential'``), the solvent cavity
+        (``'cavity'``) and the jellium counter charge
+        (``'background_charge'``) of the calculation are written into the
+        directory `path`, one file per quantity: ``<prop>.txt`` for
+        ``style='z'`` (the default), averaged over x and y as a function of
+        z, and ``<prop>.cube`` on the full 3-D grid for ``style='cube'``::
 
-    def force_contribution(self, nt_r, vHt_r):
-        # The wrapped solvation extension is not in the extension list, so
-        # its force correction only reaches the total if we forward it.
-        # Without this the forces are inconsistent with the energy and a
-        # relaxation walks uphill.  The jellium itself is a fixed external
-        # background and exerts no force on the atoms.
-        return self.solvation.force_contribution(nt_r, vHt_r)
+            atoms.get_potential_energy()
+            sjm.write_sjm_traces()  # sjm_traces/*.txt
+            sjm.write_sjm_traces(path='traces-3d', style='cube')
+
+        Note that ``'potential'`` is the electrostatic potential referenced
+        to the Fermi level, in eV, and that ``'background_charge'`` is the
+        jellium counter-charge density in e/Bohr^3 -- it integrates to minus
+        the number of excess electrons.
+
+        A ``'z'`` trace has one row per grid point of the full mesh, so traces
+        from an fd and a plane-wave run of the same cell line up row by row.
+        A real-space grid with a zero boundary in z does not store the z = 0
+        point; the row written for it repeats the first stored value and is
+        padding rather than a computed value.
+
+        This needs a calculation to have been run, and raises
+        ``RuntimeError`` before.  It is collective: call it on all ranks.
+        """
+        pot = self._running('writing SJM traces')
+        dft = pot.dft
+        if dft is None:
+            raise RuntimeError('No results yet - run a calculation before '
+                               'writing SJM traces.')
+        if style not in {'z', 'cube'}:
+            raise ValueError(f'Unknown style: {style!r}')
+
+        comm = dft.solvation.comm  # world
+        if comm.rank == 0:
+            os.makedirs(path, exist_ok=True)
+        comm.barrier()
+
+        for prop in props:
+            a_r = self._trace_data(prop, pot, dft).gather(broadcast=True)
+            if style == 'z':
+                if comm.rank == 0:
+                    _write_trace_in_z(a_r, os.path.join(path, prop + '.txt'))
+            else:
+                import ase.io
+                # ase.io.write() carries ASE's @parallel_function wrapper: it
+                # runs on the master rank and then broadcasts the outcome to
+                # the whole world.  Every rank therefore has to call it -- ASE
+                # does the rank-0 guarding itself.  Calling it inside a guard
+                # of our own leaves that broadcast unmatched, and the stale
+                # message is then picked up by the next collective, which is
+                # synchronize_atoms() at the start of the next calculation.
+                ase.io.write(os.path.join(path, prop + '.cube'),
+                             dft.atoms, data=a_r.data)
+        comm.barrier()
+
+    def _trace_data(self, prop: str, pot: Potentiostat, dft) -> UGArray:
+        """One of the quantities that write_sjm_traces() can write out."""
+        grid = dft.solvation.grid
+        if prop == 'potential':
+            vHt_x = dft.potential.vHt_x  # Hartree
+            if isinstance(vHt_x, UGArray):
+                vHt_r = vHt_x.copy()
+            else:
+                vHt_g = vHt_x.gather()
+                vHt_r = grid.empty()
+                vHt_r.scatter_from(vHt_g.ifft(grid=grid.new(comm=None))
+                                   if vHt_g is not None else None)
+            vHt_r.data[:] = (vHt_r.data - pot.fermi_level) * Ha
+            return vHt_r
+        if prop == 'background_charge':
+            mask_r = pot.charging.mask_r
+            charge_r = mask_r.new()
+            charge_r.data[:] = -self.excess_electrons * mask_r.data
+            return charge_r
+        if prop == 'cavity':
+            try:
+                g_g = dft.solvation.cavity.g_g
+            except AttributeError as exc:
+                raise ValueError('This cavity has no g_g attribute - '
+                                 'cannot write a cavity trace.') from exc
+            return grid.from_data(g_g)
+        raise ValueError(f'Unknown property: {prop!r}')
+
+    def todict(self):
+        dct = self.solvation.todict()
+        del dct['dipolelayer']  # always the same for SJM
+        dct.update({key: self._params[key] for key in _KEYWORDS})
+        return dct
+
+
+#: The SJM parameters: the keywords of SJM.__init__ other than those of the
+#: solvation model.  This is the one place they are listed -- change(),
+#: todict() and the keyword check all read them from here.
+_KEYWORDS = tuple(name for name in inspect.signature(SJM.__init__).parameters
+                  if name not in {'self', 'cavity', 'dielectric',
+                                  'interactions'})
 
 
 def _write_trace_in_z(a_r: UGArray, filename: str) -> None:

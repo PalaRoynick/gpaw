@@ -23,7 +23,8 @@ def test_h(gpaw_new, mode, in_tmp_dir):
     params['mode'] = mode
 
     if gpaw_new:
-        atoms.calc = GPAW(extensions=[SJM(**sjm, **solvation)], **params)
+        extensions = [SJM(**sjm, **solvation)]
+        atoms.calc = GPAW(extensions=extensions, **params)
         energy = atoms.get_potential_energy()
         pot = -atoms.calc.get_fermi_level()
     else:
@@ -34,7 +35,7 @@ def test_h(gpaw_new, mode, in_tmp_dir):
     assert pot == pytest.approx(7.5, abs=0.01)
 
     if gpaw_new:
-        check_grand_canonical_results(atoms, energy)
+        check_grand_canonical_results(atoms, energy, extensions[0])
 
     atoms.write('h.traj')
     if gpaw_new:
@@ -63,10 +64,9 @@ def h_atom_inputs():
     return atoms, params, sjm, solvation
 
 
-def check_grand_canonical_results(atoms, energy):
+def check_grand_canonical_results(atoms, energy, sjm):
     """The grand potential - not the canonical energy - goes to ASE."""
     calc = atoms.calc
-    sjm = calc.dft.sjm
     results = calc.results
 
     assert results['excess_electrons'] == pytest.approx(sjm.excess_electrons)
@@ -163,17 +163,16 @@ def test_cube_traces_are_written_collectively(monkeypatch, in_tmp_dir):
     world is faked here to keep the regression inside the serial suite too.
     """
     atoms, params, sjm, solvation = h_atom_inputs()
-    atoms.calc = GPAW(mode='fd', extensions=[SJM(**sjm, **solvation)],
-                      **params)
+    sjm = SJM(**sjm, **solvation)
+    atoms.calc = GPAW(mode='fd', extensions=[sjm], **params)
     atoms.get_potential_energy()
-    extension = atoms.calc.dft.sjm
 
     fake = OneRankOfTwo()
     monkeypatch.setattr(ase.parallel.world, 'comm', fake)
-    monkeypatch.setattr(extension.solvation, 'comm', fake)
+    monkeypatch.setattr(atoms.calc.dft.solvation, 'comm', fake)
 
-    extension.write_sjm_traces(path='cubes', style='cube',
-                               props=('potential', 'background_charge'))
+    sjm.write_sjm_traces(path='cubes', style='cube',
+                         props=('potential', 'background_charge'))
     # Two broadcasts per property -- the length header and the pickle -- from
     # a rank that writes no file of its own.  None at all would mean the call
     # was skipped on this rank, which is the bug.
@@ -182,7 +181,7 @@ def test_cube_traces_are_written_collectively(monkeypatch, in_tmp_dir):
     # The z-style traces go through our own writer, which is not collective,
     # so there the rank-0 guard is the right thing and must stay:
     fake.broadcasts.clear()
-    extension.write_sjm_traces(path='zs', style='z', props=('potential',))
+    sjm.write_sjm_traces(path='zs', style='z', props=('potential',))
     assert fake.broadcasts == []
 
 

@@ -71,7 +71,7 @@ background_charge.txt:
           can be used to write cube files on the 3-D grid, instead of traces.
 
 Both ``write_sjm_traces()`` and ``get_electrode_potential()`` need a calculation to have been run, and ``write_sjm_traces()`` must be called on all MPI ranks, as any other calculator method.
-Without the ``SJM`` object at hand---after reading a ``.gpw`` file, say---the SJM extension of the calculation offers the same, as ``calc.dft.sjm.write_sjm_traces()`` and ``calc.dft.sjm.get_electrode_potential()``.
+After reading a ``.gpw`` file, the ``SJM`` object is ``calc.params.extensions[0]`` again.
 
 Our traces showing the solvent region and the jellium region are plotted below.
 The black dots indicate the atom's `z` positions.

@@ -10,6 +10,7 @@ from ase.units import Bohr, Ha, _e
 from gpaw import ConvergenceError
 from gpaw.core import PWArray, UGArray
 from gpaw.mpi import broadcast_float
+from gpaw.extensions import Extension
 from gpaw.extensions.jellium import JelliumExtension
 
 
@@ -551,8 +552,12 @@ class PotentialConvergenceError(ConvergenceError):
     """Raised if the electrode potential did not equilibrate."""
 
 
-class Potentiostat:
+class Potentiostat(Extension):
     """Holds a target electrode potential by adjusting an excess charge.
+
+    It is the GPAW extension of the potential control: it puts the charge
+    into the density, moves it with the atoms and equilibrates after each
+    SCF loop.
 
     Composes three pluggable parts:
 
@@ -608,7 +613,11 @@ class Potentiostat:
     grand_output:
         Report the grand-potential energy rather than the canonical energy
         in the results (see :meth:`write_results`).  Default: True.
+    log:
+        Where the equilibration and the moves of the region are reported.
     """
+
+    name = 'potentiostat'
 
     def __init__(self,
                  *,
@@ -621,7 +630,8 @@ class Potentiostat:
                  max_iters: int = 10,
                  max_reruns: int = 10,
                  always_adjust: bool = False,
-                 grand_output: bool = True):
+                 grand_output: bool = True,
+                 log=None):
         self.charging = charging
         self.target_potential = target_potential
         self.optimizer = optimizer
@@ -632,6 +642,8 @@ class Potentiostat:
         self.max_reruns = max_reruns
         self.always_adjust = always_adjust
         self.grand_output = grand_output
+        self.log = log
+        self.dft = None  # the last converged calculation
 
         # Consecutive rejected (halved) steps since the last accepted one:
         self.reruns = 0
@@ -663,6 +675,9 @@ class Potentiostat:
     @excess_electrons.setter
     def excess_electrons(self, q: float) -> None:
         self.charging.excess_electrons = q
+
+    # The name GPAW sums the charge of the cell from:
+    charge = excess_electrons
 
     @property
     def niters(self) -> int:
@@ -704,6 +719,24 @@ class Potentiostat:
         if self.optimizer is not None:
             self.optimizer.forget_attempts()
         return staged
+
+    def update1(self, nt_r) -> None:
+        self.charging.add_charge(nt_r)
+
+    def update1pw(self, nt_g) -> None:
+        self.charging.add_charge_pw(nt_g)
+
+    def move_atoms(self, relpos_ac) -> None:
+        # A fresh budget of equilibration attempts for the new geometry,
+        # starting from the value staged by always_adjust, if any:
+        if self.new_geometry() is not None:
+            self.log(f'Excess electrons adjusted to '
+                     f'{self.excess_electrons:+.5f} for the new geometry '
+                     '(always_adjust).')
+        zs = self.charging.move(relpos_ac, self.charging.mask_r.desc)
+        if zs is not None:
+            self.log(f'Jellium region moved to {zs[0]:.3f} to '
+                     f'{zs[1]:.3f}  # Å')
 
     def post_scf_convergence(self,
                              ibzwfs,
@@ -769,6 +802,7 @@ class Potentiostat:
         relaxation, say -- then gets a fresh equilibration budget and a
         fresh record to report.
         """
+        self.dft = dft
         log = dft.log
         (fermi_level,) = dft.ibzwfs.fermi_levels
         self.fermi_level = broadcast_float(float(fermi_level), dft.comm)

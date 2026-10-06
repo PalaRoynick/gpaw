@@ -1,8 +1,8 @@
 """Changing SJM parameters without discarding the wave functions.
 
 Parameters are changed through the SJM object handed to GPAW, which
-forwards to the built extension, calc.dft.sjm, and reads the live values
-back off it.
+reaches the running potentiostat, calc.dft.potentiostat, and reads the
+live values back off it.
 """
 import numpy as np
 import pytest
@@ -63,7 +63,7 @@ def test_grand_output_toggle(in_tmp_dir, monkeypatch):
     def finished_again(dft):
         raise AssertionError('post_converged() called again')
 
-    monkeypatch.setattr(calc.dft.sjm.potentiostat, 'post_converged',
+    monkeypatch.setattr(calc.dft.potentiostat, 'post_converged',
                         finished_again)
     sjm.change(grand_output=False)
     canonical = calc.results['energy']
@@ -80,10 +80,8 @@ def test_grand_output_toggle(in_tmp_dir, monkeypatch):
 
 def test_unknown_keyword(built):
     atoms, sjm = built
-    # Both routes check the keywords, before anything is changed:
-    for obj in [sjm, atoms.calc.dft.sjm]:
-        with pytest.raises(ValueError, match='Unexpected SJM keyword'):
-            obj.change(excess_electron=-0.01)
+    with pytest.raises(ValueError, match='Unexpected SJM keyword'):
+        sjm.change(excess_electron=-0.01)
 
 
 def test_nothing_to_report_before_an_scf_loop(built):
@@ -100,7 +98,7 @@ def test_settings_live_on_the_potentiostat(built):
     sjm.change(max_iters=3, max_reruns=4, max_potential_stepsize=1.5,
                grand_output=False, always_adjust=True, mixer=0.5,
                slope_regression_depth=3, slope=-20.0)
-    pot = atoms.calc.dft.sjm.potentiostat
+    pot = atoms.calc.dft.potentiostat
     assert (pot.max_iters, pot.max_reruns, pot.max_potential_stepsize,
             pot.grand_output, pot.always_adjust) == (3, 4, 1.5, False, True)
     opt = pot.optimizer
@@ -117,7 +115,7 @@ def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
     """
     atoms, sjm = h_atoms(excess_electrons=0.0, tol=0.001)
     atoms.calc.initialize(atoms)
-    pot = atoms.calc.dft.sjm.potentiostat
+    pot = atoms.calc.dft.potentiostat
 
     sjm.change(tol=0.05)  # constant-charge mode
     assert pot.tol == pytest.approx(0.05)
@@ -136,13 +134,13 @@ def test_parameters_are_readable_but_read_only(built):
     """Every keyword reads back under its own name; none can be assigned.
 
     Once the calculation is built, the SJM object reads them off the
-    extension, so the two agree.
+    potentiostat, so the two agree.
     """
     atoms, sjm = built
-    ext = atoms.calc.dft.sjm
+    pot = atoms.calc.dft.potentiostat
     assert sjm.target_potential == 7.5
     assert sjm.tol == TOL
-    assert sjm.excess_electrons == ext.charge  # Extension API
+    assert sjm.excess_electrons == pot.charge  # Extension API
     assert sjm.max_iters == 10
     assert sjm.max_reruns == 10
     assert sjm.max_potential_stepsize == 2
@@ -151,7 +149,7 @@ def test_parameters_are_readable_but_read_only(built):
     assert sjm.mixer == 0.2
     assert sjm.slope_regression_depth == 4
     # The region that was built, while the dict given is what is recorded:
-    assert sjm.jelliumregion is ext.jelliumregion is ext.region
+    assert sjm.jelliumregion is pot.charging.region
     assert sjm.todict()['jelliumregion'] == {}
 
     for key, value in [('excess_electrons', -0.01),
@@ -159,13 +157,10 @@ def test_parameters_are_readable_but_read_only(built):
                        ('tol', 0.01),
                        ('slope', -1.0),
                        ('jelliumregion', {})]:
-        for obj in [sjm, ext]:
-            with pytest.raises(AttributeError, match='change'):
-                setattr(obj, key, value)
-    with pytest.raises(AttributeError, match='change'):
-        ext.charge = -0.01
+        with pytest.raises(AttributeError, match='change'):
+            setattr(sjm, key, value)
 
     # ... while change() does get through, to both:
     sjm.change(tol=0.01)
-    assert sjm.tol == ext.tol == 0.01
+    assert sjm.tol == pot.tol == 0.01
     assert sjm.todict()['tol'] == 0.01

@@ -13,5 +13,6 @@ def test_always_adjust_without_target_potential(in_tmp_dir):
     atoms, _ = h_atoms(excess_electrons=-0.01, always_adjust=True)
     with pytest.warns(UserWarning, match='always_adjust'):
         atoms.get_potential_energy()
-    assert atoms.calc.dft.sjm.excess_electrons == -0.01
-    assert atoms.calc.dft.sjm.potentiostat.pending_excess_electrons is None
+    pot = atoms.calc.dft.potentiostat
+    assert pot.excess_electrons == -0.01
+    assert pot.pending_excess_electrons is None

@@ -311,12 +311,9 @@ like::
 The ``write_sjm_traces()`` calls are collective: run them on all ranks, as
 you would any other calculator method.
 
-Once a calculation has been run, the SJM extension of the calculation,
-``calc.dft.sjm``, offers all of this as well, for when the ``SJM`` object
-is not at hand---after reading a ``.gpw`` file, say:
-``calc.dft.sjm.write_sjm_traces()``, ``calc.dft.sjm.get_electrode_potential()``
-and so on.  (Its ``charge`` is the number of excess electrons again, under
-the name GPAW's extension interface uses for it.)
+After reading a ``.gpw`` file, the ``SJM`` object is
+``calc.params.extensions[0]`` again.  The running parts of the calculation
+are ``calc.dft.potentiostat`` and ``calc.dft.solvation``.
 
 References
 ==========
@@ -337,9 +334,6 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrochemistry.SJM
    :members: change, write_sjm_traces, get_electrode_potential
-
-.. autoclass:: gpaw.extensions.electrochemistry.sjm.SJMExtension
-   :members: change
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: equilibrate, new_geometry, set_target_potential,

@@ -76,8 +76,7 @@ def test_sjm(gpaw_new, in_tmp_dir, mode):
     atoms.calc.write(f'Au-{gpaw_new}-{mode}.gpw')
     if gpaw_new:
         calc = GPAW(f'Au-{gpaw_new}-{mode}.gpw')
-        print(atoms.calc.dft.sjm)
-        print(calc.dft.sjm)
+        assert isinstance(calc.params.extensions[0], SJM)
 
 
 if __name__ == '__main__':
