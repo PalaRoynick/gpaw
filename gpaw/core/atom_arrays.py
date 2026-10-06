@@ -453,6 +453,83 @@ class AtomArrays:
         b_axi.scatter_from(a_axi)
         b_axi.matrix.redist(self.matrix)
 
+    def iter_by_band(self, buffer_ami, out_axi=None):
+        from gpaw.core.arrays import a2a_stuff
+
+        nm = buffer_ami.mydims[0]
+        b = self.mydims[0]
+        comm = self.layout.atomdist.comm
+        size = comm.size
+
+        ssize_a = np.array([prod(shape) for shape in self.layout.shape_a])
+        ng = sum(ssize_a)
+
+        # The following assumes too much... Maybe
+        basesize_r = np.array([
+            sum(ssize_a[self.layout.atomdist.rank_a == rank]) for rank in range(size)])
+        baseoffset_r = np.zeros_like(basesize_r)
+        baseoffset_r[1:] = np.cumsum(basesize_r[:-1])
+        myng = prod(self.myshape)
+
+        assert prod(buffer_ami.myshape) == ng
+
+        if out_axi is not None:
+            assert out_axi.myshape == self.myshape
+            assert out_axi.layout is self.layout
+
+        buffer_data = buffer_ami.data
+        extra = prod(self.mydims[1:])
+        assert extra == prod(buffer_ami.mydims[1:])
+        assert extra == 1, 'Stop it with the non-collinear'
+        for m, start in enumerate(range(0, b, comm.size * nm)):
+            end = min(start + comm.size * nm, b)
+            in_data = self.data[start:end]
+
+            for offset_index in range(0, nm):
+                tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                N = tmp.shape[0]
+                ssize_r = np.zeros(size, int)
+                ssize_r[:N] = myng
+                soffset_r = np.arange(size) * myng
+                soffset_r[N:] = 0
+                if comm.rank < N:
+                    rsize_r = basesize_r
+                    roffset_r = baseoffset_r
+                else:
+                    rsize_r = np.zeros(size, int)
+                    roffset_r = np.zeros(size, int)
+
+                comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                               buffer_data[offset_index], rsize_r, roffset_r)
+
+            mybands = np.arange(start + comm.rank, end, comm.size)
+            yield mybands, buffer_ami[:, :len(mybands)]
+
+            if out_axi is None:
+                continue
+
+            out_data = out_axi.data[start:end]
+            for offset_index in range(0, nm):
+                tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                N = tmp.shape[0]
+                ssize_r = np.zeros(size, int)
+                ssize_r[:N] = myng
+                soffset_r = np.arange(size) * myng
+                soffset_r[N:] = 0
+                if comm.rank < N:
+                    rsize_r = basesize_r
+                    roffset_r = baseoffset_r
+                else:
+                    rsize_r = np.zeros(size, int)
+                    roffset_r = np.zeros(size, int)
+                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                               tmp.ravel(), ssize_r, soffset_r)
+
+
+        # We add one extra yield to ensure cleanup
+        yield np.array([]), buffer_ami[:, :0]
+
+
     def to_lower_triangle(self):
         """Convert `N*N` matrices to `N*(N+1)/2` vectors.
 

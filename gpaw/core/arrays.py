@@ -145,20 +145,19 @@ class XArray(Generic[DomainType], XP):
             assert out_nX.myshape == self.myshape
             assert out_nX.desc is self.desc
 
-        buffer = buffer_mX.data
+        buffer_data = buffer_mX.data
         extra = prod(self.mydims[1:])
         assert extra == prod(buffer_mX.mydims[1:])
         assert extra == 1, 'Stop it with the non-collinear'
         for m, start in enumerate(range(0, b, comm.size * nm)):
             end = min(start + comm.size * nm, b)
             in_data = self.data[start:end]
-            buffer_data = buffer_mX.data
 
             for offset_index in range(0, nm):
                 tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if tmp.size > 0:
+                if True or rsize_r[comm.rank] > 0:
                     comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
                                    buffer_data[offset_index], rsize_r, roffset_r)
                 else:
@@ -166,7 +165,7 @@ class XArray(Generic[DomainType], XP):
                     comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
                                    tmp.ravel(), rsize_r, roffset_r)
 
-            mybands = np.arange(start + comm.rank, end, comm.size * nm)
+            mybands = np.arange(start + comm.rank, end, comm.size)
             yield mybands, buffer_mX[:len(mybands)]
 
             if out_nX is None:
@@ -177,13 +176,16 @@ class XArray(Generic[DomainType], XP):
                 tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if tmp.size > 0:
+                if True or tmp.size > 0:
                     comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
                                    tmp.ravel(), ssize_r, soffset_r)
                 else:
                     # No data on this rank
                     comm.alltoallv(tmp.ravel(), rsize_r, roffset_r,
                                    tmp.ravel(), ssize_r, soffset_r)
+
+        # We add one extra yield to ensure cleanup
+        yield np.array([]), buffer_mX[:0]
 
     def sanity_check(self) -> None:
         """Sanity check."""

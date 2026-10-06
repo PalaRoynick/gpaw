@@ -15,6 +15,7 @@ from gpaw.new.pwfd.davidson import sliced_preconditioner
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
+from gpaw.mpi import serial_comm
 
 # from gpaw.utilities import as_real_dtype
 
@@ -121,9 +122,9 @@ class PPCG(PWFDEigensolver):
 
         if self.max_blocksize is None:
             if xp == np:
-                self.max_blocksize = 32
+                self.max_blocksize = 16
             else:
-                self.max_blocksize = 512
+                self.max_blocksize = 256
 
         if isinstance(self.wf_grid, PWDesc):
             S = self.wf_grid.comm.size
@@ -202,6 +203,7 @@ class PPCG(PWFDEigensolver):
 
         with tracectx('Initialize'):
             dH = partial(potential.deltaH, spin=wfs.spin)
+
             M_nn = self.M_nn
 
             xp = M_nn.xp
@@ -224,9 +226,11 @@ class PPCG(PWFDEigensolver):
             P3_ani = P_ani.new()
             Ptemp_ani = P_ani.new()
             P_ani.block_diag_multiply(dS_aii, out_ani=Ptemp_ani)
-            Pbuf_abi = P_ani.layout.empty(
+
+            layout0 = P_ani.layout.new(atomdist=serial_comm)
+            Pbuf_abi = layout0.empty(
                 (self.nblocksizes, ) + psit_nX.dims[1:])
-            HPbuf_abi = P_ani.layout.empty(
+            HPbuf_abi = layout0.empty(
                 (self.nblocksizes - self.blocksize, ) + psit_nX.dims[1:])
 
             domain_comm = psit_nX.desc.comm
@@ -238,12 +242,21 @@ class PPCG(PWFDEigensolver):
 
             buffer_array_nX = psit_nX.create_work_buffer(self.data_buffers[0])
 
-            buff_bX = psit_nX.desc.empty(
+            desc0 = psit_nX.desc.new(comm=None)
+            buff_bX = desc0.empty(
                 (self.nblocksizes, ) +
-                psit_nX.dims[1:], xp=psit_nX.xp)
-            Hbuff_bX = psit_nX.desc.empty(
+                 psit_nX.dims[1:], xp=psit_nX.xp)
+            Hbuff_bX = desc0.empty(
                 (self.nblocksizes - self.blocksize, ) +
-                psit_nX.dims[1:], xp=psit_nX.xp)
+                 psit_nX.dims[1:], xp=psit_nX.xp)
+
+            dS_Aii = dS_aii.gather(copy=True, broadcast=True)
+            dH_Asii = potential.dH_asii.gather(copy=True, broadcast=True)
+
+            vt_sR = potential.vt_sR.gather(broadcast=True)
+            Ht_args = list(Ht.args)
+            Ht_args[0] = vt_sR
+            Ht_local = partial(Ht.func, *Ht_args, **Ht.keywords)
 
         with tracectx('Residual'):
             calculate_residuals(wfs.psit_nX,
@@ -299,29 +312,53 @@ class PPCG(PWFDEigensolver):
 
             with tracectx('Block-diagonal Update'):
                 new_eigs_n = np.zeros_like(wfs.myeig_n)  # New eigenvalues
-                for j in range(0, loop_limit, self.max_blocksize):
-                    block_slice_base = \
-                        slice(min(j, active_bands),
-                              min(j + self.max_blocksize, active_bands))
-                    block = \
-                        block_slice_base.stop - block_slice_base.start
-                    block_slice = active_indicies[block_slice_base]
+                mbs = self.blocksize
 
-                    buff_bX.matrix.data[:block] = \
-                        psit_nX.matrix.data[block_slice]
-                    Pbuf_abi.matrix.data[:block] = \
-                        P_ani.matrix.data[block_slice]
-                    buff_bX.matrix.data[block:2 * block] = \
-                        residual_nX.matrix.data[block_slice]
-                    Pbuf_abi.matrix.data[block:2 * block] = \
-                        P2_ani.matrix.data[block_slice]
+                iterables = (
+                    psit_nX.iter_by_band(
+                        buff_bX[0 * mbs:1 * mbs], out_nX=psit_nX),
+                    residual_nX.iter_by_band(
+                        buff_bX[1 * mbs:2 * mbs], out_nX=residual_nX),
+                    P_ani.iter_by_band(
+                        Pbuf_abi[:, 0 * mbs:1 * mbs], out_axi=P_ani),
+                    P2_ani.iter_by_band(
+                        Pbuf_abi[:, 1 * mbs:2 * mbs], out_axi=None))
+                    # XXX: Maybe the residual P_ani is useful?
+
+                if self.include_cg:
+                    iterables += (
+                        P_nX.iter_by_band(
+                            buff_bX[2 * mbs:3 * mbs], out_nX=P_nX),
+                        P3_ani.iter_by_band(
+                            Pbuf_abi[:, 2 * mbs:3 * mbs], out_axi=P3_ani))
+
+
+                for iter_info in zip(*iterables):
+                    mybands = iter_info[0][0]
+                    if len(mybands) == 0:
+                        # Nothing to do.
+                        continue
+
+                    for info in iter_info:
+                        assert all(info[0] == mybands)
+
+                    block = len(mybands)
+                    if block < mbs:
+                        # Squish the buffer array together
+                        buff_bX.data[block:2 * block] = \
+                            buff_bX.data[mbs:mbs + block]
+                        Pbuf_abi.data[block:2 * block] = \
+                            Pbuf_abi.data[mbs:mbs + block]
+                        if self.include_cg:
+                            buff_bX.data[2 * block:3 * block] = \
+                                buff_bX.data[mbs:mbs + block]
+                            Pbuf_abi.data[2 * block:3 * block] = \
+                                Pbuf_abi.data[mbs:mbs + block]
+
+                    block_slice = mybands
 
                     if i > 0 and self.include_cg:
                         nblocks = 3 * block
-                        buff_bX.matrix.data[2 * block:3 * block] = \
-                            P_nX.matrix.data[block_slice]
-                        Pbuf_abi.matrix.data[2 * block:3 * block] = \
-                            P3_ani.matrix.data[block_slice]
                     else:
                         nblocks = 2 * block
 
@@ -350,7 +387,7 @@ class PPCG(PWFDEigensolver):
                                      xp=xp)
 
                     Pbuf_abi[:, block:nblocks].block_diag_multiply(
-                        dS_aii, out_ani=HPbuf_abi[:, :nblocks - block])
+                        dS_Aii, out_ani=HPbuf_abi[:, :nblocks - block])
                     buff_bX[block:nblocks].matrix_elements(
                         buff_bX[:nblocks], cc=True, out=MBuf_bb,
                         domain_sum=False, symmetric=False)
@@ -362,7 +399,6 @@ class PPCG(PWFDEigensolver):
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         S_bb += buffer_bb
-                    domain_comm.sum(S_bb)
 
                     # Scale the diagonal elements, to improve numerical
                     # stability. Here, we use the expontent -0.25, which
@@ -380,9 +416,12 @@ class PPCG(PWFDEigensolver):
                     if not self.promote_inner_dtype:
                         MBuf_bb.data = H_bb[block:nblocks]
 
-                    Ht(buff_bX[block:nblocks], out=Hbuff_bX[:nblocks - block])
-                    dH(Pbuf_abi[:, block:nblocks],
-                       out_ani=HPbuf_abi[:, :nblocks - block])
+                    Ht_local(buff_bX[block:nblocks],
+                             out=Hbuff_bX[:nblocks - block])
+                    # dH_Aii(Pbuf_abi[:, block:nblocks],
+                    #        out_ani=HPbuf_abi[:, :nblocks - block])
+                    Pbuf_abi[:, block:nblocks].block_diag_multiply(dH_Asii,
+                        out_ani=HPbuf_abi[:, :nblocks - block])
                     Hbuff_bX[:nblocks - block].matrix_elements(
                         buff_bX[:nblocks],
                         cc=True, out=MBuf_bb,
@@ -395,7 +434,6 @@ class PPCG(PWFDEigensolver):
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         H_bb[:] += buffer_bb[:]
-                    domain_comm.sum(H_bb)
 
                     H_bb[:block, :block] = xp.diag(wfs.myeig_n[block_slice])
 
@@ -448,34 +486,37 @@ class PPCG(PWFDEigensolver):
 
                     with tracectx('rotations', gpu=xp is not np):
                         # Ye olde updates
+                        # First rotate the wavefunctions
                         buff_bX.matrix.data[:block] = \
                             cmin[:, :block] @ buff_bX.matrix.data[:block]
                         Pbuf_abi.matrix.data[:block] = \
                             cmin[:, :block] @ Pbuf_abi.matrix.data[:block]
-                        buff_bX.matrix.data[block:2 * block] = \
+
+                        # Now onto the residual or cg if available
+                        dynslice = slice(2 * mbs, 2 * mbs + block) \
+                            if self.include_cg else \
+                            slice(mbs, mbs + block)
+
+                        buff_bX.matrix.data[dynslice] = \
                             cmin[:, block:] @ buff_bX.matrix.data[
                                 block:nblocks]
-                        Pbuf_abi.matrix.data[block:2 * block] = \
+                        Pbuf_abi.matrix.data[dynslice] = \
                             cmin[:, block:] @ Pbuf_abi.matrix.data[
                                 block:nblocks]
 
-                        if self.include_cg:
-                            P_nX.matrix.data[block_slice] = \
-                                buff_bX.matrix.data[block:2 * block]
-                            P3_ani.matrix.data[block_slice] = \
-                                Pbuf_abi.matrix.data[block:2 * block]
+                        # Add the Hpsi to the wavefunctions
+                        buff_bX.matrix.data[:block] += \
+                            buff_bX.matrix.data[dynslice]
+                        Pbuf_abi.matrix.data[:block] += \
+                            Pbuf_abi.matrix.data[dynslice]
 
-                        psit_nX.matrix.data[block_slice] = \
-                            buff_bX.matrix.data[:block] \
-                            + buff_bX.matrix.data[block:2 * block]
-                        P_ani.matrix.data[block_slice] = \
-                            Pbuf_abi.matrix.data[:block] \
-                            + Pbuf_abi.matrix.data[block:2 * block]
-
+                        # Finally, calculate new Hpsi
+                        Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
 
             wfs.eig_n[:] = 0
             wfs.myeig_n[:] = new_eigs_n
             band_comm.sum(wfs._eig_n)
+            domain_comm.sum(wfs._eig_n)
             wfs.orthonormalized = False
             if (self.allow_dynamic_breakout and break_after_update) or \
                     i >= self.niter - 1:
@@ -485,7 +526,7 @@ class PPCG(PWFDEigensolver):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
                     wfs.subspace_diagonalize(
-                        Ht, dH,
+                        None, dH,
                         psit2_nX=residual_nX,
                         data_buffer=self.data_buffers[0],
                         calculate_energy=False,
@@ -493,7 +534,6 @@ class PPCG(PWFDEigensolver):
                 else:
                     wfs.orthonormalize(data_buffer=self.data_buffers[0],
                                        rotate_also=[residual_nX,])
-                    Ht(psit_nX, out=residual_nX)
 
                 calculate_residuals(wfs.psit_nX,
                                     residual_nX,
