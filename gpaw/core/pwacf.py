@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from math import pi
 from typing import TYPE_CHECKING
 
@@ -156,12 +157,12 @@ class PWLFC:  # (BaseLFC)
 
         self.comm = pw.comm
 
-        if isinstance(integrals, float):
-            self.integral_a = np.zeros(len(functions)) + integrals
+        if isinstance(integrals, Iterable):
+            self.integral_a = np.array(integrals)
         elif integrals is None:
             self.integral_a = np.zeros(len(functions))
         else:
-            self.integral_a = np.array(integrals)
+            self.integral_a = np.zeros(len(functions)) + integrals
 
         # Compute emiGR_Ga on the fly?
         self.save_memory = save_memory or xp is not np
