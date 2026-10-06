@@ -92,7 +92,7 @@ def calculate_diff_overlap_matrix(setup: Setup, w: ArrayND, w_name: str, dD_p: A
         else:
             return calculate_diff_overlap_matrix_gaunt_separate(setup, w[0], dD_p)
     else:
-        assert False
+        assert False, "TODO"
         return calculate_3phiproj_coeffs_lebedev(setup, w, dD_p)
 
 

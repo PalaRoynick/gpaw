@@ -630,8 +630,12 @@ class iKS:
                 self.dD_asp[a][kpt.s],
                 self.mix_paw_error,
             )
-            vdiffpaw_nn += 2 * \
-                np.einsum("ni,ij,mj->nm", P_ni.conj(), Phi_ii, P_ni).real
+            if np.isrealobj(vdiffpaw_nn):
+                vdiffpaw_nn += 2 * \
+                    np.einsum("ni,ij,mj->nm", P_ni.conj(), Phi_ii, P_ni).real
+            else:
+                vdiffpaw_nn += 2 * \
+                    np.einsum("ni,ij,mj->nm", P_ni.conj(), Phi_ii, P_ni)
         self.gd.comm.sum(vdiffpaw_nn)
         vdiff_nn += vdiffpaw_nn
         return vdiff_nn
