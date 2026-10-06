@@ -533,7 +533,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     eigenvalues: np.ndarray = None,  # eV
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
-                    ignore_xc_potential: bool = False
+                    ignore_xc_potential: bool = False,
+                    zora: bool = False
                     ) -> SOCResult:
     """Calculate SOC eigenstates.
 
@@ -558,6 +559,8 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         ignore_xc_potential:
             Ignore XC-contribution to dU/dr for the effective potential
             (dU/dr is dominated by the Hartree part).
+        zora:
+            Include ZORA correction.
 
     Returns a BZWaveFunctions object covering the whole BZ.
     """
@@ -577,6 +580,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
         occ_calc_params=(occcalc.todict()
                          if occcalc is not None else None),
         ignore_xc_potential=ignore_xc_potential,
+        zora=zora,
         projected=projected)
     return SOCResult(ibzwfs, e_band, v_Kmn, spin_projections_Kmv)
 

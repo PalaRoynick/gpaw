@@ -55,6 +55,10 @@ Git master branch
   the calculation of the Kohn-Sham potential.  Use
   ``parallel={'distribute_density': True}`` to enable this optimization.
 
+* Spin-orbit coupling can now be calculated with the ZORA correction, which
+  is important for heavy elements:
+  :func:`~gpaw.spinorbit.soc_eigenstates`.
+
 
 Version 26.7.0
 ==============
