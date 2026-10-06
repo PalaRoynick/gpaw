@@ -48,7 +48,8 @@ class PWHamiltonian(Hamiltonian):
             if pw_local is None:
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
-        psit_G = pw_local.empty(xp=xp).data
+        # psit_G = pw_local.empty(xp=xp).data
+        psit_G = pw_local.empty(1, xp=xp)
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
         mynbands = psit_nG.mydims[0]
@@ -59,18 +60,15 @@ class PWHamiltonian(Hamiltonian):
         vt_R_data = xp.asarray(vt_R.data)
         vtpsit_G = xp.empty_like(psit_G)
 
-        for n1 in range(0, mynbands, domain_comm.size):
-            n2 = min(n1 + domain_comm.size, mynbands)
-            psit_nG[n1:n2].gather_all(psit_G)
-            if domain_comm.rank < n2 - n1:
-                plan.ifft_sphere(psit_G, pw_local)
-                tmp_R *= vt_R_data
-                plan.fft()
-                vtpsit_G = tmp_Q.ravel()[Q_G]
-                vtpsit_G *= 1.0 / tmp_R.size
-                psit_G *= e_kin_G
-                vtpsit_G += psit_G
-            out_nG[n1:n2].scatter_from_all(vtpsit_G)
+        for psit_G in psit_nG.iter_by_band(psit_G, out_nG):
+            plan.ifft_sphere(psit_G.data[0], pw_local)
+            tmp_R *= vt_R_data
+            plan.fft()
+            vtpsit_G = tmp_Q.ravel()[Q_G]
+            vtpsit_G *= 1.0 / tmp_R.size
+            psit_G.data *= e_kin_G
+            psit_G.data += vtpsit_G
+
 
     def apply_mgga(self,
                    dedtaut_R: UGArray,

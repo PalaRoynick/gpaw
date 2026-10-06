@@ -531,36 +531,6 @@ class PWArray(XArray[PWDesc]):
 
         return out if not isinstance(out, Empty) else None
 
-    def gather_all(self, out: np.ndarray | PWArray) -> None:
-        """Gather coefficients from self[r] on rank r.
-
-        On rank r, an array of all G-vector coefficients will be returned.
-        These will be gathered from self[r] on all the cores.
-        """
-        assert len(self.dims) == 1
-        pw = self.desc
-        comm = pw.comm
-
-        if isinstance(out, PWArray):
-            out = out.data
-
-        if comm.size == 1:
-            out[:] = self.data[0]
-            return
-
-        N = self.dims[0]
-        assert N <= comm.size
-
-        ng = pw.shape[0]
-        myng = pw.myshape[0]
-        maxmyng = pw.maxmysize
-
-        ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
-            comm, N, ng, myng, maxmyng)
-
-        comm.alltoallv(self.data, ssize_r, soffset_r,
-                       out, rsize_r, roffset_r)
-
     def scatter_from(self, data: Array1D | PWArray | None = None) -> None:
         """Scatter plane-wave coefficients from rank-0 to all ranks."""
         if isinstance(data, PWArray):
@@ -594,28 +564,6 @@ class PWArray(XArray[PWDesc]):
                     data=self.data,
                     dist=(comm, self.comm.size, self.desc.comm.size))
         fro.redist(to)
-
-    def scatter_from_all(self, a_G: np.ndarray) -> None:
-        """Scatter all coefficients from rank r to self on other cores."""
-        assert len(self.dims) == 1
-        pw = self.desc
-        comm = pw.comm
-        if comm.size == 1:
-            self.data[:] = a_G
-            return
-
-        N = self.dims[0]
-        assert N <= comm.size
-
-        ng = pw.shape[0]
-        myng = pw.myshape[0]
-        maxmyng = pw.maxmysize
-
-        rsize_r, roffset_r, ssize_r, soffset_r = a2a_stuff(
-            comm, N, ng, myng, maxmyng)
-
-        comm.alltoallv(a_G, ssize_r, soffset_r,
-                       self.data, rsize_r, roffset_r)
 
     def integrate(self, other: PWArray | None = None) -> np.ndarray:
         """Integral of self or self time cc(other)."""
@@ -1002,20 +950,6 @@ def pw_to_grid(x_h: PWArray | None, grid: UGDesc) -> UGArray:
     x_r.scatter_from(x0_h.ifft(grid=grid.new(comm=None))
                      if x0_h is not None else None)
     return x_r
-
-
-def a2a_stuff(comm, N, ng, myng, maxmyng):
-    """Create arrays for MPI alltoallv call."""
-    ssize_r = np.zeros(comm.size, int)
-    ssize_r[:N] = myng
-    soffset_r = np.arange(comm.size) * myng
-    soffset_r[N:] = 0
-    roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
-    rsize_r = np.zeros(comm.size, int)
-    if comm.rank < N:
-        rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
-        rsize_r[-1] = ng - roffset_r[-1]
-    return ssize_r, soffset_r, rsize_r, roffset_r
 
 
 class Empty:

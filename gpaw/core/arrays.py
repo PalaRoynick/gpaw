@@ -131,6 +131,48 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
+    def iter_by_band(self, buffer_mX, out_nX=None):
+        nm = buffer_mX.dims[0]
+        b = self.mydims[0]
+        comm = self.desc.comm
+        size = comm.size
+
+        ng = self.desc.shape[0]
+        myng = self.desc.myshape[0]
+        maxmyng = self.desc.maxmysize
+
+        if out_nX is not None:
+            assert out_nX.myshape == self.myshape
+            assert out_nX.desc is self.desc
+        else:
+            out_nX = self
+
+        buffer = buffer_mX.data
+        extra = prod(self.dims[1:])
+        assert extra == prod(buffer_mX.dims[1:])
+        for m, start in enumerate(range(0, b, comm.size)):
+            in_data = self.data[start:start + comm.size * nm]
+            out_data = out_nX.data[start:start + comm.size * nm]
+            buffer_data = buffer_mX.data
+
+            ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
+                comm, in_data.shape[0], ng, myng, maxmyng)
+
+            for offset_index in range(0, nm):
+                if offset_index * nm >= in_data.shape[0]:
+                    offset_index -= 1
+                    break
+                comm.alltoallv(in_data[offset_index * nm], ssize_r, soffset_r,
+                               buffer_data[offset_index], rsize_r, roffset_r)
+
+            yield buffer_mX[:offset_index+1]
+
+            for offset_index in range(0, nm):
+                if offset_index * nm >= out_data.shape[0]:
+                    break
+                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                               out_data[offset_index * nm], ssize_r, soffset_r)
+
     def sanity_check(self) -> None:
         """Sanity check."""
         pass
@@ -360,6 +402,20 @@ class XArray(Generic[DomainType], XP):
 
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
+
+
+def a2a_stuff(comm, N, ng, myng, maxmyng):
+    """Create arrays for MPI alltoallv call."""
+    ssize_r = np.zeros(comm.size, int)
+    ssize_r[:N] = myng
+    soffset_r = np.arange(comm.size) * myng
+    soffset_r[N:] = 0
+    roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
+    rsize_r = np.zeros(comm.size, int)
+    if comm.rank < N:
+        rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
+        rsize_r[-1] = ng - roffset_r[-1]
+    return ssize_r, soffset_r, rsize_r, roffset_r
 
 
 def _parallel_me(psit1_nX: XArray,
