@@ -397,7 +397,8 @@ class PPCG(PWFDEigensolver):
                         H_bb[:] += buffer_bb[:]
                     domain_comm.sum(H_bb)
 
-                    H_bb[:block, :block] = xp.diag(wfs.myeig_n[block_slice])
+                    eigmat = xp.diag(wfs.myeig_n[block_slice])
+                    H_bb[:block, :block] = eigmat
                     S_bb[:block, :block] = xp.eye(block)
                     MS_bb.tril2full()
 
@@ -447,6 +448,14 @@ class PPCG(PWFDEigensolver):
 
                     with tracectx('rotations', gpu=xp is not np):
                         # Ye olde updates
+
+                        Hbuff_bX.matrix.data[:block] = \
+                            cmin[:, block:] @ Hbuff_bX.matrix.data[
+                                :nblocks - block]
+                        Hbuff_bX.matrix.data[:block] += \
+                            cmin[:, :block] @ eigmat @ \
+                            buff_bX.matrix.data[:block]
+
                         buff_bX.matrix.data[:block] = \
                             cmin[:, :block] @ buff_bX.matrix.data[:block]
                         Pbuf_abi.matrix.data[:block] = \
@@ -471,6 +480,10 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[:block] \
                             + Pbuf_abi.matrix.data[block:2 * block]
 
+                        residual_nX.matrix.data[block_slice] = \
+                            Hbuff_bX.matrix.data[:block]
+
+
             wfs.eig_n[:] = 0
             wfs.myeig_n[:] = new_eigs_n
             band_comm.sum(wfs._eig_n)
@@ -489,8 +502,8 @@ class PPCG(PWFDEigensolver):
                         calculate_energy=False,
                         scalapack_parameters=self.scalapack_parameters)
                 else:
-                    wfs.orthonormalize(residual_nX)
-                    Ht(psit_nX, out=residual_nX)
+                    wfs.orthonormalize(data_buffer=self.data_buffers[0],
+                                       rotate_also=[residual_nX,])
 
                 calculate_residuals(wfs.psit_nX,
                                     residual_nX,

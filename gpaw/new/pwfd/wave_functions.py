@@ -188,7 +188,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         self.psit_nX.add_ked(occ_n, taut_sR[self.spin])
 
     @trace
-    def orthonormalize(self, psit2_nX=None):
+    def orthonormalize(self, psit2_nX=None, data_buffer=None, rotate_also=None):
         r"""Orthonormalize wave functions.
 
         Computes the overlap matrix:::
@@ -221,8 +221,11 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         P_ani = self.P_ani
 
         P2_ani = P_ani.new()
-        if psit2_nX is None:
+        if psit2_nX is None and data_buffer is None:
             psit2_nX = psit_nX.new()
+        elif psit2_nX is None:
+            psit2_nX = psit_nX
+
         dS_aii = self.setups.get_overlap_corrections(
             P_ani.layout.atomdist,
             self.xp,
@@ -239,11 +242,20 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         domain_comm.broadcast(S.data, 0)
         # S now contains L^*
 
-        S.multiply(psit_nX, out=psit2_nX)
+        S.multiply(psit_nX, out=psit2_nX, data_buffer=data_buffer)
         S.multiply(P_ani, out=P2_ani)
         psit_nX.data[:] = psit2_nX.data
         P_ani.data[:] = P2_ani.data
         self.orthonormalized = True
+
+        if rotate_also is not None:
+            assert data_buffer is not None  # It is possible to handle this
+            # case, however, we currently don't need it, so I leave it out for
+            # simplicity.
+            assert isinstance(rotate_also, list)  # Same as above
+            for array in rotate_also:
+                S.multiply(array, out=array, data_buffer=data_buffer)
+
 
     @trace
     def build_hamiltonian(self,
