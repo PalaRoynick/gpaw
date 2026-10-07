@@ -509,6 +509,7 @@ class Matrix(XP):
 
         if comm2.rank == 0:
             LH = L.multiply(H)
+            print(LH)
             LH.multiply(L, opb='C', out=H)
             r, c, b = suggest_blocking(M, comm.size)
             eig_n = H.eigh(scalapack=(comm, r, c, b))
