@@ -333,8 +333,8 @@ prepare-libxc:
   before_script:
     - export PREFIX=`realpath $PREFIX`
   script:
-    - python -m pip install cmake
-    - export PATH="$HOME/.local/bin:$PATH"
+    - pip install cmake
+    - export PATH="$CI_PROJECT_DIR/.local/bin:$PATH"
     - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - >
