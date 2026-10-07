@@ -122,14 +122,9 @@ class PPCG(PWFDEigensolver):
 
         if self.max_blocksize is None:
             if xp == np:
-                self.max_blocksize = 16
+                self.max_blocksize = 32
             else:
                 self.max_blocksize = 256
-
-        if isinstance(self.wf_grid, PWDesc):
-            S = self.wf_grid.comm.size
-            # Use a multiple of S for maximum efficiency
-            self.max_blocksize = int(np.ceil(self.max_blocksize / S)) * S
 
         super()._initialize(ibzwfs)
         if self.include_cg:
