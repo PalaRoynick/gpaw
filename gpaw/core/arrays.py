@@ -140,12 +140,17 @@ class XArray(Generic[DomainType], XP):
         if self.comm.size == 1:
             # Fast serial implementation
             if out_nX is not None:
-                if out_nX is not self:
-                    out_nX.data[:] = self.data
                 for m, start in enumerate(range(0, b, comm.size * nm)):
                     end = min(start + comm.size * nm, b)
                     mybands = np.arange(start, end)
-                    yield mybands, out_nX.data[start:end]
+                    buffer = buffer_mX.data[:len(mybands)]
+                    buffer[:] = self.data[start:end]
+                    yield mybands, buffer_mX[:len(mybands)]
+                    out_nX.data[start:end] = buffer
+
+            # We add one extra yield to ensure cleanup
+            yield np.array([]), []
+            return
 
         ng = self.desc.shape[0]
         myng = self.desc.myshape[0]
@@ -186,7 +191,7 @@ class XArray(Generic[DomainType], XP):
                                tmp.ravel(), ssize_r, soffset_r)
 
         # We add one extra yield to ensure cleanup
-        yield np.array([]), buffer_mX[:0]
+        yield np.array([]), []
 
     def sanity_check(self) -> None:
         """Sanity check."""
