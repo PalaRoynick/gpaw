@@ -155,6 +155,14 @@ class iKS:
         If True, reports the L1 error of the all-electron density at the final iteration.
         (disable this if the used setups does not support all-electron densities, e.g. ``ae`` or ``hgh``).
 
+    apply_occupation_correction : bool, default=True
+        Include the response of the occupation numbers (``-df/de`` and the
+        accompanying Fermi-level shift) in the adjoint states. Supports a
+        common Fermi level, ``fixmagmom=True`` (one Fermi level per spin), a
+        fixed Fermi level, and fixed occupation numbers (``'fixed'`` and
+        ``'fixed-uniform'``, where the response vanishes). See
+        :meth:`iKS.calculate_eta`.
+
     nxc_kwargs : dict, optional
         Additional keyword arguments passed to the NumericalXC functional.
         This options are ignored if ``calc.hamiltonian.xc`` is already a :class:`~gpaw.xc.numericalxc.NumericalXC`.
@@ -540,12 +548,11 @@ class iKS:
                 vdiff_nn = self.calculate_vdiff_matrix_elements(kpt)
                 dd.vdiff_nn = vdiff_nn
 
-        # TODO: implement for multiple fermi levels (fixedmagmom=True)
         if self.apply_occupation_correction:
             with self.timer("Occupation correction"):
-                eta = self.calculate_eta()
+                eta_s = self.calculate_eta()
         else:
-            eta = 0.0
+            eta_s = np.zeros(wfs.nspins)
             self.dfde_un = np.zeros(
                 (len(wfs.kpt_u), self.wfs.bd.nbands), dtype=float)
 
@@ -558,6 +565,7 @@ class iKS:
 
         with self.timer("Adjoint equations"):
             for kpt, dd, dfde_n in zip(wfs.kpt_u, self.dd_u, self.dfde_un):
+                eta = eta_s[kpt.s]
                 with self.timer("OECO"):
                     p0_nG = self.calculate_p_expansion(
                         dd, dd.vdiff_nn, eta, dfde_n)
@@ -658,30 +666,91 @@ class iKS:
         vdiff_nn += vdiffpaw_nn
         return vdiff_nn
 
-    def calculate_eta(self) -> float:
-        self.dfde_un = []
-        enum = 0.0
-        denom = 0.0
-        if self.wfs.collinear and self.nspins == 1:
+    def calculate_eta(self) -> ArrayND:
+        """Lagrange multipliers for the Fermi-level response of the occupation numbers.
+        gives the correction `eta` in::
+
+            p_m += 1/2 sum_{n in block(m)} (vdiff_nm - eta delta_nm) dfde_n psi_n
+
+        with ``eta = sum_n vdiff_nn dfde_n / sum_n dfde_n``. The sums run over
+        all states sharing a Fermi level.
+        """
+        wfs = self.wfs
+        occ = wfs.occupations
+        nspins = wfs.nspins
+        if wfs.collinear and nspins == 1:
             degeneracy = 2
         else:
             degeneracy = 1
-        for kpt, dd in zip(self.wfs.kpt_u, self.dd_u):
-            f_n, dfde_n, _ = self.wfs.occupations.distribution(
-                kpt.eps_n * Ha, self.wfs.fermi_levels * Ha)
-            # 1/eV -> 1/Ha
-            dfde_n = dfde_n * (Ha * kpt.weightk * degeneracy)
+        fix_fermi_level = bool(getattr(self.calc.scf, 'fix_fermi_level', False))
+
+        fixmagmom = getattr(occ, 'name', '') == 'fixmagmom'
+        dist = occ.occ if fixmagmom else occ
+        dist_name = getattr(dist, 'name', 'unknown')
+        fermi_levels = wfs.fermi_levels
+        if fermi_levels is None:
+            fermi_levels = np.zeros(2 if fixmagmom else 1)
+        fermi_levels = np.asarray(fermi_levels, dtype=float) * Ha
+
+        if hasattr(dist, 'distribution'):
+            fixed_occupations = False
+        elif dist_name in ('fixed-uniform', 'unknown', 'mom') or \
+                hasattr(dist, 'f_sn'):
+            # eigenvalue independent occupation numbers
+            fixed_occupations = True
+        else:
+            raise NotImplementedError(
+                f"Occupation correction is not implemented for occupations "
+                f"'{dist_name}'. Use apply_occupation_correction=False.")
+
+        self.dfde_un = []
+        enum_s = np.zeros(nspins)
+        denom_s = np.zeros(nspins)
+        nbad_blocks = 0
+        for kpt, dd in zip(wfs.kpt_u, self.dd_u):
+            if fixed_occupations:
+                dfde_n = np.zeros(len(kpt.eps_n))
+                for bm in dd.blocks_occ:
+                    f_b = kpt.f_n[bm]
+                    if f_b.max() - f_b.min() > self.occ_tol:
+                        nbad_blocks += 1
+            else:
+                mu = fermi_levels[kpt.s] if fixmagmom else fermi_levels[0]
+                _, dfde_n, _ = dist.distribution(kpt.eps_n * Ha, mu)
+                # 1/eV -> 1/Ha, and the same k-point/spin weight as kpt.f_n
+                dfde_n = dfde_n * (Ha * kpt.weightk * degeneracy)
             self.dfde_un.append(dfde_n)
             for n in dd.occ:
-                enum += dd.vdiff_nn[n, n].real * dfde_n[n]
-                denom += dfde_n[n]
-        enum = self.wfs.kptband_comm.sum_scalar(enum)
-        denom = self.wfs.kptband_comm.sum_scalar(denom)
-        if abs(denom) < 1e-20:
-            denom = np.inf
-        eta = enum / denom
-        self.fmt.log(f'occupation correction eta: {eta:.4e}')
-        return eta
+                enum_s[kpt.s] += dd.vdiff_nn[n, n].real * dfde_n[n]
+                denom_s[kpt.s] += dfde_n[n]
+        wfs.kptband_comm.sum(enum_s)
+        wfs.kptband_comm.sum(denom_s)
+        nbad_blocks = wfs.kptband_comm.sum_scalar(nbad_blocks)
+
+        if not fixmagmom:
+            # pool both spin channels
+            enum_s[:] = enum_s.sum()
+            denom_s[:] = denom_s.sum()
+
+        eta_s = np.zeros(nspins)
+        if not fix_fermi_level:
+            ok = np.abs(denom_s) > 1e-20
+            eta_s[ok] = enum_s[ok] / denom_s[ok]
+
+        if fixed_occupations:
+            if nbad_blocks > 0:
+                self.fmt.log(
+                    f'WARNING: {nbad_blocks} degenerate block(s) with unequal '
+                    'fixed occupation numbers; the density is not differentiable'
+                    )
+        elif fix_fermi_level:
+            self.fmt.log('occupation correction eta: 0 (fixed Fermi level)')
+        elif fixmagmom:
+            self.fmt.log('occupation correction eta (per spin): '
+                         + ', '.join(f'{eta:.4e}' for eta in eta_s))
+        else:
+            self.fmt.log(f'occupation correction eta: {eta_s[0]:.4e}')
+        return eta_s
 
     def get_realspace_psit(self, kpt) -> ArrayND:
         if self.wfs.mode == "lcao":
