@@ -203,8 +203,8 @@ class FFTWPlans(FFTPlans):
         if self._overwrite_flags is not None:
             flags = self._overwrite_flags
 
-        assert self.tmp_nR.dtype != np.complex64
-        assert self.tmp_nR.dtype != np.float32
+        assert self.tmp_R.dtype != np.complex64
+        assert self.tmp_R.dtype != np.float32
         self._fftplan = cgpaw.FFTWPlan(self.tmp_R, self.tmp_Q, -1, flags)
         self._ifftplan = cgpaw.FFTWPlan(self.tmp_Q, self.tmp_R, 1, flags)
 
