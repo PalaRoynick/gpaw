@@ -16,7 +16,7 @@ from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, xp=np):
-        self.blocksize = 8
+        self.blocksize = 4
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
         self.plan = self.grid_local.fft_plans(xp=xp,
@@ -55,12 +55,7 @@ class PWHamiltonian(Hamiltonian):
         domain_comm = psit_nG.desc.comm
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
 
-        # vt_R_data = xp.asarray(vt_R.data)
-        # vtpsit_G = xp.empty_like(psit_G.data)
-
         for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
-            # TODO: Vectorize this by including more than one band.
-            # See the gpu call above for an example.
             if len(y) == 0:
                 # This rank got no data
                 continue
