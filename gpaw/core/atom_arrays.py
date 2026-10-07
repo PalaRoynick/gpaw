@@ -488,8 +488,9 @@ class AtomArrays:
         for m, start in enumerate(range(0, b, comm.size * nm)):
             end = min(start + comm.size * nm, b)
             in_data = self.data[start:end]
+            max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
 
-            for offset_index in range(0, nm):
+            for offset_index in range(0, max_offset):
                 send_data_ni = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 buff = buffer_data[offset_index]
                 for rank, send_data_i in enumerate(send_data_ni):
@@ -510,18 +511,25 @@ class AtomArrays:
                 continue
 
             out_data = out_axi.data[start:end]
-            for offset_index in range(0, nm):
+            for offset_index in range(0, max_offset):
                 rcv_data_ni = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 buff = buffer_data[offset_index]
-                for rank, rcv_data_i in enumerate(rcv_data_ni):
+                send_flag = start + comm.rank + offset_index * comm.size < b
+                for rank in range(comm.size):
+                    rcv_flag = start + rank + offset_index * comm.size < b
                     if rank != comm.rank:
-                        comm.receive(rcv_data_i, rank, tag=75, block=False)
-                if start + comm.rank + offset_index * comm.size < b:
-                    for rank in range(comm.size):
-                        if rank != comm.rank:
-                            data_length = len(recv_indices[rank])
+                        data_length = len(recv_indices[rank])
+                        if send_flag and rcv_flag:
                             work_buffer_ai[:data_length] = buff[recv_indices[rank]]
-                            comm.send(work_buffer_ai, rank, tag=75)
+                            comm.sendreceive(work_buffer_ai[:data_length], rank,
+                                             rcv_data_ni[rank], rank,
+                                             sendtag=76, recvtag=76)
+                        elif send_flag:
+                            work_buffer_ai[:data_length] = buff[recv_indices[rank]]
+                            comm.send(work_buffer_ai[:data_length], rank, tag=76, block=False)
+                        elif rcv_flag:
+                            comm.receive(rcv_data_ni[rank], rank, tag=76)
+                if send_flag:
                     rcv_data_ni[comm.rank] = buff[recv_indices[comm.rank]]
 
         # We add one extra yield to ensure cleanup

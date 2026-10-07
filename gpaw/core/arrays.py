@@ -152,18 +152,14 @@ class XArray(Generic[DomainType], XP):
         for m, start in enumerate(range(0, b, comm.size * nm)):
             end = min(start + comm.size * nm, b)
             in_data = self.data[start:end]
+            max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
 
-            for offset_index in range(0, nm):
+            for offset_index in range(0, max_offset):
                 tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if tmp.size > 0:
-                    comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
-                                   buffer_data[offset_index], rsize_r, roffset_r)
-                else:
-                    # No data on this rank
-                    comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
-                                   tmp.ravel(), rsize_r, roffset_r)
+                comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                               buffer_data[offset_index], rsize_r, roffset_r)
 
             mybands = np.arange(start + comm.rank, end, comm.size)
             yield mybands, buffer_mX[:len(mybands)]
@@ -172,17 +168,12 @@ class XArray(Generic[DomainType], XP):
                 continue
 
             out_data = out_nX.data[start:end]
-            for offset_index in range(0, nm):
+            for offset_index in range(0, max_offset):
                 tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if tmp.size > 0:
-                    comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
-                                   tmp.ravel(), ssize_r, soffset_r)
-                else:
-                    # No data on this rank
-                    comm.alltoallv(tmp.ravel(), rsize_r, roffset_r,
-                                   tmp.ravel(), ssize_r, soffset_r)
+                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                               tmp.ravel(), ssize_r, soffset_r)
 
         # We add one extra yield to ensure cleanup
         yield np.array([]), buffer_mX[:0]
