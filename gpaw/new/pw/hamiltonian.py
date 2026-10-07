@@ -16,7 +16,7 @@ from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, xp=np):
-        self.blocksize = 4
+        self.blocksize = 1
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
         self.plan = self.grid_local.fft_plans(xp=xp,
@@ -59,9 +59,15 @@ class PWHamiltonian(Hamiltonian):
             if len(y) == 0:
                 # This rank got no data
                 continue
-            tmp_yR = tmp_R[:len(y)]
-            tmp_yQ = tmp_Q[:len(y)]
-            plan.ifft_sphere(psit_yG.data, pw_local)
+
+            if self.blocksize == 1:
+                tmp_yR = tmp_R
+                tmp_yQ = tmp_Q
+                plan.ifft_sphere(psit_yG.data[0], pw_local)
+            else:
+                tmp_yR = tmp_R[:len(y)]
+                tmp_yQ = tmp_Q[:len(y)]
+                plan.ifft_sphere(psit_yG.data, pw_local)
             tmp_yR *= vt_R.data
             trace(plan.fft)()
             with tracectx('cut and postprocess'):
