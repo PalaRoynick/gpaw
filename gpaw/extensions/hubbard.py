@@ -66,7 +66,8 @@ class HubbardUJ(Extension):
                   N0_q: Array1D) -> tuple[float, Array3D]:
         l = self.l
 
-        nl = np.argwhere(np.equal(l_j, l))
+        # j-indices which have the correct angular momentum quantum number
+        nl = np.where(np.equal(l_j, l))[0]
         if not (len(nl) == 1 or len(nl) == 2):
             raise RuntimeError(f'Setup has {len(nl)} radial partial waves '
                                f'with angular momentum quantum number {l}.'
@@ -78,9 +79,6 @@ class HubbardUJ(Extension):
 
         nspins = len(D_sii)
         assert nspins == 4
-
-        # j-indices which have the correct angular momentum quantum number
-        nl = np.where(np.equal(l_j, l))[0]
 
         nm_j = 2 * np.array(l_j) + 1
         nm = nm_j[nl[0]]
