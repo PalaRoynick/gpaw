@@ -16,7 +16,7 @@ from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, xp=np):
-        self.blocksize = 1
+        self.blocksize = 1 if xp is np else 8
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
         self.plan = self.grid_local.fft_plans(xp=xp,

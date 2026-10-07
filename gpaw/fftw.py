@@ -30,7 +30,6 @@ _plan_cache: dict[tuple, weakref.ReferenceType] = {}
 
 def have_fftw() -> bool:
     """Did we compile with FFTW?"""
-    return False
     return hasattr(cgpaw, 'FFTWPlan')
 
 
@@ -199,6 +198,7 @@ class FFTWPlans(FFTPlans):
                  blocksize: int = 1):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
+        assert blocksize == 1, 'c-wrappers require this for now'
         super().__init__(size_c, dtype, blocksize=blocksize)
         if self._overwrite_flags is not None:
             flags = self._overwrite_flags
@@ -270,7 +270,6 @@ class CuPyFFTPlans(FFTPlans):
         self.dtype = dtype
         super().__init__(size_c, dtype, empty=cp.empty,
                          blocksize=blocksize)
-        self.Q_G_cache: dict[PWDesc, Array1D] = {}
         self.xp = cp
 
     @trace(gpu=True)
@@ -303,80 +302,6 @@ class CuPyFFTPlans(FFTPlans):
                 self.tmp_nQ, self.tmp_nR.shape[-3:],
                 norm='forward',
                 overwrite_x=True)
-
-    def indices(self, pw):
-        from gpaw.gpu import cupy as cp
-        Q_G = self.Q_G_cache.get(pw)
-        if Q_G is None:
-            Q_G = cp.asarray(pw.indices(self.shape))
-            self.Q_G_cache[pw] = Q_G
-        return Q_G
-
-    @trace
-    def ifft_sphere_wut(self, coef_G, pw, out_R=None):
-        from gpaw.gpu import cupy, cupyx
-        if out_R is not None:
-            assert isinstance(out_R.data, cupy.ndarray)
-
-        if coef_G is None:
-            if out_R is not None:
-                out_R.scatter_from(None)
-            return
-
-        if out_R is not None and out_R.desc.comm.size == 1:
-            array_R = out_R.data
-        else:
-            array_R = self.tmp_R
-        array_Q = self.tmp_Q
-
-        array_Q[:] = 0.0
-        Q_G = self.indices(pw)
-
-        assert np.issubdtype(array_Q.dtype, np.complexfloating)
-        assert np.issubdtype(coef_G.dtype, np.complexfloating)
-        shape = array_R.shape
-        pw_insert_gpu(coef_G,
-                      Q_G,
-                      1.0,
-                      array_Q.ravel(),
-                      *shape)
-
-        if np.issubdtype(self.dtype, np.complexfloating):
-            array_R[:] = cupyx.scipy.fft.ifftn(
-                array_Q, array_Q.shape,
-                norm='forward', overwrite_x=True)
-        else:
-            if is_hip:
-                array_R[:] = irfftn_patch(array_Q, shape) * array_R.size
-            else:
-                array_R[:] = cupyx.scipy.fft.irfftn(
-                    array_Q, shape,
-                    norm='forward', overwrite_x=True)
-
-        if out_R is not None and out_R.desc.comm.size > 1:
-            out_R.scatter_from(array_R)
-
-    @trace
-    def fft_sphere_wut(self, in_R, pw):
-        from gpaw.gpu import cupyx
-        if np.issubdtype(self.dtype, np.complexfloating):
-            out_Q = cupyx.scipy.fft.fftn(in_R)
-        else:
-            if is_hip:
-                out_Q = rfftn_patch(in_R)
-            else:
-                # CuPy bug? rfftn fails on non-aligned arrays
-                # To that end, make a copy. However, display a warning.
-                if in_R.data.ptr % 16:
-                    in_R = in_R.copy()
-                    from warnings import warn
-                    warn('Circumventing GPU array alignment problem '
-                         'with copy at rfftn.')
-                out_Q = cupyx.scipy.fft.rfftn(in_R)
-
-        Q_G = self.indices(pw)
-        coef_G = out_Q.ravel()[Q_G] * (1 / in_R.size)
-        return coef_G
 
 
 # The rest of this file will be removed in the future ...
