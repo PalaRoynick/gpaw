@@ -1,8 +1,21 @@
 import numpy as np
 from ase.units import Ha
 
-from gpaw.new.extensions import Extension
+from gpaw.extensions import Extension
 from gpaw.typing import Array1D, Array2D, Array3D
+
+
+U_mM = np.zeros((5, 5), dtype=complex)
+U_mM[0, 0] = 1j
+U_mM[0, 4] = -1j
+U_mM[1, 1] = 1j
+U_mM[1, 3] = 1j
+U_mM[2, 2] = np.sqrt(2)
+U_mM[3, 1] = 1
+U_mM[3, 3] = -1
+U_mM[4, 0] = 1
+U_mM[4, 4] = 1
+U_mM /= np.sqrt(2)
 
 
 class HubbardUJ(Extension):
@@ -16,9 +29,23 @@ class HubbardUJ(Extension):
         self.atom_indices = atom_indices
         assert l == 2
         self.l = l
-        self.U = U / Ha
-        self.J = J / Ha
+        nm = 2 * l + 1
+        U = self.U = U / Ha  # Hartree
+        J = self.J = J / Ha  # Hartree
         self.scale = scale
+
+        # Arrays in basis of complex spherical harmonics!
+        a0 = np.load('/home/niflheim/martov/LiFePO4_attempts/a0_float.npy')
+        a2 = np.load('/home/niflheim/martov/LiFePO4_attempts/a2_float.npy')
+        a4 = np.load('/home/niflheim/martov/LiFePO4_attempts/a4_float.npy')
+        Vee_MMMM = a0 * U + (a2 * (112 / 13) + a4 * (70 / 13)) * J
+        kronecker_MMMM = np.zeros((nm,) * 4)
+        I_MM = np.identity(nm)
+        for M_index in range(nm):
+            kronecker_MMMM[M_index, M_index] += I_MM
+        self.density_MMMM = (2 * Vee_MMMM - np.swapaxes(Vee_MMMM, 1, 3)
+                             - (2 * U - J) * kronecker_MMMM)
+        self.spin_MMMM = -np.swapaxes(Vee_MMMM, 1, 3) + J * kronecker_MMMM
 
     def update_non_local_hamiltonian(self,
                                      D_sii,
@@ -38,87 +65,73 @@ class HubbardUJ(Extension):
                   n_j: list[int],
                   N0_q: Array1D) -> tuple[float, Array3D]:
         l = self.l
-        scale = self.scale
 
         nl = np.argwhere(np.equal(l_j, l))
         if not (len(nl) == 1 or len(nl) == 2):
             raise RuntimeError(f'Setup has {len(nl)} radial partial waves '
                                f'with angular momentum quantum number {l}.'
                                ' Must be 1 or 2 for Hubbard-corrected DFT.')
+        scale = self.scale
         if scale and len(nl) == len(np.argwhere(np.array(n_j)[nl] == -1)):
             raise RuntimeError('Hubbard correction cannot be scaled if '
                                'there is no bounded partial waves.')
 
-        return hubbard(D_sii, U=self.U, J=self.J,
-                       l=l, l_j=l_j, n_j=n_j, N0_q=N0_q, scale=scale)
+        nspins = len(D_sii)
+        assert nspins == 4
 
+        # j-indices which have the correct angular momentum quantum number
+        nl = np.where(np.equal(l_j, l))[0]
 
-def liechtenstein_hubbard(
-        D_sii: Array3D,
-        U: float,
-        J: float,
-        l: int,
-        l_j: list[int],
-        n_j: list[int],
-        N0_q: Array1D,
-        scale: bool) -> tuple[float, Array3D]:
+        nm_j = 2 * np.array(l_j) + 1
+        nm = nm_j[nl[0]]
 
-    nspins = len(D_sii)
+        # Get relevant entries of the density matrix
+        i1 = slice(nm_j[:nl[0]].sum(), nm_j[:nl[0]].sum() + nm)
 
-    # j-indices which have the correct angular momentum quantum number
-    nl = np.where(np.equal(l_j, l))[0]
+        U = self.U
+        J = self.J
+        density_MMMM = self.density_MMMM
+        spin_MMMM = self.spin_MMMM
 
-    nm_j = 2 * np.array(l_j) + 1
-    nm = nm_j[nl[0]]
+        eU = 0.
+        dHU_sii = np.zeros_like(D_sii)
 
-    # Get relevant entries of the density matrix
-    i1 = slice(nm_j[:nl[0]].sum(), nm_j[:nl[0]].sum() + nm)
+        for s, D_ii in enumerate(D_sii):
+            N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
 
-    eU = 0.
-    dHU_sii = np.zeros_like(D_sii)
+            # To complex harmonics basis
+            N_MM = (U_mM.conj().T @ N_mm) @ U_mM
 
-    for s, D_ii in enumerate(D_sii):
-        N_mm, dHU_ii = aoom(D_ii, l, l_j, n_j, N0_q, scale)
-        N_mm = N_mm / 2 * nspins
-
-        if nspins == 4:
-            N_mm = N_mm / 2.0
             if s == 0:
-                eU1 = ((U - J) / 2. * (N_mm - 0.5 * N_mm @ N_mm).trace()
-                       + J / 4. * np.sum(np.square(N_mm)))
+                eU1 = ((U - J) / 2. * N_MM.trace()
+                       + np.einsum('mnop,mn,op', density_MMMM, N_MM, N_MM) / 4)
 
-                dHU_mm = (U - J) / 2. * (np.eye(nm) - N_mm.T) + J / 2. * N_mm
+                dHU_MM = ((U - J) / 2. * np.identity(nm)
+                          + np.einsum('mnop,op->nm', density_MMMM, N_MM) / 2.)
 
             else:
-                eU1 = (-(U - J) / 2. * (0.5 * N_mm @ N_mm).trace()
-                       - J / 4. * np.sum(np.square(N_mm)))
+                eU1 = np.einsum('mnop,mn,op', spin_MMMM, N_MM, N_MM) / 4.
 
-                dHU_mm = -(U - J) / 2. * N_mm.T - J / 2. * N_mm
-        else:
-            eU1 = U / 2. * (N_mm - N_mm @ N_mm).trace()
+                dHU_MM = np.einsum('mnop,op->nm', spin_MMMM, N_MM) / 2.
 
-            dHU_mm = U / 2. * (np.eye(nm) - 2 * N_mm)
-
-        eU += eU1
-        if nspins == 1:
-            # Add contribution from other spin manifold
             eU += eU1
+            dHU_mm = (U_mM @ dHU_MM) @ U_mM.conj().T
 
-        if len(nl) == 1:
-            dHU_ii[i1, i1] *= dHU_mm
-        elif len(nl) == 2:
-            i2 = slice(nm_j[:nl[1]].sum(), nm_j[:nl[1]].sum() + nm)
+            if len(nl) == 1:
+                dHU_ii[i1, i1] *= dHU_mm
+            elif len(nl) == 2:
+                i2 = slice(nm_j[:nl[1]].sum(), nm_j[:nl[1]].sum() + nm)
 
-            dHU_ii[i1, i1] *= dHU_mm
-            dHU_ii[i1, i2] *= dHU_mm
-            dHU_ii[i2, i1] *= dHU_mm
-            dHU_ii[i2, i2] *= dHU_mm
-        else:
-            raise NotImplementedError
+                dHU_ii[i1, i1] *= dHU_mm
+                dHU_ii[i1, i2] *= dHU_mm
+                dHU_ii[i2, i1] *= dHU_mm
+                dHU_ii[i2, i2] *= dHU_mm
+            else:
+                raise NotImplementedError
 
-        dHU_sii[s] = dHU_ii
+            dHU_sii[s] = dHU_ii
 
-    return eU, dHU_sii
+        return eU, dHU_sii
 
 
 def aoom(D_ii: Array2D,
