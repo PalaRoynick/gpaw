@@ -351,9 +351,9 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.data[mbs:mbs + block]
                         if self.include_cg:
                             buff_bX.data[2 * block:3 * block] = \
-                                buff_bX.data[mbs:mbs + block]
+                                buff_bX.data[2 * mbs:2 * mbs + block]
                             Pbuf_abi.data[2 * block:3 * block] = \
-                                Pbuf_abi.data[mbs:mbs + block]
+                                Pbuf_abi.data[2 * mbs:2 * mbs + block]
 
                     block_slice = mybands
 

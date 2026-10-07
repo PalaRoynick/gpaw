@@ -463,15 +463,19 @@ class AtomArrays:
 
         ssize_a = np.array([prod(shape) for shape in self.layout.shape_a])
         ng = sum(ssize_a)
-
-        # The following assumes too much... Maybe
-        basesize_r = np.array([
-            sum(ssize_a[self.layout.atomdist.rank_a == rank]) for rank in range(size)])
-        baseoffset_r = np.zeros_like(basesize_r)
-        baseoffset_r[1:] = np.cumsum(basesize_r[:-1])
         myng = prod(self.myshape)
 
         assert prod(buffer_ami.myshape) == ng
+        work_buffer_ai = np.empty_like(buffer_ami.data[0])
+        recv_indices = []
+        for rank in range(comm.size):
+            owned_atoms = np.where(self.layout.atomdist.rank_a == rank)[0]
+            recv_index = []
+            for atom in owned_atoms:
+                ind_range = buffer_ami.layout.myindices[atom]
+                assert ind_range[0] == atom
+                recv_index.extend(range(ind_range[1], ind_range[2]))
+            recv_indices.append(recv_index)
 
         if out_axi is not None:
             assert out_axi.myshape == self.myshape
@@ -486,21 +490,18 @@ class AtomArrays:
             in_data = self.data[start:end]
 
             for offset_index in range(0, nm):
-                tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
-                N = tmp.shape[0]
-                ssize_r = np.zeros(size, int)
-                ssize_r[:N] = myng
-                soffset_r = np.arange(size) * myng
-                soffset_r[N:] = 0
-                if comm.rank < N:
-                    rsize_r = basesize_r
-                    roffset_r = baseoffset_r
-                else:
-                    rsize_r = np.zeros(size, int)
-                    roffset_r = np.zeros(size, int)
-
-                comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
-                               buffer_data[offset_index], rsize_r, roffset_r)
+                send_data_ni = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                buff = buffer_data[offset_index]
+                for rank, send_data_i in enumerate(send_data_ni):
+                    if rank != comm.rank:
+                        comm.send(send_data_i, rank, tag=75, block=False)
+                if start + comm.rank + offset_index * comm.size < b:
+                    for rank in range(comm.size):
+                        if rank != comm.rank:
+                            data_length = len(recv_indices[rank])
+                            comm.receive(work_buffer_ai[:data_length], rank, tag=75)
+                            buff[recv_indices[rank]] = work_buffer_ai[:data_length]
+                    buff[recv_indices[comm.rank]] = send_data_ni[comm.rank]
 
             mybands = np.arange(start + comm.rank, end, comm.size)
             yield mybands, buffer_ami[:, :len(mybands)]
@@ -510,21 +511,18 @@ class AtomArrays:
 
             out_data = out_axi.data[start:end]
             for offset_index in range(0, nm):
-                tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
-                N = tmp.shape[0]
-                ssize_r = np.zeros(size, int)
-                ssize_r[:N] = myng
-                soffset_r = np.arange(size) * myng
-                soffset_r[N:] = 0
-                if comm.rank < N:
-                    rsize_r = basesize_r
-                    roffset_r = baseoffset_r
-                else:
-                    rsize_r = np.zeros(size, int)
-                    roffset_r = np.zeros(size, int)
-                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
-                               tmp.ravel(), ssize_r, soffset_r)
-
+                rcv_data_ni = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                buff = buffer_data[offset_index]
+                for rank, rcv_data_i in enumerate(rcv_data_ni):
+                    if rank != comm.rank:
+                        comm.receive(rcv_data_i, rank, tag=75, block=False)
+                if start + comm.rank + offset_index * comm.size < b:
+                    for rank in range(comm.size):
+                        if rank != comm.rank:
+                            data_length = len(recv_indices[rank])
+                            work_buffer_ai[:data_length] = buff[recv_indices[rank]]
+                            comm.send(work_buffer_ai, rank, tag=75)
+                    rcv_data_ni[comm.rank] = buff[recv_indices[comm.rank]]
 
         # We add one extra yield to ensure cleanup
         yield np.array([]), buffer_ami[:, :0]
