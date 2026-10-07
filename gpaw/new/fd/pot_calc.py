@@ -7,6 +7,7 @@ import numpy as np
 from gpaw.core import UGDesc
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
+from gpaw.mpi import serial_comm
 
 
 class FDPotentialCalculator(PotentialCalculator):
@@ -153,6 +154,9 @@ class FDPotentialCalculator(PotentialCalculator):
     def force_contributions(self, Q_aL, density, potential):
         nt_R = spinsum(density.nt_sR)
         vt_R = spinsum(potential.vt_sR, mean=True)
+        if self.distributed_density:
+            vt_R = vt_R.redist(nt_R.desc, self.kpt_band_comm, serial_comm)
+
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
             dedtaut_R = spinsum(dedtaut_sR, mean=True)
