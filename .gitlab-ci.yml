@@ -334,9 +334,9 @@ prepare-libxc:
     - export PREFIX=`realpath $PREFIX`
   script:
     - pip install cmake
-    - python -m pip show cmake
-    - python -c "import sys; print(sys.path)"
-    - python -c "import cmake; print(cmake.__file__)"
+    - which python
+    - python --version
+    - head -n 100 "$CI_PROJECT_DIR/.local/bin/cmake"
     - export PATH="$CI_PROJECT_DIR/.local/bin:$PATH"
     - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
