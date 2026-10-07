@@ -128,8 +128,7 @@ def test_the_legacy_only_list_is_complete():
 
 def test_parts_of_your_own():
     opt, probe = MyOptimizer(), MyProbe()
-    pot = sjm(target_potential=3.0, optimizer=opt,
-              potentialprobe=probe).potentiostat
+    pot = sjm(optimizer=opt, potentialprobe=probe).potentiostat
     assert pot.optimizer is opt and pot.potentialprobe is probe
     assert isinstance(pot.charging, JelliumCharging)
     # They are written by name, but cannot be read back:
@@ -141,14 +140,16 @@ def test_parts_of_your_own():
     class MyPotentiostat(Potentiostat):
         pass
 
-    pot = MyPotentiostat(target_potential=3.0)
+    pot = MyPotentiostat()
     assert SJM(solvation=solvent, potentiostat=pot).potentiostat is pot
 
 
 @pytest.mark.parametrize('part, key', [
     ('charging', 'excess_electrons'), ('charging', 'jelliumregion'),
-    ('optimizer', 'slope'), ('optimizer', 'mixer'),
-    ('optimizer', 'slope_regression_depth'), ('optimizer', 'tol')])
+    ('optimizer', 'target_potential'), ('optimizer', 'slope'),
+    ('optimizer', 'mixer'), ('optimizer', 'slope_regression_depth'),
+    ('optimizer', 'tol'), ('optimizer', 'max_potential_stepsize'),
+    ('optimizer', 'max_iters'), ('optimizer', 'max_reruns')])
 def test_a_part_and_the_keys_of_its_default_conflict(part, key):
     with pytest.raises(ValueError, match=f'{key} configure the default'):
         sjm(**{part: object(), key: keys[key]})
@@ -160,6 +161,23 @@ def test_change_refuses_a_setting_the_optimizer_lacks():
         obj.change(potentiostat={'mixer': 0.5})
     obj.change(potentiostat={'slope': -20.0})  # every optimizer has one
     assert obj.potentiostat.optimizer.slope == -20.0
+
+
+def test_change_of_target():
+    obj = sjm()
+    pot = obj.potentiostat
+    # A step staged by always_adjust aims at the old target:
+    pot.pending_excess_electrons = 0.3
+    obj.change(potentiostat={'target_potential': None})
+    assert pot.pending_excess_electrons is None
+    # The first guess of the charge needs a slope that lowers the potential
+    # as electrons are added:
+    pot.fermi_level, pot.electrode_potential = -0.1, 2.7
+    for slope in [0.0, 3.0]:
+        obj.change(potentiostat={'slope': slope, 'target_potential': 4.5})
+        assert pot.excess_electrons == 0.0
+    obj.change(potentiostat={'slope': -30.0, 'target_potential': 4.2})
+    assert pot.excess_electrons == pytest.approx(-0.05)
 
 
 def test_solvation_and_its_dipole_layer():

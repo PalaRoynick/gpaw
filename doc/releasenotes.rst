@@ -89,9 +89,7 @@ Git master branch
 * The potential control itself has been split out of SJM into a new
   ``gpaw.extensions.electrochemistry.Potentiostat`` class, which holds a
   target electrode potential by adjusting an excess charge.  It owns the
-  settings of the control loop---``target_potential``,
-  ``max_iters``, ``max_reruns``, ``max_potential_stepsize``,
-  ``always_adjust`` and ``grand_output``---and the state of the
+  settings ``always_adjust`` and ``grand_output`` and the state of the
   equilibration, and it composes three pluggable parts: a *charging scheme*
   (how the counter charge is put into the cell; a jellium slab for SJM), a
   *potential probe* (how the potential is read off the converged SCF state;
@@ -99,11 +97,13 @@ Git master branch
   stepped toward the target; by default a regression of the
   potential-versus-charge slope over the last ``slope_regression_depth``
   attempts, damped with the previous estimate by ``mixer``).  The
-  optimizer also decides when the potential is converged: within ``tol``,
-  by default.  SJM is now
-  only a front end for it, which pairs it with the implicit solvent:
-  ``sjm.potentiostat.target_potential`` and the rest are the
-  potentiostat's settings.
+  optimizer also holds the ``target_potential``, decides when the
+  potential is converged (within ``tol``, by default) and sets the limits
+  of the equilibration: ``max_iters``, ``max_reruns`` and
+  ``max_potential_stepsize``.  SJM is now only a front end for it, which
+  pairs it with the implicit solvent:
+  ``sjm.potentiostat.optimizer.target_potential`` and the rest are the
+  settings of the potentiostat and its parts.
   The potentiostat also finishes a converged calculation: the Legendre
   transform to the grand potential and the results.  A different
   constant-potential method can reuse the potentiostat with other parts,

@@ -20,9 +20,9 @@ def line(slope: float, charge: float, potential0: float = 5.0) -> float:
 
 def test_capacitance_guess():
     """With nothing to regress from, the slope is a plate capacitor's."""
-    opt = DirectOptimizer()
+    opt = DirectOptimizer(target_potential=TARGET)
     assert opt.slope is None
-    opt.next_excess_electrons(0.0, 5.0, TARGET, area=AREA)
+    opt.next_excess_electrons(0.0, 5.0, area=AREA)
     # The guess is kept; it is negative, as more electrons is a lower
     # potential:
     assert opt.slope == pytest.approx(guess)
@@ -82,13 +82,13 @@ def test_wrong_signed_regression_falls_back_to_capacitance():
 def test_next_step_falls_back_when_the_regression_is_wrong_signed():
     """The charge steps the right way even when the fit points the
     wrong way."""
-    opt = DirectOptimizer(mixer=0.0)
+    opt = DirectOptimizer(target_potential=TARGET, mixer=0.0)
     # Two points that regress to a positive (wrong-signed) slope of +50:
     opt.history.append((0.0, line(50.0, 0.0)))
     opt.history.append((-0.1, line(50.0, -0.1)))
     potential = line(50.0, -0.05)  # on the same (wrong-signed) line
     opt.record_attempt(-0.05, potential, area=AREA)
-    charge = opt.next_excess_electrons(-0.05, potential, TARGET, area=AREA)
+    charge = opt.next_excess_electrons(-0.05, potential, area=AREA)
     # potential (2.5 V) is below target (4.5 V), so fewer electrons are
     # wanted: charge should decrease, not increase the way the (rejected)
     # positive slope would incorrectly ask for:
@@ -130,9 +130,9 @@ def test_bad_regression_depth():
 
 def test_next_step_hits_a_linear_target():
     """One step is enough when the slope is right."""
-    opt = DirectOptimizer(slope=-30.0)
+    opt = DirectOptimizer(target_potential=TARGET, slope=-30.0)
     opt.record_attempt(-0.05, line(-30.0, -0.05), area=AREA)
-    charge = opt.next_excess_electrons(-0.05, line(-30.0, -0.05), TARGET,
+    charge = opt.next_excess_electrons(-0.05, line(-30.0, -0.05),
                                        area=AREA)
     # 5.0 - 30 * charge == TARGET:
     assert charge == pytest.approx((5.0 - TARGET) / 30.0)
@@ -142,12 +142,13 @@ def test_next_step_hits_a_linear_target():
 
 def test_trust_region():
     """A fully damped slope never steps beyond the previous step."""
-    opt = DirectOptimizer(slope=-1e-6, mixer=1.0)  # a hopeless slope
+    # A hopeless slope:
+    opt = DirectOptimizer(target_potential=TARGET, slope=-1e-6, mixer=1.0)
     opt.history.append((0.0, 5.0))
     # The potential is above the target, so electrons are wanted; the slope
     # asks for thousands of them and gets the last step size instead:
     opt.record_attempt(-0.1, 5.0, area=AREA)
-    charge = opt.next_excess_electrons(-0.1, 5.0, TARGET, area=AREA)
+    charge = opt.next_excess_electrons(-0.1, 5.0, area=AREA)
     assert charge == pytest.approx(0.0)
 
 
@@ -158,11 +159,12 @@ def _step_from(mixer: float) -> float:
     regression returns -30 whatever the mixer does with it: only the trust
     region distinguishes the cases below.
     """
-    opt = DirectOptimizer(slope=-30.0, mixer=mixer)
+    opt = DirectOptimizer(target_potential=TARGET, slope=-30.0,
+                          mixer=mixer)
     opt.history.append((0.0, line(-30.0, 0.0)))
     opt.record_attempt(-0.01, line(-30.0, -0.01), area=AREA)
     return 0.01 + opt.next_excess_electrons(-0.01, line(-30.0, -0.01),
-                                            TARGET, area=AREA)
+                                            area=AREA)
 
 
 def test_trust_region_lets_a_step_grow():
@@ -187,7 +189,7 @@ def test_a_tiny_first_step_does_not_cap_the_rest():
     whenever it happened to be small.
     """
     tiny = 1e-4  # the step that got us to the current charge
-    opt = DirectOptimizer(slope=-30.0, mixer=0.2)
+    opt = DirectOptimizer(target_potential=TARGET, slope=-30.0, mixer=0.2)
     opt.history.append((0.0, line(-30.0, 0.0)))
     charge = tiny
     steps = []
@@ -195,7 +197,7 @@ def test_a_tiny_first_step_does_not_cap_the_rest():
         previous = charge
         opt.record_attempt(charge, line(-30.0, charge), area=AREA)
         charge = opt.next_excess_electrons(charge, line(-30.0, charge),
-                                           TARGET, area=AREA)
+                                           area=AREA)
         steps.append(abs(charge - previous))
     # The old clamp would have pinned every step to `tiny`, needing ~170 of
     # them to cross the 0.0167 electrons to the target.  Now the very first
@@ -244,12 +246,12 @@ def _silent(*args, **kwargs) -> None:
 
 def test_potentiostat_within_tolerance_is_converged():
     charging = _StubCharging(excess_electrons=-0.2)
-    pot = Potentiostat(charging=charging, target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0, tol=0.01))
+    pot = Potentiostat(charging=charging, optimizer=DirectOptimizer(
+        target_potential=TARGET, slope=-30.0, tol=0.01))
     ibzwfs = _FakeIBZWFS(TARGET + 0.005)  # inside the tolerance
     mixer = _RecordingMixer()
-    assert (pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
-            is EquilibrationResult.converged)
+    assert (pot.equilibrate(ibzwfs, TARGET + 0.005, 10.0, object(), mixer,
+                            _silent) is EquilibrationResult.converged)
     assert ibzwfs.occs_calls == []
     assert mixer.resets == 0
     assert charging.excess_electrons == -0.2
@@ -257,12 +259,13 @@ def test_potentiostat_within_tolerance_is_converged():
 
 def test_potentiostat_steps_the_charge_along_the_slope():
     charging = _StubCharging(excess_electrons=-0.2)
-    pot = Potentiostat(charging=charging, target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0, tol=0.001))
+    pot = Potentiostat(charging=charging, optimizer=DirectOptimizer(
+        target_potential=TARGET, slope=-30.0, tol=0.001))
     potential = TARGET + 0.5  # 0.5 V above the target
     ibzwfs = _FakeIBZWFS(potential)
     mixer = _RecordingMixer()
-    result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+    result = pot.equilibrate(ibzwfs, potential, 10.0, object(), mixer,
+                             _silent)
     assert result is EquilibrationResult.stepped
     dc = (TARGET - potential) / -30.0
     assert charging.excess_electrons == pytest.approx(-0.2 + dc)
@@ -273,8 +276,7 @@ def test_potentiostat_steps_the_charge_along_the_slope():
 def test_potentiostat_constant_charge_is_a_noop():
     charging = _StubCharging(excess_electrons=-0.2)
     pot = Potentiostat(charging=charging)  # no target
-    # object() has no fermi_level: the potential must not be probed here.
-    assert (pot.equilibrate(object(), 10.0, object(),
+    assert (pot.equilibrate(object(), float('nan'), 10.0, object(),
                             _RecordingMixer(), _silent)
             is EquilibrationResult.converged)
     assert charging.excess_electrons == -0.2
@@ -282,12 +284,13 @@ def test_potentiostat_constant_charge_is_a_noop():
 
 def _stepping_potentiostat(charge, *, history, max_potential_stepsize=2):
     """A potentiostat mid-equilibration: one accepted attempt on record."""
-    optimizer = DirectOptimizer(slope=-30.0, tol=0.001)
+    optimizer = DirectOptimizer(target_potential=TARGET, slope=-30.0,
+                                tol=0.001,
+                                max_potential_stepsize=max_potential_stepsize)
     for attempt in history:
         optimizer.history.append(attempt)
     return Potentiostat(charging=_StubCharging(excess_electrons=charge),
-                        target_potential=TARGET, optimizer=optimizer,
-                        max_potential_stepsize=max_potential_stepsize)
+                        optimizer=optimizer)
 
 
 def test_equilibrate_rejects_a_step_that_left_the_linear_region():
@@ -298,7 +301,7 @@ def test_equilibrate_rejects_a_step_that_left_the_linear_region():
     pot = _stepping_potentiostat(2.0, history=[(0.0, 5.0)])
     ibzwfs = _FakeIBZWFS(40.0)
     mixer = _RecordingMixer()
-    result = pot.equilibrate(ibzwfs, 10.0, object(), mixer, _silent)
+    result = pot.equilibrate(ibzwfs, 40.0, 10.0, object(), mixer, _silent)
     assert result is EquilibrationResult.rejected
     # Charge halved back toward the last accepted one:
     assert pot.excess_electrons == pytest.approx(1.0)
@@ -312,7 +315,7 @@ def test_equilibrate_does_not_reject_a_big_step_toward_the_target():
     """Overshooting the *size* limit is fine as long as it closes the gap."""
     pot = _stepping_potentiostat(2.0, history=[(0.0, 40.0)])
     ibzwfs = _FakeIBZWFS(6.0)  # moved 34 V, but toward the 4.5 V target
-    result = pot.equilibrate(ibzwfs, 10.0, object(), _RecordingMixer(),
+    result = pot.equilibrate(ibzwfs, 6.0, 10.0, object(), _RecordingMixer(),
                              _silent)
     assert result is EquilibrationResult.stepped
     assert list(pot.optimizer.history)[-1] == (2.0, 6.0)  # recorded normally
@@ -321,7 +324,7 @@ def test_equilibrate_does_not_reject_a_big_step_toward_the_target():
 def test_equilibrate_max_potential_stepsize_none_disables_the_clamp():
     pot = _stepping_potentiostat(2.0, history=[(0.0, 5.0)],
                                  max_potential_stepsize=None)
-    result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
+    result = pot.equilibrate(_FakeIBZWFS(40.0), 40.0, 10.0, object(),
                              _RecordingMixer(), _silent)
     assert result is EquilibrationResult.stepped
 
@@ -330,7 +333,7 @@ def test_equilibrate_never_rejects_the_first_attempt():
     """With no accepted attempt to measure against, the first step is taken
     however far off the potential is."""
     pot = _stepping_potentiostat(0.0, history=[])
-    result = pot.equilibrate(_FakeIBZWFS(40.0), 10.0, object(),
+    result = pot.equilibrate(_FakeIBZWFS(40.0), 40.0, 10.0, object(),
                              _RecordingMixer(), _silent)
     assert result is EquilibrationResult.stepped
 
@@ -342,8 +345,8 @@ def _two_attempts(**kwargs) -> Potentiostat:
     within tol=0.2 V of the target.
     """
     pot = Potentiostat(charging=_StubCharging(excess_electrons=0.0),
-                       target_potential=TARGET,
-                       optimizer=DirectOptimizer(slope=-30.0, mixer=0.5,
+                       optimizer=DirectOptimizer(target_potential=TARGET,
+                                                 slope=-30.0, mixer=0.5,
                                                  tol=0.2), **kwargs)
     for _ in range(2):
         potential = line(-40.0, pot.excess_electrons)
@@ -379,9 +382,11 @@ def test_always_adjust_records_the_converged_attempt_once():
 class _ScriptedPotentiostat(Potentiostat):
     """A potentiostat whose attempts replay a fixed list of results."""
 
-    def __init__(self, results, **kwargs):
-        super().__init__(charging=_StubCharging(), target_potential=TARGET,
-                         optimizer=DirectOptimizer(tol=0.001), **kwargs)
+    def __init__(self, results, always_adjust=False, **kwargs):
+        super().__init__(charging=_StubCharging(),
+                         optimizer=DirectOptimizer(target_potential=TARGET,
+                                                   tol=0.001, **kwargs),
+                         always_adjust=always_adjust)
         self._results = list(results)
 
     def equilibrate(self, *args, **kwargs) -> EquilibrationResult:
@@ -416,6 +421,9 @@ def test_post_scf_raises_once_the_halving_runs_out():
     assert pot.reruns == 3
     with pytest.raises(PotentialConvergenceError, match='halvings'):
         _post_scf(pot)
+    # A new geometry gets a fresh budget:
+    pot.new_geometry()
+    assert _post_scf(pot) is False
 
 
 def test_post_scf_raises_once_the_attempts_run_out():

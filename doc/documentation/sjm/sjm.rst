@@ -158,7 +158,7 @@ Typically, over the course of a full trajectory, the added computational cost of
 As described in the  :ref:`solvated_jellium_method` tutorial, this can sometimes be further improved by simultaneously optimizing the potential with the atomic positions; set a loose ``tol`` together with ``always_adjust=True``, which keeps stepping the number of excess electrons---on to the next image, without re-converging the current one---even once the potential is within tolerance.
 The slope itself is regressed over the last ``slope_regression_depth`` attempts and damped with the previous estimate by ``mixer``; ``slope`` sets the initial guess, which is otherwise taken from an apparent capacitance of 10 muF/cm^2.
 
-All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from its ``potentiostat`` dict and which then owns the settings---``sjm.potentiostat.target_potential`` and the rest.
+All of this is done by a :class:`~gpaw.extensions.electrochemistry.Potentiostat`, which SJM builds from its ``potentiostat`` dict and which then owns the settings---``sjm.potentiostat.always_adjust``, ``sjm.potentiostat.optimizer.target_potential`` and the rest.
 The potentiostat is a general constant-potential engine rather than an SJM-specific one: how the counter charge enters the cell (the *charging scheme*, a jellium slab here), how the potential is read off the converged state (the *potential probe*, the topside work function here) and how the charge is stepped toward the target (the *optimizer*, the slope regression described above) are separate, interchangeable pieces.
 It also finishes a converged calculation: it reports the equilibration, Legendre-transforms the energies to the grand potential and writes the results, the grand-potential or the canonical energy as ``grand_output`` says.
 SJM is the front end for the jellium-plus-implicit-solvent combination; a different constant-potential method can reuse the same potentiostat with another charging scheme, optimizer or probe, and SJM itself takes parts of your own (see `Usage`_).
@@ -250,16 +250,18 @@ with a default: the charging scheme
 potential probe
 (:class:`~gpaw.extensions.electrochemistry.WorkFunctionProbe`).  The keys
 ``excess_electrons`` and ``jelliumregion`` configure the default charging
-scheme, and ``slope``, ``mixer``, ``slope_regression_depth`` and ``tol``
-the default optimizer, which also decides when the potential is converged
-(``PotentialOptimizer.converged()``).  To use a part of your own, subclass
+scheme, and ``target_potential``, ``tol``, ``slope``, ``mixer``,
+``slope_regression_depth``, ``max_potential_stepsize``, ``max_iters`` and
+``max_reruns`` the default optimizer, which holds the target, decides when
+the potential is converged (``PotentialOptimizer.converged()``) and sets
+the limits of the equilibration.  To use a part of your own, subclass
 :class:`~gpaw.extensions.electrochemistry.ChargingScheme`,
 :class:`~gpaw.extensions.electrochemistry.PotentialOptimizer` or
 :class:`~gpaw.extensions.electrochemistry.PotentialProbe` and give an
 instance under the ``charging``, ``optimizer`` or ``potentialprobe`` key::
 
-    sjm = SJM(solvation=..., potentiostat={'target_potential': 4.4,
-                                           'optimizer': MyOptimizer()})
+    sjm = SJM(solvation=...,
+              potentiostat={'optimizer': MyOptimizer(target_potential=4.4)})
 
 Its settings then go to the part itself: the keys of the default part it
 replaces raise a ``ValueError``.  A ``.gpw`` file records a part of your
@@ -286,17 +288,18 @@ The same object also offers
 * ``sjm.potentiostat``, the potentiostat that runs in the calculation
   (``calc.dft.potentiostat`` is the same object), and ``sjm.solvation``.
   The settings are read off the potentiostat and its parts, as live
-  values: ``sjm.potentiostat.target_potential``,
-  ``sjm.potentiostat.excess_electrons`` (as the potentiostat adjusts it),
+  values: ``sjm.potentiostat.excess_electrons`` (as the potentiostat
+  adjusts it), ``sjm.potentiostat.optimizer.target_potential``,
   ``sjm.potentiostat.optimizer.slope`` (the current estimate),
   ``sjm.potentiostat.optimizer.tol`` and
   ``sjm.potentiostat.charging.region``.  ``todict()``, and so the ``.gpw``
   file, records these live values.  Change them through ``change()``
-  rather than by assignment: only ``change()`` empties the results, which
-  is what makes the next ``get_potential_energy()`` run the SCF loop
-  again.
+  rather than by assignment: only ``change()`` clears the results and
+  recomputes the occupations, density and potential, which makes the next
+  ``get_potential_energy()`` run the SCF loop again.
 * ``get_electrode_potential()``, the electrode potential of the last
-  converged SCF loop, in V on the vacuum scale---minus the Fermi level,
+  converged SCF loop, in V on the vacuum scale, as the potential probe
+  reads it---minus the Fermi level for the default ``WorkFunctionProbe``,
   since the Poisson solver zeroes the electrostatic potential in the
   vacuum.  It is the same number as
   ``calc.results['electrode_potential']``, and NaN until an SCF loop has
@@ -363,8 +366,7 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: from_dict, todict, equilibrate, new_geometry,
-             set_target_potential, set_excess_electrons, post_converged,
-             write_results
+             set_excess_electrons, post_converged, write_results
 
 .. autoclass:: gpaw.extensions.electrochemistry.ChargingScheme
    :members: initialize, todict, add_charge, add_charge_pw, move
@@ -372,8 +374,8 @@ Class documentation
 .. autoclass:: gpaw.extensions.electrochemistry.JelliumCharging
 
 .. autoclass:: gpaw.extensions.electrochemistry.PotentialOptimizer
-   :members: converged, next_excess_electrons, record_attempt,
-             last_attempt, forget_attempts, reset, todict
+   :members: set_target_potential, converged, next_excess_electrons,
+             record_attempt, last_attempt, forget_attempts, reset, todict
 
 .. autoclass:: gpaw.extensions.electrochemistry.DirectOptimizer
 

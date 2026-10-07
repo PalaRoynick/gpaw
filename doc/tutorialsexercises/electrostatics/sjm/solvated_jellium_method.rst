@@ -33,16 +33,16 @@ You'll notice that the output in 'Au111.txt' contains additional information, as
 Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last ``slope_regression_depth`` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
 It is followed by the Legendre-transformed energies::
 
-    Potential found to be 4.19999 V (with +0.00664 excess electrons, attempt 5/10).
-    Slope estimated from the last 4 attempts is -68.0515 V/electron,
-    or apparent capacitance of 3.2663 muF/cm^2
+    Potential found to be 4.19521 V (with +0.00645 excess electrons, attempt 4/10).
+    Slope estimated from the last 4 attempts is -67.9098 V/electron,
+    or apparent capacitance of 3.2731 muF/cm^2
     Potential is within tolerance. Equilibrated.
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):
-      N (excess electrons):      +0.006640
-      mu (-work function):       -4.199994  # eV
-      (Grand) free energy:      -21.289927
-      (Grand) extrapolated:     -21.267335
+      N (excess electrons):      +0.006453
+      mu (-work function):       -4.195210  # eV
+      (Grand) free energy:      -21.289829
+      (Grand) extrapolated:     -21.267235
 
 These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by ``calc.get_potential_energy()`` (and therefore ``atoms.get_potential_energy()``).
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
@@ -186,4 +186,4 @@ To accomplish this, set ``grand_output=False``, like::
                                                    'grand_output': False})])
 
 To change the SJM settings, keep the ``SJM(...)`` object in a variable, ``sjm = SJM(...)``, and call its ``change()``: ``sjm.change(potentiostat={'excess_electrons': ...})`` changes the number of excess electrons, before the first calculation or later on without throwing away the wave functions, and the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``.
-The settings are read off the potentiostat that runs in the calculation---``sjm.potentiostat.excess_electrons``, ``sjm.potentiostat.target_potential``, ``sjm.potentiostat.optimizer.tol`` and so on, which are its live values (the current number of excess electrons, say)---but set them through ``change()``, which also makes the next calculation run the SCF loop again.
+The settings are read off the potentiostat that runs in the calculation---``sjm.potentiostat.excess_electrons``, ``sjm.potentiostat.optimizer.target_potential``, ``sjm.potentiostat.optimizer.tol`` and so on, which are its live values (the current number of excess electrons, say)---but set them through ``change()``, which also makes the next calculation run the SCF loop again.

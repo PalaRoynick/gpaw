@@ -103,11 +103,11 @@ def test_settings_live_on_the_potentiostat(built):
         slope_regression_depth=3, slope=-20.0))
     pot = atoms.calc.dft.potentiostat
     assert pot is sjm.potentiostat
-    assert (pot.max_iters, pot.max_reruns, pot.max_potential_stepsize,
-            pot.grand_output, pot.always_adjust) == (3, 4, 1.5, False, True)
+    assert (pot.grand_output, pot.always_adjust) == (False, True)
     opt = pot.optimizer
-    assert (opt.mixer, opt.slope_regression_depth, opt.slope) == (
-        0.5, 3, -20.0)
+    assert (opt.max_iters, opt.max_reruns, opt.max_potential_stepsize,
+            opt.mixer, opt.slope_regression_depth, opt.slope) == (
+        3, 4, 1.5, 0.5, 3, -20.0)
 
 
 def test_tol_set_at_constant_charge_survives_the_switch(in_tmp_dir):
@@ -139,9 +139,8 @@ def test_parts_of_your_own_are_the_ones_that_run(in_tmp_dir):
         pass
 
     opt, probe = PotentialOptimizer(), WorkFunctionProbe()
-    pot = MyPotentiostat(target_potential=7.5, optimizer=opt,
-                         potentialprobe=probe)
-    atoms, sjm = h_atoms(target_potential=7.5)
+    pot = MyPotentiostat(optimizer=opt, potentialprobe=probe)
+    atoms, sjm = h_atoms()
     sjm = SJM(solvation=sjm.solvation, potentiostat=pot)
     atoms.calc = GPAW(mode='fd', kpts=(2, 2, 1), txt=None, extensions=[sjm])
     atoms.calc.initialize(atoms)
