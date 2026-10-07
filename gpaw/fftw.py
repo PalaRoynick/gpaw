@@ -165,8 +165,8 @@ class FFTPlans:
 
     def fft_sphere(self, in_R, pw):
         self.tmp_R[:] = in_R.data
-        self.fft()
-        coefs = pw.cut(self.tmp_Q) * (1 / self.tmp_R.size)
+        trace(self.fft())
+        coefs = trace(pw.cut)(self.tmp_Q) * (1 / self.tmp_R.size)
         return coefs
 
 
