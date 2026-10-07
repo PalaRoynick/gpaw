@@ -100,7 +100,14 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             S_MM = self.S_MM.copy()
             S_MM.invcholesky()
             if self.ncomponents < 4:
-                self._L_MM = S_MM
+                if self.domain_comm.size == 1:
+                    self._L_MM = S_MM
+                else:
+                    S2_MM = S_MM.new(dist=(self.domain_band_comm, 2, 2, 8, 16),
+                                     data=S_MM.data if self.domain_comm.rank == 0 else None)
+                    self._L_MM = S_MM.new(dist=(self.domain_band_comm,
+                                                4, 1, 4, 16))
+                    S2_MM.redist(self._L_MM)
             else:
                 M, M = S_MM.shape
                 L_sMsM = Matrix(2 * M, 2 * M, dtype=complex)

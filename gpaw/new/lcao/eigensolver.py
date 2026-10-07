@@ -43,7 +43,17 @@ class LCAOEigensolver(Eigensolver):
                  weight_n: np.ndarray,  # XXX: Unused
                  matrix_calculator: HamiltonianMatrixCalculator):
         H_MM = matrix_calculator.calculate_matrix(wfs)
-        eig_M = H_MM.eighl(wfs.L_MM, wfs.domain_comm)
+        L_MM = wfs.L_MM
+        comm = L_MM.dist.comm
+        if H_MM.dist.comm.size == comm.size:
+            eig_M = H_MM.eighl(L_MM, wfs.domain_comm)
+        else:
+            H2_MM = L_MM.new()
+            H1_MM = L_MM.new(dist=(comm, 2, 2, 8, 16),
+                             data=H_MM.data if wfs.domain_comm.rank == 0 else None)
+            H1_MM.redist(H2_MM)
+            eig_M = H2_MM.eighl(L_MM)
+            H2_MM.redist(H_MM)
         C_Mn = H_MM  # rename (H_MM now contains the eigenvectors)
         assert len(eig_M) >= wfs.nbands
         N = wfs.nbands
