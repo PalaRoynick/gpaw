@@ -60,7 +60,9 @@ def elph_cache(session_tmp_path):
 def supercell_cache(session_tmp_path, elph_cache):
     atoms = bulk('Li', crystalstructure='bcc', a=3.51, cubic=True)
     elph_cache
-    calc = get_calc(parallel={'domain': 1, 'band': 1},
+    calc = get_calc(parallel={'domain': 1,
+                              'band': 1,
+                              'distribute_density': False},
                     # parallel={'sl_auto': True, 'augment_grids':True,
                     #          'band': 2, 'kpt': 1, 'domain': 1 },
                     txt='gs_li.txt')

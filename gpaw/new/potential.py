@@ -147,4 +147,4 @@ class Potential:
 
             vacuum_level /= (3 - grid.pbc_c.sum())
 
-        return broadcast_float(vacuum_level, grid.comm) * Ha
+        return broadcast_float(vacuum_level, self.vHt_x.desc.comm) * Ha

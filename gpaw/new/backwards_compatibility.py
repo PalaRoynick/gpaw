@@ -66,7 +66,7 @@ class FakeWFS:
         self.bd = BandDescriptor(ibzwfs.nbands, ibzwfs.band_comm)
         self.grid = density.nt_sR.desc
         self.gd = self.grid._gd
-        atomdist = density.D_asii.layout.atomdist
+        atomdist = potential.dH_asii.layout.atomdist
         self.atom_partition = AtomPartition(atomdist.comm, atomdist.rank_a)
         # self.setups.set_symmetry(ibzwfs.ibz.symmetries.symmetry)
         self.occ_calc = occ_calc
