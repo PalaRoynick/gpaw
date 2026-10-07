@@ -172,7 +172,7 @@ def test_change_of_target():
     assert pot.pending_excess_electrons is None
     # The first guess of the charge needs a slope that lowers the potential
     # as electrons are added:
-    pot.fermi_level, pot.electrode_potential = -0.1, 2.7
+    pot.electrode_potential = 2.7
     for slope in [0.0, 3.0]:
         obj.change(potentiostat={'slope': slope, 'target_potential': 4.5})
         assert pot.excess_electrons == 0.0

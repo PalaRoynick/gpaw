@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import textwrap
 import warnings
@@ -12,8 +13,8 @@ from gpaw.dft import ExtensionInput
 from gpaw.extensions import Extension
 from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
-    DirectOptimizer, Potentiostat, _from_dict, build_jellium_region,
-    default_parts, settings)
+    DirectOptimizer, JelliumCharging, Potentiostat, _from_dict,
+    build_jellium_region, default_parts)
 from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
 from gpaw.solvation.extension import Solvation
 
@@ -21,8 +22,9 @@ from gpaw.solvation.extension import Solvation
 always_adjust_warning = 'always_adjust has no effect in constant-charge mode'
 
 #: The keys that change() takes: all but the parts themselves.
-changeable = (*settings, *default_parts['charging'][1],
-              *default_parts['optimizer'][1])
+changeable = ('always_adjust', 'grand_output',
+              *inspect.signature(JelliumCharging).parameters,
+              *inspect.signature(DirectOptimizer).parameters)
 
 
 class SJM(ExtensionInput):
@@ -151,7 +153,7 @@ class SJM(ExtensionInput):
 
         log('Solvated jellium method (SJM):')
         log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
-        for key, (default, _) in default_parts.items():
+        for key, default in default_parts.items():
             if type(getattr(pot, key)) is not default:
                 log(f'  {key}: {type(getattr(pot, key)).__name__}')
         if opt.target_potential is None:
@@ -286,18 +288,18 @@ class SJM(ExtensionInput):
                 slope = opt.slope
                 if ('excess_electrons' not in potentiostat and
                         slope is not None and slope < 0 and
-                        not np.isnan(pot.fermi_level)):
+                        not np.isnan(self.get_electrode_potential())):
                     # Guess the charge needed for the new target potential:
-                    pot.set_excess_electrons(
-                        pot.excess_electrons +
-                        (target - self.get_electrode_potential()) / slope)
+                    pot.excess_electrons += (
+                        target - self.get_electrode_potential()) / slope
                     log(f'Excess electrons changed to '
                         f'{pot.excess_electrons:+.5f} based on a slope of '
                         f'{slope:.4f} V/electron.')
             rerun = True
 
         if 'excess_electrons' in potentiostat:
-            pot.set_excess_electrons(potentiostat['excess_electrons'])
+            pot.excess_electrons = potentiostat['excess_electrons']
+            pot.pending_excess_electrons = None  # an explicit value wins
             log(f'Excess electrons changed to {pot.excess_electrons:+.5f}.')
             rerun = True
 

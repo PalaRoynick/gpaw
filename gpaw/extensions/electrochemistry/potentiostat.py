@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import inspect
 import textwrap
 from collections import deque
 from typing import Any
@@ -81,27 +82,21 @@ class Potentiostat(Extension):
         self.attempts: list[tuple[float, float]] = []
         # Charge staged by always_adjust for the next geometry:
         self.pending_excess_electrons: float | None = None
-
-        # Set by post_converged(), for the last converged calculation:
-        self.fermi_level = np.nan  # Ha
-        self.electrode_potential = np.nan  # V
-        self.converged_excess_electrons = np.nan
-        self.canonical_free = np.nan  # Ha
-        self.canonical_extrapolated = np.nan  # Ha
-        self.omega_free = np.nan  # Ha
-        self.omega_extrapolated = np.nan  # Ha
+        # V, set by post_converged() with the energies of the calculation:
+        self.electrode_potential = np.nan
 
     @classmethod
     def from_dict(cls, dct: dict | None) -> Potentiostat:
         """Build a potentiostat from SJM's ``potentiostat`` dict.
 
         Besides the settings, the dict takes the parts, as instances or as
-        dicts written by :meth:`todict`, and the keys of the default parts
+        dicts written by :meth:`todict`, and the keywords of the default parts
         (see ``default_parts``).  Those keys configure the default class, so
         they cannot go together with an instance of a part.
         """
         dct = dict(dct or {})
-        for key, (default, keys) in default_parts.items():
+        for key, default in default_parts.items():
+            keys = inspect.signature(default).parameters
             given = {k: dct.pop(k) for k in keys if k in dct}
             part = dct.get(key) or {}
             if isinstance(part, dict):
@@ -119,7 +114,8 @@ class Potentiostat(Extension):
         The values are the live ones -- the equilibrated excess electrons
         and the learned slope -- so a restart picks up from them.
         """
-        return {**{key: getattr(self, key) for key in settings},
+        return {'always_adjust': self.always_adjust,
+                'grand_output': self.grand_output,
                 **{key: {'name': type(part).__name__, **part.todict()}
                    for key in default_parts
                    for part in [getattr(self, key)]}}
@@ -146,14 +142,6 @@ class Potentiostat(Extension):
         """Number of attempts made in the current equilibration."""
         return len(self.attempts)
 
-    def set_excess_electrons(self, excess_electrons: float) -> None:
-        """Set the number of excess electrons explicitly.
-
-        An explicit value wins over one staged by ``always_adjust``.
-        """
-        self.excess_electrons = excess_electrons
-        self.pending_excess_electrons = None
-
     def new_geometry(self) -> float | None:
         """Start equilibrating a new geometry.
 
@@ -165,8 +153,8 @@ class Potentiostat(Extension):
         """
         staged = self.pending_excess_electrons
         if staged is not None:
-            self.set_excess_electrons(staged)
-        self.attempts, self.reruns = [], 0
+            self.excess_electrons = staged
+        self.attempts, self.reruns, self.pending_excess_electrons = [], 0, None
         self.optimizer.forget_attempts()
         return staged
 
@@ -1040,15 +1028,10 @@ class WorkFunctionProbe(PotentialProbe):
         return -ibzwfs.fermi_level * Ha
 
 
-#: The settings of a potentiostat, besides its parts:
-settings = ('always_adjust', 'grand_output')
-#: Each part's default class, and the keys that configure that default:
-default_parts: dict[str, tuple[type, tuple[str, ...]]] = {
-    'charging': (JelliumCharging, ('excess_electrons', 'jelliumregion')),
-    'optimizer': (DirectOptimizer, (
-        'target_potential', 'tol', 'slope', 'mixer', 'slope_regression_depth',
-        'max_potential_stepsize', 'max_iters', 'max_reruns')),
-    'potentialprobe': (WorkFunctionProbe, ())}
+#: Each part's default class; its keywords are keys of the potentiostat dict:
+default_parts: dict[str, type] = {'charging': JelliumCharging,
+                                  'optimizer': DirectOptimizer,
+                                  'potentialprobe': WorkFunctionProbe}
 
 
 def _from_dict(spec, cls):

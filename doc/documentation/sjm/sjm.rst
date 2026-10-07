@@ -366,7 +366,7 @@ Class documentation
 
 .. autoclass:: gpaw.extensions.electrochemistry.Potentiostat
    :members: from_dict, todict, equilibrate, new_geometry,
-             set_excess_electrons, post_converged, write_results
+             post_converged, write_results
 
 .. autoclass:: gpaw.extensions.electrochemistry.ChargingScheme
    :members: initialize, todict, add_charge, add_charge_pw, move
