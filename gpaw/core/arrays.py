@@ -137,7 +137,7 @@ class XArray(Generic[DomainType], XP):
         b = self.mydims[0]
         comm = self.desc.comm
         size = comm.size
-        if self.comm.size == 1:
+        if comm.size == 1:
             # Fast serial implementation
             if out_nX is not None:
                 for m, start in enumerate(range(0, b, comm.size * nm)):
