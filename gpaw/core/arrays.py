@@ -157,7 +157,7 @@ class XArray(Generic[DomainType], XP):
                 tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if True or rsize_r[comm.rank] > 0:
+                if tmp.size > 0:
                     comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
                                    buffer_data[offset_index], rsize_r, roffset_r)
                 else:
@@ -176,7 +176,7 @@ class XArray(Generic[DomainType], XP):
                 tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
                 ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
                     comm, tmp.shape[0], ng, myng, maxmyng)
-                if True or tmp.size > 0:
+                if tmp.size > 0:
                     comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
                                    tmp.ravel(), ssize_r, soffset_r)
                 else:
