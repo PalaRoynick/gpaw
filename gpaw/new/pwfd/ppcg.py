@@ -505,8 +505,11 @@ class PPCG(PWFDEigensolver):
                         Pbuf_abi.matrix.data[:block] += \
                             Pbuf_abi.matrix.data[dynslice]
 
-                        # Finally, calculate new Hpsi
-                        Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
+                        # Finally, calculate new Hpsi (only if we have more
+                        # iterations to go)
+                        if not ((self.allow_dynamic_breakout and break_after_update) or \
+                                i >= self.niter - 1)
+                            Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
 
             wfs.eig_n[:] = 0
             wfs.myeig_n[:] = new_eigs_n
