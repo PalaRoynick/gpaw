@@ -428,7 +428,7 @@ class DFTComponentsBuilder:
             wfs.eig_n = eig_skn[index] / ha
             wfs._occ_n = occ_skn[index]
             layout = AtomArraysLayout([(setup.ni,) for setup in self.setups],
-                                      atomdist=self.atomdist,
+                                      atomdist=self.wf_atomdist,
                                       dtype=self.dtype)
             P_ani = AtomArrays(layout, dims=dims, comm=band_comm)
 

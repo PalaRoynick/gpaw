@@ -79,7 +79,7 @@ class DirOptPWFD(PWFDEigensolver):
                 self.nband_s = [self.converge_bands for _ in self.nocc_s]
 
             self.dS_aii = pot_calc.setups.get_overlap_corrections(
-                density.D_asii.layout.atomdist, xp)
+                potential.dH_asii.layout.atomdist, xp)
 
         nspins = len(self.nocc_s)
 
