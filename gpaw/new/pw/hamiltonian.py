@@ -16,9 +16,11 @@ from gpaw.utilities import as_complex_dtype, as_real_dtype
 
 class PWHamiltonian(Hamiltonian):
     def __init__(self, grid, dtype, xp=np):
+        self.blocksize = 8
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
-        self.plan = self.grid_local.fft_plans(xp=xp)
+        self.plan = self.grid_local.fft_plans(xp=xp,
+                                              blocksize=self.blocksize)
         # It's a bit too expensive to create all the local PW-descriptors
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
@@ -34,8 +36,8 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
-        if xp is not np and pw.comm.size == 1:
-            return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
+        # if xp is not np and pw.comm.size == 1:
+        #     return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
         tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
@@ -48,32 +50,30 @@ class PWHamiltonian(Hamiltonian):
             if pw_local is None:
                 pw_local = pw.new(comm=None)
                 self.pw_cache[key] = pw_local
-        # psit_G = pw_local.empty(xp=xp).data
-        psit_G = pw_local.empty(1, xp=xp)
+        psit_xG = pw_local.empty(self.blocksize, xp=xp)
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
-        mynbands = psit_nG.mydims[0]
-        Q_G = pw_local.indices(tmp_Q.shape)
+        Q_G = pw_local.indices(tmp_Q.shape[-3:])
 
-        # apply_local_potential_gpu doesn't work with domain parallisation
-        # So we force vt_R to be the right type here.
-        vt_R_data = xp.asarray(vt_R.data)
-        vtpsit_G = xp.empty_like(psit_G.data)
+        # vt_R_data = xp.asarray(vt_R.data)
+        # vtpsit_G = xp.empty_like(psit_G.data)
 
-        for n, psit_G in psit_nG.iter_by_band(psit_G, out_nG):
+        for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
             # TODO: Vectorize this by including more than one band.
             # See the gpu call above for an example.
-            if len(n) == 0:
+            if len(y) == 0:
                 # This rank got no data
                 continue
-            plan.ifft_sphere(psit_G.data[0], pw_local)
-            tmp_R *= vt_R_data
+            tmp_yR = tmp_R[:len(y)]
+            tmp_yQ = tmp_Q[:len(y)]
+            plan.ifft_sphere(psit_yG.data, pw_local)
+            tmp_yR *= vt_R.data
             trace(plan.fft)()
             with tracectx('cut and postprocess'):
-                vtpsit_G = tmp_Q.ravel()[Q_G]
-                vtpsit_G *= 1.0 / tmp_R.size
-                psit_G.data *= e_kin_G
-                psit_G.data += vtpsit_G
+                vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]
+                vtpsit_yG *= len(y) / tmp_yR.size
+                psit_yG.data *= e_kin_G
+                psit_yG.data += vtpsit_yG
 
 
     def apply_mgga(self,

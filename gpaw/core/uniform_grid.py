@@ -272,14 +272,17 @@ class UGDesc(Domain['UGArray']):
     def fft_plans(self,
                   flags: int = fftw.MEASURE,
                   xp=np,
-                  dtype=None) -> fftw.FFTPlans:
+                  dtype=None,
+                  blocksize: int=1) -> fftw.FFTPlans:
         """Create FFTW-plans."""
         if dtype is None:
             dtype = self.dtype
         if self.comm.rank == 0:
-            return fftw.create_plans(self.size_c, dtype, flags, xp=xp)
+            return fftw.create_plans(self.size_c, dtype, flags, xp=xp,
+                                     blocksize=blocksize)
         else:
-            return fftw.create_plans([0, 0, 0], dtype, xp=xp)
+            return fftw.create_plans([0, 0, 0], dtype, xp=xp,
+                                     blocksize=blocksize)
 
     def ranks_from_fractional_positions(self,
                                         relpos_ac: Array2D) -> Array1D:

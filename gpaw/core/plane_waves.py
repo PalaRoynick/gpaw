@@ -98,7 +98,7 @@ class PWDesc(Domain['PWArray']):
         # Convert from np.float64 to float to avoid fake cupy problem ...
         # XXX Fix cpupy!!!
         self.dv = float(abs(np.linalg.det(self.cell_cv)))
-        self._indices_cache: dict[tuple[int, ...], Array1D] = {}
+        self._indices_cache: dict[tuple[int, bool], Array1D] = {}
 
     def __repr__(self) -> str:
         m = self.myshape[0]
@@ -190,9 +190,10 @@ class PWDesc(Domain['PWArray']):
                       comm=comm or serial_comm,
                       _lazy=_lazy)
 
-    def indices(self, shape: tuple[int, ...]) -> Array1D:
+    def indices(self, shape: tuple[int, ...],
+                gpu: bool = False) -> Array1D:
         """Return indices into FFT-grid."""
-        Q_G = self._indices_cache.get(shape)
+        Q_G = self._indices_cache.get((*shape, gpu))
         if Q_G is None:
             # We should do this here instead of everywhere calling this: !!!!
             # if self.dtype == float:
@@ -202,7 +203,9 @@ class PWDesc(Domain['PWArray']):
             if (np.diff(Q_G) < 0).any():
                 a, b, c = shape
                 raise ValueError(f'{a}x{b}x{c} grid too small!')
-            self._indices_cache[shape] = Q_G
+            if gpu:
+                Q_G = cp.array(Q_G)
+            self._indices_cache[(*shape, gpu)] = Q_G
         return Q_G
 
     def minimal_uniform_grid(self,
@@ -228,22 +231,44 @@ class PWDesc(Domain['PWArray']):
         """Cut out G-vectors with (G+k)^2/2<E_kin."""
         return array_Q.ravel()[self.indices(array_Q.shape)]
 
-    def paste(self, coef_G: Array1D, array_Q: Array3D) -> None:
+    def paste(self, coef_nG: ArrayND, array_nQ: ArrayND,
+              size_c: tuple[int, int, int]) -> None:
         """Paste G-vectors with (G+k)^2/2<E_kin into 3-D FFT grid and
         zero-pad."""
-        Q_G = self.indices(array_Q.shape)
+        gpu = not isinstance(coef_nG, np.ndarray)
+        Q_G = self.indices(array_nQ.shape[-3:], gpu=gpu)
         if debug:
             assert (Q_G[1:] > Q_G[:-1]).all()
             assert (Q_G >= 0).all()
-            assert (Q_G < array_Q.size).all()
-            assert coef_G.shape == Q_G.shape
-            assert coef_G.flags.c_contiguous
+            assert (Q_G < array_nQ.size).all()
+            assert coef_nG.shape[-1] == Q_G.size
+            assert coef_nG.flags.c_contiguous
             assert Q_G.flags.c_contiguous
-            assert array_Q.flags.c_contiguous
+            assert array_nQ.flags.c_contiguous
+            if coef_nG.ndim > 1:
+                assert coef_nG.shape[0] \
+                    == array_nQ.shape[0], (coef_nG.shape[0], array_nQ.shape[0])
 
-        assert isinstance(coef_G, np.ndarray)
-        assert isinstance(array_Q, np.ndarray)
-        pw_insert(coef_G, Q_G, 1.0, array_Q)
+        if not gpu:
+            assert isinstance(array_nQ, np.ndarray)
+            if coef_nG.ndim > 1:
+                for coef_G, array_Q in zip(coef_nG, array_nQ):
+                    pw_insert(coef_G, Q_G, 1.0, array_Q)
+            else:
+                pw_insert(coef_nG, Q_G, 1.0, array_nQ)
+        else:
+            # GPU
+            if coef_nG.ndim > 1:
+                array_nX = array_nQ.reshape((coef_nG.shape[0], -1))
+            else:
+                array_nX = array_nQ.ravel()
+            array_nX[:] = 0
+            pw_insert_gpu(coef_nG,
+                          Q_G,
+                          1.0,
+                          array_nX,
+                          *size_c)
+
 
     def map_indices(self, other: PWDesc) -> tuple[Array1D, list[Array1D]]:
         """Map from one (distributed) set of plane waves to smaller global set.
