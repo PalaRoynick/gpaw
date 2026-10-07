@@ -354,13 +354,8 @@ def read_dft_state(reader: ulm.Reader,
         params = Parameters(**kwargs)
         builder = params.dft_component_builder(atoms, log=log)
 
-    (kpt_comm, band_comm, domain_comm, kpt_band_comm) = (
-        builder.communicators[x] for x in 'kbdD')
-
-    if builder.distribute_density:
-        xcomm = mpi.serial_comm
-    else:
-        xcomm = kpt_band_comm
+    (kpt_comm, band_comm, xcomm, kpt_band_comm) = (
+        builder.communicators[x] for x in 'kbxD')
 
     nt_sR = builder.grid.empty(builder.ncomponents)
     vt_sR = builder.wf_grid.empty(builder.ncomponents)

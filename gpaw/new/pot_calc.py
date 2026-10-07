@@ -54,6 +54,8 @@ class PotentialCalculator:
         self.extensions: list = extensions or []
 
         self.distributed_density = grid.comm.size != wf_grid.comm.size
+        self.xcomm = (
+            serial_comm if self.distributed_density else kpt_band_comm)
         self.grid = grid
         self.wf_grid = wf_grid
         self.wf_atomdist = wf_atomdist

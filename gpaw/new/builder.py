@@ -192,20 +192,19 @@ class DFTComponentsBuilder:
         else:
             raise ValueError(f'Unknown dtype {params.mode.dtype}')
 
-        self.distribute_density = (
+        self.distributed_density = (
             params.parallel.get('distribute_density', not False) and
             comm.size > self.communicators['d'].size)
 
-        if self.distribute_density:
-            pass  # assert self.mode == 'pw'
-
         self.grid, self.fine_grid = self.create_uniform_grids()
-        if self.distribute_density:
+        if self.distributed_density:
+            self.communicators['x'] = serial_comm
             self.wf_grid = self.grid.new(comm=self.communicators['d'])
             self.wf_atomdist = AtomDistribution(
                 self.wf_grid.ranks_from_fractional_positions(self.relpos_ac),
                 self.wf_grid.comm)
         else:
+            self.communicators['x'] = self.communicators['D']
             self.wf_grid = self.grid
             self.wf_atomdist = self.atomdist
 
