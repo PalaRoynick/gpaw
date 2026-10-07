@@ -217,6 +217,21 @@ class NumericalXCKernel:
         self.lapl(vxc_sg, lapl_sg)
         return lapl_sg
 
+    def calculate_divgrad(self, vxc_sg):
+        """Divergence of the gradient using the same stencil twice.
+        sum_g |grad v|^2
+        ``calculate_lapl`` uses a different (higher order) stencil.
+        """
+        nspins = len(vxc_sg)
+        divgrad_sg = self.gd.zeros(nspins)
+        grad_svg = self.calculate_gradient(vxc_sg)
+        tmp_g = self.gd.empty()
+        for s in range(nspins):
+            for v in range(3):
+                self.grad_v[v](grad_svg[s, v], tmp_g)
+                divgrad_sg[s] += tmp_g
+        return divgrad_sg
+
     def calculate(self, e_g, n_sg, v_sg):
         assert self.vxc_sg is not None
         vxc_sg = self.vxc_sg

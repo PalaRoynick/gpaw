@@ -11,7 +11,7 @@ from gpaw.old.density import Density
 from gpaw.old.logger import GPAWLogger
 from gpaw.lfc import LFC
 from gpaw.sphere.lebedev import Y_nL, weight_n
-from gpaw.utilities import pack_hermitian
+from gpaw.utilities import pack_density
 from gpaw.mpi import broadcast_string
 from gpaw.new.backwards_compatibility import FakeDensity
 
@@ -139,6 +139,8 @@ class iKS:
         linear_solver=None results in a purely orbital expansion scheme.
         The additional keywords and arguments are passed to the underlying method directly.
         For example linear_solver={'name': 'minres', 'rtol':1e-6, 'maxiter':600, 'ortho': True}.
+        With ``ortho=True`` (default) the components of the solved adjoint states within each
+        degenerate block are removed (in the PAW S metric).
 
     use_coarse_grid : bool, default=False
         If True, the inversion is done on the coarse grid and the resulting potential is
@@ -213,6 +215,7 @@ class iKS:
         pseudo_core_scale: float = 0.0,
         reg_scheduler_params: dict[str, int | float] | None = None,
         corereg_scheduler_params: dict[str, int | float] | None = None,
+        boundaryreg_scheduler_params: dict[str, int | float] | None = None,
         corereg_xc: str | None = "LDA_X",
         nfixed: int = 2,
         linear_solver: dict | str = "minres",
@@ -258,10 +261,16 @@ class iKS:
         corereg_scheduler_params.setdefault("decay_rate", 1.0)
         corereg_scheduler_params.setdefault("min_val", lambda_core)
 
+        boundaryreg_scheduler_params = boundaryreg_scheduler_params or {}
+        boundaryreg_scheduler_params.setdefault("decay_rate", 1.0)
+        boundaryreg_scheduler_params.setdefault("min_val", lambda_paw_boundary)
+
         self.regsched = iks_optimize.StaircaseScheduler(
             lambda_reg, **reg_scheduler_params)
         self.coresched = iks_optimize.StaircaseScheduler(
             lambda_core, **corereg_scheduler_params)
+        self.boundarysched = iks_optimize.StaircaseScheduler(
+            lambda_paw_boundary, **boundaryreg_scheduler_params)
         self.corereg_xc = corereg_xc
 
         self.timer = Timer()
@@ -489,7 +498,10 @@ class iKS:
                 self.density, self.hamiltonian, self.wfs, self.calc.log, lambda i: None
             )
 
-    def iterate(self) -> None:
+    def iterate(self, adjoint: bool = True) -> None:
+        """Update the density for the current potentials and solve the adjoint equations.
+        With `adjoint=False` only the SCF (density, Lagrangian) part is done.
+        """
         if self.wfs.kptband_comm.size > 1:
             # we need to find the bug that in the k-point parallelization causes
             # the values of potentials (and consequently the densities or vice versa) diverge on each rank
@@ -511,6 +523,12 @@ class iKS:
             self.density.update(wfs)
             self.update_diff()
 
+        if adjoint:
+            self.solve_adjoint()
+
+    def solve_adjoint(self) -> None:
+        """Solve the adjoint equations for the current wave functions and density difference."""
+        wfs = self.wfs
         with self.timer("Vdiff matrix"):
             self.dd_u = []
             for kpt in wfs.kpt_u:
@@ -818,7 +836,7 @@ class iKS:
 
         lambda_reg = self.lambda_reg
         if lambda_reg != 0.0:
-            lapl_sg = self.xc.kernel.calculate_lapl(self.xc.vxc_sg)
+            lapl_sg = self.xc.kernel.calculate_divgrad(self.xc.vxc_sg)
             if self.use_coarse_grid:
                 J_sg -= 2 * lambda_reg * self.fine2coarse(lapl_sg)
             else:
@@ -861,7 +879,7 @@ class iKS:
             self.density.D_asp.shapes_a, self.wfs.dtype)
         for a, dp_sii in dp_asii.items():
             for s in range(self.nspins):
-                dp_asp[a][s] = pack_hermitian(dp_sii[s])
+                dp_asp[a][s] = pack_density(dp_sii[s])
 
         self.update_atomic_jacobian_from_adjoint_matrices(dp_asp)
         for J_asz in self.J_xasz:
@@ -1097,7 +1115,7 @@ class iKS:
             atomic_weights=self.atomic_weights,
             apply_occupation_correction=self.apply_occupation_correction,
             reg_params=self.regsched.todict(),
-            lambda_boundary=self.lambda_boundary,
+            boundary_reg_params=self.boundarysched.todict(),
             core_reg_params=self.coresched.todict(),
             pseudo_core_scale=self.pseudo_core_scale,
             corereg_xc=self.corereg_xc or self.xc.setup_name,

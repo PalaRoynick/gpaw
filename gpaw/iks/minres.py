@@ -13,11 +13,12 @@ if TYPE_CHECKING:
 class iKSLinearSolver:
 
     def __init__(self, iks: iKS, dd: DegeneracyDescriptor, method: str, p0_nG: np.ndarray = None,
-                 ortho: bool = False, **ls_kwargs):
+                 ortho: bool = True, **ls_kwargs):
         assert method == 'minres' or method is None or method.lower() == "none"
         self.iks = iks
         self.dd = dd
         self.method = method
+        self.expansion_only = method is None or method.lower() == "none"
         self.ortho = ortho
         self.ls_kwargs = ls_kwargs
         self.nocc = len(dd.occ)
@@ -43,6 +44,14 @@ class iKSLinearSolver:
         return P_ani
 
     def apply_occupation_correction(self, dfde_n, eta):
+        """Add the eigenvalue-variation (df/de) term of the adjoint state.
+
+            p_m += 1/2 sum_{n in block(m)} (vdiff_nm - eta delta_nm) dfde_n psi_n
+
+        With ``linear_solver='none'`` or ``ortho=False`` the expansion value is kept as is.
+        """
+        if self.expansion_only or not self.ortho or self.nocc == 0:
+            return
         for bm in self.dd.blocks_occ:
             for m in bm:
                 for n in bm:
@@ -54,20 +63,35 @@ class iKSLinearSolver:
         # recalculate the projections
         self.Pp_ani = self.calculate_projections(self.kpt, self.p_nG)
 
-    def orthogonalize(self, kpt, p_nG, psit_nG):
+    def orthogonalize(self, kpt, p_nG):
+        """Remove the in-block components of the adjoint states in the S metric.
+
+            p_m -= sum_{n in block(m)} <psi_n|S|p_m> psi_n
+
+        These components span the null space of (H - eps_m S)
+        Components along orbitals outside the block are left untouched.
+        """
         wfs = self.iks.wfs
+        dd = self.dd
         Pp_ani = self.calculate_projections(kpt, p_nG)
         P_ani = kpt.P_ani
-        p2_nG = p_nG.copy()
-        for n in range(len(p2_nG)):
-            II = np.zeros(1, dtype=p2_nG.dtype)
+        psit_nG = kpt.psit_nG
+        for bm in dd.blocks_occ:
+            im_m = [dd.idx_map[m] for m in bm]
+            # c_nm = <psi_n|S|p_m> for n, m in the block
+            c_nm = np.zeros((len(bm), len(bm)), dtype=p_nG.dtype)
             for a, Pp_ni in Pp_ani.items():
-                II += np.einsum("i,ij,j", Pp_ni[n].conj(),
-                                wfs.setups[a].dO_ii, P_ani[a][self.dd.occ[n]])
-            self.iks.gd.comm.sum(II)
-            alpha = II + wfs.integrate(p_nG[n], psit_nG[n])
-            p2_nG[n] -= alpha * psit_nG[n]
-        return p2_nG
+                dO_ii = wfs.setups[a].dO_ii
+                c_nm += np.einsum("ni,ij,mj->nm", P_ani[a][bm].conj(),
+                                  dO_ii, Pp_ni[im_m])
+            self.iks.gd.comm.sum(c_nm)
+            for jn, n in enumerate(bm):
+                for jm, im in enumerate(im_m):
+                    c_nm[jn, jm] += wfs.integrate(psit_nG[n], p_nG[im])
+            for jm, im in enumerate(im_m):
+                for jn, n in enumerate(bm):
+                    p_nG[im] -= c_nm[jn, jm] * psit_nG[n]
+        return p_nG
 
     def apply_lhs(self, p_nG):
         iks = self.iks
@@ -148,7 +172,7 @@ class iKSLinearSolver:
         pt.add(b_nG, dp_ani, q=kpt.q)
 
     def calculate_p(self, p0_nG):
-        if self.method is None or self.method.lower() == "none":
+        if self.expansion_only:
             self.blocks_msg = str(self.dd.blocks_occ)
             return p0_nG
 
@@ -181,7 +205,7 @@ class iKSLinearSolver:
         self.iters = iters
         self.blocks_msg = str(self.dd.blocks_occ)
         if self.ortho:
-            p_nG = self.orthogonalize(kpt, p_nG, kpt.psit_nG[self.dd.occ])
+            p_nG = self.orthogonalize(kpt, p_nG)
         return p_nG
 
     def calculate_jacobian_one_k(self):

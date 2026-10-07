@@ -404,7 +404,10 @@ class iKSLBFGS:
         self.gauge = gauge
         self.wolfe = wolfe
         self.world = iks.hamiltonian.world
+        # initial trial step of the Armijo backtracking, adapted between iterations
         self.armijo_alpha = 2.0
+        self.armijo_alpha_max = 16.0
+        self.armijo_alpha_reset = 1.0
         self.armijo_successes = 0
 
         self.s_hist: deque[PotState] = deque(maxlen=m)
@@ -493,7 +496,7 @@ class iKSLBFGS:
         #         v_sz[..., 0] = v_sz[..., 1]
         # return x
 
-    def set_potentials_and_iterate(self, x: PotState):
+    def set_potentials_and_iterate(self, x: PotState, adjoint: bool = True):
         if self.gauge:
             self.fix_gauge(x)
         iks = self.iks
@@ -510,7 +513,7 @@ class iKSLBFGS:
             xc.vxc_xasz[0][a][:] = v_sz
         for vxc_asz in xc.vxc_xasz:
             vxc_asz.check_consistency()
-        iks.iterate()
+        iks.iterate(adjoint=adjoint)
 
     def get_cbar_grad(self, J_sg, Jt_asz):
         iks = self.iks
@@ -723,7 +726,7 @@ class iKSLBFGS:
                 f'dphi0={dphi0:.5e}')
 
             self.set_potentials_and_iterate(x)
-            self.armijo_alpha = 1.0
+            self.armijo_alpha = self.armijo_alpha_reset
             self.armijo_successes = 0
 
             return x.copy(), gk.copy(), L0, LD0, 0.0, False
@@ -733,7 +736,7 @@ class iKSLBFGS:
         for il in range(max_ls):
             x_new = x + alpha * pk
             try:
-                self.set_potentials_and_iterate(x_new)
+                self.set_potentials_and_iterate(x_new, adjoint=False)
             except ValueError as e:
                 # due to failure of scf / the step is too large!
                 iks.fmt.log(
@@ -750,20 +753,29 @@ class iKSLBFGS:
                 f'phi={phi_new:.5e}')
 
             if np.isfinite(phi_new) and phi_new <= phi0 + c1 * alpha * dphi0:
+                iks.solve_adjoint()
                 J_sg, J_xasz, Jc_a = self.get_gradients()
                 g_new = PotState(
                     J_sg, J_xasz, Jc_a, *self.potstate_args)
 
+                # Update the initial trial step for the next line search.
                 if il == 0:
+                    # accepted at the first try: grow after three in a row
                     self.armijo_successes += 1
                     if self.armijo_successes >= 3:
-                        self.armijo_alpha = min((1.0 / tau) * alpha, 16.0)
+                        self.armijo_alpha = min(alpha / tau, self.armijo_alpha_max)
                         self.armijo_successes = 0
                     else:
                         self.armijo_alpha = alpha
                 else:
-                    self.armijo_alpha = alpha
                     self.armijo_successes = 0
+                    if il <= 3:
+                        # mild backtracking: the step scale was too large
+                        self.armijo_alpha = alpha
+                    else:
+                        # deep backtracking signals a poor search direction
+                        # do not inherit the tiny step for the next direction
+                        self.armijo_alpha = max(alpha, self.armijo_alpha_reset)
 
                 iks.fmt.log(
                     f'Armijo condition satisfied: alpha={alpha:.5e}')
@@ -773,14 +785,15 @@ class iKSLBFGS:
 
             alpha *= tau
             self.log_cbar(x_new)
+            # the max-grad columns show the last accepted gradient
             iks.logiter(il, self.L1, L_new, self.LD1,
-                        LD_new, iks.jacobian(), sep='')
+                        LD_new, iks.J_sg, sep='')
 
         iks.fmt.log(
             'Armijo line search failed; restoring current state.')
         self.set_potentials_and_iterate(x)
 
-        self.armijo_alpha = 1.0
+        self.armijo_alpha = self.armijo_alpha_reset
         self.armijo_successes = 0
 
         return x.copy(), gk.copy(), L0, LD0, 0.0, False
@@ -819,11 +832,14 @@ class iKSLBFGS:
             iks.niter = t
             val_core, reset_core = iks.coresched.step(t)
             val_reg, reset_reg = iks.regsched.step(t)
-            if reset_core or reset_reg:
+            val_boundary, reset_boundary = iks.boundarysched.step(t)
+            if reset_core or reset_reg or reset_boundary:
                 iks.lambda_core = val_core
                 iks.lambda_reg = val_reg
+                iks.lambda_boundary = val_boundary
                 iks.fmt.log(f'Regularization scheduler: '
-                            f'lambda_reg={val_reg:.5e}, lambda_core={val_core:.5e}')
+                            f'lambda_reg={val_reg:.5e}, lambda_core={val_core:.5e}, '
+                            f'lambda_boundary={val_boundary:.5e}')
                 # reset the history right after the regularization has been turned off
                 self.s_hist.clear()
                 self.y_hist.clear()
