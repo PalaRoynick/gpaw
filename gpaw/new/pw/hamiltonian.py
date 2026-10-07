@@ -36,8 +36,6 @@ class PWHamiltonian(Hamiltonian):
         out_nG = out
         xp = psit_nG.xp
         pw = psit_nG.desc
-        # if xp is not np and pw.comm.size == 1:
-        #     return apply_local_potential_gpu(vt_R, psit_nG, out_nG)
         vt_R = vt_R.gather(broadcast=True)
         plan = self.plan
         tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
@@ -211,54 +209,3 @@ class SpinorPWHamiltonian(Hamiltonian):
 
     def create_preconditioner(self, blocksize, xp):
         return spinor_precondition
-
-
-@trace
-def apply_local_potential_gpu(vt_R,
-                              psit_nG,
-                              out_nG,
-                              blocksize=10):
-    from gpaw.gpu import cupyx
-    pw = psit_nG.desc
-    e_kin_G = cp.asarray(pw.ekin_G, dtype=as_real_dtype(pw.dtype))
-    mynbands = psit_nG.mydims[0]
-    size_c = vt_R.desc.size_c
-    vt_R_data = cp.asarray(vt_R.data, dtype=as_real_dtype(pw.dtype))
-    w = trace(gpu=True)
-    if np.issubdtype(pw.dtype, np.floating):
-        shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
-        ifftn = w(cupyx.scipy.fft.irfftn)
-        fftn = w(cupyx.scipy.fft.rfftn)
-    else:
-        shape = tuple(size_c)
-        ifftn = w(cupyx.scipy.fft.ifftn)
-        fftn = w(cupyx.scipy.fft.fftn)
-    Q_G = cp.asarray(pw.indices(shape))
-    psit_bQ = None
-    for b1 in range(0, mynbands, blocksize):
-        b2 = min(b1 + blocksize, mynbands)
-        nb = b2 - b1
-        if psit_bQ is None:
-            psit_bQ = cp.empty((nb,) + shape, as_complex_dtype(pw.dtype))
-        elif nb < blocksize:
-            psit_bQ = psit_bQ[:nb]
-        psit_bQ[:] = 0.0
-        pw_insert_gpu(psit_nG.data[b1:b2],
-                      Q_G,
-                      1.0,
-                      psit_bQ.reshape((nb, -1)),
-                      *size_c)
-        psit_bR = ifftn(
-            psit_bQ,
-            tuple(size_c),
-            norm='forward',
-            overwrite_x=True)
-        psit_bR *= vt_R_data
-        vtpsit_bQ = fftn(
-            psit_bR,
-            tuple(size_c),
-            norm='forward',
-            overwrite_x=True)
-        out_nG.data[b1:b2] = psit_nG.data[b1:b2]
-        out_nG.data[b1:b2] *= e_kin_G
-        out_nG.data[b1:b2] += vtpsit_bQ.reshape((nb, -1))[:, Q_G]

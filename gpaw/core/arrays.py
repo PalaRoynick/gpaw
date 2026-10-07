@@ -137,6 +137,15 @@ class XArray(Generic[DomainType], XP):
         b = self.mydims[0]
         comm = self.desc.comm
         size = comm.size
+        if self.comm.size == 1:
+            # Fast serial implementation
+            if out_nX is not None:
+                if out_nX is not self:
+                    out_nX.data[:] = self.data
+                for m, start in enumerate(range(0, b, comm.size * nm)):
+                    end = min(start + comm.size * nm, b)
+                    mybands = np.arange(start, end)
+                    yield mybands, out_nX.data[start:end]
 
         ng = self.desc.shape[0]
         myng = self.desc.myshape[0]
