@@ -55,6 +55,8 @@ Git master branch
   the calculation of the Kohn-Sham potential.  Use
   ``parallel={'distribute_density': True}`` to enable this optimization.
 
+* Fixed bug preventing use of SG15-potentials with semi-core states.
+
 
 Version 26.7.0
 ==============
