@@ -31,9 +31,5 @@ def test_spinorbit_Kr():
     assert e_m == pytest.approx(
         [e1, e1, e2a, e2a, e2b, e2b, e2b, e2b], abs=1.0e-3)
 
-    # Kr-4p splitting:
+    # Kr-4p splitting is 42 meV smaller with ZORA:
     assert ez_m[-1] - ez_m[2] == pytest.approx(e2b - e2a - 0.042, abs=0.001)
-
-
-if __name__ == '__main__':
-    test_spinorbit_Kr()
