@@ -591,7 +591,7 @@ def calculate_number_of_bands(nbands: int | str | None,
 
     if N > nao and is_lcao:
         raise ValueError('Too many bands for LCAO calculation: '
-                         f'{nbands}%d bands and only {nao} atomic orbitals!')
+                         f'{N} bands and only {nao} atomic orbitals!')
 
     if nvalence < 0:
         raise ValueError(
