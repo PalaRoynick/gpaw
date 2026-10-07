@@ -131,6 +131,7 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
+    @trace
     def iter_by_band(self, buffer_mX, out_nX=None):
         nm = buffer_mX.mydims[0]
         b = self.mydims[0]

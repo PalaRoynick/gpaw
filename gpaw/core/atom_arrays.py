@@ -11,7 +11,7 @@ from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP
 from gpaw.gpu import cupy as cp
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import prod, zips
+from gpaw.new import prod, zips, trace
 from gpaw.new.c import dH_aii_times_P_ani_gpu
 from gpaw.typing import Array1D, ArrayLike1D
 from gpaw.utilities import as_real_dtype
@@ -453,6 +453,7 @@ class AtomArrays:
         b_axi.scatter_from(a_axi)
         b_axi.matrix.redist(self.matrix)
 
+    @trace
     def iter_by_band(self, buffer_ami, out_axi=None):
         from gpaw.core.arrays import a2a_stuff
 
