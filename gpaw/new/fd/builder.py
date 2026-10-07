@@ -45,7 +45,7 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return grid, fine_grid
 
     def create_wf_description(self) -> UGDesc:
-        return self.grid.new(dtype=self.dtype)
+        return self.wf_grid.new(dtype=self.dtype)
 
     def get_pseudo_core_densities(self):
         if self._nct_aR is None:
