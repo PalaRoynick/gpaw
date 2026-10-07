@@ -8,7 +8,7 @@ from gpaw.core.arrays import XArray
 from gpaw.core.plane_waves import PWArray
 from gpaw.core.uniform_grid import UGArray
 from gpaw.gpu import cupy as cp
-from gpaw.new import trace, zips
+from gpaw.new import trace, tracectx, zips
 from gpaw.new.c import pw_insert_gpu, pw_precond
 from gpaw.new.hamiltonian import Hamiltonian
 from gpaw.utilities import as_complex_dtype, as_real_dtype
@@ -68,11 +68,12 @@ class PWHamiltonian(Hamiltonian):
                 continue
             plan.ifft_sphere(psit_G.data[0], pw_local)
             tmp_R *= vt_R_data
-            plan.fft()
-            vtpsit_G = tmp_Q.ravel()[Q_G]
-            vtpsit_G *= 1.0 / tmp_R.size
-            psit_G.data *= e_kin_G
-            psit_G.data += vtpsit_G
+            trace(plan.fft)()
+            with tracectx('cut and postprocess'):
+                vtpsit_G = tmp_Q.ravel()[Q_G]
+                vtpsit_G *= 1.0 / tmp_R.size
+                psit_G.data *= e_kin_G
+                psit_G.data += vtpsit_G
 
 
     def apply_mgga(self,
