@@ -15,7 +15,7 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.gpu import is_hip
-from gpaw.new import trace, tracetx
+from gpaw.new import trace
 from gpaw.new.c import pw_insert_gpu
 from gpaw.typing import Array1D, Array3D, DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
@@ -148,8 +148,7 @@ class FFTPlans:
         if coef_G is None:
             out_R.scatter_from(None)
             return
-        with tracetx('PW insert'):
-            pw.paste(coef_G, self.tmp_Q)
+        trace(pw.paste)(coef_G, self.tmp_Q)
 
         if np.issubdtype(pw.dtype, np.floating):
             t = self.tmp_Q[:, :, 0]
@@ -160,8 +159,7 @@ class FFTPlans:
             t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
             t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
             t[-n:, 0] = t[n:0:-1, 0].conj()
-        with tracetx('IFFT'):
-            self.ifft()
+        trace(self.ifft)()
         if out_R is not None:
             out_R.scatter_from(self.tmp_R)
 
