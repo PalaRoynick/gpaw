@@ -25,6 +25,9 @@ class MPI4PYWrapper:
         if self.parent is not None and not self._MPI.Is_finalized():
             self.comm.Free()
 
+    def __repr__(self):
+        return f'MPIComm({self.rank}/{self.size})'
+
     @cached_property
     def _MPI(self):
         import mpi4py.MPI

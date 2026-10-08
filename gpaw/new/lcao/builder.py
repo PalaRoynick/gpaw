@@ -117,8 +117,8 @@ class LCAODFTComponentsBuilder(DFTComponentsBuilder):
         ibzwfs, _ = create_lcao_ibzwfs(
             basis,
             self.ibz, self.communicators, self.setups,
-            self.relpos_ac, self.grid, self.dtype,
-            self.nbands, self.ncomponents, self.atomdist, self.nelectrons,
+            self.relpos_ac, self.wf_grid, self.dtype,
+            self.nbands, self.ncomponents, self.wf_atomdist, self.nelectrons,
             coefficients, self.xp)
         return ibzwfs
 

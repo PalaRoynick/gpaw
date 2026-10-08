@@ -39,13 +39,13 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             self.ibz.symmetries,
             h=self.params.h,
             interpolation=self.interpolation_stencil_range,
-            comm=self.communicators['d'])
+            comm=self.communicators['w' if self.distributed_density else 'd'])
         fine_grid = grid.new(size=grid.size_c * 2)
         # decomposition=[2 * d for d in grid.decomposition]
         return grid, fine_grid
 
     def create_wf_description(self) -> UGDesc:
-        return self.grid.new(dtype=self.dtype)
+        return self.wf_grid.new(dtype=self.dtype)
 
     def get_pseudo_core_densities(self):
         if self._nct_aR is None:
@@ -85,6 +85,9 @@ class FDDFTComponentsBuilder(PWFDDFTComponentsBuilder):
             poisson_solver,
             relpos_ac=self.relpos_ac,
             atomdist=self.atomdist,
+            wf_grid=self.wf_grid,
+            wf_atomdist=self.wf_atomdist,
+            kpt_band_comm=self.communicators['D'],
             interpolation_stencil_range=self.interpolation_stencil_range,
             extensions=extensions,
             xp=self.xp)

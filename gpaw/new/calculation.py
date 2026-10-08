@@ -488,7 +488,7 @@ class DFT:
             wfs = wfs.collect_bands(n1, n2)
             if wfs is not None:
                 basis = getattr(self.scf_loop.hamiltonian, 'basis', None)
-                grid = self.density.nt_sR.desc
+                grid = self.potential.vt_sR.desc
                 if collinear:
                     wfs = wfs.to_uniform_grid_wave_functions(grid, basis)
                     psit_nR = wfs.psit_nX
@@ -698,7 +698,7 @@ class DFT:
         # Not quite sure it is needed???
         # At the moment we skip it on GPU's because it doesn't
         # work!
-        if density.nt_sR.xp is np and not builder.distribute_density:
+        if density.nt_sR.xp is np and not builder.distributed_density:
             ibzwfs.kpt_band_comm.broadcast(density.nt_sR.data, 0)
 
         potential, energies, _ = pot_calc.calculate(density)

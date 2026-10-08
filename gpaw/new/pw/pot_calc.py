@@ -1,12 +1,11 @@
 import numpy as np
 
 from gpaw.core import PWDesc
-from gpaw.mpi import broadcast_float, serial_comm
+from gpaw.mpi import broadcast_float
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
 from gpaw.new.pw.stress import calculate_stress
 from gpaw.setup import Setups
-from gpaw.new.potential import Potential
 
 
 class PlaneWavePotentialCalculator(PotentialCalculator):
@@ -38,6 +37,10 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         super().__init__(xc, poisson_solver, setups,
                          relpos_ac=relpos_ac,
                          extensions=extensions,
+                         grid=grid,
+                         wf_grid=wf_grid,
+                         wf_atomdist=wf_atomdist,
+                         kpt_band_comm=kpt_band_comm,
                          soc=soc)
 
         self.vbar_ag = setups.create_local_potentials(
@@ -48,11 +51,6 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         self.grid = grid
         self.fine_grid = fine_grid
-
-        self.distributed_density = grid.comm.size != wf_grid.comm.size
-        self.wf_grid = wf_grid
-        self.wf_atomdist = wf_atomdist
-        self.kpt_band_comm = kpt_band_comm
 
         self.vbar_g = pw.zeros(xp=xp)
         self.vbar_ag.add_to(self.vbar_g)
@@ -164,22 +162,6 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
                 vHt_h,
                 V_aL,
                 e_stress)
-
-    def redist(self, potential: Potential) -> Potential:
-        """Redistribute potential.
-
-        If the density is distributed over the entire "world" then
-        we redistribute it to self.wf_grid and self.wf_atomdist and the
-        complementary communicator self.kpt_band_comm.
-        """
-        if not self.distributed_density:
-            return potential
-        return potential.redist(
-            self.wf_grid,
-            None,
-            self.wf_atomdist,
-            serial_comm,
-            self.kpt_band_comm)
 
     def move(self, relpos_ac, atomdist):
         super().move(relpos_ac, atomdist)

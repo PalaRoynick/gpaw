@@ -354,15 +354,15 @@ def read_dft_state(reader: ulm.Reader,
         params = Parameters(**kwargs)
         builder = params.dft_component_builder(atoms, log=log)
 
-    (kpt_comm, band_comm, domain_comm, kpt_band_comm) = (
-        builder.communicators[x] for x in 'kbdD')
+    (kpt_comm, band_comm, xcomm, kpt_band_comm) = (
+        builder.communicators[x] for x in 'kbxD')
 
     nt_sR = builder.grid.empty(builder.ncomponents)
-    vt_sR = builder.grid.empty(builder.ncomponents)
+    vt_sR = builder.wf_grid.empty(builder.ncomponents)
 
     if builder.xc.type == 'MGGA':
         taut_sR = builder.grid.empty(builder.ncomponents)
-        dedtaut_sR = builder.grid.empty(builder.ncomponents)
+        dedtaut_sR = builder.wf_grid.empty(builder.ncomponents)
     else:
         taut_sR = None
         dedtaut_sR = None
@@ -372,26 +372,31 @@ def read_dft_state(reader: ulm.Reader,
         [(setup.ni * (setup.ni + 1) // 2) for setup in builder.setups],
         atomdist=builder.atomdist, dtype=dtype)
     D_asp = atom_array_layout.empty(builder.ncomponents)
-    dH_asp = atom_array_layout.empty(builder.ncomponents)
+    wf_atom_array_layout = AtomArraysLayout(
+        [(setup.ni * (setup.ni + 1) // 2) for setup in builder.setups],
+        atomdist=builder.wf_atomdist, dtype=dtype)
+    dH_asp = wf_atom_array_layout.empty(builder.ncomponents)
 
-    if kpt_band_comm.rank == 0:
+    if xcomm.rank == 0:
         nt_sR.scatter_from(nt_sR_array)
-        vt_sR.scatter_from(vt_sR_array)
         if builder.xc.type == 'MGGA':
             taut_sR.scatter_from(taut_sR_array)
-            dedtaut_sR.scatter_from(dedtaut_sR_array)
         D_asp.scatter_from(D_sap_array)
+    if kpt_band_comm.rank == 0:
+        vt_sR.scatter_from(vt_sR_array)
+        if builder.xc.type == 'MGGA':
+            dedtaut_sR.scatter_from(dedtaut_sR_array)
         dH_asp.scatter_from(dH_sap_array)
     if reader.version < 4:
         convert_to_new_packing_convention(D_asp, density=True)
         convert_to_new_packing_convention(dH_asp)
 
-    kpt_band_comm.broadcast(nt_sR.data, 0)
+    xcomm.broadcast(nt_sR.data, 0)
     kpt_band_comm.broadcast(vt_sR.data, 0)
     if builder.xc.type == 'MGGA':
-        kpt_band_comm.broadcast(taut_sR.data, 0)
+        xcomm.broadcast(taut_sR.data, 0)
         kpt_band_comm.broadcast(dedtaut_sR.data, 0)
-    kpt_band_comm.broadcast(D_asp.data, 0)
+    xcomm.broadcast(D_asp.data, 0)
     kpt_band_comm.broadcast(dH_asp.data, 0)
 
     # if reader.version >= 4:
@@ -403,9 +408,9 @@ def read_dft_state(reader: ulm.Reader,
         else:
             vHt_x_array = None
         vHt_x = builder.electrostatic_potential_desc.empty()
-        if kpt_band_comm.rank == 0:
+        if xcomm.rank == 0:
             vHt_x.scatter_from(vHt_x_array)
-        kpt_band_comm.broadcast(vHt_x.data, 0)
+        xcomm.broadcast(vHt_x.data, 0)
     else:
         vHt_x = None
 

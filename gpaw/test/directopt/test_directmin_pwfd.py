@@ -132,4 +132,4 @@ def test_directmin_C2H4(in_tmp_dir, mode):
 
 
 if __name__ == '__main__':
-    test_directmin_C2H4(1, 'pw', 1)
+    test_directmin_C2H4(1, 'fd')

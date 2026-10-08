@@ -7,11 +7,12 @@ import numpy as np
 from gpaw.core import UGDesc
 from gpaw.new import spinsum, trace, zips
 from gpaw.new.pot_calc import PotentialCalculator
+from gpaw.mpi import serial_comm
 
 
 class FDPotentialCalculator(PotentialCalculator):
     def __init__(self,
-                 wf_grid: UGDesc,
+                 grid: UGDesc,
                  fine_grid: UGDesc,
                  setups,
                  xc,
@@ -19,11 +20,13 @@ class FDPotentialCalculator(PotentialCalculator):
                  *,
                  relpos_ac,
                  atomdist,
+                 wf_grid,  # grid for wave functions
+                 wf_atomdist,  # atom-distribution for wave functions
+                 kpt_band_comm,  # complementary comm for wave functions
                  interpolation_stencil_range=3,
                  extensions=None,
                  xp=np):
         self.fine_grid = fine_grid
-        self.grid = wf_grid
 
         self.vbar_ar = setups.create_local_potentials(fine_grid, relpos_ac,
                                                       atomdist, xp=xp)
@@ -37,12 +40,16 @@ class FDPotentialCalculator(PotentialCalculator):
 
         n = interpolation_stencil_range
         self.interpolation_stencil_range = n
-        self._interpolate = wf_grid.transformer(fine_grid, n, xp=xp)
-        self._restrict = fine_grid.transformer(wf_grid, n, xp=xp)
+        self._interpolate = grid.transformer(fine_grid, n, xp=xp)
+        self._restrict = fine_grid.transformer(grid, n, xp=xp)
 
         self.xp = xp
 
         super().__init__(xc, poisson_solver, setups,
+                         grid=grid,
+                         wf_grid=wf_grid,
+                         wf_atomdist=wf_atomdist,
+                         kpt_band_comm=kpt_band_comm,
                          relpos_ac=relpos_ac,
                          extensions=extensions)
 
@@ -147,6 +154,9 @@ class FDPotentialCalculator(PotentialCalculator):
     def force_contributions(self, Q_aL, density, potential):
         nt_R = spinsum(density.nt_sR)
         vt_R = spinsum(potential.vt_sR, mean=True)
+        if self.distributed_density:
+            vt_R = vt_R.redist(nt_R.desc, self.kpt_band_comm, serial_comm)
+
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
             dedtaut_R = spinsum(dedtaut_sR, mean=True)

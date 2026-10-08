@@ -30,6 +30,7 @@ from gpaw.setup import Setup
 from gpaw.spinorbit import soc as soc_terms
 from gpaw.typing import Array1D, Array2D, Array3D
 from gpaw.utilities import pack_density, pack_hermitian, unpack_hermitian
+from gpaw.mpi import serial_comm
 
 
 class PotentialCalculator:
@@ -38,6 +39,10 @@ class PotentialCalculator:
                  poisson_solver,
                  setups: list[Setup],
                  *,
+                 grid,
+                 wf_grid,  # grid for wave functions
+                 wf_atomdist,  # atom-distribution for wave functions
+                 kpt_band_comm,  # complementary comm for wave functions
                  relpos_ac: Array2D,
                  extensions: list | None = None,
                  soc: bool = False):
@@ -47,6 +52,30 @@ class PotentialCalculator:
         self.relpos_ac = relpos_ac
         self.soc = soc
         self.extensions: list = extensions or []
+
+        self.distributed_density = grid.comm.size != wf_grid.comm.size
+        self.xcomm = (
+            serial_comm if self.distributed_density else kpt_band_comm)
+        self.grid = grid
+        self.wf_grid = wf_grid
+        self.wf_atomdist = wf_atomdist
+        self.kpt_band_comm = kpt_band_comm
+
+    def redist(self, potential: Potential) -> Potential:
+        """Redistribute potential.
+
+        If the density is distributed over the entire "world" then
+        we redistribute it to self.wf_grid and self.wf_atomdist and the
+        complementary communicator self.kpt_band_comm.
+        """
+        if not self.distributed_density:
+            return potential
+        return potential.redist(
+            self.wf_grid,
+            None,
+            self.wf_atomdist,
+            serial_comm,
+            self.kpt_band_comm)
 
     def __str__(self):
         return (f'{self.poisson_solver}\n'
@@ -156,9 +185,6 @@ class PotentialCalculator:
         return (potential,
                 DFTEnergies(**energies),
                 V_aL)
-
-    def redist(self, potential: Potential):
-        return potential
 
 
 @trace
