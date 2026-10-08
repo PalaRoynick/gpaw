@@ -13,6 +13,7 @@ from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
+from gpaw.utilities.blas import mmm
 
 
 class HamiltonianMatrixCalculator:
@@ -74,12 +75,22 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
         M1, M2 = V_MM.dist.my_row_range()
         if V_MM.xp is np:
             dH_II = sparse.block_diag(
-                [sparse.coo_array(dH_ii) for dH_ii in dH_aii.values()],
+                [dH_ii for dH_ii in dH_aii.values()],
                 format='csr')
-            P_MI = sparse.hstack(
-                [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
+            dH_II = sparse.block_diag(
+                [dH_aii[a] for a in wfs.P_aMi.keys()],
                 format='csr')
-            V_MM.data += (P_MI[M1:M2].dot(dH_II)).conj().dot(P_MI.T).todense()
+            #P_MI = sparse.hstack(
+            #    [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
+            #    format='csr')
+            # V_MM.data += (P_MI[M1:M2].dot(dH_II)).conj().dot(P_MI.T).todense()
+            assert dH_II.dtype == float
+            P_MI = wfs.P_aMi.data
+            #mmm(1.0, P_MI[M1:M2].conj() @ dH_II, 'N', P_MI, 'T', 1.0, V_MM.data)
+            if V_MM.dtype == float:
+                mmm(1.0, (P_MI[M1:M2] @ dH_II).T, 'T', P_MI, 'T', 1.0, V_MM.data)
+            else:
+                1 / 0
         else:
             for a, dH_ii in dH_aii.items():
                 P_Mi = wfs.P_aMi[a]

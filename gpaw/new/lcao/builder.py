@@ -280,5 +280,8 @@ def add_atomic_overlap_corrections(
                 format='csr')
 
         P_MI = P_aMi.data
-        mmm(1.0, P_MI[M1:M2].conj() @ dO_II, 'N', P_MI, 'T', 1.0, S_MM)
+        if S_MM.dtype == float:
+            mmm(1.0, (P_MI[M1:M2] @ dO_II).T, 'T', P_MI, 'T', 1.0, S_MM)
+        else:
+            1/0
         # S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()
