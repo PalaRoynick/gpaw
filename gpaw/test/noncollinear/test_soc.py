@@ -64,7 +64,7 @@ def test_non_collinear_plus_soc():
     a.calc = GPAW(
         convergence={'bands': 28},
         symmetry='off',
-        parallel={'domain': 1},
+        parallel={'domain': 1, 'distribute_density': False},
         **kwargs,
         **params)
     a.get_potential_energy()
@@ -80,7 +80,9 @@ def test_soc_non_self_consistent():
     a = mx2('MoS2')
     a.center(vacuum=3, axis=2)
 
-    a.calc = GPAW(convergence={'bands': 14}, **params)
+    a.calc = GPAW(convergence={'bands': 14},
+                  parallel={'distribute_density': False},
+                  **params)
     a.get_potential_energy()
 
     bzwfs = soc_eigenstates(a.calc, n2=14)

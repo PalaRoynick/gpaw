@@ -87,9 +87,7 @@ def prepare_mom_calculation(calc,
     else:
         calc.dft.scf_loop.occ_calc.occ = occ_mom
         calc.dft.results = {}
-
     calc.log(occ_mom)
-
     return occ_mom
 
 
@@ -119,9 +117,10 @@ class OccupationsMOM:
         self.niter_width_update = niter_width_update
         self.width_increment = width_increment / Ha
 
-        parallel_layout = ParallelLayout(self.wfs.bd,
-                                         self.wfs.kd.comm,
-                                         self.wfs.gd.comm)
+        parallel_layout = ParallelLayout(
+            self.wfs.bd,
+            self.wfs.kd.comm,
+            self.wfs.potential.vt_sR.desc.comm)
         self.occ = FixedOccupationNumbers(numbers, parallel_layout)
         self.extrapolate_factor = self.occ.extrapolate_factor
 

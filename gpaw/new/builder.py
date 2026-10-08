@@ -482,7 +482,7 @@ def create_communicators(comm: MPIComm,
              for key, comm in comms.items()}
 
     if xp is not np and not GPU_AWARE_MPI:
-        comms = {key: CuPyMPI(comm) for key, comm in comms.items()}
+        comms = {key: comm if isinstance(comm, CuPyMPI) else CuPyMPI(comm) for key, comm in comms.items()}
 
     return comms
 

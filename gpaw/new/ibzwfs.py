@@ -67,7 +67,7 @@ class IBZWaveFunctions(Generic[WFT]):
         self.xp = wfs.xp
         if self.xp is not np:
             if not GPU_AWARE_MPI:
-                self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
+                pass#self.kpt_comm = CuPyMPI(self.kpt_comm)  # type: ignore
 
         self.move_wave_functions: Callable[..., None] = lambda *args: None
 
