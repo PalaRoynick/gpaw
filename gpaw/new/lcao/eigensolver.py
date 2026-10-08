@@ -48,12 +48,19 @@ class LCAOEigensolver(Eigensolver):
         if H_MM.dist.comm.size == comm.size:
             eig_M = H_MM.eighl(L_MM, wfs.domain_comm)
         else:
+            M = H_MM.shape[0]
             H2_MM = L_MM.new()
-            H1_MM = L_MM.new(dist=(comm, 2, 2, 8, 16),
-                             data=H_MM.data if wfs.domain_comm.rank == 0 else None)
+            H1_MM = L_MM.new(
+                dist=(comm,
+                      wfs.band_comm.size, wfs.domain_comm.size,
+                      H_MM.dist.br, M),#2, 2, 8, 16),
+                data=H_MM.data if wfs.domain_comm.rank == 0 else None)
             H1_MM.redist(H2_MM)
             eig_M = H2_MM.eighl(L_MM)
-            H2_MM.redist(H_MM)
+            H2_MM.redist(H1_MM)
+            wfs.domain_comm.broadcast(H_MM.data, 0)
+        #print(wfs.domain_band_comm.rank, H_MM.data[:, 0])
+        #raise SystemExit()
         C_Mn = H_MM  # rename (H_MM now contains the eigenvectors)
         assert len(eig_M) >= wfs.nbands
         N = wfs.nbands
