@@ -250,6 +250,7 @@ class PPCG(PWFDEigensolver):
 
             dS_Aii = dS_aii.gather(copy=True, broadcast=True)
             dH_Asii = potential.dH_asii.gather(copy=True, broadcast=True)
+            dH_Aii = dH_Asii[:, 0]
 
             vt_sR = potential.vt_sR.gather(broadcast=True)
             Ht_args = list(Ht.args)
@@ -417,7 +418,7 @@ class PPCG(PWFDEigensolver):
                              out=Hbuff_bX[:nblocks - block])
                     # dH_Aii(Pbuf_abi[:, block:nblocks],
                     #        out_ani=HPbuf_abi[:, :nblocks - block])
-                    Pbuf_abi[:, block:nblocks].block_diag_multiply(dH_Asii,
+                    Pbuf_abi[:, block:nblocks].block_diag_multiply(dH_Aii,
                         out_ani=HPbuf_abi[:, :nblocks - block])
                     Hbuff_bX[:nblocks - block].matrix_elements(
                         buff_bX[:nblocks],
