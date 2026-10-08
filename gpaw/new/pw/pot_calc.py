@@ -185,10 +185,9 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         nt_R = spinsum(density.nt_sR)
         self._nt_g = nt_R.fft(self.fftplan, pw=self.pw)
 
-        vt_R = spinsum(potential.vt_sR, mean=True)
         vt_g = None
-        if self.pw.comm.rank < vt_R.desc.comm.size:
-            vt_R = vt_R.gather()
+        if self.kpt_band_comm.rank == 0:
+            vt_R = spinsum(potential.vt_sR, mean=True).gather()
             if vt_R is not None:
                 vt_g = vt_R.fft(self.fftplan, pw=self.vbar0_g.desc)
         if self.pw.comm.size == 1:
@@ -199,8 +198,17 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
 
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
-            dedtaut_R = spinsum(dedtaut_sR, mean=True)
-            self._dedtaut_g = dedtaut_R.fft(self.fftplan, pw=self.pw)
+            dedtaut_g = None
+            if self.kpt_band_comm.rank == 0:
+                dedtaut_R = spinsum(dedtaut_sR, mean=True).gather()
+                if dedtaut_R is not None:
+                    dedtaut_g = dedtaut_R.fft(self.fftplan,
+                                              pw=self.vbar0_g.desc)
+            if self.pw.comm.size == 1:
+                self._dedtaut_g = dedtaut_g
+            else:
+                self._dedtaut_g = self.pw.empty(xp=self.xp)
+                self._dedtaut_g.scatter_from(dedtaut_g)
         else:
             self._dedtaut_g = None
 
