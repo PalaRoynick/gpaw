@@ -90,7 +90,7 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
             if V_MM.dtype == float:
                 mmm(1.0, (P_MI[M1:M2] @ dH_II).T, 'T', P_MI, 'T', 1.0, V_MM.data)
             else:
-                1 / 0
+                mmm(1.0, (P_MI[M1:M2] @ dH_II).conj().T, 'T', P_MI, 'T', 1.0, V_MM.data)
         else:
             for a, dH_ii in dH_aii.items():
                 P_Mi = wfs.P_aMi[a]

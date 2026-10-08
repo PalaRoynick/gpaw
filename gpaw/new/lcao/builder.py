@@ -271,10 +271,10 @@ def add_atomic_overlap_corrections(
         M2: int):
     dO_II = None
     for P_aMi, S_MM in zips(P_qaMi, S0_qMM):
-        # No atoms on this rank
-        if len(P_aMi) == 0:#keys()??
-            continue# or return???
         if dO_II is None:
+            if P_aMi.data.size == 0:
+                # No atoms on this rank
+                return
             dO_II = sparse.block_diag(
                 [setups[a].dO_ii for a in P_aMi.keys()],
                 format='csr')
@@ -283,5 +283,5 @@ def add_atomic_overlap_corrections(
         if S_MM.dtype == float:
             mmm(1.0, (P_MI[M1:M2] @ dO_II).T, 'T', P_MI, 'T', 1.0, S_MM)
         else:
-            1/0
+            mmm(1.0, (P_MI[M1:M2] @ dO_II).conj().T, 'T', P_MI, 'T', 1.0, S_MM)
         # S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()
