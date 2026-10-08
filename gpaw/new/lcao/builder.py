@@ -14,6 +14,8 @@ from gpaw.new.lcao.hybrids import HybridXCFunctional
 from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.utilities.timing import NullTimer
+from gpaw.core.atom_arrays import AtomArraysLayout, AtomDistribution
+from gpaw.utilities.blas import mmm
 
 
 class LCAODFTComponentsBuilder(DFTComponentsBuilder):
@@ -267,15 +269,16 @@ def add_atomic_overlap_corrections(
         setups,
         M1: int,
         M2: int):
+    dO_II = None
     for P_aMi, S_MM in zips(P_qaMi, S0_qMM):
         # No atoms on this rank
-        if len(P_aMi) == 0:
-            continue
+        if len(P_aMi) == 0:#keys()??
+            continue# or return???
+        if dO_II is None:
+            dO_II = sparse.block_diag(
+                [setups[a].dO_ii for a in P_aMi.keys()],
+                format='csr')
 
-        dO_II = sparse.block_diag(
-            [sparse.coo_array(setups[a].dO_ii) for a in P_aMi],
-            format='csr')
-        P_MI = sparse.hstack(
-            [sparse.coo_matrix(P_Mi) for P_Mi in P_aMi.values()],
-            format='csr')
-        S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()
+        P_MI = P_aMi.data
+        mmm(1.0, P_MI[M1:M2].conj() @ dO_II, 'N', P_MI, 'T', 1.0, S_MM)
+        # S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()
