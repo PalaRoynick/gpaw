@@ -245,7 +245,7 @@ class IBZWaveFunctions(Generic[WFT]):
         """Compute density and place in ``nt_sR`` and ``D_asii``."""
         if nt_sR.desc.comm.size != self.domain_comm.size:
             my_nt_sR = nt_sR.desc.new(
-                comm=self.domain_comm).zeros(self.ncomponents, xp=self.xp)
+                comm=self.domain_comm).empty(self.ncomponents, xp=self.xp)
             atomdist = self._wfs_u[0].P_ani.layout.atomdist
             my_D_asii = D_asii.layout.new(
                 atomdist=atomdist, xp=self.xp).zeros(self.ncomponents)
@@ -273,6 +273,14 @@ class IBZWaveFunctions(Generic[WFT]):
         pass  # overwritten in LCAOIBZWaveFunctions class
 
     def add_to_ked(self, taut_sR) -> None:
+        if taut_sR.desc.comm.size != self.domain_comm.size:
+            my_taut_sR = taut_sR.desc.new(
+                comm=self.domain_comm).empty(self.ncomponents, xp=self.xp)
+            self.add_to_ked(my_taut_sR)
+            my_taut_sR.redist_to(
+                taut_sR, self.kpt_band_comm, serial_comm)
+            return
+        taut_sR.data[:] = 0.0
         for wfs in self:
             wfs.add_to_ked(taut_sR)
         self.kpt_comm.sum(taut_sR.data)

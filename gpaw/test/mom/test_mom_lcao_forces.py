@@ -30,7 +30,8 @@ def test_mom_lcao_forces(in_tmp_dir):
                 spinpol=True,
                 symmetry='off',
                 convergence={'energy': 100,
-                             'density': 1e-4})
+                             'density': 1e-4},
+                parallel={'distribute_density': False})
 
     atoms.calc = calc
     # Ground-state calculation
@@ -38,7 +39,9 @@ def test_mom_lcao_forces(in_tmp_dir):
     calc.write('co_lcao_gs.gpw', 'all')
 
     for mom in [False, True]:
-        atoms, calc = restart('co_lcao_gs.gpw', txt='-')
+        atoms, calc = restart('co_lcao_gs.gpw',
+                              txt='-',
+                              parallel={'distribute_density': False})
 
         occ = prepare_mom_calculation(calc, atoms, f_sn, use_projections=mom)
         F = atoms.get_forces()

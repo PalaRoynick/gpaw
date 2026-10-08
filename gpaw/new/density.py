@@ -235,9 +235,7 @@ class Density:
 
     def update_ked(self, ibzwfs, symmetrize=True):
         if self.taut_sR is None:
-            self.taut_sR = self.nt_sR.new(zeroed=True)
-        else:
-            self.taut_sR.data[:] = 0.0
+            self.taut_sR = self.nt_sR.new()#zeroed=True)
         ibzwfs.add_to_ked(self.taut_sR)
         self.taut_sR.data[:self.ndensities] += self.tauct_R.data
         if symmetrize:
