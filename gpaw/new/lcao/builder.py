@@ -212,8 +212,23 @@ def tci_helper(basis,
         np.negative(T0_qMM.imag, T0_qMM.imag)
 
     P_aqMi = manytci.P_aqMi(my_atom_indices)
-    P_qaMi = [{a: P_aqMi[a][q] for a in my_atom_indices}
-              for q in range(len(S0_qMM))]
+
+    atomdist = AtomDistribution.from_atom_indices(
+        my_atom_indices,
+        domain_comm,
+        natoms=len(setups))
+    layout = AtomArraysLayout([setup.ni for setup in setups],
+                              atomdist=atomdist,
+                              dtype=dtype,
+                              xp=xp)
+    nao = setups.nao
+
+    P_qaMi = []
+    for q in range(len(S0_qMM)):
+        P_aMi = layout.empty(nao)
+        for a, P_Mi in P_aMi.items():
+            P_Mi[:] = P_aqMi[a][q]
+        P_qaMi.append(P_aMi)
 
     add_atomic_overlap_corrections(P_qaMi=P_qaMi,
                                    S0_qMM=S0_qMM,
@@ -224,8 +239,6 @@ def tci_helper(basis,
 
     # self.atomic_correction= self.atomic_correction_cls.new_from_wfs(self)
     # self.atomic_correction.add_overlap_correction(newS_qMM)
-
-    nao = setups.nao
 
     S_qMM = [Matrix(nao, nao, data=S_MM,
                     dist=(band_comm, band_comm.size, 1)) for S_MM in S0_qMM]
@@ -242,7 +255,7 @@ def tci_helper(basis,
     # Copy to GPU if needed:
     S_qMM = [S_MM.to_xp(xp) for S_MM in S_qMM]
     T_qMM = [T_MM.to_xp(xp) for T_MM in T_qMM]
-    P_qaMi = [{a: xp.asarray(P_Mi) for a, P_Mi in P_aMi.items()}
+    P_qaMi = [P_aMi.to_xp(xp)#{a: xp.asarray(P_Mi) for a, P_Mi in P_aMi.items()}
               for P_aMi in P_qaMi]
 
     return S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives
