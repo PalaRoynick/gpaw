@@ -487,8 +487,6 @@ class AtomArrays:
         wb1_mi = xp.empty_like(buffer_data, shape=(buffer_data.shape[0], myng))
         wb2_mi = xp.empty_like(buffer_data)
 
-        rank = None  # Debugging
-
         extra = prod(self.mydims[1:])
         assert extra == prod(buffer_ami.mydims[1:])
         assert extra == 1, 'Stop it with the non-collinear'

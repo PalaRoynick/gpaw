@@ -122,7 +122,7 @@ class PPCG(PWFDEigensolver):
 
         if self.max_blocksize is None:
             if xp == np:
-                self.max_blocksize = 32
+                self.max_blocksize = 16
             else:
                 self.max_blocksize = 256
 
@@ -313,12 +313,11 @@ class PPCG(PWFDEigensolver):
                     psit_nX.iter_by_band(
                         buff_bX[0 * mbs:1 * mbs], out_nX=psit_nX),
                     residual_nX.iter_by_band(
-                        buff_bX[1 * mbs:2 * mbs], out_nX=residual_nX),
+                        buff_bX[1 * mbs:2 * mbs],  # out_nX=residual_nX),
                     P_ani.iter_by_band(
                         Pbuf_abi[:, 0 * mbs:1 * mbs], out_axi=P_ani),
                     P2_ani.iter_by_band(
                         Pbuf_abi[:, 1 * mbs:2 * mbs], out_axi=None))
-                    # XXX: Maybe the residual P_ani is useful?
 
                 if self.include_cg:
                     iterables += (
@@ -506,10 +505,12 @@ class PPCG(PWFDEigensolver):
                             Pbuf_abi.matrix.data[dynslice]
 
                         # Finally, calculate new Hpsi (only if we have more
-                        # iterations to go)
-                        if not ((self.allow_dynamic_breakout and break_after_update) or \
-                                i >= self.niter - 1):
-                            Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
+                        # iterations to go). This is faster if the FFT and GEMM
+                        # is faster than the all2allv involved. Currently,
+                        # this rarely seems to be the case.
+                        # if not ((self.allow_dynamic_breakout and break_after_update) or \
+                        #         i >= self.niter - 1):
+                        #     Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
 
             wfs.eig_n[:] = 0
             wfs.myeig_n[:] = new_eigs_n
@@ -524,14 +525,16 @@ class PPCG(PWFDEigensolver):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
                     wfs.subspace_diagonalize(
-                        None, dH,
+                        Ht, dH,  # Ht can be removed if Hpsi is calculated
                         psit2_nX=residual_nX,
                         data_buffer=self.data_buffers[0],
                         calculate_energy=False,
                         scalapack_parameters=self.scalapack_parameters)
                 else:
-                    wfs.orthonormalize(data_buffer=self.data_buffers[0],
-                                       rotate_also=[residual_nX,])
+                    wfs.orthonormalize(data_buffer=self.data_buffers[0])
+                    # rotate_also=[residual_nX,]) - Use this if calculating
+                    # the Hpsi in the non-communicating loop. Otherwise:
+                    Ht(psit_nX, residual_nX)
 
                 calculate_residuals(wfs.psit_nX,
                                     residual_nX,
