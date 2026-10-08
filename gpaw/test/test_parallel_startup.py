@@ -4,7 +4,12 @@ import subprocess
 import sys
 
 
-mpiexec = os.environ.get('GPAW_TEST_MPIEXEC_COMMAND')
+@pytest.fixture(autouse=True)
+def require_no_mpi(comm):
+    if comm.backend != 'serial':
+        # (This condition should work in the test suite but not necessarily
+        # in other contexts)
+        pytest.skip('This test cannot run from an MPI process')
 
 
 def test_startup_serial():
@@ -14,10 +19,7 @@ def test_startup_serial():
 
 
 @pytest.mark.parametrize('backend', [None, 'cgpaw', 'mpi4py'])
-def test_startup_mpiexec(backend, comm):
-    if comm.backend != 'serial':
-        pytest.skip('This test cannot run from an MPI process')
-
+def test_startup_mpiexec(backend):
     if backend == 'mpi4py':
         pytest.importorskip('mpi4py')
     elif backend == 'cgpaw':
