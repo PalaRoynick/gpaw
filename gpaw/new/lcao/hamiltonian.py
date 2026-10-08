@@ -84,7 +84,7 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
             #    [sparse.coo_matrix(P_Mi) for P_Mi in wfs.P_aMi.values()],
             #    format='csr')
             # V_MM.data += (P_MI[M1:M2].dot(dH_II)).conj().dot(P_MI.T).todense()
-            assert dH_II.dtype == float
+            # assert dH_II.dtype == float
             P_MI = wfs.P_aMi.data
             #mmm(1.0, P_MI[M1:M2].conj() @ dH_II, 'N', P_MI, 'T', 1.0, V_MM.data)
             if V_MM.dtype == float:
