@@ -100,19 +100,20 @@ class LCAOWaveFunctions(WaveFunctions, XP):
             S_MM = self.S_MM.copy()
             S_MM.invcholesky()
             if self.ncomponents < 4:
-                if self.domain_comm.size == 1:
+                if self.domain_comm.size == 1 or self.xp is not np:
                     self._L_MM = S_MM
                 else:
-                    M = S_MM.shape[0]
+                    # Distribute L_MM over both band and domain comms:
+                    M, M = S_MM.shape
+                    # New view into S_MM:
                     S2_MM = S_MM.new(
                         dist=(self.domain_band_comm,
                               self.band_comm.size, self.domain_comm.size,
-                              S_MM.dist.br, M),#2, 2, 8, 16),
+                              S_MM.dist.br, M),
                         data=S_MM.data if self.domain_comm.rank == 0 else None)
                     self._L_MM = S_MM.new(
                         dist=(self.domain_band_comm,
-                              self.domain_band_comm.size, 1,
-                              ))#4, 1, 4, 16))
+                              self.domain_band_comm.size, 1))
                     S2_MM.redist(self._L_MM)
             else:
                 M, M = S_MM.shape
