@@ -484,8 +484,9 @@ class AtomArrays:
             assert out_axi.layout is self.layout
 
         buffer_data = buffer_ami.data
-        wb1_mi = xp.empty_like(buffer_data, shape=(buffer_data.shape[0], myng))
-        wb2_mi = xp.empty_like(buffer_data)
+        wb1_mi = xp.empty_like(buffer_data,
+                               shape=(buffer_data.shape[0], myng)).ravel()
+        wb2_mi = xp.empty_like(buffer_data).ravel()
 
         extra = prod(self.mydims[1:])
         assert extra == prod(buffer_ami.mydims[1:])
@@ -503,8 +504,8 @@ class AtomArrays:
                 snd_shape = (
                     (end - start - send_rank + comm.size - 1) // comm.size, myng)
                 if rank_offset != 0:
-                    snd_buffer = wb1_mi[:snd_shape[0], :snd_shape[1]]
-                    rcv_buffer = wb2_mi[:rcv_shape[0], :rcv_shape[1]]
+                    snd_buffer = wb1_mi[:prod(snd_shape)].reshape(snd_shape)
+                    rcv_buffer = wb2_mi[:prod(rcv_shape)].reshape(rcv_shape)
                     if rcv_shape[0] > 0 and rcv_shape[0] > 0:
                         # Snd and rcv
                         snd_buffer[:] = in_data[send_rank::comm.size]
@@ -538,8 +539,8 @@ class AtomArrays:
                 rcv_shape = ((end - start - rcv_rank + comm.size - 1) // comm.size, myng)
                 snd_shape = (len(mybands), len(recv_indices[send_rank]))
                 if rank_offset != 0:
-                    rcv_buffer = wb1_mi[:rcv_shape[0], :rcv_shape[1]]
-                    snd_buffer = wb2_mi[:snd_shape[0], :snd_shape[1]]
+                    rcv_buffer = wb1_mi[:prod(rcv_shape)].reshape(rcv_shape)
+                    snd_buffer = wb2_mi[:prod(snd_shape)].reshape(snd_shape)
                     if rcv_shape[0] > 0 and rcv_shape[0] > 0:
                         # Snd and rcv
                         snd_buffer[:] = buffer_data[:snd_shape[0],
