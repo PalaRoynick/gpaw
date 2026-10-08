@@ -313,7 +313,7 @@ class PPCG(PWFDEigensolver):
                     psit_nX.iter_by_band(
                         buff_bX[0 * mbs:1 * mbs], out_nX=psit_nX),
                     residual_nX.iter_by_band(
-                        buff_bX[1 * mbs:2 * mbs],  # out_nX=residual_nX),
+                        buff_bX[1 * mbs:2 * mbs]),  # out_nX=residual_nX),
                     P_ani.iter_by_band(
                         Pbuf_abi[:, 0 * mbs:1 * mbs], out_axi=P_ani),
                     P2_ani.iter_by_band(
