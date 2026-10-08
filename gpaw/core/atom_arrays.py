@@ -509,7 +509,7 @@ class AtomArrays:
                     rcv_buffer = wb2_mi[:rcv_shape[0], :rcv_shape[1]]
                     if rcv_shape[0] > 0 and rcv_shape[0] > 0:
                         # Snd and rcv
-                        snd_buffer[:] = in_data[start + send_rank:end:comm.size]
+                        snd_buffer[:] = in_data[send_rank::comm.size]
                         comm.sendreceive(snd_buffer, send_rank,
                                          rcv_buffer, rcv_rank,
                                          sendtag=75, recvtag=75)
@@ -522,11 +522,11 @@ class AtomArrays:
                             = rcv_buffer
                     elif snd_shape[0] > 0:
                         # Send no rcv
-                        snd_buffer[:] = in_data[start + send_rank:end:comm.size]
+                        snd_buffer[:] = in_data[send_rank::comm.size]
                         comm.send(snd_buffer, send_rank, tag=75)
                 else:
                     buffer_data[:rcv_shape[0], recv_indices[comm.rank]] \
-                        = in_data[start + comm.rank:end:comm.size]
+                        = in_data[comm.rank::comm.size]
 
             yield mybands, buffer_ami[:, :len(mybands)]
 
@@ -549,18 +549,18 @@ class AtomArrays:
                         comm.sendreceive(snd_buffer, send_rank,
                                          rcv_buffer, rcv_rank,
                                          sendtag=76, recvtag=76)
-                        out_data[start + rcv_rank:end:comm.size] = rcv_buffer
+                        out_data[rcv_rank::comm.size] = rcv_buffer
                     elif rcv_shape[0] > 0:
                         # Rcv no send
                         comm.receive(rcv_buffer, rcv_rank, tag=76)
-                        out_data[start + rcv_rank:end:comm.size] = rcv_buffer
+                        out_data[rcv_rank::comm.size] = rcv_buffer
                     elif snd_shape[0] > 0:
                         # Send no rcv
                         snd_buffer[:] = buffer_data[:snd_shape[0],
                                                     recv_indices[send_rank]]
                         comm.send(snd_buffer, send_rank, tag=76)
                 else:
-                    out_data[start + comm.rank:end:comm.size] \
+                    out_data[comm.rank::comm.size] \
                         = buffer_data[:snd_shape[0], recv_indices[comm.rank]]
 
         # We add one extra yield to ensure cleanup
