@@ -139,13 +139,13 @@ class XArray(Generic[DomainType], XP):
         size = comm.size
         if comm.size == 1:
             # Fast serial implementation
-            if out_nX is not None:
-                for m, start in enumerate(range(0, b, comm.size * nm)):
-                    end = min(start + comm.size * nm, b)
-                    mybands = np.arange(start, end)
-                    buffer = buffer_mX.data[:len(mybands)]
-                    buffer[:] = self.data[start:end]
-                    yield mybands, buffer_mX[:len(mybands)]
+            for m, start in enumerate(range(0, b, comm.size * nm)):
+                end = min(start + comm.size * nm, b)
+                mybands = np.arange(start, end)
+                buffer = buffer_mX.data[:len(mybands)]
+                buffer[:] = self.data[start:end]
+                yield mybands, buffer_mX[:len(mybands)]
+                if out_nX is not None:
                     out_nX.data[start:end] = buffer
 
             # We add one extra yield to ensure cleanup
