@@ -222,7 +222,7 @@ def tci_helper(basis,
     layout = AtomArraysLayout([setup.ni for setup in setups],
                               atomdist=atomdist,
                               dtype=dtype,
-                              xp=xp)
+                              )#xp=xp)
     nao = setups.nao
 
     P_qaMi = []
