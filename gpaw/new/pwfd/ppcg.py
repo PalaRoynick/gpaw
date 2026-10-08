@@ -122,7 +122,7 @@ class PPCG(PWFDEigensolver):
 
         if self.max_blocksize is None:
             if xp == np:
-                self.max_blocksize = 16
+                self.max_blocksize = 32
             else:
                 self.max_blocksize = 256
 
