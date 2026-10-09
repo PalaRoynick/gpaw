@@ -32,9 +32,10 @@ def test_beef(in_tmp_dir, xc):
     for a in np.linspace(5.4, 5.5, 3):
         si = bulk('Si', a=a)
         si.calc = GPAW(txt='Si-' + xc + '.txt',
-                       mixer=Mixer(0.8, 7, 50.0),
                        xc=xc,
                        kpts=[2, 2, 2],
+                       convergence={'density': 1e-3,
+                                    'eigenstates': 1e-4},
                        mode=PW(200),
                        **kwargs)
         with warnings.catch_warnings():

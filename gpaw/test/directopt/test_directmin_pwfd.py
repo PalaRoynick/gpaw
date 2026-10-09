@@ -91,10 +91,10 @@ def test_directmin_C2H4(in_tmp_dir, mode):
                 eigensolver={'name': 'etdm-fdpw',
                              'converge_unocc': False},
                 mixer={'backend': 'no-mixing'},
-                spinpol=True,
                 symmetry='off',
                 nbands=-5,
-                convergence={'eigenstates': 4.0e-6})
+                convergence={'eigenstates': 4.0e-6,
+                             'density': 1e-3})
     atoms.calc = calc
 
     # from gpaw.new.timer import global_timer
