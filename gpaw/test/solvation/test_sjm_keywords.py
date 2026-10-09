@@ -14,7 +14,46 @@ from gpaw.extensions.electrochemistry import (
     Potentiostat)
 from gpaw.extensions.electrochemistry.sjm import changeable
 from gpaw.solvation import GaussianDerivativeDipole, Solvation
-from gpaw.test.solvation.test_modes import NoCavity, Vacuum
+
+
+# A solvent that is not there: no cavity, and a dielectric of one.  The
+# AGTS tests in gpaw/test/big/solvation/sjm/ use it too.
+class NoCavity:
+    depends_on_el_density = False
+
+    def set_grid_descriptor(self, gd):
+        pass
+
+    def allocate(self):
+        pass
+
+    def update_atoms(self, atoms, log):
+        pass
+
+    def update(self, atoms, density):
+        pass
+
+    def communicate_vol_surf(self, comm):
+        pass
+
+    def summary(self, log):
+        pass
+
+    def todict(self):
+        return {}
+
+
+class Vacuum:
+    def set_grid_descriptor(self, gd):
+        self.eps_gradeps = [gd.zeros() for _ in range(4)]
+        self.eps_gradeps[0][:] = 1.0
+
+    def allocate(self):
+        pass
+
+    def todict(self):
+        return {}
+
 
 #: Every key, at a non-default value where that is meaningful.
 keys = {
