@@ -67,12 +67,11 @@ class PWHamiltonian(Hamiltonian):
                 tmp_yQ = tmp_Q[:len(y)]
                 plan.ifft_sphere(psit_yG.data, pw_local)
             tmp_yR *= vt_R.data
-            trace(plan.fft)()
-            with tracectx('cut and postprocess'):
-                vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]
-                vtpsit_yG *= len(y) / tmp_yR.size
-                psit_yG.data *= e_kin_G
-                psit_yG.data += vtpsit_yG
+            plan.fft()
+            vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]
+            vtpsit_yG *= len(y) / tmp_yR.size
+            psit_yG.data *= e_kin_G
+            psit_yG.data += vtpsit_yG
 
 
     def apply_mgga(self,

@@ -113,6 +113,7 @@ class PPCG(PWFDEigensolver):
 
         # We disable dynamic breakout for hybrids, to avoid deadlocks
         self.allow_dynamic_breakout = hamiltonian.band_local
+        self.hamiltonian = hamiltonian
 
     def __str__(self):
         return super().__str__() + f'niter={self.niter}\n'
@@ -196,6 +197,9 @@ class PPCG(PWFDEigensolver):
         self.S_bb = xp.zeros((self.nblocksizes, self.nblocksizes),
                              dtype=inner_dtype)
 
+    from line_profiler import profile
+
+    @profile
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
                  Ht, potential,
@@ -242,7 +246,12 @@ class PPCG(PWFDEigensolver):
 
             buffer_array_nX = psit_nX.create_work_buffer(self.data_buffers[0])
 
-            desc0 = psit_nX.desc.new(comm=None)
+            if domain_comm.size > 1:
+                key = tuple(psit_nX.desc.kpt_c)
+                desc0 = self.hamiltonian.pw_cache.get(key)
+            else:
+                desc0 = psit_nX.desc
+
             buff_bX = desc0.empty(
                 (self.nblocksizes, ) +
                  psit_nX.dims[1:], xp=psit_nX.xp)

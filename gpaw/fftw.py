@@ -163,9 +163,9 @@ class FFTPlans:
         if self.blocksize > 1:
             blocksize = coef_nG.shape[0]
             assert self.blocksize >= blocksize
-            trace(pw.paste)(coef_nG, self.tmp_Q[:blocksize], self.size_c)
+            pw.paste(coef_nG, self.tmp_Q[:blocksize], self.size_c)
         else:
-            trace(pw.paste)(coef_nG, self.tmp_Q, self.size_c)
+            pw.paste(coef_nG, self.tmp_Q, self.size_c)
 
         if np.issubdtype(pw.dtype, np.floating):
             t = self.tmp_Q[..., 0]
@@ -177,7 +177,7 @@ class FFTPlans:
             t[..., -n:, -m:] = t[..., n:0:-1, m:0:-1].conj()
             t[..., -n:, 0] = t[..., n:0:-1, 0].conj()
 
-        trace(self.ifft)()
+        self.ifft()
         if out_nR is not None:
             out_nR.scatter_from(self.tmp_R)
 
@@ -272,7 +272,6 @@ class CuPyFFTPlans(FFTPlans):
                          blocksize=blocksize)
         self.xp = cp
 
-    @trace(gpu=True)
     def fft(self):
         from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
@@ -285,7 +284,6 @@ class CuPyFFTPlans(FFTPlans):
             self.tmp_Q[:] = cupyx.scipy.fft.fftn(
                 self.tmp_R, axes=(-3, -2, -1), overwrite_x=True)
 
-    @trace(gpu=True)
     def ifft(self):
         from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
