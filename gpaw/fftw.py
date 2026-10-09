@@ -198,7 +198,6 @@ class FFTWPlans(FFTPlans):
                  blocksize: int = 1):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
-        assert blocksize == 1, 'c-wrappers require this for now'
         super().__init__(size_c, dtype, blocksize=blocksize)
         if self._overwrite_flags is not None:
             flags = self._overwrite_flags

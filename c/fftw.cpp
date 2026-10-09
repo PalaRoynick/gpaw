@@ -26,16 +26,33 @@ PyObject * FFTWPlan(PyObject *self, PyObject *args)
     fftw_plan plan;
 
     const int ndim = PyArray_NDIM(in_obj);
-    int dims_in[ndim];
-    int dims_out[ndim];
+    int dims_in[3];
+    int dims_out[3];
+    int offset = ndim - 3;
 
     void *indata = PyArray_DATA(in_obj);
     void *outdata = PyArray_DATA(out_obj);
 
-    for(int i=0; i < ndim; i++) {
-        dims_in[i] = (int)PyArray_DIMS(in_obj)[i];
-        dims_out[i] = (int)PyArray_DIMS(out_obj)[i];
+    for(int i=offset; i < ndim; i++) {
+        dims_in[i - offset] = (int)PyArray_DIMS(in_obj)[i];
+        dims_out[i - offset] = (int)PyArray_DIMS(out_obj)[i];
     }
+
+    int howmany = 1;
+    int idist = 0;
+    int odist = 0;
+    int istride = 1;
+    int ostride = 1;
+    if (ndim != 3) {
+        howmany = (int)PyArray_DIMS(in_obj)[0];
+        idist = 1;
+        odist = 1;
+        for (int i=0; i < 3; i++) {
+            idist *= dims_in[i];
+            odist *= dims_out[i];
+        }
+    }
+
 
     // NB: For real FFT the real array won't have flags.c_contiguous set, because of how
     // Numpy interprets the padding + slicing. Not sure if this is a good thing?
@@ -48,10 +65,12 @@ PyObject * FFTWPlan(PyObject *self, PyObject *args)
 
         assert(PyArray_IS_C_CONTIGUOUS(out_obj));
 
-        plan = fftw_plan_dft_r2c(ndim, dims_in,
-                                  (double *)indata,
-                                  (fftw_complex *)outdata,
-                                  flags);
+        plan = fftw_plan_many_dft_r2c(3, dims_in, howmany,
+                                      (double *)indata, NULL,
+                                      istride, idist,
+                                      (fftw_complex *)outdata, NULL,
+                                      ostride, odist,
+                                      flags);
     }
     else if (PyArray_DESCR(out_obj)->type_num == NPY_DOUBLE)
     {
@@ -60,10 +79,12 @@ PyObject * FFTWPlan(PyObject *self, PyObject *args)
 
         assert(PyArray_IS_C_CONTIGUOUS(in_obj));
 
-        plan = fftw_plan_dft_c2r(ndim, dims_out,
-                                  (fftw_complex *)indata,
-                                  (double *)outdata,
-                                  flags);
+        plan = fftw_plan_many_dft_c2r(3, dims_out, howmany,
+                                      (fftw_complex *)indata, NULL,
+                                      istride, idist,
+                                      (double *)outdata, NULL,
+                                      ostride, odist,
+                                      flags);
     }
     else
     {
@@ -73,10 +94,12 @@ PyObject * FFTWPlan(PyObject *self, PyObject *args)
         assert(PyArray_IS_C_CONTIGUOUS(in_obj));
         assert(PyArray_IS_C_CONTIGUOUS(out_obj));
 
-        plan = fftw_plan_dft(ndim, dims_out,
-                              (fftw_complex *)indata,
-                              (fftw_complex *)outdata,
-                              sign, flags);
+        plan = fftw_plan_many_dft(3, dims_out, howmany,
+                                  (fftw_complex *)indata, NULL,
+                                  istride, idist,
+                                  (fftw_complex *)outdata, NULL,
+                                  ostride, odist,
+                                  sign, flags);
     }
 
     return PyLong_FromVoidPtr((void*)plan);
