@@ -85,7 +85,7 @@ static void launch_calculate_potential_matrix_phi_pairs(
     const dim3 threads(lfc.block_data.block_shape.x,
                         lfc.block_data.block_shape.y,
                         lfc.block_data.block_shape.z);
-    // FIXME narrowing size_t -> uint conversion:
+    // FIXME narrowing int64_t -> uint conversion. Same happens in other kernel launches
     const dim3 blocks(static_cast<unsigned int>(lfc.phi_pair_data.num_pairs));
 
     gpaw::launch_kernel(calculate_potential_matrix_phi_pairs_kernel<T>, blocks, threads,
