@@ -197,9 +197,7 @@ class PPCG(PWFDEigensolver):
         self.S_bb = xp.zeros((self.nblocksizes, self.nblocksizes),
                              dtype=inner_dtype)
 
-    from line_profiler import profile
 
-    @profile
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
                  Ht, potential,
