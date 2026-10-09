@@ -2,8 +2,10 @@ import pytest
 from ase.build import molecule
 from ase.units import Pascal, m
 
+from gpaw import GPAW
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
-                            LinearDielectric, Power12Potential, SolvationGPAW,
+                            LinearDielectric, Power12Potential, Solvation,
                             SurfaceInteraction)
 from gpaw.utilities.adjust_cell import adjust_cell
 
@@ -28,18 +30,18 @@ def test_solvation_swap_atoms(gpaw_new):
     atoms = molecule('H2O')
     adjust_cell(atoms, vac, h)
 
-    calc = SolvationGPAW(
-        legacy_gpaw=not gpaw_new,
-        mode='fd',
-        xc='LDA',
-        h=h,
-        convergence=convergence,
+    solvation = dict(
         cavity=EffectivePotentialCavity(
             effective_potential=Power12Potential(atomic_radii, u0),
             temperature=T,
             surface_calculator=GradientSurface()),
         dielectric=LinearDielectric(epsinf=epsinf),
         interactions=[SurfaceInteraction(surface_tension=st)])
+    kwargs = dict(mode='fd', xc='LDA', h=h, convergence=convergence)
+    if gpaw_new:
+        calc = GPAW(**kwargs, extensions=[Solvation(**solvation)])
+    else:
+        calc = SolvationGPAW(**kwargs, **solvation)
     atoms.calc = calc
     atoms.get_potential_energy()
     atoms.get_forces()

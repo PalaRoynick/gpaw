@@ -53,6 +53,9 @@ used to create the figures in this tutorial is shown here:
 
 .. literalinclude:: plot.py
 
+Dipole corrections are also available for the Solvation and SJM extensions;
+see :ref:`dipole corrections with implicit solvation <solvation_dipole>`.
+
 .. [Bengtsson] Lennart Bengtsson,
     Dipole correction for surface supercell calculations,
     Phys. Rev. B 59, 12301 - Published 15 May 1999
