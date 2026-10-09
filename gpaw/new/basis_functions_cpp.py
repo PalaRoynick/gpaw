@@ -30,7 +30,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
 
         if mode != PrecalculationMode.eNever:
             warn("BasisFunctionCollection (new LFC) does not currently support"
-                 "precalculation. Forcing PrecalculationMode.eNever")
+                 " precalculation. Forcing PrecalculationMode.eNever")
             mode = PrecalculationMode.eNever
 
         from typing import TYPE_CHECKING
@@ -126,18 +126,25 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         f_asi: dict[int, np.ndarray] | dict[int, cp.ndarray]
     ) -> None:
         """"""
+        if self.num_atoms == 0:
+            return
 
         num_spins = nt_sG.shape[0]
         assert np.all(self.grid.mysize_c == nt_sG.shape[1:])
+
+        xp = np if isinstance(nt_sG, np.ndarray) else cp
+        # Flatten f_asi dict to a single array, ordered by global mu.
+        f_sM = xp.zeros((num_spins, self.Mmax))
 
         # FIXME: Ideally the caller should be responsible that the arrays in
         # f_asi are consistently Numpy or Cupy depending on nt_sG. But old
         # BasisFunctions always worked with Numpy arrays => callers currently
         # are not careful about this. For now, we convert them internally here.
-
-        xp = np if isinstance(nt_sG, np.ndarray) else cp
-        # Flatten f_asi dict to a single array, ordered by global mu.
-        f_sM = xp.zeros((num_spins, self.Mmax))
+        xp_f = np if isinstance(f_asi[0], np.ndarray) else cp
+        if xp_f is not xp:
+            warn(f"add_to_density(): Arrays in f_asi are '{xp_f.__name__}' "
+                 f"type while nt_sG is '{xp.__name__}' type. GPU/CPU memory "
+                 "copy will be performed.")
 
         for atom_idx in range(self.num_atoms):
             atom_mu_range = self.get_mu_range_a(atom_idx)
