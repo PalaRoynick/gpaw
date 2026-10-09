@@ -326,11 +326,14 @@ class PPCG(PWFDEigensolver):
                         Pbuf_abi[:, 1 * mbs:2 * mbs], out_axi=None))
 
                 if self.include_cg:
+                    final_iter = (self.allow_dynamic_breakout and
+                                  break_after_update) or i >= self.niter - 1
                     iterables += (
-                        P_nX.iter_by_band(
-                            buff_bX[2 * mbs:3 * mbs], out_nX=P_nX),
+                        P_nX.iter_by_band(buff_bX[2 * mbs:3 * mbs],
+                                          out_nX=None if final_iter else P_nX),
                         P3_ani.iter_by_band(
-                            Pbuf_abi[:, 2 * mbs:3 * mbs], out_axi=P3_ani))
+                            Pbuf_abi[:, 2 * mbs:3 * mbs],
+                            out_axi=None if final_iter else P3_ani))
 
 
                 for iter_info in zip(*iterables):
@@ -593,86 +596,3 @@ class PPCG(PWFDEigensolver):
             psit_nX.sanity_check()
 
         return error
-
-
-''' Legacy functions:
-@trace
-def approx_orthonormalize(wfs, residual_nX, Y1_nn, Y2_nn, Y3_nn,
-                          dS_aii, domain_comm):
-    """
-    Approximate orthonormalization of wave functions.
-
-    This function approximates orthonormalization of wave functions
-    using a Taylor series expansion of the inverse square root.
-
-    Parameters
-    ----------
-    wfs : PWFDWaveFunctions
-        Wave functions to be orthonormalized.
-    residual_nX : Matrix
-        Residual matrix to be used as temporary storage.
-    Y1_nn, Y2_nn, Y3_nn : Matrix
-        Temporary matrices.
-    dS_aii : Matrix
-        PAW overlap matrix.
-    domain_comm : MPI communicator
-        Communicator for domain parallelization.
-    """
-    if wfs.orthonormalized:
-        return
-    P_ani = wfs.P_ani
-    P2_ani = P_ani.new()
-    P_ani.block_diag_multiply(dS_aii, out_ani=P2_ani)
-    psit_nX = wfs.psit_nX
-    psit_nX.matrix_elements(psit_nX, cc=True, out=Y1_nn,
-                            domain_sum=False,
-                            symmetric=True)
-    P_ani.matrix.multiply(P2_ani, opb='C',
-                          symmetric=True,
-                          beta=1, out=Y1_nn)
-    domain_comm.sum(Y1_nn.data)
-    Y1_nn.tril2full()
-
-    Y1_nn.add_to_diagonal(-1.0)
-    Y1_nn.multiply(Y1_nn, out=Y2_nn)
-    Y2_nn.multiply(Y1_nn, out=Y3_nn)
-    Y1_nn.data[:] = -(1 / 2) * Y1_nn.data + \
-        (3 / 8) * Y2_nn.data + \
-        -(5 / 16) * Y3_nn.data
-
-    residual_nX.data[:] = psit_nX.data
-    P2_ani.data[:] = P_ani.data
-
-    Y1_nn.multiply(residual_nX, out=psit_nX, beta=1)
-    Y1_nn.multiply(P2_ani, out=P_ani, beta=1)
-    wfs.orthonormalized = True
-
-
-@trace
-def update_eigenvalues(wfs, Hpsit_nX, P_ani, HP_ani, dH, domain_comm):
-    dH(P_ani, out_ani=HP_ani)
-    psit_nX = wfs.psit_nX
-    xp = psit_nX.xp
-    real_dtype = as_real_dtype(psit_nX.matrix.data.dtype)
-    a_nX = psit_nX.matrix.data.view(real_dtype)
-    h_nX = Hpsit_nX.matrix.data.view(real_dtype)
-    eigs_n = xp.zeros(h_nX.shape[0], dtype=np.float64)
-    for ind in range(0, h_nX.shape[1], 4048):
-        eigs_n += xp.einsum('nX, nX -> n',
-                            h_nX[:, ind:ind + 4048],
-                            a_nX[:, ind:ind + 4048])
-    eigs_n *= psit_nX.dv
-    if np.issubdtype(psit_nX.matrix.data.dtype, np.floating) and \
-            isinstance(psit_nX, PWArray):
-        eigs_n *= 2
-        if psit_nX.desc.comm.rank == 0:
-            eigs_n -= psit_nX.matrix.data[:, 0] * \
-                Hpsit_nX.matrix.data[:, 0] * psit_nX.dv
-    p2_nX = HP_ani.matrix.data.view(real_dtype)
-    p_nX = P_ani.matrix.data.view(real_dtype)
-    eigs_n += xp.einsum('nX, nX -> n',
-                        p2_nX,
-                        p_nX)
-    domain_comm.sum(eigs_n)
-    wfs.myeig_n[:] = as_np(eigs_n)
-'''
