@@ -108,7 +108,7 @@ struct AddToDensityArrays
     const T* GPAW_RESTRICT f_sM;
     int32_t num_spins;
     // Needed to index f_sM[s * ... + mu]. The stride is in BYTES so take that into account.
-    size_t f_sM_first_stride;
+    int64_t f_sM_first_stride;
 };
 
 template<typename T>
@@ -117,10 +117,10 @@ struct ConstructDensityArrays
     T* GPAW_RESTRICT nt_G;
     const T* GPAW_RESTRICT rho_MM;
     // Column count of rho_MM (= Mmax); used for striding
-    size_t ncols;
+    int64_t ncols;
     // Row distribution: processes only rows [mu_start, mu_end) of rho_MM
-    size_t mu_start;
-    size_t mu_end;
+    int64_t mu_start;
+    int64_t mu_end;
 };
 
 template<typename T>
@@ -129,10 +129,10 @@ struct CalculatePotentialMatrixArrays
     const T* GPAW_RESTRICT vt_G;
     T* GPAW_RESTRICT V_MN;
     // Row distribution: only rows [mu_start, mu_end) are computed
-    size_t mu_start;
-    size_t mu_end;
+    int64_t mu_start;
+    int64_t mu_end;
     // Column count of V_MN (= Mmax); used for striding
-    size_t ncols;
+    int64_t ncols;
 };
 
 // Helpers for computing spherical harmonics
@@ -197,11 +197,11 @@ struct LFCThreadGridData
     // Real-space coordinates of the thread on the full grid
     GpuVec3<T> xyz;
     // Flattened index into 3D grid arrays for this thread
-    size_t grid_array_idx;
+    int64_t grid_array_idx;
 
     // Number of grid points in this domain. Needed only in some kernels, unused in others (compiler should optimize them out)
     [[maybe_unused]]
-    long nx, ny, nz;
+    int64_t nx, ny, nz;
 };
 
 namespace LFCKernelUtils
@@ -226,9 +226,9 @@ namespace LFCKernelUtils
         const auto block_start_c = blocks.block_start_bc[thread_block_idx];
 
         // Global indices on the full simulation grid
-        const int gx = block_start_c.x + threadIdx.x;
-        const int gy = block_start_c.y + threadIdx.y;
-        const int gz = block_start_c.z + threadIdx.z;
+        const grid_coord_t gx = block_start_c.x + threadIdx.x;
+        const grid_coord_t gy = block_start_c.y + threadIdx.y;
+        const grid_coord_t gz = block_start_c.z + threadIdx.z;
 
         if (gx >= grid.end_c.x || gy >= grid.end_c.y || gz >= grid.end_c.z)
         {
@@ -236,8 +236,8 @@ namespace LFCKernelUtils
         }
 
         // Compute flattened index into 3D grid arrays like vt_G. Strides:
-        const long ny = grid.end_c.y - grid.start_c.y;
-        const long nz = grid.end_c.z - grid.start_c.z;
+        const int64_t ny = grid.end_c.y - grid.start_c.y;
+        const int64_t nz = grid.end_c.z - grid.start_c.z;
         // Offset by grid.start_c to account for domain decomposition
         out.grid_array_idx = ((gx - grid.start_c.x) * ny + (gy - grid.start_c.y)) * nz + (gz - grid.start_c.z);
 
@@ -266,12 +266,12 @@ namespace LFCKernelUtils
      *                  Only the first (2*l + 1) elements will be written to.
      */
     template<typename T>
-    __device__ void evaluate_phi(size_t phi_idx, const GpuVec3<T>& xyz, const PhiDataGpu& phi_data,
+    __device__ void evaluate_phi(int64_t phi_idx, const GpuVec3<T>& xyz, const PhiDataGpu& phi_data,
         const LFCGpuSpline* GPAW_RESTRICT splines, T (&out_phi_m)[SphericalHarmonicStatics::OUT_ARRAY_SIZE])
     {
         const GpuVec3<double>& phi_pos = phi_data.position_iv[phi_idx];
         const uint8_t l = phi_data.l_i[phi_idx];
-        const size_t spline_idx = phi_data.spline_idx_i[phi_idx];
+        const int64_t spline_idx = phi_data.spline_idx_i[phi_idx];
 
         const auto& spline = splines[spline_idx];
 
@@ -303,8 +303,8 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     // Each block does phi_M that it has overlap with and writes to a unique index in the grid array
     // => no atomics or reduction needed
 
-    const size_t j_begin = blocks.start_j[block_idx];
-    const size_t j_end = blocks.start_j[block_idx + 1];
+    const int64_t j_begin = blocks.start_j[block_idx];
+    const int64_t j_end = blocks.start_j[block_idx + 1];
 
     // Array indexing is in units of T but the input stride is in bytes
     const int64_t s_stride = arrays.f_sM_first_stride / sizeof(T);
@@ -312,19 +312,19 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
     // Array for holding phi_lm components for all possible m
     T phi_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
 
-    const long spin_stride = thread_coords.nx * thread_coords.ny * thread_coords.nz;
+    const int64_t spin_stride = thread_coords.nx * thread_coords.ny * thread_coords.nz;
 
     for (int s = 0; s < arrays.num_spins; ++s)
     {
         T accum = 0;
 
-        for (size_t j = j_begin; j < j_end; ++j)
+        for (int64_t j = j_begin; j < j_end; ++j)
         {
-            const size_t phi_idx = blocks.all_blocks_phi_idx_j[j];
+            const int64_t phi_idx = blocks.all_blocks_phi_idx_j[j];
             const uint8_t l = phi.l_i[phi_idx];
             LFCKernelUtils::evaluate_phi<T>(phi_idx, thread_coords.xyz, phi, splines, phi_m);
 
-            const size_t first_mu = phi.first_mu_i[phi_idx];
+            const int64_t first_mu = phi.first_mu_i[phi_idx];
 
             const int num_m = 2*l + 1;
             for (int m = 0; m < num_m; ++m)
@@ -352,28 +352,28 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
     const uint block_idx = blockIdx.x;
 
     // Needs a double loop over phi_mu and phi_nu. Let's call them phi_r and phi_s in the following
-    const size_t j_begin = blocks.start_j[block_idx];
-    const size_t j_end = blocks.start_j[block_idx + 1];
+    const int64_t j_begin = blocks.start_j[block_idx];
+    const int64_t j_end = blocks.start_j[block_idx + 1];
 
     // Each thread writes to a unique grid index so no atomics or reductions needed.
     // Accumulate it locally and write once at the end. This has a huge impact if the compiler fails to apply noalias semantics (clang!)
     T accumulated_sum = static_cast<T>(0.0);
 
     // phi_r loop
-    for (size_t j_r = j_begin; j_r < j_end; ++j_r)
+    for (int64_t j_r = j_begin; j_r < j_end; ++j_r)
     {
-        const size_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
+        const int64_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
         const uint8_t l_r = phi.l_i[phi_idx_r];
-        const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
+        const int64_t first_mu_r = phi.first_mu_i[phi_idx_r];
         T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
         LFCKernelUtils::evaluate_phi<T>(phi_idx_r, thread_coords.xyz, phi, splines, phi_r_m);
 
         // phi_s loop
-        for (size_t j_s = j_begin; j_s < j_end; ++j_s)
+        for (int64_t j_s = j_begin; j_s < j_end; ++j_s)
         {
-            const size_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
+            const int64_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
             const uint8_t l_s = phi.l_i[phi_idx_s];
-            const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+            const int64_t first_mu_s = phi.first_mu_i[phi_idx_s];
             T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE];
             LFCKernelUtils::evaluate_phi<T>(phi_idx_s, thread_coords.xyz, phi, splines, phi_s_n);
 
@@ -382,7 +382,7 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
             // Compute phi_r(x) * rho_rs * phi_s(x)
             for (int m = 0; m < 2*l_r + 1; ++m)
             {
-                const size_t mu = first_mu_r + m;
+                const int64_t mu = first_mu_r + m;
                 if (mu < arrays.mu_start || mu >= arrays.mu_end)
                 {
                     continue;
@@ -390,9 +390,9 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
 
                 for (int n = 0; n < 2*l_s + 1; ++n)
                 {
-                    const size_t nu = first_mu_s + n;
+                    const int64_t nu = first_mu_s + n;
                     // rho_MM only has rows relevant for this rank so must offset the row index
-                    const size_t rho_idx = arrays.ncols * (mu - arrays.mu_start) + nu;
+                    const int64_t rho_idx = arrays.ncols * (mu - arrays.mu_start) + nu;
                     accumulated_sum += phi_r_m[m] * phi_s_n[n] * arrays.rho_MM[rho_idx];
                 }
             }
@@ -421,18 +421,18 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
 
     // Needs to integrate phi_mu * vt * phi_nu, so we need a double loop over the phi index.
     // Call them phi_r and phi_s in the following to avoid confusion with m, n and mu, nu that we already use.
-    const size_t j_begin = blocks.start_j[block_idx];
-    const size_t j_end = blocks.start_j[block_idx + 1];
+    const int64_t j_begin = blocks.start_j[block_idx];
+    const int64_t j_end = blocks.start_j[block_idx + 1];
 
     // Scratch space for the block-wide reductions in the loop below
     __shared__ T reduce_buf[kernel_utils::MAX_WARPS_PER_BLOCK];
 
     // phi_r loop
-    for (size_t j_r = j_begin; j_r < j_end; ++j_r)
+    for (int64_t j_r = j_begin; j_r < j_end; ++j_r)
     {
-        const size_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
+        const int64_t phi_idx_r = blocks.all_blocks_phi_idx_j[j_r];
         const uint8_t l_r = phi.l_i[phi_idx_r];
-        const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
+        const int64_t first_mu_r = phi.first_mu_i[phi_idx_r];
         T phi_r_m[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
         if (valid)
         {
@@ -440,11 +440,11 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
         }
 
         // phi_s loop
-        for (size_t j_s = j_begin; j_s < j_end; ++j_s)
+        for (int64_t j_s = j_begin; j_s < j_end; ++j_s)
         {
-            const size_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
+            const int64_t phi_idx_s = blocks.all_blocks_phi_idx_j[j_s];
             const uint8_t l_s = phi.l_i[phi_idx_s];
-            const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+            const int64_t first_mu_s = phi.first_mu_i[phi_idx_s];
             T phi_s_n[SphericalHarmonicStatics::OUT_ARRAY_SIZE] = {};
             if (valid)
             {
@@ -455,7 +455,7 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
             // All threads loop m,n (and consequently mu, nu) in the same order so the reduction below works as intended.
             for (int m = 0; m < 2*l_r + 1; ++m)
             {
-                const size_t mu = first_mu_r + m;
+                const int64_t mu = first_mu_r + m;
                 // temp until parallel V_MN properly implemented?
                 if (mu < arrays.mu_start || mu >= arrays.mu_end)
                 {
@@ -466,7 +466,7 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
 
                 for (int n = 0; n < 2*l_s + 1; ++n)
                 {
-                    const size_t nu = first_mu_s + n;
+                    const int64_t nu = first_mu_s + n;
                     if (mu >= nu)
                     {
                         const T phi_vt_phi = phi_rm_times_vt * phi_s_n[n];
@@ -498,24 +498,24 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
     BlockDataGpu blocks,
     PhiPairDataGpu pairs)
 {
-    const size_t pair_idx = blockIdx.x;
+    const int64_t pair_idx = blockIdx.x;
     if (pair_idx >= pairs.num_pairs)
     {
         return;
     }
 
-    const uint32_t block_idx = pairs.block_idx_p[pair_idx];
-    const uint32_t phi_idx_r = pairs.phi_idx_r_p[pair_idx];
-    const uint32_t phi_idx_s = pairs.phi_idx_s_p[pair_idx];
+    const int64_t block_idx = pairs.block_idx_p[pair_idx];
+    const int64_t phi_idx_r = pairs.phi_idx_r_p[pair_idx];
+    const int64_t phi_idx_s = pairs.phi_idx_s_p[pair_idx];
 
     // Metadata for the phi pair, uniform across the thread block
     const uint8_t l_r = phi.l_i[phi_idx_r];
     const uint8_t l_s = phi.l_i[phi_idx_s];
-    const size_t first_mu_r = phi.first_mu_i[phi_idx_r];
-    const size_t first_mu_s = phi.first_mu_i[phi_idx_s];
+    const int64_t first_mu_r = phi.first_mu_i[phi_idx_r];
+    const int64_t first_mu_s = phi.first_mu_i[phi_idx_s];
 
-    const size_t m_max =  (2*l_r + 1);
-    const size_t mu_end_r = first_mu_r + m_max;
+    const int64_t m_max =  (2*l_r + 1);
+    const int64_t mu_end_r = first_mu_r + m_max;
 
     // TODO Some optimization possibilities below if we require matrix row dist to be fixed during LFC init time
 
@@ -544,7 +544,7 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
 
     for (int m = 0; m < m_max; ++m)
     {
-        const size_t mu = first_mu_r + m;
+        const int64_t mu = first_mu_r + m;
         if (mu < arrays.mu_start || mu >= arrays.mu_end)
         {
             continue;
@@ -554,7 +554,7 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
 
         for (int n = 0; n < 2*l_s + 1; ++n)
         {
-            const size_t nu = first_mu_s + n;
+            const int64_t nu = first_mu_s + n;
             if (mu < nu)
             {
                 continue;

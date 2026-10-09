@@ -14,7 +14,7 @@ using LFCGpuSpline = gpaw::TRadialSplineGpu<double>;
 
 /**************************************************************/
 // Some template helpers. Define GpuVec3<T> as an alias to matchng int3, float3, long3, ...
-// CPU side uses grid_index_t for grid point indexing so we want to use the same type in GPU structs.
+// CPU side uses grid_coord_t for grid point indexing so we want to use the same type in GPU structs.
 // FIXME: would be cleaner with C++20 concepts
 
 template<typename> inline constexpr bool always_false = false;
@@ -58,41 +58,40 @@ GpuVec3<T> make_gpu_vec3(T x, T y, T z) { return {x, y, z}; }
  */
 struct PhiPairDataGpu
 {
-    size_t num_pairs;
-    // Grid block index for pair p
-    uint32_t* GPAW_RESTRICT block_idx_p = nullptr;
+    int64_t num_pairs;
+    int64_t* GPAW_RESTRICT block_idx_p = nullptr;
     // "row" phi index. These have first_mu_r >= first_mu_s
-    uint32_t* GPAW_RESTRICT phi_idx_r_p = nullptr;
+    int64_t* GPAW_RESTRICT phi_idx_r_p = nullptr;
     // "column" phi index
-    uint32_t* GPAW_RESTRICT phi_idx_s_p = nullptr;
+    int64_t* GPAW_RESTRICT phi_idx_s_p = nullptr;
 };
 
 /* Analogous to CPU-side BlockData, see comments in lfc_common.hpp for explanations. */
 struct BlockDataGpu
 {
-    size_t num_blocks;
+    int64_t num_blocks;
 
-    GpuVec3<grid_index_t> block_shape;
-    GpuVec3<grid_index_t>* GPAW_RESTRICT block_start_bc;
+    GpuVec3<grid_coord_t> block_shape;
+    GpuVec3<grid_coord_t>* GPAW_RESTRICT block_start_bc;
 
     // CSR style index buffers
-    size_t* GPAW_RESTRICT start_j;
-    size_t* GPAW_RESTRICT all_blocks_phi_idx_j;
+    int64_t* GPAW_RESTRICT start_j;
+    int64_t* GPAW_RESTRICT all_blocks_phi_idx_j;
 };
 
 struct PhiDataGpu
 {
     GpuVec3<double>* GPAW_RESTRICT position_iv;
     uint8_t* GPAW_RESTRICT l_i;
-    size_t* GPAW_RESTRICT first_mu_i;
-    size_t* GPAW_RESTRICT spline_idx_i;
-    size_t num_phi;
+    int64_t* GPAW_RESTRICT first_mu_i;
+    int64_t* GPAW_RESTRICT spline_idx_i;
+    int64_t num_phi;
 };
 
 struct GridInfoGpu
 {
-    GpuVec3<grid_index_t> start_c;
-    GpuVec3<grid_index_t> end_c;
+    GpuVec3<grid_coord_t> start_c;
+    GpuVec3<grid_coord_t> end_c;
     double3 spacing_cv[3];
     // Volume element
     double dV;
@@ -118,14 +117,14 @@ public:
     /* nt_G: NDArray<device::gpu, c_contig, ndim<3>>
     *  rho_MM: NDArray<device::gpu, c_contig, ndim<2>>
     */
-    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM, size_t mu_start, size_t mu_end) const;
+    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM, int64_t mu_start, int64_t mu_end) const;
 
     /* vt_G: const NDArray<device::gpu, c_contig, ndim<3>>
     *  out_V_MN: NDArray<c_contig, ndim<2>, shape=(mu_end-mu_start, Mmax)>
     *  mu_start, mu_end: row distribution range — only rows [mu_start, mu_end) are written
     */
     void calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
-                                    size_t mu_start, size_t mu_end) const;
+                                    int64_t mu_start, int64_t mu_end) const;
 
 
     // FIXME the _impl function need access to these but ideally these would be kept private.

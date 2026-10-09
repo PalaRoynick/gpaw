@@ -40,14 +40,14 @@ static void launch_construct_density(
     const LFCGpu& lfc,
     gpaw::PyDeviceArray& nt_G,
     const gpaw::PyDeviceArray& rho_MM,
-    size_t mu_start,
-    size_t mu_end
+    int64_t mu_start,
+    int64_t mu_end
 )
 {
     ConstructDensityArrays<T> inputs;
     inputs.nt_G = static_cast<T*>(nt_G.data);
     inputs.rho_MM = static_cast<T*>(rho_MM.data);
-    inputs.ncols = static_cast<size_t>(rho_MM.shape[1]);
+    inputs.ncols = rho_MM.shape[1];
     inputs.mu_start = mu_start;
     inputs.mu_end = mu_end;
 
@@ -67,8 +67,8 @@ static void launch_calculate_potential_matrix_phi_pairs(
     const LFCGpu& lfc,
     const gpaw::PyDeviceArray& vt_G,
     gpaw::PyDeviceArray& out_V_MN,
-    size_t mu_start,
-    size_t mu_end)
+    int64_t mu_start,
+    int64_t mu_end)
 {
     if (lfc.phi_pair_data.num_pairs == 0)
     {
@@ -80,7 +80,7 @@ static void launch_calculate_potential_matrix_phi_pairs(
     inputs.V_MN = static_cast<T*>(out_V_MN.data);
     inputs.mu_start = mu_start;
     inputs.mu_end = mu_end;
-    inputs.ncols = static_cast<size_t>(out_V_MN.shape[1]);
+    inputs.ncols = out_V_MN.shape[1];
 
     const dim3 threads(lfc.block_data.block_shape.x,
                         lfc.block_data.block_shape.y,
@@ -100,15 +100,15 @@ static void launch_calculate_potential_matrix(
     const LFCGpu& lfc,
     const gpaw::PyDeviceArray& vt_G,
     gpaw::PyDeviceArray& out_V_MN,
-    size_t mu_start,
-    size_t mu_end)
+    int64_t mu_start,
+    int64_t mu_end)
 {
     CalculatePotentialMatrixArrays<T> arrays;
     arrays.vt_G = static_cast<const T*>(vt_G.data);
     arrays.V_MN = static_cast<T*>(out_V_MN.data);
     arrays.mu_start = mu_start;
     arrays.mu_end = mu_end;
-    arrays.ncols = static_cast<size_t>(out_V_MN.shape[1]);
+    arrays.ncols = out_V_MN.shape[1];
 
     const dim3 threads(lfc.block_data.block_shape.x,
                         lfc.block_data.block_shape.y,

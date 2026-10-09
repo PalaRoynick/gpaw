@@ -25,7 +25,7 @@ LFCGpu::~LFCGpu()
     gpu::Tfree(phi_pair_data.phi_idx_s_p);
 }
 
-void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM, size_t mu_start, size_t mu_end) const
+void LFCGpu::construct_density(gpaw::PyDeviceArray &nt_G, const gpaw::PyDeviceArray &rho_MM, int64_t mu_start, int64_t mu_end) const
 {
     if (!nt_G.c_contiguous || nt_G.ndim() != 3)
     {
@@ -85,7 +85,7 @@ void LFCGpu::add_to_density(gpaw::PyDeviceArray &nt_sG, const gpaw::PyDeviceArra
 }
 
 void LFCGpu::calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
-                                        size_t mu_start, size_t mu_end) const
+                                        int64_t mu_start, int64_t mu_end) const
 {
     if (!vt_G.c_contiguous || vt_G.ndim() != 3)
     {

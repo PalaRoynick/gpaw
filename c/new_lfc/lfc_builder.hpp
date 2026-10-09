@@ -31,11 +31,11 @@ private:
 /* Staging struct for block data. Easy to work with but not efficient for actual computations. */
 struct BlockDataStaging
 {
-    size_t num_blocks() const { return block_start_bc.size(); }
-    std::array<grid_index_t, 3> block_shape;
-    std::vector<std::array<grid_index_t, 3>> block_start_bc;
+    int64_t num_blocks() const { return static_cast<int64_t>(block_start_bc.size()); }
+    std::array<grid_coord_t, 3> block_shape;
+    std::vector<std::array<grid_coord_t, 3>> block_start_bc;
     // Maps block-local phi_j to global phi_i index
-    std::vector<std::vector<size_t>> block_phi_j_to_phi_i;
+    std::vector<std::vector<int64_t>> block_phi_j_to_phi_i;
 };
 
 /* Python sees this. Currently this is responsible also for building spline pools */
@@ -46,7 +46,7 @@ class LFCBuilder
     using CpuSpline = gpaw::TRadialSpline<SplineDtype>;
 
 public:
-    void set_block_size(const std::array<grid_index_t, 3>& in_block_size);
+    void set_block_size(const std::array<grid_coord_t, 3>& in_block_size);
 
     std::array<size_t, 3> start_c;
     std::array<size_t, 3> end_c;
@@ -57,11 +57,11 @@ public:
     std::shared_ptr<SplinePool> build_spline_pool();
 
     // start_c and end_c are the MPI-aware domain start and end ranges
-    void define_grid(const std::array<grid_index_t, 3>& start_c, const std::array<grid_index_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV);
-    void add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu, const std::array<grid_index_t, 3>& cell_coords);
+    void define_grid(const std::array<grid_coord_t, 3>& start_c, const std::array<grid_coord_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV);
+    void add_phi(int32_t l, int64_t spline_index, const Position& position_v, int64_t first_mu, const std::array<grid_coord_t, 3>& cell_coords);
     /* Add a new grid block. Shape is implied to be the same as that defined by set_block_size()
     * `phi_idx_j` should map block-local phi indices to the global phi index for all phi_j in that block. */
-    void add_block(const std::array<grid_index_t, 3>& block_start_c, gpaw::Span<const size_t> phi_idx_j);
+    void add_block(const std::array<grid_coord_t, 3>& block_start_c, gpaw::Span<const int64_t> phi_idx_j);
 
     // Turns staged block data into a format that is more suitable for computations.
     static BlockData build_flattened_block_data(BlockDataStaging&& staging_data);
@@ -74,7 +74,7 @@ public:
     GridInfo grid;
     PhiData phi_data;
     BlockDataStaging block_staging;
-    std::array<int32_t, 3> block_size = {};
+    std::array<grid_coord_t, 3> block_size = {};
 
 private:
     // Staging data for splines

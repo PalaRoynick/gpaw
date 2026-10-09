@@ -16,7 +16,7 @@ SplinePool::SplinePool(std::vector<SplineData> spline_datas)
     }
 }
 
-void LFCBuilder::set_block_size(const std::array<int32_t, 3>& in_block_size)
+void LFCBuilder::set_block_size(const std::array<grid_coord_t, 3>& in_block_size)
 {
     block_staging.block_shape = in_block_size;
 }
@@ -40,7 +40,7 @@ std::shared_ptr<SplinePool> LFCBuilder::build_spline_pool()
     return std::make_shared<SplinePool>(std::move(spline_datas));
 }
 
-void LFCBuilder::define_grid(const std::array<grid_index_t, 3>& start_c, const std::array<grid_index_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV)
+void LFCBuilder::define_grid(const std::array<grid_coord_t, 3>& start_c, const std::array<grid_coord_t, 3>& end_c, const std::array<std::array<double, 3>, 3>& spacing_cv, double dV)
 {
     grid.start_c = start_c;
     grid.end_c = end_c;
@@ -48,7 +48,7 @@ void LFCBuilder::define_grid(const std::array<grid_index_t, 3>& start_c, const s
     grid.dV = dV;
 }
 
-void LFCBuilder::add_phi(int32_t l, size_t spline_index, const Position& position_v, size_t first_mu, const std::array<grid_index_t, 3>& cell_coords)
+void LFCBuilder::add_phi(int32_t l, int64_t spline_index, const Position& position_v, int64_t first_mu, const std::array<grid_coord_t, 3>& cell_coords)
 {
     constexpr auto l_max = std::numeric_limits<uint8_t>::max();
     if (l < 0)
@@ -67,18 +67,18 @@ void LFCBuilder::add_phi(int32_t l, size_t spline_index, const Position& positio
     phi_data.cell_coords_i.push_back(cell_coords);
 }
 
-void LFCBuilder::add_block(const std::array<grid_index_t, 3>& block_start_c, gpaw::Span<const size_t> phi_idx_j)
+void LFCBuilder::add_block(const std::array<grid_coord_t, 3>& block_start_c, gpaw::Span<const int64_t> phi_idx_j)
 {
     block_staging.block_start_bc.push_back(block_start_c);
 
     block_staging.block_phi_j_to_phi_i.push_back(
-        std::vector<size_t>(phi_idx_j.begin(), phi_idx_j.end()));
+        std::vector<int64_t>(phi_idx_j.begin(), phi_idx_j.end()));
 }
 
 BlockData LFCBuilder::build_flattened_block_data(BlockDataStaging&& staging_data)
 {
     BlockData out;
-    const size_t num_blocks = staging_data.num_blocks();
+    const int64_t num_blocks = staging_data.num_blocks();
 
     out.block_shape = std::move(staging_data.block_shape);
     out.block_start_bc = std::move(staging_data.block_start_bc);
@@ -86,13 +86,13 @@ BlockData LFCBuilder::build_flattened_block_data(BlockDataStaging&& staging_data
     // Build CSR lookups
     out.block_start_j.resize(num_blocks + 1);
     out.all_blocks_phi_idx_j.reserve(num_blocks); // will need at least this many
-    size_t j = 0;
-    for (size_t b = 0; b < num_blocks; ++b)
+    int64_t j = 0;
+    for (int64_t b = 0; b < num_blocks; ++b)
     {
-        const std::vector<size_t>& phi_j_to_global = staging_data.block_phi_j_to_phi_i[b];
+        const std::vector<int64_t>& phi_j_to_global = staging_data.block_phi_j_to_phi_i[b];
         out.block_start_j[b] = j;
 
-        for (size_t global_phi_idx : phi_j_to_global)
+        for (int64_t global_phi_idx : phi_j_to_global)
         {
             out.all_blocks_phi_idx_j.push_back(global_phi_idx);
         }

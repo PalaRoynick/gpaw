@@ -41,10 +41,10 @@ static void bind_lfc_builder(py::module_ m)
 
     auto add_block = [](
         LFCBuilder& self,
-        const std::array<grid_index_t, 3>& block_start_c,
-        const std::vector<size_t>& block_phi_idx_to_global)
+        const std::array<grid_coord_t, 3>& block_start_c,
+        const std::vector<int64_t>& block_phi_idx_to_global)
     {
-        self.add_block(block_start_c, gpaw::Span<const size_t>(block_phi_idx_to_global));
+        self.add_block(block_start_c, gpaw::Span<const int64_t>(block_phi_idx_to_global));
     };
 
     cls.def("add_block", add_block,
