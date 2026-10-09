@@ -8,10 +8,10 @@ from scipy.special import erf
 
 from gpaw.fd_operators import Gradient
 from gpaw.old.grid_descriptor import GridDescriptor
+from gpaw.old.solvation.poisson import (ADM12PoissonSolver,
+                                        PolarizationPoissonSolver,
+                                        WeightedFDPoissonSolver)
 from gpaw.solvation.dielectric import Dielectric
-from gpaw.solvation.poisson import (ADM12PoissonSolver,
-                                    PolarizationPoissonSolver,
-                                    WeightedFDPoissonSolver)
 from gpaw.utilities.gauss import Gaussian
 
 nn = 3

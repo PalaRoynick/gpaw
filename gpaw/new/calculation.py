@@ -427,7 +427,7 @@ class DFT:
         if not np.isnan(vacuum_level):
             self.log(f'vacuum-level: {vacuum_level:.3f}  # V')
             try:
-                wf1, wf2 = self.workfunctions(_vacuum_level=vacuum_level)
+                wf1, wf2 = self.workfunctions()
             except NonsenseError:
                 pass
             else:
@@ -435,20 +435,21 @@ class DFT:
                     f'Workfunctions: {wf1:.3f}, {wf2:.3f} eV (top, bottom)')
         self.log.fd.flush()
 
-    def workfunctions(self,
-                      *, _vacuum_level=None) -> tuple[float, float]:
-        if _vacuum_level is None:
-            _vacuum_level = self.potential.get_vacuum_level()
-        if np.isnan(_vacuum_level):
-            raise NonsenseError('No vacuum')
+    def workfunctions(self) -> tuple[float, float]:
+        """Work functions (eV) at the top and bottom of the cell.
+
+        Needs a dipole correction; the vacuum levels come from the Poisson
+        solver (see PoissonSolver.vacuum_levels()).
+        """
         try:
-            correction = self.pot_calc.poisson_solver.dipole_layer_correction()
+            top, bottom = self.pot_calc.poisson_solver.vacuum_levels(
+                self.potential)
         except NotImplementedError:
             raise NonsenseError('No dipole layer')
-        correction *= Ha
-        fermi_level = self.ibzwfs.fermi_level * Ha
-        wf = _vacuum_level - fermi_level
-        return wf - correction, wf + correction
+        if np.isnan(top):
+            raise NonsenseError('No vacuum')
+        fermi_level = self.ibzwfs.fermi_level
+        return (top - fermi_level) * Ha, (bottom - fermi_level) * Ha
 
     def vacuum_level(self) -> float:
         return self.potential.get_vacuum_level()

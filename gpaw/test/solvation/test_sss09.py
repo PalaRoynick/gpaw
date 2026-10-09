@@ -11,9 +11,9 @@ from ase import Atoms
 from ase.units import Bohr, Pascal, kcal, m, mol
 
 from gpaw import GPAW
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (FG02SmoothStepCavity, GradientSurface,
-                            LinearDielectric, SolvationGPAW, SSS09Density,
-                            SurfaceInteraction)
+                            LinearDielectric, SSS09Density, SurfaceInteraction)
 from gpaw.utilities.adjust_cell import adjust_cell
 
 

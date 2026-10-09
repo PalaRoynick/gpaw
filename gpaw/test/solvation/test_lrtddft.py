@@ -1,6 +1,7 @@
 import pytest
 from ase.build import molecule
 
+from gpaw.old.solvation import SolvationGPAW
 import gpaw.solvation as solv
 from gpaw import PoissonSolver
 from gpaw.lrtddft import LrTDDFT
@@ -14,7 +15,7 @@ def test_solvation_lrtddft():
     atoms = molecule('H2')
     adjust_cell(atoms, vac, h)
 
-    calc = solv.SolvationGPAW(
+    calc = SolvationGPAW(
         mode='fd', xc='PBE', h=0.2,  # non-solvent DFT parameters
         nbands=3,
         convergence={'energy': 0.1, 'eigenstates': 0.01, 'density': 0.1},

@@ -12,10 +12,10 @@ from ase.build import molecule
 from ase.units import Bohr, Pascal, kcal, m, mol
 
 from gpaw import GPAW
+from gpaw.old.solvation import ADM12PoissonSolver, SolvationGPAW
 from gpaw.solvation import (ADM12SmoothStepCavity, ElDensity, GradientSurface,
-                            KB51Volume, LinearDielectric, SolvationGPAW,
-                            SurfaceInteraction, VolumeInteraction)
-from gpaw.solvation.poisson import ADM12PoissonSolver
+                            KB51Volume, LinearDielectric, SurfaceInteraction,
+                            VolumeInteraction)
 from gpaw.utilities.adjust_cell import adjust_cell
 
 SKIP_VAC_CALC = True
