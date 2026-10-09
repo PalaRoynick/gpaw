@@ -182,33 +182,21 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         if self._vt_g is not None:
             return self._vt_g, self._nt_g, self._dedtaut_g
 
+        pw1 = self.vbar0_g.desc if self.vbar0_g is not None else None
+        pw = self.pw
+
         nt_R = spinsum(density.nt_sR)
         self._nt_g = nt_R.fft(self.fftplan, pw=self.pw)
 
-        vt_g = None
-        if self.kpt_band_comm.rank == 0:
-            vt_R = spinsum(potential.vt_sR, mean=True).gather()
-            if vt_R is not None:
-                vt_g = vt_R.fft(self.fftplan, pw=self.vbar0_g.desc)
-        if self.pw.comm.size == 1:
-            self._vt_g = vt_g
-        else:
-            self._vt_g = self.pw.empty(xp=self.xp)
-            self._vt_g.scatter_from(vt_g)
+        self._vt_g = fft_and_scatter(
+            potential.vt_sR, pw1, pw, self.fftplan, self.kpt_band_comm,
+            self.distributed_density)
 
         dedtaut_sR = potential.dedtaut_sR
         if dedtaut_sR is not None:
-            dedtaut_g = None
-            if self.kpt_band_comm.rank == 0:
-                dedtaut_R = spinsum(dedtaut_sR, mean=True).gather()
-                if dedtaut_R is not None:
-                    dedtaut_g = dedtaut_R.fft(self.fftplan,
-                                              pw=self.vbar0_g.desc)
-            if self.pw.comm.size == 1:
-                self._dedtaut_g = dedtaut_g
-            else:
-                self._dedtaut_g = self.pw.empty(xp=self.xp)
-                self._dedtaut_g.scatter_from(dedtaut_g)
+            self._dedtaut_g = fft_and_scatter(
+                dedtaut_sR, pw1, pw, self.fftplan, self.kpt_band_comm,
+                self.distributed_density)
         else:
             self._dedtaut_g = None
 
@@ -245,6 +233,35 @@ class PlaneWavePotentialCalculator(PotentialCalculator):
         for ext in self.extensions:
             stress_vv += ext.stress_contribution()
         return stress_vv
+
+
+def fft_and_scatter(a_sR,
+                    pw1,
+                    pw,
+                    fftplan,
+                    kpt_band_comm,
+                    distributed_density):
+    if not distributed_density:
+        a1_g = None
+        a1_R = spinsum(a_sR, mean=True).gather()
+        if a1_R is not None:
+            a1_g = a1_R.fft(fftplan, pw=pw1)
+        if pw.comm.size == 1:
+            return a1_g
+        a_g = pw.empty(xp=a_sR.xp)
+        a_g.scatter_from(a1_g)
+        return a_g
+
+    a1_g = None
+    if kpt_band_comm.rank == 0:
+        a1_R = spinsum(a_sR, mean=True).gather()
+        if a1_R is not None:
+            a1_g = a1_R.fft(fftplan, pw=pw1)
+    if pw.comm.size == 1:
+        return a1_g
+    a_g = pw.empty(xp=a_sR.xp)
+    a_g.scatter_from(a1_g)
+    return a_g
 
 
 ERROR = (
