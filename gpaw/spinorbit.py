@@ -41,7 +41,7 @@ def calculate_soc(dft: DFT,
                   ignore_xc_potential: bool = False,
                   occ_calc_params: dict | None = None,
                   projected=False,
-                  zora=False,
+                  zora=True,
                   log: str | Path | Logger | None = '-'
                   ) -> tuple[IBZWaveFunctions,
                              float,
@@ -524,6 +524,9 @@ class KPointData:
             for a, P_msi in self.P_amsi.items()}
 
 
+MISSING = '_missing'
+
+
 def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     n1: int = 0,
                     n2: int = None,
@@ -534,7 +537,7 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
                     occcalc: OccupationNumberCalculator = None,
                     projected: bool = False,
                     ignore_xc_potential: bool = False,
-                    zora: bool = False
+                    zora: bool = MISSING
                     ) -> SOCResult:
     """Calculate SOC eigenstates.
 
@@ -568,6 +571,9 @@ def soc_eigenstates(calc: ASECalculator | OldGPAW | str | Path,
 
     if isinstance(calc, (str, Path)):
         calc = GPAW(calc)
+
+    if zora is MISSING:
+        raise ValueError('Please specify zora=...')
 
     assert eigenvalues is None
     ibzwfs, e_band, v_Kmn, spin_projections_Kmv = calculate_soc(

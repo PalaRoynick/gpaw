@@ -219,7 +219,7 @@ def calculate_non_local_potential1(setup: Setup,
 
     e_soc = 0.0
     if soc:
-        dHsoc_sii = soc_terms(setup, xc.xc, D_sp)
+        dHsoc_sii = soc_terms(setup, xc.xc, D_sp, zora=?)
         e_soc += (D_sii[1:4] * dHsoc_sii).sum().real
         dH_sp[1:4] = pack_hermitian(dHsoc_sii)
 
