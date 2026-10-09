@@ -9,6 +9,7 @@ def workflow():
                  ext.test_change_before_first_calculation,
                  ext.test_change_drops_a_staged_step,
                  ext.test_sjm_zero_charge_forces_match_solvation,
+                 ext.test_zero_vacuum_does_not_matter,
                  ext.test_grand_output_toggle,
                  ext.test_unknown_keyword,
                  ext.test_nothing_to_report_before_an_scf_loop,

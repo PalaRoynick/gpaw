@@ -228,8 +228,10 @@ them.  Leaving out ``solvation`` gives water: the parameters of
 :func:`gpaw.solvation.get_HW14_water_kwargs`, with an
 :class:`~gpaw.solvation.sjm.SJMPower12Potential` that keeps the solvent from
 behind the electrode.  A solvation model without a dipole layer of its own
-gets ``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
-electrode potential to the vacuum at the top of the cell.
+gets ``GaussianDerivativeDipole(zero_vacuum=True)``, which puts the
+electrostatic potential to zero in the vacuum at the top of the cell.  The
+electrode potential is read off that vacuum level, so a layer of your own
+works with either ``zero_vacuum``.
 
 Leaving out ``target_potential`` gives a constant-charge calculation at
 the given number of ``excess_electrons``.  The

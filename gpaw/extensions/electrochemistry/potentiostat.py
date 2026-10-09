@@ -73,6 +73,7 @@ class Potentiostat(Extension):
         self.grand_output = grand_output
         # Set by SJM.build():
         self.log: Any = lambda *args, **kwargs: None
+        self.solvation: Any = None  # the built SolvationExtension
         self.dft = None  # the last converged calculation
 
         # Consecutive rejected (halved) steps since the last accepted one:
@@ -197,7 +198,8 @@ class Potentiostat(Extension):
         # Grab the values belonging to this attempt before the charge is
         # stepped on to the next one:
         excess_electrons = self.excess_electrons
-        potential = self.potentialprobe.potential(ibzwfs)
+        potential = self.potentialprobe.potential(
+            ibzwfs, self.solvation.poisson_solver)
 
         result = self.equilibrate(ibzwfs, potential, nelectrons, occ_calc,
                                   mixer, log)
@@ -245,7 +247,9 @@ class Potentiostat(Extension):
         (fermi_level,) = dft.ibzwfs.fermi_levels
         self.fermi_level = broadcast_float(float(fermi_level), dft.comm)
         self.electrode_potential = broadcast_float(
-            self.potentialprobe.potential(dft.ibzwfs), dft.comm)
+            self.potentialprobe.potential(dft.ibzwfs,
+                                          self.solvation.poisson_solver),
+            dft.comm)
 
         # Report where the equilibration ended up; the intermediate attempts
         # are summarized by the regressed slope:
@@ -267,20 +271,22 @@ class Potentiostat(Extension):
                     f'{self.pending_excess_electrons:+.5f} excess electrons.')
             log(flush=True)
 
-        # Legendre transform: Omega = E - N mu, with mu the Fermi level.
+        # Legendre transform: Omega = E - N mu, with mu minus the electrode
+        # potential (the Fermi level on the vacuum scale):
         N = self.converged_excess_electrons = self.excess_electrons
         self.canonical_free = broadcast_float(dft.energies.total_free,
                                               dft.comm)
         self.canonical_extrapolated = broadcast_float(
             dft.energies.total_extrapolated, dft.comm)
-        mu_N = self.fermi_level * N
+        mu = -self.electrode_potential / Ha
+        mu_N = mu * N
         self.omega_free = self.canonical_free - mu_N
         self.omega_extrapolated = self.canonical_extrapolated - mu_N
 
         log('Legendre-transformed energies '
             '(grand potential, Omega = E - N mu):')
         log(f'  N (excess electrons): {N:+14.6f}')
-        log(f'  mu (-work function):  {self.fermi_level * Ha:+14.6f}  # eV')
+        log(f'  mu (-potential):      {mu * Ha:+14.6f}  # eV')
         log(f'  (Grand) free energy:  {self.omega_free * Ha:+14.6f}')
         log(f'  (Grand) extrapolated: {self.omega_extrapolated * Ha:+14.6f}')
         log()
@@ -1008,7 +1014,7 @@ class DirectOptimizer(PotentialOptimizer):
 class PotentialProbe:
     """Reads the electrode potential off the converged SCF state."""
 
-    def potential(self, ibzwfs) -> float:
+    def potential(self, ibzwfs, poisson_solver) -> float:
         """Electrode potential in V, on the vacuum scale."""
         raise NotImplementedError
 
@@ -1018,14 +1024,13 @@ class PotentialProbe:
 
 
 class WorkFunctionProbe(PotentialProbe):
-    """Electrode potential as the work function: minus the Fermi level.
+    """Electrode potential as the work function: the vacuum level at the
+    top of the cell minus the Fermi level."""
 
-    Assumes the Poisson solver has zeroed the vacuum electrostatic
-    potential, as the SJM solver does.
-    """
-
-    def potential(self, ibzwfs) -> float:
-        return -ibzwfs.fermi_level * Ha
+    def potential(self, ibzwfs, poisson_solver) -> float:
+        # The dipole layer remembers the vacuum levels of its last solve:
+        top, _ = poisson_solver.vacuum_levels(None)
+        return (top - ibzwfs.fermi_level) * Ha
 
 
 #: Each part's default class; its keywords are keys of the potentiostat dict:

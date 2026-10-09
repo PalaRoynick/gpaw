@@ -11,6 +11,7 @@ from ase.units import Bohr, Ha
 from gpaw import GPAW, FermiDirac
 from gpaw.extensions.electrochemistry import (SJM, PotentialOptimizer,
                                               Potentiostat, WorkFunctionProbe)
+from gpaw.solvation import GaussianDerivativeDipole
 from gpaw.test.big.solvation.forces_new import make_atoms as nacl_atoms
 from gpaw.test.big.solvation.forces_new import make_calc
 from gpaw.test.solvation.test_sjm_keywords import NoCavity, Vacuum
@@ -229,6 +230,24 @@ def test_sjm_zero_charge_forces_match_solvation():
 
     atoms.calc = make_calc('pw', 'nacl_pw_sjm.txt', sjm=True)
     assert atoms.get_forces() == pytest.approx(F_solvation, abs=1e-6)
+
+
+def test_zero_vacuum_does_not_matter():
+    """The electrode potential is read off the vacuum level, and the grand
+    potential off the electrode potential, so neither depends on whether
+    the dipole layer puts the vacuum at zero."""
+    results = []
+    for zero_vacuum in [True, False]:
+        atoms, sjm = h_atoms(excess_electrons=-0.01)
+        sjm.solvation.dipolelayer = GaussianDerivativeDipole(
+            zero_vacuum=zero_vacuum)
+        energy = atoms.get_potential_energy()
+        results.append((sjm.get_electrode_potential(), energy,
+                        sjm.potentiostat.fermi_level * Ha))
+    (u1, e1, f1), (u2, e2, f2) = results
+    assert abs(f1 - f2) > 0.1  # two different references ...
+    assert u1 == pytest.approx(u2, abs=1e-4)  # ... but one potential
+    assert e1 == pytest.approx(e2, abs=1e-4)
 
 
 # Quick checks of change() and always_adjust on a built calculation, or after

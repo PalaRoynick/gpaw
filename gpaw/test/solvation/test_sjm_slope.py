@@ -1,4 +1,6 @@
 """Slope estimate and charge stepping behind the SJM potential control."""
+from types import SimpleNamespace
+
 import pytest
 from ase.units import Ha, _e
 
@@ -214,11 +216,17 @@ def test_reset():
     assert len(opt.history) == 0
 
 
+#: A solvation whose dipole layer has put the vacuum at zero:
+_zeroed = SimpleNamespace(poisson_solver=SimpleNamespace(
+    vacuum_levels=lambda potential: (0.0, 0.0)))
+
+
 class _FakeIBZWFS:
     """Just enough of an IBZWaveFunctions for the potentiostat to drive."""
 
     def __init__(self, potential: float):
-        # WorkFunctionProbe reads the potential as -fermi_level * Ha:
+        # With the vacuum at zero, WorkFunctionProbe reads the potential as
+        # -fermi_level * Ha:
         self.fermi_level = -potential / Ha
         self.occs_calls: list[float] = []
 
@@ -348,6 +356,7 @@ def _two_attempts(**kwargs) -> Potentiostat:
                        optimizer=DirectOptimizer(target_potential=TARGET,
                                                  slope=-30.0, mixer=0.5,
                                                  tol=0.2), **kwargs)
+    pot.solvation = _zeroed
     for _ in range(2):
         potential = line(-40.0, pot.excess_electrons)
         pot.post_scf_convergence(_FakeIBZWFS(potential), 10.0, object(),
@@ -387,6 +396,7 @@ class _ScriptedPotentiostat(Potentiostat):
                          optimizer=DirectOptimizer(target_potential=TARGET,
                                                    tol=0.001, **kwargs),
                          always_adjust=always_adjust)
+        self.solvation = _zeroed
         self._results = list(results)
 
     def equilibrate(self, *args, **kwargs) -> EquilibrationResult:

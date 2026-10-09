@@ -52,8 +52,10 @@ class SJM(ExtensionInput):
         effective potential made an
         :class:`~gpaw.solvation.sjm.SJMPower12Potential`, which keeps the
         solvent from behind the electrode.  Without a dipole layer it gets
-        ``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
-        electrode potential to the vacuum at the top of the cell.
+        ``GaussianDerivativeDipole(zero_vacuum=True)``, which puts the
+        electrostatic potential to zero in the vacuum at the top of the cell.
+        The electrode potential is read off that vacuum level, so a layer of
+        your own works with either ``zero_vacuum``.
     potentiostat:
         The potential control, held as ``sjm.potentiostat``: a
         :class:`Potentiostat` (or a subclass of it), or a dict of the keys
@@ -140,6 +142,7 @@ class SJM(ExtensionInput):
         pot = self.potentiostat
         opt = pot.optimizer
         pot.log = log = builder.log
+        pot.solvation = solvation
         warns = []
         wf_tol = (builder.params.convergence or {}).get('work function')
         if (opt.target_potential is not None and wf_tol is not None and
@@ -329,8 +332,8 @@ class SJM(ExtensionInput):
         """Electrode potential of the last converged SCF loop, in V.
 
         As read by the potential probe; for the default
-        :class:`WorkFunctionProbe` it is minus the Fermi level, since the
-        electrostatic potential is zero in the vacuum.  The same as
+        :class:`WorkFunctionProbe` it is the work function at the top of the
+        cell.  The same as
         ``calc.results['electrode_potential']``; NaN until an SCF loop has
         converged.
         """
