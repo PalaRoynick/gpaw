@@ -27,7 +27,14 @@ struct GridInfo
 /* SoA style data for grid blocks. */
 struct BlockData
 {
-    int64_t get_num_blocks() const { return static_cast<int64_t>(block_start_j.size()) - 1; }
+    int64_t get_num_blocks() const
+    {
+        if (block_start_j.size() > 1)
+        {
+            return static_cast<int64_t>(block_start_j.size() - 1);
+        }
+        return 0;
+    }
 
     std::array<grid_coord_t, 3> block_shape;
 

@@ -314,7 +314,7 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
 
     const int64_t spin_stride = thread_coords.nx * thread_coords.ny * thread_coords.nz;
 
-    for (int s = 0; s < arrays.num_spins; ++s)
+    for (int32_t s = 0; s < arrays.num_spins; ++s)
     {
         T accum = 0;
 
@@ -326,10 +326,10 @@ __global__ void add_to_density_kernel(AddToDensityArrays<T> arrays, const LFCGpu
 
             const int64_t first_mu = phi.first_mu_i[phi_idx];
 
-            const int num_m = 2*l + 1;
-            for (int m = 0; m < num_m; ++m)
+            const int32_t num_m = 2*l + 1;
+            for (int32_t m = 0; m < num_m; ++m)
             {
-                const int mu = first_mu + m;
+                const int64_t mu = first_mu + m;
                 accum += arrays.f_sM[s * s_stride + mu] * phi_m[m]*phi_m[m];
             }
         }
@@ -380,7 +380,7 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
             // TODO can we do just mu <= nu and symmetrize?
 
             // Compute phi_r(x) * rho_rs * phi_s(x)
-            for (int m = 0; m < 2*l_r + 1; ++m)
+            for (int32_t m = 0; m < 2*l_r + 1; ++m)
             {
                 const int64_t mu = first_mu_r + m;
                 if (mu < arrays.mu_start || mu >= arrays.mu_end)
@@ -388,7 +388,7 @@ __global__ void construct_density_kernel(ConstructDensityArrays<T> arrays, const
                     continue;
                 }
 
-                for (int n = 0; n < 2*l_s + 1; ++n)
+                for (int32_t n = 0; n < 2*l_s + 1; ++n)
                 {
                     const int64_t nu = first_mu_s + n;
                     // rho_MM only has rows relevant for this rank so must offset the row index
@@ -453,7 +453,7 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
 
             // Accumulate phi_rm * vt * phi_sn for each phi component m,n.
             // All threads loop m,n (and consequently mu, nu) in the same order so the reduction below works as intended.
-            for (int m = 0; m < 2*l_r + 1; ++m)
+            for (int32_t m = 0; m < 2*l_r + 1; ++m)
             {
                 const int64_t mu = first_mu_r + m;
                 // temp until parallel V_MN properly implemented?
@@ -464,7 +464,7 @@ __global__ void calculate_potential_matrix_kernel(CalculatePotentialMatrixArrays
 
                 const T phi_rm_times_vt = phi_r_m[m] * vt_dV;
 
-                for (int n = 0; n < 2*l_s + 1; ++n)
+                for (int32_t n = 0; n < 2*l_s + 1; ++n)
                 {
                     const int64_t nu = first_mu_s + n;
                     if (mu >= nu)
@@ -542,7 +542,7 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
     // Scratch space for the block-wide reductions in the loop below
     __shared__ T reduce_buf[kernel_utils::MAX_WARPS_PER_BLOCK];
 
-    for (int m = 0; m < m_max; ++m)
+    for (int32_t m = 0; m < m_max; ++m)
     {
         const int64_t mu = first_mu_r + m;
         if (mu < arrays.mu_start || mu >= arrays.mu_end)
@@ -552,7 +552,7 @@ __global__ void calculate_potential_matrix_phi_pairs_kernel(
 
         const T phi_rm_vt = phi_r_m[m] * vt_dV;
 
-        for (int n = 0; n < 2*l_s + 1; ++n)
+        for (int32_t n = 0; n < 2*l_s + 1; ++n)
         {
             const int64_t nu = first_mu_s + n;
             if (mu < nu)
