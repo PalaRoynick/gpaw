@@ -48,8 +48,6 @@ class LFCBuilder
 public:
     void set_block_size(const std::array<grid_coord_t, 3>& in_block_size);
 
-    std::array<size_t, 3> start_c;
-    std::array<size_t, 3> end_c;
     // Volume element
     double dV;
 
