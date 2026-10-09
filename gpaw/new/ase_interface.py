@@ -765,11 +765,6 @@ class ASECalculator:
     def initialize_positions(self, atoms=None):
         pass
 
-    def set(self, eigensolver):
-        assert eigensolver.pop('name') == 'etdm-fdpw'
-        self.dft.scf_loop.eigensolver = self.dft.scf_loop.eigensolver.new(
-            **eigensolver)
-
     def todict(self):
         return self.params.todict()
 
