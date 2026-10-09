@@ -140,7 +140,8 @@ class PPCG(PWFDEigensolver):
         b = wfs.psit_nX.mydims[0]
 
         # Blocksize should be close to a divisor of b.
-        bdist = (b + wfs.desc.comm.size - 1) // wfs.desc.comm.size
+        bdist = (b + wfs.psit_nX.desc.comm.size - 1) \
+            // wfs.psit_nX.desc.comm.size
         divisor = (bdist + self.max_blocksize - 1) \
             // self.max_blocksize
         self.blocksize = max(((bdist + divisor - 1) // divisor), 1)
