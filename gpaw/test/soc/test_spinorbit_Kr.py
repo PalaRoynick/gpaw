@@ -17,8 +17,10 @@ def test_spinorbit_Kr():
 
     e_n = calc.get_eigenvalues()
     e_m = soc_eigenstates(calc).eigenvalues()[0]
+    ez_m = soc_eigenstates(calc, zora=True).eigenvalues()[0]
     print(e_n)
     print(e_m)
+    print(ez_m)
 
     e1 = -22.08477236
     e2 = -8.27112345
@@ -29,6 +31,5 @@ def test_spinorbit_Kr():
     assert e_m == pytest.approx(
         [e1, e1, e2a, e2a, e2b, e2b, e2b, e2b], abs=1.0e-3)
 
-
-if __name__ == '__main__':
-    test_spinorbit_Kr()
+    # Kr-4p splitting is 42 meV smaller with ZORA:
+    assert ez_m[-1] - ez_m[2] == pytest.approx(e2b - e2a - 0.042, abs=0.001)
