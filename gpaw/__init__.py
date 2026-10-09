@@ -13,6 +13,7 @@ __version__ = '26.7.1b1'
 __ase_version_required__ = '3.29.0'
 
 __all__ = ['GPAW',
+           'ASECalculator',
            'Mixer', 'MixerSum', 'MixerDif', 'MixerSum2',
            'MixerFull',
            'CG', 'Davidson', 'RMMDIIS', 'DirectLCAO',
@@ -169,6 +170,7 @@ def _lazy_import(attr: str) -> Any:
 
 
 all_lazy_imports = dict(
+    ASECalculator='gpaw.new.ase_interface.ASECalculator',
     Mixer='gpaw.old.mixer.Mixer',
     MixerSum='gpaw.old.mixer.MixerSum',
     MixerDif='gpaw.old.mixer.MixerDif',
