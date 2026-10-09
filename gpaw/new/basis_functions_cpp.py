@@ -6,6 +6,7 @@ from gpaw import GPAW_NO_C_EXTENSION
 from gpaw.typing import override
 from gpaw.gpu import cupy as cp, as_xp
 import numpy as np
+from warnings import warn
 
 
 class BasisFunctionCollection(BasisFunctionCollectionBase):
@@ -15,7 +16,7 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
     def __init__(self,
                  system: LFCSystemDesc,
                  use_gpu: bool = False,
-                 mode: PrecalculationMode = PrecalculationMode.eIfPossible,
+                 mode: PrecalculationMode = PrecalculationMode.eNever,
                  block_size: int | tuple[int, int, int] | None = 8):
         """"""
         if GPAW_NO_C_EXTENSION:
@@ -27,8 +28,10 @@ class BasisFunctionCollection(BasisFunctionCollectionBase):
         if not use_gpu:
             raise RuntimeError("Only GPU version implemented for now")
 
-        # TEMP Force no precalculation, so that we can test stuff
-        mode = PrecalculationMode.eNever
+        if mode != PrecalculationMode.eNever:
+            warn("BasisFunctionCollection (new LFC) does not currently support"
+                 "precalculation. Forcing PrecalculationMode.eNever")
+            mode = PrecalculationMode.eNever
 
         from typing import TYPE_CHECKING
         if TYPE_CHECKING:
