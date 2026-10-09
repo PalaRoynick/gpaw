@@ -252,7 +252,7 @@ class PPCG(PWFDEigensolver):
 
             dS_Aii = dS_aii.gather(copy=True, broadcast=True)
             dH_Asii = potential.dH_asii.gather(copy=True, broadcast=True)
-            dH_Aii = dH_Asii[:, 0]
+            dH_Aii = dH_Asii[:, wfs.spin]
 
             vt_sR = potential.vt_sR.gather(broadcast=True)
             Ht_args = list(Ht.args)
