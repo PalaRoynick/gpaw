@@ -194,43 +194,6 @@ build-cuda:
      - $PIP_CACHE_DIR
 
 
-build-hip-cuda:
-  image: $IMAGE_CUDA
-  when: manual
-  extends:
-    - .build
-  script:
-    - |
-      cat << EOF >> siteconfig.py
-      gpu = True
-      gpu_target = 'hip-cuda'
-      gpu_compiler = 'hipcc'
-      gpu_compile_args = ['-O3',
-                          '-g',
-                          '-v']
-      libraries += ['cudart', 'hipblas']
-
-      # Suppress warnings from hip-cuda headers
-      extra_compile_args += ['-Wno-deprecated-declarations',
-                             '-Wno-implicit-int',
-                             ]
-      undef_macros += ['GPAW_GPU_AWARE_MPI']
-
-      # MAGMA
-      magma = True
-      libraries += ['magma']
-      EOF
-    - cat siteconfig.py
-     # Set env variable for HIPCC because otherwise it fails to pass the -std
-    # flag to underlying nvcc/cicc... and may default to c++14.
-    - export HIPCC_COMPILE_FLAGS_APPEND="-std=c++17"
-    - pip install -v --user --log build.log --editable .
-  cache:
-    key: cache-build-cuda
-    paths:
-     - $PIP_CACHE_DIR
-
-
 # Like build-cuda but uses the makefile compilation path.
 build-cuda-makefile:
   image: $IMAGE_CUDA
@@ -372,14 +335,16 @@ prepare-libxc:
   script:
     - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
-    - autoreconf -i
     - >
-      ./configure --enable-shared --disable-static --disable-fortran --prefix=$PREFIX
-      --disable-kxc
-      --disable-lxc
-      # Enable kxc, lxc, ... derivatives only if needed (affects compilation time)
-    - make | tee ../libxc-build.log
-    - make install
+      cmake -B build -S .
+      -DCMAKE_INSTALL_PREFIX=$PREFIX
+      -DCMAKE_INSTALL_LIBDIR=lib
+      -DBUILD_SHARED_LIBS=ON
+      -DENABLE_FORTRAN=OFF
+      -DMAXORDER=2
+      -DBUILD_TESTING=OFF
+    - cmake --build build | tee ../libxc-build.log
+    - cmake --install build
   when: manual
   artifacts:
     paths:
@@ -544,20 +509,6 @@ test-cuda-mpi-makefile-build:
     # just a very lightweight test as we mainly want to ensure that
     # runtime linking is OK
     - GPAW_USE_GPUS=1 $MPIEXEC -n 2 gpaw test
-
-
-test-hip-cuda:
-  image: $IMAGE_CUDA
-  extends:
-    - .test
-  needs:
-    - job: build-hip-cuda
-  tags:
-    - cuda
-  script:
-    - nvidia-smi
-    - gpaw info
-    - pytest -v -m gpu
 
 
 test-lumi-g:

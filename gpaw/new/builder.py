@@ -537,11 +537,11 @@ def normalize_initial_magmoms(
     elif isinstance(magmoms, float):
         magmom_av[:, 2] = magmoms
     else:
-        magmoms = np.asarray(magmoms)
-        if magmoms.ndim == 1:
-            magmom_av[:, 2] = magmoms
+        magmoms_array = np.asarray(magmoms)
+        if magmoms_array.ndim == 1:
+            magmom_av[:, 2] = magmoms_array
         else:
-            magmom_av[:] = magmoms
+            magmom_av[:] = magmoms_array
             ncomponents = 4
 
     if (ncomponents == 2 and
@@ -606,7 +606,7 @@ def calculate_number_of_bands(nbands: int | str | None,
 
     if N > nao and is_lcao:
         raise ValueError('Too many bands for LCAO calculation: '
-                         f'{nbands}%d bands and only {nao} atomic orbitals!')
+                         f'{N} bands and only {nao} atomic orbitals!')
 
     if nvalence < 0:
         raise ValueError(

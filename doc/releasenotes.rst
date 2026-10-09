@@ -63,11 +63,6 @@ Git master branch
 
   There is also an LDA version of the potential.
 
-* Implicit solvation calculations are now supported in plane-wave mode, using
-  an updated conjugate-gradient Poisson solver. Add the solvation model
-  through the ``extensions`` keyword; e.g.,
-  ``GPAW(..., extensions=[Solvation(...)])``.
-
 * The solvated jellium method (``gpaw.extensions.electrochemistry.SJM``) has been ported
   to the :ref:`newgpaw` architecture. Other than before it is now used as an
   extension to the GPAW calculator, and not as a separate calculator, as
@@ -116,6 +111,8 @@ Git master branch
   now distribute the density to all cores for netter parallelization of
   the calculation of the Kohn-Sham potential.  Use
   ``parallel={'distribute_density': True}`` to enable this optimization.
+
+* Fixed bug preventing use of SG15-potentials with semi-core states.
 
 
 Version 26.7.0

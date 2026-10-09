@@ -76,6 +76,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
              options: DiagonalizerOptions
              ) -> tuple[cp.ndarray, Matrix]:
         """"""
+        from gpaw.core.matrix import Matrix
 
         assert isinstance(inout_matrix.data, cp.ndarray)
         assert inout_matrix.shape[0] == inout_matrix.shape[1]
@@ -101,21 +102,24 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
                      "If you crash here, try running with more MPI processes")
 
             matrix_non_distributed = inout_matrix.gather(broadcast=False)
+            eigvecs = matrix_non_distributed
             # Can always do in-place for the internal eigh
             options_non_distributed = copy(options)
             options_non_distributed.inplace = True
         else:
+            # Avoid unnecessary copies for eigenvector output
             matrix_non_distributed = inout_matrix
+            if options.inplace:
+                eigvecs = matrix_non_distributed
+            else:
+                eigvecs = matrix_non_distributed.new()
             options_non_distributed = options
-
-        # avoid unnecessary copies for eigenvector output
-        if needs_redist or options.inplace:
-            eigvecs = matrix_non_distributed
-        else:
-            eigvecs = matrix_non_distributed.new()
 
         comm = inout_matrix.dist.comm
         if comm.rank == 0:
+            assert isinstance(matrix_non_distributed,
+                              Matrix), f'{matrix_non_distributed}'
+            assert isinstance(eigvecs, Matrix), f'{eigvecs}'
 
             if debug:
                 self.check_matrix(matrix_non_distributed.data)
@@ -136,6 +140,7 @@ class NonDistributedDiagonalizer(GPUDiagonalizer):
         comm.broadcast(eigvals, 0)
 
         if not needs_redist:
+            assert isinstance(eigvecs, Matrix), f'{type(eigvecs)}'
             return eigvals, eigvecs
 
         # distribute back to the original layout

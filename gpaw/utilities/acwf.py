@@ -30,7 +30,7 @@ def eos(atoms: Atoms,
     strains = np.linspace(-maxstrain, maxstrain, npoints)
     for i, strain in enumerate(strains):
         atoms.set_cell((1.0 + strain) * cell_cv, scale_atoms=True)
-        e = atoms.get_potential_energy()
+        e = atoms.get_potential_energy(force_consistent=True)  # free energy
         energies.append(e)
 
     strain0, e0, d2eds2 = fit(strains, energies)
@@ -128,6 +128,7 @@ def work(structure: str,
         convergence=dict(density=1e-6))
     if mode == 'pw':
         params['mode'] = dict(name='pw', ecut=1000)
+        params['nbands'] = -20,
     else:
         params['mode'] = 'lcao'
         params['basis'] = 'dzp'
