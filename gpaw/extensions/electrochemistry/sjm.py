@@ -15,6 +15,7 @@ from gpaw.new.builder import DFTComponentsBuilder
 from gpaw.extensions.electrochemistry.potentiostat import (
     DirectOptimizer, JelliumCharging, Potentiostat, _from_dict,
     build_jellium_region, default_parts)
+from gpaw.solvation import get_HW14_water_kwargs
 from gpaw.solvation.dipole_layer import GaussianDerivativeDipole
 from gpaw.solvation.extension import Solvation
 
@@ -46,9 +47,13 @@ class SJM(ExtensionInput):
         The solvation model, held as ``sjm.solvation``: a
         :class:`gpaw.solvation.Solvation` (or a subclass of it), or a dict
         of its keyword arguments (``cavity``, ``dielectric``,
-        ``interactions`` and ``dipolelayer``).  Without a dipole layer it
-        gets ``GaussianDerivativeDipole(zero_vacuum=True)``, which references
-        the electrode potential to the vacuum at the top of the cell.
+        ``interactions`` and ``dipolelayer``).  ``None`` (the default) gives
+        water as in :func:`gpaw.solvation.get_HW14_water_kwargs`, with its
+        effective potential made an
+        :class:`~gpaw.solvation.sjm.SJMPower12Potential`, which keeps the
+        solvent from behind the electrode.  Without a dipole layer it gets
+        ``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
+        electrode potential to the vacuum at the top of the cell.
     potentiostat:
         The potential control, held as ``sjm.potentiostat``: a
         :class:`Potentiostat` (or a subclass of it), or a dict of the keys
@@ -114,8 +119,14 @@ class SJM(ExtensionInput):
     name = 'sjm'
 
     def __init__(self,
-                 solvation: Solvation | dict,
+                 solvation: Solvation | dict | None = None,
                  potentiostat: Potentiostat | dict | None = None):
+        if solvation is None:
+            from gpaw.solvation.sjm import SJMPower12Potential
+            solvation = water = get_HW14_water_kwargs()
+            u = water['cavity'].effective_potential
+            water['cavity'].effective_potential = SJMPower12Potential(
+                u.atomic_radii, u.u0)
         self.solvation = _from_dict(solvation, Solvation)
         if not self.solvation.dipolelayer:
             self.solvation.dipolelayer = GaussianDerivativeDipole(

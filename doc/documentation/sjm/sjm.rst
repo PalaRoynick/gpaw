@@ -224,8 +224,11 @@ settings::
 Each of the two can also be given as an object instead of a dict: a
 :class:`gpaw.solvation.Solvation` and a
 :class:`~gpaw.extensions.electrochemistry.Potentiostat`, or subclasses of
-them.  A solvation model without a dipole layer of its own gets
-``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
+them.  Leaving out ``solvation`` gives water: the parameters of
+:func:`gpaw.solvation.get_HW14_water_kwargs`, with an
+:class:`~gpaw.solvation.sjm.SJMPower12Potential` that keeps the solvent from
+behind the electrode.  A solvation model without a dipole layer of its own
+gets ``GaussianDerivativeDipole(zero_vacuum=True)``, which references the
 electrode potential to the vacuum at the top of the cell.
 
 Leaving out ``target_potential`` gives a constant-charge calculation at

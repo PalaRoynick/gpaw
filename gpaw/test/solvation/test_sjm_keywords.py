@@ -228,3 +228,9 @@ def test_solvation_and_its_dipole_layer():
     layer = GaussianDerivativeDipole()
     obj = SJM(solvation=Solvation(**solvent, dipolelayer=layer))
     assert obj.solvation.dipolelayer is layer
+    # ... and no solvation at all gives water, kept from behind the slab:
+    solvation = SJM().solvation
+    assert solvation.dielectric.epsinf == 78.36
+    u = solvation.cavity.effective_potential
+    assert type(u).__name__ == 'SJMPower12Potential' and u.unsolv_backside
+    assert u.atomic_radii == {'H': 1.09} and u.u0 == 0.18
