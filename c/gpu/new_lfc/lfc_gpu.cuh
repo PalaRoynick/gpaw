@@ -1,0 +1,144 @@
+#pragma once
+#include "gpu/cupy_interface/device_array.hpp"
+#include "utils.hpp"
+#include "new_lfc/lfc_common.hpp"
+#include "gpu/gpu-runtime.h"  // double3 etc
+#include "gpu/splines/radial_spline_gpu.cuh"
+#include <type_traits>
+#include <cstdint>
+#include <memory>
+
+class SplinePoolGpu;
+
+using LFCGpuSpline = gpaw::TRadialSplineGpu<double>;
+
+/**************************************************************/
+// Some template helpers. Define GpuVec3<T> as an alias to matchng int3, float3, long3, ...
+// CPU side uses grid_coord_t for grid point indexing so we want to use the same type in GPU structs.
+// FIXME: would be cleaner with C++20 concepts
+
+template<typename> inline constexpr bool always_false = false;
+
+template<typename T, typename = void>
+struct GpuVec3Type
+{
+    static_assert(always_false<T>, "GpuVec3<T>: unsupported scalar type");
+};
+
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_same_v<T, float>>>
+{ using type = float3; };
+
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_same_v<T, double>>>
+{ using type = double3; };
+
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 4 && std::is_signed_v<T>>>
+{ using type = int3; };
+
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 4 && std::is_unsigned_v<T>>>
+{ using type = uint3; };
+
+template<typename T>
+struct GpuVec3Type<T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 8 && std::is_signed_v<T>>>
+{ using type = long3; };
+
+template<typename T>
+using GpuVec3 = typename GpuVec3Type<T>::type;
+
+template<typename T>
+GpuVec3<T> make_gpu_vec3(T x, T y, T z) { return {x, y, z}; }
+/*************************************************************/
+
+/**
+ * Flat list of (grid-block, phi_r, phi_s) triples for phi-pair-centric kernels.
+ * Only pairs where first_mu_r >= first_mu_s are stored, ie. kernels should handle the lower-triangle of arrays like V_MN.
+ */
+struct PhiPairDataGpu
+{
+    int64_t num_pairs;
+    int64_t* GPAW_RESTRICT block_idx_p = nullptr;
+    // "row" phi index. These have first_mu_r >= first_mu_s
+    int64_t* GPAW_RESTRICT phi_idx_r_p = nullptr;
+    // "column" phi index
+    int64_t* GPAW_RESTRICT phi_idx_s_p = nullptr;
+};
+
+/* Analogous to CPU-side BlockData, see comments in lfc_common.hpp for explanations. */
+struct BlockDataGpu
+{
+    int64_t num_blocks;
+
+    GpuVec3<grid_coord_t> block_shape;
+    GpuVec3<grid_coord_t>* GPAW_RESTRICT block_start_bc;
+
+    // CSR style index buffers
+    int64_t* GPAW_RESTRICT start_j;
+    int64_t* GPAW_RESTRICT all_blocks_phi_idx_j;
+};
+
+struct PhiDataGpu
+{
+    GpuVec3<double>* GPAW_RESTRICT position_iv;
+    uint8_t* GPAW_RESTRICT l_i;
+    int64_t* GPAW_RESTRICT first_mu_i;
+    int64_t* GPAW_RESTRICT spline_idx_i;
+    int64_t num_phi;
+};
+
+struct GridInfoGpu
+{
+    GpuVec3<grid_coord_t> start_c;
+    GpuVec3<grid_coord_t> end_c;
+    double3 spacing_cv[3];
+    // Volume element
+    double dV;
+};
+
+
+class LFCGpu
+{
+public:
+    ~LFCGpu();
+
+    LFCGpu(const LFCGpu&) = delete;
+    LFCGpu& operator=(const LFCGpu&) = delete;
+    // Could in theory be made moveable but it shouldn't be needed. Python side uses this through std::unique_ptr
+    LFCGpu(LFCGpu&&) = delete;
+    LFCGpu& operator=(LFCGpu&&) = delete;
+
+    /* nt_sG: NDArray<device::gpu, c_contig, ndim<4>>
+    *  f_sM: const NDArray<c_contig, ndim<2>>
+    */
+    void add_to_density(gpaw::PyDeviceArray& nt_sG, const gpaw::PyDeviceArray& f_sM) const;
+
+    /* nt_G: NDArray<device::gpu, c_contig, ndim<3>>
+    *  rho_MM: NDArray<device::gpu, c_contig, ndim<2>>
+    */
+    void construct_density(gpaw::PyDeviceArray& nt_G, const gpaw::PyDeviceArray& rho_MM, int64_t mu_start, int64_t mu_end) const;
+
+    /* vt_G: const NDArray<device::gpu, c_contig, ndim<3>>
+    *  out_V_MN: NDArray<c_contig, ndim<2>, shape=(mu_end-mu_start, Mmax)>
+    *  mu_start, mu_end: row distribution range — only rows [mu_start, mu_end) are written
+    */
+    void calculate_potential_matrix(const gpaw::PyDeviceArray& vt_G, gpaw::PyDeviceArray& out_V_MN,
+                                    int64_t mu_start, int64_t mu_end) const;
+
+
+    // FIXME the _impl function need access to these but ideally these would be kept private.
+    PhiDataGpu phi_data;
+    BlockDataGpu block_data;
+    PhiPairDataGpu phi_pair_data;
+    GridInfoGpu grid;
+
+    std::shared_ptr<const SplinePoolGpu> spline_pool;
+
+private:
+
+    friend class LFCBuilderGpu;
+
+    // Construction only via LFCBuilderGpu
+    LFCGpu() = default;
+};

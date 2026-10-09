@@ -36,7 +36,7 @@ if gpaw.GPAW_MPI_BACKEND is None:
 GPAW_MPI_BACKEND = gpaw.GPAW_MPI_BACKEND
 
 cgpaw_version = getattr(cgpaw, 'version', 0)
-if not GPAW_NO_C_EXTENSION and cgpaw_version != 13:
+if not GPAW_NO_C_EXTENSION and cgpaw_version != 14:
     improvement = ''
     if cgpaw_version == 9:
         improvement = ('GPAW has now much reduced memory consumption due to '
