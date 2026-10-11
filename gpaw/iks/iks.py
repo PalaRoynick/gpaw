@@ -360,7 +360,8 @@ class iKS:
 
             tdens.set_positions(self.hamiltonian.spos_ac,
                                 self.density.atom_partition)
-            iks_tools.update_density_from_density_matrix(tdens, wfs, self.P_ksnn)
+            iks_tools.update_density_from_density_matrix(
+                tdens, wfs, self.P_ksnn)
 
         density = self.density
         tdens.gd = density.gd
@@ -682,7 +683,8 @@ class iKS:
             degeneracy = 2
         else:
             degeneracy = 1
-        fix_fermi_level = bool(getattr(self.calc.scf, 'fix_fermi_level', False))
+        fix_fermi_level = bool(
+            getattr(self.calc.scf, 'fix_fermi_level', False))
 
         fixmagmom = getattr(occ, 'name', '') == 'fixmagmom'
         dist = occ.occ if fixmagmom else occ
@@ -742,7 +744,7 @@ class iKS:
                 self.fmt.log(
                     f'WARNING: {nbad_blocks} degenerate block(s) with unequal '
                     'fixed occupation numbers; the density is not differentiable'
-                    )
+                )
         elif fix_fermi_level:
             self.fmt.log('occupation correction eta: 0 (fixed Fermi level)')
         elif fixmagmom:
@@ -932,8 +934,9 @@ class iKS:
         for a, dp_sii in dp_asii.items():
             dp_sii[:] = 0.0
             for kpt, ls in zip(self.wfs.kpt_u, self.ls_u):
-                dp_ii = np.einsum(
-                    "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
+                # dp_ii = np.einsum(
+                #     "ni,nj->ij", ls.Pp_ani[a].conj(), kpt.P_ani[a][ls.dd.occ])
+                dp_ii = ls.Pp_ani[a].conj().T @ kpt.P_ani[a][ls.dd.occ]
                 dp_ii += dp_ii.conj().T
                 dp_sii[kpt.s] += dp_ii
             self.wfs.kptband_comm.sum(dp_sii)
@@ -960,44 +963,29 @@ class iKS:
     def symmetrize_atomic_adjoint_matrices(self, dp_asii: ArrayDict, a_sa: dict) -> None:
         if not dp_asii:
             return
+
         time_reversal = self.wfs.kd.symmetry.time_reversal
-
-        def symmetrize(rot, a, dp_aii, map_sa):
-            ni = rot.R_sii.shape[1]
-            D_ii = np.zeros((ni, ni), dtype=dp_aii[0].dtype)
-            for s, R_ii in enumerate(rot.R_sii):
-                D_mapped = dp_aii[map_sa[s][a]]
-
-                if time_reversal:
-                    D_mapped = D_mapped.conj()
-
-                D_ii += R_ii @ D_mapped @ R_ii.T
-            return D_ii / len(map_sa)
-
         atomrot = self.setups.atomrotations
-        nspins = next(iter(dp_asii.values())).shape[0]
-        # for s in range(nspins):
-        #     dp_aii = [dp_asii[a][s] for a in range(len(dp_asii))]
-        #     for a, dp_ii in enumerate(dp_aii):
-        #         dp_asii[a][s] = symmetrize(atomrot.get_by_a(a), a, dp_aii, a_sa)
-        for s in range(nspins):
-            source_aii = [
-                dp_asii[a][s].copy()
-                for a in range(len(dp_asii))
-            ]
 
-            symmetrized_aii = [
-                symmetrize(
-                    atomrot.get_by_a(a),
-                    a,
-                    source_aii,
-                    a_sa,
-                )
-                for a in range(len(source_aii))
-            ]
+        source_asii = [
+            dp_asii[a].conj() if time_reversal else dp_asii[a]
+            for a in range(len(dp_asii))
+        ]
 
-            for a, dp_ii in enumerate(symmetrized_aii):
-                dp_asii[a][s] = dp_ii
+        symmetrized_asii = []
+        for a in range(len(source_asii)):
+            rot = atomrot.get_by_a(a)
+            D_sii = np.zeros_like(source_asii[a])
+
+            for s, R_ii in enumerate(rot.R_sii):
+                D_mapped = source_asii[a_sa[s][a]]
+                D_sii += R_ii @ D_mapped @ R_ii.T
+
+            D_sii /= len(a_sa)
+            symmetrized_asii.append(D_sii)
+
+        for a, D_sii in enumerate(symmetrized_asii):
+            dp_asii[a][:] = D_sii
 
     def update_atomic_jacobian_from_adjoint_matrices(self, dp_asp: ArrayDict) -> None:
         lambda_core = self.lambda_core
@@ -1038,9 +1026,10 @@ class iKS:
                 J_sz += 2.0 * lambda_core * self.wcore_ag[a] * dv_sz
             if lambda_boundary != 0.0:
                 assert self.xc.paw_potmode is PAWPotMode.lebedev
-                dv_sz = vxc_asz[a] - vxct_asz[a]
-                J_sz += 2.0 * lambda_boundary * self.wboundary_ag[a] * dv_sz
-                Jt_sz -= 2.0 * lambda_boundary * self.wboundary_ag[a] * dv_sz
+                dv_sz = 2.0 * lambda_boundary * \
+                    self.wboundary_ag[a] * (vxc_asz[a] - vxct_asz[a])
+                J_sz += dv_sz
+                Jt_sz -= dv_sz
 
             self.J_xasz[0][a][:] = J_sz
             self.J_xasz[1][a][:] = Jt_sz
