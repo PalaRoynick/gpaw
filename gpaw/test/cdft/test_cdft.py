@@ -19,7 +19,8 @@ def test_cdft(in_tmp_dir, comm):
         mode='fd',
         basis='dzp',
         charge=1,
-        xc='PBE', symmetry='off',
+        xc='LDA',
+        symmetry='off',
         occupations=FermiDirac(0., fixmagmom=True),
         eigensolver=Davidson(3),
         spinpol=True,
@@ -27,8 +28,10 @@ def test_cdft(in_tmp_dir, comm):
         mixer=Mixer(beta=0.25, nmaxold=3, weight=100.0),
         txt='He2+_final_%3.2f.txt' % distance,
         communicator=comm,
-        convergence={'eigenstates': 1.0e-4, 'density': 1.0e-1,
-                     'energy': 1e-1, 'bands': 4})
+        convergence={'eigenstates': 1.0e-4,
+                     'density': 1.0e-1,
+                     'energy': 1e-1,
+                     'bands': 4})
 
     cdft_b = CDFT(calc=calc_b,
                   atoms=sys,

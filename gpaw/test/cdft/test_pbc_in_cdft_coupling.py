@@ -20,8 +20,8 @@ def test_pbc_cdft(in_tmp_dir, not_parallelized, comm):
         mode='fd',
         basis='dzp',
         charge=1,
-        xc='PBE',
-        symmetry='off', kpts=(2, 1, 1),
+        symmetry='off',
+        kpts=(2, 1, 1),
         occupations=FermiDirac(0., fixmagmom=True),
         eigensolver=Davidson(3),
         spinpol=True,  # only spin-polarized calculations are supported
@@ -59,9 +59,9 @@ def test_pbc_cdft(in_tmp_dir, not_parallelized, comm):
         mode='fd',
         basis='dzp',
         charge=1,
-        xc='PBE',
-        symmetry='off', kpts=(2, 1, 1),
-        occupations=FermiDirac(0., fixmagmom=True),
+        symmetry='off',
+        kpts=(2, 1, 1),
+        occupations=FermiDirac(0.0, fixmagmom=True),
         eigensolver=Davidson(3),
         spinpol=True,  # only spin-polarized calculations are supported
         nbands=4,

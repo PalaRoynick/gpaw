@@ -44,7 +44,7 @@ double pw91_exchange(const xc_parameters* par,
   return e;
 }
 
-double pw91_correlation(double n, double rs, double zeta, double a2, 
+double pw91_correlation(double n, double rs, double zeta, double a2,
 		       bool gga, bool spinpol,
 		       double* dedrs, double* dedzeta, double* deda2)
 {
@@ -59,10 +59,10 @@ double pw91_correlation(double n, double rs, double zeta, double a2,
     {
       double de1drs;
       double e1 = G(rtrs, 0.015545, 0.20548, 14.1189, 6.1977, 3.3662,
-                    0.62517, &de1drs);
+		    0.62517, &de1drs);
       double dalphadrs;
       double alpha = -G(rtrs, 0.016887, 0.11125, 10.357, 3.6231, 0.88026,
-                        0.49671, &dalphadrs);
+			0.49671, &dalphadrs);
       dalphadrs = -dalphadrs;
       double zp = 1.0 + zeta;
       double zm = 1.0 - zeta;
@@ -74,11 +74,11 @@ double pw91_correlation(double n, double rs, double zeta, double a2,
       double zeta3 = zeta2 * zeta;
       double zeta4 = zeta2 * zeta2;
       double x = 1.0 - zeta4;
-      *dedrs = (de0drs * (1.0 - f * zeta4) + 
-               de1drs * f * zeta4 +
-               dalphadrs * f * x * IF2);
+      *dedrs = (de0drs * (1.0 - f * zeta4) +
+	       de1drs * f * zeta4 +
+	       dalphadrs * f * x * IF2);
       *dedzeta = (4.0 * zeta3 * f * (e1 - e0 - alpha * IF2) +
-                 f1 * (zeta4 * e1 - zeta4 * e0 + x * alpha * IF2));
+		 f1 * (zeta4 * e1 - zeta4 * e0 + x * alpha * IF2));
       e = e0 + alpha * IF2 * f * x + (e1 - e0) * f * zeta4;
     }
   else
@@ -97,31 +97,31 @@ double pw91_correlation(double n, double rs, double zeta, double a2,
       double phi4;
       double GAMMAPW91 = BETA * BETA / 0.18;
       if (spinpol)
-        {
-          phi = 0.5 * (xp * xp + xm * xm);
-          phi2 = phi * phi;
-          phi3 = phi * phi2;
-          phi4 = phi * phi3;
+	{
+	  phi = 0.5 * (xp * xp + xm * xm);
+	  phi2 = phi * phi;
+	  phi3 = phi * phi2;
+	  phi4 = phi * phi3;
 
-        }
+	}
       else
-        {
-          phi = 1.0;
-          phi2 = 1.0;
-          phi3 = 1.0;
-          phi4 = 1.0;
-        }
+	{
+	  phi = 1.0;
+	  phi2 = 1.0;
+	  phi3 = 1.0;
+	  phi4 = 1.0;
+	}
       t2 = C3 * a2 * rs / (n2 * phi2);
       y = -e / (GAMMAPW91 * phi3);
       double x = exp(y);
-      double A = BETA / (GAMMAPW91 * (x - 1.0)); 
+      double A = BETA / (GAMMAPW91 * (x - 1.0));
       double At2 = A * t2;
       double nom = 1.0 + At2;
       double denom = nom + At2 * At2;
-      double H0 = (phi3 * GAMMAPW91 * 
+      double H0 = (phi3 * GAMMAPW91 *
 		   log(1.0 + BETA * t2 * nom / (denom * GAMMAPW91)));
       double tmp = (phi3 * GAMMAPW91 * BETA /
-                    (denom * (BETA * t2 * nom + GAMMAPW91 * denom)));
+		    (denom * (BETA * t2 * nom + GAMMAPW91 * denom)));
       double tmp2 = A * A * x / BETA;
       double dAdrs = tmp2 * *dedrs / phi3;
 
@@ -152,16 +152,53 @@ double pw91_correlation(double n, double rs, double zeta, double a2,
       *dedrs += (dH0dt2 + dH1dt2) * 7 * t2 / rs + dH0dA * dAdrs + dH1drs;
       *deda2 = (dH0dt2 + dH1dt2) * C3 * rs / n2;
       if (spinpol)
-        {
-          double dphidzeta = (1.0 / xp - 1.0 / xm) / 3.0;
-          double dAdzeta = tmp2 * (*dedzeta - 
+	{
+	  double dphidzeta = (1.0 / xp - 1.0 / xm) / 3.0;
+	  double dAdzeta = tmp2 * (*dedzeta -
 				   3.0 * e * dphidzeta / phi) / phi3;
-          *dedzeta += ((3.0 * H0 / phi - dH0dt2 * 2.0 * t2 / phi ) * dphidzeta +
-                      dH0dA * dAdzeta);
-          *dedzeta += (dH1dphi - dH1dt2 * 2.0 * t2 / phi ) * dphidzeta;
-          *deda2 /= phi2;
-        }
+	  *dedzeta += ((3.0 * H0 / phi - dH0dt2 * 2.0 * t2 / phi ) * dphidzeta +
+		      dH0dA * dAdzeta);
+	  *dedzeta += (dH1dphi - dH1dt2 * 2.0 * t2 / phi ) * dphidzeta;
+	  *deda2 /= phi2;
+	}
       e += H0 + H1;
     }
   return e;
+}
+
+
+void fastlda(int N,
+	     double *e,
+	     const double *n,
+	     double *v)
+{
+    double A = GAMMA;
+    double alpha1 = 0.21370;
+    double beta1 = 7.5957;
+    double beta2 = 3.5876;
+    double beta3 = 1.6382;
+    double beta4 = 0.49294;
+    for (int r = 0; r < N; r++) {
+	double d = n[r];
+	if (d < 1e-15) {
+	    e[r] = 0.0;
+	    continue;
+	}
+	double rs = pow(C0I / d, THIRD);
+	double rtrs = rs;
+	double Q0 = -2.0 * A * (1.0 + alpha1 * rs);
+	double Q1 = 2.0 * A * rtrs * (beta1 +
+				      rtrs * (beta2 +
+					      rtrs * (beta3 +
+						      rtrs * beta4)));
+	double ec = Q0 / Q1;
+	double dQ1drs = A * (beta1 / rtrs + 2.0 * beta2 +
+			     rtrs * (3.0 * beta3 + 4.0 * beta4 * rtrs));
+	double decdrs = (-2.0 * A * alpha1 * ec / Q0
+			 - Q0 * dQ1drs / (Q1 * (Q1 + 1.0)));
+	double ex = C1 / rs;
+	double dexdrs = -ex / rs;
+	e[r] = d * (ex + ec);
+	v[r] += ex + ec - rs * (dexdrs + decdrs) * THIRD;
+    }
 }

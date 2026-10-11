@@ -45,6 +45,7 @@ double rpbe_exchange(const xc_parameters* par,
 double beefvdw_exchange(const xc_parameters* par,
                         double n, double rs, double a2,
                         double* dedrs, double* deda2);
+void fastlda(int N, double *e, const double *n, double *v);
 
 //
 typedef struct
@@ -113,13 +114,20 @@ XCFunctional_calculate(XCFunctionalObject *self, PyObject *args)
     }
 #endif
 
-  if (PyArray_DIM(n_array, 0) == 1)
-    {
+  if (PyArray_DIM(n_array, 0) == 1) {
+    if (par->gga == 0) {
+        fastlda(ng, e_g, n_g, v_g);
+        Py_RETURN_NONE;
+    }
     for (int g = 0; g < ng; g++)
       {
         double n = n_g[g];
-        if (n < NMIN)
-          n = NMIN;
+        if (n < NMIN) {
+            e_g[g] = 0.0;
+            if (par->gga)
+                dedsigma_g[g] = 0.0;
+            continue;
+        }
         double rs = pow(C0I / n, THIRD);
         double dexdrs;
         double dexda2;
@@ -171,12 +179,22 @@ XCFunctional_calculate(XCFunctionalObject *self, PyObject *args)
       for (int g = 0; g < ng; g++)
         {
           double na = 2.0 * na_g[g];
-          if (na < NMIN)
-            na = NMIN;
-          double rsa = pow(C0I / na, THIRD);
           double nb = 2.0 * nb_g[g];
+          if (na < NMIN) {
+              if (nb < NMIN) {
+                  e_g[g] = 0.0;
+                  if (par->gga) {
+                      dedsigma0_g[g] = 0.0;
+                      dedsigma1_g[g] = 0.0;
+                      dedsigma2_g[g] = 0.0;
+                  }
+                  continue;
+              }
+              na = NMIN;
+          }
           if (nb < NMIN)
             nb = NMIN;
+          double rsa = pow(C0I / na, THIRD);
           double rsb = pow(C0I / nb, THIRD);
           double n = 0.5 * (na + nb);
           double rs = pow(C0I / n, THIRD);

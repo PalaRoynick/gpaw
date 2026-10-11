@@ -63,22 +63,20 @@ def test_mom_lcaosic(in_tmp_dir, gpw_files):
         """
         expect_eigen_str = """\
         Band  Eigenvalues  Occupancy  Eigenvalues  Occupancy
-           0    -32.37420    1.00000    -32.74320    1.00000
-           1    -17.73904    1.00000    -18.76757    1.00000
-           2    -15.58035    1.00000    -15.92320    1.00000
-           3     -1.76357    1.00000    -15.49637    1.00000
-           4     -9.12084    0.00000      2.48462    0.00000
-           5      4.16510    0.00000      4.82013    0.00000
+           0    -31.87767    1.00000    -32.26539    1.00000
+           1    -18.01371    1.00000    -18.81552    1.00000
+           2    -15.15795    1.00000    -15.48152    1.00000
+           3     -1.52277    1.00000    -15.22429    1.00000
+           4     -8.96380    0.00000      2.53803    0.00000
+           5      4.24103    0.00000      4.89102    0.00000
         """
 
         npt.assert_allclose(
             mk_arr_from_str(expect_lagrange_str, 6),
             mk_arr_from_str(lstr, 6),
-            rtol=0.1,
-        )
+            rtol=0.1)
 
         npt.assert_allclose(
             mk_arr_from_str(expect_eigen_str, 5),
             mk_arr_from_str(eigenvalue_string(calc.wfs), 5, skip_rows=1),
-            rtol=0.12,
-        )
+            rtol=0.12)

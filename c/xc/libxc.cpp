@@ -283,12 +283,14 @@ static void data2block(const xcinfo *info,
     if (info->spinpolarized) {
       gather(ptr,block,blocksize,info->ng,inlist->p[i].spinsize);
       if (inlist->p[i].special&N_SG)
-	for (int i=0; i<blocksize*2; i++) block[i] = (block[i]<NMIN) ? NMIN : block[i];
+	//for (int i=0; i<blocksize*2; i++) block[i] = (block[i]<NMIN) ? NMIN : block[i];
+	for (int i=0; i<blocksize*2; i++) block[i] = block[i];
     } else {
       // don't copy sigma and tau for non-spin-polarized.
       // use input arrays instead to save time. have to
       // copy n_g however, because of the NMIN patch.
-      if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = (ptr[i]<NMIN) ? NMIN : ptr[i];
+      //if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = (ptr[i]<NMIN) ? NMIN : ptr[i];
+      if (inlist->p[i].special&N_SG) for (int i=0; i<blocksize; i++) block[i] = ptr[i];
     }
   }
 }
