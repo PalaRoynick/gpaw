@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import warnings
 from types import ModuleType
-from typing import Literal, overload
+from typing import Literal, overload, cast
 
 import numpy as np
 import scipy.linalg as sla
@@ -1124,6 +1124,9 @@ class CuPyDistribution(MatrixDistribution):
         if comm.rank == 0:
             if c0 is None:
                 c0 = c.new(dist=None)
+            # These are never None on rank 0
+            a0 = cast(Matrix, a0)
+            b0 = cast(Matrix, b0)
             cublas_mmm(alpha, a0.data, opa, b0.data, opb, beta, c0.data)
         c.scatter_from(c0)
 
@@ -1162,7 +1165,7 @@ def cupy_tril2full_distributed(matrix: Matrix) -> None:
     mat_full = matrix.gather(broadcast=False)
     # Non-None on root processs
     if mat_full:
-        arr2d = mat_full.data
+        arr2d = cast(cp.ndarray, mat_full.data)
         arr2d[:] = cp.tril(arr2d) + cp.tril(arr2d, -1).conj().T
     matrix.scatter_from(mat_full)
 
