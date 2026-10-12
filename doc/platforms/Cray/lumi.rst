@@ -5,7 +5,7 @@ The ``lumi.csc.fi`` supercomputer
 =================================
 
 .. note::
-   These instructions are up-to-date as of April 2026.
+   These instructions are up-to-date as of October 2026.
 
 It is recommended to perform the installations under
 the ``/projappl/project_...`` directory (see `LUMI storage documentation`_).
@@ -161,8 +161,8 @@ Then, the following steps build GPAW in a Python virtual environment:
   # Activate venv
   source venv-gpaw-gpu/bin/activate
 
-  # Update build tools
-  pip install --upgrade pip setuptools packaging pybind11
+  # Update dependencies
+  pip install --upgrade pip setuptools packaging pybind11 typing-extensions
 
   # Freeze the system-provided packages
   pip list --format=freeze | tee $(dirname $(which pip))/../constraints.txt
@@ -282,8 +282,8 @@ Then, the following steps build GPAW in a Python virtual environment:
   # Activate venv
   source venv-gpaw-cpu/bin/activate
 
-  # Update build tools
-  pip install --upgrade pip setuptools packaging pybind11
+  # Update dependencies
+  pip install --upgrade pip setuptools packaging pybind11 typing-extensions
 
   # Freeze the system-provided packages
   pip list --format=freeze | tee $(dirname $(which pip))/../constraints.txt
