@@ -117,10 +117,14 @@ class OccupationsMOM:
         self.niter_width_update = niter_width_update
         self.width_increment = width_increment / Ha
 
+        if hasattr(self.wfs, 'potential'):
+            domain_comm = self.wfs.potential.vt_sR.desc.comm
+        else:
+            domain_comm = self.wfs.gd.comm
         parallel_layout = ParallelLayout(
             self.wfs.bd,
             self.wfs.kd.comm,
-            self.wfs.potential.vt_sR.desc.comm)
+            domain_comm)
         self.occ = FixedOccupationNumbers(numbers, parallel_layout)
         self.extrapolate_factor = self.occ.extrapolate_factor
 
