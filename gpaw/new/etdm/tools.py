@@ -64,10 +64,11 @@ def sort_orbitals_according_to_occ_wfs(ibzwfs, wfs, update_mom=False,
         #if update_eps:
         #    wfs.eps_n[:] = wfs.eps_n[ind]
 
-        if update_mom:
+        #if update_mom:
             # OccupationsMOM.numbers needs
             # to be updated after sorting
-            update_mom_numbers(ibzwfs, wfs)
+        # lo facciamo sempre per via dell'eccitazione
+        update_mom_numbers(ibzwfs, wfs)
 
         changedocc = True
 

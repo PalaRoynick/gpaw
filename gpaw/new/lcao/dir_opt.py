@@ -100,6 +100,7 @@ class DirOptLCAO(LCAOEigensolver):
         # this also does not need to be done if they are read
         nelectrons = density.nvalence - density.charge + pot_calc.charge
         ibzwfs.calculate_occs(self.occ_calc, nelectrons)
+        # is this a repetition?
         sort_orbitals_according_to_occ(ibzwfs)
 
         # initial sorting of the orbitals to be put here,
@@ -188,6 +189,8 @@ class DirOptLCAO(LCAOEigensolver):
         # print(self.etdm._gradient[0,:10])
 
         # Update reference orbitals
+        # if self.excited_state:
+            # print(ibzwfs.get_all_eigs_and_occs()[1])
         self.update_ref_orbitals(ibzwfs)
 
         if self.iter == 1:

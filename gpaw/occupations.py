@@ -638,6 +638,50 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
         return f'Fixed occupations:\n{self.f_sn}'
 
 
+class ExcitedOccupations(FixedOccupationNumbers):
+    """ Making a class that takes care of changing occupation numbers when
+        wanting to go to an excited state
+        The class gets initialized inside the excite function in etdm/tools.py
+    """
+    def __init__(self,
+                 numbers,
+                 parallel_layout=None):
+
+        super().__init__(numbers, parallel_layout)
+        self.numbers = np.array(numbers)
+        self.initialized = False
+
+    def todict(self):
+        return {'name': 'excited', 'numbers': self.f_sn}
+
+    def _calculate(self,
+                   nelectrons,
+                   eigenvalues,
+                   weights,
+                   spins,
+                   f_qn,
+                   fermi_levels_guess,
+                   fix_fermi_level=False):
+        assert not fix_fermi_level
+
+        if not self.initialized:
+            # If MOM reference orbitals are not initialized yet (e.g. when
+            # the calculation is initialized from atomic densities), update
+            # the occupation numbers according to the user-supplied 'numbers'
+            self.f_sn = self.numbers.copy()
+            self.initialized = True
+            # this is specific of mom?
+            #self.initialize_reference_orbitals()
+
+            # this has to be fixed, or maybe mom-specific
+            #self.occ.f_sn = self.update_occupations()
+            #self.iters += 1
+
+        super()._calculate(nelectrons, eigenvalues,
+                           weights, spins, f_qn, fermi_levels_guess)
+        return inf, 0.0
+
+
 class FixedOccupationNumbersUniform(OccupationNumberCalculator):
 
     extrapolate_factor = 0.0
@@ -838,6 +882,8 @@ def create_occ_calc(dct: dict[str, Any],
         return FixedOccupationNumbersUniform(
             nelectrons, nspins, fixed_magmom_value,
             nkpts, nbands, **kwargs)
+    elif name == 'excited':
+        return ExcitedOccupations(**kwargs)
     else:
         raise ValueError(f'Unknown occupation number object name: {name}')
 
