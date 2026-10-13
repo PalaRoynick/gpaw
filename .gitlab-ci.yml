@@ -4,7 +4,7 @@ variables:
   IMAGE_PATH: "registry.gitlab.com/gpaw/gpaw-ci-containers"
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
-  IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
+  IMAGE_CUDA: "$IMAGE_PATH/cuda:13-staging"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
@@ -13,7 +13,7 @@ variables:
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
-  MPIEXEC: "mpiexec --bind-to=none"
+  MPIEXEC: "mpiexec --bind-to none"
   # We override the Dockers PIP_NO_CACHE_DIR="1" here so that we
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
@@ -187,7 +187,7 @@ build-cuda:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - pip install -v --user --log build.log --editable .
+    - pip install -v --user --log build.log --no-build-isolation --editable .
   cache:
     key: cache-build-cuda
     paths:
@@ -217,10 +217,7 @@ build-cuda-makefile:
       makefile_generate_stubs = True
       EOF
     - cat siteconfig.py
-    # Get mypy for stubgen, and other deps that we're missing (pip doesn't get them for us with --no-build-isolation)
-    - pip install --user mypy pybind11
-    - pip install --user --upgrade setuptools packaging
-    - pip install -v --user --log build.log --editable . --no-build-isolation
+    - pip install -v --user --log build.log --no-build-isolation --editable .
   cache:
     key: cache-build-cuda
     paths:
