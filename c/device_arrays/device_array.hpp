@@ -32,7 +32,7 @@ struct GPAW_HIDDEN_SYMBOL PyDeviceArray
     size_t ndim() const { return shape.size(); }
     bool is_c_contiguous() const { return c_contiguous; }
 
-    void* data = nullptr;
+    void* data_ptr = nullptr;
     pybind11::dtype dtype;
     bool c_contiguous;
     // Use int64_t for shape/strides for compatibility with standards like dlpack
