@@ -2,7 +2,7 @@
 #include "gpu_python.h"
 
 #include "pyarray_utils.hpp"
-#include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
+#include "device_arrays/pybind_cupy_type_caster.hpp"
 
 #ifdef GPAW_WITH_MAGMA
     #include "gpu/cpp/magma/magma_python.h"
