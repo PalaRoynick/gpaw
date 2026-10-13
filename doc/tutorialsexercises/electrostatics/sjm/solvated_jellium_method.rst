@@ -21,6 +21,13 @@ Since SJM utilizes an implicit solvent to screen the field, we will need to spec
 SJM relies on GPAW's :ref:`continuum_solvent_model` to provide this screening, and the ``cavity``, ``dielectric`` and ``interactions`` parameters are given to the :class:`~gpaw.extensions.electrochemistry.SJM` object as its ``solvation`` dict.
 Reasonable values to simulate room-temperature water are used in the script below.
 In practice, since the purpose of the implicit solvent is just to screen the field, the net results---such as binding energies and barrier heights---will be relatively insensitive to the choice of implicit solvent parameters, so long as they are kept consistent.
+
+.. note::
+
+   Both ``solvation`` and ``potentiostat`` can, in principle, be left out.
+   Without ``solvation``, SJM uses the water of the script below---the same dielectric constant, surface tension, temperature and ``SJMPower12Potential``---except that it does not clear the solvent from the water layer (no ``H2O_layer``) and gives hydrogen the radius of 1.09 Å.
+   Without ``potentiostat``, it runs at constant charge with no excess electrons; give ``target_potential`` for a constant-potential calculation, as the script does.
+
 Try running the script below to find the number of electrons necessary to equilibrate the work function to 4.2 eV:
 
 .. literalinclude:: run-Au111.py
@@ -40,15 +47,15 @@ It is followed by the Legendre-transformed energies::
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):
       N (excess electrons):      +0.006453
-      mu (-work function):       -4.195210  # eV
+      mu (-potential):           -4.195210  # eV
       (Grand) free energy:      -21.289829
       (Grand) extrapolated:     -21.267235
 
-These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by ``calc.get_potential_energy()`` (and therefore ``atoms.get_potential_energy()``).
+These Legendre-transformed energies, `\Omega = E - N \mu`, are written into any ASE trajectories created, and are the quantity returned by ``atoms.get_potential_energy()``.
 As discussed in :ref:`grand-potential-energy`, these grand-potential energies are consistent with the forces in the grand-canonical scheme, and are thus compatible with methods such as saddle-point searches (*e.g.*, NEB) and energy optimizations (*e.g.*, BFGSLineSearch).
 If you'd rather have it output the traditional canonical energies to the ``get_potential_energy`` methods, set ``grand_output`` to ``False`` in the ``potentiostat`` dict.
 The number of excess electrons and the electrode potential are also available as ASE properties, in ``calc.results['excess_electrons']`` and ``calc.results['electrode_potential']``.
-The script keeps the ``SJM`` object in the variable ``sjm``, which gives access to the running calculation: ``sjm.potentiostat.excess_electrons`` and ``sjm.get_electrode_potential()`` give the same two numbers directly---the latter in V, on the vacuum scale, for the last converged SCF loop.
+The script keeps the ``SJM`` object in the variable ``sjm``, which gives access to the running calculation: ``sjm.excess_electrons`` and ``sjm.electrode_potential`` give the same two numbers directly---the latter in V, on the vacuum scale, for the last converged SCF loop.
 
 In the last line of the script above, ``sjm.write_sjm_traces(path='sjm_traces.out')`` wrote out some additional information in the form of 'sjm traces', into the directory ``sjm_traces.out``.
 These are traces of the electrostatic potential, the background charge, and the solvent cavity across the `z` axis (that is, `xy`-averaged).
@@ -65,16 +72,16 @@ cavity.txt:
 
 background_charge.txt:
  The jellium counter charge averaged over `xy`, as a charge density in e/Bohr^3; it integrates to minus the number of excess electrons.
- It is therefore five orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
+ It is therefore orders of magnitude smaller than the cavity function in this example, and the plot below scales it to the same range to show its shape.
 
 .. Note:: Alternatively, ``sjm.write_sjm_traces(style='cube')``
           can be used to write cube files on the 3-D grid, instead of traces.
 
-Both ``write_sjm_traces()`` and ``get_electrode_potential()`` need a calculation to have been run, and ``write_sjm_traces()`` must be called on all MPI ranks, as any other calculator method.
+Both ``write_sjm_traces()`` and ``electrode_potential`` need a calculation to have been run, and ``write_sjm_traces()`` must be called on all MPI ranks, as any other calculator method.
 After reading a ``.gpw`` file, the ``SJM`` object is ``calc.params.extensions[0]`` again.
 
 Our traces showing the solvent region and the jellium region are plotted below.
-The black dots indicate the atom's `z` positions.
+The black dots indicate the atoms' `z` positions.
 We see that both the solvent and the jellium are starting above the highest atom, so all is good.
 If you do see solvent appearing in a region where you do not want it, you can block it with ghost atoms or a boundary plane, as described in the :class:`~gpaw.solvation.sjm.SJMPower12Potential` docstring.
 If you see solvent in the metal region, you could increase the atomic radii as described in the same docstring.
@@ -105,11 +112,7 @@ An example follows.
 
 .. literalinclude:: run-Au111-H-sim.py
 
-Some things to note:
-
-* At the end of the script, we tightened the criteria back up, in order to guarantee precise results consistent with a normal, sequential calculation (assuming it found the same local minimum).
-
-* It's a good idea to use the BFGS, and not the BFGSLineSearch, algorithm for structural optimization. This is because the forces and energy are not necessarily consistent until the optimization finishes, and that might confuse an optimizer that uses the energy. BFGSLineSearch may in general have trouble with SJM, since the tolerance set on the desired potential can lead to small inconsistencies between the forces and energy. When in doubt, use the traditional BFGS optimizer.
+Note that at the end of the script, we tightened the criteria back up, in order to guarantee precise results consistent with a normal, sequential calculation (assuming it found the same local minimum).
 
 The plot below compares the "sequential" and "simultaneous" optimization approaches.
 The open circles are potential-equilibration steps, while the filled circles represent ionic steps (in which the atoms are moved).
@@ -129,7 +132,7 @@ Finding a barrier (NEB/DyNEB)
 
 Perhaps the most-desired use of constant-potential calculations is to find barriers at a specified potential.
 This avoids a well-known problem in canonical electronic structure calculations, where the work function (that is, the electrical potential) can change by 1--2 V over the course of an elementary step.
-Such a potential change is obviously much greater than the experimental situation, where potentiostatics hold the potential to a tolerance many orders of magnitude smaller.
+Such a potential change is obviously much greater than the experimental situation, where potentiostats hold the potential to a tolerance many orders of magnitude smaller.
 The SJM method allows one to calculate a reaction barrier in a manner where all images in the trajectory have identical work functions, down to a user-specified tolerance.
 
 The discrepancy between a canonical and grand-canonical simulation is most pronounced in reactions involving the creation or destruction of an ion, as the ion collides with the constant-potential surface.
@@ -186,4 +189,4 @@ To accomplish this, set ``grand_output=False``, like::
                                                    'grand_output': False})])
 
 To change the SJM settings, keep the ``SJM(...)`` object in a variable, ``sjm = SJM(...)``, and call its ``change()``: ``sjm.change(potentiostat={'excess_electrons': ...})`` changes the number of excess electrons, before the first calculation or later on without throwing away the wave functions, and the same method switches between constant-charge and constant-potential mode by setting or clearing ``target_potential``.
-The settings are read off the potentiostat that runs in the calculation---``sjm.potentiostat.excess_electrons``, ``sjm.potentiostat.optimizer.target_potential``, ``sjm.potentiostat.optimizer.tol`` and so on, which are its live values (the current number of excess electrons, say)---but set them through ``change()``, which also makes the next calculation run the SCF loop again.
+The settings are read off the potentiostat that runs in the calculation---``sjm.potentiostat.optimizer.target_potential``, ``sjm.potentiostat.optimizer.slope`` (the current estimate) and so on, which are its live values, and the number of excess electrons is ``sjm.excess_electrons``---but set them through ``change()``, which also makes the next calculation run the SCF loop again.

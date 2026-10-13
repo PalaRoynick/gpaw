@@ -48,7 +48,7 @@ class SJM(ExtensionInput):
         :class:`gpaw.solvation.Solvation` (or a subclass of it), or a dict
         of its keyword arguments (``cavity``, ``dielectric``,
         ``interactions`` and ``dipolelayer``).  ``None`` (the default) gives
-        water as in :func:`gpaw.solvation.get_HW14_water_kwargs`, with its
+        water as in ``gpaw.solvation.get_HW14_water_kwargs()``, with its
         effective potential made an
         :class:`~gpaw.solvation.sjm.SJMPower12Potential`, which keeps the
         solvent from behind the electrode.  Without a dipole layer it gets
@@ -59,11 +59,11 @@ class SJM(ExtensionInput):
     potentiostat:
         The potential control, held as ``sjm.potentiostat``: a
         :class:`Potentiostat` (or a subclass of it), or a dict of the keys
-        below.  ``None`` (the default) gives a constant-charge calculation
-        with no excess electrons.
+        under Other Parameters.  ``None`` (the default) gives a
+        constant-charge calculation with no excess electrons.
 
-    The keys of the ``potentiostat`` dict:
-
+    Other Parameters
+    ----------------
     target_potential:
         Electrode potential to equilibrate to, in V on the vacuum scale
         (expressed as a work function).  ``None`` (the default) gives a
@@ -74,9 +74,9 @@ class SJM(ExtensionInput):
         constant-potential mode.
     jelliumregion:
         Shape of the counter-charge region, as a dict.  The default is a
-        slab (:class:`SlabRegion`), taking the keys ``'top'``, ``'bottom'``,
+        slab (``SlabRegion``), taking the keys ``'top'``, ``'bottom'``,
         ``'thickness'`` and ``'fix_bottom'``.  A ``'shape'`` key selects a
-        different kind of region; see :func:`build_jellium_region`.
+        different kind of region; see ``build_jellium_region()``.
     tol:
         Tolerance for the deviation of the target potential, in V.
         Default: 0.005 V.
@@ -219,7 +219,7 @@ class SJM(ExtensionInput):
         makes the optimizer forget its attempts.
 
         The live values are read off the potentiostat and its parts:
-        ``sjm.potentiostat.excess_electrons``,
+        ``sjm.excess_electrons``,
         ``sjm.potentiostat.optimizer.target_potential``, ...  Setting them
         there directly skips what this does on top: clearing the results and
         recomputing the occupations, density and potential, which makes the
@@ -250,7 +250,7 @@ class SJM(ExtensionInput):
         if 'tol' in potentiostat:
             opt.tol = potentiostat['tol']
             if (opt.target_potential is not None and
-                    not opt.converged(self.get_electrode_potential())):
+                    not opt.converged(self.electrode_potential)):
                 rerun = True
 
         if 'always_adjust' in potentiostat:
@@ -302,10 +302,10 @@ class SJM(ExtensionInput):
                 slope = opt.slope
                 if ('excess_electrons' not in potentiostat and
                         slope is not None and slope < 0 and
-                        not np.isnan(self.get_electrode_potential())):
+                        not np.isnan(self.electrode_potential)):
                     # Guess the charge needed for the new target potential:
                     pot.excess_electrons += (
-                        target - self.get_electrode_potential()) / slope
+                        target - self.electrode_potential) / slope
                     log(f'Excess electrons changed to '
                         f'{pot.excess_electrons:+.5f} based on a slope of '
                         f'{slope:.4f} V/electron.')
@@ -328,16 +328,21 @@ class SJM(ExtensionInput):
                 density, dft.ibzwfs, dft.potential.vHt_x)
             pot.attempts, pot.reruns = [], 0
 
-    def get_electrode_potential(self) -> float:
+    @property
+    def electrode_potential(self) -> float:
         """Electrode potential of the last converged SCF loop, in V.
 
         As read by the potential probe; for the default
         :class:`WorkFunctionProbe` it is the work function at the top of the
-        cell.  The same as
-        ``calc.results['electrode_potential']``; NaN until an SCF loop has
-        converged.
+        cell.  The same as ``calc.results['electrode_potential']``; NaN
+        until an SCF loop has converged.
         """
         return self.potentiostat.electrode_potential
+
+    @property
+    def excess_electrons(self) -> float:
+        """The current number of excess electrons; set it with change()."""
+        return self.potentiostat.excess_electrons
 
     def write_sjm_traces(self, path='sjm_traces', style='z',
                          props=('potential', 'cavity', 'background_charge')):

@@ -129,7 +129,8 @@ def test_todict_builds_the_same_potentiostat_again():
 
 def test_nothing_to_read_yet():
     obj = sjm()
-    assert np.isnan(obj.get_electrode_potential())
+    assert np.isnan(obj.electrode_potential)
+    assert obj.excess_electrons == obj.potentiostat.excess_electrons
     with pytest.raises(RuntimeError, match='No results'):
         obj.write_sjm_traces()
 

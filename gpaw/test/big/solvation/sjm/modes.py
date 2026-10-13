@@ -71,11 +71,11 @@ def check_grand_canonical_results(atoms, energy, sjm, mode):
     """The grand potential - not the canonical energy - goes to ASE."""
     calc = atoms.calc
     results = calc.results
-    N = sjm.potentiostat.excess_electrons
+    N = sjm.excess_electrons
 
     assert results['excess_electrons'] == pytest.approx(N)
     assert results['electrode_potential'] == pytest.approx(
-        sjm.get_electrode_potential())
+        sjm.electrode_potential)
 
     # Omega = E - N mu, with mu = -workfunction = fermi level:
     mu_N = N * calc.get_fermi_level()

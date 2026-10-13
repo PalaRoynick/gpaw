@@ -34,7 +34,7 @@ sjm = SJM(
     potentiostat=dict(
         target_potential=4.2,
         tol=0.2,
-        excess_electrons=-0.01232))  # guess from previous
+        excess_electrons=-0.01501))  # guess from previous
 
 # The calculator.  We start with a loose potential tolerance, to move the
 # atoms cheaply, and tighten it below.

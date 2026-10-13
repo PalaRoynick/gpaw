@@ -31,7 +31,8 @@ dielectric = LinearDielectric(epsinf=epsinf)
 interactions = [SurfaceInteraction(surface_tension=gamma)]
 
 # The solvated jellium method is added to a regular GPAW calculator as an
-# extension.  Keep it in a variable, to reach the calculation through it.
+# extension.  Keep it in a variable, to conveniently access and change its
+# properties.
 sjm = SJM(
     # Implicit solvent parameters.
     solvation=dict(cavity=cavity, dielectric=dielectric,

@@ -43,11 +43,11 @@ def make_calculator(index):
             # Implicit solvent parameters.
             solvation=dict(cavity=cavity, dielectric=dielectric,
                            interactions=interactions),
-            # Solvated jellium parameters.
+            # Potentiostat parameters.
             potentiostat=dict(
                 target_potential=4.2,
                 tol=0.01,
-                excess_electrons=-0.01232))])  # guess from previous
+                excess_electrons=-0.00863))])  # guess from previous
     return calc
 
 

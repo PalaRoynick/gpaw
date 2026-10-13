@@ -67,13 +67,13 @@ def test_change_target_potential():
     atoms, sjm = converged_atoms()
     calc = atoms.calc
     ibzwfs = calc.dft.ibzwfs
-    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
-    assert sjm.get_electrode_potential() == pytest.approx(
+    assert sjm.electrode_potential == pytest.approx(7.5, abs=TOL)
+    assert sjm.electrode_potential == pytest.approx(
         calc.results['electrode_potential'])
 
     sjm.change(potentiostat={'target_potential': 7.2})
     atoms.get_potential_energy()
-    assert sjm.get_electrode_potential() == pytest.approx(7.2, abs=TOL)
+    assert sjm.electrode_potential == pytest.approx(7.2, abs=TOL)
     # The SJM object holds the potentiostat that ran, so the charge it
     # arrived at is the one read back -- and recorded:
     pot = sjm.potentiostat
@@ -94,14 +94,14 @@ def test_switch_to_constant_charge():
     sjm.change(potentiostat={'target_potential': None,
                              'excess_electrons': -0.01})
     atoms.get_potential_energy()
-    assert sjm.potentiostat.excess_electrons == -0.01
+    assert sjm.excess_electrons == -0.01
     assert calc.results['excess_electrons'] == pytest.approx(-0.01)
     assert calc.dft.ibzwfs is ibzwfs
 
     # ... and back again, reaching the same potential as before:
     sjm.change(potentiostat={'target_potential': 7.5})
     atoms.get_potential_energy()
-    assert sjm.get_electrode_potential() == pytest.approx(7.5, abs=TOL)
+    assert sjm.electrode_potential == pytest.approx(7.5, abs=TOL)
     assert calc.dft.ibzwfs is ibzwfs
 
 
@@ -112,7 +112,7 @@ def test_change_before_first_calculation():
     # No calculation yet, so this only stores the setting:
     sjm.change(potentiostat={'excess_electrons': -0.01})
     atoms.get_potential_energy()
-    assert sjm.potentiostat.excess_electrons == -0.01
+    assert sjm.excess_electrons == -0.01
     assert atoms.calc.results['excess_electrons'] == pytest.approx(-0.01)
 
     # Afterwards, the same object forwards to the built extension, which
@@ -120,7 +120,7 @@ def test_change_before_first_calculation():
     ibzwfs = atoms.calc.dft.ibzwfs
     sjm.change(potentiostat={'excess_electrons': -0.02})
     atoms.get_potential_energy()
-    assert sjm.potentiostat.excess_electrons == -0.02
+    assert sjm.excess_electrons == -0.02
     assert atoms.calc.dft.ibzwfs is ibzwfs
 
 
@@ -132,8 +132,8 @@ def test_step_reaches_the_next_geometry(always_adjust: bool):
     pot = atoms.calc.dft.potentiostat
     charge = pot.excess_electrons
 
-    assert sjm.get_electrode_potential() == pytest.approx(ADJUST_TARGET,
-                                                          abs=ADJUST_TOL)
+    assert sjm.electrode_potential == pytest.approx(ADJUST_TARGET,
+                                                    abs=ADJUST_TOL)
     # Whatever is staged, the results belong to the charge that was converged:
     assert atoms.calc.results['excess_electrons'] == pytest.approx(charge)
 
@@ -242,7 +242,7 @@ def test_zero_vacuum_does_not_matter():
         sjm.solvation.dipolelayer = GaussianDerivativeDipole(
             zero_vacuum=zero_vacuum)
         energy = atoms.get_potential_energy()
-        results.append((sjm.get_electrode_potential(), energy,
+        results.append((sjm.electrode_potential, energy,
                         sjm.potentiostat.fermi_level * Ha))
     (u1, e1, f1), (u2, e2, f2) = results
     assert abs(f1 - f2) > 0.1  # two different references ...
@@ -275,7 +275,7 @@ def test_grand_output_toggle():
     assert canonical == pytest.approx(
         calc.dft.energies.total_extrapolated * Ha)
     assert grand == pytest.approx(
-        canonical - sjm.potentiostat.excess_electrons *
+        canonical - sjm.excess_electrons *
         calc.get_fermi_level())
 
     # ... and it is reversible:
@@ -294,7 +294,7 @@ def test_nothing_to_report_before_an_scf_loop():
     """Built, but not run: no potential yet, and no traces."""
     atoms, sjm = h_atoms()
     atoms.calc.initialize(atoms)
-    assert np.isnan(sjm.get_electrode_potential())
+    assert np.isnan(sjm.electrode_potential)
     with pytest.raises(RuntimeError, match='No results'):
         sjm.write_sjm_traces()
 

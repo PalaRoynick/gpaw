@@ -188,7 +188,7 @@ class Potentiostat(Extension):
         Wraps :meth:`equilibrate` in the bookkeeping of a whole
         equilibration: accepted attempts count against ``max_iters`` and
         rejected steps in a row against ``max_reruns``, and a
-        :class:`PotentialConvergenceError` is raised when either runs out.
+        ``PotentialConvergenceError`` is raised when either runs out.
         Returns ``True`` once the potential is equilibrated (always, in
         constant-charge mode) and ``False`` when another SCF pass is needed.
         """
@@ -344,11 +344,11 @@ class Potentiostat(Extension):
         """One equilibration attempt, after the SCF criteria have passed.
 
         ``potential`` is what the probe read off ``ibzwfs``.  Returns
-        :attr:`EquilibrationResult.converged` when the potential is within
-        tolerance (or there is no target), :attr:`~EquilibrationResult.stepped`
-        after stepping the charge and re-running the occupations for another
-        SCF pass, and :attr:`~EquilibrationResult.rejected` after halving a
-        step that overshot ``max_potential_stepsize``.
+        ``EquilibrationResult.converged`` when the potential is within
+        tolerance (or there is no target), ``stepped`` after stepping the
+        charge and re-running the occupations for another SCF pass, and
+        ``rejected`` after halving a step that overshot
+        ``max_potential_stepsize``.
         """
         if not self.constant_potential:
             return EquilibrationResult.converged
@@ -466,19 +466,19 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
     """A uniform jellium counter-charge filling a masked region.
 
     The excess electrons of the atomic system are balanced by a jellium of
-    the opposite sign, uniform over the region: a :class:`SlabRegion` by
-    default, or any :class:`JelliumRegion`.  ``initialize()`` puts the
+    the opposite sign, uniform over the region: a ``SlabRegion`` by
+    default, or any ``JelliumRegion``.  ``initialize()`` puts the
     region on the grid of a calculation.  The mask itself -- normalizing it
     and putting the charge into the density -- is handled by
-    :class:`gpaw.extensions.jellium.JelliumExtension`.
+    ``gpaw.extensions.jellium.JelliumExtension``.
 
     Parameters
     ----------
     excess_electrons:
         Number of excess electrons (the jellium holds minus this).
     jelliumregion:
-        Shape of the region: a dict for :func:`build_jellium_region` or a
-        :class:`JelliumRegion`.  Defaults to a :class:`SlabRegion`.
+        Shape of the region: a dict for ``build_jellium_region()`` or a
+        ``JelliumRegion``.  Defaults to a ``SlabRegion``.
     """
 
     def __init__(self,
@@ -506,7 +506,7 @@ class JelliumCharging(JelliumExtension, ChargingScheme):
     def charge(self) -> float:
         """The same number under the name the jellium base class uses.
 
-        :class:`gpaw.extensions.jellium.JelliumExtension` stores and
+        ``gpaw.extensions.jellium.JelliumExtension`` stores and
         subtracts ``charge``, which puts minus the excess electrons into
         the density -- the counter charge.
         """
@@ -809,11 +809,11 @@ class PotentialOptimizer:
         off.  Default: 2 V.
     max_iters:
         Maximum number of attempts to equilibrate the potential for one
-        geometry before a :class:`PotentialConvergenceError` is raised.
+        geometry before a ``PotentialConvergenceError`` is raised.
         Default: 10.
     max_reruns:
         How many times in a row a step may be rejected and halved before a
-        :class:`PotentialConvergenceError` is raised.  Default: 10.
+        ``PotentialConvergenceError`` is raised.  Default: 10.
     """
 
     target_potential: float | None = None  # V

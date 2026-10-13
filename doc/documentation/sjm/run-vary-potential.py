@@ -94,7 +94,7 @@ sjm = SJM(
     solvation=dict(cavity=cavity, dielectric=dielectric,
                    interactions=interactions),
     # Solvated jellium parameters.
-    potentiostat=dict(excess_electrons=0.45235, target_potential=4.4))
+    potentiostat=dict(excess_electrons=0.44591, target_potential=4.4))
 
 atoms.calc = GPAW(
     mode=PW(400.),
@@ -117,6 +117,6 @@ write_potential_and_charge(atoms.calc, '4.4V')
 # Vary the potential for the traces figure.  change() changes the SJM
 # settings without throwing away the wave functions.
 sjm.change(potentiostat={'target_potential': 4.3,
-                         'excess_electrons': 0.47848})
+                         'excess_electrons': 0.47070})
 atoms.get_potential_energy()
 write_potential_and_charge(atoms.calc, '4.3V')
