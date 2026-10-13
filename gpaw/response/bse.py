@@ -671,8 +671,9 @@ class BSEBackend:
             # q-point. Only one W_GG is in memory at a time.
             self.context.timer.start('Compute W_GG')
             W_GG, pawcorr_q, qpd_q = \
-                self._compute_screened_potential_for_q(q_c,
-                                                       blocksize=max(self.vi, self.ci))
+                self._compute_screened_potential_for_q(q_c)
+            qpd_qv = qpd_q.copy_with(blocksize = self.nv)
+            qpd_qc = qpd_q.copy_with(blocksize = self.nc)
             self.context.timer.stop('Compute W_GG')
 
             # Process all BZ q-points that map to this IBZ q-point
@@ -693,21 +694,21 @@ class BSEBackend:
 
                     rho3_nnG, _, sign = self.get_density_matrix(
                         pair_calc, kptv1_s[0], kptv2_s[0],
-                        pawcorr0=pawcorr_q, qpd=qpd_q)
+                        pawcorr0=pawcorr_q, qpd=qpd_qv)
 
                     rho4_nnG, _, _sign4 = self.get_density_matrix(
                         pair_calc, kptc1_s[0], kptc2_s[0],
-                        pawcorr0=pawcorr_q, qpd=qpd_q)
+                        pawcorr0=pawcorr_q, qpd=qpd_qc)
                     assert sign == _sign4
 
                     if self.nspins == 2:
                         rho3s1_nnG, _, _sign3 = self.get_density_matrix(
                             pair_calc, kptv1_s[1], kptv2_s[1],
-                            pawcorr0=pawcorr_q, qpd=qpd_q)
+                            pawcorr0=pawcorr_q, qpd=qpd_qv)
 
                         rho4s1_nnG, _, _sign4 = self.get_density_matrix(
                             pair_calc, kptc1_s[1], kptc2_s[1],
-                            pawcorr0=pawcorr_q, qpd=qpd_q)
+                            pawcorr0=pawcorr_q, qpd=qpd_qc)
                         assert sign == _sign3
                         assert sign == _sign4
                     else:
@@ -870,7 +871,7 @@ class BSEBackend:
 
         return ScreenedPotential(pawcorr_q, W_qGG, qpd_q)
 
-    def _compute_screened_potential_for_q(self, q_c, blocksize=1):
+    def _compute_screened_potential_for_q(self, q_c):
         """Compute chi0, W_GG, PAW corrections, and PW descriptor for one
         q-point.
 
@@ -883,7 +884,7 @@ class BSEBackend:
         assert W_wGG.shape[0] == 1  # there should only be 1 frequency point
         W_GG = W_wGG[0]
         pawcorr = self._chi0calc.chi0_body_calc.pawcorr
-        qpd = chi0.qpd.copy_with(blocksize=blocksize)
+        qpd = chi0.qpd
         return W_GG, pawcorr, qpd
 
     @timer('diagonalize')
