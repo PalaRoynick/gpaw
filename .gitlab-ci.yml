@@ -13,7 +13,7 @@ variables:
   # pipelines on shared runners.
   DEFAULT_RUNNER_TAG: "saas-linux-small-amd64"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
-  MPIEXEC: "mpiexec --bind-to=none"
+  MPIEXEC: "mpiexec --bind-to none"
   # We override the Dockers PIP_NO_CACHE_DIR="1" here so that we
   # actually use the cache:
   PIP_NO_CACHE_DIR: ""
