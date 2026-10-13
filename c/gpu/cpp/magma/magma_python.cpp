@@ -216,29 +216,29 @@ static void eigh_magma_cupy(
         case py::dtype::num_of<float>():
             status = magma_symmetric_solver_gpu<float>(
                 solver_context,
-                static_cast<float*>(inout_matrix.data),
-                static_cast<float*>(inout_eigvals.data)
+                static_cast<float*>(inout_matrix.data_ptr),
+                static_cast<float*>(inout_eigvals.data_ptr)
             );
             break;
         case py::dtype::num_of<double>():
             status = magma_symmetric_solver_gpu<double>(
                 solver_context,
-                static_cast<double*>(inout_matrix.data),
-                static_cast<double*>(inout_eigvals.data)
+                static_cast<double*>(inout_matrix.data_ptr),
+                static_cast<double*>(inout_eigvals.data_ptr)
             );
             break;
         case py::dtype::num_of<std::complex<float>>():
             status = magma_hermitian_solver_gpu<float>(
                 solver_context,
-                static_cast<magmaComplex<float>*>(inout_matrix.data),
-                static_cast<float*>(inout_eigvals.data)
+                static_cast<magmaComplex<float>*>(inout_matrix.data_ptr),
+                static_cast<float*>(inout_eigvals.data_ptr)
             );
             break;
         case py::dtype::num_of<std::complex<double>>():
             status = magma_hermitian_solver_gpu<double>(
                 solver_context,
-                static_cast<magmaComplex<double>*>(inout_matrix.data),
-                static_cast<double*>(inout_eigvals.data)
+                static_cast<magmaComplex<double>*>(inout_matrix.data_ptr),
+                static_cast<double*>(inout_eigvals.data_ptr)
             );
             break;
     default:

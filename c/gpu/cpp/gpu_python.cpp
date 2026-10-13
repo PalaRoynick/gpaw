@@ -41,7 +41,7 @@ static void test_array_metadata(py::handle cupy_array, const PyDeviceArray& same
 
     // Get data pointer
     const std::uintptr_t data = cupy_array.attr("data").attr("ptr").cast<std::uintptr_t>();
-    if (data != reinterpret_cast<uintptr_t>(same_array.data))
+    if (data != reinterpret_cast<uintptr_t>(same_array.data_ptr))
     {
         throw std::runtime_error("data pointer does not match");
     }
