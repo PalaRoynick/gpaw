@@ -221,9 +221,7 @@ class ActualPairDensityCalculator:
 
         return n_nmv
 
-    from line_profiler import profile
     @timer('Calculate pair-densities')
-    @profile
     def calculate_pair_density(self, ut1cc_R, C1_aGi, kpt2, qpd, Q_G,
                                block=True):
         """Calculate FFT of pair-densities and add PAW corrections.
