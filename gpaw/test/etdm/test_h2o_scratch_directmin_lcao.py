@@ -110,7 +110,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
     atm = h2o_maker(vacuum=5.0)
     pwd = '/Users/giulia/Desktop/reference/'
 
-    legacy_gpaw = True
+    legacy_gpaw = False
 
     if legacy_gpaw:
 
@@ -125,7 +125,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
                           'linesearch_algo': {'name': 'max-step',
                                               'max_step': 0.005}},
              mixer={'backend': 'no-mixing'},
-             spinpol=False,
+             spinpol=True,
              legacy_gpaw=legacy_gpaw,
              nbands='nao',
              symmetry='off',
@@ -154,7 +154,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
                                   'searchdir_algo': searchdir_algo,
                                   'linesearch_algo': {'name': 'max-step',
                                                       'max_step': 0.005}},
-                  spinpol=False,
+                  spinpol=True,
                   mixer={'backend': 'no-mixing'},
                   nbands='nao',
                   basis='dzp',

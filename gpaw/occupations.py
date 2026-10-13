@@ -616,6 +616,8 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
 
         """
         super().__init__(parallel_layout)
+        # these are the initial occupation numbers, before
+        # sorting
         self.f_sn = np.array(numbers)
 
     def _calculate(self,
@@ -625,8 +627,11 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
                    spin_q,
                    f_qn,
                    fermi_level_guess=nan,
-                   fix_fermi_level=False):
-
+                   fix_fermi_level=False,
+                   f_sn=None):
+        
+        if f_sn is not None:
+            self.f_sn = f_sn
         calc_fixed(self.bd, self.f_sn, f_qn, spin_q)
 
         return inf, 0.0
@@ -670,15 +675,35 @@ class ExcitedOccupations(FixedOccupationNumbers):
             # the occupation numbers according to the user-supplied 'numbers'
             self.f_sn = self.numbers.copy()
             self.initialized = True
+            
             # this is specific of mom?
             #self.initialize_reference_orbitals()
 
             # this has to be fixed, or maybe mom-specific
             #self.occ.f_sn = self.update_occupations()
             #self.iters += 1
-
+        else:
+            # proviamo a riodinarli internamente
+            for i in range(2):
+                f = self.f_sn[i]
+                occupied = f > 1.0e-10
+                n_occ = sum(occupied)
+                if n_occ != 0.0 and np.min(f[:n_occ]) == 0:
+                    ind_occ = np.argwhere(occupied)
+                    ind_unocc = np.argwhere(~occupied)
+                    ind = np.vstack((ind_occ, ind_unocc))
+                    ind = np.squeeze(ind)
+                    f = f[ind]
+                    self.f_sn[i] = f
+            
+        
+        # print('-------------------------')
+        # print(self.f_sn)
+        # print('-------------------------')
         super()._calculate(nelectrons, eigenvalues,
-                           weights, spins, f_qn, fermi_levels_guess)
+                           weights, spins, f_qn, fermi_levels_guess,
+                           f_sn=self.f_sn)
+
         return inf, 0.0
 
 

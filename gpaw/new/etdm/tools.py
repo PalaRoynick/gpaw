@@ -56,19 +56,19 @@ def sort_orbitals_according_to_occ_wfs(ibzwfs, wfs, update_mom=False,
         #    wfs.eigensolver.dm_helper.sort_orbitals(wfs, kpt, ind)
         #else:
 
-        wfs.C_nM[np.arange(len(ind)), :] = wfs.C_nM[ind, :]
+        wfs.C_nM.data[np.arange(len(ind)), :] = wfs.C_nM.data[ind, :]
         wfs._P_ani = None
 
-        wfs.occ_n = wfs.occ_n[ind]
+        wfs._occ_n = wfs._occ_n[ind]
 
-        #if update_eps:
-        #    wfs.eps_n[:] = wfs.eps_n[ind]
+        if update_eps:
+            wfs._eig_n[:] = wfs._eig_n[ind]
 
         #if update_mom:
             # OccupationsMOM.numbers needs
             # to be updated after sorting
         # lo facciamo sempre per via dell'eccitazione
-        update_mom_numbers(ibzwfs, wfs)
+        # update_mom_numbers(ibzwfs, wfs)
 
         changedocc = True
 
@@ -82,8 +82,8 @@ def update_mom_numbers(ibzwfs, wfs):
     else:
         degeneracy = 1
     # is it translated like this?
-    wfs.myocc_n[wfs.spin] = \
-        (wfs.myocc_n / wfs.weight * degeneracy)
+    wfs._occ_n = \
+        (wfs._occ_n / wfs.weight * degeneracy)
 
 
 def excite(calc, i, a, spin=(0, 0), sort=False):

@@ -73,9 +73,13 @@ class DirOptLCAO(LCAOEigensolver):
         self.iter = 0
         self.update_ref_orbitals_counter = 20
         self.excited_state = excited_state
+        # This should be true if the excited state is false
+        self.need_init_orbs = True
 
         if self.excited_state:
+            self.need_init_orbs = False
             print('Excited state is true!!')
+
 
         super().__init__(basis)
 
@@ -95,18 +99,21 @@ class DirOptLCAO(LCAOEigensolver):
         # this could be skipped in certain circumstances, such as during
         # an excited state calculation (we do not need initial orbitals in 
         # that case)
-        super().iterate(ibzwfs, density, potential, hamiltonian)
+        if not self.excited_state:
+            super().iterate(ibzwfs, density, potential, hamiltonian)
 
         # this also does not need to be done if they are read
         nelectrons = density.nvalence - density.charge + pot_calc.charge
         ibzwfs.calculate_occs(self.occ_calc, nelectrons)
         # is this a repetition?
-        sort_orbitals_according_to_occ(ibzwfs)
+        # sort_orbitals_according_to_occ(ibzwfs)
 
         # initial sorting of the orbitals to be put here,
         # there can't be gaps in the occupations
         self.initial_sort_orbitals(ibzwfs, self.occ_calc)
 
+        # If excited state then i have to overwrite the
+        # default occupation numbers stored in occ_calc
         # Initialize objective function
         self.objfunc = LCAOObjectiveFunction(ibzwfs, self.representation,
                                              self.matrix_exp, self.mixer)
@@ -160,7 +167,6 @@ class DirOptLCAO(LCAOEigensolver):
         # Initialization
         if self.iter == 0:
             self.initialize(ibzwfs, density, potential, hamiltonian, pot_calc)
-
         # Dictionary to "deliver" main quantities to
         # various sections of the code
         shuttle = {'ibzwfs': ibzwfs,
