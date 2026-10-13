@@ -14,7 +14,7 @@ class PWDescriptor:
 
     def __init__(self, ecut, gd, dtype=None, kd=None,
                  fftwflags=fftw.MEASURE, gammacentered=False,
-                 _new=False):
+                 _new=False, blocksize=1):
 
         assert gd.pbc_c.all()
 
@@ -47,18 +47,17 @@ class PWDescriptor:
             i_Qc[..., :2] += N_c[:2] // 2
             i_Qc[..., :2] %= N_c[:2]
             i_Qc[..., :2] -= N_c[:2] // 2
-            self.tmp_Q = fftw.empty(Nr_c, complex)
-            self.tmp_R = self.tmp_Q.view(float)[:, :, :N_c[2]]
         else:
             i_Qc = np.indices(N_c).transpose((1, 2, 3, 0))
             i_Qc += N_c // 2
             i_Qc %= N_c
             i_Qc -= N_c // 2
-            self.tmp_Q = fftw.empty(N_c, complex)
-            self.tmp_R = self.tmp_Q
 
-        self.fftplan = fftw.create_plan(self.tmp_R, self.tmp_Q, -1, fftwflags)
-        self.ifftplan = fftw.create_plan(self.tmp_Q, self.tmp_R, 1, fftwflags)
+        self.fftplans = fftw.create_plans(N_c, dtype=dtype, flags=fftwflags,
+                                          blocksize=blocksize)
+        self.blocksize = blocksize
+        self.tmp_R = self.fftplans.tmp_R
+        self.tmp_Q = self.fftplans.tmp_Q
 
         # Calculate reciprocal lattice vectors:
         B_cv = 2.0 * pi * gd.icell_cv
@@ -191,7 +190,7 @@ class PWDescriptor:
             shape = x + (self.myng_q[q],)
         return np.empty(shape, complex)
 
-    def fft(self, f_R, q=None, Q_G=None, local=False):
+    def fft(self, f_R=None, q=None, Q_G=None, local=False):
         """Fast Fourier transform.
 
         Returns c(G) for G<Gc::
@@ -205,17 +204,21 @@ class PWDescriptor:
         collect/scatter.
         """
 
-        if local:
-            self.tmp_R[:] = f_R
-        else:
-            self.gd.collect(f_R, self.tmp_R)
+        if f_R is not None:
+            if local:
+                self.tmp_R[:] = f_R
+            else:
+                self.gd.collect(f_R, self.tmp_R)
 
         if self.gd.comm.rank == 0 or local:
-            self.fftplan.execute()
+            self.fftplans.fft()
             if Q_G is None:
                 q = q or 0
                 Q_G = self.Q_qG[q]
-            f_G = self.tmp_Q.ravel()[Q_G]
+            if self.blocksize > 1:
+                f_G = self.tmp_Q.reshape(self.blocksize, -1)[:, Q_G]
+            else:
+                f_G = self.tmp_Q.ravel()[Q_G]
             if local:
                 return f_G
         else:
@@ -259,7 +262,7 @@ class PWDescriptor:
                 t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
                 t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
                 t[-n:, 0] = t[n:0:-1, 0].conj()
-            self.ifftplan.execute()
+            self.fftplans.ifft()
         if comm.size == 1 or local or not distribute:
             if safe:
                 return self.tmp_R.copy()
@@ -413,7 +416,7 @@ class PWDescriptor:
         self.gd.collect(a_R, self.tmp_R[:])
 
         if self.gd.comm.rank == 0:
-            self.fftplan.execute()
+            self.fftplans.fft()
 
             a_Q = self.tmp_Q
             b_Q = pd.tmp_Q
@@ -449,7 +452,8 @@ class PWDescriptor:
                     b_Q[a0:b0, a1:b1, b2 - 1] *= 0.5
 
             b_Q[:] = np.fft.ifftshift(b_Q, axes=axes)
-            pd.ifftplan.execute()
+            # pd.ifftplan.execute()
+            pd.fftplans.ifft()
 
             a_G = a_Q.ravel()[self.Q_qG[0]]
         else:
@@ -476,7 +480,7 @@ class PWDescriptor:
             else:
                 axes = (0, 1, 2)
 
-            self.fftplan.execute()
+            self.fftplans.fft()
             b_Q[:] = np.fft.fftshift(b_Q, axes=axes)
 
             if e0:
@@ -495,7 +499,8 @@ class PWDescriptor:
             a_Q[:] = b_Q[a0:b0, a1:b1, a2:b2]
             a_Q[:] = np.fft.ifftshift(a_Q, axes=axes)
             a_G = a_Q.ravel()[pd.Q_qG[0]] / 8
-            pd.ifftplan.execute()
+            # pd.ifftplan.execute()
+            pd.fftplans.ifft()
         else:
             a_G = None
 

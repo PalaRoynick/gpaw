@@ -467,7 +467,8 @@ class BSEBackend:
         The parameter 'irreducible' puts V=0 such that the BSE kernel only
         contians W. It is used for BSE+ calculations.
         """
-        qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
+        qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd,
+            blocksize=max(self.nv, self.nc))
 
         self.ikq_k = self.kd.find_k_plus_q(self.q_c)
         if irreducible:
@@ -670,7 +671,8 @@ class BSEBackend:
             # q-point. Only one W_GG is in memory at a time.
             self.context.timer.start('Compute W_GG')
             W_GG, pawcorr_q, qpd_q = \
-                self._compute_screened_potential_for_q(q_c)
+                self._compute_screened_potential_for_q(q_c,
+                                                       blocksize=max(self.vi, self.ci))
             self.context.timer.stop('Compute W_GG')
 
             # Process all BZ q-points that map to this IBZ q-point
@@ -868,7 +870,7 @@ class BSEBackend:
 
         return ScreenedPotential(pawcorr_q, W_qGG, qpd_q)
 
-    def _compute_screened_potential_for_q(self, q_c):
+    def _compute_screened_potential_for_q(self, q_c, blocksize=1):
         """Compute chi0, W_GG, PAW corrections, and PW descriptor for one
         q-point.
 
@@ -881,7 +883,7 @@ class BSEBackend:
         assert W_wGG.shape[0] == 1  # there should only be 1 frequency point
         W_GG = W_wGG[0]
         pawcorr = self._chi0calc.chi0_body_calc.pawcorr
-        qpd = chi0.qpd
+        qpd = chi0.qpd.copy_with(blocksize=blocksize)
         return W_GG, pawcorr, qpd
 
     @timer('diagonalize')

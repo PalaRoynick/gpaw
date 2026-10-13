@@ -452,7 +452,8 @@ class Chi0ComponentPWCalculator(Chi0ComponentCalculator, ABC):
         """Integral task for a literal evaluation of chi0."""
 
     def get_pw_descriptor(self, q_c):
-        return SingleQPWDescriptor.from_q(q_c, self.ecut, self.gs.gd)
+        return SingleQPWDescriptor.from_q(q_c, self.ecut, self.gs.gd,
+                                          blocksize=1)
 
     def get_response_info_string(self, qpd, tab=''):
         nw = len(self.wd)
