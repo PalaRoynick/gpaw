@@ -9,7 +9,7 @@ from gpaw.old.pw.descriptor import PWDescriptor
 
 class SingleQPWDescriptor(PWDescriptor):
     @staticmethod
-    def from_q(q_c, ecut, gd, blocksize, gammacentered=False):
+    def from_q(q_c, ecut, gd, blocksize=1, gammacentered=False):
         """Construct a plane wave descriptor for q_c with a given cutoff."""
         qd = KPointDescriptor([q_c])
         if not isinstance(ecut, dict):

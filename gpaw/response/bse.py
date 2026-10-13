@@ -64,7 +64,7 @@ class BSEMatrix:
         comm.broadcast(w_T, 0)
         return w_T, v_ST, exclude_S
 
-    def diagonalize_tammdancoff(self, bse, deps_max=None, elpa=False):
+    def diagonalize_tammdancoff(self, bse, deps_max=None, elpa=True):
         if deps_max is None:
             deps_max = self.deps_max
         exclude_S = np.where(np.abs(self.deps_S) > deps_max)[0]
@@ -467,8 +467,7 @@ class BSEBackend:
         The parameter 'irreducible' puts V=0 such that the BSE kernel only
         contians W. It is used for BSE+ calculations.
         """
-        qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd,
-            blocksize=max(self.nv, self.nc))
+        qpd0 = SingleQPWDescriptor.from_q(self.q_c, self.ecut, self.gs.gd)
 
         self.ikq_k = self.kd.find_k_plus_q(self.q_c)
         if irreducible:
@@ -672,8 +671,13 @@ class BSEBackend:
             self.context.timer.start('Compute W_GG')
             W_GG, pawcorr_q, qpd_q = \
                 self._compute_screened_potential_for_q(q_c)
-            qpd_qv = qpd_q.copy_with(blocksize = self.nv)
-            qpd_qc = qpd_q.copy_with(blocksize = self.nc)
+            if self.add_soc:
+                bsize = self.spinors_data.nf - self.spinors_data.ni
+                qpd_qv = qpd_q.copy_with(blocksize = bsize)
+                qpd_qc = qpd_qv
+            else:
+                qpd_qv = qpd_q.copy_with(blocksize = self.nv)
+                qpd_qc = qpd_q.copy_with(blocksize = self.nc)
             self.context.timer.stop('Compute W_GG')
 
             # Process all BZ q-points that map to this IBZ q-point
