@@ -333,7 +333,7 @@ prepare-libxc:
   before_script:
     - export PREFIX=`realpath $PREFIX`
   script:
-    - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
+    - git clone --depth 1 -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
     - >
       cmake -B build -S .
@@ -546,6 +546,7 @@ test-libxc:
   script:
     - gpaw info
     - pytest -v -m libxc
+    - pytest -v -m mgga
 
 check-agts:
   image: $IMAGE_MAIN_OLDEST
