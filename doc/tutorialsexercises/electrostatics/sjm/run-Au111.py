@@ -24,8 +24,7 @@ sj = {'target_potential': 4.2}  # Desired potential
 epsinf = 78.36  # dielectric constant of water at 298 K
 gamma = 18.4 * 1e-3 * Pascal * m
 cavity = EffectivePotentialCavity(
-    effective_potential=SJMPower12Potential(
-        H2O_layer={'style': 'ghost_atoms'}),
+    effective_potential=SJMPower12Potential(H2O_layer=True),
     temperature=298.15,  # K
     surface_calculator=GradientSurface())
 dielectric = LinearDielectric(epsinf=epsinf)
