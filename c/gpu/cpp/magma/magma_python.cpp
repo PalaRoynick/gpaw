@@ -3,7 +3,7 @@
 #include "magma_gpaw.hpp"
 #include "magma_solvers.hpp"
 #include "pyarray_utils.hpp"
-#include "gpu/cupy_interface/pybind_cupy_type_caster.hpp"
+#include "device_arrays/pybind_cupy_type_caster.hpp"
 #include "gpaw_utils.h"
 
 #include <cassert>
