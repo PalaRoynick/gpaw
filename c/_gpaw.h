@@ -10,6 +10,7 @@
 #endif
 #ifndef GPAW_WITHOUT_LIBXC
 #include <xc.h> // If this file is not found, install libxc https://gpaw.readthedocs.io/install.html#libxc-installation
+#include "xc/libxc_wrapper.h"
 #endif
 
 #if defined(GPAW_WITH_MAGMA) && !defined(GPAW_GPU)
@@ -53,10 +54,6 @@ PyObject* integrate_outwards(PyObject *self, PyObject *args);
 PyObject* integrate_inwards(PyObject *self, PyObject *args);
 PyObject* localize(PyObject *self, PyObject *args);
 PyObject* NewXCFunctionalObject(PyObject *self, PyObject *args);
-#ifndef GPAW_WITHOUT_LIBXC
-PyObject* NewlxcXCFunctionalObject(PyObject *self, PyObject *args);
-PyObject* lxcXCFuncNum(PyObject *self, PyObject *args);
-#endif
 PyObject* exterior_electron_density_region(PyObject *self, PyObject *args);
 PyObject* plane_wave_grid(PyObject *self, PyObject *args);
 PyObject* tci_overlap(PyObject *self, PyObject *args);
@@ -414,6 +411,7 @@ static PyObject* moduleinit(void)
                            "libxc_version",
                            PyUnicode_FromString(xc_version_string()));
 # endif
+    bind_libxc_extras(m);
 #endif
 
 #ifdef GPAW_GPU
@@ -450,7 +448,7 @@ static PyObject* moduleinit(void)
 #endif
 
     // Version number of C-code.  Keep in sync with gpaw/_broadcast_imports.py
-    PyObject_SetAttrString(m, "version", PyLong_FromLong(14));
+    PyObject_SetAttrString(m, "version", PyLong_FromLong(15));
 
     Py_INCREF(&LFCType);
     Py_INCREF(&OperatorType);

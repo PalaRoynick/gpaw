@@ -3,6 +3,7 @@ import warnings
 import gpaw.cgpaw as cgpaw
 from gpaw import debug
 from gpaw.xc.kernel import XCKernel
+import numpy as np
 
 
 class FunctionalNeedsLaplacianError(Exception):
@@ -38,6 +39,14 @@ class LibXC(XCKernel):
         self.name = name
         self.omega = None
         self.disable_fhc = disable_fhc
+
+        # True if the libxc installation supports GPU
+        self.gpu_available = (
+            hasattr(cgpaw, 'lxcXCFunctionalDeviceAvailable') and
+            cgpaw.lxcXCFunctionalDeviceAvailable())
+        self._device_xc = None
+        """Holds the GPU version of libxc object. Created only on first use"""
+
         self.initialize(nspins=1, provides_laplacian=provides_laplacian)
 
     def initialize(self,
@@ -68,7 +77,12 @@ class LibXC(XCKernel):
             if x is None or c is None:
                 raise NameError(f'Unknown functional: {name}.')
 
-        self.xc = cgpaw.lxcXCFunctional(xc, x, c, nspins)
+        # Always init the CPU functional, and GPU version later on first use.
+        self._creation_args = xc, x, c, nspins
+        """Holds creation arguments for the C++ side object"""
+        self.xc = cgpaw.lxcXCFunctional(*self._creation_args, False)
+        """XC functional allocated in CPU memory"""
+
         self.set_omega()
 
         if self.xc.vv10():
@@ -100,10 +114,37 @@ class LibXC(XCKernel):
         nspins = len(n_sg)
         if self.nspins != nspins:
             self.initialize(nspins)
-
         self.xc.calculate(e_g.ravel(), n_sg, dedn_sg,
                           sigma_xg, dedsigma_xg,
                           tau_sg, dedtau_sg)
+
+    def calculate_gpu(self, e_g, n_sg, dedn_sg,
+                      sigma_xg=None, dedsigma_xg=None,
+                      tau_sg=None, dedtau_sg=None):
+        """Evaluate a Libxc functional on GPU arrays."""
+        if debug:
+            self.check_arguments(e_g, n_sg, dedn_sg, sigma_xg, dedsigma_xg,
+                                 tau_sg, dedtau_sg)
+        nspins = len(n_sg)
+        if self.nspins != nspins:
+            self.initialize(nspins)
+
+        shape = n_sg.shape[1:]
+        npoints = int(np.prod(shape))
+
+        device_xc = self.get_device_functional()
+        for index in range(device_xc.number_of_functionals()):
+            cgpaw.evaluate_lxcfunctional_device(
+                device_xc,
+                index,
+                npoints,
+                n_sg,
+                e_g,
+                dedn_sg,
+                sigma_xg,
+                dedsigma_xg,
+                tau_sg,
+                dedtau_sg)
 
     def set_omega(self, omega=None):
         """Set the value of gamma/omega in RSF."""
@@ -112,3 +153,19 @@ class LibXC(XCKernel):
         if self.omega is not None:
             if not self.xc.set_omega(self.omega):
                 raise ValueError('Tried setting omega on a non RSF hybrid.')
+
+    def get_device_functional(self):
+        """Returns a GPU-allocated version of the functional and initializes it
+        on first use."""
+        if not self.gpu_available:
+            raise RuntimeError("Requires Libxc built with GPU support")
+
+        if self._device_xc is None:
+            self._device_xc = cgpaw.lxcXCFunctional(self._creation_args, True)
+
+            if self.omega is not None:
+                self._device_xc.set_omega(self.omega)
+            if self.type == 'MGGA' and self.disable_fhc:
+                self._device_xc.disable_fhc()
+
+        return self._device_xc
