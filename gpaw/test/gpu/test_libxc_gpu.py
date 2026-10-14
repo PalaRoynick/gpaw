@@ -6,7 +6,8 @@ from gpaw.gpu import cupy_is_fake, cupy as cp
 from gpaw.xc.libxc import LibXC
 import numpy as np
 
-has_gpu_libxc = cgpaw.libxc_has_gpu_support()
+has_gpu_libxc = False if not hasattr(cgpaw, 'libxc_has_gpu_support') \
+    else cgpaw.libxc_has_gpu_support()
 
 pytestmark = [
     pytest.mark.gpu,

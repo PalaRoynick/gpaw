@@ -9,7 +9,7 @@
   #include <xc_funcs.h>
   #include <xc_funcs_removed.h>
 #endif
-#include "xc_gpaw.h"
+#include "xc/xc_gpaw.h"
 #include "extensions.h"
 #include <assert.h>
 

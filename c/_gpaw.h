@@ -10,7 +10,7 @@
 #endif
 #ifndef GPAW_WITHOUT_LIBXC
 #include <xc.h> // If this file is not found, install libxc https://gpaw.readthedocs.io/install.html#libxc-installation
-#include "xc/libxc_wrapper.h"
+#include "xc/libxc/libxc_wrapper.h"
 #endif
 
 #if defined(GPAW_WITH_MAGMA) && !defined(GPAW_GPU)

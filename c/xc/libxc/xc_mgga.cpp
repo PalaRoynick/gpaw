@@ -1,6 +1,6 @@
 
 #include "xc_mgga.h"
-#include "xc_gpaw.h"
+#include "xc/xc_gpaw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
