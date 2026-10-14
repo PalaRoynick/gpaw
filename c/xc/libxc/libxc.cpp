@@ -19,7 +19,7 @@ bool libxc_has_gpu_support()
 #ifdef XC_FLAGS_ON_DEVICE
   // Unclear if libxc provides any stable way of checking this!
   // For now, we check if based on default flags (libxc defaults to device functionals if built with GPU support)
-  return xc_func_info_get_default_flags() & XC_FLAGS_ON_DEVICE != 0;
+  return (xc_func_info_get_default_flags() & XC_FLAGS_ON_DEVICE) != 0;
 #endif
   return false;
 }
