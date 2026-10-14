@@ -23,6 +23,11 @@ PyDeviceArray::PyDeviceArray(pybind11::handle array)
     from_cupy(array);
 }
 
+std::string PyDeviceArray::dtype_name() const
+{
+    return dtype.attr("name").cast<std::string>();
+}
+
 void PyDeviceArray::from_cupy(pybind11::handle array)
 {
     // dtype

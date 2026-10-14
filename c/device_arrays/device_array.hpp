@@ -47,6 +47,9 @@ struct GPAW_HIDDEN_SYMBOL PyDeviceArray
     std::vector<int64_t> shape;
     std::vector<int64_t> strides;
 
+    // Gets a human-readable name of the dtype
+    std::string dtype_name() const;
+
 private:
     void from_cupy(pybind11::handle array);
     void from_cupy(PyObject* obj) { from_cupy(pybind11::handle(obj)); }
@@ -54,15 +57,16 @@ private:
     template <typename T>
     T* data_impl() const
     {
+        namespace py = pybind11;
         using U = std::remove_cv_t<T>;
         if constexpr (!std::is_void_v<U>)
         {
-            if (!dtype.is(pybind11::dtype::of<U>()))
+            if (!dtype.is(py::dtype::of<U>()))
             {
-                const std::string requested_dtype_name = pybind11::dtype::of<U>().str();
+                const std::string requested_dtype_name = py::str(py::dtype::of<U>()).cast<std::string>();
                 throw std::runtime_error(
                     "Trying to access data in a device array (dtype = " +
-                    std::string(dtype.str()) +
+                    dtype_name() +
                     ") as non-matching type " + requested_dtype_name);
             }
         }
