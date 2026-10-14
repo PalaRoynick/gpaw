@@ -235,3 +235,9 @@ def test_solvation_and_its_dipole_layer():
     u = solvation.cavity.effective_potential
     assert type(u).__name__ == 'SJMPower12Potential' and u.unsolv_backside
     assert u.atomic_radii == {'H': 1.09} and u.u0 == 0.18
+    # ... also when a single dict, taken as the potentiostat, is given:
+    obj = SJM({'target_potential': 4.2})
+    assert obj.potentiostat.optimizer.target_potential == 4.2
+    assert obj.solvation.dielectric.epsinf == 78.36
+    assert SJM({'target_potential': 4.2}, solvent).solvation.cavity is \
+        solvent['cavity']

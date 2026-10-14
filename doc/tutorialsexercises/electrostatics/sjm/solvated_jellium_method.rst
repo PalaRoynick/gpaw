@@ -27,6 +27,7 @@ In practice, since the purpose of the implicit solvent is just to screen the fie
    Both ``solvation`` and ``potentiostat`` can, in principle, be left out.
    Without ``solvation``, SJM uses the water of the script below---the same dielectric constant, surface tension, temperature and ``SJMPower12Potential``---except that it does not clear the solvent from the water layer (no ``H2O_layer``) and gives hydrogen the radius of 1.09 Å.
    Without ``potentiostat``, it runs at constant charge with no excess electrons; give ``target_potential`` for a constant-potential calculation, as the script does.
+   A single dict given without a keyword is taken as the ``potentiostat``, so ``SJM({'target_potential': 4.2})`` runs the default water at 4.2 V.
 
 Try running the script below to find the number of electrons necessary to equilibrate the work function to 4.2 eV:
 

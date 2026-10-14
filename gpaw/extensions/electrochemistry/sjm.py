@@ -41,8 +41,16 @@ class SJM(ExtensionInput):
     each calculation keeps its state in them.  So give every calculator its
     own -- every image of a NEB, for instance.
 
+    The two parameters can also be given by position, potentiostat first:
+    ``SJM({'target_potential': 4.2})`` sets only the potentiostat.
+
     Parameters
     ----------
+    potentiostat:
+        The potential control, held as ``sjm.potentiostat``: a
+        :class:`Potentiostat` (or a subclass of it), or a dict of the keys
+        under Other Parameters.  ``None`` (the default) gives a
+        constant-charge calculation with no excess electrons.
     solvation:
         The solvation model, held as ``sjm.solvation``: a
         :class:`gpaw.solvation.Solvation` (or a subclass of it), or a dict
@@ -56,11 +64,6 @@ class SJM(ExtensionInput):
         electrostatic potential to zero in the vacuum at the top of the cell.
         The electrode potential is read off that vacuum level, so a layer of
         your own works with either ``zero_vacuum``.
-    potentiostat:
-        The potential control, held as ``sjm.potentiostat``: a
-        :class:`Potentiostat` (or a subclass of it), or a dict of the keys
-        under Other Parameters.  ``None`` (the default) gives a
-        constant-charge calculation with no excess electrons.
 
     Other Parameters
     ----------------
@@ -121,8 +124,8 @@ class SJM(ExtensionInput):
     name = 'sjm'
 
     def __init__(self,
-                 solvation: Solvation | dict | None = None,
-                 potentiostat: Potentiostat | dict | None = None):
+                 potentiostat: Potentiostat | dict | None = None,
+                 solvation: Solvation | dict | None = None):
         if solvation is None:
             from gpaw.solvation.sjm import SJMPower12Potential
             solvation = water = get_HW14_water_kwargs()
@@ -428,8 +431,8 @@ class SJM(ExtensionInput):
 
     def todict(self):
         return {key: {'name': type(part).__name__, **part.todict()}
-                for key, part in [('solvation', self.solvation),
-                                  ('potentiostat', self.potentiostat)]}
+                for key, part in [('potentiostat', self.potentiostat),
+                                  ('solvation', self.solvation)]}
 
 
 def _write_trace_in_z(a_r: UGArray, filename: str) -> None:

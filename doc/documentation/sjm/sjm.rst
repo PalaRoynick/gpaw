@@ -201,24 +201,27 @@ Usage
 =====
 
 The :class:`~gpaw.extensions.electrochemistry.SJM` extension takes two
-keywords: ``solvation``, the implicit-solvent model (``cavity``,
-``dielectric`` and ``interactions``), and ``potentiostat``, the SJM
-settings::
+keywords: ``potentiostat``, the SJM settings, and ``solvation``, the
+implicit-solvent model (``cavity``, ``dielectric`` and
+``interactions``)::
 
     from gpaw import GPAW, PW
     from gpaw.extensions.electrochemistry import SJM
 
     calc = GPAW(mode=PW(400.), ...,
                 extensions=[SJM(
-                    solvation=dict(cavity=cavity,
-                                   dielectric=dielectric,
-                                   interactions=interactions),
                     potentiostat=dict(
                         target_potential=4.4,  # absolute scale, V
                         excess_electrons=0.0,  # initial guess
                         tol=0.005,  # V
                         max_iters=10,
-                        jelliumregion={'top': -1., 'bottom': -3.}))])
+                        jelliumregion={'top': -1., 'bottom': -3.}),
+                    solvation=dict(cavity=cavity,
+                                   dielectric=dielectric,
+                                   interactions=interactions))])
+
+The two can also be given by position, potentiostat first, so
+``SJM({'target_potential': 4.4})`` sets only the potentiostat.
 
 Each of the two can also be given as an object instead of a dict: a
 :class:`gpaw.solvation.Solvation` and a
