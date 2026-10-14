@@ -70,7 +70,7 @@ static void evaluate_lxcfunctional_device(
         const double* lapl = nullptr;
         double* lapl_derivative = nullptr;
         // More explicit check is on Python side
-        assert((functional->info->flags & XC_FLAGS_NEEDS_LAPLACIAN) != XC_FLAGS_NEEDS_LAPLACIAN);
+        assert((functional->info->flags & XC_FLAGS_NEEDS_LAPLACIAN) == 0);
 
         if (!sigma_xg.has_value() || !tau_sg.has_value())
         {
