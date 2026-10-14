@@ -5,7 +5,7 @@ variables:
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
-  IMAGE_ROCM: "$IMAGE_PATH/rocm:7.2-staging"
+  IMAGE_ROCM: "$IMAGE_PATH/rocm:7.2-libxc-staging"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
