@@ -261,8 +261,24 @@ class PseudoPotential(BaseSetup):
         self.nao = sum([2 * phit.get_angular_momentum_number() + 1
                         for phit in self.basis_functions_J])
 
-        self.Nct = 0.0
-        self.nct = null_spline
+        raw_nlcc = getattr(data, 'data', {}).get('nlcc')
+        if raw_nlcc is not None:
+            if hasattr(data, '_interp'):
+                nct_cut_g = data._interp(raw_nlcc)
+            else:
+                orig_r = data.data['r'][:len(raw_nlcc)]
+                gcut = np.searchsorted(data.rgd.r_g, orig_r[-1])
+                nct_cut_g = np.interp(
+                    data.rgd.r_g[:gcut], orig_r, raw_nlcc, right=0.0)
+
+            self.nct = data.rgd.spline(nct_cut_g, l=0)
+
+            nct_g = data.rgd.zeros()
+            nct_g[:len(nct_cut_g)] = nct_cut_g
+            self.Nct = float(data.rgd.integrate(nct_g))
+        else:
+            self.Nct = 0.0
+            self.nct = null_spline
 
         self.lmax = 0
 

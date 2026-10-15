@@ -171,7 +171,7 @@ class BaseSetup:
         # currently supported PAW/pseudopotentials.
         partial_waves_j = []
         for n, phit in zip(self.n_j, self.pseudo_partial_waves_j):
-            if n > 0:
+            if n is None or n > 0:
                 partial_waves_j.append(phit)
 
         assert all(n > 0 for n in self.n_j[:len(partial_waves_j)])
@@ -198,7 +198,7 @@ class BaseSetup:
             eps_j = np.ones(len(self.n_j))
             # Bound states:
             for j, n in enumerate(self.n_j):
-                if n > 0:
+                if n is None or n > 0:
                     eps_j[j] = -1.0
 
         deg_j = 2 * (2 * l_j + 1)
@@ -243,7 +243,7 @@ class BaseSetup:
 
         for j, (n1, l1, f, f_s) in enumerate(zip(self.n_j, self.l_orb_J,
                                                  f_j, f_sj.T)):
-            if not f_s.any() or n1 < 0:
+            if not f_s.any() or (n1 is not None and n1 < 0):
                 continue
             I = 0
             for bf in self.basis.bf_j:
@@ -435,7 +435,7 @@ class BaseSetup:
     def get_default_nbands(self):
         assert len(self.l_orb_J) == len(self.n_j), (self.l_orb_J, self.n_j)
         return sum([2 * l + 1 for (l, n) in zips(self.l_orb_J, self.n_j)
-                    if n > 0])
+                    if n is None or n > 0])
 
     def calculate_coulomb_corrections(self, wn_lqg, wnt_lqg, wg_lg, wnc_g,
                                       wmct_g):
@@ -1207,7 +1207,7 @@ class Setup(BaseSetup):
         n_J = []
         for j, phit_g in enumerate(phit_jg):
             n = self.n_j[j]
-            if n > 0:
+            if n is None or n > 0:
                 n_J.append(n)
                 l = self.l_j[j]
                 phit_g = phit_g.copy()
