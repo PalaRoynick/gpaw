@@ -28,6 +28,7 @@ class PPCG(PWFDEigensolver):
                  hamiltonian,
                  convergence,
                  domain_band_comm,
+                 max_niter=20,
                  niter=2,
                  min_niter=1,
                  blocksize=None,
@@ -56,9 +57,11 @@ class PPCG(PWFDEigensolver):
         converge_bands : str, optional
             Which bands to converge ('occupied' or 'unoccupied'). Default is
             'occupied'.
-        niter : int | typle[int, int], optional
-            Maximum number of iterations. Default is 2.
-        min_niter : int | None, optional
+        max_niter : int, optional
+            Maximum number of iterations, to achieve minimum residual.
+        niter : int, optional
+            Target number of iterations. Default is 2.
+        min_niter : int, optional
             If specified as an int, the value is the minimum number of
             iterations. Where the eigensolver will stop if the residual
             is below a tolerance, and performed at least the minimum number
@@ -101,6 +104,7 @@ class PPCG(PWFDEigensolver):
         self.nbands = nbands
         self.wf_grid = wf_grid
         self.band_comm = band_comm
+        self.max_niter = max_niter
         self.niter = niter
         self.min_niter = min_niter if min_niter is not None else niter
         self.max_blocksize = blocksize
@@ -135,6 +139,7 @@ class PPCG(PWFDEigensolver):
         self._allocate_buffer_arrays(ibzwfs, shape=(1,))
 
         band_comm = ibzwfs.band_comm
+        self.band_comm = band_comm
         wfs = ibzwfs._wfs_u[0]
         assert isinstance(wfs, PWFDWaveFunctions)
         B = ibzwfs.nbands
@@ -151,7 +156,7 @@ class PPCG(PWFDEigensolver):
         dtype = wfs.psit_nX.desc.dtype
 
         if self.tolerances is None:
-            self.tolerances = (0, 0, self.residual_target)
+            self.tolerances = (0, 4e-1, self.residual_target)
 
         assert len(self.tolerances) == 3
         # --------------- Convergence parameters ---------------
@@ -159,23 +164,21 @@ class PPCG(PWFDEigensolver):
         # breakout_tolerance could be used to speed up convergence
         # in double precision.
         #
-        # tol_factor :
-        #   Freeze bands with residual < tol_factor * max(residual_ns).
-        #   improves numerical stability at the cost of
-        #   convergence speed - up to a certain point.
-        #   Probably best to not use this one.
-        self.tol_factor = self.tolerances[0]
         # tolerance :
         #   Freeze bands with residual < tolerance
         #   improves numerical stability at the cost of
         #   minimum achievable residual.
-        self.tolerance = self.tolerances[1]
+        self.tolerance = self.tolerances[0]
+        # tolerance :
+        #   Minimum residual required for breakout, unless
+        #   iter > self.maximum_niter.
+        self.minimum_res = self.tolerances[1] / Ha**2
         # breakout_tolerance :
         #   Stop iteration if sum(residual_ns) < breakout_tolerance
         #   breakout_tolerance saves time at the cost of minimum
         #   achievable residual. Can also be used to improve numerical
         #   stability.
-        self.breakout_tolerance = self.tolerances[2] / Ha**2
+        self.breakout_res = self.tolerances[2] / Ha**2
 
         self.M_nn = Matrix(B, B, dtype=dtype,
                            dist=(band_comm, band_comm.size),
@@ -277,28 +280,22 @@ class PPCG(PWFDEigensolver):
             error_n = as_np(residual_nX.norm2())
             if len(error_n.shape) > 1:
                 error_n = error_n.sum(axis=1)
-            if self.allow_dynamic_breakout and \
-                    (self.tol_factor or self.tolerance):
-                active_indicies = np.logical_or(
-                    np.greater(error_n, self.tolerance),
-                    np.greater(error_n,
-                               np.max(error_n, initial=0) * self.tol_factor))
+            if self.allow_dynamic_breakout and self.tolerance:
+                active_indicies = np.greater(error_n, self.tolerance)
                 active_indicies = np.where(active_indicies)[0]
             else:
                 active_indicies = np.arange(b)
             error = weight_n @ error_n
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
-            if band_comm.sum_scalar(len(active_indicies)) == 0  \
-                    or b_error < self.breakout_tolerance and \
-                    self.min_niter <= 1:
+            if self.check_breakout(-1, b_error, active_indicies):
                 if debug:
                     psit_nX.sanity_check()
                 break_after_update = True
             else:
                 break_after_update = False
 
-        for i in range(self.niter):
+        for i in range(max(self.niter, self.max_niter)):
             with tracectx('Residual'):
                 sliced_preconditioner(psit_nX, residual_nX,
                                       buffer=buffer_array_nX,
@@ -333,14 +330,13 @@ class PPCG(PWFDEigensolver):
                         Pbuf_abi[:, 1 * mbs:2 * mbs], out_axi=None))
 
                 if self.include_cg:
-                    final_iter = (self.allow_dynamic_breakout and
-                                  break_after_update) or i >= self.niter - 1
                     iterables += (
-                        P_nX.iter_by_band(buff_bX[2 * mbs:3 * mbs],
-                                          out_nX=None if final_iter else P_nX),
+                        P_nX.iter_by_band(
+                            buff_bX[2 * mbs:3 * mbs],
+                            out_nX=None if break_after_update else P_nX),
                         P3_ani.iter_by_band(
                             Pbuf_abi[:, 2 * mbs:3 * mbs],
-                            out_axi=None if final_iter else P3_ani))
+                            out_axi=None if break_after_update else P3_ani))
 
 
                 for iter_info in zip(*iterables):
@@ -489,7 +485,7 @@ class PPCG(PWFDEigensolver):
                     else:
                         cmin = H_bb[:block, :nblocks].conj()
                     if not xp.isfinite(H_bb).all():
-                        break_after_update = True
+                        break_after_update |= self.allow_dynamic_breakout
                         new_eigs_n[block_slice] = wfs.myeig_n[block_slice]
                         continue
                     new_eigs_n[block_slice] = as_np(eig_b[:block])
@@ -524,8 +520,7 @@ class PPCG(PWFDEigensolver):
                         # iterations to go). This is faster if the FFT and GEMM
                         # is faster than the all2allv involved. Currently,
                         # this rarely seems to be the case.
-                        # if not ((self.allow_dynamic_breakout and break_after_update) or \
-                        #         i >= self.niter - 1):
+                        # if not break_after_update:
                         #     Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
 
             wfs.eig_n[:] = 0
@@ -533,8 +528,7 @@ class PPCG(PWFDEigensolver):
             band_comm.sum(wfs._eig_n)
             domain_comm.sum(wfs._eig_n)
             wfs.orthonormalized = False
-            if (self.allow_dynamic_breakout and break_after_update) or \
-                    i >= self.niter - 1:
+            if break_after_update:
                 break
 
             with tracectx('Residual'):
@@ -563,20 +557,14 @@ class PPCG(PWFDEigensolver):
                 if len(error_n.shape) > 1:
                     error_n = error_n.sum(axis=1)
 
-                if self.allow_dynamic_breakout and \
-                        (self.tol_factor or self.tolerance):
-                    active_indicies = np.logical_or(
-                        np.greater(error_n, self.tolerance),
-                        np.greater(error_n, np.max(error_n, initial=0) *
-                                   self.tol_factor))
+                if self.allow_dynamic_breakout and self.tolerance:
+                    active_indicies = np.greater(error_n, self.tolerance),
                     active_indicies = np.where(active_indicies)[0]
                 error = weight_n @ error_n
                 b_error = band_comm.sum_scalar(error) / \
                     max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
-                if band_comm.sum_scalar(len(active_indicies)) == 0 \
-                        or (b_error < self.breakout_tolerance
-                            and i + 2 >= self.min_niter):
+                if self.check_breakout(i, b_error, active_indicies):
                     # Set 'break_after_update = True', causing the
                     # loop to break at the next iteration. This gives us
                     # one more cheap iteration (since we already
@@ -603,3 +591,15 @@ class PPCG(PWFDEigensolver):
             psit_nX.sanity_check()
 
         return error
+
+    def check_breakout(self, iter, residual, active_indicies):
+        band_comm = self.band_comm
+        breakout = False
+        if self.allow_dynamic_breakout:
+            breakout |= band_comm.sum_scalar(len(active_indicies)) == 0
+            breakout |= (residual < self.breakout_res and \
+                (iter + 3) > self.min_niter)
+            breakout |= (residual < self.minimum_res and (iter + 3) > self.niter)
+        else:
+            breakout |= (iter + 3) > self.niter
+        return breakout
