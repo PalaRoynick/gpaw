@@ -33,9 +33,12 @@ class PWHamiltonian(Hamiltonian):
                                                realspace=False)
         self.grid_local_min = grid.new(comm=None, dtype=dtype,
                                        size=min_size_c)
-        self.plan_big = self.grid_local.fft_plans(xp=xp)
-        self.plan_min = self.grid_local_min.fft_plans(xp=xp,
-                                                      blocksize=self.blocksize)
+        self.plan = self.grid_local_min.fft_plans(xp=xp,
+                                                  blocksize=self.blocksize)
+        self.grid_pot_in = self.grid_local.new(dtype=np.double)
+        self.grid_pot_out = self.grid_local_min.new(dtype=np.double)
+        self.plan_in = self.grid_pot_in.fft_plans(xp=xp)
+        self.plan_out = self.grid_pot_out.fft_plans(xp=xp)
         # It's a bit too expensive to create all the local PW-descriptors
         # for all the k-points every time we apply the Hamiltonian, so we
         # cache them:
@@ -53,7 +56,7 @@ class PWHamiltonian(Hamiltonian):
         pw = psit_nG.desc
         vt_R = vt_R.gather(broadcast=True)
 
-        plan = self.plan_min
+        plan = self.plan
         tmp_R = plan.tmp_R  # self.grid_local.empty(xp=xp)
         tmp_Q = plan.tmp_Q
         if pw.comm.size == 1:
@@ -68,37 +71,8 @@ class PWHamiltonian(Hamiltonian):
         e_kin_G = xp.asarray(pw_local.ekin_G)
         domain_comm = psit_nG.desc.comm
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
-
-        # Cut the potential
-        self.plan_big.tmp_R[:] = vt_R.data
-        self.plan_big.fft()
-        is_real = np.issubdtype(pw.dtype, np.floating)
-        big2min = []
-        for i, n in enumerate(self.plan_min.shape[-3:]):
-            inds = np.zeros(n, dtype=int)
-            if i == 2 and is_real:
-                inds[:] = np.arange(n)
-            else:
-                inds[:(n + 1) // 2] = np.arange((n + 1) // 2)
-                inds[-(n // 2):] = -np.arange(n // 2, 0, -1)
-            zerodims = [a for a in range(3) if a != i]
-            big2min.append(np.expand_dims(inds, axis=zerodims))
-
-        if self.blocksize == 1:
-            scale = 1 / self.plan_big.tmp_R.size
-            self.plan_min.tmp_Q[:] = scale * \
-                self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
-
-            self.plan_min.ifft()
-            vt_r = tmp_R.real.copy()
-        else:
-            scale = 1 / self.plan_big.tmp_R.size
-            self.plan_min.tmp_Q[:] = 0
-            self.plan_min.tmp_Q[0, :] = scale * \
-                self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
-
-            self.plan_min.ifft()
-            vt_r = tmp_R[0].real.copy()
+        vt_r = vt_R.fft_restrict(self.plan_in, self.plan_out,
+                                 self.grid_pot_out)
 
         # Apply the potential
         for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
@@ -115,7 +89,7 @@ class PWHamiltonian(Hamiltonian):
                 tmp_yQ = tmp_Q[:len(y)]
                 plan.ifft_sphere(psit_yG.data, pw_local)
 
-            tmp_yR *= vt_r
+            tmp_yR *= vt_r.data
 
             plan.fft()
             vtpsit_yG = tmp_yQ.reshape(len(y), -1)[:, Q_G]
