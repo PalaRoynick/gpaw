@@ -556,15 +556,11 @@ __global__ void pw_insert_many(Tindex nb,
 				  Tcomplex* tmp_nQ)
 {
     Tindex G = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
-    Tindex b = (Tindex) threadIdx.y + (Tindex) blockIdx.y * (Tindex) blockDim.y;
-    __shared__ npy_int32 locQ_G[16];
-    if (threadIdx.y == 0)
-	locQ_G[threadIdx.x] = Q_G[G];
-    __syncthreads();
+    Tindex b = (Tindex) blockIdx.y;
 
     if ((G < nG) && (b < nb))
     {
-	npy_int32 Q = locQ_G[threadIdx.x];
+	npy_int32 Q = Q_G[G];
 	tmp_nQ[Q + b * nQ] = c_nG[G + b * nG] * scale;
     }
 }
@@ -721,8 +717,8 @@ void pw_insert_gpu_launch_kernel(
 
 	{
 		// launch "pw_insert"
-		const dim3 blocks((nG + 15) / 16, (nb + 15) / 16);
-		const dim3 threads(16, 16);
+		const dim3 blocks((nG + 255) / 256, nb);
+		const dim3 threads(256, 1);
 		const int shmem = 0;
 		if (nb == 1)
 		{

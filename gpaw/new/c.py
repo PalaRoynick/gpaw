@@ -25,9 +25,10 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
                                 pw_norm_kinetic_gpu, pwlfc_expand_gpu)
 
         def s(fun):
+            from cupy.cuda.stream import get_current_stream
+
             @functools.wraps(fun)
             def wrapper(*args):
-                from cupy.cuda.stream import get_current_stream
                 return fun(*args, get_current_stream().ptr)
             return wrapper
 
@@ -49,7 +50,6 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
         evaluate_lda_gpu = s(evaluate_lda_gpu)
         evaluate_pbe_gpu = s(evaluate_pbe_gpu)
         pw_amend_insert_realwf_gpu = s(pw_amend_insert_realwf_gpu)
-        pw_insert_gpu = s(pw_insert_gpu)
         pwlfc_expand_gpu = s(pwlfc_expand_gpu)
         pw_norm_kinetic_gpu = s(pw_norm_kinetic_gpu)
         pw_norm_gpu = s(pw_norm_gpu)

@@ -33,6 +33,183 @@ static void assert_corresponding_real(int dtypenum, PyObject* array)
     return;
 }
 
+namespace
+{
+
+struct PwInsertAttributeNames
+{
+    PyObject* data;
+    PyObject* ptr;
+    PyObject* shape;
+    PyObject* dtype;
+    PyObject* num;
+};
+
+const PwInsertAttributeNames& pw_insert_attribute_names()
+{
+    static const PwInsertAttributeNames names = {
+        PyUnicode_InternFromString("data"),
+        PyUnicode_InternFromString("ptr"),
+        PyUnicode_InternFromString("shape"),
+        PyUnicode_InternFromString("dtype"),
+        PyUnicode_InternFromString("num")};
+    return names;
+}
+
+struct PwInsertDescriptorGetter
+{
+    PyTypeObject* owner_type = nullptr;
+    PyObject* descriptor = nullptr;
+    descrgetfunc getter = nullptr;
+    bool initialized = false;
+
+    PyObject* get(PyObject* owner, PyObject* name)
+    {
+        PyTypeObject* type = Py_TYPE(owner);
+        if (!initialized)
+        {
+            initialized = true;
+            owner_type = type;
+            Py_INCREF(reinterpret_cast<PyObject*>(owner_type));
+
+            PyObject* candidate = PyObject_GetAttr(
+                reinterpret_cast<PyObject*>(owner_type), name);
+            if (candidate != nullptr)
+            {
+                descrgetfunc candidate_getter =
+                    Py_TYPE(candidate)->tp_descr_get;
+                if (candidate_getter != nullptr)
+                {
+                    descriptor = candidate;
+                    getter = candidate_getter;
+                }
+                else
+                {
+                    Py_DECREF(candidate);
+                }
+            }
+            else
+            {
+                PyErr_Clear();
+            }
+        }
+
+        if (type == owner_type && descriptor != nullptr)
+        {
+            return getter(descriptor, owner,
+                          reinterpret_cast<PyObject*>(owner_type));
+        }
+        return PyObject_GetAttr(owner, name);
+    }
+};
+
+struct PwInsertDescriptorGetters
+{
+    PwInsertDescriptorGetter array_data;
+    PwInsertDescriptorGetter array_shape;
+    PwInsertDescriptorGetter array_dtype;
+    PwInsertDescriptorGetter memory_pointer_ptr;
+    PwInsertDescriptorGetter dtype_num;
+    PwInsertDescriptorGetter current_stream_ptr;
+};
+
+PwInsertDescriptorGetters& pw_insert_descriptor_getters()
+{
+    static PwInsertDescriptorGetters getters;
+    return getters;
+}
+
+PyObject* pw_insert_get_current_stream()
+{
+    static PyObject* get_current_stream = nullptr;
+    if (get_current_stream == nullptr)
+    {
+        PyObject* module = PyImport_ImportModule("cupy.cuda.stream");
+        if (module == nullptr)
+        {
+            return nullptr;
+        }
+        get_current_stream = PyObject_GetAttrString(module,
+                                                    "get_current_stream");
+        Py_DECREF(module);
+    }
+    return get_current_stream;
+}
+
+struct PwInsertArrayMetadata
+{
+    void* data = nullptr;
+    PyObject* shape = nullptr;
+    int dtypenum = -1;
+};
+
+void* pw_insert_array_data(PyObject* array,
+                           const PwInsertAttributeNames& names)
+{
+    PwInsertDescriptorGetters& getters = pw_insert_descriptor_getters();
+    PyObject* data = getters.array_data.get(array, names.data);
+    if (data == nullptr)
+    {
+        return nullptr;
+    }
+    PyObject* ptr = getters.memory_pointer_ptr.get(data, names.ptr);
+    Py_DECREF(data);
+    if (ptr == nullptr)
+    {
+        return nullptr;
+    }
+    void* value = PyLong_AsVoidPtr(ptr);
+    Py_DECREF(ptr);
+    return value;
+}
+
+PwInsertArrayMetadata pw_insert_array_metadata(
+    PyObject* array,
+    const PwInsertAttributeNames& names)
+{
+    PwInsertArrayMetadata metadata;
+    PwInsertDescriptorGetters& getters = pw_insert_descriptor_getters();
+    metadata.data = pw_insert_array_data(array, names);
+    metadata.shape = getters.array_shape.get(array, names.shape);
+
+    PyObject* dtype = getters.array_dtype.get(array, names.dtype);
+    if (dtype == nullptr)
+    {
+        return metadata;
+    }
+    PyObject* num = getters.dtype_num.get(dtype, names.num);
+    Py_DECREF(dtype);
+    if (num == nullptr)
+    {
+        return metadata;
+    }
+    metadata.dtypenum = static_cast<int>(PyLong_AS_LONG(num));
+    Py_DECREF(num);
+    return metadata;
+}
+
+class PwInsertObjectPinner : public gpaw::PyObjectPinner
+{
+public:
+    template<typename T>
+    T* register_array_data(PyObject* obj, void* data)
+    {
+        T* ptr = reinterpret_cast<T*>(data);
+#ifdef GPAW_GPU_ARRAY_DEBUG
+        assert(ptr && "Not a Python array object");
+#endif
+#ifdef GPAW_GPU_LIFETIME_GUARD
+        if (ptr)
+        {
+            objects.push_back(obj);
+        }
+#endif
+        return ptr;
+    }
+};
+
+} // namespace
+
 PyObject* evaluate_lda_gpu(PyObject* self, PyObject* args)
 {
     PyObject* n_obj;
@@ -282,48 +459,104 @@ PyObject* pwlfc_expand_gpu(PyObject* self, PyObject* args)
 
 PyObject* pw_insert_gpu(PyObject* self, PyObject* args)
 {
-    PyObject *c_nG_obj, *Q_G_obj, *tmp_nQ_obj, *stream_obj;
+    PyObject *c_nG_obj, *Q_G_obj, *tmp_nQ_obj;
+    PyObject* stream_obj = nullptr;
     double scale;
     int rx;
     int ry;
     int rz;
-    if (!PyArg_ParseTuple(args, "OOdOiiiO",
+    if (!PyArg_ParseTuple(args, "OOdOiii|O",
                           &c_nG_obj, &Q_G_obj, &scale, &tmp_nQ_obj, &rx, &ry, &rz, &stream_obj)
     )
     {
         return NULL;
     }
 
-    gpuStream_t stream = (gpuStream_t) PyLong_AsVoidPtr(stream_obj);
-
-    gpaw::PyObjectPinner pinner;
-
-    int32_t *Q_G = pinner.borrow_array_data<int32_t>(Q_G_obj);
-    void *c_nG = pinner.borrow_array_data<void>(c_nG_obj);
-    void *tmp_nQ = pinner.borrow_array_data<void>(tmp_nQ_obj);
-    int nG = 0;
-    int nQ = 0;
-    int nb = 0;
-    assert(gpaw::Array_NDIM(c_nG_obj) == gpaw::Array_NDIM(tmp_nQ_obj));
-    if (gpaw::Array_NDIM(c_nG_obj) == 1)
+    gpuStream_t stream;
+    if (stream_obj == nullptr)
     {
-        nG = gpaw::Array_DIM(c_nG_obj, 0);
-        nb = 1;
-        nQ = gpaw::Array_DIM(tmp_nQ_obj, 0);
+        PyObject* get_current_stream = pw_insert_get_current_stream();
+        if (get_current_stream == nullptr)
+        {
+            return NULL;
+        }
+        PyObject* current_stream = PyObject_CallNoArgs(get_current_stream);
+        if (current_stream == nullptr)
+        {
+            return NULL;
+        }
+        PyObject* ptr = pw_insert_descriptor_getters().current_stream_ptr.get(
+            current_stream, pw_insert_attribute_names().ptr);
+        Py_DECREF(current_stream);
+        if (ptr == nullptr)
+        {
+            return NULL;
+        }
+        stream = (gpuStream_t) PyLong_AsVoidPtr(ptr);
+        Py_DECREF(ptr);
     }
     else
     {
-        nG = gpaw::Array_DIM(c_nG_obj, 1);
-        nb = gpaw::Array_DIM(c_nG_obj, 0);
-        nQ = gpaw::Array_DIM(tmp_nQ_obj, 1);
+        stream = (gpuStream_t) PyLong_AsVoidPtr(stream_obj);
     }
     if (PyErr_Occurred())
     {
         return NULL;
     }
 
-    int dtypenum = get_dtype(c_nG_obj);
-    assert(dtypenum == get_dtype(tmp_nQ_obj));
+    PwInsertObjectPinner pinner;
+
+    const PwInsertAttributeNames& names = pw_insert_attribute_names();
+    void* Q_G_data = pw_insert_array_data(Q_G_obj, names);
+    PwInsertArrayMetadata c_nG_metadata =
+        pw_insert_array_metadata(c_nG_obj, names);
+    PwInsertArrayMetadata tmp_nQ_metadata =
+        pw_insert_array_metadata(tmp_nQ_obj, names);
+
+    int32_t *Q_G = pinner.register_array_data<int32_t>(Q_G_obj, Q_G_data);
+    void *c_nG = pinner.register_array_data<void>(c_nG_obj,
+                                                  c_nG_metadata.data);
+    void *tmp_nQ = pinner.register_array_data<void>(tmp_nQ_obj,
+                                                    tmp_nQ_metadata.data);
+    int nG = 0;
+    int nQ = 0;
+    int nb = 0;
+    if (c_nG_metadata.shape == nullptr || tmp_nQ_metadata.shape == nullptr)
+    {
+        Py_XDECREF(c_nG_metadata.shape);
+        Py_XDECREF(tmp_nQ_metadata.shape);
+        return NULL;
+    }
+    Py_ssize_t c_nG_ndim = PyTuple_Size(c_nG_metadata.shape);
+    Py_ssize_t tmp_nQ_ndim = PyTuple_Size(tmp_nQ_metadata.shape);
+    assert(c_nG_ndim == tmp_nQ_ndim);
+    if (c_nG_ndim == 1)
+    {
+        nG = PyLong_AS_LONG(PyTuple_GET_ITEM(c_nG_metadata.shape, 0));
+        nb = 1;
+        nQ = PyLong_AS_LONG(PyTuple_GET_ITEM(tmp_nQ_metadata.shape, 0));
+    }
+    else
+    {
+        nG = PyLong_AS_LONG(PyTuple_GET_ITEM(c_nG_metadata.shape, 1));
+        nb = PyLong_AS_LONG(PyTuple_GET_ITEM(c_nG_metadata.shape, 0));
+        nQ = PyLong_AS_LONG(PyTuple_GET_ITEM(tmp_nQ_metadata.shape, 1));
+    }
+    Py_DECREF(c_nG_metadata.shape);
+    Py_DECREF(tmp_nQ_metadata.shape);
+    if (PyErr_Occurred())
+    {
+        return NULL;
+    }
+
+    int dtypenum = c_nG_metadata.dtypenum;
+    assert(dtypenum == NP_FLOAT || dtypenum == NP_DOUBLE ||
+           dtypenum == NP_FLOAT_COMPLEX || dtypenum == NP_DOUBLE_COMPLEX);
+    assert(tmp_nQ_metadata.dtypenum == NP_FLOAT ||
+           tmp_nQ_metadata.dtypenum == NP_DOUBLE ||
+           tmp_nQ_metadata.dtypenum == NP_FLOAT_COMPLEX ||
+           tmp_nQ_metadata.dtypenum == NP_DOUBLE_COMPLEX);
+    assert(dtypenum == tmp_nQ_metadata.dtypenum);
 
     pinner.commit();
 
