@@ -537,12 +537,18 @@ PyObject* add_to_density_gpu(PyObject* self, PyObject* args)
 }
 
 
-PyObject* calculate_residual_gpu(PyObject* self, PyObject* args)
+PyObject* calculate_residual_gpu(PyObject* self, PyObject* const* args, Py_ssize_t nargs)
 {
-    PyObject *residual_nG_obj, *eps_n_obj, *wf_nG_obj, *stream_obj;
-    if (!PyArg_ParseTuple(args, "OOOO",
-                          &residual_nG_obj, &eps_n_obj, &wf_nG_obj, &stream_obj))
+    if (nargs != 4)
+    {
+        PyErr_SetString(PyExc_TypeError,
+                        "calculate_residuals_gpu() takes exactly 4 positional arguments");
         return NULL;
+    }
+    PyObject *residual_nG_obj = args[0];
+    PyObject *eps_n_obj = args[1];
+    PyObject *wf_nG_obj = args[2];
+    PyObject *stream_obj = args[3];
 
     gpuStream_t stream = (gpuStream_t) PyLong_AsVoidPtr(stream_obj);
     gpaw::PyObjectPinner pinner;

@@ -35,17 +35,37 @@ void gpaw_device_synchronize()
     gpuDeviceSynchronize();
 }
 
+#if defined(__HIP_DEVICE_COMPILE__) && defined(__gfx942__)
+template <typename T>
+__device__ __forceinline__ T residual_input_load(const T* source)
+{
+    return *source;
+}
+
+__device__ __forceinline__ gpuDoubleComplex residual_input_load(
+    const gpuDoubleComplex* source)
+{
+    const double real_value = __builtin_nontemporal_load(&source->x);
+    const double imaginary_value = __builtin_nontemporal_load(&source->y);
+    return gpuDoubleComplex(real_value, imaginary_value);
+}
+#endif
+
 template <typename Tcomplex, typename Treal, typename Tindex>
 __global__ void calculate_residual_kernel(Tindex nG, Tindex nn,
 					       				  Tcomplex* residual_nG,
 										  Treal* eps_n,
 										  Tcomplex* wf_nG)
 {
-    Tindex n = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
-    Tindex g = (Tindex) threadIdx.y + (Tindex) blockIdx.y * (Tindex) blockDim.y;
+    Tindex g = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
+    Tindex n = (Tindex) blockIdx.y + (Tindex) threadIdx.y * (Tindex) gridDim.y;
     if ((g < nG) && (n < nn))
     {
+#if defined(__HIP_DEVICE_COMPILE__) && defined(__gfx942__)
+		residual_nG[n*nG + g] = residual_input_load(&residual_nG[n*nG + g]) - wf_nG[n*nG + g] * eps_n[n];
+#else
 		residual_nG[n*nG + g] = residual_nG[n*nG + g] - wf_nG[n*nG + g] * eps_n[n];
+#endif
     }
 }
 
@@ -104,8 +124,8 @@ void calculate_residual_launch_kernel(
         return;
     }
 
-	const dim3 blocks((nn+15)/16, (nG+15)/16);
-	const dim3 threads(16, 16);
+	const dim3 blocks(nG / 64 + (nG % 64 != 0), nn / 4 + (nn % 4 != 0));
+	const dim3 threads(64, 4);
 	const int shmem = 0;
 
     if (dtypenum==NP_DOUBLE_COMPLEX)

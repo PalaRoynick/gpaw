@@ -31,8 +31,20 @@ if not TYPE_CHECKING and not GPAW_NO_C_EXTENSION:
                 return fun(*args, get_current_stream().ptr)
             return wrapper
 
+        def _residual_stream_adapter(fun):
+            stream_getter = None
+
+            @functools.wraps(fun)
+            def wrapper(*args):
+                nonlocal stream_getter
+                if stream_getter is None:
+                    from cupy.cuda.stream import get_current_stream
+                    stream_getter = get_current_stream
+                return fun(*args, stream_getter().ptr)
+            return wrapper
+
         add_to_density_gpu = s(add_to_density_gpu)
-        calculate_residuals_gpu = s(calculate_residuals_gpu)
+        calculate_residuals_gpu = _residual_stream_adapter(calculate_residuals_gpu)
         dH_aii_times_P_ani_gpu = s(dH_aii_times_P_ani_gpu)
         evaluate_lda_gpu = s(evaluate_lda_gpu)
         evaluate_pbe_gpu = s(evaluate_pbe_gpu)
