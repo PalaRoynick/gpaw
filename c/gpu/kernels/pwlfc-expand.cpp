@@ -843,6 +843,8 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
     Tindex J = (Tindex) threadIdx.y + (Tindex) blockIdx.y * (Tindex) blockDim.y;
 
 	__shared__ Tcomplex imag_powers[4];
+	__shared__ Tcomplex phase_JG[16][8];
+	__shared__ int leader_J[16];
 	if (threadIdx.y == 0 && threadIdx.x == 0)
 		imag_powers[0] = {1.0,0};
 	if (threadIdx.y == 0 && threadIdx.x == 1)
@@ -851,33 +853,71 @@ __global__ void pwlfc_expand_kernel(Treal* f_Gs,
 		imag_powers[2] = {-1.0,0};
 	if (threadIdx.y == 0 && threadIdx.x == 3)
 		imag_powers[3] = {0,1.0};
+	int local_J = threadIdx.y;
+	int linear_thread = threadIdx.y * 8 + threadIdx.x;
+	if (linear_thread < 16)
+	{
+		int lane = linear_thread;
+		Tindex row_J = (Tindex)blockIdx.y * (Tindex)blockDim.y + lane;
+		bool row_valid = row_J < nJ;
+		int a = row_valid ? a_J[row_J] : 0;
+		int preceding_a = __shfl_up(a, 1, 16);
+		bool boundary = row_valid && (lane == 0 || a != preceding_a);
+		unsigned int boundaries = (unsigned int)__ballot(boundary);
+		unsigned int preceding_boundaries = boundaries & ((1u << (lane + 1)) - 1u);
+		if (row_valid)
+			leader_J[lane] = 31 - __clz(preceding_boundaries);
+	}
     __syncthreads();
 
 	//Tcomplex imag_powers[4] = {{1.0,0},{0,-1.0},{-1.0,0},{0,1.0}};
+	bool valid = (G < nG) && (J < nJ);
+	if (valid && leader_J[local_J] == local_J)
+	{
+		Treal* Gk = Gk_Gv + G*3;
+		int a = a_J[J];
+		Treal* pos = pos_av + a*3;
+		Treal GkPos = (Gk[0] * pos[0] +
+		                  Gk[1] * pos[1] +
+		                  Gk[2] * pos[2]);
+		Tcomplex emiGR = {cos(GkPos), -sin(GkPos)};
+		phase_JG[local_J][threadIdx.x] = emiGR * eikR_a[a];
+	}
+	__syncthreads();
 
-    if ((G < nG) && (J < nJ))
+    if (valid)
     {
+	Tcomplex phase = phase_JG[leader_J[local_J]][threadIdx.x];
 	f_Gs += G*nsplines;
-	Gk_Gv += G*3;
-	pos_av += a_J[J]*3;
-	Treal GkPos = (Gk_Gv[0] * pos_av[0] +
-		       	   Gk_Gv[1] * pos_av[1] +
-		           Gk_Gv[2] * pos_av[2]);
-	Tcomplex emiGR = {cos(GkPos), -sin(GkPos)};
 	Tindex s = s_J[J]; // Is Tindex really needed here (and l and m)
 	Tindex l = l_s[s];
 	Y_GL += G*nL + l*l;
-	Tcomplex f1 = emiGR * eikR_a[a_J[J]] * imag_powers[l % 4] * f_Gs[s];
+	Tcomplex f1 = phase * imag_powers[l % 4] * f_Gs[s];
 	if constexpr(strided) {
 		f_GI += G*nI*2 + I_J[J];
-		for (Tindex m = 0; m < 2 * l + 1; m++) { // here
-	    	Tcomplex f = f1 * Y_GL[m];
-	    	f_GI[0] = f.x;
+		Tcomplex f = f1 * Y_GL[2 * l];
+		Treal* tail_f_GI = f_GI + 2 * l;
+		tail_f_GI[0] = f.x;
+		if constexpr(cc)
+			tail_f_GI[nI] = -f.y;
+		else
+			tail_f_GI[nI] = f.y;
+		for (Tindex m = 0; m < 2 * l; m += 2) {
+			Treal Y0 = Y_GL[m];
+			Treal Y1 = Y_GL[m + 1];
+	    	Tcomplex f0 = f1 * Y0;
+	    	Tcomplex f2 = f1 * Y1;
+	    	f_GI[0] = f0.x;
+			f_GI[1] = f2.x;
 			if constexpr(cc)
-	    		f_GI[nI] = -f.y;
+	    		f_GI[nI] = -f0.y;
 			else
-				f_GI[nI] = f.y;
-	    	f_GI++;
+				f_GI[nI] = f0.y;
+			if constexpr(cc)
+	    		f_GI[nI + 1] = -f2.y;
+			else
+				f_GI[nI + 1] = f2.y;
+	    	f_GI += 2;
 		}
 	} else {
 		f_GI += (G*nI + I_J[J])*2;
@@ -1314,8 +1354,8 @@ void pwlfc_expand_gpu_launch_kernel(int dtypenum,
 {
     if ((!nG) || (!nJ)) return;
 
-	const dim3 blocks((nG+15)/16, (nJ+15)/16); // blockDimX must be > 4 due to shared initialization,
-	const dim3 threads(16, 16);
+	const dim3 blocks((nG+7)/8, (nJ+15)/16); // blockDimX must be > 4 due to shared initialization,
+	const dim3 threads(8, 16);
 	const int shmem = 0;
 
 	// FIXME way too much copy-pasting going on here. Kernel args for NP_DOUBLE_COMPLEX and NP_DOUBLE are identical!
