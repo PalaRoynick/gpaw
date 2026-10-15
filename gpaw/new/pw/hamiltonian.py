@@ -24,7 +24,7 @@ class PWHamiltonian(Hamiltonian):
         self.blocksize = 2 if xp is np else 8
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
-        ecut = max(2 * min(ecut, 340 / Ha), 2 * ecut)
+        ecut = max(2 * min(ecut, 340 / Ha), ecut)
         max_h = cutoff2gridspacing(ecut * Ha) / Bohr
         cell_cv = self.grid_local.cell_cv
         mode = SimpleNamespace(name='pw')
@@ -70,45 +70,37 @@ class PWHamiltonian(Hamiltonian):
         Q_G = pw_local.indices(tmp_Q.shape[-3:])
 
         # Cut the potential
-        if True:
-            self.plan_big.tmp_R[:] = vt_R.data
-            self.plan_big.fft()
-            is_real = np.issubdtype(pw.dtype, np.floating)
-            big2min = []
-            for i, n in enumerate(self.plan_min.shape[-3:]):
-                inds = np.zeros(n, dtype=int)
-                if i == 2 and is_real:
-                    inds[:] = np.arange(n)
-                else:
-                    inds[:(n + 1) // 2] = np.arange((n + 1) // 2)
-                    inds[-(n // 2):] = -np.arange(n // 2, 0, -1)
-                zerodims = [a for a in range(3) if a != i]
-                big2min.append(np.expand_dims(inds, axis=zerodims))
-
-            if self.blocksize == 1:
-                scale = 1 / self.plan_big.tmp_R.size
-                self.plan_min.tmp_Q[:] = scale * \
-                    self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
-
-                self.plan_min.ifft()
-                vt_r = tmp_R.real.copy()
+        self.plan_big.tmp_R[:] = vt_R.data
+        self.plan_big.fft()
+        is_real = np.issubdtype(pw.dtype, np.floating)
+        big2min = []
+        for i, n in enumerate(self.plan_min.shape[-3:]):
+            inds = np.zeros(n, dtype=int)
+            if i == 2 and is_real:
+                inds[:] = np.arange(n)
             else:
-                scale = 1 / self.plan_big.tmp_R.size
-                self.plan_min.tmp_Q[:] = 0
-                self.plan_min.tmp_Q[0, :] = scale * \
-                    self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
+                inds[:(n + 1) // 2] = np.arange((n + 1) // 2)
+                inds[-(n // 2):] = -np.arange(n // 2, 0, -1)
+            zerodims = [a for a in range(3) if a != i]
+            big2min.append(np.expand_dims(inds, axis=zerodims))
 
-                self.plan_min.ifft()
-                vt_r = tmp_R[0].real.copy()
+        if self.blocksize == 1:
+            scale = 1 / self.plan_big.tmp_R.size
+            self.plan_min.tmp_Q[:] = scale * \
+                self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
+
+            self.plan_min.ifft()
+            vt_r = tmp_R.real.copy()
         else:
-            vt_G = self.plan_big.fft_sphere(vt_R.data, pw_local)
-            if self.blocksize > 1:
-                self.plan_min.ifft_sphere(vt_G[None], pw_local)
-                vt_r = self.plan_min.tmp_R[0].real.copy()
-            else:
-                self.plan_min.ifft_sphere(vt_G, pw_local)
-                vt_r = self.plan_min.tmp_R.real.copy()
+            scale = 1 / self.plan_big.tmp_R.size
+            self.plan_min.tmp_Q[:] = 0
+            self.plan_min.tmp_Q[0, :] = scale * \
+                self.plan_big.tmp_Q[big2min[0], big2min[1], big2min[2]]
 
+            self.plan_min.ifft()
+            vt_r = tmp_R[0].real.copy()
+
+        # Apply the potential
         for y, psit_yG in psit_nG.iter_by_band(psit_xG, out_nG):
             if len(y) == 0:
                 # This rank got no data
