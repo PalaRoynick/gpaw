@@ -397,7 +397,8 @@ class Matrix(XP):
                [-0.10050378,  1.00503782]])
         """
         S = self.gather()
-        if S is not None:
+        # Skip an empty array (fails for SciPy < 1.14)
+        if S is not None and S.data.size > 0:
             if isinstance(S.data, np.ndarray):
                 if debug:
                     S.data[np.triu_indices(S.shape[0], 1)] = 42.0
@@ -691,6 +692,10 @@ class MatrixDistribution:
                     eigs: np.ndarray,
                     cc: bool = False,
                     limit: int | None = None) -> None:
+        # Skip an empty array (fails for SciPy < 1.14)
+        if H.data.size == 0:
+            return
+
         if cc and np.issubdtype(H.dtype, np.complexfloating):
             np.negative(H.data.imag, H.data.imag)
         if debug:
