@@ -719,6 +719,8 @@ class UGArray(XArray[UGDesc]):
             if grid is None:
                 raise ValueError('Please specify "grid" or "out".')
             out = grid.empty(self.dims, xp=self.xp)
+        if grid is None:
+            grid = out.desc
 
         if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
             raise ValueError('Grids must have zerobc=False!')
@@ -731,6 +733,10 @@ class UGArray(XArray[UGDesc]):
                 out.scatter_from(output.data)
             else:
                 out.scatter_from()
+            return out
+
+        if grid.myshape == self.desc.myshape:
+            out.data[:] = self.data
             return out
 
         is_real = np.issubdtype(self.desc.dtype, np.floating)

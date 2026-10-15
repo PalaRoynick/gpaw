@@ -24,7 +24,7 @@ class PWHamiltonian(Hamiltonian):
         self.blocksize = 2 if xp is np else 8
         self.grid = grid
         self.grid_local = grid.new(comm=None, dtype=dtype)
-        ecut = max(2 * min(ecut, 340 / Ha), ecut)
+        ecut = max(2 * min(ecut, 340 / Ha), 1.2 * ecut)
         max_h = cutoff2gridspacing(ecut * Ha) / Bohr
         cell_cv = self.grid_local.cell_cv
         mode = SimpleNamespace(name='pw')
