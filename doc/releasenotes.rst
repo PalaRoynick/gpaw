@@ -33,6 +33,18 @@ Git master branch
 * GPAW will now default to using mpi4py for MPI handling, when
   available. The cgpaw wrappers are used as a fallback.
 
+* New flourine PAW potential added to our :ref:`setup releases`.
+  It should be as accurate as the old one but will converge faster with
+  number of plane-waves.  The old potential is still the default, but
+  it is recommended that the new one is used for production calculations.
+  You can use it by specifying
+  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
+  It has been generated with the following command::
+
+    $ gpaw dataset F -fPBE -w -t v2 -b
+
+  There is also an LDA version of the potential.
+
 * Implicit solvation calculations should now be used through the new interface,
   as extensions: ``GPAW(..., extensions=[Solvation(...)])``. The legacy
   interface is still available via ``gpaw.old.solvation``; in particular, the
@@ -51,18 +63,6 @@ Git master branch
   :ref:`solvation dipole documentation<solvation_dipole>`
   for examples and options.
 
-* New flourine PAW potential added to our :ref:`setup releases`.
-  It should be as accurate as the old one but will converge faster with
-  number of plane-waves.  The old potential is still the default, but
-  it is recommended that the new one is used for production calculations.
-  You can use it by specifying
-  ``setups={'F': 'v2'}`` (see also :ref:`manual_setups`).
-  It has been generated with the following command::
-
-    $ gpaw dataset F -fPBE -w -t v2 -b
-
-  There is also an LDA version of the potential.
-
 * The solvated jellium method (``gpaw.extensions.electrochemistry.SJM``) has been ported
   to the :ref:`newgpaw` architecture. Other than before it is now used as an
   extension to the GPAW calculator, and not as a separate calculator, as
@@ -80,32 +80,6 @@ Git master branch
   * ``pot_ref``, ``cip``, ``dirichlet`` and ``fdt`` have no equivalent yet,
     so constant inner potential (CIP) calculations still need the legacy
     ``gpaw.solvation.sjm.SJM`` calculator.
-
-* The potential control itself has been split out of SJM into a new
-  ``gpaw.extensions.electrochemistry.Potentiostat`` class, which holds a
-  target electrode potential by adjusting an excess charge.  It owns the
-  settings ``always_adjust`` and ``grand_output`` and the state of the
-  equilibration, and it composes three pluggable parts: a *charging scheme*
-  (how the counter charge is put into the cell; a jellium slab for SJM), a
-  *potential probe* (how the potential is read off the converged SCF state;
-  the topside work function for SJM) and an *optimizer* (how the charge is
-  stepped toward the target; by default a regression of the
-  potential-versus-charge slope over the last ``slope_regression_depth``
-  attempts, damped with the previous estimate by ``mixer``).  The
-  optimizer also holds the ``target_potential``, decides when the
-  potential is converged (within ``tol``, by default) and sets the limits
-  of the equilibration: ``max_iters``, ``max_reruns`` and
-  ``max_potential_stepsize``.  SJM is now only a front end for it, which
-  pairs it with the implicit solvent:
-  ``sjm.potentiostat.optimizer.target_potential`` and the rest are the
-  settings of the potentiostat and its parts.
-  The potentiostat also finishes a converged calculation: the Legendre
-  transform to the grand potential and the results.  A different
-  constant-potential method can reuse the potentiostat with other parts,
-  and SJM takes a ``Solvation``, a ``Potentiostat`` or any of the three
-  parts of your own---subclasses of ``ChargingScheme``,
-  ``PotentialOptimizer`` and ``PotentialProbe``, given under the
-  ``charging``, ``optimizer`` and ``potentialprobe`` keys.
 
 * PW-mode calculations parallelized over spin, k-points and/or bands can
   now distribute the density to all cores for netter parallelization of
