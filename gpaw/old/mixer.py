@@ -1145,6 +1145,10 @@ class FullSpinMixerDriver:
         if nspins == 1:
             raise ValueError('Full-spin mixer expects 2 or 4 spin channels')
 
+        if 'name' in self.kwargs:
+            # Forwards compatibility
+            self.kwargs.pop('name')
+
         basemixer = self.basemixerclass(**self.kwargs)
         return [basemixer]
 

@@ -122,11 +122,8 @@ class PWDFTComponentsBuilder(PWFDDFTComponentsBuilder):
         return self._tauct_ag
 
     def create_poisson_solver(self, extensions):
-        try:
-            ps = super().create_poisson_solver(extensions)
-        except NotImplementedError:
-            pass
-        else:
+        ps = super().create_poisson_solver(extensions)
+        if ps is not None:
             return SlowPAWPoissonSolver(
                 self.interpolation_desc,
                 self.setups,

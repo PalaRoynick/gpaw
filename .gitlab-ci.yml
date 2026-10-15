@@ -369,14 +369,16 @@ prepare-libxc:
   script:
     - git clone -b 7.1.2 https://gitlab.com/libxc/libxc.git
     - cd libxc
-    - autoreconf -i
     - >
-      ./configure --enable-shared --disable-static --disable-fortran --prefix=$PREFIX
-      --disable-kxc
-      --disable-lxc
-      # Enable kxc, lxc, ... derivatives only if needed (affects compilation time)
-    - make | tee ../libxc-build.log
-    - make install
+      cmake -B build -S .
+      -DCMAKE_INSTALL_PREFIX=$PREFIX
+      -DCMAKE_INSTALL_LIBDIR=lib
+      -DBUILD_SHARED_LIBS=ON
+      -DENABLE_FORTRAN=OFF
+      -DMAXORDER=2
+      -DBUILD_TESTING=OFF
+    - cmake --build build | tee ../libxc-build.log
+    - cmake --install build
   when: manual
   artifacts:
     paths:

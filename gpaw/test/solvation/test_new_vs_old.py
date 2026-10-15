@@ -9,8 +9,9 @@ import pytest
 from ase.build import molecule
 from ase.units import Hartree, Pascal, m
 
-from gpaw import PW
-from gpaw.solvation import (KB51Volume, SolvationGPAW, SurfaceInteraction,
+from gpaw import GPAW, PW
+from gpaw.old.solvation import SolvationGPAW
+from gpaw.solvation import (KB51Volume, Solvation, SurfaceInteraction,
                             VolumeInteraction, get_HW14_water_kwargs)
 from gpaw.utilities.adjust_cell import adjust_cell
 
@@ -25,17 +26,18 @@ def make_atoms():
 
 
 def make_calc(mode, legacy, txt, interactions=None,):
-    kwargs = dict(legacy_gpaw=legacy, xc='LDA', symmetry='off', txt=txt,
-                  **get_HW14_water_kwargs())
-    kwargs['interactions'] = interactions or []
-    kwargs['cavity'].volume_calculator = KB51Volume()
-    if not legacy:
-        kwargs['experimental'] = {'backwards_compatible': False}
+    solvation = get_HW14_water_kwargs()
+    solvation['interactions'] = interactions or []
+    solvation['cavity'].volume_calculator = KB51Volume()
+    kwargs = dict(xc='LDA', symmetry='off', txt=txt)
     if mode == 'pw':
         kwargs.update(mode=PW(400.))
     else:
         kwargs.update(dict(mode='fd', h=H))
-    return SolvationGPAW(**kwargs)
+    if legacy:
+        return SolvationGPAW(**kwargs, **solvation)
+    return GPAW(**kwargs, extensions=[Solvation(**solvation)],
+                experimental={'backwards_compatible': False})
 
 
 def get_interaction_energies(calc, legacy):

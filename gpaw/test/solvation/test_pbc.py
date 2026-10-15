@@ -2,9 +2,9 @@ import warnings
 
 from ase.build import molecule
 
+from gpaw.old.solvation import ADM12PoissonSolver, SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, LinearDielectric,
-                            Power12Potential, SolvationGPAW)
-from gpaw.solvation.poisson import ADM12PoissonSolver
+                            Power12Potential)
 from gpaw.utilities.adjust_cell import adjust_cell
 
 h = 0.3

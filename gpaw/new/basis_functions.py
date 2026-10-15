@@ -179,6 +179,8 @@ class BasisFunctionInstance:
     """Phi metadata"""
     spline_index: int
     first_mu: int
+    """Starting global mu index for this instance.
+    Spans [first_mu, first_mu + 2*l+1) indices."""
     position: np.ndarray
     """Real-space position"""
     cell_coords: np.ndarray
@@ -296,7 +298,7 @@ class GeometryHelpers:
         self.num_blocks_c = num_blocks_c
         """Number of blocks in this MPI domain in each grid direction."""
 
-        # Compute grid domain AABB
+        # Compute grid domain AABB (Axis-Aligned Bounding Box)
         aabb_corners_c = np.array(list(itertools.product([0, 1], repeat=3)))
         span_c = self.grid.end_c - self.grid.start_c
         domain_aabb_corners_ic = (
@@ -666,9 +668,42 @@ class BasisFunctionCollectionBase(ABC):
 
     @abstractmethod
     def construct_density(self,
-                          rho_MM,
+                          rho_MM: np.ndarray | cp.ndarray,
                           nt_G: np.ndarray | cp.ndarray,
                           q):
+        """Calculate electron density from density matrix.
+        ::
+
+          ~        --      *
+          n(r) +=  >    Phi (r) rho     Phi (r)
+                   --     M1       M1M2   M2
+                  M1,M2
+
+        rho_MM: ndarray
+            The density matrix as a 2D Numpy or Cupy array. The full matrix
+            should be symmetric. See notes below for row distribution.
+
+        nt_G: ndarray
+            Pseudo electron density. Modified in-place.
+        q: int
+            The k-point index.
+            Use k = -1 for Gamma-point calculations (no phase factors).
+
+        Notes
+        -----
+        With row distribution (set_matrix_distribution called with
+        Mstart/Mstop): rho_MM should have shape (Mstop - Mstart, Mmax) and
+        contains only the rows [Mstart, Mstop) of the full matrix.
+        Each MPI rank then computes a partial contribution
+
+            n = sum_{M1 in [Mstart,Mstop), M2} Phi_M1(r) rho_M1M2 Phi_M2(r)
+
+        and the caller is responsible for summing n_rank across all ranks
+        to recover the full density.
+
+        NB: per-rank results may not be directly portable across
+        implementations, only the reduced result is guaranteed to match.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -734,7 +769,8 @@ class BasisFunctionCollectionBase(ABC):
             atom_idx: int) -> list[BasisFunctionInstance]:
         """Returns list of current basis function instances originating from
         given atom. Only includes basis funcs that overlap with the current
-        grid domain."""
+        grid domain.
+        This is cheap to call and does not incur data copying."""
         return self.phi_instances_ai[atom_idx]
 
     def get_nonempty_blocks(self) -> list[BlockCoords]:

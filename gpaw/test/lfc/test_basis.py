@@ -1,53 +1,21 @@
-import copy
-from collections import namedtuple
-from typing import cast
+from gpaw.core import UGArray, UGDesc
+from gpaw.lfc import BasisFunctions
+from gpaw.new.basis_functions import (
+    BasisFunctionDesc, BasisFunctionCollectionBase, LFCSystemDesc)
+
+from gpaw.new.basis_functions_purepython \
+    import BasisFunctionCollectionPurePython
+from gpaw.spline import Spline
+from gpaw.gpu import as_np, cupy as cp, cupy_is_fake
+from gpaw import GPAW_NO_C_EXTENSION
+from gpaw.mpi import world, MPIComm
 
 import numpy as np
 import pytest
-
-from gpaw.core import UGArray, UGDesc
-from gpaw.gpu import as_np
-from gpaw.lfc import BasisFunctions
-# from gpaw import GPAW_NO_C_EXTENSION
-from gpaw.mpi import MPIComm, world
-from gpaw.new.basis_functions import (BasisFunctionCollectionBase,
-                                      BasisFunctionDesc, LFCSystemDesc)
-from gpaw.new.basis_functions_purepython import \
-    BasisFunctionCollectionPurePython
-from gpaw.spline import Spline
-
-
-def xp_params_no_cpupy():
-    """Use as @pytest.mark.parametrize("xp", xp_params_no_cpupy())
-    to run both xp=np and xp=cp cases, but skipping fake Cupy.
-    """
-    # return [
-    #     pytest.param(np, id="numpy"),
-    #     pytest.param(
-    #         cp,
-    #         id="cupy",
-    #         marks=[
-    #             pytest.mark.gpu,
-    #             pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
-    #         ],
-    #     ),
-    # ]
-    # WIP: doesn't work with Cupy ATM
-    return [pytest.param(np, id="numpy")]
-
-
-def parametrize_purepython():
-    """Use as @pytest.mark.parametrize("purepython", parametrize_purepython())
-    to run both purepython and non-purepython versions, skipping the latter if
-    not available.
-    """
-    return [True]
-    # return [True,
-    #         pytest.param(
-    #             False,
-    #             marks=[pytest.mark.skipif(GPAW_NO_C_EXTENSION,
-    #                                       reason="No C extension")]
-    #         )]
+import copy
+import dataclasses
+from collections import namedtuple
+from typing import cast
 
 
 def make_random_phi(
@@ -114,12 +82,36 @@ def fixt_bc(request) -> BoundaryConds:
 
 
 @pytest.fixture(scope="module", params=[
-    pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
+    # pytest.param(None, id="NoBlocking", marks=pytest.mark.slow),
     pytest.param(8, id="Block8"),
     pytest.param([5, 6, 7], id="Block567")
 ])
 def fixt_block_size(request) -> int | tuple[int, int, int] | None:
-    """"""
+    """Currently the GPU implementation couples Python-side blocking
+    with kernel-side blocking, so there's a hard limit on max allowed block
+    size.
+    FIXME: decouple these. Until then, run tests only with small blocks."""
+    return request.param
+
+
+# Generate "implementation" fixture: combines [np, cp] and a purepython flag
+ImplDesc = namedtuple("ImplDesc", ["xp", "purepython"])
+
+
+@pytest.fixture(scope="module", params=[
+    pytest.param(ImplDesc(xp=np, purepython=True), id="numpy-purepython"),
+    pytest.param(
+        ImplDesc(xp=cp, purepython=False),
+        id="cupy-cpp",
+        marks=[
+            pytest.mark.gpu,
+            pytest.mark.skipif(cupy_is_fake, reason="Fake Cupy"),
+            pytest.mark.skipif(GPAW_NO_C_EXTENSION, reason="No C extension"),
+        ]
+    ),
+])
+def fixt_impl(request) -> ImplDesc:
+    """Valid (xp, purepython) implementation combinations."""
     return request.param
 
 
@@ -208,25 +200,20 @@ def make_basis(system: LFCSystemDesc,
             use_gpu=(xp is not np),
             block_size=block_size)
     else:
-        raise NotImplementedError("WIP")
-        # from gpaw.new.basis_functions_cpp import BasisFunctionCollection
-        # basis = BasisFunctionCollection(
-        #     system,
-        #     use_gpu = (xp is not np),
-        #     block_size=block_size
-        # )
+        from gpaw.new.basis_functions_cpp import BasisFunctionCollection
+        basis = BasisFunctionCollection(
+            system,
+            use_gpu=(xp is not np),
+            block_size=block_size
+        )
 
     return basis
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
-def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
+def test_basis_creation(fixt_lfc_system: LFCSystemDesc, fixt_impl: ImplDesc,
                         fixt_block_size):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
@@ -256,13 +243,16 @@ def test_basis_creation(fixt_lfc_system: LFCSystemDesc, xp, purepython: bool,
 
 
 @pytest.mark.skipif(world.size > 1, reason="TODO, probably")
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
+def test_no_blocking(fixt_lfc_system: LFCSystemDesc):
     """Tests that blocking = None makes sense. Useful because under the
-    hood the same blocking logic is still ran but with block_size == grid_size
+    hood the same blocking logic is still ran but with
+    block_size == grid_size.
+
+    This only runs on Numpy because the Cupy version uses CPU for the blocking
+    logic anyway.
     """
 
-    basis = make_basis(fixt_lfc_system, xp, purepython=True, block_size=None)
+    basis = make_basis(fixt_lfc_system, np, purepython=True, block_size=None)
     block_to_phi = basis.get_block_to_phi_map()
 
     # Should have only the (0, 0, 0) block
@@ -289,20 +279,16 @@ def test_no_blocking(fixt_lfc_system: LFCSystemDesc, xp):
     # duplicates. But that is done in test_basis_creation()
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
-@pytest.mark.parametrize("row_range", [None, range(1, 4), range(0, 100000)])
+@pytest.mark.parametrize("row_range", [pytest.param(None, id="NoRowDist"),
+                                       range(1, 4), range(0, 100000)])
 def test_potential_matrix(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     fixt_block_size,
     row_range: range | None
 ):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
@@ -335,49 +321,165 @@ def test_potential_matrix(
     V_MN_ref = xp.zeros(out_shape)
     basis_old.calculate_potential_matrix(vt_G.data, V_MN_ref, 0)
 
-    """Old code does include some elements in the upper matrix triangle,
-    I guess this is done to avoid complex branching.
-    Remove them here, while accounting for possible row distribution in which
-    case we need to carefully pick which "diagonal" to use in xp.tril(...)
-    """
+    # Old code does include some elements in the upper matrix triangle,
+    # I guess this is done to avoid complex branching.
+    # Remove them here, while accounting for possible row distribution in which
+    # case we need to carefully pick which "diagonal" to use in xp.tril(...)
     diagonal = 0 if row_range is None else row_range.start
     V_MN_ref = xp.tril(V_MN_ref, k=diagonal)
 
-    xp.testing.assert_allclose(V_MN,
-                               V_MN_ref,
-                               rtol=1e-10,
-                               atol=1e-12)
+    # Gotta be a bit careful with tolerances here. The GPU implementation uses
+    # atomicAdd when writing to V_MN which accumulates float errors due to
+    # the order of writes being nondeterministic. Error from one addition is
+    # ~1e-16 for 64bit floats but we are doing tons of them (many GPU threads),
+    # so the error accumulates. For example, with rtol=1e-10, atol=1e-12 and
+    # blocks smaller than 8x8x8 (more blocks => more partial-sum atomics),
+    # I confirmed that the following comparison tends to fail with just one
+    # element having a very slight discrepancy. Furthermore, the failing
+    # element was always in the first column of V_MN, which makes sense since
+    # the loop in kernel has condition mu >= nu, ie. the first column nu=0
+    # always qualifies and gets more atomic adds than the others. Therefore
+    # float errors tend to accumulate in the first column(s).
+    #
+    # TLDR: we are using somewhat relaxed tolerances because the kernel
+    # accumulates floating-point associtativity errors due to many atomicAdds
+    rtol = 1e-9
+    atol = 1e-11
+
+    xp.testing.assert_allclose(V_MN, V_MN_ref, rtol=rtol, atol=atol)
 
     # Test also using the optional 'out' argument
     V_MN_out = xp.empty_like(V_MN)
     dummy_out = basis.calculate_potential_matrix(vt_G.data, out=V_MN_out)
     assert dummy_out is V_MN_out
 
-    xp.testing.assert_allclose(V_MN,
-                               V_MN_out,
-                               rtol=1e-10,
-                               atol=1e-12)
+    xp.testing.assert_allclose(V_MN, V_MN_out, rtol=rtol, atol=atol)
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
+def test_construct_density(
+    fixt_lfc_system: LFCSystemDesc,
+    fixt_impl: ImplDesc,
+    fixt_block_size,
+):
+    """Checks that new fimplementation of construct_density gives the same
+    result as the old impl. Does not test with row-distributed matrix
+    because its not clear from the old implementation how the per-rank results
+    should be compared.
+
+    See test_construct_density_distributed for a row-distributed version."""
+    xp, purepython = fixt_impl
+    system = fixt_lfc_system
+    basis = make_basis(system, xp, purepython, fixt_block_size)
+
+    # Starting electron density
+    nt_G = xp.empty(system.grid.mysize_c)
+    nt_G[:] = 0.5
+    nt_G_ref = as_np(nt_G.copy())
+
+    # Density matrix, must be symmetric (hardcoded assumption in old code)
+    rng = xp.random.default_rng(444)
+    rho_MM = rng.random((basis.Mmax, basis.Mmax))
+    rho_MM = rho_MM + rho_MM.T
+
+    basis_old = make_legacy_basis_functions(basis, xp=np)
+
+    q = 0  # ?????
+
+    basis.construct_density(rho_MM, nt_G, q)
+
+    # Repeat with old code and compare
+    basis_old.construct_density(rho_MM, nt_G_ref, q)
+    xp.testing.assert_allclose(as_np(nt_G), nt_G_ref, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.skipif(world.size < 2, reason="Need multiple MPI tasks")
+def test_construct_density_distributed(
+    fixt_lfc_system: LFCSystemDesc,
+    fixt_impl: ImplDesc,
+    fixt_block_size
+):
+    """Tests row-distributed construct_density. This will assign half of the
+    available ranks for row distribution and the remaining ranks for domain
+    distribution.
+    After computing partial nt_G, row_comm
+    allreduces the contributions from all row slices. The totals from new and
+    old implementations must agree; per-rank partials may differ.
+    """
+    xp, purepython = fixt_impl
+    system = fixt_lfc_system
+
+    num_row_ranks = max(2, world.size // 2)
+    num_domain_ranks = world.size // num_row_ranks
+    # Distribute so that world.rank == domain_rank * num_row_ranks + row_rank
+
+    # row_comm: ranks that share the same grid domain
+    row_comm = None
+    for d in range(num_domain_ranks):
+        c = world.new_communicator(
+            [d * num_row_ranks + r for r in range(num_row_ranks)])
+        if c is not None:
+            row_comm = c
+
+    grid_comm = None
+    for r in range(num_row_ranks):
+        c = world.new_communicator(
+            [d * num_row_ranks + r for d in range(num_domain_ranks)])
+        if c is not None:
+            grid_comm = c
+
+    assert row_comm is not None and grid_comm is not None
+
+    grid_system = dataclasses.replace(system,
+                                      grid=system.grid.new(comm=grid_comm))
+
+    basis = make_basis(grid_system, xp, purepython, fixt_block_size)
+    basis_old = make_legacy_basis_functions(basis, xp=np)
+
+    Mmax = basis.Mmax
+    chunk = (Mmax + row_comm.size - 1) // row_comm.size
+    my_start = min(row_comm.rank * chunk, Mmax)
+    my_stop = min(my_start + chunk, Mmax)
+
+    basis.set_matrix_distribution(my_start, my_stop)
+    basis_old.set_matrix_distribution(my_start, my_stop)
+
+    # all ranks generate the same rho, then slice it according to the row dist
+    rng = xp.random.default_rng(444)
+    rho_full = rng.random((Mmax, Mmax))
+    rho_full = rho_full + rho_full.T
+    rho_slice = xp.ascontiguousarray(rho_full[my_start:my_stop])
+
+    nt_new = xp.ones(grid_system.grid.mysize_c)
+    nt_old = xp.ones(grid_system.grid.mysize_c)
+
+    q = 0  # ???
+
+    basis.construct_density(rho_slice, nt_new, q)
+    basis_old.construct_density(rho_slice, nt_old, q)
+
+    row_comm.sum(nt_new)
+    row_comm.sum(nt_old)
+
+    # Seems somewhat sensitive to tolenraces. Similar case as in
+    # pot_matrix tests above? On LUMI GPUs this passed even with
+    # rtol 1e-10, atol 1e-12 but CI runner A100 failed one element
+    rtol = 1e-9
+    atol = 1e-9
+    xp.testing.assert_allclose(nt_new, nt_old, rtol=rtol, atol=atol)
+
+
 @pytest.mark.parametrize("num_spins", [1, 2])
 def test_add_to_density(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     num_spins: int,
     fixt_block_size
 ):
     """"""
-
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
     # Matrix distribution does not matter here.
-    # TODO separate test that it indeed does not matter?
 
     # Test density
     rng = xp.random.default_rng(432)
@@ -405,21 +507,16 @@ def test_add_to_density(
     xp.testing.assert_allclose(nt_sG, nt_sG_ref, rtol=1e-10, atol=1e-12)
 
 
-@pytest.mark.parametrize("xp", xp_params_no_cpupy())
-@pytest.mark.parametrize("purepython", parametrize_purepython())
 @pytest.mark.parametrize("num_spins", [1, 2])
 @pytest.mark.skipif(world.size < 2, reason="Not enough MPI ranks")
 def test_domain_decomposition(
     fixt_lfc_system: LFCSystemDesc,
-    xp,
-    purepython: bool,
+    fixt_impl: ImplDesc,
     num_spins: int,
     fixt_block_size
 ):
     """"""
-    if not purepython and xp is np:
-        pytest.skip(reason="CPU + C++ is WIP")
-
+    xp, purepython = fixt_impl
     system = fixt_lfc_system
     basis = make_basis(system, xp, purepython, fixt_block_size)
 
