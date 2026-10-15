@@ -45,12 +45,8 @@ PyObject * FFTWPlan(PyObject *self, PyObject *args)
     int ostride = 1;
     if (ndim != 3) {
         howmany = (int)PyArray_DIMS(in_obj)[0];
-        idist = 1;
-        odist = 1;
-        for (int i=0; i < 3; i++) {
-            idist *= dims_in[i];
-            odist *= dims_out[i];
-        }
+        idist = (int)(PyArray_STRIDES(in_obj)[0] / PyArray_ITEMSIZE(in_obj));
+        odist = (int)(PyArray_STRIDES(out_obj)[0] / PyArray_ITEMSIZE(out_obj));
     }
 
 

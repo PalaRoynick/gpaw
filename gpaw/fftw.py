@@ -160,6 +160,7 @@ class FFTPlans:
         if coef_nG is None:
             out_nR.scatter_from(None)
             return
+        self.tmp_Q[:] = 0
         if self.blocksize > 1:
             blocksize = coef_nG.shape[0]
             assert self.blocksize >= blocksize
@@ -295,8 +296,8 @@ class CuPyFFTPlans(FFTPlans):
                     norm='forward',
                     overwrite_x=True)
         else:
-            self.tmp_nR[:] = cupyx.scipy.fft.ifftn(
-                self.tmp_nQ, self.tmp_nR.shape[-3:],
+            self.tmp_R[:] = cupyx.scipy.fft.ifftn(
+                self.tmp_Q, self.tmp_R.shape[-3:],
                 norm='forward',
                 overwrite_x=True)
 
