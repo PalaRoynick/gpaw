@@ -58,6 +58,11 @@ devel = [
     'pytest-xdist',
 ]
 
+cppdevel = [
+    'clang-tidy>=22',
+    'compiledb>=0.10.7',  # compiledb can generate compile_commands.json for clang-tidy from our Makefiles
+]
+
 [project.urls]
 Homepage = 'https://gpaw.readthedocs.io/'
 Repository = 'https://gitlab.com/gpaw/gpaw.git'

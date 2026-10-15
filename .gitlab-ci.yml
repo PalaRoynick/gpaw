@@ -220,11 +220,71 @@ build-cuda-makefile:
     # Get mypy for stubgen, and other deps that we're missing (pip doesn't get them for us with --no-build-isolation)
     - pip install --user mypy pybind11
     - pip install --user --upgrade setuptools packaging
-    - pip install -v --user --log build.log --editable . --no-build-isolation
+    - pip install -v --user --log build.log --editable ".[cppdevel]" --no-build-isolation
   cache:
     key: cache-build-cuda
     paths:
      - $PIP_CACHE_DIR
+  artifacts:
+    when: always
+    paths:
+      - $PYTHONUSERBASE
+      - gpaw.egg-info
+      - _gpaw.*.so
+      - "*.log"
+      - Makefile
+    expire_in: 30 mins
+
+
+# Runs clang-tidy on diffs for files under c/.
+# On branch pushes without an open MR, it diffs against the merge-base with the default branch.
+# For branches with open MRs, it instead diffs agains the MR base SHA
+clang-tidy-diff-cuda:
+  stage: build
+  image: $IMAGE_CUDA
+  needs:
+    - build-cuda-makefile
+  allow_failure: true
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - changes:
+        - c/**/*
+        - .clang-tidy
+        - .clang-tidy-configs/**/*
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        BASE_SHA="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        git fetch origin "$CI_DEFAULT_BRANCH"
+        BASE_SHA=$(git merge-base "origin/$CI_DEFAULT_BRANCH" HEAD)
+      fi
+    - compiledb --no-build make -B -f Makefile
+    - >
+      git diff -U0 --no-color "$BASE_SHA" HEAD
+      | clang-tidy-diff.py -p1 -path . -config-file=.clang-tidy-configs/cuda.yml
+
+
+# Run full clang-tidy on any MR commit that changes files under c/
+clang-tidy-full-cuda:
+  stage: build
+  image: $IMAGE_CUDA
+  needs:
+    - build-cuda-makefile
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - c/**/*
+        - .clang-tidy
+        - .clang-tidy-configs/**/*
+      # Provide a manual trigger for all pipelines
+    - when: manual
+  script:
+    - compiledb --no-build make -B -f Makefile
+    - run-clang-tidy.py -p . -config-file=.clang-tidy-configs/cuda.yml
 
 
 build-minimal:
