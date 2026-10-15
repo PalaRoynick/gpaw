@@ -9,17 +9,19 @@ from gpaw.old.pw.descriptor import PWDescriptor
 
 class SingleQPWDescriptor(PWDescriptor):
     @staticmethod
-    def from_q(q_c, ecut, gd, gammacentered=False):
+    def from_q(q_c, ecut, gd, blocksize=1, gammacentered=False):
         """Construct a plane wave descriptor for q_c with a given cutoff."""
         qd = KPointDescriptor([q_c])
         if not isinstance(ecut, dict):
             return SingleQPWDescriptor(ecut, gd, complex, qd,
-                                       gammacentered=gammacentered)
+                                       gammacentered=gammacentered,
+                                       blocksize=blocksize)
         elif ecut['class'] is SingleCylQPWDescriptor:
             return SingleCylQPWDescriptor(gd=gd,
                                           kd=qd,
                                           gammacentered=gammacentered,
                                           dtype=complex,
+                                          blocksize=blocksize
                                           **ecut['kwargs'])
         else:
             raise NotImplementedError(
@@ -36,7 +38,7 @@ class SingleQPWDescriptor(PWDescriptor):
     def copy(self):
         return self.copy_with()
 
-    def copy_with(self, ecut=None, gd=None, gammacentered=None):
+    def copy_with(self, ecut=None, gd=None, gammacentered=None, blocksize=1):
         if ecut is None:
             ecut = self.ecut
         if gd is None:
@@ -45,12 +47,14 @@ class SingleQPWDescriptor(PWDescriptor):
             gammacentered = self.gammacentered
 
         return SingleQPWDescriptor.from_q(
-            self.q_c, ecut, gd, gammacentered=gammacentered)
+            self.q_c, ecut, gd, gammacentered=gammacentered,
+            blocksize=blocksize)
 
 
 class SingleCylQPWDescriptor(SingleQPWDescriptor):
     def __init__(self, ecut_xy, ecut_z, gd, dtype=None, kd=None,
-                 fftwflags=fftw.MEASURE, gammacentered=False):
+                 fftwflags=fftw.MEASURE, gammacentered=False,
+                 blocksize=1):
 
         ecut0 = 0.5 * pi**2 / (gd.h_cv**2).sum(1).max()
         if ecut_xy is None:
@@ -67,7 +71,8 @@ class SingleCylQPWDescriptor(SingleQPWDescriptor):
         self.ecut_xy = ecut_xy
 
         super().__init__(ecut_xy, gd, dtype, kd,
-                         fftwflags, gammacentered)
+                         fftwflags, gammacentered,
+                         blocksize=blocksize)
 
     def setup_pw_grid(self, i_Qc, Q_Q):
         ng_q = []

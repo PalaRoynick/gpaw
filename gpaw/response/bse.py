@@ -64,7 +64,7 @@ class BSEMatrix:
         comm.broadcast(w_T, 0)
         return w_T, v_ST, exclude_S
 
-    def diagonalize_tammdancoff(self, bse, deps_max=None, elpa=False):
+    def diagonalize_tammdancoff(self, bse, deps_max=None, elpa=True):
         if deps_max is None:
             deps_max = self.deps_max
         exclude_S = np.where(np.abs(self.deps_S) > deps_max)[0]
@@ -671,6 +671,13 @@ class BSEBackend:
             self.context.timer.start('Compute W_GG')
             W_GG, pawcorr_q, qpd_q = \
                 self._compute_screened_potential_for_q(q_c)
+            if self.add_soc:
+                bsize = self.spinors_data.nf - self.spinors_data.ni
+                qpd_qv = qpd_q.copy_with(blocksize = bsize)
+                qpd_qc = qpd_qv
+            else:
+                qpd_qv = qpd_q.copy_with(blocksize = self.nv)
+                qpd_qc = qpd_q.copy_with(blocksize = self.nc)
             self.context.timer.stop('Compute W_GG')
 
             # Process all BZ q-points that map to this IBZ q-point
@@ -691,21 +698,21 @@ class BSEBackend:
 
                     rho3_nnG, _, sign = self.get_density_matrix(
                         pair_calc, kptv1_s[0], kptv2_s[0],
-                        pawcorr0=pawcorr_q, qpd=qpd_q)
+                        pawcorr0=pawcorr_q, qpd=qpd_qv)
 
                     rho4_nnG, _, _sign4 = self.get_density_matrix(
                         pair_calc, kptc1_s[0], kptc2_s[0],
-                        pawcorr0=pawcorr_q, qpd=qpd_q)
+                        pawcorr0=pawcorr_q, qpd=qpd_qc)
                     assert sign == _sign4
 
                     if self.nspins == 2:
                         rho3s1_nnG, _, _sign3 = self.get_density_matrix(
                             pair_calc, kptv1_s[1], kptv2_s[1],
-                            pawcorr0=pawcorr_q, qpd=qpd_q)
+                            pawcorr0=pawcorr_q, qpd=qpd_qv)
 
                         rho4s1_nnG, _, _sign4 = self.get_density_matrix(
                             pair_calc, kptc1_s[1], kptc2_s[1],
-                            pawcorr0=pawcorr_q, qpd=qpd_q)
+                            pawcorr0=pawcorr_q, qpd=qpd_qc)
                         assert sign == _sign3
                         assert sign == _sign4
                     else:

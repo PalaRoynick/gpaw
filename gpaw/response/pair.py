@@ -239,13 +239,24 @@ class ActualPairDensityCalculator:
             Mapping from flattened 3-d FFT grid to 0.5(G+q)^2<ecut sphere.
         """
         dv = qpd.gd.dv
-        n_mG = qpd.empty(kpt2.blocksize)
         myblocksize = kpt2.nb - kpt2.na
+        qpdblocksize = qpd.blocksize
+        assert qpdblocksize == myblocksize or qpdblocksize == 1
 
-        for ut_R, n_G in zip(kpt2.ut_nR, n_mG):
-            n_R = ut1cc_R * ut_R
+        if qpdblocksize < myblocksize:
+            n_mG = qpd.empty(kpt2.blocksize)
+            for n_R, n_G in zip(kpt2.ut_nR, n_mG):
+                qpd.tmp_R[:] = n_R
+                qpd.tmp_R *= ut1cc_R
+                with self.context.timer('fft'):
+                    n_G[:] = qpd.fft(Q_G=Q_G)
+        else:
+            qpd.tmp_R[:] = kpt2.ut_nR
+            qpd.tmp_R *= ut1cc_R[None]
             with self.context.timer('fft'):
-                n_G[:] = qpd.fft(n_R, 0, Q_G) * dv
+                n_mG = np.ascontiguousarray(qpd.fft(Q_G=Q_G))
+        n_mG *= dv
+
         # PAW corrections:
         with self.context.timer('gemm'):
             for C1_Gi, P2_mi in zip(C1_aGi, kpt2.P_ani):
