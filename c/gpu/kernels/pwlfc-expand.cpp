@@ -901,35 +901,161 @@ __global__ void dH_aii_times_P_ani(Tindex nA, Tindex nn, Tindex nI,
 				      Tcomplex* P_ani_dev,
 				      Tcomplex* outP_ani_dev)
 {
-    Tindex n1 = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
-    if (n1 < nn) {
-	Treal* dH_ii = dH_aii_dev;
-	Tindex I = 0;
-	for (Tindex a=0; a< nA; a++)
-	{
-	    Tindex ni = ni_a[a];
-	    Tindex Istart = I;
-	    for (Tindex i=0; i< ni; i++)
+    Tindex I = (Tindex) threadIdx.x + (Tindex) blockIdx.y * (Tindex) blockDim.x;
+    Tindex n1 = (Tindex) threadIdx.y + (Tindex) blockIdx.x * (Tindex) blockDim.y;
+    __shared__ Tindex ni_block[64];
+    __shared__ Tindex Istart_block[64];
+    __shared__ Tindex dH_offset_block[64];
+#if defined(__HIP_PLATFORM_AMD__) && defined(__HIP_DEVICE_COMPILE__)
+    __shared__ double dH_first_block[8][64];
+    Tcomplex P_first0;
+    Tcomplex P_first1;
+    Tcomplex P_first2;
+    Tcomplex P_first3;
+    Tcomplex P_first4;
+    Tcomplex P_first5;
+    Tcomplex P_first6;
+    Tcomplex P_first7;
+    Treal dH_first0;
+    Treal dH_first1;
+#endif
+
+    if (threadIdx.y == 0) {
+	Tindex ni = 0;
+	Tindex Istart = 0;
+	Tindex dH_offset = 0;
+	if (I < nI) {
+	    for (Tindex a=0; a< nA; a++)
 	    {
-		Tcomplex* outP_ni = outP_ani_dev + n1 * nI + I;
-		Tcomplex result;
-		if  constexpr (std::is_same<Tcomplex, Treal>::value) {
-			result = 0.0;
-		} else {
-			result = {0.0, 0.0};
-		}
-		Tcomplex* P_ni = P_ani_dev + n1 * nI + Istart;
-		for (Tindex i2=0; i2 < ni; i2++)
+		Tindex ni_a_value = ni_a[a];
+		if (I < Istart + ni_a_value)
 		{
-		   result = result + *P_ni * dH_ii[i2 * ni + i];
-		   P_ni++;
+		    ni = ni_a_value;
+		    break;
 		}
-		*outP_ni = result;
-		//outP_ni->x = result.x;
-		//outP_ni->y = result.y;
-		I++;
+		Istart += ni_a_value;
+		dH_offset += ni_a_value * ni_a_value;
 	    }
-	    dH_ii += ni * ni;
+	}
+	ni_block[threadIdx.x] = ni;
+	Istart_block[threadIdx.x] = Istart;
+	dH_offset_block[threadIdx.x] = dH_offset + (I - Istart);
+    }
+    __syncthreads();
+
+#if defined(__HIP_PLATFORM_AMD__) && defined(__HIP_DEVICE_COMPILE__)
+    if constexpr (std::is_same<Tcomplex, gpuDoubleComplex>::value &&
+		  std::is_same<Treal, double>::value) {
+	Tindex ni = ni_block[threadIdx.x];
+	if (I < nI && ni >= 8) {
+	    Treal* dH_i = dH_aii_dev + dH_offset_block[threadIdx.x];
+	    Tindex i2 = (Tindex)threadIdx.y * 2;
+	    Tcomplex* P_ni;
+	    {
+		Treal dH_owned0 = dH_i[i2 * ni];
+		Treal dH_owned1 = dH_i[(i2 + 1) * ni];
+		if (threadIdx.y == 0) {
+		    dH_first0 = dH_owned0;
+		    dH_first1 = dH_owned1;
+		} else {
+		    dH_first0 = dH_i[0];
+		    dH_first1 = dH_i[ni];
+		}
+		if (n1 < nn) {
+		    P_ni = P_ani_dev + n1 * nI + Istart_block[threadIdx.x];
+		    P_first0 = P_ni[0];
+		    P_first1 = P_ni[1];
+		    P_first2 = P_ni[2];
+		    P_first3 = P_ni[3];
+		    P_first4 = P_ni[4];
+		    P_first5 = P_ni[5];
+		    if (threadIdx.y == 0) {
+			P_first6 = P_ni[6];
+			P_first7 = P_ni[7];
+		    }
+		}
+		dH_first_block[i2][threadIdx.x] = dH_owned0;
+		dH_first_block[i2 + 1][threadIdx.x] = dH_owned1;
+	    }
+	    if (n1 < nn && threadIdx.y != 0) {
+		P_first6 = P_ni[6];
+		P_first7 = P_ni[7];
+	    }
+	}
+	__syncthreads();
+    }
+#endif
+
+    if (I < nI && n1 < nn) {
+	Tindex ni = ni_block[threadIdx.x];
+	if (ni != 0) {
+	    Tindex Istart = Istart_block[threadIdx.x];
+	    Tcomplex result;
+	    if  constexpr (std::is_same<Tcomplex, Treal>::value) {
+		result = 0.0;
+	    } else {
+		result = {0.0, 0.0};
+	    }
+	    Tcomplex* P_ni = P_ani_dev + n1 * nI + Istart;
+	    Treal* dH_i = dH_aii_dev + dH_offset_block[threadIdx.x];
+	    Tindex i2 = 0;
+#if defined(__HIP_PLATFORM_AMD__) && defined(__HIP_DEVICE_COMPILE__)
+	    if constexpr (std::is_same<Tcomplex, gpuDoubleComplex>::value &&
+			  std::is_same<Treal, double>::value) {
+		if (ni >= 8) {
+		    Treal dH2 = dH_first_block[2][threadIdx.x];
+		    Treal dH3 = dH_first_block[3][threadIdx.x];
+		    Treal dH4 = dH_first_block[4][threadIdx.x];
+		    Treal dH5 = dH_first_block[5][threadIdx.x];
+		    Treal dH6 = dH_first_block[6][threadIdx.x];
+		    Treal dH7 = dH_first_block[7][threadIdx.x];
+		    result = result + P_first0 * dH_first0;
+		    result = result + P_first1 * dH_first1;
+		    result = result + P_first2 * dH2;
+		    result = result + P_first3 * dH3;
+		    result = result + P_first4 * dH4;
+		    result = result + P_first5 * dH5;
+		    result = result + P_first6 * dH6;
+		    result = result + P_first7 * dH7;
+		    P_ni += 8;
+		    dH_i += 8 * ni;
+		    i2 = 8;
+		}
+	    }
+#endif
+	    for (; i2 + 3 < ni; i2 += 4)
+	    {
+	       Tcomplex P0 = P_ni[0];
+	       Tcomplex P1 = P_ni[1];
+	       Tcomplex P2 = P_ni[2];
+	       Tcomplex P3 = P_ni[3];
+	       Treal dH0 = dH_i[0];
+	       Treal dH1 = dH_i[ni];
+	       Treal dH2 = dH_i[2 * ni];
+	       Treal dH3 = dH_i[3 * ni];
+	       result = result + P0 * dH0;
+	       result = result + P1 * dH1;
+	       result = result + P2 * dH2;
+	       result = result + P3 * dH3;
+	       P_ni += 4;
+	       dH_i += 4 * ni;
+	    }
+	    switch (ni - i2)
+	    {
+	    case 3:
+	       result = result + *P_ni * *dH_i;
+	       P_ni++;
+	       dH_i += ni;
+	       [[fallthrough]];
+	    case 2:
+	       result = result + *P_ni * *dH_i;
+	       P_ni++;
+	       dH_i += ni;
+	       [[fallthrough]];
+	    case 1:
+	       result = result + *P_ni * *dH_i;
+	    }
+	    outP_ani_dev[n1 * nI + I] = result;
 	}
     }
 }
@@ -1012,10 +1138,10 @@ void dH_aii_times_P_ani_launch_kernel(int dtypenum,
 					void* outP_ani_dev,
 					gpuStream_t stream)
 {
-    if (!nn) return;
+    if (!nn || !nI) return;
 
-	const dim3 blocks((nn+255)/256);
-	const dim3 threads(256);
+	const dim3 blocks((nn+3)/4, (nI+63)/64);
+	const dim3 threads(64, 4);
 	const int shmem = 0;
 
     if (dtypenum == NP_DOUBLE_COMPLEX)
