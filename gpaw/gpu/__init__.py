@@ -47,6 +47,7 @@ else:
         from cupy.cuda import runtime
         is_hip = runtime.is_hip
         cupy_is_fake = False
+
     except ImportError:
         cupy_is_fake = True
         is_hip = False
