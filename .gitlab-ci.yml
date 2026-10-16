@@ -5,7 +5,7 @@ variables:
   IMAGE_MAIN_OLDEST: "$IMAGE_PATH/main:oldest${DOCKERSUFFIX}"
   IMAGE_MAIN_LATEST: "$IMAGE_PATH/main:latest${DOCKERSUFFIX}"
   IMAGE_CUDA: "$IMAGE_PATH/cuda:11"
-  IMAGE_ROCM: "$IMAGE_PATH/rocm:7.2-staging"
+  IMAGE_ROCM: "registry.gitlab.com/niemilau/gpaw-ci-containers/rocm:7.2-bear-staging"
   OMP_NUM_THREADS: "1"
   # CI for branches inside the GPAW namespace will run on lyn/torden
   # because the GPAW project settings define the CI variable
@@ -314,11 +314,36 @@ build-rocm:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - pip install -v --user --log build.log --no-build-isolation --editable .
+    - bear --config bear.yml -- pip install -v --user --log build.log --no-build-isolation --editable .
   cache:
     key: cache-build-rocm
     paths:
      - $PIP_CACHE_DIR
+  artifacts:
+    when: always
+    paths:
+      - $PYTHONUSERBASE
+      - gpaw.egg-info
+      - _gpaw.*.so
+      - "*.log"
+      - compile_commands.json
+
+clang-tidy-full-rocm:
+  stage: build
+  image: $IMAGE_ROCM
+  needs:
+    - build-rocm
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - c/**/*
+        - .clang-tidy
+        - .clang-tidy-configs/**/*
+      # Provide a manual trigger for all pipelines
+    - when: manual
+  script:
+    - run-clang-tidy.py -p .
 
 
 build-minimal:
