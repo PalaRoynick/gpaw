@@ -616,8 +616,6 @@ class FixedOccupationNumbers(OccupationNumberCalculator):
 
         """
         super().__init__(parallel_layout)
-        # these are the initial occupation numbers, before
-        # sorting
         self.f_sn = np.array(numbers)
 
     def _calculate(self,
@@ -670,21 +668,12 @@ class ExcitedOccupations(FixedOccupationNumbers):
         assert not fix_fermi_level
 
         if not self.initialized:
-            # If MOM reference orbitals are not initialized yet (e.g. when
-            # the calculation is initialized from atomic densities), update
-            # the occupation numbers according to the user-supplied 'numbers'
             self.f_sn = self.numbers.copy()
             self.initialized = True
             
-            # this is specific of mom?
-            #self.initialize_reference_orbitals()
-
-            # this has to be fixed, or maybe mom-specific
-            #self.occ.f_sn = self.update_occupations()
-            #self.iters += 1
         else:
             # proviamo a riodinarli internamente
-            for i in range(2):
+            for i in range(len(self.numbers)):
                 f = self.f_sn[i]
                 occupied = f > 1.0e-10
                 n_occ = sum(occupied)
@@ -696,10 +685,6 @@ class ExcitedOccupations(FixedOccupationNumbers):
                     f = f[ind]
                     self.f_sn[i] = f
             
-        
-        # print('-------------------------')
-        # print(self.f_sn)
-        # print('-------------------------')
         super()._calculate(nelectrons, eigenvalues,
                            weights, spins, f_qn, fermi_levels_guess,
                            f_sn=self.f_sn)

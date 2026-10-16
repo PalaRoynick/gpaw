@@ -8,7 +8,8 @@ from gpaw.new.potential import Potential
 from gpaw.new.lcao.eigensolver import LCAOEigensolver
 from gpaw.new.etdm.etdm import ETDM
 from gpaw.new.etdm.objfunc_lcao import LCAOObjectiveFunction
-from gpaw.new.etdm.tools import sort_orbitals_according_to_occ
+from gpaw.new.etdm.tools import sort_orbitals_according_to_occ, \
+    sort_orbitals_according_to_energies
 
 
 class DirOptLCAO(LCAOEigensolver):
@@ -80,7 +81,6 @@ class DirOptLCAO(LCAOEigensolver):
             self.need_init_orbs = False
             print('Excited state is true!!')
 
-
         super().__init__(basis)
 
         # MISSING: get functional, randomize orbitals
@@ -97,10 +97,13 @@ class DirOptLCAO(LCAOEigensolver):
 
         # First diagonalization
         # this could be skipped in certain circumstances, such as during
-        # an excited state calculation (we do not need initial orbitals in 
+        # an excited state calculation (we do not need initial orbitals in
         # that case)
         if not self.excited_state:
             super().iterate(ibzwfs, density, potential, hamiltonian)
+        else:
+            # i need to add a keyword for the type of orthonormalization
+            ibzwfs.orthonormalize()
 
         # this also does not need to be done if they are read
         nelectrons = density.nvalence - density.charge + pot_calc.charge
@@ -140,6 +143,9 @@ class DirOptLCAO(LCAOEigensolver):
         for wfs in ibzwfs:
             self.ref_orbitals.append(wfs.C_nM.copy())
 
+        # there is a problem when the two spin channels
+        # have different occupations, i have to fix the shape of this
+        # should it maybe be a list of arrays? instead of an array itself?
         a_u_init = np.array(a)
 
         # Initialize ETDM
@@ -307,6 +313,14 @@ class DirOptLCAO(LCAOEigensolver):
                 self.update_to_canonical_orbitals(wfs,
                                                   hamiltonian,
                                                   potential)
+
+        if self.excited_state:
+            # reorder orbitals according to energies
+            sort_orbitals_according_to_energies(hamiltonian, ibzwfs)
+            # reorder occupation numbers
+            for i, wfs in enumerate(ibzwfs):
+                wfs._occ_n = self.initial_occupation_numbers[i]
+
         # put this back to zero
         self.iter = 0
 
@@ -379,17 +393,12 @@ class DirOptLCAO(LCAOEigensolver):
     def initial_sort_orbitals(self, ibzwfs, occ_calc):
         """ Sort the orbitals to avoid gaps in the occupations
         """
-        # put a check if mom is enabled
-        occ_name = getattr(occ_calc.occ, 'name', None)
 
-        if occ_name == 'mom':
-            update_mom = True
-            # these are never used??????
-            self.initial_occupation_numbers = ibzwfs.get_all_eigs_and_occs()[1]
-        else:
-            update_mom = False
-        sort_orbitals_according_to_occ(ibzwfs,
-                                       update_mom=update_mom)
+        # i removed any mom options for now
+
+        # we use these at the end 
+        self.initial_occupation_numbers = [wfs.occ_n for wfs in ibzwfs]
+        sort_orbitals_according_to_occ(ibzwfs)
 
     def initialize_mom_reference_orbitals(self, ibzwfs, density, occ_calc):
         # Reinitialize the MOM reference orbitals

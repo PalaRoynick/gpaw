@@ -12,6 +12,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
+from gpaw.new.etdm.tools import gramschmidt_lcao, loewdin_lcao
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -361,3 +362,20 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         self.basis.lcao_to_grid(self.C_nM.to_xp(np).data,
                                 psit_nR.data[:mynbands], self.q)
         return psit_nR.to_xp(self.xp)
+
+    def orthonormalize(self, work_array_nX = None, type='gramschmidt'):
+        """ Orthonormalize """
+        assert type == 'gramschmidt' or type == 'loewdin'
+        # i don't know what this does
+        self.orthonormalized = False
+        #if kpt is None:
+        #    for kpt in self.kpt_u:
+        #        self.orthonormalize(kpt)
+        #    self.orthonormalized = True
+        #    return
+        if type == 'loewdin':
+            self.C_nM.data[:] = loewdin_lcao(self.C_nM.data, self.S_MM.data.conj())
+            self.orthonormalized = True
+        elif type == 'gramschmidt':
+            self.C_nM.data[:] = gramschmidt_lcao(self.C_nM.data, self.S_MM.data.conj())
+            self.orthonormalized = True

@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg as lalg
 
 # put mom excite here
 
@@ -36,13 +37,6 @@ def sort_orbitals_according_to_occ_wfs(ibzwfs, wfs, update_mom=False,
     changedocc = False
     ind = np.array([])
 
-    # Need to initialize the wave functions if
-    # restarting from gpw file in fd or pw mode
-    #if kpt.psit_nG is not None:
-    #    if not isinstance(kpt.psit_nG, np.ndarray):
-    #        wfs.initialize_wave_functions_from_restart_file()
-    #        update_proj = False
-
     occupied = wfs.occ_n > 1.0e-10
     n_occ = sum(occupied)
     if n_occ != 0.0 and np.min(wfs.occ_n[:n_occ]) == 0:
@@ -50,11 +44,6 @@ def sort_orbitals_according_to_occ_wfs(ibzwfs, wfs, update_mom=False,
         ind_unocc = np.argwhere(~occupied)
         ind = np.vstack((ind_occ, ind_unocc))
         ind = np.squeeze(ind)
-
-        # is this something deprecated?
-        #if hasattr(wfs.eigensolver, 'dm_helper'):
-        #    wfs.eigensolver.dm_helper.sort_orbitals(wfs, kpt, ind)
-        #else:
 
         wfs.C_nM.data[np.arange(len(ind)), :] = wfs.C_nM.data[ind, :]
         wfs._P_ani = None
@@ -67,7 +56,6 @@ def sort_orbitals_according_to_occ_wfs(ibzwfs, wfs, update_mom=False,
         #if update_mom:
             # OccupationsMOM.numbers needs
             # to be updated after sorting
-        # lo facciamo sempre per via dell'eccitazione
         # update_mom_numbers(ibzwfs, wfs)
 
         changedocc = True
@@ -84,6 +72,31 @@ def update_mom_numbers(ibzwfs, wfs):
     # is it translated like this?
     wfs._occ_n = \
         (wfs._occ_n / wfs.weight * degeneracy)
+
+
+def sort_orbitals_according_to_energies(hamiltonian, ibzwfs):
+    """
+    Sort orbitals according to the eigenvalues or
+    the diagonal elements of the Hamiltonian matrix
+    """
+
+    for wfs in ibzwfs:
+        orb_energies = wfs._eig_n
+
+        ind = np.argsort(orb_energies)
+        wfs._eig_n[np.arange(len(ind))] = orb_energies[ind]
+
+        wfs.C_nM.data[np.arange(len(ind)), :] = wfs.C_nM.data[ind, :]
+        wfs._P_ani = None
+
+        assert len(ind) == len(wfs.occ_n)
+        wfs._occ_n = wfs._occ_n[ind]
+
+        #occ_name = getattr(wfs.occupations, "name", None)
+        #if occ_name == 'mom':
+            # OccupationsMOM.numbers needs to be updated
+            # after sorting
+        #    update_mom_numbers(wfs, kpt)
 
 
 def excite(calc, i, a, spin=(0, 0), sort=False):
@@ -139,6 +152,44 @@ def excite(calc, i, a, spin=(0, 0), sort=False):
                         f_sn[s] = wfs.myocc_n
 
     return f_sn
+
+
+def loewdin_lcao(C_nM, S_MM):
+    """
+    Loewdin based orthonormalization
+    for LCAO mode
+
+    C_nM <- sum_m C_nM[m] [1/sqrt(S)]_mn
+    S_mn = (C_nM[m].conj(), S_MM C_nM[n])
+
+    :param C_nM: LCAO coefficients
+    :param S_MM: Overlap matrix between basis functions
+    :return: Orthonormalized coefficients so that new S_mn = delta_mn
+    """
+
+    ev, S_overlapp = np.linalg.eigh(C_nM.conj() @ S_MM @ C_nM.T)
+    ev_sqrt = np.diag(1.0 / np.sqrt(ev))
+
+    S = S_overlapp @ ev_sqrt @ S_overlapp.T.conj()
+
+    return S.T @ C_nM
+
+
+def gramschmidt_lcao(C_nM, S_MM):
+    """
+    Gram-Schmidt orthonormalization using Cholesky decomposition
+    for LCAO mode
+
+    :param C_nM: LCAO coefficients
+    :param S_MM: Overlap matrix between basis functions
+    :return: Orthonormalized coefficients so that new S_mn = delta_mn
+    """
+
+    S_nn = C_nM @ S_MM.conj() @ C_nM.T.conj()
+    L_nn = lalg.cholesky(S_nn, lower=True,
+                         overwrite_a=True, check_finite=False)
+    return lalg.solve(L_nn, C_nM)
+
 
 
 def vec2skewmat(a_vec, dim, ind_up, dtype):

@@ -11,6 +11,7 @@ from ase.lattice.hexagonal import Graphene
 from ase.units import Bohr
 
 from gpaw import FD, GPAW, LCAO, PW, Davidson, FermiDirac, Mixer
+from gpaw.dft import DFT
 from gpaw.directmin.derivatives import Davidson as SICDavidson
 from gpaw.directmin.etdm_fdpw import FDPWETDM
 from gpaw.directmin.etdm_lcao import LCAOETDM
@@ -405,7 +406,7 @@ class GPWFiles(CachedFilesHandler):
             mode=LCAO(),
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
-            eigensolver='etdm',
+            eigensolver={'name': 'etdm-lcao'},
             mixer={'backend': 'no-mixing'},
             nbands='nao',
             symmetry='off',
@@ -416,16 +417,60 @@ class GPWFiles(CachedFilesHandler):
     @gpwfile
     def h2o_do_lcao_new(self):
         atm = self.h2o_maker(vacuum=5.0)
-        atm.calc = self.GPAW(
-            legacy_gpaw=False,
-            mode=LCAO(),
+        dft = DFT(atm,
+                  mode={'name': 'lcao'},
+                  eigensolver={'name': 'etdm',
+                                'linesearch_algo': {'name': 'max-step',
+                                                        'max_step': 0.05}},
+                  mixer={'backend': 'no-mixing'},
+                  nbands='nao',
+                  basis='dzp',
+                  occupations={'name': 'fixed-uniform'},
+                  symmetry='off',
+                  spinpol=True,
+                  converge=False,
+                  txt='-')
+        atm.calc = dft.ase_calculator()
+        atm.get_potential_energy()
+        return atm.calc
+
+    @gpwfile
+    def h2o_roks_lcao(self):
+        atm = self.h2o_maker(vacuum=5.0)
+        dft = DFT(atm,
+                  mode={'name': 'lcao'},
+                  eigensolver={'name': 'etdm',
+                               'roks': True,
+                               'linesearch_algo': {'name': 'max-step',
+                                                   'max_step': 0.05}},
+                  mixer={'backend': 'no-mixing'},
+                  nbands='nao',
+                  basis='dzp',
+                  occupations={'name': 'fixed-uniform'},
+                  symmetry='off',
+                  spinpol=False,
+                  converge=False,
+                  txt='-')
+        atm.calc = dft.ase_calculator()
+        atm.get_potential_energy()
+        return atm.calc
+
+
+    @gpwfile
+    def h2o_uks_lcao(self):
+        atm = self.h2o_maker(vacuum=5.0)
+        dft = DFT(atm,
+            spinpol=True,
+            mode={'name': 'lcao'},
             basis='dzp',
             occupations={'name': 'fixed-uniform'},
-            eigensolver='etdm',
+            eigensolver={'name': 'etdm-lcao'},
             mixer={'backend': 'no-mixing'},
             nbands='nao',
             symmetry='off',
+            converge=False,
         )
+        atm.calc = dft.ase_calculator()
         atm.get_potential_energy()
         return atm.calc
 
@@ -809,6 +854,42 @@ class GPWFiles(CachedFilesHandler):
             convergence={'density': 1.0e-4, 'eigenstates': 4.0e-8},
         )
         atoms.calc = calc
+        atoms.get_potential_energy()
+        return atoms.calc
+
+
+    @gpwfile
+    def c2h4_do_lcao_new(self):
+        atoms = Atoms(
+            'C2H4',
+            [
+                [6.68748500e-01, 2.00680000e-04, 5.55800000e-05],
+                [-6.68748570e-01, -2.00860000e-04, -5.51500000e-05],
+                [4.48890600e-01, -5.30146300e-01, 9.32670330e-01],
+                [4.48878120e-01, -5.30176640e-01, -9.32674730e-01],
+                [-1.24289513e00, 1.46164400e-02, 9.32559990e-01],
+                [-1.24286000e00, -1.46832100e-02, -9.32554970e-01],
+            ],
+        )
+        atoms.center(vacuum=4)
+        eigensolver = {'name': 'etdm-lcao',
+            'searchdir_algo': 'LSR1P',
+            'linesearch_algo': {'name': 'max-step', 'max_step': 0.05}
+                        }
+        dft = DFT(
+            atoms,
+            mode='lcao',
+            basis='dzp',
+            h=0.24,
+            xc='PBE',
+            symmetry='off',
+            occupations={'name': 'fixed-uniform'},
+            eigensolver=eigensolver,
+            mixer={'backend': 'no-mixing'},
+            nbands='nao',
+            convergence={'density': 1.0e-4, 'eigenstates': 4.0e-8},
+        )
+        atoms.calc = dft.ase_calculator()
         atoms.get_potential_energy()
         return atoms.calc
 
