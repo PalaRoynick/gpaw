@@ -2,6 +2,7 @@
 
 # Disable default checks, manually enable ones we want
 Checks: >
+  #-*,
   misc-include-cleaner
 CheckOptions:
   misc-include-cleaner.UnusedIncludes: false
