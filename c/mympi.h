@@ -9,5 +9,6 @@ typedef struct
   MPI_Comm comm;
   PyObject* parent;
   int* members;
+  PyObject* weakreflist;  // allows weak references to the communicator
 } MPIObject;
 
