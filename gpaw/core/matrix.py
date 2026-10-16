@@ -1,6 +1,7 @@
 """BLACS distributed matrix object."""
 from __future__ import annotations
 
+import weakref
 from types import ModuleType
 from typing import Literal, overload
 
@@ -17,7 +18,54 @@ from gpaw.gpu.diagonalization import suggest_diagonalizer
 from gpaw.mpi import MPIComm, _Communicator, serial_comm
 from gpaw.typing import Array1D, Array2D, ArrayLike1D, ArrayLike2D
 
-_global_blacs_context_store: dict[tuple[_Communicator, int, int], int] = {}
+
+class BLACSContextStore:
+    """Cache of BLACS contexts.
+
+    The contexts belonging to a communicator are freed when the
+    communicator object is garbage collected.  Every BLACSDistribution
+    keeps a reference to its communicator, so a context can not be
+    freed while it is still in use.
+
+    The communicator is held by a weak reference, so the cache doesn't
+    keep it alive (a plain dict would, leaking contexts until MPI runs
+    out of communicators).  A weak dict only drops the entry, so a
+    finalizer frees the contexts when the communicator dies.
+    """
+    def __init__(self, order: str):
+        self.order = order
+        self.contexts: weakref.WeakKeyDictionary[
+            _Communicator, dict[tuple[int, int], int]] = (
+                weakref.WeakKeyDictionary())
+
+    def get(self, comm: _Communicator, r: int, c: int) -> int | None:
+        """Get context for r x c grid (None if BLACS is not available)."""
+        contexts = self.contexts.get(comm)
+        if contexts is None:
+            contexts = {}
+            self.contexts[comm] = contexts
+            # Don't run at exit as MPI may already be finalized then:
+            weakref.finalize(comm, _destroy_blacs_contexts,
+                             contexts).atexit = False
+        context = contexts.get((r, c))
+        if context is None:
+            try:
+                context = cgpaw.new_blacs_context(comm.get_c_object(),
+                                                  c, r, self.order)
+            except AttributeError:
+                return None
+            contexts[(r, c)] = context
+        return context
+
+
+def _destroy_blacs_contexts(contexts: dict[tuple[int, int], int]) -> None:
+    for context in contexts.values():
+        if context >= 0:
+            cgpaw.blacs_destroy(context)
+    contexts.clear()
+
+
+_global_blacs_context_store = BLACSContextStore('C')
 
 
 def suggest_blocking(N: int, ncpus: int) -> tuple[int, int, int]:
@@ -804,16 +852,7 @@ class BLACSDistribution(MatrixDistribution):
         self.br = br
         self.bc = bc
 
-        key = (comm, r, c)
-        context = _global_blacs_context_store.get(key)
-        if context is None:
-            try:
-                context = cgpaw.new_blacs_context(comm.get_c_object(),
-                                                  c, r, 'C')
-            except AttributeError:
-                pass
-            else:
-                _global_blacs_context_store[key] = context
+        context = _global_blacs_context_store.get(comm, r, c)
 
         self.simple = (c == 1 and
                        br == (M + r - 1) // r and
