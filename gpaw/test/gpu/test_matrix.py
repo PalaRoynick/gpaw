@@ -11,7 +11,7 @@ from gpaw.new.c import GPU_AWARE_MPI
 
 @pytest.mark.gpu
 @pytest.mark.serial
-def test_zyrk(set_device):
+def test_zyrk():
     a = np.array([[1, 1 + 2j, 2], [1, 0.5j, -1 - 0.5j]])
     m = Matrix(2, 3, data=a)
     b = m.multiply(m, opb='C', beta=0.0, symmetric=True)
@@ -26,7 +26,7 @@ def test_zyrk(set_device):
 
 @pytest.mark.gpu
 @pytest.mark.serial
-def test_eigh(set_device):
+def test_eigh():
     H1 = Matrix(2, 2, data=np.array([[2, 42.1 + 42.1j], [0.1 - 0.1j, 3]]))
     S1 = Matrix(2, 2, data=np.array([[1, 42.1 + 42.2j], [0.1 - 0.2j, 0.9]]))
     H2 = Matrix(2, 2, data=cp.asarray(H1.data))
@@ -50,7 +50,7 @@ def test_eigh(set_device):
 
 @pytest.mark.gpu
 @pytest.mark.serial
-def test_to_cp(set_device):
+def test_to_cp():
     H1 = Matrix(2, 2, data=np.array([[2, 42.1 + 42.1j], [0.1 - 0.1j, 3]]))
     H2 = H1.to_xp(cp)
     H3 = H2.copy()
@@ -78,8 +78,7 @@ def op(a: np.ndarray, o: str) -> np.ndarray:
 @pytest.mark.parametrize('beta', [0.0, 1.0])
 @pytest.mark.parametrize('dtype', [float, complex])
 @pytest.mark.parametrize('xp', [np, cp])
-def test_mul(shape1, shape2, op1, op2, beta, sym, same, dtype, xp, rng,
-             set_device):
+def test_mul(shape1, shape2, op1, op2, beta, sym, same, dtype, xp, rng):
     if world.size > 1 and xp is cp:
         if op1 == 'C' or (op1 == 'N' and op2 == 'C' and sym and beta == 0.0):
             pytest.skip('Not implemented!')
