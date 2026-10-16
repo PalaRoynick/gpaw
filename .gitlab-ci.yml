@@ -314,7 +314,7 @@ build-rocm:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - bear --config bear.yml -- pip install -v --user --log build.log --no-build-isolation --editable .
+    - bear --config bear.yml -- pip install -v --user --log build.log --no-build-isolation --editable ".[cppdevel]"
   cache:
     key: cache-build-rocm
     paths:
