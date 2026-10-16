@@ -3,6 +3,7 @@ from scipy.optimize import root_scalar
 
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.matrix import eigvals
 from gpaw.mixer.base import BaseMixer, DensityHistory
 from gpaw.new.density import Density
 from gpaw.typing import ArrayND
@@ -373,12 +374,6 @@ class MSR1Mixer(BaseMixer):
             # Set max_gb to a safe value
             max_gb = min(max_gb,
                          self.xp.min(-fracs_i[fracs_i <= 0]))
-
-        # Fix for cupy<13.0:
-        eigvals = getattr(
-            self.xp.linalg,
-            'eigvals',
-            lambda A: self.xp.asarray(np.linalg.eigvals(A.get())))
 
         good_broydenness = self.xp.asarray(0.5 * max_gb)
         for iter in range(2, 12):

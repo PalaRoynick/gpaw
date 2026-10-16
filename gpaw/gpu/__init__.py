@@ -48,15 +48,6 @@ else:
         is_hip = runtime.is_hip
         cupy_is_fake = False
 
-        if is_hip:
-            # XXX Ugly hack to remove definition of cupy.linalg.eigvals.
-            # Cupy 14 defines this function but without HIP backend,
-            # which causes a crash later in GPAW. Cupy < 14 does not have
-            # this function at all and the issue is not present there.
-            import cupy.linalg
-            if hasattr(cupy.linalg, 'eigvals'):
-                delattr(cupy.linalg, 'eigvals')
-
     except ImportError:
         cupy_is_fake = True
         is_hip = False
