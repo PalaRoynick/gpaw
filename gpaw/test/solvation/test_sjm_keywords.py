@@ -102,6 +102,11 @@ def sjm(**potentiostat) -> SJM:
     return SJM(solvation=solvent, potentiostat=potentiostat)
 
 
+def test_short_import():
+    from gpaw.extensions import SJM as short
+    assert short is SJM
+
+
 def test_key_set_has_not_drifted():
     assert set(changeable) == set(keys), (
         'SJM grew or lost a key; update keys here and check whether the new '

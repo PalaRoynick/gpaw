@@ -5,7 +5,7 @@ from ase.optimize import FIRE
 from ase.mep import interpolate, DyNEB
 
 from gpaw import GPAW, PW
-from gpaw.extensions.electrochemistry import SJM
+from gpaw.extensions import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,

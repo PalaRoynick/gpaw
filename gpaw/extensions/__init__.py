@@ -81,3 +81,12 @@ class Extension:
                          vt_sR: UGArray,
                          density) -> float:
         return 0.0
+
+
+# Allow importing import SJM from gpaw.extensions while keeping a tidy code.
+# More extension could, in principle be added.
+def __getattr__(name):
+    if name == 'SJM':
+        from gpaw.extensions.electrochemistry import SJM
+        return SJM
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

@@ -206,7 +206,7 @@ implicit-solvent model (``cavity``, ``dielectric`` and
 ``interactions``)::
 
     from gpaw import GPAW, PW
-    from gpaw.extensions.electrochemistry import SJM
+    from gpaw.extensions import SJM
 
     calc = GPAW(mode=PW(400.), ...,
                 extensions=[SJM(

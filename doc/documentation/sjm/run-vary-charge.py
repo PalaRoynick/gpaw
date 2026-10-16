@@ -3,7 +3,7 @@ import numpy as np
 from ase import Atoms
 from ase.units import Pascal, m
 from ase.parallel import paropen
-from gpaw.extensions.electrochemistry import SJM
+from gpaw.extensions import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw import GPAW, PW, FermiDirac
 from gpaw.solvation import (

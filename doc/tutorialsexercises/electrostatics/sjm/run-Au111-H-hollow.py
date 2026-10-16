@@ -3,7 +3,7 @@ from ase.units import Pascal, m
 from ase.optimize import BFGS
 
 from gpaw import GPAW, PW
-from gpaw.extensions.electrochemistry import SJM
+from gpaw.extensions import SJM
 from gpaw.solvation.sjm import SJMPower12Potential
 from gpaw.solvation import (
     EffectivePotentialCavity,
