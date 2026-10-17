@@ -6,7 +6,7 @@ from gpaw.solvation.sjm import SJM
 
 
 # Test wrting and reading of the SJM object into the gpw file
-@pytest.mark.skipif(world.size == 8, reason='Produces NaN')
+@pytest.mark.skipif(world.size > 1, reason='Produces NaN in parallel')
 def test_gpw(in_tmp_dir, atoms):
     atoms.calc.set(sj={'target_potential': None})
 

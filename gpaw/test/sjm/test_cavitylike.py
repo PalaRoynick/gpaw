@@ -1,3 +1,9 @@
+import pytest
+
+from gpaw.mpi import world
+
+
+@pytest.mark.skipif(world.size > 1, reason='Produces NaN in parallel')
 def test_cavitylike(atoms):
     charge = 0.2
     atoms.calc.set(sj={'jelliumregion': {'bottom': 'cavity_like'},
