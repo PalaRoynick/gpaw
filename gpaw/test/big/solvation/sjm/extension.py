@@ -21,7 +21,8 @@ ADJUST_TARGET = 7.5  # V
 ADJUST_TOL = 0.05  # V - loose on purpose; that is what always_adjust is for
 
 
-def h_atoms(convergence=None, **potentiostat) -> tuple[Atoms, SJM]:
+def h_atoms(convergence=None, maxiter=None,
+            **potentiostat) -> tuple[Atoms, SJM]:
     """One H atom in a 12 Å cell, with a vacuum SJM extension.
 
     Without keywords it is H at 7.5 V, the starting point of the change()
@@ -42,7 +43,7 @@ def h_atoms(convergence=None, **potentiostat) -> tuple[Atoms, SJM]:
     atoms.positions[0, 2] = 4.0
     atoms.calc = GPAW(
         mode='fd', kpts=(2, 2, 1), occupations=FermiDirac(0.2), txt=None,
-        convergence=convergence, extensions=[sjm])
+        convergence=convergence, maxiter=maxiter, extensions=[sjm])
     return atoms, sjm
 
 
@@ -57,6 +58,14 @@ def adjusting_atoms(always_adjust: bool) -> tuple[Atoms, SJM]:
     return h_atoms({'eigenstates': 1e-5}, target_potential=ADJUST_TARGET,
                    excess_electrons=-0.0045, tol=ADJUST_TOL,
                    always_adjust=always_adjust)
+
+
+def test_maxiter_counts_one_scf_pass():
+    # From no charge, eight SCF passes of at most 34 iterations, 146 in all:
+    atoms, sjm = h_atoms({'eigenstates': 1e-5}, maxiter=50,
+                         target_potential=7.5, excess_electrons=0.0, tol=TOL)
+    atoms.get_potential_energy()
+    assert sjm.electrode_potential == pytest.approx(7.5, abs=TOL)
 
 
 # Changing settings without discarding the wave functions, through the SJM

@@ -88,7 +88,9 @@ class SCFLoop:
         else:
             dens_error = 0.0
 
-        for self.niter in itertools.count(start=1):
+        niter0 = 0  # iterations before the current SCF pass
+        for niter in itertools.count(start=1):
+            self.niter = niter - niter0
             eig_error, wfs_error, energies = self.eigensolver.iterate(
                 ibzwfs, density, potential,
                 self.hamiltonian, pot_calc, energies)
@@ -124,7 +126,8 @@ class SCFLoop:
             assert nconverged in [0, self.comm.size], converged_items
 
             if log:
-                write_iteration(cc, converged_items, entries, ctx, log)
+                write_iteration(cc, converged_items, entries, ctx, log,
+                                first=niter == 1)
 
             if converged:
                 converged = all(
@@ -133,6 +136,7 @@ class SCFLoop:
                     for ext in pot_calc.extensions)
                 if converged:
                     break
+                niter0 = niter  # an extension changed the system: a new pass
 
             if self.niter == maxiter:
                 if wfs_error < inf:
@@ -240,7 +244,8 @@ def create_convergence_criteria(criteria: dict[str, Any]
     return criteria
 
 
-def write_iteration(criteria, converged_items, entries, ctx, log):
+def write_iteration(criteria, converged_items, entries, ctx, log,
+                    first):
     custom = (set(criteria) -
               {'energy', 'eigenstates', 'density'})
 
@@ -251,7 +256,7 @@ def write_iteration(criteria, converged_items, entries, ctx, log):
                 ctx.wfs.eigensolver.outer_iloop is not None:
             print_iloop = True
 
-    if ctx.niter == 1:
+    if first:  # the header, once per call of iterate()
         header = '|iter     |     time |      energy | eigst |  dens |'
         for name in custom:
             criterion = criteria[name]

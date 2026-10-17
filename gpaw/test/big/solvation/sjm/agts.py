@@ -16,7 +16,8 @@ def workflow():
                  ext.test_settings_live_on_the_potentiostat,
                  ext.test_tol_set_at_constant_charge_survives_the_switch,
                  ext.test_parts_of_your_own_are_the_ones_that_run,
-                 ext.test_always_adjust_without_target_potential]:
+                 ext.test_always_adjust_without_target_potential,
+                 ext.test_maxiter_counts_one_scf_pass]:
         run(function=test, cores=4)
     for flag in [False, True]:
         run(function=ext.test_step_reaches_the_next_geometry, args=[flag],
