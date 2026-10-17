@@ -144,14 +144,14 @@ class KSSingles(ExcitationList):
 
         # select
         take = np.zeros((nks, nbands, nbands), dtype=int)
-        u = 0
+        u_global = 0
         for ispin in ispins:
             for k in range(wfs.kd.nibzkpts):
                 # q = k - wfs.kd.k0
                 for s in range(wfs.nspins):
-                    rank, u = wfs.kd.who_has(k, s)
+                    rank, u_local = wfs.kd.who_has(k, s)
                     if rank == kpt_comm.rank:  # q >= 0 and q < wfs.kd.mynk:
-                        kpt = wfs.kpt_u[u]
+                        kpt = wfs.kpt_u[u_local]
                         for i in range(nbands):
                             for j in range(i + 1, nbands):
                                 fij = (kpt.f_n[i] - kpt.f_n[j]) / kpt.weight
@@ -159,8 +159,8 @@ class KSSingles(ExcitationList):
                                 if (fij > eps and
                                     epsij >= emin and epsij < emax and
                                         i >= istart and j <= jend):
-                                    take[u, i, j] = 1
-                    u += 1
+                                    take[u_global, i, j] = 1
+                    u_global += 1
         kpt_comm.sum(take)
 
         self.log()
@@ -168,18 +168,18 @@ class KSSingles(ExcitationList):
         self.log()
 
         # calculate in parallel
-        u = 0
+        u_global = 0
         for ispin in ispins:
             for k in range(wfs.kd.nibzkpts):
                 # q = k - wfs.kd.k0
                 for s in range(wfs.kd.nspins):
-                    rank, u = wfs.kd.who_has(k, s)
+                    rank, u_local = wfs.kd.who_has(k, s)
                     for i in range(nbands):
                         for j in range(i + 1, nbands):
-                            if take[u, i, j]:
+                            if take[u_global, i, j]:
                                 # if q >= 0 and q < wfs.kd.mynk:
                                 if rank == kpt_comm.rank:
-                                    kpt = wfs.kpt_u[u]
+                                    kpt = wfs.kpt_u[u_local]
                                     pspin = max(kpt.s, ispin)
                                     self.append(
                                         KSSingle(i, j, pspin, kpt, paw,
@@ -189,7 +189,7 @@ class KSSingles(ExcitationList):
                                     self.append(KSSingle(i, j, pspin=0,
                                                          kpt=None, paw=paw,
                                                          dtype=self.dtype))
-                    u += 1
+                    u_global += 1
 
         # distribute
         for kss in self:
