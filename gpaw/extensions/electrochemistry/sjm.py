@@ -169,32 +169,32 @@ class SJM(ExtensionInput):
         pot.new_geometry()
 
         log('Solvated jellium method (SJM):')
-        log(f'  jellium region: {z1:.3f} to {z2:.3f}  # Å')
+        log(f'  Jellium region: {z1:.3f} to {z2:.3f} Å')
         for key, default in default_parts.items():
             if type(getattr(pot, key)) is not default:
                 log(f'  {key}: {type(getattr(pot, key)).__name__}')
         if opt.target_potential is None:
-            log('  mode: constant charge')
-            log(f'  excess electrons: {pot.excess_electrons:+.5f}')
+            log('  Mode: Constant charge')
+            log(f'  Excess electrons: {pot.excess_electrons:+.5f}')
         else:
-            log('  mode: constant potential')
-            log(f'  target potential: {opt.target_potential:.5f}  # V')
-            log(f'  tolerance: {opt.tol:.5f}  # V')
-            log(f'  max iterations: {opt.max_iters}')
+            log('  Mode: Constant potential')
+            log(f'  Target potential: {opt.target_potential:.5f}  # V')
+            log(f'  Potential tolerance: {opt.tol:.5f}  # V')
+            log(f'  Maximal potential equilibration steps: {opt.max_iters}')
             if opt.max_potential_stepsize is not None:
-                log(f'  max potential stepsize: {opt.max_potential_stepsize}'
+                log(f'  Maximal potential step: {opt.max_potential_stepsize}'
                     f' V (halved up to {opt.max_reruns} times if exceeded)')
-            log('  initial guess of excess electrons: '
+            log('  Initial guess of excess electrons: '
                 f'{pot.excess_electrons:+.5f}')
             if opt.slope is not None:
-                log(f'  initial guess of slope: {opt.slope:.4f}  '
+                log(f'  Initial guess of slope: {opt.slope:.4f}  '
                     '# V/electron')
             if isinstance(opt, DirectOptimizer):
-                log(f'  slope damping (mixer): {opt.mixer:.2f}')
-                log('  slope regressed over the last '
-                    f'{opt.slope_regression_depth:d} attempts')
+                log('  Potential vs excess electron slope regressed over the '
+                    f'last {opt.slope_regression_depth:d} attempts mxing '
+                    'in {opt.mixer*100:.0f}% of the previous slope estimate')
             if pot.always_adjust:
-                log('  always adjust: the charge is stepped on to the next '
+                log('  Always adjust: A charge step is taken despite changing'
                     'geometry')
         return [solvation, pot]
 
