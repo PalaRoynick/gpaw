@@ -175,7 +175,7 @@ class Potentiostat(Extension):
         zs = self.charging.move(relpos_ac, self.charging.mask_r.desc)
         if zs is not None:
             self.log(f'Jellium region moved to {zs[0]:.3f} to '
-                     f'{zs[1]:.3f}  # Å')
+                     f'{zs[1]:.3f} Å')
 
     def post_scf_convergence(self,
                              ibzwfs,

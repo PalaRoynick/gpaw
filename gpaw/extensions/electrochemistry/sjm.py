@@ -178,8 +178,8 @@ class SJM(ExtensionInput):
             log(f'  Excess electrons: {pot.excess_electrons:+.5f}')
         else:
             log('  Mode: Constant potential')
-            log(f'  Target potential: {opt.target_potential:.5f}  # V')
-            log(f'  Potential tolerance: {opt.tol:.5f}  # V')
+            log(f'  Target potential: {opt.target_potential:.5f} V')
+            log(f'  Potential tolerance: {opt.tol:.5f} V')
             log(f'  Maximal potential equilibration steps: {opt.max_iters}')
             if opt.max_potential_stepsize is not None:
                 log(f'  Maximal potential step: {opt.max_potential_stepsize}'
@@ -187,14 +187,13 @@ class SJM(ExtensionInput):
             log('  Initial guess of excess electrons: '
                 f'{pot.excess_electrons:+.5f}')
             if opt.slope is not None:
-                log(f'  Initial guess of slope: {opt.slope:.4f}  '
-                    '# V/electron')
+                log(f'  Initial guess of slope: {opt.slope:.4f} V/electron')
             if isinstance(opt, DirectOptimizer):
                 log('  Potential vs excess electron slope regressed over the '
-                    f'last {opt.slope_regression_depth:d} attempts mxing '
-                    'in {opt.mixer*100:.0f}% of the previous slope estimate')
+                    f'last {opt.slope_regression_depth:d} attempts mixing in '
+                    f'{opt.mixer * 100:.0f}% of the previous slope estimate')
             if pot.always_adjust:
-                log('  Always adjust: A charge step is taken despite changing'
+                log('  Always adjust: A charge step is taken despite changing '
                     'geometry')
         return [solvation, pot]
 
@@ -289,7 +288,7 @@ class SJM(ExtensionInput):
                                                       dft.relpos_ac)
                 charging.set_region(mask_r)
                 opt.forget_attempts()  # they belong to the old region
-                log(f'Jellium region changed to {z1:.3f} to {z2:.3f}  # Å')
+                log(f'Jellium region changed to {z1:.3f} to {z2:.3f} Å')
                 rerun = True
 
         if 'target_potential' in potentiostat:
