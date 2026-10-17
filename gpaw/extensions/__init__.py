@@ -51,6 +51,7 @@ class Extension:
                              nelectrons: float,
                              occ_calc,
                              mixer,
+                             energies,
                              log) -> bool:
         """Allow for environment to "converge"."""
         return True

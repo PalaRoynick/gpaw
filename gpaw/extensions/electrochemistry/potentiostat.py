@@ -182,6 +182,7 @@ class Potentiostat(Extension):
                              nelectrons: float,
                              occ_calc,
                              mixer,
+                             energies,
                              log) -> bool:
         """Equilibrate once the SCF criteria have passed.
 
@@ -200,12 +201,19 @@ class Potentiostat(Extension):
         excess_electrons = self.excess_electrons
         potential = self.potentialprobe.potential(
             ibzwfs, self.solvation.poisson_solver)
+        omega = energies.total_extrapolated * Ha + excess_electrons * potential
+        state = (f'excess_electrons = {excess_electrons:.5f}, potential = '
+                 f'{potential:.5f} V, Grand potential energy: {omega:.5f} eV')
 
         result = self.equilibrate(ibzwfs, potential, nelectrons, occ_calc,
                                   mixer, log)
         opt = self.optimizer
 
         if result is EquilibrationResult.rejected:
+            log(f'Rejected step: {state}; it moved the potential by more '
+                f'than max_potential_stepsize ({opt.max_potential_stepsize} '
+                'V) and away from the target, so the step in excess '
+                f'electrons is halved to {self.excess_electrons:.5f}.')
             self.reruns += 1
             if self.reruns > opt.max_reruns:
                 raise PotentialConvergenceError(
@@ -219,6 +227,23 @@ class Potentiostat(Extension):
         # streak, if any, is over.
         self.reruns = 0
         self.attempts.append((excess_electrons, potential))
+        log(f'Attempt {self.niters:d}/{opt.max_iters:d}: {state}')
+        if opt.slope is not None:
+            area = self.charging.region_area
+            # Only a regressed slope is news as an apparent capacitance:
+            c = f'({capacitance(opt.slope, area):.4f} muF/cm^2)'
+            if opt.n_attempts > 1:
+                log(f'Slope estimated from the last {opt.n_attempts:d} '
+                    f'attempts is {opt.slope:.4f} V/electron {c}.')
+            elif opt.slope == capacitance(10, area):
+                log(f'Slope of {opt.slope:.4f} V/electron (10 muF/cm^2) '
+                    'used.')
+            elif opt.regressed:
+                log(f'Slope of {opt.slope:.4f} V/electron {c} used, carried '
+                    'over from the previous equilibration.')
+            else:
+                log(f'Slope of {opt.slope:.4f} V/electron used, as given by '
+                    'the slope keyword.')
 
         if result is EquilibrationResult.converged:
             if self.always_adjust:  # stage a step for the next geometry
@@ -230,6 +255,8 @@ class Potentiostat(Extension):
         if self.niters >= opt.max_iters:
             raise PotentialConvergenceError(
                 self._convergence_error_message(log))
+        log('Guess of excess_electrons for the next attempt: '
+            f'{self.excess_electrons:.5f}', flush=True)
         return False
 
     def post_converged(self, dft) -> None:
@@ -251,20 +278,7 @@ class Potentiostat(Extension):
                                           self.solvation.poisson_solver),
             dft.comm)
 
-        # Report where the equilibration ended up; the intermediate attempts
-        # are summarized by the regressed slope:
         if self.constant_potential and self.attempts:
-            excess_electrons, potential = self.attempts[-1]
-            log(f'Potential found to be {potential:.5f} V '
-                f'(with {excess_electrons:+.5f} excess electrons, '
-                f'attempt {self.niters:d}/{self.optimizer.max_iters:d}).')
-            slope = self.optimizer.slope
-            if slope is not None:
-                log(f'Slope estimated from the last '
-                    f'{self.optimizer.n_attempts:d} attempts is '
-                    f'{slope:.4f} V/electron,')
-                c = capacitance(slope, self.charging.region_area)
-                log(f'or apparent capacitance of {c:.4f} muF/cm^2')
             log('Potential is within tolerance. Equilibrated.')
             if self.pending_excess_electrons is not None:
                 log('always_adjust: the next geometry starts from '
@@ -355,8 +369,6 @@ class Potentiostat(Extension):
         optimizer = self.optimizer
         target = optimizer.target_potential
         assert target is not None
-        log(f'excess electrons: {self.excess_electrons:+.6f} |e|, '
-            f'potential: {potential:.3f} V')
 
         previous = optimizer.last_attempt()
         stepsize = optimizer.max_potential_stepsize
@@ -366,10 +378,6 @@ class Potentiostat(Extension):
             overshot = abs(prev_potential - target) < abs(potential - target)
             if moved > stepsize and overshot:
                 halved = 0.5 * (prev_excess_electrons + self.excess_electrons)
-                log(f'  step changed the potential by {moved:.3f} V, over '
-                    f'max_potential_stepsize ({stepsize} V), and away from '
-                    'the target -- rejected; halving the step in excess '
-                    f'electrons to {halved:+.6f} |e|.')
                 ibzwfs.calculate_occs(
                     occ_calc, nelectrons + (halved - self.excess_electrons))
                 self.excess_electrons = halved
@@ -818,6 +826,7 @@ class PotentialOptimizer:
 
     target_potential: float | None = None  # V
     slope: float | None = None  # estimated d(potential)/d(charge), V/electron
+    regressed = False  # whether slope comes from a previous regression
     tol: float = 0.005  # V
     max_potential_stepsize: float | None = 2  # V
     max_iters: int = 10
@@ -895,8 +904,7 @@ class DirectOptimizer(PotentialOptimizer):
     of the electrode ``area``.  Once the last ``slope_regression_depth``
     (default 4, at least 2) attempts hold two distinct charges, every
     attempt updates the estimate, damped by ``mixer`` (default 0.2):
-    ``new = mixer * old + (1 - mixer) * regressed``.  ``mixer`` also limits
-    how fast steps grow; see :meth:`~PotentialOptimizer.next_excess_electrons`.
+    ``new = mixer * old + (1 - mixer) * regressed``.
     """
 
     def __init__(self,
@@ -947,7 +955,7 @@ class DirectOptimizer(PotentialOptimizer):
         self.history.clear()
 
     def reset(self) -> None:
-        self.slope = None
+        self.slope, self.regressed = None, False
         self.history.clear()
 
     @property
@@ -973,6 +981,7 @@ class DirectOptimizer(PotentialOptimizer):
             return
         self.slope = (self.mixer * self.slope + (1.0 - self.mixer) * slope
                       if self.slope else slope)
+        self.regressed = True
         self._usable_slope(area)
 
     def _usable_slope(self, area: float) -> float:
@@ -992,23 +1001,13 @@ class DirectOptimizer(PotentialOptimizer):
         """Excess electrons that the slope points at, given this potential.
 
         The attempt must have been recorded with :meth:`record_attempt`
-        first: the slope estimate and the trust region both come from the
-        history, which this leaves untouched.  A step longer than the
-        previous one grows by only ``1 - mixer`` of the difference.
+        first, as the slope estimate comes from the history, which this
+        leaves untouched.  The whole step the slope points at is taken;
+        ``mixer`` damps the slope only.
         """
         slope = self._usable_slope(area)
         assert self.target_potential is not None
-        dc = (self.target_potential - potential) / slope
-        if len(self.history) > 1:
-            (c2, _), (c1, _) = list(self.history)[-2:]
-            previous = abs(c2 - c1)
-            if previous > 0.0 and abs(dc) > previous:
-                # Trust region: the slope is a local estimate, so only the
-                # weight a fresh regression gets, 1 - mixer, of the growth
-                # is granted (mixer = 1: never grow; 0: the full step).
-                growth = min(max(1.0 - self.mixer, 0.0), 1.0)
-                dc *= (previous + growth * (abs(dc) - previous)) / abs(dc)
-        return excess_electrons + dc
+        return excess_electrons + (self.target_potential - potential) / slope
 
 
 class PotentialProbe:

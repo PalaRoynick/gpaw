@@ -38,12 +38,12 @@ This process usually takes a few steps on the first image, but is faster on subs
 You should see that in net the routine added only about 0.006 electrons to the simulation cell, as compared to a charge-neutral simulation, in order to achieve the desired work function.
 
 You'll notice that the output in 'Au111.txt' contains additional information, as compared to a charge-neutral simulation.
-Once the calculation has converged, the equilibration is reported in a single block, which states the potential and the number of excess electrons it settled on, the slope of potential versus charge regressed over the last ``slope_regression_depth`` attempts (four by default, or as many as the equilibration took), and the apparent capacitance that slope corresponds to.
-It is followed by the Legendre-transformed energies::
+After every SCF pass, the attempt is reported with its number of excess electrons, potential and grand-potential energy (the extrapolated `\Omega = E - N \mu` introduced below), together with the slope of potential versus charge and, in parentheses, the apparent capacitance it corresponds to.
+From the second attempt on, the slope is regressed over the last ``slope_regression_depth`` attempts (four by default, or as many as the equilibration has taken so far); on the first, the log states where the slope comes from: the ``slope`` keyword, the estimate of the previous equilibration, or the guess for 10 muF/cm^2.
+The report of the last attempt is followed by the Legendre-transformed energies::
 
-    Potential found to be 4.19521 V (with +0.00645 excess electrons, attempt 4/10).
-    Slope estimated from the last 4 attempts is -67.9098 V/electron,
-    or apparent capacitance of 3.2731 muF/cm^2
+    Attempt 4/10: excess_electrons = 0.00645, potential = 4.19521 V, Grand potential energy: -21.26723 eV
+    Slope estimated from the last 4 attempts is -67.9098 V/electron (3.2731 muF/cm^2).
     Potential is within tolerance. Equilibrated.
 
     Legendre-transformed energies (grand potential, Omega = E - N mu):

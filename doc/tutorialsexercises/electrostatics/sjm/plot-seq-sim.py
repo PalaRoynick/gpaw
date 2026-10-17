@@ -23,13 +23,10 @@ def get_data(mode):
     fmaxs = []
     switch = None
     for line in lines:
-        # One line per DFT calculation: the potential the potentiostat read
-        # off after it.  "Potential found to be ..." will not do here -- the
-        # new code logs that once per *equilibration*, reporting which attempt
-        # succeeded, so it skips exactly the intermediate attempts that this
-        # figure exists to show.
-        if 'excess electrons:' in line and 'potential:' in line:
-            potentials += [float(line.split('potential:')[-1].split('V')[0])]
+        # One line per DFT calculation, rejected steps included: the
+        # potential the potentiostat read off after it.
+        if 'potential = ' in line:
+            potentials += [float(line.split('potential = ')[1].split()[0])]
         # always_adjust is on only in the first, loose-tolerance optimization,
         # so the last calculation that logs it is the one after which the
         # script tightened the criteria and went back to sequential mode.
