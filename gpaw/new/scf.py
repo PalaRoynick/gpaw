@@ -126,13 +126,13 @@ class SCFLoop:
             assert nconverged in [0, self.comm.size], converged_items
 
             if log:
-                write_iteration(cc, converged_items, entries, ctx, log,
-                                first=niter == 1)
+                write_iteration(cc, converged_items, entries, ctx, log)
 
             if converged:
                 converged = all(
                     ext.post_scf_convergence(
-                        ibzwfs, nelectrons, self.occ_calc, self.mixer, log)
+                        ibzwfs, nelectrons, self.occ_calc, self.mixer,
+                        energies, log)
                     for ext in pot_calc.extensions)
                 if converged:
                     break
@@ -244,8 +244,7 @@ def create_convergence_criteria(criteria: dict[str, Any]
     return criteria
 
 
-def write_iteration(criteria, converged_items, entries, ctx, log,
-                    first):
+def write_iteration(criteria, converged_items, entries, ctx, log):
     custom = (set(criteria) -
               {'energy', 'eigenstates', 'density'})
 
@@ -256,7 +255,7 @@ def write_iteration(criteria, converged_items, entries, ctx, log,
                 ctx.wfs.eigensolver.outer_iloop is not None:
             print_iloop = True
 
-    if first:  # the header, once per call of iterate()
+    if ctx.niter == 1:
         header = '|iter     |     time |      energy | eigst |  dens |'
         for name in custom:
             criterion = criteria[name]
