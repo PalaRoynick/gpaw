@@ -44,6 +44,8 @@ stages:
   variables:
     # Use Bear to optionally generate compile database for linting
     BEAR_CONFIG: "tools/bear.yml"
+    # Compiler executable to use for non-GPU parts. Can be overriden in jobs deriving from this
+    GPAW_COMPILER: "mpic++"
   before_script:
     - !reference [default, before_script]
     # Centralized "pip install gpaw" entry point. Usage:
@@ -87,7 +89,7 @@ stages:
     - |
       cat << EOF > siteconfig.py
       mpi = True
-      compiler = 'mpic++'
+      compiler = '$GPAW_COMPILER'
       libraries = []
       library_dirs = []
       include_dirs = []
@@ -337,6 +339,9 @@ build-rocm:
   # Run the build on mi210 runner to avoid pulling the image to other runners
   tags:
     - mi210
+  variables:
+    # Don't use an mpi wrapper, makes clang analysis harder.
+    GPAW_COMPILER: "g++"
   script:
     - |
       cat << EOF >> siteconfig.py
@@ -355,6 +360,8 @@ build-rocm:
       magma = True
       libraries += ['magma']
       EOF
+    # Manually add include flags etc from the mpi wrapper
+    - python tools/print_mpi_siteconfig.py >> siteconfig.py
     - cat siteconfig.py
     - run_gpaw_install --lint -- --no-build-isolation
   cache:
