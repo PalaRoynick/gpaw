@@ -75,7 +75,7 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
         M1, M2 = V_MM.dist.my_row_range()
         if V_MM.xp is np:
             dH_II = sparse.block_diag(
-                [dH_aii[a] for a in wfs.P_aMi.keys()],
+                [sparse.coo_array(dH_aii[a]) for a in wfs.P_aMi.keys()],
                 format='csr')
             P_MI = wfs.P_aMi.data
             PdH_MI = P_MI[M1:M2] @ dH_II

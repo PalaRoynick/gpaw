@@ -276,7 +276,7 @@ def add_atomic_overlap_corrections(
             if P_aMi.data.size == 0:
                 return  # nothing to do on this rank
             dO_II = sparse.block_diag(
-                [setups[a].dO_ii for a in P_aMi.keys()],
+                [sparse.coo_array(setups[a].dO_ii) for a in P_aMi.keys()],
                 format='csr')
 
         P_MI = P_aMi.data
