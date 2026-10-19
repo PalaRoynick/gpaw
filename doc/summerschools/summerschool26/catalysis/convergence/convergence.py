@@ -106,15 +106,15 @@ def main():
     for n in range(1, 10):
         if n == 2:
             continue  # already done
-        h, enru, eru = adsorb(h, n, 7, 600)
-        results.append((n, 7, 600, h, enru - eru - eatom[ecut]))
+        h, enru, eru = adsorb(h, n, 7, 400)
+        results.append((n, 7, 400, h, enru - eru - eatom[ecut]))
 
     # Number of k-points convergence:
     for k in range(4, 18):
         if k == 7:
             continue  # already done
-        h, enru, eru = adsorb(h, 2, k, 600)
-        results.append((2, k, 600, h, enru - eru - eatom[ecut]))
+        h, enru, eru = adsorb(h, 2, k, 400)
+        results.append((2, k, 400, h, enru - eru - eatom[ecut]))
 
     if world.rank == 0:
         Path('results.json').write_text(

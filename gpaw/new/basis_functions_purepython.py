@@ -376,17 +376,11 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
 
     @override
     def construct_density(self,
-                          rho_MM,
+                          rho_MM: np.ndarray | cp.ndarray,
                           nt_G: np.ndarray | cp.ndarray,
                           q):
         """"""
         assert np.all(nt_G.shape == self.grid.mysize_c)
-
-        num_work_rows = (self._matrix_distribution_rules.mu_end
-                         - self._matrix_distribution_rules.mu_start)
-        if num_work_rows <= 0:
-            # nothing to do
-            return
 
         if self.has_precalculated_phi():
             self._construct_density_with_precalculation(
@@ -400,7 +394,7 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
 
     def _construct_density_with_precalculation(
         self,
-        rho_MM,
+        rho_MM: np.ndarray | cp.ndarray,
         nt_G: np.ndarray | cp.ndarray,
         mu_start: int,
         mu_end: int
@@ -414,6 +408,14 @@ class BasisFunctionCollectionPurePython(BasisFunctionCollectionBase):
                         start_c[1]:end_c[1],
                         start_c[2]:end_c[2]]
 
-            rho_mm = rho_MM[block.M_m][:, block.M_m]
-            nt_g += np.einsum('mxyz, nxyz, mn -> xyz', phi_mg, phi_mg, rho_mm,
-                              optimize=True)
+            # Account for row distribution
+            local_m = [i for i, mu in enumerate(block.M_m)
+                       if mu_start <= mu < mu_end]
+            local_rows = [mu - mu_start for mu in block.M_m
+                          if mu_start <= mu < mu_end]
+
+            phi_rows = phi_mg[local_m]
+            rho_mm = rho_MM[local_rows][:, block.M_m]
+
+            nt_g += np.einsum('mxyz, nxyz, mn -> xyz', phi_rows, phi_mg,
+                              rho_mm, optimize=True)

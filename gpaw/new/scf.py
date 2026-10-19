@@ -191,11 +191,10 @@ class SCFContext:
         self.poisson_solver = pot_calc.poisson_solver
 
     def _get_workfunctions(self, _):
-        vacuum_level = self.potential.get_vacuum_level()
+        """Work functions (Ha) at the top and bottom of the cell."""
+        top, bottom = self.poisson_solver.vacuum_levels(self.potential)
         (fermi_level,) = self.ibzwfs.fermi_levels
-        wf = vacuum_level - fermi_level
-        delta = self.poisson_solver.dipole_layer_correction()
-        return np.array([wf + delta, wf - delta])
+        return np.array([top - fermi_level, bottom - fermi_level])
 
 
 def create_convergence_criteria(criteria: dict[str, Any]

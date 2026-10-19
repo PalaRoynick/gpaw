@@ -3,6 +3,7 @@ from scipy.optimize import root_scalar
 
 from gpaw.core.arrays import XArray
 from gpaw.core.atom_arrays import AtomArrays
+from gpaw.core.matrix import eigvals
 from gpaw.mixer.base import BaseMixer, DensityHistory
 from gpaw.new.density import Density
 from gpaw.typing import ArrayND
@@ -155,6 +156,8 @@ class MSR1Mixer(BaseMixer):
             good_broydenness = 0
             t_norm = y_norm
         t_norm = 1 / t_norm**0.5
+        self.world.broadcast(t_norm, 0)
+
         y_hsX.matrix.data *= t_norm[:, None]
         s_hsX.matrix.data *= t_norm[:, None]
         my_hsX.matrix.data *= t_norm[:, None]
@@ -168,15 +171,15 @@ class MSR1Mixer(BaseMixer):
         A_diag = self.xp.mean(self.xp.diag(A_hh))
         B_diag = self.xp.mean(self.xp.diag(B_hh))
 
-        S, V, D = self.xp.linalg.svd(A_hh)
-        V /= V**2 + A_diag**2 * self.reg**2  # Regularize
-        V *= (1 + self.reg**2)               # Renormalize
-        A_hh = D.T @ self.xp.diag(V) @ S.T
-
         S, V, D = self.xp.linalg.svd(B_hh)
         V /= V**2 + B_diag**2 * self.reg**2  # Regulalize
         V *= (1 + self.reg**2)               # Renormalize
         B_hh = D.T @ self.xp.diag(V) @ S.T
+
+        S, V, D = self.xp.linalg.svd(A_hh)
+        V /= (V**2 + A_diag**2 * self.reg**2)  # Regularize
+        V *= (1 + self.reg**2)               # Renormalize
+        A_hh = D.T @ self.xp.diag(V) @ S.T
 
         MRc_sX = self.MRc_hsX[-1]
         MRc_1sX = MRc_sX.new(data=MRc_sX.data[None], dims=(1,) + MRc_sX.dims)
@@ -221,10 +224,13 @@ class MSR1Mixer(BaseMixer):
             self.B = np.clip(self.B, self.B_lims[0], self.B_lims[1])
         else:
             if self.A == 0:
+                # First step: use A_target as-is
                 self.A = A_target
             else:
+                # If bad step, clip ratio to A_rate_ratio
                 A_target /= self.A
-                A_target = np.clip(A_target, self.A_lims[0], self.A_lims[1])
+                A_target = np.clip(A_target, self.A_rate_ratio[0],
+                                   self.A_rate_ratio[1])
                 self.A *= A_target
             self.A = np.clip(self.A, self.A_lims[0], self.A_lims[1])
 
@@ -248,43 +254,25 @@ class MSR1Mixer(BaseMixer):
             self.uk_1sX.data[:] -= alpha * y_hsX[h].data
 
         predicted_radius = B * self.pk_1sX.norm2().sum()**0.5
-        if predicted_radius > self.trust_radius * 1.02:
-            s_hh = s_hsX.matrix_elements(s_hsX)
-            s_hh.tril2full()
-            s_hh = s_hh.data
-            s_hh *= B**2
-            A_hh = self.xp.linalg.inv(A_hh)
-
-            self.trust_radius = max(self.trust_radius,
-                                    predicted_radius * 0.5)
-
-            def errfct(lamb):
-                beta_h = self.xp.linalg.solve(
-                    A_hh + lamb * self.xp.eye(nold - 1), BR_h
-                )
-                rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
-                return rtnval if self.xp is np else rtnval.get()
-
-            try:
-                lamb = root_scalar(errfct, bracket=[0, 5e1])
-                root = lamb.root
-            except ValueError:
-                root = 5e1
-
-            beta_h = self.xp.linalg.solve(
-                A_hh + root * self.xp.eye(nold - 1), BR_h
-            )
-            scale_factor = self.trust_radius / predicted_radius
+        if predicted_radius > self.trust_radius:
+            beta_h, scale_factor = self.apply_trust_radius(
+                B, nold, predicted_radius, alpha_h, s_hsX, A_hh, BR_h)
             A *= scale_factor
         else:
             scale_factor = 1
-            beta_h = alpha_h
+            beta_h = alpha_h.copy()
+
+        # Rank 0 decides:
+        B = self.xp.asarray(B)
+        self.world.broadcast(B, 0)
         self.world.broadcast(beta_h, 0)
+        A = self.xp.asarray(A)
+        self.world.broadcast(A, 0)
 
         self.pk_1sX.data[:] = 0
         self.uk_1sX.data[:] = self.Rc_hsX[-1].data
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
+        for h, beta in enumerate(beta_h):
             self.pk_1sX.data[:] += beta * s_hsX[h].data
             self.uk_1sX.data[:] -= beta * y_hsX[h].data
 
@@ -296,7 +284,7 @@ class MSR1Mixer(BaseMixer):
 
         beta_h *= t_norm
 
-        for h, (alpha, beta) in enumerate(zip(alpha_h, beta_h)):
+        for h, beta in enumerate(beta_h):
             nt_sX.data += B * beta * (
                 self.nt_hsX[h][0].data - self.nt_hsX[-1][0].data)
             D_asii.data += B * beta * (self.nt_hsX[h][1] - self.nt_hsX[-1][1])
@@ -317,7 +305,58 @@ class MSR1Mixer(BaseMixer):
         self.last_dNt = dNt
         return ret_dNt
 
-    def decide_good_broydenness(self, Ay_hh: ArrayND,
+    def apply_trust_radius(self,
+                           B: float,
+                           nold: int,
+                           predicted_radius: float,
+                           alpha_h: ArrayND,
+                           s_hsX: XArray,
+                           A_hh: ArrayND,
+                           BR_h: ArrayND):
+        s_hh = s_hsX.matrix_elements(s_hsX)
+        s_hh.tril2full()
+        s_hh = s_hh.data
+        s_hh *= B**2
+
+        A_hh = self.xp.linalg.inv(A_hh)
+
+        assert self.trust_radius is not None
+        self.trust_radius = max(self.trust_radius,
+                                predicted_radius * 0.5)
+
+        def errfct(lamb):
+            beta_h = self.xp.linalg.solve(
+                A_hh + lamb * self.xp.eye(nold - 1), BR_h
+            )
+            rtnval = (beta_h @ s_hh @ beta_h) - self.trust_radius**2
+            return rtnval if self.xp is np else rtnval.get()
+
+        if errfct(self.reg) < 0:
+            # We are within the trust radius
+            return alpha_h.copy(), 1
+
+        root = 1e16
+        low_lim = self.reg
+        # Most of the time, this loop will exit on the first iteration.
+        for upp_lim in [1e1, 1e2, 1e4, 1e8]:
+            if errfct(upp_lim) > 0:
+                low_lim = upp_lim
+                continue
+            try:
+                lamb = root_scalar(errfct, bracket=[low_lim, upp_lim])
+                root = lamb.root
+                break
+            except ValueError:
+                low_lim = upp_lim
+
+        beta_h = self.xp.linalg.solve(
+            A_hh + root * self.xp.eye(nold - 1), BR_h
+        )
+        scale_factor = self.trust_radius / predicted_radius
+        return beta_h, scale_factor
+
+    def decide_good_broydenness(self,
+                                Ay_hh: ArrayND,
                                 As_hh: ArrayND) -> float:
         if not self.gb_scale:
             # Multi-secant bad Broyden
@@ -336,13 +375,7 @@ class MSR1Mixer(BaseMixer):
             max_gb = min(max_gb,
                          self.xp.min(-fracs_i[fracs_i <= 0]))
 
-        # Fix for cupy<13.0:
-        eigvals = getattr(
-            self.xp.linalg,
-            'eigvals',
-            lambda A: self.xp.asarray(np.linalg.eigvals(A.get())))
-
-        good_broydenness = 0.5 * max_gb
+        good_broydenness = self.xp.asarray(0.5 * max_gb)
         for iter in range(2, 12):
             norm_vec = 1 / (y_norm + s_norm *
                             good_broydenness)**0.5
@@ -362,6 +395,7 @@ class MSR1Mixer(BaseMixer):
                 good_broydenness -= 2**(-iter) * max_gb
         good_broydenness -= 2**(-iter) * max_gb
         good_broydenness *= self.gb_scale
+        self.world.broadcast(good_broydenness, 0)
         return good_broydenness
 
     def pratt_step(self, nt_sX: XArray, D_asii: AtomArrays,
@@ -379,6 +413,12 @@ class MSR1Mixer(BaseMixer):
         self.pk_1sX.data[:] = 0
         self.last_dNt = self.calculate_charge_sloshing(self.Rc_hsX[-1])
         return self.last_dNt
+
+    def reset(self):
+        super().reset()
+        self.A = 0.0
+        self.B = 1.0
+        self.last_dNt = np.inf
 
     def __str__(self):
         lines = ['density mixing:',

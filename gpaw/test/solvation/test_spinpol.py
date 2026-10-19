@@ -3,9 +3,10 @@ import pytest
 from ase.build import molecule
 from ase.units import Pascal, m
 
+from gpaw.old.solvation import SolvationGPAW
 from gpaw.solvation import (EffectivePotentialCavity, GradientSurface,
                             KB51Volume, LeakedDensityInteraction,
-                            LinearDielectric, Power12Potential, SolvationGPAW,
+                            LinearDielectric, Power12Potential,
                             SurfaceInteraction, VolumeInteraction)
 from gpaw.utilities.adjust_cell import adjust_cell
 
