@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import cached_property
+from pathlib import Path
 from time import ctime, time
 
 import numpy as np
@@ -1508,6 +1509,13 @@ class BSEPlus:
          """
         comm = normalize_communicator(comm)
 
+        # Check that files exist before running expensive calculations
+        for name, gpw in [('bse_gpw', bse_gpw), ('rpa_gpw', rpa_gpw)]:
+            if isinstance(gpw, (str, Path)) and not Path(gpw).is_file():
+                raise FileNotFoundError(f'{name}: no such file: {gpw}')
+        if direction not in (0, 1, 2):
+            raise ValueError(f'direction must be 0, 1 or 2, got {direction}')
+
         self.bse_gpw = bse_gpw
         self.bse_valence_bands = bse_valence_bands
         self.bse_conduction_bands = bse_conduction_bands
@@ -1545,6 +1553,12 @@ class BSEPlus:
     def calculate_chi_wGG(self, optical=True, xc_kernel=None,
                           bsep_name='chi_BSEPlus',
                           save_chi_BSE=False, save_chi_RPA=False):
+        # Make sure the results can be saved before computing
+        for name in [bsep_name, save_chi_BSE, save_chi_RPA]:
+            if isinstance(name, str) and \
+               not Path(name).absolute().parent.is_dir():
+                raise FileNotFoundError(f'Output directory for {name} '
+                                        'does not exist')
 
         # irreducibale bse chi
         bse = self.create_bse_calculator()
