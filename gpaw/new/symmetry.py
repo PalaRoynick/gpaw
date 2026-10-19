@@ -11,6 +11,7 @@ from ase.units import Bohr
 
 from gpaw import debug
 from gpaw.core.domain import normalize_cell
+from gpaw.core.atom_arrays import AtomArrays
 from gpaw.new import zips
 from gpaw.rotation import rotation
 from gpaw.symmetry import Symmetry as OldSymmetry
@@ -543,6 +544,35 @@ class SymmetrizationPlan:
                 D_sii += np.einsum('ij, sjk, lk -> sil',
                                    rotation_ii, D_asii[a2], rotation_ii)
         dist_D_asii.data *= 1.0 / len(self.symmetries)
+
+    def rotate_projections(self,
+                           P_ani: AtomArrays,
+                           *,
+                           symnum: int,
+                           time_reversal: bool,
+                           ignore_phase=False,
+                           relpos_ac=None,
+                           kpt_c=None):
+        if kpt_c is None or not kpt_c.any():
+            ignore_phase = True
+        if not ignore_phase:
+            1 / 0  # not verified yet!
+            dpos_ac = (relpos_ac @ self.symmetries.rotation_scc[symnum] +
+                       self.symmetries.translation_sc[symnum] -
+                       relpos_ac[self.symmetries.atommap_sa[symnum]])
+            assert np.abs(dpos_ac - np.round(dpos_ac)).max() < 1e-9
+            x_a = np.exp(2j * np.pi * kpt_c @ dpos_ac.T)
+
+        P2_ani = P_ani.new()
+        for a, P_ni in P_ani.items():
+            R_ii = self.rotations(self.l_aj[a])[symnum]
+            b = self.symmetries.atommap_sa[symnum, a]
+            P2_ani[b][:] = P_ni @ R_ii.T
+            if not ignore_phase:
+                P2_ani[b] *= x_a[a]  # or b?
+        if time_reversal:
+            np.negative(P2_ani.data.imag, P2_ani.data.imag)
+        return P2_ani
 
 
 class GPUSymmetrizationPlan(SymmetrizationPlan):

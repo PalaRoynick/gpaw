@@ -72,7 +72,7 @@ class BaseMixer:
             ncomponents=self.ncomponents,
             desc=self.desc,
             xp=self.xp)
-        self.histories = [self.density_history, ]
+        self.histories = [self.density_history]
 
     def mix(self, density: Density) -> float:
         nt_sX = density.nt_sR

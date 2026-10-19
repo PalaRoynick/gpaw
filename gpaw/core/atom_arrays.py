@@ -272,7 +272,8 @@ class AtomArrays:
 
         return self._matrix
 
-    def new(self, *, comm='inherit', layout=None, data=None, xp=None):
+    def new(self, *, comm='inherit', layout=None, data=None, xp=None,
+            dtype=None):
         """Create new AtomArrays object of same kind.
 
         Parameters
@@ -287,6 +288,10 @@ class AtomArrays:
             assert data is None
             if self.layout.xp is not xp:
                 layout = self.layout.new(xp=xp)
+        if dtype is not None:
+            assert layout is None
+            if dtype != self.layout.dtype:
+                layout = self.layout.new(dtype=dtype)
         comm = self.comm if comm == 'inherit' else (comm or serial_comm)
         return AtomArrays(layout or self.layout,
                           self.dims,
@@ -403,7 +408,9 @@ class AtomArrays:
         if a_axi is not None:
             m_xI = a_axi.matrix.gather()  # gather x
             if m_xI is not None:
-                return AtomArrays(a_axi.layout, self.dims, data=m_xI.data)
+                data = m_xI.data.reshape(self.dims + (-1,))
+                return AtomArrays(a_axi.layout, self.dims,
+                                  data=data)
         return None
 
     def scatter_from(self,

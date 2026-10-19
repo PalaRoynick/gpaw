@@ -29,8 +29,8 @@ def test_all(xc, kb, gpw_files):
     eig_in = calc.eigenvalues()[0]
     kpts = np.zeros((4, 3))
     kpts[:, 2] = np.linspace(-0.25, 0.5, 4)
-    band_wfs = band_structure(calc.dft, kpts, convergence={'bands': 2})
-    for wfs in band_wfs:
+    band_dft = band_structure(calc.dft, kpts, convergence={'bands': 2})
+    for wfs in band_dft.ibzwfs:
         i = int(round(abs(wfs.kpt_c[2]) * 4))
         assert wfs.eig_n[:2] * Ha == pytest.approx(eig_in[i, :2])
 

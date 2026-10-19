@@ -15,7 +15,7 @@ from gpaw.spinorbit import soc_eigenstates
 
 
 def check(E, hsplit, lsplit):
-    print(E)
+    # print(E)
     h1, h2, l1, l2 = E[24:28]  # HOMO-1, HOMO, LUMO, LUMO+1
     print(h2 - h1)
     print(l2 - l1)
@@ -84,8 +84,9 @@ def test_soc_non_self_consistent():
     a.get_potential_energy()
 
     bzwfs = soc_eigenstates(a.calc, n2=14)
-    eigs = bzwfs.eigenvalues()[8]
-    check(eigs, 0.15, 0.007)
+    eigs = bzwfs.eigenvalues()
+    print(eigs[:, 5])
+    check(eigs[8], 0.15, 0.007)
 
     # Ignoring XC should not make a big difference:
     bzwfs = soc_eigenstates(a.calc, n2=14, ignore_xc_potential=True)

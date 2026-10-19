@@ -219,10 +219,33 @@ def get_overlap(bands,
         Overlap coefficients for the partial waves in the PAW setups.
         Can be extracted via get_overlap_coefficients().
     """
-    return _get_overlap(bands, gd.dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii)
+    if not hasattr(proj1, 'layout'):
+        return _old_get_overlap(
+            bands, gd.dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii)
+
+    nbands = len(bands)
+    ut1_nR = np.reshape(ut1_nR[bands], (nbands, -1))
+    ut2_nR = np.reshape(ut2_nR[bands], (nbands, -1))
+    M_nn = (ut1_nR.conj() @ ut2_nR.T) * gd.dv
+
+    for a, P1_ni in proj1.items():
+        dO_ii = dO_aii[a]
+        if P1_ni.ndim == 2:
+            P1_ni = P1_ni[bands]
+            P2_ni = proj2[a][bands]
+            M_nn += P1_ni.conj() @ (dO_ii) @ (P2_ni.T)
+        else:
+            # We have an additional spinor index s to sum over
+            P1_nsi = P1_ni[bands]
+            P2_nsi = proj2[a][bands]
+            assert P1_nsi.shape[1] == 2
+            for s in range(2):
+                M_nn += P1_nsi[:, s].conj() @ (dO_ii) @ (P2_nsi[:, s].T)
+
+    return M_nn
 
 
-def _get_overlap(bands, dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii):
+def _old_get_overlap(bands, dv, ut1_nR, ut2_nR, proj1, proj2, dO_aii):
     nbands = len(bands)
     ut1_nR = np.reshape(ut1_nR[bands], (nbands, -1))
     ut2_nR = np.reshape(ut2_nR[bands], (nbands, -1))
