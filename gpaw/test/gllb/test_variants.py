@@ -35,7 +35,7 @@ def test_wrappers(xc, in_tmp_dir, add_cwd_to_setup_paths):
 
     # Check values against regular xc
     ref_eig_n = run({'GLLBLDA': 'LDA', 'GLLBPBE': 'PBE'}[xc])
-    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=2e-5), \
+    assert np.allclose(eig_n, ref_eig_n, rtol=0, atol=1e-7), \
         f'{xc} error = {np.max(np.abs(eig_n - ref_eig_n))}'
 
 
