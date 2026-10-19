@@ -4,6 +4,7 @@ from gpaw.xc.gga import GGA
 from gpaw.xc.lda import LDA
 from gpaw.xc.libxc import LibXC
 from gpaw.xc.mgga import MGGA
+from gpaw.xc.hlmgga import ThetaMGGA
 from gpaw.xc.noncollinear import NonCollinearLDAKernel
 
 libraries = get_libraries()
@@ -123,6 +124,9 @@ def XC(kernel,
             assert libraries['libxc'], 'Please compile with libxc'
             from gpaw.xc.kernel import XCKernel
             kernel = XCKernel(name)
+        elif name in {'ThetaPBE', 'ThetaPBE_X', 'ThetaPBE_C'}:
+            from gpaw.xc.kernel import XCKernel
+            kernel = XCKernel(name)
         elif name in {'LDA', 'PBE', 'revPBE', 'RPBE', 'PW91'}:
             from gpaw.xc.kernel import XCKernel
             kernel = XCKernel(name)
@@ -158,5 +162,7 @@ def XC(kernel,
 
     elif kernel.type == 'GGA':
         return GGA(kernel, **kwargs)
+    elif kernel.type == 'ThetaMGGA':
+        return ThetaMGGA(kernel, **kwargs)
     else:
         return MGGA(kernel, **kwargs)

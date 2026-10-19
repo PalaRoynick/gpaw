@@ -13,6 +13,9 @@ codes = {
     'revTPSS': 22}
 # NOTE: when adding MGGA functionals to the above
 # list, self.type must be set to MGGA in XCKernel:__init__
+codes["ThetaPBE"] = 124
+codes["ThetaPBE_X"] = 125
+codes["ThetaPBE_C"] = 126
 
 
 class XCNull:
@@ -30,6 +33,8 @@ class XCKernel:
             self.type = 'LDA'
         elif name == 'TPSS' or name == 'M06-L' or name == 'revTPSS':
             self.type = 'MGGA'
+        elif name == 'ThetaPBE' or name == 'ThetaPBE_X' or name == 'ThetaPBE_C':
+            self.type = 'ThetaMGGA'
         else:
             self.type = 'GGA'
 
