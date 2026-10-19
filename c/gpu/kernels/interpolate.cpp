@@ -10,7 +10,7 @@
 
 #ifndef GPU_USE_COMPLEX
 #  define BLOCK_X   (32)
-#  define BLOCK_Y   (16)
+#  define BLOCK_Y   (2)
 #  define BCACHE_X  (BLOCK_X + 1)
 #  define BCACHE_Y  (BLOCK_Y + 1)
 #  define ACACHE_X  (BLOCK_X / 2 + 1)
@@ -155,7 +155,7 @@ void Zgpu(bmgs_interpolate_gpu)(int k, int skip[3][2],
 {
     if (k != 2)
         assert(0);
-    int xdiv=1;
+    int xdiv=8;
 
     int gridy = blocks
               * ((sizeb[1] + skip[1][0] + BLOCK_Y - 1) / BLOCK_Y);

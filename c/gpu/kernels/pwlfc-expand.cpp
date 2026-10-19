@@ -901,37 +901,45 @@ __global__ void dH_aii_times_P_ani(Tindex nA, Tindex nn, Tindex nI,
 				      Tcomplex* P_ani_dev,
 				      Tcomplex* outP_ani_dev)
 {
-    Tindex n1 = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
-    if (n1 < nn) {
-	Treal* dH_ii = dH_aii_dev;
-	Tindex I = 0;
-	for (Tindex a=0; a< nA; a++)
-	{
-	    Tindex ni = ni_a[a];
-	    Tindex Istart = I;
-	    for (Tindex i=0; i< ni; i++)
-	    {
-		Tcomplex* outP_ni = outP_ani_dev + n1 * nI + I;
-		Tcomplex result;
-		if  constexpr (std::is_same<Tcomplex, Treal>::value) {
-			result = 0.0;
-		} else {
-			result = {0.0, 0.0};
-		}
-		Tcomplex* P_ni = P_ani_dev + n1 * nI + Istart;
-		for (Tindex i2=0; i2 < ni; i2++)
-		{
-		   result = result + *P_ni * dH_ii[i2 * ni + i];
-		   P_ni++;
-		}
-		*outP_ni = result;
-		//outP_ni->x = result.x;
-		//outP_ni->y = result.y;
-		I++;
-	    }
-	    dH_ii += ni * ni;
-	}
+    Tindex n1 = (Tindex) threadIdx.y + (Tindex) blockIdx.y * (Tindex) blockDim.y;
+    Tindex I = (Tindex) threadIdx.x + (Tindex) blockIdx.x * (Tindex) blockDim.x;
+    
+    if (n1 >= nn || I >= nI) return;
+    
+    // Determine which atom and local index this I corresponds to
+    Tindex I_cumsum = 0;
+    Tindex atom = 0;
+    Tindex local_i = I;
+    Tindex dH_offset = 0;
+    
+    for (Tindex a = 0; a < nA; a++) {
+        Tindex ni = ni_a[a];
+        if (I < I_cumsum + ni) {
+            atom = a;
+            local_i = I - I_cumsum;
+            break;
+        }
+        I_cumsum += ni;
+        dH_offset += ni * ni;
     }
+    
+    Tindex ni = ni_a[atom];
+    Treal* dH_ii = dH_aii_dev + dH_offset;
+    Tcomplex* P_row = P_ani_dev + n1 * nI;
+    
+    // Compute the dot product
+    Tcomplex result;
+    if constexpr (std::is_same<Tcomplex, Treal>::value) {
+        result = 0.0;
+    } else {
+        result = {0.0, 0.0};
+    }
+    
+    for (Tindex i2 = 0; i2 < ni; i2++) {
+        result = result + P_row[I_cumsum + i2] * dH_ii[i2 * ni + local_i];
+    }
+    
+    outP_ani_dev[n1 * nI + I] = result;
 }
 
 template <unsigned int blockSize, typename Treal>
@@ -1014,8 +1022,8 @@ void dH_aii_times_P_ani_launch_kernel(int dtypenum,
 {
     if (!nn) return;
 
-	const dim3 blocks((nn+255)/256);
-	const dim3 threads(256);
+	const dim3 blocks((nI+31)/32, (nn+7)/8);
+	const dim3 threads(32, 8);
 	const int shmem = 0;
 
     if (dtypenum == NP_DOUBLE_COMPLEX)
