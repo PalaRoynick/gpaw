@@ -240,6 +240,11 @@ class Symmetries:
             self.atommap_sa = np.array(atommaps)
             assert self.atommap_sa.dtype == int
 
+        # Symmetries surviving each single-atom displacement, keyed by
+        # displacement encoding (e.g. '0x+').  Filled by
+        # analyze_displacements():
+        self.displaced_symmetries: dict[str, dict] = {}
+
         # Legacy stuff:
         self.op_scc = self.rotation_scc  # old name
         self._old_symmetry: OldSymmetry
@@ -368,6 +373,133 @@ class Symmetries:
                           tolerance=self.tolerance,
                           _backwards_compatible=self._backwards_compatible)
 
+    def analyze_displacements(self) -> dict[str, dict]:
+        """Map each single-atom displacement to its point-group orbit.
+
+        For every atom, cartesian axis (x, y, z) and sign (+, -) a displacement
+        is encoded as e.g. ``'0x+'`` (atom 0 displaced in +x).  For every
+        *target* displacement -- atom ``a_tgt`` in cartesian direction
+        ``e_tgt`` -- and every symmetry operation ``s`` we record the *source*
+        that maps onto it.  Operation ``s`` sends atom ``a`` ->
+        ``atommap_sa[s, a]`` and direction ``e`` -> ``e @ R_vv`` (with
+        ``R_vv = inv(cell) @ op @ cell`` the cartesian rotation), so the source
+        of ``(a_tgt, e_tgt)`` under ``s`` is the atom whose image is ``a_tgt``
+        together with the direction ``c_v`` satisfying ``e_tgt == c_v @ R_vv``.
+
+        A contribution is kept **only if** ``c_v`` is a signed cardinal unit
+        vector (+-x/y/z), in which case the source is itself one of the six
+        measured displacements and is stored as its key (e.g. ``'0y-'``).
+        Only the cardinal displacements per atom are ever measured, and by
+        design no synthesized (mixed-direction) responses are used.  For
+        cubic point groups every operation is a signed permutation of the
+        axes in cartesian coordinates, so nothing is dropped and every target
+        gets exactly ``len(self)`` contributions.  For hexagonal/trigonal
+        cells the 3-/6-fold rotations (and off-axis mirrors) have
+        non-cardinal ``c_v`` and are excluded; in-plane targets then get
+        fewer contributions, and operations coupling x- and y-displacements
+        are not represented -- 2D degeneracies (e.g. graphene E-modes) are
+        **not** enforced by :meth:`symmetrize_displaced_forces`.  This is a
+        deliberate scope constraint, not an oversight.
+
+        The result is stored in (and returned from)
+        ``self.displaced_symmetries`` as a dict keyed by *target*
+        displacement, with one entry per retained operation (k <= len(self),
+        in operation order)::
+
+            {'0x+': {'rotation_scc': ...,   # (k, 3, 3) frac rotations
+                     'atommap_sa': ...,     # (k, n_atoms) atom maps
+                     'source_keys': [...]}, # k source-displacement encodings
+             ...}
+
+        The stored rotations are the integer *fractional* operations
+        (``rotation_scc``, needed elsewhere);
+        :meth:`symmetrize_displaced_forces` re-derives the cartesian
+        ``R_vv = inv(cell) @ op @ cell`` when rotating forces.  Duplicate
+        source keys across the contributions are expected.  The stabilizer
+        of a displacement is the subset of contributions whose
+        ``source_keys`` entry equals the target key; the identity operation
+        always qualifies, so every target retains at least one contribution.
+
+        Requires atom maps (build from atoms, e.g.
+        ``create_symmetries_object(atoms)``); ``n_atoms`` is taken from
+        ``atommap_sa``.
+
+        >>> from ase.build import bulk
+        >>> atoms = bulk('Si', 'diamond', cubic=False)
+        >>> sym = create_symmetries_object(atoms)
+        >>> disp = sym.analyze_displacements()
+        >>> len(disp)  # 2 atoms * 3 axes * 2 signs
+        12
+        >>> sorted(disp['0x+'])
+        ['atommap_sa', 'rotation_scc', 'source_keys']
+        >>> disp['0x+']['rotation_scc'].shape == (len(sym), 3, 3)  # cubic:
+        True
+        >>> len(disp['0x+']['source_keys']) == len(sym)  # nothing dropped
+        True
+        """
+        n_atoms = self.atommap_sa.shape[1]
+        if n_atoms == 0:
+            raise ValueError(
+                'analyze_displacements needs atom maps; build the Symmetries '
+                'object from atoms, e.g. create_symmetries_object(atoms).')
+
+        cell_cv = self.cell_cv
+        icell_cv = np.linalg.inv(cell_cv)
+        # Cartesian rotations are used only to derive the source direction c_v;
+        # the fractional operations (rotation_scc) are what we store.
+        rotation_svv = np.array([icell_cv @ op_cc @ cell_cv
+                                 for op_cc in self.rotation_scc])
+
+        axis_chars = 'xyz'
+        sign_chars = '+-'
+
+        def key(a, axis, si):
+            return f'{a}{axis_chars[axis]}{sign_chars[si]}'
+
+        displaced: dict[str, dict] = {
+            key(a, axis, si): {'rotation_scc': [],
+                               'atommap_sa': [],
+                               'source_keys': []}
+            for a in range(n_atoms) for axis in range(3) for si in range(2)}
+
+        cardinal_tol = 1e-8
+        for R_cc, R_vv, amap_a in zip(self.rotation_scc, rotation_svv,
+                                      self.atommap_sa):
+            # Preimage: source atom whose image under this operation is a_tgt.
+            inv_amap = np.empty(n_atoms, int)
+            inv_amap[amap_a] = np.arange(n_atoms)
+            iR_vv = np.linalg.inv(R_vv)
+            for a_tgt in range(n_atoms):
+                a_src = int(inv_amap[a_tgt])
+                for axis in range(3):
+                    for si, sign in enumerate((1.0, -1.0)):
+                        e_tgt = np.zeros(3)
+                        e_tgt[axis] = sign
+                        # Source direction: c_v @ R_vv == e_tgt.
+                        c_v = e_tgt @ iR_vv
+                        # Only cardinal source directions correspond to
+                        # measured displacements; drop the rest by design
+                        # (see docstring).
+                        unit = np.isclose(np.abs(c_v), 1.0,
+                                          atol=cardinal_tol)
+                        zero = np.isclose(c_v, 0.0, atol=cardinal_tol)
+                        if unit.sum() != 1 or not np.all(unit | zero):
+                            continue
+                        axis_src = int(np.nonzero(unit)[0][0])
+                        si_src = 0 if c_v[axis_src] > 0 else 1
+                        tgt = displaced[key(a_tgt, axis, si)]
+                        tgt['rotation_scc'].append(R_cc)
+                        tgt['atommap_sa'].append(amap_a)
+                        tgt['source_keys'].append(key(a_src, axis_src,
+                                                      si_src))
+
+        for entry in displaced.values():
+            entry['rotation_scc'] = np.array(entry['rotation_scc'])
+            entry['atommap_sa'] = np.array(entry['atommap_sa'])
+
+        self.displaced_symmetries = displaced
+        return displaced
+
     @classmethod
     def from_atoms(cls,
                    atoms,
@@ -434,6 +566,102 @@ class Symmetries:
             for a1, a2 in enumerate(map_a):
                 F_av[a2] += np.dot(F0_av[a1], op_vv)
         return F_av / len(self)
+
+    def symmetrize_displaced_forces(self,
+                                    disp_keys: Iterable[str],
+                                    forces: dict) -> dict:
+        """Symmetrize forces of displaced configurations.
+
+        For each target displacement, average the force arrays of the
+        symmetry-equivalent *source* displacements, rotated (and
+        atom-permuted) onto the target.  The contributions come from
+        :meth:`analyze_displacements` (which must be called first); only
+        operations whose source is one of the six measured cardinal
+        displacements contribute.  For cubic point groups that is the full
+        group; for hexagonal/trigonal cells the x/y-coupling 3-/6-fold
+        operations are excluded by design, so 2D degeneracies are not
+        enforced.
+
+        Because every source is itself a measured displacement, its raw force
+        array transforms exactly under the operation.  For each contribution
+        ``(R_cc, amap_a, source)`` the stored fractional rotation is
+        converted to cartesian, ``R_vv = inv(cell) @ R_cc @ cell``, the
+        source array is rotated, ``F[source] @ R_vv``, and the sum divided by
+        the number of retained contributions for that target.  The identity
+        operation always contributes the target itself, so the average is
+        never empty and the outputs stay interpretable as +-displaced forces.
+
+        The forces may live on a larger atom set than the symmetry: in the
+        elph workflow the symmetry is built from the *primitive* cell while
+        the displacements are run in a supercell, so ``len(F) > n_atoms`` and
+        the cache holds only the primitive atoms' displacements.
+
+        * When ``len(F) == n_atoms`` the rotated rows are permuted by
+          ``amap_a`` -- the full treatment (needed when operations exchange
+          atoms).
+        * When ``len(F) != n_atoms`` (primitive symmetry, supercell forces)
+          the rows are rotated in place, without permutation.  This is exact
+          for the on-site / Gamma blocks that fix the phonon degeneracies
+          whenever the displaced atoms are held fixed by the point group
+          (identity map, as for Si); it does not remap the off-site
+          force-constant rows.
+
+        Every source key that a contribution needs must be present -- a
+        missing key raises ``KeyError``, it is never silently skipped (a
+        partial average would bias the result).  The needed keys are always
+        within the six displacements per primitive atom that the elph cache
+        stores.
+
+        Parameters
+        ----------
+        disp_keys:
+            Displacement encodings to symmetrize, e.g. ``('0x+', '0x-')``.
+        forces:
+            Mapping from displacement encoding to its force array,
+            e.g. ``{'0x+': F0_av, ...}``.
+
+        Returns
+        -------
+        dict mapping each key in ``disp_keys`` to its symmetrized force array
+        (same shape as the input force arrays).
+        """
+        cell_cv = self.cell_cv
+        icell_cv = np.linalg.inv(cell_cv)
+        n_atoms = self.atommap_sa.shape[1]
+        F_sym: dict = {}
+        for key in disp_keys:
+            try:
+                orbit = self.displaced_symmetries[key]
+            except KeyError:
+                raise KeyError(
+                    f'No symmetries for displacement {key!r}; '
+                    'call analyze_displacements() first.')
+
+            n_force = len(np.asarray(forces[key]))
+            # The forces may live on a larger atom set than the symmetry: in
+            # the elph workflow the symmetry is built from the primitive cell
+            # (``n_atoms``) while forces are measured on a supercell
+            # (``n_force``).  A length-``n_atoms`` permutation cannot index
+            # the supercell rows, so we only permute when the atom sets
+            # match; for the primitive-symmetry / supercell-force case the
+            # rotated rows are accumulated in place (see docstring for
+            # exactness caveats).
+            permute = n_force == n_atoms
+
+            n_ops = len(orbit['rotation_scc'])
+            acc_av = np.zeros((n_force, 3))
+            for R_cc, amap_a, src in zip(orbit['rotation_scc'],
+                                         orbit['atommap_sa'],
+                                         orbit['source_keys']):
+                R_vv = icell_cv @ R_cc @ cell_cv
+                Frot_av = np.asarray(forces[src], dtype=float) @ R_vv
+                if permute:
+                    out_av = np.zeros((n_force, 3))
+                    out_av[amap_a] = Frot_av
+                    Frot_av = out_av
+                acc_av += Frot_av
+            F_sym[key] = acc_av / n_ops
+        return F_sym
 
     def lcm(self) -> list[int]:
         """Find lowest common multiple compatible with translations."""
