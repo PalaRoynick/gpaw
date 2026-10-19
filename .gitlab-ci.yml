@@ -41,8 +41,46 @@ stages:
 
 .build:
   stage: build
+  variables:
+    # Use Bear to optionally generate compile database for linting
+    BEAR_CONFIG: "tools/bear.yml"
   before_script:
     - !reference [default, before_script]
+    # Centralized "pip install gpaw" entry point. Usage:
+    #   run_gpaw_install [--lint] [--no-editable] [-- EXTRA_PIP_ARGS...]
+    # --lint wraps the install with bear (gives compile_commands.json) and
+    # --no-editable drops --editable.
+    - |
+      run_gpaw_install() {
+        lint=false
+        editable="--editable"
+        # Parse the above flags
+        for arg in "$@"; do
+          [ "$arg" = "--" ] && break
+          [ "$arg" = "--lint" ] && lint=true
+          [ "$arg" = "--no-editable" ] && editable=""
+        done
+
+        # Strip args so that "@" only holds flags passed to pip
+        while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+          shift
+        done
+        if [ "$#" -gt 0 ]; then
+          shift  # drop the "--"
+        fi
+
+        target="."
+        if [ "$lint" = true ]; then
+          target=".[cppdevel]"
+        fi
+
+        if [ "$lint" = true ]; then
+          bear --config="$BEAR_CONFIG" -- pip install -v --user --log build.log $editable "$target" "$@"
+        else
+          pip install -v --user --log build.log $editable "$target" "$@"
+        fi
+      }
+    #
     - pip install pytest
     - pip install --user --no-deps git+https://gitlab.com/ase/ase.git
     - pip install coverage
@@ -73,6 +111,9 @@ stages:
 
       libraries += ['xc']
       EOF
+  after_script:
+    # Guarantee the artifact path below always exists even if not building for linting
+    - touch compile_commands.json
   artifacts:
     when: always
     paths:
@@ -80,6 +121,7 @@ stages:
       - gpaw.egg-info
       - _gpaw.*.so
       - "*.log"
+      - compile_commands.json
     expire_in: 30 mins
 
 
@@ -221,11 +263,71 @@ build-cuda-makefile:
     # Get mypy for stubgen, and other deps that we're missing (pip doesn't get them for us with --no-build-isolation)
     - pip install --user mypy pybind11
     - pip install --user --upgrade setuptools packaging
-    - pip install -v --user --log build.log --editable . --no-build-isolation
+    - run_gpaw_install -- --no-build-isolation
   cache:
     key: cache-build-cuda
     paths:
      - $PIP_CACHE_DIR
+  artifacts:
+    when: always
+    paths:
+      - $PYTHONUSERBASE
+      - gpaw.egg-info
+      - _gpaw.*.so
+      - "*.log"
+      - Makefile
+      - compile_commands.json
+    expire_in: 30 mins
+
+
+# Base job for running clang-tidy on diffs for files under c/.
+# On branch pushes without an open MR, this diffs against the merge-base with the default branch.
+# For branches with open MRs, this instead diffs agains the MR base SHA.
+.clang-tidy-diff:
+  stage: build
+  allow_failure: true
+  variables:
+    GIT_DEPTH: "0"
+    # Additive config .yml file for eg. CUDA builds that need special treatment
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        BASE_SHA="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        git fetch origin "$CI_DEFAULT_BRANCH"
+        BASE_SHA=$(git merge-base "origin/$CI_DEFAULT_BRANCH" HEAD)
+      fi
+    - >
+      git diff -U0 --no-color "$BASE_SHA" HEAD
+      | clang-tidy-diff.py -p1 -path . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
+
+
+# Base job for full static analysis on C++ code. Runs on MRs only.
+# This does a clang-tidy pass on all code files under c/, and runs also our manual
+# include-order-checker script.
+.clang-tidy-full:
+  stage: build
+  allow_failure: true
+  variables:
+    CLANG_TIDY_EXTRA_CONFIG: ""
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - c/**/*
+        - .clang-tidy
+        - tools/**/*
+      # Provide a manual trigger for all pipelines
+    - when: manual
+  script:
+    - run-clang-tidy.py -p . ${CLANG_TIDY_EXTRA_CONFIG:+-config-file=$CLANG_TIDY_EXTRA_CONFIG}
+    - python tools/check_include_order.py compile_commands.json
 
 
 build-rocm:
@@ -254,11 +356,33 @@ build-rocm:
       libraries += ['magma']
       EOF
     - cat siteconfig.py
-    - pip install -v --user --log build.log --no-build-isolation --editable .
+    - run_gpaw_install --lint -- --no-build-isolation
   cache:
     key: cache-build-rocm
     paths:
      - $PIP_CACHE_DIR
+  artifacts:
+    when: always
+    paths:
+      - $PYTHONUSERBASE
+      - gpaw.egg-info
+      - _gpaw.*.so
+      - "*.log"
+      - compile_commands.json
+
+
+clang-tidy-diff-rocm:
+  extends: .clang-tidy-diff
+  image: $IMAGE_ROCM
+  needs:
+    - build-rocm
+
+
+clang-tidy-full-rocm:
+  extends: .clang-tidy-full
+  image: $IMAGE_ROCM
+  needs:
+    - build-rocm
 
 
 build-minimal:

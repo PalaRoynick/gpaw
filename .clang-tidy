@@ -1,0 +1,12 @@
+# YAML file but we omit the .yml suffix. Clang convention.
+
+# Disable default checks, manually enable ones we want
+Checks: >
+  -*,
+  misc-include-cleaner
+CheckOptions:
+  misc-include-cleaner.UnusedIncludes: false
+  # Include-What-You-Use check (IWYU)
+  misc-include-cleaner.MissingIncludes: true
+  # Do the IWYU check only for headers outside GPAW repo. Ie. allow transitive includes for our own headers
+  misc-include-cleaner.IgnoreHeaders: '.*/c/.*'
