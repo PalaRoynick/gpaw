@@ -3,10 +3,14 @@
 # Disable default checks, manually enable ones we want
 Checks: >
   -*,
+  mpi-*,
   misc-include-cleaner
 CheckOptions:
   misc-include-cleaner.UnusedIncludes: false
-  # Include-What-You-Use check (IWYU)
+  # Include-What-You-Use check (IWYU). We want to catch missing stdlib include in particular
   misc-include-cleaner.MissingIncludes: true
-  # Do the IWYU check only for headers outside GPAW repo. Ie. allow transitive includes for our own headers
-  misc-include-cleaner.IgnoreHeaders: '.*/c/.*'
+  # IWYU is very noisy for CPython headers in particular: for example PyObject_HEAD comes from some internal CPython
+  # header that Python.h includes transitively. We also do a lot of transitive includes in our own headers.
+  # Therefore, use a rather aggressive ignore list. NB! The pythonX.YY/* ignore may not do the job on all platforms
+  misc-include-cleaner.IgnoreHeaders: '.*/c/.*;
+    .*Python\.h*;.*/python[0-9]\.[0-9]+/.*;.*pytypedefs\.h;.*/numpy/.*;.*/pybind11/.*'
