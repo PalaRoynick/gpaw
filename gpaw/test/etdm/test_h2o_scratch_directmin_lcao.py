@@ -123,7 +123,7 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
                           'matrix_exp': matrix_exp,
                           'searchdir_algo': searchdir_algo,
                           'linesearch_algo': {'name': 'max-step',
-                                              'max_step': 0.005}},
+                                              'max_step': 0.05}},
              mixer={'backend': 'no-mixing'},
              spinpol=True,
              legacy_gpaw=legacy_gpaw,
@@ -162,13 +162,19 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
                   symmetry='off',
                   maxiter=100,
                   converge=False,
+                  convergence={'density': 1e-5},
                   txt='-')
 
-        atm.calc = dft.ase_calculator() 
+        atm.calc = dft.ase_calculator()
         calc = atm.calc
         e = atm.get_potential_energy()
+
+        for i in range(4,6):
+            print(i)
+            print(calc._dft.ibzwfs._wfs_u[0].C_nM.data[i,:10])
+            print()
         # roks occupations
-        f_n = excite(calc, 0, 0, spin=(0, 1))
+        f_n = excite(calc, 0, 0, spin=(0, 0))
         # this division is necessary, how to remove it????
         # f_n[0] = f_n[0] / 2
         dft.change(eigensolver={'name': 'etdm', 'excited_state': True},

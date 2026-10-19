@@ -131,7 +131,9 @@ class DirOptLCAO(LCAOEigensolver):
         # Set a_u_init and indices
         a = []
         self.ind_up = []
+        shape = []
         for u in range(len(self.objfunc.a_vec_u)):
+            shape.append(len(self.objfunc.a_vec_u[u].data))
             a.append(self.objfunc.a_vec_u[u].data)
             self.ind_up.append(self.objfunc.a_vec_u[u].ind_up)
 
@@ -145,8 +147,13 @@ class DirOptLCAO(LCAOEigensolver):
 
         # there is a problem when the two spin channels
         # have different occupations, i have to fix the shape of this
-        # should it maybe be a list of arrays? instead of an array itself?
-        a_u_init = np.array(a)
+        # the problem is treating it as an array (which must have equal lenghts)
+        # also when we get to the gradient it wants it as an array.....
+        # vedi anche in old g_vec_u non è un array ma un dictionary,
+        # quindi non ho il problema delle shape.
+        # devo sistemare questo.
+        a_u_init = np.zeros((len(self.objfunc.a_vec_u), max(shape)))
+        # a_u_init = np.array(a)
 
         # Initialize ETDM
         self.etdm = ETDM(self.objfunc, a_u_init,

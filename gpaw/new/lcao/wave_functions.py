@@ -379,3 +379,5 @@ class LCAOWaveFunctions(WaveFunctions, XP):
         elif type == 'gramschmidt':
             self.C_nM.data[:] = gramschmidt_lcao(self.C_nM.data, self.S_MM.data.conj())
             self.orthonormalized = True
+            
+        self._P_ani = None
