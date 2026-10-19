@@ -261,7 +261,7 @@ def calculate_non_local_potential1(setup: Setup,
         e_xc += extension.update_non_local_hamiltonian(
             as_np(D_sii), setup, atom_index, as_np(dH_sii))
 
-    e_kinetic -= as_np(D_sii * dH_sii).sum().real
+    e_kinetic -= as_np((D_sii * dH_sii).sum().real)
 
     return dH_sii, {'kinetic_correction': e_kinetic,
                     'coulomb': e_coulomb,
