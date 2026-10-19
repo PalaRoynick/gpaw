@@ -33,3 +33,4 @@ Extensions
     :maxdepth: 1
 
     extensions/d3
+    extensions/solvation/solvation
