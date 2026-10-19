@@ -93,7 +93,8 @@ class GGAXCCorrection(PAWXCBatch):
         energy_a = integrate_correction(
             engine,
             PBEResult(ae_density_sang, ae_sigma_xang, self.evaluate_xc),
-            PBEResult(pseudo_density_sang, pseudo_sigma_xang, self.evaluate_xc),
+            PBEResult(pseudo_density_sang, pseudo_sigma_xang,
+                      self.evaluate_xc),
             self.angular_weight_n, self.radial_weight_g,
             self.reference_energy)
         energy_a.backward()
