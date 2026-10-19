@@ -8,6 +8,7 @@ from math import isclose, pi
 from pathlib import Path
 
 import numpy as np
+from ase.io.jsonio import read_json, write_json
 from ase.parallel import broadcast, paropen
 from ase.units import Ha
 from ase.utils.filecache import MultiFileJSONCache as FileCache
@@ -125,6 +126,70 @@ class Sigma:
                 'sigma_eskwn': self.sigma_eskwn,
                 'dsigma_eskn': self.dsigma_eskn,
                 'inputs': self.inputs}
+
+
+class EXXVXCResult:
+    def __init__(self, vxc_skn, exx_skn, **inputs):
+        self.vxc_skn = vxc_skn
+        self.exx_skn = exx_skn
+        self.inputs = inputs
+
+    @classmethod
+    def fromdict(cls, dct):
+        instance = cls(dct['vxc_skn'], dct['exx_skn'], **dct['inputs'])
+        return instance
+
+    def todict(self):
+        return {'vxc_skn': self.vxc_skn,
+                'exx_skn': self.exx_skn,
+                'inputs': self.inputs}
+
+    def validate_inputs(self, inputs):
+        equals = compare_inputs(inputs, self.inputs, rel_tol=1e-12,
+                                abs_tol=1e-12)
+        if not equals:
+            raise RuntimeError('There exists a cache with mismatching input '
+                               f'parameters: {inputs} != {self.inputs}.')
+
+
+class EXXVXCCache:
+    def __init__(self, path, comm):
+        self.path = Path(path)
+        self.comm = comm
+
+    def calculate(self, calculator, n1, n2, kpt_indices):
+        inputs = self.get_validation_inputs(n1, n2, kpt_indices)
+
+        cached = self.path.is_file() if self.comm.rank == 0 else False
+        cached = broadcast(cached, comm=self.comm)
+
+        with broadcast_exception(self.comm):
+            if cached:
+                result = self.read(inputs)
+            else:
+                vxc_skn, exx_skn = calculator.calculate(
+                    n1=n1, n2=n2, kpt_indices=kpt_indices)
+                result = EXXVXCResult(vxc_skn, exx_skn, **inputs)
+                if self.comm.rank == 0:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    write_json(self.path, result.todict())
+
+        result = broadcast(result, comm=self.comm)
+        return result.vxc_skn, result.exx_skn
+
+    def read(self, inputs):
+        if self.comm.rank == 0:
+            result = EXXVXCResult.fromdict(
+                read_json(self.path, always_array=False))
+            result.validate_inputs(inputs)
+        else:
+            result = None
+        return result
+
+    @staticmethod
+    def get_validation_inputs(n1, n2, kpt_indices):
+        return {'bands': [n1, n2],
+                'kpts': list(kpt_indices)}
 
 
 class G0W0Outputs:
@@ -476,6 +541,7 @@ class G0W0Calculator:
                  ecut_e,
                  frequencies=None,
                  exx_vxc_calculator,
+                 exx_vxc_cache,
                  qcache,
                  ppa=False,
                  mpa=None,
@@ -612,6 +678,7 @@ class G0W0Calculator:
         self.print_parameters(kpts, b1, b2)
 
         self.exx_vxc_calculator = exx_vxc_calculator
+        self.exx_vxc_cache = exx_vxc_cache
 
         p = self.context.print
         if self.ppa:
@@ -1046,7 +1113,8 @@ class G0W0Calculator:
 
     @timer('calculate_vxc_and_exx')
     def calculate_vxc_and_exx(self):
-        return self.exx_vxc_calculator.calculate(
+        return self.exx_vxc_cache.calculate(
+            self.exx_vxc_calculator,
             n1=self.bands[0], n2=self.bands[1],
             kpt_indices=self.kpts)
 
@@ -1387,6 +1455,9 @@ class G0W0(G0W0Calculator):
         exx_vxc_calculator = EXXVXCCalculator(
             gpwfile, world=world,
             snapshotfile_prefix=filename)
+        exx_vxc_cache = EXXVXCCache(
+            f'{filename}_exx_vxc.json',
+            comm=world)
 
         super().__init__(filename=filename,
                          wd=wd,
@@ -1400,6 +1471,7 @@ class G0W0(G0W0Calculator):
                          frequencies=frequencies,
                          kpts=kpts,
                          exx_vxc_calculator=exx_vxc_calculator,
+                         exx_vxc_cache=exx_vxc_cache,
                          qcache=qcache,
                          ppa=ppa,
                          mpa=mpa,
