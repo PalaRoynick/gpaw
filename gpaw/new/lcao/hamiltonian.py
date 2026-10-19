@@ -96,7 +96,7 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
                 if PdH_MI.flags.c_contiguous:
                     mmm(1.0, PdH_MI.conj(), 'N', P_MI, 'T', 1.0, V_MM.data)
                 else:
-                    mmm(1.0, PdH_MI, 'C', P_MI, 'T', 1.0, V_MM.data)
+                    mmm(1.0, PdH_MI.T, 'C', P_MI, 'T', 1.0, V_MM.data)
         else:
             for a, dH_ii in dH_aii.items():
                 P_Mi = wfs.P_aMi[a]
