@@ -21,7 +21,7 @@ if gpaw.GPAW_MPI_BACKEND is None:
     import sys
     parser = argparse.ArgumentParser()
     parser.add_argument('-P', '--parallel', nargs='?', const=1, type=int)
-    args, _ = parser.parse_known_args([sys.argv[1]])
+    args, _ = parser.parse_known_args(sys.argv[1:])
     if args.parallel is not None:
         gpaw.GPAW_MPI_BACKEND = "serial"
     # End of logic
