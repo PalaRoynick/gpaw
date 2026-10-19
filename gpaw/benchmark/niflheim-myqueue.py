@@ -1,7 +1,11 @@
 from os import getcwd
 from pathlib import Path
 
-from gpaw.benchmark import benchmark_main, get_benchmarks
+from gpaw.benchmark import (
+    benchmark_main,
+    get_benchmarks,
+    niflheim_gpu_only_benchmarks,
+)
 
 platforms = [('xeon24el8_test', 24, 24, 0, '10m'),
              ('a100', 8, 1, 1, '1h'),
@@ -17,6 +21,8 @@ def workflow():
     for partition, ncores, nprocs, ngpus, time in platforms:
         for benchmark in get_benchmarks(
                 cores=nprocs, memory='10000G', gpus=ngpus):
+            if benchmark in niflheim_gpu_only_benchmarks:
+                continue
             (path / f'{partition}-{nprocs}').mkdir(exist_ok=True)
             run(function=benchmark_main, args=(benchmark,),
                 nodename=partition, cores=ncores, processes=nprocs,

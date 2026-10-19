@@ -340,6 +340,24 @@ def c72():
     return atoms * (6, 6, 1)
 
 
+si_defect_shapes = {
+    127: (4, 2, 2),
+    255: (4, 4, 2),
+    511: (4, 4, 4),
+    1023: (8, 4, 4),
+    1535: (6, 8, 4),
+    2047: (8, 8, 4),
+}
+
+
+def si_defect(natoms):
+    atoms = bulk('Si', 'diamond', a=5.43, cubic=True)
+    atoms *= si_defect_shapes[natoms]
+    del atoms[0]
+    assert len(atoms) == natoms
+    return atoms
+
+
 # Contains both old and new names:
 systems = {'H2': system_H2,
            'H2-0': system_H2,
@@ -370,7 +388,13 @@ systems = {'H2': system_H2,
            'Mn2O2-3M': mn2o2,
            'Ti2Br6-3': ti2br6,
            'Fe8O8-3M': fe8o8,
-           'C72-2': c72}
+           'C72-2': c72,
+           'Si127_defect': lambda: si_defect(127),
+           'Si255_defect': lambda: si_defect(255),
+           'Si511_defect': lambda: si_defect(511),
+           'Si1023_defect': lambda: si_defect(1023),
+           'Si1535_defect': lambda: si_defect(1535),
+           'Si2047_defect': lambda: si_defect(2047)}
 
 
 def parse_system(name):

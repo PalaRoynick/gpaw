@@ -79,7 +79,25 @@ benchmarks_list = [
      '0:100G:1-4GPU'),
     ('pw_slab',
      'metalslab-pw.high:kpts.density10:xc.PBE:eigensolver.DAV3',
-     '56-:100G:2-GPU')]
+     '56-:100G:2-GPU'),
+    ('Si127_defect_gpu',
+     'Si127_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si255_defect_gpu',
+     'Si255_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si511_defect_gpu',
+     'Si511_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si1023_defect_gpu',
+     'Si1023_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si1535_defect_gpu',
+     'Si1535_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU'),
+    ('Si2047_defect_gpu',
+     'Si2047_defect-pw.low:kpts.gamma:parallel.domainband.scalapack',
+     '0:100G:1-16GPU')]
 
 
 def get_domainband(size=None, world=None):
@@ -171,6 +189,15 @@ benchmarks_reqs = {}
 for nickname, definition, req in benchmarks_list:
     benchmarks[nickname] = definition
     benchmarks_reqs[nickname] = parse_requirement(req)
+
+niflheim_gpu_only_benchmarks = {
+    'Si127_defect_gpu',
+    'Si255_defect_gpu',
+    'Si511_defect_gpu',
+    'Si1023_defect_gpu',
+    'Si1535_defect_gpu',
+    'Si2047_defect_gpu',
+}
 
 
 def recursive_update(d, u):
