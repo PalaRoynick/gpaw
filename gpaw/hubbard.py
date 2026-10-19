@@ -28,16 +28,23 @@ def parse_hubbard_string(type: str) -> tuple[str, 'HubbardU']:
 
 
 class HubbardU:
-    def __init__(self, U, l, scale=1):
+    def __init__(self, U, l, scale=1, alpha=0, lr_spin=None):
         self.scale = scale
         self.U = U
         self.l = l
+        self.alpha = alpha # perturbation for linear response U
+        self.lr_spin = lr_spin # spin channel for LR U; None for all channels (default)
 
     def _tuple(self):
         # Tests use this method to compare to expected values
         return (self.l, self.U, self.scale)
 
     def calculate(self, setup, D_sii):
+        if self.alpha != 0: # keep U potential frozen by using unperturbed density matrix
+            D_sii = self.fixed_D_sii
+        else:
+            self.fixed_D_sii = D_sii
+
         eU = 0.
         dHU_sii = np.zeros_like(D_sii)
         for l, U, scale in zip(self.l, self.U, self.scale):
@@ -53,9 +60,11 @@ class HubbardU:
 
             eU1, dHU1_sii = hubbard(D_sii, U=U, l=l,
                                     l_j=setup.l_j, n_j=setup.n_j,
-                                    N0_q=setup.N0_q, scale=scale)
+                                    N0_q=setup.N0_q, scale=scale, alpha=self.alpha,
+                                    lr_spin=self.lr_spin)
             eU += eU1.real
             dHU_sii += dHU1_sii
+
         return eU, dHU_sii
 
     def descriptions(self):
@@ -71,7 +80,10 @@ def hubbard(D_sii: Array3D,
             l_j: list[int],
             n_j: list[int],
             N0_q: Array1D,
-            scale: bool) -> tuple[float, ArrayLike2D]:
+            scale: bool,
+            alpha: float,
+            lr_spin: int) -> tuple[float, ArrayLike2D]:
+
     nspins = len(D_sii)
 
     # j-indices which have the correct angular momentum quantum number
@@ -106,6 +118,9 @@ def hubbard(D_sii: Array3D,
 
             dHU_mm = U / 2. * (np.eye(nm) - 2 * N_mm)
 
+        if lr_spin == None or lr_spin == s: # LR U perturbation
+            dHU_mm += alpha * np.eye(nm)
+
         eU += eU1
         if nspins == 1:
             # Add contribution from other spin manifold
@@ -130,8 +145,8 @@ def hubbard(D_sii: Array3D,
 
 def aoom(D_ii: Array2D,
          l: int,
-         l_j: list[int],
-         n_j: list[int],
+         l_j: List[int],
+         n_j: List[int],
          N0_q: Array1D,
          scale: bool = True) -> tuple[Array2D, Array2D]:
     """
