@@ -11,7 +11,8 @@ from gpaw.xc import XC
 @pytest.mark.ci
 @pytest.mark.parametrize('xc_name', ['LDA', 'PBE'])
 @pytest.mark.parametrize('nspins', [1, 2])
-def test_xc_XC2_radial(xc_name, nspins):
+@pytest.mark.parametrize('radial_i', [0, 21, -1])
+def test_xc_XC2_radial(xc_name, nspins, radial_i):
     rgd = EquidistantRadialGridDescriptor(0.01, 100)
 
     xc = XC(xc_name)
@@ -20,16 +21,16 @@ def test_xc_XC2_radial(xc_name, nspins):
     n[:] = np.exp(-rgd.r_g**2)
     n[-1] *= 2
     E = xc.calculate_spherical(rgd, n, v)
-    i = 21
-    x = v[-1, i] * rgd.dv_g[i]
-    n[-1, i] += 0.000001
+    i = radial_i
+    x = v[-1, i] * np.clip(rgd.dv_g[i], 1e-40, None)
+    n[-1, i] += 1e-6
     Ep = xc.calculate_spherical(rgd, n, v)
-    n[-1, i] -= 0.000002
+    n[-1, i] -= 2e-6
     Em = xc.calculate_spherical(rgd, n, v)
-    x2 = (Ep - Em) / 0.000002
+    x2 = (Ep - Em) / 2e-6
     print(xc_name, nspins, E, x, x2, x - x2)
     assert x == pytest.approx(x2, abs=1e-9)
-    n[-1, i] += 0.000001
+    n[-1, i] += 1e-6
     if nspins == 1:
         ns = rgd.empty(2)
         ns[:] = n / 2

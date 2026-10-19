@@ -210,8 +210,6 @@ class DFTComponentsBuilder:
             self.wf_atomdist = self.atomdist
 
         self.xc = create_functional(xcfunc, self.fine_grid, self.xp)
-        self.xc.backwards_compatible = params.experimental.get(
-            'backwards_compatible', False)
 
         self.interpolation_desc: Domain
         self.electrostatic_potential_desc: Domain

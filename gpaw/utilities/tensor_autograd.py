@@ -151,9 +151,7 @@ class EinsumResult(TensorResult):
                  subscripts: str,
                  left,
                  right,
-                 optimize=True,
-                 compatibility_bug=False):
-        self.compatibility_bug = compatibility_bug
+                 optimize=True):
         left_indices, right_indices, indices = _split_einsum(subscripts)
         value = engine.contract(
             subscripts, _value(left), _value(right), optimize=optimize)
@@ -170,9 +168,6 @@ class EinsumResult(TensorResult):
 
     def _backward(self, gradient):
         contributions = []
-
-        if self.compatibility_bug:
-            self.right[..., 0] = 0
 
         if isinstance(self.left, TensorResult):
             left_gradient = self.engine.contract(
@@ -381,8 +376,7 @@ class Engine:
         return self.xp.einsum(
             subscripts, left, right, optimize=optimize)
 
-    def einsum(self, subscripts: str, left, right, *, optimize=True,
-               compatibility_bug=False):
+    def einsum(self, subscripts: str, left, right, *, optimize=True):
         """Contract two operands and retain history when either is active.
         The compatibility_bug flag should only be used for matching old xc
         calculations, as it introduces a deliberate bug into the backwards
@@ -392,8 +386,7 @@ class Engine:
                 right, TensorResult):
             return self.contract(
                 subscripts, left, right, optimize=optimize)
-        return EinsumResult(self, subscripts, left, right, optimize,
-                            compatibility_bug=compatibility_bug)
+        return EinsumResult(self, subscripts, left, right, optimize)
 
     def sum(self, operand: TensorResult, axis) -> SumResult:
         """Reduce active tensor axes and create the corresponding result."""

@@ -107,8 +107,6 @@ def add_radial_gradient_correction(rgd, sigma_xg, dedsigma_xg, a_sg):
         rgd.derivative2(rgd.dv_g * dedsigma_xg[1] * a_sg[0], v_g)
         vv_sg[1] -= v_g
 
-    vv_sg[:, 0] = 0  # Here we introduce a bug for backwards compatibility
-    # The more exact version would be deleting this line.
     return vv_sg
 
 
@@ -258,7 +256,7 @@ class GGA(XCFunctional):
                                 dndr_sg[:, np.newaxis],
                                 np.zeros((1, 3)), n=None)[:2]
         v_sg[:] = dedn_sg
-        v_sg[..., 1:] /= rgd.dv_g[1:]
+        v_sg[..., :] /= np.clip(rgd.dv_g, 1e-40, None)  # Do not divide by zero.
         return rgd.integrate(e_g)
 
 

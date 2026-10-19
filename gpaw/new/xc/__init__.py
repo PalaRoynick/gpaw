@@ -81,7 +81,6 @@ class Functional:
         self.exx_omega = 0.0
         self.exx_yukawa = False
         self.energies: dict[str, float] = {}
-        self.backwards_compatible = False
 
     def __str__(self):
         return f'name: {self.xc.get_description()}'
