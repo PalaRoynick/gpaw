@@ -164,10 +164,12 @@ def parse_upf(fname):
             else:
                 tokens = element.text.split()
                 metadata = tokens[:5]
-                values = map(float, tokens[5:])
+                nvalues = int(metadata[-1])
+                values = [float(x) for x in tokens[5:5 + nvalues]]
+                assert len(values) == nvalues
+                # Currently we are ignoring any extra tokens
+                # after the values.  This may or may not be okay.
 
-                npts = int(metadata[4])
-                assert npts == len(values), (npts, len(values))
                 while values[-1] == 0.0:
                     values.pop()
 
@@ -573,8 +575,10 @@ def upfplot(setup, show=True, calculate=False):
 
     import matplotlib.pyplot as plt
     fig = plt.figure()
-    fig.canvas.set_window_title('{} - UPF setup for {}'.format(pp['fname'],
-                                                               setup.symbol))
+
+    # Fixme: matplotlib changed how to set the window title
+    # fig.canvas.set_window_title('{} - UPF setup for {}'.format(pp['fname'],
+    #                                                            setup.symbol))
 
     vax = fig.add_subplot(221)
     pax = fig.add_subplot(222)
