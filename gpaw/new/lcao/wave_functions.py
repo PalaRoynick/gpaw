@@ -12,6 +12,7 @@ from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
 from gpaw.new.wave_functions import WaveFunctions
 from gpaw.setup import Setups
 from gpaw.typing import Array2D
+from gpaw.utilities.blas import mmm
 
 
 class LCAOWaveFunctions(WaveFunctions, XP):
@@ -142,11 +143,13 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                     'Can not calculate projections due to '
                     'wave function collapse!')
 
-            from gpaw.utilities.blas import mmm
             # for a, P_Mi in self.P_aMi.items():
             #     self._P_ani[a][:] = self.C_nM.data @ P_Mi
-            mmm(1.0, self.C_nM.data, 'N', self.P_aMi.data, 'N',
-                0.0, self._P_ani.data)
+            if self.xp is np:
+                mmm(1.0, self.C_nM.data, 'N', self.P_aMi.data, 'N',
+                    0.0, self._P_ani.data)
+            else:
+                self._P_ani.data[:] = self.C_nM.data @ self.P_aMi.data
 
         return self._P_ani
 

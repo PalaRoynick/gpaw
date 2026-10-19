@@ -221,6 +221,8 @@ class ndarray:
         self.flags = data.flags
         self.ndim = data.ndim
         self.nbytes = data.nbytes
+        self.strides = data.strides
+        self.itemsize = data.itemsize
         self.data = SimpleNamespace(ptr=data.ctypes.data)
 
     @property
