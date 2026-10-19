@@ -1,4 +1,5 @@
 from math import pi
+from time import perf_counter
 
 import numpy as np
 from ase.dft.kpoints import monkhorst_pack
@@ -224,8 +225,14 @@ class WCalculator(WBaseCalculator):
                                      only_correlation=True)
         # HT used to calculate convulution between time-ordered G and W
         hilbert_transform = GWHilbertTransforms(chi0.wd.omega_w, self.eta)
+        start = perf_counter()
+        self.context.print('GW timer: Hilbert transformation started')
         with self.context.timer('Hilbert'):
             HW_swgG = hilbert_transform(W_WgG)
+        self.context.print(
+            'GW timer: Hilbert transformation finished: '
+            f'{perf_counter() - start:.3f} s'
+        )
 
         factor = 1.0 / (self.qd.nbzkpts * 2 * pi * self.gs.volume)
         return FullFrequencyHWModel(chi0.wd, HW_swgG, factor)
@@ -264,7 +271,9 @@ class WCalculator(WBaseCalculator):
             sqrtV_G = dfc.sqrtV_G
             V0, sqrtV0 = self.get_V0sqrtV0(chi0)
 
-        einv_wGG = dfc.get_epsinv_wGG(only_correlation=False)
+        einv_wGG = dfc.get_epsinv_wGG(
+            only_correlation=False, context=self.context
+        )
         W_wGG = np.empty_like(einv_wGG)
         for iw, (einv_GG, W_GG) in enumerate(zip(einv_wGG, W_wGG)):
             # If only_correlation = True function spits out
@@ -502,7 +511,9 @@ class MPACalculator(WBaseCalculator):
                                            fxc_mode)
 
         self.context.timer.start('Dyson eq.')
-        einv_wGG = dfc.get_epsinv_wGG(only_correlation=True)
+        einv_wGG = dfc.get_epsinv_wGG(
+            only_correlation=True, context=self.context
+        )
         einv_WgG = chi0.body.blockdist.distribute_as(einv_wGG, chi0.nw, 'WgG')
 
         solver = RESolver(chi0.wd.omega_w)

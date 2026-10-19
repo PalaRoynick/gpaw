@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
+from time import perf_counter
 
 import numpy as np
 from scipy.linalg.blas import zher
@@ -82,12 +83,37 @@ class PointIntegrator(Integrator):
         # Calculate integrations weight
         pb = ProgressBar(self.context.fd)
         for _, point in pb.enumerate(mydomain):
+            pair_start = perf_counter()
+            self.context.print(
+                f'GW timer: chi0 k-point pair k={point.K} '
+                f'spin={point.spin} started'
+            )
+            matrix_start = perf_counter()
+            self.context.print(
+                f'GW timer: matrix generation k={point.K} '
+                f'spin={point.spin} started'
+            )
             n_MG = integrand.matrix_element(point)
+            self.context.print(
+                f'GW timer: matrix generation k={point.K} '
+                f'spin={point.spin} finished: '
+                f'{perf_counter() - matrix_start:.3f} s'
+            )
             if n_MG is None:
+                self.context.print(
+                    f'GW timer: chi0 k-point pair k={point.K} '
+                    f'spin={point.spin} finished: '
+                    f'{perf_counter() - pair_start:.3f} s'
+                )
                 continue
             deps_M = integrand.eigenvalues(point)
 
             task.run(wd, n_MG, deps_M, out_wxx)
+            self.context.print(
+                f'GW timer: chi0 k-point pair k={point.K} '
+                f'spin={point.spin} finished: '
+                f'{perf_counter() - pair_start:.3f} s'
+            )
 
         # We have divided the broadcasted sum from previous update by
         # kncomm.size, and thus here is will be back to its original value.
@@ -468,9 +494,24 @@ class TetrahedronIntegrator(Integrator):
         # Calculate integrations weight
         pb = ProgressBar(self.context.fd)
         for _, point in pb.enumerate(mydomain):
+            pair_start = perf_counter()
+            self.context.print(
+                f'GW timer: chi0 k-point pair k={point.K} '
+                f'spin={point.spin} started'
+            )
             deps_Mk = deps_tMk[point.spin]
             teteps_Mk = deps_Mk[:, tesselation.neighbours_k[point.K]]
+            matrix_start = perf_counter()
+            self.context.print(
+                f'GW timer: matrix generation k={point.K} '
+                f'spin={point.spin} started'
+            )
             n_MG = integrand.matrix_element(point)
+            self.context.print(
+                f'GW timer: matrix generation k={point.K} '
+                f'spin={point.spin} finished: '
+                f'{perf_counter() - matrix_start:.3f} s'
+            )
 
             # Generate frequency weights
             i0_M, i1_M = wd.get_index_range(teteps_Mk.min(1), teteps_Mk.max(1))
@@ -482,6 +523,11 @@ class TetrahedronIntegrator(Integrator):
                     W_Mw.append(W_w)
 
             task.run(n_MG, deps_Mk, W_Mw, i0_M, i1_M, out_wxx)
+            self.context.print(
+                f'GW timer: chi0 k-point pair k={point.K} '
+                f'spin={point.spin} finished: '
+                f'{perf_counter() - pair_start:.3f} s'
+            )
 
         self.kncomm.sum(out_wxx)
 

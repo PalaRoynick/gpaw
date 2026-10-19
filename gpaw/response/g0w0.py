@@ -6,8 +6,10 @@ from collections.abc import Iterable
 from contextlib import ExitStack
 from math import isclose, pi
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
+from ase.io.jsonio import read_json, write_json
 from ase.parallel import broadcast, paropen
 from ase.units import Ha
 from ase.utils.filecache import MultiFileJSONCache as FileCache
@@ -72,6 +74,26 @@ def compare_inputs(inp1, inp2, rel_tol=1e-14, abs_tol=1e-14):
     return True
 
 
+def compare_gw_cache_inputs(inp1, inp2):
+    """Compare GW cache inputs across extrapolation representations.
+
+    Fully coupled extrapolation was historically not stored in the cache
+    inputs.  Treat an explicit ``True`` or a component dictionary containing
+    only true values as that same legacy default.
+    """
+    def normalize(inputs):
+        inputs = inputs.copy()
+        extrapolate = inputs.get('extrapolate')
+        if (extrapolate is True or
+                isinstance(extrapolate, dict) and
+                extrapolate and all(extrapolate.values())):
+            inputs.pop('extrapolate', None)
+        return inputs
+
+    return compare_inputs(normalize(inp1), normalize(inp2),
+                          rel_tol=1e-12, abs_tol=1e-12)
+
+
 class Sigma:
     def __init__(self, iq, q_c, fxc, esknshape, nw, **inputs):
         """Inputs are used for cache invalidation, and are stored for each
@@ -101,8 +123,7 @@ class Sigma:
         return self
 
     def validate_inputs(self, inputs):
-        equals = compare_inputs(inputs, self.inputs, rel_tol=1e-12,
-                                abs_tol=1e-12)
+        equals = compare_gw_cache_inputs(inputs, self.inputs)
         if not equals:
             raise RuntimeError('There exists a cache with mismatching input '
                                f'parameters: {inputs} != {self.inputs}.')
@@ -127,10 +148,78 @@ class Sigma:
                 'inputs': self.inputs}
 
 
+class EXXVXCResult:
+    def __init__(self, vxc_skn, exx_skn, **inputs):
+        self.vxc_skn = vxc_skn
+        self.exx_skn = exx_skn
+        self.inputs = inputs
+
+    @classmethod
+    def fromdict(cls, dct):
+        instance = cls(dct['vxc_skn'], dct['exx_skn'], **dct['inputs'])
+        return instance
+
+    def todict(self):
+        return {'vxc_skn': self.vxc_skn,
+                'exx_skn': self.exx_skn,
+                'inputs': self.inputs}
+
+    def validate_inputs(self, inputs):
+        equals = compare_inputs(inputs, self.inputs, rel_tol=1e-12,
+                                abs_tol=1e-12)
+        if not equals:
+            raise RuntimeError('There exists a cache with mismatching input '
+                               f'parameters: {inputs} != {self.inputs}.')
+
+
+class EXXVXCCache:
+    def __init__(self, path, comm):
+        self.path = Path(path)
+        self.comm = comm
+
+    def calculate(self, calculator, n1, n2, kpt_indices):
+        inputs = self.get_validation_inputs(n1, n2, kpt_indices)
+
+        cached = self.path.is_file() if self.comm.rank == 0 else False
+        cached = broadcast(cached, comm=self.comm)
+
+        with broadcast_exception(self.comm):
+            if cached:
+                result = self.read(inputs)
+            else:
+                vxc_skn, exx_skn = calculator.calculate(
+                    n1=n1, n2=n2, kpt_indices=kpt_indices)
+                result = EXXVXCResult(vxc_skn, exx_skn, **inputs)
+                if self.comm.rank == 0:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    write_json(self.path, result.todict())
+
+        result = broadcast(result, comm=self.comm)
+        return result.vxc_skn, result.exx_skn
+
+    def read(self, inputs):
+        if self.comm.rank == 0:
+            result = EXXVXCResult.fromdict(
+                read_json(self.path, always_array=False))
+            result.validate_inputs(inputs)
+        else:
+            result = None
+        return result
+
+    @staticmethod
+    def get_validation_inputs(n1, n2, kpt_indices):
+        return {'bands': [n1, n2],
+                'kpts': list(kpt_indices)}
+
+
 class G0W0Outputs:
     def __init__(self, context, shape, ecut_e, sigma_eskn, dsigma_eskn,
-                 sigma_eskwn, eps_skn, vxc_skn, exx_skn, f_skn):
+                 sigma_eskwn, eps_skn, vxc_skn, exx_skn, f_skn,
+                 kpts=None, band_start=0):
         self.extrapolate(context, shape, ecut_e, sigma_eskn, dsigma_eskn)
+        if len(ecut_e) > 1:
+            self.print_extrapolation_fits(context, ecut_e, sigma_eskn,
+                                          dsigma_eskn, kpts, band_start)
         self.Z_skn = 1 / (1 - self.dsigma_skn)
 
         # G0W0 single-step.
@@ -170,6 +259,8 @@ class G0W0Outputs:
         self.dsigr2_skn = np.zeros(shape)
         self.sigma_skn = np.zeros(shape)
         self.dsigma_skn = np.zeros(shape)
+        self.sigma_residual_skn = np.zeros(shape)
+        self.dsigma_residual_skn = np.zeros(shape)
         invN_i = ecut_e**(-3. / 2)
         for m in range(np.prod(shape)):
             s, k, n = np.unravel_index(m, shape)
@@ -179,21 +270,87 @@ class G0W0Outputs:
 
             self.sigr2_skn[s, k, n] = r_value**2
             self.sigma_skn[s, k, n] = intercept
+            residual = sigma_eskn[:, s, k, n] - (slope * invN_i + intercept)
+            self.sigma_residual_skn[s, k, n] = np.sqrt(np.mean(residual**2))
 
             slope, intercept, r_value, p_value, std_err = \
                 linregress(invN_i, dsigma_eskn[:, s, k, n])
 
             self.dsigr2_skn[s, k, n] = r_value**2
             self.dsigma_skn[s, k, n] = intercept
+            residual = dsigma_eskn[:, s, k, n] - (slope * invN_i + intercept)
+            self.dsigma_residual_skn[s, k, n] = np.sqrt(np.mean(residual**2))
 
-        if np.any(self.sigr2_skn < 0.9) or np.any(self.dsigr2_skn < 0.9):
+        if (self.bad_extrapolation_fit(sigma_eskn, self.sigma_skn,
+                                       self.sigma_residual_skn,
+                                       self.sigr2_skn, Ha).any()
+                or self.bad_extrapolation_fit(dsigma_eskn, self.dsigma_skn,
+                                              self.dsigma_residual_skn,
+                                              self.dsigr2_skn, 1).any()):
             context.print('  Warning: Bad quality of linear fit for some ('
                           'n,k). ', flush=False)
             context.print('           Higher cutoff might be necessary.',
                           flush=False)
 
-        context.print('  Minimum R^2 = %1.4f. (R^2 Should be close to 1)' %
+        context.print('  Minimum R^2 = %1.4f. (Low R^2 is harmless when '
+                      'the absolute fit residual is small)' %
                       min(np.min(self.sigr2_skn), np.min(self.dsigr2_skn)))
+
+    @staticmethod
+    def bad_extrapolation_fit(samples, fitted, residual, r2, scale):
+        """Allow nearly constant data with small absolute fit residuals.
+
+        The RMS tolerance is 1 meV for sigma and 0.001 for dsigma.
+        An undefined R^2 for constant data is harmless at this tolerance.
+        """
+        finite = (np.isfinite(samples).all(axis=0)
+                  & np.isfinite(fitted) & np.isfinite(residual))
+        poor_relative_fit = (r2 < 0.9) | ~np.isfinite(r2)
+        return ~finite | (poor_relative_fit & (residual * scale > 0.001))
+
+    def print_extrapolation_fits(self, context, ecut_e, sigma_eskn,
+                                dsigma_eskn, kpts, band_start):
+        """Print all cutoff samples and fits before the final QP summary."""
+        context.print('\nSelf-energy cutoff extrapolation fits:')
+        context.print('Sigma and its RMS fit residual are in eV; '
+                      'dsigma and its residual are dimensionless.')
+        context.print('Red extrapolated value and RMS residual: '
+                      'R^2 < 0.9 (or undefined) AND RMS residual '
+                      '> 0.001 eV for sigma or > 0.001 for dsigma; '
+                      'nonfinite samples, extrapolated values or residuals '
+                      'are always highlighted.')
+        sigma_columns = ' '.join(f'sigma@{ec * Ha:.3f}eV'
+                                 for ec in ecut_e)
+        dsigma_columns = ' '.join(f'dsigma@{ec * Ha:.3f}eV'
+                                  for ec in ecut_e)
+        for s in range(self.sigma_skn.shape[0]):
+            for k in range(self.sigma_skn.shape[1]):
+                ik = k if kpts is None else kpts[k]
+                context.print(f'\nSpin {s}, k-point {ik}:')
+                context.print(f'band {sigma_columns} sigma@infinity '
+                              f'RMS-residual R^2 | {dsigma_columns} '
+                              'dsigma@infinity RMS-residual R^2')
+                for n in range(self.sigma_skn.shape[2]):
+                    slot = s, k, n
+                    fields = []
+                    for samples, fitted, residual, r2, scale in [
+                            (sigma_eskn, self.sigma_skn,
+                             self.sigma_residual_skn, self.sigr2_skn, Ha),
+                            (dsigma_eskn, self.dsigma_skn,
+                             self.dsigma_residual_skn, self.dsigr2_skn, 1)]:
+                        values = samples[:, s, k, n] * scale
+                        fit = fitted[slot] * scale
+                        rms = residual[slot] * scale
+                        quality = r2[slot]
+                        text = ' '.join(f'{value: .7f}' for value in values)
+                        fit_text = f'{fit: .7f} {rms:.3e}'
+                        if self.bad_extrapolation_fit(
+                                samples[:, s, k, n], fitted[slot],
+                                residual[slot], quality, scale):
+                            fit_text = '\033[31m' + fit_text + '\033[0m'
+                        text += f' {fit_text} {quality:.5f}'
+                        fields.append(text)
+                    context.print(f'{band_start + n:4d} ' + ' | '.join(fields))
 
     def get_results_eV(self):
         results = {
@@ -215,6 +372,8 @@ class G0W0Outputs:
             assert self.dsigr2_skn is not None
             results['sigr2_skn'] = self.sigr2_skn
             results['dsigr2_skn'] = self.dsigr2_skn
+            results['sigma_fit_residual_skn'] = self.sigma_residual_skn * Ha
+            results['dsigma_fit_residual_skn'] = self.dsigma_residual_skn
 
         return results
 
@@ -356,7 +515,25 @@ def get_frequencies(frequencies: dict | None,
     return frequencies
 
 
+def extrapolation_components(ecut_extrapolation):
+    """Normalize cutoff extrapolation controls, preserving boolean/list API."""
+    if isinstance(ecut_extrapolation, dict):
+        expected = {'G', 'chi0', 'epsilon'}
+        if set(ecut_extrapolation) != expected or any(
+                type(value) is not bool
+                for value in ecut_extrapolation.values()):
+            raise ValueError('ecut_extrapolation requires boolean values '
+                             'for G, chi0, and epsilon')
+        return dict(ecut_extrapolation)
+    enabled = bool(np.size(ecut_extrapolation) > 1 or
+                   np.any(ecut_extrapolation))
+    return dict.fromkeys(['G', 'chi0', 'epsilon'], enabled)
+
+
 def choose_ecut_things(ecut, ecut_extrapolation):
+    if isinstance(ecut_extrapolation, dict):
+        ecut_extrapolation = any(
+            extrapolation_components(ecut_extrapolation).values())
     if ecut_extrapolation is True:
         pct = 0.8
         necuts = 3
@@ -474,8 +651,10 @@ class G0W0Calculator:
                  fxc_modes,
                  eta,
                  ecut_e,
+                 extrapolate=None,
                  frequencies=None,
                  exx_vxc_calculator,
+                 exx_vxc_cache,
                  qcache,
                  ppa=False,
                  mpa=None,
@@ -563,6 +742,11 @@ class G0W0Calculator:
         self.frequencies = frequencies
 
         self.ecut_e = ecut_e / Ha
+        self.extrapolate = (dict.fromkeys(['G', 'chi0', 'epsilon'], True)
+                            if extrapolate is None else extrapolate)
+        self.epsilon_ecut_e = (self.ecut_e if self.extrapolate['epsilon']
+                               else np.full_like(self.ecut_e,
+                                                 self.ecut_e[-1]))
 
         self.context.print(gw_logo)
 
@@ -612,6 +796,7 @@ class G0W0Calculator:
         self.print_parameters(kpts, b1, b2)
 
         self.exx_vxc_calculator = exx_vxc_calculator
+        self.exx_vxc_cache = exx_vxc_cache
 
         p = self.context.print
         if self.ppa:
@@ -763,7 +948,13 @@ class G0W0Calculator:
 
     def postprocess_single(self, fxc_name, sigma):
         output = self.calculate_g0w0_outputs(sigma)
-        return output.get_results_eV()
+        results = output.get_results_eV()
+        # Coordinates are fractional reciprocal-cell coordinates, ordered
+        # exactly like the k axis of eps, qp, sigma, and dsigma.
+        indices = np.asarray(self.kpts, dtype=int)
+        results['kpt_indices'] = indices.copy()
+        results['kpoints'] = self.wcalc.gs.kd.ibzk_kc[indices].copy()
+        return results
 
     def savepckl(self):
         """Save outputs to pckl files and return paths to those files."""
@@ -805,6 +996,11 @@ class G0W0Calculator:
             self.check(ie, i_cG, shift0_c, N_c, Q_c, mypawcorr)
 
         for n in range(kpt1.n2 - kpt1.n1):
+            start = perf_counter()
+            self.context.print(
+                f'GW timer: sigma evaluation k={kpt1.K} '
+                f'band={kpt1.n1 + n} started'
+            )
             eps1 = kpt1.eps_n[n]
             self.context.timer.start('get_nmG')
             n_mG = get_nmG(kpt1, kpt2, mypawcorr,
@@ -853,12 +1049,18 @@ class G0W0Calculator:
                 sigma.sigma_eskn[slot] += sigma_m.real.sum()
                 sigma.dsigma_eskn[slot] += dsigma_m.real.sum()
 
+            self.context.print(
+                f'GW timer: sigma evaluation k={kpt1.K} '
+                f'band={kpt1.n1 + n} finished: '
+                f'{perf_counter() - start:.3f} s'
+            )
+
     def check(self, ie, i_cG, shift0_c, N_c, Q_c, pawcorr):
         # Can we delete this check? XXX
         assert np.allclose(shift0_c.round(), shift0_c)
         shift0_c = shift0_c.round().astype(int)
         I0_G = np.ravel_multi_index(i_cG - shift0_c[:, None], N_c, 'wrap')
-        qpd = SingleQPWDescriptor.from_q(Q_c, self.ecut_e[ie],
+        qpd = SingleQPWDescriptor.from_q(Q_c, self.epsilon_ecut_e[ie],
                                          self.wcalc.gs.gd)
         G_I = np.empty(N_c.prod(), int)
         G_I[:] = -1
@@ -965,7 +1167,7 @@ class G0W0Calculator:
             self.context.timer.start('W')
 
             # First time calculation
-            if ecut == chi0.qpd.ecut:
+            if ecut == chi0.qpd.ecut or not self.extrapolate['chi0']:
                 # Nothing to cut away:
                 m2 = self.nbands
             else:
@@ -978,8 +1180,16 @@ class G0W0Calculator:
                                      f'({self.nbands}).')
             qpdi, Wdict, blocks1d, pawcorr = self.calculate_w(
                 chi0calc, q_c, chi0,
-                m1, m2, ecut, iq)
+                m1, m2, self.epsilon_ecut_e[ie], iq)
             m1 = m2
+            if not self.extrapolate['G'] or ecut == chi0.qpd.ecut:
+                g_m2 = self.nbands
+            else:
+                g_m2 = int(self.wcalc.gs.volume * ecut**1.5
+                           * 2**0.5 / 3 / pi**2)
+                if g_m2 > self.nbands:
+                    raise ValueError('G extrapolation requests more bands '
+                                     'than are available')
 
             self.context.timer.stop('W')
 
@@ -987,7 +1197,8 @@ class G0W0Calculator:
                     self.wcalc.qd, iq, q_c)):
 
                 for (progress, kpt1, kpt2)\
-                        in self.pair_distribution.kpt_pairs_by_q(bzq_c, 0, m2):
+                        in self.pair_distribution.kpt_pairs_by_q(bzq_c, 0,
+                                                                 g_m2):
                     pb.update((nQ + progress) / self.wcalc.qd.get_count())
 
                     k1 = self.wcalc.gs.kd.bz2ibz_k[kpt1.K]
@@ -1004,13 +1215,18 @@ class G0W0Calculator:
         return sigmas
 
     def get_validation_inputs(self):
-        return {'kpts': self.kpts,
+        inputs = {'kpts': self.kpts,
                 'bands': list(self.bands),
                 'nbands': self.nbands,
                 'ecut_e': list(self.ecut_e),
                 'frequencies': self.frequencies,
                 'fxc_modes': self.fxc_modes,
                 'integrate_gamma': repr(self.wcalc.integrate_gamma)}
+        # Keep legacy boolean/list caches usable.  Selective extrapolation
+        # changes the calculation and must not reuse those cached sigmas.
+        if len(self.ecut_e) > 1 and not all(self.extrapolate.values()):
+            inputs['extrapolate'] = self.extrapolate
+        return inputs
 
     @timer('calculate_w')
     def calculate_w(self, chi0calc, q_c, chi0,
@@ -1046,7 +1262,8 @@ class G0W0Calculator:
 
     @timer('calculate_vxc_and_exx')
     def calculate_vxc_and_exx(self):
-        return self.exx_vxc_calculator.calculate(
+        return self.exx_vxc_cache.calculate(
+            self.exx_vxc_calculator,
             n1=self.bands[0], n2=self.bands[1],
             kpt_indices=self.kpts)
 
@@ -1100,6 +1317,7 @@ class G0W0Calculator:
             vxc_skn=vxc_skn,
             exx_skn=exx_skn,
             f_skn=f_skn)
+        kwargs.update(kpts=self.kpts, band_start=self.bands[0])
 
         return G0W0Outputs(sigma_eskn=sigma.sigma_eskn,
                            dsigma_eskn=sigma.dsigma_eskn,
@@ -1175,7 +1393,10 @@ class G0W0(G0W0Calculator):
             Input parameters for the nonlinear frequency descriptor.
         ecut: float
             Plane wave cut-off energy in eV.
-        ecut_extrapolation: bool or list
+        ecut_extrapolation: bool, list, or dict
+            A dictionary with boolean keys G, chi0, and epsilon controls
+            which band limits and response basis vary with cutoff.  For
+            LCAO use {'G': False, 'chi0': False, 'epsilon': True}.
             If set to True an automatic extrapolation of the selfenergy to
             infinite cutoff will be performed based on three points
             for the cutoff energy.
@@ -1300,10 +1521,12 @@ class G0W0(G0W0Calculator):
                                   comm=world, timer=timer)
         gs = ResponseGroundStateAdapter.from_gpw_file(gpwfile, lazy=True)
 
+        extrapolate = extrapolation_components(ecut_extrapolation)
         if gs.is_lcao:
-            if ecut_extrapolation:
-                raise ValueError('ecut_extrapolation is '
-                                 'disabled in LCAO mode.')
+            if extrapolate['G'] or extrapolate['chi0']:
+                raise ValueError('ecut_extrapolation '
+                                 'of G or chi0 bands is disabled in LCAO '
+                                 'mode; use epsilon-only extrapolation.')
 
         context.print(gs.gs_info)
 
@@ -1327,7 +1550,7 @@ class G0W0(G0W0Calculator):
                 raise ValueError('Unknown type of gpw calclations for'
                                  ' response.')
         else:
-            if ecut_extrapolation:
+            if extrapolate['G'] or extrapolate['chi0']:
                 raise RuntimeError(
                     'nbands cannot be supplied with ecut-extrapolation.')
 
@@ -1387,12 +1610,16 @@ class G0W0(G0W0Calculator):
         exx_vxc_calculator = EXXVXCCalculator(
             gpwfile, world=world,
             snapshotfile_prefix=filename)
+        exx_vxc_cache = EXXVXCCache(
+            f'{filename}_exx_vxc.json',
+            comm=world)
 
         super().__init__(filename=filename,
                          wd=wd,
                          chi0calc=chi0calc,
                          wcalc=wcalc,
                          ecut_e=ecut_e,
+                         extrapolate=extrapolate,
                          eta=eta,
                          fxc_modes=fxc_modes,
                          nbands=nbands,
@@ -1400,6 +1627,7 @@ class G0W0(G0W0Calculator):
                          frequencies=frequencies,
                          kpts=kpts,
                          exx_vxc_calculator=exx_vxc_calculator,
+                         exx_vxc_cache=exx_vxc_cache,
                          qcache=qcache,
                          ppa=ppa,
                          mpa=mpa,

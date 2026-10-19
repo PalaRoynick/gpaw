@@ -1,4 +1,5 @@
 from functools import cached_property
+from time import perf_counter
 
 import numpy as np
 
@@ -36,7 +37,7 @@ class DielectricFunctionCalculator:
         else:
             return self.xckernel.calculate(self.qpd)
 
-    def get_epsinv_wGG(self, only_correlation=True):
+    def get_epsinv_wGG(self, only_correlation=True, context=None):
         """
         Calculates inverse dielectric matrix for all frequencies.
         """
@@ -48,9 +49,18 @@ class DielectricFunctionCalculator:
         chi0_wGG = self.chi0.body.array_with_distribution('wGG')
 
         for w, epsinv_GG in enumerate(epsinv_wGG):
+            start = perf_counter()
+            global_w = self.wblocks.a + w
+            if context is not None:
+                context.print(f'GW timer: Dyson equation w={global_w} started')
             epsinv_GG[:] = self.single_frequency_epsinv_GG(w, chi0_wGG)
             if only_correlation:
                 epsinv_GG -= self.I_GG
+            if context is not None:
+                context.print(
+                    f'GW timer: Dyson equation w={global_w} finished: '
+                    f'{perf_counter() - start:.3f} s'
+                )
         return epsinv_wGG
 
     def single_frequency_epsinv_GG(self, w, chi0_wGG):

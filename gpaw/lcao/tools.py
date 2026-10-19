@@ -263,25 +263,94 @@ def get_lcao_hamiltonian(calc):
     from gpaw.new.ase_interface import ASECalculator
     if not isinstance(calc, ASECalculator):
         return old_get_lcao_hamiltonian(calc)
+    indices_us, H_uMM, S_uMM = get_lcao_hamiltonian_local(calc)
+    return collect_lcao_hamiltonian(calc, indices_us, H_uMM, S_uMM)
+
+
+def get_lcao_hamiltonian_local(calc):
+    """Return locally owned LCAO matrices and their global ``(spin, k)``.
+
+    K-points are distributed over the calculator's k-point communicator.
+    Domain ranks belonging to the same k-point receive replicated matrices.
+    Band parallelization is deliberately unsupported because this interface
+    returns dense matrices.
+    """
     dft = calc.dft
     ibzwfs = dft.ibzwfs
+    if ibzwfs.band_comm.size != 1:
+        raise ValueError(
+            'Local LCAO Hamiltonian extraction requires band=1'
+        )
     ham = dft.scf_loop.hamiltonian
     matcalc = ham.create_hamiltonian_matrix_calculator(dft.potential)
     nM = ham.basis.Mmax
-    nK = len(ibzwfs.ibz)
-    H_skMM = np.zeros((ibzwfs.nspins, nK, nM, nM), ibzwfs.dtype)
-    S_kMM = np.zeros((nK, nM, nM), ibzwfs.dtype)
+    indices_us = []
+    H_uMM = []
+    S_uMM = []
     for wfs in ibzwfs:
         H_MM = matcalc.calculate_matrix(wfs)
-        H_skMM[wfs.spin, wfs.k] = H_MM.data * Ha
-        S_MM = wfs.S_MM
-        if wfs.spin == 0:
-            S_kMM[wfs.k] = S_MM.data
-    ibzwfs.kpt_comm.sum(H_skMM)
-    ibzwfs.kpt_comm.sum(S_kMM)
+        H_data = np.asarray(H_MM.data) * Ha
+        S_data = np.asarray(wfs.S_MM.data)
+        ibzwfs.domain_comm.broadcast(H_data, 0)
+        ibzwfs.domain_comm.broadcast(S_data, 0)
+        indices_us.append((wfs.spin, wfs.k))
+        H_uMM.append(H_data.copy())
+        S_uMM.append(S_data.copy())
+
+    return (np.asarray(indices_us, dtype=int).reshape((-1, 2)),
+            np.asarray(H_uMM, dtype=ibzwfs.dtype).reshape((-1, nM, nM)),
+            np.asarray(S_uMM, dtype=ibzwfs.dtype).reshape((-1, nM, nM)))
+
+
+def collect_lcao_hamiltonian(calc, indices_us, H_uMM, S_uMM):
+    """Collect local LCAO matrices into global arrays on world rank zero."""
+    ibzwfs = calc.dft.ibzwfs
+    nM = calc.dft.scf_loop.hamiltonian.basis.Mmax
+    H_skMM = np.zeros(
+        (ibzwfs.nspins, len(ibzwfs.ibz), nM, nM), ibzwfs.dtype
+    )
+    S_kMM = np.zeros((len(ibzwfs.ibz), nM, nM), ibzwfs.dtype)
+
+    # Domain ranks contain replicas.  Only one representative contributes
+    # each locally owned k-point to the world reduction.
+    if ibzwfs.domain_comm.rank == 0:
+        for (spin, k), H_MM, S_MM in zip(indices_us, H_uMM, S_uMM):
+            H_skMM[spin, k] = H_MM
+            if spin == 0:
+                S_kMM[k] = S_MM
+
+    calc.wfs.world.sum(H_skMM, 0)
+    calc.wfs.world.sum(S_kMM, 0)
     if calc.wfs.world.rank == 0:
         return H_skMM, S_kMM
     return None, None
+
+
+def get_lcao_hamiltonian_from_gpw_local(gpw, comm=None):
+    """Open an LCAO GPW file and return its locally owned matrices.
+
+    GPAW automatically uses as much k-point parallelization as possible.
+    Ranks left over after distributing k-points are used for replicated
+    domain-parallel matrix construction.
+    """
+    from gpaw import GPAW
+    from gpaw.mpi import world
+
+    comm = world if comm is None else comm
+    calc = GPAW(gpw, txt=None, communicator=comm,
+                parallel={'band': 1})
+    indices_us, H_uMM, S_uMM = get_lcao_hamiltonian_local(calc)
+    return calc, indices_us, H_uMM, S_uMM
+
+
+def get_lcao_hamiltonian_from_gpw(gpw, comm=None):
+    """Open a GPW file in parallel and collect its LCAO matrices on root."""
+    calc, indices_us, H_uMM, S_uMM = get_lcao_hamiltonian_from_gpw_local(
+        gpw, comm=comm
+    )
+    return collect_lcao_hamiltonian(
+        calc, indices_us, H_uMM, S_uMM
+    )
 
 
 def old_get_lcao_hamiltonian(calc):
