@@ -131,6 +131,68 @@ class XArray(Generic[DomainType], XP):
     def copy(self):
         return self.new(data=self.data.copy())
 
+    @trace
+    def iter_by_band(self, buffer_mX, out_nX=None):
+        nm = buffer_mX.mydims[0]
+        b = self.mydims[0]
+        comm = self.desc.comm
+        size = comm.size
+        if comm.size == 1:
+            # Fast serial implementation
+            for m, start in enumerate(range(0, b, comm.size * nm)):
+                end = min(start + comm.size * nm, b)
+                mybands = np.arange(start, end)
+                buffer = buffer_mX.data[:len(mybands)]
+                buffer[:] = self.data[start:end]
+                yield mybands, buffer_mX[:len(mybands)]
+                if out_nX is not None:
+                    out_nX.data[start:end] = buffer
+
+            # We add one extra yield to ensure cleanup
+            yield np.array([]), []
+            return
+
+        ng = self.desc.shape[0]
+        myng = self.desc.myshape[0]
+        maxmyng = self.desc.maxmysize
+
+        if out_nX is not None:
+            assert out_nX.myshape == self.myshape
+            assert out_nX.desc is self.desc
+
+        buffer_data = buffer_mX.data
+        extra = prod(self.mydims[1:])
+        assert extra == prod(buffer_mX.mydims[1:])
+        assert extra == 1, 'Stop it with the non-collinear'
+        for m, start in enumerate(range(0, b, comm.size * nm)):
+            end = min(start + comm.size * nm, b)
+            in_data = self.data[start:end]
+            max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
+
+            for offset_index in range(0, max_offset):
+                tmp = in_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
+                    comm, tmp.shape[0], ng, myng, maxmyng)
+                comm.alltoallv(tmp.ravel(), ssize_r, soffset_r,
+                               buffer_data[offset_index], rsize_r, roffset_r)
+
+            mybands = np.arange(start + comm.rank, end, comm.size)
+            yield mybands, buffer_mX[:len(mybands)]
+
+            if out_nX is None:
+                continue
+
+            out_data = out_nX.data[start:end]
+            for offset_index in range(0, max_offset):
+                tmp = out_data[offset_index * comm.size:(offset_index + 1) * comm.size]
+                ssize_r, soffset_r, rsize_r, roffset_r = a2a_stuff(
+                    comm, tmp.shape[0], ng, myng, maxmyng)
+                comm.alltoallv(buffer_data[offset_index], rsize_r, roffset_r,
+                               tmp.ravel(), ssize_r, soffset_r)
+
+        # We add one extra yield to ensure cleanup
+        yield np.array([]), []
+
     def sanity_check(self) -> None:
         """Sanity check."""
         pass
@@ -360,6 +422,20 @@ class XArray(Generic[DomainType], XP):
 
     def trace_inner_product(self, other: Self) -> float:
         raise NotImplementedError
+
+
+def a2a_stuff(comm, N, ng, myng, maxmyng):
+    """Create arrays for MPI alltoallv call."""
+    ssize_r = np.zeros(comm.size, int)
+    ssize_r[:N] = myng
+    soffset_r = np.arange(comm.size) * myng
+    soffset_r[N:] = 0
+    roffset_r = (np.arange(comm.size) * maxmyng).clip(max=ng)
+    rsize_r = np.zeros(comm.size, int)
+    if comm.rank < N:
+        rsize_r[:-1] = roffset_r[1:] - roffset_r[:-1]
+        rsize_r[-1] = ng - roffset_r[-1]
+    return ssize_r, soffset_r, rsize_r, roffset_r
 
 
 def _parallel_me(psit1_nX: XArray,

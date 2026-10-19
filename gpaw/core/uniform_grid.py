@@ -272,14 +272,17 @@ class UGDesc(Domain['UGArray']):
     def fft_plans(self,
                   flags: int = fftw.MEASURE,
                   xp=np,
-                  dtype=None) -> fftw.FFTPlans:
+                  dtype=None,
+                  blocksize: int=1) -> fftw.FFTPlans:
         """Create FFTW-plans."""
         if dtype is None:
             dtype = self.dtype
         if self.comm.rank == 0:
-            return fftw.create_plans(self.size_c, dtype, flags, xp=xp)
+            return fftw.create_plans(self.size_c, dtype, flags, xp=xp,
+                                     blocksize=blocksize)
         else:
-            return fftw.create_plans([0, 0, 0], dtype, xp=xp)
+            return fftw.create_plans([0, 0, 0], dtype, xp=xp,
+                                     blocksize=blocksize)
 
     def ranks_from_fractional_positions(self,
                                         relpos_ac: Array2D) -> Array1D:
@@ -716,6 +719,8 @@ class UGArray(XArray[UGDesc]):
             if grid is None:
                 raise ValueError('Please specify "grid" or "out".')
             out = grid.empty(self.dims, xp=self.xp)
+        if grid is None:
+            grid = out.desc
 
         if out.desc.zerobc_c.any() or self.desc.zerobc_c.any():
             raise ValueError('Grids must have zerobc=False!')
@@ -729,6 +734,12 @@ class UGArray(XArray[UGDesc]):
             else:
                 out.scatter_from()
             return out
+
+        if grid.myshape == self.desc.myshape:
+            out.data[:] = self.data
+            return out
+
+        is_real = np.issubdtype(self.desc.dtype, np.floating)
 
         size1_c = self.desc.size_c
         size2_c = out.desc.size_c
@@ -749,7 +760,7 @@ class UGArray(XArray[UGDesc]):
         a0, a1, a2 = size1_c // 2 - size2_c // 2
         b0, b1, b2 = size2_c // 2 + size1_c // 2 + 1
 
-        if self.desc.dtype == float:
+        if is_real:
             b2 = size2_c[2] // 2 + 1
             a2 = 0
             axes = [0, 1]
@@ -767,7 +778,7 @@ class UGArray(XArray[UGDesc]):
             b_Q[a0:b0, a1, a2:b2] += b_Q[a0:b0, b1 - 1, a2:b2]
             b_Q[a0:b0, a1, a2:b2] *= 0.5
             b1 -= 1
-        if self.desc.dtype == complex and e2:
+        if not is_real and e2:
             b_Q[a0:b0, a1:b1, a2] += b_Q[a0:b0, a1:b1, b2 - 1]
             b_Q[a0:b0, a1:b1, a2] *= 0.5
             b2 -= 1

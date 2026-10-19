@@ -188,7 +188,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         self.psit_nX.add_ked(occ_n, taut_sR[self.spin])
 
     @trace
-    def orthonormalize(self, psit2_nX=None):
+    def orthonormalize(self, psit2_nX=None, data_buffer=None, rotate_also=None):
         r"""Orthonormalize wave functions.
 
         Computes the overlap matrix:::
@@ -221,8 +221,11 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         P_ani = self.P_ani
 
         P2_ani = P_ani.new()
-        if psit2_nX is None:
+        if psit2_nX is None and data_buffer is None:
             psit2_nX = psit_nX.new()
+        elif psit2_nX is None:
+            psit2_nX = psit_nX
+
         dS_aii = self.setups.get_overlap_corrections(
             P_ani.layout.atomdist,
             self.xp,
@@ -239,26 +242,39 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         domain_comm.broadcast(S.data, 0)
         # S now contains L^*
 
-        S.multiply(psit_nX, out=psit2_nX)
+        S.multiply(psit_nX, out=psit2_nX, data_buffer=data_buffer)
         S.multiply(P_ani, out=P2_ani)
         psit_nX.data[:] = psit2_nX.data
         P_ani.data[:] = P2_ani.data
         self.orthonormalized = True
+
+        if rotate_also is not None:
+            assert data_buffer is not None  # It is possible to handle this
+            # case, however, we currently don't need it, so I leave it out for
+            # simplicity.
+            assert isinstance(rotate_also, list)  # Same as above
+            for array in rotate_also:
+                S.multiply(array, out=array, data_buffer=data_buffer)
+
 
     @trace
     def build_hamiltonian(self,
                           Ht,
                           dH,
                           psit2_nX,
+                          data_buffer=None,
                           calculate_energy=True):
         """
-        psit2_nX will be used as a buffer
-        for the wave functions.
+        psit2_nX will be used as a buffer for the wave functions, unless
+        data_buffer is provided.
 
         Ht(in, out):::
 
            ~   ^   ~
            H = T + v
+
+        If Ht is None, assume it is already applied to psit2_nX. We then require
+        data_buffer to be provided.
 
         dH:::
 
@@ -266,18 +282,30 @@ class PWFDWaveFunctions(WaveFunctions, XP):
           <𝜓 |p> ΔH  <p |𝜓>
             m  i   ij  j  n
         """
-        self.orthonormalize(psit2_nX)
+        if Ht is None:
+            assert data_buffer is not None
+            assert not calculate_energy
+            self.orthonormalize(data_buffer=data_buffer,
+                                rotate_also=[psit2_nX, ])
+        else:
+            self.orthonormalize(psit2_nX)
+
         psit_nX = self.psit_nX
         P_ani = self.P_ani
         P2_ani = P_ani.new()
         domain_comm = psit_nX.desc.comm
 
-        Ht = partial(Ht, out=psit2_nX, spin=self.spin,
-                     calculate_energy=calculate_energy)
-        H_nn = psit_nX.matrix_elements(psit_nX,
-                                       function=Ht,
-                                       domain_sum=False,
-                                       cc=True)
+        if Ht is None:
+            H_nn = psit_nX.matrix_elements(psit2_nX,
+                                           domain_sum=False,
+                                           cc=True)
+        else:
+            Ht = partial(Ht, out=psit2_nX, spin=self.spin,
+                         calculate_energy=calculate_energy)
+            H_nn = psit_nX.matrix_elements(psit_nX,
+                                           function=Ht,
+                                           domain_sum=False,
+                                           cc=True)
         dH(P_ani, out_ani=P2_ani, spin=self.spin)
         P_ani.matrix.multiply(P2_ani, opb='C', symmetric=True,
                               out=H_nn, beta=1.0)
@@ -347,6 +375,9 @@ class PWFDWaveFunctions(WaveFunctions, XP):
            ~   ^   ~
            H = T + v
 
+        If Ht is None, assume it has already been applied to psit2_nX. This
+        requires a data_buffer to store intermediate results.
+
         dH:::
 
            ~  ~    a  ~  ~
@@ -355,6 +386,7 @@ class PWFDWaveFunctions(WaveFunctions, XP):
         """
 
         H_nn = self.build_hamiltonian(Ht, dH, psit2_nX,
+                                      data_buffer=data_buffer,
                                       calculate_energy=calculate_energy)
         if nocc is not None:
             # decouple occupied from unoccupied orbitals

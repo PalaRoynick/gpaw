@@ -15,6 +15,7 @@ from gpaw.new.pwfd.davidson import sliced_preconditioner
 # from gpaw.mpi import broadcast_exception
 from gpaw.new.pwfd.eigensolver import PWFDEigensolver, calculate_residuals
 from gpaw.new.pwfd.wave_functions import PWFDWaveFunctions
+from gpaw.mpi import serial_comm
 
 # from gpaw.utilities import as_real_dtype
 
@@ -27,6 +28,7 @@ class PPCG(PWFDEigensolver):
                  hamiltonian,
                  convergence,
                  domain_band_comm,
+                 max_niter=20,
                  niter=2,
                  min_niter=1,
                  blocksize=None,
@@ -55,9 +57,11 @@ class PPCG(PWFDEigensolver):
         converge_bands : str, optional
             Which bands to converge ('occupied' or 'unoccupied'). Default is
             'occupied'.
-        niter : int | typle[int, int], optional
-            Maximum number of iterations. Default is 2.
-        min_niter : int | None, optional
+        max_niter : int, optional
+            Maximum number of iterations, to achieve minimum residual.
+        niter : int, optional
+            Target number of iterations. Default is 2.
+        min_niter : int, optional
             If specified as an int, the value is the minimum number of
             iterations. Where the eigensolver will stop if the residual
             is below a tolerance, and performed at least the minimum number
@@ -100,6 +104,7 @@ class PPCG(PWFDEigensolver):
         self.nbands = nbands
         self.wf_grid = wf_grid
         self.band_comm = band_comm
+        self.max_niter = max_niter
         self.niter = niter
         self.min_niter = min_niter if min_niter is not None else niter
         self.max_blocksize = blocksize
@@ -112,6 +117,7 @@ class PPCG(PWFDEigensolver):
 
         # We disable dynamic breakout for hybrids, to avoid deadlocks
         self.allow_dynamic_breakout = hamiltonian.band_local
+        self.hamiltonian = hamiltonian
 
     def __str__(self):
         return super().__str__() + f'niter={self.niter}\n'
@@ -123,12 +129,7 @@ class PPCG(PWFDEigensolver):
             if xp == np:
                 self.max_blocksize = 32
             else:
-                self.max_blocksize = 512
-
-        if isinstance(self.wf_grid, PWDesc):
-            S = self.wf_grid.comm.size
-            # Use a multiple of S for maximum efficiency
-            self.max_blocksize = int(np.ceil(self.max_blocksize / S)) * S
+                self.max_blocksize = 256
 
         super()._initialize(ibzwfs)
         if self.include_cg:
@@ -138,18 +139,24 @@ class PPCG(PWFDEigensolver):
         self._allocate_buffer_arrays(ibzwfs, shape=(1,))
 
         band_comm = ibzwfs.band_comm
+        self.band_comm = band_comm
         wfs = ibzwfs._wfs_u[0]
         assert isinstance(wfs, PWFDWaveFunctions)
         B = ibzwfs.nbands
         b = wfs.psit_nX.mydims[0]
-        self.blocksize = max(min(self.max_blocksize, b),
-                             1)
+
+        # Blocksize should be close to a divisor of b.
+        bdist = (b + wfs.psit_nX.desc.comm.size - 1) \
+            // wfs.psit_nX.desc.comm.size
+        divisor = (bdist + self.max_blocksize - 1) \
+            // self.max_blocksize
+        self.blocksize = max(((bdist + divisor - 1) // divisor), 1)
         self.nblocksizes = 3 * self.blocksize \
             if self.include_cg else 2 * self.blocksize
         dtype = wfs.psit_nX.desc.dtype
 
         if self.tolerances is None:
-            self.tolerances = (0, 0, self.residual_target)
+            self.tolerances = (0, 4e-1, self.residual_target)
 
         assert len(self.tolerances) == 3
         # --------------- Convergence parameters ---------------
@@ -157,23 +164,21 @@ class PPCG(PWFDEigensolver):
         # breakout_tolerance could be used to speed up convergence
         # in double precision.
         #
-        # tol_factor :
-        #   Freeze bands with residual < tol_factor * max(residual_ns).
-        #   improves numerical stability at the cost of
-        #   convergence speed - up to a certain point.
-        #   Probably best to not use this one.
-        self.tol_factor = self.tolerances[0]
         # tolerance :
         #   Freeze bands with residual < tolerance
         #   improves numerical stability at the cost of
         #   minimum achievable residual.
-        self.tolerance = self.tolerances[1]
+        self.tolerance = self.tolerances[0]
+        # tolerance :
+        #   Minimum residual required for breakout, unless
+        #   iter > self.maximum_niter.
+        self.minimum_res = self.tolerances[1] / Ha**2
         # breakout_tolerance :
         #   Stop iteration if sum(residual_ns) < breakout_tolerance
         #   breakout_tolerance saves time at the cost of minimum
         #   achievable residual. Can also be used to improve numerical
         #   stability.
-        self.breakout_tolerance = self.tolerances[2] / Ha**2
+        self.breakout_res = self.tolerances[2] / Ha**2
 
         self.M_nn = Matrix(B, B, dtype=dtype,
                            dist=(band_comm, band_comm.size),
@@ -195,6 +200,7 @@ class PPCG(PWFDEigensolver):
         self.S_bb = xp.zeros((self.nblocksizes, self.nblocksizes),
                              dtype=inner_dtype)
 
+
     def iterate1(self,
                  wfs: PWFDWaveFunctions,
                  Ht, potential,
@@ -202,6 +208,7 @@ class PPCG(PWFDEigensolver):
 
         with tracectx('Initialize'):
             dH = partial(potential.deltaH, spin=wfs.spin)
+
             M_nn = self.M_nn
 
             xp = M_nn.xp
@@ -224,9 +231,11 @@ class PPCG(PWFDEigensolver):
             P3_ani = P_ani.new()
             Ptemp_ani = P_ani.new()
             P_ani.block_diag_multiply(dS_aii, out_ani=Ptemp_ani)
-            Pbuf_abi = P_ani.layout.empty(
+
+            layout0 = P_ani.layout.new(atomdist=serial_comm)
+            Pbuf_abi = layout0.empty(
                 (self.nblocksizes, ) + psit_nX.dims[1:])
-            HPbuf_abi = P_ani.layout.empty(
+            HPbuf_abi = layout0.empty(
                 (self.nblocksizes - self.blocksize, ) + psit_nX.dims[1:])
 
             domain_comm = psit_nX.desc.comm
@@ -238,12 +247,27 @@ class PPCG(PWFDEigensolver):
 
             buffer_array_nX = psit_nX.create_work_buffer(self.data_buffers[0])
 
-            buff_bX = psit_nX.desc.empty(
+            if domain_comm.size > 1:
+                key = tuple(psit_nX.desc.kpt_c)
+                desc0 = self.hamiltonian.pw_cache.get(key)
+            else:
+                desc0 = psit_nX.desc
+
+            buff_bX = desc0.empty(
                 (self.nblocksizes, ) +
-                psit_nX.dims[1:], xp=psit_nX.xp)
-            Hbuff_bX = psit_nX.desc.empty(
+                 psit_nX.dims[1:], xp=psit_nX.xp)
+            Hbuff_bX = desc0.empty(
                 (self.nblocksizes - self.blocksize, ) +
-                psit_nX.dims[1:], xp=psit_nX.xp)
+                 psit_nX.dims[1:], xp=psit_nX.xp)
+
+            dS_Aii = dS_aii.gather(copy=True, broadcast=True)
+            dH_Asii = potential.dH_asii.gather(copy=True, broadcast=True)
+            dH_Aii = dH_Asii[:, wfs.spin]
+
+            vt_sR = potential.vt_sR.gather(broadcast=True)
+            Ht_args = list(Ht.args)
+            Ht_args[0] = vt_sR
+            Ht_local = partial(Ht.func, *Ht_args, **Ht.keywords)
 
         with tracectx('Residual'):
             calculate_residuals(wfs.psit_nX,
@@ -256,28 +280,22 @@ class PPCG(PWFDEigensolver):
             error_n = as_np(residual_nX.norm2())
             if len(error_n.shape) > 1:
                 error_n = error_n.sum(axis=1)
-            if self.allow_dynamic_breakout and \
-                    (self.tol_factor or self.tolerance):
-                active_indicies = np.logical_or(
-                    np.greater(error_n, self.tolerance),
-                    np.greater(error_n,
-                               np.max(error_n, initial=0) * self.tol_factor))
+            if self.allow_dynamic_breakout and self.tolerance:
+                active_indicies = np.greater(error_n, self.tolerance)
                 active_indicies = np.where(active_indicies)[0]
             else:
                 active_indicies = np.arange(b)
             error = weight_n @ error_n
             b_error = band_comm.sum_scalar(error) / \
                 max(band_comm.sum_scalar(weight_n.sum()), 0.5)
-            if band_comm.sum_scalar(len(active_indicies)) == 0  \
-                    or b_error < self.breakout_tolerance and \
-                    self.min_niter <= 1:
+            if self.check_breakout(-1, b_error, active_indicies):
                 if debug:
                     psit_nX.sanity_check()
                 break_after_update = True
             else:
                 break_after_update = False
 
-        for i in range(self.niter):
+        for i in range(max(self.niter, self.max_niter)):
             with tracectx('Residual'):
                 sliced_preconditioner(psit_nX, residual_nX,
                                       buffer=buffer_array_nX,
@@ -299,29 +317,54 @@ class PPCG(PWFDEigensolver):
 
             with tracectx('Block-diagonal Update'):
                 new_eigs_n = np.zeros_like(wfs.myeig_n)  # New eigenvalues
-                for j in range(0, loop_limit, self.max_blocksize):
-                    block_slice_base = \
-                        slice(min(j, active_bands),
-                              min(j + self.max_blocksize, active_bands))
-                    block = \
-                        block_slice_base.stop - block_slice_base.start
-                    block_slice = active_indicies[block_slice_base]
+                mbs = self.blocksize
 
-                    buff_bX.matrix.data[:block] = \
-                        psit_nX.matrix.data[block_slice]
-                    Pbuf_abi.matrix.data[:block] = \
-                        P_ani.matrix.data[block_slice]
-                    buff_bX.matrix.data[block:2 * block] = \
-                        residual_nX.matrix.data[block_slice]
-                    Pbuf_abi.matrix.data[block:2 * block] = \
-                        P2_ani.matrix.data[block_slice]
+                iterables = (
+                    psit_nX.iter_by_band(
+                        buff_bX[0 * mbs:1 * mbs], out_nX=psit_nX),
+                    residual_nX.iter_by_band(
+                        buff_bX[1 * mbs:2 * mbs]),  # out_nX=residual_nX),
+                    P_ani.iter_by_band(
+                        Pbuf_abi[:, 0 * mbs:1 * mbs], out_axi=P_ani),
+                    P2_ani.iter_by_band(
+                        Pbuf_abi[:, 1 * mbs:2 * mbs], out_axi=None))
+
+                if self.include_cg:
+                    iterables += (
+                        P_nX.iter_by_band(
+                            buff_bX[2 * mbs:3 * mbs],
+                            out_nX=None if break_after_update else P_nX),
+                        P3_ani.iter_by_band(
+                            Pbuf_abi[:, 2 * mbs:3 * mbs],
+                            out_axi=None if break_after_update else P3_ani))
+
+
+                for iter_info in zip(*iterables):
+                    mybands = iter_info[0][0]
+                    if len(mybands) == 0:
+                        # Nothing to do.
+                        continue
+
+                    for info in iter_info:
+                        assert all(info[0] == mybands)
+
+                    block = len(mybands)
+                    if block < mbs:
+                        # Squish the buffer array together
+                        buff_bX.data[block:2 * block] = \
+                            buff_bX.data[mbs:mbs + block]
+                        Pbuf_abi.data[block:2 * block] = \
+                            Pbuf_abi.data[mbs:mbs + block]
+                        if self.include_cg:
+                            buff_bX.data[2 * block:3 * block] = \
+                                buff_bX.data[2 * mbs:2 * mbs + block]
+                            Pbuf_abi.data[2 * block:3 * block] = \
+                                Pbuf_abi.data[2 * mbs:2 * mbs + block]
+
+                    block_slice = mybands
 
                     if i > 0 and self.include_cg:
                         nblocks = 3 * block
-                        buff_bX.matrix.data[2 * block:3 * block] = \
-                            P_nX.matrix.data[block_slice]
-                        Pbuf_abi.matrix.data[2 * block:3 * block] = \
-                            P3_ani.matrix.data[block_slice]
                     else:
                         nblocks = 2 * block
 
@@ -350,7 +393,7 @@ class PPCG(PWFDEigensolver):
                                      xp=xp)
 
                     Pbuf_abi[:, block:nblocks].block_diag_multiply(
-                        dS_aii, out_ani=HPbuf_abi[:, :nblocks - block])
+                        dS_Aii, out_ani=HPbuf_abi[:, :nblocks - block])
                     buff_bX[block:nblocks].matrix_elements(
                         buff_bX[:nblocks], cc=True, out=MBuf_bb,
                         domain_sum=False, symmetric=False)
@@ -362,7 +405,6 @@ class PPCG(PWFDEigensolver):
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         S_bb += buffer_bb
-                    domain_comm.sum(S_bb)
 
                     # Scale the diagonal elements, to improve numerical
                     # stability. Here, we use the expontent -0.25, which
@@ -380,9 +422,12 @@ class PPCG(PWFDEigensolver):
                     if not self.promote_inner_dtype:
                         MBuf_bb.data = H_bb[block:nblocks]
 
-                    Ht(buff_bX[block:nblocks], out=Hbuff_bX[:nblocks - block])
-                    dH(Pbuf_abi[:, block:nblocks],
-                       out_ani=HPbuf_abi[:, :nblocks - block])
+                    Ht_local(buff_bX[block:nblocks],
+                             out=Hbuff_bX[:nblocks - block])
+                    # dH_Aii(Pbuf_abi[:, block:nblocks],
+                    #        out_ani=HPbuf_abi[:, :nblocks - block])
+                    Pbuf_abi[:, block:nblocks].block_diag_multiply(dH_Aii,
+                        out_ani=HPbuf_abi[:, :nblocks - block])
                     Hbuff_bX[:nblocks - block].matrix_elements(
                         buff_bX[:nblocks],
                         cc=True, out=MBuf_bb,
@@ -395,9 +440,9 @@ class PPCG(PWFDEigensolver):
                         symmetric=False, beta=1, opb='C')
                     if self.promote_inner_dtype:
                         H_bb[:] += buffer_bb[:]
-                    domain_comm.sum(H_bb)
 
                     H_bb[:block, :block] = xp.diag(wfs.myeig_n[block_slice])
+
                     S_bb[:block, :block] = xp.eye(block)
                     MS_bb.tril2full()
 
@@ -440,57 +485,66 @@ class PPCG(PWFDEigensolver):
                     else:
                         cmin = H_bb[:block, :nblocks].conj()
                     if not xp.isfinite(H_bb).all():
-                        break_after_update = True
+                        break_after_update |= self.allow_dynamic_breakout
                         new_eigs_n[block_slice] = wfs.myeig_n[block_slice]
                         continue
                     new_eigs_n[block_slice] = as_np(eig_b[:block])
 
                     with tracectx('rotations', gpu=xp is not np):
                         # Ye olde updates
+                        # First rotate the wavefunctions
                         buff_bX.matrix.data[:block] = \
                             cmin[:, :block] @ buff_bX.matrix.data[:block]
                         Pbuf_abi.matrix.data[:block] = \
                             cmin[:, :block] @ Pbuf_abi.matrix.data[:block]
-                        buff_bX.matrix.data[block:2 * block] = \
+
+                        # Now onto the residual or cg if available
+                        dynslice = slice(2 * mbs, 2 * mbs + block) \
+                            if self.include_cg else \
+                            slice(mbs, mbs + block)
+
+                        buff_bX.matrix.data[dynslice] = \
                             cmin[:, block:] @ buff_bX.matrix.data[
                                 block:nblocks]
-                        Pbuf_abi.matrix.data[block:2 * block] = \
+                        Pbuf_abi.matrix.data[dynslice] = \
                             cmin[:, block:] @ Pbuf_abi.matrix.data[
                                 block:nblocks]
 
-                        if self.include_cg:
-                            P_nX.matrix.data[block_slice] = \
-                                buff_bX.matrix.data[block:2 * block]
-                            P3_ani.matrix.data[block_slice] = \
-                                Pbuf_abi.matrix.data[block:2 * block]
+                        # Add the Hpsi to the wavefunctions
+                        buff_bX.matrix.data[:block] += \
+                            buff_bX.matrix.data[dynslice]
+                        Pbuf_abi.matrix.data[:block] += \
+                            Pbuf_abi.matrix.data[dynslice]
 
-                        psit_nX.matrix.data[block_slice] = \
-                            buff_bX.matrix.data[:block] \
-                            + buff_bX.matrix.data[block:2 * block]
-                        P_ani.matrix.data[block_slice] = \
-                            Pbuf_abi.matrix.data[:block] \
-                            + Pbuf_abi.matrix.data[block:2 * block]
+                        # Finally, calculate new Hpsi (only if we have more
+                        # iterations to go). This is faster if the FFT and GEMM
+                        # is faster than the all2allv involved. Currently,
+                        # this rarely seems to be the case.
+                        # if not break_after_update:
+                        #     Ht_local(buff_bX[:block], out=buff_bX[mbs:mbs + block])
 
             wfs.eig_n[:] = 0
             wfs.myeig_n[:] = new_eigs_n
             band_comm.sum(wfs._eig_n)
+            domain_comm.sum(wfs._eig_n)
             wfs.orthonormalized = False
-            if (self.allow_dynamic_breakout and break_after_update) or \
-                    i >= self.niter - 1:
+            if break_after_update:
                 break
 
             with tracectx('Residual'):
                 # Subspace diagonialization needed every once in a while
                 if (i + 1) % self.rr_modulo == 0:
                     wfs.subspace_diagonalize(
-                        Ht, dH,
+                        Ht, dH,  # Ht can be removed if Hpsi is calculated
                         psit2_nX=residual_nX,
                         data_buffer=self.data_buffers[0],
                         calculate_energy=False,
                         scalapack_parameters=self.scalapack_parameters)
                 else:
-                    wfs.orthonormalize(residual_nX)
-                    Ht(psit_nX, out=residual_nX)
+                    wfs.orthonormalize(data_buffer=self.data_buffers[0])
+                    # rotate_also=[residual_nX,]) - Use this if calculating
+                    # the Hpsi in the non-communicating loop. Otherwise:
+                    Ht(psit_nX, residual_nX)
 
                 calculate_residuals(wfs.psit_nX,
                                     residual_nX,
@@ -503,20 +557,14 @@ class PPCG(PWFDEigensolver):
                 if len(error_n.shape) > 1:
                     error_n = error_n.sum(axis=1)
 
-                if self.allow_dynamic_breakout and \
-                        (self.tol_factor or self.tolerance):
-                    active_indicies = np.logical_or(
-                        np.greater(error_n, self.tolerance),
-                        np.greater(error_n, np.max(error_n, initial=0) *
-                                   self.tol_factor))
+                if self.allow_dynamic_breakout and self.tolerance:
+                    active_indicies = np.greater(error_n, self.tolerance),
                     active_indicies = np.where(active_indicies)[0]
                 error = weight_n @ error_n
                 b_error = band_comm.sum_scalar(error) / \
                     max(band_comm.sum_scalar(weight_n.sum()), 0.5)
 
-                if band_comm.sum_scalar(len(active_indicies)) == 0 \
-                        or (b_error < self.breakout_tolerance
-                            and i + 2 >= self.min_niter):
+                if self.check_breakout(i, b_error, active_indicies):
                     # Set 'break_after_update = True', causing the
                     # loop to break at the next iteration. This gives us
                     # one more cheap iteration (since we already
@@ -544,85 +592,14 @@ class PPCG(PWFDEigensolver):
 
         return error
 
-
-''' Legacy functions:
-@trace
-def approx_orthonormalize(wfs, residual_nX, Y1_nn, Y2_nn, Y3_nn,
-                          dS_aii, domain_comm):
-    """
-    Approximate orthonormalization of wave functions.
-
-    This function approximates orthonormalization of wave functions
-    using a Taylor series expansion of the inverse square root.
-
-    Parameters
-    ----------
-    wfs : PWFDWaveFunctions
-        Wave functions to be orthonormalized.
-    residual_nX : Matrix
-        Residual matrix to be used as temporary storage.
-    Y1_nn, Y2_nn, Y3_nn : Matrix
-        Temporary matrices.
-    dS_aii : Matrix
-        PAW overlap matrix.
-    domain_comm : MPI communicator
-        Communicator for domain parallelization.
-    """
-    if wfs.orthonormalized:
-        return
-    P_ani = wfs.P_ani
-    P2_ani = P_ani.new()
-    P_ani.block_diag_multiply(dS_aii, out_ani=P2_ani)
-    psit_nX = wfs.psit_nX
-    psit_nX.matrix_elements(psit_nX, cc=True, out=Y1_nn,
-                            domain_sum=False,
-                            symmetric=True)
-    P_ani.matrix.multiply(P2_ani, opb='C',
-                          symmetric=True,
-                          beta=1, out=Y1_nn)
-    domain_comm.sum(Y1_nn.data)
-    Y1_nn.tril2full()
-
-    Y1_nn.add_to_diagonal(-1.0)
-    Y1_nn.multiply(Y1_nn, out=Y2_nn)
-    Y2_nn.multiply(Y1_nn, out=Y3_nn)
-    Y1_nn.data[:] = -(1 / 2) * Y1_nn.data + \
-        (3 / 8) * Y2_nn.data + \
-        -(5 / 16) * Y3_nn.data
-
-    residual_nX.data[:] = psit_nX.data
-    P2_ani.data[:] = P_ani.data
-
-    Y1_nn.multiply(residual_nX, out=psit_nX, beta=1)
-    Y1_nn.multiply(P2_ani, out=P_ani, beta=1)
-    wfs.orthonormalized = True
-
-
-@trace
-def update_eigenvalues(wfs, Hpsit_nX, P_ani, HP_ani, dH, domain_comm):
-    dH(P_ani, out_ani=HP_ani)
-    psit_nX = wfs.psit_nX
-    xp = psit_nX.xp
-    real_dtype = as_real_dtype(psit_nX.matrix.data.dtype)
-    a_nX = psit_nX.matrix.data.view(real_dtype)
-    h_nX = Hpsit_nX.matrix.data.view(real_dtype)
-    eigs_n = xp.zeros(h_nX.shape[0], dtype=np.float64)
-    for ind in range(0, h_nX.shape[1], 4048):
-        eigs_n += xp.einsum('nX, nX -> n',
-                            h_nX[:, ind:ind + 4048],
-                            a_nX[:, ind:ind + 4048])
-    eigs_n *= psit_nX.dv
-    if np.issubdtype(psit_nX.matrix.data.dtype, np.floating) and \
-            isinstance(psit_nX, PWArray):
-        eigs_n *= 2
-        if psit_nX.desc.comm.rank == 0:
-            eigs_n -= psit_nX.matrix.data[:, 0] * \
-                Hpsit_nX.matrix.data[:, 0] * psit_nX.dv
-    p2_nX = HP_ani.matrix.data.view(real_dtype)
-    p_nX = P_ani.matrix.data.view(real_dtype)
-    eigs_n += xp.einsum('nX, nX -> n',
-                        p2_nX,
-                        p_nX)
-    domain_comm.sum(eigs_n)
-    wfs.myeig_n[:] = as_np(eigs_n)
-'''
+    def check_breakout(self, iter, residual, active_indicies):
+        band_comm = self.band_comm
+        breakout = False
+        if self.allow_dynamic_breakout:
+            breakout |= band_comm.sum_scalar(len(active_indicies)) == 0
+            breakout |= (residual < self.breakout_res and \
+                (iter + 3) > self.min_niter)
+            breakout |= (residual < self.minimum_res and (iter + 3) > self.niter)
+        else:
+            breakout |= (iter + 3) > self.niter
+        return breakout

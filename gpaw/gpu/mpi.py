@@ -68,6 +68,15 @@ class CuPyMPI:
         self.comm.broadcast(b, root)
         a[...] = cp.asarray(b)
 
+    def sendreceive(self, a, dest, b, src, sendtag=0, recvtag=0):
+        if isinstance(a, np.ndarray):
+            assert isinstance(b, np.ndarray)
+            return self.comm.sendreceive(a, dest, b, src, sendtag, recvtag)
+        anp = a.get()
+        bnp = np.empty_like(b)
+        self.comm.sendreceive(anp, dest, bnp, src, sendtag, recvtag)
+        b[:] = cp.asarray(bnp)
+
     def receive(self, a, src, tag=0, block=True):
         if isinstance(a, np.ndarray):
             return self.comm.receive(a, src, tag, block)

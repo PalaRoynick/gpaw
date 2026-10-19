@@ -83,9 +83,10 @@ def empty(shape, dtype=float):
 def create_plans(size_c: IntVector,
                  dtype: DTypeLike,
                  flags: int = MEASURE,
-                 xp: ModuleType = np) -> FFTPlans:
+                 xp: ModuleType = np,
+                 blocksize: int = 1) -> FFTPlans:
     """Create plan-objects for FFT and inverse FFT."""
-    key = (tuple(size_c), dtype, flags, xp)
+    key = (tuple(size_c), dtype, flags, xp, blocksize)
     # Look up weakref to plan:
     if key in _plan_cache:
         plan = _plan_cache[key]()
@@ -94,11 +95,11 @@ def create_plans(size_c: IntVector,
             return plan
     # Create new plan:
     if xp is not np:
-        plan = CuPyFFTPlans(size_c, dtype)
+        plan = CuPyFFTPlans(size_c, dtype, blocksize=blocksize)
     elif have_fftw() and get_dtype_precision(dtype) != 'single':
-        plan = FFTWPlans(size_c, dtype, flags)
+        plan = FFTWPlans(size_c, dtype, flags, blocksize=blocksize)
     else:
-        plan = NumpyFFTPlans(size_c, dtype)
+        plan = NumpyFFTPlans(size_c, dtype, blocksize=blocksize)
     _plan_cache[key] = weakref.ref(plan)
     return plan
 
@@ -109,17 +110,28 @@ class FFTPlans:
     def __init__(self,
                  size_c: IntVector,
                  dtype: DTypeLike,
-                 empty=empty):
+                 empty=empty,
+                 blocksize: int = 1):
+        self.size_c = size_c
         self.shape: tuple[int, ...]
+        self.blocksize = blocksize
 
         if np.issubdtype(dtype, np.floating):
-            self.shape = (size_c[0], size_c[1], size_c[2] // 2 + 1)
+            if blocksize > 1:
+                self.shape = (blocksize, size_c[0], size_c[1],
+                              size_c[2] // 2 + 1)
+            else:
+                self.shape = (size_c[0], size_c[1],
+                              size_c[2] // 2 + 1)
             self.tmp_Q = empty(self.shape, as_complex_dtype(dtype))
             # Real data with padding. NB: Numpy marks this as non-c-contiguous
-            self.tmp_R = self.tmp_Q.view(dtype)[:, :, :size_c[2]]
+            self.tmp_R = self.tmp_Q.view(dtype)[..., :, :, :size_c[2]]
         else:
-            self.shape = tuple(size_c)
-            self.tmp_Q = empty(size_c, dtype)
+            if blocksize > 1:
+                self.shape = (blocksize, *tuple(size_c))
+            else:
+                self.shape = tuple(size_c)
+            self.tmp_Q = empty(self.shape, dtype)
             self.tmp_R = self.tmp_Q
 
     def fft(self) -> None:
@@ -144,29 +156,36 @@ class FFTPlans:
         """
         raise NotImplementedError
 
-    def ifft_sphere(self, coef_G, pw, out_R=None):
-        if coef_G is None:
-            out_R.scatter_from(None)
+    def ifft_sphere(self, coef_nG, pw, out_nR=None):
+        if coef_nG is None:
+            out_nR.scatter_from(None)
             return
-        pw.paste(coef_G, self.tmp_Q)
+        self.tmp_Q[:] = 0
+        if self.blocksize > 1:
+            blocksize = coef_nG.shape[0]
+            assert self.blocksize >= blocksize
+            pw.paste(coef_nG, self.tmp_Q[:blocksize], self.size_c)
+        else:
+            pw.paste(coef_nG, self.tmp_Q, self.size_c)
 
         if np.issubdtype(pw.dtype, np.floating):
-            t = self.tmp_Q[:, :, 0]
-            if out_R is not None:
-                assert (out_R.desc.size_c[:2] == self.tmp_R.shape[:2]).all()
-            n, m = (s // 2 - 1 for s in self.tmp_R.shape[:2])
-            t[0, -m:] = t[0, m:0:-1].conj()
-            t[n:0:-1, -m:] = t[-n:, m:0:-1].conj()
-            t[-n:, -m:] = t[n:0:-1, m:0:-1].conj()
-            t[-n:, 0] = t[n:0:-1, 0].conj()
-        self.ifft()
-        if out_R is not None:
-            out_R.scatter_from(self.tmp_R)
+            t = self.tmp_Q[..., 0]
+            if out_nR is not None:
+                assert (out_nR.desc.size_c[:2] == self.tmp_R.shape[-3:-1]).all()
+            n, m = (s // 2 - 1 for s in self.tmp_R.shape[-3:-1])
+            t[..., 0, -m:] = t[..., 0, m:0:-1].conj()
+            t[..., n:0:-1, -m:] = t[..., -n:, m:0:-1].conj()
+            t[..., -n:, -m:] = t[..., n:0:-1, m:0:-1].conj()
+            t[..., -n:, 0] = t[..., n:0:-1, 0].conj()
 
-    def fft_sphere(self, in_R, pw):
-        self.tmp_R[:] = in_R.data
+        self.ifft()
+        if out_nR is not None:
+            out_nR.scatter_from(self.tmp_R)
+
+    def fft_sphere(self, in_nR, pw):
+        self.tmp_R[:] = in_nR
         self.fft()
-        coefs = pw.cut(self.tmp_Q) * (1 / self.tmp_R.size)
+        coefs = pw.cut(self.tmp_Q) * (self.blocksize / self.tmp_R.size)
         return coefs
 
 
@@ -176,10 +195,11 @@ class FFTWPlans(FFTPlans):
     _overwrite_flags = None
 
     """FFTW3 3d transforms."""
-    def __init__(self, size_c, dtype, flags=MEASURE):
+    def __init__(self, size_c, dtype, flags=MEASURE,
+                 blocksize: int = 1):
         if not have_fftw():
             raise ImportError('Not compiled with FFTW.')
-        super().__init__(size_c, dtype)
+        super().__init__(size_c, dtype, blocksize=blocksize)
         if self._overwrite_flags is not None:
             flags = self._overwrite_flags
 
@@ -206,22 +226,25 @@ class NumpyFFTPlans(FFTPlans):
     """Numpy fallback."""
     def fft(self):
         if np.issubdtype(self.tmp_R.dtype, np.floating):
-            self.tmp_Q[:] = rfftn(self.tmp_R, overwrite_x=True)
+            self.tmp_Q[:] = rfftn(self.tmp_R, axes=(-3, -2, -1),
+                                  overwrite_x=True)
         else:
-            self.tmp_Q[:] = fftn(self.tmp_R, overwrite_x=True)
+            self.tmp_Q[:] = fftn(self.tmp_R, axes=(-3, -2, -1),
+                                 overwrite_x=True)
 
     def ifft(self):
         if np.issubdtype(self.tmp_R.dtype, np.floating):
-            self.tmp_R[:] = irfftn(self.tmp_Q, self.tmp_R.shape,
+            self.tmp_R[:] = irfftn(self.tmp_Q, self.tmp_R.shape[-3:],
                                    norm='forward', overwrite_x=True)
         else:
-            self.tmp_R[:] = ifftn(self.tmp_Q, self.tmp_R.shape,
+            self.tmp_R[:] = ifftn(self.tmp_Q, self.tmp_R.shape[-3:],
                                   norm='forward', overwrite_x=True)
 
 
 def rfftn_patch(tmp_R):
     from gpaw.gpu import cupyx
-    return cupyx.scipy.fft.fftn(tmp_R)[:, :, :tmp_R.shape[-1] // 2 + 1]
+    return cupyx.scipy.fft.fftn(
+        tmp_R, axis=(-3, -2, -1))[:, :, :tmp_R.shape[-1] // 2 + 1]
 
 
 def irfftn_patch(B, shape):
@@ -234,122 +257,49 @@ def irfftn_patch(B, shape):
     inv_ind2 = -xp.arange(B.shape[1])[None, :, None]
     inv_ind3 = -xp.arange(1, B.shape[2])[None, None, :]
     A[:, :, -(B.shape[2] - 1):] = B[inv_ind1, inv_ind2, inv_ind3].conj()
-    return cupyx.scipy.fft.ifftn(A).real
+    return cupyx.scipy.fft.ifftn(A, axis=(-3, -2, -1)).real
 
 
 class CuPyFFTPlans(FFTPlans):
     def __init__(self,
                  size_c: IntVector,
-                 dtype: DTypeLike):
+                 dtype: DTypeLike,
+                 blocksize: int = 1):
         from gpaw.core import PWDesc
         from gpaw.gpu import cupy as cp
         self.dtype = dtype
-        super().__init__(size_c, dtype, empty=cp.empty)
-        self.Q_G_cache: dict[PWDesc, Array1D] = {}
+        super().__init__(size_c, dtype, empty=cp.empty,
+                         blocksize=blocksize)
         self.xp = cp
 
-    @trace(gpu=True)
     def fft(self):
         from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
                 self.tmp_Q[:] = rfftn_patch(self.tmp_R)
             else:
-                self.tmp_Q[:] = cupyx.scipy.fft.rfftn(self.tmp_R)
+                self.tmp_Q[:] = cupyx.scipy.fft.rfftn(
+                    self.tmp_R, axes=(-3, -2, -1), overwrite_x=True)
         else:
-            self.tmp_Q[:] = cupyx.scipy.fft.fftn(self.tmp_R)
+            self.tmp_Q[:] = cupyx.scipy.fft.fftn(
+                self.tmp_R, axes=(-3, -2, -1), overwrite_x=True)
 
-    @trace(gpu=True)
     def ifft(self):
         from gpaw.gpu import cupyx
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
-                self.tmp_R[:] = irfftn_patch(self.tmp_Q, self.tmp_R.shape) \
-                    * self.tmp_R.size
+                self.tmp_R[:] = irfftn_patch(
+                    self.tmp_Q, self.tmp_R.shape[-3:]) * self.tmp_nR.size
             else:
                 self.tmp_R[:] = cupyx.scipy.fft.irfftn(
-                    self.tmp_Q, self.tmp_R.shape,
+                    self.tmp_Q, self.tmp_R.shape[-3:],
                     norm='forward',
                     overwrite_x=True)
         else:
             self.tmp_R[:] = cupyx.scipy.fft.ifftn(
-                self.tmp_Q, self.tmp_R.shape,
+                self.tmp_Q, self.tmp_R.shape[-3:],
                 norm='forward',
                 overwrite_x=True)
-
-    def indices(self, pw):
-        from gpaw.gpu import cupy as cp
-        Q_G = self.Q_G_cache.get(pw)
-        if Q_G is None:
-            Q_G = cp.asarray(pw.indices(self.shape))
-            self.Q_G_cache[pw] = Q_G
-        return Q_G
-
-    @trace
-    def ifft_sphere(self, coef_G, pw, out_R=None):
-        from gpaw.gpu import cupy, cupyx
-        if out_R is not None:
-            assert isinstance(out_R.data, cupy.ndarray)
-
-        if coef_G is None:
-            if out_R is not None:
-                out_R.scatter_from(None)
-            return
-
-        if out_R is not None and out_R.desc.comm.size == 1:
-            array_R = out_R.data
-        else:
-            array_R = self.tmp_R
-        array_Q = self.tmp_Q
-
-        array_Q[:] = 0.0
-        Q_G = self.indices(pw)
-
-        assert np.issubdtype(array_Q.dtype, np.complexfloating)
-        assert np.issubdtype(coef_G.dtype, np.complexfloating)
-        shape = array_R.shape
-        pw_insert_gpu(coef_G,
-                      Q_G,
-                      1.0,
-                      array_Q.ravel(),
-                      *shape)
-
-        if np.issubdtype(self.dtype, np.complexfloating):
-            array_R[:] = cupyx.scipy.fft.ifftn(
-                array_Q, array_Q.shape,
-                norm='forward', overwrite_x=True)
-        else:
-            if is_hip:
-                array_R[:] = irfftn_patch(array_Q, shape) * array_R.size
-            else:
-                array_R[:] = cupyx.scipy.fft.irfftn(
-                    array_Q, shape,
-                    norm='forward', overwrite_x=True)
-
-        if out_R is not None and out_R.desc.comm.size > 1:
-            out_R.scatter_from(array_R)
-
-    @trace
-    def fft_sphere(self, in_R, pw):
-        from gpaw.gpu import cupyx
-        if np.issubdtype(self.dtype, np.complexfloating):
-            out_Q = cupyx.scipy.fft.fftn(in_R)
-        else:
-            if is_hip:
-                out_Q = rfftn_patch(in_R)
-            else:
-                # CuPy bug? rfftn fails on non-aligned arrays
-                # To that end, make a copy. However, display a warning.
-                if in_R.data.ptr % 16:
-                    in_R = in_R.copy()
-                    from warnings import warn
-                    warn('Circumventing GPU array alignment problem '
-                         'with copy at rfftn.')
-                out_Q = cupyx.scipy.fft.rfftn(in_R)
-
-        Q_G = self.indices(pw)
-        coef_G = out_Q.ravel()[Q_G] * (1 / in_R.size)
-        return coef_G
 
 
 # The rest of this file will be removed in the future ...

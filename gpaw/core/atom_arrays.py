@@ -11,7 +11,7 @@ from gpaw.core.matrix import Matrix
 from gpaw.gpu import XP
 from gpaw.gpu import cupy as cp
 from gpaw.mpi import MPIComm, serial_comm
-from gpaw.new import prod, zips
+from gpaw.new import prod, zips, trace
 from gpaw.new.c import dH_aii_times_P_ani_gpu
 from gpaw.typing import Array1D, ArrayLike1D
 from gpaw.utilities import as_real_dtype
@@ -452,6 +452,119 @@ class AtomArrays:
         b_axi = self.new(comm=None)
         b_axi.scatter_from(a_axi)
         b_axi.matrix.redist(self.matrix)
+
+    @trace
+    def iter_by_band(self, buffer_ami, out_axi=None):
+        from gpaw.core.arrays import a2a_stuff
+
+        nm = buffer_ami.mydims[0]
+        b = self.mydims[0]
+        comm = self.layout.atomdist.comm
+        size = comm.size
+        xp = self.layout.xp
+
+        ssize_a = np.array([prod(shape) for shape in self.layout.shape_a])
+        ng = sum(ssize_a)
+        myng = prod(self.myshape)
+
+        assert prod(buffer_ami.myshape) == ng
+
+        recv_indices = []
+        for rank in range(comm.size):
+            owned_atoms = np.where(self.layout.atomdist.rank_a == rank)[0]
+            recv_index = []
+            for atom in owned_atoms:
+                ind_range = buffer_ami.layout.myindices[atom]
+                assert ind_range[0] == atom
+                recv_index.extend(range(ind_range[1], ind_range[2]))
+            recv_indices.append(self.layout.xp.asarray(recv_index, dtype=int))
+
+        if out_axi is not None:
+            assert out_axi.myshape == self.myshape
+            assert out_axi.layout is self.layout
+
+        buffer_data = buffer_ami.data
+        wb1_mi = xp.empty_like(buffer_data,
+                               shape=(buffer_data.shape[0], myng)).ravel()
+        wb2_mi = xp.empty_like(buffer_data).ravel()
+
+        extra = prod(self.mydims[1:])
+        assert extra == prod(buffer_ami.mydims[1:])
+        assert extra == 1, 'Stop it with the non-collinear'
+        for m, start in enumerate(range(0, b, comm.size * nm)):
+            end = min(start + comm.size * nm, b)
+            in_data = self.data[start:end]
+            max_offset = min(nm, (b - start + comm.size - 1) // comm.size)
+
+            mybands = np.arange(start + comm.rank, end, comm.size)
+            for rank_offset in range(comm.size):
+                send_rank = (comm.rank + rank_offset) % comm.size
+                rcv_rank = (comm.rank - rank_offset) % comm.size
+                rcv_shape = (len(mybands), len(recv_indices[rcv_rank]))
+                snd_shape = (
+                    (end - start - send_rank + comm.size - 1) // comm.size, myng)
+                if rank_offset != 0:
+                    snd_buffer = wb1_mi[:prod(snd_shape)].reshape(snd_shape)
+                    rcv_buffer = wb2_mi[:prod(rcv_shape)].reshape(rcv_shape)
+                    if rcv_shape[0] > 0 and rcv_shape[0] > 0:
+                        # Snd and rcv
+                        snd_buffer[:] = in_data[send_rank::comm.size]
+                        comm.sendreceive(snd_buffer, send_rank,
+                                         rcv_buffer, rcv_rank,
+                                         sendtag=75, recvtag=75)
+                        buffer_data[:rcv_shape[0], recv_indices[rcv_rank]] \
+                            = rcv_buffer
+                    elif rcv_shape[0] > 0:
+                        # Rcv no send
+                        comm.receive(rcv_buffer, rcv_rank, tag=75)
+                        buffer_data[:rcv_shape[0], recv_indices[rcv_rank]] \
+                            = rcv_buffer
+                    elif snd_shape[0] > 0:
+                        # Send no rcv
+                        snd_buffer[:] = in_data[send_rank::comm.size]
+                        comm.send(snd_buffer, send_rank, tag=75)
+                else:
+                    buffer_data[:rcv_shape[0], recv_indices[comm.rank]] \
+                        = in_data[comm.rank::comm.size]
+
+            yield mybands, buffer_ami[:, :len(mybands)]
+
+            if out_axi is None:
+                continue
+
+            out_data = out_axi.data[start:end]
+            for rank_offset in range(comm.size):
+                send_rank = (comm.rank + rank_offset) % comm.size
+                rcv_rank = (comm.rank - rank_offset) % comm.size
+                rcv_shape = ((end - start - rcv_rank + comm.size - 1) // comm.size, myng)
+                snd_shape = (len(mybands), len(recv_indices[send_rank]))
+                if rank_offset != 0:
+                    rcv_buffer = wb1_mi[:prod(rcv_shape)].reshape(rcv_shape)
+                    snd_buffer = wb2_mi[:prod(snd_shape)].reshape(snd_shape)
+                    if rcv_shape[0] > 0 and rcv_shape[0] > 0:
+                        # Snd and rcv
+                        snd_buffer[:] = buffer_data[:snd_shape[0],
+                                                    recv_indices[send_rank]]
+                        comm.sendreceive(snd_buffer, send_rank,
+                                         rcv_buffer, rcv_rank,
+                                         sendtag=76, recvtag=76)
+                        out_data[rcv_rank::comm.size] = rcv_buffer
+                    elif rcv_shape[0] > 0:
+                        # Rcv no send
+                        comm.receive(rcv_buffer, rcv_rank, tag=76)
+                        out_data[rcv_rank::comm.size] = rcv_buffer
+                    elif snd_shape[0] > 0:
+                        # Send no rcv
+                        snd_buffer[:] = buffer_data[:snd_shape[0],
+                                                    recv_indices[send_rank]]
+                        comm.send(snd_buffer, send_rank, tag=76)
+                else:
+                    out_data[comm.rank::comm.size] \
+                        = buffer_data[:snd_shape[0], recv_indices[comm.rank]]
+
+        # We add one extra yield to ensure cleanup
+        yield np.array([]), []
+
 
     def to_lower_triangle(self):
         """Convert `N*N` matrices to `N*(N+1)/2` vectors.

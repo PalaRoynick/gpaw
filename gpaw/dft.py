@@ -280,6 +280,7 @@ class PPCG(PWFDEigensolverParameter):
 
     def __init__(self,
                  niter: int = 2,
+                 max_niter: int = 20,
                  min_niter: int | None = 1,
                  max_buffer_mem: int = 200 * 1024**2,
                  blocksize=None,
@@ -289,6 +290,7 @@ class PPCG(PWFDEigensolverParameter):
                  tolerances: tuple[float, float, float] | None = None):
         self.niter = niter
         self.min_niter = min_niter
+        self.max_niter = max_niter
         self.max_buffer_mem = max_buffer_mem
         self.blocksize = blocksize
         self.rr_modulo = rr_modulo
@@ -299,6 +301,7 @@ class PPCG(PWFDEigensolverParameter):
     def todict(self):
         return {'niter': self.niter,
                 'min_niter': self.min_niter,
+                'max_niter': self.max_niter,
                 'max_buffer_mem': self.max_buffer_mem,
                 'blocksize': self.blocksize,
                 'rr_modulo': self.rr_modulo,
@@ -326,6 +329,7 @@ class PPCG(PWFDEigensolverParameter):
             scalapack_parameters=scalapack_parameters,
             niter=self.niter,
             min_niter=self.min_niter,
+            max_niter=self.max_niter,
             max_buffer_mem=self.max_buffer_mem,
             blocksize=self.blocksize,
             rr_modulo=self.rr_modulo,
