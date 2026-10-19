@@ -287,4 +287,3 @@ def add_atomic_overlap_corrections(
                 mmm(1.0, PdO_MI.conj(), 'N', P_MI, 'T', 1.0, S_MM)
             else:
                 mmm(1.0, PdO_MI.T, 'C', P_MI, 'T', 1.0, S_MM)
-        # S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()

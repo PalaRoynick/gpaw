@@ -142,9 +142,11 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                     'Can not calculate projections due to '
                     'wave function collapse!')
 
+            from gpaw.utilities.blas import mmm
             # for a, P_Mi in self.P_aMi.items():
             #     self._P_ani[a][:] = self.C_nM.data @ P_Mi
-            self._P_ani.data[:] = self.C_nM.data @ self.P_aMi.data  # gemm?
+            mmm(1.0, self.C_nM.data, 'N', self.P_aMi.data, 'N',
+                0.0, self._P_ani.data)
 
         return self._P_ani
 
