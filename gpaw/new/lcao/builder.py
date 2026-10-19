@@ -222,7 +222,7 @@ def tci_helper(basis,
     layout = AtomArraysLayout([setup.ni for setup in setups],
                               atomdist=atomdist,
                               dtype=dtype,
-                              )#xp=xp)
+                              )  # xp=xp)
     nao = setups.nao
 
     P_qaMi = []
@@ -257,8 +257,7 @@ def tci_helper(basis,
     # Copy to GPU if needed:
     S_qMM = [S_MM.to_xp(xp) for S_MM in S_qMM]
     T_qMM = [T_MM.to_xp(xp) for T_MM in T_qMM]
-    P_qaMi = [P_aMi.to_xp(xp)#{a: xp.asarray(P_Mi) for a, P_Mi in P_aMi.items()}
-              for P_aMi in P_qaMi]
+    P_qaMi = [P_aMi.to_xp(xp) for P_aMi in P_qaMi]
 
     return S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives
 
@@ -280,8 +279,12 @@ def add_atomic_overlap_corrections(
                 format='csr')
 
         P_MI = P_aMi.data
+        PdO_MI = P_MI[M1:M2] @ dO_II
         if S_MM.dtype == float:
-            mmm(1.0, (P_MI[M1:M2] @ dO_II).T, 'T', P_MI, 'T', 1.0, S_MM)
+            mmm(1.0, PdO_MI.T, 'T', P_MI, 'T', 1.0, S_MM)
         else:
-            mmm(1.0, (P_MI[M1:M2] @ dO_II).conj().T, 'T', P_MI, 'T', 1.0, S_MM)
+            if PdO_MI.flags.c_contiguous:
+                mmm(1.0, PdO_MI.conj(), 'N', P_MI, 'T', 1.0, S_MM)
+            else:
+                mmm(1.0, PdO_MI, 'C', P_MI, 'T', 1.0, S_MM)
         # S_MM += P_MI[M1:M2].conj().dot(dO_II.dot(P_MI.T)).todense()

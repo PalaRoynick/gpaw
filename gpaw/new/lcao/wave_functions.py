@@ -142,9 +142,9 @@ class LCAOWaveFunctions(WaveFunctions, XP):
                     'Can not calculate projections due to '
                     'wave function collapse!')
 
-            #for a, P_Mi in self.P_aMi.items():
-            #    self._P_ani[a][:] = self.C_nM.data @ P_Mi
-            self._P_ani.data[:] = self.C_nM.data @ self.P_aMi.data#gemm?
+            # for a, P_Mi in self.P_aMi.items():
+            #     self._P_ani[a][:] = self.C_nM.data @ P_Mi
+            self._P_ani.data[:] = self.C_nM.data @ self.P_aMi.data  # gemm?
 
         return self._P_ani
 
