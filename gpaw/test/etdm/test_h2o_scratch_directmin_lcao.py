@@ -148,7 +148,6 @@ def test_h2o(representation, matrix_exp, searchdir_algo, gpw_files):
         dft = DFT(atm,
                   mode={'name': 'lcao'},
                   eigensolver={'name': 'etdm',
-                                'roks': False,
                                   'representation': representation,
                                   'matrix_exp': matrix_exp,
                                   'searchdir_algo': searchdir_algo,

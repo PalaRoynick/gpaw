@@ -311,15 +311,10 @@ class DirOptLCAO(LCAOEigensolver):
     def postprocess(self, ibzwfs, density, potential, hamiltonian,
                     maxiter, cc, log):
 
-        if self.roks:
-            # do not do the update to canonical orbitals
-            # with roks
-            return
-        else:
-            for wfs in ibzwfs:
-                self.update_to_canonical_orbitals(wfs,
-                                                  hamiltonian,
-                                                  potential)
+        for wfs in ibzwfs:
+            self.update_to_canonical_orbitals(wfs,
+                                              hamiltonian,
+                                              potential)
 
         if self.excited_state:
             # reorder orbitals according to energies
