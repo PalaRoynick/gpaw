@@ -90,19 +90,28 @@ def broadcast_exception(comm):
 
     will raise ZeroDivisionError in the whole world.
     """
+
     # Each core will send -1 on success or its rank on failure.
+    # We broadcast the error only from highest failing rank.
+    error = None
+    failrank = -1
+
     try:
         yield
     except Exception as ex:
-        rank = comm.max_scalar(comm.rank)
-        if rank == comm.rank:
-            broadcast(ex, rank, comm=comm)
-            raise
-    else:
-        rank = comm.max_scalar(-1)
-    # rank will now be the highest failing rank or -1
-    if rank >= 0:
-        raise broadcast(None, rank, comm=comm)
+        error = ex
+        failrank = comm.rank
+
+    failrank = comm.max_scalar(failrank)
+
+    if failrank == -1:
+        return
+
+    # We should detect if there is trouble pickling the error,
+    # or we might fail at failing here.
+    raise broadcast(
+        error if comm.rank == failrank else None,
+        root=failrank, comm=comm)
 
 
 def rank0_call(func, comm):
