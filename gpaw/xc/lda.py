@@ -41,8 +41,7 @@ class LDARadialExpansion:
             w = weight_n[n]
 
             e_g, dedn_sg = self.rcalc(rgd, n_sLg, Y_L)
-            dEdD_sqL += np.dot(rgd.dv_g * dedn_sg,
-                               n_qg.T)[:, :, np.newaxis] * (w * Y_L)
+            dEdD_sqL += np.dot(dedn_sg, n_qg.T)[:, :, np.newaxis] * (w * Y_L)
             E += w * rgd.integrate(e_g)
         return E, dEdD_sqL
 
@@ -95,7 +94,7 @@ class LDARadialCalculator:
         e_g = rgd.empty()
         dedn_sg = rgd.zeros(nspins)
         self.kernel.calculate(e_g, n_sg, dedn_sg)
-        return e_g, dedn_sg
+        return e_g, dedn_sg * rgd.dv_g
 
 
 class LDA(XCFunctional):

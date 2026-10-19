@@ -5,18 +5,22 @@ from gpaw.atom.aeatom import AllElectronAtom, c
 
 @pytest.mark.ci
 @pytest.mark.serial
-def test_aeatom():
+@pytest.mark.parametrize('xc', ('LDA', 'PBE'))
+def test_aeatom(xc):
     Z = 79  # gold atom
     kwargs = dict(ngpts=5000, alpha2=1000 * Z**2, ngauss=200)
 
     # Test Schroedinger equation:
-    aea = AllElectronAtom(Z, log=None)
+    aea = AllElectronAtom(Z, log=None, xc=xc)
     aea.initialize(**kwargs)
+
+    aea.run(dnmax=1e-8)
+    aea.refine()
 
     errors = []
     for channel in aea.channels:
         vr_g = channel.basis.rgd.empty()
-        vr_g[:] = -Z
+        vr_g[:] = -Z * channel.basis.rgd.r_g
         # Basis set of Gaussians:
         channel.solve(vr_g)
         for n in range(7):
@@ -31,17 +35,20 @@ def test_aeatom():
             e0 = -0.5 * Z**2 / (n + channel.l + 1)**2
             errors.append(abs(e / e0 - 1))
 
+
     print(max(errors))
     assert max(errors) == pytest.approx(0, abs=2.0e-5)
 
     # Test Dirac equation:
-    aea = AllElectronAtom(Z, dirac=True, log=None)
+    aea = AllElectronAtom(Z, dirac=True, log=None, xc=xc)
     aea.initialize(**kwargs)
+
+    aea.run()
 
     errors = []
     for channel in aea.channels:
         vr_g = channel.basis.rgd.empty()
-        vr_g[:] = -Z
+        vr_g[:] = -Z * channel.basis.rgd.r_g
         channel.solve(vr_g)
         for n in range(7):
             e = channel.e_n[n]

@@ -95,6 +95,7 @@ class GaussianBasis:
             # Avoid errors division by zero when l<0.0:
             gaussians_Bg = np.exp(-np.outer(alpha_B, r_g**2)) * r_g**l
             self.basis_bg = Q_Bb.T @ (prefactors_B[:, None] * gaussians_Bg)
+            self.basis_bg[~np.isfinite(self.basis_bg)] = 0
 
     def __len__(self):
         return self.nbasis
@@ -102,17 +103,17 @@ class GaussianBasis:
     def expand(self, C_xb):
         return np.dot(C_xb, self.basis_bg)
 
-    def calculate_potential_matrix(self, vr_g):
-        vr2dr_g = vr_g * self.rgd.r_g * self.rgd.dr_g
-        V_bb = np.inner(self.basis_bg[:, 1:],
-                        self.basis_bg[:, 1:] * vr2dr_g[1:])
+    def calculate_potential_matrix(self, vr2_g):
+        vr2dr_g = vr2_g * self.rgd.dr_g
+        V_bb = np.inner(self.basis_bg,
+                        self.basis_bg * vr2dr_g)
         return V_bb
 
 
-def coefs(rgd, l, vr_g, e, scalar_relativistic=True, Z=None):
+def coefs(rgd, l, vr2_g, e, scalar_relativistic=True, Z=None):
     r_g = rgd.r_g
 
-    x0_g = 2 * (e * r_g - vr_g) * r_g
+    x0_g = 2 * (e * r_g**2 - vr2_g)
     x1_g = 2 * (l + 1) * r_g / rgd.dr_g + r_g**2 * rgd.d2gdr2()
     x2_g = r_g**2 / rgd.dr_g**2
     x = 1.0
@@ -121,15 +122,17 @@ def coefs(rgd, l, vr_g, e, scalar_relativistic=True, Z=None):
         x = (1 + l + l**2 - (Z / c)**2)**0.5 - l
         r_g = r_g.copy()
         r_g[0] = 1.0
-        v_g = vr_g / r_g
-        M_g = 1 + (e - v_g) / (2 * c**2)
-        kappa_g = (rgd.derivative(vr_g) - v_g) / r_g / (2 * c**2 * M_g)
-        x0_g = (2 * M_g * (e * r_g - vr_g) * r_g +
-                (l + x - 1) * kappa_g * r_g +
+        vr_g = vr2_g / r_g
+        # M_g = 1 + (e - v_g) / (2 * c**2)
+        Mr2_g = r_g**2 + (r_g**2 * e - vr2_g) / (2 * c**2)
+        # kappa_g = (rgd.derivative(vr_g) - v_g) / r_g / (2 * c**2 * M_g)
+        kappa_r_g = (rgd.derivative(vr2_g) * r_g - 2 * vr2_g) / (2 * c**2 * Mr2_g)
+        x0_g = (2 * Mr2_g * (e * r_g - vr_g) / r_g +
+                (l + x - 1) * kappa_r_g +
                 (l + x) * (l + x - 1) - l * (l + 1))
         x1_g = (2 * (l + x) * r_g / rgd.dr_g +
                 r_g**2 * rgd.d2gdr2() +
-                r_g**2 * kappa_g / rgd.dr_g)
+                r_g * kappa_r_g / rgd.dr_g)
 
     cm1_g = x2_g - x1_g / 2
     c0_g = x0_g - 2 * x2_g
@@ -152,15 +155,15 @@ class Channel:
         self.name = 'spdfg'[l]
         self.solve2ok = False
 
-    def solve(self, vr_g):
+    def solve(self, vr2_g):
         """Diagonalize Schrödinger equation in basis set."""
-        H_bb = self.basis.calculate_potential_matrix(vr_g)
+        H_bb = self.basis.calculate_potential_matrix(vr2_g)
         H_bb += self.basis.T_bb
         self.e_n, C_bn = eigh(H_bb)
         self.C_nb = C_bn.T
         self.phi_ng = self.basis.expand(self.C_nb[:len(self.f_n)])
 
-    def solve2(self, vr_g, scalar_relativistic=True, Z=None, rgd=None):
+    def solve2(self, vr2_g, scalar_relativistic=True, Z=None, rgd=None):
         rgd = rgd or self.basis.rgd
         r_g = rgd.r_g
         l = self.l
@@ -176,7 +179,7 @@ class Channel:
                 continue
 
             # Find classical turning point:
-            x = vr_g * r_g + 0.5 * l * (l + 1) - e * r_g**2
+            x = vr2_g + 0.5 * l * (l + 1) - e * r_g**2
             g0 = rgd.round(4.0)
             while x[g0] > 0:
                 g0 -= 1
@@ -184,10 +187,10 @@ class Channel:
             iter = 0
             ok = False
             while True:
-                du1dr, a = self.integrate_outwards(u_g, rgd, vr_g, g0, e,
+                du1dr, a = self.integrate_outwards(u_g, rgd, vr2_g, g0, e,
                                                    scalar_relativistic, Z)
                 u1 = u_g[g0]
-                du2dr = self.integrate_inwards(u_g, rgd, vr_g, g0, e,
+                du2dr = self.integrate_inwards(u_g, rgd, vr2_g, g0, e,
                                                scalar_relativistic, Z)
                 u2 = u_g[g0]
                 A = du1dr / u1 - du2dr / u2
@@ -245,12 +248,11 @@ class Channel:
         f_n = self.f_n
         return np.dot(f_n, self.e_n[:len(f_n)])
 
-    def integrate_outwards(self, u_g, rgd, vr_g, g0, e,
+    def integrate_outwards(self, u_g, rgd, vr2_g, g0, e,
                            scalar_relativistic=True, Z=None, pt_g=None):
         l = self.l
         r_g = rgd.r_g
-
-        cm1_g, c0_g, cp1_g, x = coefs(rgd, l, vr_g, e, scalar_relativistic, Z)
+        cm1_g, c0_g, cp1_g, x = coefs(rgd, l, vr2_g, e, scalar_relativistic, Z)
 
         b_g = rgd.zeros()
 
@@ -267,7 +269,7 @@ class Channel:
                 a0 = 1.0
             else:
                 b_g[1:] = 2 * pt_g[1:] * r_g[1:]**(2 - l)
-                a0 = pt_g[1] / r_g[1]**l / (vr_g[1] / r_g[1] - e)
+                a0 = pt_g[1] / r_g[1]**l / (vr2_g[1] / r_g[1]**2 - e)
             a1 = a0
 
         if 0:
@@ -303,12 +305,12 @@ class Channel:
 
         return dudr, phi0
 
-    def integrate_inwards(self, u_g, rgd, vr_g, g0, e,
+    def integrate_inwards(self, u_g, rgd, vr2_g, g0, e,
                           scalar_relativistic=True, Z=None, gmax=None):
         l = self.l
         r_g = rgd.r_g
 
-        cm1_g, c0_g, cp1_g, x = coefs(rgd, l, vr_g, e, scalar_relativistic, Z)
+        cm1_g, c0_g, cp1_g, x = coefs(rgd, l, vr2_g, e, scalar_relativistic, Z)
 
         cm1_g[:g0] = 1.0  # prevent division by zero
         c0_g /= -cm1_g
@@ -366,10 +368,10 @@ class DiracChannel(Channel):
 
         self.name += '(%d/2)' % (2 * self.j)
 
-    def solve(self, vr_g):
+    def solve(self, vr2_g):
         """Solve Dirac equation in basis set."""
         nb = len(self.basis)
-        V_bb = self.basis.calculate_potential_matrix(vr_g)
+        V_bb = self.basis.calculate_potential_matrix(vr2_g)
         H_bb = np.zeros((2 * nb, 2 * nb))
         H_bb[:nb, :nb] = V_bb
         H_bb[nb:, nb:] = V_bb - 2 * c**2 * np.eye(nb)
@@ -446,7 +448,7 @@ class AllElectronAtom:
 
         self.fd = log or sys.stdout
 
-        self.vr_sg = None  # potential * r
+        self.vr2_sg = None  # potential * r**2
         self.n_sg = 0.0  # density
         self.rgd = None  # radial grid descriptor
 
@@ -608,18 +610,18 @@ class AllElectronAtom:
                  (', '.join([str(nb) for nb in nb_l]),
                   ', '.join('spdf'[:lmax + 1])))
 
-        self.vr_sg = self.rgd.zeros(self.nspins)
-        self.vr_sg[:] = -self.Z
+        self.vr2_sg = self.rgd.zeros(self.nspins)
+        self.vr2_sg[:] = -self.Z * self.rgd.r_g
 
     def solve(self):
         """Diagonalize Schrödinger equation."""
         self.eeig = 0.0
         for channel in self.channels:
             if self.method == 'Gaussian basis-set':
-                channel.solve(self.vr_sg[channel.s])
+                channel.solve(self.vr2_sg[channel.s])
             else:
-                channel.solve2(self.vr_sg[channel.s], self.scalar_relativistic,
-                               self.Z)
+                channel.solve2(self.vr2_sg[channel.s],
+                               self.scalar_relativistic, self.Z)
 
             self.eeig += channel.get_eigenvalue_sum()
 
@@ -649,11 +651,12 @@ class AllElectronAtom:
         self.calculate_density()
         self.calculate_electrostatic_potential()
         self.calculate_xc_potential()
-        self.vr_sg = self.vxc_sg * self.rgd.r_g
-        self.vr_sg += self.vHr_g
-        self.vr_sg -= self.Z
-        self.ekin = (self.eeig -
-                     self.rgd.integrate((self.vr_sg * self.n_sg).sum(0), -1))
+        vd_sg = self.vxc_sg
+        d1_g = self.rgd.r_g * self.rgd.dr_g * 4 * np.pi  # dv_g / r_g
+        vd_sg += self.vHr_g * d1_g
+        vd_sg -= self.Z * d1_g
+        self.ekin = (self.eeig - vd_sg.ravel() @ self.n_sg.ravel())
+        self.vr2_sg = vd_sg  / (self.rgd.dr_g * 4 * np.pi)
 
     def run(self, mix=0.4, maxiter=117, dnmax=1e-9):
         if self.channels is None:
@@ -662,7 +665,6 @@ class AllElectronAtom:
         if self.dirac:
             equation = 'Dirac'
         elif self.scalar_relativistic and self.method != 'Gaussian basis-set':
-
             equation = 'scalar-relativistic Schrödinger'
         else:
             equation = 'non-relativistic Schrödinger'
@@ -676,14 +678,15 @@ class AllElectronAtom:
             self.log('.', end='')
             self.fd.flush()
             if iter > 0:
-                self.vr_sg *= mix
-                self.vr_sg += (1 - mix) * vr_old_sg
+                self.vr2_sg *= mix
+                self.vr2_sg += (1 - mix) * vr2_old_sg
                 dn = self.rgd.integrate(abs(self.n_sg - n_old_sg).sum(0))
+                print(dn)
                 if dn <= dnmax:
                     self.log('\nConverged in', iter, 'steps')
                     break
 
-            vr_old_sg = self.vr_sg
+            vr2_old_sg = self.vr2_sg
             n_old_sg = self.n_sg
             self.step()
 
@@ -793,7 +796,7 @@ class AllElectronAtom:
         d0 = 42.0
         offset = 0
         for e in energies:
-            dudr = ch.integrate_outwards(u_g, self.rgd, self.vr_sg[0],
+            dudr = ch.integrate_outwards(u_g, self.rgd, self.vr2_sg[0],
                                          gcut, e, self.scalar_relativistic,
                                          self.Z)[0]
             d1 = np.arctan(dudr / u_g[gcut]) / pi + offset
