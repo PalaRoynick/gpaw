@@ -3,8 +3,10 @@
 #include "transformers.h"
 #include "bmgs.h"
 #include "gpu.h"
+#include <mpi.h>
 #include <stdlib.h>
 #include <pthread.h>
+
 
 static double *transformer_buf_gpu = NULL;
 static double *transformer_buf16_gpu = NULL;
