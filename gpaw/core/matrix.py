@@ -1,8 +1,9 @@
 """BLACS distributed matrix object."""
 from __future__ import annotations
 
+import warnings
 from types import ModuleType
-from typing import Literal, overload
+from typing import Literal, overload, cast
 
 import numpy as np
 import scipy.linalg as sla
@@ -18,6 +19,11 @@ from gpaw.mpi import MPIComm, _Communicator, serial_comm
 from gpaw.typing import Array1D, Array2D, ArrayLike1D, ArrayLike2D
 
 _global_blacs_context_store: dict[tuple[_Communicator, int, int], int] = {}
+
+
+class GpuMatmulFallbackWarning(UserWarning):
+    """For warning that distributed gpu_matmul_general() falls back to a dummy,
+    non-parallel implementation."""
 
 
 def suggest_blocking(N: int, ncpus: int) -> tuple[int, int, int]:
@@ -559,13 +565,19 @@ class Matrix(XP):
                 self.data.T[lower] = self.data[lower].conj()
             return
 
-        desc = dist.desc
-        cgpaw.scalapack_set(self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
-        buf = self.data.copy()
-        # Set diagonal to zero in the copy:
-        cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
-        # Now transpose tmp_mm adding the result to the original matrix:
-        cgpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
+        if self.xp is cp:
+            assert isinstance(dist, CuPyDistribution)
+            cupy_tril2full_distributed(self)
+        else:
+            # CPU scalapack path
+            desc = dist.desc
+            cgpaw.scalapack_set(
+                self.data, desc, 0.0, 0.0, 'L', M - 1, M - 1, 2, 1)
+            buf = self.data.copy()
+            # Set diagonal to zero in the copy:
+            cgpaw.scalapack_set(buf, desc, 0.0, 0.0, 'L', M, M, 1, 1)
+            # Now transpose tmp_mm adding the result to the original matrix:
+            cgpaw.pblas_tran(M, M, 1.0, buf, 1.0, self.data, desc, desc, True)
 
     def add_to_diagonal(self, d: ArrayLike1D | float) -> None:
         """Add list of numbers or single number to diagonal of matrix."""
@@ -1014,48 +1026,39 @@ class CuPyDistribution(MatrixDistribution):
                         return mmm_nc_sym(a, b, c, alpha, cublas_mmm)
                 else:
                     return mmm_nc(a, b, c, alpha, beta, cublas_mmm)
-            if opa == 'C' and opb == 'T' and beta == 0.0:
-                # Quick'n'dirty hack:
-                a = a.gather()
-                b = b.gather()
-                if self.comm.rank == 0:
-                    c0 = b.new()
-                    cublas_mmm(alpha, a.data, opa, b.data, opb, beta, c0.data)
-                else:
-                    c0 = None
-                c.scatter_from(c0)
-                return c
-            1 / 0
 
-        if symmetric:
-            if opa == 'N':
-                assert opb == 'C' or opb == 'T' \
-                    and np.issubdtype(a.dtype, np.floating)
-                if a is b:
+            # General distributed case, not performant but works
+            warnings.warn(
+                f'GPU matrix multiplication with (opa={opa!r}, opb={opb!r}) '
+                'is using a non-parallel algorithm',
+                GpuMatmulFallbackWarning)
+            CuPyDistribution.gpu_matmul_general(alpha, a, opa, b, opb, beta, c)
+            return c
+
+        if symmetric and opa == 'N':
+            # Non-distributed symmetric matrices: use dedicated algorithm
+            assert opb == 'C' or opb == 'T' \
+                and np.issubdtype(a.dtype, np.floating)
+            if a is b:
+                blas.gpu_r2k(0.5 * alpha,
+                             a.data,
+                             a.data,
+                             beta,
+                             c.data)
+            else:
+                if beta == 1.0 and a.shape[1] == 0:
+                    return
+                if c.data.size > 0:
+                    assert beta in [0.0, 1.0]
+                    # CuPy doesn't have dsyrk, so we roll our own:
                     blas.gpu_r2k(0.5 * alpha,
                                  a.data,
-                                 a.data,
+                                 b.data,
                                  beta,
                                  c.data)
-                else:
-                    if beta == 1.0 and a.shape[1] == 0:
-                        return
-                    if c.data.size > 0:
-                        assert beta in [0.0, 1.0]
-                        # CuPy doesn't have dsyrk, so we roll our own:
-                        blas.gpu_r2k(0.5 * alpha,
-                                     a.data,
-                                     b.data,
-                                     beta,
-                                     c.data)
-            else:
-                1 / 0
-                assert opa == 'C' and opb == 'N'
-                assert a is not b
-                raise NotImplementedError
-                blas.gpu_r2k(0.5 * alpha, a.data, b.data, beta, c.data, 'n')
-
         else:
+            # Non-distributed case without a dedicated kernel, just use generic
+            # matmul
             cublas_mmm(alpha, a.data, opa, b.data, opb, beta, c.data)
 
     def add_hermitian_conjugate(self,
@@ -1090,6 +1093,43 @@ class CuPyDistribution(MatrixDistribution):
         options.inplace = True
         eigs[:], _ = diagonalizer.eigh(H, options)
 
+    @staticmethod
+    def gpu_matmul_general(alpha, a: Matrix, opa: str, b: Matrix, opb: str,
+                           beta: float, c: Matrix) -> None:
+        """Generic matrix-matrix multiplication for distributed CuPy matrices.
+        Computes
+            \alpha * op(a) @ op(b) + \beta * c
+        and stores the result in c. Valid op codes are:
+            - 'N': identity transform
+            - 'T': transpose
+            - 'C': Hermitian conjugate
+
+        This is currently a dummy serial implementation that gathers the matrix
+        on one GPU and performs the operation there. Output c is again a
+        distributed matrix.
+
+        Used as a fallback for distributed matmul types that GPAW does not yet
+        handle with specialized algorithms. See eg. mmm_nn, mmm_nc, mmm_nc_sym.
+        """
+        # Note that some other funcs, eg. gpu_gemm, use 'H' instead of 'C'
+        VALID_OP_CODES = ['N', 'T', 'C']
+        assert opa in VALID_OP_CODES
+        assert opb in VALID_OP_CODES
+
+        comm = a.dist.comm
+        a0 = a.gather(broadcast=False)
+        b0 = b.gather(broadcast=False)
+        c0 = c.gather(broadcast=False) if beta != 0.0 else None
+
+        if comm.rank == 0:
+            if c0 is None:
+                c0 = c.new(dist=None)
+            # These are never None on rank 0
+            a0 = cast(Matrix, a0)
+            b0 = cast(Matrix, b0)
+            cublas_mmm(alpha, a0.data, opa, b0.data, opb, beta, c0.data)
+        c.scatter_from(c0)
+
     def eighl(self, H, L):
         """
         :::
@@ -1113,6 +1153,21 @@ class CuPyDistribution(MatrixDistribution):
         self.multiply(1.0, L, 'C', Ct, 'T', 0.0, H)
         # H.complex_conjugate()
         return eig_M
+
+
+def cupy_tril2full_distributed(matrix: Matrix) -> None:
+    """Construct a Hermitian matrix based on elements below the main
+    diagonal. In-place.
+    This is currently a serialized implementation that gathers the full matrix
+    on one GPU and does the operation there. In other words, has the same
+    limitation as eg. GPU-eigh."""
+
+    mat_full = matrix.gather(broadcast=False)
+    # Non-None on root processs
+    if mat_full:
+        arr2d = cast(cp.ndarray, mat_full.data)
+        arr2d[:] = cp.tril(arr2d) + cp.tril(arr2d, -1).conj().T
+    matrix.scatter_from(mat_full)
 
 
 def mmm_nn(m1, m2, m3, alpha, beta, mmm):
