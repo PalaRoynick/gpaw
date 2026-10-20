@@ -15,7 +15,7 @@ from scipy.fft import fftn, ifftn, irfftn, rfftn
 
 import gpaw.cgpaw as cgpaw
 from gpaw.gpu import is_hip
-from gpaw.typing import Array3D, DTypeLike, IntVector
+from gpaw.typing import DTypeLike, IntVector
 from gpaw.utilities import as_complex_dtype, as_real_dtype, get_dtype_precision
 
 ESTIMATE = 64
