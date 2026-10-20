@@ -71,15 +71,10 @@ stages:
           shift  # drop the "--"
         fi
 
-        target="."
         if [ "$lint" = true ]; then
-          target=".[cppdevel]"
-        fi
-
-        if [ "$lint" = true ]; then
-          bear --config="$BEAR_CONFIG" -- pip install -v --user --log build.log $editable "$target" "$@"
+          bear --config="$BEAR_CONFIG" -- pip install -v --user --log build.log $editable . "$@"
         else
-          pip install -v --user --log build.log $editable "$target" "$@"
+          pip install -v --user --log build.log $editable . "$@"
         fi
       }
     #
