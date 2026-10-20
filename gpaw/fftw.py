@@ -243,19 +243,19 @@ class NumpyFFTPlans(FFTPlans):
 def rfftn_patch(tmp_R):
     from gpaw.gpu import cupyx
     return cupyx.scipy.fft.fftn(
-        tmp_R, axes=(-3, -2, -1))[:, :, :tmp_R.shape[-1] // 2 + 1]
+        tmp_R, axes=(-3, -2, -1))[..., :tmp_R.shape[-1] // 2 + 1]
 
 
 def irfftn_patch(B, shape):
     import cupy as xp
 
     from gpaw.gpu import cupyx
-    A = xp.empty(shape, dtype=complex)
-    A[:, :, :B.shape[2]] = B
-    inv_ind1 = -xp.arange(B.shape[0])[:, None, None]
-    inv_ind2 = -xp.arange(B.shape[1])[None, :, None]
-    inv_ind3 = -xp.arange(1, B.shape[2])[None, None, :]
-    A[:, :, -(B.shape[2] - 1):] = B[inv_ind1, inv_ind2, inv_ind3].conj()
+    A = xp.empty(shape, dtype=as_complex_dtype(B.dtype))
+    A[..., :B.shape[2]] = B
+    inv_ind1 = -xp.arange(B.shape[-3])[:, None, None]
+    inv_ind2 = -xp.arange(B.shape[-2])[None, :, None]
+    inv_ind3 = -xp.arange(1, B.shape[-1])[None, None, :]
+    A[..., -(B.shape[2] - 1):] = B[..., inv_ind1, inv_ind2, inv_ind3].conj()
     return cupyx.scipy.fft.ifftn(A, axes=(-3, -2, -1)).real
 
 
@@ -287,17 +287,15 @@ class CuPyFFTPlans(FFTPlans):
         if np.issubdtype(self.tmp_R.dtype, np.floating):
             if is_hip:
                 self.tmp_R[:] = irfftn_patch(
-                    self.tmp_Q, self.tmp_R.shape[-3:]) * self.tmp_nR.size
+                    self.tmp_Q, self.tmp_R.shape) * self.tmp_nR.size
             else:
                 self.tmp_R[:] = cupyx.scipy.fft.irfftn(
                     self.tmp_Q, self.tmp_R.shape[-3:],
-                    norm='forward',
-                    overwrite_x=True)
+                    norm='forward', axes=(-3, -2, -1), overwrite_x=True)
         else:
             self.tmp_R[:] = cupyx.scipy.fft.ifftn(
                 self.tmp_Q, self.tmp_R.shape[-3:],
-                norm='forward',
-                overwrite_x=True)
+                norm='forward', axes=(-3, -2, -1), overwrite_x=True)
 
 
 # The rest of this file will be removed in the future ...
