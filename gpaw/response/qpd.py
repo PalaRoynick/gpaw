@@ -15,12 +15,12 @@ class SingleQPWDescriptor(PWDescriptor):
         if not isinstance(ecut, dict):
             return SingleQPWDescriptor(ecut, gd, complex, qd,
                                        gammacentered=gammacentered)
-        elif ecut['class'] is SingleCylQPWDescriptor:
-            return SingleCylQPWDescriptor(gd=gd,
-                                          kd=qd,
-                                          gammacentered=gammacentered,
-                                          dtype=complex,
-                                          **ecut['kwargs'])
+        elif ecut['class'] in [SingleCylQPWDescriptor, SingleZQPWDescriptor]:
+            return ecut['class'](gd=gd,
+                                 kd=qd,
+                                 gammacentered=gammacentered,
+                                 dtype=complex,
+                                 **ecut['kwargs'])
         else:
             raise NotImplementedError(
                 f'Unrecognized QPW class: {ecut["class"]}')
@@ -107,3 +107,62 @@ class SingleCylQPWDescriptor(SingleQPWDescriptor):
         return SingleCylQPWDescriptor.from_q(
             self.q_c, ecut_xy=ecut, ecut_z=self.ecut_z,
             gd=gd, gammacentered=gammacentered)
+
+
+class SingleZQPWDescriptor(SingleQPWDescriptor):
+    """Single-q PW descriptor retaining only Gx = Gy = 0 vectors.
+
+    Here Gx and Gy refer to the integer coefficients of the reciprocal cell
+    vectors in the FFT grid, not to Cartesian components.
+    """
+
+    def __init__(self, ecut_z, gd, dtype=None, kd=None,
+                 fftwflags=fftw.MEASURE, gammacentered=False):
+
+        ecut0 = 0.5 * pi**2 / (gd.h_cv**2).sum(1).max()
+        if ecut_z is None:
+            ecut_z = 0.9999 * ecut0
+        else:
+            assert ecut_z <= ecut0
+
+        self.ecut_z = ecut_z
+
+        super().__init__(ecut_z, gd, dtype, kd,
+                         fftwflags, gammacentered)
+
+    def setup_pw_grid(self, i_Qc, Q_Q):
+        ng_q = []
+        Q_qG = []
+        G2_qG = []
+        line_Q = (i_Qc[:, 0] == 0) & (i_Qc[:, 1] == 0)
+
+        for q, K_v in enumerate(self.K_qv):
+            G2_Q = ((self.G_Qv + K_v)**2).sum(axis=1)
+            if self.gammacentered:
+                mask_Q = line_Q & ((self.G_Qv**2).sum(axis=1)
+                                   <= 2 * self.ecut_z)
+            else:
+                mask_Q = line_Q & (G2_Q <= 2 * self.ecut_z)
+
+            if self.dtype == float:
+                mask_Q &= (i_Qc[:, 2] >= 0)
+
+            Q_G = Q_Q[mask_Q]
+            Q_qG.append(Q_G)
+            G2_qG.append(G2_Q[Q_G])
+            ng = len(Q_G)
+            ng_q.append(ng)
+
+        return ng_q, Q_qG, G2_qG
+
+    def copy_with(self, ecut=None, gd=None, gammacentered=None):
+        if ecut is None:
+            ecut = self.ecut_z
+        if gd is None:
+            gd = self.gd
+        if gammacentered is None:
+            gammacentered = self.gammacentered
+
+        qd = KPointDescriptor([self.q_c])
+        return SingleZQPWDescriptor(ecut, gd, complex, qd,
+                                    gammacentered=gammacentered)
