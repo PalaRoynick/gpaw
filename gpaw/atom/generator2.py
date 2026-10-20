@@ -459,7 +459,7 @@ class PAWSetupGenerator:
                     self.ncore += f
                     self.ekincore += f * ch.e_n[n]
 
-        self.ekincore -= self.rgd.integrate(self.nc_g * self.aea.vr_sg[0], -1)
+        self.ekincore -= self.rgd.integrate(self.nc_g * self.aea.vr2_sg[0], -2)
 
         self.log('Core electrons:', self.ncore)
         self.log('Valence electrons:', self.nvalence)
@@ -475,7 +475,7 @@ class PAWSetupGenerator:
     def find_polynomial_potential(self, r0, P, dv0):
         self.log('Constructing smooth local potential for r < %.3f' % r0)
         g0 = self.rgd.ceil(r0)
-        self.vtr_g = self.pseudizer(self.aea.vr_sg[0], g0, 1, P)[0]
+        self.vtr_g = self.pseudizer(self.aea.vr2_sg[0], g0, 1, P)[0]
         if dv0:
             x = self.rgd.r_g[:g0] / r0
             dv_g = dv0 * (1 - 2 * x**2 + x**4)
@@ -1114,7 +1114,7 @@ class PAWSetupGenerator:
         setup.vbar_g[0] = setup.vbar_g[1]
         setup.vt_g = self.vtr_g * sqrt(4 * pi)
         setup.vt_g[1:] /= self.rgd.r_g[1:]
-        setup.vt_g[0] = setup.vt_g[1]
+        setup.vt_g[0] = setup.vt_g[1]  # Prolly slightly wrong for GGAs, where vt_G[0] = -inf
         setup.Z = aea.Z
         setup.Nc = self.ncore
         setup.Nv = self.nvalence

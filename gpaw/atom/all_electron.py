@@ -56,7 +56,7 @@ def calculate_xc(rgd, xc, n_g):
 def calculate_potentials(rgd, xc, n_g, Z, tw_coeff=None):
     vHr_g = calculate_hartree(rgd, n_g, Z)
     vxc_g, Exc = calculate_xc(rgd, xc, n_g)
-    vr_g = vHr_g + vxc_g * rgd.r_g
+    vr2_g = vHr_g * rgd.r_g + vxc_g
 
     if tw_coeff is not None:
         vr_g /= tw_coeff
