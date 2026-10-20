@@ -9,21 +9,23 @@ from gpaw.new.etdm.etdm import ETDM
 from gpaw.new.etdm.tools import random_a
 
 
+pytestmark = pytest.mark.usefixtures('module_tmp_path')
+
+
 @pytest.fixture(scope='module')
-def ibzwfs_from_new_gpaw(tmp_path_factory):
+def ibzwfs_from_new_gpaw():
     """Create IBZWaveFunctions using new GPAW."""
 
     atoms = molecule('C6H6')
     atoms.center(vacuum=3.0)
 
-    txt_file = tmp_path_factory.mktemp('benzene') / 'benzene.txt'
     calc = GPAW(
         mode='pw',
         xc='LDA',
         nbands=15,
         spinpol=False,
         kpts=(1, 1, 1),
-        txt=str(txt_file))
+        txt='benzene.txt')
     atoms.calc = calc
     atoms.get_potential_energy()
 
