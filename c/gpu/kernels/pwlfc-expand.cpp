@@ -7,7 +7,8 @@
 #include "gpu/cpp/pwlfc_expand.hpp"
 
 #include <cassert>
-
+#include <cmath>
+#include <type_traits>
 
 #define BETA   0.066725
 #define GAMMA  0.031091

@@ -3,6 +3,7 @@
 #include "gpu/gpu.h"
 #include "gpu/gpu-complex.h"
 #include "gpu/gpu_interface.h"
+#include <cstddef>
 
 #ifndef GPU_USE_COMPLEX
 #  define BLOCK_X  128
