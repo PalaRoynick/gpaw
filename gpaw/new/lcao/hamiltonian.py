@@ -14,6 +14,7 @@ from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
 from gpaw.typing import Array2D, Array3D
 from gpaw.utilities import unpack_hermitian
 from gpaw.utilities.blas import mmm
+from gpaw.new.lcao.builder import block_diag_product
 
 
 class HamiltonianMatrixCalculator:
@@ -69,29 +70,7 @@ class CollinearHamiltonianMatrixCalculator(HamiltonianMatrixCalculator):
 
         V_MM = self._calculate_potential_matrix(wfs, V_xMM)
 
-        if len(dH_aii) == 0:
-            return V_MM
-
-        M1, M2 = V_MM.dist.my_row_range()
-        if V_MM.xp is np:
-            dH_II = sparse.block_diag(
-                [sparse.coo_array(dH_aii[a]) for a in wfs.P_aMi.keys()],
-                format='csr')
-            P_MI = wfs.P_aMi.data
-            PdH_MI = P_MI[M1:M2] @ dH_II
-            if V_MM.dtype == float:
-                assert PdH_MI.flags.f_contiguous
-                mmm(1.0, PdH_MI.T, 'T', P_MI, 'T', 1.0, V_MM.data)
-            else:
-                if PdH_MI.flags.c_contiguous:
-                    mmm(1.0, PdH_MI.conj(), 'N', P_MI, 'T', 1.0, V_MM.data)
-                else:
-                    mmm(1.0, PdH_MI.T, 'C', P_MI, 'T', 1.0, V_MM.data)
-        else:
-            for a, dH_ii in dH_aii.items():
-                P_Mi = wfs.P_aMi[a]
-                # XXX use gemm?
-                V_MM.data += (P_Mi[M1:M2] @ dH_ii).conj() @ P_Mi.T
+        block_diag_product(wfs.P_aMi, dH_aii, V_MM)
 
         return V_MM
 

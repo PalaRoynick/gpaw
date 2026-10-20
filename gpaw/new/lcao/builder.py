@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy import sparse
-
+from gpaw.core.atom_arrays import (AtomArrays, AtomArraysLayout,
+                                   AtomDistribution)
 from gpaw.core.matrix import Matrix, MatrixWithNoData
 from gpaw.dft import Parameters
 from gpaw.lcao.tci import TCIExpansions
@@ -13,9 +13,9 @@ from gpaw.new.lcao.hamiltonian import LCAOHamiltonian
 from gpaw.new.lcao.hybrids import HybridXCFunctional
 from gpaw.new.lcao.ibzwfs import LCAOIBZWaveFunctions
 from gpaw.new.lcao.wave_functions import LCAOWaveFunctions
-from gpaw.utilities.timing import NullTimer
-from gpaw.core.atom_arrays import AtomArraysLayout, AtomDistribution
 from gpaw.utilities.blas import mmm
+from gpaw.utilities.timing import NullTimer
+from scipy import sparse
 
 
 class LCAODFTComponentsBuilder(DFTComponentsBuilder):
@@ -232,20 +232,22 @@ def tci_helper(basis,
             P_Mi[:] = P_aqMi[a][q]
         P_qaMi.append(P_aMi)
 
-    add_atomic_overlap_corrections(P_qaMi=P_qaMi,
-                                   S0_qMM=S0_qMM,
-                                   setups=setups,
-                                   M1=M1,
-                                   M2=M2)
-    domain_comm.sum(S0_qMM)
-
-    # self.atomic_correction= self.atomic_correction_cls.new_from_wfs(self)
-    # self.atomic_correction.add_overlap_correction(newS_qMM)
-
     S_qMM = [Matrix(nao, nao, data=S_MM,
                     dist=(band_comm, band_comm.size, 1)) for S_MM in S0_qMM]
     T_qMM = [Matrix(nao, nao, data=T_MM,
                     dist=(band_comm, band_comm.size, 1)) for T_MM in T0_qMM]
+
+    dO_aii = AtomArraysLayout([(setup.ni, setup.ni) for setup in setups],
+                              atomdist=atomdist).new()
+    for a, dO_ii in dO_aii.items():
+        dO_ii[:] = setups[a].dO_ii
+
+    for P_aMi, S_MM in zips(P_qaMi, S_qMM):
+        block_diag_product(P_aMi, dO_aii, S_MM)
+        domain_comm.sum(S_MM.data)
+
+    # self.atomic_correction= self.atomic_correction_cls.new_from_wfs(self)
+    # self.atomic_correction.add_overlap_correction(newS_qMM)
 
     for S_MM in S_qMM:
         S_MM.tril2full()
@@ -262,29 +264,13 @@ def tci_helper(basis,
     return S_qMM, T_qMM, P_qaMi, tciexpansions, tci_derivatives
 
 
-def add_atomic_overlap_corrections(
-        P_qaMi,
-        S0_qMM,
-        setups,
-        M1: int,
-        M2: int):
-    if M1 == M2:
-        return  # nothing to do on this rank
-    dO_II = None
-    for P_aMi, S_MM in zips(P_qaMi, S0_qMM):
-        if dO_II is None:
-            if P_aMi.data.size == 0:
-                return  # nothing to do on this rank
-            dO_II = sparse.block_diag(
-                [sparse.coo_array(setups[a].dO_ii) for a in P_aMi.keys()],
-                format='csr')
-
-        P_MI = P_aMi.data
-        PdO_MI = P_MI[M1:M2] @ dO_II
-        if S_MM.dtype == float:
-            mmm(1.0, PdO_MI.T, 'T', P_MI, 'T', 1.0, S_MM)
-        else:
-            if PdO_MI.flags.c_contiguous:
-                mmm(1.0, PdO_MI.conj(), 'N', P_MI, 'T', 1.0, S_MM)
-            else:
-                mmm(1.0, PdO_MI.T, 'C', P_MI, 'T', 1.0, S_MM)
+def block_diag_product(P_aMi: AtomArrays,
+                       block_aii: AtomArrays,
+                       out_MM: Matrix) -> None:
+    M1, M2 = out_MM.dist.my_row_range()
+    P1_aMi = P_aMi[:, M1:M2]
+    PB_aMi = P1_aMi.new()
+    P1_aMi.block_diag_multiply(block_aii, PB_aMi)
+    PB_MI = PB_aMi.matrix
+    PB_MI.complex_conjugate()
+    PB_MI.multiply(P_aMi.matrix, opa='T', opb='T', beta=1.0, out=out_MM)
